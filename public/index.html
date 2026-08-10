@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="中古オーディオを複数ショップから横断検索する非公式ツール">
+  <title>HiFiScout — 中古オーディオ横断検索</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="hero">
+    <div>
+      <p class="eyebrow">USED AUDIO SEARCH</p>
+      <h1>HiFiScout</h1>
+      <p class="lead">中古オーディオを、ショップをまたいで探す。</p>
+    </div>
+    <div id="sync-status" class="sync-status">同期状況を取得中…</div>
+  </header>
+
+  <main>
+    <section class="filters" aria-label="検索条件">
+      <label class="search"><span>検索</span><input id="q" type="search" placeholder="例: TAD ME1 / LUXMAN / DAC"></label>
+      <label><span>ショップ</span><select id="shop"><option value="">すべて</option></select></label>
+      <label><span>メーカー</span><select id="manufacturer"><option value="">すべて</option></select></label>
+      <label><span>カテゴリ</span><select id="category"><option value="">すべて</option></select></label>
+      <label><span>最低価格</span><input id="minPrice" inputmode="numeric" placeholder="0"></label>
+      <label><span>最高価格</span><input id="maxPrice" inputmode="numeric" placeholder="1000000"></label>
+      <label><span>並び順</span><select id="sort"><option value="updated">更新順</option><option value="newest">新着順</option><option value="priceAsc">価格が安い順</option><option value="priceDesc">価格が高い順</option></select></label>
+      <label class="check"><input id="inStock" type="checkbox" checked><span>在庫ありのみ</span></label>
+      <label class="check"><input id="favoritesOnly" type="checkbox"><span>お気に入りのみ</span></label>
+    </section>
+
+    <div class="result-header"><strong id="count">—</strong><span>件</span><span id="loading" class="loading">更新中</span></div>
+    <section id="products" class="grid" aria-live="polite"></section>
+  </main>
+
+  <dialog id="history-dialog">
+    <button class="dialog-close" aria-label="閉じる">×</button>
+    <div id="history-content"></div>
+  </dialog>
+
+  <footer>
+    <p>HiFiScout は各販売店とは関係のない非公式の横断検索ツールです。価格・在庫・商品状態は必ず販売店の商品ページで確認してください。</p>
+    <p>商品画像・販売店の商品説明文・スタッフコメントは保存・転載しません。</p>
+  </footer>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
