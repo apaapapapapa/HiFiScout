@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "hifiscout",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-11",
+  "observability": { "enabled": true },
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
+  "vars": {
+    "AUDIOUNION_INTERVAL_MINUTES": "30",
+    "IPPINKAN_INTERVAL_MINUTES": "30",
+    "FUJIYA_AVIC_INTERVAL_MINUTES": "30",
+    "HIFIDO_INTERVAL_MINUTES": "30",
+    "CRAWL_REQUEST_DELAY_MS": "1200",
+    "CRAWL_MAX_PAGES_PER_SHOP": "40",
+    "AUDIOUNION_ENTRY_URL": "",
+    "CRAWLER_USER_AGENT": "HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "hifiscout",
+      "database_id": "REPLACE_WITH_CLOUDFLARE_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

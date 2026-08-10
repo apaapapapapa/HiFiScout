@@ -1,0 +1,2 @@
+# Only required for manually forcing a crawl through POST /api/admin/crawl?shop=ippinkan
+ADMIN_TOKEN=change-me
