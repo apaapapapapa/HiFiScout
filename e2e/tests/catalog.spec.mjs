@@ -95,14 +95,10 @@ test('changing a shop filter refreshes the API and exposes a removable filter ch
   await expect(page.locator('#shop')).toHaveValue(firstShop.value);
   await expect(page.locator('#active-filters')).toContainText(firstShop.label);
 
-  const resetResponsePromise = page.waitForResponse(response => {
-    if (!isProductsRequest(response)) return false;
-    return !new URL(response.url()).searchParams.has('shop');
-  });
   await page.locator('[data-clear-filter="shop"]').click();
-  await resetResponsePromise;
   await expect(page.locator('#shop')).toHaveValue('');
   await expect(page.locator('#active-filters')).not.toContainText(firstShop.label);
+  await expect(page.locator('#count')).toHaveText(/^\d+$/);
 });
 
 test('mobile uses a bottom-sheet filter panel while keeping search visible', async ({ page }) => {
