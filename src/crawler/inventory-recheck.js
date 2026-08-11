@@ -8,8 +8,7 @@ import {
   markInventoryAmbiguous,
   markInventoryAvailable,
   markInventoryCheckAttempt,
-  markInventorySoldOut,
-  recordInventoryMissing,
+  recordInventoryUnavailable,
   selectInventoryRecheckCandidate
 } from '../db/inventory-recheck-repository.js';
 import { createRelayHtmlFetcher } from './relay.js';
@@ -22,8 +21,7 @@ const defaultRepository = {
   markInventoryCheckAttempt,
   markInventoryAvailable,
   markInventoryAmbiguous,
-  markInventorySoldOut,
-  recordInventoryMissing
+  recordInventoryUnavailable
 };
 
 function visibleText(html) {
@@ -66,7 +64,7 @@ export function classifyAudioUnionInventoryPage(html) {
   const hasActiveEvidence = hasPricedOffer || hasPurchaseEvidence;
 
   // Conflicting page-wide signals can come from recommendations or retained historical markup.
-  // Never deactivate when the page is internally contradictory.
+  // Never treat contradictory markup as proof of either state.
   if (hasActiveEvidence && hasSoldEvidence) return 'ambiguous';
   if (hasActiveEvidence) return 'in_stock';
   if (hasSoldEvidence) return 'sold_out';
@@ -77,7 +75,7 @@ function isoBefore(now, hours) {
   return new Date(now.getTime() - hours * 60 * 60 * 1000).toISOString();
 }
 
-function priorMissingFailures(candidate) {
+function priorUnavailableFailures(candidate) {
   const checkedAt = Date.parse(candidate?.last_inventory_checked_at || '');
   const lastSeenAt = Date.parse(candidate?.last_seen_at || '');
   if (!Number.isFinite(checkedAt)) return 0;
@@ -90,6 +88,20 @@ function relayFailureReason(error) {
   if (error?.code === 'robots_disallowed') return 'robots_disallowed';
   if (Number.isFinite(error?.relayStatus)) return `relay_http_${error.relayStatus}`;
   return 'relay_error';
+}
+
+async function recordUnavailable(repository, env, candidate, attemptedAt, settings, evidence, httpStatus) {
+  const failureCount = priorUnavailableFailures(candidate) + 1;
+  const deactivate = failureCount >= settings.failureThreshold;
+  await repository.recordInventoryUnavailable(env.DB, candidate.id, attemptedAt, failureCount, deactivate);
+  return {
+    status: 'checked',
+    outcome: deactivate ? `${evidence}_deactivated` : `${evidence}_retry`,
+    ...(httpStatus ? { httpStatus } : {}),
+    failureCount,
+    productId: candidate.id,
+    sourceId: candidate.source_id
+  };
 }
 
 export async function recheckAudioUnionInventory(
@@ -140,17 +152,7 @@ export async function recheckAudioUnionInventory(
 
     const status = Number(page.status);
     if (status === 404 || status === 410) {
-      const failureCount = priorMissingFailures(candidate) + 1;
-      const deactivate = failureCount >= settings.failureThreshold;
-      await repository.recordInventoryMissing(env.DB, candidate.id, attemptedAt, failureCount, deactivate);
-      return {
-        status: 'checked',
-        outcome: deactivate ? 'missing_deactivated' : 'missing_retry',
-        httpStatus: status,
-        failureCount,
-        productId: candidate.id,
-        sourceId: candidate.source_id
-      };
+      return recordUnavailable(repository, env, candidate, attemptedAt, settings, 'missing', status);
     }
 
     if (status === 403 || status === 429 || status >= 500) {
@@ -183,15 +185,22 @@ export async function recheckAudioUnionInventory(
     const classification = classifyAudioUnionInventoryPage(page.body);
     if (classification === 'in_stock') {
       await repository.markInventoryAvailable(env.DB, candidate.id, attemptedAt);
-    } else if (classification === 'sold_out') {
-      await repository.markInventorySoldOut(env.DB, candidate.id, attemptedAt);
-    } else {
-      await repository.markInventoryAmbiguous(env.DB, candidate.id, attemptedAt);
+      return {
+        status: 'checked',
+        outcome: 'in_stock',
+        productId: candidate.id,
+        sourceId: candidate.source_id
+      };
     }
 
+    if (classification === 'sold_out') {
+      return recordUnavailable(repository, env, candidate, attemptedAt, settings, 'sold', 200);
+    }
+
+    await repository.markInventoryAmbiguous(env.DB, candidate.id, attemptedAt);
     return {
       status: 'checked',
-      outcome: classification,
+      outcome: 'ambiguous',
       productId: candidate.id,
       sourceId: candidate.source_id
     };
