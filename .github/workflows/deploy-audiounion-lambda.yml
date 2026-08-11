@@ -1,0 +1,61 @@
+name: Deploy AudioUnion Lambda
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'infra/audiounion-lambda/index.mjs'
+      - '.github/workflows/deploy-audiounion-lambda.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-audiounion-lambda
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to AWS Tokyo
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      AWS_REGION: ap-northeast-1
+      FUNCTION_NAME: hifiscout-audiounion-fetcher
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_LAMBDA_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Package Lambda
+        run: |
+          cd infra/audiounion-lambda
+          zip -j "$RUNNER_TEMP/audiounion-lambda.zip" index.mjs
+
+      - name: Deploy Lambda code
+        run: |
+          aws lambda update-function-code \
+            --region "$AWS_REGION" \
+            --function-name "$FUNCTION_NAME" \
+            --zip-file "fileb://$RUNNER_TEMP/audiounion-lambda.zip"
+
+          aws lambda wait function-updated-v2 \
+            --region "$AWS_REGION" \
+            --function-name "$FUNCTION_NAME"
+
+      - name: Verify deployment
+        run: |
+          aws lambda get-function-configuration \
+            --region "$AWS_REGION" \
+            --function-name "$FUNCTION_NAME" \
+            --query '{FunctionName:FunctionName,Runtime:Runtime,LastModified:LastModified,State:State,LastUpdateStatus:LastUpdateStatus}'
