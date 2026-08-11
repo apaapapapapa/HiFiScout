@@ -39,7 +39,7 @@ const CATEGORY_RULES = [
   ['pre_amp', /pre[\s-]?amp|pre amplifier|control amplifier|control amp|プリアンプ|コントロールアンプ/i],
   ['power_amp', /power[\s-]?amp|power amplifier|パワーアンプ/i],
   ['headphone_amp', /headphone[\s-]?amp|headphone amplifier|ヘッドホンアンプ/i],
-  ['dac', /\bdac\b|d\s*[/\-]\s*a|d\s*[/\-]?\s*a\s*コンバータ|daコンバータ|converter|wandla|tambaqui/i],
+  ['dac', /\bdac\b|d\s*[/\-]\s*a(?:\s*(?:converter|コンバータ(?:ー)?))?|da\s*コンバータ(?:ー)?|wandla|tambaqui/i],
   ['network_transport', /network transport|streaming transport|ネットワークトランスポート/i],
   ['network_player', /network|streamer|streaming|ネットワーク|rivo|zen stream/i],
   ['cd_sacd_player', /sacd|cd\s*player|cdプレーヤ|cdプレイヤ|dcd[-\s]?/i],
@@ -56,6 +56,13 @@ const CATEGORY_RULES = [
   ['cable', /\bcable\b|ケーブル/i],
   ['accessory', /insulator|インシュレータ|アクセサリ|電源タップ/i]
 ];
+
+const AMPLIFIER_CATEGORY_IDS = new Set(['integrated_amp', 'pre_amp', 'power_amp', 'headphone_amp']);
+const COMPONENT_CATEGORY_IDS = new Set([
+  'speaker', 'integrated_amp', 'pre_amp', 'power_amp', 'headphone_amp', 'dac',
+  'network_player', 'network_transport', 'cd_sacd_player', 'turntable', 'tonearm',
+  'cartridge', 'phono_eq', 'dap', 'earphone', 'headphone'
+]);
 
 function normalizeLookup(value = '') {
   return String(value)
@@ -78,12 +85,39 @@ function validCategoryIds(values = []) {
   return [...new Set(values)].filter(id => CATEGORY_BY_ID.get(id)?.selectable);
 }
 
+function resolveInferenceConflicts(values) {
+  let ids = validCategoryIds(values);
+  const set = new Set(ids);
+
+  // A network transport is a distinct seller category; the broad "network" rule must not
+  // also turn it into a network player when classification is inferred from a title.
+  if (set.has('network_transport')) ids = ids.filter(id => id !== 'network_player');
+
+  // "headphone amplifier" contains the word "headphone" but is not a headphone itself.
+  if (set.has('headphone_amp')) ids = ids.filter(id => id !== 'headphone');
+
+  // Tube amplifiers are amplifiers, not loose vacuum tubes.
+  if (set.has('vacuum_tube') && ids.some(id => AMPLIFIER_CATEGORY_IDS.has(id))) {
+    ids = ids.filter(id => id !== 'vacuum_tube');
+  }
+
+  // Accessory/cable titles frequently contain the component they are intended for
+  // (speaker cable, headphone cable, DAC accessory). Prefer the accessory product type.
+  const accessoryId = set.has('cable') ? 'cable' : set.has('accessory') ? 'accessory' : null;
+  if (accessoryId) {
+    const remaining = ids.filter(id => !COMPONENT_CATEGORY_IDS.has(id));
+    return validCategoryIds([accessoryId, ...remaining.filter(id => id !== accessoryId)]);
+  }
+
+  return validCategoryIds(ids);
+}
+
 function inferCategoryIds(text = '') {
   const ids = [];
   for (const [id, pattern] of CATEGORY_RULES) {
     if (pattern.test(text)) ids.push(id);
   }
-  return validCategoryIds(ids);
+  return resolveInferenceConflicts(ids);
 }
 
 function categoryIdFromAlias(value = '') {
