@@ -21,6 +21,77 @@ sam deploy \
 
 Use the `FunctionUrl` stack output as the Worker relay URL. The Node.js 22 Lambda runtime is supported by AWS Lambda and runs on Amazon Linux 2023.
 
+## Automatic code deployment from GitHub Actions
+
+After the initial SAM deployment, changes to `infra/audiounion-lambda/index.mjs` on `main` are automatically packaged and deployed to the existing `hifiscout-audiounion-fetcher` function in `ap-northeast-1` by `.github/workflows/deploy-audiounion-lambda.yml`. The workflow can also be run manually with `workflow_dispatch`.
+
+Authentication uses GitHub Actions OIDC. Do not create long-lived AWS access keys for this workflow.
+
+### 1. Create the GitHub OIDC provider in AWS
+
+In AWS IAM, add an OpenID Connect identity provider with:
+
+- Provider URL: `https://token.actions.githubusercontent.com`
+- Audience: `sts.amazonaws.com`
+
+This provider only needs to be created once per AWS account.
+
+### 2. Create an IAM role for GitHub Actions
+
+Create a role that trusts the GitHub OIDC provider. Restrict it to this repository's `main` branch.
+
+Replace `<AWS_ACCOUNT_ID>` with your AWS account ID in the trust policy:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::<AWS_ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+          "token.actions.githubusercontent.com:sub": "repo:apaapapapapa/HiFiScout:ref:refs/heads/main"
+        }
+      }
+    }
+  ]
+}
+```
+
+Attach a least-privilege policy that allows updating and verifying only this Lambda function:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "lambda:UpdateFunctionCode",
+        "lambda:GetFunctionConfiguration"
+      ],
+      "Resource": "arn:aws:lambda:ap-northeast-1:<AWS_ACCOUNT_ID>:function:hifiscout-audiounion-fetcher"
+    }
+  ]
+}
+```
+
+### 3. Add the role ARN to GitHub
+
+In the repository, open **Settings > Secrets and variables > Actions > Variables** and create:
+
+- Name: `AWS_LAMBDA_DEPLOY_ROLE_ARN`
+- Value: the IAM role ARN, for example `arn:aws:iam::<AWS_ACCOUNT_ID>:role/hifiscout-lambda-github-deploy`
+
+The role ARN is not a secret, so it is stored as a GitHub Actions variable rather than a secret.
+
+Once these AWS and GitHub settings are complete, pushing a Lambda code change to `main` will deploy it automatically. Changes to `template.yaml` are intentionally excluded because infrastructure/configuration changes should continue to be applied through SAM/CloudFormation rather than a code-only Lambda update.
+
 ## Configure HiFiScout
 
 Set both values as Cloudflare Worker secrets; do not commit them to `wrangler.jsonc`.
