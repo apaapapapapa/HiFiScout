@@ -20,6 +20,13 @@ export const SHOP_DEFINITIONS = {
     intervalEnv: 'HIFIDO_INTERVAL_MINUTES',
     defaultIntervalMinutes: 30
   },
+  formusic: {
+    key: 'formusic',
+    name: 'FOR MUSIC',
+    baseUrl: 'https://shop.formusic.jp',
+    intervalEnv: 'FORMUSIC_INTERVAL_MINUTES',
+    defaultIntervalMinutes: 30
+  },
   fujiyaAvic: {
     key: 'fujiya-avic',
     name: 'フジヤエービック',
