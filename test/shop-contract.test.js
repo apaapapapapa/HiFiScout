@@ -27,23 +27,21 @@ test('all shop plugins satisfy the crawler contract', () => {
   }
 });
 
-test('relay transport prefers shared crawler configuration and keeps legacy fallback', () => {
+test('relay transport requires the shared crawler configuration', () => {
   const plugin = SHOP_PLUGINS.find(candidate => candidate.key === 'audiounion');
   assert.ok(plugin);
 
   assert.deepEqual(
     relayConfiguration({
       CRAWL_RELAY_URL: 'https://shared.example/',
-      CRAWL_RELAY_TOKEN: 'shared-token',
-      AUDIOUNION_RELAY_URL: 'https://legacy.example/',
-      AUDIOUNION_RELAY_TOKEN: 'legacy-token'
-    }, plugin),
+      CRAWL_RELAY_TOKEN: 'shared-token'
+    }),
     { relayUrl: 'https://shared.example/', relayToken: 'shared-token' }
   );
 
   assert.equal(isTransportConfigured({
-    AUDIOUNION_RELAY_URL: 'https://legacy.example/',
-    AUDIOUNION_RELAY_TOKEN: 'legacy-token'
+    CRAWL_RELAY_URL: 'https://shared.example/',
+    CRAWL_RELAY_TOKEN: 'shared-token'
   }, plugin), true);
   assert.equal(isTransportConfigured({}, plugin), false);
 });
