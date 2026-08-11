@@ -31,6 +31,10 @@
     "FUJIYA_AVIC_REQUEST_DELAY_MS": "1200",
     "HIFIDO_REQUEST_DELAY_MS": "1200",
     "FORMUSIC_REQUEST_DELAY_MS": "1200",
+    "AUDIOUNION_INVENTORY_RECHECK_ENABLED": "true",
+    "AUDIOUNION_INVENTORY_RECHECK_MIN_AGE_HOURS": "24",
+    "AUDIOUNION_INVENTORY_RECHECK_INTERVAL_HOURS": "24",
+    "AUDIOUNION_INVENTORY_RECHECK_FAILURE_THRESHOLD": "2",
     "FUJIYA_AVIC_MAX_PAGES": "50",
     "HIFIDO_MAX_PAGES": "3",
     "HIFIDO_RECHECK_MAX_PAGE": "120",
@@ -47,7 +51,7 @@
     "INACTIVE_PRODUCT_RETENTION_DAYS": "365",
     "RETENTION_DELETE_BATCH_SIZE": "500",
     "AUDIOUNION_ENTRY_URL": "https://www.audiounion.jp/st/new_arrival_used.html",
-    "CRAWLER_USER_AGENT": "HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)"
+    "CRAWLER_USER_AGENT": "HiFiScoutBot/0.1 (+https://github.com/apaapapapa/HiFiScout)"
   },
   "d1_databases": [{ "binding": "DB" }]
 }
