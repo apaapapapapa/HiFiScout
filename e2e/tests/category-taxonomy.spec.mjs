@@ -56,12 +56,18 @@ test('live metadata exposes the complete canonical taxonomy including zero-count
   expect(facets.every(category => Number.isInteger(category.activeProductCount) && category.activeProductCount >= 0)).toBeTruthy();
 });
 
-test('category taxonomy keeps canonical order and parent/leaf URL state', async ({ page }) => {
+test('category taxonomy keeps separators, canonical order and parent/leaf URL state', async ({ page }) => {
   const requests = await mockCatalog(page);
   await page.goto('/');
 
-  const options = await page.locator('#category option').evaluateAll(nodes => nodes.map(node => ({ value: node.value, text: node.textContent })));
-  expect(options.slice(0, 7)).toEqual([
+  const options = await page.locator('#category option').evaluateAll(nodes => nodes.map(node => ({
+    value: node.value,
+    text: node.textContent,
+    separator: node.dataset.categorySeparator === 'true',
+    disabled: node.disabled
+  })));
+  const selectable = options.filter(option => !option.separator);
+  expect(selectable.slice(0, 7).map(({ value, text }) => ({ value, text }))).toEqual([
     { value: '', text: 'すべて' },
     { value: 'amplifier', text: 'アンプ' },
     { value: 'integrated_amp', text: '　プリメインアンプ' },
@@ -70,10 +76,17 @@ test('category taxonomy keeps canonical order and parent/leaf URL state', async 
     { value: 'headphone_amp', text: '　ヘッドホンアンプ' },
     { value: 'digital', text: 'デジタル' }
   ]);
-  expect(options.slice(-2)).toEqual([
+  expect(selectable.slice(-2).map(({ value, text }) => ({ value, text }))).toEqual([
     { value: 'dj_dtm', text: 'DJ機器・DTM' },
     { value: 'other', text: 'その他' }
   ]);
+
+  for (const id of ['amplifier', 'digital', 'analog', 'speaker', 'headphone_group', 'accessories']) {
+    const parent = page.locator(`#category option[value="${id}"]`);
+    const separator = parent.locator('xpath=preceding-sibling::option[1]');
+    await expect(separator).toBeDisabled();
+    await expect(separator).toHaveText('────────────');
+  }
 
   await page.locator('#category').selectOption('amplifier');
   await expect(page).toHaveURL(/category=amplifier/);
