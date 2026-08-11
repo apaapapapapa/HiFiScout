@@ -11,6 +11,9 @@ const MANUFACTURERS = [
   ['sony', 'SONY', ['sony', 'ソニー']],
   ['pioneer', 'Pioneer', ['pioneer', 'パイオニア']],
   ['mcintosh', 'McIntosh', ['mcintosh', 'マッキントッシュ']],
+  ['mark-levinson', 'Mark Levinson', ['mark levinson', 'marklevinson', 'マークレビンソン', 'マーク・レビンソン']],
+  ['thorens', 'Thorens', ['thorens', 'トーレンス']],
+  ['linear-technology', 'Linear Technology', ['linear technology']],
   ['kef', 'KEF', ['kef']],
   ['jbl', 'JBL', ['jbl']],
   ['tannoy', 'TANNOY', ['tannoy', 'タンノイ']],
@@ -50,11 +53,34 @@ function normalizeKey(value = '') {
     .replace(/[\s・･_\-\/&+.,'"()（）]+/g, '');
 }
 
-const BY_ALIAS = new Map();
-for (const manufacturer of MANUFACTURERS) {
-  BY_ALIAS.set(normalizeKey(manufacturer.name), manufacturer);
-  for (const alias of manufacturer.aliases) BY_ALIAS.set(normalizeKey(alias), manufacturer);
+function cleanSourceText(value = '') {
+  return String(value).normalize('NFKC').replace(/\s+/g, ' ').trim();
 }
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function prefixPattern(alias) {
+  const tokens = cleanSourceText(alias).split(/[\s・･_\-\/&+.,'"()（）]+/).filter(Boolean);
+  if (!tokens.length) return null;
+  const separator = `[\\s・･_\\-\\/&+.,'"()（）]*`;
+  const boundary = `[\\s・･_\\-\\/&+.,'"()（）]`;
+  return new RegExp(`^${tokens.map(escapeRegExp).join(separator)}(?=$|${boundary})`, 'i');
+}
+
+const BY_ALIAS = new Map();
+const PREFIX_ALIASES = [];
+for (const manufacturer of MANUFACTURERS) {
+  const aliases = [manufacturer.name, ...manufacturer.aliases];
+  for (const alias of aliases) {
+    const key = normalizeKey(alias);
+    BY_ALIAS.set(key, manufacturer);
+    const pattern = prefixPattern(alias);
+    if (pattern) PREFIX_ALIASES.push({ manufacturer, alias, key, pattern });
+  }
+}
+PREFIX_ALIASES.sort((a, b) => b.key.length - a.key.length || b.alias.length - a.alias.length);
 
 function hashKey(value) {
   let hash = 0x811c9dc5;
@@ -77,10 +103,30 @@ export function manufacturerIdForFilter(value = '') {
 }
 
 export function normalizeManufacturer(value = '') {
-  const raw = String(value).normalize('NFKC').replace(/\s+/g, ' ').trim();
+  const raw = cleanSourceText(value);
   if (!raw) return { id: '', displayName: '', matchedAlias: false };
   const key = normalizeKey(raw);
   const known = BY_ALIAS.get(key);
   if (known) return { id: known.id, displayName: known.name, matchedAlias: true };
   return { id: fallbackId(key), displayName: raw, matchedAlias: false };
+}
+
+export function splitKnownManufacturerModel(value = '') {
+  const raw = cleanSourceText(value);
+  if (!raw) return null;
+
+  for (const candidate of PREFIX_ALIASES) {
+    const match = raw.match(candidate.pattern);
+    if (!match) continue;
+    const model = raw.slice(match[0].length)
+      .replace(/^[\s・･_\-\/&+.,'"()（）]+/, '')
+      .trim();
+    return {
+      id: candidate.manufacturer.id,
+      displayName: candidate.manufacturer.name,
+      rawManufacturer: match[0].trim(),
+      model
+    };
+  }
+  return null;
 }
