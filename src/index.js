@@ -1,10 +1,11 @@
 import { SHOP_DEFINITIONS, getShopEnabled, getShopIntervalMinutes } from './config.js';
 import { checkPublicApiRateLimit } from './api-guard.js';
-import { consumeCrawlMessage, dispatchDueCrawls, dispatchForcedCrawl } from './crawler/dispatch.js';
+import { consumeCrawlMessage, dispatchDueCrawls, dispatchForcedCrawl, dispatchScheduledCrawl } from './crawler/dispatch.js';
 import { listProducts, productHistory, validateProductQuery } from './db/products.js';
 import { buildSyncHealth, getSyncHealth, logSyncHealth } from './health.js';
 import { runRetentionCleanup } from './maintenance.js';
 
+const AUDIOUNION_CRON = '1 * * * *';
 const RETENTION_CRON = '17 18 * * *';
 
 function json(data, init = {}) {
@@ -97,7 +98,9 @@ async function handleApi(request, env, ctx) {
 
 async function runScheduled(cron, env) {
   if (cron === RETENTION_CRON) return runRetentionCleanup(env);
-  const dispatch = await dispatchDueCrawls(env);
+  const dispatch = cron === AUDIOUNION_CRON
+    ? await dispatchScheduledCrawl(env, 'audiounion')
+    : await dispatchDueCrawls(env, { excludeShopKeys: ['audiounion'] });
   const health = await getSyncHealth(env);
   logSyncHealth(health);
   return dispatch;
