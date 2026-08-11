@@ -1,0 +1,1 @@
+.hero h1{display:inline-flex;align-items:center;gap:.16em}.hero h1::after{content:"";display:block;width:.68em;height:.68em;flex:0 0 auto;background:url('/hifiscout-mark.jpg') center/contain no-repeat;border-radius:50%}@media(max-width:640px){.hero h1{gap:.12em}.hero h1::after{width:.64em;height:.64em}}
