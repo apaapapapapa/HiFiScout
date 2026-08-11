@@ -2,6 +2,7 @@ import { normalizeCategory } from './categories.js';
 import { inferExplicitCategoryIds } from './category-rules.js';
 
 const MODES = new Set(['authoritative', 'corroborative', 'ignore']);
+const BROAD_SELLER_CATEGORY_IDS = new Set(['speaker_other', 'other_accessory']);
 
 function mode(value, fallback) {
   return MODES.has(value) ? value : fallback;
@@ -22,7 +23,8 @@ export function resolveCategoryPolicy(adapter = {}) {
       default: mode(seller.default, legacyPrefer ? 'corroborative' : 'authoritative'),
       categories: { ...(seller.categories || {}) }
     },
-    parserHint: mode(requested.parserHint, legacyPrefer ? 'corroborative' : 'authoritative'),
+    // Parser output is a hint, never stronger than an explicit product title.
+    parserHint: mode(requested.parserHint, 'corroborative'),
     enrichment: {
       maxRequestsPerCrawl: Math.max(0, Number(requested.enrichment?.maxRequestsPerCrawl) || 0),
       cacheHours: Math.max(1, Number(requested.enrichment?.cacheHours) || 168)
@@ -47,7 +49,9 @@ function sellerCategoryCandidates(rawCategory, categoryMapping) {
 export function sellerCategoryEvidence(rawCategory, categoryMapping, policy) {
   const normalized = sellerCategoryCandidates(rawCategory, categoryMapping);
   if (!normalized) return [];
-  const inferredBroadLabel = normalized.classificationSource === 'raw_inference';
+  // Broad seller buckets such as "speaker" or "accessory" are useful fallback evidence,
+  // but must not override a more specific explicit title such as bookshelf speaker or cable.
+  const inferredBroadLabel = normalized.classificationSource === 'raw_inference' || BROAD_SELLER_CATEGORY_IDS.has(normalized.primaryCategoryId);
   const fallbackMode = inferredBroadLabel ? 'corroborative' : policy.sellerCategory.default;
   const categoryId = normalized.primaryCategoryId;
   const requestedMode = mode(policy.sellerCategory.categories?.[categoryId], fallbackMode);
