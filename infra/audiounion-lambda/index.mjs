@@ -3,6 +3,9 @@ import { timingSafeEqual } from 'node:crypto';
 const DEFAULT_ENTRY_URL = 'https://www.audiounion.jp/st/new_arrival_used.html';
 const DEFAULT_USER_AGENT = 'HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)';
 const DEFAULT_MIN_DELAY_MS = 10_000;
+const AUDIOUNION_HOST = 'www.audiounion.jp';
+const AUDIOUNION_SEARCH_PATH = '/ct/search';
+const AUDIOUNION_SEARCH_QUERY_KEYS = new Set(['m', 'p', 'q', 's', 'd', 'option', 'order']);
 const HIFIDO_HOST = 'www.hifido.co.jp';
 const HIFIDO_ALLOWED_QUERY_KEYS = new Set(['L', 'LNG', 'O', 'OD']);
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -115,10 +118,25 @@ async function fetchRobotsPolicy(fetchFn, baseUrl, userAgent) {
 
 function configuredEntryUrl(env) {
   const url = new URL(env.AUDIOUNION_ENTRY_URL || DEFAULT_ENTRY_URL);
-  if (url.protocol !== 'https:' || url.hostname !== 'www.audiounion.jp') {
+  if (url.protocol !== 'https:' || url.hostname !== AUDIOUNION_HOST) {
     throw new Error('AUDIOUNION_ENTRY_URL must use https://www.audiounion.jp');
   }
   return url.toString();
+}
+
+function isAllowedAudioUnionSearchUrl(url) {
+  if (url.protocol !== 'https:' || url.hostname !== AUDIOUNION_HOST || url.pathname !== AUDIOUNION_SEARCH_PATH) return false;
+  for (const key of url.searchParams.keys()) {
+    if (!AUDIOUNION_SEARCH_QUERY_KEYS.has(key)) return false;
+  }
+  if (url.searchParams.get('m') !== 'used') return false;
+  if (url.searchParams.get('q') !== '') return false;
+  if (url.searchParams.get('s') !== 'new_enddate') return false;
+  if (url.searchParams.get('d') !== '1') return false;
+  if (url.searchParams.get('option') !== '1') return false;
+  if (url.searchParams.get('order') !== 'date_desc') return false;
+  const page = Number.parseInt(url.searchParams.get('p') || '', 10);
+  return Number.isSafeInteger(page) && page >= 1 && page <= 500;
 }
 
 function isAllowedHifidoUrl(url) {
@@ -135,6 +153,7 @@ function isAllowedHifidoUrl(url) {
 
 function isAllowedTarget(requestedUrl, env) {
   if (requestedUrl.toString() === configuredEntryUrl(env)) return true;
+  if (isAllowedAudioUnionSearchUrl(requestedUrl)) return true;
   return isAllowedHifidoUrl(requestedUrl);
 }
 
