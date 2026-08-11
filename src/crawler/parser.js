@@ -150,21 +150,45 @@ function exactKnownManufacturer(value = '') {
   return normalized.matchedAlias ? { raw, ...normalized } : null;
 }
 
-function modelCandidate(text, manufacturerId, shopKey) {
+function knownManufacturerCandidate(titles) {
+  const exact = titles
+    .map(title => {
+      const manufacturer = exactKnownManufacturer(title);
+      return manufacturer ? { ...manufacturer, consumedTitles: new Set([title]) } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.raw.length - a.raw.length)[0];
+  if (exact) return exact;
+
+  const combined = [];
+  const maxParts = Math.min(3, titles.length);
+  for (let size = 2; size <= maxParts; size += 1) {
+    for (let start = 0; start + size <= titles.length; start += 1) {
+      const parts = titles.slice(start, start + size);
+      const raw = parts.join(' ');
+      const normalized = normalizeManufacturer(raw);
+      if (!normalized.matchedAlias) continue;
+      combined.push({ raw, ...normalized, consumedTitles: new Set(parts) });
+    }
+  }
+  return combined.sort((a, b) => b.raw.length - a.raw.length)[0] || null;
+}
+
+function modelCandidate(text, manufacturer, shopKey) {
   const raw = cleanText(text);
-  if (!raw) return null;
+  if (!raw || manufacturer.consumedTitles.has(raw)) return null;
   const exact = exactKnownManufacturer(raw);
-  if (exact?.id === manufacturerId) return null;
+  if (exact?.id === manufacturer.id) return null;
 
   const split = splitManufacturerModel(raw, shopKey);
   const splitManufacturer = normalizeManufacturer(split.manufacturer);
-  const model = splitManufacturer.id === manufacturerId && split.model ? split.model : raw;
-  if (!model || exactKnownManufacturer(model)?.id === manufacturerId) return null;
+  const model = splitManufacturer.id === manufacturer.id && split.model ? split.model : raw;
+  if (!model || exactKnownManufacturer(model)?.id === manufacturer.id) return null;
 
   let score = Math.min(raw.length, 180);
   if (/\d/.test(model)) score += 300;
   if (/[-+./]/.test(model)) score += 40;
-  if (splitManufacturer.id === manufacturerId && split.model) score += 100;
+  if (splitManufacturer.id === manufacturer.id && split.model) score += 100;
   return { raw, model: cleanText(model), score };
 }
 
@@ -198,15 +222,14 @@ function mergeManufacturerModelCandidates(items, options) {
   for (const group of groups.values()) {
     const base = group.reduce((best, item) => itemQuality(item) > itemQuality(best) ? item : best, group[0]);
     const titles = [...new Set(group.map(item => cleanText(item.title)).filter(Boolean))];
-    const knownManufacturers = titles.map(exactKnownManufacturer).filter(Boolean);
-    const manufacturer = knownManufacturers.sort((a, b) => b.raw.length - a.raw.length)[0] || null;
+    const manufacturer = knownManufacturerCandidate(titles);
 
     if (manufacturer) {
       const model = titles
-        .map(title => modelCandidate(title, manufacturer.id, options.shopKey))
+        .map(title => modelCandidate(title, manufacturer, options.shopKey))
         .filter(Boolean)
         .sort((a, b) => b.score - a.score)[0]?.model || '';
-      const combinedTitle = model ? `${manufacturer.raw} ${model}` : base.title;
+      const combinedTitle = model ? `${manufacturer.raw} ${model}` : manufacturer.raw;
       result.push({
         ...base,
         manufacturer: manufacturer.raw,
