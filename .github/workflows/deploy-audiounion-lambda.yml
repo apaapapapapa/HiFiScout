@@ -129,10 +129,21 @@ jobs:
           jq -e '.[] | select(.name == "CRAWL_RELAY_TOKEN")' <<< "$secrets" >/dev/null
           echo "Shared relay secrets are registered in Cloudflare."
 
-      - name: Probe AudioUnion used detail URL through Tokyo relay
+      - name: Probe relay-backed shops through Tokyo relay
         shell: bash
         run: |
           set -euo pipefail
+
+          relay_token="$(aws lambda get-function-configuration \
+            --region "$AWS_REGION" \
+            --function-name "$FUNCTION_NAME" \
+            --query 'Environment.Variables.RELAY_TOKEN' \
+            --output text)"
+          relay_url="$(aws lambda get-function-url-config \
+            --region "$AWS_REGION" \
+            --function-name "$FUNCTION_NAME" \
+            --query 'FunctionUrl' \
+            --output text)"
 
           product_json="$(npx wrangler d1 execute DB --remote --json --command "
             SELECT source_url
@@ -150,20 +161,9 @@ jobs:
             exit 1
           fi
 
-          relay_token="$(aws lambda get-function-configuration \
-            --region "$AWS_REGION" \
-            --function-name "$FUNCTION_NAME" \
-            --query 'Environment.Variables.RELAY_TOKEN' \
-            --output text)"
-          relay_url="$(aws lambda get-function-url-config \
-            --region "$AWS_REGION" \
-            --function-name "$FUNCTION_NAME" \
-            --query 'FunctionUrl' \
-            --output text)"
           request_body="$(jq -cn --arg url "$detail_url" '{url: $url, requestDelayMs: 0}')"
           headers_file="$RUNNER_TEMP/audiounion-detail-headers.txt"
           body_file="$RUNNER_TEMP/audiounion-detail.html"
-
           status="$(curl -sS --max-time 35 \
             -D "$headers_file" \
             -o "$body_file" \
@@ -175,7 +175,6 @@ jobs:
 
           echo "AudioUnion detail probe HTTP status: $status"
           grep -i '^x-hifiscout-aws-region:' "$headers_file" || true
-
           if [ "$status" = "409" ]; then
             echo "AudioUnion used-detail access is disallowed by the current robots.txt policy."
             exit 1
@@ -186,7 +185,28 @@ jobs:
           fi
           grep -qi '^x-hifiscout-aws-region:[[:space:]]*ap-northeast-1' "$headers_file"
           test -s "$body_file"
-          echo "AudioUnion used-detail access is permitted and reachable through the Tokyo relay."
+
+          hifido_url='https://www.hifido.co.jp/?L=50&LNG=J&O=0&OD=0'
+          request_body="$(jq -cn --arg url "$hifido_url" '{url: $url, requestDelayMs: 0}')"
+          headers_file="$RUNNER_TEMP/hifido-relay-headers.txt"
+          body_file="$RUNNER_TEMP/hifido-relay.html"
+          status="$(curl -sS --max-time 35 \
+            -D "$headers_file" \
+            -o "$body_file" \
+            -w '%{http_code}' \
+            -X POST "$relay_url" \
+            -H "Authorization: Bearer $relay_token" \
+            -H 'Content-Type: application/json' \
+            --data "$request_body")"
+
+          echo "Hifido relay HTTP status: $status"
+          grep -i '^x-hifiscout-aws-region:' "$headers_file" || true
+          grep -i '^x-hifiscout-upstream-status:' "$headers_file" || true
+          test "$status" = "200"
+          grep -qi '^x-hifiscout-aws-region:[[:space:]]*ap-northeast-1' "$headers_file"
+          test -s "$body_file"
+          grep -Eqi 'list-item|ハイファイ堂|hifido' "$body_file"
+          echo "AudioUnion and Hifido are reachable through the Tokyo relay."
 
       - name: Verify deployment
         run: |
