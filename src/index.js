@@ -1,4 +1,4 @@
-import { getCategory } from './catalog/categories.js';
+import { categoryFacet } from './catalog/categories.js';
 import { SHOP_DEFINITIONS, getShopEnabled, getShopIntervalMinutes } from './config.js';
 import { checkPublicApiRateLimit } from './api-guard.js';
 import { consumeCrawlMessage, dispatchDueCrawls, dispatchForcedCrawl, dispatchScheduledCrawl } from './crawler/dispatch.js';
@@ -60,12 +60,18 @@ async function meta(env) {
     `)
   ]);
   const manufacturers = facets[0].results.map(row => row.value);
-  const categories = facets[1].results
-    .map(row => getCategory(row.value))
-    .filter(category => category?.selectable)
-    .sort((left, right) => left.name.localeCompare(right.name, 'ja'))
-    .map(category => category.name);
-  return { status: health.status, shops, manufacturers, categories };
+  const categoryFacets = facets[1].results
+    .map(row => categoryFacet(row.value))
+    .filter(Boolean)
+    .sort((left, right) => {
+      const groupOrder = ['アンプ', 'デジタル', 'アナログ'];
+      const leftGroup = left.group ? groupOrder.indexOf(left.group) : -1;
+      const rightGroup = right.group ? groupOrder.indexOf(right.group) : -1;
+      if (leftGroup !== rightGroup) return leftGroup - rightGroup;
+      return left.name.localeCompare(right.name, 'ja');
+    });
+  const categories = categoryFacets.map(category => category.name);
+  return { status: health.status, shops, manufacturers, categories, categoryFacets };
 }
 
 async function handleApi(request, env, ctx) {
