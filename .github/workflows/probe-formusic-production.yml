@@ -24,16 +24,11 @@ jobs:
           echo '--- health ---'
           curl --fail --silent --show-error https://hifiscout.raha3415kohei.workers.dev/api/health
           echo
-          echo '--- meta ---'
-          curl --fail --silent --show-error https://hifiscout.raha3415kohei.workers.dev/api/meta
-          echo
           echo '--- FOR MUSIC products ---'
           curl --fail --silent --show-error 'https://hifiscout.raha3415kohei.workers.dev/api/products?shop=formusic&limit=5'
           echo
-          echo '--- custom-domain health (non-blocking while DNS propagates) ---'
-          curl --fail --silent --show-error https://hifiscout.jp/api/health || true
-          echo
-      - name: Check FOR MUSIC D1 state
+      - name: Check production crawl state
         run: |
-          npx wrangler d1 execute DB --remote --command "SELECT shop_key,last_attempt_at,last_success_at,last_error_at,consecutive_failures,last_error,last_item_count FROM shop_sync_state WHERE shop_key='formusic';"
+          npx wrangler d1 execute DB --remote --command "SELECT shop_key,last_attempt_at,last_success_at,last_error_at,consecutive_failures,backoff_until,last_error,last_item_count FROM shop_sync_state ORDER BY shop_key;"
+          npx wrangler d1 execute DB --remote --command "SELECT id,shop_key,started_at,finished_at,status,item_count,page_count,message FROM crawl_runs ORDER BY started_at DESC LIMIT 12;"
           npx wrangler d1 execute DB --remote --command "SELECT COUNT(*) AS product_count, SUM(CASE WHEN is_active=1 THEN 1 ELSE 0 END) AS active_count, SUM(CASE WHEN is_active=1 AND stock_status='in_stock' THEN 1 ELSE 0 END) AS in_stock_count FROM products WHERE shop_key='formusic';"
