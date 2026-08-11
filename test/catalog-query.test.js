@@ -44,6 +44,25 @@ test('short free-text searches include raw seller catalog fields and canonical a
   assert.equal(db.calls[0].binds.filter(value => value === '%MC%').length, 7);
 });
 
+test('multi-term free-text search ANDs partial matches across product fields', async () => {
+  const db = queryCaptureDb();
+  await listProducts(db, new URL('https://example.test/api/products?q=tad%201000'));
+
+  const { sql, binds } = db.calls[0];
+  assert.doesNotMatch(sql, /JOIN products_fts/);
+  assert.equal((sql.match(/p\.model LIKE \?/g) || []).length, 2);
+  assert.equal(binds.filter(value => value === '%tad%').length, 7);
+  assert.equal(binds.filter(value => value === '%1000%').length, 7);
+});
+
+test('single long free-text terms continue to use FTS', async () => {
+  const db = queryCaptureDb();
+  await listProducts(db, new URL('https://example.test/api/products?q=LUXMAN'));
+
+  assert.match(db.calls[0].sql, /JOIN products_fts/);
+  assert.deepEqual(db.calls[0].binds.slice(0, 1), ['"LUXMAN"']);
+});
+
 test('recent-only filter constrains products to the last 48 hours', async () => {
   const db = queryCaptureDb();
   await listProducts(db, new URL('https://example.test/api/products?newOnly=true'));
