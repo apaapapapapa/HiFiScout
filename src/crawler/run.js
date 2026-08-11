@@ -1,5 +1,6 @@
 import { SHOP_DEFINITIONS, getCrawlerSettings, getShopIntervalMinutes, getShopMaxPages } from '../config.js';
 import { upsertProducts } from '../db/products.js';
+import { createBrowserHtmlFetcher } from './browser.js';
 import { fetchHtmlPage } from './fetch.js';
 import { SHOP_ADAPTERS } from './shops/index.js';
 
@@ -62,6 +63,7 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
   let pageCount = 0;
   let reachedEnd = false;
   let coverageIncomplete = false;
+  const browserFetcher = adapter.transport === 'browser' ? createBrowserHtmlFetcher(env.BROWSER) : null;
 
   try {
     const pageQueue = [...adapter.pageUrls(maxPages, env)];
@@ -72,13 +74,16 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
       const url = pageUrl(page);
       let html;
       try {
-        html = await fetchHtmlPage(url, {
+        const fetchOptions = {
           baseUrl: adapter.baseUrl,
           userAgent: settings.userAgent,
           requestDelayMs: settings.requestDelayMs,
           fetchFn,
           robotsCache
-        });
+        };
+        html = browserFetcher
+          ? await browserFetcher.fetchHtmlPage(url, fetchOptions)
+          : await fetchHtmlPage(url, fetchOptions);
       } catch (error) {
         // Entry-point 404s are tolerated to let another category/root proceed, but coverage is then incomplete.
         if (/HTTP 404/.test(error.message) && (adapter.continueOnEmpty || items.size === 0)) {
@@ -133,6 +138,8 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
     await env.DB.prepare('UPDATE crawl_runs SET finished_at = ?, status = \'failed\', page_count = ?, message = ? WHERE id = ?')
       .bind(failedAt, pageCount, String(error.message).slice(0, 1000), runId).run();
     return { shopKey: adapter.key, status: 'failed', error: error.message };
+  } finally {
+    await browserFetcher?.close();
   }
 }
 

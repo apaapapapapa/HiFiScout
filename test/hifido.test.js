@@ -26,13 +26,35 @@ test('Hifido parser keeps factual listing fields only', () => {
   assert.deepEqual(Object.keys(product).sort(), ['category','conditionText','manufacturer','model','priceYen','sourceId','sourceUrl','stockStatus','title'].sort());
 });
 
-test('Hifido crawl interval has independent pages', () => {
-  const pages = [...hifidoAdapter.pageUrls(3)];
-  assert.match(pages[0], /O=0/);
-  assert.match(pages[1], /O=50/);
-  assert.match(pages[2], /O=100/);
+test('Hifido parser handles rendered list-item markup with duplicate product links', () => {
+  const html = `
+    <div class="list-item">
+      <div class="list-title">
+        <h3><a href="/26-50215-14039-00.html?LNG=J" id="type-26-50215-14039-00">MC240</a></h3>
+        <button class="btn1 order_button" id="26-50215-14039-00">注文</button>
+      </div>
+      <div class="list-photo"><a href="/26-50215-14039-00.html?LNG=J"><img src="/photo.jpg"></a></div>
+      <div id="maker-26-50215-14039-00"><div>メーカー:<a href="/?KW=McIntosh">McIntosh<span class="maker-kana"> マッキントッシュ</span></a></div></div>
+      <div id="price-26-50215-14039-00"><div>売価:498,000円(税込)</div></div>
+      <div id="genre-26-50215-14039-00"><div>パワーアンプ（真空管）</div></div>
+    </div>`;
+
+  const [product] = parseHifidoListing(html);
+  assert.equal(product.sourceId, '26-50215-14039-00');
+  assert.equal(product.manufacturer, 'McIntosh');
+  assert.equal(product.model, 'MC240');
+  assert.equal(product.priceYen, 498000);
+  assert.equal(product.category, 'パワーアンプ');
+  assert.equal(product.stockStatus, 'in_stock');
 });
 
+test('Hifido pagination follows the live 30-item offset and uses Browser Run', () => {
+  const pages = [...hifidoAdapter.pageUrls(3)];
+  assert.equal(hifidoAdapter.transport, 'browser');
+  assert.match(pages[0], /O=0/);
+  assert.match(pages[1], /O=30/);
+  assert.match(pages[2], /O=60/);
+});
 
 test('Hifido sold listings are not treated as available', () => {
   const html = `
