@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fujiyaAvicAdapter, parseFujiyaResultCount } from '../src/crawler/shops/fujiya-avic.js';
 
-test('Fujiya initial crawl starts from the new used arrivals feed', () => {
+test('Fujiya initial crawl starts from the new used arrivals feed with 50 items per page', () => {
   const pages = [...fujiyaAvicAdapter.pageUrls(50)];
   assert.equal(pages.length, 1);
-  assert.equal(pages[0].url, 'https://www.fujiya-avic.co.jp/shop/e/ea-usednw_s1/');
+  assert.equal(pages[0].url, 'https://www.fujiya-avic.co.jp/shop/e/ea-usednw_s1/?ps=50');
 });
 
 test('Fujiya pagination is derived from the live result count', () => {
@@ -15,6 +15,7 @@ test('Fujiya pagination is derived from the live result count', () => {
   const [root] = [...fujiyaAvicAdapter.pageUrls(50)];
   const discovered = fujiyaAvicAdapter.discoverPageUrls('<div>検索結果735件</div>', root);
   assert.equal(discovered.length, 14);
+  assert.equal(discovered[0].url, 'https://www.fujiya-avic.co.jp/shop/e/ea-usednw_s1_p2/?ps=50');
   assert.match(discovered.at(-1).url, /ea-usednw_s1_p15\/\?ps=50$/);
 });
 
@@ -24,7 +25,7 @@ test('Fujiya refuses to claim complete coverage when count cannot be discovered'
 });
 
 test('Fujiya live-card shape parses price, rank, stock and bilingual maker correctly', () => {
-  const page = { url: 'https://www.fujiya-avic.co.jp/shop/e/ea-usednw_s1/' };
+  const page = { url: 'https://www.fujiya-avic.co.jp/shop/e/ea-usednw_s1/?ps=50' };
   const html = `
     <div class="product">
       <img alt="在庫あり">
@@ -42,7 +43,7 @@ test('Fujiya live-card shape parses price, rank, stock and bilingual maker corre
 });
 
 test('Fujiya price is taken from the current card, not the previous card', () => {
-  const page = { url: 'https://www.fujiya-avic.co.jp/shop/e/ea-usednw_s1/' };
+  const page = { url: 'https://www.fujiya-avic.co.jp/shop/e/ea-usednw_s1/?ps=50' };
   const html = `
     <div class="product">
       <img alt="在庫あり">
@@ -63,7 +64,7 @@ test('Fujiya price is taken from the current card, not the previous card', () =>
 });
 
 test('Fujiya DJ/DTM listings remain classifiable from the new arrivals feed', () => {
-  const page = { url: 'https://www.fujiya-avic.co.jp/shop/e/ea-usednw_s1/' };
+  const page = { url: 'https://www.fujiya-avic.co.jp/shop/e/ea-usednw_s1/?ps=50' };
   const html = `
     <div class="product">
       <img alt="在庫あり">
