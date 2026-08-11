@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createHandler } from '../infra/audiounion-lambda/index.mjs';
 
 const ENTRY_URL = 'https://www.audiounion.jp/st/new_arrival_used.html';
+const HIFIDO_URL = 'https://www.hifido.co.jp/?L=50&LNG=J&O=0&OD=0';
 const TOKEN = '0123456789abcdef0123456789abcdef';
 
 function event(body = {}, token = TOKEN) {
@@ -38,7 +39,7 @@ test('Lambda rejects unauthorized requests before seller access', async () => {
   assert.equal(fetchCount, 0);
 });
 
-test('Lambda only permits the configured AudioUnion target', async () => {
+test('Lambda only permits allowlisted seller targets', async () => {
   let fetchCount = 0;
   const handler = createHandler({
     env: env(),
@@ -49,6 +50,27 @@ test('Lambda only permits the configured AudioUnion target', async () => {
   const result = await handler(event({ url: 'https://example.com/' }));
   assert.equal(result.statusCode, 400);
   assert.equal(JSON.parse(result.body).error, 'target_not_allowed');
+  assert.equal(fetchCount, 0);
+});
+
+test('Lambda rejects non-listing Hifido URLs', async () => {
+  let fetchCount = 0;
+  const handler = createHandler({
+    env: env(),
+    fetchFn: async () => { fetchCount += 1; throw new Error('must not fetch'); },
+    sleepFn: async () => {}
+  });
+
+  const invalidUrls = [
+    'https://www.hifido.co.jp/26-50215-14039-00.html',
+    'https://www.hifido.co.jp/?L=50&LNG=J&O=1&OD=0',
+    'https://www.hifido.co.jp/?L=50&LNG=J&O=0&OD=0&KW=test'
+  ];
+  for (const url of invalidUrls) {
+    const result = await handler(event({ url }));
+    assert.equal(result.statusCode, 400);
+    assert.equal(JSON.parse(result.body).error, 'target_not_allowed');
+  }
   assert.equal(fetchCount, 0);
 });
 
@@ -85,6 +107,28 @@ test('Lambda respects robots crawl-delay and returns upstream HTML bytes', async
   assert.deepEqual(sleeps, [12000]);
   assert.equal(calls.length, 2);
   assert.equal(calls[1].options.headers['User-Agent'], 'HiFiScoutBot/0.1');
+});
+
+test('Lambda permits Hifido listing fetches through the Tokyo relay', async () => {
+  const calls = [];
+  const html = '<html><body><div class="list-item">ハイファイ堂</div></body></html>';
+  const handler = createHandler({
+    env: env({ MIN_REQUEST_DELAY_MS: '0' }),
+    sleepFn: async () => {},
+    fetchFn: async (url, options) => {
+      calls.push({ url, options });
+      if (url.endsWith('/robots.txt')) {
+        return new Response('User-agent: *\nAllow: /\n', { status: 200 });
+      }
+      return new Response(html, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } });
+    }
+  });
+
+  const result = await handler(event({ url: HIFIDO_URL }));
+  assert.equal(result.statusCode, 200);
+  assert.equal(Buffer.from(result.body, 'base64').toString('utf8'), html);
+  assert.equal(calls[0].url, 'https://www.hifido.co.jp/robots.txt');
+  assert.equal(calls[1].url, HIFIDO_URL);
 });
 
 test('Lambda refuses an explicitly disallowed AudioUnion path', async () => {

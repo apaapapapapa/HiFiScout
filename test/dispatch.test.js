@@ -9,7 +9,9 @@ const ONLY_HIFIDO = {
   FORMUSIC_ENABLED: 'false',
   HIFIDO_ENABLED: 'true',
   HIFIDO_INTERVAL_MINUTES: '30',
-  CRAWL_DISPATCH_LEASE_MINUTES: '15'
+  CRAWL_DISPATCH_LEASE_MINUTES: '15',
+  AUDIOUNION_RELAY_URL: 'https://example.lambda-url.ap-northeast-1.on.aws/',
+  AUDIOUNION_RELAY_TOKEN: 'test-relay-token'
 };
 
 test('recent queue lease prevents duplicate dispatch', () => {

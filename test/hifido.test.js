@@ -53,7 +53,9 @@ test('Hifido keeps three recent pages and adds one rotating stale recheck page',
   const now = new Date('2026-08-11T00:00:00.000Z');
   const pages = [...hifidoAdapter.pageUrls(3, { HIFIDO_RECHECK_MAX_PAGE: '6' }, { now, intervalMinutes: 30 })];
   const recheckPage = hifidoRecheckPage(3, { HIFIDO_RECHECK_MAX_PAGE: '6' }, { now, intervalMinutes: 30 });
-  assert.equal(hifidoAdapter.transport, 'browser');
+  assert.equal(hifidoAdapter.transport, 'relay');
+  assert.equal(hifidoAdapter.relayUrlEnv, 'AUDIOUNION_RELAY_URL');
+  assert.equal(hifidoAdapter.relayTokenEnv, 'AUDIOUNION_RELAY_TOKEN');
   assert.equal(hifidoAdapter.partialCoverage, true);
   assert.equal(pages.length, 4);
   assert.match(pages[0], /O=0/);
@@ -61,6 +63,14 @@ test('Hifido keeps three recent pages and adds one rotating stale recheck page',
   assert.match(pages[2], /O=60/);
   assert.ok(recheckPage >= 4 && recheckPage <= 6);
   assert.match(pages[3], new RegExp(`O=${(recheckPage - 1) * 30}`));
+});
+
+test('Hifido relay transport requires the existing Tokyo relay secrets', () => {
+  assert.equal(hifidoAdapter.isConfigured({}), false);
+  assert.equal(hifidoAdapter.isConfigured({
+    AUDIOUNION_RELAY_URL: 'https://example.lambda-url.ap-northeast-1.on.aws/',
+    AUDIOUNION_RELAY_TOKEN: 'token'
+  }), true);
 });
 
 test('Hifido rotating recheck advances with the configured crawl interval', () => {

@@ -3,6 +3,8 @@ import { timingSafeEqual } from 'node:crypto';
 const DEFAULT_ENTRY_URL = 'https://www.audiounion.jp/st/new_arrival_used.html';
 const DEFAULT_USER_AGENT = 'HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)';
 const DEFAULT_MIN_DELAY_MS = 10_000;
+const HIFIDO_HOST = 'www.hifido.co.jp';
+const HIFIDO_ALLOWED_QUERY_KEYS = new Set(['L', 'LNG', 'O', 'OD']);
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function jsonResponse(statusCode, body, headers = {}) {
@@ -119,6 +121,23 @@ function configuredEntryUrl(env) {
   return url.toString();
 }
 
+function isAllowedHifidoUrl(url) {
+  if (url.protocol !== 'https:' || url.hostname !== HIFIDO_HOST || url.pathname !== '/') return false;
+  for (const key of url.searchParams.keys()) {
+    if (!HIFIDO_ALLOWED_QUERY_KEYS.has(key)) return false;
+  }
+  if (url.searchParams.get('L') !== '50') return false;
+  if (url.searchParams.get('LNG') !== 'J') return false;
+  if (url.searchParams.get('OD') !== '0') return false;
+  const offset = Number.parseInt(url.searchParams.get('O') || '', 10);
+  return Number.isSafeInteger(offset) && offset >= 0 && offset % 30 === 0;
+}
+
+function isAllowedTarget(requestedUrl, env) {
+  if (requestedUrl.toString() === configuredEntryUrl(env)) return true;
+  return isAllowedHifidoUrl(requestedUrl);
+}
+
 function safeUserAgent(value, fallback) {
   const candidate = String(value || fallback || DEFAULT_USER_AGENT).trim();
   if (!candidate || candidate.length > 300 || /[\r\n]/.test(candidate)) return DEFAULT_USER_AGENT;
@@ -149,27 +168,27 @@ export function createHandler({ fetchFn = fetch, sleepFn = sleep, env = process.
         return jsonResponse(400, { error: 'invalid_json' });
       }
 
-      const entryUrl = configuredEntryUrl(env);
       let requestedUrl;
       try {
-        requestedUrl = new URL(String(body.url || '')).toString();
+        requestedUrl = new URL(String(body.url || ''));
       } catch {
         return jsonResponse(400, { error: 'invalid_target_url' });
       }
-      if (requestedUrl !== entryUrl) return jsonResponse(400, { error: 'target_not_allowed' });
+      if (!isAllowedTarget(requestedUrl, env)) return jsonResponse(400, { error: 'target_not_allowed' });
 
       const userAgent = safeUserAgent(body.userAgent, env.CRAWLER_USER_AGENT);
       const minimumDelayMs = nonNegativeNumber(env.MIN_REQUEST_DELAY_MS, DEFAULT_MIN_DELAY_MS);
       const requestedDelayMs = nonNegativeNumber(body.requestDelayMs, 0);
-      const robotsText = await fetchRobotsPolicy(fetchFn, entryUrl, userAgent);
-      if (!isPathAllowed(robotsText, requestedUrl, userAgent)) {
+      const targetUrl = requestedUrl.toString();
+      const robotsText = await fetchRobotsPolicy(fetchFn, targetUrl, userAgent);
+      if (!isPathAllowed(robotsText, targetUrl, userAgent)) {
         return jsonResponse(409, { error: 'robots_disallowed' });
       }
 
       const effectiveDelayMs = Math.max(minimumDelayMs, requestedDelayMs, getCrawlDelayMs(robotsText, userAgent));
       if (effectiveDelayMs > 0) await sleepFn(effectiveDelayMs);
 
-      const upstream = await fetchFn(requestedUrl, {
+      const upstream = await fetchFn(targetUrl, {
         headers: {
           'User-Agent': userAgent,
           'Accept': 'text/html,application/xhtml+xml',
