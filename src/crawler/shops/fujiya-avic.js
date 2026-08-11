@@ -6,7 +6,7 @@ const PAGE_SIZE = 50;
 const NEW_ARRIVALS_PATH = 'ea-usednw_s1';
 
 function pageUrl(page = 1) {
-  if (page === 1) return 'https://www.fujiya-avic.co.jp/shop/e/ea-usednw_s1/';
+  if (page === 1) return `https://www.fujiya-avic.co.jp/shop/e/${NEW_ARRIVALS_PATH}/?ps=${PAGE_SIZE}`;
   return `https://www.fujiya-avic.co.jp/shop/e/${NEW_ARRIVALS_PATH}_p${page}/?ps=${PAGE_SIZE}`;
 }
 
