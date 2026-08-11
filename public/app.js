@@ -52,12 +52,38 @@ async function fetchJson(url, { signal } = {}) {
   return data;
 }
 
+function categoryOptions(meta) {
+  const facets = Array.isArray(meta.categoryFacets) ? meta.categoryFacets : [];
+  if (!facets.length) {
+    return (meta.categories || []).map(value => `<option>${escapeHtml(value)}</option>`).join('');
+  }
+
+  const ungrouped = [];
+  const grouped = new Map();
+  for (const facet of facets) {
+    if (!facet?.id || !facet?.name) continue;
+    if (!facet.group) {
+      ungrouped.push(facet);
+      continue;
+    }
+    if (!grouped.has(facet.group)) grouped.set(facet.group, []);
+    grouped.get(facet.group).push(facet);
+  }
+
+  const option = facet => `<option value="${escapeHtml(facet.id)}">${escapeHtml(facet.name)}</option>`;
+  const topLevel = ungrouped.map(option).join('');
+  const groups = [...grouped.entries()].map(([group, values]) => (
+    `<optgroup label="${escapeHtml(group)}">${values.map(option).join('')}</optgroup>`
+  )).join('');
+  return topLevel + groups;
+}
+
 async function loadMeta() {
   const meta = await fetchJson('/api/meta');
   shops = Object.fromEntries(meta.shops.map(s => [s.key, s]));
   $('shop').insertAdjacentHTML('beforeend', meta.shops.map(s => `<option value="${escapeHtml(s.key)}">${escapeHtml(s.name)}</option>`).join(''));
   $('manufacturer').insertAdjacentHTML('beforeend', meta.manufacturers.map(v => `<option>${escapeHtml(v)}</option>`).join(''));
-  $('category').insertAdjacentHTML('beforeend', meta.categories.map(v => `<option>${escapeHtml(v)}</option>`).join(''));
+  $('category').insertAdjacentHTML('beforeend', categoryOptions(meta));
   $('sync-status').innerHTML = meta.shops.map(s => {
     const last = s.sync?.last_success_at ? dateFmt.format(new Date(s.sync.last_success_at)) : '未取得';
     return `<span>${escapeHtml(s.name)} <b>${last}</b> · ${s.intervalMinutes}分</span>`;
