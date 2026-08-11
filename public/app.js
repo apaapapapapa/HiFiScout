@@ -23,16 +23,23 @@ function saveFavorites() { localStorage.setItem('hifiscout:favorites', JSON.stri
 function productCard(p) {
   const favorite = state.favorites.has(p.id);
   const dropped = p.previous_price_yen != null && p.price_yen != null && p.price_yen < p.previous_price_yen;
-  const isNew = Date.now() - new Date(p.first_seen_at).getTime() < 48 * 60 * 60 * 1000;
+  const now = Date.now();
+  const firstSeenMs = new Date(p.first_seen_at).getTime();
+  const activityValue = p.last_activity_at || p.first_seen_at || p.last_seen_at;
+  const activityMs = new Date(activityValue).getTime();
+  const isNew = Number.isFinite(firstSeenMs) && now - firstSeenMs < 48 * 60 * 60 * 1000;
+  const hasBeenUpdated = Number.isFinite(activityMs) && Number.isFinite(firstSeenMs) && activityMs > firstSeenMs;
+  const isRecentlyUpdated = !isNew && hasBeenUpdated && now - activityMs < 48 * 60 * 60 * 1000;
+  const activityLabel = hasBeenUpdated ? '更新' : '初回観測';
   return `<article class="card" data-id="${p.id}">
     <div class="card-top"><span class="shop shop-${escapeHtml(p.shop_key)}">${escapeHtml(shopName(p.shop_key))}</span><button class="fav" data-fav="${p.id}" aria-label="お気に入り">${favorite ? '★' : '☆'}</button></div>
-    <div class="badges">${isNew ? '<span class="badge">NEW</span>' : ''}${dropped ? '<span class="badge">PRICE DOWN</span>' : ''}${p.condition_text ? `<span class="condition">${escapeHtml(p.condition_text)}</span>` : ''}</div>
+    <div class="badges">${isNew ? '<span class="badge">NEW</span>' : isRecentlyUpdated ? '<span class="badge">UPDATED</span>' : ''}${dropped ? '<span class="badge">PRICE DOWN</span>' : ''}${p.condition_text ? `<span class="condition">${escapeHtml(p.condition_text)}</span>` : ''}</div>
     <p class="maker">${escapeHtml(p.manufacturer)}</p>
     <h2>${escapeHtml(p.model || p.title)}</h2>
     <p class="category">${escapeHtml(p.category)}</p>
     <div class="price-row"><strong>${p.price_yen == null ? '価格不明' : yen.format(p.price_yen)}</strong>${dropped ? `<del>${yen.format(p.previous_price_yen)}</del>` : ''}</div>
     <div class="stock ${p.stock_status}">${p.stock_status === 'in_stock' ? '在庫あり' : p.stock_status === 'sold_out' ? '売り切れ' : '在庫状態未確認'}</div>
-    <p class="updated">観測 ${dateFmt.format(new Date(p.last_seen_at))}</p>
+    <p class="updated">${activityLabel} ${dateFmt.format(new Date(activityValue))}</p>
     <div class="actions"><button data-history="${p.id}">価格履歴</button><a href="${escapeHtml(p.source_url)}" target="_blank" rel="noopener noreferrer">販売店で確認 ↗</a></div>
   </article>`;
 }
