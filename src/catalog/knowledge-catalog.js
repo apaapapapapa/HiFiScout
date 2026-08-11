@@ -5,7 +5,10 @@ function clean(value = '') {
 export function normalizeCatalogModel(value = '') {
   return clean(value)
     .toUpperCase()
-    .replace(/[\s\u3000._・･\/\\‐‑‒–—―－-]+/g, '');
+    .replace(/[‐‑‒–—―－]/g, '-')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*([./_-])\s*/g, '$1')
+    .trim();
 }
 
 export function knowledgeCatalogKey(manufacturerId = '', model = '') {
