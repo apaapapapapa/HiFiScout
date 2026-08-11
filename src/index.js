@@ -5,6 +5,7 @@ import { consumeCrawlMessage, dispatchDueCrawls, dispatchForcedCrawl, dispatchSc
 import { listProducts, productHistory, validateProductQuery } from './db/products.js';
 import {
   claimInitialKnowledgeCatalogReviewRun,
+  claimKnowledgeCatalogCatchupReviewRun,
   knowledgeCatalogOperationalStatus
 } from './db/knowledge-catalog-review-repository.js';
 import { buildSyncHealth, getSyncHealth, logSyncHealth } from './health.js';
@@ -134,9 +135,15 @@ async function runScheduled(cron, env) {
 
 async function bootstrapKnowledgeCatalogReview(env) {
   const now = new Date();
-  const runId = await claimInitialKnowledgeCatalogReviewRun(env.DB, now.toISOString());
+  const startedAt = now.toISOString();
+  let runId = await claimInitialKnowledgeCatalogReviewRun(env.DB, startedAt);
+  let reason = 'initial';
+  if (!runId) {
+    runId = await claimKnowledgeCatalogCatchupReviewRun(env.DB, startedAt);
+    reason = 'catchup_after_unsupported_initial_run';
+  }
   if (!runId) return { status: 'skipped', reason: 'already_initialized' };
-  console.log(JSON.stringify({ event: 'knowledge_catalog_bootstrap_started', runId }));
+  console.log(JSON.stringify({ event: 'knowledge_catalog_bootstrap_started', runId, reason }));
   return runKnowledgeCatalogReview(env, { now, runId });
 }
 
