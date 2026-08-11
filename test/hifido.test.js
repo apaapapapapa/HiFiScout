@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SHOP_DEFINITIONS, getShopMaxPages } from '../src/config.js';
 import { hifidoAdapter, hifidoRecheckPage, parseHifidoListing } from '../src/crawler/shops/hifido.js';
+import { isTransportConfigured } from '../src/crawler/transport.js';
 
 test('Hifido parser keeps factual listing fields only', () => {
   const html = `
@@ -54,8 +55,6 @@ test('Hifido keeps three recent pages and adds one rotating stale recheck page',
   const pages = [...hifidoAdapter.pageUrls(3, { HIFIDO_RECHECK_MAX_PAGE: '6' }, { now, intervalMinutes: 30 })];
   const recheckPage = hifidoRecheckPage(3, { HIFIDO_RECHECK_MAX_PAGE: '6' }, { now, intervalMinutes: 30 });
   assert.equal(hifidoAdapter.transport, 'relay');
-  assert.equal(hifidoAdapter.relayUrlEnv, 'AUDIOUNION_RELAY_URL');
-  assert.equal(hifidoAdapter.relayTokenEnv, 'AUDIOUNION_RELAY_TOKEN');
   assert.equal(hifidoAdapter.partialCoverage, true);
   assert.equal(pages.length, 4);
   assert.match(pages[0], /O=0/);
@@ -65,12 +64,12 @@ test('Hifido keeps three recent pages and adds one rotating stale recheck page',
   assert.match(pages[3], new RegExp(`O=${(recheckPage - 1) * 30}`));
 });
 
-test('Hifido relay transport requires the existing Tokyo relay secrets', () => {
-  assert.equal(hifidoAdapter.isConfigured({}), false);
-  assert.equal(hifidoAdapter.isConfigured({
-    AUDIOUNION_RELAY_URL: 'https://example.lambda-url.ap-northeast-1.on.aws/',
-    AUDIOUNION_RELAY_TOKEN: 'token'
-  }), true);
+test('Hifido relay transport requires shared crawler relay secrets', () => {
+  assert.equal(isTransportConfigured({}, hifidoAdapter), false);
+  assert.equal(isTransportConfigured({
+    CRAWL_RELAY_URL: 'https://example.lambda-url.ap-northeast-1.on.aws/',
+    CRAWL_RELAY_TOKEN: 'token'
+  }, hifidoAdapter), true);
 });
 
 test('Hifido rotating recheck advances with the configured crawl interval', () => {
