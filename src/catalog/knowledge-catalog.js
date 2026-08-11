@@ -11,6 +11,69 @@ export function normalizeCatalogModel(value = '') {
     .trim();
 }
 
+function addLookupVariant(target, value) {
+  const normalized = normalizeCatalogModel(value);
+  if (normalized) target.add(normalized);
+  return normalized;
+}
+
+function stripListingAnnotations(value = '') {
+  return clean(value)
+    .replace(/\s*《[^》]{1,40}》\s*/g, ' ')
+    .replace(/\s*【[^】]*(?:販売済|売約|SOLD(?:\s*OUT)?|売切|品切)[^】]*】\s*$/gi, '')
+    .replace(/\s*\[[A-Z0-9][A-Z0-9._/-]{3,}\]\s*$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function stripPresentationVariant(value = '') {
+  return clean(value)
+    .replace(/\s*\/\s*(?:ブラック|ホワイト|シルバー|ゴールド|レッド|ブルー|ブラウン|黒|白|銀|black|white|silver|gold)(?:\s*[（(]?(?:ペア|pair)[）)]?)?\s*$/i, '')
+    .replace(/\s*[（(](?:B|S|BK|WH|W|K|ブラック|ホワイト|シルバー|黒|白|銀)[）)]\s*$/i, '')
+    .trim();
+}
+
+function stripManufacturerMarketSuffix(value, manufacturerId) {
+  const normalized = normalizeCatalogModel(value);
+  if (manufacturerId === 'denon') {
+    if (/^(?:AH|AVR|AVC|DCD|DHT|DNP|DP|PMA|RCD)-/i.test(normalized)) {
+      const withoutColor = normalized.replace(/-(?:BK|SP|K|W|WH)$/i, '');
+      if (withoutColor !== normalized) return withoutColor;
+    }
+    if (/^AH-[A-Z0-9-]+EM$/i.test(normalized)) return normalized.replace(/EM$/i, '');
+  }
+  return normalized;
+}
+
+/**
+ * Produces conservative lookup aliases for official-source verification without changing the
+ * persisted catalog identity. Listing-only annotations such as colors, retailer SKUs and sold
+ * markers may be removed, while meaningful revisions (SE/X/XD/MKII/Pro/Limited) are preserved.
+ */
+export function catalogModelLookupVariants({ manufacturerId = '', model = '' } = {}) {
+  const manufacturer = clean(manufacturerId).toLowerCase();
+  const variants = new Set();
+  const original = clean(model);
+  if (!original) return [];
+
+  addLookupVariant(variants, original);
+  let simplified = stripListingAnnotations(original);
+  addLookupVariant(variants, simplified);
+
+  simplified = stripPresentationVariant(simplified);
+  addLookupVariant(variants, simplified);
+
+  const marketStripped = stripManufacturerMarketSuffix(simplified, manufacturer);
+  addLookupVariant(variants, marketStripped);
+
+  // A seller may describe a base product bundled with an optional board, e.g. C-2800+AD-290V.
+  // The complete listing identity remains intact, but the base product is a valid verification key.
+  const plusIndex = marketStripped.indexOf('+');
+  if (plusIndex > 0) addLookupVariant(variants, marketStripped.slice(0, plusIndex));
+
+  return [...variants].sort((left, right) => left.length - right.length || left.localeCompare(right));
+}
+
 export function knowledgeCatalogKey(manufacturerId = '', model = '') {
   const manufacturer = clean(manufacturerId).toLowerCase();
   const normalizedModel = normalizeCatalogModel(model);

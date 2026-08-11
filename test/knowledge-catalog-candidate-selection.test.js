@@ -43,12 +43,21 @@ test('an explicitly empty supported manufacturer set spends no verification budg
   assert.equal(db.calls.length, 0);
 });
 
-test('candidate scheduling prefers never-verified rows before retries', async () => {
+test('normal candidate scheduling prefers never-verified rows before retries', async () => {
   const db = queryDb();
   await listPendingKnowledgeCatalogCandidates(db, 25, ['yamaha']);
   const sql = db.calls[0].sql;
   assert.ok(sql.indexOf('CASE WHEN last_verification_at IS NULL THEN 0 ELSE 1 END') < sql.indexOf('priority_score DESC'));
   assert.ok(sql.indexOf("COALESCE(last_verification_at, '')") < sql.indexOf('priority_score DESC'));
+});
+
+test('verifier rollout can prefer the most recently failed candidates for a matched cohort', async () => {
+  const db = queryDb();
+  await listPendingKnowledgeCatalogCandidates(db, 25, ['denon'], { preferRetries: true });
+  const sql = db.calls[0].sql;
+  assert.match(sql, /CASE WHEN last_verification_at IS NULL THEN 1 ELSE 0 END/);
+  assert.match(sql, /COALESCE\(last_verification_at, ''\) DESC/);
+  assert.ok(sql.indexOf('COALESCE(last_verification_at, \'\') DESC') < sql.indexOf('priority_score DESC'));
 });
 
 test('catch-up review claim is atomic and returns the inserted run id', async () => {

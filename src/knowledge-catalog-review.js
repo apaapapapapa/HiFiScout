@@ -25,7 +25,8 @@ export function summarizeClassificationImpact(beforeClassification, afterClassif
 export async function runKnowledgeCatalogReview(env, {
   now = new Date(),
   fetchImpl = globalThis.fetch,
-  runId: existingRunId = null
+  runId: existingRunId = null,
+  preferRetries = false
 } = {}) {
   const startedAt = now.toISOString();
   const runId = existingRunId || await startKnowledgeCatalogReviewRun(env.DB, startedAt);
@@ -34,7 +35,11 @@ export async function runKnowledgeCatalogReview(env, {
     const beforeClassification = await activeProductClassificationStats(env.DB);
     await markKnowledgeCatalogProductsDue(env.DB, startedAt, reviewIntervalDays(env));
     await refreshKnowledgeCatalogCandidates(env.DB, startedAt);
-    const verificationResult = await runKnowledgeCatalogSourceVerification(env, { now, fetchImpl });
+    const verificationResult = await runKnowledgeCatalogSourceVerification(env, {
+      now,
+      fetchImpl,
+      preferRetries
+    });
     const candidateResult = await knowledgeCatalogCandidateStats(env.DB);
     const reclassifiedProducts = await reclassifyProductsFromKnowledgeCatalog(env.DB);
     const afterClassification = await activeProductClassificationStats(env.DB);
