@@ -1,4 +1,4 @@
-import { fetchRobotsPolicy, isPathAllowed } from './robots.js';
+import { fetchRobotsPolicy, getCrawlDelayMs, isPathAllowed } from './robots.js';
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -26,12 +26,18 @@ export async function decodeHtmlResponse(response) {
 }
 
 export async function fetchHtmlPage(url, { baseUrl, userAgent, requestDelayMs, fetchFn = fetch, robotsCache = new Map() }) {
+  let robotsFetchedNow = false;
   if (!robotsCache.has(baseUrl)) {
     robotsCache.set(baseUrl, await fetchRobotsPolicy(fetchFn, baseUrl, userAgent));
+    robotsFetchedNow = true;
   }
-  if (!isPathAllowed(robotsCache.get(baseUrl), url, userAgent)) {
+  const robotsText = robotsCache.get(baseUrl);
+  if (!isPathAllowed(robotsText, url, userAgent)) {
     throw new Error(`robots.txt disallows ${new URL(url).pathname}`);
   }
+
+  const effectiveDelayMs = Math.max(Number(requestDelayMs) || 0, getCrawlDelayMs(robotsText, userAgent));
+  if (robotsFetchedNow && effectiveDelayMs > 0) await sleep(effectiveDelayMs);
 
   const response = await fetchFn(url, {
     headers: {
@@ -52,6 +58,6 @@ export async function fetchHtmlPage(url, { baseUrl, userAgent, requestDelayMs, f
   const contentType = response.headers.get('content-type') || '';
   if (!contentType.includes('text/html')) throw new Error(`unexpected content type: ${contentType}`);
   const html = await decodeHtmlResponse(response);
-  if (requestDelayMs > 0) await sleep(requestDelayMs);
+  if (effectiveDelayMs > 0) await sleep(effectiveDelayMs);
   return html;
 }
