@@ -75,11 +75,10 @@ async function meta(env) {
     .filter(category => category.filterable)
     .map(category => {
       const facet = categoryFacet(category.id);
-      const groupedParent = !category.classifiable && ['amplifier', 'digital', 'analog', 'speaker', 'headphone_group', 'accessories'].includes(category.id);
       return {
         ...facet,
-        name: groupedParent ? `${category.name}（すべて）` : category.name,
-        group: groupedParent ? category.name : facet.group,
+        name: category.parentId ? `　${category.name}` : category.name,
+        group: null,
         activeProductCount: counts.get(category.id) || 0
       };
     })
@@ -88,7 +87,9 @@ async function meta(env) {
       const b = categorySortKey(right);
       return a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
     });
-  const categories = categoryFacets.filter(category => category.classifiable).map(category => category.name);
+  const categories = canonicalCategoryDefinitions()
+    .filter(category => category.classifiable)
+    .map(category => category.name);
   return { status: health.status, shops, manufacturers, categories, categoryFacets };
 }
 
