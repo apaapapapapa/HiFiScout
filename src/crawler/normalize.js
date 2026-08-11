@@ -10,6 +10,7 @@ const CATEGORY_RULES = [
   ['イヤホン', /earphone|イヤホン|iem\b/i],
   ['ヘッドホン', /headphone|ヘッドホン|stax|d8000|susvara/i],
   ['DAP・ヘッドホンアンプ', /\bdap\b|digital audio player|headphone amp|ヘッドホンアンプ|ポータブルプレーヤ/i],
+  ['DJ機器・DTM', /\bdj\b|\bddj[-\s]|rekordbox|serato|turntable controller|オーディオインターフェース|midi/i],
   ['ケーブル・アクセサリー', /cable|ケーブル|usb|電源|insulator|インシュレータ|アクセサリ/i]
 ];
 
