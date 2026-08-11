@@ -16,5 +16,6 @@ jobs:
         with:
           node-version: 22
       - run: npm install
+      - run: npm run db:migrate:local
       - run: npm test
       - run: npx wrangler deploy --dry-run
