@@ -26,9 +26,6 @@ jobs:
     env:
       AWS_REGION: ap-northeast-1
       FUNCTION_NAME: hifiscout-audiounion-fetcher
-      CLOUDFLARE_ACCOUNT_ID: 9af87af4dbc00be3bfd4c8af3f52f684
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_WORKER_NAME: hifiscout
 
     steps:
       - name: Checkout
@@ -82,57 +79,6 @@ jobs:
 
           echo "Timed out waiting for Lambda update to complete."
           exit 1
-
-      - name: Synchronize shared relay secrets to Cloudflare
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          relay_token="$(aws lambda get-function-configuration \
-            --region "$AWS_REGION" \
-            --function-name "$FUNCTION_NAME" \
-            --query 'Environment.Variables.RELAY_TOKEN' \
-            --output text)"
-          relay_url="$(aws lambda get-function-url-config \
-            --region "$AWS_REGION" \
-            --function-name "$FUNCTION_NAME" \
-            --query 'FunctionUrl' \
-            --output text)"
-
-          if [ -z "$relay_token" ] || [ "$relay_token" = "None" ]; then
-            echo "Lambda RELAY_TOKEN is not configured."
-            exit 1
-          fi
-          if [ -z "$relay_url" ] || [ "$relay_url" = "None" ]; then
-            echo "Lambda Function URL is not configured."
-            exit 1
-          fi
-
-          put_secret() {
-            local name="$1"
-            local value="$2"
-            response="$(curl -fsS --retry 3 --retry-delay 2 \
-              -X PUT "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${CLOUDFLARE_WORKER_NAME}/secrets" \
-              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-              -H 'Content-Type: application/json' \
-              --data "$(jq -nc --arg name "$name" --arg text "$value" '{name:$name,text:$text,type:"secret_text"}')")"
-            jq -e '.success == true' <<< "$response" >/dev/null
-          }
-
-          put_secret CRAWL_RELAY_URL "$relay_url"
-          put_secret CRAWL_RELAY_TOKEN "$relay_token"
-          echo "Shared relay URL and token synchronized to Cloudflare."
-
-      - name: Verify shared relay secrets are registered
-        shell: bash
-        run: |
-          set -euo pipefail
-          response="$(curl -fsS --retry 3 --retry-delay 2 \
-            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${CLOUDFLARE_WORKER_NAME}/secrets" \
-            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")"
-          jq -e '.result[] | select(.name == "CRAWL_RELAY_URL")' <<< "$response" >/dev/null
-          jq -e '.result[] | select(.name == "CRAWL_RELAY_TOKEN")' <<< "$response" >/dev/null
-          echo "Shared relay secrets are registered in Cloudflare."
 
       - name: Verify deployment
         run: |
