@@ -1,0 +1,128 @@
+name: Diagnose AudioUnion HTML
+
+on:
+  push:
+    branches:
+      - main
+      - diagnostic/audiounion-html
+    paths:
+      - '.github/workflows/diagnose-audiounion-html.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      AWS_REGION: ap-northeast-1
+      FUNCTION_NAME: hifiscout-audiounion-fetcher
+    steps:
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6
+        with:
+          role-to-assume: ${{ vars.AWS_LAMBDA_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Invoke Lambda and inspect AudioUnion HTML
+        shell: bash
+        run: |
+          set -euo pipefail
+          relay_token="$(aws lambda get-function-configuration \
+            --region "$AWS_REGION" \
+            --function-name "$FUNCTION_NAME" \
+            --query 'Environment.Variables.RELAY_TOKEN' \
+            --output text)"
+          test -n "$relay_token"
+          test "$relay_token" != "None"
+
+          python3 - "$relay_token" > "$RUNNER_TEMP/event.json" <<'PY'
+          import json, sys
+          token = sys.argv[1]
+          event = {
+              "requestContext": {"http": {"method": "POST"}},
+              "headers": {"authorization": f"Bearer {token}"},
+              "body": json.dumps({
+                  "url": "https://www.audiounion.jp/st/new_arrival_used.html",
+                  "requestDelayMs": 10000,
+                  "userAgent": "HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)"
+              }),
+              "isBase64Encoded": False,
+          }
+          print(json.dumps(event, ensure_ascii=False))
+          PY
+
+          aws lambda invoke \
+            --region "$AWS_REGION" \
+            --function-name "$FUNCTION_NAME" \
+            --cli-binary-format raw-in-base64-out \
+            --payload "fileb://$RUNNER_TEMP/event.json" \
+            "$RUNNER_TEMP/response.json" \
+            --query '{StatusCode:StatusCode,FunctionError:FunctionError}'
+
+          python3 - "$RUNNER_TEMP/response.json" <<'PY'
+          import base64, html as htmlmod, json, re, sys
+          from pathlib import Path
+
+          envelope = json.loads(Path(sys.argv[1]).read_text())
+          status = envelope.get("statusCode")
+          print(f"relay_status={status}")
+          if status != 200:
+              print("relay_body=", envelope.get("body", "")[:500])
+              raise SystemExit(1)
+
+          raw = base64.b64decode(envelope.get("body", "")) if envelope.get("isBase64Encoded") else envelope.get("body", "").encode()
+          text = raw.decode("utf-8", errors="replace")
+          print(f"html_bytes={len(raw)}")
+
+          product_re = re.compile(r'https?://www\.audiounion\.jp/ct/detail/used/\d+/?|/ct/detail/used/\d+/?', re.I)
+          links = product_re.findall(text)
+          ids = []
+          for link in links:
+              m = re.search(r'/used/(\d+)', link)
+              if m: ids.append(m.group(1))
+          unique_ids = list(dict.fromkeys(ids))
+          print(f"product_links={len(links)} unique_product_ids={len(unique_ids)}")
+
+          markers = [
+              "在庫あり", "カートに入れる", "購入する",
+              "売約済", "売約済み", "売り切れ", "売切", "SOLD OUT", "sold out",
+              "在庫なし", "完売", "品切れ", "販売終了", "ご成約"
+          ]
+          for marker in markers:
+              print(f"marker[{marker}]={text.lower().count(marker.lower())}")
+
+          def clean(fragment):
+              fragment = re.sub(r'<script\b.*?</script>', ' ', fragment, flags=re.I|re.S)
+              fragment = re.sub(r'<style\b.*?</style>', ' ', fragment, flags=re.I|re.S)
+              fragment = re.sub(r'<[^>]+>', ' ', fragment)
+              fragment = htmlmod.unescape(fragment)
+              return re.sub(r'\s+', ' ', fragment).strip()
+
+          print("sample_product_contexts:")
+          seen = set()
+          for match in product_re.finditer(text):
+              m = re.search(r'/used/(\d+)', match.group(0))
+              if not m or m.group(1) in seen:
+                  continue
+              seen.add(m.group(1))
+              start = max(0, match.start() - 700)
+              end = min(len(text), match.end() + 900)
+              context = clean(text[start:end])
+              print(f"- id={m.group(1)} context={context[:700]}")
+              if len(seen) >= 8:
+                  break
+
+          status_terms = re.compile(r'在庫あり|カートに入れる|購入する|売約済み?|売り切れ|売切|sold\s*out|在庫なし|完売|品切れ|販売終了|ご成約', re.I)
+          matched_product_contexts = 0
+          for match in product_re.finditer(text):
+              start = max(0, match.start() - 1000)
+              end = min(len(text), match.end() + 1200)
+              context = clean(text[start:end])
+              if status_terms.search(context):
+                  matched_product_contexts += 1
+          print(f"product_link_contexts_with_status_marker={matched_product_contexts}")
+          PY
