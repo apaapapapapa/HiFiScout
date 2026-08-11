@@ -1,3 +1,5 @@
+import { splitKnownManufacturerModel } from '../catalog/manufacturers.js';
+
 const CATEGORY_RULES = [
   ['スピーカー', /speaker|スピーカー|monitor\s*audio|bookshelf/i],
   ['プリメインアンプ', /integrated|プリメイン|pma-|ma\d|a-\d/i],
@@ -87,6 +89,14 @@ export function splitManufacturerModel(title, shopKey) {
   if (shopKey === 'fujiya-avic') {
     const fujiya = splitFujiyaManufacturerModel(value);
     if (fujiya) return fujiya;
+  }
+
+  const known = splitKnownManufacturerModel(value);
+  if (known) {
+    return {
+      manufacturer: known.rawManufacturer || known.displayName,
+      model: known.model
+    };
   }
 
   const tokens = value.split(/\s+/);

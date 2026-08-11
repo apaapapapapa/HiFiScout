@@ -39,3 +39,14 @@ test('Fujiya title splitting keeps multi-word manufacturer names', () => {
     model: 'DISCDREAM 2'
   });
 });
+
+test('shared title splitting recognizes known multi-word manufacturers', () => {
+  assert.deepEqual(splitManufacturerModel('Mark Levinson No.5805', 'audiounion'), {
+    manufacturer: 'Mark Levinson',
+    model: 'No.5805'
+  });
+  assert.deepEqual(splitManufacturerModel('Linear Technology Model 1', 'example-shop'), {
+    manufacturer: 'Linear Technology',
+    model: 'Model 1'
+  });
+});

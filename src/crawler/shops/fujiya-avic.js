@@ -42,7 +42,8 @@ export const fujiyaAvicAdapter = {
     return parseProductPage(html, {
       shopKey: this.key,
       baseUrl: page.url,
-      productUrlPattern: /fujiya-avic\.co\.jp\/shop\/(?:g\/g|goods\/)/i
+      productUrlPattern: /fujiya-avic\.co\.jp\/shop\/(?:g\/g|goods\/)/i,
+      priceContext: 'forward'
     });
   }
 };
