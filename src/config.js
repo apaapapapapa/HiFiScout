@@ -65,6 +65,15 @@ export function getCrawlerSettings(env) {
   };
 }
 
+export function getAudioUnionInventoryRecheckSettings(env) {
+  return {
+    enabled: booleanFlag(env?.AUDIOUNION_INVENTORY_RECHECK_ENABLED, false),
+    minListingAgeHours: positiveInt(env?.AUDIOUNION_INVENTORY_RECHECK_MIN_AGE_HOURS, 24),
+    intervalHours: positiveInt(env?.AUDIOUNION_INVENTORY_RECHECK_INTERVAL_HOURS, 24),
+    failureThreshold: Math.max(2, positiveInt(env?.AUDIOUNION_INVENTORY_RECHECK_FAILURE_THRESHOLD, 2))
+  };
+}
+
 export function getMaintenanceSettings(env) {
   return {
     crawlRunRetentionDays: positiveInt(env?.CRAWL_RUN_RETENTION_DAYS, 30),
