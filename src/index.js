@@ -1,8 +1,11 @@
 import { SHOP_DEFINITIONS, getShopEnabled, getShopIntervalMinutes } from './config.js';
-import { crawlNextDueShop, crawlShop } from './crawler/run.js';
-import { SHOP_ADAPTERS } from './crawler/shops/index.js';
-import { listProducts, productHistory } from './db/products.js';
+import { checkPublicApiRateLimit } from './api-guard.js';
+import { consumeCrawlMessage, dispatchDueCrawls, dispatchForcedCrawl } from './crawler/dispatch.js';
+import { listProducts, productHistory, validateProductQuery } from './db/products.js';
 import { buildSyncHealth, getSyncHealth, logSyncHealth } from './health.js';
+import { runRetentionCleanup } from './maintenance.js';
+
+const RETENTION_CRON = '17 18 * * *';
 
 function json(data, init = {}) {
   return new Response(JSON.stringify(data), {
@@ -47,7 +50,15 @@ async function meta(env) {
 
 async function handleApi(request, env, ctx) {
   const url = new URL(request.url);
+  const rate = await checkPublicApiRateLimit(request, env);
+  if (!rate.allowed) {
+    console.warn(JSON.stringify({ event: 'api_rate_limited', bucket: rate.bucket }));
+    return json({ error: 'rate_limited' }, { status: 429, headers: { 'retry-after': '60' } });
+  }
+
   if (request.method === 'GET' && url.pathname === '/api/products') {
+    const validationError = validateProductQuery(url);
+    if (validationError) return json({ error: validationError }, { status: 400 });
     return cachedJson(request, ctx, 30, () => listProducts(env.DB, url));
   }
   if (request.method === 'GET' && url.pathname === '/api/meta') {
@@ -65,7 +76,9 @@ async function handleApi(request, env, ctx) {
 
   const historyMatch = url.pathname.match(/^\/api\/products\/(\d+)\/history$/);
   if (request.method === 'GET' && historyMatch) {
-    const result = await productHistory(env.DB, Number(historyMatch[1]));
+    const id = Number(historyMatch[1]);
+    if (!Number.isSafeInteger(id) || id <= 0) return json({ error: 'invalid_id' }, { status: 400 });
+    const result = await productHistory(env.DB, id);
     return result ? json(result) : json({ error: 'not_found' }, { status: 404 });
   }
 
@@ -73,20 +86,21 @@ async function handleApi(request, env, ctx) {
     if (!env.ADMIN_TOKEN || request.headers.get('authorization') !== `Bearer ${env.ADMIN_TOKEN}`) {
       return json({ error: 'unauthorized' }, { status: 401 });
     }
-    const shopKey = url.searchParams.get('shop');
-    const adapter = SHOP_ADAPTERS.find(v => v.key === shopKey);
-    if (!adapter) return json({ error: 'unknown_shop' }, { status: 400 });
-    return json(await crawlShop(env, adapter, { force: true }));
+    const result = await dispatchForcedCrawl(env, url.searchParams.get('shop'));
+    if (result.reason === 'unknown_shop') return json({ error: 'unknown_shop' }, { status: 400 });
+    if (result.reason === 'disabled') return json({ error: 'disabled' }, { status: 409 });
+    return json(result, { status: 202 });
   }
 
   return json({ error: 'not_found' }, { status: 404 });
 }
 
-async function runScheduled(env) {
-  const result = await crawlNextDueShop(env);
+async function runScheduled(cron, env) {
+  if (cron === RETENTION_CRON) return runRetentionCleanup(env);
+  const dispatch = await dispatchDueCrawls(env);
   const health = await getSyncHealth(env);
   logSyncHealth(health);
-  return result;
+  return dispatch;
 }
 
 export default {
@@ -95,7 +109,18 @@ export default {
     if (url.pathname.startsWith('/api/')) return handleApi(request, env, ctx);
     return env.ASSETS.fetch(request);
   },
-  async scheduled(_controller, env, ctx) {
-    ctx.waitUntil(runScheduled(env));
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil(runScheduled(controller.cron, env));
+  },
+  async queue(batch, env) {
+    for (const message of batch.messages) {
+      const result = await consumeCrawlMessage(env, message.body);
+      if (result.status === 'failed') {
+        console.error(JSON.stringify({ event: 'crawl_queue_job_failed', ...result }));
+      }
+      const health = await getSyncHealth(env);
+      logSyncHealth(health);
+      message.ack();
+    }
   }
 };
