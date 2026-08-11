@@ -18,7 +18,9 @@ export const SHOP_DEFINITIONS = {
     name: 'ハイファイ堂',
     baseUrl: 'https://www.hifido.co.jp',
     intervalEnv: 'HIFIDO_INTERVAL_MINUTES',
-    defaultIntervalMinutes: 30
+    defaultIntervalMinutes: 30,
+    maxPagesEnv: 'HIFIDO_MAX_PAGES',
+    defaultMaxPages: 3
   },
   formusic: {
     key: 'formusic',

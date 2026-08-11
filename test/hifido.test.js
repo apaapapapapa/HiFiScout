@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { SHOP_DEFINITIONS, getShopMaxPages } from '../src/config.js';
 import { hifidoAdapter, parseHifidoListing } from '../src/crawler/shops/hifido.js';
 
 test('Hifido parser keeps factual listing fields only', () => {
@@ -54,6 +55,12 @@ test('Hifido pagination follows the live 30-item offset and uses Browser Run', (
   assert.match(pages[0], /O=0/);
   assert.match(pages[1], /O=30/);
   assert.match(pages[2], /O=60/);
+});
+
+test('Hifido defaults to three recent pages and can be overridden explicitly', () => {
+  const definition = SHOP_DEFINITIONS.hifido;
+  assert.equal(getShopMaxPages({}, definition, 40), 3);
+  assert.equal(getShopMaxPages({ HIFIDO_MAX_PAGES: '2' }, definition, 40), 2);
 });
 
 test('Hifido sold listings are not treated as available', () => {
