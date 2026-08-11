@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 concurrency:
   group: hifiscout-e2e
