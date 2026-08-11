@@ -3,6 +3,7 @@ name: Diagnose AudioUnion HTML
 on:
   push:
     branches:
+      - main
       - diagnostic/audiounion-html
     paths:
       - '.github/workflows/diagnose-audiounion-html.yml'
