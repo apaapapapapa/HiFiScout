@@ -106,6 +106,17 @@ export function getCrawlerSettings(env) {
     minItemBaseline: positiveInt(env?.CRAWL_MIN_ITEM_BASELINE, 20),
     healthWarningFactor: positiveNumber(env?.SYNC_HEALTH_WARNING_FACTOR, 2),
     healthCriticalFactor: positiveNumber(env?.SYNC_HEALTH_CRITICAL_FACTOR, 6),
+    dispatchLeaseMinutes: positiveInt(env?.CRAWL_DISPATCH_LEASE_MINUTES, 15),
+    productTouchIntervalMinutes: positiveInt(env?.PRODUCT_TOUCH_INTERVAL_MINUTES, 1440),
     userAgent: env?.CRAWLER_USER_AGENT || 'HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)'
+  };
+}
+
+export function getMaintenanceSettings(env) {
+  return {
+    crawlRunRetentionDays: positiveInt(env?.CRAWL_RUN_RETENTION_DAYS, 30),
+    priceHistoryRetentionDays: positiveInt(env?.PRICE_HISTORY_RETENTION_DAYS, 1095),
+    inactiveProductRetentionDays: positiveInt(env?.INACTIVE_PRODUCT_RETENTION_DAYS, 365),
+    deleteBatchSize: Math.min(1000, positiveInt(env?.RETENTION_DELETE_BATCH_SIZE, 500))
   };
 }
