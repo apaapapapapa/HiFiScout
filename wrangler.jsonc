@@ -21,15 +21,33 @@
     "crons": ["*/5 * * * *"]
   },
   "vars": {
+    "AUDIOUNION_ENABLED": "true",
+    "IPPINKAN_ENABLED": "true",
+    "FUJIYA_AVIC_ENABLED": "true",
+    "HIFIDO_ENABLED": "true",
+    "FORMUSIC_ENABLED": "true",
+
     "AUDIOUNION_INTERVAL_MINUTES": "30",
     "IPPINKAN_INTERVAL_MINUTES": "30",
     "FUJIYA_AVIC_INTERVAL_MINUTES": "30",
-    "FUJIYA_AVIC_MAX_PAGES": "50",
     "HIFIDO_INTERVAL_MINUTES": "30",
-    "HIFIDO_MAX_PAGES": "3",
     "FORMUSIC_INTERVAL_MINUTES": "30",
+
+    "AUDIOUNION_REQUEST_DELAY_MS": "10000",
+    "IPPINKAN_REQUEST_DELAY_MS": "1200",
+    "FUJIYA_AVIC_REQUEST_DELAY_MS": "1200",
+    "HIFIDO_REQUEST_DELAY_MS": "1200",
+    "FORMUSIC_REQUEST_DELAY_MS": "1200",
+
+    "FUJIYA_AVIC_MAX_PAGES": "50",
+    "HIFIDO_MAX_PAGES": "3",
+    "HIFIDO_RECHECK_MAX_PAGE": "120",
     "CRAWL_REQUEST_DELAY_MS": "1200",
     "CRAWL_MAX_PAGES_PER_SHOP": "40",
+    "CRAWL_MIN_ITEM_RATIO": "0.5",
+    "CRAWL_MIN_ITEM_BASELINE": "20",
+    "SYNC_HEALTH_WARNING_FACTOR": "2",
+    "SYNC_HEALTH_CRITICAL_FACTOR": "6",
     "AUDIOUNION_ENTRY_URL": "https://www.audiounion.jp/st/new_arrival_used.html",
     "CRAWLER_USER_AGENT": "HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)"
   },
