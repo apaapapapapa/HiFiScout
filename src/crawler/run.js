@@ -6,6 +6,7 @@ import {
   getShopMaxPages,
   getShopRequestDelayMs
 } from '../config.js';
+import { syncProductMetadata } from '../db/product-metadata-repository.js';
 import { upsertProducts } from '../db/products.js';
 import {
   getShopState,
@@ -193,13 +194,15 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
     }
 
     const observedAt = nowIso(new Date());
+    const products = [...items.values()];
     const { changedCount, touchedCount, deactivatedCount } = await upsertProducts(
       env.DB,
       adapter.key,
-      [...items.values()],
+      products,
       observedAt,
       { deactivateMissing, touchIntervalMinutes: settings.productTouchIntervalMinutes }
     );
+    const metadataChangedCount = await syncProductMetadata(env.DB, adapter.key, products, observedAt);
     await markShopSuccess(env.DB, adapter.key, observedAt, items.size);
     const diagnosticSuffix = adapter.key === 'audiounion' && audioUnionDiagnostic
       ? ` | diag=${JSON.stringify(audioUnionDiagnostic)}`
@@ -208,9 +211,19 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
       finishedAt: observedAt,
       itemCount: items.size,
       pageCount,
-      message: `${changedCount} changed, ${touchedCount} touched, ${deactivatedCount} deactivated${diagnosticSuffix}`
+      message: `${changedCount} changed, ${metadataChangedCount} metadata changed, ${touchedCount} touched, ${deactivatedCount} deactivated${diagnosticSuffix}`
     });
-    return { shopKey: adapter.key, status: 'success', itemCount: items.size, pageCount, changedCount, touchedCount, deactivatedCount, deactivateMissing };
+    return {
+      shopKey: adapter.key,
+      status: 'success',
+      itemCount: items.size,
+      pageCount,
+      changedCount,
+      metadataChangedCount,
+      touchedCount,
+      deactivatedCount,
+      deactivateMissing
+    };
   } catch (error) {
     const failedAt = nowIso(new Date());
     await markShopFailure(env.DB, adapter.key, failedAt, error.message, state?.consecutive_failures || 0);

@@ -3,6 +3,7 @@ import { ippinkanAdapter } from './ippinkan.js';
 import { fujiyaAvicAdapter } from './fujiya-avic.js';
 import { hifidoAdapter } from './hifido.js';
 import { forMusicAdapter } from './formusic.js';
+// shop-generator:imports
 
 function defineShopPlugin(adapter, definition) {
   if (!adapter?.key || adapter.key !== definition.key) {
@@ -38,7 +39,8 @@ export const SHOP_PLUGINS = [
     key: 'formusic', name: 'FOR MUSIC', baseUrl: 'https://shop.formusic.jp',
     intervalEnv: 'FORMUSIC_INTERVAL_MINUTES', enabledEnv: 'FORMUSIC_ENABLED',
     requestDelayEnv: 'FORMUSIC_REQUEST_DELAY_MS', defaultIntervalMinutes: 30
-  })
+  }),
+  // shop-generator:plugins
 ];
 
 // Compatibility alias for existing callers. New code should treat each entry as a shop plugin.
