@@ -10,6 +10,19 @@ function json(data, init = {}) {
   });
 }
 
+async function cachedJson(request, ctx, ttlSeconds, load) {
+  const cacheControl = `public, max-age=${ttlSeconds}`;
+  if (typeof caches === 'undefined') return json(await load(), { headers: { 'cache-control': cacheControl } });
+
+  const cache = caches.default;
+  const cached = await cache.match(request);
+  if (cached) return cached;
+
+  const response = json(await load(), { headers: { 'cache-control': cacheControl } });
+  ctx.waitUntil(cache.put(request, response.clone()));
+  return response;
+}
+
 async function meta(env) {
   const states = await env.DB.prepare('SELECT * FROM shop_sync_state').all();
   const byKey = Object.fromEntries((states.results || []).map(row => [row.shop_key, row]));
@@ -26,10 +39,14 @@ async function meta(env) {
   return { shops, manufacturers: facets[0].results.map(r => r.value), categories: facets[1].results.map(r => r.value) };
 }
 
-async function handleApi(request, env) {
+async function handleApi(request, env, ctx) {
   const url = new URL(request.url);
-  if (request.method === 'GET' && url.pathname === '/api/products') return json(await listProducts(env.DB, url));
-  if (request.method === 'GET' && url.pathname === '/api/meta') return json(await meta(env));
+  if (request.method === 'GET' && url.pathname === '/api/products') {
+    return cachedJson(request, ctx, 30, () => listProducts(env.DB, url));
+  }
+  if (request.method === 'GET' && url.pathname === '/api/meta') {
+    return cachedJson(request, ctx, 30, () => meta(env));
+  }
   if (request.method === 'GET' && url.pathname === '/api/health') return json({ ok: true, service: 'HiFiScout' });
 
   const historyMatch = url.pathname.match(/^\/api\/products\/(\d+)\/history$/);
@@ -52,9 +69,9 @@ async function handleApi(request, env) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    if (url.pathname.startsWith('/api/')) return handleApi(request, env);
+    if (url.pathname.startsWith('/api/')) return handleApi(request, env, ctx);
     return env.ASSETS.fetch(request);
   },
   async scheduled(_controller, env, ctx) {

@@ -26,7 +26,7 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm test
-      - name: Deploy Worker and provision D1
-        run: npx wrangler deploy
-      - name: Apply D1 migrations
+      - name: Apply backward-compatible D1 migrations
         run: npx wrangler d1 migrations apply DB --remote
+      - name: Deploy Worker and static assets
+        run: npx wrangler deploy
