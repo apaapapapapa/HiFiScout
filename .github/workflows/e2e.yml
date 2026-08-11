@@ -1,0 +1,41 @@
+name: E2E
+
+on:
+  workflow_run:
+    workflows: ['Deploy Cloudflare']
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Development environment base URL
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hifiscout-e2e
+  cancel-in-progress: true
+
+jobs:
+  playwright:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      E2E_BASE_URL: ${{ inputs.base_url || vars.E2E_BASE_URL || 'https://hifiscout.raha3415kohei.workers.dev' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Install E2E dependencies
+        working-directory: e2e
+        run: npm install --no-package-lock
+      - name: Install Chromium
+        working-directory: e2e
+        run: npx playwright install --with-deps chromium
+      - name: Run Playwright against development environment
+        working-directory: e2e
+        run: npm test
