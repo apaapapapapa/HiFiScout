@@ -31,6 +31,8 @@ test('catalog page boots with live metadata and product API', async ({ page }) =
   await expect(page.getByRole('heading', { name: 'HiFiScout' })).toBeVisible();
   await expect(page.locator('#sync-status')).not.toContainText('取得中');
   await expect(page.locator('#count')).toHaveText(/^\d+\+?$/);
+  await expect(page.locator('#pagination').getByRole('button', { name: '1' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.locator('#load-more')).toHaveCount(0);
 });
 
 test('changing a shop filter sends the selected shop to the API and refreshes the UI', async ({ page }) => {
