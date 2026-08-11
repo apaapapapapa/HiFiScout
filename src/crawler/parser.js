@@ -132,8 +132,42 @@ function itemQuality(item) {
     + Math.min(item.title?.length || 0, 180);
 }
 
+function mergeAudioUnionItems(items) {
+  const groups = new Map();
+  for (const item of items) {
+    if (!item.sourceId || !item.sourceUrl || !item.title) continue;
+    if (!groups.has(item.sourceId)) groups.set(item.sourceId, []);
+    groups.get(item.sourceId).push(item);
+  }
+
+  const result = [];
+  for (const group of groups.values()) {
+    const first = group[0];
+    const detail = group.reduce((best, item) => item.title.length > best.title.length ? item : best, first);
+    if (group.length > 1 && first.title !== detail.title && first.title.length <= 80) {
+      const manufacturer = cleanText(first.title);
+      let model = cleanText(detail.title);
+      if (model.toLowerCase().startsWith(`${manufacturer.toLowerCase()} `)) model = model.slice(manufacturer.length).trim();
+      const stock = group.find(item => item.stockStatus !== 'unknown')?.stockStatus || detail.stockStatus;
+      result.push({
+        ...detail,
+        manufacturer,
+        model,
+        title: model ? `${manufacturer} ${model}` : manufacturer,
+        category: inferCategory(`${manufacturer} ${model}`),
+        stockStatus: stock
+      });
+      continue;
+    }
+    result.push(group.reduce((best, item) => itemQuality(item) > itemQuality(best) ? item : best, first));
+  }
+  return result;
+}
+
 export function parseProductPage(html, options) {
   const merged = [...fromJsonLd(html, options), ...fromAnchors(html, options)];
+  if (options.shopKey === 'audiounion') return mergeAudioUnionItems(merged);
+
   const unique = new Map();
   for (const item of merged) {
     if (!item.sourceId || !item.sourceUrl || !item.title) continue;
