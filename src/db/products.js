@@ -325,6 +325,7 @@ function ftsPhrase(value) {
 function sortDefinition(sortKey) {
   return {
     newest: { key: 'newest', column: 'last_activity_at', direction: 'DESC', idDirection: 'DESC' },
+    oldest: { key: 'oldest', column: 'last_activity_at', direction: 'ASC', idDirection: 'ASC' },
     // Backward-compatible API alias. The UI exposes only the unified activity feed.
     updated: { key: 'updated', column: 'last_activity_at', direction: 'DESC', idDirection: 'DESC' },
     priceAsc: { key: 'priceAsc', column: 'price_yen', direction: 'ASC', idDirection: 'ASC', price: true },
@@ -382,7 +383,7 @@ export function validateProductQuery(url) {
     if (value != null && value !== 'true' && value !== 'false') return `${key}_invalid`;
   }
   const sort = params.get('sort');
-  if (sort && !['newest', 'updated', 'priceAsc', 'priceDesc'].includes(sort)) return 'sort_invalid';
+  if (sort && !['newest', 'oldest', 'updated', 'priceAsc', 'priceDesc'].includes(sort)) return 'sort_invalid';
   return null;
 }
 
