@@ -13,11 +13,13 @@ export function isDispatchLeaseActive(state, now = new Date(), leaseMinutes = 15
   return now.getTime() - queuedAt < leaseMinutes * 60_000;
 }
 
-export function dueDispatchCandidates(env, stateRows = [], now = new Date()) {
+export function dueDispatchCandidates(env, stateRows = [], now = new Date(), { excludeShopKeys = [] } = {}) {
   const settings = getCrawlerSettings(env);
   const states = new Map(stateRows.map(row => [row.shop_key, row]));
+  const excluded = new Set(excludeShopKeys);
   return SHOP_ADAPTERS
     .map(adapter => {
+      if (excluded.has(adapter.key)) return null;
       const definition = definitionFor(adapter);
       const state = states.get(adapter.key) || null;
       if (!definition || !getShopEnabled(env, definition)) return null;
@@ -42,10 +44,10 @@ export async function clearQueued(db, shopKey) {
   await db.prepare('UPDATE shop_sync_state SET queued_at = NULL WHERE shop_key = ?').bind(shopKey).run();
 }
 
-export async function dispatchDueCrawls(env, { now = new Date() } = {}) {
+export async function dispatchDueCrawls(env, { now = new Date(), excludeShopKeys = [] } = {}) {
   if (!env.CRAWL_QUEUE) throw new Error('CRAWL_QUEUE binding is not configured');
   const statesResult = await env.DB.prepare('SELECT * FROM shop_sync_state').all();
-  const candidates = dueDispatchCandidates(env, statesResult.results || [], now);
+  const candidates = dueDispatchCandidates(env, statesResult.results || [], now, { excludeShopKeys });
   const queuedAt = now.toISOString();
   const queued = [];
 
@@ -56,6 +58,26 @@ export async function dispatchDueCrawls(env, { now = new Date() } = {}) {
   }
 
   return { status: queued.length ? 'queued' : 'skipped', queued };
+}
+
+export async function dispatchScheduledCrawl(env, shopKey, { now = new Date() } = {}) {
+  if (!env.CRAWL_QUEUE) throw new Error('CRAWL_QUEUE binding is not configured');
+  const adapter = SHOP_ADAPTERS.find(candidate => candidate.key === shopKey);
+  if (!adapter) return { status: 'rejected', reason: 'unknown_shop' };
+  const definition = definitionFor(adapter);
+  if (!definition || !getShopEnabled(env, definition)) return { status: 'rejected', reason: 'disabled' };
+  if (adapter.isConfigured && !adapter.isConfigured(env)) return { status: 'rejected', reason: 'configuration_missing' };
+
+  const state = await env.DB.prepare('SELECT * FROM shop_sync_state WHERE shop_key = ?').bind(shopKey).first();
+  const settings = getCrawlerSettings(env);
+  if (isDispatchLeaseActive(state, now, settings.dispatchLeaseMinutes)) {
+    return { status: 'skipped', reason: 'dispatch_lease_active', shopKey };
+  }
+
+  const queuedAt = now.toISOString();
+  await env.CRAWL_QUEUE.send({ shopKey, force: true, requestedAt: queuedAt });
+  await markQueued(env.DB, shopKey, queuedAt);
+  return { status: 'queued', shopKey };
 }
 
 export async function dispatchForcedCrawl(env, shopKey, { now = new Date() } = {}) {
