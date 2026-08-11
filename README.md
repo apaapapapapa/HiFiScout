@@ -9,7 +9,7 @@ HiFiScout is a non-official cross-shop search application for used audio equipme
 - Store only factual listing data needed for search: shop, manufacturer, model/title, category, condition grade, price, stock state, source URL, and observation timestamps.
 - Do **not** store or republish shop product images, descriptions, staff comments, or logos.
 - Always link users to the seller's original product page.
-- User traffic never causes seller-site crawling. A Cloudflare Cron Trigger starts every 5 minutes and selects at most one due shop per tick.
+- User traffic never causes seller-site crawling. Cron only dispatches due work to Cloudflare Queues.
 - Check `robots.txt` before crawling, back off on failures, and never bypass authentication, CAPTCHA, or other access controls.
 - Price history starts when HiFiScout observes a listing; no historical seller database is copied.
 - Every shop has an environment-level kill switch and request-delay override so collection can be stopped or slowed without changing crawler code.
@@ -21,25 +21,30 @@ Browser
   │
   ├── static UI (Cloudflare Workers Static Assets)
   │
-  └── /api/*
-          │
-       Worker ─────────────── D1
-          │                   ├─ products
-          │                   ├─ price_history
-          │                   └─ crawl state
-          │
-   Cron */5 minutes
-          │
-          ├─ Audio Union collector
-          ├─ 逸品館 collector
-          ├─ フジヤエービック collector
-          ├─ ハイファイ堂 collector (Browser Run)
-          └─ FOR MUSIC collector
+  └── /api/* ── Rate Limit API ── Worker ───── D1
+                                      │          ├─ products
+                                      │          ├─ price_history
+                                      │          └─ crawl state
+                                      │
+Cron */5 minutes ── due-shop dispatcher ── Cloudflare Queue
+                                           max concurrency = 1
+                                                  │
+                                                  ├─ Audio Union collector
+                                                  ├─ 逸品館 collector
+                                                  ├─ フジヤエービック collector
+                                                  ├─ ハイファイ堂 collector (Browser Run)
+                                                  └─ FOR MUSIC collector
+
+Daily retention cron ── bounded D1 cleanup
+Weekly GitHub Action ── D1 SQL export ── 90-day artifact
+                                      └─ optional R2 copy
 ```
+
+The queue consumer is globally limited to one concurrent invocation. Scheduled crawls and manually forced crawls use the same queue, so seller crawling cannot overlap accidentally. Cron can enqueue every shop that is due instead of being limited to one shop per five-minute tick.
 
 ## Crawl controls
 
-The cron wakes every five minutes, but each collector has its own interval, enabled flag, and request delay. Defaults are 30 minutes. Audio Union deliberately uses a longer 10-second request delay.
+Each collector has its own interval, enabled flag, and request delay. Defaults are 30 minutes. Audio Union deliberately uses a longer 10-second request delay.
 
 ```jsonc
 "vars": {
@@ -67,12 +72,25 @@ The cron wakes every five minutes, but each collector has its own interval, enab
 
   "CRAWL_MIN_ITEM_RATIO": "0.5",
   "CRAWL_MIN_ITEM_BASELINE": "20",
+  "CRAWL_DISPATCH_LEASE_MINUTES": "15",
+  "PRODUCT_TOUCH_INTERVAL_MINUTES": "1440",
   "SYNC_HEALTH_WARNING_FACTOR": "2",
-  "SYNC_HEALTH_CRITICAL_FACTOR": "6"
+  "SYNC_HEALTH_CRITICAL_FACTOR": "6",
+
+  "CRAWL_RUN_RETENTION_DAYS": "30",
+  "PRICE_HISTORY_RETENTION_DAYS": "1095",
+  "INACTIVE_PRODUCT_RETENTION_DAYS": "365",
+  "RETENTION_DELETE_BATCH_SIZE": "500"
 }
 ```
 
-Set `<SHOP>_ENABLED=false` to stop a collector immediately on the next deployment. `FUJIYA_AVIC_MAX_PAGES` is a safety ceiling.
+Set `<SHOP>_ENABLED=false` to stop a collector on the next deployment. `FUJIYA_AVIC_MAX_PAGES` is a safety ceiling.
+
+### Queue dispatch and exclusion
+
+The five-minute Cron Trigger finds **all** due shops and sends one message per shop to `hifiscout-crawl`. A 15-minute `queued_at` lease suppresses repeated dispatch while a message is waiting. The queue consumer uses `max_batch_size=1` and `max_concurrency=1`, so only one seller crawl can run at a time. Failed crawl results are recorded using the existing exponential backoff; infrastructure-level queue delivery failures retain the queue's retry/DLQ protection.
+
+`POST /api/admin/crawl` now enqueues a forced crawl and returns HTTP `202` instead of running seller requests on the HTTP request path.
 
 ### Item-count safety guard
 
@@ -89,6 +107,12 @@ Hifido is intentionally **not** fully synchronized every 30 minutes. Each schedu
 
 This adds only one Browser Run page per scheduled Hifido crawl while periodically revisiting older observed listings. Hifido is explicitly marked as partial coverage, so a missing item in one of these partial windows never causes unrelated existing products to be deactivated.
 
+## D1 write control
+
+Unchanged listings are no longer updated on every crawl. HiFiScout writes a product when it is new, its factual listing fields change, it becomes active again, or its low-frequency observation heartbeat is due. The default heartbeat is once every 24 hours.
+
+For complete-snapshot collectors, inactive detection now compares the current observed source-ID set with active source IDs from D1 and only writes the actually missing rows. This trades relatively cheap indexed reads for a substantial reduction in D1 row writes while preserving safe deactivation semantics.
+
 ## Sync health
 
 `GET /api/health` checks collector freshness rather than returning liveness only.
@@ -98,7 +122,26 @@ This adds only one Browser Run page per scheduled Hifido crawl while periodicall
 - `critical`: at least 3 consecutive failures or the last success is older than 6× the interval.
 - `disabled`: the shop kill switch is off; disabled shops do not make overall health unhealthy.
 
-The health endpoint returns HTTP `503` when the overall state is `critical`. Scheduled runs also emit structured `sync_health_warning` / `sync_health_critical` records to Cloudflare Workers Observability.
+The health endpoint returns HTTP `503` when the overall state is `critical`. Queue and scheduled runs also emit structured health records to Cloudflare Workers Observability.
+
+## Retention and backups
+
+A daily maintenance cron performs bounded deletes so cleanup itself cannot become a large D1 write spike. Defaults are:
+
+- crawl execution records: 30 days
+- price history: 3 years
+- inactive products: 1 year
+- at most 500 rows per table per daily cleanup invocation
+
+D1 Time Travel remains the first-line point-in-time recovery mechanism. In addition, `.github/workflows/backup.yml` exports the remote D1 database once per week, compresses the SQL dump, and retains it as a GitHub Actions artifact for 90 days.
+
+For longer external retention, create an R2 bucket and set repository variable `HIFISCOUT_BACKUP_BUCKET` to the bucket name. The same workflow will then copy each compressed backup to `d1/` in that bucket. R2 lifecycle/retention policy should be configured on the bucket according to the desired archival period.
+
+## API protection
+
+Public GET API routes use a Cloudflare Workers Rate Limiting binding as an abuse brake. The current ceiling is 120 requests/minute per anonymous actor and API route bucket. Since HiFiScout has no user accounts, the actor key uses the connecting IP with a deliberately high ceiling to reduce the risk of affecting normal users behind shared networks.
+
+`/api/products` also rejects oversized or malformed search parameters before querying D1. Search text is limited to 100 characters, cursor values to 1024 characters, and sort/numeric parameters are validated against the supported format.
 
 ## Local setup
 
@@ -110,7 +153,7 @@ npm run db:migrate:local
 npm run dev
 ```
 
-To test the scheduled handler locally:
+To test the crawl dispatcher locally:
 
 ```bash
 curl "http://localhost:8787/__scheduled?cron=*/5+*+*+*+*"
@@ -128,7 +171,7 @@ npm test
 - `GET /api/meta` — shops, configured intervals, enabled state, sync status/health, manufacturers, categories.
 - `GET /api/products/:id/history` — observed price history.
 - `GET /api/health` — crawler-aware health endpoint; returns 503 on critical sync health.
-- `POST /api/admin/crawl?shop=<shop-key>` — force one collector; requires `Authorization: Bearer <ADMIN_TOKEN>`. A disabled collector stays disabled even for this endpoint.
+- `POST /api/admin/crawl?shop=<shop-key>` — enqueue one forced collector run; requires `Authorization: Bearer <ADMIN_TOKEN>` and returns 202. A disabled collector stays disabled.
 
 Query parameters for `/api/products`: `q`, `shop`, `manufacturer`, `category`, `minPrice`, `maxPrice`, `inStock=true`, `sort=newest|updated|priceAsc|priceDesc`, `limit`.
 
@@ -152,7 +195,8 @@ If a live page can no longer be parsed, the crawler refuses to mark existing pro
 4. Keep an identifiable crawler User-Agent/contact route.
 5. Keep the non-affiliation notice and provide a listing-removal contact path.
 6. Review Workers Observability and `/api/health` regularly for parser failures or stale shops.
+7. Configure R2 backup retention if archive history beyond the 90-day GitHub artifact window is required.
 
 ## Deployment
 
-`main` is deployed by `.github/workflows/deploy.yml` using `CLOUDFLARE_API_TOKEN`. Wrangler applies backward-compatible D1 migrations before deploying the Worker/static assets. The production custom domain is managed in Cloudflare separately from the repository configuration.
+`main` is deployed by `.github/workflows/deploy.yml` using `CLOUDFLARE_API_TOKEN`. Wrangler applies backward-compatible D1 migrations before deploying the Worker/static assets. Queue resources are provisioned/bound through Wrangler configuration. The production custom domain is managed in Cloudflare separately from the repository configuration.
