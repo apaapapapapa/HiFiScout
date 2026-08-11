@@ -19,9 +19,12 @@ function parseCategoryIds(value) {
 
 function setUnambiguous(index, key, value) {
   if (!key) return;
+  if (!index.has(key)) {
+    index.set(key, value);
+    return;
+  }
   const existing = index.get(key);
-  if (!existing) return void index.set(key, value);
-  if (existing.id !== value.id) index.set(key, null);
+  if (!existing || existing.id !== value.id) index.set(key, null);
 }
 
 async function loadVerifiedCatalogIndex(db, manufacturerIds) {
