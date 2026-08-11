@@ -138,6 +138,7 @@ export const hifidoAdapter = {
   baseUrl: 'https://www.hifido.co.jp',
   transport: 'browser',
   partialCoverage: true,
+  guardItemCount: true,
   continueOnEmpty: true,
   extraPageAllowance: 1,
   *pageUrls(maxPages, env = {}, context = {}) {
