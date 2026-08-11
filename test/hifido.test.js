@@ -19,13 +19,18 @@ test('Hifido parser keeps factual listing fields only', () => {
 
   const [product] = parseHifidoListing(html);
   assert.equal(product.sourceId, '26-50234-14194-00');
+  assert.equal(product.rawManufacturer, 'SONUS FABER ソナスファベール');
   assert.equal(product.manufacturer, 'SONUS FABER');
   assert.equal(product.model, 'MINIMA AMATOR 2');
   assert.equal(product.priceYen, 498000);
+  assert.equal(product.rawCategory, 'スピーカー');
   assert.equal(product.category, 'スピーカー');
   assert.equal(product.stockStatus, 'in_stock');
   assert.equal(product.sourceUrl, 'https://www.hifido.co.jp/26-50234-14194-00.html?A=1&G=3&LNG=J');
-  assert.deepEqual(Object.keys(product).sort(), ['category','conditionText','manufacturer','model','priceYen','sourceId','sourceUrl','stockStatus','title'].sort());
+  assert.deepEqual(Object.keys(product).sort(), [
+    'category', 'conditionText', 'manufacturer', 'model', 'priceYen', 'rawCategory',
+    'rawManufacturer', 'sourceId', 'sourceUrl', 'stockStatus', 'title'
+  ].sort());
 });
 
 test('Hifido parser handles rendered list-item markup with duplicate product links', () => {
