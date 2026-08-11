@@ -1,4 +1,5 @@
 import { createKnowledgeSourceVerifier } from './catalog/knowledge-source-verifier.js';
+import { createRobotsRespectingFetch } from './crawler/robots-respecting-fetch.js';
 import {
   listDueKnowledgeCatalogProducts,
   listPendingKnowledgeCatalogCandidates,
@@ -19,12 +20,25 @@ function sameCategorySet(left = [], right = []) {
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
+function validPromotion(verification) {
+  const categoryIds = [...new Set(verification?.categoryIds || [])].filter(Boolean);
+  return verification?.status === 'verified' &&
+    Boolean(verification.sourceUrl) &&
+    Boolean(verification.canonicalModel) &&
+    Boolean(verification.primaryCategoryId) &&
+    categoryIds.includes(verification.primaryCategoryId);
+}
+
 export async function runKnowledgeCatalogSourceVerification(env, {
   now = new Date(),
   fetchImpl = globalThis.fetch
 } = {}) {
   const attemptedAt = now.toISOString();
-  const verifier = createKnowledgeSourceVerifier(env, { fetchImpl });
+  const sourceFetch = createRobotsRespectingFetch(fetchImpl, {
+    userAgent: env.CRAWLER_USER_AGENT || 'HiFiScoutBot/0.1',
+    minimumDelayMs: Number(env.KNOWLEDGE_CATALOG_SOURCE_REQUEST_DELAY_MS) || 500
+  });
+  const verifier = createKnowledgeSourceVerifier(env, { fetchImpl: sourceFetch });
   const candidateLimit = boundedLimit(env.KNOWLEDGE_CATALOG_VERIFY_MAX_CANDIDATES, 25);
   const dueProductLimit = boundedLimit(env.KNOWLEDGE_CATALOG_VERIFY_MAX_DUE_PRODUCTS, 25);
 
@@ -58,6 +72,15 @@ export async function runKnowledgeCatalogSourceVerification(env, {
     const verification = await verifier.verifyCandidate(candidate);
     verificationAttempts += 1;
     if (verification.status === 'verified') {
+      if (!validPromotion(verification)) {
+        await recordKnowledgeCatalogCandidateVerification(env.DB, candidate, {
+          ...verification,
+          status: 'ambiguous',
+          message: 'verified_result_missing_required_identity_or_primary_category'
+        }, attemptedAt);
+        verificationFailures += 1;
+        continue;
+      }
       const promotion = await promoteVerifiedKnowledgeCatalogCandidate(env.DB, candidate, verification, attemptedAt);
       if (promotion.promoted) verifiedPromotions += 1;
       else if (promotion.reason !== 'already_exists') verificationFailures += 1;
