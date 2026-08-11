@@ -3,10 +3,15 @@ import { SHOP_DEFINITIONS, getShopEnabled, getShopIntervalMinutes } from './conf
 import { checkPublicApiRateLimit } from './api-guard.js';
 import { consumeCrawlMessage, dispatchDueCrawls, dispatchForcedCrawl, dispatchScheduledCrawl } from './crawler/dispatch.js';
 import { listProducts, productHistory, validateProductQuery } from './db/products.js';
+import {
+  claimInitialKnowledgeCatalogReviewRun,
+  knowledgeCatalogOperationalStatus
+} from './db/knowledge-catalog-review-repository.js';
 import { buildSyncHealth, getSyncHealth, logSyncHealth } from './health.js';
 import { runKnowledgeCatalogReview } from './knowledge-catalog-review.js';
 import { runRetentionCleanup } from './maintenance.js';
 
+const GENERAL_CRON = '*/5 * * * *';
 const AUDIOUNION_CRON = '1 * * * *';
 const FUJIYA_AVIC_CRON = '30 * * * *';
 const RETENTION_CRON = '17 18 * * *';
@@ -79,6 +84,9 @@ async function handleApi(request, env, ctx) {
     return cachedJson(request, ctx, 30, () => listProducts(env.DB, url));
   }
   if (request.method === 'GET' && url.pathname === '/api/meta') return cachedJson(request, ctx, 30, () => meta(env));
+  if (request.method === 'GET' && url.pathname === '/api/knowledge-catalog/status') {
+    return cachedJson(request, ctx, 30, () => knowledgeCatalogOperationalStatus(env.DB));
+  }
   if (request.method === 'GET' && url.pathname === '/api/health') {
     try {
       const health = await getSyncHealth(env);
@@ -124,13 +132,24 @@ async function runScheduled(cron, env) {
   return dispatch;
 }
 
+async function bootstrapKnowledgeCatalogReview(env) {
+  const now = new Date();
+  const runId = await claimInitialKnowledgeCatalogReviewRun(env.DB, now.toISOString());
+  if (!runId) return { status: 'skipped', reason: 'already_initialized' };
+  console.log(JSON.stringify({ event: 'knowledge_catalog_bootstrap_started', runId }));
+  return runKnowledgeCatalogReview(env, { now, runId });
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname.startsWith('/api/')) return handleApi(request, env, ctx);
     return env.ASSETS.fetch(request);
   },
-  async scheduled(controller, env, ctx) { ctx.waitUntil(runScheduled(controller.cron, env)); },
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil(runScheduled(controller.cron, env));
+    if (controller.cron === GENERAL_CRON) ctx.waitUntil(bootstrapKnowledgeCatalogReview(env));
+  },
   async queue(batch, env) {
     for (const message of batch.messages) {
       const result = await consumeCrawlMessage(env, message.body);
