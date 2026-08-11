@@ -6,14 +6,12 @@ const CATEGORY_DEFINITIONS = [
   { id: 'pre_amp', name: 'プリアンプ', parentId: 'amplifier', order: 2, classifiable: true, filterable: true, aliases: ['preamp', 'pre amplifier', 'control amplifier', 'control amp', 'linestage preamplifier', 'プリアンプ', 'コントロールアンプ'] },
   { id: 'power_amp', name: 'パワーアンプ', parentId: 'amplifier', order: 3, classifiable: true, filterable: true, aliases: ['power amp', 'power amplifier', 'パワーアンプ'] },
   { id: 'headphone_amp', name: 'ヘッドホンアンプ', parentId: 'amplifier', order: 4, classifiable: true, filterable: true, aliases: ['headphone amp', 'headphone amplifier', 'ヘッドホンアンプ'] },
-  { id: 'av_receiver', name: 'AVアンプ', parentId: 'amplifier', order: 5, classifiable: true, filterable: true, aliases: ['av receiver', 'av amplifier', 'av amp', 'avアンプ', 'avレシーバー', 'avサラウンドアンプ', 'avサラウンドレシーバー'] },
 
   { id: 'digital', name: 'デジタル', parentId: null, order: 2, classifiable: false, filterable: true, aliases: ['digital audio', 'デジタル'] },
   { id: 'dac', name: 'DAC', parentId: 'digital', order: 1, classifiable: true, filterable: true, aliases: ['dac', 'd/a converter', 'd-a converter', 'da converter', 'd/aコンバーター', 'daコンバーター', 'd/aコンバータ', 'daコンバータ'] },
   { id: 'network_player', name: 'ネットワークプレーヤー', parentId: 'digital', order: 2, classifiable: true, filterable: true, aliases: ['network player', 'network transport', 'network cd receiver', 'streamer', 'streaming player', 'streaming transport', 'ネットワークプレーヤー', 'ネットワークプレイヤー', 'ネットワークトランスポート', 'ネットワーク'] },
   { id: 'cd_sacd_player', name: 'CD/SACDプレーヤー', parentId: 'digital', order: 3, classifiable: true, filterable: true, aliases: ['cd player', 'cd transport', 'sacd player', 'sacd transport', 'super audio cd transport', 'sacd/cd player', 'cdプレーヤー', 'cdトランスポート', 'sacdプレーヤー', 'sacdトランスポート', 'sacd/cdプレーヤー', 'cd/sacdプレーヤー'] },
   { id: 'dap', name: 'DAP', parentId: 'digital', order: 4, classifiable: true, filterable: true, aliases: ['dap', 'digital audio player', 'デジタルオーディオプレーヤー', 'ポータブルプレーヤー', 'ポータブルプレイヤー'] },
-  { id: 'clock_generator', name: 'マスタークロック', parentId: 'digital', order: 5, classifiable: true, filterable: true, aliases: ['master clock', 'master clock generator', 'clock generator', 'マスタークロック', 'クロックジェネレーター', 'クロックジェネレータ'] },
 
   { id: 'analog', name: 'アナログ', parentId: null, order: 3, classifiable: false, filterable: true, aliases: ['analog', 'analogue', 'アナログ'] },
   { id: 'turntable', name: 'レコードプレーヤー', parentId: 'analog', order: 1, classifiable: true, filterable: true, aliases: ['turntable', 'record player', 'レコードプレーヤー', 'レコードプレイヤー', 'ターンテーブル'] },
@@ -25,8 +23,7 @@ const CATEGORY_DEFINITIONS = [
   { id: 'speaker_bookshelf', name: 'ブックシェルフ', parentId: 'speaker', order: 1, classifiable: true, filterable: true, aliases: ['bookshelf', 'bookshelf speaker', 'standmount', 'stand-mount', 'ブックシェルフ', 'ブックシェルフ型'] },
   { id: 'speaker_floorstanding', name: 'フロア型', parentId: 'speaker', order: 2, classifiable: true, filterable: true, aliases: ['floorstanding', 'floor-standing', 'tower speaker', 'トールボーイ', 'フロア型', 'フロアスタンディング'] },
   { id: 'subwoofer', name: 'サブウーファー', parentId: 'speaker', order: 3, classifiable: true, filterable: true, aliases: ['subwoofer', 'sub-woofer', 'サブウーファー'] },
-  { id: 'speaker_other', name: 'その他スピーカー', parentId: 'speaker', order: 4, classifiable: true, filterable: true, aliases: ['speaker system', 'speaker-system', 'その他スピーカー'] },
-  { id: 'soundbar', name: 'サウンドバー', parentId: 'speaker', order: 5, classifiable: true, filterable: true, aliases: ['soundbar', 'sound bar', 'サウンドバー'] },
+  { id: 'speaker_other', name: 'その他スピーカー', parentId: 'speaker', order: 4, classifiable: true, filterable: true, aliases: ['speaker system', 'speaker-system', 'soundbar', 'sound bar', 'サウンドバー', 'その他スピーカー'] },
 
   { id: 'headphone_group', name: 'ヘッドホン', parentId: null, order: 5, classifiable: false, filterable: true, aliases: ['headphone group', 'ヘッドホン・イヤホン'] },
   { id: 'headphone', name: 'ヘッドホン', parentId: 'headphone_group', order: 1, classifiable: true, filterable: true, aliases: ['headphone', 'headphones', 'ヘッドホン'] },
@@ -37,13 +34,10 @@ const CATEGORY_DEFINITIONS = [
   { id: 'rack', name: 'オーディオラック', parentId: 'accessories', order: 2, classifiable: true, filterable: true, aliases: ['audio rack', 'rack', 'オーディオラック', 'ラック'] },
   { id: 'power_accessory', name: '電源関連', parentId: 'accessories', order: 3, classifiable: true, filterable: true, aliases: ['power accessory', 'power conditioner', 'power strip', '電源タップ', '電源コンディショナー', '電源コンディショナ'] },
   { id: 'vacuum_tube', name: '真空管', parentId: 'accessories', order: 4, classifiable: true, filterable: true, aliases: ['vacuum tube', 'tube', '真空管'] },
-  { id: 'other_accessory', name: 'その他アクセサリー', parentId: 'accessories', order: 5, classifiable: true, filterable: true, aliases: ['accessory', 'other accessory', 'insulator', 'hdmi switcher', 'dust cover', 'インシュレーター', 'インシュレータ', 'HDMIスイッチャー', 'ダストカバー', 'その他アクセサリー'] },
+  { id: 'other_accessory', name: 'その他アクセサリー', parentId: 'accessories', order: 5, classifiable: true, filterable: true, aliases: ['accessory', 'other accessory', 'insulator', 'hdmi switcher', 'dust cover', 'master clock', 'clock generator', 'インシュレーター', 'インシュレータ', 'HDMIスイッチャー', 'ダストカバー', 'マスタークロック', 'クロックジェネレーター', 'その他アクセサリー'] },
 
   { id: 'dj_dtm', name: 'DJ機器・DTM', parentId: null, order: 7, classifiable: true, filterable: true, aliases: ['dj', 'ddj', 'dtm', 'rekordbox', 'serato', 'midi', 'オーディオインターフェース'] },
-  { id: 'equalizer', name: 'イコライザー・音場補正', parentId: null, order: 7.1, classifiable: true, filterable: true, aliases: ['equalizer', 'voicing equalizer', 'graphic equalizer', 'イコライザー', '音場補正'] },
-  { id: 'crossover', name: 'チャンネルデバイダー', parentId: null, order: 7.2, classifiable: true, filterable: true, aliases: ['crossover', 'channel divider', 'frequency dividing network', 'チャンネルデバイダー', 'チャンネルディバイダー', '周波数分割'] },
-  { id: 'tuner', name: 'チューナー', parentId: null, order: 7.3, classifiable: true, filterable: true, aliases: ['tuner', 'fm tuner', 'fm stereo tuner', 'チューナー'] },
-  { id: 'other', name: 'その他', parentId: null, order: 8, classifiable: true, filterable: true, aliases: ['その他', 'others', 'other'] }
+  { id: 'other', name: 'その他', parentId: null, order: 8, classifiable: true, filterable: true, aliases: ['その他', 'others', 'other', 'av receiver', 'av amplifier', 'av amp', 'tuner', 'equalizer', 'channel divider', 'frequency dividing network', 'AVアンプ', 'AVレシーバー', 'チューナー', 'イコライザー', 'チャンネルデバイダー'] }
 ].map(category => Object.freeze({ ...category, selectable: category.filterable }));
 
 export const CATEGORIES = Object.freeze(CATEGORY_DEFINITIONS);
