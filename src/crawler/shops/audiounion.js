@@ -1,27 +1,23 @@
 import { parseProductPage } from '../parser.js';
 
+const DEFAULT_ENTRY_URL = 'https://www.audiounion.jp/st/new_arrival_used.html';
+
 export const audioUnionAdapter = {
   key: 'audiounion',
   name: 'Audio Union',
   baseUrl: 'https://www.audiounion.jp',
-  isConfigured(env) {
-    return Boolean(env?.AUDIOUNION_ENTRY_URL?.trim());
+  requestDelayMs: 10_000,
+  isConfigured() {
+    return true;
   },
-  *pageUrls(maxPages, env) {
-    const configured = env?.AUDIOUNION_ENTRY_URL?.trim();
-    if (!configured) return;
-    yield configured;
-    for (let page = 2; page <= maxPages; page += 1) {
-      const url = new URL(configured);
-      url.searchParams.set('page', String(page));
-      yield url.toString();
-    }
+  *pageUrls(_maxPages, env) {
+    yield env?.AUDIOUNION_ENTRY_URL?.trim() || DEFAULT_ENTRY_URL;
   },
   parse(html, pageUrl) {
     return parseProductPage(html, {
       shopKey: this.key,
       baseUrl: pageUrl,
-      productUrlPattern: /audiounion/i
+      productUrlPattern: /audiounion\.jp\/ct\/detail\/used\/\d+\/?/i
     });
   }
 };

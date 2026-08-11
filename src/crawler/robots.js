@@ -14,16 +14,26 @@ function parseGroups(text) {
     const key = line.slice(0, colon).trim().toLowerCase();
     const value = line.slice(colon + 1).trim();
     if (key === 'user-agent') {
-      if (!current || current.rules.length) {
-        current = { agents: [], rules: [] };
+      if (!current || current.rules.length || current.crawlDelaySeconds != null) {
+        current = { agents: [], rules: [], crawlDelaySeconds: null };
         groups.push(current);
       }
       current.agents.push(value.toLowerCase());
     } else if ((key === 'allow' || key === 'disallow') && current) {
       current.rules.push({ type: key, path: value });
+    } else if (key === 'crawl-delay' && current) {
+      const seconds = Number.parseFloat(value);
+      if (Number.isFinite(seconds) && seconds >= 0) current.crawlDelaySeconds = seconds;
     }
   }
   return groups;
+}
+
+function applicableGroups(text, userAgent) {
+  const groups = parseGroups(text);
+  const ua = userAgent.toLowerCase().split('/')[0];
+  const exact = groups.filter(g => g.agents.some(a => a !== '*' && ua.includes(a)));
+  return exact.length ? exact : groups.filter(g => g.agents.includes('*'));
 }
 
 function matchesRule(path, rulePath) {
@@ -34,15 +44,21 @@ function matchesRule(path, rulePath) {
 
 export function isPathAllowed(robotsText, targetUrl, userAgent = 'HiFiScoutBot') {
   if (robotsText == null) return true;
-  const groups = parseGroups(robotsText);
-  const ua = userAgent.toLowerCase().split('/')[0];
-  const exact = groups.filter(g => g.agents.some(a => a !== '*' && ua.includes(a)));
-  const applicable = exact.length ? exact : groups.filter(g => g.agents.includes('*'));
+  const applicable = applicableGroups(robotsText, userAgent);
   const path = normalizePath(targetUrl);
   const rules = applicable.flatMap(g => g.rules).filter(r => matchesRule(path, r.path));
   if (!rules.length) return true;
   rules.sort((a, b) => b.path.length - a.path.length || (a.type === 'allow' ? -1 : 1));
   return rules[0].type === 'allow';
+}
+
+export function getCrawlDelayMs(robotsText, userAgent = 'HiFiScoutBot') {
+  if (robotsText == null) return 0;
+  const delays = applicableGroups(robotsText, userAgent)
+    .map(group => group.crawlDelaySeconds)
+    .filter(value => Number.isFinite(value) && value >= 0);
+  if (!delays.length) return 0;
+  return Math.max(...delays) * 1000;
 }
 
 export async function fetchRobotsPolicy(fetchFn, baseUrl, userAgent) {
