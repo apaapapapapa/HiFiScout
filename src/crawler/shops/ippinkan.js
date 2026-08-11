@@ -1,5 +1,10 @@
 import { parseProductPage } from '../parser.js';
 
+function applyIppinkanStockPolicy(product) {
+  if (product.stockStatus !== 'unknown') return product;
+  return { ...product, stockStatus: 'in_stock' };
+}
+
 export const ippinkanAdapter = {
   key: 'ippinkan',
   name: '逸品館',
@@ -15,6 +20,6 @@ export const ippinkanAdapter = {
       shopKey: this.key,
       baseUrl: pageUrl,
       productUrlPattern: /ippinkan\.jp\/(?:shopdetail|view\/item|shop\/products?)/i
-    });
+    }).map(applyIppinkanStockPolicy);
   }
 };
