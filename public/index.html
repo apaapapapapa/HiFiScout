@@ -20,9 +20,10 @@
       <summary>
         <span class="sync-indicator" aria-hidden="true"></span>
         <span id="sync-summary-text">同期状況を取得中…</span>
-        <span class="sync-toggle-label" aria-hidden="true"></span>
+        <span aria-hidden="true" style="font-size:10px;font-weight:600;color:#8a867e;white-space:nowrap">詳細 ▾</span>
       </summary>
       <div id="sync-status-details" class="sync-status-details"></div>
+      <button id="sync-status-close" type="button" aria-label="同期状況を閉じる" title="閉じる" style="position:absolute;right:8px;top:calc(100% + 12px);z-index:16;width:32px;height:32px;border:0;border-radius:8px;background:#fff;color:#555;font-size:22px;line-height:1;cursor:pointer">×</button>
     </details>
   </header>
 
@@ -95,10 +96,12 @@
   </footer>
   <script>
     const syncStatus = document.getElementById('sync-status');
-    const syncSummary = syncStatus?.querySelector('summary');
-    syncSummary?.addEventListener('click', event => {
+    const syncClose = document.getElementById('sync-status-close');
+    syncClose?.addEventListener('click', event => {
       event.preventDefault();
-      syncStatus.open = !syncStatus.open;
+      event.stopPropagation();
+      syncStatus?.removeAttribute('open');
+      syncStatus?.querySelector('summary')?.focus({ preventScroll: true });
     });
   </script>
   <script src="/catalog-url-state.js"></script>
