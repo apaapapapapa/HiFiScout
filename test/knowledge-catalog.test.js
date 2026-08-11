@@ -59,45 +59,31 @@ test('candidate aggregation groups only safely-normalized formatting variants', 
 
 test('verified catalog evidence overrides a conflicting seller category', () => {
   const catalogEvidence = knowledgeCatalogEvidence({
-    canonicalName: 'SACD 10',
-    canonicalModel: 'SACD 10',
-    categoryIds: ['cd_sacd_player']
+    canonicalName: 'SACD 10', canonicalModel: 'SACD 10', categoryIds: ['cd_sacd_player']
   });
   const result = classifyCategoryEvidence([
-    { categoryId: 'dap', source: 'seller_category', strength: 'authoritative', value: 'DAP' },
-    ...catalogEvidence
+    { categoryId: 'dap', source: 'seller_category', strength: 'authoritative', value: 'DAP' }, ...catalogEvidence
   ]);
-
   assert.equal(result.classificationStatus, 'classified');
   assert.equal(result.primaryCategoryId, 'cd_sacd_player');
   assert.deepEqual(result.categoryIds, ['cd_sacd_player']);
   assert.equal(result.classificationSource, 'knowledge_catalog');
 });
 
-test('verified catalog evidence can represent multi-category products', () => {
+test('legacy multi-category catalog evidence is reduced to one primary category', () => {
   const result = classifyCategoryEvidence(knowledgeCatalogEvidence({
-    canonicalName: 'Network DAC',
-    canonicalModel: 'ND-1',
-    categoryIds: ['dac', 'network_player']
+    canonicalName: 'Network DAC', canonicalModel: 'ND-1', categoryIds: ['dac', 'network_player']
   }));
-
   assert.equal(result.classificationStatus, 'classified');
-  assert.deepEqual(result.categoryIds, ['dac', 'network_player']);
+  assert.equal(result.primaryCategoryId, 'dac');
+  assert.deepEqual(result.categoryIds, ['dac']);
 });
 
 test('classification impact reports only reductions', () => {
-  assert.deepEqual(
-    summarizeClassificationImpact(
-      { unclassifiedProducts: 12, otherProducts: 20 },
-      { unclassifiedProducts: 7, otherProducts: 16 }
-    ),
-    { unclassifiedReduced: 5, otherReduced: 4 }
-  );
-  assert.deepEqual(
-    summarizeClassificationImpact(
-      { unclassifiedProducts: 4, otherProducts: 2 },
-      { unclassifiedProducts: 6, otherProducts: 3 }
-    ),
-    { unclassifiedReduced: 0, otherReduced: 0 }
-  );
+  assert.deepEqual(summarizeClassificationImpact(
+    { unclassifiedProducts: 12, otherProducts: 20 }, { unclassifiedProducts: 7, otherProducts: 16 }
+  ), { unclassifiedReduced: 5, otherReduced: 4 });
+  assert.deepEqual(summarizeClassificationImpact(
+    { unclassifiedProducts: 4, otherProducts: 2 }, { unclassifiedProducts: 6, otherProducts: 3 }
+  ), { unclassifiedReduced: 0, otherReduced: 0 });
 });
