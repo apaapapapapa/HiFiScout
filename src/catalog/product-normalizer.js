@@ -1,33 +1,55 @@
-import { normalizeCategory } from './categories.js';
+import { classifyCategoryEvidence, summarizeCategoryEvidence } from './category-classifier.js';
+import { collectListingCategoryEvidence } from './category-evidence.js';
 import { normalizeManufacturer } from './manufacturers.js';
 
-const TITLE_INFERENCE_POLICIES = new Set(['fallback', 'prefer']);
+const CLASSIFICATION_METADATA_VERSION = 2;
 
 function clean(value = '') {
   return String(value).normalize('NFKC').replace(/\s+/g, ' ').trim();
 }
 
-function resolveCategoryPolicy(adapter = {}) {
-  const requested = adapter.categoryPolicy?.titleInference;
+function classificationMetadata(classification, evidence, existing = {}) {
   return {
-    titleInference: TITLE_INFERENCE_POLICIES.has(requested) ? requested : 'fallback'
+    ...existing,
+    version: CLASSIFICATION_METADATA_VERSION,
+    state: classification.classificationState,
+    status: classification.classificationStatus,
+    reason: classification.classificationReason,
+    source: classification.classificationSource,
+    categoryIds: classification.categoryIds,
+    candidateCategoryIds: classification.candidateCategoryIds,
+    evidence: summarizeCategoryEvidence(evidence)
   };
 }
 
-function normalizeProductCategory({ rawCategory, title, hintedCategory, categoryMapping, categoryPolicy }) {
-  if (categoryPolicy.titleInference === 'prefer') {
-    const inferredFromTitle = normalizeCategory({ title });
-    if (inferredFromTitle.classificationStatus === 'classified') {
-      return inferredFromTitle;
-    }
-  }
+export function applyCategoryClassification(product, classification, evidence = product.categoryEvidence || [], metadataPatch = {}) {
+  const metadata = product.metadata && typeof product.metadata === 'object' && !Array.isArray(product.metadata)
+    ? product.metadata
+    : {};
+  const previousClassification = metadata.categoryClassification && typeof metadata.categoryClassification === 'object'
+    ? metadata.categoryClassification
+    : {};
 
-  return normalizeCategory({
-    rawCategory,
-    title,
-    hintedCategory,
-    categoryMapping
-  });
+  return {
+    ...product,
+    primaryCategoryId: classification.primaryCategoryId,
+    categoryIds: classification.categoryIds,
+    category: classification.displayName,
+    classificationStatus: classification.classificationStatus,
+    classificationState: classification.classificationState,
+    classificationReason: classification.classificationReason,
+    classificationSource: classification.classificationSource,
+    candidateCategoryIds: classification.candidateCategoryIds,
+    searchAliases: classification.searchAliases,
+    categoryEvidence: evidence,
+    metadata: {
+      ...metadata,
+      categoryClassification: classificationMetadata(classification, evidence, {
+        ...previousClassification,
+        ...metadataPatch
+      })
+    }
+  };
 }
 
 export function normalizeCatalogProduct(product, adapter = {}) {
@@ -35,30 +57,26 @@ export function normalizeCatalogProduct(product, adapter = {}) {
   const manufacturerCandidate = clean(product.manufacturer || rawManufacturer);
   const rawCategory = clean(product.rawCategory ?? '');
   const manufacturer = normalizeManufacturer(manufacturerCandidate);
-  const categoryPolicy = resolveCategoryPolicy(adapter);
-  const category = normalizeProductCategory({
+  const { evidence } = collectListingCategoryEvidence({
     rawCategory,
     title: product.title || '',
     hintedCategory: product.category || '',
     categoryMapping: adapter.categoryMapping || {},
-    categoryPolicy
+    adapter
   });
+  const classification = classifyCategoryEvidence(evidence);
 
-  return {
+  return applyCategoryClassification({
     ...product,
     rawManufacturer,
     manufacturerId: manufacturer.id,
     manufacturer: manufacturer.displayName,
-    rawCategory,
-    primaryCategoryId: category.primaryCategoryId,
-    categoryIds: category.categoryIds,
-    category: category.displayName,
-    classificationStatus: category.classificationStatus,
-    classificationSource: category.classificationSource,
-    searchAliases: category.searchAliases
-  };
+    rawCategory
+  }, classification, evidence);
 }
 
 export function normalizeCatalogProducts(products, adapter = {}) {
   return products.map(product => normalizeCatalogProduct(product, adapter));
 }
+
+export const CATEGORY_CLASSIFICATION_METADATA_VERSION = CLASSIFICATION_METADATA_VERSION;

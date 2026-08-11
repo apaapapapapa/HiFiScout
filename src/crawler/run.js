@@ -20,6 +20,7 @@ import {
   finishCrawlRunSuccess,
   startCrawlRun
 } from '../db/crawl-run-repository.js';
+import { enrichProductCategories } from './category-enricher.js';
 import { SHOP_ADAPTERS } from './shops/index.js';
 import { createTransport, isTransportConfigured } from './transport.js';
 import {
@@ -88,6 +89,23 @@ function diagnoseAudioUnionHtml(html) {
       completed: countMatches(text, /完売|品切れ|販売終了|ご成約/g)
     }
   };
+}
+
+function logUnclassifiedProducts(adapter, products) {
+  const unresolved = products.filter(product => product.classificationStatus !== 'classified');
+  if (!unresolved.length) return;
+  console.warn(JSON.stringify({
+    event: 'catalog_unclassified',
+    shopKey: adapter.key,
+    count: unresolved.length,
+    samples: unresolved.slice(0, 5).map(product => ({
+      sourceId: product.sourceId,
+      rawCategory: product.rawCategory,
+      title: product.title,
+      state: product.classificationState || 'unclassified',
+      candidates: product.candidateCategoryIds || []
+    }))
+  }));
 }
 
 export function isShopDue(state, intervalMinutes, now = new Date()) {
@@ -194,8 +212,24 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
     }
 
     const observedAt = nowIso(new Date());
-    const products = [...items.values()];
-    const { changedCount, touchedCount, deactivatedCount } = await upsertProducts(
+    const enrichment = await enrichProductCategories({
+      db: env.DB,
+      adapter,
+      products: [...items.values()],
+      transport,
+      fetchOptions: {
+        baseUrl: adapter.baseUrl,
+        userAgent: settings.userAgent,
+        requestDelayMs,
+        fetchFn,
+        robotsCache
+      },
+      now: new Date(observedAt)
+    });
+    const products = enrichment.products;
+    logUnclassifiedProducts(adapter, products);
+
+    const { changedCount, activityCount, touchedCount, deactivatedCount } = await upsertProducts(
       env.DB,
       adapter.key,
       products,
@@ -204,14 +238,24 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
     );
     const metadataChangedCount = await syncProductMetadata(env.DB, adapter.key, products, observedAt);
     await markShopSuccess(env.DB, adapter.key, observedAt, items.size);
-    const diagnosticSuffix = adapter.key === 'audiounion' && audioUnionDiagnostic
-      ? ` | diag=${JSON.stringify(audioUnionDiagnostic)}`
-      : '';
+    const diagnosticParts = [];
+    if (adapter.key === 'audiounion' && audioUnionDiagnostic) {
+      diagnosticParts.push(`diag=${JSON.stringify(audioUnionDiagnostic)}`);
+    }
+    if (enrichment.detailRequests || enrichment.cacheHits || enrichment.unresolvedCount) {
+      diagnosticParts.push(`category_enrichment=${JSON.stringify({
+        detailRequests: enrichment.detailRequests,
+        cacheHits: enrichment.cacheHits,
+        enrichedCount: enrichment.enrichedCount,
+        unresolvedCount: enrichment.unresolvedCount
+      })}`);
+    }
+    const diagnosticSuffix = diagnosticParts.length ? ` | ${diagnosticParts.join(' | ')}` : '';
     await finishCrawlRunSuccess(env.DB, runId, {
       finishedAt: observedAt,
       itemCount: items.size,
       pageCount,
-      message: `${changedCount} changed, ${metadataChangedCount} metadata changed, ${touchedCount} touched, ${deactivatedCount} deactivated${diagnosticSuffix}`
+      message: `${changedCount} changed, ${activityCount} activity, ${metadataChangedCount} metadata changed, ${touchedCount} touched, ${deactivatedCount} deactivated${diagnosticSuffix}`
     });
     return {
       shopKey: adapter.key,
@@ -219,10 +263,17 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
       itemCount: items.size,
       pageCount,
       changedCount,
+      activityCount,
       metadataChangedCount,
       touchedCount,
       deactivatedCount,
-      deactivateMissing
+      deactivateMissing,
+      categoryEnrichment: {
+        detailRequests: enrichment.detailRequests,
+        cacheHits: enrichment.cacheHits,
+        enrichedCount: enrichment.enrichedCount,
+        unresolvedCount: enrichment.unresolvedCount
+      }
     };
   } catch (error) {
     const failedAt = nowIso(new Date());

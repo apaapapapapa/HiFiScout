@@ -16,7 +16,9 @@ async function runBatches(db, statements, chunkSize = 50) {
 
 function catalogFields(product) {
   const primaryCategoryId = product.primaryCategoryId || categoryIdForFilter(product.category) || 'other';
-  const categoryIds = [...new Set(product.categoryIds?.length ? product.categoryIds : [primaryCategoryId])];
+  const categoryIds = Array.isArray(product.categoryIds)
+    ? [...new Set(product.categoryIds)]
+    : [primaryCategoryId];
   return {
     rawManufacturer: product.rawManufacturer ?? product.manufacturer ?? '',
     manufacturerId: product.manufacturerId || manufacturerIdForFilter(product.manufacturer),
@@ -24,8 +26,8 @@ function catalogFields(product) {
     primaryCategoryId,
     categoryIds,
     categoryIdsJson: JSON.stringify(categoryIds),
-    classificationStatus: product.classificationStatus || (primaryCategoryId === 'other' ? 'unclassified' : 'classified'),
-    searchAliases: product.searchAliases || categorySearchAliases(categoryIds)
+    classificationStatus: product.classificationStatus || (categoryIds.length ? 'classified' : 'unclassified'),
+    searchAliases: product.searchAliases ?? categorySearchAliases(categoryIds)
   };
 }
 
@@ -38,7 +40,7 @@ function existingCatalogFields(existing) {
     primaryCategoryId,
     categoryIdsJson: existing.category_ids || JSON.stringify([primaryCategoryId]),
     classificationStatus: existing.classification_status || (primaryCategoryId === 'other' ? 'unclassified' : 'classified'),
-    searchAliases: existing.search_aliases || categorySearchAliases([primaryCategoryId])
+    searchAliases: existing.search_aliases ?? categorySearchAliases([primaryCategoryId])
   };
 }
 
@@ -81,7 +83,7 @@ export async function selectExistingProducts(db, shopKey, sourceIds, chunkSize =
     const result = await db.prepare(
       `SELECT id, source_id, manufacturer, raw_manufacturer, manufacturer_id, model, title,
               category, raw_category, primary_category_id, category_ids, classification_status, search_aliases,
-              condition_text, price_yen, stock_status, source_url, last_seen_at, is_active
+              condition_text, price_yen, stock_status, source_url, metadata_json, last_seen_at, is_active
        FROM products
        WHERE shop_key = ? AND source_id IN (${placeholders})`
     ).bind(shopKey, ...chunk).all();
