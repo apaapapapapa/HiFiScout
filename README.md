@@ -165,6 +165,20 @@ Tests:
 npm test
 ```
 
+## Releases
+
+Releases are automated by Semantic Release on pushes to `main`. The first release workflow run bootstraps the existing `package.json` version as the baseline tag (currently `v0.1.0`), so adopting Semantic Release does not implicitly promote the application to `v1.0.0`.
+
+Use Conventional Commit prefixes for changes that should affect the version:
+
+- `feat:` → minor release
+- `fix:` → patch release
+- `security:`, `perf:`, `refactor:` → patch release
+- `BREAKING CHANGE:` in the commit footer → major release
+- `docs:`, `test:`, `chore:`, `ci:` → no release by default
+
+Semantic Release creates the `v<version>` Git tag and GitHub Release notes. HiFiScout is a private npm package (`private: true`), so the release workflow does not publish anything to npm and does not rewrite `package.json` on each release.
+
 ## API
 
 - `GET /api/products` — search/filter/sort active listings.
