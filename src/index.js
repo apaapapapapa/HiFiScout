@@ -1,13 +1,16 @@
-import { categoryFacet } from './catalog/categories.js';
-import { SHOP_DEFINITIONS, getShopEnabled, getShopIntervalMinutes } from './config.js';
 import { checkPublicApiRateLimit } from './api-guard.js';
+import { categoryFacet } from './catalog/categories.js';
+import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from './catalog/knowledge-source-verifier-v2.js';
+import { SHOP_DEFINITIONS, getShopEnabled, getShopIntervalMinutes } from './config.js';
 import { consumeCrawlMessage, dispatchDueCrawls, dispatchForcedCrawl, dispatchScheduledCrawl } from './crawler/dispatch.js';
-import { listProducts, productHistory, validateProductQuery } from './db/products.js';
+import { knowledgeCatalogOperationalStatus } from './db/knowledge-catalog-review-repository.js';
 import {
-  claimInitialKnowledgeCatalogReviewRun,
-  claimKnowledgeCatalogCatchupReviewRun,
-  knowledgeCatalogOperationalStatus
-} from './db/knowledge-catalog-review-repository.js';
+  claimKnowledgeCatalogVerifierVersion,
+  finishKnowledgeCatalogVerifierVersionFailure,
+  finishKnowledgeCatalogVerifierVersionSuccess,
+  knowledgeCatalogVerifierState
+} from './db/knowledge-catalog-verifier-state-repository.js';
+import { listProducts, productHistory, validateProductQuery } from './db/products.js';
 import { buildSyncHealth, getSyncHealth, logSyncHealth } from './health.js';
 import { runKnowledgeCatalogReview } from './knowledge-catalog-review.js';
 import { runRetentionCleanup } from './maintenance.js';
@@ -75,6 +78,24 @@ async function meta(env) {
   return { status: health.status, shops, manufacturers, categories, categoryFacets };
 }
 
+async function knowledgeCatalogStatus(env) {
+  const [status, state] = await Promise.all([
+    knowledgeCatalogOperationalStatus(env.DB),
+    knowledgeCatalogVerifierState(env.DB)
+  ]);
+  return {
+    ...status,
+    verifier: {
+      expectedVersion: KNOWLEDGE_CATALOG_VERIFIER_VERSION,
+      version: state?.version || 0,
+      status: state?.status || 'pending',
+      startedAt: state?.startedAt || null,
+      finishedAt: state?.finishedAt || null,
+      message: state?.message || ''
+    }
+  };
+}
+
 async function handleApi(request, env, ctx) {
   const url = new URL(request.url);
   const rate = await checkPublicApiRateLimit(request, env);
@@ -86,7 +107,7 @@ async function handleApi(request, env, ctx) {
   }
   if (request.method === 'GET' && url.pathname === '/api/meta') return cachedJson(request, ctx, 30, () => meta(env));
   if (request.method === 'GET' && url.pathname === '/api/knowledge-catalog/status') {
-    return cachedJson(request, ctx, 30, () => knowledgeCatalogOperationalStatus(env.DB));
+    return cachedJson(request, ctx, 30, () => knowledgeCatalogStatus(env));
   }
   if (request.method === 'GET' && url.pathname === '/api/health') {
     try {
@@ -136,15 +157,35 @@ async function runScheduled(cron, env) {
 async function bootstrapKnowledgeCatalogReview(env) {
   const now = new Date();
   const startedAt = now.toISOString();
-  let runId = await claimInitialKnowledgeCatalogReviewRun(env.DB, startedAt);
-  let reason = 'initial';
-  if (!runId) {
-    runId = await claimKnowledgeCatalogCatchupReviewRun(env.DB, startedAt);
-    reason = 'catchup_after_unsupported_initial_run';
+  const claimed = await claimKnowledgeCatalogVerifierVersion(
+    env.DB,
+    KNOWLEDGE_CATALOG_VERIFIER_VERSION,
+    startedAt
+  );
+  if (!claimed) return { status: 'skipped', reason: 'verifier_version_already_claimed' };
+
+  console.log(JSON.stringify({
+    event: 'knowledge_catalog_verifier_rollout_started',
+    verifierVersion: KNOWLEDGE_CATALOG_VERIFIER_VERSION
+  }));
+  try {
+    const result = await runKnowledgeCatalogReview(env, { now });
+    await finishKnowledgeCatalogVerifierVersionSuccess(
+      env.DB,
+      KNOWLEDGE_CATALOG_VERIFIER_VERSION,
+      new Date().toISOString(),
+      result.message
+    );
+    return result;
+  } catch (error) {
+    await finishKnowledgeCatalogVerifierVersionFailure(
+      env.DB,
+      KNOWLEDGE_CATALOG_VERIFIER_VERSION,
+      new Date().toISOString(),
+      error?.message || String(error)
+    );
+    throw error;
   }
-  if (!runId) return { status: 'skipped', reason: 'already_initialized' };
-  console.log(JSON.stringify({ event: 'knowledge_catalog_bootstrap_started', runId, reason }));
-  return runKnowledgeCatalogReview(env, { now, runId });
 }
 
 export default {

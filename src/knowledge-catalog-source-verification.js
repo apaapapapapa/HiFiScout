@@ -1,4 +1,4 @@
-import { createKnowledgeSourceVerifier, knowledgeSourceDefinitions } from './catalog/knowledge-source-verifier.js';
+import { createKnowledgeSourceVerifierV2 } from './catalog/knowledge-source-verifier-v2.js';
 import { createRobotsRespectingFetch } from './crawler/robots-respecting-fetch.js';
 import {
   listDueKnowledgeCatalogProducts,
@@ -50,9 +50,8 @@ export async function runKnowledgeCatalogSourceVerification(env, {
     userAgent: env.CRAWLER_USER_AGENT || 'HiFiScoutBot/0.1',
     minimumDelayMs: Number(env.KNOWLEDGE_CATALOG_SOURCE_REQUEST_DELAY_MS) || 500
   });
-  const sourceDefinitions = knowledgeSourceDefinitions(env);
-  const supportedManufacturerIds = [...sourceDefinitions.keys()];
-  const verifier = createKnowledgeSourceVerifier(env, { fetchImpl: sourceFetch });
+  const verifier = createKnowledgeSourceVerifierV2(env, { fetchImpl: sourceFetch });
+  const supportedManufacturerIds = [...verifier.definitions.keys()];
   const candidateLimit = boundedLimit(env.KNOWLEDGE_CATALOG_VERIFY_MAX_CANDIDATES, 25);
   const dueProductLimit = boundedLimit(env.KNOWLEDGE_CATALOG_VERIFY_MAX_DUE_PRODUCTS, 25);
 
