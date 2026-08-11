@@ -1,6 +1,7 @@
 import {
   finishKnowledgeCatalogReviewRunFailure,
   finishKnowledgeCatalogReviewRunSuccess,
+  knowledgeCatalogCandidateStats,
   knowledgeCatalogStats,
   markKnowledgeCatalogProductsDue,
   refreshKnowledgeCatalogCandidates,
@@ -19,8 +20,9 @@ export async function runKnowledgeCatalogReview(env, { now = new Date(), fetchIm
 
   try {
     await markKnowledgeCatalogProductsDue(env.DB, startedAt, reviewIntervalDays(env));
-    const candidateResult = await refreshKnowledgeCatalogCandidates(env.DB, startedAt);
+    await refreshKnowledgeCatalogCandidates(env.DB, startedAt);
     const verificationResult = await runKnowledgeCatalogSourceVerification(env, { now, fetchImpl });
+    const candidateResult = await knowledgeCatalogCandidateStats(env.DB);
     const reclassifiedProducts = await reclassifyProductsFromKnowledgeCatalog(env.DB);
     const stats = await knowledgeCatalogStats(env.DB);
     const finishedAt = new Date().toISOString();
