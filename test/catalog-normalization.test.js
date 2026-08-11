@@ -30,6 +30,17 @@ test('shop mappings can classify a product into multiple canonical categories', 
   assert.match(result.searchAliases, /D\/Aコンバーター/i);
 });
 
+test('title inference suppresses component words inside accessory and amplifier names', () => {
+  assert.deepEqual(normalizeCategory({ title: 'Premium Speaker Cable 2m' }).categoryIds, ['cable']);
+  assert.deepEqual(normalizeCategory({ title: 'Reference Headphone Amplifier' }).categoryIds, ['headphone_amp']);
+  assert.deepEqual(normalizeCategory({ title: 'Network Transport' }).categoryIds, ['network_transport']);
+});
+
+test('DAC inference requires a DAC-specific expression rather than generic converter wording', () => {
+  assert.equal(normalizeCategory({ title: 'D/A Converter Model X' }).primaryCategoryId, 'dac');
+  assert.equal(normalizeCategory({ title: 'AC Power Converter Model X' }).primaryCategoryId, 'other');
+});
+
 test('manufacturer aliases collapse Japanese and English spellings', () => {
   assert.deepEqual(normalizeManufacturer('LUXMAN'), {
     id: 'luxman', displayName: 'LUXMAN', matchedAlias: true
@@ -38,6 +49,7 @@ test('manufacturer aliases collapse Japanese and English spellings', () => {
     id: 'luxman', displayName: 'LUXMAN', matchedAlias: true
   });
   assert.equal(normalizeManufacturer('B&W').id, 'bowers-wilkins');
+  assert.equal(normalizeManufacturer('iFi Audio Japan').id, 'ifi-audio');
 });
 
 test('raw seller values are preserved while UI values are canonicalized', () => {
