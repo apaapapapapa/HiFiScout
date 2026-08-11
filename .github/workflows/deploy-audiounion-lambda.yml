@@ -31,47 +31,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Diagnose GitHub OIDC claims
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          response="$(curl -fsSL \
-            -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")"
-
-          token="$(jq -r '.value' <<< "$response")"
-          payload="$(cut -d. -f2 <<< "$token")"
-
-          PAYLOAD="$payload" python3 - <<'PY'
-          import base64
-          import json
-          import os
-
-          payload = os.environ["PAYLOAD"]
-          payload += "=" * (-len(payload) % 4)
-          claims = json.loads(base64.urlsafe_b64decode(payload.encode()).decode())
-
-          allowed = [
-              "iss",
-              "aud",
-              "sub",
-              "repository",
-              "repository_owner",
-              "ref",
-              "ref_type",
-              "event_name",
-              "workflow",
-              "job_workflow_ref",
-              "environment",
-          ]
-
-          print("GitHub OIDC claims used for AWS trust-policy matching:")
-          for key in allowed:
-              if key in claims:
-                  print(f"{key}={claims[key]}")
-          PY
-
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v6
         with:
@@ -90,9 +49,35 @@ jobs:
             --function-name "$FUNCTION_NAME" \
             --zip-file "fileb://$RUNNER_TEMP/audiounion-lambda.zip"
 
-          aws lambda wait function-updated-v2 \
-            --region "$AWS_REGION" \
-            --function-name "$FUNCTION_NAME"
+      - name: Wait for Lambda update
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            status="$(aws lambda get-function-configuration \
+              --region "$AWS_REGION" \
+              --function-name "$FUNCTION_NAME" \
+              --query 'LastUpdateStatus' \
+              --output text)"
+
+            echo "Lambda update status: $status (attempt $attempt/30)"
+
+            if [ "$status" = "Successful" ]; then
+              exit 0
+            fi
+
+            if [ "$status" = "Failed" ]; then
+              aws lambda get-function-configuration \
+                --region "$AWS_REGION" \
+                --function-name "$FUNCTION_NAME" \
+                --query '{LastUpdateStatus:LastUpdateStatus,Reason:LastUpdateStatusReason,ReasonCode:LastUpdateStatusReasonCode}'
+              exit 1
+            fi
+
+            sleep 2
+          done
+
+          echo "Timed out waiting for Lambda update to complete."
+          exit 1
 
       - name: Verify deployment
         run: |
