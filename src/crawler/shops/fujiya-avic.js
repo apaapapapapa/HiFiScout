@@ -20,6 +20,12 @@ export const fujiyaAvicAdapter = {
   key: 'fujiya-avic',
   name: 'フジヤエービック',
   baseUrl: 'https://www.fujiya-avic.co.jp',
+  categoryPolicy: Object.freeze({
+    // Fujiya's merchandising categories are broad (for example, DAP pages can contain
+    // accessories or other device types). Prefer an explicit product-type signal in the
+    // title, then fall back to the seller category when the title is not classifiable.
+    titleInference: 'prefer'
+  }),
   dynamicPagination: true,
   continueOnEmpty: true,
   *pageUrls() {
