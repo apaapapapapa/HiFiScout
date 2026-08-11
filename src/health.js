@@ -49,9 +49,11 @@ export function evaluateShopSyncHealth({
 }
 
 function isShopConfigured(env, plugin) {
-  if (!isTransportConfigured(env, plugin)) return false;
-  if (plugin.transport === 'relay') return true;
-  return !plugin.isConfigured || plugin.isConfigured(env);
+  // Preserve the existing health contract: only AudioUnion was treated as a
+  // hard configuration dependency. Other collectors report failures through
+  // their persisted sync state instead of becoming critical before a run.
+  if (plugin.key !== 'audiounion') return true;
+  return isTransportConfigured(env, plugin);
 }
 
 export function buildSyncHealth(env, stateRows = [], now = new Date()) {
