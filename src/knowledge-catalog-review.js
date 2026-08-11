@@ -7,18 +7,20 @@ import {
   startKnowledgeCatalogReviewRun
 } from './db/knowledge-catalog-review-repository.js';
 import { reclassifyProductsFromKnowledgeCatalog } from './db/knowledge-catalog-repository.js';
+import { runKnowledgeCatalogSourceVerification } from './knowledge-catalog-source-verification.js';
 
 function reviewIntervalDays(env) {
   return Math.max(1, Number(env.KNOWLEDGE_CATALOG_REVIEW_INTERVAL_DAYS) || 30);
 }
 
-export async function runKnowledgeCatalogReview(env, { now = new Date() } = {}) {
+export async function runKnowledgeCatalogReview(env, { now = new Date(), fetchImpl = globalThis.fetch } = {}) {
   const startedAt = now.toISOString();
   const runId = await startKnowledgeCatalogReviewRun(env.DB, startedAt);
 
   try {
     await markKnowledgeCatalogProductsDue(env.DB, startedAt, reviewIntervalDays(env));
     const candidateResult = await refreshKnowledgeCatalogCandidates(env.DB, startedAt);
+    const verificationResult = await runKnowledgeCatalogSourceVerification(env, { now, fetchImpl });
     const reclassifiedProducts = await reclassifyProductsFromKnowledgeCatalog(env.DB);
     const stats = await knowledgeCatalogStats(env.DB);
     const finishedAt = new Date().toISOString();
@@ -27,8 +29,9 @@ export async function runKnowledgeCatalogReview(env, { now = new Date() } = {}) 
       finishedAt,
       ...stats,
       ...candidateResult,
+      ...verificationResult,
       reclassifiedProducts,
-      message: `${candidateResult.pendingCandidates} pending candidates, ${stats.dueProducts} verified products due for source review`
+      message: `${verificationResult.verifiedPromotions} catalog promotions, ${verificationResult.verifiedRechecks} source rechecks, ${candidateResult.pendingCandidates} pending candidates, ${stats.dueProducts} verified products still due`
     };
     await finishKnowledgeCatalogReviewRunSuccess(env.DB, runId, result);
     console.log(JSON.stringify({ event: 'knowledge_catalog_review', ...result }));
