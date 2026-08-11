@@ -41,6 +41,54 @@ function isConfigured(env, adapter) {
   return !adapter.isConfigured || adapter.isConfigured(env);
 }
 
+function countMatches(value, pattern) {
+  return [...String(value || '').matchAll(pattern)].length;
+}
+
+function diagnoseAudioUnionHtml(html) {
+  const text = String(html || '');
+  const productPattern = /(?:https?:\/\/www\.audiounion\.jp)?\/ct\/detail\/used\/(\d+)\/?/gi;
+  const matches = [...text.matchAll(productPattern)];
+  const seen = new Set();
+  let positiveContexts = 0;
+  let soldContexts = 0;
+  let neutralContexts = 0;
+  const positivePattern = /在庫あり|カートに入れる|購入する/i;
+  const soldPattern = /売約済み?|売り切れ|売切|sold\s*out|在庫なし|完売|品切れ|販売終了|ご成約/i;
+
+  for (const match of matches) {
+    const id = match[1];
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const start = Math.max(0, (match.index || 0) - 700);
+    const end = Math.min(text.length, (match.index || 0) + match[0].length + 900);
+    const context = text.slice(start, end);
+    const positive = positivePattern.test(context);
+    const sold = soldPattern.test(context);
+    if (sold) soldContexts += 1;
+    else if (positive) positiveContexts += 1;
+    else neutralContexts += 1;
+  }
+
+  return {
+    links: matches.length,
+    uniqueProducts: seen.size,
+    positiveContexts,
+    soldContexts,
+    neutralContexts,
+    markers: {
+      inStock: countMatches(text, /在庫あり/g),
+      cart: countMatches(text, /カートに入れる/g),
+      purchase: countMatches(text, /購入する/g),
+      reserved: countMatches(text, /売約済み?/g),
+      soldOutJa: countMatches(text, /売り切れ|売切/g),
+      soldOutEn: countMatches(text, /sold\s*out/gi),
+      noStock: countMatches(text, /在庫なし/g),
+      completed: countMatches(text, /完売|品切れ|販売終了|ご成約/g)
+    }
+  };
+}
+
 export function isShopDue(state, intervalMinutes, now = new Date()) {
   if (state?.backoff_until && new Date(state.backoff_until) > now) return false;
   if (!state?.last_attempt_at) return true;
@@ -75,6 +123,7 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
   let pageCount = 0;
   let reachedEnd = false;
   let coverageIncomplete = false;
+  let audioUnionDiagnostic = null;
   const transport = createTransport(env, adapter, fetchFn);
 
   try {
@@ -102,6 +151,7 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
       }
 
       pageCount += 1;
+      if (adapter.key === 'audiounion') audioUnionDiagnostic = diagnoseAudioUnionHtml(html);
       const parsed = adapter.parse(html, page);
       const discovered = discoverPages(adapter, html, page);
       if (discovered == null) {
@@ -151,11 +201,14 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
       { deactivateMissing, touchIntervalMinutes: settings.productTouchIntervalMinutes }
     );
     await markShopSuccess(env.DB, adapter.key, observedAt, items.size);
+    const diagnosticSuffix = adapter.key === 'audiounion' && audioUnionDiagnostic
+      ? ` | diag=${JSON.stringify(audioUnionDiagnostic)}`
+      : '';
     await finishCrawlRunSuccess(env.DB, runId, {
       finishedAt: observedAt,
       itemCount: items.size,
       pageCount,
-      message: `${changedCount} changed, ${touchedCount} touched, ${deactivatedCount} deactivated`
+      message: `${changedCount} changed, ${touchedCount} touched, ${deactivatedCount} deactivated${diagnosticSuffix}`
     });
     return { shopKey: adapter.key, status: 'success', itemCount: items.size, pageCount, changedCount, touchedCount, deactivatedCount, deactivateMissing };
   } catch (error) {
