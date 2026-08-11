@@ -92,10 +92,9 @@ function fromAnchors(html, { shopKey, baseUrl, hintedCategory, productUrlPattern
     const after = html.slice(index, Math.min(html.length, index + match[0].length + 900));
     const context = stripTagsKeepingSpacing(`${before} ${match[4]} ${after}`);
     const anchorText = stripTagsKeepingSpacing(match[4]);
-    // Fujiya listings frequently place adjacent cards close enough that a backward
-    // context window can contain the previous card's price. Prefer the first price
-    // after the current product link for Fujiya so prices cannot bleed across cards.
-    const priceContext = shopKey === 'fujiya-avic'
+    // Fujiya and Audio Union place adjacent product cards close together. Reading a
+    // backward window first can attach the previous card's price to the current item.
+    const priceContext = shopKey === 'fujiya-avic' || shopKey === 'audiounion'
       ? stripTagsKeepingSpacing(`${match[4]} ${after}`)
       : context;
     const priceYen = parseYen(priceContext);
@@ -126,13 +125,20 @@ function fromAnchors(html, { shopKey, baseUrl, hintedCategory, productUrlPattern
   return products;
 }
 
+function itemQuality(item) {
+  return (item.stockStatus !== 'unknown' ? 500 : 0)
+    + (item.model ? 200 : 0)
+    + (item.priceYen != null ? 100 : 0)
+    + Math.min(item.title?.length || 0, 180);
+}
+
 export function parseProductPage(html, options) {
   const merged = [...fromJsonLd(html, options), ...fromAnchors(html, options)];
   const unique = new Map();
   for (const item of merged) {
     if (!item.sourceId || !item.sourceUrl || !item.title) continue;
     const existing = unique.get(item.sourceId);
-    if (!existing || (existing.stockStatus === 'unknown' && item.stockStatus !== 'unknown')) unique.set(item.sourceId, item);
+    if (!existing || itemQuality(item) > itemQuality(existing)) unique.set(item.sourceId, item);
   }
   return [...unique.values()];
 }
