@@ -49,7 +49,7 @@ test('shop generator creates adapter, fixture, test and registry entry', async (
   const fixture = await readFile(join(rootDir, 'test/fixtures/example-audio/list.html'), 'utf8');
 
   assert.match(index, /import \{ exampleAudioAdapter \} from '\.\/example-audio\.js'/);
-  assert.match(index, /key: 'example-audio'/);
+  assert.match(index, /key: "example-audio"/);
   assert.match(adapter, /baseUrl: "https:\/\/example\.com"/);
   assert.match(fixture, /representative, sanitized listing-page fixture/);
 });
