@@ -1,3 +1,5 @@
+import { inferExplicitCategoryIds } from './category-rules.js';
+
 const CATEGORY_DEFINITIONS = [
   { id: 'amplifier', name: 'アンプ', parentId: null, order: 1, classifiable: false, filterable: true, aliases: ['amplifier', 'アンプ'] },
   { id: 'integrated_amp', name: 'プリメインアンプ', parentId: 'amplifier', order: 1, classifiable: true, filterable: true, aliases: ['integrated amp', 'integrated amplifier', 'プリメインアンプ'] },
@@ -68,6 +70,10 @@ function mappingValue(mapping, rawCategory) {
   return null;
 }
 
+function inferLeaf(value = '') {
+  return inferExplicitCategoryIds(value)[0] || null;
+}
+
 export function getCategory(categoryId) {
   return CATEGORY_BY_ID.get(LEGACY_ALIASES[categoryId] || categoryId) || null;
 }
@@ -114,10 +120,22 @@ export function categorySearchAliases(categoryIds = []) {
 
 export function normalizeCategory({ rawCategory = '', title = '', hintedCategory = '', categoryMapping = {} } = {}) {
   const mapped = categoryIdForClassification(mappingValue(categoryMapping, rawCategory));
-  const direct = mapped || categoryIdForClassification(rawCategory) || categoryIdForClassification(hintedCategory) || categoryIdForClassification(title);
-  const primaryCategoryId = direct || 'other';
+  let primaryCategoryId = mapped;
+  let source = mapped ? 'shop_mapping' : 'unclassified';
+  if (!primaryCategoryId && rawCategory) {
+    primaryCategoryId = categoryIdForClassification(rawCategory) || inferLeaf(rawCategory);
+    if (primaryCategoryId) source = categoryIdForClassification(rawCategory) ? 'global_alias' : 'raw_inference';
+  }
+  if (!primaryCategoryId && hintedCategory) {
+    primaryCategoryId = categoryIdForClassification(hintedCategory) || inferLeaf(hintedCategory);
+    if (primaryCategoryId) source = 'parser_hint';
+  }
+  if (!primaryCategoryId && title) {
+    primaryCategoryId = inferLeaf(title);
+    if (primaryCategoryId) source = 'title_inference';
+  }
+  primaryCategoryId ||= 'other';
   const primary = getCategory(primaryCategoryId) || getCategory('other');
-  const source = mapped ? 'shop_mapping' : direct ? 'global_alias' : 'unclassified';
   return {
     primaryCategoryId: primary.id,
     categoryIds: [primary.id],
