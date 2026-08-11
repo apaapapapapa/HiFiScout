@@ -1,0 +1,11 @@
+ALTER TABLE knowledge_catalog_review_runs ADD COLUMN active_products_before INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE knowledge_catalog_review_runs ADD COLUMN active_products_after INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE knowledge_catalog_review_runs ADD COLUMN unclassified_before INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE knowledge_catalog_review_runs ADD COLUMN unclassified_after INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE knowledge_catalog_review_runs ADD COLUMN other_before INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE knowledge_catalog_review_runs ADD COLUMN other_after INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE knowledge_catalog_review_runs ADD COLUMN verification_verified INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE knowledge_catalog_review_runs ADD COLUMN verification_not_found INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE knowledge_catalog_review_runs ADD COLUMN verification_ambiguous INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE knowledge_catalog_review_runs ADD COLUMN verification_unsupported INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE knowledge_catalog_review_runs ADD COLUMN verification_error INTEGER NOT NULL DEFAULT 0;
