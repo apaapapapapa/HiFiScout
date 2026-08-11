@@ -34,7 +34,7 @@ test('enabled shop with missing transport configuration is immediately critical'
   assert.equal(health.reason, 'configuration_missing');
 });
 
-test('AudioUnion health exposes relay configuration and persisted item count', () => {
+test('AudioUnion health exposes shared relay configuration and persisted item count', () => {
   const now = new Date('2026-08-11T06:00:00.000Z');
   const state = [{
     shop_key: 'audiounion',
@@ -53,8 +53,8 @@ test('AudioUnion health exposes relay configuration and persisted item count', (
 
   const configured = buildSyncHealth({
     AUDIOUNION_ENABLED: 'true',
-    AUDIOUNION_RELAY_URL: 'https://example.lambda-url.ap-northeast-1.on.aws/',
-    AUDIOUNION_RELAY_TOKEN: 'x'.repeat(64)
+    CRAWL_RELAY_URL: 'https://example.lambda-url.ap-northeast-1.on.aws/',
+    CRAWL_RELAY_TOKEN: 'x'.repeat(64)
   }, state, now).shops.find(shop => shop.shopKey === 'audiounion');
   assert.equal(configured.configured, true);
   assert.equal(configured.status, 'healthy');
