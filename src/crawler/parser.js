@@ -1,3 +1,4 @@
+import { normalizeManufacturer } from '../catalog/manufacturers.js';
 import { cleanText, inferCategory, inferStockStatus, parseYen, splitManufacturerModel, stableSourceId } from './normalize.js';
 
 function decodeJsonLd(html) {
@@ -39,14 +40,17 @@ function inferCondition(title = '', context = '') {
   return cleanText(title).match(/『([^』]+)』/)?.[1] || '';
 }
 
-function stockStatusForListing(shopKey, priceYen, inferredStatus) {
-  // AudioUnion's used listing pages do not expose a reliable per-item stock label.
-  // A displayed sales price is the seller's availability signal for these listings.
-  if (shopKey === 'audiounion' && priceYen != null) return 'in_stock';
+function conditionForListing(options, title = '', context = '') {
+  return options.fixedConditionText ? cleanText(options.fixedConditionText) : inferCondition(title, context);
+}
+
+function stockStatusForListing(options, priceYen, inferredStatus) {
+  if (options.priceImpliesInStock && priceYen != null) return 'in_stock';
   return inferredStatus;
 }
 
-function fromJsonLd(html, { shopKey, baseUrl, hintedCategory }) {
+function fromJsonLd(html, options) {
+  const { baseUrl, hintedCategory } = options;
   const products = [];
   for (const root of decodeJsonLd(html)) {
     walkJson(root, node => {
@@ -59,15 +63,15 @@ function fromJsonLd(html, { shopKey, baseUrl, hintedCategory }) {
       const priceYen = parseYen(String(offer.price ?? node.price ?? ''));
       const availability = String(offer.availability || '');
       const inferredStock = /outofstock|soldout/i.test(availability) ? 'sold_out' : /instock/i.test(availability) ? 'in_stock' : 'unknown';
-      const stockStatus = stockStatusForListing(shopKey, priceYen, inferredStock);
-      const { manufacturer, model } = splitManufacturerModel(title, shopKey);
+      const stockStatus = stockStatusForListing(options, priceYen, inferredStock);
+      const { manufacturer, model } = splitManufacturerModel(title, options.shopKey);
       products.push({
         sourceId: stableSourceId(url, title),
         manufacturer,
         model,
         title,
         category: inferCategory(title, hintedCategory),
-        conditionText: inferCondition(title),
+        conditionText: conditionForListing(options, title),
         priceYen,
         stockStatus,
         sourceUrl: url
@@ -85,7 +89,8 @@ function stripTagsKeepingSpacing(html) {
   return cleanText(withAttributes.replace(/<br\s*\/?\s*>/gi, ' ').replace(/<\/p>|<\/li>|<\/div>|<\/article>/gi, ' '));
 }
 
-function fromAnchors(html, { shopKey, baseUrl, hintedCategory, productUrlPattern }) {
+function fromAnchors(html, options) {
+  const { baseUrl, hintedCategory, productUrlPattern } = options;
   const products = [];
   const anchorRe = /<a\b([^>]*?)href\s*=\s*["']([^"']+)["']([^>]*)>([\s\S]*?)<\/a>/gi;
   const anchors = [...html.matchAll(anchorRe)];
@@ -100,9 +105,7 @@ function fromAnchors(html, { shopKey, baseUrl, hintedCategory, productUrlPattern
     const after = html.slice(index, Math.min(html.length, index + match[0].length + 900));
     const context = stripTagsKeepingSpacing(`${before} ${match[4]} ${after}`);
     const anchorText = stripTagsKeepingSpacing(match[4]);
-    // Fujiya and Audio Union place adjacent product cards close together. Reading a
-    // backward window first can attach the previous card's price to the current item.
-    const priceContext = shopKey === 'fujiya-avic' || shopKey === 'audiounion'
+    const priceContext = options.priceContext === 'forward'
       ? stripTagsKeepingSpacing(`${match[4]} ${after}`)
       : context;
     const priceYen = parseYen(priceContext);
@@ -116,8 +119,8 @@ function fromAnchors(html, { shopKey, baseUrl, hintedCategory, productUrlPattern
     title = cleanText(title);
     if (!title || title.length > 220) continue;
 
-    const condition = inferCondition(title, context);
-    const { manufacturer, model } = splitManufacturerModel(title, shopKey);
+    const condition = conditionForListing(options, title, context);
+    const { manufacturer, model } = splitManufacturerModel(title, options.shopKey);
     products.push({
       sourceId: stableSourceId(url, title),
       manufacturer,
@@ -126,7 +129,7 @@ function fromAnchors(html, { shopKey, baseUrl, hintedCategory, productUrlPattern
       category: inferCategory(title, hintedCategory),
       conditionText: condition,
       priceYen,
-      stockStatus: stockStatusForListing(shopKey, priceYen, inferStockStatus(context)),
+      stockStatus: stockStatusForListing(options, priceYen, inferStockStatus(context)),
       sourceUrl: url
     });
   }
@@ -140,7 +143,50 @@ function itemQuality(item) {
     + Math.min(item.title?.length || 0, 180);
 }
 
-function mergeAudioUnionItems(items) {
+function exactKnownManufacturer(value = '') {
+  const raw = cleanText(value);
+  if (!raw) return null;
+  const normalized = normalizeManufacturer(raw);
+  return normalized.matchedAlias ? { raw, ...normalized } : null;
+}
+
+function modelCandidate(text, manufacturerId, shopKey) {
+  const raw = cleanText(text);
+  if (!raw) return null;
+  const exact = exactKnownManufacturer(raw);
+  if (exact?.id === manufacturerId) return null;
+
+  const split = splitManufacturerModel(raw, shopKey);
+  const splitManufacturer = normalizeManufacturer(split.manufacturer);
+  const model = splitManufacturer.id === manufacturerId && split.model ? split.model : raw;
+  if (!model || exactKnownManufacturer(model)?.id === manufacturerId) return null;
+
+  let score = Math.min(raw.length, 180);
+  if (/\d/.test(model)) score += 300;
+  if (/[-+./]/.test(model)) score += 40;
+  if (splitManufacturer.id === manufacturerId && split.model) score += 100;
+  return { raw, model: cleanText(model), score };
+}
+
+function inferUnknownManufacturerAndModel(titles, shopKey) {
+  const brandCandidates = titles.filter(title => title.length <= 80 && !/\d/.test(title));
+  const modelCandidates = titles
+    .map(title => {
+      const split = splitManufacturerModel(title, shopKey);
+      const score = (/\d/.test(title) ? 300 : 0) + (/[-+./]/.test(title) ? 40 : 0) + Math.min(title.length, 180);
+      return { title, split, score };
+    })
+    .filter(candidate => candidate.score >= 300)
+    .sort((a, b) => b.score - a.score);
+
+  if (brandCandidates.length !== 1 || !modelCandidates.length) return null;
+  const manufacturer = brandCandidates[0];
+  const bestModel = modelCandidates.find(candidate => candidate.title !== manufacturer);
+  if (!bestModel) return null;
+  return { manufacturer, model: bestModel.title };
+}
+
+function mergeManufacturerModelCandidates(items, options) {
   const groups = new Map();
   for (const item of items) {
     if (!item.sourceId || !item.sourceUrl || !item.title) continue;
@@ -150,37 +196,66 @@ function mergeAudioUnionItems(items) {
 
   const result = [];
   for (const group of groups.values()) {
-    const first = group[0];
-    const detail = group.reduce((best, item) => item.title.length > best.title.length ? item : best, first);
-    if (group.length > 1 && first.title !== detail.title && first.title.length <= 80) {
-      const manufacturer = cleanText(first.title);
-      let model = cleanText(detail.title);
-      if (model.toLowerCase().startsWith(`${manufacturer.toLowerCase()} `)) model = model.slice(manufacturer.length).trim();
-      const stock = group.find(item => item.stockStatus !== 'unknown')?.stockStatus || detail.stockStatus;
+    const base = group.reduce((best, item) => itemQuality(item) > itemQuality(best) ? item : best, group[0]);
+    const titles = [...new Set(group.map(item => cleanText(item.title)).filter(Boolean))];
+    const knownManufacturers = titles.map(exactKnownManufacturer).filter(Boolean);
+    const manufacturer = knownManufacturers.sort((a, b) => b.raw.length - a.raw.length)[0] || null;
+
+    if (manufacturer) {
+      const model = titles
+        .map(title => modelCandidate(title, manufacturer.id, options.shopKey))
+        .filter(Boolean)
+        .sort((a, b) => b.score - a.score)[0]?.model || '';
+      const combinedTitle = model ? `${manufacturer.raw} ${model}` : base.title;
       result.push({
-        ...detail,
-        manufacturer,
+        ...base,
+        manufacturer: manufacturer.raw,
         model,
-        title: model ? `${manufacturer} ${model}` : manufacturer,
-        category: inferCategory(`${manufacturer} ${model}`),
-        stockStatus: stock
+        title: combinedTitle,
+        category: inferCategory(combinedTitle, options.hintedCategory),
+        conditionText: conditionForListing(options, combinedTitle),
+        stockStatus: group.find(item => item.stockStatus !== 'unknown')?.stockStatus || base.stockStatus
       });
       continue;
     }
-    result.push(group.reduce((best, item) => itemQuality(item) > itemQuality(best) ? item : best, first));
+
+    const inferred = inferUnknownManufacturerAndModel(titles, options.shopKey);
+    if (inferred) {
+      const combinedTitle = `${inferred.manufacturer} ${inferred.model}`;
+      result.push({
+        ...base,
+        manufacturer: inferred.manufacturer,
+        model: inferred.model,
+        title: combinedTitle,
+        category: inferCategory(combinedTitle, options.hintedCategory),
+        conditionText: conditionForListing(options, combinedTitle),
+        stockStatus: group.find(item => item.stockStatus !== 'unknown')?.stockStatus || base.stockStatus
+      });
+      continue;
+    }
+
+    result.push({
+      ...base,
+      conditionText: conditionForListing(options, base.title)
+    });
   }
   return result;
 }
 
-export function parseProductPage(html, options) {
-  const merged = [...fromJsonLd(html, options), ...fromAnchors(html, options)];
-  if (options.shopKey === 'audiounion') return mergeAudioUnionItems(merged);
-
+function deduplicateByQuality(items) {
   const unique = new Map();
-  for (const item of merged) {
+  for (const item of items) {
     if (!item.sourceId || !item.sourceUrl || !item.title) continue;
     const existing = unique.get(item.sourceId);
     if (!existing || itemQuality(item) > itemQuality(existing)) unique.set(item.sourceId, item);
   }
   return [...unique.values()];
+}
+
+export function parseProductPage(html, options) {
+  const candidates = [...fromJsonLd(html, options), ...fromAnchors(html, options)];
+  if (options.identityStrategy === 'manufacturer-model-candidates') {
+    return mergeManufacturerModelCandidates(candidates, options);
+  }
+  return deduplicateByQuality(candidates);
 }
