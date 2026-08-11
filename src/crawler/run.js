@@ -7,12 +7,37 @@ import {
   getShopRequestDelayMs
 } from '../config.js';
 import { upsertProducts } from '../db/products.js';
-import { createBrowserHtmlFetcher } from './browser.js';
-import { fetchHtmlPage } from './fetch.js';
-import { createRelayHtmlFetcher } from './relay.js';
+import {
+  getShopState,
+  listShopStates,
+  markShopAttempt,
+  markShopFailure,
+  markShopSuccess
+} from '../db/shop-state-repository.js';
+import {
+  finishCrawlRunFailure,
+  finishCrawlRunSuccess,
+  startCrawlRun
+} from '../db/crawl-run-repository.js';
 import { SHOP_ADAPTERS } from './shops/index.js';
+import { createTransport, isTransportConfigured } from './transport.js';
+import {
+  coverageDecision,
+  discoverPages,
+  initialPageQueue,
+  pageUrl,
+  shouldContinueAfterEmpty
+} from './strategies.js';
 
 function nowIso(now = new Date()) { return now.toISOString(); }
+
+function definitionFor(adapter) {
+  return adapter.definition || Object.values(SHOP_DEFINITIONS).find(value => value.key === adapter.key);
+}
+
+function isConfigured(env, adapter) {
+  return isTransportConfigured(env, adapter) && (!adapter.isConfigured || adapter.isConfigured(env));
+}
 
 export function isShopDue(state, intervalMinutes, now = new Date()) {
   if (state?.backoff_until && new Date(state.backoff_until) > now) return false;
@@ -26,64 +51,19 @@ export function isSuspiciousItemDrop(itemCount, previousItemCount, { minRatio = 
   return itemCount / previousItemCount < minRatio;
 }
 
-async function markAttempt(db, shopKey, now) {
-  await db.prepare(`
-    INSERT INTO shop_sync_state (shop_key, last_attempt_at) VALUES (?, ?)
-    ON CONFLICT(shop_key) DO UPDATE SET last_attempt_at = excluded.last_attempt_at
-  `).bind(shopKey, now).run();
-}
-
-async function markSuccess(db, shopKey, now, itemCount) {
-  await db.prepare(`
-    INSERT INTO shop_sync_state (shop_key, last_success_at, consecutive_failures, backoff_until, last_error, last_item_count)
-    VALUES (?, ?, 0, NULL, NULL, ?)
-    ON CONFLICT(shop_key) DO UPDATE SET last_success_at = excluded.last_success_at,
-      consecutive_failures = 0, backoff_until = NULL, last_error = NULL, last_item_count = excluded.last_item_count
-  `).bind(shopKey, now, itemCount).run();
-}
-
-async function markFailure(db, shopKey, now, message, priorFailures = 0) {
-  const failures = priorFailures + 1;
-  const backoffMinutes = Math.min(24 * 60, 15 * 2 ** Math.min(failures - 1, 6));
-  const backoffUntil = new Date(new Date(now).getTime() + backoffMinutes * 60_000).toISOString();
-  await db.prepare(`
-    INSERT INTO shop_sync_state (shop_key, last_error_at, consecutive_failures, backoff_until, last_error)
-    VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(shop_key) DO UPDATE SET last_error_at = excluded.last_error_at,
-      consecutive_failures = excluded.consecutive_failures, backoff_until = excluded.backoff_until, last_error = excluded.last_error
-  `).bind(shopKey, now, failures, backoffUntil, String(message).slice(0, 1000)).run();
-}
-
-function pageUrl(page) {
-  return typeof page === 'string' ? page : page.url;
-}
-
-function createTransportFetcher(env, adapter, fetchFn) {
-  if (adapter.transport === 'browser') return createBrowserHtmlFetcher(env.BROWSER);
-  if (adapter.transport === 'relay') {
-    return createRelayHtmlFetcher({
-      relayUrl: env?.[adapter.relayUrlEnv],
-      relayToken: env?.[adapter.relayTokenEnv],
-      fetchFn
-    });
-  }
-  return null;
-}
-
 export async function crawlShop(env, adapter, { force = false, now = new Date(), fetchFn = fetch } = {}) {
-  const definition = Object.values(SHOP_DEFINITIONS).find(v => v.key === adapter.key);
+  const definition = definitionFor(adapter);
   if (!definition) return { shopKey: adapter.key, status: 'skipped', reason: 'shop_definition_missing' };
   if (!getShopEnabled(env, definition)) return { shopKey: adapter.key, status: 'skipped', reason: 'disabled' };
-  if (adapter.isConfigured && !adapter.isConfigured(env)) return { shopKey: adapter.key, status: 'skipped', reason: 'configuration_missing' };
+  if (!isConfigured(env, adapter)) return { shopKey: adapter.key, status: 'skipped', reason: 'configuration_missing' };
+
   const intervalMinutes = getShopIntervalMinutes(env, definition);
-  const state = await env.DB.prepare('SELECT * FROM shop_sync_state WHERE shop_key = ?').bind(adapter.key).first();
+  const state = await getShopState(env.DB, adapter.key);
   if (!force && !isShopDue(state, intervalMinutes, now)) return { shopKey: adapter.key, status: 'skipped', reason: 'not_due' };
 
   const startedAt = nowIso(now);
-  await markAttempt(env.DB, adapter.key, startedAt);
-  const run = await env.DB.prepare('INSERT INTO crawl_runs (shop_key, started_at, status) VALUES (?, ?, \'running\')')
-    .bind(adapter.key, startedAt).run();
-  const runId = run.meta.last_row_id;
+  await markShopAttempt(env.DB, adapter.key, startedAt);
+  const runId = await startCrawlRun(env.DB, adapter.key, startedAt);
   const settings = getCrawlerSettings(env);
   const maxPages = getShopMaxPages(env, definition, settings.maxPagesPerShop);
   const pageLimit = maxPages + Math.max(0, adapter.extraPageAllowance || 0);
@@ -93,10 +73,10 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
   let pageCount = 0;
   let reachedEnd = false;
   let coverageIncomplete = false;
-  const transportFetcher = createTransportFetcher(env, adapter, fetchFn);
+  const transport = createTransport(env, adapter, fetchFn);
 
   try {
-    const pageQueue = [...adapter.pageUrls(maxPages, env, { now, intervalMinutes, state })];
+    const pageQueue = initialPageQueue(adapter, maxPages, env, { now, intervalMinutes, state });
     const queuedUrls = new Set(pageQueue.map(pageUrl));
 
     while (pageQueue.length && pageCount < pageLimit) {
@@ -104,18 +84,15 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
       const url = pageUrl(page);
       let html;
       try {
-        const fetchOptions = {
+        html = await transport.fetchHtmlPage(url, {
           baseUrl: adapter.baseUrl,
           userAgent: settings.userAgent,
           requestDelayMs,
           fetchFn,
           robotsCache
-        };
-        html = transportFetcher
-          ? await transportFetcher.fetchHtmlPage(url, fetchOptions)
-          : await fetchHtmlPage(url, fetchOptions);
+        });
       } catch (error) {
-        if (/HTTP 404/.test(error.message) && (adapter.continueOnEmpty || items.size === 0)) {
+        if (/HTTP 404/.test(error.message) && (shouldContinueAfterEmpty(adapter) || items.size === 0)) {
           coverageIncomplete = true;
           continue;
         }
@@ -124,25 +101,22 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
 
       pageCount += 1;
       const parsed = adapter.parse(html, page);
-
-      if (adapter.dynamicPagination && adapter.discoverPageUrls) {
-        const discovered = adapter.discoverPageUrls(html, page);
-        if (discovered == null) {
-          coverageIncomplete = true;
-        } else {
-          for (const nextPage of discovered) {
-            const nextUrl = pageUrl(nextPage);
-            if (!nextUrl || queuedUrls.has(nextUrl)) continue;
-            queuedUrls.add(nextUrl);
-            pageQueue.push(nextPage);
-          }
+      const discovered = discoverPages(adapter, html, page);
+      if (discovered == null) {
+        coverageIncomplete = true;
+      } else {
+        for (const nextPage of discovered) {
+          const nextUrl = pageUrl(nextPage);
+          if (!nextUrl || queuedUrls.has(nextUrl)) continue;
+          queuedUrls.add(nextUrl);
+          pageQueue.push(nextPage);
         }
       }
 
       if (!parsed.length) {
         if (adapter.dynamicPagination) coverageIncomplete = true;
         if (items.size > 0) {
-          if (adapter.continueOnEmpty) continue;
+          if (shouldContinueAfterEmpty(adapter)) continue;
           reachedEnd = true;
           break;
         }
@@ -154,10 +128,11 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
     if (pageQueue.length) coverageIncomplete = true;
     if (!items.size) throw new Error('no products parsed; refusing to mark existing products inactive');
 
-    const deactivateMissing = !adapter.partialCoverage && (
-      reachedEnd || (adapter.dynamicPagination && !coverageIncomplete && pageQueue.length === 0)
-    );
-    const guardItemCount = deactivateMissing || adapter.guardItemCount === true;
+    const { deactivateMissing, guardItemCount } = coverageDecision(adapter, {
+      reachedEnd,
+      coverageIncomplete,
+      queueEmpty: pageQueue.length === 0
+    });
     if (guardItemCount && isSuspiciousItemDrop(items.size, Number(state?.last_item_count), {
       minRatio: settings.minItemRatio,
       minBaseline: settings.minItemBaseline
@@ -173,18 +148,21 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
       observedAt,
       { deactivateMissing, touchIntervalMinutes: settings.productTouchIntervalMinutes }
     );
-    await markSuccess(env.DB, adapter.key, observedAt, items.size);
-    await env.DB.prepare('UPDATE crawl_runs SET finished_at = ?, status = \'success\', item_count = ?, page_count = ?, message = ? WHERE id = ?')
-      .bind(observedAt, items.size, pageCount, `${changedCount} changed, ${touchedCount} touched, ${deactivatedCount} deactivated`, runId).run();
+    await markShopSuccess(env.DB, adapter.key, observedAt, items.size);
+    await finishCrawlRunSuccess(env.DB, runId, {
+      finishedAt: observedAt,
+      itemCount: items.size,
+      pageCount,
+      message: `${changedCount} changed, ${touchedCount} touched, ${deactivatedCount} deactivated`
+    });
     return { shopKey: adapter.key, status: 'success', itemCount: items.size, pageCount, changedCount, touchedCount, deactivatedCount, deactivateMissing };
   } catch (error) {
     const failedAt = nowIso(new Date());
-    await markFailure(env.DB, adapter.key, failedAt, error.message, state?.consecutive_failures || 0);
-    await env.DB.prepare('UPDATE crawl_runs SET finished_at = ?, status = \'failed\', page_count = ?, message = ? WHERE id = ?')
-      .bind(failedAt, pageCount, String(error.message).slice(0, 1000), runId).run();
+    await markShopFailure(env.DB, adapter.key, failedAt, error.message, state?.consecutive_failures || 0);
+    await finishCrawlRunFailure(env.DB, runId, { finishedAt: failedAt, pageCount, message: error.message });
     return { shopKey: adapter.key, status: 'failed', error: error.message };
   } finally {
-    await transportFetcher?.close?.();
+    await transport.close?.();
   }
 }
 
@@ -195,15 +173,14 @@ export async function crawlDueShops(env, options = {}) {
 }
 
 export async function crawlNextDueShop(env, { now = new Date(), fetchFn = fetch } = {}) {
-  const statesResult = await env.DB.prepare('SELECT * FROM shop_sync_state').all();
-  const states = new Map((statesResult.results || []).map(row => [row.shop_key, row]));
+  const states = new Map((await listShopStates(env.DB)).map(row => [row.shop_key, row]));
   const candidates = SHOP_ADAPTERS
     .filter(adapter => {
-      const definition = Object.values(SHOP_DEFINITIONS).find(v => v.key === adapter.key);
-      return definition && getShopEnabled(env, definition) && (!adapter.isConfigured || adapter.isConfigured(env));
+      const definition = definitionFor(adapter);
+      return definition && getShopEnabled(env, definition) && isConfigured(env, adapter);
     })
     .map(adapter => {
-      const definition = Object.values(SHOP_DEFINITIONS).find(v => v.key === adapter.key);
+      const definition = definitionFor(adapter);
       const interval = getShopIntervalMinutes(env, definition);
       const state = states.get(adapter.key);
       return { adapter, state, interval, due: isShopDue(state, interval, now), lastAttempt: state?.last_attempt_at || '' };
