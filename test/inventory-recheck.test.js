@@ -48,8 +48,7 @@ function fakeRepository(selected = candidate()) {
     async markInventoryCheckAttempt(_db, ...args) { calls.push(['attempt', ...args]); },
     async markInventoryAvailable(_db, ...args) { calls.push(['available', ...args]); },
     async markInventoryAmbiguous(_db, ...args) { calls.push(['ambiguous', ...args]); },
-    async markInventorySoldOut(_db, ...args) { calls.push(['sold', ...args]); },
-    async recordInventoryMissing(_db, ...args) { calls.push(['missing', ...args]); }
+    async recordInventoryUnavailable(_db, ...args) { calls.push(['unavailable', ...args]); }
   };
   return repository;
 }
@@ -110,7 +109,7 @@ test('recheck marks an explicitly priced detail page as available', async () => 
   assert.deepEqual(repository.calls[2], ['available', 7, NOW.toISOString()]);
 });
 
-test('recheck immediately deactivates only an explicit non-conflicting sold page', async () => {
+test('first explicit sold page records unavailable evidence but keeps the product active', async () => {
   const repository = fakeRepository();
   const result = await recheckAudioUnionInventory(env(), {
     now: NOW,
@@ -119,11 +118,28 @@ test('recheck immediately deactivates only an explicit non-conflicting sold page
   });
 
   assert.equal(result.status, 'checked');
-  assert.equal(result.outcome, 'sold_out');
-  assert.deepEqual(repository.calls.at(-1), ['sold', 7, NOW.toISOString()]);
+  assert.equal(result.outcome, 'sold_retry');
+  assert.equal(result.failureCount, 1);
+  assert.deepEqual(repository.calls.at(-1), ['unavailable', 7, NOW.toISOString(), 1, false]);
 });
 
-test('first 404 records a miss but keeps the product active', async () => {
+test('second consecutive explicit sold page deactivates the product', async () => {
+  const repository = fakeRepository(candidate({
+    last_inventory_checked_at: '2026-08-10T08:00:00.000Z',
+    inventory_check_failures: 1
+  }));
+  const result = await recheckAudioUnionInventory(env(), {
+    now: NOW,
+    repository,
+    fetchFn: async () => upstreamResponse('<html><body>販売終了</body></html>')
+  });
+
+  assert.equal(result.outcome, 'sold_deactivated');
+  assert.equal(result.failureCount, 2);
+  assert.deepEqual(repository.calls.at(-1), ['unavailable', 7, NOW.toISOString(), 2, true]);
+});
+
+test('first 404 records unavailable evidence but keeps the product active', async () => {
   const repository = fakeRepository();
   const result = await recheckAudioUnionInventory(env(), {
     now: NOW,
@@ -133,7 +149,7 @@ test('first 404 records a miss but keeps the product active', async () => {
 
   assert.equal(result.outcome, 'missing_retry');
   assert.equal(result.failureCount, 1);
-  assert.deepEqual(repository.calls.at(-1), ['missing', 7, NOW.toISOString(), 1, false]);
+  assert.deepEqual(repository.calls.at(-1), ['unavailable', 7, NOW.toISOString(), 1, false]);
 });
 
 test('second consecutive 404 deactivates the product', async () => {
@@ -149,10 +165,10 @@ test('second consecutive 404 deactivates the product', async () => {
 
   assert.equal(result.outcome, 'missing_deactivated');
   assert.equal(result.failureCount, 2);
-  assert.deepEqual(repository.calls.at(-1), ['missing', 7, NOW.toISOString(), 2, true]);
+  assert.deepEqual(repository.calls.at(-1), ['unavailable', 7, NOW.toISOString(), 2, true]);
 });
 
-test('a later listing observation resets the effective missing streak', async () => {
+test('a later listing observation resets the effective unavailable streak', async () => {
   const repository = fakeRepository(candidate({
     last_seen_at: '2026-08-10T09:00:00.000Z',
     last_inventory_checked_at: '2026-08-09T08:00:00.000Z',
@@ -166,7 +182,7 @@ test('a later listing observation resets the effective missing streak', async ()
 
   assert.equal(result.outcome, 'missing_retry');
   assert.equal(result.failureCount, 1);
-  assert.deepEqual(repository.calls.at(-1), ['missing', 7, NOW.toISOString(), 1, false]);
+  assert.deepEqual(repository.calls.at(-1), ['unavailable', 7, NOW.toISOString(), 1, false]);
 });
 
 test('429 is deferred after recording only the attempt timestamp', async () => {
@@ -200,7 +216,7 @@ test('robots rejection is deferred without changing inventory state', async () =
   assert.equal(repository.calls[1][0], 'attempt');
 });
 
-test('ambiguous 200 response never deactivates the product', async () => {
+test('ambiguous 200 response never deactivates and resets unavailable evidence', async () => {
   const repository = fakeRepository(candidate({ inventory_check_failures: 1 }));
   const result = await recheckAudioUnionInventory(env(), {
     now: NOW,
