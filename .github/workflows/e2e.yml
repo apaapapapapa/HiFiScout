@@ -36,7 +36,10 @@ jobs:
       - name: Resolve installed Playwright version
         id: playwright-version
         working-directory: e2e
-        run: echo "version=$(node -p \"require('./node_modules/@playwright/test/package.json').version\")" >> "$GITHUB_OUTPUT"
+        shell: bash
+        run: |
+          version="$(node -p "require('@playwright/test/package.json').version")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Restore Playwright Chromium cache
         id: playwright-cache
         uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
