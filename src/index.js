@@ -1,7 +1,8 @@
-import { SHOP_DEFINITIONS, getShopIntervalMinutes } from './config.js';
+import { SHOP_DEFINITIONS, getShopEnabled, getShopIntervalMinutes } from './config.js';
 import { crawlNextDueShop, crawlShop } from './crawler/run.js';
 import { SHOP_ADAPTERS } from './crawler/shops/index.js';
 import { listProducts, productHistory } from './db/products.js';
+import { buildSyncHealth, getSyncHealth, logSyncHealth } from './health.js';
 
 function json(data, init = {}) {
   return new Response(JSON.stringify(data), {
@@ -25,18 +26,23 @@ async function cachedJson(request, ctx, ttlSeconds, load) {
 
 async function meta(env) {
   const states = await env.DB.prepare('SELECT * FROM shop_sync_state').all();
-  const byKey = Object.fromEntries((states.results || []).map(row => [row.shop_key, row]));
+  const stateRows = states.results || [];
+  const byKey = Object.fromEntries(stateRows.map(row => [row.shop_key, row]));
+  const health = buildSyncHealth(env, stateRows);
+  const healthByKey = Object.fromEntries(health.shops.map(shop => [shop.shopKey, shop]));
   const shops = Object.values(SHOP_DEFINITIONS).map(shop => ({
     key: shop.key,
     name: shop.name,
+    enabled: getShopEnabled(env, shop),
     intervalMinutes: getShopIntervalMinutes(env, shop),
-    sync: byKey[shop.key] || null
+    sync: byKey[shop.key] || null,
+    health: healthByKey[shop.key] || null
   }));
   const facets = await env.DB.batch([
     env.DB.prepare('SELECT DISTINCT manufacturer AS value FROM products WHERE is_active = 1 AND manufacturer <> \'\' ORDER BY manufacturer'),
     env.DB.prepare('SELECT DISTINCT category AS value FROM products WHERE is_active = 1 ORDER BY category')
   ]);
-  return { shops, manufacturers: facets[0].results.map(r => r.value), categories: facets[1].results.map(r => r.value) };
+  return { status: health.status, shops, manufacturers: facets[0].results.map(r => r.value), categories: facets[1].results.map(r => r.value) };
 }
 
 async function handleApi(request, env, ctx) {
@@ -47,7 +53,15 @@ async function handleApi(request, env, ctx) {
   if (request.method === 'GET' && url.pathname === '/api/meta') {
     return cachedJson(request, ctx, 30, () => meta(env));
   }
-  if (request.method === 'GET' && url.pathname === '/api/health') return json({ ok: true, service: 'HiFiScout' });
+  if (request.method === 'GET' && url.pathname === '/api/health') {
+    try {
+      const health = await getSyncHealth(env);
+      return json({ service: 'HiFiScout', ...health }, { status: health.ok ? 200 : 503 });
+    } catch (error) {
+      console.error(JSON.stringify({ event: 'sync_health_check_failed', error: error instanceof Error ? error.message : String(error) }));
+      return json({ ok: false, service: 'HiFiScout', status: 'critical', error: 'health_check_failed' }, { status: 503 });
+    }
+  }
 
   const historyMatch = url.pathname.match(/^\/api\/products\/(\d+)\/history$/);
   if (request.method === 'GET' && historyMatch) {
@@ -68,6 +82,13 @@ async function handleApi(request, env, ctx) {
   return json({ error: 'not_found' }, { status: 404 });
 }
 
+async function runScheduled(env) {
+  const result = await crawlNextDueShop(env);
+  const health = await getSyncHealth(env);
+  logSyncHealth(health);
+  return result;
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -75,6 +96,6 @@ export default {
     return env.ASSETS.fetch(request);
   },
   async scheduled(_controller, env, ctx) {
-    ctx.waitUntil(crawlNextDueShop(env));
+    ctx.waitUntil(runScheduled(env));
   }
 };

@@ -5,6 +5,8 @@ const PRODUCT_LINK_RE = /<a\b[^>]*href\s*=\s*["']([^"']*\/(\d{2}-\d{5}-\d{5}-\d{
 const ANCHOR_RE = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
 const DIV_CLASS_RE = /<div\b[^>]*class\s*=\s*["']([^"']*)["'][^>]*>/gi;
 const CATEGORY_RE = /(スピーカー(?:（[^）]+）)?|コントロールアンプ(?:（[^）]+）)?|プリアンプ(?:（[^）]+）)?|プリメインアンプ(?:（[^）]+）)?|パワーアンプ(?:（[^）]+）)?|レコードプレーヤー|CDプレーヤー|SACD(?:\/CD)?プレーヤー|D\/Aコンバーター|DAコンバーター|ネットワークプレーヤー|ネットワークトランスポート|トーンアーム|カートリッジ|ヘッドホン|イヤホン|ケーブル|アクセサリー|真空管|ラック|その他オーディオ機器)/i;
+const PAGE_SIZE = 30;
+const DEFAULT_RECHECK_MAX_PAGE = 120;
 
 function canonicalManufacturer(value = '') {
   const text = cleanText(value);
@@ -85,6 +87,25 @@ function parseProductBlock(block, link) {
   };
 }
 
+function listingUrl(pageNumber) {
+  const offset = Math.max(0, pageNumber - 1) * PAGE_SIZE;
+  return `https://www.hifido.co.jp/?L=50&LNG=J&O=${offset}&OD=0`;
+}
+
+function positiveInt(value, fallback) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+export function hifidoRecheckPage(maxRecentPages, env = {}, { now = new Date(), intervalMinutes = 30 } = {}) {
+  const maxPage = positiveInt(env.HIFIDO_RECHECK_MAX_PAGE, DEFAULT_RECHECK_MAX_PAGE);
+  if (maxPage <= maxRecentPages) return null;
+  const slots = maxPage - maxRecentPages;
+  const intervalMs = Math.max(1, intervalMinutes) * 60_000;
+  const slot = Math.floor(now.getTime() / intervalMs);
+  return maxRecentPages + 1 + ((slot % slots) + slots) % slots;
+}
+
 export function parseHifidoListing(html) {
   const products = [];
   const itemBlocks = listItemBlocks(html);
@@ -116,12 +137,14 @@ export const hifidoAdapter = {
   name: 'ハイファイ堂',
   baseUrl: 'https://www.hifido.co.jp',
   transport: 'browser',
-  *pageUrls(maxPages) {
-    const pageSize = 30;
-    for (let page = 0; page < maxPages; page += 1) {
-      const offset = page * pageSize;
-      yield `https://www.hifido.co.jp/?L=50&LNG=J&O=${offset}&OD=0`;
-    }
+  partialCoverage: true,
+  guardItemCount: true,
+  continueOnEmpty: true,
+  extraPageAllowance: 1,
+  *pageUrls(maxPages, env = {}, context = {}) {
+    for (let page = 1; page <= maxPages; page += 1) yield listingUrl(page);
+    const recheckPage = hifidoRecheckPage(maxPages, env, context);
+    if (recheckPage != null) yield listingUrl(recheckPage);
   },
   parse(html) {
     return parseHifidoListing(html);

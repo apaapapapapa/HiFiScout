@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SHOP_DEFINITIONS, getShopMaxPages } from '../src/config.js';
-import { hifidoAdapter, parseHifidoListing } from '../src/crawler/shops/hifido.js';
+import { hifidoAdapter, hifidoRecheckPage, parseHifidoListing } from '../src/crawler/shops/hifido.js';
 
 test('Hifido parser keeps factual listing fields only', () => {
   const html = `
@@ -49,12 +49,25 @@ test('Hifido parser handles rendered list-item markup with duplicate product lin
   assert.equal(product.stockStatus, 'in_stock');
 });
 
-test('Hifido pagination follows the live 30-item offset and uses Browser Run', () => {
-  const pages = [...hifidoAdapter.pageUrls(3)];
+test('Hifido keeps three recent pages and adds one rotating stale recheck page', () => {
+  const now = new Date('2026-08-11T00:00:00.000Z');
+  const pages = [...hifidoAdapter.pageUrls(3, { HIFIDO_RECHECK_MAX_PAGE: '6' }, { now, intervalMinutes: 30 })];
+  const recheckPage = hifidoRecheckPage(3, { HIFIDO_RECHECK_MAX_PAGE: '6' }, { now, intervalMinutes: 30 });
   assert.equal(hifidoAdapter.transport, 'browser');
+  assert.equal(hifidoAdapter.partialCoverage, true);
+  assert.equal(pages.length, 4);
   assert.match(pages[0], /O=0/);
   assert.match(pages[1], /O=30/);
   assert.match(pages[2], /O=60/);
+  assert.ok(recheckPage >= 4 && recheckPage <= 6);
+  assert.match(pages[3], new RegExp(`O=${(recheckPage - 1) * 30}`));
+});
+
+test('Hifido rotating recheck advances with the configured crawl interval', () => {
+  const env = { HIFIDO_RECHECK_MAX_PAGE: '6' };
+  const first = hifidoRecheckPage(3, env, { now: new Date('2026-08-11T00:00:00.000Z'), intervalMinutes: 30 });
+  const next = hifidoRecheckPage(3, env, { now: new Date('2026-08-11T00:30:00.000Z'), intervalMinutes: 30 });
+  assert.notEqual(first, next);
 });
 
 test('Hifido defaults to three recent pages and can be overridden explicitly', () => {
