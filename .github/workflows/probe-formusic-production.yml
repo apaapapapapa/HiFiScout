@@ -19,6 +19,9 @@ jobs:
         with:
           node-version: 22
       - run: npm install
+      - name: Clear FOR MUSIC retry backoff after deployed D1 fix
+        run: |
+          npx wrangler d1 execute DB --remote --command "UPDATE shop_sync_state SET last_attempt_at = NULL, backoff_until = NULL WHERE shop_key = 'formusic';"
       - name: Check production API
         run: |
           echo '--- health ---'
