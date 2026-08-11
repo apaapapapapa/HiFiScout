@@ -1,4 +1,5 @@
 import { SHOP_DEFINITIONS, getCrawlerSettings, getShopEnabled, getShopIntervalMinutes } from './config.js';
+import { SHOP_ADAPTERS } from './crawler/shops/index.js';
 
 const SEVERITY = { disabled: 0, healthy: 1, warning: 2, critical: 3 };
 
@@ -6,12 +7,16 @@ export function evaluateShopSyncHealth({
   state,
   intervalMinutes,
   enabled = true,
+  configured = true,
   now = new Date(),
   warningFactor = 2,
   criticalFactor = 6
 }) {
   if (!enabled) {
     return { status: 'disabled', ageMinutes: null, reason: 'disabled' };
+  }
+  if (!configured) {
+    return { status: 'critical', ageMinutes: null, reason: 'configuration_missing' };
   }
 
   const failures = Number(state?.consecutive_failures || 0);
@@ -45,28 +50,39 @@ export function evaluateShopSyncHealth({
   return { status: 'healthy', ageMinutes: Math.round(ageMinutes), reason: 'ok' };
 }
 
+function isShopConfigured(env, shopKey) {
+  if (shopKey !== 'audiounion') return true;
+  const adapter = SHOP_ADAPTERS.find(candidate => candidate.key === shopKey);
+  return !adapter?.isConfigured || adapter.isConfigured(env);
+}
+
 export function buildSyncHealth(env, stateRows = [], now = new Date()) {
   const settings = getCrawlerSettings(env);
   const states = new Map(stateRows.map(row => [row.shop_key, row]));
   const shops = Object.values(SHOP_DEFINITIONS).map(shop => {
     const enabled = getShopEnabled(env, shop);
+    const configured = isShopConfigured(env, shop.key);
     const intervalMinutes = getShopIntervalMinutes(env, shop);
     const state = states.get(shop.key) || null;
     const health = evaluateShopSyncHealth({
       state,
       intervalMinutes,
       enabled,
+      configured,
       now,
       warningFactor: settings.healthWarningFactor,
       criticalFactor: settings.healthCriticalFactor
     });
+    const lastItemCount = Number(state?.last_item_count);
     return {
       shopKey: shop.key,
       name: shop.name,
       enabled,
+      configured,
       intervalMinutes,
       lastSuccessAt: state?.last_success_at || null,
       lastAttemptAt: state?.last_attempt_at || null,
+      lastItemCount: Number.isFinite(lastItemCount) ? lastItemCount : null,
       consecutiveFailures: Number(state?.consecutive_failures || 0),
       lastError: state?.last_error || null,
       ...health

@@ -96,11 +96,21 @@ async function handleApi(request, env, ctx) {
   return json({ error: 'not_found' }, { status: 404 });
 }
 
+function logDispatchResult(cron, dispatch) {
+  const entry = { event: 'crawl_dispatch', cron, ...dispatch };
+  if (dispatch.status === 'rejected' || (dispatch.status === 'skipped' && dispatch.reason)) {
+    console.warn(JSON.stringify(entry));
+  } else {
+    console.log(JSON.stringify(entry));
+  }
+}
+
 async function runScheduled(cron, env) {
   if (cron === RETENTION_CRON) return runRetentionCleanup(env);
   const dispatch = cron === AUDIOUNION_CRON
     ? await dispatchScheduledCrawl(env, 'audiounion')
     : await dispatchDueCrawls(env, { excludeShopKeys: ['audiounion'] });
+  logDispatchResult(cron, dispatch);
   const health = await getSyncHealth(env);
   logSyncHealth(health);
   return dispatch;
@@ -120,6 +130,8 @@ export default {
       const result = await consumeCrawlMessage(env, message.body);
       if (result.status === 'failed') {
         console.error(JSON.stringify({ event: 'crawl_queue_job_failed', ...result }));
+      } else {
+        console.log(JSON.stringify({ event: 'crawl_queue_job_completed', ...result }));
       }
       const health = await getSyncHealth(env);
       logSyncHealth(health);
