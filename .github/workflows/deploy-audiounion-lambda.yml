@@ -28,11 +28,19 @@ jobs:
       FUNCTION_NAME: hifiscout-audiounion-fetcher
       CLOUDFLARE_ACCOUNT_ID: 9af87af4dbc00be3bfd4c8af3f52f684
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_WORKER_NAME: hifiscout
 
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6
@@ -108,30 +116,17 @@ jobs:
             exit 1
           fi
 
-          put_secret() {
-            local name="$1"
-            local value="$2"
-            response="$(curl -fsS --retry 3 --retry-delay 2 \
-              -X PUT "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${CLOUDFLARE_WORKER_NAME}/secrets" \
-              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-              -H 'Content-Type: application/json' \
-              --data "$(jq -nc --arg name "$name" --arg text "$value" '{name:$name,text:$text,type:"secret_text"}')")"
-            jq -e '.success == true' <<< "$response" >/dev/null
-          }
-
-          put_secret CRAWL_RELAY_URL "$relay_url"
-          put_secret CRAWL_RELAY_TOKEN "$relay_token"
+          printf '%s' "$relay_url" | npx wrangler secret put CRAWL_RELAY_URL
+          printf '%s' "$relay_token" | npx wrangler secret put CRAWL_RELAY_TOKEN
           echo "Shared relay URL and token synchronized to Cloudflare."
 
       - name: Verify shared relay secrets are registered
         shell: bash
         run: |
           set -euo pipefail
-          response="$(curl -fsS --retry 3 --retry-delay 2 \
-            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${CLOUDFLARE_WORKER_NAME}/secrets" \
-            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")"
-          jq -e '.result[] | select(.name == "CRAWL_RELAY_URL")' <<< "$response" >/dev/null
-          jq -e '.result[] | select(.name == "CRAWL_RELAY_TOKEN")' <<< "$response" >/dev/null
+          secrets="$(npx wrangler secret list)"
+          jq -e '.[] | select(.name == "CRAWL_RELAY_URL")' <<< "$secrets" >/dev/null
+          jq -e '.[] | select(.name == "CRAWL_RELAY_TOKEN")' <<< "$secrets" >/dev/null
           echo "Shared relay secrets are registered in Cloudflare."
 
       - name: Verify deployment
