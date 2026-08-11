@@ -175,6 +175,20 @@ export async function claimInitialKnowledgeCatalogReviewRun(db, startedAt) {
   return Number(run?.meta?.changes || 0) > 0 ? Number(run?.meta?.last_row_id || 0) : null;
 }
 
+export async function claimKnowledgeCatalogCatchupReviewRun(db, startedAt) {
+  const run = await db.prepare(`
+    INSERT INTO knowledge_catalog_review_runs(started_at, status)
+    SELECT ?, 'running'
+    WHERE (SELECT COUNT(*) FROM knowledge_catalog_review_runs) = 1
+      AND EXISTS (
+        SELECT 1
+        FROM knowledge_catalog_review_runs
+        WHERE status = 'success' AND verification_unsupported > 0
+      )
+  `).bind(startedAt).run();
+  return Number(run?.meta?.changes || 0) > 0 ? Number(run?.meta?.last_row_id || 0) : null;
+}
+
 export async function finishKnowledgeCatalogReviewRunSuccess(db, runId, result) {
   const outcomes = result.verificationOutcomes || {};
   await db.prepare(`

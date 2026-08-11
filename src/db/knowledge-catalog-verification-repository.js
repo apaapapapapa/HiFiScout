@@ -42,16 +42,26 @@ function attemptStatement(db, {
   );
 }
 
-export async function listPendingKnowledgeCatalogCandidates(db, limit = 25) {
+export async function listPendingKnowledgeCatalogCandidates(db, limit = 25, manufacturerIds = null) {
+  const supported = Array.isArray(manufacturerIds)
+    ? [...new Set(manufacturerIds.map(value => String(value || '').trim().toLowerCase()).filter(Boolean))]
+    : null;
+  if (supported && !supported.length) return [];
+  const manufacturerFilter = supported
+    ? ` AND manufacturer_id IN (${supported.map(() => '?').join(', ')})`
+    : '';
+  const params = supported ? [...supported, boundedLimit(limit)] : [boundedLimit(limit)];
   const result = await db.prepare(`
     SELECT id, manufacturer_id, normalized_model, observed_manufacturer, observed_model, sample_title,
            candidate_category_ids, active_listing_count, shop_count, unclassified_count, priority_score,
            verification_status, last_verification_at
     FROM knowledge_catalog_candidates
-    WHERE review_status = 'pending' AND active_listing_count > 0
-    ORDER BY priority_score DESC, unclassified_count DESC, shop_count DESC, active_listing_count DESC, id
+    WHERE review_status = 'pending' AND active_listing_count > 0${manufacturerFilter}
+    ORDER BY CASE WHEN last_verification_at IS NULL THEN 0 ELSE 1 END,
+             COALESCE(last_verification_at, ''),
+             priority_score DESC, unclassified_count DESC, shop_count DESC, active_listing_count DESC, id
     LIMIT ?
-  `).bind(boundedLimit(limit)).all();
+  `).bind(...params).all();
   return (result.results || []).map(row => ({
     id: Number(row.id),
     manufacturerId: row.manufacturer_id,
