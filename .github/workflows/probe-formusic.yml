@@ -1,0 +1,37 @@
+name: Probe FOR MUSIC
+on:
+  push:
+    branches: ['feature/formusic']
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch live FOR MUSIC HTML and robots
+        run: |
+          python - <<'PY'
+          import urllib.request, re
+
+          headers = {'User-Agent': 'HiFiScout development probe (+https://github.com/apaapapapapa/HiFiScout)'}
+          req = urllib.request.Request('https://shop.formusic.jp/', headers=headers)
+          with urllib.request.urlopen(req, timeout=20) as res:
+              html = res.read().decode('utf-8', 'replace')
+          print('HOME_STATUS=200')
+          print('HOME_BYTES=', len(html))
+          links = list(re.finditer(r'href=["\']([^"\']*/[a-z0-9-]+/\d+\.html)["\']', html, re.I))
+          print('PRODUCT_LINKS=', len(links))
+          for m in links[:3]:
+              start=max(0,m.start()-1800); end=min(len(html),m.end()+1800)
+              print('\n--- PRODUCT CONTEXT ---\n')
+              print(html[start:end])
+          try:
+              req = urllib.request.Request('https://shop.formusic.jp/robots.txt', headers=headers)
+              with urllib.request.urlopen(req, timeout=20) as res:
+                  print('\n--- ROBOTS ---')
+                  print(res.read().decode('utf-8','replace')[:4000])
+          except Exception as e:
+              print('ROBOTS_ERROR=', repr(e))
+          PY
