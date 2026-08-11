@@ -22,7 +22,7 @@ jobs:
   playwright:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       E2E_BASE_URL: ${{ inputs.base_url || vars.E2E_BASE_URL || 'https://hifiscout.raha3415kohei.workers.dev' }}
     steps:
@@ -53,3 +53,38 @@ jobs:
       - name: Run Playwright against development environment
         working-directory: e2e
         run: npm test
+      - name: Report Knowledge Catalog operational status
+        shell: bash
+        run: |
+          set -euo pipefail
+          status_url="${E2E_BASE_URL%/}/api/knowledge-catalog/status"
+          payload=''
+          latest_status=''
+
+          for attempt in $(seq 1 12); do
+            payload="$(curl -fsS --retry 3 --retry-delay 2 "$status_url")"
+            latest_status="$(jq -r '.latestReview.status // empty' <<< "$payload")"
+            if [ "$latest_status" = 'success' ] || [ "$latest_status" = 'failed' ]; then
+              break
+            fi
+            echo "Knowledge Catalog initial review is not finished yet (attempt ${attempt}/12)."
+            sleep 30
+          done
+
+          echo "$payload" | jq .
+          {
+            echo '## Knowledge Catalog operational status'
+            echo
+            echo '```json'
+            echo "$payload" | jq .
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -z "$latest_status" ]; then
+            echo 'Knowledge Catalog review did not start within the observation window.' >&2
+            exit 1
+          fi
+          if [ "$latest_status" != 'success' ]; then
+            echo "Knowledge Catalog latest review status is $latest_status." >&2
+            exit 1
+          fi
