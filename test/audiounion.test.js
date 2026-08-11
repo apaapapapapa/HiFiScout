@@ -113,3 +113,32 @@ test('Audio Union prefers the richer duplicate link and current product price', 
   assert.equal(dcs.priceYen, 1798000);
   assert.equal(dcs.stockStatus, 'in_stock');
 });
+
+test('Audio Union trims SEO sales copy from an uncatalogued manufacturer model', () => {
+  const html = `
+    <article>
+      <a href="https://www.audiounion.jp/ct/detail/used/300008/">MAGICO</a>
+      <a href="https://www.audiounion.jp/ct/detail/used/300008/">中古 MAGICO スピーカーシステム A1 A1 販売店: オーディオユニオン 大阪店 MAGICO A1 スピーカーシステム 販売価格:</a>
+      <div>販売価格: &yen;1,180,000</div>
+    </article>`;
+
+  const [item] = audioUnionAdapter.parse(html, 'https://www.audiounion.jp/st/new_arrival_used.html');
+  assert.equal(item.manufacturer, 'MAGICO');
+  assert.equal(item.model, 'A1');
+  assert.equal(item.title, 'MAGICO A1');
+});
+
+test('Audio Union keeps an uncatalogued multi-word brand together', () => {
+  const html = `
+    <article>
+      <a href="https://www.audiounion.jp/ct/detail/used/300009/">Austrian</a>
+      <a href="https://www.audiounion.jp/ct/detail/used/300009/">Audio</a>
+      <a href="https://www.audiounion.jp/ct/detail/used/300009/">The Composer</a>
+      <div>販売価格: &yen;328,000</div>
+    </article>`;
+
+  const [item] = audioUnionAdapter.parse(html, 'https://www.audiounion.jp/st/new_arrival_used.html');
+  assert.equal(item.manufacturer, 'Austrian Audio');
+  assert.equal(item.model, 'The Composer');
+  assert.equal(item.title, 'Austrian Audio The Composer');
+});
