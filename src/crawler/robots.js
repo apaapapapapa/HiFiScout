@@ -48,9 +48,11 @@ export function isPathAllowed(robotsText, targetUrl, userAgent = 'HiFiScoutBot')
 export async function fetchRobotsPolicy(fetchFn, baseUrl, userAgent) {
   const robotsUrl = new URL('/robots.txt', baseUrl).toString();
   const response = await fetchFn(robotsUrl, { headers: { 'User-Agent': userAgent } });
-  if (response.status === 404) return null;
-  if (response.status === 401 || response.status === 403) throw new Error(`robots.txt denied access (${response.status})`);
-  if (response.status === 429 || response.status >= 500) throw new Error(`robots.txt temporarily unavailable (${response.status})`);
+  if (response.status === 429) throw new Error('robots.txt temporarily unavailable (429)');
+  // RFC 9309 classifies 4xx responses as "unavailable": crawlers may access other resources.
+  // A 403 for robots.txt alone is therefore not equivalent to an explicit Disallow rule.
+  if (response.status >= 400 && response.status < 500) return null;
+  if (response.status >= 500) throw new Error(`robots.txt temporarily unavailable (${response.status})`);
   if (!response.ok) return null;
   return response.text();
 }
