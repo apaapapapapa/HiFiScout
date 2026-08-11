@@ -1,13 +1,15 @@
 const $ = id => document.getElementById(id);
 const filterSelectIds = ['shop', 'manufacturer', 'category', 'sort', 'inStock'];
 const debouncedInputIds = ['q', 'minPrice', 'maxPrice'];
+const PAGE_SIZE = 50;
 const state = {
   products: [],
   favorites: new Set(JSON.parse(localStorage.getItem('hifiscout:favorites') || '[]')),
-  nextCursor: null,
-  hasMore: false,
+  pages: new Map(),
+  currentPage: 1,
   controller: null,
-  requestSequence: 0
+  requestSequence: 0,
+  loading: false
 };
 const responseCache = new Map();
 const CACHE_TTL_MS = 30_000;
@@ -104,65 +106,103 @@ function productParams(cursor = null) {
     if (value) params.set(id, value);
   }
   if ($('inStock').checked) params.set('inStock', 'true');
-  params.set('limit', '50');
+  params.set('limit', String(PAGE_SIZE));
   if (cursor) params.set('cursor', cursor);
   return params;
 }
 
-function setLoading(loading, append = false) {
-  $('loading').classList.toggle('show', loading);
-  $('load-more').disabled = loading;
-  if (append && loading) $('load-more').textContent = '読み込み中…';
-  else $('load-more').textContent = 'もっと見る';
+function resetPages() {
+  state.pages.clear();
+  state.currentPage = 1;
+  state.products = [];
 }
 
-async function loadProducts({ append = false } = {}) {
-  if (append && !state.hasMore) return;
+function setLoading(loading) {
+  state.loading = loading;
+  $('loading').classList.toggle('show', loading);
+  renderPagination();
+}
 
-  if (!append) {
-    state.controller?.abort();
-    state.controller = new AbortController();
+function pageNumbers() {
+  const loadedPages = [...state.pages.keys()].sort((a, b) => a - b);
+  const lastLoaded = loadedPages.at(-1) || 1;
+  const lastPage = state.pages.get(lastLoaded);
+  const highestAvailable = lastPage?.hasMore ? lastLoaded + 1 : lastLoaded;
+  const candidates = new Set([1, highestAvailable]);
+  for (let page = Math.max(1, state.currentPage - 2); page <= Math.min(highestAvailable, state.currentPage + 2); page += 1) {
+    candidates.add(page);
   }
-  const controller = append ? new AbortController() : state.controller;
+  return [...candidates].filter(page => page >= 1 && page <= highestAvailable).sort((a, b) => a - b);
+}
+
+function renderPagination() {
+  const loadedPages = [...state.pages.keys()].sort((a, b) => a - b);
+  if (!loadedPages.length) {
+    $('pagination').innerHTML = '';
+    return;
+  }
+
+  const numbers = pageNumbers();
+  const parts = [];
+  numbers.forEach((page, index) => {
+    if (index && page - numbers[index - 1] > 1) parts.push('<span class="page-ellipsis" aria-hidden="true">…</span>');
+    const current = page === state.currentPage;
+    parts.push(`<button type="button" class="page-button${current ? ' active' : ''}" data-page="${page}"${current ? ' aria-current="page"' : ''}${state.loading ? ' disabled' : ''}>${page}</button>`);
+  });
+  $('pagination').innerHTML = parts.join('');
+}
+
+async function loadProducts({ page = 1, reset = false } = {}) {
+  if (reset) resetPages();
+  const cachedPage = state.pages.get(page);
+  if (cachedPage) {
+    state.currentPage = page;
+    state.products = cachedPage.items;
+    render();
+    return;
+  }
+
+  const previousPage = page > 1 ? state.pages.get(page - 1) : null;
+  if (page > 1 && (!previousPage || !previousPage.hasMore || !previousPage.nextCursor)) return;
+
+  state.controller?.abort();
+  state.controller = new AbortController();
+  const controller = state.controller;
   const sequence = ++state.requestSequence;
-  const params = productParams(append ? state.nextCursor : null);
-  setLoading(true, append);
+  const params = productParams(previousPage?.nextCursor || null);
+  setLoading(true);
 
   try {
-    const page = await fetchJson(`/api/products?${params}`, { signal: controller.signal });
+    const result = await fetchJson(`/api/products?${params}`, { signal: controller.signal });
     if (sequence !== state.requestSequence) return;
 
-    if (append) {
-      const existingIds = new Set(state.products.map(product => product.id));
-      state.products.push(...page.items.filter(product => !existingIds.has(product.id)));
-    } else {
-      state.products = page.items;
-    }
-    state.nextCursor = page.nextCursor;
-    state.hasMore = page.hasMore;
+    const pageState = {
+      items: result.items,
+      hasMore: result.hasMore,
+      nextCursor: result.nextCursor
+    };
+    state.pages.set(page, pageState);
+    state.currentPage = page;
+    state.products = pageState.items;
     render();
   } catch (error) {
     if (error.name !== 'AbortError') {
       console.error(error);
-      if (!append) {
-        state.products = [];
-        state.nextCursor = null;
-        state.hasMore = false;
-        render('商品の取得に失敗しました。');
-      }
+      if (page === 1) resetPages();
+      render('商品の取得に失敗しました。');
     }
   } finally {
-    if (sequence === state.requestSequence) setLoading(false, append);
+    if (sequence === state.requestSequence) setLoading(false);
   }
 }
 
 function render(errorMessage = '') {
   const products = $('favoritesOnly').checked ? state.products.filter(p => state.favorites.has(p.id)) : state.products;
-  $('count').textContent = `${products.length}${state.hasMore && !$('favoritesOnly').checked ? '+' : ''}`;
+  $('count').textContent = String(products.length);
   $('products').innerHTML = errorMessage
     ? `<div class="empty">${escapeHtml(errorMessage)}</div>`
     : products.length ? products.map(productCard).join('') : '<div class="empty">条件に一致する商品はありません。</div>';
-  $('load-more').hidden = !state.hasMore;
+  renderPagination();
 }
 
 async function showHistory(id) {
@@ -176,12 +216,12 @@ let inputTimer;
 document.addEventListener('input', e => {
   if (!debouncedInputIds.includes(e.target.id)) return;
   clearTimeout(inputTimer);
-  inputTimer = setTimeout(() => loadProducts(), 400);
+  inputTimer = setTimeout(() => loadProducts({ reset: true }), 400);
 });
 
 document.addEventListener('change', e => {
   if (e.target.id === 'favoritesOnly') return render();
-  if (filterSelectIds.includes(e.target.id)) loadProducts();
+  if (filterSelectIds.includes(e.target.id)) loadProducts({ reset: true });
 });
 
 document.addEventListener('click', e => {
@@ -196,8 +236,15 @@ document.addEventListener('click', e => {
   const history = e.target.closest('[data-history]');
   if (history) showHistory(history.dataset.history);
   if (e.target.matches('.dialog-close')) $('history-dialog').close();
-  if (e.target.id === 'load-more') loadProducts({ append: true });
+
+  const pageButton = e.target.closest('[data-page]');
+  if (pageButton && !pageButton.disabled) {
+    const page = Number(pageButton.dataset.page);
+    if (Number.isInteger(page) && page > 0 && page !== state.currentPage) {
+      loadProducts({ page }).then(() => $('products').scrollIntoView({ block: 'start', behavior: 'smooth' }));
+    }
+  }
 });
 
 await loadMeta();
-await loadProducts();
+await loadProducts({ reset: true });
