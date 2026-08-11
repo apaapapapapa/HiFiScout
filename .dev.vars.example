@@ -1,2 +1,6 @@
 # Only required for manually forcing a crawl through POST /api/admin/crawl?shop=ippinkan
 ADMIN_TOKEN=change-me
+
+# AudioUnion uses the Tokyo Lambda relay. Keep the real values out of source control.
+AUDIOUNION_RELAY_URL=https://example.lambda-url.ap-northeast-1.on.aws/
+AUDIOUNION_RELAY_TOKEN=change-me-with-a-long-random-token
