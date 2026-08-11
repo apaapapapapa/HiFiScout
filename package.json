@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test",
+    "test": "npm run test:unit",
+    "test:unit": "node --test",
+    "test:e2e": "npm --prefix e2e test",
     "dev": "wrangler dev --test-scheduled",
     "deploy": "wrangler d1 migrations apply DB --remote && wrangler deploy",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
