@@ -128,7 +128,13 @@ test('result count distinguishes hasMore from the current page item count', asyn
     const hasMore = params.get('priceDropped') !== 'true';
     return route.fulfill({
       contentType: 'application/json',
-      body: JSON.stringify({ items: [product()], hasMore, nextCursor: hasMore ? 'cursor-2' : null })
+      body: JSON.stringify({
+        items: [product()],
+        hasMore,
+        nextCursor: hasMore ? 'cursor-2' : null,
+        totalCount: hasMore ? 2 : 1,
+        totalPages: hasMore ? 2 : 1
+      })
     });
   });
 
