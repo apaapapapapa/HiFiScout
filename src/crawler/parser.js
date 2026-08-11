@@ -39,6 +39,13 @@ function inferCondition(title = '', context = '') {
   return cleanText(title).match(/『([^』]+)』/)?.[1] || '';
 }
 
+function stockStatusForListing(shopKey, priceYen, inferredStatus) {
+  // AudioUnion's used listing pages do not expose a reliable per-item stock label.
+  // A displayed sales price is the seller's availability signal for these listings.
+  if (shopKey === 'audiounion' && priceYen != null) return 'in_stock';
+  return inferredStatus;
+}
+
 function fromJsonLd(html, { shopKey, baseUrl, hintedCategory }) {
   const products = [];
   for (const root of decodeJsonLd(html)) {
@@ -51,7 +58,8 @@ function fromJsonLd(html, { shopKey, baseUrl, hintedCategory }) {
       const offer = Array.isArray(node.offers) ? node.offers[0] : node.offers || {};
       const priceYen = parseYen(String(offer.price ?? node.price ?? ''));
       const availability = String(offer.availability || '');
-      const stockStatus = /outofstock|soldout/i.test(availability) ? 'sold_out' : /instock/i.test(availability) ? 'in_stock' : 'unknown';
+      const inferredStock = /outofstock|soldout/i.test(availability) ? 'sold_out' : /instock/i.test(availability) ? 'in_stock' : 'unknown';
+      const stockStatus = stockStatusForListing(shopKey, priceYen, inferredStock);
       const { manufacturer, model } = splitManufacturerModel(title, shopKey);
       products.push({
         sourceId: stableSourceId(url, title),
@@ -118,7 +126,7 @@ function fromAnchors(html, { shopKey, baseUrl, hintedCategory, productUrlPattern
       category: inferCategory(title, hintedCategory),
       conditionText: condition,
       priceYen,
-      stockStatus: inferStockStatus(context),
+      stockStatus: stockStatusForListing(shopKey, priceYen, inferStockStatus(context)),
       sourceUrl: url
     });
   }

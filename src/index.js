@@ -20,11 +20,9 @@ function json(data, init = {}) {
 async function cachedJson(request, ctx, ttlSeconds, load) {
   const cacheControl = `public, max-age=${ttlSeconds}`;
   if (typeof caches === 'undefined') return json(await load(), { headers: { 'cache-control': cacheControl } });
-
   const cache = caches.default;
   const cached = await cache.match(request);
   if (cached) return cached;
-
   const response = json(await load(), { headers: { 'cache-control': cacheControl } });
   ctx.waitUntil(cache.put(request, response.clone()));
   return response;
@@ -37,12 +35,7 @@ async function meta(env) {
   const health = buildSyncHealth(env, stateRows);
   const healthByKey = Object.fromEntries(health.shops.map(shop => [shop.shopKey, shop]));
   const shops = Object.values(SHOP_DEFINITIONS).map(shop => ({
-    key: shop.key,
-    name: shop.name,
-    enabled: getShopEnabled(env, shop),
-    intervalMinutes: getShopIntervalMinutes(env, shop),
-    sync: byKey[shop.key] || null,
-    health: healthByKey[shop.key] || null
+    key: shop.key, name: shop.name, enabled: getShopEnabled(env, shop), intervalMinutes: getShopIntervalMinutes(env, shop), sync: byKey[shop.key] || null, health: healthByKey[shop.key] || null
   }));
   const facets = await env.DB.batch([
     env.DB.prepare(`
@@ -77,29 +70,21 @@ async function meta(env) {
 async function handleApi(request, env, ctx) {
   const url = new URL(request.url);
   const rate = await checkPublicApiRateLimit(request, env);
-  if (!rate.allowed) {
-    console.warn(JSON.stringify({ event: 'api_rate_limited', bucket: rate.bucket }));
-    return json({ error: 'rate_limited' }, { status: 429 });
-  }
-
+  if (!rate.allowed) return json({ error: 'rate_limited' }, { status: 429 });
   if (request.method === 'GET' && url.pathname === '/api/products') {
     const validationError = validateProductQuery(url);
     if (validationError) return json({ error: validationError }, { status: 400 });
     return cachedJson(request, ctx, 30, () => listProducts(env.DB, url));
   }
-  if (request.method === 'GET' && url.pathname === '/api/meta') {
-    return cachedJson(request, ctx, 30, () => meta(env));
-  }
+  if (request.method === 'GET' && url.pathname === '/api/meta') return cachedJson(request, ctx, 30, () => meta(env));
   if (request.method === 'GET' && url.pathname === '/api/health') {
     try {
       const health = await getSyncHealth(env);
       return json({ service: 'HiFiScout', ...health }, { status: health.ok ? 200 : 503 });
     } catch (error) {
-      console.error(JSON.stringify({ event: 'sync_health_check_failed', error: error instanceof Error ? error.message : String(error) }));
       return json({ ok: false, service: 'HiFiScout', status: 'critical', error: 'health_check_failed' }, { status: 503 });
     }
   }
-
   const historyMatch = url.pathname.match(/^\/api\/products\/(\d+)\/history$/);
   if (request.method === 'GET' && historyMatch) {
     const id = Number(historyMatch[1]);
@@ -107,27 +92,20 @@ async function handleApi(request, env, ctx) {
     const result = await productHistory(env.DB, id);
     return result ? json(result) : json({ error: 'not_found' }, { status: 404 });
   }
-
   if (request.method === 'POST' && url.pathname === '/api/admin/crawl') {
-    if (!env.ADMIN_TOKEN || request.headers.get('authorization') !== `Bearer ${env.ADMIN_TOKEN}`) {
-      return json({ error: 'unauthorized' }, { status: 401 });
-    }
+    if (!env.ADMIN_TOKEN || request.headers.get('authorization') !== `Bearer ${env.ADMIN_TOKEN}`) return json({ error: 'unauthorized' }, { status: 401 });
     const result = await dispatchForcedCrawl(env, url.searchParams.get('shop'));
     if (result.reason === 'unknown_shop') return json({ error: 'unknown_shop' }, { status: 400 });
     if (result.reason === 'disabled') return json({ error: 'disabled' }, { status: 409 });
     return json(result, { status: 202 });
   }
-
   return json({ error: 'not_found' }, { status: 404 });
 }
 
 function logDispatchResult(cron, dispatch) {
   const entry = { event: 'crawl_dispatch', cron, ...dispatch };
-  if (dispatch.status === 'rejected' || (dispatch.status === 'skipped' && dispatch.reason)) {
-    console.warn(JSON.stringify(entry));
-  } else {
-    console.log(JSON.stringify(entry));
-  }
+  if (dispatch.status === 'rejected' || (dispatch.status === 'skipped' && dispatch.reason)) console.warn(JSON.stringify(entry));
+  else console.log(JSON.stringify(entry));
 }
 
 async function runScheduled(cron, env) {
@@ -147,17 +125,12 @@ export default {
     if (url.pathname.startsWith('/api/')) return handleApi(request, env, ctx);
     return env.ASSETS.fetch(request);
   },
-  async scheduled(controller, env, ctx) {
-    ctx.waitUntil(runScheduled(controller.cron, env));
-  },
+  async scheduled(controller, env, ctx) { ctx.waitUntil(runScheduled(controller.cron, env)); },
   async queue(batch, env) {
     for (const message of batch.messages) {
       const result = await consumeCrawlMessage(env, message.body);
-      if (result.status === 'failed') {
-        console.error(JSON.stringify({ event: 'crawl_queue_job_failed', ...result }));
-      } else {
-        console.log(JSON.stringify({ event: 'crawl_queue_job_completed', ...result }));
-      }
+      if (result.status === 'failed') console.error(JSON.stringify({ event: 'crawl_queue_job_failed', ...result }));
+      else console.log(JSON.stringify({ event: 'crawl_queue_job_completed', ...result }));
       const health = await getSyncHealth(env);
       logSyncHealth(health);
       message.ack();

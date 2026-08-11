@@ -129,44 +129,6 @@ jobs:
           jq -e '.[] | select(.name == "CRAWL_RELAY_TOKEN")' <<< "$secrets" >/dev/null
           echo "Shared relay secrets are registered in Cloudflare."
 
-      - name: Probe AudioUnion full-search page 1
-        shell: bash
-        run: |
-          set -euo pipefail
-          relay_token="$(aws lambda get-function-configuration \
-            --region "$AWS_REGION" \
-            --function-name "$FUNCTION_NAME" \
-            --query 'Environment.Variables.RELAY_TOKEN' \
-            --output text)"
-          relay_url="$(aws lambda get-function-url-config \
-            --region "$AWS_REGION" \
-            --function-name "$FUNCTION_NAME" \
-            --query 'FunctionUrl' \
-            --output text)"
-          target='https://www.audiounion.jp/ct/search?m=used&p=1&q=&s=new_enddate&d=1&option=1&order=date_desc'
-          payload="$(jq -nc --arg url "$target" '{url:$url,requestDelayMs:10000,userAgent:"HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)"}')"
-          status="$(curl -sS -o "$RUNNER_TEMP/audiounion-full-search.html" -w '%{http_code}' \
-            -X POST "$relay_url" \
-            -H "Authorization: Bearer $relay_token" \
-            -H 'Content-Type: application/json' \
-            --data "$payload")"
-          echo "AudioUnion full-search upstream status: $status"
-          test "$status" = "200"
-          python3 - "$RUNNER_TEMP/audiounion-full-search.html" <<'PY'
-          import html, re, sys
-          from pathlib import Path
-          text = Path(sys.argv[1]).read_text(errors='replace')
-          ids = list(dict.fromkeys(re.findall(r'/ct/detail/used/(\d+)/?', text, re.I)))
-          pages = sorted({int(v) for v in re.findall(r'[?&]p=(\d+)', html.unescape(text)) if int(v) >= 1})
-          stripped = re.sub(r'<[^>]+>', ' ', text)
-          stripped = re.sub(r'\s+', ' ', html.unescape(stripped))
-          count_candidates = re.findall(r'(?:全|検索結果|該当)[^0-9]{0,12}([0-9,]{1,8})\s*件', stripped)
-          print(f'full_search_unique_products_page1={len(ids)}')
-          print(f'full_search_pagination_pages={pages[:30]} max={max(pages) if pages else 1}')
-          print(f'full_search_count_candidates={count_candidates[:10]}')
-          print(f'full_search_has_sales_price={"販売価格" in stripped}')
-          PY
-
       - name: Verify deployment
         run: |
           aws lambda get-function-configuration \

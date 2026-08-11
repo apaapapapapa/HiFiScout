@@ -31,43 +31,10 @@ jobs:
         run: npx wrangler d1 migrations apply DB --remote
       - name: Deploy Worker and static assets
         run: npx wrangler deploy
-      - name: Record AudioUnion diagnostic start
-        shell: bash
-        run: echo "AUDIOUNION_DIAG_STARTED_AT=$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')" >> "$GITHUB_ENV"
-      - name: Wait for scheduled AudioUnion diagnostic crawl
-        shell: bash
-        run: |
-          set -euo pipefail
-          for attempt in $(seq 1 18); do
-            result="$(npx wrangler d1 execute DB --remote --json --command "
-              SELECT id, started_at, finished_at, status, item_count, page_count, message
-              FROM crawl_runs
-              WHERE shop_key = 'audiounion' AND started_at >= '${AUDIOUNION_DIAG_STARTED_AT}'
-              ORDER BY id DESC LIMIT 1;")"
-            row="$(jq -c '.[0].results[0] // {}' <<< "$result")"
-            status="$(jq -r '.status // ""' <<< "$row")"
-            message="$(jq -r '.message // ""' <<< "$row")"
-            echo "AudioUnion scheduled diagnostic: status=$status message=$message ($attempt/18)"
-            if [ "$status" = "success" ] && [[ "$message" == *"diag="* ]]; then
-              jq . <<< "$row"
-              exit 0
-            fi
-            if [ "$status" = "failed" ]; then
-              jq . <<< "$row"
-              exit 1
-            fi
-            sleep 10
-          done
-          echo "AudioUnion scheduled diagnostic crawl did not finish with diagnostics."
-          exit 1
-      - name: Inspect AudioUnion sync state
-        run: >-
-          npx wrangler d1 execute DB --remote --command
-          "SELECT shop_key, last_attempt_at, last_success_at, consecutive_failures, last_error, last_item_count, queued_at FROM shop_sync_state WHERE shop_key = 'audiounion'"
       - name: Check production health
         shell: bash
         run: |
           set -euo pipefail
           response="$(curl -sS --retry 3 --retry-delay 2 https://hifiscout.raha3415kohei.workers.dev/api/health)"
           echo "$response" | jq .
-          echo "$response" | jq -e '.shops[] | select(.shopKey == "audiounion")'
+          echo "$response" | jq -e '.shops[] | select(.shopKey == "audiounion" and .configured == true)'

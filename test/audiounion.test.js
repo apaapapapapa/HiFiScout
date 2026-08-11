@@ -7,7 +7,7 @@ test('Audio Union uses only the allowed new-arrival used feed', () => {
   assert.deepEqual(urls, ['https://www.audiounion.jp/st/new_arrival_used.html']);
 });
 
-test('Audio Union parses used detail id and yen HTML entity', () => {
+test('Audio Union treats a listing with a sales price as in stock', () => {
   const html = `
     <article>
       <div>中古</div>
@@ -18,6 +18,7 @@ test('Audio Union parses used detail id and yen HTML entity', () => {
   assert.equal(item.sourceId, '226086');
   assert.equal(item.manufacturer, 'KEF');
   assert.equal(item.priceYen, 139800);
+  assert.equal(item.stockStatus, 'in_stock');
   assert.equal(item.sourceUrl, 'https://www.audiounion.jp/ct/detail/used/226086/');
 });
 
@@ -38,4 +39,5 @@ test('Audio Union prefers the richer duplicate link and current product price', 
   assert.equal(dcs.manufacturer, 'dCS');
   assert.equal(dcs.model, 'Bartok DAC+ (with Headphone Amplifier)');
   assert.equal(dcs.priceYen, 1798000);
+  assert.equal(dcs.stockStatus, 'in_stock');
 });
