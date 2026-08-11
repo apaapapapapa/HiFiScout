@@ -81,6 +81,19 @@ test('Audio Union handles multi-word manufacturers as full titles or split candi
   assert.deepEqual({ manufacturer: linear.manufacturer, model: linear.model }, { manufacturer: 'LINEAR TECHNOLOGY', model: 'LT-1' });
 });
 
+test('Audio Union preserves uncatalogued manufacturers containing digits when detail repeats the prefix', () => {
+  const html = `
+    <article>
+      <a href="https://www.audiounion.jp/ct/detail/used/300007/">3D Lab</a>
+      <a href="https://www.audiounion.jp/ct/detail/used/300007/">3D Lab Nano Network Player</a>
+      <div>販売価格: &yen;248,000</div>
+    </article>`;
+
+  const [item] = audioUnionAdapter.parse(html, 'https://www.audiounion.jp/st/new_arrival_used.html');
+  assert.equal(item.manufacturer, '3D Lab');
+  assert.equal(item.model, 'Nano Network Player');
+});
+
 test('Audio Union prefers the richer duplicate link and current product price', () => {
   const html = `
     <article>
