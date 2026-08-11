@@ -60,6 +60,37 @@ test('verified exact catalog match classifies before seller detail enrichment', 
   assert.equal(result.products[0].metadata.categoryClassification.catalogMatchType, 'exact');
 });
 
+test('verified rows without an explicit primary category are not used for classification', async () => {
+  const product = normalizeCatalogProduct({
+    sourceId: 'abc1',
+    manufacturer: 'Marantz',
+    model: 'ABC-1',
+    title: 'Marantz ABC-1',
+    rawCategory: 'DAP'
+  }, fujiyaAvicAdapter);
+  const db = catalogDb([{
+    id: 10,
+    manufacturer_id: 'marantz',
+    canonical_model: 'ABC-1',
+    normalized_model: 'ABC-1',
+    canonical_name: 'ABC-1',
+    category_id: 'pre_amp',
+    is_primary: 0
+  }]);
+
+  const result = await enrichProductCategories({
+    db,
+    adapter: { ...fujiyaAvicAdapter, extractDetailCategoryEvidence: undefined },
+    products: [product],
+    transport: {},
+    fetchOptions: {},
+    now: new Date('2026-08-11T10:00:00Z')
+  });
+
+  assert.equal(result.catalogMatches, 0);
+  assert.equal(result.products[0].classificationStatus, 'unclassified');
+});
+
 test('ambiguous model aliases are not used as verified evidence', async () => {
   const product = normalizeCatalogProduct({
     sourceId: 'alias1',
