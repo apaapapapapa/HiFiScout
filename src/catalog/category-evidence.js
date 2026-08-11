@@ -2,6 +2,7 @@ import { normalizeCategory } from './categories.js';
 import { inferExplicitCategoryIds } from './category-rules.js';
 
 const MODES = new Set(['authoritative', 'corroborative', 'ignore']);
+const BROAD_SELLER_CATEGORY_IDS = new Set(['speaker_other', 'other_accessory']);
 
 function mode(value, fallback) {
   return MODES.has(value) ? value : fallback;
@@ -22,7 +23,8 @@ export function resolveCategoryPolicy(adapter = {}) {
       default: mode(seller.default, legacyPrefer ? 'corroborative' : 'authoritative'),
       categories: { ...(seller.categories || {}) }
     },
-    parserHint: mode(requested.parserHint, legacyPrefer ? 'corroborative' : 'authoritative'),
+    // Parser output is a hint, never stronger than an explicit product title.
+    parserHint: mode(requested.parserHint, 'corroborative'),
     enrichment: {
       maxRequestsPerCrawl: Math.max(0, Number(requested.enrichment?.maxRequestsPerCrawl) || 0),
       cacheHours: Math.max(1, Number(requested.enrichment?.cacheHours) || 168)
@@ -30,67 +32,45 @@ export function resolveCategoryPolicy(adapter = {}) {
   };
 }
 
-export function categoryEvidenceFromText(text, {
-  source = 'title',
-  strength = 'strong',
-  context = 'title'
-} = {}) {
+export function categoryEvidenceFromText(text, { source = 'title', strength = 'strong', context = 'title' } = {}) {
   const categoryIds = inferExplicitCategoryIds(text, { context });
-  if (!categoryIds.length) return [];
-  return [{ categoryIds, source, strength, value: String(text || '') }];
+  return categoryIds.length ? [{ categoryIds: [categoryIds[0]], source, strength, value: String(text || '') }] : [];
 }
 
 function sellerCategoryCandidates(rawCategory, categoryMapping) {
   if (!rawCategory) return null;
   const normalized = normalizeCategory({ rawCategory, categoryMapping });
-  if (normalized.classificationStatus !== 'classified') return null;
-  return normalized;
+  if (normalized.classificationStatus === 'classified') return normalized;
+  const inferred = inferExplicitCategoryIds(rawCategory, { context: 'seller' });
+  if (!inferred.length) return null;
+  return { ...normalized, primaryCategoryId: inferred[0], categoryIds: [inferred[0]], classificationStatus: 'classified', classificationSource: 'raw_inference' };
 }
 
 export function sellerCategoryEvidence(rawCategory, categoryMapping, policy) {
   const normalized = sellerCategoryCandidates(rawCategory, categoryMapping);
   if (!normalized) return [];
-
-  // Free-text inference from a broad seller label is never authoritative by itself.
-  const inferredBroadLabel = normalized.classificationSource === 'raw_inference';
+  // Broad seller buckets such as "speaker" or "accessory" are useful fallback evidence,
+  // but must not override a more specific explicit title such as bookshelf speaker or cable.
+  const inferredBroadLabel = normalized.classificationSource === 'raw_inference' || BROAD_SELLER_CATEGORY_IDS.has(normalized.primaryCategoryId);
   const fallbackMode = inferredBroadLabel ? 'corroborative' : policy.sellerCategory.default;
-  const groups = new Map();
-
-  for (const categoryId of normalized.categoryIds) {
-    const requestedMode = mode(policy.sellerCategory.categories?.[categoryId], fallbackMode);
-    const strength = strengthForMode(requestedMode);
-    if (!strength) continue;
-    if (!groups.has(strength)) groups.set(strength, []);
-    groups.get(strength).push(categoryId);
-  }
-
-  return [...groups.entries()].map(([strength, categoryIds]) => ({
-    categoryIds,
-    source: 'seller_category',
-    strength,
-    value: String(rawCategory)
-  }));
+  const categoryId = normalized.primaryCategoryId;
+  const requestedMode = mode(policy.sellerCategory.categories?.[categoryId], fallbackMode);
+  const strength = strengthForMode(requestedMode);
+  return strength ? [{ categoryIds: [categoryId], source: 'seller_category', strength, value: String(rawCategory) }] : [];
 }
 
 export function parserHintEvidence(hintedCategory, policy) {
   if (!hintedCategory || policy.parserHint === 'ignore') return [];
   const normalized = normalizeCategory({ hintedCategory });
-  if (normalized.classificationStatus !== 'classified') return [];
-  // The legacy parser uses "その他" as its unknown sentinel. It is not evidence that
-  // the seller deliberately classified the item as the canonical "other" category.
-  if (normalized.primaryCategoryId === 'other') return [];
+  const categoryIds = normalized.classificationStatus === 'classified'
+    ? normalized.categoryIds
+    : inferExplicitCategoryIds(hintedCategory, { context: 'hint' });
+  if (!categoryIds.length || categoryIds[0] === 'other') return [];
   const strength = strengthForMode(policy.parserHint);
-  return strength ? [{
-    categoryIds: normalized.categoryIds,
-    source: 'parser_hint',
-    strength,
-    value: String(hintedCategory)
-  }] : [];
+  return strength ? [{ categoryIds: [categoryIds[0]], source: 'parser_hint', strength, value: String(hintedCategory) }] : [];
 }
 
-export function collectListingCategoryEvidence({
-  title = '', rawCategory = '', hintedCategory = '', categoryMapping = {}, adapter = {}
-} = {}) {
+export function collectListingCategoryEvidence({ title = '', rawCategory = '', hintedCategory = '', categoryMapping = {}, adapter = {} } = {}) {
   const policy = resolveCategoryPolicy(adapter);
   const evidence = [
     ...sellerCategoryEvidence(rawCategory, categoryMapping, policy),

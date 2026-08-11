@@ -6,6 +6,7 @@ import {
   getShopMaxPages,
   getShopRequestDelayMs
 } from '../config.js';
+import { syncObservedProductFeatureFacts } from '../db/product-feature-repository.js';
 import { syncProductMetadata } from '../db/product-metadata-repository.js';
 import { upsertProducts } from '../db/products.js';
 import {
@@ -236,6 +237,7 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
       observedAt,
       { deactivateMissing, touchIntervalMinutes: settings.productTouchIntervalMinutes }
     );
+    const featureFactCount = await syncObservedProductFeatureFacts(env.DB, adapter.key, products, observedAt);
     const metadataChangedCount = await syncProductMetadata(env.DB, adapter.key, products, observedAt);
     await markShopSuccess(env.DB, adapter.key, observedAt, items.size);
     const diagnosticParts = [];
@@ -255,7 +257,7 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
       finishedAt: observedAt,
       itemCount: items.size,
       pageCount,
-      message: `${changedCount} changed, ${activityCount} activity, ${metadataChangedCount} metadata changed, ${touchedCount} touched, ${deactivatedCount} deactivated${diagnosticSuffix}`
+      message: `${changedCount} changed, ${activityCount} activity, ${featureFactCount} feature facts, ${metadataChangedCount} metadata changed, ${touchedCount} touched, ${deactivatedCount} deactivated${diagnosticSuffix}`
     });
     return {
       shopKey: adapter.key,
@@ -264,6 +266,7 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
       pageCount,
       changedCount,
       activityCount,
+      featureFactCount,
       metadataChangedCount,
       touchedCount,
       deactivatedCount,
