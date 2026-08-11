@@ -1,4 +1,4 @@
-import { createKnowledgeSourceVerifier } from './catalog/knowledge-source-verifier.js';
+import { createKnowledgeSourceVerifier, knowledgeSourceDefinitions } from './catalog/knowledge-source-verifier.js';
 import { createRobotsRespectingFetch } from './crawler/robots-respecting-fetch.js';
 import {
   listDueKnowledgeCatalogProducts,
@@ -50,6 +50,8 @@ export async function runKnowledgeCatalogSourceVerification(env, {
     userAgent: env.CRAWLER_USER_AGENT || 'HiFiScoutBot/0.1',
     minimumDelayMs: Number(env.KNOWLEDGE_CATALOG_SOURCE_REQUEST_DELAY_MS) || 500
   });
+  const sourceDefinitions = knowledgeSourceDefinitions(env);
+  const supportedManufacturerIds = [...sourceDefinitions.keys()];
   const verifier = createKnowledgeSourceVerifier(env, { fetchImpl: sourceFetch });
   const candidateLimit = boundedLimit(env.KNOWLEDGE_CATALOG_VERIFY_MAX_CANDIDATES, 25);
   const dueProductLimit = boundedLimit(env.KNOWLEDGE_CATALOG_VERIFY_MAX_DUE_PRODUCTS, 25);
@@ -82,7 +84,11 @@ export async function runKnowledgeCatalogSourceVerification(env, {
     }
   }
 
-  const candidates = await listPendingKnowledgeCatalogCandidates(env.DB, candidateLimit);
+  const candidates = await listPendingKnowledgeCatalogCandidates(
+    env.DB,
+    candidateLimit,
+    supportedManufacturerIds
+  );
   for (const candidate of candidates) {
     const verification = await verifier.verifyCandidate(candidate);
     verificationAttempts += 1;
@@ -124,6 +130,7 @@ export async function runKnowledgeCatalogSourceVerification(env, {
     unsupportedCandidates,
     verificationOutcomes,
     dueProductsChecked: dueProducts.length,
-    candidatesChecked: candidates.length
+    candidatesChecked: candidates.length,
+    supportedManufacturers: supportedManufacturerIds.length
   };
 }
