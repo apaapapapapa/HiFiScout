@@ -7,7 +7,6 @@ import { buildSyncHealth, getSyncHealth, logSyncHealth } from './health.js';
 import { runRetentionCleanup } from './maintenance.js';
 
 const AUDIOUNION_CRON = '1 * * * *';
-const AUDIOUNION_DIAGNOSTIC_CRON = '* * * * *';
 const RETENTION_CRON = '17 18 * * *';
 
 function json(data, init = {}) {
@@ -110,7 +109,7 @@ function logDispatchResult(cron, dispatch) {
 
 async function runScheduled(cron, env) {
   if (cron === RETENTION_CRON) return runRetentionCleanup(env);
-  const dispatch = (cron === AUDIOUNION_CRON || cron === AUDIOUNION_DIAGNOSTIC_CRON)
+  const dispatch = cron === AUDIOUNION_CRON
     ? await dispatchScheduledCrawl(env, 'audiounion')
     : await dispatchDueCrawls(env, { excludeShopKeys: ['audiounion'] });
   logDispatchResult(cron, dispatch);
