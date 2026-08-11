@@ -14,7 +14,13 @@
       <h1>HiFiScout</h1>
       <p class="lead">中古オーディオを、ショップをまたいで探す。</p>
     </div>
-    <div id="sync-status" class="sync-status">同期状況を取得中…</div>
+    <details id="sync-status" class="sync-status">
+      <summary>
+        <span class="sync-indicator" aria-hidden="true"></span>
+        <span id="sync-summary-text">同期状況を取得中…</span>
+      </summary>
+      <div id="sync-status-details" class="sync-status-details"></div>
+    </details>
   </header>
 
   <main>
@@ -43,6 +49,8 @@
       <label><span>最低価格</span><input id="minPrice" inputmode="numeric" placeholder="0"></label>
       <label><span>最高価格</span><input id="maxPrice" inputmode="numeric" placeholder="1000000"></label>
       <label class="check"><input id="inStock" type="checkbox" checked><span>在庫ありのみ</span></label>
+      <label class="check"><input id="recentOnly" type="checkbox"><span>48時間以内の新着</span></label>
+      <label class="check"><input id="priceDropped" type="checkbox"><span>値下げ商品</span></label>
       <label class="check"><input id="favoritesOnly" type="checkbox"><span>お気に入りのみ <small id="favorites-count">(0)</small></span></label>
 
       <div class="filter-actions">
@@ -54,7 +62,10 @@
     <div id="active-filters" class="active-filters" aria-live="polite"></div>
 
     <div class="result-header">
-      <div class="result-count"><strong id="count">—</strong><span id="count-label">件表示</span></div>
+      <div class="result-count">
+        <strong id="count">—</strong><span id="count-label">件を表示中</span>
+        <span id="more-available" class="more-available" hidden>さらに商品があります</span>
+      </div>
       <span id="loading" class="loading" role="status" aria-live="polite">更新中</span>
       <div class="result-tools">
         <label class="sort-control"><span>並び順</span><select id="sort"><option value="newest">新着・更新順</option><option value="priceAsc">価格が安い順</option><option value="priceDesc">価格が高い順</option></select></label>
