@@ -6,11 +6,11 @@
   "scripts": {
     "test": "node --test",
     "dev": "wrangler dev --test-scheduled",
-    "deploy": "wrangler deploy",
-    "db:migrate:local": "wrangler d1 migrations apply hifiscout --local",
-    "db:migrate:remote": "wrangler d1 migrations apply hifiscout --remote"
+    "deploy": "wrangler deploy && wrangler d1 migrations apply DB --remote",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote"
   },
   "devDependencies": {
-    "wrangler": "^4.32.0"
+    "wrangler": "^4.45.0"
   }
 }
