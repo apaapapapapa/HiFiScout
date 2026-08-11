@@ -133,6 +133,24 @@ function listingChanged(existing, product) {
     Number(existing.is_active) !== 1;
 }
 
+function activityChanged(existing, product) {
+  const current = catalogFields(product);
+  const previous = existingCatalogFields(existing);
+
+  // Only seller-observed listing changes should move an item back to the top of the
+  // user-facing feed. Derived catalog normalization changes are persisted, but must
+  // not create artificial "new" activity when classification rules are improved.
+  return previous.rawManufacturer !== current.rawManufacturer ||
+    existing.model !== product.model ||
+    existing.title !== product.title ||
+    previous.rawCategory !== current.rawCategory ||
+    existing.condition_text !== product.conditionText ||
+    existing.price_yen !== product.priceYen ||
+    existing.stock_status !== product.stockStatus ||
+    existing.source_url !== product.sourceUrl ||
+    Number(existing.is_active) !== 1;
+}
+
 function categoriesChanged(existing, product) {
   const current = catalogFields(product);
   const previous = existingCatalogFields(existing);
@@ -197,6 +215,7 @@ export async function upsertProducts(
   const categorySyncSourceIds = [];
   const writes = [];
   let changedCount = 0;
+  let activityCount = 0;
   let touchedCount = 0;
 
   for (const product of products) {
@@ -210,20 +229,22 @@ export async function upsertProducts(
           shop_key, source_id, manufacturer, raw_manufacturer, manufacturer_id, model, title,
           category, raw_category, primary_category_id, category_ids, classification_status, search_aliases,
           condition_text, price_yen, previous_price_yen, stock_status, source_url,
-          first_seen_at, last_seen_at, last_changed_at, is_active
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, 1)
+          first_seen_at, last_seen_at, last_changed_at, last_activity_at, is_active
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 1)
       `).bind(
         shopKey, product.sourceId, product.manufacturer, fields.rawManufacturer, fields.manufacturerId,
         product.model, product.title, product.category, fields.rawCategory, fields.primaryCategoryId,
         fields.categoryIdsJson, fields.classificationStatus, fields.searchAliases, product.conditionText,
-        product.priceYen, product.stockStatus, product.sourceUrl, observedAt, observedAt, observedAt
+        product.priceYen, product.stockStatus, product.sourceUrl, observedAt, observedAt, observedAt, observedAt
       ));
       changedCount += 1;
+      activityCount += 1;
       continue;
     }
 
     const priceChanged = existing.price_yen !== product.priceYen && product.priceYen != null;
     const changed = listingChanged(existing, product);
+    const hasActivity = activityChanged(existing, product);
     if (priceChanged) changedPriceSourceIds.push(product.sourceId);
     if (categoriesChanged(existing, product)) categorySyncSourceIds.push(product.sourceId);
 
@@ -235,16 +256,19 @@ export async function upsertProducts(
           classification_status = ?, search_aliases = ?, condition_text = ?,
           previous_price_yen = CASE WHEN ? THEN price_yen ELSE previous_price_yen END,
           price_yen = ?, stock_status = ?, source_url = ?, last_seen_at = ?,
-          last_changed_at = ?, is_active = 1
+          last_changed_at = ?,
+          last_activity_at = CASE WHEN ? THEN ? ELSE last_activity_at END,
+          is_active = 1
         WHERE id = ?
       `).bind(
         product.manufacturer, fields.rawManufacturer, fields.manufacturerId, product.model, product.title,
         product.category, fields.rawCategory, fields.primaryCategoryId, fields.categoryIdsJson,
         fields.classificationStatus, fields.searchAliases, product.conditionText,
         priceChanged ? 1 : 0, product.priceYen, product.stockStatus, product.sourceUrl, observedAt,
-        observedAt, existing.id
+        observedAt, hasActivity ? 1 : 0, observedAt, existing.id
       ));
       changedCount += 1;
+      if (hasActivity) activityCount += 1;
     } else if (shouldTouch(existing, observedAt, touchIntervalMinutes)) {
       writes.push(db.prepare('UPDATE products SET last_seen_at = ? WHERE id = ?').bind(observedAt, existing.id));
       touchedCount += 1;
@@ -267,7 +291,7 @@ export async function upsertProducts(
     ? await deactivateProductsBySourceIds(db, shopKey, missingSourceIds)
     : 0;
 
-  return { changedCount, touchedCount, deactivatedCount };
+  return { changedCount, activityCount, touchedCount, deactivatedCount };
 }
 
 function encodeCursor(payload) {
@@ -298,11 +322,12 @@ function ftsPhrase(value) {
 
 function sortDefinition(sortKey) {
   return {
-    newest: { key: 'newest', column: 'first_seen_at', direction: 'DESC', idDirection: 'DESC' },
-    updated: { key: 'updated', column: 'last_changed_at', direction: 'DESC', idDirection: 'DESC' },
+    newest: { key: 'newest', column: 'last_activity_at', direction: 'DESC', idDirection: 'DESC' },
+    // Backward-compatible API alias. The UI exposes only the unified activity feed.
+    updated: { key: 'updated', column: 'last_activity_at', direction: 'DESC', idDirection: 'DESC' },
     priceAsc: { key: 'priceAsc', column: 'price_yen', direction: 'ASC', idDirection: 'ASC', price: true },
     priceDesc: { key: 'priceDesc', column: 'price_yen', direction: 'DESC', idDirection: 'DESC', price: true }
-  }[sortKey] || { key: 'updated', column: 'last_changed_at', direction: 'DESC', idDirection: 'DESC' };
+  }[sortKey] || { key: 'newest', column: 'last_activity_at', direction: 'DESC', idDirection: 'DESC' };
 }
 
 function addCursorPredicate(where, binds, sort, cursor) {
