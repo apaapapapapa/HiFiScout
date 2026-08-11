@@ -25,7 +25,7 @@ const MANUFACTURERS = [
   ['final', 'final', ['final', 'final audio', 'ファイナル']],
   ['sennheiser', 'Sennheiser', ['sennheiser', 'ゼンハイザー']],
   ['fostex', 'FOSTEX', ['fostex', 'フォステクス']],
-  ['ifi-audio', 'iFi audio', ['ifi', 'ifi audio', 'アイファイ']],
+  ['ifi-audio', 'iFi audio', ['ifi', 'ifi audio', 'ifi audio japan', 'アイファイ']],
   ['dcs', 'dCS', ['dcs']],
   ['lumin', 'LUMIN', ['lumin']],
   ['aurender', 'Aurender', ['aurender', 'オーレンダー']],
@@ -36,7 +36,6 @@ const MANUFACTURERS = [
   ['linn', 'LINN', ['linn', 'リン']],
   ['naim', 'Naim', ['naim', 'ネイム']],
   ['chord', 'Chord Electronics', ['chord', 'chord electronics', 'コード']],
-  ['ifi', 'iFi', ['ifi audio japan']],
   ['ibasso-audio', 'iBasso Audio', ['ibasso', 'ibasso audio', 'アイバッソ', 'アイバッソオーディオ']],
   ['moondrop', '水月雨 (MOONDROP)', ['moondrop', '水月雨', '水月雨(moondrop)', '水月雨（moondrop）', 'スイゲツアメ']]
 ].map(([id, name, aliases]) => Object.freeze({ id, name, aliases }));
