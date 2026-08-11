@@ -37,6 +37,8 @@ const state = {
   legacyFavoriteIds: storedFavorites.legacyIds,
   pages: new Map(),
   currentPage: 1,
+  totalPages: 0,
+  totalItems: null,
   controller: null,
   requestSequence: 0,
   loading: false,
@@ -253,7 +255,7 @@ async function loadMeta() {
   renderSyncStatus(meta);
 }
 
-function productParams(cursor = null) {
+function productParams({ cursor = null, page = 1, includeTotal = false } = {}) {
   const params = new URLSearchParams();
   for (const id of URL_VALUE_IDS) {
     const value = $(id).value.trim();
@@ -264,6 +266,8 @@ function productParams(cursor = null) {
   if ($('priceDropped').checked) params.set('priceDropped', 'true');
   params.set('limit', String(PAGE_SIZE));
   if (cursor) params.set('cursor', cursor);
+  else if (page > 1) params.set('offset', String((page - 1) * PAGE_SIZE));
+  if (includeTotal) params.set('includeTotal', 'true');
   return params;
 }
 
@@ -323,6 +327,8 @@ function applyUrlState() {
 function resetPages() {
   state.pages.clear();
   state.currentPage = 1;
+  state.totalPages = 0;
+  state.totalItems = null;
   state.products = [];
 }
 
@@ -333,24 +339,16 @@ function setLoading(loading) {
 }
 
 function pageNumbers() {
-  const loadedPages = [...state.pages.keys()].sort((a, b) => a - b);
-  const lastLoaded = loadedPages.at(-1) || 1;
-  const lastPage = state.pages.get(lastLoaded);
-  const highestAvailable = lastPage?.hasMore ? lastLoaded + 1 : lastLoaded;
-  const candidates = new Set([1, highestAvailable]);
-  for (let page = Math.max(1, state.currentPage - 2); page <= Math.min(highestAvailable, state.currentPage + 2); page += 1) {
-    candidates.add(page);
-  }
-  return [...candidates].filter(page => page >= 1 && page <= highestAvailable).sort((a, b) => a - b);
+  const total = state.totalPages;
+  if (total <= 0) return [];
+  if (total <= 7) return Array.from({ length: total }, (_, index) => index + 1);
+  if (state.currentPage <= 4) return [1, 2, 3, 4, 5, total];
+  if (state.currentPage >= total - 3) return [1, total - 4, total - 3, total - 2, total - 1, total];
+  return [1, state.currentPage - 1, state.currentPage, state.currentPage + 1, total];
 }
 
 function renderPagination() {
-  if ($('favoritesOnly').checked) {
-    $('pagination').innerHTML = '';
-    return;
-  }
-  const loadedPages = [...state.pages.keys()].sort((a, b) => a - b);
-  if (!loadedPages.length) {
+  if ($('favoritesOnly').checked || !state.pages.size || state.totalPages <= 1) {
     $('pagination').innerHTML = '';
     return;
   }
@@ -360,7 +358,7 @@ function renderPagination() {
   numbers.forEach((page, index) => {
     if (index && page - numbers[index - 1] > 1) parts.push('<span class="page-ellipsis" aria-hidden="true">…</span>');
     const current = page === state.currentPage;
-    parts.push(`<button type="button" class="page-button${current ? ' active' : ''}" data-page="${page}"${current ? ' aria-current="page"' : ''}${state.loading ? ' disabled' : ''}>${page}</button>`);
+    parts.push(`<button type="button" class="page-button${current ? ' active' : ''}" data-page="${page}" aria-label="${page}ページ目"${current ? ' aria-current="page"' : ''}${state.loading ? ' disabled' : ''}>${page}</button>`);
   });
   $('pagination').innerHTML = parts.join('');
 }
@@ -371,6 +369,7 @@ async function loadProducts({ page = 1, reset = false } = {}) {
     return;
   }
   if (reset) resetPages();
+  if (state.totalPages > 0 && page > state.totalPages) return;
   const cachedPage = state.pages.get(page);
   if (cachedPage) {
     state.currentPage = page;
@@ -381,19 +380,25 @@ async function loadProducts({ page = 1, reset = false } = {}) {
   }
 
   const previousPage = page > 1 ? state.pages.get(page - 1) : null;
-  if (page > 1 && (!previousPage || !previousPage.hasMore || !previousPage.nextCursor)) return;
+  const cursor = previousPage?.hasMore && previousPage.nextCursor ? previousPage.nextCursor : null;
 
   state.controller?.abort();
   state.controller = new AbortController();
   const controller = state.controller;
   const sequence = ++state.requestSequence;
-  const params = productParams(previousPage?.nextCursor || null);
+  const params = productParams({
+    cursor,
+    page: cursor ? 1 : page,
+    includeTotal: state.totalPages === 0
+  });
   setLoading(true);
 
   try {
     const result = await fetchJson(`/api/products?${params}`, { signal: controller.signal });
     if (sequence !== state.requestSequence) return;
 
+    if (Number.isInteger(result.totalPages) && result.totalPages >= 0) state.totalPages = result.totalPages;
+    if (Number.isInteger(result.totalCount) && result.totalCount >= 0) state.totalItems = result.totalCount;
     const pageState = {
       items: result.items,
       hasMore: result.hasMore,
@@ -532,10 +537,9 @@ function renderView() {
 function render(errorMessage = '') {
   const favoriteMode = $('favoritesOnly').checked;
   const products = favoriteMode ? favoriteResults() : state.products;
-  const currentPageState = state.pages.get(state.currentPage);
   $('count').textContent = String(products.length);
   $('count-label').textContent = favoriteMode ? '件のお気に入り' : '件を表示中';
-  $('more-available').hidden = favoriteMode || errorMessage || !currentPageState?.hasMore;
+  $('more-available').hidden = favoriteMode || errorMessage || state.currentPage >= state.totalPages;
   $('favorites-note').hidden = !favoriteMode;
   const legacyNotice = favoriteMode && state.legacyFavoriteIds.size
     ? `<div class="legacy-favorites-note">旧形式で保存されたお気に入りが${state.legacyFavoriteIds.size}件あります。商品一覧で再表示されると、この端末内で自動的に移行されます。</div>`
@@ -686,7 +690,7 @@ document.addEventListener('click', event => {
   const pageButton = event.target.closest('[data-page]');
   if (pageButton && !pageButton.disabled) {
     const page = Number(pageButton.dataset.page);
-    if (Number.isInteger(page) && page > 0 && page !== state.currentPage) {
+    if (Number.isInteger(page) && page > 0 && page <= state.totalPages && page !== state.currentPage) {
       loadProducts({ page }).then(() => $('products').scrollIntoView({ block: 'start', behavior: 'smooth' }));
     }
   }

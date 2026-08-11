@@ -373,11 +373,11 @@ export function validateProductQuery(url) {
     const value = params.get(key);
     if (value != null && [...value].length > maxLength) return `${key}_too_long`;
   }
-  for (const key of ['minPrice', 'maxPrice', 'limit']) {
+  for (const key of ['minPrice', 'maxPrice', 'limit', 'offset']) {
     const value = params.get(key);
     if (value != null && !/^\d{1,12}$/.test(value)) return `${key}_invalid`;
   }
-  for (const key of ['inStock', 'newOnly', 'priceDropped']) {
+  for (const key of ['inStock', 'newOnly', 'priceDropped', 'includeTotal']) {
     const value = params.get(key);
     if (value != null && value !== 'true' && value !== 'false') return `${key}_invalid`;
   }
@@ -443,24 +443,42 @@ export async function listProducts(db, url) {
   const maxPrice = Number.parseInt(params.get('maxPrice') || '', 10);
   if (Number.isFinite(maxPrice)) { where.push('p.price_yen <= ?'); binds.push(maxPrice); }
 
+  const countWhere = [...where];
+  const countBinds = [...binds];
   const sort = sortDefinition(params.get('sort'));
   const cursor = decodeCursor(params.get('cursor'));
   addCursorPredicate(where, binds, sort, cursor);
 
   const requestedLimit = Number.parseInt(params.get('limit') || String(DEFAULT_PAGE_SIZE), 10);
   const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, Number.isFinite(requestedLimit) ? requestedLimit : DEFAULT_PAGE_SIZE));
+  const requestedOffset = Number.parseInt(params.get('offset') || '0', 10);
+  const offset = Number.isFinite(requestedOffset) ? Math.max(0, requestedOffset) : 0;
+  const includeTotal = params.get('includeTotal') === 'true';
   const orderBy = sort.price
     ? `p.price_yen ${sort.direction} NULLS LAST, p.id ${sort.idDirection}`
     : `p.${sort.column} ${sort.direction}, p.id ${sort.idDirection}`;
 
+  let totalCount = null;
+  if (includeTotal) {
+    const countResult = await db.prepare(`
+      SELECT COUNT(*) AS total
+      FROM products p
+      ${join}
+      WHERE ${countWhere.join(' AND ')}
+    `).bind(...countBinds).all();
+    totalCount = Number(countResult.results?.[0]?.total || 0);
+  }
+
+  const paginationSql = offset > 0 ? 'LIMIT ? OFFSET ?' : 'LIMIT ?';
+  const paginationBinds = offset > 0 ? [limit + 1, offset] : [limit + 1];
   const result = await db.prepare(`
     SELECT p.*
     FROM products p
     ${join}
     WHERE ${where.join(' AND ')}
     ORDER BY ${orderBy}
-    LIMIT ?
-  `).bind(...binds, limit + 1).all();
+    ${paginationSql}
+  `).bind(...binds, ...paginationBinds).all();
 
   const rows = result.results || [];
   const hasMore = rows.length > limit;
@@ -469,7 +487,8 @@ export async function listProducts(db, url) {
   return {
     items,
     hasMore,
-    nextCursor: hasMore && last ? cursorFor(last, sort) : null
+    nextCursor: hasMore && last ? cursorFor(last, sort) : null,
+    ...(includeTotal ? { totalCount, totalPages: Math.ceil(totalCount / limit) } : {})
   };
 }
 
