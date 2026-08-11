@@ -50,6 +50,41 @@ test('relay transport preserves upstream crawl status', async () => {
   );
 });
 
+test('relay status-aware fetch returns upstream 404 without throwing', async () => {
+  const fetcher = createRelayHtmlFetcher({
+    relayUrl: 'https://relay.example/',
+    relayToken: 'secret-token',
+    fetchFn: async () => new Response('<html>missing</html>', {
+      status: 404,
+      headers: {
+        'content-type': 'text/html; charset=utf-8',
+        'x-hifiscout-upstream-status': '404'
+      }
+    })
+  });
+
+  const page = await fetcher.fetchPage('https://www.audiounion.jp/ct/detail/used/123/');
+  assert.equal(page.status, 404);
+  assert.equal(page.contentType, 'text/html; charset=utf-8');
+  assert.equal(page.body, '<html>missing</html>');
+});
+
+test('relay status-aware fetch distinguishes robots rejection from upstream status', async () => {
+  const fetcher = createRelayHtmlFetcher({
+    relayUrl: 'https://relay.example/',
+    relayToken: 'secret-token',
+    fetchFn: async () => new Response('{"error":"robots_disallowed"}', {
+      status: 409,
+      headers: { 'content-type': 'application/json' }
+    })
+  });
+
+  await assert.rejects(
+    fetcher.fetchPage('https://www.audiounion.jp/ct/detail/used/123/'),
+    error => error?.relayStatus === 409 && error?.code === 'robots_disallowed'
+  );
+});
+
 test('relay transport refuses missing credentials', async () => {
   const fetcher = createRelayHtmlFetcher({ relayUrl: '', relayToken: '' });
   await assert.rejects(
