@@ -1,8 +1,9 @@
 import { classifyCategoryEvidence, summarizeCategoryEvidence } from './category-classifier.js';
 import { collectListingCategoryEvidence } from './category-evidence.js';
 import { normalizeManufacturer } from './manufacturers.js';
+import { inferFeatureFacts, normalizeFeatureFacts } from './product-features.js';
 
-const CLASSIFICATION_METADATA_VERSION = 2;
+const CLASSIFICATION_METADATA_VERSION = 3;
 
 function clean(value = '') {
   return String(value).normalize('NFKC').replace(/\s+/g, ' ').trim();
@@ -23,13 +24,9 @@ function classificationMetadata(classification, evidence, existing = {}) {
 }
 
 export function applyCategoryClassification(product, classification, evidence = product.categoryEvidence || [], metadataPatch = {}) {
-  const metadata = product.metadata && typeof product.metadata === 'object' && !Array.isArray(product.metadata)
-    ? product.metadata
-    : {};
+  const metadata = product.metadata && typeof product.metadata === 'object' && !Array.isArray(product.metadata) ? product.metadata : {};
   const previousClassification = metadata.categoryClassification && typeof metadata.categoryClassification === 'object'
-    ? metadata.categoryClassification
-    : {};
-
+    ? metadata.categoryClassification : {};
   return {
     ...product,
     primaryCategoryId: classification.primaryCategoryId,
@@ -44,10 +41,7 @@ export function applyCategoryClassification(product, classification, evidence = 
     categoryEvidence: evidence,
     metadata: {
       ...metadata,
-      categoryClassification: classificationMetadata(classification, evidence, {
-        ...previousClassification,
-        ...metadataPatch
-      })
+      categoryClassification: classificationMetadata(classification, evidence, { ...previousClassification, ...metadataPatch })
     }
   };
 }
@@ -65,13 +59,18 @@ export function normalizeCatalogProduct(product, adapter = {}) {
     adapter
   });
   const classification = classifyCategoryEvidence(evidence);
+  const featureFacts = normalizeFeatureFacts([
+    ...(Array.isArray(product.featureFacts) ? product.featureFacts : []),
+    ...inferFeatureFacts(product.title || '', { source: 'title', confidence: 0.8 })
+  ]);
 
   return applyCategoryClassification({
     ...product,
     rawManufacturer,
     manufacturerId: manufacturer.id,
     manufacturer: manufacturer.displayName,
-    rawCategory
+    rawCategory,
+    featureFacts
   }, classification, evidence);
 }
 
