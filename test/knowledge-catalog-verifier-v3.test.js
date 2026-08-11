@@ -26,13 +26,13 @@ test('catalog lookup aliases preserve meaningful revisions and do not reinterpre
   assert.ok(variants('final', 'D8000 Pro Limited Edition').includes('D8000 PRO LIMITED EDITION'));
 });
 
-test('official taxonomy covers soundbars, tuners, dividers, equalizers, clocks and AV receivers', () => {
-  assert.deepEqual(inferExplicitCategoryIds('DHT-S217 Soundbar', { context: 'detail' }), ['soundbar']);
-  assert.deepEqual(inferExplicitCategoryIds('T-11 FM Stereo Tuner', { context: 'detail' }), ['tuner']);
-  assert.deepEqual(inferExplicitCategoryIds('DF-65 Digital Frequency Dividing Network', { context: 'detail' }), ['crossover']);
-  assert.deepEqual(inferExplicitCategoryIds('DG-68 Digital Voicing Equalizer', { context: 'detail' }), ['equalizer']);
-  assert.deepEqual(inferExplicitCategoryIds('G-02 Master Clock Generator', { context: 'detail' }), ['clock_generator']);
-  assert.deepEqual(inferExplicitCategoryIds('RX-V4A AV Receiver', { context: 'detail' }), ['av_receiver']);
+test('official product classes resolve without expanding the canonical UI taxonomy', () => {
+  assert.deepEqual(inferExplicitCategoryIds('DHT-S217 Soundbar', { context: 'detail' }), ['speaker_other']);
+  assert.deepEqual(inferExplicitCategoryIds('T-11 FM Stereo Tuner', { context: 'detail' }), ['other']);
+  assert.deepEqual(inferExplicitCategoryIds('DF-65 Digital Frequency Dividing Network', { context: 'detail' }), ['other']);
+  assert.deepEqual(inferExplicitCategoryIds('DG-68 Digital Voicing Equalizer', { context: 'detail' }), ['other']);
+  assert.deepEqual(inferExplicitCategoryIds('G-02 Master Clock Generator', { context: 'detail' }), ['other_accessory']);
+  assert.deepEqual(inferExplicitCategoryIds('RX-V4A AV Receiver', { context: 'detail' }), ['other']);
   assert.deepEqual(inferExplicitCategoryIds('GT-2000 ダストカバー', { context: 'title' }), ['other_accessory']);
 });
 
@@ -71,5 +71,5 @@ test('v3 inherits the nearest official history heading for Accuphase T-11', asyn
   });
 
   assert.equal(result.status, 'verified');
-  assert.equal(result.primaryCategoryId, 'tuner');
+  assert.equal(result.primaryCategoryId, 'other');
 });
