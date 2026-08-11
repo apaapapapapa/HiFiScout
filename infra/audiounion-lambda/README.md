@@ -2,7 +2,7 @@
 
 AudioUnion is fetched through a small AWS Lambda function in the Tokyo region (`ap-northeast-1`). The Lambda only returns the source HTML; parsing, normalization, D1 writes, and crawl-state handling remain in the Cloudflare Worker.
 
-The function URL uses `AuthType: NONE` so Cloudflare can call it without AWS credentials. The function itself requires a high-entropy Bearer token, only permits the configured AudioUnion entry URL, respects `robots.txt`, enforces a minimum request delay, and has reserved concurrency `1`.
+The function URL uses `AuthType: NONE` so Cloudflare can call it without AWS credentials. The function itself requires a high-entropy Bearer token, only permits the configured AudioUnion entry URL, respects `robots.txt`, and enforces a minimum request delay. Normal HiFiScout crawl execution is serialized by the Cloudflare crawl queue (`max_concurrency: 1`). Lambda reserved concurrency is intentionally not configured because AWS accounts with a small Lambda concurrency quota can reject a reservation when it would reduce the account's unreserved concurrency below AWS's required minimum.
 
 ## Deploy to Tokyo
 
@@ -49,6 +49,6 @@ A successful response should be `200`, have an HTML content type, and include `x
 
 - The target URL is fixed to the configured `www.audiounion.jp` entry URL; the Lambda is not a general-purpose proxy.
 - Requests without the Bearer token are rejected before any seller request is made.
-- Reserved concurrency is `1`, preventing parallel seller requests from this function.
+- The normal scheduler path is serialized by the Cloudflare crawl queue; Lambda reserved concurrency is intentionally omitted for compatibility with low-quota AWS accounts.
 - The minimum request delay defaults to 10 seconds; a larger Worker-side delay or `robots.txt` crawl delay wins.
 - The function URL is still public at the network layer, so keep both its URL and Bearer token out of source control. If the service is later exposed broadly, move to IAM/SigV4 authentication.
