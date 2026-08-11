@@ -1,5 +1,11 @@
-import { buildKnowledgeCatalogCandidateAggregates, knowledgeCatalogKey } from '../catalog/knowledge-catalog.js';
+import {
+  accumulateKnowledgeCatalogCandidateRows,
+  finalizeKnowledgeCatalogCandidateAggregates,
+  knowledgeCatalogKey
+} from '../catalog/knowledge-catalog.js';
 import { findVerifiedCatalogMatches } from './knowledge-catalog-repository.js';
+
+const PRODUCT_PAGE_SIZE = 500;
 
 async function runBatches(db, statements, chunkSize = 50) {
   for (let i = 0; i < statements.length; i += chunkSize) {
@@ -7,14 +13,31 @@ async function runBatches(db, statements, chunkSize = 50) {
   }
 }
 
+async function collectActiveCandidateRows(db) {
+  const grouped = new Map();
+  let lastId = 0;
+
+  for (;;) {
+    const observed = await db.prepare(`
+      SELECT id, shop_key, manufacturer_id, manufacturer, model, title, category_ids,
+             classification_status, first_seen_at, last_seen_at
+      FROM products
+      WHERE is_active = 1 AND manufacturer_id <> '' AND model <> '' AND id > ?
+      ORDER BY id
+      LIMIT ?
+    `).bind(lastId, PRODUCT_PAGE_SIZE).all();
+    const rows = observed.results || [];
+    if (!rows.length) break;
+    accumulateKnowledgeCatalogCandidateRows(grouped, rows);
+    lastId = Number(rows[rows.length - 1].id);
+    if (rows.length < PRODUCT_PAGE_SIZE) break;
+  }
+
+  return finalizeKnowledgeCatalogCandidateAggregates(grouped);
+}
+
 export async function refreshKnowledgeCatalogCandidates(db, reviewedAt) {
-  const observed = await db.prepare(`
-    SELECT shop_key, manufacturer_id, manufacturer, model, title, category_ids,
-           classification_status, first_seen_at, last_seen_at
-    FROM products
-    WHERE is_active = 1 AND manufacturer_id <> '' AND model <> ''
-  `).all();
-  const candidates = buildKnowledgeCatalogCandidateAggregates(observed.results || []);
+  const candidates = await collectActiveCandidateRows(db);
   const matches = await findVerifiedCatalogMatches(db, candidates.map(candidate => ({
     manufacturerId: candidate.manufacturerId,
     model: candidate.normalizedModel
