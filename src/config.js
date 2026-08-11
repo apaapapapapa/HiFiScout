@@ -25,7 +25,9 @@ export const SHOP_DEFINITIONS = {
     name: 'フジヤエービック',
     baseUrl: 'https://www.fujiya-avic.co.jp',
     intervalEnv: 'FUJIYA_AVIC_INTERVAL_MINUTES',
-    defaultIntervalMinutes: 30
+    defaultIntervalMinutes: 30,
+    maxPagesEnv: 'FUJIYA_AVIC_MAX_PAGES',
+    defaultMaxPages: 50
   }
 };
 
@@ -36,6 +38,11 @@ export function positiveInt(value, fallback) {
 
 export function getShopIntervalMinutes(env, shop) {
   return positiveInt(env?.[shop.intervalEnv], shop.defaultIntervalMinutes);
+}
+
+export function getShopMaxPages(env, shop, fallback) {
+  if (!shop) return fallback;
+  return positiveInt(env?.[shop.maxPagesEnv], shop.defaultMaxPages || fallback);
 }
 
 export function getCrawlerSettings(env) {

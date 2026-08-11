@@ -32,3 +32,17 @@ test('Hifido crawl interval has independent pages', () => {
   assert.match(pages[1], /O=50/);
   assert.match(pages[2], /O=100/);
 });
+
+
+test('Hifido sold listings are not treated as available', () => {
+  const html = `
+    <div class="item">
+      <a href="/26-50000-10000-00.html">A-75</a>
+      <span>売約済</span>
+      <p>メーカー:Accuphase アキュフェーズ</p>
+      <p>売価:1,200,000円(税込) 売約済み</p>
+      <p>パワーアンプ（トランジスター）</p>
+    </div>`;
+  const [product] = parseHifidoListing(html);
+  assert.equal(product.stockStatus, 'sold_out');
+});

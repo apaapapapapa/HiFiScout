@@ -44,12 +44,13 @@ The cron wakes every five minutes, but each collector has its own interval varia
   "AUDIOUNION_INTERVAL_MINUTES": "30",
   "IPPINKAN_INTERVAL_MINUTES": "30",
   "FUJIYA_AVIC_INTERVAL_MINUTES": "30",
+  "FUJIYA_AVIC_MAX_PAGES": "50",
   "HIFIDO_INTERVAL_MINUTES": "30",
   "AUDIOUNION_ENTRY_URL": ""
 }
 ```
 
-For example, setting Audio Union to 60 and Fujiya Avic to 15 requires only environment configuration; no crawler code change is needed.
+For example, setting Audio Union to 60 and Fujiya Avic to 15 requires only environment configuration; no crawler code change is needed. `FUJIYA_AVIC_MAX_PAGES` is only a safety ceiling; Fujiya pagination is discovered from each current category result count, so unused pages are not requested.
 
 ## Local setup
 
@@ -91,14 +92,14 @@ Query parameters for `/api/products`: `q`, `shop`, `manufacturer`, `category`, `
 
 ## Collector status
 
-The adapter boundary is intentionally isolated under `src/crawler/shops/` because seller HTML changes independently.
+The adapter boundary is intentionally isolated under `src/crawler/shops/` because seller HTML changes independently. The following was re-validated against the current public listing structure on 2026-08-11.
 
-- **逸品館**: initial entry point is the official all-used listing (`/shopbrand/U100000/`) with paginated URLs.
-- **フジヤエービック**: initial entry points cover used home audio and used headphones, 50 items per page.
-- **ハイファイ堂**: the initial adapter reads the official paginated listing and extracts only product ID, manufacturer, model/title, price, category, stock state, and source URL. It does not retain the listing description or images.
-- **Audio Union**: its former `st/new_arrival_used.html` endpoint and current root currently return 404 from external verification. The adapter is implemented but intentionally does not guess or crawl marketplace mirrors. Set `AUDIOUNION_ENTRY_URL` only after the current official/approved source is confirmed. Until then it is skipped rather than treated as a failure.
+- **逸品館**: uses the official all-used listing (`/shopbrand/U100000/`) and its `pageN/order/` pagination. Listing markers such as `『展示機』` are kept only as condition metadata and are removed from the normalized model name.
+- **フジヤエービック**: covers all four current used roots: earphones (`rA-EAPU`), DAP/headphone amps (`rA-HPAU`), headphones (`rA-HDPU`), and amp/speaker/player (`rA-HMLU`). Each root's displayed result count determines its pagination, with `FUJIYA_AVIC_MAX_PAGES` acting only as a safety ceiling. Multi-word makers such as `Bowers & Wilkins` and `iBasso Audio` are normalized without truncation.
+- **ハイファイ堂**: extracts only product ID, manufacturer, model/title, price, category, stock state, and source URL. It does not retain listing descriptions or images. `売約済/売約済み` is sold out; ambiguous states such as `予約中` and `商談中` remain `unknown` instead of being guessed as available.
+- **Audio Union**: its former `st/new_arrival_used.html` endpoint and current root could not be verified as a usable official inventory endpoint. The adapter therefore remains fail-closed and requires `AUDIOUNION_ENTRY_URL`; marketplace mirrors are not substituted automatically.
 
-This fail-closed behavior is deliberate: a site redesign must not erase the local index or trigger aggressive probing.
+If a live page can no longer be parsed, the crawler refuses to mark existing products inactive. Partial/dynamically truncated crawls also do not deactivate missing products.
 
 ## Before any public release
 
