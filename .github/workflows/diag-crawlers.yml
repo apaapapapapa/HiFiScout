@@ -25,8 +25,9 @@ jobs:
           import { ippinkanAdapter } from './src/crawler/shops/ippinkan.js';
           import { hifidoAdapter } from './src/crawler/shops/hifido.js';
 
-          const userAgent = 'HiFiScoutBot/0.1 (+https://github.com/apaapapapa/HiFiScout)';
-          const common = { userAgent, requestDelayMs: 0 };
+          const userAgent = 'HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)';
+          const robotsCache = new Map();
+          const common = { userAgent, requestDelayMs: 0, robotsCache };
 
           for (const url of [
             'https://ippinkan.jp/shopbrand/U100000/',
@@ -40,10 +41,14 @@ jobs:
 
           try {
             const url = 'https://www.hifido.co.jp/?L=50&LNG=J&O=0&OD=0';
-            const html = await fetchHtmlPage(url, { ...common, baseUrl: hifidoAdapter.baseUrl });
-            console.log('HIFIDO unexpected success', hifidoAdapter.parse(html).length);
+            const html = await fetchHtmlPage(url, {
+              userAgent,
+              requestDelayMs: 0,
+              robotsCache: new Map(),
+              baseUrl: hifidoAdapter.baseUrl
+            });
+            console.log('HIFIDO direct fetch succeeded', hifidoAdapter.parse(html).length);
           } catch (error) {
-            console.log('HIFIDO expected source-side block:', error.message);
-            if (!/crawl blocked with HTTP 403/.test(error.message)) throw error;
+            console.log('HIFIDO source-side access unavailable:', error.message);
           }
           NODE
