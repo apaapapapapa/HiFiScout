@@ -4,19 +4,44 @@ async function runBatches(db, statements, chunkSize = 50) {
   }
 }
 
+export async function selectProductsForHistory(db, shopKey, sourceIds, chunkSize = 50) {
+  const uniqueIds = [...new Set(sourceIds)];
+  const rows = [];
+
+  for (let i = 0; i < uniqueIds.length; i += chunkSize) {
+    const chunk = uniqueIds.slice(i, i + chunkSize);
+    if (!chunk.length) continue;
+    const placeholders = chunk.map(() => '?').join(',');
+    const result = await db.prepare(
+      `SELECT id, source_id, price_yen FROM products WHERE shop_key = ? AND source_id IN (${placeholders})`
+    ).bind(shopKey, ...chunk).all();
+    rows.push(...(result.results || []));
+  }
+
+  return rows;
+}
+
+export async function deactivateProductsNotSeenInRun(db, shopKey, observedAt) {
+  // Every product observed in this completed crawl is written with exactly this timestamp.
+  // Comparing timestamps avoids a potentially huge NOT IN (...) list and does not deactivate
+  // rows written by a newer concurrent crawl.
+  await db.prepare(`
+    UPDATE products SET is_active = 0
+    WHERE shop_key = ? AND is_active = 1 AND last_seen_at < ?
+  `).bind(shopKey, observedAt).run();
+}
+
 export async function upsertProducts(db, shopKey, products, observedAt, { deactivateMissing = false } = {}) {
   const existingResult = await db.prepare(
     'SELECT id, source_id, price_yen, stock_status, title FROM products WHERE shop_key = ?'
   ).bind(shopKey).all();
   const existingBySource = new Map((existingResult.results || []).map(row => [row.source_id, row]));
-  const seenSourceIds = [];
   const newSourceIds = [];
   const changedPriceSourceIds = [];
   const writes = [];
   let changedCount = 0;
 
   for (const product of products) {
-    seenSourceIds.push(product.sourceId);
     const existing = existingBySource.get(product.sourceId);
     if (!existing) {
       newSourceIds.push(product.sourceId);
@@ -53,19 +78,15 @@ export async function upsertProducts(db, shopKey, products, observedAt, { deacti
 
   const historySourceIds = [...new Set([...newSourceIds, ...changedPriceSourceIds])];
   if (historySourceIds.length) {
-    const placeholders = historySourceIds.map(() => '?').join(',');
-    const rows = await db.prepare(`SELECT id, source_id, price_yen FROM products WHERE shop_key = ? AND source_id IN (${placeholders})`)
-      .bind(shopKey, ...historySourceIds).all();
-    const historyWrites = (rows.results || [])
+    const rows = await selectProductsForHistory(db, shopKey, historySourceIds);
+    const historyWrites = rows
       .filter(row => row.price_yen != null)
       .map(row => db.prepare('INSERT INTO price_history (product_id, price_yen, observed_at) VALUES (?, ?, ?)').bind(row.id, row.price_yen, observedAt));
     await runBatches(db, historyWrites);
   }
 
-  if (deactivateMissing && seenSourceIds.length) {
-    const placeholders = seenSourceIds.map(() => '?').join(',');
-    await db.prepare(`UPDATE products SET is_active = 0 WHERE shop_key = ? AND source_id NOT IN (${placeholders})`)
-      .bind(shopKey, ...seenSourceIds).run();
+  if (deactivateMissing && products.length) {
+    await deactivateProductsNotSeenInRun(db, shopKey, observedAt);
   }
 
   return { changedCount };
