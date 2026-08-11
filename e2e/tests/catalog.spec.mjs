@@ -184,8 +184,8 @@ test('favorites are stored as product snapshots and rendered without a favorites
     await route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify(cursor
-        ? { items: [second], hasMore: false, nextCursor: null }
-        : { items: [first], hasMore: true, nextCursor: 'cursor-2' })
+        ? { items: [second], hasMore: false, nextCursor: null, totalCount: 2, totalPages: 2 }
+        : { items: [first], hasMore: true, nextCursor: 'cursor-2', totalCount: 2, totalPages: 2 })
     });
   });
 
@@ -246,7 +246,7 @@ test('URL restores search state and recent/price-drop filters reach the API', as
     requests.push(new URL(route.request().url()));
     await route.fulfill({
       contentType: 'application/json',
-      body: JSON.stringify({ items: [product()], hasMore: true, nextCursor: 'cursor-2' })
+      body: JSON.stringify({ items: [product()], hasMore: true, nextCursor: 'cursor-2', totalCount: 2, totalPages: 2 })
     });
   });
 
