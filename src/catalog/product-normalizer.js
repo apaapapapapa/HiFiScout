@@ -7,8 +7,9 @@ function clean(value = '') {
 
 export function normalizeCatalogProduct(product, adapter = {}) {
   const rawManufacturer = clean(product.rawManufacturer ?? product.manufacturer ?? '');
+  const manufacturerCandidate = clean(product.manufacturer || rawManufacturer);
   const rawCategory = clean(product.rawCategory ?? '');
-  const manufacturer = normalizeManufacturer(rawManufacturer);
+  const manufacturer = normalizeManufacturer(manufacturerCandidate);
   const category = normalizeCategory({
     rawCategory,
     title: product.title || '',
