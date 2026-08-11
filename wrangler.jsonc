@@ -25,7 +25,7 @@
     "FORMUSIC_INTERVAL_MINUTES": "30",
     "CRAWL_REQUEST_DELAY_MS": "1200",
     "CRAWL_MAX_PAGES_PER_SHOP": "40",
-    "AUDIOUNION_ENTRY_URL": "",
+    "AUDIOUNION_ENTRY_URL": "https://www.audiounion.jp/st/new_arrival_used.html",
     "CRAWLER_USER_AGENT": "HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)"
   },
   "d1_databases": [
