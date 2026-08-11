@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 
 const DEFAULT_ENTRY_URL = 'https://www.audiounion.jp/st/new_arrival_used.html';
 const DEFAULT_USER_AGENT = 'HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)';
+const DEFAULT_HIFIDO_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)';
 const DEFAULT_MIN_DELAY_MS = 10_000;
 const AUDIOUNION_HOST = 'www.audiounion.jp';
 const HIFIDO_HOST = 'www.hifido.co.jp';
@@ -157,6 +158,41 @@ function safeUserAgent(value, fallback) {
   return candidate;
 }
 
+function hifidoUserAgent(env) {
+  return safeUserAgent(env.HIFIDO_USER_AGENT, DEFAULT_HIFIDO_USER_AGENT);
+}
+
+function requestProfile(requestedUrl, requestedUserAgent, env) {
+  if (requestedUrl.hostname !== HIFIDO_HOST) {
+    return {
+      userAgent: requestedUserAgent,
+      headers: {
+        'User-Agent': requestedUserAgent,
+        'Accept': 'text/html,application/xhtml+xml',
+        'Accept-Language': 'ja,en;q=0.7',
+        'Cache-Control': 'no-cache'
+      }
+    };
+  }
+
+  const userAgent = hifidoUserAgent(env);
+  return {
+    userAgent,
+    headers: {
+      'User-Agent': userAgent,
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+      'Accept-Language': 'ja-JP,ja;q=0.9,en-US;q=0.6,en;q=0.5',
+      'Cache-Control': 'no-cache',
+      'Pragma': 'no-cache',
+      'Referer': 'https://www.hifido.co.jp/',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'same-origin',
+      'Upgrade-Insecure-Requests': '1'
+    }
+  };
+}
+
 function nonNegativeNumber(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
@@ -189,25 +225,21 @@ export function createHandler({ fetchFn = fetch, sleepFn = sleep, env = process.
       }
       if (!isAllowedTarget(requestedUrl, env)) return jsonResponse(400, { error: 'target_not_allowed' });
 
-      const userAgent = safeUserAgent(body.userAgent, env.CRAWLER_USER_AGENT);
+      const requestedUserAgent = safeUserAgent(body.userAgent, env.CRAWLER_USER_AGENT);
+      const profile = requestProfile(requestedUrl, requestedUserAgent, env);
       const minimumDelayMs = nonNegativeNumber(env.MIN_REQUEST_DELAY_MS, DEFAULT_MIN_DELAY_MS);
       const requestedDelayMs = nonNegativeNumber(body.requestDelayMs, 0);
       const targetUrl = requestedUrl.toString();
-      const robotsText = await fetchRobotsPolicy(fetchFn, targetUrl, userAgent);
-      if (!isPathAllowed(robotsText, targetUrl, userAgent)) {
+      const robotsText = await fetchRobotsPolicy(fetchFn, targetUrl, profile.userAgent);
+      if (!isPathAllowed(robotsText, targetUrl, profile.userAgent)) {
         return jsonResponse(409, { error: 'robots_disallowed' });
       }
 
-      const effectiveDelayMs = Math.max(minimumDelayMs, requestedDelayMs, getCrawlDelayMs(robotsText, userAgent));
+      const effectiveDelayMs = Math.max(minimumDelayMs, requestedDelayMs, getCrawlDelayMs(robotsText, profile.userAgent));
       if (effectiveDelayMs > 0) await sleepFn(effectiveDelayMs);
 
       const upstream = await fetchFn(targetUrl, {
-        headers: {
-          'User-Agent': userAgent,
-          'Accept': 'text/html,application/xhtml+xml',
-          'Accept-Language': 'ja,en;q=0.7',
-          'Cache-Control': 'no-cache'
-        },
+        headers: profile.headers,
         redirect: 'follow'
       });
       const bytes = Buffer.from(await upstream.arrayBuffer());

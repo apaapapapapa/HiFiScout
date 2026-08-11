@@ -1,0 +1,73 @@
+name: Verify Hifido Tokyo Relay
+
+on:
+  workflow_run:
+    workflows: ["Deploy AudioUnion Lambda"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  verify:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      AWS_REGION: ap-northeast-1
+      FUNCTION_NAME: hifiscout-audiounion-fetcher
+
+    steps:
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6
+        with:
+          role-to-assume: ${{ vars.AWS_LAMBDA_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Probe Hifido listing through Tokyo relay
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          relay_token="$(aws lambda get-function-configuration \
+            --region "$AWS_REGION" \
+            --function-name "$FUNCTION_NAME" \
+            --query 'Environment.Variables.RELAY_TOKEN' \
+            --output text)"
+          relay_url="$(aws lambda get-function-url-config \
+            --region "$AWS_REGION" \
+            --function-name "$FUNCTION_NAME" \
+            --query 'FunctionUrl' \
+            --output text)"
+
+          test -n "$relay_token"
+          test "$relay_token" != "None"
+          test -n "$relay_url"
+          test "$relay_url" != "None"
+
+          hifido_url='https://www.hifido.co.jp/?L=50&LNG=J&O=0&OD=0'
+          request_body="$(jq -cn --arg url "$hifido_url" '{url: $url, requestDelayMs: 0}')"
+          headers_file="$RUNNER_TEMP/hifido-relay-headers.txt"
+          body_file="$RUNNER_TEMP/hifido-relay.html"
+
+          status="$(curl -sS --max-time 35 \
+            -D "$headers_file" \
+            -o "$body_file" \
+            -w '%{http_code}' \
+            -X POST "$relay_url" \
+            -H "Authorization: Bearer $relay_token" \
+            -H 'Content-Type: application/json' \
+            --data "$request_body")"
+
+          echo "Hifido relay HTTP status: $status"
+          grep -i '^x-hifiscout-aws-region:' "$headers_file" || true
+          grep -i '^x-hifiscout-upstream-status:' "$headers_file" || true
+
+          test "$status" = "200"
+          grep -qi '^x-hifiscout-aws-region:[[:space:]]*ap-northeast-1' "$headers_file"
+          test -s "$body_file"
+          grep -Eqi 'list-item|ハイファイ堂|hifido' "$body_file"
+
+          echo "Hifido is reachable through the Tokyo relay with the production request profile."
