@@ -1,9 +1,40 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isPathAllowed } from '../src/crawler/robots.js';
+import { fetchRobotsPolicy, isPathAllowed } from '../src/crawler/robots.js';
 
 test('robots longest matching rule wins', () => {
   const robots = `User-agent: *\nDisallow: /shop/\nAllow: /shop/r/`;
   assert.equal(isPathAllowed(robots, 'https://example.com/shop/r/used', 'HiFiScoutBot'), true);
   assert.equal(isPathAllowed(robots, 'https://example.com/shop/private', 'HiFiScoutBot'), false);
+});
+
+test('robots 403 is treated as unavailable rather than an explicit disallow', async () => {
+  const policy = await fetchRobotsPolicy(
+    async () => new Response('Forbidden', { status: 403 }),
+    'https://example.com',
+    'HiFiScoutBot/0.1'
+  );
+  assert.equal(policy, null);
+});
+
+test('robots 429 remains a temporary backoff signal', async () => {
+  await assert.rejects(
+    fetchRobotsPolicy(
+      async () => new Response('Too Many Requests', { status: 429 }),
+      'https://example.com',
+      'HiFiScoutBot/0.1'
+    ),
+    /temporarily unavailable \(429\)/
+  );
+});
+
+test('robots 5xx remains a temporary backoff signal', async () => {
+  await assert.rejects(
+    fetchRobotsPolicy(
+      async () => new Response('Unavailable', { status: 503 }),
+      'https://example.com',
+      'HiFiScoutBot/0.1'
+    ),
+    /temporarily unavailable \(503\)/
+  );
 });
