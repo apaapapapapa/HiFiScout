@@ -141,14 +141,19 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
 
     if (pageQueue.length) coverageIncomplete = true;
     if (!items.size) throw new Error('no products parsed; refusing to mark existing products inactive');
-    if (isSuspiciousItemDrop(items.size, Number(state?.last_item_count), settings)) {
+
+    const deactivateMissing = !adapter.partialCoverage && (
+      reachedEnd || (adapter.dynamicPagination && !coverageIncomplete && pageQueue.length === 0)
+    );
+    const guardItemCount = deactivateMissing || adapter.guardItemCount === true;
+    if (guardItemCount && isSuspiciousItemDrop(items.size, Number(state?.last_item_count), {
+      minRatio: settings.minItemRatio,
+      minBaseline: settings.minItemBaseline
+    })) {
       throw new Error(`item count dropped suspiciously from ${state.last_item_count} to ${items.size}; refusing crawl update`);
     }
 
     const observedAt = nowIso(new Date());
-    const deactivateMissing = !adapter.partialCoverage && (
-      reachedEnd || (adapter.dynamicPagination && !coverageIncomplete && pageQueue.length === 0)
-    );
     const { changedCount } = await upsertProducts(env.DB, adapter.key, [...items.values()], observedAt, { deactivateMissing });
     await markSuccess(env.DB, adapter.key, observedAt, items.size);
     await env.DB.prepare('UPDATE crawl_runs SET finished_at = ?, status = \'success\', item_count = ?, page_count = ?, message = ? WHERE id = ?')
