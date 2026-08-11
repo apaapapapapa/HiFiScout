@@ -1,5 +1,7 @@
-import { SHOP_DEFINITIONS, getCrawlerSettings, getShopEnabled, getShopIntervalMinutes } from './config.js';
-import { SHOP_ADAPTERS } from './crawler/shops/index.js';
+import { getCrawlerSettings, getShopEnabled, getShopIntervalMinutes } from './config.js';
+import { listShopStates } from './db/shop-state-repository.js';
+import { SHOP_PLUGINS } from './crawler/shops/index.js';
+import { isTransportConfigured } from './crawler/transport.js';
 
 const SEVERITY = { disabled: 0, healthy: 1, warning: 2, critical: 3 };
 
@@ -12,12 +14,8 @@ export function evaluateShopSyncHealth({
   warningFactor = 2,
   criticalFactor = 6
 }) {
-  if (!enabled) {
-    return { status: 'disabled', ageMinutes: null, reason: 'disabled' };
-  }
-  if (!configured) {
-    return { status: 'critical', ageMinutes: null, reason: 'configuration_missing' };
-  }
+  if (!enabled) return { status: 'disabled', ageMinutes: null, reason: 'disabled' };
+  if (!configured) return { status: 'critical', ageMinutes: null, reason: 'configuration_missing' };
 
   const failures = Number(state?.consecutive_failures || 0);
   if (!state?.last_success_at) {
@@ -50,18 +48,21 @@ export function evaluateShopSyncHealth({
   return { status: 'healthy', ageMinutes: Math.round(ageMinutes), reason: 'ok' };
 }
 
-function isShopConfigured(env, shopKey) {
-  if (shopKey !== 'audiounion') return true;
-  const adapter = SHOP_ADAPTERS.find(candidate => candidate.key === shopKey);
-  return !adapter?.isConfigured || adapter.isConfigured(env);
+function isShopConfigured(env, plugin) {
+  // Preserve the existing health contract: only AudioUnion was treated as a
+  // hard configuration dependency. Other collectors report failures through
+  // their persisted sync state instead of becoming critical before a run.
+  if (plugin.key !== 'audiounion') return true;
+  return isTransportConfigured(env, plugin);
 }
 
 export function buildSyncHealth(env, stateRows = [], now = new Date()) {
   const settings = getCrawlerSettings(env);
   const states = new Map(stateRows.map(row => [row.shop_key, row]));
-  const shops = Object.values(SHOP_DEFINITIONS).map(shop => {
+  const shops = SHOP_PLUGINS.map(plugin => {
+    const shop = plugin.definition;
     const enabled = getShopEnabled(env, shop);
-    const configured = isShopConfigured(env, shop.key);
+    const configured = isShopConfigured(env, plugin);
     const intervalMinutes = getShopIntervalMinutes(env, shop);
     const state = states.get(shop.key) || null;
     const health = evaluateShopSyncHealth({
@@ -100,8 +101,7 @@ export function buildSyncHealth(env, stateRows = [], now = new Date()) {
 }
 
 export async function getSyncHealth(env, now = new Date()) {
-  const states = await env.DB.prepare('SELECT * FROM shop_sync_state').all();
-  return buildSyncHealth(env, states.results || [], now);
+  return buildSyncHealth(env, await listShopStates(env.DB), now);
 }
 
 export function logSyncHealth(health) {

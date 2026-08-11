@@ -1,9 +1,22 @@
-import { SHOP_DEFINITIONS, getCrawlerSettings, getShopEnabled, getShopIntervalMinutes } from '../config.js';
+import { getCrawlerSettings, getShopEnabled, getShopIntervalMinutes } from '../config.js';
+import {
+  clearShopQueued,
+  getShopState,
+  listShopStates,
+  markShopQueued
+} from '../db/shop-state-repository.js';
 import { crawlShop, isShopDue } from './run.js';
-import { SHOP_ADAPTERS } from './shops/index.js';
+import { getShopPlugin, SHOP_PLUGINS } from './shops/index.js';
+import { isTransportConfigured } from './transport.js';
 
-function definitionFor(adapter) {
-  return Object.values(SHOP_DEFINITIONS).find(definition => definition.key === adapter.key);
+function definitionFor(plugin) {
+  return plugin?.definition;
+}
+
+function isConfigured(env, plugin) {
+  if (!isTransportConfigured(env, plugin)) return false;
+  if (plugin.transport === 'relay') return true;
+  return !plugin.isConfigured || plugin.isConfigured(env);
 }
 
 export function isDispatchLeaseActive(state, now = new Date(), leaseMinutes = 15) {
@@ -17,43 +30,35 @@ export function dueDispatchCandidates(env, stateRows = [], now = new Date(), { e
   const settings = getCrawlerSettings(env);
   const states = new Map(stateRows.map(row => [row.shop_key, row]));
   const excluded = new Set(excludeShopKeys);
-  return SHOP_ADAPTERS
-    .map(adapter => {
-      if (excluded.has(adapter.key)) return null;
-      const definition = definitionFor(adapter);
-      const state = states.get(adapter.key) || null;
+  return SHOP_PLUGINS
+    .map(plugin => {
+      if (excluded.has(plugin.key)) return null;
+      const definition = definitionFor(plugin);
+      const state = states.get(plugin.key) || null;
       if (!definition || !getShopEnabled(env, definition)) return null;
-      if (adapter.isConfigured && !adapter.isConfigured(env)) return null;
+      if (!isConfigured(env, plugin)) return null;
       const intervalMinutes = getShopIntervalMinutes(env, definition);
       if (!isShopDue(state, intervalMinutes, now)) return null;
       if (isDispatchLeaseActive(state, now, settings.dispatchLeaseMinutes)) return null;
-      return { adapter, state, lastAttempt: state?.last_attempt_at || '' };
+      return { adapter: plugin, state, lastAttempt: state?.last_attempt_at || '' };
     })
     .filter(Boolean)
     .sort((a, b) => a.lastAttempt.localeCompare(b.lastAttempt));
 }
 
-async function markQueued(db, shopKey, queuedAt) {
-  await db.prepare(`
-    INSERT INTO shop_sync_state (shop_key, queued_at) VALUES (?, ?)
-    ON CONFLICT(shop_key) DO UPDATE SET queued_at = excluded.queued_at
-  `).bind(shopKey, queuedAt).run();
-}
-
 export async function clearQueued(db, shopKey) {
-  await db.prepare('UPDATE shop_sync_state SET queued_at = NULL WHERE shop_key = ?').bind(shopKey).run();
+  return clearShopQueued(db, shopKey);
 }
 
 export async function dispatchDueCrawls(env, { now = new Date(), excludeShopKeys = [] } = {}) {
   if (!env.CRAWL_QUEUE) throw new Error('CRAWL_QUEUE binding is not configured');
-  const statesResult = await env.DB.prepare('SELECT * FROM shop_sync_state').all();
-  const candidates = dueDispatchCandidates(env, statesResult.results || [], now, { excludeShopKeys });
+  const candidates = dueDispatchCandidates(env, await listShopStates(env.DB), now, { excludeShopKeys });
   const queuedAt = now.toISOString();
   const queued = [];
 
   for (const { adapter } of candidates) {
     await env.CRAWL_QUEUE.send({ shopKey: adapter.key, force: false, requestedAt: queuedAt });
-    await markQueued(env.DB, adapter.key, queuedAt);
+    await markShopQueued(env.DB, adapter.key, queuedAt);
     queued.push(adapter.key);
   }
 
@@ -62,13 +67,13 @@ export async function dispatchDueCrawls(env, { now = new Date(), excludeShopKeys
 
 export async function dispatchScheduledCrawl(env, shopKey, { now = new Date() } = {}) {
   if (!env.CRAWL_QUEUE) throw new Error('CRAWL_QUEUE binding is not configured');
-  const adapter = SHOP_ADAPTERS.find(candidate => candidate.key === shopKey);
-  if (!adapter) return { status: 'rejected', reason: 'unknown_shop' };
-  const definition = definitionFor(adapter);
+  const plugin = getShopPlugin(shopKey);
+  if (!plugin) return { status: 'rejected', reason: 'unknown_shop' };
+  const definition = definitionFor(plugin);
   if (!definition || !getShopEnabled(env, definition)) return { status: 'rejected', reason: 'disabled' };
-  if (adapter.isConfigured && !adapter.isConfigured(env)) return { status: 'rejected', reason: 'configuration_missing' };
+  if (!isConfigured(env, plugin)) return { status: 'rejected', reason: 'configuration_missing' };
 
-  const state = await env.DB.prepare('SELECT * FROM shop_sync_state WHERE shop_key = ?').bind(shopKey).first();
+  const state = await getShopState(env.DB, shopKey);
   const settings = getCrawlerSettings(env);
   if (isDispatchLeaseActive(state, now, settings.dispatchLeaseMinutes)) {
     return { status: 'skipped', reason: 'dispatch_lease_active', shopKey };
@@ -76,26 +81,27 @@ export async function dispatchScheduledCrawl(env, shopKey, { now = new Date() } 
 
   const queuedAt = now.toISOString();
   await env.CRAWL_QUEUE.send({ shopKey, force: true, requestedAt: queuedAt });
-  await markQueued(env.DB, shopKey, queuedAt);
+  await markShopQueued(env.DB, shopKey, queuedAt);
   return { status: 'queued', shopKey };
 }
 
 export async function dispatchForcedCrawl(env, shopKey, { now = new Date() } = {}) {
   if (!env.CRAWL_QUEUE) throw new Error('CRAWL_QUEUE binding is not configured');
-  const adapter = SHOP_ADAPTERS.find(candidate => candidate.key === shopKey);
-  if (!adapter) return { status: 'rejected', reason: 'unknown_shop' };
-  const definition = definitionFor(adapter);
+  const plugin = getShopPlugin(shopKey);
+  if (!plugin) return { status: 'rejected', reason: 'unknown_shop' };
+  const definition = definitionFor(plugin);
   if (!definition || !getShopEnabled(env, definition)) return { status: 'rejected', reason: 'disabled' };
+  if (!isConfigured(env, plugin)) return { status: 'rejected', reason: 'configuration_missing' };
   const queuedAt = now.toISOString();
   await env.CRAWL_QUEUE.send({ shopKey, force: true, requestedAt: queuedAt });
-  await markQueued(env.DB, shopKey, queuedAt);
+  await markShopQueued(env.DB, shopKey, queuedAt);
   return { status: 'queued', shopKey };
 }
 
 export async function consumeCrawlMessage(env, body) {
   const shopKey = body?.shopKey;
-  const adapter = SHOP_ADAPTERS.find(candidate => candidate.key === shopKey);
-  if (!adapter) return { status: 'skipped', reason: 'unknown_shop', shopKey };
-  await clearQueued(env.DB, shopKey);
-  return crawlShop(env, adapter, { force: body?.force === true });
+  const plugin = getShopPlugin(shopKey);
+  if (!plugin) return { status: 'skipped', reason: 'unknown_shop', shopKey };
+  await clearShopQueued(env.DB, shopKey);
+  return crawlShop(env, plugin, { force: body?.force === true });
 }
