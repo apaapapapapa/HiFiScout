@@ -33,6 +33,12 @@ function absoluteUrl(baseUrl, href) {
   }
 }
 
+function inferCondition(title = '', context = '') {
+  const rank = cleanText(context).match(/中古[：:]?\s*([A-Z][A-Z+\-]*)/i)?.[0];
+  if (rank) return cleanText(rank);
+  return cleanText(title).match(/『([^』]+)』/)?.[1] || '';
+}
+
 function fromJsonLd(html, { shopKey, baseUrl, hintedCategory }) {
   const products = [];
   for (const root of decodeJsonLd(html)) {
@@ -53,7 +59,7 @@ function fromJsonLd(html, { shopKey, baseUrl, hintedCategory }) {
         model,
         title,
         category: inferCategory(title, hintedCategory),
-        conditionText: '',
+        conditionText: inferCondition(title),
         priceYen,
         stockStatus,
         sourceUrl: url
@@ -64,7 +70,11 @@ function fromJsonLd(html, { shopKey, baseUrl, hintedCategory }) {
 }
 
 function stripTagsKeepingSpacing(html) {
-  return cleanText(html.replace(/<br\s*\/?\s*>/gi, ' ').replace(/<\/p>|<\/li>|<\/div>|<\/article>/gi, ' '));
+  const withAttributes = html.replace(/<(?:img|input)\b([^>]*)>/gi, (_, attrs) => {
+    const labels = [...attrs.matchAll(/\b(?:alt|title|aria-label)\s*=\s*["']([^"']+)["']/gi)].map(match => match[1]);
+    return labels.length ? ` ${labels.join(' ')} ` : ' ';
+  });
+  return cleanText(withAttributes.replace(/<br\s*\/?\s*>/gi, ' ').replace(/<\/p>|<\/li>|<\/div>|<\/article>/gi, ' '));
 }
 
 function fromAnchors(html, { shopKey, baseUrl, hintedCategory, productUrlPattern }) {
@@ -93,7 +103,7 @@ function fromAnchors(html, { shopKey, baseUrl, hintedCategory, productUrlPattern
     title = cleanText(title);
     if (!title || title.length > 220) continue;
 
-    const condition = context.match(/中古[：:]?\s*([A-Z][A-Z+\-]*)/i)?.[0] || '';
+    const condition = inferCondition(title, context);
     const { manufacturer, model } = splitManufacturerModel(title, shopKey);
     products.push({
       sourceId: stableSourceId(url, title),
@@ -101,7 +111,7 @@ function fromAnchors(html, { shopKey, baseUrl, hintedCategory, productUrlPattern
       model,
       title,
       category: inferCategory(title, hintedCategory),
-      conditionText: cleanText(condition),
+      conditionText: condition,
       priceYen,
       stockStatus: inferStockStatus(context),
       sourceUrl: url

@@ -1,4 +1,4 @@
-import { SHOP_DEFINITIONS, getCrawlerSettings, getShopIntervalMinutes } from '../config.js';
+import { SHOP_DEFINITIONS, getCrawlerSettings, getShopIntervalMinutes, getShopMaxPages } from '../config.js';
 import { upsertProducts } from '../db/products.js';
 import { fetchHtmlPage } from './fetch.js';
 import { SHOP_ADAPTERS } from './shops/index.js';
@@ -39,6 +39,10 @@ async function markFailure(db, shopKey, now, message, priorFailures = 0) {
   `).bind(shopKey, now, failures, backoffUntil, String(message).slice(0, 1000)).run();
 }
 
+function pageUrl(page) {
+  return typeof page === 'string' ? page : page.url;
+}
+
 export async function crawlShop(env, adapter, { force = false, now = new Date(), fetchFn = fetch } = {}) {
   const definition = Object.values(SHOP_DEFINITIONS).find(v => v.key === adapter.key);
   if (adapter.isConfigured && !adapter.isConfigured(env)) return { shopKey: adapter.key, status: 'skipped', reason: 'configuration_missing' };
@@ -52,15 +56,20 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
     .bind(adapter.key, startedAt).run();
   const runId = run.meta.last_row_id;
   const settings = getCrawlerSettings(env);
+  const maxPages = getShopMaxPages(env, definition, settings.maxPagesPerShop);
   const robotsCache = new Map();
   const items = new Map();
   let pageCount = 0;
   let reachedEnd = false;
+  let coverageIncomplete = false;
 
   try {
-    for (const page of adapter.pageUrls(settings.maxPagesPerShop, env)) {
-      if (pageCount >= settings.maxPagesPerShop) break;
-      const url = typeof page === 'string' ? page : page.url;
+    const pageQueue = [...adapter.pageUrls(maxPages, env)];
+    const queuedUrls = new Set(pageQueue.map(pageUrl));
+
+    while (pageQueue.length && pageCount < maxPages) {
+      const page = pageQueue.shift();
+      const url = pageUrl(page);
       let html;
       try {
         html = await fetchHtmlPage(url, {
@@ -71,18 +80,49 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
           robotsCache
         });
       } catch (error) {
-        if (/HTTP 404/.test(error.message) && items.size === 0) continue;
+        // Entry-point 404s are tolerated to let another category/root proceed, but coverage is then incomplete.
+        if (/HTTP 404/.test(error.message) && (adapter.continueOnEmpty || items.size === 0)) {
+          coverageIncomplete = true;
+          continue;
+        }
         throw error;
       }
+
       pageCount += 1;
       const parsed = adapter.parse(html, page);
-      if (!parsed.length && items.size > 0) { reachedEnd = true; break; }
+
+      if (adapter.dynamicPagination && adapter.discoverPageUrls) {
+        const discovered = adapter.discoverPageUrls(html, page);
+        if (discovered == null) {
+          coverageIncomplete = true;
+        } else {
+          for (const nextPage of discovered) {
+            const nextUrl = pageUrl(nextPage);
+            if (!nextUrl || queuedUrls.has(nextUrl)) continue;
+            queuedUrls.add(nextUrl);
+            pageQueue.push(nextPage);
+          }
+        }
+      }
+
+      if (!parsed.length) {
+        if (adapter.dynamicPagination) coverageIncomplete = true;
+        if (items.size > 0) {
+          if (adapter.continueOnEmpty) continue;
+          reachedEnd = true;
+          break;
+        }
+      }
+
       for (const item of parsed) items.set(item.sourceId, item);
     }
 
+    if (pageQueue.length) coverageIncomplete = true;
     if (!items.size) throw new Error('no products parsed; refusing to mark existing products inactive');
+
     const observedAt = nowIso(new Date());
-    const { changedCount } = await upsertProducts(env.DB, adapter.key, [...items.values()], observedAt, { deactivateMissing: reachedEnd });
+    const deactivateMissing = reachedEnd || (adapter.dynamicPagination && !coverageIncomplete && pageQueue.length === 0);
+    const { changedCount } = await upsertProducts(env.DB, adapter.key, [...items.values()], observedAt, { deactivateMissing });
     await markSuccess(env.DB, adapter.key, observedAt, items.size);
     await env.DB.prepare('UPDATE crawl_runs SET finished_at = ?, status = \'success\', item_count = ?, page_count = ?, message = ? WHERE id = ?')
       .bind(observedAt, items.size, pageCount, `${changedCount} changed`, runId).run();
