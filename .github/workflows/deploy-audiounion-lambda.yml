@@ -47,7 +47,8 @@ jobs:
           aws lambda update-function-code \
             --region "$AWS_REGION" \
             --function-name "$FUNCTION_NAME" \
-            --zip-file "fileb://$RUNNER_TEMP/audiounion-lambda.zip"
+            --zip-file "fileb://$RUNNER_TEMP/audiounion-lambda.zip" \
+            --query '{FunctionName:FunctionName,LastModified:LastModified,State:State,LastUpdateStatus:LastUpdateStatus}'
 
       - name: Wait for Lambda update
         run: |
