@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { normalizeCategory } from '../src/catalog/categories.js';
 import { normalizeManufacturer } from '../src/catalog/manufacturers.js';
 import { normalizeCatalogProduct } from '../src/catalog/product-normalizer.js';
+import { fujiyaAvicAdapter } from '../src/crawler/shops/fujiya-avic.js';
 
 test('shop category mapping wins over shared inference', () => {
   const result = normalizeCategory({
@@ -79,4 +80,46 @@ test('unknown products remain visible but are explicitly unclassified', () => {
   assert.equal(result.primaryCategoryId, 'other');
   assert.deepEqual(result.categoryIds, ['other']);
   assert.equal(result.classificationStatus, 'unclassified');
+});
+
+test('default shops keep seller category precedence for backward compatibility', () => {
+  const product = normalizeCatalogProduct({
+    title: 'Example SACD Player',
+    rawCategory: 'DAP'
+  });
+
+  assert.equal(product.primaryCategoryId, 'dap');
+  assert.equal(product.classificationSource, 'global_alias');
+});
+
+test('shops with low-confidence seller categories can prefer explicit title inference', () => {
+  const product = normalizeCatalogProduct({
+    title: 'Example SACD 10 SACD Player',
+    rawCategory: 'DAP'
+  }, {
+    categoryPolicy: { titleInference: 'prefer' }
+  });
+
+  assert.equal(product.primaryCategoryId, 'cd_sacd_player');
+  assert.equal(product.category, 'CD/SACDプレーヤー');
+  assert.equal(product.classificationSource, 'title_inference');
+});
+
+test('Fujiya uses the generic title-preferred policy for broad seller categories', () => {
+  const sacd = normalizeCatalogProduct({
+    title: 'MARANTZ SACD 10 SACD Player',
+    rawCategory: 'DAP'
+  }, fujiyaAvicAdapter);
+  const cable = normalizeCatalogProduct({
+    title: 'Premium Headphone Cable 2m',
+    rawCategory: 'DAP'
+  }, fujiyaAvicAdapter);
+  const ambiguous = normalizeCatalogProduct({
+    title: 'Portable Audio Model X',
+    rawCategory: 'DAP'
+  }, fujiyaAvicAdapter);
+
+  assert.equal(sacd.primaryCategoryId, 'cd_sacd_player');
+  assert.equal(cable.primaryCategoryId, 'cable');
+  assert.equal(ambiguous.primaryCategoryId, 'dap');
 });
