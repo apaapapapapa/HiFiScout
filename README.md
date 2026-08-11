@@ -29,10 +29,10 @@ Browser
 Cron */5 minutes ── due-shop dispatcher ── Cloudflare Queue
                                            max concurrency = 1
                                                   │
-                                                  ├─ Audio Union collector
+                                                  ├─ Audio Union collector ── Tokyo Lambda relay
                                                   ├─ 逸品館 collector
                                                   ├─ フジヤエービック collector
-                                                  ├─ ハイファイ堂 collector (Browser Run)
+                                                  ├─ ハイファイ堂 collector ── Tokyo Lambda relay
                                                   └─ FOR MUSIC collector
 
 Daily retention cron ── bounded D1 cleanup
@@ -42,9 +42,11 @@ Weekly GitHub Action ── D1 SQL export ── 90-day artifact
 
 The queue consumer is globally limited to one concurrent invocation. Scheduled crawls and manually forced crawls use the same queue, so seller crawling cannot overlap accidentally. Cron can enqueue every shop that is due instead of being limited to one shop per five-minute tick.
 
+Audio Union and Hifido use the same allowlisted AWS Lambda relay in `ap-northeast-1` for seller HTTP access. Parsing, normalization, classification, D1 writes, crawl state, and scheduling remain in the Cloudflare Worker. The existing Lambda/workflow names retain `audiounion` for compatibility even though the relay also supports Hifido listing URLs.
+
 ## Crawl controls
 
-Each collector has its own interval, enabled flag, and request delay. Defaults are 30 minutes. Audio Union deliberately uses a longer 10-second request delay.
+Each collector has its own interval, enabled flag, and request delay. Shop-plugin fallback intervals are 30 minutes, while the current deployed configuration runs **Audio Union, 逸品館, フジヤエービック, and FOR MUSIC every 60 minutes** and **Hifido every 30 minutes**. Audio Union deliberately uses a longer 10-second request delay.
 
 ```jsonc
 "vars": {
@@ -54,17 +56,22 @@ Each collector has its own interval, enabled flag, and request delay. Defaults a
   "HIFIDO_ENABLED": "true",
   "FORMUSIC_ENABLED": "true",
 
-  "AUDIOUNION_INTERVAL_MINUTES": "30",
-  "IPPINKAN_INTERVAL_MINUTES": "30",
-  "FUJIYA_AVIC_INTERVAL_MINUTES": "30",
+  "AUDIOUNION_INTERVAL_MINUTES": "60",
+  "IPPINKAN_INTERVAL_MINUTES": "60",
+  "FUJIYA_AVIC_INTERVAL_MINUTES": "60",
   "HIFIDO_INTERVAL_MINUTES": "30",
-  "FORMUSIC_INTERVAL_MINUTES": "30",
+  "FORMUSIC_INTERVAL_MINUTES": "60",
 
   "AUDIOUNION_REQUEST_DELAY_MS": "10000",
   "IPPINKAN_REQUEST_DELAY_MS": "1200",
   "FUJIYA_AVIC_REQUEST_DELAY_MS": "1200",
   "HIFIDO_REQUEST_DELAY_MS": "1200",
   "FORMUSIC_REQUEST_DELAY_MS": "1200",
+
+  "AUDIOUNION_INVENTORY_RECHECK_ENABLED": "true",
+  "AUDIOUNION_INVENTORY_RECHECK_MIN_AGE_HOURS": "24",
+  "AUDIOUNION_INVENTORY_RECHECK_INTERVAL_HOURS": "24",
+  "AUDIOUNION_INVENTORY_RECHECK_FAILURE_THRESHOLD": "2",
 
   "FUJIYA_AVIC_MAX_PAGES": "50",
   "HIFIDO_MAX_PAGES": "3",
@@ -84,13 +91,13 @@ Each collector has its own interval, enabled flag, and request delay. Defaults a
 }
 ```
 
-Set `<SHOP>_ENABLED=false` to stop a collector on the next deployment. `FUJIYA_AVIC_MAX_PAGES` is a safety ceiling.
+Set `<SHOP>_ENABLED=false` to stop a collector on the next deployment. `FUJIYA_AVIC_MAX_PAGES` is a safety ceiling. The authoritative deployed values live in `wrangler.jsonc`; plugin defaults are fallbacks for missing environment configuration, not the production schedule.
 
 ### Queue dispatch and exclusion
 
 The five-minute Cron Trigger finds **all** due shops and sends one message per shop to `hifiscout-crawl`. A 15-minute `queued_at` lease suppresses repeated dispatch while a message is waiting. The queue consumer uses `max_batch_size=1` and `max_concurrency=1`, so only one seller crawl can run at a time. Failed crawl results are recorded using the existing exponential backoff; infrastructure-level queue delivery failures retain the queue's retry/DLQ protection.
 
-`POST /api/admin/crawl` now enqueues a forced crawl and returns HTTP `202` instead of running seller requests on the HTTP request path.
+`POST /api/admin/crawl` enqueues a forced crawl and returns HTTP `202` instead of running seller requests on the HTTP request path.
 
 ### Item-count safety guard
 
@@ -105,7 +112,7 @@ Hifido is intentionally **not** fully synchronized every 30 minutes. Each schedu
 1. The most recent three 30-item pages.
 2. One additional older page selected on a deterministic rotation, currently across pages 4 through 120.
 
-This adds only one Browser Run page per scheduled Hifido crawl while periodically revisiting older observed listings. Hifido is explicitly marked as partial coverage, so a missing item in one of these partial windows never causes unrelated existing products to be deactivated.
+This adds only one additional Tokyo-relay listing request per scheduled Hifido crawl while periodically revisiting older observed listings. Hifido is explicitly marked as partial coverage, so a missing item in one of these partial windows never causes unrelated existing products to be deactivated.
 
 ## D1 write control
 
@@ -165,6 +172,8 @@ Tests:
 npm test
 ```
 
+See `docs/testing-strategy.md` for the test pyramid and the minimal deployed-environment Playwright E2E policy.
+
 ## Releases
 
 Releases are automated by Semantic Release on pushes to `main`. The first release workflow run bootstraps the existing `package.json` version as the baseline tag (currently `v0.1.0`), so adopting Semantic Release does not implicitly promote the application to `v1.0.0`.
@@ -191,21 +200,21 @@ Query parameters for `/api/products`: `q`, `shop`, `manufacturer`, `category`, `
 
 ## Collector status
 
-The adapter boundary is isolated under `src/crawler/shops/` because seller HTML changes independently. The following was re-validated against public listing structures on 2026-08-11.
+The adapter boundary is isolated under `src/crawler/shops/` because seller HTML changes independently. The following reflects the collector structures in `main` as of 2026-08-11.
 
 - **逸品館**: uses the official all-used listing and its pagination. Listing markers such as `『展示機』` are kept only as condition metadata and removed from the normalized model name.
-- **フジヤエービック**: covers the current used roots for earphones, DAP/headphone amps, headphones, amp/speaker/player products, and DJ/DTM. Pagination is derived from the displayed result counts.
-- **ハイファイ堂**: uses Cloudflare Browser Run, reads the latest pages plus one rotating older page, and extracts product ID, manufacturer, model/title, price, category, stock state, and source URL only. `売約済/売約済み` is sold out; ambiguous states such as `予約中` and `商談中` remain `unknown`.
+- **フジヤエービック**: uses the official new-arrival used listing at `/shop/e/ea-usednw_s1/` as its entry point. Additional pages are discovered from the displayed result count and fetched with the site's 50-item pagination. Broad merchandising buckets such as DAP/headphone-amp are treated as corroborative evidence, with bounded detail-page enrichment for unresolved classification.
+- **ハイファイ堂**: uses the Tokyo Lambda relay, reads the latest three pages plus one rotating older page, and extracts product ID, manufacturer, model/title, price, category, stock state, and source URL only. `売約済/売約済み` is sold out; ambiguous states such as `予約中` and `商談中` remain `unknown`.
 - **FOR MUSIC**: parses the storefront's structured product rows. Clearly marked `中古`, `展示現品`, and `委託品` are collected; explicitly new stock is excluded. `商談中` remains `unknown`, and `売約済` is retained as `sold_out`. Music/book entries are excluded from HiFiScout's equipment inventory.
-- **Audio Union**: uses the official new-arrival used listing configured by `AUDIOUNION_ENTRY_URL`, with a default 10-second per-request delay and an independent kill switch.
+- **Audio Union**: uses the official new-arrival used listing configured by `AUDIOUNION_ENTRY_URL` through the Tokyo Lambda relay, with a default 10-second per-request delay and an independent kill switch. Low-frequency detail-page checks are used only for stale inventory verification.
 
 If a live page can no longer be parsed, the crawler refuses to mark existing products inactive. Partial/dynamically truncated crawls also do not deactivate missing products.
 
 ## Before broad public release
 
 1. Re-check robots.txt and current terms for all target shops.
-2. Validate each adapter against live HTML from Cloudflare's runtime.
-3. Keep crawl intervals conservative and shop-specific; the initial value is 30 minutes.
+2. Validate each adapter against live HTML from the actual configured transport/runtime.
+3. Keep crawl intervals conservative and shop-specific; the current deployed schedule is 60 minutes for Audio Union/逸品館/フジヤエービック/FOR MUSIC and 30 minutes for Hifido.
 4. Keep an identifiable crawler User-Agent/contact route.
 5. Keep the non-affiliation notice and provide a listing-removal contact path.
 6. Review Workers Observability and `/api/health` regularly for parser failures or stale shops.
