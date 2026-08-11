@@ -47,20 +47,7 @@ export async function markInventoryAmbiguous(db, productId, checkedAt) {
   `).bind(checkedAt, checkedAt, productId).run();
 }
 
-export async function markInventorySoldOut(db, productId, checkedAt) {
-  return db.prepare(`
-    UPDATE products
-    SET last_inventory_check_attempt_at = ?,
-        last_inventory_checked_at = ?,
-        inventory_check_failures = 0,
-        stock_status = 'sold_out',
-        is_active = 0,
-        last_changed_at = ?
-    WHERE id = ? AND is_active = 1
-  `).bind(checkedAt, checkedAt, checkedAt, productId).run();
-}
-
-export async function recordInventoryMissing(db, productId, checkedAt, failureCount, deactivate) {
+export async function recordInventoryUnavailable(db, productId, checkedAt, failureCount, deactivate) {
   const inactive = deactivate ? 1 : 0;
   return db.prepare(`
     UPDATE products
