@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   force-crawl:
@@ -19,6 +20,38 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Wait for this commit to reach production
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${GITHUB_SHA}&per_page=50"
+          deployed=false
+          for attempt in $(seq 1 120); do
+            runs="$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "$api")"
+            deploy="$(jq -c '[.workflow_runs[] | select(.name == "Deploy Cloudflare")] | sort_by(.created_at) | last // empty' <<< "$runs")"
+            if [ -n "$deploy" ]; then
+              status="$(jq -r '.status' <<< "$deploy")"
+              conclusion="$(jq -r '.conclusion // empty' <<< "$deploy")"
+              echo "Deploy Cloudflare: status=$status conclusion=${conclusion:-pending}"
+              if [ "$status" = 'completed' ]; then
+                if [ "$conclusion" = 'success' ]; then
+                  deployed=true
+                  break
+                fi
+                echo "Production deploy failed with conclusion: $conclusion" >&2
+                exit 1
+              fi
+            else
+              echo 'Deploy Cloudflare has not started yet.'
+            fi
+            sleep 5
+          done
+          if [ "$deployed" != true ]; then
+            echo 'Production deploy did not complete successfully in the observation window.' >&2
+            exit 1
+          fi
       - name: Capture current Fujiya crawl id
         id: baseline
         shell: bash
@@ -79,13 +112,13 @@ jobs:
             echo "Forced Fujiya crawl finished with status: $status" >&2
             exit 1
           fi
-      - name: Report latest Fujiya products
+      - name: Verify newest-sorted Fujiya products in D1
         shell: bash
         run: |
           set -euo pipefail
           npx --yes wrangler@4.120.1 d1 execute DB --remote --json --command "
-            SELECT id, manufacturer, model, title, price_yen, stock_status, source_url, first_seen_at, last_seen_at
+            SELECT id, manufacturer, model, title, price_yen, stock_status, source_url, first_seen_at, last_seen_at, last_activity_at
             FROM products
             WHERE shop_key = 'fujiya-avic' AND is_active = 1
-            ORDER BY first_seen_at DESC, id DESC
+            ORDER BY last_activity_at DESC, id DESC
             LIMIT 20;" | jq .
