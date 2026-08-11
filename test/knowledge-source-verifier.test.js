@@ -9,6 +9,7 @@ import {
 } from '../src/catalog/knowledge-source-verifier.js';
 
 test('model identity uses token boundaries and does not collapse distinct model names', () => {
+  assert.equal(containsCatalogModelIdentity('K-01XD', 'K-01XD'), true);
   assert.equal(containsCatalogModelIdentity('ESOTERIC K-01XD SACD Player', 'K-01XD'), true);
   assert.equal(containsCatalogModelIdentity('ESOTERIC K-01XD SACD Player', 'K-01X'), false);
   assert.equal(containsCatalogModelIdentity('Version 25 digital player', '2.5'), false);
@@ -43,7 +44,10 @@ test('official JSON-LD Product verifies exact model and category', async () => {
   assert.equal(result.contentHash.length, 64);
 });
 
-test('official page without unambiguous category remains ambiguous', async () => {
+test('official page that confirms the model but not the category remains ambiguous', async () => {
+  const html = `<html><head><title>ESOTERIC K-01XD</title>
+    <script type="application/ld+json">{"@type":"Product","name":"K-01XD","model":"K-01XD","brand":{"name":"ESOTERIC"}}</script>
+    </head><body><h1>K-01XD</h1></body></html>`;
   const result = await verifyOfficialProductPageHtml({
     candidate: {
       manufacturerId: 'esoteric',
@@ -51,7 +55,7 @@ test('official page without unambiguous category remains ambiguous', async () =>
       observedManufacturer: 'ESOTERIC',
       observedModel: 'K-01XD'
     },
-    html: '<html><head><title>ESOTERIC K-01XD</title></head><body><h1>K-01XD</h1></body></html>',
+    html,
     sourceUrl: 'https://example.invalid/k-01xd'
   });
 
