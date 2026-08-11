@@ -129,6 +129,65 @@ jobs:
           jq -e '.[] | select(.name == "CRAWL_RELAY_TOKEN")' <<< "$secrets" >/dev/null
           echo "Shared relay secrets are registered in Cloudflare."
 
+      - name: Probe AudioUnion used detail URL through Tokyo relay
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          product_json="$(npx wrangler d1 execute DB --remote --json --command "
+            SELECT source_url
+            FROM products
+            WHERE shop_key = 'audiounion'
+              AND is_active = 1
+              AND stock_status = 'in_stock'
+              AND source_url LIKE 'https://www.audiounion.jp/ct/detail/used/%'
+            ORDER BY last_seen_at DESC
+            LIMIT 1;")"
+          detail_url="$(jq -r '.[0].results[0].source_url // empty' <<< "$product_json")"
+
+          if [ -z "$detail_url" ]; then
+            echo "No active AudioUnion used-detail URL is available for the deployment probe."
+            exit 1
+          fi
+
+          relay_token="$(aws lambda get-function-configuration \
+            --region "$AWS_REGION" \
+            --function-name "$FUNCTION_NAME" \
+            --query 'Environment.Variables.RELAY_TOKEN' \
+            --output text)"
+          relay_url="$(aws lambda get-function-url-config \
+            --region "$AWS_REGION" \
+            --function-name "$FUNCTION_NAME" \
+            --query 'FunctionUrl' \
+            --output text)"
+          request_body="$(jq -cn --arg url "$detail_url" '{url: $url, requestDelayMs: 0}')"
+          headers_file="$RUNNER_TEMP/audiounion-detail-headers.txt"
+          body_file="$RUNNER_TEMP/audiounion-detail.html"
+
+          status="$(curl -sS --max-time 35 \
+            -D "$headers_file" \
+            -o "$body_file" \
+            -w '%{http_code}' \
+            -X POST "$relay_url" \
+            -H "Authorization: Bearer $relay_token" \
+            -H 'Content-Type: application/json' \
+            --data "$request_body")"
+
+          echo "AudioUnion detail probe HTTP status: $status"
+          grep -i '^x-hifiscout-aws-region:' "$headers_file" || true
+
+          if [ "$status" = "409" ]; then
+            echo "AudioUnion used-detail access is disallowed by the current robots.txt policy."
+            exit 1
+          fi
+          if [ "$status" != "200" ]; then
+            echo "AudioUnion used-detail probe did not return HTTP 200."
+            exit 1
+          fi
+          grep -qi '^x-hifiscout-aws-region:[[:space:]]*ap-northeast-1' "$headers_file"
+          test -s "$body_file"
+          echo "AudioUnion used-detail access is permitted and reachable through the Tokyo relay."
+
       - name: Verify deployment
         run: |
           aws lambda get-function-configuration \
