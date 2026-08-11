@@ -2,6 +2,7 @@ import { categorySearchAliases, getCategory } from '../catalog/categories.js';
 import { knowledgeCatalogKey } from '../catalog/knowledge-catalog.js';
 
 const CHUNK_SIZE = 40;
+const PRODUCT_PAGE_SIZE = 500;
 
 function unique(values = []) {
   return [...new Set(values.filter(Boolean))];
@@ -116,14 +117,7 @@ async function runBatches(db, statements, chunkSize = 50) {
   }
 }
 
-export async function reclassifyProductsFromKnowledgeCatalog(db) {
-  const observed = await db.prepare(`
-    SELECT id, manufacturer_id, model, category, primary_category_id, category_ids, classification_status
-    FROM products
-    WHERE is_active = 1 AND manufacturer_id <> '' AND model <> ''
-  `).all();
-  const products = observed.results || [];
-  const matches = await findVerifiedCatalogMatches(db, products);
+function buildReclassificationStatements(db, products, matches) {
   const statements = [];
   let reclassifiedProducts = 0;
 
@@ -155,6 +149,32 @@ export async function reclassifyProductsFromKnowledgeCatalog(db) {
     reclassifiedProducts += 1;
   }
 
-  await runBatches(db, statements);
+  return { statements, reclassifiedProducts };
+}
+
+export async function reclassifyProductsFromKnowledgeCatalog(db) {
+  let lastId = 0;
+  let reclassifiedProducts = 0;
+
+  for (;;) {
+    const observed = await db.prepare(`
+      SELECT id, manufacturer_id, model, category, primary_category_id, category_ids, classification_status
+      FROM products
+      WHERE is_active = 1 AND manufacturer_id <> '' AND model <> '' AND id > ?
+      ORDER BY id
+      LIMIT ?
+    `).bind(lastId, PRODUCT_PAGE_SIZE).all();
+    const products = observed.results || [];
+    if (!products.length) break;
+
+    const matches = await findVerifiedCatalogMatches(db, products);
+    const page = buildReclassificationStatements(db, products, matches);
+    await runBatches(db, page.statements);
+    reclassifiedProducts += page.reclassifiedProducts;
+
+    lastId = Number(products[products.length - 1].id);
+    if (products.length < PRODUCT_PAGE_SIZE) break;
+  }
+
   return reclassifiedProducts;
 }
