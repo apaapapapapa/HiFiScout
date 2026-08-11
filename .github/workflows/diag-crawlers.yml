@@ -18,45 +18,29 @@ jobs:
         with:
           node-version: 22
       - run: npm install
-      - name: Probe target HTTP responses
+      - name: Inspect Ippinkan markup
         shell: bash
         run: |
-          set -u
           UA='HiFiScoutBot/0.1 (+https://github.com/apaapapapa/HiFiScout)'
+          curl -L --max-time 30 -A "$UA" -sS 'https://ippinkan.jp/shopbrand/U100000/' -o /tmp/ipp.euc
+          iconv -f EUC-JP -t UTF-8 /tmp/ipp.euc > /tmp/ipp.html
+          echo '--- shopdetail anchors ---'
+          grep -oE '<a[^>]+href="[^"]*shopdetail[^"]*"[^>]*>[^<]{0,180}' /tmp/ipp.html | head -n 8 || true
+          echo '--- around USED-35257 ---'
+          grep -n -B 12 -A 12 'USED-35257' /tmp/ipp.html | head -n 80 || true
+          echo '--- pagination ---'
+          grep -oE 'href="[^"]*(page[0-9]+|pageno=[0-9]+)[^"]*"' /tmp/ipp.html | head -n 20 || true
+      - name: Probe Hifido endpoints
+        shell: bash
+        run: |
+          UA='HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)'
           for url in \
-            'https://ippinkan.jp/robots.txt' \
-            'https://ippinkan.jp/shopbrand/U100000/' \
             'https://www.hifido.co.jp/robots.txt' \
             'https://www.hifido.co.jp/?L=50&LNG=J&O=0&OD=0' \
-            'https://www.hifido.co.jp/?lang=j' \
-            'https://www.hifido.co.jp/index.html'; do
+            'https://hifido.co.jp/?L=50&LNG=J&O=0&OD=0' \
+            'http://www.hifido.co.jp/?L=50&LNG=J&O=0&OD=0'; do
             echo "--- $url"
             curl -L --max-time 30 -A "$UA" -sS -D /tmp/headers -o /tmp/body "$url" || true
-            head -n 20 /tmp/headers || true
+            head -n 8 /tmp/headers || true
             echo "body-bytes=$(wc -c < /tmp/body 2>/dev/null || echo 0)"
-            head -c 400 /tmp/body 2>/dev/null | tr '\n' ' ' || true
-            echo
           done
-      - name: Run live parsers
-        shell: bash
-        run: |
-          node --input-type=module <<'NODE'
-          import { parseProductPage } from './src/crawler/parser.js';
-          import { parseHifidoListing } from './src/crawler/shops/hifido.js';
-          const ua = 'HiFiScoutBot/0.1 (+https://github.com/apaapapapa/HiFiScout)';
-          async function get(url) {
-            const r = await fetch(url, {headers: {'User-Agent': ua, 'Accept-Language':'ja,en;q=0.7'}});
-            const text = await r.text();
-            console.log('fetch', url, r.status, text.length);
-            return {r,text};
-          }
-          const ipp = await get('https://ippinkan.jp/shopbrand/U100000/');
-          const ippItems = parseProductPage(ipp.text, {
-            shopKey:'ippinkan', baseUrl:'https://ippinkan.jp/shopbrand/U100000/',
-            productUrlPattern:/ippinkan\.jp\/(?:shopdetail|view\/item|shop\/products?)/i
-          });
-          console.log('ippinkan parsed', ippItems.length, ippItems.slice(0,3));
-          const hifi = await get('https://www.hifido.co.jp/?L=50&LNG=J&O=0&OD=0');
-          const hifiItems = parseHifidoListing(hifi.text);
-          console.log('hifido parsed', hifiItems.length, hifiItems.slice(0,3));
-          NODE
