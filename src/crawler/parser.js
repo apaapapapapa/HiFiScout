@@ -92,7 +92,13 @@ function fromAnchors(html, { shopKey, baseUrl, hintedCategory, productUrlPattern
     const after = html.slice(index, Math.min(html.length, index + match[0].length + 900));
     const context = stripTagsKeepingSpacing(`${before} ${match[4]} ${after}`);
     const anchorText = stripTagsKeepingSpacing(match[4]);
-    const priceYen = parseYen(context);
+    // Fujiya listings frequently place adjacent cards close enough that a backward
+    // context window can contain the previous card's price. Prefer the first price
+    // after the current product link for Fujiya so prices cannot bleed across cards.
+    const priceContext = shopKey === 'fujiya-avic'
+      ? stripTagsKeepingSpacing(`${match[4]} ${after}`)
+      : context;
+    const priceYen = parseYen(priceContext);
     if (!priceYen) continue;
 
     let title = anchorText;
