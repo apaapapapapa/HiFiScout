@@ -2,7 +2,7 @@
 
 AudioUnion is fetched through a small AWS Lambda function in the Tokyo region (`ap-northeast-1`). The Lambda only returns the source HTML; parsing, normalization, D1 writes, and crawl-state handling remain in the Cloudflare Worker.
 
-The function URL uses `AuthType: NONE` so Cloudflare can call it without AWS credentials. The function itself requires a high-entropy Bearer token, only permits the configured AudioUnion entry URL, respects `robots.txt`, and enforces a minimum request delay. Normal HiFiScout crawl execution is serialized by the Cloudflare crawl queue (`max_concurrency: 1`). Lambda reserved concurrency is intentionally not configured because AWS accounts with a small Lambda concurrency quota can reject a reservation when it would reduce the account's unreserved concurrency below AWS's required minimum.
+The function URL uses `AuthType: NONE` so Cloudflare can call it without AWS credentials. The function itself requires a high-entropy Bearer token, permits only the configured AudioUnion entry URL plus exact numeric used-detail URLs under `/ct/detail/used/<id>/`, evaluates `robots.txt` before every seller request, and enforces a minimum request delay. `/ct/search` and other AudioUnion paths remain outside the relay allowlist. Normal HiFiScout crawl execution is serialized by the Cloudflare crawl queue (`max_concurrency: 1`). Lambda reserved concurrency is intentionally not configured because AWS accounts with a small Lambda concurrency quota can reject a reservation when it would reduce the account's unreserved concurrency below AWS's required minimum.
 
 ## Deploy to Tokyo
 
@@ -94,21 +94,26 @@ Once these AWS and GitHub settings are complete, pushing a Lambda code change to
 
 ## Configure HiFiScout
 
-Set both values as Cloudflare Worker secrets; do not commit them to `wrangler.jsonc`.
+The deployment workflow synchronizes the Lambda Function URL and relay token into these Cloudflare Worker secrets:
+
+- `CRAWL_RELAY_URL`
+- `CRAWL_RELAY_TOKEN`
+
+For a manual setup, use:
 
 ```bash
-printf '%s' 'https://<function-url-id>.lambda-url.ap-northeast-1.on.aws/' | npx wrangler secret put AUDIOUNION_RELAY_URL
-printf '%s' "$RELAY_TOKEN" | npx wrangler secret put AUDIOUNION_RELAY_TOKEN
+printf '%s' 'https://<function-url-id>.lambda-url.ap-northeast-1.on.aws/' | npx wrangler secret put CRAWL_RELAY_URL
+printf '%s' "$RELAY_TOKEN" | npx wrangler secret put CRAWL_RELAY_TOKEN
 ```
 
-After the relay code is deployed, AudioUnion is considered configured only when both secrets exist. Other shop collectors continue to use their existing transports.
+After the relay code is deployed, relay-backed shop collectors are considered configured only when both secrets exist.
 
 ## Smoke test
 
 This invokes the seller once, so use it only when needed.
 
 ```bash
-curl -i -X POST "$AUDIOUNION_RELAY_URL" \
+curl -i -X POST "$CRAWL_RELAY_URL" \
   -H "Authorization: Bearer $RELAY_TOKEN" \
   -H 'Content-Type: application/json' \
   --data '{"url":"https://www.audiounion.jp/st/new_arrival_used.html","userAgent":"HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)","requestDelayMs":10000}'
@@ -116,9 +121,26 @@ curl -i -X POST "$AUDIOUNION_RELAY_URL" \
 
 A successful response should be `200`, have an HTML content type, and include `x-hifiscout-aws-region: ap-northeast-1` and `x-hifiscout-upstream-status: 200`.
 
+The automatic Lambda deployment workflow also selects one currently active AudioUnion used-detail URL from D1 and probes it through the Tokyo relay. The deployment fails if live `robots.txt` rejects that path or if the detail page is not reachable through the relay.
+
+## Low-frequency inventory recheck
+
+The Worker uses detail pages only for stale-product inventory verification. The defaults are deliberately conservative:
+
+- the product must not have been observed in the normal listing for at least 24 hours;
+- at most one stale AudioUnion product is rechecked after each successful AudioUnion crawl;
+- the same product is attempted at most once per 24 hours;
+- `last_inventory_check_attempt_at` is separate from `last_inventory_checked_at`, so robots rejection, rate limiting, and transient failures can back off without being recorded as a successful inventory verification;
+- contradictory or ambiguous HTML never deactivates a product;
+- explicit sold-out evidence or HTTP 404/410 must be observed twice consecutively before the product is marked inactive;
+- a later normal-listing observation resets the effective unavailable streak.
+
+The settings are controlled by `AUDIOUNION_INVENTORY_RECHECK_*` variables in `wrangler.jsonc`.
+
 ## Security and cost controls
 
-- The target URL is fixed to the configured `www.audiounion.jp` entry URL; the Lambda is not a general-purpose proxy.
+- The relay is not a general-purpose proxy: it permits the configured AudioUnion entry URL, exact numeric AudioUnion used-detail URLs, and the separately validated Hifido listing shape only.
+- Every seller target is still subject to the live `robots.txt` policy before seller access.
 - Requests without the Bearer token are rejected before any seller request is made.
 - The normal scheduler path is serialized by the Cloudflare crawl queue; Lambda reserved concurrency is intentionally omitted for compatibility with low-quota AWS accounts.
 - The minimum request delay defaults to 10 seconds; a larger Worker-side delay or `robots.txt` crawl delay wins.
