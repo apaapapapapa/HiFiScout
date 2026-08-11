@@ -1,0 +1,39 @@
+name: Probe FOR MUSIC production
+on:
+  push:
+    branches: ['probe/formusic-production']
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_ACCOUNT_ID: 9af87af4dbc00be3bfd4c8af3f52f684
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - name: Check production API
+        run: |
+          echo '--- health ---'
+          curl --fail --silent --show-error https://hifiscout.raha3415kohei.workers.dev/api/health
+          echo
+          echo '--- meta ---'
+          curl --fail --silent --show-error https://hifiscout.raha3415kohei.workers.dev/api/meta
+          echo
+          echo '--- FOR MUSIC products ---'
+          curl --fail --silent --show-error 'https://hifiscout.raha3415kohei.workers.dev/api/products?shop=formusic&limit=5'
+          echo
+          echo '--- custom-domain health ---'
+          curl --fail --silent --show-error https://hifiscout.jp/api/health
+          echo
+      - name: Check FOR MUSIC D1 state
+        run: |
+          npx wrangler d1 execute DB --remote --command "SELECT shop_key,last_attempt_at,last_success_at,last_error_at,consecutive_failures,last_error,last_item_count FROM shop_sync_state WHERE shop_key='formusic';"
+          npx wrangler d1 execute DB --remote --command "SELECT COUNT(*) AS product_count, SUM(CASE WHEN is_active=1 THEN 1 ELSE 0 END) AS active_count, SUM(CASE WHEN is_active=1 AND stock_status='in_stock' THEN 1 ELSE 0 END) AS in_stock_count FROM products WHERE shop_key='formusic';"
