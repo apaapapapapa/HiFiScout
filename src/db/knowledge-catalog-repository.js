@@ -93,6 +93,7 @@ async function loadVerifiedCatalogIndex(db, manufacturerIds) {
 }
 
 export async function findVerifiedCatalogMatches(db, products = []) {
+  if (!db?.prepare) return new Map();
   const manufacturerIds = unique(products.map(product => product?.manufacturerId || product?.manufacturer_id));
   const index = await loadVerifiedCatalogIndex(db, manufacturerIds);
   const matches = new Map();
