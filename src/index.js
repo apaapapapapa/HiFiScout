@@ -4,10 +4,12 @@ import { checkPublicApiRateLimit } from './api-guard.js';
 import { consumeCrawlMessage, dispatchDueCrawls, dispatchForcedCrawl, dispatchScheduledCrawl } from './crawler/dispatch.js';
 import { listProducts, productHistory, validateProductQuery } from './db/products.js';
 import { buildSyncHealth, getSyncHealth, logSyncHealth } from './health.js';
+import { runKnowledgeCatalogReview } from './knowledge-catalog-review.js';
 import { runRetentionCleanup } from './maintenance.js';
 
 const AUDIOUNION_CRON = '1 * * * *';
 const RETENTION_CRON = '17 18 * * *';
+const KNOWLEDGE_CATALOG_CRON = '23 3 1 * *';
 
 function json(data, init = {}) {
   return new Response(JSON.stringify(data), {
@@ -109,6 +111,7 @@ function logDispatchResult(cron, dispatch) {
 
 async function runScheduled(cron, env) {
   if (cron === RETENTION_CRON) return runRetentionCleanup(env);
+  if (cron === KNOWLEDGE_CATALOG_CRON) return runKnowledgeCatalogReview(env);
   const dispatch = cron === AUDIOUNION_CRON
     ? await dispatchScheduledCrawl(env, 'audiounion')
     : await dispatchDueCrawls(env, { excludeShopKeys: ['audiounion'] });
