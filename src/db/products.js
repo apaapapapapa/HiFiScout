@@ -393,17 +393,20 @@ export async function listProducts(db, url) {
   const q = params.get('q')?.trim();
   let join = '';
   if (q) {
-    if ([...q].length >= 3) {
+    const terms = q.split(/\s+/u).filter(Boolean);
+    if (terms.length === 1 && [...q].length >= 3) {
       join = 'JOIN products_fts ON products_fts.rowid = p.id';
       where.push('products_fts MATCH ?');
       binds.push(ftsPhrase(q));
     } else {
-      where.push(`(
-        p.title LIKE ? OR p.manufacturer LIKE ? OR p.raw_manufacturer LIKE ? OR p.model LIKE ?
-        OR p.category LIKE ? OR p.raw_category LIKE ? OR p.search_aliases LIKE ?
-      )`);
-      const term = `%${q}%`;
-      binds.push(term, term, term, term, term, term, term);
+      for (const value of terms) {
+        where.push(`(
+          p.title LIKE ? OR p.manufacturer LIKE ? OR p.raw_manufacturer LIKE ? OR p.model LIKE ?
+          OR p.category LIKE ? OR p.raw_category LIKE ? OR p.search_aliases LIKE ?
+        )`);
+        const term = `%${value}%`;
+        binds.push(term, term, term, term, term, term, term);
+      }
     }
   }
 
