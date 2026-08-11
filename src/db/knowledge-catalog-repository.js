@@ -55,11 +55,13 @@ async function loadVerifiedCatalogIndex(db, manufacturerIds) {
           canonicalModel: row.canonical_model,
           normalizedModel: row.normalized_model,
           canonicalName: row.canonical_name,
-          categoryIds: []
+          categoryIds: [],
+          hasPrimaryCategory: false
         };
         byId.set(row.id, product);
       }
       if (row.category_id && !product.categoryIds.includes(row.category_id)) product.categoryIds.push(row.category_id);
+      if (row.category_id && Number(row.is_primary) === 1) product.hasPrimaryCategory = true;
     }
   }
 
@@ -81,14 +83,22 @@ async function loadVerifiedCatalogIndex(db, manufacturerIds) {
 
   const index = new Map();
   for (const product of byId.values()) {
-    if (!product.categoryIds.length) continue;
+    if (!product.categoryIds.length || !product.hasPrimaryCategory) continue;
+    const match = {
+      id: product.id,
+      manufacturerId: product.manufacturerId,
+      canonicalModel: product.canonicalModel,
+      normalizedModel: product.normalizedModel,
+      canonicalName: product.canonicalName,
+      categoryIds: product.categoryIds
+    };
     setUnambiguous(index, knowledgeCatalogKey(product.manufacturerId, product.normalizedModel), {
-      ...product,
+      ...match,
       matchType: 'exact'
     });
     for (const alias of aliasesByProduct.get(product.id) || []) {
       setUnambiguous(index, knowledgeCatalogKey(product.manufacturerId, alias), {
-        ...product,
+        ...match,
         matchType: 'alias'
       });
     }
