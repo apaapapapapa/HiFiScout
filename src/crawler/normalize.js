@@ -17,6 +17,7 @@ export function cleanText(value = '') {
   return String(value)
     .replace(/<[^>]*>/g, ' ')
     .replace(/&nbsp;|&#160;/gi, ' ')
+    .replace(/&yen;|&#165;|&#x0*a5;/gi, '¥')
     .replace(/&amp;/gi, '&')
     .replace(/&quot;/gi, '"')
     .replace(/&#39;|&apos;/gi, "'")
@@ -27,7 +28,7 @@ export function cleanText(value = '') {
 }
 
 export function parseYen(value = '') {
-  const normalized = String(value).replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+  const normalized = cleanText(value).replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
   const marked = normalized.match(/[¥￥]\s*([0-9][0-9,]*)|([0-9][0-9,]*)\s*円/);
   const markedValue = marked?.[1] || marked?.[2];
   if (markedValue) return Number.parseInt(markedValue.replace(/,/g, ''), 10);
@@ -95,6 +96,8 @@ export function splitManufacturerModel(title, shopKey) {
 export function stableSourceId(url, title = '') {
   try {
     const parsed = new URL(url);
+    const audioUnionId = parsed.pathname.match(/\/ct\/detail\/(?:used|new)\/(\d+)\/?/i)?.[1];
+    if (audioUnionId) return audioUnionId;
     const pathId = parsed.pathname.match(/(?:detail|goods|item|product|shopdetail)[/_-]?([A-Za-z0-9_-]+)/i)?.[1];
     if (pathId) return pathId;
     return `${parsed.pathname}${parsed.search}`;
