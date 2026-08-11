@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  deactivateProductsNotSeenInRun,
+  deactivateProductsBySourceIds,
   listProducts,
   selectExistingProducts,
-  selectProductsForHistory
+  selectProductsForHistory,
+  upsertProducts,
+  validateProductQuery
 } from '../src/db/products.js';
 
 function queryCaptureDb(results = []) {
@@ -17,10 +19,13 @@ function queryCaptureDb(results = []) {
           calls.push({ sql, binds });
           return {
             async all() { return { results }; },
-            async run() { return { success: true }; }
+            async run() { return { success: true, meta: { changes: 1 } }; }
           };
         }
       };
+    },
+    async batch(statements) {
+      return statements.map(() => ({ success: true, meta: { changes: 1 } }));
     }
   };
 }
@@ -46,16 +51,96 @@ test('existing product lookup only reads source ids observed in the current craw
   assert.doesNotMatch(db.calls[0].sql, /WHERE shop_key = \?\s*$/m);
 });
 
-test('deactivation uses observation timestamp instead of a large NOT IN list', async () => {
+test('missing products are deactivated in bounded source-id chunks', async () => {
   const db = queryCaptureDb();
-  const observedAt = '2026-08-11T00:55:00.000Z';
+  const ids = Array.from({ length: 121 }, (_, index) => `source-${index}`);
 
-  await deactivateProductsNotSeenInRun(db, 'formusic', observedAt);
+  const changed = await deactivateProductsBySourceIds(db, 'formusic', ids, 50);
 
-  assert.equal(db.calls.length, 1);
-  assert.deepEqual(db.calls[0].binds, ['formusic', observedAt]);
-  assert.match(db.calls[0].sql, /last_seen_at < \?/);
-  assert.doesNotMatch(db.calls[0].sql, /NOT IN/i);
+  assert.equal(changed, 3);
+  assert.equal(db.calls.length, 3);
+  assert.ok(db.calls.every(call => call.binds.length <= 51));
+  assert.ok(db.calls.every(call => /source_id IN/.test(call.sql)));
+  assert.ok(db.calls.every(call => /is_active = 1/.test(call.sql)));
+});
+
+test('unchanged products are not rewritten on every crawl', async () => {
+  const product = {
+    sourceId: 'p1', manufacturer: 'TAD', model: 'ME1TX', title: 'ME1TX', category: 'スピーカー',
+    conditionText: '中古', priceYen: 1000000, stockStatus: 'in_stock', sourceUrl: 'https://example.test/p1'
+  };
+  const existing = {
+    id: 1, source_id: 'p1', manufacturer: 'TAD', model: 'ME1TX', title: 'ME1TX', category: 'スピーカー',
+    condition_text: '中古', price_yen: 1000000, stock_status: 'in_stock', source_url: 'https://example.test/p1',
+    last_seen_at: '2026-08-11T00:00:00.000Z', is_active: 1
+  };
+  const batches = [];
+  const db = {
+    prepare(sql) {
+      return {
+        bind(...binds) {
+          return {
+            async all() { return { results: /SELECT id, source_id, manufacturer/.test(sql) ? [existing] : [] }; },
+            async run() { return { meta: { changes: 1 } }; },
+            sql,
+            binds
+          };
+        }
+      };
+    },
+    async batch(statements) { batches.push(statements); return statements.map(() => ({ meta: { changes: 1 } })); }
+  };
+
+  const result = await upsertProducts(db, 'hifido', [product], '2026-08-11T00:30:00.000Z', { touchIntervalMinutes: 1440 });
+
+  assert.equal(result.changedCount, 0);
+  assert.equal(result.touchedCount, 0);
+  assert.equal(batches.length, 0);
+});
+
+test('unchanged products receive a low-frequency last-seen heartbeat', async () => {
+  const product = {
+    sourceId: 'p1', manufacturer: 'TAD', model: 'ME1TX', title: 'ME1TX', category: 'スピーカー',
+    conditionText: '中古', priceYen: 1000000, stockStatus: 'in_stock', sourceUrl: 'https://example.test/p1'
+  };
+  const existing = {
+    id: 1, source_id: 'p1', manufacturer: 'TAD', model: 'ME1TX', title: 'ME1TX', category: 'スピーカー',
+    condition_text: '中古', price_yen: 1000000, stock_status: 'in_stock', source_url: 'https://example.test/p1',
+    last_seen_at: '2026-08-09T00:00:00.000Z', is_active: 1
+  };
+  const batchedSql = [];
+  const db = {
+    prepare(sql) {
+      return {
+        bind(...binds) {
+          return {
+            async all() { return { results: /SELECT id, source_id, manufacturer/.test(sql) ? [existing] : [] }; },
+            async run() { return { meta: { changes: 1 } }; },
+            sql,
+            binds
+          };
+        }
+      };
+    },
+    async batch(statements) {
+      batchedSql.push(...statements.map(statement => statement.sql));
+      return statements.map(() => ({ meta: { changes: 1 } }));
+    }
+  };
+
+  const result = await upsertProducts(db, 'hifido', [product], '2026-08-11T00:30:00.000Z', { touchIntervalMinutes: 1440 });
+
+  assert.equal(result.changedCount, 0);
+  assert.equal(result.touchedCount, 1);
+  assert.equal(batchedSql.length, 1);
+  assert.match(batchedSql[0], /last_seen_at/);
+});
+
+test('product query validation rejects oversized and malformed inputs', () => {
+  assert.equal(validateProductQuery(new URL(`https://example.test/api/products?q=${'x'.repeat(101)}`)), 'q_too_long');
+  assert.equal(validateProductQuery(new URL('https://example.test/api/products?limit=-1')), 'limit_invalid');
+  assert.equal(validateProductQuery(new URL('https://example.test/api/products?sort=random')), 'sort_invalid');
+  assert.equal(validateProductQuery(new URL('https://example.test/api/products?q=TAD&limit=50&sort=updated')), null);
 });
 
 test('product listing uses keyset pagination and returns a cursor', async () => {

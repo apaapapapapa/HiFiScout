@@ -102,7 +102,6 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
           ? await browserFetcher.fetchHtmlPage(url, fetchOptions)
           : await fetchHtmlPage(url, fetchOptions);
       } catch (error) {
-        // Entry-point 404s are tolerated to let another category/root proceed, but coverage is then incomplete.
         if (/HTTP 404/.test(error.message) && (adapter.continueOnEmpty || items.size === 0)) {
           coverageIncomplete = true;
           continue;
@@ -154,11 +153,17 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
     }
 
     const observedAt = nowIso(new Date());
-    const { changedCount } = await upsertProducts(env.DB, adapter.key, [...items.values()], observedAt, { deactivateMissing });
+    const { changedCount, touchedCount, deactivatedCount } = await upsertProducts(
+      env.DB,
+      adapter.key,
+      [...items.values()],
+      observedAt,
+      { deactivateMissing, touchIntervalMinutes: settings.productTouchIntervalMinutes }
+    );
     await markSuccess(env.DB, adapter.key, observedAt, items.size);
     await env.DB.prepare('UPDATE crawl_runs SET finished_at = ?, status = \'success\', item_count = ?, page_count = ?, message = ? WHERE id = ?')
-      .bind(observedAt, items.size, pageCount, `${changedCount} changed`, runId).run();
-    return { shopKey: adapter.key, status: 'success', itemCount: items.size, pageCount, changedCount, deactivateMissing };
+      .bind(observedAt, items.size, pageCount, `${changedCount} changed, ${touchedCount} touched, ${deactivatedCount} deactivated`, runId).run();
+    return { shopKey: adapter.key, status: 'success', itemCount: items.size, pageCount, changedCount, touchedCount, deactivatedCount, deactivateMissing };
   } catch (error) {
     const failedAt = nowIso(new Date());
     await markFailure(env.DB, adapter.key, failedAt, error.message, state?.consecutive_failures || 0);

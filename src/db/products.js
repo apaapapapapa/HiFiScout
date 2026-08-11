@@ -3,9 +3,12 @@ const MAX_PAGE_SIZE = 100;
 const LOOKUP_CHUNK_SIZE = 50;
 
 async function runBatches(db, statements, chunkSize = 50) {
+  let changes = 0;
   for (let i = 0; i < statements.length; i += chunkSize) {
-    await db.batch(statements.slice(i, i + chunkSize));
+    const results = await db.batch(statements.slice(i, i + chunkSize));
+    for (const result of results || []) changes += Number(result?.meta?.changes || 0);
   }
+  return changes;
 }
 
 export async function selectProductsForHistory(db, shopKey, sourceIds, chunkSize = LOOKUP_CHUNK_SIZE) {
@@ -34,7 +37,8 @@ export async function selectExistingProducts(db, shopKey, sourceIds, chunkSize =
     if (!chunk.length) continue;
     const placeholders = chunk.map(() => '?').join(',');
     const result = await db.prepare(
-      `SELECT id, source_id, price_yen, stock_status, title
+      `SELECT id, source_id, manufacturer, model, title, category, condition_text,
+              price_yen, stock_status, source_url, last_seen_at, is_active
        FROM products
        WHERE shop_key = ? AND source_id IN (${placeholders})`
     ).bind(shopKey, ...chunk).all();
@@ -44,20 +48,65 @@ export async function selectExistingProducts(db, shopKey, sourceIds, chunkSize =
   return rows;
 }
 
-export async function deactivateProductsNotSeenInRun(db, shopKey, observedAt) {
-  await db.prepare(`
-    UPDATE products SET is_active = 0
-    WHERE shop_key = ? AND is_active = 1 AND last_seen_at < ?
-  `).bind(shopKey, observedAt).run();
+export async function selectActiveProductSourceIds(db, shopKey) {
+  const result = await db.prepare(
+    'SELECT source_id FROM products WHERE shop_key = ? AND is_active = 1'
+  ).bind(shopKey).all();
+  return (result.results || []).map(row => row.source_id);
 }
 
-export async function upsertProducts(db, shopKey, products, observedAt, { deactivateMissing = false } = {}) {
+export async function deactivateProductsBySourceIds(db, shopKey, sourceIds, chunkSize = LOOKUP_CHUNK_SIZE) {
+  const uniqueIds = [...new Set(sourceIds)];
+  const statements = [];
+  for (let i = 0; i < uniqueIds.length; i += chunkSize) {
+    const chunk = uniqueIds.slice(i, i + chunkSize);
+    if (!chunk.length) continue;
+    const placeholders = chunk.map(() => '?').join(',');
+    statements.push(db.prepare(
+      `UPDATE products SET is_active = 0 WHERE shop_key = ? AND is_active = 1 AND source_id IN (${placeholders})`
+    ).bind(shopKey, ...chunk));
+  }
+  return runBatches(db, statements, chunkSize);
+}
+
+function listingChanged(existing, product) {
+  return existing.manufacturer !== product.manufacturer ||
+    existing.model !== product.model ||
+    existing.title !== product.title ||
+    existing.category !== product.category ||
+    existing.condition_text !== product.conditionText ||
+    existing.price_yen !== product.priceYen ||
+    existing.stock_status !== product.stockStatus ||
+    existing.source_url !== product.sourceUrl ||
+    Number(existing.is_active) !== 1;
+}
+
+function shouldTouch(existing, observedAt, touchIntervalMinutes) {
+  if (!existing.last_seen_at) return true;
+  const observedMs = new Date(observedAt).getTime();
+  const lastSeenMs = new Date(existing.last_seen_at).getTime();
+  if (!Number.isFinite(observedMs) || !Number.isFinite(lastSeenMs)) return true;
+  return observedMs - lastSeenMs >= touchIntervalMinutes * 60_000;
+}
+
+export async function upsertProducts(
+  db,
+  shopKey,
+  products,
+  observedAt,
+  { deactivateMissing = false, touchIntervalMinutes = 1440 } = {}
+) {
   const existingRows = await selectExistingProducts(db, shopKey, products.map(product => product.sourceId));
   const existingBySource = new Map(existingRows.map(row => [row.source_id, row]));
+  const observedSourceIds = new Set(products.map(product => product.sourceId));
+  const missingSourceIds = deactivateMissing
+    ? (await selectActiveProductSourceIds(db, shopKey)).filter(sourceId => !observedSourceIds.has(sourceId))
+    : [];
   const newSourceIds = [];
   const changedPriceSourceIds = [];
   const writes = [];
   let changedCount = 0;
+  let touchedCount = 0;
 
   for (const product of products) {
     const existing = existingBySource.get(product.sourceId);
@@ -79,20 +128,26 @@ export async function upsertProducts(db, shopKey, products, observedAt, { deacti
     }
 
     const priceChanged = existing.price_yen !== product.priceYen && product.priceYen != null;
-    const changed = existing.price_yen !== product.priceYen || existing.stock_status !== product.stockStatus || existing.title !== product.title;
+    const changed = listingChanged(existing, product);
     if (priceChanged) changedPriceSourceIds.push(product.sourceId);
-    writes.push(db.prepare(`
-      UPDATE products SET manufacturer = ?, model = ?, title = ?, category = ?, condition_text = ?,
-        previous_price_yen = CASE WHEN ? THEN price_yen ELSE previous_price_yen END,
-        price_yen = ?, stock_status = ?, source_url = ?, last_seen_at = ?,
-        last_changed_at = CASE WHEN ? THEN ? ELSE last_changed_at END, is_active = 1
-      WHERE id = ?
-    `).bind(
-      product.manufacturer, product.model, product.title, product.category, product.conditionText,
-      priceChanged ? 1 : 0, product.priceYen, product.stockStatus, product.sourceUrl, observedAt,
-      changed ? 1 : 0, observedAt, existing.id
-    ));
-    if (changed) changedCount += 1;
+
+    if (changed) {
+      writes.push(db.prepare(`
+        UPDATE products SET manufacturer = ?, model = ?, title = ?, category = ?, condition_text = ?,
+          previous_price_yen = CASE WHEN ? THEN price_yen ELSE previous_price_yen END,
+          price_yen = ?, stock_status = ?, source_url = ?, last_seen_at = ?,
+          last_changed_at = ?, is_active = 1
+        WHERE id = ?
+      `).bind(
+        product.manufacturer, product.model, product.title, product.category, product.conditionText,
+        priceChanged ? 1 : 0, product.priceYen, product.stockStatus, product.sourceUrl, observedAt,
+        observedAt, existing.id
+      ));
+      changedCount += 1;
+    } else if (shouldTouch(existing, observedAt, touchIntervalMinutes)) {
+      writes.push(db.prepare('UPDATE products SET last_seen_at = ? WHERE id = ?').bind(observedAt, existing.id));
+      touchedCount += 1;
+    }
   }
 
   await runBatches(db, writes);
@@ -106,11 +161,11 @@ export async function upsertProducts(db, shopKey, products, observedAt, { deacti
     await runBatches(db, historyWrites);
   }
 
-  if (deactivateMissing && products.length) {
-    await deactivateProductsNotSeenInRun(db, shopKey, observedAt);
-  }
+  const deactivatedCount = missingSourceIds.length
+    ? await deactivateProductsBySourceIds(db, shopKey, missingSourceIds)
+    : 0;
 
-  return { changedCount };
+  return { changedCount, touchedCount, deactivatedCount };
 }
 
 function encodeCursor(payload) {
@@ -180,6 +235,22 @@ function cursorFor(row, sort) {
     value: row[sort.column],
     isNull: sort.price ? row.price_yen == null : false
   });
+}
+
+export function validateProductQuery(url) {
+  const params = url.searchParams;
+  const limits = { q: 100, shop: 80, manufacturer: 100, category: 100, cursor: 1024 };
+  for (const [key, maxLength] of Object.entries(limits)) {
+    const value = params.get(key);
+    if (value != null && [...value].length > maxLength) return `${key}_too_long`;
+  }
+  for (const key of ['minPrice', 'maxPrice', 'limit']) {
+    const value = params.get(key);
+    if (value != null && !/^\d{1,12}$/.test(value)) return `${key}_invalid`;
+  }
+  const sort = params.get('sort');
+  if (sort && !['newest', 'updated', 'priceAsc', 'priceDesc'].includes(sort)) return 'sort_invalid';
+  return null;
 }
 
 export async function listProducts(db, url) {
