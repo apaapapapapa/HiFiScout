@@ -38,7 +38,7 @@ test('verified exact catalog match classifies before seller detail enrichment', 
     id: 10,
     manufacturer_id: 'marantz',
     canonical_model: 'ABC-1',
-    normalized_model: 'ABC1',
+    normalized_model: 'ABC-1',
     canonical_name: 'ABC-1 Control Amplifier',
     category_id: 'pre_amp',
     is_primary: 1
@@ -71,11 +71,11 @@ test('ambiguous model aliases are not used as verified evidence', async () => {
 
   const db = catalogDb([
     {
-      id: 10, manufacturer_id: 'marantz', canonical_model: 'ABC-1', normalized_model: 'ABC1',
+      id: 10, manufacturer_id: 'marantz', canonical_model: 'ABC-1', normalized_model: 'ABC-1',
       canonical_name: 'ABC-1', category_id: 'pre_amp', is_primary: 1
     },
     {
-      id: 11, manufacturer_id: 'marantz', canonical_model: 'ABC-2', normalized_model: 'ABC2',
+      id: 11, manufacturer_id: 'marantz', canonical_model: 'ABC-2', normalized_model: 'ABC-2',
       canonical_name: 'ABC-2', category_id: 'dac', is_primary: 1
     }
   ], [
