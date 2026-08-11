@@ -2,17 +2,11 @@ import { cleanText } from '../normalize.js';
 import { parseProductPage } from '../parser.js';
 
 const PAGE_SIZE = 50;
-const ROOTS = [
-  { path: 'rA-EAPU', category: 'イヤホン' },
-  { path: 'rA-HPAU', category: 'DAP・ヘッドホンアンプ' },
-  { path: 'rA-HDPU', category: 'ヘッドホン' },
-  { path: 'rA-HMLU', category: 'アンプ・スピーカー・プレーヤー' },
-  { path: 'rA-DTMU', category: 'DJ機器・DTM' }
-];
+const NEW_ARRIVALS_PATH = 'ea-usednw_s1';
 
-function pageUrl(rootPath, page = 1) {
-  const suffix = page === 1 ? rootPath : `${rootPath}_p${page}`;
-  return `https://www.fujiya-avic.co.jp/shop/r/${suffix}/?ps=${PAGE_SIZE}`;
+function pageUrl(page = 1) {
+  if (page === 1) return 'https://www.fujiya-avic.co.jp/shop/e/ea-usednw_s1/';
+  return `https://www.fujiya-avic.co.jp/shop/e/${NEW_ARRIVALS_PATH}_p${page}/?ps=${PAGE_SIZE}`;
 }
 
 export function parseFujiyaResultCount(html) {
@@ -29,9 +23,7 @@ export const fujiyaAvicAdapter = {
   dynamicPagination: true,
   continueOnEmpty: true,
   *pageUrls() {
-    for (const root of ROOTS) {
-      yield { url: pageUrl(root.path), category: root.category, rootPath: root.path, page: 1 };
-    }
+    yield { url: pageUrl(), page: 1 };
   },
   discoverPageUrls(html, page) {
     if (page.page !== 1) return [];
@@ -41,9 +33,7 @@ export const fujiyaAvicAdapter = {
     return Array.from({ length: totalPages - 1 }, (_, index) => {
       const pageNumber = index + 2;
       return {
-        url: pageUrl(page.rootPath, pageNumber),
-        category: page.category,
-        rootPath: page.rootPath,
+        url: pageUrl(pageNumber),
         page: pageNumber
       };
     });
@@ -52,7 +42,6 @@ export const fujiyaAvicAdapter = {
     return parseProductPage(html, {
       shopKey: this.key,
       baseUrl: page.url,
-      hintedCategory: page.category,
       productUrlPattern: /fujiya-avic\.co\.jp\/shop\/(?:g\/g|goods\/)/i
     });
   }
