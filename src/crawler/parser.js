@@ -192,7 +192,37 @@ function modelCandidate(text, manufacturer, shopKey) {
   return { raw, model: cleanText(model), score };
 }
 
+function modelAfterPrefix(detail, manufacturer) {
+  const normalizedDetail = cleanText(detail);
+  const normalizedManufacturer = cleanText(manufacturer);
+  if (!normalizedDetail || !normalizedManufacturer || normalizedDetail.length <= normalizedManufacturer.length) return '';
+  if (!normalizedDetail.toLowerCase().startsWith(normalizedManufacturer.toLowerCase())) return '';
+  const boundary = normalizedDetail[normalizedManufacturer.length];
+  if (boundary && !/[\s・･_\-\/&+.,'"()（）]/.test(boundary)) return '';
+  return normalizedDetail.slice(normalizedManufacturer.length)
+    .replace(/^[\s・･_\-\/&+.,'"()（）]+/, '')
+    .trim();
+}
+
 function inferUnknownManufacturerAndModel(titles, shopKey) {
+  const prefixPairs = [];
+  for (const manufacturer of titles) {
+    if (manufacturer.length > 80) continue;
+    for (const detail of titles) {
+      if (detail === manufacturer) continue;
+      const model = modelAfterPrefix(detail, manufacturer);
+      if (!model) continue;
+      prefixPairs.push({
+        manufacturer,
+        model,
+        score: manufacturer.length * 10 + model.length + (/\d/.test(model) ? 100 : 0)
+      });
+    }
+  }
+  if (prefixPairs.length) {
+    return prefixPairs.sort((a, b) => b.score - a.score)[0];
+  }
+
   const brandCandidates = titles.filter(title => title.length <= 80 && !/\d/.test(title));
   const modelCandidates = titles
     .map(title => {
