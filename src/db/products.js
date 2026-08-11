@@ -216,7 +216,7 @@ export async function listProducts(db, url) {
   const requestedLimit = Number.parseInt(params.get('limit') || String(DEFAULT_PAGE_SIZE), 10);
   const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, Number.isFinite(requestedLimit) ? requestedLimit : DEFAULT_PAGE_SIZE));
   const orderBy = sort.price
-    ? `p.price_yen IS NULL ASC, p.price_yen ${sort.direction}, p.id ${sort.idDirection}`
+    ? `p.price_yen ${sort.direction} NULLS LAST, p.id ${sort.idDirection}`
     : `p.${sort.column} ${sort.direction}, p.id ${sort.idDirection}`;
 
   const result = await db.prepare(`

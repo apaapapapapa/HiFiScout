@@ -90,3 +90,10 @@ test('three-character searches use the FTS5 index instead of wildcard scans', as
   assert.equal(db.calls[0].binds[0], '"D-100"');
   assert.doesNotMatch(db.calls[0].sql, /title LIKE/);
 });
+
+test('price sorting uses NULLS LAST so the price index can satisfy ordering', async () => {
+  const db = queryCaptureDb([]);
+  await listProducts(db, new URL('https://example.test/api/products?sort=priceAsc'));
+  assert.match(db.calls[0].sql, /ORDER BY p\.price_yen ASC NULLS LAST, p\.id ASC/);
+  assert.doesNotMatch(db.calls[0].sql, /price_yen IS NULL ASC/);
+});
