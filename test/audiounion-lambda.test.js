@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createHandler } from '../infra/audiounion-lambda/index.mjs';
 
 const ENTRY_URL = 'https://www.audiounion.jp/st/new_arrival_used.html';
+const FULL_SEARCH_URL = 'https://www.audiounion.jp/ct/search?m=used&p=1&q=&s=new_enddate&d=1&option=1&order=date_desc';
 const HIFIDO_URL = 'https://www.hifido.co.jp/?L=50&LNG=J&O=0&OD=0';
 const TOKEN = '0123456789abcdef0123456789abcdef';
 
@@ -51,6 +52,35 @@ test('Lambda only permits allowlisted seller targets', async () => {
   assert.equal(result.statusCode, 400);
   assert.equal(JSON.parse(result.body).error, 'target_not_allowed');
   assert.equal(fetchCount, 0);
+});
+
+test('Lambda permits only the canonical AudioUnion used-search shape', async () => {
+  const calls = [];
+  const handler = createHandler({
+    env: env({ MIN_REQUEST_DELAY_MS: '0' }),
+    sleepFn: async () => {},
+    fetchFn: async (url, options) => {
+      calls.push({ url, options });
+      if (url.endsWith('/robots.txt')) return new Response('User-agent: *\nAllow: /ct/search\n', { status: 200 });
+      return new Response('<html>used search</html>', { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } });
+    }
+  });
+
+  const allowed = await handler(event({ url: FULL_SEARCH_URL }));
+  assert.equal(allowed.statusCode, 200);
+  assert.equal(calls.at(-1).url, FULL_SEARCH_URL);
+
+  const invalidUrls = [
+    FULL_SEARCH_URL.replace('p=1', 'p=0'),
+    FULL_SEARCH_URL.replace('m=used', 'm=new'),
+    `${FULL_SEARCH_URL}&maker=accuphase`,
+    FULL_SEARCH_URL.replace('order=date_desc', 'order=price_asc')
+  ];
+  for (const url of invalidUrls) {
+    const result = await handler(event({ url }));
+    assert.equal(result.statusCode, 400);
+    assert.equal(JSON.parse(result.body).error, 'target_not_allowed');
+  }
 });
 
 test('Lambda rejects non-listing Hifido URLs', async () => {
