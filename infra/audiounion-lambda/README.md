@@ -1,8 +1,16 @@
-# AudioUnion Tokyo Lambda relay
+# Tokyo Lambda relay for Audio Union and Hifido
 
-AudioUnion is fetched through a small AWS Lambda function in the Tokyo region (`ap-northeast-1`). The Lambda only returns the source HTML; parsing, normalization, D1 writes, and crawl-state handling remain in the Cloudflare Worker.
+HiFiScout uses a small AWS Lambda function in the Tokyo region (`ap-northeast-1`) as an allowlisted HTTP relay for **Audio Union** and **ハイファイ堂 (Hifido)**. The Lambda only returns source HTML; parsing, normalization, classification, D1 writes, crawl-state handling, and scheduling remain in the Cloudflare Worker.
 
-The function URL uses `AuthType: NONE` so Cloudflare can call it without AWS credentials. The function itself requires a high-entropy Bearer token, permits only the configured AudioUnion entry URL plus exact numeric used-detail URLs under `/ct/detail/used/<id>/`, evaluates `robots.txt` before every seller request, and enforces a minimum request delay. `/ct/search` and other AudioUnion paths remain outside the relay allowlist. Normal HiFiScout crawl execution is serialized by the Cloudflare crawl queue (`max_concurrency: 1`). Lambda reserved concurrency is intentionally not configured because AWS accounts with a small Lambda concurrency quota can reject a reservation when it would reduce the account's unreserved concurrency below AWS's required minimum.
+The function URL uses `AuthType: NONE` so Cloudflare can call it without AWS credentials. The function itself requires a high-entropy Bearer token and is not a general-purpose proxy. It permits only:
+
+- the configured Audio Union new-arrival entry URL;
+- exact numeric Audio Union used-detail URLs under `/ct/detail/used/<id>/`;
+- the validated Hifido listing URL shape used by the collector, with only the expected query parameters.
+
+Every seller request is evaluated against the seller's current `robots.txt`, and the relay enforces a minimum request delay. `/ct/search` and unrelated Audio Union/Hifido paths remain outside the allowlist. Normal HiFiScout crawl execution is serialized by the Cloudflare crawl queue (`max_concurrency: 1`). Lambda reserved concurrency is intentionally not configured because AWS accounts with a small Lambda concurrency quota can reject a reservation when it would reduce the account's unreserved concurrency below AWS's required minimum.
+
+> Historical naming note: the infrastructure directory, Lambda function, and some workflow names still contain `audiounion`. They are retained for compatibility even though the relay now also serves Hifido listing requests.
 
 ## Deploy to Tokyo
 
@@ -106,9 +114,11 @@ printf '%s' 'https://<function-url-id>.lambda-url.ap-northeast-1.on.aws/' | npx 
 printf '%s' "$RELAY_TOKEN" | npx wrangler secret put CRAWL_RELAY_TOKEN
 ```
 
-After the relay code is deployed, relay-backed shop collectors are considered configured only when both secrets exist.
+Relay-backed shop collectors are considered configured only when both secrets exist. At present, both `audiounion` and `hifido` use the shared relay transport.
 
-## Smoke test
+## Smoke tests and verification
+
+### Audio Union
 
 This invokes the seller once, so use it only when needed.
 
@@ -116,19 +126,23 @@ This invokes the seller once, so use it only when needed.
 curl -i -X POST "$CRAWL_RELAY_URL" \
   -H "Authorization: Bearer $RELAY_TOKEN" \
   -H 'Content-Type: application/json' \
-  --data '{"url":"https://www.audiounion.jp/st/new_arrival_used.html","userAgent":"HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)","requestDelayMs":10000}'
+  --data '{"url":"https://www.audiounion.jp/st/new_arrival_used.html","userAgent":"HiFiScoutBot/0.1 (+https://github.com/apaapapapa/HiFiScout)","requestDelayMs":10000}'
 ```
 
 A successful response should be `200`, have an HTML content type, and include `x-hifiscout-aws-region: ap-northeast-1` and `x-hifiscout-upstream-status: 200`.
 
-The automatic Lambda deployment workflow also selects one currently active AudioUnion used-detail URL from D1 and probes it through the Tokyo relay. The deployment fails if live `robots.txt` rejects that path or if the detail page is not reachable through the relay.
+The automatic Lambda deployment workflow also selects one currently active Audio Union used-detail URL from D1 and probes it through the Tokyo relay. The deployment fails if live `robots.txt` rejects that path or if the detail page is not reachable through the relay.
 
-## Low-frequency inventory recheck
+### Hifido
 
-The Worker uses detail pages only for stale-product inventory verification. The defaults are deliberately conservative:
+Hifido uses the same Function URL/token pair but a browser-like User-Agent and a separately restricted URL shape. `.github/workflows/verify-hifido-tokyo-relay.yml` exists to verify the Tokyo relay path independently from normal Cloudflare crawl scheduling. Keep that verification aligned with `src/crawler/shops/hifido.js` whenever the Hifido listing URL format changes.
+
+## Low-frequency Audio Union inventory recheck
+
+The Worker uses Audio Union detail pages only for stale-product inventory verification. The defaults are deliberately conservative:
 
 - the product must not have been observed in the normal listing for at least 24 hours;
-- at most one stale AudioUnion product is rechecked after each successful AudioUnion crawl;
+- at most one stale Audio Union product is rechecked after each successful Audio Union crawl;
 - the same product is attempted at most once per 24 hours;
 - `last_inventory_check_attempt_at` is separate from `last_inventory_checked_at`, so robots rejection, rate limiting, and transient failures can back off without being recorded as a successful inventory verification;
 - contradictory or ambiguous HTML never deactivates a product;
@@ -139,7 +153,7 @@ The settings are controlled by `AUDIOUNION_INVENTORY_RECHECK_*` variables in `wr
 
 ## Security and cost controls
 
-- The relay is not a general-purpose proxy: it permits the configured AudioUnion entry URL, exact numeric AudioUnion used-detail URLs, and the separately validated Hifido listing shape only.
+- The relay is not a general-purpose proxy: it permits the configured Audio Union entry URL, exact numeric Audio Union used-detail URLs, and the separately validated Hifido listing shape only.
 - Every seller target is still subject to the live `robots.txt` policy before seller access.
 - Requests without the Bearer token are rejected before any seller request is made.
 - The normal scheduler path is serialized by the Cloudflare crawl queue; Lambda reserved concurrency is intentionally omitted for compatibility with low-quota AWS accounts.
