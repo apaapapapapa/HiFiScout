@@ -136,11 +136,16 @@ export const hifidoAdapter = {
   key: 'hifido',
   name: 'ハイファイ堂',
   baseUrl: 'https://www.hifido.co.jp',
-  transport: 'browser',
+  transport: 'relay',
+  relayUrlEnv: 'AUDIOUNION_RELAY_URL',
+  relayTokenEnv: 'AUDIOUNION_RELAY_TOKEN',
   partialCoverage: true,
   guardItemCount: true,
   continueOnEmpty: true,
   extraPageAllowance: 1,
+  isConfigured(env) {
+    return Boolean(env?.AUDIOUNION_RELAY_URL?.trim() && env?.AUDIOUNION_RELAY_TOKEN?.trim());
+  },
   *pageUrls(maxPages, env = {}, context = {}) {
     for (let page = 1; page <= maxPages; page += 1) yield listingUrl(page);
     const recheckPage = hifidoRecheckPage(maxPages, env, context);
