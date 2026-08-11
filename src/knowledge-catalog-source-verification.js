@@ -1,4 +1,4 @@
-import { createKnowledgeSourceVerifierV2 } from './catalog/knowledge-source-verifier-v2.js';
+import { createKnowledgeSourceVerifierV3 } from './catalog/knowledge-source-verifier-v3.js';
 import { createRobotsRespectingFetch } from './crawler/robots-respecting-fetch.js';
 import {
   listDueKnowledgeCatalogProducts,
@@ -43,14 +43,20 @@ function countOutcome(counts, status) {
 
 export async function runKnowledgeCatalogSourceVerification(env, {
   now = new Date(),
-  fetchImpl = globalThis.fetch
+  fetchImpl = globalThis.fetch,
+  preferRetries = false
 } = {}) {
   const attemptedAt = now.toISOString();
   const sourceFetch = createRobotsRespectingFetch(fetchImpl, {
     userAgent: env.CRAWLER_USER_AGENT || 'HiFiScoutBot/0.1',
     minimumDelayMs: Number(env.KNOWLEDGE_CATALOG_SOURCE_REQUEST_DELAY_MS) || 500
   });
-  const verifier = createKnowledgeSourceVerifierV2(env, { fetchImpl: sourceFetch });
+  const verifier = createKnowledgeSourceVerifierV3(env, {
+    fetchImpl: sourceFetch,
+    // The one-shot rollout has a matched-cohort purpose. Avoid expensive sitemap fallback there;
+    // normal monthly reviews retain the broader v2 fallback for catalog expansion.
+    fallbackEnabled: !preferRetries
+  });
   const supportedManufacturerIds = [...verifier.definitions.keys()];
   const candidateLimit = boundedLimit(env.KNOWLEDGE_CATALOG_VERIFY_MAX_CANDIDATES, 25);
   const dueProductLimit = boundedLimit(env.KNOWLEDGE_CATALOG_VERIFY_MAX_DUE_PRODUCTS, 25);
@@ -86,7 +92,8 @@ export async function runKnowledgeCatalogSourceVerification(env, {
   const candidates = await listPendingKnowledgeCatalogCandidates(
     env.DB,
     candidateLimit,
-    supportedManufacturerIds
+    supportedManufacturerIds,
+    { preferRetries }
   );
   for (const candidate of candidates) {
     const verification = await verifier.verifyCandidate(candidate);
@@ -130,6 +137,7 @@ export async function runKnowledgeCatalogSourceVerification(env, {
     verificationOutcomes,
     dueProductsChecked: dueProducts.length,
     candidatesChecked: candidates.length,
-    supportedManufacturers: supportedManufacturerIds.length
+    supportedManufacturers: supportedManufacturerIds.length,
+    retryFirst: preferRetries
   };
 }

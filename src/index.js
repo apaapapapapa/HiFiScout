@@ -1,6 +1,6 @@
 import { checkPublicApiRateLimit } from './api-guard.js';
-import { canonicalCategoryDefinitions, categoryFacet, getCategory } from './catalog/categories.js';
-import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from './catalog/knowledge-source-verifier-v2.js';
+import { categoryFacet } from './catalog/categories.js';
+import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from './catalog/knowledge-source-verifier-v3.js';
 import { SHOP_DEFINITIONS, getShopEnabled, getShopIntervalMinutes } from './config.js';
 import { consumeCrawlMessage, dispatchDueCrawls, dispatchForcedCrawl, dispatchScheduledCrawl } from './crawler/dispatch.js';
 import { knowledgeCatalogOperationalStatus } from './db/knowledge-catalog-review-repository.js';
@@ -39,11 +39,6 @@ async function cachedJson(request, ctx, ttlSeconds, load) {
   return response;
 }
 
-function categorySortKey(category) {
-  const parent = category.parentId ? getCategory(category.parentId) : category;
-  return [parent?.order || 999, category.parentId ? 1 : 0, category.order || 999];
-}
-
 async function meta(env) {
   const states = await env.DB.prepare('SELECT * FROM shop_sync_state').all();
   const stateRows = states.results || [];
@@ -62,33 +57,24 @@ async function meta(env) {
       ORDER BY value
     `),
     env.DB.prepare(`
-      SELECT pc.category_id AS value, COUNT(DISTINCT pc.product_id) AS active_product_count
+      SELECT DISTINCT pc.category_id AS value
       FROM product_categories pc
       JOIN products p ON p.id = pc.product_id
       WHERE p.is_active = 1
-      GROUP BY pc.category_id
     `)
   ]);
   const manufacturers = facets[0].results.map(row => row.value);
-  const counts = new Map(facets[1].results.map(row => [row.value, Number(row.active_product_count || 0)]));
-  const categoryFacets = canonicalCategoryDefinitions()
-    .filter(category => category.filterable)
-    .map(category => {
-      const facet = categoryFacet(category.id);
-      const groupedParent = !category.classifiable && ['amplifier', 'digital', 'analog', 'speaker', 'headphone_group', 'accessories'].includes(category.id);
-      return {
-        ...facet,
-        name: groupedParent ? `${category.name}（すべて）` : category.name,
-        group: groupedParent ? category.name : facet.group,
-        activeProductCount: counts.get(category.id) || 0
-      };
-    })
+  const categoryFacets = facets[1].results
+    .map(row => categoryFacet(row.value))
+    .filter(Boolean)
     .sort((left, right) => {
-      const a = categorySortKey(left);
-      const b = categorySortKey(right);
-      return a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+      const groupOrder = ['アンプ', 'デジタル', 'アナログ'];
+      const leftGroup = left.group ? groupOrder.indexOf(left.group) : -1;
+      const rightGroup = right.group ? groupOrder.indexOf(right.group) : -1;
+      if (leftGroup !== rightGroup) return leftGroup - rightGroup;
+      return left.name.localeCompare(right.name, 'ja');
     });
-  const categories = categoryFacets.filter(category => category.classifiable).map(category => category.name);
+  const categories = categoryFacets.map(category => category.name);
   return { status: health.status, shops, manufacturers, categories, categoryFacets };
 }
 
@@ -171,15 +157,34 @@ async function runScheduled(cron, env) {
 async function bootstrapKnowledgeCatalogReview(env) {
   const now = new Date();
   const startedAt = now.toISOString();
-  const claimed = await claimKnowledgeCatalogVerifierVersion(env.DB, KNOWLEDGE_CATALOG_VERIFIER_VERSION, startedAt);
+  const claimed = await claimKnowledgeCatalogVerifierVersion(
+    env.DB,
+    KNOWLEDGE_CATALOG_VERIFIER_VERSION,
+    startedAt
+  );
   if (!claimed) return { status: 'skipped', reason: 'verifier_version_already_claimed' };
-  console.log(JSON.stringify({ event: 'knowledge_catalog_verifier_rollout_started', verifierVersion: KNOWLEDGE_CATALOG_VERIFIER_VERSION }));
+
+  console.log(JSON.stringify({
+    event: 'knowledge_catalog_verifier_rollout_started',
+    verifierVersion: KNOWLEDGE_CATALOG_VERIFIER_VERSION,
+    mode: 'retry_recent_failures'
+  }));
   try {
-    const result = await runKnowledgeCatalogReview(env, { now });
-    await finishKnowledgeCatalogVerifierVersionSuccess(env.DB, KNOWLEDGE_CATALOG_VERIFIER_VERSION, new Date().toISOString(), result.message);
+    const result = await runKnowledgeCatalogReview(env, { now, preferRetries: true });
+    await finishKnowledgeCatalogVerifierVersionSuccess(
+      env.DB,
+      KNOWLEDGE_CATALOG_VERIFIER_VERSION,
+      new Date().toISOString(),
+      result.message
+    );
     return result;
   } catch (error) {
-    await finishKnowledgeCatalogVerifierVersionFailure(env.DB, KNOWLEDGE_CATALOG_VERIFIER_VERSION, new Date().toISOString(), error?.message || String(error));
+    await finishKnowledgeCatalogVerifierVersionFailure(
+      env.DB,
+      KNOWLEDGE_CATALOG_VERIFIER_VERSION,
+      new Date().toISOString(),
+      error?.message || String(error)
+    );
     throw error;
   }
 }

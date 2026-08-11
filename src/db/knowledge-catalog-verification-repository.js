@@ -42,7 +42,12 @@ function attemptStatement(db, {
   );
 }
 
-export async function listPendingKnowledgeCatalogCandidates(db, limit = 25, manufacturerIds = null) {
+export async function listPendingKnowledgeCatalogCandidates(
+  db,
+  limit = 25,
+  manufacturerIds = null,
+  { preferRetries = false } = {}
+) {
   const supported = Array.isArray(manufacturerIds)
     ? [...new Set(manufacturerIds.map(value => String(value || '').trim().toLowerCase()).filter(Boolean))]
     : null;
@@ -51,14 +56,18 @@ export async function listPendingKnowledgeCatalogCandidates(db, limit = 25, manu
     ? ` AND manufacturer_id IN (${supported.map(() => '?').join(', ')})`
     : '';
   const params = supported ? [...supported, boundedLimit(limit)] : [boundedLimit(limit)];
+  const retryOrder = preferRetries
+    ? `CASE WHEN last_verification_at IS NULL THEN 1 ELSE 0 END,
+       COALESCE(last_verification_at, '') DESC`
+    : `CASE WHEN last_verification_at IS NULL THEN 0 ELSE 1 END,
+       COALESCE(last_verification_at, '')`;
   const result = await db.prepare(`
     SELECT id, manufacturer_id, normalized_model, observed_manufacturer, observed_model, sample_title,
            candidate_category_ids, active_listing_count, shop_count, unclassified_count, priority_score,
            verification_status, last_verification_at
     FROM knowledge_catalog_candidates
     WHERE review_status = 'pending' AND active_listing_count > 0${manufacturerFilter}
-    ORDER BY CASE WHEN last_verification_at IS NULL THEN 0 ELSE 1 END,
-             COALESCE(last_verification_at, ''),
+    ORDER BY ${retryOrder},
              priority_score DESC, unclassified_count DESC, shop_count DESC, active_listing_count DESC, id
     LIMIT ?
   `).bind(...params).all();
