@@ -2,7 +2,7 @@ import { classifyCategoryEvidence, summarizeCategoryEvidence } from './category-
 import { collectListingCategoryEvidence } from './category-evidence.js';
 import { normalizeManufacturer } from './manufacturers.js';
 
-const CLASSIFICATION_METADATA_VERSION = 2;
+const CLASSIFICATION_METADATA_VERSION = 3;
 
 function clean(value = '') {
   return String(value).normalize('NFKC').replace(/\s+/g, ' ').trim();
