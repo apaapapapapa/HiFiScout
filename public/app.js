@@ -1,9 +1,13 @@
 const $ = id => document.getElementById(id);
 const debouncedInputIds = ['q', 'minPrice', 'maxPrice'];
-const filterChangeIds = ['shop', 'manufacturer', 'category', 'sort', 'inStock', 'favoritesOnly'];
+const filterChangeIds = [
+  'shop', 'manufacturer', 'category', 'sort', 'inStock', 'favoritesOnly', 'recentOnly', 'priceDropped'
+];
 const PAGE_SIZE = 50;
 const FAVORITES_KEY = 'hifiscout:favorites';
 const VIEW_KEY = 'hifiscout:view';
+const URL_VALUE_IDS = ['q', 'shop', 'manufacturer', 'category', 'minPrice', 'maxPrice', 'sort'];
+const DEFAULT_SORT = 'newest';
 
 function readFavoriteStorage() {
   const products = new Map();
@@ -36,7 +40,9 @@ const state = {
   controller: null,
   requestSequence: 0,
   loading: false,
-  view: storedView === 'cards' ? 'cards' : 'list'
+  view: storedView === 'cards' ? 'cards' : 'list',
+  applyingUrl: false,
+  booted: false
 };
 const responseCache = new Map();
 const CACHE_TTL_MS = 30_000;
@@ -95,6 +101,19 @@ function safeDate(value) {
   return Number.isFinite(date.getTime()) ? date : null;
 }
 
+function relativeTime(value) {
+  const date = safeDate(value);
+  if (!date) return '未取得';
+  const diff = Math.max(0, Date.now() - date.getTime());
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 1) return 'たった今';
+  if (minutes < 60) return `${minutes}分前`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}時間前`;
+  const days = Math.floor(hours / 24);
+  return `${days}日前`;
+}
+
 function activityData(product) {
   const firstSeen = safeDate(product.first_seen_at);
   const activityValue = product.last_activity_at || product.first_seen_at || product.last_seen_at;
@@ -111,9 +130,13 @@ function activityData(product) {
   };
 }
 
+function priceDropped(product) {
+  return product.previous_price_yen != null && product.price_yen != null && product.price_yen < product.previous_price_yen;
+}
+
 function productCard(product) {
   const favorite = isFavorite(product.id);
-  const dropped = product.previous_price_yen != null && product.price_yen != null && product.price_yen < product.previous_price_yen;
+  const dropped = priceDropped(product);
   const activity = activityData(product);
   const badges = [
     activity.isNew ? '<span class="badge">NEW</span>' : activity.isRecentlyUpdated ? '<span class="badge">UPDATED</span>' : '',
@@ -190,29 +213,111 @@ function categoryOptions(meta) {
   return topLevel + groups;
 }
 
+function renderSyncStatus(meta) {
+  const enabled = (meta.shops || []).filter(shop => shop.enabled !== false);
+  const problems = enabled.filter(shop => ['warning', 'critical'].includes(shop.health?.status));
+  const critical = problems.filter(shop => shop.health?.status === 'critical');
+  const status = meta.status || (critical.length ? 'critical' : problems.length ? 'warning' : 'healthy');
+  const summary = status === 'critical'
+    ? `⚠ ${Math.max(critical.length, problems.length)}店舗で更新に問題があります`
+    : status === 'warning'
+      ? `⚠ ${problems.length}店舗で更新が遅れています`
+      : 'データ更新 正常';
+
+  $('sync-status').classList.remove('healthy', 'warning', 'critical');
+  $('sync-status').classList.add(status === 'critical' ? 'critical' : status === 'warning' ? 'warning' : 'healthy');
+  $('sync-summary-text').textContent = summary;
+  $('sync-status-details').innerHTML = (meta.shops || []).map(shop => {
+    const health = shop.health || {};
+    const healthStatus = health.status || (shop.enabled === false ? 'disabled' : 'unknown');
+    const label = healthStatus === 'healthy' ? '正常'
+      : healthStatus === 'warning' ? '遅延'
+        : healthStatus === 'critical' ? '要確認'
+          : healthStatus === 'disabled' ? '停止中' : '未確認';
+    const lastSuccess = health.lastSuccessAt || shop.sync?.last_success_at || null;
+    const exact = safeDate(lastSuccess)?.toLocaleString('ja-JP') || '未取得';
+    return `<div class="sync-shop-row ${escapeHtml(healthStatus)}">
+      <span class="sync-shop-name">${escapeHtml(shop.name)}</span>
+      <span class="sync-shop-health">${escapeHtml(label)}</span>
+      <time title="${escapeHtml(exact)}">${escapeHtml(relativeTime(lastSuccess))}</time>
+    </div>`;
+  }).join('');
+}
+
 async function loadMeta() {
   const meta = await fetchJson('/api/meta');
   shops = Object.fromEntries(meta.shops.map(shop => [shop.key, shop]));
   $('shop').insertAdjacentHTML('beforeend', meta.shops.map(shop => `<option value="${escapeHtml(shop.key)}">${escapeHtml(shop.name)}</option>`).join(''));
   $('manufacturer-options').innerHTML = meta.manufacturers.map(value => `<option value="${escapeHtml(value)}"></option>`).join('');
   $('category').insertAdjacentHTML('beforeend', categoryOptions(meta));
-  $('sync-status').innerHTML = meta.shops.map(shop => {
-    const lastDate = shop.sync?.last_success_at ? safeDate(shop.sync.last_success_at) : null;
-    const last = lastDate ? dateFmt.format(lastDate) : '未取得';
-    return `<span>${escapeHtml(shop.name)} <b>${last}</b> · ${shop.intervalMinutes}分</span>`;
-  }).join('');
+  renderSyncStatus(meta);
 }
 
 function productParams(cursor = null) {
   const params = new URLSearchParams();
-  for (const id of ['q', 'shop', 'manufacturer', 'category', 'minPrice', 'maxPrice', 'sort']) {
+  for (const id of URL_VALUE_IDS) {
     const value = $(id).value.trim();
     if (value) params.set(id, value);
   }
   if ($('inStock').checked) params.set('inStock', 'true');
+  if ($('recentOnly').checked) params.set('newOnly', 'true');
+  if ($('priceDropped').checked) params.set('priceDropped', 'true');
   params.set('limit', String(PAGE_SIZE));
   if (cursor) params.set('cursor', cursor);
   return params;
+}
+
+function urlParamsFromState() {
+  const params = new URLSearchParams();
+  for (const id of URL_VALUE_IDS) {
+    const value = $(id).value.trim();
+    if (!value) continue;
+    if (id === 'sort' && value === DEFAULT_SORT) continue;
+    params.set(id, value);
+  }
+  if (!$('inStock').checked) params.set('inStock', 'false');
+  if ($('recentOnly').checked) params.set('newOnly', 'true');
+  if ($('priceDropped').checked) params.set('priceDropped', 'true');
+  if (state.view === 'cards') params.set('view', 'cards');
+  return params;
+}
+
+function syncUrl({ replace = false } = {}) {
+  if (!state.booted || state.applyingUrl) return;
+  const params = urlParamsFromState();
+  const nextSearch = params.toString();
+  const next = `${location.pathname}${nextSearch ? `?${nextSearch}` : ''}${location.hash}`;
+  const current = `${location.pathname}${location.search}${location.hash}`;
+  if (next === current) return;
+  if (replace) history.replaceState(null, '', next);
+  else history.pushState(null, '', next);
+}
+
+function setSelectValue(id, value) {
+  const select = $(id);
+  select.value = value;
+  if (value && select.value !== value) select.value = '';
+}
+
+function applyUrlState() {
+  const params = new URLSearchParams(location.search);
+  state.applyingUrl = true;
+  $('q').value = params.get('q') || '';
+  setSelectValue('shop', params.get('shop') || '');
+  $('manufacturer').value = params.get('manufacturer') || '';
+  setSelectValue('category', params.get('category') || '');
+  $('minPrice').value = params.get('minPrice') || '';
+  $('maxPrice').value = params.get('maxPrice') || '';
+  setSelectValue('sort', params.get('sort') || DEFAULT_SORT);
+  $('inStock').checked = params.get('inStock') !== 'false';
+  $('recentOnly').checked = params.get('newOnly') === 'true';
+  $('priceDropped').checked = params.get('priceDropped') === 'true';
+  const view = params.get('view');
+  if (view === 'cards' || view === 'list') {
+    state.view = view;
+    localStorage.setItem(VIEW_KEY, view);
+  }
+  state.applyingUrl = false;
 }
 
 function resetPages() {
@@ -330,6 +435,8 @@ function activeFilterEntries() {
   if (Number.isFinite(minPrice)) entries.push({ id: 'minPrice', label: `${yen.format(minPrice)}以上`, detail: true });
   if (Number.isFinite(maxPrice)) entries.push({ id: 'maxPrice', label: `${yen.format(maxPrice)}以下`, detail: true });
   if ($('inStock').checked) entries.push({ id: 'inStock', label: '在庫あり', detail: true });
+  if ($('recentOnly').checked) entries.push({ id: 'recentOnly', label: '48時間以内の新着', detail: true });
+  if ($('priceDropped').checked) entries.push({ id: 'priceDropped', label: '値下げ商品', detail: true });
   if ($('favoritesOnly').checked) entries.push({ id: 'favoritesOnly', label: 'お気に入り', detail: true });
   return entries;
 }
@@ -345,17 +452,17 @@ function renderActiveFilters() {
 }
 
 function clearFilter(id) {
-  if (id === 'inStock' || id === 'favoritesOnly') $(id).checked = false;
+  if (['inStock', 'favoritesOnly', 'recentOnly', 'priceDropped'].includes(id)) $(id).checked = false;
   else $(id).value = '';
   commitFilterChange(id);
 }
 
 function clearAllFilters() {
   for (const id of ['q', 'shop', 'manufacturer', 'category', 'minPrice', 'maxPrice']) $(id).value = '';
-  $('inStock').checked = false;
-  $('favoritesOnly').checked = false;
+  for (const id of ['inStock', 'favoritesOnly', 'recentOnly', 'priceDropped']) $(id).checked = false;
   renderActiveFilters();
   closeFilters();
+  syncUrl();
   loadProducts({ reset: true });
 }
 
@@ -379,6 +486,8 @@ function favoriteMatchesFilters(product) {
     if (!ids.includes(category) && product.primary_category_id !== category && product.category !== selectedCategoryLabel()) return false;
   }
   if ($('inStock').checked && product.stock_status !== 'in_stock') return false;
+  if ($('recentOnly').checked && !activityData(product).isNew) return false;
+  if ($('priceDropped').checked && !priceDropped(product)) return false;
   const minPrice = Number.parseInt($('minPrice').value, 10);
   if (Number.isFinite(minPrice) && !(product.price_yen >= minPrice)) return false;
   const maxPrice = Number.parseInt($('maxPrice').value, 10);
@@ -423,8 +532,10 @@ function renderView() {
 function render(errorMessage = '') {
   const favoriteMode = $('favoritesOnly').checked;
   const products = favoriteMode ? favoriteResults() : state.products;
+  const currentPageState = state.pages.get(state.currentPage);
   $('count').textContent = String(products.length);
-  $('count-label').textContent = favoriteMode ? '件のお気に入り' : '件表示';
+  $('count-label').textContent = favoriteMode ? '件のお気に入り' : '件を表示中';
+  $('more-available').hidden = favoriteMode || errorMessage || !currentPageState?.hasMore;
   $('favorites-note').hidden = !favoriteMode;
   const legacyNotice = favoriteMode && state.legacyFavoriteIds.size
     ? `<div class="legacy-favorites-note">旧形式で保存されたお気に入りが${state.legacyFavoriteIds.size}件あります。商品一覧で再表示されると、この端末内で自動的に移行されます。</div>`
@@ -452,6 +563,7 @@ async function showHistory(id) {
 
 function commitFilterChange(id) {
   renderActiveFilters();
+  syncUrl({ replace: debouncedInputIds.includes(id) });
   if (id === 'favoritesOnly' && $('favoritesOnly').checked) {
     state.controller?.abort();
     setLoading(false);
@@ -554,6 +666,7 @@ document.addEventListener('click', event => {
     state.view = viewButton.dataset.view === 'cards' ? 'cards' : 'list';
     localStorage.setItem(VIEW_KEY, state.view);
     renderView();
+    syncUrl();
     return;
   }
 
@@ -580,10 +693,19 @@ document.addEventListener('click', event => {
 });
 
 window.addEventListener('resize', syncFilterPanelMode);
+window.addEventListener('popstate', async () => {
+  applyUrlState();
+  renderActiveFilters();
+  renderView();
+  await loadProducts({ reset: true });
+});
 
 updateFavoriteCount();
 syncFilterPanelMode();
 await loadMeta();
+applyUrlState();
 renderActiveFilters();
 renderView();
+state.booted = true;
+syncUrl({ replace: true });
 await loadProducts({ reset: true });

@@ -9,7 +9,7 @@
   "browser": { "binding": "BROWSER" },
   "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": ["/api/*"] },
   "routes": [{ "pattern": "hifiscout.jp", "custom_domain": true }],
-  "triggers": { "crons": ["*/5 * * * *", "1 * * * *", "17 18 * * *", "23 3 1 * *"] },
+  "triggers": { "crons": ["*/5 * * * *", "1 * * * *", "30 * * * *", "17 18 * * *", "23 3 1 * *"] },
   "queues": {
     "producers": [{ "binding": "CRAWL_QUEUE", "queue": "hifiscout-crawl" }],
     "consumers": [{ "queue": "hifiscout-crawl", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 3, "retry_delay": 60, "dead_letter_queue": "hifiscout-crawl-dlq", "max_concurrency": 1 }]
