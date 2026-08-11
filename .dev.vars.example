@@ -5,5 +5,3 @@ ADMIN_TOKEN=change-me
 # Keep the real values out of source control.
 CRAWL_RELAY_URL=https://example.lambda-url.ap-northeast-1.on.aws/
 CRAWL_RELAY_TOKEN=change-me-with-a-long-random-token
-
-# Legacy AUDIOUNION_RELAY_URL / AUDIOUNION_RELAY_TOKEN remain supported during migration.
