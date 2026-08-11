@@ -12,61 +12,58 @@ const DEFAULT_MAX_PRODUCT_PAGES = 4;
 const DEFAULT_OFFICIAL_SOURCES = Object.freeze([
   {
     manufacturerId: 'luxman',
-    adapter: 'official_site',
     sourceType: 'manufacturer_official',
     baseUrl: 'https://www.luxman.co.jp/',
     catalogUrls: ['https://www.luxman.co.jp/']
   },
   {
     manufacturerId: 'accuphase',
-    adapter: 'official_site',
     sourceType: 'manufacturer_official',
     baseUrl: 'https://www.accuphase.com/',
     catalogUrls: ['https://www.accuphase.com/?lang=ja']
   },
   {
     manufacturerId: 'tad',
-    adapter: 'official_site',
     sourceType: 'manufacturer_official',
     baseUrl: 'https://tad-labs.com/jp/',
     catalogUrls: ['https://tad-labs.com/jp/']
   },
   {
     manufacturerId: 'esoteric',
-    adapter: 'official_site',
     sourceType: 'manufacturer_official',
     baseUrl: 'https://www.esoteric.jp/jp/',
     catalogUrls: ['https://www.esoteric.jp/jp/']
   },
   {
     manufacturerId: 'yamaha',
-    adapter: 'official_site',
     sourceType: 'manufacturer_official',
     baseUrl: 'https://jp.yamaha.com/',
     catalogUrls: ['https://jp.yamaha.com/products/audio_visual/hifi_components/']
   },
   {
     manufacturerId: 'denon',
-    adapter: 'official_site',
     sourceType: 'manufacturer_official',
     baseUrl: 'https://www.denon.com/ja-jp/',
     catalogUrls: ['https://www.denon.com/ja-jp/']
   },
   {
     manufacturerId: 'marantz',
-    adapter: 'official_site',
     sourceType: 'manufacturer_official',
     baseUrl: 'https://www.marantz.com/ja-jp/',
     catalogUrls: ['https://www.marantz.com/ja-jp/']
   },
   {
     manufacturerId: 'technics',
-    adapter: 'official_site',
     sourceType: 'manufacturer_official',
     baseUrl: 'https://jp.technics.com/',
     catalogUrls: ['https://jp.technics.com/']
   }
 ]);
+
+const ELEMENT_PATTERNS = Object.freeze({
+  title: /<title\b[^>]*>([\s\S]*?)<\/title>/i,
+  h1: /<h1\b[^>]*>([\s\S]*?)<\/h1>/i
+});
 
 function boundedNumber(value, fallback, min, max) {
   const parsed = Number(value);
@@ -92,8 +89,8 @@ function stripTags(value = '') {
   return clean(decodeHtml(String(value).replace(/<[^>]+>/g, ' ')));
 }
 
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function escapeRegExp(value = '') {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function normalizeIdentityText(value = '') {
@@ -114,7 +111,9 @@ export function containsCatalogModelIdentity(text = '', model = '') {
 
 function urlModelKey(value = '') {
   let decoded = String(value);
-  try { decoded = decodeURIComponent(decoded); } catch {}
+  try {
+    decoded = decodeURIComponent(decoded);
+  } catch {}
   return decoded
     .normalize('NFKC')
     .toUpperCase()
@@ -146,7 +145,10 @@ function parseSourceOverrides(value) {
     const parsed = typeof value === 'string' ? JSON.parse(value) : value;
     if (Array.isArray(parsed)) return parsed;
     if (parsed && typeof parsed === 'object') {
-      return Object.entries(parsed).map(([manufacturerId, config]) => ({ manufacturerId, ...(config || {}) }));
+      return Object.entries(parsed).map(([manufacturerId, config]) => ({
+        manufacturerId,
+        ...(config || {})
+      }));
     }
   } catch {}
   return [];
@@ -156,19 +158,29 @@ function normalizedSource(source = {}) {
   const manufacturerId = clean(source.manufacturerId).toLowerCase();
   const baseUrl = clean(source.baseUrl);
   if (!manufacturerId || !baseUrl || source.enabled === false) return null;
+
+  let base;
   try {
-    const parsed = new URL(baseUrl);
-    if (!['http:', 'https:'].includes(parsed.protocol)) return null;
+    base = new URL(baseUrl);
+    if (!['http:', 'https:'].includes(base.protocol)) return null;
   } catch {
     return null;
   }
+
+  const catalogUrls = Array.isArray(source.catalogUrls)
+    ? source.catalogUrls.filter(Boolean).map(String)
+    : [base.toString()];
+  const sitemapUrls = Array.isArray(source.sitemapUrls)
+    ? source.sitemapUrls.filter(Boolean).map(String)
+    : [];
+
   return {
     manufacturerId,
-    adapter: source.adapter === 'official_site' ? 'official_site' : 'official_site',
+    adapter: 'official_site',
     sourceType: clean(source.sourceType) || 'manufacturer_official',
-    baseUrl,
-    catalogUrls: Array.isArray(source.catalogUrls) ? source.catalogUrls.filter(Boolean).map(String) : [baseUrl],
-    sitemapUrls: Array.isArray(source.sitemapUrls) ? source.sitemapUrls.filter(Boolean).map(String) : [],
+    baseUrl: base.toString(),
+    catalogUrls,
+    sitemapUrls,
     searchUrlTemplate: clean(source.searchUrlTemplate)
   };
 }
@@ -198,32 +210,48 @@ export function knowledgeSourceDefinitions(env = {}) {
   return byManufacturer;
 }
 
+function parseTagAttributes(tag = '') {
+  const attributes = new Map();
+  const pattern = /([A-Za-z_:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g;
+  for (const match of tag.matchAll(pattern)) {
+    attributes.set(match[1].toLowerCase(), decodeHtml(match[2] ?? match[3] ?? match[4] ?? ''));
+  }
+  return attributes;
+}
+
 function metaContent(html, name) {
-  const patterns = [
-    new RegExp(`<meta[^>]+name=["']${escapeRegExp(name)}["'][^>]+content=["']([^"']*)["'][^>]*>`, 'i'),
-    new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+name=["']${escapeRegExp(name)}["'][^>]*>`, 'i')
-  ];
-  for (const pattern of patterns) {
-    const match = html.match(pattern);
-    if (match) return clean(decodeHtml(match[1]));
+  const target = String(name || '').toLowerCase();
+  for (const match of String(html).matchAll(/<meta\b[^>]*>/gi)) {
+    const attributes = parseTagAttributes(match[0]);
+    if (clean(attributes.get('name')).toLowerCase() === target) {
+      return clean(attributes.get('content'));
+    }
   }
   return '';
 }
 
 function firstElementText(html, tag) {
-  const match = html.match(new RegExp(`<${tag}\b[^>]*>([\s\S]*?)<\/${tag}>`, 'i'));
+  const pattern = ELEMENT_PATTERNS[tag];
+  if (!pattern) return '';
+  const match = String(html).match(pattern);
   return match ? stripTags(match[1]) : '';
 }
 
 function breadcrumbText(html) {
-  const matches = [...html.matchAll(/<(?:nav|div|ol|ul)\b[^>]*(?:class|id)=["'][^"']*breadcrumb[^"']*["'][^>]*>([\s\S]*?)<\/(?:nav|div|ol|ul)>/gi)];
-  return clean(matches.slice(0, 2).map(match => stripTags(match[1])).join(' '));
+  const values = [];
+  for (const match of String(html).matchAll(/<(?:nav|div|ol|ul)\b[^>]*(?:class|id)=["'][^"']*breadcrumb[^"']*["'][^>]*>([\s\S]*?)<\/(?:nav|div|ol|ul)>/gi)) {
+    values.push(stripTags(match[1]));
+    if (values.length >= 2) break;
+  }
+  return clean(values.join(' '));
 }
 
 function jsonLdValues(html) {
   const values = [];
-  for (const match of html.matchAll(/<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
-    try { values.push(JSON.parse(decodeHtml(match[1]).trim())); } catch {}
+  for (const match of String(html).matchAll(/<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    try {
+      values.push(JSON.parse(decodeHtml(match[1]).trim()));
+    } catch {}
   }
   return values;
 }
@@ -241,7 +269,10 @@ function flattenJsonLd(value, output = []) {
 
 function isProductNode(node) {
   const type = node?.['@type'];
-  return Array.isArray(type) ? type.some(value => String(value).toLowerCase() === 'product') : String(type || '').toLowerCase() === 'product';
+  if (Array.isArray(type)) {
+    return type.some(value => String(value).toLowerCase() === 'product');
+  }
+  return String(type || '').toLowerCase() === 'product';
 }
 
 function brandName(brand) {
@@ -256,9 +287,10 @@ function directModelMatches(value, normalizedModel) {
 
 function matchingProductNode(products, candidate) {
   const normalizedModel = candidate.normalizedModel || normalizeCatalogModel(candidate.observedModel || candidate.model);
+  const observedModel = candidate.observedModel || candidate.model || normalizedModel;
   return products.find(product =>
     [product.model, product.sku, product.mpn].some(value => directModelMatches(value, normalizedModel)) ||
-    containsCatalogModelIdentity(product.name, candidate.observedModel || candidate.model || normalizedModel)
+    containsCatalogModelIdentity(product.name, observedModel)
   ) || null;
 }
 
@@ -268,7 +300,14 @@ function categoryEvidenceForFields(fields, strength = 'verified') {
     const value = clean(field);
     if (!value) continue;
     const categoryIds = inferExplicitCategoryIds(value, { context: 'detail' });
-    if (categoryIds.length) evidence.push({ categoryIds, source: 'manufacturer_official', strength, value });
+    if (categoryIds.length) {
+      evidence.push({
+        categoryIds,
+        source: 'manufacturer_official',
+        strength,
+        value
+      });
+    }
   }
   return evidence;
 }
@@ -277,61 +316,107 @@ async function sha256Hex(value) {
   if (!globalThis.crypto?.subtle) return '';
   const bytes = new TextEncoder().encode(String(value));
   const digest = await crypto.subtle.digest('SHA-256', bytes);
-  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+  return [...new Uint8Array(digest)]
+    .map(byte => byte.toString(16).padStart(2, '0'))
+    .join('');
 }
 
-export async function verifyOfficialProductPageHtml({ candidate, html, sourceUrl = '', sourceType = 'manufacturer_official', httpStatus = 200 } = {}) {
+export async function verifyOfficialProductPageHtml({
+  candidate,
+  html,
+  sourceUrl = '',
+  sourceType = 'manufacturer_official',
+  httpStatus = 200
+} = {}) {
   const normalizedModel = candidate?.normalizedModel || normalizeCatalogModel(candidate?.observedModel || candidate?.model || '');
   const observedModel = candidate?.observedModel || candidate?.model || normalizedModel;
   if (!candidate?.manufacturerId || !normalizedModel || !html) {
-    return { status: 'not_found', sourceUrl, sourceType, httpStatus, message: 'missing_candidate_or_page_content' };
+    return {
+      status: 'not_found',
+      sourceUrl,
+      sourceType,
+      httpStatus,
+      message: 'missing_candidate_or_page_content'
+    };
   }
 
-  const nodes = jsonLdValues(html).flatMap(value => flattenJsonLd(value)).filter(isProductNode);
-  const product = matchingProductNode(nodes, { ...candidate, normalizedModel, observedModel });
+  const productNodes = jsonLdValues(html)
+    .flatMap(value => flattenJsonLd(value))
+    .filter(isProductNode);
+  const product = matchingProductNode(productNodes, {
+    ...candidate,
+    normalizedModel,
+    observedModel
+  });
   const title = firstElementText(html, 'title');
   const h1 = firstElementText(html, 'h1');
   const description = metaContent(html, 'description');
   const breadcrumb = breadcrumbText(html);
   const directModels = product ? [product.model, product.sku, product.mpn].filter(Boolean) : [];
+
   const modelMatched = directModels.some(value => directModelMatches(value, normalizedModel)) ||
     [product?.name, h1, title].some(value => containsCatalogModelIdentity(value, observedModel));
   if (!modelMatched) {
-    return { status: 'not_found', sourceUrl, sourceType, httpStatus, message: 'official_page_does_not_confirm_model' };
+    return {
+      status: 'not_found',
+      sourceUrl,
+      sourceType,
+      httpStatus,
+      message: 'official_page_does_not_confirm_model'
+    };
   }
 
   const explicitBrand = brandName(product?.brand);
   if (explicitBrand) {
     const resolved = normalizeManufacturer(explicitBrand);
     if (resolved.id && resolved.id !== candidate.manufacturerId) {
-      return { status: 'ambiguous', sourceUrl, sourceType, httpStatus, message: `official_product_brand_mismatch:${resolved.id}` };
+      return {
+        status: 'ambiguous',
+        sourceUrl,
+        sourceType,
+        httpStatus,
+        message: `official_product_brand_mismatch:${resolved.id}`
+      };
     }
   }
 
-  const highSignalEvidence = categoryEvidenceForFields([
+  let classification = classifyCategoryEvidence(categoryEvidenceForFields([
     product?.category,
     product?.name,
     h1,
     title
-  ]);
-  let classification = classifyCategoryEvidence(highSignalEvidence);
+  ]));
   if (classification.classificationStatus !== 'classified') {
     if (classification.classificationState === 'ambiguous') {
-      return { status: 'ambiguous', sourceUrl, sourceType, httpStatus, message: 'conflicting_official_category_evidence' };
+      return {
+        status: 'ambiguous',
+        sourceUrl,
+        sourceType,
+        httpStatus,
+        message: 'conflicting_official_category_evidence'
+      };
     }
-    const lowerSignalEvidence = categoryEvidenceForFields([
+    classification = classifyCategoryEvidence(categoryEvidenceForFields([
       product?.description,
       description,
       breadcrumb
-    ], 'strong');
-    classification = classifyCategoryEvidence(lowerSignalEvidence);
+    ], 'strong'));
   }
+
   if (classification.classificationStatus !== 'classified' || !classification.categoryIds.length) {
-    return { status: 'ambiguous', sourceUrl, sourceType, httpStatus, message: 'official_page_has_no_unambiguous_category' };
+    return {
+      status: 'ambiguous',
+      sourceUrl,
+      sourceType,
+      httpStatus,
+      message: 'official_page_has_no_unambiguous_category'
+    };
   }
 
   const canonicalModel = directModels.find(value => directModelMatches(value, normalizedModel)) || observedModel;
-  const canonicalName = clean(product?.name || h1 || title || `${candidate.observedManufacturer || candidate.manufacturerId} ${canonicalModel}`);
+  const canonicalName = clean(
+    product?.name || h1 || title || `${candidate.observedManufacturer || candidate.manufacturerId} ${canonicalModel}`
+  );
   return {
     status: 'verified',
     sourceUrl,
@@ -347,7 +432,10 @@ export async function verifyOfficialProductPageHtml({ candidate, html, sourceUrl
 }
 
 async function readLimitedText(response, maxBytes) {
-  if (!response.body?.getReader) return (await response.text()).slice(0, maxBytes);
+  if (!response.body?.getReader) {
+    return (await response.text()).slice(0, maxBytes);
+  }
+
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let total = 0;
@@ -383,9 +471,20 @@ async function fetchText(fetchImpl, url, { timeoutMs, maxBytes, userAgent }) {
       }
     });
     const text = response.ok ? await readLimitedText(response, maxBytes) : '';
-    return { ok: response.ok, status: response.status, url: response.url || url, text };
+    return {
+      ok: response.ok,
+      status: response.status,
+      url: response.url || url,
+      text
+    };
   } catch (error) {
-    return { ok: false, status: 0, url, text: '', error: error?.name === 'AbortError' ? 'timeout' : (error?.message || String(error)) };
+    return {
+      ok: false,
+      status: 0,
+      url,
+      text: '',
+      error: error?.name === 'AbortError' ? 'timeout' : (error?.message || String(error))
+    };
   } finally {
     clearTimeout(timeout);
   }
@@ -405,8 +504,8 @@ function sameOriginUrl(value, baseUrl) {
 
 function extractHtmlLinks(html, baseUrl) {
   const links = [];
-  for (const match of html.matchAll(/<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>/gi)) {
-    const url = sameOriginUrl(match[1], baseUrl);
+  for (const match of String(html).matchAll(/<a\b[^>]*href\s*=\s*(?:"([^"]+)"|'([^']+)')[^>]*>/gi)) {
+    const url = sameOriginUrl(match[1] || match[2], baseUrl);
     if (url) links.push(url);
   }
   return [...new Set(links)];
@@ -414,7 +513,7 @@ function extractHtmlLinks(html, baseUrl) {
 
 function extractSitemapLocations(xml, baseUrl) {
   const locations = [];
-  for (const match of xml.matchAll(/<loc\b[^>]*>([\s\S]*?)<\/loc>/gi)) {
+  for (const match of String(xml).matchAll(/<loc\b[^>]*>([\s\S]*?)<\/loc>/gi)) {
     const url = sameOriginUrl(stripTags(match[1]), baseUrl);
     if (url) locations.push(url);
   }
@@ -452,6 +551,7 @@ export function createKnowledgeSourceVerifier(env = {}, { fetchImpl = globalThis
   async function cacheForSource(source) {
     const key = `${source.manufacturerId}:${source.baseUrl}`;
     if (sourceCache.has(key)) return sourceCache.get(key);
+
     const state = { catalogLinks: [], sitemapLinks: null };
     const links = [];
     for (const catalogUrl of source.catalogUrls.slice(0, 4)) {
@@ -467,7 +567,10 @@ export function createKnowledgeSourceVerifier(env = {}, { fetchImpl = globalThis
 
   async function loadSitemapLinks(source, state) {
     if (state.sitemapLinks) return state.sitemapLinks;
-    const queue = source.sitemapUrls.map(url => sameOriginUrl(url, source.baseUrl)).filter(Boolean);
+
+    const queue = source.sitemapUrls
+      .map(url => sameOriginUrl(url, source.baseUrl))
+      .filter(Boolean);
     const robotsUrl = new URL('/robots.txt', source.baseUrl).toString();
     const robots = await fetchText(fetchImpl, robotsUrl, { timeoutMs, maxBytes: 250_000, userAgent });
     if (robots.ok) queue.push(...sitemapUrlsFromRobots(robots.text, source.baseUrl));
@@ -479,11 +582,16 @@ export function createKnowledgeSourceVerifier(env = {}, { fetchImpl = globalThis
       const sitemapUrl = queue.shift();
       if (!sitemapUrl || visited.has(sitemapUrl) || /\.gz(?:$|\?)/i.test(sitemapUrl)) continue;
       visited.add(sitemapUrl);
+
       const response = await fetchText(fetchImpl, sitemapUrl, { timeoutMs, maxBytes, userAgent });
       if (!response.ok) continue;
+
       for (const url of extractSitemapLocations(response.text, source.baseUrl)) {
-        if (/\.xml(?:$|\?)/i.test(url) && visited.size + queue.length < maxSitemaps * 2) queue.push(url);
-        else if (pageUrls.length < maxDiscoveredUrls) pageUrls.push(url);
+        if (/\.xml(?:$|\?)/i.test(url) && visited.size + queue.length < maxSitemaps * 2) {
+          queue.push(url);
+        } else if (pageUrls.length < maxDiscoveredUrls) {
+          pageUrls.push(url);
+        }
       }
     }
     state.sitemapLinks = [...new Set(pageUrls)];
@@ -499,7 +607,9 @@ export function createKnowledgeSourceVerifier(env = {}, { fetchImpl = globalThis
       const searchUrl = sameOriginUrl(applySearchTemplate(source.searchUrlTemplate, candidate), source.baseUrl);
       if (searchUrl) {
         const result = await fetchText(fetchImpl, searchUrl, { timeoutMs, maxBytes, userAgent });
-        if (result.ok) matches = extractHtmlLinks(result.text, result.url).filter(url => urlMatchesModel(url, model));
+        if (result.ok) {
+          matches = extractHtmlLinks(result.text, result.url).filter(url => urlMatchesModel(url, model));
+        }
       }
     }
 
@@ -511,20 +621,35 @@ export function createKnowledgeSourceVerifier(env = {}, { fetchImpl = globalThis
   }
 
   async function verifyCandidate(candidate) {
-    const sources = definitions.get(String(candidate?.manufacturerId || '').toLowerCase()) || [];
+    const manufacturerId = String(candidate?.manufacturerId || '').toLowerCase();
+    const sources = definitions.get(manufacturerId) || [];
     if (!sources.length) {
       return { status: 'unsupported', sourceType: '', sourceUrl: '', httpStatus: null, message: 'no_official_source_adapter' };
     }
 
-    let bestFailure = { status: 'not_found', sourceType: sources[0].sourceType, sourceUrl: '', httpStatus: null, message: 'official_product_page_not_discovered' };
+    let bestFailure = {
+      status: 'not_found',
+      sourceType: sources[0].sourceType,
+      sourceUrl: '',
+      httpStatus: null,
+      message: 'official_product_page_not_discovered'
+    };
+
     for (const source of sources) {
       const urls = await discoverProductUrls(source, candidate);
       for (const url of urls) {
         const page = await fetchText(fetchImpl, url, { timeoutMs, maxBytes, userAgent });
         if (!page.ok) {
-          bestFailure = { status: 'error', sourceType: source.sourceType, sourceUrl: url, httpStatus: page.status || null, message: page.error || `http_${page.status}` };
+          bestFailure = {
+            status: 'error',
+            sourceType: source.sourceType,
+            sourceUrl: url,
+            httpStatus: page.status || null,
+            message: page.error || `http_${page.status}`
+          };
           continue;
         }
+
         const result = await verifyOfficialProductPageHtml({
           candidate,
           html: page.text,
@@ -541,12 +666,26 @@ export function createKnowledgeSourceVerifier(env = {}, { fetchImpl = globalThis
 
   async function verifyStoredSource(product) {
     if (!product?.sourceUrl) {
-      return { status: 'unsupported', sourceType: product?.sourceType || '', sourceUrl: '', httpStatus: null, message: 'verified_product_has_no_source_url' };
+      return {
+        status: 'unsupported',
+        sourceType: product?.sourceType || '',
+        sourceUrl: '',
+        httpStatus: null,
+        message: 'verified_product_has_no_source_url'
+      };
     }
+
     const page = await fetchText(fetchImpl, product.sourceUrl, { timeoutMs, maxBytes, userAgent });
     if (!page.ok) {
-      return { status: page.status === 404 || page.status === 410 ? 'not_found' : 'error', sourceType: product.sourceType || '', sourceUrl: product.sourceUrl, httpStatus: page.status || null, message: page.error || `http_${page.status}` };
+      return {
+        status: page.status === 404 || page.status === 410 ? 'not_found' : 'error',
+        sourceType: product.sourceType || '',
+        sourceUrl: product.sourceUrl,
+        httpStatus: page.status || null,
+        message: page.error || `http_${page.status}`
+      };
     }
+
     return verifyOfficialProductPageHtml({
       candidate: {
         manufacturerId: product.manufacturerId,
