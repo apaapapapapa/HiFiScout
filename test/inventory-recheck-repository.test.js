@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   markInventoryAvailable,
-  recordInventoryMissing,
+  recordInventoryUnavailable,
   selectInventoryRecheckCandidate
 } from '../src/db/inventory-recheck-repository.js';
 
@@ -53,9 +53,9 @@ test('available verification resets failures without touching listing last_seen_
   assert.doesNotMatch(db.calls[0].sql, /last_seen_at\s*=/);
 });
 
-test('missing verification only deactivates when the caller reaches its threshold', async () => {
+test('unavailable verification only deactivates when the caller reaches its threshold', async () => {
   const keepDb = captureDb();
-  await recordInventoryMissing(keepDb, 9, '2026-08-11T10:00:00.000Z', 1, false);
+  await recordInventoryUnavailable(keepDb, 9, '2026-08-11T10:00:00.000Z', 1, false);
   assert.deepEqual(keepDb.calls[0].binds.slice(0, 7), [
     '2026-08-11T10:00:00.000Z',
     '2026-08-11T10:00:00.000Z',
@@ -67,7 +67,7 @@ test('missing verification only deactivates when the caller reaches its threshol
   ]);
 
   const deactivateDb = captureDb();
-  await recordInventoryMissing(deactivateDb, 9, '2026-08-12T10:00:00.000Z', 2, true);
+  await recordInventoryUnavailable(deactivateDb, 9, '2026-08-12T10:00:00.000Z', 2, true);
   assert.deepEqual(deactivateDb.calls[0].binds.slice(0, 7), [
     '2026-08-12T10:00:00.000Z',
     '2026-08-12T10:00:00.000Z',
