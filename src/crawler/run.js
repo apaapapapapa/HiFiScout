@@ -1,4 +1,11 @@
-import { SHOP_DEFINITIONS, getCrawlerSettings, getShopIntervalMinutes, getShopMaxPages } from '../config.js';
+import {
+  SHOP_DEFINITIONS,
+  getCrawlerSettings,
+  getShopEnabled,
+  getShopIntervalMinutes,
+  getShopMaxPages,
+  getShopRequestDelayMs
+} from '../config.js';
 import { upsertProducts } from '../db/products.js';
 import { createBrowserHtmlFetcher } from './browser.js';
 import { fetchHtmlPage } from './fetch.js';
@@ -10,6 +17,12 @@ export function isShopDue(state, intervalMinutes, now = new Date()) {
   if (state?.backoff_until && new Date(state.backoff_until) > now) return false;
   if (!state?.last_attempt_at) return true;
   return now.getTime() - new Date(state.last_attempt_at).getTime() >= intervalMinutes * 60_000;
+}
+
+export function isSuspiciousItemDrop(itemCount, previousItemCount, { minRatio = 0.5, minBaseline = 20 } = {}) {
+  if (!Number.isFinite(previousItemCount) || previousItemCount < minBaseline) return false;
+  if (!Number.isFinite(itemCount) || itemCount < 0) return true;
+  return itemCount / previousItemCount < minRatio;
 }
 
 async function markAttempt(db, shopKey, now) {
@@ -46,6 +59,8 @@ function pageUrl(page) {
 
 export async function crawlShop(env, adapter, { force = false, now = new Date(), fetchFn = fetch } = {}) {
   const definition = Object.values(SHOP_DEFINITIONS).find(v => v.key === adapter.key);
+  if (!definition) return { shopKey: adapter.key, status: 'skipped', reason: 'shop_definition_missing' };
+  if (!getShopEnabled(env, definition)) return { shopKey: adapter.key, status: 'skipped', reason: 'disabled' };
   if (adapter.isConfigured && !adapter.isConfigured(env)) return { shopKey: adapter.key, status: 'skipped', reason: 'configuration_missing' };
   const intervalMinutes = getShopIntervalMinutes(env, definition);
   const state = await env.DB.prepare('SELECT * FROM shop_sync_state WHERE shop_key = ?').bind(adapter.key).first();
@@ -58,6 +73,8 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
   const runId = run.meta.last_row_id;
   const settings = getCrawlerSettings(env);
   const maxPages = getShopMaxPages(env, definition, settings.maxPagesPerShop);
+  const pageLimit = maxPages + Math.max(0, adapter.extraPageAllowance || 0);
+  const requestDelayMs = getShopRequestDelayMs(env, definition, settings.requestDelayMs);
   const robotsCache = new Map();
   const items = new Map();
   let pageCount = 0;
@@ -66,10 +83,10 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
   const browserFetcher = adapter.transport === 'browser' ? createBrowserHtmlFetcher(env.BROWSER) : null;
 
   try {
-    const pageQueue = [...adapter.pageUrls(maxPages, env)];
+    const pageQueue = [...adapter.pageUrls(maxPages, env, { now, intervalMinutes, state })];
     const queuedUrls = new Set(pageQueue.map(pageUrl));
 
-    while (pageQueue.length && pageCount < maxPages) {
+    while (pageQueue.length && pageCount < pageLimit) {
       const page = pageQueue.shift();
       const url = pageUrl(page);
       let html;
@@ -77,7 +94,7 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
         const fetchOptions = {
           baseUrl: adapter.baseUrl,
           userAgent: settings.userAgent,
-          requestDelayMs: settings.requestDelayMs,
+          requestDelayMs,
           fetchFn,
           robotsCache
         };
@@ -124,14 +141,19 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
 
     if (pageQueue.length) coverageIncomplete = true;
     if (!items.size) throw new Error('no products parsed; refusing to mark existing products inactive');
+    if (isSuspiciousItemDrop(items.size, Number(state?.last_item_count), settings)) {
+      throw new Error(`item count dropped suspiciously from ${state.last_item_count} to ${items.size}; refusing crawl update`);
+    }
 
     const observedAt = nowIso(new Date());
-    const deactivateMissing = reachedEnd || (adapter.dynamicPagination && !coverageIncomplete && pageQueue.length === 0);
+    const deactivateMissing = !adapter.partialCoverage && (
+      reachedEnd || (adapter.dynamicPagination && !coverageIncomplete && pageQueue.length === 0)
+    );
     const { changedCount } = await upsertProducts(env.DB, adapter.key, [...items.values()], observedAt, { deactivateMissing });
     await markSuccess(env.DB, adapter.key, observedAt, items.size);
     await env.DB.prepare('UPDATE crawl_runs SET finished_at = ?, status = \'success\', item_count = ?, page_count = ?, message = ? WHERE id = ?')
       .bind(observedAt, items.size, pageCount, `${changedCount} changed`, runId).run();
-    return { shopKey: adapter.key, status: 'success', itemCount: items.size, pageCount, changedCount };
+    return { shopKey: adapter.key, status: 'success', itemCount: items.size, pageCount, changedCount, deactivateMissing };
   } catch (error) {
     const failedAt = nowIso(new Date());
     await markFailure(env.DB, adapter.key, failedAt, error.message, state?.consecutive_failures || 0);
@@ -153,7 +175,10 @@ export async function crawlNextDueShop(env, { now = new Date(), fetchFn = fetch 
   const statesResult = await env.DB.prepare('SELECT * FROM shop_sync_state').all();
   const states = new Map((statesResult.results || []).map(row => [row.shop_key, row]));
   const candidates = SHOP_ADAPTERS
-    .filter(adapter => !adapter.isConfigured || adapter.isConfigured(env))
+    .filter(adapter => {
+      const definition = Object.values(SHOP_DEFINITIONS).find(v => v.key === adapter.key);
+      return definition && getShopEnabled(env, definition) && (!adapter.isConfigured || adapter.isConfigured(env));
+    })
     .map(adapter => {
       const definition = Object.values(SHOP_DEFINITIONS).find(v => v.key === adapter.key);
       const interval = getShopIntervalMinutes(env, definition);
