@@ -25,10 +25,7 @@
   },
   "d1_databases": [
     {
-      "binding": "DB",
-      "database_name": "hifiscout",
-      "database_id": "REPLACE_WITH_CLOUDFLARE_D1_DATABASE_ID",
-      "migrations_dir": "migrations"
+      "binding": "DB"
     }
   ]
 }
