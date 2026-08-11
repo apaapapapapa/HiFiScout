@@ -18,7 +18,7 @@
     { "pattern": "hifiscout.jp", "custom_domain": true }
   ],
   "triggers": {
-    "crons": ["*/5 * * * *", "1 * * * *", "17 18 * * *"]
+    "crons": ["*/5 * * * *", "1 * * * *", "* * * * *", "17 18 * * *"]
   },
   "queues": {
     "producers": [
