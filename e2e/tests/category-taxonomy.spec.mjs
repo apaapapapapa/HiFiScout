@@ -31,6 +31,30 @@ async function mockCatalog(page) {
   return requests;
 }
 
+test('live metadata exposes the complete canonical taxonomy including zero-count parents', async ({ request }) => {
+  const response = await request.get('/api/meta');
+  expect(response.ok()).toBeTruthy();
+  const meta = await response.json();
+  const facets = meta.categoryFacets || [];
+
+  expect(facets.map(category => category.id)).toEqual([
+    'amplifier', 'integrated_amp', 'pre_amp', 'power_amp', 'headphone_amp',
+    'digital', 'dac', 'network_player', 'cd_sacd_player', 'dap',
+    'analog', 'turntable', 'tonearm', 'cartridge', 'phono_eq',
+    'speaker', 'speaker_bookshelf', 'speaker_floorstanding', 'subwoofer', 'speaker_other',
+    'headphone_group', 'headphone', 'earphone',
+    'accessories', 'cable', 'rack', 'power_accessory', 'vacuum_tube', 'other_accessory',
+    'dj_dtm', 'other'
+  ]);
+  expect(facets.find(category => category.id === 'amplifier')).toMatchObject({
+    name: 'アンプ（すべて）', group: 'アンプ', classifiable: false, filterable: true
+  });
+  expect(facets.find(category => category.id === 'speaker')).toMatchObject({
+    name: 'スピーカー（すべて）', group: 'スピーカー', classifiable: false, filterable: true
+  });
+  expect(facets.every(category => Number.isInteger(category.activeProductCount) && category.activeProductCount >= 0)).toBeTruthy();
+});
+
 test('category taxonomy keeps canonical order and parent/leaf URL state', async ({ page }) => {
   const requests = await mockCatalog(page);
   await page.goto('/');

@@ -1,5 +1,5 @@
 import { checkPublicApiRateLimit } from './api-guard.js';
-import { categoryFacet } from './catalog/categories.js';
+import { canonicalCategoryDefinitions, categoryFacet, getCategory } from './catalog/categories.js';
 import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from './catalog/knowledge-source-verifier-v3.js';
 import { SHOP_DEFINITIONS, getShopEnabled, getShopIntervalMinutes } from './config.js';
 import { consumeCrawlMessage, dispatchDueCrawls, dispatchForcedCrawl, dispatchScheduledCrawl } from './crawler/dispatch.js';
@@ -39,6 +39,11 @@ async function cachedJson(request, ctx, ttlSeconds, load) {
   return response;
 }
 
+function categorySortKey(category) {
+  const parent = category.parentId ? getCategory(category.parentId) : category;
+  return [parent?.order || 999, category.parentId ? 1 : 0, category.order || 999];
+}
+
 async function meta(env) {
   const states = await env.DB.prepare('SELECT * FROM shop_sync_state').all();
   const stateRows = states.results || [];
@@ -57,24 +62,33 @@ async function meta(env) {
       ORDER BY value
     `),
     env.DB.prepare(`
-      SELECT DISTINCT pc.category_id AS value
+      SELECT pc.category_id AS value, COUNT(DISTINCT pc.product_id) AS active_product_count
       FROM product_categories pc
       JOIN products p ON p.id = pc.product_id
       WHERE p.is_active = 1
+      GROUP BY pc.category_id
     `)
   ]);
   const manufacturers = facets[0].results.map(row => row.value);
-  const categoryFacets = facets[1].results
-    .map(row => categoryFacet(row.value))
-    .filter(Boolean)
+  const counts = new Map(facets[1].results.map(row => [row.value, Number(row.active_product_count || 0)]));
+  const categoryFacets = canonicalCategoryDefinitions()
+    .filter(category => category.filterable)
+    .map(category => {
+      const facet = categoryFacet(category.id);
+      const groupedParent = !category.classifiable && ['amplifier', 'digital', 'analog', 'speaker', 'headphone_group', 'accessories'].includes(category.id);
+      return {
+        ...facet,
+        name: groupedParent ? `${category.name}（すべて）` : category.name,
+        group: groupedParent ? category.name : facet.group,
+        activeProductCount: counts.get(category.id) || 0
+      };
+    })
     .sort((left, right) => {
-      const groupOrder = ['アンプ', 'デジタル', 'アナログ'];
-      const leftGroup = left.group ? groupOrder.indexOf(left.group) : -1;
-      const rightGroup = right.group ? groupOrder.indexOf(right.group) : -1;
-      if (leftGroup !== rightGroup) return leftGroup - rightGroup;
-      return left.name.localeCompare(right.name, 'ja');
+      const a = categorySortKey(left);
+      const b = categorySortKey(right);
+      return a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
     });
-  const categories = categoryFacets.map(category => category.name);
+  const categories = categoryFacets.filter(category => category.classifiable).map(category => category.name);
   return { status: health.status, shops, manufacturers, categories, categoryFacets };
 }
 
