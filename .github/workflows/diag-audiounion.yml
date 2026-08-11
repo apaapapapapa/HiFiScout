@@ -1,0 +1,47 @@
+name: Diagnose Audio Union
+
+on:
+  push:
+    branches:
+      - feat/audiounion-live-source
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Probe official Audio Union pages
+        run: |
+          node <<'NODE'
+          const ua = 'HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)';
+          const urls = [
+            'https://www.audiounion.jp/robots.txt',
+            'https://www.audiounion.jp/st/new_arrival_used.html'
+          ];
+          for (const url of urls) {
+            try {
+              const res = await fetch(url, { headers: { 'user-agent': ua }, redirect: 'follow' });
+              const text = await res.text();
+              console.log(JSON.stringify({
+                url,
+                finalUrl: res.url,
+                status: res.status,
+                contentType: res.headers.get('content-type'),
+                bytes: Buffer.byteLength(text),
+                robotsLines: url.endsWith('/robots.txt') ? text.split(/\r?\n/).filter(line => /^(user-agent|allow|disallow|crawl-delay|sitemap)\s*:/i.test(line)).slice(0, 80) : undefined,
+                hrefSamples: url.includes('new_arrival_used') ? [...text.matchAll(/href=["']([^"']+)["']/gi)].map(m => m[1]).filter(h => /item|goods|product|detail|used|search|st\//i.test(h)).slice(0, 80) : undefined,
+                yenCount: url.includes('new_arrival_used') ? (text.match(/[¥￥]|円/g) || []).length : undefined,
+                soldCount: url.includes('new_arrival_used') ? (text.match(/売約済|売り切れ|SOLD\s*OUT/gi) || []).length : undefined,
+                pagerMarkers: url.includes('new_arrival_used') ? [...text.matchAll(/(?:page|pageno|offset|start|next)[^\s"'<>]{0,80}/gi)].map(m => m[0]).slice(0, 40) : undefined
+              }, null, 2));
+            } catch (error) {
+              console.log(JSON.stringify({ url, error: String(error) }));
+            }
+          }
+          NODE
