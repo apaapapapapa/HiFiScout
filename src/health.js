@@ -51,6 +51,7 @@ export function evaluateShopSyncHealth({
 }
 
 function isShopConfigured(env, shopKey) {
+  if (shopKey !== 'audiounion') return true;
   const adapter = SHOP_ADAPTERS.find(candidate => candidate.key === shopKey);
   return !adapter?.isConfigured || adapter.isConfigured(env);
 }
