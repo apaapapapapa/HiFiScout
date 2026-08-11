@@ -59,6 +59,20 @@ test('price-dropped filter compares current and previous price', async () => {
   assert.match(db.calls[0].sql, /p\.price_yen < p\.previous_price_yen/);
 });
 
+test('discovery filters combine with existing catalog filters in one SQL query', async () => {
+  const db = queryCaptureDb();
+  await listProducts(db, new URL('https://example.test/api/products?shop=fujiya-avic&manufacturer=LUXMAN&minPrice=100000&inStock=true&newOnly=true&priceDropped=true'));
+
+  const { sql, binds } = db.calls[0];
+  assert.match(sql, /p\.shop_key = \?/);
+  assert.match(sql, /p\.manufacturer_id = \?/);
+  assert.match(sql, /p\.stock_status = 'in_stock'/);
+  assert.match(sql, /p\.first_seen_at >= strftime\([^\n]+-48 hours/);
+  assert.match(sql, /p\.price_yen < p\.previous_price_yen/);
+  assert.match(sql, /p\.price_yen >= \?/);
+  assert.deepEqual(binds.slice(0, 4), ['fujiya-avic', 'luxman', 'LUXMAN', 100000]);
+});
+
 test('boolean product filters reject unsupported values', () => {
   assert.equal(
     validateProductQuery(new URL('https://example.test/api/products?newOnly=1')),
