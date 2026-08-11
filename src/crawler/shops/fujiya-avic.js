@@ -76,6 +76,10 @@ export const fujiyaAvicAdapter = {
   key: 'fujiya-avic',
   name: 'フジヤエービック',
   baseUrl: 'https://www.fujiya-avic.co.jp',
+  // The new-used-arrivals feed is intentionally a subset of Fujiya's total inventory.
+  // Never infer that products missing from this feed are sold, and do not compare its
+  // item count against historical full-inventory crawls.
+  partialCoverage: true,
   categoryPolicy: Object.freeze({
     sellerCategory: Object.freeze({
       default: 'authoritative',
