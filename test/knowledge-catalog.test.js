@@ -9,6 +9,7 @@ import {
   knowledgeCatalogKey,
   normalizeCatalogModel
 } from '../src/catalog/knowledge-catalog.js';
+import { summarizeClassificationImpact } from '../src/knowledge-catalog-review.js';
 
 test('model normalization standardizes safe punctuation variants without erasing identity', () => {
   assert.equal(normalizeCatalogModel('K - 01XD'), 'K-01XD');
@@ -82,4 +83,21 @@ test('verified catalog evidence can represent multi-category products', () => {
 
   assert.equal(result.classificationStatus, 'classified');
   assert.deepEqual(result.categoryIds, ['dac', 'network_player']);
+});
+
+test('classification impact reports only reductions', () => {
+  assert.deepEqual(
+    summarizeClassificationImpact(
+      { unclassifiedProducts: 12, otherProducts: 20 },
+      { unclassifiedProducts: 7, otherProducts: 16 }
+    ),
+    { unclassifiedReduced: 5, otherReduced: 4 }
+  );
+  assert.deepEqual(
+    summarizeClassificationImpact(
+      { unclassifiedProducts: 4, otherProducts: 2 },
+      { unclassifiedProducts: 6, otherProducts: 3 }
+    ),
+    { unclassifiedReduced: 0, otherReduced: 0 }
+  );
 });

@@ -36,6 +36,21 @@ async function collectActiveCandidateRows(db) {
   return finalizeKnowledgeCatalogCandidateAggregates(grouped);
 }
 
+export async function activeProductClassificationStats(db) {
+  const row = await db.prepare(`
+    SELECT COUNT(*) AS active_products,
+           SUM(CASE WHEN classification_status = 'unclassified' THEN 1 ELSE 0 END) AS unclassified_products,
+           SUM(CASE WHEN primary_category_id = 'other' THEN 1 ELSE 0 END) AS other_products
+    FROM products
+    WHERE is_active = 1
+  `).first();
+  return {
+    activeProducts: Number(row?.active_products || 0),
+    unclassifiedProducts: Number(row?.unclassified_products || 0),
+    otherProducts: Number(row?.other_products || 0)
+  };
+}
+
 export async function knowledgeCatalogCandidateStats(db) {
   const counts = await db.prepare(`
     SELECT review_status, COUNT(*) AS count
@@ -151,12 +166,25 @@ export async function startKnowledgeCatalogReviewRun(db, startedAt) {
   return run.meta.last_row_id;
 }
 
+export async function claimInitialKnowledgeCatalogReviewRun(db, startedAt) {
+  const run = await db.prepare(`
+    INSERT INTO knowledge_catalog_review_runs(started_at, status)
+    SELECT ?, 'running'
+    WHERE NOT EXISTS (SELECT 1 FROM knowledge_catalog_review_runs LIMIT 1)
+  `).bind(startedAt).run();
+  return Number(run?.meta?.changes || 0) > 0 ? Number(run?.meta?.last_row_id || 0) : null;
+}
+
 export async function finishKnowledgeCatalogReviewRunSuccess(db, runId, result) {
+  const outcomes = result.verificationOutcomes || {};
   await db.prepare(`
     UPDATE knowledge_catalog_review_runs
     SET finished_at = ?, status = 'success', catalog_products = ?, due_products = ?, candidates = ?,
         pending_candidates = ?, matched_candidates = ?, reclassified_products = ?,
-        verification_attempts = ?, verified_promotions = ?, verified_rechecks = ?, verification_failures = ?, message = ?
+        verification_attempts = ?, verified_promotions = ?, verified_rechecks = ?, verification_failures = ?,
+        active_products_before = ?, active_products_after = ?, unclassified_before = ?, unclassified_after = ?,
+        other_before = ?, other_after = ?, verification_verified = ?, verification_not_found = ?,
+        verification_ambiguous = ?, verification_unsupported = ?, verification_error = ?, message = ?
     WHERE id = ?
   `).bind(
     result.finishedAt,
@@ -170,6 +198,17 @@ export async function finishKnowledgeCatalogReviewRunSuccess(db, runId, result) 
     result.verifiedPromotions,
     result.verifiedRechecks,
     result.verificationFailures,
+    result.beforeClassification?.activeProducts || 0,
+    result.afterClassification?.activeProducts || 0,
+    result.beforeClassification?.unclassifiedProducts || 0,
+    result.afterClassification?.unclassifiedProducts || 0,
+    result.beforeClassification?.otherProducts || 0,
+    result.afterClassification?.otherProducts || 0,
+    outcomes.verified || 0,
+    outcomes.notFound || 0,
+    outcomes.ambiguous || 0,
+    outcomes.unsupported || 0,
+    outcomes.error || 0,
     String(result.message || '').slice(0, 1000),
     runId
   ).run();
@@ -181,4 +220,85 @@ export async function finishKnowledgeCatalogReviewRunFailure(db, runId, finished
     SET finished_at = ?, status = 'failed', message = ?
     WHERE id = ?
   `).bind(finishedAt, String(message || '').slice(0, 1000), runId).run();
+}
+
+function number(value) {
+  return Number(value || 0);
+}
+
+function latestReviewFromRow(row) {
+  if (!row) return null;
+  return {
+    id: number(row.id),
+    startedAt: row.started_at,
+    finishedAt: row.finished_at,
+    status: row.status,
+    catalogProducts: number(row.catalog_products),
+    dueProducts: number(row.due_products),
+    candidates: number(row.candidates),
+    pendingCandidates: number(row.pending_candidates),
+    matchedCandidates: number(row.matched_candidates),
+    reclassifiedProducts: number(row.reclassified_products),
+    verificationAttempts: number(row.verification_attempts),
+    verifiedPromotions: number(row.verified_promotions),
+    verifiedRechecks: number(row.verified_rechecks),
+    verificationFailures: number(row.verification_failures),
+    verificationOutcomes: {
+      verified: number(row.verification_verified),
+      notFound: number(row.verification_not_found),
+      ambiguous: number(row.verification_ambiguous),
+      unsupported: number(row.verification_unsupported),
+      error: number(row.verification_error)
+    },
+    classificationImpact: {
+      activeProductsBefore: number(row.active_products_before),
+      activeProductsAfter: number(row.active_products_after),
+      unclassifiedBefore: number(row.unclassified_before),
+      unclassifiedAfter: number(row.unclassified_after),
+      unclassifiedReduced: Math.max(0, number(row.unclassified_before) - number(row.unclassified_after)),
+      otherBefore: number(row.other_before),
+      otherAfter: number(row.other_after),
+      otherReduced: Math.max(0, number(row.other_before) - number(row.other_after))
+    },
+    message: row.message || ''
+  };
+}
+
+export async function knowledgeCatalogOperationalStatus(db) {
+  const results = await db.batch([
+    db.prepare('SELECT * FROM knowledge_catalog_review_runs ORDER BY id DESC LIMIT 1'),
+    db.prepare(`
+      SELECT verification_status, COUNT(*) AS candidates,
+             SUM(active_listing_count) AS active_listings,
+             SUM(unclassified_count) AS unclassified_listings
+      FROM knowledge_catalog_candidates
+      WHERE active_listing_count > 0
+      GROUP BY verification_status
+      ORDER BY verification_status
+    `),
+    db.prepare("SELECT COUNT(*) AS count FROM knowledge_catalog_products WHERE verification_status = 'verified'"),
+    db.prepare(`
+      SELECT COUNT(*) AS active_products,
+             SUM(CASE WHEN classification_status = 'unclassified' THEN 1 ELSE 0 END) AS unclassified_products,
+             SUM(CASE WHEN primary_category_id = 'other' THEN 1 ELSE 0 END) AS other_products
+      FROM products
+      WHERE is_active = 1
+    `)
+  ]);
+  const current = results?.[3]?.results?.[0] || {};
+  return {
+    latestReview: latestReviewFromRow(results?.[0]?.results?.[0]),
+    current: {
+      catalogProducts: number(results?.[2]?.results?.[0]?.count),
+      activeProducts: number(current.active_products),
+      unclassifiedProducts: number(current.unclassified_products),
+      otherProducts: number(current.other_products),
+      candidateVerification: (results?.[1]?.results || []).map(row => ({
+        status: row.verification_status,
+        candidates: number(row.candidates),
+        activeListings: number(row.active_listings),
+        unclassifiedListings: number(row.unclassified_listings)
+      }))
+    }
+  };
 }

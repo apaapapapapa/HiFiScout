@@ -29,6 +29,18 @@ function validPromotion(verification) {
     categoryIds.includes(verification.primaryCategoryId);
 }
 
+function emptyOutcomeCounts() {
+  return { verified: 0, notFound: 0, ambiguous: 0, unsupported: 0, error: 0 };
+}
+
+function countOutcome(counts, status) {
+  if (status === 'verified') counts.verified += 1;
+  else if (status === 'not_found') counts.notFound += 1;
+  else if (status === 'ambiguous') counts.ambiguous += 1;
+  else if (status === 'unsupported') counts.unsupported += 1;
+  else counts.error += 1;
+}
+
 export async function runKnowledgeCatalogSourceVerification(env, {
   now = new Date(),
   fetchImpl = globalThis.fetch
@@ -47,6 +59,7 @@ export async function runKnowledgeCatalogSourceVerification(env, {
   let verifiedRechecks = 0;
   let verificationFailures = 0;
   let unsupportedCandidates = 0;
+  const verificationOutcomes = emptyOutcomeCounts();
 
   const dueProducts = await listDueKnowledgeCatalogProducts(env.DB, dueProductLimit);
   for (const product of dueProducts) {
@@ -58,12 +71,14 @@ export async function runKnowledgeCatalogSourceVerification(env, {
     if (categoriesStillMatch) {
       await recordKnowledgeCatalogProductRecheckSuccess(env.DB, product, verification, attemptedAt);
       verifiedRechecks += 1;
+      countOutcome(verificationOutcomes, 'verified');
     } else {
       const result = verification.status === 'verified'
         ? { ...verification, status: 'ambiguous', message: 'official_category_changed_since_last_verification' }
         : verification;
       await recordKnowledgeCatalogProductRecheckFailure(env.DB, product, result, attemptedAt);
       verificationFailures += 1;
+      countOutcome(verificationOutcomes, result.status);
     }
   }
 
@@ -79,15 +94,24 @@ export async function runKnowledgeCatalogSourceVerification(env, {
           message: 'verified_result_missing_required_identity_or_primary_category'
         }, attemptedAt);
         verificationFailures += 1;
+        countOutcome(verificationOutcomes, 'ambiguous');
         continue;
       }
       const promotion = await promoteVerifiedKnowledgeCatalogCandidate(env.DB, candidate, verification, attemptedAt);
-      if (promotion.promoted) verifiedPromotions += 1;
-      else if (promotion.reason !== 'already_exists') verificationFailures += 1;
+      if (promotion.promoted) {
+        verifiedPromotions += 1;
+        countOutcome(verificationOutcomes, 'verified');
+      } else if (promotion.reason === 'already_exists') {
+        countOutcome(verificationOutcomes, 'verified');
+      } else {
+        verificationFailures += 1;
+        countOutcome(verificationOutcomes, promotion.reason === 'identity_changed' || promotion.reason === 'rejected_catalog_identity' ? 'ambiguous' : 'error');
+      }
       continue;
     }
 
     await recordKnowledgeCatalogCandidateVerification(env.DB, candidate, verification, attemptedAt);
+    countOutcome(verificationOutcomes, verification.status);
     if (verification.status === 'unsupported') unsupportedCandidates += 1;
     else verificationFailures += 1;
   }
@@ -98,6 +122,7 @@ export async function runKnowledgeCatalogSourceVerification(env, {
     verifiedRechecks,
     verificationFailures,
     unsupportedCandidates,
+    verificationOutcomes,
     dueProductsChecked: dueProducts.length,
     candidatesChecked: candidates.length
   };
