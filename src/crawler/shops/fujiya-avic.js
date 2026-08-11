@@ -3,7 +3,7 @@ import { cleanText } from '../normalize.js';
 import { parseProductPage } from '../parser.js';
 
 const PAGE_SIZE = 50;
-const NEW_ARRIVALS_PATH = 'ea-usednw_s1';
+const NEW_ARRIVALS_PATH = 'ea-usednw_ssd';
 
 function pageUrl(page = 1) {
   if (page === 1) return `https://www.fujiya-avic.co.jp/shop/e/${NEW_ARRIVALS_PATH}/?ps=${PAGE_SIZE}`;
@@ -77,6 +77,7 @@ export const fujiyaAvicAdapter = {
   name: 'フジヤエービック',
   baseUrl: 'https://www.fujiya-avic.co.jp',
   // The new-used-arrivals feed is intentionally a subset of Fujiya's total inventory.
+  // Use the site's explicit newest-sort route so the feed reliably prioritizes recent arrivals.
   // Never infer that products missing from this feed are sold, and do not compare its
   // item count against historical full-inventory crawls.
   partialCoverage: true,
