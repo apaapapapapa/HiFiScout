@@ -1,4 +1,5 @@
 import {
+  activeProductClassificationStats,
   finishKnowledgeCatalogReviewRunFailure,
   finishKnowledgeCatalogReviewRunSuccess,
   knowledgeCatalogCandidateStats,
@@ -14,16 +15,30 @@ function reviewIntervalDays(env) {
   return Math.max(1, Number(env.KNOWLEDGE_CATALOG_REVIEW_INTERVAL_DAYS) || 30);
 }
 
-export async function runKnowledgeCatalogReview(env, { now = new Date(), fetchImpl = globalThis.fetch } = {}) {
+export function summarizeClassificationImpact(beforeClassification, afterClassification) {
+  return {
+    unclassifiedReduced: Math.max(0, beforeClassification.unclassifiedProducts - afterClassification.unclassifiedProducts),
+    otherReduced: Math.max(0, beforeClassification.otherProducts - afterClassification.otherProducts)
+  };
+}
+
+export async function runKnowledgeCatalogReview(env, {
+  now = new Date(),
+  fetchImpl = globalThis.fetch,
+  runId: existingRunId = null
+} = {}) {
   const startedAt = now.toISOString();
-  const runId = await startKnowledgeCatalogReviewRun(env.DB, startedAt);
+  const runId = existingRunId || await startKnowledgeCatalogReviewRun(env.DB, startedAt);
 
   try {
+    const beforeClassification = await activeProductClassificationStats(env.DB);
     await markKnowledgeCatalogProductsDue(env.DB, startedAt, reviewIntervalDays(env));
     await refreshKnowledgeCatalogCandidates(env.DB, startedAt);
     const verificationResult = await runKnowledgeCatalogSourceVerification(env, { now, fetchImpl });
     const candidateResult = await knowledgeCatalogCandidateStats(env.DB);
     const reclassifiedProducts = await reclassifyProductsFromKnowledgeCatalog(env.DB);
+    const afterClassification = await activeProductClassificationStats(env.DB);
+    const impact = summarizeClassificationImpact(beforeClassification, afterClassification);
     const stats = await knowledgeCatalogStats(env.DB);
     const finishedAt = new Date().toISOString();
     const result = {
@@ -32,8 +47,11 @@ export async function runKnowledgeCatalogReview(env, { now = new Date(), fetchIm
       ...stats,
       ...candidateResult,
       ...verificationResult,
+      beforeClassification,
+      afterClassification,
+      ...impact,
       reclassifiedProducts,
-      message: `${verificationResult.verifiedPromotions} catalog promotions, ${verificationResult.verifiedRechecks} source rechecks, ${candidateResult.pendingCandidates} pending candidates, ${stats.dueProducts} verified products still due`
+      message: `${verificationResult.verifiedPromotions} catalog promotions, ${verificationResult.verifiedRechecks} source rechecks, ${candidateResult.pendingCandidates} pending candidates, ${impact.unclassifiedReduced} unclassified and ${impact.otherReduced} other listings reduced`
     };
     await finishKnowledgeCatalogReviewRunSuccess(env.DB, runId, result);
     console.log(JSON.stringify({ event: 'knowledge_catalog_review', ...result }));
