@@ -36,6 +36,22 @@ async function collectActiveCandidateRows(db) {
   return finalizeKnowledgeCatalogCandidateAggregates(grouped);
 }
 
+export async function knowledgeCatalogCandidateStats(db) {
+  const counts = await db.prepare(`
+    SELECT review_status, COUNT(*) AS count
+    FROM knowledge_catalog_candidates
+    WHERE active_listing_count > 0
+    GROUP BY review_status
+  `).all();
+  const byStatus = Object.fromEntries((counts.results || []).map(row => [row.review_status, Number(row.count || 0)]));
+  return {
+    candidates: Object.values(byStatus).reduce((sum, count) => sum + count, 0),
+    pendingCandidates: byStatus.pending || 0,
+    matchedCandidates: byStatus.matched || 0,
+    ignoredCandidates: byStatus.ignored || 0
+  };
+}
+
 export async function refreshKnowledgeCatalogCandidates(db, reviewedAt) {
   const candidates = await collectActiveCandidateRows(db);
   const matches = await findVerifiedCatalogMatches(db, candidates.map(candidate => ({
@@ -101,20 +117,7 @@ export async function refreshKnowledgeCatalogCandidates(db, reviewedAt) {
     );
   });
   await runBatches(db, writes);
-
-  const counts = await db.prepare(`
-    SELECT review_status, COUNT(*) AS count
-    FROM knowledge_catalog_candidates
-    WHERE active_listing_count > 0
-    GROUP BY review_status
-  `).all();
-  const byStatus = Object.fromEntries((counts.results || []).map(row => [row.review_status, Number(row.count || 0)]));
-  return {
-    candidates: candidates.length,
-    pendingCandidates: byStatus.pending || 0,
-    matchedCandidates: byStatus.matched || 0,
-    ignoredCandidates: byStatus.ignored || 0
-  };
+  return knowledgeCatalogCandidateStats(db);
 }
 
 export async function markKnowledgeCatalogProductsDue(db, reviewedAt, reviewIntervalDays = 30) {
@@ -152,7 +155,8 @@ export async function finishKnowledgeCatalogReviewRunSuccess(db, runId, result) 
   await db.prepare(`
     UPDATE knowledge_catalog_review_runs
     SET finished_at = ?, status = 'success', catalog_products = ?, due_products = ?, candidates = ?,
-        pending_candidates = ?, matched_candidates = ?, reclassified_products = ?, message = ?
+        pending_candidates = ?, matched_candidates = ?, reclassified_products = ?,
+        verification_attempts = ?, verified_promotions = ?, verified_rechecks = ?, verification_failures = ?, message = ?
     WHERE id = ?
   `).bind(
     result.finishedAt,
@@ -162,6 +166,10 @@ export async function finishKnowledgeCatalogReviewRunSuccess(db, runId, result) 
     result.pendingCandidates,
     result.matchedCandidates,
     result.reclassifiedProducts,
+    result.verificationAttempts,
+    result.verifiedPromotions,
+    result.verifiedRechecks,
+    result.verificationFailures,
     String(result.message || '').slice(0, 1000),
     runId
   ).run();
