@@ -4,4 +4,46 @@ import { fujiyaAvicAdapter } from './fujiya-avic.js';
 import { hifidoAdapter } from './hifido.js';
 import { forMusicAdapter } from './formusic.js';
 
-export const SHOP_ADAPTERS = [audioUnionAdapter, ippinkanAdapter, fujiyaAvicAdapter, hifidoAdapter, forMusicAdapter];
+function defineShopPlugin(adapter, definition) {
+  if (!adapter?.key || adapter.key !== definition.key) {
+    throw new Error(`shop plugin key mismatch: ${adapter?.key || 'missing'} / ${definition.key}`);
+  }
+  return Object.freeze({ ...adapter, definition: Object.freeze({ ...definition }) });
+}
+
+export const SHOP_PLUGINS = [
+  defineShopPlugin(audioUnionAdapter, {
+    key: 'audiounion', name: 'Audio Union', baseUrl: 'https://www.audiounion.jp',
+    intervalEnv: 'AUDIOUNION_INTERVAL_MINUTES', enabledEnv: 'AUDIOUNION_ENABLED',
+    requestDelayEnv: 'AUDIOUNION_REQUEST_DELAY_MS', defaultIntervalMinutes: 30, defaultRequestDelayMs: 10_000
+  }),
+  defineShopPlugin(ippinkanAdapter, {
+    key: 'ippinkan', name: '逸品館', baseUrl: 'https://ippinkan.jp',
+    intervalEnv: 'IPPINKAN_INTERVAL_MINUTES', enabledEnv: 'IPPINKAN_ENABLED',
+    requestDelayEnv: 'IPPINKAN_REQUEST_DELAY_MS', defaultIntervalMinutes: 30
+  }),
+  defineShopPlugin(fujiyaAvicAdapter, {
+    key: 'fujiya-avic', name: 'フジヤエービック', baseUrl: 'https://www.fujiya-avic.co.jp',
+    intervalEnv: 'FUJIYA_AVIC_INTERVAL_MINUTES', enabledEnv: 'FUJIYA_AVIC_ENABLED',
+    requestDelayEnv: 'FUJIYA_AVIC_REQUEST_DELAY_MS', defaultIntervalMinutes: 30,
+    maxPagesEnv: 'FUJIYA_AVIC_MAX_PAGES', defaultMaxPages: 50
+  }),
+  defineShopPlugin(hifidoAdapter, {
+    key: 'hifido', name: 'ハイファイ堂', baseUrl: 'https://www.hifido.co.jp',
+    intervalEnv: 'HIFIDO_INTERVAL_MINUTES', enabledEnv: 'HIFIDO_ENABLED',
+    requestDelayEnv: 'HIFIDO_REQUEST_DELAY_MS', defaultIntervalMinutes: 30,
+    maxPagesEnv: 'HIFIDO_MAX_PAGES', defaultMaxPages: 3
+  }),
+  defineShopPlugin(forMusicAdapter, {
+    key: 'formusic', name: 'FOR MUSIC', baseUrl: 'https://shop.formusic.jp',
+    intervalEnv: 'FORMUSIC_INTERVAL_MINUTES', enabledEnv: 'FORMUSIC_ENABLED',
+    requestDelayEnv: 'FORMUSIC_REQUEST_DELAY_MS', defaultIntervalMinutes: 30
+  })
+];
+
+// Compatibility alias for existing callers. New code should treat each entry as a shop plugin.
+export const SHOP_ADAPTERS = SHOP_PLUGINS;
+
+export function getShopPlugin(shopKey) {
+  return SHOP_PLUGINS.find(plugin => plugin.key === shopKey) || null;
+}
