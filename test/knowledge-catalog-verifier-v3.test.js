@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { CATEGORIES } from '../src/catalog/categories.js';
 import { catalogModelLookupVariants } from '../src/catalog/knowledge-catalog.js';
 import { inferExplicitCategoryIds } from '../src/catalog/category-rules.js';
 import { createKnowledgeSourceVerifierV3 } from '../src/catalog/knowledge-source-verifier-v3.js';
@@ -24,6 +25,13 @@ test('catalog lookup aliases preserve meaningful revisions and do not reinterpre
   assert.deepEqual(variants('yamaha', 'GT-2000ダストカバー'), ['GT-2000ダストカバー']);
   assert.ok(variants('esoteric', 'K-01XD').includes('K-01XD'));
   assert.ok(variants('final', 'D8000 Pro Limited Edition').includes('D8000 PRO LIMITED EDITION'));
+});
+
+test('verifier v3 does not expand the canonical UI taxonomy', () => {
+  const ids = new Set(CATEGORIES.map(category => category.id));
+  for (const verifierOnlyType of ['soundbar', 'av_receiver', 'clock_generator', 'equalizer', 'crossover', 'tuner']) {
+    assert.equal(ids.has(verifierOnlyType), false);
+  }
 });
 
 test('official product classes resolve without expanding the canonical UI taxonomy', () => {
