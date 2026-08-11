@@ -1,11 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchRobotsPolicy, isPathAllowed } from '../src/crawler/robots.js';
+import { fetchRobotsPolicy, getCrawlDelayMs, isPathAllowed } from '../src/crawler/robots.js';
 
 test('robots longest matching rule wins', () => {
   const robots = `User-agent: *\nDisallow: /shop/\nAllow: /shop/r/`;
   assert.equal(isPathAllowed(robots, 'https://example.com/shop/r/used', 'HiFiScoutBot'), true);
   assert.equal(isPathAllowed(robots, 'https://example.com/shop/private', 'HiFiScoutBot'), false);
+});
+
+test('robots crawl-delay is parsed for the applicable user-agent', () => {
+  const robots = `User-agent: *\nCrawl-delay: 10\nDisallow: /ct/search*`;
+  assert.equal(getCrawlDelayMs(robots, 'HiFiScoutBot/0.1'), 10_000);
 });
 
 test('robots 403 is treated as unavailable rather than an explicit disallow', async () => {
