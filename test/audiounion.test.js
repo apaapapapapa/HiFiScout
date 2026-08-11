@@ -52,24 +52,33 @@ test('Audio Union reconciles manufacturer and model candidates independent of li
   assert.equal(thorens.conditionText, '中古');
 });
 
-test('Audio Union handles multi-word manufacturers without treating the second word as the model', () => {
+test('Audio Union handles multi-word manufacturers as full titles or split candidates', () => {
   const html = `
     <article>
-      <a href="https://www.audiounion.jp/ct/detail/used/300004/">Mark Levinson</a>
+      <a href="https://www.audiounion.jp/ct/detail/used/300004/">mark</a>
+      <a href="https://www.audiounion.jp/ct/detail/used/300004/">Levinson</a>
       <a href="https://www.audiounion.jp/ct/detail/used/300004/">No.326S</a>
       <div>販売価格: &yen;621,800</div>
     </article>
     <article>
       <a href="https://www.audiounion.jp/ct/detail/used/300005/">Mark Levinson No.5805</a>
       <div>販売価格: &yen;395,800</div>
+    </article>
+    <article>
+      <a href="https://www.audiounion.jp/ct/detail/used/300006/">LINEAR</a>
+      <a href="https://www.audiounion.jp/ct/detail/used/300006/">TECHNOLOGY</a>
+      <a href="https://www.audiounion.jp/ct/detail/used/300006/">LT-1</a>
+      <div>販売価格: &yen;198,000</div>
     </article>`;
 
   const items = audioUnionAdapter.parse(html, 'https://www.audiounion.jp/st/new_arrival_used.html');
   const splitLinks = items.find(item => item.sourceId === '300004');
   const fullTitle = items.find(item => item.sourceId === '300005');
+  const linear = items.find(item => item.sourceId === '300006');
 
-  assert.deepEqual({ manufacturer: splitLinks.manufacturer, model: splitLinks.model }, { manufacturer: 'Mark Levinson', model: 'No.326S' });
+  assert.deepEqual({ manufacturer: splitLinks.manufacturer, model: splitLinks.model }, { manufacturer: 'mark Levinson', model: 'No.326S' });
   assert.deepEqual({ manufacturer: fullTitle.manufacturer, model: fullTitle.model }, { manufacturer: 'Mark Levinson', model: 'No.5805' });
+  assert.deepEqual({ manufacturer: linear.manufacturer, model: linear.model }, { manufacturer: 'LINEAR TECHNOLOGY', model: 'LT-1' });
 });
 
 test('Audio Union prefers the richer duplicate link and current product price', () => {
