@@ -1,6 +1,6 @@
 import { categorySearchAliases, getCategory } from './categories.js';
 
-const STRENGTHS = new Set(['authoritative', 'strong', 'supporting']);
+const STRENGTHS = new Set(['verified', 'authoritative', 'strong', 'supporting']);
 
 function validCategoryIds(values = []) {
   return [...new Set(values)].filter(id => getCategory(id)?.selectable);
@@ -65,7 +65,7 @@ function classified(candidate, tierEvidence) {
 export function classifyCategoryEvidence(rawEvidence = []) {
   const evidence = normalizedEvidence(rawEvidence);
 
-  for (const strength of ['authoritative', 'strong']) {
+  for (const strength of ['verified', 'authoritative', 'strong']) {
     const tier = evidence.filter(item => item.strength === strength);
     if (!tier.length) continue;
     const candidate = compatibleCategorySet(tier);
