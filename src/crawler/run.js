@@ -9,6 +9,7 @@ import {
 import { upsertProducts } from '../db/products.js';
 import { createBrowserHtmlFetcher } from './browser.js';
 import { fetchHtmlPage } from './fetch.js';
+import { createRelayHtmlFetcher } from './relay.js';
 import { SHOP_ADAPTERS } from './shops/index.js';
 
 function nowIso(now = new Date()) { return now.toISOString(); }
@@ -57,6 +58,18 @@ function pageUrl(page) {
   return typeof page === 'string' ? page : page.url;
 }
 
+function createTransportFetcher(env, adapter, fetchFn) {
+  if (adapter.transport === 'browser') return createBrowserHtmlFetcher(env.BROWSER);
+  if (adapter.transport === 'relay') {
+    return createRelayHtmlFetcher({
+      relayUrl: env?.[adapter.relayUrlEnv],
+      relayToken: env?.[adapter.relayTokenEnv],
+      fetchFn
+    });
+  }
+  return null;
+}
+
 export async function crawlShop(env, adapter, { force = false, now = new Date(), fetchFn = fetch } = {}) {
   const definition = Object.values(SHOP_DEFINITIONS).find(v => v.key === adapter.key);
   if (!definition) return { shopKey: adapter.key, status: 'skipped', reason: 'shop_definition_missing' };
@@ -80,7 +93,7 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
   let pageCount = 0;
   let reachedEnd = false;
   let coverageIncomplete = false;
-  const browserFetcher = adapter.transport === 'browser' ? createBrowserHtmlFetcher(env.BROWSER) : null;
+  const transportFetcher = createTransportFetcher(env, adapter, fetchFn);
 
   try {
     const pageQueue = [...adapter.pageUrls(maxPages, env, { now, intervalMinutes, state })];
@@ -98,8 +111,8 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
           fetchFn,
           robotsCache
         };
-        html = browserFetcher
-          ? await browserFetcher.fetchHtmlPage(url, fetchOptions)
+        html = transportFetcher
+          ? await transportFetcher.fetchHtmlPage(url, fetchOptions)
           : await fetchHtmlPage(url, fetchOptions);
       } catch (error) {
         if (/HTTP 404/.test(error.message) && (adapter.continueOnEmpty || items.size === 0)) {
@@ -171,7 +184,7 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
       .bind(failedAt, pageCount, String(error.message).slice(0, 1000), runId).run();
     return { shopKey: adapter.key, status: 'failed', error: error.message };
   } finally {
-    await browserFetcher?.close();
+    await transportFetcher?.close?.();
   }
 }
 
