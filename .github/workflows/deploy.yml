@@ -30,3 +30,14 @@ jobs:
         run: npx wrangler d1 migrations apply DB --remote
       - name: Deploy Worker and static assets
         run: npx wrangler deploy
+      - name: Inspect AudioUnion sync state
+        run: >-
+          npx wrangler d1 execute DB --remote --command
+          "SELECT shop_key, last_attempt_at, last_success_at, consecutive_failures, last_error, last_item_count, queued_at FROM shop_sync_state WHERE shop_key = 'audiounion'"
+      - name: Check production health
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(curl -sS --retry 3 --retry-delay 2 https://hifiscout.raha3415kohei.workers.dev/api/health)"
+          echo "$response" | jq .
+          echo "$response" | jq -e '.shops[] | select(.shopKey == "audiounion")'
