@@ -1,9 +1,11 @@
 import { classifyCategoryEvidence } from '../catalog/category-classifier.js';
 import { resolveCategoryPolicy } from '../catalog/category-evidence.js';
+import { knowledgeCatalogEvidence, knowledgeCatalogKey } from '../catalog/knowledge-catalog.js';
 import {
   CATEGORY_CLASSIFICATION_METADATA_VERSION,
   applyCategoryClassification
 } from '../catalog/product-normalizer.js';
+import { findVerifiedCatalogMatches } from '../db/knowledge-catalog-repository.js';
 import { selectExistingProducts } from '../db/products.js';
 
 function parseJson(value, fallback = {}) {
@@ -81,6 +83,26 @@ function withDetailCheckMetadata(product, detailCheckedAt) {
   };
 }
 
+async function applyKnowledgeCatalogEvidence(db, products, now) {
+  const matches = await findVerifiedCatalogMatches(db, products);
+  let catalogMatches = 0;
+  const catalogMatchedAt = now.toISOString();
+  const updated = products.map(product => {
+    const match = matches.get(knowledgeCatalogKey(product.manufacturerId, product.model));
+    const catalogEvidence = knowledgeCatalogEvidence(match);
+    if (!catalogEvidence.length) return product;
+    catalogMatches += 1;
+    const evidence = [...(product.categoryEvidence || []), ...catalogEvidence];
+    const classification = classifyCategoryEvidence(evidence);
+    return applyCategoryClassification(product, classification, evidence, {
+      catalogProductId: match.id,
+      catalogMatchType: match.matchType,
+      catalogMatchedAt
+    });
+  });
+  return { products: updated, catalogMatches };
+}
+
 export async function enrichProductCategories({
   db,
   adapter,
@@ -90,15 +112,31 @@ export async function enrichProductCategories({
   now = new Date(),
   existingRows = null
 }) {
+  const catalog = await applyKnowledgeCatalogEvidence(db, products, now);
+  const baseProducts = catalog.products;
   const extractor = adapter?.extractDetailCategoryEvidence;
   if (typeof extractor !== 'function') {
-    return { products, detailRequests: 0, cacheHits: 0, enrichedCount: 0, unresolvedCount: 0 };
+    return {
+      products: baseProducts,
+      catalogMatches: catalog.catalogMatches,
+      detailRequests: 0,
+      cacheHits: 0,
+      enrichedCount: 0,
+      unresolvedCount: baseProducts.filter(product => product.classificationStatus !== 'classified').length
+    };
   }
 
   const policy = resolveCategoryPolicy(adapter);
-  const unresolved = products.filter(product => product.classificationStatus !== 'classified');
+  const unresolved = baseProducts.filter(product => product.classificationStatus !== 'classified');
   if (!unresolved.length) {
-    return { products, detailRequests: 0, cacheHits: 0, enrichedCount: 0, unresolvedCount: 0 };
+    return {
+      products: baseProducts,
+      catalogMatches: catalog.catalogMatches,
+      detailRequests: 0,
+      cacheHits: 0,
+      enrichedCount: 0,
+      unresolvedCount: 0
+    };
   }
 
   const rows = existingRows ?? await selectExistingProducts(db, adapter.key, unresolved.map(product => product.sourceId));
@@ -110,7 +148,7 @@ export async function enrichProductCategories({
   let enrichedCount = 0;
 
   const enriched = [];
-  for (const product of products) {
+  for (const product of baseProducts) {
     if (product.classificationStatus === 'classified') {
       enriched.push(product);
       continue;
@@ -157,13 +195,13 @@ export async function enrichProductCategories({
         sourceId: product.sourceId,
         message: error?.message || String(error)
       }));
-      // Network/robots failures are not classification evidence and must remain retryable.
       enriched.push(product);
     }
   }
 
   return {
     products: enriched,
+    catalogMatches: catalog.catalogMatches,
     detailRequests,
     cacheHits,
     enrichedCount,
