@@ -15,7 +15,11 @@ export const audioUnionAdapter = {
     return parseProductPage(html, {
       shopKey: this.key,
       baseUrl: pageUrl,
-      productUrlPattern: /audiounion\.jp\/ct\/detail\/used\/\d+\/?/i
+      productUrlPattern: /audiounion\.jp\/ct\/detail\/used\/\d+\/?/i,
+      priceContext: 'forward',
+      priceImpliesInStock: true,
+      fixedConditionText: '中古',
+      identityStrategy: 'manufacturer-model-candidates'
     });
   }
 };
