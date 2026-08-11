@@ -1,0 +1,84 @@
+name: Knowledge Catalog Diagnostics
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/knowledge-catalog-diagnostics.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_ACCOUNT_ID: 9af87af4dbc00be3bfd4c8af3f52f684
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Review 2 and 3 failure candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          sql=$(cat <<'SQL'
+          SELECT
+            CASE
+              WHEN a.attempted_at >= '2026-08-11T14:10:04.000Z' AND a.attempted_at <= '2026-08-11T14:10:45.000Z' THEN 'review2'
+              WHEN a.attempted_at >= '2026-08-11T14:50:04.000Z' AND a.attempted_at <= '2026-08-11T14:50:56.000Z' THEN 'review3'
+              ELSE 'other'
+            END AS review,
+            c.id AS candidate_id,
+            c.manufacturer_id,
+            c.observed_model,
+            c.normalized_model,
+            c.active_listing_count,
+            c.unclassified_count,
+            a.status,
+            a.http_status,
+            a.message
+          FROM knowledge_catalog_verification_attempts a
+          JOIN knowledge_catalog_candidates c ON c.id = a.candidate_id
+          WHERE (
+            (a.attempted_at >= '2026-08-11T14:10:04.000Z' AND a.attempted_at <= '2026-08-11T14:10:45.000Z')
+            OR
+            (a.attempted_at >= '2026-08-11T14:50:04.000Z' AND a.attempted_at <= '2026-08-11T14:50:56.000Z')
+          )
+            AND a.status <> 'verified'
+          ORDER BY review, c.manufacturer_id, c.observed_model, c.id;
+          SQL
+          )
+          npx wrangler d1 execute DB --remote --json --command "$sql"
+      - name: Failure aggregates
+        shell: bash
+        run: |
+          set -euo pipefail
+          sql=$(cat <<'SQL'
+          SELECT
+            CASE
+              WHEN attempted_at >= '2026-08-11T14:10:04.000Z' AND attempted_at <= '2026-08-11T14:10:45.000Z' THEN 'review2'
+              WHEN attempted_at >= '2026-08-11T14:50:04.000Z' AND attempted_at <= '2026-08-11T14:50:56.000Z' THEN 'review3'
+              ELSE 'other'
+            END AS review,
+            manufacturer_id,
+            status,
+            message,
+            COUNT(*) AS candidates
+          FROM knowledge_catalog_verification_attempts
+          WHERE (
+            (attempted_at >= '2026-08-11T14:10:04.000Z' AND attempted_at <= '2026-08-11T14:10:45.000Z')
+            OR
+            (attempted_at >= '2026-08-11T14:50:04.000Z' AND attempted_at <= '2026-08-11T14:50:56.000Z')
+          )
+            AND status <> 'verified'
+          GROUP BY review, manufacturer_id, status, message
+          ORDER BY review, manufacturer_id, status, message;
+          SQL
+          )
+          npx wrangler d1 execute DB --remote --json --command "$sql"
