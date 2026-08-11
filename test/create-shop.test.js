@@ -10,13 +10,16 @@ test('shop generator validates kebab-case keys', () => {
   assert.throws(() => validateShopKey('Example_Audio'), /lowercase kebab-case/);
 });
 
-test('shop generator renders metadata-ready adapter and registration', () => {
+test('shop generator renders catalog and metadata-ready adapter and registration', () => {
   const adapter = renderAdapter({
     key: 'example-audio',
     name: 'Example Audio',
     baseUrl: 'https://example.com',
     transport: 'direct'
   });
+  assert.match(adapter, /categoryMapping:/);
+  assert.match(adapter, /rawManufacturer/);
+  assert.match(adapter, /rawCategory/);
   assert.match(adapter, /metadata: \{ storeName, warranty \}/);
   assert.match(adapter, /exampleAudioAdapter/);
 
@@ -51,5 +54,6 @@ test('shop generator creates adapter, fixture, test and registry entry', async (
   assert.match(index, /import \{ exampleAudioAdapter \} from '\.\/example-audio\.js'/);
   assert.match(index, /key: "example-audio"/);
   assert.match(adapter, /baseUrl: "https:\/\/example\.com"/);
+  assert.match(adapter, /categoryMapping:/);
   assert.match(fixture, /representative, sanitized listing-page fixture/);
 });

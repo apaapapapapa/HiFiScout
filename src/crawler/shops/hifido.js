@@ -8,6 +8,31 @@ const CATEGORY_RE = /(スピーカー(?:（[^）]+）)?|コントロールアン
 const PAGE_SIZE = 30;
 const DEFAULT_RECHECK_MAX_PAGE = 120;
 
+const HIFIDO_CATEGORY_MAPPING = Object.freeze({
+  'スピーカー': 'speaker',
+  'コントロールアンプ': 'pre_amp',
+  'プリアンプ': 'pre_amp',
+  'プリメインアンプ': 'integrated_amp',
+  'パワーアンプ': 'power_amp',
+  'レコードプレーヤー': 'turntable',
+  'CDプレーヤー': 'cd_sacd_player',
+  'SACDプレーヤー': 'cd_sacd_player',
+  'SACD/CDプレーヤー': 'cd_sacd_player',
+  'D/Aコンバーター': 'dac',
+  'DAコンバーター': 'dac',
+  'ネットワークプレーヤー': 'network_player',
+  'ネットワークトランスポート': 'network_transport',
+  'トーンアーム': 'tonearm',
+  'カートリッジ': 'cartridge',
+  'ヘッドホン': 'headphone',
+  'イヤホン': 'earphone',
+  'ケーブル': 'cable',
+  'アクセサリー': 'accessory',
+  '真空管': 'vacuum_tube',
+  'ラック': 'rack',
+  'その他オーディオ機器': 'other'
+});
+
 function canonicalManufacturer(value = '') {
   const text = cleanText(value);
   const japaneseIndex = text.search(/[ぁ-んァ-ヶ一-龯]/);
@@ -70,15 +95,18 @@ function parseProductBlock(block, link) {
   const manufacturerRaw = text.match(/メーカー\s*[:：]\s*(.+?)(?=\s+(?:定価|売価)\s*[:：])/i)?.[1] || '';
   const manufacturer = canonicalManufacturer(manufacturerRaw);
   const categoryRaw = text.match(CATEGORY_RE)?.[1] || '';
-  const category = categoryRaw ? categoryRaw.replace(/（[^）]+）/g, '').trim() : inferCategory(title);
+  const rawCategory = categoryRaw ? categoryRaw.replace(/（[^）]+）/g, '').trim() : '';
+  const category = rawCategory || inferCategory(title);
   let stockStatus = inferStockStatus(text);
   if (stockStatus === 'unknown' && /(?:^|\s)注文(?:\s|$)/.test(text)) stockStatus = 'in_stock';
 
   return {
     sourceId: link.sourceId,
+    rawManufacturer: manufacturerRaw,
     manufacturer,
     model: title,
     title,
+    rawCategory,
     category,
     conditionText: /パーツ取り用商品|ジャンク/i.test(text) ? 'ジャンク' : '',
     priceYen,
@@ -136,6 +164,7 @@ export const hifidoAdapter = {
   key: 'hifido',
   name: 'ハイファイ堂',
   baseUrl: 'https://www.hifido.co.jp',
+  categoryMapping: HIFIDO_CATEGORY_MAPPING,
   transport: 'relay',
   partialCoverage: true,
   guardItemCount: true,

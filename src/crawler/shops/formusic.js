@@ -16,6 +16,19 @@ const CATEGORY_BY_SLUG = {
   others: 'その他'
 };
 
+const FORMUSIC_CATEGORY_MAPPING = Object.freeze({
+  'speaker-system': 'speaker',
+  'speaker-accessories': 'accessory',
+  'control-amplifiers': 'pre_amp',
+  'power-amplifiers': 'power_amp',
+  'integrated-amplifiers': 'integrated_amp',
+  'cd-sacd-players': 'cd_sacd_player',
+  'da-converter': 'dac',
+  'network-player': 'network_player',
+  accessories: ['accessory', 'cable'],
+  others: 'other'
+});
+
 const EXCLUDED_CATEGORY_SLUGS = new Set(['music-book']);
 const CURRENT_KINDS = new Set(['中古', '展示現品', '委託品']);
 
@@ -94,9 +107,11 @@ export function parseForMusicListing(html) {
 
     products.push({
       sourceId,
+      rawManufacturer: manufacturer,
       manufacturer,
       model: title,
       title,
+      rawCategory: slug,
       category,
       conditionText,
       priceYen,
@@ -112,6 +127,7 @@ export const forMusicAdapter = {
   key: 'formusic',
   name: 'FOR MUSIC',
   baseUrl: 'https://shop.formusic.jp',
+  categoryMapping: FORMUSIC_CATEGORY_MAPPING,
   // The storefront root is a complete snapshot. Reuse the crawler's complete-coverage path
   // so products removed from the storefront can be marked inactive safely.
   dynamicPagination: true,

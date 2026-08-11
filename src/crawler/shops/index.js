@@ -1,3 +1,4 @@
+import { normalizeCatalogProducts } from '../../catalog/product-normalizer.js';
 import { audioUnionAdapter } from './audiounion.js';
 import { ippinkanAdapter } from './ippinkan.js';
 import { fujiyaAvicAdapter } from './fujiya-avic.js';
@@ -9,7 +10,28 @@ function defineShopPlugin(adapter, definition) {
   if (!adapter?.key || adapter.key !== definition.key) {
     throw new Error(`shop plugin key mismatch: ${adapter?.key || 'missing'} / ${definition.key}`);
   }
-  return Object.freeze({ ...adapter, definition: Object.freeze({ ...definition }) });
+
+  const plugin = { ...adapter, definition: Object.freeze({ ...definition }) };
+  const parse = adapter.parse;
+  plugin.parse = function normalizedParse(...args) {
+    const products = normalizeCatalogProducts(parse.apply(plugin, args), plugin);
+    const unclassified = products.filter(product => product.classificationStatus === 'unclassified');
+    if (unclassified.length) {
+      console.warn(JSON.stringify({
+        event: 'catalog_unclassified',
+        shopKey: plugin.key,
+        count: unclassified.length,
+        samples: unclassified.slice(0, 5).map(product => ({
+          sourceId: product.sourceId,
+          rawCategory: product.rawCategory,
+          title: product.title
+        }))
+      }));
+    }
+    return products;
+  };
+
+  return Object.freeze(plugin);
 }
 
 export const SHOP_PLUGINS = [
