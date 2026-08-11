@@ -30,6 +30,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Install deploy-only Worker dependency
+        run: npm install --no-save --package-lock=false --ignore-scripts --omit=dev --no-audit --no-fund @cloudflare/playwright@1.3.5
       - name: Apply backward-compatible D1 migrations
         run: npx --yes wrangler@4.120.1 d1 migrations apply DB --remote
       - name: One-time repair malformed AudioUnion MAGICO A1 listing
