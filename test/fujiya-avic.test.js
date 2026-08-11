@@ -45,6 +45,27 @@ test('Fujiya live-card shape parses price, rank, stock and bilingual maker corre
   assert.equal(item.sourceUrl, 'https://www.fujiya-avic.co.jp/shop/g/g240001214761/');
 });
 
+test('Fujiya price is taken from the current card, not the previous card', () => {
+  const page = { url: 'https://www.fujiya-avic.co.jp/shop/r/rA-HMLU/?ps=50', category: 'アンプ・スピーカー・プレーヤー' };
+  const html = `
+    <div class="product">
+      <img alt="在庫あり">
+      <div>中古：AB+</div>
+      <a href="/shop/g/g240001300001/">SilentPower サイレントパワー OMNI USB [SLP-OMNI-USB]</a>
+      <span>￥119,300(税込)</span>
+    </div>
+    <div class="product">
+      <img alt="在庫あり">
+      <div>中古：AB+</div>
+      <a href="/shop/g/g240001300002/">SilentPower サイレントパワー OMNI USB [SLP-OMNI-USB]</a>
+      <span>￥119,800(税込)</span>
+    </div>`;
+  const items = fujiyaAvicAdapter.parse(html, page);
+  assert.equal(items.length, 2);
+  assert.equal(items[0].priceYen, 119300);
+  assert.equal(items[1].priceYen, 119800);
+});
+
 test('Fujiya DJ/DTM listings keep the source category', () => {
   const page = { url: 'https://www.fujiya-avic.co.jp/shop/r/rA-DTMU/?ps=50', category: 'DJ機器・DTM' };
   const html = `
