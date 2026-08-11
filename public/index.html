@@ -93,6 +93,14 @@
     <p>HiFiScout は各販売店とは関係のない非公式の横断検索ツールです。価格・在庫・商品状態は必ず販売店の商品ページで確認してください。</p>
     <p>商品画像・販売店の商品説明文・スタッフコメントは保存・転載しません。</p>
   </footer>
+  <script>
+    const syncStatus = document.getElementById('sync-status');
+    const syncSummary = syncStatus?.querySelector('summary');
+    syncSummary?.addEventListener('click', event => {
+      event.preventDefault();
+      syncStatus.open = !syncStatus.open;
+    });
+  </script>
   <script src="/catalog-url-state.js"></script>
   <script type="module" src="/app.js"></script>
 </body>
