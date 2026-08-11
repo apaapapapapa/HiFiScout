@@ -377,6 +377,10 @@ export function validateProductQuery(url) {
     const value = params.get(key);
     if (value != null && !/^\d{1,12}$/.test(value)) return `${key}_invalid`;
   }
+  for (const key of ['inStock', 'newOnly', 'priceDropped']) {
+    const value = params.get(key);
+    if (value != null && value !== 'true' && value !== 'false') return `${key}_invalid`;
+  }
   const sort = params.get('sort');
   if (sort && !['newest', 'updated', 'priceAsc', 'priceDesc'].includes(sort)) return 'sort_invalid';
   return null;
@@ -425,6 +429,12 @@ export async function listProducts(db, url) {
   }
 
   if (params.get('inStock') === 'true') where.push("p.stock_status = 'in_stock'");
+  if (params.get('newOnly') === 'true') {
+    where.push("p.first_seen_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-48 hours')");
+  }
+  if (params.get('priceDropped') === 'true') {
+    where.push('(p.previous_price_yen IS NOT NULL AND p.price_yen IS NOT NULL AND p.price_yen < p.previous_price_yen)');
+  }
   const minPrice = Number.parseInt(params.get('minPrice') || '', 10);
   if (Number.isFinite(minPrice)) { where.push('p.price_yen >= ?'); binds.push(minPrice); }
   const maxPrice = Number.parseInt(params.get('maxPrice') || '', 10);
