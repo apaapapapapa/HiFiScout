@@ -34,6 +34,9 @@ CREATE TABLE IF NOT EXISTS knowledge_catalog_product_categories (
 
 CREATE INDEX IF NOT EXISTS idx_knowledge_catalog_categories_category
   ON knowledge_catalog_product_categories(category_id, product_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_catalog_primary_category
+  ON knowledge_catalog_product_categories(product_id)
+  WHERE is_primary = 1;
 
 CREATE TABLE IF NOT EXISTS knowledge_catalog_aliases (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
