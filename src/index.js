@@ -6,6 +6,7 @@ import { buildSyncHealth, getSyncHealth, logSyncHealth } from './health.js';
 import { runRetentionCleanup } from './maintenance.js';
 
 const AUDIOUNION_CRON = '1 * * * *';
+const AUDIOUNION_DIAGNOSTIC_CRON = '* * * * *';
 const RETENTION_CRON = '17 18 * * *';
 
 function json(data, init = {}) {
@@ -54,7 +55,7 @@ async function handleApi(request, env, ctx) {
   const rate = await checkPublicApiRateLimit(request, env);
   if (!rate.allowed) {
     console.warn(JSON.stringify({ event: 'api_rate_limited', bucket: rate.bucket }));
-    return json({ error: 'rate_limited' }, { status: 429, headers: { 'retry-after': '60' } });
+    return json({ error: 'rate_limited' }, { status: 429 });
   }
 
   if (request.method === 'GET' && url.pathname === '/api/products') {
@@ -107,7 +108,7 @@ function logDispatchResult(cron, dispatch) {
 
 async function runScheduled(cron, env) {
   if (cron === RETENTION_CRON) return runRetentionCleanup(env);
-  const dispatch = cron === AUDIOUNION_CRON
+  const dispatch = (cron === AUDIOUNION_CRON || cron === AUDIOUNION_DIAGNOSTIC_CRON)
     ? await dispatchScheduledCrawl(env, 'audiounion')
     : await dispatchDueCrawls(env, { excludeShopKeys: ['audiounion'] });
   logDispatchResult(cron, dispatch);
