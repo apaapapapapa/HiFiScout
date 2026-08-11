@@ -32,35 +32,6 @@ jobs:
           cache: npm
       - name: Apply backward-compatible D1 migrations
         run: npx --yes wrangler@4.120.1 d1 migrations apply DB --remote
-      - name: One-time repair malformed AudioUnion MAGICO A1 listing
-        shell: bash
-        run: |
-          set -euo pipefail
-          npx --yes wrangler@4.120.1 d1 execute DB --remote --command "
-            UPDATE products
-               SET manufacturer = 'MAGICO',
-                   raw_manufacturer = 'MAGICO',
-                   manufacturer_id = 'magico',
-                   model = 'A1',
-                   title = 'MAGICO A1',
-                   category = 'スピーカー',
-                   raw_category = CASE WHEN raw_category IS NULL OR raw_category = '' OR raw_category = 'その他' THEN 'スピーカー' ELSE raw_category END,
-                   primary_category_id = 'speaker',
-                   category_ids = '[\"speaker\"]',
-                   classification_status = 'classified'
-             WHERE shop_key = 'audiounion'
-               AND manufacturer = 'MAGICO'
-               AND (model LIKE '%A1 A1%' OR title LIKE '%A1 A1%');
-          "
-          npx --yes wrangler@4.120.1 d1 execute DB --remote --json --command "
-            SELECT id, manufacturer, model, title, category, price_yen
-              FROM products
-             WHERE shop_key = 'audiounion'
-               AND manufacturer = 'MAGICO'
-               AND (model = 'A1' OR title = 'MAGICO A1')
-             ORDER BY last_seen_at DESC
-             LIMIT 5;
-          " | jq .
       - name: Verify AudioUnion priced listings are visible as in stock
         shell: bash
         run: |
