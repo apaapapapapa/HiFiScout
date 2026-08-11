@@ -73,7 +73,16 @@ async function meta(env) {
   const counts = new Map(facets[1].results.map(row => [row.value, Number(row.active_product_count || 0)]));
   const categoryFacets = canonicalCategoryDefinitions()
     .filter(category => category.filterable)
-    .map(category => ({ ...categoryFacet(category.id), activeProductCount: counts.get(category.id) || 0 }))
+    .map(category => {
+      const facet = categoryFacet(category.id);
+      const groupedParent = !category.classifiable && ['amplifier', 'digital', 'analog', 'speaker', 'headphone_group', 'accessories'].includes(category.id);
+      return {
+        ...facet,
+        name: groupedParent ? `${category.name}（すべて）` : category.name,
+        group: groupedParent ? category.name : facet.group,
+        activeProductCount: counts.get(category.id) || 0
+      };
+    })
     .sort((left, right) => {
       const a = categorySortKey(left);
       const b = categorySortKey(right);
