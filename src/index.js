@@ -1,3 +1,4 @@
+import { getCategory } from './catalog/categories.js';
 import { SHOP_DEFINITIONS, getShopEnabled, getShopIntervalMinutes } from './config.js';
 import { checkPublicApiRateLimit } from './api-guard.js';
 import { consumeCrawlMessage, dispatchDueCrawls, dispatchForcedCrawl, dispatchScheduledCrawl } from './crawler/dispatch.js';
@@ -44,10 +45,27 @@ async function meta(env) {
     health: healthByKey[shop.key] || null
   }));
   const facets = await env.DB.batch([
-    env.DB.prepare('SELECT DISTINCT manufacturer AS value FROM products WHERE is_active = 1 AND manufacturer <> \'\' ORDER BY manufacturer'),
-    env.DB.prepare('SELECT DISTINCT category AS value FROM products WHERE is_active = 1 ORDER BY category')
+    env.DB.prepare(`
+      SELECT manufacturer_id, MIN(manufacturer) AS value
+      FROM products
+      WHERE is_active = 1 AND manufacturer <> ''
+      GROUP BY manufacturer_id
+      ORDER BY value
+    `),
+    env.DB.prepare(`
+      SELECT DISTINCT pc.category_id AS value
+      FROM product_categories pc
+      JOIN products p ON p.id = pc.product_id
+      WHERE p.is_active = 1
+    `)
   ]);
-  return { status: health.status, shops, manufacturers: facets[0].results.map(r => r.value), categories: facets[1].results.map(r => r.value) };
+  const manufacturers = facets[0].results.map(row => row.value);
+  const categories = facets[1].results
+    .map(row => getCategory(row.value))
+    .filter(category => category?.selectable)
+    .sort((left, right) => left.name.localeCompare(right.name, 'ja'))
+    .map(category => category.name);
+  return { status: health.status, shops, manufacturers, categories };
 }
 
 async function handleApi(request, env, ctx) {
