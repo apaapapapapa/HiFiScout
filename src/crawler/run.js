@@ -36,7 +36,9 @@ function definitionFor(adapter) {
 }
 
 function isConfigured(env, adapter) {
-  return isTransportConfigured(env, adapter) && (!adapter.isConfigured || adapter.isConfigured(env));
+  if (!isTransportConfigured(env, adapter)) return false;
+  if (adapter.transport === 'relay') return true;
+  return !adapter.isConfigured || adapter.isConfigured(env);
 }
 
 export function isShopDue(state, intervalMinutes, now = new Date()) {
