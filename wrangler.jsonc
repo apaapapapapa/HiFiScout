@@ -18,8 +18,31 @@
     { "pattern": "hifiscout.jp", "custom_domain": true }
   ],
   "triggers": {
-    "crons": ["*/5 * * * *"]
+    "crons": ["*/5 * * * *", "17 18 * * *"]
   },
+  "queues": {
+    "producers": [
+      { "binding": "CRAWL_QUEUE", "queue": "hifiscout-crawl" }
+    ],
+    "consumers": [
+      {
+        "queue": "hifiscout-crawl",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 3,
+        "retry_delay": 60,
+        "dead_letter_queue": "hifiscout-crawl-dlq",
+        "max_concurrency": 1
+      }
+    ]
+  },
+  "ratelimits": [
+    {
+      "name": "API_RATE_LIMITER",
+      "namespace_id": "541721",
+      "simple": { "limit": 120, "period": 60 }
+    }
+  ],
   "vars": {
     "AUDIOUNION_ENABLED": "true",
     "IPPINKAN_ENABLED": "true",
@@ -46,8 +69,14 @@
     "CRAWL_MAX_PAGES_PER_SHOP": "40",
     "CRAWL_MIN_ITEM_RATIO": "0.5",
     "CRAWL_MIN_ITEM_BASELINE": "20",
+    "CRAWL_DISPATCH_LEASE_MINUTES": "15",
+    "PRODUCT_TOUCH_INTERVAL_MINUTES": "1440",
     "SYNC_HEALTH_WARNING_FACTOR": "2",
     "SYNC_HEALTH_CRITICAL_FACTOR": "6",
+    "CRAWL_RUN_RETENTION_DAYS": "30",
+    "PRICE_HISTORY_RETENTION_DAYS": "1095",
+    "INACTIVE_PRODUCT_RETENTION_DAYS": "365",
+    "RETENTION_DELETE_BATCH_SIZE": "500",
     "AUDIOUNION_ENTRY_URL": "https://www.audiounion.jp/st/new_arrival_used.html",
     "CRAWLER_USER_AGENT": "HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)"
   },
