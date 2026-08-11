@@ -1,0 +1,44 @@
+name: Validate live collectors
+
+on:
+  push:
+    branches:
+      - feat/audiounion-live-source
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate live parsing
+        run: |
+          node --input-type=module <<'NODE'
+          import { audioUnionAdapter } from './src/crawler/shops/audiounion.js';
+          import { fujiyaAvicAdapter } from './src/crawler/shops/fujiya-avic.js';
+          const ua = 'HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)';
+          const get = async url => {
+            const res = await fetch(url, { headers: { 'user-agent': ua, 'accept-language': 'ja,en;q=0.7' } });
+            if (!res.ok) throw new Error(`${url} HTTP ${res.status}`);
+            return res.text();
+          };
+
+          const auUrl = 'https://www.audiounion.jp/st/new_arrival_used.html';
+          const auHtml = await get(auUrl);
+          const auItems = audioUnionAdapter.parse(auHtml, auUrl);
+          console.log('AUDIOUNION', JSON.stringify({ count: auItems.length, samples: auItems.slice(0, 5).map(({sourceId, manufacturer, model, priceYen, sourceUrl}) => ({sourceId, manufacturer, model, priceYen, sourceUrl})) }));
+          if (auItems.length < 20) throw new Error(`Audio Union parsed too few items: ${auItems.length}`);
+          if (auItems.some(item => !/^\d+$/.test(item.sourceId) || !item.priceYen)) throw new Error('Audio Union produced invalid id or price');
+
+          const fjUrl = 'https://www.fujiya-avic.co.jp/shop/r/rA-HMLU/?ps=50';
+          const fjHtml = await get(fjUrl);
+          const fjItems = fujiyaAvicAdapter.parse(fjHtml, { url: fjUrl, category: 'アンプ・スピーカー・プレーヤー' });
+          console.log('FUJIYA', JSON.stringify({ count: fjItems.length, samples: fjItems.slice(0, 10).map(({title, priceYen, sourceUrl}) => ({title, priceYen, sourceUrl})) }));
+          if (fjItems.length < 10) throw new Error(`Fujiya parsed too few items: ${fjItems.length}`);
+          if (fjItems.some(item => !item.priceYen)) throw new Error('Fujiya produced missing price');
+          NODE
