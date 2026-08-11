@@ -12,8 +12,26 @@
     return className ? className.slice('shop-'.length) : '';
   }
 
+  function decorateManufacturer(card) {
+    const maker = card.querySelector('.maker');
+    if (!maker || maker.querySelector('[data-manufacturer-filter]')) return;
+
+    const manufacturer = maker.textContent?.trim() || '';
+    if (!manufacturer || manufacturer === 'メーカー不明') return;
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'manufacturer-filter-link';
+    button.dataset.manufacturerFilter = manufacturer;
+    button.textContent = manufacturer;
+    button.title = `${manufacturer}の商品に絞り込む`;
+    button.setAttribute('aria-label', `${manufacturer}の商品に絞り込む`);
+    maker.replaceChildren(button);
+  }
+
   function decorateCard(card) {
     card.querySelector('.actions .shop-link')?.remove();
+    decorateManufacturer(card);
 
     const shop = card.querySelector('.card-top .shop');
     if (!shop || shop.matches('a')) return;
@@ -40,6 +58,18 @@
 
   const products = document.getElementById('products');
   if (!products) return;
+
+  products.addEventListener('click', event => {
+    const button = event.target.closest('[data-manufacturer-filter]');
+    if (!button) return;
+
+    const manufacturer = button.dataset.manufacturerFilter?.trim();
+    const input = document.getElementById('manufacturer');
+    if (!manufacturer || !input) return;
+
+    input.value = manufacturer;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  });
 
   decorateProducts(products);
   new MutationObserver(mutations => {
