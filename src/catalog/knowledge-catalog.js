@@ -40,17 +40,15 @@ export function candidatePriority({ unclassifiedCount = 0, shopCount = 0, listin
   return Number(unclassifiedCount) * 100 + Number(shopCount) * 10 + Math.min(Number(listingCount), 9);
 }
 
-export function buildKnowledgeCatalogCandidateAggregates(rows = []) {
-  const grouped = new Map();
-
+export function accumulateKnowledgeCatalogCandidateRows(grouped, rows = []) {
+  const target = grouped || new Map();
   for (const row of rows) {
     const key = knowledgeCatalogKey(row?.manufacturer_id, row?.model);
     if (!key) continue;
     const normalizedModel = normalizeCatalogModel(row.model);
-    let candidate = grouped.get(key);
+    let candidate = target.get(key);
     if (!candidate) {
       candidate = {
-        key,
         manufacturerId: clean(row.manufacturer_id).toLowerCase(),
         normalizedModel,
         observedManufacturer: clean(row.manufacturer),
@@ -63,7 +61,7 @@ export function buildKnowledgeCatalogCandidateAggregates(rows = []) {
         firstSeenAt: '',
         lastSeenAt: ''
       };
-      grouped.set(key, candidate);
+      target.set(key, candidate);
     }
 
     candidate.listingCount += 1;
@@ -76,7 +74,10 @@ export function buildKnowledgeCatalogCandidateAggregates(rows = []) {
     candidate.firstSeenAt = earlier(candidate.firstSeenAt, row.first_seen_at);
     candidate.lastSeenAt = later(candidate.lastSeenAt, row.last_seen_at);
   }
+  return target;
+}
 
+export function finalizeKnowledgeCatalogCandidateAggregates(grouped = new Map()) {
   return [...grouped.values()].map(candidate => {
     const shopCount = candidate.shops.size;
     const result = {
@@ -99,6 +100,10 @@ export function buildKnowledgeCatalogCandidateAggregates(rows = []) {
     left.manufacturerId.localeCompare(right.manufacturerId) ||
     left.normalizedModel.localeCompare(right.normalizedModel)
   );
+}
+
+export function buildKnowledgeCatalogCandidateAggregates(rows = []) {
+  return finalizeKnowledgeCatalogCandidateAggregates(accumulateKnowledgeCatalogCandidateRows(new Map(), rows));
 }
 
 export function knowledgeCatalogEvidence(match) {
