@@ -1,11 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fujiyaAvicAdapter, parseFujiyaResultCount } from '../src/crawler/shops/fujiya-avic.js';
+import { coverageDecision } from '../src/crawler/strategies.js';
 
 test('Fujiya initial crawl starts from the new used arrivals feed with 50 items per page', () => {
   const pages = [...fujiyaAvicAdapter.pageUrls(50)];
   assert.equal(pages.length, 1);
   assert.equal(pages[0].url, 'https://www.fujiya-avic.co.jp/shop/e/ea-usednw_s1/?ps=50');
+});
+
+test('Fujiya new-arrivals feed is treated as partial coverage', () => {
+  assert.equal(fujiyaAvicAdapter.partialCoverage, true);
+
+  const decision = coverageDecision(fujiyaAvicAdapter, {
+    reachedEnd: false,
+    coverageIncomplete: false,
+    queueEmpty: true
+  });
+
+  assert.equal(decision.deactivateMissing, false);
+  assert.equal(decision.guardItemCount, false);
 });
 
 test('Fujiya pagination is derived from the live result count', () => {
