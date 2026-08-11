@@ -64,10 +64,16 @@ jobs:
           for attempt in $(seq 1 12); do
             payload="$(curl -fsS --retry 3 --retry-delay 2 "$status_url")"
             latest_status="$(jq -r '.latestReview.status // empty' <<< "$payload")"
-            if [ "$latest_status" = 'success' ] || [ "$latest_status" = 'failed' ]; then
+            latest_id="$(jq -r '.latestReview.id // 0' <<< "$payload")"
+            unsupported="$(jq -r '.latestReview.verificationOutcomes.unsupported // 0' <<< "$payload")"
+            needs_catchup=false
+            if [ "$latest_id" -eq 1 ] && [ "$latest_status" = 'success' ] && [ "$unsupported" -gt 0 ]; then
+              needs_catchup=true
+            fi
+            if [ "$latest_status" = 'failed' ] || { [ "$latest_status" = 'success' ] && [ "$needs_catchup" = false ]; }; then
               break
             fi
-            echo "Knowledge Catalog initial review is not finished yet (attempt ${attempt}/12)."
+            echo "Knowledge Catalog review/catch-up is not finished yet (attempt ${attempt}/12)."
             sleep 30
           done
 
@@ -86,5 +92,9 @@ jobs:
           fi
           if [ "$latest_status" != 'success' ]; then
             echo "Knowledge Catalog latest review status is $latest_status." >&2
+            exit 1
+          fi
+          if [ "$(jq -r '.latestReview.id // 0' <<< "$payload")" -eq 1 ] && [ "$(jq -r '.latestReview.verificationOutcomes.unsupported // 0' <<< "$payload")" -gt 0 ]; then
+            echo 'Knowledge Catalog catch-up review did not complete within the observation window.' >&2
             exit 1
           fi
