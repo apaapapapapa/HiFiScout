@@ -6,7 +6,8 @@ const ROOTS = [
   { path: 'rA-EAPU', category: 'イヤホン' },
   { path: 'rA-HPAU', category: 'DAP・ヘッドホンアンプ' },
   { path: 'rA-HDPU', category: 'ヘッドホン' },
-  { path: 'rA-HMLU', category: 'アンプ・スピーカー・プレーヤー' }
+  { path: 'rA-HMLU', category: 'アンプ・スピーカー・プレーヤー' },
+  { path: 'rA-DTMU', category: 'DJ機器・DTM' }
 ];
 
 function pageUrl(rootPath, page = 1) {
