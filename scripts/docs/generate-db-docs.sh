@@ -5,8 +5,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCHEMASPY_VERSION="7.0.2"
 SQLITE_JDBC_VERSION="3.42.0.0"
 DRIVER_DIR="$ROOT_DIR/.cache/docs/drivers"
+DB_WORK_DIR="$ROOT_DIR/.cache/docs/schema"
 OUTPUT_DIR="$ROOT_DIR/docs/public/db"
 DRIVER_JAR="$DRIVER_DIR/sqlite-jdbc-${SQLITE_JDBC_VERSION}.jar"
+WORK_DB_FILE="$DB_WORK_DIR/hifiscout.sqlite"
 
 cd "$ROOT_DIR"
 
@@ -30,12 +32,14 @@ if [[ ! -f "$DRIVER_JAR" ]]; then
     --output "$DRIVER_JAR"
 fi
 
-rm -rf "$OUTPUT_DIR"
-mkdir -p "$OUTPUT_DIR"
+rm -rf "$DB_WORK_DIR" "$OUTPUT_DIR"
+mkdir -p "$DB_WORK_DIR" "$OUTPUT_DIR"
+cp "$DB_FILE" "$WORK_DB_FILE"
+chmod u+w "$WORK_DB_FILE"
 
 docker run --rm \
   --user "$(id -u):$(id -g)" \
-  -v "$DB_FILE:/db/hifiscout.sqlite:ro" \
+  -v "$DB_WORK_DIR:/db" \
   -v "$DRIVER_DIR:/drivers:ro" \
   -v "$OUTPUT_DIR:/output" \
   "schemaspy/schemaspy:${SCHEMASPY_VERSION}" \
