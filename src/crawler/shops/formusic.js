@@ -1,64 +1,66 @@
-import { cleanText, inferCategory, parseYen } from '../normalize.js';
+import { cleanText, inferCategory, parseYen } from "../normalize.js";
 
 const CATEGORY_BY_SLUG = {
-  'speaker-system': 'スピーカー',
-  'speaker-accessories': 'スピーカーアクセサリー',
-  'control-amplifiers': 'プリアンプ',
-  'power-amplifiers': 'パワーアンプ',
-  'integrated-amplifiers': 'プリメインアンプ',
-  'channel-divider': 'チャンネルデバイダー',
-  'cd-sacd-players': 'CD/SACDプレーヤー',
-  'da-converter': 'DAC',
-  'network-player': 'ネットワーク',
-  'analog-system': 'アナログ',
-  accessories: 'ケーブル・アクセサリー',
-  visual: 'ビジュアル',
-  others: 'その他'
+  "speaker-system": "スピーカー",
+  "speaker-accessories": "スピーカーアクセサリー",
+  "control-amplifiers": "プリアンプ",
+  "power-amplifiers": "パワーアンプ",
+  "integrated-amplifiers": "プリメインアンプ",
+  "channel-divider": "チャンネルデバイダー",
+  "cd-sacd-players": "CD/SACDプレーヤー",
+  "da-converter": "DAC",
+  "network-player": "ネットワーク",
+  "analog-system": "アナログ",
+  accessories: "ケーブル・アクセサリー",
+  visual: "ビジュアル",
+  others: "その他",
 };
 
 const FORMUSIC_CATEGORY_MAPPING = Object.freeze({
-  'speaker-system': 'speaker',
-  'speaker-accessories': 'accessory',
-  'control-amplifiers': 'pre_amp',
-  'power-amplifiers': 'power_amp',
-  'integrated-amplifiers': 'integrated_amp',
-  'cd-sacd-players': 'cd_sacd_player',
-  'da-converter': 'dac',
-  'network-player': 'network_player',
-  accessories: ['accessory', 'cable'],
-  others: 'other'
+  "speaker-system": "speaker",
+  "speaker-accessories": "accessory",
+  "control-amplifiers": "pre_amp",
+  "power-amplifiers": "power_amp",
+  "integrated-amplifiers": "integrated_amp",
+  "cd-sacd-players": "cd_sacd_player",
+  "da-converter": "dac",
+  "network-player": "network_player",
+  accessories: ["accessory", "cable"],
+  others: "other",
 });
 
-const EXCLUDED_CATEGORY_SLUGS = new Set(['music-book']);
-const CURRENT_KINDS = new Set(['中古', '展示現品', '委託品']);
+const EXCLUDED_CATEGORY_SLUGS = new Set(["music-book"]);
+const CURRENT_KINDS = new Set(["中古", "展示現品", "委託品"]);
 
 function absoluteUrl(href) {
   try {
-    const url = new URL(href, 'https://shop.formusic.jp');
-    return url.hostname === 'shop.formusic.jp' ? url.toString() : null;
+    const url = new URL(href, "https://shop.formusic.jp");
+    return url.hostname === "shop.formusic.jp" ? url.toString() : null;
   } catch {
     return null;
   }
 }
 
 function cellsFromRow(rowHtml) {
-  return [...rowHtml.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map(match => match[1]);
+  return [...rowHtml.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map((match) => match[1]);
 }
 
-function firstLine(html = '') {
+function firstLine(html = "") {
   return cleanText(String(html).split(/<br\s*\/?>/i)[0]);
 }
 
-function altTexts(html = '') {
-  return [...String(html).matchAll(/\balt\s*=\s*["']([^"']+)["']/gi)].map(match => cleanText(match[1]));
+function altTexts(html = "") {
+  return [...String(html).matchAll(/\balt\s*=\s*["']([^"']+)["']/gi)].map((match) =>
+    cleanText(match[1]),
+  );
 }
 
 function categoryFor(sourceUrl, title) {
   try {
-    const slug = new URL(sourceUrl).pathname.split('/').filter(Boolean)[0] || '';
+    const slug = new URL(sourceUrl).pathname.split("/").filter(Boolean)[0] || "";
     return { slug, category: CATEGORY_BY_SLUG[slug] || inferCategory(title) };
   } catch {
-    return { slug: '', category: inferCategory(title) };
+    return { slug: "", category: inferCategory(title) };
   }
 }
 
@@ -83,12 +85,15 @@ export function parseForMusicListing(html) {
     if (EXCLUDED_CATEGORY_SLUGS.has(slug)) continue;
 
     const badges = altTexts(cells[7]);
-    const currentKind = badges.find(value => CURRENT_KINDS.has(value)) || '';
+    const currentKind = badges.find((value) => CURRENT_KINDS.has(value)) || "";
 
-    const saleHtml = cells[4].match(/class=["'][^"']*\bpost-meta-baika\b[^"']*["'][^>]*>([\s\S]*?)<\/span>/i)?.[1] || '';
+    const saleHtml =
+      cells[4].match(
+        /class=["'][^"']*\bpost-meta-baika\b[^"']*["'][^>]*>([\s\S]*?)<\/span>/i,
+      )?.[1] || "";
     const saleText = cleanText(saleHtml);
-    const soldOut = /SOLD\s*OUT/i.test(saleText) || badges.some(value => /売約済/.test(value));
-    const negotiating = badges.some(value => /商談中|予約中/.test(value));
+    const soldOut = /SOLD\s*OUT/i.test(saleText) || badges.some((value) => /売約済/.test(value));
+    const negotiating = badges.some((value) => /商談中|予約中/.test(value));
 
     // The storefront mixes used/display/consignment and new stock on the same page.
     // Keep only clearly used-like current rows, plus sold rows so an observed item can transition safely.
@@ -96,14 +101,17 @@ export function parseForMusicListing(html) {
 
     const manufacturer = firstLine(cells[1]);
     const grade = cleanText(
-      cells[5].match(/class=["'][^"']*\bpost-meta-teido\b[^"']*["'][^>]*>([\s\S]*?)<\/span>/i)?.[1] || ''
+      cells[5].match(
+        /class=["'][^"']*\bpost-meta-teido\b[^"']*["'][^>]*>([\s\S]*?)<\/span>/i,
+      )?.[1] || "",
     );
-    const priceYen = soldOut || /^(?:ASK|-|ー|オープン|OPEN)$/i.test(saleText)
-      ? null
-      : parseYen(saleText);
+    const priceYen =
+      soldOut || /^(?:ASK|-|ー|オープン|OPEN)$/i.test(saleText) ? null : parseYen(saleText);
 
-    const stockStatus = soldOut ? 'sold_out' : negotiating ? 'unknown' : 'in_stock';
-    const conditionText = [grade, currentKind, negotiating ? '商談中' : ''].filter(Boolean).join(' / ');
+    const stockStatus = soldOut ? "sold_out" : negotiating ? "unknown" : "in_stock";
+    const conditionText = [grade, currentKind, negotiating ? "商談中" : ""]
+      .filter(Boolean)
+      .join(" / ");
 
     products.push({
       sourceId,
@@ -116,28 +124,28 @@ export function parseForMusicListing(html) {
       conditionText,
       priceYen,
       stockStatus,
-      sourceUrl
+      sourceUrl,
     });
   }
 
-  return [...new Map(products.map(product => [product.sourceId, product])).values()];
+  return [...new Map(products.map((product) => [product.sourceId, product])).values()];
 }
 
 export const forMusicAdapter = {
-  key: 'formusic',
-  name: 'FOR MUSIC',
-  baseUrl: 'https://shop.formusic.jp',
+  key: "formusic",
+  name: "FOR MUSIC",
+  baseUrl: "https://shop.formusic.jp",
   categoryMapping: FORMUSIC_CATEGORY_MAPPING,
   // The storefront root is a complete snapshot. Reuse the crawler's complete-coverage path
   // so products removed from the storefront can be marked inactive safely.
   dynamicPagination: true,
   *pageUrls() {
-    yield 'https://shop.formusic.jp/';
+    yield "https://shop.formusic.jp/";
   },
   discoverPageUrls() {
     return [];
   },
   parse(html) {
     return parseForMusicListing(html);
-  }
+  },
 };

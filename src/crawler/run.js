@@ -4,52 +4,56 @@ import {
   getShopEnabled,
   getShopIntervalMinutes,
   getShopMaxPages,
-  getShopRequestDelayMs
-} from '../config.js';
-import { syncObservedProductFeatureFacts } from '../db/product-feature-repository.js';
-import { syncProductMetadata } from '../db/product-metadata-repository.js';
-import { upsertProducts } from '../db/products.js';
+  getShopRequestDelayMs,
+} from "../config.js";
+import { syncObservedProductFeatureFacts } from "../db/product-feature-repository.js";
+import { syncProductMetadata } from "../db/product-metadata-repository.js";
+import { upsertProducts } from "../db/products.js";
 import {
   getShopState,
   listShopStates,
   markShopAttempt,
   markShopFailure,
-  markShopSuccess
-} from '../db/shop-state-repository.js';
+  markShopSuccess,
+} from "../db/shop-state-repository.js";
 import {
   finishCrawlRunFailure,
   finishCrawlRunSuccess,
-  startCrawlRun
-} from '../db/crawl-run-repository.js';
-import { enrichProductCategories } from './category-enricher.js';
-import { SHOP_ADAPTERS } from './shops/index.js';
-import { createTransport, isTransportConfigured } from './transport.js';
+  startCrawlRun,
+} from "../db/crawl-run-repository.js";
+import { enrichProductCategories } from "./category-enricher.js";
+import { SHOP_ADAPTERS } from "./shops/index.js";
+import { createTransport, isTransportConfigured } from "./transport.js";
 import {
   coverageDecision,
   discoverPages,
   initialPageQueue,
   pageUrl,
-  shouldContinueAfterEmpty
-} from './strategies.js';
+  shouldContinueAfterEmpty,
+} from "./strategies.js";
 
-function nowIso(now = new Date()) { return now.toISOString(); }
+function nowIso(now = new Date()) {
+  return now.toISOString();
+}
 
 function definitionFor(adapter) {
-  return adapter.definition || Object.values(SHOP_DEFINITIONS).find(value => value.key === adapter.key);
+  return (
+    adapter.definition || Object.values(SHOP_DEFINITIONS).find((value) => value.key === adapter.key)
+  );
 }
 
 function isConfigured(env, adapter) {
   if (!isTransportConfigured(env, adapter)) return false;
-  if (adapter.transport === 'relay') return true;
+  if (adapter.transport === "relay") return true;
   return !adapter.isConfigured || adapter.isConfigured(env);
 }
 
 function countMatches(value, pattern) {
-  return [...String(value || '').matchAll(pattern)].length;
+  return [...String(value || "").matchAll(pattern)].length;
 }
 
 function diagnoseAudioUnionHtml(html) {
-  const text = String(html || '');
+  const text = String(html || "");
   const productPattern = /(?:https?:\/\/www\.audiounion\.jp)?\/ct\/detail\/used\/(\d+)\/?/gi;
   const matches = [...text.matchAll(productPattern)];
   const seen = new Set();
@@ -87,26 +91,28 @@ function diagnoseAudioUnionHtml(html) {
       soldOutJa: countMatches(text, /売り切れ|売切/g),
       soldOutEn: countMatches(text, /sold\s*out/gi),
       noStock: countMatches(text, /在庫なし/g),
-      completed: countMatches(text, /完売|品切れ|販売終了|ご成約/g)
-    }
+      completed: countMatches(text, /完売|品切れ|販売終了|ご成約/g),
+    },
   };
 }
 
 function logUnclassifiedProducts(adapter, products) {
-  const unresolved = products.filter(product => product.classificationStatus !== 'classified');
+  const unresolved = products.filter((product) => product.classificationStatus !== "classified");
   if (!unresolved.length) return;
-  console.warn(JSON.stringify({
-    event: 'catalog_unclassified',
-    shopKey: adapter.key,
-    count: unresolved.length,
-    samples: unresolved.slice(0, 5).map(product => ({
-      sourceId: product.sourceId,
-      rawCategory: product.rawCategory,
-      title: product.title,
-      state: product.classificationState || 'unclassified',
-      candidates: product.candidateCategoryIds || []
-    }))
-  }));
+  console.warn(
+    JSON.stringify({
+      event: "catalog_unclassified",
+      shopKey: adapter.key,
+      count: unresolved.length,
+      samples: unresolved.slice(0, 5).map((product) => ({
+        sourceId: product.sourceId,
+        rawCategory: product.rawCategory,
+        title: product.title,
+        state: product.classificationState || "unclassified",
+        candidates: product.candidateCategoryIds || [],
+      })),
+    }),
+  );
 }
 
 export function isShopDue(state, intervalMinutes, now = new Date()) {
@@ -115,21 +121,33 @@ export function isShopDue(state, intervalMinutes, now = new Date()) {
   return now.getTime() - new Date(state.last_attempt_at).getTime() >= intervalMinutes * 60_000;
 }
 
-export function isSuspiciousItemDrop(itemCount, previousItemCount, { minRatio = 0.5, minBaseline = 20 } = {}) {
+export function isSuspiciousItemDrop(
+  itemCount,
+  previousItemCount,
+  { minRatio = 0.5, minBaseline = 20 } = {},
+) {
   if (!Number.isFinite(previousItemCount) || previousItemCount < minBaseline) return false;
   if (!Number.isFinite(itemCount) || itemCount < 0) return true;
   return itemCount / previousItemCount < minRatio;
 }
 
-export async function crawlShop(env, adapter, { force = false, now = new Date(), fetchFn = fetch } = {}) {
+export async function crawlShop(
+  env,
+  adapter,
+  { force = false, now = new Date(), fetchFn = fetch } = {},
+) {
   const definition = definitionFor(adapter);
-  if (!definition) return { shopKey: adapter.key, status: 'skipped', reason: 'shop_definition_missing' };
-  if (!getShopEnabled(env, definition)) return { shopKey: adapter.key, status: 'skipped', reason: 'disabled' };
-  if (!isConfigured(env, adapter)) return { shopKey: adapter.key, status: 'skipped', reason: 'configuration_missing' };
+  if (!definition)
+    return { shopKey: adapter.key, status: "skipped", reason: "shop_definition_missing" };
+  if (!getShopEnabled(env, definition))
+    return { shopKey: adapter.key, status: "skipped", reason: "disabled" };
+  if (!isConfigured(env, adapter))
+    return { shopKey: adapter.key, status: "skipped", reason: "configuration_missing" };
 
   const intervalMinutes = getShopIntervalMinutes(env, definition);
   const state = await getShopState(env.DB, adapter.key);
-  if (!force && !isShopDue(state, intervalMinutes, now)) return { shopKey: adapter.key, status: 'skipped', reason: 'not_due' };
+  if (!force && !isShopDue(state, intervalMinutes, now))
+    return { shopKey: adapter.key, status: "skipped", reason: "not_due" };
 
   const startedAt = nowIso(now);
   await markShopAttempt(env.DB, adapter.key, startedAt);
@@ -160,10 +178,13 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
           userAgent: settings.userAgent,
           requestDelayMs,
           fetchFn,
-          robotsCache
+          robotsCache,
         });
       } catch (error) {
-        if (/HTTP 404/.test(error.message) && (shouldContinueAfterEmpty(adapter) || items.size === 0)) {
+        if (
+          /HTTP 404/.test(error.message) &&
+          (shouldContinueAfterEmpty(adapter) || items.size === 0)
+        ) {
           coverageIncomplete = true;
           continue;
         }
@@ -171,7 +192,7 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
       }
 
       pageCount += 1;
-      if (adapter.key === 'audiounion') audioUnionDiagnostic = diagnoseAudioUnionHtml(html);
+      if (adapter.key === "audiounion") audioUnionDiagnostic = diagnoseAudioUnionHtml(html);
       const parsed = adapter.parse(html, page);
       const discovered = discoverPages(adapter, html, page);
       if (discovered == null) {
@@ -198,18 +219,24 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
     }
 
     if (pageQueue.length) coverageIncomplete = true;
-    if (!items.size) throw new Error('no products parsed; refusing to mark existing products inactive');
+    if (!items.size)
+      throw new Error("no products parsed; refusing to mark existing products inactive");
 
     const { deactivateMissing, guardItemCount } = coverageDecision(adapter, {
       reachedEnd,
       coverageIncomplete,
-      queueEmpty: pageQueue.length === 0
+      queueEmpty: pageQueue.length === 0,
     });
-    if (guardItemCount && isSuspiciousItemDrop(items.size, Number(state?.last_item_count), {
-      minRatio: settings.minItemRatio,
-      minBaseline: settings.minItemBaseline
-    })) {
-      throw new Error(`item count dropped suspiciously from ${state.last_item_count} to ${items.size}; refusing crawl update`);
+    if (
+      guardItemCount &&
+      isSuspiciousItemDrop(items.size, Number(state?.last_item_count), {
+        minRatio: settings.minItemRatio,
+        minBaseline: settings.minItemBaseline,
+      })
+    ) {
+      throw new Error(
+        `item count dropped suspiciously from ${state.last_item_count} to ${items.size}; refusing crawl update`,
+      );
     }
 
     const observedAt = nowIso(new Date());
@@ -223,9 +250,9 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
         userAgent: settings.userAgent,
         requestDelayMs,
         fetchFn,
-        robotsCache
+        robotsCache,
       },
-      now: new Date(observedAt)
+      now: new Date(observedAt),
     });
     const products = enrichment.products;
     logUnclassifiedProducts(adapter, products);
@@ -235,33 +262,45 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
       adapter.key,
       products,
       observedAt,
-      { deactivateMissing, touchIntervalMinutes: settings.productTouchIntervalMinutes }
+      { deactivateMissing, touchIntervalMinutes: settings.productTouchIntervalMinutes },
     );
-    const featureFactCount = await syncObservedProductFeatureFacts(env.DB, adapter.key, products, observedAt);
-    const metadataChangedCount = await syncProductMetadata(env.DB, adapter.key, products, observedAt);
+    const featureFactCount = await syncObservedProductFeatureFacts(
+      env.DB,
+      adapter.key,
+      products,
+      observedAt,
+    );
+    const metadataChangedCount = await syncProductMetadata(
+      env.DB,
+      adapter.key,
+      products,
+      observedAt,
+    );
     await markShopSuccess(env.DB, adapter.key, observedAt, items.size);
     const diagnosticParts = [];
-    if (adapter.key === 'audiounion' && audioUnionDiagnostic) {
+    if (adapter.key === "audiounion" && audioUnionDiagnostic) {
       diagnosticParts.push(`diag=${JSON.stringify(audioUnionDiagnostic)}`);
     }
     if (enrichment.detailRequests || enrichment.cacheHits || enrichment.unresolvedCount) {
-      diagnosticParts.push(`category_enrichment=${JSON.stringify({
-        detailRequests: enrichment.detailRequests,
-        cacheHits: enrichment.cacheHits,
-        enrichedCount: enrichment.enrichedCount,
-        unresolvedCount: enrichment.unresolvedCount
-      })}`);
+      diagnosticParts.push(
+        `category_enrichment=${JSON.stringify({
+          detailRequests: enrichment.detailRequests,
+          cacheHits: enrichment.cacheHits,
+          enrichedCount: enrichment.enrichedCount,
+          unresolvedCount: enrichment.unresolvedCount,
+        })}`,
+      );
     }
-    const diagnosticSuffix = diagnosticParts.length ? ` | ${diagnosticParts.join(' | ')}` : '';
+    const diagnosticSuffix = diagnosticParts.length ? ` | ${diagnosticParts.join(" | ")}` : "";
     await finishCrawlRunSuccess(env.DB, runId, {
       finishedAt: observedAt,
       itemCount: items.size,
       pageCount,
-      message: `${changedCount} changed, ${activityCount} activity, ${featureFactCount} feature facts, ${metadataChangedCount} metadata changed, ${touchedCount} touched, ${deactivatedCount} deactivated${diagnosticSuffix}`
+      message: `${changedCount} changed, ${activityCount} activity, ${featureFactCount} feature facts, ${metadataChangedCount} metadata changed, ${touchedCount} touched, ${deactivatedCount} deactivated${diagnosticSuffix}`,
     });
     return {
       shopKey: adapter.key,
-      status: 'success',
+      status: "success",
       itemCount: items.size,
       pageCount,
       changedCount,
@@ -275,14 +314,24 @@ export async function crawlShop(env, adapter, { force = false, now = new Date(),
         detailRequests: enrichment.detailRequests,
         cacheHits: enrichment.cacheHits,
         enrichedCount: enrichment.enrichedCount,
-        unresolvedCount: enrichment.unresolvedCount
-      }
+        unresolvedCount: enrichment.unresolvedCount,
+      },
     };
   } catch (error) {
     const failedAt = nowIso(new Date());
-    await markShopFailure(env.DB, adapter.key, failedAt, error.message, state?.consecutive_failures || 0);
-    await finishCrawlRunFailure(env.DB, runId, { finishedAt: failedAt, pageCount, message: error.message });
-    return { shopKey: adapter.key, status: 'failed', error: error.message };
+    await markShopFailure(
+      env.DB,
+      adapter.key,
+      failedAt,
+      error.message,
+      state?.consecutive_failures || 0,
+    );
+    await finishCrawlRunFailure(env.DB, runId, {
+      finishedAt: failedAt,
+      pageCount,
+      message: error.message,
+    });
+    return { shopKey: adapter.key, status: "failed", error: error.message };
   } finally {
     await transport.close?.();
   }
@@ -295,20 +344,25 @@ export async function crawlDueShops(env, options = {}) {
 }
 
 export async function crawlNextDueShop(env, { now = new Date(), fetchFn = fetch } = {}) {
-  const states = new Map((await listShopStates(env.DB)).map(row => [row.shop_key, row]));
-  const candidates = SHOP_ADAPTERS
-    .filter(adapter => {
-      const definition = definitionFor(adapter);
-      return definition && getShopEnabled(env, definition) && isConfigured(env, adapter);
-    })
-    .map(adapter => {
+  const states = new Map((await listShopStates(env.DB)).map((row) => [row.shop_key, row]));
+  const candidates = SHOP_ADAPTERS.filter((adapter) => {
+    const definition = definitionFor(adapter);
+    return definition && getShopEnabled(env, definition) && isConfigured(env, adapter);
+  })
+    .map((adapter) => {
       const definition = definitionFor(adapter);
       const interval = getShopIntervalMinutes(env, definition);
       const state = states.get(adapter.key);
-      return { adapter, state, interval, due: isShopDue(state, interval, now), lastAttempt: state?.last_attempt_at || '' };
+      return {
+        adapter,
+        state,
+        interval,
+        due: isShopDue(state, interval, now),
+        lastAttempt: state?.last_attempt_at || "",
+      };
     })
-    .filter(candidate => candidate.due)
+    .filter((candidate) => candidate.due)
     .sort((a, b) => a.lastAttempt.localeCompare(b.lastAttempt));
-  if (!candidates.length) return { status: 'skipped', reason: 'no_shop_due' };
+  if (!candidates.length) return { status: "skipped", reason: "no_shop_due" };
   return crawlShop(env, candidates[0].adapter, { now, fetchFn });
 }

@@ -1,6 +1,6 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import { forMusicAdapter, parseForMusicListing } from '../src/crawler/shops/formusic.js';
+import test from "node:test";
+import assert from "node:assert/strict";
+import { forMusicAdapter, parseForMusicListing } from "../src/crawler/shops/formusic.js";
 
 const html = `
 <table class="itemlist">
@@ -57,36 +57,36 @@ const html = `
 </tr>
 </table>`;
 
-test('FOR MUSIC parser keeps used/display listings and factual fields only', () => {
+test("FOR MUSIC parser keeps used/display listings and factual fields only", () => {
   const items = parseForMusicListing(html);
   assert.equal(items.length, 3);
 
-  const used = items.find(item => item.sourceId === '37194');
-  assert.equal(used.manufacturer, 'Bowers&Wilkins');
-  assert.equal(used.model, '805D3 グロスブラック');
-  assert.equal(used.category, 'スピーカー');
+  const used = items.find((item) => item.sourceId === "37194");
+  assert.equal(used.manufacturer, "Bowers&Wilkins");
+  assert.equal(used.model, "805D3 グロスブラック");
+  assert.equal(used.category, "スピーカー");
   assert.equal(used.priceYen, 660000);
-  assert.equal(used.stockStatus, 'in_stock');
+  assert.equal(used.stockStatus, "in_stock");
   assert.match(used.conditionText, /美品：A/);
   assert.match(used.conditionText, /中古/);
-  assert.equal('image' in used, false);
-  assert.equal('description' in used, false);
+  assert.equal("image" in used, false);
+  assert.equal("description" in used, false);
 
-  const display = items.find(item => item.sourceId === '37001');
+  const display = items.find((item) => item.sourceId === "37001");
   assert.equal(display.priceYen, 1034000);
-  assert.equal(display.stockStatus, 'unknown');
+  assert.equal(display.stockStatus, "unknown");
   assert.match(display.conditionText, /展示現品/);
   assert.match(display.conditionText, /商談中/);
 
-  const sold = items.find(item => item.sourceId === '35000');
-  assert.equal(sold.manufacturer, 'LUXMAN');
-  assert.equal(sold.category, 'プリアンプ');
+  const sold = items.find((item) => item.sourceId === "35000");
+  assert.equal(sold.manufacturer, "LUXMAN");
+  assert.equal(sold.category, "プリアンプ");
   assert.equal(sold.priceYen, null);
-  assert.equal(sold.stockStatus, 'sold_out');
+  assert.equal(sold.stockStatus, "sold_out");
 });
 
-test('FOR MUSIC adapter uses one complete storefront snapshot', () => {
-  assert.deepEqual([...forMusicAdapter.pageUrls()], ['https://shop.formusic.jp/']);
+test("FOR MUSIC adapter uses one complete storefront snapshot", () => {
+  assert.deepEqual([...forMusicAdapter.pageUrls()], ["https://shop.formusic.jp/"]);
   assert.equal(forMusicAdapter.dynamicPagination, true);
   assert.deepEqual(forMusicAdapter.discoverPageUrls(), []);
 });

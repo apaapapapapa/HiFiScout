@@ -1,5 +1,5 @@
 export function pageUrl(page) {
-  return typeof page === 'string' ? page : page.url;
+  return typeof page === "string" ? page : page.url;
 }
 
 export function initialPageQueue(adapter, maxPages, env, context) {
@@ -16,11 +16,11 @@ export function shouldContinueAfterEmpty(adapter) {
 }
 
 export function coverageDecision(adapter, { reachedEnd, coverageIncomplete, queueEmpty }) {
-  const deactivateMissing = !adapter.partialCoverage && (
-    reachedEnd || (adapter.dynamicPagination && !coverageIncomplete && queueEmpty)
-  );
+  const deactivateMissing =
+    !adapter.partialCoverage &&
+    (reachedEnd || (adapter.dynamicPagination && !coverageIncomplete && queueEmpty));
   return {
     deactivateMissing,
-    guardItemCount: deactivateMissing || adapter.guardItemCount === true
+    guardItemCount: deactivateMissing || adapter.guardItemCount === true,
   };
 }

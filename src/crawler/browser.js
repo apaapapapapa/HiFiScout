@@ -1,6 +1,6 @@
-import { fetchRobotsPolicy, getCrawlDelayMs, isPathAllowed } from './robots.js';
+import { fetchRobotsPolicy, getCrawlDelayMs, isPathAllowed } from "./robots.js";
 
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function crawlError(status) {
   if (status === 403 || status === 429) {
@@ -42,9 +42,9 @@ export function createBrowserHtmlFetcher(browserBinding, { launchBrowser = null 
   let launchBrowserFn = launchBrowser;
 
   async function ensurePage() {
-    if (!browserBinding) throw new Error('Browser Run binding is not configured');
+    if (!browserBinding) throw new Error("Browser Run binding is not configured");
     if (!launchBrowserFn) {
-      const { launch } = await import('@cloudflare/playwright');
+      const { launch } = await import("@cloudflare/playwright");
       launchBrowserFn = launch;
     }
     if (!browser) browser = await launchBrowserFn(browserBinding, { keep_alive: 120_000 });
@@ -53,7 +53,7 @@ export function createBrowserHtmlFetcher(browserBinding, { launchBrowser = null 
   }
 
   async function navigate(targetPage, url) {
-    const response = await targetPage.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    const response = await targetPage.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
     const status = response?.status() ?? 0;
     if (status < 200 || status >= 400) throw crawlError(status);
     pageOrigin = new URL(targetPage.url()).origin;
@@ -61,8 +61,8 @@ export function createBrowserHtmlFetcher(browserBinding, { launchBrowser = null 
   }
 
   async function browserFetch(targetPage, url) {
-    const result = await targetPage.evaluate(async targetUrl => {
-      const response = await fetch(targetUrl, { cache: 'no-store', credentials: 'same-origin' });
+    const result = await targetPage.evaluate(async (targetUrl) => {
+      const response = await fetch(targetUrl, { cache: "no-store", credentials: "same-origin" });
       return { status: response.status, html: await response.text() };
     }, url);
     if (result.status < 200 || result.status >= 400) throw crawlError(result.status);
@@ -75,14 +75,17 @@ export function createBrowserHtmlFetcher(browserBinding, { launchBrowser = null 
       try {
         const targetPage = await ensurePage();
         const targetOrigin = new URL(url).origin;
-        const html = pageOrigin === targetOrigin
-          ? await browserFetch(targetPage, url)
-          : await navigate(targetPage, url);
+        const html =
+          pageOrigin === targetOrigin
+            ? await browserFetch(targetPage, url)
+            : await navigate(targetPage, url);
         if (effectiveDelayMs > 0) await sleep(effectiveDelayMs);
         return html;
       } catch (error) {
         if (error?.status) throw error;
-        throw new Error(`browser crawl failed: ${error instanceof Error ? error.message : String(error)}`);
+        throw new Error(
+          `browser crawl failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     },
 
@@ -92,6 +95,6 @@ export function createBrowserHtmlFetcher(browserBinding, { launchBrowser = null 
       page = null;
       pageOrigin = null;
       if (current) await current.close().catch(() => {});
-    }
+    },
   };
 }

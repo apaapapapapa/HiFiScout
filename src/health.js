@@ -1,7 +1,7 @@
-import { getCrawlerSettings, getShopEnabled, getShopIntervalMinutes } from './config.js';
-import { listShopStates } from './db/shop-state-repository.js';
-import { SHOP_PLUGINS } from './crawler/shops/index.js';
-import { isTransportConfigured } from './crawler/transport.js';
+import { getCrawlerSettings, getShopEnabled, getShopIntervalMinutes } from "./config.js";
+import { listShopStates } from "./db/shop-state-repository.js";
+import { SHOP_PLUGINS } from "./crawler/shops/index.js";
+import { isTransportConfigured } from "./crawler/transport.js";
 
 const SEVERITY = { disabled: 0, healthy: 1, warning: 2, critical: 3 };
 
@@ -12,17 +12,17 @@ export function evaluateShopSyncHealth({
   configured = true,
   now = new Date(),
   warningFactor = 2,
-  criticalFactor = 6
+  criticalFactor = 6,
 }) {
-  if (!enabled) return { status: 'disabled', ageMinutes: null, reason: 'disabled' };
-  if (!configured) return { status: 'critical', ageMinutes: null, reason: 'configuration_missing' };
+  if (!enabled) return { status: "disabled", ageMinutes: null, reason: "disabled" };
+  if (!configured) return { status: "critical", ageMinutes: null, reason: "configuration_missing" };
 
   const failures = Number(state?.consecutive_failures || 0);
   if (!state?.last_success_at) {
     return {
-      status: failures >= 3 ? 'critical' : 'warning',
+      status: failures >= 3 ? "critical" : "warning",
       ageMinutes: null,
-      reason: failures >= 3 ? 'never_succeeded_repeated_failures' : 'never_succeeded'
+      reason: failures >= 3 ? "never_succeeded_repeated_failures" : "never_succeeded",
     };
   }
 
@@ -33,33 +33,33 @@ export function evaluateShopSyncHealth({
 
   if (failures >= 3 || ageMinutes > intervalMinutes * criticalFactor) {
     return {
-      status: 'critical',
+      status: "critical",
       ageMinutes: Number.isFinite(ageMinutes) ? Math.round(ageMinutes) : null,
-      reason: failures >= 3 ? 'repeated_failures' : 'sync_stale'
+      reason: failures >= 3 ? "repeated_failures" : "sync_stale",
     };
   }
   if (failures >= 1 || ageMinutes > intervalMinutes * warningFactor) {
     return {
-      status: 'warning',
+      status: "warning",
       ageMinutes: Number.isFinite(ageMinutes) ? Math.round(ageMinutes) : null,
-      reason: failures >= 1 ? 'recent_failure' : 'sync_delayed'
+      reason: failures >= 1 ? "recent_failure" : "sync_delayed",
     };
   }
-  return { status: 'healthy', ageMinutes: Math.round(ageMinutes), reason: 'ok' };
+  return { status: "healthy", ageMinutes: Math.round(ageMinutes), reason: "ok" };
 }
 
 function isShopConfigured(env, plugin) {
   // Preserve the existing health contract: only AudioUnion was treated as a
   // hard configuration dependency. Other collectors report failures through
   // their persisted sync state instead of becoming critical before a run.
-  if (plugin.key !== 'audiounion') return true;
+  if (plugin.key !== "audiounion") return true;
   return isTransportConfigured(env, plugin);
 }
 
 export function buildSyncHealth(env, stateRows = [], now = new Date()) {
   const settings = getCrawlerSettings(env);
-  const states = new Map(stateRows.map(row => [row.shop_key, row]));
-  const shops = SHOP_PLUGINS.map(plugin => {
+  const states = new Map(stateRows.map((row) => [row.shop_key, row]));
+  const shops = SHOP_PLUGINS.map((plugin) => {
     const shop = plugin.definition;
     const enabled = getShopEnabled(env, shop);
     const configured = isShopConfigured(env, plugin);
@@ -72,7 +72,7 @@ export function buildSyncHealth(env, stateRows = [], now = new Date()) {
       configured,
       now,
       warningFactor: settings.healthWarningFactor,
-      criticalFactor: settings.healthCriticalFactor
+      criticalFactor: settings.healthCriticalFactor,
     });
     const lastItemCount = Number(state?.last_item_count);
     return {
@@ -86,17 +86,20 @@ export function buildSyncHealth(env, stateRows = [], now = new Date()) {
       lastItemCount: Number.isFinite(lastItemCount) ? lastItemCount : null,
       consecutiveFailures: Number(state?.consecutive_failures || 0),
       lastError: state?.last_error || null,
-      ...health
+      ...health,
     };
   });
 
-  const active = shops.filter(shop => shop.enabled);
-  const status = active.reduce((worst, shop) => SEVERITY[shop.status] > SEVERITY[worst] ? shop.status : worst, 'healthy');
+  const active = shops.filter((shop) => shop.enabled);
+  const status = active.reduce(
+    (worst, shop) => (SEVERITY[shop.status] > SEVERITY[worst] ? shop.status : worst),
+    "healthy",
+  );
   return {
-    ok: status !== 'critical',
+    ok: status !== "critical",
     status,
     checkedAt: now.toISOString(),
-    shops
+    shops,
   };
 }
 
@@ -105,9 +108,9 @@ export async function getSyncHealth(env, now = new Date()) {
 }
 
 export function logSyncHealth(health) {
-  if (health.status === 'critical') {
-    console.error(JSON.stringify({ event: 'sync_health_critical', ...health }));
-  } else if (health.status === 'warning') {
-    console.warn(JSON.stringify({ event: 'sync_health_warning', ...health }));
+  if (health.status === "critical") {
+    console.error(JSON.stringify({ event: "sync_health_critical", ...health }));
+  } else if (health.status === "warning") {
+    console.warn(JSON.stringify({ event: "sync_health_warning", ...health }));
   }
 }
