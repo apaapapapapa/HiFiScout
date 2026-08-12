@@ -222,4 +222,4 @@ If a live page can no longer be parsed, the crawler refuses to mark existing pro
 
 ## Deployment
 
-`main` is deployed by `.github/workflows/deploy.yml` using `CLOUDFLARE_API_TOKEN`. Wrangler applies backward-compatible D1 migrations before deploying the Worker/static assets. Queue resources are provisioned/bound through Wrangler configuration. The production custom domain is managed in Cloudflare separately from the repository configuration.
+`main` is deployed by `.github/workflows/deploy.yml` using `CLOUDFLARE_API_TOKEN`. Wrangler applies backward-compatible D1 migrations before deploying the Worker/static assets. Queue resources are provisioned/bound through Wrangler configuration. Production uses the Worker `workers.dev` endpoint, with the tracked default base URL in `.github/config/production.env`; the optional GitHub repository variable `PRODUCTION_BASE_URL` overrides that value without code changes. E2E uses the same production URL unless `E2E_BASE_URL` or a manual `base_url` input is provided.
