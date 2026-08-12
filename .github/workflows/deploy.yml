@@ -108,3 +108,142 @@ jobs:
           response="$(curl -sS --retry 3 --retry-delay 2 "${PRODUCTION_BASE_URL}/api/health")"
           echo "$response" | jq .
           echo "$response" | jq -e '.shops[] | select(.shopKey == "audiounion" and .configured == true)'
+      - name: Report production Data Platform and Data Quality baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          query() {
+            npx --yes wrangler@4.120.1 d1 execute DB --remote --json --command "$1" | jq '.[0].results // []'
+          }
+
+          identity="$(query "
+            SELECT
+              COUNT(*) AS resolution_count,
+              SUM(CASE WHEN status = 'matched' THEN 1 ELSE 0 END) AS matched_count,
+              SUM(CASE WHEN status = 'unresolved' THEN 1 ELSE 0 END) AS unresolved_count,
+              SUM(CASE WHEN match_method = 'vetoed' THEN 1 ELSE 0 END) AS veto_count,
+              SUM(CASE WHEN status = 'unresolved' AND candidate_catalog_product_id IS NOT NULL THEN 1 ELSE 0 END) AS candidate_count,
+              MAX(evaluated_at) AS latest_evaluated_at
+            FROM product_identity_resolutions;")"
+
+          evidence="$(query "
+            SELECT
+              COUNT(*) AS evidence_count,
+              COALESCE(SUM(content_bytes), 0) AS content_bytes,
+              SUM(CASE WHEN COALESCE(r2_object_key, '') <> '' THEN 1 ELSE 0 END) AS object_key_count,
+              MAX(captured_at) AS latest_captured_at
+            FROM evidence_archive;")"
+
+          shops="$(query "
+            SELECT
+              shop_key,
+              COUNT(*) AS active_count,
+              SUM(CASE WHEN stock_status = 'unknown' THEN 1 ELSE 0 END) AS inventory_unknown_count,
+              MAX(last_seen_at) AS latest_seen_at
+            FROM products
+            WHERE is_active = 1
+            GROUP BY shop_key
+            ORDER BY shop_key;")"
+
+          baseline="$(query "
+            SELECT
+              p.shop_key,
+              COUNT(*) AS total_items,
+              SUM(CASE WHEN COALESCE(p.raw_manufacturer, '') = '' THEN 1 ELSE 0 END) AS manufacturer_missing_count,
+              SUM(CASE
+                WHEN COALESCE(p.raw_manufacturer, '') <> ''
+                 AND COALESCE(json_extract(p.metadata_json, '$.manufacturerNormalization.matchedAlias'), 0) <> 1
+                THEN 1 ELSE 0 END) AS manufacturer_unresolved_count,
+              SUM(CASE WHEN p.classification_status <> 'classified' THEN 1 ELSE 0 END) AS category_unclassified_count,
+              SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id = 'other' THEN 1 ELSE 0 END) AS other_category_count,
+              SUM(CASE WHEN r.status = 'matched' THEN 1 ELSE 0 END) AS identity_matched_count,
+              SUM(CASE WHEN r.status = 'unresolved' THEN 1 ELSE 0 END) AS identity_unresolved_count,
+              SUM(CASE WHEN r.match_method = 'vetoed' THEN 1 ELSE 0 END) AS identity_veto_count,
+              SUM(CASE WHEN r.status = 'unresolved' AND r.candidate_catalog_product_id IS NOT NULL THEN 1 ELSE 0 END) AS identity_candidate_count,
+              SUM(CASE WHEN p.stock_status <> 'unknown' THEN 1 ELSE 0 END) AS inventory_known_count,
+              SUM(CASE WHEN p.stock_status = 'unknown' THEN 1 ELSE 0 END) AS inventory_unknown_count,
+              SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN ('other_accessory','cable','rack','power_accessory','vacuum_tube','other') THEN 1 ELSE 0 END) AS model_expected_count,
+              SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN ('other_accessory','cable','rack','power_accessory','vacuum_tube','other') AND COALESCE(p.model, '') <> '' THEN 1 ELSE 0 END) AS model_extracted_count,
+              SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN ('other_accessory','cable','rack','power_accessory','vacuum_tube','other') AND COALESCE(p.model, '') = '' THEN 1 ELSE 0 END) AS model_missing_count
+            FROM products p
+            LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
+            WHERE p.is_active = 1
+            GROUP BY p.shop_key
+            ORDER BY p.shop_key;")"
+
+          quality_runs="$(query "
+            SELECT q.*
+            FROM data_quality_runs q
+            WHERE q.id = (
+              SELECT q2.id
+              FROM data_quality_runs q2
+              WHERE q2.shop_key = q.shop_key
+              ORDER BY q2.evaluated_at DESC, q2.id DESC
+              LIMIT 1
+            )
+            ORDER BY q.shop_key;")"
+
+          baseline_with_rates="$(jq 'map(. + {
+            manufacturer_unknown_rate: (if .total_items > 0 then ((.manufacturer_missing_count + .manufacturer_unresolved_count) / .total_items) else null end),
+            category_unclassified_rate: (if .total_items > 0 then (.category_unclassified_count / .total_items) else null end),
+            identity_unresolved_rate: (if ((.identity_matched_count + .identity_unresolved_count) > 0) then (.identity_unresolved_count / (.identity_matched_count + .identity_unresolved_count)) else null end),
+            inventory_unknown_rate: (if ((.inventory_known_count + .inventory_unknown_count) > 0) then (.inventory_unknown_count / (.inventory_known_count + .inventory_unknown_count)) else null end),
+            model_extraction_rate: (if .model_expected_count > 0 then (.model_extracted_count / .model_expected_count) else null end)
+          })' <<< "$baseline")"
+
+          identity_count="$(jq -r '.[0].resolution_count // 0' <<< "$identity")"
+          evidence_count="$(jq -r '.[0].evidence_count // 0' <<< "$evidence")"
+          shop_count="$(jq 'length' <<< "$shops")"
+          if [ "$identity_count" -le 0 ]; then
+            echo "Product Identity has no production rows." >&2
+            exit 1
+          fi
+          if [ "$shop_count" -le 0 ]; then
+            echo "No active production shop data found." >&2
+            exit 1
+          fi
+
+          echo 'Product Identity production state:'
+          jq . <<< "$identity"
+          echo 'Evidence metadata production state:'
+          jq . <<< "$evidence"
+          echo 'Active listings by shop:'
+          jq . <<< "$shops"
+          echo 'Phase 2 snapshot baseline:'
+          jq . <<< "$baseline_with_rates"
+          echo 'Latest persisted Phase 2 quality runs:'
+          jq . <<< "$quality_runs"
+
+          {
+            echo '## Production Data Platform / Data Quality baseline'
+            echo
+            echo '### Phase 1 migration-backed structures'
+            echo
+            echo 'The queries below successfully read `product_identity_resolutions` (0017), `evidence_archive.content_bytes` (0018), and `data_quality_runs` (0019). A missing migration therefore fails this step at query time.'
+            echo
+            echo '#### Product Identity'
+            echo '```json'
+            jq . <<< "$identity"
+            echo '```'
+            echo
+            echo '#### Evidence metadata'
+            echo '```json'
+            jq . <<< "$evidence"
+            echo '```'
+            echo
+            echo '#### Active listings by shop'
+            echo '```json'
+            jq . <<< "$shops"
+            echo '```'
+            echo
+            echo '### Phase 2 snapshot baseline'
+            echo '```json'
+            jq . <<< "$baseline_with_rates"
+            echo '```'
+            echo
+            echo '### Latest persisted Phase 2 quality runs'
+            echo '```json'
+            jq . <<< "$quality_runs"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
