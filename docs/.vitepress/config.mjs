@@ -1,45 +1,45 @@
 export default {
-  lang: 'en-US',
-  title: 'HiFiScout Developer Docs',
-  description: 'Generated and curated implementation documentation for HiFiScout.',
+  lang: "en-US",
+  title: "HiFiScout Developer Docs",
+  description: "Generated and curated implementation documentation for HiFiScout.",
   cleanUrls: true,
   lastUpdated: true,
   themeConfig: {
-    search: { provider: 'local' },
+    search: { provider: "local" },
     nav: [
-      { text: 'Guide', link: '/' },
-      { text: 'Architecture', link: '/data-platform-architecture' },
-      { text: 'API', link: '/reference/api' },
-      { text: 'Database', link: '/database/' },
+      { text: "Guide", link: "/" },
+      { text: "Architecture", link: "/data-platform-architecture" },
+      { text: "API", link: "/reference/api" },
+      { text: "Database", link: "/database/" },
     ],
     sidebar: [
       {
-        text: 'Overview',
-        items: [{ text: 'Developer Guide', link: '/' }],
+        text: "Overview",
+        items: [{ text: "Developer Guide", link: "/" }],
       },
       {
-        text: 'Architecture',
+        text: "Architecture",
         items: [
-          { text: 'Data Platform', link: '/data-platform-architecture' },
-          { text: 'Module Dependencies', link: '/architecture/dependencies' },
+          { text: "Data Platform", link: "/data-platform-architecture" },
+          { text: "Module Dependencies", link: "/architecture/dependencies" },
         ],
       },
       {
-        text: 'Reference',
+        text: "Reference",
         items: [
-          { text: 'Source API', link: '/reference/api' },
-          { text: 'Database Schema', link: '/database/' },
+          { text: "Source API", link: "/reference/api" },
+          { text: "Database Schema", link: "/database/" },
         ],
       },
       {
-        text: 'Development',
+        text: "Development",
         items: [
-          { text: 'Adding Shops', link: '/adding-shops' },
-          { text: 'Testing Strategy', link: '/testing-strategy' },
-          { text: 'Documentation Tooling', link: '/tooling' },
+          { text: "Adding Shops", link: "/adding-shops" },
+          { text: "Testing Strategy", link: "/testing-strategy" },
+          { text: "Documentation Tooling", link: "/tooling" },
         ],
       },
     ],
-    socialLinks: [{ icon: 'github', link: 'https://github.com/apaapapapapa/HiFiScout' }],
+    socialLinks: [{ icon: "github", link: "https://github.com/apaapapapapa/HiFiScout" }],
   },
 };

@@ -1,15 +1,15 @@
 export default {
   forbidden: [
     {
-      name: 'no-circular',
-      severity: 'error',
-      comment: 'Keep production module dependencies acyclic.',
-      from: { path: '^src' },
+      name: "no-circular",
+      severity: "error",
+      comment: "Keep production module dependencies acyclic.",
+      from: { path: "^src" },
       to: { circular: true },
     },
   ],
   options: {
-    doNotFollow: { path: 'node_modules' },
-    includeOnly: '^src',
+    doNotFollow: { path: "node_modules" },
+    includeOnly: "^src",
   },
 };
