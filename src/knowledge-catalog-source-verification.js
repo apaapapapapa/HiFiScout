@@ -44,7 +44,9 @@ function countOutcome(counts, status) {
 export async function runKnowledgeCatalogSourceVerification(env, {
   now = new Date(),
   fetchImpl = globalThis.fetch,
-  preferRetries = false
+  preferRetries = false,
+  verifyCandidates = true,
+  verifyDueProducts = true
 } = {}) {
   const attemptedAt = now.toISOString();
   const sourceFetch = createRobotsRespectingFetch(fetchImpl, {
@@ -58,7 +60,10 @@ export async function runKnowledgeCatalogSourceVerification(env, {
     fallbackEnabled: !preferRetries
   });
   const supportedManufacturerIds = [...verifier.definitions.keys()];
-  const candidateLimit = boundedLimit(env.KNOWLEDGE_CATALOG_VERIFY_MAX_CANDIDATES, 50);
+  const candidateLimit = boundedLimit(
+    env.KNOWLEDGE_CATALOG_DAILY_VERIFY_MAX_CANDIDATES ?? env.KNOWLEDGE_CATALOG_VERIFY_MAX_CANDIDATES,
+    50
+  );
   const dueProductLimit = boundedLimit(env.KNOWLEDGE_CATALOG_VERIFY_MAX_DUE_PRODUCTS, 25);
 
   let verificationAttempts = 0;
@@ -68,7 +73,9 @@ export async function runKnowledgeCatalogSourceVerification(env, {
   let unsupportedCandidates = 0;
   const verificationOutcomes = emptyOutcomeCounts();
 
-  const dueProducts = await listDueKnowledgeCatalogProducts(env.DB, dueProductLimit);
+  const dueProducts = verifyDueProducts
+    ? await listDueKnowledgeCatalogProducts(env.DB, dueProductLimit)
+    : [];
   for (const product of dueProducts) {
     const verification = await verifier.verifyStoredSource(product);
     verificationAttempts += 1;
@@ -89,12 +96,14 @@ export async function runKnowledgeCatalogSourceVerification(env, {
     }
   }
 
-  const candidates = await listPendingKnowledgeCatalogCandidates(
-    env.DB,
-    candidateLimit,
-    supportedManufacturerIds,
-    { preferRetries }
-  );
+  const candidates = verifyCandidates
+    ? await listPendingKnowledgeCatalogCandidates(
+        env.DB,
+        candidateLimit,
+        supportedManufacturerIds,
+        { preferRetries }
+      )
+    : [];
   for (const candidate of candidates) {
     const verification = await verifier.verifyCandidate(candidate);
     verificationAttempts += 1;
