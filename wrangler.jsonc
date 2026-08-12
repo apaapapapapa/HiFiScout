@@ -75,8 +75,10 @@
     "KNOWLEDGE_CATALOG_SOURCE_MAX_SITEMAPS": "6",
     "KNOWLEDGE_CATALOG_SOURCE_MAX_URLS": "5000",
     "KNOWLEDGE_CATALOG_SOURCE_MAX_PRODUCT_PAGES": "4",
+    "EVIDENCE_MAX_BYTES": "1500000",
     "AUDIOUNION_ENTRY_URL": "https://www.audiounion.jp/st/new_arrival_used.html",
     "CRAWLER_USER_AGENT": "HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)"
   },
+  "r2_buckets": [{ "binding": "EVIDENCE_BUCKET", "bucket_name": "hifiscout-evidence" }],
   "d1_databases": [{ "binding": "DB" }]
 }

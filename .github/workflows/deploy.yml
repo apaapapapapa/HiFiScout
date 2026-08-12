@@ -39,6 +39,25 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Provision Evidence Archive R2
+        shell: bash
+        run: |
+          set -euo pipefail
+          bucket="hifiscout-evidence"
+          if npx --yes wrangler@4.120.1 r2 bucket info "$bucket" >/dev/null 2>&1; then
+            echo "R2 bucket already exists: $bucket"
+          else
+            npx --yes wrangler@4.120.1 r2 bucket create "$bucket"
+          fi
+
+          while IFS='|' read -r name prefix days; do
+            npx --yes wrangler@4.120.1 r2 bucket lifecycle remove "$bucket" --id "$name" >/dev/null 2>&1 || true
+            npx --yes wrangler@4.120.1 r2 bucket lifecycle add "$bucket" "$name" "$prefix" --expire-days "$days"
+          done <<'RULES'
+          hifiscout-evidence-short|evidence/short/|30
+          hifiscout-evidence-medium|evidence/medium/|90
+          hifiscout-evidence-long|evidence/long/|365
+          RULES
       - name: Install deploy-only Worker dependency
         shell: bash
         run: |
