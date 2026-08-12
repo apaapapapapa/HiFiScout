@@ -23,6 +23,7 @@ jobs:
       - name: Run strict typecheck
         shell: bash
         run: |
+          echo "::remove-matcher owner=tsc::"
           set +e
           output="$(npm run typecheck 2>&1)"
           status=$?
