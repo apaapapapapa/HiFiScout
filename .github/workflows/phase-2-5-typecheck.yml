@@ -20,4 +20,17 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run typecheck
+      - name: Run strict typecheck
+        shell: bash
+        run: |
+          set +e
+          output="$(npm run typecheck 2>&1)"
+          status=$?
+          printf '%s\n' "$output"
+          if (( status != 0 )); then
+            escaped="${output//'%'/'%25'}"
+            escaped="${escaped//$'\r'/'%0D'}"
+            escaped="${escaped//$'\n'/'%0A'}"
+            echo "::error title=Full TypeScript diagnostics::$escaped"
+          fi
+          exit "$status"
