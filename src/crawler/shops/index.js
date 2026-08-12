@@ -4,6 +4,7 @@ import { ippinkanAdapter } from './ippinkan.js';
 import { fujiyaAvicAdapter } from './fujiya-avic.js';
 import { hifidoAdapter } from './hifido.js';
 import { forMusicAdapter } from './formusic.js';
+import { shimamusenAdapter } from './shimamusen.js';
 // shop-generator:imports
 
 function defineShopPlugin(adapter, definition) {
@@ -47,6 +48,12 @@ export const SHOP_PLUGINS = [
     key: 'formusic', name: 'FOR MUSIC', baseUrl: 'https://shop.formusic.jp',
     intervalEnv: 'FORMUSIC_INTERVAL_MINUTES', enabledEnv: 'FORMUSIC_ENABLED',
     requestDelayEnv: 'FORMUSIC_REQUEST_DELAY_MS', defaultIntervalMinutes: 30
+  }),
+  defineShopPlugin(shimamusenAdapter, {
+    key: 'shimamusen', name: 'シマムセン', baseUrl: 'https://www.shimamusen.com',
+    intervalEnv: 'SHIMAMUSEN_INTERVAL_MINUTES', enabledEnv: 'SHIMAMUSEN_ENABLED',
+    requestDelayEnv: 'SHIMAMUSEN_REQUEST_DELAY_MS', defaultIntervalMinutes: 60,
+    maxPagesEnv: 'SHIMAMUSEN_MAX_PAGES', defaultMaxPages: 20
   }),
   // shop-generator:plugins
 ];
