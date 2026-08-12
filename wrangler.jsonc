@@ -10,8 +10,15 @@
   "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": ["/api/*"] },
   "triggers": { "crons": ["*/5 * * * *", "1 * * * *", "30 * * * *", "17 18 * * *", "23 3 1 * *"] },
   "queues": {
-    "producers": [{ "binding": "CRAWL_QUEUE", "queue": "hifiscout-crawl" }],
-    "consumers": [{ "queue": "hifiscout-crawl", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 3, "retry_delay": 60, "dead_letter_queue": "hifiscout-crawl-dlq", "max_concurrency": 1 }]
+    "producers": [
+      { "binding": "CRAWL_QUEUE", "queue": "hifiscout-crawl" },
+      { "binding": "KNOWLEDGE_CATALOG_QUEUE", "queue": "hifiscout-knowledge-verification" }
+    ],
+    "consumers": [
+      { "queue": "hifiscout-crawl", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 3, "retry_delay": 60, "dead_letter_queue": "hifiscout-crawl-dlq", "max_concurrency": 1 },
+      { "queue": "hifiscout-knowledge-verification", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 100, "retry_delay": 300, "dead_letter_queue": "hifiscout-knowledge-verification-dlq", "max_concurrency": 4 },
+      { "queue": "hifiscout-knowledge-verification-dlq", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 3, "retry_delay": 300, "max_concurrency": 1 }
+    ]
   },
   "ratelimits": [{ "name": "API_RATE_LIMITER", "namespace_id": "541721", "simple": { "limit": 120, "period": 60 } }],
   "vars": {
@@ -50,9 +57,14 @@
     "INACTIVE_PRODUCT_RETENTION_DAYS": "365",
     "RETENTION_DELETE_BATCH_SIZE": "500",
     "KNOWLEDGE_CATALOG_REVIEW_INTERVAL_DAYS": "30",
-    "KNOWLEDGE_CATALOG_DAILY_VERIFY_MAX_CANDIDATES": "50",
-    "KNOWLEDGE_CATALOG_VERIFY_MAX_CANDIDATES": "50",
+    "KNOWLEDGE_CATALOG_DAILY_VERIFY_MAX_CANDIDATES": "200",
+    "KNOWLEDGE_CATALOG_VERIFY_MAX_CANDIDATES": "200",
     "KNOWLEDGE_CATALOG_VERIFY_MAX_DUE_PRODUCTS": "25",
+    "KNOWLEDGE_CATALOG_QUEUE_JOB_LEASE_SECONDS": "900",
+    "KNOWLEDGE_CATALOG_QUEUE_DOMAIN_LEASE_SECONDS": "900",
+    "KNOWLEDGE_CATALOG_QUEUE_DOMAIN_RETRY_SECONDS": "60",
+    "KNOWLEDGE_CATALOG_QUEUE_TRANSIENT_MAX_ATTEMPTS": "4",
+    "KNOWLEDGE_CATALOG_QUEUE_FINALIZE_RETRY_SECONDS": "300",
     "KNOWLEDGE_CATALOG_SOURCE_REQUEST_DELAY_MS": "500",
     "KNOWLEDGE_CATALOG_SOURCE_TIMEOUT_MS": "10000",
     "KNOWLEDGE_CATALOG_SOURCE_MAX_RESPONSE_BYTES": "1500000",
@@ -60,7 +72,7 @@
     "KNOWLEDGE_CATALOG_SOURCE_MAX_URLS": "5000",
     "KNOWLEDGE_CATALOG_SOURCE_MAX_PRODUCT_PAGES": "4",
     "AUDIOUNION_ENTRY_URL": "https://www.audiounion.jp/st/new_arrival_used.html",
-    "CRAWLER_USER_AGENT": "HiFiScoutBot/0.1 (+https://github.com/apaapapapa/HiFiScout)"
+    "CRAWLER_USER_AGENT": "HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)"
   },
   "d1_databases": [{ "binding": "DB" }]
 }

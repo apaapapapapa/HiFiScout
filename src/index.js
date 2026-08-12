@@ -9,18 +9,21 @@ import {
   dispatchScheduledCrawl,
 } from "./crawler/dispatch.js";
 import { knowledgeCatalogOperationalStatus } from "./db/knowledge-catalog-review-repository.js";
+import { knowledgeCatalogVerificationQueueStatus } from "./db/knowledge-catalog-verification-queue-repository.js";
 import {
   claimKnowledgeCatalogVerifierVersion,
-  finishKnowledgeCatalogVerifierVersionFailure,
-  finishKnowledgeCatalogVerifierVersionSuccess,
   knowledgeCatalogVerifierState,
 } from "./db/knowledge-catalog-verifier-state-repository.js";
 import { listProducts, productHistory, validateProductQuery } from "./db/products.js";
 import { buildSyncHealth, getSyncHealth, logSyncHealth } from "./health.js";
 import {
-  runKnowledgeCatalogDailyVerification,
-  runKnowledgeCatalogMonthlyRecheck,
-} from "./knowledge-catalog-review.js";
+  KNOWLEDGE_CATALOG_VERIFICATION_DLQ,
+  KNOWLEDGE_CATALOG_VERIFICATION_QUEUE,
+  consumeKnowledgeCatalogVerificationBatch,
+  consumeKnowledgeCatalogVerificationDeadLetterBatch,
+  dispatchKnowledgeCatalogDailyVerification,
+  dispatchKnowledgeCatalogMonthlyRecheck,
+} from "./knowledge-catalog-verification-queue.js";
 import { runRetentionCleanup } from "./maintenance.js";
 
 const GENERAL_CRON = "*/5 * * * *";
@@ -28,6 +31,7 @@ const AUDIOUNION_CRON = "1 * * * *";
 const FUJIYA_AVIC_CRON = "30 * * * *";
 const DAILY_MAINTENANCE_CRON = "17 18 * * *";
 const KNOWLEDGE_CATALOG_MONTHLY_CRON = "23 3 1 * *";
+const CRAWL_QUEUE = "hifiscout-crawl";
 
 function json(data, init = {}) {
   return new Response(JSON.stringify(data), {
@@ -114,12 +118,14 @@ async function meta(env) {
 }
 
 async function knowledgeCatalogStatus(env) {
-  const [status, state] = await Promise.all([
+  const [status, state, queue] = await Promise.all([
     knowledgeCatalogOperationalStatus(env.DB),
     knowledgeCatalogVerifierState(env.DB),
+    knowledgeCatalogVerificationQueueStatus(env.DB),
   ]);
   return {
     ...status,
+    queue,
     verifier: {
       expectedVersion: KNOWLEDGE_CATALOG_VERIFIER_VERSION,
       version: state?.version || 0,
@@ -184,7 +190,7 @@ function logDispatchResult(cron, dispatch) {
 async function runDailyMaintenance(env) {
   const [retention, catalog] = await Promise.allSettled([
     runRetentionCleanup(env),
-    runKnowledgeCatalogDailyVerification(env),
+    dispatchKnowledgeCatalogDailyVerification(env),
   ]);
   if (retention.status === "rejected") {
     console.error(
@@ -197,7 +203,7 @@ async function runDailyMaintenance(env) {
   if (catalog.status === "rejected") {
     console.error(
       JSON.stringify({
-        event: "knowledge_catalog_daily_verification_failed",
+        event: "knowledge_catalog_daily_dispatch_failed",
         message: catalog.reason?.message || String(catalog.reason),
       }),
     );
@@ -209,7 +215,7 @@ async function runDailyMaintenance(env) {
 
 async function runScheduled(cron, env) {
   if (cron === DAILY_MAINTENANCE_CRON) return runDailyMaintenance(env);
-  if (cron === KNOWLEDGE_CATALOG_MONTHLY_CRON) return runKnowledgeCatalogMonthlyRecheck(env);
+  if (cron === KNOWLEDGE_CATALOG_MONTHLY_CRON) return dispatchKnowledgeCatalogMonthlyRecheck(env);
   const dispatch =
     cron === AUDIOUNION_CRON
       ? await dispatchScheduledCrawl(env, "audiounion")
@@ -230,34 +236,56 @@ async function bootstrapKnowledgeCatalogReview(env) {
     KNOWLEDGE_CATALOG_VERIFIER_VERSION,
     startedAt,
   );
-  if (!claimed) return { status: "skipped", reason: "verifier_version_already_claimed" };
+  if (claimed) {
+    console.log(
+      JSON.stringify({
+        event: "knowledge_catalog_verifier_rollout_started",
+        verifierVersion: KNOWLEDGE_CATALOG_VERIFIER_VERSION,
+        mode: "daily_candidates_queue",
+      }),
+    );
+    return dispatchKnowledgeCatalogDailyVerification(env, {
+      now,
+      preferRetries: false,
+      verifierVersion: KNOWLEDGE_CATALOG_VERIFIER_VERSION,
+    });
+  }
 
+  const [state, queue] = await Promise.all([
+    knowledgeCatalogVerifierState(env.DB),
+    knowledgeCatalogVerificationQueueStatus(env.DB),
+  ]);
+  if (queue.latestRunId) {
+    return { status: "skipped", reason: "knowledge_catalog_queue_already_bootstrapped" };
+  }
+
+  const verifierVersion =
+    state?.version === KNOWLEDGE_CATALOG_VERIFIER_VERSION && state.status !== "success"
+      ? KNOWLEDGE_CATALOG_VERIFIER_VERSION
+      : 0;
   console.log(
     JSON.stringify({
-      event: "knowledge_catalog_verifier_rollout_started",
-      verifierVersion: KNOWLEDGE_CATALOG_VERIFIER_VERSION,
-      mode: "daily_candidates",
+      event: "knowledge_catalog_queue_rollout_started",
+      verifierVersion,
+      mode: "daily_candidates_queue",
     }),
   );
-  try {
-    // A verifier rollout immediately exercises the new source behavior against candidate products.
-    // Existing verified products keep their independent 30-day recheck cadence.
-    const result = await runKnowledgeCatalogDailyVerification(env, { now, preferRetries: false });
-    await finishKnowledgeCatalogVerifierVersionSuccess(
-      env.DB,
-      KNOWLEDGE_CATALOG_VERIFIER_VERSION,
-      new Date().toISOString(),
-      result.message,
-    );
-    return result;
-  } catch (error) {
-    await finishKnowledgeCatalogVerifierVersionFailure(
-      env.DB,
-      KNOWLEDGE_CATALOG_VERIFIER_VERSION,
-      new Date().toISOString(),
-      error?.message || String(error),
-    );
-    throw error;
+  return dispatchKnowledgeCatalogDailyVerification(env, {
+    now,
+    preferRetries: false,
+    verifierVersion,
+  });
+}
+
+async function consumeCrawlBatch(batch, env) {
+  for (const message of batch.messages) {
+    const result = await consumeCrawlMessage(env, message.body);
+    if (result.status === "failed")
+      console.error(JSON.stringify({ event: "crawl_queue_job_failed", ...result }));
+    else console.log(JSON.stringify({ event: "crawl_queue_job_completed", ...result }));
+    const health = await getSyncHealth(env);
+    logSyncHealth(health);
+    message.ack();
   }
 }
 
@@ -272,14 +300,15 @@ export default {
     if (controller.cron === GENERAL_CRON) ctx.waitUntil(bootstrapKnowledgeCatalogReview(env));
   },
   async queue(batch, env) {
-    for (const message of batch.messages) {
-      const result = await consumeCrawlMessage(env, message.body);
-      if (result.status === "failed")
-        console.error(JSON.stringify({ event: "crawl_queue_job_failed", ...result }));
-      else console.log(JSON.stringify({ event: "crawl_queue_job_completed", ...result }));
-      const health = await getSyncHealth(env);
-      logSyncHealth(health);
-      message.ack();
+    if (batch.queue === KNOWLEDGE_CATALOG_VERIFICATION_QUEUE) {
+      return consumeKnowledgeCatalogVerificationBatch(env, batch);
     }
+    if (batch.queue === KNOWLEDGE_CATALOG_VERIFICATION_DLQ) {
+      return consumeKnowledgeCatalogVerificationDeadLetterBatch(env, batch);
+    }
+    if (batch.queue === CRAWL_QUEUE) return consumeCrawlBatch(batch, env);
+
+    console.error(JSON.stringify({ event: "unknown_queue", queue: batch.queue }));
+    for (const message of batch.messages) message.retry();
   },
 };
