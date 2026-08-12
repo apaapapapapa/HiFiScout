@@ -83,7 +83,7 @@ function productLinkFromBlock(block) {
 }
 
 function sourcePublishedAt(text) {
-  const match = text.match(/\b(20\d{2})-(\d{1,2})-(\d{1,2})\s*入荷\b/);
+  const match = text.match(/(20\d{2})-(\d{1,2})-(\d{1,2})\s*入荷/);
   if (!match) return null;
   const year = match[1];
   const month = match[2].padStart(2, '0');
