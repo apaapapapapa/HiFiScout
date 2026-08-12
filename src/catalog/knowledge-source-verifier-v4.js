@@ -1,6 +1,12 @@
+import { catalogModelLookupVariants } from './knowledge-catalog.js';
+import { containsFlexibleCatalogModelIdentity } from './knowledge-source-verifier-v2.js';
 import { createKnowledgeSourceVerifierV3 } from './knowledge-source-verifier-v3.js';
 
-export const KNOWLEDGE_CATALOG_VERIFIER_VERSION = 4;
+// The module name is kept stable for existing imports; the rollout version advances whenever
+// verification behavior changes and a one-shot production review must run again.
+export const KNOWLEDGE_CATALOG_VERIFIER_VERSION = 5;
+
+const MARANTZ_CD_SACD_INDEX = 'https://www.marantz.com/ja-jp/category/cd-sacd-players/';
 
 // Keep manufacturer-specific discovery data outside the generic verifier. The generic v2 fallback
 // can crawl these official indexes and same-origin product links, while v3 continues to provide its
@@ -131,6 +137,57 @@ function parseRegistry(value) {
   return [];
 }
 
+function candidateModel(candidate = {}) {
+  return String(candidate.observedModel || candidate.model || candidate.canonicalModel || candidate.normalizedModel || '').trim();
+}
+
+async function sha256Hex(value) {
+  if (!globalThis.crypto?.subtle) return '';
+  const bytes = new TextEncoder().encode(String(value));
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function verifyMarantzCdSacdIndex(candidate, fetchImpl) {
+  const manufacturerId = String(candidate?.manufacturerId || '').trim().toLowerCase();
+  if (manufacturerId !== 'marantz' || typeof fetchImpl !== 'function') return null;
+
+  const originalModel = candidateModel(candidate);
+  if (!originalModel) return null;
+  const aliases = catalogModelLookupVariants({ manufacturerId, model: originalModel })
+    .filter(alias => /^(?:SACD|CD)(?:\s|\d)/i.test(alias));
+  if (!aliases.length) return null;
+
+  try {
+    const response = await fetchImpl(MARANTZ_CD_SACD_INDEX, {
+      redirect: 'follow',
+      headers: { accept: 'text/html,application/xhtml+xml,*/*;q=0.8' }
+    });
+    if (!response?.ok) return null;
+    const html = (await response.text()).slice(0, 1_500_000);
+    const matchedAlias = aliases.find(alias => containsFlexibleCatalogModelIdentity(html, alias));
+    if (!matchedAlias) return null;
+
+    // This is a manufacturer-owned, category-specific index. Once the model identity is confirmed
+    // on the page, the page category itself is authoritative and avoids accidental DAC inference
+    // from SACD 10's USB-DAC feature description.
+    return {
+      status: 'verified',
+      sourceUrl: response.url || MARANTZ_CD_SACD_INDEX,
+      sourceType: 'manufacturer_official',
+      httpStatus: response.status || 200,
+      canonicalModel: originalModel,
+      canonicalName: `Marantz ${matchedAlias}`,
+      categoryIds: ['cd_sacd_player'],
+      primaryCategoryId: 'cd_sacd_player',
+      contentHash: await sha256Hex(html),
+      message: 'verified_from_marantz_cd_sacd_index_v5'
+    };
+  } catch {
+    return null;
+  }
+}
+
 function officialFamilyCategory(candidate = {}) {
   const manufacturerId = String(candidate.manufacturerId || '').trim().toLowerCase();
   const model = String(candidate.canonicalModel || candidate.observedModel || candidate.model || candidate.normalizedModel || '')
@@ -155,7 +212,7 @@ function applyOfficialFamilyCategory(result, candidate) {
     ...result,
     categoryIds: [categoryId],
     primaryCategoryId: categoryId,
-    message: `${result.message || 'verified'}:official_family_v4`
+    message: `${result.message || 'verified'}:official_family_v5`
   };
 }
 
@@ -174,12 +231,17 @@ export function expandedKnowledgeSourceEnv(env = {}) {
 
 export function createKnowledgeSourceVerifierV4(env = {}, options = {}) {
   const base = createKnowledgeSourceVerifierV3(expandedKnowledgeSourceEnv(env), options);
+  const fetchImpl = options.fetchImpl || globalThis.fetch;
   return {
     ...base,
     async verifyCandidate(candidate) {
+      const marantz = await verifyMarantzCdSacdIndex(candidate, fetchImpl);
+      if (marantz) return marantz;
       return applyOfficialFamilyCategory(await base.verifyCandidate(candidate), candidate);
     },
     async verifyStoredSource(product) {
+      const marantz = await verifyMarantzCdSacdIndex(product, fetchImpl);
+      if (marantz) return marantz;
       return applyOfficialFamilyCategory(await base.verifyStoredSource(product), product);
     }
   };

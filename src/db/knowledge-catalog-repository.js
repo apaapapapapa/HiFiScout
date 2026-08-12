@@ -1,5 +1,5 @@
 import { categorySearchAliases, getCategory } from '../catalog/categories.js';
-import { knowledgeCatalogKey } from '../catalog/knowledge-catalog.js';
+import { catalogModelLookupVariants, knowledgeCatalogKey } from '../catalog/knowledge-catalog.js';
 
 const CHUNK_SIZE = 40;
 const PRODUCT_PAGE_SIZE = 500;
@@ -92,10 +92,27 @@ async function loadVerifiedCatalogIndex(db, manufacturerIds) {
       canonicalName: product.canonicalName,
       categoryIds: product.categoryIds
     };
-    setUnambiguous(index, knowledgeCatalogKey(product.manufacturerId, product.normalizedModel), {
+    const exactKey = knowledgeCatalogKey(product.manufacturerId, product.normalizedModel);
+    setUnambiguous(index, exactKey, {
       ...match,
       matchType: 'exact'
     });
+
+    // Generate the same conservative lookup aliases for verified catalog rows that are used during
+    // official-source verification. This lets retailer presentation variants resolve to one catalog
+    // entry without weakening the stored identity or requiring broad fuzzy matching.
+    for (const alias of catalogModelLookupVariants({
+      manufacturerId: product.manufacturerId,
+      model: product.canonicalModel
+    })) {
+      const aliasKey = knowledgeCatalogKey(product.manufacturerId, alias);
+      if (!aliasKey || aliasKey === exactKey) continue;
+      setUnambiguous(index, aliasKey, {
+        ...match,
+        matchType: 'derived_alias'
+      });
+    }
+
     for (const alias of aliasesByProduct.get(product.id) || []) {
       setUnambiguous(index, knowledgeCatalogKey(product.manufacturerId, alias), {
         ...match,
@@ -115,8 +132,23 @@ export async function findVerifiedCatalogMatches(db, products = []) {
     const manufacturerId = product?.manufacturerId || product?.manufacturer_id;
     const model = product?.model || product?.normalizedModel || product?.normalized_model;
     const key = knowledgeCatalogKey(manufacturerId, model);
-    const match = key ? index.get(key) : null;
-    if (match) matches.set(key, match);
+    if (!key) continue;
+
+    let match = index.get(key) || null;
+    let matchedKey = key;
+    if (!match) {
+      for (const alias of catalogModelLookupVariants({ manufacturerId, model })) {
+        const aliasKey = knowledgeCatalogKey(manufacturerId, alias);
+        const candidate = aliasKey ? index.get(aliasKey) : null;
+        if (!candidate) continue;
+        match = candidate;
+        matchedKey = aliasKey;
+        break;
+      }
+    }
+    if (match) {
+      matches.set(key, matchedKey === key ? match : { ...match, matchType: 'derived_alias' });
+    }
   }
   return matches;
 }

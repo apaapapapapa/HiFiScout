@@ -5,6 +5,7 @@ import { classifyCategoryEvidence } from '../src/catalog/category-classifier.js'
 import {
   buildKnowledgeCatalogCandidateAggregates,
   candidatePriority,
+  catalogModelLookupVariants,
   knowledgeCatalogEvidence,
   knowledgeCatalogKey,
   normalizeCatalogModel
@@ -24,6 +25,20 @@ test('catalog keys require both normalized manufacturer and model identity', () 
   assert.equal(knowledgeCatalogKey('esoteric', 'K - 01XD'), 'esoteric:K-01XD');
   assert.equal(knowledgeCatalogKey('', 'K-01XD'), '');
   assert.equal(knowledgeCatalogKey('esoteric', ''), '');
+});
+
+test('Marantz lookup aliases remove retailer market suffixes and restore official model spacing', () => {
+  const variants = catalogModelLookupVariants({ manufacturerId: 'marantz', model: 'SACD10/FB' });
+  assert.ok(variants.includes('SACD10/FB'));
+  assert.ok(variants.includes('SACD10'));
+  assert.ok(variants.includes('SACD 10'));
+
+  const model10 = catalogModelLookupVariants({ manufacturerId: 'marantz', model: 'MODEL10/FN' });
+  assert.ok(model10.includes('MODEL10'));
+  assert.ok(model10.includes('MODEL 10'));
+
+  // The rule is manufacturer-scoped; a slash suffix on an unrelated brand remains part of identity.
+  assert.deepEqual(catalogModelLookupVariants({ manufacturerId: 'other-brand', model: 'SACD10/FB' }), ['SACD10/FB']);
 });
 
 test('candidate aggregation groups only safely-normalized formatting variants', () => {
@@ -51,10 +66,35 @@ test('candidate aggregation groups only safely-normalized formatting variants', 
   assert.equal(xd.listingCount, 2);
   assert.equal(xd.shopCount, 2);
   assert.equal(xd.unclassifiedCount, 1);
+  assert.equal(xd.otherCount, 0);
   assert.deepEqual(xd.categoryIds, ['cd_sacd_player']);
   assert.equal(xd.firstSeenAt, '2026-08-01T00:00:00.000Z');
   assert.equal(xd.lastSeenAt, '2026-08-11T00:00:00.000Z');
   assert.equal(xd.priorityScore, candidatePriority(xd));
+});
+
+test('classified other listings receive catalog review priority without double-counting unclassified rows', () => {
+  const candidates = buildKnowledgeCatalogCandidateAggregates([
+    {
+      shop_key: 'fujiya-avic', manufacturer_id: 'marantz', manufacturer: 'Marantz', model: 'SACD10/FB',
+      title: 'Marantz SACD10/FB', category_ids: '["other"]', classification_status: 'classified',
+      first_seen_at: '2026-08-01T00:00:00.000Z', last_seen_at: '2026-08-12T00:00:00.000Z'
+    },
+    {
+      shop_key: 'hifido', manufacturer_id: 'marantz', manufacturer: 'Marantz', model: 'UNKNOWN-1',
+      title: 'Marantz UNKNOWN-1', category_ids: '[]', classification_status: 'unclassified',
+      first_seen_at: '2026-08-01T00:00:00.000Z', last_seen_at: '2026-08-12T00:00:00.000Z'
+    }
+  ]);
+
+  const other = candidates.find(candidate => candidate.normalizedModel === 'SACD10/FB');
+  const unclassified = candidates.find(candidate => candidate.normalizedModel === 'UNKNOWN-1');
+  assert.equal(other.otherCount, 1);
+  assert.equal(other.unclassifiedCount, 0);
+  assert.equal(unclassified.otherCount, 0);
+  assert.equal(unclassified.unclassifiedCount, 1);
+  assert.equal(other.priorityScore, 91);
+  assert.equal(unclassified.priorityScore, 111);
 });
 
 test('verified catalog evidence overrides a conflicting seller category', () => {
