@@ -22,6 +22,14 @@ const EXPANDED_MANUFACTURERS = [
   'focal'
 ];
 
+function mappedFetch(pages, requested = []) {
+  return async url => {
+    requested.push(String(url));
+    const body = pages.get(String(url));
+    return new Response(body || 'not found', { status: body ? 200 : 404 });
+  };
+}
+
 test('v4 expands the official source registry without changing the canonical taxonomy', () => {
   assert.equal(KNOWLEDGE_CATALOG_VERIFIER_VERSION, 4);
   assert.deepEqual(
@@ -39,18 +47,19 @@ test('v4 expands the official source registry without changing the canonical tax
 });
 
 test('deployment source overrides retain disable and replacement semantics after expansion', () => {
-  const expanded = expandedKnowledgeSourceEnv({
+  const env = {
     KNOWLEDGE_CATALOG_SOURCE_REGISTRY_JSON: JSON.stringify([
       { manufacturerId: 'stax', enabled: false },
       { manufacturerId: 'focal', baseUrl: 'https://official.example/', catalogUrls: ['https://official.example/catalog'] }
     ])
-  });
+  };
+  const expanded = expandedKnowledgeSourceEnv(env);
   const registry = JSON.parse(expanded.KNOWLEDGE_CATALOG_SOURCE_REGISTRY_JSON);
   assert.equal(registry.at(-2).manufacturerId, 'stax');
   assert.equal(registry.at(-2).enabled, false);
   assert.equal(registry.at(-1).manufacturerId, 'focal');
 
-  const verifier = createKnowledgeSourceVerifierV4(expanded, {
+  const verifier = createKnowledgeSourceVerifierV4(env, {
     fetchImpl: async () => new Response('not found', { status: 404 })
   });
   assert.equal(verifier.definitions.has('stax'), false);
@@ -63,12 +72,7 @@ test('v4 generic fallback can promote a newly supported manufacturer from its of
     ['https://stax.co.jp/product/sr-x9000/', '<html><head><title>SR-X9000 Headphones</title></head><body><h1>SR-X9000 Headphones</h1></body></html>']
   ]);
   const requested = [];
-  const fetchImpl = async url => {
-    requested.push(String(url));
-    const body = pages.get(String(url));
-    return new Response(body || 'not found', { status: body ? 200 : 404 });
-  };
-  const verifier = createKnowledgeSourceVerifierV4({}, { fetchImpl });
+  const verifier = createKnowledgeSourceVerifierV4({}, { fetchImpl: mappedFetch(pages, requested) });
 
   const result = await verifier.verifyCandidate({
     manufacturerId: 'stax',
@@ -81,4 +85,44 @@ test('v4 generic fallback can promote a newly supported manufacturer from its of
   assert.equal(result.primaryCategoryId, 'headphone');
   assert.ok(requested.includes('https://stax.co.jp/product/'));
   assert.ok(requested.includes('https://stax.co.jp/product/sr-x9000/'));
+});
+
+test('v4 keeps STAX SRM driver units in the headphone amplifier category', async () => {
+  const pages = new Map([
+    ['https://stax.co.jp/product/', '<html><body><a href="/product/srm-d10-mk2/">SRM-D10 MK2</a></body></html>'],
+    ['https://stax.co.jp/product/srm-d10-mk2/', '<html><head><title>SRM-D10 MK2</title></head><body><h1>SRM-D10 MK2 USB DAC内蔵ポータブル・ドライバー・ユニット</h1></body></html>']
+  ]);
+  const verifier = createKnowledgeSourceVerifierV4({}, { fetchImpl: mappedFetch(pages) });
+
+  const result = await verifier.verifyCandidate({
+    manufacturerId: 'stax',
+    normalizedModel: 'SRM-D10 MK2',
+    observedManufacturer: 'STAX',
+    observedModel: 'SRM-D10 MK2'
+  });
+
+  assert.equal(result.status, 'verified');
+  assert.equal(result.primaryCategoryId, 'headphone_amp');
+  assert.deepEqual(result.categoryIds, ['headphone_amp']);
+  assert.match(result.message, /official_family_v4/);
+});
+
+test('v4 keeps McIntosh MHA products in the headphone amplifier category', async () => {
+  const pages = new Map([
+    ['https://www.mcintoshlabs.com/products/amplifiers', '<html><body><a href="/products/amplifiers/MHA200">MHA200</a></body></html>'],
+    ['https://www.mcintoshlabs.com/products/amplifiers/MHA200', '<html><head><title>MHA200 2-Channel Headphone Power Amplifier</title></head><body><h1>MHA200 2-Channel Headphone Power Amplifier</h1></body></html>']
+  ]);
+  const verifier = createKnowledgeSourceVerifierV4({}, { fetchImpl: mappedFetch(pages) });
+
+  const result = await verifier.verifyCandidate({
+    manufacturerId: 'mcintosh',
+    normalizedModel: 'MHA200',
+    observedManufacturer: 'McIntosh',
+    observedModel: 'MHA200'
+  });
+
+  assert.equal(result.status, 'verified');
+  assert.equal(result.primaryCategoryId, 'headphone_amp');
+  assert.deepEqual(result.categoryIds, ['headphone_amp']);
+  assert.match(result.message, /official_family_v4/);
 });
