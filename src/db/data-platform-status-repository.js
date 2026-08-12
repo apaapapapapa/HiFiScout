@@ -9,7 +9,7 @@ export async function dataPlatformStatus(db) {
              SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) AS active_product_count
       FROM products
     `),
-    db.prepare('SELECT COUNT(*) AS price_history_count FROM price_history'),
+    db.prepare("SELECT COUNT(*) AS price_history_count FROM price_history"),
     db.prepare(`
       SELECT COUNT(*) AS knowledge_catalog_count,
              SUM(CASE WHEN verification_status = 'verified' THEN 1 ELSE 0 END) AS verified_knowledge_catalog_count
@@ -22,7 +22,7 @@ export async function dataPlatformStatus(db) {
              SUM(CASE WHEN match_method = 'vetoed' THEN 1 ELSE 0 END) AS identity_veto_count
       FROM product_identity_resolutions
     `),
-    db.prepare('SELECT COUNT(*) AS evidence_metadata_count FROM evidence_archive'),
+    db.prepare("SELECT COUNT(*) AS evidence_metadata_count FROM evidence_archive"),
     db.prepare(`
       SELECT COUNT(*) AS crawl_runs_24h
       FROM crawl_runs
@@ -36,7 +36,7 @@ export async function dataPlatformStatus(db) {
   const identity = firstRow(results[3]);
   const evidence = firstRow(results[4]);
   const crawl = firstRow(results[5]);
-  const number = value => Number(value || 0);
+  const number = (value) => Number(value || 0);
 
   return {
     checkedAt: new Date().toISOString(),
@@ -54,14 +54,14 @@ export async function dataPlatformStatus(db) {
       crawlRuns24h: number(crawl.crawl_runs_24h),
     },
     platformMetrics: {
-      source: 'cloudflare_native',
+      source: "cloudflare_native",
       trackedExternally: [
-        'database_size',
-        'read_write_query_volume',
-        'rows_read_written',
-        'query_latency',
-        'd1_error_rate',
-        'd1_overloaded_timeout_errors',
+        "database_size",
+        "read_write_query_volume",
+        "rows_read_written",
+        "query_latency",
+        "d1_error_rate",
+        "d1_overloaded_timeout_errors",
       ],
     },
   };

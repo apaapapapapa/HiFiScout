@@ -1,15 +1,25 @@
-import { buildModelSearchAliases, normalizeIdentityModel } from '../catalog/product-identity.js';
-import { manufacturerSearchAliases } from '../catalog/manufacturers.js';
+import { buildModelSearchAliases, normalizeIdentityModel } from "../catalog/product-identity.js";
+import { manufacturerSearchAliases } from "../catalog/manufacturers.js";
 
 const CHUNK_SIZE = 50;
 
 function uniqueText(values = []) {
-  return [...new Set(values.map(value => String(value || '').normalize('NFKC').trim()).filter(Boolean))];
+  return [
+    ...new Set(
+      values
+        .map((value) =>
+          String(value || "")
+            .normalize("NFKC")
+            .trim(),
+        )
+        .filter(Boolean),
+    ),
+  ];
 }
 
 export function buildProductSearchProjection(product = {}) {
-  const manufacturerId = product.manufacturer_id || product.manufacturerId || '';
-  const model = product.model || '';
+  const manufacturerId = product.manufacturer_id || product.manufacturerId || "";
+  const model = product.model || "";
   return {
     productId: Number(product.id),
     manufacturerId,
@@ -20,14 +30,16 @@ export function buildProductSearchProjection(product = {}) {
       product.manufacturer,
       product.raw_manufacturer || product.rawManufacturer,
       ...manufacturerSearchAliases(manufacturerId || product.manufacturer),
-    ]).join(' '),
-    modelTerms: uniqueText([model, ...buildModelSearchAliases(model)]).join(' '),
-    title: String(product.title || '').normalize('NFKC').trim(),
+    ]).join(" "),
+    modelTerms: uniqueText([model, ...buildModelSearchAliases(model)]).join(" "),
+    title: String(product.title || "")
+      .normalize("NFKC")
+      .trim(),
     categoryTerms: uniqueText([
       product.category,
       product.raw_category || product.rawCategory,
       product.search_aliases || product.searchAliases,
-    ]).join(' '),
+    ]).join(" "),
   };
 }
 
@@ -50,7 +62,7 @@ async function loadRowsForSources(db, shopKey, sourceIds) {
   for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
     const chunk = ids.slice(i, i + CHUNK_SIZE);
     if (!chunk.length) continue;
-    const placeholders = chunk.map(() => '?').join(',');
+    const placeholders = chunk.map(() => "?").join(",");
     const result = await db
       .prepare(`
         SELECT id, manufacturer_id, manufacturer, raw_manufacturer, model, title,
@@ -70,7 +82,7 @@ async function loadExistingProjections(db, productIds) {
   for (let i = 0; i < productIds.length; i += CHUNK_SIZE) {
     const chunk = productIds.slice(i, i + CHUNK_SIZE);
     if (!chunk.length) continue;
-    const placeholders = chunk.map(() => '?').join(',');
+    const placeholders = chunk.map(() => "?").join(",");
     const result = await db
       .prepare(`
         SELECT product_id, manufacturer_id, source_model, normalized_model, manufacturer_terms, model_terms, title, category_terms
@@ -81,7 +93,7 @@ async function loadExistingProjections(db, productIds) {
       .all();
     rows.push(...(result.results || []));
   }
-  return new Map(rows.map(row => [Number(row.product_id), row]));
+  return new Map(rows.map((row) => [Number(row.product_id), row]));
 }
 
 export async function syncProductSearchProjections(db, shopKey, sourceIds = []) {
@@ -91,7 +103,7 @@ export async function syncProductSearchProjections(db, shopKey, sourceIds = []) 
   const projections = rows.map(buildProductSearchProjection);
   const existing = await loadExistingProjections(
     db,
-    projections.map(projection => projection.productId),
+    projections.map((projection) => projection.productId),
   );
   const statements = [];
   for (const projection of projections) {

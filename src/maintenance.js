@@ -1,4 +1,4 @@
-import { getMaintenanceSettings } from './config.js';
+import { getMaintenanceSettings } from "./config.js";
 
 function cutoffIso(now, days) {
   return new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
@@ -10,7 +10,7 @@ export function retentionCutoffs(env, now = new Date()) {
     settings,
     crawlRunsBefore: cutoffIso(now, settings.crawlRunRetentionDays),
     priceHistoryBefore: cutoffIso(now, settings.priceHistoryRetentionDays),
-    inactiveProductsBefore: cutoffIso(now, settings.inactiveProductRetentionDays)
+    inactiveProductsBefore: cutoffIso(now, settings.inactiveProductRetentionDays),
   };
 }
 
@@ -19,7 +19,8 @@ function changes(result) {
 }
 
 export async function runRetentionCleanup(env, { now = new Date() } = {}) {
-  const { settings, crawlRunsBefore, priceHistoryBefore, inactiveProductsBefore } = retentionCutoffs(env, now);
+  const { settings, crawlRunsBefore, priceHistoryBefore, inactiveProductsBefore } =
+    retentionCutoffs(env, now);
   const limit = settings.deleteBatchSize;
 
   const evidenceMetadata = await env.DB.prepare(`
@@ -30,21 +31,27 @@ export async function runRetentionCleanup(env, { now = new Date() } = {}) {
       ORDER BY expires_at ASC
       LIMIT ?
     )
-  `).bind(now.toISOString(), limit).run();
+  `)
+    .bind(now.toISOString(), limit)
+    .run();
 
   const crawlRuns = await env.DB.prepare(`
     DELETE FROM crawl_runs
     WHERE id IN (
       SELECT id FROM crawl_runs WHERE started_at < ? ORDER BY started_at ASC LIMIT ?
     )
-  `).bind(crawlRunsBefore, limit).run();
+  `)
+    .bind(crawlRunsBefore, limit)
+    .run();
 
   const priceHistory = await env.DB.prepare(`
     DELETE FROM price_history
     WHERE id IN (
       SELECT id FROM price_history WHERE observed_at < ? ORDER BY observed_at ASC LIMIT ?
     )
-  `).bind(priceHistoryBefore, limit).run();
+  `)
+    .bind(priceHistoryBefore, limit)
+    .run();
 
   const inactiveProducts = await env.DB.prepare(`
     DELETE FROM products
@@ -54,17 +61,19 @@ export async function runRetentionCleanup(env, { now = new Date() } = {}) {
       ORDER BY last_seen_at ASC
       LIMIT ?
     )
-  `).bind(inactiveProductsBefore, limit).run();
+  `)
+    .bind(inactiveProductsBefore, limit)
+    .run();
 
   const result = {
-    event: 'retention_cleanup',
+    event: "retention_cleanup",
     at: now.toISOString(),
     deleted: {
       evidenceMetadata: changes(evidenceMetadata),
       crawlRuns: changes(crawlRuns),
       priceHistory: changes(priceHistory),
-      inactiveProducts: changes(inactiveProducts)
-    }
+      inactiveProducts: changes(inactiveProducts),
+    },
   };
   console.log(JSON.stringify(result));
   return result;

@@ -1,20 +1,20 @@
-import { catalogModelLookupVariants } from '../catalog/knowledge-catalog.js';
-import { resolveProductIdentity } from '../catalog/product-identity.js';
+import { catalogModelLookupVariants } from "../catalog/knowledge-catalog.js";
+import { resolveProductIdentity } from "../catalog/product-identity.js";
 
 const CHUNK_SIZE = 40;
 
 function unique(values = []) {
-  return [...new Set(values.map(value => String(value || '').trim()).filter(Boolean))];
+  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
 }
 
 async function loadVerifiedIdentityCandidates(db, manufacturerIds = []) {
-  const ids = unique(manufacturerIds.map(value => value.toLowerCase()));
+  const ids = unique(manufacturerIds.map((value) => value.toLowerCase()));
   if (!ids.length) return new Map();
 
   const byId = new Map();
   for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
     const chunk = ids.slice(i, i + CHUNK_SIZE);
-    const placeholders = chunk.map(() => '?').join(',');
+    const placeholders = chunk.map(() => "?").join(",");
     const result = await db
       .prepare(`
         SELECT kp.id, kp.manufacturer_id, kp.canonical_model, kp.normalized_model,
@@ -51,7 +51,7 @@ async function loadVerifiedIdentityCandidates(db, manufacturerIds = []) {
   for (let i = 0; i < candidateIds.length; i += CHUNK_SIZE) {
     const chunk = candidateIds.slice(i, i + CHUNK_SIZE);
     if (!chunk.length) continue;
-    const placeholders = chunk.map(() => '?').join(',');
+    const placeholders = chunk.map(() => "?").join(",");
     const result = await db
       .prepare(`
         SELECT product_id, alias
@@ -62,7 +62,8 @@ async function loadVerifiedIdentityCandidates(db, manufacturerIds = []) {
       .all();
     for (const row of result.results || []) {
       const candidate = byId.get(Number(row.product_id));
-      if (candidate && row.alias && !candidate.aliases.includes(row.alias)) candidate.aliases.push(row.alias);
+      if (candidate && row.alias && !candidate.aliases.includes(row.alias))
+        candidate.aliases.push(row.alias);
     }
   }
 
@@ -75,7 +76,8 @@ async function loadVerifiedIdentityCandidates(db, manufacturerIds = []) {
         model: candidate.canonicalModel,
       }),
     ]);
-    if (!byManufacturer.has(candidate.manufacturerId)) byManufacturer.set(candidate.manufacturerId, []);
+    if (!byManufacturer.has(candidate.manufacturerId))
+      byManufacturer.set(candidate.manufacturerId, []);
     byManufacturer.get(candidate.manufacturerId).push(candidate);
   }
   return byManufacturer;
@@ -87,7 +89,7 @@ async function loadListingRows(db, shopKey, sourceIds = []) {
   for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
     const chunk = ids.slice(i, i + CHUNK_SIZE);
     if (!chunk.length) continue;
-    const placeholders = chunk.map(() => '?').join(',');
+    const placeholders = chunk.map(() => "?").join(",");
     const result = await db
       .prepare(`
         SELECT id, source_id, manufacturer_id, model, primary_category_id, classification_status
@@ -106,7 +108,7 @@ async function loadExistingResolutions(db, productIds = []) {
   for (let i = 0; i < productIds.length; i += CHUNK_SIZE) {
     const chunk = productIds.slice(i, i + CHUNK_SIZE);
     if (!chunk.length) continue;
-    const placeholders = chunk.map(() => '?').join(',');
+    const placeholders = chunk.map(() => "?").join(",");
     const result = await db
       .prepare(`
         SELECT listing_product_id, catalog_product_id, candidate_catalog_product_id, status,
@@ -119,14 +121,17 @@ async function loadExistingResolutions(db, productIds = []) {
       .all();
     rows.push(...(result.results || []));
   }
-  return new Map(rows.map(row => [Number(row.listing_product_id), row]));
+  return new Map(rows.map((row) => [Number(row.listing_product_id), row]));
 }
 
 function serializedResolution(resolution) {
   return {
-    catalogProductId: resolution.catalogProductId == null ? null : Number(resolution.catalogProductId),
+    catalogProductId:
+      resolution.catalogProductId == null ? null : Number(resolution.catalogProductId),
     candidateCatalogProductId:
-      resolution.candidateCatalogProductId == null ? null : Number(resolution.candidateCatalogProductId),
+      resolution.candidateCatalogProductId == null
+        ? null
+        : Number(resolution.candidateCatalogProductId),
     status: resolution.status,
     matchMethod: resolution.matchMethod,
     confidence: resolution.confidence,
@@ -158,16 +163,25 @@ function sameResolution(existing, next) {
 }
 
 function countMetrics(metrics, resolution) {
-  if (resolution.matchMethod === 'manufacturer_model_exact') metrics.identity_exact_match_count += 1;
-  if (resolution.matchMethod === 'catalog_alias') metrics.identity_alias_match_count += 1;
-  if (resolution.matchMethod === 'fuzzy_candidate' || resolution.matchMethod === 'fuzzy_ambiguous') {
+  if (resolution.matchMethod === "manufacturer_model_exact")
+    metrics.identity_exact_match_count += 1;
+  if (resolution.matchMethod === "catalog_alias") metrics.identity_alias_match_count += 1;
+  if (
+    resolution.matchMethod === "fuzzy_candidate" ||
+    resolution.matchMethod === "fuzzy_ambiguous"
+  ) {
     metrics.identity_fuzzy_match_count += 1;
   }
-  if (resolution.status === 'unresolved') metrics.identity_unresolved_count += 1;
-  if (resolution.matchMethod === 'vetoed') metrics.identity_veto_count += 1;
+  if (resolution.status === "unresolved") metrics.identity_unresolved_count += 1;
+  if (resolution.matchMethod === "vetoed") metrics.identity_veto_count += 1;
 }
 
-export async function syncProductIdentityResolutions(db, shopKey, sourceIds = [], evaluatedAt = new Date().toISOString()) {
+export async function syncProductIdentityResolutions(
+  db,
+  shopKey,
+  sourceIds = [],
+  evaluatedAt = new Date().toISOString(),
+) {
   const listings = await loadListingRows(db, shopKey, sourceIds);
   const metrics = {
     identity_exact_match_count: 0,
@@ -181,18 +195,18 @@ export async function syncProductIdentityResolutions(db, shopKey, sourceIds = []
 
   const candidatesByManufacturer = await loadVerifiedIdentityCandidates(
     db,
-    listings.map(row => row.manufacturer_id),
+    listings.map((row) => row.manufacturer_id),
   );
   const existing = await loadExistingResolutions(
     db,
-    listings.map(row => Number(row.id)),
+    listings.map((row) => Number(row.id)),
   );
   const statements = [];
 
   for (const listing of listings) {
     const resolution = resolveProductIdentity(
       listing,
-      candidatesByManufacturer.get(String(listing.manufacturer_id || '').toLowerCase()) || [],
+      candidatesByManufacturer.get(String(listing.manufacturer_id || "").toLowerCase()) || [],
     );
     countMetrics(metrics, resolution);
     const serialized = serializedResolution(resolution);
@@ -240,6 +254,6 @@ export async function syncProductIdentityResolutions(db, shopKey, sourceIds = []
     await db.batch(statements.slice(i, i + CHUNK_SIZE));
   }
   metrics.identity_resolution_write_count = statements.length;
-  console.log(JSON.stringify({ event: 'product_identity_resolution', shopKey, ...metrics }));
+  console.log(JSON.stringify({ event: "product_identity_resolution", shopKey, ...metrics }));
   return metrics;
 }

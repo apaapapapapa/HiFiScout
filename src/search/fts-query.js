@@ -1,18 +1,18 @@
 const MAX_TERMS = 12;
 
-function clean(value = '') {
-  return String(value).normalize('NFKC').replace(/\s+/g, ' ').trim();
+function clean(value = "") {
+  return String(value).normalize("NFKC").replace(/\s+/g, " ").trim();
 }
 
-export function quoteFtsTerm(value = '') {
+export function quoteFtsTerm(value = "") {
   return `"${String(value).replaceAll('"', '""')}"`;
 }
 
-export function parseFtsSearchQuery(value = '') {
+export function parseFtsSearchQuery(value = "") {
   const query = clean(value);
-  if (!query) return { query: '', terms: [], ftsTerms: [], shortTerms: [], ftsQuery: '' };
+  if (!query) return { query: "", terms: [], ftsTerms: [], shortTerms: [], ftsQuery: "" };
 
-  const terms = query.split(' ').filter(Boolean).slice(0, MAX_TERMS);
+  const terms = query.split(" ").filter(Boolean).slice(0, MAX_TERMS);
   const ftsTerms = [];
   const shortTerms = [];
   for (const term of terms) {
@@ -25,6 +25,6 @@ export function parseFtsSearchQuery(value = '') {
     terms,
     ftsTerms,
     shortTerms,
-    ftsQuery: ftsTerms.map(quoteFtsTerm).join(' AND '),
+    ftsQuery: ftsTerms.map(quoteFtsTerm).join(" AND "),
   };
 }

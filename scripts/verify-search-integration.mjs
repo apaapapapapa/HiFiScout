@@ -1,14 +1,14 @@
-import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 
 const sourceId = `fts-integration-${process.pid}`;
-const now = '2026-08-12T00:00:00.000Z';
+const now = "2026-08-12T00:00:00.000Z";
 
 function d1(command) {
   const output = execFileSync(
-    process.platform === 'win32' ? 'npx.cmd' : 'npx',
-    ['wrangler', 'd1', 'execute', 'DB', '--local', '--json', '--command', command],
-    { encoding: 'utf8' },
+    process.platform === "win32" ? "npx.cmd" : "npx",
+    ["wrangler", "d1", "execute", "DB", "--local", "--json", "--command", command],
+    { encoding: "utf8" },
   );
   return JSON.parse(output);
 }
@@ -37,9 +37,9 @@ try {
       AND p.source_id = '${sourceId}';
   `);
   const rows = result?.[0]?.results || [];
-  assert.equal(rows.length, 1, 'TAD 1000 must resolve through product_search_fts after migrations');
+  assert.equal(rows.length, 1, "TAD 1000 must resolve through product_search_fts after migrations");
   assert.equal(rows[0].source_id, sourceId);
-  console.log('search migration integration check passed');
+  console.log("search migration integration check passed");
 } finally {
   d1(`DELETE FROM products WHERE shop_key = 'integration' AND source_id = '${sourceId}';`);
 }

@@ -1,57 +1,62 @@
-const ROMAN_TO_NUMBER = Object.freeze({ I: '1', II: '2', III: '3', IV: '4' });
-const NUMBER_TO_ROMAN = Object.freeze({ 1: 'I', 2: 'II', 3: 'III', 4: 'IV' });
+const ROMAN_TO_NUMBER = Object.freeze({ I: "1", II: "2", III: "3", IV: "4" });
+const NUMBER_TO_ROMAN = Object.freeze({ 1: "I", 2: "II", 3: "III", 4: "IV" });
 const WORD_VARIANTS = Object.freeze([
-  'LIMITEDEDITION',
-  'SIGNATURE',
-  'ANNIVERSARY',
-  'REFERENCE',
-  'LIMITED',
-  'META',
-  'PRO',
-  'TX',
-  'SE',
+  "LIMITEDEDITION",
+  "SIGNATURE",
+  "ANNIVERSARY",
+  "REFERENCE",
+  "LIMITED",
+  "META",
+  "PRO",
+  "TX",
+  "SE",
 ]);
 
-function clean(value = '') {
+function clean(value = "") {
   return String(value)
-    .normalize('NFKC')
-    .replace(/[‐‑‒–—―－]/g, '-')
-    .replace(/\s+/g, ' ')
+    .normalize("NFKC")
+    .replace(/[‐‑‒–—―－]/g, "-")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
 function canonicalizeRevisionMarkers(value) {
   return value
-    .replace(/\bMARK\s*(IV|III|II|I|[1-9]\d*)\b/giu, (_, revision) =>
-      `MK${ROMAN_TO_NUMBER[revision.toUpperCase()] || revision}`,
+    .replace(
+      /\bMARK\s*(IV|III|II|I|[1-9]\d*)\b/giu,
+      (_, revision) => `MK${ROMAN_TO_NUMBER[revision.toUpperCase()] || revision}`,
     )
-    .replace(/\bMK\s*(IV|III|II|I|[1-9]\d*)\b/giu, (_, revision) =>
-      `MK${ROMAN_TO_NUMBER[revision.toUpperCase()] || revision}`,
+    .replace(
+      /\bMK\s*(IV|III|II|I|[1-9]\d*)\b/giu,
+      (_, revision) => `MK${ROMAN_TO_NUMBER[revision.toUpperCase()] || revision}`,
     )
-    .replace(/MK(IV|III|II|I)(?=$|[^A-Z])/giu, (_, revision) =>
-      `MK${ROMAN_TO_NUMBER[revision.toUpperCase()]}`,
+    .replace(
+      /MK(IV|III|II|I)(?=$|[^A-Z])/giu,
+      (_, revision) => `MK${ROMAN_TO_NUMBER[revision.toUpperCase()]}`,
     )
-    .replace(/MK(IV|III|II|I)(?=[A-Z0-9])/giu, (_, revision) =>
-      `MK${ROMAN_TO_NUMBER[revision.toUpperCase()]}`,
+    .replace(
+      /MK(IV|III|II|I)(?=[A-Z0-9])/giu,
+      (_, revision) => `MK${ROMAN_TO_NUMBER[revision.toUpperCase()]}`,
     )
-    .replace(/\bLIMITED\s+EDITION\b/giu, 'LIMITED');
+    .replace(/\bLIMITED\s+EDITION\b/giu, "LIMITED");
 }
 
 function canonicalizeStandaloneRomanSuffix(value) {
-  return value.replace(/(?:^|[\s/_-])(IV|III|II)(?=$|[\s/_-])/giu, (_, revision) =>
-    ` REV${ROMAN_TO_NUMBER[revision.toUpperCase()]}`,
+  return value.replace(
+    /(?:^|[\s/_-])(IV|III|II)(?=$|[\s/_-])/giu,
+    (_, revision) => ` REV${ROMAN_TO_NUMBER[revision.toUpperCase()]}`,
   );
 }
 
-export function normalizeIdentityModel(value = '') {
+export function normalizeIdentityModel(value = "") {
   const normalized = canonicalizeStandaloneRomanSuffix(
     canonicalizeRevisionMarkers(clean(value).toUpperCase()),
   );
-  return normalized.replace(/[^A-Z0-9]+/gu, '');
+  return normalized.replace(/[^A-Z0-9]+/gu, "");
 }
 
 function trailingVariant(normalizedModel) {
-  const model = normalizedModel || '';
+  const model = normalizedModel || "";
   const mk = model.match(/MK([1-9]\d*)$/u);
   if (mk && model.length > mk[0].length) return { token: `MK${mk[1]}`, length: mk[0].length };
 
@@ -65,21 +70,21 @@ function trailingVariant(normalizedModel) {
     const stem = model.slice(0, -suffix.length);
     if (!/\d/u.test(stem)) continue;
     return {
-      token: suffix === 'LIMITEDEDITION' ? 'LIMITED' : suffix,
+      token: suffix === "LIMITEDEDITION" ? "LIMITED" : suffix,
       length: suffix.length,
     };
   }
 
-  if (model.endsWith('X') && model.length > 1) {
+  if (model.endsWith("X") && model.length > 1) {
     const stem = model.slice(0, -1);
-    if (/\d/u.test(stem)) return { token: 'X', length: 1 };
+    if (/\d/u.test(stem)) return { token: "X", length: 1 };
   }
   return null;
 }
 
-export function identityModelParts(value = '') {
+export function identityModelParts(value = "") {
   const normalizedModel = normalizeIdentityModel(value);
-  if (!normalizedModel) return { normalizedModel: '', modelStem: '', variants: [] };
+  if (!normalizedModel) return { normalizedModel: "", modelStem: "", variants: [] };
 
   let stem = normalizedModel;
   const variants = [];
@@ -108,7 +113,7 @@ export function identityVeto(leftModel, rightModel) {
   if (left.modelStem !== right.modelStem) return null;
   if (!sameVariants(left.variants, right.variants)) {
     return {
-      rule: 'variant_mismatch',
+      rule: "variant_mismatch",
       leftVariants: left.variants,
       rightVariants: right.variants,
     };
@@ -117,38 +122,40 @@ export function identityVeto(leftModel, rightModel) {
 }
 
 function canonicalVariantText(token, roman = false) {
-  if (token.startsWith('MK')) {
+  if (token.startsWith("MK")) {
     const number = token.slice(2);
     return roman && NUMBER_TO_ROMAN[number] ? `MK${NUMBER_TO_ROMAN[number]}` : `MK${number}`;
   }
-  if (token.startsWith('REV')) {
+  if (token.startsWith("REV")) {
     const number = token.slice(3);
     return roman && NUMBER_TO_ROMAN[number] ? NUMBER_TO_ROMAN[number] : number;
   }
-  if (token === 'LIMITED') return roman ? 'LIMITED EDITION' : 'LIMITED';
+  if (token === "LIMITED") return roman ? "LIMITED EDITION" : "LIMITED";
   return token;
 }
 
 function hyphenateLeadingModel(value) {
   const match = value.match(/^([A-Z]{1,4})(\d.*)$/u);
-  return match ? `${match[1]}-${match[2]}` : '';
+  return match ? `${match[1]}-${match[2]}` : "";
 }
 
-export function buildModelSearchAliases(value = '') {
+export function buildModelSearchAliases(value = "") {
   const original = clean(value).toUpperCase();
   const parts = identityModelParts(value);
   if (!parts.normalizedModel) return [];
 
   const aliases = new Set([original, parts.normalizedModel]);
-  const variant = parts.variants.length ? parts.variants.map(token => canonicalVariantText(token)).join(' ') : '';
+  const variant = parts.variants.length
+    ? parts.variants.map((token) => canonicalVariantText(token)).join(" ")
+    : "";
   const romanVariant = parts.variants.length
-    ? parts.variants.map(token => canonicalVariantText(token, true)).join(' ')
-    : '';
+    ? parts.variants.map((token) => canonicalVariantText(token, true)).join(" ")
+    : "";
 
   if (variant) aliases.add(`${parts.modelStem} ${variant}`);
   if (romanVariant && romanVariant !== variant) {
     aliases.add(`${parts.modelStem} ${romanVariant}`);
-    aliases.add(`${parts.modelStem}${romanVariant.replaceAll(' ', '')}`);
+    aliases.add(`${parts.modelStem}${romanVariant.replaceAll(" ", "")}`);
   }
 
   const hyphenatedStem = hyphenateLeadingModel(parts.modelStem);
@@ -158,7 +165,7 @@ export function buildModelSearchAliases(value = '') {
   }
 
   return [...aliases]
-    .map(item => clean(item))
+    .map((item) => clean(item))
     .filter(Boolean)
     .sort((left, right) => left.length - right.length || left.localeCompare(right))
     .slice(0, 8);
@@ -187,34 +194,35 @@ function levenshteinDistance(left, right, maxDistance = Number.POSITIVE_INFINITY
 }
 
 function categoryCompatible(product, candidate) {
-  const listingCategory = product.primaryCategoryId || product.primary_category_id || '';
+  const listingCategory = product.primaryCategoryId || product.primary_category_id || "";
   const candidateCategories = candidate.categoryIds || candidate.category_ids || [];
-  if (!listingCategory || listingCategory === 'other' || !candidateCategories.length) return true;
+  if (!listingCategory || listingCategory === "other" || !candidateCategories.length) return true;
   return candidateCategories.includes(listingCategory);
 }
 
 function candidateView(candidate) {
-  const canonicalModel = candidate.canonicalModel || candidate.canonical_model || candidate.model || '';
+  const canonicalModel =
+    candidate.canonicalModel || candidate.canonical_model || candidate.model || "";
   const aliases = candidate.aliases || [];
   return {
     ...candidate,
     id: candidate.id,
-    manufacturerId: candidate.manufacturerId || candidate.manufacturer_id || '',
+    manufacturerId: candidate.manufacturerId || candidate.manufacturer_id || "",
     canonicalModel,
     parts: identityModelParts(canonicalModel),
-    aliasParts: aliases.map(alias => ({ alias, parts: identityModelParts(alias) })),
+    aliasParts: aliases.map((alias) => ({ alias, parts: identityModelParts(alias) })),
   };
 }
 
-function matchedResolution(productParts, candidate, matchMethod, matchedAlias = '') {
-  const fields = ['manufacturer_id', 'normalized_model'];
-  if (matchedAlias) fields.push('catalog_alias');
+function matchedResolution(productParts, candidate, matchMethod, matchedAlias = "") {
+  const fields = ["manufacturer_id", "normalized_model"];
+  if (matchedAlias) fields.push("catalog_alias");
   return {
-    status: 'matched',
+    status: "matched",
     catalogProductId: candidate.id,
     candidateCatalogProductId: candidate.id,
     matchMethod,
-    confidence: 'high',
+    confidence: "high",
     normalizedModel: productParts.normalizedModel,
     modelStem: productParts.modelStem,
     variants: productParts.variants,
@@ -225,28 +233,30 @@ function matchedResolution(productParts, candidate, matchMethod, matchedAlias = 
 }
 
 export function resolveProductIdentity(product, candidates = []) {
-  const manufacturerId = String(product.manufacturerId || product.manufacturer_id || '').trim().toLowerCase();
-  const model = product.model || '';
+  const manufacturerId = String(product.manufacturerId || product.manufacturer_id || "")
+    .trim()
+    .toLowerCase();
+  const model = product.model || "";
   const parts = identityModelParts(model);
   if (!manufacturerId || !parts.normalizedModel) {
     return {
-      status: 'unresolved',
+      status: "unresolved",
       catalogProductId: null,
       candidateCatalogProductId: null,
-      matchMethod: 'unresolved',
-      confidence: 'none',
+      matchMethod: "unresolved",
+      confidence: "none",
       normalizedModel: parts.normalizedModel,
       modelStem: parts.modelStem,
       variants: parts.variants,
-      matchedFields: manufacturerId ? ['manufacturer_id'] : [],
-      rejectedBy: ['missing_identity_fields'],
-      matchedAlias: '',
+      matchedFields: manufacturerId ? ["manufacturer_id"] : [],
+      rejectedBy: ["missing_identity_fields"],
+      matchedAlias: "",
     };
   }
 
   const manufacturerCandidates = candidates
     .map(candidateView)
-    .filter(candidate => candidate.manufacturerId === manufacturerId);
+    .filter((candidate) => candidate.manufacturerId === manufacturerId);
 
   const rejected = [];
   const exactMatches = [];
@@ -260,28 +270,29 @@ export function resolveProductIdentity(product, candidates = []) {
     exactMatches.push(candidate);
   }
   if (exactMatches.length === 1) {
-    return matchedResolution(parts, exactMatches[0], 'manufacturer_model_exact');
+    return matchedResolution(parts, exactMatches[0], "manufacturer_model_exact");
   }
   if (exactMatches.length > 1) {
     return {
-      status: 'unresolved',
+      status: "unresolved",
       catalogProductId: null,
       candidateCatalogProductId: null,
-      matchMethod: 'exact_ambiguous',
-      confidence: 'none',
+      matchMethod: "exact_ambiguous",
+      confidence: "none",
       normalizedModel: parts.normalizedModel,
       modelStem: parts.modelStem,
       variants: parts.variants,
-      matchedFields: ['manufacturer_id', 'normalized_model'],
-      rejectedBy: ['ambiguous_candidates'],
-      matchedAlias: '',
+      matchedFields: ["manufacturer_id", "normalized_model"],
+      rejectedBy: ["ambiguous_candidates"],
+      matchedAlias: "",
     };
   }
 
   const aliasMatches = [];
   for (const candidate of manufacturerCandidates) {
     const matchedAlias = candidate.aliasParts.find(
-      alias => alias.parts.normalizedModel && alias.parts.normalizedModel === parts.normalizedModel,
+      (alias) =>
+        alias.parts.normalizedModel && alias.parts.normalizedModel === parts.normalizedModel,
     );
     if (!matchedAlias) continue;
     const veto = identityVeto(model, candidate.canonicalModel);
@@ -292,86 +303,104 @@ export function resolveProductIdentity(product, candidates = []) {
     aliasMatches.push({ candidate, alias: matchedAlias.alias });
   }
   if (aliasMatches.length === 1) {
-    return matchedResolution(parts, aliasMatches[0].candidate, 'catalog_alias', aliasMatches[0].alias);
+    return matchedResolution(
+      parts,
+      aliasMatches[0].candidate,
+      "catalog_alias",
+      aliasMatches[0].alias,
+    );
   }
   if (aliasMatches.length > 1) {
     return {
-      status: 'unresolved',
+      status: "unresolved",
       catalogProductId: null,
       candidateCatalogProductId: null,
-      matchMethod: 'alias_ambiguous',
-      confidence: 'none',
+      matchMethod: "alias_ambiguous",
+      confidence: "none",
       normalizedModel: parts.normalizedModel,
       modelStem: parts.modelStem,
       variants: parts.variants,
-      matchedFields: ['manufacturer_id'],
-      rejectedBy: ['ambiguous_candidates'],
-      matchedAlias: '',
+      matchedFields: ["manufacturer_id"],
+      rejectedBy: ["ambiguous_candidates"],
+      matchedAlias: "",
     };
   }
 
-  const sameStem = manufacturerCandidates.filter(candidate => candidate.parts.modelStem === parts.modelStem);
+  const sameStem = manufacturerCandidates.filter(
+    (candidate) => candidate.parts.modelStem === parts.modelStem,
+  );
   for (const candidate of sameStem) {
     const veto = identityVeto(model, candidate.canonicalModel);
     if (veto) rejected.push({ candidateId: candidate.id, rule: veto.rule });
   }
   if (rejected.length) {
     return {
-      status: 'unresolved',
+      status: "unresolved",
       catalogProductId: null,
       candidateCatalogProductId: rejected[0].candidateId,
-      matchMethod: 'vetoed',
-      confidence: 'none',
+      matchMethod: "vetoed",
+      confidence: "none",
       normalizedModel: parts.normalizedModel,
       modelStem: parts.modelStem,
       variants: parts.variants,
-      matchedFields: ['manufacturer_id', 'model_stem'],
-      rejectedBy: [...new Set(rejected.map(item => item.rule))],
-      matchedAlias: '',
+      matchedFields: ["manufacturer_id", "model_stem"],
+      rejectedBy: [...new Set(rejected.map((item) => item.rule))],
+      matchedAlias: "",
     };
   }
 
   const fuzzyCandidates = manufacturerCandidates
-    .filter(candidate => candidate.parts.normalizedModel && categoryCompatible(product, candidate))
-    .map(candidate => {
+    .filter(
+      (candidate) => candidate.parts.normalizedModel && categoryCompatible(product, candidate),
+    )
+    .map((candidate) => {
       const veto = identityVeto(model, candidate.canonicalModel);
       if (veto) return null;
-      const maxLength = Math.max(parts.normalizedModel.length, candidate.parts.normalizedModel.length);
+      const maxLength = Math.max(
+        parts.normalizedModel.length,
+        candidate.parts.normalizedModel.length,
+      );
       const maxDistance = maxLength >= 8 ? 1 : 0;
-      const distance = levenshteinDistance(parts.normalizedModel, candidate.parts.normalizedModel, maxDistance);
+      const distance = levenshteinDistance(
+        parts.normalizedModel,
+        candidate.parts.normalizedModel,
+        maxDistance,
+      );
       return distance <= maxDistance ? { candidate, distance, maxLength } : null;
     })
     .filter(Boolean)
-    .sort((left, right) => left.distance - right.distance || left.candidate.id - right.candidate.id);
+    .sort(
+      (left, right) => left.distance - right.distance || left.candidate.id - right.candidate.id,
+    );
 
   if (fuzzyCandidates.length === 1) {
     const candidate = fuzzyCandidates[0].candidate;
     return {
-      status: 'unresolved',
+      status: "unresolved",
       catalogProductId: null,
       candidateCatalogProductId: candidate.id,
-      matchMethod: 'fuzzy_candidate',
-      confidence: 'low',
+      matchMethod: "fuzzy_candidate",
+      confidence: "low",
       normalizedModel: parts.normalizedModel,
       modelStem: parts.modelStem,
       variants: parts.variants,
-      matchedFields: ['manufacturer_id'],
+      matchedFields: ["manufacturer_id"],
       rejectedBy: [],
-      matchedAlias: '',
+      matchedAlias: "",
     };
   }
 
   return {
-    status: 'unresolved',
+    status: "unresolved",
     catalogProductId: null,
     candidateCatalogProductId: fuzzyCandidates[0]?.candidate.id || null,
-    matchMethod: fuzzyCandidates.length > 1 ? 'fuzzy_ambiguous' : 'unresolved',
-    confidence: 'none',
+    matchMethod: fuzzyCandidates.length > 1 ? "fuzzy_ambiguous" : "unresolved",
+    confidence: "none",
     normalizedModel: parts.normalizedModel,
     modelStem: parts.modelStem,
     variants: parts.variants,
-    matchedFields: ['manufacturer_id'],
-    rejectedBy: fuzzyCandidates.length > 1 ? ['ambiguous_candidates'] : [],
-    matchedAlias: '',
+    matchedFields: ["manufacturer_id"],
+    rejectedBy: fuzzyCandidates.length > 1 ? ["ambiguous_candidates"] : [],
+    matchedAlias: "",
   };
 }
