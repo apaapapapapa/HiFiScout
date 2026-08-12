@@ -42,6 +42,7 @@ docker run --rm \
   -t sqlite-xerial \
   -db /db/hifiscout.sqlite \
   -cat '%' \
+  -s '%' \
   -sso \
   -noschema \
   -imageformat svg
