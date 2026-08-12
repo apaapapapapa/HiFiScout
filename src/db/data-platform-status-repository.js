@@ -22,7 +22,12 @@ export async function dataPlatformStatus(db) {
              SUM(CASE WHEN match_method = 'vetoed' THEN 1 ELSE 0 END) AS identity_veto_count
       FROM product_identity_resolutions
     `),
-    db.prepare("SELECT COUNT(*) AS evidence_metadata_count FROM evidence_archive"),
+    db.prepare(`
+      SELECT COUNT(*) AS evidence_metadata_count,
+             COALESCE(SUM(content_bytes), 0) AS evidence_estimated_bytes
+      FROM evidence_archive
+      WHERE expires_at IS NULL OR expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    `),
     db.prepare(`
       SELECT COUNT(*) AS crawl_runs_24h
       FROM crawl_runs
@@ -51,6 +56,7 @@ export async function dataPlatformStatus(db) {
       identityUnresolvedCount: number(identity.identity_unresolved_count),
       identityVetoCount: number(identity.identity_veto_count),
       evidenceMetadataCount: number(evidence.evidence_metadata_count),
+      evidenceEstimatedBytes: number(evidence.evidence_estimated_bytes),
       crawlRuns24h: number(crawl.crawl_runs_24h),
     },
     platformMetrics: {
@@ -62,6 +68,9 @@ export async function dataPlatformStatus(db) {
         "query_latency",
         "d1_error_rate",
         "d1_overloaded_timeout_errors",
+        "r2_storage_bytes",
+        "r2_class_a_operations",
+        "r2_class_b_operations",
       ],
     },
   };
