@@ -32,7 +32,7 @@ The existing Evidence Archive allow-list, redaction, deduplication, retention cl
 
 ## Status and thresholds
 
-Statuses are `healthy`, `warning`, `critical`, and `unknown`. Exact boundaries are inclusive.
+Statuses are `healthy`, `warning`, `critical`, and `unknown`. High-error thresholds and item-count drops use inclusive boundaries; Evidence Coverage follows the proposed strict “below” boundaries.
 
 | Metric | Warning | Critical |
 | --- | ---: | ---: |
@@ -43,7 +43,7 @@ Statuses are `healthy`, `warning`, `critical`, and `unknown`. Exact boundaries a
 | Model Missing | >= 10% | >= 25% |
 | Parser Failure | >= 2% | >= 10% |
 | Item Count Drop | <= -20% | <= -50% |
-| Evidence Coverage | <= 95% | <= 80% |
+| Evidence Coverage | < 95% | < 80% |
 
 The thresholds intentionally start with the Phase 2 proposal because production quality baselines are not available to repository code or unauthenticated CI. They should be tuned only with observed production distributions, and shop overrides should remain exceptional.
 
