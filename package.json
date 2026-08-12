@@ -7,7 +7,7 @@
     "test": "npm run test:unit",
     "test:unit": "node --test",
     "test:e2e": "npm --prefix e2e test",
-    "lint": "oxlint .",
+    "lint": "oxlint . --deny-warnings",
     "lint:fix": "oxlint . --fix",
     "format": "oxfmt src scripts test infra/audiounion-lambda/index.mjs e2e/tests e2e/playwright.config.mjs",
     "format:check": "oxfmt --check src scripts test infra/audiounion-lambda/index.mjs e2e/tests e2e/playwright.config.mjs",
