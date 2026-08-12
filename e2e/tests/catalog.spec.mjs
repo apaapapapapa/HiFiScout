@@ -98,7 +98,7 @@ test('catalog page boots with live metadata and product API', async ({ page }) =
   await expect(page.locator('#manufacturer')).toHaveAttribute('list', 'manufacturer-options');
   await expect(page.locator('#manufacturer-options option').first()).toBeAttached();
   await expect(page.locator('#products')).toHaveClass(/view-list/);
-  await expect(page.locator('#pagination').getByRole('button', { name: '1' })).toHaveAttribute('aria-current', 'page');
+  await expect(page.locator('#pagination [data-page="1"]')).toHaveAttribute('aria-current', 'page');
   await expect(page.locator('#load-more')).toHaveCount(0);
 
   if (products.items.length) {
