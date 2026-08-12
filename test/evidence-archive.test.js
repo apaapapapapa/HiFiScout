@@ -8,7 +8,14 @@ import {
   shouldArchiveEvidence,
 } from "../src/evidence/evidence-archive.js";
 
-function fakeDb({ duplicate = null, dailyObjects = 0, dailyBytes = 0, shopDailyObjects = 0, burstObjects = 0, storedBytes = 0 } = {}) {
+function fakeDb({
+  duplicate = null,
+  dailyObjects = 0,
+  dailyBytes = 0,
+  shopDailyObjects = 0,
+  burstObjects = 0,
+  storedBytes = 0,
+} = {}) {
   const writes = [];
   return {
     writes,

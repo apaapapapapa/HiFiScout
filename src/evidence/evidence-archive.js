@@ -92,7 +92,9 @@ function expiresAt(capturedAt, retentionClass) {
 function utcDayBounds(capturedAt) {
   const date = new Date(capturedAt);
   const safeDate = Number.isFinite(date.getTime()) ? date : new Date();
-  const start = new Date(Date.UTC(safeDate.getUTCFullYear(), safeDate.getUTCMonth(), safeDate.getUTCDate()));
+  const start = new Date(
+    Date.UTC(safeDate.getUTCFullYear(), safeDate.getUTCMonth(), safeDate.getUTCDate()),
+  );
   return {
     start: start.toISOString(),
     end: new Date(start.getTime() + 86_400_000).toISOString(),
