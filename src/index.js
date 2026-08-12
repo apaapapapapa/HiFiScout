@@ -1,6 +1,6 @@
 import { checkPublicApiRateLimit } from './api-guard.js';
 import { canonicalCategoryDefinitions, categoryFacet, getCategory } from './catalog/categories.js';
-import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from './catalog/knowledge-source-verifier-v3.js';
+import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from './catalog/knowledge-source-verifier-v4.js';
 import { SHOP_DEFINITIONS, getShopEnabled, getShopIntervalMinutes } from './config.js';
 import { consumeCrawlMessage, dispatchDueCrawls, dispatchForcedCrawl, dispatchScheduledCrawl } from './crawler/dispatch.js';
 import { knowledgeCatalogOperationalStatus } from './db/knowledge-catalog-review-repository.js';
@@ -182,10 +182,12 @@ async function bootstrapKnowledgeCatalogReview(env) {
   console.log(JSON.stringify({
     event: 'knowledge_catalog_verifier_rollout_started',
     verifierVersion: KNOWLEDGE_CATALOG_VERIFIER_VERSION,
-    mode: 'retry_recent_failures'
+    mode: 'expand_official_sources'
   }));
   try {
-    const result = await runKnowledgeCatalogReview(env, { now, preferRetries: true });
+    // v4 introduces new official manufacturer adapters, so the one-shot rollout intentionally uses
+    // normal priority order and enables the generic catalog/sitemap fallback for immediate expansion.
+    const result = await runKnowledgeCatalogReview(env, { now, preferRetries: false });
     await finishKnowledgeCatalogVerifierVersionSuccess(
       env.DB,
       KNOWLEDGE_CATALOG_VERIFIER_VERSION,
