@@ -1,6 +1,17 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
 
-const categoryFacets = [
+interface CategoryFacet {
+  id: string;
+  name: string;
+  parentId: string | null;
+  order: number;
+  classifiable: boolean;
+  filterable: boolean;
+  group: string | null;
+  activeProductCount: number;
+}
+
+const categoryFacets: CategoryFacet[] = [
   {
     id: "amplifier",
     name: "アンプ",
@@ -153,8 +164,8 @@ const categoryFacets = [
   },
 ];
 
-async function mockCatalog(page) {
-  await page.route("**/api/meta", (route) =>
+async function mockCatalog(page: Page): Promise<URL[]> {
+  await page.route("**/api/meta", (route: Route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -166,8 +177,8 @@ async function mockCatalog(page) {
       }),
     }),
   );
-  const requests = [];
-  await page.route("**/api/products?**", (route) => {
+  const requests: URL[] = [];
+  await page.route("**/api/products?**", (route: Route) => {
     requests.push(new URL(route.request().url()));
     return route.fulfill({
       contentType: "application/json",
@@ -177,13 +188,21 @@ async function mockCatalog(page) {
   return requests;
 }
 
+function lastRequest(requests: URL[]): URL {
+  const request = requests.at(-1);
+  if (!request) {
+    throw new Error("Expected at least one product request");
+  }
+  return request;
+}
+
 test("live metadata exposes the complete canonical taxonomy including zero-count parents", async ({
   request,
 }) => {
   const response = await request.get("/api/meta");
   expect(response.ok()).toBeTruthy();
-  const meta = await response.json();
-  const facets = meta.categoryFacets || [];
+  const meta: { categoryFacets?: CategoryFacet[] } = await response.json();
+  const facets = meta.categoryFacets ?? [];
 
   expect(facets.map((category) => category.id)).toEqual([
     "amplifier",
@@ -236,8 +255,7 @@ test("live metadata exposes the complete canonical taxonomy including zero-count
   });
   expect(
     facets.every(
-      (category) =>
-        Number.isInteger(category.activeProductCount) && category.activeProductCount >= 0,
+      (category) => Number.isInteger(category.activeProductCount) && category.activeProductCount >= 0,
     ),
   ).toBeTruthy();
 });
@@ -256,12 +274,17 @@ test("category taxonomy keeps separators, canonical order and parent/leaf URL st
     .toBe(parentIds.length);
 
   const options = await page.locator("#category option").evaluateAll((nodes) =>
-    nodes.map((node) => ({
-      value: node.value,
-      text: node.textContent,
-      separator: node.dataset.categorySeparator === "true",
-      disabled: node.disabled,
-    })),
+    nodes.map((node) => {
+      if (!(node instanceof HTMLOptionElement)) {
+        throw new Error("Expected category option element");
+      }
+      return {
+        value: node.value,
+        text: node.textContent,
+        separator: node.dataset.categorySeparator === "true",
+        disabled: node.disabled,
+      };
+    }),
   );
   const selectable = options.filter((option) => !option.separator);
   expect(selectable.slice(0, 7).map(({ value, text }) => ({ value, text }))).toEqual([
@@ -290,13 +313,13 @@ test("category taxonomy keeps separators, canonical order and parent/leaf URL st
 
   await page.locator("#category").selectOption("amplifier");
   await expect(page).toHaveURL(/category=amplifier/);
-  expect(requests.at(-1).searchParams.get("category")).toBe("amplifier");
+  expect(lastRequest(requests).searchParams.get("category")).toBe("amplifier");
 
   await page.locator("#category").selectOption("pre_amp");
   await expect(page).toHaveURL(/category=pre_amp/);
-  expect(requests.at(-1).searchParams.get("category")).toBe("pre_amp");
+  expect(lastRequest(requests).searchParams.get("category")).toBe("pre_amp");
 
   await page.goto("/?category=speaker_bookshelf");
   await expect(page.locator("#category")).toHaveValue("speaker_bookshelf");
-  expect(requests.at(-1).searchParams.get("category")).toBe("speaker_bookshelf");
+  expect(lastRequest(requests).searchParams.get("category")).toBe("speaker_bookshelf");
 });
