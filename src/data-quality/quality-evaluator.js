@@ -27,15 +27,21 @@ export function statusForRate(value, threshold) {
 
 function metric(count, denominator, threshold) {
   const value = rate(count, denominator);
-  return { count: nonNegative(count), denominator: nonNegative(denominator), rate: value, status: statusForRate(value, threshold) };
+  return {
+    count: nonNegative(count),
+    denominator: nonNegative(denominator),
+    rate: value,
+    status: statusForRate(value, threshold),
+  };
 }
 
 function worstStatus(statuses) {
   const known = statuses.filter((status) => status !== "unknown");
   if (!known.length) return "unknown";
-  return known.reduce((worst, status) =>
-    STATUS_RANK[status] > STATUS_RANK[worst] ? status : worst,
-  "healthy");
+  return known.reduce(
+    (worst, status) => (STATUS_RANK[status] > STATUS_RANK[worst] ? status : worst),
+    "healthy",
+  );
 }
 
 export function evaluateQuality(input, { thresholdOverrides = {} } = {}) {
@@ -57,18 +63,37 @@ export function evaluateQuality(input, { thresholdOverrides = {} } = {}) {
   const parseFailures = nonNegative(input?.parseFailureCount);
   const evidenceExpected = nonNegative(input?.evidenceExpectedEventCount);
   const evidenceArchived = nonNegative(input?.evidenceArchivedEventCount);
-  const previousItemCount = Number.isFinite(Number(input?.previousItemCount))
-    ? Number(input.previousItemCount)
-    : null;
+  const previousItemCount =
+    input?.previousItemCount == null || !Number.isFinite(Number(input.previousItemCount))
+      ? null
+      : Number(input.previousItemCount);
   const currentItemCount = nonNegative(input?.currentItemCount);
-  const itemCountAbsoluteDifference = previousItemCount == null ? null : currentItemCount - previousItemCount;
-  const itemCountChangeRate = previousItemCount > 0 ? itemCountAbsoluteDifference / previousItemCount : null;
+  const itemCountAbsoluteDifference =
+    previousItemCount == null ? null : currentItemCount - previousItemCount;
+  const itemCountChangeRate =
+    previousItemCount > 0 ? itemCountAbsoluteDifference / previousItemCount : null;
 
   const metrics = {
-    manufacturerUnknown: metric(manufacturerUnknown, totalItems, thresholds.manufacturerUnknownRate),
-    categoryUnclassified: metric(input?.categoryUnclassifiedCount, totalItems, thresholds.categoryUnclassifiedRate),
-    identityUnresolved: metric(identityUnresolved, identityTotal, thresholds.identityUnresolvedRate),
-    inventoryUnknown: metric(inventoryUnknown, inventoryTotal, thresholds.inventoryUnknownRate),
+    manufacturerUnknown: metric(
+      manufacturerUnknown,
+      totalItems,
+      thresholds.manufacturerUnknownRate,
+    ),
+    categoryUnclassified: metric(
+      input?.categoryUnclassifiedCount,
+      totalItems,
+      thresholds.categoryUnclassifiedRate,
+    ),
+    identityUnresolved: metric(
+      identityUnresolved,
+      identityTotal,
+      thresholds.identityUnresolvedRate,
+    ),
+    inventoryUnknown: metric(
+      inventoryUnknown,
+      inventoryTotal,
+      thresholds.inventoryUnknownRate,
+    ),
     modelMissing: metric(modelMissing, modelExpected, thresholds.modelMissingRate),
     parserFailure: metric(parseFailures, parseAttempts, thresholds.parserFailureRate),
     evidenceCoverage: evidenceExpected
@@ -76,7 +101,10 @@ export function evaluateQuality(input, { thresholdOverrides = {} } = {}) {
           count: evidenceArchived,
           denominator: evidenceExpected,
           rate: rate(evidenceArchived, evidenceExpected),
-          status: statusForRate(rate(evidenceArchived, evidenceExpected), thresholds.evidenceCoverageRate),
+          status: statusForRate(
+            rate(evidenceArchived, evidenceExpected),
+            thresholds.evidenceCoverageRate,
+          ),
         }
       : { count: 0, denominator: 0, rate: null, status: "unknown" },
     itemCount: {
