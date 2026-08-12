@@ -79,6 +79,5 @@
     "AUDIOUNION_ENTRY_URL": "https://www.audiounion.jp/st/new_arrival_used.html",
     "CRAWLER_USER_AGENT": "HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)"
   },
-  "r2_buckets": [{ "binding": "EVIDENCE_BUCKET", "bucket_name": "hifiscout-evidence" }],
   "d1_databases": [{ "binding": "DB" }]
 }
