@@ -35,7 +35,7 @@ function absoluteUrl(baseUrl, href) {
 }
 
 function inferCondition(title = '', context = '') {
-  const rank = cleanText(context).match(/中古[：:]?\s*([A-Z][A-Z+\-]*)/i)?.[0];
+  const rank = cleanText(context).match(/中古[：:]?\s*([A-Z][A-Z+-]*)/i)?.[0];
   if (rank) return cleanText(rank);
   return cleanText(title).match(/『([^』]+)』/)?.[1] || '';
 }
@@ -198,9 +198,9 @@ function modelAfterPrefix(detail, manufacturer) {
   if (!normalizedDetail || !normalizedManufacturer || normalizedDetail.length <= normalizedManufacturer.length) return '';
   if (!normalizedDetail.toLowerCase().startsWith(normalizedManufacturer.toLowerCase())) return '';
   const boundary = normalizedDetail[normalizedManufacturer.length];
-  if (boundary && !/[\s・･_\-\/&+.,'"()（）]/.test(boundary)) return '';
+  if (boundary && !/[\s・･_\-/&+.,'"()（）]/.test(boundary)) return '';
   return normalizedDetail.slice(normalizedManufacturer.length)
-    .replace(/^[\s・･_\-\/&+.,'"()（）]+/, '')
+    .replace(/^[\s・･_\-/&+.,'"()（）]+/, '')
     .trim();
 }
 

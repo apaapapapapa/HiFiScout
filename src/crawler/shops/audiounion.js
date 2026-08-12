@@ -74,8 +74,8 @@ function startsWithIdentityPrefix(detail, manufacturer) {
   const withoutCondition = value.replace(/^中古\s*/i, '').trim();
   if (!withoutCondition.toLowerCase().startsWith(prefix.toLowerCase())) return '';
   const boundary = withoutCondition[prefix.length];
-  if (boundary && !/[\s・･_\-\/&+.,'"()（）]/.test(boundary)) return '';
-  return withoutCondition.slice(prefix.length).replace(/^[\s・･_\-\/&+.,'"()（）]+/, '').trim();
+  if (boundary && !/[\s・･_\-/&+.,'"()（）]/.test(boundary)) return '';
+  return withoutCondition.slice(prefix.length).replace(/^[\s・･_\-/&+.,'"()（）]+/, '').trim();
 }
 
 function cleanModel(value) {

@@ -45,7 +45,7 @@ const CATEGORY_BY_ID = new Map(CATEGORIES.map(category => [category.id, category
 const LEGACY_ALIASES = Object.freeze({ network_transport: 'network_player', accessory: 'other_accessory' });
 
 function normalizeLookup(value = '') {
-  return String(value).normalize('NFKC').trim().toLowerCase().replace(/[\s・･_\-\/()（）]+/g, '');
+  return String(value).normalize('NFKC').trim().toLowerCase().replace(/[\s・･_\-/()（）]+/g, '');
 }
 
 function categoryIdFromAlias(value = '', { classifiableOnly = false } = {}) {

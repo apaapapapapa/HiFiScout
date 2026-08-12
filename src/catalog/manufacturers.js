@@ -50,7 +50,7 @@ function normalizeKey(value = '') {
     .toLowerCase()
     .replace(/\b(?:co\.?\s*,?\s*ltd\.?|corporation|corp\.?|inc\.?|limited|ltd\.?)\b/gi, '')
     .replace(/(?:株式会社|有限会社|合同会社)/g, '')
-    .replace(/[\s・･_\-\/&+.,'"()（）]+/g, '');
+    .replace(/[\s・･_\-/&+.,'"()（）]+/g, '');
 }
 
 function cleanSourceText(value = '') {
@@ -62,7 +62,7 @@ function escapeRegExp(value) {
 }
 
 function prefixPattern(alias) {
-  const tokens = cleanSourceText(alias).split(/[\s・･_\-\/&+.,'"()（）]+/).filter(Boolean);
+  const tokens = cleanSourceText(alias).split(/[\s・･_\-/&+.,'"()（）]+/).filter(Boolean);
   if (!tokens.length) return null;
   const separator = `[\\s・･_\\-\\/&+.,'"()（）]*`;
   const boundary = `[\\s・･_\\-\\/&+.,'"()（）]`;
@@ -119,7 +119,7 @@ export function splitKnownManufacturerModel(value = '') {
     const match = raw.match(candidate.pattern);
     if (!match) continue;
     const model = raw.slice(match[0].length)
-      .replace(/^[\s・･_\-\/&+.,'"()（）]+/, '')
+      .replace(/^[\s・･_\-/&+.,'"()（）]+/, '')
       .trim();
     return {
       id: candidate.manufacturer.id,

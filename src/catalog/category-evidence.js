@@ -21,7 +21,7 @@ export function resolveCategoryPolicy(adapter = {}) {
   return {
     sellerCategory: {
       default: mode(seller.default, legacyPrefer ? 'corroborative' : 'authoritative'),
-      categories: { ...(seller.categories || {}) }
+      categories: { ...seller.categories }
     },
     // Parser output is a hint, never stronger than an explicit product title.
     parserHint: mode(requested.parserHint, 'corroborative'),

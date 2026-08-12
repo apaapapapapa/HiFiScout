@@ -130,7 +130,7 @@ function parseRegistry(value) {
     if (parsed && typeof parsed === 'object') {
       return Object.entries(parsed).map(([manufacturerId, config]) => ({
         manufacturerId,
-        ...(config || {})
+        ...config
       }));
     }
   } catch {}

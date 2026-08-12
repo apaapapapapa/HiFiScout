@@ -93,7 +93,7 @@ function stripManufacturerPrefix(model, prefix) {
   if (!value || !brand) return '';
   const pattern = new RegExp(`^${escapeRegExp(brand)}(?=$|[\\s・･_\\-\\/&+.,'"()（）])`, 'i');
   if (!pattern.test(value)) return '';
-  return value.replace(pattern, '').replace(/^[\s・･_\-\/&+.,'"()（）]+/, '').trim();
+  return value.replace(pattern, '').replace(/^[\s・･_\-/&+.,'"()（）]+/, '').trim();
 }
 
 export function candidateModelVariants(candidate = {}) {

@@ -74,7 +74,7 @@ function withDetailCheckMetadata(product, detailCheckedAt) {
   return {
     ...product,
     metadata: {
-      ...(product.metadata || {}),
+      ...product.metadata,
       categoryClassification: {
         ...classification,
         detailCheckedAt

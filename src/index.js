@@ -27,7 +27,7 @@ const KNOWLEDGE_CATALOG_MONTHLY_CRON = '23 3 1 * *';
 function json(data, init = {}) {
   return new Response(JSON.stringify(data), {
     ...init,
-    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...(init.headers || {}) }
+    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...init.headers }
   });
 }
 
