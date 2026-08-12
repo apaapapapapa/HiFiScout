@@ -43,6 +43,7 @@ docker run --rm \
   -v "$OUTPUT_DIR:/output" \
   -v "$SCHEMASPY_TYPE_FILE:/hifiscout-sqlite.properties:ro" \
   "schemaspy/schemaspy:${SCHEMASPY_VERSION}" \
+  -debug \
   -t hifiscout-sqlite \
   -db /db/hifiscout.sqlite \
   -cat main \
