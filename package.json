@@ -7,6 +7,10 @@
     "test": "npm run test:unit",
     "test:unit": "node --test",
     "test:e2e": "npm --prefix e2e test",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint . --fix",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
     "dev": "wrangler dev --test-scheduled",
     "deploy": "wrangler d1 migrations apply DB --remote && wrangler deploy",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
@@ -15,6 +19,8 @@
   },
   "devDependencies": {
     "@cloudflare/playwright": "^1.3.0",
+    "oxfmt": "^0.63.0",
+    "oxlint": "^1.78.0",
     "wrangler": "^4.45.0"
   }
 }
