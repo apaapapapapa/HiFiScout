@@ -1,11 +1,13 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page, type Response, type Route } from "@playwright/test";
 
-function isProductsRequest(response) {
+type JsonObject = Record<string, unknown>;
+
+function isProductsRequest(response: Response): boolean {
   const url = new URL(response.url());
   return url.pathname === "/api/products" && response.request().method() === "GET";
 }
 
-function product(overrides = {}) {
+function product(overrides: JsonObject = {}) {
   return {
     id: 1,
     shop_key: "shop-a",
@@ -32,7 +34,7 @@ function product(overrides = {}) {
   };
 }
 
-function mockMeta(overrides = {}) {
+function mockMeta(overrides: JsonObject = {}) {
   return {
     status: "healthy",
     shops: [
@@ -61,14 +63,14 @@ function mockMeta(overrides = {}) {
   };
 }
 
-async function routeMeta(page, meta = mockMeta()) {
-  await page.route("**/api/meta", async (route) => {
+async function routeMeta(page: Page, meta: JsonObject = mockMeta()): Promise<void> {
+  await page.route("**/api/meta", async (route: Route) => {
     await route.fulfill({ contentType: "application/json", body: JSON.stringify(meta) });
   });
 }
 
 test("catalog page boots with live metadata and product API", async ({ page }) => {
-  const metaResponsePromise = page.waitForResponse((response) => {
+  const metaResponsePromise = page.waitForResponse((response: Response) => {
     const url = new URL(response.url());
     return url.pathname === "/api/meta" && response.request().method() === "GET";
   });
@@ -115,30 +117,29 @@ test("changing a shop filter refreshes the API and exposes a removable filter ch
   await page.goto("/");
   await initialProductsResponse;
 
-  const firstShop = await page.locator("#shop option").evaluateAll((options) => {
-    const option = options.find((candidate) => candidate.value);
-    return option
-      ? { value: option.value, label: option.textContent?.trim() || option.value }
-      : null;
-  });
-  expect(firstShop).not.toBeNull();
+  const firstShopOption = page.locator('#shop option:not([value=""])').first();
+  const firstShopValue = await firstShopOption.getAttribute("value");
+  if (!firstShopValue) {
+    throw new Error("Expected at least one selectable shop option");
+  }
+  const firstShopLabel = (await firstShopOption.textContent())?.trim() || firstShopValue;
 
-  const filteredResponsePromise = page.waitForResponse((response) => {
+  const filteredResponsePromise = page.waitForResponse((response: Response) => {
     if (!isProductsRequest(response)) return false;
-    return new URL(response.url()).searchParams.get("shop") === firstShop.value;
+    return new URL(response.url()).searchParams.get("shop") === firstShopValue;
   });
 
-  await page.locator("#shop").selectOption(firstShop.value);
+  await page.locator("#shop").selectOption(firstShopValue);
   const filteredResponse = await filteredResponsePromise;
 
   expect(filteredResponse.ok()).toBeTruthy();
-  await expect(page.locator("#shop")).toHaveValue(firstShop.value);
-  await expect(page.locator("#active-filters")).toContainText(firstShop.label);
-  await expect(page).toHaveURL(new RegExp(`shop=${encodeURIComponent(firstShop.value)}`));
+  await expect(page.locator("#shop")).toHaveValue(firstShopValue);
+  await expect(page.locator("#active-filters")).toContainText(firstShopLabel);
+  await expect(page).toHaveURL(new RegExp(`shop=${encodeURIComponent(firstShopValue)}`));
 
   await page.locator('[data-clear-filter="shop"]').click();
   await expect(page.locator("#shop")).toHaveValue("");
-  await expect(page.locator("#active-filters")).not.toContainText(firstShop.label);
+  await expect(page.locator("#active-filters")).not.toContainText(firstShopLabel);
   await expect(page.locator("#count")).toHaveText(/^\d+$/);
 });
 
@@ -183,7 +184,7 @@ test("favorites are stored as product snapshots and rendered without a favorites
 
   await routeMeta(page);
 
-  await page.route("**/api/products?**", async (route) => {
+  await page.route("**/api/products?**", async (route: Route) => {
     productRequests += 1;
     const url = new URL(route.request().url());
     const cursor = url.searchParams.get("cursor");
@@ -201,11 +202,13 @@ test("favorites are stored as product snapshots and rendered without a favorites
   await expect(page.getByRole("link", { name: "D-10X" })).toBeVisible();
   await page.locator('[data-fav="1"]').click();
 
-  const stored = await page.evaluate(() =>
+  const stored: unknown = await page.evaluate(() =>
     JSON.parse(localStorage.getItem("hifiscout:favorites") || "[]"),
   );
   expect(stored).toHaveLength(1);
-  expect(stored[0]).toMatchObject({ id: 1, manufacturer: "LUXMAN", model: "D-10X" });
+  expect(stored).toEqual(
+    expect.arrayContaining([expect.objectContaining({ id: 1, manufacturer: "LUXMAN", model: "D-10X" })]),
+  );
 
   await page.locator("#pagination").getByRole("button", { name: "2" }).click();
   await expect(page.getByRole("link", { name: "ME1TX" })).toBeVisible();
@@ -250,7 +253,7 @@ test("sync status summarizes delayed shops and exposes per-shop details", async 
       ],
     }),
   );
-  await page.route("**/api/products?**", (route) =>
+  await page.route("**/api/products?**", (route: Route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ items: [product()], hasMore: false, nextCursor: null }),
@@ -269,8 +272,8 @@ test("sync status summarizes delayed shops and exposes per-shop details", async 
 
 test("URL restores search state and recent/price-drop filters reach the API", async ({ page }) => {
   await routeMeta(page);
-  const requests = [];
-  await page.route("**/api/products?**", async (route) => {
+  const requests: URL[] = [];
+  await page.route("**/api/products?**", async (route: Route) => {
     requests.push(new URL(route.request().url()));
     await route.fulfill({
       contentType: "application/json",
@@ -298,7 +301,11 @@ test("URL restores search state and recent/price-drop filters reach the API", as
   await expect(page.locator("#more-available")).toBeVisible();
 
   expect(requests.length).toBeGreaterThan(0);
-  const params = requests[0].searchParams;
+  const firstRequest = requests[0];
+  if (!firstRequest) {
+    throw new Error("Expected at least one product request");
+  }
+  const params = firstRequest.searchParams;
   expect(params.get("manufacturer")).toBe("LUXMAN");
   expect(params.get("sort")).toBe("priceAsc");
   expect(params.has("inStock")).toBeFalsy();
@@ -308,7 +315,7 @@ test("URL restores search state and recent/price-drop filters reach the API", as
 
 test("browser back restores previous filter state", async ({ page }) => {
   await routeMeta(page);
-  await page.route("**/api/products?**", (route) =>
+  await page.route("**/api/products?**", (route: Route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ items: [product()], hasMore: false, nextCursor: null }),
