@@ -5,6 +5,7 @@ import { SHOP_DEFINITIONS, getShopEnabled, getShopRequestDelayMs } from '../src/
 import { isShopDue, isSuspiciousItemDrop } from '../src/crawler/run.js';
 
 const wranglerConfig = JSON.parse(fs.readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
+const workerSource = fs.readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
 
 test('shop interval is evaluated independently', () => {
   const now = new Date('2026-08-11T00:30:00.000Z');
@@ -32,10 +33,15 @@ test('large item-count drops are rejected only after a meaningful baseline', () 
   assert.equal(isSuspiciousItemDrop(1, 10, { minRatio: 0.5, minBaseline: 20 }), false);
 });
 
-test('Knowledge Catalog candidates run daily while verified products keep the monthly recheck cadence', () => {
+test('Knowledge Catalog candidate verification shares the existing daily maintenance cron', () => {
   const crons = wranglerConfig.triggers?.crons || [];
-  assert.ok(crons.includes('43 4 * * *'));
+  assert.equal(crons.length, 5);
+  assert.ok(crons.includes('17 18 * * *'));
   assert.ok(crons.includes('23 3 1 * *'));
+  assert.ok(!crons.includes('43 4 * * *'));
+  assert.match(workerSource, /runDailyMaintenance\(env\)/);
+  assert.match(workerSource, /runRetentionCleanup\(env\)/);
+  assert.match(workerSource, /runKnowledgeCatalogDailyVerification\(env\)/);
   assert.equal(wranglerConfig.vars.KNOWLEDGE_CATALOG_DAILY_VERIFY_MAX_CANDIDATES, '50');
   assert.equal(wranglerConfig.vars.KNOWLEDGE_CATALOG_REVIEW_INTERVAL_DAYS, '30');
 });

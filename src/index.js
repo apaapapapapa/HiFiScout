@@ -21,8 +21,7 @@ import { runRetentionCleanup } from './maintenance.js';
 const GENERAL_CRON = '*/5 * * * *';
 const AUDIOUNION_CRON = '1 * * * *';
 const FUJIYA_AVIC_CRON = '30 * * * *';
-const RETENTION_CRON = '17 18 * * *';
-const KNOWLEDGE_CATALOG_DAILY_CRON = '43 4 * * *';
+const DAILY_MAINTENANCE_CRON = '17 18 * * *';
 const KNOWLEDGE_CATALOG_MONTHLY_CRON = '23 3 1 * *';
 
 function json(data, init = {}) {
@@ -159,9 +158,30 @@ function logDispatchResult(cron, dispatch) {
   else console.log(JSON.stringify(entry));
 }
 
+async function runDailyMaintenance(env) {
+  const [retention, catalog] = await Promise.allSettled([
+    runRetentionCleanup(env),
+    runKnowledgeCatalogDailyVerification(env)
+  ]);
+  if (retention.status === 'rejected') {
+    console.error(JSON.stringify({
+      event: 'daily_retention_failed',
+      message: retention.reason?.message || String(retention.reason)
+    }));
+  }
+  if (catalog.status === 'rejected') {
+    console.error(JSON.stringify({
+      event: 'knowledge_catalog_daily_verification_failed',
+      message: catalog.reason?.message || String(catalog.reason)
+    }));
+  }
+  if (retention.status === 'rejected') throw retention.reason;
+  if (catalog.status === 'rejected') throw catalog.reason;
+  return { retention: retention.value, catalog: catalog.value };
+}
+
 async function runScheduled(cron, env) {
-  if (cron === RETENTION_CRON) return runRetentionCleanup(env);
-  if (cron === KNOWLEDGE_CATALOG_DAILY_CRON) return runKnowledgeCatalogDailyVerification(env);
+  if (cron === DAILY_MAINTENANCE_CRON) return runDailyMaintenance(env);
   if (cron === KNOWLEDGE_CATALOG_MONTHLY_CRON) return runKnowledgeCatalogMonthlyRecheck(env);
   const dispatch = cron === AUDIOUNION_CRON
     ? await dispatchScheduledCrawl(env, 'audiounion')
