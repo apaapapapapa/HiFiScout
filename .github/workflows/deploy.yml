@@ -26,6 +26,15 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+      - name: Resolve production base URL
+        shell: bash
+        env:
+          REPOSITORY_PRODUCTION_BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
+        run: |
+          set -euo pipefail
+          source .github/config/production.env
+          base_url="${REPOSITORY_PRODUCTION_BASE_URL:-$PRODUCTION_BASE_URL}"
+          echo "PRODUCTION_BASE_URL=${base_url%/}" >> "$GITHUB_ENV"
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
@@ -66,6 +75,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          response="$(curl -sS --retry 3 --retry-delay 2 https://hifiscout.raha3415kohei.workers.dev/api/health)"
+          response="$(curl -sS --retry 3 --retry-delay 2 "${PRODUCTION_BASE_URL}/api/health")"
           echo "$response" | jq .
           echo "$response" | jq -e '.shops[] | select(.shopKey == "audiounion" and .configured == true)'
