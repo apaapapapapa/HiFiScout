@@ -34,7 +34,9 @@ jobs:
         run: |
           mapfile -t files < <(git diff --name-only --diff-filter=ACMR "$BASE_SHA" "$GITHUB_SHA" -- '*.js' '*.mjs' '*.cjs' '*.jsx' '*.ts' '*.mts' '*.cts' '*.tsx')
           if ((${#files[@]} > 0)); then
-            npx oxfmt --check "${files[@]}"
+            npx oxfmt "${files[@]}"
+            git diff -- "${files[@]}"
+            git diff --exit-code -- "${files[@]}"
           else
             echo "No changed JavaScript/TypeScript source files to format-check."
           fi
