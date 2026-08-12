@@ -60,6 +60,12 @@ test('category taxonomy keeps separators, canonical order and parent/leaf URL st
   const requests = await mockCatalog(page);
   await page.goto('/');
 
+  const parentIds = ['amplifier', 'digital', 'analog', 'speaker', 'headphone_group', 'accessories'];
+  await expect.poll(
+    () => page.locator('#category option[data-category-separator="true"]').count(),
+    { message: 'category group separators should be rendered after metadata loads' }
+  ).toBe(parentIds.length);
+
   const options = await page.locator('#category option').evaluateAll(nodes => nodes.map(node => ({
     value: node.value,
     text: node.textContent,
@@ -81,11 +87,14 @@ test('category taxonomy keeps separators, canonical order and parent/leaf URL st
     { value: 'other', text: 'その他' }
   ]);
 
-  for (const id of ['amplifier', 'digital', 'analog', 'speaker', 'headphone_group', 'accessories']) {
-    const parent = page.locator(`#category option[value="${id}"]`);
-    const separator = parent.locator('xpath=preceding-sibling::option[1]');
-    await expect(separator).toBeDisabled();
-    await expect(separator).toHaveText('────────────');
+  for (const id of parentIds) {
+    const parentIndex = options.findIndex(option => option.value === id && !option.separator);
+    expect(parentIndex).toBeGreaterThan(0);
+    expect(options[parentIndex - 1]).toMatchObject({
+      text: '────────────',
+      separator: true,
+      disabled: true
+    });
   }
 
   await page.locator('#category').selectOption('amplifier');
