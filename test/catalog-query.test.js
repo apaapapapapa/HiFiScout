@@ -63,11 +63,11 @@ test('single long free-text terms continue to use FTS', async () => {
   assert.deepEqual(db.calls[0].binds.slice(0, 1), ['"LUXMAN"']);
 });
 
-test('recent-only filter constrains products to the last 48 hours', async () => {
+test('recent-only filter constrains products to retailer publication or discovery within the last 48 hours', async () => {
   const db = queryCaptureDb();
   await listProducts(db, new URL('https://example.test/api/products?newOnly=true'));
 
-  assert.match(db.calls[0].sql, /p\.first_seen_at >= strftime\([^\n]+-48 hours/);
+  assert.match(db.calls[0].sql, /COALESCE\(p\.source_published_at, p\.first_seen_at\) >= strftime\([^\n]+-48 hours/);
 });
 
 test('price-dropped filter compares current and previous price', async () => {
@@ -86,7 +86,7 @@ test('discovery filters combine with existing catalog filters in one SQL query',
   assert.match(sql, /p\.shop_key = \?/);
   assert.match(sql, /p\.manufacturer_id = \?/);
   assert.match(sql, /p\.stock_status = 'in_stock'/);
-  assert.match(sql, /p\.first_seen_at >= strftime\([^\n]+-48 hours/);
+  assert.match(sql, /COALESCE\(p\.source_published_at, p\.first_seen_at\) >= strftime\([^\n]+-48 hours/);
   assert.match(sql, /p\.price_yen < p\.previous_price_yen/);
   assert.match(sql, /p\.price_yen >= \?/);
   assert.deepEqual(binds.slice(0, 4), ['fujiya-avic', 'luxman', 'LUXMAN', 100000]);
