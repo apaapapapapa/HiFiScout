@@ -12,14 +12,18 @@ import {
 } from './db/knowledge-catalog-verifier-state-repository.js';
 import { listProducts, productHistory, validateProductQuery } from './db/products.js';
 import { buildSyncHealth, getSyncHealth, logSyncHealth } from './health.js';
-import { runKnowledgeCatalogReview } from './knowledge-catalog-review.js';
+import {
+  runKnowledgeCatalogDailyVerification,
+  runKnowledgeCatalogMonthlyRecheck
+} from './knowledge-catalog-review.js';
 import { runRetentionCleanup } from './maintenance.js';
 
 const GENERAL_CRON = '*/5 * * * *';
 const AUDIOUNION_CRON = '1 * * * *';
 const FUJIYA_AVIC_CRON = '30 * * * *';
 const RETENTION_CRON = '17 18 * * *';
-const KNOWLEDGE_CATALOG_CRON = '23 3 1 * *';
+const KNOWLEDGE_CATALOG_DAILY_CRON = '43 4 * * *';
+const KNOWLEDGE_CATALOG_MONTHLY_CRON = '23 3 1 * *';
 
 function json(data, init = {}) {
   return new Response(JSON.stringify(data), {
@@ -157,7 +161,8 @@ function logDispatchResult(cron, dispatch) {
 
 async function runScheduled(cron, env) {
   if (cron === RETENTION_CRON) return runRetentionCleanup(env);
-  if (cron === KNOWLEDGE_CATALOG_CRON) return runKnowledgeCatalogReview(env);
+  if (cron === KNOWLEDGE_CATALOG_DAILY_CRON) return runKnowledgeCatalogDailyVerification(env);
+  if (cron === KNOWLEDGE_CATALOG_MONTHLY_CRON) return runKnowledgeCatalogMonthlyRecheck(env);
   const dispatch = cron === AUDIOUNION_CRON
     ? await dispatchScheduledCrawl(env, 'audiounion')
     : cron === FUJIYA_AVIC_CRON
@@ -182,12 +187,12 @@ async function bootstrapKnowledgeCatalogReview(env) {
   console.log(JSON.stringify({
     event: 'knowledge_catalog_verifier_rollout_started',
     verifierVersion: KNOWLEDGE_CATALOG_VERIFIER_VERSION,
-    mode: 'expand_official_sources'
+    mode: 'daily_candidates'
   }));
   try {
-    // v4 introduces new official manufacturer adapters, so the one-shot rollout intentionally uses
-    // normal priority order and enables the generic catalog/sitemap fallback for immediate expansion.
-    const result = await runKnowledgeCatalogReview(env, { now, preferRetries: false });
+    // A verifier rollout immediately exercises the new source behavior against candidate products.
+    // Existing verified products keep their independent 30-day recheck cadence.
+    const result = await runKnowledgeCatalogDailyVerification(env, { now, preferRetries: false });
     await finishKnowledgeCatalogVerifierVersionSuccess(
       env.DB,
       KNOWLEDGE_CATALOG_VERIFIER_VERSION,

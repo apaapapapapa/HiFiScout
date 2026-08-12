@@ -10,7 +10,10 @@ import {
   knowledgeCatalogKey,
   normalizeCatalogModel
 } from '../src/catalog/knowledge-catalog.js';
-import { summarizeClassificationImpact } from '../src/knowledge-catalog-review.js';
+import {
+  knowledgeCatalogReviewModeOptions,
+  summarizeClassificationImpact
+} from '../src/knowledge-catalog-review.js';
 
 test('model normalization standardizes safe punctuation variants without erasing identity', () => {
   assert.equal(normalizeCatalogModel('K - 01XD'), 'K-01XD');
@@ -126,4 +129,22 @@ test('classification impact reports only reductions', () => {
   assert.deepEqual(summarizeClassificationImpact(
     { unclassifiedProducts: 4, otherProducts: 2 }, { unclassifiedProducts: 6, otherProducts: 3 }
   ), { unclassifiedReduced: 0, otherReduced: 0 });
+});
+
+test('daily catalog mode verifies candidates without marking or rechecking verified products', () => {
+  assert.deepEqual(knowledgeCatalogReviewModeOptions('daily_candidates'), {
+    mode: 'daily_candidates',
+    markDueProducts: false,
+    verifyCandidates: true,
+    verifyDueProducts: false
+  });
+});
+
+test('monthly catalog mode rechecks verified products without consuming candidate verification capacity', () => {
+  assert.deepEqual(knowledgeCatalogReviewModeOptions('monthly_recheck'), {
+    mode: 'monthly_recheck',
+    markDueProducts: true,
+    verifyCandidates: false,
+    verifyDueProducts: true
+  });
 });
