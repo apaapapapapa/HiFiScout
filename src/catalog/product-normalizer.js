@@ -1,12 +1,13 @@
-import { classifyCategoryEvidence, summarizeCategoryEvidence } from './category-classifier.js';
-import { collectListingCategoryEvidence } from './category-evidence.js';
-import { normalizeManufacturer } from './manufacturers.js';
-import { inferFeatureFacts, normalizeFeatureFacts } from './product-features.js';
+import { classifyCategoryEvidence, summarizeCategoryEvidence } from "./category-classifier.js";
+import { collectListingCategoryEvidence } from "./category-evidence.js";
+import { normalizeManufacturer } from "./manufacturers.js";
+import { inferFeatureFacts, normalizeFeatureFacts } from "./product-features.js";
 
 const CLASSIFICATION_METADATA_VERSION = 3;
+const MANUFACTURER_NORMALIZATION_METADATA_VERSION = 1;
 
-function clean(value = '') {
-  return String(value).normalize('NFKC').replace(/\s+/g, ' ').trim();
+function clean(value = "") {
+  return String(value).normalize("NFKC").replace(/\s+/g, " ").trim();
 }
 
 function classificationMetadata(classification, evidence, existing = {}) {
@@ -19,14 +20,24 @@ function classificationMetadata(classification, evidence, existing = {}) {
     source: classification.classificationSource,
     categoryIds: classification.categoryIds,
     candidateCategoryIds: classification.candidateCategoryIds,
-    evidence: summarizeCategoryEvidence(evidence)
+    evidence: summarizeCategoryEvidence(evidence),
   };
 }
 
-export function applyCategoryClassification(product, classification, evidence = product.categoryEvidence || [], metadataPatch = {}) {
-  const metadata = product.metadata && typeof product.metadata === 'object' && !Array.isArray(product.metadata) ? product.metadata : {};
-  const previousClassification = metadata.categoryClassification && typeof metadata.categoryClassification === 'object'
-    ? metadata.categoryClassification : {};
+export function applyCategoryClassification(
+  product,
+  classification,
+  evidence = product.categoryEvidence || [],
+  metadataPatch = {},
+) {
+  const metadata =
+    product.metadata && typeof product.metadata === "object" && !Array.isArray(product.metadata)
+      ? product.metadata
+      : {};
+  const previousClassification =
+    metadata.categoryClassification && typeof metadata.categoryClassification === "object"
+      ? metadata.categoryClassification
+      : {};
   return {
     ...product,
     primaryCategoryId: classification.primaryCategoryId,
@@ -41,41 +52,59 @@ export function applyCategoryClassification(product, classification, evidence = 
     categoryEvidence: evidence,
     metadata: {
       ...metadata,
-      categoryClassification: classificationMetadata(classification, evidence, { ...previousClassification, ...metadataPatch })
-    }
+      categoryClassification: classificationMetadata(classification, evidence, {
+        ...previousClassification,
+        ...metadataPatch,
+      }),
+    },
   };
 }
 
 export function normalizeCatalogProduct(product, adapter = {}) {
-  const rawManufacturer = clean(product.rawManufacturer ?? product.manufacturer ?? '');
+  const rawManufacturer = clean(product.rawManufacturer ?? product.manufacturer ?? "");
   const manufacturerCandidate = clean(product.manufacturer || rawManufacturer);
-  const rawCategory = clean(product.rawCategory ?? '');
+  const rawCategory = clean(product.rawCategory ?? "");
   const manufacturer = normalizeManufacturer(manufacturerCandidate);
+  const metadata =
+    product.metadata && typeof product.metadata === "object" && !Array.isArray(product.metadata)
+      ? product.metadata
+      : {};
   const { evidence } = collectListingCategoryEvidence({
     rawCategory,
-    title: product.title || '',
-    hintedCategory: product.category || '',
+    title: product.title || "",
+    hintedCategory: product.category || "",
     categoryMapping: adapter.categoryMapping || {},
-    adapter
+    adapter,
   });
   const classification = classifyCategoryEvidence(evidence);
   const featureFacts = normalizeFeatureFacts([
     ...(Array.isArray(product.featureFacts) ? product.featureFacts : []),
-    ...inferFeatureFacts(product.title || '', { source: 'title', confidence: 0.8 })
+    ...inferFeatureFacts(product.title || "", { source: "title", confidence: 0.8 }),
   ]);
 
-  return applyCategoryClassification({
-    ...product,
-    rawManufacturer,
-    manufacturerId: manufacturer.id,
-    manufacturer: manufacturer.displayName,
-    rawCategory,
-    featureFacts
-  }, classification, evidence);
+  return applyCategoryClassification(
+    {
+      ...product,
+      rawManufacturer,
+      manufacturerId: manufacturer.id,
+      manufacturer: manufacturer.displayName,
+      rawCategory,
+      featureFacts,
+      metadata: {
+        ...metadata,
+        manufacturerNormalization: {
+          version: MANUFACTURER_NORMALIZATION_METADATA_VERSION,
+          matchedAlias: manufacturer.matchedAlias,
+        },
+      },
+    },
+    classification,
+    evidence,
+  );
 }
 
 export function normalizeCatalogProducts(products, adapter = {}) {
-  return products.map(product => normalizeCatalogProduct(product, adapter));
+  return products.map((product) => normalizeCatalogProduct(product, adapter));
 }
 
 export const CATEGORY_CLASSIFICATION_METADATA_VERSION = CLASSIFICATION_METADATA_VERSION;

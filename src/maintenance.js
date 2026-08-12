@@ -9,6 +9,7 @@ export function retentionCutoffs(env, now = new Date()) {
   return {
     settings,
     crawlRunsBefore: cutoffIso(now, settings.crawlRunRetentionDays),
+    dataQualityBefore: cutoffIso(now, settings.dataQualityRetentionDays),
     priceHistoryBefore: cutoffIso(now, settings.priceHistoryRetentionDays),
     inactiveProductsBefore: cutoffIso(now, settings.inactiveProductRetentionDays),
   };
@@ -19,8 +20,13 @@ function changes(result) {
 }
 
 export async function runRetentionCleanup(env, { now = new Date() } = {}) {
-  const { settings, crawlRunsBefore, priceHistoryBefore, inactiveProductsBefore } =
-    retentionCutoffs(env, now);
+  const {
+    settings,
+    crawlRunsBefore,
+    dataQualityBefore,
+    priceHistoryBefore,
+    inactiveProductsBefore,
+  } = retentionCutoffs(env, now);
   const limit = settings.deleteBatchSize;
 
   const evidenceMetadata = await env.DB.prepare(`
@@ -33,6 +39,18 @@ export async function runRetentionCleanup(env, { now = new Date() } = {}) {
     )
   `)
     .bind(now.toISOString(), limit)
+    .run();
+
+  const dataQualityRuns = await env.DB.prepare(`
+    DELETE FROM data_quality_runs
+    WHERE id IN (
+      SELECT id FROM data_quality_runs
+      WHERE evaluated_at < ?
+      ORDER BY evaluated_at ASC, id ASC
+      LIMIT ?
+    )
+  `)
+    .bind(dataQualityBefore, limit)
     .run();
 
   const crawlRuns = await env.DB.prepare(`
@@ -70,6 +88,7 @@ export async function runRetentionCleanup(env, { now = new Date() } = {}) {
     at: now.toISOString(),
     deleted: {
       evidenceMetadata: changes(evidenceMetadata),
+      dataQualityRuns: changes(dataQualityRuns),
       crawlRuns: changes(crawlRuns),
       priceHistory: changes(priceHistory),
       inactiveProducts: changes(inactiveProducts),

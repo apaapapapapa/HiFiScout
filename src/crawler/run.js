@@ -6,6 +6,7 @@ import {
   getShopMaxPages,
   getShopRequestDelayMs,
 } from "../config.js";
+import { saveDataQualityRun } from "../db/data-quality-repository.js";
 import { syncProductIdentityResolutions } from "../db/product-identity-repository.js";
 import { syncObservedProductFeatureFacts } from "../db/product-feature-repository.js";
 import { syncProductMetadata } from "../db/product-metadata-repository.js";
@@ -124,6 +125,57 @@ function crawlEvidenceError(message, reason) {
   return error;
 }
 
+function evidenceOutcome(metrics, result) {
+  if (!result || result.status === "skipped") return;
+  if (result.status === "archived" || result.status === "deduplicated") {
+    metrics.archived += 1;
+  } else if (result.status === "failed" || result.status === "suppressed") {
+    metrics.failed += 1;
+  }
+}
+
+async function safeSaveDataQuality(env, adapter, runId, evaluatedAt, run) {
+  try {
+    const quality = await saveDataQualityRun(env.DB, {
+      shopKey: adapter.key,
+      crawlRunId: runId,
+      evaluatedAt,
+      run,
+      thresholdOverrides: adapter.qualityThresholds
+        ? { [adapter.key]: adapter.qualityThresholds }
+        : {},
+    });
+    console.log(
+      JSON.stringify({
+        event: "data_quality_evaluated",
+        shop: adapter.key,
+        crawlRunId: runId,
+        status: quality.status,
+        total: quality.counts.totalItems,
+        manufacturerUnknownRate: quality.metrics.manufacturerUnknown.rate,
+        categoryUnclassifiedRate: quality.metrics.categoryUnclassified.rate,
+        identityUnresolvedRate: quality.metrics.identityUnresolved.rate,
+        inventoryUnknownRate: quality.metrics.inventoryUnknown.rate,
+        modelMissingRate: quality.metrics.modelMissing.rate,
+        parseFailureRate: quality.metrics.parserFailure.rate,
+        evidenceCoverageRate: quality.metrics.evidenceCoverage.rate,
+        itemCountChangeRate: quality.metrics.itemCount.changeRate,
+      }),
+    );
+    return quality;
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        event: "data_quality_evaluation_failure",
+        shop: adapter.key,
+        crawlRunId: runId,
+        message: error?.message || String(error),
+      }),
+    );
+    return null;
+  }
+}
+
 async function syncDerivedProductState(env, adapter, products, observedAt) {
   let searchProjection = { changedCount: 0 };
   let identity = {
@@ -215,11 +267,14 @@ export async function crawlShop(
   const robotsCache = new Map();
   const items = new Map();
   let pageCount = 0;
+  let parseAttemptCount = 0;
+  let parseFailureCount = 0;
   let reachedEnd = false;
   let coverageIncomplete = false;
   let audioUnionDiagnostic = null;
   let lastEvidenceHtml = "";
   let classificationEvidenceHtml = "";
+  const evidenceMetrics = { expected: 0, archived: 0, failed: 0 };
   const transport = createTransport(env, adapter, fetchFn);
 
   try {
@@ -253,9 +308,11 @@ export async function crawlShop(
       pageCount += 1;
       if (adapter.key === "audiounion") audioUnionDiagnostic = diagnoseAudioUnionHtml(html);
       let parsed;
+      parseAttemptCount += 1;
       try {
         parsed = adapter.parse(html, page);
       } catch (error) {
+        parseFailureCount += 1;
         error.evidenceReason = "parser_failure";
         throw error;
       }
@@ -291,6 +348,7 @@ export async function crawlShop(
 
     if (pageQueue.length) coverageIncomplete = true;
     if (!items.size) {
+      parseFailureCount = Math.max(1, parseFailureCount);
       throw crawlEvidenceError(
         "no products parsed; refusing to mark existing products inactive",
         "parser_failure",
@@ -333,16 +391,39 @@ export async function crawlShop(
     const products = enrichment.products;
     logUnclassifiedProducts(adapter, products);
 
-    let evidence = { archived: false, failed: false };
-    if (enrichment.unresolvedCount > 0 && classificationEvidenceHtml) {
-      evidence = await archiveEvidence({
+    if (enrichment.unresolvedCount > 0) {
+      evidenceMetrics.expected += 1;
+      if (classificationEvidenceHtml) {
+        const result = await archiveEvidence({
+          env,
+          shopKey: adapter.key,
+          crawlRunId: runId,
+          reason: "classification_unresolved",
+          html: classificationEvidenceHtml,
+          capturedAt: observedAt,
+        });
+        evidenceOutcome(evidenceMetrics, result);
+      } else {
+        evidenceMetrics.failed += 1;
+      }
+    }
+
+    const previousItemCount = Number(state?.last_item_count);
+    if (
+      Number.isFinite(previousItemCount) &&
+      previousItemCount > 0 &&
+      (items.size - previousItemCount) / previousItemCount <= -0.2
+    ) {
+      evidenceMetrics.expected += 1;
+      const result = await archiveEvidence({
         env,
         shopKey: adapter.key,
         crawlRunId: runId,
-        reason: "classification_unresolved",
-        html: classificationEvidenceHtml,
+        reason: "unexpected_item_count",
+        html: lastEvidenceHtml,
         capturedAt: observedAt,
       });
+      evidenceOutcome(evidenceMetrics, result);
     }
 
     const { changedCount, activityCount, touchedCount, deactivatedCount } = await upsertProducts(
@@ -365,6 +446,16 @@ export async function crawlShop(
       products,
       observedAt,
     );
+    const quality = await safeSaveDataQuality(env, adapter, runId, observedAt, {
+      parseAttemptCount,
+      parseSuccessCount: Math.max(0, parseAttemptCount - parseFailureCount),
+      parseFailureCount,
+      evidenceExpectedEventCount: evidenceMetrics.expected,
+      evidenceArchivedEventCount: evidenceMetrics.archived,
+      evidenceArchiveFailureCount: evidenceMetrics.failed,
+      previousItemCount: Number.isFinite(previousItemCount) ? previousItemCount : null,
+      currentItemCount: items.size,
+    });
     await markShopSuccess(env.DB, adapter.key, observedAt, items.size);
     const diagnosticParts = [];
     if (adapter.key === "audiounion" && audioUnionDiagnostic) {
@@ -390,9 +481,7 @@ export async function crawlShop(
     ) {
       diagnosticParts.push(`identity=${JSON.stringify(derived.identity)}`);
     }
-    if (evidence.status && evidence.status !== "skipped") {
-      diagnosticParts.push(`evidence=${JSON.stringify({ status: evidence.status })}`);
-    }
+    if (quality) diagnosticParts.push(`quality=${JSON.stringify({ status: quality.status })}`);
     const diagnosticSuffix = diagnosticParts.length ? ` | ${diagnosticParts.join(" | ")}` : "";
     await finishCrawlRunSuccess(env.DB, runId, {
       finishedAt: observedAt,
@@ -403,6 +492,7 @@ export async function crawlShop(
     return {
       shopKey: adapter.key,
       status: "success",
+      crawlRunId: runId,
       itemCount: items.size,
       pageCount,
       changedCount,
@@ -412,6 +502,7 @@ export async function crawlShop(
       touchedCount,
       deactivatedCount,
       deactivateMissing,
+      dataQuality: quality,
       searchProjection: derived.searchProjection,
       productIdentity: derived.identity,
       categoryEnrichment: {
@@ -423,8 +514,9 @@ export async function crawlShop(
     };
   } catch (error) {
     const failedAt = nowIso(new Date());
+    evidenceMetrics.expected += 1;
     if (lastEvidenceHtml) {
-      await archiveEvidence({
+      const evidence = await archiveEvidence({
         env,
         shopKey: adapter.key,
         crawlRunId: runId,
@@ -432,7 +524,21 @@ export async function crawlShop(
         html: lastEvidenceHtml,
         capturedAt: failedAt,
       });
+      evidenceOutcome(evidenceMetrics, evidence);
+    } else {
+      evidenceMetrics.failed += 1;
     }
+    const previousItemCount = Number(state?.last_item_count);
+    const quality = await safeSaveDataQuality(env, adapter, runId, failedAt, {
+      parseAttemptCount,
+      parseSuccessCount: Math.max(0, parseAttemptCount - parseFailureCount),
+      parseFailureCount,
+      evidenceExpectedEventCount: evidenceMetrics.expected,
+      evidenceArchivedEventCount: evidenceMetrics.archived,
+      evidenceArchiveFailureCount: evidenceMetrics.failed,
+      previousItemCount: Number.isFinite(previousItemCount) ? previousItemCount : null,
+      currentItemCount: items.size,
+    });
     await markShopFailure(
       env.DB,
       adapter.key,
@@ -445,7 +551,13 @@ export async function crawlShop(
       pageCount,
       message: error.message,
     });
-    return { shopKey: adapter.key, status: "failed", error: error.message };
+    return {
+      shopKey: adapter.key,
+      status: "failed",
+      crawlRunId: runId,
+      error: error.message,
+      dataQuality: quality,
+    };
   } finally {
     await transport.close?.();
   }
