@@ -56,7 +56,10 @@ test("U-AUDIO pagination crawls all outlet pages before used categories", () => 
   assert.equal(discovered[0].url, "https://www.u-audio.com/view/category/ct18?page=2");
   assert.equal(discovered[1].url, "https://www.u-audio.com/view/category/ct4");
   assert.equal(discovered.at(-1).url, "https://www.u-audio.com/view/category/ct10");
-  assert.equal(discovered.some((page) => page.categoryCode === "ct11"), false);
+  assert.equal(
+    discovered.some((page) => page.categoryCode === "ct11"),
+    false,
+  );
 
   const accessory = discovered.find((page) => page.categoryCode === "ct10");
   assert.deepEqual(uAudioAdapter.discoverPageUrls("<p>全 48 件</p>", accessory), [
