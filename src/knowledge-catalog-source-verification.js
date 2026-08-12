@@ -1,4 +1,4 @@
-import { createKnowledgeSourceVerifierV3 } from './catalog/knowledge-source-verifier-v3.js';
+import { createKnowledgeSourceVerifierV4 } from './catalog/knowledge-source-verifier-v4.js';
 import { createRobotsRespectingFetch } from './crawler/robots-respecting-fetch.js';
 import {
   listDueKnowledgeCatalogProducts,
@@ -51,14 +51,14 @@ export async function runKnowledgeCatalogSourceVerification(env, {
     userAgent: env.CRAWLER_USER_AGENT || 'HiFiScoutBot/0.1',
     minimumDelayMs: Number(env.KNOWLEDGE_CATALOG_SOURCE_REQUEST_DELAY_MS) || 500
   });
-  const verifier = createKnowledgeSourceVerifierV3(env, {
+  const verifier = createKnowledgeSourceVerifierV4(env, {
     fetchImpl: sourceFetch,
-    // The one-shot rollout has a matched-cohort purpose. Avoid expensive sitemap fallback there;
-    // normal monthly reviews retain the broader v2 fallback for catalog expansion.
+    // Retry-only rollouts avoid the expensive generic sitemap fallback. Normal reviews and source
+    // expansion rollouts retain it so newly supported manufacturers can populate the catalog.
     fallbackEnabled: !preferRetries
   });
   const supportedManufacturerIds = [...verifier.definitions.keys()];
-  const candidateLimit = boundedLimit(env.KNOWLEDGE_CATALOG_VERIFY_MAX_CANDIDATES, 25);
+  const candidateLimit = boundedLimit(env.KNOWLEDGE_CATALOG_VERIFY_MAX_CANDIDATES, 50);
   const dueProductLimit = boundedLimit(env.KNOWLEDGE_CATALOG_VERIFY_MAX_DUE_PRODUCTS, 25);
 
   let verificationAttempts = 0;
