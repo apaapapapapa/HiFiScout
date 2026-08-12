@@ -9,9 +9,7 @@ import { shimamusenAdapter } from "./shimamusen.js";
 
 function defineShopPlugin(adapter, definition) {
   if (!adapter?.key || adapter.key !== definition.key) {
-    throw new Error(
-      `shop plugin key mismatch: ${adapter?.key || "missing"} / ${definition.key}`,
-    );
+    throw new Error(`shop plugin key mismatch: ${adapter?.key || "missing"} / ${definition.key}`);
   }
 
   const plugin = { ...adapter, definition: Object.freeze({ ...definition }) };
