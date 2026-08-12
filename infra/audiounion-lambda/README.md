@@ -31,7 +31,7 @@ Use the `FunctionUrl` stack output as the Worker relay URL. The Node.js 22 Lambd
 
 ## Automatic code deployment from GitHub Actions
 
-After the initial SAM deployment, changes to `infra/audiounion-lambda/index.mjs` on `main` are automatically packaged and deployed to the existing `hifiscout-audiounion-fetcher` function in `ap-northeast-1` by `.github/workflows/deploy-audiounion-lambda.yml`. The workflow can also be run manually with `workflow_dispatch`.
+After the initial SAM deployment, changes to `infra/audiounion-lambda/index.ts` on `main` are automatically packaged and deployed to the existing `hifiscout-audiounion-fetcher` function in `ap-northeast-1` by `.github/workflows/deploy-audiounion-lambda.yml`. The workflow can also be run manually with `workflow_dispatch`.
 
 Authentication uses GitHub Actions OIDC. Do not create long-lived AWS access keys for this workflow.
 
