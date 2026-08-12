@@ -24,7 +24,7 @@ const RULES = [
   ['earphone', /\bearphones?\b|\bearbuds?\b|\biem\b|イヤホン/i],
   ['headphone', /\bheadphones?\b|ヘッドホン/i],
   ['dj_dtm', /\bdj\b|\bddj[-\s]|rekordbox|serato|\bmidi\b|オーディオインターフェース/i],
-  ['dac', /\bdac\b|d\s*[/\-]\s*a\s*(?:converter|コンバータ(?:ー)?)|da\s*コンバータ(?:ー)?|d\/aコンバータ(?:ー)?/i]
+  ['dac', /\bdac\b|d\s*[/-]\s*a\s*(?:converter|コンバータ(?:ー)?)|da\s*コンバータ(?:ー)?|d\/aコンバータ(?:ー)?/i]
 ];
 
 export function inferExplicitCategoryIds(text = '') {

@@ -8,7 +8,7 @@ export const FEATURE_DEFINITIONS = Object.freeze([
 const FEATURE_IDS = new Set(FEATURE_DEFINITIONS.map(feature => feature.id));
 
 const PRESENT_RULES = [
-  ['dac', /\bdac\b|dac\s*(?:内蔵|搭載)|d\s*[/\-]\s*a\s*(?:converter|コンバータ(?:ー)?)|da\s*コンバータ(?:ー)?/i],
+  ['dac', /\bdac\b|dac\s*(?:内蔵|搭載)|d\s*[/-]\s*a\s*(?:converter|コンバータ(?:ー)?)|da\s*コンバータ(?:ー)?/i],
   ['network_playback', /network\s+(?:player|transport|streaming)|streamer|streaming\s+(?:player|transport)|ネットワーク(?:再生|対応|プレーヤー|プレイヤー|トランスポート)/i],
   ['headphone_output', /headphone\s*(?:out|output|jack)|ヘッドホン(?:出力|端子)/i],
   ['phono_input', /phono\s*(?:in|input)|フォノ入力/i]
