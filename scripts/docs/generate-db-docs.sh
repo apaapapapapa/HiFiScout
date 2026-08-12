@@ -9,6 +9,7 @@ DB_WORK_DIR="$ROOT_DIR/.cache/docs/schema"
 OUTPUT_DIR="$ROOT_DIR/docs/public/db"
 DRIVER_JAR="$DRIVER_DIR/sqlite-jdbc-${SQLITE_JDBC_VERSION}.jar"
 WORK_DB_FILE="$DB_WORK_DIR/hifiscout.sqlite"
+SCHEMASPY_TYPE_FILE="$ROOT_DIR/scripts/docs/hifiscout-sqlite.properties"
 
 cd "$ROOT_DIR"
 
@@ -42,11 +43,12 @@ docker run --rm \
   -v "$DB_WORK_DIR:/db" \
   -v "$DRIVER_DIR:/drivers:ro" \
   -v "$OUTPUT_DIR:/output" \
+  -v "$SCHEMASPY_TYPE_FILE:/hifiscout-sqlite.properties:ro" \
   "schemaspy/schemaspy:${SCHEMASPY_VERSION}" \
-  -t sqlite-xerial \
+  -t hifiscout-sqlite \
   -db /db/hifiscout.sqlite \
-  -cat '%' \
-  -s '%' \
+  -cat main \
+  -s main \
   -sso \
   -noschema \
   -imageformat svg
