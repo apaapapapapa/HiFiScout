@@ -24,11 +24,7 @@ mkdir -p "$WRANGLER_STATE_DIR" "$DB_WORK_DIR" "$OUTPUT_DIR"
 
 npx wrangler d1 migrations apply DB --local --persist-to "$WRANGLER_STATE_DIR"
 
-DB_FILE="$(find "$WRANGLER_STATE_DIR" -type f -name '*.sqlite' -print -quit)"
-if [[ -z "$DB_FILE" ]]; then
-  echo "Could not locate the isolated local D1 SQLite database after applying migrations." >&2
-  exit 1
-fi
+DB_FILE="$(node scripts/docs/find-d1-database.mjs "$WRANGLER_STATE_DIR")"
 
 mkdir -p "$DRIVER_DIR"
 if [[ ! -f "$DRIVER_JAR" ]]; then
