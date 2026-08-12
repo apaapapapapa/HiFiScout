@@ -60,6 +60,42 @@ test('verified exact catalog match classifies before seller detail enrichment', 
   assert.equal(result.products[0].metadata.categoryClassification.catalogMatchType, 'exact');
 });
 
+test('derived Marantz model aliases reuse one verified catalog classification across retailer formats', async () => {
+  const product = normalizeCatalogProduct({
+    sourceId: 'sacd10-other-shop',
+    manufacturer: 'Marantz',
+    model: 'SACD 10',
+    title: 'Marantz SACD 10',
+    rawCategory: 'DAP',
+    sourceUrl: 'https://example.invalid/sacd10'
+  }, fujiyaAvicAdapter);
+  assert.equal(product.classificationStatus, 'unclassified');
+
+  const db = catalogDb([{
+    id: 20,
+    manufacturer_id: 'marantz',
+    canonical_model: 'SACD10/FB',
+    normalized_model: 'SACD10/FB',
+    canonical_name: 'Marantz SACD 10',
+    category_id: 'cd_sacd_player',
+    is_primary: 1
+  }]);
+  const result = await enrichProductCategories({
+    db,
+    adapter: fujiyaAvicAdapter,
+    products: [product],
+    transport: { async fetchHtmlPage() { throw new Error('detail request must not run'); } },
+    fetchOptions: {},
+    now: new Date('2026-08-12T04:00:00Z')
+  });
+
+  assert.equal(result.catalogMatches, 1);
+  assert.equal(result.detailRequests, 0);
+  assert.equal(result.products[0].primaryCategoryId, 'cd_sacd_player');
+  assert.equal(result.products[0].metadata.categoryClassification.catalogProductId, 20);
+  assert.equal(result.products[0].metadata.categoryClassification.catalogMatchType, 'derived_alias');
+});
+
 test('verified rows without an explicit primary category are not used for classification', async () => {
   const product = normalizeCatalogProduct({
     sourceId: 'abc1',
