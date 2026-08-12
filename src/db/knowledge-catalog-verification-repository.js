@@ -2,7 +2,7 @@ import { normalizeCatalogModel } from '../catalog/knowledge-catalog.js';
 
 function boundedLimit(value, fallback = 25) {
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.min(100, Math.max(1, Math.trunc(parsed))) : fallback;
+  return Number.isFinite(parsed) ? Math.min(2000, Math.max(1, Math.trunc(parsed))) : fallback;
 }
 
 function categoriesFromRow(value) {
