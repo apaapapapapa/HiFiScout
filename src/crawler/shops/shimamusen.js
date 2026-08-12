@@ -1,4 +1,4 @@
-import { cleanText, parseYen } from '../normalize.js';
+import { cleanText, parseYen, splitManufacturerModel } from '../normalize.js';
 
 const BASE_URL = 'https://www.shimamusen.com';
 const DISPLAY_URL = `${BASE_URL}/shopbrand/063/Y/`;
@@ -22,18 +22,8 @@ function stripTags(html = '') {
     .replace(/<[^>]+>/g, ' '));
 }
 
-function decodeBasicEntities(value = '') {
-  return String(value)
-    .replace(/&amp;/gi, '&')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&nbsp;/gi, ' ');
-}
-
 function cleanedAnchorText(html = '') {
-  return cleanText(decodeBasicEntities(stripTags(html)));
+  return stripTags(html);
 }
 
 function pageKind(page) {
@@ -79,8 +69,8 @@ function distinctProductBlocks(html) {
     const titleAnchor = current.find(anchor => anchor.title) || current[0];
     const nextId = orderedIds[index + 1];
     const nextAnchors = nextId ? grouped.get(nextId) : null;
-    const blockStart = Math.max(0, current[0].index - 600);
-    const blockEnd = nextAnchors ? nextAnchors[0].index : Math.min(String(html).length, current[current.length - 1].end + 1800);
+    const blockStart = Math.max(0, current[0].index - 500);
+    const blockEnd = nextAnchors ? nextAnchors[0].index : Math.min(String(html).length, current[current.length - 1].end + 1600);
     return {
       sourceId,
       sourceUrl: titleAnchor.sourceUrl,
@@ -91,18 +81,16 @@ function distinctProductBlocks(html) {
 }
 
 function manufacturerFromBlock(blockHtml, title) {
-  const text = stripTags(blockHtml);
-  const titleIndex = text.indexOf(title);
-  if (titleIndex < 0) return '';
-  const after = text.slice(titleIndex + title.length, titleIndex + title.length + 500);
-  const priceIndex = after.search(/(?:販売価格\s*)?[\d,]+円|価格\s*[:：]/);
-  const between = priceIndex >= 0 ? after.slice(0, priceIndex) : after.slice(0, 120);
-  const candidates = between
-    .split(/\s{2,}|[｜|]/)
-    .map(value => cleanText(value))
-    .filter(Boolean)
-    .filter(value => !/^(?:販売価格|価格|税込|円|新着|商品名|製造元)$/i.test(value));
-  return candidates.find(value => value.length <= 60 && !/\d{4,}/.test(value)) || '';
+  const explicit = String(blockHtml).match(
+    /<(?:span|p|div|li)\b[^>]*class=["'][^"']*(?:maker|manufacturer|brand)[^"']*["'][^>]*>([\s\S]*?)<\/(?:span|p|div|li)>/i
+  )?.[1];
+  const explicitText = stripTags(explicit || '');
+  if (explicitText && explicitText.length <= 80) return explicitText;
+  return splitManufacturerModel(title, 'shimamusen').manufacturer || '';
+}
+
+function modelFromTitle(title) {
+  return splitManufacturerModel(title, 'shimamusen').model || title;
 }
 
 function extractPrice(blockHtml) {
@@ -112,8 +100,11 @@ function extractPrice(blockHtml) {
   return match ? parseYen(match[1]) : null;
 }
 
-function soldOut(blockHtml) {
-  return /売り切れ|売切れ|SOLD\s*OUT|在庫なし|完売|販売終了/i.test(stripTags(blockHtml));
+function stockStatusFor(title, blockHtml) {
+  const text = `${title} ${stripTags(blockHtml)}`;
+  if (/売り切れ|売切れ|SOLD\s*OUT|在庫なし|完売|販売終了/i.test(text)) return 'sold_out';
+  if (/お取り寄せ/.test(title)) return 'unknown';
+  return 'in_stock';
 }
 
 function conditionFor(kind, title, blockHtml) {
@@ -132,18 +123,19 @@ export function parseShimamusenListing(html, page = {}) {
   for (const block of distinctProductBlocks(html)) {
     const title = cleanText(block.title);
     if (!title) continue;
+    const manufacturer = manufacturerFromBlock(block.html, title);
 
     products.push({
       sourceId: block.sourceId,
-      rawManufacturer: manufacturerFromBlock(block.html, title),
-      manufacturer: manufacturerFromBlock(block.html, title),
-      model: title,
+      rawManufacturer: manufacturer,
+      manufacturer,
+      model: modelFromTitle(title),
       title,
       rawCategory: kind,
       category: '',
       conditionText: conditionFor(kind, title, block.html),
       priceYen: extractPrice(block.html),
-      stockStatus: soldOut(block.html) ? 'sold_out' : 'in_stock',
+      stockStatus: stockStatusFor(title, block.html),
       sourceUrl: block.sourceUrl,
       metadata: { listingKind: kind }
     });
@@ -171,7 +163,7 @@ export const shimamusenAdapter = {
   dynamicPagination: true,
   guardItemCount: true,
   categoryPolicy: {
-    // These three entry pages are merchandising/condition buckets, not product-type categories.
+    // These are condition/merchandising buckets, not product-type categories.
     sellerCategory: { default: 'ignore' },
     parserHint: 'ignore'
   },
