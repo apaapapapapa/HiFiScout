@@ -41,6 +41,7 @@ docker run --rm \
   "schemaspy/schemaspy:${SCHEMASPY_VERSION}" \
   -t sqlite-xerial \
   -db /db/hifiscout.sqlite \
+  -cat '%' \
   -sso \
   -noschema \
   -imageformat svg
