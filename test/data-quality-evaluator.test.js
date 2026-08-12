@@ -35,11 +35,13 @@ test("rate returns null for a zero denominator", () => {
 
 test("normal quality is healthy", () => {
   const result = evaluateQuality(healthyInput());
+  assert.equal(result.snapshot.status, "healthy");
+  assert.equal(result.run.status, "healthy");
   assert.equal(result.status, "healthy");
   assert.equal(result.metrics.categoryUnclassified.rate, 0.01);
 });
 
-test("warning and critical thresholds include exact boundaries", () => {
+test("high-rate warning and critical thresholds include exact boundaries", () => {
   const warning = evaluateQuality(healthyInput({ manufacturerMissingCount: 2 }));
   assert.equal(warning.metrics.manufacturerUnknown.status, "warning");
 
@@ -57,7 +59,12 @@ test("unknown is retained when a denominator does not exist", () => {
 
 test("model rate uses model expected rather than total items", () => {
   const result = evaluateQuality(
-    healthyInput({ totalItems: 100, modelExpectedCount: 50, modelExtractedCount: 45, modelMissingCount: 5 }),
+    healthyInput({
+      totalItems: 100,
+      modelExpectedCount: 50,
+      modelExtractedCount: 45,
+      modelMissingCount: 5,
+    }),
   );
   assert.equal(result.metrics.modelMissing.denominator, 50);
   assert.equal(result.metrics.modelMissing.rate, 0.1);
@@ -65,7 +72,9 @@ test("model rate uses model expected rather than total items", () => {
 });
 
 test("item count increase is healthy and first crawl is unknown", () => {
-  const increased = evaluateQuality(healthyInput({ previousItemCount: 100, currentItemCount: 120 }));
+  const increased = evaluateQuality(
+    healthyInput({ previousItemCount: 100, currentItemCount: 120 }),
+  );
   assert.equal(increased.metrics.itemCount.changeRate, 0.2);
   assert.equal(increased.metrics.itemCount.status, "healthy");
 
@@ -74,7 +83,7 @@ test("item count increase is healthy and first crawl is unknown", () => {
   assert.equal(first.metrics.itemCount.status, "unknown");
 });
 
-test("item count drop distinguishes warning and critical", () => {
+test("item count drop uses inclusive warning and critical boundaries", () => {
   const warning = evaluateQuality(healthyInput({ previousItemCount: 100, currentItemCount: 80 }));
   assert.equal(warning.metrics.itemCount.status, "warning");
 
@@ -92,6 +101,25 @@ test("evidence coverage evaluates only expected anomaly events", () => {
     healthyInput({ evidenceExpectedEventCount: 10, evidenceArchivedEventCount: 7 }),
   );
   assert.equal(critical.metrics.evidenceCoverage.rate, 0.7);
+  assert.equal(critical.metrics.evidenceCoverage.status, "critical");
+});
+
+test("evidence coverage warning and critical boundaries are strict", () => {
+  const healthy = evaluateQuality(
+    healthyInput({ evidenceExpectedEventCount: 20, evidenceArchivedEventCount: 19 }),
+  );
+  assert.equal(healthy.metrics.evidenceCoverage.rate, 0.95);
+  assert.equal(healthy.metrics.evidenceCoverage.status, "healthy");
+
+  const warning = evaluateQuality(
+    healthyInput({ evidenceExpectedEventCount: 10, evidenceArchivedEventCount: 8 }),
+  );
+  assert.equal(warning.metrics.evidenceCoverage.rate, 0.8);
+  assert.equal(warning.metrics.evidenceCoverage.status, "warning");
+
+  const critical = evaluateQuality(
+    healthyInput({ evidenceExpectedEventCount: 100, evidenceArchivedEventCount: 79 }),
+  );
   assert.equal(critical.metrics.evidenceCoverage.status, "critical");
 });
 
