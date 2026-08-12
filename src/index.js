@@ -236,19 +236,44 @@ async function bootstrapKnowledgeCatalogReview(env) {
     KNOWLEDGE_CATALOG_VERIFIER_VERSION,
     startedAt,
   );
-  if (!claimed) return { status: "skipped", reason: "verifier_version_already_claimed" };
+  if (claimed) {
+    console.log(
+      JSON.stringify({
+        event: "knowledge_catalog_verifier_rollout_started",
+        verifierVersion: KNOWLEDGE_CATALOG_VERIFIER_VERSION,
+        mode: "daily_candidates_queue",
+      }),
+    );
+    return dispatchKnowledgeCatalogDailyVerification(env, {
+      now,
+      preferRetries: false,
+      verifierVersion: KNOWLEDGE_CATALOG_VERIFIER_VERSION,
+    });
+  }
 
+  const [state, queue] = await Promise.all([
+    knowledgeCatalogVerifierState(env.DB),
+    knowledgeCatalogVerificationQueueStatus(env.DB),
+  ]);
+  if (queue.latestRunId) {
+    return { status: "skipped", reason: "knowledge_catalog_queue_already_bootstrapped" };
+  }
+
+  const verifierVersion =
+    state?.version === KNOWLEDGE_CATALOG_VERIFIER_VERSION && state.status !== "success"
+      ? KNOWLEDGE_CATALOG_VERIFIER_VERSION
+      : 0;
   console.log(
     JSON.stringify({
-      event: "knowledge_catalog_verifier_rollout_started",
-      verifierVersion: KNOWLEDGE_CATALOG_VERIFIER_VERSION,
+      event: "knowledge_catalog_queue_rollout_started",
+      verifierVersion,
       mode: "daily_candidates_queue",
     }),
   );
   return dispatchKnowledgeCatalogDailyVerification(env, {
     now,
     preferRetries: false,
-    verifierVersion: KNOWLEDGE_CATALOG_VERIFIER_VERSION,
+    verifierVersion,
   });
 }
 
