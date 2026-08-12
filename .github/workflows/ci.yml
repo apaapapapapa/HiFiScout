@@ -26,13 +26,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Diagnose Shimamusen formatting
-        run: |
-          npx oxfmt src/crawler/shops/index.js src/crawler/shops/shimamusen.js test/shimamusen.test.js test/dispatch.test.js
-          git diff -- src/crawler/shops/index.js src/crawler/shops/shimamusen.js test/shimamusen.test.js test/dispatch.test.js
-          echo "--- DISPATCH BASE64 ---"
-          base64 -w0 test/dispatch.test.js
-          echo
       - run: npm run lint
       - name: Check formatting of changed source files
         shell: bash
