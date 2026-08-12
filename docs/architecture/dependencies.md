@@ -2,7 +2,7 @@
 
 HiFiScout uses dependency-cruiser to analyze ES module imports under `src/`.
 
-[Open the generated interactive dependency report](/generated/dependencies.html)
+[Open the generated interactive dependency report](../generated/dependencies.html)
 
 ## CI architecture check
 

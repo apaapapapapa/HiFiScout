@@ -2,7 +2,7 @@
 
 The database reference is generated from the same D1 migrations used by the application.
 
-[Open the generated SchemaSpy database documentation](/db/index.html)
+[Open the generated SchemaSpy database documentation](../db/index.html)
 
 ## How it is generated
 

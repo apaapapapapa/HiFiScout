@@ -1,7 +1,11 @@
+const configuredBase = process.env.DOCS_BASE?.trim();
+const base = configuredBase ? `${configuredBase.replace(/\/+$/, "")}/` : "/";
+
 export default {
   lang: "en-US",
   title: "HiFiScout Developer Docs",
   description: "Generated and curated implementation documentation for HiFiScout.",
+  base,
   cleanUrls: true,
   lastUpdated: true,
   themeConfig: {
@@ -40,6 +44,6 @@ export default {
         ],
       },
     ],
-    socialLinks: [{ icon: "github", link: "https://github.com/apaapapapapa/HiFiScout" }],
+    socialLinks: [{ icon: "github", link: "https://github.com/apaapapapa/HiFiScout" }],
   },
 };
