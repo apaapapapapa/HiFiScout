@@ -4,7 +4,8 @@
     ippinkan: 'https://ippinkan.jp/shopbrand/U100000/',
     'fujiya-avic': 'https://www.fujiya-avic.co.jp/shop/e/ea-usednw_s1/?ps=50',
     hifido: 'https://www.hifido.co.jp/?L=50&LNG=J&O=0&OD=0',
-    formusic: 'https://shop.formusic.jp/'
+    formusic: 'https://shop.formusic.jp/',
+    'u-audio': 'https://www.u-audio.com/'
   });
 
   function shopKeyFromElement(element) {
