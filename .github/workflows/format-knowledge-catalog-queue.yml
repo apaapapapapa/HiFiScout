@@ -1,0 +1,55 @@
+name: Format Knowledge Catalog Queue Branch
+
+on:
+  push:
+    branches: [feat/knowledge-catalog-verification-queue]
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: contains(github.event.head_commit.message, '[format-queue]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feat/knowledge-catalog-verification-queue
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Format queue implementation
+        run: |
+          npx oxfmt \
+            src/db/knowledge-catalog-verification-queue-repository.js \
+            src/db/knowledge-catalog-verification-repository.js \
+            src/index.js \
+            src/knowledge-catalog-source-verification.js \
+            src/knowledge-catalog-verification-queue.js \
+            test/knowledge-catalog-candidate-selection.test.js \
+            test/knowledge-catalog-verification-queue.test.js \
+            test/schedule.test.js
+      - name: Commit formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add \
+            src/db/knowledge-catalog-verification-queue-repository.js \
+            src/db/knowledge-catalog-verification-repository.js \
+            src/index.js \
+            src/knowledge-catalog-source-verification.js \
+            src/knowledge-catalog-verification-queue.js \
+            test/knowledge-catalog-candidate-selection.test.js \
+            test/knowledge-catalog-verification-queue.test.js \
+            test/schedule.test.js
+          if git diff --cached --quiet; then
+            echo 'No formatting changes required.'
+            exit 0
+          fi
+          git commit -m 'style: format Knowledge Catalog queue changes'
+          git push origin HEAD:feat/knowledge-catalog-verification-queue
