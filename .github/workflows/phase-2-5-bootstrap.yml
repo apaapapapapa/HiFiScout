@@ -34,6 +34,8 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          # GitHub App tokens cannot update workflow files. Workflow changes are applied separately through the repository API.
+          git restore -- .github/workflows
           git add -A
           if git diff --cached --quiet; then
             echo 'No bootstrap changes to commit.'
