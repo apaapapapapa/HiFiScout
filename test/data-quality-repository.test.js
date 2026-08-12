@@ -70,7 +70,7 @@ test("snapshot uses one D1 aggregate over active shop listings", async () => {
   assert.doesNotMatch(db.calls[0].sql, /SELECT p\.\*/);
 });
 
-test("quality result is linked to crawl run and persisted with transparent statuses", async () => {
+test("quality result is linked to crawl run and persists snapshot and run statuses", async () => {
   const db = captureDb({ firstRows: [snapshotRow] });
   const result = await saveDataQualityRun(db, {
     shopKey: "audio-union",
@@ -89,10 +89,14 @@ test("quality result is linked to crawl run and persisted with transparent statu
 
   const insert = db.calls.find((call) => call.kind === "run");
   assert.equal(result.crawlRunId, 42);
+  assert.equal(result.snapshot.status, "warning");
+  assert.equal(result.run.status, "healthy");
   assert.equal(insert.binds[0], "audio-union");
   assert.equal(insert.binds[1], 42);
-  assert.equal(insert.binds.length, 36);
+  assert.equal(insert.binds.length, 38);
   assert.match(insert.sql, /ON CONFLICT\(crawl_run_id\)/);
+  assert.match(insert.sql, /snapshot_status/);
+  assert.match(insert.sql, /run_status/);
   assert.match(insert.sql, /quality_status/);
 });
 
@@ -103,7 +107,7 @@ test("history query is bounded to 200 rows", async () => {
   assert.match(db.calls[0].sql, /LIMIT \?/);
 });
 
-test("stored row exposes count denominator rate and previous comparison", () => {
+test("stored row exposes snapshot metrics and latest crawl comparison separately", () => {
   const row = dataQualityRow({
     id: 1,
     shop_key: "audio-union",
@@ -140,15 +144,19 @@ test("stored row exposes count denominator rate and previous comparison", () => 
     parser_status: "healthy",
     item_count_status: "healthy",
     evidence_status: "healthy",
+    snapshot_status: "warning",
+    run_status: "healthy",
     quality_status: "warning",
   });
 
-  assert.deepEqual(row.metrics.manufacturerUnknown, {
+  assert.deepEqual(row.snapshot.metrics.manufacturerUnknown, {
     count: 2,
     denominator: 100,
     rate: 0.02,
     status: "warning",
   });
-  assert.equal(row.metrics.itemCount.previous, 105);
+  assert.equal(row.latestRun.metrics.itemCount.previous, 105);
+  assert.equal(row.snapshot.status, "warning");
+  assert.equal(row.latestRun.status, "healthy");
   assert.equal(row.crawlRunId, 42);
 });
