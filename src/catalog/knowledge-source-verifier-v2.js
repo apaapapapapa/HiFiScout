@@ -1,6 +1,5 @@
 import { classifyCategoryEvidence } from './category-classifier.js';
 import { inferExplicitCategoryIds } from './category-rules.js';
-import { normalizeCatalogModel } from './knowledge-catalog.js';
 import { knowledgeSourceDefinitions as baseKnowledgeSourceDefinitions } from './knowledge-source-verifier.js';
 import { normalizeManufacturer } from './manufacturers.js';
 

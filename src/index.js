@@ -131,7 +131,7 @@ async function handleApi(request, env, ctx) {
     try {
       const health = await getSyncHealth(env);
       return json({ service: 'HiFiScout', ...health }, { status: health.ok ? 200 : 503 });
-    } catch (error) {
+    } catch {
       return json({ ok: false, service: 'HiFiScout', status: 'critical', error: 'health_check_failed' }, { status: 503 });
     }
   }
