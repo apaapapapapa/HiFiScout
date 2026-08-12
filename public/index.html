@@ -105,13 +105,12 @@
     });
   </script>
   <script src="/catalog-url-state.js"></script>
-  <script type="module" src="/app.js"></script>
-  <script src="/shop-links.js"></script>
   <script>
-    window.addEventListener('load', () => {
-      const category = document.getElementById('category');
+    const category = document.getElementById('category');
+    const categoryParentIds = ['amplifier', 'digital', 'analog', 'speaker', 'headphone_group', 'accessories'];
+    const ensureCategorySeparators = () => {
       if (!category) return;
-      for (const id of ['amplifier', 'digital', 'analog', 'speaker', 'headphone_group', 'accessories']) {
+      for (const id of categoryParentIds) {
         const parent = [...category.options].find(option => option.value === id);
         if (!parent || parent.previousElementSibling?.dataset.categorySeparator === 'true') continue;
         const separator = document.createElement('option');
@@ -120,7 +119,13 @@
         separator.textContent = '────────────';
         category.insertBefore(separator, parent);
       }
-    });
+    };
+    if (category) {
+      new MutationObserver(ensureCategorySeparators).observe(category, { childList: true });
+      ensureCategorySeparators();
+    }
   </script>
+  <script type="module" src="/app.js"></script>
+  <script src="/shop-links.js"></script>
 </body>
 </html>
