@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS data_quality_runs (
   parser_status TEXT NOT NULL CHECK (parser_status IN ('healthy','warning','critical','unknown')),
   item_count_status TEXT NOT NULL CHECK (item_count_status IN ('healthy','warning','critical','unknown')),
   evidence_status TEXT NOT NULL CHECK (evidence_status IN ('healthy','warning','critical','unknown')),
+  snapshot_status TEXT NOT NULL CHECK (snapshot_status IN ('healthy','warning','critical','unknown')),
+  run_status TEXT NOT NULL CHECK (run_status IN ('healthy','warning','critical','unknown')),
   quality_status TEXT NOT NULL CHECK (quality_status IN ('healthy','warning','critical','unknown')),
   FOREIGN KEY (crawl_run_id) REFERENCES crawl_runs(id) ON DELETE SET NULL
 );
