@@ -1,6 +1,6 @@
-import { cleanText, parseYen, splitManufacturerModel } from '../normalize.js';
+import { cleanText, parseYen, splitManufacturerModel } from "../normalize.js";
 
-const BASE_URL = 'https://www.shimamusen.com';
+const BASE_URL = "https://www.shimamusen.com";
 const DISPLAY_URL = `${BASE_URL}/shopbrand/063/Y/`;
 const SALE_URL = `${BASE_URL}/shopbrand/036/Y/`;
 const USED_URL = `${BASE_URL}/shopbrand/ct826/`;
@@ -8,36 +8,39 @@ const USED_URL = `${BASE_URL}/shopbrand/ct826/`;
 function absoluteUrl(href) {
   try {
     const url = new URL(href, BASE_URL);
-    return url.hostname === 'www.shimamusen.com' ? url.toString() : null;
+    return url.hostname === "www.shimamusen.com" ? url.toString() : null;
   } catch {
     return null;
   }
 }
 
-function stripTags(html = '') {
-  return cleanText(String(html)
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<br\s*\/?>/gi, ' ')
-    .replace(/<[^>]+>/g, ' '));
+function stripTags(html = "") {
+  return cleanText(
+    String(html)
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<[^>]+>/g, " "),
+  );
 }
 
-function cleanedAnchorText(html = '') {
+function cleanedAnchorText(html = "") {
   return stripTags(html);
 }
 
 function pageKind(page) {
-  if (typeof page === 'object' && page?.kind) return page.kind;
-  const url = typeof page === 'string' ? page : page?.url || '';
-  if (/\/063\/Y\/?/i.test(url)) return '展示処分品';
-  if (/\/036\/Y\/?/i.test(url)) return '特価商品';
-  return '中古品';
+  if (typeof page === "object" && page?.kind) return page.kind;
+  const url = typeof page === "string" ? page : page?.url || "";
+  if (/\/063\/Y\/?/i.test(url)) return "展示処分品";
+  if (/\/036\/Y\/?/i.test(url)) return "特価商品";
+  return "中古品";
 }
 
 function productAnchors(html) {
   const anchors = [];
-  const re = /<a\b([^>]*\bhref\s*=\s*["']([^"']*\/shopdetail\/(\d+)\/[^"']*)["'][^>]*)>([\s\S]*?)<\/a>/gi;
-  for (const match of String(html || '').matchAll(re)) {
+  const re =
+    /<a\b([^>]*\bhref\s*=\s*["']([^"']*\/shopdetail\/(\d+)\/[^"']*)["'][^>]*)>([\s\S]*?)<\/a>/gi;
+  for (const match of String(html || "").matchAll(re)) {
     const sourceUrl = absoluteUrl(match[2]);
     if (!sourceUrl) continue;
     anchors.push({
@@ -45,7 +48,7 @@ function productAnchors(html) {
       sourceUrl,
       title: cleanedAnchorText(match[4]),
       index: match.index || 0,
-      end: (match.index || 0) + match[0].length
+      end: (match.index || 0) + match[0].length,
     });
   }
   return anchors;
@@ -66,54 +69,57 @@ function distinctProductBlocks(html) {
 
   return orderedIds.map((sourceId, index) => {
     const current = grouped.get(sourceId);
-    const titleAnchor = current.find(anchor => anchor.title) || current[0];
+    const titleAnchor = current.find((anchor) => anchor.title) || current[0];
     const nextId = orderedIds[index + 1];
     const nextAnchors = nextId ? grouped.get(nextId) : null;
     const blockStart = Math.max(0, current[0].index - 500);
-    const blockEnd = nextAnchors ? nextAnchors[0].index : Math.min(String(html).length, current[current.length - 1].end + 1600);
+    const blockEnd = nextAnchors
+      ? nextAnchors[0].index
+      : Math.min(String(html).length, current[current.length - 1].end + 1600);
     return {
       sourceId,
       sourceUrl: titleAnchor.sourceUrl,
       title: titleAnchor.title,
-      html: String(html).slice(blockStart, blockEnd)
+      html: String(html).slice(blockStart, blockEnd),
     };
   });
 }
 
 function manufacturerFromBlock(blockHtml, title) {
   const explicit = String(blockHtml).match(
-    /<(?:span|p|div|li)\b[^>]*class=["'][^"']*(?:maker|manufacturer|brand)[^"']*["'][^>]*>([\s\S]*?)<\/(?:span|p|div|li)>/i
+    /<(?:span|p|div|li)\b[^>]*class=["'][^"']*(?:maker|manufacturer|brand)[^"']*["'][^>]*>([\s\S]*?)<\/(?:span|p|div|li)>/i,
   )?.[1];
-  const explicitText = stripTags(explicit || '');
+  const explicitText = stripTags(explicit || "");
   if (explicitText && explicitText.length <= 80) return explicitText;
-  return splitManufacturerModel(title, 'shimamusen').manufacturer || '';
+  return splitManufacturerModel(title, "shimamusen").manufacturer || "";
 }
 
 function modelFromTitle(title) {
-  return splitManufacturerModel(title, 'shimamusen').model || title;
+  return splitManufacturerModel(title, "shimamusen").model || title;
 }
 
 function extractPrice(blockHtml) {
   const text = stripTags(blockHtml);
-  const match = text.match(/(?:販売価格\s*)?([\d,]+)円(?:\s*\(税込\))?/i)
-    || text.match(/([\d,]+)円\s*[～〜]/i);
+  const match =
+    text.match(/(?:販売価格\s*)?([\d,]+)円(?:\s*\(税込\))?/i) ||
+    text.match(/([\d,]+)円\s*[～〜]/i);
   return match ? parseYen(match[1]) : null;
 }
 
 function stockStatusFor(title, blockHtml) {
   const text = `${title} ${stripTags(blockHtml)}`;
-  if (/売り切れ|売切れ|SOLD\s*OUT|在庫なし|完売|販売終了/i.test(text)) return 'sold_out';
-  if (/お取り寄せ/.test(title)) return 'unknown';
-  return 'in_stock';
+  if (/売り切れ|売切れ|SOLD\s*OUT|在庫なし|完売|販売終了/i.test(text)) return "sold_out";
+  if (/お取り寄せ/.test(title)) return "unknown";
+  return "in_stock";
 }
 
 function conditionFor(kind, title, blockHtml) {
   const parts = [kind];
-  if (/未使用開封品/.test(title)) parts.push('未使用開封品');
-  else if (/B級品/.test(title)) parts.push('B級品');
-  else if (/展示処分品|現品処分品/.test(title)) parts.push('展示処分品');
-  if (/商談中|予約中/.test(stripTags(blockHtml))) parts.push('商談中');
-  return [...new Set(parts)].join(' / ');
+  if (/未使用開封品/.test(title)) parts.push("未使用開封品");
+  else if (/B級品/.test(title)) parts.push("B級品");
+  else if (/展示処分品|現品処分品/.test(title)) parts.push("展示処分品");
+  if (/商談中|予約中/.test(stripTags(blockHtml))) parts.push("商談中");
+  return [...new Set(parts)].join(" / ");
 }
 
 export function parseShimamusenListing(html, page = {}) {
@@ -132,50 +138,52 @@ export function parseShimamusenListing(html, page = {}) {
       model: modelFromTitle(title),
       title,
       rawCategory: kind,
-      category: '',
+      category: "",
       conditionText: conditionFor(kind, title, block.html),
       priceYen: extractPrice(block.html),
       stockStatus: stockStatusFor(title, block.html),
       sourceUrl: block.sourceUrl,
-      metadata: { listingKind: kind }
+      metadata: { listingKind: kind },
     });
   }
 
-  return [...new Map(products.map(product => [product.sourceId, product])).values()];
+  return [...new Map(products.map((product) => [product.sourceId, product])).values()];
 }
 
 export function discoverShimamusenPageUrls(html) {
   const pages = new Map();
   const re = /href\s*=\s*["']([^"']*\/shopbrand\/ct826\/page(\d+)\/order\/?[^"']*)["']/gi;
-  for (const match of String(html || '').matchAll(re)) {
+  for (const match of String(html || "").matchAll(re)) {
     const url = absoluteUrl(match[1]);
     const pageNumber = Number.parseInt(match[2], 10);
     if (!url || !Number.isFinite(pageNumber) || pageNumber < 2) continue;
-    pages.set(pageNumber, { url, kind: '中古品' });
+    pages.set(pageNumber, { url, kind: "中古品" });
   }
-  return [...pages.entries()].sort((a, b) => a[0] - b[0]).map(([, page]) => page);
+  return [...pages.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, page]) => page);
 }
 
 export const shimamusenAdapter = {
-  key: 'shimamusen',
-  name: 'シマムセン',
+  key: "shimamusen",
+  name: "シマムセン",
   baseUrl: BASE_URL,
   dynamicPagination: true,
   guardItemCount: true,
   categoryPolicy: {
     // These are condition/merchandising buckets, not product-type categories.
-    sellerCategory: { default: 'ignore' },
-    parserHint: 'ignore'
+    sellerCategory: { default: "ignore" },
+    parserHint: "ignore",
   },
   *pageUrls() {
-    yield { url: DISPLAY_URL, kind: '展示処分品' };
-    yield { url: SALE_URL, kind: '特価商品' };
-    yield { url: USED_URL, kind: '中古品' };
+    yield { url: DISPLAY_URL, kind: "展示処分品" };
+    yield { url: SALE_URL, kind: "特価商品" };
+    yield { url: USED_URL, kind: "中古品" };
   },
   discoverPageUrls(html, page) {
-    return pageKind(page) === '中古品' ? discoverShimamusenPageUrls(html) : [];
+    return pageKind(page) === "中古品" ? discoverShimamusenPageUrls(html) : [];
   },
   parse(html, page) {
     return parseShimamusenListing(html, page);
-  }
+  },
 };
