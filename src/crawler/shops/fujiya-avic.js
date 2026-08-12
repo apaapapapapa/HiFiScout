@@ -5,8 +5,10 @@ import { parseProductPage } from "../parser.js";
 const PAGE_SIZE = 50;
 const NEW_ARRIVALS_PATH = "ea-usednw_ssd";
 const OUTLET_PATH = "c31_dP";
+const OUTLET_STOCK_SALE_PATH = "ea-outlet";
 const FEED_NEW_ARRIVALS = "new-arrivals";
 const FEED_OUTLET = "outlet";
+const FEED_OUTLET_STOCK_SALE = "outlet-stock-sale";
 
 function newArrivalsPageUrl(page = 1) {
   if (page === 1)
@@ -19,12 +21,18 @@ function outletPageUrl(page = 1) {
   return `https://www.fujiya-avic.co.jp/shop/c/${OUTLET_PATH}_p${page}/?ps=${PAGE_SIZE}`;
 }
 
+function outletStockSalePageUrl(page = 1) {
+  if (page === 1)
+    return `https://www.fujiya-avic.co.jp/shop/e/${OUTLET_STOCK_SALE_PATH}/?ps=${PAGE_SIZE}`;
+  return `https://www.fujiya-avic.co.jp/shop/e/${OUTLET_STOCK_SALE_PATH}_p${page}/?ps=${PAGE_SIZE}`;
+}
+
 function pageFor(feed, page = 1) {
-  return {
-    url: feed === FEED_OUTLET ? outletPageUrl(page) : newArrivalsPageUrl(page),
-    page,
-    feed,
-  };
+  let url;
+  if (feed === FEED_OUTLET) url = outletPageUrl(page);
+  else if (feed === FEED_OUTLET_STOCK_SALE) url = outletStockSalePageUrl(page);
+  else url = newArrivalsPageUrl(page);
+  return { url, page, feed };
 }
 
 function attribute(attrs, name) {
@@ -96,9 +104,11 @@ export const fujiyaAvicAdapter = {
   key: "fujiya-avic",
   name: "フジヤエービック",
   baseUrl: "https://www.fujiya-avic.co.jp",
-  // Fujiya is intentionally collected from two bounded feeds: newest used arrivals and
-  // the dedicated outlet category. This excludes the broader outlet-and-stock-sale feed.
-  // Neither feed is the shop's complete inventory, so missing products must never be
+  // Fujiya is intentionally collected from three bounded feeds: newest used arrivals,
+  // the dedicated outlet category, and the broader outlet-and-stock-sale feature.
+  // Products shared by the latter two feeds retain the same canonical product URL/source ID,
+  // so the normal persistence identity prevents duplicate listings.
+  // These feeds are not the shop's complete inventory, so missing products must never be
   // treated as sold merely because they disappear here.
   partialCoverage: true,
   categoryPolicy: Object.freeze({
@@ -122,6 +132,7 @@ export const fujiyaAvicAdapter = {
   *pageUrls() {
     yield pageFor(FEED_NEW_ARRIVALS);
     yield pageFor(FEED_OUTLET);
+    yield pageFor(FEED_OUTLET_STOCK_SALE);
   },
   discoverPageUrls(html, page) {
     if (page.page !== 1) return [];
