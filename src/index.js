@@ -8,6 +8,10 @@ import {
   dispatchForcedCrawl,
   dispatchScheduledCrawl,
 } from "./crawler/dispatch.js";
+import {
+  dataQualityStatus,
+  listDataQualityHistory,
+} from "./db/data-quality-repository.js";
 import { dataPlatformStatus } from "./db/data-platform-status-repository.js";
 import { knowledgeCatalogOperationalStatus } from "./db/knowledge-catalog-review-repository.js";
 import { knowledgeCatalogVerificationQueueStatus } from "./db/knowledge-catalog-verification-queue-repository.js";
@@ -173,6 +177,17 @@ async function handleApi(request, env, ctx) {
   if (request.method === "GET" && url.pathname === "/api/admin/data-platform/status") {
     if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
     return json(await dataPlatformStatus(env.DB));
+  }
+  if (request.method === "GET" && url.pathname === "/api/admin/data-quality/status") {
+    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
+    return json(await dataQualityStatus(env.DB));
+  }
+  if (request.method === "GET" && url.pathname === "/api/admin/data-quality/history") {
+    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
+    const shop = String(url.searchParams.get("shop") || "").trim();
+    if (!shop || !SHOP_DEFINITIONS[shop]) return json({ error: "invalid_shop" }, { status: 400 });
+    const history = await listDataQualityHistory(env.DB, shop, url.searchParams.get("limit"));
+    return json({ shop, history });
   }
   const historyMatch = url.pathname.match(/^\/api\/products\/(\d+)\/history$/);
   if (request.method === "GET" && historyMatch) {
