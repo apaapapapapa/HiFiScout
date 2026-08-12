@@ -97,8 +97,9 @@ export const fujiyaAvicAdapter = {
   name: "フジヤエービック",
   baseUrl: "https://www.fujiya-avic.co.jp",
   // Fujiya is intentionally collected from two bounded feeds: newest used arrivals and
-  // the explicit outlet category. Neither feed is the shop's complete inventory, so
-  // missing products must never be treated as sold merely because they disappear here.
+  // the dedicated outlet category. This excludes the broader outlet-and-stock-sale feed.
+  // Neither feed is the shop's complete inventory, so missing products must never be
+  // treated as sold merely because they disappear here.
   partialCoverage: true,
   categoryPolicy: Object.freeze({
     sellerCategory: Object.freeze({
