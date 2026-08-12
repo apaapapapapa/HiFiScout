@@ -1,6 +1,14 @@
 import { evaluateQuality } from "../data-quality/quality-evaluator.js";
 
-const MODEL_OPTIONAL_CATEGORIES = ["accessory", "cable", "other"];
+const MODEL_OPTIONAL_CATEGORIES = [
+  "cable",
+  "rack",
+  "power_accessory",
+  "vacuum_tube",
+  "other_accessory",
+  "other",
+];
+const MODEL_OPTIONAL_SQL = MODEL_OPTIONAL_CATEGORIES.map((category) => `'${category}'`).join(",");
 const STATUS_RANK = { unknown: 0, healthy: 1, warning: 2, critical: 3 };
 
 function number(value) {
@@ -29,9 +37,9 @@ export async function readDataQualitySnapshot(db, shopKey) {
         SUM(CASE WHEN r.status = 'unresolved' AND r.candidate_catalog_product_id IS NOT NULL THEN 1 ELSE 0 END) AS identity_candidate_count,
         SUM(CASE WHEN p.stock_status <> 'unknown' THEN 1 ELSE 0 END) AS inventory_known_count,
         SUM(CASE WHEN p.stock_status = 'unknown' THEN 1 ELSE 0 END) AS inventory_unknown_count,
-        SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN ('accessory','cable','other') THEN 1 ELSE 0 END) AS model_expected_count,
-        SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN ('accessory','cable','other') AND COALESCE(p.model, '') <> '' THEN 1 ELSE 0 END) AS model_extracted_count,
-        SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN ('accessory','cable','other') AND COALESCE(p.model, '') = '' THEN 1 ELSE 0 END) AS model_missing_count
+        SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN (${MODEL_OPTIONAL_SQL}) THEN 1 ELSE 0 END) AS model_expected_count,
+        SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN (${MODEL_OPTIONAL_SQL}) AND COALESCE(p.model, '') <> '' THEN 1 ELSE 0 END) AS model_extracted_count,
+        SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN (${MODEL_OPTIONAL_SQL}) AND COALESCE(p.model, '') = '' THEN 1 ELSE 0 END) AS model_missing_count
       FROM products p
       LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
       WHERE p.shop_key = ? AND p.is_active = 1
