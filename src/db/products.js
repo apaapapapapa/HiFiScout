@@ -5,6 +5,7 @@ import { manufacturerIdForFilter } from '../catalog/manufacturers.js';
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 100;
 const LOOKUP_CHUNK_SIZE = 50;
+const RECENT_SOURCE_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 async function runBatches(db, statements, chunkSize = 50) {
   let changes = 0;
@@ -44,6 +45,22 @@ function existingCatalogFields(existing) {
   };
 }
 
+function productSourcePublishedAt(product) {
+  return product.sourcePublishedAt ?? null;
+}
+
+function initialActivity(product, observedAt) {
+  const sourceAt = productSourcePublishedAt(product);
+  if (!sourceAt) return { at: observedAt, userFacing: true };
+  const sourceMs = new Date(sourceAt).getTime();
+  const observedMs = new Date(observedAt).getTime();
+  if (!Number.isFinite(sourceMs) || !Number.isFinite(observedMs) || sourceMs > observedMs) {
+    return { at: observedAt, userFacing: true };
+  }
+  if (observedMs - sourceMs > RECENT_SOURCE_WINDOW_MS) return { at: sourceAt, userFacing: false };
+  return { at: observedAt, userFacing: true };
+}
+
 function productRow(row) {
   if (!row) return row;
   let categoryIds = [];
@@ -75,7 +92,8 @@ export async function selectExistingProducts(db, shopKey, sourceIds, chunkSize =
     const result = await db.prepare(`
       SELECT id, source_id, manufacturer, raw_manufacturer, manufacturer_id, model, title,
              category, raw_category, primary_category_id, category_ids, classification_status, search_aliases,
-             condition_text, price_yen, stock_status, source_url, metadata_json, last_seen_at, is_active
+             condition_text, price_yen, stock_status, source_url, source_published_at, metadata_json,
+             first_seen_at, last_seen_at, last_activity_at, is_active
       FROM products WHERE shop_key = ? AND source_id IN (${placeholders})
     `).bind(shopKey, ...chunk).all();
     rows.push(...(result.results || []));
@@ -110,16 +128,21 @@ function listingChanged(existing, product) {
     previous.categoryIdsJson !== current.categoryIdsJson || previous.classificationStatus !== current.classificationStatus ||
     previous.searchAliases !== current.searchAliases || existing.condition_text !== product.conditionText ||
     existing.price_yen !== product.priceYen || existing.stock_status !== product.stockStatus ||
-    existing.source_url !== product.sourceUrl || Number(existing.is_active) !== 1;
+    existing.source_url !== product.sourceUrl || (existing.source_published_at ?? null) !== productSourcePublishedAt(product) ||
+    Number(existing.is_active) !== 1;
+}
+
+function meaningfulStockActivity(previousStatus, currentStatus) {
+  if (previousStatus === currentStatus) return false;
+  if (!previousStatus || !currentStatus) return false;
+  if (previousStatus === 'unknown' || currentStatus === 'unknown') return false;
+  return true;
 }
 
 function activityChanged(existing, product) {
-  const current = catalogFields(product);
-  const previous = existingCatalogFields(existing);
-  return previous.rawManufacturer !== current.rawManufacturer || existing.model !== product.model ||
-    existing.title !== product.title || previous.rawCategory !== current.rawCategory ||
+  return existing.model !== product.model || existing.title !== product.title ||
     existing.condition_text !== product.conditionText || existing.price_yen !== product.priceYen ||
-    existing.stock_status !== product.stockStatus || existing.source_url !== product.sourceUrl || Number(existing.is_active) !== 1;
+    meaningfulStockActivity(existing.stock_status, product.stockStatus) || Number(existing.is_active) !== 1;
 }
 
 function categoriesChanged(existing, product) {
@@ -207,6 +230,7 @@ export async function upsertProducts(db, shopKey, products, observedAt, { deacti
     const fields = catalogFields(product);
     const existing = existingBySource.get(product.sourceId);
     if (!existing) {
+      const firstActivity = initialActivity(product, observedAt);
       newSourceIds.push(product.sourceId);
       categorySyncSourceIds.push(product.sourceId);
       featureSyncSourceIds.push(product.sourceId);
@@ -214,15 +238,16 @@ export async function upsertProducts(db, shopKey, products, observedAt, { deacti
         INSERT INTO products (
           shop_key, source_id, manufacturer, raw_manufacturer, manufacturer_id, model, title,
           category, raw_category, primary_category_id, category_ids, classification_status, search_aliases,
-          condition_text, price_yen, previous_price_yen, stock_status, source_url,
+          condition_text, price_yen, previous_price_yen, stock_status, source_url, source_published_at,
           first_seen_at, last_seen_at, last_changed_at, last_activity_at, is_active
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 1)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, 1)
       `).bind(shopKey, product.sourceId, product.manufacturer, fields.rawManufacturer, fields.manufacturerId,
         product.model, product.title, product.category, fields.rawCategory, fields.primaryCategoryId,
         fields.categoryIdsJson, fields.classificationStatus, fields.searchAliases, product.conditionText,
-        product.priceYen, product.stockStatus, product.sourceUrl, observedAt, observedAt, observedAt, observedAt));
+        product.priceYen, product.stockStatus, product.sourceUrl, productSourcePublishedAt(product),
+        observedAt, observedAt, observedAt, firstActivity.at));
       changedCount += 1;
-      activityCount += 1;
+      if (firstActivity.userFacing) activityCount += 1;
       continue;
     }
 
@@ -240,13 +265,13 @@ export async function upsertProducts(db, shopKey, products, observedAt, { deacti
           category = ?, raw_category = ?, primary_category_id = ?, category_ids = ?,
           classification_status = ?, search_aliases = ?, condition_text = ?,
           previous_price_yen = CASE WHEN ? THEN price_yen ELSE previous_price_yen END,
-          price_yen = ?, stock_status = ?, source_url = ?, last_seen_at = ?, last_changed_at = ?,
+          price_yen = ?, stock_status = ?, source_url = ?, source_published_at = ?, last_seen_at = ?, last_changed_at = ?,
           last_activity_at = CASE WHEN ? THEN ? ELSE last_activity_at END, is_active = 1
         WHERE id = ?
       `).bind(product.manufacturer, fields.rawManufacturer, fields.manufacturerId, product.model, product.title,
         product.category, fields.rawCategory, fields.primaryCategoryId, fields.categoryIdsJson,
         fields.classificationStatus, fields.searchAliases, product.conditionText, priceChanged ? 1 : 0,
-        product.priceYen, product.stockStatus, product.sourceUrl, observedAt, observedAt,
+        product.priceYen, product.stockStatus, product.sourceUrl, productSourcePublishedAt(product), observedAt, observedAt,
         hasActivity ? 1 : 0, observedAt, existing.id));
       changedCount += 1;
       if (hasActivity) activityCount += 1;
@@ -388,7 +413,7 @@ export async function listProducts(db, url) {
     binds.push(feature);
   }
   if (params.get('inStock') === 'true') where.push("p.stock_status = 'in_stock'");
-  if (params.get('newOnly') === 'true') where.push("p.first_seen_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-48 hours')");
+  if (params.get('newOnly') === 'true') where.push("COALESCE(p.source_published_at, p.first_seen_at) >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-48 hours')");
   if (params.get('priceDropped') === 'true') where.push('(p.previous_price_yen IS NOT NULL AND p.price_yen IS NOT NULL AND p.price_yen < p.previous_price_yen)');
   const minPrice = Number.parseInt(params.get('minPrice') || '', 10);
   if (Number.isFinite(minPrice)) { where.push('p.price_yen >= ?'); binds.push(minPrice); }

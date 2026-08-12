@@ -82,6 +82,16 @@ function productLinkFromBlock(block) {
   return fallback;
 }
 
+function sourcePublishedAt(text) {
+  const match = text.match(/(20\d{2})-(\d{1,2})-(\d{1,2})\s*入荷/);
+  if (!match) return null;
+  const year = match[1];
+  const month = match[2].padStart(2, '0');
+  const day = match[3].padStart(2, '0');
+  const parsed = new Date(`${year}-${month}-${day}T00:00:00+09:00`);
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+}
+
 function parseProductBlock(block, link) {
   const text = htmlToText(block);
   const title = cleanText(link.title);
@@ -111,7 +121,8 @@ function parseProductBlock(block, link) {
     conditionText: /パーツ取り用商品|ジャンク/i.test(text) ? 'ジャンク' : '',
     priceYen,
     stockStatus,
-    sourceUrl
+    sourceUrl,
+    sourcePublishedAt: sourcePublishedAt(text)
   };
 }
 

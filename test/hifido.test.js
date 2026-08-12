@@ -13,6 +13,7 @@ test('Hifido parser keeps factual listing fields only', () => {
       <p>定価:680,000円</p>
       <p>売価(ペア):498,000円(税込)</p>
       <p>スピーカー（海外製品）</p>
+      <p>2026-08-09入荷</p>
       <p>この説明文はDBへ保存しない。</p>
       <img src="/example.jpg" alt="商品画像">
     </div>`;
@@ -27,9 +28,10 @@ test('Hifido parser keeps factual listing fields only', () => {
   assert.equal(product.category, 'スピーカー');
   assert.equal(product.stockStatus, 'in_stock');
   assert.equal(product.sourceUrl, 'https://www.hifido.co.jp/26-50234-14194-00.html?A=1&G=3&LNG=J');
+  assert.equal(product.sourcePublishedAt, '2026-08-08T15:00:00.000Z');
   assert.deepEqual(Object.keys(product).sort(), [
     'category', 'conditionText', 'manufacturer', 'model', 'priceYen', 'rawCategory',
-    'rawManufacturer', 'sourceId', 'sourceUrl', 'stockStatus', 'title'
+    'rawManufacturer', 'sourceId', 'sourcePublishedAt', 'sourceUrl', 'stockStatus', 'title'
   ].sort());
 });
 
@@ -44,6 +46,7 @@ test('Hifido parser handles rendered list-item markup with duplicate product lin
       <div id="maker-26-50215-14039-00"><div>メーカー:<a href="/?KW=McIntosh">McIntosh<span class="maker-kana"> マッキントッシュ</span></a></div></div>
       <div id="price-26-50215-14039-00"><div>売価:498,000円(税込)</div></div>
       <div id="genre-26-50215-14039-00"><div>パワーアンプ（真空管）</div></div>
+      <div>2026-08-10入荷</div>
     </div>`;
 
   const [product] = parseHifidoListing(html);
@@ -53,6 +56,7 @@ test('Hifido parser handles rendered list-item markup with duplicate product lin
   assert.equal(product.priceYen, 498000);
   assert.equal(product.category, 'パワーアンプ');
   assert.equal(product.stockStatus, 'in_stock');
+  assert.equal(product.sourcePublishedAt, '2026-08-09T15:00:00.000Z');
 });
 
 test('Hifido keeps three recent pages and adds one rotating stale recheck page', () => {
@@ -101,4 +105,5 @@ test('Hifido sold listings are not treated as available', () => {
     </div>`;
   const [product] = parseHifidoListing(html);
   assert.equal(product.stockStatus, 'sold_out');
+  assert.equal(product.sourcePublishedAt, null);
 });
