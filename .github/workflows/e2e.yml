@@ -23,10 +23,19 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      E2E_BASE_URL: ${{ inputs.base_url || vars.E2E_BASE_URL || 'https://hifiscout.raha3415kohei.workers.dev' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Resolve E2E base URL
+        shell: bash
+        env:
+          INPUT_BASE_URL: ${{ inputs.base_url }}
+          REPOSITORY_E2E_BASE_URL: ${{ vars.E2E_BASE_URL }}
+          REPOSITORY_PRODUCTION_BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
+        run: |
+          set -euo pipefail
+          source .github/config/production.env
+          base_url="${INPUT_BASE_URL:-${REPOSITORY_E2E_BASE_URL:-${REPOSITORY_PRODUCTION_BASE_URL:-$PRODUCTION_BASE_URL}}}"
+          echo "E2E_BASE_URL=${base_url%/}" >> "$GITHUB_ENV"
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
