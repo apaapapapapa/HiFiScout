@@ -36,6 +36,14 @@ jobs:
         run: npm run docs:build
         env:
           DOCS_BASE: "${{ steps.pages.outputs.base_path }}/"
+      - name: Validate generated report links
+        env:
+          DOCS_BASE: "${{ steps.pages.outputs.base_path }}/"
+        run: |
+          test -f docs/.vitepress/dist/db/index.html
+          test -f docs/.vitepress/dist/generated/dependencies.html
+          grep -F "href=\"${DOCS_BASE}db/index.html\" target=\"_self\"" docs/.vitepress/dist/database/index.html
+          grep -F "href=\"${DOCS_BASE}generated/dependencies.html\" target=\"_self\"" docs/.vitepress/dist/architecture/dependencies.html
       - name: Upload developer documentation
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
