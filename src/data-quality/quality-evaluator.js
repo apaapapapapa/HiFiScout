@@ -16,8 +16,12 @@ export function rate(count, denominator) {
 export function statusForRate(value, threshold) {
   if (value == null || !Number.isFinite(value)) return "unknown";
   if (threshold.direction === "low") {
-    if (value <= threshold.critical) return "critical";
-    if (value <= threshold.warning) return "warning";
+    const critical =
+      threshold.inclusive === false ? value < threshold.critical : value <= threshold.critical;
+    const warning =
+      threshold.inclusive === false ? value < threshold.warning : value <= threshold.warning;
+    if (critical) return "critical";
+    if (warning) return "warning";
     return "healthy";
   }
   if (value >= threshold.critical) return "critical";
