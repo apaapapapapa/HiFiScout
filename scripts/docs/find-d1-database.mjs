@@ -49,4 +49,13 @@ if (matches.length !== 1) {
   process.exit(1);
 }
 
+// Wrangler's local D1 database uses WAL journaling. Flush committed migration
+// pages into the database file before the SchemaSpy script copies that file.
+const migratedDatabase = new DatabaseSync(matches[0]);
+try {
+  migratedDatabase.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+} finally {
+  migratedDatabase.close();
+}
+
 console.log(matches[0]);
