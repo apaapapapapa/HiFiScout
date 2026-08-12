@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  MODEL_OPTIONAL_CATEGORIES,
   dataQualityRow,
   listDataQualityHistory,
   readDataQualitySnapshot,
@@ -68,6 +69,26 @@ test("snapshot uses one D1 aggregate over active shop listings", async () => {
   assert.match(db.calls[0].sql, /p\.is_active = 1/);
   assert.match(db.calls[0].sql, /manufacturerNormalization\.matchedAlias/);
   assert.doesNotMatch(db.calls[0].sql, /SELECT p\.\*/);
+});
+
+test("model expectation excludes canonical accessory categories and other", async () => {
+  assert.deepEqual(MODEL_OPTIONAL_CATEGORIES, [
+    "cable",
+    "rack",
+    "power_accessory",
+    "vacuum_tube",
+    "other_accessory",
+    "other",
+  ]);
+
+  const db = captureDb({ firstRows: [snapshotRow] });
+  await readDataQualitySnapshot(db, "audio-union");
+  const sql = db.calls[0].sql;
+
+  for (const category of MODEL_OPTIONAL_CATEGORIES) {
+    assert.match(sql, new RegExp(`'${category}'`));
+  }
+  assert.doesNotMatch(sql, /'accessory'/);
 });
 
 test("quality result is linked to crawl run and persists snapshot and run statuses", async () => {
