@@ -94,8 +94,10 @@ function prefixPattern(alias) {
 }
 
 const BY_ALIAS = new Map();
+const BY_ID = new Map();
 const PREFIX_ALIASES = [];
 for (const manufacturer of MANUFACTURERS) {
+  BY_ID.set(manufacturer.id, manufacturer);
   const aliases = [manufacturer.name, ...manufacturer.aliases];
   for (const alias of aliases) {
     const key = normalizeKey(alias);
@@ -121,16 +123,25 @@ function fallbackId(key) {
 }
 
 export function manufacturerIdForFilter(value = "") {
+  const raw = cleanSourceText(value).toLowerCase();
+  if (BY_ID.has(raw)) return raw;
   const key = normalizeKey(value);
   if (!key) return "";
   return BY_ALIAS.get(key)?.id || fallbackId(key);
+}
+
+export function manufacturerSearchAliases(value = "") {
+  const raw = cleanSourceText(value).toLowerCase();
+  const manufacturer = BY_ID.get(raw) || BY_ALIAS.get(normalizeKey(value));
+  if (!manufacturer) return cleanSourceText(value) ? [cleanSourceText(value)] : [];
+  return [...new Set([manufacturer.id, manufacturer.name, ...manufacturer.aliases])];
 }
 
 export function normalizeManufacturer(value = "") {
   const raw = cleanSourceText(value);
   if (!raw) return { id: "", displayName: "", matchedAlias: false };
   const key = normalizeKey(raw);
-  const known = BY_ALIAS.get(key);
+  const known = BY_ALIAS.get(key) || BY_ID.get(raw.toLowerCase());
   if (known) return { id: known.id, displayName: known.name, matchedAlias: true };
   return { id: fallbackId(key), displayName: raw, matchedAlias: false };
 }

@@ -39,6 +39,8 @@ jobs:
             echo "No changed JavaScript/TypeScript source files to format-check."
           fi
       - run: npm run db:migrate:local
+      - name: Verify D1 FTS search migration
+        run: node scripts/verify-search-integration.mjs
       - run: npm test
       - run: npx wrangler deploy --dry-run
 

@@ -22,6 +22,16 @@ export async function runRetentionCleanup(env, { now = new Date() } = {}) {
   const { settings, crawlRunsBefore, priceHistoryBefore, inactiveProductsBefore } = retentionCutoffs(env, now);
   const limit = settings.deleteBatchSize;
 
+  const evidenceMetadata = await env.DB.prepare(`
+    DELETE FROM evidence_archive
+    WHERE id IN (
+      SELECT id FROM evidence_archive
+      WHERE expires_at IS NOT NULL AND expires_at <= ?
+      ORDER BY expires_at ASC
+      LIMIT ?
+    )
+  `).bind(now.toISOString(), limit).run();
+
   const crawlRuns = await env.DB.prepare(`
     DELETE FROM crawl_runs
     WHERE id IN (
@@ -50,6 +60,7 @@ export async function runRetentionCleanup(env, { now = new Date() } = {}) {
     event: 'retention_cleanup',
     at: now.toISOString(),
     deleted: {
+      evidenceMetadata: changes(evidenceMetadata),
       crawlRuns: changes(crawlRuns),
       priceHistory: changes(priceHistory),
       inactiveProducts: changes(inactiveProducts)

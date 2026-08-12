@@ -8,13 +8,15 @@ import {
   dispatchForcedCrawl,
   dispatchScheduledCrawl,
 } from "./crawler/dispatch.js";
+import { dataPlatformStatus } from "./db/data-platform-status-repository.js";
 import { knowledgeCatalogOperationalStatus } from "./db/knowledge-catalog-review-repository.js";
 import { knowledgeCatalogVerificationQueueStatus } from "./db/knowledge-catalog-verification-queue-repository.js";
 import {
   claimKnowledgeCatalogVerifierVersion,
   knowledgeCatalogVerifierState,
 } from "./db/knowledge-catalog-verifier-state-repository.js";
-import { listProducts, productHistory, validateProductQuery } from "./db/products.js";
+import { listProducts } from "./db/product-search-repository.js";
+import { productHistory, validateProductQuery } from "./db/products.js";
 import { buildSyncHealth, getSyncHealth, logSyncHealth } from "./health.js";
 import {
   KNOWLEDGE_CATALOG_VERIFICATION_DLQ,
@@ -137,6 +139,12 @@ async function knowledgeCatalogStatus(env) {
   };
 }
 
+function adminAuthorized(request, env) {
+  return Boolean(
+    env.ADMIN_TOKEN && request.headers.get("authorization") === `Bearer ${env.ADMIN_TOKEN}`,
+  );
+}
+
 async function handleApi(request, env, ctx) {
   const url = new URL(request.url);
   const rate = await checkPublicApiRateLimit(request, env);
@@ -162,6 +170,10 @@ async function handleApi(request, env, ctx) {
       );
     }
   }
+  if (request.method === "GET" && url.pathname === "/api/admin/data-platform/status") {
+    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
+    return json(await dataPlatformStatus(env.DB));
+  }
   const historyMatch = url.pathname.match(/^\/api\/products\/(\d+)\/history$/);
   if (request.method === "GET" && historyMatch) {
     const id = Number(historyMatch[1]);
@@ -170,8 +182,7 @@ async function handleApi(request, env, ctx) {
     return result ? json(result) : json({ error: "not_found" }, { status: 404 });
   }
   if (request.method === "POST" && url.pathname === "/api/admin/crawl") {
-    if (!env.ADMIN_TOKEN || request.headers.get("authorization") !== `Bearer ${env.ADMIN_TOKEN}`)
-      return json({ error: "unauthorized" }, { status: 401 });
+    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
     const result = await dispatchForcedCrawl(env, url.searchParams.get("shop"));
     if (result.reason === "unknown_shop") return json({ error: "unknown_shop" }, { status: 400 });
     if (result.reason === "disabled") return json({ error: "disabled" }, { status: 409 });
