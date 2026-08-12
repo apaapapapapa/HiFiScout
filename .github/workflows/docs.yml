@@ -37,15 +37,39 @@ jobs:
         env:
           DOCS_BASE: "${{ steps.pages.outputs.base_path }}/"
       - name: Validate generated report links
-        env:
-          DOCS_BASE: "${{ steps.pages.outputs.base_path }}/"
         run: |
           test -f docs/.vitepress/dist/db/index.html
           test -f docs/.vitepress/dist/generated/dependencies.html
-          grep -F "href=\"${DOCS_BASE}db/index.html\"" docs/.vitepress/dist/database/index.html
-          grep -F 'target="_self"' docs/.vitepress/dist/database/index.html
-          grep -F "href=\"${DOCS_BASE}generated/dependencies.html\"" docs/.vitepress/dist/architecture/dependencies.html
-          grep -F 'target="_self"' docs/.vitepress/dist/architecture/dependencies.html
+          python - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+
+          class AnchorParser(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.anchors = []
+
+              def handle_starttag(self, tag, attrs):
+                  if tag == "a":
+                      self.anchors.append(dict(attrs))
+
+          cases = [
+              (Path("docs/.vitepress/dist/database/index.html"), "../db/index.html"),
+              (
+                  Path("docs/.vitepress/dist/architecture/dependencies.html"),
+                  "../generated/dependencies.html",
+              ),
+          ]
+
+          for path, expected_href in cases:
+              parser = AnchorParser()
+              parser.feed(path.read_text(encoding="utf-8"))
+              if not any(
+                  anchor.get("href") == expected_href and anchor.get("target") == "_self"
+                  for anchor in parser.anchors
+              ):
+                  raise SystemExit(f"missing static report link {expected_href} in {path}")
+          PY
       - name: Upload developer documentation
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
