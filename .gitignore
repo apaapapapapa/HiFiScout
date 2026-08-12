@@ -5,3 +5,9 @@ node_modules/
 .DS_Store
 playwright-report/
 test-results/
+.cache/docs/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+docs/reference/api.md
+docs/public/generated/
+docs/public/db/
