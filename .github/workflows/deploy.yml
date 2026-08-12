@@ -49,6 +49,17 @@ jobs:
           rm -f "$tarball"
       - name: Apply backward-compatible D1 migrations
         run: npx --yes wrangler@4.120.1 d1 migrations apply DB --remote
+      - name: Provision Knowledge Catalog queues
+        shell: bash
+        run: |
+          set -euo pipefail
+          for queue in hifiscout-knowledge-verification hifiscout-knowledge-verification-dlq; do
+            if npx --yes wrangler@4.120.1 queues info "$queue" >/dev/null 2>&1; then
+              echo "Queue already exists: $queue"
+            else
+              npx --yes wrangler@4.120.1 queues create "$queue"
+            fi
+          done
       - name: Verify AudioUnion priced listings are visible as in stock
         shell: bash
         run: |
