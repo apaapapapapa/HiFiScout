@@ -68,6 +68,8 @@ function statusColumns(evaluation) {
     metrics.parserFailure.status,
     metrics.itemCount.status,
     metrics.evidenceCoverage.status,
+    evaluation.snapshot.status,
+    evaluation.run.status,
     evaluation.status,
   ];
 }
@@ -103,8 +105,8 @@ export async function saveDataQualityRun(
         evidence_expected_event_count, evidence_archived_event_count, evidence_archive_failure_count,
         previous_item_count, current_item_count, item_count_absolute_difference, item_count_change_rate,
         manufacturer_status, category_status, identity_status, inventory_status, model_status,
-        parser_status, item_count_status, evidence_status, quality_status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        parser_status, item_count_status, evidence_status, snapshot_status, run_status, quality_status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(crawl_run_id) WHERE crawl_run_id IS NOT NULL DO UPDATE SET
         evaluated_at = excluded.evaluated_at,
         total_items = excluded.total_items,
@@ -139,6 +141,8 @@ export async function saveDataQualityRun(
         parser_status = excluded.parser_status,
         item_count_status = excluded.item_count_status,
         evidence_status = excluded.evidence_status,
+        snapshot_status = excluded.snapshot_status,
+        run_status = excluded.run_status,
         quality_status = excluded.quality_status
     `)
     .bind(
@@ -186,52 +190,49 @@ export function dataQualityRow(row) {
   const inventoryTotal = number(row.inventory_known_count) + number(row.inventory_unknown_count);
   const manufacturerUnknown =
     number(row.manufacturer_missing_count) + number(row.manufacturer_unresolved_count);
+  const snapshotMetrics = {
+    manufacturerUnknown: rowMetric(manufacturerUnknown, row.total_items, row.manufacturer_status),
+    categoryUnclassified: rowMetric(
+      row.category_unclassified_count,
+      row.total_items,
+      row.category_status,
+    ),
+    identityUnresolved: rowMetric(
+      row.identity_unresolved_count,
+      identityTotal,
+      row.identity_status,
+    ),
+    inventoryUnknown: rowMetric(
+      row.inventory_unknown_count,
+      inventoryTotal,
+      row.inventory_status,
+    ),
+    modelMissing: rowMetric(row.model_missing_count, row.model_expected_count, row.model_status),
+  };
+  const runMetrics = {
+    parserFailure: rowMetric(row.parse_failure_count, row.parse_attempt_count, row.parser_status),
+    evidenceCoverage: rowMetric(
+      row.evidence_archived_event_count,
+      row.evidence_expected_event_count,
+      row.evidence_status,
+    ),
+    itemCount: {
+      previous: nullableNumber(row.previous_item_count),
+      current: number(row.current_item_count),
+      absoluteDifference: nullableNumber(row.item_count_absolute_difference),
+      changeRate: nullableNumber(row.item_count_change_rate),
+      status: row.item_count_status,
+    },
+  };
   return {
     id: number(row.id),
     shop: row.shop_key,
     crawlRunId: nullableNumber(row.crawl_run_id),
     evaluatedAt: row.evaluated_at,
     status: row.quality_status,
-    metrics: {
-      manufacturerUnknown: rowMetric(
-        manufacturerUnknown,
-        row.total_items,
-        row.manufacturer_status,
-      ),
-      categoryUnclassified: rowMetric(
-        row.category_unclassified_count,
-        row.total_items,
-        row.category_status,
-      ),
-      identityUnresolved: rowMetric(
-        row.identity_unresolved_count,
-        identityTotal,
-        row.identity_status,
-      ),
-      inventoryUnknown: rowMetric(
-        row.inventory_unknown_count,
-        inventoryTotal,
-        row.inventory_status,
-      ),
-      modelMissing: rowMetric(row.model_missing_count, row.model_expected_count, row.model_status),
-      parserFailure: rowMetric(
-        row.parse_failure_count,
-        row.parse_attempt_count,
-        row.parser_status,
-      ),
-      evidenceCoverage: rowMetric(
-        row.evidence_archived_event_count,
-        row.evidence_expected_event_count,
-        row.evidence_status,
-      ),
-      itemCount: {
-        previous: nullableNumber(row.previous_item_count),
-        current: number(row.current_item_count),
-        absoluteDifference: nullableNumber(row.item_count_absolute_difference),
-        changeRate: nullableNumber(row.item_count_change_rate),
-        status: row.item_count_status,
-      },
-    },
+    snapshot: { status: row.snapshot_status, metrics: snapshotMetrics },
+    latestRun: { status: row.run_status, metrics: runMetrics },
+    metrics: { ...snapshotMetrics, ...runMetrics },
     details: {
       manufacturerMissingCount: number(row.manufacturer_missing_count),
       manufacturerUnresolvedCount: number(row.manufacturer_unresolved_count),
