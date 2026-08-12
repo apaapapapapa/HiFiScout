@@ -33,7 +33,7 @@ test('large item-count drops are rejected only after a meaningful baseline', () 
   assert.equal(isSuspiciousItemDrop(1, 10, { minRatio: 0.5, minBaseline: 20 }), false);
 });
 
-test('Knowledge Catalog candidate verification shares the existing daily maintenance cron', () => {
+test('Knowledge Catalog verification is dispatched to its dedicated queue', () => {
   const crons = wranglerConfig.triggers?.crons || [];
   assert.equal(crons.length, 5);
   assert.ok(crons.includes('17 18 * * *'));
@@ -41,7 +41,19 @@ test('Knowledge Catalog candidate verification shares the existing daily mainten
   assert.ok(!crons.includes('43 4 * * *'));
   assert.match(workerSource, /runDailyMaintenance\(env\)/);
   assert.match(workerSource, /runRetentionCleanup\(env\)/);
-  assert.match(workerSource, /runKnowledgeCatalogDailyVerification\(env\)/);
-  assert.equal(wranglerConfig.vars.KNOWLEDGE_CATALOG_DAILY_VERIFY_MAX_CANDIDATES, '50');
+  assert.match(workerSource, /dispatchKnowledgeCatalogDailyVerification\(env\)/);
+  assert.match(workerSource, /dispatchKnowledgeCatalogMonthlyRecheck\(env\)/);
+  assert.equal(wranglerConfig.vars.KNOWLEDGE_CATALOG_DAILY_VERIFY_MAX_CANDIDATES, '200');
   assert.equal(wranglerConfig.vars.KNOWLEDGE_CATALOG_REVIEW_INTERVAL_DAYS, '30');
+
+  const producer = wranglerConfig.queues.producers.find(
+    item => item.binding === 'KNOWLEDGE_CATALOG_QUEUE'
+  );
+  assert.equal(producer?.queue, 'hifiscout-knowledge-verification');
+  const consumer = wranglerConfig.queues.consumers.find(
+    item => item.queue === 'hifiscout-knowledge-verification'
+  );
+  assert.equal(consumer?.max_batch_size, 1);
+  assert.equal(consumer?.max_concurrency, 4);
+  assert.equal(consumer?.dead_letter_queue, 'hifiscout-knowledge-verification-dlq');
 });
