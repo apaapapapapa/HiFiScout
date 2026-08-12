@@ -101,8 +101,7 @@ function modelFromTitle(title) {
 function extractPrice(blockHtml) {
   const text = stripTags(blockHtml);
   const match =
-    text.match(/(?:販売価格\s*)?([\d,]+)円(?:\s*\(税込\))?/i) ||
-    text.match(/([\d,]+)円\s*[～〜]/i);
+    text.match(/(?:販売価格\s*)?([\d,]+)円(?:\s*\(税込\))?/i) || text.match(/([\d,]+)円\s*[～〜]/i);
   return match ? parseYen(match[1]) : null;
 }
 
@@ -159,9 +158,7 @@ export function discoverShimamusenPageUrls(html) {
     if (!url || !Number.isFinite(pageNumber) || pageNumber < 2) continue;
     pages.set(pageNumber, { url, kind: "中古品" });
   }
-  return [...pages.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([, page]) => page);
+  return [...pages.entries()].sort((a, b) => a[0] - b[0]).map(([, page]) => page);
 }
 
 export const shimamusenAdapter = {
