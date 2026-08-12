@@ -14,7 +14,7 @@ export function qualityThresholdsForShop(shopKey, overrides = {}) {
   return Object.fromEntries(
     Object.entries(DEFAULT_QUALITY_THRESHOLDS).map(([key, value]) => [
       key,
-      { ...value, ...(shopOverrides[key] || {}) },
+      { ...value, ...shopOverrides[key] },
     ]),
   );
 }
