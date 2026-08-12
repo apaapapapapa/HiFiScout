@@ -17,7 +17,10 @@ export async function readDataQualitySnapshot(db, shopKey) {
       SELECT
         COUNT(*) AS total_items,
         SUM(CASE WHEN COALESCE(p.raw_manufacturer, '') = '' THEN 1 ELSE 0 END) AS manufacturer_missing_count,
-        SUM(CASE WHEN COALESCE(p.raw_manufacturer, '') <> '' AND COALESCE(p.manufacturer_id, '') = '' THEN 1 ELSE 0 END) AS manufacturer_unresolved_count,
+        SUM(CASE
+          WHEN COALESCE(p.raw_manufacturer, '') <> ''
+           AND COALESCE(json_extract(p.metadata_json, '$.manufacturerNormalization.matchedAlias'), 0) <> 1
+          THEN 1 ELSE 0 END) AS manufacturer_unresolved_count,
         SUM(CASE WHEN p.classification_status <> 'classified' THEN 1 ELSE 0 END) AS category_unclassified_count,
         SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id = 'other' THEN 1 ELSE 0 END) AS other_category_count,
         SUM(CASE WHEN r.status = 'matched' THEN 1 ELSE 0 END) AS identity_matched_count,
@@ -69,13 +72,16 @@ function statusColumns(evaluation) {
   ];
 }
 
-export async function saveDataQualityRun(db, {
-  shopKey,
-  crawlRunId = null,
-  evaluatedAt = new Date().toISOString(),
-  run = {},
-  thresholdOverrides = {},
-} = {}) {
+export async function saveDataQualityRun(
+  db,
+  {
+    shopKey,
+    crawlRunId = null,
+    evaluatedAt = new Date().toISOString(),
+    run = {},
+    thresholdOverrides = {},
+  } = {},
+) {
   const snapshot = await readDataQualitySnapshot(db, shopKey);
   const evaluation = evaluateQuality(
     { shopKey, ...snapshot, ...run },
@@ -136,15 +142,33 @@ export async function saveDataQualityRun(db, {
         quality_status = excluded.quality_status
     `)
     .bind(
-      shopKey, crawlRunId, evaluatedAt, c.totalItems,
-      c.manufacturerMissingCount, c.manufacturerUnresolvedCount,
-      c.categoryUnclassifiedCount, c.otherCategoryCount,
-      c.identityMatchedCount, c.identityUnresolvedCount, c.identityVetoCount, c.identityCandidateCount,
-      c.inventoryKnownCount, c.inventoryUnknownCount,
-      c.modelExpectedCount, c.modelExtractedCount, c.modelMissingCount,
-      c.parseAttemptCount, c.parseSuccessCount, c.parseFailureCount,
-      c.evidenceExpectedEventCount, c.evidenceArchivedEventCount, c.evidenceArchiveFailureCount,
-      c.previousItemCount, c.currentItemCount, c.itemCountAbsoluteDifference, c.itemCountChangeRate,
+      shopKey,
+      crawlRunId,
+      evaluatedAt,
+      c.totalItems,
+      c.manufacturerMissingCount,
+      c.manufacturerUnresolvedCount,
+      c.categoryUnclassifiedCount,
+      c.otherCategoryCount,
+      c.identityMatchedCount,
+      c.identityUnresolvedCount,
+      c.identityVetoCount,
+      c.identityCandidateCount,
+      c.inventoryKnownCount,
+      c.inventoryUnknownCount,
+      c.modelExpectedCount,
+      c.modelExtractedCount,
+      c.modelMissingCount,
+      c.parseAttemptCount,
+      c.parseSuccessCount,
+      c.parseFailureCount,
+      c.evidenceExpectedEventCount,
+      c.evidenceArchivedEventCount,
+      c.evidenceArchiveFailureCount,
+      c.previousItemCount,
+      c.currentItemCount,
+      c.itemCountAbsoluteDifference,
+      c.itemCountChangeRate,
       ...statuses,
     )
     .run();
@@ -160,7 +184,8 @@ function rowMetric(count, denominator, status) {
 export function dataQualityRow(row) {
   const identityTotal = number(row.identity_matched_count) + number(row.identity_unresolved_count);
   const inventoryTotal = number(row.inventory_known_count) + number(row.inventory_unknown_count);
-  const manufacturerUnknown = number(row.manufacturer_missing_count) + number(row.manufacturer_unresolved_count);
+  const manufacturerUnknown =
+    number(row.manufacturer_missing_count) + number(row.manufacturer_unresolved_count);
   return {
     id: number(row.id),
     shop: row.shop_key,
@@ -168,13 +193,37 @@ export function dataQualityRow(row) {
     evaluatedAt: row.evaluated_at,
     status: row.quality_status,
     metrics: {
-      manufacturerUnknown: rowMetric(manufacturerUnknown, row.total_items, row.manufacturer_status),
-      categoryUnclassified: rowMetric(row.category_unclassified_count, row.total_items, row.category_status),
-      identityUnresolved: rowMetric(row.identity_unresolved_count, identityTotal, row.identity_status),
-      inventoryUnknown: rowMetric(row.inventory_unknown_count, inventoryTotal, row.inventory_status),
+      manufacturerUnknown: rowMetric(
+        manufacturerUnknown,
+        row.total_items,
+        row.manufacturer_status,
+      ),
+      categoryUnclassified: rowMetric(
+        row.category_unclassified_count,
+        row.total_items,
+        row.category_status,
+      ),
+      identityUnresolved: rowMetric(
+        row.identity_unresolved_count,
+        identityTotal,
+        row.identity_status,
+      ),
+      inventoryUnknown: rowMetric(
+        row.inventory_unknown_count,
+        inventoryTotal,
+        row.inventory_status,
+      ),
       modelMissing: rowMetric(row.model_missing_count, row.model_expected_count, row.model_status),
-      parserFailure: rowMetric(row.parse_failure_count, row.parse_attempt_count, row.parser_status),
-      evidenceCoverage: rowMetric(row.evidence_archived_event_count, row.evidence_expected_event_count, row.evidence_status),
+      parserFailure: rowMetric(
+        row.parse_failure_count,
+        row.parse_attempt_count,
+        row.parser_status,
+      ),
+      evidenceCoverage: rowMetric(
+        row.evidence_archived_event_count,
+        row.evidence_expected_event_count,
+        row.evidence_status,
+      ),
       itemCount: {
         previous: nullableNumber(row.previous_item_count),
         current: number(row.current_item_count),
@@ -197,28 +246,33 @@ export function dataQualityRow(row) {
 }
 
 export async function latestDataQualityByShop(db) {
-  const result = await db.prepare(`
-    SELECT q.*
-    FROM data_quality_runs q
-    WHERE q.id = (
-      SELECT q2.id FROM data_quality_runs q2
-      WHERE q2.shop_key = q.shop_key
-      ORDER BY q2.evaluated_at DESC, q2.id DESC
-      LIMIT 1
-    )
-    ORDER BY q.shop_key
-  `).all();
+  const result = await db
+    .prepare(`
+      SELECT q.*
+      FROM data_quality_runs q
+      WHERE q.id = (
+        SELECT q2.id FROM data_quality_runs q2
+        WHERE q2.shop_key = q.shop_key
+        ORDER BY q2.evaluated_at DESC, q2.id DESC
+        LIMIT 1
+      )
+      ORDER BY q.shop_key
+    `)
+    .all();
   return (result.results || []).map(dataQualityRow);
 }
 
 export async function listDataQualityHistory(db, shopKey, limit = 50) {
   const boundedLimit = Math.min(200, Math.max(1, Number(limit) || 50));
-  const result = await db.prepare(`
-    SELECT * FROM data_quality_runs
-    WHERE shop_key = ?
-    ORDER BY evaluated_at DESC, id DESC
-    LIMIT ?
-  `).bind(shopKey, boundedLimit).all();
+  const result = await db
+    .prepare(`
+      SELECT * FROM data_quality_runs
+      WHERE shop_key = ?
+      ORDER BY evaluated_at DESC, id DESC
+      LIMIT ?
+    `)
+    .bind(shopKey, boundedLimit)
+    .all();
   return (result.results || []).map(dataQualityRow);
 }
 
@@ -226,7 +280,10 @@ export async function dataQualityStatus(db) {
   const shops = await latestDataQualityByShop(db);
   const known = shops.filter((shop) => shop.status !== "unknown");
   const status = known.length
-    ? known.reduce((worst, shop) => STATUS_RANK[shop.status] > STATUS_RANK[worst] ? shop.status : worst, "healthy")
+    ? known.reduce(
+        (worst, shop) => (STATUS_RANK[shop.status] > STATUS_RANK[worst] ? shop.status : worst),
+        "healthy",
+      )
     : "unknown";
   return { status, shops, checkedAt: new Date().toISOString() };
 }
