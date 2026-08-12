@@ -1,0 +1,23 @@
+name: Phase 2.5 Workspace Snapshot
+
+on:
+  push:
+    branches:
+      - feat/phase-2-5-typescript-complete-migration
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase-2-5-workspace
+          path: |
+            .
+            !.git
+          include-hidden-files: true
+          retention-days: 1
