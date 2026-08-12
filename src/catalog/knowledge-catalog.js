@@ -42,7 +42,22 @@ function stripManufacturerMarketSuffix(value, manufacturerId) {
     }
     if (/^AH-[A-Z0-9-]+EM$/i.test(normalized)) return normalized.replace(/EM$/i, '');
   }
+  if (manufacturerId === 'marantz') {
+    // Japanese retailers append market/color codes such as /FB and /FN to models whose
+    // manufacturer identity is published without that suffix (for example SACD10/FB -> SACD 10).
+    const withoutMarketSuffix = normalized.replace(/\/F(?:B|N)$/i, '');
+    if (withoutMarketSuffix !== normalized) return withoutMarketSuffix;
+  }
   return normalized;
+}
+
+function addManufacturerFormattingAliases(target, value, manufacturerId) {
+  const normalized = normalizeCatalogModel(value);
+  if (!normalized || manufacturerId !== 'marantz') return;
+  // Marantz publishes several current families with a word/number boundary while retailers often
+  // collapse it. Keep this manufacturer-scoped so unrelated model numbers remain exact identities.
+  const match = normalized.match(/^(SACD|CD|MODEL|AV|AMP|LINK)(\d+[A-Z]*)$/i);
+  if (match) addLookupVariant(target, `${match[1]} ${match[2]}`);
 }
 
 /**
@@ -65,6 +80,7 @@ export function catalogModelLookupVariants({ manufacturerId = '', model = '' } =
 
   const marketStripped = stripManufacturerMarketSuffix(simplified, manufacturer);
   addLookupVariant(variants, marketStripped);
+  addManufacturerFormattingAliases(variants, marketStripped, manufacturer);
 
   // A seller may describe a base product bundled with an optional board, e.g. C-2800+AD-290V.
   // The complete listing identity remains intact, but the base product is a valid verification key.
@@ -102,8 +118,9 @@ function later(left, right) {
   return left > right ? left : right;
 }
 
-export function candidatePriority({ unclassifiedCount = 0, shopCount = 0, listingCount = 0 } = {}) {
-  return Number(unclassifiedCount) * 100 + Number(shopCount) * 10 + Math.min(Number(listingCount), 9);
+export function candidatePriority({ unclassifiedCount = 0, otherCount = 0, shopCount = 0, listingCount = 0 } = {}) {
+  return Number(unclassifiedCount) * 100 + Number(otherCount) * 80 +
+    Number(shopCount) * 10 + Math.min(Number(listingCount), 9);
 }
 
 export function accumulateKnowledgeCatalogCandidateRows(grouped, rows = []) {
@@ -124,6 +141,7 @@ export function accumulateKnowledgeCatalogCandidateRows(grouped, rows = []) {
         shops: new Set(),
         categories: new Set(),
         unclassifiedCount: 0,
+        otherCount: 0,
         firstSeenAt: '',
         lastSeenAt: ''
       };
@@ -132,10 +150,16 @@ export function accumulateKnowledgeCatalogCandidateRows(grouped, rows = []) {
 
     candidate.listingCount += 1;
     if (row.shop_key) candidate.shops.add(String(row.shop_key));
-    for (const categoryId of parseCategoryIds(row.category_ids)) candidate.categories.add(categoryId);
+    const categoryIds = parseCategoryIds(row.category_ids);
+    for (const categoryId of categoryIds) candidate.categories.add(categoryId);
     if (row.classification_status !== 'classified') {
       candidate.unclassifiedCount += 1;
       if (row.title) candidate.sampleTitle = clean(row.title);
+    } else if (categoryIds.includes('other')) {
+      // Explicit "other" is valid for genuinely out-of-taxonomy products, but it should still be
+      // reviewed ahead of already well-classified catalog entries because official evidence may
+      // reveal a more specific canonical category.
+      candidate.otherCount += 1;
     }
     candidate.firstSeenAt = earlier(candidate.firstSeenAt, row.first_seen_at);
     candidate.lastSeenAt = later(candidate.lastSeenAt, row.last_seen_at);
@@ -156,6 +180,7 @@ export function finalizeKnowledgeCatalogCandidateAggregates(grouped = new Map())
       listingCount: candidate.listingCount,
       shopCount,
       unclassifiedCount: candidate.unclassifiedCount,
+      otherCount: candidate.otherCount,
       firstSeenAt: candidate.firstSeenAt,
       lastSeenAt: candidate.lastSeenAt
     };
