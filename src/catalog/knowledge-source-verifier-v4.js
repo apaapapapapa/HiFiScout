@@ -131,6 +131,34 @@ function parseRegistry(value) {
   return [];
 }
 
+function officialFamilyCategory(candidate = {}) {
+  const manufacturerId = String(candidate.manufacturerId || '').trim().toLowerCase();
+  const model = String(candidate.canonicalModel || candidate.observedModel || candidate.model || candidate.normalizedModel || '')
+    .normalize('NFKC')
+    .trim()
+    .toUpperCase();
+  // STAX uses SRM for electrostatic headphone driver units. Some models advertise their built-in
+  // DAC more prominently than the amplifier role, so generic text classification can otherwise
+  // choose DAC even though the product itself is a headphone amplifier/driver unit.
+  if (manufacturerId === 'stax' && /^SRM(?:[-\s]|\d)/.test(model)) return 'headphone_amp';
+  // McIntosh MHA is the dedicated headphone-amplifier family (for example MHA200). Product titles
+  // can contain "Headphone Power Amplifier", where a generic power-amplifier rule is too broad.
+  if (manufacturerId === 'mcintosh' && /^MHA(?:[-\s]|\d)/.test(model)) return 'headphone_amp';
+  return '';
+}
+
+function applyOfficialFamilyCategory(result, candidate) {
+  if (result?.status !== 'verified') return result;
+  const categoryId = officialFamilyCategory(candidate);
+  if (!categoryId) return result;
+  return {
+    ...result,
+    categoryIds: [categoryId],
+    primaryCategoryId: categoryId,
+    message: `${result.message || 'verified'}:official_family_v4`
+  };
+}
+
 export function expandedKnowledgeSourceEnv(env = {}) {
   const overrides = parseRegistry(env.KNOWLEDGE_CATALOG_SOURCE_REGISTRY_JSON);
   return {
@@ -145,5 +173,14 @@ export function expandedKnowledgeSourceEnv(env = {}) {
 }
 
 export function createKnowledgeSourceVerifierV4(env = {}, options = {}) {
-  return createKnowledgeSourceVerifierV3(expandedKnowledgeSourceEnv(env), options);
+  const base = createKnowledgeSourceVerifierV3(expandedKnowledgeSourceEnv(env), options);
+  return {
+    ...base,
+    async verifyCandidate(candidate) {
+      return applyOfficialFamilyCategory(await base.verifyCandidate(candidate), candidate);
+    },
+    async verifyStoredSource(product) {
+      return applyOfficialFamilyCategory(await base.verifyStoredSource(product), product);
+    }
+  };
 }
