@@ -255,7 +255,8 @@ test("live metadata exposes the complete canonical taxonomy including zero-count
   });
   expect(
     facets.every(
-      (category) => Number.isInteger(category.activeProductCount) && category.activeProductCount >= 0,
+      (category) =>
+        Number.isInteger(category.activeProductCount) && category.activeProductCount >= 0,
     ),
   ).toBeTruthy();
 });

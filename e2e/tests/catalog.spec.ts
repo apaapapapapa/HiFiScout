@@ -207,7 +207,9 @@ test("favorites are stored as product snapshots and rendered without a favorites
   );
   expect(stored).toHaveLength(1);
   expect(stored).toEqual(
-    expect.arrayContaining([expect.objectContaining({ id: 1, manufacturer: "LUXMAN", model: "D-10X" })]),
+    expect.arrayContaining([
+      expect.objectContaining({ id: 1, manufacturer: "LUXMAN", model: "D-10X" }),
+    ]),
   );
 
   await page.locator("#pagination").getByRole("button", { name: "2" }).click();
