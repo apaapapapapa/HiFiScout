@@ -18,3 +18,10 @@ dist/
 public/app.js
 public/catalog-url-state.js
 public/shop-links.js
+
+# TypeScript/JavaScript generated artifacts
+.generated/
+dist/
+public/app.js
+public/catalog-url-state.js
+public/shop-links.js
