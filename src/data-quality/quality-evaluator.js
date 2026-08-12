@@ -116,20 +116,41 @@ export function evaluateQuality(input, { thresholdOverrides = {} } = {}) {
     },
   };
 
-  const status = worstStatus([
+  const snapshotStatus = worstStatus([
     metrics.manufacturerUnknown.status,
     metrics.categoryUnclassified.status,
     metrics.identityUnresolved.status,
     metrics.inventoryUnknown.status,
     metrics.modelMissing.status,
+  ]);
+  const runStatus = worstStatus([
     metrics.parserFailure.status,
     metrics.itemCount.status,
     metrics.evidenceCoverage.status,
   ]);
+  const status = worstStatus([snapshotStatus, runStatus]);
 
   return {
     shopKey,
     status,
+    snapshot: {
+      status: snapshotStatus,
+      metrics: {
+        manufacturerUnknown: metrics.manufacturerUnknown,
+        categoryUnclassified: metrics.categoryUnclassified,
+        identityUnresolved: metrics.identityUnresolved,
+        inventoryUnknown: metrics.inventoryUnknown,
+        modelMissing: metrics.modelMissing,
+      },
+    },
+    run: {
+      status: runStatus,
+      metrics: {
+        parserFailure: metrics.parserFailure,
+        evidenceCoverage: metrics.evidenceCoverage,
+        itemCount: metrics.itemCount,
+      },
+    },
     metrics,
     counts: {
       totalItems,
