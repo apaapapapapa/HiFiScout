@@ -23,7 +23,8 @@ const U_AUDIO_CATEGORY_MAPPING = Object.freeze({
   中古プリメインアンプ: "integrated_amp",
 });
 
-const SELLER_NOTE_SUFFIX = /\s*(?:※\s*)?(?:商談中|売約済(?:み)?|展示処分品?|展示処分|メーカ(?:ー)?デモ機処分(?:品)?(?:\s*[0-9０-９一二三四五六七八九十]+ペア)?|メーカ(?:ー)?デモ(?:機)?|デモ機処分(?:品)?|デモ|再生品|最終在庫|別売りケーブル付き)\s*$/i;
+const SELLER_NOTE_SUFFIX =
+  /\s*(?:※\s*)?(?:商談中|売約済(?:み)?|展示処分品?|展示処分|メーカ(?:ー)?デモ機処分(?:品)?(?:\s*[0-9０-９一二三四五六七八九十]+ペア)?|メーカ(?:ー)?デモ(?:機)?|デモ機処分(?:品)?|デモ|再生品|最終在庫|別売りケーブル付き)\s*$/i;
 
 function listingPage(category, page = 1) {
   const suffix = page > 1 ? `?page=${page}` : "";
