@@ -13,11 +13,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: tar -czf phase-2-5-node-modules.tar.gz node_modules
       - uses: actions/upload-artifact@v4
         with:
-          name: phase-2-5-workspace
-          path: |
-            .
-            !.git
-          include-hidden-files: true
+          name: phase-2-5-dependencies
+          path: phase-2-5-node-modules.tar.gz
           retention-days: 1
