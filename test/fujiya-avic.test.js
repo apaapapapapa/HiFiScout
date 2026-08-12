@@ -3,13 +3,15 @@ import assert from "node:assert/strict";
 import { fujiyaAvicAdapter, parseFujiyaResultCount } from "../src/crawler/shops/fujiya-avic.js";
 import { coverageDecision } from "../src/crawler/strategies.js";
 
-test("Fujiya initial crawl includes newest used arrivals and outlet feeds with 50 items per page", () => {
+test("Fujiya initial crawl includes newest used, outlet, and outlet stock sale feeds", () => {
   const pages = [...fujiyaAvicAdapter.pageUrls(50)];
-  assert.equal(pages.length, 2);
+  assert.equal(pages.length, 3);
   assert.equal(pages[0].url, "https://www.fujiya-avic.co.jp/shop/e/ea-usednw_ssd/?ps=50");
   assert.equal(pages[0].feed, "new-arrivals");
   assert.equal(pages[1].url, "https://www.fujiya-avic.co.jp/shop/c/c31/?ps=50");
   assert.equal(pages[1].feed, "outlet");
+  assert.equal(pages[2].url, "https://www.fujiya-avic.co.jp/shop/e/ea-outlet/?ps=50");
+  assert.equal(pages[2].feed, "outlet-stock-sale");
 });
 
 test("Fujiya bounded feeds are treated as partial coverage", () => {
@@ -30,7 +32,7 @@ test("Fujiya pagination is derived independently from each live result count", (
   assert.equal(parseFujiyaResultCount("<div>該当件数391件</div>"), 391);
   assert.equal(parseFujiyaResultCount("<div>44件あります</div>"), 44);
 
-  const [usedRoot, outletRoot] = [...fujiyaAvicAdapter.pageUrls(50)];
+  const [usedRoot, outletRoot, saleRoot] = [...fujiyaAvicAdapter.pageUrls(50)];
   const usedPages = fujiyaAvicAdapter.discoverPageUrls("<div>検索結果735件</div>", usedRoot);
   assert.equal(usedPages.length, 14);
   assert.equal(usedPages[0].url, "https://www.fujiya-avic.co.jp/shop/e/ea-usednw_ssd_p2/?ps=50");
@@ -42,6 +44,11 @@ test("Fujiya pagination is derived independently from each live result count", (
   assert.equal(outletPages[0].url, "https://www.fujiya-avic.co.jp/shop/c/c31_dP_p2/?ps=50");
   assert.equal(outletPages[1].url, "https://www.fujiya-avic.co.jp/shop/c/c31_dP_p3/?ps=50");
   assert.ok(outletPages.every((page) => page.feed === "outlet"));
+
+  const salePages = fujiyaAvicAdapter.discoverPageUrls("<div>検索結果72件</div>", saleRoot);
+  assert.equal(salePages.length, 1);
+  assert.equal(salePages[0].url, "https://www.fujiya-avic.co.jp/shop/e/ea-outlet_p2/?ps=50");
+  assert.equal(salePages[0].feed, "outlet-stock-sale");
 });
 
 test("Fujiya refuses to claim complete coverage when count cannot be discovered", () => {
@@ -89,6 +96,28 @@ test("Fujiya outlet cards are collected as outlet inventory", () => {
   assert.equal(item.conditionText, "アウトレット");
   assert.equal(item.stockStatus, "in_stock");
   assert.equal(item.sourceUrl, "https://www.fujiya-avic.co.jp/shop/g/g123456789012/");
+});
+
+test("Fujiya outlet stock sale preserves the card condition and canonical product URL", () => {
+  const page = {
+    url: "https://www.fujiya-avic.co.jp/shop/e/ea-outlet/?ps=50",
+    feed: "outlet-stock-sale",
+  };
+  const html = `
+    <div class="product">
+      <img alt="在庫あり">
+      <div>新品</div>
+      <div>在庫セール</div>
+      <a href="/shop/g/g987654321000/">Cayin カイン N7 [SPK-A003]</a>
+      <span>￥169,800(税込)</span>
+    </div>`;
+  const [item] = fujiyaAvicAdapter.parse(html, page);
+  assert.equal(item.manufacturer, "Cayin");
+  assert.equal(item.model, "N7 [SPK-A003]");
+  assert.equal(item.priceYen, 169800);
+  assert.notEqual(item.conditionText, "アウトレット");
+  assert.equal(item.stockStatus, "in_stock");
+  assert.equal(item.sourceUrl, "https://www.fujiya-avic.co.jp/shop/g/g987654321000/");
 });
 
 test("Fujiya price is taken from the current card, not the previous card", () => {
