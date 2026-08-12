@@ -215,8 +215,7 @@ async function runDailyMaintenance(env) {
 
 async function runScheduled(cron, env) {
   if (cron === DAILY_MAINTENANCE_CRON) return runDailyMaintenance(env);
-  if (cron === KNOWLEDGE_CATALOG_MONTHLY_CRON)
-    return dispatchKnowledgeCatalogMonthlyRecheck(env);
+  if (cron === KNOWLEDGE_CATALOG_MONTHLY_CRON) return dispatchKnowledgeCatalogMonthlyRecheck(env);
   const dispatch =
     cron === AUDIOUNION_CRON
       ? await dispatchScheduledCrawl(env, "audiounion")

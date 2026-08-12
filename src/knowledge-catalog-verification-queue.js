@@ -50,9 +50,7 @@ const DEFAULT_FINALIZE_RETRY_SECONDS = 300;
 
 function boundedInteger(value, fallback, min, max) {
   const parsed = Number(value);
-  return Number.isFinite(parsed)
-    ? Math.min(max, Math.max(min, Math.trunc(parsed)))
-    : fallback;
+  return Number.isFinite(parsed) ? Math.min(max, Math.max(min, Math.trunc(parsed))) : fallback;
 }
 
 function candidateLimit(env) {
@@ -421,7 +419,9 @@ async function dispatchKnowledgeCatalogVerificationRun(
     return result;
   } catch (error) {
     const finishedAt = new Date().toISOString();
-    const row = await env.DB.prepare("SELECT status FROM knowledge_catalog_review_runs WHERE id = ?")
+    const row = await env.DB.prepare(
+      "SELECT status FROM knowledge_catalog_review_runs WHERE id = ?",
+    )
       .bind(runId)
       .first();
     if (row?.status === "running") {

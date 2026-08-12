@@ -172,12 +172,7 @@ export async function completeKnowledgeCatalogVerificationJob(
     .run();
 }
 
-export async function deadLetterKnowledgeCatalogVerificationJob(
-  db,
-  jobId,
-  message,
-  finishedAt,
-) {
+export async function deadLetterKnowledgeCatalogVerificationJob(db, jobId, message, finishedAt) {
   await db
     .prepare(`
       UPDATE knowledge_catalog_verification_jobs

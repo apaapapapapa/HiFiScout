@@ -15,11 +15,19 @@ test("Knowledge Catalog source retries use bounded exponential backoff", () => {
 
 test("only transient official-source failures are retried", () => {
   assert.equal(
-    isRetryableKnowledgeCatalogVerification({ status: "error", httpStatus: 429, message: "rate limited" }),
+    isRetryableKnowledgeCatalogVerification({
+      status: "error",
+      httpStatus: 429,
+      message: "rate limited",
+    }),
     true,
   );
   assert.equal(
-    isRetryableKnowledgeCatalogVerification({ status: "error", httpStatus: 503, message: "upstream" }),
+    isRetryableKnowledgeCatalogVerification({
+      status: "error",
+      httpStatus: 503,
+      message: "upstream",
+    }),
     true,
   );
   assert.equal(
@@ -27,7 +35,11 @@ test("only transient official-source failures are retried", () => {
     true,
   );
   assert.equal(
-    isRetryableKnowledgeCatalogVerification({ status: "not_found", httpStatus: 404, message: "missing" }),
+    isRetryableKnowledgeCatalogVerification({
+      status: "not_found",
+      httpStatus: 404,
+      message: "missing",
+    }),
     false,
   );
   assert.equal(
