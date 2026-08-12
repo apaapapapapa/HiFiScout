@@ -1,6 +1,8 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
 
-function catalogMeta(overrides = {}) {
+type JsonObject = Record<string, unknown>;
+
+function catalogMeta(overrides: JsonObject = {}) {
   return {
     status: "healthy",
     shops: [],
@@ -11,7 +13,7 @@ function catalogMeta(overrides = {}) {
   };
 }
 
-function product(overrides = {}) {
+function product(overrides: JsonObject = {}) {
   const recent = new Date(Date.now() - 60 * 60_000).toISOString();
   return {
     id: 1,
@@ -39,8 +41,8 @@ function product(overrides = {}) {
   };
 }
 
-async function routeMeta(page, meta = catalogMeta()) {
-  await page.route("**/api/meta", (route) =>
+async function routeMeta(page: Page, meta: JsonObject = catalogMeta()): Promise<void> {
+  await page.route("**/api/meta", (route: Route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify(meta),
@@ -52,7 +54,7 @@ test("invalid catalog query parameters are sanitized before the product API requ
   page,
 }) => {
   await routeMeta(page);
-  await page.route("**/api/products?**", (route) =>
+  await page.route("**/api/products?**", (route: Route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ items: [], hasMore: false, nextCursor: null }),
@@ -104,7 +106,7 @@ test("new and price-drop checkboxes update both the URL and product API query", 
   page,
 }) => {
   await routeMeta(page);
-  await page.route("**/api/products?**", (route) =>
+  await page.route("**/api/products?**", (route: Route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ items: [product()], hasMore: false, nextCursor: null }),
@@ -135,7 +137,7 @@ test("new and price-drop checkboxes update both the URL and product API query", 
 
 test("result count distinguishes hasMore from the current page item count", async ({ page }) => {
   await routeMeta(page);
-  await page.route("**/api/products?**", (route) => {
+  await page.route("**/api/products?**", (route: Route) => {
     const params = new URL(route.request().url()).searchParams;
     const hasMore = params.get("priceDropped") !== "true";
     return route.fulfill({
@@ -184,7 +186,7 @@ test("healthy metadata renders the simple normal sync summary", async ({ page })
       ],
     }),
   );
-  await page.route("**/api/products?**", (route) =>
+  await page.route("**/api/products?**", (route: Route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ items: [], hasMore: false, nextCursor: null }),
