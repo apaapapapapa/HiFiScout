@@ -184,6 +184,14 @@ jobs:
             )
             ORDER BY q.shop_key;")"
 
+          baseline_with_rates="$(jq 'map(. + {
+            manufacturer_unknown_rate: (if .total_items > 0 then ((.manufacturer_missing_count + .manufacturer_unresolved_count) / .total_items) else null end),
+            category_unclassified_rate: (if .total_items > 0 then (.category_unclassified_count / .total_items) else null end),
+            identity_unresolved_rate: (if ((.identity_matched_count + .identity_unresolved_count) > 0) then (.identity_unresolved_count / (.identity_matched_count + .identity_unresolved_count)) else null end),
+            inventory_unknown_rate: (if ((.inventory_known_count + .inventory_unknown_count) > 0) then (.inventory_unknown_count / (.inventory_known_count + .inventory_unknown_count)) else null end),
+            model_extraction_rate: (if .model_expected_count > 0 then (.model_extracted_count / .model_expected_count) else null end)
+          })' <<< "$baseline")"
+
           identity_count="$(jq -r '.[0].resolution_count // 0' <<< "$identity")"
           evidence_count="$(jq -r '.[0].evidence_count // 0' <<< "$evidence")"
           shop_count="$(jq 'length' <<< "$shops")"
@@ -196,9 +204,16 @@ jobs:
             exit 1
           fi
 
-          echo "Identity production rows: $identity_count"
-          echo "Evidence metadata rows: $evidence_count"
-          echo "Active shops represented in D1: $shop_count"
+          echo 'Product Identity production state:'
+          jq . <<< "$identity"
+          echo 'Evidence metadata production state:'
+          jq . <<< "$evidence"
+          echo 'Active listings by shop:'
+          jq . <<< "$shops"
+          echo 'Phase 2 snapshot baseline:'
+          jq . <<< "$baseline_with_rates"
+          echo 'Latest persisted Phase 2 quality runs:'
+          jq . <<< "$quality_runs"
 
           {
             echo '## Production Data Platform / Data Quality baseline'
@@ -224,13 +239,7 @@ jobs:
             echo
             echo '### Phase 2 snapshot baseline'
             echo '```json'
-            jq 'map(. + {
-              manufacturer_unknown_rate: (if .total_items > 0 then ((.manufacturer_missing_count + .manufacturer_unresolved_count) / .total_items) else null end),
-              category_unclassified_rate: (if .total_items > 0 then (.category_unclassified_count / .total_items) else null end),
-              identity_unresolved_rate: (if ((.identity_matched_count + .identity_unresolved_count) > 0) then (.identity_unresolved_count / (.identity_matched_count + .identity_unresolved_count)) else null end),
-              inventory_unknown_rate: (if ((.inventory_known_count + .inventory_unknown_count) > 0) then (.inventory_unknown_count / (.inventory_known_count + .inventory_unknown_count)) else null end),
-              model_extraction_rate: (if .model_expected_count > 0 then (.model_extracted_count / .model_expected_count) else null end)
-            })' <<< "$baseline"
+            jq . <<< "$baseline_with_rates"
             echo '```'
             echo
             echo '### Latest persisted Phase 2 quality runs'
