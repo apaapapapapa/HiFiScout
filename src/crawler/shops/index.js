@@ -4,6 +4,7 @@ import { ippinkanAdapter } from "./ippinkan.js";
 import { fujiyaAvicAdapter } from "./fujiya-avic.js";
 import { hifidoAdapter } from "./hifido.js";
 import { forMusicAdapter } from "./formusic.js";
+import { uAudioAdapter } from "./u-audio.js";
 import { shimamusenAdapter } from "./shimamusen.js";
 // shop-generator:imports
 
@@ -71,6 +72,17 @@ export const SHOP_PLUGINS = [
     enabledEnv: "FORMUSIC_ENABLED",
     requestDelayEnv: "FORMUSIC_REQUEST_DELAY_MS",
     defaultIntervalMinutes: 30,
+  }),
+  defineShopPlugin(uAudioAdapter, {
+    key: "u-audio",
+    name: "U-AUDIO",
+    baseUrl: "https://www.u-audio.com",
+    intervalEnv: "UAUDIO_INTERVAL_MINUTES",
+    enabledEnv: "UAUDIO_ENABLED",
+    requestDelayEnv: "UAUDIO_REQUEST_DELAY_MS",
+    defaultIntervalMinutes: 60,
+    maxPagesEnv: "UAUDIO_MAX_PAGES",
+    defaultMaxPages: 50,
   }),
   defineShopPlugin(shimamusenAdapter, {
     key: "shimamusen",
