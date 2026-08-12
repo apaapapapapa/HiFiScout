@@ -93,11 +93,7 @@ export function evaluateQuality(input, { thresholdOverrides = {} } = {}) {
       identityTotal,
       thresholds.identityUnresolvedRate,
     ),
-    inventoryUnknown: metric(
-      inventoryUnknown,
-      inventoryTotal,
-      thresholds.inventoryUnknownRate,
-    ),
+    inventoryUnknown: metric(inventoryUnknown, inventoryTotal, thresholds.inventoryUnknownRate),
     modelMissing: metric(modelMissing, modelExpected, thresholds.modelMissingRate),
     parserFailure: metric(parseFailures, parseAttempts, thresholds.parserFailureRate),
     evidenceCoverage: evidenceExpected

@@ -8,10 +8,7 @@ import {
   dispatchForcedCrawl,
   dispatchScheduledCrawl,
 } from "./crawler/dispatch.js";
-import {
-  dataQualityStatus,
-  listDataQualityHistory,
-} from "./db/data-quality-repository.js";
+import { dataQualityStatus, listDataQualityHistory } from "./db/data-quality-repository.js";
 import { dataPlatformStatus } from "./db/data-platform-status-repository.js";
 import { knowledgeCatalogOperationalStatus } from "./db/knowledge-catalog-review-repository.js";
 import { knowledgeCatalogVerificationQueueStatus } from "./db/knowledge-catalog-verification-queue-repository.js";

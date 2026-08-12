@@ -85,10 +85,7 @@ export async function saveDataQualityRun(
   } = {},
 ) {
   const snapshot = await readDataQualitySnapshot(db, shopKey);
-  const evaluation = evaluateQuality(
-    { shopKey, ...snapshot, ...run },
-    { thresholdOverrides },
-  );
+  const evaluation = evaluateQuality({ shopKey, ...snapshot, ...run }, { thresholdOverrides });
   const c = evaluation.counts;
   const statuses = statusColumns(evaluation);
 
@@ -202,11 +199,7 @@ export function dataQualityRow(row) {
       identityTotal,
       row.identity_status,
     ),
-    inventoryUnknown: rowMetric(
-      row.inventory_unknown_count,
-      inventoryTotal,
-      row.inventory_status,
-    ),
+    inventoryUnknown: rowMetric(row.inventory_unknown_count, inventoryTotal, row.inventory_status),
     modelMissing: rowMetric(row.model_missing_count, row.model_expected_count, row.model_status),
   };
   const runMetrics = {

@@ -141,7 +141,9 @@ async function safeSaveDataQuality(env, adapter, runId, evaluatedAt, run) {
       crawlRunId: runId,
       evaluatedAt,
       run,
-      thresholdOverrides: adapter.qualityThresholds ? { [adapter.key]: adapter.qualityThresholds } : {},
+      thresholdOverrides: adapter.qualityThresholds
+        ? { [adapter.key]: adapter.qualityThresholds }
+        : {},
     });
     console.log(
       JSON.stringify({
