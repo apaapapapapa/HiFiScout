@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
@@ -21,35 +21,23 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run lint
-      - name: Format changed source files and commit
-        if: github.event_name == 'pull_request'
+      - name: Check formatting of changed source files
         shell: bash
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
-          set -euo pipefail
-          mapfile -t files < <(git diff --name-only --diff-filter=ACMR "$BASE_SHA" HEAD -- '*.js' '*.mjs' '*.cjs' '*.jsx' '*.ts' '*.mts' '*.cts' '*.tsx')
-          if ((${#files[@]} == 0)); then
-            echo "No changed JavaScript/TypeScript source files to format."
-            exit 0
+          mapfile -t files < <(git diff --name-only --diff-filter=ACMR "$BASE_SHA" "$GITHUB_SHA" -- '*.js' '*.mjs' '*.cjs' '*.jsx' '*.ts' '*.mts' '*.cts' '*.tsx')
+          if ((${#files[@]} > 0)); then
+            npx oxfmt --check "${files[@]}"
+          else
+            echo "No changed JavaScript/TypeScript source files to format-check."
           fi
-          npx oxfmt "${files[@]}"
-          if git diff --quiet -- "${files[@]}"; then
-            echo "No formatting changes required."
-            exit 0
-          fi
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -- "${files[@]}"
-          git commit -m 'style: format Knowledge Catalog queue changes'
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
       - run: npm run db:migrate:local
       - run: npm test
       - run: npx wrangler deploy --dry-run
