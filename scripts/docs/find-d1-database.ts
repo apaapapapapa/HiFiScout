@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 
 const [stateDir] = process.argv.slice(2);
 if (!stateDir) {
-  console.error("Usage: node scripts/docs/find-d1-database.mjs <wrangler-state-dir>");
+  console.error("Usage: npx tsx scripts/docs/find-d1-database.ts <wrangler-state-dir>");
   process.exit(2);
 }
 

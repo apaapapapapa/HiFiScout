@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'infra/audiounion-lambda/index.mjs'
+      - 'infra/audiounion-lambda/index.ts'
       - '.github/workflows/deploy-audiounion-lambda.yml'
   workflow_dispatch:
 
@@ -48,9 +48,12 @@ jobs:
           role-to-assume: ${{ vars.AWS_LAMBDA_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Build Lambda bundle from TypeScript source
+        run: npm run build:lambda
+
       - name: Package Lambda
         run: |
-          cd infra/audiounion-lambda
+          cd dist/audiounion-lambda
           zip -j "$RUNNER_TEMP/audiounion-lambda.zip" index.mjs
 
       - name: Deploy Lambda code

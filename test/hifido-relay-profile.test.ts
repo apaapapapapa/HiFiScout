@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHandler } from "../infra/audiounion-lambda/index.mjs";
+import { createHandler } from "../infra/audiounion-lambda/index.js";
 
 const HIFIDO_URL = "https://www.hifido.co.jp/?L=50&LNG=J&O=0&OD=0";
 const TOKEN = `test-${"x".repeat(40)}`;

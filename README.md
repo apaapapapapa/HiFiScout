@@ -157,8 +157,13 @@ Requires Node.js 22+.
 ```bash
 npm install
 npm run db:migrate:local
+npm run build:frontend
 npm run dev
 ```
+
+The application is TypeScript-only; see `docs/typescript.md`. `public/app.js`, `public/catalog-url-state.js`, and
+`public/shop-links.js` are build output produced from `frontend/*.ts` by `npm run build:frontend`, so run it before
+`npm run dev` (and after changing any browser source).
 
 To test the crawl dispatcher locally:
 
@@ -170,6 +175,12 @@ Tests:
 
 ```bash
 npm test
+```
+
+Type checking:
+
+```bash
+npm run typecheck
 ```
 
 See `docs/testing-strategy.md` for the test pyramid and the minimal deployed-environment Playwright E2E policy.

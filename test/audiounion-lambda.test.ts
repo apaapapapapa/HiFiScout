@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHandler } from "../infra/audiounion-lambda/index.mjs";
+import { createHandler } from "../infra/audiounion-lambda/index.js";
 
 const ENTRY_URL = "https://www.audiounion.jp/st/new_arrival_used.html";
 const DETAIL_URL = "https://www.audiounion.jp/ct/detail/used/223257/";
 const HIFIDO_URL = "https://www.hifido.co.jp/?L=50&LNG=J&O=0&OD=0";
-const TOKEN = "0123456789abcdef0123456789abcdef";
+const TOKEN = `test-${"x".repeat(40)}`;
 
 function event(body = {}, token = TOKEN) {
   return {

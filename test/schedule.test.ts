@@ -7,7 +7,7 @@ import { isShopDue, isSuspiciousItemDrop } from "../src/crawler/run.js";
 const wranglerConfig = JSON.parse(
   fs.readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8"),
 );
-const workerSource = fs.readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
+const workerSource = fs.readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
 
 test("shop interval is evaluated independently", () => {
   const now = new Date("2026-08-11T00:30:00.000Z");

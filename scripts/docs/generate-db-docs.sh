@@ -24,7 +24,7 @@ mkdir -p "$WRANGLER_STATE_DIR" "$DB_WORK_DIR" "$OUTPUT_DIR"
 
 npx wrangler d1 migrations apply DB --local --persist-to "$WRANGLER_STATE_DIR"
 
-DB_FILE="$(node --no-warnings scripts/docs/find-d1-database.mjs "$WRANGLER_STATE_DIR")"
+DB_FILE="$(npx tsx scripts/docs/find-d1-database.ts "$WRANGLER_STATE_DIR")"
 
 mkdir -p "$DRIVER_DIR"
 if [[ ! -f "$DRIVER_JAR" ]]; then

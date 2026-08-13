@@ -8,7 +8,7 @@ import {
   renderAdapter,
   renderPluginRegistration,
   validateShopKey,
-} from "../scripts/create-shop.mjs";
+} from "../scripts/create-shop.js";
 
 test("shop generator validates kebab-case keys", () => {
   assert.equal(validateShopKey("example-audio"), "example-audio");

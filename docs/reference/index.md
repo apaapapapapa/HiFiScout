@@ -1,6 +1,6 @@
 # Source API Reference
 
-The detailed API reference is generated into `api.md` by documentation.js from exported JavaScript symbols and JSDoc comments.
+The detailed API reference is generated into `api.md` by documentation.js from exported TypeScript symbols and JSDoc comments.
 
 [Open the generated API reference](./api.md)
 

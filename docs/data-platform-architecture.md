@@ -55,7 +55,7 @@ The legacy `products_fts` table is intentionally retained during this migration.
 
 ### Multi-term FTS queries
 
-User input is parsed by `src/search/fts-query.js`; it is never concatenated directly as raw FTS syntax.
+User input is parsed by `src/search/fts-query.ts`; it is never concatenated directly as raw FTS syntax.
 
 - terms of 3 or more characters use quoted FTS5 terms
 - multiple FTS terms are combined with `AND`
@@ -165,7 +165,7 @@ The governing rule is that a false positive merge is more damaging than a false 
 
 ### Archive decisions
 
-`src/evidence/evidence-archive.js` has an explicit allow-list of archiveable reasons. The crawler currently emits evidence for:
+`src/evidence/evidence-archive.ts` has an explicit allow-list of archiveable reasons. The crawler currently emits evidence for:
 
 - parser failure / zero parsed products
 - suspicious item-count validation failure

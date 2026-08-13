@@ -4,7 +4,7 @@ HiFiScout's developer documentation is built from four complementary OSS tools.
 
 | Tool | Responsibility | Pinned version |
 | --- | --- | --- |
-| documentation.js | JavaScript/JSDoc API reference | 14.0.0 |
+| documentation.js | TypeScript/JSDoc API reference | 14.0.0 |
 | dependency-cruiser | Module dependency validation and visualization | 18.1.0 |
 | SchemaSpy | D1/SQLite schema documentation and ER diagrams | 7.0.2 |
 | VitePress | Unified static developer documentation site | 1.6.4 |

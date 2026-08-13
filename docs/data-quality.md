@@ -4,9 +4,9 @@ HiFiScout Phase 2 treats data quality as a domain concern after crawl, normaliza
 
 ## Architecture
 
-The crawler records run-level facts and delegates evaluation/persistence to the common Data Quality layer. Shop-specific quality logic is not embedded in crawler branches. Global thresholds live in `src/data-quality/quality-thresholds.js`; a shop adapter may declare a narrowly scoped `qualityThresholds` override when domain evidence justifies it.
+The crawler records run-level facts and delegates evaluation/persistence to the common Data Quality layer. Shop-specific quality logic is not embedded in crawler branches. Global thresholds live in `src/data-quality/quality-thresholds.ts`; a shop adapter may declare a narrowly scoped `qualityThresholds` override when domain evidence justifies it.
 
-`src/data-quality/quality-evaluator.js` is a pure-function-oriented evaluator. `src/db/data-quality-repository.js` owns D1 aggregation, persistence, latest/history queries, and API serialization. `migrations/0019_data_quality.sql` creates `data_quality_runs`, whose rows are linked to `crawl_runs` when available.
+`src/data-quality/quality-evaluator.ts` is a pure-function-oriented evaluator. `src/db/data-quality-repository.ts` owns D1 aggregation, persistence, latest/history queries, and API serialization. `migrations/0019_data_quality.sql` creates `data_quality_runs`, whose rows are linked to `crawl_runs` when available.
 
 Snapshot quality and crawl-run quality are semantically separate even though they are persisted atomically in one bounded D1 history row. `snapshot_status` covers the current active-listing state; `run_status` covers parser, evidence, and item-count behavior for that crawl. `quality_status` is only the worst status across those groups. It is not a weighted composite score.
 
