@@ -19,9 +19,9 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Package validated workspace
-        run: tar --exclude=.git --exclude=phase-2-5-workspace.tar.gz -czf phase-2-5-workspace.tar.gz .
+        run: tar --exclude=.git -czf /tmp/phase-2-5-workspace.tar.gz .
       - uses: actions/upload-artifact@v4
         with:
           name: phase-2-5-workspace
-          path: phase-2-5-workspace.tar.gz
+          path: /tmp/phase-2-5-workspace.tar.gz
           retention-days: 1
