@@ -1,11 +1,13 @@
-function normalizePath(url) {
+import type { RobotsGroup } from "./types.js";
+
+function normalizePath(url: string): string {
   const parsed = new URL(url);
   return `${parsed.pathname}${parsed.search}` || "/";
 }
 
-function parseGroups(text) {
-  const groups = [];
-  let current = null;
+function parseGroups(text: string): RobotsGroup[] {
+  const groups: RobotsGroup[] = [];
+  let current: RobotsGroup | null = null;
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.replace(/#.*$/, "").trim();
     if (!line) continue;
@@ -29,14 +31,14 @@ function parseGroups(text) {
   return groups;
 }
 
-function applicableGroups(text, userAgent) {
+function applicableGroups(text: string, userAgent: string): RobotsGroup[] {
   const groups = parseGroups(text);
   const ua = userAgent.toLowerCase().split("/")[0];
   const exact = groups.filter((g) => g.agents.some((a) => a !== "*" && ua.includes(a)));
   return exact.length ? exact : groups.filter((g) => g.agents.includes("*"));
 }
 
-function matchesRule(path, rulePath) {
+function matchesRule(path: string, rulePath: string): boolean {
   if (!rulePath) return false;
   const escaped = rulePath
     .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
@@ -45,7 +47,11 @@ function matchesRule(path, rulePath) {
   return new RegExp(`^${escaped}`).test(path);
 }
 
-export function isPathAllowed(robotsText, targetUrl, userAgent = "HiFiScoutBot") {
+export function isPathAllowed(
+  robotsText: string | null | undefined,
+  targetUrl: string,
+  userAgent = "HiFiScoutBot",
+): boolean {
   if (robotsText == null) return true;
   const applicable = applicableGroups(robotsText, userAgent);
   const path = normalizePath(targetUrl);
@@ -55,16 +61,23 @@ export function isPathAllowed(robotsText, targetUrl, userAgent = "HiFiScoutBot")
   return rules[0].type === "allow";
 }
 
-export function getCrawlDelayMs(robotsText, userAgent = "HiFiScoutBot") {
+export function getCrawlDelayMs(
+  robotsText: string | null | undefined,
+  userAgent = "HiFiScoutBot",
+): number {
   if (robotsText == null) return 0;
   const delays = applicableGroups(robotsText, userAgent)
     .map((group) => group.crawlDelaySeconds)
-    .filter((value) => Number.isFinite(value) && value >= 0);
+    .filter((value): value is number => value != null && Number.isFinite(value) && value >= 0);
   if (!delays.length) return 0;
   return Math.max(...delays) * 1000;
 }
 
-export async function fetchRobotsPolicy(fetchFn, baseUrl, userAgent) {
+export async function fetchRobotsPolicy(
+  fetchFn: typeof fetch,
+  baseUrl: string,
+  userAgent: string,
+): Promise<string | null> {
   const robotsUrl = new URL("/robots.txt", baseUrl).toString();
   const response = await fetchFn(robotsUrl, { headers: { "User-Agent": userAgent } });
   if (response.status === 429) throw new Error("robots.txt temporarily unavailable (429)");

@@ -1,4 +1,95 @@
 import { timingSafeEqual } from "node:crypto";
+import type { APIGatewayProxyEventHeaders, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
+
+/**
+ * One header record for every direction: the two response branches below build
+ * different key sets, and the outbound request profiles do the same.
+ */
+type RelayHeaders = Record<string, string>;
+
+/**
+ * The Lambda Function URL event fields this relay reads. `APIGatewayProxyEventV2`
+ * is assignable to it, and so are the hand-built events in the unit tests.
+ */
+interface RelayEvent {
+  headers?: APIGatewayProxyEventHeaders;
+  body?: string;
+  isBase64Encoded?: boolean;
+  requestContext?: { http?: { method?: string } };
+}
+
+/** Environment variables the relay reads. `process.env` is assignable to it. */
+interface RelayEnv {
+  RELAY_TOKEN?: string;
+  AUDIOUNION_ENTRY_URL?: string;
+  CRAWLER_USER_AGENT?: string;
+  HIFIDO_USER_AGENT?: string;
+  MIN_REQUEST_DELAY_MS?: string;
+  AWS_REGION?: string;
+}
+
+/** The `Response` surface the relay consumes; the global `Response` satisfies it. */
+interface RelayFetchResponse {
+  readonly status: number;
+  readonly ok: boolean;
+  readonly headers: { get(name: string): string | null };
+  text(): Promise<string>;
+  arrayBuffer(): Promise<ArrayBuffer>;
+}
+
+interface RelayFetchInit {
+  headers: RelayHeaders;
+  redirect: "follow";
+}
+
+type RelayFetch = (url: string, init: RelayFetchInit) => Promise<RelayFetchResponse>;
+
+type RelaySleep = (ms: number) => Promise<unknown>;
+
+/** Structured Function URL response, narrowed to the fields this relay always sets. */
+interface RelayResponse extends APIGatewayProxyStructuredResultV2 {
+  statusCode: number;
+  headers: RelayHeaders;
+  body: string;
+  isBase64Encoded: boolean;
+}
+
+/** JSON payload of every non-proxied response. */
+interface RelayErrorBody {
+  error: string;
+  message?: string;
+}
+
+/** Untrusted request payload: only the three fields below are ever read. */
+interface RelayRequestBody {
+  url?: unknown;
+  userAgent?: unknown;
+  requestDelayMs?: unknown;
+}
+
+interface RobotsRule {
+  type: "allow" | "disallow";
+  path: string;
+}
+
+interface RobotsGroup {
+  agents: string[];
+  rules: RobotsRule[];
+  crawlDelaySeconds: number | null;
+}
+
+interface RelayRequestProfile {
+  userAgent: string;
+  headers: RelayHeaders;
+}
+
+interface CreateHandlerOptions {
+  fetchFn?: RelayFetch;
+  sleepFn?: RelaySleep;
+  env?: RelayEnv;
+}
+
+type RelayHandler = (event?: RelayEvent) => Promise<RelayResponse>;
 
 const DEFAULT_ENTRY_URL = "https://www.audiounion.jp/st/new_arrival_used.html";
 const DEFAULT_USER_AGENT = "HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)";
@@ -8,9 +99,18 @@ const DEFAULT_MIN_DELAY_MS = 10_000;
 const AUDIOUNION_HOST = "www.audiounion.jp";
 const HIFIDO_HOST = "www.hifido.co.jp";
 const HIFIDO_ALLOWED_QUERY_KEYS = new Set(["L", "LNG", "O", "OD"]);
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function jsonResponse(statusCode, body, headers = {}) {
+/** Narrows a `JSON.parse` result to a plain keyed object; arrays are rejected. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function jsonResponse(
+  statusCode: number,
+  body: RelayErrorBody,
+  headers: RelayHeaders = {},
+): RelayResponse {
   return {
     statusCode,
     headers: {
@@ -23,7 +123,7 @@ function jsonResponse(statusCode, body, headers = {}) {
   };
 }
 
-function requestHeader(event, name) {
+function requestHeader(event: RelayEvent, name: string): string {
   const headers = event?.headers || {};
   const wanted = name.toLowerCase();
   for (const [key, value] of Object.entries(headers)) {
@@ -32,26 +132,27 @@ function requestHeader(event, name) {
   return "";
 }
 
-function secureEqual(left, right) {
+function secureEqual(left: string, right: string): boolean {
   const a = Buffer.from(String(left ?? ""));
   const b = Buffer.from(String(right ?? ""));
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-function decodeRequestBody(event) {
+function decodeRequestBody(event: RelayEvent): RelayRequestBody {
   const raw = event?.body || "";
   const decoded = event?.isBase64Encoded ? Buffer.from(raw, "base64").toString("utf8") : raw;
-  return decoded ? JSON.parse(decoded) : {};
+  const parsed: unknown = decoded ? JSON.parse(decoded) : {};
+  return isRecord(parsed) ? parsed : {};
 }
 
-function normalizePath(url) {
+function normalizePath(url: string): string {
   const parsed = new URL(url);
   return `${parsed.pathname}${parsed.search}` || "/";
 }
 
-function parseGroups(text) {
-  const groups = [];
-  let current = null;
+function parseGroups(text: string): RobotsGroup[] {
+  const groups: RobotsGroup[] = [];
+  let current: RobotsGroup | null = null;
   for (const rawLine of String(text || "").split(/\r?\n/)) {
     const line = rawLine.replace(/#.*$/, "").trim();
     if (!line) continue;
@@ -75,7 +176,7 @@ function parseGroups(text) {
   return groups;
 }
 
-function applicableGroups(text, userAgent) {
+function applicableGroups(text: string, userAgent: string): RobotsGroup[] {
   const groups = parseGroups(text);
   const ua = String(userAgent || "")
     .toLowerCase()
@@ -86,7 +187,7 @@ function applicableGroups(text, userAgent) {
   return exact.length ? exact : groups.filter((group) => group.agents.includes("*"));
 }
 
-function matchesRule(path, rulePath) {
+function matchesRule(path: string, rulePath: string): boolean {
   if (!rulePath) return false;
   const escaped = rulePath
     .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
@@ -95,7 +196,7 @@ function matchesRule(path, rulePath) {
   return new RegExp(`^${escaped}`).test(path);
 }
 
-function isPathAllowed(robotsText, targetUrl, userAgent) {
+function isPathAllowed(robotsText: string | null, targetUrl: string, userAgent: string): boolean {
   if (robotsText == null) return true;
   const applicable = applicableGroups(robotsText, userAgent);
   const path = normalizePath(targetUrl);
@@ -107,15 +208,19 @@ function isPathAllowed(robotsText, targetUrl, userAgent) {
   return rules[0].type === "allow";
 }
 
-function getCrawlDelayMs(robotsText, userAgent) {
+function getCrawlDelayMs(robotsText: string | null, userAgent: string): number {
   if (robotsText == null) return 0;
   const delays = applicableGroups(robotsText, userAgent)
     .map((group) => group.crawlDelaySeconds)
-    .filter((value) => Number.isFinite(value) && value >= 0);
+    .filter((value): value is number => value !== null && Number.isFinite(value) && value >= 0);
   return delays.length ? Math.max(...delays) * 1000 : 0;
 }
 
-async function fetchRobotsPolicy(fetchFn, baseUrl, userAgent) {
+async function fetchRobotsPolicy(
+  fetchFn: RelayFetch,
+  baseUrl: string,
+  userAgent: string,
+): Promise<string | null> {
   const robotsUrl = new URL("/robots.txt", baseUrl).toString();
   const response = await fetchFn(robotsUrl, {
     headers: { "User-Agent": userAgent },
@@ -129,7 +234,7 @@ async function fetchRobotsPolicy(fetchFn, baseUrl, userAgent) {
   return response.text();
 }
 
-function configuredEntryUrl(env) {
+function configuredEntryUrl(env: RelayEnv): string {
   const url = new URL(env.AUDIOUNION_ENTRY_URL || DEFAULT_ENTRY_URL);
   if (url.protocol !== "https:" || url.hostname !== AUDIOUNION_HOST) {
     throw new Error("AUDIOUNION_ENTRY_URL must use https://www.audiounion.jp");
@@ -137,7 +242,7 @@ function configuredEntryUrl(env) {
   return url.toString();
 }
 
-function isAllowedAudioUnionDetailUrl(url) {
+function isAllowedAudioUnionDetailUrl(url: URL): boolean {
   return (
     url.protocol === "https:" &&
     url.hostname === AUDIOUNION_HOST &&
@@ -150,7 +255,7 @@ function isAllowedAudioUnionDetailUrl(url) {
   );
 }
 
-function isAllowedHifidoUrl(url) {
+function isAllowedHifidoUrl(url: URL): boolean {
   if (url.protocol !== "https:" || url.hostname !== HIFIDO_HOST || url.pathname !== "/")
     return false;
   for (const key of url.searchParams.keys()) {
@@ -163,23 +268,27 @@ function isAllowedHifidoUrl(url) {
   return Number.isSafeInteger(offset) && offset >= 0 && offset % 30 === 0;
 }
 
-function isAllowedTarget(requestedUrl, env) {
+function isAllowedTarget(requestedUrl: URL, env: RelayEnv): boolean {
   if (requestedUrl.toString() === configuredEntryUrl(env)) return true;
   if (isAllowedAudioUnionDetailUrl(requestedUrl)) return true;
   return isAllowedHifidoUrl(requestedUrl);
 }
 
-function safeUserAgent(value, fallback) {
+function safeUserAgent(value: unknown, fallback?: string): string {
   const candidate = String(value || fallback || DEFAULT_USER_AGENT).trim();
   if (!candidate || candidate.length > 300 || /[\r\n]/.test(candidate)) return DEFAULT_USER_AGENT;
   return candidate;
 }
 
-function hifidoUserAgent(env) {
+function hifidoUserAgent(env: RelayEnv): string {
   return safeUserAgent(env.HIFIDO_USER_AGENT, DEFAULT_HIFIDO_USER_AGENT);
 }
 
-function requestProfile(requestedUrl, requestedUserAgent, env) {
+function requestProfile(
+  requestedUrl: URL,
+  requestedUserAgent: string,
+  env: RelayEnv,
+): RelayRequestProfile {
   if (requestedUrl.hostname !== HIFIDO_HOST) {
     return {
       userAgent: requestedUserAgent,
@@ -211,13 +320,15 @@ function requestProfile(requestedUrl, requestedUserAgent, env) {
   };
 }
 
-function nonNegativeNumber(value, fallback = 0) {
+function nonNegativeNumber(value: unknown, fallback = 0): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
-export function createHandler({ fetchFn = fetch, sleepFn = sleep, env = process.env } = {}) {
-  return async function handler(event = {}) {
+export function createHandler(
+  { fetchFn = fetch, sleepFn = sleep, env = process.env }: CreateHandlerOptions = {},
+): RelayHandler {
+  return async function handler(event: RelayEvent = {}): Promise<RelayResponse> {
     try {
       const method = event?.requestContext?.http?.method || "POST";
       if (method !== "POST")
@@ -230,14 +341,14 @@ export function createHandler({ fetchFn = fetch, sleepFn = sleep, env = process.
       if (!secureEqual(suppliedToken, relayToken))
         return jsonResponse(401, { error: "unauthorized" });
 
-      let body;
+      let body: RelayRequestBody;
       try {
         body = decodeRequestBody(event);
       } catch {
         return jsonResponse(400, { error: "invalid_json" });
       }
 
-      let requestedUrl;
+      let requestedUrl: URL;
       try {
         requestedUrl = new URL(String(body.url || ""));
       } catch {

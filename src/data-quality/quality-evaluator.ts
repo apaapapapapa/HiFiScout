@@ -1,19 +1,45 @@
+import type {
+  ItemCountMetric,
+  QualityCounts,
+  QualityEvaluation,
+  QualityMetric,
+  QualityRunMetrics,
+  QualitySnapshotMetrics,
+  QualityStatus,
+  QualityThreshold,
+} from "../db/types.js";
+import type { QualityThresholdOverrides } from "./quality-thresholds.js";
 import { qualityThresholdsForShop } from "./quality-thresholds.js";
 
-const STATUS_RANK = { unknown: 0, healthy: 1, warning: 2, critical: 3 };
+/** Every count is optional: callers pass whichever subset the crawl produced. */
+export type QualityEvaluationInput = Partial<QualityCounts> & { shopKey?: string };
 
-function nonNegative(value) {
+export interface EvaluateQualityOptions {
+  thresholdOverrides?: QualityThresholdOverrides;
+}
+
+/** Any numeric-ish column or counter; `nonNegative` normalises the rest away. */
+type CountInput = number | null | undefined;
+
+const STATUS_RANK: Record<QualityStatus, number> = {
+  unknown: 0,
+  healthy: 1,
+  warning: 2,
+  critical: 3,
+};
+
+function nonNegative(value: CountInput): number {
   const number = Number(value || 0);
   return Number.isFinite(number) && number > 0 ? number : 0;
 }
 
-export function rate(count, denominator) {
+export function rate(count: CountInput, denominator: CountInput): number | null {
   const total = nonNegative(denominator);
   if (!total) return null;
   return nonNegative(count) / total;
 }
 
-export function statusForRate(value, threshold) {
+export function statusForRate(value: number | null, threshold: QualityThreshold): QualityStatus {
   if (value == null || !Number.isFinite(value)) return "unknown";
   if (threshold.direction === "low") {
     const critical =
@@ -29,7 +55,11 @@ export function statusForRate(value, threshold) {
   return "healthy";
 }
 
-function metric(count, denominator, threshold) {
+function metric(
+  count: CountInput,
+  denominator: CountInput,
+  threshold: QualityThreshold,
+): QualityMetric {
   const value = rate(count, denominator);
   return {
     count: nonNegative(count),
@@ -39,16 +69,19 @@ function metric(count, denominator, threshold) {
   };
 }
 
-function worstStatus(statuses) {
+function worstStatus(statuses: QualityStatus[]): QualityStatus {
   const known = statuses.filter((status) => status !== "unknown");
   if (!known.length) return "unknown";
-  return known.reduce(
+  return known.reduce<QualityStatus>(
     (worst, status) => (STATUS_RANK[status] > STATUS_RANK[worst] ? status : worst),
     "healthy",
   );
 }
 
-export function evaluateQuality(input, { thresholdOverrides = {} } = {}) {
+export function evaluateQuality(
+  input: QualityEvaluationInput | null | undefined,
+  { thresholdOverrides = {} }: EvaluateQualityOptions = {},
+): QualityEvaluation {
   const shopKey = String(input?.shopKey || "");
   const thresholds = qualityThresholdsForShop(shopKey, thresholdOverrides);
   const totalItems = nonNegative(input?.totalItems);
@@ -74,10 +107,22 @@ export function evaluateQuality(input, { thresholdOverrides = {} } = {}) {
   const currentItemCount = nonNegative(input?.currentItemCount);
   const itemCountAbsoluteDifference =
     previousItemCount == null ? null : currentItemCount - previousItemCount;
+  // `itemCountAbsoluteDifference` is non-null exactly when `previousItemCount` is, so the extra
+  // guard only satisfies the checker; it never changes which branch runs.
   const itemCountChangeRate =
-    previousItemCount > 0 ? itemCountAbsoluteDifference / previousItemCount : null;
+    previousItemCount != null && itemCountAbsoluteDifference != null && previousItemCount > 0
+      ? itemCountAbsoluteDifference / previousItemCount
+      : null;
 
-  const metrics = {
+  const itemCount: ItemCountMetric = {
+    previous: previousItemCount,
+    current: currentItemCount,
+    absoluteDifference: itemCountAbsoluteDifference,
+    changeRate: itemCountChangeRate,
+    status: statusForRate(itemCountChangeRate, thresholds.itemCountDropRate),
+  };
+
+  const metrics: QualitySnapshotMetrics & QualityRunMetrics = {
     manufacturerUnknown: metric(
       manufacturerUnknown,
       totalItems,
@@ -107,13 +152,7 @@ export function evaluateQuality(input, { thresholdOverrides = {} } = {}) {
           ),
         }
       : { count: 0, denominator: 0, rate: null, status: "unknown" },
-    itemCount: {
-      previous: previousItemCount,
-      current: currentItemCount,
-      absoluteDifference: itemCountAbsoluteDifference,
-      changeRate: itemCountChangeRate,
-      status: statusForRate(itemCountChangeRate, thresholds.itemCountDropRate),
-    },
+    itemCount,
   };
 
   const snapshotStatus = worstStatus([

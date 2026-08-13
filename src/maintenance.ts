@@ -1,10 +1,39 @@
 import { getMaintenanceSettings } from "./config.js";
+import type { CrawlerEnv, MaintenanceSettings } from "./crawler/types.js";
+import type { QueryableDatabase } from "./db/types.js";
 
-function cutoffIso(now, days) {
+/** `runRetentionCleanup` always writes, so the database binding is required here. */
+export interface RetentionEnv extends CrawlerEnv {
+  readonly DB: QueryableDatabase;
+}
+
+export interface RetentionCutoffs {
+  settings: MaintenanceSettings;
+  crawlRunsBefore: string;
+  dataQualityBefore: string;
+  priceHistoryBefore: string;
+  inactiveProductsBefore: string;
+}
+
+export interface RetentionCleanupCounts {
+  evidenceMetadata: number;
+  dataQualityRuns: number;
+  crawlRuns: number;
+  priceHistory: number;
+  inactiveProducts: number;
+}
+
+export interface RetentionCleanupResult {
+  event: "retention_cleanup";
+  at: string;
+  deleted: RetentionCleanupCounts;
+}
+
+function cutoffIso(now: Date, days: number): string {
   return new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
 }
 
-export function retentionCutoffs(env, now = new Date()) {
+export function retentionCutoffs(env: CrawlerEnv, now = new Date()): RetentionCutoffs {
   const settings = getMaintenanceSettings(env);
   return {
     settings,
@@ -15,11 +44,14 @@ export function retentionCutoffs(env, now = new Date()) {
   };
 }
 
-function changes(result) {
+function changes(result: D1Response): number {
   return Number(result?.meta?.changes || 0);
 }
 
-export async function runRetentionCleanup(env, { now = new Date() } = {}) {
+export async function runRetentionCleanup(
+  env: RetentionEnv,
+  { now = new Date() }: { now?: Date } = {},
+): Promise<RetentionCleanupResult> {
   const {
     settings,
     crawlRunsBefore,
@@ -83,7 +115,7 @@ export async function runRetentionCleanup(env, { now = new Date() } = {}) {
     .bind(inactiveProductsBefore, limit)
     .run();
 
-  const result = {
+  const result: RetentionCleanupResult = {
     event: "retention_cleanup",
     at: now.toISOString(),
     deleted: {

@@ -1,4 +1,27 @@
-function apiBucket(pathname) {
+/** Public API routes that carry their own rate-limit bucket. */
+export type ApiRateLimitBucket = "products" | "history" | "meta" | "health";
+
+/**
+ * The slice of `Env` this guard reads. The binding is optional so tests (and any deployment
+ * without the limiter configured) can call the guard with a bare object.
+ */
+export interface ApiRateLimitEnv {
+  readonly API_RATE_LIMITER?: RateLimit;
+}
+
+/** The slice of `Request` this guard reads; the Worker `Request` satisfies it. */
+export interface ApiRateLimitRequest {
+  readonly method: string;
+  readonly url: string;
+  readonly headers: Pick<Headers, "get">;
+}
+
+export interface ApiRateLimitResult {
+  allowed: boolean;
+  bucket?: ApiRateLimitBucket;
+}
+
+function apiBucket(pathname: string): ApiRateLimitBucket | null {
   if (pathname === "/api/products") return "products";
   if (/^\/api\/products\/\d+\/history$/.test(pathname)) return "history";
   if (pathname === "/api/meta") return "meta";
@@ -6,7 +29,10 @@ function apiBucket(pathname) {
   return null;
 }
 
-export async function checkPublicApiRateLimit(request, env) {
+export async function checkPublicApiRateLimit(
+  request: ApiRateLimitRequest,
+  env: ApiRateLimitEnv,
+): Promise<ApiRateLimitResult> {
   if (request.method !== "GET" || !env.API_RATE_LIMITER) return { allowed: true };
   const url = new URL(request.url);
   const bucket = apiBucket(url.pathname);

@@ -1,13 +1,25 @@
-export const FEATURE_DEFINITIONS = Object.freeze([
+import type {
+  FeatureDefinition,
+  FeatureFact,
+  FeatureFactInput,
+  FeatureId,
+  InferFeatureFactsOptions,
+} from "./types.js";
+
+export const FEATURE_DEFINITIONS: readonly FeatureDefinition[] = Object.freeze([
   Object.freeze({ id: "dac", name: "DAC搭載", order: 1 }),
   Object.freeze({ id: "network_playback", name: "ネットワーク対応", order: 2 }),
   Object.freeze({ id: "headphone_output", name: "ヘッドホン出力", order: 3 }),
   Object.freeze({ id: "phono_input", name: "フォノ入力", order: 4 }),
 ]);
 
-const FEATURE_IDS = new Set(FEATURE_DEFINITIONS.map((feature) => feature.id));
+const FEATURE_IDS = new Set<string>(FEATURE_DEFINITIONS.map((feature) => feature.id));
 
-const PRESENT_RULES = [
+/**
+ * Ordered match table. The explicit tuple element type stops TypeScript widening each pair to
+ * `(string | RegExp)[]`, which would erase the feature id when the table is destructured.
+ */
+const PRESENT_RULES: readonly (readonly [FeatureId, RegExp])[] = [
   [
     "dac",
     /\bdac\b|dac\s*(?:内蔵|搭載)|d\s*[/-]\s*a\s*(?:converter|コンバータ(?:ー)?)|da\s*コンバータ(?:ー)?/i,
@@ -20,17 +32,17 @@ const PRESENT_RULES = [
   ["phono_input", /phono\s*(?:in|input)|フォノ入力/i],
 ];
 
-export function isFeatureId(value) {
-  return FEATURE_IDS.has(value);
+export function isFeatureId(value: unknown): value is FeatureId {
+  return typeof value === "string" && FEATURE_IDS.has(value);
 }
 
 export function inferFeatureFacts(
-  text = "",
-  { source = "title", confidence = 0.8, verifiedAt = null } = {},
-) {
+  text: string = "",
+  { source = "title", confidence = 0.8, verifiedAt = null }: InferFeatureFactsOptions = {},
+): FeatureFact[] {
   const value = String(text || "").normalize("NFKC");
   if (!value.trim()) return [];
-  const facts = [];
+  const facts: FeatureFact[] = [];
   for (const [featureId, pattern] of PRESENT_RULES) {
     if (!pattern.test(value)) continue;
     facts.push({ featureId, state: "present", source, confidence, verifiedAt });
@@ -38,8 +50,8 @@ export function inferFeatureFacts(
   return facts;
 }
 
-export function normalizeFeatureFacts(facts = []) {
-  const byKey = new Map();
+export function normalizeFeatureFacts(facts: FeatureFactInput[] = []): FeatureFact[] {
+  const byKey = new Map<string, FeatureFact>();
   for (const fact of facts) {
     if (!isFeatureId(fact?.featureId)) continue;
     if (fact.state !== "present" && fact.state !== "absent") continue;

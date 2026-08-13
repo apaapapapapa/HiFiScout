@@ -2,8 +2,75 @@ import { getCrawlerSettings, getShopEnabled, getShopIntervalMinutes } from "./co
 import { listShopStates } from "./db/shop-state-repository.js";
 import { SHOP_PLUGINS } from "./crawler/shops/index.js";
 import { isTransportConfigured } from "./crawler/transport.js";
+import type { CrawlerEnv, ShopPlugin } from "./crawler/types.js";
+import type { QueryableDatabase, ShopSyncStateRow } from "./db/types.js";
 
-const SEVERITY = { disabled: 0, healthy: 1, warning: 2, critical: 3 };
+export type SyncHealthStatus = "disabled" | "healthy" | "warning" | "critical";
+
+export type SyncHealthReason =
+  | "disabled"
+  | "configuration_missing"
+  | "never_succeeded_repeated_failures"
+  | "never_succeeded"
+  | "repeated_failures"
+  | "sync_stale"
+  | "recent_failure"
+  | "sync_delayed"
+  | "ok";
+
+/**
+ * A `shop_sync_state` row as the health check reads it: every column except `shop_key` is
+ * optional so partially populated fixtures and freshly seeded rows are both accepted.
+ */
+export type ShopSyncStateSnapshot = Partial<ShopSyncStateRow> & { shop_key: string };
+
+export interface ShopSyncHealth {
+  status: SyncHealthStatus;
+  ageMinutes: number | null;
+  reason: SyncHealthReason;
+}
+
+export interface EvaluateShopSyncHealthOptions {
+  state?: Partial<ShopSyncStateRow> | null;
+  intervalMinutes: number;
+  enabled?: boolean;
+  configured?: boolean;
+  now?: Date;
+  warningFactor?: number;
+  criticalFactor?: number;
+}
+
+export interface ShopSyncHealthEntry extends ShopSyncHealth {
+  shopKey: string;
+  name: string;
+  enabled: boolean;
+  configured: boolean;
+  intervalMinutes: number;
+  lastSuccessAt: string | null;
+  lastAttemptAt: string | null;
+  lastItemCount: number | null;
+  consecutiveFailures: number;
+  lastError: string | null;
+}
+
+export interface SyncHealthReport {
+  ok: boolean;
+  status: SyncHealthStatus;
+  checkedAt: string;
+  shops: ShopSyncHealthEntry[];
+}
+
+/** `getSyncHealth` reads persisted state, so the database binding is required. */
+export interface SyncHealthEnv extends CrawlerEnv {
+  readonly DB: QueryableDatabase;
+}
+
+const SEVERITY: Record<SyncHealthStatus, number> = {
+  disabled: 0,
+  healthy: 1,
+  warning: 2,
+  critical: 3,
+};
 
 export function evaluateShopSyncHealth({
   state,
@@ -13,7 +80,7 @@ export function evaluateShopSyncHealth({
   now = new Date(),
   warningFactor = 2,
   criticalFactor = 6,
-}) {
+}: EvaluateShopSyncHealthOptions): ShopSyncHealth {
   if (!enabled) return { status: "disabled", ageMinutes: null, reason: "disabled" };
   if (!configured) return { status: "critical", ageMinutes: null, reason: "configuration_missing" };
 
@@ -48,7 +115,7 @@ export function evaluateShopSyncHealth({
   return { status: "healthy", ageMinutes: Math.round(ageMinutes), reason: "ok" };
 }
 
-function isShopConfigured(env, plugin) {
+function isShopConfigured(env: CrawlerEnv, plugin: ShopPlugin): boolean {
   // Preserve the existing health contract: only AudioUnion was treated as a
   // hard configuration dependency. Other collectors report failures through
   // their persisted sync state instead of becoming critical before a run.
@@ -56,10 +123,16 @@ function isShopConfigured(env, plugin) {
   return isTransportConfigured(env, plugin);
 }
 
-export function buildSyncHealth(env, stateRows = [], now = new Date()) {
+export function buildSyncHealth(
+  env: CrawlerEnv,
+  stateRows: readonly ShopSyncStateSnapshot[] = [],
+  now = new Date(),
+): SyncHealthReport {
   const settings = getCrawlerSettings(env);
-  const states = new Map(stateRows.map((row) => [row.shop_key, row]));
-  const shops = SHOP_PLUGINS.map((plugin) => {
+  const states = new Map(
+    stateRows.map((row): [string, ShopSyncStateSnapshot] => [row.shop_key, row]),
+  );
+  const shops = SHOP_PLUGINS.map((plugin): ShopSyncHealthEntry => {
     const shop = plugin.definition;
     const enabled = getShopEnabled(env, shop);
     const configured = isShopConfigured(env, plugin);
@@ -91,7 +164,7 @@ export function buildSyncHealth(env, stateRows = [], now = new Date()) {
   });
 
   const active = shops.filter((shop) => shop.enabled);
-  const status = active.reduce(
+  const status = active.reduce<SyncHealthStatus>(
     (worst, shop) => (SEVERITY[shop.status] > SEVERITY[worst] ? shop.status : worst),
     "healthy",
   );
@@ -103,11 +176,11 @@ export function buildSyncHealth(env, stateRows = [], now = new Date()) {
   };
 }
 
-export async function getSyncHealth(env, now = new Date()) {
+export async function getSyncHealth(env: SyncHealthEnv, now = new Date()): Promise<SyncHealthReport> {
   return buildSyncHealth(env, await listShopStates(env.DB), now);
 }
 
-export function logSyncHealth(health) {
+export function logSyncHealth(health: SyncHealthReport): void {
   if (health.status === "critical") {
     console.error(JSON.stringify({ event: "sync_health_critical", ...health }));
   } else if (health.status === "warning") {

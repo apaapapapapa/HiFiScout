@@ -1,6 +1,18 @@
+import type {
+  CategoryDefinition,
+  CategoryFacet,
+  CategoryId,
+  CategoryMapping,
+  CategoryNormalizationSource,
+  ClassifiableCategoryId,
+  LegacyCategoryAlias,
+  NormalizeCategoryOptions,
+  NormalizeCategoryResult,
+} from "./types.js";
 import { inferExplicitCategoryIds } from "./category-rules.js";
 
-const CATEGORY_DEFINITIONS = [
+/** Taxonomy rows as authored; `selectable` is derived from `filterable` below. */
+const CATEGORY_SOURCE: readonly Omit<CategoryDefinition, "selectable">[] = [
   {
     id: "amplifier",
     name: "アンプ",

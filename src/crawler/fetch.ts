@@ -1,8 +1,9 @@
+import type { AugmentedCrawlError, FetchHtmlPageOptions } from "./types.js";
 import { fetchRobotsPolicy, getCrawlDelayMs, isPathAllowed } from "./robots.js";
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function responseCharset(contentType = "") {
+function responseCharset(contentType = ""): string {
   const raw = contentType.match(/charset\s*=\s*["']?([^;"'\s]+)/i)?.[1]?.toLowerCase();
   if (!raw) return "utf-8";
   return (
@@ -17,7 +18,7 @@ function responseCharset(contentType = "") {
   );
 }
 
-export async function decodeHtmlResponse(response) {
+export async function decodeHtmlResponse(response: Response): Promise<string> {
   const bytes = await response.arrayBuffer();
   const charset = responseCharset(response.headers.get("content-type") || "");
   try {
@@ -28,9 +29,15 @@ export async function decodeHtmlResponse(response) {
 }
 
 export async function fetchHtmlPage(
-  url,
-  { baseUrl, userAgent, requestDelayMs, fetchFn = fetch, robotsCache = new Map() },
-) {
+  url: string,
+  {
+    baseUrl,
+    userAgent,
+    requestDelayMs,
+    fetchFn = fetch,
+    robotsCache = new Map(),
+  }: FetchHtmlPageOptions,
+): Promise<string> {
   let robotsFetchedNow = false;
   if (!robotsCache.has(baseUrl)) {
     robotsCache.set(baseUrl, await fetchRobotsPolicy(fetchFn, baseUrl, userAgent));
@@ -58,7 +65,7 @@ export async function fetchHtmlPage(
   });
 
   if (response.status === 403 || response.status === 429) {
-    const error = new Error(`crawl blocked with HTTP ${response.status}`);
+    const error: AugmentedCrawlError = new Error(`crawl blocked with HTTP ${response.status}`);
     error.status = response.status;
     throw error;
   }

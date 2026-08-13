@@ -1,9 +1,18 @@
+import type { ProductMetadataLookupRow, QueryableDatabase } from "./types.js";
+import { isRecord } from "../types.js";
+
 const LOOKUP_CHUNK_SIZE = 50;
 const MAX_METADATA_BYTES = 8 * 1024;
 const MAX_METADATA_KEYS = 50;
 
-function stableObject(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+/** Product carrying the metadata blob that `syncProductMetadata()` persists. */
+interface ProductMetadataSyncInput {
+  sourceId: string;
+  metadata?: unknown;
+}
+
+function stableObject(value: unknown): Record<string, unknown> {
+  if (!isRecord(value)) return {};
   return Object.fromEntries(
     Object.entries(value)
       .filter(([key, entry]) => typeof key === "string" && key.length <= 64 && entry !== undefined)
@@ -12,7 +21,7 @@ function stableObject(value) {
   );
 }
 
-export function normalizeMetadataJson(metadata) {
+export function normalizeMetadataJson(metadata: unknown): string {
   const json = JSON.stringify(stableObject(metadata));
   if (new TextEncoder().encode(json).byteLength > MAX_METADATA_BYTES) {
     throw new Error(`product metadata exceeds ${MAX_METADATA_BYTES} bytes`);
@@ -20,9 +29,14 @@ export function normalizeMetadataJson(metadata) {
   return json;
 }
 
-async function existingMetadata(db, shopKey, sourceIds, chunkSize = LOOKUP_CHUNK_SIZE) {
+async function existingMetadata(
+  db: QueryableDatabase,
+  shopKey: string,
+  sourceIds: readonly string[],
+  chunkSize = LOOKUP_CHUNK_SIZE,
+): Promise<ProductMetadataLookupRow[]> {
   const uniqueIds = [...new Set(sourceIds)];
-  const rows = [];
+  const rows: ProductMetadataLookupRow[] = [];
   for (let i = 0; i < uniqueIds.length; i += chunkSize) {
     const chunk = uniqueIds.slice(i, i + chunkSize);
     if (!chunk.length) continue;
@@ -32,20 +46,25 @@ async function existingMetadata(db, shopKey, sourceIds, chunkSize = LOOKUP_CHUNK
         `SELECT id, source_id, metadata_json FROM products WHERE shop_key = ? AND source_id IN (${placeholders})`,
       )
       .bind(shopKey, ...chunk)
-      .all();
+      .all<ProductMetadataLookupRow>();
     rows.push(...(result.results || []));
   }
   return rows;
 }
 
-export async function syncProductMetadata(db, shopKey, products, observedAt) {
+export async function syncProductMetadata(
+  db: QueryableDatabase,
+  shopKey: string,
+  products: readonly ProductMetadataSyncInput[],
+  observedAt: string,
+): Promise<number> {
   const rows = await existingMetadata(
     db,
     shopKey,
     products.map((product) => product.sourceId),
   );
   const bySourceId = new Map(rows.map((row) => [row.source_id, row]));
-  const writes = [];
+  const writes: D1PreparedStatement[] = [];
 
   for (const product of products) {
     const existing = bySourceId.get(product.sourceId);

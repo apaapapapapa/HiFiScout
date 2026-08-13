@@ -1,11 +1,17 @@
+import type {
+  AugmentedCrawlError,
+  RelayFetcherConfig,
+  RelayPage,
+  RelayPageOptions,
+} from "./types.js";
 import { decodeHtmlResponse } from "./fetch.js";
 
-function configured(value) {
+function configured(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function upstreamError(status) {
-  const error = new Error(
+function upstreamError(status: number): AugmentedCrawlError {
+  const error: AugmentedCrawlError = new Error(
     status === 403 || status === 429
       ? `crawl blocked with HTTP ${status}`
       : `crawl failed with HTTP ${status}`,
@@ -14,18 +20,23 @@ function upstreamError(status) {
   return error;
 }
 
-function relayError(status, detail = "") {
-  const error = new Error(`relay failed with HTTP ${status}${detail ? `: ${detail}` : ""}`);
+function relayError(status: number, detail = ""): AugmentedCrawlError {
+  const error: AugmentedCrawlError = new Error(
+    `relay failed with HTTP ${status}${detail ? `: ${detail}` : ""}`,
+  );
   error.relayStatus = status;
   if (/robots_disallowed/i.test(detail)) error.code = "robots_disallowed";
   return error;
 }
 
+/** `createRelayHtmlFetcher` always resolves `fetchFn`, so the internal request path requires it. */
+type RelayRequestContext = RelayFetcherConfig & { fetchFn: typeof fetch };
+
 async function requestRelayPage(
-  { relayUrl, relayToken, fetchFn },
-  url,
-  { userAgent, requestDelayMs } = {},
-) {
+  { relayUrl, relayToken, fetchFn }: RelayRequestContext,
+  url: string,
+  { userAgent, requestDelayMs }: RelayPageOptions = {},
+): Promise<RelayPage> {
   if (!configured(relayUrl)) throw new Error("relay URL is not configured");
   if (!configured(relayToken)) throw new Error("relay token is not configured");
 
@@ -56,7 +67,9 @@ async function requestRelayPage(
       // Keep the status-only error when the relay body cannot be read.
     }
     if (response.status === 401 || response.status === 403) {
-      const error = new Error(`relay authentication failed with HTTP ${response.status}`);
+      const error: AugmentedCrawlError = new Error(
+        `relay authentication failed with HTTP ${response.status}`,
+      );
       error.relayStatus = response.status;
       throw error;
     }
@@ -72,14 +85,18 @@ async function requestRelayPage(
   return { status, contentType, body };
 }
 
-export function createRelayHtmlFetcher({ relayUrl, relayToken, fetchFn = fetch } = {}) {
-  const relay = { relayUrl, relayToken, fetchFn };
+export function createRelayHtmlFetcher({
+  relayUrl,
+  relayToken,
+  fetchFn = fetch,
+}: RelayFetcherConfig = {}) {
+  const relay: RelayRequestContext = { relayUrl, relayToken, fetchFn };
   return {
-    async fetchPage(url, options = {}) {
+    async fetchPage(url: string, options: RelayPageOptions = {}): Promise<RelayPage> {
       return requestRelayPage(relay, url, options);
     },
 
-    async fetchHtmlPage(url, options = {}) {
+    async fetchHtmlPage(url: string, options: RelayPageOptions = {}): Promise<string> {
       const page = await requestRelayPage(relay, url, options);
       if (page.status < 200 || page.status >= 300) throw upstreamError(page.status);
       if (!page.contentType.includes("text/html")) {
@@ -88,6 +105,6 @@ export function createRelayHtmlFetcher({ relayUrl, relayToken, fetchFn = fetch }
       return page.body;
     },
 
-    async close() {},
+    async close(): Promise<void> {},
   };
 }

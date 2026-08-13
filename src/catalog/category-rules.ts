@@ -1,4 +1,11 @@
-const RULES = [
+import type { ClassifiableCategoryId } from "./types.js";
+
+/**
+ * Ordered match table: the first pattern that matches wins, so entry order is behaviour.
+ * The explicit tuple element type stops TypeScript widening each pair to
+ * `(string | RegExp)[]`, which would erase the category id at every call site.
+ */
+const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
   ["cable", /\bcables?\b|(?:usb|xlr|rca|lan|speaker|headphone|power)\s+cable|ケーブル/i],
   ["power_accessory", /power\s*(?:strip|conditioner)|電源タップ|電源コンディショナ(?:ー)?/i],
   [
@@ -51,7 +58,15 @@ const RULES = [
   ],
 ];
 
-export function inferExplicitCategoryIds(text = "") {
+/**
+ * The second argument is accepted (and ignored) so callers can document the text they are
+ * matching: `{ context: "title" | "seller" | "hint" | "detail" }`. The rule table itself is
+ * context-independent.
+ */
+export function inferExplicitCategoryIds(
+  text: string = "",
+  _options?: { context?: string },
+): ClassifiableCategoryId[] {
   const value = String(text || "").normalize("NFKC");
   if (!value.trim()) return [];
   for (const [id, pattern] of RULES) {

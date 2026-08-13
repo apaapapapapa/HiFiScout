@@ -1,3 +1,9 @@
+import type {
+  ManufacturerNormalizationResult,
+  ShopParsedProduct,
+  StockStatus,
+} from "../catalog/types.js";
+import { isRecord } from "../types.js";
 import { normalizeManufacturer } from "../catalog/manufacturers.js";
 import {
   cleanText,
@@ -8,8 +14,27 @@ import {
   stableSourceId,
 } from "./normalize.js";
 
-function decodeJsonLd(html) {
-  const results = [];
+/**
+ * Listing-page parsing options. Every consumer is a shop adapter passing an object literal, so
+ * the shape is contextually typed at the call site.
+ */
+export interface ParseProductPageOptions {
+  shopKey: string;
+  /** Resolution base for relative hrefs; adapters pass the page URL being parsed. */
+  baseUrl: string;
+  hintedCategory?: string;
+  productUrlPattern?: RegExp;
+  /** Only the exact value `"forward"` changes the price search window. */
+  priceContext?: "forward";
+  priceImpliesInStock?: boolean;
+  fixedConditionText?: string;
+  /** Only the exact value below switches to the candidate-merging identity pass. */
+  identityStrategy?: "manufacturer-model-candidates";
+}
+
+/** Typed boundary: third-party JSON-LD, so every decoded document stays `unknown`. */
+function decodeJsonLd(html: string): unknown[] {
+  const results: unknown[] = [];
   const re = /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
   for (const match of html.matchAll(re)) {
     try {
@@ -21,19 +46,21 @@ function decodeJsonLd(html) {
   return results;
 }
 
-function walkJson(value, visitor) {
+function walkJson(value: unknown, visitor: (node: Record<string, unknown>) => void): void {
   if (!value) return;
   if (Array.isArray(value)) {
     for (const item of value) walkJson(item, visitor);
     return;
   }
-  if (typeof value === "object") {
+  // `isRecord` is exactly the reachable `typeof value === "object"` case here: `null` was
+  // rejected by the truthiness guard above and arrays returned on the previous branch.
+  if (isRecord(value)) {
     visitor(value);
     for (const child of Object.values(value)) walkJson(child, visitor);
   }
 }
 
-function absoluteUrl(baseUrl, href) {
+function absoluteUrl(baseUrl: string, href: string): string | null {
   try {
     return new URL(href, baseUrl).toString();
   } catch {
@@ -41,37 +68,49 @@ function absoluteUrl(baseUrl, href) {
   }
 }
 
-function inferCondition(title = "", context = "") {
+function inferCondition(title: string = "", context: string = ""): string {
   const rank = cleanText(context).match(/中古[：:]?\s*([A-Z][A-Z+-]*)/i)?.[0];
   if (rank) return cleanText(rank);
   return cleanText(title).match(/『([^』]+)』/)?.[1] || "";
 }
 
-function conditionForListing(options, title = "", context = "") {
+function conditionForListing(
+  options: ParseProductPageOptions,
+  title: string = "",
+  context: string = "",
+): string {
   return options.fixedConditionText
     ? cleanText(options.fixedConditionText)
     : inferCondition(title, context);
 }
 
-function stockStatusForListing(options, priceYen, inferredStatus) {
+function stockStatusForListing(
+  options: ParseProductPageOptions,
+  priceYen: number | null,
+  inferredStatus: StockStatus,
+): StockStatus {
   if (options.priceImpliesInStock && priceYen != null) return "in_stock";
   return inferredStatus;
 }
 
-function fromJsonLd(html, options) {
+function fromJsonLd(html: string, options: ParseProductPageOptions): ShopParsedProduct[] {
   const { baseUrl, hintedCategory } = options;
-  const products = [];
+  const products: ShopParsedProduct[] = [];
   for (const root of decodeJsonLd(html)) {
     walkJson(root, (node) => {
-      const type = Array.isArray(node["@type"]) ? node["@type"] : [node["@type"]];
+      const type: readonly unknown[] = Array.isArray(node["@type"])
+        ? node["@type"]
+        : [node["@type"]];
       if (!type.some((v) => String(v).toLowerCase() === "product")) return;
       const title = cleanText(node.name || "");
-      const url = absoluteUrl(baseUrl, node.url || node["@id"] || "");
+      const url = absoluteUrl(baseUrl, String(node.url || node["@id"] || ""));
       if (!title || !url) return;
-      const offer = Array.isArray(node.offers) ? node.offers[0] : node.offers || {};
+      const rawOffer = Array.isArray(node.offers) ? node.offers[0] : node.offers || {};
+      // Non-object offers read back as `undefined` either way, so this narrowing is inert.
+      const offer: Record<string, unknown> = isRecord(rawOffer) ? rawOffer : {};
       const priceYen = parseYen(String(offer.price ?? node.price ?? ""));
       const availability = String(offer.availability || "");
-      const inferredStock = /outofstock|soldout/i.test(availability)
+      const inferredStock: StockStatus = /outofstock|soldout/i.test(availability)
         ? "sold_out"
         : /instock/i.test(availability)
           ? "in_stock"
@@ -94,8 +133,8 @@ function fromJsonLd(html, options) {
   return products;
 }
 
-function stripTagsKeepingSpacing(html) {
-  const withAttributes = html.replace(/<(?:img|input)\b([^>]*)>/gi, (_, attrs) => {
+function stripTagsKeepingSpacing(html: string): string {
+  const withAttributes = html.replace(/<(?:img|input)\b([^>]*)>/gi, (_: string, attrs: string) => {
     const labels = [...attrs.matchAll(/\b(?:alt|title|aria-label)\s*=\s*["']([^"']+)["']/gi)].map(
       (match) => match[1],
     );
@@ -108,9 +147,9 @@ function stripTagsKeepingSpacing(html) {
   );
 }
 
-function fromAnchors(html, options) {
+function fromAnchors(html: string, options: ParseProductPageOptions): ShopParsedProduct[] {
   const { baseUrl, hintedCategory, productUrlPattern } = options;
-  const products = [];
+  const products: ShopParsedProduct[] = [];
   const anchorRe = /<a\b([^>]*?)href\s*=\s*["']([^"']+)["']([^>]*)>([\s\S]*?)<\/a>/gi;
   const anchors = [...html.matchAll(anchorRe)];
 

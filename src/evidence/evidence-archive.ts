@@ -1,3 +1,89 @@
+import type {
+  EvidenceArchiveResult,
+  EvidenceReason,
+  EvidenceRetentionClass,
+  EvidenceSuppressionReason,
+  EvidenceUsage,
+} from "../db/types.js";
+import { errorMessage } from "../types.js";
+
+// ---------------------------------------------------------------------------
+// Bindings, narrowed to the members this module actually calls
+// ---------------------------------------------------------------------------
+
+/** Every statement here is bound before it is read, so `bind` is the only prepared member. */
+export interface EvidencePreparedStatement {
+  bind(...values: unknown[]): EvidenceBoundStatement;
+}
+
+export interface EvidenceBoundStatement {
+  all<TRow = Record<string, unknown>>(): Promise<{ results?: TRow[] }>;
+  run(): Promise<unknown>;
+}
+
+/** Structural subset of `D1Database`; the real binding and the test doubles both satisfy it. */
+export interface EvidenceDatabase {
+  prepare(query: string): EvidencePreparedStatement;
+}
+
+/** Structural subset of `R2Bucket`: the archive only ever writes. */
+export interface EvidenceBucket {
+  put(
+    key: string,
+    value: Uint8Array<ArrayBuffer>,
+    options?: {
+      httpMetadata?: { contentType?: string };
+      customMetadata?: Record<string, string>;
+    },
+  ): Promise<unknown>;
+}
+
+/**
+ * The environment view `archiveEvidence` needs.
+ *
+ * Every member is optional because the binding check is a runtime guard, and the tuning
+ * variables are plain `wrangler.jsonc` vars. The generated `Env` and `CrawlerEnv` are both
+ * assignable to this.
+ */
+export interface EvidenceArchiveEnv {
+  readonly DB?: EvidenceDatabase;
+  readonly EVIDENCE_BUCKET?: EvidenceBucket;
+  readonly EVIDENCE_MAX_BYTES?: string;
+  readonly EVIDENCE_DAILY_MAX_OBJECTS?: string;
+  readonly EVIDENCE_DAILY_MAX_BYTES?: string;
+  readonly EVIDENCE_SHOP_DAILY_MAX_OBJECTS?: string;
+  readonly EVIDENCE_BURST_WINDOW_MINUTES?: string;
+  readonly EVIDENCE_BURST_MAX_OBJECTS?: string;
+  readonly EVIDENCE_BURST_SAMPLE_RATE?: string;
+  readonly EVIDENCE_STORAGE_WARNING_BYTES?: string;
+}
+
+/** Resolved tuning knobs; every field comes from `numericSetting`. */
+export interface EvidenceSafetySettings {
+  dailyMaxObjects: number;
+  dailyMaxBytes: number;
+  shopDailyMaxObjects: number;
+  burstWindowMinutes: number;
+  burstMaxObjects: number;
+  burstSampleRate: number;
+  storageWarningBytes: number;
+}
+
+/** The three caps evaluated before the R2 write; burst sampling is decided separately. */
+type QuotaSuppressionReason = Exclude<EvidenceSuppressionReason, "burst_sampled">;
+
+export interface ArchiveEvidenceOptions {
+  env?: EvidenceArchiveEnv;
+  shopKey?: string;
+  reason?: string;
+  html?: string;
+  productId?: number | null;
+  crawlRunId?: number | null;
+  contentType?: string;
+  capturedAt?: string;
+  eventId?: string;
+}
+
 const DEFAULT_MAX_BYTES = 1_500_000;
 const DEFAULT_DAILY_MAX_OBJECTS = 500;
 const DEFAULT_DAILY_MAX_BYTES = 200_000_000;

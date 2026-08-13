@@ -1,6 +1,8 @@
+import type { StockStatus } from "../catalog/types.js";
 import { splitKnownManufacturerModel } from "../catalog/manufacturers.js";
 
-const CATEGORY_RULES = [
+/** Display labels (not category ids); `inferCategory` returns the first matching label. */
+const CATEGORY_RULES: readonly (readonly [label: string, pattern: RegExp])[] = [
   ["スピーカー", /speaker|スピーカー|monitor\s*audio|bookshelf/i],
   ["プリメインアンプ", /integrated|プリメイン|pma-|ma\d|a-\d/i],
   ["プリアンプ", /preamp|pre amplifier|プリアンプ|control amplifier/i],
@@ -22,7 +24,11 @@ const CATEGORY_RULES = [
   ["ケーブル・アクセサリー", /cable|ケーブル|usb|電源|insulator|インシュレータ|アクセサリ/i],
 ];
 
-export function cleanText(value = "") {
+/**
+ * Typed boundary: HTML fragments and JSON-LD field values arrive untyped, and the existing
+ * `String(value)` coercion is the runtime narrowing, so the parameter stays `unknown`.
+ */
+export function cleanText(value: unknown = ""): string {
   return String(value)
     .replace(/<[^>]*>/g, " ")
     .replace(
@@ -46,7 +52,7 @@ export function cleanText(value = "") {
     .trim();
 }
 
-export function parseYen(value = "") {
+export function parseYen(value: string = ""): number | null {
   const normalized = cleanText(value).replace(/[０-９]/g, (c) =>
     String.fromCharCode(c.charCodeAt(0) - 0xfee0),
   );
@@ -58,7 +64,7 @@ export function parseYen(value = "") {
   return numericOnly ? Number.parseInt(numericOnly.replace(/,/g, ""), 10) : null;
 }
 
-export function inferStockStatus(text = "") {
+export function inferStockStatus(text: string = ""): StockStatus {
   const value = cleanText(text).toLowerCase();
   if (/売り切れ|売切|売約済(?:み)?|sold\s*out|販売終了|ご成約|在庫なし|完売|品切れ/.test(value))
     return "sold_out";
@@ -66,7 +72,7 @@ export function inferStockStatus(text = "") {
   return "unknown";
 }
 
-export function inferCategory(title = "", hintedCategory = "") {
+export function inferCategory(title: string = "", hintedCategory: string = ""): string {
   if (hintedCategory) return hintedCategory;
   for (const [category, pattern] of CATEGORY_RULES) {
     if (pattern.test(title)) return category;
@@ -74,7 +80,12 @@ export function inferCategory(title = "", hintedCategory = "") {
   return "その他";
 }
 
-function splitFujiyaManufacturerModel(value) {
+interface ManufacturerModelPair {
+  manufacturer: string;
+  model: string;
+}
+
+function splitFujiyaManufacturerModel(value: string): ManufacturerModelPair | null {
   const tokens = value.split(/\s+/).filter(Boolean);
   if (tokens.length < 2) return null;
 
@@ -93,7 +104,10 @@ function splitFujiyaManufacturerModel(value) {
   };
 }
 
-export function splitManufacturerModel(title, shopKey) {
+export function splitManufacturerModel(
+  title: string,
+  shopKey: string,
+): ManufacturerModelPair {
   let value = cleanText(title)
     .replace(/^〖[^〗]+〗\s*/g, "")
     .replace(/^中古[：:]?\s*[A-Z+-]*\s*/i, "")
@@ -125,7 +139,7 @@ export function splitManufacturerModel(title, shopKey) {
   return { manufacturer, model: tokens.slice(1).join(" ") };
 }
 
-export function stableSourceId(url, title = "") {
+export function stableSourceId(url: string, title: string = ""): string {
   try {
     const parsed = new URL(url);
     const audioUnionId = parsed.pathname.match(/\/ct\/detail\/(?:used|new)\/(\d+)\/?/i)?.[1];
