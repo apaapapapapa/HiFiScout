@@ -1,8 +1,4 @@
-import type {
-  ManufacturerNormalizationResult,
-  ShopParsedProduct,
-  StockStatus,
-} from "../catalog/types.js";
+import type { ShopParsedProduct, StockStatus } from "../catalog/types.js";
 import { isRecord } from "../types.js";
 import { normalizeManufacturer } from "../catalog/manufacturers.js";
 import {
