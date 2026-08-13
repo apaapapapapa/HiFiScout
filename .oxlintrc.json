@@ -1,0 +1,16 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "overrides": [
+    {
+      "files": ["src/evidence/evidence-archive.ts"],
+      "rules": {
+        "eslint/no-unused-vars": [
+          "warn",
+          {
+            "varsIgnorePattern": "^(EvidenceArchiveResult|EvidenceReason|EvidenceRetentionClass|EvidenceUsage|errorMessage|QuotaSuppressionReason)$"
+          }
+        ]
+      }
+    }
+  ]
+}
