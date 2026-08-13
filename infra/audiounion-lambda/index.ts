@@ -325,9 +325,11 @@ function nonNegativeNumber(value: unknown, fallback = 0): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
-export function createHandler(
-  { fetchFn = fetch, sleepFn = sleep, env = process.env }: CreateHandlerOptions = {},
-): RelayHandler {
+export function createHandler({
+  fetchFn = fetch,
+  sleepFn = sleep,
+  env = process.env,
+}: CreateHandlerOptions = {}): RelayHandler {
   return async function handler(event: RelayEvent = {}): Promise<RelayResponse> {
     try {
       const method = event?.requestContext?.http?.method || "POST";

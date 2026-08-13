@@ -104,10 +104,7 @@ function splitFujiyaManufacturerModel(value: string): ManufacturerModelPair | nu
   };
 }
 
-export function splitManufacturerModel(
-  title: string,
-  shopKey: string,
-): ManufacturerModelPair {
+export function splitManufacturerModel(title: string, shopKey: string): ManufacturerModelPair {
   let value = cleanText(title)
     .replace(/^〖[^〗]+〗\s*/g, "")
     .replace(/^中古[：:]?\s*[A-Z+-]*\s*/i, "")

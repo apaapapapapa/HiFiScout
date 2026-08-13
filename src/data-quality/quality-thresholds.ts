@@ -45,8 +45,9 @@ export function qualityThresholdsForShop(
 ): ResolvedQualityThresholds {
   const shopOverrides = overrides?.[shopKey] || {};
   return Object.fromEntries(
-    Object.entries(DEFAULT_QUALITY_THRESHOLDS).map(
-      ([key, value]): [string, QualityThreshold] => [key, { ...value, ...shopOverrides[key] }],
-    ),
+    Object.entries(DEFAULT_QUALITY_THRESHOLDS).map(([key, value]): [string, QualityThreshold] => [
+      key,
+      { ...value, ...shopOverrides[key] },
+    ]),
   );
 }
