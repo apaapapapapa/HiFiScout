@@ -11,7 +11,7 @@ import { isTransportConfigured } from "../src/crawler/transport.js";
 test("Hifido parser keeps factual listing fields only", () => {
   const html = `
     <div class="item">
-      <script>window.inventory = "sold out";</script >
+      <script>window.inventory = "sold out";</script${"\t\n        data-extra"}>
       <a href="/26-50234-14194-00.html?A=1&G=3&LNG=J">MINIMA AMATOR 2</a>
       <span>注文</span>
       <p>メーカー:SONUS FABER ソナスファベール</p>

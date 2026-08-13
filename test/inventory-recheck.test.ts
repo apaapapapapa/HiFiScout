@@ -103,6 +103,12 @@ test("inventory page classification requires non-conflicting evidence", () => {
     ),
     "ambiguous",
   );
+  assert.equal(
+    classifyAudioUnionInventoryPage(
+      '<script>const state="販売終了"</script\t\n data-extra><main>商品情報</main>',
+    ),
+    "ambiguous",
+  );
 });
 
 test("recheck marks an explicitly priced detail page as available", async () => {
