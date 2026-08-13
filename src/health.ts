@@ -176,7 +176,10 @@ export function buildSyncHealth(
   };
 }
 
-export async function getSyncHealth(env: SyncHealthEnv, now = new Date()): Promise<SyncHealthReport> {
+export async function getSyncHealth(
+  env: SyncHealthEnv,
+  now = new Date(),
+): Promise<SyncHealthReport> {
   return buildSyncHealth(env, await listShopStates(env.DB), now);
 }
 

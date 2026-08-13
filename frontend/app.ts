@@ -537,13 +537,11 @@ async function loadMeta(): Promise<void> {
   renderSyncStatus(meta);
 }
 
-function productParams(
-  {
-    cursor = null,
-    page = 1,
-    includeTotal = false,
-  }: { cursor?: string | null; page?: number; includeTotal?: boolean } = {},
-): URLSearchParams {
+function productParams({
+  cursor = null,
+  page = 1,
+  includeTotal = false,
+}: { cursor?: string | null; page?: number; includeTotal?: boolean } = {}): URLSearchParams {
   const params = new URLSearchParams();
   for (const id of URL_VALUE_IDS) {
     const value = $field(id).value.trim();
@@ -654,9 +652,10 @@ function renderPagination(): void {
   $("pagination").innerHTML = parts.join("");
 }
 
-async function loadProducts(
-  { page = 1, reset = false }: { page?: number; reset?: boolean } = {},
-): Promise<void> {
+async function loadProducts({
+  page = 1,
+  reset = false,
+}: { page?: number; reset?: boolean } = {}): Promise<void> {
   if ($input("favoritesOnly").checked) {
     render();
     return;
