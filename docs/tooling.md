@@ -11,7 +11,7 @@ HiFiScout's developer documentation is built from four complementary OSS toolcha
 
 The command-line tools are version-pinned and invoked only by documentation scripts, so they do not become part of the Cloudflare Worker runtime bundle.
 
-TypeDoc 0.28 supports TypeScript through version 6, while the application uses TypeScript 7. The API documentation command therefore runs TypeDoc with a pinned TypeScript 6.0.2 parser. Type checking remains the responsibility of `npm run typecheck`; TypeDoc only converts the exported API model to Markdown.
+TypeDoc 0.28 and dependency-cruiser 18 support TypeScript through version 6, while the application uses TypeScript 7. Their documentation commands therefore run with a pinned TypeScript 6.0.2 parser. Type checking remains the responsibility of `npm run typecheck`; these tools only convert or inspect the source model.
 
 ## Commands
 
