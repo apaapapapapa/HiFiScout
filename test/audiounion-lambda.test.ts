@@ -213,6 +213,31 @@ test("Lambda refuses an explicitly disallowed AudioUnion path", async () => {
   assert.equal(sellerFetched, false);
 });
 
+test("Lambda honors robots terminal path anchors", async () => {
+  let sellerFetched = false;
+  const handler = createHandler({
+    env: env(),
+    sleepFn: async () => {},
+    fetchFn: async (url) => {
+      if (url.endsWith("/robots.txt"))
+        return new Response("User-agent: *\nDisallow: /st/new_arrival_used.html$\n", {
+          status: 200,
+        });
+      sellerFetched = true;
+      return new Response("<html></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      });
+    },
+  });
+
+  const result = await handler(event({ url: ENTRY_URL }));
+
+  assert.equal(result.statusCode, 409);
+  assert.equal(JSON.parse(result.body).error, "robots_disallowed");
+  assert.equal(sellerFetched, false);
+});
+
 test("Lambda never fetches an AudioUnion detail page when robots disallows it", async () => {
   let detailFetched = false;
   const handler = createHandler({

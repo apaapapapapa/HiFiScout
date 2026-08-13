@@ -78,14 +78,26 @@ function clean(value = "") {
 }
 
 function decodeHtml(value = "") {
-  return String(value)
-    .replace(/&amp;/gi, "&")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)));
+  return String(value).replace(/&(?:amp|quot|apos|lt|gt|#\d+|#x[0-9a-f]+);/gi, (entity: string) => {
+    const normalized = entity.toLowerCase();
+    const namedEntities: Record<string, string> = {
+      "&amp;": "&",
+      "&quot;": '"',
+      "&apos;": "'",
+      "&lt;": "<",
+      "&gt;": ">",
+    };
+    if (normalized in namedEntities) return namedEntities[normalized];
+
+    const hexadecimal = normalized.startsWith("&#x");
+    const codePoint = Number.parseInt(
+      normalized.slice(hexadecimal ? 3 : 2, -1),
+      hexadecimal ? 16 : 10,
+    );
+    return Number.isSafeInteger(codePoint) && codePoint <= 0x10ffff
+      ? String.fromCodePoint(codePoint)
+      : entity;
+  });
 }
 
 function stripTags(value = "") {

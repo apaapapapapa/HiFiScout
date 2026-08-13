@@ -103,8 +103,9 @@ test("generic fallback can promote a newly supported manufacturer from its offic
 
   assert.equal(result.status, "verified");
   assert.equal(result.primaryCategoryId, "headphone");
-  assert.ok(requested.includes("https://stax.co.jp/product/"));
-  assert.ok(requested.includes("https://stax.co.jp/product/sr-x9000/"));
+  const requestedUrls = new Set(requested);
+  assert.equal(requestedUrls.has("https://stax.co.jp/product/"), true);
+  assert.equal(requestedUrls.has("https://stax.co.jp/product/sr-x9000/"), true);
 });
 
 test("Marantz SACD10 retailer suffix is verified from the current official CD/SACD index", async () => {

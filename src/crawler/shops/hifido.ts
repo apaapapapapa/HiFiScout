@@ -53,8 +53,8 @@ function absoluteUrl(href) {
 function htmlToText(html) {
   return cleanText(
     html
-      .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, " ")
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, " ")
       .replace(/<br\s*\/?\s*>/gi, " ")
       .replace(/<\/(?:p|li|div|article|section|tr|td|h\d)>/gi, " "),
   );

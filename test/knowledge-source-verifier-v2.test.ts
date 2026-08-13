@@ -62,7 +62,7 @@ test("v2 discovers a product from model-bearing anchor text even when the URL is
 
   assert.equal(result.status, "verified");
   assert.equal(result.primaryCategoryId, "power_amp");
-  assert.ok(requested.includes("https://example.com/item/931"));
+  assert.equal(new Set(requested).has("https://example.com/item/931"), true);
 });
 
 test("v2 uses model-local context on a grouped TAD page instead of mixing sibling categories", async () => {
@@ -100,13 +100,16 @@ test("v2 can use a nearby preceding official category label", async () => {
 
 test("v2 built-in definitions add historical product indexes", () => {
   const definitions = enhancedKnowledgeSourceDefinitions();
-  assert.ok(definitions.get("luxman")[0].catalogUrls.includes("https://www.luxman.co.jp/product/"));
-  assert.ok(
-    definitions.get("accuphase")[0].catalogUrls.includes("https://www.accuphase.com/history"),
+  assert.equal(
+    new Set(definitions.get("luxman")[0].catalogUrls).has("https://www.luxman.co.jp/product/"),
+    true,
   );
   assert.ok(
-    definitions
-      .get("esoteric")[0]
-      .catalogUrls.includes("https://www.esoteric.jp/jp/support/discon"),
+    new Set(definitions.get("accuphase")[0].catalogUrls).has("https://www.accuphase.com/history"),
+  );
+  assert.ok(
+    new Set(definitions.get("esoteric")[0].catalogUrls).has(
+      "https://www.esoteric.jp/jp/support/discon",
+    ),
   );
 });

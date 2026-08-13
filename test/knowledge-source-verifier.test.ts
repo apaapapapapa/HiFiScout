@@ -119,8 +119,9 @@ test("generic official-site adapter discovers a same-origin product link and ver
 
   assert.equal(result.status, "verified");
   assert.equal(result.primaryCategoryId, "power_amp");
-  assert.ok(requested.includes("https://example.com/catalog"));
-  assert.ok(requested.includes("https://example.com/products/ABC-1.html"));
+  const requestedUrls = new Set(requested);
+  assert.equal(requestedUrls.has("https://example.com/catalog"), true);
+  assert.equal(requestedUrls.has("https://example.com/products/ABC-1.html"), true);
   assert.ok(!requested.some((url) => url.startsWith("https://outside.example/")));
 });
 

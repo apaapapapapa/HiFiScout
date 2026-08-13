@@ -60,7 +60,7 @@ test("same-origin redirects are followed under the same robots policy", async ()
 
   const response = await fetchImpl("https://example.com/start");
   assert.equal(response.status, 200);
-  assert.ok(requested.includes("https://example.com/final"));
+  assert.equal(new Set(requested).has("https://example.com/final"), true);
 });
 
 test("cross-origin redirects are blocked before the destination is fetched", async () => {

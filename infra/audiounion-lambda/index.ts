@@ -91,7 +91,7 @@ function matchesRule(path, rulePath) {
   const escaped = rulePath
     .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
     .replace(/\*/g, ".*")
-    .replace(/\$$/, "$");
+    .replace(/\\\$$/, "$");
   return new RegExp(`^${escaped}`).test(path);
 }
 

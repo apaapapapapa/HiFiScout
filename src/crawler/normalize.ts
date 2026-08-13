@@ -25,13 +25,23 @@ const CATEGORY_RULES = [
 export function cleanText(value = "") {
   return String(value)
     .replace(/<[^>]*>/g, " ")
-    .replace(/&nbsp;|&#160;/gi, " ")
-    .replace(/&yen;|&#165;|&#x0*a5;/gi, "¥")
-    .replace(/&amp;/gi, "&")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
+    .replace(
+      /&(?:nbsp|yen|amp|quot|apos|lt|gt|#39|#160|#165|#x0*a5);/gi,
+      (entity: string) =>
+        ({
+          "&nbsp;": " ",
+          "&#160;": " ",
+          "&yen;": "¥",
+          "&#165;": "¥",
+          "&#xa5;": "¥",
+          "&amp;": "&",
+          "&quot;": '"',
+          "&#39;": "'",
+          "&apos;": "'",
+          "&lt;": "<",
+          "&gt;": ">",
+        })[entity.toLowerCase()] ?? entity,
+    )
     .replace(/\s+/g, " ")
     .trim();
 }

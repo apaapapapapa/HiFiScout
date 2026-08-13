@@ -1,6 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseYen, inferStockStatus, splitManufacturerModel } from "../src/crawler/normalize.js";
+import {
+  cleanText,
+  parseYen,
+  inferStockStatus,
+  splitManufacturerModel,
+} from "../src/crawler/normalize.js";
+
+test("HTML entities are decoded exactly once", () => {
+  assert.equal(cleanText("&lt;strong&gt;"), "<strong>");
+  assert.equal(cleanText("&amp;lt;strong&amp;gt;"), "&lt;strong&gt;");
+});
 
 test("parseYen parses Japanese prices", () => {
   assert.equal(parseYen("￥1,250,000（税込）"), 1250000);

@@ -8,6 +8,12 @@ test("robots longest matching rule wins", () => {
   assert.equal(isPathAllowed(robots, "https://example.com/shop/private", "HiFiScoutBot"), false);
 });
 
+test("robots terminal anchors match only the complete path", () => {
+  const robots = `User-agent: *\nDisallow: /catalog$`;
+  assert.equal(isPathAllowed(robots, "https://example.com/catalog", "HiFiScoutBot"), false);
+  assert.equal(isPathAllowed(robots, "https://example.com/catalog/item", "HiFiScoutBot"), true);
+});
+
 test("robots crawl-delay is parsed for the applicable user-agent", () => {
   const robots = `User-agent: *\nCrawl-delay: 10\nDisallow: /ct/search*`;
   assert.equal(getCrawlDelayMs(robots, "HiFiScoutBot/0.1"), 10_000);
