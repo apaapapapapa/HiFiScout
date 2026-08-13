@@ -1,10 +1,3 @@
-import type {
-  EvidenceArchiveResult,
-  EvidenceReason,
-  EvidenceRetentionClass,
-  EvidenceSuppressionReason,
-  EvidenceUsage,
-} from "../db/types.js";
 import { errorMessage } from "../types.js";
 
 // ---------------------------------------------------------------------------
@@ -68,9 +61,6 @@ export interface EvidenceSafetySettings {
   burstSampleRate: number;
   storageWarningBytes: number;
 }
-
-/** The three caps evaluated before the R2 write; burst sampling is decided separately. */
-type QuotaSuppressionReason = Exclude<EvidenceSuppressionReason, "burst_sampled">;
 
 export interface ArchiveEvidenceOptions {
   env?: EvidenceArchiveEnv;
@@ -438,10 +428,10 @@ export async function archiveEvidence({
         shopKey,
         reason,
         evidence_archive_failure_count: 1,
-        message: error?.message || String(error),
+        message: errorMessage(error),
       }),
     );
-    return { status: "failed", reason: "archive_error", error: error?.message || String(error) };
+    return { status: "failed", reason: "archive_error", error: errorMessage(error) };
   }
 }
 
