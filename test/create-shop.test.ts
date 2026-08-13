@@ -43,7 +43,7 @@ test("shop generator creates adapter, fixture, test and registry entry", async (
   await mkdir(join(rootDir, "src/crawler/shops"), { recursive: true });
   await mkdir(join(rootDir, "test"), { recursive: true });
   await writeFile(
-    join(rootDir, "src/crawler/shops/index.js"),
+    join(rootDir, "src/crawler/shops/index.ts"),
     `// shop-generator:imports\nexport const SHOP_PLUGINS = [\n  // shop-generator:plugins\n];\n`,
     "utf8",
   );
@@ -56,13 +56,17 @@ test("shop generator creates adapter, fixture, test and registry entry", async (
     intervalMinutes: 60,
   });
 
-  const index = await readFile(join(rootDir, "src/crawler/shops/index.js"), "utf8");
-  const adapter = await readFile(join(rootDir, "src/crawler/shops/example-audio.js"), "utf8");
+  const index = await readFile(join(rootDir, "src/crawler/shops/index.ts"), "utf8");
+  const adapter = await readFile(join(rootDir, "src/crawler/shops/example-audio.ts"), "utf8");
+  const generatedTest = await readFile(join(rootDir, "test/example-audio.test.ts"), "utf8");
   const fixture = await readFile(join(rootDir, "test/fixtures/example-audio/list.html"), "utf8");
 
   assert.match(index, /import \{ exampleAudioAdapter \} from '\.\/example-audio\.js'/);
   assert.match(index, /key: "example-audio"/);
   assert.match(adapter, /baseUrl: "https:\/\/example\.com"/);
+  assert.match(adapter, /src\/catalog\/categories\.ts/);
   assert.match(adapter, /categoryMapping:/);
+  assert.match(adapter, /parse\(_html: string\)/);
+  assert.match(generatedTest, /\.\.\/src\/crawler\/shops\/example-audio\.js/);
   assert.match(fixture, /representative, sanitized listing-page fixture/);
 });
