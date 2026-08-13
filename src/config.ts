@@ -1,30 +1,37 @@
+import type {
+  CrawlerEnv,
+  CrawlerSettings,
+  InventoryRecheckSettings,
+  MaintenanceSettings,
+  ShopDefinition,
+} from "./crawler/types.js";
 import { SHOP_PLUGINS } from "./crawler/shops/index.js";
 
-export const SHOP_DEFINITIONS = Object.fromEntries(
-  SHOP_PLUGINS.map((plugin) => [plugin.key, plugin.definition]),
+export const SHOP_DEFINITIONS: Record<string, ShopDefinition> = Object.fromEntries(
+  SHOP_PLUGINS.map((plugin): [string, ShopDefinition] => [plugin.key, plugin.definition]),
 );
 
-export function positiveInt(value, fallback) {
+export function positiveInt(value: unknown, fallback: number): number {
   const parsed = Number.parseInt(String(value ?? ""), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-export function nonNegativeInt(value, fallback) {
+export function nonNegativeInt(value: unknown, fallback: number): number {
   const parsed = Number.parseInt(String(value ?? ""), 10);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
-export function positiveNumber(value, fallback) {
+export function positiveNumber(value: unknown, fallback: number): number {
   const parsed = Number.parseFloat(String(value ?? ""));
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-export function ratio(value, fallback) {
+export function ratio(value: unknown, fallback: number): number {
   const parsed = Number.parseFloat(String(value ?? ""));
   return Number.isFinite(parsed) && parsed > 0 && parsed < 1 ? parsed : fallback;
 }
 
-export function booleanFlag(value, fallback = true) {
+export function booleanFlag(value: unknown, fallback = true): boolean {
   if (value == null || String(value).trim() === "") return fallback;
   const normalized = String(value).trim().toLowerCase();
   if (["1", "true", "yes", "on"].includes(normalized)) return true;
@@ -32,26 +39,37 @@ export function booleanFlag(value, fallback = true) {
   return fallback;
 }
 
-export function getShopEnabled(env, shop) {
+export function getShopEnabled(env: CrawlerEnv | undefined, shop: ShopDefinition): boolean {
   return booleanFlag(env?.[shop.enabledEnv], true);
 }
 
-export function getShopIntervalMinutes(env, shop) {
+export function getShopIntervalMinutes(env: CrawlerEnv | undefined, shop: ShopDefinition): number {
   return positiveInt(env?.[shop.intervalEnv], shop.defaultIntervalMinutes);
 }
 
-export function getShopMaxPages(env, shop, fallback) {
+export function getShopMaxPages(
+  env: CrawlerEnv | undefined,
+  shop: ShopDefinition | undefined,
+  fallback: number,
+): number {
   if (!shop) return fallback;
-  return positiveInt(env?.[shop.maxPagesEnv], shop.defaultMaxPages || fallback);
+  // `shop.maxPagesEnv` is optional; guarding it is equivalent to the previous
+  // `env?.[undefined]` lookup, which always produced `undefined`.
+  const configured = shop.maxPagesEnv ? env?.[shop.maxPagesEnv] : undefined;
+  return positiveInt(configured, shop.defaultMaxPages || fallback);
 }
 
-export function getShopRequestDelayMs(env, shop, fallback) {
+export function getShopRequestDelayMs(
+  env: CrawlerEnv | undefined,
+  shop: ShopDefinition | undefined,
+  fallback: number,
+): number {
   if (!shop) return fallback;
   const defaultDelay = shop.defaultRequestDelayMs ?? fallback;
   return nonNegativeInt(env?.[shop.requestDelayEnv], defaultDelay);
 }
 
-export function getCrawlerSettings(env) {
+export function getCrawlerSettings(env: CrawlerEnv | undefined): CrawlerSettings {
   return {
     requestDelayMs: nonNegativeInt(env?.CRAWL_REQUEST_DELAY_MS, 1200),
     maxPagesPerShop: positiveInt(env?.CRAWL_MAX_PAGES_PER_SHOP, 20),
@@ -66,7 +84,9 @@ export function getCrawlerSettings(env) {
   };
 }
 
-export function getAudioUnionInventoryRecheckSettings(env) {
+export function getAudioUnionInventoryRecheckSettings(
+  env: CrawlerEnv | undefined,
+): InventoryRecheckSettings {
   return {
     enabled: booleanFlag(env?.AUDIOUNION_INVENTORY_RECHECK_ENABLED, false),
     minListingAgeHours: positiveInt(env?.AUDIOUNION_INVENTORY_RECHECK_MIN_AGE_HOURS, 24),
@@ -78,7 +98,7 @@ export function getAudioUnionInventoryRecheckSettings(env) {
   };
 }
 
-export function getMaintenanceSettings(env) {
+export function getMaintenanceSettings(env: CrawlerEnv | undefined): MaintenanceSettings {
   return {
     crawlRunRetentionDays: positiveInt(env?.CRAWL_RUN_RETENTION_DAYS, 30),
     dataQualityRetentionDays: positiveInt(env?.DATA_QUALITY_RETENTION_DAYS, 180),

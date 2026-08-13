@@ -1,3 +1,4 @@
+import type { CrawlPage, ShopAdapter, ShopDefinition, ShopPlugin } from "../types.js";
 import { normalizeCatalogProducts } from "../../catalog/product-normalizer.js";
 import { audioUnionAdapter } from "./audiounion.js";
 import { ippinkanAdapter } from "./ippinkan.js";
@@ -8,21 +9,28 @@ import { uAudioAdapter } from "./u-audio.js";
 import { shimamusenAdapter } from "./shimamusen.js";
 // shop-generator:imports
 
-function defineShopPlugin(adapter, definition) {
+function defineShopPlugin(adapter: ShopAdapter, definition: ShopDefinition): ShopPlugin {
   if (!adapter?.key || adapter.key !== definition.key) {
     throw new Error(`shop plugin key mismatch: ${adapter?.key || "missing"} / ${definition.key}`);
   }
 
-  const plugin = { ...adapter, definition: Object.freeze({ ...definition }) };
   const parse = adapter.parse;
-  plugin.parse = function normalizedParse(...args) {
-    return normalizeCatalogProducts(parse.apply(plugin, args), plugin);
+  // `parse` is supplied in the literal (rather than assigned afterwards) so the plugin can be
+  // typed without an assertion. Runtime is unchanged: the spread already places `parse` at the
+  // adapter's key position, the explicit entry only replaces its value, and `plugin` is only
+  // dereferenced when the wrapper is later called.
+  const plugin: ShopPlugin = {
+    ...adapter,
+    definition: Object.freeze({ ...definition }),
+    parse: function normalizedParse(...args: [html: string, page?: CrawlPage]) {
+      return normalizeCatalogProducts(parse.apply(plugin, args), plugin);
+    },
   };
 
   return Object.freeze(plugin);
 }
 
-export const SHOP_PLUGINS = [
+export const SHOP_PLUGINS: ShopPlugin[] = [
   defineShopPlugin(audioUnionAdapter, {
     key: "audiounion",
     name: "Audio Union",
@@ -99,8 +107,8 @@ export const SHOP_PLUGINS = [
 ];
 
 // Compatibility alias for existing callers. New code should treat each entry as a shop plugin.
-export const SHOP_ADAPTERS = SHOP_PLUGINS;
+export const SHOP_ADAPTERS: ShopPlugin[] = SHOP_PLUGINS;
 
-export function getShopPlugin(shopKey) {
+export function getShopPlugin(shopKey: string | undefined): ShopPlugin | null {
   return SHOP_PLUGINS.find((plugin) => plugin.key === shopKey) || null;
 }
