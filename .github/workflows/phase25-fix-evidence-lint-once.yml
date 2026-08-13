@@ -1,0 +1,85 @@
+name: Phase 2.5 evidence lint cleanup
+
+on:
+  push:
+    branches:
+      - feat/phase-2-5-typescript-complete-migration
+    paths:
+      - .github/workflows/phase25-fix-evidence-lint-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: feat/phase-2-5-typescript-complete-migration
+          fetch-depth: 0
+
+      - name: Remove lint exception root causes
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("src/evidence/evidence-archive.ts")
+          text = path.read_text()
+
+          unused_imports = '''import type {
+            EvidenceArchiveResult,
+            EvidenceReason,
+            EvidenceRetentionClass,
+            EvidenceSuppressionReason,
+            EvidenceUsage,
+          } from "../db/types.js";
+          '''
+          if unused_imports not in text:
+              raise SystemExit("expected unused import block was not found")
+          text = text.replace(unused_imports, "", 1)
+
+          unused_alias = '''/** The three caps evaluated before the R2 write; burst sampling is decided separately. */
+          type QuotaSuppressionReason = Exclude<EvidenceSuppressionReason, "burst_sampled">;
+
+          '''
+          if unused_alias not in text:
+              raise SystemExit("expected unused quota alias was not found")
+          text = text.replace(unused_alias, "", 1)
+
+          old_message = '        message: error?.message || String(error),'
+          new_message = '        message: errorMessage(error),'
+          if old_message not in text:
+              raise SystemExit("expected catch log expression was not found")
+          text = text.replace(old_message, new_message, 1)
+
+          old_return = '    return { status: "failed", reason: "archive_error", error: error?.message || String(error) };'
+          new_return = '    return { status: "failed", reason: "archive_error", error: errorMessage(error) };'
+          if old_return not in text:
+              raise SystemExit("expected catch return expression was not found")
+          text = text.replace(old_return, new_return, 1)
+
+          path.write_text(text)
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify lint without exceptions
+        run: npm run lint
+
+      - name: Commit cleanup and remove one-time workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- src/evidence/evidence-archive.ts
+          git rm -- .github/workflows/phase25-fix-evidence-lint-once.yml
+          git diff --cached --check
+          git commit -m "fix(types): resolve evidence archive lint without exceptions"
+          git push origin HEAD:feat/phase-2-5-typescript-complete-migration
