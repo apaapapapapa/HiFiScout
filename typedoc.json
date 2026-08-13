@@ -1,0 +1,13 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src/index.ts"],
+  "tsconfig": "tsconfig.json",
+  "plugin": ["typedoc-plugin-markdown"],
+  "name": "HiFiScout API Reference",
+  "out": ".cache/docs/typedoc",
+  "entryFileName": "api",
+  "router": "module",
+  "readme": "none",
+  "cleanOutputDir": true,
+  "skipErrorChecking": true
+}

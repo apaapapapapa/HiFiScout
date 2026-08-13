@@ -8,6 +8,7 @@ test-results/
 .cache/docs/
 docs/.vitepress/cache/
 docs/.vitepress/dist/
+docs/.vitepress/.temp/
 docs/reference/api.md
 docs/public/generated/
 docs/public/db/

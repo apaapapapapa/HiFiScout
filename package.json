@@ -16,7 +16,7 @@
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
     "create-shop": "tsx scripts/create-shop.ts",
-    "docs:api": "npx --yes documentation@14.0.0 build src/index.ts --document-exported --github -f md -o docs/reference/api.md",
+    "docs:api": "npx --yes --package typedoc@0.28.20 --package typedoc-plugin-markdown@4.12.0 --package typescript@6.0.2 typedoc && tsx scripts/docs/publish-api-docs.ts",
     "docs:architecture:check": "npx --yes dependency-cruiser@18.1.0 src --config .dependency-cruiser.json --ts-config tsconfig.json --output-type err",
     "docs:architecture": "mkdir -p docs/public/generated && npx --yes dependency-cruiser@18.1.0 src --config .dependency-cruiser.json --ts-config tsconfig.json --output-type html --output-to docs/public/generated/dependencies.html",
     "docs:db": "bash scripts/docs/generate-db-docs.sh",
