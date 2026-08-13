@@ -18,9 +18,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: tar -czf phase-2-5-node-modules.tar.gz node_modules
+      - name: Package validated workspace
+        run: tar --exclude=.git --exclude=phase-2-5-workspace.tar.gz -czf phase-2-5-workspace.tar.gz .
       - uses: actions/upload-artifact@v4
         with:
-          name: phase-2-5-dependencies
-          path: phase-2-5-node-modules.tar.gz
+          name: phase-2-5-workspace
+          path: phase-2-5-workspace.tar.gz
           retention-days: 1
