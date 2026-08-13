@@ -1,14 +1,4 @@
-import type {
-  CategoryDefinition,
-  CategoryFacet,
-  CategoryId,
-  CategoryMapping,
-  CategoryNormalizationSource,
-  ClassifiableCategoryId,
-  LegacyCategoryAlias,
-  NormalizeCategoryOptions,
-  NormalizeCategoryResult,
-} from "./types.js";
+import type { CategoryDefinition } from "./types.js";
 import { inferExplicitCategoryIds } from "./category-rules.js";
 
 /** Taxonomy rows as authored; `selectable` is derived from `filterable` below. */
@@ -412,7 +402,7 @@ const CATEGORY_SOURCE: readonly Omit<CategoryDefinition, "selectable">[] = [
   },
 ].map((category) => Object.freeze({ ...category, selectable: category.filterable }));
 
-export const CATEGORIES = Object.freeze(CATEGORY_DEFINITIONS);
+export const CATEGORIES = Object.freeze(CATEGORY_SOURCE);
 const CATEGORY_BY_ID = new Map(CATEGORIES.map((category) => [category.id, category]));
 const LEGACY_ALIASES = Object.freeze({
   network_transport: "network_player",
