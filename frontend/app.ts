@@ -829,12 +829,16 @@ window.addEventListener("popstate", async () => {
   await loadProducts({ reset: true });
 });
 
-updateFavoriteCount();
-syncFilterPanelMode();
-await loadMeta();
-applyUrlState();
-renderActiveFilters();
-renderView();
-state.booted = true;
-syncUrl({ replace: true });
-await loadProducts({ reset: true });
+async function initialize() {
+  updateFavoriteCount();
+  syncFilterPanelMode();
+  await loadMeta();
+  applyUrlState();
+  renderActiveFilters();
+  renderView();
+  state.booted = true;
+  syncUrl({ replace: true });
+  await loadProducts({ reset: true });
+}
+
+initialize().catch((error) => console.error("Failed to initialize application", error));
