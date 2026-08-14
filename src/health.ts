@@ -105,7 +105,7 @@ export function evaluateShopSyncHealth({
  */
 function isShopConfigured(env: CrawlerEnv, plugin: ShopPlugin): boolean {
   if (!plugin.definition.transportConfigurationRequired) return true;
-  return isTransportConfigured(env, plugin);
+  return isTransportConfigured(env, plugin.capabilities.transport?.kind);
 }
 
 export function buildSyncHealth(

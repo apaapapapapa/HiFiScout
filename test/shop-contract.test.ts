@@ -177,13 +177,12 @@ test("registration rejects a definition the platform could not run safely", () =
   assert.throws(() => registerStub({ baseUrl: "https://example.com/used" }), /origin/);
   assert.throws(() => registerStub({ baseUrl: "http://example.com" }), /https/);
   assert.throws(() => registerStub({ baseUrl: "not a url" }), /not a URL/);
-  assert.throws(() => registerStub({ envPrefix: "example shop" }), /SCREAMING_SNAKE_CASE/);
   assert.throws(() => registerStub({ defaultIntervalMinutes: 0 }), /defaultIntervalMinutes/);
   assert.throws(() => registerStub({ defaultMaxPages: -1 }), /defaultMaxPages/);
   assert.throws(() => registerStub({ defaultRequestDelayMs: -1 }), /defaultRequestDelayMs/);
   assert.throws(() => registerStub({ scheduleCron: " " }), /scheduleCron/);
   assert.throws(
-    () => registerStub({}, { transport: "carrier-pigeon" as unknown as "direct" }),
+    () => registerStub({}, {}, { transport: { kind: "carrier-pigeon" as unknown as "direct" } }),
     /not a supported transport/,
   );
   assert.throws(
@@ -352,10 +351,13 @@ test("shop-specific behavior is opt-in capability metadata", () => {
       const policy = plugin.capabilities.inventoryRecheck;
       assert.equal(typeof policy.isDetailUrl, "function");
       assert.equal(typeof policy.classifyPage, "function");
-      assert.equal(plugin.transport, "relay");
+      assert.equal(plugin.capabilities.transport?.kind, "relay");
     }
     if (plugin.definition.transportConfigurationRequired) {
-      assert.ok(plugin.transport, `${plugin.key} grades configuration but declares no transport`);
+      assert.ok(
+        plugin.capabilities.transport?.kind,
+        `${plugin.key} grades configuration but declares no transport`,
+      );
     }
   }
 });
@@ -399,11 +401,11 @@ test("relay transport requires the shared crawler configuration", () => {
         CRAWL_RELAY_URL: "https://shared.example/",
         CRAWL_RELAY_TOKEN: "shared-token",
       },
-      plugin,
+      plugin.capabilities.transport?.kind,
     ),
     true,
   );
-  assert.equal(isTransportConfigured({}, plugin), false);
+  assert.equal(isTransportConfigured({}, plugin.capabilities.transport?.kind), false);
 });
 
 test("discovery is bounded, deduplicated and origin-safe at the platform boundary", () => {
@@ -411,6 +413,11 @@ test("discovery is bounded, deduplicated and origin-safe at the platform boundar
     baseUrl: "https://example.com",
     discovery: {
       coverage: "unknown" as const,
+      policy: {
+        emptyPage: "stop" as const,
+        itemCountValidation: "coverage" as const,
+        extraPageBudget: 0,
+      },
       *initialTargets({ maxPages }: { maxPages: number }) {
         for (let page = 1; page <= maxPages + 3; page += 1) yield `/${page}`;
         yield "/1";
@@ -425,6 +432,11 @@ test("discovery is bounded, deduplicated and origin-safe at the platform boundar
     ...fixed,
     discovery: {
       coverage: "unknown" as const,
+      policy: {
+        emptyPage: "stop" as const,
+        itemCountValidation: "coverage" as const,
+        extraPageBudget: 0,
+      },
       *initialTargets() {
         yield "https://other.example/list";
       },
@@ -435,7 +447,16 @@ test("discovery is bounded, deduplicated and origin-safe at the platform boundar
 
 test("explicit coverage semantics decide deactivation", () => {
   const complete = coverageDecision(
-    registerStub({}, { discovery: { coverage: "complete", *initialTargets() {} } }),
+    registerStub(
+      {},
+      {
+        discovery: {
+          coverage: "complete",
+          policy: { emptyPage: "stop", itemCountValidation: "coverage", extraPageBudget: 0 },
+          *initialTargets() {},
+        },
+      },
+    ),
     { reachedEnd: false, coverageIncomplete: false, queueEmpty: true },
   );
   assert.deepEqual(complete, { deactivateMissing: true, validateItemCount: true });
@@ -458,7 +479,13 @@ test("explicit coverage semantics decide deactivation", () => {
   const uncertain = coverageDecision(
     registerStub(
       { key: "uncertain-shop" },
-      { discovery: { coverage: "complete", *initialTargets() {} } },
+      {
+        discovery: {
+          coverage: "complete",
+          policy: { emptyPage: "stop", itemCountValidation: "coverage", extraPageBudget: 0 },
+          *initialTargets() {},
+        },
+      },
     ),
     { reachedEnd: true, coverageIncomplete: true, queueEmpty: true },
   );

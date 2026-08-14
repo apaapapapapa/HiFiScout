@@ -32,7 +32,6 @@ test("shop generator renders seller-fact and discovery-ready adapter", () => {
     key: "example-audio",
     name: "Example Audio",
     baseUrl: "https://example.com",
-    transport: "direct",
   });
   assert.match(adapter, /SellerProduct/);
   assert.match(adapter, /discovery:/);

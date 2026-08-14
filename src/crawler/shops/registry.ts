@@ -47,7 +47,8 @@ function assertPositiveInt(key: string, field: string, value: number | undefined
   if (!Number.isInteger(value) || value <= 0) invalid(key, `${field} must be a positive integer`);
 }
 
-function assertNonNegativeInt(key: string, field: string, value: number): void {
+function assertNonNegativeInt(key: string, field: string, value: number | undefined): void {
+  if (value === undefined) return;
   if (!Number.isInteger(value) || value < 0) {
     invalid(key, `${field} must be a non-negative integer`);
   }

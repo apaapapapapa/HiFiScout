@@ -6,7 +6,11 @@ import {
   hifidoRecheckPage,
   parseHifidoListing,
 } from "../src/crawler/shops/hifido.js";
+import { getShopPlugin } from "../src/crawler/shops/index.js";
 import { isTransportConfigured } from "../src/crawler/transport.js";
+
+const hifidoPlugin = getShopPlugin("hifido");
+if (!hifidoPlugin) throw new Error("hifido plugin missing");
 
 test("Hifido parser keeps factual listing fields only", () => {
   const html = `
@@ -93,7 +97,7 @@ test("Hifido keeps three recent pages and adds one rotating stale recheck page",
     { now, intervalMinutes: 30 },
   );
   assert.ok(recheckPage);
-  assert.equal(hifidoAdapter.transport, "relay");
+  assert.equal(hifidoPlugin.capabilities.transport?.kind, "relay");
   assert.equal(hifidoAdapter.discovery.coverage, "partial");
   assert.equal(hifidoAdapter.discovery.policy.extraPageBudget, 1);
   assert.equal(pages.length, 4);
@@ -105,14 +109,14 @@ test("Hifido keeps three recent pages and adds one rotating stale recheck page",
 });
 
 test("Hifido relay transport requires shared crawler relay secrets", () => {
-  assert.equal(isTransportConfigured({}, hifidoAdapter), false);
+  assert.equal(isTransportConfigured({}, hifidoPlugin.capabilities.transport?.kind), false);
   assert.equal(
     isTransportConfigured(
       {
         CRAWL_RELAY_URL: "https://example.lambda-url.ap-northeast-1.on.aws/",
         CRAWL_RELAY_TOKEN: "token",
       },
-      hifidoAdapter,
+      hifidoPlugin.capabilities.transport?.kind,
     ),
     true,
   );
