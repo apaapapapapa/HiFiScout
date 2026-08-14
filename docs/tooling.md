@@ -1,15 +1,17 @@
 # Documentation Tooling
 
-HiFiScout's developer documentation is built from four complementary OSS tools.
+HiFiScout's developer documentation is built from four complementary OSS toolchains.
 
 | Tool | Responsibility | Pinned version |
 | --- | --- | --- |
-| documentation.js | JavaScript/JSDoc API reference | 14.0.0 |
+| TypeDoc + typedoc-plugin-markdown | TypeScript/JSDoc API reference for VitePress | 0.28.20 / 4.12.0 |
 | dependency-cruiser | Module dependency validation and visualization | 18.1.0 |
 | SchemaSpy | D1/SQLite schema documentation and ER diagrams | 7.0.2 |
 | VitePress | Unified static developer documentation site | 1.6.4 |
 
 The command-line tools are version-pinned and invoked only by documentation scripts, so they do not become part of the Cloudflare Worker runtime bundle.
+
+TypeDoc 0.28 and dependency-cruiser 18 support TypeScript through version 6, while the application uses TypeScript 7. Their documentation commands therefore run with a pinned TypeScript 6.0.2 parser. Type checking remains the responsibility of `npm run typecheck`; these tools only convert or inspect the source model.
 
 ## Commands
 
@@ -45,6 +47,7 @@ The following paths are generated and ignored by Git:
 - `docs/public/generated/`
 - `docs/public/db/`
 - `docs/.vitepress/dist/`
+- `docs/.vitepress/.temp/`
 - `.cache/docs/`
 
 Do not edit these outputs manually. Update source code/JSDoc, module imports, migrations, or curated Markdown instead.

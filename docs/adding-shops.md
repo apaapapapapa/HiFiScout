@@ -13,10 +13,10 @@ npm run create-shop -- \
 
 Supported transports are `direct`, `relay`, and `browser`. The generator creates:
 
-- `src/crawler/shops/<key>.js`
-- `test/<key>.test.js`
+- `src/crawler/shops/<key>.ts`
+- `test/<key>.test.ts`
 - `test/fixtures/<key>/list.html`
-- a plugin registration in `src/crawler/shops/index.js`
+- a plugin registration in `src/crawler/shops/index.ts`
 
 The generated parser intentionally returns no products. Replace it with a parser backed by the sanitized fixture before enabling the shop.
 

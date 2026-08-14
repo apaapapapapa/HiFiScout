@@ -26,6 +26,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run check:no-js-source
       - run: npm run lint
       - name: Check formatting of changed source files
         shell: bash
@@ -38,11 +39,12 @@ jobs:
           else
             echo "No changed JavaScript/TypeScript source files to format-check."
           fi
+      - run: npm run typecheck
       - run: npm run db:migrate:local
       - name: Verify D1 FTS search migration
-        run: node scripts/verify-search-integration.mjs
+        run: npx tsx scripts/verify-search-integration.ts
       - run: npm test
-      - run: npx wrangler deploy --dry-run
+      - run: npm run build
 
   dependency-security:
     runs-on: ubuntu-latest

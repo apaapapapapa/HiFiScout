@@ -31,7 +31,7 @@ Use the `FunctionUrl` stack output as the Worker relay URL. The Node.js 22 Lambd
 
 ## Automatic code deployment from GitHub Actions
 
-After the initial SAM deployment, changes to `infra/audiounion-lambda/index.mjs` on `main` are automatically packaged and deployed to the existing `hifiscout-audiounion-fetcher` function in `ap-northeast-1` by `.github/workflows/deploy-audiounion-lambda.yml`. The workflow can also be run manually with `workflow_dispatch`.
+After the initial SAM deployment, changes to `infra/audiounion-lambda/index.ts` on `main` are automatically packaged and deployed to the existing `hifiscout-audiounion-fetcher` function in `ap-northeast-1` by `.github/workflows/deploy-audiounion-lambda.yml`. The workflow can also be run manually with `workflow_dispatch`.
 
 Authentication uses GitHub Actions OIDC. Do not create long-lived AWS access keys for this workflow.
 
@@ -135,7 +135,7 @@ The automatic Lambda deployment workflow also selects one currently active Audio
 
 ### Hifido
 
-Hifido uses the same Function URL/token pair but a browser-like User-Agent and a separately restricted URL shape. The automatic Lambda deployment workflow probes both Audio Union and Hifido in the same runner after deployment, so relay verification stays aligned without a separate follow-up workflow. Keep that verification aligned with `src/crawler/shops/hifido.js` whenever the Hifido listing URL format changes.
+Hifido uses the same Function URL/token pair but a browser-like User-Agent and a separately restricted URL shape. The automatic Lambda deployment workflow probes both Audio Union and Hifido in the same runner after deployment, so relay verification stays aligned without a separate follow-up workflow. Keep that verification aligned with `src/crawler/shops/hifido.ts` whenever the Hifido listing URL format changes.
 
 ## Low-frequency Audio Union inventory recheck
 

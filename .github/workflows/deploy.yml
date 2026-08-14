@@ -39,6 +39,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - run: npm ci
       - name: Provision Evidence Archive R2
         shell: bash
         run: |
@@ -99,6 +100,8 @@ jobs:
             exit 1
           fi
           echo "AudioUnion priced listings are present as in_stock; historical unknown rows are allowed until a compliant full-coverage source is available."
+      - name: Build browser assets from TypeScript source
+        run: npm run build:frontend
       - name: Deploy Worker and static assets
         run: npx --yes wrangler@4.120.1 deploy
       - name: Check production health
