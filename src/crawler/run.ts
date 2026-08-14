@@ -85,54 +85,6 @@ function isConfigured(env: CrawlerEnv, adapter: ShopPlugin): boolean {
   return !adapter.isConfigured || adapter.isConfigured(env);
 }
 
-function countMatches(value: string, pattern: RegExp): number {
-  return [...String(value || "").matchAll(pattern)].length;
-}
-
-function diagnoseAudioUnionHtml(html: string) {
-  const text = String(html || "");
-  const productPattern = /(?:https?:\/\/www\.audiounion\.jp)?\/ct\/detail\/used\/(\d+)\/?/gi;
-  const matches = [...text.matchAll(productPattern)];
-  const seen = new Set();
-  let positiveContexts = 0;
-  let soldContexts = 0;
-  let neutralContexts = 0;
-  const positivePattern = /在庫あり|カートに入れる|購入する/i;
-  const soldPattern = /売約済み?|売り切れ|売切|sold\s*out|在庫なし|完売|品切れ|販売終了|ご成約/i;
-
-  for (const match of matches) {
-    const id = match[1];
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-    const start = Math.max(0, (match.index || 0) - 700);
-    const end = Math.min(text.length, (match.index || 0) + match[0].length + 900);
-    const context = text.slice(start, end);
-    const positive = positivePattern.test(context);
-    const sold = soldPattern.test(context);
-    if (sold) soldContexts += 1;
-    else if (positive) positiveContexts += 1;
-    else neutralContexts += 1;
-  }
-
-  return {
-    links: matches.length,
-    uniqueProducts: seen.size,
-    positiveContexts,
-    soldContexts,
-    neutralContexts,
-    markers: {
-      inStock: countMatches(text, /在庫あり/g),
-      cart: countMatches(text, /カートに入れる/g),
-      purchase: countMatches(text, /購入する/g),
-      reserved: countMatches(text, /売約済み?/g),
-      soldOutJa: countMatches(text, /売り切れ|売切/g),
-      soldOutEn: countMatches(text, /sold\s*out/gi),
-      noStock: countMatches(text, /在庫なし/g),
-      completed: countMatches(text, /完売|品切れ|販売終了|ご成約/g),
-    },
-  };
-}
-
 function logUnclassifiedProducts(
   adapter: ShopPlugin,
   products: readonly NormalizedCatalogProduct[],
@@ -323,7 +275,8 @@ export async function crawlShop(
   let parseFailureCount = 0;
   let reachedEnd = false;
   let coverageIncomplete = false;
-  let audioUnionDiagnostic: ReturnType<typeof diagnoseAudioUnionHtml> | null = null;
+  /** Last non-null value from the adapter's optional `diagnosePage` hook; shape is opaque here. */
+  let pageDiagnostic: unknown = null;
   let lastEvidenceHtml = "";
   let classificationEvidenceHtml = "";
   const evidenceMetrics: EvidenceMetrics = { expected: 0, archived: 0, failed: 0 };
@@ -360,7 +313,8 @@ export async function crawlShop(
 
       lastEvidenceHtml = html;
       pageCount += 1;
-      if (adapter.key === "audiounion") audioUnionDiagnostic = diagnoseAudioUnionHtml(html);
+      const diagnostic = adapter.diagnosePage?.(html, page);
+      if (diagnostic != null) pageDiagnostic = diagnostic;
       let parsed;
       parseAttemptCount += 1;
       try {
@@ -514,9 +468,7 @@ export async function crawlShop(
     });
     await markShopSuccess(env.DB, adapter.key, observedAt, items.size);
     const diagnosticParts = [];
-    if (adapter.key === "audiounion" && audioUnionDiagnostic) {
-      diagnosticParts.push(`diag=${JSON.stringify(audioUnionDiagnostic)}`);
-    }
+    if (pageDiagnostic != null) diagnosticParts.push(`diag=${JSON.stringify(pageDiagnostic)}`);
     if (enrichment.detailRequests || enrichment.cacheHits || enrichment.unresolvedCount) {
       diagnosticParts.push(
         `category_enrichment=${JSON.stringify({

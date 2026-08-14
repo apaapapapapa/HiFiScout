@@ -1,16 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  classifyAudioUnionInventoryPage,
-  isAudioUnionUsedDetailUrl,
-  recheckAudioUnionInventory,
-} from "../src/crawler/inventory-recheck.js";
-import type { CrawlerEnv } from "../src/crawler/types.js";
+import { recheckShopInventory } from "../src/crawler/inventory-recheck.js";
+import { getShopPlugin } from "../src/crawler/shops/index.js";
+import type { CrawlerEnv, ShopPlugin } from "../src/crawler/types.js";
 import type { InventoryRecheckCandidateRow, QueryableDatabase } from "../src/db/types.js";
 import { asQueryableDatabase } from "./helpers/d1.js";
 
 const NOW = new Date("2026-08-11T10:00:00.000Z");
 const DETAIL_URL = "https://www.audiounion.jp/ct/detail/used/223257/";
+
+const audioUnion = getShopPlugin("audiounion") as ShopPlugin;
+
+type RecheckEnv = Parameters<typeof recheckShopInventory>[0];
+type RecheckOptions = Parameters<typeof recheckShopInventory>[2];
+
+/** The loop under test is shop-agnostic; AudioUnion is simply the shop that opts in today. */
+function recheck(env: RecheckEnv, options?: RecheckOptions) {
+  return recheckShopInventory(env, audioUnion, options);
+}
 
 function env(overrides: Partial<CrawlerEnv> = {}) {
   return {
@@ -98,49 +105,20 @@ function upstreamResponse(
   });
 }
 
-test("AudioUnion detail URL validation is intentionally narrow", () => {
-  assert.equal(isAudioUnionUsedDetailUrl(DETAIL_URL), true);
-  assert.equal(isAudioUnionUsedDetailUrl("https://www.audiounion.jp/ct/detail/used/223257"), true);
-  assert.equal(isAudioUnionUsedDetailUrl("https://www.audiounion.jp/ct/search/"), false);
-  assert.equal(isAudioUnionUsedDetailUrl("https://www.audiounion.jp/ct/detail/new/223257/"), false);
-  assert.equal(isAudioUnionUsedDetailUrl("https://www.audiounion.jp/ct/detail/used/abc/"), false);
-  assert.equal(isAudioUnionUsedDetailUrl(`${DETAIL_URL}?x=1`), false);
-});
+test("a shop that declares no recheck policy is skipped without touching the database", async () => {
+  const repository = fakeRepository();
+  const plain = getShopPlugin("ippinkan") as ShopPlugin;
+  assert.equal(plain.inventoryRecheck, undefined);
 
-test("inventory page classification requires non-conflicting evidence", () => {
-  assert.equal(
-    classifyAudioUnionInventoryPage("<main>販売価格 <strong>¥798,000</strong></main>"),
-    "in_stock",
-  );
-  assert.equal(
-    classifyAudioUnionInventoryPage("<main>この商品は販売終了しました</main>"),
-    "sold_out",
-  );
-  assert.equal(
-    classifyAudioUnionInventoryPage("<main>販売価格 ¥798,000 販売終了</main>"),
-    "ambiguous",
-  );
-  assert.equal(
-    classifyAudioUnionInventoryPage('<script>const state="販売終了"</script><main>商品情報</main>'),
-    "ambiguous",
-  );
-  assert.equal(
-    classifyAudioUnionInventoryPage(
-      '<script>const state="販売終了"</script ><main>商品情報</main>',
-    ),
-    "ambiguous",
-  );
-  assert.equal(
-    classifyAudioUnionInventoryPage(
-      '<script>const state="販売終了"</script\t\n data-extra><main>商品情報</main>',
-    ),
-    "ambiguous",
-  );
+  const result = await recheckShopInventory(env(), plain, { now: NOW, repository });
+
+  assert.deepEqual(result, { status: "skipped", reason: "disabled" });
+  assert.equal(repository.calls.length, 0);
 });
 
 test("recheck marks an explicitly priced detail page as available", async () => {
   const repository = fakeRepository();
-  const result = await recheckAudioUnionInventory(env(), {
+  const result = await recheck(env(), {
     now: NOW,
     repository,
     fetchFn: async () => upstreamResponse("<html><body>販売価格 <b>¥798,000</b></body></html>"),
@@ -162,7 +140,7 @@ test("recheck marks an explicitly priced detail page as available", async () => 
 
 test("first explicit sold page records unavailable evidence but keeps the product active", async () => {
   const repository = fakeRepository();
-  const result = await recheckAudioUnionInventory(env(), {
+  const result = await recheck(env(), {
     now: NOW,
     repository,
     fetchFn: async () => upstreamResponse("<html><body>この商品は販売終了しました</body></html>"),
@@ -181,7 +159,7 @@ test("second consecutive explicit sold page deactivates the product", async () =
       inventory_check_failures: 1,
     }),
   );
-  const result = await recheckAudioUnionInventory(env(), {
+  const result = await recheck(env(), {
     now: NOW,
     repository,
     fetchFn: async () => upstreamResponse("<html><body>販売終了</body></html>"),
@@ -194,7 +172,7 @@ test("second consecutive explicit sold page deactivates the product", async () =
 
 test("first 404 records unavailable evidence but keeps the product active", async () => {
   const repository = fakeRepository();
-  const result = await recheckAudioUnionInventory(env(), {
+  const result = await recheck(env(), {
     now: NOW,
     repository,
     fetchFn: async () => upstreamResponse("<html>not found</html>", 404),
@@ -212,7 +190,7 @@ test("second consecutive 404 deactivates the product", async () => {
       inventory_check_failures: 1,
     }),
   );
-  const result = await recheckAudioUnionInventory(env(), {
+  const result = await recheck(env(), {
     now: NOW,
     repository,
     fetchFn: async () => upstreamResponse("<html>not found</html>", 404),
@@ -231,7 +209,7 @@ test("a later listing observation resets the effective unavailable streak", asyn
       inventory_check_failures: 1,
     }),
   );
-  const result = await recheckAudioUnionInventory(env(), {
+  const result = await recheck(env(), {
     now: NOW,
     repository,
     fetchFn: async () => upstreamResponse("<html>not found</html>", 404),
@@ -244,7 +222,7 @@ test("a later listing observation resets the effective unavailable streak", asyn
 
 test("429 is deferred after recording only the attempt timestamp", async () => {
   const repository = fakeRepository();
-  const result = await recheckAudioUnionInventory(env(), {
+  const result = await recheck(env(), {
     now: NOW,
     repository,
     fetchFn: async () => upstreamResponse("rate limited", 429, "text/plain"),
@@ -258,7 +236,7 @@ test("429 is deferred after recording only the attempt timestamp", async () => {
 
 test("robots rejection is deferred without changing inventory state", async () => {
   const repository = fakeRepository();
-  const result = await recheckAudioUnionInventory(env(), {
+  const result = await recheck(env(), {
     now: NOW,
     repository,
     fetchFn: async () =>
@@ -276,7 +254,7 @@ test("robots rejection is deferred without changing inventory state", async () =
 
 test("ambiguous 200 response never deactivates and resets unavailable evidence", async () => {
   const repository = fakeRepository(candidate({ inventory_check_failures: 1 }));
-  const result = await recheckAudioUnionInventory(env(), {
+  const result = await recheck(env(), {
     now: NOW,
     repository,
     fetchFn: async () => upstreamResponse("<html><body>商品情報のみ</body></html>"),
@@ -289,17 +267,14 @@ test("ambiguous 200 response never deactivates and resets unavailable evidence",
 test("disabled rechecks do not select or fetch a product", async () => {
   const repository = fakeRepository();
   let fetched = false;
-  const result = await recheckAudioUnionInventory(
-    env({ AUDIOUNION_INVENTORY_RECHECK_ENABLED: "false" }),
-    {
-      now: NOW,
-      repository,
-      fetchFn: async () => {
-        fetched = true;
-        throw new Error("must not fetch");
-      },
+  const result = await recheck(env({ AUDIOUNION_INVENTORY_RECHECK_ENABLED: "false" }), {
+    now: NOW,
+    repository,
+    fetchFn: async () => {
+      fetched = true;
+      throw new Error("must not fetch");
     },
-  );
+  });
 
   assert.deepEqual(result, { status: "skipped", reason: "disabled" });
   assert.equal(repository.calls.length, 0);

@@ -1,6 +1,7 @@
 import type {
   CrawlerEnv,
   CrawlerSettings,
+  InventoryRecheckPolicy,
   InventoryRecheckSettings,
   MaintenanceSettings,
   ShopDefinition,
@@ -84,17 +85,20 @@ export function getCrawlerSettings(env: CrawlerEnv | undefined): CrawlerSettings
   };
 }
 
-export function getAudioUnionInventoryRecheckSettings(
+/**
+ * Inventory recheck is opt-in per shop and defaults to off, so enabling it is always a
+ * deliberate act. The failure threshold has a hard floor of 2: one unavailable observation must
+ * never be enough to deactivate a listing.
+ */
+export function getShopInventoryRecheckSettings(
   env: CrawlerEnv | undefined,
+  policy: InventoryRecheckPolicy,
 ): InventoryRecheckSettings {
   return {
-    enabled: booleanFlag(env?.AUDIOUNION_INVENTORY_RECHECK_ENABLED, false),
-    minListingAgeHours: positiveInt(env?.AUDIOUNION_INVENTORY_RECHECK_MIN_AGE_HOURS, 24),
-    intervalHours: positiveInt(env?.AUDIOUNION_INVENTORY_RECHECK_INTERVAL_HOURS, 24),
-    failureThreshold: Math.max(
-      2,
-      positiveInt(env?.AUDIOUNION_INVENTORY_RECHECK_FAILURE_THRESHOLD, 2),
-    ),
+    enabled: booleanFlag(env?.[policy.enabledEnv], false),
+    minListingAgeHours: positiveInt(env?.[policy.minListingAgeHoursEnv], 24),
+    intervalHours: positiveInt(env?.[policy.intervalHoursEnv], 24),
+    failureThreshold: Math.max(2, positiveInt(env?.[policy.failureThresholdEnv], 2)),
   };
 }
 

@@ -8,6 +8,7 @@ import {
   dispatchForcedCrawl,
   dispatchScheduledCrawl,
 } from "./crawler/dispatch.js";
+import { sharedSweepExclusions, shopForCron } from "./crawler/schedule.js";
 import { dataQualityStatus, listDataQualityHistory } from "./db/data-quality-repository.js";
 import { dataPlatformStatus } from "./db/data-platform-status-repository.js";
 import { knowledgeCatalogOperationalStatus } from "./db/knowledge-catalog-review-repository.js";
@@ -46,8 +47,6 @@ import type {
 import type { ShopSyncStateRow } from "./db/types.js";
 
 const GENERAL_CRON = "*/5 * * * *";
-const AUDIOUNION_CRON = "1 * * * *";
-const FUJIYA_AVIC_CRON = "30 * * * *";
 const DAILY_MAINTENANCE_CRON = "17 18 * * *";
 const KNOWLEDGE_CATALOG_MONTHLY_CRON = "23 3 1 * *";
 const CRAWL_QUEUE = "hifiscout-crawl";
@@ -295,12 +294,10 @@ async function runDailyMaintenance(env: Env) {
 async function runScheduled(cron: string, env: Env) {
   if (cron === DAILY_MAINTENANCE_CRON) return runDailyMaintenance(env);
   if (cron === KNOWLEDGE_CATALOG_MONTHLY_CRON) return dispatchKnowledgeCatalogMonthlyRecheck(env);
-  const dispatch =
-    cron === AUDIOUNION_CRON
-      ? await dispatchScheduledCrawl(env, "audiounion")
-      : cron === FUJIYA_AVIC_CRON
-        ? await dispatchScheduledCrawl(env, "fujiya-avic")
-        : await dispatchDueCrawls(env, { excludeShopKeys: ["audiounion", "fujiya-avic"] });
+  const dedicated = shopForCron(cron);
+  const dispatch = dedicated
+    ? await dispatchScheduledCrawl(env, dedicated.key)
+    : await dispatchDueCrawls(env, { excludeShopKeys: sharedSweepExclusions() });
   logDispatchResult(cron, dispatch);
   const health = await getSyncHealth(env);
   logSyncHealth(health);

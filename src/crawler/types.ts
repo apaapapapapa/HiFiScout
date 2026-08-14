@@ -134,6 +134,51 @@ export interface ShopDefinition {
   readonly defaultRequestDelayMs?: number;
   readonly maxPagesEnv?: EnvVarName;
   readonly defaultMaxPages?: number;
+
+  /**
+   * Cron expression owning this shop's dispatch.
+   *
+   * A shop that declares one is dispatched by that trigger alone and is skipped by the shared
+   * "due shops" sweep, which keeps a busy shop off the general schedule. The expression must
+   * also appear in `wrangler.jsonc` `triggers.crons` — `test/schedule.test.ts` asserts that.
+   */
+  readonly scheduleCron?: string;
+
+  /**
+   * Missing transport configuration is a *health* problem for this shop rather than something
+   * its persisted sync state will report after a failed run.
+   *
+   * Only set it for shops whose transport secrets are provisioned out of band, where a gap
+   * would otherwise stay invisible until the next scheduled crawl.
+   */
+  readonly transportConfigurationRequired?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Inventory recheck capability
+// ---------------------------------------------------------------------------
+
+/**
+ * What a shop must supply to opt into the post-crawl inventory recheck.
+ *
+ * The recheck loop itself — candidate selection, attempt marking, relay fetch, HTTP-status
+ * handling, failure counting and deactivation — is shop-agnostic and lives in
+ * `inventory-recheck.ts`. Only these settings names and two predicates are not.
+ */
+export interface InventoryRecheckPolicy {
+  readonly enabledEnv: EnvVarName;
+  readonly minListingAgeHoursEnv: EnvVarName;
+  readonly intervalHoursEnv: EnvVarName;
+  readonly failureThresholdEnv: EnvVarName;
+
+  /**
+   * Guard for the stored `source_url` before it is re-fetched. Must reject anything outside the
+   * shop's own detail pages, including redirects to other hosts, ports or query strings.
+   */
+  isDetailUrl(value: string): boolean;
+
+  /** Reads availability from a detail page. Contradictory evidence must yield `"ambiguous"`. */
+  classifyPage(html: string): InventoryClassification;
 }
 
 // ---------------------------------------------------------------------------
@@ -212,6 +257,16 @@ export interface ShopAdapter<TPage extends CrawlPage = CrawlPage> {
     html: string,
     product: NormalizedCatalogProduct,
   ): CategoryEvidenceInput[] | Promise<CategoryEvidenceInput[]>;
+
+  /**
+   * Optional per-page diagnostic snapshot for shops whose HTML needs explaining when a crawl
+   * looks wrong. The crawler keeps the last non-null value and appends it to the crawl-run
+   * message; it never inspects the contents, so the shape is the adapter's business.
+   */
+  diagnosePage?(html: string, page?: TPage): unknown;
+
+  /** Opt-in single-listing inventory recheck, run after this shop's crawl succeeds. */
+  readonly inventoryRecheck?: InventoryRecheckPolicy;
 
   /** Not implemented by any current adapter, but part of the contract `run`/`dispatch` read. */
   isConfigured?(env: CrawlerEnv): boolean;
@@ -415,7 +470,7 @@ export interface CrawlSuccessResult {
   searchProjection: { changedCount: number };
   productIdentity: IdentitySyncMetrics;
   categoryEnrichment: CategoryEnrichmentCounters;
-  /** Appended by `consumeCrawlMessage` for `audiounion` only. */
+  /** Appended by `consumeCrawlMessage` for shops that declare an `inventoryRecheck` policy. */
   inventoryRecheck?: InventoryRecheckResult;
 }
 

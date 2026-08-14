@@ -1,8 +1,19 @@
+/**
+ * Single-listing inventory recheck.
+ *
+ * Listing pages only say a product exists; whether it is still purchasable has to be read from
+ * its detail page. One candidate is rechecked per successful crawl, and a listing is only
+ * deactivated after repeated unavailable observations — a transient relay or upstream failure
+ * must never look like a sold-out product.
+ *
+ * Nothing here is shop-specific: the URL guard, the availability classifier and the settings
+ * names all come from the adapter's {@link InventoryRecheckPolicy}.
+ */
+
 import {
-  getAudioUnionInventoryRecheckSettings,
   getCrawlerSettings,
+  getShopInventoryRecheckSettings,
   getShopRequestDelayMs,
-  SHOP_DEFINITIONS,
 } from "../config.js";
 import {
   markInventoryAmbiguous,
@@ -17,12 +28,10 @@ import { isRecord } from "../types.js";
 import type { InventoryRecheckCandidateRow, QueryableDatabase } from "../db/types.js";
 import type {
   CrawlerEnv,
-  InventoryClassification,
   InventoryRecheckResult,
   InventoryRecheckSettings,
+  ShopPlugin,
 } from "./types.js";
-
-const AUDIOUNION_DETAIL_PATH = /^\/ct\/detail\/used\/\d+\/?$/;
 
 interface InventoryRecheckEnv extends CrawlerEnv {
   DB: QueryableDatabase;
@@ -71,56 +80,6 @@ const defaultRepository = {
   markInventoryAmbiguous,
   recordInventoryUnavailable,
 };
-
-function visibleText(html: unknown): string {
-  return String(html || "")
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, " ")
-    .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript\b[^>]*>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;|&#160;/gi, " ")
-    .replace(/&yen;|&#165;/gi, "¥")
-    .replace(/&amp;/gi, "&")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-export function isAudioUnionUsedDetailUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return (
-      url.protocol === "https:" &&
-      url.hostname === "www.audiounion.jp" &&
-      url.port === "" &&
-      url.username === "" &&
-      url.password === "" &&
-      AUDIOUNION_DETAIL_PATH.test(url.pathname) &&
-      url.search === "" &&
-      url.hash === ""
-    );
-  } catch {
-    return false;
-  }
-}
-
-export function classifyAudioUnionInventoryPage(html: string): InventoryClassification {
-  const text = visibleText(html);
-  if (!text) return "ambiguous";
-
-  const priceContext = text.match(/販売価格.{0,120}/i)?.[0] || "";
-  const hasPricedOffer = /(?:[¥￥]\s*[0-9][0-9,]*|[0-9][0-9,]*\s*円)/.test(priceContext);
-  const hasPurchaseEvidence = /在庫あり|カートに入れる|購入する/i.test(text);
-  const hasSoldEvidence =
-    /販売終了|売約済み?|売り切れ|売切|在庫なし|完売|品切れ|ご成約|sold\s*out/i.test(text);
-  const hasActiveEvidence = hasPricedOffer || hasPurchaseEvidence;
-
-  // Conflicting page-wide signals can come from recommendations or retained historical markup.
-  // Never treat contradictory markup as proof of either state.
-  if (hasActiveEvidence && hasSoldEvidence) return "ambiguous";
-  if (hasActiveEvidence) return "in_stock";
-  if (hasSoldEvidence) return "sold_out";
-  return "ambiguous";
-}
 
 function isoBefore(now: Date, hours: number): string {
   return new Date(now.getTime() - hours * 60 * 60 * 1000).toISOString();
@@ -174,21 +133,30 @@ async function recordUnavailable(
   };
 }
 
-export async function recheckAudioUnionInventory(
+/**
+ * Rechecks one stale listing for `plugin`.
+ *
+ * Returns `{ status: "skipped", reason: "disabled" }` for a shop that declares no policy, so
+ * callers can invoke it unconditionally.
+ */
+export async function recheckShopInventory(
   env: InventoryRecheckEnv,
+  plugin: ShopPlugin,
   {
     now = new Date(),
     fetchFn = fetch,
     repository = defaultRepository,
   }: InventoryRecheckOptions = {},
 ): Promise<InventoryRecheckResult> {
-  const settings = getAudioUnionInventoryRecheckSettings(env);
+  const policy = plugin.inventoryRecheck;
+  if (!policy) return { status: "skipped", reason: "disabled" };
+  const settings = getShopInventoryRecheckSettings(env, policy);
   if (!settings.enabled) return { status: "skipped", reason: "disabled" };
 
   const attemptedAt = now.toISOString();
 
   try {
-    const candidate = await repository.selectInventoryRecheckCandidate(env.DB, "audiounion", {
+    const candidate = await repository.selectInventoryRecheckCandidate(env.DB, plugin.key, {
       staleBefore: isoBefore(now, settings.minListingAgeHours),
       retryBefore: isoBefore(now, settings.intervalHours),
     });
@@ -196,7 +164,7 @@ export async function recheckAudioUnionInventory(
 
     await repository.markInventoryCheckAttempt(env.DB, candidate.id, attemptedAt);
 
-    if (!isAudioUnionUsedDetailUrl(candidate.source_url)) {
+    if (!policy.isDetailUrl(candidate.source_url)) {
       return {
         status: "deferred",
         reason: "invalid_detail_url",
@@ -211,7 +179,7 @@ export async function recheckAudioUnionInventory(
     const crawlerSettings = getCrawlerSettings(env);
     const requestDelayMs = getShopRequestDelayMs(
       env,
-      SHOP_DEFINITIONS.audiounion,
+      plugin.definition,
       crawlerSettings.requestDelayMs,
     );
 
@@ -274,7 +242,7 @@ export async function recheckAudioUnionInventory(
       };
     }
 
-    const classification = classifyAudioUnionInventoryPage(page.body);
+    const classification = policy.classifyPage(page.body);
     if (classification === "in_stock") {
       await repository.markInventoryAvailable(env.DB, candidate.id, attemptedAt);
       return {
