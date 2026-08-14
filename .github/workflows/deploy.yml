@@ -205,7 +205,21 @@ jobs:
                       ON kp.id = r.catalog_product_id AND kp.verification_status = 'verified'
                     WHERE r.listing_product_id = e.fallback_listing_id AND r.status = 'matched'
                   )
-              ) AS stale_fallback_entities;")"
+              ) AS stale_fallback_entities,
+              (SELECT COUNT(*) FROM product_search_entities e
+                WHERE e.entity_kind = 'catalog'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM knowledge_catalog_products kp
+                    WHERE kp.id = e.catalog_product_id AND kp.verification_status = 'verified'
+                  )
+              ) AS ineligible_catalog_entities,
+              (SELECT COUNT(*) FROM product_search_entities e
+                WHERE e.offer_count <> (
+                  SELECT COUNT(*) FROM product_search_entity_offers m
+                  JOIN products p ON p.id = m.listing_product_id
+                  WHERE m.entity_id = e.id AND p.is_active = 1
+                )
+              ) AS offer_count_mismatches;")"
 
           quality_runs="$(query "
             SELECT q.*
@@ -248,10 +262,15 @@ jobs:
 
           # A product that stops being searchable is invisible to users but silent in the logs, so
           # every read-model invariant is a deploy gate rather than a dashboard nobody opens.
-          search_drift="$(jq '[.[0] | .unmembered_active_listings, .inactive_offer_memberships, .entities_without_offers, .stale_fallback_entities] | map(. // 0) | add' <<< "$search_entities")"
+          search_drift="$(jq '[.[0] | .unmembered_active_listings, .inactive_offer_memberships, .entities_without_offers, .stale_fallback_entities, .ineligible_catalog_entities, .offer_count_mismatches] | map(. // 0) | add' <<< "$search_entities")"
           if [ "$search_drift" -ne 0 ]; then
             echo "Product search read model drifted; POST /api/admin/product-search/rebuild repairs it." >&2
             jq . <<< "$search_entities" >&2
+            exit 1
+          fi
+          if ! npx --yes wrangler@4.120.1 d1 execute DB --remote --command \
+            "INSERT INTO product_search_entities_fts(product_search_entities_fts) VALUES('integrity-check');" >/dev/null; then
+            echo "Product search FTS integrity check failed; POST /api/admin/product-search/rebuild repairs the read model." >&2
             exit 1
           fi
 

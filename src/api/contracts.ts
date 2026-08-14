@@ -131,6 +131,8 @@ export interface ProductSearchItem {
   manufacturer_id: string;
   model: string;
   primary_category_id: string;
+  /** Canonical leaf plus its ancestor ids. Optional only for pre-Phase-4 favorite snapshots. */
+  category_ids?: string[];
   /** Japanese display label for `primary_category_id`; empty when the id is unknown. */
   category: string;
   offer_count: number;

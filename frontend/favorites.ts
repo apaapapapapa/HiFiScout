@@ -53,12 +53,17 @@ function nullableNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function stringArray(value: unknown): string[] | null {
+  return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : null;
+}
+
 function stockStatus(value: unknown): DisplayOffer["stock_status"] {
   return value === "in_stock" || value === "sold_out" ? value : "unknown";
 }
 
 /** Explicit field list: a snapshot must not grow just because the API item did. */
 export function favoriteSnapshot(product: DisplayProduct): DisplayProduct {
+  const categoryIds = stringArray(product.category_ids);
   return {
     key: product.key,
     identity_kind: product.identity_kind,
@@ -67,6 +72,7 @@ export function favoriteSnapshot(product: DisplayProduct): DisplayProduct {
     manufacturer_id: product.manufacturer_id,
     model: product.model,
     primary_category_id: product.primary_category_id,
+    ...(categoryIds ? { category_ids: [...categoryIds] } : {}),
     category: product.category,
     offer_count: product.offer_count,
     in_stock_offer_count: product.in_stock_offer_count,
@@ -96,6 +102,7 @@ export function migrateListingFavorite(entry: Record<string, unknown>): DisplayP
   const activityAt = text(entry.last_activity_at) || listedAt;
   const status = stockStatus(entry.stock_status);
   const previousPrice = nullableNumber(entry.previous_price_yen);
+  const categoryIds = stringArray(entry.category_ids);
   return {
     key: `${LEGACY_FAVORITE_PREFIX}${listingId}`,
     identity_kind: "unresolved_listing",
@@ -104,6 +111,7 @@ export function migrateListingFavorite(entry: Record<string, unknown>): DisplayP
     manufacturer_id: text(entry.manufacturer_id),
     model: text(entry.model) || text(entry.title),
     primary_category_id: text(entry.primary_category_id),
+    ...(categoryIds ? { category_ids: [...categoryIds] } : {}),
     category: text(entry.category),
     offer_count: 1,
     in_stock_offer_count: status === "in_stock" ? 1 : 0,
@@ -169,10 +177,10 @@ export function favoriteStoragePayload(store: FavoriteStore): unknown[] {
 /**
  * Client-side equivalent of the server's product filtering, applied to snapshots.
  *
- * Offer-level filters are evaluated against the snapshot's representative offer, which is all a
- * stored favorite knows about; the server evaluates them against every offer. `categoryLabel` is
- * the selected `<option>` text, which lets a snapshot taken before the taxonomy existed still
- * match by its free-text category.
+ * `category_ids` carries the canonical leaf plus its ancestors, so a favorite under a group filter
+ * follows the same closure semantics as `/api/product-search`. Older snapshots without that field
+ * keep the leaf/display-label fallback. Offer-level filters are evaluated against the snapshot's
+ * representative offer, which is all a stored favorite knows about.
  */
 export function favoriteMatchesFilters(
   product: DisplayProduct,
@@ -184,8 +192,10 @@ export function favoriteMatchesFilters(
   if (q && !normalizedSearchText(product).includes(q)) return false;
   if (filters.shop && product.representative_offer?.shop_key !== filters.shop) return false;
   if (filters.manufacturer && product.manufacturer !== filters.manufacturer) return false;
+  const categoryIds = stringArray(product.category_ids) ?? [];
   if (
     filters.category &&
+    !categoryIds.includes(filters.category) &&
     product.primary_category_id !== filters.category &&
     product.category !== categoryLabel
   ) {
