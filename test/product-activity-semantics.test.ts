@@ -159,6 +159,48 @@ test("confirmed sold-out to in-stock transition creates user-facing activity", a
   assert.equal(result.activityCount, 1);
 });
 
+test("hifido title and condition changes do not create user-facing activity", async () => {
+  const db = upsertDb(existingProduct());
+
+  const result = await upsertProducts(
+    db,
+    "hifido",
+    [product({ model: "ME1TX updated", title: "ME1TX updated", conditionText: "展示品" })],
+    "2026-08-12T06:00:00.000Z",
+  );
+
+  assert.equal(result.changedCount, 1);
+  assert.equal(result.activityCount, 0);
+});
+
+test("hifido price changes create user-facing activity", async () => {
+  const db = upsertDb(existingProduct());
+
+  const result = await upsertProducts(
+    db,
+    "hifido",
+    [product({ priceYen: 900000 })],
+    "2026-08-12T06:00:00.000Z",
+  );
+
+  assert.equal(result.changedCount, 1);
+  assert.equal(result.activityCount, 1);
+});
+
+test("other shops keep title changes as user-facing activity", async () => {
+  const db = upsertDb(existingProduct());
+
+  const result = await upsertProducts(
+    db,
+    "fujiya-avic",
+    [product({ model: "ME1TX updated", title: "ME1TX updated" })],
+    "2026-08-12T06:00:00.000Z",
+  );
+
+  assert.equal(result.changedCount, 1);
+  assert.equal(result.activityCount, 1);
+});
+
 test("parser and normalization metadata drift does not create user-facing activity", async () => {
   const db = upsertDb(
     existingProduct({
