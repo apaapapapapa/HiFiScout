@@ -90,7 +90,13 @@ export function evaluateQuality(
   const manufacturerUnknown = manufacturerMissing + manufacturerUnresolved;
   const identityMatched = nonNegative(input?.identityMatchedCount);
   const identityUnresolved = nonNegative(input?.identityUnresolvedCount);
-  const identityTotal = identityMatched + identityUnresolved;
+  // Product Identity quality is defined over every active listing. A listing with no resolution
+  // row is therefore unresolved for quality purposes instead of disappearing from the denominator.
+  const identityResolutionMissing = Math.max(
+    0,
+    totalItems - identityMatched - identityUnresolved,
+  );
+  const identityUnresolvedForQuality = identityUnresolved + identityResolutionMissing;
   const inventoryKnown = nonNegative(input?.inventoryKnownCount);
   const inventoryUnknown = nonNegative(input?.inventoryUnknownCount);
   const inventoryTotal = inventoryKnown + inventoryUnknown;
@@ -134,8 +140,8 @@ export function evaluateQuality(
       thresholds.categoryUnclassifiedRate,
     ),
     identityUnresolved: metric(
-      identityUnresolved,
-      identityTotal,
+      identityUnresolvedForQuality,
+      totalItems,
       thresholds.identityUnresolvedRate,
     ),
     inventoryUnknown: metric(inventoryUnknown, inventoryTotal, thresholds.inventoryUnknownRate),
