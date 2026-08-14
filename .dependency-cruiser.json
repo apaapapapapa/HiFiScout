@@ -50,6 +50,13 @@
       "to": { "path": "^src/(knowledge-catalog/|catalog/knowledge-verification/)" }
     },
     {
+      "name": "knowledge-catalog-does-not-borrow-crawler-env-types",
+      "severity": "error",
+      "comment": "Knowledge verification and its queue own their configuration contracts. They may reuse crawler infrastructure such as robots-respecting fetch, but must not depend on CrawlerEnv just to read deployment settings.",
+      "from": { "path": "^src/(knowledge-catalog/|catalog/knowledge-verification/)" },
+      "to": { "path": "^src/crawler/types\\.ts$" }
+    },
+    {
       "name": "queue-policy-stays-pure",
       "severity": "error",
       "comment": "src/knowledge-catalog/policy.ts holds the retry, lease and promotion decisions so they can be read and tested without a database, a queue or the network. Type-only imports are fine; a value import from a repository or the verifier would put I/O back inside the policy and make those rules untestable again.",

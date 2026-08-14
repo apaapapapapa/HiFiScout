@@ -1,6 +1,7 @@
 import { expect, test, type Page, type Response, type Route } from "@playwright/test";
 
 type JsonObject = Record<string, unknown>;
+type HealthStatus = "healthy" | "warning" | "critical" | "disabled";
 
 function isProductsRequest(response: Response): boolean {
   const url = new URL(response.url());
@@ -11,6 +12,7 @@ function product(overrides: JsonObject = {}) {
   return {
     id: 1,
     shop_key: "shop-a",
+    source_id: "source-1",
     manufacturer: "LUXMAN",
     manufacturer_id: "luxman",
     raw_manufacturer: "LUXMAN",
@@ -20,6 +22,7 @@ function product(overrides: JsonObject = {}) {
     raw_category: "CD/SACDプレーヤー",
     primary_category_id: "digital-disc-player",
     category_ids: ["digital-disc-player"],
+    classification_status: "classified",
     condition_text: "中古",
     price_yen: 698000,
     previous_price_yen: 748000,
@@ -30,7 +33,75 @@ function product(overrides: JsonObject = {}) {
     last_changed_at: "2026-08-11T10:00:00.000Z",
     last_activity_at: "2026-08-11T10:00:00.000Z",
     search_aliases: "SACD CD player",
+    is_active: 1,
+    metadata_json: "{}",
+    last_inventory_checked_at: null,
+    inventory_check_failures: 0,
+    last_inventory_check_attempt_at: null,
+    source_published_at: null,
     ...overrides,
+  };
+}
+
+function syncState(key: string, lastSuccessAt: string) {
+  return {
+    shop_key: key,
+    last_attempt_at: lastSuccessAt,
+    last_success_at: lastSuccessAt,
+    last_error_at: null,
+    consecutive_failures: 0,
+    backoff_until: null,
+    last_error: null,
+    last_item_count: 1,
+    queued_at: null,
+  };
+}
+
+function healthEntry(
+  key: string,
+  name: string,
+  status: HealthStatus,
+  lastSuccessAt: string | null,
+  ageMinutes: number | null,
+  enabled = true,
+) {
+  return {
+    shopKey: key,
+    name,
+    enabled,
+    configured: true,
+    intervalMinutes: 60,
+    status,
+    ageMinutes,
+    reason:
+      status === "disabled"
+        ? "disabled"
+        : status === "warning"
+          ? "sync_delayed"
+          : status === "critical"
+            ? "sync_stale"
+            : "ok",
+    lastSuccessAt,
+    lastAttemptAt: lastSuccessAt,
+    lastItemCount: 1,
+    consecutiveFailures: 0,
+    lastError: null,
+  };
+}
+
+function shopMeta(
+  key: string,
+  name: string,
+  lastSuccessAt: string,
+  { status = "healthy", ageMinutes = 30 }: { status?: HealthStatus; ageMinutes?: number } = {},
+) {
+  return {
+    key,
+    name,
+    enabled: true,
+    intervalMinutes: 60,
+    sync: syncState(key, lastSuccessAt),
+    health: healthEntry(key, name, status, lastSuccessAt, ageMinutes),
   };
 }
 
@@ -38,26 +109,32 @@ function mockMeta(overrides: JsonObject = {}) {
   return {
     status: "healthy",
     shops: [
-      {
-        key: "shop-a",
-        name: "Shop A",
-        intervalMinutes: 60,
-        sync: { last_success_at: "2026-08-11T10:00:00.000Z" },
-        health: { status: "healthy", lastSuccessAt: "2026-08-11T10:00:00.000Z", ageMinutes: 30 },
-      },
-      {
-        key: "shop-b",
-        name: "Shop B",
-        intervalMinutes: 60,
-        sync: { last_success_at: "2026-08-11T10:05:00.000Z" },
-        health: { status: "healthy", lastSuccessAt: "2026-08-11T10:05:00.000Z", ageMinutes: 25 },
-      },
+      shopMeta("shop-a", "Shop A", "2026-08-11T10:00:00.000Z", { ageMinutes: 30 }),
+      shopMeta("shop-b", "Shop B", "2026-08-11T10:05:00.000Z", { ageMinutes: 25 }),
     ],
     manufacturers: ["LUXMAN", "TAD"],
     categories: ["CD/SACDプレーヤー", "スピーカー"],
     categoryFacets: [
-      { id: "digital-disc-player", name: "CD/SACDプレーヤー", group: "デジタル" },
-      { id: "speaker", name: "スピーカー", group: null },
+      {
+        id: "digital-disc-player",
+        name: "CD/SACDプレーヤー",
+        parentId: null,
+        order: 1,
+        classifiable: true,
+        filterable: true,
+        group: "デジタル",
+        activeProductCount: 1,
+      },
+      {
+        id: "speaker",
+        name: "スピーカー",
+        parentId: null,
+        order: 2,
+        classifiable: false,
+        filterable: true,
+        group: null,
+        activeProductCount: 1,
+      },
     ],
     ...overrides,
   };
@@ -169,6 +246,7 @@ test("favorites are stored as product snapshots and rendered without a favorites
   const first = product();
   const second = product({
     id: 2,
+    source_id: "source-2",
     manufacturer: "TAD",
     manufacturer_id: "tad",
     raw_manufacturer: "TAD",
@@ -225,33 +303,15 @@ test("favorites are stored as product snapshots and rendered without a favorites
 });
 
 test("sync status summarizes delayed shops and exposes per-shop details", async ({ page }) => {
+  const healthyAt = new Date(Date.now() - 10 * 60_000).toISOString();
+  const delayedAt = new Date(Date.now() - 150 * 60_000).toISOString();
   await routeMeta(
     page,
     mockMeta({
       status: "warning",
       shops: [
-        {
-          key: "shop-a",
-          name: "Shop A",
-          intervalMinutes: 60,
-          sync: { last_success_at: new Date(Date.now() - 10 * 60_000).toISOString() },
-          health: {
-            status: "healthy",
-            lastSuccessAt: new Date(Date.now() - 10 * 60_000).toISOString(),
-            ageMinutes: 10,
-          },
-        },
-        {
-          key: "shop-b",
-          name: "Shop B",
-          intervalMinutes: 60,
-          sync: { last_success_at: new Date(Date.now() - 150 * 60_000).toISOString() },
-          health: {
-            status: "warning",
-            lastSuccessAt: new Date(Date.now() - 150 * 60_000).toISOString(),
-            ageMinutes: 150,
-          },
-        },
+        shopMeta("shop-a", "Shop A", healthyAt, { status: "healthy", ageMinutes: 10 }),
+        shopMeta("shop-b", "Shop B", delayedAt, { status: "warning", ageMinutes: 150 }),
       ],
     }),
   );

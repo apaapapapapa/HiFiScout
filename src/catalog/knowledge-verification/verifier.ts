@@ -23,7 +23,6 @@ import { createMarantzCdSacdIndexStrategy } from "./strategies/manufacturer/mara
 import { createOfficialIndexStrategy } from "./strategies/official-index.js";
 import { verifyOfficialProductPage } from "./page-verification.js";
 import type { VerificationStrategy } from "./pipeline.js";
-import type { CrawlerEnv } from "../../crawler/types.js";
 import type {
   FailedKnowledgeSource,
   FetchTextResult,
@@ -31,6 +30,7 @@ import type {
   KnowledgeSourceVerification,
   KnowledgeSourceVerifier,
   KnowledgeSourceVerifierOptions,
+  KnowledgeVerificationEnv,
 } from "./types.js";
 
 /** Rollout state, not a code version. See the module comment. */
@@ -61,7 +61,7 @@ function manufacturerIdOf(candidate: KnowledgeSourceCandidate | undefined): stri
 }
 
 export function createKnowledgeSourceVerifier(
-  env: CrawlerEnv = {},
+  env: KnowledgeVerificationEnv = {},
   { fetchImpl = globalThis.fetch, fallbackEnabled = true }: KnowledgeSourceVerifierOptions = {},
 ): KnowledgeSourceVerifier {
   const definitions = resolveKnowledgeSourceDefinitions(env);

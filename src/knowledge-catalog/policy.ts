@@ -13,8 +13,8 @@ import type {
   KnowledgeSourceStatus,
   KnowledgeSourceVerification,
 } from "../catalog/knowledge-verification/types.js";
-import type { CrawlerEnv } from "../crawler/types.js";
 import type { KnowledgeCatalogJobType, ProductClassificationStats } from "../db/types.js";
+import type { KnowledgeCatalogConfigEnv } from "./types.js";
 
 const DEFAULT_JOB_LEASE_SECONDS = 900;
 const DEFAULT_DOMAIN_LEASE_SECONDS = 900;
@@ -29,7 +29,7 @@ function boundedInteger(value: unknown, fallback: number, min: number, max: numb
 }
 
 /** Candidates queued by one daily run. */
-export function candidateLimit(env: CrawlerEnv): number {
+export function candidateLimit(env: KnowledgeCatalogConfigEnv): number {
   return boundedInteger(
     env.KNOWLEDGE_CATALOG_DAILY_VERIFY_MAX_CANDIDATES ??
       env.KNOWLEDGE_CATALOG_VERIFY_MAX_CANDIDATES,
@@ -40,17 +40,17 @@ export function candidateLimit(env: CrawlerEnv): number {
 }
 
 /** Verified products re-read by one monthly run. */
-export function dueProductLimit(env: CrawlerEnv): number {
+export function dueProductLimit(env: KnowledgeCatalogConfigEnv): number {
   return boundedInteger(env.KNOWLEDGE_CATALOG_VERIFY_MAX_DUE_PRODUCTS, 25, 1, 2000);
 }
 
 /** How stale a verified product may be before the monthly run marks it due. */
-export function reviewIntervalDays(env: CrawlerEnv): number {
+export function reviewIntervalDays(env: KnowledgeCatalogConfigEnv): number {
   return boundedInteger(env.KNOWLEDGE_CATALOG_REVIEW_INTERVAL_DAYS, 30, 1, 3650);
 }
 
 /** How long a claimed job stays claimed before another consumer may take it over. */
-export function jobLeaseSeconds(env: CrawlerEnv): number {
+export function jobLeaseSeconds(env: KnowledgeCatalogConfigEnv): number {
   return boundedInteger(
     env.KNOWLEDGE_CATALOG_QUEUE_JOB_LEASE_SECONDS,
     DEFAULT_JOB_LEASE_SECONDS,
@@ -60,7 +60,7 @@ export function jobLeaseSeconds(env: CrawlerEnv): number {
 }
 
 /** How long one job may hold a manufacturer's domain to itself. */
-export function domainLeaseSeconds(env: CrawlerEnv): number {
+export function domainLeaseSeconds(env: KnowledgeCatalogConfigEnv): number {
   return boundedInteger(
     env.KNOWLEDGE_CATALOG_QUEUE_DOMAIN_LEASE_SECONDS,
     DEFAULT_DOMAIN_LEASE_SECONDS,
@@ -70,7 +70,7 @@ export function domainLeaseSeconds(env: CrawlerEnv): number {
 }
 
 /** How long a job waits when another job already holds its domain. */
-export function domainRetrySeconds(env: CrawlerEnv): number {
+export function domainRetrySeconds(env: KnowledgeCatalogConfigEnv): number {
   return boundedInteger(
     env.KNOWLEDGE_CATALOG_QUEUE_DOMAIN_RETRY_SECONDS,
     DEFAULT_DOMAIN_RETRY_SECONDS,
@@ -80,7 +80,7 @@ export function domainRetrySeconds(env: CrawlerEnv): number {
 }
 
 /** How many times a transient source failure is retried before the outcome is accepted. */
-export function transientMaxAttempts(env: CrawlerEnv): number {
+export function transientMaxAttempts(env: KnowledgeCatalogConfigEnv): number {
   return boundedInteger(
     env.KNOWLEDGE_CATALOG_QUEUE_TRANSIENT_MAX_ATTEMPTS,
     DEFAULT_TRANSIENT_MAX_ATTEMPTS,
@@ -90,7 +90,7 @@ export function transientMaxAttempts(env: CrawlerEnv): number {
 }
 
 /** How long the finalizer waits before checking again for outstanding jobs. */
-export function finalizeRetrySeconds(env: CrawlerEnv): number {
+export function finalizeRetrySeconds(env: KnowledgeCatalogConfigEnv): number {
   return boundedInteger(
     env.KNOWLEDGE_CATALOG_QUEUE_FINALIZE_RETRY_SECONDS,
     DEFAULT_FINALIZE_RETRY_SECONDS,

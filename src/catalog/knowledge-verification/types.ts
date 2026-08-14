@@ -106,6 +106,20 @@ export interface KnowledgeSourceDefinition {
   searchUrlTemplate: string;
 }
 
+/**
+ * Deployment settings source verification actually reads.
+ *
+ * Declared in this bounded context rather than borrowing `CrawlerEnv`: catalog verification is a
+ * separate pipeline and must not depend on the crawler's environment vocabulary merely to read
+ * four string settings. The real Worker `Env` and queue environment satisfy this structurally.
+ */
+export interface KnowledgeVerificationEnv {
+  readonly CRAWLER_USER_AGENT?: string;
+  readonly KNOWLEDGE_CATALOG_SOURCE_TIMEOUT_MS?: string;
+  readonly KNOWLEDGE_CATALOG_SOURCE_MAX_RESPONSE_BYTES?: string;
+  readonly KNOWLEDGE_CATALOG_SOURCE_REGISTRY_JSON?: string;
+}
+
 /** What callers of `createKnowledgeSourceVerifier` may use. */
 export interface KnowledgeSourceVerifier {
   verifyCandidate(candidate: KnowledgeSourceCandidate): Promise<KnowledgeSourceVerification>;
