@@ -70,7 +70,7 @@ const DEFAULT_TRANSIENT_MAX_ATTEMPTS = 4;
 const DEFAULT_TRANSIENT_RETRY_SECONDS = 300;
 const DEFAULT_FINALIZE_RETRY_SECONDS = 300;
 
-interface KnowledgeCatalogQueueEnv extends CrawlerEnv {
+export interface KnowledgeCatalogQueueEnv extends CrawlerEnv {
   DB: QueryableDatabase;
   KNOWLEDGE_CATALOG_QUEUE: Pick<Queue<KnowledgeCatalogQueueMessage>, "send" | "sendBatch">;
 }
@@ -537,7 +537,13 @@ export function dispatchKnowledgeCatalogMonthlyRecheck(
   return dispatchKnowledgeCatalogVerificationRun(env, { ...options, mode: "monthly_recheck" });
 }
 
-function classificationImpact(
+/**
+ * What the run changed, reported as reductions only.
+ *
+ * Crawls add listings while a review runs, so a category count can legitimately rise; reporting a
+ * negative "reduction" would read as the review having made classification worse.
+ */
+export function classificationImpact(
   beforeClassification: ProductClassificationStats,
   afterClassification: ProductClassificationStats,
 ) {
