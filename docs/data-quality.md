@@ -65,6 +65,8 @@ The thresholds intentionally start with the Phase 2 proposal because production 
 
 After evaluation, the crawler emits a structured `data_quality_evaluated` log with shop, crawl-run ID, status, item total, and quality rates. HTML and other evidence content are never included in the structured log. Evaluation failures emit `data_quality_evaluation_failure` without failing the crawl.
 
+The production deployment baseline independently recomputes Identity coverage over active listings. It reports `identity_resolution_missing_count` and `identity_resolution_coverage_rate`, uses all active listings as the Identity Unresolved denominator, and fails the deployment validation step if even one active listing has no Identity resolution row. This turns the active-listing Identity invariant into an operational regression gate rather than a one-time migration assertion.
+
 ## Retention
 
 Data Quality history defaults to 180 days through `DATA_QUALITY_RETENTION_DAYS`. Existing daily maintenance deletes old rows in the same bounded batch size used by other retention jobs (default 500, hard cap 1000). No unbounded history delete is performed.

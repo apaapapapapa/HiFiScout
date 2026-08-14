@@ -162,6 +162,7 @@ jobs:
               SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id = 'other' THEN 1 ELSE 0 END) AS other_category_count,
               SUM(CASE WHEN r.status = 'matched' THEN 1 ELSE 0 END) AS identity_matched_count,
               SUM(CASE WHEN r.status = 'unresolved' THEN 1 ELSE 0 END) AS identity_unresolved_count,
+              SUM(CASE WHEN r.listing_product_id IS NULL THEN 1 ELSE 0 END) AS identity_resolution_missing_count,
               SUM(CASE WHEN r.match_method = 'vetoed' THEN 1 ELSE 0 END) AS identity_veto_count,
               SUM(CASE WHEN r.status = 'unresolved' AND r.candidate_catalog_product_id IS NOT NULL THEN 1 ELSE 0 END) AS identity_candidate_count,
               SUM(CASE WHEN p.stock_status <> 'unknown' THEN 1 ELSE 0 END) AS inventory_known_count,
@@ -190,12 +191,14 @@ jobs:
           baseline_with_rates="$(jq 'map(. + {
             manufacturer_unknown_rate: (if .total_items > 0 then ((.manufacturer_missing_count + .manufacturer_unresolved_count) / .total_items) else null end),
             category_unclassified_rate: (if .total_items > 0 then (.category_unclassified_count / .total_items) else null end),
-            identity_unresolved_rate: (if ((.identity_matched_count + .identity_unresolved_count) > 0) then (.identity_unresolved_count / (.identity_matched_count + .identity_unresolved_count)) else null end),
+            identity_unresolved_rate: (if .total_items > 0 then ((.identity_unresolved_count + .identity_resolution_missing_count) / .total_items) else null end),
+            identity_resolution_coverage_rate: (if .total_items > 0 then ((.identity_matched_count + .identity_unresolved_count) / .total_items) else null end),
             inventory_unknown_rate: (if ((.inventory_known_count + .inventory_unknown_count) > 0) then (.inventory_unknown_count / (.inventory_known_count + .inventory_unknown_count)) else null end),
             model_extraction_rate: (if .model_expected_count > 0 then (.model_extracted_count / .model_expected_count) else null end)
           })' <<< "$baseline")"
 
           identity_count="$(jq -r '.[0].resolution_count // 0' <<< "$identity")"
+          identity_missing_count="$(jq '[.[].identity_resolution_missing_count // 0] | add // 0' <<< "$baseline")"
           evidence_count="$(jq -r '.[0].evidence_count // 0' <<< "$evidence")"
           shop_count="$(jq 'length' <<< "$shops")"
           if [ "$identity_count" -le 0 ]; then
@@ -204,6 +207,11 @@ jobs:
           fi
           if [ "$shop_count" -le 0 ]; then
             echo "No active production shop data found." >&2
+            exit 1
+          fi
+          if [ "$identity_missing_count" -ne 0 ]; then
+            echo "Product Identity coverage gap detected: ${identity_missing_count} active listing(s) have no resolution row." >&2
+            jq '[.[] | select((.identity_resolution_missing_count // 0) > 0) | {shop_key, total_items, identity_matched_count, identity_unresolved_count, identity_resolution_missing_count}]' <<< "$baseline" >&2
             exit 1
           fi
 
