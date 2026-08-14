@@ -8,8 +8,6 @@ function facet(
   overrides: Partial<MetaCategoryFacet> & Pick<MetaCategoryFacet, "id" | "name">,
 ): MetaCategoryFacet {
   return {
-    id: overrides.id,
-    name: overrides.name,
     parentId: null,
     order: 1,
     classifiable: false,
