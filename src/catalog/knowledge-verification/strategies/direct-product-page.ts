@@ -16,7 +16,7 @@ import type {
   FetchTextResult,
   KnowledgeSourceCandidate,
   KnowledgeSourceVerification,
-} from "../../types.js";
+} from "../types.js";
 
 function directOfficialUrls(candidate: KnowledgeSourceCandidate, alias: string): string[] {
   const manufacturerId = String(candidate?.manufacturerId || "").toLowerCase();

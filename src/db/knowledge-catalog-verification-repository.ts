@@ -4,7 +4,7 @@ import type {
   KnowledgeSourceStatus,
   KnowledgeSourceVerification,
   VerifiedKnowledgeSource,
-} from "../catalog/types.js";
+} from "../catalog/knowledge-verification/types.js";
 import type {
   DueKnowledgeCatalogProduct,
   DueKnowledgeCatalogProductRow,

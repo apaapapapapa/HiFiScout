@@ -28,7 +28,7 @@ import type {
   KnowledgeSourceCandidate,
   KnowledgeSourceDefinition,
   KnowledgeSourceVerification,
-} from "../../types.js";
+} from "../types.js";
 
 interface LinkEntry {
   url: string;

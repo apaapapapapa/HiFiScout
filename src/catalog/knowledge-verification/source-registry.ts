@@ -17,7 +17,7 @@
 import { parseSourceRegistry } from "./config.js";
 import { clean } from "./html.js";
 import type { CrawlerEnv } from "../../crawler/types.js";
-import type { KnowledgeSourceDefinition } from "../types.js";
+import type { KnowledgeSourceDefinition } from "./types.js";
 
 /** Manufacturers whose official site has a verified entry point. */
 const DEFAULT_OFFICIAL_SOURCES = Object.freeze([

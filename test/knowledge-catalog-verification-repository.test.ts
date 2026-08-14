@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import type { VerifiedKnowledgeSource } from "../src/catalog/types.js";
+import type { VerifiedKnowledgeSource } from "../src/catalog/knowledge-verification/types.js";
 import {
   promoteVerifiedKnowledgeCatalogCandidate,
   recordKnowledgeCatalogProductRecheckFailure,

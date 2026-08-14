@@ -17,7 +17,8 @@ import {
   KNOWLEDGE_CATALOG_VERIFICATION_QUEUE,
 } from "./knowledge-catalog/queue-names.js";
 import { isRecord } from "./types.js";
-import type { CrawlQueueMessage, KnowledgeCatalogQueueMessage } from "./crawler/types.js";
+import type { CrawlQueueMessage } from "./crawler/types.js";
+import type { KnowledgeCatalogQueueMessage } from "./knowledge-catalog/types.js";
 
 export const CRAWL_QUEUE = "hifiscout-crawl";
 

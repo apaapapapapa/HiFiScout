@@ -40,9 +40,12 @@ import {
 } from "./targets.js";
 import { errorMessage } from "../types.js";
 import { createVerifier } from "./verifier.js";
-import type { KnowledgeCatalogQueueMessage } from "../crawler/types.js";
 import type { KnowledgeCatalogVerificationJob } from "../db/types.js";
-import type { KnowledgeCatalogQueueEnv, VerificationTargetResult } from "./types.js";
+import type {
+  KnowledgeCatalogQueueEnv,
+  KnowledgeCatalogQueueMessage,
+  VerificationTargetResult,
+} from "./types.js";
 import type { VerifierFactory } from "./verifier.js";
 
 const JOB_TYPES = ["candidate", "product_recheck", "finalize"];

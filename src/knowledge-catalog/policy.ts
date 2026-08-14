@@ -9,7 +9,10 @@
  * must not remove a lease bound or let one manufacturer consume a whole run.
  */
 
-import type { KnowledgeSourceStatus, KnowledgeSourceVerification } from "../catalog/types.js";
+import type {
+  KnowledgeSourceStatus,
+  KnowledgeSourceVerification,
+} from "../catalog/knowledge-verification/types.js";
 import type { CrawlerEnv } from "../crawler/types.js";
 import type { KnowledgeCatalogJobType, ProductClassificationStats } from "../db/types.js";
 

@@ -21,7 +21,7 @@ import type {
   KnowledgeSourceCandidate,
   KnowledgeSourceVerification,
   KnowledgeSourceVerifier,
-} from "../catalog/types.js";
+} from "../catalog/knowledge-verification/types.js";
 import type {
   DueKnowledgeCatalogProduct,
   PendingKnowledgeCatalogCandidate,

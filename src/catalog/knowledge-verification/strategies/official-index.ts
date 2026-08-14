@@ -20,7 +20,7 @@ import type {
   FetchTextResult,
   KnowledgeSourceCandidate,
   KnowledgeSourceVerification,
-} from "../../types.js";
+} from "../types.js";
 
 interface OfficialIndex {
   url: string;

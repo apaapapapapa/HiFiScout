@@ -9,7 +9,7 @@
 
 import { createKnowledgeSourceVerifier } from "../catalog/knowledge-verification/verifier.js";
 import { createRobotsRespectingFetch } from "../crawler/robots-respecting-fetch.js";
-import type { KnowledgeSourceVerifier } from "../catalog/types.js";
+import type { KnowledgeSourceVerifier } from "../catalog/knowledge-verification/types.js";
 import type { KnowledgeCatalogQueueEnv } from "./types.js";
 
 const DEFAULT_USER_AGENT = "HiFiScoutBot/0.1";

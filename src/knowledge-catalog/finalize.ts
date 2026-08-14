@@ -25,9 +25,8 @@ import {
 } from "../db/knowledge-catalog-verification-queue-repository.js";
 import { finishKnowledgeCatalogVerifierVersionSuccess } from "../db/knowledge-catalog-verifier-state-repository.js";
 import { addSeconds, classificationImpact, finalizeRetrySeconds } from "./policy.js";
-import type { KnowledgeCatalogQueueMessage } from "../crawler/types.js";
 import type { KnowledgeCatalogVerificationJob } from "../db/types.js";
-import type { KnowledgeCatalogQueueEnv } from "./types.js";
+import type { KnowledgeCatalogQueueEnv, KnowledgeCatalogQueueMessage } from "./types.js";
 
 export async function finalizeKnowledgeCatalogVerificationRun(
   env: KnowledgeCatalogQueueEnv,
