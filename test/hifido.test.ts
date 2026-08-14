@@ -80,7 +80,12 @@ test("Hifido parser handles rendered list-item markup with duplicate product lin
 test("Hifido keeps three recent pages and adds one rotating stale recheck page", () => {
   const now = new Date("2026-08-11T00:00:00.000Z");
   const pages = [
-    ...hifidoAdapter.pageUrls(3, { HIFIDO_RECHECK_MAX_PAGE: "6" }, { now, intervalMinutes: 30 }),
+    ...hifidoAdapter.discovery.initialTargets({
+      maxPages: 3,
+      env: { HIFIDO_RECHECK_MAX_PAGE: "6" },
+      now,
+      intervalMinutes: 30,
+    }),
   ];
   const recheckPage = hifidoRecheckPage(
     3,
@@ -89,7 +94,8 @@ test("Hifido keeps three recent pages and adds one rotating stale recheck page",
   );
   assert.ok(recheckPage);
   assert.equal(hifidoAdapter.transport, "relay");
-  assert.equal(hifidoAdapter.partialCoverage, true);
+  assert.equal(hifidoAdapter.discovery.coverage, "partial");
+  assert.equal(hifidoAdapter.discovery.extraPageAllowance, 1);
   assert.equal(pages.length, 4);
   assert.match(pages[0], /O=0/);
   assert.match(pages[1], /O=30/);
