@@ -37,7 +37,8 @@ export function validateSellerProducts(
   products: readonly SellerProduct[],
   plugin: Pick<ShopPlugin, "key">,
 ): SellerProduct[] {
-  if (!Array.isArray(products)) throw new Error(`invalid seller products ${plugin.key}: not an array`);
+  if (!Array.isArray(products))
+    throw new Error(`invalid seller products ${plugin.key}: not an array`);
 
   return products.map((candidate, index) => {
     if (!isRecord(candidate)) invalid(plugin.key, index, "product must be an object");

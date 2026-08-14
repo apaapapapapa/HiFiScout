@@ -96,5 +96,8 @@ test("FOR MUSIC adapter declares one complete storefront snapshot", () => {
     ["https://shop.formusic.jp/"],
   );
   assert.equal(forMusicAdapter.discovery.coverage, "complete");
-  assert.deepEqual(forMusicAdapter.discovery.discoverTargets?.("", "https://shop.formusic.jp/"), []);
+  assert.deepEqual(
+    forMusicAdapter.discovery.discoverTargets?.("", "https://shop.formusic.jp/"),
+    [],
+  );
 });

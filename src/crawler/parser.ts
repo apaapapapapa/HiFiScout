@@ -102,8 +102,7 @@ function stockStatusForListing(
   return availabilityFromSignals({
     soldOut: inferredStatus === "sold_out",
     inStock:
-      inferredStatus === "in_stock" ||
-      (options.priceImpliesInStock === true && priceYen !== null),
+      inferredStatus === "in_stock" || (options.priceImpliesInStock === true && priceYen !== null),
     defaultStatus: inferredStatus,
   });
 }
@@ -418,10 +417,7 @@ function deduplicateByQuality(items: readonly SellerProduct[]): SellerProduct[] 
   return [...unique.values()];
 }
 
-export function parseProductPage(
-  html: string,
-  options: ParseProductPageOptions,
-): SellerProduct[] {
+export function parseProductPage(html: string, options: ParseProductPageOptions): SellerProduct[] {
   const candidates = [...fromJsonLd(html, options), ...fromAnchors(html, options)];
   if (options.identityStrategy === "manufacturer-model-candidates") {
     return mergeManufacturerModelCandidates(candidates, options);

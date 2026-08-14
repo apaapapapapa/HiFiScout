@@ -201,10 +201,7 @@ export function parseUAudioResultCount(html: string): number | null {
   return match ? Number.parseInt(match[1].replace(/[，,]/g, ""), 10) : null;
 }
 
-export function parseUAudioListing(
-  html: string,
-  page: Partial<UAudioPage> = {},
-): SellerProduct[] {
+export function parseUAudioListing(html: string, page: Partial<UAudioPage> = {}): SellerProduct[] {
   const records = productAnchorRecords(html);
   const products: SellerProduct[] = [];
 

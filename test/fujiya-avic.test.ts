@@ -71,7 +71,10 @@ test("Fujiya pagination is derived independently from each live result count", (
 
 test("Fujiya refuses to claim complete discovery when count cannot be discovered", () => {
   const [root] = initialPages();
-  assert.equal(fujiyaAvicAdapter.discovery.discoverTargets?.("<html>layout changed</html>", root), null);
+  assert.equal(
+    fujiyaAvicAdapter.discovery.discoverTargets?.("<html>layout changed</html>", root),
+    null,
+  );
 });
 
 test("Fujiya live-card shape parses price, rank, stock and bilingual maker correctly", () => {

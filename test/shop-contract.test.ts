@@ -280,7 +280,11 @@ test("every deployed variable under a shop prefix is one that shop can actually 
     const prefix = `${plugin.definition.envPrefix}_`;
     const readable = readableShopEnvVars(plugin, declared);
     const orphans = declared.filter((name) => name.startsWith(prefix) && !readable.has(name));
-    assert.deepEqual(orphans, [], `${plugin.key} has unread deployed variables: ${orphans.join(", ")}`);
+    assert.deepEqual(
+      orphans,
+      [],
+      `${plugin.key} has unread deployed variables: ${orphans.join(", ")}`,
+    );
   }
 });
 

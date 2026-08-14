@@ -1,10 +1,7 @@
 import type { CrawlPage, CrawlerEnv, DiscoveryContext, ShopAdapter } from "./types.js";
 
 /** The strategies only read the discovery slice, so tests may pass synthetic adapters. */
-type DiscoveryAdapter<TPage extends CrawlPage> = Pick<
-  ShopAdapter<TPage>,
-  "baseUrl" | "discovery"
->;
+type DiscoveryAdapter<TPage extends CrawlPage> = Pick<ShopAdapter<TPage>, "baseUrl" | "discovery">;
 
 export interface CoverageSignals {
   reachedEnd: boolean;
@@ -82,9 +79,7 @@ export function coverageDecision(
   { reachedEnd, coverageIncomplete, queueEmpty }: CoverageSignals,
 ): CoverageDecision {
   const deactivateMissing =
-    adapter.discovery.coverage === "complete" &&
-    !coverageIncomplete &&
-    (reachedEnd || queueEmpty);
+    adapter.discovery.coverage === "complete" && !coverageIncomplete && (reachedEnd || queueEmpty);
   return {
     deactivateMissing,
     guardItemCount: deactivateMissing || adapter.discovery.guardItemCount === true,

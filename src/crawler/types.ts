@@ -219,8 +219,10 @@ export interface DiscoveryCapability<TPage extends CrawlPage = CrawlPage> {
  * normalization. The legacy catalog input keeps these raw fields optional for non-crawler callers;
  * the shop platform does not.
  */
-export interface SellerProduct
-  extends Omit<ShopParsedProduct, "rawManufacturer" | "rawCategory" | "category"> {
+export interface SellerProduct extends Omit<
+  ShopParsedProduct,
+  "rawManufacturer" | "rawCategory" | "category"
+> {
   rawManufacturer: string;
   rawCategory: string;
   category: string;
