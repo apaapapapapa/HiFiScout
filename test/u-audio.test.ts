@@ -5,6 +5,7 @@ import {
   parseUAudioResultCount,
   uAudioAdapter,
 } from "../src/crawler/shops/u-audio.js";
+import { initialPageQueue } from "../src/crawler/strategies.js";
 
 const html = `
 <h1>中古スピーカー</h1><p>全 41 件</p>
@@ -52,7 +53,7 @@ test("U-AUDIO outlet entries are marked and treated as available unless sold out
 });
 
 test("U-AUDIO pagination crawls all outlet pages before used categories", () => {
-  const [bootstrap] = [...uAudioAdapter.discovery.initialTargets({ maxPages: 40, env: {} })];
+  const [bootstrap] = initialPageQueue(uAudioAdapter, 40);
   assert.equal(bootstrap.url, "https://www.u-audio.com/view/category/ct18");
   assert.equal(bootstrap.bootstrap, true);
   assert.equal(uAudioAdapter.discovery.coverage, "complete");
