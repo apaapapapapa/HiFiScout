@@ -41,6 +41,16 @@ test("normal quality is healthy", () => {
   assert.equal(result.metrics.categoryUnclassified.rate, 0.01);
 });
 
+test("identity unresolved uses every active listing and treats missing resolution rows as unresolved", () => {
+  const result = evaluateQuality(
+    healthyInput({ totalItems: 100, identityMatchedCount: 80, identityUnresolvedCount: 15 }),
+  );
+  assert.equal(result.metrics.identityUnresolved.count, 20);
+  assert.equal(result.metrics.identityUnresolved.denominator, 100);
+  assert.equal(result.metrics.identityUnresolved.rate, 0.2);
+  assert.equal(result.metrics.identityUnresolved.status, "warning");
+});
+
 test("high-rate warning and critical thresholds include exact boundaries", () => {
   const warning = evaluateQuality(healthyInput({ manufacturerMissingCount: 2 }));
   assert.equal(warning.metrics.manufacturerUnknown.status, "warning");
@@ -51,7 +61,12 @@ test("high-rate warning and critical thresholds include exact boundaries", () =>
 
 test("unknown is retained when a denominator does not exist", () => {
   const result = evaluateQuality(
-    healthyInput({ identityMatchedCount: 0, identityUnresolvedCount: 0, modelExpectedCount: 0 }),
+    healthyInput({
+      totalItems: 0,
+      identityMatchedCount: 0,
+      identityUnresolvedCount: 0,
+      modelExpectedCount: 0,
+    }),
   );
   assert.equal(result.metrics.identityUnresolved.status, "unknown");
   assert.equal(result.metrics.modelMissing.status, "unknown");
