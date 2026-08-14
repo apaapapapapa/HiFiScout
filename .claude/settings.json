@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(npm run verify)",
+      "Bash(npm run check)",
+      "Bash(npm run fix)",
+      "Bash(npm run lint)",
+      "Bash(npm run lint:fix)",
+      "Bash(npm run format)",
+      "Bash(npm run format:check)",
+      "Bash(npm run typecheck)",
+      "Bash(npm run types:worker)",
+      "Bash(npm run check:no-js-source)",
+      "Bash(npm test)",
+      "Bash(npm run test:unit)",
+      "Bash(npm run test:unit:verbose)",
+      "Bash(npm run build:*)",
+      "Bash(npx tsx --test:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git blame:*)",
+      "Bash(git branch:*)",
+      "Bash(git ls-files:*)"
+    ],
+    "deny": [
+      "Read(./package-lock.json)",
+      "Read(./node_modules/**)",
+      "Read(./dist/**)",
+      "Read(./.generated/**)",
+      "Read(./.wrangler/**)",
+      "Read(./public/*.js)",
+      "Read(./docs/public/**)",
+      "Read(./docs/reference/api.md)",
+      "Read(./playwright-report/**)",
+      "Read(./e2e/test-results/**)"
+    ]
+  }
+}

@@ -186,6 +186,13 @@ Type checking:
 npm run typecheck
 ```
 
+All pre-commit checks at once — formatter, lint fixes, then lint, format check, TypeScript-only
+check, type check, and unit tests:
+
+```bash
+npm run verify
+```
+
 See `docs/testing-strategy.md` for the test pyramid and the minimal deployed-environment Playwright E2E policy.
 
 ## Releases

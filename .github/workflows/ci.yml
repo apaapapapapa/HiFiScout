@@ -18,32 +18,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # No history is needed: the source gate is repository-wide rather than diff-scoped, and
+      # `check:no-js-source` reads the index with `git ls-files`.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run check:no-js-source
-      - run: npm run lint
-      - name: Check formatting of changed source files
-        shell: bash
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          mapfile -t files < <(git diff --name-only --diff-filter=ACMR "$BASE_SHA" "$GITHUB_SHA" -- '*.js' '*.mjs' '*.cjs' '*.jsx' '*.ts' '*.mts' '*.cts' '*.tsx')
-          if ((${#files[@]} > 0)); then
-            npx oxfmt --check "${files[@]}"
-          else
-            echo "No changed JavaScript/TypeScript source files to format-check."
-          fi
-      - run: npm run typecheck
+      # Same gate contributors run locally: lint, format check, TypeScript-only check, type check,
+      # unit tests. Keeping it as one script means CI and `npm run verify` cannot drift apart.
+      - run: npm run check
       - run: npm run db:migrate:local
       - name: Verify D1 FTS search migration
         run: npx tsx scripts/verify-search-integration.ts
-      - run: npm test
       - run: npm run build
 
   dependency-security:

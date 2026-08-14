@@ -39,6 +39,8 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: e2e/package.json
       - name: Install E2E dependencies
         working-directory: e2e
         run: npm install --no-package-lock

@@ -39,21 +39,24 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # Every `npx wrangler` below resolves to the Wrangler installed here, pinned by
+      # package-lock.json. CI already exercises that exact binary through `npm run build:worker`,
+      # so deploying with a separately downloaded copy only added registry round trips per command.
       - run: npm ci
       - name: Provision Evidence Archive R2
         shell: bash
         run: |
           set -euo pipefail
           bucket="hifiscout-evidence"
-          if npx --yes wrangler@4.120.1 r2 bucket info "$bucket" >/dev/null 2>&1; then
+          if npx wrangler r2 bucket info "$bucket" >/dev/null 2>&1; then
             echo "R2 bucket already exists: $bucket"
           else
-            npx --yes wrangler@4.120.1 r2 bucket create "$bucket"
+            npx wrangler r2 bucket create "$bucket"
           fi
 
           while IFS='|' read -r name prefix days; do
-            npx --yes wrangler@4.120.1 r2 bucket lifecycle remove "$bucket" --id "$name" >/dev/null 2>&1 || true
-            npx --yes wrangler@4.120.1 r2 bucket lifecycle add "$bucket" "$name" "$prefix" --expire-days "$days"
+            npx wrangler r2 bucket lifecycle remove "$bucket" --id "$name" >/dev/null 2>&1 || true
+            npx wrangler r2 bucket lifecycle add "$bucket" "$name" "$prefix" --expire-days "$days"
           done <<'RULES'
           hifiscout-evidence-short|evidence/short/|30
           hifiscout-evidence-medium|evidence/medium/|90
@@ -68,23 +71,23 @@ jobs:
           tar -xzf "$tarball" -C node_modules/@cloudflare/playwright --strip-components=1
           rm -f "$tarball"
       - name: Apply backward-compatible D1 migrations
-        run: npx --yes wrangler@4.120.1 d1 migrations apply DB --remote
+        run: npx wrangler d1 migrations apply DB --remote
       - name: Provision Knowledge Catalog queues
         shell: bash
         run: |
           set -euo pipefail
           for queue in hifiscout-knowledge-verification hifiscout-knowledge-verification-dlq; do
-            if npx --yes wrangler@4.120.1 queues info "$queue" >/dev/null 2>&1; then
+            if npx wrangler queues info "$queue" >/dev/null 2>&1; then
               echo "Queue already exists: $queue"
             else
-              npx --yes wrangler@4.120.1 queues create "$queue"
+              npx wrangler queues create "$queue"
             fi
           done
       - name: Verify AudioUnion priced listings are visible as in stock
         shell: bash
         run: |
           set -euo pipefail
-          result="$(npx --yes wrangler@4.120.1 d1 execute DB --remote --json --command "
+          result="$(npx wrangler d1 execute DB --remote --json --command "
             SELECT
               COUNT(*) AS active_count,
               SUM(CASE WHEN stock_status = 'in_stock' THEN 1 ELSE 0 END) AS in_stock_count,
@@ -103,7 +106,7 @@ jobs:
       - name: Build browser assets from TypeScript source
         run: npm run build:frontend
       - name: Deploy Worker and static assets
-        run: npx --yes wrangler@4.120.1 deploy
+        run: npx wrangler deploy
       - name: Check production health
         shell: bash
         run: |
@@ -117,7 +120,7 @@ jobs:
           set -euo pipefail
 
           query() {
-            npx --yes wrangler@4.120.1 d1 execute DB --remote --json --command "$1" | jq '.[0].results // []'
+            npx wrangler d1 execute DB --remote --json --command "$1" | jq '.[0].results // []'
           }
 
           identity="$(query "

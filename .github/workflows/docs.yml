@@ -27,6 +27,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # The SchemaSpy JDBC driver is downloaded from Maven Central on a cache miss only. The key
+      # tracks the generator script, which is where the driver version is declared.
+      - name: Cache SchemaSpy JDBC driver
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: .cache/docs/drivers
+          key: schemaspy-driver-${{ hashFiles('scripts/docs/generate-db-docs.sh') }}
       - name: Configure GitHub Pages
         id: pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5

@@ -1,5 +1,8 @@
 node_modules/
 .wrangler/
+
+# Shared Claude Code settings are tracked; personal overrides are not.
+.claude/settings.local.json
 .dev.vars
 .env
 .DS_Store

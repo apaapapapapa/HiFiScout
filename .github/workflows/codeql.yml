@@ -12,6 +12,11 @@ permissions:
   contents: read
   security-events: write
 
+# Each run analyzes the whole tree, so a superseded analysis of an older commit has no value.
+concurrency:
+  group: codeql-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   analyze:
     name: Analyze JavaScript

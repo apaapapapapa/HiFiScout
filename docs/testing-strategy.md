@@ -6,7 +6,12 @@ HiFiScout follows a test pyramid: most behavior is verified in-process with Node
 
 ### 1. Unit tests — default and largest layer
 
-Run with `npm test` or `npm run test:unit`.
+Run with `npm test` or `npm run test:unit`, or as part of `npm run verify`. A single file runs with
+`npx tsx --test test/<name>.test.ts`.
+
+The default reporter is `dot`: a passing run prints one character per test instead of one line, and
+failing tests still print their assertion, diff, and stack in full. `npm run test:unit:verbose` uses
+the `spec` reporter when you need to read passing test names.
 
 Keep parsing, normalization, category inference, query construction, scheduling decisions, guards, and shop-specific mapping rules here. Prefer pure functions and deterministic fixtures. Stub network, browser, queue, and D1 boundaries rather than exercising remote services.
 
