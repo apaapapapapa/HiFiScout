@@ -9,7 +9,7 @@ import type {
   QualityThreshold,
 } from "../db/types.js";
 import type { QualityThresholdOverrides } from "./quality-thresholds.js";
-import { qualityThresholdsForShop } from "./quality-thresholds.js";
+import { resolveQualityThresholds } from "./quality-thresholds.js";
 
 /** Every count is optional: callers pass whichever subset the crawl produced. */
 export type QualityEvaluationInput = Partial<QualityCounts> & { shopKey?: string };
@@ -83,7 +83,7 @@ export function evaluateQuality(
   { thresholdOverrides = {} }: EvaluateQualityOptions = {},
 ): QualityEvaluation {
   const shopKey = String(input?.shopKey || "");
-  const thresholds = qualityThresholdsForShop(shopKey, thresholdOverrides);
+  const thresholds = resolveQualityThresholds(thresholdOverrides);
   const totalItems = nonNegative(input?.totalItems);
   const manufacturerMissing = nonNegative(input?.manufacturerMissingCount);
   const manufacturerUnresolved = nonNegative(input?.manufacturerUnresolvedCount);

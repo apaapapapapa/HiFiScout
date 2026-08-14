@@ -1,7 +1,6 @@
 import { normalizeManufacturer } from "../../catalog/manufacturers.js";
 import { cleanText, inferCategory, splitManufacturerModel, stableSourceId } from "../normalize.js";
 import { parseProductPage } from "../parser.js";
-import { diagnoseAudioUnionHtml } from "./audiounion-diagnostics.js";
 import { audioUnionInventoryRecheck } from "./audiounion-inventory.js";
 import type { ManufacturerNormalizationResult } from "../../catalog/types.js";
 import type { SellerProduct, ShopAdapter } from "../types.js";
@@ -259,8 +258,5 @@ export const audioUnionAdapter = {
   },
   parse(html, pageUrl = DEFAULT_ENTRY_URL) {
     return parseAudioUnion(html, pageUrl);
-  },
-  diagnosePage(html) {
-    return diagnoseAudioUnionHtml(html);
   },
 } satisfies ShopAdapter<string>;

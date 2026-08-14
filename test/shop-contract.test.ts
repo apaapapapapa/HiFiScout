@@ -10,7 +10,11 @@ import {
   targetUrl,
 } from "../src/crawler/strategies.js";
 import { SHOP_PLUGINS } from "../src/crawler/shops/index.js";
-import { createShopRegistry, defineShopPlugin } from "../src/crawler/shops/registry.js";
+import {
+  createShopRegistry,
+  defineShopPlugin,
+  type ShopPluginCapabilities,
+} from "../src/crawler/shops/registry.js";
 import { isTransportConfigured, relayConfiguration } from "../src/crawler/transport.js";
 import type { ShopAdapter, ShopDefinitionInput, ShopPlugin } from "../src/crawler/types.js";
 
@@ -44,6 +48,8 @@ const LEGACY_DISCOVERY_FIELDS = [
   "guardItemCount",
   "extraPageAllowance",
 ] as const;
+
+const LEGACY_CAPABILITY_FIELDS = ["diagnosePage", "qualityThresholds"] as const;
 
 const shopsDir = new URL("../src/crawler/shops/", import.meta.url);
 const platformShopModules = new Set(["index.ts", "registry.ts"]);
@@ -91,6 +97,7 @@ function readableShopEnvVars(plugin: ShopPlugin, declared: readonly string[]): S
 function registerStub(
   overrides: Partial<ShopDefinitionInput> = {},
   adapterOverrides: Partial<ShopAdapter> = {},
+  capabilities: ShopPluginCapabilities = {},
 ): ShopPlugin {
   const definition: ShopDefinitionInput = {
     key: "example-shop",
@@ -110,7 +117,7 @@ function registerStub(
     parse: () => [],
     ...adapterOverrides,
   };
-  return defineShopPlugin(adapter, definition);
+  return defineShopPlugin(adapter, definition, capabilities);
 }
 
 test("all shop plugins satisfy the final crawler contract", () => {
@@ -125,6 +132,7 @@ test("all shop plugins satisfy the final crawler contract", () => {
     assert.ok(["complete", "partial", "unknown"].includes(plugin.discovery.coverage));
     assert.equal(typeof plugin.discovery.initialTargets, "function");
     assert.equal(typeof plugin.parse, "function");
+    assert.equal(typeof plugin.capabilities, "object");
     assert.equal(plugin.definition.key, plugin.key);
     assert.equal(plugin.definition.name, plugin.name);
     assert.equal(plugin.definition.baseUrl, plugin.baseUrl);
@@ -133,6 +141,9 @@ test("all shop plugins satisfy the final crawler contract", () => {
     assert.match(plugin.definition.envPrefix, /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/u);
     assert.ok(plugin.definition.defaultIntervalMinutes > 0);
     for (const legacyField of LEGACY_DISCOVERY_FIELDS) {
+      assert.equal(legacyField in plugin, false, `${plugin.key} still exposes ${legacyField}`);
+    }
+    for (const legacyField of LEGACY_CAPABILITY_FIELDS) {
       assert.equal(legacyField in plugin, false, `${plugin.key} still exposes ${legacyField}`);
     }
   }
@@ -149,6 +160,9 @@ test("registered plugins, definitions and discovery policies are immutable", () 
   }, TypeError);
   assert.throws(() => {
     (plugin as { key: string }).key = "tampered";
+  }, TypeError);
+  assert.throws(() => {
+    (plugin.capabilities as { diagnostics?: unknown }).diagnostics = {};
   }, TypeError);
   assert.throws(() => (SHOP_PLUGINS as ShopPlugin[]).push(plugin), TypeError);
 });
@@ -332,7 +346,12 @@ test("a shop module never imports another shop's module", () => {
 
 test("shop-specific behavior is opt-in capability metadata", () => {
   for (const plugin of SHOP_PLUGINS) {
-    if (plugin.diagnosePage !== undefined) assert.equal(typeof plugin.diagnosePage, "function");
+    if (plugin.capabilities.diagnostics !== undefined) {
+      assert.equal(typeof plugin.capabilities.diagnostics.diagnosePage, "function");
+    }
+    if (plugin.capabilities.dataQuality?.thresholds !== undefined) {
+      assert.equal(typeof plugin.capabilities.dataQuality.thresholds, "object");
+    }
     if (plugin.inventoryRecheck !== undefined) {
       const policy = plugin.inventoryRecheck;
       assert.equal(typeof policy.isDetailUrl, "function");
@@ -343,6 +362,28 @@ test("shop-specific behavior is opt-in capability metadata", () => {
       assert.ok(plugin.transport, `${plugin.key} grades configuration but declares no transport`);
     }
   }
+});
+
+test("diagnostics and Data Quality overrides are registered behind capabilities", () => {
+  const plugin = registerStub(
+    {},
+    {},
+    {
+      diagnostics: { diagnosePage: () => ({ kind: "fixture" }) },
+      dataQuality: {
+        thresholds: {
+          manufacturerUnknownRate: { warning: 0.04, critical: 0.08 },
+        },
+      },
+    },
+  );
+
+  assert.equal("diagnosePage" in plugin, false);
+  assert.equal("qualityThresholds" in plugin, false);
+  assert.deepEqual(plugin.capabilities.diagnostics?.diagnosePage("<html></html>"), {
+    kind: "fixture",
+  });
+  assert.equal(plugin.capabilities.dataQuality?.thresholds?.manufacturerUnknownRate?.warning, 0.04);
 });
 
 test("relay transport requires the shared crawler configuration", () => {

@@ -12,6 +12,7 @@ import type {
   ShopDefinition,
   ShopDefinitionInput,
   ShopPlugin,
+  ShopRuntimeCapabilities,
   TransportKind,
 } from "../types.js";
 import { normalizeCatalogProducts } from "../../catalog/product-normalizer.js";
@@ -22,7 +23,9 @@ import {
 } from "../../db/product-activity-policy.js";
 
 /** Behaviors a shop opts into at composition time rather than through the adapter contract. */
-export interface ShopPluginCapabilities {
+export interface ShopPluginCapabilities<
+  TPage extends CrawlPage = CrawlPage,
+> extends ShopRuntimeCapabilities<TPage> {
   readonly activityPolicy?: Readonly<ProductActivityPolicy>;
 }
 
@@ -129,19 +132,33 @@ function validatedDefinition(
 }
 
 /** Compose one concrete adapter into a frozen registered plugin. */
-export function defineShopPlugin(
-  adapter: ShopAdapter,
+export function defineShopPlugin<TPage extends CrawlPage>(
+  adapter: ShopAdapter<TPage>,
   definition: ShopDefinitionInput,
-  capabilities: ShopPluginCapabilities = {},
-): ShopPlugin {
+  capabilities: ShopPluginCapabilities<TPage> = {},
+): ShopPlugin<TPage> {
   const validated = validatedDefinition(adapter, definition);
   const parse = adapter.parse;
   const discovery = Object.freeze({ ...adapter.discovery });
-  const plugin: ShopPlugin = {
+  const runtimeCapabilities: Readonly<ShopRuntimeCapabilities<TPage>> = Object.freeze({
+    diagnostics: capabilities.diagnostics
+      ? Object.freeze({ ...capabilities.diagnostics })
+      : undefined,
+    dataQuality: capabilities.dataQuality
+      ? Object.freeze({
+          ...capabilities.dataQuality,
+          thresholds: capabilities.dataQuality.thresholds
+            ? Object.freeze({ ...capabilities.dataQuality.thresholds })
+            : undefined,
+        })
+      : undefined,
+  });
+  const plugin: ShopPlugin<TPage> = {
     ...adapter,
     discovery,
     definition: validated,
-    parse: function normalizedParse(...args: [html: string, page?: CrawlPage]) {
+    capabilities: runtimeCapabilities,
+    parse: function normalizedParse(...args: [html: string, page?: TPage]) {
       const sellerProducts = validateSellerProducts(parse.apply(plugin, args), plugin);
       return normalizeCatalogProducts(sellerProducts, plugin);
     },

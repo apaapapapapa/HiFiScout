@@ -14,18 +14,12 @@ export type QualityThresholdKey =
 /** Shape of the frozen defaults: every declared key is present. */
 export type QualityThresholds = Readonly<Record<QualityThresholdKey, QualityThreshold>>;
 
-/**
- * Shape of a merged per-shop threshold set. `Object.fromEntries` cannot preserve the key
- * union, so the resolved map is string-keyed; it still holds exactly the eight default keys.
- */
-export type ResolvedQualityThresholds = Readonly<Record<string, QualityThreshold>>;
+/** A complete threshold set after applying optional per-shop configuration. */
+export type ResolvedQualityThresholds = QualityThresholds;
 
-/**
- * Per-shop overrides, keyed by shop key then by threshold key. Adapters supply a
- * `Record<string, Partial<QualityThreshold>>`, so the inner keys stay `string`.
- */
+/** Direct overrides for one registered shop; this module never selects configuration by shop key. */
 export type QualityThresholdOverrides = Readonly<
-  Record<string, Readonly<Record<string, Partial<QualityThreshold>>>>
+  Partial<Record<QualityThresholdKey, Readonly<Partial<QualityThreshold>>>>
 >;
 
 export const DEFAULT_QUALITY_THRESHOLDS: QualityThresholds = Object.freeze({
@@ -39,15 +33,41 @@ export const DEFAULT_QUALITY_THRESHOLDS: QualityThresholds = Object.freeze({
   evidenceCoverageRate: { warning: 0.95, critical: 0.8, direction: "low", inclusive: false },
 });
 
-export function qualityThresholdsForShop(
-  shopKey: string,
+export function resolveQualityThresholds(
   overrides: QualityThresholdOverrides = {},
 ): ResolvedQualityThresholds {
-  const shopOverrides = overrides?.[shopKey] || {};
-  return Object.fromEntries(
-    Object.entries(DEFAULT_QUALITY_THRESHOLDS).map(([key, value]): [string, QualityThreshold] => [
-      key,
-      { ...value, ...shopOverrides[key] },
-    ]),
-  );
+  return Object.freeze({
+    manufacturerUnknownRate: {
+      ...DEFAULT_QUALITY_THRESHOLDS.manufacturerUnknownRate,
+      ...overrides.manufacturerUnknownRate,
+    },
+    categoryUnclassifiedRate: {
+      ...DEFAULT_QUALITY_THRESHOLDS.categoryUnclassifiedRate,
+      ...overrides.categoryUnclassifiedRate,
+    },
+    identityUnresolvedRate: {
+      ...DEFAULT_QUALITY_THRESHOLDS.identityUnresolvedRate,
+      ...overrides.identityUnresolvedRate,
+    },
+    inventoryUnknownRate: {
+      ...DEFAULT_QUALITY_THRESHOLDS.inventoryUnknownRate,
+      ...overrides.inventoryUnknownRate,
+    },
+    modelMissingRate: {
+      ...DEFAULT_QUALITY_THRESHOLDS.modelMissingRate,
+      ...overrides.modelMissingRate,
+    },
+    parserFailureRate: {
+      ...DEFAULT_QUALITY_THRESHOLDS.parserFailureRate,
+      ...overrides.parserFailureRate,
+    },
+    itemCountDropRate: {
+      ...DEFAULT_QUALITY_THRESHOLDS.itemCountDropRate,
+      ...overrides.itemCountDropRate,
+    },
+    evidenceCoverageRate: {
+      ...DEFAULT_QUALITY_THRESHOLDS.evidenceCoverageRate,
+      ...overrides.evidenceCoverageRate,
+    },
+  });
 }
