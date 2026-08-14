@@ -118,7 +118,7 @@ Filters split by what they describe, and the split is load-bearing:
 
 When offer filters are active, the card summary — offer count, shop count, lowest price, activity — is recomputed over the matching offers, so a card can never contradict the filter that produced it.
 
-Sorting reads stored aggregates over all active offers, because those columns are indexed and keyset-safe while a per-row correlated aggregate is neither:
+Explicit sorting follows the same offer subset as the card whenever an offer filter changes the meaning of the sort key. In those cases the page query joins one request-scoped aggregate over the matching offers and orders by that aggregate. Unfiltered sorts continue to use the indexed stored entity aggregates. `priceAsc` / `priceDesc` with only `inStock=true` is also served by the stored `lowest_in_stock_price_yen` aggregate, because that column already represents exactly that subset.
 
 | `?sort=` | ordering |
 | --- | --- |
@@ -127,9 +127,9 @@ Sorting reads stored aggregates over all active offers, because those columns ar
 | `updated` | most recent meaningful listing activity across offers, descending |
 | `priceAsc` / `priceDesc` | lowest offer price; the lowest **in-stock** price when `inStock=true`, so "cheapest first" never orders by a price nobody can buy |
 
-The in-stock variant is part of the cursor key, so a cursor minted under one predicate can never resume under the other. `items`, `hasMore`, `totalCount`, `totalPages` and cursor movement all operate on entities before any offer is loaded.
+The cursor records both the aggregate variant and, for request-scoped sorts, the offer-filter scope that defined it. A cursor therefore cannot resume under an ordering whose visible card values were calculated from a different offer subset. `items`, `hasMore`, `totalCount`, `totalPages` and cursor movement all operate on entities before any offer is loaded.
 
-A list response costs at most four statements regardless of page size: an optional count, the entity page, one offer-aggregate query and one windowed representative-offer query. There is no per-result offer lookup.
+Offer summaries and representative offers are loaded in chunks of 40 entity ids to stay under D1's bind-parameter ceiling. At the maximum `limit=100`, a filtered list response therefore costs at most eight statements: an optional count, the entity page, up to three offer-aggregate chunks and up to three representative-offer chunks. Unfiltered responses skip the aggregate loader. The query count is bounded by page size, not result cardinality, and there is no per-result offer lookup.
 
 ## Product Identity Resolution
 
@@ -276,7 +276,7 @@ Application-level structured logs expose:
 - `search_term_count` and `search_fts_term_count`
 - `search_entity_total_count` when the caller asked for a total
 - `matched_catalog_entity_count` and `unresolved_fallback_entity_count`, which show how much of a result page is confirmed cross-shop identity and how much is still standing in for itself
-- `offer_summary_query_count`, the bounded number of offer queries the response needed
+- `offer_summary_query_count`, the actual bounded number of chunked offer queries the response needed
 
 Raw user search text is deliberately not logged; the fields above are counts and classifications.
 
@@ -338,8 +338,9 @@ Unit/regression tests cover:
 - active-listing Identity denominator and missing-resolution coverage
 - evidence archive allow-list, redaction, hash deduplication, and best-effort R2 failure behavior
 - only a matched resolution against a verified catalog product merging two shops, with unresolved listings staying searchable as fallback entities
-- offer-level filters holding for one and the same offer, and the card summary being recomputed from the offers that matched
-- product-unit totals, offsets, and keyset cursors, including a cursor minted under one price aggregate being refused by the other
+- offer-level filters holding for one and the same offer, the card summary being recomputed from the offers that matched, and explicit sorting using that same offer subset
+- product-unit totals, offsets, and keyset cursors, including cursors being scoped to the aggregate/filter semantics that minted them
+- favorite product snapshots preserving category ancestors so group-category filters match the same products as server search
 - a page of results costing a bounded number of statements instead of one lookup per result
 - the migration backfill being the same derivation the incremental sync runs, not a second definition of grouping
 - consistency reporting each read-model invariant separately, and the rebuild converging on re-run
