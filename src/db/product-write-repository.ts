@@ -245,16 +245,22 @@ function meaningfulStockActivity(previousStatus: StockStatus, currentStatus: Sto
 
 /** The subset of {@link listingChanged} a shopper would notice; drives `last_activity_at`. */
 function activityChanged(
+  shopKey: string,
   existing: ExistingProductRow,
   product: CatalogProductUpsertInput,
 ): boolean {
+  const priceChanged = existing.price_yen !== product.priceYen;
+  const stockChanged = meaningfulStockActivity(existing.stock_status, product.stockStatus);
+  const reactivated = Number(existing.is_active) !== 1;
+  if (shopKey === "hifido") return priceChanged || stockChanged || reactivated;
+
   return (
     existing.model !== product.model ||
     existing.title !== product.title ||
     existing.condition_text !== product.conditionText ||
-    existing.price_yen !== product.priceYen ||
-    meaningfulStockActivity(existing.stock_status, product.stockStatus) ||
-    Number(existing.is_active) !== 1
+    priceChanged ||
+    stockChanged ||
+    reactivated
   );
 }
 
@@ -458,7 +464,7 @@ export async function upsertProducts(
 
     const priceChanged = existing.price_yen !== product.priceYen && product.priceYen != null;
     const changed = listingChanged(existing, product);
-    const hasActivity = activityChanged(existing, product);
+    const hasActivity = activityChanged(shopKey, existing, product);
     if (priceChanged) changedPriceSourceIds.push(product.sourceId);
     if (categoriesChanged(existing, product)) categorySyncSourceIds.push(product.sourceId);
     if (existing.title !== product.title) featureSyncSourceIds.push(product.sourceId);
