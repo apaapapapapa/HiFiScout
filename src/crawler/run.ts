@@ -26,7 +26,7 @@ import {
 } from "../db/crawl-run-repository.js";
 import { archiveEvidence } from "../evidence/evidence-archive.js";
 import { enrichProductCategories } from "./category-enricher.js";
-import { SHOP_ADAPTERS } from "./shops/index.js";
+import { SHOP_ADAPTERS, getShopActivityPolicy } from "./shops/index.js";
 import { createTransport, isTransportConfigured } from "./transport.js";
 import { errorMessage } from "../types.js";
 import type { NormalizedCatalogProduct } from "../catalog/types.js";
@@ -441,7 +441,11 @@ export async function crawlShop(
       adapter.key,
       products,
       observedAt,
-      { deactivateMissing, touchIntervalMinutes: settings.productTouchIntervalMinutes },
+      {
+        deactivateMissing,
+        touchIntervalMinutes: settings.productTouchIntervalMinutes,
+        activityPolicy: getShopActivityPolicy(adapter),
+      },
     );
     const derived = await syncDerivedProductState(env, adapter, products, observedAt);
     const featureFactCount = await syncObservedProductFeatureFacts(
