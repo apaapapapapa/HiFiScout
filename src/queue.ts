@@ -1,0 +1,66 @@
+/**
+ * Queue routing.
+ *
+ * One Worker consumes three queues, and Cloudflare delivers them all through the same handler, so
+ * each batch is identified by queue name *and* by a body shape guard before it is dispatched. An
+ * unrecognised batch is retried rather than acked, so a misrouted message is never silently lost.
+ */
+
+import { consumeCrawlMessage } from "./crawler/dispatch.js";
+import { getSyncHealth, logSyncHealth } from "./health.js";
+import {
+  KNOWLEDGE_CATALOG_VERIFICATION_DLQ,
+  KNOWLEDGE_CATALOG_VERIFICATION_QUEUE,
+  consumeKnowledgeCatalogVerificationBatch,
+  consumeKnowledgeCatalogVerificationDeadLetterBatch,
+} from "./knowledge-catalog-verification-queue.js";
+import { isRecord } from "./types.js";
+import type { CrawlQueueMessage, KnowledgeCatalogQueueMessage } from "./crawler/types.js";
+
+export const CRAWL_QUEUE = "hifiscout-crawl";
+
+export type WorkerQueueMessage = CrawlQueueMessage | KnowledgeCatalogQueueMessage;
+
+function isCrawlBatch(
+  batch: MessageBatch<WorkerQueueMessage>,
+): batch is MessageBatch<CrawlQueueMessage> {
+  return batch.messages.every((message) => isRecord(message.body) && "shopKey" in message.body);
+}
+
+function isKnowledgeCatalogBatch(
+  batch: MessageBatch<WorkerQueueMessage>,
+): batch is MessageBatch<KnowledgeCatalogQueueMessage> {
+  return batch.messages.every((message) => isRecord(message.body) && "jobId" in message.body);
+}
+
+/**
+ * A crawl job is acked whether it succeeded or failed: a failed crawl has already recorded its
+ * failure in `shop_sync_state`, and retrying it here would re-fetch the shop immediately.
+ */
+async function consumeCrawlBatch(batch: MessageBatch<CrawlQueueMessage>, env: Env): Promise<void> {
+  for (const message of batch.messages) {
+    const result = await consumeCrawlMessage(env, message.body);
+    if (result.status === "failed") {
+      console.error(JSON.stringify({ event: "crawl_queue_job_failed", ...result }));
+    } else console.log(JSON.stringify({ event: "crawl_queue_job_completed", ...result }));
+    const health = await getSyncHealth(env);
+    logSyncHealth(health);
+    message.ack();
+  }
+}
+
+export async function handleQueue(
+  batch: MessageBatch<WorkerQueueMessage>,
+  env: Env,
+): Promise<void> {
+  if (batch.queue === KNOWLEDGE_CATALOG_VERIFICATION_QUEUE && isKnowledgeCatalogBatch(batch)) {
+    return consumeKnowledgeCatalogVerificationBatch(env, batch);
+  }
+  if (batch.queue === KNOWLEDGE_CATALOG_VERIFICATION_DLQ && isKnowledgeCatalogBatch(batch)) {
+    return consumeKnowledgeCatalogVerificationDeadLetterBatch(env, batch);
+  }
+  if (batch.queue === CRAWL_QUEUE && isCrawlBatch(batch)) return consumeCrawlBatch(batch, env);
+
+  console.error(JSON.stringify({ event: "unknown_queue", queue: batch.queue }));
+  for (const message of batch.messages) message.retry();
+}

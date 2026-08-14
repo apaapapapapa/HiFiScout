@@ -8,11 +8,16 @@ import {
   shopForCron,
   shopsWithDedicatedCron,
 } from "../src/crawler/schedule.js";
+import {
+  DAILY_MAINTENANCE_CRON,
+  GENERAL_CRON,
+  KNOWLEDGE_CATALOG_MONTHLY_CRON,
+} from "../src/scheduled.js";
 
 const wranglerConfig = JSON.parse(
   fs.readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8"),
 );
-const workerSource = fs.readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
+const schedulerSource = fs.readFileSync(new URL("../src/scheduled.ts", import.meta.url), "utf8");
 
 test("shop interval is evaluated independently", () => {
   const now = new Date("2026-08-11T00:30:00.000Z");
@@ -68,8 +73,20 @@ test("the shared sweep skips exactly the shops that own a cron", () => {
 });
 
 test("scheduled crawl dispatch is resolved by policy rather than by shop name", () => {
-  assert.match(workerSource, /shopForCron\(cron\)/);
-  assert.match(workerSource, /sharedSweepExclusions\(\)/);
+  assert.match(schedulerSource, /shopForCron\(cron\)/);
+  assert.match(schedulerSource, /sharedSweepExclusions\(\)/);
+});
+
+test("every cron the scheduler handles is declared in wrangler, and vice versa", () => {
+  const crons: string[] = wranglerConfig.triggers?.crons || [];
+  const handled = [
+    GENERAL_CRON,
+    DAILY_MAINTENANCE_CRON,
+    KNOWLEDGE_CATALOG_MONTHLY_CRON,
+    ...shopsWithDedicatedCron().map((plugin) => plugin.definition.scheduleCron),
+  ];
+
+  assert.deepEqual([...crons].sort(), [...handled].sort());
 });
 
 test("large item-count drops are rejected only after a meaningful baseline", () => {
@@ -84,10 +101,10 @@ test("Knowledge Catalog verification is dispatched to its dedicated queue", () =
   assert.ok(crons.includes("17 18 * * *"));
   assert.ok(crons.includes("23 3 1 * *"));
   assert.ok(!crons.includes("43 4 * * *"));
-  assert.match(workerSource, /runDailyMaintenance\(env\)/);
-  assert.match(workerSource, /runRetentionCleanup\(env\)/);
-  assert.match(workerSource, /dispatchKnowledgeCatalogDailyVerification\(env\)/);
-  assert.match(workerSource, /dispatchKnowledgeCatalogMonthlyRecheck\(env\)/);
+  assert.match(schedulerSource, /runDailyMaintenance\(env\)/);
+  assert.match(schedulerSource, /runRetentionCleanup\(env\)/);
+  assert.match(schedulerSource, /dispatchKnowledgeCatalogDailyVerification\(env\)/);
+  assert.match(schedulerSource, /dispatchKnowledgeCatalogMonthlyRecheck\(env\)/);
   assert.equal(wranglerConfig.vars.KNOWLEDGE_CATALOG_DAILY_VERIFY_MAX_CANDIDATES, "200");
   assert.equal(wranglerConfig.vars.KNOWLEDGE_CATALOG_REVIEW_INTERVAL_DAYS, "30");
 
