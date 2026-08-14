@@ -7,18 +7,28 @@ import {
   readDataQualitySnapshot,
   saveDataQualityRun,
 } from "../src/db/data-quality-repository.js";
+import { asQueryableDatabase } from "./helpers/d1.js";
 
-function captureDb({ firstRows = [], allRows = [] } = {}) {
-  const calls = [];
+interface CapturedCall {
+  kind: "first" | "all" | "run";
+  sql: string;
+  binds: unknown[];
+}
+
+function captureDb({
+  firstRows = [],
+  allRows = [],
+}: { firstRows?: unknown[]; allRows?: unknown[][] } = {}) {
+  const calls: CapturedCall[] = [];
   let firstIndex = 0;
   let allIndex = 0;
-  return {
+  return asQueryableDatabase({
     calls,
-    prepare(sql) {
+    prepare(sql: string) {
       const statement = {
         sql,
-        binds: [],
-        bind(...binds) {
+        binds: [] as unknown[],
+        bind(...binds: unknown[]) {
           statement.binds = binds;
           return statement;
         },
@@ -37,7 +47,7 @@ function captureDb({ firstRows = [], allRows = [] } = {}) {
       };
       return statement;
     },
-  };
+  });
 }
 
 const snapshotRow = {
@@ -109,6 +119,7 @@ test("quality result is linked to crawl run and persists snapshot and run status
   });
 
   const insert = db.calls.find((call) => call.kind === "run");
+  assert.ok(insert);
   assert.equal(result.crawlRunId, 42);
   assert.equal(result.snapshot.status, "warning");
   assert.equal(result.run.status, "healthy");
@@ -149,6 +160,7 @@ test("stored row exposes snapshot metrics and latest crawl comparison separately
     model_extracted_count: 76,
     model_missing_count: 4,
     parse_attempt_count: 10,
+    parse_success_count: 10,
     parse_failure_count: 0,
     evidence_expected_event_count: 1,
     evidence_archived_event_count: 1,

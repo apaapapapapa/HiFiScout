@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { isRecord } from "../src/types.js";
 
 const sourceId = `fts-integration-${process.pid}`;
 const now = "2026-08-12T00:00:00.000Z";
 
-function d1(command) {
+function d1(command: string): unknown {
   const output = execFileSync(
     process.platform === "win32" ? "npx.cmd" : "npx",
     ["wrangler", "d1", "execute", "DB", "--local", "--json", "--command", command],
@@ -36,9 +37,10 @@ try {
     WHERE product_search_fts MATCH '"TAD" AND "1000"'
       AND p.source_id = '${sourceId}';
   `);
-  const rows = result?.[0]?.results || [];
+  const first = Array.isArray(result) ? result[0] : undefined;
+  const rows = isRecord(first) && Array.isArray(first.results) ? first.results : [];
   assert.equal(rows.length, 1, "TAD 1000 must resolve through product_search_fts after migrations");
-  assert.equal(rows[0].source_id, sourceId);
+  assert.equal(isRecord(rows[0]) ? rows[0].source_id : undefined, sourceId);
   console.log("search migration integration check passed");
 } finally {
   d1(`DELETE FROM products WHERE shop_key = 'integration' AND source_id = '${sourceId}';`);

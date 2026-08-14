@@ -1,8 +1,17 @@
-function clean(value = "") {
+import type {
+  CandidatePriorityInput,
+  CategoryEvidenceInput,
+  KnowledgeCatalogCandidateAccumulator,
+  KnowledgeCatalogListingRow,
+  KnowledgeCatalogMatch,
+  ScoredKnowledgeCatalogCandidate,
+} from "./types.js";
+
+function clean(value: unknown = ""): string {
   return String(value).normalize("NFKC").trim();
 }
 
-export function normalizeCatalogModel(value = "") {
+export function normalizeCatalogModel(value: unknown = ""): string {
   return clean(value)
     .toUpperCase()
     .replace(/[‐‑‒–—―－]/g, "-")
@@ -11,13 +20,13 @@ export function normalizeCatalogModel(value = "") {
     .trim();
 }
 
-function addLookupVariant(target, value) {
+function addLookupVariant(target: Set<string>, value: string): string {
   const normalized = normalizeCatalogModel(value);
   if (normalized) target.add(normalized);
   return normalized;
 }
 
-function stripListingAnnotations(value = "") {
+function stripListingAnnotations(value: string = ""): string {
   return clean(value)
     .replace(/\s*《[^》]{1,40}》\s*/g, " ")
     .replace(/\s*【[^】]*(?:販売済|売約|SOLD(?:\s*OUT)?|売切|品切)[^】]*】\s*$/gi, "")
@@ -26,7 +35,7 @@ function stripListingAnnotations(value = "") {
     .trim();
 }
 
-function stripPresentationVariant(value = "") {
+function stripPresentationVariant(value: string = ""): string {
   return clean(value)
     .replace(
       /\s*\/\s*(?:ブラック|ホワイト|シルバー|ゴールド|レッド|ブルー|ブラウン|黒|白|銀|black|white|silver|gold)(?:\s*[（(]?(?:ペア|pair)[）)]?)?\s*$/i,
@@ -36,7 +45,7 @@ function stripPresentationVariant(value = "") {
     .trim();
 }
 
-function stripManufacturerMarketSuffix(value, manufacturerId) {
+function stripManufacturerMarketSuffix(value: string, manufacturerId: string): string {
   const normalized = normalizeCatalogModel(value);
   if (manufacturerId === "denon") {
     if (/^(?:AH|AVR|AVC|DCD|DHT|DNP|DP|PMA|RCD)-/i.test(normalized)) {
@@ -54,7 +63,11 @@ function stripManufacturerMarketSuffix(value, manufacturerId) {
   return normalized;
 }
 
-function addManufacturerFormattingAliases(target, value, manufacturerId) {
+function addManufacturerFormattingAliases(
+  target: Set<string>,
+  value: string,
+  manufacturerId: string,
+): void {
   const normalized = normalizeCatalogModel(value);
   if (!normalized || manufacturerId !== "marantz") return;
   // Marantz publishes several current families with a word/number boundary while retailers often
@@ -68,9 +81,12 @@ function addManufacturerFormattingAliases(target, value, manufacturerId) {
  * persisted catalog identity. Listing-only annotations such as colors, retailer SKUs and sold
  * markers may be removed, while meaningful revisions (SE/X/XD/MKII/Pro/Limited) are preserved.
  */
-export function catalogModelLookupVariants({ manufacturerId = "", model = "" } = {}) {
+export function catalogModelLookupVariants({
+  manufacturerId = "",
+  model = "",
+}: { manufacturerId?: string; model?: string } = {}): string[] {
   const manufacturer = clean(manufacturerId).toLowerCase();
-  const variants = new Set();
+  const variants = new Set<string>();
   const original = clean(model);
   if (!original) return [];
 
@@ -95,29 +111,31 @@ export function catalogModelLookupVariants({ manufacturerId = "", model = "" } =
   );
 }
 
-export function knowledgeCatalogKey(manufacturerId = "", model = "") {
+export function knowledgeCatalogKey(manufacturerId: unknown = "", model: unknown = ""): string {
   const manufacturer = clean(manufacturerId).toLowerCase();
   const normalizedModel = normalizeCatalogModel(model);
   return manufacturer && normalizedModel ? `${manufacturer}:${normalizedModel}` : "";
 }
 
-function parseCategoryIds(value) {
-  if (Array.isArray(value)) return value.filter(Boolean);
+function parseCategoryIds(value: string | readonly string[] | undefined): string[] {
+  if (Array.isArray(value)) return value.filter((item): item is string => Boolean(item));
   try {
-    const parsed = JSON.parse(value || "[]");
-    return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+    const parsed: unknown = JSON.parse(typeof value === "string" ? value : "[]");
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string" && Boolean(item))
+      : [];
   } catch {
     return [];
   }
 }
 
-function earlier(left, right) {
+function earlier(left: string, right: string | undefined): string {
   if (!left) return right || "";
   if (!right) return left;
   return left < right ? left : right;
 }
 
-function later(left, right) {
+function later(left: string, right: string | undefined): string {
   if (!left) return right || "";
   if (!right) return left;
   return left > right ? left : right;
@@ -128,7 +146,7 @@ export function candidatePriority({
   otherCount = 0,
   shopCount = 0,
   listingCount = 0,
-} = {}) {
+}: CandidatePriorityInput = {}): number {
   return (
     Number(unclassifiedCount) * 100 +
     Number(otherCount) * 80 +
@@ -137,8 +155,11 @@ export function candidatePriority({
   );
 }
 
-export function accumulateKnowledgeCatalogCandidateRows(grouped, rows = []) {
-  const target = grouped || new Map();
+export function accumulateKnowledgeCatalogCandidateRows(
+  grouped: Map<string, KnowledgeCatalogCandidateAccumulator> | undefined,
+  rows: readonly KnowledgeCatalogListingRow[] = [],
+): Map<string, KnowledgeCatalogCandidateAccumulator> {
+  const target = grouped ?? new Map<string, KnowledgeCatalogCandidateAccumulator>();
   for (const row of rows) {
     const key = knowledgeCatalogKey(row?.manufacturer_id, row?.model);
     if (!key) continue;
@@ -181,7 +202,9 @@ export function accumulateKnowledgeCatalogCandidateRows(grouped, rows = []) {
   return target;
 }
 
-export function finalizeKnowledgeCatalogCandidateAggregates(grouped = new Map()) {
+export function finalizeKnowledgeCatalogCandidateAggregates(
+  grouped: ReadonlyMap<string, KnowledgeCatalogCandidateAccumulator> = new Map(),
+): ScoredKnowledgeCatalogCandidate[] {
   return [...grouped.values()]
     .map((candidate) => {
       const shopCount = candidate.shops.size;
@@ -210,13 +233,20 @@ export function finalizeKnowledgeCatalogCandidateAggregates(grouped = new Map())
     );
 }
 
-export function buildKnowledgeCatalogCandidateAggregates(rows = []) {
+export function buildKnowledgeCatalogCandidateAggregates(
+  rows: readonly KnowledgeCatalogListingRow[] = [],
+): ScoredKnowledgeCatalogCandidate[] {
   return finalizeKnowledgeCatalogCandidateAggregates(
-    accumulateKnowledgeCatalogCandidateRows(new Map(), rows),
+    accumulateKnowledgeCatalogCandidateRows(
+      new Map<string, KnowledgeCatalogCandidateAccumulator>(),
+      rows,
+    ),
   );
 }
 
-export function knowledgeCatalogEvidence(match) {
+export function knowledgeCatalogEvidence(
+  match: Partial<KnowledgeCatalogMatch> | null | undefined,
+): CategoryEvidenceInput[] {
   const categoryIds = Array.isArray(match?.categoryIds) ? match.categoryIds.filter(Boolean) : [];
   if (!categoryIds.length) return [];
   return [
@@ -224,7 +254,7 @@ export function knowledgeCatalogEvidence(match) {
       categoryIds,
       source: "knowledge_catalog",
       strength: "verified",
-      value: [match.canonicalName, match.canonicalModel].filter(Boolean).join(" ").slice(0, 240),
+      value: [match?.canonicalName, match?.canonicalModel].filter(Boolean).join(" ").slice(0, 240),
     },
   ];
 }

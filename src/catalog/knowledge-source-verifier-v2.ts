@@ -2,6 +2,21 @@ import { classifyCategoryEvidence } from "./category-classifier.js";
 import { inferExplicitCategoryIds } from "./category-rules.js";
 import { knowledgeSourceDefinitions as baseKnowledgeSourceDefinitions } from "./knowledge-source-verifier.js";
 import { normalizeManufacturer } from "./manufacturers.js";
+import type { CrawlerEnv } from "../crawler/types.js";
+import { errorMessage, isRecord } from "../types.js";
+import type {
+  CategoryClassification,
+  CategoryEvidenceInput,
+  CategoryEvidenceStrength,
+  ClassifiableCategoryId,
+  FailedKnowledgeSource,
+  FetchTextResult,
+  KnowledgeSourceCandidate,
+  KnowledgeSourceDefinition,
+  KnowledgeSourceVerification,
+  KnowledgeSourceVerifier,
+  KnowledgeSourceVerifierOptions,
+} from "./types.js";
 
 export const KNOWLEDGE_CATALOG_VERIFIER_VERSION = 2;
 
@@ -12,7 +27,7 @@ const DEFAULT_MAX_SITEMAPS = 10;
 const DEFAULT_MAX_DISCOVERED_URLS = 8_000;
 const DEFAULT_MAX_PRODUCT_PAGES = 6;
 
-const OFFICIAL_CATALOG_AUGMENTS = Object.freeze({
+const OFFICIAL_CATALOG_AUGMENTS: Readonly<Record<string, readonly string[]>> = Object.freeze({
   luxman: ["https://www.luxman.co.jp/product/"],
   accuphase: ["https://www.accuphase.com/product.html", "https://www.accuphase.com/history"],
   tad: ["https://tad-labs.com/jp/support/catalogue/"],
@@ -31,16 +46,34 @@ const OFFICIAL_CATALOG_AUGMENTS = Object.freeze({
   technics: ["https://jp.technics.com/products/?sort=tt"],
 });
 
-function boundedNumber(value, fallback, min, max) {
+interface LinkEntry {
+  url: string;
+  text: string;
+}
+
+interface SourceCacheState {
+  catalogEntries: LinkEntry[];
+  sitemapLinks: string[] | null;
+}
+
+interface VerifyOfficialProductPageHtmlV2Options {
+  candidate?: KnowledgeSourceCandidate;
+  html?: string;
+  sourceUrl?: string;
+  sourceType?: string;
+  httpStatus?: number;
+}
+
+function boundedNumber(value: unknown, fallback: number, min: number, max: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback;
 }
 
-function clean(value = "") {
+function clean(value: unknown = ""): string {
   return String(value).normalize("NFKC").replace(/\s+/g, " ").trim();
 }
 
-function decodeHtml(value = "") {
+function decodeHtml(value: unknown = ""): string {
   return String(value)
     .replace(/&amp;/gi, "&")
     .replace(/&quot;/gi, '"')
@@ -51,11 +84,11 @@ function decodeHtml(value = "") {
     .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)));
 }
 
-function stripTags(value = "") {
+function stripTags(value: unknown = ""): string {
   return clean(decodeHtml(String(value).replace(/<[^>]+>/g, " ")));
 }
 
-function visibleText(html = "") {
+function visibleText(html: unknown = ""): string {
   return stripTags(
     String(html)
       .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
@@ -63,11 +96,11 @@ function visibleText(html = "") {
   );
 }
 
-function escapeRegExp(value = "") {
+function escapeRegExp(value: unknown = ""): string {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function normalizeIdentityText(value = "") {
+function normalizeIdentityText(value: unknown = ""): string {
   return clean(value)
     .toUpperCase()
     .replace(/[‐‑‒–—―－]/g, "-")
@@ -75,7 +108,7 @@ function normalizeIdentityText(value = "") {
     .replace(/\s+/g, " ");
 }
 
-function flexibleIdentityPattern(model = "") {
+function flexibleIdentityPattern(model: unknown = ""): RegExp | null {
   const normalized = normalizeIdentityText(model);
   if (!normalized) return null;
   const parts = normalized.split(/[\s_-]+/).filter(Boolean);
@@ -83,12 +116,15 @@ function flexibleIdentityPattern(model = "") {
   return new RegExp(`(^|[^A-Z0-9])${parts.map(escapeRegExp).join("[\\s_-]*")}($|[^A-Z0-9])`, "i");
 }
 
-export function containsFlexibleCatalogModelIdentity(text = "", model = "") {
+export function containsFlexibleCatalogModelIdentity(
+  text: unknown = "",
+  model: unknown = "",
+): boolean {
   const pattern = flexibleIdentityPattern(model);
   return Boolean(pattern && pattern.test(normalizeIdentityText(text)));
 }
 
-function stripManufacturerPrefix(model, prefix) {
+function stripManufacturerPrefix(model: unknown, prefix: unknown): string {
   const value = clean(model);
   const brand = clean(prefix);
   if (!value || !brand) return "";
@@ -100,8 +136,8 @@ function stripManufacturerPrefix(model, prefix) {
     .trim();
 }
 
-export function candidateModelVariants(candidate = {}) {
-  const variants = new Set();
+export function candidateModelVariants(candidate: KnowledgeSourceCandidate = {}): string[] {
+  const variants = new Set<string>();
   const rawValues = [candidate.observedModel, candidate.model, candidate.normalizedModel].filter(
     Boolean,
   );
@@ -117,14 +153,14 @@ export function candidateModelVariants(candidate = {}) {
   return [...variants].sort((left, right) => right.length - left.length);
 }
 
-function matchesCandidateText(text, candidate) {
+function matchesCandidateText(text: unknown, candidate: KnowledgeSourceCandidate): boolean {
   return candidateModelVariants(candidate).some((model) =>
     containsFlexibleCatalogModelIdentity(text, model),
   );
 }
 
-function parseTagAttributes(tag = "") {
-  const attributes = new Map();
+function parseTagAttributes(tag: string = ""): Map<string, string> {
+  const attributes = new Map<string, string>();
   const pattern = /([A-Za-z_:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g;
   for (const match of tag.matchAll(pattern)) {
     attributes.set(match[1].toLowerCase(), decodeHtml(match[2] ?? match[3] ?? match[4] ?? ""));
@@ -132,7 +168,7 @@ function parseTagAttributes(tag = "") {
   return attributes;
 }
 
-function metaContent(html, name) {
+function metaContent(html: string, name: string): string {
   const target = String(name || "").toLowerCase();
   for (const match of String(html).matchAll(/<meta\b[^>]*>/gi)) {
     const attributes = parseTagAttributes(match[0]);
@@ -142,13 +178,13 @@ function metaContent(html, name) {
   return "";
 }
 
-function firstElementText(html, tag) {
+function firstElementText(html: string, tag: string): string {
   const match = String(html).match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"));
   return match ? stripTags(match[1]) : "";
 }
 
-function breadcrumbText(html) {
-  const values = [];
+function breadcrumbText(html: string): string {
+  const values: string[] = [];
   for (const match of String(html).matchAll(
     /<(?:nav|div|ol|ul)\b[^>]*(?:class|id)=["'][^"']*breadcrumb[^"']*["'][^>]*>([\s\S]*?)<\/(?:nav|div|ol|ul)>/gi,
   )) {
@@ -158,8 +194,8 @@ function breadcrumbText(html) {
   return clean(values.join(" "));
 }
 
-function jsonLdValues(html) {
-  const values = [];
+function jsonLdValues(html: string): unknown[] {
+  const values: unknown[] = [];
   for (const match of String(html).matchAll(
     /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
   )) {
@@ -170,30 +206,36 @@ function jsonLdValues(html) {
   return values;
 }
 
-function flattenJsonLd(value, output = []) {
+function flattenJsonLd(
+  value: unknown,
+  output: Record<string, unknown>[] = [],
+): Record<string, unknown>[] {
   if (Array.isArray(value)) {
     for (const item of value) flattenJsonLd(item, output);
     return output;
   }
-  if (!value || typeof value !== "object") return output;
+  if (!isRecord(value)) return output;
   output.push(value);
   if (Array.isArray(value["@graph"])) flattenJsonLd(value["@graph"], output);
   return output;
 }
 
-function isProductNode(node) {
-  const type = node?.["@type"];
+function isProductNode(node: Record<string, unknown>): boolean {
+  const type = node["@type"];
   if (Array.isArray(type)) return type.some((value) => String(value).toLowerCase() === "product");
   return String(type || "").toLowerCase() === "product";
 }
 
-function brandName(brand) {
+function brandName(brand: unknown): string {
   if (typeof brand === "string") return clean(brand);
-  if (brand && typeof brand === "object") return clean(brand.name);
+  if (isRecord(brand)) return clean(brand.name);
   return "";
 }
 
-function matchingProductNode(products, candidate) {
+function matchingProductNode(
+  products: readonly Record<string, unknown>[],
+  candidate: KnowledgeSourceCandidate,
+): Record<string, unknown> | null {
   return (
     products.find((product) =>
       [product.model, product.sku, product.mpn, product.name].some(
@@ -203,7 +245,7 @@ function matchingProductNode(products, candidate) {
   );
 }
 
-function officialCategoryIds(text = "") {
+function officialCategoryIds(text: unknown = ""): ClassifiableCategoryId[] {
   const value = clean(text);
   if (!value) return [];
   const ids = new Set(inferExplicitCategoryIds(value, { context: "detail" }));
@@ -219,7 +261,10 @@ function officialCategoryIds(text = "") {
   return [...ids];
 }
 
-function categoryEvidence(value, strength = "verified") {
+function categoryEvidence(
+  value: unknown,
+  strength: CategoryEvidenceStrength = "verified",
+): CategoryEvidenceInput | null {
   const text = clean(value);
   const categoryIds = officialCategoryIds(text);
   return categoryIds.length
@@ -227,7 +272,11 @@ function categoryEvidence(value, strength = "verified") {
     : null;
 }
 
-function modelContextEvidence(text, candidate, strength = "verified") {
+function modelContextEvidence(
+  text: unknown,
+  candidate: KnowledgeSourceCandidate,
+  strength: CategoryEvidenceStrength = "verified",
+): CategoryEvidenceInput | null {
   const normalizedValue = normalizeIdentityText(text);
   if (!normalizedValue) return null;
   for (const model of candidateModelVariants(candidate)) {
@@ -247,8 +296,8 @@ function modelContextEvidence(text, candidate, strength = "verified") {
   return null;
 }
 
-function modelBearingBlocks(html, candidate) {
-  const blocks = [];
+function modelBearingBlocks(html: string, candidate: KnowledgeSourceCandidate): string[] {
+  const blocks: string[] = [];
   for (const match of String(html).matchAll(/<(h[1-4]|p|li|tr|dt|dd)\b[^>]*>([\s\S]*?)<\/\1>/gi)) {
     const text = stripTags(match[2]);
     if (text && matchesCandidateText(text, candidate)) blocks.push(text);
@@ -257,7 +306,7 @@ function modelBearingBlocks(html, candidate) {
   return blocks;
 }
 
-async function sha256Hex(value) {
+async function sha256Hex(value: string): Promise<string> {
   if (!globalThis.crypto?.subtle) return "";
   const bytes = new TextEncoder().encode(String(value));
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -270,7 +319,7 @@ export async function verifyOfficialProductPageHtmlV2({
   sourceUrl = "",
   sourceType = "manufacturer_official",
   httpStatus = 200,
-} = {}) {
+}: VerifyOfficialProductPageHtmlV2Options = {}): Promise<KnowledgeSourceVerification> {
   if (!candidate?.manufacturerId || !candidateModelVariants(candidate).length || !html) {
     return {
       status: "not_found",
@@ -323,11 +372,13 @@ export async function verifyOfficialProductPageHtmlV2({
 
   const structured = [product?.category, product?.name]
     .map((value) => categoryEvidence(value))
-    .filter(Boolean);
-  let classification = structured.length ? classifyCategoryEvidence(structured) : null;
+    .filter((value): value is CategoryEvidenceInput => value !== null);
+  let classification: CategoryClassification | null = structured.length
+    ? classifyCategoryEvidence(structured)
+    : null;
 
   if (!classification || classification.classificationStatus !== "classified") {
-    const localEvidence = [];
+    const localEvidence: CategoryEvidenceInput[] = [];
     for (const value of [h1, title, ...modelBearingBlocks(html, candidate)]) {
       const evidence = modelContextEvidence(value, candidate);
       if (evidence) localEvidence.push(evidence);
@@ -346,7 +397,7 @@ export async function verifyOfficialProductPageHtmlV2({
       breadcrumbText(html),
     ]
       .map((value) => categoryEvidence(value, "strong"))
-      .filter(Boolean);
+      .filter((value): value is CategoryEvidenceInput => value !== null);
     if (fallbackEvidence.length) classification = classifyCategoryEvidence(fallbackEvidence);
   }
 
@@ -393,7 +444,7 @@ export async function verifyOfficialProductPageHtmlV2({
   };
 }
 
-async function readLimitedText(response, maxBytes) {
+async function readLimitedText(response: Response, maxBytes: number): Promise<string> {
   if (!response.body?.getReader) return (await response.text()).slice(0, maxBytes);
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -417,7 +468,11 @@ async function readLimitedText(response, maxBytes) {
   return text;
 }
 
-async function fetchText(fetchImpl, url, { timeoutMs, maxBytes, userAgent }) {
+async function fetchText(
+  fetchImpl: typeof fetch,
+  url: string,
+  { timeoutMs, maxBytes, userAgent }: { timeoutMs: number; maxBytes: number; userAgent: string },
+): Promise<FetchTextResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -437,14 +492,15 @@ async function fetchText(fetchImpl, url, { timeoutMs, maxBytes, userAgent }) {
       status: 0,
       url,
       text: "",
-      error: error?.name === "AbortError" ? "timeout" : error?.message || String(error),
+      error:
+        error instanceof Error && error.name === "AbortError" ? "timeout" : errorMessage(error),
     };
   } finally {
     clearTimeout(timeout);
   }
 }
 
-function sameOriginUrl(value, baseUrl) {
+function sameOriginUrl(value: unknown, baseUrl: string): string {
   try {
     const resolved = new URL(decodeHtml(value), baseUrl);
     const base = new URL(baseUrl);
@@ -457,7 +513,7 @@ function sameOriginUrl(value, baseUrl) {
   }
 }
 
-function htmlTextWithLabels(value = "") {
+function htmlTextWithLabels(value: unknown = ""): string {
   return stripTags(
     String(value).replace(/<(?:img|input)\b([^>]*)>/gi, (_, attrs) => {
       const labels = [
@@ -468,8 +524,8 @@ function htmlTextWithLabels(value = "") {
   );
 }
 
-function extractHtmlLinkEntries(html, baseUrl) {
-  const entries = [];
+function extractHtmlLinkEntries(html: string, baseUrl: string): LinkEntry[] {
+  const entries: LinkEntry[] = [];
   for (const match of String(html).matchAll(
     /<a\b([^>]*?)href\s*=\s*(?:"([^"]+)"|'([^']+)')([^>]*)>([\s\S]*?)<\/a>/gi,
   )) {
@@ -483,7 +539,7 @@ function extractHtmlLinkEntries(html, baseUrl) {
     );
     entries.push({ url, text });
   }
-  const deduped = new Map();
+  const deduped = new Map<string, LinkEntry>();
   for (const entry of entries) {
     const existing = deduped.get(entry.url);
     if (!existing || entry.text.length > existing.text.length) deduped.set(entry.url, entry);
@@ -491,11 +547,11 @@ function extractHtmlLinkEntries(html, baseUrl) {
   return [...deduped.values()];
 }
 
-function isLikelyCatalogIndexEntry(entry) {
-  const label = clean(entry?.text).toLowerCase();
+function isLikelyCatalogIndexEntry(entry: LinkEntry): boolean {
+  const label = clean(entry.text).toLowerCase();
   let pathname = "";
   try {
-    pathname = new URL(entry?.url).pathname.toLowerCase();
+    pathname = new URL(entry.url).pathname.toLowerCase();
   } catch {}
   return (
     /(?:製品(?:一覧|情報|紹介)?|生産終了|アーカイブ|product\s*(?:archive|museum|list)?|all\s+product|discontinued|catalog)/i.test(
@@ -507,8 +563,8 @@ function isLikelyCatalogIndexEntry(entry) {
   );
 }
 
-function extractSitemapLocations(xml, baseUrl) {
-  const locations = [];
+function extractSitemapLocations(xml: string, baseUrl: string): string[] {
+  const locations: string[] = [];
   for (const match of String(xml).matchAll(/<loc\b[^>]*>([\s\S]*?)<\/loc>/gi)) {
     const url = sameOriginUrl(stripTags(match[1]), baseUrl);
     if (url) locations.push(url);
@@ -516,8 +572,8 @@ function extractSitemapLocations(xml, baseUrl) {
   return [...new Set(locations)];
 }
 
-function sitemapUrlsFromRobots(robots, baseUrl) {
-  const urls = [];
+function sitemapUrlsFromRobots(robots: string, baseUrl: string): string[] {
+  const urls: string[] = [];
   for (const line of String(robots || "").split(/\r?\n/)) {
     const match = line.match(/^\s*Sitemap\s*:\s*(\S+)\s*$/i);
     if (!match) continue;
@@ -527,7 +583,7 @@ function sitemapUrlsFromRobots(robots, baseUrl) {
   return urls;
 }
 
-function applySearchTemplate(template, candidate) {
+function applySearchTemplate(template: string, candidate: KnowledgeSourceCandidate): string {
   if (!template) return "";
   return template
     .replaceAll(
@@ -542,7 +598,7 @@ function applySearchTemplate(template, candidate) {
     );
 }
 
-function urlMatchesCandidate(url, candidate) {
+function urlMatchesCandidate(url: string, candidate: KnowledgeSourceCandidate): boolean {
   try {
     const parsed = new URL(url);
     let decoded = `${parsed.pathname} ${parsed.search}`;
@@ -555,11 +611,11 @@ function urlMatchesCandidate(url, candidate) {
   }
 }
 
-function entryMatchesCandidate(entry, candidate) {
+function entryMatchesCandidate(entry: LinkEntry, candidate: KnowledgeSourceCandidate): boolean {
   return urlMatchesCandidate(entry.url, candidate) || matchesCandidateText(entry.text, candidate);
 }
 
-function discoveryScore(entry, candidate) {
+function discoveryScore(entry: LinkEntry, candidate: KnowledgeSourceCandidate): number {
   let score = 0;
   if (matchesCandidateText(entry.text, candidate)) score += 100;
   if (urlMatchesCandidate(entry.url, candidate)) score += 80;
@@ -568,13 +624,15 @@ function discoveryScore(entry, candidate) {
   return score;
 }
 
-export function enhancedKnowledgeSourceDefinitions(env = {}) {
+export function enhancedKnowledgeSourceDefinitions(
+  env: CrawlerEnv = {},
+): Map<string, KnowledgeSourceDefinition[]> {
   const definitions = baseKnowledgeSourceDefinitions(env);
-  const result = new Map();
+  const result = new Map<string, KnowledgeSourceDefinition[]>();
   for (const [manufacturerId, sources] of definitions) {
     result.set(
       manufacturerId,
-      sources.map((source) => {
+      sources.map((source: KnowledgeSourceDefinition) => {
         const catalogUrls = [
           ...new Set([
             ...(source.catalogUrls || []),
@@ -588,9 +646,12 @@ export function enhancedKnowledgeSourceDefinitions(env = {}) {
   return result;
 }
 
-export function createKnowledgeSourceVerifierV2(env = {}, { fetchImpl = globalThis.fetch } = {}) {
+export function createKnowledgeSourceVerifierV2(
+  env: CrawlerEnv = {},
+  { fetchImpl = globalThis.fetch }: KnowledgeSourceVerifierOptions = {},
+): KnowledgeSourceVerifier {
   const definitions = enhancedKnowledgeSourceDefinitions(env);
-  const sourceCache = new Map();
+  const sourceCache = new Map<string, SourceCacheState>();
   const timeoutMs = boundedNumber(
     env.KNOWLEDGE_CATALOG_SOURCE_TIMEOUT_MS,
     DEFAULT_TIMEOUT_MS,
@@ -629,18 +690,19 @@ export function createKnowledgeSourceVerifierV2(env = {}, { fetchImpl = globalTh
   );
   const userAgent = clean(env.CRAWLER_USER_AGENT) || "HiFiScoutBot/0.1";
 
-  async function cacheForSource(source) {
+  async function cacheForSource(source: KnowledgeSourceDefinition): Promise<SourceCacheState> {
     const key = `${source.manufacturerId}:${source.baseUrl}`;
-    if (sourceCache.has(key)) return sourceCache.get(key);
+    const cached = sourceCache.get(key);
+    if (cached) return cached;
 
-    const state = { catalogEntries: [], sitemapLinks: null };
+    const state: SourceCacheState = { catalogEntries: [], sitemapLinks: null };
     const queue = [
       ...new Set(
         (source.catalogUrls || []).map((url) => sameOriginUrl(url, source.baseUrl)).filter(Boolean),
       ),
     ];
-    const visited = new Set();
-    const entries = [];
+    const visited = new Set<string>();
+    const entries: LinkEntry[] = [];
     while (queue.length && visited.size < maxCatalogPages && entries.length < maxDiscoveredUrls) {
       const url = queue.shift();
       if (!url || visited.has(url)) continue;
@@ -659,7 +721,7 @@ export function createKnowledgeSourceVerifierV2(env = {}, { fetchImpl = globalTh
         }
       }
     }
-    const byUrl = new Map();
+    const byUrl = new Map<string, LinkEntry>();
     for (const entry of entries) {
       const existing = byUrl.get(entry.url);
       if (!existing || entry.text.length > existing.text.length) byUrl.set(entry.url, entry);
@@ -669,7 +731,10 @@ export function createKnowledgeSourceVerifierV2(env = {}, { fetchImpl = globalTh
     return state;
   }
 
-  async function loadSitemapLinks(source, state) {
+  async function loadSitemapLinks(
+    source: KnowledgeSourceDefinition,
+    state: SourceCacheState,
+  ): Promise<string[]> {
     if (state.sitemapLinks) return state.sitemapLinks;
     const queue = (source.sitemapUrls || [])
       .map((url) => sameOriginUrl(url, source.baseUrl))
@@ -683,8 +748,8 @@ export function createKnowledgeSourceVerifierV2(env = {}, { fetchImpl = globalTh
     if (robots.ok) queue.push(...sitemapUrlsFromRobots(robots.text, source.baseUrl));
     queue.push(new URL("/sitemap.xml", source.baseUrl).toString());
 
-    const visited = new Set();
-    const pageUrls = [];
+    const visited = new Set<string>();
+    const pageUrls: string[] = [];
     while (queue.length && visited.size < maxSitemaps && pageUrls.length < maxDiscoveredUrls) {
       const sitemapUrl = queue.shift();
       if (!sitemapUrl || visited.has(sitemapUrl) || /\.gz(?:$|\?)/i.test(sitemapUrl)) continue;
@@ -701,7 +766,10 @@ export function createKnowledgeSourceVerifierV2(env = {}, { fetchImpl = globalTh
     return state.sitemapLinks;
   }
 
-  async function discoverProductUrls(source, candidate) {
+  async function discoverProductUrls(
+    source: KnowledgeSourceDefinition,
+    candidate: KnowledgeSourceCandidate,
+  ): Promise<string[]> {
     const state = await cacheForSource(source);
     let matches = state.catalogEntries.filter((entry) => entryMatchesCandidate(entry, candidate));
 
@@ -735,7 +803,9 @@ export function createKnowledgeSourceVerifierV2(env = {}, { fetchImpl = globalTh
     ].slice(0, maxProductPages);
   }
 
-  async function verifyCandidate(candidate) {
+  async function verifyCandidate(
+    candidate: KnowledgeSourceCandidate,
+  ): Promise<KnowledgeSourceVerification> {
     const manufacturerId = String(candidate?.manufacturerId || "").toLowerCase();
     const sources = definitions.get(manufacturerId) || [];
     if (!sources.length) {
@@ -748,7 +818,7 @@ export function createKnowledgeSourceVerifierV2(env = {}, { fetchImpl = globalTh
       };
     }
 
-    let bestFailure = {
+    let bestFailure: FailedKnowledgeSource = {
       status: "not_found",
       sourceType: sources[0].sourceType,
       sourceUrl: "",
@@ -785,7 +855,9 @@ export function createKnowledgeSourceVerifierV2(env = {}, { fetchImpl = globalTh
     return bestFailure;
   }
 
-  async function verifyStoredSource(product) {
+  async function verifyStoredSource(
+    product: KnowledgeSourceCandidate,
+  ): Promise<KnowledgeSourceVerification> {
     if (!product?.sourceUrl) {
       return {
         status: "unsupported",

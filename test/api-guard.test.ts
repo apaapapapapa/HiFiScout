@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import { checkPublicApiRateLimit } from "../src/api-guard.js";
 
 test("public API rate limiter keys by actor and route bucket", async () => {
-  const keys = [];
+  const keys: string[] = [];
   const env = {
     API_RATE_LIMITER: {
-      async limit({ key }) {
+      async limit({ key }: { key: string }) {
         keys.push(key);
         return { success: false };
       },

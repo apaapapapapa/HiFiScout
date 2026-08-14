@@ -13,8 +13,56 @@ import {
 } from "../db/inventory-recheck-repository.js";
 import { createRelayHtmlFetcher } from "./relay.js";
 import { relayConfiguration } from "./transport.js";
+import { isRecord } from "../types.js";
+import type { InventoryRecheckCandidateRow, QueryableDatabase } from "../db/types.js";
+import type {
+  CrawlerEnv,
+  InventoryClassification,
+  InventoryRecheckResult,
+  InventoryRecheckSettings,
+} from "./types.js";
 
 const AUDIOUNION_DETAIL_PATH = /^\/ct\/detail\/used\/\d+\/?$/;
+
+interface InventoryRecheckEnv extends CrawlerEnv {
+  DB: QueryableDatabase;
+}
+
+interface InventoryRepository {
+  selectInventoryRecheckCandidate(
+    db: QueryableDatabase,
+    shopKey: string,
+    window: { staleBefore: string; retryBefore: string },
+  ): Promise<InventoryRecheckCandidateRow | null>;
+  markInventoryCheckAttempt(
+    db: QueryableDatabase,
+    productId: number,
+    attemptedAt: string,
+  ): Promise<unknown>;
+  markInventoryAvailable(
+    db: QueryableDatabase,
+    productId: number,
+    checkedAt: string,
+  ): Promise<unknown>;
+  markInventoryAmbiguous(
+    db: QueryableDatabase,
+    productId: number,
+    checkedAt: string,
+  ): Promise<unknown>;
+  recordInventoryUnavailable(
+    db: QueryableDatabase,
+    productId: number,
+    checkedAt: string,
+    failureCount: number,
+    deactivate: boolean,
+  ): Promise<unknown>;
+}
+
+interface InventoryRecheckOptions {
+  now?: Date;
+  fetchFn?: typeof fetch;
+  repository?: InventoryRepository;
+}
 
 const defaultRepository = {
   selectInventoryRecheckCandidate,
@@ -24,7 +72,7 @@ const defaultRepository = {
   recordInventoryUnavailable,
 };
 
-function visibleText(html) {
+function visibleText(html: unknown): string {
   return String(html || "")
     .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, " ")
     .replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, " ")
@@ -37,7 +85,7 @@ function visibleText(html) {
     .trim();
 }
 
-export function isAudioUnionUsedDetailUrl(value) {
+export function isAudioUnionUsedDetailUrl(value: string): boolean {
   try {
     const url = new URL(value);
     return (
@@ -55,7 +103,7 @@ export function isAudioUnionUsedDetailUrl(value) {
   }
 }
 
-export function classifyAudioUnionInventoryPage(html) {
+export function classifyAudioUnionInventoryPage(html: string): InventoryClassification {
   const text = visibleText(html);
   if (!text) return "ambiguous";
 
@@ -74,11 +122,11 @@ export function classifyAudioUnionInventoryPage(html) {
   return "ambiguous";
 }
 
-function isoBefore(now, hours) {
+function isoBefore(now: Date, hours: number): string {
   return new Date(now.getTime() - hours * 60 * 60 * 1000).toISOString();
 }
 
-function priorUnavailableFailures(candidate) {
+function priorUnavailableFailures(candidate: InventoryRecheckCandidateRow): number {
   const checkedAt = Date.parse(candidate?.last_inventory_checked_at || "");
   const lastSeenAt = Date.parse(candidate?.last_seen_at || "");
   if (!Number.isFinite(checkedAt)) return 0;
@@ -87,21 +135,26 @@ function priorUnavailableFailures(candidate) {
   return Number.isFinite(stored) && stored > 0 ? stored : 0;
 }
 
-function relayFailureReason(error) {
-  if (error?.code === "robots_disallowed") return "robots_disallowed";
-  if (Number.isFinite(error?.relayStatus)) return `relay_http_${error.relayStatus}`;
+function relayFailureReason(error: unknown): InventoryRecheckResult["reason"] {
+  if (isRecord(error) && error.code === "robots_disallowed") return "robots_disallowed";
+  if (
+    isRecord(error) &&
+    typeof error.relayStatus === "number" &&
+    Number.isFinite(error.relayStatus)
+  )
+    return `relay_http_${error.relayStatus}`;
   return "relay_error";
 }
 
 async function recordUnavailable(
-  repository,
-  env,
-  candidate,
-  attemptedAt,
-  settings,
-  evidence,
-  httpStatus,
-) {
+  repository: InventoryRepository,
+  env: InventoryRecheckEnv,
+  candidate: InventoryRecheckCandidateRow,
+  attemptedAt: string,
+  settings: InventoryRecheckSettings,
+  evidence: "missing" | "sold",
+  httpStatus: number,
+): Promise<InventoryRecheckResult> {
   const failureCount = priorUnavailableFailures(candidate) + 1;
   const deactivate = failureCount >= settings.failureThreshold;
   await repository.recordInventoryUnavailable(
@@ -122,9 +175,13 @@ async function recordUnavailable(
 }
 
 export async function recheckAudioUnionInventory(
-  env,
-  { now = new Date(), fetchFn = fetch, repository = defaultRepository } = {},
-) {
+  env: InventoryRecheckEnv,
+  {
+    now = new Date(),
+    fetchFn = fetch,
+    repository = defaultRepository,
+  }: InventoryRecheckOptions = {},
+): Promise<InventoryRecheckResult> {
   const settings = getAudioUnionInventoryRecheckSettings(env);
   if (!settings.enabled) return { status: "skipped", reason: "disabled" };
 
@@ -150,6 +207,7 @@ export async function recheckAudioUnionInventory(
 
     const { relayUrl, relayToken } = relayConfiguration(env);
     const relay = createRelayHtmlFetcher({ relayUrl, relayToken, fetchFn });
+    if (!relay.fetchPage) throw new Error("relay_fetch_page_unavailable");
     const crawlerSettings = getCrawlerSettings(env);
     const requestDelayMs = getShopRequestDelayMs(
       env,

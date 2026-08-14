@@ -1,17 +1,67 @@
 import { catalogModelLookupVariants } from "../catalog/knowledge-catalog.js";
 import { resolveProductIdentity } from "../catalog/product-identity.js";
+import type { IdentityCandidateInput, ProductIdentityResolution } from "../catalog/types.js";
+import type {
+  IdentitySyncMetrics,
+  ProductIdentityResolutionRow,
+  ProductRow,
+  QueryableDatabase,
+} from "./types.js";
 
 const CHUNK_SIZE = 40;
 
-function unique(values = []) {
+interface CatalogIdentityCandidate extends IdentityCandidateInput {
+  id: number;
+  manufacturerId: string;
+  canonicalModel: string;
+  persistedNormalizedModel: string;
+  categoryIds: string[];
+  aliases: string[];
+}
+
+interface CatalogIdentityRow {
+  id: number;
+  manufacturer_id: string;
+  canonical_model: string;
+  normalized_model: string;
+  category_id: string | null;
+}
+
+interface CatalogAliasRow {
+  product_id: number;
+  alias: string;
+}
+
+type IdentityListingRow = Pick<
+  ProductRow,
+  "id" | "source_id" | "manufacturer_id" | "model" | "primary_category_id" | "classification_status"
+>;
+
+interface SerializedResolution {
+  catalogProductId: number | null;
+  candidateCatalogProductId: number | null;
+  status: ProductIdentityResolution["status"];
+  matchMethod: ProductIdentityResolution["matchMethod"];
+  confidence: ProductIdentityResolution["confidence"];
+  normalizedModel: string;
+  modelStem: string;
+  variantsJson: string;
+  matchedFieldsJson: string;
+  rejectedByJson: string;
+}
+
+function unique(values: readonly unknown[] = []): string[] {
   return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
 }
 
-async function loadVerifiedIdentityCandidates(db, manufacturerIds = []) {
+async function loadVerifiedIdentityCandidates(
+  db: QueryableDatabase,
+  manufacturerIds: readonly string[] = [],
+): Promise<Map<string, CatalogIdentityCandidate[]>> {
   const ids = unique(manufacturerIds.map((value) => value.toLowerCase()));
-  if (!ids.length) return new Map();
+  if (!ids.length) return new Map<string, CatalogIdentityCandidate[]>();
 
-  const byId = new Map();
+  const byId = new Map<number, CatalogIdentityCandidate>();
   for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
     const chunk = ids.slice(i, i + CHUNK_SIZE);
     const placeholders = chunk.map(() => "?").join(",");
@@ -26,7 +76,7 @@ async function loadVerifiedIdentityCandidates(db, manufacturerIds = []) {
         ORDER BY kp.id, kpc.is_primary DESC, kpc.category_id
       `)
       .bind(...chunk)
-      .all();
+      .all<CatalogIdentityRow>();
 
     for (const row of result.results || []) {
       let candidate = byId.get(Number(row.id));
@@ -59,7 +109,7 @@ async function loadVerifiedIdentityCandidates(db, manufacturerIds = []) {
         WHERE alias_type = 'model' AND product_id IN (${placeholders})
       `)
       .bind(...chunk)
-      .all();
+      .all<CatalogAliasRow>();
     for (const row of result.results || []) {
       const candidate = byId.get(Number(row.product_id));
       if (candidate && row.alias && !candidate.aliases.includes(row.alias))
@@ -67,7 +117,7 @@ async function loadVerifiedIdentityCandidates(db, manufacturerIds = []) {
     }
   }
 
-  const byManufacturer = new Map();
+  const byManufacturer = new Map<string, CatalogIdentityCandidate[]>();
   for (const candidate of byId.values()) {
     candidate.aliases = unique([
       ...candidate.aliases,
@@ -76,16 +126,20 @@ async function loadVerifiedIdentityCandidates(db, manufacturerIds = []) {
         model: candidate.canonicalModel,
       }),
     ]);
-    if (!byManufacturer.has(candidate.manufacturerId))
-      byManufacturer.set(candidate.manufacturerId, []);
-    byManufacturer.get(candidate.manufacturerId).push(candidate);
+    const manufacturerCandidates = byManufacturer.get(candidate.manufacturerId) ?? [];
+    manufacturerCandidates.push(candidate);
+    byManufacturer.set(candidate.manufacturerId, manufacturerCandidates);
   }
   return byManufacturer;
 }
 
-async function loadListingRows(db, shopKey, sourceIds = []) {
+async function loadListingRows(
+  db: QueryableDatabase,
+  shopKey: string,
+  sourceIds: readonly string[] = [],
+): Promise<IdentityListingRow[]> {
   const ids = unique(sourceIds);
-  const rows = [];
+  const rows: IdentityListingRow[] = [];
   for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
     const chunk = ids.slice(i, i + CHUNK_SIZE);
     if (!chunk.length) continue;
@@ -97,14 +151,17 @@ async function loadListingRows(db, shopKey, sourceIds = []) {
         WHERE shop_key = ? AND source_id IN (${placeholders})
       `)
       .bind(shopKey, ...chunk)
-      .all();
+      .all<IdentityListingRow>();
     rows.push(...(result.results || []));
   }
   return rows;
 }
 
-async function loadExistingResolutions(db, productIds = []) {
-  const rows = [];
+async function loadExistingResolutions(
+  db: QueryableDatabase,
+  productIds: readonly number[] = [],
+): Promise<Map<number, ProductIdentityResolutionRow>> {
+  const rows: ProductIdentityResolutionRow[] = [];
   for (let i = 0; i < productIds.length; i += CHUNK_SIZE) {
     const chunk = productIds.slice(i, i + CHUNK_SIZE);
     if (!chunk.length) continue;
@@ -118,13 +175,13 @@ async function loadExistingResolutions(db, productIds = []) {
         WHERE listing_product_id IN (${placeholders})
       `)
       .bind(...chunk)
-      .all();
+      .all<ProductIdentityResolutionRow>();
     rows.push(...(result.results || []));
   }
   return new Map(rows.map((row) => [Number(row.listing_product_id), row]));
 }
 
-function serializedResolution(resolution) {
+function serializedResolution(resolution: ProductIdentityResolution): SerializedResolution {
   return {
     catalogProductId:
       resolution.catalogProductId == null ? null : Number(resolution.catalogProductId),
@@ -143,8 +200,11 @@ function serializedResolution(resolution) {
   };
 }
 
-function sameResolution(existing, next) {
-  return (
+function sameResolution(
+  existing: ProductIdentityResolutionRow | undefined,
+  next: SerializedResolution,
+): boolean {
+  return Boolean(
     existing &&
     (existing.catalog_product_id == null ? null : Number(existing.catalog_product_id)) ===
       next.catalogProductId &&
@@ -158,11 +218,11 @@ function sameResolution(existing, next) {
     existing.model_stem === next.modelStem &&
     existing.variants_json === next.variantsJson &&
     existing.matched_fields_json === next.matchedFieldsJson &&
-    existing.rejected_by_json === next.rejectedByJson
+    existing.rejected_by_json === next.rejectedByJson,
   );
 }
 
-function countMetrics(metrics, resolution) {
+function countMetrics(metrics: IdentitySyncMetrics, resolution: ProductIdentityResolution): void {
   if (resolution.matchMethod === "manufacturer_model_exact")
     metrics.identity_exact_match_count += 1;
   if (resolution.matchMethod === "catalog_alias") metrics.identity_alias_match_count += 1;
@@ -177,13 +237,13 @@ function countMetrics(metrics, resolution) {
 }
 
 export async function syncProductIdentityResolutions(
-  db,
-  shopKey,
-  sourceIds = [],
+  db: QueryableDatabase,
+  shopKey: string,
+  sourceIds: readonly string[] = [],
   evaluatedAt = new Date().toISOString(),
-) {
+): Promise<IdentitySyncMetrics> {
   const listings = await loadListingRows(db, shopKey, sourceIds);
-  const metrics = {
+  const metrics: IdentitySyncMetrics = {
     identity_exact_match_count: 0,
     identity_alias_match_count: 0,
     identity_fuzzy_match_count: 0,
@@ -201,7 +261,7 @@ export async function syncProductIdentityResolutions(
     db,
     listings.map((row) => Number(row.id)),
   );
-  const statements = [];
+  const statements: D1PreparedStatement[] = [];
 
   for (const listing of listings) {
     const resolution = resolveProductIdentity(

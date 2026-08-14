@@ -8,19 +8,36 @@ import {
   recordKnowledgeCatalogProductRecheckFailure,
   recordKnowledgeCatalogProductRecheckSuccess,
 } from "./db/knowledge-catalog-verification-repository.js";
+import type {
+  FailedKnowledgeSource,
+  KnowledgeSourceStatus,
+  VerifiedKnowledgeSource,
+} from "./catalog/types.js";
+import type { CrawlerEnv } from "./crawler/types.js";
+import type { KnowledgeCatalogVerificationOutcomes, QueryableDatabase } from "./db/types.js";
 
-function boundedLimit(value, fallback) {
+type KnowledgeCatalogRuntimeEnv = CrawlerEnv & { DB: QueryableDatabase };
+
+interface SourceVerificationOptions {
+  now?: Date;
+  fetchImpl?: typeof fetch;
+  preferRetries?: boolean;
+  verifyCandidates?: boolean;
+  verifyDueProducts?: boolean;
+}
+
+function boundedLimit(value: unknown, fallback: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.min(2000, Math.max(1, Math.trunc(parsed))) : fallback;
 }
 
-function sameCategorySet(left = [], right = []) {
+function sameCategorySet(left: readonly string[] = [], right: readonly string[] = []): boolean {
   const a = [...new Set(left)].sort();
   const b = [...new Set(right)].sort();
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
-function validPromotion(verification) {
+function validPromotion(verification: VerifiedKnowledgeSource): boolean {
   const categoryIds = [...new Set(verification?.categoryIds || [])].filter(Boolean);
   return (
     verification?.status === "verified" &&
@@ -31,11 +48,14 @@ function validPromotion(verification) {
   );
 }
 
-function emptyOutcomeCounts() {
+function emptyOutcomeCounts(): KnowledgeCatalogVerificationOutcomes {
   return { verified: 0, notFound: 0, ambiguous: 0, unsupported: 0, error: 0 };
 }
 
-function countOutcome(counts, status) {
+function countOutcome(
+  counts: KnowledgeCatalogVerificationOutcomes,
+  status: KnowledgeSourceStatus,
+): void {
   if (status === "verified") counts.verified += 1;
   else if (status === "not_found") counts.notFound += 1;
   else if (status === "ambiguous") counts.ambiguous += 1;
@@ -44,14 +64,14 @@ function countOutcome(counts, status) {
 }
 
 export async function runKnowledgeCatalogSourceVerification(
-  env,
+  env: KnowledgeCatalogRuntimeEnv,
   {
     now = new Date(),
     fetchImpl = globalThis.fetch,
     preferRetries = false,
     verifyCandidates = true,
     verifyDueProducts = true,
-  } = {},
+  }: SourceVerificationOptions = {},
 ) {
   const attemptedAt = now.toISOString();
   const sourceFetch = createRobotsRespectingFetch(fetchImpl, {
@@ -94,10 +114,13 @@ export async function runKnowledgeCatalogSourceVerification(
       verifiedRechecks += 1;
       countOutcome(verificationOutcomes, "verified");
     } else {
-      const result =
+      const result: FailedKnowledgeSource =
         verification.status === "verified"
           ? {
-              ...verification,
+              sourceUrl: verification.sourceUrl,
+              sourceType: verification.sourceType,
+              httpStatus: verification.httpStatus,
+              contentHash: verification.contentHash,
               status: "ambiguous",
               message: "official_category_changed_since_last_verification",
             }

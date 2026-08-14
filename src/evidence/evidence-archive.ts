@@ -1,4 +1,11 @@
 import { errorMessage } from "../types.js";
+import type {
+  EvidenceArchiveResult,
+  EvidenceReason,
+  EvidenceRetentionClass,
+  EvidenceSuppressionReason,
+  EvidenceUsage,
+} from "../db/types.js";
 
 // ---------------------------------------------------------------------------
 // Bindings, narrowed to the members this module actually calls
@@ -82,8 +89,12 @@ const DEFAULT_BURST_WINDOW_MINUTES = 15;
 const DEFAULT_BURST_MAX_OBJECTS = 20;
 const DEFAULT_BURST_SAMPLE_RATE = 10;
 const DEFAULT_STORAGE_WARNING_BYTES = 8_000_000_000;
-const RETENTION_DAYS = Object.freeze({ short: 30, medium: 90, long: 365 });
-const REASON_RETENTION = Object.freeze({
+const RETENTION_DAYS: Readonly<Record<EvidenceRetentionClass, number>> = Object.freeze({
+  short: 30,
+  medium: 90,
+  long: 365,
+});
+const REASON_RETENTION: Readonly<Partial<Record<string, EvidenceRetentionClass>>> = Object.freeze({
   parser_failure: "short",
   temporary_debug_snapshot: "short",
   unexpected_item_count: "medium",
@@ -96,12 +107,49 @@ const REASON_RETENTION = Object.freeze({
   knowledge_catalog_verification: "long",
 });
 
-function numericSetting(value, fallback) {
+interface BoundedHtml {
+  body: Uint8Array<ArrayBuffer>;
+  truncated: boolean;
+}
+
+interface ObjectKeyOptions {
+  shopKey: unknown;
+  retentionClass: EvidenceRetentionClass;
+  capturedAt: string;
+  eventId: string;
+}
+
+interface EvidenceUsageOptions {
+  shopKey: string | undefined;
+  reason: EvidenceReason;
+  capturedAt: string;
+  burstWindowMinutes: number;
+}
+
+interface EvidenceLogOptions {
+  shopKey: string | undefined;
+  reason: EvidenceReason;
+  suppressionReason: EvidenceSuppressionReason;
+  usage: EvidenceUsage;
+  settings: EvidenceSafetySettings;
+}
+
+interface DuplicateEvidenceRow extends Record<string, unknown> {
+  id?: number;
+  r2_object_key?: string;
+}
+
+interface CountRow extends Record<string, unknown> {
+  object_count?: number;
+  byte_count?: number;
+}
+
+function numericSetting(value: unknown, fallback: number): number {
   const parsed = Number.parseInt(String(value || ""), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function redactSensitiveTag(tag) {
+function redactSensitiveTag(tag: string): string {
   if (!/(?:token|secret|password|passwd|session|cookie|authorization|auth|csrf|xsrf)/iu.test(tag)) {
     return tag;
   }
@@ -110,7 +158,7 @@ function redactSensitiveTag(tag) {
     .replace(/\scontent\s*=\s*(["']).*?\1/giu, ' content="[REDACTED]"');
 }
 
-export function sanitizeEvidenceHtml(value = "") {
+export function sanitizeEvidenceHtml(value: unknown = ""): string {
   return String(value)
     .replace(/<(?:input|meta)\b[^>]*>/giu, redactSensitiveTag)
     .replace(
@@ -119,27 +167,27 @@ export function sanitizeEvidenceHtml(value = "") {
     );
 }
 
-function boundedHtml(value, maxBytes) {
+function boundedHtml(value: string, maxBytes: number): BoundedHtml {
   const bytes = new TextEncoder().encode(sanitizeEvidenceHtml(value));
   if (bytes.byteLength <= maxBytes) return { body: bytes, truncated: false };
   return { body: bytes.slice(0, maxBytes), truncated: true };
 }
 
-export async function sha256Hex(value) {
+export async function sha256Hex(value: string | Uint8Array<ArrayBuffer>): Promise<string> {
   const bytes = value instanceof Uint8Array ? value : new TextEncoder().encode(String(value));
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-export function evidenceRetentionClass(reason) {
-  return REASON_RETENTION[reason] || "";
+export function evidenceRetentionClass(reason: unknown): EvidenceRetentionClass | "" {
+  return typeof reason === "string" ? REASON_RETENTION[reason] || "" : "";
 }
 
-export function shouldArchiveEvidence(reason) {
+export function shouldArchiveEvidence(reason: unknown): reason is EvidenceReason {
   return Boolean(evidenceRetentionClass(reason));
 }
 
-function safeSegment(value, fallback = "unknown") {
+function safeSegment(value: unknown, fallback = "unknown"): string {
   const cleaned = String(value || "")
     .normalize("NFKC")
     .toLowerCase()
@@ -149,7 +197,7 @@ function safeSegment(value, fallback = "unknown") {
   return cleaned || fallback;
 }
 
-function objectKey({ shopKey, retentionClass, capturedAt, eventId }) {
+function objectKey({ shopKey, retentionClass, capturedAt, eventId }: ObjectKeyOptions): string {
   const date = new Date(capturedAt);
   const safeDate = Number.isFinite(date.getTime()) ? date : new Date();
   const year = safeDate.getUTCFullYear();
@@ -158,14 +206,14 @@ function objectKey({ shopKey, retentionClass, capturedAt, eventId }) {
   return `evidence/${retentionClass}/${safeSegment(shopKey)}/${year}/${month}/${day}/${safeSegment(eventId, crypto.randomUUID())}.html`;
 }
 
-function expiresAt(capturedAt, retentionClass) {
+function expiresAt(capturedAt: string, retentionClass: EvidenceRetentionClass): string | null {
   const captured = new Date(capturedAt);
   if (!Number.isFinite(captured.getTime())) return null;
   const days = RETENTION_DAYS[retentionClass];
   return new Date(captured.getTime() + days * 86_400_000).toISOString();
 }
 
-function utcDayBounds(capturedAt) {
+function utcDayBounds(capturedAt: string): { start: string; end: string } {
   const date = new Date(capturedAt);
   const safeDate = Number.isFinite(date.getTime()) ? date : new Date();
   const start = new Date(
@@ -177,13 +225,21 @@ function utcDayBounds(capturedAt) {
   };
 }
 
-async function firstRow(statement) {
-  const result = await statement.all();
-  return result.results?.[0] || {};
+async function firstRow<TRow extends Record<string, unknown>>(
+  statement: EvidenceBoundStatement,
+): Promise<Partial<TRow>> {
+  const result = await statement.all<TRow>();
+  return result.results?.[0] ?? {};
 }
 
-async function findDuplicate(db, shopKey, reason, contentHash, capturedAt) {
-  return firstRow(
+async function findDuplicate(
+  db: EvidenceDatabase,
+  shopKey: string | undefined,
+  reason: EvidenceReason,
+  contentHash: string,
+  capturedAt: string,
+): Promise<Partial<DuplicateEvidenceRow>> {
+  return firstRow<DuplicateEvidenceRow>(
     db
       .prepare(`
         SELECT id, r2_object_key
@@ -197,13 +253,16 @@ async function findDuplicate(db, shopKey, reason, contentHash, capturedAt) {
   );
 }
 
-async function readEvidenceUsage(db, { shopKey, reason, capturedAt, burstWindowMinutes }) {
+async function readEvidenceUsage(
+  db: EvidenceDatabase,
+  { shopKey, reason, capturedAt, burstWindowMinutes }: EvidenceUsageOptions,
+): Promise<EvidenceUsage> {
   const day = utcDayBounds(capturedAt);
   const capturedMs = new Date(capturedAt).getTime();
   const safeCapturedMs = Number.isFinite(capturedMs) ? capturedMs : Date.now();
   const burstStart = new Date(safeCapturedMs - burstWindowMinutes * 60_000).toISOString();
 
-  const daily = await firstRow(
+  const daily = await firstRow<CountRow>(
     db
       .prepare(`
         SELECT COUNT(*) AS object_count, COALESCE(SUM(content_bytes), 0) AS byte_count
@@ -212,7 +271,7 @@ async function readEvidenceUsage(db, { shopKey, reason, capturedAt, burstWindowM
       `)
       .bind(day.start, day.end),
   );
-  const shopDaily = await firstRow(
+  const shopDaily = await firstRow<CountRow>(
     db
       .prepare(`
         SELECT COUNT(*) AS object_count
@@ -221,7 +280,7 @@ async function readEvidenceUsage(db, { shopKey, reason, capturedAt, burstWindowM
       `)
       .bind(shopKey, day.start, day.end),
   );
-  const burst = await firstRow(
+  const burst = await firstRow<CountRow>(
     db
       .prepare(`
         SELECT COUNT(*) AS object_count
@@ -230,7 +289,7 @@ async function readEvidenceUsage(db, { shopKey, reason, capturedAt, burstWindowM
       `)
       .bind(shopKey, reason, burstStart, capturedAt),
   );
-  const storage = await firstRow(
+  const storage = await firstRow<CountRow>(
     db
       .prepare(`
         SELECT COALESCE(SUM(content_bytes), 0) AS byte_count
@@ -249,13 +308,13 @@ async function readEvidenceUsage(db, { shopKey, reason, capturedAt, burstWindowM
   };
 }
 
-function deterministicSample(contentHash, rate) {
+function deterministicSample(contentHash: string, rate: number): boolean {
   if (rate <= 1) return true;
   const prefix = Number.parseInt(contentHash.slice(0, 8), 16);
   return Number.isFinite(prefix) && prefix % rate === 0;
 }
 
-function evidenceSafetySettings(env) {
+function evidenceSafetySettings(env: EvidenceArchiveEnv): EvidenceSafetySettings {
   return {
     dailyMaxObjects: numericSetting(env.EVIDENCE_DAILY_MAX_OBJECTS, DEFAULT_DAILY_MAX_OBJECTS),
     dailyMaxBytes: numericSetting(env.EVIDENCE_DAILY_MAX_BYTES, DEFAULT_DAILY_MAX_BYTES),
@@ -276,14 +335,24 @@ function evidenceSafetySettings(env) {
   };
 }
 
-function quotaSuppressionReason(usage, settings, incomingBytes) {
+function quotaSuppressionReason(
+  usage: EvidenceUsage,
+  settings: EvidenceSafetySettings,
+  incomingBytes: number,
+): Exclude<EvidenceSuppressionReason, "burst_sampled"> | "" {
   if (usage.dailyObjects >= settings.dailyMaxObjects) return "daily_object_cap";
   if (usage.dailyBytes + incomingBytes > settings.dailyMaxBytes) return "daily_byte_cap";
   if (usage.shopDailyObjects >= settings.shopDailyMaxObjects) return "shop_daily_object_cap";
   return "";
 }
 
-function logSuppressed({ shopKey, reason, suppressionReason, usage, settings }) {
+function logSuppressed({
+  shopKey,
+  reason,
+  suppressionReason,
+  usage,
+  settings,
+}: EvidenceLogOptions): void {
   console.warn(
     JSON.stringify({
       event: "evidence_archive_suppressed",
@@ -307,7 +376,7 @@ export async function archiveEvidence({
   contentType = "text/html; charset=utf-8",
   capturedAt = new Date().toISOString(),
   eventId = crypto.randomUUID(),
-} = {}) {
+}: ArchiveEvidenceOptions = {}): Promise<EvidenceArchiveResult> {
   if (!shouldArchiveEvidence(reason) || !html)
     return { status: "skipped", reason: "not_archiveable" };
   if (!env?.DB || !env?.EVIDENCE_BUCKET?.put) {
@@ -328,7 +397,7 @@ export async function archiveEvidence({
     const bounded = boundedHtml(html, maxBytes);
     const contentHash = await sha256Hex(bounded.body);
     const duplicate = await findDuplicate(env.DB, shopKey, reason, contentHash, capturedAt);
-    if (duplicate?.id) {
+    if (duplicate.id && duplicate.r2_object_key) {
       return {
         status: "deduplicated",
         contentHash,
@@ -369,6 +438,7 @@ export async function archiveEvidence({
     }
 
     const retentionClass = evidenceRetentionClass(reason);
+    if (!retentionClass) return { status: "skipped", reason: "not_archiveable" };
     const r2ObjectKey = objectKey({ shopKey, retentionClass, capturedAt, eventId });
     const expiry = expiresAt(capturedAt, retentionClass);
     await env.EVIDENCE_BUCKET.put(r2ObjectKey, bounded.body, {

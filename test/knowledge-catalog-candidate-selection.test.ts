@@ -3,14 +3,19 @@ import assert from "node:assert/strict";
 
 import { listPendingKnowledgeCatalogCandidates } from "../src/db/knowledge-catalog-verification-repository.js";
 import { claimKnowledgeCatalogCatchupReviewRun } from "../src/db/knowledge-catalog-review-repository.js";
+import { asQueryableDatabase } from "./helpers/d1.js";
 
-function queryDb({ results = [], changes = 0, lastRowId = 0 } = {}) {
-  const calls = [];
-  return {
+function queryDb({
+  results = [],
+  changes = 0,
+  lastRowId = 0,
+}: { results?: unknown[]; changes?: number; lastRowId?: number } = {}) {
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
+  return asQueryableDatabase({
     calls,
-    prepare(sql) {
+    prepare(sql: string) {
       return {
-        bind(...params) {
+        bind(...params: unknown[]) {
           calls.push({ sql, params });
           return {
             async all() {
@@ -23,7 +28,7 @@ function queryDb({ results = [], changes = 0, lastRowId = 0 } = {}) {
         },
       };
     },
-  };
+  });
 }
 
 test("pending catalog candidates are limited to manufacturers with source adapters", async () => {

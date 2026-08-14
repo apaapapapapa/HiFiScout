@@ -22,7 +22,7 @@ const EXPANDED_MANUFACTURERS = [
   "focal",
 ];
 
-function mappedFetch(pages, requested = []) {
+function mappedFetch(pages: ReadonlyMap<string, string>, requested: string[] = []): typeof fetch {
   return async (url) => {
     requested.push(String(url));
     const body = pages.get(String(url));
@@ -65,16 +65,24 @@ test("deployment source overrides retain disable and replacement semantics after
     ]),
   };
   const expanded = expandedKnowledgeSourceEnv(env);
-  const registry = JSON.parse(expanded.KNOWLEDGE_CATALOG_SOURCE_REGISTRY_JSON);
-  assert.equal(registry.at(-2).manufacturerId, "stax");
-  assert.equal(registry.at(-2).enabled, false);
-  assert.equal(registry.at(-1).manufacturerId, "focal");
+  const registryJson = expanded.KNOWLEDGE_CATALOG_SOURCE_REGISTRY_JSON;
+  assert.ok(registryJson);
+  const registry: Array<{ manufacturerId: string; enabled?: boolean }> = JSON.parse(registryJson);
+  const staxOverride = registry.at(-2);
+  const focalOverride = registry.at(-1);
+  assert.ok(staxOverride);
+  assert.ok(focalOverride);
+  assert.equal(staxOverride.manufacturerId, "stax");
+  assert.equal(staxOverride.enabled, false);
+  assert.equal(focalOverride.manufacturerId, "focal");
 
   const verifier = createKnowledgeSourceVerifierV4(env, {
     fetchImpl: async () => new Response("not found", { status: 404 }),
   });
   assert.equal(verifier.definitions.has("stax"), false);
-  assert.equal(verifier.definitions.get("focal")[0].baseUrl, "https://official.example/");
+  const focalSources = verifier.definitions.get("focal");
+  assert.ok(focalSources);
+  assert.equal(focalSources[0].baseUrl, "https://official.example/");
 });
 
 test("generic fallback can promote a newly supported manufacturer from its official product index", async () => {
@@ -88,7 +96,7 @@ test("generic fallback can promote a newly supported manufacturer from its offic
       "<html><head><title>SR-X9000 Headphones</title></head><body><h1>SR-X9000 Headphones</h1></body></html>",
     ],
   ]);
-  const requested = [];
+  const requested: string[] = [];
   const verifier = createKnowledgeSourceVerifierV4(
     {},
     { fetchImpl: mappedFetch(pages, requested) },
@@ -116,7 +124,7 @@ test("Marantz SACD10 retailer suffix is verified from the current official CD/SA
       "<html><body><section><h2>SACD 10</h2><p>リファレンスSACDプレーヤー</p></section></body></html>",
     ],
   ]);
-  const requested = [];
+  const requested: string[] = [];
   const verifier = createKnowledgeSourceVerifierV4(
     {},
     { fetchImpl: mappedFetch(pages, requested), fallbackEnabled: false },

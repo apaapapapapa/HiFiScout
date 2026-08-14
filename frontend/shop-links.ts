@@ -8,13 +8,19 @@
     "u-audio": "https://www.u-audio.com/",
   });
 
-  function shopKeyFromElement(element) {
+  type ShopKey = keyof typeof shopListingUrls;
+
+  function isShopKey(value: string): value is ShopKey {
+    return value in shopListingUrls;
+  }
+
+  function shopKeyFromElement(element: Element): string {
     const className = [...element.classList].find((name) => name.startsWith("shop-"));
     return className ? className.slice("shop-".length) : "";
   }
 
-  function decorateManufacturer(card) {
-    const maker = card.querySelector(".maker");
+  function decorateManufacturer(card: Element): void {
+    const maker = card.querySelector<HTMLElement>(".maker");
     if (!maker || maker.querySelector("[data-manufacturer-filter]")) return;
 
     const manufacturer = maker.textContent?.trim() || "";
@@ -30,16 +36,16 @@
     maker.replaceChildren(button);
   }
 
-  function decorateCard(card) {
+  function decorateCard(card: Element): void {
     card.querySelector(".actions .shop-link")?.remove();
     decorateManufacturer(card);
 
-    const shop = card.querySelector(".card-top .shop");
+    const shop = card.querySelector<HTMLElement>(".card-top .shop");
     if (!shop || shop.matches("a")) return;
 
     const shopKey = shopKeyFromElement(shop);
+    if (!isShopKey(shopKey)) return;
     const href = shopListingUrls[shopKey];
-    if (!href) return;
 
     const link = document.createElement("a");
     link.className = `${shop.className} shop-new-arrivals-link`;
@@ -52,20 +58,21 @@
     shop.replaceWith(link);
   }
 
-  function decorateProducts(root = document) {
-    if (root.matches?.(".card")) decorateCard(root);
-    root.querySelectorAll?.(".card").forEach(decorateCard);
+  function decorateProducts(root: Document | Element = document): void {
+    if (root instanceof Element && root.matches(".card")) decorateCard(root);
+    root.querySelectorAll(".card").forEach(decorateCard);
   }
 
   const products = document.getElementById("products");
   if (!products) return;
 
   products.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-manufacturer-filter]");
+    if (!(event.target instanceof Element)) return;
+    const button = event.target.closest<HTMLElement>("[data-manufacturer-filter]");
     if (!button) return;
 
     const manufacturer = button.dataset.manufacturerFilter?.trim();
-    const input = document.getElementById("manufacturer");
+    const input = document.querySelector<HTMLInputElement>("#manufacturer");
     if (!manufacturer || !input) return;
 
     input.value = manufacturer;
@@ -76,7 +83,7 @@
   new MutationObserver((mutations) => {
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
-        if (node.nodeType === Node.ELEMENT_NODE) decorateProducts(node);
+        if (node instanceof Element) decorateProducts(node);
       }
     }
   }).observe(products, { childList: true, subtree: true });

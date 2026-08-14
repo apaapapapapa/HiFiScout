@@ -1,27 +1,33 @@
 import { getCrawlDelayMs, isPathAllowed } from "./robots.js";
+import type { RobotsPolicy } from "./types.js";
 
 const MAX_REDIRECTS = 5;
 
-function sleep(ms) {
+interface RobotsRespectingFetchOptions {
+  userAgent?: string;
+  minimumDelayMs?: number;
+}
+
+function sleep(ms: number): Promise<void> {
   return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
 }
 
-function boundedDelay(value, fallback = 500) {
+function boundedDelay(value: unknown, fallback = 500): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.min(30_000, Math.max(0, parsed)) : fallback;
 }
 
-function requestUrl(input) {
+function requestUrl(input: RequestInfo | URL): string {
   return input instanceof Request ? input.url : String(input);
 }
 
-function mergeUserAgent(init = {}, userAgent) {
+function mergeUserAgent(init: RequestInit = {}, userAgent: string): RequestInit {
   const headers = new Headers(init.headers || {});
   if (!headers.has("user-agent")) headers.set("user-agent", userAgent);
   return { ...init, headers, redirect: "manual" };
 }
 
-function redirectLocation(response, currentUrl) {
+function redirectLocation(response: Response, currentUrl: string): string {
   if (response.status < 300 || response.status >= 400) return "";
   const location = response.headers.get("location");
   if (!location) return "";
@@ -33,15 +39,16 @@ function redirectLocation(response, currentUrl) {
 }
 
 export function createRobotsRespectingFetch(
-  fetchImpl = globalThis.fetch,
-  { userAgent = "HiFiScoutBot/0.1", minimumDelayMs = 500 } = {},
-) {
-  const policyByOrigin = new Map();
-  const lastRequestAtByOrigin = new Map();
+  fetchImpl: typeof fetch = globalThis.fetch,
+  { userAgent = "HiFiScoutBot/0.1", minimumDelayMs = 500 }: RobotsRespectingFetchOptions = {},
+): typeof fetch {
+  const policyByOrigin = new Map<string, Promise<RobotsPolicy>>();
+  const lastRequestAtByOrigin = new Map<string, number>();
   const minDelay = boundedDelay(minimumDelayMs);
 
-  async function loadPolicy(origin) {
-    if (policyByOrigin.has(origin)) return policyByOrigin.get(origin);
+  async function loadPolicy(origin: string): Promise<RobotsPolicy> {
+    const cached = policyByOrigin.get(origin);
+    if (cached) return cached;
     const promise = (async () => {
       const robotsUrl = new URL("/robots.txt", origin).toString();
       const response = await fetchImpl(robotsUrl, {
@@ -69,7 +76,7 @@ export function createRobotsRespectingFetch(
     }
   }
 
-  async function waitForOrigin(origin, robotsText) {
+  async function waitForOrigin(origin: string, robotsText: string | null): Promise<void> {
     const delayMs = Math.max(minDelay, getCrawlDelayMs(robotsText, userAgent));
     const lastRequestAt = lastRequestAtByOrigin.get(origin) || 0;
     const remaining = delayMs - (Date.now() - lastRequestAt);
@@ -77,7 +84,10 @@ export function createRobotsRespectingFetch(
     lastRequestAtByOrigin.set(origin, Date.now());
   }
 
-  return async function robotsRespectingFetch(input, init = {}) {
+  return async function robotsRespectingFetch(
+    input: RequestInfo | URL,
+    init: RequestInit = {},
+  ): Promise<Response> {
     const initialUrl = requestUrl(input);
     const initial = new URL(initialUrl);
     if (!["http:", "https:"].includes(initial.protocol))

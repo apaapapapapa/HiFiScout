@@ -1,8 +1,17 @@
-import type { CategoryDefinition } from "./types.js";
+import type {
+  CategoryDefinition,
+  CategoryFacet,
+  CategoryId,
+  CategoryMapping,
+  CategoryNormalizationSource,
+  ClassifiableCategoryId,
+  NormalizeCategoryOptions,
+  NormalizeCategoryResult,
+} from "./types.js";
 import { inferExplicitCategoryIds } from "./category-rules.js";
 
 /** Taxonomy rows as authored; `selectable` is derived from `filterable` below. */
-const CATEGORY_SOURCE: readonly Omit<CategoryDefinition, "selectable">[] = [
+const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
   {
     id: "amplifier",
     name: "アンプ",
@@ -400,16 +409,22 @@ const CATEGORY_SOURCE: readonly Omit<CategoryDefinition, "selectable">[] = [
       "チャンネルデバイダー",
     ],
   },
-].map((category) => Object.freeze({ ...category, selectable: category.filterable }));
+];
+
+const CATEGORY_SOURCE: readonly CategoryDefinition[] = AUTHORED_CATEGORIES.map((category) =>
+  Object.freeze({ ...category, selectable: category.filterable }),
+);
 
 export const CATEGORIES = Object.freeze(CATEGORY_SOURCE);
-const CATEGORY_BY_ID = new Map(CATEGORIES.map((category) => [category.id, category]));
-const LEGACY_ALIASES = Object.freeze({
+const CATEGORY_BY_ID: ReadonlyMap<string, CategoryDefinition> = new Map(
+  CATEGORIES.map((category) => [category.id, category]),
+);
+const LEGACY_ALIASES: Readonly<Record<string, ClassifiableCategoryId>> = Object.freeze({
   network_transport: "network_player",
   accessory: "other_accessory",
 });
 
-function normalizeLookup(value = "") {
+function normalizeLookup(value: string = ""): string {
   return String(value)
     .normalize("NFKC")
     .trim()
@@ -417,7 +432,10 @@ function normalizeLookup(value = "") {
     .replace(/[\s・･_\-/()（）]+/g, "");
 }
 
-function categoryIdFromAlias(value = "", { classifiableOnly = false } = {}) {
+function categoryIdFromAlias(
+  value: string = "",
+  { classifiableOnly = false }: { classifiableOnly?: boolean } = {},
+): CategoryId | null {
   const legacy = LEGACY_ALIASES[value];
   if (legacy) return legacy;
   const needle = normalizeLookup(value);
@@ -431,42 +449,43 @@ function categoryIdFromAlias(value = "", { classifiableOnly = false } = {}) {
   return null;
 }
 
-function mappingValue(mapping, rawCategory) {
+function mappingValue(mapping: CategoryMapping | undefined, rawCategory: string): string | null {
   if (!mapping || !rawCategory) return null;
   const needle = normalizeLookup(rawCategory);
   for (const [raw, mapped] of Object.entries(mapping)) {
-    if (normalizeLookup(raw) === needle) return Array.isArray(mapped) ? mapped[0] : mapped;
+    if (normalizeLookup(raw) === needle)
+      return typeof mapped === "string" ? mapped : (mapped[0] ?? null);
   }
   return null;
 }
 
-function inferLeaf(value = "") {
+function inferLeaf(value: string = ""): ClassifiableCategoryId | null {
   return inferExplicitCategoryIds(value)[0] || null;
 }
 
-export function getCategory(categoryId) {
+export function getCategory(categoryId: string): CategoryDefinition | null {
   return CATEGORY_BY_ID.get(LEGACY_ALIASES[categoryId] || categoryId) || null;
 }
 
-export function categoryIdForFilter(value = "") {
+export function categoryIdForFilter(value: string = ""): CategoryId | null {
   const canonical = LEGACY_ALIASES[value] || value;
   if (CATEGORY_BY_ID.get(canonical)?.filterable) return canonical;
   return categoryIdFromAlias(value);
 }
 
-export function categoryIdForClassification(value = "") {
+export function categoryIdForClassification(value: string = ""): CategoryId | null {
   const canonical = LEGACY_ALIASES[value] || value;
   if (CATEGORY_BY_ID.get(canonical)?.classifiable) return canonical;
   return categoryIdFromAlias(value, { classifiableOnly: true });
 }
 
-export function categoryClosureIds(categoryId) {
+export function categoryClosureIds(categoryId: string): CategoryId[] {
   const category = getCategory(categoryId);
   if (!category?.classifiable) return [];
   return category.parentId ? [category.id, category.parentId] : [category.id];
 }
 
-export function categoryFacet(categoryId) {
+export function categoryFacet(categoryId: string): CategoryFacet | null {
   const category = getCategory(categoryId);
   if (!category?.filterable) return null;
   const parent = category.parentId ? getCategory(category.parentId) : null;
@@ -481,7 +500,7 @@ export function categoryFacet(categoryId) {
   };
 }
 
-export function categorySearchAliases(categoryIds = []) {
+export function categorySearchAliases(categoryIds: readonly string[] = []): string {
   return [...new Set(categoryIds)]
     .flatMap((id) => {
       const category = getCategory(id);
@@ -495,10 +514,11 @@ export function normalizeCategory({
   title = "",
   hintedCategory = "",
   categoryMapping = {},
-} = {}) {
-  const mapped = categoryIdForClassification(mappingValue(categoryMapping, rawCategory));
+}: NormalizeCategoryOptions = {}): NormalizeCategoryResult {
+  const mappedValue = mappingValue(categoryMapping, rawCategory);
+  const mapped = mappedValue ? categoryIdForClassification(mappedValue) : null;
   let primaryCategoryId = mapped;
-  let source = mapped ? "shop_mapping" : "unclassified";
+  let source: CategoryNormalizationSource = mapped ? "shop_mapping" : "unclassified";
   if (!primaryCategoryId && rawCategory) {
     primaryCategoryId = categoryIdForClassification(rawCategory) || inferLeaf(rawCategory);
     if (primaryCategoryId)
@@ -513,7 +533,8 @@ export function normalizeCategory({
     if (primaryCategoryId) source = "title_inference";
   }
   primaryCategoryId ||= "other";
-  const primary = getCategory(primaryCategoryId) || getCategory("other");
+  const primary = getCategory(primaryCategoryId) ?? getCategory("other");
+  if (!primary) throw new Error("Missing required fallback category: other");
   return {
     primaryCategoryId: primary.id,
     categoryIds: [primary.id],
@@ -524,6 +545,6 @@ export function normalizeCategory({
   };
 }
 
-export function canonicalCategoryDefinitions() {
+export function canonicalCategoryDefinitions(): readonly CategoryDefinition[] {
   return CATEGORIES;
 }

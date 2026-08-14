@@ -6,13 +6,34 @@ import {
   enhancedKnowledgeSourceDefinitions,
   verifyOfficialProductPageHtmlV2,
 } from "./knowledge-source-verifier-v2.js";
+import type { CrawlerEnv } from "../crawler/types.js";
+import { errorMessage } from "../types.js";
+import type {
+  FailedKnowledgeSource,
+  FetchTextResult,
+  KnowledgeSourceCandidate,
+  KnowledgeSourceVerification,
+  KnowledgeSourceVerifier,
+  KnowledgeSourceVerifierOptions,
+} from "./types.js";
 
 export const KNOWLEDGE_CATALOG_VERIFIER_VERSION = 3;
 
 const DEFAULT_TIMEOUT_MS = 8_000;
 const DEFAULT_MAX_RESPONSE_BYTES = 1_500_000;
 
-const OFFICIAL_INDEXES = Object.freeze({
+interface OfficialIndex {
+  url: string;
+  sourceType?: string;
+  categoryId?: string;
+}
+
+interface BlockEntry {
+  tag: string;
+  text: string;
+}
+
+const OFFICIAL_INDEXES: Readonly<Record<string, readonly OfficialIndex[]>> = Object.freeze({
   accuphase: [
     { url: "https://www.accuphase.com/history", sourceType: "manufacturer_archive" },
     { url: "https://www.accuphase.com/cat/index.html", sourceType: "manufacturer_official" },
@@ -73,11 +94,11 @@ const OFFICIAL_INDEXES = Object.freeze({
   ],
 });
 
-function clean(value = "") {
+function clean(value: unknown = ""): string {
   return String(value).normalize("NFKC").replace(/\s+/g, " ").trim();
 }
 
-function decodeHtml(value = "") {
+function decodeHtml(value: unknown = ""): string {
   return String(value).replace(/&(?:amp|quot|apos|lt|gt|#\d+|#x[0-9a-f]+);/gi, (entity: string) => {
     const normalized = entity.toLowerCase();
     const namedEntities: Record<string, string> = {
@@ -87,7 +108,7 @@ function decodeHtml(value = "") {
       "&lt;": "<",
       "&gt;": ">",
     };
-    if (normalized in namedEntities) return namedEntities[normalized];
+    if (normalized in namedEntities) return namedEntities[normalized] ?? entity;
 
     const hexadecimal = normalized.startsWith("&#x");
     const codePoint = Number.parseInt(
@@ -100,11 +121,11 @@ function decodeHtml(value = "") {
   });
 }
 
-function stripTags(value = "") {
+function stripTags(value: unknown = ""): string {
   return clean(decodeHtml(String(value).replace(/<[^>]+>/g, " ")));
 }
 
-function escapeHtml(value = "") {
+function escapeHtml(value: unknown = ""): string {
   return String(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -112,12 +133,12 @@ function escapeHtml(value = "") {
     .replaceAll('"', "&quot;");
 }
 
-function boundedNumber(value, fallback, min, max) {
+function boundedNumber(value: unknown, fallback: number, min: number, max: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback;
 }
 
-function lookupAliases(candidate = {}) {
+function lookupAliases(candidate: KnowledgeSourceCandidate = {}): string[] {
   const variants = new Set(candidateModelVariants(candidate));
   for (const model of [candidate.observedModel, candidate.model, candidate.normalizedModel]) {
     for (const alias of catalogModelLookupVariants({
@@ -132,7 +153,10 @@ function lookupAliases(candidate = {}) {
     .sort((left, right) => left.length - right.length || left.localeCompare(right));
 }
 
-function aliasCandidate(candidate, alias) {
+function aliasCandidate(
+  candidate: KnowledgeSourceCandidate,
+  alias: string,
+): KnowledgeSourceCandidate {
   return {
     ...candidate,
     observedModel: alias,
@@ -141,12 +165,12 @@ function aliasCandidate(candidate, alias) {
   };
 }
 
-function textMatchesAlias(text, alias) {
+function textMatchesAlias(text: unknown, alias: string): boolean {
   return containsFlexibleCatalogModelIdentity(text, alias);
 }
 
-function blockEntries(html = "") {
-  const entries = [];
+function blockEntries(html: string = ""): BlockEntry[] {
+  const entries: BlockEntry[] = [];
   const pattern = /<(h[1-6]|tr|li|p|dt|dd|article|section)\b[^>]*>([\s\S]*?)<\/\1>/gi;
   for (const match of String(html).matchAll(pattern)) {
     const text = stripTags(match[2]);
@@ -156,7 +180,7 @@ function blockEntries(html = "") {
   return entries;
 }
 
-function contextForAlias(html, alias, categoryId = "") {
+function contextForAlias(html: string, alias: string, categoryId = ""): string {
   const entries = blockEntries(html);
   for (let index = 0; index < entries.length; index += 1) {
     if (!textMatchesAlias(entries[index].text, alias)) continue;
@@ -182,7 +206,7 @@ function contextForAlias(html, alias, categoryId = "") {
   return "";
 }
 
-const CATEGORY_LABELS = Object.freeze({
+const CATEGORY_LABELS: Readonly<Record<string, string>> = Object.freeze({
   av_receiver: "AV Receiver",
   cartridge: "Cartridge",
   cd_sacd_player: "CD/SACD Player",
@@ -192,13 +216,13 @@ const CATEGORY_LABELS = Object.freeze({
   turntable: "Turntable",
 });
 
-function syntheticHtml(alias, context, categoryId = "") {
+function syntheticHtml(alias: string, context: string, categoryId = ""): string {
   const category = CATEGORY_LABELS[categoryId] || "";
   const value = clean([category, alias, context].filter(Boolean).join(" "));
   return `<html><head><title>${escapeHtml(value)}</title></head><body><h1>${escapeHtml(value)}</h1></body></html>`;
 }
 
-async function readLimitedText(response, maxBytes) {
+async function readLimitedText(response: Response, maxBytes: number): Promise<string> {
   if (!response.body?.getReader) return (await response.text()).slice(0, maxBytes);
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -222,7 +246,11 @@ async function readLimitedText(response, maxBytes) {
   return text;
 }
 
-async function fetchText(fetchImpl, url, { timeoutMs, maxBytes, userAgent }) {
+async function fetchText(
+  fetchImpl: typeof fetch,
+  url: string,
+  { timeoutMs, maxBytes, userAgent }: { timeoutMs: number; maxBytes: number; userAgent: string },
+): Promise<FetchTextResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -246,14 +274,15 @@ async function fetchText(fetchImpl, url, { timeoutMs, maxBytes, userAgent }) {
       status: 0,
       url,
       text: "",
-      error: error?.name === "AbortError" ? "timeout" : error?.message || String(error),
+      error:
+        error instanceof Error && error.name === "AbortError" ? "timeout" : errorMessage(error),
     };
   } finally {
     clearTimeout(timeout);
   }
 }
 
-function directOfficialUrls(candidate, alias) {
+function directOfficialUrls(candidate: KnowledgeSourceCandidate, alias: string): string[] {
   const manufacturerId = String(candidate?.manufacturerId || "").toLowerCase();
   const normalized = clean(alias).toLowerCase();
   if (!normalized) return [];
@@ -277,7 +306,10 @@ function directOfficialUrls(candidate, alias) {
   return [];
 }
 
-function verifiedForOriginalCandidate(result, candidate) {
+function verifiedForOriginalCandidate(
+  result: KnowledgeSourceVerification,
+  candidate: KnowledgeSourceCandidate,
+): KnowledgeSourceVerification {
   if (result?.status !== "verified") return result;
   return {
     ...result,
@@ -287,11 +319,11 @@ function verifiedForOriginalCandidate(result, candidate) {
 }
 
 export function createKnowledgeSourceVerifierV3(
-  env = {},
-  { fetchImpl = globalThis.fetch, fallbackEnabled = true } = {},
-) {
+  env: CrawlerEnv = {},
+  { fetchImpl = globalThis.fetch, fallbackEnabled = true }: KnowledgeSourceVerifierOptions = {},
+): KnowledgeSourceVerifier {
   const definitions = enhancedKnowledgeSourceDefinitions(env);
-  const pageCache = new Map();
+  const pageCache = new Map<string, Promise<FetchTextResult>>();
   const timeoutMs = boundedNumber(
     env.KNOWLEDGE_CATALOG_SOURCE_TIMEOUT_MS,
     DEFAULT_TIMEOUT_MS,
@@ -308,30 +340,32 @@ export function createKnowledgeSourceVerifierV3(
   const fallback = createKnowledgeSourceVerifierV2(
     {
       ...env,
-      KNOWLEDGE_CATALOG_SOURCE_MAX_CATALOG_PAGES: 3,
-      KNOWLEDGE_CATALOG_SOURCE_MAX_SITEMAPS: 2,
-      KNOWLEDGE_CATALOG_SOURCE_MAX_PRODUCT_PAGES: 2,
-      KNOWLEDGE_CATALOG_SOURCE_MAX_URLS: 3_000,
+      KNOWLEDGE_CATALOG_SOURCE_MAX_CATALOG_PAGES: "3",
+      KNOWLEDGE_CATALOG_SOURCE_MAX_SITEMAPS: "2",
+      KNOWLEDGE_CATALOG_SOURCE_MAX_PRODUCT_PAGES: "2",
+      KNOWLEDGE_CATALOG_SOURCE_MAX_URLS: "3000",
     },
     { fetchImpl },
   );
 
-  async function cachedPage(url) {
+  async function cachedPage(url: string): Promise<FetchTextResult> {
     if (!pageCache.has(url)) {
       pageCache.set(url, fetchText(fetchImpl, url, { timeoutMs, maxBytes, userAgent }));
     }
-    return pageCache.get(url);
+    const page = pageCache.get(url);
+    if (!page) throw new Error(`Failed to cache official page: ${url}`);
+    return page;
   }
 
   async function verifyHtmlForAlias(
-    candidate,
-    alias,
-    html,
-    sourceUrl,
-    sourceType,
-    httpStatus,
+    candidate: KnowledgeSourceCandidate,
+    alias: string,
+    html: string,
+    sourceUrl: string,
+    sourceType: string,
+    httpStatus: number,
     categoryId = "",
-  ) {
+  ): Promise<KnowledgeSourceVerification | null> {
     const context = contextForAlias(html, alias, categoryId);
     if (!context) return null;
     const result = await verifyOfficialProductPageHtmlV2({
@@ -344,7 +378,9 @@ export function createKnowledgeSourceVerifierV3(
     return verifiedForOriginalCandidate(result, candidate);
   }
 
-  async function verifyCandidate(candidate) {
+  async function verifyCandidate(
+    candidate: KnowledgeSourceCandidate,
+  ): Promise<KnowledgeSourceVerification> {
     const manufacturerId = String(candidate?.manufacturerId || "").toLowerCase();
     if (!definitions.has(manufacturerId)) {
       return {
@@ -356,7 +392,7 @@ export function createKnowledgeSourceVerifierV3(
       };
     }
     const aliases = lookupAliases(candidate);
-    let bestFailure = {
+    let bestFailure: FailedKnowledgeSource = {
       status: "not_found",
       sourceType: "manufacturer_official",
       sourceUrl: "",
@@ -408,7 +444,9 @@ export function createKnowledgeSourceVerifierV3(
     return bestFailure;
   }
 
-  async function verifyStoredSource(product) {
+  async function verifyStoredSource(
+    product: KnowledgeSourceCandidate,
+  ): Promise<KnowledgeSourceVerification> {
     if (!product?.sourceUrl) return fallback.verifyStoredSource(product);
     const page = await cachedPage(product.sourceUrl);
     if (!page.ok) {

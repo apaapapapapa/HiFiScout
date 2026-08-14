@@ -91,8 +91,8 @@ test("generic official-site adapter discovers a same-origin product link and ver
     ["https://example.com/robots.txt", "User-agent: *"],
     ["https://example.com/sitemap.xml", "<urlset></urlset>"],
   ]);
-  const requested = [];
-  const fetchImpl = async (url) => {
+  const requested: string[] = [];
+  const fetchImpl: typeof fetch = async (url) => {
     requested.push(String(url));
     const body = pages.get(String(url));
     return new Response(body || "not found", { status: body ? 200 : 404 });
@@ -133,5 +133,7 @@ test("source registry can disable a built-in manufacturer and add an external ad
     ]),
   });
   assert.equal(definitions.has("luxman"), false);
-  assert.equal(definitions.get("custom-brand")[0].baseUrl, "https://custom.example/");
+  const custom = definitions.get("custom-brand");
+  assert.ok(custom);
+  assert.equal(custom[0].baseUrl, "https://custom.example/");
 });

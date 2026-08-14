@@ -1,6 +1,8 @@
 import { cleanText, inferCategory, parseYen } from "../normalize.js";
+import type { ShopParsedProduct } from "../../catalog/types.js";
+import type { ShopAdapter } from "../types.js";
 
-const CATEGORY_BY_SLUG = {
+const CATEGORY_BY_SLUG: Readonly<Record<string, string>> = {
   "speaker-system": "スピーカー",
   "speaker-accessories": "スピーカーアクセサリー",
   "control-amplifiers": "プリアンプ",
@@ -32,7 +34,7 @@ const FORMUSIC_CATEGORY_MAPPING = Object.freeze({
 const EXCLUDED_CATEGORY_SLUGS = new Set(["music-book"]);
 const CURRENT_KINDS = new Set(["中古", "展示現品", "委託品"]);
 
-function absoluteUrl(href) {
+function absoluteUrl(href: string): string | null {
   try {
     const url = new URL(href, "https://shop.formusic.jp");
     return url.hostname === "shop.formusic.jp" ? url.toString() : null;
@@ -41,21 +43,21 @@ function absoluteUrl(href) {
   }
 }
 
-function cellsFromRow(rowHtml) {
+function cellsFromRow(rowHtml: string): string[] {
   return [...rowHtml.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map((match) => match[1]);
 }
 
-function firstLine(html = "") {
+function firstLine(html: string = ""): string {
   return cleanText(String(html).split(/<br\s*\/?>/i)[0]);
 }
 
-function altTexts(html = "") {
+function altTexts(html: string = ""): string[] {
   return [...String(html).matchAll(/\balt\s*=\s*["']([^"']+)["']/gi)].map((match) =>
     cleanText(match[1]),
   );
 }
 
-function categoryFor(sourceUrl, title) {
+function categoryFor(sourceUrl: string, title: string): { slug: string; category: string } {
   try {
     const slug = new URL(sourceUrl).pathname.split("/").filter(Boolean)[0] || "";
     return { slug, category: CATEGORY_BY_SLUG[slug] || inferCategory(title) };
@@ -64,8 +66,8 @@ function categoryFor(sourceUrl, title) {
   }
 }
 
-export function parseForMusicListing(html) {
-  const products = [];
+export function parseForMusicListing(html: string): ShopParsedProduct[] {
+  const products: ShopParsedProduct[] = [];
   const rowRe = /<tr\b[^>]*id=["']post-(\d+)["'][^>]*>([\s\S]*?)<\/tr>/gi;
 
   for (const rowMatch of html.matchAll(rowRe)) {
@@ -148,4 +150,4 @@ export const forMusicAdapter = {
   parse(html) {
     return parseForMusicListing(html);
   },
-};
+} satisfies ShopAdapter<string>;

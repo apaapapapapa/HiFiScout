@@ -1,9 +1,30 @@
 import { buildModelSearchAliases, normalizeIdentityModel } from "../catalog/product-identity.js";
 import { manufacturerSearchAliases } from "../catalog/manufacturers.js";
+import type {
+  ProductRow,
+  ProductSearchProjection,
+  ProductSearchProjectionInput,
+  ProductSearchProjectionRow,
+  ProjectionSyncResult,
+  QueryableDatabase,
+} from "./types.js";
 
 const CHUNK_SIZE = 50;
 
-function uniqueText(values = []) {
+type ProjectionSourceRow = Pick<
+  ProductRow,
+  | "id"
+  | "manufacturer_id"
+  | "manufacturer"
+  | "raw_manufacturer"
+  | "model"
+  | "title"
+  | "category"
+  | "raw_category"
+  | "search_aliases"
+>;
+
+function uniqueText(values: readonly unknown[] = []): string[] {
   return [
     ...new Set(
       values
@@ -17,7 +38,9 @@ function uniqueText(values = []) {
   ];
 }
 
-export function buildProductSearchProjection(product = {}) {
+export function buildProductSearchProjection(
+  product: ProductSearchProjectionInput = {},
+): ProductSearchProjection {
   const manufacturerId = product.manufacturer_id || product.manufacturerId || "";
   const model = product.model || "";
   return {
@@ -43,8 +66,11 @@ export function buildProductSearchProjection(product = {}) {
   };
 }
 
-function sameProjection(row, projection) {
-  return (
+function sameProjection(
+  row: ProductSearchProjectionRow | undefined,
+  projection: ProductSearchProjection,
+): boolean {
+  return Boolean(
     row &&
     row.manufacturer_id === projection.manufacturerId &&
     row.source_model === projection.sourceModel &&
@@ -52,12 +78,16 @@ function sameProjection(row, projection) {
     row.manufacturer_terms === projection.manufacturerTerms &&
     row.model_terms === projection.modelTerms &&
     row.title === projection.title &&
-    row.category_terms === projection.categoryTerms
+    row.category_terms === projection.categoryTerms,
   );
 }
 
-async function loadRowsForSources(db, shopKey, sourceIds) {
-  const rows = [];
+async function loadRowsForSources(
+  db: QueryableDatabase,
+  shopKey: string,
+  sourceIds: readonly string[],
+): Promise<ProjectionSourceRow[]> {
+  const rows: ProjectionSourceRow[] = [];
   const ids = [...new Set(sourceIds.filter(Boolean))];
   for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
     const chunk = ids.slice(i, i + CHUNK_SIZE);
@@ -71,14 +101,17 @@ async function loadRowsForSources(db, shopKey, sourceIds) {
         WHERE shop_key = ? AND source_id IN (${placeholders})
       `)
       .bind(shopKey, ...chunk)
-      .all();
+      .all<ProjectionSourceRow>();
     rows.push(...(result.results || []));
   }
   return rows;
 }
 
-async function loadExistingProjections(db, productIds) {
-  const rows = [];
+async function loadExistingProjections(
+  db: QueryableDatabase,
+  productIds: readonly number[],
+): Promise<Map<number, ProductSearchProjectionRow>> {
+  const rows: ProductSearchProjectionRow[] = [];
   for (let i = 0; i < productIds.length; i += CHUNK_SIZE) {
     const chunk = productIds.slice(i, i + CHUNK_SIZE);
     if (!chunk.length) continue;
@@ -90,13 +123,17 @@ async function loadExistingProjections(db, productIds) {
         WHERE product_id IN (${placeholders})
       `)
       .bind(...chunk)
-      .all();
+      .all<ProductSearchProjectionRow>();
     rows.push(...(result.results || []));
   }
   return new Map(rows.map((row) => [Number(row.product_id), row]));
 }
 
-export async function syncProductSearchProjections(db, shopKey, sourceIds = []) {
+export async function syncProductSearchProjections(
+  db: QueryableDatabase,
+  shopKey: string,
+  sourceIds: readonly string[] = [],
+): Promise<ProjectionSyncResult> {
   const rows = await loadRowsForSources(db, shopKey, sourceIds);
   if (!rows.length) return { checkedCount: 0, changedCount: 0 };
 
@@ -105,7 +142,7 @@ export async function syncProductSearchProjections(db, shopKey, sourceIds = []) 
     db,
     projections.map((projection) => projection.productId),
   );
-  const statements = [];
+  const statements: D1PreparedStatement[] = [];
   for (const projection of projections) {
     if (sameProjection(existing.get(projection.productId), projection)) continue;
     statements.push(

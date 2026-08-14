@@ -5,13 +5,16 @@ import {
   isAudioUnionUsedDetailUrl,
   recheckAudioUnionInventory,
 } from "../src/crawler/inventory-recheck.js";
+import type { CrawlerEnv } from "../src/crawler/types.js";
+import type { InventoryRecheckCandidateRow, QueryableDatabase } from "../src/db/types.js";
+import { asQueryableDatabase } from "./helpers/d1.js";
 
 const NOW = new Date("2026-08-11T10:00:00.000Z");
 const DETAIL_URL = "https://www.audiounion.jp/ct/detail/used/223257/";
 
-function env(overrides = {}) {
+function env(overrides: Partial<CrawlerEnv> = {}) {
   return {
-    DB: {},
+    DB: asQueryableDatabase({}),
     CRAWL_RELAY_URL: "https://relay.example/",
     CRAWL_RELAY_TOKEN: "test-relay-token",
     CRAWLER_USER_AGENT: "HiFiScoutBot/0.1",
@@ -24,7 +27,9 @@ function env(overrides = {}) {
   };
 }
 
-function candidate(overrides = {}) {
+function candidate(
+  overrides: Partial<InventoryRecheckCandidateRow> = {},
+): InventoryRecheckCandidateRow {
   return {
     id: 7,
     source_id: "223257",
@@ -37,31 +42,53 @@ function candidate(overrides = {}) {
   };
 }
 
-function fakeRepository(selected = candidate()) {
-  const calls = [];
+function fakeRepository(selected: InventoryRecheckCandidateRow | null = candidate()) {
+  const calls: unknown[][] = [];
   const repository = {
     calls,
-    async selectInventoryRecheckCandidate(_db, shopKey, options) {
+    async selectInventoryRecheckCandidate(
+      _db: QueryableDatabase,
+      shopKey: string,
+      options: { staleBefore: string; retryBefore: string },
+    ) {
       calls.push(["select", shopKey, options]);
       return selected;
     },
-    async markInventoryCheckAttempt(_db, ...args) {
+    async markInventoryCheckAttempt(
+      _db: QueryableDatabase,
+      productId: number,
+      attemptedAt: string,
+    ) {
+      const args = [productId, attemptedAt];
       calls.push(["attempt", ...args]);
     },
-    async markInventoryAvailable(_db, ...args) {
+    async markInventoryAvailable(_db: QueryableDatabase, productId: number, checkedAt: string) {
+      const args = [productId, checkedAt];
       calls.push(["available", ...args]);
     },
-    async markInventoryAmbiguous(_db, ...args) {
+    async markInventoryAmbiguous(_db: QueryableDatabase, productId: number, checkedAt: string) {
+      const args = [productId, checkedAt];
       calls.push(["ambiguous", ...args]);
     },
-    async recordInventoryUnavailable(_db, ...args) {
+    async recordInventoryUnavailable(
+      _db: QueryableDatabase,
+      productId: number,
+      checkedAt: string,
+      failureCount: number,
+      deactivate: boolean,
+    ) {
+      const args = [productId, checkedAt, failureCount, deactivate];
       calls.push(["unavailable", ...args]);
     },
   };
   return repository;
 }
 
-function upstreamResponse(body, status = 200, contentType = "text/html; charset=utf-8") {
+function upstreamResponse(
+  body: BodyInit,
+  status = 200,
+  contentType = "text/html; charset=utf-8",
+): Response {
   return new Response(body, {
     status,
     headers: {

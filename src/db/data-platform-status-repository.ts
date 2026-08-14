@@ -1,9 +1,26 @@
-function firstRow(result) {
+import type { QueryableDatabase } from "./types.js";
+
+interface DataPlatformStatusRow extends Record<string, unknown> {
+  product_count?: number | null;
+  active_product_count?: number | null;
+  price_history_count?: number | null;
+  knowledge_catalog_count?: number | null;
+  verified_knowledge_catalog_count?: number | null;
+  identity_resolution_count?: number | null;
+  identity_matched_count?: number | null;
+  identity_unresolved_count?: number | null;
+  identity_veto_count?: number | null;
+  evidence_metadata_count?: number | null;
+  evidence_estimated_bytes?: number | null;
+  crawl_runs_24h?: number | null;
+}
+
+function firstRow(result: D1Result<DataPlatformStatusRow> | undefined): DataPlatformStatusRow {
   return result?.results?.[0] || {};
 }
 
-export async function dataPlatformStatus(db) {
-  const results = await db.batch([
+export async function dataPlatformStatus(db: QueryableDatabase) {
+  const results = await db.batch<DataPlatformStatusRow>([
     db.prepare(`
       SELECT COUNT(*) AS product_count,
              SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) AS active_product_count
@@ -41,7 +58,7 @@ export async function dataPlatformStatus(db) {
   const identity = firstRow(results[3]);
   const evidence = firstRow(results[4]);
   const crawl = firstRow(results[5]);
-  const number = (value) => Number(value || 0);
+  const number = (value: unknown): number => Number(value || 0);
 
   return {
     checkedAt: new Date().toISOString(),

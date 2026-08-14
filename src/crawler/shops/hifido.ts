@@ -1,4 +1,12 @@
 import { cleanText, inferCategory, inferStockStatus, parseYen } from "../normalize.js";
+import type { ShopParsedProduct } from "../../catalog/types.js";
+import type { CrawlerEnv, PageUrlsContext, ShopAdapter } from "../types.js";
+
+interface HifidoProductLink {
+  href: string;
+  sourceId: string;
+  title: string;
+}
 
 const PRODUCT_ID_RE = /\/(\d{2}-\d{5}-\d{5}-\d{2})\.html/i;
 const PRODUCT_LINK_RE =
@@ -35,14 +43,14 @@ const HIFIDO_CATEGORY_MAPPING = Object.freeze({
   その他オーディオ機器: "other",
 });
 
-function canonicalManufacturer(value = "") {
+function canonicalManufacturer(value = ""): string {
   const text = cleanText(value);
   const japaneseIndex = text.search(/[ぁ-んァ-ヶ一-龯]/);
   const latin = japaneseIndex > 0 ? text.slice(0, japaneseIndex).trim() : "";
   return latin || text;
 }
 
-function absoluteUrl(href) {
+function absoluteUrl(href: string): string | null {
   try {
     return new URL(href, "https://www.hifido.co.jp").toString();
   } catch {
@@ -50,7 +58,7 @@ function absoluteUrl(href) {
   }
 }
 
-function htmlToText(html) {
+function htmlToText(html: string): string {
   return cleanText(
     html
       .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, " ")
@@ -60,19 +68,19 @@ function htmlToText(html) {
   );
 }
 
-function attr(attrs, name) {
+function attr(attrs: string, name: string): string {
   return attrs.match(new RegExp(`\\b${name}\\s*=\\s*(["'])(.*?)\\1`, "i"))?.[2] || "";
 }
 
-function listItemBlocks(html) {
+function listItemBlocks(html: string): string[] {
   const starts = [...html.matchAll(DIV_CLASS_RE)]
     .filter((match) => match[1].split(/\s+/).includes("list-item"))
     .map((match) => match.index ?? 0);
   return starts.map((start, index) => html.slice(start, starts[index + 1] ?? html.length));
 }
 
-function productLinkFromBlock(block) {
-  let fallback = null;
+function productLinkFromBlock(block: string): HifidoProductLink | null {
+  let fallback: HifidoProductLink | null = null;
   for (const match of block.matchAll(ANCHOR_RE)) {
     const href = attr(match[1], "href");
     const sourceId = href.match(PRODUCT_ID_RE)?.[1];
@@ -84,7 +92,7 @@ function productLinkFromBlock(block) {
   return fallback;
 }
 
-function sourcePublishedAt(text) {
+function sourcePublishedAt(text: string): string | null {
   const match = text.match(/(20\d{2})-(\d{1,2})-(\d{1,2})\s*入荷/);
   if (!match) return null;
   const year = match[1];
@@ -94,7 +102,7 @@ function sourcePublishedAt(text) {
   return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
 }
 
-function parseProductBlock(block, link) {
+function parseProductBlock(block: string, link: HifidoProductLink): ShopParsedProduct | null {
   const text = htmlToText(block);
   const title = cleanText(link.title);
   const sourceUrl = absoluteUrl(link.href);
@@ -131,21 +139,21 @@ function parseProductBlock(block, link) {
   };
 }
 
-function listingUrl(pageNumber) {
+function listingUrl(pageNumber: number): string {
   const offset = Math.max(0, pageNumber - 1) * PAGE_SIZE;
   return `https://www.hifido.co.jp/?L=50&LNG=J&O=${offset}&OD=0`;
 }
 
-function positiveInt(value, fallback) {
+function positiveInt(value: unknown, fallback: number): number {
   const parsed = Number.parseInt(String(value ?? ""), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 export function hifidoRecheckPage(
-  maxRecentPages,
-  env = {},
-  { now = new Date(), intervalMinutes = 30 } = {},
-) {
+  maxRecentPages: number,
+  env: CrawlerEnv = {},
+  { now = new Date(), intervalMinutes = 30 }: PageUrlsContext = {},
+): number | null {
   const maxPage = positiveInt(env.HIFIDO_RECHECK_MAX_PAGE, DEFAULT_RECHECK_MAX_PAGE);
   if (maxPage <= maxRecentPages) return null;
   const slots = maxPage - maxRecentPages;
@@ -154,8 +162,8 @@ export function hifidoRecheckPage(
   return maxRecentPages + 1 + (((slot % slots) + slots) % slots);
 }
 
-export function parseHifidoListing(html) {
-  const products = [];
+export function parseHifidoListing(html: string): ShopParsedProduct[] {
+  const products: ShopParsedProduct[] = [];
   const itemBlocks = listItemBlocks(html);
 
   if (itemBlocks.length) {
@@ -194,7 +202,7 @@ export const hifidoAdapter = {
   guardItemCount: true,
   continueOnEmpty: true,
   extraPageAllowance: 1,
-  *pageUrls(maxPages, env = {}, context = {}) {
+  *pageUrls(maxPages = 1, env = {}, context = {}) {
     for (let page = 1; page <= maxPages; page += 1) yield listingUrl(page);
     const recheckPage = hifidoRecheckPage(maxPages, env, context);
     if (recheckPage != null) yield listingUrl(recheckPage);
@@ -202,4 +210,4 @@ export const hifidoAdapter = {
   parse(html) {
     return parseHifidoListing(html);
   },
-};
+} satisfies ShopAdapter<string>;

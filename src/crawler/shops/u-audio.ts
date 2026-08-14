@@ -1,9 +1,32 @@
 import { cleanText, inferCategory, parseYen } from "../normalize.js";
+import type { ShopParsedProduct, StockStatus } from "../../catalog/types.js";
+import type { CrawlPageObject, ShopAdapter } from "../types.js";
 
 const BASE_URL = "https://www.u-audio.com";
 const PAGE_SIZE = 40;
 
-const CATEGORY_PAGES = Object.freeze([
+interface UAudioCategory {
+  code: string;
+  rawCategory: string;
+  outlet?: boolean;
+}
+
+interface UAudioPage extends CrawlPageObject {
+  page: number;
+  categoryCode: string;
+  rawCategory: string;
+  outlet: boolean;
+  bootstrap?: boolean;
+}
+
+interface ProductAnchorRecord {
+  sourceId: string;
+  sourceUrl: string;
+  index: number;
+  titles: string[];
+}
+
+const CATEGORY_PAGES: readonly UAudioCategory[] = Object.freeze([
   { code: "ct4", rawCategory: "中古スピーカー" },
   { code: "ct5", rawCategory: "中古プリアンプ" },
   { code: "ct6", rawCategory: "中古パワーアンプ" },
@@ -26,7 +49,8 @@ const U_AUDIO_CATEGORY_MAPPING = Object.freeze({
 const SELLER_NOTE_SUFFIX =
   /\s*(?:※\s*)?(?:商談中|売約済(?:み)?|展示処分品?|展示処分|メーカ(?:ー)?デモ機処分(?:品)?(?:\s*[0-9０-９一二三四五六七八九十]+ペア)?|メーカ(?:ー)?デモ(?:機)?|デモ機処分(?:品)?|デモ|再生品|最終在庫|別売りケーブル付き)\s*$/i;
 
-function listingPage(category, page = 1) {
+function listingPage(category: UAudioCategory | undefined, page = 1): UAudioPage {
+  if (!category) throw new Error("U-AUDIO category configuration missing");
   const suffix = page > 1 ? `?page=${page}` : "";
   return {
     url: `${BASE_URL}/view/category/${category.code}${suffix}`,
@@ -37,7 +61,7 @@ function listingPage(category, page = 1) {
   };
 }
 
-function additionalPages(page, count) {
+function additionalPages(page: UAudioPage, count: number): UAudioPage[] {
   const totalPages = Math.max(1, Math.ceil(count / PAGE_SIZE));
   const category = {
     code: page.categoryCode,
@@ -47,7 +71,9 @@ function additionalPages(page, count) {
   return Array.from({ length: totalPages - 1 }, (_, index) => listingPage(category, index + 2));
 }
 
-function canonicalProductLink(href) {
+function canonicalProductLink(
+  href: string,
+): Pick<ProductAnchorRecord, "sourceId" | "sourceUrl"> | null {
   try {
     const url = new URL(href, BASE_URL);
     if (url.hostname !== "www.u-audio.com") return null;
@@ -61,7 +87,7 @@ function canonicalProductLink(href) {
   }
 }
 
-function visibleText(html = "") {
+function visibleText(html: unknown = ""): string {
   return cleanText(
     String(html)
       .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
@@ -70,9 +96,9 @@ function visibleText(html = "") {
   );
 }
 
-function productAnchorRecords(html = "") {
+function productAnchorRecords(html: string = ""): ProductAnchorRecord[] {
   const anchorRe = /<a\b([^>]*?)href\s*=\s*(["'])([^"']+)\2([^>]*)>([\s\S]*?)<\/a>/gi;
-  const records = new Map();
+  const records = new Map<string, ProductAnchorRecord>();
 
   for (const match of String(html).matchAll(anchorRe)) {
     const product = canonicalProductLink(match[3]);
@@ -93,11 +119,11 @@ function productAnchorRecords(html = "") {
   return [...records.values()].sort((a, b) => a.index - b.index);
 }
 
-function titleScore(value = "") {
+function titleScore(value: string = ""): number {
   return (/\s\/\s/.test(value) ? 1000 : 0) + Math.min(value.length, 300);
 }
 
-function bestTitle(record) {
+function bestTitle(record: ProductAnchorRecord): string {
   return (
     [...new Set(record.titles)]
       .map(cleanText)
@@ -106,7 +132,7 @@ function bestTitle(record) {
   );
 }
 
-function stripSellerNotes(value = "") {
+function stripSellerNotes(value: string = ""): string {
   let result = cleanText(value);
   let previous = "";
   while (result && result !== previous) {
@@ -116,7 +142,7 @@ function stripSellerNotes(value = "") {
   return result;
 }
 
-function manufacturerAndModel(title = "") {
+function manufacturerAndModel(title: string = ""): { manufacturer: string; model: string } {
   const value = cleanText(title);
   const separator = value.lastIndexOf(" / ");
   if (separator < 0) return { manufacturer: "", model: stripSellerNotes(value) };
@@ -126,7 +152,7 @@ function manufacturerAndModel(title = "") {
   };
 }
 
-function salePrice(text = "") {
+function salePrice(text: string = ""): number | null {
   const match = text.match(
     /販売価格(?:（税込）|\(税込\))?\s*(￥\s*[0-9][0-9,]*|¥\s*[0-9][0-9,]*|[0-9][0-9,]*\s*円|お問い合わせください|－|—|-)/i,
   );
@@ -135,19 +161,23 @@ function salePrice(text = "") {
   return parseYen(value);
 }
 
-function boundedProductText(html = "") {
+function boundedProductText(html: string = ""): string {
   const text = visibleText(html);
   const action = text.match(/カートに入れる|お問い合わせ|売り切れ|売切れ/i);
   return action ? text.slice(0, (action.index || 0) + action[0].length) : text;
 }
 
-function productCode(text = "") {
+function productCode(text: string = ""): string {
   return text.match(/商品コード\s*([A-Za-z0-9][A-Za-z0-9_-]*)/i)?.[1] || "";
 }
 
-function conditionText(title, text, { outlet = false } = {}) {
+function conditionText(
+  title: string,
+  text: string,
+  { outlet = false }: Partial<Pick<UAudioPage, "outlet">> = {},
+): string {
   const source = `${title} ${text}`;
-  const conditions = [];
+  const conditions: string[] = [];
   if (/商談中/.test(source)) conditions.push("商談中");
   if (/売約済/.test(source)) conditions.push("売約済");
   if (/展示処分品|展示処分/.test(source)) conditions.push("展示処分");
@@ -159,7 +189,7 @@ function conditionText(title, text, { outlet = false } = {}) {
   return [...new Set(conditions)].join(" / ");
 }
 
-function stockStatus(title, text) {
+function stockStatus(title: string, text: string): StockStatus {
   const source = `${title} ${text}`;
   if (/SOLD\s*OUT|売り切れ|売切れ|売約済|在庫なし|完売|品切れ/i.test(source)) {
     return "sold_out";
@@ -167,14 +197,17 @@ function stockStatus(title, text) {
   return "in_stock";
 }
 
-export function parseUAudioResultCount(html) {
+export function parseUAudioResultCount(html: string): number | null {
   const match = visibleText(html).match(/全\s*([0-9][0-9,，]*)\s*件/);
   return match ? Number.parseInt(match[1].replace(/[，,]/g, ""), 10) : null;
 }
 
-export function parseUAudioListing(html, page = {}) {
+export function parseUAudioListing(
+  html: string,
+  page: Partial<UAudioPage> = {},
+): ShopParsedProduct[] {
   const records = productAnchorRecords(html);
-  const products = [];
+  const products: ShopParsedProduct[] = [];
 
   for (let index = 0; index < records.length; index += 1) {
     const record = records[index];
@@ -186,7 +219,7 @@ export function parseUAudioListing(html, page = {}) {
     const { manufacturer, model } = manufacturerAndModel(title);
     if (!model) continue;
     const code = productCode(blockText);
-    const metadata = {};
+    const metadata: Record<string, unknown> = {};
     if (code) metadata.productCode = code;
     if (page.outlet === true) metadata.outlet = true;
 
@@ -240,4 +273,4 @@ export const uAudioAdapter = {
   parse(html, page) {
     return parseUAudioListing(html, page);
   },
-};
+} satisfies ShopAdapter<UAudioPage>;

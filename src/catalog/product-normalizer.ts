@@ -107,7 +107,6 @@ export function normalizeCatalogProduct(
     ...(Array.isArray(product.featureFacts) ? product.featureFacts : []),
     ...inferFeatureFacts(product.title || "", { source: "title", confidence: 0.8 }),
   ]);
-
   return applyCategoryClassification(
     {
       ...product,
@@ -130,7 +129,7 @@ export function normalizeCatalogProduct(
 }
 
 export function normalizeCatalogProducts(
-  products: ShopParsedProduct[],
+  products: readonly ShopParsedProduct[],
   adapter: CatalogAdapterLike = {},
 ): NormalizedCatalogProduct[] {
   return products.map((product) => normalizeCatalogProduct(product, adapter));

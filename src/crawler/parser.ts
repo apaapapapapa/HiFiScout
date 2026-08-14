@@ -1,6 +1,7 @@
 import type { ShopParsedProduct, StockStatus } from "../catalog/types.js";
 import { isRecord } from "../types.js";
 import { normalizeManufacturer } from "../catalog/manufacturers.js";
+import type { ManufacturerNormalizationResult } from "../catalog/types.js";
 import {
   cleanText,
   inferCategory,
@@ -26,6 +27,22 @@ export interface ParseProductPageOptions {
   fixedConditionText?: string;
   /** Only the exact value below switches to the candidate-merging identity pass. */
   identityStrategy?: "manufacturer-model-candidates";
+}
+
+interface KnownManufacturerCandidate extends ManufacturerNormalizationResult {
+  raw: string;
+  consumedTitles: Set<string>;
+}
+
+interface ModelCandidate {
+  raw: string;
+  model: string;
+  score: number;
+}
+
+interface InferredManufacturerModel {
+  manufacturer: string;
+  model: string;
 }
 
 /** Typed boundary: third-party JSON-LD, so every decoded document stays `unknown`. */
@@ -195,7 +212,7 @@ function fromAnchors(html: string, options: ParseProductPageOptions): ShopParsed
   return products;
 }
 
-function itemQuality(item) {
+function itemQuality(item: ShopParsedProduct): number {
   return (
     (item.stockStatus !== "unknown" ? 500 : 0) +
     (item.model ? 200 : 0) +
@@ -204,24 +221,26 @@ function itemQuality(item) {
   );
 }
 
-function exactKnownManufacturer(value = "") {
+function exactKnownManufacturer(
+  value: unknown = "",
+): (ManufacturerNormalizationResult & { raw: string }) | null {
   const raw = cleanText(value);
   if (!raw) return null;
   const normalized = normalizeManufacturer(raw);
   return normalized.matchedAlias ? { raw, ...normalized } : null;
 }
 
-function knownManufacturerCandidate(titles) {
+function knownManufacturerCandidate(titles: readonly string[]): KnownManufacturerCandidate | null {
   const exact = titles
     .map((title) => {
       const manufacturer = exactKnownManufacturer(title);
       return manufacturer ? { ...manufacturer, consumedTitles: new Set([title]) } : null;
     })
-    .filter(Boolean)
+    .filter((candidate): candidate is KnownManufacturerCandidate => candidate !== null)
     .sort((a, b) => b.raw.length - a.raw.length)[0];
   if (exact) return exact;
 
-  const combined = [];
+  const combined: KnownManufacturerCandidate[] = [];
   const maxParts = Math.min(3, titles.length);
   for (let size = 2; size <= maxParts; size += 1) {
     for (let start = 0; start + size <= titles.length; start += 1) {
@@ -235,7 +254,11 @@ function knownManufacturerCandidate(titles) {
   return combined.sort((a, b) => b.raw.length - a.raw.length)[0] || null;
 }
 
-function modelCandidate(text, manufacturer, shopKey) {
+function modelCandidate(
+  text: string,
+  manufacturer: KnownManufacturerCandidate,
+  shopKey: string,
+): ModelCandidate | null {
   const raw = cleanText(text);
   if (!raw || manufacturer.consumedTitles.has(raw)) return null;
   const exact = exactKnownManufacturer(raw);
@@ -253,7 +276,7 @@ function modelCandidate(text, manufacturer, shopKey) {
   return { raw, model: cleanText(model), score };
 }
 
-function modelAfterPrefix(detail, manufacturer) {
+function modelAfterPrefix(detail: string, manufacturer: string): string {
   const normalizedDetail = cleanText(detail);
   const normalizedManufacturer = cleanText(manufacturer);
   if (
@@ -271,8 +294,11 @@ function modelAfterPrefix(detail, manufacturer) {
     .trim();
 }
 
-function inferUnknownManufacturerAndModel(titles, shopKey) {
-  const prefixPairs = [];
+function inferUnknownManufacturerAndModel(
+  titles: readonly string[],
+  shopKey: string,
+): InferredManufacturerModel | null {
+  const prefixPairs: (InferredManufacturerModel & { score: number })[] = [];
   for (const manufacturer of titles) {
     if (manufacturer.length > 80) continue;
     for (const detail of titles) {
@@ -310,15 +336,19 @@ function inferUnknownManufacturerAndModel(titles, shopKey) {
   return { manufacturer, model: bestModel.title };
 }
 
-function mergeManufacturerModelCandidates(items, options) {
-  const groups = new Map();
+function mergeManufacturerModelCandidates(
+  items: readonly ShopParsedProduct[],
+  options: ParseProductPageOptions,
+): ShopParsedProduct[] {
+  const groups = new Map<string, ShopParsedProduct[]>();
   for (const item of items) {
     if (!item.sourceId || !item.sourceUrl || !item.title) continue;
-    if (!groups.has(item.sourceId)) groups.set(item.sourceId, []);
-    groups.get(item.sourceId).push(item);
+    const group = groups.get(item.sourceId) ?? [];
+    group.push(item);
+    groups.set(item.sourceId, group);
   }
 
-  const result = [];
+  const result: ShopParsedProduct[] = [];
   for (const group of groups.values()) {
     const base = group.reduce(
       (best, item) => (itemQuality(item) > itemQuality(best) ? item : best),
@@ -331,7 +361,7 @@ function mergeManufacturerModelCandidates(items, options) {
       const model =
         titles
           .map((title) => modelCandidate(title, manufacturer, options.shopKey))
-          .filter(Boolean)
+          .filter((candidate): candidate is ModelCandidate => candidate !== null)
           .sort((a, b) => b.score - a.score)[0]?.model || "";
       const combinedTitle = model ? `${manufacturer.raw} ${model}` : manufacturer.raw;
       result.push({
@@ -371,8 +401,8 @@ function mergeManufacturerModelCandidates(items, options) {
   return result;
 }
 
-function deduplicateByQuality(items) {
-  const unique = new Map();
+function deduplicateByQuality(items: readonly ShopParsedProduct[]): ShopParsedProduct[] {
+  const unique = new Map<string, ShopParsedProduct>();
   for (const item of items) {
     if (!item.sourceId || !item.sourceUrl || !item.title) continue;
     const existing = unique.get(item.sourceId);
@@ -381,7 +411,10 @@ function deduplicateByQuality(items) {
   return [...unique.values()];
 }
 
-export function parseProductPage(html, options) {
+export function parseProductPage(
+  html: string,
+  options: ParseProductPageOptions,
+): ShopParsedProduct[] {
   const candidates = [...fromJsonLd(html, options), ...fromAnchors(html, options)];
   if (options.identityStrategy === "manufacturer-model-candidates") {
     return mergeManufacturerModelCandidates(candidates, options);

@@ -87,6 +87,7 @@ test("Hifido keeps three recent pages and adds one rotating stale recheck page",
     { HIFIDO_RECHECK_MAX_PAGE: "6" },
     { now, intervalMinutes: 30 },
   );
+  assert.ok(recheckPage);
   assert.equal(hifidoAdapter.transport, "relay");
   assert.equal(hifidoAdapter.partialCoverage, true);
   assert.equal(pages.length, 4);

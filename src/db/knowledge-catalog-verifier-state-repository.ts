@@ -1,8 +1,22 @@
-function number(value) {
+import type { KnowledgeCatalogVerifierStateRow, QueryableDatabase } from "./types.js";
+
+interface KnowledgeCatalogVerifierState {
+  version: number;
+  status: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  message: string;
+}
+
+function number(value: unknown): number {
   return Number(value || 0);
 }
 
-export async function claimKnowledgeCatalogVerifierVersion(db, version, startedAt) {
+export async function claimKnowledgeCatalogVerifierVersion(
+  db: QueryableDatabase,
+  version: number,
+  startedAt: string,
+): Promise<boolean> {
   const normalizedVersion = Math.max(1, Math.trunc(Number(version) || 1));
   const result = await db
     .prepare(`
@@ -15,11 +29,11 @@ export async function claimKnowledgeCatalogVerifierVersion(db, version, startedA
 }
 
 export async function finishKnowledgeCatalogVerifierVersionSuccess(
-  db,
-  version,
-  finishedAt,
-  message = "",
-) {
+  db: QueryableDatabase,
+  version: number,
+  finishedAt: string,
+  message: unknown = "",
+): Promise<void> {
   await db
     .prepare(`
     UPDATE knowledge_catalog_verifier_state
@@ -31,11 +45,11 @@ export async function finishKnowledgeCatalogVerifierVersionSuccess(
 }
 
 export async function finishKnowledgeCatalogVerifierVersionFailure(
-  db,
-  version,
-  finishedAt,
-  message = "",
-) {
+  db: QueryableDatabase,
+  version: number,
+  finishedAt: string,
+  message: unknown = "",
+): Promise<void> {
   await db
     .prepare(`
     UPDATE knowledge_catalog_verifier_state
@@ -46,7 +60,9 @@ export async function finishKnowledgeCatalogVerifierVersionFailure(
     .run();
 }
 
-export async function knowledgeCatalogVerifierState(db) {
+export async function knowledgeCatalogVerifierState(
+  db: QueryableDatabase,
+): Promise<KnowledgeCatalogVerifierState | null> {
   const row = await db
     .prepare(`
     SELECT version, status, started_at, finished_at, message
@@ -54,7 +70,7 @@ export async function knowledgeCatalogVerifierState(db) {
     ORDER BY version DESC
     LIMIT 1
   `)
-    .first();
+    .first<KnowledgeCatalogVerifierStateRow>();
   if (!row) return null;
   return {
     version: number(row.version),

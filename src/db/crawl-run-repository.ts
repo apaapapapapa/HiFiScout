@@ -1,4 +1,23 @@
-export async function startCrawlRun(db, shopKey, startedAt) {
+import type { QueryableDatabase } from "./types.js";
+
+interface FinishCrawlRunSuccessInput {
+  finishedAt: string;
+  itemCount: number;
+  pageCount: number;
+  message: string;
+}
+
+interface FinishCrawlRunFailureInput {
+  finishedAt: string;
+  pageCount: number;
+  message: unknown;
+}
+
+export async function startCrawlRun(
+  db: QueryableDatabase,
+  shopKey: string,
+  startedAt: string,
+): Promise<number> {
   const run = await db
     .prepare("INSERT INTO crawl_runs (shop_key, started_at, status) VALUES (?, ?, 'running')")
     .bind(shopKey, startedAt)
@@ -7,10 +26,10 @@ export async function startCrawlRun(db, shopKey, startedAt) {
 }
 
 export async function finishCrawlRunSuccess(
-  db,
-  runId,
-  { finishedAt, itemCount, pageCount, message },
-) {
+  db: QueryableDatabase,
+  runId: number,
+  { finishedAt, itemCount, pageCount, message }: FinishCrawlRunSuccessInput,
+): Promise<void> {
   await db
     .prepare(
       "UPDATE crawl_runs SET finished_at = ?, status = 'success', item_count = ?, page_count = ?, message = ? WHERE id = ?",
@@ -19,7 +38,11 @@ export async function finishCrawlRunSuccess(
     .run();
 }
 
-export async function finishCrawlRunFailure(db, runId, { finishedAt, pageCount, message }) {
+export async function finishCrawlRunFailure(
+  db: QueryableDatabase,
+  runId: number,
+  { finishedAt, pageCount, message }: FinishCrawlRunFailureInput,
+): Promise<void> {
   await db
     .prepare(
       "UPDATE crawl_runs SET finished_at = ?, status = 'failed', page_count = ?, message = ? WHERE id = ?",

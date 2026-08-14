@@ -8,19 +8,21 @@ import {
   getCategory,
 } from "../src/catalog/categories.js";
 import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
+import { parsedProduct } from "./helpers/fixtures.js";
 
 const top = () => CATEGORIES.filter((category) => category.parentId == null);
-const children = (parentId) => CATEGORIES.filter((category) => category.parentId === parentId);
+const children = (parentId: string) =>
+  CATEGORIES.filter((category) => category.parentId === parentId);
 
-function classify(title) {
+function classify(title: string) {
   return normalizeCatalogProduct(
-    {
+    parsedProduct({
       manufacturer: "",
       rawManufacturer: "",
       title,
       category: "",
       rawCategory: "",
-    },
+    }),
     { categoryPolicy: { parserHint: "ignore", sellerCategory: { default: "corroborative" } } },
   );
 }
@@ -54,8 +56,10 @@ test("group parents are filterable but never classifiable", () => {
     "headphone_group",
     "accessories",
   ]) {
-    assert.equal(getCategory(id).classifiable, false);
-    assert.equal(getCategory(id).filterable, true);
+    const category = getCategory(id);
+    assert.ok(category);
+    assert.equal(category.classifiable, false);
+    assert.equal(category.filterable, true);
   }
   assert.ok(
     CATEGORIES.filter((category) => category.parentId).every((category) => category.classifiable),

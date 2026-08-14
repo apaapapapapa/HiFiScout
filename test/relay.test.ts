@@ -1,14 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRelayHtmlFetcher } from "../src/crawler/relay.js";
+import { isRecord } from "../src/types.js";
 
 test("relay transport forwards target, delay and crawler identity", async () => {
-  let request;
+  let requestedUrl = "";
+  let requestedOptions: RequestInit = {};
   const fetcher = createRelayHtmlFetcher({
     relayUrl: "https://relay.example/",
     relayToken: "secret-token",
     fetchFn: async (url, options) => {
-      request = { url, options };
+      requestedUrl = String(url);
+      requestedOptions = options || {};
       return new Response("<html>ok</html>", {
         status: 200,
         headers: { "content-type": "text/html; charset=utf-8" },
@@ -22,9 +25,9 @@ test("relay transport forwards target, delay and crawler identity", async () => 
   });
 
   assert.equal(html, "<html>ok</html>");
-  assert.equal(request.url, "https://relay.example/");
-  assert.equal(request.options.headers.Authorization, "Bearer secret-token");
-  assert.deepEqual(JSON.parse(request.options.body), {
+  assert.equal(requestedUrl, "https://relay.example/");
+  assert.equal(new Headers(requestedOptions.headers).get("authorization"), "Bearer secret-token");
+  assert.deepEqual(JSON.parse(String(requestedOptions.body)), {
     url: "https://www.audiounion.jp/st/new_arrival_used.html",
     userAgent: "HiFiScoutBot/0.1",
     requestDelayMs: 10_000,
@@ -84,7 +87,7 @@ test("relay status-aware fetch distinguishes robots rejection from upstream stat
 
   await assert.rejects(
     fetcher.fetchPage("https://www.audiounion.jp/ct/detail/used/123/"),
-    (error) => error?.relayStatus === 409 && error?.code === "robots_disallowed",
+    (error) => isRecord(error) && error.relayStatus === 409 && error.code === "robots_disallowed",
   );
 });
 

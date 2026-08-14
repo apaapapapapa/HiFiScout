@@ -6,7 +6,7 @@ import { catalogModelLookupVariants } from "../src/catalog/knowledge-catalog.js"
 import { inferExplicitCategoryIds } from "../src/catalog/category-rules.js";
 import { createKnowledgeSourceVerifierV3 } from "../src/catalog/knowledge-source-verifier-v3.js";
 
-function variants(manufacturerId, model) {
+function variants(manufacturerId: string, model: string) {
   return catalogModelLookupVariants({ manufacturerId, model });
 }
 
@@ -28,7 +28,7 @@ test("catalog lookup aliases preserve meaningful revisions and do not reinterpre
 });
 
 test("verifier v3 does not expand the canonical UI taxonomy", () => {
-  const ids = new Set(CATEGORIES.map((category) => category.id));
+  const ids = new Set<string>(CATEGORIES.map((category) => category.id));
   for (const verifierOnlyType of [
     "soundbar",
     "av_receiver",
@@ -74,7 +74,7 @@ test("v3 verifies a simplified Denon model from an official category index and k
       '<html><body><h1>Turntables</h1><div><a href="/item/dp400">DP-400</a></div></body></html>',
     ],
   ]);
-  const fetchImpl = async (url) => {
+  const fetchImpl: typeof fetch = async (url) => {
     const body = pages.get(String(url));
     return new Response(body || "not found", { status: body ? 200 : 404 });
   };
@@ -94,7 +94,7 @@ test("v3 verifies a simplified Denon model from an official category index and k
 test("v3 inherits the nearest official history heading for Accuphase T-11", async () => {
   const history =
     "<html><body><h2>Tuner</h2><table><tr><td>T-11</td><td>FM Stereo Tuner</td></tr></table></body></html>";
-  const fetchImpl = async (url) =>
+  const fetchImpl: typeof fetch = async (url) =>
     new Response(String(url).includes("/history") ? history : "not found", {
       status: String(url).includes("/history") ? 200 : 404,
     });

@@ -1,14 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { listProducts } from "../src/db/product-search-repository.js";
+import { asQueryableDatabase } from "./helpers/d1.js";
 
-function queryCaptureDb(results = []) {
-  const calls = [];
-  return {
+function queryCaptureDb(results: unknown[] = []) {
+  const calls: Array<{ sql: string; binds: unknown[] }> = [];
+  return asQueryableDatabase({
     calls,
-    prepare(sql) {
+    prepare(sql: string) {
       return {
-        bind(...binds) {
+        bind(...binds: unknown[]) {
           calls.push({ sql, binds });
           return {
             async all() {
@@ -18,7 +19,7 @@ function queryCaptureDb(results = []) {
         },
       };
     },
-  };
+  });
 }
 
 test("TAD 1000 uses the search projection FTS5 index conjunctively", async () => {

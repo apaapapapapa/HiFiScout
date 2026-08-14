@@ -48,7 +48,7 @@ test("category degradation is a snapshot warning without poisoning run quality",
 
 test("large crawl item drop is critical run quality", () => {
   const quality = evaluateQuality(crawlOutcome({ previousItemCount: 1000, currentItemCount: 300 }));
-  assert.equal(quality.latestRun, undefined);
+  assert.equal("latestRun" in quality, false);
   assert.equal(quality.run.metrics.itemCount.changeRate, -0.7);
   assert.equal(quality.run.metrics.itemCount.status, "critical");
   assert.equal(quality.run.status, "critical");

@@ -34,18 +34,23 @@ test("Fujiya pagination is derived independently from each live result count", (
 
   const [usedRoot, outletRoot, saleRoot] = [...fujiyaAvicAdapter.pageUrls(50)];
   const usedPages = fujiyaAvicAdapter.discoverPageUrls("<div>検索結果735件</div>", usedRoot);
+  assert.ok(usedPages);
   assert.equal(usedPages.length, 14);
   assert.equal(usedPages[0].url, "https://www.fujiya-avic.co.jp/shop/e/ea-usednw_ssd_p2/?ps=50");
-  assert.match(usedPages.at(-1).url, /ea-usednw_ssd_p15\/\?ps=50$/);
+  const lastUsedPage = usedPages.at(-1);
+  assert.ok(lastUsedPage);
+  assert.match(lastUsedPage.url, /ea-usednw_ssd_p15\/\?ps=50$/);
   assert.ok(usedPages.every((page) => page.feed === "new-arrivals"));
 
   const outletPages = fujiyaAvicAdapter.discoverPageUrls("<div>101件あります</div>", outletRoot);
+  assert.ok(outletPages);
   assert.equal(outletPages.length, 2);
   assert.equal(outletPages[0].url, "https://www.fujiya-avic.co.jp/shop/c/c31_dP_p2/?ps=50");
   assert.equal(outletPages[1].url, "https://www.fujiya-avic.co.jp/shop/c/c31_dP_p3/?ps=50");
   assert.ok(outletPages.every((page) => page.feed === "outlet"));
 
   const salePages = fujiyaAvicAdapter.discoverPageUrls("<div>検索結果72件</div>", saleRoot);
+  assert.ok(salePages);
   assert.equal(salePages.length, 1);
   assert.equal(salePages[0].url, "https://www.fujiya-avic.co.jp/shop/e/ea-outlet_p2/?ps=50");
   assert.equal(salePages[0].feed, "outlet-stock-sale");

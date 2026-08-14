@@ -33,6 +33,7 @@ test("U-AUDIO parser handles stock, inquiry prices, seller notes, and stable ite
 
   assert.equal(items[1].stockStatus, "sold_out");
   assert.equal(items[1].priceYen, null);
+  assert.ok(items[1].metadata);
   assert.equal(items[1].metadata.productCode, "12776");
 
   assert.equal(items[2].manufacturer, "Mola Mola");
@@ -42,6 +43,7 @@ test("U-AUDIO parser handles stock, inquiry prices, seller notes, and stable ite
 
 test("U-AUDIO outlet entries are marked and treated as available unless sold out", () => {
   const [item] = parseUAudioListing(html, { rawCategory: "アウトレット", outlet: true });
+  assert.ok(item.metadata);
   assert.equal(item.stockStatus, "in_stock");
   assert.equal(item.metadata.outlet, true);
   assert.match(item.conditionText, /アウトレット/);
@@ -53,15 +55,19 @@ test("U-AUDIO pagination crawls all outlet pages before used categories", () => 
   assert.equal(bootstrap.bootstrap, true);
 
   const discovered = uAudioAdapter.discoverPageUrls("<p>全 49 件</p>", bootstrap);
+  assert.ok(discovered);
   assert.equal(discovered[0].url, "https://www.u-audio.com/view/category/ct18?page=2");
   assert.equal(discovered[1].url, "https://www.u-audio.com/view/category/ct4");
-  assert.equal(discovered.at(-1).url, "https://www.u-audio.com/view/category/ct10");
+  const lastPage = discovered.at(-1);
+  assert.ok(lastPage);
+  assert.equal(lastPage.url, "https://www.u-audio.com/view/category/ct10");
   assert.equal(
     discovered.some((page) => page.categoryCode === "ct11"),
     false,
   );
 
   const accessory = discovered.find((page) => page.categoryCode === "ct10");
+  assert.ok(accessory);
   assert.deepEqual(uAudioAdapter.discoverPageUrls("<p>全 48 件</p>", accessory), [
     {
       url: "https://www.u-audio.com/view/category/ct10?page=2",

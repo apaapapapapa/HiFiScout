@@ -1,20 +1,35 @@
 import { normalizeCategory } from "./categories.js";
 import { inferExplicitCategoryIds } from "./category-rules.js";
+import type {
+  CatalogAdapterLike,
+  CategoryEvidenceInput,
+  CategoryEvidenceStrength,
+  CategoryMapping,
+  CategoryPolicyMode,
+  CollectListingCategoryEvidenceOptions,
+  ListingCategoryEvidence,
+  NormalizeCategoryResult,
+  ResolvedCategoryPolicy,
+} from "./types.js";
 
-const MODES = new Set(["authoritative", "corroborative", "ignore"]);
-const BROAD_SELLER_CATEGORY_IDS = new Set(["speaker_other", "other_accessory"]);
+const BROAD_SELLER_CATEGORY_IDS: ReadonlySet<string> = new Set([
+  "speaker_other",
+  "other_accessory",
+]);
 
-function mode(value, fallback) {
-  return MODES.has(value) ? value : fallback;
+function mode(value: unknown, fallback: CategoryPolicyMode): CategoryPolicyMode {
+  return value === "authoritative" || value === "corroborative" || value === "ignore"
+    ? value
+    : fallback;
 }
 
-function strengthForMode(value) {
+function strengthForMode(value: CategoryPolicyMode): CategoryEvidenceStrength | null {
   if (value === "authoritative") return "authoritative";
   if (value === "corroborative") return "supporting";
   return null;
 }
 
-export function resolveCategoryPolicy(adapter = {}) {
+export function resolveCategoryPolicy(adapter: CatalogAdapterLike = {}): ResolvedCategoryPolicy {
   const requested = adapter.categoryPolicy || {};
   const seller = requested.sellerCategory || {};
   const legacyPrefer = requested.titleInference === "prefer";
@@ -33,16 +48,23 @@ export function resolveCategoryPolicy(adapter = {}) {
 }
 
 export function categoryEvidenceFromText(
-  text,
-  { source = "title", strength = "strong", context = "title" } = {},
-) {
+  text: string,
+  {
+    source = "title",
+    strength = "strong",
+    context = "title",
+  }: { source?: string; strength?: CategoryEvidenceStrength; context?: string } = {},
+): CategoryEvidenceInput[] {
   const categoryIds = inferExplicitCategoryIds(text, { context });
   return categoryIds.length
     ? [{ categoryIds: [categoryIds[0]], source, strength, value: String(text || "") }]
     : [];
 }
 
-function sellerCategoryCandidates(rawCategory, categoryMapping) {
+function sellerCategoryCandidates(
+  rawCategory: string,
+  categoryMapping: CategoryMapping,
+): NormalizeCategoryResult | null {
   if (!rawCategory) return null;
   const normalized = normalizeCategory({ rawCategory, categoryMapping });
   if (normalized.classificationStatus === "classified") return normalized;
@@ -57,7 +79,11 @@ function sellerCategoryCandidates(rawCategory, categoryMapping) {
   };
 }
 
-export function sellerCategoryEvidence(rawCategory, categoryMapping, policy) {
+export function sellerCategoryEvidence(
+  rawCategory: string,
+  categoryMapping: CategoryMapping,
+  policy: ResolvedCategoryPolicy,
+): CategoryEvidenceInput[] {
   const normalized = sellerCategoryCandidates(rawCategory, categoryMapping);
   if (!normalized) return [];
   // Broad seller buckets such as "speaker" or "accessory" are useful fallback evidence,
@@ -81,7 +107,10 @@ export function sellerCategoryEvidence(rawCategory, categoryMapping, policy) {
     : [];
 }
 
-export function parserHintEvidence(hintedCategory, policy) {
+export function parserHintEvidence(
+  hintedCategory: string,
+  policy: ResolvedCategoryPolicy,
+): CategoryEvidenceInput[] {
   if (!hintedCategory || policy.parserHint === "ignore") return [];
   const normalized = normalizeCategory({ hintedCategory });
   const categoryIds =
@@ -108,7 +137,7 @@ export function collectListingCategoryEvidence({
   hintedCategory = "",
   categoryMapping = {},
   adapter = {},
-} = {}) {
+}: CollectListingCategoryEvidenceOptions = {}): ListingCategoryEvidence {
   const policy = resolveCategoryPolicy(adapter);
   const evidence = [
     ...sellerCategoryEvidence(rawCategory, categoryMapping, policy),

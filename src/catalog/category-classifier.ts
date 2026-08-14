@@ -1,25 +1,38 @@
 import { categoryIdForClassification, categorySearchAliases, getCategory } from "./categories.js";
+import {
+  CATEGORY_EVIDENCE_STRENGTHS,
+  isCategoryEvidenceStrength,
+  type CategoryClassification,
+  type CategoryEvidenceInput,
+  type CategoryEvidenceSummaryItem,
+  type CategoryId,
+  type ClassificationState,
+  type ResolvedCategoryEvidenceItem,
+} from "./types.js";
 
-const STRENGTHS = new Set(["verified", "authoritative", "strong", "supporting"]);
-
-function normalizedEvidence(evidence = []) {
+function normalizedEvidence(
+  evidence: readonly CategoryEvidenceInput[] = [],
+): ResolvedCategoryEvidenceItem[] {
   return evidence
     .map((item) => {
-      const values = item?.categoryIds || (item?.categoryId ? [item.categoryId] : []);
+      const values = item.categoryIds ?? (item.categoryId ? [item.categoryId] : []);
       const categoryId =
         values.map((value) => categoryIdForClassification(value)).find(Boolean) || null;
       return {
         categoryId,
         categoryIds: categoryId ? [categoryId] : [],
-        source: String(item?.source || "unknown"),
-        strength: STRENGTHS.has(item?.strength) ? item.strength : "supporting",
-        value: String(item?.value || "").slice(0, 240),
+        source: String(item.source || "unknown"),
+        strength: isCategoryEvidenceStrength(item.strength) ? item.strength : "supporting",
+        value: String(item.value || "").slice(0, 240),
       };
     })
-    .filter((item) => item.categoryId);
+    .filter((item): item is ResolvedCategoryEvidenceItem => item.categoryId !== null);
 }
 
-function unresolved(state, evidence) {
+function unresolved(
+  state: Exclude<ClassificationState, "classified">,
+  evidence: readonly ResolvedCategoryEvidenceItem[],
+): CategoryClassification {
   const candidateCategoryIds = [...new Set(evidence.map((item) => item.categoryId))];
   return {
     primaryCategoryId: "other",
@@ -34,7 +47,10 @@ function unresolved(state, evidence) {
   };
 }
 
-function classified(categoryId, tierEvidence) {
+function classified(
+  categoryId: CategoryId,
+  tierEvidence: readonly ResolvedCategoryEvidenceItem[],
+): CategoryClassification {
   const primary = getCategory(categoryId);
   const sources = [
     ...new Set(
@@ -54,19 +70,24 @@ function classified(categoryId, tierEvidence) {
   };
 }
 
-export function classifyCategoryEvidence(rawEvidence = []) {
+export function classifyCategoryEvidence(
+  rawEvidence: readonly CategoryEvidenceInput[] = [],
+): CategoryClassification {
   const evidence = normalizedEvidence(rawEvidence);
-  for (const strength of ["verified", "authoritative", "strong"]) {
+  for (const strength of CATEGORY_EVIDENCE_STRENGTHS.slice(0, 3)) {
     const tier = evidence.filter((item) => item.strength === strength);
     if (!tier.length) continue;
     const ids = [...new Set(tier.map((item) => item.categoryId))];
     if (ids.length !== 1) return unresolved("ambiguous", tier);
-    return classified(ids[0], tier);
+    const categoryId = ids[0];
+    if (categoryId) return classified(categoryId, tier);
   }
   return unresolved("unclassified", evidence);
 }
 
-export function summarizeCategoryEvidence(rawEvidence = []) {
+export function summarizeCategoryEvidence(
+  rawEvidence: readonly CategoryEvidenceInput[] = [],
+): CategoryEvidenceSummaryItem[] {
   return normalizedEvidence(rawEvidence)
     .slice(0, 12)
     .map((item) => ({

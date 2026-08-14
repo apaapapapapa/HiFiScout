@@ -7,6 +7,31 @@ import {
   sha256Hex,
   shouldArchiveEvidence,
 } from "../src/evidence/evidence-archive.js";
+import type { EvidenceArchiveEnv, EvidenceDatabase } from "../src/evidence/evidence-archive.js";
+import { asEvidenceDatabase } from "./helpers/d1.js";
+
+interface FakeDbOptions {
+  duplicate?: { id: number; r2_object_key: string } | null;
+  dailyObjects?: number;
+  dailyBytes?: number;
+  shopDailyObjects?: number;
+  burstObjects?: number;
+  storedBytes?: number;
+}
+
+interface EvidenceWrite {
+  sql: string;
+  binds: unknown[];
+}
+
+interface BucketPut {
+  key: string;
+  body: Uint8Array<ArrayBuffer>;
+  options?: {
+    httpMetadata?: { contentType?: string };
+    customMetadata?: Record<string, string>;
+  };
+}
 
 function fakeDb({
   duplicate = null,
@@ -15,13 +40,13 @@ function fakeDb({
   shopDailyObjects = 0,
   burstObjects = 0,
   storedBytes = 0,
-} = {}) {
-  const writes = [];
-  return {
+}: FakeDbOptions = {}) {
+  const writes: EvidenceWrite[] = [];
+  return asEvidenceDatabase({
     writes,
-    prepare(sql) {
+    prepare(sql: string) {
       return {
-        bind(...binds) {
+        bind(...binds: unknown[]) {
           return {
             async all() {
               if (/SELECT id, r2_object_key/.test(sql)) {
@@ -49,17 +74,17 @@ function fakeDb({
         },
       };
     },
-  };
+  });
 }
 
-function fakeEnv(db, overrides = {}) {
-  const puts = [];
+function fakeEnv(db: EvidenceDatabase, overrides: Partial<EvidenceArchiveEnv> = {}) {
+  const puts: BucketPut[] = [];
   return {
     puts,
     env: {
       DB: db,
       EVIDENCE_BUCKET: {
-        async put(key, body, options) {
+        async put(key: string, body: Uint8Array<ArrayBuffer>, options?: BucketPut["options"]) {
           puts.push({ key, body, options });
         },
       },
@@ -197,7 +222,7 @@ test("burst sampling suppresses most repeated same-reason evidence", async () =>
 test("storage warning threshold does not block useful evidence", async () => {
   const db = fakeDb({ storedBytes: 100 });
   const { env, puts } = fakeEnv(db, { EVIDENCE_STORAGE_WARNING_BYTES: "100" });
-  const warnings = [];
+  const warnings: string[] = [];
   const originalWarn = console.warn;
   console.warn = (value) => warnings.push(String(value));
   try {

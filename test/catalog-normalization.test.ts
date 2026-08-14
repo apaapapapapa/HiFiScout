@@ -6,6 +6,7 @@ import { normalizeCategory } from "../src/catalog/categories.js";
 import { normalizeManufacturer } from "../src/catalog/manufacturers.js";
 import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
 import { fujiyaAvicAdapter } from "../src/crawler/shops/fujiya-avic.js";
+import { parsedProduct } from "./helpers/fixtures.js";
 
 test("shop category mapping wins over shared inference", () => {
   const result = normalizeCategory({
@@ -64,7 +65,7 @@ test("manufacturer aliases collapse Japanese and English spellings", () => {
 
 test("raw seller values are preserved while UI values are canonicalized", () => {
   const product = normalizeCatalogProduct(
-    {
+    parsedProduct({
       sourceId: "1",
       rawManufacturer: "LUXMAN ラックスマン",
       manufacturer: "LUXMAN",
@@ -72,7 +73,7 @@ test("raw seller values are preserved while UI values are canonicalized", () => 
       title: "LUXMAN C-10X",
       rawCategory: "コントロールアンプ",
       category: "コントロールアンプ",
-    },
+    }),
     { categoryMapping: { コントロールアンプ: "pre_amp" } },
   );
   assert.equal(product.rawManufacturer, "LUXMAN ラックスマン");
@@ -85,7 +86,9 @@ test("raw seller values are preserved while UI values are canonicalized", () => 
 });
 
 test("unknown products remain visible but are explicitly unclassified", () => {
-  const product = normalizeCatalogProduct({ title: "Mystery Device XYZ", rawCategory: "特殊機器" });
+  const product = normalizeCatalogProduct(
+    parsedProduct({ title: "Mystery Device XYZ", rawCategory: "特殊機器" }),
+  );
   assert.equal(product.primaryCategoryId, "other");
   assert.deepEqual(product.categoryIds, []);
   assert.equal(product.category, "未分類");
@@ -94,14 +97,16 @@ test("unknown products remain visible but are explicitly unclassified", () => {
 });
 
 test("default shops keep exact seller category precedence for backward compatibility", () => {
-  const product = normalizeCatalogProduct({ title: "Example SACD Player", rawCategory: "DAP" });
+  const product = normalizeCatalogProduct(
+    parsedProduct({ title: "Example SACD Player", rawCategory: "DAP" }),
+  );
   assert.equal(product.primaryCategoryId, "dap");
   assert.equal(product.classificationSource, "seller_category");
 });
 
 test("corroborative seller categories do not override explicit title evidence", () => {
   const product = normalizeCatalogProduct(
-    { title: "Example SACD 10 SACD Player", rawCategory: "DAP" },
+    parsedProduct({ title: "Example SACD 10 SACD Player", rawCategory: "DAP" }),
     {
       categoryPolicy: { sellerCategory: { categories: { dap: "corroborative" } } },
     },
@@ -112,17 +117,19 @@ test("corroborative seller categories do not override explicit title evidence", 
 });
 
 test("generic accessory seller category does not override specific title evidence", () => {
-  const product = normalizeCatalogProduct({
-    title: "Premium Headphone Cable 2m",
-    rawCategory: "アクセサリー",
-  });
+  const product = normalizeCatalogProduct(
+    parsedProduct({
+      title: "Premium Headphone Cable 2m",
+      rawCategory: "アクセサリー",
+    }),
+  );
   assert.equal(product.primaryCategoryId, "cable");
   assert.equal(product.classificationSource, "title");
 });
 
 test("a corroborative seller category alone remains unclassified instead of becoming a false positive", () => {
   const product = normalizeCatalogProduct(
-    { title: "Portable Audio Model X", rawCategory: "DAP" },
+    parsedProduct({ title: "Portable Audio Model X", rawCategory: "DAP" }),
     {
       categoryPolicy: { sellerCategory: { categories: { dap: "corroborative" } } },
     },
@@ -135,10 +142,12 @@ test("a corroborative seller category alone remains unclassified instead of beco
 });
 
 test("broad seller text inferred from a product family is not authoritative by itself", () => {
-  const product = normalizeCatalogProduct({
-    title: "Model X",
-    rawCategory: "アンプ・スピーカー・プレーヤー",
-  });
+  const product = normalizeCatalogProduct(
+    parsedProduct({
+      title: "Model X",
+      rawCategory: "アンプ・スピーカー・プレーヤー",
+    }),
+  );
   assert.equal(product.classificationStatus, "unclassified");
   assert.deepEqual(product.categoryIds, []);
 });
@@ -176,15 +185,15 @@ test("multi-category evidence never creates a multi-category product", () => {
 
 test("Fujiya uses the generic evidence policy for broad DAP merchandising buckets", () => {
   const sacd = normalizeCatalogProduct(
-    { title: "MARANTZ SACD 10 SACD Player", rawCategory: "DAP" },
+    parsedProduct({ title: "MARANTZ SACD 10 SACD Player", rawCategory: "DAP" }),
     fujiyaAvicAdapter,
   );
   const cable = normalizeCatalogProduct(
-    { title: "Premium Headphone Cable 2m", rawCategory: "DAP" },
+    parsedProduct({ title: "Premium Headphone Cable 2m", rawCategory: "DAP" }),
     fujiyaAvicAdapter,
   );
   const unresolved = normalizeCatalogProduct(
-    { title: "Portable Audio Model X", rawCategory: "DAP" },
+    parsedProduct({ title: "Portable Audio Model X", rawCategory: "DAP" }),
     fujiyaAvicAdapter,
   );
   assert.equal(sacd.primaryCategoryId, "cd_sacd_player");

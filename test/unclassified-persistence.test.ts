@@ -2,14 +2,21 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { upsertProducts } from "../src/db/products.js";
+import type { CatalogProductUpsertInput } from "../src/catalog/types.js";
+import { asQueryableDatabase } from "./helpers/d1.js";
 
-function captureDb(existing) {
-  const statements = [];
-  return {
+interface CapturedStatement {
+  sql: string;
+  binds: unknown[];
+}
+
+function captureDb(existing: Record<string, unknown> & { id: number; source_id: string }) {
+  const statements: CapturedStatement[] = [];
+  return asQueryableDatabase({
     statements,
-    prepare(sql) {
+    prepare(sql: string) {
       return {
-        bind(...binds) {
+        bind(...binds: unknown[]) {
           return {
             sql,
             binds,
@@ -24,11 +31,11 @@ function captureDb(existing) {
         },
       };
     },
-    async batch(batch) {
+    async batch(batch: CapturedStatement[]) {
       statements.push(...batch);
       return batch.map(() => ({ meta: { changes: 1 } }));
     },
-  };
+  });
 }
 
 test("unclassified products persist the canonical other leaf instead of stale seller categories", async () => {
@@ -53,7 +60,7 @@ test("unclassified products persist the canonical other leaf instead of stale se
     last_seen_at: "2026-08-11T00:00:00.000Z",
     is_active: 1,
   };
-  const product = {
+  const product: CatalogProductUpsertInput = {
     sourceId: "p1",
     manufacturer: "Example",
     rawManufacturer: "Example",

@@ -20,6 +20,7 @@ import type {
   IdentityMatchMethod,
   IdentityStatus,
   KnowledgeCatalogMatchType,
+  KnowledgeSourceCandidate,
   KnowledgeSourceStatus,
   KnowledgeSourceType,
   ProductIdentityResolution,
@@ -37,6 +38,9 @@ import type {
  * do the structural test doubles (which implement neither `exec`, `withSession` nor `dump`).
  */
 export type QueryableDatabase = Pick<D1Database, "prepare" | "batch">;
+
+/** Read-only surface: everything a caller needs when it only ever runs `SELECT`s. */
+export type ReadableDatabase = Pick<QueryableDatabase, "prepare">;
 
 /** SQLite has no boolean type; `CHECK (x IN (0, 1))` columns arrive as numbers. */
 export type SqliteBool = 0 | 1;
@@ -414,6 +418,84 @@ export interface KnowledgeCatalogVerificationJobRow {
   last_message: string;
   created_at: string;
   updated_at: string;
+}
+
+/** Camel-cased queue job returned by the verification queue repository. */
+export interface KnowledgeCatalogVerificationJob {
+  id: number;
+  runId: number;
+  jobKey: string;
+  jobType: KnowledgeCatalogJobType;
+  targetId: number | null;
+  manufacturerId: string;
+  hostname: string;
+  status: KnowledgeCatalogJobStatus;
+  outcome: KnowledgeCatalogJobOutcome;
+  deliveryAttempts: number;
+  sourceAttempts: number;
+  promoted: number;
+  rechecked: number;
+  enqueuedAt: string;
+  availableAt: string | null;
+  claimedAt: string | null;
+  leaseExpiresAt: string | null;
+  finishedAt: string | null;
+  lastMessage: string;
+}
+
+export interface KnowledgeCatalogVerificationJobSpec {
+  jobKey: string;
+  jobType: KnowledgeCatalogJobType;
+  targetId: number | null;
+  manufacturerId: string;
+  hostname: string;
+}
+
+export interface CompleteKnowledgeCatalogVerificationJobInput {
+  outcome?: KnowledgeCatalogJobOutcome;
+  promoted?: number;
+  rechecked?: number;
+  message?: string;
+}
+
+export interface ProductClassificationStats {
+  activeProducts: number;
+  unclassifiedProducts: number;
+  otherProducts: number;
+}
+
+export interface KnowledgeCatalogVerificationOutcomes {
+  verified: number;
+  notFound: number;
+  ambiguous: number;
+  unsupported: number;
+  error: number;
+}
+
+export interface KnowledgeCatalogVerificationRunStats {
+  targetJobs: number;
+  candidateJobs: number;
+  productRecheckJobs: number;
+  queued: number;
+  processing: number;
+  retrying: number;
+  completed: number;
+  deadLetter: number;
+  outstanding: number;
+  sourceAttempts: number;
+  promoted: number;
+  rechecked: number;
+  outcomes: KnowledgeCatalogVerificationOutcomes;
+}
+
+export interface KnowledgeCatalogVerificationQueueStatus {
+  queued: number;
+  processing: number;
+  retrying: number;
+  deadLetter: number;
+  oldestPendingAt: string | null;
+  latestRun: KnowledgeCatalogVerificationRunStats | null;
+  latestRunId: number | null;
 }
 
 export interface KnowledgeCatalogVerificationDomainLeaseRow {
@@ -805,6 +887,31 @@ export interface KnowledgeCatalogPromotionResult {
   promoted: boolean;
   productId: number | null;
   reason: KnowledgeCatalogPromotionReason;
+}
+
+export interface PendingKnowledgeCatalogCandidate extends KnowledgeSourceCandidate {
+  id: number;
+  manufacturerId: string;
+  normalizedModel: string;
+  observedManufacturer: string;
+  observedModel: string;
+  sampleTitle: string;
+  priorityScore: number;
+  verificationStatus: KnowledgeCatalogCandidateVerificationStatus;
+  lastVerificationAt: string | null;
+}
+
+export interface DueKnowledgeCatalogProduct extends KnowledgeSourceCandidate {
+  id: number;
+  manufacturerId: string;
+  canonicalModel: string;
+  normalizedModel: string;
+  canonicalName: string;
+  primaryCategoryId: string | null;
+  categoryIds: string[];
+  sourceId: number;
+  sourceType: KnowledgeSourceType;
+  sourceUrl: string;
 }
 
 /**

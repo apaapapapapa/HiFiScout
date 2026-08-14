@@ -4,8 +4,8 @@ import assert from "node:assert/strict";
 import { createRobotsRespectingFetch } from "../src/crawler/robots-respecting-fetch.js";
 
 test("knowledge source fetch blocks a path disallowed by robots.txt", async () => {
-  const requested = [];
-  const baseFetch = async (url) => {
+  const requested: string[] = [];
+  const baseFetch: typeof fetch = async (url) => {
     requested.push(String(url));
     if (String(url) === "https://example.com/robots.txt") {
       return new Response("User-agent: HiFiScoutBot\nDisallow: /private", { status: 200 });
@@ -24,8 +24,8 @@ test("knowledge source fetch blocks a path disallowed by robots.txt", async () =
 });
 
 test("knowledge source fetch caches robots policy and allows permitted paths", async () => {
-  const requested = [];
-  const baseFetch = async (url) => {
+  const requested: string[] = [];
+  const baseFetch: typeof fetch = async (url) => {
     requested.push(String(url));
     if (String(url) === "https://example.com/robots.txt") {
       return new Response("User-agent: *\nDisallow: /private\nAllow: /public", { status: 200 });
@@ -43,8 +43,8 @@ test("knowledge source fetch caches robots policy and allows permitted paths", a
 });
 
 test("same-origin redirects are followed under the same robots policy", async () => {
-  const requested = [];
-  const baseFetch = async (url) => {
+  const requested: string[] = [];
+  const baseFetch: typeof fetch = async (url) => {
     requested.push(String(url));
     if (String(url) === "https://example.com/robots.txt")
       return new Response("User-agent: *\nAllow: /", { status: 200 });
@@ -64,8 +64,8 @@ test("same-origin redirects are followed under the same robots policy", async ()
 });
 
 test("cross-origin redirects are blocked before the destination is fetched", async () => {
-  const requested = [];
-  const baseFetch = async (url) => {
+  const requested: string[] = [];
+  const baseFetch: typeof fetch = async (url) => {
     requested.push(String(url));
     if (String(url) === "https://example.com/robots.txt")
       return new Response("User-agent: *\nAllow: /", { status: 200 });
@@ -88,7 +88,7 @@ test("cross-origin redirects are blocked before the destination is fetched", asy
 });
 
 test("temporary robots errors fail closed for knowledge source requests", async () => {
-  const baseFetch = async (url) => {
+  const baseFetch: typeof fetch = async (url) => {
     if (String(url).endsWith("/robots.txt")) return new Response("", { status: 503 });
     return new Response("should not fetch", { status: 200 });
   };

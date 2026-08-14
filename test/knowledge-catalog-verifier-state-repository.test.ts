@@ -6,14 +6,15 @@ import {
   finishKnowledgeCatalogVerifierVersionSuccess,
   knowledgeCatalogVerifierState,
 } from "../src/db/knowledge-catalog-verifier-state-repository.js";
+import { asQueryableDatabase } from "./helpers/d1.js";
 
-function queryDb({ changes = 0, row = null } = {}) {
-  const calls = [];
-  return {
+function queryDb({ changes = 0, row = null }: { changes?: number; row?: unknown } = {}) {
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
+  return asQueryableDatabase({
     calls,
-    prepare(sql) {
+    prepare(sql: string) {
       return {
-        bind(...params) {
+        bind(...params: unknown[]) {
           calls.push({ sql, params });
           return {
             async run() {
@@ -30,7 +31,7 @@ function queryDb({ changes = 0, row = null } = {}) {
         },
       };
     },
-  };
+  });
 }
 
 test("verifier version claim is atomic and one-shot", async () => {

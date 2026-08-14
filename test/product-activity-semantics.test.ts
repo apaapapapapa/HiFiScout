@@ -1,8 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { listProducts, upsertProducts } from "../src/db/products.js";
+import type { CatalogProductUpsertInput } from "../src/catalog/types.js";
+import type { ExistingProductRow } from "../src/db/types.js";
+import { asQueryableDatabase } from "./helpers/d1.js";
 
-function product(overrides = {}) {
+interface CapturedStatement {
+  sql: string;
+  binds: unknown[];
+}
+
+function product(overrides: Partial<CatalogProductUpsertInput> = {}): CatalogProductUpsertInput {
   return {
     sourceId: "p1",
     manufacturer: "TAD",
@@ -24,7 +32,7 @@ function product(overrides = {}) {
   };
 }
 
-function existingProduct(overrides = {}) {
+function existingProduct(overrides: Partial<ExistingProductRow> = {}): ExistingProductRow {
   return {
     id: 1,
     source_id: "p1",
@@ -44,6 +52,7 @@ function existingProduct(overrides = {}) {
     stock_status: "in_stock",
     source_url: "https://example.test/p1",
     source_published_at: null,
+    metadata_json: "{}",
     first_seen_at: "2026-08-10T00:00:00.000Z",
     last_seen_at: "2026-08-11T00:00:00.000Z",
     last_activity_at: "2026-08-10T00:00:00.000Z",
@@ -52,15 +61,15 @@ function existingProduct(overrides = {}) {
   };
 }
 
-function upsertDb(existing = null) {
-  const prepared = [];
-  const batched = [];
-  return {
+function upsertDb(existing: ExistingProductRow | null = null) {
+  const prepared: CapturedStatement[] = [];
+  const batched: CapturedStatement[] = [];
+  return asQueryableDatabase({
     prepared,
     batched,
-    prepare(sql) {
+    prepare(sql: string) {
       return {
-        bind(...binds) {
+        bind(...binds: unknown[]) {
           const statement = {
             sql,
             binds,
@@ -84,11 +93,11 @@ function upsertDb(existing = null) {
         },
       };
     },
-    async batch(statements) {
+    async batch(statements: CapturedStatement[]) {
       batched.push(...statements);
       return statements.map(() => ({ success: true, meta: { changes: 1 } }));
     },
-  };
+  });
 }
 
 test("historical retailer listings do not become fresh activity when first backfilled", async () => {
@@ -116,6 +125,7 @@ test("recent retailer listings remain fresh activity when first discovered", asy
 
   assert.equal(result.activityCount, 1);
   const insert = db.prepared.find((statement) => /INSERT INTO products/.test(statement.sql));
+  assert.ok(insert);
   assert.equal(insert.binds.at(-1), observedAt);
 });
 
@@ -174,11 +184,11 @@ test("parser and normalization metadata drift does not create user-facing activi
 });
 
 test("48-hour new filter prefers retailer publication time over crawler discovery time", async () => {
-  const calls = [];
-  const db = {
-    prepare(sql) {
+  const calls: CapturedStatement[] = [];
+  const db = asQueryableDatabase({
+    prepare(sql: string) {
       return {
-        bind(...binds) {
+        bind(...binds: unknown[]) {
           calls.push({ sql, binds });
           return {
             async all() {
@@ -188,7 +198,7 @@ test("48-hour new filter prefers retailer publication time over crawler discover
         },
       };
     },
-  };
+  });
 
   await listProducts(db, new URL("https://example.test/api/products?newOnly=true"));
 

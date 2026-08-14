@@ -26,7 +26,7 @@ function env(overrides = {}) {
 }
 
 test("Hifido relay uses a browser-compatible request profile while retaining crawler identity", async () => {
-  const calls = [];
+  const calls: Array<{ url: string; options: { headers: Record<string, string> } }> = [];
   const handler = createHandler({
     env: env(),
     sleepFn: async () => {},
@@ -53,7 +53,7 @@ test("Hifido relay uses a browser-compatible request profile while retaining cra
 });
 
 test("Hifido relay user agent can be overridden without allowing header injection", async () => {
-  const calls = [];
+  const calls: Array<{ url: string; options: { headers: Record<string, string> } }> = [];
   const customAgent = "Mozilla/5.0 HiFiScoutBot/0.2";
   const handler = createHandler({
     env: env({ HIFIDO_USER_AGENT: customAgent }),

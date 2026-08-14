@@ -54,12 +54,12 @@ test("relay transport requires the shared crawler configuration", () => {
 
 test("pagination and coverage strategies preserve existing adapter semantics", () => {
   const fixed = {
-    *pageUrls(maxPages) {
+    *pageUrls(maxPages = 0) {
       for (let page = 1; page <= maxPages; page += 1) yield `/${page}`;
     },
   };
   assert.deepEqual(initialPageQueue(fixed, 2, {}, {}), ["/1", "/2"]);
-  assert.deepEqual(discoverPages(fixed, "<html>", "/1"), []);
+  assert.deepEqual(discoverPages({ ...fixed, dynamicPagination: false }, "<html>", "/1"), []);
 
   const complete = coverageDecision(
     { dynamicPagination: true },

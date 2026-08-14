@@ -3,18 +3,82 @@ import {
   finalizeKnowledgeCatalogCandidateAggregates,
   knowledgeCatalogKey,
 } from "../catalog/knowledge-catalog.js";
+import type {
+  KnowledgeCatalogCandidateAccumulator,
+  KnowledgeCatalogListingRow,
+  ScoredKnowledgeCatalogCandidate,
+} from "../catalog/types.js";
 import { findVerifiedCatalogMatches } from "./knowledge-catalog-repository.js";
+import type {
+  KnowledgeCatalogReviewRunRow,
+  KnowledgeCatalogVerificationOutcomes,
+  ProductClassificationStats,
+  QueryableDatabase,
+} from "./types.js";
 
 const PRODUCT_PAGE_SIZE = 500;
 
-async function runBatches(db, statements, chunkSize = 50) {
+interface CandidateStats {
+  candidates: number;
+  pendingCandidates: number;
+  matchedCandidates: number;
+  ignoredCandidates: number;
+}
+
+interface CatalogStats {
+  catalogProducts: number;
+  dueProducts: number;
+}
+
+interface ReviewRunSuccessResult extends CandidateStats, CatalogStats {
+  finishedAt: string;
+  reclassifiedProducts: number;
+  verificationAttempts: number;
+  verifiedPromotions: number;
+  verifiedRechecks: number;
+  verificationFailures: number;
+  beforeClassification: ProductClassificationStats;
+  afterClassification: ProductClassificationStats;
+  verificationOutcomes: KnowledgeCatalogVerificationOutcomes;
+  message: string;
+}
+
+interface CandidateStatusRow {
+  review_status: string;
+  count: number;
+}
+
+interface ActiveClassificationRow {
+  active_products: number | null;
+  unclassified_products: number | null;
+  other_products: number | null;
+}
+
+interface OperationalStatusRow extends Partial<KnowledgeCatalogReviewRunRow> {
+  count?: number;
+  verification_status?: string;
+  candidates?: number;
+  active_listings?: number | null;
+  unclassified_listings?: number | null;
+  active_products?: number | null;
+  unclassified_products?: number | null;
+  other_products?: number | null;
+}
+
+async function runBatches(
+  db: QueryableDatabase,
+  statements: D1PreparedStatement[],
+  chunkSize = 50,
+): Promise<void> {
   for (let i = 0; i < statements.length; i += chunkSize) {
     await db.batch(statements.slice(i, i + chunkSize));
   }
 }
 
-async function collectActiveCandidateRows(db) {
-  const grouped = new Map();
+async function collectActiveCandidateRows(
+  db: QueryableDatabase,
+): Promise<ScoredKnowledgeCatalogCandidate[]> {
+  const grouped = new Map<string, KnowledgeCatalogCandidateAccumulator>();
   let lastId = 0;
 
   for (;;) {
@@ -28,7 +92,7 @@ async function collectActiveCandidateRows(db) {
       LIMIT ?
     `)
       .bind(lastId, PRODUCT_PAGE_SIZE)
-      .all();
+      .all<KnowledgeCatalogListingRow & { id: number }>();
     const rows = observed.results || [];
     if (!rows.length) break;
     accumulateKnowledgeCatalogCandidateRows(grouped, rows);
@@ -39,7 +103,9 @@ async function collectActiveCandidateRows(db) {
   return finalizeKnowledgeCatalogCandidateAggregates(grouped);
 }
 
-export async function activeProductClassificationStats(db) {
+export async function activeProductClassificationStats(
+  db: QueryableDatabase,
+): Promise<ProductClassificationStats> {
   const row = await db
     .prepare(`
     SELECT COUNT(*) AS active_products,
@@ -48,7 +114,7 @@ export async function activeProductClassificationStats(db) {
     FROM products
     WHERE is_active = 1
   `)
-    .first();
+    .first<ActiveClassificationRow>();
   return {
     activeProducts: Number(row?.active_products || 0),
     unclassifiedProducts: Number(row?.unclassified_products || 0),
@@ -56,7 +122,9 @@ export async function activeProductClassificationStats(db) {
   };
 }
 
-export async function knowledgeCatalogCandidateStats(db) {
+export async function knowledgeCatalogCandidateStats(
+  db: QueryableDatabase,
+): Promise<CandidateStats> {
   const counts = await db
     .prepare(`
     SELECT review_status, COUNT(*) AS count
@@ -64,7 +132,7 @@ export async function knowledgeCatalogCandidateStats(db) {
     WHERE active_listing_count > 0
     GROUP BY review_status
   `)
-    .all();
+    .all<CandidateStatusRow>();
   const byStatus = Object.fromEntries(
     (counts.results || []).map((row) => [row.review_status, Number(row.count || 0)]),
   );
@@ -76,7 +144,10 @@ export async function knowledgeCatalogCandidateStats(db) {
   };
 }
 
-export async function refreshKnowledgeCatalogCandidates(db, reviewedAt) {
+export async function refreshKnowledgeCatalogCandidates(
+  db: QueryableDatabase,
+  reviewedAt: string,
+): Promise<CandidateStats> {
   const candidates = await collectActiveCandidateRows(db);
   const matches = await findVerifiedCatalogMatches(
     db,
@@ -154,7 +225,11 @@ export async function refreshKnowledgeCatalogCandidates(db, reviewedAt) {
   return knowledgeCatalogCandidateStats(db);
 }
 
-export async function markKnowledgeCatalogProductsDue(db, reviewedAt, reviewIntervalDays = 30) {
+export async function markKnowledgeCatalogProductsDue(
+  db: QueryableDatabase,
+  reviewedAt: string,
+  reviewIntervalDays = 30,
+): Promise<number> {
   const days = Math.max(1, Number(reviewIntervalDays) || 30);
   const threshold = new Date(
     new Date(reviewedAt).getTime() - days * 24 * 60 * 60_000,
@@ -172,8 +247,8 @@ export async function markKnowledgeCatalogProductsDue(db, reviewedAt, reviewInte
   return Number(result?.meta?.changes || 0);
 }
 
-export async function knowledgeCatalogStats(db) {
-  const results = await db.batch([
+export async function knowledgeCatalogStats(db: QueryableDatabase): Promise<CatalogStats> {
+  const results = await db.batch<{ count: number }>([
     db.prepare(
       "SELECT COUNT(*) AS count FROM knowledge_catalog_products WHERE verification_status = 'verified'",
     ),
@@ -187,7 +262,10 @@ export async function knowledgeCatalogStats(db) {
   };
 }
 
-export async function startKnowledgeCatalogReviewRun(db, startedAt) {
+export async function startKnowledgeCatalogReviewRun(
+  db: QueryableDatabase,
+  startedAt: string,
+): Promise<number> {
   const run = await db
     .prepare("INSERT INTO knowledge_catalog_review_runs(started_at, status) VALUES (?, 'running')")
     .bind(startedAt)
@@ -195,7 +273,10 @@ export async function startKnowledgeCatalogReviewRun(db, startedAt) {
   return run.meta.last_row_id;
 }
 
-export async function claimInitialKnowledgeCatalogReviewRun(db, startedAt) {
+export async function claimInitialKnowledgeCatalogReviewRun(
+  db: QueryableDatabase,
+  startedAt: string,
+): Promise<number | null> {
   const run = await db
     .prepare(`
     INSERT INTO knowledge_catalog_review_runs(started_at, status)
@@ -207,7 +288,10 @@ export async function claimInitialKnowledgeCatalogReviewRun(db, startedAt) {
   return Number(run?.meta?.changes || 0) > 0 ? Number(run?.meta?.last_row_id || 0) : null;
 }
 
-export async function claimKnowledgeCatalogCatchupReviewRun(db, startedAt) {
+export async function claimKnowledgeCatalogCatchupReviewRun(
+  db: QueryableDatabase,
+  startedAt: string,
+): Promise<number | null> {
   const run = await db
     .prepare(`
     INSERT INTO knowledge_catalog_review_runs(started_at, status)
@@ -224,7 +308,11 @@ export async function claimKnowledgeCatalogCatchupReviewRun(db, startedAt) {
   return Number(run?.meta?.changes || 0) > 0 ? Number(run?.meta?.last_row_id || 0) : null;
 }
 
-export async function finishKnowledgeCatalogReviewRunSuccess(db, runId, result) {
+export async function finishKnowledgeCatalogReviewRunSuccess(
+  db: QueryableDatabase,
+  runId: number,
+  result: ReviewRunSuccessResult,
+): Promise<void> {
   const outcomes = result.verificationOutcomes || {};
   await db
     .prepare(`
@@ -266,7 +354,12 @@ export async function finishKnowledgeCatalogReviewRunSuccess(db, runId, result) 
     .run();
 }
 
-export async function finishKnowledgeCatalogReviewRunFailure(db, runId, finishedAt, message) {
+export async function finishKnowledgeCatalogReviewRunFailure(
+  db: QueryableDatabase,
+  runId: number,
+  finishedAt: string,
+  message: unknown,
+): Promise<void> {
   await db
     .prepare(`
     UPDATE knowledge_catalog_review_runs
@@ -277,11 +370,13 @@ export async function finishKnowledgeCatalogReviewRunFailure(db, runId, finished
     .run();
 }
 
-function number(value) {
+function number(value: unknown): number {
   return Number(value || 0);
 }
 
-function latestReviewFromRow(row) {
+function latestReviewFromRow(
+  row: OperationalStatusRow | undefined,
+): Record<string, unknown> | null {
   if (!row) return null;
   return {
     id: number(row.id),
@@ -322,8 +417,10 @@ function latestReviewFromRow(row) {
   };
 }
 
-export async function knowledgeCatalogOperationalStatus(db) {
-  const results = await db.batch([
+export async function knowledgeCatalogOperationalStatus(
+  db: QueryableDatabase,
+): Promise<Record<string, unknown>> {
+  const results = await db.batch<OperationalStatusRow>([
     db.prepare("SELECT * FROM knowledge_catalog_review_runs ORDER BY id DESC LIMIT 1"),
     db.prepare(`
       SELECT verification_status, COUNT(*) AS candidates,

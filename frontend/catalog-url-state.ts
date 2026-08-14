@@ -2,13 +2,13 @@
   const source = new URLSearchParams(location.search);
   const params = new URLSearchParams();
 
-  function copyText(key, maxLength) {
+  function copyText(key: string, maxLength: number): void {
     const value = source.get(key);
     if (value == null || !value.trim() || [...value].length > maxLength) return;
     params.set(key, value);
   }
 
-  function copyNumeric(key) {
+  function copyNumeric(key: string): void {
     const value = source.get(key);
     if (value != null && /^\d{1,12}$/.test(value)) params.set(key, value);
   }
@@ -21,7 +21,7 @@
   copyNumeric("maxPrice");
 
   const sort = source.get("sort");
-  if (["priceAsc", "priceDesc"].includes(sort)) params.set("sort", sort);
+  if (sort === "priceAsc" || sort === "priceDesc") params.set("sort", sort);
 
   if (source.get("inStock") === "false") params.set("inStock", "false");
   if (source.get("newOnly") === "true") params.set("newOnly", "true");

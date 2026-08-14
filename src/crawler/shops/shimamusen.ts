@@ -1,11 +1,33 @@
 import { cleanText, parseYen, splitManufacturerModel } from "../normalize.js";
+import type { ShopParsedProduct, StockStatus } from "../../catalog/types.js";
+import type { ShopAdapter } from "../types.js";
+
+interface ShimamusenPage {
+  url: string;
+  kind: string;
+}
+
+interface ProductAnchor {
+  sourceId: string;
+  sourceUrl: string;
+  title: string;
+  index: number;
+  end: number;
+}
+
+interface ProductBlock {
+  sourceId: string;
+  sourceUrl: string;
+  title: string;
+  html: string;
+}
 
 const BASE_URL = "https://www.shimamusen.com";
 const DISPLAY_URL = `${BASE_URL}/shopbrand/063/Y/`;
 const SALE_URL = `${BASE_URL}/shopbrand/036/Y/`;
 const USED_URL = `${BASE_URL}/shopbrand/ct826/`;
 
-function absoluteUrl(href) {
+function absoluteUrl(href: string): string | null {
   try {
     const url = new URL(href, BASE_URL);
     return url.hostname === "www.shimamusen.com" ? url.toString() : null;
@@ -14,7 +36,7 @@ function absoluteUrl(href) {
   }
 }
 
-function stripTags(html = "") {
+function stripTags(html = ""): string {
   return cleanText(
     String(html)
       .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
@@ -24,11 +46,11 @@ function stripTags(html = "") {
   );
 }
 
-function cleanedAnchorText(html = "") {
+function cleanedAnchorText(html = ""): string {
   return stripTags(html);
 }
 
-function pageKind(page) {
+function pageKind(page: Partial<ShimamusenPage> | string | undefined): string {
   if (typeof page === "object" && page?.kind) return page.kind;
   const url = typeof page === "string" ? page : page?.url || "";
   if (/\/063\/Y\/?/i.test(url)) return "展示処分品";
@@ -36,8 +58,8 @@ function pageKind(page) {
   return "中古品";
 }
 
-function productAnchors(html) {
-  const anchors = [];
+function productAnchors(html: string): ProductAnchor[] {
+  const anchors: ProductAnchor[] = [];
   const re =
     /<a\b([^>]*\bhref\s*=\s*["']([^"']*\/shopdetail\/(\d+)\/[^"']*)["'][^>]*)>([\s\S]*?)<\/a>/gi;
   for (const match of String(html || "").matchAll(re)) {
@@ -54,21 +76,22 @@ function productAnchors(html) {
   return anchors;
 }
 
-function distinctProductBlocks(html) {
+function distinctProductBlocks(html: string): ProductBlock[] {
   const anchors = productAnchors(html);
-  const orderedIds = [];
-  const grouped = new Map();
+  const orderedIds: string[] = [];
+  const grouped = new Map<string, ProductAnchor[]>();
 
   for (const anchor of anchors) {
     if (!grouped.has(anchor.sourceId)) {
       grouped.set(anchor.sourceId, []);
       orderedIds.push(anchor.sourceId);
     }
-    grouped.get(anchor.sourceId).push(anchor);
+    grouped.get(anchor.sourceId)?.push(anchor);
   }
 
   return orderedIds.map((sourceId, index) => {
     const current = grouped.get(sourceId);
+    if (!current?.length) throw new Error(`missing product anchors for ${sourceId}`);
     const titleAnchor = current.find((anchor) => anchor.title) || current[0];
     const nextId = orderedIds[index + 1];
     const nextAnchors = nextId ? grouped.get(nextId) : null;
@@ -85,7 +108,7 @@ function distinctProductBlocks(html) {
   });
 }
 
-function manufacturerFromBlock(blockHtml, title) {
+function manufacturerFromBlock(blockHtml: string, title: string): string {
   const explicit = String(blockHtml).match(
     /<(?:span|p|div|li)\b[^>]*class=["'][^"']*(?:maker|manufacturer|brand)[^"']*["'][^>]*>([\s\S]*?)<\/(?:span|p|div|li)>/i,
   )?.[1];
@@ -94,25 +117,25 @@ function manufacturerFromBlock(blockHtml, title) {
   return splitManufacturerModel(title, "shimamusen").manufacturer || "";
 }
 
-function modelFromTitle(title) {
+function modelFromTitle(title: string): string {
   return splitManufacturerModel(title, "shimamusen").model || title;
 }
 
-function extractPrice(blockHtml) {
+function extractPrice(blockHtml: string): number | null {
   const text = stripTags(blockHtml);
   const match =
     text.match(/(?:販売価格\s*)?([\d,]+)円(?:\s*\(税込\))?/i) || text.match(/([\d,]+)円\s*[～〜]/i);
   return match ? parseYen(match[1]) : null;
 }
 
-function stockStatusFor(title, blockHtml) {
+function stockStatusFor(title: string, blockHtml: string): StockStatus {
   const text = `${title} ${stripTags(blockHtml)}`;
   if (/売り切れ|売切れ|SOLD\s*OUT|在庫なし|完売|販売終了/i.test(text)) return "sold_out";
   if (/お取り寄せ/.test(title)) return "unknown";
   return "in_stock";
 }
 
-function conditionFor(kind, title, blockHtml) {
+function conditionFor(kind: string, title: string, blockHtml: string): string {
   const parts = [kind];
   if (/未使用開封品/.test(title)) parts.push("未使用開封品");
   else if (/B級品/.test(title)) parts.push("B級品");
@@ -121,9 +144,12 @@ function conditionFor(kind, title, blockHtml) {
   return [...new Set(parts)].join(" / ");
 }
 
-export function parseShimamusenListing(html, page = {}) {
+export function parseShimamusenListing(
+  html: string,
+  page?: Partial<ShimamusenPage> | string,
+): ShopParsedProduct[] {
   const kind = pageKind(page);
-  const products = [];
+  const products: ShopParsedProduct[] = [];
 
   for (const block of distinctProductBlocks(html)) {
     const title = cleanText(block.title);
@@ -149,8 +175,8 @@ export function parseShimamusenListing(html, page = {}) {
   return [...new Map(products.map((product) => [product.sourceId, product])).values()];
 }
 
-export function discoverShimamusenPageUrls(html) {
-  const pages = new Map();
+export function discoverShimamusenPageUrls(html: string): ShimamusenPage[] {
+  const pages = new Map<number, ShimamusenPage>();
   const re = /href\s*=\s*["']([^"']*\/shopbrand\/ct826\/page(\d+)\/order\/?[^"']*)["']/gi;
   for (const match of String(html || "").matchAll(re)) {
     const url = absoluteUrl(match[1]);
@@ -183,4 +209,4 @@ export const shimamusenAdapter = {
   parse(html, page) {
     return parseShimamusenListing(html, page);
   },
-};
+} satisfies ShopAdapter<ShimamusenPage>;

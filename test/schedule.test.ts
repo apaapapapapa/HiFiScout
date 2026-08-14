@@ -56,11 +56,11 @@ test("Knowledge Catalog verification is dispatched to its dedicated queue", () =
   assert.equal(wranglerConfig.vars.KNOWLEDGE_CATALOG_REVIEW_INTERVAL_DAYS, "30");
 
   const producer = wranglerConfig.queues.producers.find(
-    (item) => item.binding === "KNOWLEDGE_CATALOG_QUEUE",
+    (item: { binding?: string }) => item.binding === "KNOWLEDGE_CATALOG_QUEUE",
   );
   assert.equal(producer?.queue, "hifiscout-knowledge-verification");
   const consumer = wranglerConfig.queues.consumers.find(
-    (item) => item.queue === "hifiscout-knowledge-verification",
+    (item: { queue?: string }) => item.queue === "hifiscout-knowledge-verification",
   );
   assert.equal(consumer?.max_batch_size, 1);
   assert.equal(consumer?.max_concurrency, 4);

@@ -109,6 +109,6 @@ export const SHOP_PLUGINS: ShopPlugin[] = [
 // Compatibility alias for existing callers. New code should treat each entry as a shop plugin.
 export const SHOP_ADAPTERS: ShopPlugin[] = SHOP_PLUGINS;
 
-export function getShopPlugin(shopKey: string | undefined): ShopPlugin | null {
+export function getShopPlugin(shopKey: string | null | undefined): ShopPlugin | null {
   return SHOP_PLUGINS.find((plugin) => plugin.key === shopKey) || null;
 }

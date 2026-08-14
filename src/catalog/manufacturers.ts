@@ -1,4 +1,12 @@
-const MANUFACTURERS = [
+import type {
+  ManufacturerDefinition,
+  ManufacturerModelSplit,
+  ManufacturerNormalizationResult,
+  ManufacturerSourceEntry,
+  PrefixAliasEntry,
+} from "./types.js";
+
+const MANUFACTURER_SOURCE: readonly ManufacturerSourceEntry[] = [
   ["luxman", "LUXMAN", ["luxman", "ラックスマン"]],
   ["accuphase", "Accuphase", ["accuphase", "アキュフェーズ"]],
   ["tad", "TAD", ["tad", "technical audio devices", "テクニカルオーディオデバイセズ"]],
@@ -63,9 +71,13 @@ const MANUFACTURERS = [
     "水月雨 (MOONDROP)",
     ["moondrop", "水月雨", "水月雨(moondrop)", "水月雨（moondrop）", "スイゲツアメ"],
   ],
-].map(([id, name, aliases]) => Object.freeze({ id, name, aliases }));
+];
 
-function normalizeKey(value = "") {
+const MANUFACTURERS: readonly ManufacturerDefinition[] = MANUFACTURER_SOURCE.map(
+  ([id, name, aliases]) => Object.freeze({ id, name, aliases }),
+);
+
+function normalizeKey(value: unknown = ""): string {
   return String(value)
     .normalize("NFKC")
     .trim()
@@ -75,15 +87,15 @@ function normalizeKey(value = "") {
     .replace(/[\s・･_\-/&+.,'"()（）]+/g, "");
 }
 
-function cleanSourceText(value = "") {
+function cleanSourceText(value: unknown = ""): string {
   return String(value).normalize("NFKC").replace(/\s+/g, " ").trim();
 }
 
-function escapeRegExp(value) {
+function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function prefixPattern(alias) {
+function prefixPattern(alias: string): RegExp | null {
   const tokens = cleanSourceText(alias)
     .split(/[\s・･_\-/&+.,'"()（）]+/)
     .filter(Boolean);
@@ -93,9 +105,9 @@ function prefixPattern(alias) {
   return new RegExp(`^${tokens.map(escapeRegExp).join(separator)}(?=$|${boundary})`, "i");
 }
 
-const BY_ALIAS = new Map();
-const BY_ID = new Map();
-const PREFIX_ALIASES = [];
+const BY_ALIAS = new Map<string, ManufacturerDefinition>();
+const BY_ID = new Map<string, ManufacturerDefinition>();
+const PREFIX_ALIASES: PrefixAliasEntry[] = [];
 for (const manufacturer of MANUFACTURERS) {
   BY_ID.set(manufacturer.id, manufacturer);
   const aliases = [manufacturer.name, ...manufacturer.aliases];
@@ -108,21 +120,21 @@ for (const manufacturer of MANUFACTURERS) {
 }
 PREFIX_ALIASES.sort((a, b) => b.key.length - a.key.length || b.alias.length - a.alias.length);
 
-function hashKey(value) {
+function hashKey(value: string): string {
   let hash = 0x811c9dc5;
   for (const char of value) {
-    hash ^= char.codePointAt(0);
+    hash ^= char.codePointAt(0) ?? 0;
     hash = Math.imul(hash, 0x01000193);
   }
   return (hash >>> 0).toString(36);
 }
 
-function fallbackId(key) {
+function fallbackId(key: string): string {
   const ascii = key.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   return ascii.length >= 2 ? ascii.slice(0, 80) : `brand-${hashKey(key)}`;
 }
 
-export function manufacturerIdForFilter(value = "") {
+export function manufacturerIdForFilter(value: unknown = ""): string {
   const raw = cleanSourceText(value).toLowerCase();
   if (BY_ID.has(raw)) return raw;
   const key = normalizeKey(value);
@@ -130,14 +142,14 @@ export function manufacturerIdForFilter(value = "") {
   return BY_ALIAS.get(key)?.id || fallbackId(key);
 }
 
-export function manufacturerSearchAliases(value = "") {
+export function manufacturerSearchAliases(value: unknown = ""): string[] {
   const raw = cleanSourceText(value).toLowerCase();
   const manufacturer = BY_ID.get(raw) || BY_ALIAS.get(normalizeKey(value));
   if (!manufacturer) return cleanSourceText(value) ? [cleanSourceText(value)] : [];
   return [...new Set([manufacturer.id, manufacturer.name, ...manufacturer.aliases])];
 }
 
-export function normalizeManufacturer(value = "") {
+export function normalizeManufacturer(value: unknown = ""): ManufacturerNormalizationResult {
   const raw = cleanSourceText(value);
   if (!raw) return { id: "", displayName: "", matchedAlias: false };
   const key = normalizeKey(raw);
@@ -146,7 +158,7 @@ export function normalizeManufacturer(value = "") {
   return { id: fallbackId(key), displayName: raw, matchedAlias: false };
 }
 
-export function splitKnownManufacturerModel(value = "") {
+export function splitKnownManufacturerModel(value: unknown = ""): ManufacturerModelSplit | null {
   const raw = cleanSourceText(value);
   if (!raw) return null;
 

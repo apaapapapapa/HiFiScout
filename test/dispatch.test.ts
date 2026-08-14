@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { dueDispatchCandidates, isDispatchLeaseActive } from "../src/crawler/dispatch.js";
+import { shopSyncStateRow } from "./helpers/fixtures.js";
 
 const ONLY_HIFIDO = {
   AUDIOUNION_ENABLED: "false",
@@ -33,11 +34,11 @@ test("due shop is dispatched again after a stale queue lease", () => {
   const recentLease = dueDispatchCandidates(
     ONLY_HIFIDO,
     [
-      {
+      shopSyncStateRow({
         shop_key: "hifido",
         last_attempt_at: "2026-08-11T05:00:00.000Z",
         queued_at: "2026-08-11T05:50:00.000Z",
-      },
+      }),
     ],
     now,
   );
@@ -46,11 +47,11 @@ test("due shop is dispatched again after a stale queue lease", () => {
   const staleLease = dueDispatchCandidates(
     ONLY_HIFIDO,
     [
-      {
+      shopSyncStateRow({
         shop_key: "hifido",
         last_attempt_at: "2026-08-11T05:00:00.000Z",
         queued_at: "2026-08-11T05:40:00.000Z",
-      },
+      }),
     ],
     now,
   );

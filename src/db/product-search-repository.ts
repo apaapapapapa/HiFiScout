@@ -2,85 +2,108 @@ import { categoryIdForFilter } from "../catalog/categories.js";
 import { normalizeIdentityModel } from "../catalog/product-identity.js";
 import { manufacturerIdForFilter, splitKnownManufacturerModel } from "../catalog/manufacturers.js";
 import { parseFtsSearchQuery } from "../search/fts-query.js";
+import type { FtsSearchPlan } from "../search/fts-query.js";
+import { isRecord } from "../types.js";
+import type {
+  ListProductsResult,
+  ProductApiRow,
+  ProductListCursor,
+  ProductQuerySort,
+  ProductRow,
+  QueryableDatabase,
+  SortDefinition,
+} from "./types.js";
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 100;
 
-function productRow(row) {
-  if (!row) return row;
-  let categoryIds = [];
+interface SearchPlanResult {
+  join: string;
+  plan: FtsSearchPlan | null;
+}
+
+function productRow(row: ProductRow): ProductApiRow {
+  let categoryIds: string[] = [];
   try {
-    categoryIds = JSON.parse(row.category_ids || "[]");
+    const parsed: unknown = JSON.parse(row.category_ids || "[]");
+    categoryIds = Array.isArray(parsed)
+      ? parsed.filter((value): value is string => typeof value === "string")
+      : [];
   } catch {
     categoryIds = row.primary_category_id ? [row.primary_category_id] : [];
   }
   return { ...row, category_ids: categoryIds };
 }
 
-function encodeCursor(payload) {
+function encodeCursor(payload: ProductListCursor): string {
   const bytes = new TextEncoder().encode(JSON.stringify(payload));
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/u, "");
 }
 
-function decodeCursor(value) {
+function decodeCursor(value: string | null): ProductListCursor | null {
   if (!value) return null;
   try {
     const normalized = value.replaceAll("-", "+").replaceAll("_", "/");
     const padding = "=".repeat((4 - (normalized.length % 4)) % 4);
     const binary = atob(normalized + padding);
     const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-    const parsed = JSON.parse(new TextDecoder().decode(bytes));
-    if (
-      !parsed ||
-      typeof parsed !== "object" ||
-      !Number.isInteger(parsed.id) ||
-      typeof parsed.sort !== "string"
-    ) {
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    if (!isRecord(parsed) || !Number.isInteger(parsed.id) || typeof parsed.sort !== "string") {
       return null;
     }
-    return parsed;
+    return {
+      id: Number(parsed.id),
+      sort: parsed.sort,
+      ...(typeof parsed.value === "string" ||
+      typeof parsed.value === "number" ||
+      parsed.value === null
+        ? { value: parsed.value }
+        : {}),
+      ...(typeof parsed.isNull === "boolean" ? { isNull: parsed.isNull } : {}),
+    };
   } catch {
     return null;
   }
 }
 
-function sortDefinition(sortKey) {
-  return (
-    {
-      newest: { key: "newest", column: "last_activity_at", direction: "DESC", idDirection: "DESC" },
-      oldest: { key: "oldest", column: "last_activity_at", direction: "ASC", idDirection: "ASC" },
-      updated: {
-        key: "updated",
-        column: "last_activity_at",
-        direction: "DESC",
-        idDirection: "DESC",
-      },
-      priceAsc: {
-        key: "priceAsc",
-        column: "price_yen",
-        direction: "ASC",
-        idDirection: "ASC",
-        price: true,
-      },
-      priceDesc: {
-        key: "priceDesc",
-        column: "price_yen",
-        direction: "DESC",
-        idDirection: "DESC",
-        price: true,
-      },
-    }[sortKey] || {
-      key: "newest",
+function sortDefinition(sortKey: string | null): SortDefinition {
+  const definitions: Readonly<Record<ProductQuerySort, SortDefinition>> = {
+    newest: { key: "newest", column: "last_activity_at", direction: "DESC", idDirection: "DESC" },
+    oldest: { key: "oldest", column: "last_activity_at", direction: "ASC", idDirection: "ASC" },
+    updated: {
+      key: "updated",
       column: "last_activity_at",
       direction: "DESC",
       idDirection: "DESC",
-    }
-  );
+    },
+    priceAsc: {
+      key: "priceAsc",
+      column: "price_yen",
+      direction: "ASC",
+      idDirection: "ASC",
+      price: true,
+    },
+    priceDesc: {
+      key: "priceDesc",
+      column: "price_yen",
+      direction: "DESC",
+      idDirection: "DESC",
+      price: true,
+    },
+  };
+  return sortKey && sortKey in definitions
+    ? definitions[sortKey as ProductQuerySort]
+    : definitions.newest;
 }
 
-function addCursorPredicate(where, binds, sort, cursor) {
+function addCursorPredicate(
+  where: string[],
+  binds: unknown[],
+  sort: SortDefinition,
+  cursor: ProductListCursor | null,
+): void {
   if (!cursor || cursor.sort !== sort.key) return;
   if (!sort.price) {
     if (typeof cursor.value !== "string") return;
@@ -104,7 +127,7 @@ function addCursorPredicate(where, binds, sort, cursor) {
   binds.push(cursor.value, cursor.value, cursor.id);
 }
 
-function cursorFor(row, sort) {
+function cursorFor(row: ProductApiRow, sort: SortDefinition): string {
   return encodeCursor({
     sort: sort.key,
     id: row.id,
@@ -113,7 +136,7 @@ function cursorFor(row, sort) {
   });
 }
 
-function requestedFeatures(params) {
+function requestedFeatures(params: URLSearchParams): string[] {
   return [
     ...new Set(
       params
@@ -125,7 +148,7 @@ function requestedFeatures(params) {
   ];
 }
 
-function addSearchPlan(q, where, binds) {
+function addSearchPlan(q: string, where: string[], binds: unknown[]): SearchPlanResult {
   if (!q) return { join: "", plan: null };
   const plan = parseFtsSearchQuery(q);
   let join = "JOIN product_search_projection sp ON sp.product_id = p.id";
@@ -145,7 +168,7 @@ function addSearchPlan(q, where, binds) {
   return { join, plan };
 }
 
-function relevanceOrder(q, plan, rankBinds) {
+function relevanceOrder(q: string, plan: FtsSearchPlan | null, rankBinds: unknown[]): string {
   const known = splitKnownManufacturerModel(q);
   const queryModel = known?.model || q;
   const normalizedModel = normalizeIdentityModel(queryModel);
@@ -165,11 +188,11 @@ function relevanceOrder(q, plan, rankBinds) {
   return `${caseSql}${ftsRank}, p.last_activity_at DESC, p.id DESC`;
 }
 
-export async function listProducts(db, url) {
+export async function listProducts(db: QueryableDatabase, url: URL): Promise<ListProductsResult> {
   const startedAt = Date.now();
   const params = url.searchParams;
-  const where = ["p.is_active = 1"];
-  const binds = [];
+  const where: string[] = ["p.is_active = 1"];
+  const binds: unknown[] = [];
   const q = params.get("q")?.trim() || "";
   const search = addSearchPlan(q, where, binds);
 
@@ -239,7 +262,7 @@ export async function listProducts(db, url) {
   const requestedOffset = Number.parseInt(params.get("offset") || "0", 10);
   const offset = Number.isFinite(requestedOffset) ? Math.max(0, requestedOffset) : 0;
   const includeTotal = params.get("includeTotal") === "true";
-  const rankBinds = [];
+  const rankBinds: unknown[] = [];
   const orderBy = relevance
     ? relevanceOrder(q, search.plan, rankBinds)
     : sort.price
@@ -253,7 +276,7 @@ export async function listProducts(db, url) {
         `SELECT COUNT(*) AS total FROM products p ${search.join} WHERE ${countWhere.join(" AND ")}`,
       )
       .bind(...countBinds)
-      .all();
+      .all<{ total: number }>();
     totalCount = Number(countResult.results?.[0]?.total || 0);
   }
 
@@ -264,10 +287,10 @@ export async function listProducts(db, url) {
       `SELECT p.* FROM products p ${search.join} WHERE ${where.join(" AND ")} ORDER BY ${orderBy} ${paginationSql}`,
     )
     .bind(...binds, ...rankBinds, ...paginationBinds)
-    .all();
+    .all<ProductRow>();
   const rows = result.results || [];
   const hasMore = rows.length > limit;
-  const items = (hasMore ? rows.slice(0, limit) : rows).map(productRow);
+  const items = (hasMore ? rows.slice(0, limit) : rows).map((row) => productRow(row));
   const last = items.at(-1);
 
   if (q) {
@@ -286,6 +309,6 @@ export async function listProducts(db, url) {
     items,
     hasMore,
     nextCursor: !relevance && hasMore && last ? cursorFor(last, sort) : null,
-    ...(includeTotal ? { totalCount, totalPages: Math.ceil(totalCount / limit) } : {}),
+    ...(includeTotal ? { totalCount, totalPages: Math.ceil((totalCount ?? 0) / limit) } : {}),
   };
 }

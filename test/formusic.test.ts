@@ -62,6 +62,7 @@ test("FOR MUSIC parser keeps used/display listings and factual fields only", () 
   assert.equal(items.length, 3);
 
   const used = items.find((item) => item.sourceId === "37194");
+  assert.ok(used);
   assert.equal(used.manufacturer, "Bowers&Wilkins");
   assert.equal(used.model, "805D3 グロスブラック");
   assert.equal(used.category, "スピーカー");
@@ -73,12 +74,14 @@ test("FOR MUSIC parser keeps used/display listings and factual fields only", () 
   assert.equal("description" in used, false);
 
   const display = items.find((item) => item.sourceId === "37001");
+  assert.ok(display);
   assert.equal(display.priceYen, 1034000);
   assert.equal(display.stockStatus, "unknown");
   assert.match(display.conditionText, /展示現品/);
   assert.match(display.conditionText, /商談中/);
 
   const sold = items.find((item) => item.sourceId === "35000");
+  assert.ok(sold);
   assert.equal(sold.manufacturer, "LUXMAN");
   assert.equal(sold.category, "プリアンプ");
   assert.equal(sold.priceYen, null);

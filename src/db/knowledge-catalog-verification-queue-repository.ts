@@ -1,20 +1,61 @@
+import type {
+  CompleteKnowledgeCatalogVerificationJobInput,
+  KnowledgeCatalogVerificationJob,
+  KnowledgeCatalogVerificationJobRow,
+  KnowledgeCatalogVerificationJobSpec,
+  KnowledgeCatalogVerificationQueueStatus,
+  KnowledgeCatalogVerificationRunStats,
+  ProductClassificationStats,
+  QueryableDatabase,
+} from "./types.js";
+
 const WRITE_BATCH_SIZE = 50;
 
-function addSeconds(iso, seconds) {
+interface VerificationRunStatsRow {
+  target_jobs: number | null;
+  candidate_jobs: number | null;
+  product_recheck_jobs: number | null;
+  queued: number | null;
+  processing: number | null;
+  retrying: number | null;
+  completed: number | null;
+  dead_letter: number | null;
+  source_attempts: number | null;
+  promoted: number | null;
+  rechecked: number | null;
+  verified: number | null;
+  not_found: number | null;
+  ambiguous: number | null;
+  unsupported: number | null;
+  error: number | null;
+}
+
+interface VerificationQueueBatchRow {
+  queued?: number | null;
+  processing?: number | null;
+  retrying?: number | null;
+  dead_letter?: number | null;
+  oldest_pending_at?: string | null;
+  run_id?: number;
+}
+
+function addSeconds(iso: string, seconds: number): string {
   return new Date(new Date(iso).getTime() + Math.max(1, Number(seconds) || 1) * 1000).toISOString();
 }
 
-async function runBatches(db, statements) {
+async function runBatches(db: QueryableDatabase, statements: D1PreparedStatement[]): Promise<void> {
   for (let index = 0; index < statements.length; index += WRITE_BATCH_SIZE) {
     await db.batch(statements.slice(index, index + WRITE_BATCH_SIZE));
   }
 }
 
-function number(value) {
+function number(value: unknown): number {
   return Number(value || 0);
 }
 
-function jobFromRow(row) {
+function jobFromRow(
+  row: KnowledgeCatalogVerificationJobRow | null | undefined,
+): KnowledgeCatalogVerificationJob | null {
   if (!row) return null;
   return {
     id: number(row.id),
@@ -39,7 +80,12 @@ function jobFromRow(row) {
   };
 }
 
-export async function createKnowledgeCatalogVerificationJobs(db, runId, jobs, enqueuedAt) {
+export async function createKnowledgeCatalogVerificationJobs(
+  db: QueryableDatabase,
+  runId: number,
+  jobs: readonly KnowledgeCatalogVerificationJobSpec[],
+  enqueuedAt: string,
+): Promise<KnowledgeCatalogVerificationJob[]> {
   const statements = jobs.map((job) =>
     db
       .prepare(`
@@ -71,11 +117,18 @@ export async function createKnowledgeCatalogVerificationJobs(db, runId, jobs, en
       ORDER BY id
     `)
     .bind(runId)
-    .all();
-  return (result.results || []).map(jobFromRow);
+    .all<KnowledgeCatalogVerificationJobRow>();
+  return (result.results || [])
+    .map((row) => jobFromRow(row))
+    .filter((job): job is KnowledgeCatalogVerificationJob => job !== null);
 }
 
-export async function claimKnowledgeCatalogVerificationJob(db, jobId, claimedAt, leaseSeconds) {
+export async function claimKnowledgeCatalogVerificationJob(
+  db: QueryableDatabase,
+  jobId: number,
+  claimedAt: string,
+  leaseSeconds: number,
+): Promise<KnowledgeCatalogVerificationJob | null> {
   const leaseExpiresAt = addSeconds(claimedAt, leaseSeconds);
   const result = await db
     .prepare(`
@@ -97,11 +150,15 @@ export async function claimKnowledgeCatalogVerificationJob(db, jobId, claimedAt,
   const row = await db
     .prepare("SELECT * FROM knowledge_catalog_verification_jobs WHERE id = ?")
     .bind(jobId)
-    .first();
+    .first<KnowledgeCatalogVerificationJobRow>();
   return jobFromRow(row);
 }
 
-export async function incrementKnowledgeCatalogVerificationSourceAttempt(db, jobId, attemptedAt) {
+export async function incrementKnowledgeCatalogVerificationSourceAttempt(
+  db: QueryableDatabase,
+  jobId: number,
+  attemptedAt: string,
+): Promise<number> {
   await db
     .prepare(`
       UPDATE knowledge_catalog_verification_jobs
@@ -113,17 +170,17 @@ export async function incrementKnowledgeCatalogVerificationSourceAttempt(db, job
   const row = await db
     .prepare("SELECT source_attempts FROM knowledge_catalog_verification_jobs WHERE id = ?")
     .bind(jobId)
-    .first();
+    .first<Pick<KnowledgeCatalogVerificationJobRow, "source_attempts">>();
   return number(row?.source_attempts);
 }
 
 export async function retryKnowledgeCatalogVerificationJob(
-  db,
-  jobId,
-  availableAt,
-  message,
-  updatedAt,
-) {
+  db: QueryableDatabase,
+  jobId: number,
+  availableAt: string,
+  message: unknown,
+  updatedAt: string,
+): Promise<void> {
   await db
     .prepare(`
       UPDATE knowledge_catalog_verification_jobs
@@ -140,11 +197,16 @@ export async function retryKnowledgeCatalogVerificationJob(
 }
 
 export async function completeKnowledgeCatalogVerificationJob(
-  db,
-  jobId,
-  { outcome = "skipped", promoted = 0, rechecked = 0, message = "" } = {},
-  finishedAt,
-) {
+  db: QueryableDatabase,
+  jobId: number,
+  {
+    outcome = "skipped",
+    promoted = 0,
+    rechecked = 0,
+    message = "",
+  }: CompleteKnowledgeCatalogVerificationJobInput = {},
+  finishedAt: string,
+): Promise<void> {
   await db
     .prepare(`
       UPDATE knowledge_catalog_verification_jobs
@@ -172,7 +234,12 @@ export async function completeKnowledgeCatalogVerificationJob(
     .run();
 }
 
-export async function deadLetterKnowledgeCatalogVerificationJob(db, jobId, message, finishedAt) {
+export async function deadLetterKnowledgeCatalogVerificationJob(
+  db: QueryableDatabase,
+  jobId: number,
+  message: unknown,
+  finishedAt: string,
+): Promise<void> {
   await db
     .prepare(`
       UPDATE knowledge_catalog_verification_jobs
@@ -191,12 +258,12 @@ export async function deadLetterKnowledgeCatalogVerificationJob(db, jobId, messa
 }
 
 export async function acquireKnowledgeCatalogVerificationDomainLease(
-  db,
-  hostname,
-  jobId,
-  leasedAt,
-  leaseSeconds,
-) {
+  db: QueryableDatabase,
+  hostname: string,
+  jobId: number,
+  leasedAt: string,
+  leaseSeconds: number,
+): Promise<boolean> {
   if (!hostname) return true;
   const leasedUntil = addSeconds(leasedAt, leaseSeconds);
   const result = await db
@@ -216,7 +283,11 @@ export async function acquireKnowledgeCatalogVerificationDomainLease(
   return number(result?.meta?.changes) > 0;
 }
 
-export async function releaseKnowledgeCatalogVerificationDomainLease(db, hostname, jobId) {
+export async function releaseKnowledgeCatalogVerificationDomainLease(
+  db: QueryableDatabase,
+  hostname: string,
+  jobId: number,
+): Promise<void> {
   if (!hostname) return;
   await db
     .prepare(`
@@ -227,7 +298,12 @@ export async function releaseKnowledgeCatalogVerificationDomainLease(db, hostnam
     .run();
 }
 
-export async function setKnowledgeCatalogReviewRunQueueBaseline(db, runId, baseline, message) {
+export async function setKnowledgeCatalogReviewRunQueueBaseline(
+  db: QueryableDatabase,
+  runId: number,
+  baseline: ProductClassificationStats,
+  message: unknown,
+): Promise<void> {
   await db
     .prepare(`
       UPDATE knowledge_catalog_review_runs
@@ -247,7 +323,10 @@ export async function setKnowledgeCatalogReviewRunQueueBaseline(db, runId, basel
     .run();
 }
 
-export async function knowledgeCatalogReviewRunQueueBaseline(db, runId) {
+export async function knowledgeCatalogReviewRunQueueBaseline(
+  db: QueryableDatabase,
+  runId: number,
+): Promise<ProductClassificationStats> {
   const row = await db
     .prepare(`
       SELECT active_products_before, unclassified_before, other_before
@@ -255,7 +334,12 @@ export async function knowledgeCatalogReviewRunQueueBaseline(db, runId) {
       WHERE id = ?
     `)
     .bind(runId)
-    .first();
+    .first<
+      Pick<
+        import("./types.js").KnowledgeCatalogReviewRunRow,
+        "active_products_before" | "unclassified_before" | "other_before"
+      >
+    >();
   return {
     activeProducts: number(row?.active_products_before),
     unclassifiedProducts: number(row?.unclassified_before),
@@ -263,7 +347,10 @@ export async function knowledgeCatalogReviewRunQueueBaseline(db, runId) {
   };
 }
 
-export async function knowledgeCatalogVerificationRunStats(db, runId) {
+export async function knowledgeCatalogVerificationRunStats(
+  db: QueryableDatabase,
+  runId: number,
+): Promise<KnowledgeCatalogVerificationRunStats> {
   const row = await db
     .prepare(`
       SELECT
@@ -287,7 +374,7 @@ export async function knowledgeCatalogVerificationRunStats(db, runId) {
       WHERE run_id = ? AND job_type <> 'finalize'
     `)
     .bind(runId)
-    .first();
+    .first<VerificationRunStatsRow>();
   const queued = number(row?.queued);
   const processing = number(row?.processing);
   const retrying = number(row?.retrying);
@@ -314,8 +401,10 @@ export async function knowledgeCatalogVerificationRunStats(db, runId) {
   };
 }
 
-export async function knowledgeCatalogVerificationQueueStatus(db) {
-  const results = await db.batch([
+export async function knowledgeCatalogVerificationQueueStatus(
+  db: QueryableDatabase,
+): Promise<KnowledgeCatalogVerificationQueueStatus> {
+  const results = await db.batch<VerificationQueueBatchRow>([
     db.prepare(`
       SELECT
         SUM(CASE WHEN status = 'queued' THEN 1 ELSE 0 END) AS queued,

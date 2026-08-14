@@ -8,8 +8,8 @@ if (!stateDir) {
   process.exit(2);
 }
 
-function findSqliteFiles(directory) {
-  const files = [];
+function findSqliteFiles(directory: string): string[] {
+  const files: string[] = [];
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     const path = join(directory, entry.name);
     if (entry.isDirectory()) {
@@ -22,11 +22,11 @@ function findSqliteFiles(directory) {
 }
 
 const requiredTables = new Set(["products", "price_history", "shop_sync_state", "crawl_runs"]);
-const matches = [];
+const matches: string[] = [];
 const candidates = findSqliteFiles(stateDir);
 
 for (const path of candidates) {
-  let database;
+  let database: DatabaseSync | undefined;
   try {
     database = new DatabaseSync(path, { readOnly: true });
     const rows = database.prepare("SELECT name FROM sqlite_schema WHERE type = 'table'").all();
@@ -35,7 +35,8 @@ for (const path of candidates) {
       matches.push(path);
     }
   } catch (error) {
-    console.error(`Skipping unreadable SQLite candidate ${path}: ${error.message}`);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Skipping unreadable SQLite candidate ${path}: ${message}`);
   } finally {
     database?.close();
   }

@@ -28,6 +28,25 @@ import { archiveEvidence } from "../evidence/evidence-archive.js";
 import { enrichProductCategories } from "./category-enricher.js";
 import { SHOP_ADAPTERS } from "./shops/index.js";
 import { createTransport, isTransportConfigured } from "./transport.js";
+import { errorMessage } from "../types.js";
+import type { NormalizedCatalogProduct } from "../catalog/types.js";
+import type {
+  EvidenceArchiveResult,
+  EvidenceReason,
+  IdentitySyncMetrics,
+  QualityCounts,
+  QualityEvaluation,
+  QueryableDatabase,
+  ShopSyncStateRow,
+} from "../db/types.js";
+import type {
+  AugmentedCrawlError,
+  CrawlerEnv,
+  CrawlResult,
+  RobotsCache,
+  ShopDefinition,
+  ShopPlugin,
+} from "./types.js";
 import {
   coverageDecision,
   discoverPages,
@@ -36,27 +55,41 @@ import {
   shouldContinueAfterEmpty,
 } from "./strategies.js";
 
-function nowIso(now = new Date()) {
+type RuntimeEnv = CrawlerEnv & { DB: QueryableDatabase };
+
+interface CrawlShopOptions {
+  force?: boolean;
+  now?: Date;
+  fetchFn?: typeof fetch;
+}
+
+interface EvidenceMetrics {
+  expected: number;
+  archived: number;
+  failed: number;
+}
+
+function nowIso(now = new Date()): string {
   return now.toISOString();
 }
 
-function definitionFor(adapter) {
+function definitionFor(adapter: ShopPlugin): ShopDefinition | undefined {
   return (
     adapter.definition || Object.values(SHOP_DEFINITIONS).find((value) => value.key === adapter.key)
   );
 }
 
-function isConfigured(env, adapter) {
+function isConfigured(env: CrawlerEnv, adapter: ShopPlugin): boolean {
   if (!isTransportConfigured(env, adapter)) return false;
   if (adapter.transport === "relay") return true;
   return !adapter.isConfigured || adapter.isConfigured(env);
 }
 
-function countMatches(value, pattern) {
+function countMatches(value: string, pattern: RegExp): number {
   return [...String(value || "").matchAll(pattern)].length;
 }
 
-function diagnoseAudioUnionHtml(html) {
+function diagnoseAudioUnionHtml(html: string) {
   const text = String(html || "");
   const productPattern = /(?:https?:\/\/www\.audiounion\.jp)?\/ct\/detail\/used\/(\d+)\/?/gi;
   const matches = [...text.matchAll(productPattern)];
@@ -100,7 +133,10 @@ function diagnoseAudioUnionHtml(html) {
   };
 }
 
-function logUnclassifiedProducts(adapter, products) {
+function logUnclassifiedProducts(
+  adapter: ShopPlugin,
+  products: readonly NormalizedCatalogProduct[],
+): void {
   const unresolved = products.filter((product) => product.classificationStatus !== "classified");
   if (!unresolved.length) return;
   console.warn(
@@ -119,13 +155,14 @@ function logUnclassifiedProducts(adapter, products) {
   );
 }
 
-function crawlEvidenceError(message, reason) {
-  const error = new Error(message);
-  error.evidenceReason = reason;
-  return error;
+function crawlEvidenceError(message: string, reason: EvidenceReason): AugmentedCrawlError {
+  return Object.assign(new Error(message), { evidenceReason: reason });
 }
 
-function evidenceOutcome(metrics, result) {
+function evidenceOutcome(
+  metrics: EvidenceMetrics,
+  result: EvidenceArchiveResult | null | undefined,
+): void {
   if (!result || result.status === "skipped") return;
   if (result.status === "archived" || result.status === "deduplicated") {
     metrics.archived += 1;
@@ -134,7 +171,13 @@ function evidenceOutcome(metrics, result) {
   }
 }
 
-async function safeSaveDataQuality(env, adapter, runId, evaluatedAt, run) {
+async function safeSaveDataQuality(
+  env: RuntimeEnv,
+  adapter: ShopPlugin,
+  runId: number,
+  evaluatedAt: string,
+  run: Partial<QualityCounts>,
+): Promise<(QualityEvaluation & { evaluatedAt: string; crawlRunId: number | null }) | null> {
   try {
     const quality = await saveDataQualityRun(env.DB, {
       shopKey: adapter.key,
@@ -169,14 +212,19 @@ async function safeSaveDataQuality(env, adapter, runId, evaluatedAt, run) {
         event: "data_quality_evaluation_failure",
         shop: adapter.key,
         crawlRunId: runId,
-        message: error?.message || String(error),
+        message: errorMessage(error),
       }),
     );
     return null;
   }
 }
 
-async function syncDerivedProductState(env, adapter, products, observedAt) {
+async function syncDerivedProductState(
+  env: RuntimeEnv,
+  adapter: ShopPlugin,
+  products: readonly NormalizedCatalogProduct[],
+  observedAt: string,
+): Promise<{ searchProjection: { changedCount: number }; identity: IdentitySyncMetrics }> {
   let searchProjection = { changedCount: 0 };
   let identity = {
     identity_exact_match_count: 0,
@@ -198,7 +246,7 @@ async function syncDerivedProductState(env, adapter, products, observedAt) {
       JSON.stringify({
         event: "product_search_projection_sync_failure",
         shopKey: adapter.key,
-        message: error?.message || String(error),
+        message: errorMessage(error),
       }),
     );
   }
@@ -215,7 +263,7 @@ async function syncDerivedProductState(env, adapter, products, observedAt) {
       JSON.stringify({
         event: "product_identity_sync_failure",
         shopKey: adapter.key,
-        message: error?.message || String(error),
+        message: errorMessage(error),
       }),
     );
   }
@@ -223,27 +271,31 @@ async function syncDerivedProductState(env, adapter, products, observedAt) {
   return { searchProjection, identity };
 }
 
-export function isShopDue(state, intervalMinutes, now = new Date()) {
+export function isShopDue(
+  state: Partial<Pick<ShopSyncStateRow, "backoff_until" | "last_attempt_at">> | null | undefined,
+  intervalMinutes: number,
+  now = new Date(),
+): boolean {
   if (state?.backoff_until && new Date(state.backoff_until) > now) return false;
   if (!state?.last_attempt_at) return true;
   return now.getTime() - new Date(state.last_attempt_at).getTime() >= intervalMinutes * 60_000;
 }
 
 export function isSuspiciousItemDrop(
-  itemCount,
-  previousItemCount,
-  { minRatio = 0.5, minBaseline = 20 } = {},
-) {
+  itemCount: number,
+  previousItemCount: number,
+  { minRatio = 0.5, minBaseline = 20 }: { minRatio?: number; minBaseline?: number } = {},
+): boolean {
   if (!Number.isFinite(previousItemCount) || previousItemCount < minBaseline) return false;
   if (!Number.isFinite(itemCount) || itemCount < 0) return true;
   return itemCount / previousItemCount < minRatio;
 }
 
 export async function crawlShop(
-  env,
-  adapter,
-  { force = false, now = new Date(), fetchFn = fetch } = {},
-) {
+  env: RuntimeEnv,
+  adapter: ShopPlugin,
+  { force = false, now = new Date(), fetchFn = fetch }: CrawlShopOptions = {},
+): Promise<CrawlResult> {
   const definition = definitionFor(adapter);
   if (!definition)
     return { shopKey: adapter.key, status: "skipped", reason: "shop_definition_missing" };
@@ -264,17 +316,17 @@ export async function crawlShop(
   const maxPages = getShopMaxPages(env, definition, settings.maxPagesPerShop);
   const pageLimit = maxPages + Math.max(0, adapter.extraPageAllowance || 0);
   const requestDelayMs = getShopRequestDelayMs(env, definition, settings.requestDelayMs);
-  const robotsCache = new Map();
-  const items = new Map();
+  const robotsCache: RobotsCache = new Map();
+  const items = new Map<string, NormalizedCatalogProduct>();
   let pageCount = 0;
   let parseAttemptCount = 0;
   let parseFailureCount = 0;
   let reachedEnd = false;
   let coverageIncomplete = false;
-  let audioUnionDiagnostic = null;
+  let audioUnionDiagnostic: ReturnType<typeof diagnoseAudioUnionHtml> | null = null;
   let lastEvidenceHtml = "";
   let classificationEvidenceHtml = "";
-  const evidenceMetrics = { expected: 0, archived: 0, failed: 0 };
+  const evidenceMetrics: EvidenceMetrics = { expected: 0, archived: 0, failed: 0 };
   const transport = createTransport(env, adapter, fetchFn);
 
   try {
@@ -283,6 +335,7 @@ export async function crawlShop(
 
     while (pageQueue.length && pageCount < pageLimit) {
       const page = pageQueue.shift();
+      if (!page) break;
       const url = pageUrl(page);
       let html;
       try {
@@ -294,14 +347,15 @@ export async function crawlShop(
           robotsCache,
         });
       } catch (error) {
+        const fetchError = error instanceof Error ? error : new Error(String(error));
         if (
-          /HTTP 404/.test(error.message) &&
+          /HTTP 404/.test(fetchError.message) &&
           (shouldContinueAfterEmpty(adapter) || items.size === 0)
         ) {
           coverageIncomplete = true;
           continue;
         }
-        throw error;
+        throw fetchError;
       }
 
       lastEvidenceHtml = html;
@@ -313,8 +367,10 @@ export async function crawlShop(
         parsed = adapter.parse(html, page);
       } catch (error) {
         parseFailureCount += 1;
-        error.evidenceReason = "parser_failure";
-        throw error;
+        const parseError = error instanceof Error ? error : new Error(String(error));
+        const augmentedError: AugmentedCrawlError = parseError;
+        augmentedError.evidenceReason = "parser_failure";
+        throw augmentedError;
       }
       if (
         !classificationEvidenceHtml &&
@@ -368,7 +424,7 @@ export async function crawlShop(
       })
     ) {
       throw crawlEvidenceError(
-        `item count dropped suspiciously from ${state.last_item_count} to ${items.size}; refusing crawl update`,
+        `item count dropped suspiciously from ${state?.last_item_count ?? 0} to ${items.size}; refusing crawl update`,
         "unexpected_item_count",
       );
     }
@@ -501,7 +557,7 @@ export async function crawlShop(
       metadataChangedCount,
       touchedCount,
       deactivatedCount,
-      deactivateMissing,
+      deactivateMissing: deactivateMissing === true,
       dataQuality: quality,
       searchProjection: derived.searchProjection,
       productIdentity: derived.identity,
@@ -513,6 +569,8 @@ export async function crawlShop(
       },
     };
   } catch (error) {
+    const crawlError: AugmentedCrawlError =
+      error instanceof Error ? error : new Error(String(error));
     const failedAt = nowIso(new Date());
     evidenceMetrics.expected += 1;
     if (lastEvidenceHtml) {
@@ -520,7 +578,7 @@ export async function crawlShop(
         env,
         shopKey: adapter.key,
         crawlRunId: runId,
-        reason: error.evidenceReason || "crawl_validation_failure",
+        reason: crawlError.evidenceReason || "crawl_validation_failure",
         html: lastEvidenceHtml,
         capturedAt: failedAt,
       });
@@ -543,19 +601,19 @@ export async function crawlShop(
       env.DB,
       adapter.key,
       failedAt,
-      error.message,
+      crawlError.message,
       state?.consecutive_failures || 0,
     );
     await finishCrawlRunFailure(env.DB, runId, {
       finishedAt: failedAt,
       pageCount,
-      message: error.message,
+      message: crawlError.message,
     });
     return {
       shopKey: adapter.key,
       status: "failed",
       crawlRunId: runId,
-      error: error.message,
+      error: crawlError.message,
       dataQuality: quality,
     };
   } finally {
@@ -563,20 +621,26 @@ export async function crawlShop(
   }
 }
 
-export async function crawlDueShops(env, options = {}) {
-  const results = [];
+export async function crawlDueShops(
+  env: RuntimeEnv,
+  options: CrawlShopOptions = {},
+): Promise<CrawlResult[]> {
+  const results: CrawlResult[] = [];
   for (const adapter of SHOP_ADAPTERS) results.push(await crawlShop(env, adapter, options));
   return results;
 }
 
-export async function crawlNextDueShop(env, { now = new Date(), fetchFn = fetch } = {}) {
+export async function crawlNextDueShop(
+  env: RuntimeEnv,
+  { now = new Date(), fetchFn = fetch }: Pick<CrawlShopOptions, "now" | "fetchFn"> = {},
+): Promise<CrawlResult> {
   const states = new Map((await listShopStates(env.DB)).map((row) => [row.shop_key, row]));
   const candidates = SHOP_ADAPTERS.filter((adapter) => {
     const definition = definitionFor(adapter);
     return definition && getShopEnabled(env, definition) && isConfigured(env, adapter);
   })
     .map((adapter) => {
-      const definition = definitionFor(adapter);
+      const definition = adapter.definition;
       const interval = getShopIntervalMinutes(env, definition);
       const state = states.get(adapter.key);
       return {
@@ -590,5 +654,7 @@ export async function crawlNextDueShop(env, { now = new Date(), fetchFn = fetch 
     .filter((candidate) => candidate.due)
     .sort((a, b) => a.lastAttempt.localeCompare(b.lastAttempt));
   if (!candidates.length) return { status: "skipped", reason: "no_shop_due" };
-  return crawlShop(env, candidates[0].adapter, { now, fetchFn });
+  const next = candidates[0];
+  if (!next) return { status: "skipped", reason: "no_shop_due" };
+  return crawlShop(env, next.adapter, { now, fetchFn });
 }

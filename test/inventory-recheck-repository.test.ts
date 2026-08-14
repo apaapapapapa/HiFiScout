@@ -5,14 +5,15 @@ import {
   recordInventoryUnavailable,
   selectInventoryRecheckCandidate,
 } from "../src/db/inventory-recheck-repository.js";
+import { asQueryableDatabase } from "./helpers/d1.js";
 
-function captureDb(firstResult = null) {
-  const calls = [];
-  return {
+function captureDb(firstResult: unknown = null) {
+  const calls: Array<{ sql: string; binds: unknown[] }> = [];
+  return asQueryableDatabase({
     calls,
-    prepare(sql) {
+    prepare(sql: string) {
       return {
-        bind(...binds) {
+        bind(...binds: unknown[]) {
           calls.push({ sql, binds });
           return {
             async first() {
@@ -25,7 +26,7 @@ function captureDb(firstResult = null) {
         },
       };
     },
-  };
+  });
 }
 
 test("candidate selection requires an old listing and a stale prior attempt", async () => {

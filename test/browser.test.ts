@@ -6,7 +6,7 @@ function browserHarness() {
   const calls = { launch: 0, newPage: 0, goto: 0, evaluate: 0, close: 0 };
   let currentUrl = "about:blank";
   const page = {
-    async goto(url) {
+    async goto(url: string) {
       calls.goto += 1;
       currentUrl = url;
       return { status: () => 200 };
@@ -17,7 +17,7 @@ function browserHarness() {
     async content() {
       return "<html>first</html>";
     },
-    async evaluate(_fn, url) {
+    async evaluate(_fn: unknown, url: string) {
       calls.evaluate += 1;
       return { status: 200, html: `<html>${url}</html>` };
     },
@@ -79,6 +79,12 @@ test("Browser Run transport preserves blocked HTTP status errors", async () => {
             },
             url() {
               return "https://example.com/page-1";
+            },
+            async content() {
+              return "";
+            },
+            async evaluate() {
+              return { status: 200, html: "" };
             },
           };
         },

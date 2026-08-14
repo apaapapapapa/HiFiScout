@@ -8,14 +8,23 @@ import {
   upsertProducts,
   validateProductQuery,
 } from "../src/db/products.js";
+import type { CatalogProductUpsertInput } from "../src/catalog/types.js";
+import { asQueryableDatabase } from "./helpers/d1.js";
 
-function queryCaptureDb(results = []) {
-  const calls = [];
-  return {
+interface CapturedStatement {
+  sql: string;
+  binds: unknown[];
+}
+
+type ExistingFixture = Record<string, unknown> & { id: number; source_id: string };
+
+function queryCaptureDb(results: unknown[] = []) {
+  const calls: CapturedStatement[] = [];
+  return asQueryableDatabase({
     calls,
-    prepare(sql) {
+    prepare(sql: string) {
       return {
-        bind(...binds) {
+        bind(...binds: unknown[]) {
           calls.push({ sql, binds });
           return {
             async all() {
@@ -28,19 +37,19 @@ function queryCaptureDb(results = []) {
         },
       };
     },
-    async batch(statements) {
+    async batch(statements: unknown[]) {
       return statements.map(() => ({ success: true, meta: { changes: 1 } }));
     },
-  };
+  });
 }
 
-function upsertCaptureDb(existing) {
-  const statements = [];
-  return {
+function upsertCaptureDb(existing: ExistingFixture) {
+  const statements: CapturedStatement[] = [];
+  return asQueryableDatabase({
     statements,
-    prepare(sql) {
+    prepare(sql: string) {
       return {
-        bind(...binds) {
+        bind(...binds: unknown[]) {
           return {
             sql,
             binds,
@@ -59,11 +68,11 @@ function upsertCaptureDb(existing) {
         },
       };
     },
-    async batch(batch) {
+    async batch(batch: CapturedStatement[]) {
       statements.push(...batch);
       return batch.map(() => ({ success: true, meta: { changes: 1 } }));
     },
-  };
+  });
 }
 
 test("history lookup chunks large source-id sets below D1 variable limits", async () => {
@@ -101,7 +110,7 @@ test("missing products are deactivated in bounded source-id chunks", async () =>
 });
 
 test("unchanged products are not rewritten on every crawl", async () => {
-  const product = {
+  const product: CatalogProductUpsertInput = {
     sourceId: "p1",
     manufacturer: "TAD",
     model: "ME1TX",
@@ -126,11 +135,11 @@ test("unchanged products are not rewritten on every crawl", async () => {
     last_seen_at: "2026-08-11T00:00:00.000Z",
     is_active: 1,
   };
-  const batches = [];
-  const db = {
-    prepare(sql) {
+  const batches: CapturedStatement[][] = [];
+  const db = asQueryableDatabase({
+    prepare(sql: string) {
       return {
-        bind(...binds) {
+        bind(...binds: unknown[]) {
           return {
             async all() {
               return { results: /SELECT id, source_id, manufacturer/.test(sql) ? [existing] : [] };
@@ -144,11 +153,11 @@ test("unchanged products are not rewritten on every crawl", async () => {
         },
       };
     },
-    async batch(statements) {
+    async batch(statements: CapturedStatement[]) {
       batches.push(statements);
       return statements.map(() => ({ meta: { changes: 1 } }));
     },
-  };
+  });
 
   const result = await upsertProducts(db, "hifido", [product], "2026-08-11T00:30:00.000Z", {
     touchIntervalMinutes: 1440,
@@ -161,7 +170,7 @@ test("unchanged products are not rewritten on every crawl", async () => {
 });
 
 test("unchanged products receive a low-frequency last-seen heartbeat", async () => {
-  const product = {
+  const product: CatalogProductUpsertInput = {
     sourceId: "p1",
     manufacturer: "TAD",
     model: "ME1TX",
@@ -186,11 +195,11 @@ test("unchanged products receive a low-frequency last-seen heartbeat", async () 
     last_seen_at: "2026-08-09T00:00:00.000Z",
     is_active: 1,
   };
-  const batchedSql = [];
-  const db = {
-    prepare(sql) {
+  const batchedSql: string[] = [];
+  const db = asQueryableDatabase({
+    prepare(sql: string) {
       return {
-        bind(...binds) {
+        bind(...binds: unknown[]) {
           return {
             async all() {
               return { results: /SELECT id, source_id, manufacturer/.test(sql) ? [existing] : [] };
@@ -204,11 +213,11 @@ test("unchanged products receive a low-frequency last-seen heartbeat", async () 
         },
       };
     },
-    async batch(statements) {
+    async batch(statements: CapturedStatement[]) {
       batchedSql.push(...statements.map((statement) => statement.sql));
       return statements.map(() => ({ meta: { changes: 1 } }));
     },
-  };
+  });
 
   const result = await upsertProducts(db, "hifido", [product], "2026-08-11T00:30:00.000Z", {
     touchIntervalMinutes: 1440,
@@ -243,7 +252,7 @@ test("catalog normalization changes do not create user-facing activity", async (
     last_seen_at: "2026-08-11T00:00:00.000Z",
     is_active: 1,
   };
-  const product = {
+  const product: CatalogProductUpsertInput = {
     sourceId: "p1",
     manufacturer: "TAD",
     rawManufacturer: "TAD",
@@ -293,7 +302,7 @@ test("seller-visible listing changes create user-facing activity", async () => {
     last_seen_at: "2026-08-11T00:00:00.000Z",
     is_active: 1,
   };
-  const product = {
+  const product: CatalogProductUpsertInput = {
     sourceId: "p1",
     manufacturer: "TAD",
     rawManufacturer: "TAD",

@@ -1,5 +1,25 @@
-const ROMAN_TO_NUMBER = Object.freeze({ I: "1", II: "2", III: "3", IV: "4" });
-const NUMBER_TO_ROMAN = Object.freeze({ 1: "I", 2: "II", 3: "III", 4: "IV" });
+import type {
+  IdentityCandidateInput,
+  IdentityListingInput,
+  IdentityMatchedField,
+  IdentityMatchMethod,
+  IdentityModelParts,
+  IdentityVeto,
+  ProductIdentityResolution,
+} from "./types.js";
+
+const ROMAN_TO_NUMBER: Readonly<Record<string, string>> = Object.freeze({
+  I: "1",
+  II: "2",
+  III: "3",
+  IV: "4",
+});
+const NUMBER_TO_ROMAN: Readonly<Record<string, string>> = Object.freeze({
+  1: "I",
+  2: "II",
+  3: "III",
+  4: "IV",
+});
 const WORD_VARIANTS = Object.freeze([
   "LIMITEDEDITION",
   "SIGNATURE",
@@ -12,7 +32,30 @@ const WORD_VARIANTS = Object.freeze([
   "SE",
 ]);
 
-function clean(value = "") {
+interface TrailingVariant {
+  token: string;
+  length: number;
+}
+
+interface IdentityCandidateView extends IdentityCandidateInput {
+  manufacturerId: string;
+  canonicalModel: string;
+  parts: IdentityModelParts;
+  aliasParts: { alias: string; parts: IdentityModelParts }[];
+}
+
+interface RejectedIdentityCandidate {
+  candidateId: number;
+  rule: "variant_mismatch";
+}
+
+interface FuzzyIdentityCandidate {
+  candidate: IdentityCandidateView;
+  distance: number;
+  maxLength: number;
+}
+
+function clean(value: unknown = ""): string {
   return String(value)
     .normalize("NFKC")
     .replace(/[‐‑‒–—―－]/g, "-")
@@ -20,7 +63,7 @@ function clean(value = "") {
     .trim();
 }
 
-function canonicalizeRevisionMarkers(value) {
+function canonicalizeRevisionMarkers(value: string): string {
   return value
     .replace(
       /\bMARK\s*(IV|III|II|I|[1-9]\d*)\b/giu,
@@ -41,21 +84,21 @@ function canonicalizeRevisionMarkers(value) {
     .replace(/\bLIMITED\s+EDITION\b/giu, "LIMITED");
 }
 
-function canonicalizeStandaloneRomanSuffix(value) {
+function canonicalizeStandaloneRomanSuffix(value: string): string {
   return value.replace(
     /(?:^|[\s/_-])(IV|III|II)(?=$|[\s/_-])/giu,
     (_, revision) => ` REV${ROMAN_TO_NUMBER[revision.toUpperCase()]}`,
   );
 }
 
-export function normalizeIdentityModel(value = "") {
+export function normalizeIdentityModel(value: unknown = ""): string {
   const normalized = canonicalizeStandaloneRomanSuffix(
     canonicalizeRevisionMarkers(clean(value).toUpperCase()),
   );
   return normalized.replace(/[^A-Z0-9]+/gu, "");
 }
 
-function trailingVariant(normalizedModel) {
+function trailingVariant(normalizedModel: string): TrailingVariant | null {
   const model = normalizedModel || "";
   const mk = model.match(/MK([1-9]\d*)$/u);
   if (mk && model.length > mk[0].length) return { token: `MK${mk[1]}`, length: mk[0].length };
@@ -82,12 +125,12 @@ function trailingVariant(normalizedModel) {
   return null;
 }
 
-export function identityModelParts(value = "") {
+export function identityModelParts(value: unknown = ""): IdentityModelParts {
   const normalizedModel = normalizeIdentityModel(value);
   if (!normalizedModel) return { normalizedModel: "", modelStem: "", variants: [] };
 
   let stem = normalizedModel;
-  const variants = [];
+  const variants: string[] = [];
   for (;;) {
     const variant = trailingVariant(stem);
     if (!variant) break;
@@ -102,11 +145,11 @@ export function identityModelParts(value = "") {
   };
 }
 
-function sameVariants(left, right) {
+function sameVariants(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
-export function identityVeto(leftModel, rightModel) {
+export function identityVeto(leftModel: unknown, rightModel: unknown): IdentityVeto | null {
   const left = identityModelParts(leftModel);
   const right = identityModelParts(rightModel);
   if (!left.normalizedModel || !right.normalizedModel) return null;
@@ -121,7 +164,7 @@ export function identityVeto(leftModel, rightModel) {
   return null;
 }
 
-function canonicalVariantText(token, roman = false) {
+function canonicalVariantText(token: string, roman = false): string {
   if (token.startsWith("MK")) {
     const number = token.slice(2);
     return roman && NUMBER_TO_ROMAN[number] ? `MK${NUMBER_TO_ROMAN[number]}` : `MK${number}`;
@@ -134,12 +177,12 @@ function canonicalVariantText(token, roman = false) {
   return token;
 }
 
-function hyphenateLeadingModel(value) {
+function hyphenateLeadingModel(value: string): string {
   const match = value.match(/^([A-Z]{1,4})(\d.*)$/u);
   return match ? `${match[1]}-${match[2]}` : "";
 }
 
-export function buildModelSearchAliases(value = "") {
+export function buildModelSearchAliases(value: unknown = ""): string[] {
   const original = clean(value).toUpperCase();
   const parts = identityModelParts(value);
   if (!parts.normalizedModel) return [];
@@ -171,7 +214,11 @@ export function buildModelSearchAliases(value = "") {
     .slice(0, 8);
 }
 
-function levenshteinDistance(left, right, maxDistance = Number.POSITIVE_INFINITY) {
+function levenshteinDistance(
+  left: string,
+  right: string,
+  maxDistance = Number.POSITIVE_INFINITY,
+): number {
   if (left === right) return 0;
   if (!left) return right.length;
   if (!right) return left.length;
@@ -193,14 +240,17 @@ function levenshteinDistance(left, right, maxDistance = Number.POSITIVE_INFINITY
   return previous[right.length];
 }
 
-function categoryCompatible(product, candidate) {
+function categoryCompatible(
+  product: IdentityListingInput,
+  candidate: IdentityCandidateView,
+): boolean {
   const listingCategory = product.primaryCategoryId || product.primary_category_id || "";
   const candidateCategories = candidate.categoryIds || candidate.category_ids || [];
   if (!listingCategory || listingCategory === "other" || !candidateCategories.length) return true;
   return candidateCategories.includes(listingCategory);
 }
 
-function candidateView(candidate) {
+function candidateView(candidate: IdentityCandidateInput): IdentityCandidateView {
   const canonicalModel =
     candidate.canonicalModel || candidate.canonical_model || candidate.model || "";
   const aliases = candidate.aliases || [];
@@ -214,8 +264,13 @@ function candidateView(candidate) {
   };
 }
 
-function matchedResolution(productParts, candidate, matchMethod, matchedAlias = "") {
-  const fields = ["manufacturer_id", "normalized_model"];
+function matchedResolution(
+  productParts: IdentityModelParts,
+  candidate: IdentityCandidateView,
+  matchMethod: Extract<IdentityMatchMethod, "manufacturer_model_exact" | "catalog_alias">,
+  matchedAlias = "",
+): ProductIdentityResolution {
+  const fields: IdentityMatchedField[] = ["manufacturer_id", "normalized_model"];
   if (matchedAlias) fields.push("catalog_alias");
   return {
     status: "matched",
@@ -232,7 +287,10 @@ function matchedResolution(productParts, candidate, matchMethod, matchedAlias = 
   };
 }
 
-export function resolveProductIdentity(product, candidates = []) {
+export function resolveProductIdentity(
+  product: IdentityListingInput,
+  candidates: readonly IdentityCandidateInput[] = [],
+): ProductIdentityResolution {
   const manufacturerId = String(product.manufacturerId || product.manufacturer_id || "")
     .trim()
     .toLowerCase();
@@ -258,8 +316,8 @@ export function resolveProductIdentity(product, candidates = []) {
     .map(candidateView)
     .filter((candidate) => candidate.manufacturerId === manufacturerId);
 
-  const rejected = [];
-  const exactMatches = [];
+  const rejected: RejectedIdentityCandidate[] = [];
+  const exactMatches: IdentityCandidateView[] = [];
   for (const candidate of manufacturerCandidates) {
     if (candidate.parts.normalizedModel !== parts.normalizedModel) continue;
     const veto = identityVeto(model, candidate.canonicalModel);
@@ -288,7 +346,7 @@ export function resolveProductIdentity(product, candidates = []) {
     };
   }
 
-  const aliasMatches = [];
+  const aliasMatches: { candidate: IdentityCandidateView; alias: string }[] = [];
   for (const candidate of manufacturerCandidates) {
     const matchedAlias = candidate.aliasParts.find(
       (alias) =>
@@ -368,7 +426,7 @@ export function resolveProductIdentity(product, candidates = []) {
       );
       return distance <= maxDistance ? { candidate, distance, maxLength } : null;
     })
-    .filter(Boolean)
+    .filter((candidate): candidate is FuzzyIdentityCandidate => candidate !== null)
     .sort(
       (left, right) => left.distance - right.distance || left.candidate.id - right.candidate.id,
     );

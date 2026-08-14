@@ -36,6 +36,28 @@ import {
   finishKnowledgeCatalogVerifierVersionFailure,
   finishKnowledgeCatalogVerifierVersionSuccess,
 } from "./db/knowledge-catalog-verifier-state-repository.js";
+import type {
+  FailedKnowledgeSource,
+  KnowledgeSourceCandidate,
+  KnowledgeSourceStatus,
+  KnowledgeSourceVerification,
+  KnowledgeSourceVerifier,
+} from "./catalog/types.js";
+import type {
+  CrawlerEnv,
+  KnowledgeCatalogDispatchMode,
+  KnowledgeCatalogQueueMessage,
+} from "./crawler/types.js";
+import type {
+  DueKnowledgeCatalogProduct,
+  KnowledgeCatalogJobType,
+  KnowledgeCatalogVerificationJob,
+  KnowledgeCatalogVerificationJobSpec,
+  PendingKnowledgeCatalogCandidate,
+  ProductClassificationStats,
+  QueryableDatabase,
+} from "./db/types.js";
+import { errorMessage } from "./types.js";
 
 export const KNOWLEDGE_CATALOG_VERIFICATION_QUEUE = "hifiscout-knowledge-verification";
 export const KNOWLEDGE_CATALOG_VERIFICATION_DLQ = "hifiscout-knowledge-verification-dlq";
@@ -48,12 +70,40 @@ const DEFAULT_TRANSIENT_MAX_ATTEMPTS = 4;
 const DEFAULT_TRANSIENT_RETRY_SECONDS = 300;
 const DEFAULT_FINALIZE_RETRY_SECONDS = 300;
 
-function boundedInteger(value, fallback, min, max) {
+interface KnowledgeCatalogQueueEnv extends CrawlerEnv {
+  DB: QueryableDatabase;
+  KNOWLEDGE_CATALOG_QUEUE: Pick<Queue<KnowledgeCatalogQueueMessage>, "send" | "sendBatch">;
+}
+
+interface DispatchOptions {
+  now?: Date;
+  preferRetries?: boolean;
+  verifierVersion?: number;
+}
+
+interface DispatchRunOptions extends DispatchOptions {
+  mode: KnowledgeCatalogDispatchMode;
+}
+
+interface VerificationTargetResult {
+  outcome: KnowledgeSourceStatus;
+  promoted: number;
+  rechecked: number;
+  verification: KnowledgeSourceVerification;
+}
+
+interface RetryableVerificationInput {
+  status?: string;
+  message?: string;
+  httpStatus?: number | null;
+}
+
+function boundedInteger(value: unknown, fallback: number, min: number, max: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.min(max, Math.max(min, Math.trunc(parsed))) : fallback;
 }
 
-function candidateLimit(env) {
+function candidateLimit(env: KnowledgeCatalogQueueEnv): number {
   return boundedInteger(
     env.KNOWLEDGE_CATALOG_DAILY_VERIFY_MAX_CANDIDATES ??
       env.KNOWLEDGE_CATALOG_VERIFY_MAX_CANDIDATES,
@@ -63,15 +113,15 @@ function candidateLimit(env) {
   );
 }
 
-function dueProductLimit(env) {
+function dueProductLimit(env: KnowledgeCatalogQueueEnv): number {
   return boundedInteger(env.KNOWLEDGE_CATALOG_VERIFY_MAX_DUE_PRODUCTS, 25, 1, 2000);
 }
 
-function reviewIntervalDays(env) {
+function reviewIntervalDays(env: KnowledgeCatalogQueueEnv): number {
   return boundedInteger(env.KNOWLEDGE_CATALOG_REVIEW_INTERVAL_DAYS, 30, 1, 3650);
 }
 
-function jobLeaseSeconds(env) {
+function jobLeaseSeconds(env: KnowledgeCatalogQueueEnv): number {
   return boundedInteger(
     env.KNOWLEDGE_CATALOG_QUEUE_JOB_LEASE_SECONDS,
     DEFAULT_JOB_LEASE_SECONDS,
@@ -80,7 +130,7 @@ function jobLeaseSeconds(env) {
   );
 }
 
-function domainLeaseSeconds(env) {
+function domainLeaseSeconds(env: KnowledgeCatalogQueueEnv): number {
   return boundedInteger(
     env.KNOWLEDGE_CATALOG_QUEUE_DOMAIN_LEASE_SECONDS,
     DEFAULT_DOMAIN_LEASE_SECONDS,
@@ -89,7 +139,7 @@ function domainLeaseSeconds(env) {
   );
 }
 
-function domainRetrySeconds(env) {
+function domainRetrySeconds(env: KnowledgeCatalogQueueEnv): number {
   return boundedInteger(
     env.KNOWLEDGE_CATALOG_QUEUE_DOMAIN_RETRY_SECONDS,
     DEFAULT_DOMAIN_RETRY_SECONDS,
@@ -98,7 +148,7 @@ function domainRetrySeconds(env) {
   );
 }
 
-function transientMaxAttempts(env) {
+function transientMaxAttempts(env: KnowledgeCatalogQueueEnv): number {
   return boundedInteger(
     env.KNOWLEDGE_CATALOG_QUEUE_TRANSIENT_MAX_ATTEMPTS,
     DEFAULT_TRANSIENT_MAX_ATTEMPTS,
@@ -107,7 +157,7 @@ function transientMaxAttempts(env) {
   );
 }
 
-function finalizeRetrySeconds(env) {
+function finalizeRetrySeconds(env: KnowledgeCatalogQueueEnv): number {
   return boundedInteger(
     env.KNOWLEDGE_CATALOG_QUEUE_FINALIZE_RETRY_SECONDS,
     DEFAULT_FINALIZE_RETRY_SECONDS,
@@ -116,20 +166,22 @@ function finalizeRetrySeconds(env) {
   );
 }
 
-function addSeconds(now, seconds) {
+function addSeconds(now: Date, seconds: number): string {
   return new Date(now.getTime() + seconds * 1000).toISOString();
 }
 
 export function knowledgeCatalogRetryDelaySeconds(
-  attempt,
+  attempt: number,
   baseSeconds = DEFAULT_TRANSIENT_RETRY_SECONDS,
   maxSeconds = 3600,
-) {
+): number {
   const safeAttempt = Math.max(1, Math.trunc(Number(attempt) || 1));
   return Math.min(maxSeconds, baseSeconds * 2 ** (safeAttempt - 1));
 }
 
-export function isRetryableKnowledgeCatalogVerification(verification = {}) {
+export function isRetryableKnowledgeCatalogVerification(
+  verification: RetryableVerificationInput = {},
+): boolean {
   if (verification.status !== "error") return false;
   const message = String(verification.message || "").toLowerCase();
   if (message.includes("too many subrequests")) return false;
@@ -140,21 +192,31 @@ export function isRetryableKnowledgeCatalogVerification(verification = {}) {
   );
 }
 
-function sourceFetcher(env, fetchImpl = globalThis.fetch) {
+function sourceFetcher(
+  env: KnowledgeCatalogQueueEnv,
+  fetchImpl: typeof fetch = globalThis.fetch,
+): typeof fetch {
   return createRobotsRespectingFetch(fetchImpl, {
     userAgent: env.CRAWLER_USER_AGENT || "HiFiScoutBot/0.1",
     minimumDelayMs: Number(env.KNOWLEDGE_CATALOG_SOURCE_REQUEST_DELAY_MS) || 500,
   });
 }
 
-function createVerifier(env, fetchImpl = globalThis.fetch) {
+function createVerifier(
+  env: KnowledgeCatalogQueueEnv,
+  fetchImpl: typeof fetch = globalThis.fetch,
+): KnowledgeSourceVerifier {
   return createKnowledgeSourceVerifierV4(env, {
     fetchImpl: sourceFetcher(env, fetchImpl),
     fallbackEnabled: true,
   });
 }
 
-function sourceHostname(verifier, manufacturerId, sourceUrl = "") {
+function sourceHostname(
+  verifier: KnowledgeSourceVerifier,
+  manufacturerId: string,
+  sourceUrl = "",
+): string {
   if (sourceUrl) {
     try {
       return new URL(sourceUrl).hostname.toLowerCase();
@@ -170,10 +232,10 @@ function sourceHostname(verifier, manufacturerId, sourceUrl = "") {
   return `manufacturer-${String(manufacturerId || "unknown").toLowerCase()}`;
 }
 
-function validPromotion(verification) {
-  const categoryIds = [...new Set(verification?.categoryIds || [])].filter(Boolean);
+function validPromotion(verification: KnowledgeSourceVerification): boolean {
+  if (verification.status !== "verified") return false;
+  const categoryIds = [...new Set(verification.categoryIds)].filter(Boolean);
   return (
-    verification?.status === "verified" &&
     Boolean(verification.sourceUrl) &&
     Boolean(verification.canonicalModel) &&
     Boolean(verification.primaryCategoryId) &&
@@ -181,13 +243,24 @@ function validPromotion(verification) {
   );
 }
 
-function normalizeOutcome(status) {
-  return ["verified", "not_found", "ambiguous", "unsupported", "error"].includes(status)
-    ? status
-    : "error";
+function normalizeOutcome(status: unknown): KnowledgeSourceStatus {
+  if (
+    status === "verified" ||
+    status === "not_found" ||
+    status === "ambiguous" ||
+    status === "unsupported" ||
+    status === "error"
+  )
+    return status;
+  return "error";
 }
 
-async function verifyCandidateTarget(env, candidate, verifier, attemptedAt) {
+async function verifyCandidateTarget(
+  env: KnowledgeCatalogQueueEnv,
+  candidate: PendingKnowledgeCatalogCandidate,
+  verifier: KnowledgeSourceVerifier,
+  attemptedAt: string,
+): Promise<VerificationTargetResult> {
   const verification = await verifier.verifyCandidate(candidate);
   if (verification.status !== "verified") {
     await recordKnowledgeCatalogCandidateVerification(env.DB, candidate, verification, attemptedAt);
@@ -200,7 +273,7 @@ async function verifyCandidateTarget(env, candidate, verifier, attemptedAt) {
   }
 
   if (!validPromotion(verification)) {
-    const result = {
+    const result: FailedKnowledgeSource = {
       ...verification,
       status: "ambiguous",
       message: "verified_result_missing_required_identity_or_primary_category",
@@ -238,13 +311,18 @@ async function verifyCandidateTarget(env, candidate, verifier, attemptedAt) {
   };
 }
 
-function sameCategorySet(left = [], right = []) {
+function sameCategorySet(left: readonly string[] = [], right: readonly string[] = []): boolean {
   const a = [...new Set(left)].sort();
   const b = [...new Set(right)].sort();
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
-async function verifyProductRecheckTarget(env, product, verifier, attemptedAt) {
+async function verifyProductRecheckTarget(
+  env: KnowledgeCatalogQueueEnv,
+  product: DueKnowledgeCatalogProduct,
+  verifier: KnowledgeSourceVerifier,
+  attemptedAt: string,
+): Promise<VerificationTargetResult> {
   const verification = await verifier.verifyStoredSource(product);
   const categoriesStillMatch =
     verification.status === "verified" &&
@@ -255,7 +333,7 @@ async function verifyProductRecheckTarget(env, product, verifier, attemptedAt) {
     return { outcome: "verified", promoted: 0, rechecked: 1, verification };
   }
 
-  const result =
+  const result: KnowledgeSourceVerification =
     verification.status === "verified"
       ? {
           ...verification,
@@ -272,15 +350,18 @@ async function verifyProductRecheckTarget(env, product, verifier, attemptedAt) {
   };
 }
 
-function targetJobKey(runId, jobType, targetId) {
+function targetJobKey(runId: number, jobType: KnowledgeCatalogJobType, targetId: number): string {
   return `knowledge-catalog:${runId}:${jobType}:${targetId}`;
 }
 
-function finalizerJobKey(runId) {
+function finalizerJobKey(runId: number): string {
   return `knowledge-catalog:${runId}:finalize`;
 }
 
-async function sendTargetMessages(env, messages) {
+async function sendTargetMessages(
+  env: KnowledgeCatalogQueueEnv,
+  messages: readonly KnowledgeCatalogQueueMessage[],
+): Promise<number> {
   let failed = 0;
   for (let index = 0; index < messages.length; index += QUEUE_SEND_BATCH_SIZE) {
     const chunk = messages.slice(index, index + QUEUE_SEND_BATCH_SIZE);
@@ -293,7 +374,7 @@ async function sendTargetMessages(env, messages) {
         await deadLetterKnowledgeCatalogVerificationJob(
           env.DB,
           body.jobId,
-          `queue_enqueue_failed:${error?.message || String(error)}`,
+          `queue_enqueue_failed:${errorMessage(error)}`,
           finishedAt,
         );
       }
@@ -303,8 +384,8 @@ async function sendTargetMessages(env, messages) {
 }
 
 async function dispatchKnowledgeCatalogVerificationRun(
-  env,
-  { now = new Date(), mode, preferRetries = false, verifierVersion = 0 },
+  env: KnowledgeCatalogQueueEnv,
+  { now = new Date(), mode, preferRetries = false, verifierVersion = 0 }: DispatchRunOptions,
 ) {
   if (!env.KNOWLEDGE_CATALOG_QUEUE?.sendBatch || !env.KNOWLEDGE_CATALOG_QUEUE?.send) {
     throw new Error("knowledge_catalog_queue_binding_missing");
@@ -336,8 +417,9 @@ async function dispatchKnowledgeCatalogVerificationRun(
             supportedManufacturerIds,
             { preferRetries },
           );
-    const jobType = mode === "monthly_recheck" ? "product_recheck" : "candidate";
-    const jobSpecs = targets.map((target) => ({
+    const jobType: KnowledgeCatalogJobType =
+      mode === "monthly_recheck" ? "product_recheck" : "candidate";
+    const jobSpecs: KnowledgeCatalogVerificationJobSpec[] = targets.map((target) => ({
       jobKey: targetJobKey(runId, jobType, target.id),
       jobType,
       targetId: target.id,
@@ -355,6 +437,7 @@ async function dispatchKnowledgeCatalogVerificationRun(
     const byKey = new Map(jobs.map((job) => [job.jobKey, job]));
     const targetMessages = targets.map((target) => {
       const job = byKey.get(targetJobKey(runId, jobType, target.id));
+      if (!job) throw new Error(`knowledge_catalog_job_missing:${target.id}`);
       return {
         jobId: job.id,
         runId,
@@ -368,6 +451,7 @@ async function dispatchKnowledgeCatalogVerificationRun(
     });
     const enqueueFailures = await sendTargetMessages(env, targetMessages);
     const finalizer = byKey.get(finalizerJobKey(runId));
+    if (!finalizer) throw new Error("knowledge_catalog_finalizer_job_missing");
     try {
       await env.KNOWLEDGE_CATALOG_QUEUE.send(
         {
@@ -385,7 +469,7 @@ async function dispatchKnowledgeCatalogVerificationRun(
       await deadLetterKnowledgeCatalogVerificationJob(
         env.DB,
         finalizer.id,
-        `finalizer_enqueue_failed:${error?.message || String(error)}`,
+        `finalizer_enqueue_failed:${errorMessage(error)}`,
         finishedAt,
       );
       await finishKnowledgeCatalogReviewRunFailure(
@@ -425,34 +509,38 @@ async function dispatchKnowledgeCatalogVerificationRun(
       .bind(runId)
       .first();
     if (row?.status === "running") {
-      await finishKnowledgeCatalogReviewRunFailure(
-        env.DB,
-        runId,
-        finishedAt,
-        error?.message || String(error),
-      );
+      await finishKnowledgeCatalogReviewRunFailure(env.DB, runId, finishedAt, errorMessage(error));
     }
     if (verifierVersion > 0) {
       await finishKnowledgeCatalogVerifierVersionFailure(
         env.DB,
         verifierVersion,
         finishedAt,
-        error?.message || String(error),
+        errorMessage(error),
       );
     }
     throw error;
   }
 }
 
-export function dispatchKnowledgeCatalogDailyVerification(env, options = {}) {
+export function dispatchKnowledgeCatalogDailyVerification(
+  env: KnowledgeCatalogQueueEnv,
+  options: DispatchOptions = {},
+) {
   return dispatchKnowledgeCatalogVerificationRun(env, { ...options, mode: "daily_candidates" });
 }
 
-export function dispatchKnowledgeCatalogMonthlyRecheck(env, options = {}) {
+export function dispatchKnowledgeCatalogMonthlyRecheck(
+  env: KnowledgeCatalogQueueEnv,
+  options: DispatchOptions = {},
+) {
   return dispatchKnowledgeCatalogVerificationRun(env, { ...options, mode: "monthly_recheck" });
 }
 
-function classificationImpact(beforeClassification, afterClassification) {
+function classificationImpact(
+  beforeClassification: ProductClassificationStats,
+  afterClassification: ProductClassificationStats,
+) {
   return {
     unclassifiedReduced: Math.max(
       0,
@@ -465,7 +553,12 @@ function classificationImpact(beforeClassification, afterClassification) {
   };
 }
 
-async function finalizeKnowledgeCatalogVerificationRun(env, body, message, job) {
+async function finalizeKnowledgeCatalogVerificationRun(
+  env: KnowledgeCatalogQueueEnv,
+  body: KnowledgeCatalogQueueMessage,
+  message: Message<KnowledgeCatalogQueueMessage>,
+  job: KnowledgeCatalogVerificationJob,
+) {
   const now = new Date();
   const stats = await knowledgeCatalogVerificationRunStats(env.DB, body.runId);
   if (stats.outstanding > 0) {
@@ -535,7 +628,13 @@ async function finalizeKnowledgeCatalogVerificationRun(env, body, message, job) 
   return result;
 }
 
-async function retrySourceJob(env, body, message, job, result) {
+async function retrySourceJob(
+  env: KnowledgeCatalogQueueEnv,
+  body: KnowledgeCatalogQueueMessage,
+  message: Message<KnowledgeCatalogQueueMessage>,
+  job: KnowledgeCatalogVerificationJob,
+  result: VerificationTargetResult,
+): Promise<boolean> {
   const sourceAttempts = job.sourceAttempts;
   if (
     !isRetryableKnowledgeCatalogVerification(result.verification) ||
@@ -567,7 +666,42 @@ async function retrySourceJob(env, body, message, job, result) {
   return true;
 }
 
-async function consumeSourceJob(env, body, message, job) {
+function isPendingCandidate(
+  target: KnowledgeSourceCandidate | undefined,
+): target is PendingKnowledgeCatalogCandidate {
+  return Boolean(
+    target &&
+    typeof target.id === "number" &&
+    target.manufacturerId &&
+    target.normalizedModel &&
+    target.observedManufacturer !== undefined &&
+    target.observedModel !== undefined,
+  );
+}
+
+function isDueProduct(
+  target: KnowledgeSourceCandidate | undefined,
+): target is DueKnowledgeCatalogProduct {
+  return Boolean(
+    target &&
+    typeof target.id === "number" &&
+    target.manufacturerId &&
+    target.normalizedModel &&
+    target.canonicalModel &&
+    target.canonicalName &&
+    typeof target.sourceId === "number" &&
+    target.sourceType &&
+    target.sourceUrl &&
+    Array.isArray(target.categoryIds),
+  );
+}
+
+async function consumeSourceJob(
+  env: KnowledgeCatalogQueueEnv,
+  body: KnowledgeCatalogQueueMessage,
+  message: Message<KnowledgeCatalogQueueMessage>,
+  job: KnowledgeCatalogVerificationJob,
+) {
   const now = new Date();
   const hostname = body.hostname || job.hostname;
   const acquired = await acquireKnowledgeCatalogVerificationDomainLease(
@@ -598,10 +732,14 @@ async function consumeSourceJob(env, body, message, job) {
     );
     job.sourceAttempts = sourceAttempts;
     const verifier = createVerifier(env);
-    const result =
-      body.jobType === "product_recheck"
-        ? await verifyProductRecheckTarget(env, body.target, verifier, now.toISOString())
-        : await verifyCandidateTarget(env, body.target, verifier, now.toISOString());
+    let result: VerificationTargetResult;
+    if (body.jobType === "product_recheck") {
+      if (!isDueProduct(body.target)) throw new Error("invalid_product_recheck_target");
+      result = await verifyProductRecheckTarget(env, body.target, verifier, now.toISOString());
+    } else {
+      if (!isPendingCandidate(body.target)) throw new Error("invalid_candidate_target");
+      result = await verifyCandidateTarget(env, body.target, verifier, now.toISOString());
+    }
     if (await retrySourceJob(env, body, message, job, result)) return { status: "retrying" };
 
     const finishedAt = new Date().toISOString();
@@ -635,8 +773,11 @@ async function consumeSourceJob(env, body, message, job) {
   }
 }
 
-export async function consumeKnowledgeCatalogVerificationMessage(env, message) {
-  const body = message.body || {};
+export async function consumeKnowledgeCatalogVerificationMessage(
+  env: KnowledgeCatalogQueueEnv,
+  message: Message<KnowledgeCatalogQueueMessage>,
+) {
+  const body = message.body;
   const jobId = Number(body.jobId || 0);
   const runId = Number(body.runId || 0);
   if (!jobId || !runId || !["candidate", "product_recheck", "finalize"].includes(body.jobType)) {
@@ -673,7 +814,7 @@ export async function consumeKnowledgeCatalogVerificationMessage(env, message) {
         env.DB,
         job.id,
         addSeconds(retryAt, delaySeconds),
-        `consumer_error:${error?.message || String(error)}`,
+        `consumer_error:${errorMessage(error)}`,
         retryAt.toISOString(),
       );
       message.retry({ delaySeconds });
@@ -683,7 +824,7 @@ export async function consumeKnowledgeCatalogVerificationMessage(env, message) {
           runId,
           jobId,
           delaySeconds,
-          message: error?.message || String(error),
+          message: errorMessage(error),
         }),
       );
       return { status: "retrying", reason: "consumer_error" };
@@ -693,22 +834,17 @@ export async function consumeKnowledgeCatalogVerificationMessage(env, message) {
     await deadLetterKnowledgeCatalogVerificationJob(
       env.DB,
       job.id,
-      `consumer_error_exhausted:${error?.message || String(error)}`,
+      `consumer_error_exhausted:${errorMessage(error)}`,
       finishedAt,
     );
     if (body.jobType === "finalize") {
-      await finishKnowledgeCatalogReviewRunFailure(
-        env.DB,
-        runId,
-        finishedAt,
-        error?.message || String(error),
-      );
+      await finishKnowledgeCatalogReviewRunFailure(env.DB, runId, finishedAt, errorMessage(error));
       if (Number(body.verifierVersion || 0) > 0) {
         await finishKnowledgeCatalogVerifierVersionFailure(
           env.DB,
           Number(body.verifierVersion),
           finishedAt,
-          error?.message || String(error),
+          errorMessage(error),
         );
       }
     }
@@ -717,15 +853,21 @@ export async function consumeKnowledgeCatalogVerificationMessage(env, message) {
   }
 }
 
-export async function consumeKnowledgeCatalogVerificationBatch(env, batch) {
+export async function consumeKnowledgeCatalogVerificationBatch(
+  env: KnowledgeCatalogQueueEnv,
+  batch: MessageBatch<KnowledgeCatalogQueueMessage>,
+): Promise<void> {
   for (const message of batch.messages) {
     await consumeKnowledgeCatalogVerificationMessage(env, message);
   }
 }
 
-export async function consumeKnowledgeCatalogVerificationDeadLetterBatch(env, batch) {
+export async function consumeKnowledgeCatalogVerificationDeadLetterBatch(
+  env: KnowledgeCatalogQueueEnv,
+  batch: MessageBatch<KnowledgeCatalogQueueMessage>,
+): Promise<void> {
   for (const message of batch.messages) {
-    const body = message.body || {};
+    const body = message.body;
     const jobId = Number(body.jobId || 0);
     const runId = Number(body.runId || 0);
     const finishedAt = new Date().toISOString();

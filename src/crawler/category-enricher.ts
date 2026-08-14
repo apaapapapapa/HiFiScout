@@ -7,26 +7,63 @@ import {
 } from "../catalog/product-normalizer.js";
 import { findVerifiedCatalogMatches } from "../db/knowledge-catalog-repository.js";
 import { selectExistingProducts } from "../db/products.js";
+import { categoryIdForClassification } from "../catalog/categories.js";
+import { errorMessage, isRecord } from "../types.js";
+import type {
+  CategoryClassification,
+  CategoryId,
+  NormalizedCatalogProduct,
+} from "../catalog/types.js";
+import type { CategoryEnrichmentProductRow, ReadableDatabase } from "../db/types.js";
+import type {
+  CategoryEnrichmentResult,
+  DetailHtmlFetcher,
+  FetchHtmlPageOptions,
+  ShopAdapter,
+} from "./types.js";
 
-function parseJson(value, fallback = {}) {
+type CategoryEnrichmentAdapter = Pick<
+  ShopAdapter,
+  "key" | "categoryMapping" | "categoryPolicy" | "extractDetailCategoryEvidence"
+>;
+
+interface EnrichProductCategoriesOptions {
+  db: ReadableDatabase;
+  adapter: CategoryEnrichmentAdapter;
+  products: NormalizedCatalogProduct[];
+  transport: DetailHtmlFetcher;
+  fetchOptions: FetchHtmlPageOptions;
+  now?: Date;
+  existingRows?: CategoryEnrichmentProductRow[] | null;
+}
+
+function parseJson(value: string | undefined): Record<string, unknown> {
   try {
     const parsed = JSON.parse(value || "");
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : fallback;
+    return isRecord(parsed) ? parsed : {};
   } catch {
-    return fallback;
+    return {};
   }
 }
 
-function parseCategoryIds(value) {
+function parseCategoryIds(value: string): CategoryId[] {
   try {
-    const parsed = JSON.parse(value || "[]");
-    return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+    const parsed: unknown = JSON.parse(value || "[]");
+    return Array.isArray(parsed)
+      ? parsed
+          .filter((item): item is string => typeof item === "string")
+          .map((item) => categoryIdForClassification(item))
+          .filter((item): item is CategoryId => item !== null)
+      : [];
   } catch {
     return [];
   }
 }
 
-function sameIdentity(existing, product) {
+function sameIdentity(
+  existing: CategoryEnrichmentProductRow | undefined,
+  product: NormalizedCatalogProduct,
+): boolean {
   return (
     existing?.title === product.title &&
     (existing?.model || "") === (product.model || "") &&
@@ -34,23 +71,29 @@ function sameIdentity(existing, product) {
   );
 }
 
-function classificationMetadata(existing) {
-  const metadata = parseJson(existing?.metadata_json, {});
+function classificationMetadata(
+  existing: CategoryEnrichmentProductRow | undefined,
+): Record<string, unknown> | null {
+  const metadata = parseJson(existing?.metadata_json);
   const classification = metadata.categoryClassification;
-  return classification && typeof classification === "object" ? classification : null;
+  return isRecord(classification) ? classification : null;
 }
 
-function cachedClassification(existing, product) {
+function cachedClassification(
+  existing: CategoryEnrichmentProductRow | undefined,
+  product: NormalizedCatalogProduct,
+): CategoryClassification | null {
+  if (!existing) return null;
   if (!sameIdentity(existing, product)) return null;
   const metadata = classificationMetadata(existing);
   if (metadata?.version !== CATEGORY_CLASSIFICATION_METADATA_VERSION) return null;
-  if (!metadata.detailCheckedAt) return null;
+  if (typeof metadata.detailCheckedAt !== "string" || !metadata.detailCheckedAt) return null;
   if (metadata.state !== "classified" || existing.classification_status !== "classified")
     return null;
   const categoryIds = parseCategoryIds(existing.category_ids);
   if (!categoryIds.length) return null;
   return {
-    primaryCategoryId: existing.primary_category_id || categoryIds[0],
+    primaryCategoryId: categoryIdForClassification(existing.primary_category_id) || categoryIds[0],
     categoryIds,
     displayName: existing.category,
     classificationStatus: "classified",
@@ -62,38 +105,52 @@ function cachedClassification(existing, product) {
   };
 }
 
-function recentUnresolvedCheck(existing, product, cacheHours, now) {
+function recentUnresolvedCheck(
+  existing: CategoryEnrichmentProductRow | undefined,
+  product: NormalizedCatalogProduct,
+  cacheHours: number,
+  now: Date,
+): boolean {
+  if (!existing) return false;
   if (!sameIdentity(existing, product)) return false;
   const metadata = classificationMetadata(existing);
   if (metadata?.version !== CATEGORY_CLASSIFICATION_METADATA_VERSION) return false;
-  if (metadata.state === "classified" || !metadata.detailCheckedAt) return false;
+  if (
+    metadata.state === "classified" ||
+    typeof metadata.detailCheckedAt !== "string" ||
+    !metadata.detailCheckedAt
+  )
+    return false;
   const checkedAt = new Date(metadata.detailCheckedAt).getTime();
   if (!Number.isFinite(checkedAt)) return false;
   return now.getTime() - checkedAt < cacheHours * 60 * 60_000;
 }
 
-function withDetailCheckMetadata(product, detailCheckedAt) {
-  const classification = product.metadata?.categoryClassification || {};
+function withDetailCheckMetadata(
+  product: NormalizedCatalogProduct,
+  detailCheckedAt: string,
+): NormalizedCatalogProduct {
   return {
     ...product,
     metadata: {
       ...product.metadata,
-      categoryClassification: {
-        ...classification,
-        detailCheckedAt,
-      },
+      categoryClassification: { ...product.metadata.categoryClassification, detailCheckedAt },
     },
   };
 }
 
-async function applyKnowledgeCatalogEvidence(db, products, now) {
+async function applyKnowledgeCatalogEvidence(
+  db: ReadableDatabase,
+  products: NormalizedCatalogProduct[],
+  now: Date,
+): Promise<{ products: NormalizedCatalogProduct[]; catalogMatches: number }> {
   const matches = await findVerifiedCatalogMatches(db, products);
   let catalogMatches = 0;
   const catalogMatchedAt = now.toISOString();
   const updated = products.map((product) => {
     const match = matches.get(knowledgeCatalogKey(product.manufacturerId, product.model));
     const catalogEvidence = knowledgeCatalogEvidence(match);
-    if (!catalogEvidence.length) return product;
+    if (!match || !catalogEvidence.length) return product;
     catalogMatches += 1;
     const evidence = [...(product.categoryEvidence || []), ...catalogEvidence];
     const classification = classifyCategoryEvidence(evidence);
@@ -114,7 +171,7 @@ export async function enrichProductCategories({
   fetchOptions,
   now = new Date(),
   existingRows = null,
-}) {
+}: EnrichProductCategoriesOptions): Promise<CategoryEnrichmentResult> {
   const catalog = await applyKnowledgeCatalogEvidence(db, products, now);
   const baseProducts = catalog.products;
   const extractor = adapter?.extractDetailCategoryEvidence;
@@ -160,7 +217,7 @@ export async function enrichProductCategories({
   let cacheHits = 0;
   let enrichedCount = 0;
 
-  const enriched = [];
+  const enriched: NormalizedCatalogProduct[] = [];
   for (const product of baseProducts) {
     if (product.classificationStatus === "classified") {
       enriched.push(product);
@@ -172,18 +229,27 @@ export async function enrichProductCategories({
     if (cached) {
       cacheHits += 1;
       enrichedCount += 1;
+      const metadata = classificationMetadata(existing);
       enriched.push(
-        applyCategoryClassification(product, cached, product.categoryEvidence, {
-          detailCheckedAt: classificationMetadata(existing)?.detailCheckedAt,
-        }),
+        applyCategoryClassification(
+          product,
+          cached,
+          product.categoryEvidence,
+          typeof metadata?.detailCheckedAt === "string"
+            ? { detailCheckedAt: metadata.detailCheckedAt }
+            : {},
+        ),
       );
       continue;
     }
 
     if (recentUnresolvedCheck(existing, product, policy.enrichment.cacheHours, now)) {
       cacheHits += 1;
+      const detailCheckedAt = classificationMetadata(existing)?.detailCheckedAt;
       enriched.push(
-        withDetailCheckMetadata(product, classificationMetadata(existing)?.detailCheckedAt),
+        typeof detailCheckedAt === "string"
+          ? withDetailCheckMetadata(product, detailCheckedAt)
+          : product,
       );
       continue;
     }
@@ -213,7 +279,7 @@ export async function enrichProductCategories({
           event: "category_detail_enrichment_failed",
           shopKey: adapter.key,
           sourceId: product.sourceId,
-          message: error?.message || String(error),
+          message: errorMessage(error),
         }),
       );
       enriched.push(product);

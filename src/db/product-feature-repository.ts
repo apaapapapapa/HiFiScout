@@ -1,16 +1,23 @@
 import { normalizeFeatureFacts } from "../catalog/product-features.js";
+import type { NormalizedCatalogProduct } from "../catalog/types.js";
+import type { ProductLookupRow, QueryableDatabase } from "./types.js";
 
 const CHUNK_SIZE = 50;
 
-async function runBatches(db, statements) {
+async function runBatches(db: QueryableDatabase, statements: D1PreparedStatement[]): Promise<void> {
   for (let i = 0; i < statements.length; i += CHUNK_SIZE) {
     await db.batch(statements.slice(i, i + CHUNK_SIZE));
   }
 }
 
-export async function syncObservedProductFeatureFacts(db, shopKey, products, observedAt) {
+export async function syncObservedProductFeatureFacts(
+  db: QueryableDatabase,
+  shopKey: string,
+  products: readonly NormalizedCatalogProduct[],
+  observedAt: string,
+): Promise<number> {
   if (!products.length) return 0;
-  const idBySource = new Map();
+  const idBySource = new Map<string, number>();
   const sourceIds = [...new Set(products.map((product) => product.sourceId))];
   for (let i = 0; i < sourceIds.length; i += CHUNK_SIZE) {
     const chunk = sourceIds.slice(i, i + CHUNK_SIZE);
@@ -20,11 +27,11 @@ export async function syncObservedProductFeatureFacts(db, shopKey, products, obs
         `SELECT id, source_id FROM products WHERE shop_key = ? AND source_id IN (${placeholders})`,
       )
       .bind(shopKey, ...chunk)
-      .all();
+      .all<ProductLookupRow>();
     for (const row of result.results || []) idBySource.set(row.source_id, row.id);
   }
 
-  const statements = [];
+  const statements: D1PreparedStatement[] = [];
   let factCount = 0;
   for (const product of products) {
     const productId = idBySource.get(product.sourceId);

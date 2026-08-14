@@ -1,6 +1,8 @@
 import { normalizeManufacturer } from "../../catalog/manufacturers.js";
 import { cleanText, inferCategory, splitManufacturerModel, stableSourceId } from "../normalize.js";
 import { parseProductPage } from "../parser.js";
+import type { ManufacturerNormalizationResult, ShopParsedProduct } from "../../catalog/types.js";
+import type { ShopAdapter } from "../types.js";
 
 const DEFAULT_ENTRY_URL = "https://www.audiounion.jp/st/new_arrival_used.html";
 const DETAIL_URL_PATTERN = /audiounion\.jp\/ct\/detail\/used\/\d+\/?/i;
@@ -24,10 +26,20 @@ const PRODUCT_TYPE_PREFIX =
   /^(?:スピーカー(?:システム)?|プリメインアンプ|プリアンプ|パワーアンプ|アンプ|cd\/?sacd(?:プレーヤー)?|sacd(?:プレーヤー)?|cd(?:プレーヤー)?|dac|d\/aコンバーター?|ネットワーク(?:プレーヤー)?|ターンテーブル|レコードプレーヤー|カートリッジ|ヘッドホン|イヤホン)\s*/i;
 const SALES_NOISE = /(?:販売店|販売価格|税込価格|価格|商品コード|在庫)[：:]?/i;
 
-function stripTagsKeepingSpacing(html) {
+interface KnownManufacturerParts {
+  raw: string;
+  consumed: Set<string>;
+}
+
+interface ManufacturerModelPair {
+  manufacturer: string;
+  model: string;
+}
+
+function stripTagsKeepingSpacing(html: unknown): string {
   return cleanText(
     String(html || "")
-      .replace(/<(?:img|input)\b([^>]*)>/gi, (_, attrs) => {
+      .replace(/<(?:img|input)\b([^>]*)>/gi, (_match: string, attrs: string) => {
         const labels = [
           ...attrs.matchAll(/\b(?:alt|title|aria-label)\s*=\s*["']([^"']+)["']/gi),
         ].map((match) => match[1]);
@@ -38,7 +50,7 @@ function stripTagsKeepingSpacing(html) {
   );
 }
 
-function candidateText(value) {
+function candidateText(value: unknown): string {
   let text = cleanText(value)
     .replace(/^中古\s*/i, "")
     .replace(/^NEW\s*/i, "")
@@ -48,8 +60,8 @@ function candidateText(value) {
   return text;
 }
 
-function detailLinkCandidates(html, baseUrl) {
-  const groups = new Map();
+function detailLinkCandidates(html: string, baseUrl: string): Map<string, string[]> {
+  const groups = new Map<string, string[]>();
   const anchorRe = /<a\b([^>]*?)href\s*=\s*["']([^"']+)["']([^>]*)>([\s\S]*?)<\/a>/gi;
   for (const match of String(html || "").matchAll(anchorRe)) {
     let url;
@@ -62,19 +74,19 @@ function detailLinkCandidates(html, baseUrl) {
     const sourceId = stableSourceId(url);
     const text = candidateText(stripTagsKeepingSpacing(match[4]));
     if (!sourceId || !text || /^(?:詳細|商品を見る|画像|中古|NEW)$/i.test(text)) continue;
-    if (!groups.has(sourceId)) groups.set(sourceId, []);
-    const values = groups.get(sourceId);
+    const values = groups.get(sourceId) ?? [];
     if (!values.includes(text)) values.push(text);
+    groups.set(sourceId, values);
   }
   return groups;
 }
 
-function exactKnownManufacturer(text) {
+function exactKnownManufacturer(text: string): ManufacturerNormalizationResult | null {
   const normalized = normalizeManufacturer(text);
   return normalized.matchedAlias ? normalized : null;
 }
 
-function combineKnownManufacturer(candidates) {
+function combineKnownManufacturer(candidates: readonly string[]): KnownManufacturerParts | null {
   for (let size = Math.min(3, candidates.length); size >= 1; size -= 1) {
     for (let start = 0; start + size <= candidates.length; start += 1) {
       const raw = candidates.slice(start, start + size).join(" ");
@@ -85,7 +97,7 @@ function combineKnownManufacturer(candidates) {
   return null;
 }
 
-function startsWithIdentityPrefix(detail, manufacturer) {
+function startsWithIdentityPrefix(detail: string, manufacturer: string): string {
   const value = candidateText(detail);
   const prefix = cleanText(manufacturer);
   if (!value || !prefix) return "";
@@ -99,15 +111,19 @@ function startsWithIdentityPrefix(detail, manufacturer) {
     .trim();
 }
 
-function cleanModel(value) {
+function cleanModel(value: string): string {
   let model = candidateText(value).replace(PRODUCT_TYPE_PREFIX, "").trim();
   const parts = model.split(/\s+/).filter(Boolean);
   if (parts.length === 2 && parts[0].toLowerCase() === parts[1].toLowerCase()) model = parts[0];
   return model;
 }
 
-function bestModel(candidates, manufacturer, consumed = new Set()) {
-  const models = [];
+function bestModel(
+  candidates: readonly string[],
+  manufacturer: string,
+  consumed: ReadonlySet<string> = new Set<string>(),
+): string {
+  const models: { model: string; score: number }[] = [];
   for (const candidate of candidates) {
     if (consumed.has(candidate) || candidate === manufacturer) continue;
     const prefixed = startsWithIdentityPrefix(candidate, manufacturer);
@@ -123,7 +139,7 @@ function bestModel(candidates, manufacturer, consumed = new Set()) {
   return models.sort((a, b) => b.score - a.score)[0]?.model || "";
 }
 
-function prefixPairIdentity(candidates) {
+function prefixPairIdentity(candidates: readonly string[]): ManufacturerModelPair | null {
   const brandLike = candidates.filter((value) => value.length <= 80 && !/\d/.test(value));
   for (const manufacturer of brandLike) {
     for (const detail of candidates) {
@@ -137,7 +153,7 @@ function prefixPairIdentity(candidates) {
   return null;
 }
 
-function suffixBrandIdentity(candidates) {
+function suffixBrandIdentity(candidates: readonly string[]): ManufacturerModelPair | null {
   if (candidates.length < 2) return null;
   for (let start = 0; start < candidates.length - 1; start += 1) {
     const first = candidates[start];
@@ -152,7 +168,10 @@ function suffixBrandIdentity(candidates) {
   return null;
 }
 
-function repairIdentity(item, candidates) {
+function repairIdentity(
+  item: ShopParsedProduct,
+  candidates: readonly string[] | undefined,
+): ShopParsedProduct {
   if (!candidates?.length) return item;
 
   const known = combineKnownManufacturer(candidates);
@@ -205,7 +224,7 @@ function repairIdentity(item, candidates) {
   return item;
 }
 
-function parseAudioUnion(html, pageUrl) {
+function parseAudioUnion(html: string, pageUrl: string): ShopParsedProduct[] {
   const fallback = parseProductPage(html, {
     shopKey: "audiounion",
     baseUrl: pageUrl,
@@ -228,7 +247,7 @@ export const audioUnionAdapter = {
   *pageUrls(_maxPages, env) {
     yield env?.AUDIOUNION_ENTRY_URL?.trim() || DEFAULT_ENTRY_URL;
   },
-  parse(html, pageUrl) {
+  parse(html, pageUrl = DEFAULT_ENTRY_URL) {
     return parseAudioUnion(html, pageUrl);
   },
-};
+} satisfies ShopAdapter<string>;

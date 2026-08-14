@@ -1,5 +1,5 @@
 import { checkPublicApiRateLimit } from "./api-guard.js";
-import { canonicalCategoryDefinitions, categoryFacet, getCategory } from "./catalog/categories.js";
+import { canonicalCategoryDefinitions, getCategory } from "./catalog/categories.js";
 import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from "./catalog/knowledge-source-verifier-v4.js";
 import { SHOP_DEFINITIONS, getShopEnabled, getShopIntervalMinutes } from "./config.js";
 import {
@@ -28,6 +28,15 @@ import {
   dispatchKnowledgeCatalogMonthlyRecheck,
 } from "./knowledge-catalog-verification-queue.js";
 import { runRetentionCleanup } from "./maintenance.js";
+import { errorMessage, isRecord } from "./types.js";
+import type { CategoryDefinition } from "./catalog/types.js";
+import type {
+  CrawlQueueMessage,
+  CrawlerEnv,
+  DispatchResult,
+  KnowledgeCatalogQueueMessage,
+} from "./crawler/types.js";
+import type { ShopSyncStateRow } from "./db/types.js";
 
 const GENERAL_CRON = "*/5 * * * *";
 const AUDIOUNION_CRON = "1 * * * *";
@@ -36,22 +45,28 @@ const DAILY_MAINTENANCE_CRON = "17 18 * * *";
 const KNOWLEDGE_CATALOG_MONTHLY_CRON = "23 3 1 * *";
 const CRAWL_QUEUE = "hifiscout-crawl";
 
-function json(data, init = {}) {
+function json(data: unknown, init: ResponseInit = {}): Response {
+  const headers = new Headers({
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store",
+  });
+  new Headers(init.headers).forEach((value, key) => headers.set(key, value));
   return new Response(JSON.stringify(data), {
     ...init,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-      ...init.headers,
-    },
+    headers,
   });
 }
 
-async function cachedJson(request, ctx, ttlSeconds, load) {
+async function cachedJson(
+  request: Request,
+  ctx: ExecutionContext,
+  ttlSeconds: number,
+  load: () => unknown | Promise<unknown>,
+): Promise<Response> {
   const cacheControl = `public, max-age=${ttlSeconds}`;
   if (typeof caches === "undefined")
     return json(await load(), { headers: { "cache-control": cacheControl } });
-  const cache = caches.default;
+  const cache = (caches as CacheStorage & { readonly default: Cache }).default;
   const cached = await cache.match(request);
   if (cached) return cached;
   const response = json(await load(), { headers: { "cache-control": cacheControl } });
@@ -59,13 +74,19 @@ async function cachedJson(request, ctx, ttlSeconds, load) {
   return response;
 }
 
-function categorySortKey(category) {
+function categorySortKey(category: Pick<CategoryDefinition, "parentId" | "order">): number[] {
   const parent = category.parentId ? getCategory(category.parentId) : category;
   return [parent?.order || 999, category.parentId ? 1 : 0, category.order || 999];
 }
 
-async function meta(env) {
-  const states = await env.DB.prepare("SELECT * FROM shop_sync_state").all();
+interface MetaFacetRow {
+  manufacturer_id?: string;
+  value: string;
+  active_product_count?: number | null;
+}
+
+async function meta(env: Env) {
+  const states = await env.DB.prepare("SELECT * FROM shop_sync_state").all<ShopSyncStateRow>();
   const stateRows = states.results || [];
   const byKey = Object.fromEntries(stateRows.map((row) => [row.shop_key, row]));
   const health = buildSyncHealth(env, stateRows);
@@ -78,7 +99,7 @@ async function meta(env) {
     sync: byKey[shop.key] || null,
     health: healthByKey[shop.key] || null,
   }));
-  const facets = await env.DB.batch([
+  const facets = await env.DB.batch<MetaFacetRow>([
     env.DB.prepare(`
       SELECT manufacturer_id, MIN(manufacturer) AS value
       FROM products
@@ -94,16 +115,22 @@ async function meta(env) {
       GROUP BY pc.category_id
     `),
   ]);
-  const manufacturers = facets[0].results.map((row) => row.value);
+  const manufacturers = (facets[0]?.results || []).map((row) => row.value);
   const counts = new Map(
-    facets[1].results.map((row) => [row.value, Number(row.active_product_count || 0)]),
+    (facets[1]?.results || []).map((row): [string, number] => [
+      row.value,
+      Number(row.active_product_count || 0),
+    ]),
   );
   const categoryFacets = canonicalCategoryDefinitions()
     .filter((category) => category.filterable)
     .map((category) => {
-      const facet = categoryFacet(category.id);
       return {
-        ...facet,
+        id: category.id,
+        parentId: category.parentId,
+        order: category.order,
+        classifiable: category.classifiable,
+        filterable: category.filterable,
         name: category.parentId ? `　${category.name}` : category.name,
         group: null,
         activeProductCount: counts.get(category.id) || 0,
@@ -120,7 +147,7 @@ async function meta(env) {
   return { status: health.status, shops, manufacturers, categories, categoryFacets };
 }
 
-async function knowledgeCatalogStatus(env) {
+async function knowledgeCatalogStatus(env: Env) {
   const [status, state, queue] = await Promise.all([
     knowledgeCatalogOperationalStatus(env.DB),
     knowledgeCatalogVerifierState(env.DB),
@@ -140,13 +167,13 @@ async function knowledgeCatalogStatus(env) {
   };
 }
 
-function adminAuthorized(request, env) {
+function adminAuthorized(request: Request, env: CrawlerEnv): boolean {
   return Boolean(
     env.ADMIN_TOKEN && request.headers.get("authorization") === `Bearer ${env.ADMIN_TOKEN}`,
   );
 }
 
-async function handleApi(request, env, ctx) {
+async function handleApi(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url);
   const rate = await checkPublicApiRateLimit(request, env);
   if (!rate.allowed) return json({ error: "rate_limited" }, { status: 429 });
@@ -183,7 +210,11 @@ async function handleApi(request, env, ctx) {
     if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
     const shop = String(url.searchParams.get("shop") || "").trim();
     if (!shop || !SHOP_DEFINITIONS[shop]) return json({ error: "invalid_shop" }, { status: 400 });
-    const history = await listDataQualityHistory(env.DB, shop, url.searchParams.get("limit"));
+    const history = await listDataQualityHistory(
+      env.DB,
+      shop,
+      Number(url.searchParams.get("limit")) || undefined,
+    );
     return json({ shop, history });
   }
   const historyMatch = url.pathname.match(/^\/api\/products\/(\d+)\/history$/);
@@ -196,21 +227,23 @@ async function handleApi(request, env, ctx) {
   if (request.method === "POST" && url.pathname === "/api/admin/crawl") {
     if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
     const result = await dispatchForcedCrawl(env, url.searchParams.get("shop"));
-    if (result.reason === "unknown_shop") return json({ error: "unknown_shop" }, { status: 400 });
-    if (result.reason === "disabled") return json({ error: "disabled" }, { status: 409 });
+    if (result.status === "rejected" && result.reason === "unknown_shop")
+      return json({ error: "unknown_shop" }, { status: 400 });
+    if (result.status === "rejected" && result.reason === "disabled")
+      return json({ error: "disabled" }, { status: 409 });
     return json(result, { status: 202 });
   }
   return json({ error: "not_found" }, { status: 404 });
 }
 
-function logDispatchResult(cron, dispatch) {
+function logDispatchResult(cron: string, dispatch: DispatchResult): void {
   const entry = { event: "crawl_dispatch", cron, ...dispatch };
-  if (dispatch.status === "rejected" || (dispatch.status === "skipped" && dispatch.reason))
+  if (dispatch.status === "rejected" || (dispatch.status === "skipped" && "reason" in dispatch))
     console.warn(JSON.stringify(entry));
   else console.log(JSON.stringify(entry));
 }
 
-async function runDailyMaintenance(env) {
+async function runDailyMaintenance(env: Env) {
   const [retention, catalog] = await Promise.allSettled([
     runRetentionCleanup(env),
     dispatchKnowledgeCatalogDailyVerification(env),
@@ -219,7 +252,7 @@ async function runDailyMaintenance(env) {
     console.error(
       JSON.stringify({
         event: "daily_retention_failed",
-        message: retention.reason?.message || String(retention.reason),
+        message: errorMessage(retention.reason),
       }),
     );
   }
@@ -227,7 +260,7 @@ async function runDailyMaintenance(env) {
     console.error(
       JSON.stringify({
         event: "knowledge_catalog_daily_dispatch_failed",
-        message: catalog.reason?.message || String(catalog.reason),
+        message: errorMessage(catalog.reason),
       }),
     );
   }
@@ -236,7 +269,7 @@ async function runDailyMaintenance(env) {
   return { retention: retention.value, catalog: catalog.value };
 }
 
-async function runScheduled(cron, env) {
+async function runScheduled(cron: string, env: Env) {
   if (cron === DAILY_MAINTENANCE_CRON) return runDailyMaintenance(env);
   if (cron === KNOWLEDGE_CATALOG_MONTHLY_CRON) return dispatchKnowledgeCatalogMonthlyRecheck(env);
   const dispatch =
@@ -251,7 +284,7 @@ async function runScheduled(cron, env) {
   return dispatch;
 }
 
-async function bootstrapKnowledgeCatalogReview(env) {
+async function bootstrapKnowledgeCatalogReview(env: Env) {
   const now = new Date();
   const startedAt = now.toISOString();
   const claimed = await claimKnowledgeCatalogVerifierVersion(
@@ -300,7 +333,7 @@ async function bootstrapKnowledgeCatalogReview(env) {
   });
 }
 
-async function consumeCrawlBatch(batch, env) {
+async function consumeCrawlBatch(batch: MessageBatch<CrawlQueueMessage>, env: Env): Promise<void> {
   for (const message of batch.messages) {
     const result = await consumeCrawlMessage(env, message.body);
     if (result.status === "failed")
@@ -312,26 +345,40 @@ async function consumeCrawlBatch(batch, env) {
   }
 }
 
+type WorkerQueueMessage = CrawlQueueMessage | KnowledgeCatalogQueueMessage;
+
+function isCrawlBatch(
+  batch: MessageBatch<WorkerQueueMessage>,
+): batch is MessageBatch<CrawlQueueMessage> {
+  return batch.messages.every((message) => isRecord(message.body) && "shopKey" in message.body);
+}
+
+function isKnowledgeCatalogBatch(
+  batch: MessageBatch<WorkerQueueMessage>,
+): batch is MessageBatch<KnowledgeCatalogQueueMessage> {
+  return batch.messages.every((message) => isRecord(message.body) && "jobId" in message.body);
+}
+
 export default {
-  async fetch(request, env, ctx) {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/api/")) return handleApi(request, env, ctx);
     return env.ASSETS.fetch(request);
   },
-  async scheduled(controller, env, ctx) {
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(runScheduled(controller.cron, env));
     if (controller.cron === GENERAL_CRON) ctx.waitUntil(bootstrapKnowledgeCatalogReview(env));
   },
-  async queue(batch, env) {
-    if (batch.queue === KNOWLEDGE_CATALOG_VERIFICATION_QUEUE) {
+  async queue(batch: MessageBatch<WorkerQueueMessage>, env: Env): Promise<void> {
+    if (batch.queue === KNOWLEDGE_CATALOG_VERIFICATION_QUEUE && isKnowledgeCatalogBatch(batch)) {
       return consumeKnowledgeCatalogVerificationBatch(env, batch);
     }
-    if (batch.queue === KNOWLEDGE_CATALOG_VERIFICATION_DLQ) {
+    if (batch.queue === KNOWLEDGE_CATALOG_VERIFICATION_DLQ && isKnowledgeCatalogBatch(batch)) {
       return consumeKnowledgeCatalogVerificationDeadLetterBatch(env, batch);
     }
-    if (batch.queue === CRAWL_QUEUE) return consumeCrawlBatch(batch, env);
+    if (batch.queue === CRAWL_QUEUE && isCrawlBatch(batch)) return consumeCrawlBatch(batch, env);
 
     console.error(JSON.stringify({ event: "unknown_queue", queue: batch.queue }));
     for (const message of batch.messages) message.retry();
   },
-};
+} satisfies ExportedHandler<Env, WorkerQueueMessage>;

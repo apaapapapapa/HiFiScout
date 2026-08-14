@@ -7,22 +7,24 @@ import {
   extractFujiyaDetailCategoryEvidence,
   fujiyaAvicAdapter,
 } from "../src/crawler/shops/fujiya-avic.js";
+import type { CategoryEnrichmentProductRow } from "../src/db/types.js";
+import { detailFetchOptions, emptyCatalogDb, parsedProduct } from "./helpers/fixtures.js";
 
 test("Fujiya unresolved model is classified from product-specific detail evidence", async () => {
   const product = normalizeCatalogProduct(
-    {
+    parsedProduct({
       sourceId: "d10x",
       manufacturer: "LUXMAN",
       model: "D-10X",
       title: "LUXMAN D-10X",
       rawCategory: "DAP",
       sourceUrl: "https://www.fujiya-avic.co.jp/shop/g/gd10x/",
-    },
+    }),
     fujiyaAvicAdapter,
   );
   assert.equal(product.classificationStatus, "unclassified");
   const result = await enrichProductCategories({
-    db: {},
+    db: emptyCatalogDb(),
     adapter: fujiyaAvicAdapter,
     products: [product],
     existingRows: [],
@@ -31,7 +33,7 @@ test("Fujiya unresolved model is classified from product-specific detail evidenc
         return '<html><head><meta name="description" content="LUXMAN D-10X フラグシップSACD/CDプレーヤーの中古商品です。"></head><body><h1>D-10X</h1></body></html>';
       },
     },
-    fetchOptions: {},
+    fetchOptions: detailFetchOptions(),
     now: new Date("2026-08-11T10:00:00Z"),
   });
   const [classified] = result.products;
@@ -62,17 +64,17 @@ test("Fujiya detail extraction stops at product-specific metadata and ignores re
 
 test("cached detail classification is reused for the same product identity without another request", async () => {
   const product = normalizeCatalogProduct(
-    {
+    parsedProduct({
       sourceId: "d10x",
       manufacturer: "LUXMAN",
       model: "D-10X",
       title: "LUXMAN D-10X",
       rawCategory: "DAP",
       sourceUrl: "https://www.fujiya-avic.co.jp/shop/g/gd10x/",
-    },
+    }),
     fujiyaAvicAdapter,
   );
-  const existingRows = [
+  const existingRows: CategoryEnrichmentProductRow[] = [
     {
       source_id: "d10x",
       manufacturer_id: product.manufacturerId,
@@ -93,7 +95,7 @@ test("cached detail classification is reused for the same product identity witho
     },
   ];
   const result = await enrichProductCategories({
-    db: {},
+    db: emptyCatalogDb(),
     adapter: fujiyaAvicAdapter,
     products: [product],
     existingRows,
@@ -102,7 +104,7 @@ test("cached detail classification is reused for the same product identity witho
         throw new Error("detail fetch must not run");
       },
     },
-    fetchOptions: {},
+    fetchOptions: detailFetchOptions(),
     now: new Date("2026-08-11T10:00:00Z"),
   });
   assert.equal(result.detailRequests, 0);
@@ -112,18 +114,18 @@ test("cached detail classification is reused for the same product identity witho
 
 test("successful unresolved detail checks are cached briefly, but fetch failures remain retryable", async () => {
   const product = normalizeCatalogProduct(
-    {
+    parsedProduct({
       sourceId: "unknown",
       manufacturer: "Example",
       model: "ABC-123",
       title: "Example ABC-123",
       rawCategory: "DAP",
       sourceUrl: "https://www.fujiya-avic.co.jp/shop/g/gunknown/",
-    },
+    }),
     fujiyaAvicAdapter,
   );
   const checked = await enrichProductCategories({
-    db: {},
+    db: emptyCatalogDb(),
     adapter: fujiyaAvicAdapter,
     products: [product],
     existingRows: [],
@@ -132,7 +134,7 @@ test("successful unresolved detail checks are cached briefly, but fetch failures
         return "<html><body><h1>ABC-123</h1><p>中古商品です。</p></body></html>";
       },
     },
-    fetchOptions: {},
+    fetchOptions: detailFetchOptions(),
     now: new Date("2026-08-11T10:00:00Z"),
   });
   assert.equal(checked.products[0].classificationStatus, "unclassified");
@@ -141,7 +143,7 @@ test("successful unresolved detail checks are cached briefly, but fetch failures
     "2026-08-11T10:00:00.000Z",
   );
   const failed = await enrichProductCategories({
-    db: {},
+    db: emptyCatalogDb(),
     adapter: fujiyaAvicAdapter,
     products: [product],
     existingRows: [],
@@ -150,7 +152,7 @@ test("successful unresolved detail checks are cached briefly, but fetch failures
         throw new Error("temporary failure");
       },
     },
-    fetchOptions: {},
+    fetchOptions: detailFetchOptions(),
     now: new Date("2026-08-11T11:00:00Z"),
   });
   assert.equal(failed.detailRequests, 1);

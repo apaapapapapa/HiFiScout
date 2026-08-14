@@ -5,13 +5,65 @@ import {
 } from "../catalog/categories.js";
 import { isFeatureId, normalizeFeatureFacts } from "../catalog/product-features.js";
 import { manufacturerIdForFilter } from "../catalog/manufacturers.js";
+import type {
+  CatalogProductUpsertInput,
+  CategoryId,
+  ClassificationStatus,
+  FeatureFact,
+  StockStatus,
+} from "../catalog/types.js";
+import { isRecord } from "../types.js";
+import type {
+  ExistingProductRow,
+  ListProductsResult,
+  PriceHistoryPoint,
+  ProductApiRow,
+  ProductHistoryResult,
+  ProductListCursor,
+  ProductLookupRow,
+  ProductPriceLookupRow,
+  ProductQuerySort,
+  ProductRow,
+  QueryableDatabase,
+  ReadableDatabase,
+  SortDefinition,
+  UpsertProductsResult,
+} from "./types.js";
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 100;
 const LOOKUP_CHUNK_SIZE = 50;
 const RECENT_SOURCE_WINDOW_MS = 48 * 60 * 60 * 1000;
 
-async function runBatches(db, statements, chunkSize = 50) {
+interface CatalogFields {
+  rawManufacturer: string;
+  manufacturerId: string;
+  rawCategory: string;
+  primaryCategoryId: CategoryId;
+  categoryIds: CategoryId[];
+  categoryIdsJson: string;
+  classificationStatus: ClassificationStatus;
+  searchAliases: string;
+  featureFacts: FeatureFact[];
+}
+
+interface ExistingCatalogFields extends Omit<CatalogFields, "categoryIds" | "featureFacts"> {}
+
+interface InitialActivity {
+  at: string;
+  userFacing: boolean;
+}
+
+interface UpsertProductsOptions {
+  deactivateMissing?: boolean;
+  touchIntervalMinutes?: number;
+}
+
+async function runBatches(
+  db: QueryableDatabase,
+  statements: D1PreparedStatement[],
+  chunkSize = 50,
+): Promise<number> {
   let changes = 0;
   for (let i = 0; i < statements.length; i += chunkSize) {
     const results = await db.batch(statements.slice(i, i + chunkSize));
@@ -20,9 +72,9 @@ async function runBatches(db, statements, chunkSize = 50) {
   return changes;
 }
 
-function catalogFields(product) {
+function catalogFields(product: CatalogProductUpsertInput): CatalogFields {
   const primaryCategoryId =
-    product.primaryCategoryId || categoryIdForFilter(product.category) || "other";
+    categoryIdForFilter(product.primaryCategoryId || product.category || "") || "other";
   const categoryIds = [primaryCategoryId];
   return {
     rawManufacturer: product.rawManufacturer ?? product.manufacturer ?? "",
@@ -39,9 +91,9 @@ function catalogFields(product) {
   };
 }
 
-function existingCatalogFields(existing) {
+function existingCatalogFields(existing: ExistingProductRow): ExistingCatalogFields {
   const primaryCategoryId =
-    existing.primary_category_id || categoryIdForFilter(existing.category) || "other";
+    categoryIdForFilter(existing.primary_category_id || existing.category) || "other";
   return {
     rawManufacturer: existing.raw_manufacturer ?? existing.manufacturer ?? "",
     manufacturerId: existing.manufacturer_id || manufacturerIdForFilter(existing.manufacturer),
@@ -55,11 +107,11 @@ function existingCatalogFields(existing) {
   };
 }
 
-function productSourcePublishedAt(product) {
+function productSourcePublishedAt(product: CatalogProductUpsertInput): string | null {
   return product.sourcePublishedAt ?? null;
 }
 
-function initialActivity(product, observedAt) {
+function initialActivity(product: CatalogProductUpsertInput, observedAt: string): InitialActivity {
   const sourceAt = productSourcePublishedAt(product);
   if (!sourceAt) return { at: observedAt, userFacing: true };
   const sourceMs = new Date(sourceAt).getTime();
@@ -71,11 +123,16 @@ function initialActivity(product, observedAt) {
   return { at: observedAt, userFacing: true };
 }
 
-function productRow(row) {
+function productRow(row: ProductRow): ProductApiRow;
+function productRow(row: null): null;
+function productRow(row: ProductRow | null): ProductApiRow | null {
   if (!row) return row;
-  let categoryIds = [];
+  let categoryIds: string[] = [];
   try {
-    categoryIds = JSON.parse(row.category_ids || "[]");
+    const parsed: unknown = JSON.parse(row.category_ids || "[]");
+    categoryIds = Array.isArray(parsed)
+      ? parsed.filter((value): value is string => typeof value === "string")
+      : [];
   } catch {
     categoryIds = row.primary_category_id ? [row.primary_category_id] : [];
   }
@@ -83,13 +140,13 @@ function productRow(row) {
 }
 
 export async function selectProductsForHistory(
-  db,
-  shopKey,
-  sourceIds,
+  db: QueryableDatabase,
+  shopKey: string,
+  sourceIds: readonly string[],
   chunkSize = LOOKUP_CHUNK_SIZE,
-) {
+): Promise<ProductPriceLookupRow[]> {
   const uniqueIds = [...new Set(sourceIds)];
-  const rows = [];
+  const rows: ProductPriceLookupRow[] = [];
   for (let i = 0; i < uniqueIds.length; i += chunkSize) {
     const chunk = uniqueIds.slice(i, i + chunkSize);
     if (!chunk.length) continue;
@@ -99,20 +156,20 @@ export async function selectProductsForHistory(
         `SELECT id, source_id, price_yen FROM products WHERE shop_key = ? AND source_id IN (${placeholders})`,
       )
       .bind(shopKey, ...chunk)
-      .all();
+      .all<ProductPriceLookupRow>();
     rows.push(...(result.results || []));
   }
   return rows;
 }
 
 export async function selectExistingProducts(
-  db,
-  shopKey,
-  sourceIds,
+  db: ReadableDatabase,
+  shopKey: string,
+  sourceIds: readonly string[],
   chunkSize = LOOKUP_CHUNK_SIZE,
-) {
+): Promise<ExistingProductRow[]> {
   const uniqueIds = [...new Set(sourceIds)];
-  const rows = [];
+  const rows: ExistingProductRow[] = [];
   for (let i = 0; i < uniqueIds.length; i += chunkSize) {
     const chunk = uniqueIds.slice(i, i + chunkSize);
     if (!chunk.length) continue;
@@ -126,28 +183,31 @@ export async function selectExistingProducts(
       FROM products WHERE shop_key = ? AND source_id IN (${placeholders})
     `)
       .bind(shopKey, ...chunk)
-      .all();
+      .all<ExistingProductRow>();
     rows.push(...(result.results || []));
   }
   return rows;
 }
 
-export async function selectActiveProductSourceIds(db, shopKey) {
+export async function selectActiveProductSourceIds(
+  db: QueryableDatabase,
+  shopKey: string,
+): Promise<string[]> {
   const result = await db
     .prepare("SELECT source_id FROM products WHERE shop_key = ? AND is_active = 1")
     .bind(shopKey)
-    .all();
+    .all<Pick<ProductRow, "source_id">>();
   return (result.results || []).map((row) => row.source_id);
 }
 
 export async function deactivateProductsBySourceIds(
-  db,
-  shopKey,
-  sourceIds,
+  db: QueryableDatabase,
+  shopKey: string,
+  sourceIds: readonly string[],
   chunkSize = LOOKUP_CHUNK_SIZE,
-) {
+): Promise<number> {
   const uniqueIds = [...new Set(sourceIds)];
-  const statements = [];
+  const statements: D1PreparedStatement[] = [];
   for (let i = 0; i < uniqueIds.length; i += chunkSize) {
     const chunk = uniqueIds.slice(i, i + chunkSize);
     if (!chunk.length) continue;
@@ -163,7 +223,7 @@ export async function deactivateProductsBySourceIds(
   return runBatches(db, statements, chunkSize);
 }
 
-function listingChanged(existing, product) {
+function listingChanged(existing: ExistingProductRow, product: CatalogProductUpsertInput): boolean {
   const current = catalogFields(product);
   const previous = existingCatalogFields(existing);
   return (
@@ -187,14 +247,17 @@ function listingChanged(existing, product) {
   );
 }
 
-function meaningfulStockActivity(previousStatus, currentStatus) {
+function meaningfulStockActivity(previousStatus: StockStatus, currentStatus: StockStatus): boolean {
   if (previousStatus === currentStatus) return false;
   if (!previousStatus || !currentStatus) return false;
   if (previousStatus === "unknown" || currentStatus === "unknown") return false;
   return true;
 }
 
-function activityChanged(existing, product) {
+function activityChanged(
+  existing: ExistingProductRow,
+  product: CatalogProductUpsertInput,
+): boolean {
   return (
     existing.model !== product.model ||
     existing.title !== product.title ||
@@ -205,7 +268,10 @@ function activityChanged(existing, product) {
   );
 }
 
-function categoriesChanged(existing, product) {
+function categoriesChanged(
+  existing: ExistingProductRow,
+  product: CatalogProductUpsertInput,
+): boolean {
   const current = catalogFields(product);
   const previous = existingCatalogFields(existing);
   return (
@@ -214,7 +280,11 @@ function categoriesChanged(existing, product) {
   );
 }
 
-function shouldTouch(existing, observedAt, touchIntervalMinutes) {
+function shouldTouch(
+  existing: ExistingProductRow,
+  observedAt: string,
+  touchIntervalMinutes: number,
+): boolean {
   if (!existing.last_seen_at) return true;
   const observedMs = new Date(observedAt).getTime();
   const lastSeenMs = new Date(existing.last_seen_at).getTime();
@@ -222,8 +292,12 @@ function shouldTouch(existing, observedAt, touchIntervalMinutes) {
   return observedMs - lastSeenMs >= touchIntervalMinutes * 60_000;
 }
 
-async function rowsForSources(db, shopKey, sourceIds) {
-  const rows = [];
+async function rowsForSources(
+  db: QueryableDatabase,
+  shopKey: string,
+  sourceIds: readonly string[],
+): Promise<ProductLookupRow[]> {
+  const rows: ProductLookupRow[] = [];
   for (let i = 0; i < sourceIds.length; i += LOOKUP_CHUNK_SIZE) {
     const chunk = sourceIds.slice(i, i + LOOKUP_CHUNK_SIZE);
     if (!chunk.length) continue;
@@ -233,19 +307,24 @@ async function rowsForSources(db, shopKey, sourceIds) {
         `SELECT id, source_id FROM products WHERE shop_key = ? AND source_id IN (${placeholders})`,
       )
       .bind(shopKey, ...chunk)
-      .all();
+      .all<ProductLookupRow>();
     rows.push(...(result.results || []));
   }
   return rows;
 }
 
-async function syncProductCategories(db, shopKey, products, sourceIds) {
+async function syncProductCategories(
+  db: QueryableDatabase,
+  shopKey: string,
+  products: readonly CatalogProductUpsertInput[],
+  sourceIds: readonly string[],
+): Promise<void> {
   if (!sourceIds.length) return;
   const wanted = new Set(sourceIds);
   const selected = products.filter((product) => wanted.has(product.sourceId));
   const rows = await rowsForSources(db, shopKey, sourceIds);
   const idBySource = new Map(rows.map((row) => [row.source_id, row.id]));
-  const statements = [];
+  const statements: D1PreparedStatement[] = [];
   for (const product of selected) {
     const productId = idBySource.get(product.sourceId);
     if (!productId) continue;
@@ -266,13 +345,19 @@ async function syncProductCategories(db, shopKey, products, sourceIds) {
   await runBatches(db, statements);
 }
 
-async function syncProductFeatureFacts(db, shopKey, products, sourceIds, observedAt) {
+async function syncProductFeatureFacts(
+  db: QueryableDatabase,
+  shopKey: string,
+  products: readonly CatalogProductUpsertInput[],
+  sourceIds: readonly string[],
+  observedAt: string,
+): Promise<void> {
   if (!sourceIds.length) return;
   const wanted = new Set(sourceIds);
   const selected = products.filter((product) => wanted.has(product.sourceId));
   const rows = await rowsForSources(db, shopKey, sourceIds);
   const idBySource = new Map(rows.map((row) => [row.source_id, row.id]));
-  const statements = [];
+  const statements: D1PreparedStatement[] = [];
   for (const product of selected) {
     const productId = idBySource.get(product.sourceId);
     if (!productId) continue;
@@ -304,12 +389,12 @@ async function syncProductFeatureFacts(db, shopKey, products, sourceIds, observe
 }
 
 export async function upsertProducts(
-  db,
-  shopKey,
-  products,
-  observedAt,
-  { deactivateMissing = false, touchIntervalMinutes = 1440 } = {},
-) {
+  db: QueryableDatabase,
+  shopKey: string,
+  products: readonly CatalogProductUpsertInput[],
+  observedAt: string,
+  { deactivateMissing = false, touchIntervalMinutes = 1440 }: UpsertProductsOptions = {},
+): Promise<UpsertProductsResult> {
   const existingRows = await selectExistingProducts(
     db,
     shopKey,
@@ -322,11 +407,11 @@ export async function upsertProducts(
         (sourceId) => !observedSourceIds.has(sourceId),
       )
     : [];
-  const newSourceIds = [];
-  const changedPriceSourceIds = [];
-  const categorySyncSourceIds = [];
-  const featureSyncSourceIds = [];
-  const writes = [];
+  const newSourceIds: string[] = [];
+  const changedPriceSourceIds: string[] = [];
+  const categorySyncSourceIds: string[] = [];
+  const featureSyncSourceIds: string[] = [];
+  const writes: D1PreparedStatement[] = [];
   let changedCount = 0;
   let activityCount = 0;
   let touchedCount = 0;
@@ -466,73 +551,78 @@ export async function upsertProducts(
   return { changedCount, activityCount, touchedCount, deactivatedCount };
 }
 
-function encodeCursor(payload) {
+function encodeCursor(payload: ProductListCursor): string {
   const bytes = new TextEncoder().encode(JSON.stringify(payload));
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/u, "");
 }
 
-function decodeCursor(value) {
+function decodeCursor(value: string | null): ProductListCursor | null {
   if (!value) return null;
   try {
     const normalized = value.replaceAll("-", "+").replaceAll("_", "/");
     const padding = "=".repeat((4 - (normalized.length % 4)) % 4);
     const binary = atob(normalized + padding);
     const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-    const parsed = JSON.parse(new TextDecoder().decode(bytes));
-    if (
-      !parsed ||
-      typeof parsed !== "object" ||
-      !Number.isInteger(parsed.id) ||
-      typeof parsed.sort !== "string"
-    )
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    if (!isRecord(parsed) || !Number.isInteger(parsed.id) || typeof parsed.sort !== "string")
       return null;
-    return parsed;
+    return {
+      id: Number(parsed.id),
+      sort: parsed.sort,
+      ...(typeof parsed.value === "string" ||
+      typeof parsed.value === "number" ||
+      parsed.value === null
+        ? { value: parsed.value }
+        : {}),
+      ...(typeof parsed.isNull === "boolean" ? { isNull: parsed.isNull } : {}),
+    };
   } catch {
     return null;
   }
 }
 
-function ftsPhrase(value) {
+function ftsPhrase(value: string): string {
   return `"${value.replaceAll('"', '""')}"`;
 }
 
-function sortDefinition(sortKey) {
-  return (
-    {
-      newest: { key: "newest", column: "last_activity_at", direction: "DESC", idDirection: "DESC" },
-      oldest: { key: "oldest", column: "last_activity_at", direction: "ASC", idDirection: "ASC" },
-      updated: {
-        key: "updated",
-        column: "last_activity_at",
-        direction: "DESC",
-        idDirection: "DESC",
-      },
-      priceAsc: {
-        key: "priceAsc",
-        column: "price_yen",
-        direction: "ASC",
-        idDirection: "ASC",
-        price: true,
-      },
-      priceDesc: {
-        key: "priceDesc",
-        column: "price_yen",
-        direction: "DESC",
-        idDirection: "DESC",
-        price: true,
-      },
-    }[sortKey] || {
-      key: "newest",
+function sortDefinition(sortKey: string | null): SortDefinition {
+  const definitions: Readonly<Record<ProductQuerySort, SortDefinition>> = {
+    newest: { key: "newest", column: "last_activity_at", direction: "DESC", idDirection: "DESC" },
+    oldest: { key: "oldest", column: "last_activity_at", direction: "ASC", idDirection: "ASC" },
+    updated: {
+      key: "updated",
       column: "last_activity_at",
       direction: "DESC",
       idDirection: "DESC",
-    }
-  );
+    },
+    priceAsc: {
+      key: "priceAsc",
+      column: "price_yen",
+      direction: "ASC",
+      idDirection: "ASC",
+      price: true,
+    },
+    priceDesc: {
+      key: "priceDesc",
+      column: "price_yen",
+      direction: "DESC",
+      idDirection: "DESC",
+      price: true,
+    },
+  };
+  return sortKey && sortKey in definitions
+    ? definitions[sortKey as ProductQuerySort]
+    : definitions.newest;
 }
 
-function addCursorPredicate(where, binds, sort, cursor) {
+function addCursorPredicate(
+  where: string[],
+  binds: unknown[],
+  sort: SortDefinition,
+  cursor: ProductListCursor | null,
+): void {
   if (!cursor || cursor.sort !== sort.key) return;
   if (!sort.price) {
     if (typeof cursor.value !== "string") return;
@@ -556,7 +646,7 @@ function addCursorPredicate(where, binds, sort, cursor) {
   binds.push(cursor.value, cursor.value, cursor.id);
 }
 
-function cursorFor(row, sort) {
+function cursorFor(row: ProductApiRow, sort: SortDefinition): string {
   return encodeCursor({
     sort: sort.key,
     id: row.id,
@@ -565,7 +655,7 @@ function cursorFor(row, sort) {
   });
 }
 
-function requestedFeatures(params) {
+function requestedFeatures(params: URLSearchParams): string[] {
   return [
     ...new Set(
       params
@@ -577,7 +667,7 @@ function requestedFeatures(params) {
   ];
 }
 
-export function validateProductQuery(url) {
+export function validateProductQuery(url: URL): string | null {
   const params = url.searchParams;
   const limits = { q: 100, shop: 80, manufacturer: 100, category: 100, cursor: 1024 };
   for (const [key, maxLength] of Object.entries(limits)) {
@@ -601,10 +691,10 @@ export function validateProductQuery(url) {
   return null;
 }
 
-export async function listProducts(db, url) {
+export async function listProducts(db: QueryableDatabase, url: URL): Promise<ListProductsResult> {
   const params = url.searchParams;
-  const where = ["p.is_active = 1"];
-  const binds = [];
+  const where: string[] = ["p.is_active = 1"];
+  const binds: unknown[] = [];
   const q = params.get("q")?.trim();
   let join = "";
   if (q) {
@@ -694,7 +784,7 @@ export async function listProducts(db, url) {
     const countResult = await db
       .prepare(`SELECT COUNT(*) AS total FROM products p ${join} WHERE ${countWhere.join(" AND ")}`)
       .bind(...countBinds)
-      .all();
+      .all<{ total: number }>();
     totalCount = Number(countResult.results?.[0]?.total || 0);
   }
   const paginationSql = offset > 0 ? "LIMIT ? OFFSET ?" : "LIMIT ?";
@@ -704,27 +794,33 @@ export async function listProducts(db, url) {
       `SELECT p.* FROM products p ${join} WHERE ${where.join(" AND ")} ORDER BY ${orderBy} ${paginationSql}`,
     )
     .bind(...binds, ...paginationBinds)
-    .all();
+    .all<ProductRow>();
   const rows = result.results || [];
   const hasMore = rows.length > limit;
-  const items = (hasMore ? rows.slice(0, limit) : rows).map(productRow);
+  const items = (hasMore ? rows.slice(0, limit) : rows).map((row) => productRow(row));
   const last = items.at(-1);
   return {
     items,
     hasMore,
     nextCursor: hasMore && last ? cursorFor(last, sort) : null,
-    ...(includeTotal ? { totalCount, totalPages: Math.ceil(totalCount / limit) } : {}),
+    ...(includeTotal ? { totalCount, totalPages: Math.ceil((totalCount ?? 0) / limit) } : {}),
   };
 }
 
-export async function productHistory(db, id) {
-  const product = await db.prepare("SELECT * FROM products WHERE id = ?").bind(id).first();
+export async function productHistory(
+  db: QueryableDatabase,
+  id: number,
+): Promise<ProductHistoryResult | null> {
+  const product = await db
+    .prepare("SELECT * FROM products WHERE id = ?")
+    .bind(id)
+    .first<ProductRow>();
   if (!product) return null;
   const history = await db
     .prepare(
       "SELECT price_yen, observed_at FROM price_history WHERE product_id = ? ORDER BY observed_at ASC",
     )
     .bind(id)
-    .all();
+    .all<PriceHistoryPoint>();
   return { product: productRow(product), history: history.results || [] };
 }

@@ -294,7 +294,9 @@ export interface CategoryClassificationFields {
   candidateCategoryIds: CategoryId[];
   searchAliases: string;
   categoryEvidence: CategoryEvidenceInput[];
-  metadata: ProductMetadata;
+  metadata: ProductMetadata & {
+    categoryClassification: CategoryClassificationMetadata & Record<string, unknown>;
+  };
 }
 
 /** Result of spreading `CategoryClassificationFields` over an arbitrary product shape. */
@@ -723,6 +725,8 @@ export interface KnowledgeSourceVerificationBase {
    */
   sourceType: string;
   httpStatus: number | null;
+  /** Hash of fetched response content when verification reached a readable source page. */
+  contentHash?: string;
   /** Template-interpolated (`http_404`, `...:official_family_v5`); never a literal union. */
   message: string;
 }

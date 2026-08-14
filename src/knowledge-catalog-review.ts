@@ -10,12 +10,28 @@ import {
 } from "./db/knowledge-catalog-review-repository.js";
 import { reclassifyProductsFromKnowledgeCatalog } from "./db/knowledge-catalog-repository.js";
 import { runKnowledgeCatalogSourceVerification } from "./knowledge-catalog-source-verification.js";
+import { errorMessage } from "./types.js";
+import type { CrawlerEnv } from "./crawler/types.js";
+import type { ProductClassificationStats, QueryableDatabase } from "./db/types.js";
 
-function reviewIntervalDays(env) {
+type KnowledgeCatalogRuntimeEnv = CrawlerEnv & { DB: QueryableDatabase };
+
+interface KnowledgeCatalogReviewOptions {
+  now?: Date;
+  fetchImpl?: typeof fetch;
+  runId?: number | null;
+  preferRetries?: boolean;
+  mode?: string;
+}
+
+function reviewIntervalDays(env: CrawlerEnv): number {
   return Math.max(1, Number(env.KNOWLEDGE_CATALOG_REVIEW_INTERVAL_DAYS) || 30);
 }
 
-export function summarizeClassificationImpact(beforeClassification, afterClassification) {
+export function summarizeClassificationImpact(
+  beforeClassification: Pick<ProductClassificationStats, "unclassifiedProducts" | "otherProducts">,
+  afterClassification: Pick<ProductClassificationStats, "unclassifiedProducts" | "otherProducts">,
+) {
   return {
     unclassifiedReduced: Math.max(
       0,
@@ -54,14 +70,14 @@ export function knowledgeCatalogReviewModeOptions(mode = "full") {
 }
 
 export async function runKnowledgeCatalogReview(
-  env,
+  env: KnowledgeCatalogRuntimeEnv,
   {
     now = new Date(),
     fetchImpl = globalThis.fetch,
     runId: existingRunId = null,
     preferRetries = false,
     mode = "full",
-  } = {},
+  }: KnowledgeCatalogReviewOptions = {},
 ) {
   const startedAt = now.toISOString();
   const runId = existingRunId || (await startKnowledgeCatalogReviewRun(env.DB, startedAt));
@@ -104,27 +120,28 @@ export async function runKnowledgeCatalogReview(
     return result;
   } catch (error) {
     const finishedAt = new Date().toISOString();
-    await finishKnowledgeCatalogReviewRunFailure(
-      env.DB,
-      runId,
-      finishedAt,
-      error?.message || String(error),
-    );
+    await finishKnowledgeCatalogReviewRunFailure(env.DB, runId, finishedAt, errorMessage(error));
     console.error(
       JSON.stringify({
         event: "knowledge_catalog_review_failed",
         mode: reviewMode.mode,
-        message: error?.message || String(error),
+        message: errorMessage(error),
       }),
     );
     throw error;
   }
 }
 
-export function runKnowledgeCatalogDailyVerification(env, options = {}) {
+export function runKnowledgeCatalogDailyVerification(
+  env: KnowledgeCatalogRuntimeEnv,
+  options: Omit<KnowledgeCatalogReviewOptions, "mode"> = {},
+) {
   return runKnowledgeCatalogReview(env, { ...options, mode: "daily_candidates" });
 }
 
-export function runKnowledgeCatalogMonthlyRecheck(env, options = {}) {
+export function runKnowledgeCatalogMonthlyRecheck(
+  env: KnowledgeCatalogRuntimeEnv,
+  options: Omit<KnowledgeCatalogReviewOptions, "mode"> = {},
+) {
   return runKnowledgeCatalogReview(env, { ...options, mode: "monthly_recheck" });
 }

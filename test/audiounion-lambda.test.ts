@@ -59,7 +59,7 @@ test("Lambda only permits allowlisted seller targets", async () => {
 });
 
 test("Lambda permits AudioUnion used detail URLs and still evaluates robots", async () => {
-  const calls = [];
+  const calls: Array<{ url: string; options: { headers: Record<string, string> } }> = [];
   const html = "<html><body>販売価格 ¥798,000</body></html>";
   const handler = createHandler({
     env: env({ MIN_REQUEST_DELAY_MS: "0" }),
@@ -138,8 +138,8 @@ test("Lambda rejects non-listing Hifido URLs", async () => {
 });
 
 test("Lambda respects robots crawl-delay and returns upstream HTML bytes", async () => {
-  const calls = [];
-  const sleeps = [];
+  const calls: Array<{ url: string; options: { headers: Record<string, string> } }> = [];
+  const sleeps: number[] = [];
   const html = "<html><body>AudioUnion 中古</body></html>";
   const handler = createHandler({
     env: env(),
@@ -170,7 +170,7 @@ test("Lambda respects robots crawl-delay and returns upstream HTML bytes", async
 });
 
 test("Lambda permits Hifido listing fetches through the Tokyo relay", async () => {
-  const calls = [];
+  const calls: Array<{ url: string; options: { headers: Record<string, string> } }> = [];
   const html = '<html><body><div class="list-item">ハイファイ堂</div></body></html>';
   const handler = createHandler({
     env: env({ MIN_REQUEST_DELAY_MS: "0" }),

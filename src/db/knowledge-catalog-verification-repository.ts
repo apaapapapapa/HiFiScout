@@ -1,11 +1,57 @@
 import { normalizeCatalogModel } from "../catalog/knowledge-catalog.js";
+import type {
+  FailedKnowledgeSource,
+  KnowledgeSourceStatus,
+  KnowledgeSourceVerification,
+  VerifiedKnowledgeSource,
+} from "../catalog/types.js";
+import type {
+  DueKnowledgeCatalogProduct,
+  DueKnowledgeCatalogProductRow,
+  KnowledgeCatalogCandidateRow,
+  KnowledgeCatalogProductRow,
+  KnowledgeCatalogPromotionResult,
+  PendingKnowledgeCatalogCandidate,
+  QueryableDatabase,
+} from "./types.js";
 
-function boundedLimit(value, fallback = 25) {
+interface VerificationAttemptInput {
+  candidateId?: number | null;
+  productId?: number | null;
+  manufacturerId: string;
+  normalizedModel: string;
+  sourceType?: string;
+  sourceUrl?: string;
+  attemptedAt: string;
+  status: KnowledgeSourceStatus;
+  httpStatus?: number | null;
+  contentHash?: string;
+  message?: string;
+}
+
+interface CandidateListOptions {
+  preferRetries?: boolean;
+}
+
+type PendingCandidateRow = Pick<
+  KnowledgeCatalogCandidateRow,
+  | "id"
+  | "manufacturer_id"
+  | "normalized_model"
+  | "observed_manufacturer"
+  | "observed_model"
+  | "sample_title"
+  | "priority_score"
+  | "verification_status"
+  | "last_verification_at"
+>;
+
+function boundedLimit(value: unknown, fallback = 25): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.min(2000, Math.max(1, Math.trunc(parsed))) : fallback;
 }
 
-function categoriesFromRow(value) {
+function categoriesFromRow(value: string | null): string[] {
   return String(value || "")
     .split(",")
     .map((item) => item.trim())
@@ -13,7 +59,7 @@ function categoriesFromRow(value) {
 }
 
 function attemptStatement(
-  db,
+  db: QueryableDatabase,
   {
     candidateId = null,
     productId = null,
@@ -26,8 +72,8 @@ function attemptStatement(
     httpStatus = null,
     contentHash = "",
     message = "",
-  },
-) {
+  }: VerificationAttemptInput,
+): D1PreparedStatement {
   return db
     .prepare(`
     INSERT INTO knowledge_catalog_verification_attempts (
@@ -51,11 +97,11 @@ function attemptStatement(
 }
 
 export async function listPendingKnowledgeCatalogCandidates(
-  db,
+  db: QueryableDatabase,
   limit = 25,
-  manufacturerIds = null,
-  { preferRetries = false } = {},
-) {
+  manufacturerIds: readonly string[] | null = null,
+  { preferRetries = false }: CandidateListOptions = {},
+): Promise<PendingKnowledgeCatalogCandidate[]> {
   const supported = Array.isArray(manufacturerIds)
     ? [
         ...new Set(
@@ -91,7 +137,7 @@ export async function listPendingKnowledgeCatalogCandidates(
     LIMIT ?
   `)
     .bind(...params)
-    .all();
+    .all<PendingCandidateRow>();
   return (result.results || []).map((row) => ({
     id: Number(row.id),
     manufacturerId: row.manufacturer_id,
@@ -106,11 +152,11 @@ export async function listPendingKnowledgeCatalogCandidates(
 }
 
 export async function recordKnowledgeCatalogCandidateVerification(
-  db,
-  candidate,
-  verification,
-  attemptedAt,
-) {
+  db: QueryableDatabase,
+  candidate: PendingKnowledgeCatalogCandidate,
+  verification: KnowledgeSourceVerification,
+  attemptedAt: string,
+): Promise<void> {
   const status = verification.status === "verified" ? "verified" : verification.status;
   await db.batch([
     db
@@ -143,11 +189,11 @@ export async function recordKnowledgeCatalogCandidateVerification(
 }
 
 export async function promoteVerifiedKnowledgeCatalogCandidate(
-  db,
-  candidate,
-  verification,
-  verifiedAt,
-) {
+  db: QueryableDatabase,
+  candidate: PendingKnowledgeCatalogCandidate,
+  verification: VerifiedKnowledgeSource,
+  verifiedAt: string,
+): Promise<KnowledgeCatalogPromotionResult> {
   const existing = await db
     .prepare(`
     SELECT id, verification_status
@@ -156,7 +202,7 @@ export async function promoteVerifiedKnowledgeCatalogCandidate(
     LIMIT 1
   `)
     .bind(candidate.manufacturerId, candidate.normalizedModel)
-    .first();
+    .first<Pick<KnowledgeCatalogProductRow, "id" | "verification_status">>();
 
   if (existing?.verification_status === "rejected") {
     await recordKnowledgeCatalogCandidateVerification(
@@ -316,7 +362,10 @@ export async function promoteVerifiedKnowledgeCatalogCandidate(
   return { promoted: true, productId, reason: "verified" };
 }
 
-export async function listDueKnowledgeCatalogProducts(db, limit = 25) {
+export async function listDueKnowledgeCatalogProducts(
+  db: QueryableDatabase,
+  limit = 25,
+): Promise<DueKnowledgeCatalogProduct[]> {
   const result = await db
     .prepare(`
     SELECT kp.id, kp.manufacturer_id, kp.canonical_model, kp.normalized_model, kp.canonical_name,
@@ -344,7 +393,7 @@ export async function listDueKnowledgeCatalogProducts(db, limit = 25) {
     LIMIT ?
   `)
     .bind(boundedLimit(limit))
-    .all();
+    .all<DueKnowledgeCatalogProductRow>();
   return (result.results || []).map((row) => ({
     id: Number(row.id),
     manufacturerId: row.manufacturer_id,
@@ -360,11 +409,11 @@ export async function listDueKnowledgeCatalogProducts(db, limit = 25) {
 }
 
 export async function recordKnowledgeCatalogProductRecheckSuccess(
-  db,
-  product,
-  verification,
-  verifiedAt,
-) {
+  db: QueryableDatabase,
+  product: DueKnowledgeCatalogProduct,
+  verification: VerifiedKnowledgeSource,
+  verifiedAt: string,
+): Promise<void> {
   await db.batch([
     db
       .prepare(`
@@ -396,11 +445,11 @@ export async function recordKnowledgeCatalogProductRecheckSuccess(
 }
 
 export async function recordKnowledgeCatalogProductRecheckFailure(
-  db,
-  product,
-  verification,
-  attemptedAt,
-) {
+  db: QueryableDatabase,
+  product: DueKnowledgeCatalogProduct,
+  verification: FailedKnowledgeSource,
+  attemptedAt: string,
+): Promise<void> {
   const sourceStatus = verification.status === "not_found" ? "missing" : "error";
   const attemptStatus = ["not_found", "ambiguous", "unsupported", "error"].includes(
     verification.status,

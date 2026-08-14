@@ -61,6 +61,7 @@ test("AudioUnion health exposes shared relay configuration and persisted item co
   const missing = buildSyncHealth({ AUDIOUNION_ENABLED: "true" }, state, now).shops.find(
     (shop) => shop.shopKey === "audiounion",
   );
+  assert.ok(missing);
   assert.equal(missing.configured, false);
   assert.equal(missing.status, "critical");
   assert.equal(missing.reason, "configuration_missing");
@@ -75,6 +76,7 @@ test("AudioUnion health exposes shared relay configuration and persisted item co
     state,
     now,
   ).shops.find((shop) => shop.shopKey === "audiounion");
+  assert.ok(configured);
   assert.equal(configured.configured, true);
   assert.equal(configured.status, "healthy");
   assert.equal(configured.lastItemCount, 42);
@@ -87,6 +89,7 @@ test("disabled shops do not make overall health unhealthy", () => {
     new Date("2026-08-11T06:00:00.000Z"),
   );
   const audioUnion = health.shops.find((shop) => shop.shopKey === "audiounion");
+  assert.ok(audioUnion);
   assert.equal(audioUnion.status, "disabled");
   assert.notEqual(health.status, "critical");
 });

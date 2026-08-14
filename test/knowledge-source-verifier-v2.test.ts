@@ -34,8 +34,8 @@ test("v2 discovers a product from model-bearing anchor text even when the URL is
       "<html><head><title>ABC-1 Power Amplifier</title></head><body><h1>ABC-1 Power Amplifier</h1></body></html>",
     ],
   ]);
-  const requested = [];
-  const fetchImpl = async (url) => {
+  const requested: string[] = [];
+  const fetchImpl: typeof fetch = async (url) => {
     requested.push(String(url));
     const body = pages.get(String(url));
     return new Response(body || "not found", { status: body ? 200 : 404 });
@@ -100,16 +100,13 @@ test("v2 can use a nearby preceding official category label", async () => {
 
 test("v2 built-in definitions add historical product indexes", () => {
   const definitions = enhancedKnowledgeSourceDefinitions();
-  assert.equal(
-    new Set(definitions.get("luxman")[0].catalogUrls).has("https://www.luxman.co.jp/product/"),
-    true,
-  );
-  assert.ok(
-    new Set(definitions.get("accuphase")[0].catalogUrls).has("https://www.accuphase.com/history"),
-  );
-  assert.ok(
-    new Set(definitions.get("esoteric")[0].catalogUrls).has(
-      "https://www.esoteric.jp/jp/support/discon",
-    ),
-  );
+  const luxman = definitions.get("luxman");
+  const accuphase = definitions.get("accuphase");
+  const esoteric = definitions.get("esoteric");
+  assert.ok(luxman);
+  assert.ok(accuphase);
+  assert.ok(esoteric);
+  assert.equal(new Set(luxman[0].catalogUrls).has("https://www.luxman.co.jp/product/"), true);
+  assert.ok(new Set(accuphase[0].catalogUrls).has("https://www.accuphase.com/history"));
+  assert.ok(new Set(esoteric[0].catalogUrls).has("https://www.esoteric.jp/jp/support/discon"));
 });

@@ -1,6 +1,16 @@
 import { catalogModelLookupVariants } from "./knowledge-catalog.js";
 import { containsFlexibleCatalogModelIdentity } from "./knowledge-source-verifier-v2.js";
 import { createKnowledgeSourceVerifierV3 } from "./knowledge-source-verifier-v3.js";
+import type { CrawlerEnv } from "../crawler/types.js";
+import { isRecord } from "../types.js";
+import type {
+  ClassifiableCategoryId,
+  KnowledgeSourceCandidate,
+  KnowledgeSourceVerification,
+  KnowledgeSourceVerifier,
+  KnowledgeSourceVerifierOptions,
+  VerifiedKnowledgeSource,
+} from "./types.js";
 
 // The module name is kept stable for existing imports; the rollout version advances whenever
 // verification behavior changes and a one-shot production review must run again.
@@ -116,22 +126,21 @@ export const EXPANDED_OFFICIAL_SOURCES = Object.freeze([
   },
 ]);
 
-function parseRegistry(value) {
+function parseRegistry(value: unknown): Record<string, unknown>[] {
   if (!value) return [];
   try {
     const parsed = typeof value === "string" ? JSON.parse(value) : value;
-    if (Array.isArray(parsed)) return parsed.filter(Boolean);
-    if (parsed && typeof parsed === "object") {
-      return Object.entries(parsed).map(([manufacturerId, config]) => ({
-        manufacturerId,
-        ...config,
-      }));
+    if (Array.isArray(parsed)) return parsed.filter(isRecord);
+    if (isRecord(parsed)) {
+      return Object.entries(parsed)
+        .filter((entry): entry is [string, Record<string, unknown>] => isRecord(entry[1]))
+        .map(([manufacturerId, config]) => ({ manufacturerId, ...config }));
     }
   } catch {}
   return [];
 }
 
-function candidateModel(candidate = {}) {
+function candidateModel(candidate: KnowledgeSourceCandidate = {}): string {
   return String(
     candidate.observedModel ||
       candidate.model ||
@@ -141,14 +150,17 @@ function candidateModel(candidate = {}) {
   ).trim();
 }
 
-async function sha256Hex(value) {
+async function sha256Hex(value: string): Promise<string> {
   if (!globalThis.crypto?.subtle) return "";
   const bytes = new TextEncoder().encode(String(value));
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function verifyMarantzCdSacdIndex(candidate, fetchImpl) {
+async function verifyMarantzCdSacdIndex(
+  candidate: KnowledgeSourceCandidate,
+  fetchImpl: typeof fetch,
+): Promise<VerifiedKnowledgeSource | null> {
   const manufacturerId = String(candidate?.manufacturerId || "")
     .trim()
     .toLowerCase();
@@ -191,7 +203,9 @@ async function verifyMarantzCdSacdIndex(candidate, fetchImpl) {
   }
 }
 
-function officialFamilyCategory(candidate = {}) {
+function officialFamilyCategory(
+  candidate: KnowledgeSourceCandidate = {},
+): ClassifiableCategoryId | "" {
   const manufacturerId = String(candidate.manufacturerId || "")
     .trim()
     .toLowerCase();
@@ -215,7 +229,10 @@ function officialFamilyCategory(candidate = {}) {
   return "";
 }
 
-function applyOfficialFamilyCategory(result, candidate) {
+function applyOfficialFamilyCategory(
+  result: KnowledgeSourceVerification,
+  candidate: KnowledgeSourceCandidate,
+): KnowledgeSourceVerification {
   if (result?.status !== "verified") return result;
   const categoryId = officialFamilyCategory(candidate);
   if (!categoryId) return result;
@@ -227,7 +244,7 @@ function applyOfficialFamilyCategory(result, candidate) {
   };
 }
 
-export function expandedKnowledgeSourceEnv(env = {}) {
+export function expandedKnowledgeSourceEnv(env: CrawlerEnv = {}): CrawlerEnv {
   const overrides = parseRegistry(env.KNOWLEDGE_CATALOG_SOURCE_REGISTRY_JSON);
   return {
     ...env,
@@ -240,17 +257,24 @@ export function expandedKnowledgeSourceEnv(env = {}) {
   };
 }
 
-export function createKnowledgeSourceVerifierV4(env = {}, options = {}) {
+export function createKnowledgeSourceVerifierV4(
+  env: CrawlerEnv = {},
+  options: KnowledgeSourceVerifierOptions = {},
+): KnowledgeSourceVerifier {
   const base = createKnowledgeSourceVerifierV3(expandedKnowledgeSourceEnv(env), options);
   const fetchImpl = options.fetchImpl || globalThis.fetch;
   return {
     ...base,
-    async verifyCandidate(candidate) {
+    async verifyCandidate(
+      candidate: KnowledgeSourceCandidate,
+    ): Promise<KnowledgeSourceVerification> {
       const marantz = await verifyMarantzCdSacdIndex(candidate, fetchImpl);
       if (marantz) return marantz;
       return applyOfficialFamilyCategory(await base.verifyCandidate(candidate), candidate);
     },
-    async verifyStoredSource(product) {
+    async verifyStoredSource(
+      product: KnowledgeSourceCandidate,
+    ): Promise<KnowledgeSourceVerification> {
       const marantz = await verifyMarantzCdSacdIndex(product, fetchImpl);
       if (marantz) return marantz;
       return applyOfficialFamilyCategory(await base.verifyStoredSource(product), product);

@@ -1,14 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { listProducts, validateProductQuery } from "../src/db/products.js";
+import { asQueryableDatabase } from "./helpers/d1.js";
 
-function paginationDb({ total = 5, rows = [] } = {}) {
-  const calls = [];
-  return {
+function paginationDb({ total = 5, rows = [] }: { total?: number; rows?: unknown[] } = {}) {
+  const calls: Array<{ sql: string; binds: unknown[] }> = [];
+  return asQueryableDatabase({
     calls,
-    prepare(sql) {
+    prepare(sql: string) {
       return {
-        bind(...binds) {
+        bind(...binds: unknown[]) {
           calls.push({ sql, binds });
           return {
             async all() {
@@ -19,7 +20,7 @@ function paginationDb({ total = 5, rows = [] } = {}) {
         },
       };
     },
-  };
+  });
 }
 
 test("product pagination reports total pages and supports direct offset jumps", async () => {

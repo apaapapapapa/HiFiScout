@@ -1,4 +1,16 @@
 import { evaluateQuality } from "../data-quality/quality-evaluator.js";
+import type { QualityThresholdOverrides } from "../data-quality/quality-thresholds.js";
+import type {
+  DataQualityRunRow,
+  DataQualitySnapshotAggregateRow,
+  QualityCounts,
+  QualityEvaluation,
+  QualityMetric,
+  QualityRunMetrics,
+  QualitySnapshotMetrics,
+  QualityStatus,
+  QueryableDatabase,
+} from "./types.js";
 
 const MODEL_OPTIONAL_CATEGORIES = [
   "cable",
@@ -9,17 +21,63 @@ const MODEL_OPTIONAL_CATEGORIES = [
   "other",
 ];
 const MODEL_OPTIONAL_SQL = MODEL_OPTIONAL_CATEGORIES.map((category) => `'${category}'`).join(",");
-const STATUS_RANK = { unknown: 0, healthy: 1, warning: 2, critical: 3 };
+const STATUS_RANK: Readonly<Record<QualityStatus, number>> = {
+  unknown: 0,
+  healthy: 1,
+  warning: 2,
+  critical: 3,
+};
 
-function number(value) {
+interface SaveDataQualityRunOptions {
+  shopKey: string;
+  crawlRunId?: number | null;
+  evaluatedAt?: string;
+  run?: Partial<QualityCounts>;
+  thresholdOverrides?: QualityThresholdOverrides;
+}
+
+interface StoredQualityEvaluation {
+  id: number;
+  shop: string;
+  crawlRunId: number | null;
+  evaluatedAt: string;
+  status: QualityStatus;
+  snapshot: { status: QualityStatus; metrics: QualitySnapshotMetrics };
+  latestRun: { status: QualityStatus; metrics: QualityRunMetrics };
+  metrics: QualitySnapshotMetrics & QualityRunMetrics;
+  details: Record<string, number>;
+}
+
+function number(value: unknown): number {
   return Number(value || 0);
 }
 
-function nullableNumber(value) {
+function nullableNumber(value: unknown): number | null {
   return value == null ? null : Number(value);
 }
 
-export async function readDataQualitySnapshot(db, shopKey) {
+export async function readDataQualitySnapshot(
+  db: QueryableDatabase,
+  shopKey: string,
+): Promise<
+  Pick<
+    QualityCounts,
+    | "totalItems"
+    | "manufacturerMissingCount"
+    | "manufacturerUnresolvedCount"
+    | "categoryUnclassifiedCount"
+    | "otherCategoryCount"
+    | "identityMatchedCount"
+    | "identityUnresolvedCount"
+    | "identityVetoCount"
+    | "identityCandidateCount"
+    | "inventoryKnownCount"
+    | "inventoryUnknownCount"
+    | "modelExpectedCount"
+    | "modelExtractedCount"
+    | "modelMissingCount"
+  >
+> {
   const row = await db
     .prepare(`
       SELECT
@@ -45,7 +103,7 @@ export async function readDataQualitySnapshot(db, shopKey) {
       WHERE p.shop_key = ? AND p.is_active = 1
     `)
     .bind(shopKey)
-    .first();
+    .first<DataQualitySnapshotAggregateRow>();
 
   return {
     totalItems: number(row?.total_items),
@@ -65,7 +123,7 @@ export async function readDataQualitySnapshot(db, shopKey) {
   };
 }
 
-function statusColumns(evaluation) {
+function statusColumns(evaluation: QualityEvaluation): QualityStatus[] {
   const metrics = evaluation.metrics;
   return [
     metrics.manufacturerUnknown.status,
@@ -83,15 +141,15 @@ function statusColumns(evaluation) {
 }
 
 export async function saveDataQualityRun(
-  db,
+  db: QueryableDatabase,
   {
     shopKey,
     crawlRunId = null,
     evaluatedAt = new Date().toISOString(),
     run = {},
     thresholdOverrides = {},
-  } = {},
-) {
+  }: SaveDataQualityRunOptions,
+): Promise<QualityEvaluation & { evaluatedAt: string; crawlRunId: number | null }> {
   const snapshot = await readDataQualitySnapshot(db, shopKey);
   const evaluation = evaluateQuality({ shopKey, ...snapshot, ...run }, { thresholdOverrides });
   const c = evaluation.counts;
@@ -184,13 +242,13 @@ export async function saveDataQualityRun(
   return { ...evaluation, evaluatedAt, crawlRunId };
 }
 
-function rowMetric(count, denominator, status) {
+function rowMetric(count: unknown, denominator: unknown, status: QualityStatus): QualityMetric {
   const c = number(count);
   const d = number(denominator);
   return { count: c, denominator: d, rate: d ? c / d : null, status };
 }
 
-export function dataQualityRow(row) {
+export function dataQualityRow(row: DataQualityRunRow): StoredQualityEvaluation {
   const identityTotal = number(row.identity_matched_count) + number(row.identity_unresolved_count);
   const inventoryTotal = number(row.inventory_known_count) + number(row.inventory_unknown_count);
   const manufacturerUnknown =
@@ -247,7 +305,9 @@ export function dataQualityRow(row) {
   };
 }
 
-export async function latestDataQualityByShop(db) {
+export async function latestDataQualityByShop(
+  db: QueryableDatabase,
+): Promise<StoredQualityEvaluation[]> {
   const result = await db
     .prepare(`
       SELECT q.*
@@ -260,11 +320,15 @@ export async function latestDataQualityByShop(db) {
       )
       ORDER BY q.shop_key
     `)
-    .all();
-  return (result.results || []).map(dataQualityRow);
+    .all<DataQualityRunRow>();
+  return (result.results || []).map((row) => dataQualityRow(row));
 }
 
-export async function listDataQualityHistory(db, shopKey, limit = 50) {
+export async function listDataQualityHistory(
+  db: QueryableDatabase,
+  shopKey: string,
+  limit = 50,
+): Promise<StoredQualityEvaluation[]> {
   const boundedLimit = Math.min(200, Math.max(1, Number(limit) || 50));
   const result = await db
     .prepare(`
@@ -274,15 +338,19 @@ export async function listDataQualityHistory(db, shopKey, limit = 50) {
       LIMIT ?
     `)
     .bind(shopKey, boundedLimit)
-    .all();
-  return (result.results || []).map(dataQualityRow);
+    .all<DataQualityRunRow>();
+  return (result.results || []).map((row) => dataQualityRow(row));
 }
 
-export async function dataQualityStatus(db) {
+export async function dataQualityStatus(db: QueryableDatabase): Promise<{
+  status: QualityStatus;
+  shops: StoredQualityEvaluation[];
+  checkedAt: string;
+}> {
   const shops = await latestDataQualityByShop(db);
   const known = shops.filter((shop) => shop.status !== "unknown");
   const status = known.length
-    ? known.reduce(
+    ? known.reduce<QualityStatus>(
         (worst, shop) => (STATUS_RANK[shop.status] > STATUS_RANK[worst] ? shop.status : worst),
         "healthy",
       )

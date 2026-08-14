@@ -48,6 +48,9 @@ test("Audio Union reconciles manufacturer and model candidates independent of li
   const luxman = items.find((item) => item.sourceId === "300001");
   const denon = items.find((item) => item.sourceId === "300002");
   const thorens = items.find((item) => item.sourceId === "300003");
+  assert.ok(luxman);
+  assert.ok(denon);
+  assert.ok(thorens);
 
   assert.deepEqual(
     { manufacturer: luxman.manufacturer, model: luxman.model },
@@ -87,6 +90,9 @@ test("Audio Union handles multi-word manufacturers as full titles or split candi
   const splitLinks = items.find((item) => item.sourceId === "300004");
   const fullTitle = items.find((item) => item.sourceId === "300005");
   const linear = items.find((item) => item.sourceId === "300006");
+  assert.ok(splitLinks);
+  assert.ok(fullTitle);
+  assert.ok(linear);
 
   assert.deepEqual(
     { manufacturer: splitLinks.manufacturer, model: splitLinks.model },
@@ -132,6 +138,7 @@ test("Audio Union prefers the richer duplicate link and current product price", 
     </article>`;
   const items = audioUnionAdapter.parse(html, "https://www.audiounion.jp/st/new_arrival_used.html");
   const dcs = items.find((item) => item.sourceId === "225940");
+  assert.ok(dcs);
   assert.equal(dcs.manufacturer, "dCS");
   assert.equal(dcs.model, "Bartok DAC+ (with Headphone Amplifier)");
   assert.equal(dcs.priceYen, 1798000);

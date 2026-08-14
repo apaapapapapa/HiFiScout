@@ -1,13 +1,25 @@
-export async function getShopState(db, shopKey) {
-  return db.prepare("SELECT * FROM shop_sync_state WHERE shop_key = ?").bind(shopKey).first();
+import type { QueryableDatabase, ShopSyncStateRow } from "./types.js";
+
+export async function getShopState(
+  db: QueryableDatabase,
+  shopKey: string,
+): Promise<ShopSyncStateRow | null> {
+  return db
+    .prepare("SELECT * FROM shop_sync_state WHERE shop_key = ?")
+    .bind(shopKey)
+    .first<ShopSyncStateRow>();
 }
 
-export async function listShopStates(db) {
-  const result = await db.prepare("SELECT * FROM shop_sync_state").all();
+export async function listShopStates(db: QueryableDatabase): Promise<ShopSyncStateRow[]> {
+  const result = await db.prepare("SELECT * FROM shop_sync_state").all<ShopSyncStateRow>();
   return result.results || [];
 }
 
-export async function markShopAttempt(db, shopKey, attemptedAt) {
+export async function markShopAttempt(
+  db: QueryableDatabase,
+  shopKey: string,
+  attemptedAt: string,
+): Promise<void> {
   await db
     .prepare(`
     INSERT INTO shop_sync_state (shop_key, last_attempt_at) VALUES (?, ?)
@@ -17,7 +29,12 @@ export async function markShopAttempt(db, shopKey, attemptedAt) {
     .run();
 }
 
-export async function markShopSuccess(db, shopKey, succeededAt, itemCount) {
+export async function markShopSuccess(
+  db: QueryableDatabase,
+  shopKey: string,
+  succeededAt: string,
+  itemCount: number,
+): Promise<void> {
   await db
     .prepare(`
     INSERT INTO shop_sync_state (shop_key, last_success_at, consecutive_failures, backoff_until, last_error, last_item_count)
@@ -29,7 +46,13 @@ export async function markShopSuccess(db, shopKey, succeededAt, itemCount) {
     .run();
 }
 
-export async function markShopFailure(db, shopKey, failedAt, message, priorFailures = 0) {
+export async function markShopFailure(
+  db: QueryableDatabase,
+  shopKey: string,
+  failedAt: string,
+  message: unknown,
+  priorFailures = 0,
+): Promise<void> {
   const failures = priorFailures + 1;
   const backoffMinutes = Math.min(24 * 60, 15 * 2 ** Math.min(failures - 1, 6));
   const backoffUntil = new Date(
@@ -46,7 +69,11 @@ export async function markShopFailure(db, shopKey, failedAt, message, priorFailu
     .run();
 }
 
-export async function markShopQueued(db, shopKey, queuedAt) {
+export async function markShopQueued(
+  db: QueryableDatabase,
+  shopKey: string,
+  queuedAt: string,
+): Promise<void> {
   await db
     .prepare(`
     INSERT INTO shop_sync_state (shop_key, queued_at) VALUES (?, ?)
@@ -56,7 +83,7 @@ export async function markShopQueued(db, shopKey, queuedAt) {
     .run();
 }
 
-export async function clearShopQueued(db, shopKey) {
+export async function clearShopQueued(db: QueryableDatabase, shopKey: string): Promise<void> {
   await db
     .prepare("UPDATE shop_sync_state SET queued_at = NULL WHERE shop_key = ?")
     .bind(shopKey)

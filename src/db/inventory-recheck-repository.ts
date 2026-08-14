@@ -1,4 +1,15 @@
-export async function selectInventoryRecheckCandidate(db, shopKey, { staleBefore, retryBefore }) {
+import type { InventoryRecheckCandidateRow, QueryableDatabase } from "./types.js";
+
+interface InventoryCandidateWindow {
+  staleBefore: string;
+  retryBefore: string;
+}
+
+export async function selectInventoryRecheckCandidate(
+  db: QueryableDatabase,
+  shopKey: string,
+  { staleBefore, retryBefore }: InventoryCandidateWindow,
+): Promise<InventoryRecheckCandidateRow | null> {
   return db
     .prepare(`
     SELECT id, source_id, source_url, last_seen_at, last_inventory_checked_at,
@@ -17,10 +28,14 @@ export async function selectInventoryRecheckCandidate(db, shopKey, { staleBefore
     LIMIT 1
   `)
     .bind(shopKey, staleBefore, retryBefore)
-    .first();
+    .first<InventoryRecheckCandidateRow>();
 }
 
-export async function markInventoryCheckAttempt(db, productId, attemptedAt) {
+export async function markInventoryCheckAttempt(
+  db: QueryableDatabase,
+  productId: number,
+  attemptedAt: string,
+): Promise<D1Result> {
   return db
     .prepare(`
     UPDATE products
@@ -31,7 +46,11 @@ export async function markInventoryCheckAttempt(db, productId, attemptedAt) {
     .run();
 }
 
-export async function markInventoryAvailable(db, productId, checkedAt) {
+export async function markInventoryAvailable(
+  db: QueryableDatabase,
+  productId: number,
+  checkedAt: string,
+): Promise<D1Result> {
   return db
     .prepare(`
     UPDATE products
@@ -46,7 +65,11 @@ export async function markInventoryAvailable(db, productId, checkedAt) {
     .run();
 }
 
-export async function markInventoryAmbiguous(db, productId, checkedAt) {
+export async function markInventoryAmbiguous(
+  db: QueryableDatabase,
+  productId: number,
+  checkedAt: string,
+): Promise<D1Result> {
   return db
     .prepare(`
     UPDATE products
@@ -60,12 +83,12 @@ export async function markInventoryAmbiguous(db, productId, checkedAt) {
 }
 
 export async function recordInventoryUnavailable(
-  db,
-  productId,
-  checkedAt,
-  failureCount,
-  deactivate,
-) {
+  db: QueryableDatabase,
+  productId: number,
+  checkedAt: string,
+  failureCount: number,
+  deactivate: boolean,
+): Promise<D1Result> {
   const inactive = deactivate ? 1 : 0;
   return db
     .prepare(`

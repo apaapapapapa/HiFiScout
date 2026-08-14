@@ -4,10 +4,12 @@ import assert from "node:assert/strict";
 import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
 import { enrichProductCategories } from "../src/crawler/category-enricher.js";
 import { fujiyaAvicAdapter } from "../src/crawler/shops/fujiya-avic.js";
+import { asQueryableDatabase } from "./helpers/d1.js";
+import { detailFetchOptions, parsedProduct } from "./helpers/fixtures.js";
 
-function catalogDb(rows, aliases = []) {
-  return {
-    prepare(sql) {
+function catalogDb(rows: unknown[], aliases: unknown[] = []) {
+  return asQueryableDatabase({
+    prepare(sql: string) {
       return {
         bind() {
           return {
@@ -20,19 +22,19 @@ function catalogDb(rows, aliases = []) {
         },
       };
     },
-  };
+  });
 }
 
 test("verified exact catalog match classifies before seller detail enrichment", async () => {
   const product = normalizeCatalogProduct(
-    {
+    parsedProduct({
       sourceId: "abc1",
       manufacturer: "Marantz",
       model: "ABC-1",
       title: "Marantz ABC-1",
       rawCategory: "DAP",
       sourceUrl: "https://example.invalid/abc1",
-    },
+    }),
     fujiyaAvicAdapter,
   );
   assert.equal(product.classificationStatus, "unclassified");
@@ -57,7 +59,7 @@ test("verified exact catalog match classifies before seller detail enrichment", 
         throw new Error("detail request must not run");
       },
     },
-    fetchOptions: {},
+    fetchOptions: detailFetchOptions(),
     now: new Date("2026-08-11T10:00:00Z"),
   });
 
@@ -71,14 +73,14 @@ test("verified exact catalog match classifies before seller detail enrichment", 
 
 test("derived Marantz model aliases reuse one verified catalog classification across retailer formats", async () => {
   const product = normalizeCatalogProduct(
-    {
+    parsedProduct({
       sourceId: "sacd10-other-shop",
       manufacturer: "Marantz",
       model: "SACD 10",
       title: "Marantz SACD 10",
       rawCategory: "DAP",
       sourceUrl: "https://example.invalid/sacd10",
-    },
+    }),
     fujiyaAvicAdapter,
   );
   assert.equal(product.classificationStatus, "unclassified");
@@ -103,7 +105,7 @@ test("derived Marantz model aliases reuse one verified catalog classification ac
         throw new Error("detail request must not run");
       },
     },
-    fetchOptions: {},
+    fetchOptions: detailFetchOptions(),
     now: new Date("2026-08-12T04:00:00Z"),
   });
 
@@ -119,13 +121,13 @@ test("derived Marantz model aliases reuse one verified catalog classification ac
 
 test("verified rows without an explicit primary category are not used for classification", async () => {
   const product = normalizeCatalogProduct(
-    {
+    parsedProduct({
       sourceId: "abc1",
       manufacturer: "Marantz",
       model: "ABC-1",
       title: "Marantz ABC-1",
       rawCategory: "DAP",
-    },
+    }),
     fujiyaAvicAdapter,
   );
   const db = catalogDb([
@@ -144,8 +146,12 @@ test("verified rows without an explicit primary category are not used for classi
     db,
     adapter: { ...fujiyaAvicAdapter, extractDetailCategoryEvidence: undefined },
     products: [product],
-    transport: {},
-    fetchOptions: {},
+    transport: {
+      async fetchHtmlPage() {
+        throw new Error("detail request must not run");
+      },
+    },
+    fetchOptions: detailFetchOptions(),
     now: new Date("2026-08-11T10:00:00Z"),
   });
 
@@ -155,13 +161,13 @@ test("verified rows without an explicit primary category are not used for classi
 
 test("ambiguous model aliases are not used as verified evidence", async () => {
   const product = normalizeCatalogProduct(
-    {
+    parsedProduct({
       sourceId: "alias1",
       manufacturer: "Marantz",
       model: "SHARED",
       title: "Marantz SHARED",
       rawCategory: "DAP",
-    },
+    }),
     fujiyaAvicAdapter,
   );
 
@@ -196,8 +202,12 @@ test("ambiguous model aliases are not used as verified evidence", async () => {
     db,
     adapter: { ...fujiyaAvicAdapter, extractDetailCategoryEvidence: undefined },
     products: [product],
-    transport: {},
-    fetchOptions: {},
+    transport: {
+      async fetchHtmlPage() {
+        throw new Error("detail request must not run");
+      },
+    },
+    fetchOptions: detailFetchOptions(),
     now: new Date("2026-08-11T10:00:00Z"),
   });
 

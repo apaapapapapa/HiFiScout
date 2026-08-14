@@ -87,6 +87,7 @@ test("candidate aggregation groups only safely-normalized formatting variants", 
   const candidates = buildKnowledgeCatalogCandidateAggregates(rows);
   assert.equal(candidates.length, 2);
   const xd = candidates.find((candidate) => candidate.normalizedModel === "K-01XD");
+  assert.ok(xd);
   assert.equal(xd.listingCount, 2);
   assert.equal(xd.shopCount, 2);
   assert.equal(xd.unclassifiedCount, 1);
@@ -125,6 +126,8 @@ test("classified other listings receive catalog review priority without double-c
 
   const other = candidates.find((candidate) => candidate.normalizedModel === "SACD10/FB");
   const unclassified = candidates.find((candidate) => candidate.normalizedModel === "UNKNOWN-1");
+  assert.ok(other);
+  assert.ok(unclassified);
   assert.equal(other.otherCount, 1);
   assert.equal(other.unclassifiedCount, 0);
   assert.equal(unclassified.otherCount, 0);
