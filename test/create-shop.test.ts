@@ -3,12 +3,31 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { transform } from "esbuild";
 import {
   createShop,
   renderAdapter,
   renderPluginRegistration,
+  renderTest,
   validateShopKey,
 } from "../scripts/create-shop.js";
+
+/**
+ * Parses generated source the way the build does.
+ *
+ * Syntax only — the scaffold is type-checked for real by `npm run typecheck` once it is written
+ * into the repository. This is the guard against a template that no longer produces a file the
+ * project can compile at all.
+ */
+async function assertParses(source: string, fileName: string): Promise<void> {
+  try {
+    await transform(source, { loader: "ts", sourcefile: fileName });
+  } catch (error) {
+    assert.fail(
+      `${fileName} is not valid TypeScript: ${error instanceof Error ? error.message : error}`,
+    );
+  }
+}
 
 test("shop generator validates kebab-case keys", () => {
   assert.equal(validateShopKey("example-audio"), "example-audio");
@@ -27,6 +46,8 @@ test("shop generator renders catalog and metadata-ready adapter and registration
   assert.match(adapter, /rawCategory/);
   assert.match(adapter, /metadata: \{ storeName, warranty \}/);
   assert.match(adapter, /exampleAudioAdapter/);
+  // Typed against the platform contract, so a scaffold that drifts fails `npm run typecheck`.
+  assert.match(adapter, /satisfies ShopAdapter;/);
 
   const registration = renderPluginRegistration({
     key: "example-audio",
@@ -34,8 +55,48 @@ test("shop generator renders catalog and metadata-ready adapter and registration
     baseUrl: "https://example.com",
     intervalMinutes: 60,
   });
-  assert.match(registration, /EXAMPLE_AUDIO_INTERVAL_MINUTES/);
   assert.match(registration, /defaultIntervalMinutes: 60/);
+  // Settings names are derived from the key, so registration declares none of them.
+  assert.doesNotMatch(registration, /EXAMPLE_AUDIO_INTERVAL_MINUTES:/);
+});
+
+test("a generated shop is registered but not yet crawling", () => {
+  const registration = renderPluginRegistration({
+    key: "example-audio",
+    name: "Example Audio",
+    baseUrl: "https://example.com",
+  });
+  // The scaffold parser returns no products, and a shop that parses nothing fails its crawl and
+  // would refuse to deactivate anything. It must not go live just by being merged.
+  assert.match(registration, /defaultEnabled: false/);
+});
+
+test("the generated scaffold is syntactically valid TypeScript", async () => {
+  const adapter = renderAdapter({
+    key: "example-audio",
+    name: "Example Audio",
+    baseUrl: "https://example.com",
+    transport: "relay",
+  });
+  const generatedTest = renderTest({ key: "example-audio" });
+  const registration = renderPluginRegistration({
+    key: "example-audio",
+    name: "Example Audio",
+    baseUrl: "https://example.com",
+  });
+
+  await assertParses(adapter, "example-audio.ts");
+  await assertParses(generatedTest, "example-audio.test.ts");
+  // The registration is an argument fragment, so it is parsed inside the call it is spliced into.
+  await assertParses(`createShopRegistry([\n${registration}]);\n`, "index.ts");
+});
+
+test("shop generator refuses a base URL the registry would reject", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "hifiscout-shop-"));
+  await assert.rejects(
+    createShop({ rootDir, key: "example-audio", name: "Example Audio", baseUrl: "http://x.test" }),
+    /must use https/,
+  );
 });
 
 test("shop generator creates adapter, fixture, test and registry entry", async () => {
@@ -44,7 +105,7 @@ test("shop generator creates adapter, fixture, test and registry entry", async (
   await mkdir(join(rootDir, "test"), { recursive: true });
   await writeFile(
     join(rootDir, "src/crawler/shops/index.ts"),
-    `// shop-generator:imports\nexport const SHOP_PLUGINS = [\n  // shop-generator:plugins\n];\n`,
+    `// shop-generator:imports\nexport const SHOP_PLUGINS = createShopRegistry([\n  // shop-generator:plugins\n]);\n`,
     "utf8",
   );
 
@@ -61,12 +122,37 @@ test("shop generator creates adapter, fixture, test and registry entry", async (
   const generatedTest = await readFile(join(rootDir, "test/example-audio.test.ts"), "utf8");
   const fixture = await readFile(join(rootDir, "test/fixtures/example-audio/list.html"), "utf8");
 
-  assert.match(index, /import \{ exampleAudioAdapter \} from '\.\/example-audio\.js'/);
+  assert.match(index, /import \{ exampleAudioAdapter \} from "\.\/example-audio\.js"/);
   assert.match(index, /key: "example-audio"/);
-  assert.match(adapter, /baseUrl: "https:\/\/example\.com"/);
+  assert.match(adapter, /baseUrl: BASE_URL/);
+  assert.match(adapter, /const BASE_URL = "https:\/\/example\.com"/);
   assert.match(adapter, /src\/catalog\/categories\.ts/);
   assert.match(adapter, /categoryMapping:/);
-  assert.match(adapter, /parse\(_html: string\)/);
+  assert.match(adapter, /parse\(_html: string\): ShopParsedProduct\[\]/);
   assert.match(generatedTest, /\.\.\/src\/crawler\/shops\/example-audio\.js/);
   assert.match(fixture, /representative, sanitized listing-page fixture/);
+  await assertParses(index, "index.ts");
+  await assertParses(adapter, "example-audio.ts");
+  await assertParses(generatedTest, "example-audio.test.ts");
+});
+
+test("shop generator refuses a key the registry already holds", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "hifiscout-shop-"));
+  await mkdir(join(rootDir, "src/crawler/shops"), { recursive: true });
+  await mkdir(join(rootDir, "test"), { recursive: true });
+  await writeFile(
+    join(rootDir, "src/crawler/shops/index.ts"),
+    `// shop-generator:imports\nexport const SHOP_PLUGINS = createShopRegistry([\n  defineShopPlugin(exampleAudioAdapter, {\n    key: "example-audio",\n  }),\n  // shop-generator:plugins\n]);\n`,
+    "utf8",
+  );
+
+  await assert.rejects(
+    createShop({
+      rootDir,
+      key: "example-audio",
+      name: "Example Audio",
+      baseUrl: "https://example.com",
+    }),
+    /already registered/,
+  );
 });

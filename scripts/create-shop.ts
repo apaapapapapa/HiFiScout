@@ -55,6 +55,11 @@ function isShopTransport(value: string): value is ShopTransport {
   return value === "direct" || value === "relay" || value === "browser";
 }
 
+/**
+ * The scaffold is typed against the platform contract (`satisfies ShopAdapter`) so a shop that
+ * does not fit the contract fails `npm run typecheck` rather than at crawl time, and is written
+ * in the repository's own formatting so `npm run format:check` stays green on a fresh scaffold.
+ */
 export function renderAdapter({
   key,
   name,
@@ -62,14 +67,66 @@ export function renderAdapter({
   transport = "direct",
 }: AdapterTemplateOptions): string {
   const identifier = adapterIdentifier(key);
-  return `export const ${identifier} = {\n  key: ${quote(key)},\n  name: ${quote(name)},\n  baseUrl: ${quote(baseUrl)},\n  transport: ${quote(transport)},\n  // Map seller category labels to canonical IDs from src/catalog/categories.ts.\n  // The first ID is the primary category when an item belongs to multiple categories.\n  categoryMapping: {\n    // 'Seller category': 'canonical_category_id',\n    // 'Network DAC': ['dac', 'network_player']\n  },\n  *pageUrls() {\n    // TODO: replace with the shop's actual used-product listing URL(s).\n    yield this.baseUrl;\n  },\n  parse(_html: string) {\n    // TODO: parse factual listing fields only. Preserve rawManufacturer/rawCategory when available.\n    // Shop-specific fields belong in metadata. Canonical catalog fields are added centrally.\n    // Example item: { sourceId, rawManufacturer, manufacturer, model, title, rawCategory, category,\n    //   conditionText, priceYen, stockStatus, sourceUrl, metadata: { storeName, warranty } }\n    return [];\n  }\n};\n`;
+  return `import type { ShopParsedProduct } from "../../catalog/types.js";
+import type { ShopAdapter } from "../types.js";
+
+const BASE_URL = ${quote(baseUrl)};
+
+/**
+ * ${name}.
+ *
+ * Report seller facts only. Canonical manufacturer/category resolution, product identity,
+ * persistence, search projection, evidence and data quality are the platform's responsibility.
+ */
+export const ${identifier} = {
+  key: ${quote(key)},
+  name: ${quote(name)},
+  baseUrl: BASE_URL,
+  transport: ${quote(transport)},
+  // Seller category label -> canonical id from src/catalog/categories.ts. The first id of an
+  // array is the primary category when a listing genuinely spans categories.
+  categoryMapping: {
+    // "ネットワークDAC": ["dac", "network_player"],
+  },
+  *pageUrls(): Generator<string> {
+    // TODO: yield this shop's used-listing entry points.
+    yield BASE_URL;
+  },
+  parse(_html: string): ShopParsedProduct[] {
+    // TODO: return one entry per listing. Keep the seller's own wording in rawManufacturer and
+    // rawCategory, and put shop-specific factual fields in metadata:
+    // { sourceId, sourceUrl, title, rawManufacturer, manufacturer, model, rawCategory, category,
+    //   conditionText, priceYen, stockStatus, metadata: { storeName, warranty } }
+    return [];
+  },
+} satisfies ShopAdapter;
+`;
 }
 
 export function renderTest({ key }: Pick<AdapterTemplateOptions, "key">): string {
   const identifier = adapterIdentifier(key);
-  return `import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { readFile } from 'node:fs/promises';\nimport { ${identifier} } from '../src/crawler/shops/${key}.js';\n\ntest('${key} adapter scaffold is wired', async () => {\n  const fixture = await readFile(new URL('./fixtures/${key}/list.html', import.meta.url), 'utf8');\n  assert.equal(${identifier}.key, ${quote(key)});\n  assert.ok(${identifier}.baseUrl);\n  assert.deepEqual(${identifier}.parse(fixture), []);\n});\n`;
+  return `import test from "node:test";
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { ${identifier} } from "../src/crawler/shops/${key}.js";
+
+test("${key} adapter scaffold is wired", async () => {
+  const fixture = await readFile(
+    new URL("./fixtures/${key}/list.html", import.meta.url),
+    "utf8",
+  );
+  assert.equal(${identifier}.key, ${quote(key)});
+  assert.ok(${identifier}.baseUrl);
+  assert.deepEqual(${identifier}.parse(fixture), []);
+});
+`;
 }
 
+/**
+ * Registration carries no environment-variable names: they are derived from the key by
+ * `defineShopPlugin`. `defaultEnabled: false` is what keeps the empty scaffold parser from
+ * going live the moment the branch is deployed.
+ */
 export function renderPluginRegistration({
   key,
   name,
@@ -78,7 +135,16 @@ export function renderPluginRegistration({
 }: PluginRegistrationOptions): string {
   const identifier = adapterIdentifier(key);
   const prefix = envPrefix(key);
-  return `  defineShopPlugin(${identifier}, {\n    key: ${quote(key)}, name: ${quote(name)}, baseUrl: ${quote(baseUrl)},\n    intervalEnv: '${prefix}_INTERVAL_MINUTES', enabledEnv: '${prefix}_ENABLED',\n    requestDelayEnv: '${prefix}_REQUEST_DELAY_MS', defaultIntervalMinutes: ${intervalMinutes}\n  }),\n`;
+  return `  defineShopPlugin(${identifier}, {
+    key: ${quote(key)},
+    name: ${quote(name)},
+    baseUrl: ${quote(baseUrl)},
+    defaultIntervalMinutes: ${intervalMinutes},
+    // The scaffold parser returns nothing. Drop this line (or set ${prefix}_ENABLED) only once a
+    // real parser and a representative fixture are in place.
+    defaultEnabled: false,
+  }),
+`;
 }
 
 async function assertMissing(path: string): Promise<void> {
@@ -103,8 +169,9 @@ export async function createShop({
   if (!name?.trim()) throw new Error("shop name is required");
   if (!baseUrl) throw new Error("base URL is required");
   const parsedBaseUrl = new URL(baseUrl);
-  if (!["http:", "https:"].includes(parsedBaseUrl.protocol))
-    throw new Error("base URL must use http or https");
+  // The base URL becomes the robots.txt origin and the guard every crawl target is checked
+  // against, so the registry accepts https origins only.
+  if (parsedBaseUrl.protocol !== "https:") throw new Error("base URL must use https");
   if (!isShopTransport(transport)) throw new Error("transport must be direct, relay, or browser");
   if (!Number.isInteger(intervalMinutes) || intervalMinutes <= 0)
     throw new Error("interval must be a positive integer");
@@ -124,14 +191,14 @@ export async function createShop({
   if (!index.includes(IMPORT_MARKER) || !index.includes(PLUGIN_MARKER)) {
     throw new Error("shop registry generator markers are missing");
   }
-  if (index.includes(`key: '${shopKey}'`) || index.includes(`./${shopKey}.js`)) {
+  if (index.includes(`key: ${quote(shopKey)}`) || index.includes(`./${shopKey}.js`)) {
     throw new Error(`shop already registered: ${shopKey}`);
   }
 
   const identifier = adapterIdentifier(shopKey);
   index = index.replace(
     IMPORT_MARKER,
-    `import { ${identifier} } from './${shopKey}.js';\n${IMPORT_MARKER}`,
+    `import { ${identifier} } from "./${shopKey}.js";\n${IMPORT_MARKER}`,
   );
   index = index.replace(
     PLUGIN_MARKER,
@@ -180,12 +247,17 @@ async function main() {
     transport: args.transport || "direct",
     intervalMinutes,
   });
+  const prefix = envPrefix(validateShopKey(args.key));
   console.log(`Created shop ${args.key}`);
   console.log(`- ${result.adapterPath}`);
   console.log(`- ${result.testPath}`);
   console.log(`- ${result.fixturePath}`);
+  console.log(`- registered in ${result.indexPath}`);
   console.log(
-    "Next: replace the scaffold parser, add a representative fixture, then run npm test.",
+    `Next: add a representative sanitized fixture, replace the scaffold parser, run npm test,\n` +
+      `then remove defaultEnabled: false (or set ${prefix}_ENABLED) to let the shop crawl.\n` +
+      `Its settings are ${prefix}_ENABLED / _INTERVAL_MINUTES / _REQUEST_DELAY_MS / _MAX_PAGES;\n` +
+      `declare deployed values in wrangler.jsonc, not new names in the crawler types.`,
   );
 }
 

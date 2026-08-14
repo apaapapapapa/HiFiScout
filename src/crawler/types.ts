@@ -42,16 +42,12 @@ export type EnvSecretName = "CRAWL_RELAY_URL" | "CRAWL_RELAY_TOKEN" | "ADMIN_TOK
 
 /**
  * Variables the code reads that are not (yet) declared in `wrangler.jsonc`.
- * Adding a shop means adding its four env names here as well.
+ *
+ * Shop-scoped names are deliberately absent. They are composed from
+ * {@link ShopDefinition.envPrefix} and {@link ShopEnvSuffix} and read through the single
+ * widening boundary in `src/config.ts`, so registering a shop never means editing this union.
  */
 export type UndeclaredEnvVarName =
-  | "UAUDIO_ENABLED"
-  | "UAUDIO_INTERVAL_MINUTES"
-  | "UAUDIO_REQUEST_DELAY_MS"
-  | "UAUDIO_MAX_PAGES"
-  | "FORMUSIC_MAX_PAGES"
-  | "IPPINKAN_MAX_PAGES"
-  | "AUDIOUNION_MAX_PAGES"
   | "DATA_QUALITY_RETENTION_DAYS"
   | "KNOWLEDGE_CATALOG_SOURCE_MAX_CATALOG_PAGES"
   | "KNOWLEDGE_CATALOG_SOURCE_REGISTRY_JSON";
@@ -118,18 +114,48 @@ export interface MaintenanceSettings {
 
 export type TransportKind = "direct" | "relay" | "browser";
 
+/**
+ * Every shop-scoped setting the platform knows how to read.
+ *
+ * The set is closed on purpose. A shop may not invent a setting name, and a new *kind* of shop
+ * setting is a platform decision that belongs here — but the shop half of the name comes from
+ * {@link ShopDefinition.envPrefix}, so adding a shop adds nothing to this union.
+ */
+export type ShopEnvSuffix =
+  | "ENABLED"
+  | "INTERVAL_MINUTES"
+  | "REQUEST_DELAY_MS"
+  | "MAX_PAGES"
+  | "INVENTORY_RECHECK_ENABLED"
+  | "INVENTORY_RECHECK_MIN_AGE_HOURS"
+  | "INVENTORY_RECHECK_INTERVAL_HOURS"
+  | "INVENTORY_RECHECK_FAILURE_THRESHOLD";
+
 /** Operational metadata attached to a plugin by `defineShopPlugin`. */
 export interface ShopDefinition {
   readonly key: string;
   readonly name: string;
   readonly baseUrl: string;
-  readonly intervalEnv: EnvVarName;
-  readonly enabledEnv: EnvVarName;
-  readonly requestDelayEnv: EnvVarName;
+
+  /**
+   * SCREAMING_SNAKE_CASE first half of every variable this shop is configured with.
+   *
+   * `defineShopPlugin` derives it by upper-casing the kebab-case key unless the definition
+   * overrides it, and each setting is read as `` `${envPrefix}_${suffix}` `` for a
+   * {@link ShopEnvSuffix} the platform declares. Deriving rather than declaring the four names
+   * separately is what keeps a shop's configuration in one place and out of `EnvVarName`.
+   */
+  readonly envPrefix: string;
+
   readonly defaultIntervalMinutes: number;
   readonly defaultRequestDelayMs?: number;
-  readonly maxPagesEnv?: EnvVarName;
   readonly defaultMaxPages?: number;
+
+  /**
+   * Whether the shop crawls while `${envPrefix}_ENABLED` is unset. Defaults to `true`; a
+   * generated scaffold sets it to `false` so an unfinished parser is never live by omission.
+   */
+  readonly defaultEnabled?: boolean;
 
   /**
    * Cron expression owning this shop's dispatch.
@@ -150,6 +176,15 @@ export interface ShopDefinition {
   readonly transportConfigurationRequired?: boolean;
 }
 
+/**
+ * A definition as a shop writes it. `envPrefix` is optional because `defineShopPlugin` derives
+ * it from the key; a shop only states one when its deployed variables already use another
+ * spelling.
+ */
+export type ShopDefinitionInput = Omit<ShopDefinition, "envPrefix"> & {
+  readonly envPrefix?: string;
+};
+
 // ---------------------------------------------------------------------------
 // Inventory recheck capability
 // ---------------------------------------------------------------------------
@@ -159,14 +194,10 @@ export interface ShopDefinition {
  *
  * The recheck loop itself — candidate selection, attempt marking, relay fetch, HTTP-status
  * handling, failure counting and deactivation — is shop-agnostic and lives in
- * `inventory-recheck.ts`. Only these settings names and two predicates are not.
+ * `inventory-recheck.ts`, and its `INVENTORY_RECHECK_*` settings are read from the shop's own
+ * env prefix. Only these two predicates are shop-specific.
  */
 export interface InventoryRecheckPolicy {
-  readonly enabledEnv: EnvVarName;
-  readonly minListingAgeHoursEnv: EnvVarName;
-  readonly intervalHoursEnv: EnvVarName;
-  readonly failureThresholdEnv: EnvVarName;
-
   /**
    * Guard for the stored `source_url` before it is re-fetched. Must reject anything outside the
    * shop's own detail pages, including redirects to other hosts, ports or query strings.
@@ -410,7 +441,6 @@ export type DispatchResult =
 // ---------------------------------------------------------------------------
 
 export type CrawlSkipReason =
-  | "shop_definition_missing"
   | "disabled"
   | "configuration_missing"
   | "not_due"

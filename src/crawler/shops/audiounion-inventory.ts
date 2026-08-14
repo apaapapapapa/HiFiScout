@@ -66,11 +66,11 @@ export function classifyAudioUnionInventoryPage(html: string): InventoryClassifi
   return "ambiguous";
 }
 
+/**
+ * The `AUDIOUNION_INVENTORY_RECHECK_*` settings this policy runs under are derived from the
+ * shop's env prefix by `src/config.ts`; only the two seller-specific predicates live here.
+ */
 export const audioUnionInventoryRecheck: InventoryRecheckPolicy = {
-  enabledEnv: "AUDIOUNION_INVENTORY_RECHECK_ENABLED",
-  minListingAgeHoursEnv: "AUDIOUNION_INVENTORY_RECHECK_MIN_AGE_HOURS",
-  intervalHoursEnv: "AUDIOUNION_INVENTORY_RECHECK_INTERVAL_HOURS",
-  failureThresholdEnv: "AUDIOUNION_INVENTORY_RECHECK_FAILURE_THRESHOLD",
   isDetailUrl: isAudioUnionUsedDetailUrl,
   classifyPage: classifyAudioUnionInventoryPage,
 };

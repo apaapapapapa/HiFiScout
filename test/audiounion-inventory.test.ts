@@ -6,6 +6,7 @@ import {
   isAudioUnionUsedDetailUrl,
 } from "../src/crawler/shops/audiounion-inventory.js";
 import { getShopPlugin } from "../src/crawler/shops/index.js";
+import { shopEnvVarName } from "../src/config.js";
 
 const DETAIL_URL = "https://www.audiounion.jp/ct/detail/used/223257/";
 
@@ -53,7 +54,11 @@ test("the AudioUnion adapter exposes its recheck policy to the generic loop", ()
   const plugin = getShopPlugin("audiounion");
   assert.ok(plugin);
   assert.equal(plugin.inventoryRecheck, audioUnionInventoryRecheck);
-  assert.equal(audioUnionInventoryRecheck.enabledEnv, "AUDIOUNION_INVENTORY_RECHECK_ENABLED");
+  // The settings the loop runs under are derived from the shop, not restated by the policy.
+  assert.equal(
+    shopEnvVarName(plugin.definition, "INVENTORY_RECHECK_ENABLED"),
+    "AUDIOUNION_INVENTORY_RECHECK_ENABLED",
+  );
   assert.equal(audioUnionInventoryRecheck.isDetailUrl(DETAIL_URL), true);
   assert.equal(audioUnionInventoryRecheck.classifyPage("<main>販売終了</main>"), "sold_out");
 });
