@@ -69,5 +69,8 @@ test("product favorites retain category ancestors so group filters match like se
 
   const snapshot = favoriteSnapshot(product);
   assert.deepEqual(snapshot.category_ids, closure);
-  assert.equal(favoriteMatchesFilters(snapshot, filters({ category: parent }), "", Date.now()), true);
+  assert.equal(
+    favoriteMatchesFilters(snapshot, filters({ category: parent }), "", Date.now()),
+    true,
+  );
 });

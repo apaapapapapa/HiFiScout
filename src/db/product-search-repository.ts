@@ -249,15 +249,19 @@ function addOfferFilter(filter: OfferFilter, where: string[], binds: unknown[]):
  * specifically for that predicate. Every other offer filter changes the value the user sees, so an
  * explicit sort must use the same matching subset.
  */
-function needsRequestScopedSort(query: ProductQuery, filter: OfferFilter, relevance: boolean): boolean {
+function needsRequestScopedSort(
+  query: ProductQuery,
+  filter: OfferFilter,
+  relevance: boolean,
+): boolean {
   if (relevance || !filter.active) return false;
   if (query.sort !== "priceAsc" && query.sort !== "priceDesc") return true;
   return Boolean(
     query.shop ||
-      query.newOnly ||
-      query.priceDropped ||
-      query.minPrice != null ||
-      query.maxPrice != null
+    query.newOnly ||
+    query.priceDropped ||
+    query.minPrice != null ||
+    query.maxPrice != null,
   );
 }
 
@@ -459,11 +463,7 @@ export async function searchProducts(
     hasMore,
     nextCursor:
       !relevance && hasMore && last
-        ? cursorFor(
-            last,
-            sort,
-            requestScopedSort ? (last.request_sort_value ?? null) : undefined,
-          )
+        ? cursorFor(last, sort, requestScopedSort ? (last.request_sort_value ?? null) : undefined)
         : null,
     ...(query.includeTotal
       ? { totalCount, totalPages: Math.ceil((totalCount ?? 0) / query.limit) }
