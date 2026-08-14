@@ -16,11 +16,19 @@ Snapshot metrics are calculated in D1 with `COUNT(*)` and `SUM(CASE ...)` over a
 
 - Manufacturer Unknown: missing raw manufacturer plus raw manufacturer values that did not resolve through a known canonical manufacturer alias. Manufacturer normalization evidence is stored in existing bounded product metadata.
 - Category Unclassified: `classification_status != 'classified'`. Canonical `other` remains separate as `other_category_count`.
-- Product Identity Unresolved: reuses `product_identity_resolutions` and separately retains matched, unresolved, veto, and candidate counts.
+- Product Identity Unresolved: denominator is every active listing. Explicit `unresolved` resolution rows count as unresolved, and any active listing with no `product_identity_resolutions` row is also treated as unresolved instead of disappearing from the metric. Stored/API detail `identityResolutionMissingCount` is derived as `active listings - matched - unresolved`, making coverage gaps directly observable.
 - Inventory Unknown: `stock_status = 'unknown'`; all other canonical availability states are treated as known.
 - Model Missing: denominator is `model_expected_count`, not all products. Canonical accessory leaves (`cable`, `rack`, `power_accessory`, `vacuum_tube`, `other_accessory`) and canonical `other` are excluded from the model-required population so products that legitimately may not have a model number are not counted as extraction failures.
 
 Every ratio retains count and denominator. A zero denominator produces `rate: null` and `status: unknown` rather than an artificial 0% or 100%.
+
+For Product Identity specifically, the invariant is:
+
+```text
+active listings = matched resolutions + unresolved resolutions + missing resolution rows
+```
+
+Missing resolution rows are a data-quality failure state, not a separate population excluded from the denominator.
 
 ## Crawl-run metrics
 
@@ -49,7 +57,7 @@ The thresholds intentionally start with the Phase 2 proposal because production 
 
 ## API
 
-`GET /api/admin/data-quality/status` returns the overall status and latest quality record for each shop. Each shop exposes `snapshot` and `latestRun` separately, while the flattened `metrics` object supports lightweight operational UI consumers.
+`GET /api/admin/data-quality/status` returns the overall status and latest quality record for each shop. Each shop exposes `snapshot` and `latestRun` separately, while the flattened `metrics` object supports lightweight operational UI consumers. The `details` object includes `identityResolutionMissingCount` so operators can distinguish ordinary unresolved identities from listings that have no resolution row at all.
 
 `GET /api/admin/data-quality/history?shop=<shop-key>&limit=<n>` returns crawl-linked history for one shop. The query is bounded to at most 200 rows. Both endpoints require the existing `ADMIN_TOKEN` bearer authorization.
 
@@ -69,6 +77,6 @@ Infrastructure-level D1/R2 latency, storage, and error metrics remain in Cloudfl
 
 ## Baseline and rollout
 
-Migration 0017 introduced search/identity/evidence foundations and migration 0018 added Evidence Archive usage metadata. Deployment applies migrations before the Worker release, so Phase 2 migration 0019 is applied after those foundations.
+Migration 0017 introduced search/identity/evidence foundations and migration 0018 added Evidence Archive usage metadata. Deployment applies migrations before the Worker release, so Phase 2 migration 0019 is applied after those foundations. Migration 0020 closes the rollout-era Identity coverage gap by inserting an explicit unresolved/backfill-pending resolution for every existing listing that lacks one.
 
-Production percentages cannot be derived safely from the repository alone because the Admin API is authenticated and CI does not assume access to `ADMIN_TOKEN`. The first successful crawl per shop after deployment persists a Phase 2 baseline. Manufacturer resolution metadata is refreshed during normal product metadata synchronization; until a listing has been observed by the new code, missing manufacturer-normalization evidence is conservatively treated as unresolved rather than falsely claiming a canonical match.
+The first successful crawl per shop after deployment persists a Phase 2 baseline. Manufacturer resolution metadata is refreshed during normal product metadata synchronization; until a listing has been observed by the new code, missing manufacturer-normalization evidence is conservatively treated as unresolved rather than falsely claiming a canonical match. Identity coverage is likewise conservative: a missing resolution row is counted as unresolved until the backfill or normal resolver supplies an explicit resolution.
