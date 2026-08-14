@@ -10,7 +10,7 @@ import {
   knowledgeCatalogKey,
   normalizeCatalogModel,
 } from "../src/catalog/knowledge-catalog.js";
-import { classificationImpact } from "../src/knowledge-catalog-verification-queue.js";
+import { classificationImpact } from "../src/knowledge-catalog/policy.js";
 
 test("model normalization standardizes safe punctuation variants without erasing identity", () => {
   assert.equal(normalizeCatalogModel("K - 01XD"), "K-01XD");

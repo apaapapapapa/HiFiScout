@@ -17,7 +17,7 @@ import { getSyncHealth, logSyncHealth } from "./health.js";
 import {
   dispatchKnowledgeCatalogDailyVerification,
   dispatchKnowledgeCatalogMonthlyRecheck,
-} from "./knowledge-catalog-verification-queue.js";
+} from "./knowledge-catalog/dispatch.js";
 import { runRetentionCleanup } from "./maintenance.js";
 import { errorMessage } from "./types.js";
 import type { DispatchResult } from "./crawler/types.js";

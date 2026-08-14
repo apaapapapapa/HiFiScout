@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   dispatchKnowledgeCatalogDailyVerification,
   dispatchKnowledgeCatalogMonthlyRecheck,
-} from "../src/knowledge-catalog-verification-queue.js";
+} from "../src/knowledge-catalog/dispatch.js";
 import {
   knowledgeJobRow,
   queueBinding,
