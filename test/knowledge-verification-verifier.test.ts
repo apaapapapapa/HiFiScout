@@ -156,7 +156,7 @@ test("the official index is consulted before generic discovery, which never runs
   assert.equal(result.status, "verified");
   // The registry catalog page is the generic strategy's entry point; reaching it would mean the
   // cheaper index route did not short-circuit.
-  assert.ok(!requested.includes("https://www.denon.com/ja-jp/"));
+  assert.equal(new Set(requested).has("https://www.denon.com/ja-jp/"), false);
 });
 
 test("an index that mentions the model without a category inherits the nearest heading", async () => {
