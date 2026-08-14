@@ -19,7 +19,7 @@ test("AudioUnion detail URL validation is intentionally narrow", () => {
   assert.equal(isAudioUnionUsedDetailUrl(`${DETAIL_URL}?x=1`), false);
 });
 
-test("inventory page classification requires non-conflicting evidence", () => {
+test("inventory page classification uses the canonical availability tri-state", () => {
   assert.equal(
     classifyAudioUnionInventoryPage("<main>販売価格 <strong>¥798,000</strong></main>"),
     "in_stock",
@@ -30,23 +30,23 @@ test("inventory page classification requires non-conflicting evidence", () => {
   );
   assert.equal(
     classifyAudioUnionInventoryPage("<main>販売価格 ¥798,000 販売終了</main>"),
-    "ambiguous",
+    "unknown",
   );
   assert.equal(
     classifyAudioUnionInventoryPage('<script>const state="販売終了"</script><main>商品情報</main>'),
-    "ambiguous",
+    "unknown",
   );
   assert.equal(
     classifyAudioUnionInventoryPage(
       '<script>const state="販売終了"</script ><main>商品情報</main>',
     ),
-    "ambiguous",
+    "unknown",
   );
   assert.equal(
     classifyAudioUnionInventoryPage(
       '<script>const state="販売終了"</script\t\n data-extra><main>商品情報</main>',
     ),
-    "ambiguous",
+    "unknown",
   );
 });
 
@@ -54,7 +54,6 @@ test("the AudioUnion adapter exposes its recheck policy to the generic loop", ()
   const plugin = getShopPlugin("audiounion");
   assert.ok(plugin);
   assert.equal(plugin.inventoryRecheck, audioUnionInventoryRecheck);
-  // The settings the loop runs under are derived from the shop, not restated by the policy.
   assert.equal(
     shopEnvVarName(plugin.definition, "INVENTORY_RECHECK_ENABLED"),
     "AUDIOUNION_INVENTORY_RECHECK_ENABLED",
