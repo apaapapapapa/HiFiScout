@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { fujiyaAvicAdapter, parseFujiyaResultCount } from "../src/crawler/shops/fujiya-avic.js";
-import { coverageDecision } from "../src/crawler/strategies.js";
+import { coverageDecision, initialPageQueue } from "../src/crawler/strategies.js";
 
 function initialPages() {
-  return [...fujiyaAvicAdapter.discovery.initialTargets({ maxPages: 50, env: {} })];
+  return initialPageQueue(fujiyaAvicAdapter, 50);
 }
 
 test("Fujiya initial crawl includes newest used, outlet, and outlet stock sale feeds", () => {
