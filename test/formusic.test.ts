@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { forMusicAdapter, parseForMusicListing } from "../src/crawler/shops/formusic.js";
+import { discoverPages, initialPageQueue } from "../src/crawler/strategies.js";
 
 const html = `
 <table class="itemlist">
@@ -91,13 +92,7 @@ test("FOR MUSIC parser keeps used/display listings and factual fields only", () 
 });
 
 test("FOR MUSIC adapter declares one complete storefront snapshot", () => {
-  assert.deepEqual(
-    [...forMusicAdapter.discovery.initialTargets({ maxPages: 40, env: {} })],
-    ["https://shop.formusic.jp/"],
-  );
+  assert.deepEqual(initialPageQueue(forMusicAdapter, 40), ["https://shop.formusic.jp/"]);
   assert.equal(forMusicAdapter.discovery.coverage, "complete");
-  assert.deepEqual(
-    forMusicAdapter.discovery.discoverTargets?.("", "https://shop.formusic.jp/"),
-    [],
-  );
+  assert.deepEqual(discoverPages(forMusicAdapter, "", "https://shop.formusic.jp/"), []);
 });
