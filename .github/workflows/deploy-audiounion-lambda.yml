@@ -119,9 +119,37 @@ jobs:
             exit 1
           fi
 
-          printf '%s' "$relay_url" | npx wrangler secret put CRAWL_RELAY_URL
-          printf '%s' "$relay_token" | npx wrangler secret put CRAWL_RELAY_TOKEN
-          echo "Shared relay URL and token synchronized to Cloudflare."
+          secrets_json="$(jq -cn \
+            --arg relay_url "$relay_url" \
+            --arg relay_token "$relay_token" \
+            '{CRAWL_RELAY_URL: $relay_url, CRAWL_RELAY_TOKEN: $relay_token}')"
+
+          status=1
+          for attempt in $(seq 1 60); do
+            set +e
+            output="$(printf '%s' "$secrets_json" | npx wrangler secret bulk 2>&1)"
+            status=$?
+            set -e
+
+            if [ "$status" -eq 0 ]; then
+              echo "Shared relay URL and token synchronized to Cloudflare."
+              break
+            fi
+
+            if grep -Fq "latest version of your Worker isn't currently deployed" <<< "$output"; then
+              echo "Cloudflare has an undeployed Worker version; retrying relay secret sync (attempt $attempt/60)."
+              sleep 5
+              continue
+            fi
+
+            echo "$output" >&2
+            exit "$status"
+          done
+
+          if [ "$status" -ne 0 ]; then
+            echo "Timed out waiting for the latest Cloudflare Worker version to be deployed."
+            exit 1
+          fi
 
       - name: Verify shared relay secrets are registered
         shell: bash
