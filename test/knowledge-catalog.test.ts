@@ -47,6 +47,30 @@ test("Marantz lookup aliases remove retailer market suffixes and restore officia
   );
 });
 
+test("lookup aliases remove listing-only presentation suffixes conservatively", () => {
+  const variants = (manufacturerId: string, model: string) =>
+    catalogModelLookupVariants({ manufacturerId, model });
+
+  assert.ok(variants("denon", "DP-400-BK [DP400BKEM]").includes("DP-400"));
+  assert.ok(variants("denon", "DCD-755RE-SP").includes("DCD-755RE"));
+  assert.ok(variants("denon", "DL-103《JP-u》【販売済】").includes("DL-103"));
+  assert.ok(variants("denon", "RCD-N12/ブラック").includes("RCD-N12"));
+  assert.ok(variants("denon", "PerL Pro/ホワイト").includes("PERL PRO"));
+  assert.ok(variants("denon", "AH-D9200EM").includes("AH-D9200"));
+});
+
+test("lookup aliases preserve meaningful revisions and do not reinterpret accessories", () => {
+  const variants = (manufacturerId: string, model: string) =>
+    catalogModelLookupVariants({ manufacturerId, model });
+
+  assert.ok(variants("yamaha", "YH-5000SE(B)").includes("YH-5000SE"));
+  assert.ok(variants("accuphase", "C-2800+AD-290V").includes("C-2800"));
+  assert.ok(variants("esoteric", "K-01XD").includes("K-01XD"));
+  assert.ok(variants("final", "D8000 Pro Limited Edition").includes("D8000 PRO LIMITED EDITION"));
+  // An accessory is not a variant of the component it names.
+  assert.deepEqual(variants("yamaha", "GT-2000ダストカバー"), ["GT-2000ダストカバー"]);
+});
+
 test("candidate aggregation groups only safely-normalized formatting variants", () => {
   const rows = [
     {

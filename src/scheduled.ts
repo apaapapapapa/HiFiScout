@@ -7,7 +7,7 @@
 
 import { dispatchDueCrawls, dispatchScheduledCrawl } from "./crawler/dispatch.js";
 import { sharedSweepExclusions, shopForCron } from "./crawler/schedule.js";
-import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from "./catalog/knowledge-source-verifier-v4.js";
+import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from "./catalog/knowledge-verification/verifier.js";
 import { knowledgeCatalogVerificationQueueStatus } from "./db/knowledge-catalog-verification-queue-repository.js";
 import {
   claimKnowledgeCatalogVerifierVersion,

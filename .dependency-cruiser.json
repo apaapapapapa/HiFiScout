@@ -43,6 +43,16 @@
       "to": { "path": "^src/(crawler|http)/" }
     },
     {
+      "name": "manufacturer-strategies-are-composed-only-by-the-verifier",
+      "severity": "error",
+      "comment": "Manufacturer-specific verification behavior is wired in at src/catalog/knowledge-verification/verifier.ts. If a generic strategy or the shared page verifier imported one, per-manufacturer conditionals would be back inside the code that must stay manufacturer-agnostic.",
+      "from": {
+        "path": "^src",
+        "pathNot": "^src/catalog/knowledge-verification/(verifier\\.ts$|strategies/manufacturer/)"
+      },
+      "to": { "path": "^src/catalog/knowledge-verification/strategies/manufacturer/" }
+    },
+    {
       "name": "shop-adapters-are-reached-through-the-registry",
       "severity": "error",
       "comment": "Generic code composes shops through src/crawler/shops/index.ts. Importing a concrete adapter directly is how shop-specific branches get back into shared code — the thing Phase 2.6 removed.",

@@ -699,7 +699,7 @@ export interface CandidatePriorityInput {
 }
 
 // ---------------------------------------------------------------------------
-// Knowledge source verification (src/catalog/knowledge-source-verifier*.ts)
+// Knowledge source verification (src/catalog/knowledge-verification/)
 // ---------------------------------------------------------------------------
 
 export type KnowledgeSourceType =
@@ -798,7 +798,7 @@ export interface KnowledgeSourceDefinition {
   searchUrlTemplate: string;
 }
 
-/** Public surface shared by all four `createKnowledgeSourceVerifier*` factories. */
+/** What callers of `createKnowledgeSourceVerifier` may use. */
 export interface KnowledgeSourceVerifier {
   verifyCandidate(candidate: KnowledgeSourceCandidate): Promise<KnowledgeSourceVerification>;
   verifyStoredSource(product: KnowledgeSourceCandidate): Promise<KnowledgeSourceVerification>;
@@ -807,11 +807,15 @@ export interface KnowledgeSourceVerifier {
 
 export interface KnowledgeSourceVerifierOptions {
   fetchImpl?: typeof fetch;
-  /** v3/v4 only. */
+  /**
+   * Whether site-wide generic discovery may run. Retry-only rollouts disable it: it is the
+   * slowest strategy and re-running it on a candidate that already failed rarely changes the
+   * outcome.
+   */
   fallbackEnabled?: boolean;
 }
 
-/** Internal HTTP helper result, duplicated in the v1/v2/v3 verifiers. */
+/** Result of the shared bounded fetch in `knowledge-verification/http.ts`. */
 export interface FetchTextResult {
   ok: boolean;
   /** `0` when the request threw. */

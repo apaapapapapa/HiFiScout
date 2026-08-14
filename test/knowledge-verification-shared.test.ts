@@ -66,6 +66,11 @@ test("model identity is bounded so a shorter model never matches inside a longer
   assert.equal(containsCatalogModelIdentity("SA-10", ""), false);
 });
 
+test("model identity treats punctuation inside a model as significant", () => {
+  assert.equal(containsCatalogModelIdentity("Version 2.5 digital player", "2.5"), true);
+  assert.equal(containsCatalogModelIdentity("Version 25 digital player", "2.5"), false);
+});
+
 test("flexible identity tolerates separator drift but keeps the same boundaries", () => {
   for (const text of ["LUXMAN L-507Z", "LUXMAN L 507Z", "LUXMAN L507Z", "luxman l_507z"]) {
     assert.equal(containsFlexibleCatalogModelIdentity(text, "L-507Z"), true, text);
@@ -73,6 +78,10 @@ test("flexible identity tolerates separator drift but keeps the same boundaries"
   assert.equal(containsFlexibleCatalogModelIdentity("LUXMAN L-507ZX", "L-507Z"), false);
   // Full-width and en-dash variants normalize to ASCII before matching.
   assert.equal(containsFlexibleCatalogModelIdentity("LUXMAN L–507Z", "L-507Z"), true);
+  // Drift in the other direction too: the official name spaces what the listing runs together.
+  assert.equal(containsFlexibleCatalogModelIdentity("Marantz SACD30n", "SACD 30n"), true);
+  assert.equal(containsFlexibleCatalogModelIdentity("LUXMAN D10X", "D-10X"), true);
+  assert.equal(containsFlexibleCatalogModelIdentity("ESOTERIC K-01XD", "K-01X"), false);
 });
 
 test("manufacturer prefixes are stripped only at a token boundary", () => {
@@ -95,6 +104,17 @@ test("candidate variants cover both the listing and official spellings, longest 
   assert.deepEqual(
     variants,
     [...variants].sort((a, b) => b.length - a.length),
+  );
+});
+
+test("candidate variants strip a hyphen-joined manufacturer prefix conservatively", () => {
+  assert.deepEqual(
+    candidateModelVariants({
+      manufacturerId: "tad",
+      observedManufacturer: "TAD",
+      observedModel: "TAD-D1000TX",
+    }),
+    ["TAD-D1000TX", "D1000TX"],
   );
 });
 

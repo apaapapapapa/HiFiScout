@@ -6,7 +6,7 @@
  * recorded. They differ while a rollout is in flight, which is the point of exposing both.
  */
 
-import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from "../catalog/knowledge-source-verifier-v4.js";
+import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from "../catalog/knowledge-verification/verifier.js";
 import { knowledgeCatalogOperationalStatus } from "../db/knowledge-catalog-review-repository.js";
 import { knowledgeCatalogVerificationQueueStatus } from "../db/knowledge-catalog-verification-queue-repository.js";
 import { knowledgeCatalogVerifierState } from "../db/knowledge-catalog-verifier-state-repository.js";

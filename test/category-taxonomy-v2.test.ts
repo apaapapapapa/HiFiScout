@@ -7,6 +7,7 @@ import {
   categoryIdForFilter,
   getCategory,
 } from "../src/catalog/categories.js";
+import { inferExplicitCategoryIds } from "../src/catalog/category-rules.js";
 import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
 import { parsedProduct } from "./helpers/fixtures.js";
 
@@ -111,6 +112,34 @@ test("composite amplifier titles keep one product category and expose features s
 test("transports are classified as their player family", () => {
   assert.equal(classify("Network Transport N1").primaryCategoryId, "network_player");
   assert.equal(classify("CD Transport D1").primaryCategoryId, "cd_sacd_player");
+});
+
+test("official product classes resolve into the canonical taxonomy rather than extending it", () => {
+  // Manufacturer pages name product classes the UI taxonomy deliberately does not carry. Each has
+  // to land on an existing category instead of introducing one.
+  assert.deepEqual(inferExplicitCategoryIds("DHT-S217 Soundbar", { context: "detail" }), [
+    "speaker_other",
+  ]);
+  assert.deepEqual(inferExplicitCategoryIds("T-11 FM Stereo Tuner", { context: "detail" }), [
+    "other",
+  ]);
+  assert.deepEqual(
+    inferExplicitCategoryIds("DF-65 Digital Frequency Dividing Network", { context: "detail" }),
+    ["other"],
+  );
+  assert.deepEqual(
+    inferExplicitCategoryIds("DG-68 Digital Voicing Equalizer", { context: "detail" }),
+    ["other"],
+  );
+  assert.deepEqual(inferExplicitCategoryIds("G-02 Master Clock Generator", { context: "detail" }), [
+    "other_accessory",
+  ]);
+  assert.deepEqual(inferExplicitCategoryIds("RX-V4A AV Receiver", { context: "detail" }), [
+    "other",
+  ]);
+  assert.deepEqual(inferExplicitCategoryIds("GT-2000 ダストカバー", { context: "title" }), [
+    "other_accessory",
+  ]);
 });
 
 test("speaker classification uses strong form-factor evidence only", () => {
