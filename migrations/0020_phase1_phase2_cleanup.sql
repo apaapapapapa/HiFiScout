@@ -8,6 +8,7 @@ DROP TABLE IF EXISTS products_fts;
 -- Phase 2 identity-quality cleanup: every listing must have an explicit resolution row so active
 -- listing coverage is complete. Valid identity fields remain backfill_pending until the normal
 -- crawler resolver evaluates them; listings missing identity fields are explicitly unresolved.
+-- The repair is idempotent because listing_product_id is the resolution table primary key.
 INSERT OR IGNORE INTO product_identity_resolutions(
   listing_product_id, catalog_product_id, candidate_catalog_product_id, status,
   match_method, confidence, normalized_model, model_stem, variants_json,
