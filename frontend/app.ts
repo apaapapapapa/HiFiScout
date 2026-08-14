@@ -160,7 +160,14 @@ function updateFavoriteCount(): void {
   $("favorites-count").textContent = `(${favoriteCount()})`;
 }
 
-/** Refreshes stored favorites with live prices and offer counts as they reappear in results. */
+/**
+ * Refreshes stored favorites with live prices and offer counts as they reappear in results.
+ *
+ * The summary written here is the one the server computed for the *current* filters, so a favorite
+ * seen under `shop=A` records that shop's view of the product. That matches what the user was
+ * looking at and what the favorites note already promises — "as of the last time you saw it" — and
+ * it self-corrects the moment they open the product's offers, which always fetches the full set.
+ */
 function refreshFavoriteSnapshots(products: DisplayProduct[]): void {
   let changed = false;
   for (const product of products) {
