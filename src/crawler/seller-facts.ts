@@ -98,6 +98,7 @@ export function validateSellerProducts(
       invalid(plugin.key, index, "categoryEvidence must be an array");
     }
 
-    return candidate as SellerProduct;
+    // The checks above are the runtime proof; TypeScript cannot derive a structural type from them.
+    return candidate as unknown as SellerProduct;
   });
 }
