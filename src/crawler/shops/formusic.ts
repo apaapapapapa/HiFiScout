@@ -1,6 +1,6 @@
 import { cleanText, inferCategory, parseYen } from "../normalize.js";
-import type { ShopParsedProduct } from "../../catalog/types.js";
-import type { ShopAdapter } from "../types.js";
+import { availabilityFromSignals } from "../availability.js";
+import type { SellerProduct, ShopAdapter } from "../types.js";
 
 const CATEGORY_BY_SLUG: Readonly<Record<string, string>> = {
   "speaker-system": "スピーカー",
@@ -66,8 +66,8 @@ function categoryFor(sourceUrl: string, title: string): { slug: string; category
   }
 }
 
-export function parseForMusicListing(html: string): ShopParsedProduct[] {
-  const products: ShopParsedProduct[] = [];
+export function parseForMusicListing(html: string): SellerProduct[] {
+  const products: SellerProduct[] = [];
   const rowRe = /<tr\b[^>]*id=["']post-(\d+)["'][^>]*>([\s\S]*?)<\/tr>/gi;
 
   for (const rowMatch of html.matchAll(rowRe)) {
@@ -97,8 +97,6 @@ export function parseForMusicListing(html: string): ShopParsedProduct[] {
     const soldOut = /SOLD\s*OUT/i.test(saleText) || badges.some((value) => /売約済/.test(value));
     const negotiating = badges.some((value) => /商談中|予約中/.test(value));
 
-    // The storefront mixes used/display/consignment and new stock on the same page.
-    // Keep only clearly used-like current rows, plus sold rows so an observed item can transition safely.
     if (!soldOut && !currentKind) continue;
 
     const manufacturer = firstLine(cells[1]);
@@ -109,8 +107,10 @@ export function parseForMusicListing(html: string): ShopParsedProduct[] {
     );
     const priceYen =
       soldOut || /^(?:ASK|-|ー|オープン|OPEN)$/i.test(saleText) ? null : parseYen(saleText);
-
-    const stockStatus = soldOut ? "sold_out" : negotiating ? "unknown" : "in_stock";
+    const stockStatus = availabilityFromSignals({
+      soldOut,
+      inStock: !soldOut && !negotiating,
+    });
     const conditionText = [grade, currentKind, negotiating ? "商談中" : ""]
       .filter(Boolean)
       .join(" / ");
@@ -138,14 +138,14 @@ export const forMusicAdapter = {
   name: "FOR MUSIC",
   baseUrl: "https://shop.formusic.jp",
   categoryMapping: FORMUSIC_CATEGORY_MAPPING,
-  // The storefront root is a complete snapshot. Reuse the crawler's complete-coverage path
-  // so products removed from the storefront can be marked inactive safely.
-  dynamicPagination: true,
-  *pageUrls() {
-    yield "https://shop.formusic.jp/";
-  },
-  discoverPageUrls() {
-    return [];
+  discovery: {
+    coverage: "complete",
+    *initialTargets() {
+      yield "https://shop.formusic.jp/";
+    },
+    discoverTargets() {
+      return [];
+    },
   },
   parse(html) {
     return parseForMusicListing(html);
