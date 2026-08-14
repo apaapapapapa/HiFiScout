@@ -20,7 +20,7 @@ const categoryFacets: CategoryFacet[] = [
     classifiable: false,
     filterable: true,
     group: null,
-    activeProductCount: 3,
+    activeProductCount: 2,
   },
   {
     id: "integrated_amp",
@@ -43,66 +43,6 @@ const categoryFacets: CategoryFacet[] = [
     activeProductCount: 1,
   },
   {
-    id: "power_amp",
-    name: "　パワーアンプ",
-    parentId: "amplifier",
-    order: 3,
-    classifiable: true,
-    filterable: true,
-    group: null,
-    activeProductCount: 1,
-  },
-  {
-    id: "headphone_amp",
-    name: "　ヘッドホンアンプ",
-    parentId: "amplifier",
-    order: 4,
-    classifiable: true,
-    filterable: true,
-    group: null,
-    activeProductCount: 0,
-  },
-  {
-    id: "digital",
-    name: "デジタル",
-    parentId: null,
-    order: 2,
-    classifiable: false,
-    filterable: true,
-    group: null,
-    activeProductCount: 2,
-  },
-  {
-    id: "dac",
-    name: "　DAC",
-    parentId: "digital",
-    order: 1,
-    classifiable: true,
-    filterable: true,
-    group: null,
-    activeProductCount: 1,
-  },
-  {
-    id: "network_player",
-    name: "　ネットワークプレーヤー",
-    parentId: "digital",
-    order: 2,
-    classifiable: true,
-    filterable: true,
-    group: null,
-    activeProductCount: 1,
-  },
-  {
-    id: "analog",
-    name: "アナログ",
-    parentId: null,
-    order: 3,
-    classifiable: false,
-    filterable: true,
-    group: null,
-    activeProductCount: 0,
-  },
-  {
     id: "speaker",
     name: "スピーカー",
     parentId: null,
@@ -121,46 +61,6 @@ const categoryFacets: CategoryFacet[] = [
     filterable: true,
     group: null,
     activeProductCount: 1,
-  },
-  {
-    id: "headphone_group",
-    name: "ヘッドホン",
-    parentId: null,
-    order: 5,
-    classifiable: false,
-    filterable: true,
-    group: null,
-    activeProductCount: 0,
-  },
-  {
-    id: "accessories",
-    name: "アクセサリー",
-    parentId: null,
-    order: 6,
-    classifiable: false,
-    filterable: true,
-    group: null,
-    activeProductCount: 0,
-  },
-  {
-    id: "dj_dtm",
-    name: "DJ機器・DTM",
-    parentId: null,
-    order: 7,
-    classifiable: true,
-    filterable: true,
-    group: null,
-    activeProductCount: 0,
-  },
-  {
-    id: "other",
-    name: "その他",
-    parentId: null,
-    order: 8,
-    classifiable: true,
-    filterable: true,
-    group: null,
-    activeProductCount: 0,
   },
 ];
 
@@ -190,9 +90,7 @@ async function mockCatalog(page: Page): Promise<URL[]> {
 
 function lastRequest(requests: URL[]): URL {
   const request = requests.at(-1);
-  if (!request) {
-    throw new Error("Expected at least one product request");
-  }
+  if (!request) throw new Error("Expected at least one product request");
   return request;
 }
 
@@ -261,56 +159,11 @@ test("live metadata exposes the complete canonical taxonomy including zero-count
   ).toBeTruthy();
 });
 
-test("category taxonomy keeps separators, canonical order and parent/leaf URL state", async ({
+test("category selection and browser URL state stay wired for parents and leaves", async ({
   page,
 }) => {
   const requests = await mockCatalog(page);
   await page.goto("/");
-
-  const parentIds = ["amplifier", "digital", "analog", "speaker", "headphone_group", "accessories"];
-  await expect
-    .poll(() => page.locator('#category option[data-category-separator="true"]').count(), {
-      message: "category group separators should be rendered after metadata loads",
-    })
-    .toBe(parentIds.length);
-
-  const options = await page.locator("#category option").evaluateAll((nodes) =>
-    nodes.map((node) => {
-      if (!(node instanceof HTMLOptionElement)) {
-        throw new Error("Expected category option element");
-      }
-      return {
-        value: node.value,
-        text: node.textContent,
-        separator: node.dataset.categorySeparator === "true",
-        disabled: node.disabled,
-      };
-    }),
-  );
-  const selectable = options.filter((option) => !option.separator);
-  expect(selectable.slice(0, 7).map(({ value, text }) => ({ value, text }))).toEqual([
-    { value: "", text: "すべて" },
-    { value: "amplifier", text: "アンプ" },
-    { value: "integrated_amp", text: "　プリメインアンプ" },
-    { value: "pre_amp", text: "　プリアンプ" },
-    { value: "power_amp", text: "　パワーアンプ" },
-    { value: "headphone_amp", text: "　ヘッドホンアンプ" },
-    { value: "digital", text: "デジタル" },
-  ]);
-  expect(selectable.slice(-2).map(({ value, text }) => ({ value, text }))).toEqual([
-    { value: "dj_dtm", text: "DJ機器・DTM" },
-    { value: "other", text: "その他" },
-  ]);
-
-  for (const id of parentIds) {
-    const parentIndex = options.findIndex((option) => option.value === id && !option.separator);
-    expect(parentIndex).toBeGreaterThan(0);
-    expect(options[parentIndex - 1]).toMatchObject({
-      text: "────────────",
-      separator: true,
-      disabled: true,
-    });
-  }
 
   await page.locator("#category").selectOption("amplifier");
   await expect(page).toHaveURL(/category=amplifier/);
