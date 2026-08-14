@@ -632,6 +632,7 @@ export interface ProductSearchEntityRow {
   primary_category_id: string;
   offer_count: number;
   in_stock_offer_count: number;
+  sold_out_offer_count: number;
   shop_count: number;
   lowest_price_yen: number | null;
   /** Lowest price among in-stock offers only, so "cheapest first" can stay indexable under the
@@ -648,6 +649,7 @@ export interface ProductSearchOfferAggregateRow {
   entity_id: number;
   offer_count: number;
   in_stock_offer_count: number;
+  sold_out_offer_count: number;
   shop_count: number;
   lowest_price_yen: number | null;
   highest_price_yen: number | null;

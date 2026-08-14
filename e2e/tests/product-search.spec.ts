@@ -70,6 +70,7 @@ const OFFERS = [
 const CROSS_SHOP_PRODUCT = product({
   offer_count: 3,
   in_stock_offer_count: 2,
+  sold_out_offer_count: 1,
   shop_count: 3,
   lowest_price_yen: 660000,
   highest_price_yen: 712000,

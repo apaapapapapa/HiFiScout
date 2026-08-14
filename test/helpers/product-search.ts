@@ -23,6 +23,7 @@ export function entityRow(
     primary_category_id: "integrated_amp",
     offer_count: 1,
     in_stock_offer_count: 1,
+    sold_out_offer_count: 0,
     shop_count: 1,
     lowest_price_yen: 300_000,
     lowest_in_stock_price_yen: 300_000,

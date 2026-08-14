@@ -137,6 +137,8 @@ export interface ProductSearchItem {
   category: string;
   offer_count: number;
   in_stock_offer_count: number;
+  /** Explicitly sold-out matching offers; distinguishes sold out from unknown availability. */
+  sold_out_offer_count: number;
   shop_count: number;
   lowest_price_yen: number | null;
   highest_price_yen: number | null;

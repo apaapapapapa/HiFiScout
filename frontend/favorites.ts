@@ -35,6 +35,10 @@ export const FAVORITES_KEY = "hifiscout:favorites";
 /** Namespace for migrated seller-listing favorites; never collides with a server entity key. */
 export const LEGACY_FAVORITE_PREFIX = "legacy-";
 
+export function isLegacyFavoriteKey(key: string): boolean {
+  return key.startsWith(LEGACY_FAVORITE_PREFIX);
+}
+
 export interface FavoriteStore {
   products: Map<string, DisplayProduct>;
   /** Listing ids from the oldest storage format, which carry nothing renderable. */
@@ -76,6 +80,7 @@ export function favoriteSnapshot(product: DisplayProduct): DisplayProduct {
     category: product.category,
     offer_count: product.offer_count,
     in_stock_offer_count: product.in_stock_offer_count,
+    sold_out_offer_count: product.sold_out_offer_count,
     shop_count: product.shop_count,
     lowest_price_yen: product.lowest_price_yen,
     highest_price_yen: product.highest_price_yen,
@@ -115,6 +120,7 @@ export function migrateListingFavorite(entry: Record<string, unknown>): DisplayP
     category: text(entry.category),
     offer_count: 1,
     in_stock_offer_count: status === "in_stock" ? 1 : 0,
+    sold_out_offer_count: status === "sold_out" ? 1 : 0,
     shop_count: 1,
     lowest_price_yen: price,
     highest_price_yen: price,

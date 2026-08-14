@@ -48,6 +48,7 @@ function product(overrides: Partial<DisplayProduct> = {}): DisplayProduct {
     category: "ブックシェルフスピーカー",
     offer_count: 1,
     in_stock_offer_count: 1,
+    sold_out_offer_count: 0,
     shop_count: 1,
     lowest_price_yen: 1_000_000,
     highest_price_yen: 1_000_000,
@@ -198,6 +199,7 @@ test("a multi-shop card leads to the comparison instead of one arbitrary shop", 
       offer_count: 3,
       shop_count: 2,
       in_stock_offer_count: 2,
+      sold_out_offer_count: 1,
       highest_price_yen: 1_200_000,
     }),
     { favorite: false, shopName, now: NOW },
@@ -220,6 +222,28 @@ test("a product with no price and no stock says so rather than inventing one", (
   assert.match(markup, /価格不明/u);
   assert.match(markup, /在庫状態未確認/u);
   assert.match(markup, /aria-pressed="false"/u);
+});
+
+test("a product whose offers are all sold out is not labelled as unknown", () => {
+  const markup = productCard(
+    product({ offer_count: 2, in_stock_offer_count: 0, sold_out_offer_count: 2 }),
+    { favorite: false, shopName, now: NOW },
+  );
+
+  assert.match(markup, /class="stock sold_out">売り切れ/u);
+  assert.doesNotMatch(markup, /在庫状態未確認/u);
+});
+
+test("a migrated listing favorite links to its shop without requesting server-only detail", () => {
+  const markup = productCard(product({ key: "legacy-7" }), {
+    favorite: true,
+    shopName,
+    now: NOW,
+  });
+
+  assert.doesNotMatch(markup, /data-offers=/u);
+  assert.doesNotMatch(markup, /商品詳細/u);
+  assert.match(markup, /class="shop-link"/u);
 });
 
 test("a card badges the newest applicable state and a price drop independently", () => {

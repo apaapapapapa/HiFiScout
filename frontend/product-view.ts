@@ -11,6 +11,7 @@
  */
 
 import { dateFmt, escapeHtml, relativeTime, safeDate, yen } from "./format.js";
+import { isLegacyFavoriteKey } from "./favorites.js";
 import { activityData, priceDropped } from "./product-activity.js";
 import type { MetaCategoryFacet, MetaResponse, MetaShop } from "../src/api/contracts.js";
 import type { DisplayOffer, DisplayProduct, PriceHistoryEntry } from "./types.js";
@@ -39,8 +40,16 @@ function priceSummary(product: DisplayProduct): string {
 function offerAvailability(product: DisplayProduct): string {
   if (!product.offer_count) return "取扱なし";
   if (product.in_stock_offer_count === product.offer_count) return "在庫あり";
+  if (product.sold_out_offer_count === product.offer_count) return "売り切れ";
   if (!product.in_stock_offer_count) return "在庫状態未確認";
   return `${product.in_stock_offer_count}/${product.offer_count}件が在庫あり`;
+}
+
+function offerAvailabilityClass(product: DisplayProduct): DisplayOffer["stock_status"] {
+  if (product.in_stock_offer_count) return "in_stock";
+  return product.offer_count > 0 && product.sold_out_offer_count === product.offer_count
+    ? "sold_out"
+    : "unknown";
 }
 
 /**
@@ -83,12 +92,15 @@ export function productCard(
     : `<a class="product-title-link" href="${sourceUrl}" target="_blank" rel="noopener noreferrer">${escapeHtml(title)}</a>`;
   const condition = multiOffer ? "" : product.representative_offer?.condition_text || "";
   const favoriteLabel = favorite ? "お気に入りから削除" : "お気に入りに追加";
+  const hasServerDetail = !isLegacyFavoriteKey(product.key);
   const updated = activity.activity
     ? `${activity.label} ${dateFmt.format(activity.activity)}`
     : "更新日時不明";
-  const offersButton = multiOffer
-    ? `<button class="offers-button" data-offers="${key}" type="button">${product.offer_count}件の在庫を比較</button>`
-    : `<button class="offers-button" data-offers="${key}" type="button">商品詳細</button>`;
+  const offersButton = hasServerDetail
+    ? multiOffer
+      ? `<button class="offers-button" data-offers="${key}" type="button">${product.offer_count}件の在庫を比較</button>`
+      : `<button class="offers-button" data-offers="${key}" type="button">商品詳細</button>`
+    : "";
   return `<article class="card" data-key="${key}">
     <div class="product-summary">
       <div class="card-top">
@@ -104,7 +116,7 @@ export function productCard(
     </div>
     <div class="product-commerce">
       <div class="price-row"><strong>${escapeHtml(priceSummary(product))}</strong></div>
-      <div class="stock ${product.in_stock_offer_count ? "in_stock" : "sold_out"}">${escapeHtml(offerAvailability(product))}</div>
+      <div class="stock ${offerAvailabilityClass(product)}">${escapeHtml(offerAvailability(product))}</div>
       <p class="updated">${escapeHtml(updated)}</p>
     </div>
     <div class="actions">

@@ -187,6 +187,7 @@ export function isProductSearchItem(value: unknown): value is ProductSearchItem 
     (value.catalog_product_id === null || isNonNegativeInteger(value.catalog_product_id)) &&
     isNonNegativeInteger(value.offer_count) &&
     isNonNegativeInteger(value.in_stock_offer_count) &&
+    isNonNegativeInteger(value.sold_out_offer_count) &&
     isNonNegativeInteger(value.shop_count) &&
     isNullableNumber(value.lowest_price_yen) &&
     isNullableNumber(value.highest_price_yen) &&

@@ -15,6 +15,10 @@ const migration = readFileSync(
   new URL("../migrations/0021_product_search_entities.sql", import.meta.url),
   "utf8",
 );
+const soldOutAggregateMigration = readFileSync(
+  new URL("../migrations/0022_product_search_sold_out_aggregate.sql", import.meta.url),
+  "utf8",
+);
 const deployWorkflow = readFileSync(
   new URL("../.github/workflows/deploy.yml", import.meta.url),
   "utf8",
@@ -33,6 +37,17 @@ test("the migration is additive so the deployed Worker keeps serving during roll
   assert.doesNotMatch(migration, /product_search_projection\s*;/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS product_search_entities/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS product_search_entity_offers/);
+});
+
+test("sold-out availability is added and backfilled in a forward-only migration", () => {
+  assert.match(
+    soldOutAggregateMigration,
+    /ALTER TABLE product_search_entities\s+ADD COLUMN sold_out_offer_count/,
+  );
+  assert.doesNotMatch(soldOutAggregateMigration, /DROP TABLE|DROP COLUMN/);
+  assert.ok(
+    normalized(soldOutAggregateMigration).includes(normalized(refreshEntityAggregatesSql())),
+  );
 });
 
 test("a listing can belong to exactly one entity, enforced by the schema rather than by code", () => {
@@ -81,7 +96,6 @@ test("the backfill is the same derivation the running sync uses, not a second de
     upsertFallbackEntitiesSql(),
     upsertCatalogOffersSql(),
     upsertFallbackOffersSql(),
-    refreshEntityAggregatesSql(),
     deleteEmptyEntitiesSql(),
   ]) {
     assert.ok(backfill.includes(normalized(sql)), normalized(sql).slice(0, 80));

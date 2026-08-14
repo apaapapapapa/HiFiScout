@@ -251,6 +251,7 @@ test("the card summary is recomputed from the offers that matched the filter", a
         entity_id: 7,
         offer_count: 1,
         in_stock_offer_count: 1,
+        sold_out_offer_count: 0,
         shop_count: 1,
         lowest_price_yen: 120_000,
         highest_price_yen: 120_000,
@@ -262,8 +263,13 @@ test("the card summary is recomputed from the offers that matched the filter", a
   });
 
   const result = await searchProducts(db, productQuery("?shop=hifido&inStock=true"));
+  const aggregateQuery = db.calls.find((statement) =>
+    /AS sold_out_offer_count/.test(statement.sql),
+  );
 
+  assert.ok(aggregateQuery);
   assert.equal(result.items[0].offer_count, 1);
+  assert.equal(result.items[0].sold_out_offer_count, 0);
   assert.equal(result.items[0].shop_count, 1);
   assert.equal(result.items[0].lowest_price_yen, 120_000);
   assert.equal(result.items[0].representative_offer?.shop_key, "hifido");

@@ -314,6 +314,7 @@ async function loadOfferAggregates(
         SELECT m.entity_id AS entity_id,
                COUNT(*) AS offer_count,
                SUM(CASE WHEN p.stock_status = 'in_stock' THEN 1 ELSE 0 END) AS in_stock_offer_count,
+               SUM(CASE WHEN p.stock_status = 'sold_out' THEN 1 ELSE 0 END) AS sold_out_offer_count,
                COUNT(DISTINCT p.shop_key) AS shop_count,
                MIN(p.price_yen) AS lowest_price_yen,
                MAX(p.price_yen) AS highest_price_yen,

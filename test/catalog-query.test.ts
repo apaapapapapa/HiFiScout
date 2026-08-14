@@ -70,7 +70,8 @@ test("offer filters are conjoined inside one EXISTS so they must hold for the sa
   );
   assert.match(sql, /p\.price_yen < p\.previous_price_yen/);
   assert.match(sql, /p\.price_yen >= \?/);
-  assert.deepEqual(binds.slice(0, 4), ["luxman", "LUXMAN", "fujiya-avic", 100000]);
+  // The request-scoped sort subquery is bound before the main WHERE clause.
+  assert.deepEqual(binds.slice(0, 4), ["fujiya-avic", 100000, "luxman", "LUXMAN"]);
 });
 
 test("a product with no offer filters needs no offer subquery at all", async () => {

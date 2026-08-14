@@ -42,6 +42,7 @@ export function product(overrides: JsonObject = {}) {
     category: "CD/SACDプレーヤー",
     offer_count: 1,
     in_stock_offer_count: 1,
+    sold_out_offer_count: 0,
     shop_count: 1,
     lowest_price_yen: 698000,
     highest_price_yen: 698000,

@@ -40,6 +40,7 @@ function product(overrides: Partial<ProductSearchItem> = {}): ProductSearchItem 
     category: "ブックシェルフ",
     offer_count: 2,
     in_stock_offer_count: 1,
+    sold_out_offer_count: 1,
     shop_count: 2,
     lowest_price_yen: 1_000_000,
     highest_price_yen: 1_200_000,
@@ -99,6 +100,10 @@ test("product response guard validates the fields the UI consumes", () => {
     false,
   );
   assert.equal(isProductsResponse({ ...valid, items: [{ ...product(), shop_count: "2" }] }), false);
+  assert.equal(
+    isProductsResponse({ ...valid, items: [{ ...product(), sold_out_offer_count: "1" }] }),
+    false,
+  );
   assert.equal(
     isProductsResponse({ ...valid, items: [{ ...product(), has_price_drop: 1 }] }),
     false,

@@ -5,6 +5,7 @@ import {
   listShopStates,
   markShopQueued,
 } from "../db/shop-state-repository.js";
+import { syncProductSearchEntities } from "../db/product-search-entity-repository.js";
 import { recheckShopInventory } from "./inventory-recheck.js";
 import { crawlShop, isShopDue } from "./run.js";
 import { getShopPlugin, SHOP_PLUGINS } from "./shops/index.js";
@@ -16,10 +17,12 @@ import type {
   CrawlResult,
   DispatchResult,
   DueDispatchCandidate,
+  InventoryRecheckResult,
   ShopPlugin,
 } from "./types.js";
 
 type RuntimeEnv = CrawlerEnv & { DB: QueryableDatabase };
+type ProductSearchEntitySync = typeof syncProductSearchEntities;
 
 interface DispatchOptions {
   now?: Date;
@@ -151,5 +154,17 @@ export async function consumeCrawlMessage(
   }
 
   const inventoryRecheck = await recheckShopInventory(env, plugin);
+  await syncInventoryRecheckSearchEntities(env.DB, resolvedShopKey, inventoryRecheck);
   return { ...crawlResult, inventoryRecheck };
+}
+
+/** Refreshes the one entity whose listing facts an inventory recheck may have changed. */
+export async function syncInventoryRecheckSearchEntities(
+  db: QueryableDatabase,
+  shopKey: string,
+  result: InventoryRecheckResult,
+  sync: ProductSearchEntitySync = syncProductSearchEntities,
+): Promise<void> {
+  if (result.status !== "checked" || !result.sourceId) return;
+  await sync(db, shopKey, [result.sourceId]);
 }

@@ -46,6 +46,7 @@ function product(overrides: Partial<DisplayProduct> = {}): DisplayProduct {
     category: "ブックシェルフスピーカー",
     offer_count: 1,
     in_stock_offer_count: 1,
+    sold_out_offer_count: 0,
     shop_count: 1,
     lowest_price_yen: 1_000_000,
     highest_price_yen: 1_000_000,
@@ -120,6 +121,14 @@ test("a listing favorite without a usable id is discarded rather than migrated",
   assert.equal(migrateListingFavorite({ id: -3 }), null);
 });
 
+test("a sold-out listing favorite preserves explicit availability through migration", () => {
+  const migrated = migrateListingFavorite({ id: 8, stock_status: "sold_out" });
+
+  assert.ok(migrated);
+  assert.equal(migrated.in_stock_offer_count, 0);
+  assert.equal(migrated.sold_out_offer_count, 1);
+});
+
 test("bare listing ids are preserved as unrenderable legacy entries", () => {
   const store = parseFavoriteStorage(JSON.stringify([42, 43]), isProductSearchItem);
 
@@ -140,7 +149,7 @@ test("a snapshot keeps exactly the rendered fields and detaches the nested offer
   const source = product();
   const snapshot = favoriteSnapshot(source);
 
-  assert.equal(Object.keys(snapshot).length, 18);
+  assert.equal(Object.keys(snapshot).length, 19);
   assert.ok(isProductSearchItem(snapshot));
   assert.notEqual(snapshot.representative_offer, source.representative_offer);
   assert.deepEqual(snapshot.representative_offer, source.representative_offer);

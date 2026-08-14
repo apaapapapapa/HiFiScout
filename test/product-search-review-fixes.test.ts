@@ -5,9 +5,10 @@ import { categoryClosureIds } from "../src/catalog/categories.js";
 import { decodeCursor } from "../src/db/product-search-cursor.js";
 import { toProductSearchItem } from "../src/db/product-search-entity-mapper.js";
 import { searchProducts } from "../src/db/product-search-repository.js";
+import { syncInventoryRecheckSearchEntities } from "../src/crawler/dispatch.js";
 import { favoriteMatchesFilters, favoriteSnapshot } from "../frontend/favorites.js";
 import type { ProductFilters } from "../frontend/filters.js";
-import { captureDatabase } from "./helpers/d1.js";
+import { asQueryableDatabase, captureDatabase } from "./helpers/d1.js";
 import { entityRow } from "./helpers/product-search.js";
 import { productQuery } from "./helpers/product-query.js";
 
@@ -73,4 +74,34 @@ test("product favorites retain category ancestors so group filters match like se
     favoriteMatchesFilters(snapshot, filters({ category: parent }), "", Date.now()),
     true,
   );
+});
+
+test("a completed inventory recheck refreshes the changed listing's search entity", async () => {
+  const calls: unknown[][] = [];
+  await syncInventoryRecheckSearchEntities(
+    asQueryableDatabase({}),
+    "audiounion",
+    { status: "checked", outcome: "in_stock", sourceId: "223257", productId: 7 },
+    async (_db, shopKey, sourceIds) => {
+      calls.push([shopKey, sourceIds]);
+      return { listing_count: 1, entity_count: 1, removed_entity_count: 0 };
+    },
+  );
+
+  assert.deepEqual(calls, [["audiounion", ["223257"]]]);
+});
+
+test("a deferred inventory recheck does not rewrite an unchanged search entity", async () => {
+  let syncCount = 0;
+  await syncInventoryRecheckSearchEntities(
+    asQueryableDatabase({}),
+    "audiounion",
+    { status: "deferred", reason: "upstream_http_429", sourceId: "223257", productId: 7 },
+    async () => {
+      syncCount += 1;
+      return { listing_count: 1, entity_count: 1, removed_entity_count: 0 };
+    },
+  );
+
+  assert.equal(syncCount, 0);
 });
