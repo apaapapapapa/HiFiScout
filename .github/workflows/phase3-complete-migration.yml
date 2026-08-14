@@ -1,0 +1,43 @@
+name: Phase 3 Complete Migration
+
+on:
+  push:
+    branches:
+      - phase3/complete-migration-no-compat
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: ${{ !contains(github.event.head_commit.message, 'refactor(shops): complete Phase 3 migration') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: phase3/complete-migration-no-compat
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+          cache: npm
+      - name: Fix transform and apply migration
+        shell: bash
+        run: |
+          python3 -c 'from pathlib import Path; p=Path(".github/scripts/phase3_complete_migration.py"); s=p.read_text(); old="    '''\${renderPluginRegistration({ key: shopKey, name: name.trim(), baseUrl: parsedBaseUrl.origin, intervalMinutes })}\${PLUGIN_MARKER}`,'',\n    '''\${renderPluginRegistration({ key: shopKey, name: name.trim(), baseUrl: parsedBaseUrl.origin, transport, intervalMinutes })}\${PLUGIN_MARKER}`,'',\n"; new="    '''    `\${renderPluginRegistration({ key: shopKey, name: name.trim(), baseUrl: parsedBaseUrl.origin, intervalMinutes })}\${PLUGIN_MARKER}`,\\n''',\n    '''    `\${renderPluginRegistration({ key: shopKey, name: name.trim(), baseUrl: parsedBaseUrl.origin, transport, intervalMinutes })}\${PLUGIN_MARKER}`,\\n''',\n"; assert old in s; p.write_text(s.replace(old,new))'
+          python3 .github/scripts/phase3_complete_migration.py
+      - name: Format final source
+        run: |
+          npm ci
+          npm run format
+      - name: Remove one-shot migration machinery
+        run: |
+          rm .github/scripts/phase3_complete_migration.py
+          rm .github/workflows/phase3-complete-migration.yml
+      - name: Commit complete migration
+        shell: bash
+        run: |
+          git config user.name "apapaapapapapa"
+          git config user.email "83394495+apaapapapapa@users.noreply.github.com"
+          git add -A
+          git commit -m "refactor(shops): complete Phase 3 migration without compatibility layers"
+          git push origin HEAD:phase3/complete-migration-no-compat
