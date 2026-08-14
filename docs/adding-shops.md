@@ -215,3 +215,28 @@ other editorial content.
 9. Declare the shop's `<PREFIX>_*` values in `wrangler.jsonc`; relay collectors also require
    `CRAWL_RELAY_URL` and `CRAWL_RELAY_TOKEN`.
 10. Remove `defaultEnabled: false` only after the implementation and CI are green.
+
+
+## Optional diagnostics and Data Quality capabilities
+
+A normal shop does not need either capability. Seller-specific diagnostics and threshold tuning are
+registered explicitly at the composition boundary; do not add flat hooks to `ShopAdapter` and do
+not branch on a shop key inside the generic crawler or Data Quality evaluator.
+
+```ts
+defineShopPlugin(adapter, definition, {
+  diagnostics: {
+    diagnosePage: (html, page) => diagnoseSellerMarkup(html, page),
+  },
+  dataQuality: {
+    thresholds: {
+      inventoryUnknownRate: { warning: 0.1, critical: 0.25 },
+    },
+  },
+});
+```
+
+`diagnostics.diagnosePage` may return seller-specific explanatory metadata, but the generic crawl
+lifecycle treats that value as opaque. `dataQuality.thresholds` may tune the shared metrics only;
+shops must not replace or duplicate the common evaluator. If a new quality concept should apply to
+all shops, add it to the platform instead.

@@ -229,12 +229,32 @@ export interface SellerProduct extends Omit<
 }
 
 // ---------------------------------------------------------------------------
+// Optional runtime capabilities
+// ---------------------------------------------------------------------------
+
+/** Seller-specific diagnostic metadata. Generic orchestration treats the result as opaque. */
+export interface PageDiagnosticsCapability<TPage extends CrawlPage = CrawlPage> {
+  diagnosePage(html: string, page?: TPage): unknown;
+}
+
+/** Per-shop Data Quality configuration. Metric calculation remains platform-owned. */
+export interface DataQualityCapability {
+  readonly thresholds?: Readonly<Record<string, Partial<QualityThreshold>>>;
+}
+
+/** Capabilities exposed only after a shop is registered by the platform composition root. */
+export interface ShopRuntimeCapabilities<TPage extends CrawlPage = CrawlPage> {
+  readonly diagnostics?: Readonly<PageDiagnosticsCapability<TPage>>;
+  readonly dataQuality?: Readonly<DataQualityCapability>;
+}
+
+// ---------------------------------------------------------------------------
 // Shop adapter contract
 // ---------------------------------------------------------------------------
 
 /**
- * Universal shop contract: identity, discovery and seller-fact parsing. Transport/category
- * policy and lifecycle hooks are explicit optional capabilities layered on top.
+ * Universal seller-facing contract: identity, discovery and seller-fact parsing. Optional
+ * platform behavior is attached at registration through `ShopRuntimeCapabilities`.
  */
 export interface ShopAdapter<TPage extends CrawlPage = CrawlPage> {
   readonly key: string;
@@ -256,16 +276,10 @@ export interface ShopAdapter<TPage extends CrawlPage = CrawlPage> {
     product: NormalizedCatalogProduct,
   ): CategoryEvidenceInput[] | Promise<CategoryEvidenceInput[]>;
 
-  /** Opaque per-page diagnostics retained by generic orchestration. */
-  diagnosePage?(html: string, page?: TPage): unknown;
-
   /** Opt-in single-listing inventory recheck, run after this shop's crawl succeeds. */
   readonly inventoryRecheck?: InventoryRecheckPolicy;
 
   isConfigured?(env: CrawlerEnv): boolean;
-
-  /** Per-shop data-quality threshold overrides; keys are `DEFAULT_QUALITY_THRESHOLDS` keys. */
-  readonly qualityThresholds?: Readonly<Record<string, Partial<QualityThreshold>>>;
 
   /** Present only after `defineShopPlugin`; see `ShopPlugin`. */
   readonly definition?: Readonly<ShopDefinition>;
@@ -277,6 +291,7 @@ export interface ShopPlugin<TPage extends CrawlPage = CrawlPage> extends Omit<
   "parse" | "definition"
 > {
   readonly definition: Readonly<ShopDefinition>;
+  readonly capabilities: Readonly<ShopRuntimeCapabilities<TPage>>;
   parse(html: string, page?: TPage): NormalizedCatalogProduct[];
 }
 

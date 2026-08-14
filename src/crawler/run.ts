@@ -128,9 +128,7 @@ async function safeSaveDataQuality(
       crawlRunId: runId,
       evaluatedAt,
       run,
-      thresholdOverrides: adapter.qualityThresholds
-        ? { [adapter.key]: adapter.qualityThresholds }
-        : {},
+      thresholdOverrides: adapter.capabilities.dataQuality?.thresholds || {},
     });
     console.log(
       JSON.stringify({
@@ -265,7 +263,7 @@ export async function crawlShop(
   let parseFailureCount = 0;
   let reachedEnd = false;
   let coverageIncomplete = false;
-  /** Last non-null value from the adapter's optional `diagnosePage` hook; shape is opaque here. */
+  /** Last non-null seller diagnostic; generic orchestration never interprets its shape. */
   let pageDiagnostic: unknown = null;
   let lastEvidenceHtml = "";
   let classificationEvidenceHtml = "";
@@ -303,7 +301,7 @@ export async function crawlShop(
 
       lastEvidenceHtml = html;
       pageCount += 1;
-      const diagnostic = adapter.diagnosePage?.(html, page);
+      const diagnostic = adapter.capabilities.diagnostics?.diagnosePage(html, page);
       if (diagnostic != null) pageDiagnostic = diagnostic;
       let parsed;
       parseAttemptCount += 1;

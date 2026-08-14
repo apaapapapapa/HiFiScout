@@ -126,9 +126,7 @@ test("evidence coverage warning and critical boundaries are strict", () => {
 test("shop overrides replace only declared thresholds", () => {
   const result = evaluateQuality(healthyInput({ manufacturerMissingCount: 3 }), {
     thresholdOverrides: {
-      "test-shop": {
-        manufacturerUnknownRate: { warning: 0.04, critical: 0.08 },
-      },
+      manufacturerUnknownRate: { warning: 0.04, critical: 0.08 },
     },
   });
   assert.equal(result.metrics.manufacturerUnknown.status, "healthy");

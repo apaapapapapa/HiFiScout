@@ -14,6 +14,7 @@ import {
   type ProductActivityPolicy,
 } from "../../db/product-activity-policy.js";
 import { audioUnionAdapter } from "./audiounion.js";
+import { diagnoseAudioUnionHtml } from "./audiounion-diagnostics.js";
 import { ippinkanAdapter } from "./ippinkan.js";
 import { fujiyaAvicAdapter } from "./fujiya-avic.js";
 import { hifidoAdapter } from "./hifido.js";
@@ -33,15 +34,19 @@ const HIFIDO_ACTIVITY_POLICY: Readonly<ProductActivityPolicy> = Object.freeze({
 });
 
 export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
-  defineShopPlugin(audioUnionAdapter, {
-    key: "audiounion",
-    name: "Audio Union",
-    baseUrl: "https://www.audiounion.jp",
-    defaultIntervalMinutes: 30,
-    defaultRequestDelayMs: 10_000,
-    scheduleCron: "1 * * * *",
-    transportConfigurationRequired: true,
-  }),
+  defineShopPlugin(
+    audioUnionAdapter,
+    {
+      key: "audiounion",
+      name: "Audio Union",
+      baseUrl: "https://www.audiounion.jp",
+      defaultIntervalMinutes: 30,
+      defaultRequestDelayMs: 10_000,
+      scheduleCron: "1 * * * *",
+      transportConfigurationRequired: true,
+    },
+    { diagnostics: { diagnosePage: diagnoseAudioUnionHtml } },
+  ),
   defineShopPlugin(ippinkanAdapter, {
     key: "ippinkan",
     name: "逸品館",
