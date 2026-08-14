@@ -14,5 +14,13 @@ if old not in text:
     raise RuntimeError('crawler type import replacement not found')
 text = text.replace(old, new)
 
+old = "text = text.replace('registerStub({ envPrefix: \\\"example shop\\\" }), /SCREAMING_SNAKE_CASE/);\\\\n', '')"
+if old not in text:
+    old = "text = text.replace('registerStub({ envPrefix: \"example shop\" }), /SCREAMING_SNAKE_CASE/);\\n', '')"
+new = "text = text.replace('  assert.throws(() => registerStub({ envPrefix: \\\"example shop\\\" }), /SCREAMING_SNAKE_CASE/);\\\\n', '')"
+if old not in text:
+    raise RuntimeError('envPrefix test transform not found')
+text = text.replace(old, new)
+
 path.write_text(text)
 print('fixed phase3 transform script')
