@@ -51,7 +51,7 @@ The projection contains:
 
 The crawler refreshes only listings observed in the current crawl. The repository compares the calculated projection with the persisted one and skips unchanged writes. SQL triggers provide a safe baseline for product writes performed outside that path and keep FTS rows synchronized.
 
-The legacy `products_fts` table is intentionally retained during this migration. Production migrations run before the new Worker is deployed, so dropping the old index in the same migration would create a rollout window in which the old Worker could fail.
+Migration 0017 deliberately retained the old `products_fts` table because production migrations run before the replacement Worker is deployed. After all application search callers had moved to `product_search_fts`, migration 0020 removed the retired `products_fts` virtual table and its three `products_fts_*` triggers. D1 therefore maintains only the active search index and no longer pays duplicate FTS write/storage cost.
 
 ### Multi-term FTS queries
 
@@ -101,7 +101,7 @@ The verified `knowledge_catalog_products` table is the canonical-product basis. 
 - veto reasons
 - evaluation time
 
-Existing listings are initially seeded as `backfill_pending` + `unresolved`. They are reevaluated incrementally by normal shop crawls. The migration never bulk-merges existing production listings.
+Migration 0017 initially seeded listings that already had canonical manufacturer and model fields as `backfill_pending` + `unresolved`. Migration 0020 closes the remaining coverage gap by inserting an explicit unresolved/backfill-pending row for every listing that still lacks a resolution. Normal crawls reevaluate those rows incrementally and only promote deterministic high-confidence matches. The migrations never bulk-merge production listings.
 
 ### Resolution order
 
@@ -279,6 +279,7 @@ Unit/regression tests cover:
 - variant parsing/Veto behavior
 - exact and ambiguous Product Identity matches
 - fuzzy candidates remaining unresolved
+- active-listing Identity denominator and missing-resolution coverage
 - evidence archive allow-list, redaction, hash deduplication, and best-effort R2 failure behavior
 
-The migration is designed to be forward-only, keep existing production product rows intact, preserve the legacy FTS index during rollout, and incrementally converge existing listings through normal crawler runs.
+The migrations are forward-only. Migration 0017 preserved the old FTS stack only for its rollout window; migration 0020 removes it after all callers have migrated and backfills any listing missing an Identity resolution row without merging products.
