@@ -1,4 +1,4 @@
-import { createKnowledgeSourceVerifierV4 } from "./catalog/knowledge-source-verifier-v4.js";
+import { createKnowledgeSourceVerifier } from "./catalog/knowledge-verification/verifier.js";
 import { createRobotsRespectingFetch } from "./crawler/robots-respecting-fetch.js";
 import {
   listDueKnowledgeCatalogProducts,
@@ -78,7 +78,7 @@ export async function runKnowledgeCatalogSourceVerification(
     userAgent: env.CRAWLER_USER_AGENT || "HiFiScoutBot/0.1",
     minimumDelayMs: Number(env.KNOWLEDGE_CATALOG_SOURCE_REQUEST_DELAY_MS) || 500,
   });
-  const verifier = createKnowledgeSourceVerifierV4(env, {
+  const verifier = createKnowledgeSourceVerifier(env, {
     fetchImpl: sourceFetch,
     // Retry-only rollouts avoid the expensive generic sitemap fallback. Normal reviews and source
     // expansion rollouts retain it so newly supported manufacturers can populate the catalog.

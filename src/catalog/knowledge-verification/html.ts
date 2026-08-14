@@ -1,8 +1,8 @@
 /**
  * HTML reading primitives shared by every knowledge-source verification path.
  *
- * These were copied verbatim between `knowledge-source-verifier{,-v2,-v3}.ts`. The copies drifted
- * — `decodeHtml` in particular — so they now live here once and the verifier layers import them.
+ * These were once copied between the versioned verifier modules and had drifted apart —
+ * `decodeHtml` in particular — so they live here once and every strategy imports them.
  *
  * Everything here treats its input as hostile: these parse manufacturer HTML fetched over the
  * network, so nothing may throw on malformed markup.

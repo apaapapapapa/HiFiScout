@@ -1,4 +1,4 @@
-import { createKnowledgeSourceVerifierV4 } from "./catalog/knowledge-source-verifier-v4.js";
+import { createKnowledgeSourceVerifier } from "./catalog/knowledge-verification/verifier.js";
 import { createRobotsRespectingFetch } from "./crawler/robots-respecting-fetch.js";
 import {
   activeProductClassificationStats,
@@ -206,7 +206,7 @@ function createVerifier(
   env: KnowledgeCatalogQueueEnv,
   fetchImpl: typeof fetch = globalThis.fetch,
 ): KnowledgeSourceVerifier {
-  return createKnowledgeSourceVerifierV4(env, {
+  return createKnowledgeSourceVerifier(env, {
     fetchImpl: sourceFetcher(env, fetchImpl),
     fallbackEnabled: true,
   });
