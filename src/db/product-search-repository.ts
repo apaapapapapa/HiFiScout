@@ -16,8 +16,9 @@
  *   `shop=A` with one listing and `maxPrice` with another shop's listing would be a wrong answer,
  *   not a lenient one.
  *
- * Offer data is loaded with a bounded number of queries per request — never one per result. A list
- * response costs at most four statements regardless of page size.
+ * Offer data is loaded with a bounded number of queries per request — never one per result. At the
+ * maximum page size a response costs at most eight statements: an optional count, the entity page,
+ * and up to three chunks each for filtered aggregates and representative offers.
  */
 
 import { categoryFilterIds } from "../catalog/categories.js";
@@ -52,6 +53,7 @@ import type {
   ProductSearchEntityRow,
   ProductSearchOfferAggregateRow,
   ProductSearchOfferRow,
+  ProductSearchSortDefinition,
   QueryableDatabase,
 } from "./types.js";
 
@@ -99,6 +101,11 @@ interface OfferFilter {
   sql: string;
   binds: unknown[];
   active: boolean;
+}
+
+interface ProductSearchPageRow extends ProductSearchEntityRow {
+  /** Present only when ORDER BY was computed from the matching offer subset. */
+  request_sort_value?: string | number | null;
 }
 
 /**
@@ -186,9 +193,9 @@ function addProductFilters(query: ProductQuery, where: string[], binds: unknown[
 /**
  * The offer-level predicate, as one conjunction to be evaluated against a single listing row.
  *
- * Returned rather than appended so the identical predicate can be reused by the summary and
- * representative-offer queries: the numbers on a card are computed over exactly the offers that
- * made the product match.
+ * Returned rather than appended so the identical predicate can be reused by the summary,
+ * representative-offer and request-scoped sort queries. The numbers on a card and the sort key are
+ * therefore computed over exactly the offers that made the product match.
  */
 function offerFilter(query: ProductQuery): OfferFilter {
   const predicates: string[] = [];
@@ -233,6 +240,59 @@ function addOfferFilter(filter: OfferFilter, where: string[], binds: unknown[]):
     WHERE m.entity_id = e.id AND p.is_active = 1${filter.sql}
   )`);
   binds.push(...filter.binds);
+}
+
+/**
+ * Stored entity aggregates are valid only while the request has not narrowed the relevant offers.
+ *
+ * The in-stock-only price case is the one exception: `lowest_in_stock_price_yen` is already stored
+ * specifically for that predicate. Every other offer filter changes the value the user sees, so an
+ * explicit sort must use the same matching subset.
+ */
+function needsRequestScopedSort(query: ProductQuery, filter: OfferFilter, relevance: boolean): boolean {
+  if (relevance || !filter.active) return false;
+  if (query.sort !== "priceAsc" && query.sort !== "priceDesc") return true;
+  return Boolean(
+    query.shop ||
+      query.newOnly ||
+      query.priceDropped ||
+      query.minPrice != null ||
+      query.maxPrice != null
+  );
+}
+
+/** A stable cursor namespace for an ordering derived from request-level offer predicates. */
+function offerSortScopeKey(query: ProductQuery): string {
+  return [
+    query.shop,
+    query.inStock ? "1" : "0",
+    query.newOnly ? "1" : "0",
+    query.priceDropped ? "1" : "0",
+    query.minPrice == null ? "" : String(query.minPrice),
+    query.maxPrice == null ? "" : String(query.maxPrice),
+  ]
+    .map((value) => encodeURIComponent(value))
+    .join("|");
+}
+
+/**
+ * Aggregate sort values over exactly the offers accepted by {@link offerFilter}.
+ *
+ * This is an inner join, so it also proves a matching offer exists. The existing `EXISTS` remains
+ * in the WHERE clause because the count query shares that predicate and must not depend on ORDER BY.
+ */
+function requestScopedSortJoin(filter: OfferFilter): string {
+  return ` JOIN (
+    SELECT m.entity_id AS entity_id,
+           MIN(p.price_yen) AS lowest_price_yen,
+           MIN(CASE WHEN p.stock_status = 'in_stock' THEN p.price_yen END) AS lowest_in_stock_price_yen,
+           MAX(p.last_activity_at) AS latest_activity_at,
+           MAX(COALESCE(p.source_published_at, p.first_seen_at)) AS newest_listed_at
+    FROM product_search_entity_offers m
+    JOIN products p ON p.id = m.listing_product_id
+    WHERE p.is_active = 1${filter.sql}
+    GROUP BY m.entity_id
+  ) matching_sort ON matching_sort.entity_id = e.id`;
 }
 
 /** Recomputes the card summary over the matching offers, so it cannot contradict the filter. */
@@ -318,12 +378,22 @@ export async function searchProducts(
   const countWhere = [...where];
   const countBinds = [...binds];
   const relevance = usesRelevanceOrder(query);
-  const sort = sortDefinition(query.sort, query.inStock);
-  if (!relevance) addCursorPredicate(where, binds, sort, decodeCursor(query.cursor));
+  const baseSort = sortDefinition(query.sort, query.inStock);
+  const requestScopedSort = needsRequestScopedSort(query, filter, relevance);
+  const sort: ProductSearchSortDefinition = requestScopedSort
+    ? { ...baseSort, key: `${baseSort.key}|offers:${offerSortScopeKey(query)}` }
+    : baseSort;
+  const sortColumn = requestScopedSort ? `matching_sort.${sort.column}` : `e.${sort.column}`;
+  if (!relevance) addCursorPredicate(where, binds, sort, decodeCursor(query.cursor), sortColumn);
 
   const rankBinds: unknown[] = [];
-  const orderBy = relevance ? relevanceOrder(query.q, search.plan, rankBinds) : sortOrderBy(sort);
+  const orderBy = relevance
+    ? relevanceOrder(query.q, search.plan, rankBinds)
+    : sortOrderBy(sort, sortColumn);
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const sortJoin = requestScopedSort ? requestScopedSortJoin(filter) : "";
+  const sortSelect = requestScopedSort ? `, ${sortColumn} AS request_sort_value` : "";
+  const sortJoinBinds = requestScopedSort ? filter.binds : [];
 
   let totalCount = null;
   if (query.includeTotal) {
@@ -341,10 +411,10 @@ export async function searchProducts(
   const paginationBinds = query.offset > 0 ? [query.limit + 1, query.offset] : [query.limit + 1];
   const result = await db
     .prepare(
-      `SELECT ${entityColumns("e")} FROM product_search_entities e${search.join} ${whereSql} ORDER BY ${orderBy} ${paginationSql}`,
+      `SELECT ${entityColumns("e")}${sortSelect} FROM product_search_entities e${search.join}${sortJoin} ${whereSql} ORDER BY ${orderBy} ${paginationSql}`,
     )
-    .bind(...binds, ...rankBinds, ...paginationBinds)
-    .all<ProductSearchEntityRow>();
+    .bind(...sortJoinBinds, ...binds, ...rankBinds, ...paginationBinds)
+    .all<ProductSearchPageRow>();
   const rows = result.results || [];
   const hasMore = rows.length > query.limit;
   const pageRows = hasMore ? rows.slice(0, query.limit) : rows;
@@ -363,6 +433,7 @@ export async function searchProducts(
     }),
   );
   const last = pageRows.at(-1);
+  const offerQueryChunkCount = chunked(entityIds).length;
 
   if (query.q) {
     console.log(
@@ -378,7 +449,7 @@ export async function searchProducts(
         unresolved_fallback_entity_count: items.filter(
           (item) => item.identity_kind === "unresolved_listing",
         ).length,
-        offer_summary_query_count: filter.active ? 2 : 1,
+        offer_summary_query_count: offerQueryChunkCount * (filter.active ? 2 : 1),
       }),
     );
   }
@@ -386,7 +457,14 @@ export async function searchProducts(
   return {
     items,
     hasMore,
-    nextCursor: !relevance && hasMore && last ? cursorFor(last, sort) : null,
+    nextCursor:
+      !relevance && hasMore && last
+        ? cursorFor(
+            last,
+            sort,
+            requestScopedSort ? (last.request_sort_value ?? null) : undefined,
+          )
+        : null,
     ...(query.includeTotal
       ? { totalCount, totalPages: Math.ceil((totalCount ?? 0) / query.limit) }
       : {}),

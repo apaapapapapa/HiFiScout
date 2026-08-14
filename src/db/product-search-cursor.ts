@@ -10,17 +10,12 @@
  * - `updated` — most recent meaningful listing activity across the product's active offers.
  * - `priceAsc` / `priceDesc` — the product's lowest offer price. When the caller asked for in-stock
  *   offers the aggregate switches to the lowest *in-stock* price, so "cheapest first" never orders
- *   by a price that is not for sale. That variant is part of the cursor key, so a cursor minted
- *   under one predicate can never resume under the other.
+ *   by a price that is not for sale.
  *
- * Sorting deliberately reads the stored aggregates over all active offers rather than recomputing
- * them under the request's offer filters: those columns are indexed and keyset-safe, and the
- * alternative is a per-row correlated aggregate that no index can serve. The displayed summary is
- * recomputed from the matching offers (see `product-search-repository.ts`), so the card a user
- * reads always agrees with the filter they applied.
- *
- * NULL aggregates sort last in both directions, which is why every predicate carries the extra
- * `IS NULL` arm rather than assuming a comparable value.
+ * Unfiltered sorts read the stored entity aggregates. A request that narrows offers beyond what a
+ * stored aggregate represents may instead order by a request-scoped aggregate supplied by the
+ * repository; the cursor carries the matching sort key so it cannot resume under a different
+ * ordering. NULL aggregates sort last in both directions.
  */
 
 import type { ProductQuerySort } from "../api/contracts.js";
@@ -70,8 +65,11 @@ export function sortDefinition(
   };
 }
 
-export function sortOrderBy(sort: ProductSearchSortDefinition): string {
-  return `e.${sort.column} ${sort.direction} NULLS LAST, e.id ${sort.idDirection}`;
+export function sortOrderBy(
+  sort: ProductSearchSortDefinition,
+  column = `e.${sort.column}`,
+): string {
+  return `${column} ${sort.direction} NULLS LAST, e.id ${sort.idDirection}`;
 }
 
 export function encodeCursor(payload: ProductSearchCursor): string {
@@ -111,18 +109,19 @@ export function decodeCursor(value: string | null): ProductSearchCursor | null {
 /**
  * Appends the `WHERE` predicate that resumes after `cursor`.
  *
- * A cursor minted for a different ordering is ignored rather than rejected, which keeps a stale
- * bookmark from erroring the request instead of just restarting it.
+ * `column` is normally the stored entity aggregate, but the repository can supply an equivalent
+ * request-scoped aggregate when offer filters changed the meaning of the sort. A cursor minted for
+ * a different ordering is ignored rather than rejected.
  */
 export function addCursorPredicate(
   where: string[],
   binds: unknown[],
   sort: ProductSearchSortDefinition,
   cursor: ProductSearchCursor | null,
+  column = `e.${sort.column}`,
 ): void {
   if (!cursor || cursor.sort !== sort.key) return;
   const idOp = sort.idDirection === "DESC" ? "<" : ">";
-  const column = `e.${sort.column}`;
   if (cursor.isNull) {
     where.push(`(${column} IS NULL AND e.id ${idOp} ?)`);
     binds.push(cursor.id);
@@ -135,12 +134,16 @@ export function addCursorPredicate(
 }
 
 /**
- * Mints the cursor from the entity row, not from the response item.
+ * Mints the cursor from the value the ORDER BY actually used.
  *
- * The tie-breaker is the internal entity id, which is never exposed, and the sort value is the
- * stored aggregate the ORDER BY actually used — not the filtered aggregate the card displays.
+ * `valueOverride` is supplied for a request-scoped aggregate; otherwise the stored entity column
+ * remains the source. The tie-breaker is the internal entity id, which is never exposed directly.
  */
-export function cursorFor(row: ProductSearchEntityRow, sort: ProductSearchSortDefinition): string {
-  const value = row[sort.column] ?? null;
+export function cursorFor(
+  row: ProductSearchEntityRow,
+  sort: ProductSearchSortDefinition,
+  valueOverride?: string | number | null,
+): string {
+  const value = valueOverride === undefined ? (row[sort.column] ?? null) : valueOverride;
   return encodeCursor({ sort: sort.key, id: Number(row.id), value, isNull: value == null });
 }

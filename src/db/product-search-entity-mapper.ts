@@ -10,7 +10,7 @@
  * would be contradicting its own filter.
  */
 
-import { getCategory } from "../catalog/categories.js";
+import { categoryClosureIds, getCategory } from "../catalog/categories.js";
 import { NEW_OFFER_WINDOW_MS } from "./product-search-entity-sql.js";
 import type { ProductOffer, ProductSearchItem } from "../api/contracts.js";
 import type {
@@ -122,6 +122,7 @@ export function toProductSearchItem(
     manufacturer_id: row.manufacturer_id,
     model: row.model,
     primary_category_id: row.primary_category_id,
+    category_ids: categoryClosureIds(row.primary_category_id),
     category: getCategory(row.primary_category_id)?.name ?? "",
     offer_count: Number(summary.offer_count || 0),
     in_stock_offer_count: Number(summary.in_stock_offer_count || 0),
