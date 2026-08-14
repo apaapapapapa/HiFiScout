@@ -16,8 +16,7 @@
 
 import { parseSourceRegistry } from "./config.js";
 import { clean } from "./html.js";
-import type { CrawlerEnv } from "../../crawler/types.js";
-import type { KnowledgeSourceDefinition } from "./types.js";
+import type { KnowledgeSourceDefinition, KnowledgeVerificationEnv } from "./types.js";
 
 /** Manufacturers whose official site has a verified entry point. */
 const DEFAULT_OFFICIAL_SOURCES = Object.freeze([
@@ -246,7 +245,7 @@ function normalizedSource(source: Record<string, unknown> = {}): KnowledgeSource
  * an additional source, and `enabled: false` removes the manufacturer entirely.
  */
 export function knowledgeSourceDefinitions(
-  env: CrawlerEnv = {},
+  env: KnowledgeVerificationEnv = {},
 ): Map<string, KnowledgeSourceDefinition[]> {
   const byManufacturer = new Map<string, KnowledgeSourceDefinition[]>();
   for (const source of DEFAULT_OFFICIAL_SOURCES) {
@@ -278,7 +277,9 @@ export function knowledgeSourceDefinitions(
  * They go first so an explicit deployment override later in the array keeps the replace/disable
  * semantics of {@link knowledgeSourceDefinitions}.
  */
-export function expandedKnowledgeSourceEnv(env: CrawlerEnv = {}): CrawlerEnv {
+export function expandedKnowledgeSourceEnv(
+  env: KnowledgeVerificationEnv = {},
+): KnowledgeVerificationEnv {
   const overrides = parseSourceRegistry(env.KNOWLEDGE_CATALOG_SOURCE_REGISTRY_JSON);
   return {
     ...env,
@@ -291,7 +292,7 @@ export function expandedKnowledgeSourceEnv(env: CrawlerEnv = {}): CrawlerEnv {
 
 /** The definitions verification actually runs against: expanded built-ins plus archive indexes. */
 export function resolveKnowledgeSourceDefinitions(
-  env: CrawlerEnv = {},
+  env: KnowledgeVerificationEnv = {},
 ): Map<string, KnowledgeSourceDefinition[]> {
   const definitions = knowledgeSourceDefinitions(expandedKnowledgeSourceEnv(env));
   const result = new Map<string, KnowledgeSourceDefinition[]>();
