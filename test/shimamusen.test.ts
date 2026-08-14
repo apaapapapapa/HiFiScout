@@ -64,12 +64,12 @@ test("Shimamusen used pagination is discovered dynamically and sorted", () => {
 
 test("Shimamusen adapter starts from all three requested entry pages", () => {
   assert.deepEqual(
-    [...shimamusenAdapter.pageUrls()],
+    [...shimamusenAdapter.discovery.initialTargets({ maxPages: 40, env: {} })],
     [
       { url: "https://www.shimamusen.com/shopbrand/063/Y/", kind: "展示処分品" },
       { url: "https://www.shimamusen.com/shopbrand/036/Y/", kind: "特価商品" },
       { url: "https://www.shimamusen.com/shopbrand/ct826/", kind: "中古品" },
     ],
   );
-  assert.equal(shimamusenAdapter.dynamicPagination, true);
+  assert.equal(shimamusenAdapter.discovery.coverage, "complete");
 });
