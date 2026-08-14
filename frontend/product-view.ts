@@ -99,6 +99,16 @@ export function paginationMarkup(
   return parts.join("");
 }
 
+const CATEGORY_SEPARATOR =
+  '<option disabled data-category-separator="true">────────────</option>';
+
+/**
+ * Renders category metadata in server order.
+ *
+ * A top-level, non-classifiable category is a visual group heading in the flat `<select>`. The
+ * separator belongs to this deterministic projection, not to a MutationObserver in the HTML shell,
+ * so order and separator placement are unit-testable without a browser.
+ */
 export function categoryOptions(meta: MetaResponse): string {
   const facets = Array.isArray(meta.categoryFacets) ? meta.categoryFacets : [];
   if (!facets.length) {
@@ -119,7 +129,12 @@ export function categoryOptions(meta: MetaResponse): string {
 
   const option = (facet: MetaCategoryFacet) =>
     `<option value="${escapeHtml(facet.id)}">${escapeHtml(facet.name)}</option>`;
-  const topLevel = ungrouped.map(option).join("");
+  const topLevel = ungrouped
+    .map(
+      (facet) =>
+        `${facet.parentId === null && !facet.classifiable ? CATEGORY_SEPARATOR : ""}${option(facet)}`,
+    )
+    .join("");
   const groups = [...grouped.entries()]
     .map(
       ([group, values]) =>
