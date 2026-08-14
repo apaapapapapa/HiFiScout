@@ -6,6 +6,16 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node"],
     "strict": true,
+    // Both pass with zero findings today, so they cost nothing to keep and catch the next
+    // half-written branch or forgotten `break`.
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    // Deliberately NOT enabled yet:
+    // - noUncheckedIndexedAccess: 381 findings. Real value (regex groups, `results[0]`, parsed
+    //   JSON arrays), but adopting it means auditing each site, not blanket-asserting them.
+    // - exactOptionalPropertyTypes: 14 findings. Needs care rather than volume — several parsing
+    //   and normalization paths intentionally distinguish an absent property from one present
+    //   with `undefined`, and adapters assert their exact parsed key set.
     "noEmit": true,
     "verbatimModuleSyntax": true,
     "resolveJsonModule": true,
