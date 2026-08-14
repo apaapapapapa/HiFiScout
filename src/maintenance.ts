@@ -21,6 +21,7 @@ export interface RetentionCleanupCounts {
   crawlRuns: number;
   priceHistory: number;
   inactiveProducts: number;
+  emptySearchEntities: number;
 }
 
 export interface RetentionCleanupResult {
@@ -115,6 +116,16 @@ export async function runRetentionCleanup(
     .bind(inactiveProductsBefore, limit)
     .run();
 
+  // Deleting a listing cascades its search membership away, which can leave a product entity with
+  // nothing to offer. Retiring those here keeps the read model's "every entity has an active
+  // offer" invariant true without waiting for the next crawl of an unrelated shop.
+  const emptySearchEntities = await env.DB.prepare(`
+    DELETE FROM product_search_entities
+    WHERE NOT EXISTS (
+      SELECT 1 FROM product_search_entity_offers m WHERE m.entity_id = product_search_entities.id
+    )
+  `).run();
+
   const result: RetentionCleanupResult = {
     event: "retention_cleanup",
     at: now.toISOString(),
@@ -124,6 +135,7 @@ export async function runRetentionCleanup(
       crawlRuns: changes(crawlRuns),
       priceHistory: changes(priceHistory),
       inactiveProducts: changes(inactiveProducts),
+      emptySearchEntities: changes(emptySearchEntities),
     },
   };
   console.log(JSON.stringify(result));

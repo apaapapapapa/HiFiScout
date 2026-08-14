@@ -6,39 +6,57 @@ import { pageNumbers, pageOffset, resultSummary } from "../frontend/pagination.j
 import { activityData, priceDropped } from "../frontend/product-activity.js";
 import {
   emptyState,
+  offersMarkup,
   paginationMarkup,
   priceHistoryMarkup,
   productCard,
   syncStatusSummary,
 } from "../frontend/product-view.js";
 import type { MetaResponse } from "../src/api/contracts.js";
-import type { DisplayProduct } from "../frontend/types.js";
+import type { DisplayOffer, DisplayProduct } from "../frontend/types.js";
 
 const NOW = Date.parse("2026-08-12T00:00:00.000Z");
+const shopName = (key: string) => (key === "hifido" ? "ハイファイ堂" : key);
 
-function product(overrides: Partial<DisplayProduct> = {}): DisplayProduct {
+function offer(overrides: Partial<DisplayOffer> = {}): DisplayOffer {
   return {
-    id: 1,
+    listing_product_id: 1,
     shop_key: "hifido",
-    manufacturer: "TAD",
-    manufacturer_id: "tad",
-    raw_manufacturer: "TAD",
-    model: "ME1TX",
-    title: "TAD ME1TX",
-    category: "スピーカー",
-    raw_category: "スピーカー",
-    primary_category_id: "speaker",
+    source_url: "https://example.test/p1",
+    title: "TAD ME1TX ペア",
     condition_text: "中古",
     price_yen: 1_000_000,
     previous_price_yen: null,
     stock_status: "in_stock",
-    source_url: "https://example.test/p1",
     first_seen_at: "2026-08-01T00:00:00.000Z",
     last_seen_at: "2026-08-11T00:00:00.000Z",
     last_activity_at: "2026-08-11T00:00:00.000Z",
-    last_changed_at: "2026-08-11T00:00:00.000Z",
-    search_aliases: "",
-    category_ids: ["speaker"],
+    source_published_at: null,
+    ...overrides,
+  };
+}
+
+function product(overrides: Partial<DisplayProduct> = {}): DisplayProduct {
+  return {
+    key: "c-1",
+    identity_kind: "catalog",
+    catalog_product_id: 1,
+    manufacturer: "TAD",
+    manufacturer_id: "tad",
+    model: "ME1TX",
+    primary_category_id: "speaker_bookshelf",
+    category: "ブックシェルフスピーカー",
+    offer_count: 1,
+    in_stock_offer_count: 1,
+    sold_out_offer_count: 0,
+    shop_count: 1,
+    lowest_price_yen: 1_000_000,
+    highest_price_yen: 1_000_000,
+    latest_activity_at: "2026-08-11T00:00:00.000Z",
+    newest_listed_at: "2026-08-01T00:00:00.000Z",
+    has_new_offer: false,
+    has_price_drop: false,
+    representative_offer: offer(),
     ...overrides,
   };
 }
@@ -111,15 +129,15 @@ test("the pager marks the current page and elides gaps", () => {
   assert.match(paginationMarkup([1, 2], 1, true), /disabled/u);
 });
 
-test("a listing is new for 48 hours, then updated for 48 hours, never both", () => {
-  const fresh = activityData(product({ first_seen_at: "2026-08-11T12:00:00.000Z" }), NOW);
+test("a product is new for 48 hours, then updated for 48 hours, never both", () => {
+  const fresh = activityData(product({ newest_listed_at: "2026-08-11T12:00:00.000Z" }), NOW);
   assert.equal(fresh.isNew, true);
   assert.equal(fresh.isRecentlyUpdated, false);
 
   const updated = activityData(
     product({
-      first_seen_at: "2026-08-01T00:00:00.000Z",
-      last_activity_at: "2026-08-11T12:00:00.000Z",
+      newest_listed_at: "2026-08-01T00:00:00.000Z",
+      latest_activity_at: "2026-08-11T12:00:00.000Z",
     }),
     NOW,
   );
@@ -129,36 +147,34 @@ test("a listing is new for 48 hours, then updated for 48 hours, never both", () 
 
   const stale = activityData(
     product({
-      first_seen_at: "2026-08-01T00:00:00.000Z",
-      last_activity_at: "2026-08-02T00:00:00.000Z",
+      newest_listed_at: "2026-08-01T00:00:00.000Z",
+      latest_activity_at: "2026-08-02T00:00:00.000Z",
     }),
     NOW,
   );
   assert.equal(stale.isRecentlyUpdated, false);
 });
 
-test("a never-changed listing is labelled as a first observation", () => {
+test("a never-changed product is labelled as a first observation", () => {
   const first = activityData(
     product({
-      first_seen_at: "2026-08-01T00:00:00.000Z",
-      last_activity_at: "2026-08-01T00:00:00.000Z",
+      newest_listed_at: "2026-08-01T00:00:00.000Z",
+      latest_activity_at: "2026-08-01T00:00:00.000Z",
     }),
     NOW,
   );
   assert.equal(first.label, "初回観測");
 });
 
-test("a price drop needs both prices present", () => {
-  assert.equal(priceDropped(product({ price_yen: 900, previous_price_yen: 1000 })), true);
-  assert.equal(priceDropped(product({ price_yen: 1100, previous_price_yen: 1000 })), false);
-  assert.equal(priceDropped(product({ price_yen: null, previous_price_yen: 1000 })), false);
-  assert.equal(priceDropped(product({ previous_price_yen: null })), false);
+test("a price drop is the aggregate the server computed across offers", () => {
+  assert.equal(priceDropped(product({ has_price_drop: true })), true);
+  assert.equal(priceDropped(product({ has_price_drop: false })), false);
 });
 
 test("retailer text is escaped before it reaches innerHTML", () => {
   const markup = productCard(
     product({ model: '<img src=x onerror="alert(1)">', manufacturer: "A&B" }),
-    { favorite: false, shopName: "ハイファイ堂", now: NOW },
+    { favorite: false, shopName, now: NOW },
   );
 
   assert.doesNotMatch(markup, /<img src=x/u);
@@ -167,42 +183,118 @@ test("retailer text is escaped before it reaches innerHTML", () => {
   assert.equal(escapeHtml(`<>&"'`), "&lt;&gt;&amp;&quot;&#39;");
 });
 
-test("a card reflects favorite state and stock wording", () => {
-  const favorited = productCard(product(), { favorite: true, shopName: "ハイファイ堂", now: NOW });
-  assert.match(favorited, /aria-pressed="true"/u);
-  assert.match(favorited, /お気に入りから削除/u);
-  assert.match(favorited, /在庫あり/u);
+test("a single-offer card keeps its direct shop link and shop chip", () => {
+  const markup = productCard(product(), { favorite: true, shopName, now: NOW });
 
-  const soldOut = productCard(product({ stock_status: "sold_out" }), {
-    favorite: false,
-    shopName: "ハイファイ堂",
+  assert.match(markup, /aria-pressed="true"/u);
+  assert.match(markup, /お気に入りから削除/u);
+  assert.match(markup, /class="shop shop-hifido">ハイファイ堂</u);
+  assert.match(markup, /class="product-title-link" href="https:\/\/example\.test\/p1"/u);
+  assert.match(markup, /data-fav="c-1"/u);
+});
+
+test("a multi-shop card leads to the comparison instead of one arbitrary shop", () => {
+  const markup = productCard(
+    product({
+      offer_count: 3,
+      shop_count: 2,
+      in_stock_offer_count: 2,
+      sold_out_offer_count: 1,
+      highest_price_yen: 1_200_000,
+    }),
+    { favorite: false, shopName, now: NOW },
+  );
+
+  assert.match(markup, /class="shop shop-multiple">2店舗</u);
+  assert.match(markup, /<button type="button" class="product-title-link" data-offers="c-1"/u);
+  assert.match(markup, /3件の在庫を比較/u);
+  assert.match(markup, /2\/3件が在庫あり/u);
+  assert.match(markup, /￥1,000,000〜/u);
+  assert.doesNotMatch(markup, /class="shop-link"/u);
+});
+
+test("a product with no price and no stock says so rather than inventing one", () => {
+  const markup = productCard(
+    product({ lowest_price_yen: null, highest_price_yen: null, in_stock_offer_count: 0 }),
+    { favorite: false, shopName, now: NOW },
+  );
+
+  assert.match(markup, /価格不明/u);
+  assert.match(markup, /在庫状態未確認/u);
+  assert.match(markup, /aria-pressed="false"/u);
+});
+
+test("a product whose offers are all sold out is not labelled as unknown", () => {
+  const markup = productCard(
+    product({ offer_count: 2, in_stock_offer_count: 0, sold_out_offer_count: 2 }),
+    { favorite: false, shopName, now: NOW },
+  );
+
+  assert.match(markup, /class="stock sold_out">売り切れ/u);
+  assert.doesNotMatch(markup, /在庫状態未確認/u);
+});
+
+test("a migrated listing favorite links to its shop without requesting server-only detail", () => {
+  const markup = productCard(product({ key: "legacy-7" }), {
+    favorite: true,
+    shopName,
     now: NOW,
   });
-  assert.match(soldOut, /売り切れ/u);
-  assert.match(soldOut, /aria-pressed="false"/u);
 
-  const unknown = productCard(product({ stock_status: null, price_yen: null }), {
-    favorite: false,
-    shopName: "ハイファイ堂",
-    now: NOW,
-  });
-  assert.match(unknown, /在庫状態未確認/u);
-  assert.match(unknown, /価格不明/u);
+  assert.doesNotMatch(markup, /data-offers=/u);
+  assert.doesNotMatch(markup, /商品詳細/u);
+  assert.match(markup, /class="shop-link"/u);
 });
 
 test("a card badges the newest applicable state and a price drop independently", () => {
   const markup = productCard(
-    product({
-      first_seen_at: "2026-08-11T12:00:00.000Z",
-      price_yen: 900,
-      previous_price_yen: 1000,
-    }),
-    { favorite: false, shopName: "ハイファイ堂", now: NOW },
+    product({ newest_listed_at: "2026-08-11T12:00:00.000Z", has_price_drop: true }),
+    { favorite: false, shopName, now: NOW },
   );
 
   assert.match(markup, /badge">NEW</u);
   assert.match(markup, /badge">PRICE DOWN</u);
   assert.doesNotMatch(markup, /UPDATED/u);
+});
+
+test("the offer list keeps what actually distinguishes two offers of the same model", () => {
+  const markup = offersMarkup(
+    product({ offer_count: 2, shop_count: 2 }),
+    [
+      offer({ listing_product_id: 11, title: "TAD ME1TX 元箱付き", condition_text: "美品" }),
+      offer({
+        listing_product_id: 22,
+        shop_key: "formusic",
+        title: "TAD ME1TX",
+        condition_text: "並品",
+        price_yen: 900_000,
+        previous_price_yen: 1_000_000,
+        stock_status: "sold_out",
+      }),
+    ],
+    { shopName },
+  );
+
+  assert.match(markup, /2店舗 \/ 2件の在庫/u);
+  assert.match(markup, /元箱付き/u);
+  assert.match(markup, /美品/u);
+  assert.match(markup, /並品/u);
+  assert.match(markup, /data-history="11"/u);
+  assert.match(markup, /data-history="22"/u);
+  assert.match(markup, /<del>￥1,000,000<\/del>/u);
+  assert.match(markup, /売り切れ/u);
+  assert.equal((markup.match(/href="https:\/\/example\.test\/p1"/g) || []).length, 2);
+});
+
+test("an unresolved product says the comparison is unavailable, not that it failed", () => {
+  const markup = offersMarkup(
+    product({ identity_kind: "unresolved_listing", catalog_product_id: null }),
+    [offer()],
+    { shopName },
+  );
+
+  assert.match(markup, /他店の在庫と照合できていません/u);
+  assert.doesNotMatch(markup, /件の在庫<\/p>/u);
 });
 
 test("empty states distinguish no favorites from no matches", () => {
@@ -232,14 +324,15 @@ test("sync status grades only enabled shops and prefers the reported status", ()
 });
 
 test("price history marks each drop and handles an empty series", () => {
-  const markup = priceHistoryMarkup(product(), [
+  const listing = { manufacturer: "TAD", model: "ME1TX", title: "TAD ME1TX" };
+  const markup = priceHistoryMarkup(listing, [
     { price_yen: 1000, observed_at: "2026-08-01T00:00:00.000Z" },
     { price_yen: 900, observed_at: "2026-08-02T00:00:00.000Z" },
     { price_yen: 1200, observed_at: "2026-08-03T00:00:00.000Z" },
   ]);
 
   assert.equal((markup.match(/<span>↓<\/span>/g) || []).length, 1);
-  assert.match(priceHistoryMarkup(product(), []), /履歴はまだありません/u);
+  assert.match(priceHistoryMarkup(listing, []), /履歴はまだありません/u);
 });
 
 test("relative time buckets by minute, hour and day", () => {

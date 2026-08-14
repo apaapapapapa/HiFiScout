@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
-
-type JsonObject = Record<string, unknown>;
+import { offer, product as productItem } from "./product-fixtures.js";
+import type { JsonObject } from "./product-fixtures.js";
 
 function catalogMeta(overrides: JsonObject = {}) {
   return {
@@ -13,40 +13,16 @@ function catalogMeta(overrides: JsonObject = {}) {
   };
 }
 
+/** Recently listed, so the "48時間以内の新着" filter has something to keep. */
 function product(overrides: JsonObject = {}) {
   const recent = new Date(Date.now() - 60 * 60_000).toISOString();
-  return {
-    id: 1,
-    shop_key: "shop-a",
-    source_id: "source-1",
-    manufacturer: "LUXMAN",
-    manufacturer_id: "luxman",
-    raw_manufacturer: "LUXMAN",
-    model: "D-10X",
-    title: "LUXMAN D-10X",
-    category: "CD/SACDプレーヤー",
-    raw_category: "CD/SACDプレーヤー",
-    primary_category_id: "digital-disc-player",
-    category_ids: ["digital-disc-player"],
-    classification_status: "classified",
-    condition_text: "中古",
-    price_yen: 698000,
-    previous_price_yen: 748000,
-    stock_status: "in_stock",
-    source_url: "https://example.com/products/1",
-    first_seen_at: recent,
-    last_seen_at: recent,
-    last_changed_at: recent,
-    last_activity_at: recent,
-    search_aliases: "SACD CD player",
-    is_active: 1,
-    metadata_json: "{}",
-    last_inventory_checked_at: null,
-    inventory_check_failures: 0,
-    last_inventory_check_attempt_at: null,
-    source_published_at: null,
+  return productItem({
+    latest_activity_at: recent,
+    newest_listed_at: recent,
+    has_new_offer: true,
+    representative_offer: offer({ first_seen_at: recent, last_activity_at: recent }),
     ...overrides,
-  };
+  });
 }
 
 function healthEntry({
@@ -98,7 +74,7 @@ async function routeMeta(page: Page, meta: JsonObject = catalogMeta()): Promise<
  */
 test("the URL is sanitized before the catalog script reads it", async ({ page }) => {
   await routeMeta(page);
-  await page.route("**/api/products?**", (route: Route) =>
+  await page.route("**/api/product-search?**", (route: Route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ items: [], hasMore: false, nextCursor: null }),
@@ -107,7 +83,7 @@ test("the URL is sanitized before the catalog script reads it", async ({ page })
 
   const productRequestPromise = page.waitForRequest((request) => {
     const url = new URL(request.url());
-    return url.pathname === "/api/products" && request.method() === "GET";
+    return url.pathname === "/api/product-search" && request.method() === "GET";
   });
 
   const longQuery = "x".repeat(101);
@@ -134,7 +110,7 @@ test("new and price-drop checkboxes update both the URL and product API query", 
   page,
 }) => {
   await routeMeta(page);
-  await page.route("**/api/products?**", (route: Route) =>
+  await page.route("**/api/product-search?**", (route: Route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ items: [product()], hasMore: false, nextCursor: null }),
@@ -145,7 +121,7 @@ test("new and price-drop checkboxes update both the URL and product API query", 
 
   const newRequestPromise = page.waitForRequest((request) => {
     const url = new URL(request.url());
-    return url.pathname === "/api/products" && url.searchParams.get("newOnly") === "true";
+    return url.pathname === "/api/product-search" && url.searchParams.get("newOnly") === "true";
   });
   await page.locator("#recentOnly").check();
   const newRequest = await newRequestPromise;
@@ -154,7 +130,9 @@ test("new and price-drop checkboxes update both the URL and product API query", 
 
   const droppedRequestPromise = page.waitForRequest((request) => {
     const url = new URL(request.url());
-    return url.pathname === "/api/products" && url.searchParams.get("priceDropped") === "true";
+    return (
+      url.pathname === "/api/product-search" && url.searchParams.get("priceDropped") === "true"
+    );
   });
   await page.locator("#priceDropped").check();
   const droppedParams = new URL((await droppedRequestPromise).url()).searchParams;
@@ -170,7 +148,7 @@ test("new and price-drop checkboxes update both the URL and product API query", 
  */
 test("the result counter is reapplied after a filter change", async ({ page }) => {
   await routeMeta(page);
-  await page.route("**/api/products?**", (route: Route) => {
+  await page.route("**/api/product-search?**", (route: Route) => {
     const params = new URL(route.request().url()).searchParams;
     const hasMore = params.get("priceDropped") !== "true";
     return route.fulfill({
@@ -233,7 +211,7 @@ test("healthy metadata renders the simple normal sync summary", async ({ page })
       ],
     }),
   );
-  await page.route("**/api/products?**", (route: Route) =>
+  await page.route("**/api/product-search?**", (route: Route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ items: [], hasMore: false, nextCursor: null }),

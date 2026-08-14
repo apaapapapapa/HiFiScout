@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { offer, product, routeProductSearch } from "./product-fixtures.js";
 
 test("multi-word search is sent to the product API unchanged and renders its result", async ({
   page,
@@ -16,61 +17,44 @@ test("multi-word search is sent to the product API unchanged and renders its res
     }),
   );
 
-  await page.route("**/api/products?**", async (route) => {
-    const url = new URL(route.request().url());
-    const q = url.searchParams.get("q") || "";
+  await routeProductSearch(page, (url) => {
     const items =
-      q === "TAD 1000"
+      url.searchParams.get("q") === "TAD 1000"
         ? [
-            {
-              id: 1000,
-              shop_key: "shop-a",
-              source_id: "tad-d1000mk2",
+            product({
+              key: "c-1000",
+              catalog_product_id: 1000,
               manufacturer: "TAD",
               manufacturer_id: "tad",
-              raw_manufacturer: "Technical Audio Devices",
               model: "D1000MK2",
-              title: "TAD D1000MK2",
-              category: "DAC",
-              raw_category: "D/Aコンバーター",
               primary_category_id: "dac",
-              category_ids: ["dac"],
-              classification_status: "classified",
-              condition_text: "中古",
-              price_yen: 500000,
-              previous_price_yen: null,
-              stock_status: "in_stock",
-              source_url: "https://example.com/tad-d1000mk2",
-              first_seen_at: "2026-08-12T00:00:00.000Z",
-              last_seen_at: "2026-08-12T00:00:00.000Z",
-              last_changed_at: "2026-08-12T00:00:00.000Z",
-              last_activity_at: "2026-08-12T00:00:00.000Z",
-              search_aliases: "DAC D/A Converter",
-              is_active: 1,
-              metadata_json: "{}",
-              last_inventory_checked_at: null,
-              inventory_check_failures: 0,
-              last_inventory_check_attempt_at: null,
-              source_published_at: null,
-            },
+              category: "DAC",
+              lowest_price_yen: 500000,
+              highest_price_yen: 500000,
+              has_price_drop: false,
+              representative_offer: offer({
+                listing_product_id: 1000,
+                title: "TAD D1000MK2",
+                price_yen: 500000,
+                previous_price_yen: null,
+                source_url: "https://example.com/tad-d1000mk2",
+              }),
+            }),
           ]
         : [];
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        items,
-        hasMore: false,
-        nextCursor: null,
-        totalCount: items.length,
-        totalPages: items.length ? 1 : 0,
-      }),
-    });
+    return {
+      items,
+      hasMore: false,
+      nextCursor: null,
+      totalCount: items.length,
+      totalPages: items.length ? 1 : 0,
+    };
   });
 
   await page.goto("/");
   const searchRequest = page.waitForRequest((request) => {
     const url = new URL(request.url());
-    return url.pathname === "/api/products" && url.searchParams.get("q") === "TAD 1000";
+    return url.pathname === "/api/product-search" && url.searchParams.get("q") === "TAD 1000";
   });
   await page.locator("#q").fill("TAD 1000");
   await searchRequest;

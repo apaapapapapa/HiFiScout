@@ -16,10 +16,15 @@
 import type { ClassificationStatus, StockStatus } from "../catalog/types.js";
 
 // ---------------------------------------------------------------------------
-// /api/products
+// seller listings (/api/products/:id/history)
 // ---------------------------------------------------------------------------
 
-/** Accepted `?sort=` values. Part of the public query vocabulary, not a storage concern. */
+/**
+ * Accepted `?sort=` values. Part of the public query vocabulary, not a storage concern.
+ *
+ * The vocabulary survived the move to product-level search, but each value is now defined over
+ * offer aggregates rather than one listing's columns — see `product-search-cursor.ts`.
+ */
 export type ProductQuerySort = "newest" | "oldest" | "updated" | "priceAsc" | "priceDesc";
 
 export const PRODUCT_QUERY_SORTS: readonly ProductQuerySort[] = [
@@ -31,11 +36,14 @@ export const PRODUCT_QUERY_SORTS: readonly ProductQuerySort[] = [
 ];
 
 /**
- * One `/api/products` item.
+ * One seller listing, as returned by the price-history endpoint.
  *
  * Field names stay snake_case because that is the shipped wire format; they mirror the current
  * columns by intent, not by construction. Changing this interface is an API change and must be
  * a deliberate edit here, not a side effect of a migration.
+ *
+ * Product search returns {@link ProductSearchItem} instead: this shape describes one shop's row,
+ * which is exactly what a product-level result must not be.
  */
 export interface ProductListItem {
   id: number;
@@ -73,13 +81,89 @@ export interface ProductListItem {
   source_published_at: string | null;
 }
 
-/** `/api/products` response. `totalCount`/`totalPages` exist only when `includeTotal=true`. */
-export interface ProductListResponse {
-  items: ProductListItem[];
+// ---------------------------------------------------------------------------
+// /api/product-search
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether a result is a confirmed Knowledge Catalog product or a listing standing in for itself.
+ *
+ * `unresolved_listing` is not an error state and must stay visible: it is what keeps identity
+ * coverage gaps from turning into products a user cannot find.
+ */
+export type ProductSearchIdentityKind = "catalog" | "unresolved_listing";
+
+/**
+ * One shop's factual offer for a product.
+ *
+ * Everything here is a seller observation and stays that way — nothing on this interface is
+ * promoted to a canonical product fact for rendering convenience.
+ */
+export interface ProductOffer {
+  /** `products.id`. Also the key for `/api/products/:id/history`. */
+  listing_product_id: number;
+  shop_key: string;
+  source_url: string;
+  title: string;
+  condition_text: string;
+  price_yen: number | null;
+  previous_price_yen: number | null;
+  stock_status: StockStatus;
+  first_seen_at: string;
+  last_seen_at: string;
+  last_activity_at: string | null;
+  source_published_at: string | null;
+}
+
+/**
+ * One `/api/product-search` result: a product plus a summary of its live offers.
+ *
+ * `key` is the only identifier clients should route on. It is namespaced so a catalog id and a
+ * listing id can never be mistaken for each other. The aggregate fields describe the offers that
+ * satisfied the request's offer-level filters, so a card cannot contradict the filter that
+ * produced it; `offer_count` is therefore a count of *matching* offers, not of all of them.
+ */
+export interface ProductSearchItem {
+  key: string;
+  identity_kind: ProductSearchIdentityKind;
+  catalog_product_id: number | null;
+  manufacturer: string;
+  manufacturer_id: string;
+  model: string;
+  primary_category_id: string;
+  /** Canonical leaf plus its ancestor ids. Optional only for pre-Phase-4 favorite snapshots. */
+  category_ids?: string[];
+  /** Japanese display label for `primary_category_id`; empty when the id is unknown. */
+  category: string;
+  offer_count: number;
+  in_stock_offer_count: number;
+  /** Explicitly sold-out matching offers; distinguishes sold out from unknown availability. */
+  sold_out_offer_count: number;
+  shop_count: number;
+  lowest_price_yen: number | null;
+  highest_price_yen: number | null;
+  latest_activity_at: string | null;
+  /** Newest `source_published_at`/`first_seen_at` across matching offers. */
+  newest_listed_at: string | null;
+  has_new_offer: boolean;
+  has_price_drop: boolean;
+  /** Cheapest in-stock matching offer, for compact rendering. Null only if offers vanished. */
+  representative_offer: ProductOffer | null;
+}
+
+/** `/api/product-search` response. `totalCount`/`totalPages` exist only when `includeTotal=true`. */
+export interface ProductSearchResponse {
+  items: ProductSearchItem[];
   hasMore: boolean;
   nextCursor: string | null;
   totalCount?: number | null;
   totalPages?: number;
+}
+
+/** `/api/product-search/:key`: the product plus every eligible active offer under it. */
+export interface ProductSearchDetailResponse {
+  product: ProductSearchItem;
+  offers: ProductOffer[];
 }
 
 // ---------------------------------------------------------------------------

@@ -1,0 +1,300 @@
+/**
+ * Maintenance of the product-level search read model.
+ *
+ * Three entry points share one definition of what an entity is (see `product-search-entity-sql.ts`):
+ *
+ * - {@link syncProductSearchEntities} runs after every crawl, scoped to the listings that shop just
+ *   reported plus any of its listings that went inactive since the last pass;
+ * - {@link rebuildProductSearchEntities} re-derives the whole model and is safe to run repeatedly;
+ * - {@link productSearchEntityConsistency} reports drift instead of waiting for a user to notice a
+ *   product that stopped being searchable.
+ *
+ * None of this belongs in the search query path: reads must never repair the projection they read.
+ */
+
+import {
+  deleteEmptyEntitiesSql,
+  deleteInactiveOffersSql,
+  refreshEntityAggregatesSql,
+  refreshEntitySearchTermsSql,
+  scopeClause,
+  upsertCatalogEntitiesSql,
+  upsertCatalogOffersSql,
+  upsertFallbackEntitiesSql,
+  upsertFallbackOffersSql,
+} from "./product-search-entity-sql.js";
+import type {
+  ProductSearchEntityConsistency,
+  ProductSearchEntityRebuildResult,
+  ProductSearchEntitySyncResult,
+  QueryableDatabase,
+} from "./types.js";
+
+/** D1 caps bound variables per statement; every scoped statement stays well below that limit. */
+const CHUNK_SIZE = 40;
+
+function chunks<T>(values: readonly T[], size = CHUNK_SIZE): T[][] {
+  const result: T[][] = [];
+  for (let i = 0; i < values.length; i += size) result.push(values.slice(i, i + size));
+  return result;
+}
+
+async function runStatement(
+  db: QueryableDatabase,
+  sql: string,
+  binds: readonly unknown[] = [],
+): Promise<number> {
+  const result = await db
+    .prepare(sql)
+    .bind(...binds)
+    .run();
+  return Number(result?.meta?.changes || 0);
+}
+
+async function selectNumbers(
+  db: QueryableDatabase,
+  sql: string,
+  binds: readonly unknown[],
+  column: string,
+): Promise<number[]> {
+  const result = await db
+    .prepare(sql)
+    .bind(...binds)
+    .all<Record<string, number>>();
+  return (result.results || []).map((row) => Number(row[column]));
+}
+
+/** Listing ids for the source ids a shop just reported. */
+async function listingIdsForSources(
+  db: QueryableDatabase,
+  shopKey: string,
+  sourceIds: readonly string[],
+): Promise<number[]> {
+  const ids = [...new Set(sourceIds.filter(Boolean))];
+  const found: number[] = [];
+  for (const chunk of chunks(ids)) {
+    const placeholders = chunk.map(() => "?").join(",");
+    found.push(
+      ...(await selectNumbers(
+        db,
+        `SELECT id FROM products WHERE shop_key = ? AND source_id IN (${placeholders})`,
+        [shopKey, ...chunk],
+        "id",
+      )),
+    );
+  }
+  return found;
+}
+
+/**
+ * Listings this shop deactivated that still hold membership.
+ *
+ * A crawl reports what it saw, so a listing that disappeared is never in `sourceIds` — without
+ * this, a sold-out offer would keep inflating its product's offer count forever.
+ */
+async function staleMemberListingIds(db: QueryableDatabase, shopKey: string): Promise<number[]> {
+  return selectNumbers(
+    db,
+    `SELECT m.listing_product_id AS listing_product_id
+     FROM product_search_entity_offers m
+     JOIN products p ON p.id = m.listing_product_id
+     WHERE p.shop_key = ? AND p.is_active = 0`,
+    [shopKey],
+    "listing_product_id",
+  );
+}
+
+/** Entities the given listings belong to, plus any fallback entity minted for them. */
+async function entityIdsForListings(
+  db: QueryableDatabase,
+  listingIds: readonly number[],
+): Promise<number[]> {
+  const found: number[] = [];
+  for (const chunk of chunks(listingIds)) {
+    const placeholders = chunk.map(() => "?").join(",");
+    found.push(
+      ...(await selectNumbers(
+        db,
+        `SELECT DISTINCT entity_id AS entity_id FROM product_search_entity_offers
+         WHERE listing_product_id IN (${placeholders})`,
+        chunk,
+        "entity_id",
+      )),
+      ...(await selectNumbers(
+        db,
+        `SELECT id AS entity_id FROM product_search_entities
+         WHERE fallback_listing_id IN (${placeholders})`,
+        chunk,
+        "entity_id",
+      )),
+    );
+  }
+  return found;
+}
+
+async function refreshEntities(
+  db: QueryableDatabase,
+  entityIds: readonly number[],
+): Promise<{ refreshedCount: number; removedCount: number }> {
+  let removedCount = 0;
+  for (const chunk of chunks(entityIds)) {
+    const offerScope = scopeClause("m.entity_id", chunk.length);
+    await runStatement(db, refreshEntityAggregatesSql(offerScope), chunk);
+    await runStatement(db, refreshEntitySearchTermsSql(offerScope), chunk);
+    removedCount += await runStatement(
+      db,
+      deleteEmptyEntitiesSql(scopeClause("id", chunk.length)),
+      chunk,
+    );
+  }
+  return { refreshedCount: entityIds.length, removedCount };
+}
+
+/**
+ * Brings the product-level model in line with one shop's latest crawl.
+ *
+ * Entity rows are written before membership so a member always has an entity to point at, and the
+ * affected entity set is captured both before and after the membership rewrite: a listing that has
+ * just been matched must also re-aggregate the fallback entity it is leaving behind.
+ */
+export async function syncProductSearchEntities(
+  db: QueryableDatabase,
+  shopKey: string,
+  sourceIds: readonly string[] = [],
+): Promise<ProductSearchEntitySyncResult> {
+  const observed = await listingIdsForSources(db, shopKey, sourceIds);
+  const stale = await staleMemberListingIds(db, shopKey);
+  const listingIds = [...new Set([...observed, ...stale])];
+  if (!listingIds.length) {
+    return { listing_count: 0, entity_count: 0, removed_entity_count: 0 };
+  }
+
+  const before = await entityIdsForListings(db, listingIds);
+  for (const chunk of chunks(listingIds)) {
+    const listingScope = scopeClause("p.id", chunk.length);
+    await runStatement(db, upsertCatalogEntitiesSql(listingScope), chunk);
+    await runStatement(db, upsertFallbackEntitiesSql(listingScope), chunk);
+    await runStatement(db, deleteInactiveOffersSql(listingScope), chunk);
+    await runStatement(db, upsertCatalogOffersSql(listingScope), chunk);
+    await runStatement(db, upsertFallbackOffersSql(listingScope), chunk);
+  }
+  const after = await entityIdsForListings(db, listingIds);
+
+  const affected = [...new Set([...before, ...after])];
+  const { removedCount } = await refreshEntities(db, affected);
+  return {
+    listing_count: listingIds.length,
+    entity_count: affected.length,
+    removed_entity_count: removedCount,
+  };
+}
+
+/**
+ * Re-derives every entity from listings, identity resolutions and the Knowledge Catalog.
+ *
+ * The repair path for migration recovery, local development and production drift. Idempotent:
+ * `entity_key` and `listing_product_id` are unique, so a second run converges on the same rows.
+ */
+export async function rebuildProductSearchEntities(
+  db: QueryableDatabase,
+): Promise<ProductSearchEntityRebuildResult> {
+  await runStatement(db, upsertCatalogEntitiesSql());
+  await runStatement(db, upsertFallbackEntitiesSql());
+  await runStatement(db, deleteInactiveOffersSql());
+  const catalogOffers = await runStatement(db, upsertCatalogOffersSql());
+  const fallbackOffers = await runStatement(db, upsertFallbackOffersSql());
+  await runStatement(db, refreshEntityAggregatesSql());
+  await runStatement(db, refreshEntitySearchTermsSql());
+  const removed = await runStatement(db, deleteEmptyEntitiesSql());
+  const totals = await db
+    .prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM product_search_entities) AS entity_count,
+         (SELECT COUNT(*) FROM product_search_entity_offers) AS offer_count`,
+    )
+    .bind()
+    .first<{ entity_count: number; offer_count: number }>();
+  const result: ProductSearchEntityRebuildResult = {
+    event: "product_search_entity_rebuild",
+    entity_count: Number(totals?.entity_count || 0),
+    offer_count: Number(totals?.offer_count || 0),
+    membership_write_count: catalogOffers + fallbackOffers,
+    removed_entity_count: removed,
+  };
+  console.log(JSON.stringify(result));
+  return result;
+}
+
+const CONSISTENCY_SQL = `
+  SELECT
+    (SELECT COUNT(*) FROM products p
+      WHERE p.is_active = 1
+        AND NOT EXISTS (SELECT 1 FROM product_search_entity_offers m WHERE m.listing_product_id = p.id)
+    ) AS unmembered_active_listings,
+    (SELECT COUNT(*) FROM product_search_entity_offers m
+      JOIN products p ON p.id = m.listing_product_id
+      WHERE p.is_active = 0
+    ) AS inactive_offer_memberships,
+    (SELECT COUNT(*) FROM product_search_entities e
+      WHERE NOT EXISTS (SELECT 1 FROM product_search_entity_offers m WHERE m.entity_id = e.id)
+    ) AS entities_without_offers,
+    (SELECT COUNT(*) FROM product_search_entities e
+      WHERE e.entity_kind = 'unresolved_listing'
+        AND EXISTS (
+          SELECT 1 FROM product_identity_resolutions r
+          JOIN knowledge_catalog_products kp
+            ON kp.id = r.catalog_product_id AND kp.verification_status = 'verified'
+          WHERE r.listing_product_id = e.fallback_listing_id AND r.status = 'matched'
+        )
+    ) AS stale_fallback_entities,
+    (SELECT COUNT(*) FROM product_search_entities e
+      WHERE e.entity_kind = 'catalog'
+        AND NOT EXISTS (
+          SELECT 1 FROM knowledge_catalog_products kp
+          WHERE kp.id = e.catalog_product_id AND kp.verification_status = 'verified'
+        )
+    ) AS ineligible_catalog_entities,
+    (SELECT COUNT(*) FROM product_search_entities e
+      WHERE e.offer_count <> (
+        SELECT COUNT(*) FROM product_search_entity_offers m
+        JOIN products p ON p.id = m.listing_product_id
+        WHERE m.entity_id = e.id AND p.is_active = 1
+      )
+    ) AS offer_count_mismatches
+`;
+
+/**
+ * Drift metrics for the product search projection.
+ *
+ * Every number should be zero. A non-zero value names exactly which invariant broke, which is what
+ * makes {@link rebuildProductSearchEntities} an informed repair rather than a ritual.
+ */
+export async function productSearchEntityConsistency(
+  db: QueryableDatabase,
+): Promise<ProductSearchEntityConsistency> {
+  const row = await db.prepare(CONSISTENCY_SQL).bind().first<Record<string, number>>();
+  let ftsIntegrityOk = true;
+  try {
+    await db
+      .prepare(
+        "INSERT INTO product_search_entities_fts(product_search_entities_fts) VALUES('integrity-check')",
+      )
+      .bind()
+      .run();
+  } catch {
+    ftsIntegrityOk = false;
+  }
+  const counts = {
+    unmembered_active_listings: Number(row?.unmembered_active_listings || 0),
+    inactive_offer_memberships: Number(row?.inactive_offer_memberships || 0),
+    entities_without_offers: Number(row?.entities_without_offers || 0),
+    stale_fallback_entities: Number(row?.stale_fallback_entities || 0),
+    ineligible_catalog_entities: Number(row?.ineligible_catalog_entities || 0),
+    offer_count_mismatches: Number(row?.offer_count_mismatches || 0),
+  };
+  return {
+    ...counts,
+    fts_integrity_ok: ftsIntegrityOk,
+    ok: ftsIntegrityOk && Object.values(counts).every((value) => value === 0),
+  };
+}

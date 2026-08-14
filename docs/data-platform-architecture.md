@@ -22,6 +22,7 @@ D1 remains authoritative for:
 - Knowledge Catalog products, aliases, categories, candidates, and review state
 - crawl/shop state
 - search projection metadata
+- the product-level search read model: search entities and their offer memberships
 - Listing -> Knowledge Catalog product identity resolutions
 - R2 evidence metadata
 
@@ -35,9 +36,30 @@ Normal successful crawl HTML is not archived.
 
 ## Product search
 
+Since Phase 4 the user-facing unit of search is a **product**, not a seller listing. Three shops listing the same amplifier produce one result with three offers, and every count, filter, sort and page boundary is defined over products.
+
+### Search entities
+
+`product_search_entities` is the product-level read model. Each row is one **search entity**, which is either:
+
+- a confirmed Knowledge Catalog product (`entity_kind = 'catalog'`, public key `c-<catalog id>`); or
+- a single unresolved listing standing in for itself (`entity_kind = 'unresolved_listing'`, public key `l-<listing id>`).
+
+The fallback kind is mandatory rather than a nicety: identity coverage is incomplete, and without it a listing the catalog has not confirmed would silently stop being findable. Public keys are namespaced because catalog ids and listing ids overlap numerically and must never be mistaken for each other.
+
+`product_search_entity_offers` maps each active listing to exactly one entity. `listing_product_id` is the table's primary key, so duplicate membership is impossible by schema rather than by convention.
+
+Grouping is decided only by Product Identity Resolution: a listing joins a canonical entity when its resolution is `matched` against a verified `knowledge_catalog_products` row. Candidates, fuzzy suggestions, equal titles and equal model stems never merge two shops — variants such as `MK2`, `SE` and `Meta` therefore stay separate for exactly as long as the identity layer says they are different products. Search never runs a second grouping engine of its own.
+
+An entity exists only while it holds at least one active offer, which is what retires a fallback entity when its listing becomes confirmed and what retires a canonical entity when every shop has sold out.
+
+`src/db/product-search-entity-sql.ts` holds the single definition of that derivation. The crawler's incremental sync, the deterministic rebuild (`POST /api/admin/product-search/rebuild`) and the migration backfill all execute the same statements — scoped or unscoped — so the repair path cannot disagree with the live path.
+
+`GET /api/admin/product-search/consistency` reports drift per invariant: active listings with no membership, memberships pointing at inactive listings, entities with no offers, fallback entities whose listing is now matched, catalog entities whose product is no longer eligible, stale offer-count aggregates, and FTS index integrity. The deploy pipeline fails on any of them rather than leaving a product quietly unsearchable.
+
 ### Search projection
 
-`product_search_projection` decouples search vocabulary from the physical shape of `products`. Its FTS5 external-content table is `product_search_fts` with the trigram tokenizer.
+`product_search_projection` decouples listing search vocabulary from the physical shape of `products` and feeds the seller evidence folded into each entity's search terms. Its FTS5 external-content table is `product_search_fts` with the trigram tokenizer.
 
 The projection contains:
 
@@ -71,17 +93,43 @@ For example, `TAD 1000` becomes an FTS5 query equivalent to:
 
 and matches model text such as `D1000MK2` through the trigram index.
 
+Product search matches `product_search_entities_fts`, whose rows are entities. Each entity indexes canonical manufacturer terms, the canonical normalized model, canonical model terms including Knowledge Catalog aliases, and bounded seller evidence — the titles and normalized terms of up to three member listings — so a query phrased the way a retailer writes it still finds the product without that phrasing becoming canonical truth.
+
 ### Ranking
 
 When the API caller does not request an explicit sort, text search applies a small deterministic preference before FTS5 `bm25`:
 
 1. known manufacturer + normalized model exact match
 2. normalized model exact match
-3. exact title
+3. exact canonical model
 4. FTS5 rank
 5. latest activity as a tie breaker
 
+Ranking reads canonical entity columns only, so a product cannot climb the results merely by being listed in more shops.
+
 When the caller explicitly selects `newest`, `oldest`, `updated`, `priceAsc`, or `priceDesc`, that sort remains authoritative. No separate ranking engine is introduced.
+
+### Filters, sorting and pagination
+
+Filters split by what they describe, and the split is load-bearing:
+
+- **Product-level** — `manufacturer`, `category`, `feature` — restrict the entity. A group category expands to its descendants at query time.
+- **Offer-level** — `shop`, `inStock`, `minPrice`, `maxPrice`, `newOnly`, `priceDropped` — are evaluated inside one `EXISTS`, so they must all hold for the *same* offer. Satisfying `shop=A` with one listing and `maxPrice` with another shop's listing would be a wrong answer, not a lenient one.
+
+When offer filters are active, the card summary — offer count, shop count, lowest price, activity — is recomputed over the matching offers, so a card can never contradict the filter that produced it.
+
+Explicit sorting follows the same offer subset as the card whenever an offer filter changes the meaning of the sort key. In those cases the page query joins one request-scoped aggregate over the matching offers and orders by that aggregate. Unfiltered sorts continue to use the indexed stored entity aggregates. `priceAsc` / `priceDesc` with only `inStock=true` is also served by the stored `lowest_in_stock_price_yen` aggregate, because that column already represents exactly that subset.
+
+| `?sort=` | ordering |
+| --- | --- |
+| `newest` | newest offer publication/first-seen time, descending |
+| `oldest` | the same aggregate ascending — the exact inverse, not a different column |
+| `updated` | most recent meaningful listing activity across offers, descending |
+| `priceAsc` / `priceDesc` | lowest offer price; the lowest **in-stock** price when `inStock=true`, so "cheapest first" never orders by a price nobody can buy |
+
+The cursor records both the aggregate variant and, for request-scoped sorts, the offer-filter scope that defined it. A cursor therefore cannot resume under an ordering whose visible card values were calculated from a different offer subset. `items`, `hasMore`, `totalCount`, `totalPages` and cursor movement all operate on entities before any offer is loaded.
+
+Offer summaries and representative offers are loaded in chunks of 40 entity ids to stay under D1's bind-parameter ceiling. At the maximum `limit=100`, a filtered list response therefore costs at most eight statements: an optional count, the entity page, up to three offer-aggregate chunks and up to three representative-offer chunks. Unfiltered responses skip the aggregate loader. The query count is bounded by page size, not result cardinality, and there is no per-result offer lookup.
 
 ## Product Identity Resolution
 
@@ -225,6 +273,14 @@ Application-level structured logs expose:
 - `evidence_archive_failure_count`
 - `search_latency_ms`
 - `search_result_count`
+- `search_term_count` and `search_fts_term_count`
+- `search_entity_total_count` when the caller asked for a total
+- `matched_catalog_entity_count` and `unresolved_fallback_entity_count`, which show how much of a result page is confirmed cross-shop identity and how much is still standing in for itself
+- `offer_summary_query_count`, the actual bounded number of chunked offer queries the response needed
+
+Raw user search text is deliberately not logged; the fields above are counts and classifications.
+
+Each crawl summary additionally carries `searchEntities` with the listings resynced, entities touched, and entities retired by that crawl. Entity sync runs after identity resolution, because which product a listing belongs to is decided by the resolution written in the step before it. A failure there logs `product_search_entity_sync_failure` and leaves the crawl successful: stale grouping is a read-model repair, not a reason to discard a completed collection.
 
 `GET /api/admin/data-platform/status` (ADMIN_TOKEN protected) reports bounded D1 counts useful for migration/capacity decisions:
 
@@ -281,5 +337,14 @@ Unit/regression tests cover:
 - fuzzy candidates remaining unresolved
 - active-listing Identity denominator and missing-resolution coverage
 - evidence archive allow-list, redaction, hash deduplication, and best-effort R2 failure behavior
+- only a matched resolution against a verified catalog product merging two shops, with unresolved listings staying searchable as fallback entities
+- offer-level filters holding for one and the same offer, the card summary being recomputed from the offers that matched, and explicit sorting using that same offer subset
+- product-unit totals, offsets, and keyset cursors, including cursors being scoped to the aggregate/filter semantics that minted them
+- favorite product snapshots preserving category ancestors so group-category filters match the same products as server search
+- a page of results costing a bounded number of statements instead of one lookup per result
+- the migration backfill being the same derivation the incremental sync runs, not a second definition of grouping
+- consistency reporting each read-model invariant separately, and the rebuild converging on re-run
 
-The migrations are forward-only. Migration 0017 preserved the old FTS stack only for its rollout window; migration 0020 removes it after all callers have migrated and backfills any listing missing an Identity resolution row without merging products.
+`scripts/verify-search-integration.ts` covers what SQL-shape assertions cannot: it runs against a locally migrated D1 in CI to prove that the trigram index really resolves `TAD 1000` and that two shops' confirmed listings collapse into one entity while an unconfirmed listing stays separate.
+
+The migrations are forward-only. Migration 0017 preserved the old FTS stack only for its rollout window; migration 0020 removes it after all callers have migrated and backfills any listing missing an Identity resolution row without merging products. Migration 0021 is purely additive for the same reason — migrations run before the replacement Worker is deployed, so the listing search structures stay untouched and keep serving traffic while the product entity tables fill in.

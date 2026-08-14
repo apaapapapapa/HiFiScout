@@ -39,21 +39,24 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # Every `npx wrangler` below resolves to the Wrangler installed here, pinned by
+      # package-lock.json. CI already exercises that exact binary through `npm run build:worker`,
+      # so deploying with a separately downloaded copy only added registry round trips per command.
       - run: npm ci
       - name: Provision Evidence Archive R2
         shell: bash
         run: |
           set -euo pipefail
           bucket="hifiscout-evidence"
-          if npx --yes wrangler@4.120.1 r2 bucket info "$bucket" >/dev/null 2>&1; then
+          if npx wrangler r2 bucket info "$bucket" >/dev/null 2>&1; then
             echo "R2 bucket already exists: $bucket"
           else
-            npx --yes wrangler@4.120.1 r2 bucket create "$bucket"
+            npx wrangler r2 bucket create "$bucket"
           fi
 
           while IFS='|' read -r name prefix days; do
-            npx --yes wrangler@4.120.1 r2 bucket lifecycle remove "$bucket" --id "$name" >/dev/null 2>&1 || true
-            npx --yes wrangler@4.120.1 r2 bucket lifecycle add "$bucket" "$name" "$prefix" --expire-days "$days"
+            npx wrangler r2 bucket lifecycle remove "$bucket" --id "$name" >/dev/null 2>&1 || true
+            npx wrangler r2 bucket lifecycle add "$bucket" "$name" "$prefix" --expire-days "$days"
           done <<'RULES'
           hifiscout-evidence-short|evidence/short/|30
           hifiscout-evidence-medium|evidence/medium/|90
@@ -68,23 +71,23 @@ jobs:
           tar -xzf "$tarball" -C node_modules/@cloudflare/playwright --strip-components=1
           rm -f "$tarball"
       - name: Apply backward-compatible D1 migrations
-        run: npx --yes wrangler@4.120.1 d1 migrations apply DB --remote
+        run: npx wrangler d1 migrations apply DB --remote
       - name: Provision Knowledge Catalog queues
         shell: bash
         run: |
           set -euo pipefail
           for queue in hifiscout-knowledge-verification hifiscout-knowledge-verification-dlq; do
-            if npx --yes wrangler@4.120.1 queues info "$queue" >/dev/null 2>&1; then
+            if npx wrangler queues info "$queue" >/dev/null 2>&1; then
               echo "Queue already exists: $queue"
             else
-              npx --yes wrangler@4.120.1 queues create "$queue"
+              npx wrangler queues create "$queue"
             fi
           done
       - name: Verify AudioUnion priced listings are visible as in stock
         shell: bash
         run: |
           set -euo pipefail
-          result="$(npx --yes wrangler@4.120.1 d1 execute DB --remote --json --command "
+          result="$(npx wrangler d1 execute DB --remote --json --command "
             SELECT
               COUNT(*) AS active_count,
               SUM(CASE WHEN stock_status = 'in_stock' THEN 1 ELSE 0 END) AS in_stock_count,
@@ -103,7 +106,7 @@ jobs:
       - name: Build browser assets from TypeScript source
         run: npm run build:frontend
       - name: Deploy Worker and static assets
-        run: npx --yes wrangler@4.120.1 deploy
+        run: npx wrangler deploy
       - name: Check production health
         shell: bash
         run: |
@@ -117,7 +120,7 @@ jobs:
           set -euo pipefail
 
           query() {
-            npx --yes wrangler@4.120.1 d1 execute DB --remote --json --command "$1" | jq '.[0].results // []'
+            npx wrangler d1 execute DB --remote --json --command "$1" | jq '.[0].results // []'
           }
 
           identity="$(query "
@@ -176,6 +179,48 @@ jobs:
             GROUP BY p.shop_key
             ORDER BY p.shop_key;")"
 
+          search_entities="$(query "
+            SELECT
+              (SELECT COUNT(*) FROM product_search_entities) AS entity_count,
+              (SELECT COUNT(*) FROM product_search_entities WHERE entity_kind = 'catalog') AS catalog_entity_count,
+              (SELECT COUNT(*) FROM product_search_entities WHERE entity_kind = 'unresolved_listing') AS fallback_entity_count,
+              (SELECT COUNT(*) FROM product_search_entities WHERE shop_count > 1) AS multi_shop_entity_count,
+              (SELECT COUNT(*) FROM product_search_entity_offers) AS offer_count,
+              (SELECT COUNT(*) FROM products p
+                WHERE p.is_active = 1
+                  AND NOT EXISTS (SELECT 1 FROM product_search_entity_offers m WHERE m.listing_product_id = p.id)
+              ) AS unmembered_active_listings,
+              (SELECT COUNT(*) FROM product_search_entity_offers m
+                JOIN products p ON p.id = m.listing_product_id
+                WHERE p.is_active = 0
+              ) AS inactive_offer_memberships,
+              (SELECT COUNT(*) FROM product_search_entities e
+                WHERE NOT EXISTS (SELECT 1 FROM product_search_entity_offers m WHERE m.entity_id = e.id)
+              ) AS entities_without_offers,
+              (SELECT COUNT(*) FROM product_search_entities e
+                WHERE e.entity_kind = 'unresolved_listing'
+                  AND EXISTS (
+                    SELECT 1 FROM product_identity_resolutions r
+                    JOIN knowledge_catalog_products kp
+                      ON kp.id = r.catalog_product_id AND kp.verification_status = 'verified'
+                    WHERE r.listing_product_id = e.fallback_listing_id AND r.status = 'matched'
+                  )
+              ) AS stale_fallback_entities,
+              (SELECT COUNT(*) FROM product_search_entities e
+                WHERE e.entity_kind = 'catalog'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM knowledge_catalog_products kp
+                    WHERE kp.id = e.catalog_product_id AND kp.verification_status = 'verified'
+                  )
+              ) AS ineligible_catalog_entities,
+              (SELECT COUNT(*) FROM product_search_entities e
+                WHERE e.offer_count <> (
+                  SELECT COUNT(*) FROM product_search_entity_offers m
+                  JOIN products p ON p.id = m.listing_product_id
+                  WHERE m.entity_id = e.id AND p.is_active = 1
+                )
+              ) AS offer_count_mismatches;")"
+
           quality_runs="$(query "
             SELECT q.*
             FROM data_quality_runs q
@@ -215,6 +260,20 @@ jobs:
             exit 1
           fi
 
+          # A product that stops being searchable is invisible to users but silent in the logs, so
+          # every read-model invariant is a deploy gate rather than a dashboard nobody opens.
+          search_drift="$(jq '[.[0] | .unmembered_active_listings, .inactive_offer_memberships, .entities_without_offers, .stale_fallback_entities, .ineligible_catalog_entities, .offer_count_mismatches] | map(. // 0) | add' <<< "$search_entities")"
+          if [ "$search_drift" -ne 0 ]; then
+            echo "Product search read model drifted; POST /api/admin/product-search/rebuild repairs it." >&2
+            jq . <<< "$search_entities" >&2
+            exit 1
+          fi
+          if ! npx --yes wrangler@4.120.1 d1 execute DB --remote --command \
+            "INSERT INTO product_search_entities_fts(product_search_entities_fts) VALUES('integrity-check');" >/dev/null; then
+            echo "Product search FTS integrity check failed; POST /api/admin/product-search/rebuild repairs the read model." >&2
+            exit 1
+          fi
+
           echo 'Product Identity production state:'
           jq . <<< "$identity"
           echo 'Evidence metadata production state:'
@@ -223,6 +282,8 @@ jobs:
           jq . <<< "$shops"
           echo 'Phase 2 snapshot baseline:'
           jq . <<< "$baseline_with_rates"
+          echo 'Phase 4 product search read model:'
+          jq . <<< "$search_entities"
           echo 'Latest persisted Phase 2 quality runs:'
           jq . <<< "$quality_runs"
 
@@ -251,6 +312,11 @@ jobs:
             echo '### Phase 2 snapshot baseline'
             echo '```json'
             jq . <<< "$baseline_with_rates"
+            echo '```'
+            echo
+            echo '### Phase 4 product search read model'
+            echo '```json'
+            jq . <<< "$search_entities"
             echo '```'
             echo
             echo '### Latest persisted Phase 2 quality runs'

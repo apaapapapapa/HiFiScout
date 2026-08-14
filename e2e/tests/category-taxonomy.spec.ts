@@ -78,7 +78,7 @@ async function mockCatalog(page: Page): Promise<URL[]> {
     }),
   );
   const requests: URL[] = [];
-  await page.route("**/api/products?**", (route: Route) => {
+  await page.route("**/api/product-search?**", (route: Route) => {
     requests.push(new URL(route.request().url()));
     return route.fulfill({
       contentType: "application/json",

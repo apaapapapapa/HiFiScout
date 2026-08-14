@@ -11,7 +11,9 @@ import {
   createApiClient,
   isMetaResponse,
   isNonNegativeInteger,
+  isProductDetailResponse,
   isProductHistoryResponse,
+  isProductSearchItem,
   isProductsResponse,
 } from "./api-client.js";
 import {
@@ -49,6 +51,8 @@ import {
   emptyState,
   errorState,
   legacyFavoritesNotice,
+  offersErrorMarkup,
+  offersMarkup,
   paginationMarkup,
   priceHistoryErrorMarkup,
   priceHistoryMarkup,
@@ -58,6 +62,13 @@ import {
 } from "./product-view.js";
 import type { MetaResponse, MetaShop } from "../src/api/contracts.js";
 import type { DisplayProduct, PageState, ShopIndex } from "./types.js";
+
+/**
+ * The rendered unit is a product with offers.
+ *
+ * The list response carries one representative offer per product; the rest are fetched only when a
+ * user opens the comparison, so a page of fifty results still costs one request.
+ */
 
 interface AppState {
   products: DisplayProduct[];
@@ -91,7 +102,7 @@ const MOBILE_QUERY = "(max-width: 640px)";
 const storedView = localStorage.getItem(VIEW_KEY);
 const state: AppState = {
   products: [],
-  favorites: parseFavoriteStorage(localStorage.getItem(FAVORITES_KEY)),
+  favorites: parseFavoriteStorage(localStorage.getItem(FAVORITES_KEY), isProductSearchItem),
   pages: new Map(),
   currentPage: 1,
   totalPages: 0,
@@ -107,8 +118,8 @@ const state: AppState = {
 const api = createApiClient();
 let shops: ShopIndex = {};
 
-function shopName(key: string | null): string {
-  return shops[key ?? ""]?.name || key || "ショップ不明";
+function shopName(key: string): string {
+  return shops[key]?.name || key || "ショップ不明";
 }
 
 /** Single read of the filter controls; every pure helper takes the result rather than the DOM. */
@@ -128,8 +139,8 @@ function selectedCategoryLabel(): string {
   return option?.value ? (option.textContent?.trim() ?? "") : "";
 }
 
-function isFavorite(id: number | string | null): boolean {
-  return state.favorites.products.has(Number(id)) || state.favorites.legacyIds.has(Number(id));
+function isFavorite(key: string): boolean {
+  return state.favorites.products.has(key);
 }
 
 function favoriteCount(): number {
@@ -149,14 +160,19 @@ function updateFavoriteCount(): void {
   $("favorites-count").textContent = `(${favoriteCount()})`;
 }
 
-/** Upgrades legacy id-only favorites to full snapshots as their products reappear in a listing. */
+/**
+ * Refreshes stored favorites with live prices and offer counts as they reappear in results.
+ *
+ * The summary written here is the one the server computed for the *current* filters, so a favorite
+ * seen under `shop=A` records that shop's view of the product. That matches what the user was
+ * looking at and what the favorites note already promises — "as of the last time you saw it" — and
+ * it self-corrects the moment they open the product's offers, which always fetches the full set.
+ */
 function refreshFavoriteSnapshots(products: DisplayProduct[]): void {
   let changed = false;
   for (const product of products) {
-    const id = Number(product.id);
-    if (!isFavorite(id)) continue;
-    state.favorites.legacyIds.delete(id);
-    state.favorites.products.set(id, favoriteSnapshot(product));
+    if (!isFavorite(product.key)) continue;
+    state.favorites.products.set(product.key, favoriteSnapshot(product));
     changed = true;
   }
   if (changed) saveFavorites();
@@ -285,9 +301,11 @@ async function loadProducts({
   setLoading(true);
 
   try {
-    const result = await api.fetchJson(`/api/products?${params}`, { signal: controller.signal });
+    const result = await api.fetchJson(`/api/product-search?${params}`, {
+      signal: controller.signal,
+    });
     if (sequence !== state.requestSequence) return;
-    if (!isProductsResponse(result)) throw new TypeError("Unexpected /api/products payload");
+    if (!isProductsResponse(result)) throw new TypeError("Unexpected /api/product-search payload");
 
     if (isNonNegativeInteger(result.totalPages)) state.totalPages = result.totalPages;
     if (isNonNegativeInteger(result.totalCount)) state.totalItems = result.totalCount;
@@ -370,12 +388,7 @@ function render(errorMessage = ""): void {
   $("favorites-note").hidden = !favoriteMode;
   const legacyNotice = favoriteMode ? legacyFavoritesNotice(state.favorites.legacyIds.size) : "";
   const cards = products
-    .map((product) =>
-      productCard(product, {
-        favorite: isFavorite(product.id),
-        shopName: shopName(product.shop_key),
-      }),
-    )
+    .map((product) => productCard(product, { favorite: isFavorite(product.key), shopName }))
     .join("");
   $("products").innerHTML = errorMessage
     ? errorState(errorMessage)
@@ -385,9 +398,10 @@ function render(errorMessage = ""): void {
   renderPagination();
 }
 
-async function showHistory(id: string): Promise<void> {
+/** Price history is per seller listing, so it is reached from an offer rather than from a card. */
+async function showHistory(listingId: string): Promise<void> {
   try {
-    const data = await api.fetchJson(`/api/products/${id}/history`);
+    const data = await api.fetchJson(`/api/products/${listingId}/history`);
     if (!isProductHistoryResponse(data)) throw new TypeError("Unexpected history payload");
     $("history-content").innerHTML = priceHistoryMarkup(data.product, data.history);
     $dialog("history-dialog").showModal();
@@ -395,6 +409,27 @@ async function showHistory(id: string): Promise<void> {
     console.error(error);
     $("history-content").innerHTML = priceHistoryErrorMarkup();
     $dialog("history-dialog").showModal();
+  }
+}
+
+/**
+ * The cross-shop comparison.
+ *
+ * Offers are fetched on demand rather than embedded in every card: a list response carries one
+ * representative offer per product, and loading the rest for fifty products nobody opened would be
+ * exactly the per-result fan-out the product model exists to avoid.
+ */
+async function showOffers(key: string): Promise<void> {
+  const dialog = $dialog("offers-dialog");
+  try {
+    const data = await api.fetchJson(`/api/product-search/${encodeURIComponent(key)}`);
+    if (!isProductDetailResponse(data)) throw new TypeError("Unexpected product detail payload");
+    $("offers-content").innerHTML = offersMarkup(data.product, data.offers, { shopName });
+    dialog.showModal();
+  } catch (error) {
+    console.error(error);
+    $("offers-content").innerHTML = offersErrorMarkup();
+    dialog.showModal();
   }
 }
 
@@ -451,15 +486,12 @@ function syncFilterPanelMode(): void {
   document.body.classList.remove("filters-open");
 }
 
-function toggleFavorite(id: number): void {
-  if (isFavorite(id)) {
-    state.favorites.products.delete(id);
-    state.favorites.legacyIds.delete(id);
+function toggleFavorite(key: string): void {
+  if (isFavorite(key)) {
+    state.favorites.products.delete(key);
   } else {
-    const product =
-      state.products.find((candidate) => Number(candidate.id) === id) ||
-      state.favorites.products.get(id);
-    if (product) state.favorites.products.set(id, favoriteSnapshot(product));
+    const product = state.products.find((candidate) => candidate.key === key);
+    if (product) state.favorites.products.set(key, favoriteSnapshot(product));
   }
   saveFavorites();
   render();
@@ -488,7 +520,13 @@ document.addEventListener("click", (event) => {
 
   const favoriteButton = closestElement(target, "[data-fav]");
   if (favoriteButton) {
-    toggleFavorite(Number(favoriteButton.dataset.fav));
+    toggleFavorite(favoriteButton.dataset.fav ?? "");
+    return;
+  }
+
+  const offersButton = closestElement(target, "[data-offers]");
+  if (offersButton) {
+    showOffers(offersButton.dataset.offers ?? "");
     return;
   }
 
@@ -523,8 +561,9 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  if (target.matches(".dialog-close")) {
-    $dialog("history-dialog").close();
+  const dialogClose = closestElement(target, ".dialog-close");
+  if (dialogClose) {
+    dialogClose.closest("dialog")?.close();
     return;
   }
   if (target.id === "filter-toggle") {

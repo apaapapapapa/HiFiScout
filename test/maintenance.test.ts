@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { retentionCutoffs } from "../src/maintenance.js";
+import { retentionCutoffs, runRetentionCleanup } from "../src/maintenance.js";
+import { captureDatabase } from "./helpers/d1.js";
 
 test("retention cutoffs use conservative operational defaults", () => {
   const now = new Date("2026-08-11T00:00:00.000Z");
@@ -14,6 +15,26 @@ test("retention cutoffs use conservative operational defaults", () => {
   assert.equal(result.crawlRunsBefore, "2026-07-12T00:00:00.000Z");
   assert.equal(result.dataQualityBefore, "2026-02-12T00:00:00.000Z");
   assert.equal(result.inactiveProductsBefore, "2025-08-11T00:00:00.000Z");
+});
+
+test("deleting an aged-out listing also retires the product it was the last offer for", async () => {
+  const db = captureDatabase();
+  const result = await runRetentionCleanup(
+    { DB: db },
+    { now: new Date("2026-08-11T00:00:00.000Z") },
+  );
+
+  const prune = db.calls.find((statement) =>
+    /DELETE FROM product_search_entities/.test(statement.sql),
+  );
+  assert.ok(prune, "expected empty product entities to be pruned");
+  assert.match(prune.sql, /NOT EXISTS[\s\S]*product_search_entity_offers/);
+  assert.equal(result.deleted.emptySearchEntities, 1);
+  // Order matters: pruning before the listing delete would leave the entity behind.
+  const listingDelete = db.calls.findIndex((statement) =>
+    /DELETE FROM products/.test(statement.sql),
+  );
+  assert.ok(listingDelete >= 0 && listingDelete < db.calls.indexOf(prune));
 });
 
 test("retention delete batches are capped at 1000 rows", () => {

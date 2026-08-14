@@ -12,13 +12,14 @@ import type {
   MetaResponse,
   MetaShop,
   MetaShopSyncState,
-  ProductListItem,
+  ProductOffer,
   ProductPricePoint,
+  ProductSearchItem,
   ShopHealthEntry,
   ShopHealthReason,
   ShopHealthStatus,
 } from "../src/api/contracts.js";
-import type { ProductHistoryResponse, ProductsResponse } from "./types.js";
+import type { ProductDetailResponse, ProductHistoryResponse, ProductsResponse } from "./types.js";
 
 /** Matches the Worker's own `cache-control: public, max-age=30` on these endpoints. */
 const CACHE_TTL_MS = 30_000;
@@ -138,45 +139,63 @@ function isMetaCategoryFacet(value: unknown): value is MetaCategoryFacet {
   );
 }
 
-function isProductListItem(value: unknown): value is ProductListItem {
+export function isProductOffer(value: unknown): value is ProductOffer {
   if (!isRecord(value)) return false;
   const stringFields = [
     "shop_key",
-    "source_id",
-    "manufacturer",
-    "model",
-    "title",
-    "category",
-    "condition_text",
     "source_url",
+    "title",
+    "condition_text",
     "first_seen_at",
     "last_seen_at",
-    "last_changed_at",
-    "metadata_json",
-    "raw_manufacturer",
-    "manufacturer_id",
-    "raw_category",
-    "primary_category_id",
-    "search_aliases",
   ] as const;
   if (!stringFields.every((field) => typeof value[field] === "string")) return false;
 
   return (
-    isNonNegativeInteger(value.id) &&
+    isNonNegativeInteger(value.listing_product_id) &&
     isNullableNumber(value.price_yen) &&
+    isNullableNumber(value.previous_price_yen) &&
     (value.stock_status === "in_stock" ||
       value.stock_status === "sold_out" ||
       value.stock_status === "unknown") &&
-    (value.is_active === 0 || value.is_active === 1) &&
-    isNullableNumber(value.previous_price_yen) &&
-    isStringArray(value.category_ids) &&
-    (value.classification_status === "classified" ||
-      value.classification_status === "unclassified") &&
-    isNullableString(value.last_inventory_checked_at) &&
-    isNonNegativeInteger(value.inventory_check_failures) &&
-    isNullableString(value.last_inventory_check_attempt_at) &&
     isNullableString(value.last_activity_at) &&
     isNullableString(value.source_published_at)
+  );
+}
+
+/**
+ * Validates every field the product card reads, including the nested representative offer.
+ *
+ * Also the gate for favorites restored from localStorage, so a hand-edited or half-migrated entry
+ * is discarded rather than rendered as a product.
+ */
+export function isProductSearchItem(value: unknown): value is ProductSearchItem {
+  if (!isRecord(value)) return false;
+  const stringFields = [
+    "key",
+    "manufacturer",
+    "manufacturer_id",
+    "model",
+    "primary_category_id",
+    "category",
+  ] as const;
+  if (!stringFields.every((field) => typeof value[field] === "string")) return false;
+  if (!value.key) return false;
+
+  return (
+    (value.identity_kind === "catalog" || value.identity_kind === "unresolved_listing") &&
+    (value.catalog_product_id === null || isNonNegativeInteger(value.catalog_product_id)) &&
+    isNonNegativeInteger(value.offer_count) &&
+    isNonNegativeInteger(value.in_stock_offer_count) &&
+    isNonNegativeInteger(value.sold_out_offer_count) &&
+    isNonNegativeInteger(value.shop_count) &&
+    isNullableNumber(value.lowest_price_yen) &&
+    isNullableNumber(value.highest_price_yen) &&
+    isNullableString(value.latest_activity_at) &&
+    isNullableString(value.newest_listed_at) &&
+    typeof value.has_new_offer === "boolean" &&
+    typeof value.has_price_drop === "boolean" &&
+    (value.representative_offer === null || isProductOffer(value.representative_offer))
   );
 }
 
@@ -203,7 +222,7 @@ export function isProductsResponse(value: unknown): value is ProductsResponse {
   if (
     !isRecord(value) ||
     !Array.isArray(value.items) ||
-    !value.items.every(isProductListItem) ||
+    !value.items.every(isProductSearchItem) ||
     typeof value.hasMore !== "boolean" ||
     !isNullableString(value.nextCursor)
   ) {
@@ -219,10 +238,27 @@ export function isProductsResponse(value: unknown): value is ProductsResponse {
   return !("totalPages" in value) || isNonNegativeInteger(value.totalPages);
 }
 
+export function isProductDetailResponse(value: unknown): value is ProductDetailResponse {
+  return (
+    isRecord(value) &&
+    isProductSearchItem(value.product) &&
+    Array.isArray(value.offers) &&
+    value.offers.every(isProductOffer)
+  );
+}
+
+/**
+ * Price history stays a seller-listing view, so only the labels the dialog prints are validated.
+ * Widening this to the whole listing contract would recouple the browser to a shape it stopped
+ * rendering when cards became products.
+ */
 export function isProductHistoryResponse(value: unknown): value is ProductHistoryResponse {
   return (
     isRecord(value) &&
-    isProductListItem(value.product) &&
+    isRecord(value.product) &&
+    typeof value.product.manufacturer === "string" &&
+    typeof value.product.model === "string" &&
+    typeof value.product.title === "string" &&
     Array.isArray(value.history) &&
     value.history.every(isProductPricePoint)
   );

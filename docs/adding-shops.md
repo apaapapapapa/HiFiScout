@@ -1,9 +1,9 @@
 # Adding a shop
 
 A shop is a plugin, not a change to the crawler. Discovery, transport, normalization, identity,
-persistence, search projection, evidence, and data quality are platform behavior. A shop contributes
-only definition metadata, a discovery policy, seller-fact parsing, availability mapping, optional
-capabilities, fixtures, and tests.
+persistence, search projection, product search grouping, evidence, and data quality are platform
+behavior. A shop contributes only definition metadata, a discovery policy, seller-fact parsing,
+availability mapping, optional capabilities, fixtures, and tests.
 
 Adding a normal shop must not require editing `run.ts`, `dispatch.ts`, a repository, or a shop-name
 type union in `src/crawler/types.ts`.
@@ -209,8 +209,7 @@ other editorial content.
 4. Map seller availability to the canonical tri-state and test contradictory/uncertain cases.
 5. Define seller-category mapping/policy and optional detail evidence where listing evidence is weak.
 6. Add parser assertions for raw fields, availability, classification and factual metadata.
-7. Run `npm run format`, `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`,
-   `npm run docs:architecture:check`, and `npm run build`.
+7. Run `npm run verify`, `npm run docs:architecture:check`, and `npm run build`.
 8. Check robots.txt and the site's current terms.
 9. Declare the shop's `<PREFIX>_*` values in `wrangler.jsonc`; relay collectors also require
    `CRAWL_RELAY_URL` and `CRAWL_RELAY_TOKEN`.

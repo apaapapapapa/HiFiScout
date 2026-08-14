@@ -67,6 +67,8 @@ After evaluation, the crawler emits a structured `data_quality_evaluated` log wi
 
 The production deployment baseline independently recomputes Identity coverage over active listings. It reports `identity_resolution_missing_count` and `identity_resolution_coverage_rate`, uses all active listings as the Identity Unresolved denominator, and fails the deployment validation step if even one active listing has no Identity resolution row. This turns the active-listing Identity invariant into an operational regression gate rather than a one-time migration assertion.
 
+The same step also counts product search read-model drift — active listings with no entity membership, memberships pointing at inactive listings, entities left without offers, and fallback entities whose listing has since been confirmed — and fails the deploy when any counter is non-zero. A product that stops being searchable is invisible to users but silent in the logs, which is why it is a gate rather than a dashboard; `POST /api/admin/product-search/rebuild` is the documented repair. See [Data platform architecture](./data-platform-architecture.md) for the read model itself.
+
 ## Retention
 
 Data Quality history defaults to 180 days through `DATA_QUALITY_RETENTION_DAYS`. Existing daily maintenance deletes old rows in the same bounded batch size used by other retention jobs (default 500, hard cap 1000). No unbounded history delete is performed.

@@ -6,7 +6,12 @@ HiFiScout follows a test pyramid: most behavior is verified in-process with Node
 
 ### 1. Unit tests — default and largest layer
 
-Run with `npm test` or `npm run test:unit`.
+Run with `npm test` or `npm run test:unit`, or as part of `npm run verify`. A single file runs with
+`npx tsx --test test/<name>.test.ts`.
+
+The default reporter is `dot`: a passing run prints one character per test instead of one line, and
+failing tests still print their assertion, diff, and stack in full. `npm run test:unit:verbose` uses
+the `spec` reporter when you need to read passing test names.
 
 Keep parsing, normalization, category inference, query construction, scheduling decisions, guards, and shop-specific mapping rules here. Prefer pure functions and deterministic fixtures. Stub network, browser, queue, and D1 boundaries rather than exercising remote services.
 
@@ -26,11 +31,12 @@ Playwright lives in `e2e/` so Chromium and the Playwright runner are not depende
 
 The E2E suite validates only critical wiring that smaller tests cannot prove:
 
-- the deployed page loads and can call `/api/meta` and `/api/products`;
+- the deployed page loads and can call `/api/meta` and `/api/product-search`;
 - the catalog UI initializes successfully from live API responses;
-- changing a shop filter propagates the selected value to `/api/products` and refreshes the UI.
+- changing a shop filter propagates the selected value to `/api/product-search` and refreshes the UI;
+- a product listed by several shops renders as one card, and opening it fetches `/api/product-search/:key` and shows each shop's offer with its own link.
 
-The tests deliberately avoid assertions such as a specific product, price, manufacturer, or result count being present. Development data changes continuously, so those assertions would create flaky tests without increasing confidence in application wiring.
+Tests against live data deliberately avoid assertions such as a specific product, price, manufacturer, or result count being present. Development data changes continuously, so those assertions would create flaky tests without increasing confidence in application wiring. The cross-shop grouping flow is the exception and uses routed fixtures, because the point of that test is what the browser does with a multi-offer product — the grouping SQL itself is proven by the repository unit tests.
 
 ## Running E2E locally
 
@@ -45,7 +51,9 @@ E2E_BASE_URL=https://hifiscout.raha3415kohei.workers.dev npm test
 
 ## CI policy
 
-The normal `CI` workflow runs migrations, the fast Node test suite, and Wrangler dry-run validation. It does not install a browser.
+The normal `CI` workflow runs migrations, `scripts/verify-search-integration.ts` against that locally migrated D1, the fast Node test suite, and Wrangler dry-run validation. It does not install a browser.
+
+The search integration check exists because two behaviors cannot be proven by asserting on generated SQL: that the FTS5 trigram index actually resolves a query like `TAD 1000`, and that two shops' confirmed listings really collapse into one search entity while an unconfirmed listing stays on its own. Those are properties of the database, so they are verified against a real one.
 
 The `E2E` workflow runs after a successful `Deploy Cloudflare` workflow, so it checks the version that was actually deployed instead of racing the deployment. It can also be started manually with an alternate base URL. A single Chromium worker is used to keep cost, duration, and nondeterminism low.
 

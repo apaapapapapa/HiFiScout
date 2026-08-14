@@ -485,6 +485,24 @@ export function categoryClosureIds(categoryId: string): CategoryId[] {
   return category.parentId ? [category.id, category.parentId] : [category.id];
 }
 
+/**
+ * Every category id a filter on `value` should accept, including `value` itself.
+ *
+ * The inverse of {@link categoryClosureIds}: that one answers "which filters match this product",
+ * this one answers "which products match this filter". Product search needs the second direction
+ * because a product-level result stores one canonical category rather than a materialized closure,
+ * so a group category has to expand to its descendants at query time. Accepts ids, display names
+ * and legacy aliases, exactly like {@link categoryIdForFilter}.
+ */
+export function categoryFilterIds(value: string = ""): CategoryId[] {
+  const categoryId = categoryIdForFilter(value);
+  if (!categoryId) return [];
+  return CATEGORIES.filter(
+    (candidate) =>
+      candidate.id === categoryId || categoryClosureIds(candidate.id).includes(categoryId),
+  ).map((candidate) => candidate.id);
+}
+
 export function categoryFacet(categoryId: string): CategoryFacet | null {
   const category = getCategory(categoryId);
   if (!category?.filterable) return null;
