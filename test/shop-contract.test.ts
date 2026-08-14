@@ -46,7 +46,7 @@ function readSource(path: string): string {
 }
 
 function ownerOfShopFile(file: string): string | undefined {
-  return [...SHOP_PLUGINS.map((plugin) => plugin.key)]
+  return SHOP_PLUGINS.map((plugin) => plugin.key)
     .sort((a, b) => b.length - a.length)
     .find((key) => file === `${key}.ts` || file.startsWith(`${key}-`));
 }
