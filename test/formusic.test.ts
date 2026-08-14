@@ -64,6 +64,8 @@ test("FOR MUSIC parser keeps used/display listings and factual fields only", () 
   const used = items.find((item) => item.sourceId === "37194");
   assert.ok(used);
   assert.equal(used.manufacturer, "Bowers&Wilkins");
+  assert.equal(used.rawManufacturer, "Bowers&Wilkins");
+  assert.equal(used.rawCategory, "speaker-system");
   assert.equal(used.model, "805D3 グロスブラック");
   assert.equal(used.category, "スピーカー");
   assert.equal(used.priceYen, 660000);
@@ -88,8 +90,11 @@ test("FOR MUSIC parser keeps used/display listings and factual fields only", () 
   assert.equal(sold.stockStatus, "sold_out");
 });
 
-test("FOR MUSIC adapter uses one complete storefront snapshot", () => {
-  assert.deepEqual([...forMusicAdapter.pageUrls()], ["https://shop.formusic.jp/"]);
-  assert.equal(forMusicAdapter.dynamicPagination, true);
-  assert.deepEqual(forMusicAdapter.discoverPageUrls(), []);
+test("FOR MUSIC adapter declares one complete storefront snapshot", () => {
+  assert.deepEqual(
+    [...forMusicAdapter.discovery.initialTargets({ maxPages: 40, env: {} })],
+    ["https://shop.formusic.jp/"],
+  );
+  assert.equal(forMusicAdapter.discovery.coverage, "complete");
+  assert.deepEqual(forMusicAdapter.discovery.discoverTargets?.("", "https://shop.formusic.jp/"), []);
 });
