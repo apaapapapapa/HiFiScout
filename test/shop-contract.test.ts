@@ -365,24 +365,25 @@ test("shop-specific behavior is opt-in capability metadata", () => {
 });
 
 test("diagnostics and Data Quality overrides are registered behind capabilities", () => {
-  const plugin = registerStub({}, {}, {
-    diagnostics: { diagnosePage: () => ({ kind: "fixture" }) },
-    dataQuality: {
-      thresholds: {
-        manufacturerUnknownRate: { warning: 0.04, critical: 0.08 },
+  const plugin = registerStub(
+    {},
+    {},
+    {
+      diagnostics: { diagnosePage: () => ({ kind: "fixture" }) },
+      dataQuality: {
+        thresholds: {
+          manufacturerUnknownRate: { warning: 0.04, critical: 0.08 },
+        },
       },
     },
-  });
+  );
 
   assert.equal("diagnosePage" in plugin, false);
   assert.equal("qualityThresholds" in plugin, false);
   assert.deepEqual(plugin.capabilities.diagnostics?.diagnosePage("<html></html>"), {
     kind: "fixture",
   });
-  assert.equal(
-    plugin.capabilities.dataQuality?.thresholds?.manufacturerUnknownRate?.warning,
-    0.04,
-  );
+  assert.equal(plugin.capabilities.dataQuality?.thresholds?.manufacturerUnknownRate?.warning, 0.04);
 });
 
 test("relay transport requires the shared crawler configuration", () => {

@@ -23,8 +23,9 @@ import {
 } from "../../db/product-activity-policy.js";
 
 /** Behaviors a shop opts into at composition time rather than through the adapter contract. */
-export interface ShopPluginCapabilities<TPage extends CrawlPage = CrawlPage>
-  extends ShopRuntimeCapabilities<TPage> {
+export interface ShopPluginCapabilities<
+  TPage extends CrawlPage = CrawlPage,
+> extends ShopRuntimeCapabilities<TPage> {
   readonly activityPolicy?: Readonly<ProductActivityPolicy>;
 }
 
