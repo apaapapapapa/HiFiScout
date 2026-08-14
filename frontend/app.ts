@@ -1,80 +1,62 @@
 /**
+ * The server contracts. Type-only, so nothing from `src/` reaches the browser bundle — but the
+ * payload shapes are now defined once, on the server, instead of being copied here by hand.
+ */
+import type {
+  MetaCategoryFacet,
+  MetaResponse,
+  MetaShop,
+  ProductListItem,
+  ProductListResponse,
+  ProductPricePoint,
+} from "../src/api/contracts.js";
+
+type Nullable<T> = { [K in keyof T]: T[K] | null };
+
+/** The `/api/products` fields this UI renders. The rest of the contract is ignored here. */
+type DisplayFields = Pick<
+  ProductListItem,
+  | "id"
+  | "shop_key"
+  | "manufacturer"
+  | "manufacturer_id"
+  | "raw_manufacturer"
+  | "model"
+  | "title"
+  | "category"
+  | "raw_category"
+  | "primary_category_id"
+  | "condition_text"
+  | "price_yen"
+  | "previous_price_yen"
+  | "stock_status"
+  | "source_url"
+  | "first_seen_at"
+  | "last_seen_at"
+  | "last_changed_at"
+  | "last_activity_at"
+  | "search_aliases"
+  | "category_ids"
+>;
+
+/**
  * Shape shared by `/api/products` items and by the favorite snapshots persisted in localStorage.
  * Snapshots are written by `favoriteSnapshot()`, which stores `null` for every missing field, so
- * both sources expose the same keys with nullable values.
+ * both sources expose the same keys with nullable values. Field *types* still come from the
+ * contract, so a server-side change to one of them breaks this build.
  */
-interface DisplayProduct {
-  id: number | null;
-  shop_key: string | null;
-  manufacturer: string | null;
-  manufacturer_id: string | null;
-  raw_manufacturer: string | null;
-  model: string | null;
-  title: string | null;
-  category: string | null;
-  raw_category: string | null;
-  primary_category_id: string | null;
-  condition_text: string | null;
-  price_yen: number | null;
-  previous_price_yen: number | null;
-  stock_status: string | null;
-  source_url: string | null;
-  first_seen_at: string | null;
-  last_seen_at: string | null;
-  last_changed_at: string | null;
-  last_activity_at: string | null;
-  search_aliases: string | null;
-  category_ids: string[];
-}
+type DisplayProduct = Nullable<Omit<DisplayFields, "category_ids">> & { category_ids: string[] };
 
-interface ShopHealth {
-  status?: string | null;
-  lastSuccessAt?: string | null;
-}
-
-interface ShopSyncState {
-  last_success_at?: string | null;
-}
-
-interface MetaShop {
-  key: string;
-  name: string;
-  enabled?: boolean;
-  intervalMinutes?: number;
-  sync?: ShopSyncState | null;
-  health?: ShopHealth | null;
-}
-
-interface MetaCategoryFacet {
-  id: string;
-  name: string;
-  group?: string | null;
-}
-
-/** `/api/meta` payload built by `meta()` in src/index.ts. */
-interface MetaResponse {
-  status?: string;
-  shops: MetaShop[];
-  manufacturers: string[];
-  categories?: string[];
-  categoryFacets?: MetaCategoryFacet[];
-}
-
-/** `/api/products` payload built by `listProducts()` in src/db/product-search-repository.ts. */
-interface ProductsResponse {
+/**
+ * `/api/products` as the browser treats it: `isProductsResponse()` only validates `items`, so
+ * item fields stay nullable even though the contract declares them populated.
+ */
+interface ProductsResponse extends Omit<ProductListResponse, "items"> {
   items: DisplayProduct[];
-  hasMore: boolean;
-  nextCursor: string | null;
-  totalCount?: number | null;
-  totalPages?: number;
 }
 
-interface PriceHistoryEntry {
-  price_yen: number;
-  observed_at: string;
-}
+type PriceHistoryEntry = ProductPricePoint;
 
-/** `/api/products/:id/history` payload built by `productHistory()` in src/db/products.ts. */
 interface ProductHistoryResponse {
   product: DisplayProduct;
   history: PriceHistoryEntry[];
@@ -497,8 +479,8 @@ function renderSyncStatus(meta: MetaResponse): void {
   $("sync-summary-text").textContent = summary;
   $("sync-status-details").innerHTML = (meta.shops || [])
     .map((shop) => {
-      const health = shop.health || {};
-      const healthStatus = health.status || (shop.enabled === false ? "disabled" : "unknown");
+      const health = shop.health;
+      const healthStatus = health?.status || (shop.enabled === false ? "disabled" : "unknown");
       const label =
         healthStatus === "healthy"
           ? "正常"
@@ -509,7 +491,7 @@ function renderSyncStatus(meta: MetaResponse): void {
               : healthStatus === "disabled"
                 ? "停止中"
                 : "未確認";
-      const lastSuccess = health.lastSuccessAt || shop.sync?.last_success_at || null;
+      const lastSuccess = health?.lastSuccessAt || shop.sync?.last_success_at || null;
       const exact = safeDate(lastSuccess)?.toLocaleString("ja-JP") || "未取得";
       return `<div class="sync-shop-row ${escapeHtml(healthStatus)}">
       <span class="sync-shop-name">${escapeHtml(shop.name)}</span>

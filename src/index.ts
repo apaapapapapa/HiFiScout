@@ -16,8 +16,9 @@ import {
   claimKnowledgeCatalogVerifierVersion,
   knowledgeCatalogVerifierState,
 } from "./db/knowledge-catalog-verifier-state-repository.js";
+import { parseProductQuery, validateProductQuery } from "./api/product-query.js";
+import { productHistory } from "./db/product-history-repository.js";
 import { listProducts } from "./db/product-search-repository.js";
-import { productHistory, validateProductQuery } from "./db/products.js";
 import { buildSyncHealth, getSyncHealth, logSyncHealth } from "./health.js";
 import {
   KNOWLEDGE_CATALOG_VERIFICATION_DLQ,
@@ -29,6 +30,12 @@ import {
 } from "./knowledge-catalog-verification-queue.js";
 import { runRetentionCleanup } from "./maintenance.js";
 import { errorMessage, isRecord } from "./types.js";
+import type {
+  MetaCategoryFacet,
+  MetaResponse,
+  MetaShop,
+  MetaShopSyncState,
+} from "./api/contracts.js";
 import type { CategoryDefinition } from "./catalog/types.js";
 import type {
   CrawlQueueMessage,
@@ -85,19 +92,34 @@ interface MetaFacetRow {
   active_product_count?: number | null;
 }
 
-async function meta(env: Env) {
+/** Explicit row -> contract projection: `shop_sync_state` must not define the payload by itself. */
+function toMetaShopSyncState(row: ShopSyncStateRow): MetaShopSyncState {
+  return {
+    shop_key: row.shop_key,
+    last_attempt_at: row.last_attempt_at,
+    last_success_at: row.last_success_at,
+    last_error_at: row.last_error_at,
+    consecutive_failures: row.consecutive_failures,
+    backoff_until: row.backoff_until,
+    last_error: row.last_error,
+    last_item_count: row.last_item_count,
+    queued_at: row.queued_at,
+  };
+}
+
+async function meta(env: Env): Promise<MetaResponse> {
   const states = await env.DB.prepare("SELECT * FROM shop_sync_state").all<ShopSyncStateRow>();
   const stateRows = states.results || [];
-  const byKey = Object.fromEntries(stateRows.map((row) => [row.shop_key, row]));
+  const byKey = new Map(stateRows.map((row) => [row.shop_key, toMetaShopSyncState(row)]));
   const health = buildSyncHealth(env, stateRows);
-  const healthByKey = Object.fromEntries(health.shops.map((shop) => [shop.shopKey, shop]));
-  const shops = Object.values(SHOP_DEFINITIONS).map((shop) => ({
+  const healthByKey = new Map(health.shops.map((shop) => [shop.shopKey, shop]));
+  const shops = Object.values(SHOP_DEFINITIONS).map((shop): MetaShop => ({
     key: shop.key,
     name: shop.name,
     enabled: getShopEnabled(env, shop),
     intervalMinutes: getShopIntervalMinutes(env, shop),
-    sync: byKey[shop.key] || null,
-    health: healthByKey[shop.key] || null,
+    sync: byKey.get(shop.key) || null,
+    health: healthByKey.get(shop.key) || null,
   }));
   const facets = await env.DB.batch<MetaFacetRow>([
     env.DB.prepare(`
@@ -124,7 +146,12 @@ async function meta(env: Env) {
   );
   const categoryFacets = canonicalCategoryDefinitions()
     .filter((category) => category.filterable)
-    .map((category) => {
+    .sort((left, right) => {
+      const a = categorySortKey(left);
+      const b = categorySortKey(right);
+      return a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+    })
+    .map((category): MetaCategoryFacet => {
       return {
         id: category.id,
         parentId: category.parentId,
@@ -135,11 +162,6 @@ async function meta(env: Env) {
         group: null,
         activeProductCount: counts.get(category.id) || 0,
       };
-    })
-    .sort((left, right) => {
-      const a = categorySortKey(left);
-      const b = categorySortKey(right);
-      return a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
     });
   const categories = canonicalCategoryDefinitions()
     .filter((category) => category.classifiable)
@@ -180,7 +202,8 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext): Pro
   if (request.method === "GET" && url.pathname === "/api/products") {
     const validationError = validateProductQuery(url);
     if (validationError) return json({ error: validationError }, { status: 400 });
-    return cachedJson(request, ctx, 30, () => listProducts(env.DB, url));
+    const query = parseProductQuery(url);
+    return cachedJson(request, ctx, 30, () => listProducts(env.DB, query));
   }
   if (request.method === "GET" && url.pathname === "/api/meta")
     return cachedJson(request, ctx, 30, () => meta(env));

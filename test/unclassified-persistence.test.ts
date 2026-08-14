@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { upsertProducts } from "../src/db/products.js";
+import { upsertProducts } from "../src/db/product-write-repository.js";
 import type { CatalogProductUpsertInput } from "../src/catalog/types.js";
 import { asQueryableDatabase } from "./helpers/d1.js";
 

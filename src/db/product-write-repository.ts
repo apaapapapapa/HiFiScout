@@ -1,9 +1,17 @@
+/**
+ * Listing write path: the crawler's `products` upsert and the lookups it needs.
+ *
+ * Deliberately separate from the read repositories. This module decides what counts as a change,
+ * what counts as *user-facing* activity, and what may be skipped entirely; the search and history
+ * repositories only project rows onto API contracts.
+ */
+
 import {
   categoryClosureIds,
   categoryIdForFilter,
   categorySearchAliases,
 } from "../catalog/categories.js";
-import { isFeatureId, normalizeFeatureFacts } from "../catalog/product-features.js";
+import { normalizeFeatureFacts } from "../catalog/product-features.js";
 import { manufacturerIdForFilter } from "../catalog/manufacturers.js";
 import type {
   CatalogProductUpsertInput,
@@ -12,26 +20,17 @@ import type {
   FeatureFact,
   StockStatus,
 } from "../catalog/types.js";
-import { isRecord } from "../types.js";
 import type {
   ExistingProductRow,
-  ListProductsResult,
-  PriceHistoryPoint,
-  ProductApiRow,
-  ProductHistoryResult,
-  ProductListCursor,
   ProductLookupRow,
   ProductPriceLookupRow,
-  ProductQuerySort,
   ProductRow,
   QueryableDatabase,
   ReadableDatabase,
-  SortDefinition,
   UpsertProductsResult,
 } from "./types.js";
 
-const DEFAULT_PAGE_SIZE = 50;
-const MAX_PAGE_SIZE = 100;
+/** D1 caps bound variables per statement; every `IN (...)` lookup is chunked below that limit. */
 const LOOKUP_CHUNK_SIZE = 50;
 const RECENT_SOURCE_WINDOW_MS = 48 * 60 * 60 * 1000;
 
@@ -111,6 +110,10 @@ function productSourcePublishedAt(product: CatalogProductUpsertInput): string | 
   return product.sourcePublishedAt ?? null;
 }
 
+/**
+ * A listing first seen long after the retailer published it is a backfill, not news: it is dated
+ * by the retailer's timestamp and kept out of the "new arrivals" activity count.
+ */
 function initialActivity(product: CatalogProductUpsertInput, observedAt: string): InitialActivity {
   const sourceAt = productSourcePublishedAt(product);
   if (!sourceAt) return { at: observedAt, userFacing: true };
@@ -121,22 +124,6 @@ function initialActivity(product: CatalogProductUpsertInput, observedAt: string)
   }
   if (observedMs - sourceMs > RECENT_SOURCE_WINDOW_MS) return { at: sourceAt, userFacing: false };
   return { at: observedAt, userFacing: true };
-}
-
-function productRow(row: ProductRow): ProductApiRow;
-function productRow(row: null): null;
-function productRow(row: ProductRow | null): ProductApiRow | null {
-  if (!row) return row;
-  let categoryIds: string[] = [];
-  try {
-    const parsed: unknown = JSON.parse(row.category_ids || "[]");
-    categoryIds = Array.isArray(parsed)
-      ? parsed.filter((value): value is string => typeof value === "string")
-      : [];
-  } catch {
-    categoryIds = row.primary_category_id ? [row.primary_category_id] : [];
-  }
-  return { ...row, category_ids: categoryIds };
 }
 
 export async function selectProductsForHistory(
@@ -223,6 +210,7 @@ export async function deactivateProductsBySourceIds(
   return runBatches(db, statements, chunkSize);
 }
 
+/** Any stored column differing from the freshly parsed listing, including re-normalized fields. */
 function listingChanged(existing: ExistingProductRow, product: CatalogProductUpsertInput): boolean {
   const current = catalogFields(product);
   const previous = existingCatalogFields(existing);
@@ -247,6 +235,7 @@ function listingChanged(existing: ExistingProductRow, product: CatalogProductUps
   );
 }
 
+/** `unknown` is an absence of information, so transitions in or out of it are not news. */
 function meaningfulStockActivity(previousStatus: StockStatus, currentStatus: StockStatus): boolean {
   if (previousStatus === currentStatus) return false;
   if (!previousStatus || !currentStatus) return false;
@@ -254,6 +243,7 @@ function meaningfulStockActivity(previousStatus: StockStatus, currentStatus: Sto
   return true;
 }
 
+/** The subset of {@link listingChanged} a shopper would notice; drives `last_activity_at`. */
 function activityChanged(
   existing: ExistingProductRow,
   product: CatalogProductUpsertInput,
@@ -280,6 +270,7 @@ function categoriesChanged(
   );
 }
 
+/** Unchanged listings still need an occasional `last_seen_at` heartbeat, but not every crawl. */
 function shouldTouch(
   existing: ExistingProductRow,
   observedAt: string,
@@ -361,6 +352,7 @@ async function syncProductFeatureFacts(
   for (const product of selected) {
     const productId = idBySource.get(product.sourceId);
     if (!productId) continue;
+    // Only title-derived facts are owned by this pass; verified facts from other sources persist.
     const facts = catalogFields(product).featureFacts.filter((fact) => fact.source === "title");
     statements.push(
       db
@@ -531,6 +523,7 @@ export async function upsertProducts(
     observedAt,
   );
 
+  // Ids are only known after the inserts land, so history is written in a second pass.
   const historySourceIds = [...new Set([...newSourceIds, ...changedPriceSourceIds])];
   if (historySourceIds.length) {
     const rows = await selectProductsForHistory(db, shopKey, historySourceIds);
@@ -549,278 +542,4 @@ export async function upsertProducts(
     ? await deactivateProductsBySourceIds(db, shopKey, missingSourceIds)
     : 0;
   return { changedCount, activityCount, touchedCount, deactivatedCount };
-}
-
-function encodeCursor(payload: ProductListCursor): string {
-  const bytes = new TextEncoder().encode(JSON.stringify(payload));
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/u, "");
-}
-
-function decodeCursor(value: string | null): ProductListCursor | null {
-  if (!value) return null;
-  try {
-    const normalized = value.replaceAll("-", "+").replaceAll("_", "/");
-    const padding = "=".repeat((4 - (normalized.length % 4)) % 4);
-    const binary = atob(normalized + padding);
-    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-    const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes));
-    if (!isRecord(parsed) || !Number.isInteger(parsed.id) || typeof parsed.sort !== "string")
-      return null;
-    return {
-      id: Number(parsed.id),
-      sort: parsed.sort,
-      ...(typeof parsed.value === "string" ||
-      typeof parsed.value === "number" ||
-      parsed.value === null
-        ? { value: parsed.value }
-        : {}),
-      ...(typeof parsed.isNull === "boolean" ? { isNull: parsed.isNull } : {}),
-    };
-  } catch {
-    return null;
-  }
-}
-
-function ftsPhrase(value: string): string {
-  return `"${value.replaceAll('"', '""')}"`;
-}
-
-function sortDefinition(sortKey: string | null): SortDefinition {
-  const definitions: Readonly<Record<ProductQuerySort, SortDefinition>> = {
-    newest: { key: "newest", column: "last_activity_at", direction: "DESC", idDirection: "DESC" },
-    oldest: { key: "oldest", column: "last_activity_at", direction: "ASC", idDirection: "ASC" },
-    updated: {
-      key: "updated",
-      column: "last_activity_at",
-      direction: "DESC",
-      idDirection: "DESC",
-    },
-    priceAsc: {
-      key: "priceAsc",
-      column: "price_yen",
-      direction: "ASC",
-      idDirection: "ASC",
-      price: true,
-    },
-    priceDesc: {
-      key: "priceDesc",
-      column: "price_yen",
-      direction: "DESC",
-      idDirection: "DESC",
-      price: true,
-    },
-  };
-  return sortKey && sortKey in definitions
-    ? definitions[sortKey as ProductQuerySort]
-    : definitions.newest;
-}
-
-function addCursorPredicate(
-  where: string[],
-  binds: unknown[],
-  sort: SortDefinition,
-  cursor: ProductListCursor | null,
-): void {
-  if (!cursor || cursor.sort !== sort.key) return;
-  if (!sort.price) {
-    if (typeof cursor.value !== "string") return;
-    const op = sort.direction === "DESC" ? "<" : ">";
-    const idOp = sort.idDirection === "DESC" ? "<" : ">";
-    where.push(`(p.${sort.column} ${op} ? OR (p.${sort.column} = ? AND p.id ${idOp} ?))`);
-    binds.push(cursor.value, cursor.value, cursor.id);
-    return;
-  }
-  const idOp = sort.idDirection === "DESC" ? "<" : ">";
-  if (cursor.isNull) {
-    where.push(`(p.price_yen IS NULL AND p.id ${idOp} ?)`);
-    binds.push(cursor.id);
-    return;
-  }
-  if (typeof cursor.value !== "number") return;
-  const priceOp = sort.direction === "DESC" ? "<" : ">";
-  where.push(
-    `(p.price_yen IS NULL OR p.price_yen ${priceOp} ? OR (p.price_yen = ? AND p.id ${idOp} ?))`,
-  );
-  binds.push(cursor.value, cursor.value, cursor.id);
-}
-
-function cursorFor(row: ProductApiRow, sort: SortDefinition): string {
-  return encodeCursor({
-    sort: sort.key,
-    id: row.id,
-    value: row[sort.column],
-    isNull: sort.price ? row.price_yen == null : false,
-  });
-}
-
-function requestedFeatures(params: URLSearchParams): string[] {
-  return [
-    ...new Set(
-      params
-        .getAll("feature")
-        .flatMap((value) => value.split(","))
-        .map((value) => value.trim())
-        .filter(Boolean),
-    ),
-  ];
-}
-
-export function validateProductQuery(url: URL): string | null {
-  const params = url.searchParams;
-  const limits = { q: 100, shop: 80, manufacturer: 100, category: 100, cursor: 1024 };
-  for (const [key, maxLength] of Object.entries(limits)) {
-    const value = params.get(key);
-    if (value != null && [...value].length > maxLength) return `${key}_too_long`;
-  }
-  for (const value of params.getAll("feature"))
-    if ([...value].length > 200) return "feature_too_long";
-  if (requestedFeatures(params).some((feature) => !isFeatureId(feature))) return "feature_invalid";
-  for (const key of ["minPrice", "maxPrice", "limit", "offset"]) {
-    const value = params.get(key);
-    if (value != null && !/^\d{1,12}$/.test(value)) return `${key}_invalid`;
-  }
-  for (const key of ["inStock", "newOnly", "priceDropped", "includeTotal"]) {
-    const value = params.get(key);
-    if (value != null && value !== "true" && value !== "false") return `${key}_invalid`;
-  }
-  const sort = params.get("sort");
-  if (sort && !["newest", "oldest", "updated", "priceAsc", "priceDesc"].includes(sort))
-    return "sort_invalid";
-  return null;
-}
-
-export async function listProducts(db: QueryableDatabase, url: URL): Promise<ListProductsResult> {
-  const params = url.searchParams;
-  const where: string[] = ["p.is_active = 1"];
-  const binds: unknown[] = [];
-  const q = params.get("q")?.trim();
-  let join = "";
-  if (q) {
-    const terms = q.split(/\s+/u).filter(Boolean);
-    if (terms.length === 1 && [...q].length >= 3) {
-      join = "JOIN products_fts ON products_fts.rowid = p.id";
-      where.push("products_fts MATCH ?");
-      binds.push(ftsPhrase(q));
-    } else {
-      for (const value of terms) {
-        where.push(
-          `(p.title LIKE ? OR p.manufacturer LIKE ? OR p.raw_manufacturer LIKE ? OR p.model LIKE ? OR p.category LIKE ? OR p.raw_category LIKE ? OR p.search_aliases LIKE ?)`,
-        );
-        const term = `%${value}%`;
-        binds.push(term, term, term, term, term, term, term);
-      }
-    }
-  }
-  const shop = params.get("shop")?.trim();
-  if (shop) {
-    where.push("p.shop_key = ?");
-    binds.push(shop);
-  }
-  const manufacturer = params.get("manufacturer")?.trim();
-  if (manufacturer) {
-    where.push("(p.manufacturer_id = ? OR p.manufacturer = ?)");
-    binds.push(manufacturerIdForFilter(manufacturer), manufacturer);
-  }
-  const category = params.get("category")?.trim();
-  if (category) {
-    const categoryId = categoryIdForFilter(category);
-    if (categoryId) {
-      where.push(
-        "EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id = ?)",
-      );
-      binds.push(categoryId);
-    } else {
-      where.push("p.category = ?");
-      binds.push(category);
-    }
-  }
-  for (const feature of requestedFeatures(params)) {
-    where.push(
-      "EXISTS (SELECT 1 FROM product_feature_facts pff WHERE pff.product_id = p.id AND pff.feature_id = ? AND pff.state = 'present')",
-    );
-    binds.push(feature);
-  }
-  if (params.get("inStock") === "true") where.push("p.stock_status = 'in_stock'");
-  if (params.get("newOnly") === "true")
-    where.push(
-      "COALESCE(p.source_published_at, p.first_seen_at) >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-48 hours')",
-    );
-  if (params.get("priceDropped") === "true")
-    where.push(
-      "(p.previous_price_yen IS NOT NULL AND p.price_yen IS NOT NULL AND p.price_yen < p.previous_price_yen)",
-    );
-  const minPrice = Number.parseInt(params.get("minPrice") || "", 10);
-  if (Number.isFinite(minPrice)) {
-    where.push("p.price_yen >= ?");
-    binds.push(minPrice);
-  }
-  const maxPrice = Number.parseInt(params.get("maxPrice") || "", 10);
-  if (Number.isFinite(maxPrice)) {
-    where.push("p.price_yen <= ?");
-    binds.push(maxPrice);
-  }
-
-  const countWhere = [...where];
-  const countBinds = [...binds];
-  const sort = sortDefinition(params.get("sort"));
-  const cursor = decodeCursor(params.get("cursor"));
-  addCursorPredicate(where, binds, sort, cursor);
-  const requestedLimit = Number.parseInt(params.get("limit") || String(DEFAULT_PAGE_SIZE), 10);
-  const limit = Math.min(
-    MAX_PAGE_SIZE,
-    Math.max(1, Number.isFinite(requestedLimit) ? requestedLimit : DEFAULT_PAGE_SIZE),
-  );
-  const requestedOffset = Number.parseInt(params.get("offset") || "0", 10);
-  const offset = Number.isFinite(requestedOffset) ? Math.max(0, requestedOffset) : 0;
-  const includeTotal = params.get("includeTotal") === "true";
-  const orderBy = sort.price
-    ? `p.price_yen ${sort.direction} NULLS LAST, p.id ${sort.idDirection}`
-    : `p.${sort.column} ${sort.direction}, p.id ${sort.idDirection}`;
-
-  let totalCount = null;
-  if (includeTotal) {
-    const countResult = await db
-      .prepare(`SELECT COUNT(*) AS total FROM products p ${join} WHERE ${countWhere.join(" AND ")}`)
-      .bind(...countBinds)
-      .all<{ total: number }>();
-    totalCount = Number(countResult.results?.[0]?.total || 0);
-  }
-  const paginationSql = offset > 0 ? "LIMIT ? OFFSET ?" : "LIMIT ?";
-  const paginationBinds = offset > 0 ? [limit + 1, offset] : [limit + 1];
-  const result = await db
-    .prepare(
-      `SELECT p.* FROM products p ${join} WHERE ${where.join(" AND ")} ORDER BY ${orderBy} ${paginationSql}`,
-    )
-    .bind(...binds, ...paginationBinds)
-    .all<ProductRow>();
-  const rows = result.results || [];
-  const hasMore = rows.length > limit;
-  const items = (hasMore ? rows.slice(0, limit) : rows).map((row) => productRow(row));
-  const last = items.at(-1);
-  return {
-    items,
-    hasMore,
-    nextCursor: hasMore && last ? cursorFor(last, sort) : null,
-    ...(includeTotal ? { totalCount, totalPages: Math.ceil((totalCount ?? 0) / limit) } : {}),
-  };
-}
-
-export async function productHistory(
-  db: QueryableDatabase,
-  id: number,
-): Promise<ProductHistoryResult | null> {
-  const product = await db
-    .prepare("SELECT * FROM products WHERE id = ?")
-    .bind(id)
-    .first<ProductRow>();
-  if (!product) return null;
-  const history = await db
-    .prepare(
-      "SELECT price_yen, observed_at FROM price_history WHERE product_id = ? ORDER BY observed_at ASC",
-    )
-    .bind(id)
-    .all<PriceHistoryPoint>();
-  return { product: productRow(product), history: history.results || [] };
 }

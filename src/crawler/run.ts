@@ -11,7 +11,7 @@ import { syncProductIdentityResolutions } from "../db/product-identity-repositor
 import { syncObservedProductFeatureFacts } from "../db/product-feature-repository.js";
 import { syncProductMetadata } from "../db/product-metadata-repository.js";
 import { syncProductSearchProjections } from "../db/product-search-projection-repository.js";
-import { upsertProducts } from "../db/products.js";
+import { upsertProducts } from "../db/product-write-repository.js";
 import {
   getShopState,
   listShopStates,
