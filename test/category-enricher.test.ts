@@ -3,12 +3,13 @@ import assert from "node:assert/strict";
 
 import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
 import { enrichProductCategories } from "../src/crawler/category-enricher.js";
-import {
-  extractFujiyaDetailCategoryEvidence,
-  fujiyaAvicAdapter,
-} from "../src/crawler/shops/fujiya-avic.js";
+import { extractFujiyaDetailCategoryEvidence } from "../src/crawler/shops/fujiya-avic.js";
+import { getShopPlugin } from "../src/crawler/shops/index.js";
 import type { CategoryEnrichmentProductRow } from "../src/db/types.js";
 import { detailFetchOptions, emptyCatalogDb, parsedProduct } from "./helpers/fixtures.js";
+
+const fujiyaAvicPlugin = getShopPlugin("fujiya-avic");
+if (!fujiyaAvicPlugin) throw new Error("fujiya-avic plugin missing");
 
 test("Fujiya unresolved model is classified from product-specific detail evidence", async () => {
   const product = normalizeCatalogProduct(
@@ -20,12 +21,12 @@ test("Fujiya unresolved model is classified from product-specific detail evidenc
       rawCategory: "DAP",
       sourceUrl: "https://www.fujiya-avic.co.jp/shop/g/gd10x/",
     }),
-    fujiyaAvicAdapter,
+    fujiyaAvicPlugin.capabilities.catalog,
   );
   assert.equal(product.classificationStatus, "unclassified");
   const result = await enrichProductCategories({
     db: emptyCatalogDb(),
-    adapter: fujiyaAvicAdapter,
+    adapter: fujiyaAvicPlugin,
     products: [product],
     existingRows: [],
     transport: {
@@ -72,7 +73,7 @@ test("cached detail classification is reused for the same product identity witho
       rawCategory: "DAP",
       sourceUrl: "https://www.fujiya-avic.co.jp/shop/g/gd10x/",
     }),
-    fujiyaAvicAdapter,
+    fujiyaAvicPlugin.capabilities.catalog,
   );
   const existingRows: CategoryEnrichmentProductRow[] = [
     {
@@ -96,7 +97,7 @@ test("cached detail classification is reused for the same product identity witho
   ];
   const result = await enrichProductCategories({
     db: emptyCatalogDb(),
-    adapter: fujiyaAvicAdapter,
+    adapter: fujiyaAvicPlugin,
     products: [product],
     existingRows,
     transport: {
@@ -122,11 +123,11 @@ test("successful unresolved detail checks are cached briefly, but fetch failures
       rawCategory: "DAP",
       sourceUrl: "https://www.fujiya-avic.co.jp/shop/g/gunknown/",
     }),
-    fujiyaAvicAdapter,
+    fujiyaAvicPlugin.capabilities.catalog,
   );
   const checked = await enrichProductCategories({
     db: emptyCatalogDb(),
-    adapter: fujiyaAvicAdapter,
+    adapter: fujiyaAvicPlugin,
     products: [product],
     existingRows: [],
     transport: {
@@ -144,7 +145,7 @@ test("successful unresolved detail checks are cached briefly, but fetch failures
   );
   const failed = await enrichProductCategories({
     db: emptyCatalogDb(),
-    adapter: fujiyaAvicAdapter,
+    adapter: fujiyaAvicPlugin,
     products: [product],
     existingRows: [],
     transport: {

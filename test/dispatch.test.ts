@@ -8,7 +8,7 @@ const ONLY_HIFIDO = {
   IPPINKAN_ENABLED: "false",
   FUJIYA_AVIC_ENABLED: "false",
   FORMUSIC_ENABLED: "false",
-  UAUDIO_ENABLED: "false",
+  U_AUDIO_ENABLED: "false",
   SHIMAMUSEN_ENABLED: "false",
   HIFIDO_ENABLED: "true",
   HIFIDO_INTERVAL_MINUTES: "30",

@@ -17,20 +17,9 @@ import type {
 } from "../types.js";
 import { normalizeCatalogProducts } from "../../catalog/product-normalizer.js";
 import { validateSellerProducts } from "../seller-facts.js";
-import {
-  DEFAULT_PRODUCT_ACTIVITY_POLICY,
-  type ProductActivityPolicy,
-} from "../../db/product-activity-policy.js";
-
-/** Behaviors a shop opts into at composition time rather than through the adapter contract. */
-export interface ShopPluginCapabilities<
-  TPage extends CrawlPage = CrawlPage,
-> extends ShopRuntimeCapabilities<TPage> {
-  readonly activityPolicy?: Readonly<ProductActivityPolicy>;
-}
+import { DEFAULT_PRODUCT_ACTIVITY_POLICY } from "../../db/product-activity-policy.js";
 
 const SHOP_KEY_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
-const ENV_PREFIX_PATTERN = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/u;
 
 const SUPPORTED_TRANSPORTS: Readonly<Record<TransportKind, true>> = {
   direct: true,
@@ -43,8 +32,6 @@ const SUPPORTED_COVERAGE: Readonly<Record<CoverageKind, true>> = {
   partial: true,
   unknown: true,
 };
-
-const activityPolicies = new WeakMap<ShopPlugin, Readonly<ProductActivityPolicy>>();
 
 /** The kebab-case key as its SCREAMING_SNAKE_CASE configuration namespace. */
 export function deriveEnvPrefix(key: string): string {
@@ -95,7 +82,20 @@ function validateDiscovery(adapter: ShopAdapter): void {
   if (discovery.discoverTargets !== undefined && typeof discovery.discoverTargets !== "function") {
     invalid(key, "discovery.discoverTargets must be a function when present");
   }
-  assertNonNegativeInt(key, "discovery.extraPageAllowance", discovery.extraPageAllowance);
+  if (!discovery.policy) invalid(key, "discovery.policy is required");
+  if (discovery.policy.emptyPage !== "stop" && discovery.policy.emptyPage !== "continue") {
+    invalid(key, `discovery.policy.emptyPage ${String(discovery.policy.emptyPage)} is invalid`);
+  }
+  if (
+    discovery.policy.itemCountValidation !== "coverage" &&
+    discovery.policy.itemCountValidation !== "always"
+  ) {
+    invalid(
+      key,
+      `discovery.policy.itemCountValidation ${String(discovery.policy.itemCountValidation)} is invalid`,
+    );
+  }
+  assertNonNegativeInt(key, "discovery.policy.extraPageBudget", discovery.policy.extraPageBudget);
 }
 
 function validatedDefinition(
@@ -111,10 +111,7 @@ function validatedDefinition(
   assertBaseUrl(key, input.baseUrl);
   validateDiscovery(adapter);
 
-  const envPrefix = input.envPrefix || deriveEnvPrefix(key);
-  if (!ENV_PREFIX_PATTERN.test(envPrefix)) {
-    invalid(key, `envPrefix must be SCREAMING_SNAKE_CASE: ${envPrefix}`);
-  }
+  const envPrefix = deriveEnvPrefix(key);
 
   if (!Number.isInteger(input.defaultIntervalMinutes) || input.defaultIntervalMinutes <= 0) {
     invalid(key, "defaultIntervalMinutes must be a positive integer");
@@ -124,23 +121,55 @@ function validatedDefinition(
   if (input.scheduleCron !== undefined && !input.scheduleCron.trim()) {
     invalid(key, "scheduleCron must not be empty");
   }
-  if (adapter.transport !== undefined && !SUPPORTED_TRANSPORTS[adapter.transport]) {
-    invalid(key, `transport ${adapter.transport} is not a supported transport`);
-  }
-
   return Object.freeze({ ...input, envPrefix });
+}
+
+function validateCapabilities<TPage extends CrawlPage>(
+  key: string,
+  definition: ShopDefinitionInput,
+  capabilities: ShopRuntimeCapabilities<TPage>,
+): void {
+  const transport = capabilities.transport?.kind;
+  if (transport !== undefined && !SUPPORTED_TRANSPORTS[transport]) {
+    invalid(key, `transport ${transport} is not a supported transport`);
+  }
+  if (definition.transportConfigurationRequired === true && transport !== "relay") {
+    invalid(key, "transportConfigurationRequired requires relay transport");
+  }
 }
 
 /** Compose one concrete adapter into a frozen registered plugin. */
 export function defineShopPlugin<TPage extends CrawlPage>(
   adapter: ShopAdapter<TPage>,
   definition: ShopDefinitionInput,
-  capabilities: ShopPluginCapabilities<TPage> = {},
+  capabilities: ShopRuntimeCapabilities<TPage> = {},
 ): ShopPlugin<TPage> {
   const validated = validatedDefinition(adapter, definition);
+  validateCapabilities(adapter.key, definition, capabilities);
   const parse = adapter.parse;
-  const discovery = Object.freeze({ ...adapter.discovery });
+  const discovery = Object.freeze({
+    ...adapter.discovery,
+    policy: Object.freeze({ ...adapter.discovery.policy }),
+  });
   const runtimeCapabilities: Readonly<ShopRuntimeCapabilities<TPage>> = Object.freeze({
+    transport: capabilities.transport ? Object.freeze({ ...capabilities.transport }) : undefined,
+    catalog: capabilities.catalog
+      ? Object.freeze({
+          ...capabilities.catalog,
+          categoryMapping: capabilities.catalog.categoryMapping
+            ? Object.freeze({ ...capabilities.catalog.categoryMapping })
+            : undefined,
+          categoryPolicy: capabilities.catalog.categoryPolicy
+            ? Object.freeze({ ...capabilities.catalog.categoryPolicy })
+            : undefined,
+        })
+      : undefined,
+    detailCategoryEvidence: capabilities.detailCategoryEvidence
+      ? Object.freeze({ ...capabilities.detailCategoryEvidence })
+      : undefined,
+    inventoryRecheck: capabilities.inventoryRecheck
+      ? Object.freeze({ ...capabilities.inventoryRecheck })
+      : undefined,
     diagnostics: capabilities.diagnostics
       ? Object.freeze({ ...capabilities.diagnostics })
       : undefined,
@@ -152,6 +181,9 @@ export function defineShopPlugin<TPage extends CrawlPage>(
             : undefined,
         })
       : undefined,
+    activityPolicy: capabilities.activityPolicy
+      ? Object.freeze({ ...capabilities.activityPolicy })
+      : undefined,
   });
   const plugin: ShopPlugin<TPage> = {
     ...adapter,
@@ -160,34 +192,21 @@ export function defineShopPlugin<TPage extends CrawlPage>(
     capabilities: runtimeCapabilities,
     parse: function normalizedParse(...args: [html: string, page?: TPage]) {
       const sellerProducts = validateSellerProducts(parse.apply(plugin, args), plugin);
-      return normalizeCatalogProducts(sellerProducts, plugin);
+      return normalizeCatalogProducts(sellerProducts, runtimeCapabilities.catalog || {});
     },
   };
-  const frozenPlugin = Object.freeze(plugin);
-  activityPolicies.set(
-    frozenPlugin,
-    capabilities.activityPolicy || DEFAULT_PRODUCT_ACTIVITY_POLICY,
-  );
-
-  return frozenPlugin;
+  return Object.freeze(plugin);
 }
 
 /** Validate cross-plugin invariants once when the composition root is evaluated. */
 export function createShopRegistry(plugins: readonly ShopPlugin[]): readonly ShopPlugin[] {
   const seenKeys = new Set<string>();
-  const seenPrefixes = new Map<string, string>();
   const seenCrons = new Map<string, string>();
 
   for (const plugin of plugins) {
-    const { key, envPrefix, scheduleCron } = plugin.definition;
+    const { key, scheduleCron } = plugin.definition;
     if (seenKeys.has(key)) throw new Error(`duplicate shop key in registry: ${key}`);
     seenKeys.add(key);
-
-    const prefixOwner = seenPrefixes.get(envPrefix);
-    if (prefixOwner) {
-      throw new Error(`shops ${prefixOwner} and ${key} share the env prefix ${envPrefix}`);
-    }
-    seenPrefixes.set(envPrefix, key);
 
     if (!scheduleCron) continue;
     const cronOwner = seenCrons.get(scheduleCron);
@@ -201,6 +220,6 @@ export function createShopRegistry(plugins: readonly ShopPlugin[]): readonly Sho
 }
 
 /** Resolve optional user-facing activity semantics at the shop composition boundary. */
-export function getShopActivityPolicy(plugin: ShopPlugin): Readonly<ProductActivityPolicy> {
-  return activityPolicies.get(plugin) || DEFAULT_PRODUCT_ACTIVITY_POLICY;
+export function getShopActivityPolicy(plugin: ShopPlugin) {
+  return plugin.capabilities.activityPolicy || DEFAULT_PRODUCT_ACTIVITY_POLICY;
 }

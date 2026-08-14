@@ -40,7 +40,7 @@ const CATEGORY_PAGES: readonly UAudioCategory[] = Object.freeze([
 const OUTLET_PAGE = CATEGORY_PAGES.find((category) => category.outlet);
 const USED_PAGES = CATEGORY_PAGES.filter((category) => !category.outlet);
 
-const U_AUDIO_CATEGORY_MAPPING = Object.freeze({
+export const U_AUDIO_CATEGORY_MAPPING = Object.freeze({
   中古プリアンプ: "pre_amp",
   中古パワーアンプ: "power_amp",
   中古プリメインアンプ: "integrated_amp",
@@ -238,18 +238,18 @@ export function parseUAudioListing(html: string, page: Partial<UAudioPage> = {})
   return products;
 }
 
+export const U_AUDIO_CATEGORY_POLICY = Object.freeze({
+  sellerCategory: Object.freeze({ default: "authoritative" as const }),
+  parserHint: "corroborative" as const,
+});
+
 export const uAudioAdapter = {
   key: "u-audio",
   name: "U-AUDIO",
   baseUrl: BASE_URL,
-  categoryMapping: U_AUDIO_CATEGORY_MAPPING,
-  categoryPolicy: Object.freeze({
-    sellerCategory: Object.freeze({ default: "authoritative" }),
-    parserHint: "corroborative",
-  }),
   discovery: {
     coverage: "complete",
-    continueOnEmpty: true,
+    policy: { emptyPage: "continue", itemCountValidation: "coverage", extraPageBudget: 0 },
     *initialTargets() {
       yield { ...listingPage(OUTLET_PAGE, 1), bootstrap: true };
     },

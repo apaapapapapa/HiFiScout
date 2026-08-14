@@ -187,17 +187,18 @@ export function discoverShimamusenPageUrls(html: string): ShimamusenPage[] {
   return [...pages.entries()].sort((a, b) => a[0] - b[0]).map(([, page]) => page);
 }
 
+export const SHIMAMUSEN_CATEGORY_POLICY = Object.freeze({
+  sellerCategory: Object.freeze({ default: "ignore" as const }),
+  parserHint: "ignore" as const,
+});
+
 export const shimamusenAdapter = {
   key: "shimamusen",
   name: "シマムセン",
   baseUrl: BASE_URL,
-  categoryPolicy: {
-    sellerCategory: { default: "ignore" },
-    parserHint: "ignore",
-  },
   discovery: {
     coverage: "complete",
-    guardItemCount: true,
+    policy: { emptyPage: "stop", itemCountValidation: "always", extraPageBudget: 0 },
     *initialTargets() {
       yield { url: DISPLAY_URL, kind: "展示処分品" };
       yield { url: SALE_URL, kind: "特価商品" };

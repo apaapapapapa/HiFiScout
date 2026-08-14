@@ -12,13 +12,13 @@ interface AdapterTemplateOptions {
   key: string;
   name: string;
   baseUrl: string;
-  transport?: ShopTransport;
 }
 
 interface PluginRegistrationOptions {
   key: string;
   name: string;
   baseUrl: string;
+  transport?: ShopTransport;
   intervalMinutes?: number;
 }
 
@@ -56,12 +56,7 @@ function isShopTransport(value: string): value is ShopTransport {
 }
 
 /** Scaffold a disabled, bounded shop against the final Phase 3 platform contract. */
-export function renderAdapter({
-  key,
-  name,
-  baseUrl,
-  transport = "direct",
-}: AdapterTemplateOptions): string {
+export function renderAdapter({ key, name, baseUrl }: AdapterTemplateOptions): string {
   const identifier = adapterIdentifier(key);
   return `import type { SellerProduct, ShopAdapter } from "../types.js";
 
@@ -77,13 +72,10 @@ export const ${identifier} = {
   key: ${quote(key)},
   name: ${quote(name)},
   baseUrl: BASE_URL,
-  transport: ${quote(transport)},
-  categoryMapping: {
-    // "ネットワークDAC": ["dac", "network_player"],
-  },
   discovery: {
     // Keep the scaffold non-destructive until the seller's coverage semantics are understood.
     coverage: "unknown",
+    policy: { emptyPage: "stop", itemCountValidation: "coverage", extraPageBudget: 0 },
     *initialTargets(): Generator<string> {
       // TODO: replace with this shop's used-listing entry points.
       yield BASE_URL;
@@ -124,6 +116,7 @@ export function renderPluginRegistration({
   key,
   name,
   baseUrl,
+  transport = "direct",
   intervalMinutes = 60,
 }: PluginRegistrationOptions): string {
   const identifier = adapterIdentifier(key);
@@ -136,6 +129,8 @@ export function renderPluginRegistration({
     // The scaffold parser returns nothing. Drop this line (or set ${prefix}_ENABLED) only once a
     // real parser and a representative fixture are in place.
     defaultEnabled: false,
+  }, {
+    transport: { kind: ${quote(transport)} },
   }),
 `;
 }
@@ -198,7 +193,7 @@ export async function createShop({
   );
   index = index.replace(
     PLUGIN_MARKER,
-    `${renderPluginRegistration({ key: shopKey, name: name.trim(), baseUrl: parsedBaseUrl.origin, intervalMinutes })}${PLUGIN_MARKER}`,
+    `${renderPluginRegistration({ key: shopKey, name: name.trim(), baseUrl: parsedBaseUrl.origin, transport, intervalMinutes })}${PLUGIN_MARKER}`,
   );
 
   await mkdir(dirname(adapterPath), { recursive: true });
@@ -206,7 +201,7 @@ export async function createShop({
   await Promise.all([
     writeFile(
       adapterPath,
-      renderAdapter({ key: shopKey, name: name.trim(), baseUrl: parsedBaseUrl.origin, transport }),
+      renderAdapter({ key: shopKey, name: name.trim(), baseUrl: parsedBaseUrl.origin }),
       "utf8",
     ),
     writeFile(testPath, renderTest({ key: shopKey }), "utf8"),

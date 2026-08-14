@@ -35,7 +35,6 @@ interface ShopAdapter<TPage extends CrawlPage = CrawlPage> {
   baseUrl: string;
   discovery: DiscoveryCapability<TPage>;
   parse(html: string, page?: TPage): SellerProduct[];
-  // optional declared capabilities: transport/category/detail diagnostics/recheck/etc.
 }
 ```
 
@@ -50,9 +49,11 @@ shop-local context used by that shop's parser.
 ```ts
 interface DiscoveryCapability<TPage extends CrawlPage> {
   coverage: "complete" | "partial" | "unknown";
-  continueOnEmpty?: boolean;
-  guardItemCount?: boolean;
-  extraPageAllowance?: number;
+  policy: {
+    emptyPage: "stop" | "continue";
+    itemCountValidation: "coverage" | "always";
+    extraPageBudget: number;
+  };
   initialTargets(context: DiscoveryContext): Iterable<TPage>;
   discoverTargets?(html: string, page: TPage): readonly TPage[] | null;
 }
@@ -67,8 +68,8 @@ Use the coverage value deliberately:
 - `unknown`: the configured target set cannot prove whether it covers all seller inventory. Missing
   products are never deactivated.
 
-The platform owns the safety rules: it bounds target count using `maxPages` plus the explicit extra
-allowance, validates every target against the shop's configured HTTPS origin, suppresses duplicate
+The platform owns the safety rules: it bounds target count using `maxPages` plus
+`policy.extraPageBudget`, validates every target against the shop's configured HTTPS origin, suppresses duplicate
 URLs, and tracks incomplete discovery. A shop must never fetch another listing page from inside
 `parse()` or `discoverTargets()`.
 
@@ -78,9 +79,8 @@ URLs, and tracks incomplete discovery. A shop must never fetch another listing p
 - additional typed targets when pagination/category expansion is known;
 - `null` when the page layout prevents the adapter from knowing whether discovery is complete.
 
-The legacy `pageUrls`, `discoverPageUrls`, `dynamicPagination`, `partialCoverage`,
-`continueOnEmpty`, `guardItemCount`, and adapter-level `extraPageAllowance` flags are not part of the
-contract.
+Legacy pagination flags are not accepted. Empty-page behavior, item-count validation, and the
+additional page budget are expressed only through the typed `discovery.policy` object.
 
 ## Seller-product fields
 
@@ -148,14 +148,14 @@ environment prefix and the platform reads:
 | `<PREFIX>_MAX_PAGES` | discovery ceiling | `defaultMaxPages`, else global |
 | `<PREFIX>_INVENTORY_RECHECK_*` | recheck settings | off unless capability enabled |
 
-Declare deployed values in `wrangler.jsonc`. A shop whose deployed names use a different spelling may
-set `envPrefix` on its definition. Shop-owned discovery inputs such as an entry URL are ordinary env
-variables read inside that shop module.
+Declare deployed values in `wrangler.jsonc`. The prefix is always derived from the shop key; aliases and
+custom prefix overrides are not supported. For example, `u-audio` always uses `U_AUDIO_*`. Shop-owned
+discovery inputs such as an entry URL are ordinary env variables read inside that shop module.
 
-`defineShopPlugin` validates the definition and discovery policy at module load. Invalid keys, non-HTTPS
-origins, invalid coverage, negative allowances, unsupported transports, duplicate environment prefixes,
+`defineShopPlugin` validates the definition, discovery policy, and declared capabilities at module load.
+Invalid keys, non-HTTPS origins, invalid coverage/policies, negative budgets, unsupported transports,
 or duplicate crons fail CI rather than a scheduled crawl. Registered definitions, discovery policies,
-plugins and the registry are frozen.
+capabilities, plugins and the registry are frozen.
 
 ## Category evidence and shop policy
 
@@ -163,10 +163,10 @@ Category classification remains deterministic and evidence-based. Do not add sho
 the shared taxonomy and do not encode seller merchandising buckets as canonical categories unless the
 seller label is authoritative.
 
-Seller-category policy may be `authoritative`, `corroborative`, or `ignore`. Detail enrichment via
-`extractDetailCategoryEvidence()` is optional and should return product-specific evidence, not make the
-final category decision. Detail requests are bounded by the platform and only unresolved products need
-them.
+Seller-category policy may be `authoritative`, `corroborative`, or `ignore`. Category mapping/policy is
+registered under `capabilities.catalog`; optional detail enrichment is registered under
+`capabilities.detailCategoryEvidence`. It returns product-specific evidence, never the final category
+decision. Detail requests are bounded by the platform and only unresolved products need them.
 
 `other` and `unclassified` are different. `other` is a confirmed canonical category; `unclassified`
 means evidence is insufficient. Candidate categories from unresolved products must not leak into
@@ -217,7 +217,7 @@ other editorial content.
 10. Remove `defaultEnabled: false` only after the implementation and CI are green.
 
 
-## Optional diagnostics and Data Quality capabilities
+## Optional capabilities
 
 A normal shop does not need either capability. Seller-specific diagnostics and threshold tuning are
 registered explicitly at the composition boundary; do not add flat hooks to `ShopAdapter` and do
@@ -240,3 +240,11 @@ defineShopPlugin(adapter, definition, {
 lifecycle treats that value as opaque. `dataQuality.thresholds` may tune the shared metrics only;
 shops must not replace or duplicate the common evaluator. If a new quality concept should apply to
 all shops, add it to the platform instead.
+
+
+### Capability composition
+
+The adapter itself stays universal and minimal. Transport selection, catalog hints, detail evidence,
+inventory recheck, diagnostics, Data Quality thresholds, and activity semantics are attached only at
+`defineShopPlugin(...)` in the composition root. A normal shop must not add a new optional field to
+`ShopAdapter`.

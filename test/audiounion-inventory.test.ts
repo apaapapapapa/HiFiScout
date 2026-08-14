@@ -53,7 +53,10 @@ test("inventory page classification uses the canonical availability tri-state", 
 test("the AudioUnion adapter exposes its recheck policy to the generic loop", () => {
   const plugin = getShopPlugin("audiounion");
   assert.ok(plugin);
-  assert.equal(plugin.inventoryRecheck, audioUnionInventoryRecheck);
+  assert.equal(
+    plugin.capabilities.inventoryRecheck?.classifyPage,
+    audioUnionInventoryRecheck.classifyPage,
+  );
   assert.equal(
     shopEnvVarName(plugin.definition, "INVENTORY_RECHECK_ENABLED"),
     "AUDIOUNION_INVENTORY_RECHECK_ENABLED",

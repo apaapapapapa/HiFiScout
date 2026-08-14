@@ -3,9 +3,12 @@ import assert from "node:assert/strict";
 
 import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
 import { enrichProductCategories } from "../src/crawler/category-enricher.js";
-import { fujiyaAvicAdapter } from "../src/crawler/shops/fujiya-avic.js";
+import { getShopPlugin } from "../src/crawler/shops/index.js";
 import { asQueryableDatabase } from "./helpers/d1.js";
 import { detailFetchOptions, parsedProduct } from "./helpers/fixtures.js";
+
+const fujiyaAvicPlugin = getShopPlugin("fujiya-avic");
+if (!fujiyaAvicPlugin) throw new Error("fujiya-avic plugin missing");
 
 function catalogDb(rows: unknown[], aliases: unknown[] = []) {
   return asQueryableDatabase({
@@ -35,7 +38,7 @@ test("verified exact catalog match classifies before seller detail enrichment", 
       rawCategory: "DAP",
       sourceUrl: "https://example.invalid/abc1",
     }),
-    fujiyaAvicAdapter,
+    fujiyaAvicPlugin.capabilities.catalog,
   );
   assert.equal(product.classificationStatus, "unclassified");
 
@@ -52,7 +55,7 @@ test("verified exact catalog match classifies before seller detail enrichment", 
   ]);
   const result = await enrichProductCategories({
     db,
-    adapter: fujiyaAvicAdapter,
+    adapter: fujiyaAvicPlugin,
     products: [product],
     transport: {
       async fetchHtmlPage() {
@@ -81,7 +84,7 @@ test("derived Marantz model aliases reuse one verified catalog classification ac
       rawCategory: "DAP",
       sourceUrl: "https://example.invalid/sacd10",
     }),
-    fujiyaAvicAdapter,
+    fujiyaAvicPlugin.capabilities.catalog,
   );
   assert.equal(product.classificationStatus, "unclassified");
 
@@ -98,7 +101,7 @@ test("derived Marantz model aliases reuse one verified catalog classification ac
   ]);
   const result = await enrichProductCategories({
     db,
-    adapter: fujiyaAvicAdapter,
+    adapter: fujiyaAvicPlugin,
     products: [product],
     transport: {
       async fetchHtmlPage() {
@@ -128,7 +131,7 @@ test("verified rows without an explicit primary category are not used for classi
       title: "Marantz ABC-1",
       rawCategory: "DAP",
     }),
-    fujiyaAvicAdapter,
+    fujiyaAvicPlugin.capabilities.catalog,
   );
   const db = catalogDb([
     {
@@ -144,7 +147,10 @@ test("verified rows without an explicit primary category are not used for classi
 
   const result = await enrichProductCategories({
     db,
-    adapter: { ...fujiyaAvicAdapter, extractDetailCategoryEvidence: undefined },
+    adapter: {
+      ...fujiyaAvicPlugin,
+      capabilities: { ...fujiyaAvicPlugin.capabilities, detailCategoryEvidence: undefined },
+    },
     products: [product],
     transport: {
       async fetchHtmlPage() {
@@ -168,7 +174,7 @@ test("ambiguous model aliases are not used as verified evidence", async () => {
       title: "Marantz SHARED",
       rawCategory: "DAP",
     }),
-    fujiyaAvicAdapter,
+    fujiyaAvicPlugin.capabilities.catalog,
   );
 
   const db = catalogDb(
@@ -200,7 +206,10 @@ test("ambiguous model aliases are not used as verified evidence", async () => {
 
   const result = await enrichProductCategories({
     db,
-    adapter: { ...fujiyaAvicAdapter, extractDetailCategoryEvidence: undefined },
+    adapter: {
+      ...fujiyaAvicPlugin,
+      capabilities: { ...fujiyaAvicPlugin.capabilities, detailCategoryEvidence: undefined },
+    },
     products: [product],
     transport: {
       async fetchHtmlPage() {

@@ -1,4 +1,4 @@
-import type { ShopParsedProduct } from "../../src/catalog/types.js";
+import type { CatalogNormalizationInput } from "../../src/catalog/types.js";
 import type { FetchHtmlPageOptions } from "../../src/crawler/types.js";
 import type { ReadableDatabase, ShopSyncStateRow } from "../../src/db/types.js";
 import { asQueryableDatabase } from "./d1.js";
@@ -10,8 +10,8 @@ import { asQueryableDatabase } from "./d1.js";
  * the exact key set of a parsed product, so absent must stay absent.
  */
 export function parsedProduct(
-  overrides: Partial<ShopParsedProduct> & Pick<ShopParsedProduct, "title">,
-): ShopParsedProduct {
+  overrides: Partial<CatalogNormalizationInput> & Pick<CatalogNormalizationInput, "title">,
+): CatalogNormalizationInput {
   return {
     sourceId: "",
     manufacturer: "",

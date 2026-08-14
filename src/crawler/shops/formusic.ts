@@ -18,7 +18,7 @@ const CATEGORY_BY_SLUG: Readonly<Record<string, string>> = {
   others: "その他",
 };
 
-const FORMUSIC_CATEGORY_MAPPING = Object.freeze({
+export const FORMUSIC_CATEGORY_MAPPING = Object.freeze({
   "speaker-system": "speaker",
   "speaker-accessories": "accessory",
   "control-amplifiers": "pre_amp",
@@ -137,9 +137,9 @@ export const forMusicAdapter = {
   key: "formusic",
   name: "FOR MUSIC",
   baseUrl: "https://shop.formusic.jp",
-  categoryMapping: FORMUSIC_CATEGORY_MAPPING,
   discovery: {
     coverage: "complete",
+    policy: { emptyPage: "stop", itemCountValidation: "coverage", extraPageBudget: 0 },
     *initialTargets() {
       yield "https://shop.formusic.jp/";
     },

@@ -19,13 +19,10 @@ import type {
   CategoryEnrichmentResult,
   DetailHtmlFetcher,
   FetchHtmlPageOptions,
-  ShopAdapter,
+  ShopPlugin,
 } from "./types.js";
 
-type CategoryEnrichmentAdapter = Pick<
-  ShopAdapter,
-  "key" | "categoryMapping" | "categoryPolicy" | "extractDetailCategoryEvidence"
->;
+type CategoryEnrichmentAdapter = Pick<ShopPlugin, "key" | "capabilities">;
 
 interface EnrichProductCategoriesOptions {
   db: ReadableDatabase;
@@ -174,7 +171,7 @@ export async function enrichProductCategories({
 }: EnrichProductCategoriesOptions): Promise<CategoryEnrichmentResult> {
   const catalog = await applyKnowledgeCatalogEvidence(db, products, now);
   const baseProducts = catalog.products;
-  const extractor = adapter?.extractDetailCategoryEvidence;
+  const extractor = adapter.capabilities.detailCategoryEvidence?.extract;
   if (typeof extractor !== "function") {
     return {
       products: baseProducts,
@@ -188,7 +185,7 @@ export async function enrichProductCategories({
     };
   }
 
-  const policy = resolveCategoryPolicy(adapter);
+  const policy = resolveCategoryPolicy(adapter.capabilities.catalog?.categoryPolicy);
   const unresolved = baseProducts.filter(
     (product) => product.classificationStatus !== "classified",
   );
@@ -262,7 +259,7 @@ export async function enrichProductCategories({
     detailRequests += 1;
     try {
       const html = await transport.fetchHtmlPage(product.sourceUrl, fetchOptions);
-      const detailEvidence = await extractor.call(adapter, html, product);
+      const detailEvidence = await extractor(html, product);
       const evidence = [
         ...(product.categoryEvidence || []),
         ...(Array.isArray(detailEvidence) ? detailEvidence : []),

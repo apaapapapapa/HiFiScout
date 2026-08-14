@@ -1,7 +1,7 @@
 import { normalizeCategory } from "./categories.js";
 import { inferExplicitCategoryIds } from "./category-rules.js";
 import type {
-  CatalogAdapterLike,
+  CategoryPolicyInput,
   CategoryEvidenceInput,
   CategoryEvidenceStrength,
   CategoryMapping,
@@ -29,13 +29,11 @@ function strengthForMode(value: CategoryPolicyMode): CategoryEvidenceStrength | 
   return null;
 }
 
-export function resolveCategoryPolicy(adapter: CatalogAdapterLike = {}): ResolvedCategoryPolicy {
-  const requested = adapter.categoryPolicy || {};
+export function resolveCategoryPolicy(requested: CategoryPolicyInput = {}): ResolvedCategoryPolicy {
   const seller = requested.sellerCategory || {};
-  const legacyPrefer = requested.titleInference === "prefer";
   return {
     sellerCategory: {
-      default: mode(seller.default, legacyPrefer ? "corroborative" : "authoritative"),
+      default: mode(seller.default, "authoritative"),
       categories: { ...seller.categories },
     },
     // Parser output is a hint, never stronger than an explicit product title.
@@ -136,9 +134,9 @@ export function collectListingCategoryEvidence({
   rawCategory = "",
   hintedCategory = "",
   categoryMapping = {},
-  adapter = {},
+  categoryPolicy = {},
 }: CollectListingCategoryEvidenceOptions = {}): ListingCategoryEvidence {
-  const policy = resolveCategoryPolicy(adapter);
+  const policy = resolveCategoryPolicy(categoryPolicy);
   const evidence = [
     ...sellerCategoryEvidence(rawCategory, categoryMapping, policy),
     ...categoryEvidenceFromText(title, { source: "title", strength: "strong", context: "title" }),

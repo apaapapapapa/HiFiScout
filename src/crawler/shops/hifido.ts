@@ -23,7 +23,7 @@ const CATEGORY_RE =
 const PAGE_SIZE = 30;
 const DEFAULT_RECHECK_MAX_PAGE = 120;
 
-const HIFIDO_CATEGORY_MAPPING = Object.freeze({
+export const HIFIDO_CATEGORY_MAPPING = Object.freeze({
   スピーカー: "speaker",
   コントロールアンプ: "pre_amp",
   プリアンプ: "pre_amp",
@@ -205,13 +205,9 @@ export const hifidoAdapter = {
   key: "hifido",
   name: "ハイファイ堂",
   baseUrl: "https://www.hifido.co.jp",
-  categoryMapping: HIFIDO_CATEGORY_MAPPING,
-  transport: "relay",
   discovery: {
     coverage: "partial",
-    guardItemCount: true,
-    continueOnEmpty: true,
-    extraPageAllowance: 1,
+    policy: { emptyPage: "continue", itemCountValidation: "always", extraPageBudget: 1 },
     *initialTargets({ maxPages, env, now, intervalMinutes }) {
       for (let page = 1; page <= maxPages; page += 1) yield listingUrl(page);
       const recheckPage = hifidoRecheckPage(maxPages, env, { now, intervalMinutes });

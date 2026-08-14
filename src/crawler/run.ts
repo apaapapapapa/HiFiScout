@@ -72,9 +72,7 @@ function nowIso(now = new Date()): string {
 }
 
 function isConfigured(env: CrawlerEnv, adapter: ShopPlugin): boolean {
-  if (!isTransportConfigured(env, adapter)) return false;
-  if (adapter.transport === "relay") return true;
-  return !adapter.isConfigured || adapter.isConfigured(env);
+  return isTransportConfigured(env, adapter.capabilities.transport?.kind);
 }
 
 function logUnclassifiedProducts(
@@ -254,7 +252,7 @@ export async function crawlShop(
   const runId = await startCrawlRun(env.DB, adapter.key, startedAt);
   const settings = getCrawlerSettings(env);
   const maxPages = getShopMaxPages(env, definition, settings.maxPagesPerShop);
-  const pageLimit = maxPages + Math.max(0, adapter.discovery.extraPageAllowance || 0);
+  const pageLimit = maxPages + adapter.discovery.policy.extraPageBudget;
   const requestDelayMs = getShopRequestDelayMs(env, definition, settings.requestDelayMs);
   const robotsCache: RobotsCache = new Map();
   const items = new Map<string, NormalizedCatalogProduct>();
@@ -268,7 +266,7 @@ export async function crawlShop(
   let lastEvidenceHtml = "";
   let classificationEvidenceHtml = "";
   const evidenceMetrics: EvidenceMetrics = { expected: 0, archived: 0, failed: 0 };
-  const transport = createTransport(env, adapter, fetchFn);
+  const transport = createTransport(env, adapter.capabilities.transport?.kind, fetchFn);
 
   try {
     const pageQueue = initialPageQueue(adapter, maxPages, env, { now, intervalMinutes, state });
@@ -358,13 +356,13 @@ export async function crawlShop(
       );
     }
 
-    const { deactivateMissing, guardItemCount } = coverageDecision(adapter, {
+    const { deactivateMissing, validateItemCount } = coverageDecision(adapter, {
       reachedEnd,
       coverageIncomplete,
       queueEmpty: pageQueue.length === 0,
     });
     if (
-      guardItemCount &&
+      validateItemCount &&
       isSuspiciousItemDrop(items.size, Number(state?.last_item_count), {
         minRatio: settings.minItemRatio,
         minBaseline: settings.minItemBaseline,

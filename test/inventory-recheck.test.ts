@@ -108,7 +108,7 @@ function upstreamResponse(
 test("a shop that declares no recheck policy is skipped without touching the database", async () => {
   const repository = fakeRepository();
   const plain = getShopPlugin("ippinkan") as ShopPlugin;
-  assert.equal(plain.inventoryRecheck, undefined);
+  assert.equal(plain.capabilities.inventoryRecheck, undefined);
 
   const result = await recheckShopInventory(env(), plain, { now: NOW, repository });
 
