@@ -18,6 +18,7 @@ function product(overrides: JsonObject = {}) {
   return {
     id: 1,
     shop_key: "shop-a",
+    source_id: "source-1",
     manufacturer: "LUXMAN",
     manufacturer_id: "luxman",
     raw_manufacturer: "LUXMAN",
@@ -27,6 +28,7 @@ function product(overrides: JsonObject = {}) {
     raw_category: "CD/SACDプレーヤー",
     primary_category_id: "digital-disc-player",
     category_ids: ["digital-disc-player"],
+    classification_status: "classified",
     condition_text: "中古",
     price_yen: 698000,
     previous_price_yen: 748000,
@@ -37,7 +39,45 @@ function product(overrides: JsonObject = {}) {
     last_changed_at: recent,
     last_activity_at: recent,
     search_aliases: "SACD CD player",
+    is_active: 1,
+    metadata_json: "{}",
+    last_inventory_checked_at: null,
+    inventory_check_failures: 0,
+    last_inventory_check_attempt_at: null,
+    source_published_at: null,
     ...overrides,
+  };
+}
+
+function healthEntry({
+  key,
+  name,
+  enabled,
+  status,
+  lastSuccessAt,
+  ageMinutes,
+}: {
+  key: string;
+  name: string;
+  enabled: boolean;
+  status: "healthy" | "disabled";
+  lastSuccessAt: string | null;
+  ageMinutes: number | null;
+}) {
+  return {
+    shopKey: key,
+    name,
+    enabled,
+    configured: true,
+    intervalMinutes: 60,
+    status,
+    ageMinutes,
+    reason: status === "disabled" ? "disabled" : "ok",
+    lastSuccessAt,
+    lastAttemptAt: lastSuccessAt,
+    lastItemCount: null,
+    consecutiveFailures: 0,
+    lastError: null,
   };
 }
 
@@ -164,13 +204,31 @@ test("healthy metadata renders the simple normal sync summary", async ({ page })
           key: "shop-a",
           name: "Shop A",
           enabled: true,
-          health: { status: "healthy", lastSuccessAt, ageMinutes: 12 },
+          intervalMinutes: 60,
+          sync: null,
+          health: healthEntry({
+            key: "shop-a",
+            name: "Shop A",
+            enabled: true,
+            status: "healthy",
+            lastSuccessAt,
+            ageMinutes: 12,
+          }),
         },
         {
           key: "shop-disabled",
           name: "Disabled Shop",
           enabled: false,
-          health: { status: "disabled", lastSuccessAt: null, ageMinutes: null },
+          intervalMinutes: 60,
+          sync: null,
+          health: healthEntry({
+            key: "shop-disabled",
+            name: "Disabled Shop",
+            enabled: false,
+            status: "disabled",
+            lastSuccessAt: null,
+            ageMinutes: null,
+          }),
         },
       ],
     }),
