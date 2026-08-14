@@ -92,10 +92,7 @@ export function evaluateQuality(
   const identityUnresolved = nonNegative(input?.identityUnresolvedCount);
   // Product Identity quality is defined over every active listing. A listing with no resolution
   // row is therefore unresolved for quality purposes instead of disappearing from the denominator.
-  const identityResolutionMissing = Math.max(
-    0,
-    totalItems - identityMatched - identityUnresolved,
-  );
+  const identityResolutionMissing = Math.max(0, totalItems - identityMatched - identityUnresolved);
   const identityUnresolvedForQuality = identityUnresolved + identityResolutionMissing;
   const inventoryKnown = nonNegative(input?.inventoryKnownCount);
   const inventoryUnknown = nonNegative(input?.inventoryUnknownCount);

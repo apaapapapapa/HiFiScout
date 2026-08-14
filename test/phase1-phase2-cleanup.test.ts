@@ -17,7 +17,10 @@ test("cleanup migration removes the retired products FTS stack", () => {
 
 test("cleanup migration backfills every listing missing an identity resolution", () => {
   assert.match(migration, /INSERT OR IGNORE INTO product_identity_resolutions/);
-  assert.match(migration, /LEFT JOIN product_identity_resolutions r ON r\.listing_product_id = p\.id/);
+  assert.match(
+    migration,
+    /LEFT JOIN product_identity_resolutions r ON r\.listing_product_id = p\.id/,
+  );
   assert.match(migration, /WHERE r\.listing_product_id IS NULL/);
   assert.match(migration, /THEN 'backfill_pending'/);
   assert.match(migration, /'\["missing_identity_fields"\]'/);
