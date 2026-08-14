@@ -17,7 +17,7 @@ export type QualityThresholds = Readonly<Record<QualityThresholdKey, QualityThre
 /** A complete threshold set after applying optional per-shop configuration. */
 export type ResolvedQualityThresholds = QualityThresholds;
 
-/** Direct overrides for one shop. Shop selection belongs to the plugin capability boundary. */
+/** Direct overrides for one registered shop; this module never selects configuration by shop key. */
 export type QualityThresholdOverrides = Readonly<
   Partial<Record<QualityThresholdKey, Readonly<Partial<QualityThreshold>>>>
 >;
