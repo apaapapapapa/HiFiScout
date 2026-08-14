@@ -6,7 +6,7 @@ import {
   applyCategoryClassification,
 } from "../catalog/product-normalizer.js";
 import { findVerifiedCatalogMatches } from "../db/knowledge-catalog-repository.js";
-import { selectExistingProducts } from "../db/products.js";
+import { selectExistingProducts } from "../db/product-write-repository.js";
 import { categoryIdForClassification } from "../catalog/categories.js";
 import { errorMessage, isRecord } from "../types.js";
 import type {

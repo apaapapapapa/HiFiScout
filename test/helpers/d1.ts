@@ -13,3 +13,59 @@ export function asQueryableDatabase<T extends object>(database: T): T & Queryabl
 export function asEvidenceDatabase<T extends object>(database: T): T & EvidenceDatabase {
   return database as T & EvidenceDatabase;
 }
+
+export interface CapturedStatement {
+  sql: string;
+  binds: unknown[];
+}
+
+/** Chooses the rows a statement resolves to, so one fake can serve count + page queries. */
+export type StatementResults = (statement: CapturedStatement) => unknown[];
+
+export interface CaptureDatabase extends QueryableDatabase {
+  /** Every `prepare().bind()` call, in order. */
+  readonly calls: CapturedStatement[];
+  /** Every statement handed to `batch()`, flattened in call order. */
+  readonly batched: CapturedStatement[];
+}
+
+/**
+ * Statement-capture D1 double.
+ *
+ * Deliberately not a SQLite emulator: it records the SQL and binds a repository produced and
+ * replays caller-chosen rows. Tests assert on those recordings, which is what repository SQL
+ * shape tests actually need. `batch()` reports one changed row per statement.
+ */
+export function captureDatabase(results: unknown[] | StatementResults = []): CaptureDatabase {
+  const calls: CapturedStatement[] = [];
+  const batched: CapturedStatement[] = [];
+  const select: StatementResults = typeof results === "function" ? results : () => results;
+  return asQueryableDatabase({
+    calls,
+    batched,
+    prepare(sql: string) {
+      return {
+        bind(...binds: unknown[]) {
+          const statement: CapturedStatement = { sql, binds };
+          calls.push(statement);
+          return {
+            ...statement,
+            async all() {
+              return { results: select(statement) };
+            },
+            async first() {
+              return select(statement)[0] ?? null;
+            },
+            async run() {
+              return { success: true, meta: { changes: 1 } };
+            },
+          };
+        },
+      };
+    },
+    async batch(statements: CapturedStatement[]) {
+      batched.push(...statements);
+      return statements.map(() => ({ success: true, meta: { changes: 1 } }));
+    },
+  });
+}

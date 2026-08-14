@@ -8,9 +8,10 @@
  *
  * Conversion happens in the repository mapping layer, never in a row type.
  *
- * Imports are type-only and one-directional (`db -> catalog`) to keep `^src` acyclic.
+ * Imports are type-only and one-directional (`db -> api -> catalog`) to keep `^src` acyclic.
  */
 
+import type { ProductQuerySort } from "../api/contracts.js";
 import type {
   CategoryId,
   ClassificationStatus,
@@ -93,11 +94,10 @@ export interface ProductRow {
 }
 
 /**
- * `productRow()` output and the `/api/products` item shape: the raw row with `category_ids`
- * replaced by the parsed array. Duplicated today in `products.ts` and
- * `product-search-repository.ts`; both should reference this type.
+ * The API item shape is NOT derived from this row. `product-row-mapper.ts` maps `ProductRow`
+ * onto `ProductListItem` in `api/contracts.ts` field by field, so adding a column here cannot
+ * change a public payload.
  */
-export type ProductApiRow = Omit<ProductRow, "category_ids"> & { category_ids: string[] };
 
 /** Explicit column list read by `selectExistingProducts()` during upsert. */
 export type ExistingProductRow = Pick<
@@ -822,11 +822,9 @@ export interface UpsertProductsResult {
   deactivatedCount: number;
 }
 
-export type ProductQuerySort = "newest" | "oldest" | "updated" | "priceAsc" | "priceDesc";
-
 /**
  * Discriminated on the optional `price` flag, which gates both the SQL ORDER BY and the
- * cursor encoding.
+ * cursor encoding. `key` is the public `?sort=` value the cursor is minted for.
  */
 export type SortDefinition =
   | {
@@ -850,20 +848,6 @@ export interface ProductListCursor {
   sort: string;
   value?: string | number | null;
   isNull?: boolean;
-}
-
-/** `/api/products` response. `totalCount`/`totalPages` exist only when `includeTotal=true`. */
-export interface ListProductsResult {
-  items: ProductApiRow[];
-  hasMore: boolean;
-  nextCursor: string | null;
-  totalCount?: number | null;
-  totalPages?: number;
-}
-
-export interface ProductHistoryResult {
-  product: ProductApiRow;
-  history: PriceHistoryPoint[];
 }
 
 /** `findVerifiedCatalogMatches()` value; `null` marks an ambiguous key. */

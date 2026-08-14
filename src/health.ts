@@ -2,21 +2,23 @@ import { getCrawlerSettings, getShopEnabled, getShopIntervalMinutes } from "./co
 import { listShopStates } from "./db/shop-state-repository.js";
 import { SHOP_PLUGINS } from "./crawler/shops/index.js";
 import { isTransportConfigured } from "./crawler/transport.js";
+import type {
+  ShopHealthEntry,
+  ShopHealthReason,
+  ShopHealthStatus,
+  ShopHealthSummary,
+  SyncHealthResponse,
+} from "./api/contracts.js";
 import type { CrawlerEnv, ShopPlugin } from "./crawler/types.js";
 import type { QueryableDatabase, ShopSyncStateRow } from "./db/types.js";
 
-export type SyncHealthStatus = "disabled" | "healthy" | "warning" | "critical";
+/**
+ * The health vocabulary is part of the `/api/health` and `/api/meta` contracts, so it is owned
+ * by `api/contracts.ts`; these aliases keep the existing internal names.
+ */
+export type SyncHealthStatus = ShopHealthStatus;
 
-export type SyncHealthReason =
-  | "disabled"
-  | "configuration_missing"
-  | "never_succeeded_repeated_failures"
-  | "never_succeeded"
-  | "repeated_failures"
-  | "sync_stale"
-  | "recent_failure"
-  | "sync_delayed"
-  | "ok";
+export type SyncHealthReason = ShopHealthReason;
 
 /**
  * A `shop_sync_state` row as the health check reads it: every column except `shop_key` is
@@ -24,11 +26,7 @@ export type SyncHealthReason =
  */
 export type ShopSyncStateSnapshot = Partial<ShopSyncStateRow> & { shop_key: string };
 
-export interface ShopSyncHealth {
-  status: SyncHealthStatus;
-  ageMinutes: number | null;
-  reason: SyncHealthReason;
-}
+export type ShopSyncHealth = ShopHealthSummary;
 
 export interface EvaluateShopSyncHealthOptions {
   state?: Partial<ShopSyncStateRow> | null;
@@ -40,25 +38,9 @@ export interface EvaluateShopSyncHealthOptions {
   criticalFactor?: number;
 }
 
-export interface ShopSyncHealthEntry extends ShopSyncHealth {
-  shopKey: string;
-  name: string;
-  enabled: boolean;
-  configured: boolean;
-  intervalMinutes: number;
-  lastSuccessAt: string | null;
-  lastAttemptAt: string | null;
-  lastItemCount: number | null;
-  consecutiveFailures: number;
-  lastError: string | null;
-}
+export type ShopSyncHealthEntry = ShopHealthEntry;
 
-export interface SyncHealthReport {
-  ok: boolean;
-  status: SyncHealthStatus;
-  checkedAt: string;
-  shops: ShopSyncHealthEntry[];
-}
+export type SyncHealthReport = SyncHealthResponse;
 
 /** `getSyncHealth` reads persisted state, so the database binding is required. */
 export interface SyncHealthEnv extends CrawlerEnv {

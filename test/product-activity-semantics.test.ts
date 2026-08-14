@@ -1,9 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { listProducts, upsertProducts } from "../src/db/products.js";
+import { listProducts } from "../src/db/product-search-repository.js";
+import { upsertProducts } from "../src/db/product-write-repository.js";
 import type { CatalogProductUpsertInput } from "../src/catalog/types.js";
 import type { ExistingProductRow } from "../src/db/types.js";
-import { asQueryableDatabase } from "./helpers/d1.js";
+import { asQueryableDatabase, captureDatabase } from "./helpers/d1.js";
+import { productQuery } from "./helpers/product-query.js";
 
 interface CapturedStatement {
   sql: string;
@@ -184,23 +186,9 @@ test("parser and normalization metadata drift does not create user-facing activi
 });
 
 test("48-hour new filter prefers retailer publication time over crawler discovery time", async () => {
-  const calls: CapturedStatement[] = [];
-  const db = asQueryableDatabase({
-    prepare(sql: string) {
-      return {
-        bind(...binds: unknown[]) {
-          calls.push({ sql, binds });
-          return {
-            async all() {
-              return { results: [] };
-            },
-          };
-        },
-      };
-    },
-  });
+  const db = captureDatabase();
 
-  await listProducts(db, new URL("https://example.test/api/products?newOnly=true"));
+  await listProducts(db, productQuery("?newOnly=true"));
 
-  assert.match(calls[0].sql, /COALESCE\(p\.source_published_at, p\.first_seen_at\)/);
+  assert.match(db.calls[0].sql, /COALESCE\(p\.source_published_at, p\.first_seen_at\)/);
 });
