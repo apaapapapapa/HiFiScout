@@ -43,7 +43,7 @@ import {
 } from "./favorites.js";
 import type { FavoriteStore } from "./favorites.js";
 import { escapeHtml } from "./format.js";
-import { pageNumbers } from "./pagination.js";
+import { pageNumbers, resultSummary } from "./pagination.js";
 import {
   categoryOptions,
   emptyState,
@@ -357,11 +357,16 @@ function render(errorMessage = ""): void {
   const products = favoriteMode
     ? favoriteResults(state.favorites, filters, selectedCategoryLabel())
     : state.products;
-  $("count").textContent = String(products.length);
-  $("count-label").textContent = favoriteMode ? "件のお気に入り" : "件を表示中";
-  $("more-available").hidden = Boolean(
-    favoriteMode || errorMessage || state.currentPage >= state.totalPages,
-  );
+  const summary = resultSummary({
+    shown: products.length,
+    favoriteMode,
+    currentPage: state.currentPage,
+    totalPages: state.totalPages,
+    errorMessage,
+  });
+  $("count").textContent = summary.count;
+  $("count-label").textContent = summary.label;
+  $("more-available").hidden = summary.moreHidden;
   $("favorites-note").hidden = !favoriteMode;
   const legacyNotice = favoriteMode ? legacyFavoritesNotice(state.favorites.legacyIds.size) : "";
   const cards = products

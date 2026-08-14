@@ -1,37 +1,13 @@
-(() => {
-  const source = new URLSearchParams(location.search);
-  const params = new URLSearchParams();
+/**
+ * Bootstrap: rewrites the address bar before `app.ts` reads it.
+ *
+ * Loaded as its own entry so the correction happens before the catalog script parses the query and
+ * issues its first request. The rules live in {@link sanitizedCatalogUrl}, which is why this file
+ * has nothing in it but the browser calls.
+ */
 
-  function copyText(key: string, maxLength: number): void {
-    const value = source.get(key);
-    if (value == null || !value.trim() || [...value].length > maxLength) return;
-    params.set(key, value);
-  }
+import { sanitizedCatalogUrl } from "./catalog-url-sanitizer.js";
 
-  function copyNumeric(key: string): void {
-    const value = source.get(key);
-    if (value != null && /^\d{1,12}$/.test(value)) params.set(key, value);
-  }
-
-  copyText("q", 100);
-  copyText("shop", 80);
-  copyText("manufacturer", 100);
-  copyText("category", 100);
-  copyNumeric("minPrice");
-  copyNumeric("maxPrice");
-
-  const sort = source.get("sort");
-  if (sort === "priceAsc" || sort === "priceDesc") params.set("sort", sort);
-
-  if (source.get("inStock") === "false") params.set("inStock", "false");
-  if (source.get("newOnly") === "true") params.set("newOnly", "true");
-  if (source.get("priceDropped") === "true") params.set("priceDropped", "true");
-
-  const view = source.get("view");
-  if (view === "cards" || view === "list") params.set("view", view);
-
-  const nextSearch = params.toString();
-  const nextUrl = `${location.pathname}${nextSearch ? `?${nextSearch}` : ""}${location.hash}`;
-  const currentUrl = `${location.pathname}${location.search}${location.hash}`;
-  if (nextUrl !== currentUrl) history.replaceState(null, "", nextUrl);
-})();
+const nextUrl = sanitizedCatalogUrl(location.pathname, location.search, location.hash);
+// `replaceState`, not `pushState`: correcting a bad link must not add a back-button step.
+if (nextUrl) history.replaceState(null, "", nextUrl);
