@@ -27,6 +27,16 @@ function assertString(
   if (nonEmpty && !value.trim()) invalid(shopKey, index, `${field} must not be empty`);
 }
 
+function assertSourceUrl(shopKey: string, index: number, value: string): void {
+  let sourceUrl: URL;
+  try {
+    sourceUrl = new URL(value);
+  } catch {
+    invalid(shopKey, index, "sourceUrl must be an absolute URL");
+  }
+  if (sourceUrl.protocol !== "https:") invalid(shopKey, index, "sourceUrl must use https");
+}
+
 /**
  * Runtime boundary between untrusted seller parsing and the shared catalog pipeline.
  *
@@ -69,12 +79,7 @@ export function validateSellerProducts(
       invalid(plugin.key, index, "stockStatus must be in_stock, sold_out, or unknown");
     }
 
-    try {
-      const sourceUrl = new URL(candidate.sourceUrl as string);
-      if (sourceUrl.protocol !== "https:") invalid(plugin.key, index, "sourceUrl must use https");
-    } catch {
-      invalid(plugin.key, index, "sourceUrl must be an absolute URL");
-    }
+    assertSourceUrl(plugin.key, index, candidate.sourceUrl as string);
 
     if (
       candidate.sourcePublishedAt !== undefined &&
