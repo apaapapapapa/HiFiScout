@@ -1,9 +1,9 @@
 # Adding a shop
 
 A shop is a plugin, not a change to the crawler. Discovery, transport, normalization, identity,
-persistence, search projection, evidence, and data quality are platform behavior. A shop contributes
-only definition metadata, a discovery policy, seller-fact parsing, availability mapping, optional
-capabilities, fixtures, and tests.
+persistence, search projection, product search grouping, evidence, and data quality are platform
+behavior. A shop contributes only definition metadata, a discovery policy, seller-fact parsing,
+availability mapping, optional capabilities, fixtures, and tests.
 
 Adding a normal shop must not require editing `run.ts`, `dispatch.ts`, a repository, or a shop-name
 type union in `src/crawler/types.ts`.

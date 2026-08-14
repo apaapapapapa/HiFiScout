@@ -46,7 +46,9 @@ E2E_BASE_URL=https://hifiscout.raha3415kohei.workers.dev npm test
 
 ## CI policy
 
-The normal `CI` workflow runs migrations, the fast Node test suite, and Wrangler dry-run validation. It does not install a browser.
+The normal `CI` workflow runs migrations, `scripts/verify-search-integration.ts` against that locally migrated D1, the fast Node test suite, and Wrangler dry-run validation. It does not install a browser.
+
+The search integration check exists because two behaviors cannot be proven by asserting on generated SQL: that the FTS5 trigram index actually resolves a query like `TAD 1000`, and that two shops' confirmed listings really collapse into one search entity while an unconfirmed listing stays on its own. Those are properties of the database, so they are verified against a real one.
 
 The `E2E` workflow runs after a successful `Deploy Cloudflare` workflow, so it checks the version that was actually deployed instead of racing the deployment. It can also be started manually with an alternate base URL. A single Chromium worker is used to keep cost, duration, and nondeterminism low.
 

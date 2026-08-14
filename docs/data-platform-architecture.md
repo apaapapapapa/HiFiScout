@@ -22,6 +22,7 @@ D1 remains authoritative for:
 - Knowledge Catalog products, aliases, categories, candidates, and review state
 - crawl/shop state
 - search projection metadata
+- the product-level search read model: search entities and their offer memberships
 - Listing -> Knowledge Catalog product identity resolutions
 - R2 evidence metadata
 
@@ -279,6 +280,8 @@ Application-level structured logs expose:
 
 Raw user search text is deliberately not logged; the fields above are counts and classifications.
 
+Each crawl summary additionally carries `searchEntities` with the listings resynced, entities touched, and entities retired by that crawl. Entity sync runs after identity resolution, because which product a listing belongs to is decided by the resolution written in the step before it. A failure there logs `product_search_entity_sync_failure` and leaves the crawl successful: stale grouping is a read-model repair, not a reason to discard a completed collection.
+
 `GET /api/admin/data-platform/status` (ADMIN_TOKEN protected) reports bounded D1 counts useful for migration/capacity decisions:
 
 - total and active products
@@ -334,5 +337,13 @@ Unit/regression tests cover:
 - fuzzy candidates remaining unresolved
 - active-listing Identity denominator and missing-resolution coverage
 - evidence archive allow-list, redaction, hash deduplication, and best-effort R2 failure behavior
+- only a matched resolution against a verified catalog product merging two shops, with unresolved listings staying searchable as fallback entities
+- offer-level filters holding for one and the same offer, and the card summary being recomputed from the offers that matched
+- product-unit totals, offsets, and keyset cursors, including a cursor minted under one price aggregate being refused by the other
+- a page of results costing a bounded number of statements instead of one lookup per result
+- the migration backfill being the same derivation the incremental sync runs, not a second definition of grouping
+- consistency reporting each read-model invariant separately, and the rebuild converging on re-run
 
-The migrations are forward-only. Migration 0017 preserved the old FTS stack only for its rollout window; migration 0020 removes it after all callers have migrated and backfills any listing missing an Identity resolution row without merging products.
+`scripts/verify-search-integration.ts` covers what SQL-shape assertions cannot: it runs against a locally migrated D1 in CI to prove that the trigram index really resolves `TAD 1000` and that two shops' confirmed listings collapse into one entity while an unconfirmed listing stays separate.
+
+The migrations are forward-only. Migration 0017 preserved the old FTS stack only for its rollout window; migration 0020 removes it after all callers have migrated and backfills any listing missing an Identity resolution row without merging products. Migration 0021 is purely additive for the same reason — migrations run before the replacement Worker is deployed, so the listing search structures stay untouched and keep serving traffic while the product entity tables fill in.

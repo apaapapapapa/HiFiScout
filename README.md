@@ -22,7 +22,8 @@ Browser
   ├── static UI (Cloudflare Workers Static Assets)
   │
   └── /api/* ── Rate Limit API ── Worker ───── D1
-                                      │          ├─ products
+                                      │          ├─ products (seller listings)
+                                      │          ├─ product search entities + offers
                                       │          ├─ price_history
                                       │          └─ crawl state
                                       │
@@ -139,6 +140,8 @@ A daily maintenance cron performs bounded deletes so cleanup itself cannot becom
 - price history: 3 years
 - inactive products: 1 year
 - at most 500 rows per table per daily cleanup invocation
+
+The same job also retires product search entities whose last offer has gone, so deleting an inactive listing cannot leave a product in the index with nothing to buy.
 
 D1 Time Travel remains the first-line point-in-time recovery mechanism. In addition, `.github/workflows/backup.yml` exports the remote D1 database once per week, compresses the SQL dump, and retains it as a GitHub Actions artifact for 90 days.
 
