@@ -52,12 +52,18 @@ export function stripTags(value: unknown = ""): string {
   return clean(decodeHtml(String(value).replace(/<[^>]+>/g, " ")));
 }
 
-/** Text a reader would see: scripts and styles removed before tags are stripped. */
+/**
+ * Text a reader would see: scripts and styles removed before tags are stripped.
+ *
+ * The closing tags allow trailing content (`</script >`, `</script data-x>`) because HTML parsers
+ * accept those. A stricter `</script>` would leave the script body in the text, and script bodies
+ * routinely mention model numbers and availability wording — exactly what the classifier reads.
+ */
 export function visibleText(html: unknown = ""): string {
   return stripTags(
     String(html)
-      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " "),
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, " ")
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, " "),
   );
 }
 

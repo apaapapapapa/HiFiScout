@@ -49,6 +49,16 @@ test("tag stripping and visible text drop scripts and styles", () => {
   assert.match(stripTags("<script>SECRET</script>"), /SECRET/u);
 });
 
+test("script removal accepts the closing-tag spellings a browser accepts", () => {
+  // A `</script>`-only pattern leaves the script body in the text, and script bodies routinely
+  // mention model numbers and availability wording that the classifier would then read as page
+  // content. `inventory-recheck` already guarded this; the shared helper now does too.
+  for (const closing of ["</script>", "</script >", "</script\t\n data-x>"]) {
+    assert.equal(visibleText(`<script>SA-10 在庫あり${closing}<p>SA-11</p>`), "SA-11", closing);
+  }
+  assert.equal(visibleText("<style>.a{}</style ><p>OK</p>"), "OK");
+});
+
 test("model identity is bounded so a shorter model never matches inside a longer one", () => {
   assert.equal(containsCatalogModelIdentity("Marantz SA-10 player", "SA-10"), true);
   assert.equal(containsCatalogModelIdentity("Marantz SA-100 player", "SA-10"), false);
