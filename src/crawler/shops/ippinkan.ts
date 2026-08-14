@@ -16,6 +16,7 @@ export const ippinkanAdapter = {
     // Numbered pages are capped operationally; the listing does not prove that the configured cap
     // represents the shop's entire inventory, so absence must never deactivate a product.
     coverage: "unknown",
+    policy: { emptyPage: "stop", itemCountValidation: "coverage", extraPageBudget: 0 },
     *initialTargets({ maxPages }) {
       yield "https://ippinkan.jp/shopbrand/U100000/";
       for (let page = 2; page <= maxPages; page += 1) {

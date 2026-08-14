@@ -1,7 +1,6 @@
 import { normalizeManufacturer } from "../../catalog/manufacturers.js";
 import { cleanText, inferCategory, splitManufacturerModel, stableSourceId } from "../normalize.js";
 import { parseProductPage } from "../parser.js";
-import { audioUnionInventoryRecheck } from "./audiounion-inventory.js";
 import type { ManufacturerNormalizationResult } from "../../catalog/types.js";
 import type { SellerProduct, ShopAdapter } from "../types.js";
 
@@ -247,11 +246,9 @@ export const audioUnionAdapter = {
   key: "audiounion",
   name: "Audio Union",
   baseUrl: "https://www.audiounion.jp",
-  transport: "relay",
-  requestDelayMs: 10_000,
-  inventoryRecheck: audioUnionInventoryRecheck,
   discovery: {
     coverage: "partial",
+    policy: { emptyPage: "stop", itemCountValidation: "coverage", extraPageBudget: 0 },
     *initialTargets({ env }) {
       yield env.AUDIOUNION_ENTRY_URL?.trim() || DEFAULT_ENTRY_URL;
     },

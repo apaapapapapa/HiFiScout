@@ -5,7 +5,7 @@ import { classifyCategoryEvidence } from "../src/catalog/category-classifier.js"
 import { normalizeCategory } from "../src/catalog/categories.js";
 import { normalizeManufacturer } from "../src/catalog/manufacturers.js";
 import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
-import { fujiyaAvicAdapter } from "../src/crawler/shops/fujiya-avic.js";
+import { FUJIYA_CATEGORY_POLICY } from "../src/crawler/shops/fujiya-avic.js";
 import { parsedProduct } from "./helpers/fixtures.js";
 
 test("shop category mapping wins over shared inference", () => {
@@ -186,15 +186,15 @@ test("multi-category evidence never creates a multi-category product", () => {
 test("Fujiya uses the generic evidence policy for broad DAP merchandising buckets", () => {
   const sacd = normalizeCatalogProduct(
     parsedProduct({ title: "MARANTZ SACD 10 SACD Player", rawCategory: "DAP" }),
-    fujiyaAvicAdapter,
+    { categoryPolicy: FUJIYA_CATEGORY_POLICY },
   );
   const cable = normalizeCatalogProduct(
     parsedProduct({ title: "Premium Headphone Cable 2m", rawCategory: "DAP" }),
-    fujiyaAvicAdapter,
+    { categoryPolicy: FUJIYA_CATEGORY_POLICY },
   );
   const unresolved = normalizeCatalogProduct(
     parsedProduct({ title: "Portable Audio Model X", rawCategory: "DAP" }),
-    fujiyaAvicAdapter,
+    { categoryPolicy: FUJIYA_CATEGORY_POLICY },
   );
   assert.equal(sacd.primaryCategoryId, "cd_sacd_player");
   assert.equal(cable.primaryCategoryId, "cable");

@@ -10,13 +10,14 @@ import {
   targetUrl,
 } from "../src/crawler/strategies.js";
 import { SHOP_PLUGINS } from "../src/crawler/shops/index.js";
-import {
-  createShopRegistry,
-  defineShopPlugin,
-  type ShopPluginCapabilities,
-} from "../src/crawler/shops/registry.js";
+import { createShopRegistry, defineShopPlugin } from "../src/crawler/shops/registry.js";
 import { isTransportConfigured, relayConfiguration } from "../src/crawler/transport.js";
-import type { ShopAdapter, ShopDefinitionInput, ShopPlugin } from "../src/crawler/types.js";
+import type {
+  ShopAdapter,
+  ShopDefinitionInput,
+  ShopPlugin,
+  ShopRuntimeCapabilities,
+} from "../src/crawler/types.js";
 
 const GENERIC_MODULES = [
   "src/config.ts",
@@ -83,7 +84,9 @@ function directlyReadShopEnvVars(plugin: ShopPlugin, declared: readonly string[]
 
 function platformReadableShopEnvVars(plugin: ShopPlugin): string[] {
   return SHOP_ENV_SUFFIXES.filter(
-    (suffix) => !suffix.startsWith("INVENTORY_RECHECK_") || plugin.inventoryRecheck !== undefined,
+    (suffix) =>
+      !suffix.startsWith("INVENTORY_RECHECK_") ||
+      plugin.capabilities.inventoryRecheck !== undefined,
   ).map((suffix) => shopEnvVarName(plugin.definition, suffix));
 }
 
@@ -97,7 +100,7 @@ function readableShopEnvVars(plugin: ShopPlugin, declared: readonly string[]): S
 function registerStub(
   overrides: Partial<ShopDefinitionInput> = {},
   adapterOverrides: Partial<ShopAdapter> = {},
-  capabilities: ShopPluginCapabilities = {},
+  capabilities: ShopRuntimeCapabilities = {},
 ): ShopPlugin {
   const definition: ShopDefinitionInput = {
     key: "example-shop",
@@ -112,6 +115,7 @@ function registerStub(
     baseUrl: definition.baseUrl,
     discovery: {
       coverage: "unknown",
+      policy: { emptyPage: "stop", itemCountValidation: "coverage", extraPageBudget: 0 },
       *initialTargets() {},
     },
     parse: () => [],
@@ -193,6 +197,7 @@ test("registration rejects a definition the platform could not run safely", () =
         {
           discovery: {
             coverage: "everything" as unknown as "complete",
+            policy: { emptyPage: "stop", itemCountValidation: "coverage", extraPageBudget: 0 },
             *initialTargets() {},
           },
         },
@@ -206,12 +211,12 @@ test("registration rejects a definition the platform could not run safely", () =
         {
           discovery: {
             coverage: "unknown",
-            extraPageAllowance: -1,
+            policy: { emptyPage: "stop", itemCountValidation: "coverage", extraPageBudget: -1 },
             *initialTargets() {},
           },
         },
       ),
-    /extraPageAllowance/,
+    /extraPageBudget/,
   );
   assert.throws(() => registerStub({}, { key: "other-shop" }), /adapter key/);
   assert.throws(() => registerStub({}, { baseUrl: "https://other.example" }), /adapter baseUrl/);
@@ -219,14 +224,6 @@ test("registration rejects a definition the platform could not run safely", () =
 
 test("the registry rejects shops that would silently share configuration", () => {
   assert.throws(() => createShopRegistry([registerStub(), registerStub()]), /duplicate shop key/);
-  assert.throws(
-    () =>
-      createShopRegistry([
-        registerStub({ key: "one-shop", envPrefix: "SHARED" }),
-        registerStub({ key: "two-shop", envPrefix: "SHARED" }),
-      ]),
-    /share the env prefix/,
-  );
   assert.throws(
     () =>
       createShopRegistry([
@@ -239,7 +236,6 @@ test("the registry rejects shops that would silently share configuration", () =>
 
 test("shop settings are derived from the definition rather than declared per shop", () => {
   assert.equal(registerStub({ key: "example-shop" }).definition.envPrefix, "EXAMPLE_SHOP");
-  assert.equal(registerStub({ envPrefix: "LEGACY" }).definition.envPrefix, "LEGACY");
 
   for (const plugin of SHOP_PLUGINS) {
     for (const suffix of SHOP_ENV_SUFFIXES) {
@@ -352,8 +348,8 @@ test("shop-specific behavior is opt-in capability metadata", () => {
     if (plugin.capabilities.dataQuality?.thresholds !== undefined) {
       assert.equal(typeof plugin.capabilities.dataQuality.thresholds, "object");
     }
-    if (plugin.inventoryRecheck !== undefined) {
-      const policy = plugin.inventoryRecheck;
+    if (plugin.capabilities.inventoryRecheck !== undefined) {
+      const policy = plugin.capabilities.inventoryRecheck;
       assert.equal(typeof policy.isDetailUrl, "function");
       assert.equal(typeof policy.classifyPage, "function");
       assert.equal(plugin.transport, "relay");
@@ -442,16 +438,22 @@ test("explicit coverage semantics decide deactivation", () => {
     registerStub({}, { discovery: { coverage: "complete", *initialTargets() {} } }),
     { reachedEnd: false, coverageIncomplete: false, queueEmpty: true },
   );
-  assert.deepEqual(complete, { deactivateMissing: true, guardItemCount: true });
+  assert.deepEqual(complete, { deactivateMissing: true, validateItemCount: true });
 
   const partial = coverageDecision(
     registerStub(
       { key: "partial-shop" },
-      { discovery: { coverage: "partial", guardItemCount: true, *initialTargets() {} } },
+      {
+        discovery: {
+          coverage: "partial",
+          policy: { emptyPage: "stop", itemCountValidation: "always", extraPageBudget: 0 },
+          *initialTargets() {},
+        },
+      },
     ),
     { reachedEnd: true, coverageIncomplete: false, queueEmpty: true },
   );
-  assert.deepEqual(partial, { deactivateMissing: false, guardItemCount: true });
+  assert.deepEqual(partial, { deactivateMissing: false, validateItemCount: true });
 
   const uncertain = coverageDecision(
     registerStub(
@@ -460,5 +462,5 @@ test("explicit coverage semantics decide deactivation", () => {
     ),
     { reachedEnd: true, coverageIncomplete: true, queueEmpty: true },
   );
-  assert.deepEqual(uncertain, { deactivateMissing: false, guardItemCount: false });
+  assert.deepEqual(uncertain, { deactivateMissing: false, validateItemCount: false });
 });

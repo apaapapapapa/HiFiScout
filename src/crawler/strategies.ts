@@ -11,7 +11,7 @@ export interface CoverageSignals {
 
 export interface CoverageDecision {
   deactivateMissing: boolean;
-  guardItemCount: boolean;
+  validateItemCount: boolean;
 }
 
 export function pageUrl(page: CrawlPage): string {
@@ -45,7 +45,7 @@ export function initialPageQueue<TPage extends CrawlPage>(
   env: CrawlerEnv = {},
   context: Omit<DiscoveryContext, "maxPages" | "env"> = {},
 ): TPage[] {
-  const allowance = Math.max(0, adapter.discovery.extraPageAllowance || 0);
+  const allowance = adapter.discovery.policy.extraPageBudget;
   const limit = Math.max(1, maxPages) + allowance;
   const discoveryContext: DiscoveryContext = { maxPages, env, ...context };
   const pages: TPage[] = [];
@@ -71,7 +71,7 @@ export function discoverPages<TPage extends CrawlPage>(
 }
 
 export function shouldContinueAfterEmpty(adapter: DiscoveryAdapter<CrawlPage>): boolean {
-  return adapter.discovery.continueOnEmpty === true;
+  return adapter.discovery.policy.emptyPage === "continue";
 }
 
 export function coverageDecision(
@@ -82,6 +82,7 @@ export function coverageDecision(
     adapter.discovery.coverage === "complete" && !coverageIncomplete && (reachedEnd || queueEmpty);
   return {
     deactivateMissing,
-    guardItemCount: deactivateMissing || adapter.discovery.guardItemCount === true,
+    validateItemCount:
+      deactivateMissing || adapter.discovery.policy.itemCountValidation === "always",
   };
 }

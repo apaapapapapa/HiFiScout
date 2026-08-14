@@ -37,8 +37,9 @@ test("shop generator renders seller-fact and discovery-ready adapter", () => {
   assert.match(adapter, /SellerProduct/);
   assert.match(adapter, /discovery:/);
   assert.match(adapter, /coverage: "unknown"/);
+  assert.match(adapter, /extraPageBudget: 0/);
   assert.match(adapter, /initialTargets/);
-  assert.match(adapter, /categoryMapping:/);
+  assert.doesNotMatch(adapter, /categoryMapping|transport:/);
   assert.match(adapter, /rawManufacturer/);
   assert.match(adapter, /rawCategory/);
   assert.match(adapter, /metadata: \{ storeName, warranty \}/);
@@ -53,6 +54,7 @@ test("shop generator renders seller-fact and discovery-ready adapter", () => {
     intervalMinutes: 60,
   });
   assert.match(registration, /defaultIntervalMinutes: 60/);
+  assert.match(registration, /transport: \{ kind: "direct" \}/);
   assert.doesNotMatch(registration, /EXAMPLE_AUDIO_INTERVAL_MINUTES:/);
 });
 
@@ -70,7 +72,6 @@ test("the generated scaffold is syntactically valid TypeScript", async () => {
     key: "example-audio",
     name: "Example Audio",
     baseUrl: "https://example.com",
-    transport: "relay",
   });
   const generatedTest = renderTest({ key: "example-audio" });
   const registration = renderPluginRegistration({
@@ -133,6 +134,7 @@ test("shop generator creates adapter, fixture, test and registry entry", async (
   assert.match(adapter, /const BASE_URL = "https:\/\/example\.com"/);
   assert.match(adapter, /discovery:/);
   assert.match(adapter, /coverage: "unknown"/);
+  assert.match(adapter, /extraPageBudget: 0/);
   assert.match(adapter, /parse\(_html: string\): SellerProduct\[\]/);
   assert.match(generatedTest, /\.\.\/src\/crawler\/shops\/example-audio\.js/);
   assert.match(fixture, /representative, sanitized listing-page fixture/);

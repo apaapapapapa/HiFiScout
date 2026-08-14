@@ -7,7 +7,7 @@
  * must never look like a sold-out product.
  *
  * Nothing here is shop-specific: the settings come from the shop's own env prefix, and the URL
- * guard and availability classifier from the adapter's {@link InventoryRecheckPolicy}.
+ * guard and availability classifier from the plugin's inventory-recheck capability.
  */
 
 import {
@@ -148,7 +148,7 @@ export async function recheckShopInventory(
     repository = defaultRepository,
   }: InventoryRecheckOptions = {},
 ): Promise<InventoryRecheckResult> {
-  const policy = plugin.inventoryRecheck;
+  const policy = plugin.capabilities.inventoryRecheck;
   if (!policy) return { status: "skipped", reason: "disabled" };
   const settings = getShopInventoryRecheckSettings(env, plugin.definition);
   if (!settings.enabled) return { status: "skipped", reason: "disabled" };

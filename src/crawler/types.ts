@@ -9,10 +9,11 @@ import type {
   CategoryEvidenceInput,
   CategoryMapping,
   CategoryPolicyInput,
+  FeatureFactInput,
   NormalizedCatalogProduct,
-  ShopParsedProduct,
   StockStatus,
 } from "../catalog/types.js";
+import type { ProductActivityPolicy } from "../db/product-activity-policy.js";
 import type {
   IdentitySyncMetrics,
   QualityEvaluation,
@@ -146,10 +147,8 @@ export interface ShopDefinition {
   readonly transportConfigurationRequired?: boolean;
 }
 
-/** A definition as a shop writes it; `envPrefix` is derived unless explicitly overridden. */
-export type ShopDefinitionInput = Omit<ShopDefinition, "envPrefix"> & {
-  readonly envPrefix?: string;
-};
+/** A definition as a shop writes it; `envPrefix` is always derived from the shop key. */
+export type ShopDefinitionInput = Omit<ShopDefinition, "envPrefix">;
 
 // ---------------------------------------------------------------------------
 // Inventory recheck capability
@@ -200,11 +199,18 @@ export interface DiscoveryContext {
  * needed, page-to-page/category expansion. The platform validates origin, bounds and deduplicates
  * every target before fetching it.
  */
+export type EmptyPageAction = "stop" | "continue";
+export type ItemCountValidationMode = "coverage" | "always";
+
+export interface DiscoveryPolicy {
+  readonly emptyPage: EmptyPageAction;
+  readonly itemCountValidation: ItemCountValidationMode;
+  readonly extraPageBudget: number;
+}
+
 export interface DiscoveryCapability<TPage extends CrawlPage = CrawlPage> {
   readonly coverage: CoverageKind;
-  readonly continueOnEmpty?: boolean;
-  readonly guardItemCount?: boolean;
-  readonly extraPageAllowance?: number;
+  readonly policy: Readonly<DiscoveryPolicy>;
   initialTargets(context: DiscoveryContext): Iterable<TPage>;
   /** `null` means this page made coverage uncertain; `[]` means no additional targets. */
   discoverTargets?(html: string, page: TPage): readonly TPage[] | null;
@@ -214,23 +220,47 @@ export interface DiscoveryCapability<TPage extends CrawlPage = CrawlPage> {
 // Seller-fact contract
 // ---------------------------------------------------------------------------
 
-/**
- * The strict seller-fact shape every shop parser must produce before central catalog
- * normalization. The legacy catalog input keeps these raw fields optional for non-crawler callers;
- * the shop platform does not.
- */
-export interface SellerProduct extends Omit<
-  ShopParsedProduct,
-  "rawManufacturer" | "rawCategory" | "category"
-> {
+/** The strict seller-fact shape every shop parser must produce before catalog normalization. */
+export interface SellerProduct {
+  sourceId: string;
+  manufacturer: string;
   rawManufacturer: string;
+  model: string;
+  title: string;
   rawCategory: string;
+  /** Parser hint (a display label), not a category id. */
   category: string;
+  conditionText: string;
+  priceYen: number | null;
+  stockStatus: StockStatus;
+  sourceUrl: string;
+  sourcePublishedAt?: string | null;
+  metadata?: Record<string, unknown>;
+  featureFacts?: FeatureFactInput[];
+  categoryEvidence?: CategoryEvidenceInput[];
 }
 
 // ---------------------------------------------------------------------------
 // Optional runtime capabilities
 // ---------------------------------------------------------------------------
+
+export interface TransportCapability {
+  readonly kind: TransportKind;
+}
+
+/** Catalog normalization hints owned by one seller but interpreted by shared catalog code. */
+export interface CatalogCapability {
+  readonly categoryMapping?: CategoryMapping;
+  readonly categoryPolicy?: CategoryPolicyInput;
+}
+
+/** Optional seller-specific detail-page evidence extraction. */
+export interface DetailCategoryEvidenceCapability {
+  extract(
+    html: string,
+    product: NormalizedCatalogProduct,
+  ): CategoryEvidenceInput[] | Promise<CategoryEvidenceInput[]>;
+}
 
 /** Seller-specific diagnostic metadata. Generic orchestration treats the result as opaque. */
 export interface PageDiagnosticsCapability<TPage extends CrawlPage = CrawlPage> {
@@ -244,8 +274,13 @@ export interface DataQualityCapability {
 
 /** Capabilities exposed only after a shop is registered by the platform composition root. */
 export interface ShopRuntimeCapabilities<TPage extends CrawlPage = CrawlPage> {
+  readonly transport?: Readonly<TransportCapability>;
+  readonly catalog?: Readonly<CatalogCapability>;
+  readonly detailCategoryEvidence?: Readonly<DetailCategoryEvidenceCapability>;
+  readonly inventoryRecheck?: Readonly<InventoryRecheckPolicy>;
   readonly diagnostics?: Readonly<PageDiagnosticsCapability<TPage>>;
   readonly dataQuality?: Readonly<DataQualityCapability>;
+  readonly activityPolicy?: Readonly<ProductActivityPolicy>;
 }
 
 // ---------------------------------------------------------------------------
@@ -264,31 +299,12 @@ export interface ShopAdapter<TPage extends CrawlPage = CrawlPage> {
 
   /** Raw seller facts. `defineShopPlugin` validates and normalizes them before the crawler sees them. */
   parse(html: string, page?: TPage): SellerProduct[];
-
-  /** Defaults to `"direct"` when absent. */
-  readonly transport?: TransportKind;
-  readonly requestDelayMs?: number;
-  readonly categoryMapping?: CategoryMapping;
-  readonly categoryPolicy?: CategoryPolicyInput;
-
-  extractDetailCategoryEvidence?(
-    html: string,
-    product: NormalizedCatalogProduct,
-  ): CategoryEvidenceInput[] | Promise<CategoryEvidenceInput[]>;
-
-  /** Opt-in single-listing inventory recheck, run after this shop's crawl succeeds. */
-  readonly inventoryRecheck?: InventoryRecheckPolicy;
-
-  isConfigured?(env: CrawlerEnv): boolean;
-
-  /** Present only after `defineShopPlugin`; see `ShopPlugin`. */
-  readonly definition?: Readonly<ShopDefinition>;
 }
 
 /** A registered shop after validation, frozen composition and central normalization wrapping. */
 export interface ShopPlugin<TPage extends CrawlPage = CrawlPage> extends Omit<
   ShopAdapter<TPage>,
-  "parse" | "definition"
+  "parse"
 > {
   readonly definition: Readonly<ShopDefinition>;
   readonly capabilities: Readonly<ShopRuntimeCapabilities<TPage>>;

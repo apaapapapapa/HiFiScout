@@ -28,7 +28,7 @@ test("Fujiya bounded feeds are explicit partial coverage", () => {
   });
 
   assert.equal(decision.deactivateMissing, false);
-  assert.equal(decision.guardItemCount, false);
+  assert.equal(decision.validateItemCount, false);
 });
 
 test("Fujiya pagination is derived independently from each live result count", () => {

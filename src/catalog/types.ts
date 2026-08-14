@@ -327,8 +327,6 @@ export interface CategoryPolicyInput {
     readonly categories?: Readonly<Record<string, CategoryPolicyMode>>;
   };
   readonly parserHint?: CategoryPolicyMode;
-  /** Legacy compatibility flag; only the exact value `"prefer"` has an effect. */
-  readonly titleInference?: string;
   readonly enrichment?: {
     readonly maxRequestsPerCrawl?: number;
     readonly cacheHours?: number;
@@ -348,12 +346,8 @@ export interface ResolvedCategoryPolicy {
   };
 }
 
-/**
- * The slice of a shop adapter the catalog layer reads. Declared here (rather than importing
- * `ShopAdapter` from the crawler) so this module stays a leaf.
- */
-export interface CatalogAdapterLike {
-  readonly key?: string;
+/** Catalog-owned normalization configuration supplied by the shop composition boundary. */
+export interface CategoryNormalizationConfig {
   readonly categoryMapping?: CategoryMapping;
   readonly categoryPolicy?: CategoryPolicyInput;
 }
@@ -363,7 +357,7 @@ export interface CollectListingCategoryEvidenceOptions {
   rawCategory?: string;
   hintedCategory?: string;
   categoryMapping?: CategoryMapping;
-  adapter?: CatalogAdapterLike;
+  categoryPolicy?: CategoryPolicyInput;
 }
 
 export interface ListingCategoryEvidence {
@@ -455,14 +449,10 @@ export interface ManufacturerModelSplit {
 export type StockStatus = "in_stock" | "sold_out" | "unknown";
 
 /**
- * Stage 1 — what a shop adapter's `parse()` returns, before normalization.
- *
- * `metadata`/`featureFacts`/`categoryEvidence`/`sourcePublishedAt`/`rawManufacturer`/
- * `rawCategory`/`category` are optional because adapters are heterogeneous: `parser.ts`
- * output and `ippinkan` omit several of them, and tests assert the exact key set of a
- * parsed product, so absent must stay absent (never `key: undefined`).
+ * Catalog normalization input. Seller adapters use the stricter crawler-owned `SellerProduct`
+ * contract; other catalog callers may omit raw evidence that is unavailable to them.
  */
-export interface ShopParsedProduct {
+export interface CatalogNormalizationInput {
   sourceId: string;
   manufacturer: string;
   rawManufacturer?: string;
@@ -484,7 +474,7 @@ export interface ShopParsedProduct {
 /**
  * Stage 2 — `normalizeCatalogProduct()` output. This is what the crawler, the category
  * enricher and every repository see; `defineShopPlugin` guarantees `plugin.parse()`
- * returns this, never `ShopParsedProduct`.
+ * returns this, never an unnormalized seller product.
  */
 export interface NormalizedCatalogProduct extends CategoryClassificationFields {
   sourceId: string;

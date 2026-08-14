@@ -110,29 +110,29 @@ export function parseFujiyaResultCount(html: string): number | null {
   return raw ? Number.parseInt(raw.replace(/[，,]/g, ""), 10) : null;
 }
 
+export const FUJIYA_CATEGORY_POLICY = Object.freeze({
+  sellerCategory: Object.freeze({
+    default: "authoritative" as const,
+    categories: Object.freeze({
+      dap: "corroborative" as const,
+      headphone_amp: "corroborative" as const,
+    }),
+  }),
+  parserHint: "corroborative" as const,
+  enrichment: Object.freeze({
+    maxRequestsPerCrawl: 20,
+    cacheHours: 168,
+  }),
+});
+
 export const fujiyaAvicAdapter = {
   key: "fujiya-avic",
   name: "フジヤエービック",
   baseUrl: "https://www.fujiya-avic.co.jp",
-  categoryPolicy: Object.freeze({
-    sellerCategory: Object.freeze({
-      default: "authoritative",
-      categories: Object.freeze({
-        dap: "corroborative",
-        headphone_amp: "corroborative",
-      }),
-    }),
-    parserHint: "corroborative",
-    enrichment: Object.freeze({
-      maxRequestsPerCrawl: 20,
-      cacheHours: 168,
-    }),
-  }),
-  extractDetailCategoryEvidence: extractFujiyaDetailCategoryEvidence,
   discovery: {
     // New arrivals and outlet feeds are intentionally bounded subsets of total inventory.
     coverage: "partial",
-    continueOnEmpty: true,
+    policy: { emptyPage: "continue", itemCountValidation: "coverage", extraPageBudget: 0 },
     *initialTargets() {
       yield pageFor(FEED_NEW_ARRIVALS);
       yield pageFor(FEED_OUTLET);

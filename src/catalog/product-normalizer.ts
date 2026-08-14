@@ -1,5 +1,6 @@
 import type {
-  CatalogAdapterLike,
+  CatalogNormalizationInput,
+  CategoryNormalizationConfig,
   CategoryClassifiableProduct,
   CategoryClassification,
   CategoryClassificationMetadata,
@@ -8,7 +9,6 @@ import type {
   CategoryEvidenceInput,
   NormalizedCatalogProduct,
   ProductMetadata,
-  ShopParsedProduct,
   WithCategoryClassification,
 } from "./types.js";
 import { isRecord } from "../types.js";
@@ -87,8 +87,8 @@ export function applyCategoryClassification<T extends CategoryClassifiableProduc
 }
 
 export function normalizeCatalogProduct(
-  product: ShopParsedProduct,
-  adapter: CatalogAdapterLike = {},
+  product: CatalogNormalizationInput,
+  config: CategoryNormalizationConfig = {},
 ): NormalizedCatalogProduct {
   const rawManufacturer = clean(product.rawManufacturer ?? product.manufacturer ?? "");
   const manufacturerCandidate = clean(product.manufacturer || rawManufacturer);
@@ -99,8 +99,8 @@ export function normalizeCatalogProduct(
     rawCategory,
     title: product.title || "",
     hintedCategory: product.category || "",
-    categoryMapping: adapter.categoryMapping || {},
-    adapter,
+    categoryMapping: config.categoryMapping || {},
+    categoryPolicy: config.categoryPolicy,
   });
   const classification = classifyCategoryEvidence(evidence);
   const featureFacts = normalizeFeatureFacts([
@@ -129,10 +129,10 @@ export function normalizeCatalogProduct(
 }
 
 export function normalizeCatalogProducts(
-  products: readonly ShopParsedProduct[],
-  adapter: CatalogAdapterLike = {},
+  products: readonly CatalogNormalizationInput[],
+  config: CategoryNormalizationConfig = {},
 ): NormalizedCatalogProduct[] {
-  return products.map((product) => normalizeCatalogProduct(product, adapter));
+  return products.map((product) => normalizeCatalogProduct(product, config));
 }
 
 export const CATEGORY_CLASSIFICATION_METADATA_VERSION = CLASSIFICATION_METADATA_VERSION;

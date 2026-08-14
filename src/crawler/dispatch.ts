@@ -31,9 +31,7 @@ interface DispatchAtOptions {
 }
 
 function isConfigured(env: CrawlerEnv, plugin: ShopPlugin): boolean {
-  if (!isTransportConfigured(env, plugin)) return false;
-  if (plugin.transport === "relay") return true;
-  return !plugin.isConfigured || plugin.isConfigured(env);
+  return isTransportConfigured(env, plugin.capabilities.transport?.kind);
 }
 
 export function isDispatchLeaseActive(
@@ -148,7 +146,9 @@ export async function consumeCrawlMessage(
 
   const crawlResult = await crawlShop(env, plugin, { force: body?.force === true });
   // Rechecking after a failed crawl would spend the shop's request budget on stale candidates.
-  if (crawlResult.status !== "success" || !plugin.inventoryRecheck) return crawlResult;
+  if (crawlResult.status !== "success" || !plugin.capabilities.inventoryRecheck) {
+    return crawlResult;
+  }
 
   const inventoryRecheck = await recheckShopInventory(env, plugin);
   return { ...crawlResult, inventoryRecheck };
