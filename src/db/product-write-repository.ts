@@ -20,6 +20,10 @@ import type {
   FeatureFact,
   StockStatus,
 } from "../catalog/types.js";
+import {
+  DEFAULT_PRODUCT_ACTIVITY_POLICY,
+  type ProductActivityPolicy,
+} from "./product-activity-policy.js";
 import type {
   ExistingProductRow,
   ProductLookupRow,
@@ -56,6 +60,7 @@ interface InitialActivity {
 interface UpsertProductsOptions {
   deactivateMissing?: boolean;
   touchIntervalMinutes?: number;
+  activityPolicy?: Readonly<ProductActivityPolicy>;
 }
 
 async function runBatches(
@@ -243,24 +248,23 @@ function meaningfulStockActivity(previousStatus: StockStatus, currentStatus: Sto
   return true;
 }
 
-/** The subset of {@link listingChanged} a shopper would notice; drives `last_activity_at`. */
+/** The policy-selected subset of {@link listingChanged} that drives `last_activity_at`. */
 function activityChanged(
-  shopKey: string,
   existing: ExistingProductRow,
   product: CatalogProductUpsertInput,
+  policy: Readonly<ProductActivityPolicy>,
 ): boolean {
   const priceChanged = existing.price_yen !== product.priceYen;
   const stockChanged = meaningfulStockActivity(existing.stock_status, product.stockStatus);
   const reactivated = Number(existing.is_active) !== 1;
-  if (shopKey === "hifido") return priceChanged || stockChanged || reactivated;
 
   return (
-    existing.model !== product.model ||
-    existing.title !== product.title ||
-    existing.condition_text !== product.conditionText ||
-    priceChanged ||
-    stockChanged ||
-    reactivated
+    (policy.model && existing.model !== product.model) ||
+    (policy.title && existing.title !== product.title) ||
+    (policy.condition && existing.condition_text !== product.conditionText) ||
+    (policy.price && priceChanged) ||
+    (policy.stock && stockChanged) ||
+    (policy.reactivation && reactivated)
   );
 }
 
@@ -391,7 +395,11 @@ export async function upsertProducts(
   shopKey: string,
   products: readonly CatalogProductUpsertInput[],
   observedAt: string,
-  { deactivateMissing = false, touchIntervalMinutes = 1440 }: UpsertProductsOptions = {},
+  {
+    deactivateMissing = false,
+    touchIntervalMinutes = 1440,
+    activityPolicy = DEFAULT_PRODUCT_ACTIVITY_POLICY,
+  }: UpsertProductsOptions = {},
 ): Promise<UpsertProductsResult> {
   const existingRows = await selectExistingProducts(
     db,
@@ -464,7 +472,7 @@ export async function upsertProducts(
 
     const priceChanged = existing.price_yen !== product.priceYen && product.priceYen != null;
     const changed = listingChanged(existing, product);
-    const hasActivity = activityChanged(shopKey, existing, product);
+    const hasActivity = activityChanged(existing, product, activityPolicy);
     if (priceChanged) changedPriceSourceIds.push(product.sourceId);
     if (categoriesChanged(existing, product)) categorySyncSourceIds.push(product.sourceId);
     if (existing.title !== product.title) featureSyncSourceIds.push(product.sourceId);

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { listProducts } from "../src/db/product-search-repository.js";
 import { upsertProducts } from "../src/db/product-write-repository.js";
+import { getShopActivityPolicy, getShopPlugin } from "../src/crawler/shops/index.js";
 import type { CatalogProductUpsertInput } from "../src/catalog/types.js";
 import type { ExistingProductRow } from "../src/db/types.js";
 import { asQueryableDatabase, captureDatabase } from "./helpers/d1.js";
@@ -159,14 +160,31 @@ test("confirmed sold-out to in-stock transition creates user-facing activity", a
   assert.equal(result.activityCount, 1);
 });
 
+test("hifido activity policy is composed at the shop plugin boundary", () => {
+  const hifido = getShopPlugin("hifido");
+  assert.ok(hifido);
+
+  assert.deepEqual(getShopActivityPolicy(hifido), {
+    model: false,
+    title: false,
+    condition: false,
+    price: true,
+    stock: true,
+    reactivation: true,
+  });
+});
+
 test("hifido title and condition changes do not create user-facing activity", async () => {
   const db = upsertDb(existingProduct());
+  const hifido = getShopPlugin("hifido");
+  assert.ok(hifido);
 
   const result = await upsertProducts(
     db,
     "hifido",
     [product({ model: "ME1TX updated", title: "ME1TX updated", conditionText: "展示品" })],
     "2026-08-12T06:00:00.000Z",
+    { activityPolicy: getShopActivityPolicy(hifido) },
   );
 
   assert.equal(result.changedCount, 1);

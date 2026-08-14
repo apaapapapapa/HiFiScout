@@ -1,5 +1,9 @@
 import type { CrawlPage, ShopAdapter, ShopDefinition, ShopPlugin } from "../types.js";
 import { normalizeCatalogProducts } from "../../catalog/product-normalizer.js";
+import {
+  DEFAULT_PRODUCT_ACTIVITY_POLICY,
+  type ProductActivityPolicy,
+} from "../../db/product-activity-policy.js";
 import { audioUnionAdapter } from "./audiounion.js";
 import { ippinkanAdapter } from "./ippinkan.js";
 import { fujiyaAvicAdapter } from "./fujiya-avic.js";
@@ -9,7 +13,23 @@ import { uAudioAdapter } from "./u-audio.js";
 import { shimamusenAdapter } from "./shimamusen.js";
 // shop-generator:imports
 
-function defineShopPlugin(adapter: ShopAdapter, definition: ShopDefinition): ShopPlugin {
+interface ShopPluginCapabilities {
+  readonly activityPolicy?: Readonly<ProductActivityPolicy>;
+}
+
+const activityPolicies = new WeakMap<ShopPlugin, Readonly<ProductActivityPolicy>>();
+const HIFIDO_ACTIVITY_POLICY: Readonly<ProductActivityPolicy> = Object.freeze({
+  ...DEFAULT_PRODUCT_ACTIVITY_POLICY,
+  model: false,
+  title: false,
+  condition: false,
+});
+
+function defineShopPlugin(
+  adapter: ShopAdapter,
+  definition: ShopDefinition,
+  capabilities: ShopPluginCapabilities = {},
+): ShopPlugin {
   if (!adapter?.key || adapter.key !== definition.key) {
     throw new Error(`shop plugin key mismatch: ${adapter?.key || "missing"} / ${definition.key}`);
   }
@@ -26,8 +46,13 @@ function defineShopPlugin(adapter: ShopAdapter, definition: ShopDefinition): Sho
       return normalizeCatalogProducts(parse.apply(plugin, args), plugin);
     },
   };
+  const frozenPlugin = Object.freeze(plugin);
+  activityPolicies.set(
+    frozenPlugin,
+    capabilities.activityPolicy || DEFAULT_PRODUCT_ACTIVITY_POLICY,
+  );
 
-  return Object.freeze(plugin);
+  return frozenPlugin;
 }
 
 export const SHOP_PLUGINS: ShopPlugin[] = [
@@ -64,17 +89,21 @@ export const SHOP_PLUGINS: ShopPlugin[] = [
     defaultMaxPages: 50,
     scheduleCron: "30 * * * *",
   }),
-  defineShopPlugin(hifidoAdapter, {
-    key: "hifido",
-    name: "ハイファイ堂",
-    baseUrl: "https://www.hifido.co.jp",
-    intervalEnv: "HIFIDO_INTERVAL_MINUTES",
-    enabledEnv: "HIFIDO_ENABLED",
-    requestDelayEnv: "HIFIDO_REQUEST_DELAY_MS",
-    defaultIntervalMinutes: 30,
-    maxPagesEnv: "HIFIDO_MAX_PAGES",
-    defaultMaxPages: 3,
-  }),
+  defineShopPlugin(
+    hifidoAdapter,
+    {
+      key: "hifido",
+      name: "ハイファイ堂",
+      baseUrl: "https://www.hifido.co.jp",
+      intervalEnv: "HIFIDO_INTERVAL_MINUTES",
+      enabledEnv: "HIFIDO_ENABLED",
+      requestDelayEnv: "HIFIDO_REQUEST_DELAY_MS",
+      defaultIntervalMinutes: 30,
+      maxPagesEnv: "HIFIDO_MAX_PAGES",
+      defaultMaxPages: 3,
+    },
+    { activityPolicy: HIFIDO_ACTIVITY_POLICY },
+  ),
   defineShopPlugin(forMusicAdapter, {
     key: "formusic",
     name: "FOR MUSIC",
@@ -114,4 +143,9 @@ export const SHOP_ADAPTERS: ShopPlugin[] = SHOP_PLUGINS;
 
 export function getShopPlugin(shopKey: string | null | undefined): ShopPlugin | null {
   return SHOP_PLUGINS.find((plugin) => plugin.key === shopKey) || null;
+}
+
+/** Resolve optional user-facing activity semantics at the shop composition boundary. */
+export function getShopActivityPolicy(plugin: ShopPlugin): Readonly<ProductActivityPolicy> {
+  return activityPolicies.get(plugin) || DEFAULT_PRODUCT_ACTIVITY_POLICY;
 }
