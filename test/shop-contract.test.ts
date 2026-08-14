@@ -34,12 +34,8 @@ const GENERIC_MODULES = [
   "src/crawler/transport.ts",
 ];
 
-/**
- * Deployed variables a shop reads itself rather than through the platform settings vocabulary.
- * They are discovery inputs, not operational policy; anything else under a shop's prefix is a
- * name the crawler will never read.
- */
-const SHOP_OWNED_DEPLOYED_VARS = new Set(["AUDIOUNION_ENTRY_URL", "HIFIDO_RECHECK_MAX_PAGE"]);
+const shopsDir = new URL("../src/crawler/shops/", import.meta.url);
+const platformShopModules = new Set(["index.ts", "registry.ts"]);
 
 const wranglerConfig = JSON.parse(
   fs.readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8"),
@@ -47,6 +43,46 @@ const wranglerConfig = JSON.parse(
 
 function readSource(path: string): string {
   return fs.readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+}
+
+function ownerOfShopFile(file: string): string | undefined {
+  return [...SHOP_PLUGINS.map((plugin) => plugin.key)]
+    .sort((a, b) => b.length - a.length)
+    .find((key) => file === `${key}.ts` || file.startsWith(`${key}-`));
+}
+
+function shopOwnedModuleSource(plugin: ShopPlugin): string {
+  return fs
+    .readdirSync(shopsDir)
+    .filter((file) => !platformShopModules.has(file) && ownerOfShopFile(file) === plugin.key)
+    .map((file) => fs.readFileSync(new URL(file, shopsDir), "utf8"))
+    .join("\n");
+}
+
+/**
+ * Exact deployed names referenced by shop-owned modules. This replaces a central allowlist: a
+ * new shop can add a discovery/config input in its own module without editing this generic test.
+ */
+function directlyReadShopEnvVars(plugin: ShopPlugin, declared: readonly string[]): string[] {
+  const source = shopOwnedModuleSource(plugin);
+  return declared.filter((name) => source.includes(name));
+}
+
+/**
+ * Platform-owned suffixes are capability-aware. Core crawl settings apply to every plugin;
+ * inventory-recheck settings are readable only when that lifecycle capability is present.
+ */
+function platformReadableShopEnvVars(plugin: ShopPlugin): string[] {
+  return SHOP_ENV_SUFFIXES.filter(
+    (suffix) => !suffix.startsWith("INVENTORY_RECHECK_") || plugin.inventoryRecheck !== undefined,
+  ).map((suffix) => shopEnvVarName(plugin.definition, suffix));
+}
+
+function readableShopEnvVars(plugin: ShopPlugin, declared: readonly string[]): Set<string> {
+  return new Set([
+    ...platformReadableShopEnvVars(plugin),
+    ...directlyReadShopEnvVars(plugin, declared),
+  ]);
 }
 
 /**
@@ -163,24 +199,53 @@ test("shop settings are derived from the definition rather than declared per sho
   }
 });
 
-test("every deployed variable under a shop prefix is one the crawler reads", () => {
+test("enabled production shops deploy a kill switch under their exact env prefix", () => {
+  const declared = new Set(Object.keys(wranglerConfig.vars || {}));
+  for (const plugin of SHOP_PLUGINS) {
+    if (plugin.definition.defaultEnabled === false) continue;
+    const enabledVar = shopEnvVarName(plugin.definition, "ENABLED");
+    assert.ok(
+      declared.has(enabledVar),
+      `${plugin.key} defaults enabled but wrangler.jsonc does not declare ${enabledVar}; an envPrefix typo would silently bypass its kill switch and all shop-scoped settings`,
+    );
+  }
+});
+
+test("shop-owned deployed variables are discovered from shop modules, not a central allowlist", () => {
   const declared = Object.keys(wranglerConfig.vars || {});
-  const readable = new Set(
-    SHOP_PLUGINS.flatMap((plugin) =>
-      SHOP_ENV_SUFFIXES.map((suffix) => shopEnvVarName(plugin.definition, suffix)),
-    ),
+  const audioUnion = SHOP_PLUGINS.find((plugin) => plugin.key === "audiounion");
+  const hifido = SHOP_PLUGINS.find((plugin) => plugin.key === "hifido");
+  assert.ok(audioUnion);
+  assert.ok(hifido);
+  assert.ok(directlyReadShopEnvVars(audioUnion, declared).includes("AUDIOUNION_ENTRY_URL"));
+  assert.ok(directlyReadShopEnvVars(hifido, declared).includes("HIFIDO_RECHECK_MAX_PAGE"));
+});
+
+test("capability-scoped settings are readable only for shops that declare the capability", () => {
+  const audioUnion = SHOP_PLUGINS.find((plugin) => plugin.key === "audiounion");
+  const fujiya = SHOP_PLUGINS.find((plugin) => plugin.key === "fujiya-avic");
+  assert.ok(audioUnion);
+  assert.ok(fujiya);
+  assert.ok(
+    platformReadableShopEnvVars(audioUnion).includes("AUDIOUNION_INVENTORY_RECHECK_ENABLED"),
   );
+  assert.equal(
+    platformReadableShopEnvVars(fujiya).includes("FUJIYA_AVIC_INVENTORY_RECHECK_ENABLED"),
+    false,
+  );
+});
+
+test("every deployed variable under a shop prefix is one that shop can actually read", () => {
+  const declared = Object.keys(wranglerConfig.vars || {});
 
   for (const plugin of SHOP_PLUGINS) {
     const prefix = `${plugin.definition.envPrefix}_`;
-    const orphans = declared.filter(
-      (name) =>
-        name.startsWith(prefix) && !readable.has(name) && !SHOP_OWNED_DEPLOYED_VARS.has(name),
-    );
+    const readable = readableShopEnvVars(plugin, declared);
+    const orphans = declared.filter((name) => name.startsWith(prefix) && !readable.has(name));
     assert.deepEqual(
       orphans,
       [],
-      `wrangler.jsonc declares ${orphans.join(", ")} for ${plugin.key}, which nothing reads`,
+      `wrangler.jsonc declares ${orphans.join(", ")} for ${plugin.key}, which its platform lifecycle and shop modules do not read`,
     );
   }
 });
@@ -209,27 +274,18 @@ test("generic crawler and orchestration code names no concrete shop", () => {
 });
 
 test("a shop module never imports another shop's module", () => {
-  const shopsDir = new URL("../src/crawler/shops/", import.meta.url);
-  const platformModules = new Set(["index.ts", "registry.ts"]);
-  const keys = SHOP_PLUGINS.map((plugin) => plugin.key);
-  // Longest match first: `audiounion-inventory` belongs to `audiounion`, not to a shorter key.
-  const ownerOf = (file: string): string | undefined =>
-    [...keys]
-      .sort((a, b) => b.length - a.length)
-      .find((key) => file === `${key}.ts` || file.startsWith(`${key}-`));
-
-  const files = fs.readdirSync(shopsDir).filter((file) => !platformModules.has(file));
+  const files = fs.readdirSync(shopsDir).filter((file) => !platformShopModules.has(file));
   assert.ok(files.length >= SHOP_PLUGINS.length);
 
   for (const file of files) {
-    const owner = ownerOf(file);
+    const owner = ownerOfShopFile(file);
     assert.ok(owner, `${file} does not belong to any registered shop`);
 
     const source = fs.readFileSync(new URL(file, shopsDir), "utf8");
     const siblings = [...source.matchAll(/from\s+"\.\/([^"]+)\.js"/gu)].map((match) => match[1]);
     for (const sibling of siblings) {
       assert.equal(
-        ownerOf(`${sibling}.ts`),
+        ownerOfShopFile(`${sibling}.ts`),
         owner,
         `${file} imports ${sibling}, which belongs to another shop`,
       );

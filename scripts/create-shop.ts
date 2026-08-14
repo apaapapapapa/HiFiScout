@@ -170,8 +170,13 @@ export async function createShop({
   if (!baseUrl) throw new Error("base URL is required");
   const parsedBaseUrl = new URL(baseUrl);
   // The base URL becomes the robots.txt origin and the guard every crawl target is checked
-  // against, so the registry accepts https origins only.
+  // against, so the generator must enforce the exact same contract as the runtime registry.
   if (parsedBaseUrl.protocol !== "https:") throw new Error("base URL must use https");
+  if (baseUrl !== parsedBaseUrl.origin) {
+    throw new Error(
+      "base URL must be an https origin with no path, query, fragment or trailing slash",
+    );
+  }
   if (!isShopTransport(transport)) throw new Error("transport must be direct, relay, or browser");
   if (!Number.isInteger(intervalMinutes) || intervalMinutes <= 0)
     throw new Error("interval must be a positive integer");

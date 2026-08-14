@@ -97,6 +97,18 @@ test("shop generator refuses a base URL the registry would reject", async () => 
     createShop({ rootDir, key: "example-audio", name: "Example Audio", baseUrl: "http://x.test" }),
     /must use https/,
   );
+
+  for (const baseUrl of [
+    "https://example.com/",
+    "https://example.com/catalog",
+    "https://example.com?view=used",
+    "https://example.com#used",
+  ]) {
+    await assert.rejects(
+      createShop({ rootDir, key: "example-audio", name: "Example Audio", baseUrl }),
+      /must be an https origin/,
+    );
+  }
 });
 
 test("shop generator creates adapter, fixture, test and registry entry", async () => {
@@ -113,7 +125,7 @@ test("shop generator creates adapter, fixture, test and registry entry", async (
     rootDir,
     key: "example-audio",
     name: "Example Audio",
-    baseUrl: "https://example.com/catalog",
+    baseUrl: "https://example.com",
     intervalMinutes: 60,
   });
 
