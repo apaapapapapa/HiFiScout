@@ -28,5 +28,7 @@ test("data quality admin endpoint keeps a stable contract", async ({ request }) 
     expect(shop.metrics).toHaveProperty("parserFailure");
     expect(shop.metrics).toHaveProperty("evidenceCoverage");
     expect(shop.metrics).toHaveProperty("itemCount");
+    expect(typeof shop.details).toBe("object");
+    expect(shop.details).toHaveProperty("identityResolutionMissingCount");
   }
 });

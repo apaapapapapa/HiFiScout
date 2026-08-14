@@ -249,7 +249,11 @@ function rowMetric(count: unknown, denominator: unknown, status: QualityStatus):
 }
 
 export function dataQualityRow(row: DataQualityRunRow): StoredQualityEvaluation {
-  const identityTotal = number(row.identity_matched_count) + number(row.identity_unresolved_count);
+  const totalItems = number(row.total_items);
+  const identityMatched = number(row.identity_matched_count);
+  const identityUnresolved = number(row.identity_unresolved_count);
+  const identityResolutionMissing = Math.max(0, totalItems - identityMatched - identityUnresolved);
+  const identityUnresolvedForQuality = identityUnresolved + identityResolutionMissing;
   const inventoryTotal = number(row.inventory_known_count) + number(row.inventory_unknown_count);
   const manufacturerUnknown =
     number(row.manufacturer_missing_count) + number(row.manufacturer_unresolved_count);
@@ -261,8 +265,8 @@ export function dataQualityRow(row: DataQualityRunRow): StoredQualityEvaluation 
       row.category_status,
     ),
     identityUnresolved: rowMetric(
-      row.identity_unresolved_count,
-      identityTotal,
+      identityUnresolvedForQuality,
+      row.total_items,
       row.identity_status,
     ),
     inventoryUnknown: rowMetric(row.inventory_unknown_count, inventoryTotal, row.inventory_status),
@@ -296,7 +300,8 @@ export function dataQualityRow(row: DataQualityRunRow): StoredQualityEvaluation 
       manufacturerMissingCount: number(row.manufacturer_missing_count),
       manufacturerUnresolvedCount: number(row.manufacturer_unresolved_count),
       otherCategoryCount: number(row.other_category_count),
-      identityMatchedCount: number(row.identity_matched_count),
+      identityMatchedCount: identityMatched,
+      identityResolutionMissingCount: identityResolutionMissing,
       identityVetoCount: number(row.identity_veto_count),
       identityCandidateCount: number(row.identity_candidate_count),
       modelExtractedCount: number(row.model_extracted_count),

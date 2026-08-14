@@ -57,7 +57,7 @@ const snapshotRow = {
   category_unclassified_count: 2,
   other_category_count: 3,
   identity_matched_count: 80,
-  identity_unresolved_count: 20,
+  identity_unresolved_count: 15,
   identity_veto_count: 2,
   identity_candidate_count: 4,
   inventory_known_count: 99,
@@ -76,6 +76,7 @@ test("snapshot uses one D1 aggregate over active shop listings", async () => {
   assert.deepEqual(db.calls[0].binds, ["audio-union"]);
   assert.match(db.calls[0].sql, /COUNT\(\*\)/);
   assert.match(db.calls[0].sql, /SUM\(CASE/);
+  assert.match(db.calls[0].sql, /LEFT JOIN product_identity_resolutions/);
   assert.match(db.calls[0].sql, /p\.is_active = 1/);
   assert.match(db.calls[0].sql, /manufacturerNormalization\.matchedAlias/);
   assert.doesNotMatch(db.calls[0].sql, /SELECT p\.\*/);
@@ -121,6 +122,8 @@ test("quality result is linked to crawl run and persists snapshot and run status
   const insert = db.calls.find((call) => call.kind === "run");
   assert.ok(insert);
   assert.equal(result.crawlRunId, 42);
+  assert.equal(result.snapshot.metrics.identityUnresolved.count, 20);
+  assert.equal(result.snapshot.metrics.identityUnresolved.denominator, 100);
   assert.equal(result.snapshot.status, "warning");
   assert.equal(result.run.status, "healthy");
   assert.equal(insert.binds[0], "audio-union");
@@ -139,7 +142,7 @@ test("history query is bounded to 200 rows", async () => {
   assert.match(db.calls[0].sql, /LIMIT \?/);
 });
 
-test("stored row exposes snapshot metrics and latest crawl comparison separately", () => {
+test("stored row exposes identity coverage gaps against all active listings", () => {
   const row = dataQualityRow({
     id: 1,
     shop_key: "audio-union",
@@ -151,7 +154,7 @@ test("stored row exposes snapshot metrics and latest crawl comparison separately
     category_unclassified_count: 2,
     other_category_count: 3,
     identity_matched_count: 80,
-    identity_unresolved_count: 20,
+    identity_unresolved_count: 15,
     identity_veto_count: 2,
     identity_candidate_count: 4,
     inventory_known_count: 99,
@@ -188,6 +191,13 @@ test("stored row exposes snapshot metrics and latest crawl comparison separately
     rate: 0.02,
     status: "warning",
   });
+  assert.deepEqual(row.snapshot.metrics.identityUnresolved, {
+    count: 20,
+    denominator: 100,
+    rate: 0.2,
+    status: "warning",
+  });
+  assert.equal(row.details.identityResolutionMissingCount, 5);
   assert.equal(row.latestRun.metrics.itemCount.previous, 105);
   assert.equal(row.snapshot.status, "warning");
   assert.equal(row.latestRun.status, "healthy");
