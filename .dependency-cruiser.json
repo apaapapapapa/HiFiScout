@@ -43,6 +43,16 @@
       "to": { "path": "^src/(crawler|http)/" }
     },
     {
+      "name": "queue-policy-stays-pure",
+      "severity": "error",
+      "comment": "src/knowledge-catalog/policy.ts holds the retry, lease and promotion decisions so they can be read and tested without a database, a queue or the network. Type-only imports are fine; a value import from a repository or the verifier would put I/O back inside the policy and make those rules untestable again.",
+      "from": { "path": "^src/knowledge-catalog/policy\\.ts$" },
+      "to": {
+        "path": "^src/(db|catalog|crawler)/",
+        "dependencyTypesNot": ["type-only"]
+      }
+    },
+    {
       "name": "manufacturer-strategies-are-composed-only-by-the-verifier",
       "severity": "error",
       "comment": "Manufacturer-specific verification behavior is wired in at src/catalog/knowledge-verification/verifier.ts. If a generic strategy or the shared page verifier imported one, per-manufacturer conditionals would be back inside the code that must stay manufacturer-agnostic.",

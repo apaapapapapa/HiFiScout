@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   isRetryableKnowledgeCatalogVerification,
   knowledgeCatalogRetryDelaySeconds,
-} from "../src/knowledge-catalog-verification-queue.js";
+} from "../src/knowledge-catalog/policy.js";
 
 test("Knowledge Catalog source retries use bounded exponential backoff", () => {
   assert.equal(knowledgeCatalogRetryDelaySeconds(1), 300);

@@ -9,11 +9,13 @@
 import { consumeCrawlMessage } from "./crawler/dispatch.js";
 import { getSyncHealth, logSyncHealth } from "./health.js";
 import {
-  KNOWLEDGE_CATALOG_VERIFICATION_DLQ,
-  KNOWLEDGE_CATALOG_VERIFICATION_QUEUE,
   consumeKnowledgeCatalogVerificationBatch,
   consumeKnowledgeCatalogVerificationDeadLetterBatch,
-} from "./knowledge-catalog-verification-queue.js";
+} from "./knowledge-catalog/consumer.js";
+import {
+  KNOWLEDGE_CATALOG_VERIFICATION_DLQ,
+  KNOWLEDGE_CATALOG_VERIFICATION_QUEUE,
+} from "./knowledge-catalog/queue-names.js";
 import { isRecord } from "./types.js";
 import type { CrawlQueueMessage, KnowledgeCatalogQueueMessage } from "./crawler/types.js";
 
