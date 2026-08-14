@@ -27,7 +27,7 @@
     "typecheck": "npm run types:worker && tsc --noEmit",
     "types:worker": "tsx scripts/ensure-directories.ts .generated && wrangler types .generated/worker-configuration.d.ts",
     "build": "npm run build:frontend && npm run build:worker && npm run build:lambda",
-    "build:frontend": "esbuild frontend/app.ts frontend/catalog-url-state.ts frontend/shop-links.ts --outdir=public --format=iife --target=es2022",
+    "build:frontend": "esbuild frontend/app.ts frontend/catalog-url-state.ts frontend/shop-links.ts --bundle --outdir=public --format=iife --target=es2022",
     "build:worker": "wrangler deploy --dry-run --outdir dist/worker",
     "build:lambda": "tsx scripts/ensure-directories.ts dist/audiounion-lambda && esbuild infra/audiounion-lambda/index.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/audiounion-lambda/index.mjs",
     "check:no-js-source": "tsx scripts/check-no-first-party-js.ts"
