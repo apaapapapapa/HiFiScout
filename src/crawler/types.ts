@@ -16,6 +16,7 @@ import type {
 import type { ProductActivityPolicy } from "../db/product-activity-policy.js";
 import type {
   IdentitySyncMetrics,
+  ProductSearchEntitySyncResult,
   QualityEvaluation,
   QualityThreshold,
   QueryableDatabase,
@@ -457,6 +458,7 @@ export interface CrawlSuccessResult {
   dataQuality: QualityEvaluation | null;
   searchProjection: { changedCount: number };
   productIdentity: IdentitySyncMetrics;
+  searchEntities: ProductSearchEntitySyncResult;
   categoryEnrichment: CategoryEnrichmentCounters;
   inventoryRecheck?: InventoryRecheckResult;
 }

@@ -44,23 +44,29 @@ export function captureDatabase(results: unknown[] | StatementResults = []): Cap
     calls,
     batched,
     prepare(sql: string) {
+      // D1 lets a parameterless statement skip `bind()`, so the double has to as well —
+      // otherwise a repository that omits it fails here for a reason production would not.
+      const record = (binds: unknown[]) => {
+        const statement: CapturedStatement = { sql, binds };
+        calls.push(statement);
+        return {
+          ...statement,
+          async all() {
+            return { results: select(statement) };
+          },
+          async first() {
+            return select(statement)[0] ?? null;
+          },
+          async run() {
+            return { success: true, meta: { changes: 1 } };
+          },
+        };
+      };
       return {
-        bind(...binds: unknown[]) {
-          const statement: CapturedStatement = { sql, binds };
-          calls.push(statement);
-          return {
-            ...statement,
-            async all() {
-              return { results: select(statement) };
-            },
-            async first() {
-              return select(statement)[0] ?? null;
-            },
-            async run() {
-              return { success: true, meta: { changes: 1 } };
-            },
-          };
-        },
+        bind: (...binds: unknown[]) => record(binds),
+        all: () => record([]).all(),
+        first: () => record([]).first(),
+        run: () => record([]).run(),
       };
     },
     async batch(statements: CapturedStatement[]) {

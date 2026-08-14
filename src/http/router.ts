@@ -14,7 +14,11 @@ import { dispatchForcedCrawl } from "../crawler/dispatch.js";
 import { dataPlatformStatus } from "../db/data-platform-status-repository.js";
 import { dataQualityStatus, listDataQualityHistory } from "../db/data-quality-repository.js";
 import { productHistory } from "../db/product-history-repository.js";
-import { listProducts } from "../db/product-search-repository.js";
+import {
+  productSearchEntityConsistency,
+  rebuildProductSearchEntities,
+} from "../db/product-search-entity-repository.js";
+import { productSearchDetail, searchProducts } from "../db/product-search-repository.js";
 import { getSyncHealth } from "../health.js";
 import { knowledgeCatalogStatus } from "./knowledge-catalog-status.js";
 import { meta } from "./meta.js";
@@ -24,7 +28,11 @@ import type { CrawlerEnv } from "../crawler/types.js";
 /** Seconds the edge may serve a cached read response. */
 const READ_CACHE_TTL_SECONDS = 30;
 
+/** Seller-listing price history. Listing-scoped by design; product search lives elsewhere. */
 const PRODUCT_HISTORY_PATH = /^\/api\/products\/(\d+)\/history$/;
+
+/** Namespaced entity key (`c-12`, `l-345`), not a bare id — see `api/product-search-key.ts`. */
+const PRODUCT_SEARCH_DETAIL_PATH = /^\/api\/product-search\/([a-z]-\d{1,15})$/;
 
 function adminAuthorized(request: Request, env: CrawlerEnv): boolean {
   return Boolean(
@@ -37,12 +45,17 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext): Pro
   const rate = await checkPublicApiRateLimit(request, env);
   if (!rate.allowed) return json({ error: "rate_limited" }, { status: 429 });
 
-  if (request.method === "GET" && url.pathname === "/api/products") {
+  if (request.method === "GET" && url.pathname === "/api/product-search") {
     // Validate before parsing so a hostile query is rejected rather than silently normalized.
     const validationError = validateProductQuery(url);
     if (validationError) return json({ error: validationError }, { status: 400 });
     const query = parseProductQuery(url);
-    return cachedJson(request, ctx, READ_CACHE_TTL_SECONDS, () => listProducts(env.DB, query));
+    return cachedJson(request, ctx, READ_CACHE_TTL_SECONDS, () => searchProducts(env.DB, query));
+  }
+  const detailMatch = url.pathname.match(PRODUCT_SEARCH_DETAIL_PATH);
+  if (request.method === "GET" && detailMatch) {
+    const detail = await productSearchDetail(env.DB, detailMatch[1]);
+    return detail ? json(detail) : json({ error: "not_found" }, { status: 404 });
   }
   if (request.method === "GET" && url.pathname === "/api/meta") {
     return cachedJson(request, ctx, READ_CACHE_TTL_SECONDS, () => meta(env));
@@ -80,6 +93,15 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext): Pro
       Number(url.searchParams.get("limit")) || undefined,
     );
     return json({ shop, history });
+  }
+  if (request.method === "GET" && url.pathname === "/api/admin/product-search/consistency") {
+    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
+    const consistency = await productSearchEntityConsistency(env.DB);
+    return json(consistency, { status: consistency.ok ? 200 : 409 });
+  }
+  if (request.method === "POST" && url.pathname === "/api/admin/product-search/rebuild") {
+    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
+    return json(await rebuildProductSearchEntities(env.DB));
   }
   const historyMatch = url.pathname.match(PRODUCT_HISTORY_PATH);
   if (request.method === "GET" && historyMatch) {

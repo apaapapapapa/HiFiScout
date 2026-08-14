@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { listProducts } from "../src/db/product-search-repository.js";
+import { searchProducts } from "../src/db/product-search-repository.js";
 import { upsertProducts } from "../src/db/product-write-repository.js";
 import { getShopActivityPolicy, getShopPlugin } from "../src/crawler/shops/index.js";
 import type { CatalogProductUpsertInput } from "../src/catalog/types.js";
@@ -248,7 +248,7 @@ test("parser and normalization metadata drift does not create user-facing activi
 test("48-hour new filter prefers retailer publication time over crawler discovery time", async () => {
   const db = captureDatabase();
 
-  await listProducts(db, productQuery("?newOnly=true"));
+  await searchProducts(db, productQuery("?newOnly=true"));
 
   assert.match(db.calls[0].sql, /COALESCE\(p\.source_published_at, p\.first_seen_at\)/);
 });

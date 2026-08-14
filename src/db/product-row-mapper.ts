@@ -1,9 +1,12 @@
 /**
- * The single `products` row -> API DTO boundary.
+ * The single `products` row -> seller-listing DTO boundary.
  *
- * Every read path that feeds an HTTP response goes through {@link toProductListItem}, and every
- * such query selects {@link PRODUCT_LIST_COLUMNS} rather than `SELECT *`. Together they keep a
- * future migration from silently adding a column to the public payload.
+ * Every listing read path that feeds an HTTP response goes through {@link toProductListItem}, and
+ * every such query selects {@link PRODUCT_LIST_COLUMNS} rather than `SELECT *`. Together they keep
+ * a future migration from silently adding a column to the public payload.
+ *
+ * Product search maps entities instead — see `product-search-entity-mapper.ts`. This mapper now
+ * serves the price-history endpoint, which is legitimately scoped to one shop's listing.
  */
 
 import type { ProductListItem } from "../api/contracts.js";

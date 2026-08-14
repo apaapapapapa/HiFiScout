@@ -26,11 +26,12 @@ Playwright lives in `e2e/` so Chromium and the Playwright runner are not depende
 
 The E2E suite validates only critical wiring that smaller tests cannot prove:
 
-- the deployed page loads and can call `/api/meta` and `/api/products`;
+- the deployed page loads and can call `/api/meta` and `/api/product-search`;
 - the catalog UI initializes successfully from live API responses;
-- changing a shop filter propagates the selected value to `/api/products` and refreshes the UI.
+- changing a shop filter propagates the selected value to `/api/product-search` and refreshes the UI;
+- a product listed by several shops renders as one card, and opening it fetches `/api/product-search/:key` and shows each shop's offer with its own link.
 
-The tests deliberately avoid assertions such as a specific product, price, manufacturer, or result count being present. Development data changes continuously, so those assertions would create flaky tests without increasing confidence in application wiring.
+Tests against live data deliberately avoid assertions such as a specific product, price, manufacturer, or result count being present. Development data changes continuously, so those assertions would create flaky tests without increasing confidence in application wiring. The cross-shop grouping flow is the exception and uses routed fixtures, because the point of that test is what the browser does with a multi-offer product — the grouping SQL itself is proven by the repository unit tests.
 
 ## Running E2E locally
 

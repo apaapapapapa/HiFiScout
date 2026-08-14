@@ -148,7 +148,7 @@ For longer external retention, create an R2 bucket and set repository variable `
 
 Public GET API routes use a Cloudflare Workers Rate Limiting binding as an abuse brake. The current ceiling is 120 requests/minute per anonymous actor and API route bucket. Since HiFiScout has no user accounts, the actor key uses the connecting IP with a deliberately high ceiling to reduce the risk of affecting normal users behind shared networks.
 
-`/api/products` also rejects oversized or malformed search parameters before querying D1. Search text is limited to 100 characters, cursor values to 1024 characters, and sort/numeric parameters are validated against the supported format.
+`/api/product-search` also rejects oversized or malformed search parameters before querying D1. Search text is limited to 100 characters, cursor values to 1024 characters, and sort/numeric parameters are validated against the supported format.
 
 ## Local setup
 
@@ -201,13 +201,20 @@ Semantic Release creates the `v<version>` Git tag and GitHub Release notes. HiFi
 
 ## API
 
-- `GET /api/products` — search/filter/sort active listings.
+- `GET /api/product-search` — search/filter/sort **products**. One result per product, with a summary of the shops offering it.
+- `GET /api/product-search/:key` — one product and every eligible active offer under it. `:key` is the namespaced entity key from a search result (`c-<catalog id>` or `l-<listing id>`), never a bare numeric id.
 - `GET /api/meta` — shops, configured intervals, enabled state, sync status/health, manufacturers, categories.
-- `GET /api/products/:id/history` — observed price history.
+- `GET /api/products/:id/history` — observed price history for one **seller listing**, keyed by `representative_offer.listing_product_id` / an offer's `listing_product_id`.
 - `GET /api/health` — crawler-aware health endpoint; returns 503 on critical sync health.
 - `POST /api/admin/crawl?shop=<shop-key>` — enqueue one forced collector run; requires `Authorization: Bearer <ADMIN_TOKEN>` and returns 202. A disabled collector stays disabled.
+- `GET /api/admin/product-search/consistency` — product-search read-model drift counters; answers 409 when any invariant is violated.
+- `POST /api/admin/product-search/rebuild` — deterministic, idempotent rebuild of the product-search read model.
 
-Query parameters for `/api/products`: `q`, `shop`, `manufacturer`, `category`, `minPrice`, `maxPrice`, `inStock=true`, `sort=newest|updated|priceAsc|priceDesc`, `limit`.
+Query parameters for `/api/product-search`: `q`, `shop`, `manufacturer`, `category`, `feature`, `minPrice`, `maxPrice`, `inStock=true`, `newOnly=true`, `priceDropped=true`, `sort=newest|oldest|updated|priceAsc|priceDesc`, `limit`, `offset`, `cursor`, `includeTotal=true`.
+
+`manufacturer`, `category` and `feature` select products. `shop`, `inStock`, `minPrice`, `maxPrice`, `newOnly` and `priceDropped` select offers, and a product matches only when a single one of its offers satisfies all of them together. `limit`, `offset`, `totalCount` and `totalPages` count products.
+
+The listing-shaped `GET /api/products` search endpoint was retired when the browser moved to product search; `/api/products/:id/history` remains and is deliberately listing-scoped, because a price history belongs to one shop's offer.
 
 ## Collector status
 

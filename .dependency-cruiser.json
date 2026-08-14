@@ -97,6 +97,13 @@
       }
     },
     {
+      "name": "product-search-sql-stays-a-vocabulary",
+      "severity": "error",
+      "comment": "src/db/product-search-entity-sql.ts is the one definition of what a search entity is, shared by the incremental sync, the deterministic rebuild and the migration backfill. It must stay pure SQL text with no dependencies: the moment it can reach a repository or the catalog, the three callers can start disagreeing about grouping again.",
+      "from": { "path": "^src/db/product-search-entity-sql\\.ts$" },
+      "to": { "path": "^src" }
+    },
+    {
       "name": "domain-code-does-not-import-shops",
       "severity": "error",
       "comment": "The catalog domain and the repositories are what shops feed, never the other way round. Reaching the registry from either would make canonical catalog decisions depend on which shops happen to be registered.",

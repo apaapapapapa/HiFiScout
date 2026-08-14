@@ -1,47 +1,8 @@
 import { expect, test, type Page, type Response, type Route } from "@playwright/test";
+import { isProductSearchRequest as isProductsRequest, offer, product } from "./product-fixtures.js";
+import type { JsonObject } from "./product-fixtures.js";
 
-type JsonObject = Record<string, unknown>;
 type HealthStatus = "healthy" | "warning" | "critical" | "disabled";
-
-function isProductsRequest(response: Response): boolean {
-  const url = new URL(response.url());
-  return url.pathname === "/api/products" && response.request().method() === "GET";
-}
-
-function product(overrides: JsonObject = {}) {
-  return {
-    id: 1,
-    shop_key: "shop-a",
-    source_id: "source-1",
-    manufacturer: "LUXMAN",
-    manufacturer_id: "luxman",
-    raw_manufacturer: "LUXMAN",
-    model: "D-10X",
-    title: "LUXMAN D-10X",
-    category: "CD/SACDプレーヤー",
-    raw_category: "CD/SACDプレーヤー",
-    primary_category_id: "digital-disc-player",
-    category_ids: ["digital-disc-player"],
-    classification_status: "classified",
-    condition_text: "中古",
-    price_yen: 698000,
-    previous_price_yen: 748000,
-    stock_status: "in_stock",
-    source_url: "https://example.com/products/1",
-    first_seen_at: "2026-08-11T08:00:00.000Z",
-    last_seen_at: "2026-08-11T10:00:00.000Z",
-    last_changed_at: "2026-08-11T10:00:00.000Z",
-    last_activity_at: "2026-08-11T10:00:00.000Z",
-    search_aliases: "SACD CD player",
-    is_active: 1,
-    metadata_json: "{}",
-    last_inventory_checked_at: null,
-    inventory_check_failures: 0,
-    last_inventory_check_attempt_at: null,
-    source_published_at: null,
-    ...overrides,
-  };
-}
 
 function syncState(key: string, lastSuccessAt: string) {
   return {
@@ -245,24 +206,28 @@ test("favorites are stored as product snapshots and rendered without a favorites
   let productRequests = 0;
   const first = product();
   const second = product({
-    id: 2,
-    source_id: "source-2",
+    key: "c-2",
+    catalog_product_id: 2,
     manufacturer: "TAD",
     manufacturer_id: "tad",
-    raw_manufacturer: "TAD",
     model: "ME1TX",
-    title: "TAD ME1TX",
     category: "スピーカー",
     primary_category_id: "speaker",
-    category_ids: ["speaker"],
-    price_yen: 980000,
-    previous_price_yen: null,
-    source_url: "https://example.com/products/2",
+    lowest_price_yen: 980000,
+    highest_price_yen: 980000,
+    has_price_drop: false,
+    representative_offer: offer({
+      listing_product_id: 2,
+      title: "TAD ME1TX",
+      price_yen: 980000,
+      previous_price_yen: null,
+      source_url: "https://example.com/products/2",
+    }),
   });
 
   await routeMeta(page);
 
-  await page.route("**/api/products?**", async (route: Route) => {
+  await page.route("**/api/product-search?**", async (route: Route) => {
     productRequests += 1;
     const url = new URL(route.request().url());
     const cursor = url.searchParams.get("cursor");
@@ -278,7 +243,7 @@ test("favorites are stored as product snapshots and rendered without a favorites
 
   await page.goto("/");
   await expect(page.getByRole("link", { name: "D-10X" })).toBeVisible();
-  await page.locator('[data-fav="1"]').click();
+  await page.locator('[data-fav="c-1"]').click();
 
   const stored: unknown = await page.evaluate(() =>
     JSON.parse(localStorage.getItem("hifiscout:favorites") || "[]"),
@@ -286,7 +251,7 @@ test("favorites are stored as product snapshots and rendered without a favorites
   expect(stored).toHaveLength(1);
   expect(stored).toEqual(
     expect.arrayContaining([
-      expect.objectContaining({ id: 1, manufacturer: "LUXMAN", model: "D-10X" }),
+      expect.objectContaining({ key: "c-1", manufacturer: "LUXMAN", model: "D-10X" }),
     ]),
   );
 
@@ -315,7 +280,7 @@ test("sync status summarizes delayed shops and exposes per-shop details", async 
       ],
     }),
   );
-  await page.route("**/api/products?**", (route: Route) =>
+  await page.route("**/api/product-search?**", (route: Route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ items: [product()], hasMore: false, nextCursor: null }),
@@ -335,7 +300,7 @@ test("sync status summarizes delayed shops and exposes per-shop details", async 
 test("URL restores search state and recent/price-drop filters reach the API", async ({ page }) => {
   await routeMeta(page);
   const requests: URL[] = [];
-  await page.route("**/api/products?**", async (route: Route) => {
+  await page.route("**/api/product-search?**", async (route: Route) => {
     requests.push(new URL(route.request().url()));
     await route.fulfill({
       contentType: "application/json",
@@ -377,7 +342,7 @@ test("URL restores search state and recent/price-drop filters reach the API", as
 
 test("browser back restores previous filter state", async ({ page }) => {
   await routeMeta(page);
-  await page.route("**/api/products?**", (route: Route) =>
+  await page.route("**/api/product-search?**", (route: Route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ items: [product()], hasMore: false, nextCursor: null }),

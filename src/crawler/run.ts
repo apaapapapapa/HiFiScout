@@ -9,6 +9,7 @@ import { saveDataQualityRun } from "../db/data-quality-repository.js";
 import { syncProductIdentityResolutions } from "../db/product-identity-repository.js";
 import { syncObservedProductFeatureFacts } from "../db/product-feature-repository.js";
 import { syncProductMetadata } from "../db/product-metadata-repository.js";
+import { syncProductSearchEntities } from "../db/product-search-entity-repository.js";
 import { syncProductSearchProjections } from "../db/product-search-projection-repository.js";
 import { upsertProducts } from "../db/product-write-repository.js";
 import {
@@ -33,6 +34,7 @@ import type {
   EvidenceArchiveResult,
   EvidenceReason,
   IdentitySyncMetrics,
+  ProductSearchEntitySyncResult,
   QualityCounts,
   QualityEvaluation,
   QueryableDatabase,
@@ -159,12 +161,25 @@ async function safeSaveDataQuality(
   }
 }
 
+interface DerivedProductState {
+  searchProjection: { changedCount: number };
+  identity: IdentitySyncMetrics;
+  searchEntities: ProductSearchEntitySyncResult;
+}
+
+/**
+ * Rebuilds everything downstream of the listing write, in dependency order.
+ *
+ * Search entities go last on purpose: which product a listing belongs to is decided by the identity
+ * resolution written in the step before it, so running them the other way round would group this
+ * crawl's listings against the previous crawl's identities.
+ */
 async function syncDerivedProductState(
   env: RuntimeEnv,
   adapter: ShopPlugin,
   products: readonly NormalizedCatalogProduct[],
   observedAt: string,
-): Promise<{ searchProjection: { changedCount: number }; identity: IdentitySyncMetrics }> {
+): Promise<DerivedProductState> {
   let searchProjection = { changedCount: 0 };
   let identity = {
     identity_exact_match_count: 0,
@@ -173,6 +188,11 @@ async function syncDerivedProductState(
     identity_unresolved_count: 0,
     identity_veto_count: 0,
     identity_resolution_write_count: 0,
+  };
+  let searchEntities: ProductSearchEntitySyncResult = {
+    listing_count: 0,
+    entity_count: 0,
+    removed_entity_count: 0,
   };
 
   try {
@@ -208,7 +228,23 @@ async function syncDerivedProductState(
     );
   }
 
-  return { searchProjection, identity };
+  try {
+    searchEntities = await syncProductSearchEntities(
+      env.DB,
+      adapter.key,
+      products.map((product) => product.sourceId),
+    );
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        event: "product_search_entity_sync_failure",
+        shopKey: adapter.key,
+        message: errorMessage(error),
+      }),
+    );
+  }
+
+  return { searchProjection, identity, searchEntities };
 }
 
 export function isShopDue(
@@ -477,6 +513,9 @@ export async function crawlShop(
     if (derived.searchProjection.changedCount) {
       diagnosticParts.push(`search_projection=${JSON.stringify(derived.searchProjection)}`);
     }
+    if (derived.searchEntities.entity_count || derived.searchEntities.removed_entity_count) {
+      diagnosticParts.push(`search_entities=${JSON.stringify(derived.searchEntities)}`);
+    }
     if (
       derived.identity.identity_resolution_write_count ||
       derived.identity.identity_unresolved_count ||
@@ -508,6 +547,7 @@ export async function crawlShop(
       dataQuality: quality,
       searchProjection: derived.searchProjection,
       productIdentity: derived.identity,
+      searchEntities: derived.searchEntities,
       categoryEnrichment: {
         detailRequests: enrichment.detailRequests,
         cacheHits: enrichment.cacheHits,

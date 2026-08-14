@@ -8,10 +8,9 @@
  *
  * Conversion happens in the repository mapping layer, never in a row type.
  *
- * Imports are type-only and one-directional (`db -> api -> catalog`) to keep `^src` acyclic.
+ * Imports are type-only and one-directional (`db -> catalog`) to keep `^src` acyclic.
  */
 
-import type { ProductQuerySort } from "../api/contracts.js";
 import type {
   CategoryId,
   ClassificationStatus,
@@ -608,6 +607,125 @@ export interface ProjectionSyncResult {
 }
 
 // ---------------------------------------------------------------------------
+// product search entities (migration 0021)
+// ---------------------------------------------------------------------------
+
+export type ProductSearchEntityKind = "catalog" | "unresolved_listing";
+
+/**
+ * One row of the product-level search read model.
+ *
+ * The aggregate columns describe *all* currently active offers. When an offer-level filter is in
+ * play the response recomputes them over the matching subset instead, so a card can never
+ * contradict the filter that produced it.
+ */
+export interface ProductSearchEntityRow {
+  id: number;
+  entity_key: string;
+  entity_kind: ProductSearchEntityKind;
+  catalog_product_id: number | null;
+  fallback_listing_id: number | null;
+  manufacturer_id: string;
+  manufacturer: string;
+  model: string;
+  normalized_model: string;
+  primary_category_id: string;
+  offer_count: number;
+  in_stock_offer_count: number;
+  shop_count: number;
+  lowest_price_yen: number | null;
+  /** Lowest price among in-stock offers only, so "cheapest first" can stay indexable under the
+   * default in-stock filter instead of ordering by a price nobody can buy. */
+  lowest_in_stock_price_yen: number | null;
+  highest_price_yen: number | null;
+  latest_activity_at: string | null;
+  newest_listed_at: string | null;
+  has_price_drop: 0 | 1;
+}
+
+/** Per-entity aggregates recomputed over the offers that satisfy the active offer filters. */
+export interface ProductSearchOfferAggregateRow {
+  entity_id: number;
+  offer_count: number;
+  in_stock_offer_count: number;
+  shop_count: number;
+  lowest_price_yen: number | null;
+  highest_price_yen: number | null;
+  latest_activity_at: string | null;
+  newest_listed_at: string | null;
+  has_price_drop: number;
+}
+
+/** A seller listing as it is exposed under a product. `entity_id` is absent on detail reads. */
+export interface ProductSearchOfferRow {
+  entity_id?: number;
+  listing_product_id: number;
+  shop_key: string;
+  source_url: string;
+  title: string;
+  condition_text: string;
+  price_yen: number | null;
+  previous_price_yen: number | null;
+  stock_status: StockStatus;
+  first_seen_at: string;
+  last_seen_at: string;
+  last_activity_at: string | null;
+  source_published_at: string | null;
+}
+
+export interface ProductSearchEntitySyncResult {
+  listing_count: number;
+  entity_count: number;
+  removed_entity_count: number;
+}
+
+export interface ProductSearchEntityRebuildResult {
+  event: "product_search_entity_rebuild";
+  entity_count: number;
+  offer_count: number;
+  membership_write_count: number;
+  removed_entity_count: number;
+}
+
+/** Every count is an invariant violation; `ok` is the single signal for a health surface. */
+export interface ProductSearchEntityConsistency {
+  unmembered_active_listings: number;
+  inactive_offer_memberships: number;
+  entities_without_offers: number;
+  stale_fallback_entities: number;
+  ineligible_catalog_entities: number;
+  offer_count_mismatches: number;
+  fts_integrity_ok: boolean;
+  ok: boolean;
+}
+
+/** Product-level keyset pagination. Only `id` and `sort` are runtime-validated. */
+export interface ProductSearchCursor {
+  id: number;
+  sort: string;
+  value?: string | number | null;
+  isNull?: boolean;
+}
+
+/**
+ * A product-level ordering.
+ *
+ * `key` is what a cursor is stamped with, and differs from the `sort` query value whenever the
+ * column depends on the request (the price sorts switch to the in-stock aggregate when the caller
+ * asked for in-stock offers), so a cursor can never be replayed against a different ordering.
+ */
+export interface ProductSearchSortDefinition {
+  key: string;
+  column:
+    | "newest_listed_at"
+    | "latest_activity_at"
+    | "lowest_price_yen"
+    | "lowest_in_stock_price_yen";
+  direction: "ASC" | "DESC";
+  idDirection: "ASC" | "DESC";
+}
+
+// ---------------------------------------------------------------------------
 // evidence archive (migrations 0017, 0018)
 // ---------------------------------------------------------------------------
 
@@ -822,34 +940,6 @@ export interface UpsertProductsResult {
   activityCount: number;
   touchedCount: number;
   deactivatedCount: number;
-}
-
-/**
- * Discriminated on the optional `price` flag, which gates both the SQL ORDER BY and the
- * cursor encoding. `key` is the public `?sort=` value the cursor is minted for.
- */
-export type SortDefinition =
-  | {
-      key: ProductQuerySort;
-      column: "last_activity_at";
-      direction: "ASC" | "DESC";
-      idDirection: "ASC" | "DESC";
-      price?: undefined;
-    }
-  | {
-      key: ProductQuerySort;
-      column: "price_yen";
-      direction: "ASC" | "DESC";
-      idDirection: "ASC" | "DESC";
-      price: true;
-    };
-
-/** Decoded base64url cursor. Only `id` and `sort` are runtime-validated. */
-export interface ProductListCursor {
-  id: number;
-  sort: string;
-  value?: string | number | null;
-  isNull?: boolean;
 }
 
 /** `findVerifiedCatalogMatches()` value; `null` marks an ambiguous key. */

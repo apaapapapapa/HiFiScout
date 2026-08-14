@@ -1,10 +1,21 @@
 /**
  * Device-local favorites.
  *
- * Two generations coexist in storage: the current one persists a full product snapshot so a
- * favorite still renders after the listing drops it, while an older build stored bare numeric
- * ids. Both are read; only snapshots are written, and a legacy id is upgraded the next time its
- * product appears in a listing.
+ * A favorite is a product, keyed by the search entity key the server issued. What is stored is a
+ * full snapshot, so a favorite still renders after every shop stops listing it.
+ *
+ * Three generations coexist in storage, and the two older ones are seller-listing shaped:
+ *
+ * 1. bare numeric listing ids, written by the oldest build;
+ * 2. listing snapshots (`{id, shop_key, model, price_yen, ...}`);
+ * 3. product snapshots, written by this build.
+ *
+ * Listing ids are never reinterpreted as product ids. A generation-2 snapshot is migrated into a
+ * product-shaped favorite whose key is `legacy-<listing id>` — a namespace no server key can
+ * occupy — and whose single offer carries the original listing id, so the entry stays renderable
+ * and its shop link stays correct without pretending the identity layer confirmed anything.
+ * Generation-1 entries carry no snapshot at all: they are counted and surfaced as a notice, since
+ * a listing id can no longer be resolved by a search that returns products.
  *
  * Matching and sorting are pure so the favorites view can be tested without a browser — it is the
  * one filter path the server does not evaluate.
@@ -17,12 +28,16 @@ import {
   priceDropped,
 } from "./product-activity.js";
 import type { ProductFilters } from "./filters.js";
-import type { DisplayProduct } from "./types.js";
+import type { DisplayOffer, DisplayProduct } from "./types.js";
 
 export const FAVORITES_KEY = "hifiscout:favorites";
 
+/** Namespace for migrated seller-listing favorites; never collides with a server entity key. */
+export const LEGACY_FAVORITE_PREFIX = "legacy-";
+
 export interface FavoriteStore {
-  products: Map<number, DisplayProduct>;
+  products: Map<string, DisplayProduct>;
+  /** Listing ids from the oldest storage format, which carry nothing renderable. */
   legacyIds: Set<number>;
 }
 
@@ -30,26 +45,111 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function text(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function nullableNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function stockStatus(value: unknown): DisplayOffer["stock_status"] {
+  return value === "in_stock" || value === "sold_out" ? value : "unknown";
+}
+
+/** Explicit field list: a snapshot must not grow just because the API item did. */
+export function favoriteSnapshot(product: DisplayProduct): DisplayProduct {
+  return {
+    key: product.key,
+    identity_kind: product.identity_kind,
+    catalog_product_id: product.catalog_product_id,
+    manufacturer: product.manufacturer,
+    manufacturer_id: product.manufacturer_id,
+    model: product.model,
+    primary_category_id: product.primary_category_id,
+    category: product.category,
+    offer_count: product.offer_count,
+    in_stock_offer_count: product.in_stock_offer_count,
+    shop_count: product.shop_count,
+    lowest_price_yen: product.lowest_price_yen,
+    highest_price_yen: product.highest_price_yen,
+    latest_activity_at: product.latest_activity_at,
+    newest_listed_at: product.newest_listed_at,
+    has_new_offer: product.has_new_offer,
+    has_price_drop: product.has_price_drop,
+    representative_offer: product.representative_offer ? { ...product.representative_offer } : null,
+  };
+}
+
 /**
- * Typed boundary: favorites come back from localStorage as `unknown`. Only the id is validated —
- * the remaining fields were written by `favoriteSnapshot()` and are rendered through
- * `escapeHtml`, so a tampered entry can produce a wrong-looking card but not markup.
+ * Turns a stored seller-listing snapshot into a product-shaped favorite.
+ *
+ * Explicit rather than incidental: the listing id lands on the offer, the entity key is namespaced,
+ * and the identity kind is `unresolved_listing` because nothing about this entry was confirmed by
+ * the catalog. Counts are 1 because a listing snapshot only ever described one shop's offer.
  */
-function isFavoriteEntry(value: unknown): value is DisplayProduct {
-  return isRecord(value) && Number.isSafeInteger(Number(value.id));
+export function migrateListingFavorite(entry: Record<string, unknown>): DisplayProduct | null {
+  const listingId = Number(entry.id);
+  if (!Number.isSafeInteger(listingId) || listingId <= 0) return null;
+  const price = nullableNumber(entry.price_yen);
+  const listedAt = text(entry.first_seen_at) || null;
+  const activityAt = text(entry.last_activity_at) || listedAt;
+  const status = stockStatus(entry.stock_status);
+  const previousPrice = nullableNumber(entry.previous_price_yen);
+  return {
+    key: `${LEGACY_FAVORITE_PREFIX}${listingId}`,
+    identity_kind: "unresolved_listing",
+    catalog_product_id: null,
+    manufacturer: text(entry.manufacturer),
+    manufacturer_id: text(entry.manufacturer_id),
+    model: text(entry.model) || text(entry.title),
+    primary_category_id: text(entry.primary_category_id),
+    category: text(entry.category),
+    offer_count: 1,
+    in_stock_offer_count: status === "in_stock" ? 1 : 0,
+    shop_count: 1,
+    lowest_price_yen: price,
+    highest_price_yen: price,
+    latest_activity_at: activityAt,
+    newest_listed_at: listedAt,
+    has_new_offer: false,
+    has_price_drop: previousPrice != null && price != null && price < previousPrice,
+    representative_offer: {
+      listing_product_id: listingId,
+      shop_key: text(entry.shop_key),
+      source_url: text(entry.source_url),
+      title: text(entry.title),
+      condition_text: text(entry.condition_text),
+      price_yen: price,
+      previous_price_yen: previousPrice,
+      stock_status: status,
+      first_seen_at: text(entry.first_seen_at),
+      last_seen_at: text(entry.last_seen_at),
+      last_activity_at: activityAt,
+      source_published_at: null,
+    },
+  };
 }
 
 /** Never throws: malformed local data yields an empty collection rather than a broken page. */
-export function parseFavoriteStorage(raw: string | null): FavoriteStore {
-  const products = new Map<number, DisplayProduct>();
+export function parseFavoriteStorage(
+  raw: string | null,
+  isProduct: (value: unknown) => value is DisplayProduct,
+): FavoriteStore {
+  const products = new Map<string, DisplayProduct>();
   const legacyIds = new Set<number>();
   try {
     const parsed: unknown = JSON.parse(raw || "[]");
     if (!Array.isArray(parsed)) return { products, legacyIds };
     const entries: unknown[] = parsed;
     for (const entry of entries) {
-      if (isFavoriteEntry(entry)) {
-        products.set(Number(entry.id), { ...entry, id: Number(entry.id) });
+      if (isProduct(entry)) {
+        products.set(entry.key, entry);
+        continue;
+      }
+      if (isRecord(entry)) {
+        const migrated = migrateListingFavorite(entry);
+        if (migrated) products.set(migrated.key, migrated);
         continue;
       }
       const id = Number(entry);
@@ -61,43 +161,18 @@ export function parseFavoriteStorage(raw: string | null): FavoriteStore {
   return { products, legacyIds };
 }
 
-/** Explicit field list: a snapshot must not grow just because the API item did. */
-export function favoriteSnapshot(product: DisplayProduct): DisplayProduct {
-  return {
-    id: product.id ?? null,
-    shop_key: product.shop_key ?? null,
-    manufacturer: product.manufacturer ?? null,
-    manufacturer_id: product.manufacturer_id ?? null,
-    raw_manufacturer: product.raw_manufacturer ?? null,
-    model: product.model ?? null,
-    title: product.title ?? null,
-    category: product.category ?? null,
-    raw_category: product.raw_category ?? null,
-    primary_category_id: product.primary_category_id ?? null,
-    condition_text: product.condition_text ?? null,
-    price_yen: product.price_yen ?? null,
-    previous_price_yen: product.previous_price_yen ?? null,
-    stock_status: product.stock_status ?? null,
-    source_url: product.source_url ?? null,
-    first_seen_at: product.first_seen_at ?? null,
-    last_seen_at: product.last_seen_at ?? null,
-    last_changed_at: product.last_changed_at ?? null,
-    last_activity_at: product.last_activity_at ?? null,
-    search_aliases: product.search_aliases ?? null,
-    category_ids: Array.isArray(product.category_ids) ? [...product.category_ids] : [],
-  };
-}
-
 /** What to persist: legacy ids first, then snapshots, matching the read order. */
 export function favoriteStoragePayload(store: FavoriteStore): unknown[] {
   return [...store.legacyIds, ...store.products.values()];
 }
 
 /**
- * Client-side equivalent of the server's `/api/products` filtering, applied to snapshots.
+ * Client-side equivalent of the server's product filtering, applied to snapshots.
  *
- * `categoryLabel` is the selected `<option>` text, which lets a snapshot taken before the
- * category taxonomy existed still match by its free-text category.
+ * Offer-level filters are evaluated against the snapshot's representative offer, which is all a
+ * stored favorite knows about; the server evaluates them against every offer. `categoryLabel` is
+ * the selected `<option>` text, which lets a snapshot taken before the taxonomy existed still
+ * match by its free-text category.
  */
 export function favoriteMatchesFilters(
   product: DisplayProduct,
@@ -107,40 +182,37 @@ export function favoriteMatchesFilters(
 ): boolean {
   const q = filters.q.trim().toLocaleLowerCase("ja-JP");
   if (q && !normalizedSearchText(product).includes(q)) return false;
-  if (filters.shop && product.shop_key !== filters.shop) return false;
+  if (filters.shop && product.representative_offer?.shop_key !== filters.shop) return false;
   if (filters.manufacturer && product.manufacturer !== filters.manufacturer) return false;
-  if (filters.category) {
-    const ids = Array.isArray(product.category_ids) ? product.category_ids : [];
-    if (
-      !ids.includes(filters.category) &&
-      product.primary_category_id !== filters.category &&
-      product.category !== categoryLabel
-    ) {
-      return false;
-    }
+  if (
+    filters.category &&
+    product.primary_category_id !== filters.category &&
+    product.category !== categoryLabel
+  ) {
+    return false;
   }
-  if (filters.inStock && product.stock_status !== "in_stock") return false;
+  if (filters.inStock && product.in_stock_offer_count < 1) return false;
   if (filters.recentOnly && !activityData(product, now).isNew) return false;
   if (filters.priceDropped && !priceDropped(product)) return false;
   const minPrice = Number.parseInt(filters.minPrice, 10);
   // A null price coerces to 0 in the original relational comparison; `?? 0` keeps that.
-  if (Number.isFinite(minPrice) && !((product.price_yen ?? 0) >= minPrice)) return false;
+  if (Number.isFinite(minPrice) && !((product.lowest_price_yen ?? 0) >= minPrice)) return false;
   const maxPrice = Number.parseInt(filters.maxPrice, 10);
-  if (Number.isFinite(maxPrice) && !((product.price_yen ?? 0) <= maxPrice)) return false;
+  if (Number.isFinite(maxPrice) && !((product.lowest_price_yen ?? 0) <= maxPrice)) return false;
   return true;
 }
 
-/** Price sorts push unpriced listings last in both directions; everything else is by recency. */
+/** Price sorts push unpriced products last in both directions; everything else is by recency. */
 export function sortFavorites(products: DisplayProduct[], sort: string): DisplayProduct[] {
   const sorted = [...products];
   sorted.sort((left, right) => {
     if (sort === "priceAsc" || sort === "priceDesc") {
-      if (left.price_yen == null && right.price_yen == null) return 0;
-      if (left.price_yen == null) return 1;
-      if (right.price_yen == null) return -1;
+      if (left.lowest_price_yen == null && right.lowest_price_yen == null) return 0;
+      if (left.lowest_price_yen == null) return 1;
+      if (right.lowest_price_yen == null) return -1;
       return sort === "priceAsc"
-        ? left.price_yen - right.price_yen
-        : right.price_yen - left.price_yen;
+        ? left.lowest_price_yen - right.lowest_price_yen
+        : right.lowest_price_yen - left.lowest_price_yen;
     }
     return activityTime(right) - activityTime(left);
   });

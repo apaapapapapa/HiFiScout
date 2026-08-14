@@ -2,72 +2,49 @@
  * Browser-side views of the server contracts.
  *
  * `src/api/contracts.ts` states what the Worker sends. This module states what the browser is
- * willing to assume after its runtime guards have run — which is deliberately weaker, because
- * `/api/products` items and localStorage favorites flow through the same rendering code and the
- * latter were written by an older version of this app.
+ * willing to assume after its runtime guards have run.
+ *
+ * Since Phase 4 the rendered unit is a product with offers, not a seller listing, and favorites are
+ * validated by the same guard as API results — so one type flows through rendering whether a card
+ * came from `/api/product-search` or from localStorage. Favorites written by the previous,
+ * listing-shaped build are migrated at read time rather than being reinterpreted in place; see
+ * `favorites.ts`.
  */
 
 import type {
   MetaShop,
-  ProductListItem,
-  ProductListResponse,
+  ProductOffer,
   ProductPricePoint,
+  ProductSearchItem,
+  ProductSearchResponse,
 } from "../src/api/contracts.js";
 
-type Nullable<T> = { [K in keyof T]: T[K] | null };
+/** A rendered product. Identical to the contract: the guard validates every field the UI reads. */
+export type DisplayProduct = ProductSearchItem;
 
-/** The `/api/products` fields this UI renders. The rest of the contract is ignored here. */
-export type DisplayFields = Pick<
-  ProductListItem,
-  | "id"
-  | "shop_key"
-  | "manufacturer"
-  | "manufacturer_id"
-  | "raw_manufacturer"
-  | "model"
-  | "title"
-  | "category"
-  | "raw_category"
-  | "primary_category_id"
-  | "condition_text"
-  | "price_yen"
-  | "previous_price_yen"
-  | "stock_status"
-  | "source_url"
-  | "first_seen_at"
-  | "last_seen_at"
-  | "last_changed_at"
-  | "last_activity_at"
-  | "search_aliases"
-  | "category_ids"
->;
+/** One shop's offer under a product. */
+export type DisplayOffer = ProductOffer;
 
-/**
- * Shape shared by rendered products and the favorite snapshots persisted in localStorage.
- * `favoriteSnapshot()` stores `null` for every missing field, so both sources expose the same
- * keys with nullable values. Field *types* still come from the contract, so a server-side change
- * to one of them breaks this build.
- */
-export type DisplayProduct = Nullable<Omit<DisplayFields, "category_ids">> & {
-  category_ids: string[];
-};
+export type ProductsResponse = ProductSearchResponse;
 
-/**
- * `/api/products` as the browser treats it: `isProductsResponse()` only validates `items`, so
- * item fields stay nullable even though the contract declares them populated.
- */
-export interface ProductsResponse extends Omit<ProductListResponse, "items"> {
-  items: DisplayProduct[];
+export interface ProductDetailResponse {
+  product: DisplayProduct;
+  offers: DisplayOffer[];
 }
 
 export type PriceHistoryEntry = ProductPricePoint;
 
+/** `/api/products/:id/history` stays listing-scoped: history belongs to one shop's offer. */
 export interface ProductHistoryResponse {
-  product: DisplayProduct;
+  product: {
+    manufacturer: string;
+    model: string;
+    title: string;
+  };
   history: PriceHistoryEntry[];
 }
 
-/** One fetched page of the listing, kept so page navigation can replay without a request. */
+/** One fetched page of results, kept so page navigation can replay without a request. */
 export interface PageState {
   items: DisplayProduct[];
   hasMore: boolean;

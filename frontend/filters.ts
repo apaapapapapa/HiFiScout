@@ -1,10 +1,13 @@
 /**
- * Filter state and its three serializations: the `/api/products` query, the address bar, and the
- * active-filter chips.
+ * Filter state and its three serializations: the `/api/product-search` query, the address bar, and
+ * the active-filter chips.
  *
  * {@link ProductFilters} holds the raw trimmed control values rather than parsed numbers. That is
  * deliberate: `minPrice=abc` must still reach the API so the server answers `400 minPrice_invalid`
  * instead of the browser silently dropping it.
+ *
+ * The query vocabulary is unchanged by Phase 4, so a shared URL still works — but the server now
+ * splits it into product-level and offer-level predicates, and `limit`/`offset` count products.
  */
 
 import { yen } from "./format.js";

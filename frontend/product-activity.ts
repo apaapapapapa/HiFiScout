@@ -1,8 +1,12 @@
 /**
- * Freshness and price-drop derivation.
+ * Freshness and price-drop derivation for a product result.
  *
  * `now` is a parameter rather than an implicit `Date.now()` so the 48-hour boundaries can be
  * tested exactly instead of approximately.
+ *
+ * Every input here is an aggregate over the product's offers, which is why "new" means *some*
+ * offer is new rather than the product being new: a model that has been on sale for years becomes
+ * newsworthy again the moment another shop lists one.
  */
 
 import { safeDate } from "./format.js";
@@ -18,16 +22,15 @@ export interface ActivityData {
 }
 
 /**
- * A listing is NEW for 48 hours after first discovery, and UPDATED for 48 hours after a later
- * change — never both, so a freshly discovered product that changes immediately still reads as
- * new rather than flipping badge.
+ * A product is NEW while one of its offers was listed in the last 48 hours, and UPDATED when a
+ * later change happened instead — never both, so a freshly listed product that changes price
+ * immediately still reads as new rather than flipping badge.
  */
 export function activityData(product: DisplayProduct, now = Date.now()): ActivityData {
-  const firstSeen = safeDate(product.first_seen_at);
-  const activityValue = product.last_activity_at || product.first_seen_at || product.last_seen_at;
-  const activity = safeDate(activityValue);
-  const isNew = Boolean(firstSeen && now - firstSeen.getTime() < RECENT_WINDOW_MS);
-  const hasBeenUpdated = Boolean(activity && firstSeen && activity.getTime() > firstSeen.getTime());
+  const listed = safeDate(product.newest_listed_at);
+  const activity = safeDate(product.latest_activity_at) || listed;
+  const isNew = Boolean(listed && now - listed.getTime() < RECENT_WINDOW_MS);
+  const hasBeenUpdated = Boolean(activity && listed && activity.getTime() > listed.getTime());
   const isRecentlyUpdated = Boolean(
     !isNew && hasBeenUpdated && activity && now - activity.getTime() < RECENT_WINDOW_MS,
   );
@@ -39,26 +42,18 @@ export function activityData(product: DisplayProduct, now = Date.now()): Activit
   };
 }
 
-export function priceDropped(
-  product: DisplayProduct,
-): product is DisplayProduct & { price_yen: number; previous_price_yen: number } {
-  return (
-    product.previous_price_yen != null &&
-    product.price_yen != null &&
-    product.price_yen < product.previous_price_yen
-  );
+export function priceDropped(product: DisplayProduct): boolean {
+  return product.has_price_drop;
 }
 
-/** Haystack for client-side favorite search; mirrors the columns the server FTS projection uses. */
+/** Haystack for client-side favorite search; mirrors the terms the server entity index holds. */
 export function normalizedSearchText(product: DisplayProduct): string {
   return [
-    product.title,
-    product.model,
     product.manufacturer,
-    product.raw_manufacturer,
+    product.manufacturer_id,
+    product.model,
     product.category,
-    product.raw_category,
-    product.search_aliases,
+    product.representative_offer?.title,
   ]
     .filter(Boolean)
     .join(" ")
@@ -67,9 +62,5 @@ export function normalizedSearchText(product: DisplayProduct): string {
 
 /** Sort key used when ordering favorites by recency. */
 export function activityTime(product: DisplayProduct): number {
-  return (
-    safeDate(
-      product.last_activity_at || product.first_seen_at || product.last_seen_at,
-    )?.getTime() || 0
-  );
+  return safeDate(product.latest_activity_at || product.newest_listed_at)?.getTime() || 0;
 }

@@ -176,6 +176,34 @@ jobs:
             GROUP BY p.shop_key
             ORDER BY p.shop_key;")"
 
+          search_entities="$(query "
+            SELECT
+              (SELECT COUNT(*) FROM product_search_entities) AS entity_count,
+              (SELECT COUNT(*) FROM product_search_entities WHERE entity_kind = 'catalog') AS catalog_entity_count,
+              (SELECT COUNT(*) FROM product_search_entities WHERE entity_kind = 'unresolved_listing') AS fallback_entity_count,
+              (SELECT COUNT(*) FROM product_search_entities WHERE shop_count > 1) AS multi_shop_entity_count,
+              (SELECT COUNT(*) FROM product_search_entity_offers) AS offer_count,
+              (SELECT COUNT(*) FROM products p
+                WHERE p.is_active = 1
+                  AND NOT EXISTS (SELECT 1 FROM product_search_entity_offers m WHERE m.listing_product_id = p.id)
+              ) AS unmembered_active_listings,
+              (SELECT COUNT(*) FROM product_search_entity_offers m
+                JOIN products p ON p.id = m.listing_product_id
+                WHERE p.is_active = 0
+              ) AS inactive_offer_memberships,
+              (SELECT COUNT(*) FROM product_search_entities e
+                WHERE NOT EXISTS (SELECT 1 FROM product_search_entity_offers m WHERE m.entity_id = e.id)
+              ) AS entities_without_offers,
+              (SELECT COUNT(*) FROM product_search_entities e
+                WHERE e.entity_kind = 'unresolved_listing'
+                  AND EXISTS (
+                    SELECT 1 FROM product_identity_resolutions r
+                    JOIN knowledge_catalog_products kp
+                      ON kp.id = r.catalog_product_id AND kp.verification_status = 'verified'
+                    WHERE r.listing_product_id = e.fallback_listing_id AND r.status = 'matched'
+                  )
+              ) AS stale_fallback_entities;")"
+
           quality_runs="$(query "
             SELECT q.*
             FROM data_quality_runs q
@@ -215,6 +243,15 @@ jobs:
             exit 1
           fi
 
+          # A product that stops being searchable is invisible to users but silent in the logs, so
+          # every read-model invariant is a deploy gate rather than a dashboard nobody opens.
+          search_drift="$(jq '[.[0] | .unmembered_active_listings, .inactive_offer_memberships, .entities_without_offers, .stale_fallback_entities] | map(. // 0) | add' <<< "$search_entities")"
+          if [ "$search_drift" -ne 0 ]; then
+            echo "Product search read model drifted; POST /api/admin/product-search/rebuild repairs it." >&2
+            jq . <<< "$search_entities" >&2
+            exit 1
+          fi
+
           echo 'Product Identity production state:'
           jq . <<< "$identity"
           echo 'Evidence metadata production state:'
@@ -223,6 +260,8 @@ jobs:
           jq . <<< "$shops"
           echo 'Phase 2 snapshot baseline:'
           jq . <<< "$baseline_with_rates"
+          echo 'Phase 4 product search read model:'
+          jq . <<< "$search_entities"
           echo 'Latest persisted Phase 2 quality runs:'
           jq . <<< "$quality_runs"
 
@@ -251,6 +290,11 @@ jobs:
             echo '### Phase 2 snapshot baseline'
             echo '```json'
             jq . <<< "$baseline_with_rates"
+            echo '```'
+            echo
+            echo '### Phase 4 product search read model'
+            echo '```json'
+            jq . <<< "$search_entities"
             echo '```'
             echo
             echo '### Latest persisted Phase 2 quality runs'
