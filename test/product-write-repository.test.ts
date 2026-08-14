@@ -228,7 +228,7 @@ test("seller-visible listing changes create user-facing activity", async () => {
   };
   const db = captureDatabase(upsertResults(existing));
 
-  const result = await upsertProducts(db, "hifido", [product], "2026-08-11T01:00:00.000Z");
+  const result = await upsertProducts(db, "fujiya-avic", [product], "2026-08-11T01:00:00.000Z");
 
   assert.equal(result.changedCount, 1);
   assert.equal(result.activityCount, 1);
