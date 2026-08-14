@@ -27,3 +27,43 @@ export function pageNumbers(currentPage: number, totalPages: number): number[] {
 export function pageOffset(page: number, pageSize = PAGE_SIZE): number {
   return Math.max(0, (page - 1) * pageSize);
 }
+
+export interface ResultSummaryInput {
+  /** Items on the page as rendered — not the server's total. */
+  shown: number;
+  /** Favorites are a local view of stored snapshots, not a paged server result. */
+  favoriteMode: boolean;
+  currentPage: number;
+  totalPages: number;
+  /** A failed load renders an error in place of results. */
+  errorMessage?: string;
+}
+
+export interface ResultSummary {
+  count: string;
+  label: string;
+  /** Whether the "more results exist" hint is hidden. */
+  moreHidden: boolean;
+}
+
+/**
+ * The counter above the results.
+ *
+ * The count is what is on screen now, so "more available" is a separate signal rather than a
+ * larger number: reporting a total the page is not showing reads as a rendering bug. Favorites are
+ * never paged — the whole stored set is in the browser — so the hint is suppressed there, as it is
+ * when an error replaced the results entirely.
+ */
+export function resultSummary({
+  shown,
+  favoriteMode,
+  currentPage,
+  totalPages,
+  errorMessage = "",
+}: ResultSummaryInput): ResultSummary {
+  return {
+    count: String(shown),
+    label: favoriteMode ? "件のお気に入り" : "件を表示中",
+    moreHidden: Boolean(favoriteMode || errorMessage || currentPage >= totalPages),
+  };
+}

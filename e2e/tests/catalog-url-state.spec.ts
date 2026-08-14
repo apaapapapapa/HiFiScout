@@ -50,9 +50,13 @@ async function routeMeta(page: Page, meta: JsonObject = catalogMeta()): Promise<
   );
 }
 
-test("invalid catalog query parameters are sanitized before the product API request", async ({
-  page,
-}) => {
+/**
+ * Which parameters survive sanitization is asserted per-rule in
+ * test/frontend-catalog-url-sanitizer.test.ts. What needs a real page is the ordering: the
+ * bootstrap entry has to rewrite the address bar via `history.replaceState` *before* the catalog
+ * script parses it and issues its first request. No unit test can observe that.
+ */
+test("the URL is sanitized before the catalog script reads it", async ({ page }) => {
   await routeMeta(page);
   await page.route("**/api/products?**", (route: Route) =>
     route.fulfill({
@@ -67,38 +71,22 @@ test("invalid catalog query parameters are sanitized before the product API requ
   });
 
   const longQuery = "x".repeat(101);
-  const longShop = "s".repeat(81);
   await page.goto(
-    `/?q=${longQuery}&shop=${longShop}&manufacturer=${longQuery}&category=${longQuery}&minPrice=abc&maxPrice=12x&sort=invalid&inStock=maybe&newOnly=yes&priceDropped=1&favoritesOnly=true&cursor=bogus`,
+    `/?q=${longQuery}&minPrice=abc&sort=invalid&inStock=maybe&favoritesOnly=true&cursor=bogus`,
   );
 
-  const productRequest = await productRequestPromise;
-  const apiParams = new URL(productRequest.url()).searchParams;
+  // The first request already reflects the correction, which is what proves the ordering.
+  const apiParams = new URL((await productRequestPromise).url()).searchParams;
   expect(apiParams.get("q")).toBeNull();
-  expect(apiParams.get("shop")).toBeNull();
-  expect(apiParams.get("manufacturer")).toBeNull();
-  expect(apiParams.get("category")).toBeNull();
-  expect(apiParams.get("minPrice")).toBeNull();
-  expect(apiParams.get("maxPrice")).toBeNull();
-  expect(apiParams.get("sort")).toBe("newest");
-  expect(apiParams.get("inStock")).toBe("true");
-  expect(apiParams.get("newOnly")).toBeNull();
-  expect(apiParams.get("priceDropped")).toBeNull();
-  expect(apiParams.get("favoritesOnly")).toBeNull();
   expect(apiParams.get("cursor")).toBeNull();
+  expect(apiParams.get("sort")).toBe("newest");
 
+  // The address bar is corrected too, so a reload or share carries the cleaned link.
+  expect([...new URL(page.url()).searchParams.keys()]).toEqual([]);
+
+  // The controls were populated from the corrected URL rather than the original.
   await expect(page.locator("#q")).toHaveValue("");
-  await expect(page.locator("#manufacturer")).toHaveValue("");
-  await expect(page.locator("#minPrice")).toHaveValue("");
-  await expect(page.locator("#maxPrice")).toHaveValue("");
   await expect(page.locator("#sort")).toHaveValue("newest");
-  await expect(page.locator("#inStock")).toBeChecked();
-  await expect(page.locator("#recentOnly")).not.toBeChecked();
-  await expect(page.locator("#priceDropped")).not.toBeChecked();
-  await expect(page.locator("#favoritesOnly")).not.toBeChecked();
-
-  const pageParams = new URL(page.url()).searchParams;
-  expect([...pageParams.keys()]).toEqual([]);
   await expect(page.locator("#products")).not.toContainText("商品の取得に失敗しました。");
 });
 
@@ -135,7 +123,12 @@ test("new and price-drop checkboxes update both the URL and product API query", 
   await expect(page).toHaveURL(/priceDropped=true/);
 });
 
-test("result count distinguishes hasMore from the current page item count", async ({ page }) => {
+/**
+ * `resultSummary` is asserted per-case in test/frontend-view.test.ts. What this adds is that the
+ * summary is recomputed and reapplied to the DOM when a filter change brings back a different page
+ * shape — the wiring between a control event, the refetch and the counter.
+ */
+test("the result counter is reapplied after a filter change", async ({ page }) => {
   await routeMeta(page);
   await page.route("**/api/products?**", (route: Route) => {
     const params = new URL(route.request().url()).searchParams;
@@ -154,13 +147,9 @@ test("result count distinguishes hasMore from the current page item count", asyn
 
   await page.goto("/");
   await expect(page.locator("#count")).toHaveText("1");
-  await expect(page.locator("#count-label")).toHaveText("件を表示中");
-  await expect(page.locator("#more-available")).toHaveText("さらに商品があります");
   await expect(page.locator("#more-available")).toBeVisible();
 
   await page.locator("#priceDropped").check();
-  await expect(page.locator("#count")).toHaveText("1");
-  await expect(page.locator("#count-label")).toHaveText("件を表示中");
   await expect(page.locator("#more-available")).toBeHidden();
 });
 

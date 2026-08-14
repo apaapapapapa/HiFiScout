@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { escapeHtml, relativeTime, safeDate } from "../frontend/format.js";
-import { pageNumbers, pageOffset } from "../frontend/pagination.js";
+import { pageNumbers, pageOffset, resultSummary } from "../frontend/pagination.js";
 import { activityData, priceDropped } from "../frontend/product-activity.js";
 import {
   emptyState,
@@ -62,6 +62,39 @@ test("long page counts always keep the first and last page reachable", () => {
     assert.equal(numbers[0], 1);
     assert.equal(numbers.at(-1), 20);
   }
+});
+
+test("the result counter reports what is on screen, with more-available as a separate signal", () => {
+  assert.deepEqual(
+    resultSummary({ shown: 50, favoriteMode: false, currentPage: 1, totalPages: 2 }),
+    { count: "50", label: "件を表示中", moreHidden: false },
+  );
+  assert.deepEqual(
+    resultSummary({ shown: 12, favoriteMode: false, currentPage: 2, totalPages: 2 }),
+    { count: "12", label: "件を表示中", moreHidden: true },
+  );
+});
+
+test("favorites and failed loads never claim more results are available", () => {
+  // Favorites are the whole stored set, so there is no next page to hint at.
+  assert.equal(
+    resultSummary({ shown: 3, favoriteMode: true, currentPage: 1, totalPages: 9 }).moreHidden,
+    true,
+  );
+  assert.equal(
+    resultSummary({ shown: 3, favoriteMode: true, currentPage: 1, totalPages: 9 }).label,
+    "件のお気に入り",
+  );
+  assert.equal(
+    resultSummary({
+      shown: 0,
+      favoriteMode: false,
+      currentPage: 1,
+      totalPages: 9,
+      errorMessage: "商品の取得に失敗しました。",
+    }).moreHidden,
+    true,
+  );
 });
 
 test("page offsets follow the fixed page size", () => {
