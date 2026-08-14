@@ -5,7 +5,7 @@ import {
   listShopStates,
   markShopQueued,
 } from "../db/shop-state-repository.js";
-import { recheckAudioUnionInventory } from "./inventory-recheck.js";
+import { recheckShopInventory } from "./inventory-recheck.js";
 import { crawlShop, isShopDue } from "./run.js";
 import { getShopPlugin, SHOP_PLUGINS } from "./shops/index.js";
 import { isTransportConfigured } from "./transport.js";
@@ -155,8 +155,9 @@ export async function consumeCrawlMessage(
   await clearShopQueued(env.DB, resolvedShopKey);
 
   const crawlResult = await crawlShop(env, plugin, { force: body?.force === true });
-  if (resolvedShopKey !== "audiounion" || crawlResult.status !== "success") return crawlResult;
+  // Rechecking after a failed crawl would spend the shop's request budget on stale candidates.
+  if (crawlResult.status !== "success" || !plugin.inventoryRecheck) return crawlResult;
 
-  const inventoryRecheck = await recheckAudioUnionInventory(env);
+  const inventoryRecheck = await recheckShopInventory(env, plugin);
   return { ...crawlResult, inventoryRecheck };
 }

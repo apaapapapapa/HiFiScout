@@ -97,11 +97,14 @@ export function evaluateShopSyncHealth({
   return { status: "healthy", ageMinutes: Math.round(ageMinutes), reason: "ok" };
 }
 
+/**
+ * Only shops that declare `transportConfigurationRequired` are graded on configuration.
+ *
+ * For every other collector a missing transport shows up as a failed run in its persisted sync
+ * state, so pre-emptively reporting critical would raise an alarm the run itself will raise.
+ */
 function isShopConfigured(env: CrawlerEnv, plugin: ShopPlugin): boolean {
-  // Preserve the existing health contract: only AudioUnion was treated as a
-  // hard configuration dependency. Other collectors report failures through
-  // their persisted sync state instead of becoming critical before a run.
-  if (plugin.key !== "audiounion") return true;
+  if (!plugin.definition.transportConfigurationRequired) return true;
   return isTransportConfigured(env, plugin);
 }
 

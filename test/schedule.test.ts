@@ -3,6 +3,11 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { SHOP_DEFINITIONS, getShopEnabled, getShopRequestDelayMs } from "../src/config.js";
 import { isShopDue, isSuspiciousItemDrop } from "../src/crawler/run.js";
+import {
+  sharedSweepExclusions,
+  shopForCron,
+  shopsWithDedicatedCron,
+} from "../src/crawler/schedule.js";
 
 const wranglerConfig = JSON.parse(
   fs.readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8"),
@@ -34,6 +39,37 @@ test("shop request delay overrides the global fallback", () => {
     15_000,
   );
   assert.equal(getShopRequestDelayMs({}, SHOP_DEFINITIONS.ippinkan, 1200), 1200);
+});
+
+test("a dedicated shop cron is declared in wrangler and owns that shop alone", () => {
+  const crons: string[] = wranglerConfig.triggers?.crons || [];
+  const dedicated = shopsWithDedicatedCron();
+  assert.ok(dedicated.length > 0);
+
+  for (const plugin of dedicated) {
+    const cron = plugin.definition.scheduleCron;
+    assert.ok(cron);
+    assert.ok(crons.includes(cron), `${plugin.key} cron ${cron} is missing from wrangler.jsonc`);
+    assert.equal(shopForCron(cron), plugin);
+  }
+});
+
+test("the shared sweep skips exactly the shops that own a cron", () => {
+  assert.deepEqual(
+    [...sharedSweepExclusions()].sort(),
+    shopsWithDedicatedCron()
+      .map((plugin) => plugin.key)
+      .sort(),
+  );
+  // Non-crawl crons must fall through to the shared sweep rather than dispatching a shop.
+  assert.equal(shopForCron("*/5 * * * *"), null);
+  assert.equal(shopForCron("17 18 * * *"), null);
+  assert.equal(shopForCron(""), null);
+});
+
+test("scheduled crawl dispatch is resolved by policy rather than by shop name", () => {
+  assert.match(workerSource, /shopForCron\(cron\)/);
+  assert.match(workerSource, /sharedSweepExclusions\(\)/);
 });
 
 test("large item-count drops are rejected only after a meaningful baseline", () => {

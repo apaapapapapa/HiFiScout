@@ -40,6 +40,8 @@ export const SHOP_PLUGINS: ShopPlugin[] = [
     requestDelayEnv: "AUDIOUNION_REQUEST_DELAY_MS",
     defaultIntervalMinutes: 30,
     defaultRequestDelayMs: 10_000,
+    scheduleCron: "1 * * * *",
+    transportConfigurationRequired: true,
   }),
   defineShopPlugin(ippinkanAdapter, {
     key: "ippinkan",
@@ -60,6 +62,7 @@ export const SHOP_PLUGINS: ShopPlugin[] = [
     defaultIntervalMinutes: 30,
     maxPagesEnv: "FUJIYA_AVIC_MAX_PAGES",
     defaultMaxPages: 50,
+    scheduleCron: "30 * * * *",
   }),
   defineShopPlugin(hifidoAdapter, {
     key: "hifido",
