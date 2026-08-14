@@ -1,5 +1,4 @@
 import {
-  SHOP_DEFINITIONS,
   getCrawlerSettings,
   getShopEnabled,
   getShopIntervalMinutes,
@@ -26,7 +25,7 @@ import {
 } from "../db/crawl-run-repository.js";
 import { archiveEvidence } from "../evidence/evidence-archive.js";
 import { enrichProductCategories } from "./category-enricher.js";
-import { SHOP_ADAPTERS, getShopActivityPolicy } from "./shops/index.js";
+import { SHOP_PLUGINS, getShopActivityPolicy } from "./shops/index.js";
 import { createTransport, isTransportConfigured } from "./transport.js";
 import { errorMessage } from "../types.js";
 import type { NormalizedCatalogProduct } from "../catalog/types.js";
@@ -44,7 +43,6 @@ import type {
   CrawlerEnv,
   CrawlResult,
   RobotsCache,
-  ShopDefinition,
   ShopPlugin,
 } from "./types.js";
 import {
@@ -71,12 +69,6 @@ interface EvidenceMetrics {
 
 function nowIso(now = new Date()): string {
   return now.toISOString();
-}
-
-function definitionFor(adapter: ShopPlugin): ShopDefinition | undefined {
-  return (
-    adapter.definition || Object.values(SHOP_DEFINITIONS).find((value) => value.key === adapter.key)
-  );
 }
 
 function isConfigured(env: CrawlerEnv, adapter: ShopPlugin): boolean {
@@ -248,9 +240,7 @@ export async function crawlShop(
   adapter: ShopPlugin,
   { force = false, now = new Date(), fetchFn = fetch }: CrawlShopOptions = {},
 ): Promise<CrawlResult> {
-  const definition = definitionFor(adapter);
-  if (!definition)
-    return { shopKey: adapter.key, status: "skipped", reason: "shop_definition_missing" };
+  const definition = adapter.definition;
   if (!getShopEnabled(env, definition))
     return { shopKey: adapter.key, status: "skipped", reason: "disabled" };
   if (!isConfigured(env, adapter))
@@ -582,7 +572,7 @@ export async function crawlDueShops(
   options: CrawlShopOptions = {},
 ): Promise<CrawlResult[]> {
   const results: CrawlResult[] = [];
-  for (const adapter of SHOP_ADAPTERS) results.push(await crawlShop(env, adapter, options));
+  for (const adapter of SHOP_PLUGINS) results.push(await crawlShop(env, adapter, options));
   return results;
 }
 
@@ -591,10 +581,9 @@ export async function crawlNextDueShop(
   { now = new Date(), fetchFn = fetch }: Pick<CrawlShopOptions, "now" | "fetchFn"> = {},
 ): Promise<CrawlResult> {
   const states = new Map((await listShopStates(env.DB)).map((row) => [row.shop_key, row]));
-  const candidates = SHOP_ADAPTERS.filter((adapter) => {
-    const definition = definitionFor(adapter);
-    return definition && getShopEnabled(env, definition) && isConfigured(env, adapter);
-  })
+  const candidates = SHOP_PLUGINS.filter(
+    (adapter) => getShopEnabled(env, adapter.definition) && isConfigured(env, adapter),
+  )
     .map((adapter) => {
       const definition = adapter.definition;
       const interval = getShopIntervalMinutes(env, definition);

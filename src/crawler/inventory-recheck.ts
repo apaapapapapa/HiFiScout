@@ -6,8 +6,8 @@
  * deactivated after repeated unavailable observations — a transient relay or upstream failure
  * must never look like a sold-out product.
  *
- * Nothing here is shop-specific: the URL guard, the availability classifier and the settings
- * names all come from the adapter's {@link InventoryRecheckPolicy}.
+ * Nothing here is shop-specific: the settings come from the shop's own env prefix, and the URL
+ * guard and availability classifier from the adapter's {@link InventoryRecheckPolicy}.
  */
 
 import {
@@ -150,7 +150,7 @@ export async function recheckShopInventory(
 ): Promise<InventoryRecheckResult> {
   const policy = plugin.inventoryRecheck;
   if (!policy) return { status: "skipped", reason: "disabled" };
-  const settings = getShopInventoryRecheckSettings(env, policy);
+  const settings = getShopInventoryRecheckSettings(env, plugin.definition);
   if (!settings.enabled) return { status: "skipped", reason: "disabled" };
 
   const attemptedAt = now.toISOString();

@@ -1,10 +1,10 @@
 import type {
   CrawlerEnv,
   CrawlerSettings,
-  InventoryRecheckPolicy,
   InventoryRecheckSettings,
   MaintenanceSettings,
   ShopDefinition,
+  ShopEnvSuffix,
 } from "./crawler/types.js";
 import { SHOP_PLUGINS } from "./crawler/shops/index.js";
 
@@ -40,12 +40,53 @@ export function booleanFlag(value: unknown, fallback = true): boolean {
   return fallback;
 }
 
+/**
+ * The whole shop configuration surface, as a record so that adding a {@link ShopEnvSuffix}
+ * without teaching this module to read it is a compile error.
+ */
+const SHOP_ENV_SUFFIX_SET: Readonly<Record<ShopEnvSuffix, true>> = {
+  ENABLED: true,
+  INTERVAL_MINUTES: true,
+  REQUEST_DELAY_MS: true,
+  MAX_PAGES: true,
+  INVENTORY_RECHECK_ENABLED: true,
+  INVENTORY_RECHECK_MIN_AGE_HOURS: true,
+  INVENTORY_RECHECK_INTERVAL_HOURS: true,
+  INVENTORY_RECHECK_FAILURE_THRESHOLD: true,
+};
+
+/** Every setting suffix a registered shop can be configured with. */
+export const SHOP_ENV_SUFFIXES = Object.keys(SHOP_ENV_SUFFIX_SET) as readonly ShopEnvSuffix[];
+
+/** The variable a shop setting is read from: its env prefix joined to the setting suffix. */
+export function shopEnvVarName(shop: ShopDefinition, suffix: ShopEnvSuffix): string {
+  return `${shop.envPrefix}_${suffix}`;
+}
+
+/**
+ * Reads one shop-scoped variable.
+ *
+ * Shop variable names are composed at runtime from the definition's env prefix, so they are not
+ * members of `CrawlerEnv`'s finite key set and cannot be indexed through it. This function is
+ * the only place that widens the environment, and it is what keeps registering a shop from
+ * meaning an edit to the crawler's environment vocabulary. Both halves of the name are
+ * constrained elsewhere: the prefix is validated at registration, the suffix by
+ * {@link ShopEnvSuffix}.
+ */
+function shopEnvValue(
+  env: CrawlerEnv | undefined,
+  shop: ShopDefinition,
+  suffix: ShopEnvSuffix,
+): unknown {
+  return (env as unknown as Record<string, unknown> | undefined)?.[shopEnvVarName(shop, suffix)];
+}
+
 export function getShopEnabled(env: CrawlerEnv | undefined, shop: ShopDefinition): boolean {
-  return booleanFlag(env?.[shop.enabledEnv], true);
+  return booleanFlag(shopEnvValue(env, shop, "ENABLED"), shop.defaultEnabled !== false);
 }
 
 export function getShopIntervalMinutes(env: CrawlerEnv | undefined, shop: ShopDefinition): number {
-  return positiveInt(env?.[shop.intervalEnv], shop.defaultIntervalMinutes);
+  return positiveInt(shopEnvValue(env, shop, "INTERVAL_MINUTES"), shop.defaultIntervalMinutes);
 }
 
 export function getShopMaxPages(
@@ -54,10 +95,7 @@ export function getShopMaxPages(
   fallback: number,
 ): number {
   if (!shop) return fallback;
-  // `shop.maxPagesEnv` is optional; guarding it is equivalent to the previous
-  // `env?.[undefined]` lookup, which always produced `undefined`.
-  const configured = shop.maxPagesEnv ? env?.[shop.maxPagesEnv] : undefined;
-  return positiveInt(configured, shop.defaultMaxPages || fallback);
+  return positiveInt(shopEnvValue(env, shop, "MAX_PAGES"), shop.defaultMaxPages || fallback);
 }
 
 export function getShopRequestDelayMs(
@@ -67,7 +105,7 @@ export function getShopRequestDelayMs(
 ): number {
   if (!shop) return fallback;
   const defaultDelay = shop.defaultRequestDelayMs ?? fallback;
-  return nonNegativeInt(env?.[shop.requestDelayEnv], defaultDelay);
+  return nonNegativeInt(shopEnvValue(env, shop, "REQUEST_DELAY_MS"), defaultDelay);
 }
 
 export function getCrawlerSettings(env: CrawlerEnv | undefined): CrawlerSettings {
@@ -92,13 +130,16 @@ export function getCrawlerSettings(env: CrawlerEnv | undefined): CrawlerSettings
  */
 export function getShopInventoryRecheckSettings(
   env: CrawlerEnv | undefined,
-  policy: InventoryRecheckPolicy,
+  shop: ShopDefinition,
 ): InventoryRecheckSettings {
   return {
-    enabled: booleanFlag(env?.[policy.enabledEnv], false),
-    minListingAgeHours: positiveInt(env?.[policy.minListingAgeHoursEnv], 24),
-    intervalHours: positiveInt(env?.[policy.intervalHoursEnv], 24),
-    failureThreshold: Math.max(2, positiveInt(env?.[policy.failureThresholdEnv], 2)),
+    enabled: booleanFlag(shopEnvValue(env, shop, "INVENTORY_RECHECK_ENABLED"), false),
+    minListingAgeHours: positiveInt(shopEnvValue(env, shop, "INVENTORY_RECHECK_MIN_AGE_HOURS"), 24),
+    intervalHours: positiveInt(shopEnvValue(env, shop, "INVENTORY_RECHECK_INTERVAL_HOURS"), 24),
+    failureThreshold: Math.max(
+      2,
+      positiveInt(shopEnvValue(env, shop, "INVENTORY_RECHECK_FAILURE_THRESHOLD"), 2),
+    ),
   };
 }
 

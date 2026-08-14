@@ -1,6 +1,8 @@
 # Adding a shop
 
-Use the scaffold generator so every collector starts with the same plugin contract, fixture layout, and environment-variable naming.
+A shop is a plugin, not a change to the crawler. Discovery, transport, normalization, identity, persistence, search projection, evidence, and data quality are platform behavior; a shop contributes definition metadata, listing entry points, a parser, availability mapping, optional declared capabilities, fixtures, and tests. Adding one must not require editing `run.ts`, `dispatch.ts`, a repository, or a type union in `src/crawler/types.ts`.
+
+Use the scaffold generator so every collector starts from the same contract.
 
 ```bash
 npm run create-shop -- \
@@ -11,48 +13,60 @@ npm run create-shop -- \
   --interval 60
 ```
 
-Supported transports are `direct`, `relay`, and `browser`. The generator creates:
+Supported transports are `direct`, `relay`, and `browser`. The base URL must be an `https` origin: it is the robots.txt origin and the guard every crawl target is checked against. The generator creates:
 
-- `src/crawler/shops/<key>.ts`
+- `src/crawler/shops/<key>.ts` — an adapter typed `satisfies ShopAdapter`
 - `test/<key>.test.ts`
 - `test/fixtures/<key>/list.html`
 - a plugin registration in `src/crawler/shops/index.ts`
 
-The generated parser intentionally returns no products. Replace it with a parser backed by the sanitized fixture before enabling the shop.
+Nothing else needs editing to register the shop: `npm run typecheck`, `npm run format:check`, and `npm test` all pass on a freshly generated scaffold.
+
+The generated parser intentionally returns no products, and the registration carries `defaultEnabled: false` so it cannot crawl just by being merged. Remove that line once a real parser and a representative fixture are in place.
+
+## Configuration
+
+Shop settings are derived from the definition, never declared separately. The key's SCREAMING_SNAKE_CASE form is the shop's environment prefix, and the platform reads these names:
+
+| Variable | Meaning | Default |
+| --- | --- | --- |
+| `<PREFIX>_ENABLED` | kill switch | `defaultEnabled`, else on |
+| `<PREFIX>_INTERVAL_MINUTES` | crawl interval | `defaultIntervalMinutes` |
+| `<PREFIX>_REQUEST_DELAY_MS` | per-request pacing | `defaultRequestDelayMs`, else the global delay |
+| `<PREFIX>_MAX_PAGES` | page ceiling | `defaultMaxPages`, else the global ceiling |
+| `<PREFIX>_INVENTORY_RECHECK_*` | recheck policy settings | off unless enabled |
+
+Declare deployed values in `wrangler.jsonc`. A shop whose deployed variables already use another spelling states `envPrefix` on its definition instead of being renamed. Settings the shop reads itself — a discovery entry point, for example — are ordinary `Env` variables and belong in `wrangler.jsonc` alongside the rest.
+
+`defineShopPlugin` validates the definition at module load, so an invalid key, a non-origin or non-https base URL, a non-positive interval, an unsupported transport, or two shops sharing an env prefix or a cron fails in CI rather than during a scheduled crawl. Registered definitions are frozen.
 
 ## Product fields
 
-Collectors should return seller facts. Catalog normalization is applied centrally at the shop-plugin boundary before persistence.
+A parser returns seller facts — `ShopParsedProduct` in `src/catalog/types.ts`. Catalog normalization is applied centrally at the shop-plugin boundary before persistence, so a parser never produces persistence rows or cross-shop identity.
 
-```js
-{
-  sourceId,
-  rawManufacturer,
-  manufacturer,
-  model,
-  title,
-  rawCategory,
-  category,
-  conditionText,
-  priceYen,
-  stockStatus,
-  sourceUrl
+```ts
+interface ShopParsedProduct {
+  sourceId: string;
+  sourceUrl: string;
+  title: string;
+  manufacturer: string;
+  rawManufacturer?: string;
+  model: string;
+  category?: string;
+  rawCategory?: string;
+  conditionText: string;
+  priceYen: number | null;
+  stockStatus: "in_stock" | "sold_out" | "unknown";
+  sourcePublishedAt?: string | null;
+  metadata?: Record<string, unknown>;
 }
 ```
 
 `rawManufacturer` and `rawCategory` should contain the seller's original values whenever the page exposes them. `manufacturer` and `category` may contain the parser's best candidate/hint; the catalog layer converts them to HiFiScout canonical manufacturer/category values.
 
-A normalized persisted product additionally has:
+`stockStatus` is the shop's mapping of its own availability wording onto the canonical vocabulary, and it belongs in the adapter with tests. Never infer `in_stock` from a successful parse: evidence that is contradictory or absent is `unknown`, which stays distinguishable from a confirmed state everywhere downstream.
 
-```js
-{
-  manufacturerId,
-  primaryCategoryId,
-  categoryIds,
-  classificationStatus,
-  searchAliases
-}
-```
+A normalized persisted product (`NormalizedCatalogProduct`) additionally has `manufacturerId`, `primaryCategoryId`, `categoryIds`, `classificationStatus`, and `searchAliases`.
 
 During collection a product also carries `classificationState`, `candidateCategoryIds`, and category evidence for diagnostics/enrichment. `classification_status` remains the stable persisted `classified` / `unclassified` value; richer state such as `ambiguous` is retained in `metadata.categoryClassification`.
 
@@ -78,31 +92,31 @@ Seller categories can be configured as:
 
 Example for a shop whose DAP merchandising bucket also contains heterogeneous products:
 
-```js
+```ts
 export const exampleAudioAdapter = {
-  key: 'example-audio',
-  name: 'Example Audio',
-  baseUrl: 'https://example.com',
+  key: "example-audio",
+  name: "Example Audio",
+  baseUrl: BASE_URL,
   categoryMapping: {
-    'コントロールアンプ': 'pre_amp',
-    'パワーアンプ': 'power_amp',
-    'ネットワークDAC': ['dac', 'network_player']
+    コントロールアンプ: "pre_amp",
+    パワーアンプ: "power_amp",
+    ネットワークDAC: ["dac", "network_player"],
   },
   categoryPolicy: {
     sellerCategory: {
-      default: 'authoritative',
+      default: "authoritative",
       categories: {
-        dap: 'corroborative'
-      }
+        dap: "corroborative",
+      },
     },
-    parserHint: 'corroborative',
+    parserHint: "corroborative",
     enrichment: {
       maxRequestsPerCrawl: 20,
-      cacheHours: 168
-    }
+      cacheHours: 168,
+    },
   },
   // ...
-};
+} satisfies ShopAdapter;
 ```
 
 Exact `categoryMapping` values are normally authoritative. Broad free-text seller labels that only match shared inference rules are automatically treated as corroborative, even when the shop default is authoritative. This prevents a label such as `アンプ・スピーカー・プレーヤー` from silently becoming a confirmed category.
@@ -123,20 +137,20 @@ Classification behavior is:
 
 A shop may expose `extractDetailCategoryEvidence(html, product)` when its listing data is too coarse to classify some products.
 
-```js
-import { categoryEvidenceFromText } from '../../catalog/category-evidence.js';
+```ts
+import { categoryEvidenceFromText } from "../../catalog/category-evidence.js";
 
 export const exampleAudioAdapter = {
   // ...
-  extractDetailCategoryEvidence(html, product) {
+  extractDetailCategoryEvidence(html: string, product: NormalizedCatalogProduct) {
     const productSpecificLabel = extractProductSpecificLabel(html, product);
     return categoryEvidenceFromText(productSpecificLabel, {
-      source: 'detail_metadata',
-      strength: 'strong',
-      context: 'detail'
+      source: "detail_metadata",
+      strength: "strong",
+      context: "detail",
     });
-  }
-};
+  },
+} satisfies ShopAdapter;
 ```
 
 The extractor should return evidence, not make the final category decision. Prefer structured/product-specific metadata, breadcrumb labels, or the product's lead description. Do not scan an entire detail page indiscriminately: related-product and cross-sell text can mention different component types and create false evidence.
@@ -147,24 +161,24 @@ Detail enrichment is intentionally bounded by `maxRequestsPerCrawl` and only run
 
 Shop-specific factual fields belong in `metadata` instead of new `products` columns:
 
-```js
+```ts
 {
-  sourceId: '123',
-  rawManufacturer: 'Example Audio Co., Ltd.',
-  manufacturer: 'Example Audio',
-  model: 'Model 1',
-  title: 'Example Audio Model 1',
-  rawCategory: 'Control Amplifier',
-  category: 'プリアンプ',
-  conditionText: 'A',
-  priceYen: 100000,
-  stockStatus: 'in_stock',
-  sourceUrl: 'https://example.com/used/123',
+  sourceId: "123",
+  rawManufacturer: "Example Audio Co., Ltd.",
+  manufacturer: "Example Audio",
+  model: "Model 1",
+  title: "Example Audio Model 1",
+  rawCategory: "Control Amplifier",
+  category: "プリアンプ",
+  conditionText: "A",
+  priceYen: 100_000,
+  stockStatus: "in_stock",
+  sourceUrl: "https://example.com/used/123",
   metadata: {
-    storeName: 'Tokyo',
-    warranty: '6 months',
-    accessories: ['remote', 'box']
-  }
+    storeName: "Tokyo",
+    warranty: "6 months",
+    accessories: ["remote", "box"],
+  },
 }
 ```
 
@@ -174,13 +188,14 @@ Only factual seller information should be stored. Do not use metadata to copy de
 
 ## Before enabling the collector
 
-1. Replace the generated fixture with representative, sanitized listing HTML.
-2. Implement `pageUrls()` and `parse()`.
+1. Replace the generated fixture with representative, sanitized listing HTML covering the variants that matter: a normal listing, sold out / negotiating / unknown availability, pagination termination, and a malformed or empty page.
+2. Implement `pageUrls()` and `parse()`. Discovery must stay bounded and must not fetch pages itself; pagination beyond fixed entry points is `dynamicPagination` plus `discoverPageUrls()`, which returns `null` when coverage is unknown so nothing is deactivated on a guess.
 3. Capture `rawCategory`/`rawManufacturer` when the seller exposes them and define `categoryMapping` for seller-specific category names.
 4. Decide whether seller categories are authoritative or only corroborative; configure `categoryPolicy` for broad buckets.
-5. Add `extractDetailCategoryEvidence()` only when listing evidence is insufficient, and keep it product-specific.
-6. Add parser/classifier assertions for raw fields, canonical classification, unresolved behavior, and any metadata fields.
-7. Run `npm test` and the Wrangler deploy dry-run through CI.
-8. Check robots.txt and the site's current terms.
-9. Configure the generated `<SHOP>_ENABLED`, `<SHOP>_INTERVAL_MINUTES`, and `<SHOP>_REQUEST_DELAY_MS` variables.
-10. For relay collectors, ensure `CRAWL_RELAY_URL` and `CRAWL_RELAY_TOKEN` are configured.
+5. Map the seller's availability wording to `stockStatus`, and test that mapping at the shop boundary rather than in generic crawler code.
+6. Add `extractDetailCategoryEvidence()` only when listing evidence is insufficient, and keep it product-specific.
+7. Add parser/classifier assertions for raw fields, canonical classification, unresolved behavior, and any metadata fields.
+8. Run `npm test` and the Wrangler deploy dry-run through CI.
+9. Check robots.txt and the site's current terms.
+10. Declare the shop's `<PREFIX>_*` values in `wrangler.jsonc`, and for relay collectors ensure `CRAWL_RELAY_URL` and `CRAWL_RELAY_TOKEN` are configured.
+11. Remove `defaultEnabled: false` from the registration last, once everything above holds.

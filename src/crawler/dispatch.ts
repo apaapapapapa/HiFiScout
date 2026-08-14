@@ -30,10 +30,6 @@ interface DispatchAtOptions {
   now?: Date;
 }
 
-function definitionFor(plugin: ShopPlugin | null | undefined) {
-  return plugin?.definition;
-}
-
 function isConfigured(env: CrawlerEnv, plugin: ShopPlugin): boolean {
   if (!isTransportConfigured(env, plugin)) return false;
   if (plugin.transport === "relay") return true;
@@ -62,9 +58,9 @@ export function dueDispatchCandidates(
   const excluded = new Set(excludeShopKeys);
   return SHOP_PLUGINS.map((plugin) => {
     if (excluded.has(plugin.key)) return null;
-    const definition = definitionFor(plugin);
+    const definition = plugin.definition;
     const state = states.get(plugin.key) || null;
-    if (!definition || !getShopEnabled(env, definition)) return null;
+    if (!getShopEnabled(env, definition)) return null;
     if (!isConfigured(env, plugin)) return null;
     const intervalMinutes = getShopIntervalMinutes(env, definition);
     if (!isShopDue(state, intervalMinutes, now)) return null;
@@ -108,9 +104,7 @@ export async function dispatchScheduledCrawl(
   const plugin = getShopPlugin(shopKey);
   if (!plugin) return { status: "rejected", reason: "unknown_shop" };
   const resolvedShopKey = plugin.key;
-  const definition = definitionFor(plugin);
-  if (!definition || !getShopEnabled(env, definition))
-    return { status: "rejected", reason: "disabled" };
+  if (!getShopEnabled(env, plugin.definition)) return { status: "rejected", reason: "disabled" };
   if (!isConfigured(env, plugin)) return { status: "rejected", reason: "configuration_missing" };
 
   const state = await getShopState(env.DB, resolvedShopKey);
@@ -134,9 +128,7 @@ export async function dispatchForcedCrawl(
   const plugin = getShopPlugin(shopKey);
   if (!plugin) return { status: "rejected", reason: "unknown_shop" };
   const resolvedShopKey = plugin.key;
-  const definition = definitionFor(plugin);
-  if (!definition || !getShopEnabled(env, definition))
-    return { status: "rejected", reason: "disabled" };
+  if (!getShopEnabled(env, plugin.definition)) return { status: "rejected", reason: "disabled" };
   if (!isConfigured(env, plugin)) return { status: "rejected", reason: "configuration_missing" };
   const queuedAt = now.toISOString();
   await env.CRAWL_QUEUE.send({ shopKey: resolvedShopKey, force: true, requestedAt: queuedAt });

@@ -79,12 +79,29 @@
     {
       "name": "shop-adapters-are-reached-through-the-registry",
       "severity": "error",
-      "comment": "Generic code composes shops through src/crawler/shops/index.ts. Importing a concrete adapter directly is how shop-specific branches get back into shared code — the thing Phase 2.6 removed.",
+      "comment": "Generic code composes shops through src/crawler/shops/index.ts. Importing a concrete adapter — or the registration machinery in registry.ts — directly is how shop-specific branches get back into shared code.",
       "from": { "path": "^src", "pathNot": "^src/crawler/shops/" },
       "to": {
         "path": "^src/crawler/shops/",
         "pathNot": "^src/crawler/shops/index\\.ts$"
       }
+    },
+    {
+      "name": "shops-do-not-reach-persistence-or-the-api",
+      "severity": "error",
+      "comment": "A shop reports seller facts. Persistence, search projection, evidence retention and HTTP behavior are platform stages that run after it, and a shop that could call them directly would be able to bypass one. The only exception is the activity-policy vocabulary, which the composition root reads to attach a shop's user-facing update semantics.",
+      "from": { "path": "^src/crawler/shops/" },
+      "to": {
+        "path": "^src/(db|evidence|search|http|api|knowledge-catalog)/",
+        "pathNot": "^src/db/product-activity-policy\\.ts$"
+      }
+    },
+    {
+      "name": "domain-code-does-not-import-shops",
+      "severity": "error",
+      "comment": "The catalog domain and the repositories are what shops feed, never the other way round. Reaching the registry from either would make canonical catalog decisions depend on which shops happen to be registered.",
+      "from": { "path": "^src/(catalog|db)/" },
+      "to": { "path": "^src/crawler/shops/" }
     }
   ],
   "options": {
