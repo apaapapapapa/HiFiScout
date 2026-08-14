@@ -1,7 +1,8 @@
-import type { ShopParsedProduct, StockStatus } from "../catalog/types.js";
+import type { StockStatus } from "../catalog/types.js";
 import { isRecord } from "../types.js";
 import { normalizeManufacturer } from "../catalog/manufacturers.js";
 import type { ManufacturerNormalizationResult } from "../catalog/types.js";
+import { availabilityFromSignals } from "./availability.js";
 import {
   cleanText,
   inferCategory,
@@ -10,11 +11,9 @@ import {
   splitManufacturerModel,
   stableSourceId,
 } from "./normalize.js";
+import type { SellerProduct } from "./types.js";
 
-/**
- * Listing-page parsing options. Every consumer is a shop adapter passing an object literal, so
- * the shape is contextually typed at the call site.
- */
+/** Listing-page parsing options shared by simple HTML adapters. */
 export interface ParseProductPageOptions {
   shopKey: string;
   /** Resolution base for relative hrefs; adapters pass the page URL being parsed. */
@@ -65,8 +64,6 @@ function walkJson(value: unknown, visitor: (node: Record<string, unknown>) => vo
     for (const item of value) walkJson(item, visitor);
     return;
   }
-  // `isRecord` is exactly the reachable `typeof value === "object"` case here: `null` was
-  // rejected by the truthiness guard above and arrays returned on the previous branch.
   if (isRecord(value)) {
     visitor(value);
     for (const child of Object.values(value)) walkJson(child, visitor);
@@ -102,13 +99,18 @@ function stockStatusForListing(
   priceYen: number | null,
   inferredStatus: StockStatus,
 ): StockStatus {
-  if (options.priceImpliesInStock && priceYen != null) return "in_stock";
-  return inferredStatus;
+  return availabilityFromSignals({
+    soldOut: inferredStatus === "sold_out",
+    inStock:
+      inferredStatus === "in_stock" ||
+      (options.priceImpliesInStock === true && priceYen !== null),
+    defaultStatus: inferredStatus,
+  });
 }
 
-function fromJsonLd(html: string, options: ParseProductPageOptions): ShopParsedProduct[] {
+function fromJsonLd(html: string, options: ParseProductPageOptions): SellerProduct[] {
   const { baseUrl, hintedCategory } = options;
-  const products: ShopParsedProduct[] = [];
+  const products: SellerProduct[] = [];
   for (const root of decodeJsonLd(html)) {
     walkJson(root, (node) => {
       const type: readonly unknown[] = Array.isArray(node["@type"])
@@ -119,7 +121,6 @@ function fromJsonLd(html: string, options: ParseProductPageOptions): ShopParsedP
       const url = absoluteUrl(baseUrl, String(node.url || node["@id"] || ""));
       if (!title || !url) return;
       const rawOffer = Array.isArray(node.offers) ? node.offers[0] : node.offers || {};
-      // Non-object offers read back as `undefined` either way, so this narrowing is inert.
       const offer: Record<string, unknown> = isRecord(rawOffer) ? rawOffer : {};
       const priceYen = parseYen(String(offer.price ?? node.price ?? ""));
       const availability = String(offer.availability || "");
@@ -132,9 +133,11 @@ function fromJsonLd(html: string, options: ParseProductPageOptions): ShopParsedP
       const { manufacturer, model } = splitManufacturerModel(title, options.shopKey);
       products.push({
         sourceId: stableSourceId(url, title),
+        rawManufacturer: manufacturer,
         manufacturer,
         model,
         title,
+        rawCategory: hintedCategory || "",
         category: inferCategory(title, hintedCategory),
         conditionText: conditionForListing(options, title),
         priceYen,
@@ -160,9 +163,9 @@ function stripTagsKeepingSpacing(html: string): string {
   );
 }
 
-function fromAnchors(html: string, options: ParseProductPageOptions): ShopParsedProduct[] {
+function fromAnchors(html: string, options: ParseProductPageOptions): SellerProduct[] {
   const { baseUrl, hintedCategory, productUrlPattern } = options;
-  const products: ShopParsedProduct[] = [];
+  const products: SellerProduct[] = [];
   const anchorRe = /<a\b([^>]*?)href\s*=\s*["']([^"']+)["']([^>]*)>([\s\S]*?)<\/a>/gi;
   const anchors = [...html.matchAll(anchorRe)];
 
@@ -199,9 +202,11 @@ function fromAnchors(html: string, options: ParseProductPageOptions): ShopParsed
     const { manufacturer, model } = splitManufacturerModel(title, options.shopKey);
     products.push({
       sourceId: stableSourceId(url, title),
+      rawManufacturer: manufacturer,
       manufacturer,
       model,
       title,
+      rawCategory: hintedCategory || "",
       category: inferCategory(title, hintedCategory),
       conditionText: condition,
       priceYen,
@@ -212,7 +217,7 @@ function fromAnchors(html: string, options: ParseProductPageOptions): ShopParsed
   return products;
 }
 
-function itemQuality(item: ShopParsedProduct): number {
+function itemQuality(item: SellerProduct): number {
   return (
     (item.stockStatus !== "unknown" ? 500 : 0) +
     (item.model ? 200 : 0) +
@@ -337,10 +342,10 @@ function inferUnknownManufacturerAndModel(
 }
 
 function mergeManufacturerModelCandidates(
-  items: readonly ShopParsedProduct[],
+  items: readonly SellerProduct[],
   options: ParseProductPageOptions,
-): ShopParsedProduct[] {
-  const groups = new Map<string, ShopParsedProduct[]>();
+): SellerProduct[] {
+  const groups = new Map<string, SellerProduct[]>();
   for (const item of items) {
     if (!item.sourceId || !item.sourceUrl || !item.title) continue;
     const group = groups.get(item.sourceId) ?? [];
@@ -348,7 +353,7 @@ function mergeManufacturerModelCandidates(
     groups.set(item.sourceId, group);
   }
 
-  const result: ShopParsedProduct[] = [];
+  const result: SellerProduct[] = [];
   for (const group of groups.values()) {
     const base = group.reduce(
       (best, item) => (itemQuality(item) > itemQuality(best) ? item : best),
@@ -366,6 +371,7 @@ function mergeManufacturerModelCandidates(
       const combinedTitle = model ? `${manufacturer.raw} ${model}` : manufacturer.raw;
       result.push({
         ...base,
+        rawManufacturer: manufacturer.raw,
         manufacturer: manufacturer.raw,
         model,
         title: combinedTitle,
@@ -382,6 +388,7 @@ function mergeManufacturerModelCandidates(
       const combinedTitle = `${inferred.manufacturer} ${inferred.model}`;
       result.push({
         ...base,
+        rawManufacturer: inferred.manufacturer,
         manufacturer: inferred.manufacturer,
         model: inferred.model,
         title: combinedTitle,
@@ -401,8 +408,8 @@ function mergeManufacturerModelCandidates(
   return result;
 }
 
-function deduplicateByQuality(items: readonly ShopParsedProduct[]): ShopParsedProduct[] {
-  const unique = new Map<string, ShopParsedProduct>();
+function deduplicateByQuality(items: readonly SellerProduct[]): SellerProduct[] {
+  const unique = new Map<string, SellerProduct>();
   for (const item of items) {
     if (!item.sourceId || !item.sourceUrl || !item.title) continue;
     const existing = unique.get(item.sourceId);
@@ -414,7 +421,7 @@ function deduplicateByQuality(items: readonly ShopParsedProduct[]): ShopParsedPr
 export function parseProductPage(
   html: string,
   options: ParseProductPageOptions,
-): ShopParsedProduct[] {
+): SellerProduct[] {
   const candidates = [...fromJsonLd(html, options), ...fromAnchors(html, options)];
   if (options.identityStrategy === "manufacturer-model-candidates") {
     return mergeManufacturerModelCandidates(candidates, options);
