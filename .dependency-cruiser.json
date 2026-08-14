@@ -3,13 +3,59 @@
     {
       "name": "no-circular",
       "severity": "error",
-      "comment": "Keep production module dependencies acyclic.",
-      "from": { "path": "^src" },
+      "comment": "Keep first-party module dependencies acyclic.",
+      "from": { "path": "^(src|frontend)" },
       "to": { "circular": true }
+    },
+    {
+      "name": "api-contracts-is-a-leaf",
+      "severity": "error",
+      "comment": "src/api/contracts.ts is imported by the browser bundle. It may only depend on the catalog type vocabulary; anything else would drag server code toward frontend/ and make the contract depend on the persistence it exists to decouple from.",
+      "from": { "path": "^src/api/contracts\\.ts$" },
+      "to": { "path": "^src", "pathNot": "^src/catalog/types\\.ts$" }
+    },
+    {
+      "name": "frontend-reaches-server-only-through-contracts",
+      "severity": "error",
+      "comment": "The browser bundle may share the HTTP contracts and nothing else. Importing a repository, the router or crawler code would either break the bundle or ship server logic to users.",
+      "from": { "path": "^frontend" },
+      "to": { "path": "^src", "pathNot": "^src/api/contracts\\.ts$" }
+    },
+    {
+      "name": "server-does-not-import-frontend",
+      "severity": "error",
+      "comment": "frontend/ is a browser bundle entry, never a library for the Worker.",
+      "from": { "path": "^src" },
+      "to": { "path": "^frontend" }
+    },
+    {
+      "name": "catalog-does-not-depend-on-persistence",
+      "severity": "error",
+      "comment": "The catalog domain — categories, manufacturers, identity, knowledge verification — decides meaning, not storage. It must stay testable without a database, so mapping goes db -> catalog and never back.",
+      "from": { "path": "^src/catalog" },
+      "to": { "path": "^src/db" }
+    },
+    {
+      "name": "repositories-do-not-depend-on-orchestration",
+      "severity": "error",
+      "comment": "Repositories are called by the crawler and the HTTP layer; depending back on either would make persistence unusable from a different entrypoint and invite cycles.",
+      "from": { "path": "^src/db" },
+      "to": { "path": "^src/(crawler|http)/" }
+    },
+    {
+      "name": "shop-adapters-are-reached-through-the-registry",
+      "severity": "error",
+      "comment": "Generic code composes shops through src/crawler/shops/index.ts. Importing a concrete adapter directly is how shop-specific branches get back into shared code — the thing Phase 2.6 removed.",
+      "from": { "path": "^src", "pathNot": "^src/crawler/shops/" },
+      "to": {
+        "path": "^src/crawler/shops/",
+        "pathNot": "^src/crawler/shops/index\\.ts$"
+      }
     }
   ],
   "options": {
     "doNotFollow": { "path": "node_modules" },
-    "includeOnly": "^src"
+    "includeOnly": "^(src|frontend)",
+    "tsPreCompilationDeps": true
   }
 }
