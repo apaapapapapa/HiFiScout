@@ -210,6 +210,23 @@ test("offer summary and representative offer cost two bounded queries, not one p
   assert.match(offerQueries[1].sql, /ROW_NUMBER\(\) OVER/);
 });
 
+test("a full page stays inside D1's bound-parameter limit without going per-result", async () => {
+  const rows = Array.from({ length: 100 }, (_, index) => entityRow({ id: index + 1 }));
+  const db = captureDatabase((statement) =>
+    /SELECT e\.id, e\.entity_key/.test(statement.sql) ? rows : [],
+  );
+
+  const result = await searchProducts(db, productQuery("?limit=100&shop=hifido&inStock=true"));
+
+  assert.equal(result.items.length, 100);
+  const offerQueries = db.calls.filter((statement) => /m\.entity_id IN \(/.test(statement.sql));
+  // Bounded by the page size, not by the result count: three chunks per loader, never 100 queries.
+  assert.equal(offerQueries.length, 6);
+  for (const statement of offerQueries) {
+    assert.ok(statement.binds.length <= 100, `${statement.binds.length} binds`);
+  }
+});
+
 test("no offer filters means the stored aggregates are already the right summary", async () => {
   const db = captureDatabase((statement) =>
     /SELECT e\.id, e\.entity_key/.test(statement.sql) ? [entityRow({ id: 1 })] : [],

@@ -63,6 +63,23 @@ import type {
  */
 export const MAX_DETAIL_OFFERS = 200;
 
+/**
+ * Entity ids per offer query.
+ *
+ * D1 caps bound parameters per statement at 100, and a full `limit=100` page plus the offer filter
+ * binds would exceed that. Chunking keeps the offer loaders bounded by the page size rather than by
+ * the result count — at most three statements each, never one per result.
+ */
+const OFFER_QUERY_CHUNK_SIZE = 40;
+
+function chunked(values: readonly number[]): number[][] {
+  const chunks: number[][] = [];
+  for (let i = 0; i < values.length; i += OFFER_QUERY_CHUNK_SIZE) {
+    chunks.push(values.slice(i, i + OFFER_QUERY_CHUNK_SIZE));
+  }
+  return chunks;
+}
+
 /** Ranks the offer a card shows: in stock first, then cheapest, then most recently active. */
 const REPRESENTATIVE_OFFER_ORDER = `
   CASE WHEN p.stock_status = 'in_stock' THEN 0 ELSE 1 END,
@@ -225,30 +242,34 @@ async function loadOfferAggregates(
   filter: OfferFilter,
 ): Promise<Map<number, ProductSearchOfferAggregateRow>> {
   if (!entityIds.length || !filter.active) return new Map();
-  const placeholders = entityIds.map(() => "?").join(",");
-  const result = await db
-    .prepare(`
-      SELECT m.entity_id AS entity_id,
-             COUNT(*) AS offer_count,
-             SUM(CASE WHEN p.stock_status = 'in_stock' THEN 1 ELSE 0 END) AS in_stock_offer_count,
-             COUNT(DISTINCT p.shop_key) AS shop_count,
-             MIN(p.price_yen) AS lowest_price_yen,
-             MAX(p.price_yen) AS highest_price_yen,
-             MAX(p.last_activity_at) AS latest_activity_at,
-             MAX(COALESCE(p.source_published_at, p.first_seen_at)) AS newest_listed_at,
-             MAX(CASE
-                   WHEN p.previous_price_yen IS NOT NULL AND p.price_yen IS NOT NULL
-                        AND p.price_yen < p.previous_price_yen THEN 1
-                   ELSE 0
-                 END) AS has_price_drop
-      FROM product_search_entity_offers m
-      JOIN products p ON p.id = m.listing_product_id
-      WHERE m.entity_id IN (${placeholders}) AND p.is_active = 1${filter.sql}
-      GROUP BY m.entity_id
-    `)
-    .bind(...entityIds, ...filter.binds)
-    .all<ProductSearchOfferAggregateRow>();
-  return new Map((result.results || []).map((row) => [Number(row.entity_id), row]));
+  const aggregates = new Map<number, ProductSearchOfferAggregateRow>();
+  for (const chunk of chunked(entityIds)) {
+    const placeholders = chunk.map(() => "?").join(",");
+    const result = await db
+      .prepare(`
+        SELECT m.entity_id AS entity_id,
+               COUNT(*) AS offer_count,
+               SUM(CASE WHEN p.stock_status = 'in_stock' THEN 1 ELSE 0 END) AS in_stock_offer_count,
+               COUNT(DISTINCT p.shop_key) AS shop_count,
+               MIN(p.price_yen) AS lowest_price_yen,
+               MAX(p.price_yen) AS highest_price_yen,
+               MAX(p.last_activity_at) AS latest_activity_at,
+               MAX(COALESCE(p.source_published_at, p.first_seen_at)) AS newest_listed_at,
+               MAX(CASE
+                     WHEN p.previous_price_yen IS NOT NULL AND p.price_yen IS NOT NULL
+                          AND p.price_yen < p.previous_price_yen THEN 1
+                     ELSE 0
+                   END) AS has_price_drop
+        FROM product_search_entity_offers m
+        JOIN products p ON p.id = m.listing_product_id
+        WHERE m.entity_id IN (${placeholders}) AND p.is_active = 1${filter.sql}
+        GROUP BY m.entity_id
+      `)
+      .bind(...chunk, ...filter.binds)
+      .all<ProductSearchOfferAggregateRow>();
+    for (const row of result.results || []) aggregates.set(Number(row.entity_id), row);
+  }
+  return aggregates;
 }
 
 /** One representative offer per product, in a single windowed query rather than one per result. */
@@ -258,23 +279,27 @@ async function loadRepresentativeOffers(
   filter: OfferFilter,
 ): Promise<Map<number, ProductSearchOfferRow>> {
   if (!entityIds.length) return new Map();
-  const placeholders = entityIds.map(() => "?").join(",");
-  const result = await db
-    .prepare(`
-      SELECT entity_id, ${offerProjectionColumns()} FROM (
-        SELECT m.entity_id AS entity_id, ${offerColumns("p")},
-               ROW_NUMBER() OVER (
-                 PARTITION BY m.entity_id ORDER BY ${REPRESENTATIVE_OFFER_ORDER}
-               ) AS rn
-        FROM product_search_entity_offers m
-        JOIN products p ON p.id = m.listing_product_id
-        WHERE m.entity_id IN (${placeholders}) AND p.is_active = 1${filter.sql}
-      )
-      WHERE rn = 1
-    `)
-    .bind(...entityIds, ...filter.binds)
-    .all<ProductSearchOfferRow>();
-  return new Map((result.results || []).map((row) => [Number(row.entity_id), row]));
+  const representatives = new Map<number, ProductSearchOfferRow>();
+  for (const chunk of chunked(entityIds)) {
+    const placeholders = chunk.map(() => "?").join(",");
+    const result = await db
+      .prepare(`
+        SELECT entity_id, ${offerProjectionColumns()} FROM (
+          SELECT m.entity_id AS entity_id, ${offerColumns("p")},
+                 ROW_NUMBER() OVER (
+                   PARTITION BY m.entity_id ORDER BY ${REPRESENTATIVE_OFFER_ORDER}
+                 ) AS rn
+          FROM product_search_entity_offers m
+          JOIN products p ON p.id = m.listing_product_id
+          WHERE m.entity_id IN (${placeholders}) AND p.is_active = 1${filter.sql}
+        )
+        WHERE rn = 1
+      `)
+      .bind(...chunk, ...filter.binds)
+      .all<ProductSearchOfferRow>();
+    for (const row of result.results || []) representatives.set(Number(row.entity_id), row);
+  }
+  return representatives;
 }
 
 export async function searchProducts(
