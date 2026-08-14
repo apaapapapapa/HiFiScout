@@ -3,20 +3,44 @@ import { inferExplicitCategoryIds } from "./category-rules.js";
 import { knowledgeSourceDefinitions as baseKnowledgeSourceDefinitions } from "./knowledge-source-verifier.js";
 import { normalizeManufacturer } from "./manufacturers.js";
 import type { CrawlerEnv } from "../crawler/types.js";
-import { errorMessage, isRecord } from "../types.js";
 import type {
   CategoryClassification,
   CategoryEvidenceInput,
   CategoryEvidenceStrength,
   ClassifiableCategoryId,
   FailedKnowledgeSource,
-  FetchTextResult,
   KnowledgeSourceCandidate,
   KnowledgeSourceDefinition,
   KnowledgeSourceVerification,
   KnowledgeSourceVerifier,
   KnowledgeSourceVerifierOptions,
 } from "./types.js";
+import { applySearchTemplate, boundedNumber } from "./knowledge-verification/config.js";
+import {
+  brandName,
+  breadcrumbText,
+  clean,
+  extractSitemapLocations,
+  flattenJsonLd,
+  isProductNode,
+  jsonLdValues,
+  metaContent,
+  parseTagAttributes,
+  sameOriginUrl,
+  sitemapUrlsFromRobots,
+  stripTags,
+  visibleText,
+} from "./knowledge-verification/html.js";
+import { fetchText, sha256Hex } from "./knowledge-verification/http.js";
+import {
+  candidateModelVariants,
+  containsFlexibleCatalogModelIdentity,
+  flexibleIdentityPattern,
+  matchesCandidateText,
+  normalizeIdentityText,
+} from "./knowledge-verification/model-matching.js";
+
+export { candidateModelVariants, containsFlexibleCatalogModelIdentity };
 
 export const KNOWLEDGE_CATALOG_VERIFIER_VERSION = 2;
 
@@ -64,172 +88,9 @@ interface VerifyOfficialProductPageHtmlV2Options {
   httpStatus?: number;
 }
 
-function boundedNumber(value: unknown, fallback: number, min: number, max: number): number {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback;
-}
-
-function clean(value: unknown = ""): string {
-  return String(value).normalize("NFKC").replace(/\s+/g, " ").trim();
-}
-
-function decodeHtml(value: unknown = ""): string {
-  return String(value)
-    .replace(/&amp;/gi, "&")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)));
-}
-
-function stripTags(value: unknown = ""): string {
-  return clean(decodeHtml(String(value).replace(/<[^>]+>/g, " ")));
-}
-
-function visibleText(html: unknown = ""): string {
-  return stripTags(
-    String(html)
-      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " "),
-  );
-}
-
-function escapeRegExp(value: unknown = ""): string {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function normalizeIdentityText(value: unknown = ""): string {
-  return clean(value)
-    .toUpperCase()
-    .replace(/[‐‑‒–—―－]/g, "-")
-    .replace(/\s*-\s*/g, "-")
-    .replace(/\s+/g, " ");
-}
-
-function flexibleIdentityPattern(model: unknown = ""): RegExp | null {
-  const normalized = normalizeIdentityText(model);
-  if (!normalized) return null;
-  const parts = normalized.split(/[\s_-]+/).filter(Boolean);
-  if (!parts.length) return null;
-  return new RegExp(`(^|[^A-Z0-9])${parts.map(escapeRegExp).join("[\\s_-]*")}($|[^A-Z0-9])`, "i");
-}
-
-export function containsFlexibleCatalogModelIdentity(
-  text: unknown = "",
-  model: unknown = "",
-): boolean {
-  const pattern = flexibleIdentityPattern(model);
-  return Boolean(pattern && pattern.test(normalizeIdentityText(text)));
-}
-
-function stripManufacturerPrefix(model: unknown, prefix: unknown): string {
-  const value = clean(model);
-  const brand = clean(prefix);
-  if (!value || !brand) return "";
-  const pattern = new RegExp(`^${escapeRegExp(brand)}(?=$|[\\s・･_\\-\\/&+.,'"()（）])`, "i");
-  if (!pattern.test(value)) return "";
-  return value
-    .replace(pattern, "")
-    .replace(/^[\s・･_\-/&+.,'"()（）]+/, "")
-    .trim();
-}
-
-export function candidateModelVariants(candidate: KnowledgeSourceCandidate = {}): string[] {
-  const variants = new Set<string>();
-  const rawValues = [candidate.observedModel, candidate.model, candidate.normalizedModel].filter(
-    Boolean,
-  );
-  for (const raw of rawValues) {
-    const value = clean(raw);
-    if (!value) continue;
-    variants.add(value);
-    for (const prefix of [candidate.observedManufacturer, candidate.manufacturerId]) {
-      const stripped = stripManufacturerPrefix(value, prefix);
-      if (stripped) variants.add(stripped);
-    }
-  }
-  return [...variants].sort((left, right) => right.length - left.length);
-}
-
-function matchesCandidateText(text: unknown, candidate: KnowledgeSourceCandidate): boolean {
-  return candidateModelVariants(candidate).some((model) =>
-    containsFlexibleCatalogModelIdentity(text, model),
-  );
-}
-
-function parseTagAttributes(tag: string = ""): Map<string, string> {
-  const attributes = new Map<string, string>();
-  const pattern = /([A-Za-z_:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g;
-  for (const match of tag.matchAll(pattern)) {
-    attributes.set(match[1].toLowerCase(), decodeHtml(match[2] ?? match[3] ?? match[4] ?? ""));
-  }
-  return attributes;
-}
-
-function metaContent(html: string, name: string): string {
-  const target = String(name || "").toLowerCase();
-  for (const match of String(html).matchAll(/<meta\b[^>]*>/gi)) {
-    const attributes = parseTagAttributes(match[0]);
-    if (clean(attributes.get("name")).toLowerCase() === target)
-      return clean(attributes.get("content"));
-  }
-  return "";
-}
-
 function firstElementText(html: string, tag: string): string {
   const match = String(html).match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"));
   return match ? stripTags(match[1]) : "";
-}
-
-function breadcrumbText(html: string): string {
-  const values: string[] = [];
-  for (const match of String(html).matchAll(
-    /<(?:nav|div|ol|ul)\b[^>]*(?:class|id)=["'][^"']*breadcrumb[^"']*["'][^>]*>([\s\S]*?)<\/(?:nav|div|ol|ul)>/gi,
-  )) {
-    values.push(stripTags(match[1]));
-    if (values.length >= 2) break;
-  }
-  return clean(values.join(" "));
-}
-
-function jsonLdValues(html: string): unknown[] {
-  const values: unknown[] = [];
-  for (const match of String(html).matchAll(
-    /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
-  )) {
-    try {
-      values.push(JSON.parse(decodeHtml(match[1]).trim()));
-    } catch {}
-  }
-  return values;
-}
-
-function flattenJsonLd(
-  value: unknown,
-  output: Record<string, unknown>[] = [],
-): Record<string, unknown>[] {
-  if (Array.isArray(value)) {
-    for (const item of value) flattenJsonLd(item, output);
-    return output;
-  }
-  if (!isRecord(value)) return output;
-  output.push(value);
-  if (Array.isArray(value["@graph"])) flattenJsonLd(value["@graph"], output);
-  return output;
-}
-
-function isProductNode(node: Record<string, unknown>): boolean {
-  const type = node["@type"];
-  if (Array.isArray(type)) return type.some((value) => String(value).toLowerCase() === "product");
-  return String(type || "").toLowerCase() === "product";
-}
-
-function brandName(brand: unknown): string {
-  if (typeof brand === "string") return clean(brand);
-  if (isRecord(brand)) return clean(brand.name);
-  return "";
 }
 
 function matchingProductNode(
@@ -304,13 +165,6 @@ function modelBearingBlocks(html: string, candidate: KnowledgeSourceCandidate): 
     if (blocks.length >= 12) break;
   }
   return blocks;
-}
-
-async function sha256Hex(value: string): Promise<string> {
-  if (!globalThis.crypto?.subtle) return "";
-  const bytes = new TextEncoder().encode(String(value));
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export async function verifyOfficialProductPageHtmlV2({
@@ -444,75 +298,6 @@ export async function verifyOfficialProductPageHtmlV2({
   };
 }
 
-async function readLimitedText(response: Response, maxBytes: number): Promise<string> {
-  if (!response.body?.getReader) return (await response.text()).slice(0, maxBytes);
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let total = 0;
-  let text = "";
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const remaining = maxBytes - total;
-      if (remaining <= 0) break;
-      const chunk = value.byteLength > remaining ? value.slice(0, remaining) : value;
-      total += chunk.byteLength;
-      text += decoder.decode(chunk, { stream: true });
-      if (total >= maxBytes) break;
-    }
-    text += decoder.decode();
-  } finally {
-    if (total >= maxBytes) await reader.cancel().catch(() => {});
-  }
-  return text;
-}
-
-async function fetchText(
-  fetchImpl: typeof fetch,
-  url: string,
-  { timeoutMs, maxBytes, userAgent }: { timeoutMs: number; maxBytes: number; userAgent: string },
-): Promise<FetchTextResult> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetchImpl(url, {
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        accept: "text/html,application/xhtml+xml,application/xml,text/xml;q=0.9,*/*;q=0.8",
-        "user-agent": userAgent,
-      },
-    });
-    const text = response.ok ? await readLimitedText(response, maxBytes) : "";
-    return { ok: response.ok, status: response.status, url: response.url || url, text };
-  } catch (error) {
-    return {
-      ok: false,
-      status: 0,
-      url,
-      text: "",
-      error:
-        error instanceof Error && error.name === "AbortError" ? "timeout" : errorMessage(error),
-    };
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-function sameOriginUrl(value: unknown, baseUrl: string): string {
-  try {
-    const resolved = new URL(decodeHtml(value), baseUrl);
-    const base = new URL(baseUrl);
-    if (!["http:", "https:"].includes(resolved.protocol) || resolved.origin !== base.origin)
-      return "";
-    resolved.hash = "";
-    return resolved.toString();
-  } catch {
-    return "";
-  }
-}
-
 function htmlTextWithLabels(value: unknown = ""): string {
   return stripTags(
     String(value).replace(/<(?:img|input)\b([^>]*)>/gi, (_, attrs) => {
@@ -561,41 +346,6 @@ function isLikelyCatalogIndexEntry(entry: LinkEntry): boolean {
       pathname,
     )
   );
-}
-
-function extractSitemapLocations(xml: string, baseUrl: string): string[] {
-  const locations: string[] = [];
-  for (const match of String(xml).matchAll(/<loc\b[^>]*>([\s\S]*?)<\/loc>/gi)) {
-    const url = sameOriginUrl(stripTags(match[1]), baseUrl);
-    if (url) locations.push(url);
-  }
-  return [...new Set(locations)];
-}
-
-function sitemapUrlsFromRobots(robots: string, baseUrl: string): string[] {
-  const urls: string[] = [];
-  for (const line of String(robots || "").split(/\r?\n/)) {
-    const match = line.match(/^\s*Sitemap\s*:\s*(\S+)\s*$/i);
-    if (!match) continue;
-    const url = sameOriginUrl(match[1], baseUrl);
-    if (url && !/\.gz(?:$|\?)/i.test(url)) urls.push(url);
-  }
-  return urls;
-}
-
-function applySearchTemplate(template: string, candidate: KnowledgeSourceCandidate): string {
-  if (!template) return "";
-  return template
-    .replaceAll(
-      "{model}",
-      encodeURIComponent(
-        candidate.observedModel || candidate.model || candidate.normalizedModel || "",
-      ),
-    )
-    .replaceAll(
-      "{manufacturer}",
-      encodeURIComponent(candidate.observedManufacturer || candidate.manufacturerId || ""),
-    );
 }
 
 function urlMatchesCandidate(url: string, candidate: KnowledgeSourceCandidate): boolean {

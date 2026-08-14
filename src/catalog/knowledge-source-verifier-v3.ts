@@ -7,7 +7,6 @@ import {
   verifyOfficialProductPageHtmlV2,
 } from "./knowledge-source-verifier-v2.js";
 import type { CrawlerEnv } from "../crawler/types.js";
-import { errorMessage } from "../types.js";
 import type {
   FailedKnowledgeSource,
   FetchTextResult,
@@ -16,6 +15,9 @@ import type {
   KnowledgeSourceVerifier,
   KnowledgeSourceVerifierOptions,
 } from "./types.js";
+import { boundedNumber } from "./knowledge-verification/config.js";
+import { clean, escapeHtml, stripTags } from "./knowledge-verification/html.js";
+import { HTML_ACCEPT, fetchText } from "./knowledge-verification/http.js";
 
 export const KNOWLEDGE_CATALOG_VERIFIER_VERSION = 3;
 
@@ -93,50 +95,6 @@ const OFFICIAL_INDEXES: Readonly<Record<string, readonly OfficialIndex[]>> = Obj
     },
   ],
 });
-
-function clean(value: unknown = ""): string {
-  return String(value).normalize("NFKC").replace(/\s+/g, " ").trim();
-}
-
-function decodeHtml(value: unknown = ""): string {
-  return String(value).replace(/&(?:amp|quot|apos|lt|gt|#\d+|#x[0-9a-f]+);/gi, (entity: string) => {
-    const normalized = entity.toLowerCase();
-    const namedEntities: Record<string, string> = {
-      "&amp;": "&",
-      "&quot;": '"',
-      "&apos;": "'",
-      "&lt;": "<",
-      "&gt;": ">",
-    };
-    if (normalized in namedEntities) return namedEntities[normalized] ?? entity;
-
-    const hexadecimal = normalized.startsWith("&#x");
-    const codePoint = Number.parseInt(
-      normalized.slice(hexadecimal ? 3 : 2, -1),
-      hexadecimal ? 16 : 10,
-    );
-    return Number.isSafeInteger(codePoint) && codePoint <= 0x10ffff
-      ? String.fromCodePoint(codePoint)
-      : entity;
-  });
-}
-
-function stripTags(value: unknown = ""): string {
-  return clean(decodeHtml(String(value).replace(/<[^>]+>/g, " ")));
-}
-
-function escapeHtml(value: unknown = ""): string {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
-
-function boundedNumber(value: unknown, fallback: number, min: number, max: number): number {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback;
-}
 
 function lookupAliases(candidate: KnowledgeSourceCandidate = {}): string[] {
   const variants = new Set(candidateModelVariants(candidate));
@@ -222,66 +180,6 @@ function syntheticHtml(alias: string, context: string, categoryId = ""): string 
   return `<html><head><title>${escapeHtml(value)}</title></head><body><h1>${escapeHtml(value)}</h1></body></html>`;
 }
 
-async function readLimitedText(response: Response, maxBytes: number): Promise<string> {
-  if (!response.body?.getReader) return (await response.text()).slice(0, maxBytes);
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let total = 0;
-  let text = "";
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const remaining = maxBytes - total;
-      if (remaining <= 0) break;
-      const chunk = value.byteLength > remaining ? value.slice(0, remaining) : value;
-      total += chunk.byteLength;
-      text += decoder.decode(chunk, { stream: true });
-      if (total >= maxBytes) break;
-    }
-    text += decoder.decode();
-  } finally {
-    if (total >= maxBytes) await reader.cancel().catch(() => {});
-  }
-  return text;
-}
-
-async function fetchText(
-  fetchImpl: typeof fetch,
-  url: string,
-  { timeoutMs, maxBytes, userAgent }: { timeoutMs: number; maxBytes: number; userAgent: string },
-): Promise<FetchTextResult> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetchImpl(url, {
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        accept: "text/html,application/xhtml+xml,*/*;q=0.8",
-        "user-agent": userAgent,
-      },
-    });
-    return {
-      ok: response.ok,
-      status: response.status,
-      url: response.url || url,
-      text: response.ok ? await readLimitedText(response, maxBytes) : "",
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      status: 0,
-      url,
-      text: "",
-      error:
-        error instanceof Error && error.name === "AbortError" ? "timeout" : errorMessage(error),
-    };
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 function directOfficialUrls(candidate: KnowledgeSourceCandidate, alias: string): string[] {
   const manufacturerId = String(candidate?.manufacturerId || "").toLowerCase();
   const normalized = clean(alias).toLowerCase();
@@ -350,7 +248,11 @@ export function createKnowledgeSourceVerifierV3(
 
   async function cachedPage(url: string): Promise<FetchTextResult> {
     if (!pageCache.has(url)) {
-      pageCache.set(url, fetchText(fetchImpl, url, { timeoutMs, maxBytes, userAgent }));
+      // v3 only ever reads HTML indexes and product pages, so it keeps the narrower Accept.
+      pageCache.set(
+        url,
+        fetchText(fetchImpl, url, { timeoutMs, maxBytes, userAgent, accept: HTML_ACCEPT }),
+      );
     }
     const page = pageCache.get(url);
     if (!page) throw new Error(`Failed to cache official page: ${url}`);

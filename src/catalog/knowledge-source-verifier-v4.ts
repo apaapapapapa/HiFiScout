@@ -2,7 +2,6 @@ import { catalogModelLookupVariants } from "./knowledge-catalog.js";
 import { containsFlexibleCatalogModelIdentity } from "./knowledge-source-verifier-v2.js";
 import { createKnowledgeSourceVerifierV3 } from "./knowledge-source-verifier-v3.js";
 import type { CrawlerEnv } from "../crawler/types.js";
-import { isRecord } from "../types.js";
 import type {
   ClassifiableCategoryId,
   KnowledgeSourceCandidate,
@@ -11,6 +10,8 @@ import type {
   KnowledgeSourceVerifierOptions,
   VerifiedKnowledgeSource,
 } from "./types.js";
+import { parseSourceRegistry } from "./knowledge-verification/config.js";
+import { sha256Hex } from "./knowledge-verification/http.js";
 
 // The module name is kept stable for existing imports; the rollout version advances whenever
 // verification behavior changes and a one-shot production review must run again.
@@ -126,20 +127,6 @@ export const EXPANDED_OFFICIAL_SOURCES = Object.freeze([
   },
 ]);
 
-function parseRegistry(value: unknown): Record<string, unknown>[] {
-  if (!value) return [];
-  try {
-    const parsed = typeof value === "string" ? JSON.parse(value) : value;
-    if (Array.isArray(parsed)) return parsed.filter(isRecord);
-    if (isRecord(parsed)) {
-      return Object.entries(parsed)
-        .filter((entry): entry is [string, Record<string, unknown>] => isRecord(entry[1]))
-        .map(([manufacturerId, config]) => ({ manufacturerId, ...config }));
-    }
-  } catch {}
-  return [];
-}
-
 function candidateModel(candidate: KnowledgeSourceCandidate = {}): string {
   return String(
     candidate.observedModel ||
@@ -148,13 +135,6 @@ function candidateModel(candidate: KnowledgeSourceCandidate = {}): string {
       candidate.normalizedModel ||
       "",
   ).trim();
-}
-
-async function sha256Hex(value: string): Promise<string> {
-  if (!globalThis.crypto?.subtle) return "";
-  const bytes = new TextEncoder().encode(String(value));
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 async function verifyMarantzCdSacdIndex(
@@ -245,7 +225,7 @@ function applyOfficialFamilyCategory(
 }
 
 export function expandedKnowledgeSourceEnv(env: CrawlerEnv = {}): CrawlerEnv {
-  const overrides = parseRegistry(env.KNOWLEDGE_CATALOG_SOURCE_REGISTRY_JSON);
+  const overrides = parseSourceRegistry(env.KNOWLEDGE_CATALOG_SOURCE_REGISTRY_JSON);
   return {
     ...env,
     // Expanded built-ins come first so an explicit deployment override later in the array retains

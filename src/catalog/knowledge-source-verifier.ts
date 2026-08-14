@@ -3,18 +3,39 @@ import { inferExplicitCategoryIds } from "./category-rules.js";
 import { normalizeCatalogModel } from "./knowledge-catalog.js";
 import { normalizeManufacturer } from "./manufacturers.js";
 import type { CrawlerEnv } from "../crawler/types.js";
-import { errorMessage, isRecord } from "../types.js";
 import type {
   CategoryEvidenceInput,
   CategoryEvidenceStrength,
   FailedKnowledgeSource,
-  FetchTextResult,
   KnowledgeSourceCandidate,
   KnowledgeSourceDefinition,
   KnowledgeSourceVerification,
   KnowledgeSourceVerifier,
   KnowledgeSourceVerifierOptions,
 } from "./types.js";
+import {
+  applySearchTemplate,
+  boundedNumber,
+  parseSourceRegistry,
+} from "./knowledge-verification/config.js";
+import {
+  brandName,
+  breadcrumbText,
+  clean,
+  extractSitemapLocations,
+  flattenJsonLd,
+  isProductNode,
+  jsonLdValues,
+  metaContent,
+  sameOriginUrl,
+  sitemapUrlsFromRobots,
+  stripTags,
+} from "./knowledge-verification/html.js";
+import { fetchText, sha256Hex } from "./knowledge-verification/http.js";
+import { containsCatalogModelIdentity } from "./knowledge-verification/model-matching.js";
+
+/** Re-exported for existing callers and tests; the implementation is shared now. */
+export { containsCatalogModelIdentity };
 
 const DEFAULT_MAX_RESPONSE_BYTES = 1_500_000;
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -91,50 +112,6 @@ interface VerifyOfficialProductPageHtmlOptions {
   httpStatus?: number;
 }
 
-function boundedNumber(value: unknown, fallback: number, min: number, max: number): number {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback;
-}
-
-function clean(value: unknown = ""): string {
-  return String(value).normalize("NFKC").replace(/\s+/g, " ").trim();
-}
-
-function decodeHtml(value: unknown = ""): string {
-  return String(value)
-    .replace(/&amp;/gi, "&")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)));
-}
-
-function stripTags(value: unknown = ""): string {
-  return clean(decodeHtml(String(value).replace(/<[^>]+>/g, " ")));
-}
-
-function escapeRegExp(value: unknown = ""): string {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function normalizeIdentityText(value: unknown = ""): string {
-  return clean(value)
-    .toUpperCase()
-    .replace(/[‐‑‒–—―－]/g, "-")
-    .replace(/\s*-\s*/g, "-")
-    .replace(/\s+/g, " ");
-}
-
-export function containsCatalogModelIdentity(text: unknown = "", model: unknown = ""): boolean {
-  const normalizedText = normalizeIdentityText(text);
-  const normalizedModel = normalizeIdentityText(model);
-  if (!normalizedText || !normalizedModel) return false;
-  const pattern = new RegExp(`(^|[^A-Z0-9])${escapeRegExp(normalizedModel)}($|[^A-Z0-9])`, "i");
-  return pattern.test(normalizedText);
-}
-
 function urlModelKey(value: unknown = ""): string {
   let decoded = String(value);
   try {
@@ -163,20 +140,6 @@ function urlMatchesModel(url: string, model: unknown): boolean {
   } catch {
     return false;
   }
-}
-
-function parseSourceOverrides(value: unknown): Record<string, unknown>[] {
-  if (!value) return [];
-  try {
-    const parsed = typeof value === "string" ? JSON.parse(value) : value;
-    if (Array.isArray(parsed)) return parsed.filter(isRecord);
-    if (isRecord(parsed)) {
-      return Object.entries(parsed)
-        .filter((entry): entry is [string, Record<string, unknown>] => isRecord(entry[1]))
-        .map(([manufacturerId, config]) => ({ manufacturerId, ...config }));
-    }
-  } catch {}
-  return [];
 }
 
 function normalizedSource(source: Record<string, unknown> = {}): KnowledgeSourceDefinition | null {
@@ -219,7 +182,7 @@ export function knowledgeSourceDefinitions(
     if (normalized) byManufacturer.set(normalized.manufacturerId, [normalized]);
   }
 
-  for (const raw of parseSourceOverrides(env.KNOWLEDGE_CATALOG_SOURCE_REGISTRY_JSON)) {
+  for (const raw of parseSourceRegistry(env.KNOWLEDGE_CATALOG_SOURCE_REGISTRY_JSON)) {
     const manufacturerId = clean(raw.manufacturerId).toLowerCase();
     if (!manufacturerId) continue;
     if (raw.enabled === false) {
@@ -237,82 +200,11 @@ export function knowledgeSourceDefinitions(
   return byManufacturer;
 }
 
-function parseTagAttributes(tag: string = ""): Map<string, string> {
-  const attributes = new Map<string, string>();
-  const pattern = /([A-Za-z_:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g;
-  for (const match of tag.matchAll(pattern)) {
-    attributes.set(match[1].toLowerCase(), decodeHtml(match[2] ?? match[3] ?? match[4] ?? ""));
-  }
-  return attributes;
-}
-
-function metaContent(html: string, name: string): string {
-  const target = String(name || "").toLowerCase();
-  for (const match of String(html).matchAll(/<meta\b[^>]*>/gi)) {
-    const attributes = parseTagAttributes(match[0]);
-    if (clean(attributes.get("name")).toLowerCase() === target) {
-      return clean(attributes.get("content"));
-    }
-  }
-  return "";
-}
-
 function firstElementText(html: string, tag: string): string {
   const pattern = ELEMENT_PATTERNS[tag];
   if (!pattern) return "";
   const match = String(html).match(pattern);
   return match ? stripTags(match[1]) : "";
-}
-
-function breadcrumbText(html: string): string {
-  const values: string[] = [];
-  for (const match of String(html).matchAll(
-    /<(?:nav|div|ol|ul)\b[^>]*(?:class|id)=["'][^"']*breadcrumb[^"']*["'][^>]*>([\s\S]*?)<\/(?:nav|div|ol|ul)>/gi,
-  )) {
-    values.push(stripTags(match[1]));
-    if (values.length >= 2) break;
-  }
-  return clean(values.join(" "));
-}
-
-function jsonLdValues(html: string): unknown[] {
-  const values: unknown[] = [];
-  for (const match of String(html).matchAll(
-    /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
-  )) {
-    try {
-      values.push(JSON.parse(decodeHtml(match[1]).trim()));
-    } catch {}
-  }
-  return values;
-}
-
-function flattenJsonLd(
-  value: unknown,
-  output: Record<string, unknown>[] = [],
-): Record<string, unknown>[] {
-  if (Array.isArray(value)) {
-    for (const item of value) flattenJsonLd(item, output);
-    return output;
-  }
-  if (!isRecord(value)) return output;
-  output.push(value);
-  if (Array.isArray(value["@graph"])) flattenJsonLd(value["@graph"], output);
-  return output;
-}
-
-function isProductNode(node: Record<string, unknown>): boolean {
-  const type = node["@type"];
-  if (Array.isArray(type)) {
-    return type.some((value) => String(value).toLowerCase() === "product");
-  }
-  return String(type || "").toLowerCase() === "product";
-}
-
-function brandName(brand: unknown): string {
-  if (typeof brand === "string") return clean(brand);
-  if (isRecord(brand)) return clean(brand.name);
-  return "";
 }
 
 function directModelMatches(value: unknown, normalizedModel: string): boolean {
@@ -355,13 +247,6 @@ function categoryEvidenceForFields(
     }
   }
   return evidence;
-}
-
-async function sha256Hex(value: string): Promise<string> {
-  if (!globalThis.crypto?.subtle) return "";
-  const bytes = new TextEncoder().encode(String(value));
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export async function verifyOfficialProductPageHtml({
@@ -476,83 +361,6 @@ export async function verifyOfficialProductPageHtml({
   };
 }
 
-async function readLimitedText(response: Response, maxBytes: number): Promise<string> {
-  if (!response.body?.getReader) {
-    return (await response.text()).slice(0, maxBytes);
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let total = 0;
-  let text = "";
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const remaining = maxBytes - total;
-      if (remaining <= 0) break;
-      const chunk = value.byteLength > remaining ? value.slice(0, remaining) : value;
-      total += chunk.byteLength;
-      text += decoder.decode(chunk, { stream: true });
-      if (total >= maxBytes) break;
-    }
-    text += decoder.decode();
-  } finally {
-    if (total >= maxBytes) await reader.cancel().catch(() => {});
-  }
-  return text;
-}
-
-async function fetchText(
-  fetchImpl: typeof fetch,
-  url: string,
-  { timeoutMs, maxBytes, userAgent }: { timeoutMs: number; maxBytes: number; userAgent: string },
-): Promise<FetchTextResult> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetchImpl(url, {
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        accept: "text/html,application/xhtml+xml,application/xml,text/xml;q=0.9,*/*;q=0.8",
-        "user-agent": userAgent,
-      },
-    });
-    const text = response.ok ? await readLimitedText(response, maxBytes) : "";
-    return {
-      ok: response.ok,
-      status: response.status,
-      url: response.url || url,
-      text,
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      status: 0,
-      url,
-      text: "",
-      error:
-        error instanceof Error && error.name === "AbortError" ? "timeout" : errorMessage(error),
-    };
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-function sameOriginUrl(value: unknown, baseUrl: string): string {
-  try {
-    const resolved = new URL(decodeHtml(value), baseUrl);
-    const base = new URL(baseUrl);
-    if (!["http:", "https:"].includes(resolved.protocol) || resolved.origin !== base.origin)
-      return "";
-    resolved.hash = "";
-    return resolved.toString();
-  } catch {
-    return "";
-  }
-}
-
 function extractHtmlLinks(html: string, baseUrl: string): string[] {
   const links: string[] = [];
   for (const match of String(html).matchAll(
@@ -562,41 +370,6 @@ function extractHtmlLinks(html: string, baseUrl: string): string[] {
     if (url) links.push(url);
   }
   return [...new Set(links)];
-}
-
-function extractSitemapLocations(xml: string, baseUrl: string): string[] {
-  const locations: string[] = [];
-  for (const match of String(xml).matchAll(/<loc\b[^>]*>([\s\S]*?)<\/loc>/gi)) {
-    const url = sameOriginUrl(stripTags(match[1]), baseUrl);
-    if (url) locations.push(url);
-  }
-  return [...new Set(locations)];
-}
-
-function sitemapUrlsFromRobots(robots: string, baseUrl: string): string[] {
-  const urls: string[] = [];
-  for (const line of String(robots || "").split(/\r?\n/)) {
-    const match = line.match(/^\s*Sitemap\s*:\s*(\S+)\s*$/i);
-    if (!match) continue;
-    const url = sameOriginUrl(match[1], baseUrl);
-    if (url && !/\.gz(?:$|\?)/i.test(url)) urls.push(url);
-  }
-  return urls;
-}
-
-function applySearchTemplate(template: string, candidate: KnowledgeSourceCandidate): string {
-  if (!template) return "";
-  return template
-    .replaceAll(
-      "{model}",
-      encodeURIComponent(
-        candidate.observedModel || candidate.model || candidate.normalizedModel || "",
-      ),
-    )
-    .replaceAll(
-      "{manufacturer}",
-      encodeURIComponent(candidate.observedManufacturer || candidate.manufacturerId || ""),
-    );
 }
 
 export function createKnowledgeSourceVerifier(
