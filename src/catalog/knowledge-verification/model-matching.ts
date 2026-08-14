@@ -13,7 +13,7 @@
  */
 
 import { clean } from "./html.js";
-import type { KnowledgeSourceCandidate } from "../types.js";
+import type { KnowledgeSourceCandidate } from "./types.js";
 
 export function escapeRegExp(value: unknown = ""): string {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

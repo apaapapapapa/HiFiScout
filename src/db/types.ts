@@ -21,12 +21,14 @@ import type {
   IdentityMatchMethod,
   IdentityStatus,
   KnowledgeCatalogMatchType,
-  KnowledgeSourceCandidate,
-  KnowledgeSourceStatus,
-  KnowledgeSourceType,
   ProductIdentityResolution,
   StockStatus,
 } from "../catalog/types.js";
+import type {
+  KnowledgeSourceCandidate,
+  KnowledgeSourceStatus,
+  KnowledgeSourceType,
+} from "../catalog/knowledge-verification/types.js";
 
 // ---------------------------------------------------------------------------
 // D1 access surface

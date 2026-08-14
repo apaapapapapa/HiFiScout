@@ -13,7 +13,7 @@
 import { catalogModelLookupVariants } from "../../knowledge-catalog.js";
 import { clean } from "../html.js";
 import { candidateModelVariants } from "../model-matching.js";
-import type { KnowledgeSourceCandidate, KnowledgeSourceVerification } from "../../types.js";
+import type { KnowledgeSourceCandidate, KnowledgeSourceVerification } from "../types.js";
 
 export function lookupAliases(candidate: KnowledgeSourceCandidate = {}): string[] {
   const variants = new Set(candidateModelVariants(candidate));

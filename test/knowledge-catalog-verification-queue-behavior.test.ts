@@ -11,8 +11,11 @@ import {
   queueEnv,
   queueMessage,
 } from "./helpers/knowledge-queue.js";
-import type { KnowledgeCatalogQueueMessage } from "../src/crawler/types.js";
-import type { KnowledgeSourceVerification, KnowledgeSourceVerifier } from "../src/catalog/types.js";
+import type { KnowledgeCatalogQueueMessage } from "../src/knowledge-catalog/types.js";
+import type {
+  KnowledgeSourceVerification,
+  KnowledgeSourceVerifier,
+} from "../src/catalog/knowledge-verification/types.js";
 
 /**
  * The queue decisions that determine whether work is repeated, dropped, or declared finished: the

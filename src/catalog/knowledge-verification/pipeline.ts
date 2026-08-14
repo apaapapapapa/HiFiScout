@@ -15,7 +15,7 @@ import type {
   FailedKnowledgeSource,
   KnowledgeSourceCandidate,
   KnowledgeSourceVerification,
-} from "../types.js";
+} from "./types.js";
 
 export interface VerificationStrategy {
   /** Identifies the strategy in tests and in composition order; not persisted. */

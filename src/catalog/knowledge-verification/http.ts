@@ -7,7 +7,7 @@
  */
 
 import { errorMessage } from "../../types.js";
-import type { FetchTextResult } from "../types.js";
+import type { FetchTextResult } from "./types.js";
 
 /** HTML-only pages. The index and product-page strategies use this. */
 export const HTML_ACCEPT = "text/html,application/xhtml+xml,*/*;q=0.8";

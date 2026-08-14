@@ -9,13 +9,11 @@ import type {
   CategoryEvidenceInput,
   CategoryMapping,
   CategoryPolicyInput,
-  KnowledgeSourceCandidate,
   NormalizedCatalogProduct,
   ShopParsedProduct,
 } from "../catalog/types.js";
 import type {
   IdentitySyncMetrics,
-  KnowledgeCatalogJobType,
   QualityEvaluation,
   QualityThreshold,
   QueryableDatabase,
@@ -77,10 +75,8 @@ export type EnvVars = { readonly [Name in EnvVarName]?: string };
 export interface CrawlerEnv extends EnvVars {
   readonly DB?: QueryableDatabase;
   readonly CRAWL_QUEUE?: Pick<Queue<CrawlQueueMessage>, "send">;
-  readonly KNOWLEDGE_CATALOG_QUEUE?: Pick<
-    Queue<KnowledgeCatalogQueueMessage>,
-    "send" | "sendBatch"
-  >;
+  // The knowledge-catalog queue binding is declared by `KnowledgeCatalogQueueEnv` instead, so the
+  // crawler vocabulary does not have to know the shape of a verification message.
   readonly BROWSER?: BrowserRun;
   readonly EVIDENCE_BUCKET?: R2Bucket;
 }
@@ -392,24 +388,6 @@ export interface CrawlQueueMessage {
   shopKey: string;
   force: boolean;
   requestedAt: string;
-}
-
-/** Which dispatcher enqueued a knowledge-catalog verification run. */
-export type KnowledgeCatalogDispatchMode = "daily_candidates" | "monthly_recheck";
-
-/**
- * Body of a `KNOWLEDGE_CATALOG_QUEUE` message. `hostname`/`target` are absent on the
- * `"finalize"` message, which is sent on its own with a delay after the target batch.
- */
-export interface KnowledgeCatalogQueueMessage {
-  jobId: number;
-  runId: number;
-  jobType: KnowledgeCatalogJobType;
-  mode: KnowledgeCatalogDispatchMode;
-  preferRetries: boolean;
-  verifierVersion: number;
-  hostname?: string;
-  target?: KnowledgeSourceCandidate;
 }
 
 export interface DueDispatchCandidate {

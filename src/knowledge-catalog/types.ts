@@ -5,13 +5,33 @@
  * dispatch and finalization can all depend on it without forming a cycle.
  */
 
-import type { KnowledgeSourceStatus, KnowledgeSourceVerification } from "../catalog/types.js";
 import type {
-  CrawlerEnv,
-  KnowledgeCatalogDispatchMode,
-  KnowledgeCatalogQueueMessage,
-} from "../crawler/types.js";
-import type { QueryableDatabase } from "../db/types.js";
+  KnowledgeSourceCandidate,
+  KnowledgeSourceStatus,
+  KnowledgeSourceVerification,
+} from "../catalog/knowledge-verification/types.js";
+import type { CrawlerEnv } from "../crawler/types.js";
+import type { KnowledgeCatalogJobType, QueryableDatabase } from "../db/types.js";
+
+/** Which dispatcher enqueued a knowledge-catalog verification run. */
+export type KnowledgeCatalogDispatchMode = "daily_candidates" | "monthly_recheck";
+
+/**
+ * Body of a `KNOWLEDGE_CATALOG_QUEUE` message.
+ *
+ * `hostname`/`target` are absent on the `"finalize"` message, which is sent on its own with a
+ * delay after the target batch.
+ */
+export interface KnowledgeCatalogQueueMessage {
+  jobId: number;
+  runId: number;
+  jobType: KnowledgeCatalogJobType;
+  mode: KnowledgeCatalogDispatchMode;
+  preferRetries: boolean;
+  verifierVersion: number;
+  hostname?: string;
+  target?: KnowledgeSourceCandidate;
+}
 
 /**
  * What the queue's modules need from the Worker environment.

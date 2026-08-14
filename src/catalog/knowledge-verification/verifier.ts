@@ -31,7 +31,7 @@ import type {
   KnowledgeSourceVerification,
   KnowledgeSourceVerifier,
   KnowledgeSourceVerifierOptions,
-} from "../types.js";
+} from "./types.js";
 
 /** Rollout state, not a code version. See the module comment. */
 export const KNOWLEDGE_CATALOG_VERIFIER_VERSION = 5;

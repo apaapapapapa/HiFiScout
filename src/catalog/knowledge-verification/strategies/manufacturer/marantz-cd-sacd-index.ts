@@ -14,7 +14,7 @@ import { catalogModelLookupVariants } from "../../../knowledge-catalog.js";
 import { sha256Hex } from "../../http.js";
 import { containsFlexibleCatalogModelIdentity } from "../../model-matching.js";
 import type { VerificationStrategy } from "../../pipeline.js";
-import type { KnowledgeSourceCandidate, KnowledgeSourceVerification } from "../../../types.js";
+import type { KnowledgeSourceCandidate, KnowledgeSourceVerification } from "../../types.js";
 
 const MARANTZ_CD_SACD_INDEX = "https://www.marantz.com/ja-jp/category/cd-sacd-players/";
 

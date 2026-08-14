@@ -43,6 +43,13 @@
       "to": { "path": "^src/(crawler|http)/" }
     },
     {
+      "name": "crawler-does-not-know-about-catalog-verification",
+      "severity": "error",
+      "comment": "The crawler collects listings; Knowledge Catalog verification is a separate pipeline that later reads what the crawler stored. They meet through the database, not through each other's types — which is what a verification queue message type sitting in the crawler vocabulary had quietly undone.",
+      "from": { "path": "^src/crawler/" },
+      "to": { "path": "^src/(knowledge-catalog/|catalog/knowledge-verification/)" }
+    },
+    {
       "name": "queue-policy-stays-pure",
       "severity": "error",
       "comment": "src/knowledge-catalog/policy.ts holds the retry, lease and promotion decisions so they can be read and tested without a database, a queue or the network. Type-only imports are fine; a value import from a repository or the verifier would put I/O back inside the policy and make those rules untestable again.",

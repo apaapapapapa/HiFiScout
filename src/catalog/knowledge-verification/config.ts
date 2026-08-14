@@ -6,7 +6,7 @@
  */
 
 import { isRecord } from "../../types.js";
-import type { KnowledgeSourceCandidate } from "../types.js";
+import type { KnowledgeSourceCandidate } from "./types.js";
 
 /** Clamps into `[min, max]`; a non-numeric value falls back rather than becoming `NaN`. */
 export function boundedNumber(value: unknown, fallback: number, min: number, max: number): number {

@@ -7,8 +7,9 @@
  * safe where a generic text rule is not.
  */
 
-import type { ClassifiableCategoryId, KnowledgeSourceCandidate } from "../../../types.js";
-import type { KnowledgeSourceVerification } from "../../../types.js";
+import type { ClassifiableCategoryId } from "../../../types.js";
+import type { KnowledgeSourceCandidate } from "../../types.js";
+import type { KnowledgeSourceVerification } from "../../types.js";
 
 interface ModelFamily {
   manufacturerId: string;

@@ -35,9 +35,13 @@ import {
 } from "./policy.js";
 import { errorMessage } from "../types.js";
 import { createVerifier, sourceHostname } from "./verifier.js";
-import type { KnowledgeCatalogQueueMessage } from "../crawler/types.js";
 import type { KnowledgeCatalogJobType, KnowledgeCatalogVerificationJobSpec } from "../db/types.js";
-import type { DispatchOptions, DispatchRunOptions, KnowledgeCatalogQueueEnv } from "./types.js";
+import type {
+  DispatchOptions,
+  DispatchRunOptions,
+  KnowledgeCatalogQueueEnv,
+  KnowledgeCatalogQueueMessage,
+} from "./types.js";
 
 /** Cloudflare's per-call limit for `sendBatch`. */
 const QUEUE_SEND_BATCH_SIZE = 100;

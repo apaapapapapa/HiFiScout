@@ -25,9 +25,8 @@ import type {
   CategoryEvidenceInput,
   CategoryEvidenceStrength,
   ClassifiableCategoryId,
-  KnowledgeSourceCandidate,
-  KnowledgeSourceVerification,
 } from "../types.js";
+import type { KnowledgeSourceCandidate, KnowledgeSourceVerification } from "./types.js";
 import {
   brandName,
   breadcrumbText,

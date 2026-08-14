@@ -8,8 +8,10 @@
  */
 
 import { asQueryableDatabase } from "./d1.js";
-import type { KnowledgeCatalogQueueMessage } from "../../src/crawler/types.js";
-import type { KnowledgeCatalogQueueEnv } from "../../src/knowledge-catalog/types.js";
+import type {
+  KnowledgeCatalogQueueEnv,
+  KnowledgeCatalogQueueMessage,
+} from "../../src/knowledge-catalog/types.js";
 
 export interface QueueStatement {
   sql: string;
