@@ -6,6 +6,10 @@ const migration = readFileSync(
   new URL("../migrations/0020_phase1_phase2_cleanup.sql", import.meta.url),
   "utf8",
 );
+const deployWorkflow = readFileSync(
+  new URL("../.github/workflows/deploy.yml", import.meta.url),
+  "utf8",
+);
 
 test("cleanup migration removes the retired products FTS stack", () => {
   assert.match(migration, /DROP TRIGGER IF EXISTS products_fts_ai/);
@@ -25,4 +29,22 @@ test("cleanup migration backfills every listing missing an identity resolution",
   assert.match(migration, /THEN 'backfill_pending'/);
   assert.match(migration, /'\["missing_identity_fields"\]'/);
   assert.doesNotMatch(migration, /p\.is_active\s*=\s*1/);
+});
+
+test("production baseline fails when an active listing lacks identity resolution", () => {
+  assert.match(
+    deployWorkflow,
+    /SUM\(CASE WHEN r\.listing_product_id IS NULL THEN 1 ELSE 0 END\) AS identity_resolution_missing_count/,
+  );
+  assert.match(
+    deployWorkflow,
+    /\.identity_unresolved_count \+ \.identity_resolution_missing_count\) \/ \.total_items/,
+  );
+  assert.match(
+    deployWorkflow,
+    /\.identity_matched_count \+ \.identity_unresolved_count\) \/ \.total_items/,
+  );
+  assert.match(deployWorkflow, /identity_missing_count=.*identity_resolution_missing_count/);
+  assert.match(deployWorkflow, /if \[ "\$identity_missing_count" -ne 0 \]; then/);
+  assert.match(deployWorkflow, /Product Identity coverage gap detected/);
 });
