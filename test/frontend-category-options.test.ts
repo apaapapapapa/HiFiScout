@@ -60,7 +60,10 @@ test("category options preserve server order and separate non-classifiable paren
   assert.ok(markup.indexOf('value="integrated_amp"') < markup.indexOf('value="digital"'));
   assert.ok(markup.indexOf('value="digital"') < markup.indexOf('value="dac"'));
   assert.ok(markup.indexOf('value="dac"') < markup.indexOf('value="dj_dtm"'));
-  assert.doesNotMatch(markup.slice(markup.indexOf('value="dj_dtm"') - 80), /category-separator/u);
+  assert.match(
+    markup,
+    /<option value="dac">　DAC<\/option><option value="dj_dtm">DJ機器・DTM<\/option>$/u,
+  );
 });
 
 test("legacy category fallback stays escaped when facets are unavailable", () => {
