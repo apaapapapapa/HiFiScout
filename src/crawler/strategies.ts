@@ -1,10 +1,4 @@
-import type {
-  CrawlPage,
-  CrawlerEnv,
-  DiscoveryContext,
-  ShopAdapter,
-  ShopSyncStateRow,
-} from "./types.js";
+import type { CrawlPage, CrawlerEnv, DiscoveryContext, ShopAdapter } from "./types.js";
 
 /** The strategies only read the discovery slice, so tests may pass synthetic adapters. */
 type DiscoveryAdapter<TPage extends CrawlPage> = Pick<
