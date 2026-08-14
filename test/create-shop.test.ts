@@ -12,13 +12,6 @@ import {
   validateShopKey,
 } from "../scripts/create-shop.js";
 
-/**
- * Parses generated source the way the build does.
- *
- * Syntax only — the scaffold is type-checked for real by `npm run typecheck` once it is written
- * into the repository. This is the guard against a template that no longer produces a file the
- * project can compile at all.
- */
 async function assertParses(source: string, fileName: string): Promise<void> {
   try {
     await transform(source, { loader: "ts", sourcefile: fileName });
@@ -34,20 +27,24 @@ test("shop generator validates kebab-case keys", () => {
   assert.throws(() => validateShopKey("Example_Audio"), /lowercase kebab-case/);
 });
 
-test("shop generator renders catalog and metadata-ready adapter and registration", () => {
+test("shop generator renders seller-fact and discovery-ready adapter", () => {
   const adapter = renderAdapter({
     key: "example-audio",
     name: "Example Audio",
     baseUrl: "https://example.com",
     transport: "direct",
   });
+  assert.match(adapter, /SellerProduct/);
+  assert.match(adapter, /discovery:/);
+  assert.match(adapter, /coverage: "unknown"/);
+  assert.match(adapter, /initialTargets/);
   assert.match(adapter, /categoryMapping:/);
   assert.match(adapter, /rawManufacturer/);
   assert.match(adapter, /rawCategory/);
   assert.match(adapter, /metadata: \{ storeName, warranty \}/);
   assert.match(adapter, /exampleAudioAdapter/);
-  // Typed against the platform contract, so a scaffold that drifts fails `npm run typecheck`.
   assert.match(adapter, /satisfies ShopAdapter;/);
+  assert.doesNotMatch(adapter, /pageUrls|dynamicPagination|discoverPageUrls/);
 
   const registration = renderPluginRegistration({
     key: "example-audio",
@@ -56,7 +53,6 @@ test("shop generator renders catalog and metadata-ready adapter and registration
     intervalMinutes: 60,
   });
   assert.match(registration, /defaultIntervalMinutes: 60/);
-  // Settings names are derived from the key, so registration declares none of them.
   assert.doesNotMatch(registration, /EXAMPLE_AUDIO_INTERVAL_MINUTES:/);
 });
 
@@ -66,8 +62,6 @@ test("a generated shop is registered but not yet crawling", () => {
     name: "Example Audio",
     baseUrl: "https://example.com",
   });
-  // The scaffold parser returns no products, and a shop that parses nothing fails its crawl and
-  // would refuse to deactivate anything. It must not go live just by being merged.
   assert.match(registration, /defaultEnabled: false/);
 });
 
@@ -87,7 +81,6 @@ test("the generated scaffold is syntactically valid TypeScript", async () => {
 
   await assertParses(adapter, "example-audio.ts");
   await assertParses(generatedTest, "example-audio.test.ts");
-  // The registration is an argument fragment, so it is parsed inside the call it is spliced into.
   await assertParses(`createShopRegistry([\n${registration}]);\n`, "index.ts");
 });
 
@@ -138,9 +131,9 @@ test("shop generator creates adapter, fixture, test and registry entry", async (
   assert.match(index, /key: "example-audio"/);
   assert.match(adapter, /baseUrl: BASE_URL/);
   assert.match(adapter, /const BASE_URL = "https:\/\/example\.com"/);
-  assert.match(adapter, /src\/catalog\/categories\.ts/);
-  assert.match(adapter, /categoryMapping:/);
-  assert.match(adapter, /parse\(_html: string\): ShopParsedProduct\[\]/);
+  assert.match(adapter, /discovery:/);
+  assert.match(adapter, /coverage: "unknown"/);
+  assert.match(adapter, /parse\(_html: string\): SellerProduct\[\]/);
   assert.match(generatedTest, /\.\.\/src\/crawler\/shops\/example-audio\.js/);
   assert.match(fixture, /representative, sanitized listing-page fixture/);
   await assertParses(index, "index.ts");
