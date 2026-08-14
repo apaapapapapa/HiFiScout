@@ -1,0 +1,40 @@
+name: Phase3 Complete Migration Audit
+
+on:
+  push:
+    branches:
+      - phase3-complete-migration-audit-helper
+      - phase3-complete-migration-audit-helper-2
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Audit remaining Phase 3 compatibility surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          patterns=(
+            'ShopParsedProduct'
+            'CatalogAdapterLike'
+            'titleInference'
+            'envPrefix:'
+            'UAUDIO_'
+            'continueOnEmpty'
+            'guardItemCount'
+            'extraPageAllowance'
+            'categoryMapping'
+            'categoryPolicy'
+            'extractDetailCategoryEvidence'
+            'inventoryRecheck'
+            'isConfigured'
+            'requestDelayMs'
+          )
+          for pattern in "${patterns[@]}"; do
+            echo "===== ${pattern} ====="
+            git grep -n -F "$pattern" -- ':!node_modules' || true
+          done
