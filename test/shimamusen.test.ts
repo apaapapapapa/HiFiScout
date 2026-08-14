@@ -5,6 +5,7 @@ import {
   parseShimamusenListing,
   shimamusenAdapter,
 } from "../src/crawler/shops/shimamusen.js";
+import { initialPageQueue } from "../src/crawler/strategies.js";
 
 const listingHtml = `
 <ul class="item-list">
@@ -63,13 +64,10 @@ test("Shimamusen used pagination is discovered dynamically and sorted", () => {
 });
 
 test("Shimamusen adapter starts from all three requested entry pages", () => {
-  assert.deepEqual(
-    [...shimamusenAdapter.pageUrls()],
-    [
-      { url: "https://www.shimamusen.com/shopbrand/063/Y/", kind: "展示処分品" },
-      { url: "https://www.shimamusen.com/shopbrand/036/Y/", kind: "特価商品" },
-      { url: "https://www.shimamusen.com/shopbrand/ct826/", kind: "中古品" },
-    ],
-  );
-  assert.equal(shimamusenAdapter.dynamicPagination, true);
+  assert.deepEqual(initialPageQueue(shimamusenAdapter, 40), [
+    { url: "https://www.shimamusen.com/shopbrand/063/Y/", kind: "展示処分品" },
+    { url: "https://www.shimamusen.com/shopbrand/036/Y/", kind: "特価商品" },
+    { url: "https://www.shimamusen.com/shopbrand/ct826/", kind: "中古品" },
+  ]);
+  assert.equal(shimamusenAdapter.discovery.coverage, "complete");
 });

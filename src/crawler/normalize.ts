@@ -1,5 +1,6 @@
 import type { StockStatus } from "../catalog/types.js";
 import { splitKnownManufacturerModel } from "../catalog/manufacturers.js";
+import { availabilityFromText } from "./availability.js";
 
 /** Display labels (not category ids); `inferCategory` returns the first matching label. */
 const CATEGORY_RULES: readonly (readonly [label: string, pattern: RegExp])[] = [
@@ -65,11 +66,7 @@ export function parseYen(value: string = ""): number | null {
 }
 
 export function inferStockStatus(text: string = ""): StockStatus {
-  const value = cleanText(text).toLowerCase();
-  if (/売り切れ|売切|売約済(?:み)?|sold\s*out|販売終了|ご成約|在庫なし|完売|品切れ/.test(value))
-    return "sold_out";
-  if (/在庫あり|in\s*stock|カートに入れる|購入する/.test(value)) return "in_stock";
-  return "unknown";
+  return availabilityFromText(cleanText(text));
 }
 
 export function inferCategory(title: string = "", hintedCategory: string = ""): string {
@@ -105,7 +102,7 @@ function splitFujiyaManufacturerModel(value: string): ManufacturerModelPair | nu
 }
 
 export function splitManufacturerModel(title: string, shopKey: string): ManufacturerModelPair {
-  let value = cleanText(title)
+  const value = cleanText(title)
     .replace(/^〖[^〗]+〗\s*/g, "")
     .replace(/^中古[：:]?\s*[A-Z+-]*\s*/i, "")
     .replace(/『[^』]+』/g, "")

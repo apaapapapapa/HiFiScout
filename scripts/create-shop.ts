@@ -55,11 +55,7 @@ function isShopTransport(value: string): value is ShopTransport {
   return value === "direct" || value === "relay" || value === "browser";
 }
 
-/**
- * The scaffold is typed against the platform contract (`satisfies ShopAdapter`) so a shop that
- * does not fit the contract fails `npm run typecheck` rather than at crawl time, and is written
- * in the repository's own formatting so `npm run format:check` stays green on a fresh scaffold.
- */
+/** Scaffold a disabled, bounded shop against the final Phase 3 platform contract. */
 export function renderAdapter({
   key,
   name,
@@ -67,8 +63,7 @@ export function renderAdapter({
   transport = "direct",
 }: AdapterTemplateOptions): string {
   const identifier = adapterIdentifier(key);
-  return `import type { ShopParsedProduct } from "../../catalog/types.js";
-import type { ShopAdapter } from "../types.js";
+  return `import type { SellerProduct, ShopAdapter } from "../types.js";
 
 const BASE_URL = ${quote(baseUrl)};
 
@@ -83,18 +78,19 @@ export const ${identifier} = {
   name: ${quote(name)},
   baseUrl: BASE_URL,
   transport: ${quote(transport)},
-  // Seller category label -> canonical id from src/catalog/categories.ts. The first id of an
-  // array is the primary category when a listing genuinely spans categories.
   categoryMapping: {
     // "ネットワークDAC": ["dac", "network_player"],
   },
-  *pageUrls(): Generator<string> {
-    // TODO: yield this shop's used-listing entry points.
-    yield BASE_URL;
+  discovery: {
+    // Keep the scaffold non-destructive until the seller's coverage semantics are understood.
+    coverage: "unknown",
+    *initialTargets(): Generator<string> {
+      // TODO: replace with this shop's used-listing entry points.
+      yield BASE_URL;
+    },
   },
-  parse(_html: string): ShopParsedProduct[] {
-    // TODO: return one entry per listing. Keep the seller's own wording in rawManufacturer and
-    // rawCategory, and put shop-specific factual fields in metadata:
+  parse(_html: string): SellerProduct[] {
+    // TODO: return one entry per listing. The raw seller fields are required by the platform:
     // { sourceId, sourceUrl, title, rawManufacturer, manufacturer, model, rawCategory, category,
     //   conditionText, priceYen, stockStatus, metadata: { storeName, warranty } }
     return [];
@@ -116,17 +112,14 @@ test("${key} adapter scaffold is wired", async () => {
     "utf8",
   );
   assert.equal(${identifier}.key, ${quote(key)});
+  assert.equal(${identifier}.discovery.coverage, "unknown");
   assert.ok(${identifier}.baseUrl);
   assert.deepEqual(${identifier}.parse(fixture), []);
 });
 `;
 }
 
-/**
- * Registration carries no environment-variable names: they are derived from the key by
- * `defineShopPlugin`. `defaultEnabled: false` is what keeps the empty scaffold parser from
- * going live the moment the branch is deployed.
- */
+/** The empty scaffold is registered but disabled until its parser and fixtures are complete. */
 export function renderPluginRegistration({
   key,
   name,
@@ -169,8 +162,6 @@ export async function createShop({
   if (!name?.trim()) throw new Error("shop name is required");
   if (!baseUrl) throw new Error("base URL is required");
   const parsedBaseUrl = new URL(baseUrl);
-  // The base URL becomes the robots.txt origin and the guard every crawl target is checked
-  // against, so the generator must enforce the exact same contract as the runtime registry.
   if (parsedBaseUrl.protocol !== "https:") throw new Error("base URL must use https");
   if (baseUrl !== parsedBaseUrl.origin) {
     throw new Error(

@@ -49,8 +49,8 @@ import {
   coverageDecision,
   discoverPages,
   initialPageQueue,
-  pageUrl,
   shouldContinueAfterEmpty,
+  targetUrl,
 } from "./strategies.js";
 
 type RuntimeEnv = CrawlerEnv & { DB: QueryableDatabase };
@@ -256,7 +256,7 @@ export async function crawlShop(
   const runId = await startCrawlRun(env.DB, adapter.key, startedAt);
   const settings = getCrawlerSettings(env);
   const maxPages = getShopMaxPages(env, definition, settings.maxPagesPerShop);
-  const pageLimit = maxPages + Math.max(0, adapter.extraPageAllowance || 0);
+  const pageLimit = maxPages + Math.max(0, adapter.discovery.extraPageAllowance || 0);
   const requestDelayMs = getShopRequestDelayMs(env, definition, settings.requestDelayMs);
   const robotsCache: RobotsCache = new Map();
   const items = new Map<string, NormalizedCatalogProduct>();
@@ -274,12 +274,12 @@ export async function crawlShop(
 
   try {
     const pageQueue = initialPageQueue(adapter, maxPages, env, { now, intervalMinutes, state });
-    const queuedUrls = new Set(pageQueue.map(pageUrl));
+    const queuedUrls = new Set(pageQueue.map((page) => targetUrl(adapter, page)));
 
     while (pageQueue.length && pageCount < pageLimit) {
       const page = pageQueue.shift();
       if (!page) break;
-      const url = pageUrl(page);
+      const url = targetUrl(adapter, page);
       let html;
       try {
         html = await transport.fetchHtmlPage(url, {
@@ -322,20 +322,25 @@ export async function crawlShop(
       ) {
         classificationEvidenceHtml = html;
       }
+
       const discovered = discoverPages(adapter, html, page);
       if (discovered == null) {
         coverageIncomplete = true;
       } else {
         for (const nextPage of discovered) {
-          const nextUrl = pageUrl(nextPage);
-          if (!nextUrl || queuedUrls.has(nextUrl)) continue;
+          const nextUrl = targetUrl(adapter, nextPage);
+          if (queuedUrls.has(nextUrl)) continue;
+          if (queuedUrls.size >= pageLimit) {
+            coverageIncomplete = true;
+            continue;
+          }
           queuedUrls.add(nextUrl);
           pageQueue.push(nextPage);
         }
       }
 
       if (!parsed.length) {
-        if (adapter.dynamicPagination) coverageIncomplete = true;
+        if (adapter.discovery.discoverTargets) coverageIncomplete = true;
         if (items.size > 0) {
           if (shouldContinueAfterEmpty(adapter)) continue;
           reachedEnd = true;

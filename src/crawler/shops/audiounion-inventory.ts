@@ -1,11 +1,9 @@
 /**
  * AudioUnion's inventory-recheck knowledge: which URLs may be re-fetched and how its detail
  * pages express availability.
- *
- * Kept out of `crawler/inventory-recheck.ts` so the recheck loop stays shop-agnostic, and out of
- * `audiounion.ts` so the listing parser stays focused on parsing.
  */
 
+import { availabilityFromSignals } from "../availability.js";
 import type { InventoryClassification, InventoryRecheckPolicy } from "../types.js";
 
 const DETAIL_PATH = /^\/ct\/detail\/used\/\d+\/?$/;
@@ -23,12 +21,7 @@ function visibleText(html: unknown): string {
     .trim();
 }
 
-/**
- * Only exact `https://www.audiounion.jp/ct/detail/used/<id>` URLs are re-fetched.
- *
- * The stored `source_url` is crawler input, so every other component — port, credentials, query,
- * fragment — must be empty rather than merely ignored.
- */
+/** Only exact `https://www.audiounion.jp/ct/detail/used/<id>` URLs are re-fetched. */
 export function isAudioUnionUsedDetailUrl(value: string): boolean {
   try {
     const url = new URL(value);
@@ -49,27 +42,20 @@ export function isAudioUnionUsedDetailUrl(value: string): boolean {
 
 export function classifyAudioUnionInventoryPage(html: string): InventoryClassification {
   const text = visibleText(html);
-  if (!text) return "ambiguous";
+  if (!text) return "unknown";
 
   const priceContext = text.match(/販売価格.{0,120}/i)?.[0] || "";
   const hasPricedOffer = /(?:[¥￥]\s*[0-9][0-9,]*|[0-9][0-9,]*\s*円)/.test(priceContext);
   const hasPurchaseEvidence = /在庫あり|カートに入れる|購入する/i.test(text);
   const hasSoldEvidence =
     /販売終了|売約済み?|売り切れ|売切|在庫なし|完売|品切れ|ご成約|sold\s*out/i.test(text);
-  const hasActiveEvidence = hasPricedOffer || hasPurchaseEvidence;
 
-  // Conflicting page-wide signals can come from recommendations or retained historical markup.
-  // Never treat contradictory markup as proof of either state.
-  if (hasActiveEvidence && hasSoldEvidence) return "ambiguous";
-  if (hasActiveEvidence) return "in_stock";
-  if (hasSoldEvidence) return "sold_out";
-  return "ambiguous";
+  return availabilityFromSignals({
+    soldOut: hasSoldEvidence,
+    inStock: hasPricedOffer || hasPurchaseEvidence,
+  });
 }
 
-/**
- * The `AUDIOUNION_INVENTORY_RECHECK_*` settings this policy runs under are derived from the
- * shop's env prefix by `src/config.ts`; only the two seller-specific predicates live here.
- */
 export const audioUnionInventoryRecheck: InventoryRecheckPolicy = {
   isDetailUrl: isAudioUnionUsedDetailUrl,
   classifyPage: classifyAudioUnionInventoryPage,

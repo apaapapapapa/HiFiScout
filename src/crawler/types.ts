@@ -11,6 +11,7 @@ import type {
   CategoryPolicyInput,
   NormalizedCatalogProduct,
   ShopParsedProduct,
+  StockStatus,
 } from "../catalog/types.js";
 import type {
   IdentitySyncMetrics,
@@ -136,51 +137,16 @@ export interface ShopDefinition {
   readonly key: string;
   readonly name: string;
   readonly baseUrl: string;
-
-  /**
-   * SCREAMING_SNAKE_CASE first half of every variable this shop is configured with.
-   *
-   * `defineShopPlugin` derives it by upper-casing the kebab-case key unless the definition
-   * overrides it, and each setting is read as `` `${envPrefix}_${suffix}` `` for a
-   * {@link ShopEnvSuffix} the platform declares. Deriving rather than declaring the four names
-   * separately is what keeps a shop's configuration in one place and out of `EnvVarName`.
-   */
   readonly envPrefix: string;
-
   readonly defaultIntervalMinutes: number;
   readonly defaultRequestDelayMs?: number;
   readonly defaultMaxPages?: number;
-
-  /**
-   * Whether the shop crawls while `${envPrefix}_ENABLED` is unset. Defaults to `true`; a
-   * generated scaffold sets it to `false` so an unfinished parser is never live by omission.
-   */
   readonly defaultEnabled?: boolean;
-
-  /**
-   * Cron expression owning this shop's dispatch.
-   *
-   * A shop that declares one is dispatched by that trigger alone and is skipped by the shared
-   * "due shops" sweep, which keeps a busy shop off the general schedule. The expression must
-   * also appear in `wrangler.jsonc` `triggers.crons` — `test/schedule.test.ts` asserts that.
-   */
   readonly scheduleCron?: string;
-
-  /**
-   * Missing transport configuration is a *health* problem for this shop rather than something
-   * its persisted sync state will report after a failed run.
-   *
-   * Only set it for shops whose transport secrets are provisioned out of band, where a gap
-   * would otherwise stay invisible until the next scheduled crawl.
-   */
   readonly transportConfigurationRequired?: boolean;
 }
 
-/**
- * A definition as a shop writes it. `envPrefix` is optional because `defineShopPlugin` derives
- * it from the key; a shop only states one when its deployed variables already use another
- * spelling.
- */
+/** A definition as a shop writes it; `envPrefix` is derived unless explicitly overridden. */
 export type ShopDefinitionInput = Omit<ShopDefinition, "envPrefix"> & {
   readonly envPrefix?: string;
 };
@@ -189,47 +155,77 @@ export type ShopDefinitionInput = Omit<ShopDefinition, "envPrefix"> & {
 // Inventory recheck capability
 // ---------------------------------------------------------------------------
 
-/**
- * What a shop must supply to opt into the post-crawl inventory recheck.
- *
- * The recheck loop itself — candidate selection, attempt marking, relay fetch, HTTP-status
- * handling, failure counting and deactivation — is shop-agnostic and lives in
- * `inventory-recheck.ts`, and its `INVENTORY_RECHECK_*` settings are read from the shop's own
- * env prefix. Only these two predicates are shop-specific.
- */
+/** What a shop must supply to opt into the post-crawl inventory recheck. */
 export interface InventoryRecheckPolicy {
-  /**
-   * Guard for the stored `source_url` before it is re-fetched. Must reject anything outside the
-   * shop's own detail pages, including redirects to other hosts, ports or query strings.
-   */
+  /** Reject anything outside the shop's own detail-page URL contract. */
   isDetailUrl(value: string): boolean;
 
-  /** Reads availability from a detail page. Contradictory evidence must yield `"ambiguous"`. */
+  /**
+   * Maps detail-page evidence to the same canonical tri-state used by listing persistence.
+   * Contradictory or non-conclusive evidence must yield `"unknown"`.
+   */
   classifyPage(html: string): InventoryClassification;
 }
 
 // ---------------------------------------------------------------------------
-// Page queue
+// Discovery / page targets
 // ---------------------------------------------------------------------------
 
-/**
- * A shop-specific page descriptor. Every queued page carries a `url` (`shimamusen`, `fujiya`
- * and `u-audio` all attach one alongside their extra keys), so `pageUrl()` returns `string`;
- * adapters declare their own narrower descriptor and pass it as the `TPage` argument of
- * `ShopAdapter`.
- */
+/** A shop-specific crawl target. Extra fields are opaque typed context for that shop's parser. */
 export interface CrawlPageObject {
   readonly url: string;
 }
 
-/** An entry of the crawl page queue: a bare URL or a descriptor carrying one. */
+/** A crawl target is either a URL or a descriptor carrying one. */
 export type CrawlPage = string | CrawlPageObject;
 
-/** Third argument of `adapter.pageUrls`; only `hifido` reads `now`/`intervalMinutes`. */
-export interface PageUrlsContext {
-  now?: Date;
-  intervalMinutes?: number;
-  state?: ShopSyncStateRow | null;
+/**
+ * Coverage promised by discovery.
+ *
+ * `complete` permits deactivation only after bounded discovery finishes without uncertainty.
+ * `partial` is intentionally a subset feed. `unknown` cannot prove absence either way.
+ */
+export type CoverageKind = "complete" | "partial" | "unknown";
+
+export interface DiscoveryContext {
+  readonly maxPages: number;
+  readonly env: CrawlerEnv;
+  readonly now?: Date;
+  readonly intervalMinutes?: number;
+  readonly state?: ShopSyncStateRow | null;
+}
+
+/**
+ * Discovery is independent from parsing. Shops describe bounded initial targets and, when
+ * needed, page-to-page/category expansion. The platform validates origin, bounds and deduplicates
+ * every target before fetching it.
+ */
+export interface DiscoveryCapability<TPage extends CrawlPage = CrawlPage> {
+  readonly coverage: CoverageKind;
+  readonly continueOnEmpty?: boolean;
+  readonly guardItemCount?: boolean;
+  readonly extraPageAllowance?: number;
+  initialTargets(context: DiscoveryContext): Iterable<TPage>;
+  /** `null` means this page made coverage uncertain; `[]` means no additional targets. */
+  discoverTargets?(html: string, page: TPage): readonly TPage[] | null;
+}
+
+// ---------------------------------------------------------------------------
+// Seller-fact contract
+// ---------------------------------------------------------------------------
+
+/**
+ * The strict seller-fact shape every shop parser must produce before central catalog
+ * normalization. The legacy catalog input keeps these raw fields optional for non-crawler callers;
+ * the shop platform does not.
+ */
+export interface SellerProduct extends Omit<
+  ShopParsedProduct,
+  "rawManufacturer" | "rawCategory" | "category"
+> {
+  rawManufacturer: string;
+  rawCategory: string;
+  category: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -237,65 +233,35 @@ export interface PageUrlsContext {
 // ---------------------------------------------------------------------------
 
 /**
- * A shop adapter.
- *
- * `key`, `name`, `baseUrl`, `pageUrls` and `parse` are the only universal members
- * (asserted by `test/shop-contract.test.ts`); every other member is opt-in and appears on
- * one to four of the seven adapters.
- *
- * `pageUrls`, `parse` and `discoverPageUrls` are declared as methods on purpose: method
- * parameter bivariance is what lets an adapter narrowed to its own page descriptor
- * (`ShopAdapter<FujiyaPage>`) be stored in a `ShopAdapter<CrawlPage>` registry.
- *
- * `this` inside an adapter's methods is the *plugin*, not the raw adapter: `defineShopPlugin`
- * re-binds `parse` with `parse.apply(plugin, args)`.
+ * Universal shop contract: identity, discovery and seller-fact parsing. Transport/category
+ * policy and lifecycle hooks are explicit optional capabilities layered on top.
  */
 export interface ShopAdapter<TPage extends CrawlPage = CrawlPage> {
   readonly key: string;
   readonly name: string;
   readonly baseUrl: string;
+  readonly discovery: DiscoveryCapability<TPage>;
 
-  /** Generator; all three arguments are optional because call sites pass 0-3 of them. */
-  pageUrls(maxPages?: number, env?: CrawlerEnv, context?: PageUrlsContext): Iterable<TPage>;
-
-  /** Raw parse output. `defineShopPlugin` wraps this so the crawler never sees it directly. */
-  parse(html: string, page?: TPage): ShopParsedProduct[];
+  /** Raw seller facts. `defineShopPlugin` validates and normalizes them before the crawler sees them. */
+  parse(html: string, page?: TPage): SellerProduct[];
 
   /** Defaults to `"direct"` when absent. */
   readonly transport?: TransportKind;
-  /** Declared by `audiounion` only; the effective delay comes from `getShopRequestDelayMs`. */
   readonly requestDelayMs?: number;
   readonly categoryMapping?: CategoryMapping;
   readonly categoryPolicy?: CategoryPolicyInput;
-  /** The shop's feeds are a subset of its inventory, so missing products are never deactivated. */
-  readonly partialCoverage?: boolean;
-  readonly guardItemCount?: boolean;
-  readonly continueOnEmpty?: boolean;
-  readonly dynamicPagination?: boolean;
-  readonly extraPageAllowance?: number;
-
-  /**
-   * `TPage[]` = more pages, `[]` = nothing more to crawl, `null` = coverage UNKNOWN
-   * (which suppresses deactivation). Never `undefined`.
-   */
-  discoverPageUrls?(html: string, page: TPage): TPage[] | null;
 
   extractDetailCategoryEvidence?(
     html: string,
     product: NormalizedCatalogProduct,
   ): CategoryEvidenceInput[] | Promise<CategoryEvidenceInput[]>;
 
-  /**
-   * Optional per-page diagnostic snapshot for shops whose HTML needs explaining when a crawl
-   * looks wrong. The crawler keeps the last non-null value and appends it to the crawl-run
-   * message; it never inspects the contents, so the shape is the adapter's business.
-   */
+  /** Opaque per-page diagnostics retained by generic orchestration. */
   diagnosePage?(html: string, page?: TPage): unknown;
 
   /** Opt-in single-listing inventory recheck, run after this shop's crawl succeeds. */
   readonly inventoryRecheck?: InventoryRecheckPolicy;
 
-  /** Not implemented by any current adapter, but part of the contract `run`/`dispatch` read. */
   isConfigured?(env: CrawlerEnv): boolean;
 
   /** Per-shop data-quality threshold overrides; keys are `DEFAULT_QUALITY_THRESHOLDS` keys. */
@@ -305,10 +271,7 @@ export interface ShopAdapter<TPage extends CrawlPage = CrawlPage> {
   readonly definition?: Readonly<ShopDefinition>;
 }
 
-/**
- * A registered shop: the adapter plus its frozen definition, with `parse` replaced by the
- * normalizing wrapper. This is what `SHOP_PLUGINS` holds and what the crawler consumes.
- */
+/** A registered shop after validation, frozen composition and central normalization wrapping. */
 export interface ShopPlugin<TPage extends CrawlPage = CrawlPage> extends Omit<
   ShopAdapter<TPage>,
   "parse" | "definition"
@@ -357,14 +320,10 @@ export interface RelayFetcherConfig {
   fetchFn?: typeof fetch;
 }
 
-/**
- * What `createTransport` returns. `close` and `fetchPage` are optional: the direct and
- * browser transports have no `fetchPage`, and tests substitute a bare `{ fetchHtmlPage }`.
- */
+/** What `createTransport` returns. */
 export interface HtmlTransport {
   fetchHtmlPage(url: string, options: FetchHtmlPageOptions): Promise<string>;
   close?(): Promise<void>;
-  /** Relay only. Returns the status instead of throwing on a non-2xx upstream response. */
   fetchPage?(url: string, options?: RelayPageOptions): Promise<RelayPage>;
 }
 
@@ -395,19 +354,10 @@ export interface RobotsPolicy {
 // Augmented errors
 // ---------------------------------------------------------------------------
 
-/**
- * `new Error()` values the crawler decorates with extra properties that consumers branch on.
- * Build them with `Object.assign(new Error(msg), { status })` rather than a subclass, which
- * is what the current runtime does.
- */
 export interface AugmentedCrawlError extends Error {
-  /** Upstream HTTP status (`fetch.ts`, `relay.ts`, `browser.ts`). */
   status?: number;
-  /** Relay-hop HTTP status, distinct from the upstream one. */
   relayStatus?: number;
-  /** Currently only `"robots_disallowed"`. */
   code?: string;
-  /** Evidence reason attached by `run.ts` and read back in its catch block. */
   evidenceReason?: string;
 }
 
@@ -450,7 +400,6 @@ export type CrawlSkipReason =
 export interface CrawlSkippedResult {
   status: "skipped";
   reason: CrawlSkipReason;
-  /** Absent on the `no_shop_due` result produced by `crawlNextDueShop`. */
   shopKey?: string;
 }
 
@@ -478,7 +427,6 @@ export interface CrawlSuccessResult {
   searchProjection: { changedCount: number };
   productIdentity: IdentitySyncMetrics;
   categoryEnrichment: CategoryEnrichmentCounters;
-  /** Appended by `consumeCrawlMessage` for shops that declare an `inventoryRecheck` policy. */
   inventoryRecheck?: InventoryRecheckResult;
 }
 
@@ -502,7 +450,8 @@ export interface CategoryEnrichmentResult extends CategoryEnrichmentCounters {
 // Inventory recheck
 // ---------------------------------------------------------------------------
 
-export type InventoryClassification = "in_stock" | "sold_out" | "ambiguous";
+/** Detail-page classification uses the same canonical tri-state as listing persistence. */
+export type InventoryClassification = StockStatus;
 
 export type InventoryRecheckOutcome =
   | "in_stock"
@@ -512,10 +461,6 @@ export type InventoryRecheckOutcome =
   | "sold_deactivated"
   | "sold_retry";
 
-/**
- * `reason` is partly templated (`relay_http_404`, `upstream_http_500`, ...), so the union
- * keeps a template-literal arm rather than pretending it is closed.
- */
 export type InventoryRecheckReason =
   | "disabled"
   | "no_candidate"
@@ -534,10 +479,7 @@ export interface InventoryRecheckResult {
   outcome?: InventoryRecheckOutcome;
   sourceId?: string;
   productId?: number;
-  /** `"failed"` only: the caught error message, truncated to 200 characters. */
   error?: string;
-  /** `"checked"` only, on the unavailable branches: consecutive unavailable observations. */
   failureCount?: number;
-  /** `"checked"` only, on the 404/410 and sold-out branches. */
   httpStatus?: number;
 }

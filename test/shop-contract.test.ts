@@ -3,18 +3,17 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 import { SHOP_DEFINITIONS, SHOP_ENV_SUFFIXES, shopEnvVarName } from "../src/config.js";
-import { coverageDecision, discoverPages, initialPageQueue } from "../src/crawler/strategies.js";
+import {
+  coverageDecision,
+  discoverPages,
+  initialPageQueue,
+  targetUrl,
+} from "../src/crawler/strategies.js";
 import { SHOP_PLUGINS } from "../src/crawler/shops/index.js";
 import { createShopRegistry, defineShopPlugin } from "../src/crawler/shops/registry.js";
 import { isTransportConfigured, relayConfiguration } from "../src/crawler/transport.js";
 import type { ShopAdapter, ShopDefinitionInput, ShopPlugin } from "../src/crawler/types.js";
 
-/**
- * Modules that drive every shop. Adding a shop must not require editing any of them, so none may
- * mention a shop by key or by its environment-variable prefix. `shops/index.ts` is the one
- * deliberate exception — it is the composition list — which is why the registration machinery
- * lives in `shops/registry.ts` and is checked here with the rest.
- */
 const GENERIC_MODULES = [
   "src/config.ts",
   "src/health.ts",
@@ -24,15 +23,27 @@ const GENERIC_MODULES = [
   "src/scheduled.ts",
   "src/http/meta.ts",
   "src/http/router.ts",
+  "src/crawler/availability.ts",
   "src/crawler/category-enricher.ts",
   "src/crawler/dispatch.ts",
   "src/crawler/inventory-recheck.ts",
   "src/crawler/run.ts",
   "src/crawler/schedule.ts",
+  "src/crawler/seller-facts.ts",
   "src/crawler/shops/registry.ts",
   "src/crawler/strategies.ts",
   "src/crawler/transport.ts",
 ];
+
+const LEGACY_DISCOVERY_FIELDS = [
+  "pageUrls",
+  "discoverPageUrls",
+  "dynamicPagination",
+  "partialCoverage",
+  "continueOnEmpty",
+  "guardItemCount",
+  "extraPageAllowance",
+] as const;
 
 const shopsDir = new URL("../src/crawler/shops/", import.meta.url);
 const platformShopModules = new Set(["index.ts", "registry.ts"]);
@@ -59,19 +70,11 @@ function shopOwnedModuleSource(plugin: ShopPlugin): string {
     .join("\n");
 }
 
-/**
- * Exact deployed names referenced by shop-owned modules. This replaces a central allowlist: a
- * new shop can add a discovery/config input in its own module without editing this generic test.
- */
 function directlyReadShopEnvVars(plugin: ShopPlugin, declared: readonly string[]): string[] {
   const source = shopOwnedModuleSource(plugin);
   return declared.filter((name) => source.includes(name));
 }
 
-/**
- * Platform-owned suffixes are capability-aware. Core crawl settings apply to every plugin;
- * inventory-recheck settings are readable only when that lifecycle capability is present.
- */
 function platformReadableShopEnvVars(plugin: ShopPlugin): string[] {
   return SHOP_ENV_SUFFIXES.filter(
     (suffix) => !suffix.startsWith("INVENTORY_RECHECK_") || plugin.inventoryRecheck !== undefined,
@@ -85,10 +88,6 @@ function readableShopEnvVars(plugin: ShopPlugin, declared: readonly string[]): S
   ]);
 }
 
-/**
- * A minimal adapter/definition pair. Overrides land on both halves so a test only varies the
- * field it is about, and `defineShopPlugin` still sees a self-consistent shop.
- */
 function registerStub(
   overrides: Partial<ShopDefinitionInput> = {},
   adapterOverrides: Partial<ShopAdapter> = {},
@@ -104,22 +103,27 @@ function registerStub(
     key: definition.key,
     name: definition.name,
     baseUrl: definition.baseUrl,
-    *pageUrls() {},
+    discovery: {
+      coverage: "unknown",
+      *initialTargets() {},
+    },
     parse: () => [],
     ...adapterOverrides,
   };
   return defineShopPlugin(adapter, definition);
 }
 
-test("all shop plugins satisfy the crawler contract", () => {
-  assert.ok(SHOP_PLUGINS.length >= 5);
+test("all shop plugins satisfy the final crawler contract", () => {
+  assert.equal(SHOP_PLUGINS.length, 7);
   assert.equal(new Set(SHOP_PLUGINS.map((plugin) => plugin.key)).size, SHOP_PLUGINS.length);
 
   for (const plugin of SHOP_PLUGINS) {
     assert.ok(plugin.key);
     assert.ok(plugin.name);
     assert.ok(plugin.baseUrl);
-    assert.equal(typeof plugin.pageUrls, "function");
+    assert.equal(typeof plugin.discovery, "object");
+    assert.ok(["complete", "partial", "unknown"].includes(plugin.discovery.coverage));
+    assert.equal(typeof plugin.discovery.initialTargets, "function");
     assert.equal(typeof plugin.parse, "function");
     assert.equal(plugin.definition.key, plugin.key);
     assert.equal(plugin.definition.name, plugin.name);
@@ -128,19 +132,24 @@ test("all shop plugins satisfy the crawler contract", () => {
     assert.equal(plugin.baseUrl, new URL(plugin.baseUrl).origin);
     assert.match(plugin.definition.envPrefix, /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/u);
     assert.ok(plugin.definition.defaultIntervalMinutes > 0);
+    for (const legacyField of LEGACY_DISCOVERY_FIELDS) {
+      assert.equal(legacyField in plugin, false, `${plugin.key} still exposes ${legacyField}`);
+    }
   }
 });
 
-test("a registered plugin and its definition cannot be mutated afterwards", () => {
+test("registered plugins, definitions and discovery policies are immutable", () => {
   const plugin = SHOP_PLUGINS[0];
   assert.ok(plugin);
   assert.throws(() => {
     (plugin.definition as { name: string }).name = "tampered";
   }, TypeError);
   assert.throws(() => {
+    (plugin.discovery as { coverage: string }).coverage = "partial";
+  }, TypeError);
+  assert.throws(() => {
     (plugin as { key: string }).key = "tampered";
   }, TypeError);
-  // The registry itself is frozen too, so no caller can append an unvalidated shop at runtime.
   assert.throws(() => (SHOP_PLUGINS as ShopPlugin[]).push(plugin), TypeError);
 });
 
@@ -159,7 +168,37 @@ test("registration rejects a definition the platform could not run safely", () =
     () => registerStub({}, { transport: "carrier-pigeon" as unknown as "direct" }),
     /not a supported transport/,
   );
-  // An adapter whose identity drifts from its registration would be configured as another shop.
+  assert.throws(
+    () => registerStub({}, { discovery: undefined as unknown as ShopAdapter["discovery"] }),
+    /discovery capability is required/,
+  );
+  assert.throws(
+    () =>
+      registerStub(
+        {},
+        {
+          discovery: {
+            coverage: "everything" as unknown as "complete",
+            *initialTargets() {},
+          },
+        },
+      ),
+    /coverage/,
+  );
+  assert.throws(
+    () =>
+      registerStub(
+        {},
+        {
+          discovery: {
+            coverage: "unknown",
+            extraPageAllowance: -1,
+            *initialTargets() {},
+          },
+        },
+      ),
+    /extraPageAllowance/,
+  );
   assert.throws(() => registerStub({}, { key: "other-shop" }), /adapter key/);
   assert.throws(() => registerStub({}, { baseUrl: "https://other.example" }), /adapter baseUrl/);
 });
@@ -185,7 +224,6 @@ test("the registry rejects shops that would silently share configuration", () =>
 });
 
 test("shop settings are derived from the definition rather than declared per shop", () => {
-  // `fujiya-avic` -> `FUJIYA_AVIC`; a shop only states a prefix when its deployed names differ.
   assert.equal(registerStub({ key: "example-shop" }).definition.envPrefix, "EXAMPLE_SHOP");
   assert.equal(registerStub({ envPrefix: "LEGACY" }).definition.envPrefix, "LEGACY");
 
@@ -206,7 +244,7 @@ test("enabled production shops deploy a kill switch under their exact env prefix
     const enabledVar = shopEnvVarName(plugin.definition, "ENABLED");
     assert.ok(
       declared.has(enabledVar),
-      `${plugin.key} defaults enabled but wrangler.jsonc does not declare ${enabledVar}; an envPrefix typo would silently bypass its kill switch and all shop-scoped settings`,
+      `${plugin.key} defaults enabled but wrangler.jsonc does not declare ${enabledVar}`,
     );
   }
 });
@@ -245,7 +283,7 @@ test("every deployed variable under a shop prefix is one that shop can actually 
     assert.deepEqual(
       orphans,
       [],
-      `wrangler.jsonc declares ${orphans.join(", ")} for ${plugin.key}, which its platform lifecycle and shop modules do not read`,
+      `${plugin.key} has unread deployed variables: ${orphans.join(", ")}`,
     );
   }
 });
@@ -256,7 +294,6 @@ test("generic crawler and orchestration code names no concrete shop", () => {
       SHOP_PLUGINS.flatMap((plugin) => [
         plugin.key,
         plugin.key.replaceAll("-", "_"),
-        // The env prefix catches branching on a shop's configuration namespace too.
         plugin.definition.envPrefix,
       ]).map((token) => token.toLowerCase()),
     ),
@@ -293,14 +330,13 @@ test("a shop module never imports another shop's module", () => {
   }
 });
 
-test("shop-specific behavior is opt-in adapter metadata, never a branch in shared code", () => {
+test("shop-specific behavior is opt-in capability metadata", () => {
   for (const plugin of SHOP_PLUGINS) {
     if (plugin.diagnosePage !== undefined) assert.equal(typeof plugin.diagnosePage, "function");
     if (plugin.inventoryRecheck !== undefined) {
       const policy = plugin.inventoryRecheck;
       assert.equal(typeof policy.isDetailUrl, "function");
       assert.equal(typeof policy.classifyPage, "function");
-      // A shop cannot be rechecked through a transport that cannot return an upstream status.
       assert.equal(plugin.transport, "relay");
     }
     if (plugin.definition.transportConfigurationRequired) {
@@ -320,7 +356,6 @@ test("relay transport requires the shared crawler configuration", () => {
     }),
     { relayUrl: "https://shared.example/", relayToken: "shared-token" },
   );
-
   assert.equal(
     isTransportConfigured(
       {
@@ -334,32 +369,55 @@ test("relay transport requires the shared crawler configuration", () => {
   assert.equal(isTransportConfigured({}, plugin), false);
 });
 
-test("pagination and coverage strategies preserve existing adapter semantics", () => {
+test("discovery is bounded, deduplicated and origin-safe at the platform boundary", () => {
   const fixed = {
-    *pageUrls(maxPages = 0) {
-      for (let page = 1; page <= maxPages; page += 1) yield `/${page}`;
+    baseUrl: "https://example.com",
+    discovery: {
+      coverage: "unknown" as const,
+      *initialTargets({ maxPages }: { maxPages: number }) {
+        for (let page = 1; page <= maxPages + 3; page += 1) yield `/${page}`;
+        yield "/1";
+      },
     },
   };
   assert.deepEqual(initialPageQueue(fixed, 2, {}, {}), ["/1", "/2"]);
-  assert.deepEqual(discoverPages({ ...fixed, dynamicPagination: false }, "<html>", "/1"), []);
+  assert.deepEqual(discoverPages(fixed, "<html>", "/1"), []);
+  assert.equal(targetUrl(fixed, "/1"), "https://example.com/1");
 
-  const complete = coverageDecision(
-    { dynamicPagination: true },
-    {
-      reachedEnd: false,
-      coverageIncomplete: false,
-      queueEmpty: true,
+  const outside = {
+    ...fixed,
+    discovery: {
+      coverage: "unknown" as const,
+      *initialTargets() {
+        yield "https://other.example/list";
+      },
     },
+  };
+  assert.throws(() => initialPageQueue(outside, 2, {}, {}), /outside shop origin/);
+});
+
+test("explicit coverage semantics decide deactivation", () => {
+  const complete = coverageDecision(
+    registerStub({}, { discovery: { coverage: "complete", *initialTargets() {} } }),
+    { reachedEnd: false, coverageIncomplete: false, queueEmpty: true },
   );
   assert.deepEqual(complete, { deactivateMissing: true, guardItemCount: true });
 
   const partial = coverageDecision(
-    { partialCoverage: true, guardItemCount: true },
-    {
-      reachedEnd: true,
-      coverageIncomplete: false,
-      queueEmpty: true,
-    },
+    registerStub(
+      { key: "partial-shop" },
+      { discovery: { coverage: "partial", guardItemCount: true, *initialTargets() {} } },
+    ),
+    { reachedEnd: true, coverageIncomplete: false, queueEmpty: true },
   );
   assert.deepEqual(partial, { deactivateMissing: false, guardItemCount: true });
+
+  const uncertain = coverageDecision(
+    registerStub(
+      { key: "uncertain-shop" },
+      { discovery: { coverage: "complete", *initialTargets() {} } },
+    ),
+    { reachedEnd: true, coverageIncomplete: true, queueEmpty: true },
+  );
+  assert.deepEqual(uncertain, { deactivateMissing: false, guardItemCount: false });
 });

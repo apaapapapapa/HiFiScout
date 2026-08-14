@@ -1,11 +1,16 @@
 import { cleanText, inferCategory, inferStockStatus, parseYen } from "../normalize.js";
-import type { ShopParsedProduct } from "../../catalog/types.js";
-import type { CrawlerEnv, PageUrlsContext, ShopAdapter } from "../types.js";
+import { availabilityFromSignals } from "../availability.js";
+import type { CrawlerEnv, SellerProduct, ShopAdapter } from "../types.js";
 
 interface HifidoProductLink {
   href: string;
   sourceId: string;
   title: string;
+}
+
+interface HifidoRecheckContext {
+  now?: Date;
+  intervalMinutes?: number;
 }
 
 const PRODUCT_ID_RE = /\/(\d{2}-\d{5}-\d{5}-\d{2})\.html/i;
@@ -102,7 +107,7 @@ function sourcePublishedAt(text: string): string | null {
   return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
 }
 
-function parseProductBlock(block: string, link: HifidoProductLink): ShopParsedProduct | null {
+function parseProductBlock(block: string, link: HifidoProductLink): SellerProduct | null {
   const text = htmlToText(block);
   const title = cleanText(link.title);
   const sourceUrl = absoluteUrl(link.href);
@@ -120,8 +125,12 @@ function parseProductBlock(block: string, link: HifidoProductLink): ShopParsedPr
   const categoryRaw = text.match(CATEGORY_RE)?.[1] || "";
   const rawCategory = categoryRaw ? categoryRaw.replace(/（[^）]+）/g, "").trim() : "";
   const category = rawCategory || inferCategory(title);
-  let stockStatus = inferStockStatus(text);
-  if (stockStatus === "unknown" && /(?:^|\s)注文(?:\s|$)/.test(text)) stockStatus = "in_stock";
+  const inferred = inferStockStatus(text);
+  const ordered = /(?:^|\s)注文(?:\s|$)/.test(text);
+  const stockStatus = availabilityFromSignals({
+    soldOut: inferred === "sold_out",
+    inStock: inferred === "in_stock" || (ordered && inferred !== "sold_out"),
+  });
 
   return {
     sourceId: link.sourceId,
@@ -152,7 +161,7 @@ function positiveInt(value: unknown, fallback: number): number {
 export function hifidoRecheckPage(
   maxRecentPages: number,
   env: CrawlerEnv = {},
-  { now = new Date(), intervalMinutes = 30 }: PageUrlsContext = {},
+  { now = new Date(), intervalMinutes = 30 }: HifidoRecheckContext = {},
 ): number | null {
   const maxPage = positiveInt(env.HIFIDO_RECHECK_MAX_PAGE, DEFAULT_RECHECK_MAX_PAGE);
   if (maxPage <= maxRecentPages) return null;
@@ -162,8 +171,8 @@ export function hifidoRecheckPage(
   return maxRecentPages + 1 + (((slot % slots) + slots) % slots);
 }
 
-export function parseHifidoListing(html: string): ShopParsedProduct[] {
-  const products: ShopParsedProduct[] = [];
+export function parseHifidoListing(html: string): SellerProduct[] {
+  const products: SellerProduct[] = [];
   const itemBlocks = listItemBlocks(html);
 
   if (itemBlocks.length) {
@@ -198,14 +207,16 @@ export const hifidoAdapter = {
   baseUrl: "https://www.hifido.co.jp",
   categoryMapping: HIFIDO_CATEGORY_MAPPING,
   transport: "relay",
-  partialCoverage: true,
-  guardItemCount: true,
-  continueOnEmpty: true,
-  extraPageAllowance: 1,
-  *pageUrls(maxPages = 1, env = {}, context = {}) {
-    for (let page = 1; page <= maxPages; page += 1) yield listingUrl(page);
-    const recheckPage = hifidoRecheckPage(maxPages, env, context);
-    if (recheckPage != null) yield listingUrl(recheckPage);
+  discovery: {
+    coverage: "partial",
+    guardItemCount: true,
+    continueOnEmpty: true,
+    extraPageAllowance: 1,
+    *initialTargets({ maxPages, env, now, intervalMinutes }) {
+      for (let page = 1; page <= maxPages; page += 1) yield listingUrl(page);
+      const recheckPage = hifidoRecheckPage(maxPages, env, { now, intervalMinutes });
+      if (recheckPage != null) yield listingUrl(recheckPage);
+    },
   },
   parse(html) {
     return parseHifidoListing(html);

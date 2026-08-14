@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { audioUnionAdapter } from "../src/crawler/shops/audiounion.js";
 
 test("Audio Union uses only the allowed new-arrival used feed", () => {
-  const urls = [...audioUnionAdapter.pageUrls(40, {})];
+  const urls = [...audioUnionAdapter.discovery.initialTargets({ maxPages: 40, env: {} })];
   assert.deepEqual(urls, ["https://www.audiounion.jp/st/new_arrival_used.html"]);
+  assert.equal(audioUnionAdapter.discovery.coverage, "partial");
 });
 
 test("Audio Union treats a listing with a sales price as in stock", () => {
@@ -20,6 +21,8 @@ test("Audio Union treats a listing with a sales price as in stock", () => {
   );
   assert.equal(item.sourceId, "226086");
   assert.equal(item.manufacturer, "KEF");
+  assert.equal(item.rawManufacturer, "KEF");
+  assert.equal(item.rawCategory, "");
   assert.equal(item.priceYen, 139800);
   assert.equal(item.stockStatus, "in_stock");
   assert.equal(item.conditionText, "中古");

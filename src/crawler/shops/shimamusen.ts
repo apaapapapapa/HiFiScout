@@ -1,6 +1,6 @@
+import { availabilityFromSignals } from "../availability.js";
 import { cleanText, parseYen, splitManufacturerModel } from "../normalize.js";
-import type { ShopParsedProduct, StockStatus } from "../../catalog/types.js";
-import type { ShopAdapter } from "../types.js";
+import type { SellerProduct, ShopAdapter } from "../types.js";
 
 interface ShimamusenPage {
   url: string;
@@ -128,11 +128,11 @@ function extractPrice(blockHtml: string): number | null {
   return match ? parseYen(match[1]) : null;
 }
 
-function stockStatusFor(title: string, blockHtml: string): StockStatus {
+function stockStatusFor(title: string, blockHtml: string) {
   const text = `${title} ${stripTags(blockHtml)}`;
-  if (/売り切れ|売切れ|SOLD\s*OUT|在庫なし|完売|販売終了/i.test(text)) return "sold_out";
-  if (/お取り寄せ/.test(title)) return "unknown";
-  return "in_stock";
+  const soldOut = /売り切れ|売切れ|SOLD\s*OUT|在庫なし|完売|販売終了/i.test(text);
+  const ordered = /お取り寄せ/.test(title);
+  return availabilityFromSignals({ soldOut, inStock: !soldOut && !ordered });
 }
 
 function conditionFor(kind: string, title: string, blockHtml: string): string {
@@ -147,9 +147,9 @@ function conditionFor(kind: string, title: string, blockHtml: string): string {
 export function parseShimamusenListing(
   html: string,
   page?: Partial<ShimamusenPage> | string,
-): ShopParsedProduct[] {
+): SellerProduct[] {
   const kind = pageKind(page);
-  const products: ShopParsedProduct[] = [];
+  const products: SellerProduct[] = [];
 
   for (const block of distinctProductBlocks(html)) {
     const title = cleanText(block.title);
@@ -191,20 +191,21 @@ export const shimamusenAdapter = {
   key: "shimamusen",
   name: "シマムセン",
   baseUrl: BASE_URL,
-  dynamicPagination: true,
-  guardItemCount: true,
   categoryPolicy: {
-    // These are condition/merchandising buckets, not product-type categories.
     sellerCategory: { default: "ignore" },
     parserHint: "ignore",
   },
-  *pageUrls() {
-    yield { url: DISPLAY_URL, kind: "展示処分品" };
-    yield { url: SALE_URL, kind: "特価商品" };
-    yield { url: USED_URL, kind: "中古品" };
-  },
-  discoverPageUrls(html, page) {
-    return pageKind(page) === "中古品" ? discoverShimamusenPageUrls(html) : [];
+  discovery: {
+    coverage: "complete",
+    guardItemCount: true,
+    *initialTargets() {
+      yield { url: DISPLAY_URL, kind: "展示処分品" };
+      yield { url: SALE_URL, kind: "特価商品" };
+      yield { url: USED_URL, kind: "中古品" };
+    },
+    discoverTargets(html, page) {
+      return pageKind(page) === "中古品" ? discoverShimamusenPageUrls(html) : [];
+    },
   },
   parse(html, page) {
     return parseShimamusenListing(html, page);

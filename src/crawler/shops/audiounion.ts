@@ -3,8 +3,8 @@ import { cleanText, inferCategory, splitManufacturerModel, stableSourceId } from
 import { parseProductPage } from "../parser.js";
 import { diagnoseAudioUnionHtml } from "./audiounion-diagnostics.js";
 import { audioUnionInventoryRecheck } from "./audiounion-inventory.js";
-import type { ManufacturerNormalizationResult, ShopParsedProduct } from "../../catalog/types.js";
-import type { ShopAdapter } from "../types.js";
+import type { ManufacturerNormalizationResult } from "../../catalog/types.js";
+import type { SellerProduct, ShopAdapter } from "../types.js";
 
 const DEFAULT_ENTRY_URL = "https://www.audiounion.jp/st/new_arrival_used.html";
 const DETAIL_URL_PATTERN = /audiounion\.jp\/ct\/detail\/used\/\d+\/?/i;
@@ -171,9 +171,9 @@ function suffixBrandIdentity(candidates: readonly string[]): ManufacturerModelPa
 }
 
 function repairIdentity(
-  item: ShopParsedProduct,
+  item: SellerProduct,
   candidates: readonly string[] | undefined,
-): ShopParsedProduct {
+): SellerProduct {
   if (!candidates?.length) return item;
 
   const known = combineKnownManufacturer(candidates);
@@ -182,6 +182,7 @@ function repairIdentity(
     const title = model ? `${known.raw} ${model}` : known.raw;
     return {
       ...item,
+      rawManufacturer: known.raw,
       manufacturer: known.raw,
       model,
       title,
@@ -194,6 +195,7 @@ function repairIdentity(
     const title = `${prefixPair.manufacturer} ${prefixPair.model}`.trim();
     return {
       ...item,
+      rawManufacturer: prefixPair.manufacturer,
       ...prefixPair,
       title,
       category: inferCategory(title, item.category === "その他" ? "" : item.category),
@@ -207,6 +209,7 @@ function repairIdentity(
       : suffixBrand.manufacturer;
     return {
       ...item,
+      rawManufacturer: suffixBrand.manufacturer,
       ...suffixBrand,
       title,
       category: inferCategory(title, item.category === "その他" ? "" : item.category),
@@ -218,6 +221,7 @@ function repairIdentity(
     const split = splitManufacturerModel(cleanTitle, "audiounion");
     return {
       ...item,
+      rawManufacturer: split.manufacturer,
       ...split,
       title: cleanTitle,
       category: inferCategory(cleanTitle, item.category === "その他" ? "" : item.category),
@@ -226,7 +230,7 @@ function repairIdentity(
   return item;
 }
 
-function parseAudioUnion(html: string, pageUrl: string): ShopParsedProduct[] {
+function parseAudioUnion(html: string, pageUrl: string): SellerProduct[] {
   const fallback = parseProductPage(html, {
     shopKey: "audiounion",
     baseUrl: pageUrl,
@@ -247,8 +251,11 @@ export const audioUnionAdapter = {
   transport: "relay",
   requestDelayMs: 10_000,
   inventoryRecheck: audioUnionInventoryRecheck,
-  *pageUrls(_maxPages, env) {
-    yield env?.AUDIOUNION_ENTRY_URL?.trim() || DEFAULT_ENTRY_URL;
+  discovery: {
+    coverage: "partial",
+    *initialTargets({ env }) {
+      yield env.AUDIOUNION_ENTRY_URL?.trim() || DEFAULT_ENTRY_URL;
+    },
   },
   parse(html, pageUrl = DEFAULT_ENTRY_URL) {
     return parseAudioUnion(html, pageUrl);

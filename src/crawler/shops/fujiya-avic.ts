@@ -95,9 +95,6 @@ export function extractFujiyaDetailCategoryEvidence(
   html: string,
   product: Partial<Pick<NormalizedCatalogProduct, "model" | "title">> = {},
 ): CategoryEvidenceInput[] {
-  // Prefer product-specific metadata. Never scan the entire detail page: related-product
-  // copy can mention a different component (for example an amplifier page mentioning
-  // a matching SACD player) and would otherwise create false category evidence.
   for (const description of metaDescriptions(html)) {
     const evidence = firstExplicitDetailEvidence(description, "detail_metadata");
     if (evidence.length) return evidence;
@@ -117,18 +114,10 @@ export const fujiyaAvicAdapter = {
   key: "fujiya-avic",
   name: "フジヤエービック",
   baseUrl: "https://www.fujiya-avic.co.jp",
-  // Fujiya is intentionally collected from three bounded feeds: newest used arrivals,
-  // the dedicated outlet category, and the broader outlet-and-stock-sale feature.
-  // Products shared by the latter two feeds retain the same canonical product URL/source ID,
-  // so the normal persistence identity prevents duplicate listings.
-  // These feeds are not the shop's complete inventory, so missing products must never be
-  // treated as sold merely because they disappear here.
-  partialCoverage: true,
   categoryPolicy: Object.freeze({
     sellerCategory: Object.freeze({
       default: "authoritative",
       categories: Object.freeze({
-        // These merchandising buckets are known to contain heterogeneous products.
         dap: "corroborative",
         headphone_amp: "corroborative",
       }),
@@ -140,19 +129,22 @@ export const fujiyaAvicAdapter = {
     }),
   }),
   extractDetailCategoryEvidence: extractFujiyaDetailCategoryEvidence,
-  dynamicPagination: true,
-  continueOnEmpty: true,
-  *pageUrls(_maxPages?: number) {
-    yield pageFor(FEED_NEW_ARRIVALS);
-    yield pageFor(FEED_OUTLET);
-    yield pageFor(FEED_OUTLET_STOCK_SALE);
-  },
-  discoverPageUrls(html, page) {
-    if ((page.page ?? 1) !== 1) return [];
-    const count = parseFujiyaResultCount(html);
-    if (count == null) return null;
-    const totalPages = Math.max(1, Math.ceil(count / PAGE_SIZE));
-    return Array.from({ length: totalPages - 1 }, (_, index) => pageFor(page.feed, index + 2));
+  discovery: {
+    // New arrivals and outlet feeds are intentionally bounded subsets of total inventory.
+    coverage: "partial",
+    continueOnEmpty: true,
+    *initialTargets() {
+      yield pageFor(FEED_NEW_ARRIVALS);
+      yield pageFor(FEED_OUTLET);
+      yield pageFor(FEED_OUTLET_STOCK_SALE);
+    },
+    discoverTargets(html, page) {
+      if ((page.page ?? 1) !== 1) return [];
+      const count = parseFujiyaResultCount(html);
+      if (count == null) return null;
+      const totalPages = Math.max(1, Math.ceil(count / PAGE_SIZE));
+      return Array.from({ length: totalPages - 1 }, (_, index) => pageFor(page.feed, index + 2));
+    },
   },
   parse(html, page = pageFor(FEED_NEW_ARRIVALS)) {
     return parseProductPage(html, {

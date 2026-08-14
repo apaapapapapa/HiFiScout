@@ -1,15 +1,7 @@
-import type { CrawlPage, CrawlerEnv, PageUrlsContext, ShopAdapter } from "./types.js";
+import type { CrawlPage, CrawlerEnv, DiscoveryContext, ShopAdapter } from "./types.js";
 
-/** The strategies only read a slice of the adapter, so tests may pass partial objects. */
-type PageQueueAdapter<TPage extends CrawlPage> = Pick<ShopAdapter<TPage>, "pageUrls">;
-type PageDiscoveryAdapter<TPage extends CrawlPage> = Pick<
-  ShopAdapter<TPage>,
-  "dynamicPagination" | "discoverPageUrls"
->;
-type CoverageAdapter = Pick<
-  ShopAdapter,
-  "partialCoverage" | "dynamicPagination" | "guardItemCount" | "continueOnEmpty"
->;
+/** The strategies only read the discovery slice, so tests may pass synthetic adapters. */
+type DiscoveryAdapter<TPage extends CrawlPage> = Pick<ShopAdapter<TPage>, "baseUrl" | "discovery">;
 
 export interface CoverageSignals {
   reachedEnd: boolean;
@@ -18,12 +10,7 @@ export interface CoverageSignals {
 }
 
 export interface CoverageDecision {
-  /**
-   * Stays `boolean | undefined`: the `&&`/`||` chain short-circuits on the optional
-   * `dynamicPagination` flag, so an adapter that declares neither flag yields `undefined`
-   * today and the value is forwarded (and JSON-serialized) as-is.
-   */
-  deactivateMissing: boolean | undefined;
+  deactivateMissing: boolean;
   guardItemCount: boolean;
 }
 
@@ -31,37 +18,70 @@ export function pageUrl(page: CrawlPage): string {
   return typeof page === "string" ? page : page.url;
 }
 
+/**
+ * Resolve and validate a target before it reaches transport. Discovery may use relative targets,
+ * but it cannot leave the shop's configured https origin.
+ */
+export function targetUrl<TPage extends CrawlPage>(
+  adapter: Pick<ShopAdapter<TPage>, "baseUrl">,
+  page: TPage,
+): string {
+  const raw = pageUrl(page);
+  let parsed: URL;
+  try {
+    parsed = new URL(raw, adapter.baseUrl);
+  } catch {
+    throw new Error(`invalid crawl target URL: ${raw}`);
+  }
+  if (parsed.protocol !== "https:" || parsed.origin !== adapter.baseUrl) {
+    throw new Error(`crawl target outside shop origin ${adapter.baseUrl}: ${parsed.toString()}`);
+  }
+  return parsed.toString();
+}
+
 export function initialPageQueue<TPage extends CrawlPage>(
-  adapter: PageQueueAdapter<TPage>,
-  maxPages?: number,
-  env?: CrawlerEnv,
-  context?: PageUrlsContext,
+  adapter: DiscoveryAdapter<TPage>,
+  maxPages = 1,
+  env: CrawlerEnv = {},
+  context: Omit<DiscoveryContext, "maxPages" | "env"> = {},
 ): TPage[] {
-  return [...adapter.pageUrls(maxPages, env, context)];
+  const allowance = Math.max(0, adapter.discovery.extraPageAllowance || 0);
+  const limit = Math.max(1, maxPages) + allowance;
+  const discoveryContext: DiscoveryContext = { maxPages, env, ...context };
+  const pages: TPage[] = [];
+  const seen = new Set<string>();
+
+  for (const page of adapter.discovery.initialTargets(discoveryContext)) {
+    const url = targetUrl(adapter, page);
+    if (seen.has(url)) continue;
+    seen.add(url);
+    pages.push(page);
+    if (pages.length >= limit) break;
+  }
+  return pages;
 }
 
 export function discoverPages<TPage extends CrawlPage>(
-  adapter: PageDiscoveryAdapter<TPage>,
+  adapter: DiscoveryAdapter<TPage>,
   html: string,
   page: TPage,
-): TPage[] | null {
-  if (!adapter.dynamicPagination || !adapter.discoverPageUrls) return [];
-  return adapter.discoverPageUrls(html, page);
+): readonly TPage[] | null {
+  if (!adapter.discovery.discoverTargets) return [];
+  return adapter.discovery.discoverTargets(html, page);
 }
 
-export function shouldContinueAfterEmpty(adapter: CoverageAdapter): boolean {
-  return adapter.continueOnEmpty === true;
+export function shouldContinueAfterEmpty(adapter: DiscoveryAdapter<CrawlPage>): boolean {
+  return adapter.discovery.continueOnEmpty === true;
 }
 
 export function coverageDecision(
-  adapter: CoverageAdapter,
+  adapter: DiscoveryAdapter<CrawlPage>,
   { reachedEnd, coverageIncomplete, queueEmpty }: CoverageSignals,
 ): CoverageDecision {
   const deactivateMissing =
-    !adapter.partialCoverage &&
-    (reachedEnd || (adapter.dynamicPagination && !coverageIncomplete && queueEmpty));
+    adapter.discovery.coverage === "complete" && !coverageIncomplete && (reachedEnd || queueEmpty);
   return {
     deactivateMissing,
-    guardItemCount: deactivateMissing || adapter.guardItemCount === true,
+    guardItemCount: deactivateMissing || adapter.discovery.guardItemCount === true,
   };
 }

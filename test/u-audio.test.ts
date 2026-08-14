@@ -5,6 +5,7 @@ import {
   parseUAudioResultCount,
   uAudioAdapter,
 } from "../src/crawler/shops/u-audio.js";
+import { initialPageQueue } from "../src/crawler/strategies.js";
 
 const html = `
 <h1>中古スピーカー</h1><p>全 41 件</p>
@@ -25,6 +26,8 @@ test("U-AUDIO parser handles stock, inquiry prices, seller notes, and stable ite
 
   assert.equal(items[0].sourceId, "000000009659");
   assert.equal(items[0].sourceUrl, "https://www.u-audio.com/view/item/000000009659");
+  assert.equal(items[0].rawManufacturer, "B&W");
+  assert.equal(items[0].rawCategory, "中古スピーカー");
   assert.equal(items[0].manufacturer, "B&W");
   assert.equal(items[0].model, "802D4W(サテン・ホワイト)");
   assert.equal(items[0].priceYen, 2980000);
@@ -50,11 +53,12 @@ test("U-AUDIO outlet entries are marked and treated as available unless sold out
 });
 
 test("U-AUDIO pagination crawls all outlet pages before used categories", () => {
-  const [bootstrap] = [...uAudioAdapter.pageUrls()];
+  const [bootstrap] = initialPageQueue(uAudioAdapter, 40);
   assert.equal(bootstrap.url, "https://www.u-audio.com/view/category/ct18");
   assert.equal(bootstrap.bootstrap, true);
+  assert.equal(uAudioAdapter.discovery.coverage, "complete");
 
-  const discovered = uAudioAdapter.discoverPageUrls("<p>全 49 件</p>", bootstrap);
+  const discovered = uAudioAdapter.discovery.discoverTargets?.("<p>全 49 件</p>", bootstrap);
   assert.ok(discovered);
   assert.equal(discovered[0].url, "https://www.u-audio.com/view/category/ct18?page=2");
   assert.equal(discovered[1].url, "https://www.u-audio.com/view/category/ct4");
@@ -68,7 +72,7 @@ test("U-AUDIO pagination crawls all outlet pages before used categories", () => 
 
   const accessory = discovered.find((page) => page.categoryCode === "ct10");
   assert.ok(accessory);
-  assert.deepEqual(uAudioAdapter.discoverPageUrls("<p>全 48 件</p>", accessory), [
+  assert.deepEqual(uAudioAdapter.discovery.discoverTargets?.("<p>全 48 件</p>", accessory), [
     {
       url: "https://www.u-audio.com/view/category/ct10?page=2",
       page: 2,

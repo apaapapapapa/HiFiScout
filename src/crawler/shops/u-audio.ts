@@ -1,6 +1,6 @@
+import { availabilityFromSignals } from "../availability.js";
 import { cleanText, inferCategory, parseYen } from "../normalize.js";
-import type { ShopParsedProduct, StockStatus } from "../../catalog/types.js";
-import type { CrawlPageObject, ShopAdapter } from "../types.js";
+import type { CrawlPageObject, SellerProduct, ShopAdapter } from "../types.js";
 
 const BASE_URL = "https://www.u-audio.com";
 const PAGE_SIZE = 40;
@@ -189,12 +189,11 @@ function conditionText(
   return [...new Set(conditions)].join(" / ");
 }
 
-function stockStatus(title: string, text: string): StockStatus {
+function stockStatus(title: string, text: string) {
   const source = `${title} ${text}`;
-  if (/SOLD\s*OUT|売り切れ|売切れ|売約済|在庫なし|完売|品切れ/i.test(source)) {
-    return "sold_out";
-  }
-  return "in_stock";
+  const soldOut = /SOLD\s*OUT|売り切れ|売切れ|売約済|在庫なし|完売|品切れ/i.test(source);
+  // The seller treats 商談中 as still available; only explicit sold evidence closes the listing.
+  return availabilityFromSignals({ soldOut, inStock: !soldOut });
 }
 
 export function parseUAudioResultCount(html: string): number | null {
@@ -202,12 +201,9 @@ export function parseUAudioResultCount(html: string): number | null {
   return match ? Number.parseInt(match[1].replace(/[，,]/g, ""), 10) : null;
 }
 
-export function parseUAudioListing(
-  html: string,
-  page: Partial<UAudioPage> = {},
-): ShopParsedProduct[] {
+export function parseUAudioListing(html: string, page: Partial<UAudioPage> = {}): SellerProduct[] {
   const records = productAnchorRecords(html);
-  const products: ShopParsedProduct[] = [];
+  const products: SellerProduct[] = [];
 
   for (let index = 0; index < records.length; index += 1) {
     const record = records[index];
@@ -251,24 +247,26 @@ export const uAudioAdapter = {
     sellerCategory: Object.freeze({ default: "authoritative" }),
     parserHint: "corroborative",
   }),
-  dynamicPagination: true,
-  continueOnEmpty: true,
-  *pageUrls() {
-    yield { ...listingPage(OUTLET_PAGE, 1), bootstrap: true };
-  },
-  discoverPageUrls(html, page) {
-    if (page.bootstrap) {
+  discovery: {
+    coverage: "complete",
+    continueOnEmpty: true,
+    *initialTargets() {
+      yield { ...listingPage(OUTLET_PAGE, 1), bootstrap: true };
+    },
+    discoverTargets(html, page) {
+      if (page.bootstrap) {
+        const count = parseUAudioResultCount(html);
+        if (count == null) throw new Error("U-AUDIO outlet result count not found");
+        return [
+          ...additionalPages(page, count),
+          ...USED_PAGES.map((category) => listingPage(category, 1)),
+        ];
+      }
+      if (page.page !== 1) return [];
       const count = parseUAudioResultCount(html);
-      if (count == null) throw new Error("U-AUDIO outlet result count not found");
-      return [
-        ...additionalPages(page, count),
-        ...USED_PAGES.map((category) => listingPage(category, 1)),
-      ];
-    }
-    if (page.page !== 1) return [];
-    const count = parseUAudioResultCount(html);
-    if (count == null) return null;
-    return additionalPages(page, count);
+      if (count == null) return null;
+      return additionalPages(page, count);
+    },
   },
   parse(html, page) {
     return parseUAudioListing(html, page);
