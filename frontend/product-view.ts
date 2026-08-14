@@ -99,8 +99,7 @@ export function paginationMarkup(
   return parts.join("");
 }
 
-const CATEGORY_SEPARATOR =
-  '<option disabled data-category-separator="true">────────────</option>';
+const CATEGORY_SEPARATOR = '<option disabled data-category-separator="true">────────────</option>';
 
 /**
  * Renders category metadata in server order.

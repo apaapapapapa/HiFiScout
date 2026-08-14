@@ -4,7 +4,9 @@ import assert from "node:assert/strict";
 import { categoryOptions } from "../frontend/product-view.js";
 import type { MetaCategoryFacet, MetaResponse } from "../src/api/contracts.js";
 
-function facet(overrides: Partial<MetaCategoryFacet> & Pick<MetaCategoryFacet, "id" | "name">): MetaCategoryFacet {
+function facet(
+  overrides: Partial<MetaCategoryFacet> & Pick<MetaCategoryFacet, "id" | "name">,
+): MetaCategoryFacet {
   return {
     id: overrides.id,
     name: overrides.name,

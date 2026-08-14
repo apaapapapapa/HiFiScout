@@ -84,8 +84,14 @@ test("product response guard validates the fields the UI consumes", () => {
   assert.equal(isProductsResponse(valid), true);
   assert.equal(isProductsResponse({ ...valid, hasMore: "yes" }), false);
   assert.equal(isProductsResponse({ ...valid, nextCursor: 2 }), false);
-  assert.equal(isProductsResponse({ ...valid, items: [{ ...product(), stock_status: "available" }] }), false);
-  assert.equal(isProductsResponse({ ...valid, items: [{ ...product(), category_ids: "speaker" }] }), false);
+  assert.equal(
+    isProductsResponse({ ...valid, items: [{ ...product(), stock_status: "available" }] }),
+    false,
+  );
+  assert.equal(
+    isProductsResponse({ ...valid, items: [{ ...product(), category_ids: "speaker" }] }),
+    false,
+  );
   assert.equal(isProductsResponse({ ...valid, totalPages: -1 }), false);
 });
 

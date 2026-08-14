@@ -170,7 +170,8 @@ function isProductListItem(value: unknown): value is ProductListItem {
     (value.is_active === 0 || value.is_active === 1) &&
     isNullableNumber(value.previous_price_yen) &&
     isStringArray(value.category_ids) &&
-    (value.classification_status === "classified" || value.classification_status === "unclassified") &&
+    (value.classification_status === "classified" ||
+      value.classification_status === "unclassified") &&
     isNullableString(value.last_inventory_checked_at) &&
     isNonNegativeInteger(value.inventory_check_failures) &&
     isNullableString(value.last_inventory_check_attempt_at) &&
@@ -180,7 +181,9 @@ function isProductListItem(value: unknown): value is ProductListItem {
 }
 
 function isProductPricePoint(value: unknown): value is ProductPricePoint {
-  return isRecord(value) && isFiniteNumber(value.price_yen) && typeof value.observed_at === "string";
+  return (
+    isRecord(value) && isFiniteNumber(value.price_yen) && typeof value.observed_at === "string"
+  );
 }
 
 export function isMetaResponse(value: unknown): value is MetaResponse {
