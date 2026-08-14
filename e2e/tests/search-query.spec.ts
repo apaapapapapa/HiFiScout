@@ -25,6 +25,7 @@ test("multi-word search is sent to the product API unchanged and renders its res
             {
               id: 1000,
               shop_key: "shop-a",
+              source_id: "tad-d1000mk2",
               manufacturer: "TAD",
               manufacturer_id: "tad",
               raw_manufacturer: "Technical Audio Devices",
@@ -34,6 +35,7 @@ test("multi-word search is sent to the product API unchanged and renders its res
               raw_category: "D/Aコンバーター",
               primary_category_id: "dac",
               category_ids: ["dac"],
+              classification_status: "classified",
               condition_text: "中古",
               price_yen: 500000,
               previous_price_yen: null,
@@ -44,6 +46,12 @@ test("multi-word search is sent to the product API unchanged and renders its res
               last_changed_at: "2026-08-12T00:00:00.000Z",
               last_activity_at: "2026-08-12T00:00:00.000Z",
               search_aliases: "DAC D/A Converter",
+              is_active: 1,
+              metadata_json: "{}",
+              last_inventory_checked_at: null,
+              inventory_check_failures: 0,
+              last_inventory_check_attempt_at: null,
+              source_published_at: null,
             },
           ]
         : [];
