@@ -1,5 +1,6 @@
 import { categorySearchAliases, getCategory } from "../catalog/categories.js";
 import { catalogModelLookupVariants, knowledgeCatalogKey } from "../catalog/knowledge-catalog.js";
+import { refreshListingProjections } from "./listing-projection-refresh.js";
 import type {
   CatalogMatchIndexEntry,
   ProductRow,
@@ -35,22 +36,31 @@ interface CatalogLookupProduct {
   model?: string;
   normalizedModel?: string;
   normalized_model?: string;
+  modelResolutionStatus?: string;
+  model_resolution_status?: string;
 }
 
 type ReclassificationProductRow = Pick<
   ProductRow,
   | "id"
+  | "shop_key"
+  | "source_id"
   | "manufacturer_id"
   | "model"
+  | "model_resolution_status"
   | "category"
   | "primary_category_id"
   | "category_ids"
   | "classification_status"
->;
+> & {
+  identity_status: string | null;
+  identity_catalog_product_id: number | null;
+};
 
 interface ReclassificationPage {
   statements: D1PreparedStatement[];
   reclassifiedProducts: number;
+  reclassifiedListings: Array<{ shop_key: string; source_id: string }>;
 }
 
 function unique(values: readonly unknown[] = []): string[] {
@@ -205,6 +215,13 @@ export async function findVerifiedCatalogMatches(
   const index = await loadVerifiedCatalogIndex(db, manufacturerIds);
   const matches = new Map<string, CatalogMatchIndexEntry>();
   for (const product of products) {
+    // A Knowledge Catalog row is authoritative only after Model Resolution has produced a usable
+    // identity input. Candidate/unresolved models must not borrow verified category evidence merely
+    // because their presentation happens to equal a catalog spelling.
+    const modelResolutionStatus =
+      product?.modelResolutionStatus || product?.model_resolution_status || "";
+    if (modelResolutionStatus && modelResolutionStatus !== "resolved") continue;
+
     const manufacturerId = product?.manufacturerId || product?.manufacturer_id;
     const model = product?.model || product?.normalizedModel || product?.normalized_model;
     const key = knowledgeCatalogKey(manufacturerId, model);
@@ -245,11 +262,23 @@ function buildReclassificationStatements(
   matches: ReadonlyMap<string, CatalogMatchIndexEntry>,
 ): ReclassificationPage {
   const statements: D1PreparedStatement[] = [];
+  const reclassifiedListings: Array<{ shop_key: string; source_id: string }> = [];
   let reclassifiedProducts = 0;
 
   for (const product of products) {
     const match = matches.get(knowledgeCatalogKey(product.manufacturer_id, product.model));
     if (!match) continue;
+    // Historical reclassification is allowed only when the existing conservative Product Identity
+    // resolver has attached this listing to the same verified canonical product. Candidate catalog
+    // IDs and unresolved identities never become category authority.
+    if (
+      product.identity_status !== "matched" ||
+      product.identity_catalog_product_id === null ||
+      Number(product.identity_catalog_product_id) !== Number(match.id)
+    ) {
+      continue;
+    }
+
     const categoryIds = match.categoryIds.filter(
       (categoryId) => getCategory(categoryId)?.selectable,
     );
@@ -291,14 +320,16 @@ function buildReclassificationStatements(
           .bind(product.id, categoryId),
       );
     }
+    reclassifiedListings.push({ shop_key: product.shop_key, source_id: product.source_id });
     reclassifiedProducts += 1;
   }
 
-  return { statements, reclassifiedProducts };
+  return { statements, reclassifiedProducts, reclassifiedListings };
 }
 
 export async function reclassifyProductsFromKnowledgeCatalog(
   db: QueryableDatabase,
+  evaluatedAt = new Date().toISOString(),
 ): Promise<number> {
   let lastId = 0;
   let reclassifiedProducts = 0;
@@ -306,11 +337,15 @@ export async function reclassifyProductsFromKnowledgeCatalog(
   for (;;) {
     const observed = await db
       .prepare(`
-      SELECT id, canonical_manufacturer_id AS manufacturer_id, model, category,
-             primary_category_id, category_ids, classification_status
-      FROM products
-      WHERE is_active = 1 AND canonical_manufacturer_id <> '' AND model <> '' AND id > ?
-      ORDER BY id
+      SELECT p.id, p.shop_key, p.source_id,
+             p.canonical_manufacturer_id AS manufacturer_id, p.model, p.model_resolution_status,
+             p.category, p.primary_category_id, p.category_ids, p.classification_status,
+             pir.status AS identity_status,
+             pir.catalog_product_id AS identity_catalog_product_id
+      FROM products p
+      LEFT JOIN product_identity_resolutions pir ON pir.listing_product_id = p.id
+      WHERE p.is_active = 1 AND p.canonical_manufacturer_id <> '' AND p.model <> '' AND p.id > ?
+      ORDER BY p.id
       LIMIT ?
     `)
       .bind(lastId, PRODUCT_PAGE_SIZE)
@@ -321,6 +356,12 @@ export async function reclassifyProductsFromKnowledgeCatalog(
     const matches = await findVerifiedCatalogMatches(db, products);
     const page = buildReclassificationStatements(db, products, matches);
     await runBatches(db, page.statements);
+    if (page.reclassifiedListings.length) {
+      // Category/search aliases are part of the product-level read model. Refresh through the same
+      // Phase 4 dependency order so search projection, Product Identity and entity membership cannot
+      // be left stale after a canonical category correction.
+      await refreshListingProjections(db, page.reclassifiedListings, evaluatedAt);
+    }
     reclassifiedProducts += page.reclassifiedProducts;
 
     lastId = Number(products[products.length - 1].id);
