@@ -8,6 +8,7 @@
 import { dispatchDueCrawls, dispatchScheduledCrawl } from "./crawler/dispatch.js";
 import { sharedSweepExclusions, shopForCron } from "./crawler/schedule.js";
 import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from "./catalog/knowledge-verification/verifier.js";
+import { runDataQualityRemediationSweep } from "./db/data-quality-remediation-service.js";
 import { knowledgeCatalogVerificationQueueStatus } from "./db/knowledge-catalog-verification-queue-repository.js";
 import {
   claimKnowledgeCatalogVerifierVersion,
@@ -136,8 +137,8 @@ export async function bootstrapKnowledgeCatalogReview(env: Env) {
 }
 
 /**
- * Both tasks are handed to `waitUntil` rather than awaited: a cron invocation should return
- * immediately and let the runtime keep the work alive.
+ * Crawl dispatch, catalog verification rollout, and data-quality replay are independent bounded
+ * tasks. Remediation shares the five-minute trigger but never performs a recrawl.
  */
 export function handleScheduled(
   controller: ScheduledController,
@@ -145,5 +146,8 @@ export function handleScheduled(
   ctx: ExecutionContext,
 ): void {
   ctx.waitUntil(runScheduled(controller.cron, env));
-  if (controller.cron === GENERAL_CRON) ctx.waitUntil(bootstrapKnowledgeCatalogReview(env));
+  if (controller.cron === GENERAL_CRON) {
+    ctx.waitUntil(bootstrapKnowledgeCatalogReview(env));
+    ctx.waitUntil(runDataQualityRemediationSweep(env.DB));
+  }
 }

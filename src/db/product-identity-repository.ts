@@ -1,5 +1,6 @@
 import { catalogModelLookupVariants } from "../catalog/knowledge-catalog.js";
 import { resolveProductIdentity } from "../catalog/product-identity.js";
+import { IDENTITY_RESOLVER_VERSION } from "../catalog/resolution-versions.js";
 import type { IdentityCandidateInput, ProductIdentityResolution } from "../catalog/types.js";
 import type {
   IdentitySyncMetrics,
@@ -42,6 +43,10 @@ type IdentityListingRow = Pick<
   | "primary_category_id"
   | "classification_status"
 >;
+
+interface VersionedIdentityResolutionRow extends ProductIdentityResolutionRow {
+  identity_resolver_version: number;
+}
 
 interface SerializedResolution {
   catalogProductId: number | null;
@@ -167,8 +172,8 @@ async function loadListingRows(
 async function loadExistingResolutions(
   db: QueryableDatabase,
   productIds: readonly number[] = [],
-): Promise<Map<number, ProductIdentityResolutionRow>> {
-  const rows: ProductIdentityResolutionRow[] = [];
+): Promise<Map<number, VersionedIdentityResolutionRow>> {
+  const rows: VersionedIdentityResolutionRow[] = [];
   for (let i = 0; i < productIds.length; i += CHUNK_SIZE) {
     const chunk = productIds.slice(i, i + CHUNK_SIZE);
     if (!chunk.length) continue;
@@ -177,12 +182,12 @@ async function loadExistingResolutions(
       .prepare(`
         SELECT listing_product_id, catalog_product_id, candidate_catalog_product_id, status,
                match_method, confidence, normalized_model, model_stem, variants_json,
-               matched_fields_json, rejected_by_json
+               matched_fields_json, rejected_by_json, identity_resolver_version
         FROM product_identity_resolutions
         WHERE listing_product_id IN (${placeholders})
       `)
       .bind(...chunk)
-      .all<ProductIdentityResolutionRow>();
+      .all<VersionedIdentityResolutionRow>();
     rows.push(...(result.results || []));
   }
   return new Map(rows.map((row) => [Number(row.listing_product_id), row]));
@@ -208,11 +213,12 @@ function serializedResolution(resolution: ProductIdentityResolution): Serialized
 }
 
 function sameResolution(
-  existing: ProductIdentityResolutionRow | undefined,
+  existing: VersionedIdentityResolutionRow | undefined,
   next: SerializedResolution,
 ): boolean {
   return Boolean(
     existing &&
+    Number(existing.identity_resolver_version) === IDENTITY_RESOLVER_VERSION &&
     (existing.catalog_product_id == null ? null : Number(existing.catalog_product_id)) ===
       next.catalogProductId &&
     (existing.candidate_catalog_product_id == null
@@ -286,8 +292,8 @@ export async function syncProductIdentityResolutions(
           INSERT INTO product_identity_resolutions(
             listing_product_id, catalog_product_id, candidate_catalog_product_id, status,
             match_method, confidence, normalized_model, model_stem, variants_json,
-            matched_fields_json, rejected_by_json, evaluated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            matched_fields_json, rejected_by_json, identity_resolver_version, evaluated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(listing_product_id) DO UPDATE SET
             catalog_product_id = excluded.catalog_product_id,
             candidate_catalog_product_id = excluded.candidate_catalog_product_id,
@@ -299,6 +305,7 @@ export async function syncProductIdentityResolutions(
             variants_json = excluded.variants_json,
             matched_fields_json = excluded.matched_fields_json,
             rejected_by_json = excluded.rejected_by_json,
+            identity_resolver_version = excluded.identity_resolver_version,
             evaluated_at = excluded.evaluated_at
         `)
         .bind(
@@ -313,6 +320,7 @@ export async function syncProductIdentityResolutions(
           serialized.variantsJson,
           serialized.matchedFieldsJson,
           serialized.rejectedByJson,
+          IDENTITY_RESOLVER_VERSION,
           evaluatedAt,
         ),
     );
