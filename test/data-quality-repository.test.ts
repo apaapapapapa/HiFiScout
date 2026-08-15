@@ -203,6 +203,8 @@ test("stored row exposes identity coverage gaps against all active listings", ()
   assert.equal(row.latestRun.metrics.itemCount.previous, 105);
   assert.equal(row.snapshot.status, "warning");
   assert.equal(row.latestRun.status, "healthy");
+  assert.equal(row.latestRun.crawlRunId, 42);
+  assert.equal(row.latestRun.evaluatedAt, "2026-08-12T13:00:00.000Z");
   assert.equal(row.crawlRunId, 42);
 });
 
@@ -290,9 +292,12 @@ test("a remediation-only row cannot bury a real crawl's parser-failure critical"
     evaluated_at: "2026-08-15T00:00:00.000Z",
     parse_attempt_count: 10,
     parse_failure_count: 9,
+    evidence_expected_event_count: 10,
+    evidence_archived_event_count: 2,
+    evidence_archive_failure_count: 3,
     parser_status: "critical",
     item_count_status: "healthy",
-    evidence_status: "unknown",
+    evidence_status: "critical",
     run_status: "critical",
     quality_status: "critical",
     rn_latest: 2,
@@ -303,6 +308,7 @@ test("a remediation-only row cannot bury a real crawl's parser-failure critical"
     crawl_run_id: null,
     evaluated_at: "2026-08-15T01:00:00.000Z",
     manufacturer_missing_count: 0,
+    evidence_archive_failure_count: 0,
     rn_latest: 1,
     rn_latest_crawl: 3,
   });
@@ -310,14 +316,20 @@ test("a remediation-only row cannot bury a real crawl's parser-failure critical"
 
   const [shop] = await latestDataQualityByShop(db);
 
-  // The remediation row is newer, but it never measured parser health — the last real crawl's
-  // critical parser failure must still be what /status reports, not a fabricated "unknown".
+  // The remediation row owns snapshot provenance, while crawl-only health and details keep the
+  // provenance of the last real crawl that actually measured them.
   assert.equal(shop.id, 2);
+  assert.equal(shop.crawlRunId, null);
   assert.equal(shop.evaluatedAt, "2026-08-15T01:00:00.000Z");
   assert.equal(shop.status, "critical");
   assert.equal(shop.latestRun.status, "critical");
+  assert.equal(shop.latestRun.crawlRunId, 10);
+  assert.equal(shop.latestRun.evaluatedAt, "2026-08-15T00:00:00.000Z");
   assert.equal(shop.metrics.parserFailure.status, "critical");
   assert.equal(shop.metrics.parserFailure.rate, 0.9);
+  assert.equal(shop.metrics.evidenceCoverage.status, "critical");
+  assert.equal(shop.metrics.evidenceCoverage.rate, 0.2);
+  assert.equal(shop.details.evidenceArchiveFailureCount, 3);
   assert.match(db.calls[0].sql, /rn_latest_crawl/);
 });
 
@@ -337,4 +349,6 @@ test("the common case (no intervening remediation row) is unaffected", async () 
 
   assert.equal(shop.id, 1);
   assert.equal(shop.status, "healthy");
+  assert.equal(shop.latestRun.crawlRunId, 10);
+  assert.equal(shop.latestRun.evaluatedAt, "2026-08-15T00:00:00.000Z");
 });
