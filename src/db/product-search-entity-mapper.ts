@@ -11,6 +11,7 @@
  */
 
 import { categoryClosureIds, getCategory } from "../catalog/categories.js";
+import { normalizeManufacturer } from "../catalog/manufacturers.js";
 import { NEW_OFFER_WINDOW_MS } from "./product-search-entity-sql.js";
 import type { ProductOffer, ProductSearchItem } from "../api/contracts.js";
 import type {
@@ -115,12 +116,21 @@ export function toProductSearchItem(
 ): ProductSearchItem {
   const summary = aggregate ?? row;
   const newestListedAt = summary.newest_listed_at ?? null;
+  // Read models are eventually repaired by the versioned remediation queue, but cards must never
+  // expose a seller condition badge as part of the brand while that backfill is still catching up.
+  // Bootstrap-known brands also recover their canonical public id here; operational aliases keep
+  // the id already stored in the entity because their vocabulary lives in D1, not this code map.
+  const normalizedManufacturer = normalizeManufacturer(row.manufacturer);
+  const publicManufacturer = normalizedManufacturer.displayName || row.manufacturer;
+  const publicManufacturerId = normalizedManufacturer.matchedAlias
+    ? normalizedManufacturer.id
+    : row.manufacturer_id;
   return {
     key: row.entity_key,
     identity_kind: row.entity_kind,
     catalog_product_id: nullableNumber(row.catalog_product_id),
-    manufacturer: row.manufacturer,
-    manufacturer_id: row.manufacturer_id,
+    manufacturer: publicManufacturer,
+    manufacturer_id: publicManufacturerId,
     model: row.model,
     primary_category_id: row.primary_category_id,
     category_ids: categoryClosureIds(row.primary_category_id),
