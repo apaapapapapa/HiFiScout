@@ -4,7 +4,9 @@ import type { QueryableDatabase } from "./types.js";
 
 type StoredQuality = Awaited<ReturnType<typeof dataQualityStatus>>["shops"][number];
 
-function withRemediationSlo<T extends StoredQuality>(quality: T): T & {
+function withRemediationSlo<T extends StoredQuality>(
+  quality: T,
+): T & {
   remediationSlo: ReturnType<typeof evaluateRemediationSlo>;
 } {
   const totalItems = Number(quality.metrics.manufacturerUnknown.denominator || 0);

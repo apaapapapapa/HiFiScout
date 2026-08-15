@@ -291,13 +291,17 @@ export async function dataQualityRemediationImpact(
   categoryIssues: CategoryIssueImpact[];
   modelExtractionPatterns: ModelExtractionPatternImpact[];
 }> {
-  const [unknownManufacturers, unresolvedManufacturerModels, categoryIssues, modelExtractionPatterns] =
-    await Promise.all([
-      listUnknownManufacturerImpact(db, limit),
-      listUnresolvedManufacturerModelImpact(db, limit),
-      listCategoryIssueImpact(db, limit),
-      listModelExtractionPatternImpact(db, limit),
-    ]);
+  const [
+    unknownManufacturers,
+    unresolvedManufacturerModels,
+    categoryIssues,
+    modelExtractionPatterns,
+  ] = await Promise.all([
+    listUnknownManufacturerImpact(db, limit),
+    listUnresolvedManufacturerModelImpact(db, limit),
+    listCategoryIssueImpact(db, limit),
+    listModelExtractionPatternImpact(db, limit),
+  ]);
   return {
     unknownManufacturers,
     unresolvedManufacturerModels,
