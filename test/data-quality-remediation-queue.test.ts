@@ -161,7 +161,10 @@ test("full rebuild is explicit, bounded, restartable, and idempotent by rebuild 
   const duplicate = await enqueueFullDataQualityRebuild(db, options);
   assert.equal(duplicate.workKeys.length, 0);
 
-  const page2 = await enqueueFullDataQualityRebuild(db, { ...options, afterId: page1.nextAfterId || 0 });
+  const page2 = await enqueueFullDataQualityRebuild(db, {
+    ...options,
+    afterId: page1.nextAfterId || 0,
+  });
   assert.equal(page2.selectedCount, 1);
   assert.equal(page2.workKeys.length, 1);
   assert.equal(page2.hasMore, false);

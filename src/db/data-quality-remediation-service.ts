@@ -1,4 +1,7 @@
-import { classifyCategoryEvidence, summarizeCategoryEvidence } from "../catalog/category-classifier.js";
+import {
+  classifyCategoryEvidence,
+  summarizeCategoryEvidence,
+} from "../catalog/category-classifier.js";
 import { collectListingCategoryEvidence } from "../catalog/category-evidence.js";
 import { createManufacturerResolver } from "../catalog/manufacturer-resolver.js";
 import { createModelResolver } from "../catalog/model-resolver.js";
@@ -111,7 +114,9 @@ function storedCategoryEvidence(
   }).evidence;
 }
 
-function featureKey(fact: Pick<FeatureFact, "featureId" | "state" | "source" | "confidence">): string {
+function featureKey(
+  fact: Pick<FeatureFact, "featureId" | "state" | "source" | "confidence">,
+): string {
   return `${fact.featureId}:${fact.state}:${fact.source}:${Number(fact.confidence)}`;
 }
 
@@ -390,9 +395,11 @@ async function processJob(
   // One canonical downstream refresh path keeps FTS, Product Identity, and the Phase-4 entity/read
   // model in dependency order. It is intentionally run even when the derived listing is unchanged:
   // an identity-version-only replay still has work to stamp.
-  await refreshListingProjections(db, [
-    { shopKey: row.shop_key, sourceIds: [row.source_id] },
-  ], evaluatedAt);
+  await refreshListingProjections(
+    db,
+    [{ shopKey: row.shop_key, sourceIds: [row.source_id] }],
+    evaluatedAt,
+  );
   await clearProjectionPending(db, row, evaluatedAt);
   return row.shop_key;
 }

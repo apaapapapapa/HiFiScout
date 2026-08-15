@@ -204,7 +204,10 @@ function automaticWorkKey(row: CandidateRow): string {
  */
 export async function seedDataQualityRemediationQueue(
   db: QueryableDatabase,
-  { limit = DEFAULT_SEED_LIMIT, now = new Date().toISOString() }: { limit?: number; now?: string } = {},
+  {
+    limit = DEFAULT_SEED_LIMIT,
+    now = new Date().toISOString(),
+  }: { limit?: number; now?: string } = {},
 ): Promise<SeedRemediationResult> {
   const selectedLimit = bounded(limit, DEFAULT_SEED_LIMIT, MAX_SEED_LIMIT);
   const rows = await db

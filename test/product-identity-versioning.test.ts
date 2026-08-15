@@ -61,21 +61,44 @@ test("identity resolver version bump rewrites once even when the resolution is u
     .run();
   const db = sqliteD1(sqlite);
 
-  const initial = await syncProductIdentityResolutions(db, "shop", ["source-1"], "2026-08-15T00:00:00.000Z");
+  const initial = await syncProductIdentityResolutions(
+    db,
+    "shop",
+    ["source-1"],
+    "2026-08-15T00:00:00.000Z",
+  );
   assert.equal(initial.identity_resolution_write_count, 1);
   assert.equal(
     sqlite
-      .prepare("SELECT identity_resolver_version FROM product_identity_resolutions WHERE listing_product_id = 1")
+      .prepare(
+        "SELECT identity_resolver_version FROM product_identity_resolutions WHERE listing_product_id = 1",
+      )
       .get()?.identity_resolver_version,
     IDENTITY_RESOLVER_VERSION,
   );
 
   sqlite
-    .prepare("UPDATE product_identity_resolutions SET identity_resolver_version = 0 WHERE listing_product_id = 1")
+    .prepare(
+      "UPDATE product_identity_resolutions SET identity_resolver_version = 0 WHERE listing_product_id = 1",
+    )
     .run();
-  const replay = await syncProductIdentityResolutions(db, "shop", ["source-1"], "2026-08-15T00:01:00.000Z");
-  assert.equal(replay.identity_resolution_write_count, 1, "version-only staleness must be persisted");
+  const replay = await syncProductIdentityResolutions(
+    db,
+    "shop",
+    ["source-1"],
+    "2026-08-15T00:01:00.000Z",
+  );
+  assert.equal(
+    replay.identity_resolution_write_count,
+    1,
+    "version-only staleness must be persisted",
+  );
 
-  const noOp = await syncProductIdentityResolutions(db, "shop", ["source-1"], "2026-08-15T00:02:00.000Z");
+  const noOp = await syncProductIdentityResolutions(
+    db,
+    "shop",
+    ["source-1"],
+    "2026-08-15T00:02:00.000Z",
+  );
   assert.equal(noOp.identity_resolution_write_count, 0, "current-version replay must be a no-op");
 });
