@@ -116,10 +116,7 @@ test("canonical manufacturer filters also accept stale resolver ids while replay
 
   const page = db.calls.find((statement) => /SELECT e\.id, e\.entity_key/.test(statement.sql));
   assert.ok(page);
-  assert.match(
-    page.sql,
-    /e\.manufacturer_id IN \(SELECT value FROM json_each\(\?\)\)/,
-  );
+  assert.match(page.sql, /e\.manufacturer_id IN \(SELECT value FROM json_each\(\?\)\)/);
   assert.deepEqual(
     new Set(JSON.parse(String(page.binds[0]))),
     new Set(["msb-technology", "msbtechnology", "msb"]),
