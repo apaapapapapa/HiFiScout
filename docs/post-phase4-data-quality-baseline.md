@@ -1,5 +1,8 @@
 # Post-Phase-4 data-quality baseline
 
+> Progress against this baseline is tracked in
+> [post-phase4-remediation-status.md](post-phase4-remediation-status.md).
+
 This is the pre-remediation production baseline for sections 1 and 2 of the post-Phase-4
 data-quality program. It was captured from the successful Phase 4 deployment run for merge commit
 `d3959f00641ae5025b4ee8d795a82dc09e6867d1` on 2026-08-14.

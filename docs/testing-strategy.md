@@ -57,6 +57,27 @@ The search integration check exists because two behaviors cannot be proven by as
 
 The `E2E` workflow runs after a successful `Deploy Cloudflare` workflow, so it checks the version that was actually deployed instead of racing the deployment. It can also be started manually with an alternate base URL. A single Chromium worker is used to keep cost, duration, and nondeterminism low.
 
+## Post-Phase-4 remediation regression coverage
+
+The remediation work has a fixed regression checklist. Each group has a home, so a new rule is added
+next to the ones it belongs with instead of starting a parallel suite:
+
+| Area | Tests |
+| --- | --- |
+| Manufacturer resolution and alias replay | `manufacturer-resolver`, `manufacturer-repository`, `manufacturer-alias-admin` |
+| Model resolution rules | `model-resolver`, `model-repository` |
+| Model resolution per shop shape | `model-resolver-shop-inputs` |
+| Knowledge Catalog candidates, priority, catalog-driven replay | `knowledge-catalog`, `knowledge-catalog-remediation`, `knowledge-catalog-candidate-selection` |
+| Identity safety (revisions, aliases, fuzzy, ambiguity) | `product-identity`, `product-identity-versioning` |
+| Replay, versioning and the remediation queue | `data-quality-remediation-queue`, `data-quality-remediation-service`, `data-quality-remediation-sweep` |
+| Search behaviour after a remediation changes identity | `remediation-search-integration` |
+| Schema and backfill | `*-migration` tests, one per migration |
+
+`remediation-search-integration` is the only suite that runs against the real migrated schema
+in-process, through `test/helpers/migrated-sqlite.ts`. Reach for that helper when the behaviour under
+test lives in the schema — an FTS index, a trigger, a CHECK, a uniqueness constraint — rather than in
+the SQL a repository emits. Everything else is cheaper to prove with `captureDatabase`.
+
 ## Placement rules for new tests
 
 Choose the lowest layer that can detect the failure:
