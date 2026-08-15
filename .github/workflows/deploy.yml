@@ -123,6 +123,54 @@ jobs:
             npx wrangler d1 execute DB --remote --json --command "$1" | jq '.[0].results // []'
           }
 
+          read_search_entities() {
+            query "
+              SELECT
+                (SELECT COUNT(*) FROM product_search_entities) AS entity_count,
+                (SELECT COUNT(*) FROM product_search_entities WHERE entity_kind = 'catalog') AS catalog_entity_count,
+                (SELECT COUNT(*) FROM product_search_entities WHERE entity_kind = 'unresolved_listing') AS fallback_entity_count,
+                (SELECT COUNT(*) FROM product_search_entities WHERE shop_count > 1) AS multi_shop_entity_count,
+                (SELECT COUNT(*) FROM product_search_entity_offers) AS offer_count,
+                (SELECT COUNT(*) FROM products p
+                  WHERE p.is_active = 1
+                    AND NOT EXISTS (SELECT 1 FROM product_search_entity_offers m WHERE m.listing_product_id = p.id)
+                ) AS unmembered_active_listings,
+                (SELECT COUNT(*) FROM product_search_entity_offers m
+                  JOIN products p ON p.id = m.listing_product_id
+                  WHERE p.is_active = 0
+                ) AS inactive_offer_memberships,
+                (SELECT COUNT(*) FROM product_search_entities e
+                  WHERE NOT EXISTS (SELECT 1 FROM product_search_entity_offers m WHERE m.entity_id = e.id)
+                ) AS entities_without_offers,
+                (SELECT COUNT(*) FROM product_search_entities e
+                  WHERE e.entity_kind = 'unresolved_listing'
+                    AND EXISTS (
+                      SELECT 1 FROM product_identity_resolutions r
+                      JOIN knowledge_catalog_products kp
+                        ON kp.id = r.catalog_product_id AND kp.verification_status = 'verified'
+                      WHERE r.listing_product_id = e.fallback_listing_id AND r.status = 'matched'
+                    )
+                ) AS stale_fallback_entities,
+                (SELECT COUNT(*) FROM product_search_entities e
+                  WHERE e.entity_kind = 'catalog'
+                    AND NOT EXISTS (
+                      SELECT 1 FROM knowledge_catalog_products kp
+                      WHERE kp.id = e.catalog_product_id AND kp.verification_status = 'verified'
+                    )
+                ) AS ineligible_catalog_entities,
+                (SELECT COUNT(*) FROM product_search_entities e
+                  WHERE e.offer_count <> (
+                    SELECT COUNT(*) FROM product_search_entity_offers m
+                    JOIN products p ON p.id = m.listing_product_id
+                    WHERE m.entity_id = e.id AND p.is_active = 1
+                  )
+                ) AS offer_count_mismatches;"
+          }
+
+          search_drift_count() {
+            jq '[.[0] | .unmembered_active_listings, .inactive_offer_memberships, .entities_without_offers, .stale_fallback_entities, .ineligible_catalog_entities, .offer_count_mismatches] | map(. // 0) | add' <<< "$1"
+          }
+
           identity="$(query "
             SELECT
               COUNT(*) AS resolution_count,
@@ -234,6 +282,20 @@ jobs:
             ORDER BY change_count DESC, field, reason
             LIMIT 25;")"
 
+          remediation_queue="$(query "
+            SELECT
+              SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+              SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END) AS processing,
+              SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) AS resolved,
+              SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
+              SUM(CASE WHEN status IN ('pending', 'processing') THEN 1 ELSE 0 END) AS backlog,
+              MIN(CASE WHEN status IN ('pending', 'processing') THEN created_at END) AS oldest_pending_at
+            FROM data_quality_remediation_queue;")"
+          remediation_queue_with_rates="$(jq 'map(. + {
+            completed: ((.resolved // 0) + (.failed // 0)),
+            failure_rate: (if (((.resolved // 0) + (.failed // 0)) > 0) then ((.failed // 0) / ((.resolved // 0) + (.failed // 0))) else null end)
+          })' <<< "$remediation_queue")"
+
           stale_resolver_versions="$(query "
             SELECT
               SUM(CASE WHEN manufacturer_resolver_version < 2 THEN 1 ELSE 0 END)
@@ -243,47 +305,24 @@ jobs:
             FROM products
             WHERE is_active = 1;")"
 
-          search_entities="$(query "
-            SELECT
-              (SELECT COUNT(*) FROM product_search_entities) AS entity_count,
-              (SELECT COUNT(*) FROM product_search_entities WHERE entity_kind = 'catalog') AS catalog_entity_count,
-              (SELECT COUNT(*) FROM product_search_entities WHERE entity_kind = 'unresolved_listing') AS fallback_entity_count,
-              (SELECT COUNT(*) FROM product_search_entities WHERE shop_count > 1) AS multi_shop_entity_count,
-              (SELECT COUNT(*) FROM product_search_entity_offers) AS offer_count,
-              (SELECT COUNT(*) FROM products p
-                WHERE p.is_active = 1
-                  AND NOT EXISTS (SELECT 1 FROM product_search_entity_offers m WHERE m.listing_product_id = p.id)
-              ) AS unmembered_active_listings,
-              (SELECT COUNT(*) FROM product_search_entity_offers m
-                JOIN products p ON p.id = m.listing_product_id
-                WHERE p.is_active = 0
-              ) AS inactive_offer_memberships,
-              (SELECT COUNT(*) FROM product_search_entities e
-                WHERE NOT EXISTS (SELECT 1 FROM product_search_entity_offers m WHERE m.entity_id = e.id)
-              ) AS entities_without_offers,
-              (SELECT COUNT(*) FROM product_search_entities e
-                WHERE e.entity_kind = 'unresolved_listing'
-                  AND EXISTS (
-                    SELECT 1 FROM product_identity_resolutions r
-                    JOIN knowledge_catalog_products kp
-                      ON kp.id = r.catalog_product_id AND kp.verification_status = 'verified'
-                    WHERE r.listing_product_id = e.fallback_listing_id AND r.status = 'matched'
-                  )
-              ) AS stale_fallback_entities,
-              (SELECT COUNT(*) FROM product_search_entities e
-                WHERE e.entity_kind = 'catalog'
-                  AND NOT EXISTS (
-                    SELECT 1 FROM knowledge_catalog_products kp
-                    WHERE kp.id = e.catalog_product_id AND kp.verification_status = 'verified'
-                  )
-              ) AS ineligible_catalog_entities,
-              (SELECT COUNT(*) FROM product_search_entities e
-                WHERE e.offer_count <> (
-                  SELECT COUNT(*) FROM product_search_entity_offers m
-                  JOIN products p ON p.id = m.listing_product_id
-                  WHERE m.entity_id = e.id AND p.is_active = 1
-                )
-              ) AS offer_count_mismatches;")"
+          # Listing upserts and Phase 4 projection refreshes are separate bounded D1 writes. A
+          # concurrent crawl can therefore expose a short intermediate state to this deploy-only
+          # observer. Re-read a non-zero result for up to 40 seconds, but keep persistent drift a
+          # hard deploy failure.
+          search_entities="[]"
+          search_drift=1
+          for attempt in 1 2 3 4 5; do
+            search_entities="$(read_search_entities)"
+            search_drift="$(search_drift_count "$search_entities")"
+            if [ "$search_drift" -eq 0 ]; then
+              break
+            fi
+            if [ "$attempt" -lt 5 ]; then
+              echo "Product search read model is temporarily inconsistent (attempt ${attempt}/5); retrying in 10s." >&2
+              jq . <<< "$search_entities" >&2
+              sleep 10
+            fi
+          done
 
           quality_runs="$(query "
             SELECT q.*
@@ -325,10 +364,9 @@ jobs:
           fi
 
           # A product that stops being searchable is invisible to users but silent in the logs, so
-          # every read-model invariant is a deploy gate rather than a dashboard nobody opens.
-          search_drift="$(jq '[.[0] | .unmembered_active_listings, .inactive_offer_memberships, .entities_without_offers, .stale_fallback_entities, .ineligible_catalog_entities, .offer_count_mismatches] | map(. // 0) | add' <<< "$search_entities")"
+          # every persistent read-model invariant remains a deploy gate rather than a dashboard nobody opens.
           if [ "$search_drift" -ne 0 ]; then
-            echo "Product search read model drifted; POST /api/admin/product-search/rebuild repairs it." >&2
+            echo "Product search read model drifted after 5 observations; POST /api/admin/product-search/rebuild repairs it." >&2
             jq . <<< "$search_entities" >&2
             exit 1
           fi
@@ -358,6 +396,8 @@ jobs:
           jq . <<< "$unresolved_models"
           echo 'Remediation changes recorded:'
           jq . <<< "$remediation_events"
+          echo 'Remediation queue operational state:'
+          jq . <<< "$remediation_queue_with_rates"
           echo 'Listings still behind the current resolver versions:'
           jq . <<< "$stale_resolver_versions"
 
@@ -416,6 +456,11 @@ jobs:
             echo '### Remediation changes recorded'
             echo '```json'
             jq . <<< "$remediation_events"
+            echo '```'
+            echo
+            echo '### Remediation queue operational state'
+            echo '```json'
+            jq . <<< "$remediation_queue_with_rates"
             echo '```'
             echo
             echo '### Listings still behind the current resolver versions'
