@@ -73,7 +73,7 @@ const SNAPSHOT_ROW = {
   model_missing_count: 0,
 };
 
-function sweepDatabase() {
+function sweepDatabase({ failSnapshot = false }: { failSnapshot?: boolean } = {}) {
   return captureDatabase((statement) => {
     const sql = statement.sql;
     if (/WHEN p\.manufacturer_resolver_version < \? THEN 'resolve_manufacturer'/.test(sql)) {
@@ -89,8 +89,14 @@ function sweepDatabase() {
     if (/SELECT \*\s+FROM data_quality_remediation_queue\s+WHERE id IN/.test(sql)) {
       return [CLAIMED_JOB_ROW];
     }
+    if (/SELECT attempt_count, max_attempts FROM data_quality_remediation_queue/.test(sql)) {
+      return [{ attempt_count: 1, max_attempts: 3 }];
+    }
     if (/FROM products\s+WHERE id = \?/.test(sql)) return [LISTING_ROW];
-    if (/p\.shop_key = \? AND p\.is_active = 1/.test(sql)) return [SNAPSHOT_ROW];
+    if (/COUNT\(\*\) AS total_items/.test(sql)) {
+      if (failSnapshot) throw new Error("snapshot unavailable");
+      return [SNAPSHOT_ROW];
+    }
     return [];
   });
 }
@@ -109,8 +115,13 @@ test("a resolved job persists a fresh data-quality snapshot without inventing a 
   assert.equal(result.failed, 0);
   assert.deepEqual(result.affectedShops, ["audio-union"]);
 
-  const insert = db.calls.find((call) => /INSERT INTO data_quality_runs/.test(call.sql));
-  assert.ok(insert, "the sweep must persist the recomputed snapshot, not only log it");
+  const insertIndex = db.calls.findIndex((call) => /INSERT INTO data_quality_runs/.test(call.sql));
+  const resolveIndex = db.calls.findIndex((call) => /SET status = 'resolved'/.test(call.sql));
+  assert.ok(insertIndex >= 0, "the sweep must persist the recomputed snapshot, not only log it");
+  assert.ok(resolveIndex > insertIndex, "snapshot persistence must complete before the job is resolved");
+
+  const insert = db.calls[insertIndex];
+  assert.ok(insert);
   assert.equal(insert.binds[0], "audio-union");
   assert.equal(insert.binds[1], null, "crawl_run_id stays null: no synthetic crawl is invented");
   assert.equal(insert.binds[3], 7, "total_items comes from the freshly read snapshot");
@@ -124,6 +135,28 @@ test("a resolved job persists a fresh data-quality snapshot without inventing a 
     7,
     "current_item_count defaults to the snapshot total rather than zero",
   );
+});
+
+test("snapshot finalization failure retries the processed job instead of resolving it", async () => {
+  const db = sweepDatabase({ failSnapshot: true });
+
+  const result = await runDataQualityRemediationSweep(db, {
+    seedLimit: 10,
+    claimLimit: 10,
+    leaseSeconds: 300,
+    now: new Date("2026-08-15T00:00:00.000Z"),
+  });
+
+  assert.equal(result.resolved, 0);
+  assert.equal(result.failed, 0);
+  assert.equal(result.retried, 1);
+  assert.deepEqual(result.affectedShops, ["audio-union"]);
+  assert.ok(!db.calls.some((call) => /SET status = 'resolved'/.test(call.sql)));
+  const retry = db.calls.find(
+    (call) => /SET status = \?, available_at = \?/.test(call.sql) && call.binds[0] === "pending",
+  );
+  assert.ok(retry, "snapshot failure must return the already-processed job to the durable retry path");
+  assert.match(String(retry.binds[4]), /snapshot unavailable/);
 });
 
 test("an empty claim leaves the data-quality history untouched", async () => {
