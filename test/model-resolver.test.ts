@@ -298,3 +298,27 @@ test("applying resolution records replayable metadata without touching seller ev
   });
   assert.equal(applied.metadata.keep, true);
 });
+
+test("title-derived models stay title-derived when raw seller evidence is empty", () => {
+  const product = {
+    sourceId: "p1",
+    manufacturer: "Accuphase",
+    rawManufacturer: "Accuphase",
+    manufacturerId: "accuphase",
+    model: "",
+    rawModel: "",
+    normalizedModel: "",
+    title: "Accuphase E-800",
+    metadata: {},
+  } as unknown as NormalizedCatalogProduct;
+
+  const first = applyModelResolution(product);
+  const second = applyModelResolution(first);
+
+  for (const resolved of [first, second]) {
+    assert.equal(resolved.rawModel, "");
+    assert.equal(resolved.model, "E-800");
+    assert.equal(resolved.modelResolutionMethod, "title_after_manufacturer");
+    assert.equal(resolved.modelResolutionConfidence, "medium");
+  }
+});

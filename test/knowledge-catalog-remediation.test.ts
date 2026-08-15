@@ -66,6 +66,14 @@ test("aggregation is idempotent for the same listing evidence", () => {
   );
 });
 
+test("candidate evidence never regenerates an empty raw model from the derived model", () => {
+  const [candidate] = buildKnowledgeCatalogCandidateAggregates([
+    listing({ raw_model: "", model: "E-800", title: "Accuphase E-800" }),
+  ]);
+
+  assert.deepEqual(candidate.rawModelVariants, []);
+});
+
 test("a matched listing is not counted as unresolved identity work", () => {
   const [candidate] = buildKnowledgeCatalogCandidateAggregates([
     listing({ identity_status: "matched", identity_match_method: "manufacturer_model_exact" }),
@@ -281,11 +289,22 @@ test("a replay that changes no identity writes no provenance", async () => {
   );
 });
 
-function pendingSweepDatabase(listings: { id: number; shop_key: string; source_id: string }[]) {
+const VERIFIED_AT = "2026-08-14T00:00:00.000Z";
+
+function pendingSweepDatabase(
+  listings: { id: number; shop_key: string; source_id: string }[],
+  remediationAfterListingId = 0,
+) {
   return captureDatabase((statement) => {
     if (/COUNT\(\*\) AS pending/.test(statement.sql)) return [{ pending: 3 }];
     if (/last_remediated_at IS NULL OR last_remediated_at < last_verified_at/.test(statement.sql)) {
-      return [{ id: 7 }];
+      return [
+        {
+          id: 7,
+          last_verified_at: VERIFIED_AT,
+          remediation_after_listing_id: remediationAfterListingId,
+        },
+      ];
     }
     if (/FROM knowledge_catalog_products/.test(statement.sql)) {
       return [{ id: 7, manufacturer_id: "esoteric", canonical_model: "K-01XD" }];
@@ -308,14 +327,22 @@ test("the sweep selects a durable backlog rather than a time window", async () =
   // Oldest verification first, so a backlog drains in order instead of re-doing the newest.
   assert.match(db.calls[0].sql, /ORDER BY last_verified_at, id/);
   assert.doesNotMatch(db.calls[0].sql, /last_verified_at >= \?/);
-  assert.deepEqual(db.calls[0].binds, [5]);
+  assert.deepEqual(db.calls[0].binds, [6]);
   // A fully replayed product advances its watermark so the next run moves past it.
   const watermark = db.batched.find((statement) =>
-    /UPDATE knowledge_catalog_products SET last_remediated_at/.test(statement.sql),
+    /UPDATE knowledge_catalog_products\s+SET last_remediated_at/.test(statement.sql),
   );
   assert.ok(watermark);
-  assert.deepEqual(watermark.binds, ["2026-08-15T01:00:00.000Z", "2026-08-15T01:00:00.000Z", 7]);
+  assert.deepEqual(watermark.binds, [
+    "2026-08-15T01:00:00.000Z",
+    "2026-08-15T01:00:00.000Z",
+    7,
+    VERIFIED_AT,
+  ]);
   assert.equal(summary.pendingProducts, 3);
+  assert.equal(summary.hasMoreProducts, true);
+  assert.equal(summary.remainingProductCount, 3);
+  assert.equal(summary.incompleteProductCount, 3);
 });
 
 test("a partially replayed product keeps its watermark so the next run resumes it", async () => {
@@ -331,11 +358,79 @@ test("a partially replayed product keeps its watermark so the next run resumes i
   });
 
   assert.equal(summary.processedCount, 1);
-  assert.ok(
-    !db.batched.some((statement) =>
-      /UPDATE knowledge_catalog_products SET last_remediated_at/.test(statement.sql),
-    ),
+  const cursor = db.batched.find((statement) =>
+    /SET remediation_after_listing_id = \?/.test(statement.sql),
   );
+  assert.ok(cursor);
+  assert.deepEqual(cursor.binds, [11, "2026-08-15T01:00:00.000Z", 7, VERIFIED_AT]);
   // Work that did not fit is reported, never silently dropped.
   assert.equal(summary.pendingProducts, 3);
+
+  const resumed = pendingSweepDatabase([{ id: 12, shop_key: "hifido", source_id: "b" }], 11);
+  await reprocessPendingCatalogRemediation(resumed, {
+    productLimit: 5,
+    limit: 1,
+    evaluatedAt: "2026-08-15T01:01:00.000Z",
+  });
+  const listingPage = resumed.calls.find((statement) =>
+    /normalized_model IN \(/.test(statement.sql),
+  );
+  assert.ok(listingPage);
+  assert.equal(listingPage.binds[0], 11);
+  assert.ok(
+    resumed.batched.some(
+      (statement) =>
+        /last_remediated_at = \?/.test(statement.sql) &&
+        /remediation_after_listing_id = 0/.test(statement.sql),
+    ),
+  );
+});
+
+test("product-axis overflow is explicit when 21 verified products exceed a limit of 20", async () => {
+  let currentProductId = 0;
+  const products = Array.from({ length: 21 }, (_, index) => ({
+    id: index + 1,
+    last_verified_at: VERIFIED_AT,
+    remediation_after_listing_id: 0,
+  }));
+  const db = captureDatabase((statement) => {
+    if (/COUNT\(\*\) AS pending/.test(statement.sql)) return [{ pending: 1 }];
+    if (/last_remediated_at IS NULL OR last_remediated_at < last_verified_at/.test(statement.sql)) {
+      return products;
+    }
+    if (/SELECT id, manufacturer_id, canonical_model/.test(statement.sql)) {
+      currentProductId = Number(statement.binds[0]);
+      return [
+        {
+          id: currentProductId,
+          manufacturer_id: "example",
+          canonical_model: `X-${currentProductId}`,
+        },
+      ];
+    }
+    if (/normalized_model IN \(/.test(statement.sql)) {
+      return [
+        {
+          id: 1000 + currentProductId,
+          shop_key: "shop-a",
+          source_id: `listing-${currentProductId}`,
+        },
+      ];
+    }
+    return [];
+  });
+
+  const summary = await reprocessPendingCatalogRemediation(db, {
+    productLimit: 20,
+    limit: 5,
+    evaluatedAt: "2026-08-15T01:00:00.000Z",
+  });
+
+  assert.deepEqual(db.calls[0].binds, [21]);
+  assert.equal(summary.catalogProducts, 20);
+  assert.equal(summary.processedCount, 20);
+  assert.equal(summary.pendingProducts, 1);
+  assert.equal(summary.hasMoreProducts, true);
+  assert.equal(summary.remainingProductCount, 1);
+  assert.equal(summary.incompleteProductCount, 1);
 });

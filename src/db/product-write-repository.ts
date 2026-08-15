@@ -344,12 +344,17 @@ function activityChanged(
   product: CatalogProductUpsertInput,
   policy: Readonly<ProductActivityPolicy>,
 ): boolean {
+  const previous = existingCatalogFields(existing);
+  const current = catalogFields(product);
   const priceChanged = existing.price_yen !== product.priceYen;
   const stockChanged = meaningfulStockActivity(existing.stock_status, product.stockStatus);
   const reactivated = Number(existing.is_active) !== 1;
 
   return (
-    (policy.model && existing.model !== product.model) ||
+    // `model` is derived and may move when resolver rules change. User-facing model activity is
+    // seller evidence changing, so an empty raw model remains meaningful and is never replaced by
+    // the title-derived model for this comparison.
+    (policy.model && previous.rawModel !== current.rawModel) ||
     (policy.title && existing.title !== product.title) ||
     (policy.condition && existing.condition_text !== product.conditionText) ||
     (policy.price && priceChanged) ||

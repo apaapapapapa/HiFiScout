@@ -14,6 +14,9 @@ test("model resolution gains a rule version behind the current resolver", () => 
   // Existing rows must stay selectable for replay rather than claiming to be current.
   assert.ok(MODEL_RESOLVER_VERSION > 1);
   assert.match(migration, /idx_products_model_resolver_version/);
+  assert.match(migration, /ADD COLUMN remediation_projection_required INTEGER NOT NULL DEFAULT 0/);
+  assert.match(migration, /ADD COLUMN remediation_projection_token TEXT NOT NULL DEFAULT ''/);
+  assert.match(migration, /idx_products_remediation_projection_required/);
   assert.match(migration, /idx_products_identity_group/);
 });
 
@@ -32,6 +35,7 @@ test("candidate rows carry the evidence a reviewer needs", () => {
 
 test("catalog remediation progress is a durable watermark, not a time window", () => {
   assert.match(migration, /ADD COLUMN last_remediated_at TEXT/);
+  assert.match(migration, /ADD COLUMN remediation_after_listing_id INTEGER NOT NULL DEFAULT 0/);
   assert.match(migration, /idx_knowledge_catalog_products_remediation/);
 });
 
@@ -84,7 +88,9 @@ test("production-shaped rows migrate without losing raw evidence", () => {
 
   const product = db
     .prepare(
-      "SELECT raw_model, normalized_model, model_resolver_version FROM products WHERE id = 1",
+      `SELECT raw_model, normalized_model, model_resolver_version,
+              remediation_projection_required, remediation_projection_token
+       FROM products WHERE id = 1`,
     )
     .get() as Record<string, unknown>;
   assert.deepEqual(
@@ -93,7 +99,19 @@ test("production-shaped rows migrate without losing raw evidence", () => {
       raw_model: "D-1000 MKII",
       normalized_model: "d1000mkii",
       model_resolver_version: 1,
+      remediation_projection_required: 0,
+      remediation_projection_token: "",
     },
+  );
+
+  const catalogProgress = db
+    .prepare(
+      "SELECT last_remediated_at, remediation_after_listing_id FROM knowledge_catalog_products WHERE id = 1",
+    )
+    .get() as Record<string, unknown>;
+  assert.deepEqual(
+    { ...catalogProgress },
+    { last_remediated_at: null, remediation_after_listing_id: 0 },
   );
 
   // Every already-verified entry starts owed a replay, so the existing catalog is remediated once

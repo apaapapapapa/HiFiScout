@@ -8,6 +8,7 @@ import { createModelResolver, MODEL_RESOLVER_VERSION } from "../catalog/model-re
 import type {
   ManufacturerAliasEvidence,
   ManufacturerVerificationStatus,
+  ModelResolutionResult,
 } from "../catalog/types.js";
 import { refreshListingProjections } from "./listing-projection-refresh.js";
 import { remediationEventStatement } from "./remediation-event-repository.js";
@@ -44,6 +45,11 @@ export interface ManufacturerAliasReplayResult {
   hasMore: boolean;
 }
 
+export interface ManufacturerReplayDependencies {
+  /** Test seam for deterministic downstream failure injection. */
+  refreshListings?: typeof refreshListingProjections;
+}
+
 export interface UnresolvedManufacturerGroup {
   normalizedRawManufacturer: string;
   sampleRawManufacturer: string;
@@ -69,6 +75,8 @@ interface ManufacturerReplayListingRow {
   model_resolution_status: string;
   model_resolution_method: string;
   model_resolution_confidence: string;
+  model_resolver_version: number;
+  remediation_projection_required: number;
   title: string;
   metadata_json: string;
 }
@@ -232,7 +240,7 @@ export async function selectListingsAffectedByManufacturerAlias(
              manufacturer_resolution_method, manufacturer_resolution_confidence,
              manufacturer_resolver_version, model, raw_model, normalized_model,
              model_resolution_status, model_resolution_method, model_resolution_confidence,
-             title, metadata_json
+             model_resolver_version, remediation_projection_required, title, metadata_json
       FROM products
       WHERE is_active = 1 AND id > ? AND (
         normalized_raw_manufacturer = ?
@@ -248,38 +256,72 @@ export async function selectListingsAffectedByManufacturerAlias(
   return { rows: rows.slice(0, take), hasMore: rows.length > take };
 }
 
-function sameManufacturerResolution(
+function manufacturerResolutionMoved(
   row: ManufacturerReplayListingRow,
   next: ReturnType<typeof resolveManufacturer>,
 ): boolean {
   return (
-    row.canonical_manufacturer_id === next.canonicalManufacturerId &&
-    row.manufacturer_resolution_status === next.status &&
-    row.manufacturer_resolution_method === next.method &&
-    row.manufacturer_resolution_confidence === next.confidence &&
-    Number(row.manufacturer_resolver_version) === MANUFACTURER_RESOLVER_VERSION &&
-    row.manufacturer === (next.displayName || row.manufacturer)
+    row.canonical_manufacturer_id !== next.canonicalManufacturerId ||
+    row.manufacturer_resolution_status !== next.status ||
+    row.manufacturer_resolution_method !== next.method ||
+    row.manufacturer_resolution_confidence !== next.confidence ||
+    row.manufacturer !== (next.displayName || row.manufacturer) ||
+    row.manufacturer_id !== (next.canonicalManufacturerId || row.manufacturer_id)
   );
 }
 
-/**
- * Bounded, cursor-restartable replay for one alias. It changes only derived manufacturer and model
- * fields, then refreshes the existing identity and Phase 4 search projections without fetching a
- * shop. Model Resolution is re-run in the same page because it depends on the canonical
- * manufacturer this replay may have just corrected.
- */
-export async function reprocessManufacturerAliasListings(
+function modelResolutionMoved(
+  row: ManufacturerReplayListingRow,
+  next: ModelResolutionResult,
+): boolean {
+  return (
+    row.model !== next.model ||
+    row.normalized_model !== next.normalizedModel ||
+    row.model_resolution_status !== next.status ||
+    row.model_resolution_method !== next.method ||
+    row.model_resolution_confidence !== next.confidence
+  );
+}
+
+export async function selectStaleManufacturerListings(
+  db: ReadableDatabase,
+  { afterId = 0, limit }: ManufacturerAliasReplayOptions = {},
+): Promise<{ rows: ManufacturerReplayListingRow[]; hasMore: boolean }> {
+  const take = boundedLimit(limit);
+  const result = await db
+    .prepare(`
+      SELECT id, shop_key, source_id, manufacturer, raw_manufacturer, manufacturer_id,
+             canonical_manufacturer_id, manufacturer_resolution_status,
+             manufacturer_resolution_method, manufacturer_resolution_confidence,
+             manufacturer_resolver_version, model, raw_model, normalized_model,
+             model_resolution_status, model_resolution_method, model_resolution_confidence,
+             model_resolver_version, remediation_projection_required, title, metadata_json
+      FROM products
+      WHERE is_active = 1 AND id > ?
+        AND (manufacturer_resolver_version < ? OR remediation_projection_required = 1)
+      ORDER BY id
+      LIMIT ?
+    `)
+    .bind(afterId, MANUFACTURER_RESOLVER_VERSION, take + 1)
+    .all<ManufacturerReplayListingRow>();
+  const rows = result.results || [];
+  return { rows: rows.slice(0, take), hasMore: rows.length > take };
+}
+
+async function reprocessManufacturerRows(
   db: QueryableDatabase,
-  alias: ManufacturerAliasEvidence,
-  options: ManufacturerAliasReplayOptions = {},
+  selected: { rows: ManufacturerReplayListingRow[]; hasMore: boolean },
+  aliases: readonly ManufacturerAliasEvidence[],
+  evaluatedAt: string,
+  reason: string,
+  dependencies: ManufacturerReplayDependencies,
 ): Promise<ManufacturerAliasReplayResult> {
-  const evaluatedAt = options.evaluatedAt || new Date().toISOString();
-  const selected = await selectListingsAffectedByManufacturerAlias(db, alias, options);
-  const aliases = await listManufacturerAliasEvidence(db);
   const resolver = createManufacturerResolver(aliases);
   const modelResolver = createModelResolver(aliases);
-  const changed: ManufacturerReplayListingRow[] = [];
+  const refreshListings = dependencies.refreshListings || refreshListingProjections;
+  const replayToken = crypto.randomUUID();
   const statements: D1PreparedStatement[] = [];
+  let changedCount = 0;
 
   for (const row of selected.rows) {
     const resolution = resolver({
@@ -287,7 +329,14 @@ export async function reprocessManufacturerAliasListings(
       manufacturerCandidate: row.raw_manufacturer ? row.manufacturer : "",
       title: row.title,
     });
-    if (sameManufacturerResolution(row, resolution)) continue;
+    const model = modelResolver({
+      rawModel: row.raw_model,
+      title: row.title,
+      manufacturerId: resolution.canonicalManufacturerId,
+    });
+    const manufacturerMoved = manufacturerResolutionMoved(row, resolution);
+    const modelMoved = modelResolutionMoved(row, model);
+    const moved = manufacturerMoved || modelMoved;
     const metadata = {
       version: MANUFACTURER_RESOLVER_VERSION,
       matchedAlias: resolution.matchedAlias,
@@ -297,11 +346,6 @@ export async function reprocessManufacturerAliasListings(
       normalizedRawManufacturer: resolution.normalizedRawManufacturer,
       candidateManufacturerIds: resolution.candidateManufacturerIds,
     };
-    const model = modelResolver({
-      rawModel: row.raw_model || row.model,
-      title: row.title,
-      manufacturerId: resolution.canonicalManufacturerId,
-    });
     const modelMetadata = {
       version: MODEL_RESOLVER_VERSION,
       status: model.status,
@@ -319,9 +363,10 @@ export async function reprocessManufacturerAliasListings(
             canonical_manufacturer_id = ?, manufacturer_resolution_status = ?,
             manufacturer_resolution_method = ?, manufacturer_resolution_confidence = ?,
             manufacturer_resolver_version = ?,
-            model = ?, raw_model = ?, normalized_model = ?, model_resolution_status = ?,
+            model = ?, normalized_model = ?, model_resolution_status = ?,
             model_resolution_method = ?, model_resolution_confidence = ?,
-            model_resolver_version = ?,
+            model_resolver_version = ?, remediation_projection_required = 1,
+            remediation_projection_token = ?,
             metadata_json = json_set(
               json_set(
                 CASE WHEN json_valid(metadata_json) THEN metadata_json ELSE '{}' END,
@@ -329,7 +374,7 @@ export async function reprocessManufacturerAliasListings(
               ),
               '$.modelNormalization', json(?)
             ),
-            last_changed_at = ?
+            last_changed_at = CASE WHEN ? THEN ? ELSE last_changed_at END
           WHERE id = ?
         `)
         .bind(
@@ -341,41 +386,38 @@ export async function reprocessManufacturerAliasListings(
           resolution.method,
           resolution.confidence,
           MANUFACTURER_RESOLVER_VERSION,
-          model.model || row.model,
-          model.rawModel || row.raw_model || row.model,
+          model.model,
           model.normalizedModel,
           model.status,
           model.method,
           model.confidence,
           MODEL_RESOLVER_VERSION,
+          replayToken,
           JSON.stringify(metadata),
           JSON.stringify(modelMetadata),
+          moved ? 1 : 0,
           evaluatedAt,
           row.id,
         ),
     );
-    // Provenance for the fields that actually moved, so alias-driven corrections are auditable
-    // alongside the model and identity replays rather than being the one silent path.
-    statements.push(
-      remediationEventStatement(db, {
-        listingProductId: Number(row.id),
-        shopKey: row.shop_key,
-        sourceId: row.source_id,
-        field: "manufacturer",
-        previousValue: `${row.canonical_manufacturer_id || "-"} (${row.manufacturer_resolution_status})`,
-        newValue: `${resolution.canonicalManufacturerId || "-"} (${resolution.status})`,
-        reason: `verified_manufacturer_alias:${alias.normalizedAlias}`,
-        resolverMethod: resolution.method,
-        resolverConfidence: resolution.confidence,
-        resolverVersion: MANUFACTURER_RESOLVER_VERSION,
-        processedAt: evaluatedAt,
-      }),
-    );
-    if (
-      row.model !== model.model ||
-      row.normalized_model !== model.normalizedModel ||
-      row.model_resolution_status !== model.status
-    ) {
+    if (manufacturerMoved) {
+      statements.push(
+        remediationEventStatement(db, {
+          listingProductId: Number(row.id),
+          shopKey: row.shop_key,
+          sourceId: row.source_id,
+          field: "manufacturer",
+          previousValue: `${row.canonical_manufacturer_id || "-"} (${row.manufacturer_resolution_status})`,
+          newValue: `${resolution.canonicalManufacturerId || "-"} (${resolution.status})`,
+          reason,
+          resolverMethod: resolution.method,
+          resolverConfidence: resolution.confidence,
+          resolverVersion: MANUFACTURER_RESOLVER_VERSION,
+          processedAt: evaluatedAt,
+        }),
+      );
+    }
+    if (modelMoved) {
       statements.push(
         remediationEventStatement(db, {
           listingProductId: Number(row.id),
@@ -384,7 +426,7 @@ export async function reprocessManufacturerAliasListings(
           field: "model",
           previousValue: `${row.model} (${row.normalized_model || "-"}/${row.model_resolution_status})`,
           newValue: `${model.model} (${model.normalizedModel || "-"}/${model.status})`,
-          reason: `verified_manufacturer_alias:${alias.normalizedAlias}`,
+          reason,
           resolverMethod: model.method,
           resolverConfidence: model.confidence,
           resolverVersion: MODEL_RESOLVER_VERSION,
@@ -392,21 +434,92 @@ export async function reprocessManufacturerAliasListings(
         }),
       );
     }
-    changed.push(row);
+    if (moved) changedCount += 1;
   }
 
   for (let index = 0; index < statements.length; index += 50) {
     await db.batch(statements.slice(index, index + 50));
   }
-  await refreshListingProjections(db, changed, evaluatedAt);
+  // Every selected row refreshes. This includes a retry whose canonical fields already match but
+  // whose previous downstream pass failed while `remediation_projection_required` stayed set.
+  await refreshListings(db, selected.rows, evaluatedAt);
+  const completed = selected.rows.map((row) =>
+    db
+      .prepare(`
+        UPDATE products
+        SET remediation_projection_required = 0, remediation_projection_token = ''
+        WHERE id = ? AND manufacturer_resolver_version = ? AND model_resolver_version = ?
+          AND remediation_projection_token = ?
+      `)
+      .bind(row.id, MANUFACTURER_RESOLVER_VERSION, MODEL_RESOLVER_VERSION, replayToken),
+  );
+  for (let index = 0; index < completed.length; index += 50) {
+    await db.batch(completed.slice(index, index + 50));
+  }
 
   const last = selected.rows.at(-1);
   return {
     processedCount: selected.rows.length,
-    changedCount: changed.length,
+    changedCount,
     nextAfterId: selected.hasMore && last ? Number(last.id) : null,
     hasMore: selected.hasMore,
   };
+}
+
+/**
+ * Bounded, cursor-restartable replay for one alias. It changes only derived manufacturer and model
+ * fields, then refreshes the existing identity and Phase 4 search projections without fetching a
+ * shop. Model Resolution is re-run in the same page because it depends on the canonical
+ * manufacturer this replay may have just corrected.
+ */
+export async function reprocessManufacturerAliasListings(
+  db: QueryableDatabase,
+  alias: ManufacturerAliasEvidence,
+  options: ManufacturerAliasReplayOptions = {},
+  dependencies: ManufacturerReplayDependencies = {},
+): Promise<ManufacturerAliasReplayResult> {
+  const evaluatedAt = options.evaluatedAt || new Date().toISOString();
+  const selected = await selectListingsAffectedByManufacturerAlias(db, alias, options);
+  const aliases = await listManufacturerAliasEvidence(db);
+  return reprocessManufacturerRows(
+    db,
+    selected,
+    aliases,
+    evaluatedAt,
+    `verified_manufacturer_alias:${alias.normalizedAlias}`,
+    dependencies,
+  );
+}
+
+/**
+ * Runtime-normalize one bounded page of migration/code-version-stale manufacturer evidence.
+ * This is the authoritative repair path for SQL backfill approximations: normalization rules live
+ * in TypeScript, while migration rows deliberately remain behind the current resolver version.
+ */
+export async function reprocessStaleManufacturerListings(
+  db: QueryableDatabase,
+  options: ManufacturerAliasReplayOptions = {},
+  dependencies: ManufacturerReplayDependencies = {},
+): Promise<ManufacturerAliasReplayResult> {
+  const evaluatedAt = options.evaluatedAt || new Date().toISOString();
+  const selected = await selectStaleManufacturerListings(db, options);
+  if (!selected.rows.length) {
+    return {
+      processedCount: 0,
+      changedCount: 0,
+      nextAfterId: null,
+      hasMore: false,
+    };
+  }
+  const aliases = await listManufacturerAliasEvidence(db);
+  return reprocessManufacturerRows(
+    db,
+    selected,
+    aliases,
+    evaluatedAt,
+    "manufacturer_resolver_version_replay",
+    dependencies,
+  );
 }
 
 /** One operational write plus its first replay page; resume with `nextAfterId` when present. */

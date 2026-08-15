@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { MODEL_RESOLVER_VERSION } from "../src/catalog/model-resolver.js";
 import {
@@ -9,6 +10,7 @@ import {
 } from "../src/db/model-repository.js";
 import type { NormalizedCatalogProduct } from "../src/catalog/types.js";
 import { captureDatabase } from "./helpers/d1.js";
+import { sqliteD1 } from "./helpers/sqlite-d1.js";
 
 function staleListing(overrides: Record<string, unknown> = {}) {
   return {
@@ -22,6 +24,8 @@ function staleListing(overrides: Record<string, unknown> = {}) {
     model_resolution_status: "resolved",
     model_resolution_method: "legacy_normalization",
     model_resolution_confidence: "medium",
+    model_resolver_version: 1,
+    remediation_projection_required: 0,
     title: "TAD D-1000 MK2 中古",
     metadata_json: "{}",
     ...overrides,
@@ -85,6 +89,8 @@ test("replay rewrites only derived model fields and leaves seller facts alone", 
   const update = db.batched.find((statement) => /UPDATE products SET/.test(statement.sql));
   assert.ok(update);
   assert.match(update.sql, /model_resolver_version = \?/);
+  assert.match(update.sql, /remediation_projection_required = 1/);
+  assert.doesNotMatch(update.sql, /\braw_model\s*=/);
   for (const sellerFact of [
     "price_yen",
     "stock_status",
@@ -132,6 +138,116 @@ test("replay records before/after provenance only for listings that actually mov
   // The version still advances, so a second pass cannot re-select the same row forever.
   const update = unchanged.batched.find((statement) => /UPDATE products SET/.test(statement.sql));
   assert.ok(update?.binds.includes(MODEL_RESOLVER_VERSION));
+});
+
+test("model replay keeps empty raw evidence and recovers after downstream failure", async () => {
+  const sqlite = new DatabaseSync(":memory:");
+  sqlite.exec(`
+    CREATE TABLE products (
+      id INTEGER PRIMARY KEY,
+      shop_key TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      canonical_manufacturer_id TEXT NOT NULL,
+      model TEXT NOT NULL,
+      raw_model TEXT NOT NULL,
+      normalized_model TEXT NOT NULL,
+      model_resolution_status TEXT NOT NULL,
+      model_resolution_method TEXT NOT NULL,
+      model_resolution_confidence TEXT NOT NULL,
+      model_resolver_version INTEGER NOT NULL,
+      remediation_projection_required INTEGER NOT NULL DEFAULT 0,
+      remediation_projection_token TEXT NOT NULL DEFAULT '',
+      title TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      last_changed_at TEXT NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1
+    );
+    INSERT INTO products(
+      id, shop_key, source_id, canonical_manufacturer_id, model, raw_model, normalized_model,
+      model_resolution_status, model_resolution_method, model_resolution_confidence,
+      model_resolver_version, title, last_changed_at
+    ) VALUES (
+      11, 'shop-a', 'listing-11', 'accuphase', 'E-800', '', 'E800',
+      'resolved', 'title_after_manufacturer', 'medium', 1,
+      'Accuphase E-800', '2026-08-14T00:00:00.000Z'
+    );
+    CREATE TABLE knowledge_catalog_manufacturers (
+      id TEXT PRIMARY KEY,
+      canonical_name TEXT NOT NULL,
+      verification_status TEXT NOT NULL
+    );
+    CREATE TABLE knowledge_catalog_manufacturer_aliases (
+      id INTEGER PRIMARY KEY,
+      manufacturer_id TEXT NOT NULL,
+      alias TEXT NOT NULL,
+      normalized_alias TEXT NOT NULL,
+      verification_status TEXT NOT NULL,
+      source TEXT NOT NULL,
+      provenance_json TEXT NOT NULL,
+      rule_version INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
+  const db = sqliteD1(sqlite);
+  let projection = "old";
+  let refreshAttempts = 0;
+  const refreshListings = async (): Promise<void> => {
+    refreshAttempts += 1;
+    if (refreshAttempts === 1) throw new Error("injected_projection_failure");
+    projection = "current";
+  };
+
+  await assert.rejects(
+    reprocessStaleModelListings(
+      db,
+      { evaluatedAt: "2026-08-15T00:00:00.000Z" },
+      { refreshListings },
+    ),
+    /injected_projection_failure/,
+  );
+  const failedState = sqlite
+    .prepare(`
+      SELECT raw_model, model, model_resolution_method, model_resolver_version,
+             remediation_projection_required, last_changed_at
+      FROM products WHERE id = 11
+    `)
+    .get() as Record<string, unknown>;
+  assert.deepEqual(
+    { ...failedState },
+    {
+      raw_model: "",
+      model: "E-800",
+      model_resolution_method: "title_after_manufacturer",
+      model_resolver_version: MODEL_RESOLVER_VERSION,
+      remediation_projection_required: 1,
+      last_changed_at: "2026-08-14T00:00:00.000Z",
+    },
+  );
+
+  const retried = await reprocessStaleModelListings(
+    db,
+    { evaluatedAt: "2026-08-15T00:01:00.000Z" },
+    { refreshListings },
+  );
+
+  assert.equal(retried.processedCount, 1);
+  assert.equal(retried.changedCount, 0);
+  assert.equal(refreshAttempts, 2);
+  assert.equal(projection, "current");
+  const completedState = sqlite
+    .prepare("SELECT raw_model, remediation_projection_required FROM products WHERE id = 11")
+    .get() as Record<string, unknown>;
+  assert.deepEqual({ ...completedState }, { raw_model: "", remediation_projection_required: 0 });
+
+  const current = await reprocessStaleModelListings(
+    db,
+    { evaluatedAt: "2026-08-15T00:02:00.000Z" },
+    { refreshListings },
+  );
+  assert.equal(current.processedCount, 0);
+  assert.equal(refreshAttempts, 2);
+  sqlite.close();
 });
 
 test("replay refreshes identity and the search projection in dependency order", async () => {

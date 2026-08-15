@@ -6,9 +6,19 @@
 ALTER TABLE products ADD COLUMN model_resolver_version INTEGER NOT NULL DEFAULT 1
   CHECK (model_resolver_version > 0);
 
+-- Resolver versions mean "evaluated by this algorithm". Downstream Product Search consistency is
+-- tracked separately so a projection/identity/entity failure cannot strand an already-versioned
+-- listing outside the retry selector.
+ALTER TABLE products ADD COLUMN remediation_projection_required INTEGER NOT NULL DEFAULT 0
+  CHECK (remediation_projection_required IN (0, 1));
+ALTER TABLE products ADD COLUMN remediation_projection_token TEXT NOT NULL DEFAULT '';
+
 -- Replay selectors: stale-version work, and the unresolved manufacturer/model grouping key.
 CREATE INDEX IF NOT EXISTS idx_products_model_resolver_version
   ON products(model_resolver_version, is_active, id);
+CREATE INDEX IF NOT EXISTS idx_products_remediation_projection_required
+  ON products(remediation_projection_required, is_active, id)
+  WHERE remediation_projection_required = 1;
 CREATE INDEX IF NOT EXISTS idx_products_identity_group
   ON products(canonical_manufacturer_id, normalized_model, is_active, id)
   WHERE canonical_manufacturer_id <> '' AND normalized_model <> '';
@@ -35,6 +45,8 @@ CREATE INDEX IF NOT EXISTS idx_knowledge_catalog_candidates_remediation
 -- of what it verified leaves the rest selectable, and re-verification (which moves
 -- `last_verified_at` forward) makes a product remediation work again.
 ALTER TABLE knowledge_catalog_products ADD COLUMN last_remediated_at TEXT;
+ALTER TABLE knowledge_catalog_products ADD COLUMN remediation_after_listing_id INTEGER NOT NULL DEFAULT 0
+  CHECK (remediation_after_listing_id >= 0);
 
 CREATE INDEX IF NOT EXISTS idx_knowledge_catalog_products_remediation
   ON knowledge_catalog_products(verification_status, last_remediated_at, last_verified_at, id);

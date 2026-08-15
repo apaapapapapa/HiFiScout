@@ -222,7 +222,9 @@ export function accumulateKnowledgeCatalogCandidateRows(
     if (row.shop_key) candidate.shops.add(String(row.shop_key));
     const categoryIds = parseCategoryIds(row.category_ids);
     for (const categoryId of categoryIds) candidate.categories.add(categoryId);
-    addBounded(candidate.rawModelVariants, row.raw_model || row.model, RAW_VARIANT_LIMIT);
+    // Empty raw evidence is still evidence that the seller supplied no model. Never manufacture a
+    // raw variant from the title-derived display model during remediation aggregation.
+    addBounded(candidate.rawModelVariants, row.raw_model, RAW_VARIANT_LIMIT);
     addBounded(candidate.sourceUrls, row.source_url, SOURCE_URL_LIMIT);
     // A listing with no resolution row is as unresolved as an explicit `unresolved` row; both are
     // work the remediation loop still owes the catalog.

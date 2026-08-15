@@ -5,6 +5,7 @@ import type { VerifiedKnowledgeSource } from "../src/catalog/knowledge-verificat
 import {
   promoteVerifiedKnowledgeCatalogCandidate,
   recordKnowledgeCatalogProductRecheckFailure,
+  recordKnowledgeCatalogProductRecheckSuccess,
 } from "../src/db/knowledge-catalog-verification-repository.js";
 import type {
   DueKnowledgeCatalogProduct,
@@ -79,6 +80,19 @@ const verification: VerifiedKnowledgeSource = {
   message: "verified",
 };
 
+const dueProduct: DueKnowledgeCatalogProduct = {
+  id: 41,
+  manufacturerId: "example",
+  canonicalModel: "MODEL1",
+  normalizedModel: "MODEL1",
+  canonicalName: "Example Model 1",
+  primaryCategoryId: "power_amp",
+  categoryIds: ["power_amp"],
+  sourceId: 9,
+  sourceType: "manufacturer_official",
+  sourceUrl: "https://example.test/model-1",
+};
+
 test("new catalog promotions retain the fetched content hash in verification history", async () => {
   const db = captureDb();
 
@@ -98,22 +112,9 @@ test("new catalog promotions retain the fetched content hash in verification his
 
 test("category-change rechecks retain the fetched content hash in verification history", async () => {
   const db = captureDb();
-  const product: DueKnowledgeCatalogProduct = {
-    id: 41,
-    manufacturerId: "example",
-    canonicalModel: "MODEL1",
-    normalizedModel: "MODEL1",
-    canonicalName: "Example Model 1",
-    primaryCategoryId: "power_amp",
-    categoryIds: ["power_amp"],
-    sourceId: 9,
-    sourceType: "manufacturer_official",
-    sourceUrl: "https://example.test/model-1",
-  };
-
   await recordKnowledgeCatalogProductRecheckFailure(
     db,
-    product,
+    dueProduct,
     {
       status: "ambiguous",
       sourceUrl: verification.sourceUrl,
@@ -130,4 +131,21 @@ test("category-change rechecks retain the fetched content hash in verification h
     .find((statement) => statement.sql.includes("knowledge_catalog_verification_attempts"));
   assert.ok(attempt);
   assert.equal(attempt.binds[9], contentHash);
+});
+
+test("re-verification restarts catalog remediation from the first listing", async () => {
+  const db = captureDb();
+
+  await recordKnowledgeCatalogProductRecheckSuccess(
+    db,
+    dueProduct,
+    verification,
+    "2026-08-14T00:00:00.000Z",
+  );
+
+  const productUpdate = db.batches
+    .flat()
+    .find((statement) => statement.sql.includes("UPDATE knowledge_catalog_products"));
+  assert.ok(productUpdate);
+  assert.match(productUpdate.sql, /remediation_after_listing_id = 0/);
 });

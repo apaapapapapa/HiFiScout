@@ -3,8 +3,9 @@
  *
  * Everything here re-derives model fields from evidence that is already in D1, so a resolver rule
  * change never needs a shop to be crawled again. Replay is bounded, cursor-restartable, and
- * idempotent: a page always advances `model_resolver_version`, so a second run over the same rows
- * selects nothing, and only listings whose derived values actually moved are counted or recorded.
+ * idempotent: a completed page has the current `model_resolver_version` and no pending projection
+ * refresh. A page whose downstream refresh failed remains selected even though its derived fields
+ * were already evaluated, and only values that actually moved are counted or recorded.
  */
 
 import {
@@ -39,6 +40,11 @@ export interface ModelReplayResult {
   hasMore: boolean;
 }
 
+export interface ModelReplayDependencies {
+  /** Test seam for deterministic downstream failure injection. */
+  refreshListings?: typeof refreshListingProjections;
+}
+
 export interface UnresolvedModelGroup {
   canonicalManufacturerId: string;
   normalizedModel: string;
@@ -60,6 +66,8 @@ interface ModelReplayListingRow {
   model_resolution_status: string;
   model_resolution_method: string;
   model_resolution_confidence: string;
+  model_resolver_version: number;
+  remediation_projection_required: number;
   title: string;
   metadata_json: string;
 }
@@ -104,9 +112,10 @@ export async function selectStaleModelListings(
     .prepare(`
       SELECT id, shop_key, source_id, canonical_manufacturer_id, model, raw_model, normalized_model,
              model_resolution_status, model_resolution_method, model_resolution_confidence,
-             title, metadata_json
+             model_resolver_version, remediation_projection_required, title, metadata_json
       FROM products
-      WHERE is_active = 1 AND id > ? AND model_resolver_version < ?
+      WHERE is_active = 1 AND id > ?
+        AND (model_resolver_version < ? OR remediation_projection_required = 1)
       ORDER BY id
       LIMIT ?
     `)
@@ -120,22 +129,33 @@ export async function selectStaleModelListings(
  * Replay one bounded page of listings whose stored model predates the current resolver version.
  *
  * Only derived model fields move; price, stock, source URL and shop timestamps are seller facts and
- * are never touched. Identity and the Phase 4 projection are refreshed in dependency order for the
- * listings that actually changed.
+ * are never touched. Identity and the Phase 4 projection are refreshed in dependency order for
+ * every selected listing, including a retry whose derived values already moved on its failed pass.
  */
 export async function reprocessStaleModelListings(
   db: QueryableDatabase,
   options: ModelReplayOptions = {},
+  dependencies: ModelReplayDependencies = {},
 ): Promise<ModelReplayResult> {
   const evaluatedAt = options.evaluatedAt || new Date().toISOString();
   const selected = await selectStaleModelListings(db, options);
+  if (!selected.rows.length) {
+    return {
+      processedCount: 0,
+      changedCount: 0,
+      nextAfterId: null,
+      hasMore: false,
+    };
+  }
   const resolver = createModelResolver(await listManufacturerAliasEvidence(db));
+  const refreshListings = dependencies.refreshListings || refreshListingProjections;
+  const replayToken = crypto.randomUUID();
   const changed: ModelReplayListingRow[] = [];
   const statements: D1PreparedStatement[] = [];
 
   for (const row of selected.rows) {
     const resolution = resolver({
-      rawModel: row.raw_model || row.model,
+      rawModel: row.raw_model,
       title: row.title,
       manufacturerId: row.canonical_manufacturer_id,
     });
@@ -154,14 +174,18 @@ export async function reprocessStaleModelListings(
       removedAnnotations: resolution.removedAnnotations,
       unclassifiedTokens: resolution.unclassifiedTokens,
     };
-    // The version always advances, even for a no-op, so the cursor cannot re-select this row.
+    // The resolver version means the algorithm ran. The separate pending bit remains set until all
+    // downstream read models have refreshed, so a failure cannot make this row disappear from the
+    // retry selector merely because its resolver version is already current.
     statements.push(
       db
         .prepare(`
           UPDATE products SET
-            model = ?, raw_model = ?, normalized_model = ?, model_resolution_status = ?,
+            model = ?, normalized_model = ?, model_resolution_status = ?,
             model_resolution_method = ?, model_resolution_confidence = ?,
             model_resolver_version = ?,
+            remediation_projection_required = 1,
+            remediation_projection_token = ?,
             metadata_json = json_set(
               CASE WHEN json_valid(metadata_json) THEN metadata_json ELSE '{}' END,
               '$.modelNormalization', json(?)
@@ -170,13 +194,13 @@ export async function reprocessStaleModelListings(
           WHERE id = ?
         `)
         .bind(
-          resolution.model || row.model,
-          resolution.rawModel || row.raw_model || row.model,
+          resolution.model,
           resolution.normalizedModel,
           resolution.status,
           resolution.method,
           resolution.confidence,
           MODEL_RESOLVER_VERSION,
+          replayToken,
           JSON.stringify(metadata),
           moved ? 1 : 0,
           evaluatedAt,
@@ -205,7 +229,21 @@ export async function reprocessStaleModelListings(
   for (let index = 0; index < statements.length; index += WRITE_BATCH_SIZE) {
     await db.batch(statements.slice(index, index + WRITE_BATCH_SIZE));
   }
-  await refreshListingProjections(db, changed, evaluatedAt);
+  // Refresh every selected row, not just values that moved. A retry sees the already-derived values
+  // as a no-op, but the pending bit proves its previous projection refresh did not finish.
+  await refreshListings(db, selected.rows, evaluatedAt);
+  const completed = selected.rows.map((row) =>
+    db
+      .prepare(`
+        UPDATE products
+        SET remediation_projection_required = 0, remediation_projection_token = ''
+        WHERE id = ? AND model_resolver_version = ? AND remediation_projection_token = ?
+      `)
+      .bind(row.id, MODEL_RESOLVER_VERSION, replayToken),
+  );
+  for (let index = 0; index < completed.length; index += WRITE_BATCH_SIZE) {
+    await db.batch(completed.slice(index, index + WRITE_BATCH_SIZE));
+  }
 
   const last = selected.rows.at(-1);
   return {

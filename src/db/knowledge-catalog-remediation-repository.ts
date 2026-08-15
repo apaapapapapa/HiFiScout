@@ -324,6 +324,18 @@ export interface PendingCatalogReplaySummary {
   matchedCount: number;
   /** Verified products still owed a replay after this invocation, including this run's leftovers. */
   pendingProducts: number;
+  /** True when either the product page or a product's listing page left durable work behind. */
+  hasMoreProducts: boolean;
+  /** Exact durable product backlog after this invocation. */
+  remainingProductCount: number;
+  /** Backward-compatible explicit incomplete count for finalizer/status reporting. */
+  incompleteProductCount: number;
+}
+
+interface PendingCatalogProductRow {
+  id: number;
+  last_verified_at: string;
+  remediation_after_listing_id: number;
 }
 
 /** Verified entries whose listings have not been replayed since the entry was last verified. */
@@ -349,16 +361,19 @@ export async function reprocessPendingCatalogRemediation(
   { productLimit = 20, limit, evaluatedAt }: PendingCatalogReplayOptions = {},
 ): Promise<PendingCatalogReplaySummary> {
   const processedAt = evaluatedAt || new Date().toISOString();
-  const products = await db
+  const take = Math.min(100, Math.max(1, Math.trunc(Number(productLimit) || 20)));
+  const productPage = await db
     .prepare(`
-      SELECT id
+      SELECT id, last_verified_at, remediation_after_listing_id
       FROM knowledge_catalog_products
       WHERE ${PENDING_REMEDIATION_PREDICATE}
       ORDER BY last_verified_at, id
       LIMIT ?
     `)
-    .bind(Math.min(100, Math.max(1, Math.trunc(Number(productLimit) || 20))))
-    .all<{ id: number }>();
+    .bind(take + 1)
+    .all<PendingCatalogProductRow>();
+  const pendingPage = productPage.results || [];
+  const products = pendingPage.slice(0, take);
 
   const summary: PendingCatalogReplaySummary = {
     catalogProducts: 0,
@@ -366,10 +381,13 @@ export async function reprocessPendingCatalogRemediation(
     changedCount: 0,
     matchedCount: 0,
     pendingProducts: 0,
+    hasMoreProducts: pendingPage.length > take,
+    remainingProductCount: 0,
+    incompleteProductCount: 0,
   };
-  const completed: number[] = [];
-  for (const row of products.results || []) {
+  for (const row of products) {
     const { target, replay } = await reprocessVerifiedCatalogProduct(db, Number(row.id), {
+      afterId: Number(row.remediation_after_listing_id) || 0,
       limit,
       evaluatedAt: processedAt,
     });
@@ -378,21 +396,29 @@ export async function reprocessPendingCatalogRemediation(
     summary.processedCount += replay.processedCount;
     summary.changedCount += replay.changedCount;
     summary.matchedCount += replay.matchedCount;
-    // A product with a page left over keeps its watermark so the next invocation resumes it.
-    if (!replay.hasMore) completed.push(target.catalogProductId);
-  }
-
-  for (let index = 0; index < completed.length; index += WRITE_BATCH_SIZE) {
-    const chunk = completed.slice(index, index + WRITE_BATCH_SIZE);
-    await db.batch(
-      chunk.map((id) =>
+    // Persist progress after each successfully refreshed product. If a later product fails, this
+    // one does not lose its cursor; if this write itself fails, replaying the same page is safe.
+    if (replay.hasMore && replay.nextAfterId !== null) {
+      await db.batch([
         db
-          .prepare(
-            "UPDATE knowledge_catalog_products SET last_remediated_at = ?, updated_at = ? WHERE id = ?",
-          )
-          .bind(processedAt, processedAt, id),
-      ),
-    );
+          .prepare(`
+            UPDATE knowledge_catalog_products
+            SET remediation_after_listing_id = ?, updated_at = ?
+            WHERE id = ? AND last_verified_at = ?
+          `)
+          .bind(replay.nextAfterId, processedAt, target.catalogProductId, row.last_verified_at),
+      ]);
+    } else {
+      await db.batch([
+        db
+          .prepare(`
+            UPDATE knowledge_catalog_products
+            SET last_remediated_at = ?, remediation_after_listing_id = 0, updated_at = ?
+            WHERE id = ? AND last_verified_at = ?
+          `)
+          .bind(processedAt, processedAt, target.catalogProductId, row.last_verified_at),
+      ]);
+    }
   }
 
   const remaining = await db
@@ -401,5 +427,8 @@ export async function reprocessPendingCatalogRemediation(
     )
     .first<{ pending: number }>();
   summary.pendingProducts = Number(remaining?.pending || 0);
+  summary.hasMoreProducts ||= summary.pendingProducts > 0;
+  summary.remainingProductCount = summary.pendingProducts;
+  summary.incompleteProductCount = summary.pendingProducts;
   return summary;
 }

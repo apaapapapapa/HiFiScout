@@ -231,6 +231,63 @@ test("other shops keep title changes as user-facing activity", async () => {
   assert.equal(result.activityCount, 1);
 });
 
+test("resolver-only model changes do not create user-facing activity", async () => {
+  const rawModel = "D-1000 MK2 中古";
+  const db = upsertDb(
+    existingProduct({
+      model: rawModel,
+      raw_model: rawModel,
+      normalized_model: "D1000MK2",
+      title: "TAD D-1000 MK2",
+    }),
+  );
+
+  const result = await upsertProducts(
+    db,
+    "fujiya-avic",
+    [
+      product({
+        model: "D-1000 MK2",
+        rawModel,
+        normalizedModel: "D1000MK2",
+        title: "TAD D-1000 MK2",
+      }),
+    ],
+    "2026-08-12T06:00:00.000Z",
+  );
+
+  assert.equal(result.changedCount, 1);
+  assert.equal(result.activityCount, 0);
+});
+
+test("seller-side raw model changes remain user-facing activity when policy enables model", async () => {
+  const db = upsertDb(
+    existingProduct({
+      model: "D-1000 MK2",
+      raw_model: "D-1000 MK2",
+      normalized_model: "D1000MK2",
+      title: "TAD D-1000 MK2",
+    }),
+  );
+
+  const result = await upsertProducts(
+    db,
+    "fujiya-avic",
+    [
+      product({
+        model: "D-1000 MK2 Signature",
+        rawModel: "D-1000 MK2 Signature",
+        normalizedModel: "D1000MK2SIGNATURE",
+        title: "TAD D-1000 MK2",
+      }),
+    ],
+    "2026-08-12T06:00:00.000Z",
+  );
+
+  assert.equal(result.changedCount, 1);
+  assert.equal(result.activityCount, 1);
+});
+
 test("parser and normalization metadata drift does not create user-facing activity", async () => {
   const db = upsertDb(
     existingProduct({

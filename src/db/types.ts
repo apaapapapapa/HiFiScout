@@ -98,6 +98,10 @@ export interface ProductRow {
   model_resolution_method: ModelResolutionMethod;
   model_resolution_confidence: ResolutionConfidence;
   model_resolver_version: number;
+  /** A remediation replay has derived fields that still need projection/identity/entity refresh. */
+  remediation_projection_required: SqliteBool;
+  /** Compare-and-clear token preventing an older concurrent replay from clearing newer work. */
+  remediation_projection_token: string;
   raw_category: string;
   primary_category_id: string;
   /** JSON `string[]`; parse to `unknown` then narrow. */

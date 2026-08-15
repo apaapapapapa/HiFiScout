@@ -19,6 +19,7 @@ import {
 } from "../db/knowledge-catalog-remediation-repository.js";
 import {
   listUnresolvedManufacturerGroups,
+  reprocessStaleManufacturerListings,
   saveManufacturerAliasAndReprocess,
 } from "../db/manufacturer-repository.js";
 import { listUnresolvedModelGroups, reprocessStaleModelListings } from "../db/model-repository.js";
@@ -165,6 +166,15 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext): Pro
     const replay = parseReplayRequest(await readJsonBody(request));
     if (!replay) return json({ error: "invalid_replay_request" }, { status: 400 });
     return json(await reprocessStaleModelListings(env.DB, replay));
+  }
+  if (
+    request.method === "POST" &&
+    url.pathname === "/api/admin/data-quality/replay-manufacturers"
+  ) {
+    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
+    const replay = parseReplayRequest(await readJsonBody(request));
+    if (!replay) return json({ error: "invalid_replay_request" }, { status: 400 });
+    return json(await reprocessStaleManufacturerListings(env.DB, replay));
   }
   if (request.method === "POST" && url.pathname === "/api/admin/knowledge-catalog/replay") {
     if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });

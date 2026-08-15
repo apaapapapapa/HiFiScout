@@ -334,7 +334,7 @@ export function applyModelResolution(
       ? aliasesOrResolver
       : createModelResolver(aliasesOrResolver);
   const resolution = resolver({
-    rawModel: product.rawModel || product.model,
+    rawModel: product.rawModel,
     title: product.title,
     manufacturerId: product.manufacturerId,
   });
