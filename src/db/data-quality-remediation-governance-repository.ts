@@ -1,14 +1,22 @@
+import {
+  REMEDIATION_ROLLOUT_BASELINE,
+  remediationBaselineForShop,
+} from "../data-quality/remediation-baseline.js";
+import {
+  buildRemediationDashboardMetrics,
+  REMEDIATION_DASHBOARD_LIMITS,
+} from "../data-quality/remediation-dashboard.js";
 import { evaluateRemediationSlo } from "../data-quality/remediation-slo.js";
+import { dataQualityRemediationImpact } from "./data-quality-remediation-impact-repository.js";
+import { dataQualityRemediationOperationalMetrics } from "./data-quality-remediation-metrics.js";
 import { dataQualityStatus, listDataQualityHistory } from "./data-quality-repository.js";
+import { listIdentityResolutionMethodDistribution } from "./data-quality-remediation-dashboard-repository.js";
+import { listUnresolvedIdentityGroups } from "./knowledge-catalog-remediation-repository.js";
 import type { QueryableDatabase } from "./types.js";
 
 type StoredQuality = Awaited<ReturnType<typeof dataQualityStatus>>["shops"][number];
 
-function withRemediationSlo<T extends StoredQuality>(
-  quality: T,
-): T & {
-  remediationSlo: ReturnType<typeof evaluateRemediationSlo>;
-} {
+function withRemediationSlo<T extends StoredQuality>(quality: T) {
   const totalItems = Number(quality.metrics.manufacturerUnknown.denominator || 0);
   const missingIdentityRows = Number(quality.details.identityResolutionMissingCount || 0);
   return {
@@ -26,26 +34,56 @@ function withRemediationSlo<T extends StoredQuality>(
   };
 }
 
-/**
- * Existing Phase 2 status plus the post-Phase-4 milestone evaluation for every shop independently.
- * The top-level Phase 2 status remains the worst shop, so a healthy source cannot hide a degraded
- * source and the remediation goals do not create a second monitoring datastore.
- */
-export async function dataQualityStatusWithRemediationSlo(db: QueryableDatabase): Promise<
-  Omit<Awaited<ReturnType<typeof dataQualityStatus>>, "shops"> & {
-    shops: Array<ReturnType<typeof withRemediationSlo>>;
-  }
-> {
+export async function dataQualityStatusWithRemediationSlo(db: QueryableDatabase) {
   const status = await dataQualityStatus(db);
-  return { ...status, shops: status.shops.map(withRemediationSlo) };
+  const current = status.shops.map(withRemediationSlo);
+  const histories = await Promise.all(
+    current.map(async (shop) =>
+      (
+        await listDataQualityHistory(
+          db,
+          shop.shop,
+          REMEDIATION_DASHBOARD_LIMITS.historySnapshots,
+        )
+      ).map(withRemediationSlo),
+    ),
+  );
+  const [impact, catalogCandidateGroups, queue, identityResolutionMethods] = await Promise.all([
+    dataQualityRemediationImpact(db, REMEDIATION_DASHBOARD_LIMITS.contributors),
+    listUnresolvedIdentityGroups(db, REMEDIATION_DASHBOARD_LIMITS.contributors),
+    dataQualityRemediationOperationalMetrics(db),
+    listIdentityResolutionMethodDistribution(db),
+  ]);
+  const shops = current.map((shop, index) => ({
+    ...shop,
+    dashboard: {
+      historyLimit: REMEDIATION_DASHBOARD_LIMITS.historySnapshots,
+      trendOrder: "oldest_to_newest" as const,
+      rolloutBaselineCapturedAt: REMEDIATION_ROLLOUT_BASELINE.capturedAt,
+      metrics: buildRemediationDashboardMetrics(
+        shop,
+        histories[index] || [],
+        remediationBaselineForShop(shop.shop),
+      ),
+    },
+  }));
+  return {
+    ...status,
+    shops,
+    remediation: {
+      rolloutBaseline: REMEDIATION_ROLLOUT_BASELINE,
+      boundedQueries: REMEDIATION_DASHBOARD_LIMITS,
+      queue,
+      identityResolutionMethods,
+      topContributors: { ...impact, catalogCandidateGroups },
+    },
+  };
 }
 
-/** History uses the same persisted Phase 2 rows, with milestone compliance derived at read time. */
 export async function listDataQualityHistoryWithRemediationSlo(
   db: QueryableDatabase,
   shopKey: string,
   limit?: number,
 ): Promise<Array<ReturnType<typeof withRemediationSlo>>> {
-  const history = await listDataQualityHistory(db, shopKey, limit);
-  return history.map(withRemediationSlo);
+  return (await listDataQualityHistory(db, shopKey, limit)).map(withRemediationSlo);
 }
