@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   MODEL_OPTIONAL_CATEGORIES,
   dataQualityRow,
+  latestDataQualityByShop,
   listDataQualityHistory,
   readDataQualitySnapshot,
   saveDataQualityRun,
@@ -233,4 +234,107 @@ test("a crawl run's explicit item count still overrides the snapshot default", a
 
   assert.equal(result.run.metrics.itemCount.current, 95);
   assert.equal(result.run.metrics.itemCount.previous, 90);
+});
+
+function runRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 1,
+    shop_key: "audio-union",
+    crawl_run_id: null,
+    evaluated_at: "2026-08-15T00:00:00.000Z",
+    total_items: 100,
+    manufacturer_missing_count: 0,
+    manufacturer_unresolved_count: 0,
+    category_unclassified_count: 0,
+    other_category_count: 0,
+    identity_matched_count: 100,
+    identity_unresolved_count: 0,
+    identity_veto_count: 0,
+    identity_candidate_count: 0,
+    inventory_known_count: 100,
+    inventory_unknown_count: 0,
+    model_expected_count: 100,
+    model_extracted_count: 100,
+    model_missing_count: 0,
+    parse_attempt_count: 0,
+    parse_success_count: 0,
+    parse_failure_count: 0,
+    evidence_expected_event_count: 0,
+    evidence_archived_event_count: 0,
+    evidence_archive_failure_count: 0,
+    previous_item_count: null,
+    current_item_count: 100,
+    item_count_absolute_difference: null,
+    item_count_change_rate: null,
+    manufacturer_status: "healthy",
+    category_status: "healthy",
+    identity_status: "healthy",
+    inventory_status: "healthy",
+    model_status: "healthy",
+    parser_status: "unknown",
+    item_count_status: "unknown",
+    evidence_status: "unknown",
+    snapshot_status: "healthy",
+    run_status: "unknown",
+    quality_status: "healthy",
+    rn_latest: 1,
+    rn_latest_crawl: 2,
+    ...overrides,
+  };
+}
+
+test("a remediation-only row cannot bury a real crawl's parser-failure critical", async () => {
+  const criticalCrawl = runRow({
+    id: 1,
+    crawl_run_id: 10,
+    evaluated_at: "2026-08-15T00:00:00.000Z",
+    parse_attempt_count: 10,
+    parse_failure_count: 9,
+    parser_status: "critical",
+    item_count_status: "healthy",
+    evidence_status: "unknown",
+    run_status: "critical",
+    quality_status: "critical",
+    rn_latest: 2,
+    rn_latest_crawl: 1,
+  });
+  const remediationOnlyRun = runRow({
+    id: 2,
+    crawl_run_id: null,
+    evaluated_at: "2026-08-15T01:00:00.000Z",
+    manufacturer_missing_count: 0,
+    rn_latest: 1,
+    rn_latest_crawl: 3,
+  });
+  const db = captureDb({ allRows: [[remediationOnlyRun, criticalCrawl]] });
+
+  const [shop] = await latestDataQualityByShop(db);
+
+  // The remediation row is newer, but it never measured parser health — the last real crawl's
+  // critical parser failure must still be what /status reports, not a fabricated "unknown".
+  assert.equal(shop.id, 2);
+  assert.equal(shop.evaluatedAt, "2026-08-15T01:00:00.000Z");
+  assert.equal(shop.status, "critical");
+  assert.equal(shop.latestRun.status, "critical");
+  assert.equal(shop.metrics.parserFailure.status, "critical");
+  assert.equal(shop.metrics.parserFailure.rate, 0.9);
+  assert.match(db.calls[0].sql, /rn_latest_crawl/);
+});
+
+test("the common case (no intervening remediation row) is unaffected", async () => {
+  const onlyCrawl = runRow({
+    id: 1,
+    crawl_run_id: 10,
+    parser_status: "healthy",
+    run_status: "healthy",
+    quality_status: "healthy",
+    rn_latest: 1,
+    rn_latest_crawl: 1,
+  });
+  const db = captureDb({ allRows: [[onlyCrawl]] });
+
+  const [shop] = await latestDataQualityByShop(db);
+
+  assert.equal(shop.id, 1);
+  assert.equal(shop.status, "healthy");
 });

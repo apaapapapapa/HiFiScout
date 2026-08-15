@@ -319,23 +319,72 @@ export function dataQualityRow(row: DataQualityRunRow): StoredQualityEvaluation 
   };
 }
 
+function worseStatus(a: QualityStatus, b: QualityStatus): QualityStatus {
+  return STATUS_RANK[b] > STATUS_RANK[a] ? b : a;
+}
+
+/**
+ * A remediation sweep persists a row between crawls with `crawl_run_id` left null and its run-level
+ * counts (parser failures, evidence coverage, item-count drop) left unmeasured, so that row's own
+ * `run`/`quality` status is `unknown` rather than a fabricated pass. Composing the latest row's
+ * `status`/`latestRun` from it directly would silently drop the last real crawl's run health — e.g.
+ * a shop stuck `critical` on parser failures would read as merely the (possibly healthy) snapshot
+ * status the moment a remediation sweep runs. Crawl-run fields are therefore always sourced from the
+ * newest crawl-linked row, kept independent of which row is newest overall.
+ */
+function mergeLatestWithLatestCrawl(
+  latest: StoredQualityEvaluation,
+  latestCrawl: StoredQualityEvaluation | null,
+): StoredQualityEvaluation {
+  if (!latestCrawl || latestCrawl.id === latest.id) return latest;
+  return {
+    ...latest,
+    status: worseStatus(latest.snapshot.status, latestCrawl.latestRun.status),
+    latestRun: latestCrawl.latestRun,
+    metrics: { ...latest.snapshot.metrics, ...latestCrawl.latestRun.metrics },
+  };
+}
+
 export async function latestDataQualityByShop(
   db: QueryableDatabase,
 ): Promise<StoredQualityEvaluation[]> {
   const result = await db
     .prepare(`
-      SELECT q.*
-      FROM data_quality_runs q
-      WHERE q.id = (
-        SELECT q2.id FROM data_quality_runs q2
-        WHERE q2.shop_key = q.shop_key
-        ORDER BY q2.evaluated_at DESC, q2.id DESC
-        LIMIT 1
+      WITH ranked AS (
+        SELECT q.*,
+          ROW_NUMBER() OVER (
+            PARTITION BY q.shop_key ORDER BY q.evaluated_at DESC, q.id DESC
+          ) AS rn_latest,
+          ROW_NUMBER() OVER (
+            PARTITION BY q.shop_key ORDER BY
+              (CASE WHEN q.crawl_run_id IS NOT NULL THEN q.evaluated_at END) DESC,
+              (CASE WHEN q.crawl_run_id IS NOT NULL THEN q.id END) DESC
+          ) AS rn_latest_crawl
+        FROM data_quality_runs q
       )
-      ORDER BY q.shop_key
+      SELECT * FROM ranked
+      WHERE rn_latest = 1 OR (rn_latest_crawl = 1 AND crawl_run_id IS NOT NULL)
+      ORDER BY shop_key
     `)
-    .all<DataQualityRunRow>();
-  return (result.results || []).map((row) => dataQualityRow(row));
+    .all<DataQualityRunRow & { rn_latest: number; rn_latest_crawl: number }>();
+  const byShop = new Map<
+    string,
+    { latest?: StoredQualityEvaluation; latestCrawl?: StoredQualityEvaluation }
+  >();
+  for (const row of result.results || []) {
+    const entry = byShop.get(row.shop_key) || {};
+    const evaluation = dataQualityRow(row);
+    if (Number(row.rn_latest) === 1) entry.latest = evaluation;
+    if (Number(row.rn_latest_crawl) === 1 && row.crawl_run_id != null) {
+      entry.latestCrawl = evaluation;
+    }
+    byShop.set(row.shop_key, entry);
+  }
+  return [...byShop.values()]
+    .filter((entry): entry is typeof entry & { latest: StoredQualityEvaluation } =>
+      Boolean(entry.latest),
+    )
+    .map((entry) => mergeLatestWithLatestCrawl(entry.latest, entry.latestCrawl ?? null));
 }
 
 export async function listDataQualityHistory(

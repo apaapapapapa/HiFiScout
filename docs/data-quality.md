@@ -115,6 +115,8 @@ The first successful crawl per shop after deployment persists a Phase 2 baseline
 
 Every five-minute sweep that resolves at least one job also recomputes and persists a snapshot for each shop it touched, via the same `saveDataQualityRun` a crawl uses, with `crawl_run_id` left `null`. This closes the loop without inventing a synthetic crawl: crawl-only run metrics (parser failure, evidence coverage, item-count drop) correctly report `unknown` on that row since no crawl happened, while the snapshot metrics (manufacturer/category/identity/inventory/model) reflect current D1 state immediately rather than waiting for the shop's next crawl. A sweep with no resolved work writes no row, so history growth stays proportional to actual remediation activity and is bounded by the existing 180-day retention.
 
+Because that row's own run status is `unknown`, `latestDataQualityByShop` never lets it stand in for crawl-run health: the newest row overall supplies the snapshot metrics, but `latestRun` (parser failure, evidence coverage, item-count drop) and the metric statuses that feed the top-level `status` are always sourced from the newest row that has a `crawl_run_id`, independent of which row is newest. A shop stuck `critical` on parser failures stays `critical` through any number of intervening remediation sweeps instead of reading as healthy the moment one runs.
+
 ## Rebuild and backfill order
 
 Migrating existing production data, or a full recovery rebuild, follows this dependency order — each stage's output is what the next stage reads, so running them out of order stales the result immediately:
