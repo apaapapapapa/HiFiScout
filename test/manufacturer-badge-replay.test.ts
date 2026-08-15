@@ -8,6 +8,10 @@ import { productQuery } from "./helpers/product-query.js";
 test("badge-prefixed Japanese legacy manufacturers remain filterable during replay", async () => {
   const { sqlite, db } = migratedSqlite();
   try {
+    // This fixture intentionally models an already-existing stale read-model row. Its referenced
+    // listing is irrelevant to the manufacturer predicate, so avoid manufacturing a full product
+    // fixture solely to satisfy the read model's foreign key.
+    sqlite.exec("PRAGMA foreign_keys = OFF");
     sqlite
       .prepare(`
         INSERT INTO product_search_entities(
@@ -24,6 +28,7 @@ test("badge-prefixed Japanese legacy manufacturers remain filterable during repl
         "l505uxii",
         "integrated_amp",
       );
+    sqlite.exec("PRAGMA foreign_keys = ON");
 
     const result = await searchProducts(db, productQuery("?manufacturer=LUXMAN"));
 
