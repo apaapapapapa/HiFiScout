@@ -23,7 +23,11 @@
 
 import { categoryFilterIds } from "../catalog/categories.js";
 import { normalizeIdentityModel } from "../catalog/product-identity.js";
-import { manufacturerFilterIds, splitKnownManufacturerModel } from "../catalog/manufacturers.js";
+import {
+  manufacturerFilterIds,
+  manufacturerFilterPresentations,
+  splitKnownManufacturerModel,
+} from "../catalog/manufacturers.js";
 import { parseFtsSearchQuery } from "../search/fts-query.js";
 import type { FtsSearchPlan } from "../search/fts-query.js";
 import { usesRelevanceOrder } from "../api/product-query.js";
@@ -73,6 +77,9 @@ export const MAX_DETAIL_OFFERS = 200;
  * the result count — at most three statements each, never one per result.
  */
 const OFFER_QUERY_CHUNK_SIZE = 40;
+
+const NORMALIZED_MANUFACTURER_PRESENTATION_SQL =
+  "LOWER(REPLACE(REPLACE(TRIM(e.manufacturer), ' ', ''), '　', ''))";
 
 function chunked(values: readonly number[]): number[][] {
   const chunks: number[][] = [];
@@ -166,19 +173,32 @@ function relevanceOrder(q: string, plan: FtsSearchPlan | null, rankBinds: unknow
 /** Product-level filters: they describe the product, so they never look at an individual offer. */
 function addProductFilters(query: ProductQuery, where: string[], binds: unknown[]): void {
   if (query.manufacturer) {
-    // During a resolver-version replay, the public facet may already expose the canonical display
-    // while an entity still carries the previous fallback id (for example `msb`). Match every id
-    // that the known alias set could historically have produced until the replay converges.
+    // A visible canonical facet can race ahead of resolver replay. Keep matching the old ids, and
+    // also the seller presentation itself so a Japanese-only alias whose old id was a badge-specific
+    // hash (for example `【中古品】ラックスマン`) cannot disappear during that window.
     const manufacturerIds = manufacturerFilterIds(query.manufacturer);
-    if (manufacturerIds.length) {
-      where.push(
-        `(e.manufacturer_id IN (${manufacturerIds.map(() => "?").join(",")}) OR e.manufacturer = ?)`,
-      );
-      binds.push(...manufacturerIds, query.manufacturer);
-    } else {
-      where.push("e.manufacturer = ?");
-      binds.push(query.manufacturer);
-    }
+    const manufacturerPresentations = manufacturerFilterPresentations(query.manufacturer).map(
+      (presentation) => presentation.toLowerCase().replace(/\s+/gu, ""),
+    );
+    where.push(`(
+      e.manufacturer_id IN (SELECT value FROM json_each(?))
+      OR EXISTS (
+        SELECT 1 FROM json_each(?) presentation
+        WHERE ${NORMALIZED_MANUFACTURER_PRESENTATION_SQL} = presentation.value
+           OR (
+             (
+               ${NORMALIZED_MANUFACTURER_PRESENTATION_SQL} LIKE '【%】%'
+               OR ${NORMALIZED_MANUFACTURER_PRESENTATION_SQL} LIKE '〖%〗%'
+               OR ${NORMALIZED_MANUFACTURER_PRESENTATION_SQL} LIKE '[%]%'
+             )
+             AND substr(
+               ${NORMALIZED_MANUFACTURER_PRESENTATION_SQL},
+               -length(presentation.value)
+             ) = presentation.value
+           )
+      )
+    )`);
+    binds.push(JSON.stringify(manufacturerIds), JSON.stringify(manufacturerPresentations));
   }
   if (query.category) {
     const categoryIds = categoryFilterIds(query.category);
