@@ -68,6 +68,22 @@ BEGIN
         ), '')
         ELSE ''
       END,
+      resolver_confidence = CASE
+        WHEN NEW.field = 'identity' THEN COALESCE((
+          SELECT r.confidence
+          FROM product_identity_resolutions r
+          WHERE r.listing_product_id = NEW.listing_product_id
+        ), NEW.resolver_confidence)
+        ELSE NEW.resolver_confidence
+      END,
+      resolver_version = CASE
+        WHEN NEW.field = 'identity' THEN COALESCE((
+          SELECT r.identity_resolver_version
+          FROM product_identity_resolutions r
+          WHERE r.listing_product_id = NEW.listing_product_id
+        ), NEW.resolver_version)
+        ELSE NEW.resolver_version
+      END,
       provenance_complete = CASE
         WHEN NEW.field = 'identity'
          AND NOT EXISTS (
@@ -169,7 +185,13 @@ BEGIN
          COALESCE(OLD.category, '') || ' (' || COALESCE(OLD.primary_category_id, '') || '/' || OLD.classification_status || ')',
          COALESCE(NEW.category, '') || ' (' || COALESCE(NEW.primary_category_id, '') || '/' || NEW.classification_status || ')',
          'category_classifier_queue_replay', 'category_evidence', '',
-         COALESCE(CAST(json_extract(NEW.metadata_json, '$.categoryClassification.version') AS INTEGER), 0),
+         CASE
+           WHEN json_valid(NEW.metadata_json) THEN COALESCE(
+             CAST(json_extract(NEW.metadata_json, '$.categoryClassification.version') AS INTEGER),
+             0
+           )
+           ELSE 0
+         END,
          substr(NEW.remediation_projection_token, 11, 24)
   WHERE OLD.category IS NOT NEW.category
      OR OLD.primary_category_id IS NOT NEW.primary_category_id
