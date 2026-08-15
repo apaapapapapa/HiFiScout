@@ -83,11 +83,11 @@ const MANUFACTURER_LISTING_LABEL =
 
 /** Remove seller condition badges accidentally captured as part of manufacturer/title evidence. */
 export function stripManufacturerListingLabels(value: unknown = ""): string {
-  return String(value).normalize("NFKC").replace(MANUFACTURER_LISTING_LABEL, "").trim();
+  return String(value).replace(MANUFACTURER_LISTING_LABEL, "").trim();
 }
 
 export function normalizeManufacturerKey(value: unknown = ""): string {
-  return stripManufacturerListingLabels(value)
+  return stripManufacturerListingLabels(String(value).normalize("NFKC"))
     .toLowerCase()
     .replace(/\b(?:co\.?\s*,?\s*ltd\.?|corporation|corp\.?|inc\.?|limited|ltd\.?)\b/gi, "")
     .replace(/(?:株式会社|有限会社|合同会社)/g, "")
