@@ -73,7 +73,7 @@ function direction(
   const change = last - first;
   if (Math.abs(change) < 1e-12) return "flat";
   const higherIsBetter = key === "identityCoverage" || key === "evidenceCoverage";
-  return higherIsBetter === change > 0 ? "improving" : "degrading";
+  return (change > 0) === higherIsBetter ? "improving" : "degrading";
 }
 
 export function buildRemediationDashboardMetric(
