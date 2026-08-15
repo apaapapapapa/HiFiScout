@@ -40,11 +40,7 @@ export async function dataQualityStatusWithRemediationSlo(db: QueryableDatabase)
   const histories = await Promise.all(
     current.map(async (shop) =>
       (
-        await listDataQualityHistory(
-          db,
-          shop.shop,
-          REMEDIATION_DASHBOARD_LIMITS.historySnapshots,
-        )
+        await listDataQualityHistory(db, shop.shop, REMEDIATION_DASHBOARD_LIMITS.historySnapshots)
       ).map(withRemediationSlo),
     ),
   );

@@ -108,7 +108,9 @@ export const REMEDIATION_ROLLOUT_BASELINE = Object.freeze({
 });
 
 export function remediationBaselineForShop(shopKey: string): RemediationShopBaseline | null {
-  return REMEDIATION_ROLLOUT_BASELINE.shops[
-    shopKey as keyof typeof REMEDIATION_ROLLOUT_BASELINE.shops
-  ] ?? null;
+  return (
+    REMEDIATION_ROLLOUT_BASELINE.shops[
+      shopKey as keyof typeof REMEDIATION_ROLLOUT_BASELINE.shops
+    ] ?? null
+  );
 }
