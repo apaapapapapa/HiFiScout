@@ -1,0 +1,372 @@
+/**
+ * The Knowledge Catalog remediation loop.
+ *
+ * Listings that Product Identity cannot resolve become a structured, impact-ordered candidate
+ * process instead of an unorganized backlog, and a catalog entry that becomes verified can be
+ * applied to the listings it explains without any shop being crawled again.
+ *
+ * Candidate creation is not verification: nothing here promotes a listing to a canonical product.
+ * Replay only re-runs the existing conservative resolver against evidence that has changed, so a
+ * group repeated across many shops still cannot merge until the catalog says it may.
+ */
+
+import { normalizeIdentityModel } from "../catalog/product-identity.js";
+import { refreshListingProjections } from "./listing-projection-refresh.js";
+import { remediationEventStatement } from "./remediation-event-repository.js";
+import type { QueryableDatabase, ReadableDatabase } from "./types.js";
+
+const DEFAULT_REPLAY_LIMIT = 100;
+const MAX_REPLAY_LIMIT = 250;
+const MAX_IDENTITY_MODELS = 20;
+const LOOKUP_CHUNK_SIZE = 50;
+const WRITE_BATCH_SIZE = 50;
+
+export interface CatalogRemediationTarget {
+  catalogProductId: number;
+  manufacturerId: string;
+  canonicalModel: string;
+  /** Identity-normalized canonical model plus verified model aliases. */
+  identityModels: string[];
+}
+
+export interface CatalogRemediationOptions {
+  afterId?: number;
+  limit?: number;
+  evaluatedAt?: string;
+}
+
+export interface CatalogRemediationResult {
+  processedCount: number;
+  changedCount: number;
+  matchedCount: number;
+  nextAfterId: number | null;
+  hasMore: boolean;
+}
+
+export interface UnresolvedIdentityGroup {
+  canonicalManufacturerId: string;
+  normalizedModel: string;
+  sampleModel: string;
+  sampleRawModel: string;
+  sampleSourceUrl: string;
+  identityRejectionReason: string;
+  listingCount: number;
+  shopCount: number;
+  unclassifiedCount: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+}
+
+interface UnresolvedIdentityGroupRow {
+  canonical_manufacturer_id: string;
+  normalized_model: string;
+  sample_model: string;
+  sample_raw_model: string;
+  sample_source_url: string;
+  identity_rejection_reason: string;
+  listing_count: number;
+  shop_count: number;
+  unclassified_count: number;
+  first_seen_at: string;
+  last_seen_at: string;
+}
+
+interface RemediationListingRow {
+  id: number;
+  shop_key: string;
+  source_id: string;
+}
+
+interface IdentityStateRow {
+  listing_product_id: number;
+  catalog_product_id: number | null;
+  status: string;
+  match_method: string;
+}
+
+interface IdentityState {
+  catalogProductId: number | null;
+  status: string;
+  matchMethod: string;
+}
+
+function boundedLimit(value: number | undefined): number {
+  return Math.min(MAX_REPLAY_LIMIT, Math.max(1, Number(value) || DEFAULT_REPLAY_LIMIT));
+}
+
+function describe(state: IdentityState | undefined): string {
+  if (!state) return "none";
+  return `${state.status}:${state.matchMethod}:${state.catalogProductId ?? "-"}`;
+}
+
+/**
+ * Highest-impact unresolved groups, keyed exactly as the skill requires: canonical manufacturer
+ * plus normalized model. A human can read one row and decide whether to add a catalog entry.
+ */
+export async function listUnresolvedIdentityGroups(
+  db: ReadableDatabase,
+  limit = 50,
+): Promise<UnresolvedIdentityGroup[]> {
+  const result = await db
+    .prepare(`
+      SELECT p.canonical_manufacturer_id,
+             p.normalized_model,
+             MIN(p.model) AS sample_model,
+             MIN(p.raw_model) AS sample_raw_model,
+             MIN(p.source_url) AS sample_source_url,
+             MIN(COALESCE(r.match_method, 'missing_resolution')) AS identity_rejection_reason,
+             COUNT(*) AS listing_count,
+             COUNT(DISTINCT p.shop_key) AS shop_count,
+             SUM(CASE WHEN p.classification_status <> 'classified' THEN 1 ELSE 0 END)
+               AS unclassified_count,
+             MIN(p.first_seen_at) AS first_seen_at,
+             MAX(p.last_seen_at) AS last_seen_at
+      FROM products p
+      LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
+      WHERE p.is_active = 1
+        AND p.canonical_manufacturer_id <> ''
+        AND p.normalized_model <> ''
+        AND COALESCE(r.status, 'unresolved') <> 'matched'
+      GROUP BY p.canonical_manufacturer_id, p.normalized_model
+      ORDER BY listing_count DESC, shop_count DESC,
+               p.canonical_manufacturer_id, p.normalized_model
+      LIMIT ?
+    `)
+    .bind(Math.min(200, Math.max(1, Number(limit) || 50)))
+    .all<UnresolvedIdentityGroupRow>();
+  return (result.results || []).map((row) => ({
+    canonicalManufacturerId: row.canonical_manufacturer_id,
+    normalizedModel: row.normalized_model,
+    sampleModel: row.sample_model || "",
+    sampleRawModel: row.sample_raw_model || "",
+    sampleSourceUrl: row.sample_source_url || "",
+    identityRejectionReason: row.identity_rejection_reason || "missing_resolution",
+    listingCount: Number(row.listing_count),
+    shopCount: Number(row.shop_count),
+    unclassifiedCount: Number(row.unclassified_count || 0),
+    firstSeenAt: row.first_seen_at || "",
+    lastSeenAt: row.last_seen_at || "",
+  }));
+}
+
+/**
+ * Resolve which stored listings a verified catalog entry can now explain.
+ *
+ * The selector is the identity normalization, not the catalog's own model spelling, because that
+ * is the representation Product Identity actually compares.
+ */
+export async function loadCatalogRemediationTarget(
+  db: ReadableDatabase,
+  catalogProductId: number,
+): Promise<CatalogRemediationTarget | null> {
+  const product = await db
+    .prepare(`
+      SELECT id, manufacturer_id, canonical_model
+      FROM knowledge_catalog_products
+      WHERE id = ? AND verification_status = 'verified'
+    `)
+    .bind(catalogProductId)
+    .first<{ id: number; manufacturer_id: string; canonical_model: string }>();
+  if (!product) return null;
+
+  const aliases = await db
+    .prepare(`
+      SELECT alias FROM knowledge_catalog_aliases
+      WHERE product_id = ? AND alias_type = 'model'
+      ORDER BY normalized_alias
+      LIMIT ?
+    `)
+    .bind(product.id, MAX_IDENTITY_MODELS)
+    .all<{ alias: string }>();
+
+  const identityModels = [
+    ...new Set(
+      [product.canonical_model, ...(aliases.results || []).map((row) => row.alias)]
+        .map((value) => normalizeIdentityModel(value))
+        .filter(Boolean),
+    ),
+  ]
+    .sort()
+    .slice(0, MAX_IDENTITY_MODELS);
+  if (!identityModels.length) return null;
+
+  return {
+    catalogProductId: Number(product.id),
+    manufacturerId: String(product.manufacturer_id || "").toLowerCase(),
+    canonicalModel: product.canonical_model,
+    identityModels,
+  };
+}
+
+export async function selectListingsForCatalogRemediation(
+  db: ReadableDatabase,
+  target: CatalogRemediationTarget,
+  { afterId = 0, limit }: CatalogRemediationOptions = {},
+): Promise<{ rows: RemediationListingRow[]; hasMore: boolean }> {
+  const take = boundedLimit(limit);
+  const placeholders = target.identityModels.map(() => "?").join(",");
+  const result = await db
+    .prepare(`
+      SELECT id, shop_key, source_id
+      FROM products
+      WHERE is_active = 1 AND id > ? AND canonical_manufacturer_id = ?
+        AND normalized_model IN (${placeholders})
+      ORDER BY id
+      LIMIT ?
+    `)
+    .bind(afterId, target.manufacturerId, ...target.identityModels, take + 1)
+    .all<RemediationListingRow>();
+  const rows = result.results || [];
+  return { rows: rows.slice(0, take), hasMore: rows.length > take };
+}
+
+async function loadIdentityStates(
+  db: ReadableDatabase,
+  listingIds: readonly number[],
+): Promise<Map<number, IdentityState>> {
+  const states = new Map<number, IdentityState>();
+  for (let index = 0; index < listingIds.length; index += LOOKUP_CHUNK_SIZE) {
+    const chunk = listingIds.slice(index, index + LOOKUP_CHUNK_SIZE);
+    const placeholders = chunk.map(() => "?").join(",");
+    const result = await db
+      .prepare(`
+        SELECT listing_product_id, catalog_product_id, status, match_method
+        FROM product_identity_resolutions
+        WHERE listing_product_id IN (${placeholders})
+      `)
+      .bind(...chunk)
+      .all<IdentityStateRow>();
+    for (const row of result.results || []) {
+      states.set(Number(row.listing_product_id), {
+        catalogProductId: row.catalog_product_id === null ? null : Number(row.catalog_product_id),
+        status: row.status,
+        matchMethod: row.match_method,
+      });
+    }
+  }
+  return states;
+}
+
+/**
+ * Apply one verified catalog entry to a bounded page of the listings it explains.
+ *
+ * Seller facts are untouched. Only Product Identity and the projections that depend on it are
+ * recomputed, and only listings whose identity actually moved produce a provenance row.
+ */
+export async function reprocessCatalogRemediationTarget(
+  db: QueryableDatabase,
+  target: CatalogRemediationTarget,
+  options: CatalogRemediationOptions = {},
+): Promise<CatalogRemediationResult> {
+  const evaluatedAt = options.evaluatedAt || new Date().toISOString();
+  const selected = await selectListingsForCatalogRemediation(db, target, options);
+  const listingIds = selected.rows.map((row) => Number(row.id));
+  const before = await loadIdentityStates(db, listingIds);
+
+  await refreshListingProjections(db, selected.rows, evaluatedAt);
+
+  const after = await loadIdentityStates(db, listingIds);
+  const statements: D1PreparedStatement[] = [];
+  let matchedCount = 0;
+  for (const row of selected.rows) {
+    const previous = before.get(Number(row.id));
+    const next = after.get(Number(row.id));
+    if (next?.status === "matched") matchedCount += 1;
+    if (describe(previous) === describe(next)) continue;
+    statements.push(
+      remediationEventStatement(db, {
+        listingProductId: Number(row.id),
+        shopKey: row.shop_key,
+        sourceId: row.source_id,
+        field: "identity",
+        previousValue: describe(previous),
+        newValue: describe(next),
+        reason: `verified_catalog_product:${target.catalogProductId}`,
+        resolverMethod: next?.matchMethod || "",
+        resolverConfidence: next?.status === "matched" ? "high" : "none",
+        processedAt: evaluatedAt,
+      }),
+    );
+  }
+  for (let index = 0; index < statements.length; index += WRITE_BATCH_SIZE) {
+    await db.batch(statements.slice(index, index + WRITE_BATCH_SIZE));
+  }
+
+  const last = selected.rows.at(-1);
+  return {
+    processedCount: selected.rows.length,
+    changedCount: statements.length,
+    matchedCount,
+    nextAfterId: selected.hasMore && last ? Number(last.id) : null,
+    hasMore: selected.hasMore,
+  };
+}
+
+/** Load the verified catalog entry and replay its first page; resume with `nextAfterId`. */
+export async function reprocessVerifiedCatalogProduct(
+  db: QueryableDatabase,
+  catalogProductId: number,
+  options: CatalogRemediationOptions = {},
+): Promise<{ target: CatalogRemediationTarget | null; replay: CatalogRemediationResult | null }> {
+  const target = await loadCatalogRemediationTarget(db, catalogProductId);
+  if (!target) return { target: null, replay: null };
+  return { target, replay: await reprocessCatalogRemediationTarget(db, target, options) };
+}
+
+export interface VerifiedCatalogReplayOptions extends CatalogRemediationOptions {
+  since: string;
+  productLimit?: number;
+}
+
+export interface VerifiedCatalogReplaySummary {
+  catalogProducts: number;
+  processedCount: number;
+  changedCount: number;
+  matchedCount: number;
+  /** Catalog products with a page left over; their remaining listings were not replayed here. */
+  incompleteProducts: number;
+}
+
+/**
+ * Close the loop for everything a review run just verified.
+ *
+ * Bounded on both axes — at most `productLimit` catalog entries, one listing page each — so it fits
+ * a Worker invocation. `incompleteProducts` reports what was left rather than silently truncating;
+ * the remainder is resumable through the admin endpoint and is re-run by the next crawl anyway.
+ */
+export async function reprocessCatalogProductsVerifiedSince(
+  db: QueryableDatabase,
+  { since, productLimit = 20, limit, evaluatedAt }: VerifiedCatalogReplayOptions,
+): Promise<VerifiedCatalogReplaySummary> {
+  const products = await db
+    .prepare(`
+      SELECT id
+      FROM knowledge_catalog_products
+      WHERE verification_status = 'verified' AND last_verified_at >= ?
+      ORDER BY last_verified_at DESC, id DESC
+      LIMIT ?
+    `)
+    .bind(since, Math.min(100, Math.max(1, Math.trunc(Number(productLimit) || 20))))
+    .all<{ id: number }>();
+
+  const summary: VerifiedCatalogReplaySummary = {
+    catalogProducts: 0,
+    processedCount: 0,
+    changedCount: 0,
+    matchedCount: 0,
+    incompleteProducts: 0,
+  };
+  for (const row of products.results || []) {
+    const { target, replay } = await reprocessVerifiedCatalogProduct(db, Number(row.id), {
+      limit,
+      evaluatedAt,
+    });
+    if (!target || !replay) continue;
+    summary.catalogProducts += 1;
+    summary.processedCount += replay.processedCount;
+    summary.changedCount += replay.changedCount;
+    summary.matchedCount += replay.matchedCount;
+    if (replay.hasMore) summary.incompleteProducts += 1;
+  }
+  return summary;
+}

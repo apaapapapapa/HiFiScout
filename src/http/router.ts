@@ -13,6 +13,16 @@ import { SHOP_DEFINITIONS } from "../config.js";
 import { dispatchForcedCrawl } from "../crawler/dispatch.js";
 import { dataPlatformStatus } from "../db/data-platform-status-repository.js";
 import { dataQualityStatus, listDataQualityHistory } from "../db/data-quality-repository.js";
+import {
+  listUnresolvedIdentityGroups,
+  reprocessVerifiedCatalogProduct,
+} from "../db/knowledge-catalog-remediation-repository.js";
+import {
+  listUnresolvedManufacturerGroups,
+  saveManufacturerAliasAndReprocess,
+} from "../db/manufacturer-repository.js";
+import { listUnresolvedModelGroups, reprocessStaleModelListings } from "../db/model-repository.js";
+import { listRecentRemediationEvents } from "../db/remediation-event-repository.js";
 import { productHistory } from "../db/product-history-repository.js";
 import {
   productSearchEntityConsistency,
@@ -21,6 +31,8 @@ import {
 import { productSearchDetail, searchProducts } from "../db/product-search-repository.js";
 import { getSyncHealth } from "../health.js";
 import { knowledgeCatalogStatus } from "./knowledge-catalog-status.js";
+import { parseManufacturerAliasAdminRequest } from "./manufacturer-alias-admin.js";
+import { parseCatalogReplayRequest, parseReplayRequest } from "./remediation-admin.js";
 import { meta } from "./meta.js";
 import { cachedJson, json } from "./response.js";
 import type { CrawlerEnv } from "../crawler/types.js";
@@ -38,6 +50,17 @@ function adminAuthorized(request: Request, env: CrawlerEnv): boolean {
   return Boolean(
     env.ADMIN_TOKEN && request.headers.get("authorization") === `Bearer ${env.ADMIN_TOKEN}`,
   );
+}
+
+/** `undefined` for an absent body, `null` for malformed JSON — the parsers distinguish them. */
+async function readJsonBody(request: Request): Promise<unknown> {
+  const raw = await request.text();
+  if (!raw.trim()) return undefined;
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
 }
 
 async function handleApi(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -93,6 +116,68 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext): Pro
       Number(url.searchParams.get("limit")) || undefined,
     );
     return json({ shop, history });
+  }
+  if (
+    request.method === "GET" &&
+    url.pathname === "/api/admin/data-quality/unresolved-manufacturers"
+  ) {
+    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
+    const groups = await listUnresolvedManufacturerGroups(
+      env.DB,
+      Number(url.searchParams.get("limit")) || undefined,
+    );
+    return json({ groups });
+  }
+  if (request.method === "POST" && url.pathname === "/api/admin/manufacturer-aliases") {
+    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
+    const body = await readJsonBody(request);
+    if (body === null) return json({ error: "invalid_json" }, { status: 400 });
+    const parsed = parseManufacturerAliasAdminRequest(body);
+    if (!parsed) return json({ error: "invalid_manufacturer_alias" }, { status: 400 });
+    return json(await saveManufacturerAliasAndReprocess(env.DB, parsed.input, parsed.replay));
+  }
+  if (request.method === "GET" && url.pathname === "/api/admin/data-quality/unresolved-models") {
+    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
+    const groups = await listUnresolvedModelGroups(
+      env.DB,
+      Number(url.searchParams.get("limit")) || undefined,
+    );
+    return json({ groups });
+  }
+  if (request.method === "GET" && url.pathname === "/api/admin/data-quality/unresolved-identity") {
+    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
+    const groups = await listUnresolvedIdentityGroups(
+      env.DB,
+      Number(url.searchParams.get("limit")) || undefined,
+    );
+    return json({ groups });
+  }
+  if (request.method === "GET" && url.pathname === "/api/admin/data-quality/remediation-events") {
+    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
+    const events = await listRecentRemediationEvents(
+      env.DB,
+      Number(url.searchParams.get("limit")) || undefined,
+    );
+    return json({ events });
+  }
+  if (request.method === "POST" && url.pathname === "/api/admin/data-quality/replay-models") {
+    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
+    const replay = parseReplayRequest(await readJsonBody(request));
+    if (!replay) return json({ error: "invalid_replay_request" }, { status: 400 });
+    return json(await reprocessStaleModelListings(env.DB, replay));
+  }
+  if (request.method === "POST" && url.pathname === "/api/admin/knowledge-catalog/replay") {
+    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
+    const parsed = parseCatalogReplayRequest(await readJsonBody(request));
+    if (!parsed) return json({ error: "invalid_replay_request" }, { status: 400 });
+    const result = await reprocessVerifiedCatalogProduct(
+      env.DB,
+      parsed.catalogProductId,
+      parsed.replay,
+    );
+    if (!result.target)
+      return json({ error: "verified_catalog_product_not_found" }, { status: 404 });
+    return json(result);
   }
   if (request.method === "GET" && url.pathname === "/api/admin/product-search/consistency") {
     if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });

@@ -78,7 +78,8 @@ test("snapshot uses one D1 aggregate over active shop listings", async () => {
   assert.match(db.calls[0].sql, /SUM\(CASE/);
   assert.match(db.calls[0].sql, /LEFT JOIN product_identity_resolutions/);
   assert.match(db.calls[0].sql, /p\.is_active = 1/);
-  assert.match(db.calls[0].sql, /manufacturerNormalization\.matchedAlias/);
+  assert.match(db.calls[0].sql, /manufacturer_resolution_status/);
+  assert.doesNotMatch(db.calls[0].sql, /manufacturerNormalization\.matchedAlias/);
   assert.doesNotMatch(db.calls[0].sql, /SELECT p\.\*/);
 });
 

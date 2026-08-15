@@ -77,7 +77,7 @@ const MANUFACTURERS: readonly ManufacturerDefinition[] = MANUFACTURER_SOURCE.map
   ([id, name, aliases]) => Object.freeze({ id, name, aliases }),
 );
 
-function normalizeKey(value: unknown = ""): string {
+export function normalizeManufacturerKey(value: unknown = ""): string {
   return String(value)
     .normalize("NFKC")
     .trim()
@@ -95,14 +95,19 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function prefixPattern(alias: string): RegExp | null {
+/**
+ * Anchored pattern matching a manufacturer presentation prefix, tolerant of the separators
+ * retailers put between brand words. Shared by manufacturer title extraction and by Model
+ * Resolution, which removes the same tokens before extracting a model candidate.
+ */
+export function manufacturerPrefixPattern(alias: unknown = ""): RegExp | null {
   const tokens = cleanSourceText(alias)
-    .split(/[\s・･_\-/&+.,'"()（）]+/)
+    .split(/[\s・･_\-/&+.,'"()（）]+/u)
     .filter(Boolean);
   if (!tokens.length) return null;
   const separator = `[\\s・･_\\-\\/&+.,'"()（）]*`;
   const boundary = `[\\s・･_\\-\\/&+.,'"()（）]`;
-  return new RegExp(`^${tokens.map(escapeRegExp).join(separator)}(?=$|${boundary})`, "i");
+  return new RegExp(`^${tokens.map(escapeRegExp).join(separator)}(?=$|${boundary})`, "iu");
 }
 
 const BY_ALIAS = new Map<string, ManufacturerDefinition>();
@@ -112,9 +117,9 @@ for (const manufacturer of MANUFACTURERS) {
   BY_ID.set(manufacturer.id, manufacturer);
   const aliases = [manufacturer.name, ...manufacturer.aliases];
   for (const alias of aliases) {
-    const key = normalizeKey(alias);
+    const key = normalizeManufacturerKey(alias);
     BY_ALIAS.set(key, manufacturer);
-    const pattern = prefixPattern(alias);
+    const pattern = manufacturerPrefixPattern(alias);
     if (pattern) PREFIX_ALIASES.push({ manufacturer, alias, key, pattern });
   }
 }
@@ -137,14 +142,14 @@ function fallbackId(key: string): string {
 export function manufacturerIdForFilter(value: unknown = ""): string {
   const raw = cleanSourceText(value).toLowerCase();
   if (BY_ID.has(raw)) return raw;
-  const key = normalizeKey(value);
+  const key = normalizeManufacturerKey(value);
   if (!key) return "";
   return BY_ALIAS.get(key)?.id || fallbackId(key);
 }
 
 export function manufacturerSearchAliases(value: unknown = ""): string[] {
   const raw = cleanSourceText(value).toLowerCase();
-  const manufacturer = BY_ID.get(raw) || BY_ALIAS.get(normalizeKey(value));
+  const manufacturer = BY_ID.get(raw) || BY_ALIAS.get(normalizeManufacturerKey(value));
   if (!manufacturer) return cleanSourceText(value) ? [cleanSourceText(value)] : [];
   return [...new Set([manufacturer.id, manufacturer.name, ...manufacturer.aliases])];
 }
@@ -152,7 +157,7 @@ export function manufacturerSearchAliases(value: unknown = ""): string[] {
 export function normalizeManufacturer(value: unknown = ""): ManufacturerNormalizationResult {
   const raw = cleanSourceText(value);
   if (!raw) return { id: "", displayName: "", matchedAlias: false };
-  const key = normalizeKey(raw);
+  const key = normalizeManufacturerKey(raw);
   const known = BY_ALIAS.get(key) || BY_ID.get(raw.toLowerCase());
   if (known) return { id: known.id, displayName: known.name, matchedAlias: true };
   return { id: fallbackId(key), displayName: raw, matchedAlias: false };
@@ -177,4 +182,9 @@ export function splitKnownManufacturerModel(value: unknown = ""): ManufacturerMo
     };
   }
   return null;
+}
+
+/** Immutable bootstrap catalog used when D1 has no operational alias for a spelling yet. */
+export function bootstrapManufacturers(): readonly ManufacturerDefinition[] {
+  return MANUFACTURERS;
 }

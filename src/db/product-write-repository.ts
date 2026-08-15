@@ -12,12 +12,20 @@ import {
   categorySearchAliases,
 } from "../catalog/categories.js";
 import { normalizeFeatureFacts } from "../catalog/product-features.js";
-import { manufacturerIdForFilter } from "../catalog/manufacturers.js";
+import { manufacturerIdForFilter, normalizeManufacturerKey } from "../catalog/manufacturers.js";
+import { MANUFACTURER_RESOLVER_VERSION } from "../catalog/manufacturer-resolver.js";
+import { MODEL_RESOLVER_VERSION } from "../catalog/model-resolver.js";
+import { normalizeIdentityModel } from "../catalog/product-identity.js";
 import type {
   CatalogProductUpsertInput,
   CategoryId,
   ClassificationStatus,
   FeatureFact,
+  ManufacturerResolutionMethod,
+  ManufacturerResolutionStatus,
+  ModelResolutionMethod,
+  ResolutionConfidence,
+  ResolutionStatus,
   StockStatus,
 } from "../catalog/types.js";
 import {
@@ -40,7 +48,19 @@ const RECENT_SOURCE_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 interface CatalogFields {
   rawManufacturer: string;
+  normalizedRawManufacturer: string;
   manufacturerId: string;
+  canonicalManufacturerId: string;
+  manufacturerResolutionStatus: ManufacturerResolutionStatus;
+  manufacturerResolutionMethod: ManufacturerResolutionMethod;
+  manufacturerResolutionConfidence: ResolutionConfidence;
+  manufacturerResolverVersion: number;
+  rawModel: string;
+  normalizedModel: string;
+  modelResolutionStatus: ResolutionStatus;
+  modelResolutionMethod: ModelResolutionMethod;
+  modelResolutionConfidence: ResolutionConfidence;
+  modelResolverVersion: number;
   rawCategory: string;
   primaryCategoryId: CategoryId;
   categoryIds: CategoryId[];
@@ -80,9 +100,39 @@ function catalogFields(product: CatalogProductUpsertInput): CatalogFields {
   const primaryCategoryId =
     categoryIdForFilter(product.primaryCategoryId || product.category || "") || "other";
   const categoryIds = [primaryCategoryId];
+  const rawManufacturer = product.rawManufacturer ?? product.manufacturer ?? "";
+  const canonicalManufacturerId =
+    product.manufacturerResolutionStatus === "candidate" ||
+    product.manufacturerResolutionStatus === "unresolved"
+      ? ""
+      : product.manufacturerId || "";
+  const manufacturerResolutionStatus =
+    product.manufacturerResolutionStatus || (canonicalManufacturerId ? "resolved" : "unresolved");
+  const rawModel = product.rawModel ?? product.model ?? "";
+  const normalizedModel = product.normalizedModel ?? normalizeIdentityModel(product.model);
   return {
-    rawManufacturer: product.rawManufacturer ?? product.manufacturer ?? "",
+    rawManufacturer,
+    normalizedRawManufacturer:
+      product.normalizedRawManufacturer ?? normalizeManufacturerKey(rawManufacturer),
     manufacturerId: product.manufacturerId || manufacturerIdForFilter(product.manufacturer),
+    canonicalManufacturerId,
+    manufacturerResolutionStatus,
+    manufacturerResolutionMethod:
+      product.manufacturerResolutionMethod ||
+      (manufacturerResolutionStatus === "resolved" ? "bootstrap_alias" : "none"),
+    manufacturerResolutionConfidence:
+      product.manufacturerResolutionConfidence ||
+      (manufacturerResolutionStatus === "resolved" ? "high" : "none"),
+    manufacturerResolverVersion: MANUFACTURER_RESOLVER_VERSION,
+    rawModel,
+    normalizedModel,
+    modelResolutionStatus:
+      product.modelResolutionStatus || (normalizedModel ? "resolved" : "unresolved"),
+    modelResolutionMethod:
+      product.modelResolutionMethod || (normalizedModel ? "seller_model" : "none"),
+    modelResolutionConfidence:
+      product.modelResolutionConfidence || (normalizedModel ? "medium" : "none"),
+    modelResolverVersion: product.modelResolverVersion || MODEL_RESOLVER_VERSION,
     rawCategory: product.rawCategory ?? product.category ?? "",
     primaryCategoryId,
     categoryIds,
@@ -100,7 +150,30 @@ function existingCatalogFields(existing: ExistingProductRow): ExistingCatalogFie
     categoryIdForFilter(existing.primary_category_id || existing.category) || "other";
   return {
     rawManufacturer: existing.raw_manufacturer ?? existing.manufacturer ?? "",
+    normalizedRawManufacturer:
+      existing.normalized_raw_manufacturer ||
+      normalizeManufacturerKey(existing.raw_manufacturer ?? existing.manufacturer),
     manufacturerId: existing.manufacturer_id || manufacturerIdForFilter(existing.manufacturer),
+    canonicalManufacturerId: existing.canonical_manufacturer_id ?? existing.manufacturer_id ?? "",
+    manufacturerResolutionStatus:
+      existing.manufacturer_resolution_status ||
+      (existing.manufacturer_id ? "resolved" : "unresolved"),
+    manufacturerResolutionMethod:
+      existing.manufacturer_resolution_method ||
+      (existing.manufacturer_id ? "bootstrap_alias" : "none"),
+    manufacturerResolutionConfidence:
+      existing.manufacturer_resolution_confidence || (existing.manufacturer_id ? "high" : "none"),
+    manufacturerResolverVersion:
+      existing.manufacturer_resolver_version || MANUFACTURER_RESOLVER_VERSION,
+    rawModel: existing.raw_model ?? existing.model ?? "",
+    normalizedModel: existing.normalized_model || normalizeIdentityModel(existing.model),
+    modelResolutionStatus:
+      existing.model_resolution_status || (existing.model ? "resolved" : "unresolved"),
+    modelResolutionMethod:
+      existing.model_resolution_method || (existing.model ? "seller_model" : "none"),
+    modelResolutionConfidence:
+      existing.model_resolution_confidence || (existing.model ? "medium" : "none"),
+    modelResolverVersion: existing.model_resolver_version || MODEL_RESOLVER_VERSION,
     rawCategory: existing.raw_category ?? existing.category ?? "",
     primaryCategoryId,
     categoryIdsJson: JSON.stringify([primaryCategoryId]),
@@ -168,7 +241,12 @@ export async function selectExistingProducts(
     const placeholders = chunk.map(() => "?").join(",");
     const result = await db
       .prepare(`
-      SELECT id, source_id, manufacturer, raw_manufacturer, manufacturer_id, model, title,
+      SELECT id, source_id, manufacturer, raw_manufacturer, manufacturer_id,
+             normalized_raw_manufacturer, canonical_manufacturer_id,
+             manufacturer_resolution_status, manufacturer_resolution_method,
+             manufacturer_resolution_confidence, manufacturer_resolver_version,
+             model, raw_model, normalized_model, model_resolution_status,
+             model_resolution_method, model_resolution_confidence, model_resolver_version, title,
              category, raw_category, primary_category_id, category_ids, classification_status, search_aliases,
              condition_text, price_yen, stock_status, source_url, source_published_at, metadata_json,
              first_seen_at, last_seen_at, last_activity_at, is_active
@@ -222,8 +300,20 @@ function listingChanged(existing: ExistingProductRow, product: CatalogProductUps
   return (
     existing.manufacturer !== product.manufacturer ||
     previous.rawManufacturer !== current.rawManufacturer ||
+    previous.normalizedRawManufacturer !== current.normalizedRawManufacturer ||
     previous.manufacturerId !== current.manufacturerId ||
+    previous.canonicalManufacturerId !== current.canonicalManufacturerId ||
+    previous.manufacturerResolutionStatus !== current.manufacturerResolutionStatus ||
+    previous.manufacturerResolutionMethod !== current.manufacturerResolutionMethod ||
+    previous.manufacturerResolutionConfidence !== current.manufacturerResolutionConfidence ||
+    previous.manufacturerResolverVersion !== current.manufacturerResolverVersion ||
     existing.model !== product.model ||
+    previous.rawModel !== current.rawModel ||
+    previous.normalizedModel !== current.normalizedModel ||
+    previous.modelResolutionStatus !== current.modelResolutionStatus ||
+    previous.modelResolutionMethod !== current.modelResolutionMethod ||
+    previous.modelResolutionConfidence !== current.modelResolutionConfidence ||
+    previous.modelResolverVersion !== current.modelResolverVersion ||
     existing.title !== product.title ||
     existing.category !== product.category ||
     previous.rawCategory !== current.rawCategory ||
@@ -434,19 +524,41 @@ export async function upsertProducts(
         db
           .prepare(`
         INSERT INTO products (
-          shop_key, source_id, manufacturer, raw_manufacturer, manufacturer_id, model, title,
+          shop_key, source_id, manufacturer, raw_manufacturer, normalized_raw_manufacturer,
+          manufacturer_id, canonical_manufacturer_id, manufacturer_resolution_status,
+          manufacturer_resolution_method, manufacturer_resolution_confidence,
+          manufacturer_resolver_version, model, raw_model, normalized_model,
+          model_resolution_status, model_resolution_method, model_resolution_confidence,
+          model_resolver_version, title,
           category, raw_category, primary_category_id, category_ids, classification_status, search_aliases,
           condition_text, price_yen, previous_price_yen, stock_status, source_url, source_published_at,
           first_seen_at, last_seen_at, last_changed_at, last_activity_at, is_active
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, 1)
+        ) VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?,
+          ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, 1
+        )
       `)
           .bind(
             shopKey,
             product.sourceId,
             product.manufacturer,
             fields.rawManufacturer,
+            fields.normalizedRawManufacturer,
             fields.manufacturerId,
+            fields.canonicalManufacturerId,
+            fields.manufacturerResolutionStatus,
+            fields.manufacturerResolutionMethod,
+            fields.manufacturerResolutionConfidence,
+            fields.manufacturerResolverVersion,
             product.model,
+            fields.rawModel,
+            fields.normalizedModel,
+            fields.modelResolutionStatus,
+            fields.modelResolutionMethod,
+            fields.modelResolutionConfidence,
+            fields.modelResolverVersion,
             product.title,
             product.category,
             fields.rawCategory,
@@ -482,7 +594,12 @@ export async function upsertProducts(
         db
           .prepare(`
         UPDATE products SET
-          manufacturer = ?, raw_manufacturer = ?, manufacturer_id = ?, model = ?, title = ?,
+          manufacturer = ?, raw_manufacturer = ?, normalized_raw_manufacturer = ?,
+          manufacturer_id = ?, canonical_manufacturer_id = ?, manufacturer_resolution_status = ?,
+          manufacturer_resolution_method = ?, manufacturer_resolution_confidence = ?,
+          manufacturer_resolver_version = ?, model = ?, raw_model = ?, normalized_model = ?,
+          model_resolution_status = ?, model_resolution_method = ?, model_resolution_confidence = ?,
+          model_resolver_version = ?, title = ?,
           category = ?, raw_category = ?, primary_category_id = ?, category_ids = ?,
           classification_status = ?, search_aliases = ?, condition_text = ?,
           previous_price_yen = CASE WHEN ? THEN price_yen ELSE previous_price_yen END,
@@ -493,8 +610,20 @@ export async function upsertProducts(
           .bind(
             product.manufacturer,
             fields.rawManufacturer,
+            fields.normalizedRawManufacturer,
             fields.manufacturerId,
+            fields.canonicalManufacturerId,
+            fields.manufacturerResolutionStatus,
+            fields.manufacturerResolutionMethod,
+            fields.manufacturerResolutionConfidence,
+            fields.manufacturerResolverVersion,
             product.model,
+            fields.rawModel,
+            fields.normalizedModel,
+            fields.modelResolutionStatus,
+            fields.modelResolutionMethod,
+            fields.modelResolutionConfidence,
+            fields.modelResolverVersion,
             product.title,
             product.category,
             fields.rawCategory,

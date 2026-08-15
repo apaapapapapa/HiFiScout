@@ -274,11 +274,17 @@ export type CategoryClassificationMetadataOverrides = Partial<
 export interface ProductMetadata extends Record<string, unknown> {
   categoryClassification?: CategoryClassificationMetadata & Record<string, unknown>;
   manufacturerNormalization?: ManufacturerNormalizationMetadata;
+  modelNormalization?: ModelNormalizationMetadata;
 }
 
 export interface ManufacturerNormalizationMetadata {
   version: number;
   matchedAlias: boolean;
+  status?: ManufacturerResolutionStatus;
+  method?: ManufacturerResolutionMethod;
+  confidence?: ResolutionConfidence;
+  normalizedRawManufacturer?: string;
+  candidateManufacturerIds?: string[];
 }
 
 /** The eleven fields `applyCategoryClassification` writes onto a product. */
@@ -435,11 +441,100 @@ export interface ManufacturerNormalizationResult {
   matchedAlias: boolean;
 }
 
+/** Shared by every resolution stage: canonical, needs review, or no usable evidence. */
+export type ResolutionStatus = "resolved" | "candidate" | "unresolved";
+
+export type ManufacturerResolutionStatus = ResolutionStatus;
+
+export type ManufacturerResolutionMethod =
+  | "verified_alias"
+  | "bootstrap_alias"
+  | "title_verified_alias"
+  | "title_bootstrap_alias"
+  | "ambiguous_alias"
+  | "unverified_alias"
+  | "none";
+
+export type ResolutionConfidence = "high" | "medium" | "low" | "none";
+
+export type ManufacturerVerificationStatus = "pending" | "verified" | "rejected";
+
+/** D1-backed alias evidence passed into the pure manufacturer resolver. */
+export interface ManufacturerAliasEvidence {
+  manufacturerId: string;
+  canonicalName: string;
+  alias: string;
+  normalizedAlias: string;
+  verificationStatus: ManufacturerVerificationStatus;
+  source: string;
+  ruleVersion: number;
+}
+
+export interface ManufacturerResolutionInput {
+  rawManufacturer?: unknown;
+  manufacturerCandidate?: unknown;
+  title?: unknown;
+}
+
+export interface ManufacturerResolutionResult {
+  canonicalManufacturerId: string;
+  displayName: string;
+  normalizedRawManufacturer: string;
+  status: ManufacturerResolutionStatus;
+  method: ManufacturerResolutionMethod;
+  confidence: ResolutionConfidence;
+  matchedAlias: boolean;
+  candidateManufacturerIds: string[];
+}
+
 export interface ManufacturerModelSplit {
   id: string;
   displayName: string;
   rawManufacturer: string;
   model: string;
+}
+
+export type ModelResolutionMethod =
+  | "seller_model"
+  | "seller_model_annotated"
+  | "title_after_manufacturer"
+  | "unsafe_annotation"
+  | "none";
+
+/**
+ * Model Resolution runs after Manufacturer Resolution: a resolved manufacturer is what makes
+ * presentation-token removal and title extraction safe.
+ */
+export interface ModelResolutionInput {
+  rawModel?: unknown;
+  title?: unknown;
+  manufacturerId?: unknown;
+}
+
+export interface ModelResolutionResult {
+  /** Immutable seller presentation, never replaced by a normalized or canonical value. */
+  rawModel: string;
+  /** Display model after conservative annotation removal. */
+  model: string;
+  /** Deterministic search/identity representation. */
+  normalizedModel: string;
+  status: ResolutionStatus;
+  method: ModelResolutionMethod;
+  confidence: ResolutionConfidence;
+  /** Rule names that removed something, for audit. */
+  removedAnnotations: string[];
+  /** Residue that could not be classified as merchandising, so it was kept rather than deleted. */
+  unclassifiedTokens: string[];
+}
+
+export interface ModelNormalizationMetadata {
+  version: number;
+  status: ResolutionStatus;
+  method: ModelResolutionMethod;
+  confidence: ResolutionConfidence;
+  normalizedModel: string;
+  removedAnnotations: string[];
+  unclassifiedTokens: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -456,6 +551,7 @@ export interface CatalogNormalizationInput {
   sourceId: string;
   manufacturer: string;
   rawManufacturer?: string;
+  rawModel?: string;
   model: string;
   title: string;
   rawCategory?: string;
@@ -481,8 +577,17 @@ export interface NormalizedCatalogProduct extends CategoryClassificationFields {
   /** Replaced by the manufacturer's canonical display name. */
   manufacturer: string;
   rawManufacturer: string;
+  normalizedRawManufacturer: string;
   manufacturerId: string;
+  manufacturerResolutionStatus: ManufacturerResolutionStatus;
+  manufacturerResolutionMethod: ManufacturerResolutionMethod;
+  manufacturerResolutionConfidence: ResolutionConfidence;
   model: string;
+  rawModel: string;
+  normalizedModel: string;
+  modelResolutionStatus: ResolutionStatus;
+  modelResolutionMethod: ModelResolutionMethod;
+  modelResolutionConfidence: ResolutionConfidence;
   title: string;
   rawCategory: string;
   conditionText: string;
@@ -504,8 +609,18 @@ export interface CatalogProductUpsertInput {
   sourceId: string;
   manufacturer: string;
   rawManufacturer?: string;
+  normalizedRawManufacturer?: string;
   manufacturerId?: string;
+  manufacturerResolutionStatus?: ManufacturerResolutionStatus;
+  manufacturerResolutionMethod?: ManufacturerResolutionMethod;
+  manufacturerResolutionConfidence?: ResolutionConfidence;
   model: string;
+  rawModel?: string;
+  normalizedModel?: string;
+  modelResolutionStatus?: ResolutionStatus;
+  modelResolutionMethod?: ModelResolutionMethod;
+  modelResolutionConfidence?: ResolutionConfidence;
+  modelResolverVersion?: number;
   title: string;
   category?: string;
   rawCategory?: string;
@@ -635,11 +750,16 @@ export interface KnowledgeCatalogListingRow {
   manufacturer_id?: string;
   manufacturer?: string;
   model?: string;
+  raw_model?: string;
   title?: string;
   shop_key?: string;
+  source_url?: string;
   /** JSON string or already-parsed array. */
   category_ids?: string | readonly string[];
   classification_status?: string;
+  /** Current Product Identity state, so a candidate can explain why it is still unresolved. */
+  identity_status?: string;
+  identity_match_method?: string;
   first_seen_at?: string;
   last_seen_at?: string;
 }
@@ -654,8 +774,12 @@ export interface KnowledgeCatalogCandidateAccumulator {
   listingCount: number;
   shops: Set<string>;
   categories: Set<string>;
+  rawModelVariants: Set<string>;
+  sourceUrls: Set<string>;
+  identityRejectionReasons: Map<string, number>;
   unclassifiedCount: number;
   otherCount: number;
+  unresolvedIdentityCount: number;
   firstSeenAt: string;
   lastSeenAt: string;
 }
@@ -668,10 +792,17 @@ export interface KnowledgeCatalogCandidateAggregate {
   observedModel: string;
   sampleTitle: string;
   categoryIds: string[];
+  /** Bounded, deterministic sample of the seller presentations seen for this key. */
+  rawModelVariants: string[];
+  /** Bounded, deterministic sample of listing URLs a reviewer can open as evidence. */
+  sourceUrls: string[];
+  /** The most common reason Product Identity currently refuses to match this group. */
+  identityRejectionReason: string;
   listingCount: number;
   shopCount: number;
   unclassifiedCount: number;
   otherCount: number;
+  unresolvedIdentityCount: number;
   firstSeenAt: string;
   lastSeenAt: string;
 }
@@ -684,6 +815,7 @@ export interface ScoredKnowledgeCatalogCandidate extends KnowledgeCatalogCandida
 export interface CandidatePriorityInput {
   unclassifiedCount?: number;
   otherCount?: number;
+  unresolvedIdentityCount?: number;
   shopCount?: number;
   listingCount?: number;
 }

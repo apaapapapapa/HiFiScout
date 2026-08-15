@@ -306,9 +306,10 @@ export async function reclassifyProductsFromKnowledgeCatalog(
   for (;;) {
     const observed = await db
       .prepare(`
-      SELECT id, manufacturer_id, model, category, primary_category_id, category_ids, classification_status
+      SELECT id, canonical_manufacturer_id AS manufacturer_id, model, category,
+             primary_category_id, category_ids, classification_status
       FROM products
-      WHERE is_active = 1 AND manufacturer_id <> '' AND model <> '' AND id > ?
+      WHERE is_active = 1 AND canonical_manufacturer_id <> '' AND model <> '' AND id > ?
       ORDER BY id
       LIMIT ?
     `)

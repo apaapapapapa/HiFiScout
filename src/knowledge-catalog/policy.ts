@@ -89,6 +89,16 @@ export function transientMaxAttempts(env: KnowledgeCatalogConfigEnv): number {
   );
 }
 
+/** Catalog entries whose listings one finalizer replays after verification. */
+export function remediationProductLimit(env: KnowledgeCatalogConfigEnv): number {
+  return boundedInteger(env.KNOWLEDGE_CATALOG_REMEDIATION_MAX_PRODUCTS, 20, 1, 100);
+}
+
+/** Listings replayed per catalog entry in one finalizer invocation. */
+export function remediationListingLimit(env: KnowledgeCatalogConfigEnv): number {
+  return boundedInteger(env.KNOWLEDGE_CATALOG_REMEDIATION_MAX_LISTINGS, 100, 1, 250);
+}
+
 /** How long the finalizer waits before checking again for outstanding jobs. */
 export function finalizeRetrySeconds(env: KnowledgeCatalogConfigEnv): number {
   return boundedInteger(

@@ -6,6 +6,8 @@ import {
   normalizeIdentityModel,
   resolveProductIdentity,
 } from "../src/catalog/product-identity.js";
+import { syncProductIdentityResolutions } from "../src/db/product-identity-repository.js";
+import { captureDatabase } from "./helpers/d1.js";
 
 const TAD_D1000_MK2 = {
   id: 101,
@@ -96,4 +98,34 @@ test("stronger normalization collisions in verified catalog rows remain unresolv
   );
   assert.equal(resolution.status, "unresolved");
   assert.equal(resolution.matchMethod, "exact_ambiguous");
+});
+
+test("identity candidate loading uses only the resolved canonical manufacturer id", async () => {
+  const db = captureDatabase((statement) => {
+    if (/SELECT id, source_id, canonical_manufacturer_id/.test(statement.sql)) {
+      return [
+        {
+          id: 9,
+          source_id: "listing-9",
+          canonical_manufacturer_id: "tad",
+          model: "UNKNOWN",
+          primary_category_id: "dac",
+          classification_status: "classified",
+        },
+      ];
+    }
+    return [];
+  });
+
+  await syncProductIdentityResolutions(db, "shop", ["listing-9"]);
+
+  const catalogLookup = db.calls.find((call) =>
+    /FROM knowledge_catalog_products kp/.test(call.sql),
+  );
+  assert.ok(catalogLookup);
+  assert.deepEqual(catalogLookup.binds, ["tad"]);
+  const listingLookup = db.calls.find((call) => /FROM products/.test(call.sql));
+  assert.ok(listingLookup);
+  assert.match(listingLookup.sql, /canonical_manufacturer_id/);
+  assert.doesNotMatch(listingLookup.sql, /SELECT id, source_id, manufacturer_id,/);
 });

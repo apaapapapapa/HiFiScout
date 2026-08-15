@@ -14,11 +14,11 @@ Snapshot quality and crawl-run quality are semantically separate even though the
 
 Snapshot metrics are calculated in D1 with `COUNT(*)` and `SUM(CASE ...)` over active listings for one shop. Products are not loaded wholesale into a Worker.
 
-- Manufacturer Unknown: missing raw manufacturer plus raw manufacturer values that did not resolve through a known canonical manufacturer alias. Manufacturer normalization evidence is stored in existing bounded product metadata.
+- Manufacturer Unknown: listings whose dedicated `manufacturer_resolution_status` is not `resolved`, split into missing and non-empty raw seller values. Raw evidence, normalized raw keys, canonical IDs, method, confidence, and resolver version are stored explicitly; bounded metadata keeps the corresponding explanation for compatibility and audit.
 - Category Unclassified: `classification_status != 'classified'`. Canonical `other` remains separate as `other_category_count`.
 - Product Identity Unresolved: denominator is every active listing. Explicit `unresolved` resolution rows count as unresolved, and any active listing with no `product_identity_resolutions` row is also treated as unresolved instead of disappearing from the metric. Stored/API detail `identityResolutionMissingCount` is derived as `active listings - matched - unresolved`, making coverage gaps directly observable.
 - Inventory Unknown: `stock_status = 'unknown'`; all other canonical availability states are treated as known.
-- Model Missing: denominator is `model_expected_count`, not all products. Canonical accessory leaves (`cable`, `rack`, `power_accessory`, `vacuum_tube`, `other_accessory`) and canonical `other` are excluded from the model-required population so products that legitimately may not have a model number are not counted as extraction failures.
+- Model Missing: denominator is `model_expected_count`, not all products. Canonical accessory leaves (`cable`, `rack`, `power_accessory`, `vacuum_tube`, `other_accessory`) and canonical `other` are excluded from the model-required population so products that legitimately may not have a model number are not counted as extraction failures. A listing counts as extracted only when its dedicated `model_resolution_status` is `resolved`; a `candidate` listing has a model the resolver could not fully classify and is counted as an extraction failure rather than as a success.
 
 Every ratio retains count and denominator. A zero denominator produces `rate: null` and `status: unknown` rather than an artificial 0% or 100%.
 
@@ -61,6 +61,12 @@ The thresholds intentionally start with the Phase 2 proposal because production 
 
 `GET /api/admin/data-quality/history?shop=<shop-key>&limit=<n>` returns crawl-linked history for one shop. The query is bounded to at most 200 rows. Both endpoints require the existing `ADMIN_TOKEN` bearer authorization.
 
+`GET /api/admin/data-quality/unresolved-manufacturers?limit=<n>` returns a bounded impact-ordered aggregation of unresolved normalized raw spellings. `POST /api/admin/manufacturer-aliases` writes an audited pending/verified/rejected alias. A verified write reprocesses one bounded page of matching stored listings without crawling a seller and returns `nextAfterId` when the caller must resume. The replay refreshes Product Identity and the Phase 4 product-search projection in dependency order. These endpoints also require `ADMIN_TOKEN`.
+
+`GET /api/admin/data-quality/unresolved-models?limit=<n>` aggregates model extraction failures by canonical manufacturer, normalized model, status, and resolver method. `GET /api/admin/data-quality/unresolved-identity?limit=<n>` aggregates listings Product Identity still refuses to match, keyed by canonical manufacturer plus normalized model and carrying the current rejection reason, shop spread, and sample evidence. `GET /api/admin/data-quality/remediation-events?limit=<n>` returns recent before/after provenance for canonical changes that remediation caused.
+
+`POST /api/admin/data-quality/replay-models` reprocesses one bounded page of listings whose stored model predates the current model resolver version, and `POST /api/admin/knowledge-catalog/replay` applies one verified catalog product to the listings it explains. Both accept optional `afterId`/`limit` and return `nextAfterId` when the caller must resume; neither contacts a seller site. All of these require `ADMIN_TOKEN`.
+
 ## Observability
 
 After evaluation, the crawler emits a structured `data_quality_evaluated` log with shop, crawl-run ID, status, item total, and quality rates. HTML and other evidence content are never included in the structured log. Evaluation failures emit `data_quality_evaluation_failure` without failing the crawl.
@@ -82,5 +88,21 @@ Infrastructure-level D1/R2 latency, storage, and error metrics remain in Cloudfl
 ## Baseline and rollout
 
 Migration 0017 introduced search/identity/evidence foundations and migration 0018 added Evidence Archive usage metadata. Deployment applies migrations before the Worker release, so Phase 2 migration 0019 is applied after those foundations. Migration 0020 closes the rollout-era Identity coverage gap by inserting an explicit unresolved/backfill-pending resolution for every existing listing that lacks one.
+
+Migration 0023 separates raw and derived manufacturer/model fields on seller listings and adds canonical manufacturer plus manufacturer-alias persistence. The public `manufacturer_id` remains a filter/display compatibility field; only `canonical_manufacturer_id` may load Product Identity candidates. Pending aliases and verified alias collisions therefore cannot silently merge products.
+
+Migration 0024 gives Model Resolution its own rule version, extends Knowledge Catalog candidates with the evidence a reviewer needs (raw model variants, sample source URLs, identity rejection reason, unresolved-identity and `other` counts), and adds `data_quality_remediation_events` for before/after provenance. `model_resolver_version` defaults to `1` so every pre-existing listing stays behind the current resolver and is selectable for bounded replay; replaying a page always advances the version, so a second pass over the same rows is a no-op.
+
+## Model Resolution
+
+Model Resolution is a dedicated stage that runs after Manufacturer Resolution, because a resolved manufacturer is what makes brand-token removal and title extraction safe. It keeps three levels apart: `raw_model` is the seller's presentation and is never overwritten, `normalized_model` is the deterministic identity representation, and the canonical model stays in the Knowledge Catalog.
+
+Merchandising annotations — listing state, condition, packaging, seller stock numbers, presentation colours — are removed only through an explicit vocabulary, and every removal is re-checked against the identity parts. A removal that would rewrite the identity string or drop a revision or edition token (`MK2`, `MK3`, `TX`, `SE`, `Signature`, `Meta`, `X`, `Limited`, `Reference`, `Pro`) is rejected. Residue that is neither clearly merchandising nor clearly identity is left in the model and the listing becomes a `candidate`: the data is never destroyed, but the resolver does not claim a resolved model either.
+
+## Remediation loop
+
+Listings that cannot resolve are aggregated by canonical manufacturer plus normalized model and prioritized by impact — unclassified listings first, then canonical `other`, then unresolved identity, then shop spread, then listing count. Cross-shop repetition contributes to priority but is never treated as proof of product identity; candidate creation is not verification.
+
+When a catalog entry becomes verified, the review run's finalizer replays the listings it explains: Product Identity is re-run and the Phase 4 search projection, entity, and offer membership are refreshed in that dependency order, with no seller fetch. Only listings whose identity actually moved produce a provenance row, so the event table stays proportional to how much data improved rather than to how often replay ran. The sweep is bounded on both axes (`KNOWLEDGE_CATALOG_REMEDIATION_MAX_PRODUCTS`, `KNOWLEDGE_CATALOG_REMEDIATION_MAX_LISTINGS`) and reports the catalog products whose listings it did not finish rather than truncating silently.
 
 The first successful crawl per shop after deployment persists a Phase 2 baseline. Manufacturer resolution metadata is refreshed during normal product metadata synchronization; until a listing has been observed by the new code, missing manufacturer-normalization evidence is conservatively treated as unresolved rather than falsely claiming a canonical match. Identity coverage is likewise conservative: a missing resolution row is counted as unresolved until the backfill or normal resolver supplies an explicit resolution.

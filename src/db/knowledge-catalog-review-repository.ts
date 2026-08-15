@@ -84,11 +84,14 @@ async function collectActiveCandidateRows(
   for (;;) {
     const observed = await db
       .prepare(`
-      SELECT id, shop_key, manufacturer_id, manufacturer, model, title, category_ids,
-             classification_status, first_seen_at, last_seen_at
-      FROM products
-      WHERE is_active = 1 AND manufacturer_id <> '' AND model <> '' AND id > ?
-      ORDER BY id
+      SELECT p.id, p.shop_key, p.canonical_manufacturer_id AS manufacturer_id,
+             p.manufacturer, p.model, p.raw_model, p.title, p.source_url, p.category_ids,
+             p.classification_status, p.first_seen_at, p.last_seen_at,
+             r.status AS identity_status, r.match_method AS identity_match_method
+      FROM products p
+      LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
+      WHERE p.is_active = 1 AND p.canonical_manufacturer_id <> '' AND p.model <> '' AND p.id > ?
+      ORDER BY p.id
       LIMIT ?
     `)
       .bind(lastId, PRODUCT_PAGE_SIZE)
@@ -163,6 +166,8 @@ export async function refreshKnowledgeCatalogCandidates(
     SET active_listing_count = 0,
         shop_count = 0,
         unclassified_count = 0,
+        other_count = 0,
+        unresolved_identity_count = 0,
         priority_score = 0,
         last_reviewed_at = ?,
         updated_at = ?
@@ -178,17 +183,24 @@ export async function refreshKnowledgeCatalogCandidates(
       .prepare(`
       INSERT INTO knowledge_catalog_candidates (
         manufacturer_id, normalized_model, observed_manufacturer, observed_model, sample_title,
-        candidate_category_ids, active_listing_count, shop_count, unclassified_count, priority_score,
+        candidate_category_ids, raw_model_variants, evidence_source_urls, identity_rejection_reason,
+        active_listing_count, shop_count, unclassified_count, other_count,
+        unresolved_identity_count, priority_score,
         review_status, catalog_product_id, first_seen_at, last_seen_at, last_reviewed_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(manufacturer_id, normalized_model) DO UPDATE SET
         observed_manufacturer = excluded.observed_manufacturer,
         observed_model = excluded.observed_model,
         sample_title = excluded.sample_title,
         candidate_category_ids = excluded.candidate_category_ids,
+        raw_model_variants = excluded.raw_model_variants,
+        evidence_source_urls = excluded.evidence_source_urls,
+        identity_rejection_reason = excluded.identity_rejection_reason,
         active_listing_count = excluded.active_listing_count,
         shop_count = excluded.shop_count,
         unclassified_count = excluded.unclassified_count,
+        other_count = excluded.other_count,
+        unresolved_identity_count = excluded.unresolved_identity_count,
         priority_score = excluded.priority_score,
         review_status = CASE
           WHEN excluded.catalog_product_id IS NOT NULL THEN 'matched'
@@ -208,9 +220,14 @@ export async function refreshKnowledgeCatalogCandidates(
         candidate.observedModel,
         candidate.sampleTitle,
         JSON.stringify(candidate.categoryIds),
+        JSON.stringify(candidate.rawModelVariants),
+        JSON.stringify(candidate.sourceUrls),
+        candidate.identityRejectionReason,
         candidate.listingCount,
         candidate.shopCount,
         candidate.unclassifiedCount,
+        candidate.otherCount,
+        candidate.unresolvedIdentityCount,
         candidate.priorityScore,
         match ? "matched" : "pending",
         match?.id || null,
@@ -223,6 +240,18 @@ export async function refreshKnowledgeCatalogCandidates(
   });
   await runBatches(db, writes);
   return knowledgeCatalogCandidateStats(db);
+}
+
+/** The finalizer runs long after dispatch; the run's own start is its remediation window. */
+export async function knowledgeCatalogReviewRunStartedAt(
+  db: QueryableDatabase,
+  runId: number,
+): Promise<string> {
+  const row = await db
+    .prepare("SELECT started_at FROM knowledge_catalog_review_runs WHERE id = ?")
+    .bind(runId)
+    .first<Pick<KnowledgeCatalogReviewRunRow, "started_at">>();
+  return row?.started_at || "";
 }
 
 export async function markKnowledgeCatalogProductsDue(

@@ -82,10 +82,13 @@ export async function readDataQualitySnapshot(
     .prepare(`
       SELECT
         COUNT(*) AS total_items,
-        SUM(CASE WHEN COALESCE(p.raw_manufacturer, '') = '' THEN 1 ELSE 0 END) AS manufacturer_missing_count,
+        SUM(CASE
+          WHEN COALESCE(p.raw_manufacturer, '') = ''
+           AND p.manufacturer_resolution_status <> 'resolved'
+          THEN 1 ELSE 0 END) AS manufacturer_missing_count,
         SUM(CASE
           WHEN COALESCE(p.raw_manufacturer, '') <> ''
-           AND COALESCE(json_extract(p.metadata_json, '$.manufacturerNormalization.matchedAlias'), 0) <> 1
+           AND p.manufacturer_resolution_status <> 'resolved'
           THEN 1 ELSE 0 END) AS manufacturer_unresolved_count,
         SUM(CASE WHEN p.classification_status <> 'classified' THEN 1 ELSE 0 END) AS category_unclassified_count,
         SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id = 'other' THEN 1 ELSE 0 END) AS other_category_count,
@@ -96,8 +99,8 @@ export async function readDataQualitySnapshot(
         SUM(CASE WHEN p.stock_status <> 'unknown' THEN 1 ELSE 0 END) AS inventory_known_count,
         SUM(CASE WHEN p.stock_status = 'unknown' THEN 1 ELSE 0 END) AS inventory_unknown_count,
         SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN (${MODEL_OPTIONAL_SQL}) THEN 1 ELSE 0 END) AS model_expected_count,
-        SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN (${MODEL_OPTIONAL_SQL}) AND COALESCE(p.model, '') <> '' THEN 1 ELSE 0 END) AS model_extracted_count,
-        SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN (${MODEL_OPTIONAL_SQL}) AND COALESCE(p.model, '') = '' THEN 1 ELSE 0 END) AS model_missing_count
+        SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN (${MODEL_OPTIONAL_SQL}) AND p.model_resolution_status = 'resolved' THEN 1 ELSE 0 END) AS model_extracted_count,
+        SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN (${MODEL_OPTIONAL_SQL}) AND p.model_resolution_status <> 'resolved' THEN 1 ELSE 0 END) AS model_missing_count
       FROM products p
       LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
       WHERE p.shop_key = ? AND p.is_active = 1
