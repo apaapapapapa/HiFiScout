@@ -41,6 +41,17 @@ test("Ippinkan title splitting removes listing condition markers", () => {
   );
 });
 
+test("seller condition badges do not become part of the manufacturer", () => {
+  assert.deepEqual(splitManufacturerModel("【中古品】MSB Analog DAC ※送料無料", "shimamusen"), {
+    manufacturer: "MSB",
+    model: "Analog DAC ※送料無料",
+  });
+  assert.deepEqual(splitManufacturerModel("[中古品] MSB Analog DAC", "shimamusen"), {
+    manufacturer: "MSB",
+    model: "Analog DAC",
+  });
+});
+
 test("Fujiya title splitting keeps multi-word manufacturer names", () => {
   assert.deepEqual(
     splitManufacturerModel(
