@@ -74,6 +74,7 @@ test("category reclassification retries a failed downstream projection refresh",
     false,
   );
 
+  // The retry starts from an already-correct category; only the durable projection token keeps it live.
   const reclassified = await reclassifyProductsFromKnowledgeCatalog(
     db,
     "2026-08-15T01:01:00.000Z",
