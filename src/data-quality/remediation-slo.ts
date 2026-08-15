@@ -145,7 +145,7 @@ export function evaluateRemediationSlo(input: RemediationSloInput): {
 
   return {
     milestone: "initial",
-    status: aggregateStatus([...Object.values(metrics)]),
+    status: aggregateStatus(Object.values(metrics)),
     structuralStatus,
     sourceStatus,
     metrics,
