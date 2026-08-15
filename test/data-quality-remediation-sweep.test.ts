@@ -118,7 +118,10 @@ test("a resolved job persists a fresh data-quality snapshot without inventing a 
   const insertIndex = db.calls.findIndex((call) => /INSERT INTO data_quality_runs/.test(call.sql));
   const resolveIndex = db.calls.findIndex((call) => /SET status = 'resolved'/.test(call.sql));
   assert.ok(insertIndex >= 0, "the sweep must persist the recomputed snapshot, not only log it");
-  assert.ok(resolveIndex > insertIndex, "snapshot persistence must complete before the job is resolved");
+  assert.ok(
+    resolveIndex > insertIndex,
+    "snapshot persistence must complete before the job is resolved",
+  );
 
   const insert = db.calls[insertIndex];
   assert.ok(insert);
@@ -155,7 +158,10 @@ test("snapshot finalization failure retries the processed job instead of resolvi
   const retry = db.calls.find(
     (call) => /SET status = \?, available_at = \?/.test(call.sql) && call.binds[0] === "pending",
   );
-  assert.ok(retry, "snapshot failure must return the already-processed job to the durable retry path");
+  assert.ok(
+    retry,
+    "snapshot failure must return the already-processed job to the durable retry path",
+  );
   assert.match(String(retry.binds[4]), /snapshot unavailable/);
 });
 
