@@ -72,6 +72,7 @@ function direction(
   if (first == null || last == null) return "unknown";
   const change = last - first;
   if (Math.abs(change) < 1e-12) return "flat";
+  // Coverage metrics improve when they rise; all other tracked remediation rates improve when they fall.
   const higherIsBetter = key === "identityCoverage" || key === "evidenceCoverage";
   return change > 0 === higherIsBetter ? "improving" : "degrading";
 }
