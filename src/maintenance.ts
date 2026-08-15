@@ -18,6 +18,7 @@ export interface RetentionCutoffs {
 export interface RetentionCleanupCounts {
   evidenceMetadata: number;
   dataQualityRuns: number;
+  remediationQueue: number;
   crawlRuns: number;
   priceHistory: number;
   inactiveProducts: number;
@@ -86,6 +87,20 @@ export async function runRetentionCleanup(
     .bind(dataQualityBefore, limit)
     .run();
 
+  // Completed remediation jobs are operational history, not a permanent per-listing ledger. Keep
+  // failures for diagnosis, but age successful jobs out with the same retention horizon as DQ runs.
+  const remediationQueue = await env.DB.prepare(`
+    DELETE FROM data_quality_remediation_queue
+    WHERE id IN (
+      SELECT id FROM data_quality_remediation_queue
+      WHERE status = 'resolved' AND resolved_at IS NOT NULL AND resolved_at < ?
+      ORDER BY resolved_at ASC, id ASC
+      LIMIT ?
+    )
+  `)
+    .bind(dataQualityBefore, limit)
+    .run();
+
   const crawlRuns = await env.DB.prepare(`
     DELETE FROM crawl_runs
     WHERE id IN (
@@ -132,6 +147,7 @@ export async function runRetentionCleanup(
     deleted: {
       evidenceMetadata: changes(evidenceMetadata),
       dataQualityRuns: changes(dataQualityRuns),
+      remediationQueue: changes(remediationQueue),
       crawlRuns: changes(crawlRuns),
       priceHistory: changes(priceHistory),
       inactiveProducts: changes(inactiveProducts),
