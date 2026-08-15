@@ -10,6 +10,7 @@ import type {
 
 const CHUNK_SIZE = 40;
 const PRODUCT_PAGE_SIZE = 500;
+const CATEGORY_PROJECTION_TOKEN_PREFIX = "category:";
 
 interface CatalogIndexProduct extends Omit<CatalogMatchIndexEntry, "matchType"> {
   hasPrimaryCategory: boolean;
@@ -52,15 +53,29 @@ type ReclassificationProductRow = Pick<
   | "primary_category_id"
   | "category_ids"
   | "classification_status"
+  | "remediation_projection_required"
+  | "remediation_projection_token"
 > & {
   identity_status: string | null;
   identity_catalog_product_id: number | null;
 };
 
+interface ReclassificationRefreshTarget {
+  id: number;
+  shop_key: string;
+  source_id: string;
+  projectionToken: string;
+}
+
 interface ReclassificationPage {
   statements: D1PreparedStatement[];
   reclassifiedProducts: number;
-  reclassifiedListings: Array<{ shop_key: string; source_id: string }>;
+  refreshTargets: ReclassificationRefreshTarget[];
+}
+
+export interface KnowledgeCatalogReclassificationDependencies {
+  /** Test seam for deterministic downstream failure injection. */
+  refreshListings?: typeof refreshListingProjections;
 }
 
 function unique(values: readonly unknown[] = []): string[] {
@@ -77,6 +92,12 @@ function parseCategoryIds(value: string | readonly string[] | null): string[] {
   } catch {
     return [];
   }
+}
+
+function pendingCategoryProjectionToken(product: ReclassificationProductRow): string | null {
+  if (Number(product.remediation_projection_required) !== 1) return null;
+  const token = String(product.remediation_projection_token || "");
+  return token.startsWith(CATEGORY_PROJECTION_TOKEN_PREFIX) ? token : null;
 }
 
 function setUnambiguous(
@@ -262,11 +283,25 @@ function buildReclassificationStatements(
   matches: ReadonlyMap<string, CatalogMatchIndexEntry>,
 ): ReclassificationPage {
   const statements: D1PreparedStatement[] = [];
-  const reclassifiedListings: Array<{ shop_key: string; source_id: string }> = [];
+  const refreshTargets: ReclassificationRefreshTarget[] = [];
   let reclassifiedProducts = 0;
 
   for (const product of products) {
+    const pendingProjectionToken = pendingCategoryProjectionToken(product);
     const match = matches.get(knowledgeCatalogKey(product.manufacturer_id, product.model));
+
+    // A previous category write may already have committed before its Phase 4 refresh failed. That
+    // durable token remains authoritative retry work even if the current catalog/identity lookup no
+    // longer qualifies: the downstream projections must re-read the row's current truth once.
+    if (pendingProjectionToken) {
+      refreshTargets.push({
+        id: Number(product.id),
+        shop_key: product.shop_key,
+        source_id: product.source_id,
+        projectionToken: pendingProjectionToken,
+      });
+    }
+
     if (!match) continue;
     // Historical reclassification is allowed only when the existing conservative Product Identity
     // resolver has attached this listing to the same verified canonical product. Candidate catalog
@@ -293,11 +328,13 @@ function buildReclassificationStatements(
       product.category === primary.name;
     if (unchanged) continue;
 
+    const projectionToken = `${CATEGORY_PROJECTION_TOKEN_PREFIX}${crypto.randomUUID()}`;
     statements.push(
       db
         .prepare(`
       UPDATE products
-      SET category = ?, primary_category_id = ?, category_ids = ?, classification_status = 'classified', search_aliases = ?
+      SET category = ?, primary_category_id = ?, category_ids = ?, classification_status = 'classified',
+          search_aliases = ?, remediation_projection_required = 1, remediation_projection_token = ?
       WHERE id = ?
     `)
         .bind(
@@ -305,6 +342,7 @@ function buildReclassificationStatements(
           primary.id,
           JSON.stringify(categoryIds),
           categorySearchAliases(categoryIds),
+          projectionToken,
           product.id,
         ),
     );
@@ -320,17 +358,30 @@ function buildReclassificationStatements(
           .bind(product.id, categoryId),
       );
     }
-    reclassifiedListings.push({ shop_key: product.shop_key, source_id: product.source_id });
+
+    const existingTarget = refreshTargets.find((target) => target.id === Number(product.id));
+    if (existingTarget) {
+      existingTarget.projectionToken = projectionToken;
+    } else {
+      refreshTargets.push({
+        id: Number(product.id),
+        shop_key: product.shop_key,
+        source_id: product.source_id,
+        projectionToken,
+      });
+    }
     reclassifiedProducts += 1;
   }
 
-  return { statements, reclassifiedProducts, reclassifiedListings };
+  return { statements, reclassifiedProducts, refreshTargets };
 }
 
 export async function reclassifyProductsFromKnowledgeCatalog(
   db: QueryableDatabase,
   evaluatedAt = new Date().toISOString(),
+  dependencies: KnowledgeCatalogReclassificationDependencies = {},
 ): Promise<number> {
+  const refreshListings = dependencies.refreshListings || refreshListingProjections;
   let lastId = 0;
   let reclassifiedProducts = 0;
 
@@ -340,6 +391,7 @@ export async function reclassifyProductsFromKnowledgeCatalog(
       SELECT p.id, p.shop_key, p.source_id,
              p.canonical_manufacturer_id AS manufacturer_id, p.model, p.model_resolution_status,
              p.category, p.primary_category_id, p.category_ids, p.classification_status,
+             p.remediation_projection_required, p.remediation_projection_token,
              pir.status AS identity_status,
              pir.catalog_product_id AS identity_catalog_product_id
       FROM products p
@@ -356,11 +408,21 @@ export async function reclassifyProductsFromKnowledgeCatalog(
     const matches = await findVerifiedCatalogMatches(db, products);
     const page = buildReclassificationStatements(db, products, matches);
     await runBatches(db, page.statements);
-    if (page.reclassifiedListings.length) {
-      // Category/search aliases are part of the product-level read model. Refresh through the same
-      // Phase 4 dependency order so search projection, Product Identity and entity membership cannot
-      // be left stale after a canonical category correction.
-      await refreshListingProjections(db, page.reclassifiedListings, evaluatedAt);
+    if (page.refreshTargets.length) {
+      // Category/search aliases are part of the product-level read model. The pending bit/token are
+      // committed with the category write, and cleared only after the dependency-ordered refresh
+      // succeeds. A thrown refresh therefore leaves durable work for the next invocation.
+      await refreshListings(db, page.refreshTargets, evaluatedAt);
+      const completed = page.refreshTargets.map((target) =>
+        db
+          .prepare(`
+            UPDATE products
+            SET remediation_projection_required = 0, remediation_projection_token = ''
+            WHERE id = ? AND remediation_projection_token = ?
+          `)
+          .bind(target.id, target.projectionToken),
+      );
+      await runBatches(db, completed);
     }
     reclassifiedProducts += page.reclassifiedProducts;
 
