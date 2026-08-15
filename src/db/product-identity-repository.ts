@@ -34,7 +34,13 @@ interface CatalogAliasRow {
 
 type IdentityListingRow = Pick<
   ProductRow,
-  "id" | "source_id" | "manufacturer_id" | "model" | "primary_category_id" | "classification_status"
+  | "id"
+  | "source_id"
+  | "canonical_manufacturer_id"
+  | "model"
+  | "model_resolution_status"
+  | "primary_category_id"
+  | "classification_status"
 >;
 
 interface SerializedResolution {
@@ -146,7 +152,8 @@ async function loadListingRows(
     const placeholders = chunk.map(() => "?").join(",");
     const result = await db
       .prepare(`
-        SELECT id, source_id, manufacturer_id, model, primary_category_id, classification_status
+        SELECT id, source_id, canonical_manufacturer_id, model, model_resolution_status,
+               primary_category_id, classification_status
         FROM products
         WHERE shop_key = ? AND source_id IN (${placeholders})
       `)
@@ -255,7 +262,7 @@ export async function syncProductIdentityResolutions(
 
   const candidatesByManufacturer = await loadVerifiedIdentityCandidates(
     db,
-    listings.map((row) => row.manufacturer_id),
+    listings.map((row) => row.canonical_manufacturer_id),
   );
   const existing = await loadExistingResolutions(
     db,
@@ -264,9 +271,10 @@ export async function syncProductIdentityResolutions(
   const statements: D1PreparedStatement[] = [];
 
   for (const listing of listings) {
+    const manufacturerId = String(listing.canonical_manufacturer_id || "").toLowerCase();
     const resolution = resolveProductIdentity(
-      listing,
-      candidatesByManufacturer.get(String(listing.manufacturer_id || "").toLowerCase()) || [],
+      { ...listing, manufacturer_id: manufacturerId },
+      candidatesByManufacturer.get(manufacturerId) || [],
     );
     countMetrics(metrics, resolution);
     const serialized = serializedResolution(resolution);

@@ -70,6 +70,7 @@ test("raw seller values are preserved while UI values are canonicalized", () => 
       rawManufacturer: "LUXMAN ラックスマン",
       manufacturer: "LUXMAN",
       model: "C-10X",
+      rawModel: "C-10X / Silver",
       title: "LUXMAN C-10X",
       rawCategory: "コントロールアンプ",
       category: "コントロールアンプ",
@@ -79,6 +80,12 @@ test("raw seller values are preserved while UI values are canonicalized", () => 
   assert.equal(product.rawManufacturer, "LUXMAN ラックスマン");
   assert.equal(product.manufacturerId, "luxman");
   assert.equal(product.manufacturer, "LUXMAN");
+  assert.equal(product.rawModel, "C-10X / Silver");
+  assert.equal(product.model, "C-10X");
+  // The presentation colour is merchandising, not identity; the `X` revision token survives it.
+  assert.equal(product.normalizedModel, "C10X");
+  assert.equal(product.modelResolutionStatus, "resolved");
+  assert.equal(product.modelResolutionMethod, "seller_model_annotated");
   assert.equal(product.rawCategory, "コントロールアンプ");
   assert.equal(product.primaryCategoryId, "pre_amp");
   assert.deepEqual(product.categoryIds, ["pre_amp"]);

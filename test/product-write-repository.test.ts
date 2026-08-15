@@ -59,6 +59,46 @@ test("missing products are deactivated in bounded source-id chunks", async () =>
   assert.ok(db.calls.every((call) => /is_active = 1/.test(call.sql)));
 });
 
+test("new listings persist raw and resolved fields with a valid bind shape", async () => {
+  const product: CatalogProductUpsertInput = {
+    sourceId: "p1",
+    manufacturer: "TAD",
+    rawManufacturer: "Technical Audio Devices",
+    normalizedRawManufacturer: "technicalaudiodevices",
+    manufacturerId: "tad",
+    manufacturerResolutionStatus: "resolved",
+    manufacturerResolutionMethod: "verified_alias",
+    manufacturerResolutionConfidence: "high",
+    model: "D1000 MK2",
+    rawModel: "D-1000 MKII",
+    normalizedModel: "D1000MK2",
+    modelResolutionStatus: "resolved",
+    modelResolutionMethod: "seller_model",
+    modelResolutionConfidence: "medium",
+    title: "TAD D-1000 MKII",
+    category: "CD/SACD player",
+    rawCategory: "SACD",
+    primaryCategoryId: "cd_sacd_player",
+    classificationStatus: "classified",
+    conditionText: "used",
+    priceYen: 1000000,
+    stockStatus: "in_stock",
+    sourceUrl: "https://example.test/p1",
+  };
+  const db = captureDatabase(upsertResults(null));
+
+  await upsertProducts(db, "hifido", [product], "2026-08-15T00:00:00.000Z");
+
+  const insert = db.batched.find((statement) => /INSERT INTO products/.test(statement.sql));
+  assert.ok(insert);
+  assert.equal((insert.sql.match(/\?/g) || []).length, insert.binds.length);
+  assert.match(insert.sql, /raw_manufacturer, normalized_raw_manufacturer/);
+  assert.match(insert.sql, /canonical_manufacturer_id, manufacturer_resolution_status/);
+  assert.match(insert.sql, /model, raw_model, normalized_model/);
+  assert.ok(insert.binds.includes("Technical Audio Devices"));
+  assert.ok(insert.binds.includes("D-1000 MKII"));
+});
+
 test("unchanged products are not rewritten on every crawl", async () => {
   const product: CatalogProductUpsertInput = {
     sourceId: "p1",

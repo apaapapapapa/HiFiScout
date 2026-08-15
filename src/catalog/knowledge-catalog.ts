@@ -7,6 +7,10 @@ import type {
   ScoredKnowledgeCatalogCandidate,
 } from "./types.js";
 
+/** Evidence samples are capped so one popular group cannot grow an unbounded D1 row. */
+const RAW_VARIANT_LIMIT = 10;
+const SOURCE_URL_LIMIT = 5;
+
 function clean(value: unknown = ""): string {
   return String(value).normalize("NFKC").trim();
 }
@@ -141,18 +145,45 @@ function later(left: string, right: string | undefined): string {
   return left > right ? left : right;
 }
 
+/**
+ * Impact, not novelty. A group that leaves many listings unclassified or outside a canonical
+ * product ranks above a one-off unknown item, and cross-shop repetition is a tie-breaking signal
+ * rather than evidence of identity.
+ */
 export function candidatePriority({
   unclassifiedCount = 0,
   otherCount = 0,
+  unresolvedIdentityCount = 0,
   shopCount = 0,
   listingCount = 0,
 }: CandidatePriorityInput = {}): number {
   return (
     Number(unclassifiedCount) * 100 +
     Number(otherCount) * 80 +
+    Number(unresolvedIdentityCount) * 40 +
     Number(shopCount) * 10 +
     Math.min(Number(listingCount), 9)
   );
+}
+
+/** Keeps one candidate row small enough to stay a bounded D1 aggregate. */
+function addBounded(target: Set<string>, value: unknown, limit: number): void {
+  const text = clean(value);
+  if (!text || target.size >= limit) return;
+  target.add(text);
+}
+
+function dominantReason(reasons: ReadonlyMap<string, number>): string {
+  let dominant = "";
+  let best = 0;
+  for (const [reason, count] of [...reasons].sort((left, right) =>
+    left[0].localeCompare(right[0]),
+  )) {
+    if (count <= best) continue;
+    dominant = reason;
+    best = count;
+  }
+  return dominant;
 }
 
 export function accumulateKnowledgeCatalogCandidateRows(
@@ -175,8 +206,12 @@ export function accumulateKnowledgeCatalogCandidateRows(
         listingCount: 0,
         shops: new Set(),
         categories: new Set(),
+        rawModelVariants: new Set(),
+        sourceUrls: new Set(),
+        identityRejectionReasons: new Map(),
         unclassifiedCount: 0,
         otherCount: 0,
+        unresolvedIdentityCount: 0,
         firstSeenAt: "",
         lastSeenAt: "",
       };
@@ -187,6 +222,20 @@ export function accumulateKnowledgeCatalogCandidateRows(
     if (row.shop_key) candidate.shops.add(String(row.shop_key));
     const categoryIds = parseCategoryIds(row.category_ids);
     for (const categoryId of categoryIds) candidate.categories.add(categoryId);
+    // Empty raw evidence is still evidence that the seller supplied no model. Never manufacture a
+    // raw variant from the title-derived display model during remediation aggregation.
+    addBounded(candidate.rawModelVariants, row.raw_model, RAW_VARIANT_LIMIT);
+    addBounded(candidate.sourceUrls, row.source_url, SOURCE_URL_LIMIT);
+    // A listing with no resolution row is as unresolved as an explicit `unresolved` row; both are
+    // work the remediation loop still owes the catalog.
+    if (row.identity_status !== "matched") {
+      candidate.unresolvedIdentityCount += 1;
+      const reason = clean(row.identity_match_method) || "missing_resolution";
+      candidate.identityRejectionReasons.set(
+        reason,
+        (candidate.identityRejectionReasons.get(reason) || 0) + 1,
+      );
+    }
     if (row.classification_status !== "classified") {
       candidate.unclassifiedCount += 1;
       if (row.title) candidate.sampleTitle = clean(row.title);
@@ -215,10 +264,14 @@ export function finalizeKnowledgeCatalogCandidateAggregates(
         observedModel: candidate.observedModel,
         sampleTitle: candidate.sampleTitle,
         categoryIds: [...candidate.categories].sort(),
+        rawModelVariants: [...candidate.rawModelVariants].sort(),
+        sourceUrls: [...candidate.sourceUrls].sort(),
+        identityRejectionReason: dominantReason(candidate.identityRejectionReasons),
         listingCount: candidate.listingCount,
         shopCount,
         unclassifiedCount: candidate.unclassifiedCount,
         otherCount: candidate.otherCount,
+        unresolvedIdentityCount: candidate.unresolvedIdentityCount,
         firstSeenAt: candidate.firstSeenAt,
         lastSeenAt: candidate.lastSeenAt,
       };

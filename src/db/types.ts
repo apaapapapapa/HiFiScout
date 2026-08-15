@@ -20,7 +20,13 @@ import type {
   IdentityMatchMethod,
   IdentityStatus,
   KnowledgeCatalogMatchType,
+  ManufacturerResolutionMethod,
+  ManufacturerResolutionStatus,
+  ManufacturerVerificationStatus,
+  ModelResolutionMethod,
   ProductIdentityResolution,
+  ResolutionConfidence,
+  ResolutionStatus,
   StockStatus,
 } from "../catalog/types.js";
 import type {
@@ -80,6 +86,22 @@ export interface ProductRow {
   metadata_json: string;
   raw_manufacturer: string;
   manufacturer_id: string;
+  normalized_raw_manufacturer: string;
+  canonical_manufacturer_id: string;
+  manufacturer_resolution_status: ManufacturerResolutionStatus;
+  manufacturer_resolution_method: ManufacturerResolutionMethod;
+  manufacturer_resolution_confidence: ResolutionConfidence;
+  manufacturer_resolver_version: number;
+  raw_model: string;
+  normalized_model: string;
+  model_resolution_status: ResolutionStatus;
+  model_resolution_method: ModelResolutionMethod;
+  model_resolution_confidence: ResolutionConfidence;
+  model_resolver_version: number;
+  /** A remediation replay has derived fields that still need projection/identity/entity refresh. */
+  remediation_projection_required: SqliteBool;
+  /** Compare-and-clear token preventing an older concurrent replay from clearing newer work. */
+  remediation_projection_token: string;
   raw_category: string;
   primary_category_id: string;
   /** JSON `string[]`; parse to `unknown` then narrow. */
@@ -108,7 +130,19 @@ export type ExistingProductRow = Pick<
   | "manufacturer"
   | "raw_manufacturer"
   | "manufacturer_id"
+  | "normalized_raw_manufacturer"
+  | "canonical_manufacturer_id"
+  | "manufacturer_resolution_status"
+  | "manufacturer_resolution_method"
+  | "manufacturer_resolution_confidence"
+  | "manufacturer_resolver_version"
   | "model"
+  | "raw_model"
+  | "normalized_model"
+  | "model_resolution_status"
+  | "model_resolution_method"
+  | "model_resolution_confidence"
+  | "model_resolver_version"
   | "title"
   | "category"
   | "raw_category"
@@ -304,6 +338,30 @@ export interface KnowledgeCatalogAliasRow {
   normalized_alias: string;
   alias_type: KnowledgeCatalogAliasType;
   created_at: string;
+}
+
+export interface KnowledgeCatalogManufacturerRow {
+  id: string;
+  canonical_name: string;
+  verification_status: ManufacturerVerificationStatus;
+  source: string;
+  provenance_json: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KnowledgeCatalogManufacturerAliasRow {
+  id: number;
+  manufacturer_id: string;
+  canonical_name: string;
+  alias: string;
+  normalized_alias: string;
+  verification_status: ManufacturerVerificationStatus;
+  source: string;
+  provenance_json: string;
+  rule_version: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface KnowledgeCatalogSourceRow {

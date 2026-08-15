@@ -418,7 +418,8 @@ export async function recordKnowledgeCatalogProductRecheckSuccess(
     db
       .prepare(`
       UPDATE knowledge_catalog_products
-      SET review_status = 'current', last_verified_at = ?, last_reviewed_at = ?, updated_at = ?
+      SET review_status = 'current', last_verified_at = ?, last_reviewed_at = ?,
+          remediation_after_listing_id = 0, updated_at = ?
       WHERE id = ?
     `)
       .bind(verifiedAt, verifiedAt, verifiedAt, product.id),

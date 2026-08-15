@@ -10,6 +10,7 @@
  * is why the paths that make finalization impossible fail the run explicitly.
  */
 
+import { reprocessPendingCatalogRemediation } from "../db/knowledge-catalog-remediation-repository.js";
 import { reclassifyProductsFromKnowledgeCatalog } from "../db/knowledge-catalog-repository.js";
 import {
   activeProductClassificationStats,
@@ -24,7 +25,13 @@ import {
   retryKnowledgeCatalogVerificationJob,
 } from "../db/knowledge-catalog-verification-queue-repository.js";
 import { finishKnowledgeCatalogVerifierVersionSuccess } from "../db/knowledge-catalog-verifier-state-repository.js";
-import { addSeconds, classificationImpact, finalizeRetrySeconds } from "./policy.js";
+import {
+  addSeconds,
+  classificationImpact,
+  finalizeRetrySeconds,
+  remediationListingLimit,
+  remediationProductLimit,
+} from "./policy.js";
 import type { KnowledgeCatalogVerificationJob } from "../db/types.js";
 import type { KnowledgeCatalogQueueEnv, KnowledgeCatalogQueueMessage } from "./types.js";
 
@@ -52,6 +59,13 @@ export async function finalizeKnowledgeCatalogVerificationRun(
   const beforeClassification = await knowledgeCatalogReviewRunQueueBaseline(env.DB, body.runId);
   // Only now that every verification has landed can listings be re-read against the catalog.
   const reclassifiedProducts = await reclassifyProductsFromKnowledgeCatalog(env.DB);
+  // Reclassification corrects the category; this closes the rest of the loop, re-running Product
+  // Identity and the Phase 4 projection for the listings each newly verified entry now explains.
+  const remediation = await reprocessPendingCatalogRemediation(env.DB, {
+    productLimit: remediationProductLimit(env),
+    limit: remediationListingLimit(env),
+    evaluatedAt: now.toISOString(),
+  });
   const [candidateResult, catalogResult, afterClassification] = await Promise.all([
     knowledgeCatalogCandidateStats(env.DB),
     knowledgeCatalogStats(env.DB),
@@ -80,7 +94,8 @@ export async function finalizeKnowledgeCatalogVerificationRun(
     afterClassification,
     ...impact,
     reclassifiedProducts,
-    message: `${body.mode || "daily_candidates"}: ${stats.promoted} catalog promotions, ${stats.rechecked} source rechecks, ${candidateResult.pendingCandidates} pending candidates, ${impact.unclassifiedReduced} unclassified and ${impact.otherReduced} other listings reduced via queue`,
+    remediation,
+    message: `${body.mode || "daily_candidates"}: ${stats.promoted} catalog promotions, ${stats.rechecked} source rechecks, ${candidateResult.pendingCandidates} pending candidates, ${impact.unclassifiedReduced} unclassified and ${impact.otherReduced} other listings reduced via queue, ${remediation.matchedCount} listings matched by remediation replay${remediation.pendingProducts ? ` (${remediation.pendingProducts} catalog products still owed a replay)` : ""}`,
   };
   await finishKnowledgeCatalogReviewRunSuccess(env.DB, body.runId, result);
   // Only a run that claimed a rollout version may close it out; an ordinary run carries zero.

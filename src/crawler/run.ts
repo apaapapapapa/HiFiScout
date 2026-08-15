@@ -9,6 +9,7 @@ import { saveDataQualityRun } from "../db/data-quality-repository.js";
 import { syncProductIdentityResolutions } from "../db/product-identity-repository.js";
 import { syncObservedProductFeatureFacts } from "../db/product-feature-repository.js";
 import { syncProductMetadata } from "../db/product-metadata-repository.js";
+import { resolveProductCatalogFields } from "../db/model-repository.js";
 import { syncProductSearchEntities } from "../db/product-search-entity-repository.js";
 import { syncProductSearchProjections } from "../db/product-search-projection-repository.js";
 import { upsertProducts } from "../db/product-write-repository.js";
@@ -411,10 +412,13 @@ export async function crawlShop(
     }
 
     const observedAt = nowIso(new Date());
+    const manufacturerResolvedProducts = await resolveProductCatalogFields(env.DB, [
+      ...items.values(),
+    ]);
     const enrichment = await enrichProductCategories({
       db: env.DB,
       adapter,
-      products: [...items.values()],
+      products: manufacturerResolvedProducts,
       transport,
       fetchOptions: {
         baseUrl: adapter.baseUrl,

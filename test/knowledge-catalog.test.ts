@@ -153,8 +153,11 @@ test("classified other listings receive catalog review priority without double-c
   assert.equal(other.unclassifiedCount, 0);
   assert.equal(unclassified.otherCount, 0);
   assert.equal(unclassified.unclassifiedCount, 1);
-  assert.equal(other.priorityScore, 91);
-  assert.equal(unclassified.priorityScore, 111);
+  // Neither fixture carries an identity resolution, so each also counts one unresolved listing.
+  assert.equal(other.unresolvedIdentityCount, 1);
+  assert.equal(unclassified.unresolvedIdentityCount, 1);
+  assert.equal(other.priorityScore, 131);
+  assert.equal(unclassified.priorityScore, 151);
 });
 
 test("verified catalog evidence overrides a conflicting seller category", () => {

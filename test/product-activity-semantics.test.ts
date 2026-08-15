@@ -42,7 +42,19 @@ function existingProduct(overrides: Partial<ExistingProductRow> = {}): ExistingP
     manufacturer: "TAD",
     raw_manufacturer: "TAD",
     manufacturer_id: "tad",
+    normalized_raw_manufacturer: "tad",
+    canonical_manufacturer_id: "tad",
+    manufacturer_resolution_status: "resolved",
+    manufacturer_resolution_method: "bootstrap_alias",
+    manufacturer_resolution_confidence: "high",
+    manufacturer_resolver_version: 2,
     model: "ME1TX",
+    raw_model: "ME1TX",
+    normalized_model: "me1tx",
+    model_resolution_status: "resolved",
+    model_resolution_method: "seller_model",
+    model_resolution_confidence: "medium",
+    model_resolver_version: 2,
     title: "ME1TX",
     category: "スピーカー",
     raw_category: "スピーカー",
@@ -212,6 +224,63 @@ test("other shops keep title changes as user-facing activity", async () => {
     db,
     "fujiya-avic",
     [product({ model: "ME1TX updated", title: "ME1TX updated" })],
+    "2026-08-12T06:00:00.000Z",
+  );
+
+  assert.equal(result.changedCount, 1);
+  assert.equal(result.activityCount, 1);
+});
+
+test("resolver-only model changes do not create user-facing activity", async () => {
+  const rawModel = "D-1000 MK2 中古";
+  const db = upsertDb(
+    existingProduct({
+      model: rawModel,
+      raw_model: rawModel,
+      normalized_model: "D1000MK2",
+      title: "TAD D-1000 MK2",
+    }),
+  );
+
+  const result = await upsertProducts(
+    db,
+    "fujiya-avic",
+    [
+      product({
+        model: "D-1000 MK2",
+        rawModel,
+        normalizedModel: "D1000MK2",
+        title: "TAD D-1000 MK2",
+      }),
+    ],
+    "2026-08-12T06:00:00.000Z",
+  );
+
+  assert.equal(result.changedCount, 1);
+  assert.equal(result.activityCount, 0);
+});
+
+test("seller-side raw model changes remain user-facing activity when policy enables model", async () => {
+  const db = upsertDb(
+    existingProduct({
+      model: "D-1000 MK2",
+      raw_model: "D-1000 MK2",
+      normalized_model: "D1000MK2",
+      title: "TAD D-1000 MK2",
+    }),
+  );
+
+  const result = await upsertProducts(
+    db,
+    "fujiya-avic",
+    [
+      product({
+        model: "D-1000 MK2 Signature",
+        rawModel: "D-1000 MK2 Signature",
+        normalizedModel: "D1000MK2SIGNATURE",
+        title: "TAD D-1000 MK2",
+      }),
+    ],
     "2026-08-12T06:00:00.000Z",
   );
 

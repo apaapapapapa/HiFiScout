@@ -26,7 +26,9 @@ test("unknown manufacturer fallback is explicitly unresolved for quality metrics
     }),
   );
 
-  assert.ok(product.manufacturerId);
+  assert.equal(product.manufacturerId, "");
+  assert.equal(product.manufacturerResolutionStatus, "unresolved");
+  assert.equal(product.manufacturerResolutionMethod, "none");
   assert.ok(product.metadata.manufacturerNormalization);
   assert.equal(product.metadata.manufacturerNormalization.matchedAlias, false);
 });

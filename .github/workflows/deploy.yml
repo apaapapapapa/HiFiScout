@@ -156,10 +156,13 @@ jobs:
             SELECT
               p.shop_key,
               COUNT(*) AS total_items,
-              SUM(CASE WHEN COALESCE(p.raw_manufacturer, '') = '' THEN 1 ELSE 0 END) AS manufacturer_missing_count,
+              SUM(CASE
+                WHEN COALESCE(p.raw_manufacturer, '') = ''
+                 AND p.manufacturer_resolution_status <> 'resolved'
+                THEN 1 ELSE 0 END) AS manufacturer_missing_count,
               SUM(CASE
                 WHEN COALESCE(p.raw_manufacturer, '') <> ''
-                 AND COALESCE(json_extract(p.metadata_json, '$.manufacturerNormalization.matchedAlias'), 0) <> 1
+                 AND p.manufacturer_resolution_status <> 'resolved'
                 THEN 1 ELSE 0 END) AS manufacturer_unresolved_count,
               SUM(CASE WHEN p.classification_status <> 'classified' THEN 1 ELSE 0 END) AS category_unclassified_count,
               SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id = 'other' THEN 1 ELSE 0 END) AS other_category_count,
@@ -171,13 +174,74 @@ jobs:
               SUM(CASE WHEN p.stock_status <> 'unknown' THEN 1 ELSE 0 END) AS inventory_known_count,
               SUM(CASE WHEN p.stock_status = 'unknown' THEN 1 ELSE 0 END) AS inventory_unknown_count,
               SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN ('other_accessory','cable','rack','power_accessory','vacuum_tube','other') THEN 1 ELSE 0 END) AS model_expected_count,
-              SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN ('other_accessory','cable','rack','power_accessory','vacuum_tube','other') AND COALESCE(p.model, '') <> '' THEN 1 ELSE 0 END) AS model_extracted_count,
-              SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN ('other_accessory','cable','rack','power_accessory','vacuum_tube','other') AND COALESCE(p.model, '') = '' THEN 1 ELSE 0 END) AS model_missing_count
+              SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN ('other_accessory','cable','rack','power_accessory','vacuum_tube','other') AND p.model_resolution_status = 'resolved' THEN 1 ELSE 0 END) AS model_extracted_count,
+              SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN ('other_accessory','cable','rack','power_accessory','vacuum_tube','other') AND p.model_resolution_status <> 'resolved' THEN 1 ELSE 0 END) AS model_missing_count
             FROM products p
             LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
             WHERE p.is_active = 1
             GROUP BY p.shop_key
             ORDER BY p.shop_key;")"
+
+          unresolved_manufacturers="$(query "
+            SELECT
+              p.normalized_raw_manufacturer,
+              MIN(p.raw_manufacturer) AS sample_raw_manufacturer,
+              COUNT(*) AS active_listing_count,
+              COUNT(DISTINCT p.shop_key) AS shop_count
+            FROM products p
+            WHERE p.is_active = 1 AND p.manufacturer_resolution_status <> 'resolved'
+            GROUP BY p.normalized_raw_manufacturer
+            ORDER BY active_listing_count DESC, shop_count DESC, p.normalized_raw_manufacturer
+            LIMIT 25;")"
+
+          unresolved_manufacturer_models="$(query "
+            SELECT
+              p.canonical_manufacturer_id,
+              p.normalized_model,
+              p.shop_key,
+              COUNT(*) AS active_listing_count
+            FROM products p
+            JOIN product_identity_resolutions r ON r.listing_product_id = p.id
+            WHERE p.is_active = 1 AND r.status = 'unresolved'
+            GROUP BY p.canonical_manufacturer_id, p.normalized_model, p.shop_key
+            ORDER BY active_listing_count DESC, p.canonical_manufacturer_id,
+                     p.normalized_model, p.shop_key
+            LIMIT 50;")"
+
+          unresolved_models="$(query "
+            SELECT
+              p.canonical_manufacturer_id,
+              p.model_resolution_status,
+              p.model_resolution_method,
+              MIN(p.raw_model) AS sample_raw_model,
+              COUNT(*) AS active_listing_count,
+              COUNT(DISTINCT p.shop_key) AS shop_count
+            FROM products p
+            WHERE p.is_active = 1 AND p.model_resolution_status <> 'resolved'
+            GROUP BY p.canonical_manufacturer_id, p.model_resolution_status,
+                     p.model_resolution_method
+            ORDER BY active_listing_count DESC, shop_count DESC, p.canonical_manufacturer_id
+            LIMIT 25;")"
+
+          remediation_events="$(query "
+            SELECT
+              field,
+              reason,
+              COUNT(*) AS change_count,
+              MAX(processed_at) AS last_processed_at
+            FROM data_quality_remediation_events
+            GROUP BY field, reason
+            ORDER BY change_count DESC, field, reason
+            LIMIT 25;")"
+
+          stale_resolver_versions="$(query "
+            SELECT
+              SUM(CASE WHEN manufacturer_resolver_version < 2 THEN 1 ELSE 0 END)
+                AS stale_manufacturer_listings,
+              SUM(CASE WHEN model_resolver_version < 2 THEN 1 ELSE 0 END)
+                AS stale_model_listings
+            FROM products
+            WHERE is_active = 1;")"
 
           search_entities="$(query "
             SELECT
@@ -286,6 +350,16 @@ jobs:
           jq . <<< "$search_entities"
           echo 'Latest persisted Phase 2 quality runs:'
           jq . <<< "$quality_runs"
+          echo 'Top unresolved manufacturer raw values:'
+          jq . <<< "$unresolved_manufacturers"
+          echo 'Top unresolved manufacturer/model/shop groups:'
+          jq . <<< "$unresolved_manufacturer_models"
+          echo 'Top model extraction failures:'
+          jq . <<< "$unresolved_models"
+          echo 'Remediation changes recorded:'
+          jq . <<< "$remediation_events"
+          echo 'Listings still behind the current resolver versions:'
+          jq . <<< "$stale_resolver_versions"
 
           {
             echo '## Production Data Platform / Data Quality baseline'
@@ -322,5 +396,30 @@ jobs:
             echo '### Latest persisted Phase 2 quality runs'
             echo '```json'
             jq . <<< "$quality_runs"
+            echo '```'
+            echo
+            echo '### Top unresolved manufacturer raw values'
+            echo '```json'
+            jq . <<< "$unresolved_manufacturers"
+            echo '```'
+            echo
+            echo '### Top unresolved manufacturer/model/shop groups'
+            echo '```json'
+            jq . <<< "$unresolved_manufacturer_models"
+            echo '```'
+            echo
+            echo '### Top model extraction failures'
+            echo '```json'
+            jq . <<< "$unresolved_models"
+            echo '```'
+            echo
+            echo '### Remediation changes recorded'
+            echo '```json'
+            jq . <<< "$remediation_events"
+            echo '```'
+            echo
+            echo '### Listings still behind the current resolver versions'
+            echo '```json'
+            jq . <<< "$stale_resolver_versions"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

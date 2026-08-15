@@ -312,6 +312,27 @@ export function resolveProductIdentity(
     };
   }
 
+  // A model Model Resolution could not fully classify must not attach to a canonical product.
+  // Normalization strips exactly the residue that made it a candidate — `D-1000 MK2 特別仕様`
+  // normalizes to `D1000MK2` — so without this gate an unclassified edition would exact-match the
+  // base product at high confidence. The listing stays unresolved and remediable instead.
+  const modelStatus = product.modelResolutionStatus || product.model_resolution_status;
+  if (modelStatus && modelStatus !== "resolved") {
+    return {
+      status: "unresolved",
+      catalogProductId: null,
+      candidateCatalogProductId: null,
+      matchMethod: "unresolved",
+      confidence: "none",
+      normalizedModel: parts.normalizedModel,
+      modelStem: parts.modelStem,
+      variants: parts.variants,
+      matchedFields: ["manufacturer_id"],
+      rejectedBy: ["unresolved_model"],
+      matchedAlias: "",
+    };
+  }
+
   const manufacturerCandidates = candidates
     .map(candidateView)
     .filter((candidate) => candidate.manufacturerId === manufacturerId);

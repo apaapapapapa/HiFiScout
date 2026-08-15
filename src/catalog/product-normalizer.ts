@@ -14,11 +14,12 @@ import type {
 import { isRecord } from "../types.js";
 import { classifyCategoryEvidence, summarizeCategoryEvidence } from "./category-classifier.js";
 import { collectListingCategoryEvidence } from "./category-evidence.js";
-import { normalizeManufacturer } from "./manufacturers.js";
+import { resolveManufacturer, MANUFACTURER_RESOLVER_VERSION } from "./manufacturer-resolver.js";
+import { normalizeManufacturerKey } from "./manufacturers.js";
+import { resolveModel, MODEL_RESOLVER_VERSION } from "./model-resolver.js";
 import { inferFeatureFacts, normalizeFeatureFacts } from "./product-features.js";
 
 const CLASSIFICATION_METADATA_VERSION = 3;
-const MANUFACTURER_NORMALIZATION_METADATA_VERSION = 1;
 
 function clean(value: unknown = ""): string {
   return String(value).normalize("NFKC").replace(/\s+/g, " ").trim();
@@ -93,7 +94,19 @@ export function normalizeCatalogProduct(
   const rawManufacturer = clean(product.rawManufacturer ?? product.manufacturer ?? "");
   const manufacturerCandidate = clean(product.manufacturer || rawManufacturer);
   const rawCategory = clean(product.rawCategory ?? "");
-  const manufacturer = normalizeManufacturer(manufacturerCandidate);
+  const manufacturer = resolveManufacturer({
+    rawManufacturer,
+    manufacturerCandidate,
+    title: product.title,
+  });
+  const normalizedRawManufacturer = normalizeManufacturerKey(rawManufacturer);
+  // Model Resolution runs after Manufacturer Resolution so it can remove verified brand
+  // presentation tokens and fall back to title evidence only for a known manufacturer.
+  const model = resolveModel({
+    rawModel: product.rawModel ?? product.model ?? "",
+    title: product.title,
+    manufacturerId: manufacturer.canonicalManufacturerId,
+  });
   const metadata: Record<string, unknown> = isRecord(product.metadata) ? product.metadata : {};
   const { evidence } = collectListingCategoryEvidence({
     rawCategory,
@@ -111,15 +124,39 @@ export function normalizeCatalogProduct(
     {
       ...product,
       rawManufacturer,
-      manufacturerId: manufacturer.id,
+      normalizedRawManufacturer,
+      manufacturerId: manufacturer.canonicalManufacturerId,
       manufacturer: manufacturer.displayName,
+      manufacturerResolutionStatus: manufacturer.status,
+      manufacturerResolutionMethod: manufacturer.method,
+      manufacturerResolutionConfidence: manufacturer.confidence,
+      model: model.model,
+      rawModel: model.rawModel,
+      normalizedModel: model.normalizedModel,
+      modelResolutionStatus: model.status,
+      modelResolutionMethod: model.method,
+      modelResolutionConfidence: model.confidence,
       rawCategory,
       featureFacts,
       metadata: {
         ...metadata,
         manufacturerNormalization: {
-          version: MANUFACTURER_NORMALIZATION_METADATA_VERSION,
+          version: MANUFACTURER_RESOLVER_VERSION,
           matchedAlias: manufacturer.matchedAlias,
+          status: manufacturer.status,
+          method: manufacturer.method,
+          confidence: manufacturer.confidence,
+          normalizedRawManufacturer,
+          candidateManufacturerIds: manufacturer.candidateManufacturerIds,
+        },
+        modelNormalization: {
+          version: MODEL_RESOLVER_VERSION,
+          status: model.status,
+          method: model.method,
+          confidence: model.confidence,
+          normalizedModel: model.normalizedModel,
+          removedAnnotations: model.removedAnnotations,
+          unclassifiedTokens: model.unclassifiedTokens,
         },
       } satisfies ProductMetadata,
     },
