@@ -110,6 +110,31 @@ test("manufacturer filter vocabulary canonicalizes and deduplicates stale presen
   );
 });
 
+test("canonical manufacturer filters also accept stale resolver ids while replay drains", async () => {
+  const db = captureDatabase();
+  await searchProducts(db, productQuery("?manufacturer=MSB%20Technology"));
+
+  const page = db.calls.find((statement) => /SELECT e\.id, e\.entity_key/.test(statement.sql));
+  assert.ok(page);
+  assert.match(page.sql, /e\.manufacturer_id IN \(SELECT value FROM json_each\(\?\)\)/);
+  assert.deepEqual(
+    new Set(JSON.parse(String(page.binds[0]))),
+    new Set(["msb-technology", "msbtechnology", "msb"]),
+  );
+  assert.ok(JSON.parse(String(page.binds[1])).includes("msbtechnology"));
+});
+
+test("canonical manufacturer filters keep badge-prefixed Japanese stale rows visible", async () => {
+  const db = captureDatabase();
+  await searchProducts(db, productQuery("?manufacturer=LUXMAN"));
+
+  const page = db.calls.find((statement) => /SELECT e\.id, e\.entity_key/.test(statement.sql));
+  assert.ok(page);
+  assert.ok(JSON.parse(String(page.binds[1])).includes("ラックスマン"));
+  assert.match(page.sql, /LIKE '【%】%'/);
+  assert.match(page.sql, /substr\(/);
+});
+
 test("a completed inventory recheck refreshes the changed listing's search entity", async () => {
   const calls: unknown[][] = [];
   await syncInventoryRecheckSearchEntities(
