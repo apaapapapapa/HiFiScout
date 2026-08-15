@@ -53,6 +53,7 @@ const LISTING_ROW = {
   search_aliases: "",
   metadata_json: "{}",
   remediation_projection_required: 1,
+  remediation_projection_token: "dq-replay:2026-08-15T00:00:00.000Z:42",
 };
 
 const SNAPSHOT_ROW = {

@@ -11,13 +11,13 @@ import { checkPublicApiRateLimit } from "../api-guard.js";
 import { parseProductQuery, validateProductQuery } from "../api/product-query.js";
 import { SHOP_DEFINITIONS } from "../config.js";
 import { dispatchForcedCrawl } from "../crawler/dispatch.js";
-import { identityResolutionMethodDistribution } from "../db/data-quality-repository.js";
 import { dataPlatformStatus } from "../db/data-platform-status-repository.js";
 import {
   dataQualityStatusWithRemediationSlo,
   listDataQualityHistoryWithRemediationSlo,
 } from "../db/data-quality-remediation-governance-repository.js";
 import { dataQualityRemediationImpact } from "../db/data-quality-remediation-impact-repository.js";
+import { enqueueFullDataQualityRebuild } from "../db/data-quality-remediation-queue-repository.js";
 import {
   listUnresolvedIdentityGroups,
   reprocessVerifiedCatalogProduct,
@@ -38,7 +38,12 @@ import { productSearchDetail, searchProducts } from "../db/product-search-reposi
 import { getSyncHealth } from "../health.js";
 import { knowledgeCatalogStatus } from "./knowledge-catalog-status.js";
 import { parseManufacturerAliasAdminRequest } from "./manufacturer-alias-admin.js";
-import { parseCatalogReplayRequest, parseReplayRequest } from "./remediation-admin.js";
+import {
+  DATA_QUALITY_REBUILD_ORDER,
+  parseCatalogReplayRequest,
+  parseDataQualityRebuildRequest,
+  parseReplayRequest,
+} from "./remediation-admin.js";
 import { meta } from "./meta.js";
 import { cachedJson, json } from "./response.js";
 import type { CrawlerEnv } from "../crawler/types.js";
@@ -132,6 +137,21 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext): Pro
       ),
     );
   }
+  if (request.method === "POST" && url.pathname === "/api/admin/data-quality/rebuild") {
+    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
+    const body = await readJsonBody(request);
+    if (body === null) return json({ error: "invalid_json" }, { status: 400 });
+    const parsed = parseDataQualityRebuildRequest(body);
+    if (!parsed) return json({ error: "invalid_rebuild_request" }, { status: 400 });
+    const rebuildKey = parsed.rebuildKey ?? "post-phase4-data-quality-remediation-13-15";
+    const result = await enqueueFullDataQualityRebuild(env.DB, {
+      ...parsed,
+      rebuildKey,
+      reason: "post_phase4_data_quality_backfill",
+      source: "admin_api",
+    });
+    return json({ order: DATA_QUALITY_REBUILD_ORDER, rebuildKey, ...result }, { status: 202 });
+  }
   if (
     request.method === "GET" &&
     url.pathname === "/api/admin/data-quality/unresolved-manufacturers"
@@ -166,13 +186,6 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext): Pro
       Number(url.searchParams.get("limit")) || undefined,
     );
     return json({ groups });
-  }
-  if (
-    request.method === "GET" &&
-    url.pathname === "/api/admin/data-quality/identity-method-distribution"
-  ) {
-    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
-    return json({ distribution: await identityResolutionMethodDistribution(env.DB) });
   }
   if (request.method === "GET" && url.pathname === "/api/admin/data-quality/remediation-events") {
     if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });

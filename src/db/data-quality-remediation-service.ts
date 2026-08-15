@@ -52,6 +52,7 @@ interface RemediationListingRow {
   search_aliases: string;
   metadata_json: string;
   remediation_projection_required: number;
+  remediation_projection_token: string;
 }
 
 interface StoredFeatureFactRow {
@@ -186,7 +187,7 @@ async function loadListing(
              model_resolution_method, model_resolution_confidence, model_resolver_version,
              title, category, raw_category, primary_category_id, category_ids,
              classification_status, search_aliases, metadata_json,
-             remediation_projection_required
+             remediation_projection_required, remediation_projection_token
       FROM products
       WHERE id = ?
     `)
@@ -203,12 +204,16 @@ function requiresDerivedReplay(workType: DataQualityRemediationWorkType): boolea
   );
 }
 
+/**
+ * Recompute derived fields and return the projection token that this worker owns. If the product
+ * row is already current, ownership stays with the token observed when the row was loaded.
+ */
 async function replayDerivedListing(
   db: QueryableDatabase,
   row: RemediationListingRow,
   aliases: Awaited<ReturnType<typeof listManufacturerAliasEvidence>>,
   evaluatedAt: string,
-): Promise<boolean> {
+): Promise<string> {
   const manufacturerResolver = createManufacturerResolver(aliases);
   const modelResolver = createModelResolver(aliases);
   const manufacturer = manufacturerResolver({
@@ -356,25 +361,32 @@ async function replayDerivedListing(
     )
     .run();
 
-  const featuresChanged = await syncTitleFeatureFacts(db, row, evaluatedAt);
-  return Number(result?.meta?.changes || 0) > 0 || featuresChanged;
+  await syncTitleFeatureFacts(db, row, evaluatedAt);
+  return Number(result?.meta?.changes || 0) > 0 ? token : row.remediation_projection_token;
 }
 
-async function clearProjectionPending(
+/**
+ * Clear only the dirty marker this worker observed/created. A newer crawl or replay may replace the
+ * token while projections are refreshing; in that case its dirty marker must survive for the next
+ * refresh instead of being erased by an older worker.
+ */
+export async function clearProjectionPendingForToken(
   db: QueryableDatabase,
-  row: RemediationListingRow,
-  evaluatedAt: string,
-): Promise<void> {
-  await db
+  listingProductId: number,
+  projectionToken: string,
+): Promise<boolean> {
+  const result = await db
     .prepare(`
       UPDATE products
       SET remediation_projection_required = 0,
           remediation_projection_token = ''
-      WHERE id = ? AND remediation_projection_required = 1
+      WHERE id = ?
+        AND remediation_projection_required = 1
+        AND remediation_projection_token = ?
     `)
-    .bind(row.id)
+    .bind(listingProductId, projectionToken)
     .run();
-  void evaluatedAt;
+  return Number(result?.meta?.changes || 0) > 0;
 }
 
 async function processJob(
@@ -387,8 +399,9 @@ async function processJob(
   const row = await loadListing(db, job.listingProductId);
   if (!row) return null;
 
+  let projectionToken = row.remediation_projection_token;
   if (requiresDerivedReplay(job.workType)) {
-    await replayDerivedListing(db, row, aliases, evaluatedAt);
+    projectionToken = await replayDerivedListing(db, row, aliases, evaluatedAt);
   }
 
   // One canonical downstream refresh path keeps FTS, Product Identity, and the Phase-4 entity/read
@@ -399,7 +412,7 @@ async function processJob(
     [{ shop_key: row.shop_key, source_id: row.source_id }],
     evaluatedAt,
   );
-  await clearProjectionPending(db, row, evaluatedAt);
+  await clearProjectionPendingForToken(db, row.id, projectionToken);
   return row.shop_key;
 }
 

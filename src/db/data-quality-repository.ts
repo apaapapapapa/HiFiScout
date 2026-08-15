@@ -6,12 +6,9 @@ import type {
   QualityCounts,
   QualityEvaluation,
   QualityMetric,
-  QualityMetricTrend,
-  QualityMetricTrends,
   QualityRunMetrics,
   QualitySnapshotMetrics,
   QualityStatus,
-  QualityTrendMetricKey,
   QueryableDatabase,
 } from "./types.js";
 
@@ -322,71 +319,23 @@ export function dataQualityRow(row: DataQualityRunRow): StoredQualityEvaluation 
   };
 }
 
-const TREND_METRIC_KEYS: readonly QualityTrendMetricKey[] = [
-  "manufacturerUnknown",
-  "categoryUnclassified",
-  "identityUnresolved",
-  "inventoryUnknown",
-  "modelMissing",
-  "parserFailure",
-  "evidenceCoverage",
-];
-
-function metricTrend(current: QualityMetric, previous: QualityMetric | null): QualityMetricTrend {
-  const previousRate = previous ? previous.rate : null;
-  const absoluteDelta =
-    current.rate == null || previousRate == null ? null : current.rate - previousRate;
-  const percentageDelta =
-    absoluteDelta == null || !previousRate ? null : absoluteDelta / previousRate;
-  return {
-    previousRate,
-    previousStatus: previous ? previous.status : null,
-    absoluteDelta,
-    percentageDelta,
-  };
-}
-
-function buildQualityTrend(
-  current: StoredQualityEvaluation,
-  previous: StoredQualityEvaluation | null,
-): QualityMetricTrends {
-  const trend = {} as Record<QualityTrendMetricKey, QualityMetricTrend>;
-  for (const key of TREND_METRIC_KEYS) {
-    trend[key] = metricTrend(current.metrics[key], previous ? previous.metrics[key] : null);
-  }
-  return trend;
-}
-
-/**
- * Latest snapshot per shop, plus a snapshot-over-snapshot trend against the run immediately before
- * it. One windowed query keeps this a single bounded read across every shop rather than the N+1 a
- * per-shop "and also fetch the previous row" lookup would otherwise require.
- */
 export async function latestDataQualityByShop(
   db: QueryableDatabase,
-): Promise<Array<StoredQualityEvaluation & { trend: QualityMetricTrends }>> {
+): Promise<StoredQualityEvaluation[]> {
   const result = await db
     .prepare(`
-      WITH ranked AS (
-        SELECT q.*, ROW_NUMBER() OVER (
-          PARTITION BY q.shop_key ORDER BY q.evaluated_at DESC, q.id DESC
-        ) AS rn
-        FROM data_quality_runs q
+      SELECT q.*
+      FROM data_quality_runs q
+      WHERE q.id = (
+        SELECT q2.id FROM data_quality_runs q2
+        WHERE q2.shop_key = q.shop_key
+        ORDER BY q2.evaluated_at DESC, q2.id DESC
+        LIMIT 1
       )
-      SELECT * FROM ranked WHERE rn <= 2 ORDER BY shop_key, rn
+      ORDER BY q.shop_key
     `)
     .all<DataQualityRunRow>();
-  const byShop = new Map<string, DataQualityRunRow[]>();
-  for (const row of result.results || []) {
-    const rows = byShop.get(row.shop_key) || [];
-    rows.push(row);
-    byShop.set(row.shop_key, rows);
-  }
-  return [...byShop.values()].map(([currentRow, previousRow]) => {
-    const current = dataQualityRow(currentRow);
-    const previous = previousRow ? dataQualityRow(previousRow) : null;
-    return { ...current, trend: buildQualityTrend(current, previous) };
-  });
+  return (result.results || []).map((row) => dataQualityRow(row));
 }
 
 export async function listDataQualityHistory(
@@ -409,7 +358,7 @@ export async function listDataQualityHistory(
 
 export async function dataQualityStatus(db: QueryableDatabase): Promise<{
   status: QualityStatus;
-  shops: Array<StoredQualityEvaluation & { trend: QualityMetricTrends }>;
+  shops: StoredQualityEvaluation[];
   checkedAt: string;
 }> {
   const shops = await latestDataQualityByShop(db);
@@ -421,45 +370,6 @@ export async function dataQualityStatus(db: QueryableDatabase): Promise<{
       )
     : "unknown";
   return { status, shops, checkedAt: new Date().toISOString() };
-}
-
-interface IdentityMethodDistributionRow {
-  shop_key: string;
-  match_method: string | null;
-  listing_count: number;
-}
-
-export interface IdentityMethodDistributionEntry {
-  shopKey: string;
-  matchMethod: string;
-  listingCount: number;
-}
-
-/**
- * How active listings are distributed across `product_identity_resolutions.match_method`, per shop.
- * A listing with no resolution row is grouped as `missing_resolution` rather than disappearing, the
- * same convention the snapshot metrics use for identity coverage gaps.
- */
-export async function identityResolutionMethodDistribution(
-  db: QueryableDatabase,
-): Promise<IdentityMethodDistributionEntry[]> {
-  const result = await db
-    .prepare(`
-      SELECT p.shop_key,
-             COALESCE(r.match_method, 'missing_resolution') AS match_method,
-             COUNT(*) AS listing_count
-      FROM products p
-      LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
-      WHERE p.is_active = 1
-      GROUP BY p.shop_key, COALESCE(r.match_method, 'missing_resolution')
-      ORDER BY p.shop_key, listing_count DESC, match_method
-    `)
-    .all<IdentityMethodDistributionRow>();
-  return (result.results || []).map((row) => ({
-    shopKey: row.shop_key,
-    matchMethod: row.match_method || "missing_resolution",
-    listingCount: number(row.listing_count),
-  }));
 }
 
 export { MODEL_OPTIONAL_CATEGORIES };

@@ -199,8 +199,9 @@ function automaticWorkKey(row: CandidateRow): string {
 }
 
 /**
- * Convert only actionable/stale listings into durable work. The deterministic key makes repeated
- * sweeps a no-op until a resolver version or dependency-driven work key changes.
+ * Convert only actionable/stale listings into durable work. Candidates whose exact deterministic
+ * work key already exists are excluded before LIMIT is applied, so resolved/unresolved low ids can
+ * never starve later stale listings. A resolver/dependency change naturally produces a new key.
  */
 export async function seedDataQualityRemediationQueue(
   db: QueryableDatabase,
@@ -212,42 +213,67 @@ export async function seedDataQualityRemediationQueue(
   const selectedLimit = bounded(limit, DEFAULT_SEED_LIMIT, MAX_SEED_LIMIT);
   const rows = await db
     .prepare(`
+      WITH candidates AS (
+        SELECT
+          p.id,
+          CASE
+            WHEN p.manufacturer_resolver_version < ? THEN 'resolve_manufacturer'
+            WHEN p.model_resolver_version < ? THEN 'resolve_model'
+            WHEN COALESCE(CAST(json_extract(p.metadata_json, '$.categoryClassification.version') AS INTEGER), 0) < ?
+              THEN 'classify_category'
+            WHEN COALESCE(r.identity_resolver_version, 0) < ? THEN 'resolve_identity'
+            WHEN p.remediation_projection_required = 1 THEN 'rebuild_search_entity'
+            WHEN p.manufacturer_resolution_status <> 'resolved' THEN 'resolve_manufacturer'
+            WHEN p.model_resolution_status <> 'resolved' THEN 'resolve_model'
+            WHEN p.classification_status <> 'classified' THEN 'classify_category'
+            WHEN r.listing_product_id IS NULL OR r.status <> 'matched' THEN 'resolve_identity'
+            ELSE 'reprocess_listing'
+          END AS work_type,
+          p.manufacturer_resolver_version,
+          p.model_resolver_version,
+          COALESCE(CAST(json_extract(p.metadata_json, '$.categoryClassification.version') AS INTEGER), 0)
+            AS category_classifier_version,
+          COALESCE(r.identity_resolver_version, 0) AS identity_resolver_version
+        FROM products p
+        LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
+        WHERE p.is_active = 1
+          AND (
+            p.manufacturer_resolver_version < ?
+            OR p.model_resolver_version < ?
+            OR COALESCE(CAST(json_extract(p.metadata_json, '$.categoryClassification.version') AS INTEGER), 0) < ?
+            OR COALESCE(r.identity_resolver_version, 0) < ?
+            OR p.remediation_projection_required = 1
+            OR p.manufacturer_resolution_status <> 'resolved'
+            OR p.model_resolution_status <> 'resolved'
+            OR p.classification_status <> 'classified'
+            OR r.listing_product_id IS NULL
+            OR r.status <> 'matched'
+          )
+      ), keyed AS (
+        SELECT
+          c.*,
+          'auto:' || c.work_type ||
+          ':listing:' || c.id ||
+          ':manufacturer:' || c.manufacturer_resolver_version ||
+          ':model:' || c.model_resolver_version ||
+          ':category:' || c.category_classifier_version ||
+          ':identity:' || c.identity_resolver_version AS work_key
+        FROM candidates c
+      )
       SELECT
-        p.id,
-        CASE
-          WHEN p.manufacturer_resolver_version < ? THEN 'resolve_manufacturer'
-          WHEN p.model_resolver_version < ? THEN 'resolve_model'
-          WHEN COALESCE(CAST(json_extract(p.metadata_json, '$.categoryClassification.version') AS INTEGER), 0) < ?
-            THEN 'classify_category'
-          WHEN COALESCE(r.identity_resolver_version, 0) < ? THEN 'resolve_identity'
-          WHEN p.remediation_projection_required = 1 THEN 'rebuild_search_entity'
-          WHEN p.manufacturer_resolution_status <> 'resolved' THEN 'resolve_manufacturer'
-          WHEN p.model_resolution_status <> 'resolved' THEN 'resolve_model'
-          WHEN p.classification_status <> 'classified' THEN 'classify_category'
-          WHEN r.listing_product_id IS NULL OR r.status <> 'matched' THEN 'resolve_identity'
-          ELSE 'reprocess_listing'
-        END AS work_type,
-        p.manufacturer_resolver_version,
-        p.model_resolver_version,
-        COALESCE(CAST(json_extract(p.metadata_json, '$.categoryClassification.version') AS INTEGER), 0)
-          AS category_classifier_version,
-        COALESCE(r.identity_resolver_version, 0) AS identity_resolver_version
-      FROM products p
-      LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
-      WHERE p.is_active = 1
-        AND (
-          p.manufacturer_resolver_version < ?
-          OR p.model_resolver_version < ?
-          OR COALESCE(CAST(json_extract(p.metadata_json, '$.categoryClassification.version') AS INTEGER), 0) < ?
-          OR COALESCE(r.identity_resolver_version, 0) < ?
-          OR p.remediation_projection_required = 1
-          OR p.manufacturer_resolution_status <> 'resolved'
-          OR p.model_resolution_status <> 'resolved'
-          OR p.classification_status <> 'classified'
-          OR r.listing_product_id IS NULL
-          OR r.status <> 'matched'
-        )
-      ORDER BY p.id
+        k.id,
+        k.work_type,
+        k.manufacturer_resolver_version,
+        k.model_resolver_version,
+        k.category_classifier_version,
+        k.identity_resolver_version
+      FROM keyed k
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM data_quality_remediation_queue q
+        WHERE q.work_key = k.work_key
+      )
+      ORDER BY k.id
       LIMIT ?
     `)
     .bind(
