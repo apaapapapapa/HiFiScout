@@ -2,10 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { categoryClosureIds } from "../src/catalog/categories.js";
+import { syncInventoryRecheckSearchEntities } from "../src/crawler/dispatch.js";
 import { decodeCursor } from "../src/db/product-search-cursor.js";
 import { toProductSearchItem } from "../src/db/product-search-entity-mapper.js";
 import { searchProducts } from "../src/db/product-search-repository.js";
-import { syncInventoryRecheckSearchEntities } from "../src/crawler/dispatch.js";
+import { normalizeManufacturerFacetValues } from "../src/http/meta.js";
 import { favoriteMatchesFilters, favoriteSnapshot } from "../frontend/favorites.js";
 import type { ProductFilters } from "../frontend/filters.js";
 import { asQueryableDatabase, captureDatabase } from "./helpers/d1.js";
@@ -73,6 +74,39 @@ test("product favorites retain category ancestors so group filters match like se
   assert.equal(
     favoriteMatchesFilters(snapshot, filters({ category: parent }), "", Date.now()),
     true,
+  );
+});
+
+test("product search cards hide seller condition badges from manufacturer presentation", () => {
+  const used = toProductSearchItem(
+    entityRow({ manufacturer_id: "luxman", manufacturer: "〖中古品〗LUXMAN" }),
+  );
+  assert.equal(used.manufacturer, "LUXMAN");
+  assert.equal(used.manufacturer_id, "luxman");
+
+  const display = toProductSearchItem(
+    entityRow({ manufacturer_id: "luxman", manufacturer: "【展示処分品】LUXMAN" }),
+  );
+  assert.equal(display.manufacturer, "LUXMAN");
+  assert.equal(display.manufacturer_id, "luxman");
+
+  const unknown = toProductSearchItem(
+    entityRow({ manufacturer_id: "example-audio", manufacturer: "【中古品】Example Audio" }),
+  );
+  assert.equal(unknown.manufacturer, "Example Audio");
+  assert.equal(unknown.manufacturer_id, "example-audio");
+});
+
+test("manufacturer filter vocabulary canonicalizes and deduplicates stale presentations", () => {
+  assert.deepEqual(
+    normalizeManufacturerFacetValues([
+      { value: "〖中古品〗LUXMAN" },
+      { value: "【展示処分品】LUXMAN" },
+      { value: "LUXMAN" },
+      { value: "【中古品】MSB" },
+      { value: "MSB Technology" },
+    ]),
+    ["LUXMAN", "MSB Technology"],
   );
 });
 

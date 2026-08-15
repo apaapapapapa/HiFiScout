@@ -7,6 +7,7 @@
  */
 
 import { canonicalCategoryDefinitions, getCategory } from "../catalog/categories.js";
+import { normalizeManufacturer } from "../catalog/manufacturers.js";
 import { SHOP_DEFINITIONS, getShopEnabled, getShopIntervalMinutes } from "../config.js";
 import { buildSyncHealth } from "../health.js";
 import type {
@@ -28,6 +29,20 @@ interface MetaFacetRow {
 function categorySortKey(category: Pick<CategoryDefinition, "parentId" | "order">): number[] {
   const parent = category.parentId ? getCategory(category.parentId) : category;
   return [parent?.order || 999, category.parentId ? 1 : 0, category.order || 999];
+}
+
+/**
+ * Public manufacturer vocabulary must not expose stale seller presentation text while a resolver
+ * version replay is still draining. Canonicalization is also a dedupe boundary: `LUXMAN`,
+ * `〖中古品〗LUXMAN` and `【展示処分品】LUXMAN` are one filter option, not three.
+ */
+export function normalizeManufacturerFacetValues(
+  rows: readonly Pick<MetaFacetRow, "value">[],
+): string[] {
+  const values = rows
+    .map((row) => normalizeManufacturer(row.value).displayName)
+    .filter((value): value is string => Boolean(value));
+  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
 }
 
 /** Explicit row -> contract projection: `shop_sync_state` must not define the payload by itself. */
@@ -77,7 +92,7 @@ export async function meta(env: Env): Promise<MetaResponse> {
       GROUP BY pc.category_id
     `),
   ]);
-  const manufacturers = (facets[0]?.results || []).map((row) => row.value);
+  const manufacturers = normalizeManufacturerFacetValues(facets[0]?.results || []);
   const counts = new Map(
     (facets[1]?.results || []).map((row): [string, number] => [
       row.value,
