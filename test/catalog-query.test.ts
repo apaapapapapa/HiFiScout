@@ -17,10 +17,7 @@ test("manufacturer aliases filter through canonical, legacy id, and stale presen
   const db = captureDatabase();
   await searchProducts(db, productQuery("?manufacturer=ラックスマン"));
 
-  assert.match(
-    db.calls[0].sql,
-    /e\.manufacturer_id IN \(SELECT value FROM json_each\(\?\)\)/,
-  );
+  assert.match(db.calls[0].sql, /e\.manufacturer_id IN \(SELECT value FROM json_each\(\?\)\)/);
   assert.deepEqual(JSON.parse(String(db.calls[0].binds[0])), ["luxman", "brand-6mvady"]);
   assert.ok(JSON.parse(String(db.calls[0].binds[1])).includes("ラックスマン"));
   assert.match(db.calls[0].sql, /substr\(/);
@@ -67,10 +64,7 @@ test("offer filters are conjoined inside one EXISTS so they must hold for the sa
   const existsClauses = sql.match(/EXISTS \(\s*SELECT 1 FROM product_search_entity_offers/g) || [];
   assert.equal(existsClauses.length, 1);
   assert.match(sql, /p\.shop_key = \?/);
-  assert.match(
-    sql,
-    /e\.manufacturer_id IN \(SELECT value FROM json_each\(\?\)\)/,
-  );
+  assert.match(sql, /e\.manufacturer_id IN \(SELECT value FROM json_each\(\?\)\)/);
   assert.match(sql, /p\.stock_status = 'in_stock'/);
   assert.match(
     sql,
