@@ -57,15 +57,20 @@ export async function finalizeKnowledgeCatalogVerificationRun(
   }
 
   const beforeClassification = await knowledgeCatalogReviewRunQueueBaseline(env.DB, body.runId);
-  // Only now that every verification has landed can listings be re-read against the catalog.
-  const reclassifiedProducts = await reclassifyProductsFromKnowledgeCatalog(env.DB);
-  // Reclassification corrects the category; this closes the rest of the loop, re-running Product
-  // Identity and the Phase 4 projection for the listings each newly verified entry now explains.
+  // A newly verified catalog entry must first pass the existing conservative Product Identity
+  // resolver. This replay also refreshes the Phase 4 projection/entity for identities that changed.
   const remediation = await reprocessPendingCatalogRemediation(env.DB, {
     productLimit: remediationProductLimit(env),
     limit: remediationListingLimit(env),
     evaluatedAt: now.toISOString(),
   });
+  // Only matched canonical identities may now contribute authoritative Knowledge Catalog category
+  // evidence. The repository refreshes the product-level search projection again for rows whose
+  // category/search aliases changed, so no downstream read model is left stale.
+  const reclassifiedProducts = await reclassifyProductsFromKnowledgeCatalog(
+    env.DB,
+    now.toISOString(),
+  );
   const [candidateResult, catalogResult, afterClassification] = await Promise.all([
     knowledgeCatalogCandidateStats(env.DB),
     knowledgeCatalogStats(env.DB),
