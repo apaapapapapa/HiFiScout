@@ -162,7 +162,7 @@ export function manufacturerSearchAliases(value: unknown = ""): string[] {
 }
 
 export function normalizeManufacturer(value: unknown = ""): ManufacturerNormalizationResult {
-  const raw = cleanSourceText(value);
+  const raw = cleanSourceText(stripManufacturerListingLabels(value));
   if (!raw) return { id: "", displayName: "", matchedAlias: false };
   const key = normalizeManufacturerKey(raw);
   const known = BY_ALIAS.get(key) || BY_ID.get(raw.toLowerCase());
