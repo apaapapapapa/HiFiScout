@@ -57,13 +57,23 @@ here rather than absorbed into a threshold change.
 
 ## Query plans (section 16)
 
-`test/remediation-query-plans.test.ts` explains the SQL the repositories actually issue. Three full
+`test/remediation-query-plans.test.ts` explains the SQL the repositories actually issue. Two full
 table reads are recorded there, each with the change that would remove it:
 
 | Query | Reads | Why the index does not apply |
 | --- | --- | --- |
-| Queue claim | `data_quality_remediation_queue` | Claimable states are an `OR` over different columns, and `ORDER BY` disagrees with the index column order. A `UNION ALL` per state would use the partial index. |
-| Replay seeding | `products` | The staleness CTE tests four resolver versions in `CASE` branches, so no single index applies — and this runs every five minutes. One selector per resolver would bound it. |
-| Price sort page | `product_search_entities` | `ORDER BY lowest_price_yen ASC NULLS LAST` cannot use `(lowest_price_yen, id)`, since SQLite orders NULLs first. An index over `(lowest_price_yen IS NULL, lowest_price_yen, id)` would match. |
+| Queue claim | `data_quality_remediation_queue`, plus a sort | Claimable states are an `OR` over different columns, and `ORDER BY priority DESC, available_at, id` disagrees with the partial index column order. A `UNION ALL` per state would use `idx_dq_remediation_queue_claim`. |
+| Replay seeding | `products`, every five minutes | The staleness CTE tests four resolver versions in `CASE` branches, so no single index applies. One selector per resolver, each against its own version index, would bound it. |
 
-The test allows exactly these three and fails on any new one, so the list only shrinks.
+Each allowance names the statement it covers, so an exception earned by one query cannot excuse a
+new scan in another, and an allowance that stops matching fails the test — the list only shrinks.
+
+Reading a plan correctly matters more than it looks. `SCAN t USING INDEX i` walks an index in
+order and is what these tests are asking for; only a bare `SCAN t` is a row-by-row table read.
+Two earlier candidate findings did not survive that distinction:
+
+- the price-sort page **does** use `idx_product_search_entities_price`. It only appeared not to
+  because the plan had been measured against an empty `product_search_entities`;
+- the unresolved-identity grouping **does** use `idx_products_identity_group`, which the test now
+  asserts by name rather than by checking that the SQL contains `LIMIT` — the `LIMIT` follows
+  `GROUP BY`, so it bounds rows returned, not rows read.

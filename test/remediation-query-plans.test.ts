@@ -12,7 +12,12 @@ import { listManufacturerAliasEvidence } from "../src/db/manufacturer-repository
 import { searchProducts } from "../src/db/product-search-repository.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { productQuery } from "./helpers/product-query.js";
-import { queryPlan, recordingDatabase, unindexedScans } from "./helpers/query-plan.js";
+import {
+  queryPlan,
+  readsThroughIndex,
+  recordingDatabase,
+  unindexedScans,
+} from "./helpers/query-plan.js";
 import type { ExecutedStatement } from "./helpers/query-plan.js";
 
 /**
@@ -34,28 +39,45 @@ import type { ExecutedStatement } from "./helpers/query-plan.js";
 const LISTING_COUNT = 40;
 
 /**
- * Full reads the planner performs today that the schema does not yet avoid.
+ * An accepted row-by-row read, tied to the one statement that performs it.
  *
- * These are measured, not assumed, and each one is a real production cost. They are named here
- * rather than left as a failing suite so the harness keeps catching *new* scans; deleting an entry
- * is what a fix looks like, and the test then fails until the entry goes.
- *
- * - `data_quality_remediation_queue` (claim): `idx_dq_remediation_queue_claim` cannot serve the
- *   query because the two claimable states are an `OR` of different columns and the `ORDER BY`
- *   column order differs from the index. Splitting the branches into a `UNION ALL` would let each
- *   side use the partial index.
- * - `products` (seed): the staleness CTE tests four resolver versions in `CASE` branches, so no
- *   single index applies and every listing is read on each five-minute tick. Running one selector
- *   per resolver, each against its own version index, would bound it.
- * - `product_search_entities` (price sort): `ORDER BY lowest_price_yen ASC NULLS LAST` cannot use
- *   `idx_product_search_entities_price`, because SQLite orders NULLs first. An index over
- *   `(lowest_price_yen IS NULL, lowest_price_yen, id)` would match the requested order.
+ * `when` is what keeps an exception honest. An allowance listed for the whole recorded workload
+ * would also excuse a *different* query that starts scanning the same table, which is the opposite
+ * of what this file is for.
  */
-const KNOWN_UNINDEXED_READS = {
-  queueClaim: ["data_quality_remediation_queue"],
-  replaySeed: ["p"],
-  searchPriceSort: ["e"],
-} as const;
+interface ScanAllowance {
+  /** Table or alias, as the plan names it. */
+  readonly tables: readonly string[];
+  /** The statement the allowance covers. */
+  readonly when: RegExp;
+  readonly reason: string;
+}
+
+/**
+ * Full table reads the schema does not yet avoid, measured rather than assumed.
+ *
+ * Each is a real production cost, recorded here instead of left as a failing suite so the harness
+ * keeps catching *new* scans. Deleting an entry is what a fix looks like: the test then fails until
+ * the entry goes.
+ */
+const KNOWN_UNINDEXED_READS: Record<string, ScanAllowance> = {
+  queueClaim: {
+    tables: ["data_quality_remediation_queue"],
+    when: /SELECT id\s+FROM data_quality_remediation_queue/,
+    reason:
+      "idx_dq_remediation_queue_claim cannot serve this query: the two claimable states are an OR " +
+      "over different columns, and ORDER BY priority DESC, available_at, id disagrees with the " +
+      "index column order, so the plan also sorts. A UNION ALL per state would use the partial index.",
+  },
+  replaySeed: {
+    tables: ["p"],
+    when: /WITH candidates AS/,
+    reason:
+      "The staleness CTE tests four resolver versions in CASE branches, so no single index applies " +
+      "and every listing is read on each five-minute tick. One selector per resolver, each against " +
+      "its own version index, would bound it.",
+  },
+};
 
 function seedListings(sqlite: DatabaseSync): void {
   const insert = sqlite.prepare(`
@@ -99,28 +121,48 @@ function selects(executed: readonly ExecutedStatement[]): ExecutedStatement[] {
   );
 }
 
-/** Asserts every SELECT a repository issued reads the growing tables through an index. */
+/** Constant-size reference tables; reading one end to end costs nothing that grows. */
+const SMALL_REFERENCE_TABLES = [
+  "knowledge_catalog_products",
+  "knowledge_catalog_product_categories",
+  "knowledge_catalog_aliases",
+  "knowledge_catalog_manufacturers",
+  "knowledge_catalog_manufacturer_aliases",
+];
+
+/**
+ * Asserts every statement a repository issued reads the growing tables through an index.
+ *
+ * Allowances are matched against each statement individually, so an exception granted for one query
+ * cannot silently cover a different one that starts scanning the same table.
+ */
 function assertNoGrowingTableScans(
   sqlite: DatabaseSync,
   executed: readonly ExecutedStatement[],
-  { allow = [] as string[], label = "" } = {},
+  { allowances = [] as ScanAllowance[], label = "" } = {},
 ): void {
   const inspected = selects(executed);
   assert.ok(inspected.length > 0, `${label}: nothing was executed, so nothing was proven`);
+  const applied = new Set<ScanAllowance>();
   for (const statement of inspected) {
+    const matching = allowances.filter((allowance) => allowance.when.test(statement.sql));
+    for (const allowance of matching) applied.add(allowance);
     const scans = unindexedScans(queryPlan(sqlite, statement), [
-      // Constant-size or intentionally swept tables. Anything not listed here must use an index.
-      "knowledge_catalog_products",
-      "knowledge_catalog_product_categories",
-      "knowledge_catalog_aliases",
-      "knowledge_catalog_manufacturers",
-      "knowledge_catalog_manufacturer_aliases",
-      ...allow,
+      ...SMALL_REFERENCE_TABLES,
+      ...matching.flatMap((allowance) => allowance.tables),
     ]);
     assert.deepEqual(
       scans,
       [],
       `${label}: full table read of ${scans.join(", ")} in\n${statement.sql.trim()}`,
+    );
+  }
+  // An allowance nobody needed is a fix that landed without its record being removed.
+  for (const allowance of allowances) {
+    assert.ok(
+      applied.has(allowance),
+      `${label}: no statement matched the recorded allowance for ${allowance.tables.join(", ")} — ` +
+        "if the query no longer scans, delete the KNOWN_UNINDEXED_READS entry",
     );
   }
 }
@@ -136,7 +178,7 @@ test("queue claiming stays bounded, and its scan is the one recorded below", asy
 
   assertNoGrowingTableScans(sqlite, executed, {
     label: "claim",
-    allow: [...KNOWN_UNINDEXED_READS.queueClaim],
+    allowances: [KNOWN_UNINDEXED_READS.queueClaim],
   });
 });
 
@@ -151,9 +193,7 @@ test("replay seeding reads no table beyond the ones recorded below", async () =>
 
   assertNoGrowingTableScans(sqlite, executed, {
     label: "seed",
-    // Identity staleness is defined by the absence of a current resolution row, so the selector
-    // walks the resolution table itself; it is bounded by LIMIT rather than by an index.
-    allow: ["product_identity_resolutions", ...KNOWN_UNINDEXED_READS.replaySeed],
+    allowances: [KNOWN_UNINDEXED_READS.replaySeed],
   });
 });
 
@@ -177,44 +217,59 @@ test("manufacturer alias evidence loads through the normalized alias index", asy
   }
 });
 
-test("unresolved identity grouping is bounded rather than a full listing sweep", async () => {
+test("unresolved identity grouping walks the identity-group index, not the listing table", async () => {
   const { sqlite, db: inner } = migratedSqlite();
   seedListings(sqlite);
   const { db, executed } = recordingDatabase(inner);
 
   await listUnresolvedIdentityGroups(db, 25);
 
-  for (const statement of selects(executed)) {
-    // Grouping is an aggregate over unresolved listings, so a scan is expected; what must hold is
-    // that it is capped, or the query would grow without bound as the catalog grows.
-    assert.match(statement.sql, /LIMIT/i);
-  }
-});
-
-test("a product search page adds no unindexed read beyond the recorded price sort", async () => {
-  const { sqlite, db: inner } = migratedSqlite();
-  seedListings(sqlite);
-  // The search read model has to exist before its plans mean anything: explaining a query against
-  // an empty table describes the empty table, not production.
-  await refreshListingProjections(
-    inner,
-    Array.from({ length: LISTING_COUNT }, (_, i) => ({
-      shop_key: `shop-${i % 4}`,
-      source_id: `source-${i}`,
-    })),
-    "2026-08-15T00:00:00.000Z",
+  const [grouping, ...rest] = selects(executed);
+  assert.equal(rest.length, 0, "grouping should be one statement, not a per-group lookup");
+  const plan = queryPlan(sqlite, grouping);
+  // `LIMIT` sits after GROUP BY here, so it bounds the rows returned but not the rows read. The
+  // only thing that bounds the read is the index, which is what has to be asserted: drop
+  // idx_products_identity_group and this becomes a full listing sweep on every dashboard load.
+  assert.ok(
+    readsThroughIndex(plan, "p", "idx_products_identity_group"),
+    `grouping must read listings through idx_products_identity_group, got:\n${plan
+      .map((step) => step.detail)
+      .join("\n")}`,
   );
-  const { db, executed } = recordingDatabase(inner);
-
-  await searchProducts(db, productQuery("?q=TAD&includeTotal=true&limit=20"));
-  await searchProducts(db, productQuery("?sort=priceAsc&limit=20"));
-  await searchProducts(db, productQuery("?manufacturer=tad&category=dac&inStock=true&limit=20"));
-
-  assertNoGrowingTableScans(sqlite, executed, {
-    label: "search",
-    // The offer queries drive from `product_search_entity_offers` scoped to the page's entity ids
-    // and join listings by primary key; on a fixture this small the planner reads the listing side
-    // directly. What must stay indexed is the membership side, which the page scopes.
-    allow: ["p", ...KNOWN_UNINDEXED_READS.searchPriceSort],
-  });
+  assert.deepEqual(unindexedScans(plan, SMALL_REFERENCE_TABLES), []);
 });
+
+/**
+ * The three shapes a search page takes, each measured on its own.
+ *
+ * Recording all three into one bucket would let an exception earned by the price sort excuse a new
+ * scan in the text or filtered query, so every shape gets its own database and its own assertion.
+ */
+const SEARCH_SHAPES = [
+  { label: "full text", search: "?q=TAD&includeTotal=true&limit=20" },
+  { label: "price sort", search: "?sort=priceAsc&limit=20" },
+  { label: "filters", search: "?manufacturer=tad&category=dac&inStock=true&limit=20" },
+] as const;
+
+for (const shape of SEARCH_SHAPES) {
+  test(`a ${shape.label} search page reads no table row by row`, async () => {
+    const { sqlite, db: inner } = migratedSqlite();
+    seedListings(sqlite);
+    // The search read model has to exist before its plans mean anything: explaining a query against
+    // an empty table describes the empty table, not production. Measuring the price sort against an
+    // empty `product_search_entities` is what previously made it look like it ignored its index.
+    await refreshListingProjections(
+      inner,
+      Array.from({ length: LISTING_COUNT }, (_, i) => ({
+        shop_key: `shop-${i % 4}`,
+        source_id: `source-${i}`,
+      })),
+      "2026-08-15T00:00:00.000Z",
+    );
+    const { db, executed } = recordingDatabase(inner);
+
+    await searchProducts(db, productQuery(shape.search));
+
+    assertNoGrowingTableScans(sqlite, executed, { label: shape.label });
+  });
+}

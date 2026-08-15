@@ -78,10 +78,16 @@ export function queryPlan(sqlite: DatabaseSync, statement: ExecutedStatement): r
 }
 
 /**
- * Tables the plan reads without an index, ignoring the ones a caller declares acceptable.
+ * Tables the plan reads row by row, ignoring the ones a caller declares acceptable.
  *
- * `SCAN <table>` is SQLite's own wording for "read every row". Small constant tables and deliberate
- * aggregate sweeps are legitimate; a scan of a table that grows with the catalog is not.
+ * `SCAN` alone is SQLite's wording for "read every row of the table b-tree". The qualified forms
+ * are not that, and conflating them turns this whole harness into noise:
+ *
+ * - `SCAN t USING INDEX i` / `USING COVERING INDEX i` walks an index in order. It reads every entry,
+ *   but through the index the schema provides — which is exactly what these tests are asking for.
+ * - `SCAN t VIRTUAL TABLE INDEX 0:M1` is an FTS5 `MATCH`, i.e. the full-text index doing its job.
+ *
+ * Only a bare `SCAN <table>` is reported.
  */
 export function unindexedScans(
   plan: readonly PlanStep[],
@@ -89,12 +95,23 @@ export function unindexedScans(
 ): string[] {
   const scans: string[] = [];
   for (const step of plan) {
-    const table = /^SCAN (\w+)/.exec(step.detail)?.[1];
-    if (!table || allowed.includes(table)) continue;
-    // SQLite words an FTS5 MATCH as `SCAN <table> VIRTUAL TABLE INDEX 0:M1`. That is the full-text
-    // index doing its job, not a row-by-row read, so it must not be counted as a scan.
-    if (/VIRTUAL TABLE INDEX \d+:\w/.test(step.detail)) continue;
-    scans.push(table);
+    const table = /^SCAN (\w+)\s*(.*)$/.exec(step.detail);
+    if (!table) continue;
+    const [, name, qualifier] = table;
+    if (allowed.includes(name)) continue;
+    if (/\b(USING\s+(COVERING\s+)?INDEX|VIRTUAL TABLE INDEX)\b/.test(qualifier)) continue;
+    scans.push(name);
   }
   return [...new Set(scans)];
+}
+
+/** Whether the plan reads `table` through the named index, rather than however it likes. */
+export function readsThroughIndex(
+  plan: readonly PlanStep[],
+  table: string,
+  index: string,
+): boolean {
+  return plan.some((step) =>
+    new RegExp(`^(SCAN|SEARCH) ${table}\\b.*USING (COVERING )?INDEX ${index}\\b`).test(step.detail),
+  );
 }
