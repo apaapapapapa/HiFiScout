@@ -397,7 +397,7 @@ async function processJob(
   // an identity-version-only replay still has work to stamp.
   await refreshListingProjections(
     db,
-    [{ shopKey: row.shop_key, sourceIds: [row.source_id] }],
+    [{ shop_key: row.shop_key, source_id: row.source_id }],
     evaluatedAt,
   );
   await clearProjectionPending(db, row, evaluatedAt);
