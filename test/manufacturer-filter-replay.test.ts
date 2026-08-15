@@ -11,6 +11,6 @@ test("manufacturer filters include canonical and pre-normalization alias ids", (
   );
   assert.deepEqual(
     new Set(manufacturerFilterIds("Bowers & Wilkins")),
-    new Set(["bowers-wilkins", "bowerswilkins", "bowersandwilkins", "bw"]),
+    new Set(["bowers-wilkins", "bowerswilkins", "bowersandwilkins", "bw", "brand-mvkgbk"]),
   );
 });
