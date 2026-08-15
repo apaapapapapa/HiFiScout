@@ -12,7 +12,11 @@ import { parseProductQuery, validateProductQuery } from "../api/product-query.js
 import { SHOP_DEFINITIONS } from "../config.js";
 import { dispatchForcedCrawl } from "../crawler/dispatch.js";
 import { dataPlatformStatus } from "../db/data-platform-status-repository.js";
-import { dataQualityStatus, listDataQualityHistory } from "../db/data-quality-repository.js";
+import {
+  dataQualityStatusWithRemediationSlo,
+  listDataQualityHistoryWithRemediationSlo,
+} from "../db/data-quality-remediation-governance-repository.js";
+import { dataQualityRemediationImpact } from "../db/data-quality-remediation-impact-repository.js";
 import {
   listUnresolvedIdentityGroups,
   reprocessVerifiedCatalogProduct,
@@ -105,18 +109,27 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext): Pro
   }
   if (request.method === "GET" && url.pathname === "/api/admin/data-quality/status") {
     if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
-    return json(await dataQualityStatus(env.DB));
+    return json(await dataQualityStatusWithRemediationSlo(env.DB));
   }
   if (request.method === "GET" && url.pathname === "/api/admin/data-quality/history") {
     if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
     const shop = String(url.searchParams.get("shop") || "").trim();
     if (!shop || !SHOP_DEFINITIONS[shop]) return json({ error: "invalid_shop" }, { status: 400 });
-    const history = await listDataQualityHistory(
+    const history = await listDataQualityHistoryWithRemediationSlo(
       env.DB,
       shop,
       Number(url.searchParams.get("limit")) || undefined,
     );
     return json({ shop, history });
+  }
+  if (request.method === "GET" && url.pathname === "/api/admin/data-quality/remediation-impact") {
+    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
+    return json(
+      await dataQualityRemediationImpact(
+        env.DB,
+        Number(url.searchParams.get("limit")) || undefined,
+      ),
+    );
   }
   if (
     request.method === "GET" &&
