@@ -166,7 +166,7 @@ test("unresolved model identity never borrows verified catalog category evidence
 
   assert.equal(result.catalogMatches, 0);
   assert.equal(result.products[0].classificationStatus, "unclassified");
-  assert.equal(result.products[0].classificationSource, "none");
+  assert.equal(result.products[0].classificationSource, "unclassified");
 });
 
 test("verified rows without an explicit primary category are not used for classification", async () => {
