@@ -112,6 +112,39 @@ test("priority ranks broad unresolved impact above a one-off unknown item", () =
   assert.ok(candidatePriority({ shopCount: 5 }) < candidatePriority({ unclassifiedCount: 1 }));
 });
 
+test("priority is a pure function of the aggregate, not of how it was accumulated", () => {
+  const rows = [
+    listing({ manufacturer_id: "esoteric", model: "K-01XD" }),
+    listing({ manufacturer_id: "luxman", model: "L-507Z", shop_key: "fujiya-avic" }),
+    listing({ manufacturer_id: "accuphase", model: "E-800", shop_key: "ippinkan" }),
+  ];
+
+  for (const candidate of buildKnowledgeCatalogCandidateAggregates(rows)) {
+    assert.equal(candidate.priorityScore, candidatePriority(candidate));
+  }
+});
+
+test("candidates that score identically are ordered by identity, not by arrival", () => {
+  // Three one-listing groups with nothing to separate them but their keys. Without an explicit
+  // tie-break the order would follow accumulation order, and a reviewer's queue would reshuffle on
+  // every sweep for no reason — which is exactly what makes a "top unresolved products" list
+  // untrustworthy.
+  const rows = [
+    listing({ manufacturer_id: "luxman", model: "L-507Z", source_url: "https://example.test/l" }),
+    listing({ manufacturer_id: "accuphase", model: "E-800", source_url: "https://example.test/a" }),
+    listing({ manufacturer_id: "esoteric", model: "K-01XD", source_url: "https://example.test/e" }),
+  ];
+
+  const forward = buildKnowledgeCatalogCandidateAggregates(rows);
+  const reversed = buildKnowledgeCatalogCandidateAggregates([...rows].reverse());
+
+  assert.deepEqual(
+    forward.map((candidate) => candidate.manufacturerId),
+    ["accuphase", "esoteric", "luxman"],
+  );
+  assert.deepEqual(forward, reversed);
+});
+
 test("unresolved identity groups are keyed by canonical manufacturer and normalized model", async () => {
   const db = captureDatabase([
     {
