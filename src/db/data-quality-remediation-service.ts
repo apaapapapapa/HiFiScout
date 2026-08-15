@@ -8,9 +8,8 @@ import { createModelResolver } from "../catalog/model-resolver.js";
 import { inferFeatureFacts } from "../catalog/product-features.js";
 import { RESOLUTION_VERSIONS } from "../catalog/resolution-versions.js";
 import type { CategoryEvidenceInput, FeatureFact } from "../catalog/types.js";
-import { evaluateQuality } from "../data-quality/quality-evaluator.js";
 import { errorMessage, isRecord } from "../types.js";
-import { readDataQualitySnapshot } from "./data-quality-repository.js";
+import { saveDataQualityRun } from "./data-quality-repository.js";
 import {
   claimDataQualityRemediationBatch,
   dataQualityRemediationQueueMetrics,
@@ -437,6 +436,7 @@ export async function runDataQualityRemediationSweep(
     ? await listManufacturerAliasEvidence(db)
     : [];
   const affectedShops = new Set<string>();
+  const successfulJobsByShop = new Map<string, DataQualityRemediationJob[]>();
   let resolved = 0;
   let failed = 0;
   let retried = 0;
@@ -444,9 +444,15 @@ export async function runDataQualityRemediationSweep(
   for (const job of jobs) {
     try {
       const shopKey = await processJob(db, job, aliases, evaluatedAt);
-      if (shopKey) affectedShops.add(shopKey);
-      await resolveDataQualityRemediationJob(db, job.id, evaluatedAt);
-      resolved += 1;
+      if (!shopKey) {
+        await resolveDataQualityRemediationJob(db, job.id, evaluatedAt);
+        resolved += 1;
+        continue;
+      }
+      affectedShops.add(shopKey);
+      const shopJobs = successfulJobsByShop.get(shopKey) || [];
+      shopJobs.push(job);
+      successfulJobsByShop.set(shopKey, shopJobs);
     } catch (error) {
       const status = await retryOrFailDataQualityRemediationJob(db, job.id, error, {
         updatedAt: evaluatedAt,
@@ -466,19 +472,60 @@ export async function runDataQualityRemediationSweep(
     }
   }
 
-  // Recompute the snapshot from current D1 state after replay without inventing a synthetic crawl
-  // run. This keeps seller/run metrics untouched while making the post-remediation DQ state visible.
-  for (const shopKey of affectedShops) {
-    const snapshot = await readDataQualitySnapshot(db, shopKey);
-    const quality = evaluateQuality({ shopKey, ...snapshot });
-    console.log(
-      JSON.stringify({
-        event: "data_quality_remediation_snapshot",
-        shopKey,
-        status: quality.snapshot.status,
-        metrics: quality.snapshot.metrics,
-      }),
-    );
+  // Snapshot persistence is part of durable job completion. Keep successfully processed jobs in
+  // `processing` until their shop's post-remediation snapshot is safely stored; otherwise a transient
+  // D1 failure could mark the only retryable work resolved and permanently lose the DQ refresh.
+  for (const [shopKey, shopJobs] of successfulJobsByShop) {
+    try {
+      const saved = await saveDataQualityRun(db, { shopKey, crawlRunId: null, evaluatedAt });
+      console.log(
+        JSON.stringify({
+          event: "data_quality_remediation_snapshot",
+          shopKey,
+          status: saved.snapshot.status,
+          metrics: saved.snapshot.metrics,
+        }),
+      );
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          event: "data_quality_remediation_snapshot_failed",
+          shopKey,
+          jobCount: shopJobs.length,
+          message: errorMessage(error),
+        }),
+      );
+      for (const job of shopJobs) {
+        const status = await retryOrFailDataQualityRemediationJob(db, job.id, error, {
+          updatedAt: evaluatedAt,
+        });
+        if (status === "failed") failed += 1;
+        else retried += 1;
+      }
+      continue;
+    }
+
+    for (const job of shopJobs) {
+      try {
+        await resolveDataQualityRemediationJob(db, job.id, evaluatedAt);
+        resolved += 1;
+      } catch (error) {
+        const status = await retryOrFailDataQualityRemediationJob(db, job.id, error, {
+          updatedAt: evaluatedAt,
+        });
+        if (status === "failed") failed += 1;
+        else retried += 1;
+        console.error(
+          JSON.stringify({
+            event: "data_quality_remediation_job_finalize_failed",
+            jobId: job.id,
+            shopKey,
+            status,
+            message: errorMessage(error),
+          }),
+        );
+      }
+    }
   }
 
   const queue = await dataQualityRemediationQueueMetrics(db);
