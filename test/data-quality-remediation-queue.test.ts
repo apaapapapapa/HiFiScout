@@ -105,6 +105,22 @@ test("stale resolver work is seeded once with a deterministic key", async () => 
   assert.equal(metrics.resolved, 1);
 });
 
+test("a listing already at every current version seeds no work at all", async () => {
+  // The counterpart to the staleness selectors: if the version predicates ever stopped filtering,
+  // every sweep would re-enqueue the whole table and the queue would never drain. Nothing else
+  // asserts the empty case, because every other seeding test starts by making a row stale.
+  const { sqlite, db } = database();
+  insertHealthyListing(sqlite, 1);
+  insertHealthyListing(sqlite, 2);
+
+  const seeded = await seedDataQualityRemediationQueue(db, { now: "2026-08-15T00:00:00.000Z" });
+
+  assert.equal(seeded.selectedCount, 0);
+  assert.deepEqual(seeded.workKeys, []);
+  const metrics = await dataQualityRemediationQueueMetrics(db);
+  assert.equal(metrics.backlog, 0);
+});
+
 test("deduplicated low ids cannot starve later stale listings", async () => {
   const { sqlite, db } = database();
   insertHealthyListing(sqlite, 1);
