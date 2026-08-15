@@ -92,7 +92,7 @@ test("stale resolver work is seeded once with a deterministic key", async () => 
   assert.equal(first.selectedCount, 1);
   assert.equal(first.workKeys.length, 1);
   assert.match(first.workKeys[0] || "", /resolve_manufacturer/);
-  assert.equal(second.selectedCount, 1);
+  assert.equal(second.selectedCount, 0);
   assert.equal(second.workKeys.length, 0, "same stale evidence/version must not duplicate work");
 
   const [job] = await claimDataQualityRemediationBatch(db, { claimedAt: now, limit: 1 });
@@ -103,6 +103,27 @@ test("stale resolver work is seeded once with a deterministic key", async () => 
   const metrics = await dataQualityRemediationQueueMetrics(db);
   assert.equal(metrics.backlog, 0);
   assert.equal(metrics.resolved, 1);
+});
+
+test("deduplicated low ids cannot starve later stale listings", async () => {
+  const { sqlite, db } = database();
+  insertHealthyListing(sqlite, 1);
+  insertHealthyListing(sqlite, 2);
+  sqlite
+    .prepare("UPDATE products SET manufacturer_resolver_version = ?")
+    .run(RESOLUTION_VERSIONS.manufacturer - 1);
+  const now = "2026-08-15T00:00:00.000Z";
+
+  const first = await seedDataQualityRemediationQueue(db, { now, limit: 1 });
+  const second = await seedDataQualityRemediationQueue(db, { now, limit: 1 });
+  const third = await seedDataQualityRemediationQueue(db, { now, limit: 1 });
+
+  assert.equal(first.workKeys.length, 1);
+  assert.match(first.workKeys[0] || "", /listing:1:/);
+  assert.equal(second.workKeys.length, 1);
+  assert.match(second.workKeys[0] || "", /listing:2:/);
+  assert.equal(third.selectedCount, 0);
+  assert.equal(third.workKeys.length, 0);
 });
 
 test("abandoned processing is reclaimable and retry exhaustion becomes failed", async () => {
