@@ -18,3 +18,6 @@ export const RESOLUTION_VERSIONS = Object.freeze({
   category: CATEGORY_CLASSIFIER_VERSION,
   identity: IDENTITY_RESOLVER_VERSION,
 });
+
+/** Stages whose stored version participates in automatic replay eligibility. */
+export type ResolutionStage = keyof typeof RESOLUTION_VERSIONS;
