@@ -146,12 +146,49 @@ function fallbackId(key: string): string {
   return ascii.length >= 2 ? ascii.slice(0, 80) : `brand-${hashKey(key)}`;
 }
 
+/**
+ * Reproduce the pre-listing-label normalization key for legacy ids that can still exist while a
+ * resolver-version replay is draining. This is deliberately private: new writes must always use
+ * the current canonical normalization above.
+ */
+function legacyManufacturerKey(value: unknown = ""): string {
+  return String(value)
+    .normalize("NFKC")
+    .trim()
+    .toLowerCase()
+    .replace(/\b(?:co\.?\s*,?\s*ltd\.?|corporation|corp\.?|inc\.?|limited|ltd\.?)\b/gi, "")
+    .replace(/(?:株式会社|有限会社|合同会社)/g, "")
+    .replace(/[\s・･_\-/&+.,'"()（）]+/g, "");
+}
+
 export function manufacturerIdForFilter(value: unknown = ""): string {
   const raw = cleanSourceText(value).toLowerCase();
   if (BY_ID.has(raw)) return raw;
   const key = normalizeManufacturerKey(value);
   if (!key) return "";
   return BY_ALIAS.get(key)?.id || fallbackId(key);
+}
+
+/**
+ * IDs that may represent the same known manufacturer while historical resolver output is being
+ * replayed. The canonical id is first; the remaining ids are exactly the fallback ids the previous
+ * normalization produced for canonical names and aliases (for example `msb` before
+ * `msb-technology`). Unknown manufacturers keep their single deterministic id.
+ */
+export function manufacturerFilterIds(value: unknown = ""): string[] {
+  const raw = cleanSourceText(value).toLowerCase();
+  const manufacturer = BY_ID.get(raw) || BY_ALIAS.get(normalizeManufacturerKey(value));
+  if (!manufacturer) {
+    const id = manufacturerIdForFilter(value);
+    return id ? [id] : [];
+  }
+
+  const ids = new Set<string>([manufacturer.id]);
+  for (const alias of [manufacturer.name, ...manufacturer.aliases]) {
+    const legacyKey = legacyManufacturerKey(alias);
+    if (legacyKey) ids.add(fallbackId(legacyKey));
+  }
+  return [...ids];
 }
 
 export function manufacturerSearchAliases(value: unknown = ""): string[] {
