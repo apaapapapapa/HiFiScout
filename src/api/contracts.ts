@@ -13,7 +13,7 @@
  * localStorage, query strings) still belongs to the guards at each boundary.
  */
 
-import type { ClassificationStatus, StockStatus } from "../catalog/types.js";
+import type { StockStatus } from "../catalog/types.js";
 
 // ---------------------------------------------------------------------------
 // seller listings (/api/products/:id/history)
@@ -36,14 +36,11 @@ export const PRODUCT_QUERY_SORTS: readonly ProductQuerySort[] = [
 ];
 
 /**
- * One seller listing, as returned by the price-history endpoint.
+ * Public seller facts returned by the price-history endpoint.
  *
- * Field names stay snake_case because that is the shipped wire format; they mirror the current
- * columns by intent, not by construction. Changing this interface is an API change and must be
- * a deliberate edit here, not a side effect of a migration.
- *
- * Product search returns {@link ProductSearchItem} instead: this shape describes one shop's row,
- * which is exactly what a product-level result must not be.
+ * Raw source evidence, resolver/classification provenance, search aliases, and remediation metadata
+ * intentionally do not belong to this DTO. Those fields remain queryable in D1/admin surfaces but
+ * must not leak into an ordinary user-facing response merely because they share the `products` row.
  */
 export interface ProductListItem {
   id: number;
@@ -61,22 +58,7 @@ export interface ProductListItem {
   first_seen_at: string;
   last_seen_at: string;
   last_changed_at: string;
-  /** Wire value of the SQLite boolean; the list endpoint only ever returns active products. */
-  is_active: 0 | 1;
   previous_price_yen: number | null;
-  /** JSON object serialised as a string; consumers parse to `unknown` then narrow. */
-  metadata_json: string;
-  raw_manufacturer: string;
-  manufacturer_id: string;
-  raw_category: string;
-  primary_category_id: string;
-  /** Already parsed into an array, unlike the stored JSON column. */
-  category_ids: string[];
-  classification_status: ClassificationStatus;
-  search_aliases: string;
-  last_inventory_checked_at: string | null;
-  inventory_check_failures: number;
-  last_inventory_check_attempt_at: string | null;
   last_activity_at: string | null;
   source_published_at: string | null;
 }
