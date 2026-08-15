@@ -87,7 +87,9 @@ test("category reclassification retries a failed downstream projection refresh",
 
   assert.equal(reclassified, 0);
   assert.equal(refreshCalls, 2);
-  assert.deepEqual(refreshedListings, [{ id: 11, shop_key: "hifido", source_id: "listing-11", projectionToken: pendingToken }]);
+  assert.deepEqual(refreshedListings, [
+    { id: 11, shop_key: "hifido", source_id: "listing-11", projectionToken: pendingToken },
+  ]);
   const completed = db.batched.find(
     (statement) =>
       /SET remediation_projection_required = 0/.test(statement.sql) &&
