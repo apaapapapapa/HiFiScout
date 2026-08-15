@@ -112,18 +112,23 @@ test("canonical remediation captures identity and search membership before and a
     );
   `);
 
-  const before = db.prepare(`
+  const before = db
+    .prepare(`
     SELECT previous_identity_resolution, new_identity_resolution,
            previous_search_entity_key, new_search_entity_key, provenance_complete
     FROM data_quality_remediation_events WHERE id = 1
-  `).get() as Record<string, unknown>;
-  assert.deepEqual({ ...before }, {
-    previous_identity_resolution: "unresolved:no_candidate:-",
-    new_identity_resolution: "",
-    previous_search_entity_key: "l-1",
-    new_search_entity_key: "",
-    provenance_complete: 0,
-  });
+  `)
+    .get() as Record<string, unknown>;
+  assert.deepEqual(
+    { ...before },
+    {
+      previous_identity_resolution: "unresolved:no_candidate:-",
+      new_identity_resolution: "",
+      previous_search_entity_key: "l-1",
+      new_search_entity_key: "",
+      provenance_complete: 0,
+    },
+  );
 
   db.exec(`
     UPDATE product_identity_resolutions
@@ -134,18 +139,23 @@ test("canonical remediation captures identity and search membership before and a
     UPDATE product_search_entity_offers SET entity_id = 2 WHERE listing_product_id = 1;
   `);
 
-  const after = db.prepare(`
+  const after = db
+    .prepare(`
     SELECT previous_identity_resolution, new_identity_resolution,
            previous_search_entity_key, new_search_entity_key, provenance_complete
     FROM data_quality_remediation_events WHERE id = 1
-  `).get() as Record<string, unknown>;
-  assert.deepEqual({ ...after }, {
-    previous_identity_resolution: "unresolved:no_candidate:-",
-    new_identity_resolution: "matched:catalog_exact:42",
-    previous_search_entity_key: "l-1",
-    new_search_entity_key: "c-42",
-    provenance_complete: 1,
-  });
+  `)
+    .get() as Record<string, unknown>;
+  assert.deepEqual(
+    { ...after },
+    {
+      previous_identity_resolution: "unresolved:no_candidate:-",
+      new_identity_resolution: "matched:catalog_exact:42",
+      previous_search_entity_key: "l-1",
+      new_search_entity_key: "c-42",
+      provenance_complete: 1,
+    },
+  );
   db.close();
 });
 
@@ -170,17 +180,22 @@ test("post-refresh identity events use persisted resolver confidence and version
     );
   `);
 
-  const event = db.prepare(`
+  const event = db
+    .prepare(`
     SELECT resolver_confidence, resolver_version, previous_search_entity_key,
            new_search_entity_key, provenance_complete
     FROM data_quality_remediation_events WHERE id = 1
-  `).get() as Record<string, unknown>;
-  assert.deepEqual({ ...event }, {
-    resolver_confidence: "0.98",
-    resolver_version: 7,
-    previous_search_entity_key: "l-1",
-    new_search_entity_key: "c-42",
-    provenance_complete: 1,
-  });
+  `)
+    .get() as Record<string, unknown>;
+  assert.deepEqual(
+    { ...event },
+    {
+      resolver_confidence: "0.98",
+      resolver_version: 7,
+      previous_search_entity_key: "l-1",
+      new_search_entity_key: "c-42",
+      provenance_complete: 1,
+    },
+  );
   db.close();
 });
