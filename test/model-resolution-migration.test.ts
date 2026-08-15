@@ -30,6 +30,11 @@ test("candidate rows carry the evidence a reviewer needs", () => {
   assert.match(migration, /idx_knowledge_catalog_candidates_remediation/);
 });
 
+test("catalog remediation progress is a durable watermark, not a time window", () => {
+  assert.match(migration, /ADD COLUMN last_remediated_at TEXT/);
+  assert.match(migration, /idx_knowledge_catalog_products_remediation/);
+});
+
 test("remediation provenance records before and after values", () => {
   assert.match(migration, /CREATE TABLE IF NOT EXISTS data_quality_remediation_events/);
   assert.match(migration, /previous_value TEXT NOT NULL/);
@@ -51,6 +56,17 @@ test("production-shaped rows migrate without losing raw evidence", () => {
     );
     INSERT INTO products(id, canonical_manufacturer_id, model, raw_model, normalized_model)
     VALUES (1, 'tad', 'D-1000 MKII', 'D-1000 MKII', 'd1000mkii');
+
+    CREATE TABLE knowledge_catalog_products (
+      id INTEGER PRIMARY KEY,
+      manufacturer_id TEXT NOT NULL,
+      canonical_model TEXT NOT NULL,
+      verification_status TEXT NOT NULL DEFAULT 'verified',
+      last_verified_at TEXT,
+      updated_at TEXT NOT NULL DEFAULT ''
+    );
+    INSERT INTO knowledge_catalog_products(id, manufacturer_id, canonical_model, last_verified_at)
+    VALUES (1, 'tad', 'D-1000 MKII', '2026-08-14T00:00:00.000Z');
 
     CREATE TABLE knowledge_catalog_candidates (
       id INTEGER PRIMARY KEY,
@@ -79,6 +95,17 @@ test("production-shaped rows migrate without losing raw evidence", () => {
       model_resolver_version: 1,
     },
   );
+
+  // Every already-verified entry starts owed a replay, so the existing catalog is remediated once
+  // rather than being treated as already done.
+  const pending = db
+    .prepare(
+      `SELECT COUNT(*) AS pending FROM knowledge_catalog_products
+       WHERE verification_status = 'verified'
+         AND (last_remediated_at IS NULL OR last_remediated_at < last_verified_at)`,
+    )
+    .get() as Record<string, unknown>;
+  assert.equal(pending.pending, 1);
 
   const candidates = db
     .prepare(

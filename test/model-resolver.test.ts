@@ -172,6 +172,53 @@ test("title evidence is used only when the manufacturer resolved", () => {
   assert.equal(unresolvedManufacturer.method, "none");
 });
 
+test("a title tail that is still prose does not become a resolved model", () => {
+  const prose = resolveModel({
+    rawModel: "",
+    title: "Accuphase Integrated Stereo Amplifier E-5000",
+    manufacturerId: "accuphase",
+  });
+  assert.equal(prose.status, "candidate");
+  assert.ok(prose.unclassifiedTokens.includes("title_prose"));
+  // Non-destructive: the evidence is kept so a reviewer can see what the title actually said.
+  assert.equal(prose.model, "Integrated Stereo Amplifier E-5000");
+
+  const digitless = resolveModel({
+    rawModel: "",
+    title: "Accuphase Power Amplifier",
+    manufacturerId: "accuphase",
+  });
+  assert.equal(digitless.status, "candidate");
+
+  // Model-shaped tails still resolve from title evidence.
+  for (const [title, expected] of [
+    ["Accuphase E-800", "E-800"],
+    ["TAD D-1000 MK2", "D-1000 MK2"],
+    ["Bowers & Wilkins 805 D4 Signature", "805 D4 Signature"],
+  ] as const) {
+    const result = resolveModel({ rawModel: "", title, manufacturerId: "" });
+    const withManufacturer = resolveModel({
+      rawModel: "",
+      title,
+      manufacturerId: title.startsWith("TAD")
+        ? "tad"
+        : title.startsWith("Accuphase")
+          ? "accuphase"
+          : "bowers-wilkins",
+    });
+    assert.equal(result.status, "unresolved", title);
+    assert.equal(withManufacturer.model, expected, title);
+    assert.equal(withManufacturer.status, "resolved", title);
+  }
+
+  // A long seller-provided model field is still trusted; only title evidence is treated as prose.
+  const sellerField = resolveModel({
+    rawModel: "Integrated Stereo Amplifier E-5000",
+    manufacturerId: "accuphase",
+  });
+  assert.equal(sellerField.status, "resolved");
+});
+
 test("a model with no alphanumeric identity stays unresolved and keeps its raw value", () => {
   const result = resolve("中古");
 
@@ -205,15 +252,19 @@ test("annotation removal cannot turn a revision into a false catalog match", () 
   const baseMatch = resolveProductIdentity({ manufacturerId: "tad", model: base.model }, catalog);
   assert.equal(baseMatch.catalogProductId, 1);
 
-  // A listing the resolver could not fully classify keeps its text, so identity sees the same
-  // evidence it always did and stays conservative rather than matching a stripped-down model.
+  // A model the resolver could not fully classify must not attach at all. Identity normalization
+  // erases the unclassified residue (`特別仕様` disappears), so without the status gate a special
+  // edition would exact-match the base product at high confidence.
   const candidate = resolve("D-1000 MK2 特別仕様");
   assert.equal(candidate.status, "candidate");
-  assert.equal(
-    resolveProductIdentity({ manufacturerId: "tad", model: candidate.model }, catalog)
-      .catalogProductId,
-    2,
+  assert.equal(normalizeIdentityModel(candidate.model), "D1000MK2");
+  const gated = resolveProductIdentity(
+    { manufacturerId: "tad", model: candidate.model, modelResolutionStatus: candidate.status },
+    catalog,
   );
+  assert.equal(gated.status, "unresolved");
+  assert.equal(gated.catalogProductId, null);
+  assert.deepEqual(gated.rejectedBy, ["unresolved_model"]);
 });
 
 test("applying resolution records replayable metadata without touching seller evidence", () => {

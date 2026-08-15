@@ -10,6 +10,7 @@ import type {
   ManufacturerVerificationStatus,
 } from "../catalog/types.js";
 import { refreshListingProjections } from "./listing-projection-refresh.js";
+import { remediationEventStatement } from "./remediation-event-repository.js";
 import type {
   KnowledgeCatalogManufacturerAliasRow,
   QueryableDatabase,
@@ -96,6 +97,23 @@ function jsonObject(value: unknown): string {
 
 function likePrefix(value: string): string {
   return `${value.replace(/[\\%_]/g, "\\$&")}%`;
+}
+
+/**
+ * Title selector for listings with no explicit manufacturer field.
+ *
+ * The resolver accepts any separator between brand words (`Example Audio`, `Example-Audio`,
+ * `ExampleAudio`), which no single `LIKE` can express, so this deliberately over-selects on the
+ * first brand token and lets the resolver decide per row — a replay that skipped those spellings
+ * would silently miss listings the crawler does correct. Over-selection is bounded: only listings
+ * with an empty `raw_manufacturer` reach this branch, the page limit still applies, and rows whose
+ * resolution is unchanged are skipped without a write.
+ */
+function titlePrefixPattern(alias: string): string {
+  const [firstToken = ""] = clean(alias)
+    .split(/[\s・･_\-/&+.,'"()（）]+/u)
+    .filter(Boolean);
+  return likePrefix(firstToken || alias);
 }
 
 export async function listManufacturerAliasEvidence(
@@ -224,7 +242,7 @@ export async function selectListingsAffectedByManufacturerAlias(
       ORDER BY id
       LIMIT ?
     `)
-    .bind(afterId, alias.normalizedAlias, alias.alias, likePrefix(alias.alias), take + 1)
+    .bind(afterId, alias.normalizedAlias, alias.alias, titlePrefixPattern(alias.alias), take + 1)
     .all<ManufacturerReplayListingRow>();
   const rows = result.results || [];
   return { rows: rows.slice(0, take), hasMore: rows.length > take };
@@ -336,6 +354,44 @@ export async function reprocessManufacturerAliasListings(
           row.id,
         ),
     );
+    // Provenance for the fields that actually moved, so alias-driven corrections are auditable
+    // alongside the model and identity replays rather than being the one silent path.
+    statements.push(
+      remediationEventStatement(db, {
+        listingProductId: Number(row.id),
+        shopKey: row.shop_key,
+        sourceId: row.source_id,
+        field: "manufacturer",
+        previousValue: `${row.canonical_manufacturer_id || "-"} (${row.manufacturer_resolution_status})`,
+        newValue: `${resolution.canonicalManufacturerId || "-"} (${resolution.status})`,
+        reason: `verified_manufacturer_alias:${alias.normalizedAlias}`,
+        resolverMethod: resolution.method,
+        resolverConfidence: resolution.confidence,
+        resolverVersion: MANUFACTURER_RESOLVER_VERSION,
+        processedAt: evaluatedAt,
+      }),
+    );
+    if (
+      row.model !== model.model ||
+      row.normalized_model !== model.normalizedModel ||
+      row.model_resolution_status !== model.status
+    ) {
+      statements.push(
+        remediationEventStatement(db, {
+          listingProductId: Number(row.id),
+          shopKey: row.shop_key,
+          sourceId: row.source_id,
+          field: "model",
+          previousValue: `${row.model} (${row.normalized_model || "-"}/${row.model_resolution_status})`,
+          newValue: `${model.model} (${model.normalizedModel || "-"}/${model.status})`,
+          reason: `verified_manufacturer_alias:${alias.normalizedAlias}`,
+          resolverMethod: model.method,
+          resolverConfidence: model.confidence,
+          resolverVersion: MODEL_RESOLVER_VERSION,
+          processedAt: evaluatedAt,
+        }),
+      );
+    }
     changed.push(row);
   }
 

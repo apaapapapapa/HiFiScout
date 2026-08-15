@@ -92,15 +92,40 @@ test("verified aliases select historical listings in bounded cursor order", asyn
   assert.equal(selected.rows.length, 1);
   assert.equal(selected.rows[0].id, 11);
   assert.equal(selected.hasMore, true);
+  // Title selection uses the first brand token, because the resolver accepts any separator between
+  // brand words; a literal alias LIKE would skip "Technical-Audio-Devices X-1".
   assert.deepEqual(db.calls[0].binds, [
     10,
     "technicalaudiodevices",
     "Technical Audio Devices",
-    "Technical Audio Devices%",
+    "Technical%",
     2,
   ]);
   assert.match(db.calls[0].sql, /ORDER BY id/);
   assert.match(db.calls[0].sql, /LIMIT \?/);
+});
+
+test("alias replay selects the separator spellings the resolver accepts", async () => {
+  const titles = [
+    "Example Audio X-1",
+    "Example-Audio X-1",
+    "Example_Audio X-1",
+    "ExampleAudio X-1",
+  ];
+  const db = captureDatabase(
+    titles.map((title, index) => ({ id: index + 1, shop_key: "a", source_id: `${index}` })),
+  );
+
+  await selectListingsAffectedByManufacturerAlias(db, {
+    alias: "Example Audio",
+    normalizedAlias: "exampleaudio",
+  });
+
+  const [, , , likePattern] = db.calls[0].binds as string[];
+  const matcher = new RegExp(`^${likePattern.replace(/%$/, "")}`, "i");
+  for (const title of titles) {
+    assert.ok(matcher.test(title), title);
+  }
 });
 
 test("verified alias replay updates only derived fields and invokes downstream refreshes", async () => {
@@ -197,6 +222,16 @@ test("verified alias replay updates only derived fields and invokes downstream r
   assert.match(update.sql, /model_resolver_version = \?/);
   assert.ok(update.binds.includes("X-1"));
   assert.ok(update.binds.includes("X1"));
+
+  // Alias-driven corrections are auditable too, for both fields that moved.
+  const events = db.batched.filter((statement) =>
+    /INSERT INTO data_quality_remediation_events/.test(statement.sql),
+  );
+  assert.equal(events.length, 2);
+  assert.ok(events[0].binds.includes("manufacturer"));
+  assert.ok(events[0].binds.includes("example-audio (resolved)"));
+  assert.ok(events[0].binds.includes("verified_manufacturer_alias:exampleaudiojapan"));
+  assert.ok(events[1].binds.includes("model"));
   assert.ok(db.calls.some((call) => /product_search_projection/.test(call.sql)));
   assert.ok(db.calls.some((call) => /canonical_manufacturer_id/.test(call.sql)));
   assert.ok(db.calls.some((call) => /SELECT id FROM products/.test(call.sql)));

@@ -242,18 +242,6 @@ export async function refreshKnowledgeCatalogCandidates(
   return knowledgeCatalogCandidateStats(db);
 }
 
-/** The finalizer runs long after dispatch; the run's own start is its remediation window. */
-export async function knowledgeCatalogReviewRunStartedAt(
-  db: QueryableDatabase,
-  runId: number,
-): Promise<string> {
-  const row = await db
-    .prepare("SELECT started_at FROM knowledge_catalog_review_runs WHERE id = ?")
-    .bind(runId)
-    .first<Pick<KnowledgeCatalogReviewRunRow, "started_at">>();
-  return row?.started_at || "";
-}
-
 export async function markKnowledgeCatalogProductsDue(
   db: QueryableDatabase,
   reviewedAt: string,

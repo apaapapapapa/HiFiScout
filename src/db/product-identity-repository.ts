@@ -38,6 +38,7 @@ type IdentityListingRow = Pick<
   | "source_id"
   | "canonical_manufacturer_id"
   | "model"
+  | "model_resolution_status"
   | "primary_category_id"
   | "classification_status"
 >;
@@ -151,8 +152,8 @@ async function loadListingRows(
     const placeholders = chunk.map(() => "?").join(",");
     const result = await db
       .prepare(`
-        SELECT id, source_id, canonical_manufacturer_id, model, primary_category_id,
-               classification_status
+        SELECT id, source_id, canonical_manufacturer_id, model, model_resolution_status,
+               primary_category_id, classification_status
         FROM products
         WHERE shop_key = ? AND source_id IN (${placeholders})
       `)

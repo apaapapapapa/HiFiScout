@@ -313,60 +313,93 @@ export async function reprocessVerifiedCatalogProduct(
   return { target, replay: await reprocessCatalogRemediationTarget(db, target, options) };
 }
 
-export interface VerifiedCatalogReplayOptions extends CatalogRemediationOptions {
-  since: string;
+export interface PendingCatalogReplayOptions extends CatalogRemediationOptions {
   productLimit?: number;
 }
 
-export interface VerifiedCatalogReplaySummary {
+export interface PendingCatalogReplaySummary {
   catalogProducts: number;
   processedCount: number;
   changedCount: number;
   matchedCount: number;
-  /** Catalog products with a page left over; their remaining listings were not replayed here. */
-  incompleteProducts: number;
+  /** Verified products still owed a replay after this invocation, including this run's leftovers. */
+  pendingProducts: number;
 }
 
+/** Verified entries whose listings have not been replayed since the entry was last verified. */
+const PENDING_REMEDIATION_PREDICATE = `
+  verification_status = 'verified'
+  AND (last_remediated_at IS NULL OR last_remediated_at < last_verified_at)
+`;
+
 /**
- * Close the loop for everything a review run just verified.
+ * Drain the remediation backlog.
  *
- * Bounded on both axes — at most `productLimit` catalog entries, one listing page each — so it fits
- * a Worker invocation. `incompleteProducts` reports what was left rather than silently truncating;
- * the remainder is resumable through the admin endpoint and is re-run by the next crawl anyway.
+ * Selection is a durable watermark rather than a time window: a run that verifies more entries than
+ * one invocation can replay leaves the remainder selectable, so the next run continues instead of
+ * stranding them behind a newer `started_at`. Oldest verification first, so the backlog drains in
+ * order. `last_remediated_at` advances only when a product's listings are fully replayed, which
+ * makes a partially replayed product resume on the next invocation.
+ *
+ * Bounded on both axes — at most `productLimit` entries, one listing page each — and
+ * `pendingProducts` reports what is still owed rather than truncating silently.
  */
-export async function reprocessCatalogProductsVerifiedSince(
+export async function reprocessPendingCatalogRemediation(
   db: QueryableDatabase,
-  { since, productLimit = 20, limit, evaluatedAt }: VerifiedCatalogReplayOptions,
-): Promise<VerifiedCatalogReplaySummary> {
+  { productLimit = 20, limit, evaluatedAt }: PendingCatalogReplayOptions = {},
+): Promise<PendingCatalogReplaySummary> {
+  const processedAt = evaluatedAt || new Date().toISOString();
   const products = await db
     .prepare(`
       SELECT id
       FROM knowledge_catalog_products
-      WHERE verification_status = 'verified' AND last_verified_at >= ?
-      ORDER BY last_verified_at DESC, id DESC
+      WHERE ${PENDING_REMEDIATION_PREDICATE}
+      ORDER BY last_verified_at, id
       LIMIT ?
     `)
-    .bind(since, Math.min(100, Math.max(1, Math.trunc(Number(productLimit) || 20))))
+    .bind(Math.min(100, Math.max(1, Math.trunc(Number(productLimit) || 20))))
     .all<{ id: number }>();
 
-  const summary: VerifiedCatalogReplaySummary = {
+  const summary: PendingCatalogReplaySummary = {
     catalogProducts: 0,
     processedCount: 0,
     changedCount: 0,
     matchedCount: 0,
-    incompleteProducts: 0,
+    pendingProducts: 0,
   };
+  const completed: number[] = [];
   for (const row of products.results || []) {
     const { target, replay } = await reprocessVerifiedCatalogProduct(db, Number(row.id), {
       limit,
-      evaluatedAt,
+      evaluatedAt: processedAt,
     });
     if (!target || !replay) continue;
     summary.catalogProducts += 1;
     summary.processedCount += replay.processedCount;
     summary.changedCount += replay.changedCount;
     summary.matchedCount += replay.matchedCount;
-    if (replay.hasMore) summary.incompleteProducts += 1;
+    // A product with a page left over keeps its watermark so the next invocation resumes it.
+    if (!replay.hasMore) completed.push(target.catalogProductId);
   }
+
+  for (let index = 0; index < completed.length; index += WRITE_BATCH_SIZE) {
+    const chunk = completed.slice(index, index + WRITE_BATCH_SIZE);
+    await db.batch(
+      chunk.map((id) =>
+        db
+          .prepare(
+            "UPDATE knowledge_catalog_products SET last_remediated_at = ?, updated_at = ? WHERE id = ?",
+          )
+          .bind(processedAt, processedAt, id),
+      ),
+    );
+  }
+
+  const remaining = await db
+    .prepare(
+      `SELECT COUNT(*) AS pending FROM knowledge_catalog_products WHERE ${PENDING_REMEDIATION_PREDICATE}`,
+    )
+    .first<{ pending: number }>();
+  summary.pendingProducts = Number(remaining?.pending || 0);
   return summary;
 }

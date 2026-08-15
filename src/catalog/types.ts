@@ -666,7 +666,9 @@ export type IdentityMatchedField =
 export type IdentityRejectionRule =
   | "missing_identity_fields"
   | "ambiguous_candidates"
-  | "variant_mismatch";
+  | "variant_mismatch"
+  /** Model Resolution could not fully classify the model, so it may not attach to a product. */
+  | "unresolved_model";
 
 export interface IdentityModelParts {
   normalizedModel: string;
@@ -690,6 +692,12 @@ export interface IdentityListingInput {
   primaryCategoryId?: string;
   primary_category_id?: string;
   model?: string;
+  /**
+   * Model Resolution's verdict on `model`. Absent means "already resolved" so pre-existing callers
+   * and fixtures keep their behavior; `candidate`/`unresolved` blocks automatic attachment.
+   */
+  modelResolutionStatus?: ResolutionStatus;
+  model_resolution_status?: ResolutionStatus;
 }
 
 /** Catalog side of `resolveProductIdentity`. `id` must be numeric (candidates are sorted by it). */

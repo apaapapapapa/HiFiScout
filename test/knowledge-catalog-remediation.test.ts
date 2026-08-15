@@ -7,7 +7,7 @@ import {
 import {
   listUnresolvedIdentityGroups,
   loadCatalogRemediationTarget,
-  reprocessCatalogProductsVerifiedSince,
+  reprocessPendingCatalogRemediation,
   reprocessVerifiedCatalogProduct,
   selectListingsForCatalogRemediation,
 } from "../src/db/knowledge-catalog-remediation-repository.js";
@@ -281,30 +281,61 @@ test("a replay that changes no identity writes no provenance", async () => {
   );
 });
 
-test("the post-verification sweep is bounded and reports what it left behind", async () => {
-  const db = captureDatabase((statement) => {
-    if (/last_verified_at >= \?/.test(statement.sql)) return [{ id: 7 }];
+function pendingSweepDatabase(listings: { id: number; shop_key: string; source_id: string }[]) {
+  return captureDatabase((statement) => {
+    if (/COUNT\(\*\) AS pending/.test(statement.sql)) return [{ pending: 3 }];
+    if (/last_remediated_at IS NULL OR last_remediated_at < last_verified_at/.test(statement.sql)) {
+      return [{ id: 7 }];
+    }
     if (/FROM knowledge_catalog_products/.test(statement.sql)) {
       return [{ id: 7, manufacturer_id: "esoteric", canonical_model: "K-01XD" }];
     }
-    if (/normalized_model IN \(/.test(statement.sql)) {
-      return [
-        { id: 11, shop_key: "hifido", source_id: "a" },
-        { id: 12, shop_key: "hifido", source_id: "b" },
-      ];
-    }
+    if (/normalized_model IN \(/.test(statement.sql)) return listings;
     return [];
   });
+}
 
-  const summary = await reprocessCatalogProductsVerifiedSince(db, {
-    since: "2026-08-15T00:00:00.000Z",
+test("the sweep selects a durable backlog rather than a time window", async () => {
+  const db = pendingSweepDatabase([{ id: 11, shop_key: "hifido", source_id: "a" }]);
+
+  const summary = await reprocessPendingCatalogRemediation(db, {
+    productLimit: 5,
+    limit: 10,
+    evaluatedAt: "2026-08-15T01:00:00.000Z",
+  });
+
+  assert.equal(summary.catalogProducts, 1);
+  // Oldest verification first, so a backlog drains in order instead of re-doing the newest.
+  assert.match(db.calls[0].sql, /ORDER BY last_verified_at, id/);
+  assert.doesNotMatch(db.calls[0].sql, /last_verified_at >= \?/);
+  assert.deepEqual(db.calls[0].binds, [5]);
+  // A fully replayed product advances its watermark so the next run moves past it.
+  const watermark = db.batched.find((statement) =>
+    /UPDATE knowledge_catalog_products SET last_remediated_at/.test(statement.sql),
+  );
+  assert.ok(watermark);
+  assert.deepEqual(watermark.binds, ["2026-08-15T01:00:00.000Z", "2026-08-15T01:00:00.000Z", 7]);
+  assert.equal(summary.pendingProducts, 3);
+});
+
+test("a partially replayed product keeps its watermark so the next run resumes it", async () => {
+  const db = pendingSweepDatabase([
+    { id: 11, shop_key: "hifido", source_id: "a" },
+    { id: 12, shop_key: "hifido", source_id: "b" },
+  ]);
+
+  const summary = await reprocessPendingCatalogRemediation(db, {
     productLimit: 5,
     limit: 1,
     evaluatedAt: "2026-08-15T01:00:00.000Z",
   });
 
-  assert.equal(summary.catalogProducts, 1);
   assert.equal(summary.processedCount, 1);
-  assert.equal(summary.incompleteProducts, 1);
-  assert.deepEqual(db.calls[0].binds, ["2026-08-15T00:00:00.000Z", 5]);
+  assert.ok(
+    !db.batched.some((statement) =>
+      /UPDATE knowledge_catalog_products SET last_remediated_at/.test(statement.sql),
+    ),
+  );
+  // Work that did not fit is reported, never silently dropped.
+  assert.equal(summary.pendingProducts, 3);
 });

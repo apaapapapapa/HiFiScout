@@ -31,6 +31,14 @@ WHERE observed_model <> '';
 CREATE INDEX IF NOT EXISTS idx_knowledge_catalog_candidates_remediation
   ON knowledge_catalog_candidates(review_status, unresolved_identity_count DESC, priority_score DESC, id);
 
+-- Remediation progress is a durable watermark, not a time window. A run that can only replay part
+-- of what it verified leaves the rest selectable, and re-verification (which moves
+-- `last_verified_at` forward) makes a product remediation work again.
+ALTER TABLE knowledge_catalog_products ADD COLUMN last_remediated_at TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_catalog_products_remediation
+  ON knowledge_catalog_products(verification_status, last_remediated_at, last_verified_at, id);
+
 -- Before/after provenance for canonical changes that remediation caused. Only actual changes are
 -- recorded; an idempotent replay that resolves to the same values writes nothing.
 CREATE TABLE IF NOT EXISTS data_quality_remediation_events (

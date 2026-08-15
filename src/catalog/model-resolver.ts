@@ -104,6 +104,13 @@ const UNCLASSIFIED_RULES: readonly AnnotationRule[] = [
   },
 ];
 
+/**
+ * Longest token run a title tail may be and still be accepted as a model. Covers the real shapes
+ * (`E-5000`, `D-1000 MK2`, `805 D4 Signature`, `Model 30 SE`) without swallowing a product
+ * description.
+ */
+const TITLE_MODEL_MAX_TOKENS = 3;
+
 function clean(value: unknown = ""): string {
   return String(value).normalize("NFKC").replace(/\s+/g, " ").trim();
 }
@@ -155,6 +162,19 @@ function unclassifiedResidue(value: string): string[] {
     if (rule.pattern.test(value) && !found.includes(rule.name)) found.push(rule.name);
   }
   return found;
+}
+
+/**
+ * Whether a title tail is short and model-shaped enough to be trusted as a model on its own.
+ *
+ * A title is prose with a model somewhere inside it, so taking the whole tail would turn
+ * "Integrated Stereo Amplifier E-5000" into a resolved model and quietly inflate the metric. A real
+ * model number is a short token run containing a digit; anything longer stays a candidate for
+ * review rather than being guessed at or truncated.
+ */
+function looksLikeModel(value: string): boolean {
+  const tokens = value.split(/\s+/u).filter(Boolean);
+  return tokens.length > 0 && tokens.length <= TITLE_MODEL_MAX_TOKENS && /\d/u.test(value);
 }
 
 function stripManufacturerPresentation(value: string, patterns: readonly RegExp[]): string {
@@ -244,7 +264,12 @@ function resolvePreparedModel(
   const normalizedModel = normalizeIdentityModel(model);
   if (!normalizedModel) return unresolvedResult(rawModel, model || rawModel);
 
-  const unclassifiedTokens = [...(safe ? [] : ["identity_guard"]), ...unclassifiedResidue(model)];
+  const unclassifiedTokens = [
+    ...(safe ? [] : ["identity_guard"]),
+    ...unclassifiedResidue(model),
+    // Title evidence is prose until proven otherwise; the seller's own model field is not.
+    ...(fromSeller || looksLikeModel(model) ? [] : ["title_prose"]),
+  ];
   if (unclassifiedTokens.length) {
     return {
       rawModel,
