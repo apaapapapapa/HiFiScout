@@ -110,6 +110,19 @@ test("manufacturer filter vocabulary canonicalizes and deduplicates stale presen
   );
 });
 
+test("canonical manufacturer filters also accept stale resolver ids while replay drains", async () => {
+  const db = captureDatabase();
+  await searchProducts(db, productQuery("?manufacturer=MSB%20Technology"));
+
+  const page = db.calls.find((statement) => /SELECT e\.id, e\.entity_key/.test(statement.sql));
+  assert.ok(page);
+  assert.match(page.sql, /e\.manufacturer_id IN \(\?,\?,\?\)/);
+  assert.ok(page.binds.includes("msb-technology"));
+  assert.ok(page.binds.includes("msbtechnology"));
+  assert.ok(page.binds.includes("msb"));
+  assert.ok(page.binds.includes("MSB Technology"));
+});
+
 test("a completed inventory recheck refreshes the changed listing's search entity", async () => {
   const calls: unknown[][] = [];
   await syncInventoryRecheckSearchEntities(
