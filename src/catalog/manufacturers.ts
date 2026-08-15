@@ -191,6 +191,17 @@ export function manufacturerFilterIds(value: unknown = ""): string[] {
   return [...ids];
 }
 
+/** Public and seller spellings that may appear in a stale entity's manufacturer presentation. */
+export function manufacturerFilterPresentations(value: unknown = ""): string[] {
+  const raw = cleanSourceText(value).toLowerCase();
+  const manufacturer = BY_ID.get(raw) || BY_ALIAS.get(normalizeManufacturerKey(value));
+  if (!manufacturer) {
+    const presentation = cleanSourceText(stripManufacturerListingLabels(value));
+    return presentation ? [presentation] : [];
+  }
+  return [...new Set([manufacturer.name, ...manufacturer.aliases])];
+}
+
 export function manufacturerSearchAliases(value: unknown = ""): string[] {
   const raw = cleanSourceText(value).toLowerCase();
   const manufacturer = BY_ID.get(raw) || BY_ALIAS.get(normalizeManufacturerKey(value));
