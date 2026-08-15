@@ -1,5 +1,8 @@
 import type { StockStatus } from "../catalog/types.js";
-import { splitKnownManufacturerModel } from "../catalog/manufacturers.js";
+import {
+  splitKnownManufacturerModel,
+  stripManufacturerListingLabels,
+} from "../catalog/manufacturers.js";
 import { availabilityFromText } from "./availability.js";
 
 /** Display labels (not category ids); `inferCategory` returns the first matching label. */
@@ -102,7 +105,7 @@ function splitFujiyaManufacturerModel(value: string): ManufacturerModelPair | nu
 }
 
 export function splitManufacturerModel(title: string, shopKey: string): ManufacturerModelPair {
-  const value = cleanText(title)
+  const value = cleanText(stripManufacturerListingLabels(title))
     .replace(/^〖[^〗]+〗\s*/g, "")
     .replace(/^中古[：:]?\s*[A-Z+-]*\s*/i, "")
     .replace(/『[^』]+』/g, "")

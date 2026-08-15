@@ -33,6 +33,24 @@ test("manufacturer keys apply NFKC, case, punctuation and legal-entity normaliza
   assert.equal(result.confidence, "high");
 });
 
+test("MSB spellings and seller condition badges resolve to MSB Technology", () => {
+  const cases = [
+    ["MSB", "msb"],
+    ["MSB Technology", "msbtechnology"],
+    ["【中古品】MSB", "msb"],
+    ["[中古品] MSB", "msb"],
+  ] as const;
+
+  for (const [rawManufacturer, normalizedRawManufacturer] of cases) {
+    const result = resolveManufacturer({ rawManufacturer });
+    assert.equal(result.status, "resolved");
+    assert.equal(result.canonicalManufacturerId, "msb-technology");
+    assert.equal(result.displayName, "MSB Technology");
+    assert.equal(result.method, "bootstrap_alias");
+    assert.equal(result.normalizedRawManufacturer, normalizedRawManufacturer);
+  }
+});
+
 test("a verified operational alias resolves to its canonical manufacturer", () => {
   const result = resolveManufacturer({ rawManufacturer: "Example-Audio Japan" }, [
     alias({ alias: "Example Audio Japan", normalizedAlias: "exampleaudiojapan" }),
