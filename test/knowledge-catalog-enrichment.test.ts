@@ -122,6 +122,53 @@ test("derived Marantz model aliases reuse one verified catalog classification ac
   );
 });
 
+test("unresolved model identity never borrows verified catalog category evidence", async () => {
+  const normalized = normalizeCatalogProduct(
+    parsedProduct({
+      sourceId: "candidate-model",
+      manufacturer: "Marantz",
+      model: "ABC-1",
+      title: "Marantz ABC-1",
+      rawCategory: "DAP",
+      sourceUrl: "https://example.invalid/candidate-model",
+    }),
+    fujiyaAvicPlugin.capabilities.catalog,
+  );
+  const product = { ...normalized, modelResolutionStatus: "candidate" as const };
+  assert.equal(product.classificationStatus, "unclassified");
+
+  const db = catalogDb([
+    {
+      id: 10,
+      manufacturer_id: "marantz",
+      canonical_model: "ABC-1",
+      normalized_model: "ABC-1",
+      canonical_name: "ABC-1 Control Amplifier",
+      category_id: "pre_amp",
+      is_primary: 1,
+    },
+  ]);
+  const result = await enrichProductCategories({
+    db,
+    adapter: {
+      ...fujiyaAvicPlugin,
+      capabilities: { ...fujiyaAvicPlugin.capabilities, detailCategoryEvidence: undefined },
+    },
+    products: [product],
+    transport: {
+      async fetchHtmlPage() {
+        throw new Error("detail request must not run");
+      },
+    },
+    fetchOptions: detailFetchOptions(),
+    now: new Date("2026-08-15T01:00:00Z"),
+  });
+
+  assert.equal(result.catalogMatches, 0);
+  assert.equal(result.products[0].classificationStatus, "unclassified");
+  assert.equal(result.products[0].classificationSource, "none");
+});
+
 test("verified rows without an explicit primary category are not used for classification", async () => {
   const product = normalizeCatalogProduct(
     parsedProduct({
