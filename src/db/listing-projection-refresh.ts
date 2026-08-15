@@ -14,28 +14,16 @@ export interface ReplayedListing {
   source_id: string;
 }
 
-/** Grouped form used by bounded queue consumers that already partition work by shop. */
-export interface ReplayedListingBatch {
-  shopKey: string;
-  sourceIds: readonly string[];
-}
-
 export async function refreshListingProjections(
   db: QueryableDatabase,
-  listings: readonly (ReplayedListing | ReplayedListingBatch)[],
+  listings: readonly ReplayedListing[],
   evaluatedAt: string,
 ): Promise<void> {
   const byShop = new Map<string, string[]>();
   for (const listing of listings) {
-    if ("shop_key" in listing) {
-      const sourceIds = byShop.get(listing.shop_key) || [];
-      sourceIds.push(listing.source_id);
-      byShop.set(listing.shop_key, sourceIds);
-      continue;
-    }
-    const sourceIds = byShop.get(listing.shopKey) || [];
-    sourceIds.push(...listing.sourceIds);
-    byShop.set(listing.shopKey, sourceIds);
+    const sourceIds = byShop.get(listing.shop_key) || [];
+    sourceIds.push(listing.source_id);
+    byShop.set(listing.shop_key, sourceIds);
   }
   for (const [shopKey, sourceIds] of byShop) {
     await syncProductSearchProjections(db, shopKey, sourceIds);
