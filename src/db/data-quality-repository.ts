@@ -43,7 +43,12 @@ interface StoredQualityEvaluation {
   evaluatedAt: string;
   status: QualityStatus;
   snapshot: { status: QualityStatus; metrics: QualitySnapshotMetrics };
-  latestRun: { status: QualityStatus; metrics: QualityRunMetrics };
+  latestRun: {
+    crawlRunId: number | null;
+    evaluatedAt: string;
+    status: QualityStatus;
+    metrics: QualityRunMetrics;
+  };
   metrics: QualitySnapshotMetrics & QualityRunMetrics;
   details: Record<string, number>;
 }
@@ -303,7 +308,12 @@ export function dataQualityRow(row: DataQualityRunRow): StoredQualityEvaluation 
     evaluatedAt: row.evaluated_at,
     status: row.quality_status,
     snapshot: { status: row.snapshot_status, metrics: snapshotMetrics },
-    latestRun: { status: row.run_status, metrics: runMetrics },
+    latestRun: {
+      crawlRunId: nullableNumber(row.crawl_run_id),
+      evaluatedAt: row.evaluated_at,
+      status: row.run_status,
+      metrics: runMetrics,
+    },
     metrics: { ...snapshotMetrics, ...runMetrics },
     details: {
       manufacturerMissingCount: number(row.manufacturer_missing_count),
@@ -330,7 +340,8 @@ function worseStatus(a: QualityStatus, b: QualityStatus): QualityStatus {
  * `status`/`latestRun` from it directly would silently drop the last real crawl's run health — e.g.
  * a shop stuck `critical` on parser failures would read as merely the (possibly healthy) snapshot
  * status the moment a remediation sweep runs. Crawl-run fields are therefore always sourced from the
- * newest crawl-linked row, kept independent of which row is newest overall.
+ * newest crawl-linked row, kept independent of which row is newest overall. Run-level details are
+ * sourced from that same crawl row so the composed response retains coherent provenance.
  */
 function mergeLatestWithLatestCrawl(
   latest: StoredQualityEvaluation,
@@ -342,6 +353,10 @@ function mergeLatestWithLatestCrawl(
     status: worseStatus(latest.snapshot.status, latestCrawl.latestRun.status),
     latestRun: latestCrawl.latestRun,
     metrics: { ...latest.snapshot.metrics, ...latestCrawl.latestRun.metrics },
+    details: {
+      ...latest.details,
+      evidenceArchiveFailureCount: latestCrawl.details.evidenceArchiveFailureCount,
+    },
   };
 }
 
