@@ -8,6 +8,7 @@ const migration = readFileSync(
   "utf8",
 );
 
+// Keep this fixture intentionally minimal: it models only the tables touched by migration 0026.
 function database(): DatabaseSync {
   const db = new DatabaseSync(":memory:");
   db.exec(`
