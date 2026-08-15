@@ -52,6 +52,7 @@ const MANUFACTURER_SOURCE: readonly ManufacturerSourceEntry[] = [
   ["fostex", "FOSTEX", ["fostex", "フォステクス"]],
   ["ifi-audio", "iFi audio", ["ifi", "ifi audio", "ifi audio japan", "アイファイ"]],
   ["dcs", "dCS", ["dcs"]],
+  ["msb-technology", "MSB Technology", ["msb", "msb technology"]],
   ["lumin", "LUMIN", ["lumin"]],
   ["aurender", "Aurender", ["aurender", "オーレンダー"]],
   ["soulnote", "SOULNOTE", ["soulnote", "ソウルノート"]],
@@ -77,10 +78,16 @@ const MANUFACTURERS: readonly ManufacturerDefinition[] = MANUFACTURER_SOURCE.map
   ([id, name, aliases]) => Object.freeze({ id, name, aliases }),
 );
 
+const MANUFACTURER_LISTING_LABEL =
+  /^(?:(?:【|〖|\[)\s*(?:中古(?:品)?|新品|展示(?:処分)?品?|特価(?:商品|品)?|未使用(?:開封)?品?|B級品|アウトレット(?:品)?|現品処分品)\s*(?:】|〗|\])\s*)+/iu;
+
+/** Remove seller condition badges accidentally captured as part of manufacturer/title evidence. */
+export function stripManufacturerListingLabels(value: unknown = ""): string {
+  return String(value).normalize("NFKC").replace(MANUFACTURER_LISTING_LABEL, "").trim();
+}
+
 export function normalizeManufacturerKey(value: unknown = ""): string {
-  return String(value)
-    .normalize("NFKC")
-    .trim()
+  return stripManufacturerListingLabels(value)
     .toLowerCase()
     .replace(/\b(?:co\.?\s*,?\s*ltd\.?|corporation|corp\.?|inc\.?|limited|ltd\.?)\b/gi, "")
     .replace(/(?:株式会社|有限会社|合同会社)/g, "")
@@ -164,7 +171,7 @@ export function normalizeManufacturer(value: unknown = ""): ManufacturerNormaliz
 }
 
 export function splitKnownManufacturerModel(value: unknown = ""): ManufacturerModelSplit | null {
-  const raw = cleanSourceText(value);
+  const raw = cleanSourceText(stripManufacturerListingLabels(value));
   if (!raw) return null;
 
   for (const candidate of PREFIX_ALIASES) {
