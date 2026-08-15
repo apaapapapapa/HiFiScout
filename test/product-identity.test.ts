@@ -40,6 +40,9 @@ test("exact manufacturer/model identity resolves to the verified Knowledge Catal
 
 for (const [left, right] of [
   ["D1000", "D1000MK2"],
+  // Two revisions of one product: neither is a prefix of the other, so only the variant veto —
+  // not the model text — keeps a listing off the wrong generation.
+  ["D1000MK2", "D1000MK3"],
   ["D1000MK2", "D1000TX"],
   ["805 D4", "805 D4 Signature"],
   ["LS50", "LS50 Meta"],
