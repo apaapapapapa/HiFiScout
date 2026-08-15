@@ -23,7 +23,7 @@
 
 import { categoryFilterIds } from "../catalog/categories.js";
 import { normalizeIdentityModel } from "../catalog/product-identity.js";
-import { manufacturerIdForFilter, splitKnownManufacturerModel } from "../catalog/manufacturers.js";
+import { manufacturerFilterIds, splitKnownManufacturerModel } from "../catalog/manufacturers.js";
 import { parseFtsSearchQuery } from "../search/fts-query.js";
 import type { FtsSearchPlan } from "../search/fts-query.js";
 import { usesRelevanceOrder } from "../api/product-query.js";
@@ -166,8 +166,19 @@ function relevanceOrder(q: string, plan: FtsSearchPlan | null, rankBinds: unknow
 /** Product-level filters: they describe the product, so they never look at an individual offer. */
 function addProductFilters(query: ProductQuery, where: string[], binds: unknown[]): void {
   if (query.manufacturer) {
-    where.push("(e.manufacturer_id = ? OR e.manufacturer = ?)");
-    binds.push(manufacturerIdForFilter(query.manufacturer), query.manufacturer);
+    // During a resolver-version replay, the public facet may already expose the canonical display
+    // while an entity still carries the previous fallback id (for example `msb`). Match every id
+    // that the known alias set could historically have produced until the replay converges.
+    const manufacturerIds = manufacturerFilterIds(query.manufacturer);
+    if (manufacturerIds.length) {
+      where.push(
+        `(e.manufacturer_id IN (${manufacturerIds.map(() => "?").join(",")}) OR e.manufacturer = ?)`,
+      );
+      binds.push(...manufacturerIds, query.manufacturer);
+    } else {
+      where.push("e.manufacturer = ?");
+      binds.push(query.manufacturer);
+    }
   }
   if (query.category) {
     const categoryIds = categoryFilterIds(query.category);
