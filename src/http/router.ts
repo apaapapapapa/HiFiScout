@@ -11,6 +11,7 @@ import { checkPublicApiRateLimit } from "../api-guard.js";
 import { parseProductQuery, validateProductQuery } from "../api/product-query.js";
 import { SHOP_DEFINITIONS } from "../config.js";
 import { dispatchForcedCrawl } from "../crawler/dispatch.js";
+import { identityResolutionMethodDistribution } from "../db/data-quality-repository.js";
 import { dataPlatformStatus } from "../db/data-platform-status-repository.js";
 import {
   dataQualityStatusWithRemediationSlo,
@@ -165,6 +166,13 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext): Pro
       Number(url.searchParams.get("limit")) || undefined,
     );
     return json({ groups });
+  }
+  if (
+    request.method === "GET" &&
+    url.pathname === "/api/admin/data-quality/identity-method-distribution"
+  ) {
+    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
+    return json({ distribution: await identityResolutionMethodDistribution(env.DB) });
   }
   if (request.method === "GET" && url.pathname === "/api/admin/data-quality/remediation-events") {
     if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });

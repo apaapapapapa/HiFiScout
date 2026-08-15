@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   MODEL_OPTIONAL_CATEGORIES,
   dataQualityRow,
+  identityResolutionMethodDistribution,
+  latestDataQualityByShop,
   listDataQualityHistory,
   readDataQualitySnapshot,
   saveDataQualityRun,
@@ -203,4 +205,143 @@ test("stored row exposes identity coverage gaps against all active listings", ()
   assert.equal(row.snapshot.status, "warning");
   assert.equal(row.latestRun.status, "healthy");
   assert.equal(row.crawlRunId, 42);
+});
+
+test("a remediation-triggered run without an explicit item count defaults to the snapshot total", async () => {
+  const db = captureDb({ firstRows: [snapshotRow] });
+  const result = await saveDataQualityRun(db, {
+    shopKey: "audio-union",
+    crawlRunId: null,
+    evaluatedAt: "2026-08-15T00:00:00.000Z",
+  });
+
+  assert.equal(result.run.metrics.itemCount.current, 100);
+  assert.equal(result.run.metrics.itemCount.previous, null);
+  assert.equal(result.run.metrics.itemCount.status, "unknown");
+  const insert = db.calls.find((call) => call.kind === "run");
+  assert.ok(insert);
+  assert.equal(insert.binds[0], "audio-union");
+  assert.equal(insert.binds[1], null);
+});
+
+test("a crawl run's explicit item count still overrides the snapshot default", async () => {
+  const db = captureDb({ firstRows: [snapshotRow] });
+  const result = await saveDataQualityRun(db, {
+    shopKey: "audio-union",
+    crawlRunId: 7,
+    evaluatedAt: "2026-08-15T00:00:00.000Z",
+    run: { previousItemCount: 90, currentItemCount: 95 },
+  });
+
+  assert.equal(result.run.metrics.itemCount.current, 95);
+  assert.equal(result.run.metrics.itemCount.previous, 90);
+});
+
+function dataQualityRunRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 1,
+    shop_key: "audio-union",
+    crawl_run_id: null,
+    evaluated_at: "2026-08-15T00:00:00.000Z",
+    total_items: 100,
+    manufacturer_missing_count: 0,
+    manufacturer_unresolved_count: 0,
+    category_unclassified_count: 0,
+    other_category_count: 0,
+    identity_matched_count: 100,
+    identity_unresolved_count: 0,
+    identity_veto_count: 0,
+    identity_candidate_count: 0,
+    inventory_known_count: 100,
+    inventory_unknown_count: 0,
+    model_expected_count: 100,
+    model_extracted_count: 100,
+    model_missing_count: 0,
+    parse_attempt_count: 10,
+    parse_success_count: 10,
+    parse_failure_count: 0,
+    evidence_expected_event_count: 0,
+    evidence_archived_event_count: 0,
+    evidence_archive_failure_count: 0,
+    previous_item_count: 100,
+    current_item_count: 100,
+    item_count_absolute_difference: 0,
+    item_count_change_rate: 0,
+    manufacturer_status: "healthy",
+    category_status: "healthy",
+    identity_status: "healthy",
+    inventory_status: "healthy",
+    model_status: "healthy",
+    parser_status: "healthy",
+    item_count_status: "healthy",
+    evidence_status: "healthy",
+    snapshot_status: "healthy",
+    run_status: "healthy",
+    quality_status: "healthy",
+    ...overrides,
+  };
+}
+
+test("latest-per-shop trend compares the current run against the run immediately before it", async () => {
+  const db = captureDb({
+    allRows: [
+      [
+        dataQualityRunRow({
+          id: 2,
+          evaluated_at: "2026-08-15T01:00:00.000Z",
+          manufacturer_missing_count: 5,
+          manufacturer_status: "warning",
+        }),
+        dataQualityRunRow({
+          id: 1,
+          evaluated_at: "2026-08-15T00:00:00.000Z",
+          manufacturer_missing_count: 10,
+          manufacturer_status: "warning",
+        }),
+      ],
+    ],
+  });
+
+  const [shop] = await latestDataQualityByShop(db);
+
+  assert.equal(shop.id, 2);
+  assert.equal(shop.metrics.manufacturerUnknown.rate, 0.05);
+  assert.equal(shop.trend.manufacturerUnknown.previousRate, 0.1);
+  assert.equal(shop.trend.manufacturerUnknown.previousStatus, "warning");
+  assert.equal(shop.trend.manufacturerUnknown.absoluteDelta, -0.05);
+  assert.equal(shop.trend.manufacturerUnknown.percentageDelta, -0.5);
+  assert.match(db.calls[0].sql, /ROW_NUMBER\(\) OVER/);
+  assert.match(db.calls[0].sql, /PARTITION BY q\.shop_key/);
+});
+
+test("a shop's first-ever run has no previous snapshot to compare against", async () => {
+  const db = captureDb({ allRows: [[dataQualityRunRow({ id: 1 })]] });
+
+  const [shop] = await latestDataQualityByShop(db);
+
+  assert.equal(shop.trend.manufacturerUnknown.previousRate, null);
+  assert.equal(shop.trend.manufacturerUnknown.previousStatus, null);
+  assert.equal(shop.trend.manufacturerUnknown.absoluteDelta, null);
+  assert.equal(shop.trend.manufacturerUnknown.percentageDelta, null);
+});
+
+test("identity method distribution groups active listings by shop and method, folding missing rows in", async () => {
+  const db = captureDb({
+    allRows: [
+      [
+        { shop_key: "audio-union", match_method: "manufacturer_model_exact", listing_count: 40 },
+        { shop_key: "audio-union", match_method: null, listing_count: 3 },
+      ],
+    ],
+  });
+
+  const distribution = await identityResolutionMethodDistribution(db);
+
+  assert.deepEqual(distribution, [
+    { shopKey: "audio-union", matchMethod: "manufacturer_model_exact", listingCount: 40 },
+    { shopKey: "audio-union", matchMethod: "missing_resolution", listingCount: 3 },
+  ]);
+  assert.match(db.calls[0].sql, /COALESCE\(r\.match_method, 'missing_resolution'\)/);
+  assert.match(db.calls[0].sql, /LEFT JOIN product_identity_resolutions/);
+  assert.match(db.calls[0].sql, /p\.is_active = 1/);
 });

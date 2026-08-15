@@ -8,9 +8,8 @@ import { createModelResolver } from "../catalog/model-resolver.js";
 import { inferFeatureFacts } from "../catalog/product-features.js";
 import { RESOLUTION_VERSIONS } from "../catalog/resolution-versions.js";
 import type { CategoryEvidenceInput, FeatureFact } from "../catalog/types.js";
-import { evaluateQuality } from "../data-quality/quality-evaluator.js";
 import { errorMessage, isRecord } from "../types.js";
-import { readDataQualitySnapshot } from "./data-quality-repository.js";
+import { saveDataQualityRun } from "./data-quality-repository.js";
 import {
   claimDataQualityRemediationBatch,
   dataQualityRemediationQueueMetrics,
@@ -453,17 +452,18 @@ export async function runDataQualityRemediationSweep(
     }
   }
 
-  // Recompute the snapshot from current D1 state after replay without inventing a synthetic crawl
-  // run. This keeps seller/run metrics untouched while making the post-remediation DQ state visible.
+  // Recompute and persist the snapshot from current D1 state after replay: the last step of the
+  // rebuild/backfill order. `crawlRunId` stays null rather than inventing a synthetic crawl, so
+  // crawl-only run metrics (parser failures, evidence coverage, item-count drop) correctly report
+  // unknown for this row instead of a misleading zero — no crawl happened this tick.
   for (const shopKey of affectedShops) {
-    const snapshot = await readDataQualitySnapshot(db, shopKey);
-    const quality = evaluateQuality({ shopKey, ...snapshot });
+    const saved = await saveDataQualityRun(db, { shopKey, crawlRunId: null, evaluatedAt });
     console.log(
       JSON.stringify({
         event: "data_quality_remediation_snapshot",
         shopKey,
-        status: quality.snapshot.status,
-        metrics: quality.snapshot.metrics,
+        status: saved.snapshot.status,
+        metrics: saved.snapshot.metrics,
       }),
     );
   }

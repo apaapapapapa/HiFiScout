@@ -876,6 +876,27 @@ export interface QualityThreshold {
   inclusive?: boolean;
 }
 
+/** The seven rate metrics comparable snapshot-over-snapshot; `itemCount` carries its own delta. */
+export type QualityTrendMetricKey =
+  | "manufacturerUnknown"
+  | "categoryUnclassified"
+  | "identityUnresolved"
+  | "inventoryUnknown"
+  | "modelMissing"
+  | "parserFailure"
+  | "evidenceCoverage";
+
+export interface QualityMetricTrend {
+  previousRate: number | null;
+  previousStatus: QualityStatus | null;
+  /** `currentRate - previousRate`, in rate units (e.g. -0.02 is a 2 percentage-point drop). */
+  absoluteDelta: number | null;
+  /** `absoluteDelta / previousRate`; null when there is no non-zero previous rate to divide by. */
+  percentageDelta: number | null;
+}
+
+export type QualityMetricTrends = Record<QualityTrendMetricKey, QualityMetricTrend>;
+
 export interface QualitySnapshotMetrics {
   manufacturerUnknown: QualityMetric;
   categoryUnclassified: QualityMetric;
