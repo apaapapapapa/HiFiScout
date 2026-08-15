@@ -34,13 +34,20 @@ test("manufacturer keys apply NFKC, case, punctuation and legal-entity normaliza
 });
 
 test("MSB spellings and seller condition badges resolve to MSB Technology", () => {
-  for (const rawManufacturer of ["MSB", "MSB Technology", "【中古品】MSB", "[中古品] MSB"]) {
+  const cases = [
+    ["MSB", "msb"],
+    ["MSB Technology", "msbtechnology"],
+    ["【中古品】MSB", "msb"],
+    ["[中古品] MSB", "msb"],
+  ] as const;
+
+  for (const [rawManufacturer, normalizedRawManufacturer] of cases) {
     const result = resolveManufacturer({ rawManufacturer });
     assert.equal(result.status, "resolved");
     assert.equal(result.canonicalManufacturerId, "msb-technology");
     assert.equal(result.displayName, "MSB Technology");
     assert.equal(result.method, "bootstrap_alias");
-    assert.equal(result.normalizedRawManufacturer, "msb");
+    assert.equal(result.normalizedRawManufacturer, normalizedRawManufacturer);
   }
 });
 
