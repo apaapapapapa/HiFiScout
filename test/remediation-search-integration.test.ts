@@ -99,20 +99,30 @@ function insertListing(sqlite: DatabaseSync, listing: Listing): number {
   return Number(result.lastInsertRowid);
 }
 
-/** Verifies a canonical product, which is what a Knowledge Catalog remediation ultimately does. */
-function verifyCatalogProduct(sqlite: DatabaseSync, canonicalModel: string): number {
+/**
+ * Adds a canonical product, which is what a Knowledge Catalog remediation ultimately does.
+ *
+ * `verificationStatus` is a parameter because the difference between a verified row and a pending
+ * one is the difference between a merge and a candidate nobody approved.
+ */
+function catalogProduct(
+  sqlite: DatabaseSync,
+  canonicalModel: string,
+  verificationStatus = "verified",
+): number {
   const result = sqlite
     .prepare(`
       INSERT INTO knowledge_catalog_products(
         manufacturer_id, canonical_model, normalized_model, canonical_name,
         verification_status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, 'verified', ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
     `)
     .run(
       CATALOG_MANUFACTURER,
       canonicalModel,
       canonicalModel,
       `TAD ${canonicalModel}`,
+      verificationStatus,
       LATEST,
       LATEST,
     );
@@ -193,7 +203,7 @@ test("a remediated listing leaves its fallback entity and joins the canonical pr
   assert.equal(entityKeyForListing(sqlite, listingIds["shop-a"]), fallbackA);
   assert.equal(entityKeyForListing(sqlite, listingIds["shop-b"]), fallbackB);
 
-  const catalogId = verifyCatalogProduct(sqlite, "D1000MK2");
+  const catalogId = catalogProduct(sqlite, "D1000MK2");
   await refreshEverything(db, LATEST);
 
   const canonical = `c-${catalogId}`;
@@ -230,7 +240,7 @@ test("a remediated listing leaves its fallback entity and joins the canonical pr
 
 test("the revision the remediation did not verify keeps its own product", async () => {
   const { sqlite, db, listingIds } = arrangeUnresolved();
-  const catalogId = verifyCatalogProduct(sqlite, "D1000MK2");
+  const catalogId = catalogProduct(sqlite, "D1000MK2");
   await refreshEverything(db, LATEST);
 
   const revision = listingIds["shop-c"];
@@ -256,10 +266,35 @@ test("the revision the remediation did not verify keeps its own product", async 
   );
 });
 
+test("a catalog product nobody verified merges nothing", async () => {
+  // `knowledge_catalog_products.verification_status` only admits 'verified' or 'rejected', so an
+  // unreviewed product is unrepresentable here by construction — candidates live in
+  // `knowledge_catalog_candidates` until someone approves them. What still needs proving is the
+  // reviewed-and-turned-down row: identity, membership and entity creation each repeat the
+  // `verification_status = 'verified'` predicate, and this is what shows all three agree.
+  const { sqlite, db, listingIds } = arrangeUnresolved();
+  const rejected = catalogProduct(sqlite, "D1000MK2", "rejected");
+  await refreshEverything(db, LATEST);
+
+  assert.equal(entityExists(sqlite, `c-${rejected}`), false);
+  assert.equal(entityKeyForListing(sqlite, listingIds["shop-a"]), `l-${listingIds["shop-a"]}`);
+  assert.equal(entityKeyForListing(sqlite, listingIds["shop-b"]), `l-${listingIds["shop-b"]}`);
+
+  // ...and verifying that same row is all it takes to complete the merge, so the listings were
+  // held back by the review state rather than by anything else about the fixture.
+  sqlite
+    .prepare("UPDATE knowledge_catalog_products SET verification_status = 'verified' WHERE id = ?")
+    .run(rejected);
+  await refreshEverything(db, LATEST);
+
+  assert.equal(entityKeyForListing(sqlite, listingIds["shop-a"]), `c-${rejected}`);
+  assert.equal(entityKeyForListing(sqlite, listingIds["shop-b"]), `c-${rejected}`);
+});
+
 test("verified sibling revisions stay two products rather than collapsing into one", async () => {
   const { sqlite, db, listingIds } = arrangeUnresolved();
-  const mk2 = verifyCatalogProduct(sqlite, "D1000MK2");
-  const mk3 = verifyCatalogProduct(sqlite, "D1000MK3");
+  const mk2 = catalogProduct(sqlite, "D1000MK2");
+  const mk3 = catalogProduct(sqlite, "D1000MK3");
   await refreshEverything(db, LATEST);
 
   assert.equal(entityKeyForListing(sqlite, listingIds["shop-a"]), `c-${mk2}`);
@@ -277,7 +312,7 @@ test("verified sibling revisions stay two products rather than collapsing into o
 
 test("search reports the remediated product once, with both shops' offers", async () => {
   const { sqlite, db } = arrangeUnresolved();
-  verifyCatalogProduct(sqlite, "D1000MK2");
+  catalogProduct(sqlite, "D1000MK2");
   await refreshEverything(db, LATEST);
 
   const response = await searchProducts(db, productQuery("?q=D1000MK2&includeTotal=true"));
@@ -294,7 +329,7 @@ test("search reports the remediated product once, with both shops' offers", asyn
 
 test("filters still describe the offers behind the remediated product", async () => {
   const { sqlite, db } = arrangeUnresolved();
-  verifyCatalogProduct(sqlite, "D1000MK2");
+  catalogProduct(sqlite, "D1000MK2");
   await refreshEverything(db, LATEST);
 
   const byShop = await searchProducts(db, productQuery("?shop=shop-b&includeTotal=true"));
@@ -317,7 +352,7 @@ test("filters still describe the offers behind the remediated product", async ()
 
 test("sort and pagination page over remediated products without repeating or losing one", async () => {
   const { sqlite, db } = arrangeUnresolved();
-  verifyCatalogProduct(sqlite, "D1000MK2");
+  catalogProduct(sqlite, "D1000MK2");
   await refreshEverything(db, LATEST);
 
   const ascending = await searchProducts(db, productQuery("?sort=priceAsc"));
@@ -345,7 +380,7 @@ test("sort and pagination page over remediated products without repeating or los
 test("the projection reports no drift once a remediation has moved a listing", async () => {
   const { sqlite, db } = arrangeUnresolved();
   await refreshEverything(db, LATEST);
-  verifyCatalogProduct(sqlite, "D1000MK2");
+  catalogProduct(sqlite, "D1000MK2");
   await refreshEverything(db, LATEST);
 
   assert.deepEqual(await productSearchEntityConsistency(db), {
@@ -362,7 +397,7 @@ test("the projection reports no drift once a remediation has moved a listing", a
 
 test("replaying the same remediation twice changes nothing", async () => {
   const { sqlite, db, listingIds } = arrangeUnresolved();
-  verifyCatalogProduct(sqlite, "D1000MK2");
+  catalogProduct(sqlite, "D1000MK2");
   await refreshEverything(db, LATEST);
 
   const snapshot = () =>

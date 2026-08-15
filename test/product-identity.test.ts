@@ -138,6 +138,52 @@ test("model search aliases are bounded and include roman/numeric revision spelli
   assert.ok(aliases.length <= 8);
 });
 
+test("a verified catalog alias may match a spelling normalization cannot reach", () => {
+  // The whole reason aliases exist: `M30` and `Model 30` are the same product, and no amount of
+  // punctuation normalization turns one into the other. This is the only path that can match them,
+  // so it needs a positive test and not just the ambiguity and veto cases below.
+  const resolution = resolveProductIdentity(
+    { manufacturerId: "marantz", model: "M30", primaryCategoryId: "integrated_amp" },
+    [
+      {
+        id: 30,
+        manufacturerId: "marantz",
+        canonicalModel: "Model 30",
+        aliases: ["M30"],
+        categoryIds: ["integrated_amp"],
+      },
+    ],
+  );
+
+  assert.equal(resolution.status, "matched");
+  assert.equal(resolution.catalogProductId, 30);
+  assert.equal(resolution.matchMethod, "catalog_alias");
+  assert.equal(resolution.matchedAlias, "M30");
+  assert.ok(resolution.matchedFields.includes("catalog_alias"));
+});
+
+test("an alias recorded against the wrong revision is vetoed like any other merge", () => {
+  // A mistaken alias in the catalog is the one way a *verified* row can still be wrong. The variant
+  // veto has to run inside the alias branch too, or curating the catalog becomes a way to bypass it.
+  const resolution = resolveProductIdentity({ manufacturerId: "tad", model: "D1000MK2" }, [
+    { id: 1, manufacturerId: "tad", canonicalModel: "D1000MK3", aliases: ["D1000MK2"] },
+  ]);
+
+  assert.equal(resolution.status, "unresolved");
+  assert.equal(resolution.catalogProductId, null);
+  assert.equal(resolution.matchMethod, "vetoed");
+  assert.deepEqual(resolution.rejectedBy, ["variant_mismatch"]);
+});
+
+test("an alias never reaches across manufacturers", () => {
+  const resolution = resolveProductIdentity({ manufacturerId: "denon", model: "M30" }, [
+    { id: 30, manufacturerId: "marantz", canonicalModel: "Model 30", aliases: ["M30"] },
+  ]);
+
+  assert.equal(resolution.status, "unresolved");
+  assert.equal(resolution.catalogProductId, null);
+});
+
 test("ambiguous aliases never auto-merge", () => {
   const resolution = resolveProductIdentity(
     { manufacturerId: "maker", model: "MODEL-1 SPECIAL", primaryCategoryId: "dac" },
