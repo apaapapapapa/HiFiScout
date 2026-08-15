@@ -3,7 +3,8 @@
  *
  * Only actual changes are recorded. An idempotent replay that re-derives the same values writes
  * nothing, so the table stays proportional to how much data actually improved rather than to how
- * often replay ran.
+ * often replay ran. Migration 0026 augments each change with the Product Identity and Product
+ * Search membership on both sides of the downstream projection refresh.
  */
 
 import type { QueryableDatabase, ReadableDatabase } from "./types.js";
@@ -21,6 +22,11 @@ export interface RemediationEvent {
   resolverMethod?: string;
   resolverConfidence?: string;
   resolverVersion?: number;
+  previousIdentityResolution?: string;
+  newIdentityResolution?: string;
+  previousSearchEntityKey?: string;
+  newSearchEntityKey?: string;
+  provenanceComplete?: boolean;
   processedAt: string;
 }
 
@@ -36,6 +42,11 @@ interface RemediationEventRow {
   resolver_method: string;
   resolver_confidence: string;
   resolver_version: number;
+  previous_identity_resolution: string;
+  new_identity_resolution: string;
+  previous_search_entity_key: string;
+  new_search_entity_key: string;
+  provenance_complete: number;
   processed_at: string;
 }
 
@@ -79,7 +90,9 @@ export async function listRecentRemediationEvents(
   const result = await db
     .prepare(`
       SELECT id, listing_product_id, shop_key, source_id, field, previous_value, new_value, reason,
-             resolver_method, resolver_confidence, resolver_version, processed_at
+             resolver_method, resolver_confidence, resolver_version,
+             previous_identity_resolution, new_identity_resolution,
+             previous_search_entity_key, new_search_entity_key, provenance_complete, processed_at
       FROM data_quality_remediation_events
       ORDER BY processed_at DESC, id DESC
       LIMIT ?
@@ -97,6 +110,11 @@ export async function listRecentRemediationEvents(
     resolverMethod: row.resolver_method,
     resolverConfidence: row.resolver_confidence,
     resolverVersion: Number(row.resolver_version || 0),
+    previousIdentityResolution: row.previous_identity_resolution,
+    newIdentityResolution: row.new_identity_resolution,
+    previousSearchEntityKey: row.previous_search_entity_key,
+    newSearchEntityKey: row.new_search_entity_key,
+    provenanceComplete: Number(row.provenance_complete || 0) === 1,
     processedAt: row.processed_at,
   }));
 }
