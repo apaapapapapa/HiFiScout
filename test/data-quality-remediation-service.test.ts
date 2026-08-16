@@ -106,13 +106,7 @@ test("empty shop remediation work skips downstream projection refresh", async ()
     refreshCalls += 1;
   };
 
-  await refreshRemediationShopProjections(
-    db,
-    "shop-a",
-    [],
-    "2026-08-16T00:00:00.000Z",
-    refresh,
-  );
+  await refreshRemediationShopProjections(db, "shop-a", [], "2026-08-16T00:00:00.000Z", refresh);
 
   assert.equal(refreshCalls, 0);
 });
