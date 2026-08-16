@@ -104,10 +104,7 @@ test("manual exhausted jobs are not rewritten by the resolver replay recovery", 
   assert.ok(job);
 
   assert.equal(
-    await recoverExpiredExhaustedAutomaticRemediationJobs(
-      db,
-      "2026-08-16T00:01:01.000Z",
-    ),
+    await recoverExpiredExhaustedAutomaticRemediationJobs(db, "2026-08-16T00:01:01.000Z"),
     0,
   );
   const metrics = await dataQualityRemediationQueueMetrics(db);
