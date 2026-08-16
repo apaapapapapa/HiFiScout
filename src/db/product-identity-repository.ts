@@ -11,6 +11,13 @@ import type {
 
 const CHUNK_SIZE = 40;
 
+export interface ProductIdentitySyncOptions {
+  /** Number of manufacturers whose verified catalog candidates may be loaded by one query. */
+  candidateManufacturerChunkSize?: number;
+  /** Emit bounded candidate-query telemetry. Intended for operational replay, not normal crawls. */
+  traceCandidateScopes?: boolean;
+}
+
 interface CatalogIdentityCandidate extends IdentityCandidateInput {
   id: number;
   manufacturerId: string;
@@ -65,17 +72,34 @@ function unique(values: readonly unknown[] = []): string[] {
   return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
 }
 
+function boundedManufacturerChunkSize(value: number | undefined): number {
+  if (value == null || !Number.isFinite(value)) return CHUNK_SIZE;
+  return Math.max(1, Math.min(CHUNK_SIZE, Math.trunc(value)));
+}
+
 async function loadVerifiedIdentityCandidates(
   db: QueryableDatabase,
   manufacturerIds: readonly string[] = [],
+  candidateManufacturerChunkSize = CHUNK_SIZE,
+  traceCandidateScopes = false,
 ): Promise<Map<string, CatalogIdentityCandidate[]>> {
   const ids = unique(manufacturerIds.map((value) => value.toLowerCase()));
   if (!ids.length) return new Map<string, CatalogIdentityCandidate[]>();
 
+  const manufacturerChunkSize = boundedManufacturerChunkSize(candidateManufacturerChunkSize);
   const byId = new Map<number, CatalogIdentityCandidate>();
-  for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
-    const chunk = ids.slice(i, i + CHUNK_SIZE);
+  for (let i = 0; i < ids.length; i += manufacturerChunkSize) {
+    const chunk = ids.slice(i, i + manufacturerChunkSize);
     const placeholders = chunk.map(() => "?").join(",");
+    const startedAt = Date.now();
+    if (traceCandidateScopes) {
+      console.log(
+        JSON.stringify({
+          event: "product_identity_candidate_scope_start",
+          manufacturer_ids: chunk,
+        }),
+      );
+    }
     const result = await db
       .prepare(`
         SELECT kp.id, kp.manufacturer_id, kp.canonical_model, kp.normalized_model,
@@ -88,6 +112,17 @@ async function loadVerifiedIdentityCandidates(
       `)
       .bind(...chunk)
       .all<CatalogIdentityRow>();
+
+    if (traceCandidateScopes) {
+      console.log(
+        JSON.stringify({
+          event: "product_identity_candidate_scope_complete",
+          manufacturer_ids: chunk,
+          catalog_row_count: result.results?.length || 0,
+          duration_ms: Date.now() - startedAt,
+        }),
+      );
+    }
 
     for (const row of result.results || []) {
       let candidate = byId.get(Number(row.id));
@@ -254,6 +289,7 @@ export async function syncProductIdentityResolutions(
   shopKey: string,
   sourceIds: readonly string[] = [],
   evaluatedAt = new Date().toISOString(),
+  options: ProductIdentitySyncOptions = {},
 ): Promise<IdentitySyncMetrics> {
   const listings = await loadListingRows(db, shopKey, sourceIds);
   const metrics: IdentitySyncMetrics = {
@@ -269,6 +305,8 @@ export async function syncProductIdentityResolutions(
   const candidatesByManufacturer = await loadVerifiedIdentityCandidates(
     db,
     listings.map((row) => row.canonical_manufacturer_id),
+    options.candidateManufacturerChunkSize,
+    options.traceCandidateScopes,
   );
   const existing = await loadExistingResolutions(
     db,
