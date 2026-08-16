@@ -15,35 +15,57 @@ export interface ReplayedListing {
 }
 
 /**
- * Keep the cheap projection/entity stages batched by shop, but bound the expensive identity
- * candidate reads to one manufacturer per query. This preserves aggregation efficiency while a
- * mixed hardware remediation batch cannot turn one D1 candidate lookup into a large multi-brand
- * scan.
+ * Remediation deliberately refreshes one listing at a time. The normal crawler keeps its batched
+ * sync path, but replay work needs a hard failure boundary so one pathological listing cannot make
+ * the other jobs in the same claim execute the expensive identity candidate read as one unit.
  */
 export async function refreshListingProjections(
   db: QueryableDatabase,
   listings: readonly ReplayedListing[],
   evaluatedAt: string,
 ): Promise<void> {
-  const byShop = new Map<string, Set<string>>();
-  for (const listing of listings) {
-    const sourceIds = byShop.get(listing.shop_key) || new Set<string>();
-    sourceIds.add(listing.source_id);
-    byShop.set(listing.shop_key, sourceIds);
-  }
+  const uniqueListings = [
+    ...new Map(
+      listings.map(
+        (listing) => [`${listing.shop_key}\u0000${listing.source_id}`, listing] as const,
+      ),
+    ).values(),
+  ];
 
-  for (const [shopKey, sourceIdSet] of byShop) {
-    const sourceIds = [...sourceIdSet];
-    await syncProductSearchProjections(db, shopKey, sourceIds);
-    await syncProductIdentityResolutions(db, shopKey, sourceIds, evaluatedAt, {
+  for (const [index, listing] of uniqueListings.entries()) {
+    const { shop_key: shopKey, source_id: sourceId } = listing;
+    const startedAt = Date.now();
+    console.log(
+      JSON.stringify({
+        event: "data_quality_remediation_projection_listing_start",
+        shop_key: shopKey,
+        source_id: sourceId,
+        listing_index: index + 1,
+        listing_count: uniqueListings.length,
+      }),
+    );
+
+    await syncProductSearchProjections(db, shopKey, [sourceId]);
+    await syncProductIdentityResolutions(db, shopKey, [sourceId], evaluatedAt, {
       candidateManufacturerChunkSize: 1,
       traceCandidateScopes: true,
     });
     // Resolver replay is listing-scoped. Shop-wide inactive membership cleanup belongs to a crawl,
     // where the observed inventory set is authoritative; pulling it into a remediation pass can
     // turn a handful of stale listings into an unbounded shop-wide entity projection.
-    await syncProductSearchEntities(db, shopKey, sourceIds, {
+    await syncProductSearchEntities(db, shopKey, [sourceId], {
       includeInactiveShopMembers: false,
     });
+
+    console.log(
+      JSON.stringify({
+        event: "data_quality_remediation_projection_listing_complete",
+        shop_key: shopKey,
+        source_id: sourceId,
+        listing_index: index + 1,
+        listing_count: uniqueListings.length,
+        duration_ms: Date.now() - startedAt,
+      }),
+    );
   }
 }
