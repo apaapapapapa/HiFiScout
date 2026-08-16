@@ -113,9 +113,9 @@ export default {
       const before = await replayStatus(env.DB);
       const sweep = await runDataQualityRemediationSweep(env.DB, {
         seedLimit: 250,
-        // Keep one remote request small enough that a pathological shop/listing group cannot hold
-        // the entire drain workflow hostage. The workflow runs more sweeps to preserve throughput.
-        claimLimit: 10,
+        // One HTTP sweep owns one listing. If a remote D1 call stalls until the workflow-level
+        // timeout, the other claim candidates remain pending instead of sharing its lease/retry.
+        claimLimit: 1,
         leaseSeconds: 900,
       });
       const after = await replayStatus(env.DB);
