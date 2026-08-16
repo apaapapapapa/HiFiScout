@@ -54,6 +54,7 @@ jobs:
           D1_DATABASE_ID: ${{ steps.d1.outputs.database_id }}
         run: |
           set -euo pipefail
+          # Administrative replay must not consume the production Worker's daily invocation quota.
           result=.generated/remediation-drain-result.json
           npx tsx scripts/resolver-replay-drain.ts \
             --max-sweeps 64 \
