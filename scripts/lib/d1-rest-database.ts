@@ -1,10 +1,9 @@
 import type { QueryableDatabase } from "../../src/db/types.js";
 
-type RestParameter = string | number | null;
+type BoundValue = string | number | boolean | null | ArrayBuffer;
 
 interface RestStatementRequest {
   sql: string;
-  params: RestParameter[];
 }
 
 interface CloudflareApiError {
@@ -27,10 +26,144 @@ export interface D1RestDatabaseOptions {
   maxRateLimitRetries?: number;
 }
 
-function normalizeParameter(value: unknown): RestParameter {
-  if (value === null || typeof value === "string" || typeof value === "number") return value;
-  if (typeof value === "boolean") return value ? 1 : 0;
+function normalizeBoundValue(value: unknown): BoundValue {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    value instanceof ArrayBuffer
+  ) {
+    return value;
+  }
   throw new TypeError(`D1 REST adapter does not support bind value type: ${typeof value}`);
+}
+
+function hex(bytes: Uint8Array): string {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function sqlLiteral(value: BoundValue): string {
+  if (value === null) return "NULL";
+  if (typeof value === "string") return `'${value.replaceAll("'", "''")}'`;
+  if (typeof value === "boolean") return value ? "1" : "0";
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new TypeError("D1 REST adapter cannot bind a non-finite number");
+    return String(value);
+  }
+  return `X'${hex(new Uint8Array(value))}'`;
+}
+
+function renderBoundSql(sql: string, values: readonly BoundValue[]): string {
+  let output = "";
+  let valueIndex = 0;
+  let state: "normal" | "single" | "double" | "backtick" | "bracket" | "line" | "block" =
+    "normal";
+
+  for (let index = 0; index < sql.length; index += 1) {
+    const current = sql[index] || "";
+    const next = sql[index + 1] || "";
+
+    if (state === "line") {
+      output += current;
+      if (current === "\n") state = "normal";
+      continue;
+    }
+    if (state === "block") {
+      output += current;
+      if (current === "*" && next === "/") {
+        output += next;
+        index += 1;
+        state = "normal";
+      }
+      continue;
+    }
+    if (state === "single") {
+      output += current;
+      if (current === "'" && next === "'") {
+        output += next;
+        index += 1;
+      } else if (current === "'") {
+        state = "normal";
+      }
+      continue;
+    }
+    if (state === "double") {
+      output += current;
+      if (current === '"' && next === '"') {
+        output += next;
+        index += 1;
+      } else if (current === '"') {
+        state = "normal";
+      }
+      continue;
+    }
+    if (state === "backtick") {
+      output += current;
+      if (current === "`" && next === "`") {
+        output += next;
+        index += 1;
+      } else if (current === "`") {
+        state = "normal";
+      }
+      continue;
+    }
+    if (state === "bracket") {
+      output += current;
+      if (current === "]") state = "normal";
+      continue;
+    }
+
+    if (current === "-" && next === "-") {
+      output += `${current}${next}`;
+      index += 1;
+      state = "line";
+      continue;
+    }
+    if (current === "/" && next === "*") {
+      output += `${current}${next}`;
+      index += 1;
+      state = "block";
+      continue;
+    }
+    if (current === "'") {
+      output += current;
+      state = "single";
+      continue;
+    }
+    if (current === '"') {
+      output += current;
+      state = "double";
+      continue;
+    }
+    if (current === "`") {
+      output += current;
+      state = "backtick";
+      continue;
+    }
+    if (current === "[") {
+      output += current;
+      state = "bracket";
+      continue;
+    }
+    if (current === "?") {
+      const value = values[valueIndex];
+      if (valueIndex >= values.length || value === undefined) {
+        throw new Error("D1 REST adapter received fewer bind values than SQL placeholders");
+      }
+      output += sqlLiteral(value);
+      valueIndex += 1;
+      continue;
+    }
+    output += current;
+  }
+
+  if (valueIndex !== values.length) {
+    throw new Error(
+      `D1 REST adapter bind count mismatch: SQL used ${valueIndex}, received ${values.length}`,
+    );
+  }
+  return output;
 }
 
 function errorSummary(envelope: CloudflareD1Envelope | null): string {
@@ -61,19 +194,23 @@ class D1RestPreparedStatement {
   constructor(
     private readonly database: D1RestDatabase,
     readonly sql: string,
-    readonly params: readonly RestParameter[] = [],
+    readonly values: readonly BoundValue[] = [],
   ) {}
 
   bind(...values: unknown[]): D1PreparedStatement {
     return new D1RestPreparedStatement(
       this.database,
       this.sql,
-      values.map(normalizeParameter),
+      values.map(normalizeBoundValue),
     ) as unknown as D1PreparedStatement;
   }
 
+  request(): RestStatementRequest {
+    return { sql: renderBoundSql(this.sql, this.values) };
+  }
+
   async first<T = Record<string, unknown>>(columnName?: string): Promise<T | null> {
-    const result = await this.database.execute<T>({ sql: this.sql, params: [...this.params] });
+    const result = await this.database.execute<T>(this.request());
     const row = result.results?.[0];
     if (row == null) return null;
     if (!columnName) return row;
@@ -82,20 +219,17 @@ class D1RestPreparedStatement {
   }
 
   async all<T = Record<string, unknown>>(): Promise<D1Result<T>> {
-    return this.database.execute<T>({ sql: this.sql, params: [...this.params] });
+    return this.database.execute<T>(this.request());
   }
 
   async run<T = Record<string, unknown>>(): Promise<D1Result<T>> {
-    return this.database.execute<T>({ sql: this.sql, params: [...this.params] });
+    return this.database.execute<T>(this.request());
   }
 
   async raw<T extends unknown[] = unknown[]>(
     options: { columnNames?: boolean } = {},
   ): Promise<T[]> {
-    const result = await this.database.execute<Record<string, unknown>>({
-      sql: this.sql,
-      params: [...this.params],
-    });
+    const result = await this.database.execute<Record<string, unknown>>(this.request());
     const rows = result.results || [];
     if (!rows.length) return [];
     const columns = Object.keys(rows[0] || {});
@@ -125,11 +259,12 @@ export class D1RestDatabase implements QueryableDatabase {
   }
 
   async batch<T = unknown>(statements: D1PreparedStatement[]): Promise<D1Result<T>[]> {
+    if (!statements.length) return [];
     const requests = statements.map((statement) => {
       if (!(statement instanceof D1RestPreparedStatement)) {
         throw new TypeError("D1 REST batch received a statement from a different database adapter");
       }
-      return { sql: statement.sql, params: [...statement.params] };
+      return statement.request();
     });
     return this.request<T>({ batch: requests }, requests.length);
   }
@@ -182,6 +317,9 @@ export class D1RestDatabase implements QueryableDatabase {
         throw new Error(
           `Cloudflare D1 API result count mismatch: expected ${expectedResults}, received ${results.length}`,
         );
+      }
+      if (results.some((result) => result.success === false)) {
+        throw new Error("Cloudflare D1 API returned an unsuccessful statement result");
       }
       return results;
     }
