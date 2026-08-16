@@ -153,28 +153,28 @@ jobs:
                       OR q.lease_expires_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now')))
                 )
               ORDER BY q.priority DESC, q.available_at, q.id
-              LIMIT 10;")"
+              LIMIT 1;")"
             preview_rows="$(jq -c '.[0].results // []' <<< "$preview")"
-            echo "Next remediation claim composition (iteration=$iteration):"
+            echo "Next remediation claim (iteration=$iteration):"
             jq '
-              group_by(.shop_key)
-              | map({
-                  shop_key: (.[0].shop_key // ""),
-                  count: length,
-                  listings: map({
-                    job_id,
-                    work_type,
-                    attempt_count,
-                    listing_product_id,
-                    source_id,
-                    manufacturer,
-                    model,
-                    title
-                  })
-                })
+              map({
+                job_id,
+                work_type,
+                attempt_count,
+                listing_product_id,
+                shop_key,
+                source_id,
+                manufacturer,
+                model,
+                title
+              })
             ' <<< "$preview_rows"
 
-            result="$(curl --max-time 180 -fsS -X POST "$base/sweep")"
+            if ! result="$(curl --max-time 180 -fsS -X POST "$base/sweep")"; then
+              echo "Remediation sweep failed or timed out (iteration=$iteration); Worker diagnostics follow:" >&2
+              tail -n 200 "$log" >&2 || true
+              exit 1
+            fi
             claimed="$(jq -r '.sweep.claimed' <<< "$result")"
             resolved="$(jq -r '.sweep.resolved' <<< "$result")"
             retried="$(jq -r '.sweep.retried' <<< "$result")"
