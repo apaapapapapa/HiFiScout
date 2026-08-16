@@ -64,7 +64,10 @@ test("D1 REST adapter sends bound queries directly to the database API", async (
 
 test("D1 REST adapter renders NULL and quoted strings without replacing literal question marks", async () => {
   let body: unknown;
-  const fakeFetch = async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+  const fakeFetch = async (
+    _input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
     body = JSON.parse(String(init?.body || "{}")) as unknown;
     return jsonResponse({
       success: true,
