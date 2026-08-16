@@ -83,7 +83,7 @@ jobs:
           set -euo pipefail
           port=8791
           log=/tmp/remediation-drain-wrangler.log
-          max_sweeps=4
+          max_sweeps=12
           npx wrangler dev \
             --config .generated/remediation-drain.wrangler.jsonc \
             --ip 127.0.0.1 \
