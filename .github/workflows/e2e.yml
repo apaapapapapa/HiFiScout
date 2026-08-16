@@ -95,11 +95,14 @@ jobs:
             if [ "$verifier_status" = 'failed' ] || [ "$latest_review_status" = 'failed' ]; then
               break
             fi
+            # A newer scheduled review may start after the latest queue run completes. In that
+            # healthy overlap the review id is greater than the queue run id; requiring equality
+            # makes E2E flaky even though the completed queue run is fully observable.
             if [ "$expected_version" -gt 0 ] \
               && [ "$verifier_version" -ge "$expected_version" ] \
               && [ "$verifier_status" = 'success' ] \
               && [ "$queue_run_id" -gt 0 ] \
-              && [ "$latest_review_id" -eq "$queue_run_id" ] \
+              && [ "$latest_review_id" -ge "$queue_run_id" ] \
               && [ "$queue_terminal" -gt 0 ] \
               && { [ "$latest_review_status" = 'running' ] || [ "$latest_review_status" = 'success' ]; }; then
               break
@@ -133,8 +136,8 @@ jobs:
             echo 'Knowledge Catalog Queue has not produced a verification run.' >&2
             exit 1
           fi
-          if [ "$latest_review_id" -ne "$queue_run_id" ]; then
-            echo "Knowledge Catalog latest review ${latest_review_id} does not match Queue run ${queue_run_id}." >&2
+          if [ "$latest_review_id" -lt "$queue_run_id" ]; then
+            echo "Knowledge Catalog latest review ${latest_review_id} lags Queue run ${queue_run_id}." >&2
             exit 1
           fi
           if [ $((queue_completed + queue_dead_letter)) -le 0 ]; then
