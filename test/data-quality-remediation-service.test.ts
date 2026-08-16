@@ -97,3 +97,22 @@ test("shop remediation refresh batches every source before clearing owned projec
     remediation_projection_token: "",
   });
 });
+
+test("empty shop remediation work skips downstream projection refresh", async () => {
+  const sqlite = new DatabaseSync(":memory:");
+  const db = sqliteD1(sqlite);
+  let refreshCalls = 0;
+  const refresh: ListingProjectionRefresher = async () => {
+    refreshCalls += 1;
+  };
+
+  await refreshRemediationShopProjections(
+    db,
+    "shop-a",
+    [],
+    "2026-08-16T00:00:00.000Z",
+    refresh,
+  );
+
+  assert.equal(refreshCalls, 0);
+});
