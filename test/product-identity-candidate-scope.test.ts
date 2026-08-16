@@ -79,7 +79,8 @@ test("normal identity sync keeps manufacturer candidate reads batched by default
     "2026-08-16T00:00:00.000Z",
   );
 
-  assert.deepEqual(candidateReads(db).map((statement) => statement.binds), [
-    ["onkyo", "kenwood"],
-  ]);
+  assert.deepEqual(
+    candidateReads(db).map((statement) => statement.binds),
+    [["onkyo", "kenwood"]],
+  );
 });
