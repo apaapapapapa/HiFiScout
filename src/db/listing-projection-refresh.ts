@@ -14,25 +14,56 @@ export interface ReplayedListing {
   source_id: string;
 }
 
+/**
+ * Remediation is deliberately projected one listing at a time.
+ *
+ * Identity projection loads verified catalog candidates for every manufacturer represented by the
+ * input batch. A mixed hardware batch can therefore turn a small queue claim into a large remote D1
+ * read even after search-entity cleanup is listing-scoped. Normal crawls still use their batched
+ * sync path; only resolver replay pays this stronger bound.
+ */
 export async function refreshListingProjections(
   db: QueryableDatabase,
   listings: readonly ReplayedListing[],
   evaluatedAt: string,
 ): Promise<void> {
-  const byShop = new Map<string, string[]>();
-  for (const listing of listings) {
-    const sourceIds = byShop.get(listing.shop_key) || [];
-    sourceIds.push(listing.source_id);
-    byShop.set(listing.shop_key, sourceIds);
-  }
-  for (const [shopKey, sourceIds] of byShop) {
-    await syncProductSearchProjections(db, shopKey, sourceIds);
-    await syncProductIdentityResolutions(db, shopKey, sourceIds, evaluatedAt);
+  const uniqueListings = [
+    ...new Map(
+      listings.map((listing) => [`${listing.shop_key}\u0000${listing.source_id}`, listing] as const),
+    ).values(),
+  ];
+
+  for (const [index, listing] of uniqueListings.entries()) {
+    const { shop_key: shopKey, source_id: sourceId } = listing;
+    const startedAt = Date.now();
+    console.log(
+      JSON.stringify({
+        event: "data_quality_remediation_projection_listing_start",
+        shop_key: shopKey,
+        source_id: sourceId,
+        listing_index: index + 1,
+        listing_count: uniqueListings.length,
+      }),
+    );
+
+    await syncProductSearchProjections(db, shopKey, [sourceId]);
+    await syncProductIdentityResolutions(db, shopKey, [sourceId], evaluatedAt);
     // Resolver replay is listing-scoped. Shop-wide inactive membership cleanup belongs to a crawl,
     // where the observed inventory set is authoritative; pulling it into a remediation pass can
     // turn a handful of stale listings into an unbounded shop-wide entity projection.
-    await syncProductSearchEntities(db, shopKey, sourceIds, {
+    await syncProductSearchEntities(db, shopKey, [sourceId], {
       includeInactiveShopMembers: false,
     });
+
+    console.log(
+      JSON.stringify({
+        event: "data_quality_remediation_projection_listing_complete",
+        shop_key: shopKey,
+        source_id: sourceId,
+        listing_index: index + 1,
+        listing_count: uniqueListings.length,
+        duration_ms: Date.now() - startedAt,
+      }),
+    );
   }
 }
