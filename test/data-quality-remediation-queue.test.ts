@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { RESOLUTION_VERSIONS } from "../src/catalog/resolution-versions.js";
 import {
@@ -11,69 +11,49 @@ import {
   retryOrFailDataQualityRemediationJob,
   seedDataQualityRemediationQueue,
 } from "../src/db/data-quality-remediation-queue-repository.js";
-import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 
+/**
+ * These tests ran against a hand-written three-column schema until the staleness selector was split
+ * into one indexed query per stage. Those queries name their index with `INDEXED BY`, so a schema
+ * that omits an index no longer produces a slower plan — it produces no plan at all. Replaying the
+ * real migrations is therefore the only honest fixture, and it removes a copy of the products DDL
+ * that had to be kept in step with every index the repository depends on.
+ */
 function database() {
-  const sqlite = new DatabaseSync(":memory:");
-  sqlite.exec(`
-    CREATE TABLE products (
-      id INTEGER PRIMARY KEY,
-      is_active INTEGER NOT NULL DEFAULT 1,
-      manufacturer_resolver_version INTEGER NOT NULL,
-      model_resolver_version INTEGER NOT NULL,
-      metadata_json TEXT NOT NULL DEFAULT '{}',
-      remediation_projection_required INTEGER NOT NULL DEFAULT 0,
-      manufacturer_resolution_status TEXT NOT NULL DEFAULT 'resolved',
-      model_resolution_status TEXT NOT NULL DEFAULT 'resolved',
-      classification_status TEXT NOT NULL DEFAULT 'classified'
-    );
-    CREATE TABLE product_identity_resolutions (
-      listing_product_id INTEGER PRIMARY KEY,
-      status TEXT NOT NULL,
-      identity_resolver_version INTEGER NOT NULL DEFAULT 1
-    );
-    CREATE TABLE data_quality_remediation_queue (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      work_key TEXT NOT NULL UNIQUE,
-      work_type TEXT NOT NULL,
-      listing_product_id INTEGER,
-      entity_id TEXT NOT NULL DEFAULT '',
-      reason TEXT NOT NULL,
-      source TEXT NOT NULL DEFAULT '',
-      status TEXT NOT NULL DEFAULT 'pending',
-      priority INTEGER NOT NULL DEFAULT 100,
-      attempt_count INTEGER NOT NULL DEFAULT 0,
-      max_attempts INTEGER NOT NULL DEFAULT 3,
-      available_at TEXT NOT NULL,
-      claimed_at TEXT,
-      lease_expires_at TEXT,
-      resolved_at TEXT,
-      last_error TEXT NOT NULL DEFAULT '',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-  `);
-  return { sqlite, db: sqliteD1(sqlite) };
+  return migratedSqlite();
 }
 
+/** The columns `products` requires, with everything the staleness selectors look at already good. */
 function insertHealthyListing(sqlite: DatabaseSync, id: number): void {
   sqlite
     .prepare(`
       INSERT INTO products(
-        id, manufacturer_resolver_version, model_resolver_version, metadata_json,
+        id, shop_key, source_id, title, source_url, first_seen_at, last_seen_at, last_changed_at,
+        last_activity_at, is_active, metadata_json,
+        manufacturer_resolver_version, model_resolver_version,
         manufacturer_resolution_status, model_resolution_status, classification_status
-      ) VALUES (?, ?, ?, ?, 'resolved', 'resolved', 'classified')
+      ) VALUES (
+        ?, ?, ?, ?, ?, '2026-07-01T00:00:00.000Z', '2026-07-01T00:00:00.000Z',
+        '2026-07-01T00:00:00.000Z', '2026-07-01T00:00:00.000Z', 1, ?,
+        ?, ?, 'resolved', 'resolved', 'classified'
+      )
     `)
     .run(
       id,
+      `shop-${id}`,
+      `source-${id}`,
+      `listing ${id}`,
+      `https://example.test/${id}`,
+      JSON.stringify({ categoryClassification: { version: RESOLUTION_VERSIONS.category } }),
       RESOLUTION_VERSIONS.manufacturer,
       RESOLUTION_VERSIONS.model,
-      JSON.stringify({ categoryClassification: { version: RESOLUTION_VERSIONS.category } }),
     );
   sqlite
     .prepare(`
-      INSERT INTO product_identity_resolutions(listing_product_id, status, identity_resolver_version)
-      VALUES (?, 'matched', ?)
+      INSERT INTO product_identity_resolutions(
+        listing_product_id, status, match_method, confidence, evaluated_at, identity_resolver_version
+      ) VALUES (?, 'matched', 'test', 'high', '2026-07-01T00:00:00.000Z', ?)
     `)
     .run(id, RESOLUTION_VERSIONS.identity);
 }
@@ -143,7 +123,9 @@ test("deduplicated low ids cannot starve later stale listings", async () => {
 });
 
 test("abandoned processing is reclaimable and retry exhaustion becomes failed", async () => {
-  const { db } = database();
+  const { sqlite, db } = database();
+  // The queue carries a foreign key to `products`, so the listing this job points at has to exist.
+  insertHealthyListing(sqlite, 42);
   const t0 = "2026-08-15T00:00:00.000Z";
   await enqueueDataQualityRemediation(db, {
     workKey: "manual:listing:42",

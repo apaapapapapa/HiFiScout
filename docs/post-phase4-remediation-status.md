@@ -58,15 +58,32 @@ here rather than absorbed into a threshold change.
 ## Query plans (section 16)
 
 `test/remediation-query-plans.test.ts` explains the SQL the repositories actually issue. Two full
-table reads are recorded there, each with the change that would remove it:
+table reads were recorded there. Both are now fixed — by migration `0027_remediation_selector_indexes.sql`
+and the statement rewrites it enables — and the recorded list is empty:
 
-| Query | Reads | Why the index does not apply |
+| Query | Was | Is |
 | --- | --- | --- |
-| Queue claim | `data_quality_remediation_queue`, plus a sort | Claimable states are an `OR` over different columns, and `ORDER BY priority DESC, available_at, id` disagrees with the partial index column order. A `UNION ALL` per state would use `idx_dq_remediation_queue_claim`. |
-| Replay seeding | `products`, every five minutes | The staleness CTE tests four resolver versions in `CASE` branches, so no single index applies. One selector per resolver, each against its own version index, would bound it. |
+| Queue claim | Read `data_quality_remediation_queue` end to end, then sorted it — the claimable states are an `OR` over different columns, and `ORDER BY priority DESC, available_at, id` disagreed with the one claim index. | A `UNION ALL` per state. Each branch walks `idx_dq_remediation_queue_pending` / `idx_dq_remediation_queue_processing`, which are already in claim order, and stops at `LIMIT`; the outer sort sees at most two batches. `idx_dq_remediation_queue_claim` had no other reader and is dropped. |
+| Replay seeding | Read every listing, every five minutes — the staleness CTE was one disjunction over ten columns, which no index can serve. | Ten bounded selectors, one per condition, each naming its index with `INDEXED BY`. Manufacturer and category versions got theirs in migration 0027; category's is an expression index over `metadata_json.categoryClassification.version`. |
 
-Each allowance names the statement it covers, so an exception earned by one query cannot excuse a
-new scan in another, and an allowance that stops matching fails the test — the list only shrinks.
+Selection is unchanged. Each selector still excludes already-queued work keys before its own `LIMIT`,
+and a listing among the lowest *n* ids of the union has fewer than *n* smaller ids inside every
+selector it matches, so merging the per-selector results cannot lose it.
+
+The cost is now proportional to the work outstanding rather than to the catalog: a stage that has
+finished backfilling costs a seek that finds nothing. The selectors keyed on resolution *status*
+(`unresolved` manufacturer, `unclassified` category, unmatched identity) are the exception — those
+match a large, persistent share of listings by definition, so they read what is genuinely still
+unresolved. They read it through an index instead of through the table.
+
+The test now asserts the index by name for each resolver stage, not merely the absence of a scan.
+Reading through *some* index is not the property that matters: a planner free to pick
+`idx_products_active_ids` for the manufacturer selector would walk every active listing to find the
+few that are behind, which is the cost the split exists to remove.
+
+The allowance mechanism stays. Each entry names the statement it covers, so an exception earned by
+one query cannot excuse a new scan in another, and an allowance that stops matching fails the test —
+the list only shrinks.
 
 Reading a plan correctly matters more than it looks. `SCAN t USING INDEX i` walks an index in
 order and is what these tests are asking for; only a bare `SCAN t` is a row-by-row table read.

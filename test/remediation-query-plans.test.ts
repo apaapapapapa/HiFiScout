@@ -56,28 +56,27 @@ interface ScanAllowance {
 /**
  * Full table reads the schema does not yet avoid, measured rather than assumed.
  *
- * Each is a real production cost, recorded here instead of left as a failing suite so the harness
- * keeps catching *new* scans. Deleting an entry is what a fix looks like: the test then fails until
- * the entry goes.
+ * The list is empty: the queue claim and the replay seeding selector were the two entries, and
+ * migration 0027 plus the selector rewrite removed both. It stays here because recording a new cost
+ * is how this file absorbs one — a scan that cannot be fixed today gets an entry naming the exact
+ * statement it covers, so the harness keeps failing on every *other* scan. Entries only ever leave.
  */
-const KNOWN_UNINDEXED_READS: Record<string, ScanAllowance> = {
-  queueClaim: {
-    tables: ["data_quality_remediation_queue"],
-    when: /SELECT id\s+FROM data_quality_remediation_queue/,
-    reason:
-      "idx_dq_remediation_queue_claim cannot serve this query: the two claimable states are an OR " +
-      "over different columns, and ORDER BY priority DESC, available_at, id disagrees with the " +
-      "index column order, so the plan also sorts. A UNION ALL per state would use the partial index.",
-  },
-  replaySeed: {
-    tables: ["p"],
-    when: /WITH candidates AS/,
-    reason:
-      "The staleness CTE tests four resolver versions in CASE branches, so no single index applies " +
-      "and every listing is read on each five-minute tick. One selector per resolver, each against " +
-      "its own version index, would bound it.",
-  },
-};
+const KNOWN_UNINDEXED_READS: readonly ScanAllowance[] = [];
+
+/**
+ * The index each stage's staleness selector must reach, and the alias its plan names.
+ *
+ * Seeding is one statement per stage now, so this is what "one selector per resolver, each against
+ * its own version index" looks like as an assertion. Reading through *some* index is not enough: a
+ * planner free to pick `idx_products_active_ids` for the manufacturer selector would walk every
+ * active listing to find the few that are behind, which is the cost the split exists to remove.
+ */
+const REQUIRED_SEED_INDEXES: readonly { readonly table: string; readonly index: string }[] = [
+  { table: "p", index: "idx_products_manufacturer_resolver_version" },
+  { table: "p", index: "idx_products_model_resolver_version" },
+  { table: "p", index: "idx_products_category_classifier_version" },
+  { table: "r", index: "idx_product_identity_resolver_version" },
+];
 
 function seedListings(sqlite: DatabaseSync): void {
   const insert = sqlite.prepare(`
@@ -167,7 +166,7 @@ function assertNoGrowingTableScans(
   }
 }
 
-test("queue claiming stays bounded, and its scan is the one recorded below", async () => {
+test("queue claiming walks one partial index per claimable state", async () => {
   const { sqlite, db: inner } = migratedSqlite();
   seedListings(sqlite);
   const { db, executed } = recordingDatabase(inner);
@@ -178,11 +177,22 @@ test("queue claiming stays bounded, and its scan is the one recorded below", asy
 
   assertNoGrowingTableScans(sqlite, executed, {
     label: "claim",
-    allowances: [KNOWN_UNINDEXED_READS.queueClaim],
+    allowances: [...KNOWN_UNINDEXED_READS],
   });
+  // Both halves have to be indexed, not just the one a fixture happens to populate: `pending` is
+  // the common path, and `processing` is the one that reclaims an expired lease.
+  const [claim] = selects(executed);
+  assert.ok(claim, "claiming should issue a candidate query");
+  const plan = queryPlan(sqlite, claim);
+  for (const index of ["idx_dq_remediation_queue_pending", "idx_dq_remediation_queue_processing"]) {
+    assert.ok(
+      readsThroughIndex(plan, "data_quality_remediation_queue", index),
+      `claiming must walk ${index}, got:\n${plan.map((step) => step.detail).join("\n")}`,
+    );
+  }
 });
 
-test("replay seeding reads no table beyond the ones recorded below", async () => {
+test("replay seeding reaches every stage through that stage's own index", async () => {
   const { sqlite, db: inner } = migratedSqlite();
   seedListings(sqlite);
   const { db, executed } = recordingDatabase(inner);
@@ -193,8 +203,17 @@ test("replay seeding reads no table beyond the ones recorded below", async () =>
 
   assertNoGrowingTableScans(sqlite, executed, {
     label: "seed",
-    allowances: [KNOWN_UNINDEXED_READS.replaySeed],
+    allowances: [...KNOWN_UNINDEXED_READS],
   });
+  const plans = selects(executed).map((statement) => queryPlan(sqlite, statement));
+  for (const { table, index } of REQUIRED_SEED_INDEXES) {
+    assert.ok(
+      plans.some((plan) => readsThroughIndex(plan, table, index)),
+      `no seeding statement read ${table} through ${index}; plans were:\n${plans
+        .map((plan) => plan.map((step) => step.detail).join(" | "))
+        .join("\n")}`,
+    );
+  }
 });
 
 test("manufacturer alias evidence loads through the normalized alias index", async () => {
