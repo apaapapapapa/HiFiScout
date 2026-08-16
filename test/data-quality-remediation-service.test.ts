@@ -61,7 +61,10 @@ test("shop remediation refresh batches every source before clearing owned projec
       (2, 1, 'token-2');
   `);
   const db = sqliteD1(sqlite);
-  const calls: Array<{ listings: Array<{ shop_key: string; source_id: string }>; evaluatedAt: string }> = [];
+  const calls: Array<{
+    listings: Array<{ shop_key: string; source_id: string }>;
+    evaluatedAt: string;
+  }> = [];
   const refresh: ListingProjectionRefresher = async (_db, listings, evaluatedAt) => {
     calls.push({ listings: [...listings], evaluatedAt });
   };
