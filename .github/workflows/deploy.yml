@@ -119,7 +119,7 @@ jobs:
           if jq -e . >/dev/null 2>&1 <<< "$response"; then
             jq . <<< "$response"
             jq -e '.shops[] | select(.shopKey == "audiounion" and .configured == true)' <<< "$response" >/dev/null
-          elif grep -Fq 'error code: 1027' <<< "$response"; then
+          elif [[ "$http_status" == "429" ]] && grep -Eqi 'Error[[:space:]]+1027' <<< "$response"; then
             echo "::warning title=Production runtime health deferred::Cloudflare Workers daily request quota is exhausted (error 1027); the Worker deployment itself succeeded and direct D1 deploy gates will continue."
             echo "Production health endpoint returned HTTP ${http_status} because the account-wide Worker request quota is exhausted."
           else
