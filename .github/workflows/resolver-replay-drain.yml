@@ -40,192 +40,47 @@ jobs:
           set -euo pipefail
           info="$(npx wrangler d1 info DB --json)"
           id="$(jq -r '.uuid // .database_id // .id // empty' <<< "$info")"
-          name="$(jq -r '.name // .database_name // empty' <<< "$info")"
-          if [[ -z "$id" || -z "$name" ]]; then
-            echo 'Could not resolve the deployed DB binding to an explicit D1 id/name.' >&2
+          if [[ -z "$id" ]]; then
+            echo 'Could not resolve the deployed DB binding to an explicit D1 id.' >&2
             jq . <<< "$info" >&2
             exit 1
           fi
           echo "database_id=$id" >> "$GITHUB_OUTPUT"
-          echo "database_name=$name" >> "$GITHUB_OUTPUT"
 
-      - name: Create local worker config with production D1 remote binding
-        shell: bash
-        env:
-          DATABASE_ID: ${{ steps.d1.outputs.database_id }}
-          DATABASE_NAME: ${{ steps.d1.outputs.database_name }}
-        run: |
-          set -euo pipefail
-          mkdir -p .generated
-          node <<'NODE'
-          const fs = require('node:fs');
-          const base = JSON.parse(fs.readFileSync('wrangler.jsonc', 'utf8'));
-          const config = {
-            $schema: '../node_modules/wrangler/config-schema.json',
-            name: 'hifiscout-remediation-drain-local',
-            main: '../src/ops/remediation-drain.ts',
-            compatibility_date: base.compatibility_date,
-            compatibility_flags: base.compatibility_flags,
-            d1_databases: [{
-              binding: 'DB',
-              database_name: process.env.DATABASE_NAME,
-              database_id: process.env.DATABASE_ID,
-              remote: true,
-            }],
-          };
-          fs.writeFileSync('.generated/remediation-drain.wrangler.jsonc', JSON.stringify(config, null, 2));
-          NODE
-
-      - name: Process one bounded replay batch
+      - name: Process one bounded replay batch through the D1 REST API
         id: drain
         shell: bash
+        env:
+          D1_DATABASE_ID: ${{ steps.d1.outputs.database_id }}
         run: |
           set -euo pipefail
-          port=8791
-          log=/tmp/remediation-drain-wrangler.log
-          max_sweeps=24
-          npx wrangler dev \
-            --config .generated/remediation-drain.wrangler.jsonc \
-            --ip 127.0.0.1 \
-            --port "$port" \
-            --log-level error \
-            >"$log" 2>&1 &
-          pid=$!
-          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          result=.generated/remediation-drain-result.json
+          npx tsx scripts/resolver-replay-drain.ts \
+            --max-sweeps 64 \
+            --output "$result"
 
-          base="http://127.0.0.1:${port}"
-          ready=0
-          for _ in $(seq 1 60); do
-            if curl -fsS "$base/status" >/tmp/remediation-status.json 2>/dev/null; then
-              ready=1
-              break
-            fi
-            if ! kill -0 "$pid" 2>/dev/null; then
-              cat "$log" >&2
-              exit 1
-            fi
-            sleep 1
-          done
-          if [[ "$ready" -ne 1 ]]; then
-            cat "$log" >&2
-            echo 'Remediation drain worker did not become ready.' >&2
-            exit 1
-          fi
-
-          compaction="$(curl -fsS -X POST "$base/compact")"
-          compacted="$(jq -r '.compacted' <<< "$compaction")"
-          echo "Resolved $compacted superseded automatic queue jobs before this drain batch."
-
-          initial="$(jq -c '.after' <<< "$compaction")"
-          initial_failed="$(jq -r '.queue.failed' <<< "$initial")"
-          echo 'Initial replay status after compaction:'
-          jq . <<< "$initial"
-
-          for iteration in $(seq 1 "$max_sweeps"); do
-            status="$(curl -fsS "$base/status")"
-            stale="$(jq -r '.stale.total' <<< "$status")"
-            if [[ "$stale" -eq 0 ]]; then
-              break
-            fi
-
-            preview="$(npx wrangler d1 execute DB --remote --json --command "
-              SELECT q.id AS job_id,
-                     q.status,
-                     q.work_type,
-                     q.priority,
-                     q.attempt_count,
-                     q.available_at,
-                     q.listing_product_id,
-                     COALESCE(p.shop_key, '') AS shop_key,
-                     COALESCE(p.source_id, '') AS source_id,
-                     COALESCE(p.manufacturer, '') AS manufacturer,
-                     COALESCE(p.model, '') AS model,
-                     COALESCE(p.title, '') AS title
-              FROM data_quality_remediation_queue q
-              LEFT JOIN products p ON p.id = q.listing_product_id
-              WHERE q.attempt_count < q.max_attempts
-                AND (
-                  (q.status = 'pending'
-                    AND q.available_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-                  OR
-                  (q.status = 'processing'
-                    AND (q.lease_expires_at IS NULL
-                      OR q.lease_expires_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now')))
-                )
-              ORDER BY q.priority DESC, q.available_at, q.id
-              LIMIT 1;")"
-            preview_rows="$(jq -c '.[0].results // []' <<< "$preview")"
-            echo "Next remediation claim (iteration=$iteration):"
-            jq '
-              map({
-                job_id,
-                work_type,
-                attempt_count,
-                listing_product_id,
-                shop_key,
-                source_id,
-                manufacturer,
-                model,
-                title
-              })
-            ' <<< "$preview_rows"
-
-            if ! result="$(curl --max-time 180 -fsS -X POST "$base/sweep")"; then
-              echo "Remediation sweep failed or timed out (iteration=$iteration); Worker diagnostics follow:" >&2
-              tail -n 200 "$log" >&2 || true
-              exit 1
-            fi
-            claimed="$(jq -r '.sweep.claimed' <<< "$result")"
-            resolved="$(jq -r '.sweep.resolved' <<< "$result")"
-            retried="$(jq -r '.sweep.retried' <<< "$result")"
-            remaining="$(jq -r '.after.stale.total' <<< "$result")"
-            failed="$(jq -r '.after.queue.failed' <<< "$result")"
-            printf 'iteration=%s claimed=%s resolved=%s retried=%s stale=%s\n' \
-              "$iteration" "$claimed" "$resolved" "$retried" "$remaining"
-
-            if [[ "$failed" -gt "$initial_failed" ]]; then
-              echo 'A remediation job moved to failed while draining.' >&2
-              jq . <<< "$result" >&2
-              exit 1
-            fi
-            if [[ "$claimed" -eq 0 && "$remaining" -gt 0 ]]; then
-              sleep 5
-            fi
-          done
-
-          final="$(curl -fsS "$base/status")"
-          remaining="$(jq -r '.stale.total' <<< "$final")"
-          final_failed="$(jq -r '.queue.failed' <<< "$final")"
-          complete=false
-          if [[ "$remaining" -eq 0 ]]; then
-            complete=true
-          fi
-
-          echo 'Final replay status for this batch:'
-          jq . <<< "$final"
-          if [[ "$final_failed" -gt "$initial_failed" ]]; then
-            echo 'Resolver replay introduced failed queue jobs.' >&2
-            exit 1
-          fi
-
+          complete="$(jq -r '.complete' "$result")"
+          remaining="$(jq -r '.remaining' "$result")"
+          compacted="$(jq -r '.compacted' "$result")"
           echo "complete=$complete" >> "$GITHUB_OUTPUT"
           echo "remaining=$remaining" >> "$GITHUB_OUTPUT"
 
           {
             echo '## Resolver Replay Drain Batch'
             echo
+            echo "Transport: direct Cloudflare D1 REST API (no Worker invocation)"
             echo "Superseded jobs compacted: $compacted"
             echo "Completed: $complete"
             echo "Remaining stale signals: $remaining"
             echo
             echo '### Initial after compaction'
             echo '```json'
-            jq . <<< "$initial"
+            jq .initial "$result"
             echo '```'
             echo
             echo '### Final'
             echo '```json'
-            jq . <<< "$final"
+            jq .final "$result"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
