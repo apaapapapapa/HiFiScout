@@ -88,14 +88,12 @@ test("shop remediation refresh batches every source before clearing owned projec
     ],
     evaluatedAt: "2026-08-16T00:00:00.000Z",
   });
-  assert.deepEqual(projectionState(sqlite, 1), {
-    remediation_projection_required: 0,
-    remediation_projection_token: "",
-  });
-  assert.deepEqual(projectionState(sqlite, 2), {
-    remediation_projection_required: 0,
-    remediation_projection_token: "",
-  });
+  const first = projectionState(sqlite, 1);
+  assert.equal(first.remediation_projection_required, 0);
+  assert.equal(first.remediation_projection_token, "");
+  const second = projectionState(sqlite, 2);
+  assert.equal(second.remediation_projection_required, 0);
+  assert.equal(second.remediation_projection_token, "");
 });
 
 // The empty fast path must not touch D1 or invoke the expensive downstream projection chain.
