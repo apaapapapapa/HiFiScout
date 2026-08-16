@@ -48,7 +48,8 @@ function sqlLiteral(value: BoundValue): string {
   if (typeof value === "string") return `'${value.replaceAll("'", "''")}'`;
   if (typeof value === "boolean") return value ? "1" : "0";
   if (typeof value === "number") {
-    if (!Number.isFinite(value)) throw new TypeError("D1 REST adapter cannot bind a non-finite number");
+    if (!Number.isFinite(value))
+      throw new TypeError("D1 REST adapter cannot bind a non-finite number");
     return String(value);
   }
   return `X'${hex(new Uint8Array(value))}'`;
@@ -57,8 +58,7 @@ function sqlLiteral(value: BoundValue): string {
 function renderBoundSql(sql: string, values: readonly BoundValue[]): string {
   let output = "";
   let valueIndex = 0;
-  let state: "normal" | "single" | "double" | "backtick" | "bracket" | "line" | "block" =
-    "normal";
+  let state: "normal" | "single" | "double" | "backtick" | "bracket" | "line" | "block" = "normal";
 
   for (let index = 0; index < sql.length; index += 1) {
     const current = sql[index] || "";
