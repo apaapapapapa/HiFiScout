@@ -29,7 +29,9 @@ export async function refreshListingProjections(
 ): Promise<void> {
   const uniqueListings = [
     ...new Map(
-      listings.map((listing) => [`${listing.shop_key}\u0000${listing.source_id}`, listing] as const),
+      listings.map(
+        (listing) => [`${listing.shop_key}\u0000${listing.source_id}`, listing] as const,
+      ),
     ).values(),
   ];
 
