@@ -1,6 +1,15 @@
+import {
+  classifyCategoryEvidence,
+  summarizeCategoryEvidence,
+} from "../catalog/category-classifier.js";
+import { collectListingCategoryEvidence } from "../catalog/category-evidence.js";
 import { RESOLUTION_VERSIONS } from "../catalog/resolution-versions.js";
-import { runDataQualityRemediationSweep } from "../db/data-quality-remediation-service.js";
+import type { CategoryEvidenceInput } from "../catalog/types.js";
+import { reprocessStaleManufacturerListings } from "../db/manufacturer-repository.js";
+import { reprocessStaleModelListings } from "../db/model-repository.js";
+import { refreshListingProjections } from "../db/listing-projection-refresh.js";
 import type { QueryableDatabase } from "../db/types.js";
+import { isRecord } from "../types.js";
 
 interface RemediationDrainEnv {
   DB: D1Database;
@@ -22,8 +31,53 @@ interface QueueStatusRow {
   failed: number;
 }
 
+interface CategoryReplayRow {
+  id: number;
+  shop_key: string;
+  source_id: string;
+  title: string;
+  category: string;
+  raw_category: string;
+  metadata_json: string;
+}
+
+const BULK_LIMIT = 250;
+const WRITE_BATCH_SIZE = 50;
+
 function json(value: unknown, status = 200): Response {
   return Response.json(value, { status });
+}
+
+function metadataObject(value: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(value || "{}");
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function categoryMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
+  return isRecord(metadata.categoryClassification) ? metadata.categoryClassification : {};
+}
+
+function categoryEvidence(row: CategoryReplayRow, metadata: Record<string, unknown>) {
+  const stored = categoryMetadata(metadata).evidence;
+  if (Array.isArray(stored)) {
+    const evidence = stored.filter(
+      (entry): entry is CategoryEvidenceInput =>
+        isRecord(entry) &&
+        Array.isArray(entry.categoryIds) &&
+        typeof entry.source === "string" &&
+        typeof entry.strength === "string",
+    );
+    if (evidence.length) return evidence;
+  }
+  return collectListingCategoryEvidence({
+    title: row.title,
+    rawCategory: row.raw_category,
+    hintedCategory: row.category,
+  }).evidence;
 }
 
 async function replayStatus(db: QueryableDatabase) {
@@ -94,25 +148,113 @@ async function replayStatus(db: QueryableDatabase) {
   };
 }
 
-/**
- * Local-only operational worker used by GitHub Actions with a remote D1 binding.
- * It deliberately exposes just status and one bounded queue sweep; it is never deployed.
- */
+async function reprocessStaleCategoryListings(db: QueryableDatabase) {
+  const selected = await db
+    .prepare(`
+      SELECT id, shop_key, source_id, title, category, raw_category, metadata_json
+      FROM products
+      WHERE is_active = 1
+        AND COALESCE(CAST(json_extract(metadata_json, '$.categoryClassification.version') AS INTEGER), 0) < ?
+      ORDER BY id
+      LIMIT ?
+    `)
+    .bind(RESOLUTION_VERSIONS.category, BULK_LIMIT)
+    .all<CategoryReplayRow>();
+  const rows = selected.results || [];
+  if (!rows.length) return { processedCount: 0, changedCount: 0, hasMore: false };
+
+  const replayToken = crypto.randomUUID();
+  const evaluatedAt = new Date().toISOString();
+  const updates: D1PreparedStatement[] = [];
+  let changedCount = 0;
+
+  for (const row of rows) {
+    const metadata = metadataObject(row.metadata_json);
+    const evidence = categoryEvidence(row, metadata);
+    const classification = classifyCategoryEvidence(evidence);
+    const nextMetadata = {
+      ...metadata,
+      categoryClassification: {
+        ...categoryMetadata(metadata),
+        version: RESOLUTION_VERSIONS.category,
+        state: classification.classificationState,
+        status: classification.classificationStatus,
+        reason: classification.classificationReason,
+        source: classification.classificationSource,
+        categoryIds: classification.categoryIds,
+        candidateCategoryIds: classification.candidateCategoryIds,
+        evidence: summarizeCategoryEvidence(evidence),
+      },
+    };
+    const categoryIds = JSON.stringify(classification.categoryIds);
+    const metadataJson = JSON.stringify(nextMetadata);
+    if (row.category !== classification.displayName || row.metadata_json !== metadataJson) {
+      changedCount += 1;
+    }
+    updates.push(
+      db
+        .prepare(`
+          UPDATE products SET
+            category = ?, primary_category_id = ?, category_ids = ?, classification_status = ?,
+            search_aliases = ?, metadata_json = ?, remediation_projection_required = 1,
+            remediation_projection_token = ?
+          WHERE id = ?
+        `)
+        .bind(
+          classification.displayName,
+          classification.primaryCategoryId,
+          categoryIds,
+          classification.classificationStatus,
+          classification.searchAliases,
+          metadataJson,
+          replayToken,
+          row.id,
+        ),
+    );
+  }
+  for (let index = 0; index < updates.length; index += WRITE_BATCH_SIZE) {
+    await db.batch(updates.slice(index, index + WRITE_BATCH_SIZE));
+  }
+  await refreshListingProjections(db, rows, evaluatedAt);
+  const clears = rows.map((row) =>
+    db
+      .prepare(`
+        UPDATE products
+        SET remediation_projection_required = 0, remediation_projection_token = ''
+        WHERE id = ? AND remediation_projection_token = ?
+      `)
+      .bind(row.id, replayToken),
+  );
+  for (let index = 0; index < clears.length; index += WRITE_BATCH_SIZE) {
+    await db.batch(clears.slice(index, index + WRITE_BATCH_SIZE));
+  }
+  return { processedCount: rows.length, changedCount, hasMore: rows.length === BULK_LIMIT };
+}
+
+/** Local-only operational worker. It is never deployed and only exposes bounded bulk replay. */
 export default {
   async fetch(request: Request, env: RemediationDrainEnv): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/status") {
       return json(await replayStatus(env.DB));
     }
-    if (request.method === "POST" && url.pathname === "/sweep") {
+    if (request.method === "POST" && url.pathname === "/replay/manufacturer") {
       const before = await replayStatus(env.DB);
-      const sweep = await runDataQualityRemediationSweep(env.DB, {
-        seedLimit: 250,
-        claimLimit: 50,
-        leaseSeconds: 900,
-      });
+      const replay = await reprocessStaleManufacturerListings(env.DB, { limit: BULK_LIMIT });
       const after = await replayStatus(env.DB);
-      return json({ before, sweep, after });
+      return json({ before, replay, after });
+    }
+    if (request.method === "POST" && url.pathname === "/replay/model") {
+      const before = await replayStatus(env.DB);
+      const replay = await reprocessStaleModelListings(env.DB, { limit: BULK_LIMIT });
+      const after = await replayStatus(env.DB);
+      return json({ before, replay, after });
+    }
+    if (request.method === "POST" && url.pathname === "/replay/category") {
+      const before = await replayStatus(env.DB);
+      const replay = await reprocessStaleCategoryListings(env.DB);
+      const after = await replayStatus(env.DB);
+      return json({ before, replay, after });
     }
     return json({ error: "not_found" }, 404);
   },
