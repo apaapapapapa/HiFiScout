@@ -77,12 +77,12 @@ function sweepDatabase({ failSnapshot = false }: { failSnapshot?: boolean } = {}
   return captureDatabase((statement) => {
     const sql = statement.sql;
     if (/WHEN p\.manufacturer_resolver_version < \? THEN 'resolve_manufacturer'/.test(sql)) {
-      return []; // nothing new to auto-seed this tick
+      return []; // nothing new to auto-seed this tick — one statement per staleness selector
     }
+    // Claiming is a UNION ALL over the two claimable states; the `pending` branch is the one a
+    // freshly seeded queue answers from.
     if (
-      /SELECT id\s+FROM data_quality_remediation_queue\s+WHERE attempt_count < max_attempts/.test(
-        sql,
-      )
+      /FROM data_quality_remediation_queue INDEXED BY idx_dq_remediation_queue_pending/.test(sql)
     ) {
       return [{ id: 1 }];
     }
@@ -166,16 +166,9 @@ test("snapshot finalization failure retries the processed job instead of resolvi
 });
 
 test("an empty claim leaves the data-quality history untouched", async () => {
-  const db = captureDatabase((statement) => {
-    if (
-      /SELECT id\s+FROM data_quality_remediation_queue\s+WHERE attempt_count < max_attempts/.test(
-        statement.sql,
-      )
-    ) {
-      return [];
-    }
-    return [];
-  });
+  // Every read answers empty, which is what an idle tick looks like: nothing stale to seed and
+  // nothing claimable in either state.
+  const db = captureDatabase(() => []);
 
   const result = await runDataQualityRemediationSweep(db, {
     now: new Date("2026-08-15T00:00:00.000Z"),
