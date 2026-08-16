@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { refreshListingProjections } from "../src/db/listing-projection-refresh.js";
 import { captureDatabase } from "./helpers/d1.js";
 
-test("remediation refresh projects each listing separately and deduplicates repeated inputs", async () => {
+test("remediation refresh preserves shop batching and deduplicates repeated inputs", async () => {
   const db = captureDatabase([]);
 
   await refreshListingProjections(
@@ -23,15 +23,7 @@ test("remediation refresh projects each listing separately and deduplicates repe
       statement.sql.includes("FROM products"),
   );
 
-  assert.equal(projectionSourceReads.length, 2);
-  assert.deepEqual(
-    projectionSourceReads.map((statement) => statement.binds),
-    [
-      ["hifido", "source-a"],
-      ["hifido", "source-b"],
-    ],
-  );
-  for (const statement of projectionSourceReads) {
-    assert.match(statement.sql, /source_id IN \(\?\)/);
-  }
+  assert.equal(projectionSourceReads.length, 1);
+  assert.deepEqual(projectionSourceReads[0]?.binds, ["hifido", "source-a", "source-b"]);
+  assert.match(projectionSourceReads[0]?.sql || "", /source_id IN \(\?,\?\)/);
 });
