@@ -68,7 +68,13 @@ jobs:
                 lease_expires_at = NULL,
                 last_error = '',
                 updated_at = '${now}'
-            WHERE status = 'pending'
+            WHERE (
+                status = 'pending'
+                OR (
+                  status = 'processing'
+                  AND (lease_expires_at IS NULL OR lease_expires_at <= '${now}')
+                )
+              )
               AND source = 'scheduled_sweep'
               AND reason = 'automatic_data_quality_remediation'
               AND listing_product_id IS NOT NULL
