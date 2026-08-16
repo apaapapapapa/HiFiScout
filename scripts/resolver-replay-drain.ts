@@ -65,7 +65,8 @@ function argument(name: string, fallback: string): string {
 
 function positiveInteger(value: string, name: string): number {
   const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed <= 0) throw new Error(`${name} must be a positive integer`);
+  if (!Number.isInteger(parsed) || parsed <= 0)
+    throw new Error(`${name} must be a positive integer`);
   return parsed;
 }
 

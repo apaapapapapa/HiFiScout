@@ -37,7 +37,9 @@ function errorSummary(envelope: CloudflareD1Envelope | null): string {
   const errors = envelope?.errors || [];
   if (!errors.length) return "Cloudflare D1 API returned an unsuccessful response";
   return errors
-    .map((error) => [error.code, error.message].filter((part) => part != null && part !== "").join(": "))
+    .map((error) =>
+      [error.code, error.message].filter((part) => part != null && part !== "").join(": "),
+    )
     .join("; ");
 }
 
@@ -87,7 +89,9 @@ class D1RestPreparedStatement {
     return this.database.execute<T>({ sql: this.sql, params: [...this.params] });
   }
 
-  async raw<T extends unknown[] = unknown[]>(options: { columnNames?: boolean } = {}): Promise<T[]> {
+  async raw<T extends unknown[] = unknown[]>(
+    options: { columnNames?: boolean } = {},
+  ): Promise<T[]> {
     const result = await this.database.execute<Record<string, unknown>>({
       sql: this.sql,
       params: [...this.params],
@@ -109,7 +113,9 @@ export class D1RestDatabase implements QueryableDatabase {
 
   constructor(private readonly options: D1RestDatabaseOptions) {
     this.fetchImpl = options.fetchImpl || fetch;
-    this.sleep = options.sleep || ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
+    this.sleep =
+      options.sleep ||
+      ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
     this.maxRateLimitRetries = Math.max(0, options.maxRateLimitRetries ?? 4);
     this.endpoint = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(options.accountId)}/d1/database/${encodeURIComponent(options.databaseId)}/query`;
   }

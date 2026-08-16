@@ -17,7 +17,10 @@ function jsonResponse(body: unknown, status = 200, headers?: HeadersInit): Respo
 
 test("D1 REST adapter sends bound queries directly to the database API", async () => {
   const captured: CapturedRequest[] = [];
-  const fakeFetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+  const fakeFetch = async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
     const headers = new Headers(init?.headers);
     captured.push({
       url: String(input),
@@ -63,7 +66,10 @@ test("D1 REST adapter sends bound queries directly to the database API", async (
 
 test("D1 REST adapter preserves D1 batch semantics in one API request", async () => {
   const captured: CapturedRequest[] = [];
-  const fakeFetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+  const fakeFetch = async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
     const headers = new Headers(init?.headers);
     captured.push({
       url: String(input),
