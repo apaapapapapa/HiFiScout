@@ -190,6 +190,15 @@ function asStatementResults(value: unknown): unknown[] {
   return value == null ? [] : [value];
 }
 
+function statementFailed(value: unknown): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "success" in value &&
+    (value as { success?: boolean }).success === false
+  );
+}
+
 class D1RestPreparedStatement {
   constructor(
     private readonly database: D1RestDatabase,
@@ -312,16 +321,16 @@ export class D1RestDatabase implements QueryableDatabase {
       }
       if (!envelope?.success) throw new Error(errorSummary(envelope));
 
-      const results = asStatementResults(envelope.result) as D1Result<T>[];
-      if (results.length !== expectedResults) {
+      const rawResults = asStatementResults(envelope.result);
+      if (rawResults.length !== expectedResults) {
         throw new Error(
-          `Cloudflare D1 API result count mismatch: expected ${expectedResults}, received ${results.length}`,
+          `Cloudflare D1 API result count mismatch: expected ${expectedResults}, received ${rawResults.length}`,
         );
       }
-      if (results.some((result) => result.success === false)) {
+      if (rawResults.some(statementFailed)) {
         throw new Error("Cloudflare D1 API returned an unsuccessful statement result");
       }
-      return results;
+      return rawResults as D1Result<T>[];
     }
   }
 }
