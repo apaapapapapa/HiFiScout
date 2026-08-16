@@ -72,10 +72,11 @@ const KNOWN_UNINDEXED_READS: readonly ScanAllowance[] = [];
  * active listing to find the few that are behind, which is the cost the split exists to remove.
  */
 const REQUIRED_SEED_INDEXES: readonly { readonly table: string; readonly index: string }[] = [
-  { table: "p", index: "idx_products_manufacturer_resolver_version" },
-  { table: "p", index: "idx_products_model_resolver_version" },
-  { table: "p", index: "idx_products_category_classifier_version" },
+  { table: "p", index: "idx_products_active_manufacturer_version" },
+  { table: "p", index: "idx_products_active_model_version" },
+  { table: "p", index: "idx_products_active_category_version" },
   { table: "r", index: "idx_product_identity_resolver_version" },
+  { table: "p", index: "idx_products_remediation_projection_required" },
 ];
 
 function seedListings(sqlite: DatabaseSync): void {
@@ -211,6 +212,21 @@ test("replay seeding reaches every stage through that stage's own index", async 
       plans.some((plan) => readsThroughIndex(plan, table, index)),
       `no seeding statement read ${table} through ${index}; plans were:\n${plans
         .map((plan) => plan.map((step) => step.detail).join(" | "))
+        .join("\n")}`,
+    );
+  }
+
+  // Reading through an index is not yet a bounded read. A sort between the index and the LIMIT means
+  // every stale row is visited before any of them can be discarded, which is how a selector stays
+  // proportional to the backlog while looking perfectly indexed — the exact shape the seeding
+  // selectors were in before their `ORDER BY` was made to match the order their index delivers.
+  for (const plan of plans) {
+    const sorted = plan.filter((step) => /USE TEMP B-TREE FOR ORDER BY/.test(step.detail));
+    assert.deepEqual(
+      sorted.map((step) => step.detail),
+      [],
+      `a seeding selector sorts before its LIMIT, so the LIMIT cannot bound it:\n${plan
+        .map((step) => step.detail)
         .join("\n")}`,
     );
   }
