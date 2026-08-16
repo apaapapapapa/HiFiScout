@@ -49,6 +49,59 @@ jobs:
           echo "database_id=$id" >> "$GITHUB_OUTPUT"
           echo "database_name=$name" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve superseded automatic queue jobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          versions="$(npx tsx --eval 'import { RESOLUTION_VERSIONS } from "./src/catalog/resolution-versions.ts"; process.stdout.write(JSON.stringify(RESOLUTION_VERSIONS));')"
+          manufacturer_version="$(jq -r '.manufacturer' <<< "$versions")"
+          model_version="$(jq -r '.model' <<< "$versions")"
+          category_version="$(jq -r '.category' <<< "$versions")"
+          identity_version="$(jq -r '.identity' <<< "$versions")"
+          now="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
+
+          result="$(npx wrangler d1 execute DB --remote --json --command "
+            UPDATE data_quality_remediation_queue
+            SET status = 'resolved',
+                resolved_at = '${now}',
+                claimed_at = NULL,
+                lease_expires_at = NULL,
+                last_error = '',
+                updated_at = '${now}'
+            WHERE status = 'pending'
+              AND source = 'scheduled_sweep'
+              AND reason = 'automatic_data_quality_remediation'
+              AND listing_product_id IS NOT NULL
+              AND work_type IN (
+                'resolve_manufacturer', 'resolve_model', 'classify_category',
+                'resolve_identity', 'rebuild_search_entity'
+              )
+              AND EXISTS (
+                SELECT 1
+                FROM products p
+                LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
+                WHERE p.id = data_quality_remediation_queue.listing_product_id
+                  AND (
+                    p.is_active = 0
+                    OR (
+                      p.remediation_projection_required = 0
+                      AND (
+                        (data_quality_remediation_queue.work_type = 'resolve_manufacturer'
+                          AND p.manufacturer_resolver_version >= ${manufacturer_version})
+                        OR (data_quality_remediation_queue.work_type = 'resolve_model'
+                          AND p.model_resolver_version >= ${model_version})
+                        OR (data_quality_remediation_queue.work_type = 'classify_category'
+                          AND COALESCE(CAST(json_extract(p.metadata_json, '$.categoryClassification.version') AS INTEGER), 0) >= ${category_version})
+                        OR (data_quality_remediation_queue.work_type = 'resolve_identity'
+                          AND COALESCE(r.identity_resolver_version, 0) >= ${identity_version})
+                        OR data_quality_remediation_queue.work_type = 'rebuild_search_entity'
+                      )
+                    )
+                  )
+              );")"
+          compacted="$(jq -r '.[0].meta.changes // 0' <<< "$result")"
+          echo "Resolved $compacted superseded automatic queue jobs before this drain batch."
+
       - name: Create local worker config with production D1 remote binding
         shell: bash
         env:
