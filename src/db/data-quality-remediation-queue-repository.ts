@@ -55,11 +55,16 @@ interface QueueRow {
 
 interface CandidateRow {
   id: number;
-  work_type: DataQualityRemediationWorkType;
   manufacturer_resolver_version: number;
   model_resolver_version: number;
   category_classifier_version: number;
   identity_resolver_version: number;
+}
+
+/** A candidate plus the selector that found it, which is what it is owed. */
+interface Candidate {
+  readonly row: CandidateRow;
+  readonly workType: DataQualityRemediationWorkType;
 }
 
 interface FullRebuildRow {
@@ -186,10 +191,11 @@ export async function enqueueDataQualityRemediation(
   return number(result?.meta?.changes) > 0;
 }
 
-function automaticWorkKey(row: CandidateRow): string {
+/** Must stay identical to the `work_key` the selector's SQL builds, which is what dedupes work. */
+function automaticWorkKey({ row, workType }: Candidate): string {
   return [
     "auto",
-    row.work_type,
+    workType,
     `listing:${row.id}`,
     `manufacturer:${row.manufacturer_resolver_version}`,
     `model:${row.model_resolver_version}`,
@@ -203,12 +209,14 @@ const CATEGORY_VERSION_EXPRESSION =
   "COALESCE(CAST(json_extract(p.metadata_json, '$.categoryClassification.version') AS INTEGER), 0)";
 
 /**
- * One indexed way into the stale set.
+ * One indexed way into the stale set, bounded by its own LIMIT.
  *
  * Staleness used to be a single disjunction over ten columns. No index can serve a disjunction, so
- * every five-minute tick read every listing — a cost that grew with the catalog while the work it
- * was looking for shrank. Splitting it gives each condition its own selector, and each selector its
- * own index, so a drained stage costs a seek that finds nothing instead of a table read.
+ * every five-minute tick read every listing. Splitting it gives each condition its own selector and
+ * its own index — but an index is only half of it: the selector's `ORDER BY` has to be the order its
+ * index already delivers, or the plan collects every matching row into a temp b-tree before the
+ * LIMIT can discard them, and the tick is once again proportional to the backlog rather than to the
+ * page it is allowed to take.
  *
  * `INDEXED BY` is the point, not decoration. These statements exist because of the index they name;
  * a plan that quietly fell back to reading the table would restore exactly the cost this removes,
@@ -223,7 +231,27 @@ interface StaleSelector {
   readonly where: string;
   /** Binds the predicate needs, in the order it uses them. */
   readonly binds: readonly number[];
+  /** Must match what `source`'s index already yields, so LIMIT stops the walk. */
+  readonly orderBy: string;
+  /** What the selected listing is owed. The selector *is* the reason, so it names it. */
+  readonly workType: DataQualityRemediationWorkType;
+  /**
+   * Listing id, as the *driving* table spells it.
+   *
+   * It has to come from the table the index is on, or the ordering the index delivers is one SQLite
+   * cannot connect to the `ORDER BY` and it sorts instead. `p.id` and `r.listing_product_id` are the
+   * same value — the join is on them — but only one of them is a column of the driving index.
+   */
+  readonly id: string;
+  /** Same reasoning: a `COALESCE` over an indexed column is an expression, and cannot be ordered on. */
+  readonly identityVersion: string;
 }
+
+/** Reached through `products`, so the identity row may be absent and its version defaults. */
+const LISTING_DRIVEN = {
+  id: "p.id",
+  identityVersion: "COALESCE(r.identity_resolver_version, 0)",
+} as const;
 
 /** Listings drive the selector; the identity row may not exist yet. */
 function listingSource(index: string): string {
@@ -238,110 +266,100 @@ function identitySource(index: string): string {
 }
 
 /**
- * Every condition the old disjunction contained, one indexed selector each.
+ * The two things that make a listing stale, one selector per stage.
  *
- * The status predicates are written as equalities rather than the `<> 'resolved'` the work-type CASE
- * still uses, because `<>` cannot seek. Both spellings select the same rows: each column carries a
- * CHECK constraint listing its complete domain (0005, 0017, 0023), so "not resolved" and "one of the
- * remaining values" are the same set.
+ * Both are *signals*: a resolver version behind the current one, and the projection dirty flag that
+ * a failed downstream refresh leaves behind. Both are also self-clearing, so a drained stage costs a
+ * seek that finds nothing.
+ *
+ * A resolution *result* — still-unresolved manufacturer, still-unclassified category, still-
+ * unresolved identity, missing identity row — is deliberately not here, though it used to be. It is
+ * not a signal: replaying the same resolver version over the same listing produces the same result,
+ * so those selectors walked the whole persistent unresolved catalog every tick to enqueue work whose
+ * outcome was already known, and then to find nothing at all once the deterministic keys were
+ * queued. What actually changes an outcome is a version bump, which the selectors below catch, or a
+ * dependency change, and every dependency drives its own bounded, cursor-restartable replay:
+ * `reprocessManufacturerAliasListings` on alias verification, `reprocessPendingCatalogRemediation`
+ * on catalog verification, and `reclassifyProductsFromKnowledgeCatalog`, which sets
+ * `remediation_projection_required` and so arrives back here through the projection selector.
+ * Re-running everything regardless stays available as the explicit, paged
+ * `enqueueFullDataQualityRebuild`.
+ *
+ * Order is priority: a listing behind on two stages is seeded for the first one that claims it.
  */
 const STALE_SELECTORS: readonly StaleSelector[] = [
   {
     key: "manufacturer_version",
-    source: listingSource("idx_products_manufacturer_resolver_version"),
+    ...LISTING_DRIVEN,
+    source: listingSource("idx_products_active_manufacturer_version"),
     where: "p.is_active = 1 AND p.manufacturer_resolver_version < ?",
     binds: [RESOLUTION_VERSIONS.manufacturer],
+    orderBy: "k.manufacturer_resolver_version, k.id",
+    workType: "resolve_manufacturer",
   },
   {
     key: "model_version",
-    source: listingSource("idx_products_model_resolver_version"),
+    ...LISTING_DRIVEN,
+    source: listingSource("idx_products_active_model_version"),
     where: "p.is_active = 1 AND p.model_resolver_version < ?",
     binds: [RESOLUTION_VERSIONS.model],
+    orderBy: "k.model_resolver_version, k.id",
+    workType: "resolve_model",
   },
   {
     key: "category_version",
-    source: listingSource("idx_products_category_classifier_version"),
+    ...LISTING_DRIVEN,
+    source: listingSource("idx_products_active_category_version"),
     where: `p.is_active = 1 AND ${CATEGORY_VERSION_EXPRESSION} < ?`,
     binds: [RESOLUTION_VERSIONS.category],
+    orderBy: "k.category_classifier_version, k.id",
+    workType: "classify_category",
   },
   {
     key: "identity_version",
+    // The one selector `product_identity_resolutions` drives, so both the id and the version come
+    // from that table: they are the columns of `idx_product_identity_resolver_version`, in its order.
+    id: "r.listing_product_id",
+    identityVersion: "r.identity_resolver_version",
     source: identitySource("idx_product_identity_resolver_version"),
     where: "p.is_active = 1 AND r.identity_resolver_version < ?",
     binds: [RESOLUTION_VERSIONS.identity],
-  },
-  {
-    key: "identity_unresolved",
-    source: identitySource("idx_product_identity_status"),
-    where: "p.is_active = 1 AND r.status = 'unresolved'",
-    binds: [],
-  },
-  {
-    key: "identity_missing",
-    source: listingSource("idx_products_active_ids"),
-    where: "p.is_active = 1 AND r.listing_product_id IS NULL",
-    binds: [],
+    orderBy: "k.identity_resolver_version, k.id",
+    workType: "resolve_identity",
   },
   {
     key: "projection_required",
+    ...LISTING_DRIVEN,
     source: listingSource("idx_products_remediation_projection_required"),
     where: "p.is_active = 1 AND p.remediation_projection_required = 1",
     binds: [],
-  },
-  {
-    key: "manufacturer_unresolved",
-    source: listingSource("idx_products_manufacturer_resolution"),
-    where: "p.is_active = 1 AND p.manufacturer_resolution_status IN ('candidate', 'unresolved')",
-    binds: [],
-  },
-  {
-    key: "model_unresolved",
-    source: listingSource("idx_products_model_resolution"),
-    where: "p.is_active = 1 AND p.model_resolution_status IN ('candidate', 'unresolved')",
-    binds: [],
-  },
-  {
-    key: "category_unclassified",
-    source: listingSource("idx_products_classification_status"),
-    where: "p.is_active = 1 AND p.classification_status = 'unclassified'",
-    binds: [],
+    orderBy: "k.id",
+    workType: "rebuild_search_entity",
   },
 ];
 
 /**
  * The candidate projection, reached through one selector.
  *
- * Only the driving table and predicate vary. Work type and work key are computed from the same
- * listing/identity state in every selector, so the same listing reached two ways produces the same
- * row and deduplicates cleanly.
+ * Only the driving table, predicate, order and work type vary. The work key still carries all four
+ * resolver versions whichever selector produced the row, so the same listing reached two ways
+ * produces the same key and a version bump anywhere still produces a new one.
  */
 function staleCandidateSql(selector: StaleSelector): string {
   return `
       WITH candidates AS (
         SELECT
-          p.id,
-          CASE
-            WHEN p.manufacturer_resolver_version < ? THEN 'resolve_manufacturer'
-            WHEN p.model_resolver_version < ? THEN 'resolve_model'
-            WHEN ${CATEGORY_VERSION_EXPRESSION} < ? THEN 'classify_category'
-            WHEN COALESCE(r.identity_resolver_version, 0) < ? THEN 'resolve_identity'
-            WHEN p.remediation_projection_required = 1 THEN 'rebuild_search_entity'
-            WHEN p.manufacturer_resolution_status <> 'resolved' THEN 'resolve_manufacturer'
-            WHEN p.model_resolution_status <> 'resolved' THEN 'resolve_model'
-            WHEN p.classification_status <> 'classified' THEN 'classify_category'
-            WHEN r.listing_product_id IS NULL OR r.status <> 'matched' THEN 'resolve_identity'
-            ELSE 'reprocess_listing'
-          END AS work_type,
+          ${selector.id} AS id,
           p.manufacturer_resolver_version,
           p.model_resolver_version,
           ${CATEGORY_VERSION_EXPRESSION} AS category_classifier_version,
-          COALESCE(r.identity_resolver_version, 0) AS identity_resolver_version
+          ${selector.identityVersion} AS identity_resolver_version
         FROM ${selector.source}
         WHERE ${selector.where}
       ), keyed AS (
         SELECT
           c.*,
-          'auto:' || c.work_type ||
+          'auto:${selector.workType}' ||
           ':listing:' || c.id ||
           ':manufacturer:' || c.manufacturer_resolver_version ||
           ':model:' || c.model_resolver_version ||
@@ -351,7 +369,6 @@ function staleCandidateSql(selector: StaleSelector): string {
       )
       SELECT
         k.id,
-        k.work_type,
         k.manufacturer_resolver_version,
         k.model_resolver_version,
         k.category_classifier_version,
@@ -362,7 +379,7 @@ function staleCandidateSql(selector: StaleSelector): string {
         FROM data_quality_remediation_queue q
         WHERE q.work_key = k.work_key
       )
-      ORDER BY k.id
+      ORDER BY ${selector.orderBy}
       LIMIT ?
     `;
 }
@@ -381,39 +398,35 @@ export async function seedDataQualityRemediationQueue(
 ): Promise<SeedRemediationResult> {
   const selectedLimit = bounded(limit, DEFAULT_SEED_LIMIT, MAX_SEED_LIMIT);
   const seen = new Set<number>();
-  const candidates: CandidateRow[] = [];
+  const candidates: Candidate[] = [];
+  // Every selector runs, and each is asked for at most one page, so a tick reads a fixed number of
+  // bounded index seeks however far behind the catalog is. Stopping early once the budget is full
+  // would save four seeks and cost the harness its view of the other four plans — and would let a
+  // long backfill guarantee that the later stages are never even looked at.
+  //
+  // Pages are kept in selector order, which is the work-type priority the single CASE expression
+  // used to encode: a listing behind on two stages is seeded for the first stage that claims it.
   for (const selector of STALE_SELECTORS) {
     const rows = await db
       .prepare(staleCandidateSql(selector))
-      .bind(
-        RESOLUTION_VERSIONS.manufacturer,
-        RESOLUTION_VERSIONS.model,
-        RESOLUTION_VERSIONS.category,
-        RESOLUTION_VERSIONS.identity,
-        ...selector.binds,
-        selectedLimit,
-      )
+      .bind(...selector.binds, selectedLimit)
       .all<CandidateRow>();
     for (const row of rows.results || []) {
       const id = number(row.id);
       if (seen.has(id)) continue;
       seen.add(id);
-      candidates.push(row);
+      candidates.push({ row, workType: selector.workType });
     }
   }
 
-  // Splitting the selector did not change which listings get picked. Each one already excludes
-  // deduplicated keys before its own LIMIT, and a listing among the lowest `selectedLimit` ids of
-  // the union has fewer than that many smaller ids inside every selector it matches — so it is
-  // returned by each of them, and merging cannot lose it.
-  candidates.sort((left, right) => number(left.id) - number(right.id));
   const selected = candidates.slice(0, selectedLimit);
   const workKeys: string[] = [];
-  for (const row of selected) {
-    const workKey = automaticWorkKey(row);
+  for (const candidate of selected) {
+    const { row } = candidate;
+    const workKey = automaticWorkKey(candidate);
     const inserted = await enqueueDataQualityRemediation(db, {
       workKey,
-      workType: row.work_type,
+      workType: candidate.workType,
       listingProductId: number(row.id),
       entityId: String(row.id),
       reason: "automatic_data_quality_remediation",

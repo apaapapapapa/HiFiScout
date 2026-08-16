@@ -58,28 +58,54 @@ here rather than absorbed into a threshold change.
 ## Query plans (section 16)
 
 `test/remediation-query-plans.test.ts` explains the SQL the repositories actually issue. Two full
-table reads were recorded there. Both are now fixed — by migration `0027_remediation_selector_indexes.sql`
-and the statement rewrites it enables — and the recorded list is empty:
+table reads were recorded there. Both are fixed and the recorded list is empty:
 
 | Query | Was | Is |
 | --- | --- | --- |
 | Queue claim | Read `data_quality_remediation_queue` end to end, then sorted it — the claimable states are an `OR` over different columns, and `ORDER BY priority DESC, available_at, id` disagreed with the one claim index. | A `UNION ALL` per state. Each branch walks `idx_dq_remediation_queue_pending` / `idx_dq_remediation_queue_processing`, which are already in claim order, and stops at `LIMIT`; the outer sort sees at most two batches. `idx_dq_remediation_queue_claim` had no other reader and is dropped. |
-| Replay seeding | Read every listing, every five minutes — the staleness CTE was one disjunction over ten columns, which no index can serve. | Ten bounded selectors, one per condition, each naming its index with `INDEXED BY`. Manufacturer and category versions got theirs in migration 0027; category's is an expression index over `metadata_json.categoryClassification.version`. |
+| Replay seeding | Read every listing, every five minutes — the staleness CTE was one disjunction over ten columns, which no index can serve. | Five bounded selectors, each naming its index with `INDEXED BY` and ordering by what that index already delivers, so a tick is five index seeks of one page each. |
 
-Selection is unchanged. Each selector still excludes already-queued work keys before its own `LIMIT`,
-and a listing among the lowest *n* ids of the union has fewer than *n* smaller ids inside every
-selector it matches, so merging the per-selector results cannot lose it.
+Migration 0027 split the selector; **0028 is what made the split bound anything**, and the gap
+between those two is the part worth remembering.
 
-The cost is now proportional to the work outstanding rather than to the catalog: a stage that has
-finished backfilling costs a seek that finds nothing. The selectors keyed on resolution *status*
-(`unresolved` manufacturer, `unclassified` category, unmatched identity) are the exception — those
-match a large, persistent share of listings by definition, so they read what is genuinely still
-unresolved. They read it through an index instead of through the table.
+**An index is not a bound if a sort sits between it and the `LIMIT`.** Three of 0027's selectors read
+through an index and then collected every matching row into a temp b-tree, because `ORDER BY id`
+disagreed with the order the index delivered. Ordering by `(version, id)` instead — the index's own
+order — lets the plan stream and stop. The test now fails on `USE TEMP B-TREE FOR ORDER BY` in any
+seeding plan, which is the property that actually matters and the one "reads through an index" hides.
+Getting there also meant selecting the driving table's spelling of a column: `r.listing_product_id`
+rather than `p.id`, and a bare `r.identity_resolver_version` rather than a `COALESCE` over it, since
+SQLite cannot order on an expression using the index underneath it.
 
-The test now asserts the index by name for each resolver stage, not merely the absence of a scan.
-Reading through *some* index is not the property that matters: a planner free to pick
-`idx_products_active_ids` for the manufacturer selector would walk every active listing to find the
-few that are behind, which is the cost the split exists to remove.
+**A range on the leading column ends the usable prefix.** 0027's version indexes were
+`(version, is_active, id)`, so a catalog full of retired listings on an old resolver version would be
+read and discarded one entry at a time. 0028 makes `is_active` a partial-index predicate instead of a
+key column, which keeps inactive rows out of the index entirely and leaves the key columns free to
+match the selector's order. Leading with an `is_active` equality would also have worked for the
+selector — and did visible damage elsewhere: it made the version indexes look attractive to unrelated
+listing queries, and the unresolved-identity dashboard query immediately switched off
+`idx_products_identity_group` onto one of them.
+
+**Still-unresolved is a result, not a signal.** 0027 gave "manufacturer unresolved", "category
+unclassified", "identity unresolved" and "identity row missing" an index each, which fixed the plan
+and not the cost: their candidate set is the persistent unresolved catalog, so every tick walked all
+of it, probed the queue once per row, and — once the deterministic work keys were queued — returned
+nothing. Replaying the same resolver version over the same listing produces the same answer, so those
+four are gone from automatic seeding. What remains is the two things that genuinely mean *stale*:
+
+- a resolver version behind the current one (manufacturer, model, category, identity), and
+- `remediation_projection_required`, the dirty flag a failed downstream refresh leaves behind.
+
+Both self-clear, so a drained stage costs a seek that finds nothing. An outcome that changes because a
+*dependency* changed is already covered, bounded and cursor-restartable, elsewhere:
+`reprocessManufacturerAliasListings` on alias verification, `reprocessPendingCatalogRemediation` on
+catalog verification, and `reclassifyProductsFromKnowledgeCatalog`, which sets the projection flag and
+so arrives back in this queue. Re-running everything regardless is the explicit, paged
+`enqueueFullDataQualityRebuild`.
+
+One property did change: seeding pages are now taken in stage order rather than by listing id, so a
+long backfill in an early stage can delay seeding of a later one. That ordering matches the priority
+the old `CASE` already encoded, and every stage's page is read whether or not the budget is full.
 
 The allowance mechanism stays. Each entry names the statement it covers, so an exception earned by
 one query cannot excuse a new scan in another, and an allowance that stops matching fails the test —

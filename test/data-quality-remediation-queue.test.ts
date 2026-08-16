@@ -101,6 +101,45 @@ test("a listing already at every current version seeds no work at all", async ()
   assert.equal(metrics.backlog, 0);
 });
 
+test("a listing that is merely unresolved at the current version is not stale", async () => {
+  // Being unresolved is a result, not a signal. Replaying the same resolver version over the same
+  // listing produces the same answer, so seeding it every five minutes only re-enqueues work whose
+  // outcome is already known — and once its deterministic key is queued, walking the whole
+  // persistent unresolved set to find nothing is the cost that has to stay off the cron path.
+  // Outcomes change when a version moves (covered above) or when a dependency does, and every
+  // dependency drives its own bounded replay; `enqueueFullDataQualityRebuild` remains for the rest.
+  const { sqlite, db } = database();
+  insertHealthyListing(sqlite, 1);
+  sqlite.exec(`
+    UPDATE products
+    SET manufacturer_resolution_status = 'unresolved',
+        model_resolution_status = 'unresolved',
+        classification_status = 'unclassified'
+    WHERE id = 1
+  `);
+  sqlite.exec(
+    "UPDATE product_identity_resolutions SET status = 'unresolved' WHERE listing_product_id = 1",
+  );
+
+  const seeded = await seedDataQualityRemediationQueue(db, { now: "2026-08-15T00:00:00.000Z" });
+
+  assert.equal(seeded.selectedCount, 0);
+  assert.deepEqual(seeded.workKeys, []);
+});
+
+test("a listing whose downstream refresh failed is still stale", async () => {
+  // The counterpart: `remediation_projection_required` is a signal, and it is what keeps a listing
+  // that is already at every current version from being stranded by a failed projection pass.
+  const { sqlite, db } = database();
+  insertHealthyListing(sqlite, 1);
+  sqlite.exec("UPDATE products SET remediation_projection_required = 1 WHERE id = 1");
+
+  const seeded = await seedDataQualityRemediationQueue(db, { now: "2026-08-15T00:00:00.000Z" });
+
+  assert.equal(seeded.workKeys.length, 1);
+  assert.match(seeded.workKeys[0] || "", /rebuild_search_entity/);
+});
+
 test("deduplicated low ids cannot starve later stale listings", async () => {
   const { sqlite, db } = database();
   insertHealthyListing(sqlite, 1);
