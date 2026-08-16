@@ -1,4 +1,5 @@
 import { RESOLUTION_VERSIONS } from "../catalog/resolution-versions.js";
+import { compactSupersededAutomaticRemediationJobs } from "../db/data-quality-remediation-compaction.js";
 import { runDataQualityRemediationSweep } from "../db/data-quality-remediation-service.js";
 import type { QueryableDatabase } from "../db/types.js";
 
@@ -96,13 +97,17 @@ async function replayStatus(db: QueryableDatabase) {
 
 /**
  * Local-only operational worker used by GitHub Actions with a remote D1 binding.
- * It deliberately exposes just status and one bounded queue sweep; it is never deployed.
+ * It deliberately exposes only bounded remediation operations; it is never deployed.
  */
 export default {
   async fetch(request: Request, env: RemediationDrainEnv): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/status") {
       return json(await replayStatus(env.DB));
+    }
+    if (request.method === "POST" && url.pathname === "/compact") {
+      const compacted = await compactSupersededAutomaticRemediationJobs(env.DB);
+      return json({ compacted, after: await replayStatus(env.DB) });
     }
     if (request.method === "POST" && url.pathname === "/sweep") {
       const before = await replayStatus(env.DB);

@@ -112,9 +112,13 @@ jobs:
             exit 1
           fi
 
-          initial="$(cat /tmp/remediation-status.json)"
+          compaction="$(curl -fsS -X POST "$base/compact")"
+          compacted="$(jq -r '.compacted' <<< "$compaction")"
+          echo "Resolved $compacted superseded automatic queue jobs before this drain batch."
+
+          initial="$(jq -c '.after' <<< "$compaction")"
           initial_failed="$(jq -r '.queue.failed' <<< "$initial")"
-          echo 'Initial replay status:'
+          echo 'Initial replay status after compaction:'
           jq . <<< "$initial"
 
           for iteration in $(seq 1 "$max_sweeps"); do
@@ -164,10 +168,11 @@ jobs:
           {
             echo '## Resolver Replay Drain Batch'
             echo
+            echo "Superseded jobs compacted: $compacted"
             echo "Completed: $complete"
             echo "Remaining stale signals: $remaining"
             echo
-            echo '### Initial'
+            echo '### Initial after compaction'
             echo '```json'
             jq . <<< "$initial"
             echo '```'
