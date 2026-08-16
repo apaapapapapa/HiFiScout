@@ -83,7 +83,7 @@ jobs:
           set -euo pipefail
           port=8791
           log=/tmp/remediation-drain-wrangler.log
-          max_sweeps=12
+          max_sweeps=24
           npx wrangler dev \
             --config .generated/remediation-drain.wrangler.jsonc \
             --ip 127.0.0.1 \
@@ -128,7 +128,53 @@ jobs:
               break
             fi
 
-            result="$(curl -fsS -X POST "$base/sweep")"
+            preview="$(npx wrangler d1 execute DB --remote --json --command "
+              SELECT q.id AS job_id,
+                     q.status,
+                     q.work_type,
+                     q.priority,
+                     q.attempt_count,
+                     q.available_at,
+                     q.listing_product_id,
+                     COALESCE(p.shop_key, '') AS shop_key,
+                     COALESCE(p.source_id, '') AS source_id,
+                     COALESCE(p.manufacturer, '') AS manufacturer,
+                     COALESCE(p.model, '') AS model,
+                     COALESCE(p.title, '') AS title
+              FROM data_quality_remediation_queue q
+              LEFT JOIN products p ON p.id = q.listing_product_id
+              WHERE q.attempt_count < q.max_attempts
+                AND (
+                  (q.status = 'pending'
+                    AND q.available_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                  OR
+                  (q.status = 'processing'
+                    AND (q.lease_expires_at IS NULL
+                      OR q.lease_expires_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now')))
+                )
+              ORDER BY q.priority DESC, q.available_at, q.id
+              LIMIT 10;")"
+            preview_rows="$(jq -c '.[0].results // []' <<< "$preview")"
+            echo "Next remediation claim composition (iteration=$iteration):"
+            jq '
+              group_by(.shop_key)
+              | map({
+                  shop_key: (.[0].shop_key // ""),
+                  count: length,
+                  listings: map({
+                    job_id,
+                    work_type,
+                    attempt_count,
+                    listing_product_id,
+                    source_id,
+                    manufacturer,
+                    model,
+                    title
+                  })
+                })
+            ' <<< "$preview_rows"
+
+            result="$(curl --max-time 180 -fsS -X POST "$base/sweep")"
             claimed="$(jq -r '.sweep.claimed' <<< "$result")"
             resolved="$(jq -r '.sweep.resolved' <<< "$result")"
             retried="$(jq -r '.sweep.retried' <<< "$result")"
