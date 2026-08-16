@@ -9,10 +9,9 @@ interface CapturedRequest {
 }
 
 function jsonResponse(body: unknown, status = 200, headers?: HeadersInit): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json", ...headers },
-  });
+  const responseHeaders = new Headers(headers);
+  responseHeaders.set("Content-Type", "application/json");
+  return new Response(JSON.stringify(body), { status, headers: responseHeaders });
 }
 
 test("D1 REST adapter sends bound queries directly to the database API", async () => {
@@ -59,8 +58,34 @@ test("D1 REST adapter sends bound queries directly to the database API", async (
   );
   assert.equal(captured[0]?.authorization, "Bearer secret-token");
   assert.deepEqual(captured[0]?.body, {
-    sql: "SELECT id, manufacturer FROM products WHERE id = ? AND is_active = ?",
-    params: [7, 1],
+    sql: "SELECT id, manufacturer FROM products WHERE id = 7 AND is_active = 1",
+  });
+});
+
+test("D1 REST adapter renders NULL and quoted strings without replacing literal question marks", async () => {
+  let body: unknown;
+  const fakeFetch = async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    body = JSON.parse(String(init?.body || "{}")) as unknown;
+    return jsonResponse({
+      success: true,
+      result: [{ success: true, results: [], meta: { changes: 1 } }],
+      errors: [],
+    });
+  };
+  const db = createD1RestDatabase({
+    accountId: "account",
+    databaseId: "database",
+    apiToken: "token",
+    fetchImpl: fakeFetch as typeof fetch,
+  });
+
+  await db
+    .prepare("UPDATE example SET value = ?, optional = ? WHERE marker = '?' AND id = ? -- ?")
+    .bind("O'Brien", null, 9)
+    .run();
+
+  assert.deepEqual(body, {
+    sql: "UPDATE example SET value = 'O''Brien', optional = NULL WHERE marker = '?' AND id = 9 -- ?",
   });
 });
 
@@ -102,8 +127,8 @@ test("D1 REST adapter preserves D1 batch semantics in one API request", async ()
   assert.equal(captured.length, 1);
   assert.deepEqual(captured[0]?.body, {
     batch: [
-      { sql: "UPDATE products SET model = ? WHERE id = ?", params: ["C-3900", 1] },
-      { sql: "DELETE FROM product_feature_facts WHERE product_id = ?", params: [1] },
+      { sql: "UPDATE products SET model = 'C-3900' WHERE id = 1" },
+      { sql: "DELETE FROM product_feature_facts WHERE product_id = 1" },
     ],
   });
 });
