@@ -92,8 +92,9 @@ test("resolved automatic work releases its canonical dedupe key for a later stal
       ORDER BY id
     `)
     .all() as Array<{ work_key: string; status: string }>;
-  assert.deepEqual(rows, [
-    { work_key: `${canonicalKey}:resolved:${firstJob.id}`, status: "resolved" },
-    { work_key: canonicalKey, status: "pending" },
-  ]);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0]?.work_key, `${canonicalKey}:resolved:${firstJob.id}`);
+  assert.equal(rows[0]?.status, "resolved");
+  assert.equal(rows[1]?.work_key, canonicalKey);
+  assert.equal(rows[1]?.status, "pending");
 });
