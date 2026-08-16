@@ -33,6 +33,17 @@ import type {
 /** D1 caps bound variables per statement; every scoped statement stays well below that limit. */
 const CHUNK_SIZE = 40;
 
+export interface ProductSearchEntitySyncOptions {
+  /**
+   * Include inactive memberships from the whole shop in this sync.
+   *
+   * Crawls set this implicitly through the default because they are authoritative for shop
+   * inventory and must retire disappeared offers. Resolver remediation is listing-scoped and sets
+   * it to false so replaying ten stale listings cannot expand into a shop-wide projection pass.
+   */
+  includeInactiveShopMembers?: boolean;
+}
+
 function chunks<T>(values: readonly T[], size = CHUNK_SIZE): T[][] {
   const result: T[][] = [];
   for (let i = 0; i < values.length; i += size) result.push(values.slice(i, i + size));
@@ -161,9 +172,10 @@ export async function syncProductSearchEntities(
   db: QueryableDatabase,
   shopKey: string,
   sourceIds: readonly string[] = [],
+  { includeInactiveShopMembers = true }: ProductSearchEntitySyncOptions = {},
 ): Promise<ProductSearchEntitySyncResult> {
   const observed = await listingIdsForSources(db, shopKey, sourceIds);
-  const stale = await staleMemberListingIds(db, shopKey);
+  const stale = includeInactiveShopMembers ? await staleMemberListingIds(db, shopKey) : [];
   const listingIds = [...new Set([...observed, ...stale])];
   if (!listingIds.length) {
     return { listing_count: 0, entity_count: 0, removed_entity_count: 0 };
