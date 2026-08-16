@@ -1,0 +1,149 @@
+name: Product Data Audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/product-data-audit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_ACCOUNT_ID: 9af87af4dbc00be3bfd4c8af3f52f684
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Export every active listing for representation audit
+        id: export
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          output='product-audit.jsonl'
+          : > "$output"
+          cursor=0
+          page_size=500
+
+          while true; do
+            sql="SELECT
+              p.id,
+              p.shop_key,
+              p.source_id,
+              p.source_url,
+              p.title,
+              p.raw_manufacturer,
+              p.manufacturer,
+              p.manufacturer_id,
+              p.normalized_raw_manufacturer,
+              p.canonical_manufacturer_id,
+              p.manufacturer_resolution_status,
+              p.manufacturer_resolution_method,
+              p.manufacturer_resolution_confidence,
+              p.manufacturer_resolver_version,
+              p.raw_model,
+              p.model,
+              p.normalized_model,
+              p.model_resolution_status,
+              p.model_resolution_method,
+              p.model_resolution_confidence,
+              p.model_resolver_version,
+              p.raw_category,
+              p.category,
+              p.primary_category_id,
+              p.classification_status,
+              p.condition_text,
+              p.price_yen,
+              p.stock_status,
+              COALESCE(r.status, '') AS identity_status,
+              COALESCE(r.match_method, '') AS identity_match_method,
+              COALESCE(r.confidence, '') AS identity_confidence,
+              r.catalog_product_id,
+              r.candidate_catalog_product_id,
+              COALESCE(r.normalized_model, '') AS identity_normalized_model,
+              COALESCE(r.model_stem, '') AS identity_model_stem,
+              COALESCE(r.variants_json, '[]') AS identity_variants_json,
+              COALESCE(r.rejected_by_json, '[]') AS identity_rejected_by_json
+            FROM products p
+            LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
+            WHERE p.is_active = 1 AND p.id > ${cursor}
+            ORDER BY p.id
+            LIMIT ${page_size};"
+
+            response="$(npx wrangler d1 execute DB --remote --json --command "$sql")"
+            rows="$(jq -c '.[0].results // []' <<< "$response")"
+            count="$(jq 'length' <<< "$rows")"
+            if [[ "$count" -eq 0 ]]; then
+              break
+            fi
+
+            jq -c '.[]' <<< "$rows" >> "$output"
+            cursor="$(jq -r '.[-1].id' <<< "$rows")"
+          done
+
+          count_response="$(npx wrangler d1 execute DB --remote --json --command 'SELECT COUNT(*) AS count FROM products WHERE is_active = 1;')"
+          expected="$(jq -r '.[0].results[0].count' <<< "$count_response")"
+          actual="$(wc -l < "$output" | tr -d ' ')"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "active listing export mismatch: expected=$expected actual=$actual" >&2
+            exit 1
+          fi
+
+          npx wrangler d1 execute DB --remote --json --command "SELECT
+            m.id AS manufacturer_id,
+            m.canonical_name,
+            m.verification_status AS manufacturer_verification_status,
+            a.alias,
+            a.normalized_alias,
+            a.verification_status AS alias_verification_status
+          FROM knowledge_catalog_manufacturers m
+          LEFT JOIN knowledge_catalog_manufacturer_aliases a ON a.manufacturer_id = m.id
+          ORDER BY m.id, a.id;" > manufacturer-catalog.json
+
+          npx wrangler d1 execute DB --remote --json --command "SELECT
+            p.id,
+            p.manufacturer_id,
+            p.canonical_model,
+            p.normalized_model,
+            p.canonical_name,
+            p.verification_status,
+            COALESCE(c.category_id, '') AS primary_category_id
+          FROM knowledge_catalog_products p
+          LEFT JOIN knowledge_catalog_product_categories c
+            ON c.product_id = p.id AND c.is_primary = 1
+          ORDER BY p.id;" > product-catalog.json
+
+          stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+          jq -n \
+            --arg generated_at "$stamp" \
+            --argjson active_listings "$actual" \
+            '{generated_at: $generated_at, active_listings: $active_listings}' \
+            > product-audit-manifest.json
+
+          gzip -9 "$output"
+          echo "stamp=$stamp" >> "$GITHUB_OUTPUT"
+          echo "active_listings=$actual" >> "$GITHUB_OUTPUT"
+          echo "Exported $actual active listings."
+
+      - name: Upload complete audit dataset
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: product-data-audit-${{ steps.export.outputs.stamp }}
+          path: |
+            product-audit.jsonl.gz
+            product-audit-manifest.json
+            manufacturer-catalog.json
+            product-catalog.json
+          retention-days: 14
+          if-no-files-found: error
