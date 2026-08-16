@@ -15,6 +15,8 @@ export const EXHAUSTED_LEASE_RECOVERY_SOURCE_MARKER = "resolver_replay_drain_rec
  * recovery one-shot: if the recovered attempt itself later disappears, the job is not granted an
  * unbounded retry budget. A normal execution error on the recovered attempt therefore becomes a
  * terminal failure through the existing retry/fail path and remains visible to the drain.
+ *
+ * This recovery is intentionally administrative and never rewrites manual queue work.
  */
 export async function recoverExpiredExhaustedAutomaticRemediationJobs(
   db: QueryableDatabase,
