@@ -28,6 +28,11 @@ export async function refreshListingProjections(
   for (const [shopKey, sourceIds] of byShop) {
     await syncProductSearchProjections(db, shopKey, sourceIds);
     await syncProductIdentityResolutions(db, shopKey, sourceIds, evaluatedAt);
-    await syncProductSearchEntities(db, shopKey, sourceIds);
+    // Resolver replay is listing-scoped. Shop-wide inactive membership cleanup belongs to a crawl,
+    // where the observed inventory set is authoritative; pulling it into a remediation pass can
+    // turn a handful of stale listings into an unbounded shop-wide entity projection.
+    await syncProductSearchEntities(db, shopKey, sourceIds, {
+      includeInactiveShopMembers: false,
+    });
   }
 }
