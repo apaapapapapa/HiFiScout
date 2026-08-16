@@ -148,6 +148,9 @@ export function handleScheduled(
   ctx.waitUntil(runScheduled(controller.cron, env));
   if (controller.cron === GENERAL_CRON) {
     ctx.waitUntil(bootstrapKnowledgeCatalogReview(env));
-    ctx.waitUntil(runDataQualityRemediationSweep(env.DB));
+    // Keep the cron claim itself listing-scoped. Projection code is also listing-scoped, but a
+    // worker-level timeout cannot be caught reliably inside a ten-job sweep; claiming one job makes
+    // the lease/retry boundary match the expensive projection boundary.
+    ctx.waitUntil(runDataQualityRemediationSweep(env.DB, { claimLimit: 1 }));
   }
 }
