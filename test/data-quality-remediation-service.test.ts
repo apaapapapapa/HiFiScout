@@ -98,6 +98,7 @@ test("shop remediation refresh batches every source before clearing owned projec
   });
 });
 
+// The empty fast path must not touch D1 or invoke the expensive downstream projection chain.
 test("empty shop remediation work skips downstream projection refresh", async () => {
   const sqlite = new DatabaseSync(":memory:");
   const db = sqliteD1(sqlite);
