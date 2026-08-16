@@ -6,6 +6,7 @@ import { runDataQualityRemediationSweep } from "../src/db/data-quality-remediati
 import type { QueryableDatabase } from "../src/db/types.js";
 import { createD1RestDatabase } from "./lib/d1-rest-database.js";
 import { recoverExpiredExhaustedAutomaticRemediationJobs } from "./lib/remediation-drain-recovery.js";
+import { enqueueStaleTargetReplayRecovery } from "./lib/remediation-stale-target-recovery.js";
 
 interface ReplayStatusRow {
   active_listings: number;
@@ -44,6 +45,7 @@ interface ReplayStatus {
 
 interface DrainResult {
   recoveredExhausted: number;
+  recoveredBlockedStale: number;
   compacted: number;
   complete: boolean;
   remaining: number;
@@ -207,6 +209,7 @@ async function main(): Promise<void> {
   console.log("Initial replay status after recovery and compaction:");
   console.log(JSON.stringify(initial, null, 2));
 
+  let recoveredBlockedStale = 0;
   let current = initial;
   for (let iteration = 1; iteration <= maxSweeps && current.stale.total > 0; iteration += 1) {
     let sweep = await runDataQualityRemediationSweep(queueOnlyDatabase, {
@@ -216,13 +219,34 @@ async function main(): Promise<void> {
     });
 
     // Existing durable work can be exhausted before every current stale signal has a queue row.
-    // Seed once through the real database only at that boundary, while retaining one-listing claims.
+    // Seed once through the normal selector first, while retaining one-listing claims.
     if (sweep.claimed === 0) {
       sweep = await runDataQualityRemediationSweep(database, {
         seedLimit: 250,
         claimLimit: 1,
         leaseSeconds: 900,
       });
+    }
+
+    // Legacy automatic work keys identify the versions stored on a listing, not the resolver target
+    // generation. If an old resolved row therefore suppresses a genuinely new stale replay, keep its
+    // history intact and create a target-version-aware administrative recovery job instead.
+    if (sweep.claimed === 0) {
+      const recovery = await enqueueStaleTargetReplayRecovery(database, {
+        limit: 250,
+        now: new Date().toISOString(),
+      });
+      recoveredBlockedStale += recovery.workKeys.length;
+      if (recovery.workKeys.length > 0) {
+        console.log(
+          `Enqueued ${recovery.workKeys.length} target-aware recovery jobs for stale signals blocked by historical automatic keys.`,
+        );
+        sweep = await runDataQualityRemediationSweep(queueOnlyDatabase, {
+          seedLimit: 1,
+          claimLimit: 1,
+          leaseSeconds: 900,
+        });
+      }
     }
 
     current = await replayStatus(database);
@@ -237,7 +261,7 @@ async function main(): Promise<void> {
     }
     if (sweep.claimed === 0 && current.stale.total > 0) {
       throw new Error(
-        `No remediation job is claimable while ${current.stale.total} stale signals remain after queue top-up`,
+        `No remediation job is claimable while ${current.stale.total} stale signals remain after normal and target-aware queue top-up`,
       );
     }
   }
@@ -251,6 +275,7 @@ async function main(): Promise<void> {
 
   const result: DrainResult = {
     recoveredExhausted,
+    recoveredBlockedStale,
     compacted,
     complete: final.stale.total === 0,
     remaining: final.stale.total,
