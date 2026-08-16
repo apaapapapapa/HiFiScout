@@ -14,6 +14,37 @@ export interface ReplayedListing {
   source_id: string;
 }
 
+type ProjectionStage = "search_projection" | "identity_resolution" | "search_entity";
+
+async function runProjectionStage(
+  stage: ProjectionStage,
+  shopKey: string,
+  listingCount: number,
+  operation: () => Promise<unknown>,
+): Promise<void> {
+  const startedAt = Date.now();
+  console.log(
+    JSON.stringify({
+      event: "data_quality_remediation_projection_stage_start",
+      stage,
+      shop_key: shopKey,
+      listing_count: listingCount,
+    }),
+  );
+
+  await operation();
+
+  console.log(
+    JSON.stringify({
+      event: "data_quality_remediation_projection_stage_complete",
+      stage,
+      shop_key: shopKey,
+      listing_count: listingCount,
+      duration_ms: Date.now() - startedAt,
+    }),
+  );
+}
+
 /**
  * Keep search projection and search-entity aggregation batched by shop. Only the expensive
  * identity candidate lookup is bounded to one manufacturer per query, so mixed-brand replay work
@@ -33,16 +64,22 @@ export async function refreshListingProjections(
 
   for (const [shopKey, sourceIdSet] of byShop) {
     const sourceIds = [...sourceIdSet];
-    await syncProductSearchProjections(db, shopKey, sourceIds);
-    await syncProductIdentityResolutions(db, shopKey, sourceIds, evaluatedAt, {
-      candidateManufacturerChunkSize: 1,
-      traceCandidateScopes: true,
-    });
+    await runProjectionStage("search_projection", shopKey, sourceIds.length, () =>
+      syncProductSearchProjections(db, shopKey, sourceIds),
+    );
+    await runProjectionStage("identity_resolution", shopKey, sourceIds.length, () =>
+      syncProductIdentityResolutions(db, shopKey, sourceIds, evaluatedAt, {
+        candidateManufacturerChunkSize: 1,
+        traceCandidateScopes: true,
+      }),
+    );
     // Resolver replay is listing-scoped. Shop-wide inactive membership cleanup belongs to a crawl,
     // where the observed inventory set is authoritative; pulling it into a remediation pass can
     // turn a handful of stale listings into an unbounded shop-wide entity projection.
-    await syncProductSearchEntities(db, shopKey, sourceIds, {
-      includeInactiveShopMembers: false,
-    });
+    await runProjectionStage("search_entity", shopKey, sourceIds.length, () =>
+      syncProductSearchEntities(db, shopKey, sourceIds, {
+        includeInactiveShopMembers: false,
+      }),
+    );
   }
 }
