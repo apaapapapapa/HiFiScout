@@ -111,9 +111,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          response="$(curl -sS --retry 3 --retry-delay 2 "${PRODUCTION_BASE_URL}/api/health")"
-          echo "$response" | jq .
-          echo "$response" | jq -e '.shops[] | select(.shopKey == "audiounion" and .configured == true)'
+          health_body="$(mktemp)"
+          trap 'rm -f "$health_body"' EXIT
+          http_status="$(curl -sS --retry 3 --retry-delay 2 -o "$health_body" -w '%{http_code}' "${PRODUCTION_BASE_URL}/api/health")"
+          response="$(cat "$health_body")"
+
+          if jq -e . >/dev/null 2>&1 <<< "$response"; then
+            jq . <<< "$response"
+            jq -e '.shops[] | select(.shopKey == "audiounion" and .configured == true)' <<< "$response" >/dev/null
+          elif grep -Fq 'error code: 1027' <<< "$response"; then
+            echo "::warning title=Production runtime health deferred::Cloudflare Workers daily request quota is exhausted (error 1027); the Worker deployment itself succeeded and direct D1 deploy gates will continue."
+            echo "Production health endpoint returned HTTP ${http_status} because the account-wide Worker request quota is exhausted."
+          else
+            echo "Production health endpoint returned a non-JSON response (HTTP ${http_status}):" >&2
+            printf '%s\n' "$response" >&2
+            exit 1
+          fi
       - name: Report production Data Platform and Data Quality baseline
         shell: bash
         run: |
