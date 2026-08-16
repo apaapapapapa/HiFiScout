@@ -1,0 +1,198 @@
+name: Resolver Replay Drain
+
+on:
+  workflow_run:
+    workflows: ['Deploy Cloudflare']
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-resolver-replay-drain
+  cancel-in-progress: false
+
+jobs:
+  drain:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CLOUDFLARE_ACCOUNT_ID: 9af87af4dbc00be3bfd4c8af3f52f684
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Resolve inherited production D1 binding
+        id: d1
+        shell: bash
+        run: |
+          set -euo pipefail
+          info="$(npx wrangler d1 info DB --json)"
+          id="$(jq -r '.uuid // .database_id // .id // empty' <<< "$info")"
+          name="$(jq -r '.name // .database_name // empty' <<< "$info")"
+          if [[ -z "$id" || -z "$name" ]]; then
+            echo 'Could not resolve the deployed DB binding to an explicit D1 id/name.' >&2
+            jq . <<< "$info" >&2
+            exit 1
+          fi
+          echo "database_id=$id" >> "$GITHUB_OUTPUT"
+          echo "database_name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Create local worker config with production D1 remote binding
+        shell: bash
+        env:
+          DATABASE_ID: ${{ steps.d1.outputs.database_id }}
+          DATABASE_NAME: ${{ steps.d1.outputs.database_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p .generated
+          node <<'NODE'
+          const fs = require('node:fs');
+          const base = JSON.parse(fs.readFileSync('wrangler.jsonc', 'utf8'));
+          const config = {
+            $schema: '../node_modules/wrangler/config-schema.json',
+            name: 'hifiscout-remediation-drain-local',
+            main: '../src/ops/remediation-drain.ts',
+            compatibility_date: base.compatibility_date,
+            compatibility_flags: base.compatibility_flags,
+            d1_databases: [{
+              binding: 'DB',
+              database_name: process.env.DATABASE_NAME,
+              database_id: process.env.DATABASE_ID,
+              remote: true,
+            }],
+          };
+          fs.writeFileSync('.generated/remediation-drain.wrangler.jsonc', JSON.stringify(config, null, 2));
+          NODE
+
+      - name: Drain stale resolver work through existing remediation service
+        shell: bash
+        run: |
+          set -euo pipefail
+          port=8791
+          log=/tmp/remediation-drain-wrangler.log
+          npx wrangler dev \
+            --config .generated/remediation-drain.wrangler.jsonc \
+            --ip 127.0.0.1 \
+            --port "$port" \
+            --log-level error \
+            >"$log" 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+
+          base="http://127.0.0.1:${port}"
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl -fsS "$base/status" >/tmp/remediation-status.json 2>/dev/null; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$pid" 2>/dev/null; then
+              cat "$log" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          if [[ "$ready" -ne 1 ]]; then
+            cat "$log" >&2
+            echo 'Remediation drain worker did not become ready.' >&2
+            exit 1
+          fi
+
+          initial="$(cat /tmp/remediation-status.json)"
+          initial_failed="$(jq -r '.queue.failed' <<< "$initial")"
+          echo 'Initial replay status:'
+          jq . <<< "$initial"
+
+          for iteration in $(seq 1 240); do
+            status="$(curl -fsS "$base/status")"
+            stale="$(jq -r '.stale.total' <<< "$status")"
+            if [[ "$stale" -eq 0 ]]; then
+              break
+            fi
+
+            result="$(curl -fsS -X POST "$base/sweep")"
+            claimed="$(jq -r '.sweep.claimed' <<< "$result")"
+            resolved="$(jq -r '.sweep.resolved' <<< "$result")"
+            retried="$(jq -r '.sweep.retried' <<< "$result")"
+            remaining="$(jq -r '.after.stale.total' <<< "$result")"
+            failed="$(jq -r '.after.queue.failed' <<< "$result")"
+            printf 'iteration=%s claimed=%s resolved=%s retried=%s stale=%s\n' \
+              "$iteration" "$claimed" "$resolved" "$retried" "$remaining"
+
+            if [[ "$failed" -gt "$initial_failed" ]]; then
+              echo 'A remediation job moved to failed while draining.' >&2
+              jq . <<< "$result" >&2
+              exit 1
+            fi
+            if [[ "$claimed" -eq 0 && "$remaining" -gt 0 ]]; then
+              sleep 5
+            fi
+          done
+
+          final="$(curl -fsS "$base/status")"
+          echo 'Final replay status:'
+          jq . <<< "$final"
+          jq -e '.stale.total == 0' <<< "$final" >/dev/null || {
+            echo 'Resolver replay did not fully converge.' >&2
+            cat "$log" >&2
+            exit 1
+          }
+          jq -e --argjson baseline "$initial_failed" '.queue.failed <= $baseline' <<< "$final" >/dev/null || {
+            echo 'Resolver replay introduced failed queue jobs.' >&2
+            exit 1
+          }
+
+          {
+            echo '## Resolver Replay Drain'
+            echo
+            echo '### Initial'
+            echo '```json'
+            jq . <<< "$initial"
+            echo '```'
+            echo
+            echo '### Final'
+            echo '```json'
+            jq . <<< "$final"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify production search read-model consistency
+        shell: bash
+        run: |
+          set -euo pipefail
+          result="$(npx wrangler d1 execute DB --remote --json --command "
+            SELECT
+              (SELECT COUNT(*) FROM products WHERE is_active = 1) AS active_listings,
+              (SELECT COUNT(*) FROM product_search_entity_offers) AS offer_count,
+              (SELECT COUNT(*) FROM products p
+                WHERE p.is_active = 1
+                  AND NOT EXISTS (
+                    SELECT 1 FROM product_search_entity_offers o
+                    WHERE o.listing_product_id = p.id
+                  )) AS unmembered_active_listings,
+              (SELECT COUNT(*) FROM product_search_entity_offers o
+                JOIN products p ON p.id = o.listing_product_id
+                WHERE p.is_active = 0) AS inactive_offer_memberships,
+              (SELECT COUNT(*) FROM product_search_entities e
+                WHERE NOT EXISTS (
+                  SELECT 1 FROM product_search_entity_offers o WHERE o.entity_id = e.id
+                )) AS entities_without_offers;")"
+          row="$(jq -c '.[0].results[0] // {}' <<< "$result")"
+          jq . <<< "$row"
+          jq -e '
+            .active_listings == .offer_count and
+            .unmembered_active_listings == 0 and
+            .inactive_offer_memberships == 0 and
+            .entities_without_offers == 0
+          ' <<< "$row" >/dev/null
