@@ -5,6 +5,7 @@ import { compactSupersededAutomaticRemediationJobs } from "../src/db/data-qualit
 import { runDataQualityRemediationSweep } from "../src/db/data-quality-remediation-service.js";
 import type { QueryableDatabase } from "../src/db/types.js";
 import { createD1RestDatabase } from "./lib/d1-rest-database.js";
+import { recoverExpiredExhaustedAutomaticRemediationJobs } from "./lib/remediation-drain-recovery.js";
 
 interface ReplayStatusRow {
   active_listings: number;
@@ -42,6 +43,7 @@ interface ReplayStatus {
 }
 
 interface DrainResult {
+  recoveredExhausted: number;
   compacted: number;
   complete: boolean;
   remaining: number;
@@ -192,12 +194,17 @@ async function main(): Promise<void> {
   });
   const queueOnlyDatabase = existingQueueOnlyDatabase(database);
 
+  const recoveredExhausted = await recoverExpiredExhaustedAutomaticRemediationJobs(database);
+  console.log(
+    `Recovered ${recoveredExhausted} expired automatic queue jobs whose retry budget was exhausted.`,
+  );
+
   const compacted = await compactSupersededAutomaticRemediationJobs(database);
   console.log(`Resolved ${compacted} superseded automatic queue jobs before this drain batch.`);
 
   const initial = await replayStatus(database);
   const initialFailed = initial.queue.failed;
-  console.log("Initial replay status after compaction:");
+  console.log("Initial replay status after recovery and compaction:");
   console.log(JSON.stringify(initial, null, 2));
 
   let current = initial;
@@ -243,6 +250,7 @@ async function main(): Promise<void> {
   }
 
   const result: DrainResult = {
+    recoveredExhausted,
     compacted,
     complete: final.stale.total === 0,
     remaining: final.stale.total,
