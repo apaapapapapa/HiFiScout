@@ -67,6 +67,24 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
   },
 
   {
+    id: "av_amp",
+    name: "AVアンプ",
+    parentId: "amplifier",
+    order: 5,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "av amp",
+      "av amplifier",
+      "av receiver",
+      "audio video receiver",
+      "AVアンプ",
+      "AVレシーバー",
+      "AVレシーバ",
+    ],
+  },
+
+  {
     id: "digital",
     name: "デジタル",
     parentId: null,
@@ -306,7 +324,7 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
   },
   {
     id: "speaker_floorstanding",
-    name: "フロア型",
+    name: "フロア型・トールボーイ",
     parentId: "speaker",
     order: 2,
     classifiable: true,
@@ -316,33 +334,52 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
       "floor-standing",
       "tower speaker",
       "トールボーイ",
+      "フロア型・トールボーイ",
       "フロア型",
       "フロアスタンディング",
+    ],
+  },
+  {
+    id: "center_speaker",
+    name: "センタースピーカー",
+    parentId: "speaker",
+    order: 3,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "center speaker",
+      "centre speaker",
+      "center channel speaker",
+      "centre channel speaker",
+      "センタースピーカー",
+      "センター・スピーカー",
     ],
   },
   {
     id: "subwoofer",
     name: "サブウーファー",
     parentId: "speaker",
-    order: 3,
+    order: 4,
     classifiable: true,
     filterable: true,
     aliases: ["subwoofer", "sub-woofer", "サブウーファー"],
   },
   {
-    id: "speaker_other",
-    name: "その他スピーカー",
+    id: "active_speaker",
+    name: "アクティブスピーカー",
     parentId: "speaker",
-    order: 4,
+    order: 5,
     classifiable: true,
     filterable: true,
     aliases: [
-      "speaker system",
-      "speaker-system",
-      "soundbar",
-      "sound bar",
-      "サウンドバー",
-      "その他スピーカー",
+      "active speaker",
+      "active speakers",
+      "powered speaker",
+      "powered speakers",
+      "powered monitor",
+      "powered monitors",
+      "アクティブスピーカー",
+      "パワードスピーカー",
     ],
   },
 
@@ -467,15 +504,10 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
       "その他",
       "others",
       "other",
-      "av receiver",
-      "av amplifier",
-      "av amp",
       "tuner",
       "equalizer",
       "channel divider",
       "frequency dividing network",
-      "AVアンプ",
-      "AVレシーバー",
       "チューナー",
       "イコライザー",
       "チャンネルデバイダー",
@@ -494,6 +526,10 @@ const CATEGORY_BY_ID: ReadonlyMap<string, CategoryDefinition> = new Map(
 const LEGACY_ALIASES: Readonly<Record<string, ClassifiableCategoryId>> = Object.freeze({
   network_transport: "network_player",
   accessory: "other_accessory",
+  speaker_other: "other",
+});
+const LEGACY_FILTER_ALIASES: Readonly<Record<string, CategoryId>> = Object.freeze({
+  speaker_other: "speaker",
 });
 
 function normalizeLookup(value: string = ""): string {
@@ -536,11 +572,12 @@ function inferLeaf(value: string = ""): ClassifiableCategoryId | null {
 }
 
 export function getCategory(categoryId: string): CategoryDefinition | null {
-  return CATEGORY_BY_ID.get(LEGACY_ALIASES[categoryId] || categoryId) || null;
+  const canonical = LEGACY_FILTER_ALIASES[categoryId] || LEGACY_ALIASES[categoryId] || categoryId;
+  return CATEGORY_BY_ID.get(canonical) || null;
 }
 
 export function categoryIdForFilter(value: string = ""): CategoryId | null {
-  const canonical = LEGACY_ALIASES[value] || value;
+  const canonical = LEGACY_FILTER_ALIASES[value] || LEGACY_ALIASES[value] || value;
   if (CATEGORY_BY_ID.get(canonical)?.filterable) return canonical;
   return categoryIdFromAlias(value);
 }

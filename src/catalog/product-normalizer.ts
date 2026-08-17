@@ -19,7 +19,7 @@ import { normalizeManufacturerKey } from "./manufacturers.js";
 import { resolveModel, MODEL_RESOLVER_VERSION } from "./model-resolver.js";
 import { inferFeatureFacts, normalizeFeatureFacts } from "./product-features.js";
 
-const CLASSIFICATION_METADATA_VERSION = 4;
+const CLASSIFICATION_METADATA_VERSION = 5;
 
 function clean(value: unknown = ""): string {
   return String(value).normalize("NFKC").replace(/\s+/g, " ").trim();
