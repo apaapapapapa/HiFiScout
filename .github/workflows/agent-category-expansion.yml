@@ -1,0 +1,224 @@
+name: Agent digital category expansion
+
+on:
+  push:
+    branches:
+      - agent/add-digital-network-categories
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Apply taxonomy changes
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one replacement anchor, found {count}: {old!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              "src/catalog/types.ts",
+              '  | "dap"\n  | "turntable"',
+              '  | "dap"\n'
+              '  | "network_switch"\n'
+              '  | "optical_isolator"\n'
+              '  | "router"\n'
+              '  | "music_server"\n'
+              '  | "master_clock"\n'
+              '  | "turntable"',
+          )
+          replace_once(
+              "src/catalog/types.ts",
+              "/** Every id present in `CATEGORIES` (31 entries). */",
+              "/** Every id present in `CATEGORIES` (36 entries). */",
+          )
+
+          digital_categories = '''  {
+            id: "network_switch",
+            name: "スイッチングハブ",
+            parentId: "digital",
+            order: 5,
+            classifiable: true,
+            filterable: true,
+            aliases: [
+              "network switch",
+              "ethernet switch",
+              "switching hub",
+              "スイッチングハブ",
+              "ネットワークスイッチ",
+            ],
+          },
+          {
+            id: "optical_isolator",
+            name: "光アイソレーター",
+            parentId: "digital",
+            order: 6,
+            classifiable: true,
+            filterable: true,
+            aliases: [
+              "optical isolator",
+              "fiber isolator",
+              "fibre isolator",
+              "光アイソレーター",
+              "光アイソレータ",
+              "光絶縁",
+            ],
+          },
+          {
+            id: "router",
+            name: "ルーター",
+            parentId: "digital",
+            order: 7,
+            classifiable: true,
+            filterable: true,
+            aliases: ["router", "audio router", "オーディオルーター", "ルーター", "ルータ"],
+          },
+          {
+            id: "music_server",
+            name: "ミュージックサーバー",
+            parentId: "digital",
+            order: 8,
+            classifiable: true,
+            filterable: true,
+            aliases: [
+              "music server",
+              "audio server",
+              "music library server",
+              "ミュージックサーバー",
+              "ミュージックサーバ",
+              "オーディオサーバー",
+              "オーディオサーバ",
+            ],
+          },
+          {
+            id: "master_clock",
+            name: "マスタークロックジェネレーター",
+            parentId: "digital",
+            order: 9,
+            classifiable: true,
+            filterable: true,
+            aliases: [
+              "master clock",
+              "master clock generator",
+              "clock generator",
+              "マスタークロック",
+              "マスタークロックジェネレーター",
+              "マスタークロックジェネレータ",
+              "クロックジェネレーター",
+              "クロックジェネレータ",
+            ],
+          },
+
+          '''
+          replace_once(
+              "src/catalog/categories.ts",
+              '  {\n    id: "analog",',
+              digital_categories + '  {\n    id: "analog",',
+          )
+          replace_once(
+              "src/catalog/categories.ts",
+              '      "dust cover",\n      "master clock",\n      "clock generator",\n      "インシュレーター",',
+              '      "dust cover",\n      "インシュレーター",',
+          )
+          replace_once(
+              "src/catalog/categories.ts",
+              '      "ダストカバー",\n      "マスタークロック",\n      "クロックジェネレーター",\n      "その他アクセサリー",',
+              '      "ダストカバー",\n      "その他アクセサリー",',
+          )
+
+          rules = '''  [
+            "network_switch",
+            /switching\\s+hub|network\\s+switch|ethernet\\s+switch|スイッチングハブ|ネットワークスイッチ/i,
+          ],
+          [
+            "optical_isolator",
+            /optical\\s+isolator|fiber\\s+isolator|fibre\\s+isolator|光アイソレータ(?:ー)?|光絶縁/i,
+          ],
+          ["router", /\\b(?:audio\\s+)?router\\b|オーディオルータ(?:ー)?|ルータ(?:ー)?/i],
+          [
+            "music_server",
+            /music\\s+server|audio\\s+server|music\\s+library\\s+server|ミュージックサーバ(?:ー)?|オーディオサーバ(?:ー)?/i,
+          ],
+          [
+            "master_clock",
+            /master\\s+clock(?:\\s+generator)?|clock\\s+generator|マスタークロック(?:ジェネレータ(?:ー)?)?|クロックジェネレータ(?:ー)?/i,
+          ],
+          '''
+          replace_once(
+              "src/catalog/category-rules.ts",
+              '  ["power_accessory", /power\\s*(?:strip|conditioner)|電源タップ|電源コンディショナ(?:ー)?/i],\n',
+              '  ["power_accessory", /power\\s*(?:strip|conditioner)|電源タップ|電源コンディショナ(?:ー)?/i],\n' + rules,
+          )
+          replace_once(
+              "src/catalog/category-rules.ts",
+              '/\\baccessor(?:y|ies)\\b|insulator|インシュレータ(?:ー)?|アクセサリ(?:ー)?|hdmi\\s*(?:switcher|switch)|hdmiスイッチャー|dust\\s*cover|ダストカバー|master\\s+clock\\s+generator|clock\\s+generator|マスタークロック|クロックジェネレータ(?:ー)?/i,',
+              '/\\baccessor(?:y|ies)\\b|insulator|インシュレータ(?:ー)?|アクセサリ(?:ー)?|hdmi\\s*(?:switcher|switch)|hdmiスイッチャー|dust\\s*cover|ダストカバー/i,',
+          )
+
+          replace_once(
+              "test/category-taxonomy-v2.test.ts",
+              '["dac", "network_player", "cd_sacd_player", "dap"],',
+              '[\n      "dac",\n      "network_player",\n      "cd_sacd_player",\n      "dap",\n      "network_switch",\n      "optical_isolator",\n      "router",\n      "music_server",\n      "master_clock",\n    ],',
+          )
+          replace_once(
+              "test/category-taxonomy-v2.test.ts",
+              '  assert.deepEqual(inferExplicitCategoryIds("G-02 Master Clock Generator", { context: "detail" }), [\n    "other_accessory",\n  ]);',
+              '  assert.deepEqual(inferExplicitCategoryIds("G-02 Master Clock Generator", { context: "detail" }), [\n    "master_clock",\n  ]);',
+          )
+          digital_test = '''test("digital network infrastructure and server titles use dedicated categories", () => {
+            assert.deepEqual(inferExplicitCategoryIds("Silent Angel N8 Network Switch"), ["network_switch"]);
+            assert.deepEqual(inferExplicitCategoryIds("光アイソレーター OPT ISO BOX"), ["optical_isolator"]);
+            assert.deepEqual(inferExplicitCategoryIds("Audio Router R1"), ["router"]);
+            assert.deepEqual(inferExplicitCategoryIds("DELA Music Server N1"), ["music_server"]);
+            assert.deepEqual(inferExplicitCategoryIds("G-02 Master Clock Generator"), ["master_clock"]);
+          });
+
+          '''
+          replace_once(
+              "test/category-taxonomy-v2.test.ts",
+              'test("official product classes resolve into the canonical taxonomy rather than extending it", () => {',
+              digital_test + 'test("official product classes resolve into the canonical taxonomy rather than extending it", () => {',
+          )
+
+          replace_once(
+              "src/catalog/product-normalizer.ts",
+              "const CLASSIFICATION_METADATA_VERSION = 3;",
+              "const CLASSIFICATION_METADATA_VERSION = 4;",
+          )
+          PY
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Format touched files
+        run: npx oxfmt src/catalog/categories.ts src/catalog/types.ts src/catalog/category-rules.ts src/catalog/product-normalizer.ts test/category-taxonomy-v2.test.ts
+
+      - name: Validate
+        run: npm run check
+
+      - name: Commit implementation
+        run: |
+          rm .github/workflows/agent-category-expansion.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/catalog/categories.ts src/catalog/types.ts src/catalog/category-rules.ts src/catalog/product-normalizer.ts test/category-taxonomy-v2.test.ts .github/workflows/agent-category-expansion.yml
+          git commit -m "feat: expand digital audio categories"
+          git push origin HEAD:agent/add-digital-network-categories
