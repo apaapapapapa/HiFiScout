@@ -9,8 +9,25 @@ const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
   ["cable", /\bcables?\b|(?:usb|xlr|rca|lan|speaker|headphone|power)\s+cable|ケーブル/i],
   ["power_accessory", /power\s*(?:strip|conditioner)|電源タップ|電源コンディショナ(?:ー)?/i],
   [
+    "network_switch",
+    /switching\s+hub|network\s+switch|ethernet\s+switch|スイッチングハブ|ネットワークスイッチ/i,
+  ],
+  [
+    "optical_isolator",
+    /optical\s+isolator|fiber\s+isolator|fibre\s+isolator|光アイソレータ(?:ー)?|光絶縁/i,
+  ],
+  ["router", /\b(?:audio\s+)?router\b|オーディオルータ(?:ー)?|ルータ(?:ー)?/i],
+  [
+    "music_server",
+    /music\s+server|audio\s+server|music\s+library\s+server|ミュージックサーバ(?:ー)?|オーディオサーバ(?:ー)?/i,
+  ],
+  [
+    "master_clock",
+    /master\s+clock(?:\s+generator)?|clock\s+generator|マスタークロック(?:ジェネレータ(?:ー)?)?|クロックジェネレータ(?:ー)?/i,
+  ],
+  [
     "other_accessory",
-    /\baccessor(?:y|ies)\b|insulator|インシュレータ(?:ー)?|アクセサリ(?:ー)?|hdmi\s*(?:switcher|switch)|hdmiスイッチャー|dust\s*cover|ダストカバー|master\s+clock\s+generator|clock\s+generator|マスタークロック|クロックジェネレータ(?:ー)?/i,
+    /\baccessor(?:y|ies)\b|insulator|インシュレータ(?:ー)?|アクセサリ(?:ー)?|hdmi\s*(?:switcher|switch)|hdmiスイッチャー|dust\s*cover|ダストカバー/i,
   ],
   ["vacuum_tube", /vacuum\s+tube|真空管/i],
   ["rack", /audio\s+rack|オーディオラック/i],
