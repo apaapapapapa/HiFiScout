@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
+import { RESOLUTION_VERSIONS } from "../src/catalog/resolution-versions.js";
 import { compactSupersededAutomaticRemediationJobs } from "../src/db/data-quality-remediation-compaction.js";
 import { sqliteD1 } from "./helpers/sqlite-d1.js";
 
@@ -49,16 +50,16 @@ test("compaction resolves only superseded automatic jobs and expired leases", as
     );
 
     INSERT INTO products VALUES
-      (1, 1, 0, 3, 2, '{"categoryClassification":{"version":3}}'),
-      (2, 1, 0, 3, 1, '{"categoryClassification":{"version":3}}'),
-      (3, 1, 0, 3, 2, '{"categoryClassification":{"version":3}}'),
-      (4, 1, 0, 3, 2, '{"categoryClassification":{"version":3}}'),
-      (5, 1, 0, 3, 2, '{"categoryClassification":{"version":3}}'),
-      (6, 1, 0, 3, 2, '{"categoryClassification":{"version":3}}'),
-      (7, 1, 0, 3, 2, '{"categoryClassification":{"version":3}}'),
+      (1, 1, 0, 3, 2, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}'),
+      (2, 1, 0, 3, 1, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}'),
+      (3, 1, 0, 3, 2, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}'),
+      (4, 1, 0, 3, 2, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}'),
+      (5, 1, 0, 3, 2, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}'),
+      (6, 1, 0, 3, 2, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}'),
+      (7, 1, 0, 3, 2, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}'),
       (8, 0, 1, 0, 0, '{}'),
-      (9, 1, 0, 3, 2, '{"categoryClassification":{"version":3}}'),
-      (10, 1, 1, 3, 2, '{"categoryClassification":{"version":3}}');
+      (9, 1, 0, 3, 2, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}'),
+      (10, 1, 1, 3, 2, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}');
 
     INSERT INTO product_identity_resolutions VALUES (4, 1), (7, 1);
 

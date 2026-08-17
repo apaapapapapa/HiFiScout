@@ -32,6 +32,11 @@ export type ClassifiableCategoryId =
   | "network_player"
   | "cd_sacd_player"
   | "dap"
+  | "network_switch"
+  | "optical_isolator"
+  | "router"
+  | "music_server"
+  | "master_clock"
   | "turntable"
   | "tonearm"
   | "cartridge"
@@ -50,7 +55,7 @@ export type ClassifiableCategoryId =
   | "dj_dtm"
   | "other";
 
-/** Every id present in `CATEGORIES` (31 entries). */
+/** Every id present in `CATEGORIES` (36 entries). */
 export type CategoryId = CategoryGroupId | ClassifiableCategoryId;
 
 /**

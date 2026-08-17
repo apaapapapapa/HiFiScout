@@ -74,7 +74,17 @@ test("children retain required definition order", () => {
   );
   assert.deepEqual(
     children("digital").map((category) => category.id),
-    ["dac", "network_player", "cd_sacd_player", "dap"],
+    [
+      "dac",
+      "network_player",
+      "cd_sacd_player",
+      "dap",
+      "network_switch",
+      "optical_isolator",
+      "router",
+      "music_server",
+      "master_clock",
+    ],
   );
   assert.deepEqual(
     children("speaker").map((category) => category.id),
@@ -114,6 +124,14 @@ test("transports are classified as their player family", () => {
   assert.equal(classify("CD Transport D1").primaryCategoryId, "cd_sacd_player");
 });
 
+test("digital network infrastructure and server titles use dedicated categories", () => {
+  assert.deepEqual(inferExplicitCategoryIds("Silent Angel N8 Network Switch"), ["network_switch"]);
+  assert.deepEqual(inferExplicitCategoryIds("光アイソレーター OPT ISO BOX"), ["optical_isolator"]);
+  assert.deepEqual(inferExplicitCategoryIds("Audio Router R1"), ["router"]);
+  assert.deepEqual(inferExplicitCategoryIds("DELA Music Server N1"), ["music_server"]);
+  assert.deepEqual(inferExplicitCategoryIds("G-02 Master Clock Generator"), ["master_clock"]);
+});
+
 test("official product classes resolve into the canonical taxonomy rather than extending it", () => {
   // Manufacturer pages name product classes the UI taxonomy deliberately does not carry. Each has
   // to land on an existing category instead of introducing one.
@@ -132,7 +150,7 @@ test("official product classes resolve into the canonical taxonomy rather than e
     ["other"],
   );
   assert.deepEqual(inferExplicitCategoryIds("G-02 Master Clock Generator", { context: "detail" }), [
-    "other_accessory",
+    "master_clock",
   ]);
   assert.deepEqual(inferExplicitCategoryIds("RX-V4A AV Receiver", { context: "detail" }), [
     "other",
