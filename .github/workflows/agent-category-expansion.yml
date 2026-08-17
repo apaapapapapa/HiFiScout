@@ -34,6 +34,14 @@ jobs:
                   raise SystemExit(f"{path}: expected one replacement anchor, found {count}: {old!r}")
               p.write_text(text.replace(old, new, 1))
 
+          def replace_count(path: str, old: str, new: str, expected: int) -> None:
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != expected:
+                  raise SystemExit(f"{path}: expected {expected} replacements, found {count}: {old!r}")
+              p.write_text(text.replace(old, new))
+
           replace_once(
               "src/catalog/types.ts",
               '  | "dap"\n  | "turntable"',
@@ -203,13 +211,36 @@ jobs:
               "const CLASSIFICATION_METADATA_VERSION = 3;",
               "const CLASSIFICATION_METADATA_VERSION = 4;",
           )
+
+          replace_once(
+              "test/category-enricher.test.ts",
+              'import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";',
+              'import {\n  CATEGORY_CLASSIFICATION_METADATA_VERSION,\n  normalizeCatalogProduct,\n} from "../src/catalog/product-normalizer.js";',
+          )
+          replace_once(
+              "test/category-enricher.test.ts",
+              "          version: 3,",
+              "          version: CATEGORY_CLASSIFICATION_METADATA_VERSION,",
+          )
+
+          replace_once(
+              "test/data-quality-remediation-compaction.test.ts",
+              'import test from "node:test";\n',
+              'import test from "node:test";\nimport { RESOLUTION_VERSIONS } from "../src/catalog/resolution-versions.js";\n',
+          )
+          replace_count(
+              "test/data-quality-remediation-compaction.test.ts",
+              '{"categoryClassification":{"version":3}}',
+              '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}',
+              9,
+          )
           PY
 
       - name: Install dependencies
         run: npm ci
 
       - name: Format touched files
-        run: npx oxfmt src/catalog/categories.ts src/catalog/types.ts src/catalog/category-rules.ts src/catalog/product-normalizer.ts test/category-taxonomy-v2.test.ts
+        run: npx oxfmt src/catalog/categories.ts src/catalog/types.ts src/catalog/category-rules.ts src/catalog/product-normalizer.ts test/category-taxonomy-v2.test.ts test/category-enricher.test.ts test/data-quality-remediation-compaction.test.ts
 
       - name: Validate
         run: npm run check
@@ -219,6 +250,6 @@ jobs:
           rm .github/workflows/agent-category-expansion.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/catalog/categories.ts src/catalog/types.ts src/catalog/category-rules.ts src/catalog/product-normalizer.ts test/category-taxonomy-v2.test.ts .github/workflows/agent-category-expansion.yml
+          git add src/catalog/categories.ts src/catalog/types.ts src/catalog/category-rules.ts src/catalog/product-normalizer.ts test/category-taxonomy-v2.test.ts test/category-enricher.test.ts test/data-quality-remediation-compaction.test.ts .github/workflows/agent-category-expansion.yml
           git commit -m "feat: expand digital audio categories"
           git push origin HEAD:agent/add-digital-network-categories
