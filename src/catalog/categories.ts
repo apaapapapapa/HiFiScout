@@ -526,6 +526,7 @@ const CATEGORY_BY_ID: ReadonlyMap<string, CategoryDefinition> = new Map(
 const LEGACY_ALIASES: Readonly<Record<string, ClassifiableCategoryId>> = Object.freeze({
   network_transport: "network_player",
   accessory: "other_accessory",
+  speaker_other: "other",
 });
 const LEGACY_FILTER_ALIASES: Readonly<Record<string, CategoryId>> = Object.freeze({
   speaker_other: "speaker",
