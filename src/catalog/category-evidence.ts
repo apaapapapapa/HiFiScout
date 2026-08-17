@@ -12,10 +12,7 @@ import type {
   ResolvedCategoryPolicy,
 } from "./types.js";
 
-const BROAD_SELLER_CATEGORY_IDS: ReadonlySet<string> = new Set([
-  "speaker_other",
-  "other_accessory",
-]);
+const BROAD_SELLER_CATEGORY_IDS: ReadonlySet<string> = new Set(["other", "other_accessory"]);
 
 function mode(value: unknown, fallback: CategoryPolicyMode): CategoryPolicyMode {
   return value === "authoritative" || value === "corroborative" || value === "ignore"

@@ -31,10 +31,13 @@ const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
   ],
   ["vacuum_tube", /vacuum\s+tube|真空管/i],
   ["rack", /audio\s+rack|オーディオラック/i],
-  ["speaker_other", /\bsound\s*bars?\b|サウンドバー/i],
+  [
+    "av_amp",
+    /\bav\s+(?:receiver|amplifier|amp)\b|audio\s+video\s+receiver|av(?:サラウンド)?(?:レシーバ(?:ー)?|アンプ)|\bavr[-\s]?[a-z0-9]/i,
+  ],
   [
     "other",
-    /\bav\s+(?:receiver|amplifier)\b|av(?:サラウンド)?(?:レシーバー|アンプ)|\bavr[-\s]?[a-z0-9]|voicing\s+equalizer|graphic\s+equalizer|\bequalizer\b|音場補正|イコライザ(?:ー)?|frequency\s+dividing\s+network|channel\s+divider|\bcrossover\b|チャンネル(?:デバイダ|ディバイダ)(?:ー)?|周波数分割|(?:dds\s+)?(?:fm|am\s*\/\s*fm)\s+stereo\s+tuner|\btuner\b|チューナー/i,
+    /voicing\s+equalizer|graphic\s+equalizer|\bequalizer\b|音場補正|イコライザ(?:ー)?|frequency\s+dividing\s+network|channel\s+divider|\bcrossover\b|チャンネル(?:デバイダ|ディバイダ)(?:ー)?|周波数分割|(?:dds\s+)?(?:fm|am\s*\/\s*fm)\s+stereo\s+tuner|\btuner\b|チューナー/i,
   ],
   ["integrated_amp", /integrated\s+(?:amp|amplifier)|プリメインアンプ|インテグレーテッドアンプ/i],
   [
@@ -59,13 +62,18 @@ const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
     "dap",
     /\bdap\b|digital\s+audio\s+player|デジタルオーディオ(?:プレーヤー|プレイヤー)|ポータブルオーディオ(?:プレーヤー|プレイヤー)/i,
   ],
+  [
+    "active_speaker",
+    /\bactive\b.*\bspeakers?\b|powered\s+(?:speakers?|monitors?)|アクティブ.*スピーカー|パワードスピーカー/i,
+  ],
+  ["center_speaker", /cent(?:er|re)(?:\s+channel)?\s+speaker|センター(?:・)?スピーカー/i],
   ["speaker_bookshelf", /bookshelf(?:\s+speaker)?|stand[\s-]?mount|ブックシェルフ(?:型)?/i],
   [
     "speaker_floorstanding",
     /floor[\s-]?standing|tower\s+speaker|トールボーイ|フロア型|フロアスタンディング/i,
   ],
   ["subwoofer", /sub[\s-]?woofer|サブウーファー/i],
-  ["speaker_other", /\bspeakers?\b|スピーカー/i],
+  ["other", /\bsound\s*bars?\b|サウンドバー|\bspeakers?\b|スピーカー/i],
   ["earphone", /\bearphones?\b|\bearbuds?\b|\biem\b|イヤホン/i],
   ["headphone", /\bheadphones?\b|ヘッドホン/i],
   ["dj_dtm", /\bdj\b|\bddj[-\s]|rekordbox|serato|\bmidi\b|オーディオインターフェース/i],

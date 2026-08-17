@@ -70,7 +70,7 @@ test("group parents are filterable but never classifiable", () => {
 test("children retain required definition order", () => {
   assert.deepEqual(
     children("amplifier").map((category) => category.id),
-    ["integrated_amp", "pre_amp", "power_amp", "headphone_amp"],
+    ["integrated_amp", "pre_amp", "power_amp", "headphone_amp", "av_amp"],
   );
   assert.deepEqual(
     children("digital").map((category) => category.id),
@@ -88,7 +88,7 @@ test("children retain required definition order", () => {
   );
   assert.deepEqual(
     children("speaker").map((category) => category.id),
-    ["speaker_bookshelf", "speaker_floorstanding", "subwoofer", "speaker_other"],
+    ["speaker_bookshelf", "speaker_floorstanding", "center_speaker", "subwoofer", "active_speaker"],
   );
   assert.deepEqual(
     children("accessories").map((category) => category.id),
@@ -99,6 +99,7 @@ test("children retain required definition order", () => {
 test("legacy category aliases resolve to canonical ids", () => {
   assert.equal(categoryIdForFilter("network_transport"), "network_player");
   assert.equal(categoryIdForFilter("accessory"), "other_accessory");
+  assert.equal(categoryIdForFilter("speaker_other"), "speaker");
 });
 
 test("search closure contains leaf and parent only", () => {
@@ -135,9 +136,7 @@ test("digital network infrastructure and server titles use dedicated categories"
 test("official product classes resolve into the canonical taxonomy rather than extending it", () => {
   // Manufacturer pages name product classes the UI taxonomy deliberately does not carry. Each has
   // to land on an existing category instead of introducing one.
-  assert.deepEqual(inferExplicitCategoryIds("DHT-S217 Soundbar", { context: "detail" }), [
-    "speaker_other",
-  ]);
+  assert.deepEqual(inferExplicitCategoryIds("DHT-S217 Soundbar", { context: "detail" }), ["other"]);
   assert.deepEqual(inferExplicitCategoryIds("T-11 FM Stereo Tuner", { context: "detail" }), [
     "other",
   ]);
@@ -153,22 +152,26 @@ test("official product classes resolve into the canonical taxonomy rather than e
     "master_clock",
   ]);
   assert.deepEqual(inferExplicitCategoryIds("RX-V4A AV Receiver", { context: "detail" }), [
-    "other",
+    "av_amp",
   ]);
   assert.deepEqual(inferExplicitCategoryIds("GT-2000 ダストカバー", { context: "title" }), [
     "other_accessory",
   ]);
 });
 
-test("speaker classification uses strong form-factor evidence only", () => {
+test("speaker classification uses the requested five canonical leaves", () => {
   assert.equal(classify("Bookshelf Speaker Model A").primaryCategoryId, "speaker_bookshelf");
   assert.equal(
     classify("Floorstanding Speaker Model B").primaryCategoryId,
     "speaker_floorstanding",
   );
-  assert.equal(classify("Subwoofer Model C").primaryCategoryId, "subwoofer");
-  assert.equal(classify("Speaker Model D").primaryCategoryId, "speaker_other");
-  assert.equal(classify("SUB Model E").primaryCategoryId, "other");
+  assert.equal(classify("Center Speaker Model C").primaryCategoryId, "center_speaker");
+  assert.equal(classify("Subwoofer Model D").primaryCategoryId, "subwoofer");
+  assert.equal(classify("Active Speaker Model E").primaryCategoryId, "active_speaker");
+  assert.equal(classify("Active Bookshelf Speaker Model F").primaryCategoryId, "active_speaker");
+  assert.equal(classify("Speaker Model G").primaryCategoryId, "other");
+  assert.equal(classify("SUB Model H").primaryCategoryId, "other");
+  assert.equal(getCategory("speaker_floorstanding")?.name, "フロア型・トールボーイ");
 });
 
 test("accessory precedence prevents target component words from stealing classification", () => {

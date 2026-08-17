@@ -28,6 +28,7 @@ export type ClassifiableCategoryId =
   | "pre_amp"
   | "power_amp"
   | "headphone_amp"
+  | "av_amp"
   | "dac"
   | "network_player"
   | "cd_sacd_player"
@@ -43,8 +44,9 @@ export type ClassifiableCategoryId =
   | "phono_eq"
   | "speaker_bookshelf"
   | "speaker_floorstanding"
+  | "center_speaker"
   | "subwoofer"
-  | "speaker_other"
+  | "active_speaker"
   | "headphone"
   | "earphone"
   | "cable"
@@ -55,14 +57,14 @@ export type ClassifiableCategoryId =
   | "dj_dtm"
   | "other";
 
-/** Every id present in `CATEGORIES` (36 entries). */
+/** Every id present in `CATEGORIES` (38 entries). */
 export type CategoryId = CategoryGroupId | ClassifiableCategoryId;
 
 /**
  * Pre-taxonomy-v2 ids still accepted on input and rewritten by `LEGACY_ALIASES`.
  * They are NOT `CategoryId`s and must never be produced.
  */
-export type LegacyCategoryAlias = "network_transport" | "accessory";
+export type LegacyCategoryAlias = "network_transport" | "accessory" | "speaker_other";
 
 export interface CategoryDefinition {
   readonly id: CategoryId;
