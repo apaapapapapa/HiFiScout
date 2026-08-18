@@ -1,0 +1,83 @@
+name: Agent cable category split PR v3
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply taxonomy patch and regression updates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          workflow = Path('.github/workflows/agent-cable-category-split-v2.yml').read_text().splitlines()
+          start = next(i for i, line in enumerate(workflow) if line.strip() == '- name: Apply cable taxonomy changes')
+          run_line = next(i for i in range(start + 1, len(workflow)) if workflow[i].strip() == 'run: |')
+          end = next(i for i in range(run_line + 1, len(workflow)) if workflow[i].startswith('      - name: Install dependencies'))
+          block = workflow[run_line + 1:end]
+          prefix = '          '
+          code = '\n'.join(line[len(prefix):] if line.startswith(prefix) else line for line in block) + '\n'
+          Path('/tmp/apply-cable-taxonomy.py').write_text(code)
+          PY
+          python /tmp/apply-cable-taxonomy.py
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('src/catalog/category-rules.ts')
+          text = p.read_text()
+          marker = 'const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [\n\\\n'
+          if marker not in text:
+              raise SystemExit('expected stray backslash marker not found')
+          p.write_text(text.replace(marker, 'const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [\n', 1))
+
+          p = Path('test/catalog-normalization.test.ts')
+          text = p.read_text()
+          replacements = [
+              ('normalizeCategory({ title: "Premium Speaker Cable 2m" }).categoryIds, ["cable"]', 'normalizeCategory({ title: "Premium Speaker Cable 2m" }).categoryIds, ["cable_other"]'),
+              ('assert.equal(product.primaryCategoryId, "cable");\n  assert.equal(product.classificationSource, "title");', 'assert.equal(product.primaryCategoryId, "cable_other");\n  assert.equal(product.classificationSource, "title");'),
+              ('assert.equal(cable.primaryCategoryId, "cable");', 'assert.equal(cable.primaryCategoryId, "cable_other");'),
+          ]
+          for old, new in replacements:
+              if old not in text:
+                  raise SystemExit(f'missing catalog-normalization fixture: {old}')
+              text = text.replace(old, new, 1)
+          p.write_text(text)
+          PY
+      - name: Install dependencies
+        run: npm ci
+      - name: Format touched files
+        run: npx oxfmt --write src/catalog/categories.ts src/catalog/category-rules.ts src/catalog/category-evidence.ts src/catalog/product-normalizer.ts src/catalog/types.ts test/category-taxonomy-v2.test.ts test/catalog-normalization.test.ts
+      - name: Validate
+        run: |
+          npm run check
+          npm run build
+      - name: Commit implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/catalog/categories.ts src/catalog/category-rules.ts src/catalog/category-evidence.ts src/catalog/product-normalizer.ts src/catalog/types.ts test/category-taxonomy-v2.test.ts test/catalog-normalization.test.ts
+          if git diff --cached --quiet; then
+            echo 'No implementation changes to commit.'
+            exit 0
+          fi
+          git commit -m 'feat: split cable category into eight types'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
