@@ -146,8 +146,7 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
     ],
   },
   {
-    // Historical id retained so existing URLs/data remain compatible; the category is now medium-agnostic.
-    id: "cd_sacd_transport",
+    id: "transport",
     name: "トランスポート",
     parentId: "digital",
     order: 4,
@@ -726,7 +725,8 @@ const CATEGORY_BY_ID: ReadonlyMap<string, CategoryDefinition> = new Map(
   CATEGORIES.map((category) => [category.id, category]),
 );
 const LEGACY_ALIASES: Readonly<Record<string, ClassifiableCategoryId>> = Object.freeze({
-  network_transport: "cd_sacd_transport",
+  network_transport: "transport",
+  cd_sacd_transport: "transport",
   accessory: "other_accessory",
   speaker_other: "other",
   headphone: "wired_headphone",

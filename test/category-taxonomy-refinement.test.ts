@@ -25,7 +25,7 @@ test("refined taxonomy exposes the requested headphone and power categories", ()
 
 test("transport and step-up transformer are siblings of their source categories", () => {
   const player = getCategory("cd_sacd_player");
-  const transport = getCategory("cd_sacd_transport");
+  const transport = getCategory("transport");
   assert.equal(player?.parentId, "digital");
   assert.equal(transport?.parentId, "digital");
   assert.equal(transport?.order, (player?.order ?? 0) + 1);

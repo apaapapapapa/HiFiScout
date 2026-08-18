@@ -143,7 +143,7 @@ test("live metadata exposes the complete canonical taxonomy including zero-count
     "dac",
     "network_player",
     "cd_sacd_player",
-    "cd_sacd_transport",
+    "transport",
     "dap",
     "network_switch",
     "optical_isolator",
@@ -201,7 +201,7 @@ test("live metadata exposes the complete canonical taxonomy including zero-count
     name: "　プリアンプ",
     parentId: "amplifier",
   });
-  expect(facets.find((category) => category.id === "cd_sacd_transport")).toMatchObject({
+  expect(facets.find((category) => category.id === "transport")).toMatchObject({
     name: "　トランスポート",
     parentId: "digital",
   });

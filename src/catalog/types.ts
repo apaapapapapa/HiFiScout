@@ -33,7 +33,7 @@ export type ClassifiableCategoryId =
   | "dac"
   | "network_player"
   | "cd_sacd_player"
-  | "cd_sacd_transport"
+  | "transport"
   | "dap"
   | "network_switch"
   | "optical_isolator"
@@ -79,6 +79,7 @@ export type CategoryId = CategoryGroupId | ClassifiableCategoryId;
  */
 export type LegacyCategoryAlias =
   | "network_transport"
+  | "cd_sacd_transport"
   | "accessory"
   | "speaker_other"
   | "headphone"
@@ -113,7 +114,7 @@ export interface CategoryFacet {
  * Shop-supplied `rawCategory` -> category id mapping.
  *
  * Values are NOT guaranteed to be canonical `CategoryId`s: adapters map to legacy
- * aliases (`network_transport`, `accessory`) and to group ids, and a value may be an
+ * legacy aliases (for compatibility), canonical ids and group ids, and a value may be an
  * array whose first element wins (`categories.ts` `mappingValue`).
  */
 export type CategoryMapping = Readonly<Record<string, string | readonly string[]>>;
