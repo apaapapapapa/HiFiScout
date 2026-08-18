@@ -1,0 +1,69 @@
+name: Verify transport canonical post-merge
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  verify:
+    if: github.head_ref == 'ops/verify-transport-canonical-post-merge'
+    runs-on: ubuntu-latest
+    env:
+      TARGET_SHA: 9e6d892da5b5c4d3bde192612f847f09ed33b0a0
+      PRODUCTION_URL: https://hifiscout.tokyojp.workers.dev
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Wait for main CI, deployment, and E2E
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${TARGET_SHA}&per_page=100"
+          latest_run() {
+            local name="$1"
+            jq -c --arg name "$name" '[.workflow_runs[] | select(.name == $name)] | sort_by(.created_at) | last // {}'
+          }
+          for attempt in $(seq 1 90); do
+            payload="$(curl -fsSL \
+              -H 'Accept: application/vnd.github+json' \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "$api")"
+            failed="$(jq -r '[.workflow_runs[] | select(.status == "completed" and (.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "cancelled" or .conclusion == "startup_failure" or .conclusion == "action_required"))] | length' <<<"$payload")"
+            if [ "$failed" -gt 0 ]; then
+              jq -r '.workflow_runs[] | select(.status == "completed" and (.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "cancelled" or .conclusion == "startup_failure" or .conclusion == "action_required")) | [.name, .conclusion, .html_url] | @tsv' <<<"$payload" >&2
+              exit 1
+            fi
+            ci="$(latest_run CI <<<"$payload")"
+            deploy="$(latest_run 'Deploy Cloudflare' <<<"$payload")"
+            e2e="$(latest_run E2E <<<"$payload")"
+            ci_ok="$(jq -r '.status == "completed" and .conclusion == "success"' <<<"$ci")"
+            deploy_ok="$(jq -r '.status == "completed" and .conclusion == "success"' <<<"$deploy")"
+            e2e_ok="$(jq -r '.status == "completed" and .conclusion == "success"' <<<"$e2e")"
+            if [ "$ci_ok" = true ] && [ "$deploy_ok" = true ] && [ "$e2e_ok" = true ]; then
+              echo 'Required post-merge workflows are green.'
+              exit 0
+            fi
+            [ "$attempt" -lt 90 ] || { echo 'Post-merge workflows did not reach green.' >&2; exit 1; }
+            sleep 10
+          done
+      - name: Verify production canonical transport metadata and legacy filters
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="$(curl -fsSL --retry 5 --retry-delay 2 "${PRODUCTION_URL%/}/api/meta")"
+          jq -e '
+            (.categoryFacets | map({key: .id, value: .}) | from_entries) as $c
+            | $c.transport.name == "　トランスポート"
+            and $c.transport.parentId == "digital"
+            and ($c.cd_sacd_transport == null)
+            and ($c.network_transport == null)
+          ' <<<"$payload" >/dev/null
+          for category in transport cd_sacd_transport network_transport; do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --retry 3 --retry-delay 1 "${PRODUCTION_URL%/}/api/product-search?category=${category}")"
+            [ "$code" = 200 ] || { echo "${category} filter returned HTTP ${code}" >&2; exit 1; }
+          done
+          echo 'Production exposes transport as canonical while legacy filters remain accepted.'
