@@ -1,0 +1,99 @@
+name: Agent fix cable DQ model scope
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply cable model-optional category fix
+        shell: python
+        run: |
+          from pathlib import Path
+
+          cable_ids = [
+              "cable",
+              "cable_xlr",
+              "cable_rca",
+              "cable_phono",
+              "cable_usb",
+              "cable_lan",
+              "cable_digital",
+              "cable_power",
+              "cable_other",
+          ]
+
+          p = Path("src/db/data-quality-repository.ts")
+          text = p.read_text()
+          old = '''const MODEL_OPTIONAL_CATEGORIES = [
+            "cable",
+            "rack",
+            "power_accessory",
+            "vacuum_tube",
+            "other_accessory",
+            "other",
+          ];'''
+          new = '''const MODEL_OPTIONAL_CATEGORIES = [
+            "cable",
+            "cable_xlr",
+            "cable_rca",
+            "cable_phono",
+            "cable_usb",
+            "cable_lan",
+            "cable_digital",
+            "cable_power",
+            "cable_other",
+            "rack",
+            "power_accessory",
+            "vacuum_tube",
+            "other_accessory",
+            "other",
+          ];'''
+          if old not in text:
+              raise SystemExit("data-quality MODEL_OPTIONAL_CATEGORIES anchor not found")
+          p.write_text(text.replace(old, new, 1))
+
+          p = Path(".github/workflows/deploy.yml")
+          text = p.read_text()
+          old_sql = "'other_accessory','cable','rack','power_accessory','vacuum_tube','other'"
+          new_sql = "'other_accessory','cable','cable_xlr','cable_rca','cable_phono','cable_usb','cable_lan','cable_digital','cable_power','cable_other','rack','power_accessory','vacuum_tube','other'"
+          count = text.count(old_sql)
+          if count != 3:
+              raise SystemExit(f"expected 3 deploy baseline category lists, found {count}")
+          p.write_text(text.replace(old_sql, new_sql))
+
+      - name: Install dependencies
+        run: npm ci
+      - name: Format
+        run: npx oxfmt --write src/db/data-quality-repository.ts .github/workflows/deploy.yml
+      - name: Validate
+        run: |
+          npm run check
+          npm run build
+      - name: Commit fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/db/data-quality-repository.ts .github/workflows/deploy.yml
+          if git diff --cached --quiet; then
+            echo 'No changes to commit.'
+            exit 0
+          fi
+          git commit -m 'fix: exclude cable leaves from model quality metrics'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
