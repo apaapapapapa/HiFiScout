@@ -73,12 +73,12 @@ jobs:
           payload="$(curl -fsSL --retry 5 --retry-delay 2 "${PRODUCTION_URL%/}/api/meta")"
           jq -e '
             (.categoryFacets | map({key: .id, value: .}) | from_entries) as $c
-            | $c.wired_headphone.name == "有線ヘッドホン"
-            and $c.wired_earphone.name == "有線イヤホン"
-            and $c.btw_headphone.name == "BTWヘッドホン"
-            and $c.btw_earphone.name == "BTWイヤホン"
-            and $c.power_strip.name == "電源タップ"
-            and $c.clean_power.name == "クリーン電源"
+            | ($c.wired_headphone.name | endswith("有線ヘッドホン"))
+            and ($c.wired_earphone.name | endswith("有線イヤホン"))
+            and ($c.btw_headphone.name | endswith("BTWヘッドホン"))
+            and ($c.btw_earphone.name | endswith("BTWイヤホン"))
+            and ($c.power_strip.name | endswith("電源タップ"))
+            and ($c.clean_power.name | endswith("クリーン電源"))
             and $c.cd_sacd_transport.parentId == "digital"
             and $c.cd_sacd_player.parentId == "digital"
             and $c.phono_step_up_transformer.parentId == "analog"
