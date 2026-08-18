@@ -68,6 +68,17 @@ jobs:
               'const CLASSIFICATION_METADATA_VERSION = 8;',
               'const CLASSIFICATION_METADATA_VERSION = 9;',
           )
+          # First-party mappings must emit the canonical id directly; legacy ids are input compatibility only.
+          replace(
+              'src/crawler/shops/hifido.ts',
+              '  ネットワークトランスポート: "network_transport",',
+              '  ネットワークトランスポート: "transport",',
+          )
+          replace(
+              'src/catalog/types.ts',
+              ' * aliases (`network_transport`, `accessory`) and to group ids, and a value may be an',
+              ' * legacy aliases (for compatibility), canonical ids and group ids, and a value may be an',
+          )
 
           # Lock both legacy ids to the new canonical id and ensure neither appears in canonical definitions.
           taxonomy = Path('test/category-taxonomy-v2.test.ts')
@@ -77,7 +88,7 @@ jobs:
               raise SystemExit('legacy network transport assertion not found')
           text = text.replace(
               needle,
-              needle + '\n  assert.equal(categoryIdForFilter("cd_sacd_transport"), "transport");\n  assert.equal(getCategory("cd_sacd_transport")?.id, "transport");\n  assert.equal(CATEGORIES.some((category) => category.id === "cd_sacd_transport"), false);',
+              needle + '\n  assert.equal(categoryIdForFilter("cd_sacd_transport"), "transport");\n  assert.equal(getCategory("cd_sacd_transport")?.id, "transport");\n  assert.equal(CATEGORIES.map((category) => String(category.id)).includes("cd_sacd_transport"), false);',
           )
           taxonomy.write_text(text)
 
@@ -93,18 +104,22 @@ jobs:
           feature_test.write_text(text)
           PY
       - name: Format changed files
-        run: npx oxfmt src/catalog/types.ts src/catalog/categories.ts src/catalog/category-rules.ts src/catalog/product-normalizer.ts test/category-taxonomy-v2.test.ts test/catalog-normalization.test.ts test/category-feature-query.test.ts e2e/tests/category-taxonomy.spec.ts
+        run: npx oxfmt src/catalog/types.ts src/catalog/categories.ts src/catalog/category-rules.ts src/catalog/product-normalizer.ts src/crawler/shops/hifido.ts test/category-taxonomy-v2.test.ts test/category-taxonomy-refinement.test.ts test/catalog-normalization.test.ts test/category-feature-query.test.ts e2e/tests/category-taxonomy.spec.ts
       - name: Verify legacy ids only remain as compatibility aliases/tests
         shell: bash
         run: |
-          echo '=== remaining cd_sacd_transport references ==='
-          grep -RIn 'cd_sacd_transport' src test e2e scripts frontend infra || true
+          echo '=== remaining legacy transport id references ==='
+          grep -RInE 'cd_sacd_transport|network_transport' src test e2e scripts frontend infra || true
           if grep -RIn 'id: "cd_sacd_transport"' src test e2e scripts frontend infra; then
-            echo 'Legacy id remains as a canonical definition' >&2
+            echo 'Legacy CD/SACD id remains as a canonical definition' >&2
             exit 1
           fi
           if grep -RIn '\["cd_sacd_transport"' src/catalog/category-rules.ts; then
-            echo 'Legacy id remains in classifier rules' >&2
+            echo 'Legacy CD/SACD id remains in classifier rules' >&2
+            exit 1
+          fi
+          if grep -RIn 'ネットワークトランスポート: "network_transport"' src; then
+            echo 'First-party mapping still emits legacy network_transport' >&2
             exit 1
           fi
       - run: npm run check
