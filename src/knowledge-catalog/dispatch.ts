@@ -82,7 +82,13 @@ async function sendTargetMessages(
 
 async function dispatchKnowledgeCatalogVerificationRun(
   env: KnowledgeCatalogQueueEnv,
-  { now = new Date(), mode, preferRetries = false, verifierVersion = 0 }: DispatchRunOptions,
+  {
+    now = new Date(),
+    mode,
+    preferRetries = false,
+    verifierVersion = 0,
+    runId: existingRunId = 0,
+  }: DispatchRunOptions,
 ) {
   // Checked before the run row is created: a run whose jobs can never be enqueued would sit
   // `running` until an operator noticed.
@@ -91,7 +97,7 @@ async function dispatchKnowledgeCatalogVerificationRun(
   }
 
   const startedAt = now.toISOString();
-  const runId = await startKnowledgeCatalogReviewRun(env.DB, startedAt);
+  const runId = existingRunId || (await startKnowledgeCatalogReviewRun(env.DB, startedAt));
   try {
     // Recorded up front because the finalizer runs much later and reports the difference.
     const beforeClassification = await activeProductClassificationStats(env.DB);

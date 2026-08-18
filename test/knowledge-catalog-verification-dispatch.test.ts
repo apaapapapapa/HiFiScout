@@ -95,6 +95,17 @@ test("a run records its classification baseline before any verification is queue
   assert.equal(baseline[0].binds.at(-1), RUN_ID);
 });
 
+test("a pre-created recovery run is populated without inserting a duplicate review row", async () => {
+  const db = dispatchDatabase();
+  const queue = queueBinding();
+  const result = await dispatchKnowledgeCatalogDailyVerification(queueEnv(db, queue.binding), {
+    runId: RUN_ID,
+    preferRetries: true,
+  });
+  assert.equal(result.runId, RUN_ID);
+  assert.equal(db.ran("INSERT INTO knowledge_catalog_review_runs").length, 0);
+});
+
 test("dispatch refuses to start when the queue binding is missing", async () => {
   const db = dispatchDatabase();
 

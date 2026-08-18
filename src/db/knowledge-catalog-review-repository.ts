@@ -290,6 +290,38 @@ export async function startKnowledgeCatalogReviewRun(
   return run.meta.last_row_id;
 }
 
+export async function latestKnowledgeCatalogReviewRunState(
+  db: QueryableDatabase,
+): Promise<Pick<KnowledgeCatalogReviewRunRow, "id" | "status" | "message"> | null> {
+  return db
+    .prepare(
+      "SELECT id, status, message FROM knowledge_catalog_review_runs ORDER BY id DESC LIMIT 1",
+    )
+    .first<Pick<KnowledgeCatalogReviewRunRow, "id" | "status" | "message">>();
+}
+
+export async function startKnowledgeCatalogRecoveryReviewRun(
+  db: QueryableDatabase,
+  failedRunId: number,
+  startedAt: string,
+): Promise<number | null> {
+  const run = await db
+    .prepare(`
+      INSERT INTO knowledge_catalog_review_runs(started_at, status, message)
+      SELECT ?, 'running', ?
+      WHERE EXISTS (
+        SELECT 1 FROM knowledge_catalog_review_runs
+        WHERE id = ? AND status = 'failed'
+      )
+        AND NOT EXISTS (
+          SELECT 1 FROM knowledge_catalog_review_runs WHERE id > ?
+        )
+    `)
+    .bind(startedAt, `recovery_of_run:${failedRunId}`, failedRunId, failedRunId)
+    .run();
+  return Number(run?.meta?.changes || 0) > 0 ? Number(run?.meta?.last_row_id || 0) : null;
+}
+
 export async function claimInitialKnowledgeCatalogReviewRun(
   db: QueryableDatabase,
   startedAt: string,

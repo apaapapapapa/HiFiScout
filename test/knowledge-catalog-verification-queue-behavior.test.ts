@@ -165,19 +165,43 @@ test("a malformed queue message is acked rather than redelivered forever", async
   assert.equal(db.statements.length, 0, "nothing is claimed for a message that cannot be routed");
 });
 
-test("a job another consumer already holds is acked without being processed", async () => {
-  // Claiming is a conditional UPDATE; zero changed rows means the lease is held elsewhere.
-  const db = queueDatabase((sql) =>
-    sql.includes("SET status = 'processing'") ? { changes: 0 } : {},
-  );
+test("a redelivery while another consumer holds the lease is retried instead of lost", async () => {
+  const db = queueDatabase((sql) => {
+    if (sql.includes("SET status = 'processing'")) return { changes: 0 };
+    if (sql.includes("SELECT * FROM knowledge_catalog_verification_jobs")) {
+      return {
+        row: knowledgeJobRow({
+          status: "processing",
+          lease_expires_at: "2099-01-01T00:00:00.000Z",
+        }),
+      };
+    }
+    return {};
+  });
   const { message, acks, retries } = queueMessage();
-
   const result = await consumeKnowledgeCatalogVerificationMessage(queueEnv(db), message);
 
-  assert.deepEqual(result, { status: "ignored", reason: "job_not_claimable" });
+  assert.equal(result.status, "retrying");
+  assert.equal("reason" in result && result.reason, "job_lease_held");
+  assert.equal(acks.length, 0);
+  assert.equal(retries[0]?.delaySeconds, 900);
+  assert.equal(db.ran("SET status = 'retrying'").length, 0);
+});
+
+test("a redelivery for a terminal job is acknowledged without reprocessing", async () => {
+  const db = queueDatabase((sql) => {
+    if (sql.includes("SET status = 'processing'")) return { changes: 0 };
+    if (sql.includes("SELECT * FROM knowledge_catalog_verification_jobs")) {
+      return { row: knowledgeJobRow({ status: "completed" }) };
+    }
+    return {};
+  });
+  const { message, acks, retries } = queueMessage();
+  const result = await consumeKnowledgeCatalogVerificationMessage(queueEnv(db), message);
+
+  assert.deepEqual(result, { status: "ignored", reason: "job_terminal_or_missing" });
   assert.equal(acks.length, 1);
   assert.equal(retries.length, 0);
-  assert.equal(db.ran("SET status = 'retrying'").length, 0);
 });
 
 test("a busy manufacturer domain defers the job instead of fetching alongside another", async () => {
