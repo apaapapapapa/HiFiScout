@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:
-      TARGET_SHA: 7d998322c17a714a3b95ce1d4af79974c0bb610e
+      TARGET_SHA: cd77cfc1abc3bb5c661905f1bf6d861fbcda5434
       GH_TOKEN: ${{ github.token }}
       PRODUCTION_BASE_URL: https://hifiscout.tokyojp.workers.dev
     steps:
