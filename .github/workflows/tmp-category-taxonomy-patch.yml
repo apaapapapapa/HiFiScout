@@ -1,0 +1,637 @@
+name: Temporary category taxonomy patch
+
+on:
+  push:
+    branches:
+      - feat/refine-audio-category-taxonomy
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/refine-audio-category-taxonomy
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply taxonomy patch
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          def read(path):
+              return Path(path).read_text()
+
+          def write(path, text):
+              Path(path).write_text(text)
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected 1 match, got {count}")
+              return text.replace(old, new, 1)
+
+          def replace_block(text, category_id, replacement):
+              pattern = rf'  \{{\n    id: "{re.escape(category_id)}",.*?\n  \}},\n'
+              updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+              if count != 1:
+                  raise SystemExit(f"category block {category_id}: expected 1 match, got {count}")
+              return updated
+
+          def set_order(text, category_id, order):
+              pattern = rf'(id: "{re.escape(category_id)}",.*?\n    order: )\d+'
+              updated, count = re.subn(pattern, rf'\g<1>{order}', text, count=1, flags=re.S)
+              if count != 1:
+                  raise SystemExit(f"order {category_id}: expected 1 match, got {count}")
+              return updated
+
+          # -----------------------------------------------------------------
+          # Type vocabulary
+          # -----------------------------------------------------------------
+          path = 'src/catalog/types.ts'
+          text = read(path)
+          text = replace_once(
+              text,
+              '  | "cd_sacd_player"\n  | "dap"',
+              '  | "cd_sacd_player"\n  | "cd_sacd_transport"\n  | "dap"',
+              'types digital transport',
+          )
+          text = replace_once(
+              text,
+              '  | "phono_eq"\n  | "speaker_bookshelf"',
+              '  | "phono_eq"\n  | "phono_step_up_transformer"\n  | "speaker_bookshelf"',
+              'types phono transformer',
+          )
+          text = replace_once(
+              text,
+              '  | "headphone"\n  | "earphone"',
+              '  | "wired_headphone"\n  | "wired_earphone"\n  | "btw_headphone"\n  | "btw_earphone"',
+              'types headphone leaves',
+          )
+          text = replace_once(
+              text,
+              '  | "rack"\n  | "power_accessory"\n  | "vacuum_tube"',
+              '  | "rack"\n  | "power_strip"\n  | "clean_power"\n  | "vacuum_tube"',
+              'types power leaves',
+          )
+          text = replace_once(text, '/** Every id present in `CATEGORIES` (45 entries). */', '/** Every id present in `CATEGORIES` (50 entries). */', 'category count comment')
+          text = replace_once(
+              text,
+              'export type LegacyCategoryAlias = "network_transport" | "accessory" | "speaker_other";',
+              'export type LegacyCategoryAlias =\n  | "network_transport"\n  | "accessory"\n  | "speaker_other"\n  | "headphone"\n  | "earphone"\n  | "power_accessory";',
+              'legacy category alias type',
+          )
+          write(path, text)
+
+          # -----------------------------------------------------------------
+          # Canonical category definitions and compatibility
+          # -----------------------------------------------------------------
+          path = 'src/catalog/categories.ts'
+          text = read(path)
+          cd_blocks = '''  {
+            id: "cd_sacd_player",
+            name: "CD/SACDプレーヤー",
+            parentId: "digital",
+            order: 3,
+            classifiable: true,
+            filterable: true,
+            aliases: [
+              "cd player",
+              "sacd player",
+              "sacd/cd player",
+              "cdプレーヤー",
+              "sacdプレーヤー",
+              "sacd/cdプレーヤー",
+              "cd/sacdプレーヤー",
+            ],
+          },
+          {
+            id: "cd_sacd_transport",
+            name: "CD/SACDトランスポート",
+            parentId: "digital",
+            order: 4,
+            classifiable: true,
+            filterable: true,
+            aliases: [
+              "cd transport",
+              "sacd transport",
+              "super audio cd transport",
+              "disc transport",
+              "cdトランスポート",
+              "sacdトランスポート",
+              "cd/sacdトランスポート",
+              "トランスポート",
+            ],
+          },
+          '''
+          text = replace_block(text, 'cd_sacd_player', cd_blocks)
+          for category_id, order in [
+              ('dap', 5),
+              ('network_switch', 6),
+              ('optical_isolator', 7),
+              ('router', 8),
+              ('music_server', 9),
+              ('master_clock', 10),
+          ]:
+              text = set_order(text, category_id, order)
+
+          phono_blocks = '''  {
+            id: "phono_eq",
+            name: "フォノイコライザー",
+            parentId: "analog",
+            order: 4,
+            classifiable: true,
+            filterable: true,
+            aliases: ["phono equalizer", "phono eq", "phono stage", "フォノイコライザー", "フォノアンプ"],
+          },
+          {
+            id: "phono_step_up_transformer",
+            name: "昇圧トランス",
+            parentId: "analog",
+            order: 5,
+            classifiable: true,
+            filterable: true,
+            aliases: [
+              "step-up transformer",
+              "step up transformer",
+              "mc transformer",
+              "moving coil transformer",
+              "昇圧トランス",
+              "mc昇圧トランス",
+            ],
+          },
+          '''
+          text = replace_block(text, 'phono_eq', phono_blocks)
+
+          headphone_blocks = '''  {
+            id: "wired_headphone",
+            name: "有線ヘッドホン",
+            parentId: "headphone_group",
+            order: 1,
+            classifiable: true,
+            filterable: true,
+            aliases: ["wired headphone", "wired headphones", "有線ヘッドホン"],
+          },
+          {
+            id: "wired_earphone",
+            name: "有線イヤホン",
+            parentId: "headphone_group",
+            order: 2,
+            classifiable: true,
+            filterable: true,
+            aliases: ["wired earphone", "wired earphones", "wired earbuds", "有線イヤホン"],
+          },
+          {
+            id: "btw_headphone",
+            name: "BTWヘッドホン",
+            parentId: "headphone_group",
+            order: 3,
+            classifiable: true,
+            filterable: true,
+            aliases: [
+              "bluetooth headphone",
+              "bluetooth headphones",
+              "wireless headphone",
+              "wireless headphones",
+              "bluetoothヘッドホン",
+              "ワイヤレスヘッドホン",
+              "BTWヘッドホン",
+            ],
+          },
+          {
+            id: "btw_earphone",
+            name: "BTWイヤホン",
+            parentId: "headphone_group",
+            order: 4,
+            classifiable: true,
+            filterable: true,
+            aliases: [
+              "bluetooth earphone",
+              "bluetooth earphones",
+              "wireless earphone",
+              "wireless earphones",
+              "wireless earbuds",
+              "true wireless",
+              "tws",
+              "bluetoothイヤホン",
+              "ワイヤレスイヤホン",
+              "完全ワイヤレスイヤホン",
+              "BTWイヤホン",
+            ],
+          },
+          '''
+          text = replace_block(text, 'headphone', headphone_blocks)
+          text = replace_block(text, 'earphone', '')
+
+          power_blocks = '''  {
+            id: "power_strip",
+            name: "電源タップ",
+            parentId: "accessories",
+            order: 3,
+            classifiable: true,
+            filterable: true,
+            aliases: [
+              "power strip",
+              "power distributor",
+              "power distribution",
+              "電源タップ",
+              "電源ボックス",
+            ],
+          },
+          {
+            id: "clean_power",
+            name: "クリーン電源",
+            parentId: "accessories",
+            order: 4,
+            classifiable: true,
+            filterable: true,
+            aliases: [
+              "clean power",
+              "power conditioner",
+              "power regenerator",
+              "ac regenerator",
+              "クリーン電源",
+              "電源コンディショナー",
+              "電源コンディショナ",
+              "電源リジェネレーター",
+            ],
+          },
+          '''
+          text = replace_block(text, 'power_accessory', power_blocks)
+          text = set_order(text, 'vacuum_tube', 5)
+          text = set_order(text, 'other_accessory', 6)
+
+          text = replace_once(
+              text,
+              '''const LEGACY_ALIASES: Readonly<Record<string, ClassifiableCategoryId>> = Object.freeze({
+            network_transport: "network_player",
+            accessory: "other_accessory",
+            speaker_other: "other",
+          });''',
+              '''const LEGACY_ALIASES: Readonly<Record<string, ClassifiableCategoryId>> = Object.freeze({
+            network_transport: "network_player",
+            accessory: "other_accessory",
+            speaker_other: "other",
+            headphone: "wired_headphone",
+            earphone: "wired_earphone",
+            power_accessory: "clean_power",
+          });''',
+              'legacy alias map',
+          )
+
+          old_filter = '''export function categoryFilterIds(value: string = ""): CategoryId[] {
+            const categoryId = categoryIdForFilter(value);
+            if (!categoryId) return [];
+            return CATEGORIES.filter(
+              (candidate) =>
+                candidate.id === categoryId || categoryClosureIds(candidate.id).includes(categoryId),
+            ).map((candidate) => candidate.id);
+          }'''
+          new_filter = '''export function categoryFilterIds(value: string = ""): string[] {
+            const categoryId = categoryIdForFilter(value);
+            if (!categoryId) return [];
+            const canonicalIds = CATEGORIES.filter(
+              (candidate) =>
+                candidate.id === categoryId || categoryClosureIds(candidate.id).includes(categoryId),
+            ).map((candidate) => candidate.id);
+            const legacyIds = Object.entries(LEGACY_ALIASES)
+              .filter(([, canonical]) => canonicalIds.includes(canonical))
+              .map(([legacy]) => legacy);
+            return [...new Set([...canonicalIds, ...legacyIds])];
+          }'''
+          text = replace_once(text, old_filter, new_filter, 'category filter compatibility')
+          write(path, text)
+
+          # Broad legacy seller buckets must not override a stronger explicit title such as Bluetooth.
+          path = 'src/catalog/category-evidence.ts'
+          text = read(path)
+          text = replace_once(
+              text,
+              '''const BROAD_SELLER_CATEGORY_IDS: ReadonlySet<string> = new Set([
+            "other",
+            "other_accessory",
+            "cable_other",
+          ]);''',
+              '''const BROAD_SELLER_CATEGORY_IDS: ReadonlySet<string> = new Set([
+            "other",
+            "other_accessory",
+            "cable_other",
+            "wired_headphone",
+            "wired_earphone",
+            "clean_power",
+          ]);''',
+              'broad seller categories',
+          )
+          write(path, text)
+
+          # -----------------------------------------------------------------
+          # Explicit classification rules
+          # -----------------------------------------------------------------
+          path = 'src/catalog/category-rules.ts'
+          text = read(path)
+          text = replace_once(
+              text,
+              '  ["power_accessory", /power\\s*(?:strip|conditioner)|電源タップ|電源コンディショナ(?:ー)?/i],',
+              '''  [
+            "clean_power",
+            /power\\s*(?:conditioner|regenerator)|ac\\s*regenerator|clean\\s*power|クリーン電源|電源コンディショナ(?:ー)?|電源リジェネレータ(?:ー)?/i,
+          ],
+          ["power_strip", /power\\s*(?:strip|distributor|distribution)|電源タップ|電源ボックス/i],''',
+              'power classification rules',
+          )
+          old_cd_rule = '''  [
+            "cd_sacd_player",
+            /network\\s+cd\\s+receiver|(?:sacd|cd)\\s*(?:\\/\\s*(?:sacd|cd))?\\s*(?:player|transport|プレーヤー|プレイヤー|トランスポート)|super\\s+audio\\s+cd\\s+transport|(?:sacd\\s*\\/\\s*cd|cd\\s*\\/\\s*sacd)/i,
+          ],'''
+          new_cd_rule = '''  [
+            "cd_sacd_transport",
+            /(?:sacd|cd)\\s*(?:\\/\\s*(?:sacd|cd))?\\s*(?:transport|トランスポート)|super\\s+audio\\s+cd\\s+transport|(?:cd|sacd)\\s*\\/\\s*(?:sacd|cd)\\s*トランスポート/i,
+          ],
+          [
+            "cd_sacd_player",
+            /network\\s+cd\\s+receiver|(?:sacd|cd)\\s*(?:\\/\\s*(?:sacd|cd))?\\s*(?:player|プレーヤー|プレイヤー)|(?:sacd\\s*\\/\\s*cd|cd\\s*\\/\\s*sacd)(?!\\s*トランスポート)/i,
+          ],'''
+          text = replace_once(text, old_cd_rule, new_cd_rule, 'cd transport rule')
+          text = replace_once(
+              text,
+              '  ["phono_eq", /phono\\s+(?:equalizer|eq|stage)|フォノイコライザー|フォノアンプ/i],',
+              '''  [
+            "phono_step_up_transformer",
+            /(?:mc|moving\\s+coil)\\s+(?:step[\\s-]*up\\s+)?transformer|step[\\s-]*up\\s+transformer|(?:mc)?昇圧トランス/i,
+          ],
+          ["phono_eq", /phono\\s+(?:equalizer|eq|stage)|フォノイコライザー|フォノアンプ/i],''',
+              'phono step-up rule',
+          )
+          text = replace_once(
+              text,
+              '''  ["earphone", /\\bearphones?\\b|\\bearbuds?\\b|\\biem\\b|イヤホン/i],
+          ["headphone", /\\bheadphones?\\b|ヘッドホン/i],''',
+              '''  [
+            "btw_earphone",
+            /(?:bluetooth|wireless|true\\s+wireless|\\btws\\b).*?(?:earphones?|earbuds?|\\biem\\b)|(?:earphones?|earbuds?|\\biem\\b).*?(?:bluetooth|wireless|true\\s+wireless|\\btws\\b)|(?:bluetooth|ワイヤレス|完全ワイヤレス).*?イヤホン|イヤホン.*?(?:bluetooth|ワイヤレス|完全ワイヤレス)/i,
+          ],
+          [
+            "btw_headphone",
+            /(?:bluetooth|wireless).*?headphones?|headphones?.*?(?:bluetooth|wireless)|(?:bluetooth|ワイヤレス).*?ヘッドホン|ヘッドホン.*?(?:bluetooth|ワイヤレス)/i,
+          ],
+          ["wired_earphone", /\\bearphones?\\b|\\bearbuds?\\b|\\biem\\b|イヤホン/i],
+          ["wired_headphone", /\\bheadphones?\\b|ヘッドホン/i],''',
+              'headphone classification rules',
+          )
+          write(path, text)
+
+          # Taxonomy change must make stored classifications replay-eligible.
+          path = 'src/catalog/product-normalizer.ts'
+          text = read(path)
+          text = replace_once(text, 'const CLASSIFICATION_METADATA_VERSION = 6;', 'const CLASSIFICATION_METADATA_VERSION = 7;', 'category classification version')
+          write(path, text)
+
+          # -----------------------------------------------------------------
+          # Metadata compatibility while category replay drains
+          # -----------------------------------------------------------------
+          path = 'src/http/meta.ts'
+          text = read(path)
+          old_counts = '''  const counts = new Map(
+            (facets[1]?.results || []).map((row): [string, number] => [
+              row.value,
+              Number(row.active_product_count || 0),
+            ]),
+          );'''
+          new_counts = '''  const counts = new Map<string, number>();
+          for (const row of facets[1]?.results || []) {
+            const categoryId = getCategory(row.value)?.id || row.value;
+            counts.set(
+              categoryId,
+              (counts.get(categoryId) || 0) + Number(row.active_product_count || 0),
+            );
+          }'''
+          text = replace_once(text, old_counts, new_counts, 'meta legacy category counts')
+          write(path, text)
+
+          # -----------------------------------------------------------------
+          # Category select separator: DJ/DTM gets both an upper and lower line.
+          # -----------------------------------------------------------------
+          path = 'frontend/product-view.ts'
+          text = read(path)
+          old_projection = '''  const topLevel = ungrouped
+            .map(
+              (facet) =>
+                `${facet.parentId === null && !facet.classifiable ? CATEGORY_SEPARATOR : ""}${option(facet)}`,
+            )
+            .join("");'''
+          new_projection = '''  const topLevel = ungrouped
+            .map((facet) => {
+              const topLevelFacet = facet.parentId === null;
+              const before =
+                topLevelFacet && (!facet.classifiable || facet.id === "dj_dtm")
+                  ? CATEGORY_SEPARATOR
+                  : "";
+              const after = topLevelFacet && facet.id === "dj_dtm" ? CATEGORY_SEPARATOR : "";
+              return `${before}${option(facet)}${after}`;
+            })
+            .join("");'''
+          text = replace_once(text, old_projection, new_projection, 'DJ separator projection')
+          write(path, text)
+
+          # -----------------------------------------------------------------
+          # Unit tests
+          # -----------------------------------------------------------------
+          path = 'test/category-taxonomy-v2.test.ts'
+          text = read(path)
+          text = replace_once(
+              text,
+              '''      "cd_sacd_player",
+              "dap",''',
+              '''      "cd_sacd_player",
+              "cd_sacd_transport",
+              "dap",''',
+              'digital child test',
+          )
+          text = replace_once(
+              text,
+              '''  assert.deepEqual(
+            children("speaker").map((category) => category.id),''',
+              '''  assert.deepEqual(
+            children("analog").map((category) => category.id),
+            ["turntable", "tonearm", "cartridge", "phono_eq", "phono_step_up_transformer"],
+          );
+          assert.deepEqual(
+            children("speaker").map((category) => category.id),''',
+              'analog children test',
+          )
+          text = replace_once(
+              text,
+              '''  assert.deepEqual(
+            children("accessories").map((category) => category.id),
+            ["cable", "rack", "power_accessory", "vacuum_tube", "other_accessory"],
+          );''',
+              '''  assert.deepEqual(
+            children("headphone_group").map((category) => category.id),
+            ["wired_headphone", "wired_earphone", "btw_headphone", "btw_earphone"],
+          );
+          assert.deepEqual(
+            children("accessories").map((category) => category.id),
+            ["cable", "rack", "power_strip", "clean_power", "vacuum_tube", "other_accessory"],
+          );''',
+              'headphone and accessory child tests',
+          )
+          text = replace_once(
+              text,
+              '''  assert.equal(categoryIdForFilter("speaker_other"), "speaker");''',
+              '''  assert.equal(categoryIdForFilter("speaker_other"), "speaker");
+          assert.equal(categoryIdForFilter("headphone"), "wired_headphone");
+          assert.equal(categoryIdForFilter("earphone"), "wired_earphone");
+          assert.equal(categoryIdForFilter("power_accessory"), "clean_power");''',
+              'legacy alias assertions',
+          )
+          text = replace_once(
+              text,
+              '''test("transports are classified as their player family", () => {
+            assert.equal(classify("Network Transport N1").primaryCategoryId, "network_player");
+            assert.equal(classify("CD Transport D1").primaryCategoryId, "cd_sacd_player");
+          });''',
+              '''test("CD/SACD transports are independent from players while network transport stays a network player", () => {
+            assert.equal(classify("Network Transport N1").primaryCategoryId, "network_player");
+            assert.equal(classify("CD Transport D1").primaryCategoryId, "cd_sacd_transport");
+            assert.equal(classify("SACD Player D2").primaryCategoryId, "cd_sacd_player");
+          });''',
+              'transport classification test',
+          )
+          text = replace_once(
+              text,
+              '''test("accessory precedence prevents target component words from stealing classification", () => {
+            assert.equal(classify("電源タップ 6口").primaryCategoryId, "power_accessory");
+            assert.equal(classify("インシュレーター 4個").primaryCategoryId, "other_accessory");
+          });''',
+              '''test("headphone, phono and power refinements classify into their dedicated leaves", () => {
+            assert.equal(classify("有線ヘッドホン MDR-1").primaryCategoryId, "wired_headphone");
+            assert.equal(classify("有線イヤホン IER-1").primaryCategoryId, "wired_earphone");
+            assert.equal(classify("Bluetooth ワイヤレスヘッドホン WH-1").primaryCategoryId, "btw_headphone");
+            assert.equal(classify("完全ワイヤレスイヤホン WF-1").primaryCategoryId, "btw_earphone");
+            assert.equal(classify("MC昇圧トランス T-1").primaryCategoryId, "phono_step_up_transformer");
+            assert.equal(classify("フォノイコライザー EQ-1").primaryCategoryId, "phono_eq");
+            assert.equal(classify("電源タップ 6口").primaryCategoryId, "power_strip");
+            assert.equal(classify("クリーン電源 Power Conditioner P-1").primaryCategoryId, "clean_power");
+            assert.equal(classify("インシュレーター 4個").primaryCategoryId, "other_accessory");
+          });''',
+              'refined taxonomy classification test',
+          )
+          write(path, text)
+
+          path = 'test/meta-category-hierarchy.test.ts'
+          text = read(path)
+          text = replace_once(
+              text,
+              'assert.deepEqual(ids.slice(accessoriesIndex, accessoriesIndex + 14), [',
+              'assert.deepEqual(ids.slice(accessoriesIndex, accessoriesIndex + 15), [',
+              'meta accessory slice size',
+          )
+          text = replace_once(
+              text,
+              '''    "rack",
+            "power_accessory",
+            "vacuum_tube",''',
+              '''    "rack",
+            "power_strip",
+            "clean_power",
+            "vacuum_tube",''',
+              'meta accessory power leaves',
+          )
+          write(path, text)
+
+          path = 'test/frontend-category-options.test.ts'
+          text = read(path)
+          text = replace_once(
+              text,
+              'assert.equal((markup.match(/data-category-separator="true"/g) || []).length, 2);',
+              'assert.equal((markup.match(/data-category-separator="true"/g) || []).length, 4);',
+              'separator count test',
+          )
+          text = replace_once(
+              text,
+              '''  assert.match(
+            markup,
+            /<option value="dac">　DAC<\\/option><option value="dj_dtm">DJ機器・DTM<\\/option>$/u,
+          );''',
+              '''  assert.match(
+            markup,
+            /<option value="dac">　DAC<\\/option><option disabled data-category-separator="true">────────────<\\/option><option value="dj_dtm">DJ機器・DTM<\\/option><option disabled data-category-separator="true">────────────<\\/option>$/u,
+          );''',
+              'DJ separator boundary test',
+          )
+          write(path, text)
+
+          # -----------------------------------------------------------------
+          # E2E taxonomy contract
+          # -----------------------------------------------------------------
+          path = 'e2e/tests/category-taxonomy.spec.ts'
+          text = read(path)
+          text = replace_once(
+              text,
+              '''    "cd_sacd_player",
+              "dap",''',
+              '''    "cd_sacd_player",
+              "cd_sacd_transport",
+              "dap",''',
+              'e2e digital transport',
+          )
+          text = replace_once(
+              text,
+              '''    "phono_eq",
+              "speaker",''',
+              '''    "phono_eq",
+              "phono_step_up_transformer",
+              "speaker",''',
+              'e2e phono transformer',
+          )
+          text = replace_once(
+              text,
+              '''    "headphone_group",
+              "headphone",
+              "earphone",
+              "accessories",''',
+              '''    "headphone_group",
+              "wired_headphone",
+              "wired_earphone",
+              "btw_headphone",
+              "btw_earphone",
+              "accessories",''',
+              'e2e headphone leaves',
+          )
+          text = replace_once(
+              text,
+              '''    "rack",
+              "power_accessory",
+              "vacuum_tube",''',
+              '''    "rack",
+              "power_strip",
+              "clean_power",
+              "vacuum_tube",''',
+              'e2e power leaves',
+          )
+          write(path, text)
+          PY
+      - name: Install dependencies
+        run: npm ci
+      - name: Format
+        run: npm run format
+      - name: Validate
+        run: npm run check
+      - name: Remove temporary workflow and commit
+        shell: bash
+        run: |
+          rm .github/workflows/tmp-category-taxonomy-patch.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: refine audio category taxonomy"
+          git push origin HEAD:feat/refine-audio-category-taxonomy
