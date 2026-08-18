@@ -24,6 +24,7 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
+          import re
 
           p = Path("src/db/data-quality-repository.ts")
           text = p.read_text()
@@ -66,15 +67,8 @@ jobs:
 
           p = Path("test/data-quality-repository.test.ts")
           text = p.read_text()
-          old_test = '''  assert.deepEqual(MODEL_OPTIONAL_CATEGORIES, [
-            "cable",
-            "rack",
-            "power_accessory",
-            "vacuum_tube",
-            "other_accessory",
-            "other",
-          ]);'''
-          new_test = '''  assert.deepEqual(MODEL_OPTIONAL_CATEGORIES, [
+          pattern = r'(test\("model expectation excludes canonical accessory categories and other", async \(\) => \{\n)\s*assert\.deepEqual\(MODEL_OPTIONAL_CATEGORIES, \[.*?\n\s*\]\);'
+          replacement = r'''\1  assert.deepEqual(MODEL_OPTIONAL_CATEGORIES, [
             "cable",
             "cable_xlr",
             "cable_rca",
@@ -90,9 +84,10 @@ jobs:
             "other_accessory",
             "other",
           ]);'''
-          if old_test not in text:
-              raise SystemExit("data-quality test expectation anchor not found")
-          p.write_text(text.replace(old_test, new_test, 1))
+          text, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+          if count != 1:
+              raise SystemExit(f"expected one data-quality test expectation, found {count}")
+          p.write_text(text)
 
       - name: Install dependencies
         run: npm ci
