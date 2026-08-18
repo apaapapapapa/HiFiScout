@@ -16,6 +16,7 @@ import {
   claimKnowledgeCatalogVerificationJob,
   completeKnowledgeCatalogVerificationJob,
   deadLetterKnowledgeCatalogVerificationJob,
+  getKnowledgeCatalogVerificationJob,
   incrementKnowledgeCatalogVerificationSourceAttempt,
   releaseKnowledgeCatalogVerificationDomainLease,
   retryKnowledgeCatalogVerificationJob,
@@ -56,6 +57,21 @@ const JOB_TYPES = ["candidate", "product_recheck", "finalize"];
  * consumer error may be a transient Worker fault worth more chances.
  */
 const DELIVERY_ATTEMPT_MULTIPLIER = 2;
+
+function unclaimableRetryDelaySeconds(
+  env: KnowledgeCatalogQueueEnv,
+  job: KnowledgeCatalogVerificationJob,
+  now: Date,
+): number {
+  const retryAt = job.status === "processing" ? job.leaseExpiresAt : job.availableAt;
+  const untilRetry = retryAt
+    ? Math.ceil((new Date(retryAt).getTime() - now.getTime()) / 1000)
+    : domainRetrySeconds(env);
+  return Math.max(
+    1,
+    Math.min(jobLeaseSeconds(env), untilRetry > 0 ? untilRetry : domainRetrySeconds(env)),
+  );
+}
 
 export interface ConsumeOptions {
   /** Overridable so job processing can be exercised without reaching the network. */
@@ -212,10 +228,21 @@ export async function consumeKnowledgeCatalogVerificationMessage(
     now.toISOString(),
     jobLeaseSeconds(env),
   );
-  // Already claimed, already finished, or already dead-lettered: another consumer owns the outcome.
   if (!job) {
-    message.ack();
-    return { status: "ignored", reason: "job_not_claimable" };
+    const current = await getKnowledgeCatalogVerificationJob(env.DB, jobId);
+    if (!current || current.status === "completed" || current.status === "dead_letter") {
+      message.ack();
+      return { status: "ignored", reason: "job_terminal_or_missing" };
+    }
+    // Redelivery can race a valid D1 lease after a Worker interruption. ACK would delete
+    // the only Queue message and strand the row in `processing` forever.
+    const delaySeconds = unclaimableRetryDelaySeconds(env, current, now);
+    message.retry({ delaySeconds });
+    return {
+      status: "retrying",
+      reason: current.status === "processing" ? "job_lease_held" : "job_not_ready",
+      delaySeconds,
+    };
   }
 
   try {

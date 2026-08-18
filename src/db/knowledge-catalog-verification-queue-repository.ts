@@ -154,6 +154,37 @@ export async function claimKnowledgeCatalogVerificationJob(
   return jobFromRow(row);
 }
 
+export async function getKnowledgeCatalogVerificationJob(
+  db: QueryableDatabase,
+  jobId: number,
+): Promise<KnowledgeCatalogVerificationJob | null> {
+  const row = await db
+    .prepare("SELECT * FROM knowledge_catalog_verification_jobs WHERE id = ?")
+    .bind(jobId)
+    .first<KnowledgeCatalogVerificationJobRow>();
+  return jobFromRow(row);
+}
+
+export async function deadLetterOutstandingKnowledgeCatalogVerificationJobsForRun(
+  db: QueryableDatabase,
+  runId: number,
+  finishedAt: string,
+  message: unknown,
+): Promise<number> {
+  const result = await db
+    .prepare(`
+      UPDATE knowledge_catalog_verification_jobs
+      SET status = 'dead_letter', outcome = 'error', finished_at = ?,
+          available_at = NULL, claimed_at = NULL, lease_expires_at = NULL,
+          last_message = ?, updated_at = ?
+      WHERE run_id = ?
+        AND status IN ('queued', 'processing', 'retrying')
+    `)
+    .bind(finishedAt, String(message || "failed_run_recovery").slice(0, 1000), finishedAt, runId)
+    .run();
+  return number(result?.meta?.changes);
+}
+
 export async function incrementKnowledgeCatalogVerificationSourceAttempt(
   db: QueryableDatabase,
   jobId: number,
