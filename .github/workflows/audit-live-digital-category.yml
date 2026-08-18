@@ -13,13 +13,31 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Fetch live product-search results
+      - name: Fetch all live product-search results
         shell: bash
         run: |
           set -euo pipefail
-          url='https://hifiscout.tokyojp.workers.dev/api/product-search?category=digital&sort=priceDesc&limit=50&includeTotal=true'
-          curl --fail --silent --show-error --location --retry 3 --retry-delay 2 "$url" -o result.json
-          echo '=== META ==='
-          jq -r '"totalCount=\(.totalCount // "null") totalPages=\(.totalPages // "null") shown=\(.items|length)"' result.json
-          echo '=== ITEMS ==='
-          jq -r '.items | to_entries[] | [(.key + 1), .value.key, .value.manufacturer, .value.model, .value.primary_category_id, .value.category, (.value.lowest_price_yen // ""), (.value.highest_price_yen // ""), (.value.representative_offer.shop_key // ""), (.value.representative_offer.title // ""), (.value.representative_offer.source_url // "")] | @tsv' result.json
+          base='https://hifiscout.tokyojp.workers.dev/api/product-search?category=digital&sort=priceDesc&limit=50'
+          total=0
+          index=0
+          for offset in 0 50 100; do
+            url="${base}&offset=${offset}"
+            if [[ "$offset" -eq 0 ]]; then
+              url="${url}&includeTotal=true"
+            fi
+            curl --fail --silent --show-error --location --retry 3 --retry-delay 2 "$url" -o "result-${offset}.json"
+            if [[ "$offset" -eq 0 ]]; then
+              echo '=== META ==='
+              jq -r '"totalCount=\(.totalCount // "null") totalPages=\(.totalPages // "null")"' "result-${offset}.json"
+            fi
+            count="$(jq '.items | length' "result-${offset}.json")"
+            if [[ "$count" -eq 0 ]]; then
+              break
+            fi
+            echo "=== ITEMS offset=${offset} ==="
+            jq -r --argjson baseIndex "$index" '.items | to_entries[] | [($baseIndex + .key + 1), .value.key, .value.manufacturer, .value.model, .value.primary_category_id, .value.category, (.value.lowest_price_yen // ""), (.value.highest_price_yen // ""), (.value.representative_offer.shop_key // ""), (.value.representative_offer.title // ""), (.value.representative_offer.source_url // "")] | @tsv' "result-${offset}.json"
+            total=$((total + count))
+            index=$((index + count))
+          done
+          echo "=== FETCHED ==="
+          echo "fetched=${total}"
