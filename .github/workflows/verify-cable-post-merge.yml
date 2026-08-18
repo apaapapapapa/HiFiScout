@@ -1,0 +1,78 @@
+name: Verify cable post-merge pipeline
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      TARGET_SHA: dee68ef61d0d365591fefda64cb2b0655d5c0cf4
+      GH_TOKEN: ${{ github.token }}
+      PRODUCTION_BASE_URL: https://hifiscout.tokyojp.workers.dev
+    steps:
+      - name: Verify main CI and Cloudflare deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${TARGET_SHA}&per_page=100"
+
+          for attempt in $(seq 1 30); do
+            runs="$(curl -fsSL \
+              -H 'Accept: application/vnd.github+json' \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "$api")"
+
+            echo "Runs for ${TARGET_SHA} (attempt ${attempt}):"
+            jq -r '.workflow_runs[] | [.name, .event, .status, (.conclusion // "-")] | @tsv' <<< "$runs" | sort
+
+            ci="$(jq -r '[.workflow_runs[] | select(.name == "CI" and .event == "push")][0].conclusion // "missing"' <<< "$runs")"
+            deploy="$(jq -r '[.workflow_runs[] | select(.name == "Deploy Cloudflare")][0].conclusion // "missing"' <<< "$runs")"
+
+            if [[ "$ci" == "success" && "$deploy" == "success" ]]; then
+              echo "main CI and Deploy Cloudflare are both successful for ${TARGET_SHA}."
+              break
+            fi
+
+            if [[ "$ci" =~ ^(failure|cancelled|timed_out|action_required|startup_failure)$ ]]; then
+              echo "main CI failed for ${TARGET_SHA}: ${ci}" >&2
+              exit 1
+            fi
+            if [[ "$deploy" =~ ^(failure|cancelled|timed_out|action_required|startup_failure)$ ]]; then
+              echo "Deploy Cloudflare failed for ${TARGET_SHA}: ${deploy}" >&2
+              exit 1
+            fi
+            if [[ "$attempt" -eq 30 ]]; then
+              echo "Timed out waiting for main CI/deploy: CI=${ci}, Deploy=${deploy}" >&2
+              exit 1
+            fi
+            sleep 10
+          done
+
+      - name: Verify production health
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(mktemp)"
+          trap 'rm -f "$body"' EXIT
+          status="$(curl -sS --retry 3 --retry-delay 2 -o "$body" -w '%{http_code}' "${PRODUCTION_BASE_URL}/api/health")"
+          response="$(cat "$body")"
+
+          if jq -e . >/dev/null 2>&1 <<< "$response"; then
+            jq . <<< "$response"
+            test "$status" -ge 200 -a "$status" -lt 300
+            jq -e '.shops[] | select(.shopKey == "audiounion" and .configured == true)' <<< "$response" >/dev/null
+          elif [[ "$status" == "429" ]] && grep -Eqi 'Error[[:space:]]+1027' <<< "$response"; then
+            echo "Cloudflare Worker request quota is exhausted (1027); deploy success above remains authoritative."
+          else
+            echo "Unexpected production health response HTTP ${status}:" >&2
+            cat "$body" >&2
+            exit 1
+          fi
