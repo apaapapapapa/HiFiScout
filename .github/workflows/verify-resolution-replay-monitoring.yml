@@ -1,0 +1,79 @@
+name: Verify resolution replay monitoring
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  verify:
+    if: github.head_ref == 'ops/verify-resolution-replay-monitoring'
+    runs-on: ubuntu-latest
+    env:
+      TARGET_SHA: c14fd330d3bee8a3aff01d82c22b4d1fdbc4184e
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Wait for post-merge CI, deploy, and E2E
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${TARGET_SHA}&per_page=100"
+          latest_run() {
+            local name="$1"
+            jq -c --arg name "$name" '[.workflow_runs[] | select(.name == $name)] | sort_by(.created_at) | last // {}'
+          }
+          for attempt in $(seq 1 90); do
+            payload="$(curl -fsSL \
+              -H 'Accept: application/vnd.github+json' \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "$api")"
+            failed="$(jq -r '[.workflow_runs[] | select(.status == "completed" and (.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "cancelled" or .conclusion == "startup_failure" or .conclusion == "action_required"))] | length' <<<"$payload")"
+            if [ "$failed" -gt 0 ]; then
+              jq -r '.workflow_runs[] | select(.status == "completed" and (.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "cancelled" or .conclusion == "startup_failure" or .conclusion == "action_required")) | [.name, .conclusion, .html_url] | @tsv' <<<"$payload" >&2
+              exit 1
+            fi
+            ci="$(latest_run CI <<<"$payload")"
+            deploy="$(latest_run 'Deploy Cloudflare' <<<"$payload")"
+            e2e="$(latest_run E2E <<<"$payload")"
+            ci_ok="$(jq -r '.status == "completed" and .conclusion == "success"' <<<"$ci")"
+            deploy_ok="$(jq -r '.status == "completed" and .conclusion == "success"' <<<"$deploy")"
+            e2e_ok="$(jq -r '.status == "completed" and .conclusion == "success"' <<<"$e2e")"
+            if [ "$ci_ok" = true ] && [ "$deploy_ok" = true ] && [ "$e2e_ok" = true ]; then
+              echo 'Post-merge CI, Cloudflare deploy, and E2E are green.'
+              break
+            fi
+            [ "$attempt" -lt 90 ] || { echo 'Post-merge workflows did not converge.' >&2; exit 1; }
+            sleep 10
+          done
+      - name: Dispatch permanent Resolver Replay Status workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run resolver-replay-status.yml --repo "$GITHUB_REPOSITORY" --ref main
+      - name: Verify permanent status workflow succeeds on merged main
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/resolver-replay-status.yml/runs?branch=main&event=workflow_dispatch&per_page=20"
+          for attempt in $(seq 1 60); do
+            payload="$(curl -fsSL \
+              -H 'Accept: application/vnd.github+json' \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "$api")"
+            run="$(jq -c --arg sha "$TARGET_SHA" '[.workflow_runs[] | select(.head_sha == $sha)] | sort_by(.created_at) | last // {}' <<<"$payload")"
+            status="$(jq -r '.status // ""' <<<"$run")"
+            conclusion="$(jq -r '.conclusion // ""' <<<"$run")"
+            url="$(jq -r '.html_url // ""' <<<"$run")"
+            if [ "$status" = completed ]; then
+              [ "$conclusion" = success ] || { echo "Resolver Replay Status failed: $url" >&2; exit 1; }
+              echo "Resolver Replay Status succeeded: $url"
+              exit 0
+            fi
+            [ "$attempt" -lt 60 ] || { echo 'Resolver Replay Status did not complete.' >&2; exit 1; }
+            sleep 5
+          done
