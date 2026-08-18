@@ -6,6 +6,10 @@ import { normalizeCategory } from "../src/catalog/categories.js";
 import { normalizeManufacturer } from "../src/catalog/manufacturers.js";
 import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
 import { FUJIYA_CATEGORY_POLICY } from "../src/crawler/shops/fujiya-avic.js";
+import {
+  FORMUSIC_CATEGORY_MAPPING,
+  FORMUSIC_CATEGORY_POLICY,
+} from "../src/crawler/shops/formusic.js";
 import { parsedProduct } from "./helpers/fixtures.js";
 
 test("shop category mapping wins over shared inference", () => {
@@ -121,6 +125,38 @@ test("corroborative seller categories do not override explicit title evidence", 
   assert.equal(product.primaryCategoryId, "cd_sacd_player");
   assert.equal(product.category, "CD/SACDプレーヤー");
   assert.equal(product.classificationSource, "title");
+});
+
+test("FOR MUSIC disc bucket lets an explicit transport title select transport", () => {
+  const transport = normalizeCatalogProduct(
+    parsedProduct({
+      title: "D1.5 SACD/CD Transport",
+      rawCategory: "cd-sacd-players",
+      category: "CD/SACDプレーヤー",
+    }),
+    {
+      categoryMapping: FORMUSIC_CATEGORY_MAPPING,
+      categoryPolicy: FORMUSIC_CATEGORY_POLICY,
+    },
+  );
+  assert.equal(transport.primaryCategoryId, "transport");
+  assert.equal(transport.category, "トランスポート");
+  assert.equal(transport.classificationSource, "title");
+
+  const player = normalizeCatalogProduct(
+    parsedProduct({
+      title: "Example SACD/CD Player",
+      rawCategory: "cd-sacd-players",
+      category: "CD/SACDプレーヤー",
+    }),
+    {
+      categoryMapping: FORMUSIC_CATEGORY_MAPPING,
+      categoryPolicy: FORMUSIC_CATEGORY_POLICY,
+    },
+  );
+  assert.equal(player.primaryCategoryId, "cd_sacd_player");
+  assert.equal(player.category, "CD/SACDプレーヤー");
+  assert.equal(player.classificationSource, "title");
 });
 
 test("generic accessory seller category does not override specific title evidence", () => {
