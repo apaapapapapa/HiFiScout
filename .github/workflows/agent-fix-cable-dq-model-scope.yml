@@ -52,23 +52,29 @@ jobs:
             "other_accessory",
             "other",
           ];'''
-          if old not in text:
-              raise SystemExit("data-quality MODEL_OPTIONAL_CATEGORIES anchor not found")
-          p.write_text(text.replace(old, new, 1))
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif new not in text:
+              raise SystemExit("data-quality MODEL_OPTIONAL_CATEGORIES state is unexpected")
+          p.write_text(text)
 
           p = Path(".github/workflows/deploy.yml")
           text = p.read_text()
           old_sql = "'other_accessory','cable','rack','power_accessory','vacuum_tube','other'"
           new_sql = "'other_accessory','cable','cable_xlr','cable_rca','cable_phono','cable_usb','cable_lan','cable_digital','cable_power','cable_other','rack','power_accessory','vacuum_tube','other'"
-          count = text.count(old_sql)
-          if count != 3:
-              raise SystemExit(f"expected 3 deploy baseline category lists, found {count}")
-          p.write_text(text.replace(old_sql, new_sql))
+          old_count = text.count(old_sql)
+          new_count = text.count(new_sql)
+          if old_count == 3:
+              text = text.replace(old_sql, new_sql)
+          elif not (old_count == 0 and new_count == 3):
+              raise SystemExit(f"unexpected deploy baseline lists: old={old_count}, new={new_count}")
+          p.write_text(text)
 
           p = Path("test/data-quality-repository.test.ts")
           text = p.read_text()
-          pattern = r'(test\("model expectation excludes canonical accessory categories and other", async \(\) => \{\n)\s*assert\.deepEqual\(MODEL_OPTIONAL_CATEGORIES, \[.*?\n\s*\]\);'
-          replacement = r'''\1  assert.deepEqual(MODEL_OPTIONAL_CATEGORIES, [
+          if '"cable_xlr"' not in text:
+              pattern = r'(test\("model expectation excludes canonical accessory categories and other", async \(\) => \{\n)\s*assert\.deepEqual\(MODEL_OPTIONAL_CATEGORIES, \[.*?\n\s*\]\);'
+              replacement = r'''\1  assert.deepEqual(MODEL_OPTIONAL_CATEGORIES, [
             "cable",
             "cable_xlr",
             "cable_rca",
@@ -84,9 +90,9 @@ jobs:
             "other_accessory",
             "other",
           ]);'''
-          text, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
-          if count != 1:
-              raise SystemExit(f"expected one data-quality test expectation, found {count}")
+              text, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+              if count != 1:
+                  raise SystemExit(f"expected one data-quality test expectation, found {count}")
           p.write_text(text)
 
       - name: Install dependencies
@@ -97,16 +103,21 @@ jobs:
         run: |
           npm run check
           npm run build
-      - name: Commit fix
+      - name: Commit source and test fix
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/db/data-quality-repository.ts test/data-quality-repository.test.ts .github/workflows/deploy.yml
-          if git diff --cached --quiet; then
-            echo 'No changes to commit.'
-            exit 0
+          git add src/db/data-quality-repository.ts test/data-quality-repository.test.ts
+          if ! git diff --cached --quiet; then
+            git commit -m 'fix: exclude cable leaves from model quality metrics'
+            git push origin HEAD:${{ github.event.pull_request.head.ref }}
           fi
-          git commit -m 'fix: exclude cable leaves from model quality metrics'
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+      - name: Export validated deploy workflow
+        shell: bash
+        run: |
+          echo 'DEPLOY_YML_BASE64_BEGIN'
+          base64 -w0 .github/workflows/deploy.yml
+          echo
+          echo 'DEPLOY_YML_BASE64_END'
