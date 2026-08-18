@@ -25,18 +25,6 @@ jobs:
         run: |
           from pathlib import Path
 
-          cable_ids = [
-              "cable",
-              "cable_xlr",
-              "cable_rca",
-              "cable_phono",
-              "cable_usb",
-              "cable_lan",
-              "cable_digital",
-              "cable_power",
-              "cable_other",
-          ]
-
           p = Path("src/db/data-quality-repository.ts")
           text = p.read_text()
           old = '''const MODEL_OPTIONAL_CATEGORIES = [
@@ -76,10 +64,40 @@ jobs:
               raise SystemExit(f"expected 3 deploy baseline category lists, found {count}")
           p.write_text(text.replace(old_sql, new_sql))
 
+          p = Path("test/data-quality-repository.test.ts")
+          text = p.read_text()
+          old_test = '''  assert.deepEqual(MODEL_OPTIONAL_CATEGORIES, [
+            "cable",
+            "rack",
+            "power_accessory",
+            "vacuum_tube",
+            "other_accessory",
+            "other",
+          ]);'''
+          new_test = '''  assert.deepEqual(MODEL_OPTIONAL_CATEGORIES, [
+            "cable",
+            "cable_xlr",
+            "cable_rca",
+            "cable_phono",
+            "cable_usb",
+            "cable_lan",
+            "cable_digital",
+            "cable_power",
+            "cable_other",
+            "rack",
+            "power_accessory",
+            "vacuum_tube",
+            "other_accessory",
+            "other",
+          ]);'''
+          if old_test not in text:
+              raise SystemExit("data-quality test expectation anchor not found")
+          p.write_text(text.replace(old_test, new_test, 1))
+
       - name: Install dependencies
         run: npm ci
       - name: Format
-        run: npx oxfmt --write src/db/data-quality-repository.ts .github/workflows/deploy.yml
+        run: npx oxfmt --write src/db/data-quality-repository.ts test/data-quality-repository.test.ts .github/workflows/deploy.yml
       - name: Validate
         run: |
           npm run check
@@ -90,7 +108,7 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/db/data-quality-repository.ts .github/workflows/deploy.yml
+          git add src/db/data-quality-repository.ts test/data-quality-repository.test.ts .github/workflows/deploy.yml
           if git diff --cached --quiet; then
             echo 'No changes to commit.'
             exit 0
