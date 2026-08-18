@@ -131,7 +131,7 @@ test("children retain required definition order", () => {
 });
 
 test("legacy category aliases resolve to canonical ids", () => {
-  assert.equal(categoryIdForFilter("network_transport"), "network_player");
+  assert.equal(categoryIdForFilter("network_transport"), "cd_sacd_transport");
   assert.equal(categoryIdForFilter("accessory"), "other_accessory");
   assert.equal(categoryIdForFilter("speaker_other"), "speaker");
   assert.equal(categoryIdForFilter("headphone"), "wired_headphone");
@@ -158,10 +158,14 @@ test("composite amplifier titles keep one product category and expose features s
   assert.equal(integrated.featureFacts.find((fact) => fact.featureId === "dac")?.state, "present");
 });
 
-test("CD/SACD transports are independent from players while network transport stays a network player", () => {
-  assert.equal(classify("Network Transport N1").primaryCategoryId, "network_player");
+test("disc and network transports share one transport category independent from players", () => {
+  assert.equal(classify("Network Transport N1").primaryCategoryId, "cd_sacd_transport");
+  assert.equal(classify("ネットワークトランスポート N2").primaryCategoryId, "cd_sacd_transport");
+  assert.equal(classify("Streaming Transport N3").primaryCategoryId, "cd_sacd_transport");
   assert.equal(classify("CD Transport D1").primaryCategoryId, "cd_sacd_transport");
   assert.equal(classify("SACD Player D2").primaryCategoryId, "cd_sacd_player");
+  assert.equal(classify("Network Player P1").primaryCategoryId, "network_player");
+  assert.equal(getCategory("cd_sacd_transport")?.name, "トランスポート");
 });
 
 test("digital network infrastructure and server titles use dedicated categories", () => {

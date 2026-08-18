@@ -70,12 +70,12 @@ const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
   ["power_amp", /power[\s-]?(?:amp|amplifier)|パワーアンプ/i],
   ["headphone_amp", /headphone[\s-]?(?:amp|amplifier)|ヘッドホンアンプ/i],
   [
-    "network_player",
-    /network\s+(?:audio\s+)?(?:player|transport)|network\s+cd\s+receiver|streaming\s+(?:player|transport)|ネットワーク(?:オーディオ)?(?:プレーヤー|プレイヤー|トランスポート)/i,
+    "cd_sacd_transport",
+    /(?:network(?:\s+audio)?|streaming)\s+transport|ネットワーク(?:オーディオ)?トランスポート|ストリーミングトランスポート|(?:sacd|cd)\s*(?:\/\s*(?:sacd|cd))?\s*(?:transport|トランスポート)|super\s+audio\s+cd\s+transport|(?:cd|sacd)\s*\/\s*(?:sacd|cd)\s*トランスポート/i,
   ],
   [
-    "cd_sacd_transport",
-    /(?:sacd|cd)\s*(?:\/\s*(?:sacd|cd))?\s*(?:transport|トランスポート)|super\s+audio\s+cd\s+transport|(?:cd|sacd)\s*\/\s*(?:sacd|cd)\s*トランスポート/i,
+    "network_player",
+    /network\s+(?:audio\s+)?player|network\s+cd\s+receiver|streaming\s+player|ネットワーク(?:オーディオ)?(?:プレーヤー|プレイヤー)/i,
   ],
   [
     "cd_sacd_player",
