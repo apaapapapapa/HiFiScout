@@ -1,5 +1,8 @@
 import { appendFile } from "node:fs/promises";
-import { resolutionReplayStatus, type ResolutionReplayStatus } from "../src/db/resolution-replay-status-repository.js";
+import {
+  resolutionReplayStatus,
+  type ResolutionReplayStatus,
+} from "../src/db/resolution-replay-status-repository.js";
 import { createD1RestDatabase } from "./lib/d1-rest-database.js";
 
 function requiredEnv(name: string): string {

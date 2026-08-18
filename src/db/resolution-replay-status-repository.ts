@@ -63,7 +63,11 @@ function progressPercent(upToDate: number, total: number): number {
   return Math.round((upToDate / total) * 10_000) / 100;
 }
 
-function stage(targetVersion: number, stale: number, activeListings: number): ResolutionReplayStageStatus {
+function stage(
+  targetVersion: number,
+  stale: number,
+  activeListings: number,
+): ResolutionReplayStageStatus {
   const upToDate = Math.max(0, activeListings - stale);
   return {
     targetVersion,
@@ -79,7 +83,9 @@ function stage(targetVersion: number, stale: number, activeListings: number): Re
  * The target versions come from the same resolver-owned tuple used by the replay drain, so this
  * stays useful for future version bumps without adding version-specific monitoring code.
  */
-export async function resolutionReplayStatus(db: QueryableDatabase): Promise<ResolutionReplayStatus> {
+export async function resolutionReplayStatus(
+  db: QueryableDatabase,
+): Promise<ResolutionReplayStatus> {
   const versions = RESOLUTION_VERSIONS;
   const [replayRow, queueRow] = await Promise.all([
     db
