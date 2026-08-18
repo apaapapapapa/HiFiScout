@@ -22,7 +22,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Show current transport references
-        run: rg -n "network_transport|network transport|ネットワークトランスポート|cd_sacd_transport|CD/SACDトランスポート" src test e2e || true
+        run: grep -RInE "network_transport|network transport|ネットワークトランスポート|cd_sacd_transport|CD/SACDトランスポート" src test e2e || true
       - name: Apply transport taxonomy patch
         shell: bash
         run: |
@@ -78,12 +78,22 @@ jobs:
               '''test("disc and network transports share one transport category independent from players", () => {\n  assert.equal(classify("Network Transport N1").primaryCategoryId, "cd_sacd_transport");\n  assert.equal(classify("ネットワークトランスポート N2").primaryCategoryId, "cd_sacd_transport");\n  assert.equal(classify("Streaming Transport N3").primaryCategoryId, "cd_sacd_transport");\n  assert.equal(classify("CD Transport D1").primaryCategoryId, "cd_sacd_transport");\n  assert.equal(classify("SACD Player D2").primaryCategoryId, "cd_sacd_player");\n  assert.equal(classify("Network Player P1").primaryCategoryId, "network_player");\n  assert.equal(getCategory("cd_sacd_transport")?.name, "トランスポート");\n});''',
           )
           replace(
+              'test/catalog-normalization.test.ts',
+              '''  assert.deepEqual(normalizeCategory({ title: "Network Transport" }).categoryIds, [\n    "network_player",\n  ]);''',
+              '''  assert.deepEqual(normalizeCategory({ title: "Network Transport" }).categoryIds, [\n    "cd_sacd_transport",\n  ]);''',
+          )
+          replace(
+              'test/category-feature-query.test.ts',
+              '''test("legacy network transport filter resolves to network player", async () => {\n  const db = captureDatabase();\n  await searchProducts(db, productQuery("?category=network_transport"));\n  assert.equal(db.calls[0].binds[0], "network_player");\n});''',
+              '''test("legacy network transport filter resolves to transport", async () => {\n  const db = captureDatabase();\n  await searchProducts(db, productQuery("?category=network_transport"));\n  assert.equal(db.calls[0].binds[0], "cd_sacd_transport");\n});''',
+          )
+          replace(
               'e2e/tests/category-taxonomy.spec.ts',
               '''  expect(facets.find((category) => category.id === "pre_amp")).toMatchObject({\n    name: "　プリアンプ",\n    parentId: "amplifier",\n  });''',
               '''  expect(facets.find((category) => category.id === "pre_amp")).toMatchObject({\n    name: "　プリアンプ",\n    parentId: "amplifier",\n  });\n  expect(facets.find((category) => category.id === "cd_sacd_transport")).toMatchObject({\n    name: "　トランスポート",\n    parentId: "digital",\n  });''',
           )
           PY
-      - run: npx oxfmt src/catalog/categories.ts src/catalog/category-rules.ts src/catalog/product-normalizer.ts test/category-taxonomy-v2.test.ts e2e/tests/category-taxonomy.spec.ts
+      - run: npx oxfmt src/catalog/categories.ts src/catalog/category-rules.ts src/catalog/product-normalizer.ts test/category-taxonomy-v2.test.ts test/catalog-normalization.test.ts test/category-feature-query.test.ts e2e/tests/category-taxonomy.spec.ts
       - run: npm run check
       - run: npm run build
       - name: Commit implementation
@@ -95,6 +105,6 @@ jobs:
           fi
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add src/catalog/categories.ts src/catalog/category-rules.ts src/catalog/product-normalizer.ts test/category-taxonomy-v2.test.ts e2e/tests/category-taxonomy.spec.ts
+          git add src/catalog/categories.ts src/catalog/category-rules.ts src/catalog/product-normalizer.ts test/category-taxonomy-v2.test.ts test/catalog-normalization.test.ts test/category-feature-query.test.ts e2e/tests/category-taxonomy.spec.ts
           git commit -m "fix: classify network transports as transports"
           git push origin HEAD:${{ github.head_ref }}
