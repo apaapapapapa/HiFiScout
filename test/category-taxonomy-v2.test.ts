@@ -56,14 +56,26 @@ test("group parents are filterable but never classifiable", () => {
     "speaker",
     "headphone_group",
     "accessories",
+    "cable",
   ]) {
     const category = getCategory(id);
     assert.ok(category);
     assert.equal(category.classifiable, false);
     assert.equal(category.filterable, true);
   }
+  const groupIds = new Set([
+    "amplifier",
+    "digital",
+    "analog",
+    "speaker",
+    "headphone_group",
+    "accessories",
+    "cable",
+  ]);
   assert.ok(
-    CATEGORIES.filter((category) => category.parentId).every((category) => category.classifiable),
+    CATEGORIES.filter((category) => !groupIds.has(category.id)).every(
+      (category) => category.classifiable,
+    ),
   );
 });
 
@@ -94,6 +106,19 @@ test("children retain required definition order", () => {
     children("accessories").map((category) => category.id),
     ["cable", "rack", "power_accessory", "vacuum_tube", "other_accessory"],
   );
+  assert.deepEqual(
+    children("cable").map((category) => category.id),
+    [
+      "cable_xlr",
+      "cable_rca",
+      "cable_phono",
+      "cable_usb",
+      "cable_lan",
+      "cable_digital",
+      "cable_power",
+      "cable_other",
+    ],
+  );
 });
 
 test("legacy category aliases resolve to canonical ids", () => {
@@ -102,10 +127,11 @@ test("legacy category aliases resolve to canonical ids", () => {
   assert.equal(categoryIdForFilter("speaker_other"), "speaker");
 });
 
-test("search closure contains leaf and parent only", () => {
+test("search closure contains leaf and every ancestor group", () => {
   assert.deepEqual(categoryClosureIds("pre_amp"), ["pre_amp", "amplifier"]);
   assert.deepEqual(categoryClosureIds("speaker_bookshelf"), ["speaker_bookshelf", "speaker"]);
   assert.deepEqual(categoryClosureIds("dac"), ["dac", "digital"]);
+  assert.deepEqual(categoryClosureIds("cable_xlr"), ["cable_xlr", "cable", "accessories"]);
 });
 
 test("composite amplifier titles keep one product category and expose features separately", () => {
@@ -174,10 +200,33 @@ test("speaker classification uses the requested five canonical leaves", () => {
   assert.equal(getCategory("speaker_floorstanding")?.name, "フロア型・トールボーイ");
 });
 
+test("cable classification uses the requested eight canonical leaves", () => {
+  assert.equal(classify("XLRケーブル 1m").primaryCategoryId, "cable_xlr");
+  assert.equal(classify("RCAケーブル 1m").primaryCategoryId, "cable_rca");
+  assert.equal(classify("フォノケーブル 1.2m").primaryCategoryId, "cable_phono");
+  assert.equal(classify("USBケーブル Type-B 1m").primaryCategoryId, "cable_usb");
+  assert.equal(classify("LANケーブル CAT8 2m").primaryCategoryId, "cable_lan");
+  assert.equal(classify("AES/EBU デジタルケーブル 1m").primaryCategoryId, "cable_digital");
+  assert.equal(classify("電源ケーブル 1.5m").primaryCategoryId, "cable_power");
+  assert.equal(classify("スピーカーケーブル 3m").primaryCategoryId, "cable_other");
+  assert.equal(classify("ヘッドホンケーブル 2m").primaryCategoryId, "cable_other");
+});
+
+test("generic seller cable buckets do not override a specific title cable type", () => {
+  const product = normalizeCatalogProduct(
+    parsedProduct({
+      manufacturer: "",
+      rawManufacturer: "",
+      title: "XLRケーブル 1m",
+      category: "",
+      rawCategory: "ケーブル",
+    }),
+    { categoryMapping: { ケーブル: "cable" } },
+  );
+  assert.equal(product.primaryCategoryId, "cable_xlr");
+});
+
 test("accessory precedence prevents target component words from stealing classification", () => {
-  assert.equal(classify("ヘッドホンケーブル 2m").primaryCategoryId, "cable");
-  assert.equal(classify("スピーカーケーブル 3m").primaryCategoryId, "cable");
-  assert.equal(classify("電源ケーブル 1.5m").primaryCategoryId, "cable");
   assert.equal(classify("電源タップ 6口").primaryCategoryId, "power_accessory");
   assert.equal(classify("インシュレーター 4個").primaryCategoryId, "other_accessory");
 });

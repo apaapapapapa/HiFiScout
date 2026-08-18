@@ -425,9 +425,123 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
     name: "ケーブル",
     parentId: "accessories",
     order: 1,
-    classifiable: true,
+    classifiable: false,
     filterable: true,
     aliases: ["cable", "cables", "ケーブル"],
+  },
+  {
+    id: "cable_xlr",
+    name: "XLRケーブル",
+    parentId: "cable",
+    order: 1,
+    classifiable: true,
+    filterable: true,
+    aliases: ["xlr cable", "xlr cables", "xlr interconnect", "XLRケーブル", "XLRインターコネクト"],
+  },
+  {
+    id: "cable_rca",
+    name: "RCAケーブル",
+    parentId: "cable",
+    order: 2,
+    classifiable: true,
+    filterable: true,
+    aliases: ["rca cable", "rca cables", "rca interconnect", "RCAケーブル", "RCAインターコネクト"],
+  },
+  {
+    id: "cable_phono",
+    name: "フォノケーブル",
+    parentId: "cable",
+    order: 3,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "phono cable",
+      "phono interconnect",
+      "tonearm cable",
+      "フォノケーブル",
+      "トーンアームケーブル",
+    ],
+  },
+  {
+    id: "cable_usb",
+    name: "USBケーブル",
+    parentId: "cable",
+    order: 4,
+    classifiable: true,
+    filterable: true,
+    aliases: ["usb cable", "usb cables", "USBケーブル", "オーディオUSBケーブル"],
+  },
+  {
+    id: "cable_lan",
+    name: "LANケーブル",
+    parentId: "cable",
+    order: 5,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "lan cable",
+      "ethernet cable",
+      "network cable",
+      "LANケーブル",
+      "オーディオLANケーブル",
+      "イーサネットケーブル",
+    ],
+  },
+  {
+    id: "cable_digital",
+    name: "デジタルケーブル",
+    parentId: "cable",
+    order: 6,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "digital cable",
+      "digital interconnect",
+      "spdif cable",
+      "s/pdif cable",
+      "aes/ebu cable",
+      "toslink cable",
+      "optical cable",
+      "coaxial digital cable",
+      "hdmi cable",
+      "デジタルケーブル",
+      "デジタル同軸ケーブル",
+      "光デジタルケーブル",
+      "HDMIケーブル",
+    ],
+  },
+  {
+    id: "cable_power",
+    name: "電源ケーブル",
+    parentId: "cable",
+    order: 7,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "power cable",
+      "power cord",
+      "mains cable",
+      "ac cable",
+      "電源ケーブル",
+      "電源コード",
+      "ACケーブル",
+    ],
+  },
+  {
+    id: "cable_other",
+    name: "その他ケーブル",
+    parentId: "cable",
+    order: 8,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "other cable",
+      "speaker cable",
+      "headphone cable",
+      "その他ケーブル",
+      "スピーカーケーブル",
+      "ヘッドホンケーブル",
+    ],
   },
   {
     id: "rack",
@@ -531,6 +645,10 @@ const LEGACY_ALIASES: Readonly<Record<string, ClassifiableCategoryId>> = Object.
 const LEGACY_FILTER_ALIASES: Readonly<Record<string, CategoryId>> = Object.freeze({
   speaker_other: "speaker",
 });
+const CLASSIFICATION_ALIASES: Readonly<Record<string, ClassifiableCategoryId>> = Object.freeze({
+  ...LEGACY_ALIASES,
+  cable: "cable_other",
+});
 
 function normalizeLookup(value: string = ""): string {
   return String(value)
@@ -544,7 +662,7 @@ function categoryIdFromAlias(
   value: string = "",
   { classifiableOnly = false }: { classifiableOnly?: boolean } = {},
 ): CategoryId | null {
-  const legacy = LEGACY_ALIASES[value];
+  const legacy = classifiableOnly ? CLASSIFICATION_ALIASES[value] : LEGACY_ALIASES[value];
   if (legacy) return legacy;
   const needle = normalizeLookup(value);
   if (!needle) return null;
@@ -583,7 +701,7 @@ export function categoryIdForFilter(value: string = ""): CategoryId | null {
 }
 
 export function categoryIdForClassification(value: string = ""): CategoryId | null {
-  const canonical = LEGACY_ALIASES[value] || value;
+  const canonical = CLASSIFICATION_ALIASES[value] || value;
   if (CATEGORY_BY_ID.get(canonical)?.classifiable) return canonical;
   return categoryIdFromAlias(value, { classifiableOnly: true });
 }
@@ -591,7 +709,15 @@ export function categoryIdForClassification(value: string = ""): CategoryId | nu
 export function categoryClosureIds(categoryId: string): CategoryId[] {
   const category = getCategory(categoryId);
   if (!category?.classifiable) return [];
-  return category.parentId ? [category.id, category.parentId] : [category.id];
+  const closure: CategoryId[] = [];
+  const seen = new Set<CategoryId>();
+  let current: CategoryDefinition | null = category;
+  while (current && !seen.has(current.id)) {
+    closure.push(current.id);
+    seen.add(current.id);
+    current = current.parentId ? getCategory(current.parentId) : null;
+  }
+  return closure;
 }
 
 /**
