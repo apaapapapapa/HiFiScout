@@ -31,7 +31,9 @@ test("legacy multi-value shop mappings resolve to one primary leaf category", ()
 });
 
 test("title inference suppresses component words inside accessory and amplifier names", () => {
-  assert.deepEqual(normalizeCategory({ title: "Premium Speaker Cable 2m" }).categoryIds, ["cable"]);
+  assert.deepEqual(normalizeCategory({ title: "Premium Speaker Cable 2m" }).categoryIds, [
+    "cable_other",
+  ]);
   assert.deepEqual(normalizeCategory({ title: "Reference Headphone Amplifier" }).categoryIds, [
     "headphone_amp",
   ]);
@@ -130,7 +132,7 @@ test("generic accessory seller category does not override specific title evidenc
       rawCategory: "アクセサリー",
     }),
   );
-  assert.equal(product.primaryCategoryId, "cable");
+  assert.equal(product.primaryCategoryId, "cable_other");
   assert.equal(product.classificationSource, "title");
 });
 
@@ -204,7 +206,7 @@ test("Fujiya uses the generic evidence policy for broad DAP merchandising bucket
     { categoryPolicy: FUJIYA_CATEGORY_POLICY },
   );
   assert.equal(sacd.primaryCategoryId, "cd_sacd_player");
-  assert.equal(cable.primaryCategoryId, "cable");
+  assert.equal(cable.primaryCategoryId, "cable_other");
   assert.equal(unresolved.classificationStatus, "unclassified");
   assert.deepEqual(unresolved.categoryIds, []);
 });

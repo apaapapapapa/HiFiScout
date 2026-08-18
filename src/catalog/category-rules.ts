@@ -6,7 +6,26 @@ import type { ClassifiableCategoryId } from "./types.js";
  * `(string | RegExp)[]`, which would erase the category id at every call site.
  */
 const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
-  ["cable", /\bcables?\b|(?:usb|xlr|rca|lan|speaker|headphone|power)\s+cable|ケーブル/i],
+  ["cable_usb", /\busb\b.*(?:\bcables?\b|interconnect)|usb\s*ケーブル|オーディオusbケーブル/i],
+  [
+    "cable_lan",
+    /\b(?:lan|ethernet|network)\b.*\bcables?\b|(?:lan|イーサネット|ネットワーク)\s*ケーブル/i,
+  ],
+  [
+    "cable_phono",
+    /\b(?:phono|tonearm)\b.*(?:\bcables?\b|interconnect)|フォノ(?:用)?ケーブル|トーンアームケーブル/i,
+  ],
+  [
+    "cable_power",
+    /\b(?:ac|power|mains)\b.*(?:\bcables?\b|cord)|(?:電源|ac)\s*(?:ケーブル|コード)/i,
+  ],
+  [
+    "cable_digital",
+    /\b(?:digital|s\/?pdif|aes\/?ebu|toslink|optical|coaxial|hdmi)\b.*(?:\bcables?\b|interconnect)|(?:デジタル|同軸デジタル|光デジタル|hdmi)\s*ケーブル/i,
+  ],
+  ["cable_xlr", /\bxlr\b.*(?:\bcables?\b|interconnect)|xlr\s*(?:ケーブル|インターコネクト)/i],
+  ["cable_rca", /\brca\b.*(?:\bcables?\b|interconnect)|rca\s*(?:ケーブル|インターコネクト)/i],
+  ["cable_other", /\bcables?\b|ケーブル/i],
   ["power_accessory", /power\s*(?:strip|conditioner)|電源タップ|電源コンディショナ(?:ー)?/i],
   [
     "network_switch",

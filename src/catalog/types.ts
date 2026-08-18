@@ -20,7 +20,8 @@ export type CategoryGroupId =
   | "analog"
   | "speaker"
   | "headphone_group"
-  | "accessories";
+  | "accessories"
+  | "cable";
 
 /** Leaf categories a product can actually be classified into. */
 export type ClassifiableCategoryId =
@@ -49,7 +50,14 @@ export type ClassifiableCategoryId =
   | "active_speaker"
   | "headphone"
   | "earphone"
-  | "cable"
+  | "cable_xlr"
+  | "cable_rca"
+  | "cable_phono"
+  | "cable_usb"
+  | "cable_lan"
+  | "cable_digital"
+  | "cable_power"
+  | "cable_other"
   | "rack"
   | "power_accessory"
   | "vacuum_tube"
@@ -57,7 +65,7 @@ export type ClassifiableCategoryId =
   | "dj_dtm"
   | "other";
 
-/** Every id present in `CATEGORIES` (38 entries). */
+/** Every id present in `CATEGORIES` (45 entries). */
 export type CategoryId = CategoryGroupId | ClassifiableCategoryId;
 
 /**
