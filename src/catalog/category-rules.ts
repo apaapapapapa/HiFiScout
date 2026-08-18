@@ -70,7 +70,7 @@ const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
   ["power_amp", /power[\s-]?(?:amp|amplifier)|パワーアンプ/i],
   ["headphone_amp", /headphone[\s-]?(?:amp|amplifier)|ヘッドホンアンプ/i],
   [
-    "cd_sacd_transport",
+    "transport",
     /(?:network(?:\s+audio)?|streaming)\s+transport|ネットワーク(?:オーディオ)?トランスポート|ストリーミングトランスポート|(?:sacd|cd)\s*(?:\/\s*(?:sacd|cd))?\s*(?:transport|トランスポート)|super\s+audio\s+cd\s+transport|(?:cd|sacd)\s*\/\s*(?:sacd|cd)\s*トランスポート/i,
   ],
   [

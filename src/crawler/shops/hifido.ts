@@ -36,7 +36,7 @@ export const HIFIDO_CATEGORY_MAPPING = Object.freeze({
   "D/Aコンバーター": "dac",
   DAコンバーター: "dac",
   ネットワークプレーヤー: "network_player",
-  ネットワークトランスポート: "network_transport",
+  ネットワークトランスポート: "transport",
   トーンアーム: "tonearm",
   カートリッジ: "cartridge",
   ヘッドホン: "headphone",

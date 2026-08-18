@@ -48,8 +48,31 @@ test("multiple feature parameters are ANDed and unknown feature ids are rejected
   );
 });
 
+test("transport filter includes canonical and legacy stored ids during replay", async () => {
+  const db = captureDatabase();
+  await searchProducts(db, productQuery("?category=transport"));
+
+  const acceptedIds = categoryFilterIds("transport");
+  assert.deepEqual(acceptedIds, ["transport", "network_transport", "cd_sacd_transport"]);
+  assert.deepEqual(db.calls[0].binds.slice(0, acceptedIds.length), acceptedIds);
+});
+
 test("legacy network transport filter resolves to transport", async () => {
   const db = captureDatabase();
   await searchProducts(db, productQuery("?category=network_transport"));
-  assert.equal(db.calls[0].binds[0], "cd_sacd_transport");
+  assert.deepEqual(db.calls[0].binds.slice(0, 3), [
+    "transport",
+    "network_transport",
+    "cd_sacd_transport",
+  ]);
+});
+
+test("legacy CD/SACD transport filter resolves to transport", async () => {
+  const db = captureDatabase();
+  await searchProducts(db, productQuery("?category=cd_sacd_transport"));
+  assert.deepEqual(db.calls[0].binds.slice(0, 3), [
+    "transport",
+    "network_transport",
+    "cd_sacd_transport",
+  ]);
 });

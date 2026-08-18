@@ -37,9 +37,7 @@ test("title inference suppresses component words inside accessory and amplifier 
   assert.deepEqual(normalizeCategory({ title: "Reference Headphone Amplifier" }).categoryIds, [
     "headphone_amp",
   ]);
-  assert.deepEqual(normalizeCategory({ title: "Network Transport" }).categoryIds, [
-    "cd_sacd_transport",
-  ]);
+  assert.deepEqual(normalizeCategory({ title: "Network Transport" }).categoryIds, ["transport"]);
 });
 
 test("DAC inference requires a DAC-specific expression rather than generic converter wording", () => {

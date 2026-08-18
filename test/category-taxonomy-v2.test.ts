@@ -90,7 +90,7 @@ test("children retain required definition order", () => {
       "dac",
       "network_player",
       "cd_sacd_player",
-      "cd_sacd_transport",
+      "transport",
       "dap",
       "network_switch",
       "optical_isolator",
@@ -131,7 +131,13 @@ test("children retain required definition order", () => {
 });
 
 test("legacy category aliases resolve to canonical ids", () => {
-  assert.equal(categoryIdForFilter("network_transport"), "cd_sacd_transport");
+  assert.equal(categoryIdForFilter("network_transport"), "transport");
+  assert.equal(categoryIdForFilter("cd_sacd_transport"), "transport");
+  assert.equal(getCategory("cd_sacd_transport")?.id, "transport");
+  assert.equal(
+    CATEGORIES.map((category) => String(category.id)).includes("cd_sacd_transport"),
+    false,
+  );
   assert.equal(categoryIdForFilter("accessory"), "other_accessory");
   assert.equal(categoryIdForFilter("speaker_other"), "speaker");
   assert.equal(categoryIdForFilter("headphone"), "wired_headphone");
@@ -159,13 +165,13 @@ test("composite amplifier titles keep one product category and expose features s
 });
 
 test("disc and network transports share one transport category independent from players", () => {
-  assert.equal(classify("Network Transport N1").primaryCategoryId, "cd_sacd_transport");
-  assert.equal(classify("ネットワークトランスポート N2").primaryCategoryId, "cd_sacd_transport");
-  assert.equal(classify("Streaming Transport N3").primaryCategoryId, "cd_sacd_transport");
-  assert.equal(classify("CD Transport D1").primaryCategoryId, "cd_sacd_transport");
+  assert.equal(classify("Network Transport N1").primaryCategoryId, "transport");
+  assert.equal(classify("ネットワークトランスポート N2").primaryCategoryId, "transport");
+  assert.equal(classify("Streaming Transport N3").primaryCategoryId, "transport");
+  assert.equal(classify("CD Transport D1").primaryCategoryId, "transport");
   assert.equal(classify("SACD Player D2").primaryCategoryId, "cd_sacd_player");
   assert.equal(classify("Network Player P1").primaryCategoryId, "network_player");
-  assert.equal(getCategory("cd_sacd_transport")?.name, "トランスポート");
+  assert.equal(getCategory("transport")?.name, "トランスポート");
 });
 
 test("digital network infrastructure and server titles use dedicated categories", () => {
