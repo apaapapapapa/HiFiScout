@@ -25,10 +25,36 @@ interface MetaFacetRow {
   active_product_count?: number | null;
 }
 
-/** Groups sort by their parent's order, then parents before children, then by own order. */
-function categorySortKey(category: Pick<CategoryDefinition, "parentId" | "order">): number[] {
-  const parent = category.parentId ? getCategory(category.parentId) : category;
-  return [parent?.order || 999, category.parentId ? 1 : 0, category.order || 999];
+/** Full root-to-leaf path. Cycles are cut defensively even though the authored taxonomy forbids them. */
+function categoryHierarchy(category: CategoryDefinition): CategoryDefinition[] {
+  const path: CategoryDefinition[] = [];
+  const seen = new Set<string>();
+  let current: CategoryDefinition | null = category;
+  while (current && !seen.has(current.id)) {
+    path.unshift(current);
+    seen.add(current.id);
+    current = current.parentId ? getCategory(current.parentId) : null;
+  }
+  return path;
+}
+
+/** Parents precede descendants; siblings follow their authored `order` at every hierarchy depth. */
+export function compareCategoryHierarchy(
+  left: CategoryDefinition,
+  right: CategoryDefinition,
+): number {
+  const a = categoryHierarchy(left);
+  const b = categoryHierarchy(right);
+  const sharedDepth = Math.min(a.length, b.length);
+  for (let index = 0; index < sharedDepth; index += 1) {
+    const orderDifference = (a[index]?.order || 999) - (b[index]?.order || 999);
+    if (orderDifference) return orderDifference;
+  }
+  return a.length - b.length || left.id.localeCompare(right.id);
+}
+
+export function categoryHierarchyDepth(category: CategoryDefinition): number {
+  return Math.max(0, categoryHierarchy(category).length - 1);
 }
 
 /**
@@ -101,20 +127,17 @@ export async function meta(env: Env): Promise<MetaResponse> {
   );
   const categoryFacets = canonicalCategoryDefinitions()
     .filter((category) => category.filterable)
-    .sort((left, right) => {
-      const a = categorySortKey(left);
-      const b = categorySortKey(right);
-      return a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
-    })
+    .sort(compareCategoryHierarchy)
     .map((category): MetaCategoryFacet => {
+      const depth = categoryHierarchyDepth(category);
       return {
         id: category.id,
         parentId: category.parentId,
         order: category.order,
         classifiable: category.classifiable,
         filterable: category.filterable,
-        // Child categories are indented so a flat `<select>` still reads as a hierarchy.
-        name: category.parentId ? `　${category.name}` : category.name,
+        // Preserve hierarchy depth even though the browser renders a flat `<select>`.
+        name: `${"　".repeat(depth)}${category.name}`,
         group: null,
         activeProductCount: counts.get(category.id) || 0,
       };
