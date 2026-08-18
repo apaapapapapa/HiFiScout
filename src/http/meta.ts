@@ -119,12 +119,11 @@ export async function meta(env: Env): Promise<MetaResponse> {
     `),
   ]);
   const manufacturers = normalizeManufacturerFacetValues(facets[0]?.results || []);
-  const counts = new Map(
-    (facets[1]?.results || []).map((row): [string, number] => [
-      row.value,
-      Number(row.active_product_count || 0),
-    ]),
-  );
+  const counts = new Map<string, number>();
+  for (const row of facets[1]?.results || []) {
+    const categoryId = getCategory(row.value)?.id || row.value;
+    counts.set(categoryId, (counts.get(categoryId) || 0) + Number(row.active_product_count || 0));
+  }
   const categoryFacets = canonicalCategoryDefinitions()
     .filter((category) => category.filterable)
     .sort(compareCategoryHierarchy)

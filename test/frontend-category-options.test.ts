@@ -49,7 +49,7 @@ test("category options preserve server order and separate non-classifiable paren
     ]),
   );
 
-  assert.equal((markup.match(/data-category-separator="true"/g) || []).length, 2);
+  assert.equal((markup.match(/data-category-separator="true"/g) || []).length, 4);
   assert.match(
     markup,
     /^<option disabled data-category-separator="true">────────────<\/option><option value="amplifier">アンプ<\/option>/u,
@@ -60,7 +60,7 @@ test("category options preserve server order and separate non-classifiable paren
   assert.ok(markup.indexOf('value="dac"') < markup.indexOf('value="dj_dtm"'));
   assert.match(
     markup,
-    /<option value="dac">　DAC<\/option><option value="dj_dtm">DJ機器・DTM<\/option>$/u,
+    /<option value="dac">　DAC<\/option><option disabled data-category-separator="true">────────────<\/option><option value="dj_dtm">DJ機器・DTM<\/option><option disabled data-category-separator="true">────────────<\/option>$/u,
   );
 });
 

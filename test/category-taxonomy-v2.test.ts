@@ -90,6 +90,7 @@ test("children retain required definition order", () => {
       "dac",
       "network_player",
       "cd_sacd_player",
+      "cd_sacd_transport",
       "dap",
       "network_switch",
       "optical_isolator",
@@ -99,12 +100,20 @@ test("children retain required definition order", () => {
     ],
   );
   assert.deepEqual(
+    children("analog").map((category) => category.id),
+    ["turntable", "tonearm", "cartridge", "phono_eq", "phono_step_up_transformer"],
+  );
+  assert.deepEqual(
     children("speaker").map((category) => category.id),
     ["speaker_bookshelf", "speaker_floorstanding", "center_speaker", "subwoofer", "active_speaker"],
   );
   assert.deepEqual(
+    children("headphone_group").map((category) => category.id),
+    ["wired_headphone", "wired_earphone", "btw_headphone", "btw_earphone"],
+  );
+  assert.deepEqual(
     children("accessories").map((category) => category.id),
-    ["cable", "rack", "power_accessory", "vacuum_tube", "other_accessory"],
+    ["cable", "rack", "power_strip", "clean_power", "vacuum_tube", "other_accessory"],
   );
   assert.deepEqual(
     children("cable").map((category) => category.id),
@@ -125,6 +134,9 @@ test("legacy category aliases resolve to canonical ids", () => {
   assert.equal(categoryIdForFilter("network_transport"), "network_player");
   assert.equal(categoryIdForFilter("accessory"), "other_accessory");
   assert.equal(categoryIdForFilter("speaker_other"), "speaker");
+  assert.equal(categoryIdForFilter("headphone"), "wired_headphone");
+  assert.equal(categoryIdForFilter("earphone"), "wired_earphone");
+  assert.equal(categoryIdForFilter("power_accessory"), "clean_power");
 });
 
 test("search closure contains leaf and every ancestor group", () => {
@@ -146,9 +158,10 @@ test("composite amplifier titles keep one product category and expose features s
   assert.equal(integrated.featureFacts.find((fact) => fact.featureId === "dac")?.state, "present");
 });
 
-test("transports are classified as their player family", () => {
+test("CD/SACD transports are independent from players while network transport stays a network player", () => {
   assert.equal(classify("Network Transport N1").primaryCategoryId, "network_player");
-  assert.equal(classify("CD Transport D1").primaryCategoryId, "cd_sacd_player");
+  assert.equal(classify("CD Transport D1").primaryCategoryId, "cd_sacd_transport");
+  assert.equal(classify("SACD Player D2").primaryCategoryId, "cd_sacd_player");
 });
 
 test("digital network infrastructure and server titles use dedicated categories", () => {
@@ -226,7 +239,14 @@ test("generic seller cable buckets do not override a specific title cable type",
   assert.equal(product.primaryCategoryId, "cable_xlr");
 });
 
-test("accessory precedence prevents target component words from stealing classification", () => {
-  assert.equal(classify("電源タップ 6口").primaryCategoryId, "power_accessory");
+test("headphone, phono and power refinements classify into their dedicated leaves", () => {
+  assert.equal(classify("有線ヘッドホン MDR-1").primaryCategoryId, "wired_headphone");
+  assert.equal(classify("有線イヤホン IER-1").primaryCategoryId, "wired_earphone");
+  assert.equal(classify("Bluetooth ワイヤレスヘッドホン WH-1").primaryCategoryId, "btw_headphone");
+  assert.equal(classify("完全ワイヤレスイヤホン WF-1").primaryCategoryId, "btw_earphone");
+  assert.equal(classify("MC昇圧トランス T-1").primaryCategoryId, "phono_step_up_transformer");
+  assert.equal(classify("フォノイコライザー EQ-1").primaryCategoryId, "phono_eq");
+  assert.equal(classify("電源タップ 6口").primaryCategoryId, "power_strip");
+  assert.equal(classify("クリーン電源 Power Conditioner P-1").primaryCategoryId, "clean_power");
   assert.equal(classify("インシュレーター 4個").primaryCategoryId, "other_accessory");
 });

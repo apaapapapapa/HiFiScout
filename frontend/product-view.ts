@@ -263,10 +263,13 @@ export function categoryOptions(meta: MetaResponse): string {
   const option = (facet: MetaCategoryFacet) =>
     `<option value="${escapeHtml(facet.id)}">${escapeHtml(facet.name)}</option>`;
   const topLevel = ungrouped
-    .map(
-      (facet) =>
-        `${facet.parentId === null && !facet.classifiable ? CATEGORY_SEPARATOR : ""}${option(facet)}`,
-    )
+    .map((facet) => {
+      const topLevelFacet = facet.parentId === null;
+      const before =
+        topLevelFacet && (!facet.classifiable || facet.id === "dj_dtm") ? CATEGORY_SEPARATOR : "";
+      const after = topLevelFacet && facet.id === "dj_dtm" ? CATEGORY_SEPARATOR : "";
+      return `${before}${option(facet)}${after}`;
+    })
     .join("");
   const groups = [...grouped.entries()]
     .map(

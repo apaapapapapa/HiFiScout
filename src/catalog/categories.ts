@@ -140,24 +140,37 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
     filterable: true,
     aliases: [
       "cd player",
-      "cd transport",
       "sacd player",
-      "sacd transport",
-      "super audio cd transport",
       "sacd/cd player",
       "cdプレーヤー",
-      "cdトランスポート",
       "sacdプレーヤー",
-      "sacdトランスポート",
       "sacd/cdプレーヤー",
       "cd/sacdプレーヤー",
+    ],
+  },
+  {
+    id: "cd_sacd_transport",
+    name: "CD/SACDトランスポート",
+    parentId: "digital",
+    order: 4,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "cd transport",
+      "sacd transport",
+      "super audio cd transport",
+      "disc transport",
+      "cdトランスポート",
+      "sacdトランスポート",
+      "cd/sacdトランスポート",
+      "トランスポート",
     ],
   },
   {
     id: "dap",
     name: "DAP",
     parentId: "digital",
-    order: 4,
+    order: 5,
     classifiable: true,
     filterable: true,
     aliases: [
@@ -173,7 +186,7 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
     id: "network_switch",
     name: "スイッチングハブ",
     parentId: "digital",
-    order: 5,
+    order: 6,
     classifiable: true,
     filterable: true,
     aliases: [
@@ -188,7 +201,7 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
     id: "optical_isolator",
     name: "光アイソレーター",
     parentId: "digital",
-    order: 6,
+    order: 7,
     classifiable: true,
     filterable: true,
     aliases: [
@@ -204,7 +217,7 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
     id: "router",
     name: "ルーター",
     parentId: "digital",
-    order: 7,
+    order: 8,
     classifiable: true,
     filterable: true,
     aliases: ["router", "audio router", "オーディオルーター", "ルーター", "ルータ"],
@@ -213,7 +226,7 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
     id: "music_server",
     name: "ミュージックサーバー",
     parentId: "digital",
-    order: 8,
+    order: 9,
     classifiable: true,
     filterable: true,
     aliases: [
@@ -230,7 +243,7 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
     id: "master_clock",
     name: "マスタークロックジェネレーター",
     parentId: "digital",
-    order: 9,
+    order: 10,
     classifiable: true,
     filterable: true,
     aliases: [
@@ -295,6 +308,22 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
     classifiable: true,
     filterable: true,
     aliases: ["phono equalizer", "phono eq", "phono stage", "フォノイコライザー", "フォノアンプ"],
+  },
+  {
+    id: "phono_step_up_transformer",
+    name: "昇圧トランス",
+    parentId: "analog",
+    order: 5,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "step-up transformer",
+      "step up transformer",
+      "mc transformer",
+      "moving coil transformer",
+      "昇圧トランス",
+      "mc昇圧トランス",
+    ],
   },
 
   {
@@ -393,22 +422,60 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
     aliases: ["headphone group", "ヘッドホン・イヤホン"],
   },
   {
-    id: "headphone",
-    name: "ヘッドホン",
+    id: "wired_headphone",
+    name: "有線ヘッドホン",
     parentId: "headphone_group",
     order: 1,
     classifiable: true,
     filterable: true,
-    aliases: ["headphone", "headphones", "ヘッドホン"],
+    aliases: ["wired headphone", "wired headphones", "有線ヘッドホン"],
   },
   {
-    id: "earphone",
-    name: "イヤホン",
+    id: "wired_earphone",
+    name: "有線イヤホン",
     parentId: "headphone_group",
     order: 2,
     classifiable: true,
     filterable: true,
-    aliases: ["earphone", "earphones", "earbud", "earbuds", "iem", "イヤホン"],
+    aliases: ["wired earphone", "wired earphones", "wired earbuds", "有線イヤホン"],
+  },
+  {
+    id: "btw_headphone",
+    name: "BTWヘッドホン",
+    parentId: "headphone_group",
+    order: 3,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "bluetooth headphone",
+      "bluetooth headphones",
+      "wireless headphone",
+      "wireless headphones",
+      "bluetoothヘッドホン",
+      "ワイヤレスヘッドホン",
+      "BTWヘッドホン",
+    ],
+  },
+  {
+    id: "btw_earphone",
+    name: "BTWイヤホン",
+    parentId: "headphone_group",
+    order: 4,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "bluetooth earphone",
+      "bluetooth earphones",
+      "wireless earphone",
+      "wireless earphones",
+      "wireless earbuds",
+      "true wireless",
+      "tws",
+      "bluetoothイヤホン",
+      "ワイヤレスイヤホン",
+      "完全ワイヤレスイヤホン",
+      "BTWイヤホン",
+    ],
   },
 
   {
@@ -553,26 +620,43 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
     aliases: ["audio rack", "rack", "オーディオラック", "ラック"],
   },
   {
-    id: "power_accessory",
-    name: "電源関連",
+    id: "power_strip",
+    name: "電源タップ",
     parentId: "accessories",
     order: 3,
     classifiable: true,
     filterable: true,
     aliases: [
-      "power accessory",
-      "power conditioner",
       "power strip",
+      "power distributor",
+      "power distribution",
       "電源タップ",
+      "電源ボックス",
+    ],
+  },
+  {
+    id: "clean_power",
+    name: "クリーン電源",
+    parentId: "accessories",
+    order: 4,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "clean power",
+      "power conditioner",
+      "power regenerator",
+      "ac regenerator",
+      "クリーン電源",
       "電源コンディショナー",
       "電源コンディショナ",
+      "電源リジェネレーター",
     ],
   },
   {
     id: "vacuum_tube",
     name: "真空管",
     parentId: "accessories",
-    order: 4,
+    order: 5,
     classifiable: true,
     filterable: true,
     aliases: ["vacuum tube", "tube", "真空管"],
@@ -581,7 +665,7 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
     id: "other_accessory",
     name: "その他アクセサリー",
     parentId: "accessories",
-    order: 5,
+    order: 6,
     classifiable: true,
     filterable: true,
     aliases: [
@@ -641,6 +725,9 @@ const LEGACY_ALIASES: Readonly<Record<string, ClassifiableCategoryId>> = Object.
   network_transport: "network_player",
   accessory: "other_accessory",
   speaker_other: "other",
+  headphone: "wired_headphone",
+  earphone: "wired_earphone",
+  power_accessory: "clean_power",
 });
 const LEGACY_FILTER_ALIASES: Readonly<Record<string, CategoryId>> = Object.freeze({
   speaker_other: "speaker",
@@ -729,13 +816,17 @@ export function categoryClosureIds(categoryId: string): CategoryId[] {
  * so a group category has to expand to its descendants at query time. Accepts ids, display names
  * and legacy aliases, exactly like {@link categoryIdForFilter}.
  */
-export function categoryFilterIds(value: string = ""): CategoryId[] {
+export function categoryFilterIds(value: string = ""): string[] {
   const categoryId = categoryIdForFilter(value);
   if (!categoryId) return [];
-  return CATEGORIES.filter(
+  const canonicalIds = CATEGORIES.filter(
     (candidate) =>
       candidate.id === categoryId || categoryClosureIds(candidate.id).includes(categoryId),
   ).map((candidate) => candidate.id);
+  const legacyIds = Object.entries(LEGACY_ALIASES)
+    .filter(([, canonical]) => canonicalIds.includes(canonical))
+    .map(([legacy]) => legacy);
+  return [...new Set([...canonicalIds, ...legacyIds])];
 }
 
 export function categoryFacet(categoryId: string): CategoryFacet | null {
