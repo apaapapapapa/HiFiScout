@@ -14,6 +14,14 @@ import type {
 
 const MODEL_OPTIONAL_CATEGORIES = [
   "cable",
+  "cable_xlr",
+  "cable_rca",
+  "cable_phono",
+  "cable_usb",
+  "cable_lan",
+  "cable_digital",
+  "cable_power",
+  "cable_other",
   "rack",
   "power_accessory",
   "vacuum_tube",
