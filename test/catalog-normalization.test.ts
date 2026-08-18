@@ -38,7 +38,7 @@ test("title inference suppresses component words inside accessory and amplifier 
     "headphone_amp",
   ]);
   assert.deepEqual(normalizeCategory({ title: "Network Transport" }).categoryIds, [
-    "network_player",
+    "cd_sacd_transport",
   ]);
 });
 

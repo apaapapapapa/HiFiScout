@@ -201,6 +201,10 @@ test("live metadata exposes the complete canonical taxonomy including zero-count
     name: "　プリアンプ",
     parentId: "amplifier",
   });
+  expect(facets.find((category) => category.id === "cd_sacd_transport")).toMatchObject({
+    name: "　トランスポート",
+    parentId: "digital",
+  });
   expect(facets.find((category) => category.id === "cable_xlr")).toMatchObject({
     name: "　　XLRケーブル",
     parentId: "cable",

@@ -48,8 +48,8 @@ test("multiple feature parameters are ANDed and unknown feature ids are rejected
   );
 });
 
-test("legacy network transport filter resolves to network player", async () => {
+test("legacy network transport filter resolves to transport", async () => {
   const db = captureDatabase();
   await searchProducts(db, productQuery("?category=network_transport"));
-  assert.equal(db.calls[0].binds[0], "network_player");
+  assert.equal(db.calls[0].binds[0], "cd_sacd_transport");
 });
