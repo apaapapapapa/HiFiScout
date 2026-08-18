@@ -16,6 +16,9 @@ const BROAD_SELLER_CATEGORY_IDS: ReadonlySet<string> = new Set([
   "other",
   "other_accessory",
   "cable_other",
+  "wired_headphone",
+  "wired_earphone",
+  "clean_power",
 ]);
 
 function mode(value: unknown, fallback: CategoryPolicyMode): CategoryPolicyMode {

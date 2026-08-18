@@ -33,6 +33,7 @@ export type ClassifiableCategoryId =
   | "dac"
   | "network_player"
   | "cd_sacd_player"
+  | "cd_sacd_transport"
   | "dap"
   | "network_switch"
   | "optical_isolator"
@@ -43,13 +44,16 @@ export type ClassifiableCategoryId =
   | "tonearm"
   | "cartridge"
   | "phono_eq"
+  | "phono_step_up_transformer"
   | "speaker_bookshelf"
   | "speaker_floorstanding"
   | "center_speaker"
   | "subwoofer"
   | "active_speaker"
-  | "headphone"
-  | "earphone"
+  | "wired_headphone"
+  | "wired_earphone"
+  | "btw_headphone"
+  | "btw_earphone"
   | "cable_xlr"
   | "cable_rca"
   | "cable_phono"
@@ -59,20 +63,27 @@ export type ClassifiableCategoryId =
   | "cable_power"
   | "cable_other"
   | "rack"
-  | "power_accessory"
+  | "power_strip"
+  | "clean_power"
   | "vacuum_tube"
   | "other_accessory"
   | "dj_dtm"
   | "other";
 
-/** Every id present in `CATEGORIES` (45 entries). */
+/** Every id present in `CATEGORIES` (50 entries). */
 export type CategoryId = CategoryGroupId | ClassifiableCategoryId;
 
 /**
  * Pre-taxonomy-v2 ids still accepted on input and rewritten by `LEGACY_ALIASES`.
  * They are NOT `CategoryId`s and must never be produced.
  */
-export type LegacyCategoryAlias = "network_transport" | "accessory" | "speaker_other";
+export type LegacyCategoryAlias =
+  | "network_transport"
+  | "accessory"
+  | "speaker_other"
+  | "headphone"
+  | "earphone"
+  | "power_accessory";
 
 export interface CategoryDefinition {
   readonly id: CategoryId;

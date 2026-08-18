@@ -299,7 +299,7 @@ test("generic discovery promotes a manufacturer that only the expanded registry 
   });
 
   assert.equal(result.status, "verified");
-  assert.equal(result.primaryCategoryId, "headphone");
+  assert.equal(result.primaryCategoryId, "wired_headphone");
   const requestedUrls = new Set(requested);
   assert.equal(requestedUrls.has("https://stax.co.jp/product/"), true);
   assert.equal(requestedUrls.has("https://stax.co.jp/product/sr-x9000/"), true);

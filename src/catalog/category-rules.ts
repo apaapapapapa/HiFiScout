@@ -26,7 +26,11 @@ const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
   ["cable_xlr", /\bxlr\b.*(?:\bcables?\b|interconnect)|xlr\s*(?:ケーブル|インターコネクト)/i],
   ["cable_rca", /\brca\b.*(?:\bcables?\b|interconnect)|rca\s*(?:ケーブル|インターコネクト)/i],
   ["cable_other", /\bcables?\b|ケーブル/i],
-  ["power_accessory", /power\s*(?:strip|conditioner)|電源タップ|電源コンディショナ(?:ー)?/i],
+  [
+    "clean_power",
+    /power\s*(?:conditioner|regenerator)|ac\s*regenerator|clean\s*power|クリーン電源|電源コンディショナ(?:ー)?|電源リジェネレータ(?:ー)?/i,
+  ],
+  ["power_strip", /power\s*(?:strip|distributor|distribution)|電源タップ|電源ボックス/i],
   [
     "network_switch",
     /switching\s+hub|network\s+switch|ethernet\s+switch|スイッチングハブ|ネットワークスイッチ/i,
@@ -56,7 +60,7 @@ const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
   ],
   [
     "other",
-    /voicing\s+equalizer|graphic\s+equalizer|\bequalizer\b|音場補正|イコライザ(?:ー)?|frequency\s+dividing\s+network|channel\s+divider|\bcrossover\b|チャンネル(?:デバイダ|ディバイダ)(?:ー)?|周波数分割|(?:dds\s+)?(?:fm|am\s*\/\s*fm)\s+stereo\s+tuner|\btuner\b|チューナー/i,
+    /voicing\s+equalizer|graphic\s+equalizer|(?<!phono\s)\bequalizer\b|音場補正|(?<!フォノ)イコライザ(?:ー)?|frequency\s+dividing\s+network|channel\s+divider|\bcrossover\b|チャンネル(?:デバイダ|ディバイダ)(?:ー)?|周波数分割|(?:dds\s+)?(?:fm|am\s*\/\s*fm)\s+stereo\s+tuner|\btuner\b|チューナー/i,
   ],
   ["integrated_amp", /integrated\s+(?:amp|amplifier)|プリメインアンプ|インテグレーテッドアンプ/i],
   [
@@ -70,8 +74,16 @@ const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
     /network\s+(?:audio\s+)?(?:player|transport)|network\s+cd\s+receiver|streaming\s+(?:player|transport)|ネットワーク(?:オーディオ)?(?:プレーヤー|プレイヤー|トランスポート)/i,
   ],
   [
+    "cd_sacd_transport",
+    /(?:sacd|cd)\s*(?:\/\s*(?:sacd|cd))?\s*(?:transport|トランスポート)|super\s+audio\s+cd\s+transport|(?:cd|sacd)\s*\/\s*(?:sacd|cd)\s*トランスポート/i,
+  ],
+  [
     "cd_sacd_player",
-    /network\s+cd\s+receiver|(?:sacd|cd)\s*(?:\/\s*(?:sacd|cd))?\s*(?:player|transport|プレーヤー|プレイヤー|トランスポート)|super\s+audio\s+cd\s+transport|(?:sacd\s*\/\s*cd|cd\s*\/\s*sacd)/i,
+    /network\s+cd\s+receiver|(?:sacd|cd)\s*(?:\/\s*(?:sacd|cd))?\s*(?:player|プレーヤー|プレイヤー)|(?:sacd\s*\/\s*cd|cd\s*\/\s*sacd)(?!\s*トランスポート)/i,
+  ],
+  [
+    "phono_step_up_transformer",
+    /(?:mc|moving\s+coil)\s+(?:step[\s-]*up\s+)?transformer|step[\s-]*up\s+transformer|(?:mc)?昇圧トランス/i,
   ],
   ["phono_eq", /phono\s+(?:equalizer|eq|stage)|フォノイコライザー|フォノアンプ/i],
   ["turntable", /\bturntable\b|record\s+player|ターンテーブル|レコード(?:プレーヤー|プレイヤー)/i],
@@ -93,8 +105,16 @@ const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
   ],
   ["subwoofer", /sub[\s-]?woofer|サブウーファー/i],
   ["other", /\bsound\s*bars?\b|サウンドバー|\bspeakers?\b|スピーカー/i],
-  ["earphone", /\bearphones?\b|\bearbuds?\b|\biem\b|イヤホン/i],
-  ["headphone", /\bheadphones?\b|ヘッドホン/i],
+  [
+    "btw_earphone",
+    /(?:bluetooth|wireless|true\s+wireless|\btws\b).*?(?:earphones?|earbuds?|\biem\b)|(?:earphones?|earbuds?|\biem\b).*?(?:bluetooth|wireless|true\s+wireless|\btws\b)|(?:bluetooth|ワイヤレス|完全ワイヤレス).*?イヤホン|イヤホン.*?(?:bluetooth|ワイヤレス|完全ワイヤレス)/i,
+  ],
+  [
+    "btw_headphone",
+    /(?:bluetooth|wireless).*?headphones?|headphones?.*?(?:bluetooth|wireless)|(?:bluetooth|ワイヤレス).*?ヘッドホン|ヘッドホン.*?(?:bluetooth|ワイヤレス)/i,
+  ],
+  ["wired_earphone", /\bearphones?\b|\bearbuds?\b|\biem\b|イヤホン/i],
+  ["wired_headphone", /\bheadphones?\b|ヘッドホン/i],
   ["dj_dtm", /\bdj\b|\bddj[-\s]|rekordbox|serato|\bmidi\b|オーディオインターフェース/i],
   [
     "dac",

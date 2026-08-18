@@ -12,7 +12,7 @@ test("metadata category ordering keeps nested cable leaves inside the accessorie
 
   const accessoriesIndex = ids.indexOf("accessories");
   assert.notEqual(accessoriesIndex, -1);
-  assert.deepEqual(ids.slice(accessoriesIndex, accessoriesIndex + 14), [
+  assert.deepEqual(ids.slice(accessoriesIndex, accessoriesIndex + 15), [
     "accessories",
     "cable",
     "cable_xlr",
@@ -24,7 +24,8 @@ test("metadata category ordering keeps nested cable leaves inside the accessorie
     "cable_power",
     "cable_other",
     "rack",
-    "power_accessory",
+    "power_strip",
+    "clean_power",
     "vacuum_tube",
     "other_accessory",
   ]);
