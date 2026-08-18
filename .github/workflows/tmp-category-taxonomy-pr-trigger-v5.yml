@@ -1,0 +1,77 @@
+name: Temporary category taxonomy PR trigger v5
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'feat/refine-audio-category-taxonomy'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/refine-audio-category-taxonomy
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply taxonomy patch and fixes
+        shell: bash
+        run: |
+          python3 <<'PYEXTRACT'
+          from pathlib import Path
+          source = Path('.github/workflows/tmp-category-taxonomy-pr-trigger-v4.yml').read_text()
+          start = source.index("          python3 <<'PY'\n") + len("          python3 <<'PY'\n")
+          end = source.index("\n          PY\n", start)
+          body = source[start:end]
+          lines = [line[10:] if line.startswith('          ') else line for line in body.splitlines()]
+          Path('/tmp/apply-taxonomy-v4.py').write_text('\n'.join(lines) + '\n')
+          PYEXTRACT
+          python3 /tmp/apply-taxonomy-v4.py
+          python3 <<'PYFIX'
+          from pathlib import Path
+
+          path = Path('src/catalog/category-rules.ts')
+          text = path.read_text()
+          phono_start = text.index('  [\n    "phono_step_up_transformer",')
+          phono_end = text.index('\n  ["turntable",', phono_start)
+          phono_rules = text[phono_start:phono_end]
+          text = text[:phono_start] + text[phono_end:]
+          generic_other = text.index('  [\n    "other",')
+          text = text[:generic_other] + phono_rules + '\n' + text[generic_other:]
+          path.write_text(text)
+
+          path = Path('test/knowledge-verification-verifier.test.ts')
+          text = path.read_text()
+          old = '  assert.equal(result.primaryCategoryId, "headphone");'
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one legacy headphone verifier assertion, got {text.count(old)}')
+          path.write_text(text.replace(old, '  assert.equal(result.primaryCategoryId, "wired_headphone");', 1))
+          PYFIX
+      - name: Install dependencies
+        run: npm ci
+      - name: Format
+        run: npm run format
+      - name: Validate
+        run: npm run check
+      - name: Commit implementation and remove temporary workflows
+        shell: bash
+        run: |
+          rm .github/workflows/tmp-category-taxonomy-patch.yml
+          rm .github/workflows/tmp-category-taxonomy-pr-trigger.yml
+          rm .github/workflows/tmp-category-taxonomy-pr-trigger-v2.yml
+          rm .github/workflows/tmp-category-taxonomy-pr-trigger-v3.yml
+          rm .github/workflows/tmp-category-taxonomy-pr-trigger-v4.yml
+          rm .github/workflows/tmp-category-taxonomy-pr-trigger-v5.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: refine audio category taxonomy"
+          git push origin HEAD:feat/refine-audio-category-taxonomy
