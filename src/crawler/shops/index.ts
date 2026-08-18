@@ -23,7 +23,11 @@ import {
   fujiyaAvicAdapter,
 } from "./fujiya-avic.js";
 import { HIFIDO_CATEGORY_MAPPING, hifidoAdapter } from "./hifido.js";
-import { FORMUSIC_CATEGORY_MAPPING, forMusicAdapter } from "./formusic.js";
+import {
+  FORMUSIC_CATEGORY_MAPPING,
+  FORMUSIC_CATEGORY_POLICY,
+  forMusicAdapter,
+} from "./formusic.js";
 import { U_AUDIO_CATEGORY_MAPPING, U_AUDIO_CATEGORY_POLICY, uAudioAdapter } from "./u-audio.js";
 import { SHIMAMUSEN_CATEGORY_POLICY, shimamusenAdapter } from "./shimamusen.js";
 // shop-generator:imports
@@ -100,7 +104,12 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       baseUrl: "https://shop.formusic.jp",
       defaultIntervalMinutes: 30,
     },
-    { catalog: { categoryMapping: FORMUSIC_CATEGORY_MAPPING } },
+    {
+      catalog: {
+        categoryMapping: FORMUSIC_CATEGORY_MAPPING,
+        categoryPolicy: FORMUSIC_CATEGORY_POLICY,
+      },
+    },
   ),
   defineShopPlugin(
     uAudioAdapter,
