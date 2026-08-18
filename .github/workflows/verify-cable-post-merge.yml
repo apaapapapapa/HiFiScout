@@ -5,7 +5,7 @@ on:
     branches: [main]
 
 permissions:
-  actions: read
+  actions: write
   contents: read
 
 jobs:
@@ -14,58 +14,73 @@ jobs:
     timeout-minutes: 12
     env:
       TARGET_SHA: cd77cfc1abc3bb5c661905f1bf6d861fbcda5434
+      FAILED_E2E_RUN_ID: 32135810835
       GH_TOKEN: ${{ github.token }}
       PRODUCTION_BASE_URL: https://hifiscout.tokyojp.workers.dev
     steps:
-      - name: Verify final main CI, deploy, and E2E
+      - name: Verify main CI and deploy
         shell: bash
         run: |
           set -euo pipefail
           api="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${TARGET_SHA}&per_page=100"
+          runs="$(curl -fsSL \
+            -H 'Accept: application/vnd.github+json' \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "$api")"
+          jq -r '.workflow_runs[] | [.id, .name, .event, .status, (.conclusion // "-")] | @tsv' <<< "$runs" | sort -k2
+          test "$(jq -r '[.workflow_runs[] | select(.name == "CI" and .event == "push")][0].conclusion' <<< "$runs")" = success
+          test "$(jq -r '[.workflow_runs[] | select(.name == "Deploy Cloudflare")][0].conclusion' <<< "$runs")" = success
 
-          for attempt in $(seq 1 60); do
-            runs="$(curl -fsSL \
+      - name: Wait for failed Knowledge Catalog run recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          status_url="${PRODUCTION_BASE_URL%/}/api/knowledge-catalog/status"
+          for attempt in $(seq 1 30); do
+            payload="$(curl -fsS --retry 3 --retry-delay 2 "$status_url")"
+            review_id="$(jq -r '.latestReview.id // 0' <<< "$payload")"
+            review_status="$(jq -r '.latestReview.status // empty' <<< "$payload")"
+            queue_run_id="$(jq -r '.queue.latestRunId // 0' <<< "$payload")"
+            queue_terminal="$(jq -r '((.queue.latestRun.completed // 0) + (.queue.latestRun.deadLetter // 0))' <<< "$payload")"
+            echo "attempt=${attempt} review=${review_id}:${review_status} queue=${queue_run_id} terminal=${queue_terminal}"
+            if [ "$review_id" -gt 13 ] && { [ "$review_status" = running ] || [ "$review_status" = success ]; } && [ "$queue_terminal" -gt 0 ]; then
+              echo "$payload" | jq .
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "Knowledge Catalog recovery did not become observable." >&2
+          exit 1
+
+      - name: Re-run failed E2E after recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL -X POST \
+            -H 'Accept: application/vnd.github+json' \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${FAILED_E2E_RUN_ID}/rerun-failed-jobs"
+
+          for attempt in $(seq 1 45); do
+            run="$(curl -fsSL \
               -H 'Accept: application/vnd.github+json' \
               -H "Authorization: Bearer ${GH_TOKEN}" \
               -H 'X-GitHub-Api-Version: 2022-11-28' \
-              "$api")"
-
-            echo "Runs for ${TARGET_SHA} (attempt ${attempt}):"
-            jq -r '.workflow_runs[] | [.id, .name, .event, .status, (.conclusion // "-"), .html_url] | @tsv' <<< "$runs" | sort -k2
-
-            ci="$(jq -r '[.workflow_runs[] | select(.name == "CI" and .event == "push")][0].conclusion // "missing"' <<< "$runs")"
-            deploy="$(jq -r '[.workflow_runs[] | select(.name == "Deploy Cloudflare")][0].conclusion // "missing"' <<< "$runs")"
-            e2e="$(jq -r '[.workflow_runs[] | select(.name == "E2E")][0].conclusion // "missing"' <<< "$runs")"
-            e2e_id="$(jq -r '[.workflow_runs[] | select(.name == "E2E")][0].id // empty' <<< "$runs")"
-
-            if [[ "$ci" == "success" && "$deploy" == "success" && "$e2e" == "success" ]]; then
-              echo "CI, Deploy Cloudflare, and E2E are all successful for ${TARGET_SHA}."
-              break
-            fi
-
-            for pair in "CI:$ci" "Deploy Cloudflare:$deploy" "E2E:$e2e"; do
-              name="${pair%%:*}"
-              conclusion="${pair#*:}"
-              if [[ "$conclusion" =~ ^(failure|cancelled|timed_out|action_required|startup_failure)$ ]]; then
-                echo "$name failed for ${TARGET_SHA}: ${conclusion}" >&2
-                if [[ "$name" == "E2E" && -n "$e2e_id" ]]; then
-                  curl -fsSL \
-                    -H 'Accept: application/vnd.github+json' \
-                    -H "Authorization: Bearer ${GH_TOKEN}" \
-                    -H 'X-GitHub-Api-Version: 2022-11-28' \
-                    "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${e2e_id}/jobs?per_page=100" \
-                    | jq -r '.jobs[] | [.id, .name, .status, (.conclusion // "-"), .html_url] | @tsv'
-                fi
-                exit 1
-              fi
-            done
-
-            if [[ "$attempt" -eq 60 ]]; then
-              echo "Timed out: CI=${ci}, Deploy=${deploy}, E2E=${e2e}" >&2
-              exit 1
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${FAILED_E2E_RUN_ID}")"
+            status="$(jq -r '.status' <<< "$run")"
+            conclusion="$(jq -r '.conclusion // empty' <<< "$run")"
+            attempt_no="$(jq -r '.run_attempt' <<< "$run")"
+            echo "E2E attempt=${attempt_no} status=${status} conclusion=${conclusion:-pending}"
+            if [ "$status" = completed ]; then
+              test "$conclusion" = success
+              exit 0
             fi
             sleep 10
           done
+          echo "E2E rerun did not complete in observation window." >&2
+          exit 1
 
       - name: Verify production endpoint is reachable
         shell: bash
@@ -75,13 +90,12 @@ jobs:
           trap 'rm -f "$body"' EXIT
           status="$(curl -sS --retry 3 --retry-delay 2 -o "$body" -w '%{http_code}' "${PRODUCTION_BASE_URL}/api/health")"
           response="$(cat "$body")"
-
           if jq -e . >/dev/null 2>&1 <<< "$response"; then
             jq . <<< "$response"
             jq -e '.shops[] | select(.shopKey == "audiounion" and .configured == true)' <<< "$response" >/dev/null
-            echo "Production health endpoint returned JSON over HTTP ${status}; overall shop health may be non-green independently of deploy success."
+            echo "Production health endpoint returned JSON over HTTP ${status}."
           elif [[ "$status" == "429" ]] && grep -Eqi 'Error[[:space:]]+1027' <<< "$response"; then
-            echo "Cloudflare Worker request quota is exhausted (1027); deploy success above remains authoritative."
+            echo "Cloudflare Worker request quota is exhausted (1027); deploy success remains authoritative."
           else
             echo "Unexpected production health response HTTP ${status}:" >&2
             cat "$body" >&2
