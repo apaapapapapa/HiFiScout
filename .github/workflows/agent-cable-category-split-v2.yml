@@ -1,0 +1,244 @@
+name: Agent cable category split v2
+
+on:
+  push:
+    branches:
+      - feat/split-cable-categories
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply cable taxonomy changes
+        shell: python
+        run: |
+          from pathlib import Path
+          from textwrap import dedent, indent
+          import re
+
+          def read(path):
+              return Path(path).read_text()
+
+          def write(path, text):
+              Path(path).write_text(text)
+
+          def replace1(text, old, new, label):
+              if old not in text:
+                  raise SystemExit(f"missing anchor: {label}")
+              return text.replace(old, new, 1)
+
+          def sub1(text, pattern, repl, label):
+              out, count = re.subn(pattern, repl, text, count=1, flags=re.S)
+              if count != 1:
+                  raise SystemExit(f"expected one match for {label}, got {count}")
+              return out
+
+          # Domain types: cable becomes a nested group; eight cable kinds become leaves.
+          path = "src/catalog/types.ts"
+          text = read(path)
+          text = replace1(text, '  | "headphone_group"\n  | "accessories";', '  | "headphone_group"\n  | "accessories"\n  | "cable";', "category group cable")
+          text = replace1(text, '  | "earphone"\n  | "cable"\n  | "rack"', '  | "earphone"\n  | "cable_xlr"\n  | "cable_rca"\n  | "cable_phono"\n  | "cable_usb"\n  | "cable_lan"\n  | "cable_digital"\n  | "cable_power"\n  | "cable_other"\n  | "rack"', "cable leaf ids")
+          text = replace1(text, '/** Every id present in `CATEGORIES` (38 entries). */', '/** Every id present in `CATEGORIES` (45 entries). */', "category count")
+          write(path, text)
+
+          # Canonical taxonomy definitions.
+          path = "src/catalog/categories.ts"
+          text = read(path)
+          cable_block = indent(dedent('''\
+          {
+            id: "cable",
+            name: "ケーブル",
+            parentId: "accessories",
+            order: 1,
+            classifiable: false,
+            filterable: true,
+            aliases: ["cable", "cables", "ケーブル"],
+          },
+          {
+            id: "cable_xlr",
+            name: "XLRケーブル",
+            parentId: "cable",
+            order: 1,
+            classifiable: true,
+            filterable: true,
+            aliases: ["xlr cable", "xlr cables", "xlr interconnect", "XLRケーブル", "XLRインターコネクト"],
+          },
+          {
+            id: "cable_rca",
+            name: "RCAケーブル",
+            parentId: "cable",
+            order: 2,
+            classifiable: true,
+            filterable: true,
+            aliases: ["rca cable", "rca cables", "rca interconnect", "RCAケーブル", "RCAインターコネクト"],
+          },
+          {
+            id: "cable_phono",
+            name: "フォノケーブル",
+            parentId: "cable",
+            order: 3,
+            classifiable: true,
+            filterable: true,
+            aliases: ["phono cable", "phono interconnect", "tonearm cable", "フォノケーブル", "トーンアームケーブル"],
+          },
+          {
+            id: "cable_usb",
+            name: "USBケーブル",
+            parentId: "cable",
+            order: 4,
+            classifiable: true,
+            filterable: true,
+            aliases: ["usb cable", "usb cables", "USBケーブル", "オーディオUSBケーブル"],
+          },
+          {
+            id: "cable_lan",
+            name: "LANケーブル",
+            parentId: "cable",
+            order: 5,
+            classifiable: true,
+            filterable: true,
+            aliases: ["lan cable", "ethernet cable", "network cable", "LANケーブル", "オーディオLANケーブル", "イーサネットケーブル"],
+          },
+          {
+            id: "cable_digital",
+            name: "デジタルケーブル",
+            parentId: "cable",
+            order: 6,
+            classifiable: true,
+            filterable: true,
+            aliases: ["digital cable", "digital interconnect", "spdif cable", "s/pdif cable", "aes/ebu cable", "toslink cable", "optical cable", "coaxial digital cable", "hdmi cable", "デジタルケーブル", "デジタル同軸ケーブル", "光デジタルケーブル", "HDMIケーブル"],
+          },
+          {
+            id: "cable_power",
+            name: "電源ケーブル",
+            parentId: "cable",
+            order: 7,
+            classifiable: true,
+            filterable: true,
+            aliases: ["power cable", "power cord", "mains cable", "ac cable", "電源ケーブル", "電源コード", "ACケーブル"],
+          },
+          {
+            id: "cable_other",
+            name: "その他ケーブル",
+            parentId: "cable",
+            order: 8,
+            classifiable: true,
+            filterable: true,
+            aliases: ["other cable", "speaker cable", "headphone cable", "その他ケーブル", "スピーカーケーブル", "ヘッドホンケーブル"],
+          },
+          '''), "  ")
+          text = sub1(text, r'  \{\n    id: "cable",\n    name: "ケーブル",\n    parentId: "accessories",\n    order: 1,\n    classifiable: true,\n    filterable: true,\n    aliases: \["cable", "cables", "ケーブル"\],\n  \},\n', lambda _: cable_block, "cable definition")
+          text = replace1(text, 'const LEGACY_FILTER_ALIASES: Readonly<Record<string, CategoryId>> = Object.freeze({\n  speaker_other: "speaker",\n});\n', 'const LEGACY_FILTER_ALIASES: Readonly<Record<string, CategoryId>> = Object.freeze({\n  speaker_other: "speaker",\n});\nconst CLASSIFICATION_ALIASES: Readonly<Record<string, ClassifiableCategoryId>> = Object.freeze({\n  ...LEGACY_ALIASES,\n  cable: "cable_other",\n});\n', "classification aliases")
+          text = replace1(text, '  const legacy = LEGACY_ALIASES[value];\n  if (legacy) return legacy;', '  const legacy = classifiableOnly ? CLASSIFICATION_ALIASES[value] : LEGACY_ALIASES[value];\n  if (legacy) return legacy;', "alias lookup")
+          text = replace1(text, '  const canonical = LEGACY_ALIASES[value] || value;\n  if (CATEGORY_BY_ID.get(canonical)?.classifiable) return canonical;', '  const canonical = CLASSIFICATION_ALIASES[value] || value;\n  if (CATEGORY_BY_ID.get(canonical)?.classifiable) return canonical;', "classification lookup")
+          closure = dedent('''\
+          export function categoryClosureIds(categoryId: string): CategoryId[] {
+            const category = getCategory(categoryId);
+            if (!category?.classifiable) return [];
+            const closure: CategoryId[] = [];
+            const seen = new Set<CategoryId>();
+            let current: CategoryDefinition | null = category;
+            while (current && !seen.has(current.id)) {
+              closure.push(current.id);
+              seen.add(current.id);
+              current = current.parentId ? getCategory(current.parentId) : null;
+            }
+            return closure;
+          }
+          ''')
+          text = sub1(text, r'export function categoryClosureIds\(categoryId: string\): CategoryId\[\] \{\n.*?\n\}\n\n/\*\*', lambda m: closure + '\n/**', "recursive category closure")
+          write(path, text)
+
+          # Ordered classification: functional cable types beat connector types; generic cable is last.
+          path = "src/catalog/category-rules.ts"
+          text = read(path)
+          rules = dedent(r'''\
+            ["cable_usb", /\busb\b.*(?:\bcables?\b|interconnect)|usb\s*ケーブル|オーディオusbケーブル/i],
+            ["cable_lan", /\b(?:lan|ethernet|network)\b.*\bcables?\b|(?:lan|イーサネット|ネットワーク)\s*ケーブル/i],
+            ["cable_phono", /\b(?:phono|tonearm)\b.*(?:\bcables?\b|interconnect)|フォノ(?:用)?ケーブル|トーンアームケーブル/i],
+            ["cable_power", /\b(?:ac|power|mains)\b.*(?:\bcables?\b|cord)|(?:電源|ac)\s*(?:ケーブル|コード)/i],
+            ["cable_digital", /\b(?:digital|s\/?pdif|aes\/?ebu|toslink|optical|coaxial|hdmi)\b.*(?:\bcables?\b|interconnect)|(?:デジタル|同軸デジタル|光デジタル|hdmi)\s*ケーブル/i],
+            ["cable_xlr", /\bxlr\b.*(?:\bcables?\b|interconnect)|xlr\s*(?:ケーブル|インターコネクト)/i],
+            ["cable_rca", /\brca\b.*(?:\bcables?\b|interconnect)|rca\s*(?:ケーブル|インターコネクト)/i],
+            ["cable_other", /\bcables?\b|ケーブル/i],
+          ''')
+          text = sub1(text, r'  \["cable", /.*?\],\n', lambda _: rules, "cable classification rules")
+          write(path, text)
+
+          path = "src/catalog/category-evidence.ts"
+          text = read(path)
+          text = replace1(text, 'const BROAD_SELLER_CATEGORY_IDS: ReadonlySet<string> = new Set(["other", "other_accessory"]);', 'const BROAD_SELLER_CATEGORY_IDS: ReadonlySet<string> = new Set([\n  "other",\n  "other_accessory",\n  "cable_other",\n]);', "broad cable seller bucket")
+          write(path, text)
+
+          path = "src/catalog/product-normalizer.ts"
+          text = read(path)
+          text = replace1(text, 'const CLASSIFICATION_METADATA_VERSION = 5;', 'const CLASSIFICATION_METADATA_VERSION = 6;', "classification metadata version")
+          write(path, text)
+
+          # Tests for nested hierarchy, exact leaf order, classification, precedence and compatibility.
+          path = "test/category-taxonomy-v2.test.ts"
+          text = read(path)
+          text = replace1(text, '    "accessories",\n  ]) {', '    "accessories",\n    "cable",\n  ]) {', "cable group test")
+          text = sub1(text, r'  assert\.ok\(\n    CATEGORIES\.filter\(\(category\) => category\.parentId\)\.every\(\(category\) => category\.classifiable\),\n  \);', '  const groupIds = new Set([\n    "amplifier",\n    "digital",\n    "analog",\n    "speaker",\n    "headphone_group",\n    "accessories",\n    "cable",\n  ]);\n  assert.ok(\n    CATEGORIES.filter((category) => !groupIds.has(category.id)).every(\n      (category) => category.classifiable,\n    ),\n  );', "nested group classifiability")
+          text = replace1(text, '  assert.deepEqual(\n    children("accessories").map((category) => category.id),\n    ["cable", "rack", "power_accessory", "vacuum_tube", "other_accessory"],\n  );\n', '  assert.deepEqual(\n    children("accessories").map((category) => category.id),\n    ["cable", "rack", "power_accessory", "vacuum_tube", "other_accessory"],\n  );\n  assert.deepEqual(\n    children("cable").map((category) => category.id),\n    [\n      "cable_xlr",\n      "cable_rca",\n      "cable_phono",\n      "cable_usb",\n      "cable_lan",\n      "cable_digital",\n      "cable_power",\n      "cable_other",\n    ],\n  );\n', "cable leaf order")
+          text = replace1(text, 'test("search closure contains leaf and parent only", () => {\n  assert.deepEqual(categoryClosureIds("pre_amp"), ["pre_amp", "amplifier"]);\n  assert.deepEqual(categoryClosureIds("speaker_bookshelf"), ["speaker_bookshelf", "speaker"]);\n  assert.deepEqual(categoryClosureIds("dac"), ["dac", "digital"]);\n});', 'test("search closure contains leaf and every ancestor group", () => {\n  assert.deepEqual(categoryClosureIds("pre_amp"), ["pre_amp", "amplifier"]);\n  assert.deepEqual(categoryClosureIds("speaker_bookshelf"), ["speaker_bookshelf", "speaker"]);\n  assert.deepEqual(categoryClosureIds("dac"), ["dac", "digital"]);\n  assert.deepEqual(categoryClosureIds("cable_xlr"), ["cable_xlr", "cable", "accessories"]);\n});', "recursive closure test")
+          cable_tests = dedent('''\
+          test("cable classification uses the requested eight canonical leaves", () => {
+            assert.equal(classify("XLRケーブル 1m").primaryCategoryId, "cable_xlr");
+            assert.equal(classify("RCAケーブル 1m").primaryCategoryId, "cable_rca");
+            assert.equal(classify("フォノケーブル 1.2m").primaryCategoryId, "cable_phono");
+            assert.equal(classify("USBケーブル Type-B 1m").primaryCategoryId, "cable_usb");
+            assert.equal(classify("LANケーブル CAT8 2m").primaryCategoryId, "cable_lan");
+            assert.equal(classify("AES/EBU デジタルケーブル 1m").primaryCategoryId, "cable_digital");
+            assert.equal(classify("電源ケーブル 1.5m").primaryCategoryId, "cable_power");
+            assert.equal(classify("スピーカーケーブル 3m").primaryCategoryId, "cable_other");
+            assert.equal(classify("ヘッドホンケーブル 2m").primaryCategoryId, "cable_other");
+          });
+
+          test("generic seller cable buckets do not override a specific title cable type", () => {
+            const product = normalizeCatalogProduct(
+              parsedProduct({
+                manufacturer: "",
+                rawManufacturer: "",
+                title: "XLRケーブル 1m",
+                category: "",
+                rawCategory: "ケーブル",
+              }),
+              { categoryMapping: { ケーブル: "cable" } },
+            );
+            assert.equal(product.primaryCategoryId, "cable_xlr");
+          });
+
+          test("accessory precedence prevents target component words from stealing classification", () => {
+            assert.equal(classify("電源タップ 6口").primaryCategoryId, "power_accessory");
+            assert.equal(classify("インシュレーター 4個").primaryCategoryId, "other_accessory");
+          });
+          ''')
+          text = sub1(text, r'test\("accessory precedence prevents target component words from stealing classification", \(\) => \{.*?\n\}\);', lambda _: cable_tests.rstrip(), "cable classification tests")
+          write(path, text)
+
+      - name: Install dependencies
+        run: npm ci
+      - name: Format touched files
+        run: npx oxfmt --write src/catalog/categories.ts src/catalog/category-rules.ts src/catalog/category-evidence.ts src/catalog/product-normalizer.ts src/catalog/types.ts test/category-taxonomy-v2.test.ts
+      - name: Validate
+        run: |
+          npm run check
+          npm run build
+      - name: Commit implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/catalog/categories.ts src/catalog/category-rules.ts src/catalog/category-evidence.ts src/catalog/product-normalizer.ts src/catalog/types.ts test/category-taxonomy-v2.test.ts
+          git commit -m "feat: split cable category into eight types"
+          git push
