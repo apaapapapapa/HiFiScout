@@ -13,40 +13,59 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     env:
-      TARGET_SHA: dee68ef61d0d365591fefda64cb2b0655d5c0cf4
+      TARGET_SHA: 7d998322c17a714a3b95ce1d4af79974c0bb610e
       GH_TOKEN: ${{ github.token }}
       PRODUCTION_BASE_URL: https://hifiscout.tokyojp.workers.dev
     steps:
-      - name: Verify main CI and Cloudflare deploy
+      - name: Verify final main CI, deploy, and E2E
         shell: bash
         run: |
           set -euo pipefail
           api="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${TARGET_SHA}&per_page=100"
-          runs="$(curl -fsSL \
-            -H 'Accept: application/vnd.github+json' \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H 'X-GitHub-Api-Version: 2022-11-28' \
-            "$api")"
 
-          echo "Runs for ${TARGET_SHA}:"
-          jq -r '.workflow_runs[] | [.id, .name, .event, .status, (.conclusion // "-"), .html_url] | @tsv' <<< "$runs" | sort -k2
-
-          ci="$(jq -r '[.workflow_runs[] | select(.name == "CI" and .event == "push")][0].conclusion // "missing"' <<< "$runs")"
-          deploy="$(jq -r '[.workflow_runs[] | select(.name == "Deploy Cloudflare")][0].conclusion // "missing"' <<< "$runs")"
-          test "$ci" = success
-          test "$deploy" = success
-
-          e2e_id="$(jq -r '[.workflow_runs[] | select(.name == "E2E")][0].id // empty' <<< "$runs")"
-          if [[ -n "$e2e_id" ]]; then
-            echo "E2E_RUN_ID=${e2e_id}" >> "$GITHUB_ENV"
-            echo "E2E run id: ${e2e_id}"
-            curl -fsSL \
+          for attempt in $(seq 1 60); do
+            runs="$(curl -fsSL \
               -H 'Accept: application/vnd.github+json' \
               -H "Authorization: Bearer ${GH_TOKEN}" \
               -H 'X-GitHub-Api-Version: 2022-11-28' \
-              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${e2e_id}/jobs?per_page=100" \
-              | jq -r '.jobs[] | [.id, .name, .status, (.conclusion // "-"), .html_url] | @tsv'
-          fi
+              "$api")"
+
+            echo "Runs for ${TARGET_SHA} (attempt ${attempt}):"
+            jq -r '.workflow_runs[] | [.id, .name, .event, .status, (.conclusion // "-"), .html_url] | @tsv' <<< "$runs" | sort -k2
+
+            ci="$(jq -r '[.workflow_runs[] | select(.name == "CI" and .event == "push")][0].conclusion // "missing"' <<< "$runs")"
+            deploy="$(jq -r '[.workflow_runs[] | select(.name == "Deploy Cloudflare")][0].conclusion // "missing"' <<< "$runs")"
+            e2e="$(jq -r '[.workflow_runs[] | select(.name == "E2E")][0].conclusion // "missing"' <<< "$runs")"
+            e2e_id="$(jq -r '[.workflow_runs[] | select(.name == "E2E")][0].id // empty' <<< "$runs")"
+
+            if [[ "$ci" == "success" && "$deploy" == "success" && "$e2e" == "success" ]]; then
+              echo "CI, Deploy Cloudflare, and E2E are all successful for ${TARGET_SHA}."
+              break
+            fi
+
+            for pair in "CI:$ci" "Deploy Cloudflare:$deploy" "E2E:$e2e"; do
+              name="${pair%%:*}"
+              conclusion="${pair#*:}"
+              if [[ "$conclusion" =~ ^(failure|cancelled|timed_out|action_required|startup_failure)$ ]]; then
+                echo "$name failed for ${TARGET_SHA}: ${conclusion}" >&2
+                if [[ "$name" == "E2E" && -n "$e2e_id" ]]; then
+                  curl -fsSL \
+                    -H 'Accept: application/vnd.github+json' \
+                    -H "Authorization: Bearer ${GH_TOKEN}" \
+                    -H 'X-GitHub-Api-Version: 2022-11-28' \
+                    "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${e2e_id}/jobs?per_page=100" \
+                    | jq -r '.jobs[] | [.id, .name, .status, (.conclusion // "-"), .html_url] | @tsv'
+                fi
+                exit 1
+              fi
+            done
+
+            if [[ "$attempt" -eq 60 ]]; then
+              echo "Timed out: CI=${ci}, Deploy=${deploy}, E2E=${e2e}" >&2
+              exit 1
+            fi
+            sleep 10
+          done
 
       - name: Verify production endpoint is reachable
         shell: bash
