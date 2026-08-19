@@ -10,13 +10,14 @@ import { detailFetchOptions, parsedProduct } from "./helpers/fixtures.js";
 const fujiyaAvicPlugin = getShopPlugin("fujiya-avic");
 if (!fujiyaAvicPlugin) throw new Error("fujiya-avic plugin missing");
 
-function catalogDb(rows: unknown[], aliases: unknown[] = []) {
+function catalogDb(rows: unknown[], aliases: unknown[] = [], manualRows: unknown[] = []) {
   return asQueryableDatabase({
     prepare(sql: string) {
       return {
         bind() {
           return {
             async all() {
+              if (sql.includes("source_type = 'manual_verified'")) return { results: manualRows };
               if (sql.includes("FROM knowledge_catalog_products")) return { results: rows };
               if (sql.includes("FROM knowledge_catalog_aliases")) return { results: aliases };
               throw new Error(`unexpected query: ${sql}`);
@@ -122,7 +123,7 @@ test("derived Marantz model aliases reuse one verified catalog classification ac
   );
 });
 
-test("unresolved model identity never borrows verified catalog category evidence", async () => {
+test("unresolved model identity never borrows generic verified catalog category evidence", async () => {
   const normalized = normalizeCatalogProduct(
     parsedProduct({
       sourceId: "candidate-model",
@@ -167,6 +168,52 @@ test("unresolved model identity never borrows verified catalog category evidence
   assert.equal(result.catalogMatches, 0);
   assert.equal(result.products[0].classificationStatus, "unclassified");
   assert.equal(result.products[0].classificationSource, "unclassified");
+});
+
+test("manual-verified exact model may classify a candidate model without weakening generic evidence", async () => {
+  const normalized = normalizeCatalogProduct(
+    parsedProduct({
+      sourceId: "candidate-manual-model",
+      manufacturer: "SOtM",
+      model: "sNH-10G (クロック機能及びマスタークロック入力機能モデル、50Ω、12V)",
+      title: "SOtM sNH-10G",
+      rawCategory: "マスタークロック",
+      sourceUrl: "https://example.invalid/snh10g",
+    }),
+    fujiyaAvicPlugin.capabilities.catalog,
+  );
+  const product = { ...normalized, modelResolutionStatus: "candidate" as const };
+  const manualRow = {
+    id: 224,
+    manufacturer_id: "sotm",
+    canonical_model: product.model,
+    normalized_model: product.model,
+    canonical_name: "sNH-10G 50Ω",
+    category_id: "network_switch",
+    is_primary: 1,
+  };
+  const db = catalogDb([manualRow], [], [manualRow]);
+
+  const result = await enrichProductCategories({
+    db,
+    adapter: {
+      ...fujiyaAvicPlugin,
+      capabilities: { ...fujiyaAvicPlugin.capabilities, detailCategoryEvidence: undefined },
+    },
+    products: [product],
+    transport: {
+      async fetchHtmlPage() {
+        throw new Error("detail request must not run");
+      },
+    },
+    fetchOptions: detailFetchOptions(),
+    now: new Date("2026-08-19T03:00:00Z"),
+  });
+
+  assert.equal(result.catalogMatches, 1);
+  assert.equal(result.products[0].primaryCategoryId, "network_switch");
+  assert.equal(result.products[0].classificationStatus, "classified");
+  assert.equal(result.products[0].metadata.categoryClassification.catalogProductId, 224);
 });
 
 test("verified rows without an explicit primary category are not used for classification", async () => {
