@@ -119,7 +119,7 @@ function lifecycleName(value: CatalogProduct["lifecycleStatus"]): string {
 function cell(row: HTMLTableRowElement, value: string): void {
   const td = document.createElement("td");
   td.textContent = value;
-  row.append(td);
+  row.appendChild(td);
 }
 
 function openEdit(product: CatalogProduct): void {
@@ -150,9 +150,9 @@ function render(items: CatalogProduct[]): void {
     button.className = "secondary-button compact";
     button.textContent = "編集";
     button.addEventListener("click", () => openEdit(product));
-    action.append(button);
-    row.append(action);
-    rows.append(row);
+    action.appendChild(button);
+    row.appendChild(action);
+    rows.appendChild(row);
   }
 }
 
@@ -193,7 +193,7 @@ function addOption(select: HTMLSelectElement, category: CategoryFacet): void {
   const option = document.createElement("option");
   option.value = category.id;
   option.textContent = category.name;
-  select.append(option);
+  select.appendChild(option);
 }
 
 async function loadCategories(): Promise<void> {
