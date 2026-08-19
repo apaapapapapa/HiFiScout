@@ -42,25 +42,17 @@ jobs:
 
           path = Path('e2e/tests/catalog.spec.ts')
           text = path.read_text()
-          old = '''  if (products.items.length) {
-            const titleControl = page.locator(".product-title-link").first();
-            await expect(titleControl).toBeVisible();
-            await expect(titleControl).toHaveAttribute("data-offers", /.+/);
-          }'''.replace('          ', '')
-          new = '''  if (products.items.length) {
-            const titleControl = page.locator(".product-title-link").first();
-            await expect(titleControl).toBeVisible();
-            const tagName = await titleControl.evaluate((element) => element.tagName);
-            if (tagName === "BUTTON") {
-              await expect(titleControl).toHaveAttribute("data-offers", /.+/);
-            } else {
-              expect(tagName).toBe("A");
-              await expect(titleControl).toHaveAttribute("href", /^https?:\\/\\//);
-              await expect(titleControl).toHaveAttribute("target", "_blank");
-            }
-          }'''.replace('          ', '')
+          old = '    await expect(titleControl).toHaveAttribute("data-offers", /.+/);'
+          new = '''    const tagName = await titleControl.evaluate((element) => element.tagName);
+              if (tagName === "BUTTON") {
+                await expect(titleControl).toHaveAttribute("data-offers", /.+/);
+              } else {
+                expect(tagName).toBe("A");
+                await expect(titleControl).toHaveAttribute("href", /^https?:\\/\\//);
+                await expect(titleControl).toHaveAttribute("target", "_blank");
+              }'''.replace('              ', '    ')
           if old not in text:
-              raise SystemExit('catalog title assertion not found')
+              raise SystemExit('catalog title assertion line not found')
           path.write_text(text.replace(old, new, 1))
           PY
 
