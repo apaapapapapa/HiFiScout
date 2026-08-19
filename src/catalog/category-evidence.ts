@@ -21,23 +21,6 @@ const BROAD_SELLER_CATEGORY_IDS: ReadonlySet<string> = new Set([
   "clean_power",
 ]);
 
-// These leaves are intentionally broad but still semantically exact when a shop explicitly maps
-// its own seller bucket to them. They may be used as a last-resort classification only when no
-// stronger title evidence exists. Keep this list narrower than BROAD_SELLER_CATEGORY_IDS: a
-// generic headphone bucket, for example, cannot safely choose wired vs wireless.
-const SAFE_MAPPED_BROAD_FALLBACK_IDS: ReadonlySet<string> = new Set([
-  "other_accessory",
-  "cable_other",
-]);
-
-// The remediation replay reconstructs category evidence from persisted listing fields without
-// importing concrete crawler adapters. These exact raw seller labels are unambiguous enough to
-// reproduce the same safe fallback even when the original shop mapping is not available.
-const SAFE_RAW_BROAD_FALLBACK_IDS: ReadonlyMap<string, string> = new Map([
-  ["アクセサリー", "other_accessory"],
-  ["ケーブル", "cable_other"],
-]);
-
 function mode(value: unknown, fallback: CategoryPolicyMode): CategoryPolicyMode {
   return value === "authoritative" || value === "corroborative" || value === "ignore"
     ? value
@@ -126,35 +109,6 @@ export function sellerCategoryEvidence(
     : [];
 }
 
-function safeMappedBroadFallbackId(
-  rawCategory: string,
-  categoryMapping: CategoryMapping,
-  policy: ResolvedCategoryPolicy,
-): string | null {
-  if (!rawCategory || policy.sellerCategory.default !== "authoritative") return null;
-
-  const exactRawFallback = SAFE_RAW_BROAD_FALLBACK_IDS.get(rawCategory.normalize("NFKC").trim());
-  if (exactRawFallback) {
-    // An explicit per-category policy always wins over the automatic fallback promotion.
-    return policy.sellerCategory.categories?.[exactRawFallback] == null ? exactRawFallback : null;
-  }
-
-  const directMapping = categoryMapping[rawCategory];
-  // Array mappings intentionally represent broad/mixed seller buckets; never force one member.
-  if (typeof directMapping !== "string") return null;
-  const normalized = normalizeCategory({ rawCategory, categoryMapping });
-  if (
-    normalized.classificationStatus !== "classified" ||
-    normalized.classificationSource !== "shop_mapping" ||
-    !SAFE_MAPPED_BROAD_FALLBACK_IDS.has(normalized.primaryCategoryId)
-  ) {
-    return null;
-  }
-  // An explicit per-category policy always wins over this automatic fallback promotion.
-  if (policy.sellerCategory.categories?.[normalized.primaryCategoryId] != null) return null;
-  return normalized.primaryCategoryId;
-}
-
 export function parserHintEvidence(
   hintedCategory: string,
   policy: ResolvedCategoryPolicy,
@@ -187,27 +141,10 @@ export function collectListingCategoryEvidence({
   categoryPolicy = {},
 }: CollectListingCategoryEvidenceOptions = {}): ListingCategoryEvidence {
   const policy = resolveCategoryPolicy(categoryPolicy);
-  let sellerEvidence = sellerCategoryEvidence(rawCategory, categoryMapping, policy);
-  const titleEvidence = categoryEvidenceFromText(title, {
-    source: "title",
-    strength: "strong",
-    context: "title",
-  });
-
-  // An exact safe seller bucket can resolve a model-only listing, but only after confirming the
-  // title gives us no more specific category. This is intentionally not a general promotion of
-  // corroborative evidence.
-  const fallbackId =
-    titleEvidence.length === 0
-      ? safeMappedBroadFallbackId(rawCategory, categoryMapping, policy)
-      : null;
-  if (fallbackId && sellerEvidence.length) {
-    sellerEvidence = sellerEvidence.map((item) =>
-      item.categoryIds?.[0] === fallbackId ? { ...item, strength: "authoritative" } : item,
-    );
-  }
-
-  const evidence = [...sellerEvidence, ...titleEvidence];
+  const evidence = [
+    ...sellerCategoryEvidence(rawCategory, categoryMapping, policy),
+    ...categoryEvidenceFromText(title, { source: "title", strength: "strong", context: "title" }),
+  ];
   if (!rawCategory) evidence.push(...parserHintEvidence(hintedCategory, policy));
   return { evidence, policy };
 }
