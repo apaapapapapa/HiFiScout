@@ -22,6 +22,12 @@ interface ProductAnchorRecord {
   titles: string[];
 }
 
+interface AfroAudioManufacturerModel {
+  rawManufacturer: string;
+  manufacturer: string;
+  model: string;
+}
+
 /**
  * Top-level categories that belong to HiFiScout's audio scope. Afro Audio also sells cameras,
  * musical instruments, software and recording/PA equipment; those are intentionally excluded.
@@ -42,6 +48,11 @@ const AUDIO_CATEGORIES: readonly AfroAudioCategory[] = Object.freeze([
 
 const SOLD_PATTERN = /販売済|売約済(?:み)?|売り切れ|売切れ|在庫なし|完売|品切れ/i;
 const STOCK_PATTERN = /在庫あり|販売済|売約済(?:み)?|売り切れ|売切れ|在庫なし|完売|品切れ/i;
+const SELLER_CONDITION_PREFIX_PATTERN =
+  /^(?:[〖【]\s*(?:開封未使用|未使用|新品|[SABC]ランク|現状|ジャンク)\s*[〗】]\s*)+/iu;
+const CONDITION_MARKER_PATTERN = /[〖【]([^〗】]+)[〗】]/gu;
+const SELLER_CONDITION_PATTERN = /^(?:開封未使用|未使用|新品|[SABC]ランク|現状|ジャンク)$/iu;
+const ANY_CONDITION_MARKER_PATTERN = /[〖【][^〗】]+[〗】]/u;
 
 function listingPage(category: AfroAudioCategory, page = 1): AfroAudioPage {
   const url = new URL("/products/list", BASE_URL);
@@ -116,9 +127,13 @@ function listingTitle(value: string): string {
   return text;
 }
 
+function canonicalTitle(value: string): string {
+  return cleanText(value.replace(SELLER_CONDITION_PREFIX_PATTERN, " "));
+}
+
 function titleScore(value: string): number {
   if (!value || /^(?:詳細|商品詳細|more|image|画像)$/iu.test(value)) return -1;
-  return (/〖[^〗]+〗/u.test(value) ? 1000 : 0) + Math.min(value.length, 300);
+  return (ANY_CONDITION_MARKER_PATTERN.test(value) ? 1000 : 0) + Math.min(value.length, 300);
 }
 
 function bestTitle(record: ProductAnchorRecord, blockText: string): string {
@@ -131,10 +146,24 @@ function bestTitle(record: ProductAnchorRecord, blockText: string): string {
 }
 
 function conditionText(title: string): string {
-  return [...title.matchAll(/〖([^〗]+)〗/gu)]
+  return [...title.matchAll(CONDITION_MARKER_PATTERN)]
     .map((match) => cleanText(match[1]))
-    .filter(Boolean)
+    .filter((value) => SELLER_CONDITION_PATTERN.test(value))
     .join(" / ");
+}
+
+function manufacturerModel(title: string): AfroAudioManufacturerModel {
+  const chPrecision = title.match(/^CH\s+Precision(?=\s|$)/iu)?.[0];
+  if (chPrecision) {
+    return {
+      rawManufacturer: chPrecision,
+      manufacturer: "CH PRECISION",
+      model: title.slice(chPrecision.length).trim(),
+    };
+  }
+
+  const { manufacturer, model } = splitManufacturerModel(title, "afroaudio");
+  return { rawManufacturer: manufacturer, manufacturer, model };
 }
 
 function stockStatus(text: string) {
@@ -161,10 +190,11 @@ export function parseAfroAudioListing(
     const record = records[index];
     const end = records[index + 1]?.index ?? String(html).length;
     const blockText = visibleText(String(html).slice(record.index, end));
-    const title = bestTitle(record, blockText);
+    const sellerTitle = bestTitle(record, blockText);
+    const title = canonicalTitle(sellerTitle);
     if (!title) continue;
 
-    const { manufacturer, model } = splitManufacturerModel(title, "afroaudio");
+    const { rawManufacturer, manufacturer, model } = manufacturerModel(title);
     const code = productCode(blockText);
     const metadata: Record<string, unknown> = {};
     if (code) metadata.productCode = code;
@@ -173,12 +203,12 @@ export function parseAfroAudioListing(
       sourceId: record.sourceId,
       sourceUrl: record.sourceUrl,
       title,
-      rawManufacturer: manufacturer,
+      rawManufacturer,
       manufacturer,
       model: model || title,
       rawCategory: page.rawCategory || "",
       category: inferCategory(title),
-      conditionText: conditionText(title),
+      conditionText: conditionText(sellerTitle),
       priceYen: parseYen(blockText),
       stockStatus: stockStatus(blockText),
       metadata,

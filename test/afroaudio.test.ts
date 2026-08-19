@@ -43,7 +43,7 @@ test("Afro Audio parser extracts seller facts and canonical availability", () =>
 
   const available = items[0];
   assert.equal(available.sourceId, "30094");
-  assert.equal(available.title, "〖Aランク〗Accuphase DP-570 CDデッキ アキュフェーズ");
+  assert.equal(available.title, "Accuphase DP-570 CDデッキ アキュフェーズ");
   assert.equal(available.manufacturer, "Accuphase");
   assert.match(available.model, /DP-570/);
   assert.equal(available.priceYen, 650000);
@@ -53,8 +53,41 @@ test("Afro Audio parser extracts seller facts and canonical availability", () =>
   assert.equal(available.sourceUrl, "https://afroaudio.jp/products/detail/30094");
   assert.equal(available.metadata?.productCode, "60834");
 
+  assert.equal(items[1].title, "Accuphase E-307 プリメインアンプ アキュフェーズ");
+  assert.equal(items[1].conditionText, "Cランク");
   assert.equal(items[1].stockStatus, "sold_out");
+  assert.equal(items[2].title, "MICRO DD-8 ターンテーブル マイクロ");
+  assert.equal(items[2].conditionText, "Bランク");
   assert.equal(items[2].stockStatus, "sold_out");
+});
+
+test("Afro Audio parser separates rank from title and preserves multi-word manufacturer", () => {
+  const html = `
+    <div class="item">
+      <a href="/products/detail/50169">
+        NEW 〖Aランク〗CH Precision DIGITAL OUTPUT BOARD C1
+        @50169 50169 ￥20,000 税込 在庫あり
+      </a>
+    </div>
+    <div class="item">
+      <a href="/products/detail/53078">
+        〖Bランク〗アスカ ASUKA AS-XLRM-H3B Type F XLRアダプターペア 〖元箱〗
+        @53078 53078 ￥25,000 税込 在庫あり
+      </a>
+    </div>`;
+
+  const items = parseAfroAudioListing(html, { rawCategory: "ラック・その他" });
+  assert.equal(items.length, 2);
+
+  const chPrecision = items[0];
+  assert.equal(chPrecision.title, "CH Precision DIGITAL OUTPUT BOARD C1");
+  assert.equal(chPrecision.rawManufacturer, "CH Precision");
+  assert.equal(chPrecision.manufacturer, "CH PRECISION");
+  assert.equal(chPrecision.model, "DIGITAL OUTPUT BOARD C1");
+  assert.equal(chPrecision.conditionText, "Aランク");
+
+  assert.equal(items[1].title, "アスカ ASUKA AS-XLRM-H3B Type F XLRアダプターペア 〖元箱〗");
+  assert.equal(items[1].conditionText, "Bランク");
 });
 
 test("Afro Audio parser de-duplicates links and ignores footer availability labels", () => {
@@ -69,6 +102,8 @@ test("Afro Audio parser de-duplicates links and ignores footer availability labe
   const items = parseAfroAudioListing(html, { rawCategory: "アンプ" });
   assert.equal(items.length, 1);
   assert.equal(items[0].sourceId, "30123");
+  assert.equal(items[0].title, "LUXMAN L-509Z プリメインアンプ ラックスマン");
+  assert.equal(items[0].conditionText, "Bランク");
   assert.equal(items[0].priceYen, 780000);
   assert.equal(items[0].stockStatus, "in_stock");
 });
