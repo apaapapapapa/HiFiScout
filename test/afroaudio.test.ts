@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
 import {
   afroAudioAdapter,
   discoverAfroAudioPageUrls,
@@ -61,7 +62,7 @@ test("Afro Audio parser extracts seller facts and canonical availability", () =>
   assert.equal(items[2].stockStatus, "sold_out");
 });
 
-test("Afro Audio parser separates rank from title and preserves multi-word manufacturer", () => {
+test("Afro Audio parser separates rank and resolves CH Precision canonically", () => {
   const html = `
     <div class="item">
       <a href="/products/detail/50169">
@@ -82,9 +83,15 @@ test("Afro Audio parser separates rank from title and preserves multi-word manuf
   const chPrecision = items[0];
   assert.equal(chPrecision.title, "CH Precision DIGITAL OUTPUT BOARD C1");
   assert.equal(chPrecision.rawManufacturer, "CH Precision");
-  assert.equal(chPrecision.manufacturer, "CH PRECISION");
+  assert.equal(chPrecision.manufacturer, "CH Precision");
   assert.equal(chPrecision.model, "DIGITAL OUTPUT BOARD C1");
   assert.equal(chPrecision.conditionText, "Aランク");
+
+  const normalized = normalizeCatalogProduct(chPrecision);
+  assert.equal(normalized.manufacturer, "CH PRECISION");
+  assert.equal(normalized.manufacturerId, "ch-precision");
+  assert.equal(normalized.manufacturerResolutionStatus, "resolved");
+  assert.equal(normalized.manufacturerResolutionMethod, "bootstrap_alias");
 
   assert.equal(items[1].title, "アスカ ASUKA AS-XLRM-H3B Type F XLRアダプターペア 〖元箱〗");
   assert.equal(items[1].conditionText, "Bランク");
