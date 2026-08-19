@@ -19,30 +19,42 @@ const PRODUCT_LINK_RE =
 const ANCHOR_RE = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
 const DIV_CLASS_RE = /<div\b[^>]*class\s*=\s*["']([^"']*)["'][^>]*>/gi;
 const CATEGORY_RE =
-  /(スピーカー(?:（[^）]+）)?|コントロールアンプ(?:（[^）]+）)?|プリアンプ(?:（[^）]+）)?|プリメインアンプ(?:（[^）]+）)?|パワーアンプ(?:（[^）]+）)?|レコードプレーヤー|CDプレーヤー|SACD(?:\/CD)?プレーヤー|D\/Aコンバーター|DAコンバーター|ネットワークプレーヤー|ネットワークトランスポート|トーンアーム|カートリッジ|ヘッドホン|イヤホン|ケーブル|アクセサリー|真空管|ラック|その他オーディオ機器)/i;
+  /(スピーカーアクセサリー|スピーカー(?:（[^）]+）)?|コントロールアンプ(?:（[^）]+）)?|プリアンプ(?:（[^）]+）)?|プリメインアンプ(?:（[^）]+）)?|パワーアンプ(?:（[^）]+）)?|AVアンプ|ヘッドホンアンプ|レコードプレーヤー|CDトランスポート|SACDトランスポート|CDプレーヤー|SACD(?:\/CD)?プレーヤー|D\/Aコンバータ(?:ー)?|DAコンバータ(?:ー)?|ネットワークプレーヤー|ネットワークプレイヤー|ネットワークトランスポート|トーンアーム|カートリッジ|昇圧トランス|フォノイコライザー|ヘッドホン|イヤホン|ケーブル|アクセサリー|インシュレータ(?:ー)?|真空管|ラック|その他オーディオ機器)/i;
 const PAGE_SIZE = 30;
 const DEFAULT_RECHECK_MAX_PAGE = 120;
 
 export const HIFIDO_CATEGORY_MAPPING = Object.freeze({
   スピーカー: "speaker",
+  スピーカーアクセサリー: "accessory",
   コントロールアンプ: "pre_amp",
   プリアンプ: "pre_amp",
   プリメインアンプ: "integrated_amp",
   パワーアンプ: "power_amp",
+  AVアンプ: "av_amp",
+  ヘッドホンアンプ: "headphone_amp",
   レコードプレーヤー: "turntable",
+  CDトランスポート: "transport",
+  SACDトランスポート: "transport",
   CDプレーヤー: "cd_sacd_player",
   SACDプレーヤー: "cd_sacd_player",
   "SACD/CDプレーヤー": "cd_sacd_player",
+  "D/Aコンバータ": "dac",
   "D/Aコンバーター": "dac",
+  DAコンバータ: "dac",
   DAコンバーター: "dac",
   ネットワークプレーヤー: "network_player",
+  ネットワークプレイヤー: "network_player",
   ネットワークトランスポート: "transport",
   トーンアーム: "tonearm",
   カートリッジ: "cartridge",
+  昇圧トランス: "phono_step_up_transformer",
+  フォノイコライザー: "phono_eq",
   ヘッドホン: "headphone",
   イヤホン: "earphone",
   ケーブル: "cable",
   アクセサリー: "accessory",
+  インシュレータ: "accessory",
+  インシュレーター: "accessory",
   真空管: "vacuum_tube",
   ラック: "rack",
   その他オーディオ機器: "other",
