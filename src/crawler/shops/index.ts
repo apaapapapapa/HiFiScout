@@ -32,6 +32,7 @@ import { U_AUDIO_CATEGORY_MAPPING, U_AUDIO_CATEGORY_POLICY, uAudioAdapter } from
 import { SHIMAMUSEN_CATEGORY_POLICY, shimamusenAdapter } from "./shimamusen.js";
 import { dynamicAudioAdapter } from "./dynamic-audio.js";
 import { afroAudioAdapter } from "./afroaudio.js";
+import { osakayaAdapter } from "./osakaya.js";
 // shop-generator:imports
 
 export { getShopActivityPolicy } from "./registry.js";
@@ -153,6 +154,13 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
     baseUrl: "https://afroaudio.jp",
     defaultIntervalMinutes: 60,
     defaultMaxPages: 50,
+  }),
+  defineShopPlugin(osakayaAdapter, {
+    key: "osakaya",
+    name: "CAVIN大阪屋",
+    baseUrl: "https://osakaya.com",
+    defaultIntervalMinutes: 60,
+    defaultMaxPages: 20,
   }),
   // shop-generator:plugins
 ]);
