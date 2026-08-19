@@ -58,6 +58,17 @@ function apiError(body: ApiEnvelope<unknown>, status: number): Error {
   return new Error(`Cloudflare API HTTP ${status}${details ? ` — ${details}` : ""}`);
 }
 
+function accessNotEnabled(body: ApiEnvelope<unknown>, status: number): boolean {
+  return Boolean(
+    status === 403 &&
+      body.errors?.some(
+        (item) =>
+          item.code === 9999 &&
+          /access(?:\.api\.error\.not_enabled| is not enabled)/iu.test(item.message || ""),
+      ),
+  );
+}
+
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const requestHeaders = new Headers(headers);
   new Headers(init.headers).forEach((value, key) => requestHeaders.set(key, value));
@@ -73,7 +84,9 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 async function optionalApi<T>(path: string): Promise<T | null> {
   const response = await fetch(`${apiBase}${path}`, { headers });
   const body = (await response.json()) as ApiEnvelope<T>;
-  if (response.status === 404) return null;
+  if (response.status === 404 || accessNotEnabled(body as ApiEnvelope<unknown>, response.status)) {
+    return null;
+  }
   if (!response.ok || !body.success) {
     const text = JSON.stringify(body.errors || []).toLowerCase();
     if (text.includes("not found") || text.includes("does not exist")) return null;
@@ -90,7 +103,7 @@ async function ensureOrganization(): Promise<ZeroTrustOrganization> {
     method: "POST",
     body: JSON.stringify({
       name: "HiFiScout",
-      auth_domain: `hifiscout-${suffix}`,
+      auth_domain: `hifiscout-${suffix}.cloudflareaccess.com`,
     }),
   });
 }
