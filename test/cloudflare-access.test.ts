@@ -32,6 +32,15 @@ async function signedToken(
   return `${header}.${body}.${base64Url(new Uint8Array(signature))}`;
 }
 
+async function accessJwk(publicKey: CryptoKey): Promise<JsonWebKey & { kid: string }> {
+  return {
+    ...(await crypto.subtle.exportKey("jwk", publicKey)),
+    kid: "test-key",
+    alg: "RS256",
+    use: "sig",
+  };
+}
+
 test("Cloudflare Access team domain accepts only HTTPS cloudflareaccess.com origins", () => {
   assert.equal(
     normalizeCloudflareAccessTeamDomain("team.cloudflareaccess.com"),
@@ -57,10 +66,7 @@ test("Cloudflare Access JWT verifies signature, issuer, audience and expiry", as
     true,
     ["sign", "verify"],
   )) as CryptoKeyPair;
-  const jwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
-  jwk.kid = "test-key";
-  jwk.alg = "RS256";
-  jwk.use = "sig";
+  const jwk = await accessJwk(pair.publicKey);
   const now = 1_800_000_000;
   const issuer = "https://team.cloudflareaccess.com";
   const token = await signedToken(pair.privateKey, {
@@ -112,8 +118,7 @@ test("Cloudflare Access JWT fails closed for tampered signatures", async () => {
     true,
     ["sign", "verify"],
   )) as CryptoKeyPair;
-  const jwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
-  jwk.kid = "test-key";
+  const jwk = await accessJwk(pair.publicKey);
   const now = 1_800_000_000;
   const issuer = "https://team.cloudflareaccess.com";
   const token = await signedToken(pair.privateKey, {
