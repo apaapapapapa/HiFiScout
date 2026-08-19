@@ -153,7 +153,6 @@ async function ensureApplication(
   const body = {
     name: appName,
     type: "self_hosted",
-    domain: adminDomain,
     destinations: [{ type: "worker", worker_id: workerId }],
     session_duration: "24h",
     app_launcher_visible: false,
