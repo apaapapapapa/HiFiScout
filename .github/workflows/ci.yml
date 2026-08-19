@@ -18,16 +18,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      # No history is needed: the source gate is repository-wide rather than diff-scoped, and
-      # `check:no-js-source` reads the index with `git ls-files`.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      # Same gate contributors run locally: lint, format check, TypeScript-only check, type check,
-      # unit tests. Keeping it as one script means CI and `npm run verify` cannot drift apart.
       - run: npm run check
       - run: npm run db:migrate:local
       - name: Verify D1 FTS search migration
@@ -67,39 +63,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo '=== totals by classification status ==='
-          npx wrangler d1 execute DB --remote --json --command "
-            SELECT classification_status, COUNT(*) AS count
-            FROM products
-            WHERE is_active = 1 AND primary_category_id = 'other'
-            GROUP BY classification_status
-            ORDER BY count DESC;" | jq '.[0].results'
-
-          echo '=== top raw category buckets ==='
-          npx wrangler d1 execute DB --remote --json --command "
-            SELECT shop_key, COALESCE(NULLIF(TRIM(raw_category), ''), '(blank)') AS raw_category, COUNT(*) AS count
-            FROM products
-            WHERE is_active = 1 AND primary_category_id = 'other'
-            GROUP BY shop_key, raw_category
-            ORDER BY count DESC, shop_key, raw_category
-            LIMIT 120;" | jq '.[0].results'
-
-          echo '=== top manufacturers ==='
-          npx wrangler d1 execute DB --remote --json --command "
-            SELECT COALESCE(NULLIF(TRIM(manufacturer), ''), '(unknown)') AS manufacturer, COUNT(*) AS count
-            FROM products
-            WHERE is_active = 1 AND primary_category_id = 'other'
-            GROUP BY manufacturer
-            ORDER BY count DESC, manufacturer
-            LIMIT 80;" | jq '.[0].results'
-
-          echo '=== sample listings ==='
-          npx wrangler d1 execute DB --remote --json --command "
-            SELECT id, shop_key, title, manufacturer, model, raw_category, classification_status, classification_source
-            FROM products
-            WHERE is_active = 1 AND primary_category_id = 'other'
-            ORDER BY shop_key, raw_category, id
-            LIMIT 300;" | jq '.[0].results'
+          query() {
+            npx wrangler d1 execute DB --remote --json --command "$1" | jq 'if type == "array" then .[0].results else . end'
+          }
+          echo '=== hifido speaker accessory cable ==='
+          query "SELECT id, raw_category, title, manufacturer, model FROM products WHERE is_active = 1 AND primary_category_id = 'other' AND shop_key = 'hifido' AND raw_category IN ('スピーカー','アクセサリー','ケーブル') ORDER BY raw_category, id DESC LIMIT 180;"
+          echo '=== fujiya broad buckets ==='
+          query "SELECT id, raw_category, title, manufacturer, model FROM products WHERE is_active = 1 AND primary_category_id = 'other' AND shop_key = 'fujiya-avic' AND raw_category IN ('DAP・ヘッドホンアンプ','アンプ・スピーカー・プレーヤー') ORDER BY raw_category, id DESC LIMIT 180;"
+          echo '=== blank categories ==='
+          query "SELECT id, shop_key, title, manufacturer, model FROM products WHERE is_active = 1 AND primary_category_id = 'other' AND COALESCE(TRIM(raw_category), '') = '' AND shop_key IN ('hifido','fujiya-avic','ippinkan','audiounion') ORDER BY id DESC LIMIT 240;"
 
   playwright-browser-cache:
     if: github.event_name == 'push'
