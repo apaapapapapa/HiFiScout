@@ -1,0 +1,38 @@
+name: Debug Manual Category Authority Patch
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  debug:
+    if: github.head_ref == 'fix/manual-verified-category-authority'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.head_ref }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Execute patch script without committing
+        shell: bash
+        run: |
+          set -euo pipefail
+          awk '
+            /python - <<.PY./ { capture=1; next }
+            capture && /^          PY$/ { exit }
+            capture { sub(/^          /, ""); print }
+          ' .github/workflows/apply-manual-category-authority-patch-v2.yml > /tmp/category-patch.py
+          python /tmp/category-patch.py
+          npx oxfmt --write src/db/knowledge-catalog-repository.ts scripts/apply-approved-category-audit.ts test/knowledge-catalog-reclassification.test.ts
+          git diff --check
+          npm run typecheck
+          npm run test:unit
