@@ -11,7 +11,7 @@ import type {
   NormalizedCatalogProduct,
 } from "./types.js";
 
-export const MANUFACTURER_RESOLVER_VERSION = 4;
+export const MANUFACTURER_RESOLVER_VERSION = 5;
 
 export type ManufacturerResolver = (
   input: ManufacturerResolutionInput,
@@ -141,6 +141,40 @@ function resolveAliasRows(
     : null;
 }
 
+/**
+ * Recover a legacy parser artifact where an unknown multi-word brand was truncated to its first
+ * token (for example `Silent` from `Silent Angel`). The full verified alias must be present at the
+ * start of the title, and the explicit seller value must itself be a complete token-prefix of that
+ * alias. Arbitrary unknown manufacturer text therefore still cannot be overridden by the title.
+ */
+function resolveTruncatedManufacturerPrefix(
+  raw: string,
+  normalizedRaw: string,
+  candidate: string,
+  title: unknown,
+  aliases: PreparedManufacturerAliases,
+): ManufacturerResolutionResult | null {
+  const explicitValues = [...new Set([raw, candidate].map(clean).filter(Boolean))];
+  if (!explicitValues.length) return null;
+
+  const cleanTitle = clean(title);
+  const compatible = aliases.prefixes.filter((entry) => {
+    if (!entry.pattern.test(cleanTitle)) return false;
+    return explicitValues.some((value) => {
+      const valueKey = normalizeManufacturerKey(value);
+      if (valueKey.length < 2 || valueKey === entry.row.normalizedAlias) return false;
+      const prefixPattern = manufacturerPrefixPattern(value);
+      return Boolean(prefixPattern?.test(clean(entry.row.alias)));
+    });
+  });
+  const longest = Math.max(0, ...compatible.map((entry) => entry.row.normalizedAlias.length));
+  if (!longest) return null;
+  const strongest = compatible
+    .filter((entry) => entry.row.normalizedAlias.length === longest)
+    .map((entry) => entry.row);
+  return resolveAliasRows(raw || candidate, normalizedRaw, strongest, true);
+}
+
 function resolvePreparedManufacturer(
   { rawManufacturer, manufacturerCandidate, title }: ManufacturerResolutionInput,
   aliases: PreparedManufacturerAliases,
@@ -161,6 +195,14 @@ function resolvePreparedManufacturer(
     if (candidateResult) return candidateResult;
   }
   if (normalizedRaw || normalizedCandidate) {
+    const recovered = resolveTruncatedManufacturerPrefix(
+      raw,
+      normalizedRaw,
+      candidate,
+      title || "",
+      aliases,
+    );
+    if (recovered) return recovered;
     return {
       canonicalManufacturerId: "",
       displayName: candidate || raw,
