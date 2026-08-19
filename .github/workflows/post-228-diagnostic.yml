@@ -55,3 +55,5 @@ jobs:
           query "SELECT COALESCE(json_extract(metadata_json, '$.categoryClassification.version'), 0) AS version, COUNT(*) AS count FROM products WHERE is_active = 1 GROUP BY version ORDER BY version;"
           echo '=== remediation queue ==='
           query "SELECT status, COUNT(*) AS count FROM data_quality_remediation_queue GROUP BY status ORDER BY status;"
+
+      # Refresh marker: second snapshot after replay has had time to process production rows.
