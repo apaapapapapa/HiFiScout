@@ -113,9 +113,11 @@ export function parseFujiyaResultCount(html: string): number | null {
 export const FUJIYA_CATEGORY_POLICY = Object.freeze({
   sellerCategory: Object.freeze({
     default: "authoritative" as const,
+    // Fujiya's DAP/headphone-amp buckets are known to contain unrelated desktop/disc products.
+    // They must remain unresolved until title/detail evidence identifies the actual product type.
     categories: Object.freeze({
-      dap: "corroborative" as const,
-      headphone_amp: "corroborative" as const,
+      dap: "ignore" as const,
+      headphone_amp: "ignore" as const,
     }),
   }),
   parserHint: "corroborative" as const,
