@@ -125,7 +125,7 @@ function registerStub(
 }
 
 test("all shop plugins satisfy the final crawler contract", () => {
-  assert.equal(SHOP_PLUGINS.length, 8);
+  assert.equal(SHOP_PLUGINS.length, 9);
   assert.equal(new Set(SHOP_PLUGINS.map((plugin) => plugin.key)).size, SHOP_PLUGINS.length);
 
   for (const plugin of SHOP_PLUGINS) {
