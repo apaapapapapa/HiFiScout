@@ -4,6 +4,8 @@ import type { CrawlPageObject, SellerProduct, ShopAdapter } from "../types.js";
 
 const BASE_URL = "https://dynamicaudio5used.wordpress.com";
 
+type RawTextTag = "script" | "style";
+
 interface DynamicAudioPage extends CrawlPageObject {
   page: number;
 }
@@ -16,6 +18,11 @@ interface WordPressArticle {
 interface EntryTitle {
   sourceUrl: string;
   title: string;
+}
+
+interface HtmlTagHeader {
+  closing: boolean;
+  name: string;
 }
 
 const SOLD_PATTERN = /SOLD\s*I?OUT|売約済(?:み)?|売り切れ|売切れ|完売|販売終了|在庫なし/i;
@@ -44,11 +51,101 @@ function decodeNumericEntities(value: string): string {
   });
 }
 
+function isHtmlSpace(char: string | undefined): boolean {
+  return char === " " || char === "\t" || char === "\n" || char === "\r" || char === "\f";
+}
+
+function isHtmlTagNameChar(char: string | undefined): boolean {
+  if (!char) return false;
+  const code = char.charCodeAt(0);
+  return (
+    (code >= 48 && code <= 57) ||
+    (code >= 65 && code <= 90) ||
+    (code >= 97 && code <= 122) ||
+    char === ":" ||
+    char === "-"
+  );
+}
+
+function parseHtmlTagHeader(rawHeader: string): HtmlTagHeader | null {
+  let index = 0;
+  while (isHtmlSpace(rawHeader[index])) index += 1;
+
+  let closing = false;
+  if (rawHeader[index] === "/") {
+    closing = true;
+    index += 1;
+    while (isHtmlSpace(rawHeader[index])) index += 1;
+  }
+
+  const nameStart = index;
+  while (isHtmlTagNameChar(rawHeader[index])) index += 1;
+  if (index === nameStart) return null;
+
+  return {
+    closing,
+    name: rawHeader.slice(nameStart, index).toLowerCase(),
+  };
+}
+
+function findHtmlTagEnd(html: string, start: number): number {
+  let quote: '"' | "'" | null = null;
+  for (let index = start; index < html.length; index += 1) {
+    const char = html[index];
+    if (quote) {
+      if (char === quote) quote = null;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === ">") return index;
+  }
+  return -1;
+}
+
+function stripRawTextElements(html: string): string {
+  let output = "";
+  let cursor = 0;
+  let suppressedTag: RawTextTag | null = null;
+
+  while (cursor < html.length) {
+    const tagStart = html.indexOf("<", cursor);
+    if (tagStart < 0) {
+      if (!suppressedTag) output += html.slice(cursor);
+      break;
+    }
+
+    if (!suppressedTag) output += html.slice(cursor, tagStart);
+    const tagEnd = findHtmlTagEnd(html, tagStart + 1);
+    if (tagEnd < 0) {
+      if (!suppressedTag) output += html.slice(tagStart);
+      break;
+    }
+
+    const header = parseHtmlTagHeader(html.slice(tagStart + 1, tagEnd));
+    if (suppressedTag) {
+      if (header?.closing && header.name === suppressedTag) {
+        suppressedTag = null;
+        output += " ";
+      }
+    } else if (header && !header.closing && (header.name === "script" || header.name === "style")) {
+      suppressedTag = header.name;
+      output += " ";
+    } else {
+      output += html.slice(tagStart, tagEnd + 1);
+    }
+
+    cursor = tagEnd + 1;
+  }
+
+  return output;
+}
+
 function textLines(html: string): string[] {
   const withLineBreaks = decodeNumericEntities(
-    String(html || "")
-      .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, " ")
-      .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, " ")
+    stripRawTextElements(String(html || ""))
       .replace(/<br\s*\/?>/gi, "\n")
       .replace(/<\/(?:p|div|li|h[1-6]|tr|section)>/gi, "\n"),
   );

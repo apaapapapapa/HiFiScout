@@ -54,14 +54,15 @@ test("Dynamic Audio parser ignores editorial sale posts without a product classi
   );
 });
 
-test("Dynamic Audio parser strips script and style content with spaced closing tags", () => {
+// Raw-text payloads must never become seller facts, even when closing-tag syntax is irregular.
+test("Dynamic Audio parser strips raw-text content despite malformed closing-tag suffixes", () => {
   const html = `
     <article id="post-105" class="post type-post">
       <h2 class="entry-title"><a href="/2026/08/19/luxman-d-10x/">LUXMAN D-10X</a></h2>
       <div class="entry-content">
         <p>中古＠SACD/CDプレーヤー<br>販売価格 ￥900,000</p>
-        <script>販売価格 ￥1,111,111</script >
-        <style>販売価格 ￥2,222,222</style >
+        <script data-test=">">販売価格 ￥1,111,111</script\t\n ignored>
+        <style>販売価格 ￥2,222,222</style\n ignored>
       </div>
     </article>
   `;
