@@ -42,6 +42,12 @@ interface CategoryMismatchRow {
   catalog_product_id: number;
 }
 
+interface ProjectionMismatchRow extends CategoryMismatchRow {
+  entity_id: number;
+  entity_key: string;
+  entity_category_id: string;
+}
+
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is required`);
@@ -198,6 +204,34 @@ export async function applyApprovedCategoryAudit(db: QueryableDatabase): Promise
     .all<CategoryMismatchRow>();
   if ((mismatches.results || []).length) {
     throw new Error(`approved category audit mismatches remain: ${JSON.stringify(mismatches.results)}`);
+  }
+
+  const projectionMismatches = await db
+    .prepare(`
+      SELECT p.id, p.shop_key, p.source_id, p.manufacturer, p.model, p.primary_category_id,
+             kpc.category_id AS expected_category_id, r.catalog_product_id,
+             e.id AS entity_id, e.entity_key, e.primary_category_id AS entity_category_id
+      FROM products p
+      JOIN product_identity_resolutions r
+        ON r.listing_product_id = p.id AND r.status = 'matched'
+      JOIN knowledge_catalog_sources s
+        ON s.product_id = r.catalog_product_id
+       AND s.source_type = 'manual_verified'
+       AND s.source_url = ?
+       AND s.status = 'active'
+      JOIN knowledge_catalog_product_categories kpc
+        ON kpc.product_id = r.catalog_product_id AND kpc.is_primary = 1
+      JOIN product_search_entity_offers o ON o.listing_product_id = p.id
+      JOIN product_search_entities e ON e.id = o.entity_id
+      WHERE p.is_active = 1 AND e.primary_category_id <> kpc.category_id
+      ORDER BY p.id
+    `)
+    .bind(AUDIT_SOURCE)
+    .all<ProjectionMismatchRow>();
+  if ((projectionMismatches.results || []).length) {
+    throw new Error(
+      `approved category audit search projection mismatches remain: ${JSON.stringify(projectionMismatches.results)}`,
+    );
   }
 
   console.log(
