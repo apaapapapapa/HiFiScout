@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { classifyCategoryEvidence } from "../src/catalog/category-classifier.js";
 import {
   CATEGORY_CLASSIFICATION_METADATA_VERSION,
   normalizeCatalogProduct,
@@ -40,6 +41,30 @@ test("broad seller accessory evidence classifies only as the final fallback", ()
   );
   assert.equal(specificTitle.primaryCategoryId, "cable_usb");
   assert.equal(specificTitle.classificationSource, "title");
+});
+
+test("persisted supporting evidence for exact safe seller buckets is replayable", () => {
+  const accessory = classifyCategoryEvidence([
+    {
+      categoryIds: ["other_accessory"],
+      source: "seller_category",
+      strength: "supporting",
+      value: "アクセサリー",
+    },
+  ]);
+  assert.equal(accessory.primaryCategoryId, "other_accessory");
+  assert.equal(accessory.classificationStatus, "classified");
+
+  const cable = classifyCategoryEvidence([
+    {
+      categoryIds: ["cable_other"],
+      source: "seller_category",
+      strength: "supporting",
+      value: "ケーブル",
+    },
+  ]);
+  assert.equal(cable.primaryCategoryId, "cable_other");
+  assert.equal(cable.classificationStatus, "classified");
 });
 
 test("known mixed seller buckets stay unresolved instead of becoming fallback classifications", () => {
