@@ -104,7 +104,9 @@ function productAnchorRecords(html: string): ProductAnchorRecord[] {
 }
 
 function listingTitle(value: string): string {
-  let text = cleanText(value).replace(/^NEW\s+/iu, "").trim();
+  let text = cleanText(value)
+    .replace(/^NEW\s+/iu, "")
+    .trim();
   const productCode = text.search(/\s@\s*\d+/u);
   if (productCode > 0) text = text.slice(0, productCode).trim();
   else {
@@ -120,10 +122,12 @@ function titleScore(value: string): number {
 }
 
 function bestTitle(record: ProductAnchorRecord, blockText: string): string {
-  return [...new Set([...record.titles, blockText])]
-    .map(listingTitle)
-    .filter((value) => value.length >= 3)
-    .sort((a, b) => titleScore(b) - titleScore(a))[0] || "";
+  return (
+    [...new Set([...record.titles, blockText])]
+      .map(listingTitle)
+      .filter((value) => value.length >= 3)
+      .sort((a, b) => titleScore(b) - titleScore(a))[0] || ""
+  );
 }
 
 function conditionText(title: string): string {

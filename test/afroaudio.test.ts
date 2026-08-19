@@ -97,15 +97,60 @@ test("Afro Audio pagination expands the observed last page for the same category
 
 test("Afro Audio adapter starts from audio-only top-level categories", () => {
   assert.deepEqual(initialPageQueue(afroAudioAdapter, 40), [
-    { url: "https://afroaudio.jp/products/list?category_id=1", page: 1, categoryId: 1, rawCategory: "プレーヤー" },
-    { url: "https://afroaudio.jp/products/list?category_id=19", page: 1, categoryId: 19, rawCategory: "アンプ" },
-    { url: "https://afroaudio.jp/products/list?category_id=3", page: 1, categoryId: 3, rawCategory: "スピーカー・ヘッドフォン" },
-    { url: "https://afroaudio.jp/products/list?category_id=4", page: 1, categoryId: 4, rawCategory: "デジタル機器・コンバーター類" },
-    { url: "https://afroaudio.jp/products/list?category_id=5", page: 1, categoryId: 5, rawCategory: "アナログパーツ・フォノイコライザー" },
-    { url: "https://afroaudio.jp/products/list?category_id=6", page: 1, categoryId: 6, rawCategory: "ケーブル類" },
-    { url: "https://afroaudio.jp/products/list?category_id=7", page: 1, categoryId: 7, rawCategory: "電源" },
-    { url: "https://afroaudio.jp/products/list?category_id=8", page: 1, categoryId: 8, rawCategory: "ラック・その他" },
-    { url: "https://afroaudio.jp/products/list?category_id=15", page: 1, categoryId: 15, rawCategory: "真空管" },
+    {
+      url: "https://afroaudio.jp/products/list?category_id=1",
+      page: 1,
+      categoryId: 1,
+      rawCategory: "プレーヤー",
+    },
+    {
+      url: "https://afroaudio.jp/products/list?category_id=19",
+      page: 1,
+      categoryId: 19,
+      rawCategory: "アンプ",
+    },
+    {
+      url: "https://afroaudio.jp/products/list?category_id=3",
+      page: 1,
+      categoryId: 3,
+      rawCategory: "スピーカー・ヘッドフォン",
+    },
+    {
+      url: "https://afroaudio.jp/products/list?category_id=4",
+      page: 1,
+      categoryId: 4,
+      rawCategory: "デジタル機器・コンバーター類",
+    },
+    {
+      url: "https://afroaudio.jp/products/list?category_id=5",
+      page: 1,
+      categoryId: 5,
+      rawCategory: "アナログパーツ・フォノイコライザー",
+    },
+    {
+      url: "https://afroaudio.jp/products/list?category_id=6",
+      page: 1,
+      categoryId: 6,
+      rawCategory: "ケーブル類",
+    },
+    {
+      url: "https://afroaudio.jp/products/list?category_id=7",
+      page: 1,
+      categoryId: 7,
+      rawCategory: "電源",
+    },
+    {
+      url: "https://afroaudio.jp/products/list?category_id=8",
+      page: 1,
+      categoryId: 8,
+      rawCategory: "ラック・その他",
+    },
+    {
+      url: "https://afroaudio.jp/products/list?category_id=15",
+      page: 1,
+      categoryId: 15,
+      rawCategory: "真空管",
+    },
   ]);
   assert.equal(afroAudioAdapter.discovery.coverage, "complete");
 });
