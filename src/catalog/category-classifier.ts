@@ -74,7 +74,10 @@ export function classifyCategoryEvidence(
   rawEvidence: readonly CategoryEvidenceInput[] = [],
 ): CategoryClassification {
   const evidence = normalizedEvidence(rawEvidence);
-  for (const strength of CATEGORY_EVIDENCE_STRENGTHS.slice(0, 3)) {
+  // Supporting evidence is deliberately the last tier. It may classify a product only when
+  // verified/authoritative/strong evidence is absent, so broad seller buckets remain useful as a
+  // fallback without overriding a more specific title or detail-page classification.
+  for (const strength of CATEGORY_EVIDENCE_STRENGTHS) {
     const tier = evidence.filter((item) => item.strength === strength);
     if (!tier.length) continue;
     const ids = [...new Set(tier.map((item) => item.categoryId))];
