@@ -17,6 +17,11 @@ interface IdentityProvider {
   type?: string;
 }
 
+interface CloudflareWorker {
+  id?: string;
+  name?: string;
+}
+
 interface AccessDestination {
   type?: string;
   worker_id?: string;
@@ -122,22 +127,34 @@ async function ensureCloudflareIdentityProvider(): Promise<IdentityProvider> {
   });
 }
 
-function protectsAdminWorker(application: AccessApplication): boolean {
+async function resolveWorkerId(): Promise<string> {
+  const workers = await api<CloudflareWorker[]>(
+    "/workers/workers?per_page=100&order_by=name&order=asc",
+  );
+  const worker = workers.find((candidate) => candidate.name === workerName);
+  if (!worker?.id) throw new Error(`Cloudflare Worker not found: ${workerName}`);
+  return worker.id;
+}
+
+function protectsAdminWorker(application: AccessApplication, workerId: string): boolean {
   return Boolean(
     application.destinations?.some(
-      (destination) => destination.type === "worker" && destination.worker_id === workerName,
+      (destination) => destination.type === "worker" && destination.worker_id === workerId,
     ),
   );
 }
 
-async function ensureApplication(identityProviderId: string): Promise<AccessApplication> {
+async function ensureApplication(
+  identityProviderId: string,
+  workerId: string,
+): Promise<AccessApplication> {
   const applications = await api<AccessApplication[]>("/access/apps?per_page=100");
   let application = applications.find((candidate) => candidate.name === appName);
   const body = {
     name: appName,
     type: "self_hosted",
     domain: adminDomain,
-    destinations: [{ type: "worker", worker_id: workerName }],
+    destinations: [{ type: "worker", worker_id: workerId }],
     session_duration: "24h",
     app_launcher_visible: false,
     allowed_idps: [identityProviderId],
@@ -149,7 +166,7 @@ async function ensureApplication(identityProviderId: string): Promise<AccessAppl
       method: "POST",
       body: JSON.stringify(body),
     });
-  } else if (!protectsAdminWorker(application)) {
+  } else if (!protectsAdminWorker(application, workerId)) {
     if (!application.id) throw new Error("Existing Access application has no id");
     application = await api<AccessApplication>(`/access/apps/${application.id}`, {
       method: "PUT",
@@ -196,13 +213,15 @@ function teamDomain(organization: ZeroTrustOrganization): string {
 const organization = await ensureOrganization();
 const identityProvider = await ensureCloudflareIdentityProvider();
 if (!identityProvider.id) throw new Error("Cloudflare identity provider has no id");
-const application = await ensureApplication(identityProvider.id);
+const workerId = await resolveWorkerId();
+const application = await ensureApplication(identityProvider.id, workerId);
 await ensurePolicy(application.id as string);
 
 const accessTeamDomain = teamDomain(organization);
 const accessAud = application.aud as string;
 console.log(`Cloudflare Access application ready: ${appName}`);
 console.log(`Admin domain: https://${adminDomain}`);
+console.log(`Admin Worker ID: ${workerId}`);
 console.log(`Team domain: ${accessTeamDomain}`);
 console.log(`AUD: ${accessAud}`);
 
