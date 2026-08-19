@@ -78,3 +78,42 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         working-directory: e2e
         run: npx playwright install chromium
+
+  verify-admin-html-fix-rollout:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+    env:
+      TARGET_SHA: c012de0214bcb35719ed4907797a38fa87e5d59b
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Wait for main rollout
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${TARGET_SHA}&per_page=100"
+          ci=""
+          public_deploy=""
+          admin_deploy=""
+          for _ in $(seq 1 90); do
+            runs="$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H 'Accept: application/vnd.github+json' "$api")"
+            ci="$(jq -c '[.workflow_runs[] | select(.name == "CI" and .event == "push")] | sort_by(.created_at) | last // empty' <<<"$runs")"
+            public_deploy="$(jq -c '[.workflow_runs[] | select(.name == "Deploy Cloudflare" and .event == "workflow_run" and .conclusion != "skipped")] | sort_by(.created_at) | last // empty' <<<"$runs")"
+            admin_deploy="$(jq -c '[.workflow_runs[] | select(.name == "Deploy Catalog Admin" and .event == "workflow_run" and .conclusion != "skipped")] | sort_by(.created_at) | last // empty' <<<"$runs")"
+            if [[ -n "$ci" && -n "$public_deploy" && -n "$admin_deploy" ]] && \
+               [[ "$(jq -r .status <<<"$ci")" == completed ]] && \
+               [[ "$(jq -r .status <<<"$public_deploy")" == completed ]] && \
+               [[ "$(jq -r .status <<<"$admin_deploy")" == completed ]]; then
+              break
+            fi
+            sleep 10
+          done
+          [[ -n "$ci" && "$(jq -r .conclusion <<<"$ci")" == success ]]
+          [[ -n "$public_deploy" && "$(jq -r .conclusion <<<"$public_deploy")" == success ]]
+          [[ -n "$admin_deploy" && "$(jq -r .conclusion <<<"$admin_deploy")" == success ]]
+          echo "CI_RUN_ID=$(jq -r .id <<<"$ci")"
+          echo "PUBLIC_DEPLOY_RUN_ID=$(jq -r .id <<<"$public_deploy")"
+          echo "ADMIN_DEPLOY_RUN_ID=$(jq -r .id <<<"$admin_deploy")"
