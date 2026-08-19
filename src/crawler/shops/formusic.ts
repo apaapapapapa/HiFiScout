@@ -32,11 +32,11 @@ export const FORMUSIC_CATEGORY_MAPPING = Object.freeze({
 });
 
 // FOR MUSIC puts both complete players and transport-only products in the same disc bucket.
-// Keep the bucket as candidate evidence, but let an explicit product title decide the leaf category.
+// Ignore that bucket as classification evidence and let an explicit product title decide the leaf.
 export const FORMUSIC_CATEGORY_POLICY = Object.freeze({
   sellerCategory: Object.freeze({
     default: "authoritative" as const,
-    categories: Object.freeze({ cd_sacd_player: "corroborative" as const }),
+    categories: Object.freeze({ cd_sacd_player: "ignore" as const }),
   }),
   parserHint: "corroborative" as const,
 });
