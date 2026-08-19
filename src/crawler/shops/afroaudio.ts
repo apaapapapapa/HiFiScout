@@ -58,8 +58,8 @@ function listingPage(category: AfroAudioCategory, page = 1): AfroAudioPage {
 function visibleText(html: unknown = ""): string {
   return cleanText(
     String(html)
-      .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, " ")
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, " ")
       .replace(/<br\s*\/?>/gi, " "),
   );
 }
