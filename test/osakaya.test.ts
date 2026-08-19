@@ -75,8 +75,16 @@ test("CAVIN Osaka-ya pagination follows observed links only for the selected con
     <a href="/store/items/pre-amp/2091/">LUXMAN CL-38u 中古品 ￥248,000税込</a>`;
 
   assert.deepEqual(discoverOsakayaPageUrls(html, usedPage), [
-    { ...usedPage, url: "https://osakaya.com/store/items/?search%5Bc_pt%5D%5B%5D=2&page=2", page: 2 },
-    { ...usedPage, url: "https://osakaya.com/store/items/?search%5Bc_pt%5D%5B%5D=2&page=3", page: 3 },
+    {
+      ...usedPage,
+      url: "https://osakaya.com/store/items/?search%5Bc_pt%5D%5B%5D=2&page=2",
+      page: 2,
+    },
+    {
+      ...usedPage,
+      url: "https://osakaya.com/store/items/?search%5Bc_pt%5D%5B%5D=2&page=3",
+      page: 3,
+    },
   ]);
 });
 
@@ -88,7 +96,11 @@ test("CAVIN Osaka-ya pagination falls back to result count when page links are s
     <a href="javascript:void(0)">2</a>`;
 
   assert.deepEqual(discoverOsakayaPageUrls(html, usedPage), [
-    { ...usedPage, url: "https://osakaya.com/store/items/?search%5Bc_pt%5D%5B%5D=2&page=2", page: 2 },
+    {
+      ...usedPage,
+      url: "https://osakaya.com/store/items/?search%5Bc_pt%5D%5B%5D=2&page=2",
+      page: 2,
+    },
   ]);
 });
 

@@ -138,7 +138,11 @@ function resultCount(html: string): number | null {
   return raw ? Number.parseInt(raw.replaceAll(",", ""), 10) : null;
 }
 
-function paginationTarget(href: string, label: string, page: Partial<OsakayaPage>): OsakayaPage | null {
+function paginationTarget(
+  href: string,
+  label: string,
+  page: Partial<OsakayaPage>,
+): OsakayaPage | null {
   if (!page.conditionCode || !page.conditionText) return null;
   try {
     const url = new URL(href, BASE_URL);
