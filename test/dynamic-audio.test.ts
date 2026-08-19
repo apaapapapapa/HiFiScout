@@ -54,6 +54,7 @@ test("Dynamic Audio parser ignores editorial sale posts without a product classi
   );
 });
 
+// Raw-text payloads must never become seller facts, even when closing-tag syntax is irregular.
 test("Dynamic Audio parser strips raw-text content despite malformed closing-tag suffixes", () => {
   const html = `
     <article id="post-105" class="post type-post">
