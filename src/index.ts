@@ -9,7 +9,7 @@
  * widening the object's type.
  */
 
-import { handleHttp } from "./http/router.js";
+import { handleHttp } from "./http/catalog-admin-router.js";
 import { handleQueue } from "./queue.js";
 import type { WorkerQueueMessage } from "./queue.js";
 import { handleScheduled } from "./scheduled.js";

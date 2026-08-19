@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Knowledge Catalog 管理 | HiFiScout</title>
+    <link rel="stylesheet" href="/brand.css" />
+    <link rel="stylesheet" href="/catalog-admin.css" />
+  </head>
+  <body>
+    <main class="admin-shell">
+      <header class="admin-header">
+        <a class="brand-link" href="/" aria-label="HiFiScout トップへ戻る">
+          <img src="/hifiscout-mark.jpg" alt="" />
+          <span>HiFiScout</span>
+        </a>
+        <div>
+          <p class="eyebrow">ADMIN</p>
+          <h1>Knowledge Catalog 管理</h1>
+          <p class="lede">検証済みCatalogの表示名・カテゴリ・ライフサイクルを修正します。</p>
+        </div>
+      </header>
+
+      <section class="panel auth-panel" aria-labelledby="auth-heading">
+        <div>
+          <h2 id="auth-heading">管理APIへ接続</h2>
+          <p>ADMIN_TOKENはこのタブのsessionStorageにだけ保持され、URLには保存されません。</p>
+        </div>
+        <div class="auth-controls">
+          <label for="admin-token">ADMIN_TOKEN</label>
+          <input id="admin-token" type="password" autocomplete="off" spellcheck="false" />
+          <button id="connect-button" type="button">接続</button>
+        </div>
+      </section>
+
+      <p id="status-message" class="status-message" role="status" aria-live="polite"></p>
+
+      <section id="catalog-controls" hidden>
+        <form id="catalog-search-form" class="panel search-grid">
+          <label>
+            <span>検索</span>
+            <input id="catalog-query" type="search" placeholder="製品名 / 型番 / manufacturer id" />
+          </label>
+          <label>
+            <span>Manufacturer ID</span>
+            <input id="manufacturer-id" type="text" placeholder="luxman" spellcheck="false" />
+          </label>
+          <label>
+            <span>カテゴリ</span>
+            <select id="category-filter"></select>
+          </label>
+          <button type="submit">絞り込む</button>
+        </form>
+
+        <section class="panel table-panel" aria-label="Knowledge Catalog 一覧">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>メーカー</th>
+                  <th>型番</th>
+                  <th>表示名</th>
+                  <th>カテゴリ</th>
+                  <th>状態</th>
+                  <th>紐づくlisting</th>
+                  <th>更新日時</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="catalog-rows"></tbody>
+            </table>
+          </div>
+          <p id="empty-state" class="empty-state" hidden>条件に一致するCatalogはありません。</p>
+          <nav class="pagination" aria-label="Catalogページング">
+            <button id="previous-page" class="secondary-button" type="button" disabled>前へ</button>
+            <span id="page-position">先頭</span>
+            <button id="next-page" class="secondary-button" type="button" disabled>次へ</button>
+          </nav>
+        </section>
+      </section>
+    </main>
+
+    <dialog id="edit-dialog">
+      <form id="edit-form" method="dialog" class="edit-form">
+        <div>
+          <p class="eyebrow">EDIT CATALOG</p>
+          <h2>Catalog情報を修正</h2>
+          <p id="edit-identity" class="identity"></p>
+          <p class="identity-note">メーカーと型番はProduct Identityに影響するため、この画面では変更できません。</p>
+        </div>
+        <label>
+          <span>表示名</span>
+          <input id="edit-canonical-name" type="text" maxlength="300" required />
+        </label>
+        <label>
+          <span>主カテゴリ</span>
+          <select id="edit-category" required></select>
+        </label>
+        <label>
+          <span>ライフサイクル</span>
+          <select id="edit-lifecycle" required>
+            <option value="unknown">不明</option>
+            <option value="active">現行</option>
+            <option value="discontinued">生産完了</option>
+          </select>
+        </label>
+        <p class="edit-note">保存すると、このCatalogに一致済みのlistingも再分類・再投影されます。</p>
+        <div class="dialog-actions">
+          <button id="cancel-edit" class="secondary-button" type="button">キャンセル</button>
+          <button id="save-edit" type="submit">保存</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="/catalog-admin.js"></script>
+  </body>
+</html>

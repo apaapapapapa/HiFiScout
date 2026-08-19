@@ -1,0 +1,281 @@
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+body {
+  margin: 0;
+  background: #f4f5f7;
+  color: #20242a;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.admin-shell {
+  width: min(1480px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 32px 0 64px;
+}
+
+.admin-header {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.brand-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.brand-link img {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 6px;
+  font-size: clamp(1.7rem, 3vw, 2.4rem);
+}
+
+h2 {
+  margin-bottom: 8px;
+  font-size: 1.08rem;
+}
+
+.eyebrow {
+  margin-bottom: 4px;
+  color: #69717d;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.lede,
+.panel p,
+.identity-note,
+.edit-note {
+  color: #69717d;
+}
+
+.panel {
+  margin-bottom: 18px;
+  padding: 20px;
+  border: 1px solid #dfe3e8;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 4px 18px rgb(24 32 44 / 5%);
+}
+
+.auth-panel,
+.auth-controls,
+.search-grid,
+.pagination,
+.dialog-actions {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+}
+
+.auth-panel {
+  justify-content: space-between;
+  align-items: center;
+}
+
+.auth-controls label,
+.search-grid label,
+.edit-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+input,
+select,
+button {
+  min-height: 40px;
+  border-radius: 8px;
+  font: inherit;
+}
+
+input,
+select {
+  min-width: 180px;
+  padding: 8px 10px;
+  border: 1px solid #cbd1d8;
+  background: #fff;
+  color: inherit;
+}
+
+button {
+  padding: 8px 16px;
+  border: 1px solid #20242a;
+  background: #20242a;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.secondary-button {
+  border-color: #cbd1d8;
+  background: #fff;
+  color: #20242a;
+}
+
+.compact {
+  min-height: 34px;
+  padding: 5px 10px;
+}
+
+.status-message {
+  min-height: 24px;
+  margin: 0 0 12px;
+  font-size: 0.9rem;
+}
+
+.status-message[data-kind="error"] {
+  color: #a52828;
+}
+
+.status-message[data-kind="success"] {
+  color: #21683d;
+}
+
+.search-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 2fr) minmax(180px, 1fr) minmax(220px, 1fr) auto;
+}
+
+.search-grid input,
+.search-grid select {
+  width: 100%;
+}
+
+.table-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+th,
+td {
+  padding: 12px 14px;
+  border-bottom: 1px solid #e7eaee;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+th {
+  background: #fafbfc;
+  color: #59616c;
+  font-size: 0.76rem;
+  letter-spacing: 0.02em;
+}
+
+td:nth-child(4) {
+  min-width: 220px;
+  white-space: normal;
+}
+
+.empty-state {
+  padding: 24px;
+  text-align: center;
+}
+
+.pagination {
+  justify-content: flex-end;
+  padding: 14px 18px;
+}
+
+#page-position {
+  align-self: center;
+  color: #69717d;
+  font-size: 0.86rem;
+}
+
+dialog {
+  width: min(560px, calc(100% - 32px));
+  padding: 0;
+  border: 0;
+  border-radius: 16px;
+  box-shadow: 0 24px 80px rgb(0 0 0 / 24%);
+}
+
+dialog::backdrop {
+  background: rgb(15 20 28 / 48%);
+}
+
+.edit-form {
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+}
+
+.edit-form input,
+.edit-form select {
+  width: 100%;
+}
+
+.identity {
+  margin-bottom: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 700;
+}
+
+.identity-note,
+.edit-note {
+  margin-bottom: 0;
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.dialog-actions {
+  justify-content: flex-end;
+}
+
+@media (max-width: 820px) {
+  .admin-header,
+  .auth-panel,
+  .auth-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .search-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-controls input {
+    width: 100%;
+  }
+}
