@@ -1,3 +1,5 @@
+export {};
+
 interface CategoryFacet {
   id: string;
   name: string;
@@ -25,10 +27,10 @@ interface CatalogUpdateResponse {
   refreshedListings: number;
 }
 
-function element<T extends HTMLElement>(id: string): T {
+function element<T>(id: string): T {
   const value = document.getElementById(id);
   if (!value) throw new Error(`Missing #${id}`);
-  return value as T;
+  return value as unknown as T;
 }
 
 const tokenInput = element<HTMLInputElement>("admin-token");
