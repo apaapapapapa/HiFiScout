@@ -142,9 +142,9 @@ test("catalog page boots with live metadata and product API", async ({ page }) =
   await expect(page.locator("#load-more")).toHaveCount(0);
 
   if (products.items.length) {
-    const titleLink = page.locator(".product-title-link").first();
-    await expect(titleLink).toBeVisible();
-    await expect(titleLink).toHaveAttribute("target", "_blank");
+    const titleControl = page.locator(".product-title-link").first();
+    await expect(titleControl).toBeVisible();
+    await expect(titleControl).toHaveAttribute("data-offers", /.+/);
   }
 });
 
