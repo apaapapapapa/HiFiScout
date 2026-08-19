@@ -123,7 +123,8 @@ test("Cloudflare Access JWT fails closed for tampered signatures", async () => {
   });
   const parts = token.split(".");
   const tampered = `${parts[0]}.${encodedJson({ iss: issuer, aud: "catalog-admin-aud", exp: now + 9999 })}.${parts[2]}`;
-  const fetchFn = (async () => new Response(JSON.stringify({ keys: [jwk] }), { status: 200 })) as typeof fetch;
+  const fetchFn = (async () =>
+    new Response(JSON.stringify({ keys: [jwk] }), { status: 200 })) as typeof fetch;
   assert.equal(
     await verifyCloudflareAccessToken(
       tampered,

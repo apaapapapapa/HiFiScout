@@ -99,7 +99,9 @@ async function json<T>(response: Response): Promise<T> {
 async function adminJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body) headers.set("content-type", "application/json");
-  return json<T>(await fetch(path, { ...init, headers, cache: "no-store", credentials: "same-origin" }));
+  return json<T>(
+    await fetch(path, { ...init, headers, cache: "no-store", credentials: "same-origin" }),
+  );
 }
 
 function categoryName(id: string): string {

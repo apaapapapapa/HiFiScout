@@ -62,7 +62,10 @@ function categoryFacets() {
           (left.hierarchy[index]?.order || 999) - (right.hierarchy[index]?.order || 999);
         if (difference) return difference;
       }
-      return left.hierarchy.length - right.hierarchy.length || left.category.id.localeCompare(right.category.id);
+      return (
+        left.hierarchy.length - right.hierarchy.length ||
+        left.category.id.localeCompare(right.category.id)
+      );
     })
     .map(({ category, hierarchy }) => ({
       id: category.id,
@@ -79,7 +82,10 @@ function assetRequest(request: Request, pathname: string): Request {
   return new Request(url, request);
 }
 
-async function handleAuthenticatedRequest(request: Request, env: CatalogAdminEnv): Promise<Response> {
+async function handleAuthenticatedRequest(
+  request: Request,
+  env: CatalogAdminEnv,
+): Promise<Response> {
   const url = new URL(request.url);
 
   if (request.method === "GET" && url.pathname === "/api/meta") {
