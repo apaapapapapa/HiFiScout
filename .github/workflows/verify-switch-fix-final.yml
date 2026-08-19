@@ -33,7 +33,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          required=('CI' 'Deploy Cloudflare' 'Apply Manual Category Authority' 'E2E Tests')
+          required=('CI' 'Deploy Cloudflare' 'Apply Manual Category Authority' 'E2E')
           for attempt in $(seq 1 100); do
             runs="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/actions/runs" -f head_sha="${TARGET_SHA}" -f per_page=100)"
             echo "=== target workflow snapshot ${attempt} ==="
