@@ -171,11 +171,14 @@ test("unresolved model identity never borrows generic verified catalog category 
 });
 
 test("manual-verified exact model may classify a candidate model without weakening generic evidence", async () => {
+  const sellerModel =
+    "sNH-10G (クロック機能及びマスタークロック入力機能モデル、50Ω、12V)";
   const normalized = normalizeCatalogProduct(
     parsedProduct({
       sourceId: "candidate-manual-model",
       manufacturer: "SOtM",
-      model: "sNH-10G (クロック機能及びマスタークロック入力機能モデル、50Ω、12V)",
+      model: sellerModel,
+      rawModel: sellerModel,
       title: "SOtM sNH-10G",
       rawCategory: "マスタークロック",
       sourceUrl: "https://example.invalid/snh10g",
