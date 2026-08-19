@@ -59,9 +59,11 @@ function apiError(body: ApiEnvelope<unknown>, status: number): Error {
 }
 
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const requestHeaders = new Headers(headers);
+  new Headers(init.headers).forEach((value, key) => requestHeaders.set(key, value));
   const response = await fetch(`${apiBase}${path}`, {
     ...init,
-    headers: { ...headers, ...(init.headers || {}) },
+    headers: requestHeaders,
   });
   const body = (await response.json()) as ApiEnvelope<T>;
   if (!response.ok || !body.success) throw apiError(body as ApiEnvelope<unknown>, response.status);
