@@ -151,7 +151,7 @@ function resolveTruncatedManufacturerPrefix(
   raw: string,
   normalizedRaw: string,
   candidate: string,
-  title: string,
+  title: unknown,
   aliases: PreparedManufacturerAliases,
 ): ManufacturerResolutionResult | null {
   const explicitValues = [...new Set([raw, candidate].map(clean).filter(Boolean))];
