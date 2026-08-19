@@ -1,4 +1,6 @@
 -- Explicit seller presentation accepted by the 2026-08-19 approved category audit.
+-- SOtM sNH-10G and Telegartner M12 SWITCH IE GOLD are already verified as network_switch in 0031;
+-- this migration only adds the remaining EDISCREATION seller spelling needed by the same audit.
 -- This alias is category/identity evidence for one verified catalog product; it does not weaken
 -- generic model normalization or introduce fuzzy matching.
 INSERT OR IGNORE INTO knowledge_catalog_aliases(
