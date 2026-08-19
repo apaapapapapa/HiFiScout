@@ -41,6 +41,7 @@ const AUDIO_CATEGORIES: readonly AfroAudioCategory[] = Object.freeze([
 ]);
 
 const SOLD_PATTERN = /販売済|売約済(?:み)?|売り切れ|売切れ|在庫なし|完売|品切れ/i;
+const STOCK_PATTERN = /在庫あり|販売済|売約済(?:み)?|売り切れ|売切れ|在庫なし|完売|品切れ/i;
 
 function listingPage(category: AfroAudioCategory, page = 1): AfroAudioPage {
   const url = new URL("/products/list", BASE_URL);
@@ -133,8 +134,11 @@ function conditionText(title: string): string {
 }
 
 function stockStatus(text: string) {
-  const soldOut = SOLD_PATTERN.test(text);
-  const inStock = !soldOut && /在庫あり/u.test(text);
+  const priceIndex = text.search(/[¥￥]\s*[0-9]/u);
+  const statusRegion = (priceIndex >= 0 ? text.slice(priceIndex) : text).slice(0, 160);
+  const firstStatus = statusRegion.match(STOCK_PATTERN)?.[0] || "";
+  const soldOut = SOLD_PATTERN.test(firstStatus);
+  const inStock = /在庫あり/u.test(firstStatus);
   return availabilityFromSignals({ soldOut, inStock });
 }
 
