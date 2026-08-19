@@ -1,0 +1,61 @@
+name: Diagnose Category Audit Unmatched
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_ACCOUNT_ID: 9af87af4dbc00be3bfd4c8af3f52f684
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Inspect production listings and manual catalog targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== TARGET LISTINGS ==='
+          npx wrangler d1 execute DB --remote --json --command "
+            SELECT
+              p.id, p.shop_key, p.raw_manufacturer, p.manufacturer, p.canonical_manufacturer_id,
+              p.raw_model, p.model, p.normalized_model, p.primary_category_id,
+              r.status AS identity_status, r.match_method, r.catalog_product_id,
+              r.normalized_model AS identity_normalized_model, r.model_stem, r.variants_json,
+              r.candidate_catalog_product_id, r.rejected_by_json
+            FROM products p
+            LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
+            WHERE p.is_active = 1 AND (
+              p.canonical_manufacturer_id IN ('telegartner','sotm','luxury-precision','ediscreation')
+              OR p.normalized_raw_manufacturer IN ('telegartner','sotm','luxuryprecision','ediscreation')
+            )
+            ORDER BY p.canonical_manufacturer_id, p.id;" | jq -c '.[0].results[]'
+
+          echo '=== MANUAL CATALOG TARGETS ==='
+          npx wrangler d1 execute DB --remote --json --command "
+            SELECT kp.id, kp.manufacturer_id, kp.canonical_model, kp.normalized_model,
+                   kp.verification_status, kpc.category_id,
+                   COALESCE(group_concat(ka.normalized_alias, ' || '), '') AS aliases
+            FROM knowledge_catalog_products kp
+            JOIN knowledge_catalog_sources s
+              ON s.product_id = kp.id
+             AND s.source_type = 'manual_verified'
+             AND s.source_url = 'manual://approved-category-audit/2026-08-19'
+             AND s.status = 'active'
+            LEFT JOIN knowledge_catalog_product_categories kpc
+              ON kpc.product_id = kp.id AND kpc.is_primary = 1
+            LEFT JOIN knowledge_catalog_aliases ka ON ka.product_id = kp.id
+            GROUP BY kp.id, kp.manufacturer_id, kp.canonical_model, kp.normalized_model,
+                     kp.verification_status, kpc.category_id
+            ORDER BY kp.manufacturer_id, kp.id;" | jq -c '.[0].results[]'
