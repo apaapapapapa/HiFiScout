@@ -1,0 +1,68 @@
+name: Verify Catalog Admin Deployment
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/verify-catalog-admin-deploy.yml"
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_SHA: 993e3d11f572a67e0258e4554b25feb7ddafe383
+      PRODUCTION_BASE_URL: https://hifiscout.tokyojp.workers.dev
+    steps:
+      - name: Verify main CI and deploy for target merge
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for attempt in $(seq 1 60); do
+            ci_runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=main&event=push&per_page=20")"
+            deploy_runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/deploy.yml/runs?branch=main&event=workflow_run&per_page=20")"
+
+            ci="$(jq -c --arg sha "$TARGET_SHA" '[.workflow_runs[] | select(.head_sha == $sha)] | sort_by(.created_at) | last // empty' <<< "$ci_runs")"
+            deploy="$(jq -c --arg sha "$TARGET_SHA" '[.workflow_runs[] | select(.head_sha == $sha)] | sort_by(.created_at) | last // empty' <<< "$deploy_runs")"
+
+            ci_status="$(jq -r '.status // "missing"' <<< "${ci:-{}}")"
+            ci_conclusion="$(jq -r '.conclusion // "pending"' <<< "${ci:-{}}")"
+            deploy_status="$(jq -r '.status // "missing"' <<< "${deploy:-{}}")"
+            deploy_conclusion="$(jq -r '.conclusion // "pending"' <<< "${deploy:-{}}")"
+
+            echo "attempt=${attempt} ci=${ci_status}/${ci_conclusion} deploy=${deploy_status}/${deploy_conclusion}"
+
+            if [[ "$ci_status" == "completed" && "$deploy_status" == "completed" ]]; then
+              jq '{name, event, status, conclusion, head_sha, html_url}' <<< "$ci"
+              jq '{name, event, status, conclusion, head_sha, html_url}' <<< "$deploy"
+              [[ "$ci_conclusion" == "success" ]]
+              [[ "$deploy_conclusion" == "success" ]]
+              exit 0
+            fi
+
+            sleep 10
+          done
+
+          echo "Timed out waiting for CI/deploy for ${TARGET_SHA}" >&2
+          exit 1
+
+      - name: Verify deployed admin surface
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          page="$(curl -fsS --retry 3 --retry-delay 2 "${PRODUCTION_BASE_URL}/catalog-admin.html")"
+          grep -F "Knowledge Catalog 管理" <<< "$page" >/dev/null
+
+          response_body="$(mktemp)"
+          trap 'rm -f "$response_body"' EXIT
+          status="$(curl -sS --retry 3 --retry-delay 2 -o "$response_body" -w '%{http_code}' "${PRODUCTION_BASE_URL}/api/admin/knowledge-catalog/products")"
+          echo "unauthenticated admin API status=${status}"
+          cat "$response_body"
+          [[ "$status" == "401" ]]
+          jq -e '.error == "unauthorized"' "$response_body" >/dev/null
