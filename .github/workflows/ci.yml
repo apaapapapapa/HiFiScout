@@ -49,6 +49,58 @@ jobs:
       - name: Fail on high or critical dependency vulnerabilities
         run: npm audit --audit-level=high
 
+  other-category-audit:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_ACCOUNT_ID: 9af87af4dbc00be3bfd4c8af3f52f684
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Audit active listings classified as other
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== totals by classification status ==='
+          npx wrangler d1 execute DB --remote --json --command "
+            SELECT classification_status, COUNT(*) AS count
+            FROM products
+            WHERE is_active = 1 AND primary_category_id = 'other'
+            GROUP BY classification_status
+            ORDER BY count DESC;" | jq '.[0].results'
+
+          echo '=== top raw category buckets ==='
+          npx wrangler d1 execute DB --remote --json --command "
+            SELECT shop_key, COALESCE(NULLIF(TRIM(raw_category), ''), '(blank)') AS raw_category, COUNT(*) AS count
+            FROM products
+            WHERE is_active = 1 AND primary_category_id = 'other'
+            GROUP BY shop_key, raw_category
+            ORDER BY count DESC, shop_key, raw_category
+            LIMIT 120;" | jq '.[0].results'
+
+          echo '=== top manufacturers ==='
+          npx wrangler d1 execute DB --remote --json --command "
+            SELECT COALESCE(NULLIF(TRIM(manufacturer), ''), '(unknown)') AS manufacturer, COUNT(*) AS count
+            FROM products
+            WHERE is_active = 1 AND primary_category_id = 'other'
+            GROUP BY manufacturer
+            ORDER BY count DESC, manufacturer
+            LIMIT 80;" | jq '.[0].results'
+
+          echo '=== sample listings ==='
+          npx wrangler d1 execute DB --remote --json --command "
+            SELECT id, shop_key, title, manufacturer, model, raw_category, classification_status, classification_source
+            FROM products
+            WHERE is_active = 1 AND primary_category_id = 'other'
+            ORDER BY shop_key, raw_category, id
+            LIMIT 300;" | jq '.[0].results'
+
   playwright-browser-cache:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
