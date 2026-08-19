@@ -8,6 +8,10 @@ interface JwtHeader {
   kid?: unknown;
 }
 
+interface AccessJsonWebKey extends JsonWebKey {
+  kid?: string;
+}
+
 export interface CloudflareAccessClaims {
   iss: string;
   aud: string | string[];
@@ -19,11 +23,11 @@ export interface CloudflareAccessClaims {
 }
 
 interface JwksDocument {
-  keys?: JsonWebKey[];
+  keys?: AccessJsonWebKey[];
 }
 
 const JWKS_CACHE_MS = 5 * 60 * 1000;
-let cachedJwks: { url: string; expiresAt: number; keys: JsonWebKey[] } | null = null;
+let cachedJwks: { url: string; expiresAt: number; keys: AccessJsonWebKey[] } | null = null;
 
 function decodeBase64Url(value: string): Uint8Array {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
@@ -63,7 +67,7 @@ export function normalizeCloudflareAccessTeamDomain(value: string): string | nul
   }
 }
 
-async function loadJwks(url: string, fetchFn: typeof fetch): Promise<JsonWebKey[]> {
+async function loadJwks(url: string, fetchFn: typeof fetch): Promise<AccessJsonWebKey[]> {
   const now = Date.now();
   if (fetchFn === fetch && cachedJwks?.url === url && cachedJwks.expiresAt > now) {
     return cachedJwks.keys;
