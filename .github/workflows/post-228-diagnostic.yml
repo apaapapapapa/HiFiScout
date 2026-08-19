@@ -1,0 +1,57 @@
+name: Post 228 Diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CLOUDFLARE_ACCOUNT_ID: 9af87af4dbc00be3bfd4c8af3f52f684
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Inspect main workflow rollout
+        shell: bash
+        run: |
+          set -euo pipefail
+          for workflow in ci.yml deploy.yml resolver-replay-drain.yml product-data-audit.yml; do
+            echo "=== $workflow ==="
+            gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --branch main \
+              --workflow "$workflow" \
+              --limit 8 \
+              --json databaseId,workflowName,event,headSha,status,conclusion,createdAt,updatedAt \
+              | jq .
+          done
+
+      - name: Inspect production other counts
+        shell: bash
+        run: |
+          set -euo pipefail
+          query() {
+            npx wrangler d1 execute DB --remote --json --command "$1" \
+              | jq 'if type == "array" then .[0].results else . end'
+          }
+          echo '=== active other totals ==='
+          query "SELECT classification_status, COUNT(*) AS count FROM products WHERE is_active = 1 AND primary_category_id = 'other' GROUP BY classification_status ORDER BY count DESC;"
+          echo '=== target raw buckets still in other ==='
+          query "SELECT shop_key, raw_category, COUNT(*) AS count FROM products WHERE is_active = 1 AND primary_category_id = 'other' AND raw_category IN ('アクセサリー','ケーブル') GROUP BY shop_key, raw_category ORDER BY count DESC;"
+          echo '=== category metadata versions ==='
+          query "SELECT COALESCE(json_extract(metadata_json, '$.categoryClassification.version'), 0) AS version, COUNT(*) AS count FROM products WHERE is_active = 1 GROUP BY version ORDER BY version;"
+          echo '=== remediation queue ==='
+          query "SELECT status, COUNT(*) AS count FROM data_quality_remediation_queue GROUP BY status ORDER BY status;"
