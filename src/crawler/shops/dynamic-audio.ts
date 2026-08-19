@@ -130,11 +130,7 @@ function stripRawTextElements(html: string): string {
         suppressedTag = null;
         output += " ";
       }
-    } else if (
-      header &&
-      !header.closing &&
-      (header.name === "script" || header.name === "style")
-    ) {
+    } else if (header && !header.closing && (header.name === "script" || header.name === "style")) {
       suppressedTag = header.name;
       output += " ";
     } else {
