@@ -116,14 +116,20 @@ async function ensureOrganization(): Promise<ZeroTrustOrganization> {
 async function ensureCloudflareIdentityProvider(): Promise<IdentityProvider> {
   const providers = await api<IdentityProvider[]>("/access/identity_providers?per_page=100");
   const existing = providers.find((provider) => provider.type === "cloudflare");
-  if (existing?.id) return existing;
+  const body = {
+    name: existing?.name || "Cloudflare",
+    type: "cloudflare",
+    config: { restrict_to_account_members: true },
+  };
+  if (existing?.id) {
+    return api<IdentityProvider>(`/access/identity_providers/${existing.id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+  }
   return api<IdentityProvider>("/access/identity_providers", {
     method: "POST",
-    body: JSON.stringify({
-      name: "Cloudflare",
-      type: "cloudflare",
-      config: { restrict_to_account_members: true },
-    }),
+    body: JSON.stringify(body),
   });
 }
 
@@ -157,7 +163,9 @@ async function ensureApplication(
     session_duration: "24h",
     app_launcher_visible: false,
     allowed_idps: [identityProviderId],
-    auto_redirect_to_identity: true,
+    // Do not instant-redirect to the Cloudflare IdP. If identity or policy evaluation fails,
+    // instant auth can bounce the browser back through the same IdP indefinitely.
+    auto_redirect_to_identity: false,
   };
 
   if (!application) {
@@ -171,6 +179,11 @@ async function ensureApplication(
       method: "PUT",
       body: JSON.stringify(body),
     });
+  } else if (application.id) {
+    application = await api<AccessApplication>(`/access/apps/${application.id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
   }
   if (!application.id || !application.aud) {
     if (!application.id) throw new Error("Access application has no id");
@@ -180,13 +193,16 @@ async function ensureApplication(
   return application;
 }
 
-async function ensurePolicy(applicationId: string): Promise<void> {
+async function ensurePolicy(applicationId: string, identityProviderId: string): Promise<void> {
   const policies = await api<AccessPolicy[]>(`/access/apps/${applicationId}/policies?per_page=100`);
   const existing = policies.find((policy) => policy.name === policyName);
   const body = {
     name: policyName,
     decision: "allow",
-    include: [{ cloudflare_account_member: { account_id: accountId } }],
+    // The Cloudflare IdP itself is restricted to this account's members. Requiring that exact
+    // login method keeps the policy fail-closed without a second account-membership evaluation.
+    include: [{ everyone: {} }],
+    require: [{ login_method: { id: identityProviderId } }],
     session_duration: "24h",
   };
   if (existing?.id) {
@@ -214,7 +230,7 @@ const identityProvider = await ensureCloudflareIdentityProvider();
 if (!identityProvider.id) throw new Error("Cloudflare identity provider has no id");
 const workerId = await resolveWorkerId();
 const application = await ensureApplication(identityProvider.id, workerId);
-await ensurePolicy(application.id as string);
+await ensurePolicy(application.id as string, identityProvider.id);
 
 const accessTeamDomain = teamDomain(organization);
 const accessAud = application.aud as string;
