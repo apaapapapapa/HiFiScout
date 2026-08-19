@@ -25,20 +25,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Apply fixes and validate
+      - name: Patch E2E semantics and validate
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
-
-          path = Path('.github/workflows/apply-manual-category-authority.yml')
-          text = path.read_text()
-          old = """            run=\"$(jq -c '[.workflow_runs[] | select(.head_sha == env.GITHUB_SHA)] | sort_by(.created_at) | last // empty' <<< \"$runs\")\""""
-          new = """            run=\"$(jq -c '[.workflow_runs[] | select(.head_sha == env.GITHUB_SHA and (.conclusion // \"\") != \"skipped\")] | sort_by(.created_at) | last // empty' <<< \"$runs\")\""""
-          if old not in text:
-              raise SystemExit('manual-category deploy selector not found')
-          path.write_text(text.replace(old, new, 1))
 
           path = Path('e2e/tests/catalog.spec.ts')
           text = path.read_text()
@@ -56,15 +48,14 @@ jobs:
           path.write_text(text.replace(old, new, 1))
           PY
 
-          npx oxfmt --write .github/workflows/apply-manual-category-authority.yml e2e/tests/catalog.spec.ts
+          npx oxfmt --write e2e/tests/catalog.spec.ts
           git diff --check
           npm run typecheck
           npm run lint
           npm run test:unit
 
-          rm .github/workflows/apply-post-merge-switch-pipeline-fix.yml
-          git add -A
+          git add e2e/tests/catalog.spec.ts
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'fix(ci): wait for deploy and accept single-offer titles'
+          git commit -m 'fix(e2e): accept single-offer title links'
           git push origin HEAD:fix/post-merge-switch-pipeline
