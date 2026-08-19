@@ -22,3 +22,4 @@ dist/
 public/app.js
 public/catalog-url-state.js
 public/shop-links.js
+admin-public/catalog-admin.js
