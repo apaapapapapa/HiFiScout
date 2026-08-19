@@ -5,16 +5,29 @@ import {
   getCategory,
 } from "../catalog/categories.js";
 import { refreshListingProjections } from "./listing-projection-refresh.js";
-import type { QueryableDatabase, ReadableDatabase } from "./types.js";
 import type {
-  KnowledgeCatalogAdminListOptions,
-  KnowledgeCatalogAdminUpdateInput,
   KnowledgeCatalogLifecycleStatus,
-} from "../http/knowledge-catalog-admin.js";
+  QueryableDatabase,
+  ReadableDatabase,
+} from "./types.js";
 
 const LISTING_PAGE_SIZE = 100;
 const WRITE_BATCH_SIZE = 50;
 const CATEGORY_PROJECTION_TOKEN_PREFIX = "category:admin:";
+
+interface KnowledgeCatalogAdminListOptions {
+  query: string;
+  manufacturerId: string;
+  categoryId: string;
+  afterId: number;
+  limit: number;
+}
+
+interface KnowledgeCatalogAdminUpdateInput {
+  canonicalName: string;
+  lifecycleStatus: KnowledgeCatalogLifecycleStatus;
+  primaryCategoryId: string;
+}
 
 interface KnowledgeCatalogAdminProductRow {
   id: number;
