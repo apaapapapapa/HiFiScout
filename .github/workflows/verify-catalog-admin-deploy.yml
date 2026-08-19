@@ -29,11 +29,13 @@ jobs:
 
             ci="$(jq -c --arg sha "$TARGET_SHA" '[.workflow_runs[] | select(.head_sha == $sha)] | sort_by(.created_at) | last // empty' <<< "$ci_runs")"
             deploy="$(jq -c --arg sha "$TARGET_SHA" '[.workflow_runs[] | select(.head_sha == $sha)] | sort_by(.created_at) | last // empty' <<< "$deploy_runs")"
+            if [[ -z "$ci" ]]; then ci='{}'; fi
+            if [[ -z "$deploy" ]]; then deploy='{}'; fi
 
-            ci_status="$(jq -r '.status // "missing"' <<< "${ci:-{}}")"
-            ci_conclusion="$(jq -r '.conclusion // "pending"' <<< "${ci:-{}}")"
-            deploy_status="$(jq -r '.status // "missing"' <<< "${deploy:-{}}")"
-            deploy_conclusion="$(jq -r '.conclusion // "pending"' <<< "${deploy:-{}}")"
+            ci_status="$(jq -r '.status // "missing"' <<< "$ci")"
+            ci_conclusion="$(jq -r '.conclusion // "pending"' <<< "$ci")"
+            deploy_status="$(jq -r '.status // "missing"' <<< "$deploy")"
+            deploy_conclusion="$(jq -r '.conclusion // "pending"' <<< "$deploy")"
 
             echo "attempt=${attempt} ci=${ci_status}/${ci_conclusion} deploy=${deploy_status}/${deploy_conclusion}"
 
