@@ -48,7 +48,10 @@ test("Dynamic Audio parser uses the final advertised price after an arrow", () =
 });
 
 test("Dynamic Audio parser ignores editorial sale posts without a product classification", () => {
-  assert.equal(parseDynamicAudioListing(fixture).some((item) => item.sourceId === "104"), false);
+  assert.equal(
+    parseDynamicAudioListing(fixture).some((item) => item.sourceId === "104"),
+    false,
+  );
 });
 
 test("Dynamic Audio pagination is discovered on the WordPress archive", () => {

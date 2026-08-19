@@ -31,7 +31,10 @@ const PRICE_LABELS: readonly RegExp[] = [
 function decodeNumericEntities(value: string): string {
   return value.replace(/&#(x[0-9a-f]+|\d+);/gi, (entity, rawCode: string) => {
     const hexadecimal = rawCode[0]?.toLowerCase() === "x";
-    const codePoint = Number.parseInt(hexadecimal ? rawCode.slice(1) : rawCode, hexadecimal ? 16 : 10);
+    const codePoint = Number.parseInt(
+      hexadecimal ? rawCode.slice(1) : rawCode,
+      hexadecimal ? 16 : 10,
+    );
     if (!Number.isFinite(codePoint)) return entity;
     try {
       return String.fromCodePoint(codePoint);
@@ -91,7 +94,9 @@ function entryTitle(articleHtml: string): EntryTitle | null {
   return null;
 }
 
-function listingClassification(lines: readonly string[]): { listingKind: string; rawCategory: string } | null {
+function listingClassification(
+  lines: readonly string[],
+): { listingKind: string; rawCategory: string } | null {
   for (const line of lines) {
     const separator = line.indexOf("＠");
     if (separator <= 0) continue;
@@ -182,7 +187,9 @@ export function parseDynamicAudioListing(html: string): SellerProduct[] {
 
 export function discoverDynamicAudioPageUrls(html: string, currentPage = 1): DynamicAudioPage[] {
   const pages = new Map<number, DynamicAudioPage>();
-  for (const match of String(html || "").matchAll(/href\s*=\s*["']([^"']*\/page\/(\d+)\/?[^"']*)["']/gi)) {
+  for (const match of String(html || "").matchAll(
+    /href\s*=\s*["']([^"']*\/page\/(\d+)\/?[^"']*)["']/gi,
+  )) {
     const page = Number.parseInt(match[2], 10);
     if (!Number.isFinite(page) || page <= currentPage) continue;
     try {
