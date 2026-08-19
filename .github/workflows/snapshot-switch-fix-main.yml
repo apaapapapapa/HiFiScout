@@ -1,0 +1,26 @@
+name: Snapshot Switch Fix Main
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  snapshot:
+    if: github.head_ref == 'ops/verify-switch-fix-final'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_SHA: 890865821ebe872e465a443d63ccb6f1b742dbeb
+    steps:
+      - name: Show target workflow runs
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api --method GET "/repos/${GITHUB_REPOSITORY}/actions/runs" -f head_sha="${TARGET_SHA}" -f per_page=100 \
+            | jq -r '.workflow_runs[] | [.name, .status, (.conclusion // "pending"), (.id|tostring), .created_at] | @tsv' \
+            | sort -u
