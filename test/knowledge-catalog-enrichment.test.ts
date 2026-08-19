@@ -184,12 +184,17 @@ test("manual-verified exact model may classify a candidate model without weakeni
     }),
     fujiyaAvicPlugin.capabilities.catalog,
   );
-  const product = { ...normalized, modelResolutionStatus: "candidate" as const };
+  const product = {
+    ...normalized,
+    manufacturerId: "sotm",
+    model: sellerModel,
+    modelResolutionStatus: "candidate" as const,
+  };
   const manualRow = {
     id: 224,
     manufacturer_id: "sotm",
-    canonical_model: product.model,
-    normalized_model: product.model,
+    canonical_model: sellerModel,
+    normalized_model: sellerModel,
     canonical_name: "sNH-10G 50Ω",
     category_id: "network_switch",
     is_primary: 1,
