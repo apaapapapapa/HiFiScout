@@ -64,7 +64,7 @@ jobs:
             cat /tmp/public-admin-api >&2
             exit 1
           fi
-      - name: Verify Cloudflare Access protects admin Worker
+      - name: Verify Cloudflare Access protects admin Worker without redirect loops
         shell: bash
         env:
           ADMIN_URL: ${{ steps.access.outputs.admin_url }}
@@ -73,16 +73,23 @@ jobs:
           headers="$(mktemp)"
           body="$(mktemp)"
           trap 'rm -f "$headers" "$body"' EXIT
+
           status="$(curl -sS -D "$headers" -o "$body" -w '%{http_code}' --max-time 20 "$ADMIN_URL")"
           location="$(awk 'BEGIN { IGNORECASE=1 } /^location:/ { sub(/\r$/, ""); print substr($0, 11) }' "$headers" | tail -1)"
-          if [[ "$status" =~ ^30[12378]$ ]] && [[ "$location" == *"/cdn-cgi/access/"* ]]; then
-            echo "Cloudflare Access login challenge confirmed (${status})."
-            exit 0
+          if [[ ! "$status" =~ ^30[12378]$ ]] || [[ "$location" != *"/cdn-cgi/access/"* ]]; then
+            echo "Expected an initial Cloudflare Access challenge; got HTTP ${status}, location=${location}." >&2
+            cat "$body" >&2
+            exit 1
           fi
-          if [[ "$status" == "401" || "$status" == "403" ]]; then
-            echo "Admin Worker rejected unauthenticated access (${status})."
-            exit 0
+          echo "Initial Cloudflare Access challenge confirmed (${status})."
+
+          follow="$(curl -LsS --max-redirs 8 -o "$body" -w '%{http_code}|%{url_effective}' --max-time 20 "$ADMIN_URL")"
+          final_status="${follow%%|*}"
+          effective_url="${follow#*|}"
+          echo "Access redirect chain terminated with HTTP ${final_status} at ${effective_url}."
+          if [[ "$final_status" != "200" ]] || [[ "$effective_url" != *".cloudflareaccess.com/cdn-cgi/access/"* ]]; then
+            echo "Cloudflare Access login did not terminate at its login page." >&2
+            cat "$body" >&2
+            exit 1
           fi
-          echo "Admin Worker was not protected as expected (HTTP ${status}, location=${location})." >&2
-          cat "$body" >&2
-          exit 1
+          echo "Cloudflare Access login page reached without a redirect loop."
