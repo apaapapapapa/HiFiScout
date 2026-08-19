@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      TARGET_SHA: 1f7ed9d0dcc536f6c806b956c266f96ca5d9f44a
+      TARGET_SHA: a1ee1e694dd1bbc8b65fa50eaa7775811b1a3ca4
       PUBLIC_URL: https://hifiscout.tokyojp.workers.dev
       ADMIN_URL: https://hifiscout-admin.tokyojp.workers.dev
       GH_TOKEN: ${{ github.token }}
