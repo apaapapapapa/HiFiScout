@@ -189,7 +189,9 @@ export async function applyManualCategoryAuthority(db: QueryableDatabase): Promi
           target.id,
         ),
     );
-    statements.push(db.prepare("DELETE FROM product_categories WHERE product_id = ?").bind(target.id));
+    statements.push(
+      db.prepare("DELETE FROM product_categories WHERE product_id = ?").bind(target.id),
+    );
     statements.push(
       db
         .prepare("INSERT OR IGNORE INTO product_categories(product_id, category_id) VALUES (?, ?)")

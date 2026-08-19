@@ -5,8 +5,7 @@ import { knowledgeCatalogKey } from "../src/catalog/knowledge-catalog.js";
 import { findManualVerifiedCategoryMatches } from "../src/db/manual-category-authority-repository.js";
 import { captureDatabase } from "./helpers/d1.js";
 
-const SOTM_MODEL =
-  "sNH-10G (クロック機能及びマスタークロック入力機能モデル、50Ω、12V)";
+const SOTM_MODEL = "sNH-10G (クロック機能及びマスタークロック入力機能モデル、50Ω、12V)";
 
 test("manual category authority accepts only candidate exact/explicit-alias models", async () => {
   const db = captureDatabase((statement) => {
@@ -16,8 +15,7 @@ test("manual category authority accepts only candidate exact/explicit-alias mode
           id: 224,
           manufacturer_id: "sotm",
           canonical_model: SOTM_MODEL,
-          normalized_model:
-            "SNH-10G (クロック機能及びマスタークロック入力機能モデル、50Ω、12V)",
+          normalized_model: "SNH-10G (クロック機能及びマスタークロック入力機能モデル、50Ω、12V)",
           canonical_name: "sNH-10G 50Ω",
           category_id: "network_switch",
         },
