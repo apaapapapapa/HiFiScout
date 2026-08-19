@@ -30,6 +30,7 @@ import {
 } from "./formusic.js";
 import { U_AUDIO_CATEGORY_MAPPING, U_AUDIO_CATEGORY_POLICY, uAudioAdapter } from "./u-audio.js";
 import { SHIMAMUSEN_CATEGORY_POLICY, shimamusenAdapter } from "./shimamusen.js";
+import { dynamicAudioAdapter } from "./dynamic-audio.js";
 // shop-generator:imports
 
 export { getShopActivityPolicy } from "./registry.js";
@@ -138,6 +139,13 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
     },
     { catalog: { categoryPolicy: SHIMAMUSEN_CATEGORY_POLICY } },
   ),
+  defineShopPlugin(dynamicAudioAdapter, {
+    key: "dynamic-audio",
+    name: "DYNAMIC AUDIO",
+    baseUrl: "https://dynamicaudio5used.wordpress.com",
+    defaultIntervalMinutes: 60,
+    defaultMaxPages: 30,
+  }),
   // shop-generator:plugins
 ]);
 
