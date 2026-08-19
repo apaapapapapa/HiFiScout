@@ -1,0 +1,114 @@
+name: Verify Switch Fix Main
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    if: github.head_ref == 'ops/verify-switch-fix-main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_ACCOUNT_ID: 9af87af4dbc00be3bfd4c8af3f52f684
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+      TARGET_SHA: e572f4aa036402b9e1326dc47562749d32530d49
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.head_ref }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Wait for target main workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          required=('CI' 'Deploy Cloudflare' 'Apply Manual Category Authority')
+          for attempt in $(seq 1 80); do
+            runs="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/actions/runs" -f head_sha="${TARGET_SHA}" -f per_page=100)"
+            echo "=== target workflow snapshot ${attempt} ==="
+            jq -r '.workflow_runs[] | [.name, .status, (.conclusion // "pending"), (.id|tostring)] | @tsv' <<< "$runs" | sort -u
+
+            ready=1
+            for name in "${required[@]}"; do
+              row="$(jq -c --arg name "$name" '[.workflow_runs[] | select(.name == $name)] | sort_by(.created_at) | last // empty' <<< "$runs")"
+              if [[ -z "$row" ]]; then
+                ready=0
+                echo "waiting for $name"
+                continue
+              fi
+              status="$(jq -r '.status' <<< "$row")"
+              conclusion="$(jq -r '.conclusion // ""' <<< "$row")"
+              if [[ "$status" != 'completed' ]]; then
+                ready=0
+                echo "waiting for $name: $status"
+              elif [[ "$conclusion" != 'success' ]]; then
+                echo "$name failed with conclusion=$conclusion" >&2
+                jq . <<< "$row" >&2
+                exit 1
+              fi
+            done
+            if [[ "$ready" -eq 1 ]]; then
+              echo 'Required main workflows succeeded.'
+              exit 0
+            fi
+            sleep 15
+          done
+          echo 'Timed out waiting for target main workflows.' >&2
+          exit 1
+
+      - name: Resolve production D1 binding
+        id: d1
+        shell: bash
+        run: |
+          set -euo pipefail
+          info="$(npx wrangler d1 info DB --json)"
+          id="$(jq -r '.uuid // .database_id // .id // empty' <<< "$info")"
+          test -n "$id"
+          echo "database_id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Verify production switching-hub classifications
+        shell: bash
+        run: |
+          set -euo pipefail
+          result="$(npx wrangler d1 execute DB --remote --json --command "
+            SELECT p.id, p.canonical_manufacturer_id, p.model,
+                   p.model_resolution_status, p.primary_category_id,
+                   r.status AS identity_status,
+                   e.entity_key, e.primary_category_id AS entity_category_id
+            FROM products p
+            LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
+            LEFT JOIN product_search_entity_offers o ON o.listing_product_id = p.id
+            LEFT JOIN product_search_entities e ON e.id = o.entity_id
+            WHERE p.is_active = 1
+              AND (
+                (p.canonical_manufacturer_id = 'sotm' AND p.model LIKE 'sNH-10G%')
+                OR (
+                  p.canonical_manufacturer_id = 'telegartner'
+                  AND p.model = 'M12 SWITCH IE GOLD + 専用オプションケーブル2.0m ×3本'
+                )
+              )
+            ORDER BY p.canonical_manufacturer_id, p.id;")"
+          rows="$(jq -c '.[0].results // []' <<< "$result")"
+          echo "$rows" | jq .
+          count="$(jq 'length' <<< "$rows")"
+          if [[ "$count" -lt 4 ]]; then
+            echo "Expected at least the 3 SOtM variants plus Telegartner listing; got $count" >&2
+            exit 1
+          fi
+          mismatches="$(jq '[.[] | select(.primary_category_id != "network_switch" or .entity_category_id != "network_switch")] | length' <<< "$rows")"
+          if [[ "$mismatches" -ne 0 ]]; then
+            echo 'Switching-hub product/search categories still contain mismatches.' >&2
+            exit 1
+          fi
+          echo "Verified $count switching-hub listings and search entities as network_switch."
