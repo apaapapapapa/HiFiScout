@@ -14,18 +14,41 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
-      TARGET_SHA: 993e3d11f572a67e0258e4554b25feb7ddafe383
+      TARGET_SHA: e572f4aa036402b9e1326dc47562749d32530d49
+      PRODUCTION_BASE_URL: https://hifiscout.tokyojp.workers.dev
     steps:
-      - name: Print matching main runs
+      - name: Verify successful descendant main pipeline
         shell: bash
         run: |
           set -euo pipefail
-          echo "CI runs for target"
-          gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=main&event=push&per_page=30" \
-            | jq --arg sha "$TARGET_SHA" '.workflow_runs[] | select(.head_sha == $sha) | {id,name,event,status,conclusion,head_sha,created_at,updated_at,html_url}'
-          echo "Deploy runs for target"
-          gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/deploy.yml/runs?branch=main&event=workflow_run&per_page=30" \
-            | jq --arg sha "$TARGET_SHA" '.workflow_runs[] | select(.head_sha == $sha) | {id,name,event,status,conclusion,head_sha,created_at,updated_at,html_url}'
-          echo "Latest deploy runs"
-          gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/deploy.yml/runs?branch=main&event=workflow_run&per_page=5" \
-            | jq '.workflow_runs[] | {id,status,conclusion,head_sha,created_at,updated_at,html_url}'
+
+          ci_runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=main&event=push&per_page=30")"
+          deploy_runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/deploy.yml/runs?branch=main&event=workflow_run&per_page=30")"
+          ci="$(jq -c --arg sha "$TARGET_SHA" '[.workflow_runs[] | select(.head_sha == $sha)] | sort_by(.created_at) | last // empty' <<< "$ci_runs")"
+          deploy="$(jq -c --arg sha "$TARGET_SHA" '[.workflow_runs[] | select(.head_sha == $sha)] | sort_by(.created_at) | last // empty' <<< "$deploy_runs")"
+
+          [[ -n "$ci" ]]
+          [[ -n "$deploy" ]]
+          jq '{id,name,event,status,conclusion,head_sha,created_at,updated_at,html_url}' <<< "$ci"
+          jq '{id,name,event,status,conclusion,head_sha,created_at,updated_at,html_url}' <<< "$deploy"
+          [[ "$(jq -r '.status' <<< "$ci")" == "completed" ]]
+          [[ "$(jq -r '.conclusion' <<< "$ci")" == "success" ]]
+          [[ "$(jq -r '.status' <<< "$deploy")" == "completed" ]]
+          [[ "$(jq -r '.conclusion' <<< "$deploy")" == "success" ]]
+
+      - name: Verify deployed catalog admin surface
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          page="$(curl -fsS --retry 3 --retry-delay 2 "${PRODUCTION_BASE_URL}/catalog-admin.html")"
+          grep -F "Knowledge Catalog 管理" <<< "$page" >/dev/null
+          echo "catalog-admin.html is deployed"
+
+          response_body="$(mktemp)"
+          trap 'rm -f "$response_body"' EXIT
+          status="$(curl -sS --retry 3 --retry-delay 2 -o "$response_body" -w '%{http_code}' "${PRODUCTION_BASE_URL}/api/admin/knowledge-catalog/products")"
+          echo "unauthenticated admin API status=${status}"
+          cat "$response_body"
+          [[ "$status" == "401" ]]
+          jq -e '.error == "unauthorized"' "$response_body" >/dev/null
