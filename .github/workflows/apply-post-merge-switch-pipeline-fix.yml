@@ -1,0 +1,75 @@
+name: Apply Post-Merge Switch Pipeline Fix
+
+on:
+  push:
+    branches: [fix/post-merge-switch-pipeline]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: fix/post-merge-switch-pipeline
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply fixes and validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/apply-manual-category-authority.yml')
+          text = path.read_text()
+          old = """            run=\"$(jq -c '[.workflow_runs[] | select(.head_sha == env.GITHUB_SHA)] | sort_by(.created_at) | last // empty' <<< \"$runs\")\""""
+          new = """            run=\"$(jq -c '[.workflow_runs[] | select(.head_sha == env.GITHUB_SHA and (.conclusion // \"\") != \"skipped\")] | sort_by(.created_at) | last // empty' <<< \"$runs\")\""""
+          if old not in text:
+              raise SystemExit('manual-category deploy selector not found')
+          path.write_text(text.replace(old, new, 1))
+
+          path = Path('e2e/tests/catalog.spec.ts')
+          text = path.read_text()
+          old = '''  if (products.items.length) {
+            const titleControl = page.locator(".product-title-link").first();
+            await expect(titleControl).toBeVisible();
+            await expect(titleControl).toHaveAttribute("data-offers", /.+/);
+          }'''.replace('          ', '')
+          new = '''  if (products.items.length) {
+            const titleControl = page.locator(".product-title-link").first();
+            await expect(titleControl).toBeVisible();
+            const tagName = await titleControl.evaluate((element) => element.tagName);
+            if (tagName === "BUTTON") {
+              await expect(titleControl).toHaveAttribute("data-offers", /.+/);
+            } else {
+              expect(tagName).toBe("A");
+              await expect(titleControl).toHaveAttribute("href", /^https?:\\/\\//);
+              await expect(titleControl).toHaveAttribute("target", "_blank");
+            }
+          }'''.replace('          ', '')
+          if old not in text:
+              raise SystemExit('catalog title assertion not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+
+          npx oxfmt --write .github/workflows/apply-manual-category-authority.yml e2e/tests/catalog.spec.ts
+          git diff --check
+          npm run typecheck
+          npm run lint
+          npm run test:unit
+
+          rm .github/workflows/apply-post-merge-switch-pipeline-fix.yml
+          git add -A
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(ci): wait for deploy and accept single-offer titles'
+          git push origin HEAD:fix/post-merge-switch-pipeline
