@@ -1,0 +1,439 @@
+name: Apply Manual Category Authority Patch
+
+on:
+  push:
+    branches: [fix/manual-verified-category-authority]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: fix/manual-verified-category-authority
+          fetch-depth: 0
+      - name: Apply conservative manual category authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/db/knowledge-catalog-repository.ts')
+          text = path.read_text()
+
+          old = '''const CHUNK_SIZE = 40;
+          const PRODUCT_PAGE_SIZE = 500;
+          const CATEGORY_PROJECTION_TOKEN_PREFIX = "category:";
+
+          interface CatalogIndexProduct extends Omit<CatalogMatchIndexEntry, "matchType"> {
+            hasPrimaryCategory: boolean;
+          }
+
+          interface CatalogProductCategoryJoin {
+            id: number;
+            manufacturer_id: string;
+            canonical_model: string;
+            normalized_model: string;
+            canonical_name: string;
+            category_id: string | null;
+            is_primary: number | null;
+          }'''.replace('          ', '')
+          new = '''const CHUNK_SIZE = 40;
+          const PRODUCT_PAGE_SIZE = 500;
+          const CATEGORY_PROJECTION_TOKEN_PREFIX = "category:";
+
+          /**
+           * Category authority is deliberately narrower than Product Identity authority.
+           * A manually verified product may classify an exact seller model presentation even when
+           * Model Resolution keeps that verbose presentation as `candidate`; it still may not merge
+           * offers into the canonical product until Product Identity independently resolves it.
+           */
+          type CatalogMatchIndexEntryWithAuthority = CatalogMatchIndexEntry & {
+            manualCategoryAuthority: boolean;
+          };
+
+          interface CatalogIndexProduct
+            extends Omit<CatalogMatchIndexEntryWithAuthority, "matchType"> {
+            hasPrimaryCategory: boolean;
+          }
+
+          interface CatalogProductCategoryJoin {
+            id: number;
+            manufacturer_id: string;
+            canonical_model: string;
+            normalized_model: string;
+            canonical_name: string;
+            category_id: string | null;
+            is_primary: number | null;
+            manual_category_authority: number;
+          }'''.replace('          ', '')
+          if old not in text:
+              raise SystemExit('catalog type block not found')
+          text = text.replace(old, new, 1)
+
+          old = '''function setUnambiguous(
+            index: Map<string, CatalogMatchIndexEntry | null>,
+            key: string,
+            value: CatalogMatchIndexEntry,
+          ): void {'''.replace('          ', '')
+          new = '''function setUnambiguous(
+            index: Map<string, CatalogMatchIndexEntryWithAuthority | null>,
+            key: string,
+            value: CatalogMatchIndexEntryWithAuthority,
+          ): void {'''.replace('          ', '')
+          if old not in text:
+              raise SystemExit('setUnambiguous signature not found')
+          text = text.replace(old, new, 1)
+
+          old = '''async function loadVerifiedCatalogIndex(
+            db: ReadableDatabase,
+            manufacturerIds: readonly string[],
+          ): Promise<Map<string, CatalogMatchIndexEntry | null>> {'''.replace('          ', '')
+          new = '''async function loadVerifiedCatalogIndex(
+            db: ReadableDatabase,
+            manufacturerIds: readonly string[],
+          ): Promise<Map<string, CatalogMatchIndexEntryWithAuthority | null>> {'''.replace('          ', '')
+          if old not in text:
+              raise SystemExit('loadVerifiedCatalogIndex signature not found')
+          text = text.replace(old, new, 1)
+
+          old = '''      SELECT kp.id, kp.manufacturer_id, kp.canonical_model, kp.normalized_model, kp.canonical_name,
+                     kpc.category_id, kpc.is_primary
+              FROM knowledge_catalog_products kp'''.replace('          ', '')
+          new = '''      SELECT kp.id, kp.manufacturer_id, kp.canonical_model, kp.normalized_model, kp.canonical_name,
+                     kpc.category_id, kpc.is_primary,
+                     EXISTS (
+                       SELECT 1
+                       FROM knowledge_catalog_sources ks
+                       WHERE ks.product_id = kp.id
+                         AND ks.source_type = 'manual_verified'
+                         AND ks.status = 'active'
+                     ) AS manual_category_authority
+              FROM knowledge_catalog_products kp'''.replace('          ', '')
+          if old not in text:
+              raise SystemExit('catalog SELECT block not found')
+          text = text.replace(old, new, 1)
+
+          old = '''          categoryIds: [],
+                    hasPrimaryCategory: false,
+                  };'''.replace('          ', '')
+          new = '''          categoryIds: [],
+                    hasPrimaryCategory: false,
+                    manualCategoryAuthority: Number(row.manual_category_authority) === 1,
+                  };'''.replace('          ', '')
+          if old not in text:
+              raise SystemExit('catalog product initialization not found')
+          text = text.replace(old, new, 1)
+
+          old = '''  const index = new Map<string, CatalogMatchIndexEntry | null>();'''
+          new = '''  const index = new Map<string, CatalogMatchIndexEntryWithAuthority | null>();'''
+          if old not in text:
+              raise SystemExit('catalog index map not found')
+          text = text.replace(old, new, 1)
+
+          old = '''  for (const product of products) {
+            // A Knowledge Catalog row is authoritative only after Model Resolution has produced a usable
+            // identity input. Candidate/unresolved models must not borrow verified category evidence merely
+            // because their presentation happens to equal a catalog spelling.
+            const modelResolutionStatus =
+              product?.modelResolutionStatus || product?.model_resolution_status || "";
+            if (modelResolutionStatus && modelResolutionStatus !== "resolved") continue;
+
+            const manufacturerId = product?.manufacturerId || product?.manufacturer_id;
+            const model = product?.model || product?.normalizedModel || product?.normalized_model;
+            const key = knowledgeCatalogKey(manufacturerId, model);
+            if (!key) continue;
+
+            let match = index.get(key) || null;
+            let matchedKey = key;
+            if (!match) {
+              for (const alias of catalogModelLookupVariants({ manufacturerId, model })) {
+                const aliasKey = knowledgeCatalogKey(manufacturerId, alias);
+                const candidate = aliasKey ? index.get(aliasKey) : null;
+                if (!candidate) continue;
+                match = candidate;
+                matchedKey = aliasKey;
+                break;
+              }
+            }
+            if (match) {
+              matches.set(key, matchedKey === key ? match : { ...match, matchType: "derived_alias" });
+            }
+          }'''.replace('          ', '')
+          new = '''  for (const product of products) {
+            const modelResolutionStatus =
+              product?.modelResolutionStatus || product?.model_resolution_status || "";
+            const unresolvedModel = Boolean(
+              modelResolutionStatus && modelResolutionStatus !== "resolved",
+            );
+            const manufacturerId = product?.manufacturerId || product?.manufacturer_id;
+            const model = product?.model || product?.normalizedModel || product?.normalized_model;
+            const key = knowledgeCatalogKey(manufacturerId, model);
+            if (!key) continue;
+
+            let match = index.get(key) || null;
+            let matchedKey = key;
+            if (!match) {
+              for (const alias of catalogModelLookupVariants({ manufacturerId, model })) {
+                const aliasKey = knowledgeCatalogKey(manufacturerId, alias);
+                const candidate = aliasKey ? index.get(aliasKey) : null;
+                if (!candidate) continue;
+                match = candidate;
+                matchedKey = aliasKey;
+                break;
+              }
+            }
+            if (!match) continue;
+
+            // Normal verified catalog rows keep the existing Model Resolution gate. The only exception is
+            // an explicitly manual-verified category fact whose seller presentation is an exact catalog
+            // spelling or explicit model alias. Derived formatting aliases are intentionally insufficient.
+            if (
+              unresolvedModel &&
+              (!match.manualCategoryAuthority ||
+                (match.matchType !== "exact" && match.matchType !== "alias"))
+            ) {
+              continue;
+            }
+
+            matches.set(
+              key,
+              matchedKey === key || match.matchType === "alias"
+                ? match
+                : { ...match, matchType: "derived_alias" },
+            );
+          }'''.replace('          ', '')
+          if old not in text:
+              raise SystemExit('findVerifiedCatalogMatches loop not found')
+          text = text.replace(old, new, 1)
+
+          old = '''    // Historical reclassification is allowed only when the existing conservative Product Identity
+              // resolver has attached this listing to the same verified canonical product. Candidate catalog
+              // IDs and unresolved identities never become category authority.
+              if (
+                product.identity_status !== "matched" ||
+                product.identity_catalog_product_id === null ||
+                Number(product.identity_catalog_product_id) !== Number(match.id)
+              ) {
+                continue;
+              }'''.replace('          ', '')
+          new = '''    // Product Identity remains the normal authority. A narrow category-only exception exists for
+              // manually verified exact/explicit-alias matches whose model is still a candidate because the
+              // seller presentation contains descriptive text. This does not change Product Identity state or
+              // merge offers; it only lets the verified product fact correct the listing's category.
+              const manualUnresolvedModelCategory =
+                Boolean((match as CatalogMatchIndexEntryWithAuthority).manualCategoryAuthority) &&
+                product.model_resolution_status !== "resolved";
+              if (
+                !manualUnresolvedModelCategory &&
+                (product.identity_status !== "matched" ||
+                  product.identity_catalog_product_id === null ||
+                  Number(product.identity_catalog_product_id) !== Number(match.id))
+              ) {
+                continue;
+              }'''.replace('          ', '')
+          if old not in text:
+              raise SystemExit('reclassification identity gate not found')
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+
+          path = Path('scripts/apply-approved-category-audit.ts')
+          text = path.read_text()
+          old = '''    if (replay.processedCount > 0 && replay.matchedCount !== replay.processedCount) {
+              throw new Error(
+                `catalog replay did not match every selected listing for ${product.manufacturer_id} ${product.canonical_model}: ${replay.matchedCount}/${replay.processedCount}`,
+              );
+            }'''.replace('          ', '')
+          new = '''    if (replay.processedCount > 0 && replay.matchedCount !== replay.processedCount) {
+              console.warn(
+                JSON.stringify({
+                  event: "approved_category_audit_identity_unresolved",
+                  catalogProductId: product.id,
+                  manufacturerId: product.manufacturer_id,
+                  model: product.canonical_model,
+                  processedCount: replay.processedCount,
+                  matchedCount: replay.matchedCount,
+                }),
+              );
+            }'''.replace('          ', '')
+          if old not in text:
+              raise SystemExit('audit strict identity block not found')
+          path.write_text(text.replace(old, new, 1))
+
+          path = Path('.github/workflows/apply-approved-category-audit.yml')
+          text = path.read_text()
+          old = """      - 'migrations/0032_correct_n05xd_category.sql'\n      - 'scripts/apply-approved-category-audit.ts'"""
+          new = """      - 'migrations/0032_correct_n05xd_category.sql'\n      - 'migrations/0033_audited_category_model_aliases.sql'\n      - 'src/db/knowledge-catalog-repository.ts'\n      - 'scripts/apply-approved-category-audit.ts'"""
+          if old not in text:
+              raise SystemExit('audit workflow path block not found')
+          text = text.replace(old, new, 1)
+          marker = '''          if [[ "$(jq '.[0].results | length' <<< "$edis")" -ne 0 ]]; then
+            echo 'EDISCREATION canonical spelling did not converge:' >&2
+            jq '.[0].results' <<< "$edis" >&2
+            exit 1
+          fi
+          '''
+          addition = '''          if [[ "$(jq '.[0].results | length' <<< "$edis")" -ne 0 ]]; then
+            echo 'EDISCREATION canonical spelling did not converge:' >&2
+            jq '.[0].results' <<< "$edis" >&2
+            exit 1
+          fi
+
+          candidate_categories="$(npx wrangler d1 execute DB --remote --json --command "
+            WITH expected(manufacturer_id, model, category_id) AS (
+              VALUES
+                ('telegartner', 'M12 SWITCH IE GOLD + 専用オプションケーブル2.0m ×3本', 'network_switch'),
+                ('sotm', 'sNH-10G (クロック機能及びマスタークロック入力機能モデル、50Ω、12V)', 'network_switch'),
+                ('sotm', 'sNH-10G (クロック機能及びマスタークロック入力機能モデル、75Ω、12V)', 'network_switch'),
+                ('sotm', 'sNH-10G/masterclock (12Vdc) スペシャルエディション(銀線仕様)', 'network_switch'),
+                ('luxury-precision', 'PCM1792A DACカード E7専用', 'other_accessory'),
+                ('ediscreation', 'SilentSwitch OCXO JPN STD [SILENT SWITCH OCXO JPSM]', 'network_switch'),
+                ('ediscreation', 'Fiber Box2 JAPAN STANDARD MODE', 'optical_isolator')
+            )
+            SELECT x.manufacturer_id, x.model, x.category_id,
+                   COUNT(p.id) AS listing_count,
+                   SUM(CASE
+                     WHEN p.id IS NULL OR p.primary_category_id <> x.category_id
+                       OR COALESCE(e.primary_category_id, '') <> x.category_id
+                     THEN 1 ELSE 0 END) AS mismatch_count
+            FROM expected x
+            LEFT JOIN products p
+              ON p.is_active = 1
+             AND p.canonical_manufacturer_id = x.manufacturer_id
+             AND p.model = x.model
+            LEFT JOIN product_search_entity_offers o ON o.listing_product_id = p.id
+            LEFT JOIN product_search_entities e ON e.id = o.entity_id
+            GROUP BY x.manufacturer_id, x.model, x.category_id
+            HAVING listing_count = 0 OR mismatch_count > 0;")"
+          if [[ "$(jq '.[0].results | length' <<< "$candidate_categories")" -ne 0 ]]; then
+            echo 'Manual-verified candidate-model category corrections did not converge:' >&2
+            jq '.[0].results' <<< "$candidate_categories" >&2
+            exit 1
+          fi
+          '''
+          if marker not in text:
+              raise SystemExit('audit workflow verification marker not found')
+          path.write_text(text.replace(marker, addition, 1))
+
+          path = Path('test/knowledge-catalog-reclassification.test.ts')
+          text = path.read_text()
+          text = text.replace(
+              'import { reclassifyProductsFromKnowledgeCatalog } from "../src/db/knowledge-catalog-repository.js";',
+              'import {\n  findVerifiedCatalogMatches,\n  reclassifyProductsFromKnowledgeCatalog,\n} from "../src/db/knowledge-catalog-repository.js";',
+              1,
+          )
+          text += r'''
+
+          test("manual-verified exact catalog category can classify a candidate model without identity merge", async () => {
+            const db = captureDatabase((statement) => {
+              if (/FROM products p/.test(statement.sql)) {
+                return [
+                  {
+                    id: 41,
+                    shop_key: "u-audio",
+                    source_id: "listing-41",
+                    manufacturer_id: "sotm",
+                    model: "sNH-10G (クロック機能及びマスタークロック入力機能モデル、50Ω、12V)",
+                    model_resolution_status: "candidate",
+                    category: "マスタークロックジェネレーター",
+                    primary_category_id: "master_clock",
+                    category_ids: '["master_clock"]',
+                    classification_status: "classified",
+                    remediation_projection_required: 0,
+                    remediation_projection_token: "",
+                    identity_status: "unresolved",
+                    identity_catalog_product_id: null,
+                  },
+                ];
+              }
+              if (/FROM knowledge_catalog_products kp/.test(statement.sql)) {
+                return [
+                  {
+                    id: 240,
+                    manufacturer_id: "sotm",
+                    canonical_model:
+                      "sNH-10G (クロック機能及びマスタークロック入力機能モデル、50Ω、12V)",
+                    normalized_model:
+                      "SNH-10G (クロック機能及びマスタークロック入力機能モデル、50Ω、12V)",
+                    canonical_name: "sNH-10G 50Ω",
+                    category_id: "network_switch",
+                    is_primary: 1,
+                    manual_category_authority: 1,
+                  },
+                ];
+              }
+              if (/FROM knowledge_catalog_aliases/.test(statement.sql)) return [];
+              return [];
+            });
+            const refreshed: Array<{ id: number; shop_key: string; source_id: string }> = [];
+
+            const reclassified = await reclassifyProductsFromKnowledgeCatalog(
+              db,
+              "2026-08-19T00:00:00.000Z",
+              {
+                refreshListings: async (_database, listings) => {
+                  refreshed.push(...listings);
+                },
+              },
+            );
+
+            assert.equal(reclassified, 1);
+            const categoryUpdate = db.batched.find((statement) =>
+              /SET category = \?, primary_category_id = \?/.test(statement.sql),
+            );
+            assert.ok(categoryUpdate);
+            assert.equal(categoryUpdate.binds[1], "network_switch");
+            assert.deepEqual(
+              refreshed.map(({ id, shop_key, source_id }) => ({ id, shop_key, source_id })),
+              [{ id: 41, shop_key: "u-audio", source_id: "listing-41" }],
+            );
+          });
+
+          test("candidate model still cannot borrow category from a non-manual catalog row", async () => {
+            const db = captureDatabase((statement) => {
+              if (/FROM knowledge_catalog_products kp/.test(statement.sql)) {
+                return [
+                  {
+                    id: 240,
+                    manufacturer_id: "sotm",
+                    canonical_model: "sNH-10G 説明付き",
+                    normalized_model: "SNH-10G 説明付き",
+                    canonical_name: "sNH-10G",
+                    category_id: "network_switch",
+                    is_primary: 1,
+                    manual_category_authority: 0,
+                  },
+                ];
+              }
+              if (/FROM knowledge_catalog_aliases/.test(statement.sql)) return [];
+              return [];
+            });
+
+            const matches = await findVerifiedCatalogMatches(db, [
+              {
+                manufacturer_id: "sotm",
+                model: "sNH-10G 説明付き",
+                model_resolution_status: "candidate",
+              },
+            ]);
+            assert.equal(matches.size, 0);
+          });
+          '''.replace('          ', '')
+          path.write_text(text)
+          PY
+
+          npx oxfmt --write src/db/knowledge-catalog-repository.ts scripts/apply-approved-category-audit.ts test/knowledge-catalog-reclassification.test.ts
+          git diff --check
+          npm run typecheck
+          npm run test:unit -- --test-name-pattern='manual-verified|category reclassification'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/db/knowledge-catalog-repository.ts scripts/apply-approved-category-audit.ts .github/workflows/apply-approved-category-audit.yml test/knowledge-catalog-reclassification.test.ts
+          git commit -m 'fix(catalog): allow manual category authority for exact candidate models'
+          git push origin HEAD:fix/manual-verified-category-authority
