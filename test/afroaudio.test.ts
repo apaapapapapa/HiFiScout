@@ -57,13 +57,14 @@ test("Afro Audio parser extracts seller facts and canonical availability", () =>
   assert.equal(items[2].stockStatus, "sold_out");
 });
 
-test("Afro Audio parser de-duplicates image and title anchors for one detail page", () => {
+test("Afro Audio parser de-duplicates links and ignores footer availability labels", () => {
   const html = `
     <div class="item">
       <a href="/products/detail/30123"><img src="/item.jpg" alt=""></a>
       <a href="/products/detail/30123">〖Bランク〗LUXMAN L-509Z プリメインアンプ ラックスマン</a>
       <span>@60999 60999</span><span>￥780,000 税込</span><span>在庫あり</span>
-    </div>`;
+    </div>
+    <footer><a href="/products/list?category_id=99">販売済</a></footer>`;
 
   const items = parseAfroAudioListing(html, { rawCategory: "アンプ" });
   assert.equal(items.length, 1);
