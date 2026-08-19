@@ -61,11 +61,11 @@ function apiError(body: ApiEnvelope<unknown>, status: number): Error {
 function accessNotEnabled(body: ApiEnvelope<unknown>, status: number): boolean {
   return Boolean(
     status === 403 &&
-      body.errors?.some(
-        (item) =>
-          item.code === 9999 &&
-          /access(?:\.api\.error\.not_enabled| is not enabled)/iu.test(item.message || ""),
-      ),
+    body.errors?.some(
+      (item) =>
+        item.code === 9999 &&
+        /access(?:\.api\.error\.not_enabled| is not enabled)/iu.test(item.message || ""),
+    ),
   );
 }
 
