@@ -188,10 +188,7 @@ export function catalogAdminCategoryIds(primaryCategoryValue: string): string[] 
   return primaryCategoryId ? categoryClosureIds(primaryCategoryId) : [];
 }
 
-async function runBatches(
-  db: QueryableDatabase,
-  statements: D1PreparedStatement[],
-): Promise<void> {
+async function runBatches(db: QueryableDatabase, statements: D1PreparedStatement[]): Promise<void> {
   for (let index = 0; index < statements.length; index += WRITE_BATCH_SIZE) {
     await db.batch(statements.slice(index, index + WRITE_BATCH_SIZE));
   }
@@ -308,14 +305,7 @@ export async function updateKnowledgeCatalogAdminProduct(
             updated_at = ?
         WHERE id = ? AND verification_status = 'verified'
       `)
-      .bind(
-        input.canonicalName,
-        input.lifecycleStatus,
-        updatedAt,
-        updatedAt,
-        updatedAt,
-        productId,
-      ),
+      .bind(input.canonicalName, input.lifecycleStatus, updatedAt, updatedAt, updatedAt, productId),
     db
       .prepare("DELETE FROM knowledge_catalog_product_categories WHERE product_id = ?")
       .bind(productId),

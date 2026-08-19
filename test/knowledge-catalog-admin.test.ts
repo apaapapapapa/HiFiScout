@@ -29,7 +29,9 @@ test("catalog admin list query rejects invalid pagination and category", () => {
   );
   assert.equal(
     parseKnowledgeCatalogAdminListQuery(
-      new URL("https://example.test/api/admin/knowledge-catalog/products?categoryId=not-a-category"),
+      new URL(
+        "https://example.test/api/admin/knowledge-catalog/products?categoryId=not-a-category",
+      ),
     ),
     null,
   );

@@ -1,7 +1,4 @@
-import {
-  categoryIdForClassification,
-  categoryIdForFilter,
-} from "../catalog/categories.js";
+import { categoryIdForClassification, categoryIdForFilter } from "../catalog/categories.js";
 import { isRecord } from "../types.js";
 
 export type KnowledgeCatalogLifecycleStatus = "unknown" | "active" | "discontinued";
@@ -41,10 +38,7 @@ export function parseKnowledgeCatalogAdminListQuery(
   const query = boundedText(url.searchParams.get("q"), 200);
   const manufacturerId = boundedText(url.searchParams.get("manufacturerId"), 100);
   if (query === null || manufacturerId === null) return null;
-  if (
-    manufacturerId &&
-    !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(manufacturerId.toLowerCase())
-  ) {
+  if (manufacturerId && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(manufacturerId.toLowerCase())) {
     return null;
   }
 
@@ -55,7 +49,12 @@ export function parseKnowledgeCatalogAdminListQuery(
 
   const afterId = optionalNonNegativeInteger(url.searchParams.get("afterId"), 0);
   const requestedLimit = optionalNonNegativeInteger(url.searchParams.get("limit"), DEFAULT_LIMIT);
-  if (afterId === null || requestedLimit === null || requestedLimit < 1 || requestedLimit > MAX_LIMIT) {
+  if (
+    afterId === null ||
+    requestedLimit === null ||
+    requestedLimit < 1 ||
+    requestedLimit > MAX_LIMIT
+  ) {
     return null;
   }
 
