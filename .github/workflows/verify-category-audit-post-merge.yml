@@ -1,0 +1,204 @@
+name: Verify Category Audit Post-Merge
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      TARGET_SHA: 94d35ed2bc0856218581694bb4af9b6e9c349776
+      GH_TOKEN: ${{ github.token }}
+      CLOUDFLARE_ACCOUNT_ID: 9af87af4dbc00be3bfd4c8af3f52f684
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.TARGET_SHA }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Wait for main CI, deploy, correction replay, and E2E
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          check_workflow() {
+            local workflow="$1"
+            local label="$2"
+            local json run status conclusion id
+            json="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow}/runs?branch=main&head_sha=${TARGET_SHA}&per_page=20")"
+            run="$(jq -c --arg sha "$TARGET_SHA" '[.workflow_runs[] | select(.head_sha == $sha)] | sort_by(.created_at) | last // empty' <<< "$json")"
+            if [[ -z "$run" ]]; then
+              echo "${label}: not-started"
+              return 2
+            fi
+            id="$(jq -r '.id' <<< "$run")"
+            status="$(jq -r '.status' <<< "$run")"
+            conclusion="$(jq -r '.conclusion // ""' <<< "$run")"
+            echo "${label}: run=${id} status=${status} conclusion=${conclusion:-pending}"
+            if [[ "$status" != "completed" ]]; then
+              return 2
+            fi
+            if [[ "$conclusion" != "success" ]]; then
+              echo "${label} failed for ${TARGET_SHA}." >&2
+              return 1
+            fi
+            return 0
+          }
+
+          for attempt in $(seq 1 120); do
+            pending=0
+            for entry in \
+              'ci.yml|CI' \
+              'deploy.yml|Deploy Cloudflare' \
+              'apply-approved-category-audit.yml|Apply Approved Category Audit' \
+              'e2e.yml|E2E'; do
+              workflow="${entry%%|*}"
+              label="${entry#*|}"
+              if check_workflow "$workflow" "$label"; then
+                :
+              else
+                rc=$?
+                if [[ "$rc" -eq 1 ]]; then
+                  exit 1
+                fi
+                pending=1
+              fi
+            done
+            if [[ "$pending" -eq 0 ]]; then
+              echo 'All post-merge workflows succeeded.'
+              exit 0
+            fi
+            echo "Waiting for post-merge workflows (${attempt}/120)..."
+            sleep 15
+          done
+          echo 'Timed out waiting for post-merge workflows.' >&2
+          exit 1
+
+      - name: Verify production D1 category state
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(npx wrangler d1 execute DB --remote --json --command "
+            SELECT p.id, p.manufacturer, p.model, p.primary_category_id,
+                   COALESCE(r.catalog_product_id, 0) AS catalog_product_id,
+                   COALESCE(e.primary_category_id, '') AS entity_category_id
+            FROM products p
+            LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
+            LEFT JOIN product_search_entity_offers o ON o.listing_product_id = p.id
+            LEFT JOIN product_search_entities e ON e.id = o.entity_id
+            WHERE p.is_active = 1 AND (
+              p.model IN ('Grandioso T1','D1.5 SACD/CD Transport','Rossini Transport','Grandioso-P1X','Lina Network DAC','Granodioso G1','Grandioso G1','Madison STREAMER','S-05','S-05 B','D-07X','InPol EAR with DAC WH','NT-07','DV-50S','NR1200','MDS-JE700','DN-S1000','Network Router UEF','N-05XD')
+              OR p.model LIKE 'M12 SWITCH IE GOLD%'
+              OR p.model LIKE 'sNH-10G%'
+              OR p.model LIKE 'PCM1792A DACカード E7専用%'
+              OR p.model LIKE 'Silent%Switch OCXO%'
+              OR p.model LIKE 'SILENT SWITCH OCXO%'
+              OR p.model LIKE 'Fiber Box 2%'
+              OR p.model LIKE 'FIBER BOX 2%'
+            )
+            ORDER BY p.id;")"
+          jq '.[0].results' <<< "$response"
+
+          # Exact failures are surfaced individually so a later regression is diagnosable.
+          jq -e '
+            def allcat($model; $category):
+              ([.[0].results[] | select(.model == $model)] | length) > 0 and
+              ([.[0].results[] | select(.model == $model and (.primary_category_id != $category or .entity_category_id != $category))] | length) == 0;
+            allcat("Grandioso T1"; "turntable") and
+            allcat("D1.5 SACD/CD Transport"; "transport") and
+            allcat("Rossini Transport"; "transport") and
+            allcat("Grandioso-P1X"; "transport") and
+            allcat("Lina Network DAC"; "network_player") and
+            allcat("Madison STREAMER"; "network_player") and
+            allcat("S-05"; "power_amp") and
+            allcat("S-05 B"; "power_amp") and
+            allcat("D-07X"; "cd_sacd_player") and
+            allcat("InPol EAR with DAC WH"; "headphone_amp") and
+            allcat("NT-07"; "transport") and
+            allcat("DV-50S"; "cd_sacd_player") and
+            allcat("NR1200"; "integrated_amp") and
+            allcat("MDS-JE700"; "other") and
+            allcat("DN-S1000"; "dj_dtm") and
+            allcat("Network Router UEF"; "router") and
+            allcat("N-05XD"; "network_player")
+          ' <<< "$response" >/dev/null
+
+          jq -e '
+            ([.[0].results[] | select(.model | test("M12 SWITCH IE GOLD"))] | length) > 0 and
+            ([.[0].results[] | select((.model | test("M12 SWITCH IE GOLD")) and (.primary_category_id != "network_switch" or .entity_category_id != "network_switch"))] | length) == 0 and
+            ([.[0].results[] | select(.model | test("^sNH-10G"; "i"))] | length) > 0 and
+            ([.[0].results[] | select((.model | test("^sNH-10G"; "i")) and (.primary_category_id != "network_switch" or .entity_category_id != "network_switch"))] | length) == 0 and
+            ([.[0].results[] | select(.model | test("PCM1792A DACカード E7専用"))] | length) > 0 and
+            ([.[0].results[] | select((.model | test("PCM1792A DACカード E7専用")) and (.primary_category_id != "other_accessory" or .entity_category_id != "other_accessory"))] | length) == 0
+          ' <<< "$response" >/dev/null
+
+          edis="$(npx wrangler d1 execute DB --remote --json --command "
+            SELECT p.id, p.raw_manufacturer, p.manufacturer, p.canonical_manufacturer_id,
+                   p.model, p.primary_category_id, COALESCE(e.primary_category_id, '') AS entity_category_id
+            FROM products p
+            LEFT JOIN product_search_entity_offers o ON o.listing_product_id = p.id
+            LEFT JOIN product_search_entities e ON e.id = o.entity_id
+            WHERE p.is_active = 1 AND p.normalized_raw_manufacturer = 'ediscreation'
+            ORDER BY p.id;")"
+          jq '.[0].results' <<< "$edis"
+          jq -e '
+            (.[0].results | length) > 0 and
+            ([.[0].results[] | select(.manufacturer != "EDISCREATION" or .canonical_manufacturer_id != "ediscreation")] | length) == 0 and
+            ([.[0].results[] | select((.model | test("switch"; "i")) and (.primary_category_id != "network_switch" or .entity_category_id != "network_switch"))] | length) == 0 and
+            ([.[0].results[] | select((.model | test("fiber box"; "i")) and (.primary_category_id != "optical_isolator" or .entity_category_id != "optical_isolator"))] | length) == 0
+          ' <<< "$edis" >/dev/null
+
+          protected="$(npx wrangler d1 execute DB --remote --json --command "
+            SELECT id, model, primary_category_id
+            FROM products
+            WHERE p.is_active = 1;")" 2>/dev/null || true
+
+      - name: Verify representative public API results
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://hifiscout.tokyojp.workers.dev/api/product-search'
+
+          check_api() {
+            local query="$1"
+            local expected="$2"
+            local response
+            for attempt in $(seq 1 8); do
+              response="$(curl --fail --silent --show-error --get "$base" --data-urlencode "q=${query}" --data-urlencode 'limit=50')"
+              if jq -e --arg expected "$expected" '.items | any(.primary_category_id == $expected)' <<< "$response" >/dev/null; then
+                echo "API ${query}: ${expected}"
+                return 0
+              fi
+              echo "Waiting for API projection/cache: ${query} -> ${expected} (${attempt}/8)"
+              sleep 10
+            done
+            echo "Public API did not expose ${query} as ${expected}." >&2
+            jq '.items[] | {manufacturer, model, primary_category_id, category}' <<< "$response" >&2
+            return 1
+          }
+
+          check_api 'Grandioso T1' turntable
+          check_api 'D1.5 SACD/CD Transport' transport
+          check_api 'Rossini Transport' transport
+          check_api 'Grandioso P1X' transport
+          check_api 'Lina Network DAC' network_player
+          check_api 'N-05XD' network_player
+          check_api 'Madison STREAMER' network_player
+          check_api 'S-05' power_amp
+          check_api 'D-07X' cd_sacd_player
+          check_api 'NT-07' transport
+          check_api 'Network Router UEF' router
+          check_api 'Silent Switch OCXO' network_switch
+          check_api 'Fiber Box 2' optical_isolator
