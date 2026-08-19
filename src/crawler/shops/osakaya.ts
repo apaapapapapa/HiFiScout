@@ -101,6 +101,7 @@ function listingTitle(value: string): string {
   return text.slice(0, end).trim();
 }
 
+/** Osaka-ya cards can contain MSRP first and the actual taxed selling price last. */
 function currentPrice(text: string): number | null {
   const normalized = cleanText(text).normalize("NFKC");
   const taxedPrices = [...normalized.matchAll(/[¥￥]\s*([0-9][0-9,]*)\s*税込/gu)];
