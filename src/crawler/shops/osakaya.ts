@@ -28,6 +28,7 @@ const ENTRY_PAGES: readonly OsakayaEntryPage[] = Object.freeze([
 ]);
 
 const SOLD_PATTERN = /SOLD\s*OUT|売り切れ|売切れ|売約済(?:み)?|在庫なし|完売|品切れ|販売終了/iu;
+const CONDITION_MARKER_PATTERN = /(?:中古品|特価品)/u;
 const CONDITION_PATTERN = /(?:中古品|特価品)/gu;
 
 function listingPage(entry: OsakayaEntryPage, page = 1): OsakayaPage {
@@ -82,20 +83,11 @@ function productAnchorRecords(html: string): ProductAnchorRecord[] {
 
 function sellerText(record: ProductAnchorRecord): string {
   const candidates = [...new Set(record.titles.map(cleanText).filter(Boolean))];
-  return (
-    candidates.sort((a, b) => {
-      const score = (value: string) =>
-        (CONDITION_PATTERN.test(value) ? 1000 : 0) +
-        (/[¥￥]\s*[0-9][0-9,]*\s*税込/u.test(value) ? 1000 : 0) +
-        Math.min(value.length, 500);
-      CONDITION_PATTERN.lastIndex = 0;
-      const left = score(a);
-      CONDITION_PATTERN.lastIndex = 0;
-      const right = score(b);
-      CONDITION_PATTERN.lastIndex = 0;
-      return right - left;
-    })[0] || ""
-  );
+  const score = (value: string) =>
+    (CONDITION_MARKER_PATTERN.test(value) ? 1000 : 0) +
+    (/[¥￥]\s*[0-9][0-9,]*\s*税込/u.test(value) ? 1000 : 0) +
+    Math.min(value.length, 500);
+  return candidates.sort((a, b) => score(b) - score(a))[0] || "";
 }
 
 function listingTitle(value: string): string {
@@ -213,6 +205,10 @@ export function discoverOsakayaPageUrls(
   if (!page.conditionCode || !page.conditionText) return [];
   if ((page.page || 1) !== 1) return [];
 
+  const entry: OsakayaEntryPage = {
+    conditionCode: page.conditionCode,
+    conditionText: page.conditionText,
+  };
   const targets = new Map<number, OsakayaPage>();
   const anchorRe = /<a\b([^>]*?)href\s*=\s*(["'])([^"']+)\2([^>]*)>([\s\S]*?)<\/a>/gi;
   for (const match of String(html || "").matchAll(anchorRe)) {
@@ -231,10 +227,7 @@ export function discoverOsakayaPageUrls(
 
   const maxPage = Math.ceil(total / itemsOnPage);
   return Array.from({ length: Math.max(0, maxPage - 1) }, (_, index) =>
-    listingPage(
-      { conditionCode: page.conditionCode as "2" | "3", conditionText: page.conditionText },
-      index + 2,
-    ),
+    listingPage(entry, index + 2),
   );
 }
 
