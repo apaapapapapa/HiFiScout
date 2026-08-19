@@ -22,12 +22,6 @@ interface ProductAnchorRecord {
   titles: string[];
 }
 
-interface AfroAudioManufacturerModel {
-  rawManufacturer: string;
-  manufacturer: string;
-  model: string;
-}
-
 /**
  * Top-level categories that belong to HiFiScout's audio scope. Afro Audio also sells cameras,
  * musical instruments, software and recording/PA equipment; those are intentionally excluded.
@@ -152,20 +146,6 @@ function conditionText(title: string): string {
     .join(" / ");
 }
 
-function manufacturerModel(title: string): AfroAudioManufacturerModel {
-  const chPrecision = title.match(/^CH\s+Precision(?=\s|$)/iu)?.[0];
-  if (chPrecision) {
-    return {
-      rawManufacturer: chPrecision,
-      manufacturer: "CH PRECISION",
-      model: title.slice(chPrecision.length).trim(),
-    };
-  }
-
-  const { manufacturer, model } = splitManufacturerModel(title, "afroaudio");
-  return { rawManufacturer: manufacturer, manufacturer, model };
-}
-
 function stockStatus(text: string) {
   const priceIndex = text.search(/[¥￥]\s*[0-9]/u);
   const statusRegion = (priceIndex >= 0 ? text.slice(priceIndex) : text).slice(0, 160);
@@ -194,7 +174,7 @@ export function parseAfroAudioListing(
     const title = canonicalTitle(sellerTitle);
     if (!title) continue;
 
-    const { rawManufacturer, manufacturer, model } = manufacturerModel(title);
+    const { manufacturer, model } = splitManufacturerModel(title, "afroaudio");
     const code = productCode(blockText);
     const metadata: Record<string, unknown> = {};
     if (code) metadata.productCode = code;
@@ -203,7 +183,7 @@ export function parseAfroAudioListing(
       sourceId: record.sourceId,
       sourceUrl: record.sourceUrl,
       title,
-      rawManufacturer,
+      rawManufacturer: manufacturer,
       manufacturer,
       model: model || title,
       rawCategory: page.rawCategory || "",
