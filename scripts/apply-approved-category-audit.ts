@@ -203,7 +203,9 @@ export async function applyApprovedCategoryAudit(db: QueryableDatabase): Promise
     .bind(AUDIT_SOURCE)
     .all<CategoryMismatchRow>();
   if ((mismatches.results || []).length) {
-    throw new Error(`approved category audit mismatches remain: ${JSON.stringify(mismatches.results)}`);
+    throw new Error(
+      `approved category audit mismatches remain: ${JSON.stringify(mismatches.results)}`,
+    );
   }
 
   const projectionMismatches = await db
