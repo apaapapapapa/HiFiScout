@@ -30,8 +30,8 @@ jobs:
           for _ in $(seq 1 90); do
             runs="$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H 'Accept: application/vnd.github+json' "$api")"
             ci="$(jq -c '[.workflow_runs[] | select(.name == "CI" and .event == "push")] | sort_by(.created_at) | last // empty' <<<"$runs")"
-            public_deploy="$(jq -c '[.workflow_runs[] | select(.name == "Deploy Cloudflare" and .event == "workflow_run")] | sort_by(.created_at) | last // empty' <<<"$runs")"
-            admin_deploy="$(jq -c '[.workflow_runs[] | select(.name == "Deploy Catalog Admin" and .event == "workflow_run")] | sort_by(.created_at) | last // empty' <<<"$runs")"
+            public_deploy="$(jq -c '[.workflow_runs[] | select(.name == "Deploy Cloudflare" and .event == "workflow_run" and .conclusion != "skipped")] | sort_by(.created_at) | last // empty' <<<"$runs")"
+            admin_deploy="$(jq -c '[.workflow_runs[] | select(.name == "Deploy Catalog Admin" and .event == "workflow_run" and .conclusion != "skipped")] | sort_by(.created_at) | last // empty' <<<"$runs")"
 
             ci_state="$(jq -r 'if . == "" then "missing" else "\(.status)/\(.conclusion // "-")" end' <<<"${ci:-\"\"}")"
             public_state="$(jq -r 'if . == "" then "missing" else "\(.status)/\(.conclusion // "-")" end' <<<"${public_deploy:-\"\"}")"
