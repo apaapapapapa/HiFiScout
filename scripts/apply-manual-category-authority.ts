@@ -167,7 +167,6 @@ export async function applyManualCategoryAuthority(db: QueryableDatabase): Promi
         `manual category target ${target.catalog_product_id} has non-selectable category ${target.expected_category_id}`,
       );
     }
-    if (target.current_category_id === category.id) continue;
 
     const projectionToken = `${CATEGORY_PROJECTION_TOKEN_PREFIX}${crypto.randomUUID()}`;
     tokens.set(target.id, projectionToken);
