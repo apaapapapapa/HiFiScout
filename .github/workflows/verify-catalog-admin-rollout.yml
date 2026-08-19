@@ -1,0 +1,95 @@
+name: Verify Catalog Admin Rollout
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/verify-catalog-admin-rollout.yml"
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TARGET_SHA: 1f7ed9d0dcc536f6c806b956c266f96ca5d9f44a
+      PUBLIC_URL: https://hifiscout.tokyojp.workers.dev
+      ADMIN_URL: https://hifiscout-admin.tokyojp.workers.dev
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Track main rollout chain
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${TARGET_SHA}&per_page=100"
+          ci=""
+          public_deploy=""
+          admin_deploy=""
+          for _ in $(seq 1 90); do
+            runs="$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H 'Accept: application/vnd.github+json' "$api")"
+            ci="$(jq -c '[.workflow_runs[] | select(.name == "CI" and .event == "push")] | sort_by(.created_at) | last // empty' <<<"$runs")"
+            public_deploy="$(jq -c '[.workflow_runs[] | select(.name == "Deploy Cloudflare" and .event == "workflow_run")] | sort_by(.created_at) | last // empty' <<<"$runs")"
+            admin_deploy="$(jq -c '[.workflow_runs[] | select(.name == "Deploy Catalog Admin" and .event == "workflow_run")] | sort_by(.created_at) | last // empty' <<<"$runs")"
+
+            ci_state="$(jq -r 'if . == "" then "missing" else "\(.status)/\(.conclusion // "-")" end' <<<"${ci:-\"\"}")"
+            public_state="$(jq -r 'if . == "" then "missing" else "\(.status)/\(.conclusion // "-")" end' <<<"${public_deploy:-\"\"}")"
+            admin_state="$(jq -r 'if . == "" then "missing" else "\(.status)/\(.conclusion // "-")" end' <<<"${admin_deploy:-\"\"}")"
+            echo "CI=${ci_state} DeployCloudflare=${public_state} DeployCatalogAdmin=${admin_state}"
+
+            if [[ -n "$ci" && -n "$public_deploy" && -n "$admin_deploy" ]] && \
+               [[ "$(jq -r .status <<<"$ci")" == "completed" ]] && \
+               [[ "$(jq -r .status <<<"$public_deploy")" == "completed" ]] && \
+               [[ "$(jq -r .status <<<"$admin_deploy")" == "completed" ]]; then
+              break
+            fi
+            sleep 10
+          done
+
+          [[ -n "$ci" ]] || { echo "main CI run not found" >&2; exit 1; }
+          [[ -n "$public_deploy" ]] || { echo "Deploy Cloudflare run not found" >&2; exit 1; }
+          [[ -n "$admin_deploy" ]] || { echo "Deploy Catalog Admin run not found" >&2; exit 1; }
+
+          echo "CI_RUN_ID=$(jq -r .id <<<"$ci") conclusion=$(jq -r .conclusion <<<"$ci")"
+          echo "PUBLIC_DEPLOY_RUN_ID=$(jq -r .id <<<"$public_deploy") conclusion=$(jq -r .conclusion <<<"$public_deploy")"
+          echo "ADMIN_DEPLOY_RUN_ID=$(jq -r .id <<<"$admin_deploy") conclusion=$(jq -r .conclusion <<<"$admin_deploy")"
+
+          [[ "$(jq -r .conclusion <<<"$ci")" == "success" ]]
+          [[ "$(jq -r .conclusion <<<"$public_deploy")" == "success" ]]
+          [[ "$(jq -r .conclusion <<<"$admin_deploy")" == "success" ]]
+
+      - name: Verify production access boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          public_page="$(curl -sS --max-time 20 "${PUBLIC_URL}/catalog-admin" || true)"
+          if grep -q "Knowledge Catalog 管理" <<<"$public_page"; then
+            echo "Public Worker still exposes Catalog Admin HTML" >&2
+            exit 1
+          fi
+
+          public_api_status="$(curl -sS -o /tmp/public-admin-api -w '%{http_code}' --max-time 20 "${PUBLIC_URL}/api/admin/knowledge-catalog/products")"
+          echo "PUBLIC_ADMIN_API_STATUS=${public_api_status}"
+          [[ "$public_api_status" == "404" ]]
+
+          headers="$(mktemp)"
+          body="$(mktemp)"
+          trap 'rm -f "$headers" "$body"' EXIT
+          admin_status="$(curl -sS -D "$headers" -o "$body" -w '%{http_code}' --max-time 20 "$ADMIN_URL")"
+          location="$(awk 'BEGIN { IGNORECASE=1 } /^location:/ { sub(/\r$/, ""); print substr($0, 11) }' "$headers" | tail -1)"
+          echo "ADMIN_UNAUTH_STATUS=${admin_status}"
+          echo "ADMIN_UNAUTH_LOCATION=${location}"
+
+          if [[ "$admin_status" =~ ^30[12378]$ ]] && [[ "$location" == *"/cdn-cgi/access/"* ]]; then
+            echo "Cloudflare Access challenge confirmed"
+            exit 0
+          fi
+          if [[ "$admin_status" == "401" || "$admin_status" == "403" ]]; then
+            echo "Unauthenticated admin request rejected"
+            exit 0
+          fi
+          echo "Admin Worker is not protected as expected" >&2
+          cat "$body" >&2
+          exit 1
