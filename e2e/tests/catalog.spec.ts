@@ -144,7 +144,14 @@ test("catalog page boots with live metadata and product API", async ({ page }) =
   if (products.items.length) {
     const titleControl = page.locator(".product-title-link").first();
     await expect(titleControl).toBeVisible();
-    await expect(titleControl).toHaveAttribute("data-offers", /.+/);
+    const tagName = await titleControl.evaluate((element) => element.tagName);
+    if (tagName === "BUTTON") {
+      await expect(titleControl).toHaveAttribute("data-offers", /.+/);
+    } else {
+      expect(tagName).toBe("A");
+      await expect(titleControl).toHaveAttribute("href", /^https?:\/\//);
+      await expect(titleControl).toHaveAttribute("target", "_blank");
+    }
   }
 });
 
