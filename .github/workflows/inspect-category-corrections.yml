@@ -1,0 +1,51 @@
+name: Inspect Category Corrections
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_ACCOUNT_ID: 9af87af4dbc00be3bfd4c8af3f52f684
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Inspect targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          sql="SELECT
+            p.id, p.shop_key, p.source_id, p.title, p.raw_manufacturer, p.manufacturer,
+            p.canonical_manufacturer_id, p.raw_model, p.model, p.normalized_model,
+            p.primary_category_id, p.category, p.classification_status,
+            json_extract(p.metadata_json, '$.categoryClassification.version') AS category_version,
+            r.status AS identity_status, r.catalog_product_id
+          FROM products p
+          LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
+          WHERE p.is_active = 1 AND (
+            p.model LIKE '%Grandioso T1%' OR p.model LIKE '%D1.5%' OR p.model LIKE '%Rossini Transport%' OR
+            p.model LIKE '%Grandioso-P1X%' OR p.model LIKE '%Lina Network DAC%' OR p.model LIKE '%Granodioso G1%' OR
+            p.model LIKE '%Grandioso G1%' OR p.model LIKE '%Madison STREAMER%' OR p.model LIKE 'S-05%' OR
+            p.model LIKE '%D-07X%' OR p.model LIKE '%InPol EAR%' OR p.model LIKE '%M12 SWITCH%' OR
+            p.model LIKE '%NT-07%' OR p.model LIKE '%sNH-10G%' OR p.model LIKE '%DV-50S%' OR
+            p.model LIKE '%PCM1792A DAC%' OR p.model LIKE '%NR1200%' OR p.model LIKE '%MDS-JE700%' OR
+            p.model LIKE '%DN-S1000%' OR p.model LIKE '%Network Router UEF%' OR p.model LIKE '%SILENT SWITCH OCXO%' OR
+            p.model LIKE '%FIBER BOX 2%'
+          )
+          ORDER BY p.id;"
+          echo '=== PRODUCTS ==='
+          npx wrangler d1 execute DB --remote --json --command "$sql" | jq -c '.[0].results[]'
+          echo '=== CATALOG ==='
+          npx wrangler d1 execute DB --remote --json --command "SELECT kp.id, kp.manufacturer_id, kp.canonical_model, kp.normalized_model, kp.canonical_name, kp.verification_status, kpc.category_id, kpc.is_primary FROM knowledge_catalog_products kp LEFT JOIN knowledge_catalog_product_categories kpc ON kpc.product_id = kp.id WHERE kp.normalized_model IN ('GRANDIOSO T1','T1','D1.5 SACD/CD TRANSPORT','ROSSINI TRANSPORT','GRANDIOSO-P1X','LINA NETWORK DAC','GRANODIOSO G1','GRANDIOSO G1','MADISON STREAMER','S-05 B','S-05','D-07X','INPOL EAR WITH DAC WH','M12 SWITCH IE GOLD + 専用オプションケーブル2.0M ×3本','NT-07','SNH-10G (クロック機能及びマスタークロック入力機能モデル、50Ω、12V)','SNH-10G (クロック機能及びマスタークロック入力機能モデル、75Ω、12V)','DV-50S','PCM1792A DACカード E7専用','NR1200','MDS-JE700','DN-S1000','NETWORK ROUTER UEF','SILENT SWITCH OCXO “JAPAN EXCLUSIVE MODEL”','FIBER BOX 2 “JAPAN EXCLUSIVE MODEL”') ORDER BY kp.id, kpc.is_primary DESC;" | jq -c '.[0].results[]'
