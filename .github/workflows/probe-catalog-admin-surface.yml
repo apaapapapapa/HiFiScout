@@ -1,0 +1,31 @@
+name: Probe Catalog Admin Surface
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/probe-catalog-admin-surface.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe production paths
+        shell: bash
+        run: |
+          set -u
+          base='https://hifiscout.tokyojp.workers.dev'
+          for path in /catalog-admin.html /catalog-admin /catalog-admin.js /catalog-admin.css /api/admin/knowledge-catalog/products /api/health; do
+            echo "===== ${path} ====="
+            headers="$(mktemp)"
+            body="$(mktemp)"
+            code="$(curl -sS -L --max-redirs 5 -D "$headers" -o "$body" -w '%{http_code}' "${base}${path}" || true)"
+            echo "status=${code}"
+            sed -n '1,20p' "$headers"
+            echo '--- body prefix ---'
+            head -c 500 "$body" || true
+            echo
+            rm -f "$headers" "$body"
+          done
