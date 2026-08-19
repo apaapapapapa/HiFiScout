@@ -146,7 +146,7 @@ function paginationTarget(
 ): OsakayaPage | null {
   if (!page.conditionCode || !page.conditionText) return null;
   try {
-    const url = new URL(href, BASE_URL);
+    const url = new URL(href, page.url || `${BASE_URL}/store/items/`);
     if (url.origin !== BASE_URL || !/^\/store\/items\/?$/u.test(url.pathname)) return null;
     if (!url.searchParams.getAll(CONDITION_PARAM).includes(page.conditionCode)) return null;
 
