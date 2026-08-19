@@ -5,34 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex,nofollow" />
     <title>Knowledge Catalog 管理 | HiFiScout</title>
-    <link rel="stylesheet" href="/brand.css" />
     <link rel="stylesheet" href="/catalog-admin.css" />
   </head>
   <body>
     <main class="admin-shell">
       <header class="admin-header">
-        <a class="brand-link" href="/" aria-label="HiFiScout トップへ戻る">
-          <img src="/hifiscout-mark.jpg" alt="" />
-          <span>HiFiScout</span>
-        </a>
+        <a class="brand-link" href="https://hifiscout.tokyojp.workers.dev/" rel="noreferrer">HiFiScout</a>
         <div>
-          <p class="eyebrow">ADMIN</p>
+          <p class="eyebrow">CLOUDFLARE ACCESS · ADMIN</p>
           <h1>Knowledge Catalog 管理</h1>
           <p class="lede">検証済みCatalogの表示名・カテゴリ・ライフサイクルを修正します。</p>
         </div>
       </header>
-
-      <section class="panel auth-panel" aria-labelledby="auth-heading">
-        <div>
-          <h2 id="auth-heading">管理APIへ接続</h2>
-          <p>ADMIN_TOKENはこのタブのsessionStorageにだけ保持され、URLには保存されません。</p>
-        </div>
-        <div class="auth-controls">
-          <label for="admin-token">ADMIN_TOKEN</label>
-          <input id="admin-token" type="password" autocomplete="off" spellcheck="false" />
-          <button id="connect-button" type="button">接続</button>
-        </div>
-      </section>
 
       <p id="status-message" class="status-message" role="status" aria-live="polite"></p>
 

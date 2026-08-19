@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "hifiscout",
-  "main": "src/index.ts",
+  "main": "src/worker.ts",
   "compatibility_date": "2026-08-11",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
@@ -88,7 +88,7 @@
     "EVIDENCE_BURST_SAMPLE_RATE": "10",
     "EVIDENCE_STORAGE_WARNING_BYTES": "8000000000",
     "AUDIOUNION_ENTRY_URL": "https://www.audiounion.jp/st/new_arrival_used.html",
-    "CRAWLER_USER_AGENT": "HiFiScoutBot/0.1 (+https://github.com/apaapapapa/HiFiScout)"
+    "CRAWLER_USER_AGENT": "HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)"
   },
   "r2_buckets": [{ "binding": "EVIDENCE_BUCKET", "bucket_name": "hifiscout-evidence" }],
   "d1_databases": [{ "binding": "DB" }]

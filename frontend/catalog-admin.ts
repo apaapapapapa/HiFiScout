@@ -33,8 +33,6 @@ function element<T>(id: string): T {
   return value as unknown as T;
 }
 
-const tokenInput = element<HTMLInputElement>("admin-token");
-const connectButton = element<HTMLButtonElement>("connect-button");
 const controls = element<HTMLElement>("catalog-controls");
 const searchForm = element<HTMLFormElement>("catalog-search-form");
 const queryInput = element<HTMLInputElement>("catalog-query");
@@ -55,8 +53,6 @@ const editLifecycle = element<HTMLSelectElement>("edit-lifecycle");
 const cancelEdit = element<HTMLButtonElement>("cancel-edit");
 const saveEdit = element<HTMLButtonElement>("save-edit");
 
-const SESSION_KEY = "hifiscout.catalog-admin-token";
-let token = sessionStorage.getItem(SESSION_KEY) || "";
 let categories: CategoryFacet[] = [];
 let currentAfterId = 0;
 let nextAfterId: number | null = null;
@@ -75,7 +71,6 @@ function errorText(error: unknown): string {
 
 function setBusy(value: boolean): void {
   busy = value;
-  connectButton.disabled = value;
   previousButton.disabled = value || history.length === 0;
   nextButton.disabled = value || nextAfterId === null;
   saveEdit.disabled = value;
@@ -103,9 +98,10 @@ async function json<T>(response: Response): Promise<T> {
 
 async function adminJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
-  headers.set("authorization", `Bearer ${token}`);
   if (init.body) headers.set("content-type", "application/json");
-  return json<T>(await fetch(path, { ...init, headers, cache: "no-store" }));
+  return json<T>(
+    await fetch(path, { ...init, headers, cache: "no-store", credentials: "same-origin" }),
+  );
 }
 
 function categoryName(id: string): string {
@@ -197,9 +193,7 @@ function addOption(select: HTMLSelectElement, category: CategoryFacet): void {
 }
 
 async function loadCategories(): Promise<void> {
-  const meta = await json<{ categoryFacets: CategoryFacet[] }>(
-    await fetch("/api/meta", { cache: "no-store" }),
-  );
+  const meta = await adminJson<{ categoryFacets: CategoryFacet[] }>("/api/meta");
   categories = meta.categoryFacets;
   categoryFilter.replaceChildren(new Option("すべてのカテゴリ", ""));
   editCategory.replaceChildren();
@@ -207,16 +201,6 @@ async function loadCategories(): Promise<void> {
     if (category.filterable) addOption(categoryFilter, category);
     if (category.classifiable) addOption(editCategory, category);
   }
-}
-
-async function connect(): Promise<void> {
-  token = tokenInput.value.trim();
-  if (!token) {
-    message("ADMIN_TOKENを入力してください。", "error");
-    return;
-  }
-  sessionStorage.setItem(SESSION_KEY, token);
-  await load(0, true);
 }
 
 async function save(): Promise<void> {
@@ -255,7 +239,6 @@ async function save(): Promise<void> {
   }
 }
 
-connectButton.addEventListener("click", () => void connect());
 searchForm.addEventListener("submit", (event) => {
   event.preventDefault();
   history = [];
@@ -282,13 +265,10 @@ editForm.addEventListener("submit", (event) => {
 async function start(): Promise<void> {
   try {
     await loadCategories();
+    await load(0, true);
   } catch (error) {
-    message(`カテゴリ定義を読み込めません: ${errorText(error)}`, "error");
-    return;
+    message(`管理画面を初期化できません: ${errorText(error)}`, "error");
   }
-  tokenInput.value = token;
-  if (token) await load(0, true);
-  else message("ADMIN_TOKENで接続するとCatalogを編集できます。");
 }
 
 void start();
