@@ -82,7 +82,7 @@ function assetRequest(request: Request, pathname: string): Request {
   return new Request(url, request);
 }
 
-async function handleAuthenticatedRequest(
+export async function handleAuthenticatedCatalogAdminRequest(
   request: Request,
   env: CatalogAdminEnv,
 ): Promise<Response> {
@@ -112,7 +112,10 @@ async function handleAuthenticatedRequest(
   }
 
   if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/catalog-admin")) {
-    return env.ADMIN_ASSETS.fetch(assetRequest(request, "/catalog-admin.html"));
+    // Static Assets' default HTML handling maps the clean URL to catalog-admin.html with 200.
+    // Fetching /catalog-admin.html instead returns a 307 back to /catalog-admin, which loops
+    // when this Worker handles the clean route again after Cloudflare Access authentication.
+    return env.ADMIN_ASSETS.fetch(assetRequest(request, "/catalog-admin"));
   }
   if (request.method === "GET" && ADMIN_ASSET_PATHS.has(url.pathname)) {
     return env.ADMIN_ASSETS.fetch(request);
@@ -127,6 +130,6 @@ export default {
       audience: env.ACCESS_AUD || "",
     });
     if (!claims) return json({ error: "cloudflare_access_required" }, { status: 403 });
-    return handleAuthenticatedRequest(request, env);
+    return handleAuthenticatedCatalogAdminRequest(request, env);
   },
 } satisfies ExportedHandler<CatalogAdminEnv>;
