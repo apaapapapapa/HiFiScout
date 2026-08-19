@@ -116,7 +116,7 @@ function currentPrice(lines: readonly string[]): number | null {
       const value = line.slice(labelMatch.index + labelMatch[0].length);
       if (SOLD_PATTERN.test(value)) return null;
       const prices = [...value.matchAll(/(?:[¥￥]\s*)?([0-9][0-9,]{2,})/g)];
-      const raw = prices.at(-1)?.[1];
+      const raw = prices[prices.length - 1]?.[1];
       if (raw) return Number.parseInt(raw.replaceAll(",", ""), 10);
     }
   }
