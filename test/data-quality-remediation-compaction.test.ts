@@ -50,16 +50,16 @@ test("compaction resolves only superseded automatic jobs and expired leases", as
     );
 
     INSERT INTO products VALUES
-      (1, 1, 0, 3, 2, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}'),
-      (2, 1, 0, 3, 1, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}'),
-      (3, 1, 0, 3, 2, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}'),
-      (4, 1, 0, 3, 2, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}'),
-      (5, 1, 0, 3, 2, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}'),
-      (6, 1, 0, 3, 2, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}'),
-      (7, 1, 0, 3, 2, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}'),
+      (1, 1, 0, ${RESOLUTION_VERSIONS.manufacturer}, ${RESOLUTION_VERSIONS.model}, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}'),
+      (2, 1, 0, ${RESOLUTION_VERSIONS.manufacturer}, ${RESOLUTION_VERSIONS.model - 1}, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}'),
+      (3, 1, 0, ${RESOLUTION_VERSIONS.manufacturer}, ${RESOLUTION_VERSIONS.model}, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}'),
+      (4, 1, 0, ${RESOLUTION_VERSIONS.manufacturer}, ${RESOLUTION_VERSIONS.model}, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}'),
+      (5, 1, 0, ${RESOLUTION_VERSIONS.manufacturer}, ${RESOLUTION_VERSIONS.model}, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}'),
+      (6, 1, 0, ${RESOLUTION_VERSIONS.manufacturer}, ${RESOLUTION_VERSIONS.model}, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}'),
+      (7, 1, 0, ${RESOLUTION_VERSIONS.manufacturer}, ${RESOLUTION_VERSIONS.model}, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}'),
       (8, 0, 1, 0, 0, '{}'),
-      (9, 1, 0, 3, 2, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}'),
-      (10, 1, 1, 3, 2, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}');
+      (9, 1, 0, ${RESOLUTION_VERSIONS.manufacturer}, ${RESOLUTION_VERSIONS.model}, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}'),
+      (10, 1, 1, ${RESOLUTION_VERSIONS.manufacturer}, ${RESOLUTION_VERSIONS.model}, '{"categoryClassification":{"version":${RESOLUTION_VERSIONS.category}}}');
 
     INSERT INTO product_identity_resolutions VALUES (4, 1), (7, 1);
 
