@@ -30,6 +30,14 @@ const SAFE_MAPPED_BROAD_FALLBACK_IDS: ReadonlySet<string> = new Set([
   "cable_other",
 ]);
 
+// The remediation replay reconstructs category evidence from persisted listing fields without
+// importing concrete crawler adapters. These exact raw seller labels are unambiguous enough to
+// reproduce the same safe fallback even when the original shop mapping is not available.
+const SAFE_RAW_BROAD_FALLBACK_IDS: ReadonlyMap<string, string> = new Map([
+  ["アクセサリー", "other_accessory"],
+  ["ケーブル", "cable_other"],
+]);
+
 function mode(value: unknown, fallback: CategoryPolicyMode): CategoryPolicyMode {
   return value === "authoritative" || value === "corroborative" || value === "ignore"
     ? value
@@ -124,6 +132,13 @@ function safeMappedBroadFallbackId(
   policy: ResolvedCategoryPolicy,
 ): string | null {
   if (!rawCategory || policy.sellerCategory.default !== "authoritative") return null;
+
+  const exactRawFallback = SAFE_RAW_BROAD_FALLBACK_IDS.get(rawCategory.normalize("NFKC").trim());
+  if (exactRawFallback) {
+    // An explicit per-category policy always wins over the automatic fallback promotion.
+    return policy.sellerCategory.categories?.[exactRawFallback] == null ? exactRawFallback : null;
+  }
+
   const directMapping = categoryMapping[rawCategory];
   // Array mappings intentionally represent broad/mixed seller buckets; never force one member.
   if (typeof directMapping !== "string") return null;
@@ -179,9 +194,9 @@ export function collectListingCategoryEvidence({
     context: "title",
   });
 
-  // A shop-owned mapping such as Hifido's `アクセサリー -> other_accessory` is exact enough to
-  // resolve a model-only listing, but only after confirming the title gives us no more specific
-  // category. This is intentionally not a general promotion of corroborative evidence.
+  // An exact safe seller bucket can resolve a model-only listing, but only after confirming the
+  // title gives us no more specific category. This is intentionally not a general promotion of
+  // corroborative evidence.
   const fallbackId =
     titleEvidence.length === 0
       ? safeMappedBroadFallbackId(rawCategory, categoryMapping, policy)
