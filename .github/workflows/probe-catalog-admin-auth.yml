@@ -1,0 +1,32 @@
+name: Probe Catalog Admin Auth
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/probe-catalog-admin-auth.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    env:
+      ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+      PRODUCTION_BASE_URL: https://hifiscout.tokyojp.workers.dev
+    steps:
+      - name: Verify authenticated catalog read
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "$ADMIN_TOKEN" ]]
+          body="$(mktemp)"
+          trap 'rm -f "$body"' EXIT
+          status="$(curl -sS -o "$body" -w '%{http_code}' \
+            -H "Authorization: Bearer ${ADMIN_TOKEN}" \
+            "${PRODUCTION_BASE_URL}/api/admin/knowledge-catalog/products?limit=1")"
+          echo "authenticated admin API status=${status}"
+          [[ "$status" == "200" ]]
+          jq -e '.items | type == "array"' "$body" >/dev/null
+          jq -e '.hasMore | type == "boolean"' "$body" >/dev/null
+          echo "authenticated catalog read succeeded"
