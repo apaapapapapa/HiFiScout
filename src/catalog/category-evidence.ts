@@ -21,6 +21,15 @@ const BROAD_SELLER_CATEGORY_IDS: ReadonlySet<string> = new Set([
   "clean_power",
 ]);
 
+// These leaves are intentionally broad but still semantically exact when a shop explicitly maps
+// its own seller bucket to them. They may be used as a last-resort classification only when no
+// stronger title evidence exists. Keep this list narrower than BROAD_SELLER_CATEGORY_IDS: a
+// generic headphone bucket, for example, cannot safely choose wired vs wireless.
+const SAFE_MAPPED_BROAD_FALLBACK_IDS: ReadonlySet<string> = new Set([
+  "other_accessory",
+  "cable_other",
+]);
+
 function mode(value: unknown, fallback: CategoryPolicyMode): CategoryPolicyMode {
   return value === "authoritative" || value === "corroborative" || value === "ignore"
     ? value
@@ -109,6 +118,28 @@ export function sellerCategoryEvidence(
     : [];
 }
 
+function safeMappedBroadFallbackId(
+  rawCategory: string,
+  categoryMapping: CategoryMapping,
+  policy: ResolvedCategoryPolicy,
+): string | null {
+  if (!rawCategory || policy.sellerCategory.default !== "authoritative") return null;
+  const directMapping = categoryMapping[rawCategory];
+  // Array mappings intentionally represent broad/mixed seller buckets; never force one member.
+  if (typeof directMapping !== "string") return null;
+  const normalized = normalizeCategory({ rawCategory, categoryMapping });
+  if (
+    normalized.classificationStatus !== "classified" ||
+    normalized.classificationSource !== "shop_mapping" ||
+    !SAFE_MAPPED_BROAD_FALLBACK_IDS.has(normalized.primaryCategoryId)
+  ) {
+    return null;
+  }
+  // An explicit per-category policy always wins over this automatic fallback promotion.
+  if (policy.sellerCategory.categories?.[normalized.primaryCategoryId] != null) return null;
+  return normalized.primaryCategoryId;
+}
+
 export function parserHintEvidence(
   hintedCategory: string,
   policy: ResolvedCategoryPolicy,
@@ -141,10 +172,27 @@ export function collectListingCategoryEvidence({
   categoryPolicy = {},
 }: CollectListingCategoryEvidenceOptions = {}): ListingCategoryEvidence {
   const policy = resolveCategoryPolicy(categoryPolicy);
-  const evidence = [
-    ...sellerCategoryEvidence(rawCategory, categoryMapping, policy),
-    ...categoryEvidenceFromText(title, { source: "title", strength: "strong", context: "title" }),
-  ];
+  let sellerEvidence = sellerCategoryEvidence(rawCategory, categoryMapping, policy);
+  const titleEvidence = categoryEvidenceFromText(title, {
+    source: "title",
+    strength: "strong",
+    context: "title",
+  });
+
+  // A shop-owned mapping such as Hifido's `アクセサリー -> other_accessory` is exact enough to
+  // resolve a model-only listing, but only after confirming the title gives us no more specific
+  // category. This is intentionally not a general promotion of corroborative evidence.
+  const fallbackId =
+    titleEvidence.length === 0
+      ? safeMappedBroadFallbackId(rawCategory, categoryMapping, policy)
+      : null;
+  if (fallbackId && sellerEvidence.length) {
+    sellerEvidence = sellerEvidence.map((item) =>
+      item.categoryIds?.[0] === fallbackId ? { ...item, strength: "authoritative" } : item,
+    );
+  }
+
+  const evidence = [...sellerEvidence, ...titleEvidence];
   if (!rawCategory) evidence.push(...parserHintEvidence(hintedCategory, policy));
   return { evidence, policy };
 }
