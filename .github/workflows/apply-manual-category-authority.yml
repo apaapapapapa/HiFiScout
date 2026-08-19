@@ -44,7 +44,7 @@ jobs:
           set -euo pipefail
           for attempt in $(seq 1 120); do
             runs="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/actions/workflows/deploy.yml/runs" -f branch=main -f head_sha="${GITHUB_SHA}" -f per_page=20)"
-            run="$(jq -c '[.workflow_runs[] | select(.head_sha == env.GITHUB_SHA)] | sort_by(.created_at) | last // empty' <<< "$runs")"
+            run="$(jq -c '[.workflow_runs[] | select(.head_sha == env.GITHUB_SHA and (.conclusion // "") != "skipped")] | sort_by(.created_at) | last // empty' <<< "$runs")"
             if [[ -z "$run" ]]; then
               echo "Waiting for Deploy Cloudflare run for ${GITHUB_SHA} (${attempt}/120)"
               sleep 15
