@@ -31,6 +31,7 @@ import {
 import { U_AUDIO_CATEGORY_MAPPING, U_AUDIO_CATEGORY_POLICY, uAudioAdapter } from "./u-audio.js";
 import { SHIMAMUSEN_CATEGORY_POLICY, shimamusenAdapter } from "./shimamusen.js";
 import { dynamicAudioAdapter } from "./dynamic-audio.js";
+import { afroAudioAdapter } from "./afroaudio.js";
 // shop-generator:imports
 
 export { getShopActivityPolicy } from "./registry.js";
@@ -145,6 +146,13 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
     baseUrl: "https://dynamicaudio5used.wordpress.com",
     defaultIntervalMinutes: 60,
     defaultMaxPages: 30,
+  }),
+  defineShopPlugin(afroAudioAdapter, {
+    key: "afroaudio",
+    name: "アフロオーディオ",
+    baseUrl: "https://afroaudio.jp",
+    defaultIntervalMinutes: 60,
+    defaultMaxPages: 50,
   }),
   // shop-generator:plugins
 ]);
