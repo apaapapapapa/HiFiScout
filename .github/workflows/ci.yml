@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, agent/reduce-other-categories-v2]
   pull_request:
     branches: [main]
 
@@ -46,7 +46,6 @@ jobs:
         run: npm audit --audit-level=high
 
   other-category-audit:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
