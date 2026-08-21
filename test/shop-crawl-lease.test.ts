@@ -50,12 +50,11 @@ test("long queue wait keeps one dispatch and one live crawl per shop", async () 
   );
 
   await releaseShopCrawl(db, "hifido", crawlToken, requestedAt);
-  assert.deepEqual(leaseState(sqlite, "hifido"), {
-    queued_at: null,
-    queued_token: null,
-    crawl_lease_token: null,
-    crawl_lease_until: null,
-  });
+  const released = leaseState(sqlite, "hifido");
+  assert.equal(released.queued_at, null);
+  assert.equal(released.queued_token, null);
+  assert.equal(released.crawl_lease_token, null);
+  assert.equal(released.crawl_lease_until, null);
 
   assert.equal(
     await tryClaimShopCrawl(db, "hifido", requestedAt, "2026-08-21T01:33:00.000Z", 20),
