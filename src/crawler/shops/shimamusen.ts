@@ -1,3 +1,4 @@
+import { stripManufacturerListingLabels } from "../../catalog/manufacturers.js";
 import { availabilityFromSignals } from "../availability.js";
 import { cleanText, parseYen, splitManufacturerModel } from "../normalize.js";
 import type { SellerProduct, ShopAdapter } from "../types.js";
@@ -28,6 +29,7 @@ const SALE_URL = `${BASE_URL}/shopbrand/036/Y/`;
 const USED_URL = `${BASE_URL}/shopbrand/ct826/`;
 const MARKETING_PREFIX = /^(?:(?:【(?:開封品|店頭在庫品処分セール|期間限定特価)】)\s*)+/u;
 const REFURBISHED_PREFIX = /^メーカー新装商品\s*/u;
+const LISTING_INDEX_PREFIX = /^[①-⑳]\s*/u;
 
 function absoluteUrl(href: string): string | null {
   try {
@@ -53,7 +55,17 @@ function cleanedAnchorText(html = ""): string {
 }
 
 function productIdentityText(value: string): string {
-  return cleanText(value).replace(MARKETING_PREFIX, "").replace(REFURBISHED_PREFIX, "").trim();
+  let result = String(value).trim();
+  let previous = "";
+  while (result && result !== previous) {
+    previous = result;
+    result = stripManufacturerListingLabels(result)
+      .replace(MARKETING_PREFIX, "")
+      .replace(REFURBISHED_PREFIX, "")
+      .replace(LISTING_INDEX_PREFIX, "")
+      .trim();
+  }
+  return cleanText(result);
 }
 
 function pageKind(page: Partial<ShimamusenPage> | string | undefined): string {
@@ -145,8 +157,12 @@ function stockStatusFor(title: string, blockHtml: string) {
 function conditionFor(kind: string, title: string, blockHtml: string): string {
   const parts = [kind];
   if (/未使用開封品/.test(title)) parts.push("未使用開封品");
+  else if (/【開封品】/.test(title)) parts.push("開封品");
   else if (/B級品/.test(title)) parts.push("B級品");
   else if (/展示処分品|現品処分品/.test(title)) parts.push("展示処分品");
+  if (/メーカー新装商品/.test(title)) parts.push("メーカー新装商品");
+  if (/期間限定特価/.test(title)) parts.push("期間限定特価");
+  if (/店頭在庫品処分セール/.test(title)) parts.push("店頭在庫品処分セール");
   if (/商談中|予約中/.test(stripTags(blockHtml))) parts.push("商談中");
   return [...new Set(parts)].join(" / ");
 }
