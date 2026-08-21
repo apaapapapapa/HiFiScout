@@ -28,6 +28,7 @@ test("headshell is a classifiable child of cartridge", () => {
   assert.deepEqual(categoryClosureIds("headshell"), ["headshell", "cartridge", "analog"]);
   assert.deepEqual(categoryFilterIds("headshell"), ["headshell"]);
   assert.ok(categoryFilterIds("cartridge").includes("headshell"));
+  assert.ok(categoryFilterIds("analog").includes("headshell"));
 });
 
 test("headshell titles classify more specifically than the cartridge seller bucket", () => {
