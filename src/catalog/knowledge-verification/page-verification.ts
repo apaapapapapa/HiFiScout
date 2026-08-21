@@ -55,6 +55,9 @@ const MODEL_CONTEXT_CHARS = 96;
 /** Bounds the scan of model-bearing blocks on a long index page. */
 const MAX_MODEL_BEARING_BLOCKS = 12;
 
+/** Canonical names are display/search facts, not a place to persist a whole page heading. */
+const MAX_CANONICAL_NAME_CHARS = 240;
+
 export interface VerifyOfficialProductPageOptions {
   candidate?: KnowledgeSourceCandidate;
   html?: string;
@@ -65,7 +68,7 @@ export interface VerifyOfficialProductPageOptions {
 
 function firstElementText(html: string, tag: string): string {
   const match = String(html).match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"));
-  return match ? stripTags(match[1]) : "";
+  return match ? visibleText(match[1]) : "";
 }
 
 /**
@@ -76,7 +79,7 @@ function firstElementText(html: string, tag: string): string {
  */
 function productContentText(html: string): string {
   const value = String(html);
-  const semantic = value.match(/<(?:main|article)\b[^>]*>([\s\S]*?)<\/(?:main|article)>/i)?.[1];
+  const semantic = value.match(/<(main|article)\b[^>]*>([\s\S]*?)<\/\1>/i)?.[2];
   const scoped = semantic ?? value.replace(/<(nav|header|footer|aside)\b[^>]*>[\s\S]*?<\/\1>/gi, " ");
   return visibleText(scoped);
 }
@@ -165,11 +168,29 @@ function modelContextEvidence(
 function modelBearingBlocks(html: string, candidate: KnowledgeSourceCandidate): string[] {
   const blocks: string[] = [];
   for (const match of String(html).matchAll(/<(h[1-4]|p|li|tr|dt|dd)\b[^>]*>([\s\S]*?)<\/\1>/gi)) {
-    const text = stripTags(match[2]);
+    const text = visibleText(match[2]);
     if (text && matchesCandidateText(text, candidate)) blocks.push(text);
     if (blocks.length >= MAX_MODEL_BEARING_BLOCKS) break;
   }
   return blocks;
+}
+
+function canonicalNameFromPage(
+  candidate: KnowledgeSourceCandidate,
+  values: readonly unknown[],
+  fallback: string,
+): string {
+  for (const value of values) {
+    const text = clean(value);
+    if (
+      text &&
+      text.length <= MAX_CANONICAL_NAME_CHARS &&
+      matchesCandidateText(text, candidate)
+    ) {
+      return text;
+    }
+  }
+  return clean(fallback).slice(0, MAX_CANONICAL_NAME_CHARS);
 }
 
 /**
@@ -291,11 +312,11 @@ export async function verifyOfficialProductPage({
   const canonicalModel = clean(
     candidate.observedModel || candidate.model || directModel || candidate.normalizedModel,
   );
-  const canonicalName = clean(
-    product?.name ||
-      h1 ||
-      title ||
-      `${candidate.observedManufacturer || candidate.manufacturerId} ${canonicalModel}`,
+  const fallbackName = `${candidate.observedManufacturer || candidate.manufacturerId} ${canonicalModel}`;
+  const canonicalName = canonicalNameFromPage(
+    candidate,
+    [product?.name, h1, title],
+    fallbackName,
   );
   return {
     status: "verified",
