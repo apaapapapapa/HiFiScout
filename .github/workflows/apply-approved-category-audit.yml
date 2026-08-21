@@ -6,7 +6,9 @@ on:
     paths:
       - 'migrations/0031_correct_audited_product_categories.sql'
       - 'migrations/0032_correct_n05xd_category.sql'
+      - 'migrations/0035_correct_ai_audited_product_data.sql'
       - 'scripts/apply-approved-category-audit.ts'
+      - 'scripts/apply-manual-category-authority.ts'
       - '.github/workflows/apply-approved-category-audit.yml'
   workflow_dispatch:
 
@@ -79,7 +81,7 @@ jobs:
           fi
           echo "database_id=$id" >> "$GITHUB_OUTPUT"
 
-      - name: Replay verified category corrections and refresh search entities
+      - name: Replay verified audit corrections and refresh search entities
         env:
           D1_DATABASE_ID: ${{ steps.d1.outputs.database_id }}
         run: npx tsx scripts/apply-approved-category-audit.ts
