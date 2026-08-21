@@ -57,9 +57,13 @@ export function cleanText(value: unknown = ""): string {
 }
 
 export function parseYen(value: string = ""): number | null {
-  const normalized = cleanText(value).replace(/[０-９]/g, (c) =>
-    String.fromCharCode(c.charCodeAt(0) - 0xfee0),
-  );
+  const normalized = cleanText(value)
+    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(/，/g, ",")
+    // Retailer HTML can wrap thousands groups in separate elements. After tags are stripped,
+    // `¥198<span>,000</span>` becomes `¥198 ,000`; restore only valid three-digit groups so a
+    // fragmented price cannot silently truncate to ¥198.
+    .replace(/([0-9])\s*,\s*(?=[0-9]{3}(?:\D|$))/g, "$1,");
   const marked = normalized.match(/[¥￥]\s*([0-9][0-9,]*)|([0-9][0-9,]*)\s*円/);
   const markedValue = marked?.[1] || marked?.[2];
   if (markedValue) return Number.parseInt(markedValue.replace(/,/g, ""), 10);
