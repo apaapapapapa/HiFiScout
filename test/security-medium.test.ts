@@ -6,6 +6,7 @@ import { checkPublicApiRateLimit } from "../src/api-guard.js";
 import { parseProductPage } from "../src/crawler/parser.js";
 import { safeProductSourceUrl } from "../src/db/product-search-entity-mapper.js";
 
+// Keep the regression suite crossing HTTP, crawler, and DTO boundaries so each defense is explicit.
 function executionContext(): ExecutionContext {
   return {
     waitUntil() {},
