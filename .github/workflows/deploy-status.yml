@@ -1,0 +1,37 @@
+name: Deploy Status
+
+on:
+  workflow_run:
+    workflows: ["Deploy Cloudflare"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish Cloudflare deployment status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          DEPLOY_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          DEPLOY_RUN_URL: ${{ github.event.workflow_run.html_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "$DEPLOY_CONCLUSION" in
+            success) state=success ;;
+            failure|timed_out) state=failure ;;
+            *) state=error ;;
+          esac
+
+          gh api --method POST "/repos/${GITHUB_REPOSITORY}/statuses/${DEPLOY_HEAD_SHA}" \
+            -f state="$state" \
+            -f context="deployment/cloudflare" \
+            -f description="Cloudflare deployment: ${DEPLOY_CONCLUSION}" \
+            -f target_url="$DEPLOY_RUN_URL"
