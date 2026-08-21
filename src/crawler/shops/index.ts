@@ -45,6 +45,17 @@ const HIFIDO_ACTIVITY_POLICY: Readonly<ProductActivityPolicy> = Object.freeze({
   condition: false,
 });
 
+// Osaka-ya's `av-amp` URL bucket is merchandising, not a reliable product type: it currently also
+// contains the Marantz AMP 10 power amplifier. Keep it as corroboration so an explicit title/model
+// can select the canonical leaf while genuine AV receiver titles still classify as `av_amp`.
+const OSAKAYA_CATEGORY_POLICY = Object.freeze({
+  sellerCategory: Object.freeze({
+    default: "authoritative" as const,
+    categories: Object.freeze({ av_amp: "corroborative" as const }),
+  }),
+  parserHint: "corroborative" as const,
+});
+
 export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
   defineShopPlugin(
     audioUnionAdapter,
@@ -155,13 +166,17 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
     defaultIntervalMinutes: 60,
     defaultMaxPages: 50,
   }),
-  defineShopPlugin(osakayaAdapter, {
-    key: "osakaya",
-    name: "CAVIN大阪屋",
-    baseUrl: "https://osakaya.com",
-    defaultIntervalMinutes: 60,
-    defaultMaxPages: 20,
-  }),
+  defineShopPlugin(
+    osakayaAdapter,
+    {
+      key: "osakaya",
+      name: "CAVIN大阪屋",
+      baseUrl: "https://osakaya.com",
+      defaultIntervalMinutes: 60,
+      defaultMaxPages: 20,
+    },
+    { catalog: { categoryPolicy: OSAKAYA_CATEGORY_POLICY } },
+  ),
   // shop-generator:plugins
 ]);
 
