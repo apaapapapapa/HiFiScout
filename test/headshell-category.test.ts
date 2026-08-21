@@ -1,11 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import {
-  categoryClosureIds,
-  categoryFilterIds,
-  getCategory,
-} from "../src/catalog/categories.js";
+import { categoryClosureIds, categoryFilterIds, getCategory } from "../src/catalog/categories.js";
 import { inferExplicitCategoryIds } from "../src/catalog/category-rules.js";
 import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
 import { parsedProduct } from "./helpers/fixtures.js";
@@ -36,9 +32,7 @@ test("headshell is a classifiable child of cartridge", () => {
 
 test("headshell titles classify more specifically than the cartridge seller bucket", () => {
   assert.deepEqual(inferExplicitCategoryIds("Ortofon LH-4000 Headshell"), ["headshell"]);
-  assert.deepEqual(inferExplicitCategoryIds("Audio-Technica AT-LH15H ヘッドシェル"), [
-    "headshell",
-  ]);
+  assert.deepEqual(inferExplicitCategoryIds("Audio-Technica AT-LH15H ヘッドシェル"), ["headshell"]);
 
   const headshell = classify("Audio-Technica AT-LH15H ヘッドシェル", "カートリッジ");
   assert.equal(headshell.primaryCategoryId, "headshell");
