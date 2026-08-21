@@ -42,7 +42,7 @@ test("CAVIN Osaka-ya parser keeps the selling price instead of MSRP", () => {
   assert.equal(items[0].sourceUrl, "https://osakaya.com/store/items/pre-amp/2091/");
   assert.equal(items[0].title, "LUXMAN ラックスマン CL-38u 真空管プリアンプ");
   assert.equal(items[0].manufacturer, "LUXMAN");
-  assert.match(items[0].model, /^CL-38u/u);
+  assert.equal(items[0].model, "CL-38u");
   assert.equal(items[0].rawCategory, "pre-amp");
   assert.equal(items[0].category, "プリアンプ");
   assert.equal(items[0].conditionText, "中古品");
@@ -61,10 +61,33 @@ test("CAVIN Osaka-ya parser handles special-price cards and sold-out evidence", 
   const [item] = parseOsakayaListing(html, specialPage);
   assert.ok(item);
   assert.equal(item.sourceId, "3001");
+  assert.equal(item.model, "F-02");
   assert.equal(item.conditionText, "特価品");
   assert.equal(item.priceYen, 1309000);
   assert.equal(item.stockStatus, "sold_out");
   assert.equal(item.category, "プリメインアンプ");
+});
+
+test("CAVIN Osaka-ya strips Japanese sale and category descriptions from product models", () => {
+  const html = `
+    <a href="/store/items/power-amp/4001/">
+      McIntosh マッキントッシュ MC275VI 真空管パワーアンプ 中古品 ￥880,000税込
+    </a>
+    <a href="/store/items/pre-main-amp/4002/">
+      TRIODE MUSASHI 特価 真空管プリメインアンプ 特価品 ￥478,500税込
+    </a>
+    <a href="/store/items/network-player/4003/">
+      SFORZATO DSP-Columba 特価 ネットワークプレーヤー 特価品 ￥1,386,000税込
+    </a>
+    <a href="/store/items/music-server/4004/">
+      DELA N50-S20-J 特価 ミュージックサーバー 特価品 ￥228,800税込
+    </a>`;
+
+  const items = parseOsakayaListing(html, specialPage);
+  assert.deepEqual(
+    items.map(({ model }) => model),
+    ["MC275VI", "MUSASHI", "DSP-Columba", "N50-S20-J"],
+  );
 });
 
 test("CAVIN Osaka-ya pagination follows observed links only for the selected condition", () => {
