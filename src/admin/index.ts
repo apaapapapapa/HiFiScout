@@ -21,12 +21,46 @@ const ADMIN_ASSET_PATHS = new Set([
   "/catalog-admin.css",
   "/catalog-admin.js",
 ]);
+const ADMIN_CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self'",
+  "img-src 'self' data:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "frame-ancestors 'none'",
+  "form-action 'self'",
+].join("; ");
+
+/** Browser hardening is enforced by the Worker so Access policy changes cannot remove it. */
+export function withCatalogAdminSecurityHeaders(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set("content-security-policy", ADMIN_CONTENT_SECURITY_POLICY);
+  headers.set("x-frame-options", "DENY");
+  headers.set("x-content-type-options", "nosniff");
+  headers.set("referrer-policy", "no-referrer");
+  headers.set(
+    "permissions-policy",
+    "camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()",
+  );
+  headers.set("cross-origin-opener-policy", "same-origin");
+  headers.set("cross-origin-resource-policy", "same-origin");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
 
 function json(value: unknown, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
   headers.set("content-type", "application/json; charset=utf-8");
   headers.set("cache-control", "no-store");
-  return new Response(JSON.stringify(value), { ...init, headers });
+  return withCatalogAdminSecurityHeaders(
+    new Response(JSON.stringify(value), { ...init, headers }),
+  );
 }
 
 async function readJsonBody(request: Request): Promise<unknown> {
@@ -82,6 +116,10 @@ function assetRequest(request: Request, pathname: string): Request {
   return new Request(url, request);
 }
 
+async function adminAsset(env: CatalogAdminEnv, request: Request): Promise<Response> {
+  return withCatalogAdminSecurityHeaders(await env.ADMIN_ASSETS.fetch(request));
+}
+
 export async function handleAuthenticatedCatalogAdminRequest(
   request: Request,
   env: CatalogAdminEnv,
@@ -115,10 +153,10 @@ export async function handleAuthenticatedCatalogAdminRequest(
     // Static Assets' default HTML handling maps the clean URL to catalog-admin.html with 200.
     // Fetching /catalog-admin.html instead returns a 307 back to /catalog-admin, which loops
     // when this Worker handles the clean route again after Cloudflare Access authentication.
-    return env.ADMIN_ASSETS.fetch(assetRequest(request, "/catalog-admin"));
+    return adminAsset(env, assetRequest(request, "/catalog-admin"));
   }
   if (request.method === "GET" && ADMIN_ASSET_PATHS.has(url.pathname)) {
-    return env.ADMIN_ASSETS.fetch(request);
+    return adminAsset(env, request);
   }
   return json({ error: "not_found" }, { status: 404 });
 }
