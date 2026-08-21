@@ -58,9 +58,7 @@ function json(value: unknown, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
   headers.set("content-type", "application/json; charset=utf-8");
   headers.set("cache-control", "no-store");
-  return withCatalogAdminSecurityHeaders(
-    new Response(JSON.stringify(value), { ...init, headers }),
-  );
+  return withCatalogAdminSecurityHeaders(new Response(JSON.stringify(value), { ...init, headers }));
 }
 
 async function readJsonBody(request: Request): Promise<unknown> {

@@ -36,5 +36,8 @@ test("public metadata redacts persisted crawler error text from sync and health 
   assert.ok(hifido);
   assert.equal(hifido.sync?.last_error, null);
   assert.equal(hifido.health?.lastError, null);
-  assert.doesNotMatch(JSON.stringify(response), /super-secret|internal\.example\.test|10\.0\.0\.7/u);
+  assert.doesNotMatch(
+    JSON.stringify(response),
+    /super-secret|internal\.example\.test|10\.0\.0\.7/u,
+  );
 });
