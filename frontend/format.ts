@@ -18,24 +18,6 @@ export function escapeHtml(value: string | null = ""): string {
   return String(value).replace(/[&<>"']/g, (character) => HTML_REPLACEMENTS[character]);
 }
 
-/**
- * Only web URLs may become clickable retailer links.
- *
- * `escapeHtml` protects markup syntax, not URL schemes: `javascript:` survives HTML escaping and
- * executes when clicked. Source URLs originate on retailer pages, so keep this independent guard
- * at the final DOM boundary even when crawler-side validation is also present.
- */
-export function safeExternalUrl(value: string | null = ""): string {
-  const raw = String(value || "").trim();
-  if (!raw) return "#";
-  try {
-    const url = new URL(raw);
-    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : "#";
-  } catch {
-    return "#";
-  }
-}
-
 export const yen = new Intl.NumberFormat("ja-JP", {
   style: "currency",
   currency: "JPY",
