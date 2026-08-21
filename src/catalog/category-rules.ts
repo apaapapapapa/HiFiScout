@@ -52,7 +52,6 @@ const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
     "other_accessory",
     /\baccessor(?:y|ies)\b|insulator|インシュレータ(?:ー)?|アクセサリ(?:ー)?|hdmi\s*(?:switcher|switch)|hdmiスイッチャー|dust\s*cover|ダストカバー/i,
   ],
-  ["vacuum_tube", /vacuum\s+tube|真空管/i],
   ["rack", /audio\s+rack|オーディオラック/i],
   [
     "av_amp",
@@ -69,6 +68,10 @@ const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
   ],
   ["power_amp", /power[\s-]?(?:amp|amplifier)|パワーアンプ/i],
   ["headphone_amp", /headphone[\s-]?(?:amp|amplifier)|ヘッドホンアンプ/i],
+  // "vacuum tube" describes the implementation of an amplifier as often as it describes a
+  // replacement tube. Product-type amplifier evidence must therefore win before the tube-accessory
+  // fallback; a bare 12AX7/真空管 listing still lands here.
+  ["vacuum_tube", /vacuum\s+tube|真空管/i],
   [
     "transport",
     /(?:network(?:\s+audio)?|streaming)\s+transport|ネットワーク(?:オーディオ)?トランスポート|ストリーミングトランスポート|(?:sacd|cd)\s*(?:\/\s*(?:sacd|cd))?\s*(?:transport|トランスポート)|super\s+audio\s+cd\s+transport|(?:cd|sacd)\s*\/\s*(?:sacd|cd)\s*トランスポート/i,
@@ -103,7 +106,7 @@ const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
     "speaker_floorstanding",
     /floor[\s-]?standing|tower\s+speaker|トールボーイ|フロア型|フロアスタンディング/i,
   ],
-  ["subwoofer", /sub[\s-]?woofer|サブウーファー/i],
+  ["subwoofer", /sub[\s-]?woofer|スーパーウーファー|サブウーファー/i],
   ["other", /\bsound\s*bars?\b|サウンドバー|\bspeakers?\b|スピーカー/i],
   [
     "btw_earphone",
