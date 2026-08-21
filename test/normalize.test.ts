@@ -19,6 +19,13 @@ test("parseYen parses Japanese prices", () => {
   assert.equal(parseYen("780000"), 780000);
 });
 
+test("parseYen restores thousands groups fragmented by HTML spacing", () => {
+  assert.equal(parseYen("¥198 ,000（税込）"), 198000);
+  assert.equal(parseYen("¥1 ,198 ,000"), 1198000);
+  assert.equal(parseYen("￥１９８ ，０００円"), 198000);
+  assert.equal(parseYen("¥198 ,00"), 198);
+});
+
 test("stock status is conservative", () => {
   assert.equal(inferStockStatus("在庫あり"), "in_stock");
   assert.equal(inferStockStatus("売り切れ"), "sold_out");
