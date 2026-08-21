@@ -125,12 +125,27 @@ function stripJapaneseBrandPrefix(value: string): string {
   return tokens.join(" ");
 }
 
+/**
+ * CAVIN Osaka-ya appends Japanese merchandising/category copy to model names, for example
+ * `F-02 特価 プリメインアンプ` or `MC275VI 真空管パワーアンプ`. The model itself is the
+ * Latin/digit prefix; keep that stable for identity resolution and product-card display.
+ */
+function stripJapaneseListingDescription(value: string): string {
+  const text = cleanText(value);
+  const japaneseSuffix = text.search(/[ぁ-んァ-ヶ一-龯]/u);
+  if (japaneseSuffix <= 0) return text;
+
+  const modelPrefix = text.slice(0, japaneseSuffix).trim();
+  return /[A-Za-z0-9]/u.test(modelPrefix) ? modelPrefix : text;
+}
+
 function manufacturerModel(title: string) {
   const { manufacturer, model } = splitManufacturerModel(title, "osakaya");
+  const modelWithoutBrand = stripJapaneseBrandPrefix(model) || model || title;
   return {
     rawManufacturer: manufacturer,
     manufacturer,
-    model: stripJapaneseBrandPrefix(model) || model || title,
+    model: stripJapaneseListingDescription(modelWithoutBrand) || modelWithoutBrand,
   };
 }
 
