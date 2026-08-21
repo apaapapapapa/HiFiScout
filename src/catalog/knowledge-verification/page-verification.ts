@@ -79,7 +79,8 @@ function firstElementText(html: string, tag: string): string {
 function productContentText(html: string): string {
   const value = String(html);
   const semantic = value.match(/<(main|article)\b[^>]*>([\s\S]*?)<\/\1>/i)?.[2];
-  const scoped = semantic ?? value.replace(/<(nav|header|footer|aside)\b[^>]*>[\s\S]*?<\/\1>/gi, " ");
+  const scoped =
+    semantic ?? value.replace(/<(nav|header|footer|aside)\b[^>]*>[\s\S]*?<\/\1>/gi, " ");
   return visibleText(scoped);
 }
 
@@ -181,11 +182,7 @@ function canonicalNameFromPage(
 ): string {
   for (const value of values) {
     const text = clean(value);
-    if (
-      text &&
-      text.length <= MAX_CANONICAL_NAME_CHARS &&
-      matchesCandidateText(text, candidate)
-    ) {
+    if (text && text.length <= MAX_CANONICAL_NAME_CHARS && matchesCandidateText(text, candidate)) {
       return text;
     }
   }
@@ -312,11 +309,7 @@ export async function verifyOfficialProductPage({
     candidate.observedModel || candidate.model || directModel || candidate.normalizedModel,
   );
   const fallbackName = `${candidate.observedManufacturer || candidate.manufacturerId} ${canonicalModel}`;
-  const canonicalName = canonicalNameFromPage(
-    candidate,
-    [product?.name, h1, title],
-    fallbackName,
-  );
+  const canonicalName = canonicalNameFromPage(candidate, [product?.name, h1, title], fallbackName);
   return {
     status: "verified",
     sourceUrl,

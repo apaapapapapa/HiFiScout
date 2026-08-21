@@ -9,8 +9,7 @@ import { parsedProduct } from "./helpers/fixtures.js";
 
 test("vacuum-tube amplifiers classify by product type rather than tube technology", () => {
   assert.equal(
-    normalizeCategory({ title: "Western Electric 91E 真空管プリメインアンプ" })
-      .primaryCategoryId,
+    normalizeCategory({ title: "Western Electric 91E 真空管プリメインアンプ" }).primaryCategoryId,
     "integrated_amp",
   );
   assert.equal(
