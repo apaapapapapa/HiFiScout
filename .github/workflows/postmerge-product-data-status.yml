@@ -41,13 +41,13 @@ jobs:
             SUM(CASE WHEN remediation_projection_required = 1 THEN 1 ELSE 0 END) AS projection_dirty
           FROM products WHERE is_active = 1;"
 
-          echo '--- AI audit catalog source ---'
+          echo '--- approved product audit catalog source ---'
           query "SELECT
             COUNT(DISTINCT s.product_id) AS audited_catalog_products,
             SUM(CASE WHEN kp.verification_status = 'verified' THEN 1 ELSE 0 END) AS verified_rows
           FROM knowledge_catalog_sources s
           JOIN knowledge_catalog_products kp ON kp.id = s.product_id
-          WHERE s.source_url = 'manual://ai-product-audit/2026-08-21' AND s.status = 'active';"
+          WHERE s.source_url = 'manual://approved-product-audit/2026-08-21' AND s.status = 'active';"
 
           echo '--- legacy taxonomy remaining in catalog ---'
           query "SELECT category_id, COUNT(*) AS count
@@ -82,13 +82,13 @@ jobs:
           )
           GROUP BY shop_key ORDER BY count DESC;"
 
-          echo '--- AI-audited matched category mismatches ---'
+          echo '--- approved-product-audit matched category mismatches ---'
           query "SELECT COUNT(*) AS mismatch_count
           FROM products p
           JOIN product_identity_resolutions r ON r.listing_product_id = p.id AND r.status = 'matched'
           JOIN knowledge_catalog_sources s
             ON s.product_id = r.catalog_product_id
-           AND s.source_url = 'manual://ai-product-audit/2026-08-21'
+           AND s.source_url = 'manual://approved-product-audit/2026-08-21'
            AND s.status = 'active'
           JOIN knowledge_catalog_product_categories c
             ON c.product_id = r.catalog_product_id AND c.is_primary = 1
