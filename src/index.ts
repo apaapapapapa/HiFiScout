@@ -6,6 +6,11 @@
  * testable composition root.
  */
 
+import {
+  canonicalProductQueryUrl,
+  parseProductQuery,
+  validateProductQuery,
+} from "./api/product-query.js";
 import { handleHttp } from "./http/router.js";
 import { handleQueue } from "./queue.js";
 import type { WorkerQueueMessage } from "./queue.js";
@@ -31,6 +36,16 @@ async function handlePublicHttp(
       },
     });
   }
+
+  // Cache keys must describe the normalized search, not attacker-controlled query serialization.
+  // Invalid queries are left untouched so the HTTP boundary can return its normal validation error.
+  if (request.method === "GET" && url.pathname === "/api/product-search") {
+    if (!validateProductQuery(url)) {
+      const canonicalUrl = canonicalProductQueryUrl(url, parseProductQuery(url));
+      request = new Request(canonicalUrl.toString(), request);
+    }
+  }
+
   return handleHttp(request, env, ctx);
 }
 
