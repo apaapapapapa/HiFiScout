@@ -11,10 +11,12 @@
  * classifies:
  *
  * 1. structured JSON-LD `category` / `name`;
- * 2. text adjacent to the model on the page, which is what keeps a grouped index page from
- *    borrowing a sibling product's category;
+ * 2. model-local semantic blocks such as the page title, headings, paragraphs and list/table rows;
  * 3. page-level description and breadcrumb, which are demoted to `strong` because they describe
  *    the page rather than the model.
+ *
+ * The complete visible page text is allowed to prove that a model is present, but never to prove
+ * its category: global navigation and sibling-product menus are not product facts.
  */
 
 import { classifyCategoryEvidence } from "../category-classifier.js";
@@ -232,10 +234,6 @@ export async function verifyOfficialProductPage({
     const localEvidence: CategoryEvidenceInput[] = [];
     for (const value of [h1, title, ...modelBearingBlocks(html, candidate)]) {
       const evidence = modelContextEvidence(value, candidate);
-      if (evidence) localEvidence.push(evidence);
-    }
-    if (!localEvidence.length) {
-      const evidence = modelContextEvidence(pageText, candidate);
       if (evidence) localEvidence.push(evidence);
     }
     if (localEvidence.length) classification = classifyCategoryEvidence(localEvidence);
