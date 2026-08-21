@@ -66,6 +66,50 @@ test("official page that confirms the model but not the category remains ambiguo
   assert.equal(result.message, "official_page_has_no_unambiguous_category");
 });
 
+test("global navigation near a model cannot become category evidence", async () => {
+  const html = `<html><head>
+      <title>FOSTEX T60RP</title>
+      <meta name="description" content="T60RP is a wired headphone using an RP planar magnetic driver">
+    </head><body>
+      <nav>Products / Headphone Amplifier / T60RP / Speakers / Cable</nav>
+      <h1>T60RP</h1>
+      <div class="breadcrumb">Home &gt; Headphones &gt; T60RP</div>
+    </body></html>`;
+  const result = await verifyOfficialProductPage({
+    candidate: {
+      manufacturerId: "fostex",
+      normalizedModel: "T60RP",
+      observedManufacturer: "FOSTEX",
+      observedModel: "T60RP",
+    },
+    html,
+    sourceUrl: "https://example.invalid/t60rp",
+  });
+
+  assert.equal(result.status, "verified");
+  assert.equal(result.primaryCategoryId, "wired_headphone");
+});
+
+test("navigation-only category text leaves a confirmed model ambiguous", async () => {
+  const html = `<html><head><title>STAX SR-L700 MK2</title></head><body>
+    <nav>Cable / Headphone Amplifier / SR-L700 MK2 / Accessories</nav>
+    <h1>SR-L700 MK2</h1>
+    </body></html>`;
+  const result = await verifyOfficialProductPage({
+    candidate: {
+      manufacturerId: "stax",
+      normalizedModel: "SR-L700 MK2",
+      observedManufacturer: "STAX",
+      observedModel: "SR-L700 MK2",
+    },
+    html,
+    sourceUrl: "https://example.invalid/sr-l700-mk2",
+  });
+
+  assert.equal(result.status, "ambiguous");
+  assert.equal(result.message, "official_page_has_no_unambiguous_category");
+});
+
 test("a page about a different model is not found rather than ambiguous", async () => {
   const result = await verifyOfficialProductPage({
     candidate: {
