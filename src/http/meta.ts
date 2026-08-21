@@ -80,7 +80,9 @@ function toMetaShopSyncState(row: ShopSyncStateRow): MetaShopSyncState {
     last_error_at: row.last_error_at,
     consecutive_failures: row.consecutive_failures,
     backoff_until: row.backoff_until,
-    last_error: row.last_error,
+    // Raw crawler errors can contain upstream URLs or diagnostics; public metadata keeps only the
+    // timestamp/failure counters and structured health reason.
+    last_error: null,
     last_item_count: row.last_item_count,
     queued_at: row.queued_at,
   };
