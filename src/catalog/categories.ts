@@ -304,6 +304,15 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
     aliases: ["cartridge", "カートリッジ"],
   },
   {
+    id: "headshell",
+    name: "ヘッドシェル",
+    parentId: "cartridge",
+    order: 1,
+    classifiable: true,
+    filterable: true,
+    aliases: ["headshell", "head shell", "ヘッドシェル"],
+  },
+  {
     id: "phono_eq",
     name: "フォノイコライザー",
     parentId: "analog",

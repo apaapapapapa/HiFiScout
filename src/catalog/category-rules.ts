@@ -91,6 +91,7 @@ const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
   ["phono_eq", /phono\s+(?:equalizer|eq|stage)|フォノイコライザー|フォノアンプ/i],
   ["turntable", /\bturntable\b|record\s+player|ターンテーブル|レコード(?:プレーヤー|プレイヤー)/i],
   ["tonearm", /tone\s*arm|トーンアーム/i],
+  ["headshell", /\bhead\s*shell\b|ヘッドシェル/i],
   ["cartridge", /\bcartridge\b|カートリッジ/i],
   [
     "dap",
