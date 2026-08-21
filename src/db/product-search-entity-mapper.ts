@@ -75,11 +75,25 @@ export function offerProjectionColumns(): string {
   return ["listing_product_id", ...PRODUCT_OFFER_COLUMNS].join(", ");
 }
 
+/**
+ * Retailer URLs are untrusted data. HTML escaping cannot neutralize a `javascript:` URL, so the
+ * public DTO boundary permits only absolute HTTP(S) links. Returning an empty value lets the UI's
+ * existing fallback render a non-navigating `#` link for any legacy poisoned row.
+ */
+export function safeProductSourceUrl(value: string): string {
+  try {
+    const url = new URL(String(value || "").trim());
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
 export function toProductOffer(row: ProductSearchOfferRow): ProductOffer {
   return {
     listing_product_id: Number(row.listing_product_id),
     shop_key: row.shop_key,
-    source_url: row.source_url,
+    source_url: safeProductSourceUrl(row.source_url),
     title: row.title,
     condition_text: row.condition_text,
     price_yen: row.price_yen,
