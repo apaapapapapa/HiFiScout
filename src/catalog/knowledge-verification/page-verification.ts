@@ -11,12 +11,13 @@
  * classifies:
  *
  * 1. structured JSON-LD `category` / `name`;
- * 2. model-local semantic blocks such as the page title, headings, paragraphs and list/table rows;
+ * 2. model-local semantic blocks and nearby product-content text;
  * 3. page-level description and breadcrumb, which are demoted to `strong` because they describe
  *    the page rather than the model.
  *
- * The complete visible page text is allowed to prove that a model is present, but never to prove
- * its category: global navigation and sibling-product menus are not product facts.
+ * The complete visible page text may prove that a model is present. Category inference is stricter:
+ * global navigation/header/footer/aside chrome is removed first so menus and sibling-navigation
+ * labels cannot become product facts.
  */
 
 import { classifyCategoryEvidence } from "../category-classifier.js";
@@ -65,6 +66,19 @@ export interface VerifyOfficialProductPageOptions {
 function firstElementText(html: string, tag: string): string {
   const match = String(html).match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"));
   return match ? stripTags(match[1]) : "";
+}
+
+/**
+ * Text eligible for page-level model-context category evidence.
+ *
+ * Prefer a semantic main/article container when one exists. On older manufacturer sites that lack
+ * either element, remove the standard global-chrome containers before converting the body to text.
+ */
+function productContentText(html: string): string {
+  const value = String(html);
+  const semantic = value.match(/<(?:main|article)\b[^>]*>([\s\S]*?)<\/(?:main|article)>/i)?.[1];
+  const scoped = semantic ?? value.replace(/<(nav|header|footer|aside)\b[^>]*>[\s\S]*?<\/\1>/gi, " ");
+  return visibleText(scoped);
 }
 
 function matchingProductNode(
@@ -234,6 +248,10 @@ export async function verifyOfficialProductPage({
     const localEvidence: CategoryEvidenceInput[] = [];
     for (const value of [h1, title, ...modelBearingBlocks(html, candidate)]) {
       const evidence = modelContextEvidence(value, candidate);
+      if (evidence) localEvidence.push(evidence);
+    }
+    if (!localEvidence.length) {
+      const evidence = modelContextEvidence(productContentText(html), candidate);
       if (evidence) localEvidence.push(evidence);
     }
     if (localEvidence.length) classification = classifyCategoryEvidence(localEvidence);
