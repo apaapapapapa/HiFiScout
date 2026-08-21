@@ -126,5 +126,5 @@ test("Hifido recognizes supported seller categories that previously became blank
 });
 
 test("category metadata version advances so stale rows are replayable", () => {
-  assert.equal(CATEGORY_CLASSIFICATION_METADATA_VERSION, 10);
+  assert.equal(CATEGORY_CLASSIFICATION_METADATA_VERSION, 11);
 });
