@@ -82,6 +82,29 @@ test("AudioUnion health exposes shared relay configuration and persisted item co
   assert.equal(configured.lastItemCount, 42);
 });
 
+test("public sync health never exposes persisted crawler error text", () => {
+  const secretError =
+    "fetch failed: https://internal.example.test/path?token=super-secret upstream=10.0.0.7";
+  const health = buildSyncHealth(
+    { HIFIDO_ENABLED: "true" },
+    [
+      {
+        shop_key: "hifido",
+        last_success_at: "2026-08-11T05:59:00.000Z",
+        last_attempt_at: "2026-08-11T06:00:00.000Z",
+        consecutive_failures: 1,
+        last_error: secretError,
+      },
+    ],
+    new Date("2026-08-11T06:00:00.000Z"),
+  );
+  const hifido = health.shops.find((shop) => shop.shopKey === "hifido");
+
+  assert.ok(hifido);
+  assert.equal(hifido.lastError, null);
+  assert.doesNotMatch(JSON.stringify(health), /super-secret|internal\.example\.test|10\.0\.0\.7/u);
+});
+
 test("disabled shops do not make overall health unhealthy", () => {
   const health = buildSyncHealth(
     { AUDIOUNION_ENABLED: "false" },
