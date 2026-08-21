@@ -47,7 +47,7 @@ export const U_AUDIO_CATEGORY_MAPPING = Object.freeze({
 });
 
 const SELLER_NOTE_SUFFIX =
-  /\s*(?:※\s*)?(?:商談中|売約済(?:み)?|展示処分品?|展示処分|メーカ(?:ー)?デモ機処分(?:品)?(?:\s*[0-9０-９一二三四五六七八九十]+ペア)?|メーカ(?:ー)?デモ(?:機)?|デモ機処分(?:品)?|デモ|再生品|最終在庫|別売りケーブル付き)\s*$/i;
+  /\s*(?:※\s*)?(?:商談中|売約済(?:み)?|展示処分品?|展示処分|メーカ(?:ー)?デモ機処分(?:品)?(?:\s*[0-9０-９一二三四五六七八九十]+ペア)?|メーカ(?:ー)?デモ(?:機)?|デモ機処分(?:品)?|デモ|再生品|最終在庫|訳あり(?:特価)?|別売りケーブル付き)\s*$/i;
 
 function listingPage(category: UAudioCategory | undefined, page = 1): UAudioPage {
   if (!category) throw new Error("U-AUDIO category configuration missing");
@@ -185,6 +185,7 @@ function conditionText(
   else if (/メーカ(?:ー)?デモ|\bデモ\b/.test(source)) conditions.push("デモ");
   if (/再生品/.test(source)) conditions.push("再生品");
   if (/最終在庫/.test(source)) conditions.push("最終在庫");
+  if (/訳あり(?:特価)?/.test(source)) conditions.push("訳あり特価");
   if (outlet) conditions.push("アウトレット");
   return [...new Set(conditions)].join(" / ");
 }
