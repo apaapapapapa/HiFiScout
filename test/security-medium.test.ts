@@ -37,10 +37,7 @@ test("product-search list and detail share an abuse-brake rate-limit bucket", as
 
   assert.equal(list.bucket, "product-search");
   assert.equal(detail.bucket, "product-search");
-  assert.deepEqual(keys, [
-    "203.0.113.7:product-search",
-    "203.0.113.7:product-search",
-  ]);
+  assert.deepEqual(keys, ["203.0.113.7:product-search", "203.0.113.7:product-search"]);
 });
 
 test("common parser rejects executable schemes from retailer JSON-LD", () => {
