@@ -13,6 +13,8 @@ import {
 const SAFE_SUPPORTING_SELLER_FALLBACKS: ReadonlyMap<string, CategoryId> = new Map([
   ["アクセサリー", "other_accessory"],
   ["ケーブル", "cable_other"],
+  ["カートリッジ", "cartridge"],
+  ["cartridge", "cartridge"],
 ]);
 
 function normalizedEvidence(
@@ -83,7 +85,8 @@ function safeSupportingSellerFallback(
 
   const safeSeller = tier.find((item) => {
     if (item.source !== "seller_category") return false;
-    const expected = SAFE_SUPPORTING_SELLER_FALLBACKS.get(item.value.normalize("NFKC").trim());
+    const value = item.value.normalize("NFKC").trim().toLowerCase();
+    const expected = SAFE_SUPPORTING_SELLER_FALLBACKS.get(value);
     return expected === item.categoryId;
   });
   if (!safeSeller) return null;
