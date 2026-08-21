@@ -1,5 +1,5 @@
 /** Public API routes that carry their own rate-limit bucket. */
-export type ApiRateLimitBucket = "products" | "history" | "meta" | "health";
+export type ApiRateLimitBucket = "products" | "product-search" | "history" | "meta" | "health";
 
 /**
  * The slice of `Env` this guard reads. The binding is optional so tests (and any deployment
@@ -23,6 +23,12 @@ export interface ApiRateLimitResult {
 
 function apiBucket(pathname: string): ApiRateLimitBucket | null {
   if (pathname === "/api/products") return "products";
+  if (
+    pathname === "/api/product-search" ||
+    /^\/api\/product-search\/[a-z]-\d{1,15}$/.test(pathname)
+  ) {
+    return "product-search";
+  }
   if (/^\/api\/products\/\d+\/history$/.test(pathname)) return "history";
   if (pathname === "/api/meta") return "meta";
   if (pathname === "/api/health") return "health";
