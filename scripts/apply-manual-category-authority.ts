@@ -3,7 +3,11 @@ import { refreshListingProjections } from "../src/db/listing-projection-refresh.
 import type { QueryableDatabase } from "../src/db/types.js";
 import { createD1RestDatabase } from "./lib/d1-rest-database.js";
 
-const AUDIT_SOURCE = "manual://approved-category-audit/2026-08-19";
+const AUDIT_SOURCES = [
+  "manual://approved-category-audit/2026-08-19",
+  "manual://approved-product-audit/2026-08-21",
+] as const;
+const AUDIT_SOURCE_PLACEHOLDERS = AUDIT_SOURCES.map(() => "?").join(",");
 const CATEGORY_PROJECTION_TOKEN_PREFIX = "category:manual-audit:";
 
 interface ManualCategoryTargetRow {
@@ -48,7 +52,7 @@ async function loadTargets(db: QueryableDatabase): Promise<ManualCategoryTargetR
       JOIN knowledge_catalog_sources s
         ON s.product_id = kp.id
        AND s.source_type = 'manual_verified'
-       AND s.source_url = ?
+       AND s.source_url IN (${AUDIT_SOURCE_PLACEHOLDERS})
        AND s.status = 'active'
       JOIN knowledge_catalog_product_categories kpc
         ON kpc.product_id = kp.id AND kpc.is_primary = 1
@@ -59,7 +63,7 @@ async function loadTargets(db: QueryableDatabase): Promise<ManualCategoryTargetR
         AND (p.model = kp.canonical_model OR p.model = ka.alias)
       ORDER BY p.id
     `)
-    .bind(AUDIT_SOURCE)
+    .bind(...AUDIT_SOURCES)
     .all<ManualCategoryTargetRow>();
   return result.results || [];
 }
@@ -96,7 +100,7 @@ async function verifyTargets(db: QueryableDatabase): Promise<void> {
       JOIN knowledge_catalog_sources s
         ON s.product_id = kp.id
        AND s.source_type = 'manual_verified'
-       AND s.source_url = ?
+       AND s.source_url IN (${AUDIT_SOURCE_PLACEHOLDERS})
        AND s.status = 'active'
       JOIN knowledge_catalog_product_categories kpc
         ON kpc.product_id = kp.id AND kpc.is_primary = 1
@@ -115,7 +119,7 @@ async function verifyTargets(db: QueryableDatabase): Promise<void> {
         )
       ORDER BY p.id
     `)
-    .bind(AUDIT_SOURCE)
+    .bind(...AUDIT_SOURCES)
     .all<ManualCategoryMismatchRow>();
   if ((result.results || []).length) {
     throw new Error(
@@ -218,6 +222,7 @@ export async function applyManualCategoryAuthority(db: QueryableDatabase): Promi
   console.log(
     JSON.stringify({
       event: "manual_category_authority_complete",
+      auditSources: AUDIT_SOURCES,
       targetCount: targets.length,
       changedCount: refreshTargets.length,
     }),
