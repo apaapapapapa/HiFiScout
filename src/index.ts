@@ -11,8 +11,31 @@ import { handleQueue } from "./queue.js";
 import type { WorkerQueueMessage } from "./queue.js";
 import { handleScheduled } from "./scheduled.js";
 
+/**
+ * Legacy operational admin HTTP routes used a static bearer token on the public Worker. They are
+ * retired at the outermost public entrypoint so no bearer value can make those handlers reachable.
+ * Administrative UI/RPC capabilities live on the separate Cloudflare Access-protected admin Worker.
+ */
+async function handlePublicHttp(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+): Promise<Response> {
+  const url = new URL(request.url);
+  if (url.pathname.startsWith("/api/admin/")) {
+    return new Response(JSON.stringify({ error: "not_found" }), {
+      status: 404,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+      },
+    });
+  }
+  return handleHttp(request, env, ctx);
+}
+
 export default {
-  fetch: handleHttp,
+  fetch: handlePublicHttp,
   scheduled: handleScheduled,
   queue: handleQueue,
 } satisfies ExportedHandler<Env, WorkerQueueMessage>;
