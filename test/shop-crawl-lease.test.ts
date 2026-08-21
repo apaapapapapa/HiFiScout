@@ -15,7 +15,10 @@ interface LeaseState {
   crawl_lease_until: string | null;
 }
 
-function leaseState(sqlite: ReturnType<typeof migratedSqlite>["sqlite"], shopKey: string): LeaseState {
+function leaseState(
+  sqlite: ReturnType<typeof migratedSqlite>["sqlite"],
+  shopKey: string,
+): LeaseState {
   return sqlite
     .prepare(
       `SELECT queued_at, queued_token, crawl_lease_token, crawl_lease_until
@@ -30,10 +33,7 @@ test("long queue wait keeps one dispatch and one live crawl per shop", async () 
   const dispatchToken = await reserveShopDispatch(db, "hifido", requestedAt, 120);
   assert.equal(dispatchToken, crawlDispatchToken("hifido", requestedAt));
 
-  assert.equal(
-    await reserveShopDispatch(db, "hifido", "2026-08-21T01:30:00.000Z", 120),
-    null,
-  );
+  assert.equal(await reserveShopDispatch(db, "hifido", "2026-08-21T01:30:00.000Z", 120), null);
 
   const crawlToken = await tryClaimShopCrawl(
     db,
@@ -45,13 +45,7 @@ test("long queue wait keeps one dispatch and one live crawl per shop", async () 
   assert.ok(crawlToken);
 
   assert.equal(
-    await tryClaimShopCrawl(
-      db,
-      "hifido",
-      requestedAt,
-      "2026-08-21T01:32:00.000Z",
-      20,
-    ),
+    await tryClaimShopCrawl(db, "hifido", requestedAt, "2026-08-21T01:32:00.000Z", 20),
     null,
   );
 
@@ -64,13 +58,7 @@ test("long queue wait keeps one dispatch and one live crawl per shop", async () 
   });
 
   assert.equal(
-    await tryClaimShopCrawl(
-      db,
-      "hifido",
-      requestedAt,
-      "2026-08-21T01:33:00.000Z",
-      20,
-    ),
+    await tryClaimShopCrawl(db, "hifido", requestedAt, "2026-08-21T01:33:00.000Z", 20),
     null,
   );
 });
@@ -87,13 +75,7 @@ test("recovery dispatch supersedes a stale queued message", async () => {
   );
 
   assert.equal(
-    await tryClaimShopCrawl(
-      db,
-      "u-audio",
-      oldRequestedAt,
-      "2026-08-21T02:02:00.000Z",
-      20,
-    ),
+    await tryClaimShopCrawl(db, "u-audio", oldRequestedAt, "2026-08-21T02:02:00.000Z", 20),
     null,
   );
 

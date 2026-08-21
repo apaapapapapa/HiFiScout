@@ -90,12 +90,7 @@ async function enqueueReservedCrawl(
   leaseMinutes: number,
 ): Promise<boolean> {
   if (!env.CRAWL_QUEUE) throw new Error("CRAWL_QUEUE binding is not configured");
-  const dispatchToken = await reserveShopDispatch(
-    env.DB,
-    shopKey,
-    requestedAt,
-    leaseMinutes,
-  );
+  const dispatchToken = await reserveShopDispatch(env.DB, shopKey, requestedAt, leaseMinutes);
   if (!dispatchToken) return false;
 
   try {
