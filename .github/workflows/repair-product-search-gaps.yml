@@ -16,7 +16,8 @@ concurrency:
 
 jobs:
   repair-and-rerun:
-    # The repair command itself refuses to rerun a deployment when no projection gap existed.
+    # The repair command itself refuses to rerun a deployment when Product Search was already
+    # consistent, so unrelated deployment failures cannot enter a rerun loop.
     if: github.event.workflow_run.conclusion == 'failure'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -47,14 +48,14 @@ jobs:
           fi
           echo "database_id=$id" >> "$GITHUB_OUTPUT"
 
-      - name: Repair active listing Product Search projection gaps
+      - name: Repair Product Search projection drift
         shell: bash
         env:
           D1_DATABASE_ID: ${{ steps.d1.outputs.database_id }}
         run: |
           set -euo pipefail
-          # Only a real projection gap is allowed to trigger an automatic deploy rerun.
-          # Unrelated deploy failures stop here instead of entering a rerun loop.
+          # Missing active projections are repaired through the dependency-ordered listing path.
+          # Any remaining derived read-model drift is repaired by the deterministic global rebuild.
           npx tsx scripts/repair-product-search-gaps.ts \
             --batch-size 20 \
             --max-listings 100 \
@@ -67,5 +68,5 @@ jobs:
           FAILED_DEPLOY_RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
           set -euo pipefail
-          echo "Projection gaps repaired; rerunning failed jobs in Deploy Cloudflare run ${FAILED_DEPLOY_RUN_ID}."
+          echo "Product Search projection repaired; rerunning failed jobs in Deploy Cloudflare run ${FAILED_DEPLOY_RUN_ID}."
           gh run rerun "$FAILED_DEPLOY_RUN_ID" --failed --repo "$GITHUB_REPOSITORY"
