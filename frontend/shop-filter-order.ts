@@ -17,10 +17,7 @@ export function sortShopFilterOptions(select: HTMLSelectElement): void {
   const allLabel =
     [...select.options].find((option) => !option.value)?.textContent?.trim() || "すべて";
   select.innerHTML = `<option value="">${escapeHtml(allLabel)}</option>${sorted
-    .map(
-      (entry) =>
-        `<option value="${escapeHtml(entry.key)}">${escapeHtml(entry.name)}</option>`,
-    )
+    .map((entry) => `<option value="${escapeHtml(entry.key)}">${escapeHtml(entry.name)}</option>`)
     .join("")}`;
   select.value = selectedValue;
 }
