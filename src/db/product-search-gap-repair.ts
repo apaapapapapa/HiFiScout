@@ -30,6 +30,37 @@ function positiveBoundedInteger(value: number | undefined, fallback: number, max
   return value;
 }
 
+/**
+ * An active listing needs projection repair when any stage is missing, or when Product Identity
+ * already points at a verified Catalog product but the Product Search membership still points at an
+ * unresolved fallback entity. The latter is a completed upstream transition with a stale read
+ * model, so treating it as a gap is both safe and sufficient to move the listing to its Catalog
+ * entity through the normal dependency-ordered refresh path.
+ */
+const ACTIVE_PROJECTION_GAP_PREDICATE = `
+  NOT EXISTS (
+    SELECT 1
+    FROM product_identity_resolutions r
+    WHERE r.listing_product_id = p.id
+  )
+  OR NOT EXISTS (
+    SELECT 1
+    FROM product_search_entity_offers o
+    WHERE o.listing_product_id = p.id
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM product_search_entity_offers o
+    JOIN product_search_entities e
+      ON e.id = o.entity_id AND e.entity_kind = 'unresolved_listing'
+    JOIN product_identity_resolutions r
+      ON r.listing_product_id = p.id AND r.status = 'matched'
+    JOIN knowledge_catalog_products kp
+      ON kp.id = r.catalog_product_id AND kp.verification_status = 'verified'
+    WHERE o.listing_product_id = p.id
+  )
+`;
+
 async function selectActiveProjectionGaps(
   db: QueryableDatabase,
   afterId: number,
@@ -41,18 +72,7 @@ async function selectActiveProjectionGaps(
       FROM products p
       WHERE p.is_active = 1
         AND p.id > ?
-        AND (
-          NOT EXISTS (
-            SELECT 1
-            FROM product_identity_resolutions r
-            WHERE r.listing_product_id = p.id
-          )
-          OR NOT EXISTS (
-            SELECT 1
-            FROM product_search_entity_offers o
-            WHERE o.listing_product_id = p.id
-          )
-        )
+        AND (${ACTIVE_PROJECTION_GAP_PREDICATE})
       ORDER BY p.id
       LIMIT ?
     `)
@@ -67,18 +87,7 @@ async function countActiveProjectionGaps(db: QueryableDatabase): Promise<number>
       SELECT COUNT(*) AS gap_count
       FROM products p
       WHERE p.is_active = 1
-        AND (
-          NOT EXISTS (
-            SELECT 1
-            FROM product_identity_resolutions r
-            WHERE r.listing_product_id = p.id
-          )
-          OR NOT EXISTS (
-            SELECT 1
-            FROM product_search_entity_offers o
-            WHERE o.listing_product_id = p.id
-          )
-        )
+        AND (${ACTIVE_PROJECTION_GAP_PREDICATE})
     `)
     .first<{ gap_count: number }>();
   return Number(row?.gap_count || 0);
@@ -96,18 +105,7 @@ async function countSeedGaps(
       FROM products p
       WHERE p.id IN (${placeholders})
         AND p.is_active = 1
-        AND (
-          NOT EXISTS (
-            SELECT 1
-            FROM product_identity_resolutions r
-            WHERE r.listing_product_id = p.id
-          )
-          OR NOT EXISTS (
-            SELECT 1
-            FROM product_search_entity_offers o
-            WHERE o.listing_product_id = p.id
-          )
-        )
+        AND (${ACTIVE_PROJECTION_GAP_PREDICATE})
     `)
     .bind(...listingIds)
     .first<{ gap_count: number }>();
