@@ -73,7 +73,7 @@ async function readJsonBody(
   const bytes = new Uint8Array(byteLength);
   let offset = 0;
   for (const chunk of chunks) {
-    bytes.set(chunk.valueOf(), offset);
+    bytes.set(chunk, offset);
     offset += chunk.byteLength;
   }
   const raw = new TextDecoder().decode(bytes);
