@@ -1,11 +1,8 @@
-# HiFiScout — guide for Claude Code
+# HiFiScout — Claude Code guide
 
-Cloudflare Worker + D1 cross-shop search for used hi-fi gear. Cron dispatches due shops to a Queue;
-the queue consumer crawls, parses, normalizes, resolves product identity, and writes D1. The Worker
-also serves `/api/*` and static assets. The UI is plain TypeScript in `frontend/`, bundled by
-esbuild into `public/*.js`.
+HiFiScout is a Cloudflare Workers + D1 application for cross-shop used-audio search. Cron dispatches due shops to a Queue; the consumer uses shop plugins to crawl, normalize seller facts, resolve catalog identity, update D1/search projections, and archive bounded evidence.
 
-Repository rules (pre-commit checks, TypeScript-only source policy) live in AGENTS.md:
+Repository-wide rules live in `AGENTS.md`:
 
 @AGENTS.md
 
@@ -13,69 +10,55 @@ Repository rules (pre-commit checks, TypeScript-only source policy) live in AGEN
 
 | Task | Command |
 | --- | --- |
-| **Everything before a commit** | `npm run verify` |
-| Auto-fix only (format + lint --fix) | `npm run fix` |
-| Read-only gate — exactly what CI runs | `npm run check` |
-| One test file | `npx tsx --test test/<name>.test.ts` |
-| Test names instead of dots | `npm run test:unit:verbose` |
+| Everything before a commit | `npm run verify` |
+| Read-only CI-equivalent gate | `npm run check` |
+| Apply format/lint fixes only | `npm run fix` |
+| One unit-test file | `npx tsx --test test/<name>.test.ts` |
+| Verbose unit tests | `npm run test:unit:verbose` |
 | Local dev server | `npm run dev` |
 
-`npm run verify` runs `fix` then `check` (lint → format:check → check:no-js-source → typecheck →
-unit tests) and prints roughly 700 bytes when everything passes. Run it **once** at the end of a
-change instead of invoking the five underlying commands separately — that costs five tool round
-trips and about 50 KB of output for the same information.
+Run `npm run verify` once near the end of a change instead of invoking formatter, lint, typecheck, and unit tests separately. Successful repository tooling is intentionally quiet; failures retain full diagnostics.
 
-Failures are still reported in full: the dot test reporter prints the assertion, diff, and stack
-for every failing test, and `scripts/run-quiet.ts` replays all suppressed output on a non-zero exit.
-
-## Repo map
+## Repository map
 
 | Path | Contents |
 | --- | --- |
-| `src/index.ts` | Worker entry: `fetch`, `scheduled`, `queue` handlers |
-| `src/http/` | Router, response helpers, status endpoints |
-| `src/api/` | API contracts, product query, search keys |
-| `src/crawler/` | Crawl loop (`run.ts`), `dispatch.ts`, transports (fetch/robots/relay/browser), normalization |
-| `src/crawler/shops/` | One adapter per shop plus `registry.ts` — shops are plugins |
-| `src/catalog/` | Categories, manufacturers, product identity/normalizer, `knowledge-verification/` |
-| `src/db/` | One repository per aggregate; `types.ts` holds row and domain types |
-| `src/search/fts-query.ts` | D1 FTS5 query construction |
+| `src/index.ts` | Worker entry and runtime handlers |
+| `src/http/` | routing, HTTP helpers, health/status endpoints |
+| `src/api/` | API query/contracts |
+| `src/crawler/` | dispatch, crawl loop, transports, shared crawler types |
+| `src/crawler/shops/index.ts` | shop composition root and current shop inventory |
+| `src/crawler/shops/` | concrete shop plugins |
+| `src/catalog/` | categories, manufacturers, normalization, identity/catalog logic |
+| `src/db/` | repositories and persistence types |
+| `src/search/` | FTS/query helpers |
+| `src/data-quality/` | quality evaluation and remediation runtime |
 | `src/evidence/` | R2 evidence archive |
-| `src/data-quality/` | Quality evaluator and thresholds |
-| `frontend/` | Browser TypeScript, bundled into `public/*.js` |
-| `test/` | Node test-runner unit and contract tests, one file per concern |
-| `e2e/` | Playwright; requires a deployed environment, not run locally by default |
-| `migrations/` | D1 SQL migrations, applied in order |
-| `infra/audiounion-lambda/` | Tokyo relay used by Audio Union and Hifido |
-| `scripts/` | Repo tooling (scaffolding, doc generation, checks) |
+| `frontend/` | browser TypeScript |
+| `test/` | unit/contract/query-plan tests |
+| `e2e/` | deployed-environment Playwright tests |
+| `migrations/` | ordered D1 migrations |
+| `scripts/` | maintained repository/operations tooling |
 
-## Where to look first
-
-Read the listed file before searching — these answers are already written down.
+## Where to start
 
 | Task | Start here |
 | --- | --- |
-| Add or change a shop | `docs/adding-shops.md`, then `src/crawler/shops/registry.ts` and a nearby adapter. A normal shop needs no edits to `run.ts`, `dispatch.ts`, or a repository. |
-| Search, ranking, or filters | `src/db/product-search-repository.ts`, `src/search/fts-query.ts`, `src/api/product-query.ts` |
-| Schema change | Add a new file to `migrations/`; never edit an applied migration |
-| Data quality rules | `docs/data-quality.md`, `src/data-quality/` |
-| Architecture / storage boundaries | `docs/data-platform-architecture.md` |
-| Where a test belongs | `docs/testing-strategy.md` |
-| Evidence archive limits | `docs/r2-evidence-safety.md` |
+| Add/change a shop | `docs/adding-shops.md`, `src/crawler/shops/index.ts`, nearby adapter |
+| Search/ranking/filters | `src/db/product-search-repository.ts`, `src/search/fts-query.ts`, `src/api/product-query.ts` |
+| Schema change | new file in `migrations/`; never edit an applied migration |
+| Data-quality rules | `docs/data-quality.md`, `src/data-quality/` |
+| Current data remediation | `docs/data-quality-remediation.md` |
+| Architecture/storage | `docs/data-platform-architecture.md` |
+| Test placement | `docs/testing-strategy.md` |
+| Evidence limits | `docs/r2-evidence-safety.md` |
 
-## Token discipline
+## Context discipline
 
-Context is the scarce resource in this repo; these are the cheap habits that matter here.
-
-- Run `npm run verify` once. Do not run `format`, `lint`, `typecheck`, and `test` as separate calls.
-- Do not run `npm run docs:generate`, `docs:build`, or `docs:dev` to answer a question. They
-  download pinned toolchains through `npx` and emit large output. Source code, JSDoc, and
-  `migrations/*.sql` are the source of truth — read those.
-- `.agents/skills/*/SKILL.md` are archived records of completed migration phases (~1,850 lines
-  total). Read them only when asked about that phase's history.
-- `src/db/types.ts`, `src/catalog/types.ts`, and `src/crawler/types.ts` are 500–1,000 lines each.
-  Grep for the symbol you need instead of reading them whole.
-- Generated paths are denied to `Read` in `.claude/settings.json` (`package-lock.json`, `dist/`,
-  `.generated/`, `public/*.js`, `docs/public/`). Nothing in them is a source of truth.
-- Reviewing a change: `git diff --stat` first, then `git diff -- <path>` for the files that matter.
-- Reading CI: `gh run view <id> --log-failed`, never `--log`.
+- Prefer the source-of-truth table in `README.md`; do not reconstruct current shop/configuration state from old PRs or snapshots.
+- Read symbols/sections, not whole large files. In particular, grep large `types.ts` files and remediation documents before opening them wholesale.
+- Do not read generated output (`package-lock.json`, `dist/`, `.generated/`, `public/*.js`, `admin-public/*.js`, `docs/public/`) as implementation source.
+- Do not run documentation generators just to understand the code; inspect source, JSDoc, migrations, and curated docs.
+- Review with `git diff --stat` first, then inspect only relevant paths.
+- For CI failures, inspect failed jobs/logs rather than downloading complete successful workflow logs.
+- Completed migration plans, dated operational snapshots, and one-off workflow helpers should not remain as parallel sources of truth. Git history is the archive.

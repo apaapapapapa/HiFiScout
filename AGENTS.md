@@ -34,9 +34,16 @@ it fails.
 
 - Prefer `npm run verify` over separate check commands.
 - Unit tests use the dot reporter. Use `npm run test:unit:verbose` only when you need test names.
-- Wrap new noisy-but-successful tooling in `tsx scripts/run-quiet.ts <command> [args...]`, which
-  suppresses output on success and replays it in full on failure.
-- Generated output (`dist/`, `.generated/`, `public/*.js`, `docs/public/`, `package-lock.json`) is
-  never a source of truth. Read the source instead.
-- Claude Code users: `CLAUDE.md` adds a repository map and per-task entry points so common changes
-  do not require exploratory searching.
+- Wrap new noisy-but-successful tooling in `tsx scripts/run-quiet.ts <command> [args...]`, which suppresses output on success and replays it in full on failure.
+- Generated output (`dist/`, `.generated/`, `public/*.js`, `admin-public/*.js`, `docs/public/`, `package-lock.json`) is never a source of truth. Read the source instead.
+- Claude Code users: `CLAUDE.md` provides the repository map and per-task entry points.
+
+## Documentation and workflow lifecycle
+
+Keep `main` focused on current sources of truth rather than implementation history.
+
+- Update a canonical document instead of adding another dated status/progress file when possible.
+- Delete completed migration plans and production snapshots once their durable invariants are encoded in current code, tests, or maintained docs. Git history is the archive.
+- Remove one-off GitHub Actions workflows and helper scripts after the permanent runtime/operational path replaces them.
+- Do not duplicate dynamic shop inventories, schedules, schema details, or environment values in prose when a canonical source file already exists.
+- Before deleting operational automation, verify that no recurring production responsibility still depends on it.
