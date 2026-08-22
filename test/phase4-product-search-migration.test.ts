@@ -23,6 +23,14 @@ const deployWorkflow = readFileSync(
   new URL("../.github/workflows/deploy.yml", import.meta.url),
   "utf8",
 );
+const operationalHealthWorkflow = readFileSync(
+  new URL("../.github/workflows/production-operational-health.yml", import.meta.url),
+  "utf8",
+);
+const operationalHealthScript = readFileSync(
+  new URL("../scripts/production-operational-health.sh", import.meta.url),
+  "utf8",
+);
 
 /** Comparing SQL by shape, since the migration file is formatted for reading rather than diffing. */
 function normalized(sql: string): string {
@@ -120,13 +128,17 @@ test("the backfill groups only confirmed identities and keeps unresolved listing
   assert.doesNotMatch(migration, /candidate_catalog_product_id/);
 });
 
-test("production read-model drift fails the deploy instead of quietly hiding products", () => {
-  assert.match(deployWorkflow, /AS unmembered_active_listings/);
-  assert.match(deployWorkflow, /AS inactive_offer_memberships/);
-  assert.match(deployWorkflow, /AS entities_without_offers/);
-  assert.match(deployWorkflow, /AS stale_fallback_entities/);
-  assert.match(deployWorkflow, /if \[ "\$search_drift" -ne 0 \]; then/);
-  assert.match(deployWorkflow, /api\/admin\/product-search\/rebuild/);
+test("production read-model drift fails operational health without rewriting deployment success", () => {
+  assert.match(operationalHealthWorkflow, /workflows: \["Deploy Cloudflare"\]/);
+  assert.match(operationalHealthWorkflow, /scripts\/production-operational-health\.sh/);
+  assert.match(operationalHealthScript, /AS unmembered_active_listings/);
+  assert.match(operationalHealthScript, /AS inactive_offer_memberships/);
+  assert.match(operationalHealthScript, /AS entities_without_offers/);
+  assert.match(operationalHealthScript, /AS stale_fallback_entities/);
+  assert.match(operationalHealthScript, /if \[ "\$search_drift" -ne 0 \]; then/);
+  assert.match(operationalHealthScript, /api\/admin\/product-search\/rebuild/);
+  assert.doesNotMatch(deployWorkflow, /AS unmembered_active_listings/);
+  assert.doesNotMatch(deployWorkflow, /identity_resolution_missing_count/);
 });
 
 test("membership only ever covers active listings, so an entity always has something to buy", () => {
