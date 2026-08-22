@@ -50,6 +50,12 @@ interface ProductAuditExportElements {
   download: HTMLAnchorElement;
 }
 
+interface EditSnapshot {
+  canonicalName: string;
+  primaryCategoryId: string;
+  lifecycleStatus: CatalogProduct["lifecycleStatus"];
+}
+
 function element<T>(id: string): T {
   const value = document.getElementById(id);
   if (!value) throw new Error(`Missing #${id}`);
@@ -61,6 +67,10 @@ const searchForm = element<HTMLFormElement>("catalog-search-form");
 const queryInput = element<HTMLInputElement>("catalog-query");
 const manufacturerInput = element<HTMLInputElement>("manufacturer-id");
 const categoryFilter = element<HTMLSelectElement>("category-filter");
+const resetSearch = element<HTMLButtonElement>("reset-search");
+const searchSubmit = element<HTMLButtonElement>("search-submit");
+const tablePanel = element<HTMLElement>("catalog-table-panel");
+const resultSummary = element<HTMLElement>("result-summary");
 const rows = element<HTMLTableSectionElement>("catalog-rows");
 const emptyState = element<HTMLElement>("empty-state");
 const status = element<HTMLElement>("status-message");
@@ -73,6 +83,8 @@ const editIdentity = element<HTMLElement>("edit-identity");
 const editName = element<HTMLInputElement>("edit-canonical-name");
 const editCategory = element<HTMLSelectElement>("edit-category");
 const editLifecycle = element<HTMLSelectElement>("edit-lifecycle");
+const editChangeStatus = element<HTMLElement>("edit-change-status");
+const closeEditButton = element<HTMLButtonElement>("close-edit");
 const cancelEdit = element<HTMLButtonElement>("cancel-edit");
 const saveEdit = element<HTMLButtonElement>("save-edit");
 const productAuditExportElements = {
@@ -96,7 +108,10 @@ let currentAfterId = 0;
 let nextAfterId: number | null = null;
 let history: number[] = [];
 let editingId: number | null = null;
+let editingSnapshot: EditSnapshot | null = null;
 let busy = false;
+let saving = false;
+let catalogReady = false;
 let productAuditExportPollTimer: number | null = null;
 const productAuditExportJobs: Record<ProductAuditExportScope, ProductAuditExportJob | null> = {
   active: null,
@@ -116,11 +131,39 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function hasActiveFilters(): boolean {
+  return Boolean(queryInput.value.trim() || manufacturerInput.value.trim() || categoryFilter.value);
+}
+
+function editIsDirty(): boolean {
+  if (!editingSnapshot) return false;
+  return (
+    editName.value.trim() !== editingSnapshot.canonicalName ||
+    editCategory.value !== editingSnapshot.primaryCategoryId ||
+    editLifecycle.value !== editingSnapshot.lifecycleStatus
+  );
+}
+
+function updateInteractionState(): void {
+  previousButton.disabled = busy || history.length === 0;
+  nextButton.disabled = busy || nextAfterId === null;
+  searchSubmit.disabled = busy;
+  resetSearch.disabled = busy || !hasActiveFilters();
+  tablePanel.classList.toggle("is-loading", busy);
+  tablePanel.setAttribute("aria-busy", busy ? "true" : "false");
+
+  const dirty = editIsDirty();
+  saveEdit.disabled = busy || saving || !dirty;
+  saveEdit.textContent = saving ? "保存中…" : "変更を保存";
+  if (editingSnapshot) {
+    editChangeStatus.dataset.dirty = dirty ? "true" : "false";
+    editChangeStatus.textContent = dirty ? "未保存の変更があります。" : "変更すると保存できます。";
+  }
+}
+
 function setBusy(value: boolean): void {
   busy = value;
-  previousButton.disabled = value || history.length === 0;
-  nextButton.disabled = value || nextAfterId === null;
-  saveEdit.disabled = value;
+  updateInteractionState();
 }
 
 async function json<T>(response: Response): Promise<T> {
@@ -342,19 +385,55 @@ function lifecycleName(value: CatalogProduct["lifecycleStatus"]): string {
   return value === "active" ? "現行" : value === "discontinued" ? "生産完了" : "不明";
 }
 
-function cell(row: HTMLTableRowElement, value: string): void {
+function lifecycleClass(value: CatalogProduct["lifecycleStatus"]): string {
+  return value === "active"
+    ? "lifecycle-active"
+    : value === "discontinued"
+      ? "lifecycle-discontinued"
+      : "lifecycle-unknown";
+}
+
+function cell(row: HTMLTableRowElement, label: string, value: string, className = ""): void {
   const td = document.createElement("td");
+  td.dataset.label = label;
   td.textContent = value;
+  if (className) td.className = className;
+  row.appendChild(td);
+}
+
+function badgeCell(
+  row: HTMLTableRowElement,
+  label: string,
+  value: string,
+  className: string,
+): void {
+  const td = document.createElement("td");
+  td.dataset.label = label;
+  const badge = document.createElement("span");
+  badge.className = className;
+  badge.textContent = value;
+  badge.title = value;
+  td.appendChild(badge);
   row.appendChild(td);
 }
 
 function openEdit(product: CatalogProduct): void {
   editingId = product.id;
+  editingSnapshot = {
+    canonicalName: product.canonicalName,
+    primaryCategoryId: product.primaryCategoryId,
+    lifecycleStatus: product.lifecycleStatus,
+  };
   editIdentity.textContent = `${product.manufacturerId} / ${product.canonicalModel} (#${product.id})`;
   editName.value = product.canonicalName;
   editCategory.value = product.primaryCategoryId;
   editLifecycle.value = product.lifecycleStatus;
   dialog.showModal();
+  updateInteractionState();
+  requestAnimationFrame(() => {
+    editName.focus();
+    editName.select();
+  });
 }
 
 function render(items: CatalogProduct[]): void {
@@ -362,19 +441,38 @@ function render(items: CatalogProduct[]): void {
   emptyState.hidden = items.length !== 0;
   for (const product of items) {
     const row = document.createElement("tr");
-    cell(row, String(product.id));
-    cell(row, product.manufacturerId);
-    cell(row, product.canonicalModel);
-    cell(row, product.canonicalName);
-    cell(row, categoryName(product.primaryCategoryId));
-    cell(row, lifecycleName(product.lifecycleStatus));
-    cell(row, String(product.matchedListingCount));
-    cell(row, product.updatedAt ? new Date(product.updatedAt).toLocaleString("ja-JP") : "—");
+    row.dataset.catalogId = String(product.id);
+    cell(row, "ID", String(product.id), "id-cell");
+    cell(row, "メーカー", product.manufacturerId);
+    cell(row, "型番", product.canonicalModel, "model-cell");
+    cell(row, "表示名", product.canonicalName, "name-cell");
+    badgeCell(
+      row,
+      "カテゴリ",
+      categoryName(product.primaryCategoryId),
+      "category-badge",
+    );
+    badgeCell(
+      row,
+      "状態",
+      lifecycleName(product.lifecycleStatus),
+      `lifecycle-badge ${lifecycleClass(product.lifecycleStatus)}`,
+    );
+    badgeCell(row, "listing", String(product.matchedListingCount), "count-badge");
+    cell(
+      row,
+      "更新日時",
+      product.updatedAt ? new Date(product.updatedAt).toLocaleString("ja-JP") : "—",
+      "updated-cell",
+    );
     const action = document.createElement("td");
+    action.dataset.label = "操作";
+    action.className = "row-actions";
     const button = document.createElement("button");
     button.type = "button";
     button.className = "secondary-button compact";
     button.textContent = "編集";
+    button.setAttribute("aria-label", `${product.canonicalName} を編集`);
     button.addEventListener("click", () => openEdit(product));
     action.appendChild(button);
     row.appendChild(action);
@@ -392,6 +490,16 @@ function params(afterId: number): URLSearchParams {
   return value;
 }
 
+function updateResultSummary(itemCount: number): void {
+  const filters: string[] = [];
+  if (queryInput.value.trim()) filters.push(`検索「${queryInput.value.trim()}」`);
+  if (manufacturerInput.value.trim()) filters.push(`メーカー ${manufacturerInput.value.trim()}`);
+  if (categoryFilter.value) filters.push(categoryName(categoryFilter.value));
+  resultSummary.textContent = filters.length
+    ? `${itemCount}件表示 · ${filters.join(" · ")}`
+    : `${itemCount}件表示 · すべてのCatalog`;
+}
+
 async function load(afterId: number, resetHistory = false): Promise<void> {
   if (busy) return;
   setBusy(true);
@@ -404,11 +512,13 @@ async function load(afterId: number, resetHistory = false): Promise<void> {
     nextAfterId = result.nextAfterId;
     if (resetHistory) history = [];
     render(result.items);
+    updateResultSummary(result.items.length);
+    catalogReady = true;
     controls.hidden = false;
-    pagePosition.textContent = afterId ? `ID ${afterId} より後` : "先頭";
-    message(`${result.items.length}件を表示しています。`, "success");
+    pagePosition.textContent = `ページ ${history.length + 1}`;
+    message("");
   } catch (error) {
-    controls.hidden = true;
+    if (!catalogReady) controls.hidden = true;
     message(`Catalogを読み込めません: ${errorText(error)}`, "error");
   } finally {
     setBusy(false);
@@ -434,13 +544,14 @@ async function loadCategories(): Promise<void> {
 }
 
 async function save(): Promise<void> {
-  if (editingId === null || busy) return;
+  if (editingId === null || busy || !editIsDirty()) return;
   const canonicalName = editName.value.trim();
   const primaryCategoryId = editCategory.value;
   if (!canonicalName || !primaryCategoryId) {
     message("表示名とカテゴリは必須です。", "error");
     return;
   }
+  saving = true;
   setBusy(true);
   try {
     const result = await adminJson<CatalogUpdateResponse>(
@@ -456,6 +567,8 @@ async function save(): Promise<void> {
     );
     dialog.close();
     editingId = null;
+    editingSnapshot = null;
+    saving = false;
     setBusy(false);
     await load(currentAfterId);
     message(
@@ -463,10 +576,25 @@ async function save(): Promise<void> {
       "success",
     );
   } catch (error) {
+    saving = false;
     message(`保存できません: ${errorText(error)}`, "error");
   } finally {
     setBusy(false);
   }
+}
+
+function clearFilters(): void {
+  queryInput.value = "";
+  manufacturerInput.value = "";
+  categoryFilter.value = "";
+  history = [];
+  updateInteractionState();
+  void load(0, true);
+  queryInput.focus();
+}
+
+function closeEditDialog(): void {
+  dialog.close();
 }
 
 searchForm.addEventListener("submit", (event) => {
@@ -474,6 +602,11 @@ searchForm.addEventListener("submit", (event) => {
   history = [];
   void load(0, true);
 });
+resetSearch.addEventListener("click", clearFilters);
+for (const control of [queryInput, manufacturerInput, categoryFilter]) {
+  control.addEventListener("input", updateInteractionState);
+  control.addEventListener("change", updateInteractionState);
+}
 previousButton.addEventListener("click", () => {
   const previous = history.pop();
   if (previous !== undefined) void load(previous);
@@ -483,10 +616,24 @@ nextButton.addEventListener("click", () => {
   history.push(currentAfterId);
   void load(nextAfterId);
 });
-cancelEdit.addEventListener("click", () => {
-  editingId = null;
-  dialog.close();
+closeEditButton.addEventListener("click", closeEditDialog);
+cancelEdit.addEventListener("click", closeEditDialog);
+dialog.addEventListener("cancel", (event) => {
+  if (!editIsDirty()) return;
+  event.preventDefault();
+  editChangeStatus.dataset.dirty = "warning";
+  editChangeStatus.textContent = "未保存の変更があります。キャンセルで破棄できます。";
 });
+dialog.addEventListener("close", () => {
+  editingId = null;
+  editingSnapshot = null;
+  saving = false;
+  updateInteractionState();
+});
+for (const control of [editName, editCategory, editLifecycle]) {
+  control.addEventListener("input", updateInteractionState);
+  control.addEventListener("change", updateInteractionState);
+}
 editForm.addEventListener("submit", (event) => {
   event.preventDefault();
   void save();
@@ -501,6 +648,7 @@ async function start(): Promise<void> {
   void loadProductAuditExports();
   try {
     await loadCategories();
+    updateInteractionState();
     await load(0, true);
   } catch (error) {
     message(`管理画面を初期化できません: ${errorText(error)}`, "error");
