@@ -149,6 +149,9 @@ function updateInteractionState(): void {
   nextButton.disabled = busy || nextAfterId === null;
   searchSubmit.disabled = busy;
   resetSearch.disabled = busy || !hasActiveFilters();
+  queryInput.disabled = busy;
+  manufacturerInput.disabled = busy;
+  categoryFilter.disabled = busy;
   tablePanel.classList.toggle("is-loading", busy);
   tablePanel.setAttribute("aria-busy", busy ? "true" : "false");
 
@@ -495,6 +498,15 @@ function updateResultSummary(itemCount: number): void {
     : `${itemCount}件表示 · すべてのCatalog`;
 }
 
+function invalidatePaginationForPendingFilters(): void {
+  if (busy) return;
+  currentAfterId = 0;
+  nextAfterId = null;
+  history = [];
+  pagePosition.textContent = "ページ —";
+  updateInteractionState();
+}
+
 async function load(
   afterId: number,
   resetHistory = false,
@@ -609,8 +621,8 @@ searchForm.addEventListener("submit", (event) => {
 });
 resetSearch.addEventListener("click", clearFilters);
 for (const control of [queryInput, manufacturerInput, categoryFilter]) {
-  control.addEventListener("input", updateInteractionState);
-  control.addEventListener("change", updateInteractionState);
+  control.addEventListener("input", invalidatePaginationForPendingFilters);
+  control.addEventListener("change", invalidatePaginationForPendingFilters);
 }
 previousButton.addEventListener("click", () => {
   const previous = history.at(-1);
