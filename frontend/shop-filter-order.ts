@@ -14,7 +14,8 @@ export function sortShopFilterOptions(select: HTMLSelectElement): void {
   if (sorted.every((entry, index) => entry.key === current[index]?.key)) return;
 
   const selectedValue = select.value;
-  const allLabel = [...select.options].find((option) => !option.value)?.textContent?.trim() || "すべて";
+  const allLabel =
+    [...select.options].find((option) => !option.value)?.textContent?.trim() || "すべて";
   select.innerHTML = `<option value="">${escapeHtml(allLabel)}</option>${sorted
     .map(
       (entry) =>
@@ -25,10 +26,12 @@ export function sortShopFilterOptions(select: HTMLSelectElement): void {
 }
 
 function installShopFilterOrdering(): void {
+  const root = document.getElementById("shop");
+  if (!root) return;
   const select = $select("shop");
   const sort = () => sortShopFilterOptions(select);
   sort();
-  new MutationObserver(sort).observe(select, { childList: true });
+  new MutationObserver(sort).observe(root, { childList: true });
 }
 
 installShopFilterOrdering();
