@@ -51,6 +51,7 @@ import {
   AUDIO_SPACE_CORE_CATEGORY_POLICY,
   audioSpaceCoreAdapter,
 } from "./audio-space-core.js";
+import { rewireAdapter } from "./rewire.js";
 import {
   HOME_SHOKAI_CATEGORY_MAPPING,
   HOME_SHOKAI_CATEGORY_POLICY,
@@ -257,6 +258,15 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       },
     },
   ),
+  defineShopPlugin(rewireAdapter, {
+    key: "rewire",
+    name: "REWIRE",
+    baseUrl: "https://rewire.co.jp",
+    defaultEnabled: false,
+    defaultIntervalMinutes: 60,
+    defaultRequestDelayMs: 1500,
+    defaultMaxPages: 30,
+  }),
   defineShopPlugin(
     homeShokaiAdapter,
     {
