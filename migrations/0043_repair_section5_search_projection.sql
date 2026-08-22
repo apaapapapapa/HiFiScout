@@ -10,8 +10,9 @@
 -- A deactivated listing is no longer an offer.
 DELETE FROM product_search_entity_offers
 WHERE listing_product_id IN (
-  SELECT p.id
-  FROM products p
+  SELECT m.listing_product_id
+  FROM product_search_entity_offers m
+  JOIN products p ON p.id = m.listing_product_id
   WHERE p.is_active = 0
 );
 
@@ -83,7 +84,5 @@ WHERE e.id = agg.entity_id
 -- An entity without an active offer is not a searchable product.
 DELETE FROM product_search_entities
 WHERE NOT EXISTS (
-  SELECT 1
-  FROM product_search_entity_offers m
-  WHERE m.entity_id = product_search_entities.id
+  SELECT 1 FROM product_search_entity_offers m WHERE m.entity_id = product_search_entities.id
 );
