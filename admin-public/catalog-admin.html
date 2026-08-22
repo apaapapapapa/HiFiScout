@@ -10,132 +10,210 @@
   <body>
     <main class="admin-shell">
       <header class="admin-header">
-        <a class="brand-link" href="https://hifiscout.tokyojp.workers.dev/" rel="noreferrer">HiFiScout</a>
-        <div>
-          <p class="eyebrow">CLOUDFLARE ACCESS · ADMIN</p>
-          <h1>Knowledge Catalog 管理</h1>
-          <p class="lede">検証済みCatalogの表示名・カテゴリ・ライフサイクルを修正します。</p>
+        <a
+          class="brand-link"
+          href="https://hifiscout.tokyojp.workers.dev/"
+          rel="noreferrer"
+          aria-label="HiFiScout を開く"
+        >
+          <span class="brand-mark" aria-hidden="true">HS</span>
+          <span class="brand-copy">
+            <strong>HiFiScout</strong>
+            <span>Catalog Console</span>
+          </span>
+        </a>
+        <div class="header-copy">
+          <p class="eyebrow eyebrow-inverse">CATALOG OPERATIONS</p>
+          <h1>Knowledge Catalog <span>管理</span></h1>
+          <p class="lede">
+            検証済みCatalogの表示名・カテゴリ・ライフサイクルを、安全に検索・修正できます。
+          </p>
+        </div>
+        <div class="header-actions">
+          <span class="access-badge"><span aria-hidden="true"></span>Cloudflare Access 保護中</span>
+          <a
+            class="header-link"
+            href="https://hifiscout.tokyojp.workers.dev/"
+            rel="noreferrer"
+            target="_blank"
+          >
+            検索サイトを開く <span aria-hidden="true">↗</span>
+          </a>
         </div>
       </header>
 
       <p id="status-message" class="status-message" role="status" aria-live="polite"></p>
 
       <section id="catalog-controls" hidden>
-        <section class="panel export-panel" aria-labelledby="product-audit-heading">
-          <div class="export-introduction">
-            <p class="eyebrow">AI DATA AUDIT</p>
-            <h2 id="product-audit-heading">登録商品をCSVで診断</h2>
-            <p>
-              店舗ごとの生データ、正規化済みメーカー・型番、カテゴリ、Product Identity、検索上の同一製品グループを1行1listingで出力します。CSVをAIに渡して、重複表示・カテゴリ誤り・メーカー/型番の正規化漏れを確認できます。
-            </p>
+        <section class="panel workspace-panel" aria-labelledby="catalog-search-heading">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">CATALOG WORKSPACE</p>
+              <h2 id="catalog-search-heading">Catalogを検索・編集</h2>
+              <p>製品名・型番・メーカー・カテゴリを組み合わせて対象を絞り込めます。</p>
+            </div>
+            <span class="keyboard-hint"><kbd>Enter</kbd> で検索</span>
           </div>
-          <div class="export-jobs">
-            <section class="export-job" aria-labelledby="export-active-heading">
-              <div>
-                <h3 id="export-active-heading">掲載中商品</h3>
-                <p
-                  id="export-active-status"
-                  class="export-status"
-                  role="status"
-                  aria-live="polite"
-                >
-                  最新の生成状況を確認しています…
-                </p>
-              </div>
-              <div class="export-job-actions">
-                <button id="export-active-generate" type="button" disabled>CSVを生成</button>
-                <a
-                  id="export-active-download"
-                  class="button-link secondary-button"
-                  hidden
-                >
-                  ダウンロード
-                </a>
-              </div>
-            </section>
-            <section class="export-job" aria-labelledby="export-all-heading">
-              <div>
-                <h3 id="export-all-heading">全履歴</h3>
-                <p
-                  id="export-all-status"
-                  class="export-status"
-                  role="status"
-                  aria-live="polite"
-                >
-                  最新の生成状況を確認しています…
-                </p>
-              </div>
-              <div class="export-job-actions">
-                <button id="export-all-generate" class="secondary-button" type="button" disabled>
-                  CSVを生成
-                </button>
-                <a
-                  id="export-all-download"
-                  class="button-link secondary-button"
-                  hidden
-                >
-                  ダウンロード
-                </a>
-              </div>
-            </section>
-          </div>
-          <p class="export-note">
-            通常の品質確認には「掲載中商品」を推奨します。「全履歴」には販売終了・非掲載の商品も含まれます。生成ボタンを押すと、CPU負荷を抑えるため250件ずつバックグラウンドで処理します。完了まで時間がかかる場合がありますが、画面を閉じても処理は継続し、完成したCSVは7日間ダウンロードできます。1回の上限は225,000件、生成期限は24時間です。
-          </p>
+          <form id="catalog-search-form" class="search-grid">
+            <label class="search-field search-field-wide">
+              <span>製品を検索</span>
+              <input
+                id="catalog-query"
+                type="search"
+                placeholder="製品名 / 型番 / manufacturer id"
+                autocomplete="off"
+              />
+            </label>
+            <label class="search-field">
+              <span>Manufacturer ID</span>
+              <input
+                id="manufacturer-id"
+                type="text"
+                placeholder="luxman"
+                spellcheck="false"
+                autocomplete="off"
+              />
+            </label>
+            <label class="search-field">
+              <span>カテゴリ</span>
+              <select id="category-filter"></select>
+            </label>
+            <div class="search-actions">
+              <button id="reset-search" class="tertiary-button" type="button">条件をクリア</button>
+              <button id="search-submit" type="submit">検索</button>
+            </div>
+          </form>
         </section>
 
-        <form id="catalog-search-form" class="panel search-grid">
-          <label>
-            <span>検索</span>
-            <input id="catalog-query" type="search" placeholder="製品名 / 型番 / manufacturer id" />
-          </label>
-          <label>
-            <span>Manufacturer ID</span>
-            <input id="manufacturer-id" type="text" placeholder="luxman" spellcheck="false" />
-          </label>
-          <label>
-            <span>カテゴリ</span>
-            <select id="category-filter"></select>
-          </label>
-          <button type="submit">絞り込む</button>
-        </form>
-
-        <section class="panel table-panel" aria-label="Knowledge Catalog 一覧">
+        <section
+          id="catalog-table-panel"
+          class="panel table-panel"
+          aria-label="Knowledge Catalog 一覧"
+        >
+          <div class="table-toolbar">
+            <div>
+              <p class="eyebrow">RESULTS</p>
+              <h2>Catalog一覧</h2>
+            </div>
+            <p id="result-summary" class="result-summary" aria-live="polite">読み込み中…</p>
+          </div>
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>ID</th>
-                  <th>メーカー</th>
-                  <th>型番</th>
-                  <th>表示名</th>
-                  <th>カテゴリ</th>
-                  <th>状態</th>
-                  <th>紐づくlisting</th>
-                  <th>更新日時</th>
-                  <th></th>
+                  <th scope="col">ID</th>
+                  <th scope="col">メーカー</th>
+                  <th scope="col">型番</th>
+                  <th scope="col">表示名</th>
+                  <th scope="col">カテゴリ</th>
+                  <th scope="col">状態</th>
+                  <th scope="col">listing</th>
+                  <th scope="col">更新日時</th>
+                  <th scope="col">操作</th>
                 </tr>
               </thead>
               <tbody id="catalog-rows"></tbody>
             </table>
           </div>
-          <p id="empty-state" class="empty-state" hidden>条件に一致するCatalogはありません。</p>
-          <nav class="pagination" aria-label="Catalogページング">
-            <button id="previous-page" class="secondary-button" type="button" disabled>前へ</button>
-            <span id="page-position">先頭</span>
-            <button id="next-page" class="secondary-button" type="button" disabled>次へ</button>
-          </nav>
+          <p id="empty-state" class="empty-state" hidden>
+            <strong>条件に一致するCatalogがありません。</strong>
+            <span>検索条件を減らすか、条件をクリアして再検索してください。</span>
+          </p>
+          <div class="pagination-bar">
+            <span id="page-position">ページ 1</span>
+            <nav class="pagination" aria-label="Catalogページング">
+              <button id="previous-page" class="secondary-button" type="button" disabled>
+                ← 前へ
+              </button>
+              <button id="next-page" class="secondary-button" type="button" disabled>
+                次へ →
+              </button>
+            </nav>
+          </div>
         </section>
+
+        <details class="panel export-panel">
+          <summary class="export-summary">
+            <span class="export-summary-copy">
+              <span class="eyebrow">AI DATA AUDIT</span>
+              <strong id="product-audit-heading">登録商品をCSVで診断</strong>
+              <span>重複・カテゴリ・メーカー/型番の品質確認用データを生成します。</span>
+            </span>
+            <span class="summary-chevron" aria-hidden="true"></span>
+          </summary>
+          <div class="export-content" aria-labelledby="product-audit-heading">
+            <p class="export-description">
+              店舗ごとの生データ、正規化済みメーカー・型番、カテゴリ、Product Identity、検索上の同一製品グループを1行1listingで出力します。CSVをAIに渡して、重複表示・カテゴリ誤り・メーカー/型番の正規化漏れを確認できます。
+            </p>
+            <div class="export-jobs">
+              <section class="export-job" aria-labelledby="export-active-heading">
+                <div>
+                  <span class="job-kicker">RECOMMENDED</span>
+                  <h3 id="export-active-heading">掲載中商品</h3>
+                  <p
+                    id="export-active-status"
+                    class="export-status"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    最新の生成状況を確認しています…
+                  </p>
+                </div>
+                <div class="export-job-actions">
+                  <button id="export-active-generate" type="button" disabled>CSVを生成</button>
+                  <a id="export-active-download" class="button-link secondary-button" hidden>
+                    ダウンロード
+                  </a>
+                </div>
+              </section>
+              <section class="export-job" aria-labelledby="export-all-heading">
+                <div>
+                  <span class="job-kicker job-kicker-muted">ARCHIVE</span>
+                  <h3 id="export-all-heading">全履歴</h3>
+                  <p
+                    id="export-all-status"
+                    class="export-status"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    最新の生成状況を確認しています…
+                  </p>
+                </div>
+                <div class="export-job-actions">
+                  <button id="export-all-generate" class="secondary-button" type="button" disabled>
+                    CSVを生成
+                  </button>
+                  <a id="export-all-download" class="button-link secondary-button" hidden>
+                    ダウンロード
+                  </a>
+                </div>
+              </section>
+            </div>
+            <p class="export-note">
+              通常の品質確認には「掲載中商品」を推奨します。「全履歴」には販売終了・非掲載の商品も含まれます。生成ボタンを押すと250件ずつバックグラウンドで処理し、画面を閉じても継続します。完成したCSVは7日間ダウンロードできます。1回の上限は225,000件、生成期限は24時間です。
+            </p>
+          </div>
+        </details>
       </section>
     </main>
 
     <dialog id="edit-dialog">
       <form id="edit-form" method="dialog" class="edit-form">
-        <div>
-          <p class="eyebrow">EDIT CATALOG</p>
-          <h2>Catalog情報を修正</h2>
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">EDIT CATALOG</p>
+            <h2>Catalog情報を修正</h2>
+          </div>
+          <button id="close-edit" class="icon-button" type="button" aria-label="編集画面を閉じる">
+            ×
+          </button>
+        </div>
+        <div class="identity-card">
+          <span>変更対象</span>
           <p id="edit-identity" class="identity"></p>
-          <p class="identity-note">メーカーと型番はProduct Identityに影響するため、この画面では変更できません。</p>
+          <p class="identity-note">
+            メーカーと型番はProduct Identityに影響するため、この画面では変更できません。
+          </p>
         </div>
         <label>
           <span>表示名</span>
@@ -153,10 +231,16 @@
             <option value="discontinued">生産完了</option>
           </select>
         </label>
-        <p class="edit-note">保存すると、このCatalogに一致済みのlistingも再分類・再投影されます。</p>
+        <div class="edit-impact">
+          <strong>保存時の処理</strong>
+          <p>このCatalogに一致済みのlistingも再分類・再投影されます。</p>
+        </div>
+        <p id="edit-change-status" class="edit-change-status" data-dirty="false">
+          変更すると保存できます。
+        </p>
         <div class="dialog-actions">
           <button id="cancel-edit" class="secondary-button" type="button">キャンセル</button>
-          <button id="save-edit" type="submit">保存</button>
+          <button id="save-edit" type="submit" disabled>変更を保存</button>
         </div>
       </form>
     </dialog>
