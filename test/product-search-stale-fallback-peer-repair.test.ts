@@ -30,7 +30,9 @@ function insertListing(
       )
     `)
     .run(sourceId, NOW, NOW, NOW, NOW);
-  return Number(sqlite.prepare("SELECT id FROM products WHERE source_id = ?").get(sourceId)?.id || 0);
+  return Number(
+    sqlite.prepare("SELECT id FROM products WHERE source_id = ?").get(sourceId)?.id || 0,
+  );
 }
 
 function insertResolution(
