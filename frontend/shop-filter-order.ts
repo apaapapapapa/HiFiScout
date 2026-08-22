@@ -2,7 +2,7 @@ import { $select } from "./dom.js";
 import { escapeHtml } from "./format.js";
 import { sortShopsByJapaneseReading } from "./shop-options.js";
 
-/** Reorder only the search condition's shop options; the metadata array stays untouched. */
+/** Order only the search condition's shop options; other shop lists stay untouched. */
 export function sortShopFilterOptions(select: HTMLSelectElement): void {
   const current = [...select.options]
     .filter((option) => option.value)
