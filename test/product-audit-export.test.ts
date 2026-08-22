@@ -6,11 +6,7 @@ import type {
   CatalogAdminProductExportRow,
 } from "../src/admin/contracts.js";
 import { handleAuthenticatedCatalogAdminRequest } from "../src/admin/index.js";
-import {
-  PRODUCT_AUDIT_CSV_BOM,
-  productAuditCsvHeader,
-  productAuditCsvRow,
-} from "../src/admin/product-audit-csv.js";
+import { productAuditCsvHeader, productAuditCsvRow } from "../src/admin/product-audit-csv.js";
 import { listProductAuditExportPage } from "../src/db/product-audit-export-repository.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 
@@ -99,7 +95,7 @@ function assertAdminSecurityHeaders(response: Response): void {
 }
 
 test("AI audit CSV has stable diagnostic columns and neutralises spreadsheet formulas", () => {
-  const header = productAuditCsvHeader();
+  const headers = productAuditCsvHeader().split(",");
   for (const column of [
     "listing_id",
     "canonical_manufacturer_id",
@@ -109,7 +105,7 @@ test("AI audit CSV has stable diagnostic columns and neutralises spreadsheet for
     "identity_status",
     "catalog_primary_category_id",
   ]) {
-    assert.ok(header.split(",").includes(column), column);
+    assert.ok(headers.includes(column), column);
   }
 
   const line = productAuditCsvRow(
@@ -147,8 +143,10 @@ test("protected product export paginates the service binding and downloads UTF-8
     { scope: "all", afterId: 1, limit: 500 },
   ]);
 
-  const body = await response.text();
-  assert.ok(body.startsWith(`${PRODUCT_AUDIT_CSV_BOM}listing_id,shop_key`));
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  assert.deepEqual([...bytes.slice(0, 3)], [0xef, 0xbb, 0xbf]);
+  const body = new TextDecoder().decode(bytes);
+  assert.ok(body.startsWith("listing_id,shop_key"));
   assert.match(body, /"source-1"/u);
   assert.match(body, /"source-2"/u);
 });
