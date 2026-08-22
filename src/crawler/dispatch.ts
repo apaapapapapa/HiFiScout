@@ -28,6 +28,10 @@ import type {
 
 type RuntimeEnv = CrawlerEnv & { DB: QueryableDatabase };
 type ProductSearchEntitySync = typeof syncProductSearchEntities;
+type ShopCrawlLeaseState = ShopSyncStateRow & {
+  queued_token?: string | null;
+  crawl_lease_until?: string | null;
+};
 
 /** Cloudflare Queue consumer invocations have a 15-minute wall-clock limit. */
 const CRAWL_EXECUTION_LEASE_MINUTES = 20;
@@ -240,7 +244,7 @@ export async function dispatchForcedCrawl(
 }
 
 function matchingDispatchReservation(
-  state: ShopSyncStateRow | null,
+  state: ShopCrawlLeaseState | null,
   shopKey: string,
   requestedAt: string,
 ): boolean {
@@ -251,7 +255,7 @@ function matchingDispatchReservation(
   );
 }
 
-function retryAfterLeaseSeconds(state: ShopSyncStateRow | null, now: Date): number | null {
+function retryAfterLeaseSeconds(state: ShopCrawlLeaseState | null, now: Date): number | null {
   if (!state?.crawl_lease_until) return null;
   const leaseUntil = new Date(state.crawl_lease_until).getTime();
   if (!Number.isFinite(leaseUntil) || leaseUntil <= now.getTime()) return null;
@@ -288,7 +292,7 @@ export async function consumeCrawlMessage(
     CRAWL_EXECUTION_LEASE_MINUTES,
   );
   if (!crawlLeaseToken) {
-    const state = await getShopState(env.DB, resolvedShopKey);
+    const state = (await getShopState(env.DB, resolvedShopKey)) as ShopCrawlLeaseState | null;
     const retryAfterSeconds = matchingDispatchReservation(state, resolvedShopKey, requestedAt)
       ? retryAfterLeaseSeconds(state, claimedAtDate)
       : null;
