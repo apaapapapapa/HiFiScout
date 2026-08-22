@@ -15,6 +15,7 @@ export const SHOP_FILTER_READINGS: Readonly<Record<string, string>> = Object.fre
   avac: "あばっく",
   afroaudio: "あふろおーでぃお",
   ippinkan: "いっぴんかん",
+  "audio-space-core": "おーでぃおすぺーすこあ",
   audiounion: "おーでぃおゆにおん",
   osakaya: "きゃびんおおさかや",
   "sound-support": "さうんどさぽーと",
