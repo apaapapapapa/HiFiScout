@@ -608,6 +608,12 @@ hifido の `raw_category` → カテゴリ写像は他は健全です（`カー�
 
 ## 5. 商品名・型番の表記ゆれと製品同定
 
+> **対応（2026-08-22）**: N-1〜N-5 を実装し、N-6 は既知の衝突ケースとして回帰テストに固定しました。
+> N-3 の本文には「未解決なら `manufacturer_id` を空にする」という記述がありますが、N-2 と §6 の
+> 公開フィルタ契約と矛盾するため、実装は **`manufacturer_id` = 決定的な公開フィルタ ID、
+> `canonical_manufacturer_id` = verified alias のみ** に統一しています。プレースホルダー値だけは N-4 に従い
+> 両方を空にします。resolver version を更新し、既存行は bounded replay の対象に戻します。
+
 ### N-1. 音楽ソフト（中古レコード／CD）がハードウェアカタログに混入 ✅ 検証済み
 
 **対象**: `src/crawler/shops/hifido.ts:122-167`

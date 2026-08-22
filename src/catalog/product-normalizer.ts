@@ -15,7 +15,7 @@ import { isRecord } from "../types.js";
 import { classifyCategoryEvidence, summarizeCategoryEvidence } from "./category-classifier.js";
 import { collectListingCategoryEvidence } from "./category-evidence.js";
 import { resolveManufacturer, MANUFACTURER_RESOLVER_VERSION } from "./manufacturer-resolver.js";
-import { normalizeManufacturerKey } from "./manufacturers.js";
+import { manufacturerIdForFilter, normalizeManufacturerKey } from "./manufacturers.js";
 import { resolveModel, MODEL_RESOLVER_VERSION } from "./model-resolver.js";
 import { inferFeatureFacts, normalizeFeatureFacts } from "./product-features.js";
 
@@ -125,7 +125,7 @@ export function normalizeCatalogProduct(
       ...product,
       rawManufacturer,
       normalizedRawManufacturer,
-      manufacturerId: manufacturer.canonicalManufacturerId,
+      manufacturerId: manufacturerIdForFilter(manufacturer.displayName || rawManufacturer),
       manufacturer: manufacturer.displayName,
       manufacturerResolutionStatus: manufacturer.status,
       manufacturerResolutionMethod: manufacturer.method,

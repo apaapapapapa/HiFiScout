@@ -20,7 +20,7 @@ import type {
   ResolutionStatus,
 } from "./types.js";
 
-export const MODEL_RESOLVER_VERSION = 5;
+export const MODEL_RESOLVER_VERSION = 6;
 
 export type ModelResolver = (input: ModelResolutionInput) => ModelResolutionResult;
 type PreparedModelResolver = ReadonlyMap<string, readonly RegExp[]>;
@@ -70,6 +70,11 @@ const ANNOTATION_RULES: readonly AnnotationRule[] = [
   {
     name: "shipping",
     pattern: /\s*(?:※\s*)?送料無料\s*$/gu,
+  },
+  {
+    name: "product_type_suffix",
+    pattern:
+      /\s+(?:プリメインアンプ|インテグレーテッドアンプ|パワーアンプ|プリアンプ|コントロールアンプ|AVアンプ|ヘッドホンアンプ|フォノイコライザー|レコードプレーヤー|ターンテーブル|CDプレーヤー|SACD(?:\/CD)?プレーヤー|CDトランスポート|SACDトランスポート|ネットワークプレーヤー|ネットワークプレイヤー|ネットワークトランスポート|D\/Aコンバータ(?:ー)?|DAコンバータ(?:ー)?|サブウーファー|スピーカー|ヘッドホン|イヤホン|トーンアーム|カートリッジ|昇圧トランス|チューナー|イコライザー)\s*$/gu,
   },
   {
     // Some seller list pages append both a Japanese product-type label and a Japanese brand

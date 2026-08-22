@@ -1,5 +1,6 @@
 import {
   bootstrapManufacturers,
+  isManufacturerPlaceholder,
   manufacturerPrefixPattern,
   normalizeManufacturerKey,
 } from "./manufacturers.js";
@@ -11,7 +12,7 @@ import type {
   NormalizedCatalogProduct,
 } from "./types.js";
 
-export const MANUFACTURER_RESOLVER_VERSION = 5;
+export const MANUFACTURER_RESOLVER_VERSION = 6;
 
 export type ManufacturerResolver = (
   input: ManufacturerResolutionInput,
@@ -180,8 +181,20 @@ function resolvePreparedManufacturer(
   aliases: PreparedManufacturerAliases,
 ): ManufacturerResolutionResult {
   const raw = clean(rawManufacturer);
-  const normalizedRaw = normalizeManufacturerKey(raw);
   const candidate = clean(manufacturerCandidate);
+  if (isManufacturerPlaceholder(raw) || isManufacturerPlaceholder(candidate)) {
+    return {
+      canonicalManufacturerId: "",
+      displayName: "",
+      normalizedRawManufacturer: "",
+      status: "unresolved",
+      method: "none",
+      confidence: "none",
+      matchedAlias: false,
+      candidateManufacturerIds: [],
+    };
+  }
+  const normalizedRaw = normalizeManufacturerKey(raw);
   const normalizedCandidate = normalizeManufacturerKey(candidate);
 
   if (normalizedRaw) {

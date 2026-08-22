@@ -64,6 +64,25 @@ const MANUFACTURER_SOURCE: readonly ManufacturerSourceEntry[] = [
   ["linn", "LINN", ["linn", "リン"]],
   ["naim", "Naim", ["naim", "ネイム"]],
   ["chord", "Chord Electronics", ["chord", "chord electronics", "コード"]],
+  ["airbow", "AIRBOW", ["airbow", "エアボウ"]],
+  [
+    "astellkern",
+    "Astell&Kern",
+    ["astell&kern", "astell & kern", "astell kern", "アステルアンドケルン", "アステル&ケルン"],
+  ],
+  ["fiio", "FiiO", ["fiio", "フィーオ"]],
+  ["cayin", "Cayin", ["cayin", "カイン"]],
+  ["hibymusic", "HiBy", ["hiby", "hibymusic", "hiby music", "ハイビー", "ハイビーミュージック"]],
+  [
+    "campfireaudio",
+    "Campfire Audio",
+    ["campfire audio", "campfireaudio", "キャンプファイヤーオーディオ"],
+  ],
+  ["uniquemelody", "Unique Melody", ["unique melody", "uniquemelody", "ユニークメロディ"]],
+  ["audioquest", "AudioQuest", ["audioquest", "audio quest", "オーディオクエスト"]],
+  ["tiglon", "TIGLON", ["tiglon", "ティグロン"]],
+  ["kenwood", "KENWOOD", ["kenwood", "ケンウッド"]],
+  ["trio", "TRIO", ["trio", "トリオ"]],
   [
     "ibasso-audio",
     "iBasso Audio",
@@ -88,8 +107,20 @@ export function stripManufacturerListingLabels(value: unknown = ""): string {
   return String(value).replace(MANUFACTURER_LISTING_LABEL, "").trim();
 }
 
+const MANUFACTURER_PLACEHOLDER_RE = /^(?:不明(?:\s+.*)?|メーカー不明|その他|ノーブランド)$/u;
+
+export function isManufacturerPlaceholder(value: unknown = ""): boolean {
+  const text = stripManufacturerListingLabels(String(value))
+    .normalize("NFKC")
+    .replace(/\s+/g, " ")
+    .trim();
+  return MANUFACTURER_PLACEHOLDER_RE.test(text);
+}
+
 export function normalizeManufacturerKey(value: unknown = ""): string {
-  return stripManufacturerListingLabels(String(value).normalize("NFKC"))
+  const stripped = stripManufacturerListingLabels(String(value).normalize("NFKC"));
+  if (isManufacturerPlaceholder(stripped)) return "";
+  return stripped
     .toLowerCase()
     .replace(/\b(?:co\.?\s*,?\s*ltd\.?|corporation|corp\.?|inc\.?|limited|ltd\.?)\b/gi, "")
     .replace(/(?:株式会社|有限会社|合同会社)/g, "")
@@ -144,6 +175,7 @@ function hashKey(value: string): string {
 }
 
 function fallbackId(key: string): string {
+  if (!key) return "";
   const ascii = key.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   return ascii.length >= 2 ? ascii.slice(0, 80) : `brand-${hashKey(key)}`;
 }

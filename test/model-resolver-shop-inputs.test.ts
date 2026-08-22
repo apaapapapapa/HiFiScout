@@ -109,20 +109,19 @@ const SHOP_CASES: readonly ShopModelCase[] = [
       removedAnnotations: ["presentation_color"],
     },
   },
-  // Shimamusen titles carry a 〖…〗 condition marker and a trailing Japanese product-type word. The
-  // marker is split off by the adapter; the product-type word is residue the resolver refuses to
-  // guess about, so the listing becomes remediation work instead of a falsely confident model.
+  // Shimamusen titles carry a 〖…〗 condition marker and a trailing Japanese product-type word.
+  // Section 5 treats only the terminal product-type vocabulary as non-identity annotation; edition
+  // tokens such as SE remain part of the resolved model.
   {
     shopKey: "shimamusen",
     title: "〖展示処分品〗ESOTERIC N-01XD SE ネットワークプレーヤー",
     manufacturerId: "esoteric",
     expected: {
-      model: "N-01XD SE ネットワークプレーヤー",
+      model: "N-01XD SE",
       normalizedModel: "N01XDSE",
-      status: "candidate",
-      method: "unsafe_annotation",
-      removedAnnotations: [],
-      unclassifiedTokens: ["unclassified_text"],
+      status: "resolved",
+      method: "seller_model_annotated",
+      removedAnnotations: ["product_type_suffix"],
     },
   },
   {
@@ -346,9 +345,7 @@ test("no two shops' spellings of one product resolve to different identities", (
   assert.deepEqual([...normalized], ["E800"]);
 });
 
-test("a shop that leaves a product-type word attached produces remediation work, not a wrong model", () => {
-  // Shimamusen's trailing category word is the single largest source of unresolved models, and the
-  // point of `candidate` is that the Knowledge Catalog loop gets to see it.
+test("a terminal product-type word is removed without erasing the model revision", () => {
   const shimamusen = resolveModel({
     rawModel: splitManufacturerModel(
       "〖展示処分品〗ESOTERIC N-01XD SE ネットワークプレーヤー",
@@ -358,9 +355,9 @@ test("a shop that leaves a product-type word attached produces remediation work,
     manufacturerId: "esoteric",
   });
 
-  assert.equal(shimamusen.status, "candidate");
-  assert.ok(shimamusen.unclassifiedTokens.includes("unclassified_text"));
-  // The revision survives even though the model was not accepted, so a later catalog fix cannot
-  // accidentally attach this listing to the base N-01XD.
+  assert.equal(shimamusen.status, "resolved");
+  assert.equal(shimamusen.model, "N-01XD SE");
+  assert.deepEqual(shimamusen.removedAnnotations, ["product_type_suffix"]);
+  // The revision remains in identity, so this cannot attach to the base N-01XD.
   assert.equal(shimamusen.normalizedModel, "N01XDSE");
 });
