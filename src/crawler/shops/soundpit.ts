@@ -50,9 +50,7 @@ function sourceIdFromUrl(value: string): string | null {
 function fallbackFacts(fragment: string) {
   const lines = visibleLines(fragment).filter(
     (value) =>
-      !/^(?:売約済(?:み)?|商談中|予約中|取り置き|NEW|NEW ITEM|中古商品|Used Audio)$/iu.test(
-        value,
-      ),
+      !/^(?:売約済(?:み)?|商談中|予約中|取り置き|NEW|NEW ITEM|中古商品|Used Audio)$/iu.test(value),
   );
   const tail = lines.slice(-3);
   return {
@@ -97,9 +95,7 @@ function productHeadings(html: string): string[] {
     .filter(
       (value) =>
         value &&
-        !/Used Audio|中古商品|ハイエンド.*オーディオ専門店|SOUND PIT|サウンドピット/iu.test(
-          value,
-        ),
+        !/Used Audio|中古商品|ハイエンド.*オーディオ専門店|SOUND PIT|サウンドピット/iu.test(value),
     );
 }
 
@@ -164,7 +160,8 @@ export function parseSoundPitDetail(
   const rawCategory = explicitCategory(leadText, sellerCategory);
   const negotiating = NEGOTIATING_PATTERN.test(leadText);
   const soldOut = Boolean(page.soldOut) || SOLD_PATTERN.test(leadText);
-  const priceYen = soldOut || /(?:価格\s*)?[¥￥]?\s*ASK\b/iu.test(leadText) ? null : parseYen(leadText);
+  const priceYen =
+    soldOut || /(?:価格\s*)?[¥￥]?\s*ASK\b/iu.test(leadText) ? null : parseYen(leadText);
   const stockStatus = availabilityFromSignals({
     soldOut,
     inStock: !soldOut && !negotiating,
