@@ -26,7 +26,7 @@
           <p class="eyebrow eyebrow-inverse">CATALOG OPERATIONS</p>
           <h1>Knowledge Catalog <span>管理</span></h1>
           <p class="lede">
-            検証済みCatalogの表示名・カテゴリ・ライフサイクルを、安全に検索・修正できます。
+            Catalogの検索・修正に加え、未検証候補の手動Verify、Catalog追加、重複Catalogの統合を行えます。
           </p>
         </div>
         <div class="header-actions">
@@ -50,11 +50,21 @@
             <div>
               <p class="eyebrow">CATALOG WORKSPACE</p>
               <h2 id="catalog-search-heading">Catalogを検索・編集</h2>
-              <p>製品名・型番・メーカー・カテゴリを組み合わせて対象を絞り込めます。</p>
+              <p>検証済みCatalogと未検証候補を同じ検索条件で確認できます。</p>
             </div>
-            <span class="keyboard-hint"><kbd>Enter</kbd> で検索</span>
+            <div class="header-actions">
+              <span class="keyboard-hint"><kbd>Enter</kbd> で検索</span>
+              <button id="open-create" class="secondary-button" type="button">＋ Catalogを追加</button>
+            </div>
           </div>
           <form id="catalog-search-form" class="search-grid">
+            <label class="search-field">
+              <span>表示対象</span>
+              <select id="catalog-view">
+                <option value="products">検証済みCatalog</option>
+                <option value="candidates">未検証候補</option>
+              </select>
+            </label>
             <label class="search-field search-field-wide">
               <span>製品を検索</span>
               <input
@@ -93,7 +103,7 @@
           <div class="table-toolbar">
             <div>
               <p class="eyebrow">RESULTS</p>
-              <h2>Catalog一覧</h2>
+              <h2 id="result-heading">Catalog一覧</h2>
             </div>
             <p id="result-summary" class="result-summary" aria-live="polite">読み込み中…</p>
           </div>
@@ -104,7 +114,7 @@
                   <th scope="col">ID</th>
                   <th scope="col">メーカー</th>
                   <th scope="col">型番</th>
-                  <th scope="col">表示名</th>
+                  <th scope="col">表示名 / サンプル</th>
                   <th scope="col">カテゴリ</th>
                   <th scope="col">状態</th>
                   <th scope="col">listing</th>
@@ -116,8 +126,8 @@
             </table>
           </div>
           <p id="empty-state" class="empty-state" hidden>
-            <strong>条件に一致するCatalogがありません。</strong>
-            <span>検索条件を減らすか、条件をクリアして再検索してください。</span>
+            <strong>条件に一致するデータがありません。</strong>
+            <span>検索条件を減らすか、表示対象を切り替えてください。</span>
           </p>
           <div class="pagination-bar">
             <span id="page-position">ページ 1</span>
@@ -153,62 +163,39 @@
                   <p class="export-job-description">
                     検証状態を含むカタログ全件を100件ずつ低負荷で処理します。上限90,000件・生成期限24時間です。
                   </p>
-                  <p
-                    id="export-catalog-status"
-                    class="export-status"
-                    role="status"
-                    aria-live="polite"
-                  >
+                  <p id="export-catalog-status" class="export-status" role="status" aria-live="polite">
                     最新の生成状況を確認しています…
                   </p>
                 </div>
                 <div class="export-job-actions">
                   <button id="export-catalog-generate" type="button" disabled>CSVを生成</button>
-                  <a id="export-catalog-download" class="button-link secondary-button" hidden>
-                    ダウンロード
-                  </a>
+                  <a id="export-catalog-download" class="button-link secondary-button" hidden>ダウンロード</a>
                 </div>
               </section>
               <section class="export-job" aria-labelledby="export-active-heading">
                 <div>
                   <span class="job-kicker">RECOMMENDED</span>
                   <h3 id="export-active-heading">掲載中商品</h3>
-                  <p
-                    id="export-active-status"
-                    class="export-status"
-                    role="status"
-                    aria-live="polite"
-                  >
+                  <p id="export-active-status" class="export-status" role="status" aria-live="polite">
                     最新の生成状況を確認しています…
                   </p>
                 </div>
                 <div class="export-job-actions">
                   <button id="export-active-generate" type="button" disabled>CSVを生成</button>
-                  <a id="export-active-download" class="button-link secondary-button" hidden>
-                    ダウンロード
-                  </a>
+                  <a id="export-active-download" class="button-link secondary-button" hidden>ダウンロード</a>
                 </div>
               </section>
               <section class="export-job" aria-labelledby="export-all-heading">
                 <div>
                   <span class="job-kicker job-kicker-muted">ARCHIVE</span>
                   <h3 id="export-all-heading">全履歴</h3>
-                  <p
-                    id="export-all-status"
-                    class="export-status"
-                    role="status"
-                    aria-live="polite"
-                  >
+                  <p id="export-all-status" class="export-status" role="status" aria-live="polite">
                     最新の生成状況を確認しています…
                   </p>
                 </div>
                 <div class="export-job-actions">
-                  <button id="export-all-generate" class="secondary-button" type="button" disabled>
-                    CSVを生成
-                  </button>
-                  <a id="export-all-download" class="button-link secondary-button" hidden>
-                    ダウンロード
-                  </a>
+                  <button id="export-all-generate" class="secondary-button" type="button" disabled>CSVを生成</button>
+                  <a id="export-all-download" class="button-link secondary-button" hidden>ダウンロード</a>
                 </div>
               </section>
             </div>
@@ -227,16 +214,12 @@
             <p class="eyebrow">EDIT CATALOG</p>
             <h2>Catalog情報を修正</h2>
           </div>
-          <button id="close-edit" class="icon-button" type="button" aria-label="編集画面を閉じる">
-            ×
-          </button>
+          <button id="close-edit" class="icon-button" type="button" aria-label="編集画面を閉じる">×</button>
         </div>
         <div class="identity-card">
           <span>変更対象</span>
           <p id="edit-identity" class="identity"></p>
-          <p class="identity-note">
-            メーカーと型番はProduct Identityに影響するため、この画面では変更できません。
-          </p>
+          <p class="identity-note">メーカーと型番を変える場合は、正しいCatalogを追加してから重複統合を利用してください。</p>
         </div>
         <label>
           <span>表示名</span>
@@ -258,12 +241,75 @@
           <strong>保存時の処理</strong>
           <p>このCatalogに一致済みのlistingも再分類・再投影されます。</p>
         </div>
-        <p id="edit-change-status" class="edit-change-status" data-dirty="false">
-          変更すると保存できます。
-        </p>
+        <p id="edit-change-status" class="edit-change-status" data-dirty="false">変更すると保存できます。</p>
         <div class="dialog-actions">
           <button id="cancel-edit" class="secondary-button" type="button">キャンセル</button>
           <button id="save-edit" type="submit" disabled>変更を保存</button>
+        </div>
+        <div class="edit-impact">
+          <strong>重複CatalogをこのCatalogへ統合</strong>
+          <p>統合元のalias・source・検証履歴・Product IdentityをこのCatalogへ移し、統合元Catalogを削除します。</p>
+          <label>
+            <span>統合元 Catalog ID</span>
+            <input id="merge-source-id" type="number" min="1" step="1" inputmode="numeric" placeholder="例: 123" />
+          </label>
+          <p id="merge-status" class="edit-change-status"></p>
+          <div class="dialog-actions">
+            <button id="merge-submit" class="secondary-button" type="button">このCatalogへ統合</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="create-dialog">
+      <form id="create-form" method="dialog" class="edit-form">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">MANUAL VERIFICATION</p>
+            <h2 id="create-dialog-title">Catalogを手動追加</h2>
+          </div>
+          <button id="close-create" class="icon-button" type="button" aria-label="手動追加画面を閉じる">×</button>
+        </div>
+        <div id="create-context" class="identity-card" hidden>
+          <span>未検証候補</span>
+          <p id="create-candidate-identity" class="identity"></p>
+          <p id="create-candidate-sample" class="identity-note"></p>
+        </div>
+        <label>
+          <span>Manufacturer ID / メーカー名</span>
+          <input id="create-manufacturer" type="text" maxlength="100" required autocomplete="off" />
+        </label>
+        <label>
+          <span>型番</span>
+          <input id="create-model" type="text" maxlength="200" required autocomplete="off" />
+        </label>
+        <label>
+          <span>表示名</span>
+          <input id="create-name" type="text" maxlength="300" required autocomplete="off" />
+        </label>
+        <label>
+          <span>主カテゴリ</span>
+          <select id="create-category" required></select>
+        </label>
+        <label>
+          <span>ライフサイクル</span>
+          <select id="create-lifecycle" required>
+            <option value="unknown">不明</option>
+            <option value="active">現行</option>
+            <option value="discontinued">生産完了</option>
+          </select>
+        </label>
+        <label>
+          <span>確認元URL（任意）</span>
+          <input id="create-source-url" type="url" maxlength="1000" placeholder="https://..." autocomplete="off" />
+        </label>
+        <div class="edit-impact">
+          <strong>手動Verifyとして記録</strong>
+          <p>manual_verified sourceを残し、Product Identityの再評価と検索projection更新を実行します。</p>
+        </div>
+        <div class="dialog-actions">
+          <button id="cancel-create" class="secondary-button" type="button">キャンセル</button>
+          <button id="create-submit" type="submit">検証済みとして登録</button>
         </div>
       </form>
     </dialog>
