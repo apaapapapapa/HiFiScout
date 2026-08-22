@@ -11,6 +11,13 @@ import {
   tryClaimShopCrawl,
 } from "../db/shop-state-repository.js";
 import { syncProductSearchEntities } from "../db/product-search-entity-repository.js";
+import {
+  hasDispatchReservation,
+  matchesDispatchReservation,
+  retryAfterExecutionLeaseSeconds,
+  shouldRecoverDispatch,
+  type CrawlLifecycleRow,
+} from "./crawl-lifecycle.js";
 import { recheckShopInventory } from "./inventory-recheck.js";
 import { crawlQueueLane, crawlQueueSender } from "./queue-lanes.js";
 import { crawlShop, isShopDue } from "./run.js";
@@ -29,11 +36,6 @@ import type {
 
 type RuntimeEnv = CrawlerEnv & { DB: QueryableDatabase };
 type ProductSearchEntitySync = typeof syncProductSearchEntities;
-type ShopCrawlLeaseState = ShopSyncStateRow & {
-  queued_token?: string | null;
-  queued_last_sent_at?: string | null;
-  crawl_lease_until?: string | null;
-};
 
 /** Cloudflare Queue consumer invocations have a 15-minute wall-clock limit. */
 const CRAWL_EXECUTION_LEASE_MINUTES = 20;
@@ -69,8 +71,7 @@ export function isDispatchLeaseActive(
 ): boolean {
   void now;
   void leaseMinutes;
-  if (!state?.queued_at) return false;
-  return Number.isFinite(new Date(state.queued_at).getTime());
+  return hasDispatchReservation(state);
 }
 
 export function dueDispatchCandidates(
@@ -160,26 +161,6 @@ function logBatchDispatch(
   );
 }
 
-function recoveryDue(state: ShopCrawlLeaseState, now: Date, recoveryMinutes: number): boolean {
-  if (!state.queued_at) return false;
-  const requestedAtMs = new Date(state.queued_at).getTime();
-  if (!Number.isFinite(requestedAtMs)) return false;
-
-  const lastSentAtMs = new Date(state.queued_last_sent_at || state.queued_at).getTime();
-  if (
-    Number.isFinite(lastSentAtMs) &&
-    now.getTime() - lastSentAtMs < Math.max(1, recoveryMinutes) * 60_000
-  ) {
-    return false;
-  }
-
-  if (state.crawl_lease_until) {
-    const leaseUntilMs = new Date(state.crawl_lease_until).getTime();
-    if (Number.isFinite(leaseUntilMs) && leaseUntilMs > now.getTime()) return false;
-  }
-  return true;
-}
-
 /**
  * Re-sends an orphaned logical child without changing its requestedAt/token.
  *
@@ -195,12 +176,12 @@ export async function recoverStalledCrawlDispatches(
   }: RecoveryOptions = {},
 ): Promise<string[]> {
   const recovered: string[] = [];
-  const states = (await listShopStates(env.DB)) as ShopCrawlLeaseState[];
+  const states = (await listShopStates(env.DB)) as CrawlLifecycleRow[];
   const recoveredAt = now.toISOString();
   const batchRunId = `crawl-recovery:${recoveredAt}:${crypto.randomUUID()}`;
 
   for (const state of states) {
-    if (!recoveryDue(state, now, recoveryMinutes) || !state.queued_at) continue;
+    if (!shouldRecoverDispatch(state, now, recoveryMinutes) || !state.queued_at) continue;
     const plugin = getShopPlugin(state.shop_key);
     if (!plugin || !getShopEnabled(env, plugin.definition) || !isConfigured(env, plugin)) continue;
     const destination = crawlQueueSender(env, plugin);
@@ -219,8 +200,7 @@ export async function recoverStalledCrawlDispatches(
     const dispatchToken = state.queued_token || crawlDispatchToken(plugin.key, state.queued_at);
     const message: CrawlQueueMessage = {
       shopKey: plugin.key,
-      // A recovered job was already authorized by the scheduler. Rechecking due-ness after a
-      // crashed attempt would suppress it because that attempt already advanced last_attempt_at.
+      // Legacy metadata only. A successful D1 lifecycle claim is the execution authorization.
       force: true,
       requestedAt: state.queued_at,
       jobId: dispatchToken,
@@ -355,23 +335,12 @@ export async function dispatchForcedCrawl(
   return dispatchOneCrawl(env, plugin, true, now);
 }
 
-function matchingDispatchReservation(
-  state: ShopCrawlLeaseState | null,
-  shopKey: string,
-  requestedAt: string,
-): boolean {
-  if (!state) return false;
-  const dispatchToken = crawlDispatchToken(shopKey, requestedAt);
-  return (
-    state.queued_token === dispatchToken || (!state.queued_token && state.queued_at === requestedAt)
-  );
-}
-
-function retryAfterLeaseSeconds(state: ShopCrawlLeaseState | null, now: Date): number | null {
-  if (!state?.crawl_lease_until) return null;
-  const leaseUntil = new Date(state.crawl_lease_until).getTime();
-  if (!Number.isFinite(leaseUntil) || leaseUntil <= now.getTime()) return null;
-  return Math.max(1, Math.ceil((leaseUntil - now.getTime()) / 1000) + CRAWL_RETRY_SAFETY_SECONDS);
+/**
+ * Compatibility bridge between the explicit dispatch lifecycle and the crawler's historical
+ * boolean schedule bypass. Only a successfully claimed Queue child may enter through this path.
+ */
+async function executeClaimedDispatch(env: RuntimeEnv, plugin: ShopPlugin): Promise<CrawlResult> {
+  return crawlShop(env, plugin, { force: true });
 }
 
 export async function consumeCrawlMessage(
@@ -404,9 +373,9 @@ export async function consumeCrawlMessage(
     CRAWL_EXECUTION_LEASE_MINUTES,
   );
   if (!crawlLeaseToken) {
-    const state = (await getShopState(env.DB, resolvedShopKey)) as ShopCrawlLeaseState | null;
-    const retryAfterSeconds = matchingDispatchReservation(state, resolvedShopKey, requestedAt)
-      ? retryAfterLeaseSeconds(state, claimedAtDate)
+    const state = (await getShopState(env.DB, resolvedShopKey)) as CrawlLifecycleRow | null;
+    const retryAfterSeconds = matchesDispatchReservation(state, resolvedShopKey, requestedAt)
+      ? retryAfterExecutionLeaseSeconds(state, claimedAtDate, CRAWL_RETRY_SAFETY_SECONDS)
       : null;
     if (retryAfterSeconds != null) {
       console.log(
@@ -442,11 +411,7 @@ export async function consumeCrawlMessage(
   }
 
   try {
-    // Claiming the dispatch is the authorization to crawl. `last_attempt_at` is written at crawl
-    // start, so a Worker killed by the 15-minute wall limit leaves a recent attempt behind. If a
-    // Queue retry re-ran the due check, it would ACK the valid recovery as `not_due` instead of
-    // actually retrying the child.
-    const crawlResult = await crawlShop(env, plugin, { force: true });
+    const crawlResult = await executeClaimedDispatch(env, plugin);
     // Rechecking after a failed crawl would spend the shop's request budget on stale candidates.
     if (crawlResult.status !== "success" || !plugin.capabilities.inventoryRecheck) {
       return crawlResult;
