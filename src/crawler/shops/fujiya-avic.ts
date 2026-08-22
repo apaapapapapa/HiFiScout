@@ -75,7 +75,9 @@ function containsProductNeedle(sentence: string, needles: string[]): boolean {
 function productTitleDeclaresCable(
   product: Partial<Pick<NormalizedCatalogProduct, "model" | "title">>,
 ): boolean {
-  return /\bcables?\b|\bcord\b|ケーブル|コード/i.test(cleanText(`${product.title || ""} ${product.model || ""}`));
+  return /\bcables?\b|\bcord\b|ケーブル|コード/i.test(
+    cleanText(`${product.title || ""} ${product.model || ""}`),
+  );
 }
 
 function firstExplicitDetailEvidence(
@@ -136,7 +138,11 @@ export function extractFujiyaDetailCategoryEvidence(
     if (evidence.length) return evidence;
   }
 
-  return firstExplicitDetailEvidence(productLeadText(html, product), "detail_product_text", product);
+  return firstExplicitDetailEvidence(
+    productLeadText(html, product),
+    "detail_product_text",
+    product,
+  );
 }
 
 export function parseFujiyaResultCount(html: string): number | null {
