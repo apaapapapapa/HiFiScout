@@ -1,10 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import {
-  SHOP_FILTER_READINGS,
-  sortShopsByJapaneseReading,
-} from "../frontend/shop-options.js";
+import { SHOP_FILTER_READINGS, sortShopsByJapaneseReading } from "../frontend/shop-options.js";
 import { SHOP_PLUGINS } from "../src/crawler/shops/index.js";
 
 function shop(key: string, name: string) {
@@ -46,7 +43,13 @@ test("sorting does not mutate the source order used by other UI surfaces", () =>
 
   const sorted = sortShopsByJapaneseReading(shops);
 
-  assert.deepEqual(shops.map((entry) => entry.key), originalKeys);
-  assert.deepEqual(sorted.map((entry) => entry.key), ["avac", "hifido"]);
+  assert.deepEqual(
+    shops.map((entry) => entry.key),
+    originalKeys,
+  );
+  assert.deepEqual(
+    sorted.map((entry) => entry.key),
+    ["avac", "hifido"],
+  );
   assert.notEqual(sorted, shops);
 });

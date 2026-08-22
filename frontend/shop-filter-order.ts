@@ -10,13 +10,11 @@ interface DomShopOption {
 export function sortShopFilterOptions(select: HTMLSelectElement): void {
   const current = [...select.options]
     .filter((option) => option.value)
-    .map(
-      (option): DomShopOption => ({
-        key: option.value,
-        name: option.textContent?.trim() || option.value,
-        option,
-      }),
-    );
+    .map((option): DomShopOption => ({
+      key: option.value,
+      name: option.textContent?.trim() || option.value,
+      option,
+    }));
   const sorted = sortShopsByJapaneseReading(current);
   if (sorted.every((entry, index) => entry.option === current[index]?.option)) return;
   for (const entry of sorted) select.append(entry.option);
