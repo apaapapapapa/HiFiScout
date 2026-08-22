@@ -156,9 +156,9 @@ async function adminJson<T>(path: string, init: RequestInit = {}): Promise<T> {
 function hasActiveFilters(): boolean {
   return Boolean(
     queryInput.value.trim() ||
-    shopKeyInput.value.trim() ||
-    categoryFilter.value ||
-    scopeFilter.value !== "active",
+      shopKeyInput.value.trim() ||
+      categoryFilter.value ||
+      scopeFilter.value !== "active",
   );
 }
 
@@ -217,7 +217,7 @@ function appendText(parent: HTMLElement, tag: string, text: string, className = 
   const child = document.createElement(tag);
   child.textContent = text;
   if (className) child.className = className;
-  parent.append(child);
+  parent.appendChild(child);
   return child;
 }
 
@@ -234,7 +234,7 @@ function stackCell(
   for (const line of lines) {
     appendText(stack, line.strong ? "strong" : "small", line.text, line.className || "");
   }
-  td.append(stack);
+  td.appendChild(stack);
   return td;
 }
 
@@ -258,7 +258,7 @@ function safeSourceUrl(value: string): string | null {
 function renderRow(product: ListingProduct): HTMLTableRowElement {
   const tr = document.createElement("tr");
 
-  tr.append(
+  tr.appendChild(
     stackCell(
       { text: `#${product.id}`, strong: true },
       { text: product.shopKey },
@@ -269,9 +269,9 @@ function renderRow(product: ListingProduct): HTMLTableRowElement {
   const productCell = cell();
   appendText(productCell, "span", product.title, "listing-title");
   if (!product.isActive) appendText(productCell, "small", "掲載終了", "listing-muted");
-  tr.append(productCell);
+  tr.appendChild(productCell);
 
-  tr.append(
+  tr.appendChild(
     stackCell(
       { text: product.manufacturer || "—", strong: true },
       { text: product.canonicalManufacturerId || product.manufacturerId || "ID未解決" },
@@ -279,7 +279,7 @@ function renderRow(product: ListingProduct): HTMLTableRowElement {
     ),
   );
 
-  tr.append(
+  tr.appendChild(
     stackCell(
       { text: product.model || "—", strong: true },
       { text: product.normalizedModel || "normalized未解決" },
@@ -287,7 +287,7 @@ function renderRow(product: ListingProduct): HTMLTableRowElement {
     ),
   );
 
-  tr.append(
+  tr.appendChild(
     stackCell(
       { text: product.category || "—", strong: true },
       { text: product.primaryCategoryId || "未分類" },
@@ -306,10 +306,10 @@ function renderRow(product: ListingProduct): HTMLTableRowElement {
     "listing-status-badge",
   );
   stock.dataset.state = product.stockStatus;
-  priceCell.append(priceStack);
-  tr.append(priceCell);
+  priceCell.appendChild(priceStack);
+  tr.appendChild(priceCell);
 
-  tr.append(stackCell({ text: dateText(product.lastSeenAt), strong: true }));
+  tr.appendChild(stackCell({ text: dateText(product.lastSeenAt), strong: true }));
 
   const overrideCell = cell();
   const labels = overrideLabels(product);
@@ -320,9 +320,8 @@ function renderRow(product: ListingProduct): HTMLTableRowElement {
     "override-badge",
   );
   badge.dataset.active = labels.length ? "true" : "false";
-  if (product.overrides.updatedAt)
-    badge.title = `最終補正: ${dateText(product.overrides.updatedAt)}`;
-  tr.append(overrideCell);
+  if (product.overrides.updatedAt) badge.title = `最終補正: ${dateText(product.overrides.updatedAt)}`;
+  tr.appendChild(overrideCell);
 
   const actionCell = cell();
   const editButton = document.createElement("button");
@@ -330,8 +329,8 @@ function renderRow(product: ListingProduct): HTMLTableRowElement {
   editButton.className = "secondary-button";
   editButton.textContent = "編集";
   editButton.addEventListener("click", () => openEdit(product));
-  actionCell.append(editButton);
-  tr.append(actionCell);
+  actionCell.appendChild(editButton);
+  tr.appendChild(actionCell);
 
   return tr;
 }
@@ -350,7 +349,7 @@ function populateCategories(): void {
   const all = document.createElement("option");
   all.value = "";
   all.textContent = "すべてのカテゴリ";
-  categoryFilter.append(all);
+  categoryFilter.appendChild(all);
 
   editCategory.replaceChildren();
   for (const category of categories) {
@@ -358,13 +357,13 @@ function populateCategories(): void {
       const option = document.createElement("option");
       option.value = category.id;
       option.textContent = category.name;
-      categoryFilter.append(option);
+      categoryFilter.appendChild(option);
     }
     if (category.classifiable) {
       const option = document.createElement("option");
       option.value = category.id;
       option.textContent = category.name;
-      editCategory.append(option);
+      editCategory.appendChild(option);
     }
   }
 }
