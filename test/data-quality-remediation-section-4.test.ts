@@ -17,6 +17,7 @@ test("E-1 wireless earphone model families do not fall through to wired earphone
     "JBL TOUR PRO 3",
     "Shokz OpenFit2+",
     "Shokz OpenDots ONE",
+    "Shokz OpenRun Pro 2",
     "Apple AirPods Pro 3",
     "HUAWEI FreeBuds Pro 4",
     "SONY LinkBuds Fit",
