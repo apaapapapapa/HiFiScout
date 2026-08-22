@@ -27,6 +27,7 @@ test("relay transport forwards target, delay and crawler identity", async () => 
   assert.equal(html, "<html>ok</html>");
   assert.equal(requestedUrl, "https://relay.example/");
   assert.equal(new Headers(requestedOptions.headers).get("authorization"), "Bearer secret-token");
+  assert.ok(requestedOptions.signal instanceof AbortSignal);
   assert.deepEqual(JSON.parse(String(requestedOptions.body)), {
     url: "https://www.audiounion.jp/st/new_arrival_used.html",
     userAgent: "HiFiScoutBot/0.1",
