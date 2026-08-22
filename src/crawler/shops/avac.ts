@@ -36,7 +36,7 @@ const AUDIO_CATEGORIES: readonly AvacCategory[] = Object.freeze([
   { id: 3175, rawCategory: "中古 サブウーファー" },
 ]);
 
-const USED_MARKER_PATTERN = /[〖【]\s*中古\s*[〗】]/u;
+const CONDITION_MARKER_PATTERN = /[〖【]\s*(中古|展示処分品|アウトレット)\s*[〗】]/u;
 const PRODUCT_CODE_PATTERN = /[〖【]\s*コード\s*([^〗】]+?)\s*[〗】]/u;
 const SOLD_PATTERN =
   /この商品は完売しました|完売|売り切れ|売切れ|在庫なし|品切れ|販売終了|売約済(?:み)?/u;
@@ -112,7 +112,7 @@ function listingTitle(value: string): string {
 function titleScore(value: string): number {
   if (!value || /^(?:詳細|商品詳細|more|image|画像)$/iu.test(value)) return -1;
   return (
-    (USED_MARKER_PATTERN.test(value) ? 10_000 : 0) +
+    (CONDITION_MARKER_PATTERN.test(value) ? 10_000 : 0) +
     (PRODUCT_CODE_PATTERN.test(value) ? 1_000 : 0) +
     Math.min(value.length, 500)
   );
@@ -131,14 +131,15 @@ interface ParsedTitle {
   readonly title: string;
   readonly productCode: string;
   readonly rawCategory: string;
+  readonly conditionText: string;
 }
 
-function parseUsedTitle(value: string, fallbackCategory: string): ParsedTitle | null {
+function parseConditionedTitle(value: string, fallbackCategory: string): ParsedTitle | null {
   const sellerTitle = listingTitle(value);
-  const used = sellerTitle.match(USED_MARKER_PATTERN);
-  if (!used || used.index === undefined) return null;
+  const condition = sellerTitle.match(CONDITION_MARKER_PATTERN);
+  if (!condition || condition.index === undefined) return null;
 
-  const afterCondition = sellerTitle.slice(used.index + used[0].length).trim();
+  const afterCondition = sellerTitle.slice(condition.index + condition[0].length).trim();
   const code = afterCondition.match(PRODUCT_CODE_PATTERN);
   const codeIndex = code?.index ?? -1;
   const titleEnd = codeIndex >= 0 ? codeIndex : afterCondition.length;
@@ -153,6 +154,7 @@ function parseUsedTitle(value: string, fallbackCategory: string): ParsedTitle | 
     title,
     productCode: cleanText(code?.[1] || ""),
     rawCategory: cleanText(afterCondition.slice(categoryStart)) || fallbackCategory,
+    conditionText: cleanText(condition[1]),
   };
 }
 
@@ -172,10 +174,10 @@ export function parseAvacListing(html: string, page: Partial<AvacPage> = {}): Se
     const record = records[index];
     const end = records[index + 1]?.index ?? String(html).length;
     const blockText = visibleText(String(html).slice(record.index, end));
-    const parsedTitle = parseUsedTitle(bestTitle(record, blockText), page.rawCategory || "");
+    const parsedTitle = parseConditionedTitle(bestTitle(record, blockText), page.rawCategory || "");
 
-    // AVAC's `sale_type=2` pages currently mix 中古, 展示処分品 and アウトレット. The explicit
-    // seller condition marker is therefore the authoritative inclusion rule.
+    // AVAC's `sale_type=2` pages mix 中古, 展示処分品 and アウトレット. These three explicit
+    // seller condition markers are the authoritative inclusion rule; unrelated conditions stay out.
     if (!parsedTitle) continue;
 
     const { manufacturer, model } = splitManufacturerModel(parsedTitle.title, "avac");
@@ -192,7 +194,7 @@ export function parseAvacListing(html: string, page: Partial<AvacPage> = {}): Se
       model: model || parsedTitle.title,
       rawCategory: parsedTitle.rawCategory,
       category: inferCategory(`${parsedTitle.rawCategory} ${parsedTitle.title}`),
-      conditionText: "中古",
+      conditionText: parsedTitle.conditionText,
       priceYen: parseYen(blockText),
       stockStatus: stockStatus(blockText),
       metadata,
