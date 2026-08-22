@@ -18,6 +18,7 @@ export interface RetentionCutoffs {
 export interface RetentionCleanupCounts {
   evidenceMetadata: number;
   productAuditExports: number;
+  knowledgeCatalogExports: number;
   dataQualityRuns: number;
   remediationQueue: number;
   crawlRuns: number;
@@ -70,6 +71,18 @@ export async function runRetentionCleanup(
       SELECT id FROM evidence_archive
       WHERE expires_at IS NOT NULL AND expires_at <= ?
       ORDER BY expires_at ASC
+      LIMIT ?
+    )
+  `)
+    .bind(now.toISOString(), limit)
+    .run();
+
+  const knowledgeCatalogExports = await env.DB.prepare(`
+    DELETE FROM knowledge_catalog_export_jobs
+    WHERE id IN (
+      SELECT id FROM knowledge_catalog_export_jobs
+      WHERE expires_at IS NOT NULL AND expires_at <= ?
+      ORDER BY expires_at ASC, id ASC
       LIMIT ?
     )
   `)
@@ -160,6 +173,7 @@ export async function runRetentionCleanup(
     deleted: {
       evidenceMetadata: changes(evidenceMetadata),
       productAuditExports: changes(productAuditExports),
+      knowledgeCatalogExports: changes(knowledgeCatalogExports),
       dataQualityRuns: changes(dataQualityRuns),
       remediationQueue: changes(remediationQueue),
       crawlRuns: changes(crawlRuns),

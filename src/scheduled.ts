@@ -27,6 +27,7 @@ import {
   dispatchKnowledgeCatalogDailyVerification,
   dispatchKnowledgeCatalogMonthlyRecheck,
 } from "./knowledge-catalog/dispatch.js";
+import { recoverStaleKnowledgeCatalogExportJobs } from "./knowledge-catalog-export/service.js";
 import { runRetentionCleanup } from "./maintenance.js";
 import { recoverStaleProductAuditExportJobs } from "./product-audit-export/service.js";
 import { errorMessage } from "./types.js";
@@ -207,5 +208,6 @@ export function handleScheduled(
     // the lease/retry boundary match the expensive projection boundary.
     ctx.waitUntil(runDataQualityRemediationSweep(env.DB, { claimLimit: 1 }));
     ctx.waitUntil(recoverStaleProductAuditExportJobs(env.DB, env.PRODUCT_AUDIT_EXPORT_QUEUE));
+    ctx.waitUntil(recoverStaleKnowledgeCatalogExportJobs(env.DB, env.PRODUCT_AUDIT_EXPORT_QUEUE));
   }
 }
