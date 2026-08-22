@@ -18,8 +18,7 @@ interface CatalogAdminEnv {
 
 const COLLECTION_PATH = "/api/admin/knowledge-catalog/products";
 const CANDIDATE_COLLECTION_PATH = "/api/admin/knowledge-catalog/candidates";
-const CANDIDATE_VERIFY_PATH =
-  /^\/api\/admin\/knowledge-catalog\/candidates\/(\d{1,15})\/verify$/u;
+const CANDIDATE_VERIFY_PATH = /^\/api\/admin\/knowledge-catalog\/candidates\/(\d{1,15})\/verify$/u;
 const PRODUCT_PATH = /^\/api\/admin\/knowledge-catalog\/products\/(\d{1,15})$/u;
 const PRODUCT_MERGE_PATH = /^\/api\/admin\/knowledge-catalog\/products\/(\d{1,15})\/merge$/u;
 const CATALOG_EXPORT_COLLECTION_PATH = "/api/admin/knowledge-catalog-exports";
@@ -204,7 +203,10 @@ function manualOperationError(error: unknown): Response {
   const message = error instanceof Error ? error.message : String(error);
   if (message.startsWith("catalog_admin_product_already_exists:")) {
     const existingProductId = Number(message.split(":", 2)[1] || 0);
-    return json({ error: "catalog_admin_product_already_exists", existingProductId }, { status: 409 });
+    return json(
+      { error: "catalog_admin_product_already_exists", existingProductId },
+      { status: 409 },
+    );
   }
   if (
     message === "catalog_admin_category_invalid" ||
@@ -217,7 +219,9 @@ function manualOperationError(error: unknown): Response {
   if (message === "catalog_admin_merge_manufacturer_mismatch") {
     return json({ error: message }, { status: 409 });
   }
-  console.error(JSON.stringify({ message: "Catalog Admin manual operation failed", error: message }));
+  console.error(
+    JSON.stringify({ message: "Catalog Admin manual operation failed", error: message }),
+  );
   return json({ error: "catalog_admin_manual_operation_failed" }, { status: 500 });
 }
 

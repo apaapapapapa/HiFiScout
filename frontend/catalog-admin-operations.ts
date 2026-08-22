@@ -194,7 +194,12 @@ function tableCell(row: HTMLTableRowElement, label: string, value: string, class
   row.appendChild(cell);
 }
 
-function badgeCell(row: HTMLTableRowElement, label: string, value: string, className: string): void {
+function badgeCell(
+  row: HTMLTableRowElement,
+  label: string,
+  value: string,
+  className: string,
+): void {
   const cell = document.createElement("td");
   cell.dataset.label = label;
   const badge = document.createElement("span");
@@ -246,7 +251,12 @@ function renderCandidates(items: CatalogCandidate[]): void {
     tableCell(row, "ID", String(candidate.id), "id-cell");
     tableCell(row, "メーカー", manufacturer);
     tableCell(row, "型番", model, "model-cell");
-    tableCell(row, "サンプル", candidate.sampleTitle || `${manufacturer} ${model}`.trim(), "name-cell");
+    tableCell(
+      row,
+      "サンプル",
+      candidate.sampleTitle || `${manufacturer} ${model}`.trim(),
+      "name-cell",
+    );
     badgeCell(row, "カテゴリ", categoryName(candidatePrimaryCategory(candidate)), "category-badge");
     badgeCell(
       row,
@@ -278,7 +288,8 @@ function renderCandidates(items: CatalogCandidate[]): void {
 function candidateSummaryText(count: number): string {
   const filters: string[] = [];
   if (candidateQuery.value.trim()) filters.push(`検索「${candidateQuery.value.trim()}」`);
-  if (candidateManufacturer.value.trim()) filters.push(`メーカー ${candidateManufacturer.value.trim()}`);
+  if (candidateManufacturer.value.trim())
+    filters.push(`メーカー ${candidateManufacturer.value.trim()}`);
   if (candidateCategory.value) filters.push(categoryName(candidateCategory.value));
   return filters.length ? `${count}件表示 · ${filters.join(" · ")}` : `${count}件表示 · 未検証候補`;
 }

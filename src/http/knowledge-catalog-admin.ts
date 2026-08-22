@@ -131,7 +131,8 @@ export function parseKnowledgeCatalogAdminCreate(
   const manufacturerId = manufacturerIdForFilter(rawManufacturer);
   const canonicalModel = bodyText(value.canonicalModel, 200);
   const verifiedSourceUrl = sourceUrl(value.sourceUrl);
-  if (!rawManufacturer || !manufacturerId || !canonicalModel || verifiedSourceUrl === null) return null;
+  if (!rawManufacturer || !manufacturerId || !canonicalModel || verifiedSourceUrl === null)
+    return null;
 
   return {
     ...update,

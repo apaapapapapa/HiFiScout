@@ -204,7 +204,10 @@ export async function listKnowledgeCatalogAdminCandidates(
   };
 }
 
-async function loadCandidate(db: ReadableDatabase, candidateId: number): Promise<CandidateRow | null> {
+async function loadCandidate(
+  db: ReadableDatabase,
+  candidateId: number,
+): Promise<CandidateRow | null> {
   return db
     .prepare(`
       SELECT id, manufacturer_id, normalized_model, observed_manufacturer, observed_model,
@@ -583,7 +586,12 @@ export async function mergeKnowledgeCatalogAdminProducts(
     loadCatalogState(db, targetProductId),
     loadCatalogState(db, sourceProductId),
   ]);
-  if (!target || !source || target.verification_status !== "verified" || source.verification_status !== "verified") {
+  if (
+    !target ||
+    !source ||
+    target.verification_status !== "verified" ||
+    source.verification_status !== "verified"
+  ) {
     return null;
   }
   if (!target.primary_category_id) throw new Error("catalog_admin_merge_target_category_missing");
@@ -602,9 +610,19 @@ export async function mergeKnowledgeCatalogAdminProducts(
     .first<{ count: number }>();
 
   const statements: D1PreparedStatement[] = [];
-  const canonicalModelAlias = modelAliasStatement(db, targetProductId, source.canonical_model, mergedAt);
+  const canonicalModelAlias = modelAliasStatement(
+    db,
+    targetProductId,
+    source.canonical_model,
+    mergedAt,
+  );
   if (canonicalModelAlias) statements.push(canonicalModelAlias);
-  const canonicalNameAlias = nameAliasStatement(db, targetProductId, source.canonical_name, mergedAt);
+  const canonicalNameAlias = nameAliasStatement(
+    db,
+    targetProductId,
+    source.canonical_name,
+    mergedAt,
+  );
   if (canonicalNameAlias) statements.push(canonicalNameAlias);
   statements.push(
     db
