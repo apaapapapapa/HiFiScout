@@ -76,14 +76,14 @@ const ANNOTATION_RULES: readonly AnnotationRule[] = [
     pattern: /\s*[（(](?:B|S|BK|WH|W|K|N|ブラック|ホワイト|シルバー|黒|白|銀)[）)]\s*$/iu,
   },
   {
-    // Several seller list pages append a Japanese product-type label and then the Japanese brand
+    // Some seller list pages append both a Japanese product-type label and a Japanese brand
     // presentation to the actual model (for example `DP-570 CDデッキ アキュフェーズ` or
-    // `Fiber Box 2 JPSM 光絶縁ツール エディスクリエーション`). These are explicit presentation
-    // tokens, not revisions. Keep the vocabulary narrow; unknown Japanese residue remains a
-    // candidate and therefore cannot merge with a base model.
+    // `Fiber Box 2 JPSM 光絶縁ツール エディスクリエーション`). Require both pieces of
+    // presentation evidence: a bare category word such as Shimamusen's `ネットワークプレーヤー`
+    // stays a candidate instead of being silently deleted.
     name: "seller_title_suffix",
     pattern:
-      /\s+(?:光絶縁ツール|スイッチングハブ|CDデッキ|プリメインアンプ|パワーアンプ|プリアンプ|ターンテーブル|フォノイコライザー|ネットワークプレーヤー|スピーカー|ヘッドホン)(?:\s+[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー・]+)?\s*$/giu,
+      /\s+(?:光絶縁ツール|スイッチングハブ|CDデッキ|プリメインアンプ|パワーアンプ|プリアンプ|ターンテーブル|フォノイコライザー|ネットワークプレーヤー|スピーカー|ヘッドホン)\s+[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー・]+\s*$/giu,
   },
 ];
 
