@@ -2,6 +2,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 
 import worker from "./index.js";
 import type {
+  CatalogAdminCreateInput,
   CatalogAdminListOptions,
   CatalogAdminRpc,
   CatalogAdminUpdateInput,
@@ -10,6 +11,12 @@ import {
   listKnowledgeCatalogAdminProducts,
   updateKnowledgeCatalogAdminProduct,
 } from "./db/knowledge-catalog-admin-repository.js";
+import {
+  createKnowledgeCatalogAdminProduct,
+  listKnowledgeCatalogAdminCandidates,
+  mergeKnowledgeCatalogAdminProducts,
+  verifyKnowledgeCatalogAdminCandidate,
+} from "./db/knowledge-catalog-admin-operations.js";
 import {
   listListingAdminProducts,
   updateListingAdminProduct,
@@ -39,8 +46,24 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
     return listKnowledgeCatalogAdminProducts(this.env.DB, options);
   }
 
+  async listCandidates(options: CatalogAdminListOptions) {
+    return listKnowledgeCatalogAdminCandidates(this.env.DB, options);
+  }
+
+  async createProduct(input: CatalogAdminCreateInput) {
+    return createKnowledgeCatalogAdminProduct(this.env.DB, input);
+  }
+
+  async verifyCandidate(candidateId: number, input: CatalogAdminCreateInput) {
+    return verifyKnowledgeCatalogAdminCandidate(this.env.DB, candidateId, input);
+  }
+
   async updateProduct(productId: number, input: CatalogAdminUpdateInput) {
     return updateKnowledgeCatalogAdminProduct(this.env.DB, productId, input);
+  }
+
+  async mergeProducts(targetProductId: number, sourceProductId: number) {
+    return mergeKnowledgeCatalogAdminProducts(this.env.DB, targetProductId, sourceProductId);
   }
 
   async listListings(options: ListingAdminListOptions) {
