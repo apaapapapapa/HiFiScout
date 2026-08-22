@@ -20,6 +20,7 @@ const GOJUON_KEYS = [
   "hifido",
   "formusic",
   "fujiya-avic",
+  "home-shokai",
   "u-audio",
 ] as const;
 
