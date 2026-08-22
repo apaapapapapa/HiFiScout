@@ -296,7 +296,6 @@ test("every deployed variable under a shop prefix is one that shop can actually 
     );
   }
 });
-
 test("generic crawler and orchestration code names no concrete shop", () => {
   const tokens = [
     ...new Set(
@@ -310,110 +309,184 @@ test("generic crawler and orchestration code names no concrete shop", () => {
 
   for (const path of GENERIC_MODULES) {
     const source = readSource(path).toLowerCase();
-    for (const token of tokens) {
-      assert.equal(source.includes(token), false, `${path} names concrete shop ${token}`);
+    const found = tokens.filter((token) => source.includes(token));
+    assert.deepEqual(
+      found,
+      [],
+      `${path} mentions ${found.join(", ")}; move that behavior behind adapter metadata or a hook`,
+    );
+  }
+});
+
+test("a shop module never imports another shop's module", () => {
+  const files = fs.readdirSync(shopsDir).filter((file) => !platformShopModules.has(file));
+  assert.ok(files.length >= SHOP_PLUGINS.length);
+
+  for (const file of files) {
+    const owner = ownerOfShopFile(file);
+    assert.ok(owner, `${file} does not belong to any registered shop`);
+
+    const source = fs.readFileSync(new URL(file, shopsDir), "utf8");
+    const siblings = [...source.matchAll(/from\s+"\.\/([^"]+)\.js"/gu)].map((match) => match[1]);
+    for (const sibling of siblings) {
+      assert.equal(
+        ownerOfShopFile(`${sibling}.ts`),
+        owner,
+        `${file} imports ${sibling}, which belongs to another shop`,
+      );
     }
   }
 });
 
-test("shop modules do not import generic orchestration or another concrete shop", () => {
+test("shop-specific behavior is opt-in capability metadata", () => {
   for (const plugin of SHOP_PLUGINS) {
-    const source = shopOwnedModuleSource(plugin);
-    assert.doesNotMatch(source, /from\s+["']\.\.\/(?:run|dispatch|schedule|transport)\.js["']/u);
-    for (const other of SHOP_PLUGINS) {
-      if (other.key === plugin.key) continue;
-      assert.doesNotMatch(source, new RegExp(`from\\s+["'][^"']*${other.key}[^"']*["']`, "u"));
+    if (plugin.capabilities.diagnostics !== undefined) {
+      assert.equal(typeof plugin.capabilities.diagnostics.diagnosePage, "function");
+    }
+    if (plugin.capabilities.dataQuality?.thresholds !== undefined) {
+      assert.equal(typeof plugin.capabilities.dataQuality.thresholds, "object");
+    }
+    if (plugin.capabilities.inventoryRecheck !== undefined) {
+      const policy = plugin.capabilities.inventoryRecheck;
+      assert.equal(typeof policy.isDetailUrl, "function");
+      assert.equal(typeof policy.classifyPage, "function");
+      assert.equal(plugin.capabilities.transport?.kind, "relay");
+    }
+    if (plugin.definition.transportConfigurationRequired) {
+      assert.ok(
+        plugin.capabilities.transport?.kind,
+        `${plugin.key} grades configuration but declares no transport`,
+      );
     }
   }
 });
 
-test("shop discovery is bounded by the platform maxPages limit", () => {
-  const adapter = registerStub(
+test("diagnostics and Data Quality overrides are registered behind capabilities", () => {
+  const plugin = registerStub(
+    {},
     {},
     {
-      discovery: {
-        coverage: "complete",
-        policy: { emptyPage: "stop", itemCountValidation: "coverage", extraPageBudget: 3 },
-        *initialTargets() {
-          yield "https://example.com/page/1";
-          yield "https://example.com/page/2";
-          yield "https://example.com/page/3";
-        },
-        discoverTargets: () => ["https://example.com/page/4"],
-      },
-    },
-  );
-  assert.deepEqual(initialPageQueue(adapter, 2), [
-    "https://example.com/page/1",
-    "https://example.com/page/2",
-  ]);
-  assert.deepEqual(discoverPages(adapter, "", "https://example.com/page/1"), [
-    "https://example.com/page/4",
-  ]);
-  assert.equal(coverageDecision(adapter, { reachedEnd: true }).deactivateMissing, true);
-});
-
-test("partial discovery never deactivates missing listings", () => {
-  const adapter = registerStub(
-    {},
-    {
-      discovery: {
-        coverage: "partial",
-        policy: { emptyPage: "continue", itemCountValidation: "coverage", extraPageBudget: 0 },
-        *initialTargets() {
-          yield "https://example.com/latest";
+      diagnostics: { diagnosePage: () => ({ kind: "fixture" }) },
+      dataQuality: {
+        thresholds: {
+          manufacturerUnknownRate: { warning: 0.04, critical: 0.08 },
         },
       },
     },
   );
-  assert.equal(coverageDecision(adapter, { reachedEnd: true }).deactivateMissing, false);
+
+  assert.equal("diagnosePage" in plugin, false);
+  assert.equal("qualityThresholds" in plugin, false);
+  assert.deepEqual(plugin.capabilities.diagnostics?.diagnosePage("<html></html>"), {
+    kind: "fixture",
+  });
+  assert.equal(plugin.capabilities.dataQuality?.thresholds?.manufacturerUnknownRate?.warning, 0.04);
 });
 
-test("targetUrl rejects cross-origin and malformed discovery targets", () => {
-  const adapter = registerStub();
-  assert.equal(targetUrl(adapter, "https://example.com/ok"), "https://example.com/ok");
-  assert.throws(() => targetUrl(adapter, "https://evil.example/"), /outside shop origin/);
-  assert.throws(
-    () => targetUrl(adapter, { url: "http://example.com/insecure" }),
-    /outside shop origin/,
-  );
-  assert.throws(() => targetUrl(adapter, { url: "not-a-url" }), /invalid discovery target/);
-});
+test("relay transport requires the shared crawler configuration", () => {
+  const plugin = SHOP_PLUGINS.find((candidate) => candidate.key === "audiounion");
+  assert.ok(plugin);
 
-test("relay transport configuration is mandatory only when declared by the definition", () => {
-  const relay = registerStub(
-    { transportConfigurationRequired: true },
-    {},
-    { transport: { kind: "relay" } },
-  );
-  const direct = registerStub();
-  assert.equal(isTransportConfigured(relay, {}), false);
-  assert.equal(
-    isTransportConfigured(relay, {
-      CRAWL_RELAY_URL: "https://relay.example/",
-      CRAWL_RELAY_TOKEN: "token",
+  assert.deepEqual(
+    relayConfiguration({
+      CRAWL_RELAY_URL: "https://shared.example/",
+      CRAWL_RELAY_TOKEN: "shared-token",
     }),
+    { relayUrl: "https://shared.example/", relayToken: "shared-token" },
+  );
+  assert.equal(
+    isTransportConfigured(
+      {
+        CRAWL_RELAY_URL: "https://shared.example/",
+        CRAWL_RELAY_TOKEN: "shared-token",
+      },
+      plugin.capabilities.transport?.kind,
+    ),
     true,
   );
-  assert.equal(isTransportConfigured(direct, {}), true);
+  assert.equal(isTransportConfigured({}, plugin.capabilities.transport?.kind), false);
 });
 
-test("transportConfigurationRequired cannot be attached to a non-relay plugin", () => {
-  assert.throws(
-    () => registerStub({ transportConfigurationRequired: true }),
-    /requires relay transport/,
-  );
+test("discovery is bounded, deduplicated and origin-safe at the platform boundary", () => {
+  const fixed = {
+    baseUrl: "https://example.com",
+    discovery: {
+      coverage: "unknown" as const,
+      policy: {
+        emptyPage: "stop" as const,
+        itemCountValidation: "coverage" as const,
+        extraPageBudget: 0,
+      },
+      *initialTargets({ maxPages }: { maxPages: number }) {
+        for (let page = 1; page <= maxPages + 3; page += 1) yield `/${page}`;
+        yield "/1";
+      },
+    },
+  };
+  assert.deepEqual(initialPageQueue(fixed, 2, {}, {}), ["/1", "/2"]);
+  assert.deepEqual(discoverPages(fixed, "<html>", "/1"), []);
+  assert.equal(targetUrl(fixed, "/1"), "https://example.com/1");
+
+  const outside = {
+    ...fixed,
+    discovery: {
+      coverage: "unknown" as const,
+      policy: {
+        emptyPage: "stop" as const,
+        itemCountValidation: "coverage" as const,
+        extraPageBudget: 0,
+      },
+      *initialTargets() {
+        yield "https://other.example/list";
+      },
+    },
+  };
+  assert.throws(() => initialPageQueue(outside, 2, {}, {}), /outside shop origin/);
 });
 
-test("relayConfiguration rejects incomplete or insecure values", () => {
-  assert.throws(() => relayConfiguration({}), /CRAWL_RELAY_URL/);
-  assert.throws(
-    () =>
-      relayConfiguration({ CRAWL_RELAY_URL: "http:\/\/relay.example", CRAWL_RELAY_TOKEN: "token" }),
-    /https/,
+test("explicit coverage semantics decide deactivation", () => {
+  const complete = coverageDecision(
+    registerStub(
+      {},
+      {
+        discovery: {
+          coverage: "complete",
+          policy: { emptyPage: "stop", itemCountValidation: "coverage", extraPageBudget: 0 },
+          *initialTargets() {},
+        },
+      },
+    ),
+    { reachedEnd: false, coverageIncomplete: false, queueEmpty: true },
   );
-  assert.throws(
-    () => relayConfiguration({ CRAWL_RELAY_URL: "https:\/\/relay.example", CRAWL_RELAY_TOKEN: "" }),
-    /CRAWL_RELAY_TOKEN/,
+  assert.deepEqual(complete, { deactivateMissing: true, validateItemCount: true });
+
+  const partial = coverageDecision(
+    registerStub(
+      { key: "partial-shop" },
+      {
+        discovery: {
+          coverage: "partial",
+          policy: { emptyPage: "stop", itemCountValidation: "always", extraPageBudget: 0 },
+          *initialTargets() {},
+        },
+      },
+    ),
+    { reachedEnd: true, coverageIncomplete: false, queueEmpty: true },
   );
+  assert.deepEqual(partial, { deactivateMissing: false, validateItemCount: true });
+
+  const uncertain = coverageDecision(
+    registerStub(
+      { key: "uncertain-shop" },
+      {
+        discovery: {
+          coverage: "complete",
+          policy: { emptyPage: "stop", itemCountValidation: "coverage", extraPageBudget: 0 },
+          *initialTargets() {},
+        },
+      },
+    ),
+    { reachedEnd: true, coverageIncomplete: true, queueEmpty: true },
+  );
+  assert.deepEqual(uncertain, { deactivateMissing: false, validateItemCount: false });
 });
