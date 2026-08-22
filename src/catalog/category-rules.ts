@@ -36,20 +36,22 @@ const DAP_BRAND_MODEL_GAP = /[^]{0,32}?/;
 /**
  * A player's model number also names the accessories sold for it, and those are not players.
  *
- * Applied as a lookahead from the start of the match, which relies on shop titles naming the
- * product type after the brand and model — the order every shop in the registry uses. A title that
- * leads with the accessory noun escapes it, and a genuine player whose title advertises a bundled
- * case is blocked; both fail to `unclassified`, which the enrichment and Knowledge Catalog paths
- * can still recover, rather than to a wrong terminal label.
+ * This guard is anchored to the beginning of the whole input, not to the position where the brand
+ * happens to match. RegExp#test searches for a match at every position, so an unanchored lookahead
+ * let titles such as `ケース Astell&Kern SP2000` skip past the accessory word and start matching at
+ * `Astell&Kern`. Blocking on the whole title keeps accessory-first and accessory-last spellings
+ * symmetric. A genuine player whose title advertises a bundled case remains conservatively
+ * unclassified so enrichment or the Knowledge Catalog can recover it instead of assigning a wrong
+ * terminal label.
  */
 const DAP_ACCESSORY_GUARD =
-  /(?![^]*(?:ケース|カバー|フィルム|ストラップ|\bcase\b|\bcover\b|\bfilm\b|\bstrap\b))/;
+  /^(?![^]*(?:ケース|カバー|フィルム|ストラップ|\bcase\b|\bcover\b|\bfilm\b|\bstrap\b))/;
 
 const DAP_MODEL_PATTERN = new RegExp(
-  DAP_MODEL_FAMILIES.map(
+  `${DAP_ACCESSORY_GUARD.source}[^]*?(?:${DAP_MODEL_FAMILIES.map(
     ([brand, models]) =>
-      `${DAP_ACCESSORY_GUARD.source}(?:${brand.source})${DAP_BRAND_MODEL_GAP.source}(?:${models.source})`,
-  ).join("|"),
+      `(?:${brand.source})${DAP_BRAND_MODEL_GAP.source}(?:${models.source})`,
+  ).join("|")})`,
   "i",
 );
 
