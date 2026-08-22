@@ -1,4 +1,8 @@
-import type { MetaShop } from "../src/api/contracts.js";
+/** Minimal shape needed to order one shop filter option. */
+export interface ShopFilterOption {
+  key: string;
+  name: string;
+}
 
 /**
  * Japanese readings used only to order the shop search filter.
@@ -28,7 +32,7 @@ const JAPANESE_READING_COLLATOR = new Intl.Collator("ja", {
 });
 
 /** Return a copy ordered by the Japanese reading while preserving each shop's display label. */
-export function sortShopsByJapaneseReading(shops: readonly MetaShop[]): MetaShop[] {
+export function sortShopsByJapaneseReading<T extends ShopFilterOption>(shops: readonly T[]): T[] {
   return [...shops].sort((left, right) => {
     const leftReading = SHOP_FILTER_READINGS[left.key] || left.name;
     const rightReading = SHOP_FILTER_READINGS[right.key] || right.name;
