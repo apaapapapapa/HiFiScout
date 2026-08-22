@@ -18,8 +18,8 @@ const wranglerConfig = JSON.parse(
   fs.readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8"),
 );
 const schedulerSource = fs.readFileSync(new URL("../src/scheduled.ts", import.meta.url), "utf8");
-const deployWorkflow = fs.readFileSync(
-  new URL("../.github/workflows/deploy.yml", import.meta.url),
+const provisionProductionResources = fs.readFileSync(
+  new URL("../scripts/provision-production-resources.sh", import.meta.url),
   "utf8",
 );
 
@@ -162,13 +162,16 @@ test("admin CSV exports share the existing serialized Product Audit queue", () =
   assert.equal(deadLetterConsumer?.max_concurrency, 1);
   assert.match(schedulerSource, /recoverStaleProductAuditExportJobs/);
   assert.match(schedulerSource, /recoverStaleKnowledgeCatalogExportJobs/);
-  assert.match(deployWorkflow, /hifiscout-product-audit-exports\|product-audit-exports\/\|10/);
   assert.match(
-    deployWorkflow,
+    provisionProductionResources,
+    /hifiscout-product-audit-exports\|product-audit-exports\/\|10/,
+  );
+  assert.match(
+    provisionProductionResources,
     /hifiscout-knowledge-catalog-exports\|knowledge-catalog-exports\/\|10/,
   );
   assert.match(
-    deployWorkflow,
-    /for queue in hifiscout-product-audit-export hifiscout-product-audit-export-dlq/,
+    provisionProductionResources,
+    /hifiscout-product-audit-export hifiscout-product-audit-export-dlq/,
   );
 });
