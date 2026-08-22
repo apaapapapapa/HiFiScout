@@ -13,6 +13,7 @@
 import { dateFmt, escapeHtml, relativeTime, safeDate, yen } from "./format.js";
 import { isLegacyFavoriteKey } from "./favorites.js";
 import { activityData, priceDropped } from "./product-activity.js";
+import { sortShopsByJapaneseReading } from "./shop-options.js";
 import type { MetaCategoryFacet, MetaResponse, MetaShop } from "../src/api/contracts.js";
 import type { DisplayOffer, DisplayProduct, PriceHistoryEntry } from "./types.js";
 
@@ -320,7 +321,7 @@ const HEALTH_LABELS: Record<string, string> = {
 };
 
 export function syncShopRows(shops: readonly MetaShop[], now = Date.now()): string {
-  return shops
+  return sortShopsByJapaneseReading(shops)
     .map((shop) => {
       const health = shop.health;
       const healthStatus = health?.status || (shop.enabled === false ? "disabled" : "unknown");

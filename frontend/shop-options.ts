@@ -1,11 +1,11 @@
-/** Minimal shape needed to order one shop filter option. */
+/** Minimal shape needed to order one user-facing shop entry. */
 export interface ShopFilterOption {
   key: string;
   name: string;
 }
 
 /**
- * Japanese gojuon readings used only to order the shop search filter.
+ * Japanese gojuon readings shared by user-facing shop lists that need Japanese reading order.
  *
  * Display names intentionally stay unchanged. Keep this map exhaustive: the unit test compares it
  * with the registered shop plugins so a newly added shop cannot silently fall back to Latin or
