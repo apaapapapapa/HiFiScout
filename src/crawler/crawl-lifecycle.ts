@@ -110,7 +110,9 @@ export function readCrawlLifecycle(
 
   const dispatchToken = state.queued_token || crawlDispatchToken(state.shop_key, requestedAt);
   const lastSentAt =
-    timestampMs(state.queued_last_sent_at) == null ? requestedAt : state.queued_last_sent_at || requestedAt;
+    timestampMs(state.queued_last_sent_at) == null
+      ? requestedAt
+      : state.queued_last_sent_at || requestedAt;
 
   if (!hasLeaseToken) {
     return {
@@ -165,8 +167,7 @@ export function shouldRecoverDispatch(
   if (lifecycle.phase !== "queued" || !lifecycle.lastSentAt) return false;
   const lastSentAtMs = timestampMs(lifecycle.lastSentAt);
   return (
-    lastSentAtMs != null &&
-    now.getTime() - lastSentAtMs >= Math.max(1, recoveryMinutes) * 60_000
+    lastSentAtMs != null && now.getTime() - lastSentAtMs >= Math.max(1, recoveryMinutes) * 60_000
   );
 }
 
@@ -178,7 +179,9 @@ export function matchesDispatchReservation(
 ): boolean {
   if (!state) return false;
   const dispatchToken = crawlDispatchToken(shopKey, requestedAt);
-  return state.queued_token === dispatchToken || (!state.queued_token && state.queued_at === requestedAt);
+  return (
+    state.queued_token === dispatchToken || (!state.queued_token && state.queued_at === requestedAt)
+  );
 }
 
 /** Retry delay for a duplicate delivery while the owning child is still executing. */
