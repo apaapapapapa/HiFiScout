@@ -151,6 +151,7 @@ export function parseTereonListing(html: string, page: Partial<TereonPage> = {})
       rawManufacturer,
       manufacturer,
       model,
+      // These top-level MakeShop buckets describe condition, not product type.
       rawCategory: "",
       category: inferCategory(`${title} ${model}`),
       conditionText: sellerCondition(rawTitle, page),
