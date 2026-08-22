@@ -134,9 +134,7 @@ async function exactIdentityPeerListingIds(
 ): Promise<number[]> {
   const found: number[] = [];
   for (const chunk of chunks(listingIds)) {
-    found.push(
-      ...(await selectNumbers(db, exactIdentityPeerIdsSql(chunk.length), chunk, "id")),
-    );
+    found.push(...(await selectNumbers(db, exactIdentityPeerIdsSql(chunk.length), chunk, "id")));
   }
   return found;
 }
