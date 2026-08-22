@@ -16,55 +16,6 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  finalize-remediation-doc:
-    if: github.event_name == 'pull_request' && github.head_ref == 'fix/finalize-data-quality-remediation'
-    permissions:
-      contents: write
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: ${{ github.head_ref }}
-          fetch-depth: 0
-      - name: Update remediation completion note and restore CI workflow
-        shell: bash
-        run: |
-          set -euo pipefail
-          python <<'PY'
-          from pathlib import Path
-
-          path = Path('docs/data-quality-remediation.md')
-          text = path.read_text()
-          old = '''**残作業（P0 外に切り出し）**: `hifido` の `detailCategoryEvidence` は未実装のままです。
-実装には hifido の**商品詳細ページの実 HTML**が必要ですが、リポジトリにフィクスチャがなく、
-アダプタが知っているのは一覧ページの構造だけです。マークアップを推測して抽出器を書くと、
-本指示書自身が警告する「構造化されていない箇所からの strong 証拠」を作り込むことになるため、
-実 HTML を採取するまで着手しません。なお hifido の未分類はそもそも E-3（`CATEGORY_RE` の
-ブロック内自由文検索）と N-1（レコード部門 1,771 件）の寄与が大きく、補完の期待値は
-fujiya-avic ほど高くありません。
-'''
-          new = '''**追加対応（2026-08-22）**: `hifido` にも `detailCategoryEvidence` を実装・登録しました。
-抽出器は本文全体や URL 属性を走査せず、完全一致する `sourceId` のテキストノード直後にある
-短い商品ヘッダだけを対象にし、国・店舗・入荷日時より後ろの説明文を証拠から除外します。
-カテゴリ語は既存の `HIFIDO_CATEGORY_MAPPING` / seller-category policy を通して
-`detail_metadata` 証拠へ変換し、`アクセサリー` のような broad seller bucket は従来どおり
-supporting evidence に留めます。補完は 1 crawl 最大 10 request、未解決結果も 168 時間
-キャッシュし、東京 relay と Hifido への負荷を抑えます。説明文・ナビゲーション・リンク属性の
-カテゴリ語を拾わない回帰テストも追加済みです。
-'''
-          if old not in text:
-              raise SystemExit('expected Hifido residual paragraph not found')
-          path.write_text(text.replace(old, new, 1))
-          PY
-          git fetch origin main
-          git show origin/main:.github/workflows/ci.yml > .github/workflows/ci.yml
-          git config user.name github-actions
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add docs/data-quality-remediation.md .github/workflows/ci.yml
-          git commit -m "docs: mark Hifido detail enrichment complete"
-          git push origin HEAD:${{ github.head_ref }}
-
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
