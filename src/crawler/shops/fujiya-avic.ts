@@ -58,20 +58,56 @@ function metaDescriptions(html: string): string[] {
   return [...new Set(descriptions)];
 }
 
-function firstExplicitDetailEvidence(text: string, source: string): CategoryEvidenceInput[] {
+function productNeedles(
+  product: Partial<Pick<NormalizedCatalogProduct, "model" | "title">>,
+): string[] {
+  return [...new Set([product.model, product.title].map(cleanText).filter(Boolean))].sort(
+    (left, right) => right.length - left.length,
+  );
+}
+
+function containsProductNeedle(sentence: string, needles: string[]): boolean {
+  if (!needles.length) return true;
+  const normalized = sentence.normalize("NFKC").toLowerCase();
+  return needles.some((needle) => normalized.includes(needle.normalize("NFKC").toLowerCase()));
+}
+
+function productTitleDeclaresCable(
+  product: Partial<Pick<NormalizedCatalogProduct, "model" | "title">>,
+): boolean {
+  return /\bcables?\b|\bcord\b|ケーブル|コード/i.test(cleanText(`${product.title || ""} ${product.model || ""}`));
+}
+
+function firstExplicitDetailEvidence(
+  text: string,
+  source: string,
+  product: Partial<Pick<NormalizedCatalogProduct, "model" | "title">>,
+): CategoryEvidenceInput[] {
   const normalized = cleanText(text);
   if (!normalized) return [];
+  const needles = productNeedles(product);
   const sentences = normalized
     .split(/[。！？!?]+/)
     .map(cleanText)
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((sentence) => containsProductNeedle(sentence, needles));
   for (const sentence of sentences) {
     const evidence = categoryEvidenceFromText(sentence, {
       source,
       strength: "strong",
       context: "detail",
     });
-    if (evidence.length) return evidence;
+    if (!evidence.length) continue;
+
+    // `cable_other` was observed on DAPs, disc players, projectors and soundbars whose titles had no
+    // cable token. A detail sentence can legitimately mention the product and an included/connected
+    // cable, so proximity to the model alone is not sufficient evidence that the product *is* a
+    // cable. Keep cable detail evidence only when the listing title/model itself declares a cable;
+    // seller buckets and explicit title rules remain available for genuine model-only cable rows.
+    const filtered = productTitleDeclaresCable(product)
+      ? evidence
+      : evidence.filter((item) => !item.categoryIds.some((id) => id.startsWith("cable_")));
+    if (filtered.length) return filtered;
   }
   return [];
 }
@@ -96,11 +132,11 @@ export function extractFujiyaDetailCategoryEvidence(
   product: Partial<Pick<NormalizedCatalogProduct, "model" | "title">> = {},
 ): CategoryEvidenceInput[] {
   for (const description of metaDescriptions(html)) {
-    const evidence = firstExplicitDetailEvidence(description, "detail_metadata");
+    const evidence = firstExplicitDetailEvidence(description, "detail_metadata", product);
     if (evidence.length) return evidence;
   }
 
-  return firstExplicitDetailEvidence(productLeadText(html, product), "detail_product_text");
+  return firstExplicitDetailEvidence(productLeadText(html, product), "detail_product_text", product);
 }
 
 export function parseFujiyaResultCount(html: string): number | null {
