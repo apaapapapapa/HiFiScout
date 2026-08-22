@@ -37,6 +37,20 @@ test("common color and finish presentations resolve to the same product model", 
   }
 });
 
+test("real shop compound finish spellings are presentation-only", () => {
+  const uAudio = resolve("802D4W(サテン・ホワイト)");
+  assert.equal(uAudio.status, "resolved");
+  assert.equal(uAudio.model, "802D4W");
+  assert.equal(uAudio.normalizedModel, "802D4W");
+  assert.ok(uAudio.removedAnnotations.includes("presentation_color"));
+
+  const forMusic = resolve("805D3 グロスブラック");
+  assert.equal(forMusic.status, "resolved");
+  assert.equal(forMusic.model, "805D3");
+  assert.equal(forMusic.normalizedModel, "805D3");
+  assert.ok(forMusic.removedAnnotations.includes("presentation_color"));
+});
+
 test("color cleanup preserves real revision tokens and does not treat bare short suffixes as colors", () => {
   const revision = resolve("D-1000 MK2 ブラック");
   assert.equal(revision.model, "D-1000 MK2");
