@@ -28,6 +28,7 @@ import {
   dispatchKnowledgeCatalogMonthlyRecheck,
 } from "./knowledge-catalog/dispatch.js";
 import { runRetentionCleanup } from "./maintenance.js";
+import { recoverStaleProductAuditExportJobs } from "./product-audit-export/service.js";
 import { errorMessage } from "./types.js";
 import type { DispatchResult } from "./crawler/types.js";
 
@@ -205,5 +206,6 @@ export function handleScheduled(
     // worker-level timeout cannot be caught reliably inside a ten-job sweep; claiming one job makes
     // the lease/retry boundary match the expensive projection boundary.
     ctx.waitUntil(runDataQualityRemediationSweep(env.DB, { claimLimit: 1 }));
+    ctx.waitUntil(recoverStaleProductAuditExportJobs(env.DB, env.PRODUCT_AUDIT_EXPORT_QUEUE));
   }
 }

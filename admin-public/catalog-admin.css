@@ -174,9 +174,7 @@ button:disabled {
 
 .export-panel {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px 24px;
-  align-items: center;
+  gap: 18px;
 }
 
 .export-panel h2 {
@@ -189,15 +187,47 @@ button:disabled {
   line-height: 1.6;
 }
 
-.export-actions {
+.export-jobs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.export-job {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid #dfe3e8;
+  border-radius: 10px;
+  background: #fafbfc;
+}
+
+.export-job h3 {
+  margin: 0 0 6px;
+  font-size: 0.98rem;
+}
+
+.export-job-actions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  align-items: center;
+}
+
+.export-status {
+  min-height: 44px;
+  font-size: 0.84rem;
+}
+
+.export-status[data-kind="error"] {
+  color: #a52828;
+}
+
+.export-status[data-kind="success"] {
+  color: #21683d;
 }
 
 .export-note {
-  grid-column: 1 / -1;
   font-size: 0.8rem;
 }
 
@@ -311,16 +341,13 @@ dialog::backdrop {
     flex-direction: column;
   }
 
-  .export-panel {
+  .export-jobs {
     grid-template-columns: 1fr;
   }
 
-  .export-actions {
-    justify-content: flex-start;
-  }
-
-  .export-note {
-    grid-column: auto;
+  .export-job-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .search-grid {

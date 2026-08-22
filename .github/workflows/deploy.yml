@@ -61,6 +61,7 @@ jobs:
           hifiscout-evidence-short|evidence/short/|30
           hifiscout-evidence-medium|evidence/medium/|90
           hifiscout-evidence-long|evidence/long/|365
+          hifiscout-product-audit-exports|product-audit-exports/|10
           RULES
       - name: Install deploy-only Worker dependency
         shell: bash
@@ -77,6 +78,17 @@ jobs:
         run: |
           set -euo pipefail
           for queue in hifiscout-knowledge-verification hifiscout-knowledge-verification-dlq; do
+            if npx wrangler queues info "$queue" >/dev/null 2>&1; then
+              echo "Queue already exists: $queue"
+            else
+              npx wrangler queues create "$queue"
+            fi
+          done
+      - name: Provision Product Audit export queues
+        shell: bash
+        run: |
+          set -euo pipefail
+          for queue in hifiscout-product-audit-export hifiscout-product-audit-export-dlq; do
             if npx wrangler queues info "$queue" >/dev/null 2>&1; then
               echo "Queue already exists: $queue"
             else

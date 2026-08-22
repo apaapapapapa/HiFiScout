@@ -1,13 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type {
-  CatalogAdminProductExportOptions,
-  CatalogAdminProductExportRow,
-} from "../src/admin/contracts.js";
+import type { CatalogAdminProductExportRow, CatalogAdminRpc } from "../src/admin/contracts.js";
 import { handleAuthenticatedCatalogAdminRequest } from "../src/admin/index.js";
-import { productAuditCsvHeader, productAuditCsvRow } from "../src/admin/product-audit-csv.js";
+import {
+  PRODUCT_AUDIT_CSV_BOM,
+  productAuditCsvHeader,
+  productAuditCsvRow,
+} from "../src/admin/product-audit-csv.js";
 import { listProductAuditExportPage } from "../src/db/product-audit-export-repository.js";
+import type {
+  ProductAuditExportJob,
+  ProductAuditExportScope,
+} from "../src/product-audit-export/types.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 
 function exportRow(
@@ -66,8 +71,30 @@ function exportRow(
   };
 }
 
+const EXPORT_JOB_ID = "0198d32e-6800-7b10-9000-000000000001";
+
+function exportJob(overrides: Partial<ProductAuditExportJob> = {}): ProductAuditExportJob {
+  return {
+    id: EXPORT_JOB_ID,
+    scope: "active",
+    status: "queued",
+    maxListingId: 20,
+    afterId: 0,
+    chunkCount: 0,
+    rowCount: 0,
+    byteCount: 0,
+    deliveryAttempts: 0,
+    createdAt: "2026-08-22T00:00:00.000Z",
+    updatedAt: "2026-08-22T00:00:00.000Z",
+    completedAt: null,
+    expiresAt: null,
+    error: "",
+    ...overrides,
+  };
+}
+
 function exportEnv(
-  exportPage: (options: CatalogAdminProductExportOptions) => Promise<unknown>,
+  overrides: Partial<CatalogAdminRpc> = {},
 ): Parameters<typeof handleAuthenticatedCatalogAdminRequest>[1] {
   return {
     ADMIN_ASSETS: {
@@ -82,7 +109,21 @@ function exportEnv(
       async updateProduct(): Promise<unknown> {
         return {};
       },
-      exportProductAuditPage: exportPage,
+      async startProductAuditExport(
+        scope: ProductAuditExportScope,
+      ): Promise<ProductAuditExportJob> {
+        return exportJob({ scope });
+      },
+      async latestProductAuditExportJob(): Promise<ProductAuditExportJob | null> {
+        return null;
+      },
+      async getProductAuditExportJob(): Promise<ProductAuditExportJob | null> {
+        return null;
+      },
+      async downloadProductAuditExport(): Promise<Response> {
+        return new Response(null, { status: 404 });
+      },
+      ...overrides,
     },
   } as unknown as Parameters<typeof handleAuthenticatedCatalogAdminRequest>[1];
 }
@@ -116,62 +157,199 @@ test("AI audit CSV has stable diagnostic columns and neutralises spreadsheet for
   );
   assert.match(line, /"'=HYPERLINK\(""https:\/\/example\.test"",""seller, title""\)"/u);
   assert.match(line, /"Model ""quoted""\nsecond line"/u);
+
+  const csv = `${PRODUCT_AUDIT_CSV_BOM}${productAuditCsvHeader()}\r\n${line}\r\n`;
+  const bytes = new TextEncoder().encode(csv);
+  assert.deepEqual(Array.from(bytes.slice(0, 3)), [0xef, 0xbb, 0xbf]);
+  assert.ok(csv.endsWith("\r\n"));
 });
 
-test("protected product export paginates the service binding and downloads UTF-8 CSV", async () => {
-  const calls: CatalogAdminProductExportOptions[] = [];
+test("protected product export starts one asynchronous job and reports queue failures", async () => {
+  const scopes: ProductAuditExportScope[] = [];
+  const acceptedJob = exportJob({ scope: "all" });
+  const accepted = await handleAuthenticatedCatalogAdminRequest(
+    new Request("https://admin.example.test/api/admin/product-audit-exports", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ scope: "all" }),
+    }),
+    exportEnv({
+      async startProductAuditExport(scope) {
+        scopes.push(scope);
+        return acceptedJob;
+      },
+    }),
+  );
+
+  assert.equal(accepted.status, 202);
+  assert.deepEqual(await accepted.json(), acceptedJob);
+  assert.deepEqual(scopes, ["all"]);
+  assertAdminSecurityHeaders(accepted);
+
+  const unavailable = await handleAuthenticatedCatalogAdminRequest(
+    new Request("https://admin.example.test/api/admin/product-audit-exports", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ scope: "active" }),
+    }),
+    exportEnv({
+      async startProductAuditExport() {
+        throw new Error("queue unavailable");
+      },
+    }),
+  );
+  assert.equal(unavailable.status, 503);
+  assert.deepEqual(await unavailable.json(), { error: "product_audit_export_start_failed" });
+  assertAdminSecurityHeaders(unavailable);
+});
+
+test("product export validates scopes before invoking the service binding", async () => {
+  let calls = 0;
+  const env = exportEnv({
+    async startProductAuditExport() {
+      calls += 1;
+      return exportJob();
+    },
+  });
+  for (const request of [
+    new Request("https://admin.example.test/api/admin/product-audit-exports", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{",
+    }),
+    new Request("https://admin.example.test/api/admin/product-audit-exports", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ scope: "deleted" }),
+    }),
+    new Request("https://admin.example.test/api/admin/product-audit-exports"),
+    new Request("https://admin.example.test/api/admin/product-audit-exports?scope=deleted"),
+  ]) {
+    const response = await handleAuthenticatedCatalogAdminRequest(request, env);
+    assert.equal(response.status, 400);
+    assertAdminSecurityHeaders(response);
+  }
+  assert.equal(calls, 0);
+});
+
+test("product export rejects cross-site, non-JSON, and oversized generation requests", async () => {
+  let calls = 0;
+  const env = exportEnv({
+    async startProductAuditExport() {
+      calls += 1;
+      return exportJob();
+    },
+  });
+  const crossSite = await handleAuthenticatedCatalogAdminRequest(
+    new Request("https://admin.example.test/api/admin/product-audit-exports", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://attacker.example",
+        "sec-fetch-site": "cross-site",
+      },
+      body: JSON.stringify({ scope: "active" }),
+    }),
+    env,
+  );
+  assert.equal(crossSite.status, 403);
+
+  const simpleCrossSite = await handleAuthenticatedCatalogAdminRequest(
+    new Request("https://admin.example.test/api/admin/product-audit-exports", {
+      method: "POST",
+      headers: { "content-type": "text/plain" },
+      body: JSON.stringify({ scope: "active" }),
+    }),
+    env,
+  );
+  assert.equal(simpleCrossSite.status, 415);
+
+  const oversized = await handleAuthenticatedCatalogAdminRequest(
+    new Request("https://admin.example.test/api/admin/product-audit-exports", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ scope: "active", padding: "x".repeat(1_024) }),
+    }),
+    env,
+  );
+  assert.equal(oversized.status, 413);
+  assert.equal(calls, 0);
+});
+
+test("product export restores the latest job and polls an individual UUID", async () => {
+  const readyJob = exportJob({
+    status: "ready",
+    rowCount: 2,
+    completedAt: "2026-08-22T00:05:00.000Z",
+    expiresAt: "2026-08-29T00:05:00.000Z",
+  });
+  const latestScopes: ProductAuditExportScope[] = [];
+  const requestedIds: string[] = [];
+  const env = exportEnv({
+    async latestProductAuditExportJob(scope) {
+      latestScopes.push(scope);
+      return readyJob;
+    },
+    async getProductAuditExportJob(jobId) {
+      requestedIds.push(jobId);
+      return jobId === readyJob.id ? readyJob : null;
+    },
+  });
+
+  const latest = await handleAuthenticatedCatalogAdminRequest(
+    new Request("https://admin.example.test/api/admin/product-audit-exports?scope=active"),
+    env,
+  );
+  assert.equal(latest.status, 200);
+  assert.deepEqual(await latest.json(), { job: readyJob });
+  assert.deepEqual(latestScopes, ["active"]);
+
+  const found = await handleAuthenticatedCatalogAdminRequest(
+    new Request(`https://admin.example.test/api/admin/product-audit-exports/${readyJob.id}`),
+    env,
+  );
+  assert.equal(found.status, 200);
+  assert.deepEqual(await found.json(), readyJob);
+  assert.deepEqual(requestedIds, [readyJob.id]);
+
+  const missingId = "0198d32e-6800-7b10-9000-000000000002";
+  const missing = await handleAuthenticatedCatalogAdminRequest(
+    new Request(`https://admin.example.test/api/admin/product-audit-exports/${missingId}`),
+    env,
+  );
+  assert.equal(missing.status, 404);
+  assert.deepEqual(await missing.json(), { error: "not_found" });
+});
+
+test("product export download preserves attachment metadata and admin security headers", async () => {
+  const requestedIds: string[] = [];
   const response = await handleAuthenticatedCatalogAdminRequest(
-    new Request("https://admin.example.test/api/admin/products/export.csv?scope=all"),
-    exportEnv(async (options) => {
-      calls.push(options);
-      return options.afterId === 0
-        ? { items: [exportRow()], nextAfterId: 1 }
-        : { items: [exportRow({ listingId: 2, sourceId: "source-2" })], nextAfterId: null };
+    new Request(
+      `https://admin.example.test/api/admin/product-audit-exports/${EXPORT_JOB_ID}/download`,
+    ),
+    exportEnv({
+      async downloadProductAuditExport(jobId) {
+        requestedIds.push(jobId);
+        return new Response(`${PRODUCT_AUDIT_CSV_BOM}${productAuditCsvHeader()}\r\n`, {
+          headers: {
+            "content-type": "text/csv; charset=utf-8",
+            "content-disposition": 'attachment; filename="hifiscout-product-audit-active.csv"',
+            "cache-control": "no-store",
+          },
+        });
+      },
     }),
   );
 
   assert.equal(response.status, 200);
+  assert.deepEqual(requestedIds, [EXPORT_JOB_ID]);
   assert.equal(response.headers.get("content-type"), "text/csv; charset=utf-8");
+  assert.equal(
+    response.headers.get("content-disposition"),
+    'attachment; filename="hifiscout-product-audit-active.csv"',
+  );
   assert.equal(response.headers.get("cache-control"), "no-store");
-  assert.match(
-    response.headers.get("content-disposition") || "",
-    /attachment; filename="hifiscout-product-audit-all-\d{4}-\d{2}-\d{2}\.csv"/u,
-  );
   assertAdminSecurityHeaders(response);
-  assert.deepEqual(calls, [
-    { scope: "all", afterId: 0, limit: 500 },
-    { scope: "all", afterId: 1, limit: 500 },
-  ]);
-
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  assert.deepEqual(Array.from(bytes.slice(0, 3)), [0xef, 0xbb, 0xbf]);
-  const body = new TextDecoder().decode(bytes);
-  assert.ok(body.startsWith("listing_id,shop_key"));
-  assert.match(body, /"source-1"/u);
-  assert.match(body, /"source-2"/u);
-});
-
-test("product export defaults to active listings and rejects an unknown scope", async () => {
-  const calls: CatalogAdminProductExportOptions[] = [];
-  const env = exportEnv(async (options) => {
-    calls.push(options);
-    return { items: [], nextAfterId: null };
-  });
-
-  const active = await handleAuthenticatedCatalogAdminRequest(
-    new Request("https://admin.example.test/api/admin/products/export.csv"),
-    env,
-  );
-  assert.equal(active.status, 200);
-  assert.deepEqual(calls, [{ scope: "active", afterId: 0, limit: 500 }]);
-
-  const invalid = await handleAuthenticatedCatalogAdminRequest(
-    new Request("https://admin.example.test/api/admin/products/export.csv?scope=deleted"),
-    env,
-  );
-  assert.equal(invalid.status, 400);
-  assert.deepEqual(await invalid.json(), { error: "invalid_product_export_scope" });
-  assert.equal(calls.length, 1, "invalid input must not reach the main Worker RPC");
 });
 
 test("product audit repository exports active rows by default and all history on request", async () => {
@@ -246,7 +424,12 @@ test("product audit repository exports active rows by default and all history on
     `)
     .run(activeId, "2026-08-22T00:00:00.000Z");
 
-  const active = await listProductAuditExportPage(db, { scope: "active", afterId: 0, limit: 50 });
+  const active = await listProductAuditExportPage(db, {
+    scope: "active",
+    afterId: 0,
+    maxId: inactiveId,
+    limit: 50,
+  });
   assert.equal(active.items.length, 1);
   assert.equal(active.items[0]?.listingId, activeId);
   assert.equal(active.items[0]?.normalizedModel, "FIBERBOX2JPSM");
@@ -254,7 +437,12 @@ test("product audit repository exports active rows by default and all history on
   assert.equal(active.items[0]?.identityStatus, "unresolved");
   assert.equal(active.nextAfterId, null);
 
-  const all = await listProductAuditExportPage(db, { scope: "all", afterId: 0, limit: 50 });
+  const all = await listProductAuditExportPage(db, {
+    scope: "all",
+    afterId: 0,
+    maxId: inactiveId,
+    limit: 50,
+  });
   assert.deepEqual(
     all.items.map((item) => item.listingId),
     [activeId, inactiveId],

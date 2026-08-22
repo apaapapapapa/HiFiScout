@@ -1,7 +1,7 @@
 /**
  * Queue routing.
  *
- * One Worker consumes three queues, and Cloudflare delivers them all through the same handler, so
+ * One Worker consumes multiple queues, and Cloudflare delivers them all through the same handler, so
  * each batch is identified by queue name *and* by a body shape guard before it is dispatched. An
  * unrecognised batch is retried rather than acked, so a misrouted message is never silently lost.
  */
@@ -16,13 +16,26 @@ import {
   KNOWLEDGE_CATALOG_VERIFICATION_DLQ,
   KNOWLEDGE_CATALOG_VERIFICATION_QUEUE,
 } from "./knowledge-catalog/queue-names.js";
+import {
+  consumeProductAuditExportBatch,
+  consumeProductAuditExportDeadLetterBatch,
+} from "./product-audit-export/consumer.js";
+import {
+  PRODUCT_AUDIT_EXPORT_DLQ,
+  PRODUCT_AUDIT_EXPORT_QUEUE,
+} from "./product-audit-export/queue-names.js";
+import { isProductAuditExportQueueMessage } from "./product-audit-export/types.js";
 import { isRecord } from "./types.js";
 import type { CrawlQueueMessage } from "./crawler/types.js";
 import type { KnowledgeCatalogQueueMessage } from "./knowledge-catalog/types.js";
+import type { ProductAuditExportQueueMessage } from "./product-audit-export/types.js";
 
 export const CRAWL_QUEUE = "hifiscout-crawl";
 
-export type WorkerQueueMessage = CrawlQueueMessage | KnowledgeCatalogQueueMessage;
+export type WorkerQueueMessage =
+  | CrawlQueueMessage
+  | KnowledgeCatalogQueueMessage
+  | ProductAuditExportQueueMessage;
 
 function isCrawlBatch(
   batch: MessageBatch<WorkerQueueMessage>,
@@ -33,7 +46,19 @@ function isCrawlBatch(
 function isKnowledgeCatalogBatch(
   batch: MessageBatch<WorkerQueueMessage>,
 ): batch is MessageBatch<KnowledgeCatalogQueueMessage> {
-  return batch.messages.every((message) => isRecord(message.body) && "jobId" in message.body);
+  return batch.messages.every(
+    (message) =>
+      isRecord(message.body) &&
+      typeof message.body.jobId === "number" &&
+      typeof message.body.runId === "number" &&
+      typeof message.body.jobType === "string",
+  );
+}
+
+function isProductAuditExportBatch(
+  batch: MessageBatch<WorkerQueueMessage>,
+): batch is MessageBatch<ProductAuditExportQueueMessage> {
+  return batch.messages.every((message) => isProductAuditExportQueueMessage(message.body));
 }
 
 function queueWaitMs(requestedAt: string, receivedAtMs: number): number | null {
@@ -78,6 +103,12 @@ export async function handleQueue(
   batch: MessageBatch<WorkerQueueMessage>,
   env: Env,
 ): Promise<void> {
+  if (batch.queue === PRODUCT_AUDIT_EXPORT_QUEUE && isProductAuditExportBatch(batch)) {
+    return consumeProductAuditExportBatch(env, batch);
+  }
+  if (batch.queue === PRODUCT_AUDIT_EXPORT_DLQ && isProductAuditExportBatch(batch)) {
+    return consumeProductAuditExportDeadLetterBatch(env, batch);
+  }
   if (batch.queue === KNOWLEDGE_CATALOG_VERIFICATION_QUEUE && isKnowledgeCatalogBatch(batch)) {
     return consumeKnowledgeCatalogVerificationBatch(env, batch);
   }

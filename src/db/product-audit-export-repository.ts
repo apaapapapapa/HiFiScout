@@ -1,10 +1,13 @@
 import type { ReadableDatabase } from "./types.js";
+import type { ProductAuditExportScope } from "../product-audit-export/types.js";
 
-export type ProductAuditExportScope = "active" | "all";
+export type { ProductAuditExportScope } from "../product-audit-export/types.js";
 
 export interface ProductAuditExportOptions {
   scope: ProductAuditExportScope;
   afterId: number;
+  /** Inclusive ID horizon captured when an asynchronous export job starts. */
+  maxId: number;
   limit: number;
 }
 
@@ -192,6 +195,7 @@ export async function listProductAuditExportPage(
 ): Promise<ProductAuditExportPage> {
   const limit = Math.min(1000, Math.max(1, Number(options.limit) || 1));
   const afterId = Math.max(0, Number(options.afterId) || 0);
+  const maxId = Math.max(0, Number.isSafeInteger(options.maxId) ? Number(options.maxId) : 0);
   const activeClause = options.scope === "active" ? "AND p.is_active = 1" : "";
   const result = await db
     .prepare(`
@@ -263,11 +267,12 @@ export async function listProductAuditExportPage(
       LEFT JOIN knowledge_catalog_products candidate_kp
         ON candidate_kp.id = r.candidate_catalog_product_id
       WHERE p.id > ?
+        AND p.id <= ?
         ${activeClause}
       ORDER BY p.id
       LIMIT ?
     `)
-    .bind(afterId, limit + 1)
+    .bind(afterId, maxId, limit + 1)
     .all<ProductAuditExportDbRow>();
 
   const rows = result.results || [];

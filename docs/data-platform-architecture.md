@@ -252,12 +252,33 @@ R2 lifecycle rules are provisioned by the production deploy workflow using prefi
 - `evidence/short/`: 30 days
 - `evidence/medium/`: 90 days
 - `evidence/long/`: 365 days
+- `product-audit-exports/`: 10 days (covers the 24-hour generation deadline plus 7-day download window)
 
 The application records `expires_at` in D1, and the existing daily retention cleanup removes expired evidence metadata in bounded batches. Object deletion itself is delegated to R2 lifecycle rules rather than a custom lifecycle engine.
 
 ### Failure semantics
 
 Evidence archival is best-effort. Missing bindings, hashing/database errors, and R2 write failures are logged and returned as archive failures; they are not thrown into the product crawl update path. A crawler failure remains a crawler failure for its original reason, not because evidence could not be stored.
+
+### Product Audit CSV generation
+
+The Access-protected Catalog Admin starts Product Audit CSV exports as persistent D1 jobs instead
+of reading every listing in one HTTP request. A dedicated Queue processes one bounded page at a
+time with a single concurrent consumer and a delay between pages. Each page becomes a deterministic
+R2 chunk under `product-audit-exports/{jobId}/`; the completed job streams those already-generated
+chunks in order, so download performs no product joins or CSV re-encoding.
+
+The job captures a maximum listing-ID horizon at creation, uses cursor and chunk compare-and-swap
+fields for at-least-once Queue delivery, and permits only one running job per scope. It is not a
+transactional point-in-time snapshot: active state and joined canonical fields are read when each
+page runs, so the CSV intentionally reflects bounded, eventually consistent interval semantics.
+
+Generation has a 24-hour deadline and a 900-chunk cap (250 rows per chunk), keeping both generation
+work and the later streaming download below explicit per-invocation bounds. A five-minute recovery
+path re-enqueues stale cursors, while a compare-and-swap throttle prevents repeated POST or polling
+requests from flooding the Queue. Completed exports are available through the Access Worker for 7
+days. Daily maintenance removes expired D1 job metadata in bounded batches, while the R2 lifecycle
+rule removes the private chunks after 10 days.
 
 ## Observability and capacity monitoring
 
@@ -320,7 +341,7 @@ The Repository boundary is deliberately preserved so that a future PostgreSQL im
 
 ## Deployment requirements
 
-`wrangler.jsonc` binds `EVIDENCE_BUCKET` to the `hifiscout-evidence` R2 bucket. The production deployment workflow creates the bucket if necessary and reconciles the three HiFiScout-owned lifecycle rules before deploying the Worker.
+`wrangler.jsonc` binds `EVIDENCE_BUCKET` to the `hifiscout-evidence` R2 bucket. The production deployment workflow creates the bucket if necessary and reconciles the four HiFiScout-owned lifecycle rules before deploying the Worker.
 
 The Cloudflare API token used by deployment therefore needs the permission required to create/configure R2 buckets and lifecycle rules (`Workers R2 Storage Write`) in addition to the permissions already required by the Worker/D1 deployment.
 

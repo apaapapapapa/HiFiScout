@@ -22,19 +22,65 @@
 
       <section id="catalog-controls" hidden>
         <section class="panel export-panel" aria-labelledby="product-audit-heading">
-          <div>
+          <div class="export-introduction">
             <p class="eyebrow">AI DATA AUDIT</p>
             <h2 id="product-audit-heading">登録商品をCSVで診断</h2>
             <p>
               店舗ごとの生データ、正規化済みメーカー・型番、カテゴリ、Product Identity、検索上の同一製品グループを1行1listingで出力します。CSVをAIに渡して、重複表示・カテゴリ誤り・メーカー/型番の正規化漏れを確認できます。
             </p>
           </div>
-          <div class="export-actions">
-            <a class="button-link" href="/api/admin/products/export.csv">掲載中商品CSV</a>
-            <a class="button-link secondary-button" href="/api/admin/products/export.csv?scope=all">全履歴CSV</a>
+          <div class="export-jobs">
+            <section class="export-job" aria-labelledby="export-active-heading">
+              <div>
+                <h3 id="export-active-heading">掲載中商品</h3>
+                <p
+                  id="export-active-status"
+                  class="export-status"
+                  role="status"
+                  aria-live="polite"
+                >
+                  最新の生成状況を確認しています…
+                </p>
+              </div>
+              <div class="export-job-actions">
+                <button id="export-active-generate" type="button" disabled>CSVを生成</button>
+                <a
+                  id="export-active-download"
+                  class="button-link secondary-button"
+                  hidden
+                >
+                  ダウンロード
+                </a>
+              </div>
+            </section>
+            <section class="export-job" aria-labelledby="export-all-heading">
+              <div>
+                <h3 id="export-all-heading">全履歴</h3>
+                <p
+                  id="export-all-status"
+                  class="export-status"
+                  role="status"
+                  aria-live="polite"
+                >
+                  最新の生成状況を確認しています…
+                </p>
+              </div>
+              <div class="export-job-actions">
+                <button id="export-all-generate" class="secondary-button" type="button" disabled>
+                  CSVを生成
+                </button>
+                <a
+                  id="export-all-download"
+                  class="button-link secondary-button"
+                  hidden
+                >
+                  ダウンロード
+                </a>
+              </div>
+            </section>
           </div>
           <p class="export-note">
-            通常の品質確認には「掲載中商品CSV」を推奨します。「全履歴CSV」には販売終了・非掲載の商品も含まれます。
+            通常の品質確認には「掲載中商品」を推奨します。「全履歴」には販売終了・非掲載の商品も含まれます。生成ボタンを押すと、CPU負荷を抑えるため250件ずつバックグラウンドで処理します。完了まで時間がかかる場合がありますが、画面を閉じても処理は継続し、完成したCSVは7日間ダウンロードできます。1回の上限は225,000件、生成期限は24時間です。
           </p>
         </section>
 
