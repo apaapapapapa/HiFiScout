@@ -7,6 +7,11 @@
  */
 
 import { consumeCrawlMessage } from "./crawler/dispatch.js";
+import {
+  isCrawlDeadLetterQueueName,
+  isCrawlQueueName,
+} from "./crawler/queue-lanes.js";
+import { crawlDispatchToken, releaseShopDispatch } from "./db/shop-state-repository.js";
 import { getSyncHealth, logSyncHealth } from "./health.js";
 import {
   consumeKnowledgeCatalogVerificationBatch,
@@ -36,6 +41,7 @@ import type { KnowledgeCatalogExportQueueMessage } from "./knowledge-catalog-exp
 import type { KnowledgeCatalogQueueMessage } from "./knowledge-catalog/types.js";
 import type { ProductAuditExportQueueMessage } from "./product-audit-export/types.js";
 
+/** Kept as an export while the pre-lane production queue drains. */
 export const CRAWL_QUEUE = "hifiscout-crawl";
 
 export type WorkerQueueMessage =
@@ -47,7 +53,12 @@ export type WorkerQueueMessage =
 function isCrawlBatch(
   batch: MessageBatch<WorkerQueueMessage>,
 ): batch is MessageBatch<CrawlQueueMessage> {
-  return batch.messages.every((message) => isRecord(message.body) && "shopKey" in message.body);
+  return batch.messages.every(
+    (message) =>
+      isRecord(message.body) &&
+      typeof message.body.shopKey === "string" &&
+      typeof message.body.requestedAt === "string",
+  );
 }
 
 function isKnowledgeCatalogBatch(
@@ -81,12 +92,9 @@ function queueWaitMs(requestedAt: string, receivedAtMs: number): number | null {
 }
 
 /**
- * A crawl job is acked whether it succeeded or failed: a failed crawl has already recorded its
- * failure in `shop_sync_state`, and retrying it here would re-fetch the shop immediately.
- *
- * The structured timing fields are intentionally attached to the existing completion/failure
- * events so Cloudflare Observability can group queue wait and crawl wall time by `shopKey` without
- * a second log join.
+ * Shop-origin failures are acked because `crawlShop` has already persisted its independent backoff.
+ * A duplicate delivery that arrives while the same child job still owns a live crawl lease is
+ * different: retry it after that lease instead of acknowledging and losing the job.
  */
 async function consumeCrawlBatch(batch: MessageBatch<CrawlQueueMessage>, env: Env): Promise<void> {
   for (const message of batch.messages) {
@@ -101,13 +109,63 @@ async function consumeCrawlBatch(batch: MessageBatch<CrawlQueueMessage>, env: En
       queueWaitMs: queueWaitMs(message.body.requestedAt, receivedAtMs),
       crawlDurationMs: Math.max(0, completedAtMs - receivedAtMs),
     };
+    const job = {
+      queue: batch.queue,
+      jobId:
+        message.body.jobId || crawlDispatchToken(message.body.shopKey, message.body.requestedAt),
+      batchRunId: message.body.batchRunId || null,
+      lane: message.body.lane || null,
+    };
+
+    if (result.status === "skipped" && result.reason === "crawl_in_progress") {
+      const retryAfterSeconds = Math.max(1, result.retryAfterSeconds || 60);
+      console.log(
+        JSON.stringify({
+          event: "crawl_queue_job_deferred",
+          ...job,
+          ...result,
+          ...timing,
+          retryAfterSeconds,
+        }),
+      );
+      message.retry({ delaySeconds: retryAfterSeconds });
+      continue;
+    }
+
     if (result.status === "failed") {
-      console.error(JSON.stringify({ event: "crawl_queue_job_failed", ...result, ...timing }));
+      console.error(JSON.stringify({ event: "crawl_queue_job_failed", ...job, ...result, ...timing }));
     } else {
-      console.log(JSON.stringify({ event: "crawl_queue_job_completed", ...result, ...timing }));
+      console.log(JSON.stringify({ event: "crawl_queue_job_completed", ...job, ...result, ...timing }));
     }
     const health = await getSyncHealth(env);
     logSyncHealth(health);
+    message.ack();
+  }
+}
+
+/**
+ * A child that exhausts Queue retries must release only its own reservation. The next scheduler
+ * sweep can then create a fresh child job; other shops and any newer reservation are untouched.
+ */
+async function consumeCrawlDeadLetterBatch(
+  batch: MessageBatch<CrawlQueueMessage>,
+  env: Env,
+): Promise<void> {
+  for (const message of batch.messages) {
+    const { shopKey, requestedAt } = message.body;
+    const jobId = message.body.jobId || crawlDispatchToken(shopKey, requestedAt);
+    await releaseShopDispatch(env.DB, shopKey, crawlDispatchToken(shopKey, requestedAt));
+    console.error(
+      JSON.stringify({
+        event: "crawl_queue_job_dead_lettered",
+        queue: batch.queue,
+        shopKey,
+        requestedAt,
+        jobId,
+        batchRunId: message.body.batchRunId || null,
+        lane: message.body.lane || null,
+      }),
+    );
     message.ack();
   }
 }
@@ -134,7 +192,10 @@ export async function handleQueue(
   if (batch.queue === KNOWLEDGE_CATALOG_VERIFICATION_DLQ && isKnowledgeCatalogBatch(batch)) {
     return consumeKnowledgeCatalogVerificationDeadLetterBatch(env, batch);
   }
-  if (batch.queue === CRAWL_QUEUE && isCrawlBatch(batch)) return consumeCrawlBatch(batch, env);
+  if (isCrawlQueueName(batch.queue) && isCrawlBatch(batch)) return consumeCrawlBatch(batch, env);
+  if (isCrawlDeadLetterQueueName(batch.queue) && isCrawlBatch(batch)) {
+    return consumeCrawlDeadLetterBatch(batch, env);
+  }
 
   console.error(JSON.stringify({ event: "unknown_queue", queue: batch.queue }));
   for (const message of batch.messages) message.retry();
