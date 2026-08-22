@@ -41,13 +41,17 @@ test("repairs missing Identity and Product Search membership for an active listi
 
   assert.equal(
     sqlite
-      .prepare("SELECT COUNT(*) AS count FROM product_identity_resolutions WHERE listing_product_id = ?")
+      .prepare(
+        "SELECT COUNT(*) AS count FROM product_identity_resolutions WHERE listing_product_id = ?",
+      )
       .get(listingId)?.count,
     0,
   );
   assert.equal(
     sqlite
-      .prepare("SELECT COUNT(*) AS count FROM product_search_entity_offers WHERE listing_product_id = ?")
+      .prepare(
+        "SELECT COUNT(*) AS count FROM product_search_entity_offers WHERE listing_product_id = ?",
+      )
       .get(listingId)?.count,
     0,
   );
@@ -61,13 +65,17 @@ test("repairs missing Identity and Product Search membership for an active listi
   assert.deepEqual(result, { selectedCount: 1, repairedCount: 1, remainingGapCount: 0 });
   assert.equal(
     sqlite
-      .prepare("SELECT COUNT(*) AS count FROM product_identity_resolutions WHERE listing_product_id = ?")
+      .prepare(
+        "SELECT COUNT(*) AS count FROM product_identity_resolutions WHERE listing_product_id = ?",
+      )
       .get(listingId)?.count,
     1,
   );
   assert.equal(
     sqlite
-      .prepare("SELECT COUNT(*) AS count FROM product_search_entity_offers WHERE listing_product_id = ?")
+      .prepare(
+        "SELECT COUNT(*) AS count FROM product_search_entity_offers WHERE listing_product_id = ?",
+      )
       .get(listingId)?.count,
     1,
   );
@@ -103,7 +111,9 @@ test("repairs a missing search membership even when Identity already exists", as
   assert.deepEqual(result, { selectedCount: 1, repairedCount: 1, remainingGapCount: 0 });
   assert.equal(
     sqlite
-      .prepare("SELECT COUNT(*) AS count FROM product_search_entity_offers WHERE listing_product_id = ?")
+      .prepare(
+        "SELECT COUNT(*) AS count FROM product_search_entity_offers WHERE listing_product_id = ?",
+      )
       .get(listingId)?.count,
     1,
   );

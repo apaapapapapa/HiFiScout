@@ -84,7 +84,10 @@ async function countActiveProjectionGaps(db: QueryableDatabase): Promise<number>
   return Number(row?.gap_count || 0);
 }
 
-async function countSeedGaps(db: QueryableDatabase, listingIds: readonly number[]): Promise<number> {
+async function countSeedGaps(
+  db: QueryableDatabase,
+  listingIds: readonly number[],
+): Promise<number> {
   if (!listingIds.length) return 0;
   const placeholders = listingIds.map(() => "?").join(",");
   const row = await db
