@@ -55,6 +55,11 @@ const MANUFACTURER_SOURCE: readonly ManufacturerSourceEntry[] = [
   ["ch-precision", "CH PRECISION", ["ch precision", "chprecision"]],
   ["silent-angel", "Silent Angel", ["silent angel", "silentangel"]],
   ["msb-technology", "MSB Technology", ["msb", "msb technology"]],
+  [
+    "camelot-technology",
+    "CAMELOT TECHNOLOGY",
+    ["camelot", "camelot technology", "キャメロットテクノロジー"],
+  ],
   ["lumin", "LUMIN", ["lumin"]],
   ["aurender", "Aurender", ["aurender", "オーレンダー"]],
   ["soulnote", "SOULNOTE", ["soulnote", "ソウルノート"]],
