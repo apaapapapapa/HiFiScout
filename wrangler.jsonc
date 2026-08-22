@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "hifiscout",
-  "main": "src/index.ts",
+  "main": "src/worker.ts",
   "compatibility_date": "2026-08-11",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
@@ -15,7 +15,7 @@
       { "binding": "KNOWLEDGE_CATALOG_QUEUE", "queue": "hifiscout-knowledge-verification" }
     ],
     "consumers": [
-      { "queue": "hifiscout-crawl", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 3, "retry_delay": 60, "dead_letter_queue": "hifiscout-crawl-dlq", "max_concurrency": 1 },
+      { "queue": "hifiscout-crawl", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 3, "retry_delay": 60, "dead_letter_queue": "hifiscout-crawl-dlq", "max_concurrency": 4 },
       { "queue": "hifiscout-knowledge-verification", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 100, "retry_delay": 300, "dead_letter_queue": "hifiscout-knowledge-verification-dlq", "max_concurrency": 4 },
       { "queue": "hifiscout-knowledge-verification-dlq", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 3, "retry_delay": 300, "max_concurrency": 1 }
     ]
@@ -29,6 +29,9 @@
     "FORMUSIC_ENABLED": "true",
     "U_AUDIO_ENABLED": "true",
     "SHIMAMUSEN_ENABLED": "true",
+    "DYNAMIC_AUDIO_ENABLED": "true",
+    "AFROAUDIO_ENABLED": "true",
+    "OSAKAYA_ENABLED": "true",
     "AUDIOUNION_INTERVAL_MINUTES": "60",
     "IPPINKAN_INTERVAL_MINUTES": "60",
     "FUJIYA_AVIC_INTERVAL_MINUTES": "60",
@@ -36,6 +39,9 @@
     "FORMUSIC_INTERVAL_MINUTES": "60",
     "U_AUDIO_INTERVAL_MINUTES": "60",
     "SHIMAMUSEN_INTERVAL_MINUTES": "60",
+    "DYNAMIC_AUDIO_INTERVAL_MINUTES": "60",
+    "AFROAUDIO_INTERVAL_MINUTES": "60",
+    "OSAKAYA_INTERVAL_MINUTES": "60",
     "AUDIOUNION_REQUEST_DELAY_MS": "10000",
     "IPPINKAN_REQUEST_DELAY_MS": "1200",
     "FUJIYA_AVIC_REQUEST_DELAY_MS": "1200",
@@ -43,6 +49,9 @@
     "FORMUSIC_REQUEST_DELAY_MS": "1200",
     "U_AUDIO_REQUEST_DELAY_MS": "1200",
     "SHIMAMUSEN_REQUEST_DELAY_MS": "1200",
+    "DYNAMIC_AUDIO_REQUEST_DELAY_MS": "1200",
+    "AFROAUDIO_REQUEST_DELAY_MS": "1200",
+    "OSAKAYA_REQUEST_DELAY_MS": "1200",
     "AUDIOUNION_INVENTORY_RECHECK_ENABLED": "true",
     "AUDIOUNION_INVENTORY_RECHECK_MIN_AGE_HOURS": "24",
     "AUDIOUNION_INVENTORY_RECHECK_INTERVAL_HOURS": "24",
@@ -51,12 +60,15 @@
     "HIFIDO_MAX_PAGES": "3",
     "U_AUDIO_MAX_PAGES": "50",
     "SHIMAMUSEN_MAX_PAGES": "20",
+    "DYNAMIC_AUDIO_MAX_PAGES": "30",
+    "AFROAUDIO_MAX_PAGES": "50",
+    "OSAKAYA_MAX_PAGES": "20",
     "HIFIDO_RECHECK_MAX_PAGE": "120",
     "CRAWL_REQUEST_DELAY_MS": "1200",
     "CRAWL_MAX_PAGES_PER_SHOP": "40",
     "CRAWL_MIN_ITEM_RATIO": "0.5",
     "CRAWL_MIN_ITEM_BASELINE": "20",
-    "CRAWL_DISPATCH_LEASE_MINUTES": "15",
+    "CRAWL_DISPATCH_LEASE_MINUTES": "120",
     "PRODUCT_TOUCH_INTERVAL_MINUTES": "1440",
     "SYNC_HEALTH_WARNING_FACTOR": "2",
     "SYNC_HEALTH_CRITICAL_FACTOR": "6",
@@ -88,7 +100,7 @@
     "EVIDENCE_BURST_SAMPLE_RATE": "10",
     "EVIDENCE_STORAGE_WARNING_BYTES": "8000000000",
     "AUDIOUNION_ENTRY_URL": "https://www.audiounion.jp/st/new_arrival_used.html",
-    "CRAWLER_USER_AGENT": "HiFiScoutBot/0.1 (+https://github.com/apaapapapa/HiFiScout)"
+    "CRAWLER_USER_AGENT": "HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)"
   },
   "r2_buckets": [{ "binding": "EVIDENCE_BUCKET", "bucket_name": "hifiscout-evidence" }],
   "d1_databases": [{ "binding": "DB" }]

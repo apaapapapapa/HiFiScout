@@ -72,6 +72,8 @@ export interface DispatchOptions {
   preferRetries?: boolean;
   /** Non-zero while a verifier rollout is in flight, so finalization can close it out. */
   verifierVersion?: number;
+  /** Existing atomically-claimed run row used only by failed-run recovery. */
+  runId?: number;
 }
 
 export interface DispatchRunOptions extends DispatchOptions {

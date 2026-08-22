@@ -10,6 +10,13 @@ import {
   type ResolvedCategoryEvidenceItem,
 } from "./types.js";
 
+const SAFE_SUPPORTING_SELLER_FALLBACKS: ReadonlyMap<string, CategoryId> = new Map([
+  ["アクセサリー", "other_accessory"],
+  ["ケーブル", "cable_other"],
+  ["カートリッジ", "cartridge"],
+  ["cartridge", "cartridge"],
+]);
+
 function normalizedEvidence(
   evidence: readonly CategoryEvidenceInput[] = [],
 ): ResolvedCategoryEvidenceItem[] {
@@ -70,6 +77,28 @@ function classified(
   };
 }
 
+function safeSupportingSellerFallback(
+  evidence: readonly ResolvedCategoryEvidenceItem[],
+): CategoryClassification | null {
+  const tier = evidence.filter((item) => item.strength === "supporting");
+  if (!tier.length) return null;
+
+  const safeSeller = tier.find((item) => {
+    if (item.source !== "seller_category") return false;
+    const value = item.value.normalize("NFKC").trim().toLowerCase();
+    const expected = SAFE_SUPPORTING_SELLER_FALLBACKS.get(value);
+    return expected === item.categoryId;
+  });
+  if (!safeSeller) return null;
+
+  // Do not turn a supporting-tier disagreement into an arbitrary classification. A safe broad
+  // seller bucket is usable only when every other supporting signal points to that same leaf.
+  if (tier.some((item) => item.categoryId !== safeSeller.categoryId)) {
+    return unresolved("ambiguous", tier);
+  }
+  return classified(safeSeller.categoryId, tier);
+}
+
 export function classifyCategoryEvidence(
   rawEvidence: readonly CategoryEvidenceInput[] = [],
 ): CategoryClassification {
@@ -82,7 +111,11 @@ export function classifyCategoryEvidence(
     const categoryId = ids[0];
     if (categoryId) return classified(categoryId, tier);
   }
-  return unresolved("unclassified", evidence);
+
+  // Supporting/corroborative evidence remains non-classifying by default. The only exceptions are
+  // exact generic seller buckets whose leaf is semantically certain and intentionally broad. This
+  // also makes persisted v9 evidence replayable after the classifier version is bumped.
+  return safeSupportingSellerFallback(evidence) || unresolved("unclassified", evidence);
 }
 
 export function summarizeCategoryEvidence(

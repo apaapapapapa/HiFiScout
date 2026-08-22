@@ -1,3 +1,4 @@
+import { resolutionReplayStatus } from "./resolution-replay-status-repository.js";
 import type { QueryableDatabase } from "./types.js";
 
 interface DataPlatformStatusRow extends Record<string, unknown> {
@@ -51,6 +52,7 @@ export async function dataPlatformStatus(db: QueryableDatabase) {
       WHERE started_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-24 hours')
     `),
   ]);
+  const resolutionReplay = await resolutionReplayStatus(db);
 
   const products = firstRow(results[0]);
   const history = firstRow(results[1]);
@@ -76,6 +78,7 @@ export async function dataPlatformStatus(db: QueryableDatabase) {
       evidenceEstimatedBytes: number(evidence.evidence_estimated_bytes),
       crawlRuns24h: number(crawl.crawl_runs_24h),
     },
+    resolutionReplay,
     platformMetrics: {
       source: "cloudflare_native",
       trackedExternally: [

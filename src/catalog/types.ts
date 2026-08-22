@@ -13,56 +13,84 @@
 // Category taxonomy (src/catalog/categories.ts)
 // ---------------------------------------------------------------------------
 
-/** Non-classifiable grouping parents. `CATEGORIES` entries use these as `parentId`. */
+/** Non-classifiable grouping categories. */
 export type CategoryGroupId =
   | "amplifier"
   | "digital"
   | "analog"
   | "speaker"
   | "headphone_group"
-  | "accessories";
+  | "accessories"
+  | "cable";
 
-/** Leaf categories a product can actually be classified into. */
+/** Categories a product can actually be classified into. Some may also parent a more specific category. */
 export type ClassifiableCategoryId =
   | "integrated_amp"
   | "pre_amp"
   | "power_amp"
   | "headphone_amp"
+  | "av_amp"
   | "dac"
   | "network_player"
   | "cd_sacd_player"
+  | "transport"
   | "dap"
+  | "network_switch"
+  | "optical_isolator"
+  | "router"
+  | "music_server"
+  | "master_clock"
   | "turntable"
   | "tonearm"
   | "cartridge"
+  | "headshell"
   | "phono_eq"
+  | "phono_step_up_transformer"
   | "speaker_bookshelf"
   | "speaker_floorstanding"
+  | "center_speaker"
   | "subwoofer"
-  | "speaker_other"
-  | "headphone"
-  | "earphone"
-  | "cable"
+  | "active_speaker"
+  | "wired_headphone"
+  | "wired_earphone"
+  | "btw_headphone"
+  | "btw_earphone"
+  | "cable_xlr"
+  | "cable_rca"
+  | "cable_phono"
+  | "cable_usb"
+  | "cable_lan"
+  | "cable_digital"
+  | "cable_power"
+  | "cable_other"
   | "rack"
-  | "power_accessory"
+  | "power_strip"
+  | "clean_power"
   | "vacuum_tube"
   | "other_accessory"
   | "dj_dtm"
   | "other";
 
-/** Every id present in `CATEGORIES` (31 entries). */
+/** Every id present in `CATEGORIES` (51 entries). */
 export type CategoryId = CategoryGroupId | ClassifiableCategoryId;
 
 /**
  * Pre-taxonomy-v2 ids still accepted on input and rewritten by `LEGACY_ALIASES`.
  * They are NOT `CategoryId`s and must never be produced.
  */
-export type LegacyCategoryAlias = "network_transport" | "accessory";
+export type LegacyCategoryAlias =
+  | "network_transport"
+  | "cd_sacd_transport"
+  | "accessory"
+  | "speaker_other"
+  | "headphone"
+  | "earphone"
+  | "power_accessory";
 
 export interface CategoryDefinition {
   readonly id: CategoryId;
   readonly name: string;
-  readonly parentId: CategoryGroupId | null;
+  readonly parentId: CategoryId | null;
   readonly order: number;
   readonly classifiable: boolean;
   readonly filterable: boolean;
@@ -75,7 +103,7 @@ export interface CategoryDefinition {
 export interface CategoryFacet {
   readonly id: CategoryId;
   readonly name: string;
-  readonly parentId: CategoryGroupId | null;
+  readonly parentId: CategoryId | null;
   readonly order: number;
   readonly classifiable: boolean;
   readonly filterable: boolean;
@@ -87,7 +115,7 @@ export interface CategoryFacet {
  * Shop-supplied `rawCategory` -> category id mapping.
  *
  * Values are NOT guaranteed to be canonical `CategoryId`s: adapters map to legacy
- * aliases (`network_transport`, `accessory`) and to group ids, and a value may be an
+ * legacy aliases (for compatibility), canonical ids and group ids, and a value may be an
  * array whose first element wins (`categories.ts` `mappingValue`).
  */
 export type CategoryMapping = Readonly<Record<string, string | readonly string[]>>;

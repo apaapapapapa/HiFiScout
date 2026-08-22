@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
+import {
+  CATEGORY_CLASSIFICATION_METADATA_VERSION,
+  normalizeCatalogProduct,
+} from "../src/catalog/product-normalizer.js";
 import { enrichProductCategories } from "../src/crawler/category-enricher.js";
 import { extractFujiyaDetailCategoryEvidence } from "../src/crawler/shops/fujiya-avic.js";
 import { getShopPlugin } from "../src/crawler/shops/index.js";
@@ -88,7 +91,7 @@ test("cached detail classification is reused for the same product identity witho
       search_aliases: "CD/SACDプレーヤー cd player sacd player",
       metadata_json: JSON.stringify({
         categoryClassification: {
-          version: 3,
+          version: CATEGORY_CLASSIFICATION_METADATA_VERSION,
           state: "classified",
           detailCheckedAt: "2026-08-10T10:00:00.000Z",
         },

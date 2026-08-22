@@ -72,7 +72,9 @@ function walkJson(value: unknown, visitor: (node: Record<string, unknown>) => vo
 
 function absoluteUrl(baseUrl: string, href: string): string | null {
   try {
-    return new URL(href, baseUrl).toString();
+    const url = new URL(href, baseUrl);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    return url.toString();
   } catch {
     return null;
   }
@@ -108,7 +110,7 @@ function stockStatusForListing(
 }
 
 function fromJsonLd(html: string, options: ParseProductPageOptions): SellerProduct[] {
-  const { baseUrl, hintedCategory } = options;
+  const { baseUrl, hintedCategory, productUrlPattern } = options;
   const products: SellerProduct[] = [];
   for (const root of decodeJsonLd(html)) {
     walkJson(root, (node) => {
@@ -118,7 +120,7 @@ function fromJsonLd(html: string, options: ParseProductPageOptions): SellerProdu
       if (!type.some((v) => String(v).toLowerCase() === "product")) return;
       const title = cleanText(node.name || "");
       const url = absoluteUrl(baseUrl, String(node.url || node["@id"] || ""));
-      if (!title || !url) return;
+      if (!title || !url || (productUrlPattern && !productUrlPattern.test(url))) return;
       const rawOffer = Array.isArray(node.offers) ? node.offers[0] : node.offers || {};
       const offer: Record<string, unknown> = isRecord(rawOffer) ? rawOffer : {};
       const priceYen = parseYen(String(offer.price ?? node.price ?? ""));

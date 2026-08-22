@@ -52,6 +52,8 @@ const MANUFACTURER_SOURCE: readonly ManufacturerSourceEntry[] = [
   ["fostex", "FOSTEX", ["fostex", "フォステクス"]],
   ["ifi-audio", "iFi audio", ["ifi", "ifi audio", "ifi audio japan", "アイファイ"]],
   ["dcs", "dCS", ["dcs"]],
+  ["ch-precision", "CH PRECISION", ["ch precision", "chprecision"]],
+  ["silent-angel", "Silent Angel", ["silent angel", "silentangel"]],
   ["msb-technology", "MSB Technology", ["msb", "msb technology"]],
   ["lumin", "LUMIN", ["lumin"]],
   ["aurender", "Aurender", ["aurender", "オーレンダー"]],

@@ -3,7 +3,10 @@ import {
   clearShopQueued,
   getShopState,
   listShopStates,
-  markShopQueued,
+  releaseShopCrawl,
+  releaseShopDispatch,
+  reserveShopDispatch,
+  tryClaimShopCrawl,
 } from "../db/shop-state-repository.js";
 import { syncProductSearchEntities } from "../db/product-search-entity-repository.js";
 import { recheckShopInventory } from "./inventory-recheck.js";
@@ -23,6 +26,9 @@ import type {
 
 type RuntimeEnv = CrawlerEnv & { DB: QueryableDatabase };
 type ProductSearchEntitySync = typeof syncProductSearchEntities;
+
+/** Cloudflare Queue consumer invocations have a 15-minute wall-clock limit. */
+const CRAWL_EXECUTION_LEASE_MINUTES = 20;
 
 interface DispatchOptions {
   now?: Date;
@@ -76,11 +82,32 @@ export async function clearQueued(db: QueryableDatabase, shopKey: string): Promi
   return clearShopQueued(db, shopKey);
 }
 
+async function enqueueReservedCrawl(
+  env: RuntimeEnv,
+  shopKey: string,
+  force: boolean,
+  requestedAt: string,
+  leaseMinutes: number,
+): Promise<boolean> {
+  if (!env.CRAWL_QUEUE) throw new Error("CRAWL_QUEUE binding is not configured");
+  const dispatchToken = await reserveShopDispatch(env.DB, shopKey, requestedAt, leaseMinutes);
+  if (!dispatchToken) return false;
+
+  try {
+    await env.CRAWL_QUEUE.send({ shopKey, force, requestedAt });
+    return true;
+  } catch (error) {
+    await releaseShopDispatch(env.DB, shopKey, dispatchToken);
+    throw error;
+  }
+}
+
 export async function dispatchDueCrawls(
   env: RuntimeEnv,
   { now = new Date(), excludeShopKeys = [] }: DispatchOptions = {},
 ): Promise<DispatchResult> {
   if (!env.CRAWL_QUEUE) throw new Error("CRAWL_QUEUE binding is not configured");
+  const settings = getCrawlerSettings(env);
   const candidates = dueDispatchCandidates(env, await listShopStates(env.DB), now, {
     excludeShopKeys,
   });
@@ -88,9 +115,14 @@ export async function dispatchDueCrawls(
   const queued: string[] = [];
 
   for (const { adapter } of candidates) {
-    await env.CRAWL_QUEUE.send({ shopKey: adapter.key, force: false, requestedAt: queuedAt });
-    await markShopQueued(env.DB, adapter.key, queuedAt);
-    queued.push(adapter.key);
+    const reserved = await enqueueReservedCrawl(
+      env,
+      adapter.key,
+      false,
+      queuedAt,
+      settings.dispatchLeaseMinutes,
+    );
+    if (reserved) queued.push(adapter.key);
   }
 
   return queued.length ? { status: "queued", queued } : { status: "skipped", queued };
@@ -115,9 +147,16 @@ export async function dispatchScheduledCrawl(
   }
 
   const queuedAt = now.toISOString();
-  await env.CRAWL_QUEUE.send({ shopKey: resolvedShopKey, force: true, requestedAt: queuedAt });
-  await markShopQueued(env.DB, resolvedShopKey, queuedAt);
-  return { status: "queued", shopKey: resolvedShopKey };
+  const reserved = await enqueueReservedCrawl(
+    env,
+    resolvedShopKey,
+    true,
+    queuedAt,
+    settings.dispatchLeaseMinutes,
+  );
+  return reserved
+    ? { status: "queued", shopKey: resolvedShopKey }
+    : { status: "skipped", reason: "dispatch_lease_active", shopKey: resolvedShopKey };
 }
 
 export async function dispatchForcedCrawl(
@@ -131,10 +170,19 @@ export async function dispatchForcedCrawl(
   const resolvedShopKey = plugin.key;
   if (!getShopEnabled(env, plugin.definition)) return { status: "rejected", reason: "disabled" };
   if (!isConfigured(env, plugin)) return { status: "rejected", reason: "configuration_missing" };
+
+  const settings = getCrawlerSettings(env);
   const queuedAt = now.toISOString();
-  await env.CRAWL_QUEUE.send({ shopKey: resolvedShopKey, force: true, requestedAt: queuedAt });
-  await markShopQueued(env.DB, resolvedShopKey, queuedAt);
-  return { status: "queued", shopKey: resolvedShopKey };
+  const reserved = await enqueueReservedCrawl(
+    env,
+    resolvedShopKey,
+    true,
+    queuedAt,
+    settings.dispatchLeaseMinutes,
+  );
+  return reserved
+    ? { status: "queued", shopKey: resolvedShopKey }
+    : { status: "skipped", reason: "dispatch_lease_active", shopKey: resolvedShopKey };
 }
 
 export async function consumeCrawlMessage(
@@ -145,17 +193,51 @@ export async function consumeCrawlMessage(
   const plugin = getShopPlugin(shopKey);
   if (!plugin) return { status: "skipped", reason: "unknown_shop", shopKey };
   const resolvedShopKey = plugin.key;
-  await clearShopQueued(env.DB, resolvedShopKey);
-
-  const crawlResult = await crawlShop(env, plugin, { force: body?.force === true });
-  // Rechecking after a failed crawl would spend the shop's request budget on stale candidates.
-  if (crawlResult.status !== "success" || !plugin.capabilities.inventoryRecheck) {
-    return crawlResult;
+  const requestedAt = body?.requestedAt;
+  if (!requestedAt) {
+    console.warn(
+      JSON.stringify({
+        event: "crawl_queue_message_rejected",
+        shopKey: resolvedShopKey,
+        reason: "missing_requested_at",
+      }),
+    );
+    return { status: "skipped", reason: "not_due", shopKey: resolvedShopKey };
   }
 
-  const inventoryRecheck = await recheckShopInventory(env, plugin);
-  await syncInventoryRecheckSearchEntities(env.DB, resolvedShopKey, inventoryRecheck);
-  return { ...crawlResult, inventoryRecheck };
+  const claimedAt = new Date().toISOString();
+  const crawlLeaseToken = await tryClaimShopCrawl(
+    env.DB,
+    resolvedShopKey,
+    requestedAt,
+    claimedAt,
+    CRAWL_EXECUTION_LEASE_MINUTES,
+  );
+  if (!crawlLeaseToken) {
+    console.log(
+      JSON.stringify({
+        event: "crawl_queue_duplicate_suppressed",
+        shopKey: resolvedShopKey,
+        requestedAt,
+        observedAt: claimedAt,
+      }),
+    );
+    return { status: "skipped", reason: "not_due", shopKey: resolvedShopKey };
+  }
+
+  try {
+    const crawlResult = await crawlShop(env, plugin, { force: body?.force === true });
+    // Rechecking after a failed crawl would spend the shop's request budget on stale candidates.
+    if (crawlResult.status !== "success" || !plugin.capabilities.inventoryRecheck) {
+      return crawlResult;
+    }
+
+    const inventoryRecheck = await recheckShopInventory(env, plugin);
+    await syncInventoryRecheckSearchEntities(env.DB, resolvedShopKey, inventoryRecheck);
+    return { ...crawlResult, inventoryRecheck };
+  } finally {
+    await releaseShopCrawl(env.DB, resolvedShopKey, crawlLeaseToken, requestedAt);
+  }
 }
 
 /** Refreshes the one entity whose listing facts an inventory recheck may have changed. */

@@ -13,8 +13,13 @@ import type {
 } from "./types.js";
 
 const BROAD_SELLER_CATEGORY_IDS: ReadonlySet<string> = new Set([
-  "speaker_other",
+  "other",
   "other_accessory",
+  "cable_other",
+  "wired_headphone",
+  "wired_earphone",
+  "clean_power",
+  "cartridge",
 ]);
 
 function mode(value: unknown, fallback: CategoryPolicyMode): CategoryPolicyMode {
@@ -84,8 +89,8 @@ export function sellerCategoryEvidence(
 ): CategoryEvidenceInput[] {
   const normalized = sellerCategoryCandidates(rawCategory, categoryMapping);
   if (!normalized) return [];
-  // Broad seller buckets such as "speaker" or "accessory" are useful fallback evidence,
-  // but must not override a more specific explicit title such as bookshelf speaker or cable.
+  // Broad seller buckets such as "speaker", "accessory" or the parent "cartridge" are useful
+  // fallback evidence, but must not override a more specific explicit title such as headshell.
   const inferredBroadLabel =
     normalized.classificationSource === "raw_inference" ||
     BROAD_SELLER_CATEGORY_IDS.has(normalized.primaryCategoryId);

@@ -1,4 +1,5 @@
 import { RESOLUTION_VERSIONS } from "../catalog/resolution-versions.js";
+import { compactSupersededAutomaticRemediationJobs } from "../db/data-quality-remediation-compaction.js";
 import { runDataQualityRemediationSweep } from "../db/data-quality-remediation-service.js";
 import type { QueryableDatabase } from "../db/types.js";
 
@@ -96,7 +97,7 @@ async function replayStatus(db: QueryableDatabase) {
 
 /**
  * Local-only operational worker used by GitHub Actions with a remote D1 binding.
- * It deliberately exposes just status and one bounded queue sweep; it is never deployed.
+ * It deliberately exposes only bounded remediation operations; it is never deployed.
  */
 export default {
   async fetch(request: Request, env: RemediationDrainEnv): Promise<Response> {
@@ -104,11 +105,17 @@ export default {
     if (request.method === "GET" && url.pathname === "/status") {
       return json(await replayStatus(env.DB));
     }
+    if (request.method === "POST" && url.pathname === "/compact") {
+      const compacted = await compactSupersededAutomaticRemediationJobs(env.DB);
+      return json({ compacted, after: await replayStatus(env.DB) });
+    }
     if (request.method === "POST" && url.pathname === "/sweep") {
       const before = await replayStatus(env.DB);
       const sweep = await runDataQualityRemediationSweep(env.DB, {
         seedLimit: 250,
-        claimLimit: 50,
+        // One HTTP sweep owns one listing. If a remote D1 call stalls until the workflow-level
+        // timeout, the other claim candidates remain pending instead of sharing its lease/retry.
+        claimLimit: 1,
         leaseSeconds: 900,
       });
       const after = await replayStatus(env.DB);

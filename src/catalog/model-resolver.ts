@@ -1,18 +1,8 @@
 /**
  * Model Resolution.
  *
- * A dedicated stage, deliberately not a generic "split the title at whitespace" fallback. It runs
- * after Manufacturer Resolution because a verified manufacturer is what makes presentation-token
- * removal and title extraction safe, and it keeps three separate levels:
- *
- *   raw model        - the seller's presentation, never overwritten
- *   normalized model - the deterministic search/identity representation
- *   canonical model  - the Knowledge Catalog's verified model, resolved elsewhere
- *
- * Merchandising annotations are removed only through the explicit vocabulary below, and every
- * removal is re-checked against the identity parts: a rule that would drop a revision or edition
- * token (MK2, TX, SE, Signature, Meta, X, ...) is rejected and the listing becomes a candidate
- * instead. Losing `D-1000 MK2 != D-1000` is worse than leaving a listing unresolved.
+ * Seller evidence is immutable (`rawModel`). Canonical model presentation may remove only explicit
+ * merchandising annotations, and every removal is checked against identity revision tokens.
  */
 
 import {
@@ -29,11 +19,9 @@ import type {
   ResolutionStatus,
 } from "./types.js";
 
-export const MODEL_RESOLVER_VERSION = 2;
+export const MODEL_RESOLVER_VERSION = 3;
 
 export type ModelResolver = (input: ModelResolutionInput) => ModelResolutionResult;
-
-/** Presentation prefixes per canonical manufacturer, longest alias first. */
 type PreparedModelResolver = ReadonlyMap<string, readonly RegExp[]>;
 
 interface AnnotationRule {
@@ -46,22 +34,17 @@ interface StrippedModel {
   removed: string[];
 }
 
-/**
- * Merchandising vocabulary. Every entry describes something a retailer writes *around* a product
- * name — listing state, condition, packaging, its own stock number, a presentation colour. Nothing
- * here may overlap the revision/edition tokens `identityModelParts` recognises.
- */
 const ANNOTATION_RULES: readonly AnnotationRule[] = [
   {
     name: "listing_state",
     pattern:
-      /[【《[［(（]?\s*(?:販売済み?|売約済み?|ご成約|商談中|予約済み?|完売|売切れ?|品切れ?)\s*[】》\]］)）]?/gu,
+      /[【《[［(（]?\s*(?:販売済み?|売約済み?|ご成約|商談中|予約済み?|完売|売切れ?|品切れ?|お取り寄せ|1セットのみ|色選択)\s*[】》\]］)）]?/gu,
   },
   { name: "listing_state", pattern: /[【《[［(（]?\s*SOLD(?:\s*OUT)?\s*[】》\]］)）]?/giu },
   {
     name: "condition",
     pattern:
-      /[【《[［(（]?\s*(?:中古美品|中古|極美品|美品|良品|並品|新品同様|新品|未使用品|未使用|展示処分品|展示品|デモ機|アウトレット|訳あり|ジャンク品?|保証書付き?|保証付き?)\s*[】》\]］)）]?/gu,
+      /[【《[［(（]?\s*(?:中古美品|中古|極美品|美品|良品|並品|新品同様|新同品|新品|未使用品|未使用|未使用開封品|開封品|展示処分品|展示品|デモ機|アウトレット|訳あり|B級品|ジャンク品?|保証書付き?|保証付き?)\s*[】》\]］)）]?/gu,
   },
   {
     name: "condition",
@@ -80,6 +63,10 @@ const ANNOTATION_RULES: readonly AnnotationRule[] = [
   { name: "seller_sku", pattern: /\s*[[［]\s*[A-Z0-9][A-Z0-9._/-]{3,}\s*[\]］]\s*$/iu },
   { name: "seller_sku", pattern: /\s*《[^》]{1,40}》\s*/gu },
   {
+    name: "shipping",
+    pattern: /\s*(?:※\s*)?送料無料\s*$/gu,
+  },
+  {
     name: "presentation_color",
     pattern:
       /\s*\/\s*(?:ブラック|ホワイト|シルバー|ゴールド|レッド|ブルー|ブラウン|黒|白|銀|BLACK|WHITE|SILVER|GOLD)(?:\s*[（(]?\s*(?:ペア|PAIR)\s*[）)]?)?\s*$/iu,
@@ -90,11 +77,6 @@ const ANNOTATION_RULES: readonly AnnotationRule[] = [
   },
 ];
 
-/**
- * Residue that is neither clearly merchandising nor clearly identity. It is kept in the model —
- * removing it could destroy a real model number — but it downgrades the listing to `candidate` so
- * the remediation loop can surface the pattern instead of silently claiming a resolved model.
- */
 const UNCLASSIFIED_RULES: readonly AnnotationRule[] = [
   { name: "seller_bracket", pattern: /[【】《》[\]［］]/u },
   { name: "seller_number", pattern: /(?:^|[^A-Za-z0-9])\d{5,}(?:$|[^A-Za-z0-9])/u },
@@ -104,11 +86,6 @@ const UNCLASSIFIED_RULES: readonly AnnotationRule[] = [
   },
 ];
 
-/**
- * Longest token run a title tail may be and still be accepted as a model. Covers the real shapes
- * (`E-5000`, `D-1000 MK2`, `805 D4 Signature`, `Model 30 SE`) without swallowing a product
- * description.
- */
 const TITLE_MODEL_MAX_TOKENS = 3;
 
 function clean(value: unknown = ""): string {
@@ -144,10 +121,6 @@ function isSubsequence(needle: string, haystack: string): boolean {
   return index === needle.length;
 }
 
-/**
- * The safety invariant for every removal: annotation stripping may only delete characters from the
- * identity representation, and may never drop a revision or edition token.
- */
 function preservesModelIdentity(before: string, after: string): boolean {
   const source = identityModelParts(before);
   const result = identityModelParts(after);
@@ -164,14 +137,6 @@ function unclassifiedResidue(value: string): string[] {
   return found;
 }
 
-/**
- * Whether a title tail is short and model-shaped enough to be trusted as a model on its own.
- *
- * A title is prose with a model somewhere inside it, so taking the whole tail would turn
- * "Integrated Stereo Amplifier E-5000" into a resolved model and quietly inflate the metric. A real
- * model number is a short token run containing a digit; anything longer stays a candidate for
- * review rather than being guessed at or truncated.
- */
 function looksLikeModel(value: string): boolean {
   const tokens = value.split(/\s+/u).filter(Boolean);
   return tokens.length > 0 && tokens.length <= TITLE_MODEL_MAX_TOKENS && /\d/u.test(value);
@@ -208,8 +173,6 @@ function presentationPatterns(
   for (const manufacturer of bootstrapManufacturers()) {
     for (const alias of [manufacturer.name, ...manufacturer.aliases]) add(manufacturer.id, alias);
   }
-  // Only verified operational spellings may be removed. A pending alias is not yet evidence that
-  // the token is a brand name rather than part of the model.
   for (const row of operationalAliases) {
     if (row.verificationStatus !== "verified") continue;
     add(row.manufacturerId, row.canonicalName);
@@ -249,8 +212,6 @@ function resolvePreparedModel(
   const rawModel = clean(input.rawModel);
   const manufacturerId = clean(input.manufacturerId).toLowerCase();
   const fromSeller = Boolean(rawModel);
-  // Without a resolved manufacturer a title is just prose: there is no verified brand token to
-  // remove, so the model stays unresolved rather than being guessed at.
   const source = fromSeller ? rawModel : manufacturerId ? clean(input.title) : "";
   if (!source) return unresolvedResult(rawModel, rawModel);
 
@@ -267,7 +228,6 @@ function resolvePreparedModel(
   const unclassifiedTokens = [
     ...(safe ? [] : ["identity_guard"]),
     ...unclassifiedResidue(model),
-    // Title evidence is prose until proven otherwise; the seller's own model field is not.
     ...(fromSeller || looksLikeModel(model) ? [] : ["title_prose"]),
   ];
   if (unclassifiedTokens.length) {
@@ -308,7 +268,6 @@ function resolvePreparedModel(
   };
 }
 
-/** Compile one presentation snapshot for bounded batch resolution without rebuilding regexes. */
 export function createModelResolver(
   operationalAliases: readonly ManufacturerAliasEvidence[] = [],
 ): ModelResolver {
@@ -316,7 +275,6 @@ export function createModelResolver(
   return (input) => resolvePreparedModel(input, prepared);
 }
 
-/** Pure, deterministic one-off resolution over bootstrap plus D1-provided alias evidence. */
 export function resolveModel(
   input: ModelResolutionInput,
   operationalAliases: readonly ManufacturerAliasEvidence[] = [],
@@ -324,7 +282,6 @@ export function resolveModel(
   return createModelResolver(operationalAliases)(input);
 }
 
-/** Re-resolve an already parsed listing without touching its immutable seller evidence. */
 export function applyModelResolution(
   product: NormalizedCatalogProduct,
   aliasesOrResolver: readonly ManufacturerAliasEvidence[] | ModelResolver = [],

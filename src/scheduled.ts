@@ -9,7 +9,15 @@ import { dispatchDueCrawls, dispatchScheduledCrawl } from "./crawler/dispatch.js
 import { sharedSweepExclusions, shopForCron } from "./crawler/schedule.js";
 import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from "./catalog/knowledge-verification/verifier.js";
 import { runDataQualityRemediationSweep } from "./db/data-quality-remediation-service.js";
-import { knowledgeCatalogVerificationQueueStatus } from "./db/knowledge-catalog-verification-queue-repository.js";
+import {
+  deadLetterOutstandingKnowledgeCatalogVerificationJobsForRun,
+  knowledgeCatalogVerificationQueueStatus,
+} from "./db/knowledge-catalog-verification-queue-repository.js";
+import {
+  finishKnowledgeCatalogReviewRunFailure,
+  latestKnowledgeCatalogReviewRunState,
+  startKnowledgeCatalogRecoveryReviewRun,
+} from "./db/knowledge-catalog-review-repository.js";
 import {
   claimKnowledgeCatalogVerifierVersion,
   knowledgeCatalogVerifierState,
@@ -108,13 +116,11 @@ export async function bootstrapKnowledgeCatalogReview(env: Env) {
     });
   }
 
-  const [state, queue] = await Promise.all([
+  const [state, queue, latestReview] = await Promise.all([
     knowledgeCatalogVerifierState(env.DB),
     knowledgeCatalogVerificationQueueStatus(env.DB),
+    latestKnowledgeCatalogReviewRunState(env.DB),
   ]);
-  if (queue.latestRunId) {
-    return { status: "skipped", reason: "knowledge_catalog_queue_already_bootstrapped" };
-  }
 
   // A rollout that claimed the version but never finished keeps its version; anything else
   // bootstraps at 0 so the run is treated as a plain first fill rather than a rollout.
@@ -122,6 +128,53 @@ export async function bootstrapKnowledgeCatalogReview(env: Env) {
     state?.version === KNOWLEDGE_CATALOG_VERIFIER_VERSION && state.status !== "success"
       ? KNOWLEDGE_CATALOG_VERIFIER_VERSION
       : 0;
+
+  if (latestReview?.status === "running") {
+    return { status: "skipped", reason: "knowledge_catalog_review_in_progress" };
+  }
+  if (latestReview?.status === "failed") {
+    const failedRunId = Number(latestReview.id || 0);
+    const recoveryRunId = failedRunId
+      ? await startKnowledgeCatalogRecoveryReviewRun(env.DB, failedRunId, startedAt)
+      : null;
+    if (!recoveryRunId) {
+      return { status: "skipped", reason: "knowledge_catalog_recovery_already_claimed" };
+    }
+    try {
+      const abandonedJobs = await deadLetterOutstandingKnowledgeCatalogVerificationJobsForRun(
+        env.DB,
+        failedRunId,
+        startedAt,
+        `abandoned_after_failed_run:${failedRunId}`,
+      );
+      console.warn(
+        JSON.stringify({
+          event: "knowledge_catalog_failed_run_recovery_started",
+          failedRunId,
+          recoveryRunId,
+          abandonedJobs,
+          verifierVersion,
+        }),
+      );
+      return await dispatchKnowledgeCatalogDailyVerification(env, {
+        now,
+        preferRetries: true,
+        verifierVersion,
+        runId: recoveryRunId,
+      });
+    } catch (error) {
+      await finishKnowledgeCatalogReviewRunFailure(
+        env.DB,
+        recoveryRunId,
+        new Date().toISOString(),
+        `knowledge_catalog_recovery_dispatch_failed:${errorMessage(error)}`,
+      );
+      throw error;
+    }
+  }
+  if (queue.latestRunId) {
+    return { status: "skipped", reason: "knowledge_catalog_queue_already_bootstrapped" };
+  }
   console.log(
     JSON.stringify({
       event: "knowledge_catalog_queue_rollout_started",
@@ -148,6 +201,9 @@ export function handleScheduled(
   ctx.waitUntil(runScheduled(controller.cron, env));
   if (controller.cron === GENERAL_CRON) {
     ctx.waitUntil(bootstrapKnowledgeCatalogReview(env));
-    ctx.waitUntil(runDataQualityRemediationSweep(env.DB));
+    // Keep the cron claim itself listing-scoped. Projection code is also listing-scoped, but a
+    // worker-level timeout cannot be caught reliably inside a ten-job sweep; claiming one job makes
+    // the lease/retry boundary match the expensive projection boundary.
+    ctx.waitUntil(runDataQualityRemediationSweep(env.DB, { claimLimit: 1 }));
   }
 }

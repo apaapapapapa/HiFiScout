@@ -143,7 +143,9 @@ export function buildSyncHealth(
       lastAttemptAt: state?.last_attempt_at || null,
       lastItemCount: Number.isFinite(lastItemCount) ? lastItemCount : null,
       consecutiveFailures: Number(state?.consecutive_failures || 0),
-      lastError: state?.last_error || null,
+      // Persisted crawler errors may contain upstream URLs or diagnostics. Public health/meta only
+      // expose the structured status/reason vocabulary; raw failure details remain in D1/logs.
+      lastError: null,
       ...health,
     };
   });

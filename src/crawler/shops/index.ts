@@ -23,9 +23,16 @@ import {
   fujiyaAvicAdapter,
 } from "./fujiya-avic.js";
 import { HIFIDO_CATEGORY_MAPPING, hifidoAdapter } from "./hifido.js";
-import { FORMUSIC_CATEGORY_MAPPING, forMusicAdapter } from "./formusic.js";
+import {
+  FORMUSIC_CATEGORY_MAPPING,
+  FORMUSIC_CATEGORY_POLICY,
+  forMusicAdapter,
+} from "./formusic.js";
 import { U_AUDIO_CATEGORY_MAPPING, U_AUDIO_CATEGORY_POLICY, uAudioAdapter } from "./u-audio.js";
 import { SHIMAMUSEN_CATEGORY_POLICY, shimamusenAdapter } from "./shimamusen.js";
+import { dynamicAudioAdapter } from "./dynamic-audio.js";
+import { afroAudioAdapter } from "./afroaudio.js";
+import { osakayaAdapter } from "./osakaya.js";
 // shop-generator:imports
 
 export { getShopActivityPolicy } from "./registry.js";
@@ -36,6 +43,17 @@ const HIFIDO_ACTIVITY_POLICY: Readonly<ProductActivityPolicy> = Object.freeze({
   model: false,
   title: false,
   condition: false,
+});
+
+// Osaka-ya's `av-amp` URL bucket is merchandising, not a reliable product type: it currently also
+// contains the Marantz AMP 10 power amplifier. Keep it as corroboration so an explicit title/model
+// can select the canonical leaf while genuine AV receiver titles still classify as `av_amp`.
+const OSAKAYA_CATEGORY_POLICY = Object.freeze({
+  sellerCategory: Object.freeze({
+    default: "authoritative" as const,
+    categories: Object.freeze({ av_amp: "corroborative" as const }),
+  }),
+  parserHint: "corroborative" as const,
 });
 
 export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
@@ -100,7 +118,12 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       baseUrl: "https://shop.formusic.jp",
       defaultIntervalMinutes: 30,
     },
-    { catalog: { categoryMapping: FORMUSIC_CATEGORY_MAPPING } },
+    {
+      catalog: {
+        categoryMapping: FORMUSIC_CATEGORY_MAPPING,
+        categoryPolicy: FORMUSIC_CATEGORY_POLICY,
+      },
+    },
   ),
   defineShopPlugin(
     uAudioAdapter,
@@ -128,6 +151,31 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       defaultMaxPages: 20,
     },
     { catalog: { categoryPolicy: SHIMAMUSEN_CATEGORY_POLICY } },
+  ),
+  defineShopPlugin(dynamicAudioAdapter, {
+    key: "dynamic-audio",
+    name: "DYNAMIC AUDIO",
+    baseUrl: "https://dynamicaudio5used.wordpress.com",
+    defaultIntervalMinutes: 60,
+    defaultMaxPages: 30,
+  }),
+  defineShopPlugin(afroAudioAdapter, {
+    key: "afroaudio",
+    name: "アフロオーディオ",
+    baseUrl: "https://afroaudio.jp",
+    defaultIntervalMinutes: 60,
+    defaultMaxPages: 50,
+  }),
+  defineShopPlugin(
+    osakayaAdapter,
+    {
+      key: "osakaya",
+      name: "CAVIN大阪屋",
+      baseUrl: "https://osakaya.com",
+      defaultIntervalMinutes: 60,
+      defaultMaxPages: 20,
+    },
+    { catalog: { categoryPolicy: OSAKAYA_CATEGORY_POLICY } },
   ),
   // shop-generator:plugins
 ]);

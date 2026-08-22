@@ -1,0 +1,38 @@
+name: Resolver Replay Status
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_ACCOUNT_ID: 9af87af4dbc00be3bfd4c8af3f52f684
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Resolve production D1 binding
+        id: d1
+        shell: bash
+        run: |
+          set -euo pipefail
+          info="$(npx wrangler d1 info DB --json)"
+          id="$(jq -r '.uuid // .database_id // .id // empty' <<< "$info")"
+          if [[ -z "$id" ]]; then
+            echo 'Could not resolve the deployed DB binding to an explicit D1 id.' >&2
+            jq . <<< "$info" >&2
+            exit 1
+          fi
+          echo "database_id=$id" >> "$GITHUB_OUTPUT"
+      - name: Report resolver replay convergence
+        env:
+          D1_DATABASE_ID: ${{ steps.d1.outputs.database_id }}
+        run: npx tsx scripts/resolution-replay-status.ts

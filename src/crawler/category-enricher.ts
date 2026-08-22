@@ -6,6 +6,7 @@ import {
   applyCategoryClassification,
 } from "../catalog/product-normalizer.js";
 import { findVerifiedCatalogMatches } from "../db/knowledge-catalog-repository.js";
+import { findManualVerifiedCategoryMatches } from "../db/manual-category-authority-repository.js";
 import { selectExistingProducts } from "../db/product-write-repository.js";
 import { categoryIdForClassification } from "../catalog/categories.js";
 import { errorMessage, isRecord } from "../types.js";
@@ -141,11 +142,15 @@ async function applyKnowledgeCatalogEvidence(
   products: NormalizedCatalogProduct[],
   now: Date,
 ): Promise<{ products: NormalizedCatalogProduct[]; catalogMatches: number }> {
-  const matches = await findVerifiedCatalogMatches(db, products);
+  const [matches, manualCategoryMatches] = await Promise.all([
+    findVerifiedCatalogMatches(db, products),
+    findManualVerifiedCategoryMatches(db, products),
+  ]);
   let catalogMatches = 0;
   const catalogMatchedAt = now.toISOString();
   const updated = products.map((product) => {
-    const match = matches.get(knowledgeCatalogKey(product.manufacturerId, product.model));
+    const key = knowledgeCatalogKey(product.manufacturerId, product.model);
+    const match = matches.get(key) || manualCategoryMatches.get(key);
     const catalogEvidence = knowledgeCatalogEvidence(match);
     if (!match || !catalogEvidence.length) return product;
     catalogMatches += 1;

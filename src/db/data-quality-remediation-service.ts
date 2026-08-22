@@ -62,6 +62,20 @@ interface StoredFeatureFactRow {
   confidence: number;
 }
 
+interface PreparedRemediationJob {
+  job: DataQualityRemediationJob;
+  row: RemediationListingRow;
+  projectionToken: string;
+}
+
+export interface RemediationProjectionWork {
+  listingProductId: number;
+  sourceId: string;
+  projectionToken: string;
+}
+
+export type ListingProjectionRefresher = typeof refreshListingProjections;
+
 export interface RunDataQualityRemediationSweepOptions {
   seedLimit?: number;
   claimLimit?: number;
@@ -389,12 +403,12 @@ export async function clearProjectionPendingForToken(
   return Number(result?.meta?.changes || 0) > 0;
 }
 
-async function processJob(
+async function prepareJob(
   db: QueryableDatabase,
   job: DataQualityRemediationJob,
   aliases: Awaited<ReturnType<typeof listManufacturerAliasEvidence>>,
   evaluatedAt: string,
-): Promise<string | null> {
+): Promise<PreparedRemediationJob | null> {
   if (!job.listingProductId) return null;
   const row = await loadListing(db, job.listingProductId);
   if (!row) return null;
@@ -403,17 +417,30 @@ async function processJob(
   if (requiresDerivedReplay(job.workType)) {
     projectionToken = await replayDerivedListing(db, row, aliases, evaluatedAt);
   }
+  return { job, row, projectionToken };
+}
 
-  // One canonical downstream refresh path keeps FTS, Product Identity, and the Phase-4 entity/read
-  // model in dependency order. It is intentionally run even when the derived listing is unchanged:
-  // an identity-version-only replay still has work to stamp.
-  await refreshListingProjections(
+/**
+ * Refresh one shop's downstream read models in a single bounded call instead of once per queue job.
+ * The repository functions already chunk source ids internally, so batching preserves their D1
+ * safety limits while avoiding repeated catalog/search reads over the remote binding.
+ */
+export async function refreshRemediationShopProjections(
+  db: QueryableDatabase,
+  shopKey: string,
+  work: readonly RemediationProjectionWork[],
+  evaluatedAt: string,
+  refreshProjections: ListingProjectionRefresher = refreshListingProjections,
+): Promise<void> {
+  if (!work.length) return;
+  await refreshProjections(
     db,
-    [{ shop_key: row.shop_key, source_id: row.source_id }],
+    work.map((item) => ({ shop_key: shopKey, source_id: item.sourceId })),
     evaluatedAt,
   );
-  await clearProjectionPendingForToken(db, row.id, projectionToken);
-  return row.shop_key;
+  for (const item of work) {
+    await clearProjectionPendingForToken(db, item.listingProductId, item.projectionToken);
+  }
 }
 
 export async function runDataQualityRemediationSweep(
@@ -436,22 +463,23 @@ export async function runDataQualityRemediationSweep(
     ? await listManufacturerAliasEvidence(db)
     : [];
   const affectedShops = new Set<string>();
-  const successfulJobsByShop = new Map<string, DataQualityRemediationJob[]>();
+  const successfulJobsByShop = new Map<string, PreparedRemediationJob[]>();
   let resolved = 0;
   let failed = 0;
   let retried = 0;
 
   for (const job of jobs) {
     try {
-      const shopKey = await processJob(db, job, aliases, evaluatedAt);
-      if (!shopKey) {
+      const prepared = await prepareJob(db, job, aliases, evaluatedAt);
+      if (!prepared) {
         await resolveDataQualityRemediationJob(db, job.id, evaluatedAt);
         resolved += 1;
         continue;
       }
+      const shopKey = prepared.row.shop_key;
       affectedShops.add(shopKey);
       const shopJobs = successfulJobsByShop.get(shopKey) || [];
-      shopJobs.push(job);
+      shopJobs.push(prepared);
       successfulJobsByShop.set(shopKey, shopJobs);
     } catch (error) {
       const status = await retryOrFailDataQualityRemediationJob(db, job.id, error, {
@@ -472,10 +500,41 @@ export async function runDataQualityRemediationSweep(
     }
   }
 
-  // Snapshot persistence is part of durable job completion. Keep successfully processed jobs in
-  // `processing` until their shop's post-remediation snapshot is safely stored; otherwise a transient
-  // D1 failure could mark the only retryable work resolved and permanently lose the DQ refresh.
-  for (const [shopKey, shopJobs] of successfulJobsByShop) {
+  for (const [shopKey, preparedJobs] of successfulJobsByShop) {
+    const shopJobs = preparedJobs.map((prepared) => prepared.job);
+    try {
+      await refreshRemediationShopProjections(
+        db,
+        shopKey,
+        preparedJobs.map((prepared) => ({
+          listingProductId: prepared.row.id,
+          sourceId: prepared.row.source_id,
+          projectionToken: prepared.projectionToken,
+        })),
+        evaluatedAt,
+      );
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          event: "data_quality_remediation_projection_batch_failed",
+          shopKey,
+          jobCount: shopJobs.length,
+          message: errorMessage(error),
+        }),
+      );
+      for (const job of shopJobs) {
+        const status = await retryOrFailDataQualityRemediationJob(db, job.id, error, {
+          updatedAt: evaluatedAt,
+        });
+        if (status === "failed") failed += 1;
+        else retried += 1;
+      }
+      continue;
+    }
+
+    // Snapshot persistence is part of durable job completion. Keep successfully replayed jobs in
+    // `processing` until their shop's post-remediation snapshot is safely stored; otherwise a
+    // transient D1 failure could mark the only retryable work resolved and lose the DQ refresh.
     try {
       const saved = await saveDataQualityRun(db, { shopKey, crawlRunId: null, evaluatedAt });
       console.log(

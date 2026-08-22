@@ -67,6 +67,24 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
   },
 
   {
+    id: "av_amp",
+    name: "AVアンプ",
+    parentId: "amplifier",
+    order: 5,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "av amp",
+      "av amplifier",
+      "av receiver",
+      "audio video receiver",
+      "AVアンプ",
+      "AVレシーバー",
+      "AVレシーバ",
+    ],
+  },
+
+  {
     id: "digital",
     name: "デジタル",
     parentId: null,
@@ -102,14 +120,11 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
     filterable: true,
     aliases: [
       "network player",
-      "network transport",
       "network cd receiver",
       "streamer",
       "streaming player",
-      "streaming transport",
       "ネットワークプレーヤー",
       "ネットワークプレイヤー",
-      "ネットワークトランスポート",
       "ネットワーク",
     ],
   },
@@ -122,24 +137,43 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
     filterable: true,
     aliases: [
       "cd player",
-      "cd transport",
       "sacd player",
-      "sacd transport",
-      "super audio cd transport",
       "sacd/cd player",
       "cdプレーヤー",
-      "cdトランスポート",
       "sacdプレーヤー",
-      "sacdトランスポート",
       "sacd/cdプレーヤー",
       "cd/sacdプレーヤー",
+    ],
+  },
+  {
+    id: "transport",
+    name: "トランスポート",
+    parentId: "digital",
+    order: 4,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "cd transport",
+      "sacd transport",
+      "super audio cd transport",
+      "disc transport",
+      "network transport",
+      "network audio transport",
+      "streaming transport",
+      "cdトランスポート",
+      "sacdトランスポート",
+      "cd/sacdトランスポート",
+      "ネットワークトランスポート",
+      "ネットワークオーディオトランスポート",
+      "ストリーミングトランスポート",
+      "トランスポート",
     ],
   },
   {
     id: "dap",
     name: "DAP",
     parentId: "digital",
-    order: 4,
+    order: 5,
     classifiable: true,
     filterable: true,
     aliases: [
@@ -148,6 +182,82 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
       "デジタルオーディオプレーヤー",
       "ポータブルプレーヤー",
       "ポータブルプレイヤー",
+    ],
+  },
+
+  {
+    id: "network_switch",
+    name: "スイッチングハブ",
+    parentId: "digital",
+    order: 6,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "network switch",
+      "ethernet switch",
+      "switching hub",
+      "スイッチングハブ",
+      "ネットワークスイッチ",
+    ],
+  },
+  {
+    id: "optical_isolator",
+    name: "光アイソレーター",
+    parentId: "digital",
+    order: 7,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "optical isolator",
+      "fiber isolator",
+      "fibre isolator",
+      "光アイソレーター",
+      "光アイソレータ",
+      "光絶縁",
+    ],
+  },
+  {
+    id: "router",
+    name: "ルーター",
+    parentId: "digital",
+    order: 8,
+    classifiable: true,
+    filterable: true,
+    aliases: ["router", "audio router", "オーディオルーター", "ルーター", "ルータ"],
+  },
+  {
+    id: "music_server",
+    name: "ミュージックサーバー",
+    parentId: "digital",
+    order: 9,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "music server",
+      "audio server",
+      "music library server",
+      "ミュージックサーバー",
+      "ミュージックサーバ",
+      "オーディオサーバー",
+      "オーディオサーバ",
+    ],
+  },
+  {
+    id: "master_clock",
+    name: "マスタークロックジェネレーター",
+    parentId: "digital",
+    order: 10,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "master clock",
+      "master clock generator",
+      "clock generator",
+      "マスタークロック",
+      "マスタークロックジェネレーター",
+      "マスタークロックジェネレータ",
+      "クロックジェネレーター",
+      "クロックジェネレータ",
     ],
   },
 
@@ -194,6 +304,15 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
     aliases: ["cartridge", "カートリッジ"],
   },
   {
+    id: "headshell",
+    name: "ヘッドシェル",
+    parentId: "cartridge",
+    order: 1,
+    classifiable: true,
+    filterable: true,
+    aliases: ["headshell", "head shell", "ヘッドシェル"],
+  },
+  {
     id: "phono_eq",
     name: "フォノイコライザー",
     parentId: "analog",
@@ -201,6 +320,22 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
     classifiable: true,
     filterable: true,
     aliases: ["phono equalizer", "phono eq", "phono stage", "フォノイコライザー", "フォノアンプ"],
+  },
+  {
+    id: "phono_step_up_transformer",
+    name: "昇圧トランス",
+    parentId: "analog",
+    order: 5,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "step-up transformer",
+      "step up transformer",
+      "mc transformer",
+      "moving coil transformer",
+      "昇圧トランス",
+      "mc昇圧トランス",
+    ],
   },
 
   {
@@ -230,7 +365,7 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
   },
   {
     id: "speaker_floorstanding",
-    name: "フロア型",
+    name: "フロア型・トールボーイ",
     parentId: "speaker",
     order: 2,
     classifiable: true,
@@ -240,33 +375,52 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
       "floor-standing",
       "tower speaker",
       "トールボーイ",
+      "フロア型・トールボーイ",
       "フロア型",
       "フロアスタンディング",
+    ],
+  },
+  {
+    id: "center_speaker",
+    name: "センタースピーカー",
+    parentId: "speaker",
+    order: 3,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "center speaker",
+      "centre speaker",
+      "center channel speaker",
+      "centre channel speaker",
+      "センタースピーカー",
+      "センター・スピーカー",
     ],
   },
   {
     id: "subwoofer",
     name: "サブウーファー",
     parentId: "speaker",
-    order: 3,
+    order: 4,
     classifiable: true,
     filterable: true,
     aliases: ["subwoofer", "sub-woofer", "サブウーファー"],
   },
   {
-    id: "speaker_other",
-    name: "その他スピーカー",
+    id: "active_speaker",
+    name: "アクティブスピーカー",
     parentId: "speaker",
-    order: 4,
+    order: 5,
     classifiable: true,
     filterable: true,
     aliases: [
-      "speaker system",
-      "speaker-system",
-      "soundbar",
-      "sound bar",
-      "サウンドバー",
-      "その他スピーカー",
+      "active speaker",
+      "active speakers",
+      "powered speaker",
+      "powered speakers",
+      "powered monitor",
+      "powered monitors",
+      "アクティブスピーカー",
+      "パワードスピーカー",
     ],
   },
 
@@ -280,22 +434,60 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
     aliases: ["headphone group", "ヘッドホン・イヤホン"],
   },
   {
-    id: "headphone",
-    name: "ヘッドホン",
+    id: "wired_headphone",
+    name: "有線ヘッドホン",
     parentId: "headphone_group",
     order: 1,
     classifiable: true,
     filterable: true,
-    aliases: ["headphone", "headphones", "ヘッドホン"],
+    aliases: ["wired headphone", "wired headphones", "有線ヘッドホン"],
   },
   {
-    id: "earphone",
-    name: "イヤホン",
+    id: "wired_earphone",
+    name: "有線イヤホン",
     parentId: "headphone_group",
     order: 2,
     classifiable: true,
     filterable: true,
-    aliases: ["earphone", "earphones", "earbud", "earbuds", "iem", "イヤホン"],
+    aliases: ["wired earphone", "wired earphones", "wired earbuds", "有線イヤホン"],
+  },
+  {
+    id: "btw_headphone",
+    name: "BTWヘッドホン",
+    parentId: "headphone_group",
+    order: 3,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "bluetooth headphone",
+      "bluetooth headphones",
+      "wireless headphone",
+      "wireless headphones",
+      "bluetoothヘッドホン",
+      "ワイヤレスヘッドホン",
+      "BTWヘッドホン",
+    ],
+  },
+  {
+    id: "btw_earphone",
+    name: "BTWイヤホン",
+    parentId: "headphone_group",
+    order: 4,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "bluetooth earphone",
+      "bluetooth earphones",
+      "wireless earphone",
+      "wireless earphones",
+      "wireless earbuds",
+      "true wireless",
+      "tws",
+      "bluetoothイヤホン",
+      "ワイヤレスイヤホン",
+      "完全ワイヤレスイヤホン",
+      "BTWイヤホン",
+    ],
   },
 
   {
@@ -312,9 +504,123 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
     name: "ケーブル",
     parentId: "accessories",
     order: 1,
-    classifiable: true,
+    classifiable: false,
     filterable: true,
     aliases: ["cable", "cables", "ケーブル"],
+  },
+  {
+    id: "cable_xlr",
+    name: "XLRケーブル",
+    parentId: "cable",
+    order: 1,
+    classifiable: true,
+    filterable: true,
+    aliases: ["xlr cable", "xlr cables", "xlr interconnect", "XLRケーブル", "XLRインターコネクト"],
+  },
+  {
+    id: "cable_rca",
+    name: "RCAケーブル",
+    parentId: "cable",
+    order: 2,
+    classifiable: true,
+    filterable: true,
+    aliases: ["rca cable", "rca cables", "rca interconnect", "RCAケーブル", "RCAインターコネクト"],
+  },
+  {
+    id: "cable_phono",
+    name: "フォノケーブル",
+    parentId: "cable",
+    order: 3,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "phono cable",
+      "phono interconnect",
+      "tonearm cable",
+      "フォノケーブル",
+      "トーンアームケーブル",
+    ],
+  },
+  {
+    id: "cable_usb",
+    name: "USBケーブル",
+    parentId: "cable",
+    order: 4,
+    classifiable: true,
+    filterable: true,
+    aliases: ["usb cable", "usb cables", "USBケーブル", "オーディオUSBケーブル"],
+  },
+  {
+    id: "cable_lan",
+    name: "LANケーブル",
+    parentId: "cable",
+    order: 5,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "lan cable",
+      "ethernet cable",
+      "network cable",
+      "LANケーブル",
+      "オーディオLANケーブル",
+      "イーサネットケーブル",
+    ],
+  },
+  {
+    id: "cable_digital",
+    name: "デジタルケーブル",
+    parentId: "cable",
+    order: 6,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "digital cable",
+      "digital interconnect",
+      "spdif cable",
+      "s/pdif cable",
+      "aes/ebu cable",
+      "toslink cable",
+      "optical cable",
+      "coaxial digital cable",
+      "hdmi cable",
+      "デジタルケーブル",
+      "デジタル同軸ケーブル",
+      "光デジタルケーブル",
+      "HDMIケーブル",
+    ],
+  },
+  {
+    id: "cable_power",
+    name: "電源ケーブル",
+    parentId: "cable",
+    order: 7,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "power cable",
+      "power cord",
+      "mains cable",
+      "ac cable",
+      "電源ケーブル",
+      "電源コード",
+      "ACケーブル",
+    ],
+  },
+  {
+    id: "cable_other",
+    name: "その他ケーブル",
+    parentId: "cable",
+    order: 8,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "other cable",
+      "speaker cable",
+      "headphone cable",
+      "その他ケーブル",
+      "スピーカーケーブル",
+      "ヘッドホンケーブル",
+    ],
   },
   {
     id: "rack",
@@ -326,26 +632,43 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
     aliases: ["audio rack", "rack", "オーディオラック", "ラック"],
   },
   {
-    id: "power_accessory",
-    name: "電源関連",
+    id: "power_strip",
+    name: "電源タップ",
     parentId: "accessories",
     order: 3,
     classifiable: true,
     filterable: true,
     aliases: [
-      "power accessory",
-      "power conditioner",
       "power strip",
+      "power distributor",
+      "power distribution",
       "電源タップ",
+      "電源ボックス",
+    ],
+  },
+  {
+    id: "clean_power",
+    name: "クリーン電源",
+    parentId: "accessories",
+    order: 4,
+    classifiable: true,
+    filterable: true,
+    aliases: [
+      "clean power",
+      "power conditioner",
+      "power regenerator",
+      "ac regenerator",
+      "クリーン電源",
       "電源コンディショナー",
       "電源コンディショナ",
+      "電源リジェネレーター",
     ],
   },
   {
     id: "vacuum_tube",
     name: "真空管",
     parentId: "accessories",
-    order: 4,
+    order: 5,
     classifiable: true,
     filterable: true,
     aliases: ["vacuum tube", "tube", "真空管"],
@@ -354,7 +677,7 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
     id: "other_accessory",
     name: "その他アクセサリー",
     parentId: "accessories",
-    order: 5,
+    order: 6,
     classifiable: true,
     filterable: true,
     aliases: [
@@ -363,14 +686,10 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
       "insulator",
       "hdmi switcher",
       "dust cover",
-      "master clock",
-      "clock generator",
       "インシュレーター",
       "インシュレータ",
       "HDMIスイッチャー",
       "ダストカバー",
-      "マスタークロック",
-      "クロックジェネレーター",
       "その他アクセサリー",
     ],
   },
@@ -395,15 +714,10 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
       "その他",
       "others",
       "other",
-      "av receiver",
-      "av amplifier",
-      "av amp",
       "tuner",
       "equalizer",
       "channel divider",
       "frequency dividing network",
-      "AVアンプ",
-      "AVレシーバー",
       "チューナー",
       "イコライザー",
       "チャンネルデバイダー",
@@ -420,8 +734,20 @@ const CATEGORY_BY_ID: ReadonlyMap<string, CategoryDefinition> = new Map(
   CATEGORIES.map((category) => [category.id, category]),
 );
 const LEGACY_ALIASES: Readonly<Record<string, ClassifiableCategoryId>> = Object.freeze({
-  network_transport: "network_player",
+  network_transport: "transport",
+  cd_sacd_transport: "transport",
   accessory: "other_accessory",
+  speaker_other: "other",
+  headphone: "wired_headphone",
+  earphone: "wired_earphone",
+  power_accessory: "clean_power",
+});
+const LEGACY_FILTER_ALIASES: Readonly<Record<string, CategoryId>> = Object.freeze({
+  speaker_other: "speaker",
+});
+const CLASSIFICATION_ALIASES: Readonly<Record<string, ClassifiableCategoryId>> = Object.freeze({
+  ...LEGACY_ALIASES,
+  cable: "cable_other",
 });
 
 function normalizeLookup(value: string = ""): string {
@@ -436,7 +762,7 @@ function categoryIdFromAlias(
   value: string = "",
   { classifiableOnly = false }: { classifiableOnly?: boolean } = {},
 ): CategoryId | null {
-  const legacy = LEGACY_ALIASES[value];
+  const legacy = classifiableOnly ? CLASSIFICATION_ALIASES[value] : LEGACY_ALIASES[value];
   if (legacy) return legacy;
   const needle = normalizeLookup(value);
   if (!needle) return null;
@@ -464,17 +790,18 @@ function inferLeaf(value: string = ""): ClassifiableCategoryId | null {
 }
 
 export function getCategory(categoryId: string): CategoryDefinition | null {
-  return CATEGORY_BY_ID.get(LEGACY_ALIASES[categoryId] || categoryId) || null;
+  const canonical = LEGACY_FILTER_ALIASES[categoryId] || LEGACY_ALIASES[categoryId] || categoryId;
+  return CATEGORY_BY_ID.get(canonical) || null;
 }
 
 export function categoryIdForFilter(value: string = ""): CategoryId | null {
-  const canonical = LEGACY_ALIASES[value] || value;
+  const canonical = LEGACY_FILTER_ALIASES[value] || LEGACY_ALIASES[value] || value;
   if (CATEGORY_BY_ID.get(canonical)?.filterable) return canonical;
   return categoryIdFromAlias(value);
 }
 
 export function categoryIdForClassification(value: string = ""): CategoryId | null {
-  const canonical = LEGACY_ALIASES[value] || value;
+  const canonical = CLASSIFICATION_ALIASES[value] || value;
   if (CATEGORY_BY_ID.get(canonical)?.classifiable) return canonical;
   return categoryIdFromAlias(value, { classifiableOnly: true });
 }
@@ -482,7 +809,15 @@ export function categoryIdForClassification(value: string = ""): CategoryId | nu
 export function categoryClosureIds(categoryId: string): CategoryId[] {
   const category = getCategory(categoryId);
   if (!category?.classifiable) return [];
-  return category.parentId ? [category.id, category.parentId] : [category.id];
+  const closure: CategoryId[] = [];
+  const seen = new Set<CategoryId>();
+  let current: CategoryDefinition | null = category;
+  while (current && !seen.has(current.id)) {
+    closure.push(current.id);
+    seen.add(current.id);
+    current = current.parentId ? getCategory(current.parentId) : null;
+  }
+  return closure;
 }
 
 /**
@@ -494,13 +829,17 @@ export function categoryClosureIds(categoryId: string): CategoryId[] {
  * so a group category has to expand to its descendants at query time. Accepts ids, display names
  * and legacy aliases, exactly like {@link categoryIdForFilter}.
  */
-export function categoryFilterIds(value: string = ""): CategoryId[] {
+export function categoryFilterIds(value: string = ""): string[] {
   const categoryId = categoryIdForFilter(value);
   if (!categoryId) return [];
-  return CATEGORIES.filter(
+  const canonicalIds = CATEGORIES.filter(
     (candidate) =>
       candidate.id === categoryId || categoryClosureIds(candidate.id).includes(categoryId),
   ).map((candidate) => candidate.id);
+  const legacyIds = Object.entries(LEGACY_ALIASES)
+    .filter(([, canonical]) => canonicalIds.includes(canonical))
+    .map(([legacy]) => legacy);
+  return [...new Set([...canonicalIds, ...legacyIds])];
 }
 
 export function categoryFacet(categoryId: string): CategoryFacet | null {

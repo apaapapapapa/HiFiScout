@@ -2,7 +2,7 @@ name: Deploy Cloudflare
 
 on:
   workflow_run:
-    workflows: ['CI']
+    workflows: ["CI"]
     types: [completed]
     branches: [main]
   workflow_dispatch:
@@ -111,9 +111,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          response="$(curl -sS --retry 3 --retry-delay 2 "${PRODUCTION_BASE_URL}/api/health")"
-          echo "$response" | jq .
-          echo "$response" | jq -e '.shops[] | select(.shopKey == "audiounion" and .configured == true)'
+          health_body="$(mktemp)"
+          trap 'rm -f "$health_body"' EXIT
+          http_status="$(curl -sS --retry 3 --retry-delay 2 -o "$health_body" -w '%{http_code}' "${PRODUCTION_BASE_URL}/api/health")"
+          response="$(cat "$health_body")"
+
+          if jq -e . >/dev/null 2>&1 <<< "$response"; then
+            jq . <<< "$response"
+            jq -e '.shops[] | select(.shopKey == "audiounion" and .configured == true)' <<< "$response" >/dev/null
+          elif [[ "$http_status" == "429" ]] && grep -Eqi 'Error[[:space:]]+1027' <<< "$response"; then
+            echo "::warning title=Production runtime health deferred::Cloudflare Workers daily request quota is exhausted (error 1027); the Worker deployment itself succeeded and direct D1 deploy gates will continue."
+            echo "Production health endpoint returned HTTP ${http_status} because the account-wide Worker request quota is exhausted."
+          else
+            echo "Production health endpoint returned a non-JSON response (HTTP ${http_status}):" >&2
+            printf '%s\n' "$response" >&2
+            exit 1
+          fi
       - name: Report production Data Platform and Data Quality baseline
         shell: bash
         run: |
@@ -221,9 +234,9 @@ jobs:
               SUM(CASE WHEN r.status = 'unresolved' AND r.candidate_catalog_product_id IS NOT NULL THEN 1 ELSE 0 END) AS identity_candidate_count,
               SUM(CASE WHEN p.stock_status <> 'unknown' THEN 1 ELSE 0 END) AS inventory_known_count,
               SUM(CASE WHEN p.stock_status = 'unknown' THEN 1 ELSE 0 END) AS inventory_unknown_count,
-              SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN ('other_accessory','cable','rack','power_accessory','vacuum_tube','other') THEN 1 ELSE 0 END) AS model_expected_count,
-              SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN ('other_accessory','cable','rack','power_accessory','vacuum_tube','other') AND p.model_resolution_status = 'resolved' THEN 1 ELSE 0 END) AS model_extracted_count,
-              SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN ('other_accessory','cable','rack','power_accessory','vacuum_tube','other') AND p.model_resolution_status <> 'resolved' THEN 1 ELSE 0 END) AS model_missing_count
+              SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN ('other_accessory','cable','cable_xlr','cable_rca','cable_phono','cable_usb','cable_lan','cable_digital','cable_power','cable_other','rack','power_accessory','vacuum_tube','other') THEN 1 ELSE 0 END) AS model_expected_count,
+              SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN ('other_accessory','cable','cable_xlr','cable_rca','cable_phono','cable_usb','cable_lan','cable_digital','cable_power','cable_other','rack','power_accessory','vacuum_tube','other') AND p.model_resolution_status = 'resolved' THEN 1 ELSE 0 END) AS model_extracted_count,
+              SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN ('other_accessory','cable','cable_xlr','cable_rca','cable_phono','cable_usb','cable_lan','cable_digital','cable_power','cable_other','rack','power_accessory','vacuum_tube','other') AND p.model_resolution_status <> 'resolved' THEN 1 ELSE 0 END) AS model_missing_count
             FROM products p
             LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
             WHERE p.is_active = 1

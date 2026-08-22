@@ -87,6 +87,14 @@ test("snapshot uses one D1 aggregate over active shop listings", async () => {
 test("model expectation excludes canonical accessory categories and other", async () => {
   assert.deepEqual(MODEL_OPTIONAL_CATEGORIES, [
     "cable",
+    "cable_xlr",
+    "cable_rca",
+    "cable_phono",
+    "cable_usb",
+    "cable_lan",
+    "cable_digital",
+    "cable_power",
+    "cable_other",
     "rack",
     "power_accessory",
     "vacuum_tube",

@@ -36,16 +36,38 @@ function isKnowledgeCatalogBatch(
   return batch.messages.every((message) => isRecord(message.body) && "jobId" in message.body);
 }
 
+function queueWaitMs(requestedAt: string, receivedAtMs: number): number | null {
+  const requestedAtMs = new Date(requestedAt).getTime();
+  if (!Number.isFinite(requestedAtMs)) return null;
+  return Math.max(0, receivedAtMs - requestedAtMs);
+}
+
 /**
  * A crawl job is acked whether it succeeded or failed: a failed crawl has already recorded its
  * failure in `shop_sync_state`, and retrying it here would re-fetch the shop immediately.
+ *
+ * The structured timing fields are intentionally attached to the existing completion/failure
+ * events so Cloudflare Observability can group queue wait and crawl wall time by `shopKey` without
+ * a second log join.
  */
 async function consumeCrawlBatch(batch: MessageBatch<CrawlQueueMessage>, env: Env): Promise<void> {
   for (const message of batch.messages) {
+    const receivedAtMs = Date.now();
+    const queueReceivedAt = new Date(receivedAtMs).toISOString();
     const result = await consumeCrawlMessage(env, message.body);
+    const completedAtMs = Date.now();
+    const timing = {
+      requestedAt: message.body.requestedAt,
+      queueReceivedAt,
+      completedAt: new Date(completedAtMs).toISOString(),
+      queueWaitMs: queueWaitMs(message.body.requestedAt, receivedAtMs),
+      crawlDurationMs: Math.max(0, completedAtMs - receivedAtMs),
+    };
     if (result.status === "failed") {
-      console.error(JSON.stringify({ event: "crawl_queue_job_failed", ...result }));
-    } else console.log(JSON.stringify({ event: "crawl_queue_job_completed", ...result }));
+      console.error(JSON.stringify({ event: "crawl_queue_job_failed", ...result, ...timing }));
+    } else {
+      console.log(JSON.stringify({ event: "crawl_queue_job_completed", ...result, ...timing }));
+    }
     const health = await getSyncHealth(env);
     logSyncHealth(health);
     message.ack();

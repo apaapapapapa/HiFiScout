@@ -6,6 +6,10 @@ import { normalizeCategory } from "../src/catalog/categories.js";
 import { normalizeManufacturer } from "../src/catalog/manufacturers.js";
 import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
 import { FUJIYA_CATEGORY_POLICY } from "../src/crawler/shops/fujiya-avic.js";
+import {
+  FORMUSIC_CATEGORY_MAPPING,
+  FORMUSIC_CATEGORY_POLICY,
+} from "../src/crawler/shops/formusic.js";
 import { parsedProduct } from "./helpers/fixtures.js";
 
 test("shop category mapping wins over shared inference", () => {
@@ -31,13 +35,13 @@ test("legacy multi-value shop mappings resolve to one primary leaf category", ()
 });
 
 test("title inference suppresses component words inside accessory and amplifier names", () => {
-  assert.deepEqual(normalizeCategory({ title: "Premium Speaker Cable 2m" }).categoryIds, ["cable"]);
+  assert.deepEqual(normalizeCategory({ title: "Premium Speaker Cable 2m" }).categoryIds, [
+    "cable_other",
+  ]);
   assert.deepEqual(normalizeCategory({ title: "Reference Headphone Amplifier" }).categoryIds, [
     "headphone_amp",
   ]);
-  assert.deepEqual(normalizeCategory({ title: "Network Transport" }).categoryIds, [
-    "network_player",
-  ]);
+  assert.deepEqual(normalizeCategory({ title: "Network Transport" }).categoryIds, ["transport"]);
 });
 
 test("DAC inference requires a DAC-specific expression rather than generic converter wording", () => {
@@ -123,6 +127,38 @@ test("corroborative seller categories do not override explicit title evidence", 
   assert.equal(product.classificationSource, "title");
 });
 
+test("FOR MUSIC disc bucket lets an explicit transport title select transport", () => {
+  const transport = normalizeCatalogProduct(
+    parsedProduct({
+      title: "D1.5 SACD/CD Transport",
+      rawCategory: "cd-sacd-players",
+      category: "CD/SACDプレーヤー",
+    }),
+    {
+      categoryMapping: FORMUSIC_CATEGORY_MAPPING,
+      categoryPolicy: FORMUSIC_CATEGORY_POLICY,
+    },
+  );
+  assert.equal(transport.primaryCategoryId, "transport");
+  assert.equal(transport.category, "トランスポート");
+  assert.equal(transport.classificationSource, "title");
+
+  const player = normalizeCatalogProduct(
+    parsedProduct({
+      title: "Example SACD/CD Player",
+      rawCategory: "cd-sacd-players",
+      category: "CD/SACDプレーヤー",
+    }),
+    {
+      categoryMapping: FORMUSIC_CATEGORY_MAPPING,
+      categoryPolicy: FORMUSIC_CATEGORY_POLICY,
+    },
+  );
+  assert.equal(player.primaryCategoryId, "cd_sacd_player");
+  assert.equal(player.category, "CD/SACDプレーヤー");
+  assert.equal(player.classificationSource, "title");
+});
+
 test("generic accessory seller category does not override specific title evidence", () => {
   const product = normalizeCatalogProduct(
     parsedProduct({
@@ -130,7 +166,7 @@ test("generic accessory seller category does not override specific title evidenc
       rawCategory: "アクセサリー",
     }),
   );
-  assert.equal(product.primaryCategoryId, "cable");
+  assert.equal(product.primaryCategoryId, "cable_other");
   assert.equal(product.classificationSource, "title");
 });
 
@@ -204,7 +240,7 @@ test("Fujiya uses the generic evidence policy for broad DAP merchandising bucket
     { categoryPolicy: FUJIYA_CATEGORY_POLICY },
   );
   assert.equal(sacd.primaryCategoryId, "cd_sacd_player");
-  assert.equal(cable.primaryCategoryId, "cable");
+  assert.equal(cable.primaryCategoryId, "cable_other");
   assert.equal(unresolved.classificationStatus, "unclassified");
   assert.deepEqual(unresolved.categoryIds, []);
 });
