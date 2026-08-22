@@ -27,6 +27,7 @@ export const SHOP_FILTER_READINGS: Readonly<Record<string, string>> = Object.fre
   formusic: "ふぉーみゅーじっく",
   "fujiya-avic": "ふじやえーびっく",
   "u-audio": "ゆーおーでぃお",
+  rewire: "りわいあー",
 });
 
 const JAPANESE_READING_COLLATOR = new Intl.Collator("ja", {
