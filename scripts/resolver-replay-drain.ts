@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { RESOLUTION_VERSIONS } from "../src/catalog/resolution-versions.js";
 import { compactSupersededAutomaticRemediationJobs } from "../src/db/data-quality-remediation-compaction.js";
+import { reprocessStaleManufacturerListings } from "../src/db/manufacturer-repository.js";
 import { runDataQualityRemediationSweep } from "../src/db/data-quality-remediation-service.js";
 import type { QueryableDatabase } from "../src/db/types.js";
 import { createD1RestDatabase } from "./lib/d1-rest-database.js";
@@ -45,6 +46,7 @@ interface ReplayStatus {
 interface DrainResult {
   recoveredExhausted: number;
   compacted: number;
+  manufacturerProcessed: number;
   complete: boolean;
   remaining: number;
   initial: ReplayStatus;
@@ -179,6 +181,24 @@ function existingQueueOnlyDatabase(db: QueryableDatabase): QueryableDatabase {
   } as QueryableDatabase;
 }
 
+async function drainStaleManufacturerPages(
+  db: QueryableDatabase,
+  maxPages: number,
+): Promise<number> {
+  let afterId = 0;
+  let processed = 0;
+  for (let page = 0; page < maxPages; page += 1) {
+    const result = await reprocessStaleManufacturerListings(db, {
+      afterId,
+      limit: 250,
+    });
+    processed += result.processedCount;
+    if (!result.hasMore || result.nextAfterId == null) break;
+    afterId = result.nextAfterId;
+  }
+  return processed;
+}
+
 async function writeResult(path: string, result: DrainResult): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, `${JSON.stringify(result, null, 2)}\n`, "utf8");
@@ -186,6 +206,10 @@ async function writeResult(path: string, result: DrainResult): Promise<void> {
 
 async function main(): Promise<void> {
   const maxSweeps = positiveInteger(argument("--max-sweeps", "24"), "--max-sweeps");
+  const manufacturerPages = positiveInteger(
+    argument("--manufacturer-pages", "4"),
+    "--manufacturer-pages",
+  );
   const output = argument("--output", ".generated/remediation-drain-result.json");
   const database = createD1RestDatabase({
     accountId: requiredEnv("CLOUDFLARE_ACCOUNT_ID"),
@@ -199,7 +223,7 @@ async function main(): Promise<void> {
     `Recovered ${recoveredExhausted} expired automatic queue jobs whose retry budget was exhausted.`,
   );
 
-  const compacted = await compactSupersededAutomaticRemediationJobs(database);
+  let compacted = await compactSupersededAutomaticRemediationJobs(database);
   console.log(`Resolved ${compacted} superseded automatic queue jobs before this drain batch.`);
 
   const initial = await replayStatus(database);
@@ -208,10 +232,26 @@ async function main(): Promise<void> {
   console.log(JSON.stringify(initial, null, 2));
 
   let current = initial;
+  const manufacturerProcessed =
+    current.stale.manufacturer > 0
+      ? await drainStaleManufacturerPages(database, manufacturerPages)
+      : 0;
+  if (manufacturerProcessed > 0) {
+    console.log(
+      `Bulk manufacturer replay processed ${manufacturerProcessed} listings through the authoritative replay path.`,
+    );
+    const compactedAfterManufacturer = await compactSupersededAutomaticRemediationJobs(database);
+    compacted += compactedAfterManufacturer;
+    console.log(
+      `Resolved ${compactedAfterManufacturer} manufacturer jobs superseded by the bulk replay.`,
+    );
+    current = await replayStatus(database);
+  }
+
   for (let iteration = 1; iteration <= maxSweeps && current.stale.total > 0; iteration += 1) {
     let sweep = await runDataQualityRemediationSweep(queueOnlyDatabase, {
       seedLimit: 1,
-      claimLimit: 1,
+      claimLimit: 10,
       leaseSeconds: 900,
     });
 
@@ -220,7 +260,7 @@ async function main(): Promise<void> {
     if (sweep.claimed === 0) {
       sweep = await runDataQualityRemediationSweep(database, {
         seedLimit: 250,
-        claimLimit: 1,
+        claimLimit: 10,
         leaseSeconds: 900,
       });
     }
@@ -252,6 +292,7 @@ async function main(): Promise<void> {
   const result: DrainResult = {
     recoveredExhausted,
     compacted,
+    manufacturerProcessed,
     complete: final.stale.total === 0,
     remaining: final.stale.total,
     initial,
