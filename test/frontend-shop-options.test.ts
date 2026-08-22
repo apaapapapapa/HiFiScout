@@ -22,6 +22,7 @@ const GOJUON_KEYS = [
   "formusic",
   "fujiya-avic",
   "u-audio",
+  "rewire",
 ] as const;
 
 function shop(key: string, name: string) {
