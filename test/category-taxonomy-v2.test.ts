@@ -226,9 +226,9 @@ test("speaker classification uses the requested five canonical leaves", () => {
   assert.equal(classify("Subwoofer Model D").primaryCategoryId, "subwoofer");
   assert.equal(classify("Active Speaker Model E").primaryCategoryId, "active_speaker");
   assert.equal(classify("Active Bookshelf Speaker Model F").primaryCategoryId, "active_speaker");
-  // A generic speaker title is still the real `other` leaf: `category-rules.ts` gives it a
-  // deliberate terminal label. A bare "SUB" matches no rule at all, so it is the sentinel.
-  assert.equal(classify("Speaker Model G").primaryCategoryId, "other");
+  // Neither a generic speaker title nor a bare "SUB" names a leaf, so both stay undecided rather
+  // than being frozen under the terminal `other` label. See G-1 in the remediation guide.
+  assert.equal(classify("Speaker Model G").primaryCategoryId, "unclassified");
   assert.equal(classify("SUB Model H").primaryCategoryId, "unclassified");
   assert.equal(getCategory("speaker_floorstanding")?.name, "フロア型・トールボーイ");
 });

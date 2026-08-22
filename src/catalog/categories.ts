@@ -290,6 +290,11 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
       "レコードプレーヤー",
       "レコードプレイヤー",
       "ターンテーブル",
+      // A shop bucket spelled "アナログプレーヤー" names this leaf exactly. As a taxonomy alias it
+      // resolves through `global_alias`, which seller evidence may treat as authoritative; the rule
+      // table alone would only ever produce `raw_inference`, which is deliberately corroborative.
+      "アナログプレーヤー",
+      "アナログプレイヤー",
     ],
   },
   {
