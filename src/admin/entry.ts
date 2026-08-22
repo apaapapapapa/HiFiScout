@@ -22,11 +22,16 @@ interface AdminEnv {
 
 const LISTING_COLLECTION_PATH = "/api/admin/listings";
 const LISTING_PATH = /^\/api\/admin\/listings\/(\d{1,15})$/u;
-const LISTING_ASSET_PATHS = new Set([
-  "/listing-admin.html",
+const CONSOLE_ASSET_PATHS = new Set([
+  "/admin-console.css",
+  "/admin-console.js",
+  "/catalog-admin.css",
+  "/catalog-admin.js",
   "/listing-admin.css",
   "/listing-admin.js",
 ]);
+const INTERNAL_FRAGMENT_PATHS = new Set(["/catalog-admin.html", "/listing-admin.html"]);
+const LEGACY_PAGE_PATHS = new Set(["/catalog-admin", "/listing-admin"]);
 const REQUEST_BODY_TOO_LARGE = Symbol("request_body_too_large");
 
 function json(value: unknown, init: ResponseInit = {}): Response {
@@ -41,6 +46,10 @@ function assetRequest(request: Request, pathname: string): Request {
   url.pathname = pathname;
   url.search = "";
   return new Request(url, request);
+}
+
+async function adminAsset(env: AdminEnv, request: Request): Promise<Response> {
+  return withCatalogAdminSecurityHeaders(await env.ADMIN_ASSETS.fetch(request));
 }
 
 async function readJsonBody(
@@ -90,10 +99,12 @@ function isSameOriginBrowserMutation(request: Request, url: URL): boolean {
   return !fetchSite || fetchSite === "same-origin";
 }
 
-function isListingRoute(pathname: string): boolean {
+function isAdminEntryRoute(pathname: string): boolean {
   return (
-    pathname === "/listing-admin" ||
-    LISTING_ASSET_PATHS.has(pathname) ||
+    pathname === "/" ||
+    CONSOLE_ASSET_PATHS.has(pathname) ||
+    INTERNAL_FRAGMENT_PATHS.has(pathname) ||
+    LEGACY_PAGE_PATHS.has(pathname) ||
     pathname === LISTING_COLLECTION_PATH ||
     LISTING_PATH.test(pathname)
   );
@@ -111,7 +122,7 @@ function updateError(error: unknown): Response {
   return json({ error: "listing_admin_update_failed" }, { status: 500 });
 }
 
-async function handleListingRequest(request: Request, env: AdminEnv): Promise<Response> {
+async function handleAdminEntryRequest(request: Request, env: AdminEnv): Promise<Response> {
   const url = new URL(request.url);
 
   if (request.method === "GET" && url.pathname === LISTING_COLLECTION_PATH) {
@@ -147,13 +158,20 @@ async function handleListingRequest(request: Request, env: AdminEnv): Promise<Re
     }
   }
 
-  if (request.method === "GET" && url.pathname === "/listing-admin") {
-    return withCatalogAdminSecurityHeaders(
-      await env.ADMIN_ASSETS.fetch(assetRequest(request, "/listing-admin")),
-    );
+  if (request.method === "GET" && url.pathname === "/") {
+    return adminAsset(env, assetRequest(request, "/"));
   }
-  if (request.method === "GET" && LISTING_ASSET_PATHS.has(url.pathname)) {
-    return withCatalogAdminSecurityHeaders(await env.ADMIN_ASSETS.fetch(request));
+  if (request.method === "GET" && CONSOLE_ASSET_PATHS.has(url.pathname)) {
+    return adminAsset(env, request);
+  }
+  if (request.method === "GET" && INTERNAL_FRAGMENT_PATHS.has(url.pathname)) {
+    if (request.headers.get("x-admin-fragment") !== "1") {
+      return json({ error: "not_found" }, { status: 404 });
+    }
+    return adminAsset(env, request);
+  }
+  if (request.method === "GET" && LEGACY_PAGE_PATHS.has(url.pathname)) {
+    return json({ error: "not_found" }, { status: 404 });
   }
   return json({ error: "not_found" }, { status: 404 });
 }
@@ -161,13 +179,13 @@ async function handleListingRequest(request: Request, env: AdminEnv): Promise<Re
 export default {
   async fetch(request: Request, env: AdminEnv): Promise<Response> {
     const pathname = new URL(request.url).pathname;
-    if (!isListingRoute(pathname)) return catalogAdmin.fetch(request, env);
+    if (!isAdminEntryRoute(pathname)) return catalogAdmin.fetch(request, env);
 
     const claims = await verifyCloudflareAccessRequest(request, {
       teamDomain: env.ACCESS_TEAM_DOMAIN || "",
       audience: env.ACCESS_AUD || "",
     });
     if (!claims) return json({ error: "cloudflare_access_required" }, { status: 403 });
-    return handleListingRequest(request, env);
+    return handleAdminEntryRequest(request, env);
   },
 } satisfies ExportedHandler<AdminEnv>;
