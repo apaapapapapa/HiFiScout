@@ -23,29 +23,27 @@ jobs:
 
           path = Path('.github/workflows/deploy.yml')
           text = path.read_text()
-          needle = '''      - name: Apply backward-compatible D1 migrations
-                run: npx wrangler d1 migrations apply DB --remote
-              - name: Provision Knowledge Catalog queues
-          '''
-          replacement = '''      - name: Apply backward-compatible D1 migrations
-                run: npx wrangler d1 migrations apply DB --remote
-              - name: Provision crawl queues
-                shell: bash
-                run: |
-                  set -euo pipefail
-                  for queue in \
-                    hifiscout-crawl hifiscout-crawl-dlq \
-                    hifiscout-crawl-fast hifiscout-crawl-fast-dlq \
-                    hifiscout-crawl-heavy hifiscout-crawl-heavy-dlq \
-                    hifiscout-crawl-relay hifiscout-crawl-relay-dlq; do
-                    if npx wrangler queues info "$queue" >/dev/null 2>&1; then
-                      echo "Queue already exists: $queue"
-                    else
-                      npx wrangler queues create "$queue"
-                    fi
-                  done
-              - name: Provision Knowledge Catalog queues
-          '''
+          needle = (
+              "      - name: Apply backward-compatible D1 migrations\n"
+              "        run: npx wrangler d1 migrations apply DB --remote\n"
+              "      - name: Provision Knowledge Catalog queues\n"
+          )
+          replacement = (
+              "      - name: Apply backward-compatible D1 migrations\n"
+              "        run: npx wrangler d1 migrations apply DB --remote\n"
+              "      - name: Provision crawl queues\n"
+              "        shell: bash\n"
+              "        run: |\n"
+              "          set -euo pipefail\n"
+              "          for queue in hifiscout-crawl hifiscout-crawl-dlq hifiscout-crawl-fast hifiscout-crawl-fast-dlq hifiscout-crawl-heavy hifiscout-crawl-heavy-dlq hifiscout-crawl-relay hifiscout-crawl-relay-dlq; do\n"
+              "            if npx wrangler queues info \"$queue\" >/dev/null 2>&1; then\n"
+              "              echo \"Queue already exists: $queue\"\n"
+              "            else\n"
+              "              npx wrangler queues create \"$queue\"\n"
+              "            fi\n"
+              "          done\n"
+              "      - name: Provision Knowledge Catalog queues\n"
+          )
           if text.count(needle) != 1:
               raise SystemExit(f'expected one deploy workflow insertion point, found {text.count(needle)}')
           path.write_text(text.replace(needle, replacement))
