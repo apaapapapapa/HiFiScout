@@ -118,3 +118,78 @@ test("repairs a missing search membership even when Identity already exists", as
     1,
   );
 });
+
+test("repairs a stale fallback membership after Identity becomes catalog-matched", async () => {
+  const { sqlite, db } = migratedSqlite();
+  const listingId = insertActiveListing(sqlite, "gap-stale-fallback");
+
+  // First establish the normal unresolved fallback projection.
+  await repairActiveListingProjectionGaps(db, {
+    evaluatedAt: NOW,
+    batchSize: 5,
+    maxListings: 10,
+  });
+  assert.equal(
+    sqlite
+      .prepare(`
+        SELECT e.entity_kind
+        FROM product_search_entity_offers o
+        JOIN product_search_entities e ON e.id = o.entity_id
+        WHERE o.listing_product_id = ?
+      `)
+      .get(listingId)?.entity_kind,
+    "unresolved_listing",
+  );
+
+  // Simulate an interrupted write: Product Identity is already authoritative, but Product Search
+  // has not yet consumed the transition and still points at the fallback entity.
+  const catalog = sqlite
+    .prepare(`
+      INSERT INTO knowledge_catalog_products(
+        manufacturer_id, canonical_model, normalized_model, canonical_name,
+        verification_status, created_at, updated_at
+      ) VALUES ('example-audio', 'MODEL-1', 'MODEL1', 'Example Audio MODEL-1', 'verified', ?, ?)
+      RETURNING id
+    `)
+    .get(NOW, NOW);
+  const catalogId = Number(catalog?.id || 0);
+  sqlite
+    .prepare(
+      "INSERT INTO knowledge_catalog_product_categories(product_id, category_id, is_primary) VALUES (?, 'dac', 1)",
+    )
+    .run(catalogId);
+  sqlite
+    .prepare(`
+      UPDATE product_identity_resolutions
+      SET catalog_product_id = ?, candidate_catalog_product_id = NULL, status = 'matched',
+          match_method = 'test_catalog_match', confidence = 'high', evaluated_at = ?
+      WHERE listing_product_id = ?
+    `)
+    .run(catalogId, NOW, listingId);
+
+  const result = await repairActiveListingProjectionGaps(db, {
+    evaluatedAt: NOW,
+    batchSize: 5,
+    maxListings: 10,
+  });
+
+  assert.deepEqual(result, { selectedCount: 1, repairedCount: 1, remainingGapCount: 0 });
+  const repairedEntity = sqlite
+    .prepare(`
+      SELECT e.entity_kind, e.catalog_product_id
+      FROM product_search_entity_offers o
+      JOIN product_search_entities e ON e.id = o.entity_id
+      WHERE o.listing_product_id = ?
+    `)
+    .get(listingId);
+  assert.equal(repairedEntity?.entity_kind, "catalog");
+  assert.equal(Number(repairedEntity?.catalog_product_id || 0), catalogId);
+  assert.equal(
+    sqlite
+      .prepare(
+        "SELECT COUNT(*) AS count FROM product_search_entities WHERE fallback_listing_id = ?",
+      )
+      .get(listingId)?.count,
+    0,
+  );
+});
