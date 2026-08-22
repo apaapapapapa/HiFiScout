@@ -31,6 +31,18 @@ const LEGACY_PRICE_CATEGORY_RE = new RegExp(
 );
 const PAGE_SIZE = 30;
 const DEFAULT_RECHECK_MAX_PAGE = 120;
+const MUSIC_SOFTWARE_TITLE_RE = /[0-9０-９]+\s*枚(?:セット|組)/u;
+
+function isOutOfScopeMusicSoftware(
+  link: HifidoProductLink,
+  title: string,
+  sourceUrl: string,
+): boolean {
+  // Hifido also lists used records/CD box sets. They are intentionally excluded from HiFiScout's
+  // hardware catalog, just as other mixed-inventory shops exclude non-audio product departments.
+  const path = new URL(sourceUrl).pathname;
+  return path.startsWith("/26-20368") || MUSIC_SOFTWARE_TITLE_RE.test(title);
+}
 
 export const HIFIDO_CATEGORY_MAPPING = Object.freeze({
   スピーカー: "speaker",
@@ -174,6 +186,7 @@ function parseProductBlock(block: string, link: HifidoProductLink): SellerProduc
   const title = cleanText(link.title);
   const sourceUrl = absoluteUrl(link.href);
   if (!title || !sourceUrl) return null;
+  if (isOutOfScopeMusicSoftware(link, title, sourceUrl)) return null;
 
   const priceText =
     text.match(/売価(?:\([^)]*\))?\s*[:：]\s*[¥￥]?\s*([0-9０-９][0-9０-９,，]*)\s*円?/i)?.[1] ||

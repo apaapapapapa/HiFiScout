@@ -160,16 +160,20 @@ function existingCatalogFields(existing: ExistingProductRow): ExistingCatalogFie
     normalizedRawManufacturer:
       existing.normalized_raw_manufacturer ||
       normalizeManufacturerKey(existing.raw_manufacturer ?? existing.manufacturer),
-    manufacturerId: existing.manufacturer_id || manufacturerIdForFilter(existing.manufacturer),
-    canonicalManufacturerId: existing.canonical_manufacturer_id ?? existing.manufacturer_id ?? "",
+    manufacturerId: manufacturerIdForFilter(existing.manufacturer),
+    canonicalManufacturerId:
+      existing.manufacturer_resolution_status === "resolved"
+        ? existing.canonical_manufacturer_id || manufacturerIdForFilter(existing.manufacturer)
+        : "",
     manufacturerResolutionStatus:
       existing.manufacturer_resolution_status ||
-      (existing.manufacturer_id ? "resolved" : "unresolved"),
+      (existing.canonical_manufacturer_id ? "resolved" : "unresolved"),
     manufacturerResolutionMethod:
       existing.manufacturer_resolution_method ||
-      (existing.manufacturer_id ? "bootstrap_alias" : "none"),
+      (existing.canonical_manufacturer_id ? "bootstrap_alias" : "none"),
     manufacturerResolutionConfidence:
-      existing.manufacturer_resolution_confidence || (existing.manufacturer_id ? "high" : "none"),
+      existing.manufacturer_resolution_confidence ||
+      (existing.canonical_manufacturer_id ? "high" : "none"),
     manufacturerResolverVersion:
       existing.manufacturer_resolver_version || MANUFACTURER_RESOLVER_VERSION,
     rawModel: existing.raw_model ?? existing.model ?? "",

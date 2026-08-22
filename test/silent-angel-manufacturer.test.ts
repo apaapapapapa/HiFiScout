@@ -38,7 +38,7 @@ test("resolver repairs the legacy first-token Silent manufacturer without rewrit
     title: "Silent Angel Munich M1",
   });
 
-  assert.equal(MANUFACTURER_RESOLVER_VERSION, 5);
+  assert.equal(MANUFACTURER_RESOLVER_VERSION, 6);
   assert.equal(result.status, "resolved");
   assert.equal(result.canonicalManufacturerId, "silent-angel");
   assert.equal(result.displayName, "Silent Angel");

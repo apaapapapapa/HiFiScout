@@ -86,7 +86,7 @@ test("E-3 Hifido reads the structural genre field rather than unrelated free tex
   assert.equal(product.category, "パワーアンプ");
 });
 
-test("E-3 Hifido does not infer seller category from an LP description", () => {
+test("N-1 Hifido excludes an LP box set before category inference", () => {
   const html = `
     <div class="list-item">
       <h3><a href="/26-50001-10001-00.html?LNG=J" id="type-26-50001-10001-00">クラシックLP 10枚セット</a></h3>
@@ -95,8 +95,7 @@ test("E-3 Hifido does not infer seller category from an LP description", () => {
       <p>カートリッジ交換後の試聴にもおすすめのレコードセットです。</p>
     </div>`;
 
-  const [product] = parseHifidoListing(html);
-  assert.equal(product.rawCategory, "");
+  assert.deepEqual(parseHifidoListing(html), []);
 });
 
 test("E-4 Hifido rack mentions cannot override an explicit seller genre", () => {

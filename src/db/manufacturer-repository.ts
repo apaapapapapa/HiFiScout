@@ -3,7 +3,7 @@ import {
   MANUFACTURER_RESOLVER_VERSION,
   resolveManufacturer,
 } from "../catalog/manufacturer-resolver.js";
-import { normalizeManufacturerKey } from "../catalog/manufacturers.js";
+import { manufacturerIdForFilter, normalizeManufacturerKey } from "../catalog/manufacturers.js";
 import { createModelResolver, MODEL_RESOLVER_VERSION } from "../catalog/model-resolver.js";
 import type {
   ManufacturerAliasEvidence,
@@ -266,7 +266,8 @@ function manufacturerResolutionMoved(
     row.manufacturer_resolution_method !== next.method ||
     row.manufacturer_resolution_confidence !== next.confidence ||
     row.manufacturer !== (next.displayName || row.manufacturer) ||
-    row.manufacturer_id !== (next.canonicalManufacturerId || row.manufacturer_id)
+    row.manufacturer_id !==
+      manufacturerIdForFilter(next.displayName || row.manufacturer || row.raw_manufacturer)
   );
 }
 
@@ -334,6 +335,9 @@ async function reprocessManufacturerRows(
       title: row.title,
       manufacturerId: resolution.canonicalManufacturerId,
     });
+    const manufacturerFilterId = manufacturerIdForFilter(
+      resolution.displayName || row.manufacturer || row.raw_manufacturer,
+    );
     const manufacturerMoved = manufacturerResolutionMoved(row, resolution);
     const modelMoved = modelResolutionMoved(row, model);
     const moved = manufacturerMoved || modelMoved;
@@ -379,7 +383,7 @@ async function reprocessManufacturerRows(
         `)
         .bind(
           resolution.displayName || row.manufacturer,
-          resolution.canonicalManufacturerId || row.manufacturer_id,
+          manufacturerFilterId,
           resolution.normalizedRawManufacturer,
           resolution.canonicalManufacturerId,
           resolution.status,

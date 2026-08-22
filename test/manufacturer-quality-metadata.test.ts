@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { manufacturerIdForFilter } from "../src/catalog/manufacturers.js";
 import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
 import { parsedProduct } from "./helpers/fixtures.js";
 
@@ -26,7 +27,7 @@ test("unknown manufacturer fallback is explicitly unresolved for quality metrics
     }),
   );
 
-  assert.equal(product.manufacturerId, "");
+  assert.equal(product.manufacturerId, manufacturerIdForFilter("Example Unknown Audio"));
   assert.equal(product.manufacturerResolutionStatus, "unresolved");
   assert.equal(product.manufacturerResolutionMethod, "none");
   assert.ok(product.metadata.manufacturerNormalization);

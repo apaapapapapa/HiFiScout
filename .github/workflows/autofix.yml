@@ -12,10 +12,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  section-5-remediation:
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'fix/data-quality-remediation-section-5'
+  oxfmt:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -26,140 +26,27 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Apply section 5 remediation
+      - name: Apply oxfmt to changed source files
         shell: bash
         run: |
           set -euo pipefail
-          python <<'PY'
-          from pathlib import Path
-
-          def replace(path: str, old: str, new: str) -> None:
-              p = Path(path)
-              text = p.read_text()
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"{path}: expected one match, found {count}")
-              p.write_text(text.replace(old, new))
-
-          # N-1: keep music software out of the hardware listing corpus.
-          replace(
-              "src/crawler/shops/hifido.ts",
-              'const DEFAULT_RECHECK_MAX_PAGE = 120;\n',
-              '''const DEFAULT_RECHECK_MAX_PAGE = 120;\nconst MUSIC_SOFTWARE_TITLE_RE = /[0-9０-９]+\\s*枚(?:セット|組)/u;\n\nfunction isOutOfScopeMusicSoftware(link: HifidoProductLink, title: string, sourceUrl: string): boolean {\n  // Hifido also lists used records/CD box sets. They are intentionally excluded from HiFiScout's\n  // hardware catalog, just as other mixed-inventory shops exclude non-audio product departments.\n  const path = new URL(sourceUrl).pathname;\n  return path.startsWith(\"/26-20368\") || MUSIC_SOFTWARE_TITLE_RE.test(title);\n}\n''',
-          )
-          replace(
-              "src/crawler/shops/hifido.ts",
-              '  if (!title || !sourceUrl) return null;\n\n  const priceText =\n',
-              '  if (!title || !sourceUrl) return null;\n  if (isOutOfScopeMusicSoftware(link, title, sourceUrl)) return null;\n\n  const priceText =\n',
-          )
-
-          # N-2/N-4: extend verified bootstrap aliases and reject seller placeholder brands.
-          replace(
-              "src/catalog/manufacturers.ts",
-              'export function normalizeManufacturerKey(value: unknown = ""): string {\n  return stripManufacturerListingLabels(String(value).normalize("NFKC"))\n',
-              '''const MANUFACTURER_PLACEHOLDER_RE = /^(?:不明(?:\\s+.*)?|メーカー不明|その他|ノーブランド)$/u;\n\nexport function isManufacturerPlaceholder(value: unknown = \"\"): boolean {\n  const text = stripManufacturerListingLabels(String(value))\n    .normalize(\"NFKC\")\n    .replace(/\\s+/g, \" \")\n    .trim();\n  return MANUFACTURER_PLACEHOLDER_RE.test(text);\n}\n\nexport function normalizeManufacturerKey(value: unknown = \"\"): string {\n  const stripped = stripManufacturerListingLabels(String(value).normalize(\"NFKC\"));\n  if (isManufacturerPlaceholder(stripped)) return \"\";\n  return stripped\n''',
-          )
-          replace(
-              "src/catalog/manufacturers.ts",
-              '  ["chord", "Chord Electronics", ["chord", "chord electronics", "コード"]],\n  [\n    "ibasso-audio",\n',
-              '''  [\"chord\", \"Chord Electronics\", [\"chord\", \"chord electronics\", \"コード\"]],\n  [\"airbow\", \"AIRBOW\", [\"airbow\", \"エアボウ\"]],\n  [\n    \"astell-kern\",\n    \"Astell&Kern\",\n    [\"astell&kern\", \"astell & kern\", \"astell kern\", \"アステルアンドケルン\", \"アステル&ケルン\"],\n  ],\n  [\"fiio\", \"FiiO\", [\"fiio\", \"フィーオ\"]],\n  [\"cayin\", \"Cayin\", [\"cayin\", \"カイン\"]],\n  [\"hiby\", \"HiBy\", [\"hiby\", \"hibymusic\", \"hiby music\", \"ハイビー\", \"ハイビーミュージック\"]],\n  [\n    \"campfire-audio\",\n    \"Campfire Audio\",\n    [\"campfire audio\", \"campfireaudio\", \"キャンプファイヤーオーディオ\"],\n  ],\n  [\"unique-melody\", \"Unique Melody\", [\"unique melody\", \"uniquemelody\", \"ユニークメロディ\"]],\n  [\"audioquest\", \"AudioQuest\", [\"audioquest\", \"audio quest\", \"オーディオクエスト\"]],\n  [\"tiglon\", \"TIGLON\", [\"tiglon\", \"ティグロン\"]],\n  [\"kenwood\", \"KENWOOD\", [\"kenwood\", \"ケンウッド\"]],\n  [\"trio\", \"TRIO\", [\"trio\", \"トリオ\"]],\n  [\n    \"ibasso-audio\",\n''',
-          )
-          replace(
-              "src/catalog/manufacturers.ts",
-              'function fallbackId(key: string): string {\n  const ascii = key.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");\n',
-              'function fallbackId(key: string): string {\n  if (!key) return "";\n  const ascii = key.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");\n',
-          )
-
-          replace(
-              "src/catalog/manufacturer-resolver.ts",
-              '  manufacturerPrefixPattern,\n  normalizeManufacturerKey,\n',
-              '  isManufacturerPlaceholder,\n  manufacturerPrefixPattern,\n  normalizeManufacturerKey,\n',
-          )
-          replace(
-              "src/catalog/manufacturer-resolver.ts",
-              'export const MANUFACTURER_RESOLVER_VERSION = 5;\n',
-              'export const MANUFACTURER_RESOLVER_VERSION = 6;\n',
-          )
-          replace(
-              "src/catalog/manufacturer-resolver.ts",
-              '''  const raw = clean(rawManufacturer);\n  const normalizedRaw = normalizeManufacturerKey(raw);\n  const candidate = clean(manufacturerCandidate);\n  const normalizedCandidate = normalizeManufacturerKey(candidate);\n\n  if (normalizedRaw) {\n''',
-              '''  const raw = clean(rawManufacturer);\n  const candidate = clean(manufacturerCandidate);\n  if (isManufacturerPlaceholder(raw) || isManufacturerPlaceholder(candidate)) {\n    return {\n      canonicalManufacturerId: \"\",\n      displayName: \"\",\n      normalizedRawManufacturer: \"\",\n      status: \"unresolved\",\n      method: \"none\",\n      confidence: \"none\",\n      matchedAlias: false,\n      candidateManufacturerIds: [],\n    };\n  }\n  const normalizedRaw = normalizeManufacturerKey(raw);\n  const normalizedCandidate = normalizeManufacturerKey(candidate);\n\n  if (normalizedRaw) {\n''',
-          )
-
-          # N-3: manufacturer_id is the stable public filter id; canonical id remains verified-only.
-          replace(
-              "src/catalog/product-normalizer.ts",
-              'import { normalizeManufacturerKey } from "./manufacturers.js";\n',
-              'import { manufacturerIdForFilter, normalizeManufacturerKey } from "./manufacturers.js";\n',
-          )
-          replace(
-              "src/catalog/product-normalizer.ts",
-              '      manufacturerId: manufacturer.canonicalManufacturerId,\n',
-              '      manufacturerId: manufacturerIdForFilter(manufacturer.displayName || rawManufacturer),\n',
-          )
-          replace(
-              "src/db/product-write-repository.ts",
-              '''    manufacturerId: existing.manufacturer_id || manufacturerIdForFilter(existing.manufacturer),\n    canonicalManufacturerId: existing.canonical_manufacturer_id ?? existing.manufacturer_id ?? \"\",\n    manufacturerResolutionStatus:\n      existing.manufacturer_resolution_status ||\n      (existing.manufacturer_id ? \"resolved\" : \"unresolved\"),\n    manufacturerResolutionMethod:\n      existing.manufacturer_resolution_method ||\n      (existing.manufacturer_id ? \"bootstrap_alias\" : \"none\"),\n    manufacturerResolutionConfidence:\n      existing.manufacturer_resolution_confidence || (existing.manufacturer_id ? \"high\" : \"none\"),\n''',
-              '''    manufacturerId: manufacturerIdForFilter(existing.manufacturer),\n    canonicalManufacturerId:\n      existing.manufacturer_resolution_status === \"resolved\"\n        ? existing.canonical_manufacturer_id || manufacturerIdForFilter(existing.manufacturer)\n        : \"\",\n    manufacturerResolutionStatus:\n      existing.manufacturer_resolution_status ||\n      (existing.canonical_manufacturer_id ? \"resolved\" : \"unresolved\"),\n    manufacturerResolutionMethod:\n      existing.manufacturer_resolution_method ||\n      (existing.canonical_manufacturer_id ? \"bootstrap_alias\" : \"none\"),\n    manufacturerResolutionConfidence:\n      existing.manufacturer_resolution_confidence ||\n      (existing.canonical_manufacturer_id ? \"high\" : \"none\"),\n''',
-          )
-          replace(
-              "src/db/manufacturer-repository.ts",
-              'import { normalizeManufacturerKey } from "../catalog/manufacturers.js";\n',
-              'import { manufacturerIdForFilter, normalizeManufacturerKey } from "../catalog/manufacturers.js";\n',
-          )
-          replace(
-              "src/db/manufacturer-repository.ts",
-              '''    row.manufacturer !== (next.displayName || row.manufacturer) ||\n    row.manufacturer_id !== (next.canonicalManufacturerId || row.manufacturer_id)\n''',
-              '''    row.manufacturer !== (next.displayName || row.manufacturer) ||\n    row.manufacturer_id !==\n      manufacturerIdForFilter(next.displayName || row.manufacturer || row.raw_manufacturer)\n''',
-          )
-          replace(
-              "src/db/manufacturer-repository.ts",
-              '''    const model = modelResolver({\n      rawModel: row.raw_model,\n      title: row.title,\n      manufacturerId: resolution.canonicalManufacturerId,\n    });\n    const manufacturerMoved = manufacturerResolutionMoved(row, resolution);\n''',
-              '''    const model = modelResolver({\n      rawModel: row.raw_model,\n      title: row.title,\n      manufacturerId: resolution.canonicalManufacturerId,\n    });\n    const manufacturerFilterId = manufacturerIdForFilter(\n      resolution.displayName || row.manufacturer || row.raw_manufacturer,\n    );\n    const manufacturerMoved = manufacturerResolutionMoved(row, resolution);\n''',
-          )
-          replace(
-              "src/db/manufacturer-repository.ts",
-              '''          resolution.displayName || row.manufacturer,\n          resolution.canonicalManufacturerId || row.manufacturer_id,\n          resolution.normalizedRawManufacturer,\n''',
-              '''          resolution.displayName || row.manufacturer,\n          manufacturerFilterId,\n          resolution.normalizedRawManufacturer,\n''',
-          )
-
-          # N-5: strip only terminal product-type annotations; retain edition/accessory residue guards.
-          replace(
-              "src/catalog/model-resolver.ts",
-              'export const MODEL_RESOLVER_VERSION = 5;\n',
-              'export const MODEL_RESOLVER_VERSION = 6;\n',
-          )
-          replace(
-              "src/catalog/model-resolver.ts",
-              '''  {\n    name: \"shipping\",\n    pattern: /\\s*(?:※\\s*)?送料無料\\s*$/gu,\n  },\n  {\n    // Some seller list pages append both a Japanese product-type label and a Japanese brand\n''',
-              '''  {\n    name: \"shipping\",\n    pattern: /\\s*(?:※\\s*)?送料無料\\s*$/gu,\n  },\n  {\n    name: \"product_type_suffix\",\n    pattern:\n      /\\s+(?:プリメインアンプ|インテグレーテッドアンプ|パワーアンプ|プリアンプ|コントロールアンプ|AVアンプ|ヘッドホンアンプ|フォノイコライザー|レコードプレーヤー|ターンテーブル|CDプレーヤー|SACD(?:\\/CD)?プレーヤー|CDトランスポート|SACDトランスポート|ネットワークプレーヤー|ネットワークプレイヤー|ネットワークトランスポート|D\\/Aコンバータ(?:ー)?|DAコンバータ(?:ー)?|サブウーファー|スピーカー|ヘッドホン|イヤホン|トーンアーム|カートリッジ|昇圧トランス|チューナー|イコライザー)\\s*$/gu,\n  },\n  {\n    // Some seller list pages append both a Japanese product-type label and a Japanese brand\n''',
-          )
-
-          # Record the remediation and the N-3 contract clarification in the audit document.
-          replace(
-              "docs/data-quality-remediation.md",
-              '## 5. 商品名・型番の表記ゆれと製品同定\n\n',
-              '''## 5. 商品名・型番の表記ゆれと製品同定\n\n> **対応（2026-08-22）**: N-1〜N-5 を実装し、N-6 は既知の衝突ケースとして回帰テストに固定しました。\n> N-3 の本文には「未解決なら `manufacturer_id` を空にする」という記述がありますが、N-2 と §6 の\n> 公開フィルタ契約と矛盾するため、実装は **`manufacturer_id` = 決定的な公開フィルタ ID、\n> `canonical_manufacturer_id` = verified alias のみ** に統一しています。プレースホルダー値だけは N-4 に従い\n> 両方を空にします。resolver version を更新し、既存行は bounded replay の対象に戻します。\n\n''',
-          )
-
-          Path("migrations/0042_remediate_product_identity_section5.sql").write_text('''-- Data-quality remediation §5: product naming/model identity.\n-- Seller evidence (raw_manufacturer/raw_model) remains immutable; derived fields are replayed.\n\n-- N-1: Hifido's record/CD box-set department is outside HiFiScout's hardware scope.\nUPDATE products\nSET is_active = 0,\n    last_changed_at = CURRENT_TIMESTAMP\nWHERE is_active = 1\n  AND shop_key = 'hifido'\n  AND (\n    source_id LIKE '26-20368-%'\n    OR title LIKE '%枚セット%'\n    OR title LIKE '%枚組%'\n  );\n\n-- N-4: remove meaningless seller placeholders from public manufacturer presentation/filtering.\nUPDATE products\nSET manufacturer = '',\n    manufacturer_id = '',\n    canonical_manufacturer_id = '',\n    normalized_raw_manufacturer = '',\n    manufacturer_resolution_status = 'unresolved',\n    manufacturer_resolution_method = 'none',\n    manufacturer_resolution_confidence = 'none',\n    remediation_projection_required = 1\nWHERE is_active = 1\n  AND (\n    TRIM(manufacturer) IN ('不明', 'メーカー不明', 'その他', 'ノーブランド', '不明 フメイ')\n    OR TRIM(raw_manufacturer) IN ('不明', 'メーカー不明', 'その他', 'ノーブランド', '不明 フメイ')\n    OR TRIM(manufacturer) LIKE '不明 %'\n    OR TRIM(raw_manufacturer) LIKE '不明 %'\n  );\n\n-- N-2/N-3/N-5: aliases and resolver semantics changed. Re-enter the existing bounded replay path\n-- instead of rewriting derived IDs/models in SQL. Manufacturer replay also re-runs Model Resolution.\nUPDATE products\nSET manufacturer_resolver_version = 0\nWHERE is_active = 1;\n''')
-
-          Path("test/data-quality-section5.test.ts").write_text('''import test from \"node:test\";\nimport assert from \"node:assert/strict\";\n\nimport { resolveManufacturer } from \"../src/catalog/manufacturer-resolver.js\";\nimport {\n  manufacturerIdForFilter,\n  normalizeManufacturer,\n  normalizeManufacturerKey,\n} from \"../src/catalog/manufacturers.js\";\nimport { resolveModel } from \"../src/catalog/model-resolver.js\";\nimport { normalizeIdentityModel, resolveProductIdentity } from \"../src/catalog/product-identity.js\";\nimport { normalizeCatalogProduct } from \"../src/catalog/product-normalizer.js\";\nimport { parseHifidoListing } from \"../src/crawler/shops/hifido.js\";\nimport { parsedProduct } from \"./helpers/fixtures.js\";\n\ntest(\"section 5 N-1 excludes Hifido music software by department and title\", () => {\n  const item = (sourceId: string, title: string) => `\n    <div class=\"list-item\">\n      <h3><a id=\"type-${sourceId}\" href=\"/${sourceId}.html\">${title}</a></h3>\n      <div>メーカー:SONY ソニー</div>\n      <div>売価:2,500円(税込)</div>\n      <div id=\"genre-${sourceId}\">その他オーディオ機器</div>\n    </div>`;\n  const products = parseHifidoListing(\n    item(\"26-20368-12345-00\", \"アマデウス弦楽四重奏団5枚セット\") +\n      item(\"26-50000-12345-00\", \"クラシック名演集 6枚組\") +\n      item(\"26-50001-12345-00\", \"TA-DA9000ES\"),\n  );\n  assert.deepEqual(products.map((product) => product.sourceId), [\"26-50001-12345-00\"]);\n});\n\ntest(\"section 5 N-2 resolves the audited high-volume manufacturer spellings\", () => {\n  const cases: readonly [string, string][] = [\n    [\"AIRBOW\", \"airbow\"],\n    [\"Astell&Kern\", \"astell-kern\"],\n    [\"FIIO\", \"fiio\"],\n    [\"Cayin\", \"cayin\"],\n    [\"HiByMusic\", \"hiby\"],\n    [\"Campfire Audio\", \"campfire-audio\"],\n    [\"Unique Melody\", \"unique-melody\"],\n    [\"audioquest\", \"audioquest\"],\n    [\"TIGLON\", \"tiglon\"],\n    [\"KENWOOD\", \"kenwood\"],\n    [\"TRIO\", \"trio\"],\n  ];\n  for (const [raw, expectedId] of cases) {\n    assert.equal(resolveManufacturer({ rawManufacturer: raw }).canonicalManufacturerId, expectedId);\n    assert.equal(normalizeManufacturer(raw).id, expectedId);\n    assert.equal(manufacturerIdForFilter(raw), expectedId);\n  }\n});\n\ntest(\"section 5 N-3 keeps unresolved public manufacturer ids deterministic\", () => {\n  const first = normalizeCatalogProduct(\n    parsedProduct({\n      title: \"Mystery Brand X-1\",\n      manufacturer: \"Mystery Brand\",\n      rawManufacturer: \"Mystery Brand\",\n      model: \"X-1\",\n    }),\n  );\n  const second = normalizeCatalogProduct(\n    parsedProduct({\n      title: \"Mystery Brand X-1\",\n      manufacturer: \"Mystery Brand\",\n      rawManufacturer: \"Mystery Brand\",\n      model: \"X-1\",\n    }),\n  );\n  assert.equal(first.manufacturerResolutionStatus, \"unresolved\");\n  assert.equal(first.manufacturerId, manufacturerIdForFilter(\"Mystery Brand\"));\n  assert.equal(first.manufacturerId, second.manufacturerId);\n});\n\ntest(\"section 5 N-4 rejects placeholder manufacturers without title inference\", () => {\n  for (const placeholder of [\"不明\", \"不明 フメイ\", \"不明 ナガオカ\", \"メーカー不明\", \"その他\", \"ノーブランド\"]) {\n    assert.equal(normalizeManufacturerKey(placeholder), \"\");\n    assert.equal(manufacturerIdForFilter(placeholder), \"\");\n    const resolution = resolveManufacturer({\n      rawManufacturer: placeholder,\n      manufacturerCandidate: placeholder,\n      title: \"SONY HAP-Z1ES\",\n    });\n    assert.equal(resolution.canonicalManufacturerId, \"\");\n    assert.equal(resolution.displayName, \"\");\n  }\n});\n\ntest(\"section 5 N-5 strips only terminal Japanese product-type annotations\", () => {\n  for (const [rawModel, expected] of [\n    [\"No5302 パワーアンプ\", \"No5302\"],\n    [\"C-2800 プリアンプ\", \"C-2800\"],\n    [\"GT-2000 ターンテーブル\", \"GT-2000\"],\n    [\"KC62 サブウーファー\", \"KC62\"],\n  ] as const) {\n    const result = resolveModel({ rawModel, manufacturerId: \"mark-levinson\" });\n    assert.equal(result.status, \"resolved\");\n    assert.equal(result.model, expected);\n    assert.ok(result.removedAnnotations.includes(\"product_type_suffix\"));\n  }\n\n  assert.equal(\n    resolveModel({ rawModel: \"D-1000 MK2 特別仕様\", manufacturerId: \"luxman\" }).status,\n    \"candidate\",\n  );\n  assert.equal(\n    resolveModel({ rawModel: \"GT-2000ダストカバー\", manufacturerId: \"yamaha\" }).status,\n    \"candidate\",\n  );\n});\n\ntest(\"section 5 N-6 preserves the known punctuation collision as ambiguous\", () => {\n  assert.equal(normalizeIdentityModel(\"SLH-7-550-BL\"), normalizeIdentityModel(\"SLH-7-550B-L\"));\n  const resolution = resolveProductIdentity(\n    {\n      manufacturerId: \"sony\",\n      model: \"SLH-7-550-BL\",\n      modelResolutionStatus: \"resolved\",\n    },\n    [\n      { id: 1, manufacturerId: \"sony\", canonicalModel: \"SLH-7-550-BL\" },\n      { id: 2, manufacturerId: \"sony\", canonicalModel: \"SLH-7-550B-L\" },\n    ],\n  );\n  assert.equal(resolution.status, \"unresolved\");\n  assert.equal(resolution.matchMethod, \"exact_ambiguous\");\n});\n''')
-          PY
-          git fetch --no-tags origin main
-          git checkout origin/main -- .github/workflows/autofix.yml
-      - name: Verify once
-        run: npm run verify
-      - name: Commit remediation
+          git fetch --no-tags origin "${{ github.event.pull_request.base.ref }}"
+          mapfile -t files < <(git diff --name-only --diff-filter=ACMR "origin/${{ github.event.pull_request.base.ref }}...HEAD" -- '*.js' '*.mjs' '*.cjs' '*.jsx' '*.ts' '*.mts' '*.cts' '*.tsx')
+          if ((${#files[@]} == 0)); then
+            echo "No changed JavaScript/TypeScript source files to format."
+            exit 0
+          fi
+          npx oxfmt "${files[@]}"
+      - name: Commit formatting changes
         shell: bash
         run: |
           set -euo pipefail
           if git diff --quiet; then
-            echo "No remediation changes to commit."
+            echo "No formatting changes required."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "fix: address data quality remediation section 5"
+          git add -u
+          git commit -m "style: apply oxfmt"
           git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
