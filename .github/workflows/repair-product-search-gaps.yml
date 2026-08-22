@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   repair-and-rerun:
+    # The repair command itself refuses to rerun a deployment when no projection gap existed.
     if: github.event.workflow_run.conclusion == 'failure'
     runs-on: ubuntu-latest
     timeout-minutes: 10
