@@ -5,7 +5,7 @@ export interface ShopFilterOption {
 }
 
 /**
- * Japanese readings used only to order the shop search filter.
+ * Japanese gojuon readings used only to order the shop search filter.
  *
  * Display names intentionally stay unchanged. Keep this map exhaustive: the unit test compares it
  * with the registered shop plugins so a newly added shop cannot silently fall back to Latin or
