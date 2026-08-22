@@ -162,7 +162,7 @@ export async function handleAuthenticatedAdminEntryRequest(
   }
 
   if (request.method === "GET" && url.pathname === "/") {
-    return adminAsset(env, assetRequest(request, "/"));
+    return adminAsset(env, assetRequest(request, "/index.html"));
   }
   if (request.method === "GET" && CONSOLE_ASSET_PATHS.has(url.pathname)) {
     return adminAsset(env, request);

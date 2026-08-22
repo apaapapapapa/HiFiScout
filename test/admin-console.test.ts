@@ -42,8 +42,13 @@ test("admin root serves the single unified console entrypoint", async () => {
   );
 
   assert.equal(response.status, 200);
-  assert.deepEqual(seenPaths, ["/"]);
+  assert.deepEqual(seenPaths, ["/index.html"]);
   assertAdminSecurityHeaders(response);
+});
+
+test("admin assets disable Cloudflare HTML canonical redirects", () => {
+  const config = readFileSync(new URL("../wrangler.admin.jsonc", import.meta.url), "utf8");
+  assert.match(config, /"html_handling"\s*:\s*"none"/u);
 });
 
 test("legacy clean admin page URLs are retired", async () => {
