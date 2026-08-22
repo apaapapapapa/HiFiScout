@@ -1,4 +1,5 @@
 import { categoryIdForClassification, categoryIdForFilter } from "../catalog/categories.js";
+import { manufacturerIdForFilter } from "../catalog/manufacturers.js";
 import { isRecord } from "../types.js";
 
 export type KnowledgeCatalogLifecycleStatus = "unknown" | "active" | "discontinued";
@@ -15,6 +16,16 @@ export interface KnowledgeCatalogAdminUpdateInput {
   canonicalName: string;
   lifecycleStatus: KnowledgeCatalogLifecycleStatus;
   primaryCategoryId: string;
+}
+
+export interface KnowledgeCatalogAdminCreateInput extends KnowledgeCatalogAdminUpdateInput {
+  manufacturerId: string;
+  canonicalModel: string;
+  sourceUrl: string;
+}
+
+export interface KnowledgeCatalogAdminMergeInput {
+  sourceProductId: number;
 }
 
 const DEFAULT_LIMIT = 50;
@@ -71,30 +82,69 @@ function bodyText(value: unknown, maxLength: number): string {
   return typeof value === "string" && value.trim().length <= maxLength ? value.trim() : "";
 }
 
+function lifecycleStatus(value: unknown): KnowledgeCatalogLifecycleStatus | null {
+  return value === "unknown" || value === "active" || value === "discontinued" ? value : null;
+}
+
+function primaryCategory(value: unknown): string {
+  const raw = bodyText(value, 100);
+  return raw ? categoryIdForClassification(raw) || "" : "";
+}
+
+function sourceUrl(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") return "";
+  const text = bodyText(value, 1000);
+  if (!text) return null;
+  try {
+    const parsed = new URL(text);
+    return parsed.protocol === "https:" || parsed.protocol === "http:" ? parsed.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 export function parseKnowledgeCatalogAdminUpdate(
   value: unknown,
 ): KnowledgeCatalogAdminUpdateInput | null {
   if (!isRecord(value)) return null;
 
   const canonicalName = bodyText(value.canonicalName, 300);
-  const primaryCategoryValue = bodyText(value.primaryCategoryId, 100);
-  const primaryCategoryId = primaryCategoryValue
-    ? categoryIdForClassification(primaryCategoryValue)
-    : null;
-  const lifecycleStatus = value.lifecycleStatus;
-
-  if (!canonicalName || !primaryCategoryId) return null;
-  if (
-    lifecycleStatus !== "unknown" &&
-    lifecycleStatus !== "active" &&
-    lifecycleStatus !== "discontinued"
-  ) {
-    return null;
-  }
+  const primaryCategoryId = primaryCategory(value.primaryCategoryId);
+  const lifecycle = lifecycleStatus(value.lifecycleStatus);
+  if (!canonicalName || !primaryCategoryId || !lifecycle) return null;
 
   return {
     canonicalName,
-    lifecycleStatus,
+    lifecycleStatus: lifecycle,
     primaryCategoryId,
   };
+}
+
+export function parseKnowledgeCatalogAdminCreate(
+  value: unknown,
+): KnowledgeCatalogAdminCreateInput | null {
+  if (!isRecord(value)) return null;
+  const update = parseKnowledgeCatalogAdminUpdate(value);
+  if (!update) return null;
+
+  const rawManufacturer = bodyText(value.manufacturerId, 100);
+  const manufacturerId = manufacturerIdForFilter(rawManufacturer);
+  const canonicalModel = bodyText(value.canonicalModel, 200);
+  const verifiedSourceUrl = sourceUrl(value.sourceUrl);
+  if (!rawManufacturer || !manufacturerId || !canonicalModel || verifiedSourceUrl === null) return null;
+
+  return {
+    ...update,
+    manufacturerId,
+    canonicalModel,
+    sourceUrl: verifiedSourceUrl,
+  };
+}
+
+export function parseKnowledgeCatalogAdminMerge(
+  value: unknown,
+): KnowledgeCatalogAdminMergeInput | null {
+  if (!isRecord(value)) return null;
+  const sourceProductId = Number(value.sourceProductId);
+  return Number.isSafeInteger(sourceProductId) && sourceProductId > 0 ? { sourceProductId } : null;
 }
