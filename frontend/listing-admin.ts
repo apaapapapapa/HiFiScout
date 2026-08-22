@@ -156,9 +156,9 @@ async function adminJson<T>(path: string, init: RequestInit = {}): Promise<T> {
 function hasActiveFilters(): boolean {
   return Boolean(
     queryInput.value.trim() ||
-      shopKeyInput.value.trim() ||
-      categoryFilter.value ||
-      scopeFilter.value !== "active",
+    shopKeyInput.value.trim() ||
+    categoryFilter.value ||
+    scopeFilter.value !== "active",
   );
 }
 
@@ -320,7 +320,8 @@ function renderRow(product: ListingProduct): HTMLTableRowElement {
     "override-badge",
   );
   badge.dataset.active = labels.length ? "true" : "false";
-  if (product.overrides.updatedAt) badge.title = `最終補正: ${dateText(product.overrides.updatedAt)}`;
+  if (product.overrides.updatedAt)
+    badge.title = `最終補正: ${dateText(product.overrides.updatedAt)}`;
   tr.appendChild(overrideCell);
 
   const actionCell = cell();
