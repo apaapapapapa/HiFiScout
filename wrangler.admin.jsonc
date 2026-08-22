@@ -10,7 +10,8 @@
   "assets": {
     "directory": "./admin-public",
     "binding": "ADMIN_ASSETS",
-    "run_worker_first": true
+    "run_worker_first": true,
+    "html_handling": "none"
   },
   "services": [
     {
