@@ -21,6 +21,23 @@
       <p id="status-message" class="status-message" role="status" aria-live="polite"></p>
 
       <section id="catalog-controls" hidden>
+        <section class="panel export-panel" aria-labelledby="product-audit-heading">
+          <div>
+            <p class="eyebrow">AI DATA AUDIT</p>
+            <h2 id="product-audit-heading">登録商品をCSVで診断</h2>
+            <p>
+              店舗ごとの生データ、正規化済みメーカー・型番、カテゴリ、Product Identity、検索上の同一製品グループを1行1listingで出力します。CSVをAIに渡して、重複表示・カテゴリ誤り・メーカー/型番の正規化漏れを確認できます。
+            </p>
+          </div>
+          <div class="export-actions">
+            <a class="button-link" href="/api/admin/products/export.csv">掲載中商品CSV</a>
+            <a class="button-link secondary-button" href="/api/admin/products/export.csv?scope=all">全履歴CSV</a>
+          </div>
+          <p class="export-note">
+            通常の品質確認には「掲載中商品CSV」を推奨します。「全履歴CSV」には販売終了・非掲載の商品も含まれます。
+          </p>
+        </section>
+
         <form id="catalog-search-form" class="panel search-grid">
           <label>
             <span>検索</span>

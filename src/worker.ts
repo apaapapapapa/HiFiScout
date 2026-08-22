@@ -1,11 +1,17 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 
 import worker from "./index.js";
-import type { CatalogAdminListOptions, CatalogAdminUpdateInput } from "./admin/contracts.js";
+import type {
+  CatalogAdminListOptions,
+  CatalogAdminProductExportOptions,
+  CatalogAdminProductExportPage,
+  CatalogAdminUpdateInput,
+} from "./admin/contracts.js";
 import {
   listKnowledgeCatalogAdminProducts,
   updateKnowledgeCatalogAdminProduct,
 } from "./db/knowledge-catalog-admin-repository.js";
+import { listProductAuditExportPage } from "./db/product-audit-export-repository.js";
 
 /**
  * Internal Catalog Admin capability. Cloudflare exposes this class only through the named Service
@@ -18,6 +24,12 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> {
 
   async updateProduct(productId: number, input: CatalogAdminUpdateInput) {
     return updateKnowledgeCatalogAdminProduct(this.env.DB, productId, input);
+  }
+
+  async exportProductAuditPage(
+    options: CatalogAdminProductExportOptions,
+  ): Promise<CatalogAdminProductExportPage> {
+    return listProductAuditExportPage(this.env.DB, options);
   }
 }
 
