@@ -46,7 +46,10 @@ function decodeHtmlEntity(entity: string): string {
   const match = normalized.match(/^&#(x[0-9a-f]+|\d+);$/i);
   if (!match) return entity;
   const raw = match[1];
-  const codePoint = Number.parseInt(raw.startsWith("x") ? raw.slice(1) : raw, raw.startsWith("x") ? 16 : 10);
+  const codePoint = Number.parseInt(
+    raw.startsWith("x") ? raw.slice(1) : raw,
+    raw.startsWith("x") ? 16 : 10,
+  );
   if (
     !Number.isInteger(codePoint) ||
     codePoint <= 0 ||
