@@ -38,7 +38,8 @@ const AUDIO_CATEGORIES: readonly AvacCategory[] = Object.freeze([
 
 const USED_MARKER_PATTERN = /[〖【]\s*中古\s*[〗】]/u;
 const PRODUCT_CODE_PATTERN = /[〖【]\s*コード\s*([^〗】]+?)\s*[〗】]/u;
-const SOLD_PATTERN = /この商品は完売しました|完売|売り切れ|売切れ|在庫なし|品切れ|販売終了|売約済(?:み)?/u;
+const SOLD_PATTERN =
+  /この商品は完売しました|完売|売り切れ|売切れ|在庫なし|品切れ|販売終了|売約済(?:み)?/u;
 const IN_STOCK_PATTERN = /カートに入れる|[〖【]\s*中古用\s*[〗】]|数量/u;
 
 function listingPage(category: AvacCategory, page = 1): AvacPage {
@@ -163,10 +164,7 @@ function stockStatus(text: string) {
   });
 }
 
-export function parseAvacListing(
-  html: string,
-  page: Partial<AvacPage> = {},
-): SellerProduct[] {
+export function parseAvacListing(html: string, page: Partial<AvacPage> = {}): SellerProduct[] {
   const records = productAnchorRecords(html);
   const products: SellerProduct[] = [];
 
@@ -204,10 +202,7 @@ export function parseAvacListing(
   return products;
 }
 
-export function discoverAvacPageUrls(
-  html: string,
-  page: Partial<AvacPage>,
-): AvacPage[] {
+export function discoverAvacPageUrls(html: string, page: Partial<AvacPage>): AvacPage[] {
   if (!page.categoryId || !page.rawCategory) return [];
   const currentPage = page.page || 1;
   let maxPage = currentPage;

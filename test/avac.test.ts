@@ -89,12 +89,15 @@ test("AVAC pagination stays inside the current used category", () => {
   <a href="/buy/used/products/list?category_id=3007&pageno=20&sale_type=1">wrong sale type</a>
   <a href="https://example.com/buy/used/products/list?category_id=3007&pageno=99&sale_type=2">external</a>`;
 
-  assert.deepEqual(discoverAvacPageUrls(html, audioPage), [2, 3, 4, 5].map((page) => ({
-    url: `https://www.avac.co.jp/buy/used/products/list?category_id=3007&pageno=${page}&sale_type=2`,
-    page,
-    categoryId: 3007,
-    rawCategory: "中古 -AUDIO製品(全商品)-",
-  })));
+  assert.deepEqual(
+    discoverAvacPageUrls(html, audioPage),
+    [2, 3, 4, 5].map((page) => ({
+      url: `https://www.avac.co.jp/buy/used/products/list?category_id=3007&pageno=${page}&sale_type=2`,
+      page,
+      categoryId: 3007,
+      rawCategory: "中古 -AUDIO製品(全商品)-",
+    })),
+  );
 });
 
 test("AVAC adapter covers audio plus the HiFi-relevant VISUAL leaves", () => {
