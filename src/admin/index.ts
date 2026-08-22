@@ -1,6 +1,14 @@
 import { canonicalCategoryDefinitions, getCategory } from "../catalog/categories.js";
 import type { CategoryDefinition } from "../catalog/types.js";
-import type { CatalogAdminRpc } from "./contracts.js";
+import type {
+  CatalogAdminProductExportScope,
+  CatalogAdminRpc,
+} from "./contracts.js";
+import {
+  PRODUCT_AUDIT_CSV_BOM,
+  productAuditCsvHeader,
+  productAuditCsvRow,
+} from "./product-audit-csv.js";
 import {
   parseKnowledgeCatalogAdminListQuery,
   parseKnowledgeCatalogAdminUpdate,
@@ -15,7 +23,9 @@ interface CatalogAdminEnv {
 }
 
 const COLLECTION_PATH = "/api/admin/knowledge-catalog/products";
+const PRODUCT_EXPORT_PATH = "/api/admin/products/export.csv";
 const PRODUCT_PATH = /^\/api\/admin\/knowledge-catalog\/products\/(\d{1,15})$/;
+const PRODUCT_EXPORT_PAGE_SIZE = 500;
 const ADMIN_ASSET_PATHS = new Set([
   "/catalog-admin.html",
   "/catalog-admin.css",
@@ -59,6 +69,18 @@ function json(value: unknown, init: ResponseInit = {}): Response {
   headers.set("content-type", "application/json; charset=utf-8");
   headers.set("cache-control", "no-store");
   return withCatalogAdminSecurityHeaders(new Response(JSON.stringify(value), { ...init, headers }));
+}
+
+function csv(value: string, filename: string): Response {
+  return withCatalogAdminSecurityHeaders(
+    new Response(value, {
+      headers: {
+        "content-type": "text/csv; charset=utf-8",
+        "content-disposition": `attachment; filename="${filename}"`,
+        "cache-control": "no-store",
+      },
+    }),
+  );
 }
 
 async function readJsonBody(request: Request): Promise<unknown> {
@@ -118,6 +140,33 @@ async function adminAsset(env: CatalogAdminEnv, request: Request): Promise<Respo
   return withCatalogAdminSecurityHeaders(await env.ADMIN_ASSETS.fetch(request));
 }
 
+function productExportScope(url: URL): CatalogAdminProductExportScope | null {
+  const value = url.searchParams.get("scope") || "active";
+  return value === "active" || value === "all" ? value : null;
+}
+
+async function productAuditCsv(
+  env: CatalogAdminEnv,
+  scope: CatalogAdminProductExportScope,
+): Promise<Response> {
+  const lines = [`${PRODUCT_AUDIT_CSV_BOM}${productAuditCsvHeader()}`];
+  let afterId = 0;
+  for (;;) {
+    const page = await env.CATALOG_ADMIN.exportProductAuditPage({
+      scope,
+      afterId,
+      limit: PRODUCT_EXPORT_PAGE_SIZE,
+    });
+    for (const item of page.items) lines.push(productAuditCsvRow(item));
+    if (page.nextAfterId === null) break;
+    if (page.nextAfterId <= afterId) throw new Error("catalog_admin_export_cursor_did_not_advance");
+    afterId = page.nextAfterId;
+  }
+
+  const date = new Date().toISOString().slice(0, 10);
+  return csv(`${lines.join("\r\n")}\r\n`, `hifiscout-product-audit-${scope}-${date}.csv`);
+}
+
 export async function handleAuthenticatedCatalogAdminRequest(
   request: Request,
   env: CatalogAdminEnv,
@@ -126,6 +175,11 @@ export async function handleAuthenticatedCatalogAdminRequest(
 
   if (request.method === "GET" && url.pathname === "/api/meta") {
     return json({ categoryFacets: categoryFacets() });
+  }
+  if (request.method === "GET" && url.pathname === PRODUCT_EXPORT_PATH) {
+    const scope = productExportScope(url);
+    if (!scope) return json({ error: "invalid_product_export_scope" }, { status: 400 });
+    return productAuditCsv(env, scope);
   }
   if (request.method === "GET" && url.pathname === COLLECTION_PATH) {
     const options = parseKnowledgeCatalogAdminListQuery(url);
