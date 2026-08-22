@@ -87,9 +87,9 @@ export async function markShopFailure(
  *
  * A queued reservation is deliberately not time-expired here. Replacing an old token while its
  * message is still waiting moves that shop to the tail of the queue and can starve it indefinitely.
- * Queue retry/DLQ handling owns recovery instead; the scheduler only creates a new child job after
- * the previous reservation has been released. `leaseMinutes` remains in the signature for rollout
- * compatibility with callers/config and is intentionally ignored.
+ * The scheduler may re-send the *same* stable child after a quiet recovery window, while Queue
+ * retry/DLQ handling still owns normal delivery recovery. `leaseMinutes` remains in the signature
+ * for rollout compatibility with callers/config and is intentionally ignored here.
  */
 export async function reserveShopDispatch(
   db: QueryableDatabase,
@@ -101,17 +101,44 @@ export async function reserveShopDispatch(
   const dispatchToken = crawlDispatchToken(shopKey, queuedAt);
   const result = await db
     .prepare(`
-      INSERT INTO shop_sync_state (shop_key, queued_at, queued_token)
-      VALUES (?, ?, ?)
+      INSERT INTO shop_sync_state (shop_key, queued_at, queued_token, queued_last_sent_at)
+      VALUES (?, ?, ?, ?)
       ON CONFLICT(shop_key) DO UPDATE SET
         queued_at = excluded.queued_at,
-        queued_token = excluded.queued_token
+        queued_token = excluded.queued_token,
+        queued_last_sent_at = excluded.queued_last_sent_at
       WHERE shop_sync_state.queued_at IS NULL
         AND (shop_sync_state.crawl_lease_until IS NULL OR shop_sync_state.crawl_lease_until <= ?)
     `)
-    .bind(shopKey, queuedAt, dispatchToken, queuedAt)
+    .bind(shopKey, queuedAt, dispatchToken, queuedAt, queuedAt)
     .run();
   return changes(result) > 0 ? dispatchToken : null;
+}
+
+/**
+ * Records that the same logical child was handed to Queue again.
+ *
+ * Compare-and-update keeps a late recovery send from touching a newer reservation. The legacy
+ * predicate covers queue messages that were created before queued_token existed.
+ */
+export async function markShopDispatchSent(
+  db: QueryableDatabase,
+  shopKey: string,
+  dispatchToken: string,
+  sentAt: string,
+): Promise<void> {
+  await db
+    .prepare(`
+      UPDATE shop_sync_state
+      SET queued_last_sent_at = ?
+      WHERE shop_key = ?
+        AND (
+          queued_token = ?
+          OR (queued_token IS NULL AND ? = shop_key || ':' || queued_at)
+        )
+    `)
+    .bind(sentAt, shopKey, dispatchToken, dispatchToken)
+    .run();
 }
 
 /** Releases only the dispatch reservation owned by this message. */
@@ -123,10 +150,14 @@ export async function releaseShopDispatch(
   await db
     .prepare(`
       UPDATE shop_sync_state
-      SET queued_at = NULL, queued_token = NULL
-      WHERE shop_key = ? AND queued_token = ?
+      SET queued_at = NULL, queued_token = NULL, queued_last_sent_at = NULL
+      WHERE shop_key = ?
+        AND (
+          queued_token = ?
+          OR (queued_token IS NULL AND ? = shop_key || ':' || queued_at)
+        )
     `)
-    .bind(shopKey, dispatchToken)
+    .bind(shopKey, dispatchToken, dispatchToken)
     .run();
 }
 
@@ -191,7 +222,7 @@ export async function releaseShopCrawl(
   await db
     .prepare(`
       UPDATE shop_sync_state
-      SET queued_at = NULL, queued_token = NULL
+      SET queued_at = NULL, queued_token = NULL, queued_last_sent_at = NULL
       WHERE shop_key = ?
         AND (
           queued_token = ?
@@ -210,17 +241,21 @@ export async function markShopQueued(
 ): Promise<void> {
   await db
     .prepare(`
-    INSERT INTO shop_sync_state (shop_key, queued_at) VALUES (?, ?)
-    ON CONFLICT(shop_key) DO UPDATE SET queued_at = excluded.queued_at
+    INSERT INTO shop_sync_state (shop_key, queued_at, queued_last_sent_at) VALUES (?, ?, ?)
+    ON CONFLICT(shop_key) DO UPDATE SET
+      queued_at = excluded.queued_at,
+      queued_last_sent_at = excluded.queued_last_sent_at
   `)
-    .bind(shopKey, queuedAt)
+    .bind(shopKey, queuedAt, queuedAt)
     .run();
 }
 
 /** Administrative/legacy clear; normal queue processing uses token-checked release functions. */
 export async function clearShopQueued(db: QueryableDatabase, shopKey: string): Promise<void> {
   await db
-    .prepare("UPDATE shop_sync_state SET queued_at = NULL, queued_token = NULL WHERE shop_key = ?")
+    .prepare(
+      "UPDATE shop_sync_state SET queued_at = NULL, queued_token = NULL, queued_last_sent_at = NULL WHERE shop_key = ?",
+    )
     .bind(shopKey)
     .run();
 }
