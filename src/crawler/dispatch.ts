@@ -160,11 +160,7 @@ function logBatchDispatch(
   );
 }
 
-function recoveryDue(
-  state: ShopCrawlLeaseState,
-  now: Date,
-  recoveryMinutes: number,
-): boolean {
+function recoveryDue(state: ShopCrawlLeaseState, now: Date, recoveryMinutes: number): boolean {
   if (!state.queued_at) return false;
   const requestedAtMs = new Date(state.queued_at).getTime();
   if (!Number.isFinite(requestedAtMs)) return false;
@@ -193,7 +189,10 @@ function recoveryDue(
  */
 export async function recoverStalledCrawlDispatches(
   env: RuntimeEnv,
-  { now = new Date(), recoveryMinutes = getCrawlerSettings(env).dispatchLeaseMinutes }: RecoveryOptions = {},
+  {
+    now = new Date(),
+    recoveryMinutes = getCrawlerSettings(env).dispatchLeaseMinutes,
+  }: RecoveryOptions = {},
 ): Promise<string[]> {
   const recovered: string[] = [];
   const states = (await listShopStates(env.DB)) as ShopCrawlLeaseState[];
