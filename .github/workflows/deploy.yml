@@ -74,6 +74,21 @@ jobs:
           rm -f "$tarball"
       - name: Apply backward-compatible D1 migrations
         run: npx wrangler d1 migrations apply DB --remote
+      - name: Provision crawl queues
+        shell: bash
+        run: |
+          set -euo pipefail
+          for queue in \
+            hifiscout-crawl hifiscout-crawl-dlq \
+            hifiscout-crawl-fast hifiscout-crawl-fast-dlq \
+            hifiscout-crawl-heavy hifiscout-crawl-heavy-dlq \
+            hifiscout-crawl-relay hifiscout-crawl-relay-dlq; do
+            if npx wrangler queues info "$queue" >/dev/null 2>&1; then
+              echo "Queue already exists: $queue"
+            else
+              npx wrangler queues create "$queue"
+            fi
+          done
       - name: Provision Knowledge Catalog queues
         shell: bash
         run: |
