@@ -1,14 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { relativeTime, safeDate } from "../frontend/format.js";
+import { syncShopRows } from "../frontend/product-view.js";
+import type { MetaShop } from "../src/api/contracts.js";
 
-test("missing sync timestamps are not interpreted as the Unix epoch", () => {
-  assert.equal(safeDate(null), null);
-  assert.equal(relativeTime(null, Date.parse("2026-08-23T00:00:00.000Z")), "未取得");
-});
+test("a shop with no successful sync renders unavailable instead of an epoch age", () => {
+  const shop = {
+    key: "audio-space-core",
+    name: "オーディオスペースコア",
+    enabled: true,
+    health: {
+      status: "warning",
+      lastSuccessAt: null,
+    },
+    sync: {
+      last_success_at: null,
+    },
+  } as unknown as MetaShop;
 
-test("invalid sync timestamps stay unavailable", () => {
-  assert.equal(safeDate("not-a-date"), null);
-  assert.equal(relativeTime("not-a-date", Date.parse("2026-08-23T00:00:00.000Z")), "未取得");
+  const markup = syncShopRows([shop], Date.parse("2026-08-23T00:00:00.000Z"));
+
+  assert.match(markup, /未取得/u);
+  assert.doesNotMatch(markup, /日前/u);
 });
