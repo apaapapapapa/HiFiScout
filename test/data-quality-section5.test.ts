@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
-import { resolveManufacturer } from "../src/catalog/manufacturer-resolver.js";
+import {
+  MANUFACTURER_RESOLVER_VERSION,
+  resolveManufacturer,
+} from "../src/catalog/manufacturer-resolver.js";
 import {
   manufacturerIdForFilter,
   normalizeManufacturer,
@@ -12,6 +16,21 @@ import { normalizeIdentityModel, resolveProductIdentity } from "../src/catalog/p
 import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
 import { parseHifidoListing } from "../src/crawler/shops/hifido.js";
 import { parsedProduct } from "./helpers/fixtures.js";
+
+test("section 5 migration requeues manufacturer replay with a valid stale version", () => {
+  const migration = readFileSync(
+    new URL("../migrations/0042_remediate_product_identity_section5.sql", import.meta.url),
+    "utf8",
+  );
+  const match = migration.match(/SET manufacturer_resolver_version = (\d+)/u);
+  assert.ok(match, "section 5 migration must set a replay-eligible manufacturer resolver version");
+  const replayVersion = Number(match[1]);
+  assert.ok(replayVersion > 0, "products schema requires manufacturer_resolver_version > 0");
+  assert.ok(
+    replayVersion < MANUFACTURER_RESOLVER_VERSION,
+    "section 5 migration must leave active listings stale for bounded replay",
+  );
+});
 
 test("section 5 N-1 excludes Hifido music software by department and title", () => {
   const item = (sourceId: string, title: string) => `
