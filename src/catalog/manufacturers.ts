@@ -60,6 +60,11 @@ const MANUFACTURER_SOURCE: readonly ManufacturerSourceEntry[] = [
     "CAMELOT TECHNOLOGY",
     ["camelot", "camelot technology", "キャメロットテクノロジー"],
   ],
+  [
+    "organic-audio",
+    "Organic Audio",
+    ["organic", "organic audio", "オーガニックオーディオ", "オーガニック・オーディオ"],
+  ],
   ["lumin", "LUMIN", ["lumin"]],
   ["aurender", "Aurender", ["aurender", "オーレンダー"]],
   ["soulnote", "SOULNOTE", ["soulnote", "ソウルノート"]],
