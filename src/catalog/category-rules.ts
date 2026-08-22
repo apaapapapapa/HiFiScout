@@ -179,13 +179,13 @@ const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
   ["other", /\bsound\s*bars?\b|サウンドバー/i],
   [
     "btw_earphone",
-    /(?:bluetooth|wireless|true\s+wireless|\btws\b).*?(?:earphones?|earbuds?|\biem\b)|(?:earphones?|earbuds?|\biem\b).*?(?:bluetooth|wireless|true\s+wireless|\btws\b)|(?:bluetooth|ワイヤレス|完全ワイヤレス).*?イヤホン|イヤホン.*?(?:bluetooth|ワイヤレス|完全ワイヤレス)/i,
+    /(?:bluetooth|wireless|true\s+wireless|\btws\b).*?(?:earphones?|earbuds?|\biem\b)|(?:earphones?|earbuds?|\biem\b).*?(?:bluetooth|wireless|true\s+wireless|\btws\b)|(?:bluetooth|ワイヤレス|完全ワイヤレス).*?イヤホン|イヤホン.*?(?:bluetooth|ワイヤレス|完全ワイヤレス)|\bearbuds?\b|\bwf-\d|\btour\s+pro\b|\bopen(?:fit|dots|run)\w*\b|\bairpods\b(?!\s*max)|\blinkbuds\b|\bfreebuds\b|quietcomfort.*\bearbuds?\b/i,
   ],
   [
     "btw_headphone",
-    /(?:bluetooth|wireless).*?headphones?|headphones?.*?(?:bluetooth|wireless)|(?:bluetooth|ワイヤレス).*?ヘッドホン|ヘッドホン.*?(?:bluetooth|ワイヤレス)/i,
+    /(?:bluetooth|wireless).*?headphones?|headphones?.*?(?:bluetooth|wireless)|(?:bluetooth|ワイヤレス).*?ヘッドホン|ヘッドホン.*?(?:bluetooth|ワイヤレス)|\bwh-\d{4}|\bwi-\d|quietcomfort\s+(?:ultra\s+)?headphones|\bpx[78]\b|\bmomentum\s+\d+\s+wireless\b|\bairpods\s+max\b/i,
   ],
-  ["wired_earphone", /\bearphones?\b|\bearbuds?\b|\biem\b|イヤホン/i],
+  ["wired_earphone", /\bearphones?\b|\biem\b|イヤホン/i],
   ["wired_headphone", /\bheadphones?\b|ヘッドホン/i],
   ["dj_dtm", /\bdj\b|\bddj[-\s]|rekordbox|serato|\bmidi\b|オーディオインターフェース/i],
   [

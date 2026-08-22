@@ -18,8 +18,17 @@ const PRODUCT_LINK_RE =
   /<a\b[^>]*href\s*=\s*["']([^"']*\/(\d{2}-\d{5}-\d{5}-\d{2})\.html[^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi;
 const ANCHOR_RE = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
 const DIV_CLASS_RE = /<div\b[^>]*class\s*=\s*["']([^"']*)["'][^>]*>/gi;
-const CATEGORY_RE =
-  /(スピーカーアクセサリー|スピーカー(?:（[^）]+）)?|コントロールアンプ(?:（[^）]+）)?|プリアンプ(?:（[^）]+）)?|プリメインアンプ(?:（[^）]+）)?|パワーアンプ(?:（[^）]+）)?|AVアンプ|ヘッドホンアンプ|レコードプレーヤー|CDトランスポート|SACDトランスポート|CDプレーヤー|SACD(?:\/CD)?プレーヤー|D\/Aコンバータ(?:ー)?|DAコンバータ(?:ー)?|ネットワークプレーヤー|ネットワークプレイヤー|ネットワークトランスポート|トーンアーム|カートリッジ|昇圧トランス|フォノイコライザー|ヘッドホン|イヤホン|ケーブル|アクセサリー|インシュレータ(?:ー)?|真空管|ラック|その他オーディオ機器)/i;
+const CATEGORY_NAMES =
+  "スピーカーアクセサリー|スピーカー|コントロールアンプ|プリアンプ|プリメインアンプ|パワーアンプ|AVアンプ|ヘッドホンアンプ|レコードプレーヤー|CDトランスポート|SACDトランスポート|CDプレーヤー|SACD(?:\\/CD)?プレーヤー|D\\/Aコンバータ(?:ー)?|DAコンバータ(?:ー)?|ネットワークプレーヤー|ネットワークプレイヤー|ネットワークトランスポート|トーンアーム|カートリッジ|昇圧トランス|フォノイコライザー|ヘッドホン|イヤホン|ケーブル|アクセサリー|インシュレータ(?:ー)?|真空管|ラック|その他オーディオ機器";
+const CATEGORY_VALUE_RE = new RegExp(`^(${CATEGORY_NAMES})(?:（[^）]+）)?$`, "i");
+const CATEGORY_LABEL_RE = new RegExp(
+  `(?:ジャンル|カテゴリ)\\s*[:：]\\s*(${CATEGORY_NAMES})(?:（[^）]+）)?`,
+  "i",
+);
+const LEGACY_PRICE_CATEGORY_RE = new RegExp(
+  `売価(?:\\([^)]*\\))?\\s*[:：]\\s*[¥￥]?\\s*[0-9０-９][0-9０-９,，]*\\s*円?(?:\\s*\\([^)]*\\))?\\s*(${CATEGORY_NAMES})(?:（[^）]+）)?(?=\\s+(?:在庫|注文|売約|商談|20\\d{2}-\\d{1,2}-\\d{1,2}\\s*入荷)|\\s*$)`,
+  "i",
+);
 const PAGE_SIZE = 30;
 const DEFAULT_RECHECK_MAX_PAGE = 120;
 
@@ -119,6 +128,47 @@ function sourcePublishedAt(text: string): string | null {
   return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
 }
 
+function normalizeHifidoCategory(value = ""): string {
+  return cleanText(value).match(CATEGORY_VALUE_RE)?.[1]?.trim() || "";
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Hifido list items contain product descriptions as well as the seller genre. Scanning the whole
+ * block for the first category-looking word makes a sentence about a cartridge, rack or cable look
+ * like seller metadata. Prefer the rendered `genre-<sourceId>` field, then explicit labels. Older
+ * snapshots are supported only when the category is structurally adjacent to the price/status row
+ * or occupies an exact standalone field; arbitrary prose never becomes seller metadata.
+ */
+function categoryFromBlock(block: string, sourceId: string): string {
+  const escapedSourceId = escapeRegExp(sourceId);
+  const genreHtml =
+    block.match(
+      new RegExp(
+        `<div\\b[^>]*\\bid\\s*=\\s*["']genre-${escapedSourceId}["'][^>]*>([\\s\\S]*?)<\\/div>`,
+        "i",
+      ),
+    )?.[1] || "";
+  const genreCategory = normalizeHifidoCategory(genreHtml);
+  if (genreCategory) return genreCategory;
+
+  const text = htmlToText(block);
+  const labeledCategory = text.match(CATEGORY_LABEL_RE)?.[1]?.trim() || "";
+  if (labeledCategory) return labeledCategory;
+
+  const legacyPriceCategory = text.match(LEGACY_PRICE_CATEGORY_RE)?.[1]?.trim() || "";
+  if (legacyPriceCategory) return legacyPriceCategory;
+
+  for (const match of block.matchAll(/<(p|li|td)\b[^>]*>([\s\S]*?)<\/\1>/gi)) {
+    const standaloneCategory = normalizeHifidoCategory(match[2]);
+    if (standaloneCategory) return standaloneCategory;
+  }
+  return "";
+}
+
 function parseProductBlock(block: string, link: HifidoProductLink): SellerProduct | null {
   const text = htmlToText(block);
   const title = cleanText(link.title);
@@ -134,8 +184,7 @@ function parseProductBlock(block: string, link: HifidoProductLink): SellerProduc
   const manufacturerRaw =
     text.match(/メーカー\s*[:：]\s*(.+?)(?=\s+(?:定価|売価)\s*[:：])/i)?.[1] || "";
   const manufacturer = canonicalManufacturer(manufacturerRaw);
-  const categoryRaw = text.match(CATEGORY_RE)?.[1] || "";
-  const rawCategory = categoryRaw ? categoryRaw.replace(/（[^）]+）/g, "").trim() : "";
+  const rawCategory = categoryFromBlock(block, link.sourceId);
   const category = rawCategory || inferCategory(title);
   const inferred = inferStockStatus(text);
   const ordered = /(?:^|\s)注文(?:\s|$)/.test(text);
