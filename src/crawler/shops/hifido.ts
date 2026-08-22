@@ -1,5 +1,7 @@
-import { cleanText, inferCategory, inferStockStatus, parseYen } from "../normalize.js";
+import { collectListingCategoryEvidence } from "../../catalog/category-evidence.js";
+import type { CategoryEvidenceInput, NormalizedCatalogProduct } from "../../catalog/types.js";
 import { availabilityFromSignals } from "../availability.js";
+import { cleanText, inferCategory, inferStockStatus, parseYen } from "../normalize.js";
 import type { CrawlerEnv, SellerProduct, ShopAdapter } from "../types.js";
 
 interface HifidoProductLink {
@@ -81,6 +83,15 @@ export const HIFIDO_CATEGORY_MAPPING = Object.freeze({
   その他オーディオ機器: "other",
 });
 
+export const HIFIDO_CATEGORY_POLICY = Object.freeze({
+  sellerCategory: Object.freeze({ default: "authoritative" as const }),
+  parserHint: "corroborative" as const,
+  enrichment: Object.freeze({
+    maxRequestsPerCrawl: 10,
+    cacheHours: 168,
+  }),
+});
+
 function canonicalManufacturer(value = ""): string {
   const text = cleanText(value);
   const japaneseIndex = text.search(/[ぁ-んァ-ヶ一-龯]/);
@@ -146,6 +157,52 @@ function normalizeHifidoCategory(value = ""): string {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Detail pages expose the listing source id immediately before the seller category, followed by
+ * country/store/arrival metadata. Only that compact header segment is eligible as detail evidence.
+ * Category-looking words in descriptions, navigation and URL attributes are deliberately ignored.
+ */
+function detailSellerCategory(html: string, sourceId: string): string {
+  if (!sourceId) return "";
+  const sanitized = String(html || "")
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, " ");
+  const escapedSourceId = escapeRegExp(sourceId);
+  const markerRe = new RegExp(`>\\s*(?:&nbsp;\\s*)*${escapedSourceId}(?:\\s*&nbsp;)*\\s*<`, "gi");
+  for (const match of sanitized.matchAll(markerRe)) {
+    const start = (match.index ?? 0) + match[0].length;
+    const visible = htmlToText(sanitized.slice(start, start + 1800)).slice(0, 320);
+    const boundary = visible.search(
+      /(?:^|\s)(?:日本|20\d{2}-\d{1,2}-\d{1,2}(?:\s+\d{1,2}:\d{2}:\d{2})?入荷)(?:\s|$)/u,
+    );
+    const header = cleanText(boundary >= 0 ? visible.slice(0, boundary) : visible.slice(0, 120));
+    const category =
+      header.match(new RegExp(`(?:^|\\s)(${CATEGORY_NAMES})(?:（[^）]+）)?(?=\\s|$)`, "i"))?.[1] ||
+      "";
+    const normalized = normalizeHifidoCategory(category);
+    if (normalized) return normalized;
+  }
+  return "";
+}
+
+export function extractHifidoDetailCategoryEvidence(
+  html: string,
+  product: Partial<Pick<NormalizedCatalogProduct, "sourceId">> = {},
+): CategoryEvidenceInput[] {
+  const rawCategory = detailSellerCategory(html, cleanText(product.sourceId || ""));
+  if (!rawCategory) return [];
+  const evidence = collectListingCategoryEvidence({
+    rawCategory,
+    categoryMapping: HIFIDO_CATEGORY_MAPPING,
+    categoryPolicy: HIFIDO_CATEGORY_POLICY,
+  }).evidence.filter((item) => item.source === "seller_category");
+  return evidence.map((item) => ({
+    ...item,
+    source: "detail_metadata",
+    value: rawCategory,
+  }));
 }
 
 /**

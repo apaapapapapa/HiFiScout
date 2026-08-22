@@ -4,6 +4,7 @@ import {
 } from "../catalog/category-classifier.js";
 import { collectListingCategoryEvidence } from "../catalog/category-evidence.js";
 import { createManufacturerResolver } from "../catalog/manufacturer-resolver.js";
+import { manufacturerIdForFilter } from "../catalog/manufacturers.js";
 import { createModelResolver } from "../catalog/model-resolver.js";
 import { inferFeatureFacts } from "../catalog/product-features.js";
 import { RESOLUTION_VERSIONS } from "../catalog/resolution-versions.js";
@@ -235,6 +236,9 @@ async function replayDerivedListing(
     manufacturerCandidate: row.raw_manufacturer ? row.manufacturer : "",
     title: row.title,
   });
+  const manufacturerFilterId = manufacturerIdForFilter(
+    manufacturer.displayName || row.manufacturer || row.raw_manufacturer,
+  );
   const model = modelResolver({
     rawModel: row.raw_model,
     title: row.title,
@@ -342,7 +346,7 @@ async function replayDerivedListing(
     .bind(
       manufacturer.displayName,
       manufacturer.normalizedRawManufacturer,
-      manufacturer.canonicalManufacturerId,
+      manufacturerFilterId,
       manufacturer.canonicalManufacturerId,
       manufacturer.status,
       manufacturer.method,
@@ -364,7 +368,7 @@ async function replayDerivedListing(
       row.id,
       manufacturer.displayName,
       manufacturer.normalizedRawManufacturer,
-      manufacturer.canonicalManufacturerId,
+      manufacturerFilterId,
       manufacturer.canonicalManufacturerId,
       manufacturer.status,
       manufacturer.method,
