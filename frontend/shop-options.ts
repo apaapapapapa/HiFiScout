@@ -26,6 +26,7 @@ export const SHOP_FILTER_READINGS: Readonly<Record<string, string>> = Object.fre
   hifido: "はいふぁいどう",
   formusic: "ふぉーみゅーじっく",
   "fujiya-avic": "ふじやえーびっく",
+  "home-shokai": "ほーむしょうかい",
   "u-audio": "ゆーおーでぃお",
   rewire: "りわいあー",
 });
