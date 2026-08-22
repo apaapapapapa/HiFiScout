@@ -170,10 +170,7 @@ function detailSellerCategory(html: string, sourceId: string): string {
     .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, " ")
     .replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, " ");
   const escapedSourceId = escapeRegExp(sourceId);
-  const markerRe = new RegExp(
-    `>\\s*(?:&nbsp;\\s*)*${escapedSourceId}(?:\\s*&nbsp;)*\\s*<`,
-    "gi",
-  );
+  const markerRe = new RegExp(`>\\s*(?:&nbsp;\\s*)*${escapedSourceId}(?:\\s*&nbsp;)*\\s*<`, "gi");
   for (const match of sanitized.matchAll(markerRe)) {
     const start = (match.index ?? 0) + match[0].length;
     const visible = htmlToText(sanitized.slice(start, start + 1800)).slice(0, 320);
