@@ -10,6 +10,8 @@ import { syncProductSearchProjections } from "./product-search-projection-reposi
 import type { QueryableDatabase } from "./types.js";
 
 export interface ReplayedListing {
+  /** Optional provenance identifier carried by admin/remediation callers; projection is source-scoped. */
+  id?: number;
   shop_key: string;
   source_id: string;
 }
