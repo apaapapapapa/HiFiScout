@@ -49,8 +49,7 @@ const DAP_ACCESSORY_GUARD =
 
 const DAP_MODEL_PATTERN = new RegExp(
   `${DAP_ACCESSORY_GUARD.source}[^]*?(?:${DAP_MODEL_FAMILIES.map(
-    ([brand, models]) =>
-      `(?:${brand.source})${DAP_BRAND_MODEL_GAP.source}(?:${models.source})`,
+    ([brand, models]) => `(?:${brand.source})${DAP_BRAND_MODEL_GAP.source}(?:${models.source})`,
   ).join("|")})`,
   "i",
 );
