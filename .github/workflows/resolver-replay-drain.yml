@@ -10,6 +10,7 @@ on:
 permissions:
   contents: read
   actions: write
+  statuses: write
 
 concurrency:
   group: production-resolver-replay-drain
@@ -115,6 +116,31 @@ jobs:
             .inactive_offer_memberships == 0 and
             .entities_without_offers == 0
           ' <<< "$row" >/dev/null
+
+      - name: Publish replay convergence status
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          if [[ "${{ steps.drain.outcome }}" != 'success' ]]; then
+            state='failure'
+            description='Resolver replay batch failed'
+          elif [[ "${{ steps.drain.outputs.complete }}" == 'true' ]]; then
+            state='success'
+            description='Resolver replay fully converged'
+          else
+            state='pending'
+            description="Resolver replay: ${{ steps.drain.outputs.remaining }} stale signals remain"
+          fi
+          gh api --method POST "/repos/${GITHUB_REPOSITORY}/statuses/${TARGET_SHA}" \
+            -f state="$state" \
+            -f context='data-quality/resolver-replay' \
+            -f description="$description" \
+            -f target_url="$run_url"
 
       - name: Continue replay or trigger full audit
         if: steps.drain.outcome == 'success'
