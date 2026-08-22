@@ -1,14 +1,43 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { syncShopRows } from "../frontend/product-view.js";
 import { SHOP_FILTER_READINGS, sortShopsByJapaneseReading } from "../frontend/shop-options.js";
+import type { MetaShop } from "../src/api/contracts.js";
 import { SHOP_PLUGINS } from "../src/crawler/shops/index.js";
+
+const GOJUON_KEYS = [
+  "avac",
+  "afroaudio",
+  "ippinkan",
+  "audiounion",
+  "osakaya",
+  "sound-support",
+  "soundpit",
+  "shimamusen",
+  "dynamic-audio",
+  "hifido",
+  "formusic",
+  "fujiya-avic",
+  "u-audio",
+] as const;
 
 function shop(key: string, name: string) {
   return { key, name };
 }
 
-test("shop search-filter readings cover every registered shop", () => {
+function metaShop(key: string, name: string): MetaShop {
+  return {
+    key,
+    name,
+    enabled: true,
+    intervalMinutes: 60,
+    sync: null,
+    health: null,
+  };
+}
+
+test("shop readings cover every registered shop", () => {
   assert.deepEqual(
     Object.keys(SHOP_FILTER_READINGS).sort(),
     SHOP_PLUGINS.map((plugin) => plugin.key).sort(),
@@ -20,21 +49,21 @@ test("shop search filter follows Japanese gojuon reading order", () => {
 
   assert.deepEqual(
     sortShopsByJapaneseReading(shops).map((entry) => entry.key),
-    [
-      "avac",
-      "afroaudio",
-      "ippinkan",
-      "audiounion",
-      "osakaya",
-      "sound-support",
-      "soundpit",
-      "shimamusen",
-      "dynamic-audio",
-      "hifido",
-      "formusic",
-      "fujiya-avic",
-      "u-audio",
-    ],
+    GOJUON_KEYS,
+  );
+});
+
+test("sync status details follows the same Japanese gojuon reading order", () => {
+  const shops = SHOP_PLUGINS.map((plugin) => metaShop(plugin.key, plugin.name));
+  const namesByKey = new Map(SHOP_PLUGINS.map((plugin) => [plugin.key, plugin.name]));
+  const markup = syncShopRows(shops, Date.UTC(2026, 7, 22, 0, 0, 0));
+  const renderedNames = [...markup.matchAll(/<span class="sync-shop-name">([^<]+)<\/span>/g)].map(
+    (match) => match[1],
+  );
+
+  assert.deepEqual(
+    renderedNames,
+    GOJUON_KEYS.map((key) => namesByKey.get(key)),
   );
 });
 
