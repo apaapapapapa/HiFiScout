@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { SHOP_DEFINITIONS, getShopMaxPages } from "../src/config.js";
 import {
+  HIFIDO_CATEGORY_POLICY,
+  extractHifidoDetailCategoryEvidence,
   hifidoAdapter,
   hifidoRecheckPage,
   parseHifidoListing,
@@ -79,6 +81,52 @@ test("Hifido parser handles rendered list-item markup with duplicate product lin
   assert.equal(product.category, "パワーアンプ");
   assert.equal(product.stockStatus, "in_stock");
   assert.equal(product.sourcePublishedAt, "2026-08-09T15:00:00.000Z");
+});
+
+// Mirrors the observed public product header ordering: source id -> seller category -> Japan -> shop/date.
+test("Hifido detail enrichment reads only seller metadata after the exact source id", () => {
+  const html = `
+    <main>
+      <div class="product-number">26-49399-07355-00</div>
+      <div class="genre">アクセサリー</div>
+      <div>日本</div>
+      <div>大須本店</div>
+      <div>2026-03-28 19:59:16入荷</div>
+      <p>説明文ではカートリッジやケーブルにも触れるが、分類根拠にはしない。</p>
+    </main>`;
+  assert.deepEqual(extractHifidoDetailCategoryEvidence(html, { sourceId: "26-49399-07355-00" }), [
+    {
+      categoryIds: ["other_accessory"],
+      source: "detail_metadata",
+      strength: "supporting",
+      value: "アクセサリー",
+    },
+  ]);
+  assert.equal(HIFIDO_CATEGORY_POLICY.enrichment.maxRequestsPerCrawl, 10);
+  assert.equal(
+    hifidoPlugin.capabilities.detailCategoryEvidence?.extract,
+    extractHifidoDetailCategoryEvidence,
+  );
+});
+
+test("Hifido detail enrichment never scans description or source-id attributes as category metadata", () => {
+  const proseOnly = `
+    <a href="/26-49399-07355-00.html">SRBN</a>
+    <p>このアクセサリーはスピーカーやカートリッジにも利用できます。</p>`;
+  assert.deepEqual(
+    extractHifidoDetailCategoryEvidence(proseOnly, { sourceId: "26-49399-07355-00" }),
+    [],
+  );
+
+  const lateDescription = `
+    <div>26-49399-07355-00</div>
+    <div>日本</div>
+    <div>大須本店</div>
+    <p>説明文: ケーブルとアクセサリーを組み合わせて利用できます。</p>`;
+  assert.deepEqual(
+    extractHifidoDetailCategoryEvidence(lateDescription, { sourceId: "26-49399-07355-00" }),
+    [],
+  );
 });
 
 test("Hifido keeps three recent pages and adds one rotating stale recheck page", () => {
