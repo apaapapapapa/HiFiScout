@@ -14,7 +14,9 @@ import {
 import { listProductAuditExportPage } from "../src/db/product-audit-export-repository.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 
-function exportRow(overrides: Partial<CatalogAdminProductExportRow> = {}): CatalogAdminProductExportRow {
+function exportRow(
+  overrides: Partial<CatalogAdminProductExportRow> = {},
+): CatalogAdminProductExportRow {
   return {
     listingId: 1,
     shopKey: "shop-a",

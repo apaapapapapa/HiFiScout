@@ -1,9 +1,6 @@
 import { canonicalCategoryDefinitions, getCategory } from "../catalog/categories.js";
 import type { CategoryDefinition } from "../catalog/types.js";
-import type {
-  CatalogAdminProductExportScope,
-  CatalogAdminRpc,
-} from "./contracts.js";
+import type { CatalogAdminProductExportScope, CatalogAdminRpc } from "./contracts.js";
 import {
   PRODUCT_AUDIT_CSV_BOM,
   productAuditCsvHeader,
