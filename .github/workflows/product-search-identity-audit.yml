@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 jobs:
   audit:
@@ -28,6 +29,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Audit product-level identity grouping
+        id: audit
         shell: bash
         run: |
           set -euo pipefail
@@ -122,3 +124,40 @@ jobs:
             LIMIT 30;")"
           echo 'Repeated unresolved model presentations for follow-up (diagnostic only):'
           jq . <<< "$candidates"
+          echo "repeated_group_count=$(jq 'length' <<< "$candidates")" >> "$GITHUB_OUTPUT"
+
+      - name: Report product identity audit status
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TARGET_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          AUDIT_OUTCOME: ${{ steps.audit.outcome }}
+          REPEATED_GROUPS: ${{ steps.audit.outputs.repeated_group_count }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$AUDIT_OUTCOME" == "success" ]]; then
+            state="success"
+            description="safe splits: 0; repeated unresolved groups: ${REPEATED_GROUPS:-0}"
+          else
+            state="failure"
+            description="product identity audit failed"
+          fi
+
+          payload="$(jq -nc \
+            --arg state "$state" \
+            --arg context "hifiscout/product-identity-audit" \
+            --arg description "$description" \
+            --arg target_url "$RUN_URL" \
+            '{state: $state, context: $context, description: $description, target_url: $target_url}')"
+
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${REPOSITORY}/statuses/${TARGET_SHA}" \
+            -d "$payload" >/dev/null
