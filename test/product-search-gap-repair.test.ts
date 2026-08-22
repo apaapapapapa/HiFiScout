@@ -193,3 +193,58 @@ test("repairs a stale fallback membership after Identity becomes catalog-matched
     0,
   );
 });
+
+test("repairs an unresolved listing assigned to another listing's fallback entity", async () => {
+  const { sqlite, db } = migratedSqlite();
+  const seedListingId = insertActiveListing(sqlite, "gap-fallback-seed");
+  const memberListingId = insertActiveListing(sqlite, "gap-fallback-member");
+
+  await repairActiveListingProjectionGaps(db, {
+    evaluatedAt: NOW,
+    batchSize: 5,
+    maxListings: 10,
+  });
+
+  const seedEntityId = Number(
+    sqlite
+      .prepare(
+        "SELECT entity_id FROM product_search_entity_offers WHERE listing_product_id = ?",
+      )
+      .get(seedListingId)?.entity_id || 0,
+  );
+  const memberEntityId = Number(
+    sqlite
+      .prepare(
+        "SELECT entity_id FROM product_search_entity_offers WHERE listing_product_id = ?",
+      )
+      .get(memberListingId)?.entity_id || 0,
+  );
+  assert.notEqual(seedEntityId, memberEntityId);
+
+  // Reproduce an older grouped-fallback read model: the second listing is unresolved but its offer
+  // incorrectly lives under the first listing's fallback entity.
+  sqlite
+    .prepare(
+      "UPDATE product_search_entity_offers SET entity_id = ? WHERE listing_product_id = ?",
+    )
+    .run(seedEntityId, memberListingId);
+  sqlite.prepare("DELETE FROM product_search_entities WHERE id = ?").run(memberEntityId);
+
+  const result = await repairActiveListingProjectionGaps(db, {
+    evaluatedAt: NOW,
+    batchSize: 5,
+    maxListings: 10,
+  });
+
+  assert.deepEqual(result, { selectedCount: 1, repairedCount: 1, remainingGapCount: 0 });
+  const memberEntity = sqlite
+    .prepare(`
+      SELECT e.entity_kind, e.fallback_listing_id
+      FROM product_search_entity_offers o
+      JOIN product_search_entities e ON e.id = o.entity_id
+      WHERE o.listing_product_id = ?
+    `)
+    .get(memberListingId);
+  assert.equal(memberEntity?.entity_kind, "unresolved_listing");
+  assert.equal(Number(memberEntity?.fallback_listing_id || 0), memberListingId);
+});
