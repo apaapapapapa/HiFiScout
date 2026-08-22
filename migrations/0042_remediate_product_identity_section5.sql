@@ -33,6 +33,7 @@ WHERE is_active = 1
 
 -- N-2/N-3/N-5: aliases and resolver semantics changed. Re-enter the existing bounded replay path
 -- instead of rewriting derived IDs/models in SQL. Manufacturer replay also re-runs Model Resolution.
+-- The replay recomputes deterministic public manufacturer_id values while canonical ids remain verified-only.
 UPDATE products
 SET manufacturer_resolver_version = 0
 WHERE is_active = 1;
