@@ -15,6 +15,10 @@ function argument(name: string, fallback: string): string {
   return value;
 }
 
+function hasFlag(name: string): boolean {
+  return process.argv.includes(name);
+}
+
 function positiveInteger(value: string, name: string): number {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed <= 0) {
@@ -38,5 +42,10 @@ console.log(JSON.stringify({ event: "product_search_projection_gap_repair", ...r
 if (result.remainingGapCount > 0) {
   throw new Error(
     `${result.remainingGapCount} active listing Product Search projection gaps remain after bounded repair`,
+  );
+}
+if (hasFlag("--require-repair") && result.repairedCount === 0) {
+  throw new Error(
+    "Deploy failed, but no active listing Product Search projection gap was found; refusing an unrelated automatic rerun",
   );
 }
