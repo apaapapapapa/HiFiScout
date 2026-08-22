@@ -18,6 +18,12 @@ export interface CatalogAdminUpdateInput {
   primaryCategoryId: string;
 }
 
+export interface CatalogAdminCreateInput extends CatalogAdminUpdateInput {
+  manufacturerId: string;
+  canonicalModel: string;
+  sourceUrl: string;
+}
+
 export type CatalogAdminProductExportScope = ProductAuditExportScope;
 
 /** One seller listing enriched with the identity/search state an AI needs for data-quality review. */
@@ -74,7 +80,11 @@ export interface CatalogAdminProductExportRow {
 
 export interface CatalogAdminRpc {
   listProducts(options: CatalogAdminListOptions): Promise<unknown>;
+  listCandidates(options: CatalogAdminListOptions): Promise<unknown>;
+  createProduct(input: CatalogAdminCreateInput): Promise<unknown>;
+  verifyCandidate(candidateId: number, input: CatalogAdminCreateInput): Promise<unknown>;
   updateProduct(productId: number, input: CatalogAdminUpdateInput): Promise<unknown>;
+  mergeProducts(targetProductId: number, sourceProductId: number): Promise<unknown>;
   startKnowledgeCatalogExport(): Promise<KnowledgeCatalogExportJob>;
   latestKnowledgeCatalogExportJob(): Promise<KnowledgeCatalogExportJob | null>;
   getKnowledgeCatalogExportJob(jobId: string): Promise<KnowledgeCatalogExportJob | null>;
