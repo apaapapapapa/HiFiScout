@@ -25,6 +25,10 @@ const CATEGORY_LABEL_RE = new RegExp(
   `(?:ジャンル|カテゴリ)\\s*[:：]\\s*(${CATEGORY_NAMES})(?:（[^）]+）)?`,
   "i",
 );
+const LEGACY_PRICE_CATEGORY_RE = new RegExp(
+  `売価(?:\\([^)]*\\))?\\s*[:：]\\s*[¥￥]?\\s*[0-9０-９][0-9０-９,，]*\\s*円?(?:\\s*\\([^)]*\\))?\\s*(${CATEGORY_NAMES})(?:（[^）]+）)?(?=\\s+(?:在庫|注文|売約|商談|20\\d{2}-\\d{1,2}-\\d{1,2}\\s*入荷)|\\s*$)`,
+  "i",
+);
 const PAGE_SIZE = 30;
 const DEFAULT_RECHECK_MAX_PAGE = 120;
 
@@ -135,8 +139,9 @@ function escapeRegExp(value: string): string {
 /**
  * Hifido list items contain product descriptions as well as the seller genre. Scanning the whole
  * block for the first category-looking word makes a sentence about a cartridge, rack or cable look
- * like seller metadata. Prefer the rendered `genre-<sourceId>` field, then explicit labels, and
- * retain only a narrow legacy fallback where a standalone field is itself exactly a category.
+ * like seller metadata. Prefer the rendered `genre-<sourceId>` field, then explicit labels. Older
+ * snapshots are supported only when the category is structurally adjacent to the price/status row
+ * or occupies an exact standalone field; arbitrary prose never becomes seller metadata.
  */
 function categoryFromBlock(block: string, sourceId: string): string {
   const escapedSourceId = escapeRegExp(sourceId);
@@ -153,6 +158,9 @@ function categoryFromBlock(block: string, sourceId: string): string {
   const text = htmlToText(block);
   const labeledCategory = text.match(CATEGORY_LABEL_RE)?.[1]?.trim() || "";
   if (labeledCategory) return labeledCategory;
+
+  const legacyPriceCategory = text.match(LEGACY_PRICE_CATEGORY_RE)?.[1]?.trim() || "";
+  if (legacyPriceCategory) return legacyPriceCategory;
 
   for (const match of block.matchAll(/<(p|li|td)\b[^>]*>([\s\S]*?)<\/\1>/gi)) {
     const standaloneCategory = normalizeHifidoCategory(match[2]);
