@@ -38,9 +38,12 @@
     {
       "name": "repositories-do-not-depend-on-orchestration",
       "severity": "error",
-      "comment": "Repositories are called by the crawler and the HTTP layer; depending back on either would make persistence unusable from a different entrypoint and invite cycles.",
+      "comment": "Repositories are called by the crawler and the HTTP layer; runtime dependencies back on either would make persistence unusable from a different entrypoint and invite cycles. Type-only contracts are erased by TypeScript and are allowed.",
       "from": { "path": "^src/db" },
-      "to": { "path": "^src/(crawler|http)/" }
+      "to": {
+        "path": "^src/(crawler|http)/",
+        "dependencyTypesNot": ["type-only"]
+      }
     },
     {
       "name": "crawler-does-not-know-about-catalog-verification",

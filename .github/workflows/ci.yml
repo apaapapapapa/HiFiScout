@@ -30,6 +30,8 @@ jobs:
       # unit tests. Keeping it as one script means CI and `npm run verify` cannot drift apart.
       - run: npm run check
       - run: npm run db:migrate:local
+      - name: Verify listing admin overrides survive crawler writes
+        run: npx tsx scripts/verify-listing-admin-overrides.ts
       - name: Verify D1 FTS search migration
         run: npx tsx scripts/verify-search-integration.ts
       - run: npm run build
