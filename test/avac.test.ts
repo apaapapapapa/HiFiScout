@@ -30,14 +30,24 @@ const listingHtml = `
   <button>カートに入れる</button>
 </div>
 <div class="product">
+  <a href="/buy/products/detail/50005">〖展示処分品〗DALI OBERON7(DW)〖コードW-OBERON7DW〗フロア型スピーカー（ペア）</a>
+  <p>￥106,000(税込)</p>
+  <button>カートに入れる</button>
+</div>
+<div class="product">
   <a href="/buy/products/detail/50003">※特価※〖中古〗ONKYO A-7VL-特〖コード22-100268〗プリメインアンプ</a>
   <p>￥49,800 (税込)</p>
   <button>カートに入れる</button>
+</div>
+<div class="product">
+  <a href="/buy/products/detail/50006">〖新品〗DENON PMA-1700NE〖コードNEW-001〗プリメインアンプ</a>
+  <p>￥198,000 (税込)</p>
+  <button>カートに入れる</button>
 </div>`;
 
-test("AVAC parser keeps explicit used stock and ignores outlet/display inventory", () => {
+test("AVAC parser includes used, outlet and display-disposal inventory", () => {
   const products = parseAvacListing(listingHtml, audioPage);
-  assert.equal(products.length, 2);
+  assert.equal(products.length, 4);
 
   assert.deepEqual(products[0], {
     sourceId: "50001",
@@ -57,11 +67,22 @@ test("AVAC parser keeps explicit used stock and ignores outlet/display inventory
     },
   });
 
-  assert.equal(products[1]?.sourceId, "50003");
-  assert.equal(products[1]?.title, "ONKYO A-7VL");
-  assert.equal(products[1]?.model, "A-7VL");
-  assert.equal(products[1]?.rawCategory, "プリメインアンプ");
-  assert.equal(products[1]?.category, "プリメインアンプ");
+  assert.equal(products[1]?.sourceId, "50002");
+  assert.equal(products[1]?.title, "KOJO Crystal EpL(1本)");
+  assert.equal(products[1]?.conditionText, "アウトレット");
+
+  assert.equal(products[2]?.sourceId, "50005");
+  assert.equal(products[2]?.title, "DALI OBERON7(DW)");
+  assert.equal(products[2]?.conditionText, "展示処分品");
+  assert.equal(products[2]?.rawCategory, "フロア型スピーカー（ペア）");
+  assert.equal(products[2]?.category, "スピーカー");
+
+  assert.equal(products[3]?.sourceId, "50003");
+  assert.equal(products[3]?.title, "ONKYO A-7VL");
+  assert.equal(products[3]?.model, "A-7VL");
+  assert.equal(products[3]?.rawCategory, "プリメインアンプ");
+  assert.equal(products[3]?.category, "プリメインアンプ");
+  assert.equal(products[3]?.conditionText, "中古");
 });
 
 test("AVAC parser preserves sold-out evidence and removes seller shipping suffixes", () => {
