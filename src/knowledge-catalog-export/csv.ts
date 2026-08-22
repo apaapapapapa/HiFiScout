@@ -4,11 +4,7 @@ import {
   knowledgeCatalogCsvRow,
 } from "../admin/knowledge-catalog-csv.js";
 import type { KnowledgeCatalogExportRow } from "../db/knowledge-catalog-export-repository.js";
-import {
-  CSV_EXPORT_MAX_CHUNKS,
-  csvChunkKey,
-  encodeCsvChunk,
-} from "../export/csv-chunks.js";
+import { CSV_EXPORT_MAX_CHUNKS, csvChunkKey, encodeCsvChunk } from "../export/csv-chunks.js";
 
 /** One small, predictable CPU slice per Queue delivery. */
 export const KNOWLEDGE_CATALOG_EXPORT_PAGE_SIZE = 100;

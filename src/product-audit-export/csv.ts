@@ -4,11 +4,7 @@ import {
   productAuditCsvRow,
 } from "../admin/product-audit-csv.js";
 import type { ProductAuditExportRow } from "../db/product-audit-export-repository.js";
-import {
-  CSV_EXPORT_MAX_CHUNKS,
-  csvChunkKey,
-  encodeCsvChunk,
-} from "../export/csv-chunks.js";
+import { CSV_EXPORT_MAX_CHUNKS, csvChunkKey, encodeCsvChunk } from "../export/csv-chunks.js";
 
 /** Deliberately small so each Queue delivery has a predictable, low CPU ceiling. */
 export const PRODUCT_AUDIT_EXPORT_PAGE_SIZE = 250;
