@@ -22,7 +22,12 @@ import {
   extractFujiyaDetailCategoryEvidence,
   fujiyaAvicAdapter,
 } from "./fujiya-avic.js";
-import { HIFIDO_CATEGORY_MAPPING, hifidoAdapter } from "./hifido.js";
+import {
+  HIFIDO_CATEGORY_MAPPING,
+  HIFIDO_CATEGORY_POLICY,
+  extractHifidoDetailCategoryEvidence,
+  hifidoAdapter,
+} from "./hifido.js";
 import {
   FORMUSIC_CATEGORY_MAPPING,
   FORMUSIC_CATEGORY_POLICY,
@@ -119,7 +124,11 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
     },
     {
       transport: { kind: "relay" },
-      catalog: { categoryMapping: HIFIDO_CATEGORY_MAPPING },
+      catalog: {
+        categoryMapping: HIFIDO_CATEGORY_MAPPING,
+        categoryPolicy: HIFIDO_CATEGORY_POLICY,
+      },
+      detailCategoryEvidence: { extract: extractHifidoDetailCategoryEvidence },
       activityPolicy: HIFIDO_ACTIVITY_POLICY,
     },
   ),
