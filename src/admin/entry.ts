@@ -27,6 +27,7 @@ const CONSOLE_ASSET_PATHS = new Set([
   "/admin-console.js",
   "/catalog-admin.css",
   "/catalog-admin.js",
+  "/hifiscout-mark.jpg",
   "/listing-admin.css",
   "/listing-admin.js",
 ]);
