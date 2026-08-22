@@ -1,5 +1,7 @@
 import type { RobotsGroup } from "./types.js";
 
+const ROBOTS_HTTP_TIMEOUT_MS = 15_000;
+
 function normalizePath(url: string): string {
   const parsed = new URL(url);
   return `${parsed.pathname}${parsed.search}` || "/";
@@ -79,7 +81,10 @@ export async function fetchRobotsPolicy(
   userAgent: string,
 ): Promise<string | null> {
   const robotsUrl = new URL("/robots.txt", baseUrl).toString();
-  const response = await fetchFn(robotsUrl, { headers: { "User-Agent": userAgent } });
+  const response = await fetchFn(robotsUrl, {
+    headers: { "User-Agent": userAgent },
+    signal: AbortSignal.timeout(ROBOTS_HTTP_TIMEOUT_MS),
+  });
   if (response.status === 429) throw new Error("robots.txt temporarily unavailable (429)");
   // RFC 9309 classifies 4xx responses as "unavailable": crawlers may access other resources.
   // A 403 for robots.txt alone is therefore not equivalent to an explicit Disallow rule.
