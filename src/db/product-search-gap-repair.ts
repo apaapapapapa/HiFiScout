@@ -1,3 +1,7 @@
+import {
+  productSearchEntityConsistency,
+  rebuildProductSearchEntities,
+} from "./product-search-entity-repository.js";
 import { refreshListingProjections } from "./listing-projection-refresh.js";
 import type { QueryableDatabase } from "./types.js";
 
@@ -17,6 +21,17 @@ export interface ProductSearchGapRepairResult {
   selectedCount: number;
   repairedCount: number;
   remainingGapCount: number;
+}
+
+type ProductSearchConsistency = Awaited<ReturnType<typeof productSearchEntityConsistency>>;
+type ProductSearchRebuildResult = Awaited<ReturnType<typeof rebuildProductSearchEntities>>;
+
+export interface ProductSearchProjectionRepairResult {
+  activeGapRepair: ProductSearchGapRepairResult;
+  consistencyBefore: ProductSearchConsistency;
+  rebuildResult: ProductSearchRebuildResult | null;
+  consistencyAfter: ProductSearchConsistency;
+  repaired: boolean;
 }
 
 const DEFAULT_BATCH_SIZE = 20;
@@ -163,5 +178,46 @@ export async function repairActiveListingProjectionGaps(
     selectedCount,
     repairedCount,
     remainingGapCount: await countActiveProjectionGaps(db),
+  };
+}
+
+/**
+ * Repairs every Product Search invariant used by the production deploy gate.
+ *
+ * Active listing gaps need the full listing projection chain because Product Identity may also be
+ * missing. Once those are repaired, any remaining drift belongs exclusively to the derived Product
+ * Search read model (inactive memberships, empty/stale entities, aggregate mismatches, or FTS
+ * integrity) and is repaired with the same deterministic global rebuild exposed by the admin API.
+ * The gate is never weakened: failure to converge after rebuilding is an error.
+ */
+export async function repairProductSearchProjection(
+  db: QueryableDatabase,
+  options: ProductSearchGapRepairOptions = {},
+): Promise<ProductSearchProjectionRepairResult> {
+  const activeGapRepair = await repairActiveListingProjectionGaps(db, options);
+  if (activeGapRepair.remainingGapCount > 0) {
+    throw new Error(
+      `${activeGapRepair.remainingGapCount} active listing Product Search projection gaps remain after bounded repair`,
+    );
+  }
+
+  const consistencyBefore = await productSearchEntityConsistency(db);
+  const rebuildResult = consistencyBefore.ok ? null : await rebuildProductSearchEntities(db);
+  const consistencyAfter = rebuildResult
+    ? await productSearchEntityConsistency(db)
+    : consistencyBefore;
+
+  if (!consistencyAfter.ok) {
+    throw new Error(
+      `Product Search projection did not converge after repair: ${JSON.stringify(consistencyAfter)}`,
+    );
+  }
+
+  return {
+    activeGapRepair,
+    consistencyBefore,
+    rebuildResult,
+    consistencyAfter,
+    repaired: activeGapRepair.repairedCount > 0 || rebuildResult !== null,
   };
 }
