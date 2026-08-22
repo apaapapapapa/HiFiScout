@@ -19,7 +19,7 @@ import type {
   ResolutionStatus,
 } from "./types.js";
 
-export const MODEL_RESOLVER_VERSION = 3;
+export const MODEL_RESOLVER_VERSION = 4;
 
 export type ModelResolver = (input: ModelResolutionInput) => ModelResolutionResult;
 type PreparedModelResolver = ReadonlyMap<string, readonly RegExp[]>;
@@ -75,6 +75,16 @@ const ANNOTATION_RULES: readonly AnnotationRule[] = [
     name: "presentation_color",
     pattern: /\s*[（(](?:B|S|BK|WH|W|K|N|ブラック|ホワイト|シルバー|黒|白|銀)[）)]\s*$/iu,
   },
+  {
+    // Some seller list pages append both a Japanese product-type label and a Japanese brand
+    // presentation to the actual model (for example `DP-570 CDデッキ アキュフェーズ` or
+    // `Fiber Box 2 JPSM 光絶縁ツール エディスクリエーション`). Require both pieces of
+    // presentation evidence: a bare category word such as Shimamusen's `ネットワークプレーヤー`
+    // stays a candidate instead of being silently deleted.
+    name: "seller_title_suffix",
+    pattern:
+      /\s+(?:光絶縁ツール|スイッチングハブ|CDデッキ|プリメインアンプ|パワーアンプ|プリアンプ|ターンテーブル|フォノイコライザー|ネットワークプレーヤー|スピーカー|ヘッドホン)\s+[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー・]+\s*$/giu,
+  },
 ];
 
 const UNCLASSIFIED_RULES: readonly AnnotationRule[] = [
@@ -87,6 +97,8 @@ const UNCLASSIFIED_RULES: readonly AnnotationRule[] = [
 ];
 
 const TITLE_MODEL_MAX_TOKENS = 3;
+const BRACKETED_ALIAS_MIN_COMMON_PREFIX = 12;
+const BRACKETED_ALIAS_MIN_COMMON_RATIO = 0.65;
 
 function clean(value: unknown = ""): string {
   return String(value).normalize("NFKC").replace(/\s+/g, " ").trim();
@@ -100,9 +112,53 @@ function tidy(value: string): string {
     .trim();
 }
 
+function commonPrefixLength(left: string, right: string): number {
+  const limit = Math.min(left.length, right.length);
+  let index = 0;
+  while (index < limit && left[index] === right[index]) index += 1;
+  return index;
+}
+
+/**
+ * Some retailers put their own long-form model first and the canonical market model in brackets,
+ * e.g. `SilentSwitch OCXO JPN STD [SILENT SWITCH OCXO JPSM]`.
+ *
+ * Brackets alone are never trusted. The bracketed value must be ASCII/model-shaped, must share a
+ * long majority prefix with the leading value, and must retain every recognized revision token.
+ * This lets an explicit alternate presentation converge without turning arbitrary bracket prose
+ * into identity evidence.
+ */
+function preferredBracketedModelAlias(value: string): StrippedModel {
+  const match = value.match(/^(.+?)\s+\[([A-Za-z0-9][A-Za-z0-9 ._+/-]{4,})\]\s*$/u);
+  if (!match) return { text: value, removed: [] };
+
+  const leading = tidy(match[1]);
+  const alias = tidy(match[2]);
+  const normalizedLeading = normalizeIdentityModel(leading);
+  const normalizedAlias = normalizeIdentityModel(alias);
+  const shorterLength = Math.min(normalizedLeading.length, normalizedAlias.length);
+  if (!shorterLength) return { text: value, removed: [] };
+
+  const common = commonPrefixLength(normalizedLeading, normalizedAlias);
+  if (
+    common < BRACKETED_ALIAS_MIN_COMMON_PREFIX ||
+    common / shorterLength < BRACKETED_ALIAS_MIN_COMMON_RATIO
+  ) {
+    return { text: value, removed: [] };
+  }
+
+  const sourceVariants = identityModelParts(value).variants;
+  const aliasVariants = identityModelParts(alias).variants;
+  if (!sourceVariants.every((variant) => aliasVariants.includes(variant))) {
+    return { text: value, removed: [] };
+  }
+  return { text: alias, removed: ["seller_model_alias"] };
+}
+
 function stripSellerAnnotations(value: string): StrippedModel {
-  const removed: string[] = [];
-  let text = value;
+  const preferred = preferredBracketedModelAlias(value);
+  const removed = [...preferred.removed];
+  let text = preferred.text;
   for (const rule of ANNOTATION_RULES) {
     const next = tidy(text.replace(rule.pattern, " "));
     if (!next || next === text) continue;

@@ -60,18 +60,19 @@ test("entity rows are written before the memberships that point at them", async 
     "membership-cleanup",
     "membership",
     "membership",
+    "membership",
     "refresh",
     "refresh",
     "prune",
   ]);
 });
 
-test("only a matched resolution against a verified catalog product may merge two shops", async () => {
+test("catalog grouping still requires a matched resolution against a verified product", async () => {
   const db = captureDatabase(syncResults());
   await syncProductSearchEntities(db, "hifido", ["source-1"]);
 
   const membership = writes(db).find((statement) =>
-    /INSERT INTO product_search_entity_offers[\s\S]*product_identity_resolutions/.test(
+    /INSERT INTO product_search_entity_offers[\s\S]*JOIN product_identity_resolutions r ON/.test(
       statement.sql,
     ),
   );
@@ -79,14 +80,14 @@ test("only a matched resolution against a verified catalog product may merge two
   assert.match(membership.sql, /r\.status = 'matched'/);
   assert.match(membership.sql, /kp\.verification_status = 'verified'/);
   assert.match(membership.sql, /p\.is_active = 1/);
-  // A candidate, a fuzzy suggestion or a model stem must never reach the grouping decision.
+  // Candidate catalog evidence and model stems must never reach either grouping decision.
   for (const statement of db.calls) {
     assert.doesNotMatch(statement.sql, /candidate_catalog_product_id/);
     assert.doesNotMatch(statement.sql, /model_stem/);
   }
 });
 
-test("an unresolved listing gets its own entity instead of being merged or dropped", async () => {
+test("an unresolved listing gets a fallback entity before any exact-peer refinement", async () => {
   const db = captureDatabase(syncResults());
   await syncProductSearchEntities(db, "hifido", ["source-1"]);
 
@@ -183,7 +184,7 @@ test("rebuild is idempotent by construction: every write converges on a unique k
   await rebuildProductSearchEntities(db);
 
   const upserts = writes(db).filter((statement) => /^\s*INSERT INTO/.test(statement.sql));
-  assert.equal(upserts.length, 4);
+  assert.equal(upserts.length, 5);
   for (const statement of upserts) {
     assert.match(statement.sql, /ON CONFLICT\((entity_key|listing_product_id)\) DO UPDATE SET/);
   }

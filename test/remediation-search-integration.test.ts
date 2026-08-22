@@ -14,10 +14,10 @@ import { productQuery } from "./helpers/product-query.js";
  *
  * The other search suites assert on generated SQL, which can only show that a repository emitted
  * the statement it was asked to emit. The transition this file covers is the one that is easy to
- * get wrong and impossible to see in SQL shape: a listing that was standing in for itself as an
- * `unresolved_listing` entity is confirmed against a newly verified Knowledge Catalog product, and
- * has to *leave* the entity it owned and join a shared one — without stranding the old entity,
- * without double-counting itself, and without dragging its sibling revision along with it.
+ * get wrong and impossible to see in SQL shape: resolved exact manufacturer/model peers share one
+ * unresolved fallback entity until a verified Knowledge Catalog product exists, then all confirmed
+ * listings have to *leave* that fallback and join the canonical entity — without stranding the old
+ * entity, without double-counting themselves, and without dragging a sibling revision along.
  *
  * Everything runs through {@link refreshListingProjections}, which is the same downstream path the
  * remediation sweep uses (`data-quality-remediation-service.ts`), against the real migrated schema.
@@ -102,8 +102,8 @@ function insertListing(sqlite: DatabaseSync, listing: Listing): number {
 /**
  * Adds a canonical product, which is what a Knowledge Catalog remediation ultimately does.
  *
- * `verificationStatus` is a parameter because the difference between a verified row and a pending
- * one is the difference between a merge and a candidate nobody approved.
+ * `verificationStatus` is a parameter because the difference between a verified row and a rejected
+ * one is the difference between a canonical entity and safe exact fallback grouping.
  */
 function catalogProduct(
   sqlite: DatabaseSync,
@@ -150,12 +150,7 @@ interface Fixture {
   readonly listingIds: Record<string, number>;
 }
 
-/**
- * Three listings, projected once with an empty Knowledge Catalog.
- *
- * This is deliberately the "before" state the remediation project set out to fix: identity resolves
- * nothing, so all three listings are searchable only as their own fallback entities.
- */
+/** Three listings projected initially with an empty Knowledge Catalog. */
 function arrangeUnresolved(): Fixture {
   const { sqlite, db } = migratedSqlite();
   const listingIds: Record<string, number> = {};
@@ -194,14 +189,15 @@ function membershipCount(sqlite: DatabaseSync, listingId: number): number {
   return Number(row?.count ?? -1);
 }
 
-test("a remediated listing leaves its fallback entity and joins the canonical product", async () => {
+test("exact unresolved peers share a fallback, then leave it for the canonical product", async () => {
   const { sqlite, db, listingIds } = arrangeUnresolved();
   await refreshEverything(db, LATEST);
 
-  const fallbackA = `l-${listingIds["shop-a"]}`;
-  const fallbackB = `l-${listingIds["shop-b"]}`;
-  assert.equal(entityKeyForListing(sqlite, listingIds["shop-a"]), fallbackA);
-  assert.equal(entityKeyForListing(sqlite, listingIds["shop-b"]), fallbackB);
+  const sharedFallback = `l-${listingIds["shop-a"]}`;
+  const supersededFallback = `l-${listingIds["shop-b"]}`;
+  assert.equal(entityKeyForListing(sqlite, listingIds["shop-a"]), sharedFallback);
+  assert.equal(entityKeyForListing(sqlite, listingIds["shop-b"]), sharedFallback);
+  assert.equal(entityExists(sqlite, supersededFallback), false);
 
   const catalogId = catalogProduct(sqlite, "D1000MK2");
   await refreshEverything(db, LATEST);
@@ -210,11 +206,11 @@ test("a remediated listing leaves its fallback entity and joins the canonical pr
   assert.equal(entityKeyForListing(sqlite, listingIds["shop-a"]), canonical);
   assert.equal(entityKeyForListing(sqlite, listingIds["shop-b"]), canonical);
   assert.equal(
-    entityExists(sqlite, fallbackA),
+    entityExists(sqlite, sharedFallback),
     false,
-    "the fallback entity a confirmed listing left behind must be removed, not kept empty",
+    "the shared fallback a confirmed product left behind must be removed, not kept empty",
   );
-  assert.equal(entityExists(sqlite, fallbackB), false);
+  assert.equal(entityExists(sqlite, supersededFallback), false);
   // The membership primary key makes a second row impossible; asserting it proves the transition
   // never tried to write one, which is what would have surfaced as an error in production.
   assert.equal(membershipCount(sqlite, listingIds["shop-a"]), 1);
@@ -266,22 +262,22 @@ test("the revision the remediation did not verify keeps its own product", async 
   );
 });
 
-test("a catalog product nobody verified merges nothing", async () => {
+test("a rejected catalog product never creates a catalog entity or overrides exact fallback grouping", async () => {
   // `knowledge_catalog_products.verification_status` only admits 'verified' or 'rejected', so an
   // unreviewed product is unrepresentable here by construction — candidates live in
-  // `knowledge_catalog_candidates` until someone approves them. What still needs proving is the
-  // reviewed-and-turned-down row: identity, membership and entity creation each repeat the
-  // `verification_status = 'verified'` predicate, and this is what shows all three agree.
+  // `knowledge_catalog_candidates` until someone approves them. A rejected row must never become
+  // authoritative, while the independently safe exact manufacturer/model identity may still keep
+  // duplicate cards collapsed.
   const { sqlite, db, listingIds } = arrangeUnresolved();
   const rejected = catalogProduct(sqlite, "D1000MK2", "rejected");
   await refreshEverything(db, LATEST);
 
+  const sharedFallback = `l-${listingIds["shop-a"]}`;
   assert.equal(entityExists(sqlite, `c-${rejected}`), false);
-  assert.equal(entityKeyForListing(sqlite, listingIds["shop-a"]), `l-${listingIds["shop-a"]}`);
-  assert.equal(entityKeyForListing(sqlite, listingIds["shop-b"]), `l-${listingIds["shop-b"]}`);
+  assert.equal(entityKeyForListing(sqlite, listingIds["shop-a"]), sharedFallback);
+  assert.equal(entityKeyForListing(sqlite, listingIds["shop-b"]), sharedFallback);
 
-  // ...and verifying that same row is all it takes to complete the merge, so the listings were
-  // held back by the review state rather than by anything else about the fixture.
+  // ...and verifying that same row is all it takes to promote both listings to the canonical entity.
   sqlite
     .prepare("UPDATE knowledge_catalog_products SET verification_status = 'verified' WHERE id = ?")
     .run(rejected);
@@ -289,6 +285,7 @@ test("a catalog product nobody verified merges nothing", async () => {
 
   assert.equal(entityKeyForListing(sqlite, listingIds["shop-a"]), `c-${rejected}`);
   assert.equal(entityKeyForListing(sqlite, listingIds["shop-b"]), `c-${rejected}`);
+  assert.equal(entityExists(sqlite, sharedFallback), false);
 });
 
 test("verified sibling revisions stay two products rather than collapsing into one", async () => {
