@@ -144,7 +144,7 @@ test("protected product export paginates the service binding and downloads UTF-8
   ]);
 
   const bytes = new Uint8Array(await response.arrayBuffer());
-  assert.deepEqual([...bytes.slice(0, 3)], [0xef, 0xbb, 0xbf]);
+  assert.deepEqual(Array.from(bytes.slice(0, 3)), [0xef, 0xbb, 0xbf]);
   const body = new TextDecoder().decode(bytes);
   assert.ok(body.startsWith("listing_id,shop_key"));
   assert.match(body, /"source-1"/u);
