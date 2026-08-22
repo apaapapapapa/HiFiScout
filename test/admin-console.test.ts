@@ -46,6 +46,18 @@ test("admin root serves the single unified console entrypoint", async () => {
   assertAdminSecurityHeaders(response);
 });
 
+test("admin brand image is served through the protected static asset binding", async () => {
+  const seenPaths: string[] = [];
+  const response = await handleAuthenticatedAdminEntryRequest(
+    new Request("https://admin.example.test/hifiscout-mark.jpg"),
+    adminEnv(seenPaths),
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(seenPaths, ["/hifiscout-mark.jpg"]);
+  assertAdminSecurityHeaders(response);
+});
+
 test("admin assets disable Cloudflare HTML canonical redirects", () => {
   const config = readFileSync(new URL("../wrangler.admin.jsonc", import.meta.url), "utf8");
   assert.match(config, /"html_handling"\s*:\s*"none"/u);
