@@ -30,6 +30,10 @@ const FLOORSTANDING_MODEL_PATTERNS: readonly RegExp[] = [
   /(?:\bmcintosh\b|マッキントッシュ)[\s\S]{0,120}\bxrt\s*22\b|\bxrt\s*22\b[\s\S]{0,120}(?:\bmcintosh\b|マッキントッシュ)/iu,
 ];
 
+const JAPANESE_TEXT_PATTERN = /[ぁ-んァ-ヶ一-龯]/u;
+const ENGLISH_PRODUCT_TYPE_SUFFIX =
+  /\s+(?:(?:stereo|mono(?:ral)?|tube|line)?\s*(?:power|integrated|pre)?\s*amplifier|preamp|preamplifier|speaker\s+system|sacd\/cd|sacd|cd\s+player|d\/a\s+converter)\b[\s\S]*$/iu;
+
 export interface RewirePage extends CrawlPageObject {
   readonly page: number;
 }
@@ -112,13 +116,48 @@ function sellerCategory(text: string): string {
 }
 
 function normalizedSellerCategory(title: string, rawSellerCategory: string): string {
-  if (
-    rawSellerCategory === "スピーカー" &&
-    FLOORSTANDING_MODEL_PATTERNS.some((pattern) => pattern.test(title))
-  ) {
+  if (FLOORSTANDING_MODEL_PATTERNS.some((pattern) => pattern.test(title))) {
     return "フロア型";
   }
   return rawSellerCategory;
+}
+
+/**
+ * REWIRE list titles frequently append a translated brand, product type, output specs and sales
+ * copy to the actual model. Product cards already render the manufacturer separately, so retain the
+ * seller's complete title in `title` while extracting only the model-shaped prefix into `model`.
+ */
+function conciseRewireModel(rawModel: string): string {
+  const original = cleanText(rawModel);
+  if (!original) return "";
+
+  let value = original.replace(/^of\s+Oregon\s+/iu, "").trim();
+  const japaneseIndex = value.search(JAPANESE_TEXT_PATTERN);
+  if (japaneseIndex > 0) {
+    const prefix = value.slice(0, japaneseIndex).trim();
+    // A Latin/digit prefix followed by Japanese copy is the seller's model presentation followed
+    // by its translated brand/category/description. Japanese-only model names start at index 0 and
+    // are therefore left untouched.
+    if (/[A-Za-z0-9]/u.test(prefix)) value = prefix;
+  }
+
+  value = cleanText(value.replace(ENGLISH_PRODUCT_TYPE_SUFFIX, " "));
+
+  // REWIRE sometimes repeats the same model/brand presentation after a slash. Once the left side
+  // already contains a model token, the right side is listing presentation rather than identity.
+  const slash = value.indexOf(" / ");
+  if (slash > 0) {
+    const left = value.slice(0, slash).trim();
+    if (/\d/u.test(left)) value = left;
+  }
+
+  value = value
+    .replace(/[\s/／|]+$/u, "")
+    .replace(/\s+(?:original\s+pair|mono\s+pair|pair)\s*$/iu, "")
+    .replace(/\s+\(\d{4}\)\s*$/u, "")
+    .trim();
+
+  return value || original;
 }
 
 function conditionAndTitle(cardText: string): { conditionText: string; title: string } {
@@ -167,7 +206,7 @@ export function parseRewireListing(html: string): SellerProduct[] {
       title,
       rawManufacturer: manufacturer,
       manufacturer,
-      model: model || title,
+      model: conciseRewireModel(model || title),
       rawCategory,
       category: inferCategory(title),
       conditionText,
