@@ -97,6 +97,8 @@ const UNCLASSIFIED_RULES: readonly AnnotationRule[] = [
 ];
 
 const TITLE_MODEL_MAX_TOKENS = 3;
+const BRACKETED_ALIAS_MIN_COMMON_PREFIX = 12;
+const BRACKETED_ALIAS_MIN_COMMON_RATIO = 0.65;
 
 function clean(value: unknown = ""): string {
   return String(value).normalize("NFKC").replace(/\s+/g, " ").trim();
@@ -110,9 +112,53 @@ function tidy(value: string): string {
     .trim();
 }
 
+function commonPrefixLength(left: string, right: string): number {
+  const limit = Math.min(left.length, right.length);
+  let index = 0;
+  while (index < limit && left[index] === right[index]) index += 1;
+  return index;
+}
+
+/**
+ * Some retailers put their own long-form model first and the canonical market model in brackets,
+ * e.g. `SilentSwitch OCXO JPN STD [SILENT SWITCH OCXO JPSM]`.
+ *
+ * Brackets alone are never trusted. The bracketed value must be ASCII/model-shaped, must share a
+ * long majority prefix with the leading value, and must retain every recognized revision token.
+ * This lets an explicit alternate presentation converge without turning arbitrary bracket prose
+ * into identity evidence.
+ */
+function preferredBracketedModelAlias(value: string): StrippedModel {
+  const match = value.match(/^(.+?)\s+\[([A-Za-z0-9][A-Za-z0-9 ._+/-]{4,})\]\s*$/u);
+  if (!match) return { text: value, removed: [] };
+
+  const leading = tidy(match[1]);
+  const alias = tidy(match[2]);
+  const normalizedLeading = normalizeIdentityModel(leading);
+  const normalizedAlias = normalizeIdentityModel(alias);
+  const shorterLength = Math.min(normalizedLeading.length, normalizedAlias.length);
+  if (!shorterLength) return { text: value, removed: [] };
+
+  const common = commonPrefixLength(normalizedLeading, normalizedAlias);
+  if (
+    common < BRACKETED_ALIAS_MIN_COMMON_PREFIX ||
+    common / shorterLength < BRACKETED_ALIAS_MIN_COMMON_RATIO
+  ) {
+    return { text: value, removed: [] };
+  }
+
+  const sourceVariants = identityModelParts(value).variants;
+  const aliasVariants = identityModelParts(alias).variants;
+  if (!sourceVariants.every((variant) => aliasVariants.includes(variant))) {
+    return { text: value, removed: [] };
+  }
+  return { text: alias, removed: ["seller_model_alias"] };
+}
+
 function stripSellerAnnotations(value: string): StrippedModel {
-  const removed: string[] = [];
-  let text = value;
+  const preferred = preferredBracketedModelAlias(value);
+  const removed = [...preferred.removed];
+  let text = preferred.text;
   for (const rule of ANNOTATION_RULES) {
     const next = tidy(text.replace(rule.pattern, " "));
     if (!next || next === text) continue;
@@ -289,7 +335,7 @@ export function resolveModel(
   input: ModelResolutionInput,
   operationalAliases: readonly ManufacturerAliasEvidence[] = [],
 ): ModelResolutionResult {
-  return createModelResolver(operationalAliases)(input);
+  return createModelResolver(operationalAliases)(input, operationalAliases);
 }
 
 export function applyModelResolution(
