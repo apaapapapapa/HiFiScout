@@ -10,6 +10,10 @@ import {
 test("HTML entities are decoded exactly once", () => {
   assert.equal(cleanText("&lt;strong&gt;"), "<strong>");
   assert.equal(cleanText("&amp;lt;strong&amp;gt;"), "&lt;strong&gt;");
+  assert.equal(cleanText("15&#8243; Monitor"), "15″ Monitor");
+  assert.equal(cleanText("15&#x2033; Monitor"), "15″ Monitor");
+  assert.equal(cleanText("&#165;1,000"), "¥1,000");
+  assert.equal(cleanText("invalid &#xD800; entity"), "invalid &#xD800; entity");
 });
 
 test("parseYen parses Japanese prices", () => {

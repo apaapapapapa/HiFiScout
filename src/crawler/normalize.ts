@@ -28,6 +28,39 @@ const CATEGORY_RULES: readonly (readonly [label: string, pattern: RegExp])[] = [
   ["ケーブル・アクセサリー", /cable|ケーブル|usb|電源|insulator|インシュレータ|アクセサリ/i],
 ];
 
+const NAMED_HTML_ENTITIES: Readonly<Record<string, string>> = Object.freeze({
+  "&nbsp;": " ",
+  "&yen;": "¥",
+  "&amp;": "&",
+  "&quot;": '"',
+  "&apos;": "'",
+  "&lt;": "<",
+  "&gt;": ">",
+});
+
+function decodeHtmlEntity(entity: string): string {
+  const normalized = entity.toLowerCase();
+  const named = NAMED_HTML_ENTITIES[normalized];
+  if (named !== undefined) return named;
+
+  const match = normalized.match(/^&#(x[0-9a-f]+|\d+);$/i);
+  if (!match) return entity;
+  const raw = match[1];
+  const codePoint = Number.parseInt(
+    raw.startsWith("x") ? raw.slice(1) : raw,
+    raw.startsWith("x") ? 16 : 10,
+  );
+  if (
+    !Number.isInteger(codePoint) ||
+    codePoint <= 0 ||
+    codePoint > 0x10ffff ||
+    (codePoint >= 0xd800 && codePoint <= 0xdfff)
+  ) {
+    return entity;
+  }
+  return String.fromCodePoint(codePoint);
+}
+
 /**
  * Typed boundary: HTML fragments and JSON-LD field values arrive untyped, and the existing
  * `String(value)` coercion is the runtime narrowing, so the parameter stays `unknown`.
@@ -35,23 +68,7 @@ const CATEGORY_RULES: readonly (readonly [label: string, pattern: RegExp])[] = [
 export function cleanText(value: unknown = ""): string {
   return String(value)
     .replace(/<[^>]*>/g, " ")
-    .replace(
-      /&(?:nbsp|yen|amp|quot|apos|lt|gt|#39|#160|#165|#x0*a5);/gi,
-      (entity: string) =>
-        ({
-          "&nbsp;": " ",
-          "&#160;": " ",
-          "&yen;": "¥",
-          "&#165;": "¥",
-          "&#xa5;": "¥",
-          "&amp;": "&",
-          "&quot;": '"',
-          "&#39;": "'",
-          "&apos;": "'",
-          "&lt;": "<",
-          "&gt;": ">",
-        })[entity.toLowerCase()] ?? entity,
-    )
+    .replace(/&(?:nbsp|yen|amp|quot|apos|lt|gt|#(?:x[0-9a-f]+|\d+));/gi, decodeHtmlEntity)
     .replace(/\s+/g, " ")
     .trim();
 }

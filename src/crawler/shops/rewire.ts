@@ -25,6 +25,11 @@ const SELLER_CATEGORIES = [
   "その他",
 ] as const;
 
+const FLOORSTANDING_MODEL_PATTERNS: readonly RegExp[] = [
+  /(?:\btannoy\b|タンノイ)[\s\S]{0,120}\brectangular\s+grf\b|\brectangular\s+grf\b[\s\S]{0,120}(?:\btannoy\b|タンノイ)/iu,
+  /(?:\bmcintosh\b|マッキントッシュ)[\s\S]{0,120}\bxrt\s*22\b|\bxrt\s*22\b[\s\S]{0,120}(?:\bmcintosh\b|マッキントッシュ)/iu,
+];
+
 export interface RewirePage extends CrawlPageObject {
   readonly page: number;
 }
@@ -106,6 +111,16 @@ function sellerCategory(text: string): string {
   return result;
 }
 
+function normalizedSellerCategory(title: string, rawSellerCategory: string): string {
+  if (
+    rawSellerCategory === "スピーカー" &&
+    FLOORSTANDING_MODEL_PATTERNS.some((pattern) => pattern.test(title))
+  ) {
+    return "フロア型";
+  }
+  return rawSellerCategory;
+}
+
 function conditionAndTitle(cardText: string): { conditionText: string; title: string } {
   let value = cleanText(cardText.replace(/^sold\s*out\s*/iu, ""));
   const priceIndex = value.search(PRICE_MARKER_PATTERN);
@@ -136,11 +151,15 @@ export function parseRewireListing(html: string): SellerProduct[] {
     if (!title) continue;
 
     const { manufacturer, model } = splitManufacturerModel(title, "rewire");
-    const rawCategory = sellerCategory(record.text);
+    const rawSellerCategory = sellerCategory(record.text);
+    const rawCategory = normalizedSellerCategory(title, rawSellerCategory);
     const soldOut = SOLD_PATTERN.test(record.text);
     const metadata: Record<string, unknown> = {};
     const code = record.text.match(SOURCE_CODE_PATTERN)?.[1]?.toUpperCase();
     if (code) metadata.productCode = code;
+    if (rawSellerCategory && rawSellerCategory !== rawCategory) {
+      metadata.rewireSellerCategory = rawSellerCategory;
+    }
 
     products.push({
       sourceId: sourceId(record.text, record.fallbackSourceId),
