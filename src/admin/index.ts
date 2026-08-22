@@ -2,7 +2,9 @@ import { canonicalCategoryDefinitions, getCategory } from "../catalog/categories
 import type { CategoryDefinition } from "../catalog/types.js";
 import type { CatalogAdminProductExportScope, CatalogAdminRpc } from "./contracts.js";
 import {
+  parseKnowledgeCatalogAdminCreate,
   parseKnowledgeCatalogAdminListQuery,
+  parseKnowledgeCatalogAdminMerge,
   parseKnowledgeCatalogAdminUpdate,
 } from "../http/knowledge-catalog-admin.js";
 import { verifyCloudflareAccessRequest } from "./access.js";
@@ -15,13 +17,17 @@ interface CatalogAdminEnv {
 }
 
 const COLLECTION_PATH = "/api/admin/knowledge-catalog/products";
+const CANDIDATE_COLLECTION_PATH = "/api/admin/knowledge-catalog/candidates";
+const CANDIDATE_VERIFY_PATH =
+  /^\/api\/admin\/knowledge-catalog\/candidates\/(\d{1,15})\/verify$/u;
+const PRODUCT_PATH = /^\/api\/admin\/knowledge-catalog\/products\/(\d{1,15})$/u;
+const PRODUCT_MERGE_PATH = /^\/api\/admin\/knowledge-catalog\/products\/(\d{1,15})\/merge$/u;
 const CATALOG_EXPORT_COLLECTION_PATH = "/api/admin/knowledge-catalog-exports";
 const CATALOG_EXPORT_JOB_PATH =
   /^\/api\/admin\/knowledge-catalog-exports\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(\/download)?$/iu;
 const PRODUCT_EXPORT_COLLECTION_PATH = "/api/admin/product-audit-exports";
 const PRODUCT_EXPORT_JOB_PATH =
   /^\/api\/admin\/product-audit-exports\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(\/download)?$/iu;
-const PRODUCT_PATH = /^\/api\/admin\/knowledge-catalog\/products\/(\d{1,15})$/;
 const ADMIN_ASSET_PATHS = new Set([
   "/catalog-admin.html",
   "/catalog-admin.css",
@@ -194,6 +200,46 @@ function knowledgeCatalogExportUnavailable(error: unknown, operation: string): R
   );
 }
 
+function manualOperationError(error: unknown): Response {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.startsWith("catalog_admin_product_already_exists:")) {
+    const existingProductId = Number(message.split(":", 2)[1] || 0);
+    return json({ error: "catalog_admin_product_already_exists", existingProductId }, { status: 409 });
+  }
+  if (
+    message === "catalog_admin_category_invalid" ||
+    message === "catalog_admin_model_invalid" ||
+    message === "catalog_admin_merge_same_product" ||
+    message === "catalog_admin_merge_target_category_missing"
+  ) {
+    return json({ error: message }, { status: 400 });
+  }
+  if (message === "catalog_admin_merge_manufacturer_mismatch") {
+    return json({ error: message }, { status: 409 });
+  }
+  console.error(JSON.stringify({ message: "Catalog Admin manual operation failed", error: message }));
+  return json({ error: "catalog_admin_manual_operation_failed" }, { status: 500 });
+}
+
+async function mutationBody(request: Request, url: URL): Promise<unknown | Response> {
+  if (!isJsonRequest(request)) {
+    return json({ error: "application_json_required" }, { status: 415 });
+  }
+  if (!isSameOriginBrowserMutation(request, url)) {
+    return json({ error: "same_origin_required" }, { status: 403 });
+  }
+  const body = await readJsonBody(request);
+  if (body === REQUEST_BODY_TOO_LARGE) {
+    return json({ error: "request_body_too_large" }, { status: 413 });
+  }
+  if (body === null) return json({ error: "invalid_json" }, { status: 400 });
+  return body;
+}
+
+function isResponse(value: unknown): value is Response {
+  return value instanceof Response;
+}
+
 export async function handleAuthenticatedCatalogAdminRequest(
   request: Request,
   env: CatalogAdminEnv,
@@ -302,10 +348,63 @@ export async function handleAuthenticatedCatalogAdminRequest(
     const job = await env.CATALOG_ADMIN.getProductAuditExportJob(jobId);
     return job ? json(job) : json({ error: "not_found" }, { status: 404 });
   }
+
   if (request.method === "GET" && url.pathname === COLLECTION_PATH) {
     const options = parseKnowledgeCatalogAdminListQuery(url);
     if (!options) return json({ error: "invalid_catalog_query" }, { status: 400 });
     return json(await env.CATALOG_ADMIN.listProducts(options));
+  }
+  if (request.method === "GET" && url.pathname === CANDIDATE_COLLECTION_PATH) {
+    const options = parseKnowledgeCatalogAdminListQuery(url);
+    if (!options) return json({ error: "invalid_catalog_query" }, { status: 400 });
+    return json(await env.CATALOG_ADMIN.listCandidates(options));
+  }
+  if (request.method === "POST" && url.pathname === COLLECTION_PATH) {
+    const body = await mutationBody(request, url);
+    if (isResponse(body)) return body;
+    const input = parseKnowledgeCatalogAdminCreate(body);
+    if (!input) return json({ error: "invalid_catalog_create" }, { status: 400 });
+    try {
+      return json(await env.CATALOG_ADMIN.createProduct(input), { status: 201 });
+    } catch (error) {
+      return manualOperationError(error);
+    }
+  }
+
+  const candidateVerifyMatch = url.pathname.match(CANDIDATE_VERIFY_PATH);
+  if (request.method === "POST" && candidateVerifyMatch) {
+    const candidateId = Number(candidateVerifyMatch[1]);
+    if (!Number.isSafeInteger(candidateId) || candidateId <= 0) {
+      return json({ error: "invalid_id" }, { status: 400 });
+    }
+    const body = await mutationBody(request, url);
+    if (isResponse(body)) return body;
+    const input = parseKnowledgeCatalogAdminCreate(body);
+    if (!input) return json({ error: "invalid_catalog_verify" }, { status: 400 });
+    try {
+      const result = await env.CATALOG_ADMIN.verifyCandidate(candidateId, input);
+      return result ? json(result) : json({ error: "not_found" }, { status: 404 });
+    } catch (error) {
+      return manualOperationError(error);
+    }
+  }
+
+  const productMergeMatch = url.pathname.match(PRODUCT_MERGE_PATH);
+  if (request.method === "POST" && productMergeMatch) {
+    const targetProductId = Number(productMergeMatch[1]);
+    if (!Number.isSafeInteger(targetProductId) || targetProductId <= 0) {
+      return json({ error: "invalid_id" }, { status: 400 });
+    }
+    const body = await mutationBody(request, url);
+    if (isResponse(body)) return body;
+    const input = parseKnowledgeCatalogAdminMerge(body);
+    if (!input) return json({ error: "invalid_catalog_merge" }, { status: 400 });
+    try {
+      const result = await env.CATALOG_ADMIN.mergeProducts(targetProductId, input.sourceProductId);
+      return result ? json(result) : json({ error: "not_found" }, { status: 404 });
+    } catch (error) {
+      return manualOperationError(error);
+    }
   }
 
   const productMatch = url.pathname.match(PRODUCT_PATH);
@@ -314,15 +413,16 @@ export async function handleAuthenticatedCatalogAdminRequest(
     if (!Number.isSafeInteger(productId) || productId <= 0) {
       return json({ error: "invalid_id" }, { status: 400 });
     }
-    const body = await readJsonBody(request);
-    if (body === REQUEST_BODY_TOO_LARGE) {
-      return json({ error: "request_body_too_large" }, { status: 413 });
-    }
-    if (body === null) return json({ error: "invalid_json" }, { status: 400 });
+    const body = await mutationBody(request, url);
+    if (isResponse(body)) return body;
     const input = parseKnowledgeCatalogAdminUpdate(body);
     if (!input) return json({ error: "invalid_catalog_update" }, { status: 400 });
-    const result = await env.CATALOG_ADMIN.updateProduct(productId, input);
-    return result ? json(result) : json({ error: "not_found" }, { status: 404 });
+    try {
+      const result = await env.CATALOG_ADMIN.updateProduct(productId, input);
+      return result ? json(result) : json({ error: "not_found" }, { status: 404 });
+    } catch (error) {
+      return manualOperationError(error);
+    }
   }
 
   if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/catalog-admin")) {
