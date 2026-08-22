@@ -335,7 +335,7 @@ export function resolveModel(
   input: ModelResolutionInput,
   operationalAliases: readonly ManufacturerAliasEvidence[] = [],
 ): ModelResolutionResult {
-  return createModelResolver(operationalAliases)(input, operationalAliases);
+  return createModelResolver(operationalAliases)(input);
 }
 
 export function applyModelResolution(
