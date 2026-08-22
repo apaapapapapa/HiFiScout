@@ -33,17 +33,45 @@ import { runRetentionCleanup } from "./maintenance.js";
 import { recoverStaleProductAuditExportJobs } from "./product-audit-export/service.js";
 import { errorMessage } from "./types.js";
 import type { DispatchResult } from "./crawler/types.js";
+import type { QueryableDatabase } from "./db/types.js";
 
 /** The shared sweep. Also the trigger that gets a chance to bootstrap a verifier rollout. */
 export const GENERAL_CRON = "*/5 * * * *";
 export const DAILY_MAINTENANCE_CRON = "17 18 * * *";
 export const KNOWLEDGE_CATALOG_MONTHLY_CRON = "23 3 1 * *";
 
+const GENERAL_PROJECTION_REPAIR_BATCH_SIZE = 5;
+const GENERAL_PROJECTION_REPAIR_MAX_LISTINGS = 20;
+
 function logDispatchResult(cron: string, dispatch: DispatchResult): void {
   const entry = { event: "crawl_dispatch", cron, ...dispatch };
   if (dispatch.status === "rejected" || (dispatch.status === "skipped" && "reason" in dispatch)) {
     console.warn(JSON.stringify(entry));
   } else console.log(JSON.stringify(entry));
+}
+
+/**
+ * Repair only a small listing-scoped slice on every five-minute sweep. Crawl, Product Identity and
+ * Product Search are separate bounded writes; a Worker hard-kill can therefore leave a verified
+ * Identity match pointing at its old fallback entity even though neither subsystem is otherwise
+ * unhealthy. Daily repair is too slow for a user-facing search read model, while this bounded pass
+ * gives the interrupted transition a deterministic five-minute convergence path without turning
+ * the scheduler into a shop-wide rebuild.
+ */
+export async function repairGeneralCronProjectionGaps(db: QueryableDatabase) {
+  const result = await repairActiveListingProjectionGaps(db, {
+    batchSize: GENERAL_PROJECTION_REPAIR_BATCH_SIZE,
+    maxListings: GENERAL_PROJECTION_REPAIR_MAX_LISTINGS,
+  });
+  if (result.repairedCount > 0 || result.remainingGapCount > 0) {
+    console.log(
+      JSON.stringify({
+        event: "general_product_search_projection_repair",
+        ...result,
+      }),
+    );
+  }
+  return result;
 }
 
 /**
@@ -218,6 +246,7 @@ export function handleScheduled(
   ctx.waitUntil(runScheduled(controller.cron, env));
   if (controller.cron === GENERAL_CRON) {
     ctx.waitUntil(bootstrapKnowledgeCatalogReview(env));
+    ctx.waitUntil(repairGeneralCronProjectionGaps(env.DB));
     // Keep the cron claim itself listing-scoped. Projection code is also listing-scoped, but a
     // worker-level timeout cannot be caught reliably inside a ten-job sweep; claiming one job makes
     // the lease/retry boundary match the expensive projection boundary.
