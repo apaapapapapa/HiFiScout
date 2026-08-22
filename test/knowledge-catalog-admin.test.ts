@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { catalogAdminCategoryIds } from "../src/db/knowledge-catalog-admin-repository.js";
+import {
+  catalogAdminCategoryIds,
+  listKnowledgeCatalogAdminProducts,
+} from "../src/db/knowledge-catalog-admin-repository.js";
 import {
   parseKnowledgeCatalogAdminListQuery,
   parseKnowledgeCatalogAdminUpdate,
 } from "../src/http/knowledge-catalog-admin.js";
+import { captureDatabase } from "./helpers/d1.js";
 
 test("catalog admin list query validates and canonicalizes filters", () => {
   const url = new URL(
@@ -35,6 +39,49 @@ test("catalog admin list query rejects invalid pagination and category", () => {
     ),
     null,
   );
+});
+
+test("catalog admin free-text search uses normalized model and aliases", async () => {
+  const db = captureDatabase();
+  await listKnowledgeCatalogAdminProducts(db, {
+    query: "Ｄ－１０００",
+    manufacturerId: "",
+    categoryId: "",
+    afterId: 0,
+    limit: 50,
+  });
+
+  const { sql, binds } = db.calls[0];
+  assert.match(sql, /INSTR\(LOWER\(kp\.normalized_model\), \?\)/);
+  assert.match(sql, /FROM knowledge_catalog_aliases search_alias/);
+  assert.match(sql, /INSTR\(LOWER\(search_alias\.normalized_alias\), \?\)/);
+  assert.doesNotMatch(sql, /\bLIKE\b/);
+  assert.deepEqual(binds, [
+    0,
+    "d-1000",
+    "d-1000",
+    "d-1000",
+    "d1000",
+    "d1000",
+    "d-1000",
+    "d1000",
+    "d1000",
+    51,
+  ]);
+});
+
+test("catalog admin search removes model separators for fuzzy identity matching", async () => {
+  const db = captureDatabase();
+  await listKnowledgeCatalogAdminProducts(db, {
+    query: "D 1000",
+    manufacturerId: "",
+    categoryId: "",
+    afterId: 0,
+    limit: 50,
+  });
+
+  assert.equal(db.calls[0].binds[1], "d 1000");
+  assert.equal(db.calls[0].binds[4], "d1000");
 });
 
 test("catalog admin update accepts only canonical leaf categories", () => {
