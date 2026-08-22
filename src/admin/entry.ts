@@ -73,7 +73,7 @@ async function readJsonBody(
   const bytes = new Uint8Array(byteLength);
   let offset = 0;
   for (const chunk of chunks) {
-    bytes.set(chunk, offset);
+    bytes.set(chunk.valueOf(), offset);
     offset += chunk.byteLength;
   }
   const raw = new TextDecoder().decode(bytes);
@@ -162,7 +162,7 @@ export async function handleAuthenticatedAdminEntryRequest(
   }
 
   if (request.method === "GET" && url.pathname === "/") {
-    return adminAsset(env, assetRequest(request, "/"));
+    return adminAsset(env, assetRequest(request, "/index.html"));
   }
   if (request.method === "GET" && CONSOLE_ASSET_PATHS.has(url.pathname)) {
     return adminAsset(env, request);
