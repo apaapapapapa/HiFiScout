@@ -55,12 +55,14 @@ test("catalog admin free-text search uses normalized model and aliases", async (
   assert.match(sql, /INSTR\(LOWER\(kp\.normalized_model\), \?\)/);
   assert.match(sql, /FROM knowledge_catalog_aliases search_alias/);
   assert.match(sql, /INSTR\(LOWER\(search_alias\.normalized_alias\), \?\)/);
+  assert.match(sql, /kp\.manufacturer_id IN \(SELECT value FROM json_each\(\?\)\)/);
   assert.doesNotMatch(sql, /\bLIKE\b/);
   assert.deepEqual(binds, [
     0,
     "d-1000",
     "d-1000",
     "d-1000",
+    '["d-1000","d1000"]',
     "d1000",
     "d1000",
     "d-1000",
@@ -81,7 +83,38 @@ test("catalog admin search removes model separators for fuzzy identity matching"
   });
 
   assert.equal(db.calls[0].binds[1], "d 1000");
-  assert.equal(db.calls[0].binds[4], "d1000");
+  assert.equal(db.calls[0].binds[5], "d1000");
+});
+
+test("catalog admin free-text manufacturer search includes legacy manufacturer ids", async () => {
+  const db = captureDatabase();
+  await listKnowledgeCatalogAdminProducts(db, {
+    query: "mark-levinson",
+    manufacturerId: "",
+    categoryId: "",
+    afterId: 0,
+    limit: 50,
+  });
+
+  const ids = JSON.parse(String(db.calls[0].binds[4])) as string[];
+  assert.ok(ids.includes("mark-levinson"));
+  assert.ok(ids.includes("marklevinson"));
+});
+
+test("catalog admin manufacturer filter includes canonical and legacy ids", async () => {
+  const db = captureDatabase();
+  await listKnowledgeCatalogAdminProducts(db, {
+    query: "",
+    manufacturerId: "mark-levinson",
+    categoryId: "",
+    afterId: 0,
+    limit: 50,
+  });
+
+  assert.match(db.calls[0].sql, /kp\.manufacturer_id IN \(SELECT value FROM json_each\(\?\)\)/);
+  const ids = JSON.parse(String(db.calls[0].binds[1])) as string[];
+  assert.ok(ids.includes("mark-levinson"));
+  assert.ok(ids.includes("marklevinson"));
 });
 
 test("catalog admin update accepts only canonical leaf categories", () => {
