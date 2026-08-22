@@ -1,0 +1,31 @@
+name: Temporary Main Status Probe
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Report workflows for merged Tereon commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: dde329a72df05de9f354ac1123734a05aaae0b87
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "TARGET_SHA=${TARGET_SHA}"
+          echo "RUNS_BEGIN"
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs?branch=main&per_page=30" \
+            --jq '.workflow_runs[] | [.id, .name, .event, .head_branch, .head_sha, .status, (.conclusion // "")] | @tsv'
+          echo "RUNS_END"
+          echo "TARGET_RUNS_BEGIN"
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs?branch=main&per_page=30" \
+            --jq ".workflow_runs[] | select(.head_sha == \"${TARGET_SHA}\") | [.id, .name, .event, .head_branch, .head_sha, .status, (.conclusion // \"\")] | @tsv"
+          echo "TARGET_RUNS_END"
