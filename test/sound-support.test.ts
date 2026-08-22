@@ -92,7 +92,7 @@ test("Sound Support adapter crawls all inventory categories directly and is regi
     ],
   );
   assert.equal(soundSupportAdapter.discovery.coverage, "complete");
-  assert.equal(soundSupportAdapter.discovery.discoverTargets, undefined);
+  assert.equal("discoverTargets" in soundSupportAdapter.discovery, false);
 
   const plugin = getShopPlugin("sound-support");
   assert.ok(plugin);
