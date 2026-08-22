@@ -9,9 +9,15 @@
  * - {@link productSearchEntityConsistency} reports drift instead of waiting for a user to notice a
  *   product that stopped being searchable.
  *
- * None of this belongs in the search query path: reads must never repair the projection they read.
+ * Verified Knowledge Catalog identities are authoritative. Before a product reaches that state,
+ * resolved exact manufacturer/model peers may share one representative fallback entity; see
+ * `product-search-exact-identity.ts`. Reads never repair the projection they consume.
  */
 
+import {
+  exactIdentityPeerIdsSql,
+  upsertExactIdentityGroupOffersSql,
+} from "./product-search-exact-identity.js";
 import {
   deleteEmptyEntitiesSql,
   deleteInactiveOffersSql,
@@ -115,6 +121,26 @@ async function staleMemberListingIds(db: QueryableDatabase, shopKey: string): Pr
   );
 }
 
+/**
+ * Safe unresolved peers of the listings being changed.
+ *
+ * Incremental sync has to rewrite both sides of a newly discovered exact identity. Otherwise the
+ * new offer would move into the shared fallback entity while an older shop's offer remained in its
+ * previous per-listing entity until the next global rebuild.
+ */
+async function exactIdentityPeerListingIds(
+  db: QueryableDatabase,
+  listingIds: readonly number[],
+): Promise<number[]> {
+  const found: number[] = [];
+  for (const chunk of chunks(listingIds)) {
+    found.push(
+      ...(await selectNumbers(db, exactIdentityPeerIdsSql(chunk.length), chunk, "id")),
+    );
+  }
+  return found;
+}
+
 /** Entities the given listings belong to, plus any fallback entity minted for them. */
 async function entityIdsForListings(
   db: QueryableDatabase,
@@ -176,10 +202,16 @@ export async function syncProductSearchEntities(
 ): Promise<ProductSearchEntitySyncResult> {
   const observed = await listingIdsForSources(db, shopKey, sourceIds);
   const stale = includeInactiveShopMembers ? await staleMemberListingIds(db, shopKey) : [];
-  const listingIds = [...new Set([...observed, ...stale])];
-  if (!listingIds.length) {
+  const seeds = [...new Set([...observed, ...stale])];
+  if (!seeds.length) {
     return { listing_count: 0, entity_count: 0, removed_entity_count: 0 };
   }
+
+  const peers = await exactIdentityPeerListingIds(db, seeds);
+  // Numeric order is load-bearing for groups larger than one D1 chunk: the representative is the
+  // minimum eligible listing id, so its fallback entity must be created before later peer chunks
+  // try to point at it.
+  const listingIds = [...new Set([...seeds, ...peers])].sort((left, right) => left - right);
 
   const before = await entityIdsForListings(db, listingIds);
   for (const chunk of chunks(listingIds)) {
@@ -189,6 +221,7 @@ export async function syncProductSearchEntities(
     await runStatement(db, deleteInactiveOffersSql(listingScope), chunk);
     await runStatement(db, upsertCatalogOffersSql(listingScope), chunk);
     await runStatement(db, upsertFallbackOffersSql(listingScope), chunk);
+    await runStatement(db, upsertExactIdentityGroupOffersSql(listingScope), chunk);
   }
   const after = await entityIdsForListings(db, listingIds);
 
@@ -215,6 +248,7 @@ export async function rebuildProductSearchEntities(
   await runStatement(db, deleteInactiveOffersSql());
   const catalogOffers = await runStatement(db, upsertCatalogOffersSql());
   const fallbackOffers = await runStatement(db, upsertFallbackOffersSql());
+  const exactIdentityOffers = await runStatement(db, upsertExactIdentityGroupOffersSql());
   await runStatement(db, refreshEntityAggregatesSql());
   await runStatement(db, refreshEntitySearchTermsSql());
   const removed = await runStatement(db, deleteEmptyEntitiesSql());
@@ -230,7 +264,7 @@ export async function rebuildProductSearchEntities(
     event: "product_search_entity_rebuild",
     entity_count: Number(totals?.entity_count || 0),
     offer_count: Number(totals?.offer_count || 0),
-    membership_write_count: catalogOffers + fallbackOffers,
+    membership_write_count: catalogOffers + fallbackOffers + exactIdentityOffers,
     removed_entity_count: removed,
   };
   console.log(JSON.stringify(result));
