@@ -1,4 +1,4 @@
-import { repairActiveListingProjectionGaps } from "../src/db/product-search-gap-repair.js";
+import { repairProductSearchProjection } from "../src/db/product-search-gap-repair.js";
 import { createD1RestDatabase } from "./lib/d1-rest-database.js";
 
 function requiredEnv(name: string): string {
@@ -33,19 +33,14 @@ const database = createD1RestDatabase({
   apiToken: requiredEnv("CLOUDFLARE_API_TOKEN"),
 });
 
-const result = await repairActiveListingProjectionGaps(database, {
+const result = await repairProductSearchProjection(database, {
   batchSize: positiveInteger(argument("--batch-size", "20"), "--batch-size"),
   maxListings: positiveInteger(argument("--max-listings", "100"), "--max-listings"),
 });
 
-console.log(JSON.stringify({ event: "product_search_projection_gap_repair", ...result }));
-if (result.remainingGapCount > 0) {
+console.log(JSON.stringify({ event: "product_search_projection_repair", ...result }));
+if (hasFlag("--require-repair") && !result.repaired) {
   throw new Error(
-    `${result.remainingGapCount} active listing Product Search projection gaps remain after bounded repair`,
-  );
-}
-if (hasFlag("--require-repair") && result.repairedCount === 0) {
-  throw new Error(
-    "Deploy failed, but no active listing Product Search projection gap was found; refusing an unrelated automatic rerun",
+    "Deploy failed, but Product Search projection was already consistent; refusing an unrelated automatic rerun",
   );
 }
