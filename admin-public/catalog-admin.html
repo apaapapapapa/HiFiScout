@@ -21,15 +21,41 @@
       <p id="status-message" class="status-message" role="status" aria-live="polite"></p>
 
       <section id="catalog-controls" hidden>
-        <section class="panel export-panel" aria-labelledby="product-audit-heading">
+        <section class="panel export-panel" aria-labelledby="csv-export-heading">
           <div class="export-introduction">
             <p class="eyebrow">AI DATA AUDIT</p>
-            <h2 id="product-audit-heading">登録商品をCSVで診断</h2>
+            <h2 id="csv-export-heading">カタログと登録商品をCSVで診断</h2>
             <p>
-              店舗ごとの生データ、正規化済みメーカー・型番、カテゴリ、Product Identity、検索上の同一製品グループを1行1listingで出力します。CSVをAIに渡して、重複表示・カテゴリ誤り・メーカー/型番の正規化漏れを確認できます。
+              Knowledge Catalogは1行1製品、登録商品は店舗ごとの生データやProduct Identityを1行1listingで出力します。CSVをAIに渡して、重複表示・カテゴリ誤り・メーカー/型番の正規化漏れを確認できます。
             </p>
           </div>
           <div class="export-jobs">
+            <section class="export-job" aria-labelledby="export-catalog-heading">
+              <div>
+                <h3 id="export-catalog-heading">Knowledge Catalog</h3>
+                <p class="export-job-description">
+                  検証状態を含むカタログ全件を、100件ずつ低負荷で処理します。上限90,000件・生成期限24時間で、完成後7日間ダウンロードできます。
+                </p>
+                <p
+                  id="export-catalog-status"
+                  class="export-status"
+                  role="status"
+                  aria-live="polite"
+                >
+                  最新の生成状況を確認しています…
+                </p>
+              </div>
+              <div class="export-job-actions">
+                <button id="export-catalog-generate" type="button" disabled>CSVを生成</button>
+                <a
+                  id="export-catalog-download"
+                  class="button-link secondary-button"
+                  hidden
+                >
+                  ダウンロード
+                </a>
+              </div>
+            </section>
             <section class="export-job" aria-labelledby="export-active-heading">
               <div>
                 <h3 id="export-active-heading">掲載中商品</h3>

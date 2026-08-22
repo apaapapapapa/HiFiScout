@@ -15,6 +15,9 @@ interface CatalogAdminEnv {
 }
 
 const COLLECTION_PATH = "/api/admin/knowledge-catalog/products";
+const CATALOG_EXPORT_COLLECTION_PATH = "/api/admin/knowledge-catalog-exports";
+const CATALOG_EXPORT_JOB_PATH =
+  /^\/api\/admin\/knowledge-catalog-exports\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(\/download)?$/iu;
 const PRODUCT_EXPORT_COLLECTION_PATH = "/api/admin/product-audit-exports";
 const PRODUCT_EXPORT_JOB_PATH =
   /^\/api\/admin\/product-audit-exports\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(\/download)?$/iu;
@@ -168,6 +171,29 @@ function productExportScopeFromBody(value: unknown): CatalogAdminProductExportSc
   return productExportScope((value as Record<string, unknown>).scope);
 }
 
+function isEmptyJsonObject(value: unknown): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === 0
+  );
+}
+
+function knowledgeCatalogExportUnavailable(error: unknown, operation: string): Response {
+  console.error(
+    JSON.stringify({
+      message: "Knowledge Catalog export RPC unavailable",
+      operation,
+      error: error instanceof Error ? error.message : String(error),
+    }),
+  );
+  return json(
+    { error: "knowledge_catalog_export_unavailable" },
+    { status: 503, headers: { "retry-after": "30" } },
+  );
+}
+
 export async function handleAuthenticatedCatalogAdminRequest(
   request: Request,
   env: CatalogAdminEnv,
@@ -176,6 +202,60 @@ export async function handleAuthenticatedCatalogAdminRequest(
 
   if (request.method === "GET" && url.pathname === "/api/meta") {
     return json({ categoryFacets: categoryFacets() });
+  }
+  if (request.method === "POST" && url.pathname === CATALOG_EXPORT_COLLECTION_PATH) {
+    if (!isJsonRequest(request)) {
+      return json({ error: "application_json_required" }, { status: 415 });
+    }
+    if (!isSameOriginBrowserMutation(request, url)) {
+      return json({ error: "same_origin_required" }, { status: 403 });
+    }
+    const body = await readJsonBody(request, 1024);
+    if (body === REQUEST_BODY_TOO_LARGE) {
+      return json({ error: "request_body_too_large" }, { status: 413 });
+    }
+    if (body === null) return json({ error: "invalid_json" }, { status: 400 });
+    if (!isEmptyJsonObject(body)) {
+      return json({ error: "invalid_knowledge_catalog_export_request" }, { status: 400 });
+    }
+    try {
+      const job = await env.CATALOG_ADMIN.startKnowledgeCatalogExport();
+      return json(job, { status: job.status === "failed" ? 503 : 202 });
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          message: "Knowledge Catalog export could not be queued",
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+      return json({ error: "knowledge_catalog_export_start_failed" }, { status: 503 });
+    }
+  }
+  if (request.method === "GET" && url.pathname === CATALOG_EXPORT_COLLECTION_PATH) {
+    try {
+      return json({ job: await env.CATALOG_ADMIN.latestKnowledgeCatalogExportJob() });
+    } catch (error) {
+      return knowledgeCatalogExportUnavailable(error, "latest");
+    }
+  }
+
+  const catalogExportJobMatch = url.pathname.match(CATALOG_EXPORT_JOB_PATH);
+  if (request.method === "GET" && catalogExportJobMatch) {
+    const jobId = catalogExportJobMatch[1];
+    try {
+      if (catalogExportJobMatch[2]) {
+        return withCatalogAdminSecurityHeaders(
+          await env.CATALOG_ADMIN.downloadKnowledgeCatalogExport(jobId),
+        );
+      }
+      const job = await env.CATALOG_ADMIN.getKnowledgeCatalogExportJob(jobId);
+      return job ? json(job) : json({ error: "not_found" }, { status: 404 });
+    } catch (error) {
+      return knowledgeCatalogExportUnavailable(
+        error,
+        catalogExportJobMatch[2] ? "download" : "status",
+      );
+    }
   }
   if (request.method === "POST" && url.pathname === PRODUCT_EXPORT_COLLECTION_PATH) {
     if (!isJsonRequest(request)) {

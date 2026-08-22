@@ -13,6 +13,10 @@ import {
   consumeKnowledgeCatalogVerificationDeadLetterBatch,
 } from "./knowledge-catalog/consumer.js";
 import {
+  consumeKnowledgeCatalogExportBatch,
+  consumeKnowledgeCatalogExportDeadLetterBatch,
+} from "./knowledge-catalog-export/consumer.js";
+import {
   KNOWLEDGE_CATALOG_VERIFICATION_DLQ,
   KNOWLEDGE_CATALOG_VERIFICATION_QUEUE,
 } from "./knowledge-catalog/queue-names.js";
@@ -25,8 +29,10 @@ import {
   PRODUCT_AUDIT_EXPORT_QUEUE,
 } from "./product-audit-export/queue-names.js";
 import { isProductAuditExportQueueMessage } from "./product-audit-export/types.js";
+import { isKnowledgeCatalogExportQueueMessage } from "./knowledge-catalog-export/types.js";
 import { isRecord } from "./types.js";
 import type { CrawlQueueMessage } from "./crawler/types.js";
+import type { KnowledgeCatalogExportQueueMessage } from "./knowledge-catalog-export/types.js";
 import type { KnowledgeCatalogQueueMessage } from "./knowledge-catalog/types.js";
 import type { ProductAuditExportQueueMessage } from "./product-audit-export/types.js";
 
@@ -35,6 +41,7 @@ export const CRAWL_QUEUE = "hifiscout-crawl";
 export type WorkerQueueMessage =
   | CrawlQueueMessage
   | KnowledgeCatalogQueueMessage
+  | KnowledgeCatalogExportQueueMessage
   | ProductAuditExportQueueMessage;
 
 function isCrawlBatch(
@@ -59,6 +66,12 @@ function isProductAuditExportBatch(
   batch: MessageBatch<WorkerQueueMessage>,
 ): batch is MessageBatch<ProductAuditExportQueueMessage> {
   return batch.messages.every((message) => isProductAuditExportQueueMessage(message.body));
+}
+
+function isKnowledgeCatalogExportBatch(
+  batch: MessageBatch<WorkerQueueMessage>,
+): batch is MessageBatch<KnowledgeCatalogExportQueueMessage> {
+  return batch.messages.every((message) => isKnowledgeCatalogExportQueueMessage(message.body));
 }
 
 function queueWaitMs(requestedAt: string, receivedAtMs: number): number | null {
@@ -106,8 +119,14 @@ export async function handleQueue(
   if (batch.queue === PRODUCT_AUDIT_EXPORT_QUEUE && isProductAuditExportBatch(batch)) {
     return consumeProductAuditExportBatch(env, batch);
   }
+  if (batch.queue === PRODUCT_AUDIT_EXPORT_QUEUE && isKnowledgeCatalogExportBatch(batch)) {
+    return consumeKnowledgeCatalogExportBatch(env, batch);
+  }
   if (batch.queue === PRODUCT_AUDIT_EXPORT_DLQ && isProductAuditExportBatch(batch)) {
     return consumeProductAuditExportDeadLetterBatch(env, batch);
+  }
+  if (batch.queue === PRODUCT_AUDIT_EXPORT_DLQ && isKnowledgeCatalogExportBatch(batch)) {
+    return consumeKnowledgeCatalogExportDeadLetterBatch(env, batch);
   }
   if (batch.queue === KNOWLEDGE_CATALOG_VERIFICATION_QUEUE && isKnowledgeCatalogBatch(batch)) {
     return consumeKnowledgeCatalogVerificationBatch(env, batch);

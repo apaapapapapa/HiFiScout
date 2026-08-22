@@ -189,7 +189,7 @@ button:disabled {
 
 .export-jobs {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 12px;
 }
 
@@ -205,6 +205,10 @@ button:disabled {
 .export-job h3 {
   margin: 0 0 6px;
   font-size: 0.98rem;
+}
+
+.export-job-description {
+  font-size: 0.8rem;
 }
 
 .export-job-actions {

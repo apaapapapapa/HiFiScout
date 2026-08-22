@@ -2,6 +2,7 @@ import type {
   ProductAuditExportJob,
   ProductAuditExportScope,
 } from "../product-audit-export/types.js";
+import type { KnowledgeCatalogExportJob } from "../knowledge-catalog-export/types.js";
 
 export interface CatalogAdminListOptions {
   query: string;
@@ -74,6 +75,10 @@ export interface CatalogAdminProductExportRow {
 export interface CatalogAdminRpc {
   listProducts(options: CatalogAdminListOptions): Promise<unknown>;
   updateProduct(productId: number, input: CatalogAdminUpdateInput): Promise<unknown>;
+  startKnowledgeCatalogExport(): Promise<KnowledgeCatalogExportJob>;
+  latestKnowledgeCatalogExportJob(): Promise<KnowledgeCatalogExportJob | null>;
+  getKnowledgeCatalogExportJob(jobId: string): Promise<KnowledgeCatalogExportJob | null>;
+  downloadKnowledgeCatalogExport(jobId: string): Promise<Response>;
   startProductAuditExport(scope: ProductAuditExportScope): Promise<ProductAuditExportJob>;
   latestProductAuditExportJob(
     scope: ProductAuditExportScope,
