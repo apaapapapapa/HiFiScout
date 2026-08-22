@@ -1,6 +1,59 @@
 import type { ClassifiableCategoryId } from "./types.js";
 
 /**
+ * Digital audio player model families, each anchored to its own brand.
+ *
+ * A bare `M23` or `R6` identifies nothing, and matching one would be actively harmful: those
+ * strings also appear in other brands' cable and earphone model numbers. Every family therefore
+ * requires the brand token to appear in the same text, close to the model.
+ *
+ * The brand comes from the title rather than from `manufacturer_id` because none of these brands
+ * are in `MANUFACTURER_SOURCE` yet — a rule keyed on the resolved id would classify nothing until
+ * that separate brand-coverage work lands, and shop titles carry the brand anyway.
+ *
+ * Each entry lists only the families that are unambiguously players for that brand. Brands that
+ * also sell amplifiers, dongles or earphones keep those out: FiiO's `K`/`Q`/`BTR`/`FH` lines,
+ * Cayin's `C9`/`RU`, HiBy's `FC`, Shanling's `UA`/`ME` and Astell&Kern's `PA` are deliberately
+ * absent, so a portable amplifier is still read as one.
+ */
+const DAP_MODEL_FAMILIES: readonly (readonly [brand: RegExp, models: RegExp])[] = [
+  [/astell\s*&?\s*kern|アステル(?:アンドケルン)?/, /\b(?:kann|sp\d{3,4}|se\d{3}|sr\d{2})\b/],
+  [/cayin|カイン/, /\bn\d{1,2}[a-z]{0,3}\b/],
+  [/hiby|ハイビー/, /\brs?\d{1,2}(?:\s*(?:i{1,3}|gen\s*\d|pro|saber))?\b/],
+  [/fiio|フィーオ/, /\bm\d{1,2}[a-z]*\b/],
+  [/shanling|シャンリン/, /\bm\d{1,2}[a-z]*\b/],
+  [/ibasso|アイバッソ/, /\bdx\d{2,3}\b/],
+  [/luxury\s*&?\s*precision|ラグジュアリー(?:アンドプレシジョン)?/, /\b(?:lp|p|e)\d{1,2}\b/],
+];
+
+/**
+ * A bounded gap between the two halves, so a shop title that puts a katakana reading between brand
+ * and model still matches while an unrelated brand elsewhere in the same string cannot lend its
+ * name to a model number.
+ */
+const DAP_BRAND_MODEL_GAP = /[^]{0,32}?/;
+
+/**
+ * A player's model number also names the accessories sold for it, and those are not players.
+ *
+ * Applied as a lookahead from the start of the match, which relies on shop titles naming the
+ * product type after the brand and model — the order every shop in the registry uses. A title that
+ * leads with the accessory noun escapes it, and a genuine player whose title advertises a bundled
+ * case is blocked; both fail to `unclassified`, which the enrichment and Knowledge Catalog paths
+ * can still recover, rather than to a wrong terminal label.
+ */
+const DAP_ACCESSORY_GUARD =
+  /(?![^]*(?:ケース|カバー|フィルム|ストラップ|\bcase\b|\bcover\b|\bfilm\b|\bstrap\b))/;
+
+const DAP_MODEL_PATTERN = new RegExp(
+  DAP_MODEL_FAMILIES.map(
+    ([brand, models]) =>
+      `${DAP_ACCESSORY_GUARD.source}(?:${brand.source})${DAP_BRAND_MODEL_GAP.source}(?:${models.source})`,
+  ).join("|"),
+  "i",
+);
+
+/**
  * Ordered match table: the first pattern that matches wins, so entry order is behaviour.
  * The explicit tuple element type stops TypeScript widening each pair to
  * `(string | RegExp)[]`, which would erase the category id at every call site.
@@ -89,7 +142,10 @@ const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
     /(?:mc|moving\s+coil)\s+(?:step[\s-]*up\s+)?transformer|step[\s-]*up\s+transformer|(?:mc)?昇圧トランス/i,
   ],
   ["phono_eq", /phono\s+(?:equalizer|eq|stage)|フォノイコライザー|フォノアンプ/i],
-  ["turntable", /\bturntable\b|record\s+player|ターンテーブル|レコード(?:プレーヤー|プレイヤー)/i],
+  [
+    "turntable",
+    /\bturntable\b|record\s+player|ターンテーブル|(?:レコード|アナログ)(?:プレーヤー|プレイヤー)/i,
+  ],
   ["tonearm", /tone\s*arm|トーンアーム/i],
   ["headshell", /\bhead\s*shell\b|ヘッドシェル/i],
   ["cartridge", /\bcartridge\b|カートリッジ/i],
@@ -97,6 +153,10 @@ const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
     "dap",
     /\bdap\b|digital\s+audio\s+player|デジタルオーディオ(?:プレーヤー|プレイヤー)|ポータブルオーディオ(?:プレーヤー|プレイヤー)/i,
   ],
+  // Deliberately below the cable, amplifier and earphone-word rules above: an explicit product-type
+  // word in the title beats a model number every time, so a brand's replacement cable or portable
+  // amplifier keeps its own category even though the brand also makes players.
+  ["dap", DAP_MODEL_PATTERN],
   [
     "active_speaker",
     /\bactive\b.*\bspeakers?\b|powered\s+(?:speakers?|monitors?)|アクティブ.*スピーカー|パワードスピーカー/i,
@@ -108,7 +168,14 @@ const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
     /floor[\s-]?standing|tower\s+speaker|トールボーイ|フロア型|フロアスタンディング/i,
   ],
   ["subwoofer", /sub[\s-]?woofer|スーパーウーファー|サブウーファー/i],
-  ["other", /\bsound\s*bars?\b|サウンドバー|\bspeakers?\b|スピーカー/i],
+  // Soundbars only. A generic "speaker" word must NOT resolve here: `other` is a terminal leaf, and
+  // `enrichProductCategories()` skips classified products, so labelling a bare `2Wayスピーカー` as
+  // "その他" froze it permanently — worse than leaving it unclassified, where the detail-page and
+  // Knowledge Catalog paths can still reach it. The alternative was introduced by the
+  // `speaker_other` leaf removal (#189) rewriting that id to `other`, not by a design decision.
+  // Do not add a generic classifiable speaker leaf back: `speaker` is `classifiable:false` on
+  // purpose, and a "その他スピーカー" bucket is useless as a buyer-facing filter.
+  ["other", /\bsound\s*bars?\b|サウンドバー/i],
   [
     "btw_earphone",
     /(?:bluetooth|wireless|true\s+wireless|\btws\b).*?(?:earphones?|earbuds?|\biem\b)|(?:earphones?|earbuds?|\biem\b).*?(?:bluetooth|wireless|true\s+wireless|\btws\b)|(?:bluetooth|ワイヤレス|完全ワイヤレス).*?イヤホン|イヤホン.*?(?:bluetooth|ワイヤレス|完全ワイヤレス)/i,
