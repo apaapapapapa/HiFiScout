@@ -31,11 +31,15 @@ function positiveBoundedInteger(value: number | undefined, fallback: number, max
 }
 
 /**
- * An active listing needs projection repair when any stage is missing, or when Product Identity
- * already points at a verified Catalog product but the Product Search membership still points at an
- * unresolved fallback entity. The latter is a completed upstream transition with a stale read
- * model, so treating it as a gap is both safe and sufficient to move the listing to its Catalog
- * entity through the normal dependency-ordered refresh path.
+ * An active listing needs projection repair when any stage is missing, or when it belongs to a
+ * fallback entity whose representative listing has already become a verified Catalog match.
+ *
+ * The representative clause deliberately follows the entity membership rather than only checking
+ * the current listing's own Identity row. Exact-identity grouping allows several unresolved offers
+ * to share `l-<representative id>`. If that representative is promoted between bounded writes, its
+ * own offer may already move to Catalog while peers remain attached to the now-stale fallback. In
+ * that state the peer is the row that must be replayed so the unresolved group can elect a current
+ * representative and the obsolete entity can be pruned.
  */
 const ACTIVE_PROJECTION_GAP_PREDICATE = `
   NOT EXISTS (
@@ -53,10 +57,12 @@ const ACTIVE_PROJECTION_GAP_PREDICATE = `
     FROM product_search_entity_offers o
     JOIN product_search_entities e
       ON e.id = o.entity_id AND e.entity_kind = 'unresolved_listing'
-    JOIN product_identity_resolutions r
-      ON r.listing_product_id = p.id AND r.status = 'matched'
-    JOIN knowledge_catalog_products kp
-      ON kp.id = r.catalog_product_id AND kp.verification_status = 'verified'
+    JOIN product_identity_resolutions representative_r
+      ON representative_r.listing_product_id = e.fallback_listing_id
+      AND representative_r.status = 'matched'
+    JOIN knowledge_catalog_products representative_kp
+      ON representative_kp.id = representative_r.catalog_product_id
+      AND representative_kp.verification_status = 'verified'
     WHERE o.listing_product_id = p.id
   )
 `;
