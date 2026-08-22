@@ -8,8 +8,14 @@ import {
 import { findVerifiedCatalogMatches } from "../db/knowledge-catalog-repository.js";
 import { findManualVerifiedCategoryMatches } from "../db/manual-category-authority-repository.js";
 import { selectExistingProducts } from "../db/product-write-repository.js";
+import { categoryIdForClassification } from "../catalog/categories.js";
 import { errorMessage, isRecord } from "../types.js";
-import type { CategoryEvidenceInput, NormalizedCatalogProduct } from "../catalog/types.js";
+import type {
+  CategoryClassification,
+  CategoryEvidenceInput,
+  CategoryId,
+  NormalizedCatalogProduct,
+} from "../catalog/types.js";
 import type { CategoryEnrichmentProductRow, ReadableDatabase } from "../db/types.js";
 import type {
   CategoryEnrichmentResult,
@@ -36,6 +42,20 @@ function parseJson(value: string | undefined): Record<string, unknown> {
     return isRecord(parsed) ? parsed : {};
   } catch {
     return {};
+  }
+}
+
+function parseCategoryIds(value: string): CategoryId[] {
+  try {
+    const parsed: unknown = JSON.parse(value || "[]");
+    return Array.isArray(parsed)
+      ? parsed
+          .filter((item): item is string => typeof item === "string")
+          .map((item) => categoryIdForClassification(item))
+          .filter((item): item is CategoryId => item !== null)
+      : [];
+  } catch {
+    return [];
   }
 }
 
@@ -72,6 +92,8 @@ function groupByIdentity(
 interface DetailDecision {
   /** Detail-page evidence restored from a copy classified on an earlier crawl. */
   cachedEvidence: CategoryEvidenceInput[] | null;
+  /** Legacy cached rows may have the final classification but no persisted evidence summary. */
+  cachedClassification: CategoryClassification | null;
   cachedCheckedAt: string | null;
   /** A recent detail check that found nothing; the whole identity waits out `cacheHours`. */
   recentlyChecked: boolean;
@@ -83,6 +105,7 @@ interface DetailDecision {
 function newDetailDecision(): DetailDecision {
   return {
     cachedEvidence: null,
+    cachedClassification: null,
     cachedCheckedAt: null,
     recentlyChecked: false,
     recentCheckedAt: null,
@@ -99,6 +122,37 @@ function classificationMetadata(
 }
 
 /**
+ * Restore the persisted final answer for backward compatibility with cache rows that predate the
+ * evidence summary. New cache rows should use {@link cachedDetailEvidence} so each listing can
+ * recompute against its own seller evidence.
+ */
+function cachedClassification(
+  existing: CategoryEnrichmentProductRow | undefined,
+  product: NormalizedCatalogProduct,
+): CategoryClassification | null {
+  if (!existing) return null;
+  if (!sameIdentity(existing, product)) return null;
+  const metadata = classificationMetadata(existing);
+  if (metadata?.version !== CATEGORY_CLASSIFICATION_METADATA_VERSION) return null;
+  if (typeof metadata.detailCheckedAt !== "string" || !metadata.detailCheckedAt) return null;
+  if (metadata.state !== "classified" || existing.classification_status !== "classified")
+    return null;
+  const categoryIds = parseCategoryIds(existing.category_ids);
+  if (!categoryIds.length) return null;
+  return {
+    primaryCategoryId: categoryIdForClassification(existing.primary_category_id) || categoryIds[0],
+    categoryIds,
+    displayName: existing.category,
+    classificationStatus: "classified",
+    classificationState: "classified",
+    classificationReason: "",
+    classificationSource: "cached_detail",
+    candidateCategoryIds: [],
+    searchAliases: existing.search_aliases || "",
+  };
+}
+
+/**
  * Restore only the detail-page evidence from a cached decision.
  *
  * A cached final classification is not portable between listings: each listing still owns its
@@ -111,14 +165,9 @@ function cachedDetailEvidence(
   existing: CategoryEnrichmentProductRow | undefined,
   product: NormalizedCatalogProduct,
 ): CategoryEvidenceInput[] | null {
-  if (!existing) return null;
-  if (!sameIdentity(existing, product)) return null;
+  if (!cachedClassification(existing, product)) return null;
   const metadata = classificationMetadata(existing);
-  if (metadata?.version !== CATEGORY_CLASSIFICATION_METADATA_VERSION) return null;
-  if (typeof metadata.detailCheckedAt !== "string" || !metadata.detailCheckedAt) return null;
-  if (metadata.state !== "classified" || existing.classification_status !== "classified")
-    return null;
-  if (!Array.isArray(metadata.evidence)) return null;
+  if (!Array.isArray(metadata?.evidence)) return null;
 
   const detailEvidence = metadata.evidence
     .filter(isRecord)
@@ -263,14 +312,15 @@ export async function enrichProductCategories({
 
     for (const product of group) {
       const existing = existingBySourceId.get(product.sourceId);
-      const cachedEvidence = cachedDetailEvidence(existing, product);
-      if (!cachedEvidence) continue;
-      decision.cachedEvidence = cachedEvidence;
+      const cached = cachedClassification(existing, product);
+      if (!cached) continue;
+      decision.cachedClassification = cached;
+      decision.cachedEvidence = cachedDetailEvidence(existing, product);
       const detailCheckedAt = classificationMetadata(existing)?.detailCheckedAt;
       decision.cachedCheckedAt = typeof detailCheckedAt === "string" ? detailCheckedAt : null;
       break;
     }
-    if (decision.cachedEvidence) continue;
+    if (decision.cachedClassification) continue;
 
     for (const product of group) {
       const existing = existingBySourceId.get(product.sourceId);
@@ -312,21 +362,36 @@ export async function enrichProductCategories({
     }
     const decision = decisions.get(identityKey(product));
 
-    if (decision?.cachedEvidence) {
+    if (decision?.cachedClassification) {
       cacheHits += 1;
-      const evidence = [...(product.categoryEvidence || []), ...decision.cachedEvidence];
-      const classification = {
-        ...classifyCategoryEvidence(evidence),
-        classificationSource: "cached_detail",
-      };
-      const updated = applyCategoryClassification(
-        product,
-        classification,
-        evidence,
-        decision.cachedCheckedAt ? { detailCheckedAt: decision.cachedCheckedAt } : {},
-      );
-      if (updated.classificationStatus === "classified") enrichedCount += 1;
-      enriched.push(updated);
+      if (decision.cachedEvidence) {
+        const evidence = [...(product.categoryEvidence || []), ...decision.cachedEvidence];
+        const classification = {
+          ...classifyCategoryEvidence(evidence),
+          classificationSource: "cached_detail",
+        };
+        const updated = applyCategoryClassification(
+          product,
+          classification,
+          evidence,
+          decision.cachedCheckedAt ? { detailCheckedAt: decision.cachedCheckedAt } : {},
+        );
+        if (updated.classificationStatus === "classified") enrichedCount += 1;
+        enriched.push(updated);
+      } else {
+        // Legacy cache rows did not persist evidence. Keep their previous zero-request behaviour;
+        // once a row is refreshed under the current metadata shape it will take the evidence path
+        // above and regain per-listing recomputation plus full provenance.
+        enrichedCount += 1;
+        enriched.push(
+          applyCategoryClassification(
+            product,
+            decision.cachedClassification,
+            product.categoryEvidence,
+            decision.cachedCheckedAt ? { detailCheckedAt: decision.cachedCheckedAt } : {},
+          ),
+        );
+      }
       continue;
     }
 
