@@ -85,3 +85,49 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         working-directory: e2e
         run: npx playwright install chromium
+
+  remediation-diagnostic:
+    if: github.event_name == 'pull_request' && github.head_ref == 'diagnostic/data-quality-remediation-final'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_ACCOUNT_ID: 9af87af4dbc00be3bfd4c8af3f52f684
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Query completion invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          versions="$(npx tsx --eval 'import { RESOLUTION_VERSIONS } from "./src/catalog/resolution-versions.ts"; process.stdout.write(JSON.stringify(RESOLUTION_VERSIONS));')"
+          mv="$(jq -r '.manufacturer' <<< "$versions")"; modv="$(jq -r '.model' <<< "$versions")"; cv="$(jq -r '.category' <<< "$versions")"; iv="$(jq -r '.identity' <<< "$versions")"
+          echo '--- listing invariants ---'
+          npx wrangler d1 execute DB --remote --json --command "SELECT COUNT(*) AS active_listings, SUM(CASE WHEN classification_status='unclassified' AND (category_ids IS NULL OR TRIM(category_ids) IN ('','[]')) THEN 1 ELSE 0 END) AS unclassified_empty_category_ids, SUM(CASE WHEN shop_key='hifido' AND (source_id LIKE '26-20368-%' OR title LIKE '%枚セット%' OR title LIKE '%枚組%') THEN 1 ELSE 0 END) AS active_hifido_music_software, SUM(CASE WHEN shop_key='hifido' AND raw_category='カートリッジ' AND (title LIKE '%枚セット%' OR title LIKE '%枚組%') THEN 1 ELSE 0 END) AS active_hifido_category_bleed, SUM(CASE WHEN TRIM(manufacturer) IN ('不明','メーカー不明','その他','ノーブランド','不明 フメイ') OR TRIM(raw_manufacturer) IN ('不明','メーカー不明','その他','ノーブランド','不明 フメイ') OR TRIM(manufacturer) LIKE '不明 %' OR TRIM(raw_manufacturer) LIKE '不明 %' THEN 1 ELSE 0 END) AS active_placeholder_manufacturers, SUM(CASE WHEN manufacturer_resolver_version < ${mv} THEN 1 ELSE 0 END) AS stale_manufacturer, SUM(CASE WHEN model_resolver_version < ${modv} THEN 1 ELSE 0 END) AS stale_model, SUM(CASE WHEN COALESCE(CAST(json_extract(metadata_json,'$.categoryClassification.version') AS INTEGER),0) < ${cv} THEN 1 ELSE 0 END) AS stale_category, SUM(CASE WHEN remediation_projection_required=1 THEN 1 ELSE 0 END) AS projection_dirty FROM products WHERE is_active=1;" | jq '.[0].results[0]'
+          echo '--- category determinism ---'
+          npx wrangler d1 execute DB --remote --json --command "SELECT COUNT(*) AS inconsistent_category_groups FROM (SELECT shop_key,title,raw_category FROM products WHERE is_active=1 GROUP BY shop_key,title,raw_category HAVING COUNT(DISTINCT primary_category_id)>1);" | jq '.[0].results[0]'
+          echo '--- manufacturer determinism ---'
+          npx wrangler d1 execute DB --remote --json --command "SELECT COUNT(*) AS inconsistent_manufacturer_groups FROM (SELECT shop_key,title,raw_category,raw_manufacturer FROM products WHERE is_active=1 GROUP BY shop_key,title,raw_category,raw_manufacturer HAVING COUNT(DISTINCT manufacturer_id)>1);" | jq '.[0].results[0]'
+          echo '--- identity staleness ---'
+          npx wrangler d1 execute DB --remote --json --command "SELECT SUM(CASE WHEN COALESCE(r.identity_resolver_version,0) < ${iv} THEN 1 ELSE 0 END) AS stale_identity FROM products p LEFT JOIN product_identity_resolutions r ON r.listing_product_id=p.id WHERE p.is_active=1;" | jq '.[0].results[0]'
+          echo '--- queue ---'
+          npx wrangler d1 execute DB --remote --json --command "SELECT SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending, SUM(CASE WHEN status='processing' THEN 1 ELSE 0 END) AS processing, SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed, MIN(CASE WHEN status IN ('pending','processing') THEN created_at END) AS oldest_backlog FROM data_quality_remediation_queue;" | jq '.[0].results[0]'
+      - name: Inspect live Hifido detail structure
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(npx wrangler d1 execute DB --remote --json --command "SELECT id,source_url,title,raw_category FROM products WHERE is_active=1 AND shop_key='hifido' AND source_url LIKE 'https://www.hifido.co.jp/%' AND title NOT LIKE '%枚セット%' AND title NOT LIKE '%枚組%' ORDER BY CASE WHEN classification_status='unclassified' THEN 0 ELSE 1 END,id DESC LIMIT 1;")"
+          row="$(jq -c '.[0].results[0] // {}' <<< "$response")"; url="$(jq -r '.source_url // empty' <<< "$row")"
+          echo "Selected listing: $(jq -c '{id,title,raw_category}' <<< "$row")"; test -n "$url"
+          status="$(curl --compressed -L -sS -o hifido-detail.bin -w '%{http_code}' -A 'HiFiScoutBot/0.1 (+https://github.com/apaapapapa/HiFiScout)' -H 'Accept: text/html,application/xhtml+xml' -H 'Accept-Language: ja,en;q=0.7' -H 'Cache-Control: no-cache' "$url" || true)"
+          echo "Hifido detail HTTP status: $status"; echo "Hifido detail bytes: $(wc -c < hifido-detail.bin | tr -d ' ')"; [[ "$status" == '200' ]] || exit 0
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const b=readFileSync('hifido-detail.bin'); let h; try{h=new TextDecoder('euc-jp').decode(b)}catch{h=new TextDecoder().decode(b)}
+          const out=[]; for(const p of [/ジャンル/giu,/カテゴリ/giu,/genre/giu,/メーカー/giu,/商品詳細/giu]){for(const m of h.matchAll(p)){const s=h.slice(Math.max(0,m.index-180),Math.min(h.length,m.index+m[0].length+240)).replace(/\s+/gu,' ').trim(); if(!out.includes(s))out.push(s); if(out.length>=12)break} if(out.length>=12)break}
+          console.log(`Structural snippets found: ${out.length}`); out.forEach((s,i)=>console.log(`SNIPPET ${i+1}: ${s.slice(0,500)}`));
+          NODE
