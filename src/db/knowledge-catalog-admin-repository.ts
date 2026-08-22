@@ -4,6 +4,7 @@ import {
   categorySearchAliases,
   getCategory,
 } from "../catalog/categories.js";
+import { manufacturerFilterIds } from "../catalog/manufacturers.js";
 import { normalizeIdentityModel } from "../catalog/product-identity.js";
 import { refreshListingProjections } from "./listing-projection-refresh.js";
 import type {
@@ -23,6 +24,11 @@ function normalizeCatalogAdminSearchText(value: string): string {
     .replace(/\s+/gu, " ")
     .trim()
     .toLowerCase();
+}
+
+function catalogAdminManufacturerIds(value: string): string[] {
+  const raw = normalizeCatalogAdminSearchText(value);
+  return [...new Set([raw, ...manufacturerFilterIds(value)])].filter(Boolean);
 }
 
 interface KnowledgeCatalogAdminListOptions {
@@ -168,10 +174,12 @@ export async function listKnowledgeCatalogAdminProducts(
   if (options.query) {
     const textQuery = normalizeCatalogAdminSearchText(options.query);
     const identityQuery = normalizeIdentityModel(options.query).toLowerCase();
+    const manufacturerIds = catalogAdminManufacturerIds(options.query);
     where.push(`(
       INSTR(LOWER(kp.canonical_name), ?) > 0 OR
       INSTR(LOWER(kp.canonical_model), ?) > 0 OR
       INSTR(LOWER(kp.manufacturer_id), ?) > 0 OR
+      kp.manufacturer_id IN (SELECT value FROM json_each(?)) OR
       (? <> '' AND INSTR(LOWER(kp.normalized_model), ?) > 0) OR
       EXISTS (
         SELECT 1
@@ -187,6 +195,7 @@ export async function listKnowledgeCatalogAdminProducts(
       textQuery,
       textQuery,
       textQuery,
+      JSON.stringify(manufacturerIds),
       identityQuery,
       identityQuery,
       textQuery,
@@ -195,8 +204,8 @@ export async function listKnowledgeCatalogAdminProducts(
     );
   }
   if (options.manufacturerId) {
-    where.push("kp.manufacturer_id = ?");
-    params.push(options.manufacturerId);
+    where.push("kp.manufacturer_id IN (SELECT value FROM json_each(?))");
+    params.push(JSON.stringify(catalogAdminManufacturerIds(options.manufacturerId)));
   }
   if (options.categoryId) {
     where.push(`EXISTS (
