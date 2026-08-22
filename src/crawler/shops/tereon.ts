@@ -100,7 +100,10 @@ function manufacturerModel(title: string) {
     manufacturer,
     // Tereon appends colour, carton and cosmetic notes in parentheses. Keep the stable model stem
     // so black/silver and other finish variants can resolve to the same catalog product.
-    model: cleanText(model).replace(/\s*[（(].*$/u, "").trim() || cleanText(model),
+    model:
+      cleanText(model)
+        .replace(/\s*[（(].*$/u, "")
+        .trim() || cleanText(model),
   };
 }
 
@@ -127,10 +130,7 @@ function paginationTarget(href: string, page: Partial<TereonPage>): TereonPage |
   }
 }
 
-export function parseTereonListing(
-  html: string,
-  page: Partial<TereonPage> = {},
-): SellerProduct[] {
+export function parseTereonListing(html: string, page: Partial<TereonPage> = {}): SellerProduct[] {
   const records = productAnchorRecords(html);
   const products: SellerProduct[] = [];
 
