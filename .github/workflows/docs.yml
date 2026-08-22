@@ -22,11 +22,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/setup-node-deps
       # The SchemaSpy JDBC driver is downloaded from Maven Central on a cache miss only. The key
       # tracks the generator script, which is where the driver version is declared.
       - name: Cache SchemaSpy JDBC driver

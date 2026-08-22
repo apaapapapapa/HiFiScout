@@ -23,11 +23,7 @@ jobs:
       # No history is needed: the source gate is repository-wide rather than diff-scoped, and
       # `check:no-js-source` reads the index with `git ls-files`.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/setup-node-deps
       # Same gate contributors run locally: lint, format check, TypeScript-only check, type check,
       # unit tests. Keeping it as one script means CI and `npm run verify` cannot drift apart.
       - run: npm run check
@@ -43,11 +39,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/setup-node-deps
       - name: Verify npm registry signatures and provenance
         run: npm audit signatures
       - name: Fail on high or critical dependency vulnerabilities
