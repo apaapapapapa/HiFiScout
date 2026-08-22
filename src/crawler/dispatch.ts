@@ -4,6 +4,7 @@ import {
   crawlDispatchToken,
   getShopState,
   listShopStates,
+  markShopDispatchSent,
   releaseShopCrawl,
   releaseShopDispatch,
   reserveShopDispatch,
@@ -30,6 +31,7 @@ type RuntimeEnv = CrawlerEnv & { DB: QueryableDatabase };
 type ProductSearchEntitySync = typeof syncProductSearchEntities;
 type ShopCrawlLeaseState = ShopSyncStateRow & {
   queued_token?: string | null;
+  queued_last_sent_at?: string | null;
   crawl_lease_until?: string | null;
 };
 
@@ -44,6 +46,11 @@ interface DispatchOptions {
 
 interface DispatchAtOptions {
   now?: Date;
+}
+
+interface RecoveryOptions {
+  now?: Date;
+  recoveryMinutes?: number;
 }
 
 function isConfigured(env: CrawlerEnv, plugin: ShopPlugin): boolean {
@@ -153,11 +160,117 @@ function logBatchDispatch(
   );
 }
 
+function recoveryDue(
+  state: ShopCrawlLeaseState,
+  now: Date,
+  recoveryMinutes: number,
+): boolean {
+  if (!state.queued_at) return false;
+  const requestedAtMs = new Date(state.queued_at).getTime();
+  if (!Number.isFinite(requestedAtMs)) return false;
+
+  const lastSentAtMs = new Date(state.queued_last_sent_at || state.queued_at).getTime();
+  if (
+    Number.isFinite(lastSentAtMs) &&
+    now.getTime() - lastSentAtMs < Math.max(1, recoveryMinutes) * 60_000
+  ) {
+    return false;
+  }
+
+  if (state.crawl_lease_until) {
+    const leaseUntilMs = new Date(state.crawl_lease_until).getTime();
+    if (Number.isFinite(leaseUntilMs) && leaseUntilMs > now.getTime()) return false;
+  }
+  return true;
+}
+
+/**
+ * Re-sends an orphaned logical child without changing its requestedAt/token.
+ *
+ * This is a watchdog, not a second scheduler. Duplicate deliveries remain safe because every copy
+ * carries the same dispatch identity and `tryClaimShopCrawl` enforces single-flight execution.
+ * Keeping the original identity avoids the queue-tail starvation caused by replacing stale jobs.
+ */
+export async function recoverStalledCrawlDispatches(
+  env: RuntimeEnv,
+  { now = new Date(), recoveryMinutes = getCrawlerSettings(env).dispatchLeaseMinutes }: RecoveryOptions = {},
+): Promise<string[]> {
+  const recovered: string[] = [];
+  const states = (await listShopStates(env.DB)) as ShopCrawlLeaseState[];
+  const recoveredAt = now.toISOString();
+  const batchRunId = `crawl-recovery:${recoveredAt}:${crypto.randomUUID()}`;
+
+  for (const state of states) {
+    if (!recoveryDue(state, now, recoveryMinutes) || !state.queued_at) continue;
+    const plugin = getShopPlugin(state.shop_key);
+    if (!plugin || !getShopEnabled(env, plugin.definition) || !isConfigured(env, plugin)) continue;
+    const destination = crawlQueueSender(env, plugin);
+    if (!destination) {
+      console.error(
+        JSON.stringify({
+          event: "crawl_dispatch_recovery_failed",
+          shopKey: state.shop_key,
+          requestedAt: state.queued_at,
+          reason: "queue_binding_missing",
+        }),
+      );
+      continue;
+    }
+
+    const dispatchToken = state.queued_token || crawlDispatchToken(plugin.key, state.queued_at);
+    const message: CrawlQueueMessage = {
+      shopKey: plugin.key,
+      // A recovered job was already authorized by the scheduler. Rechecking due-ness after a
+      // crashed attempt would suppress it because that attempt already advanced last_attempt_at.
+      force: true,
+      requestedAt: state.queued_at,
+      jobId: dispatchToken,
+      batchRunId,
+      lane: destination.lane,
+    };
+
+    try {
+      await destination.queue.send(message);
+      await markShopDispatchSent(env.DB, plugin.key, dispatchToken, recoveredAt);
+      recovered.push(plugin.key);
+      console.warn(
+        JSON.stringify({
+          event: "crawl_dispatch_recovered",
+          shopKey: plugin.key,
+          requestedAt: state.queued_at,
+          recoveredAt,
+          jobId: dispatchToken,
+          batchRunId,
+          lane: destination.lane,
+        }),
+      );
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          event: "crawl_dispatch_recovery_failed",
+          shopKey: plugin.key,
+          requestedAt: state.queued_at,
+          jobId: dispatchToken,
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    }
+  }
+
+  return recovered;
+}
+
 export async function dispatchDueCrawls(
   env: RuntimeEnv,
   { now = new Date(), excludeShopKeys = [] }: DispatchOptions = {},
 ): Promise<DispatchResult> {
   const settings = getCrawlerSettings(env);
+  // Recovery intentionally scans every shop, including dedicated-cron shops. The general five-
+  // minute sweep is the common watchdog for all lane consumers.
+  await recoverStalledCrawlDispatches(env, {
+    now,
+    recoveryMinutes: settings.dispatchLeaseMinutes,
+  });
   const candidates = dueDispatchCandidates(env, await listShopStates(env.DB), now, {
     excludeShopKeys,
   });
@@ -330,7 +443,11 @@ export async function consumeCrawlMessage(
   }
 
   try {
-    const crawlResult = await crawlShop(env, plugin, { force: body?.force === true });
+    // Claiming the dispatch is the authorization to crawl. `last_attempt_at` is written at crawl
+    // start, so a Worker killed by the 15-minute wall limit leaves a recent attempt behind. If a
+    // Queue retry re-ran the due check, it would ACK the valid recovery as `not_due` instead of
+    // actually retrying the child.
+    const crawlResult = await crawlShop(env, plugin, { force: true });
     // Rechecking after a failed crawl would spend the shop's request budget on stale candidates.
     if (crawlResult.status !== "success" || !plugin.capabilities.inventoryRecheck) {
       return crawlResult;
