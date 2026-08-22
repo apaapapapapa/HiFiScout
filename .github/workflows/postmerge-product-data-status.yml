@@ -1,0 +1,96 @@
+name: Post-merge Product Data Status
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_ACCOUNT_ID: 9af87af4dbc00be3bfd4c8af3f52f684
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Inspect production D1 product-data status
+        shell: bash
+        run: |
+          set -euo pipefail
+          query() {
+            npx wrangler d1 execute DB --remote --json --command "$1" | jq '.[0].results // []'
+          }
+
+          echo '--- recent migrations ---'
+          query "SELECT id, name, applied_at FROM d1_migrations ORDER BY id DESC LIMIT 5;"
+
+          echo '--- resolver convergence ---'
+          query "SELECT
+            COUNT(*) AS active_listings,
+            SUM(CASE WHEN manufacturer_resolver_version < 5 THEN 1 ELSE 0 END) AS stale_manufacturer,
+            SUM(CASE WHEN model_resolver_version < 3 THEN 1 ELSE 0 END) AS stale_model,
+            SUM(CASE WHEN COALESCE(CAST(json_extract(metadata_json, '$.categoryClassification.version') AS INTEGER), 0) < 11 THEN 1 ELSE 0 END) AS stale_category,
+            SUM(CASE WHEN remediation_projection_required = 1 THEN 1 ELSE 0 END) AS projection_dirty
+          FROM products WHERE is_active = 1;"
+
+          echo '--- approved product audit catalog source ---'
+          query "SELECT
+            COUNT(DISTINCT s.product_id) AS audited_catalog_products,
+            SUM(CASE WHEN kp.verification_status = 'verified' THEN 1 ELSE 0 END) AS verified_rows
+          FROM knowledge_catalog_sources s
+          JOIN knowledge_catalog_products kp ON kp.id = s.product_id
+          WHERE s.source_url = 'manual://approved-product-audit/2026-08-21' AND s.status = 'active';"
+
+          echo '--- legacy taxonomy remaining in catalog ---'
+          query "SELECT category_id, COUNT(*) AS count
+          FROM knowledge_catalog_product_categories
+          WHERE category_id IN ('headphone','earphone','cable','speaker_other')
+          GROUP BY category_id ORDER BY category_id;"
+
+          echo '--- legacy taxonomy remaining on active listings ---'
+          query "SELECT primary_category_id, COUNT(*) AS count
+          FROM products
+          WHERE is_active = 1 AND primary_category_id IN ('headphone','earphone','cable','speaker_other')
+          GROUP BY primary_category_id ORDER BY primary_category_id;"
+
+          echo '--- canonical manufacturer marketing leakage ---'
+          query "SELECT shop_key, manufacturer, COUNT(*) AS count
+          FROM products
+          WHERE is_active = 1 AND (
+            manufacturer LIKE '%期間限定特価%'
+            OR manufacturer LIKE '%店頭在庫品処分%'
+            OR manufacturer LIKE '%メーカー新装商品%'
+            OR manufacturer LIKE '%訳あり特価%'
+          )
+          GROUP BY shop_key, manufacturer ORDER BY count DESC;"
+
+          echo '--- canonical model seller-note leakage ---'
+          query "SELECT shop_key, COUNT(*) AS count
+          FROM products
+          WHERE is_active = 1 AND (
+            model LIKE '%送料無料%'
+            OR model LIKE '%お取り寄せ%'
+            OR model LIKE '%B級品%'
+          )
+          GROUP BY shop_key ORDER BY count DESC;"
+
+          echo '--- approved-product-audit matched category mismatches ---'
+          query "SELECT COUNT(*) AS mismatch_count
+          FROM products p
+          JOIN product_identity_resolutions r ON r.listing_product_id = p.id AND r.status = 'matched'
+          JOIN knowledge_catalog_sources s
+            ON s.product_id = r.catalog_product_id
+           AND s.source_url = 'manual://approved-product-audit/2026-08-21'
+           AND s.status = 'active'
+          JOIN knowledge_catalog_product_categories c
+            ON c.product_id = r.catalog_product_id AND c.is_primary = 1
+          WHERE p.is_active = 1
+            AND (p.primary_category_id <> c.category_id OR p.classification_status <> 'classified');"
