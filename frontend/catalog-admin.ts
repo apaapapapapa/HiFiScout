@@ -446,12 +446,7 @@ function render(items: CatalogProduct[]): void {
     cell(row, "メーカー", product.manufacturerId);
     cell(row, "型番", product.canonicalModel, "model-cell");
     cell(row, "表示名", product.canonicalName, "name-cell");
-    badgeCell(
-      row,
-      "カテゴリ",
-      categoryName(product.primaryCategoryId),
-      "category-badge",
-    );
+    badgeCell(row, "カテゴリ", categoryName(product.primaryCategoryId), "category-badge");
     badgeCell(
       row,
       "状態",
