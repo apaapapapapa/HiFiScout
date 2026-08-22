@@ -32,6 +32,9 @@ export type EnvBindingName =
   | "EVIDENCE_BUCKET"
   | "DB"
   | "CRAWL_QUEUE"
+  | "CRAWL_FAST_QUEUE"
+  | "CRAWL_HEAVY_QUEUE"
+  | "CRAWL_RELAY_QUEUE"
   | "KNOWLEDGE_CATALOG_QUEUE"
   | "PRODUCT_AUDIT_EXPORT_QUEUE"
   | "API_RATE_LIMITER"
@@ -74,7 +77,11 @@ export type EnvVars = { readonly [Name in EnvVarName]?: string };
  */
 export interface CrawlerEnv extends EnvVars {
   readonly DB?: QueryableDatabase;
+  /** Legacy rollout fallback; new production work uses one of the lane-specific bindings below. */
   readonly CRAWL_QUEUE?: Pick<Queue<CrawlQueueMessage>, "send">;
+  readonly CRAWL_FAST_QUEUE?: Pick<Queue<CrawlQueueMessage>, "send">;
+  readonly CRAWL_HEAVY_QUEUE?: Pick<Queue<CrawlQueueMessage>, "send">;
+  readonly CRAWL_RELAY_QUEUE?: Pick<Queue<CrawlQueueMessage>, "send">;
   // The knowledge-catalog queue binding is declared by `KnowledgeCatalogQueueEnv` instead, so the
   // crawler vocabulary does not have to know the shape of a verification message.
   readonly BROWSER?: BrowserRun;
@@ -398,10 +405,18 @@ export interface AugmentedCrawlError extends Error {
 // Queue + dispatch
 // ---------------------------------------------------------------------------
 
+export type CrawlQueueLane = "fast" | "heavy" | "relay";
+
 export interface CrawlQueueMessage {
   shopKey: string;
   force: boolean;
   requestedAt: string;
+  /** Stable logical identity for this child job. Optional only for legacy queued messages. */
+  jobId?: string;
+  /** Correlates all child jobs created by one scheduler invocation. */
+  batchRunId?: string;
+  /** Intended execution pool. Queue routing remains authoritative. */
+  lane?: CrawlQueueLane;
 }
 
 export interface DueDispatchCandidate {
@@ -428,12 +443,16 @@ export type CrawlSkipReason =
   | "configuration_missing"
   | "not_due"
   | "no_shop_due"
-  | "unknown_shop";
+  | "unknown_shop"
+  | "crawl_in_progress"
+  | "stale_dispatch";
 
 export interface CrawlSkippedResult {
   status: "skipped";
   reason: CrawlSkipReason;
   shopKey?: string;
+  /** Queue consumers use this only for a live single-flight lease. */
+  retryAfterSeconds?: number;
 }
 
 export interface CategoryEnrichmentCounters {

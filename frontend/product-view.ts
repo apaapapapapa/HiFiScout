@@ -327,11 +327,14 @@ export function syncShopRows(shops: readonly MetaShop[], now = Date.now()): stri
       const healthStatus = health?.status || (shop.enabled === false ? "disabled" : "unknown");
       const label = HEALTH_LABELS[healthStatus] || "未確認";
       const lastSuccess = health?.lastSuccessAt || shop.sync?.last_success_at || null;
-      const exact = safeDate(lastSuccess)?.toLocaleString("ja-JP") || "未取得";
+      const exact = lastSuccess
+        ? safeDate(lastSuccess)?.toLocaleString("ja-JP") || "未取得"
+        : "未取得";
+      const relative = lastSuccess ? relativeTime(lastSuccess, now) : "未取得";
       return `<div class="sync-shop-row ${escapeHtml(healthStatus)}">
       <span class="sync-shop-name">${escapeHtml(shop.name)}</span>
       <span class="sync-shop-health">${escapeHtml(label)}</span>
-      <time title="${escapeHtml(exact)}">${escapeHtml(relativeTime(lastSuccess, now))}</time>
+      <time title="${escapeHtml(exact)}">${escapeHtml(relative)}</time>
     </div>`;
     })
     .join("");

@@ -1,6 +1,7 @@
 import { getCrawlerSettings, getShopEnabled, getShopIntervalMinutes } from "../config.js";
 import {
   clearShopQueued,
+  crawlDispatchToken,
   getShopState,
   listShopStates,
   releaseShopCrawl,
@@ -10,6 +11,7 @@ import {
 } from "../db/shop-state-repository.js";
 import { syncProductSearchEntities } from "../db/product-search-entity-repository.js";
 import { recheckShopInventory } from "./inventory-recheck.js";
+import { crawlQueueLane, crawlQueueSender } from "./queue-lanes.js";
 import { crawlShop, isShopDue } from "./run.js";
 import { getShopPlugin, SHOP_PLUGINS } from "./shops/index.js";
 import { isTransportConfigured } from "./transport.js";
@@ -26,9 +28,14 @@ import type {
 
 type RuntimeEnv = CrawlerEnv & { DB: QueryableDatabase };
 type ProductSearchEntitySync = typeof syncProductSearchEntities;
+type ShopCrawlLeaseState = ShopSyncStateRow & {
+  queued_token?: string | null;
+  crawl_lease_until?: string | null;
+};
 
 /** Cloudflare Queue consumer invocations have a 15-minute wall-clock limit. */
 const CRAWL_EXECUTION_LEASE_MINUTES = 20;
+const CRAWL_RETRY_SAFETY_SECONDS = 5;
 
 interface DispatchOptions {
   now?: Date;
@@ -43,15 +50,20 @@ function isConfigured(env: CrawlerEnv, plugin: ShopPlugin): boolean {
   return isTransportConfigured(env, plugin.capabilities.transport?.kind);
 }
 
+/**
+ * A queued child job stays reserved until its consumer or DLQ explicitly releases it. Time alone
+ * must never make it eligible for a replacement dispatch, otherwise a congested queue can keep
+ * moving the same shop to the tail forever.
+ */
 export function isDispatchLeaseActive(
   state: Partial<Pick<ShopSyncStateRow, "queued_at">> | null | undefined,
   now = new Date(),
   leaseMinutes = 15,
 ): boolean {
+  void now;
+  void leaseMinutes;
   if (!state?.queued_at) return false;
-  const queuedAt = new Date(state.queued_at).getTime();
-  if (!Number.isFinite(queuedAt)) return false;
-  return now.getTime() - queuedAt < leaseMinutes * 60_000;
+  return Number.isFinite(new Date(state.queued_at).getTime());
 }
 
 export function dueDispatchCandidates(
@@ -60,7 +72,6 @@ export function dueDispatchCandidates(
   now = new Date(),
   { excludeShopKeys = [] }: Pick<DispatchOptions, "excludeShopKeys"> = {},
 ): DueDispatchCandidate[] {
-  const settings = getCrawlerSettings(env);
   const states = new Map(stateRows.map((row) => [row.shop_key, row]));
   const excluded = new Set(excludeShopKeys);
   return SHOP_PLUGINS.map((plugin) => {
@@ -71,7 +82,7 @@ export function dueDispatchCandidates(
     if (!isConfigured(env, plugin)) return null;
     const intervalMinutes = getShopIntervalMinutes(env, definition);
     if (!isShopDue(state, intervalMinutes, now)) return null;
-    if (isDispatchLeaseActive(state, now, settings.dispatchLeaseMinutes)) return null;
+    if (isDispatchLeaseActive(state, now)) return null;
     return { adapter: plugin, state, lastAttempt: state?.last_attempt_at || "" };
   })
     .filter((candidate): candidate is DueDispatchCandidate => candidate !== null)
@@ -84,48 +95,128 @@ export async function clearQueued(db: QueryableDatabase, shopKey: string): Promi
 
 async function enqueueReservedCrawl(
   env: RuntimeEnv,
-  shopKey: string,
+  plugin: ShopPlugin,
   force: boolean,
   requestedAt: string,
+  batchRunId: string,
   leaseMinutes: number,
 ): Promise<boolean> {
-  if (!env.CRAWL_QUEUE) throw new Error("CRAWL_QUEUE binding is not configured");
-  const dispatchToken = await reserveShopDispatch(env.DB, shopKey, requestedAt, leaseMinutes);
+  const destination = crawlQueueSender(env, plugin);
+  if (!destination) throw new Error(`crawl queue binding is not configured for ${plugin.key}`);
+  const dispatchToken = await reserveShopDispatch(env.DB, plugin.key, requestedAt, leaseMinutes);
   if (!dispatchToken) return false;
 
+  const message: CrawlQueueMessage = {
+    shopKey: plugin.key,
+    force,
+    requestedAt,
+    jobId: dispatchToken,
+    batchRunId,
+    lane: destination.lane,
+  };
   try {
-    await env.CRAWL_QUEUE.send({ shopKey, force, requestedAt });
+    await destination.queue.send(message);
     return true;
   } catch (error) {
-    await releaseShopDispatch(env.DB, shopKey, dispatchToken);
+    await releaseShopDispatch(env.DB, plugin.key, dispatchToken);
     throw error;
   }
+}
+
+function newBatchRunId(requestedAt: string): string {
+  return `crawl-batch:${requestedAt}:${crypto.randomUUID()}`;
+}
+
+function logBatchDispatch(
+  batchRunId: string,
+  requestedAt: string,
+  queued: readonly string[],
+  candidates: readonly DueDispatchCandidate[],
+): void {
+  const candidateByKey = new Map(candidates.map((candidate) => [candidate.adapter.key, candidate]));
+  const lanes = { fast: 0, heavy: 0, relay: 0 };
+  for (const shopKey of queued) {
+    const candidate = candidateByKey.get(shopKey);
+    if (!candidate) continue;
+    lanes[crawlQueueLane(candidate.adapter)] += 1;
+  }
+  console.log(
+    JSON.stringify({
+      event: "crawl_batch_dispatched",
+      batchRunId,
+      requestedAt,
+      candidateCount: candidates.length,
+      queuedCount: queued.length,
+      queued,
+      lanes,
+    }),
+  );
 }
 
 export async function dispatchDueCrawls(
   env: RuntimeEnv,
   { now = new Date(), excludeShopKeys = [] }: DispatchOptions = {},
 ): Promise<DispatchResult> {
-  if (!env.CRAWL_QUEUE) throw new Error("CRAWL_QUEUE binding is not configured");
   const settings = getCrawlerSettings(env);
   const candidates = dueDispatchCandidates(env, await listShopStates(env.DB), now, {
     excludeShopKeys,
   });
   const queuedAt = now.toISOString();
+  const batchRunId = newBatchRunId(queuedAt);
   const queued: string[] = [];
 
   for (const { adapter } of candidates) {
     const reserved = await enqueueReservedCrawl(
       env,
-      adapter.key,
+      adapter,
       false,
       queuedAt,
+      batchRunId,
       settings.dispatchLeaseMinutes,
     );
     if (reserved) queued.push(adapter.key);
   }
 
+  logBatchDispatch(batchRunId, queuedAt, queued, candidates);
   return queued.length ? { status: "queued", queued } : { status: "skipped", queued };
+}
+
+async function dispatchOneCrawl(
+  env: RuntimeEnv,
+  plugin: ShopPlugin,
+  force: boolean,
+  now: Date,
+): Promise<DispatchResult> {
+  const state = await getShopState(env.DB, plugin.key);
+  const settings = getCrawlerSettings(env);
+  if (isDispatchLeaseActive(state, now, settings.dispatchLeaseMinutes)) {
+    return { status: "skipped", reason: "dispatch_lease_active", shopKey: plugin.key };
+  }
+
+  const queuedAt = now.toISOString();
+  const batchRunId = newBatchRunId(queuedAt);
+  const reserved = await enqueueReservedCrawl(
+    env,
+    plugin,
+    force,
+    queuedAt,
+    batchRunId,
+    settings.dispatchLeaseMinutes,
+  );
+  console.log(
+    JSON.stringify({
+      event: "crawl_batch_dispatched",
+      batchRunId,
+      requestedAt: queuedAt,
+      candidateCount: 1,
+      queuedCount: reserved ? 1 : 0,
+      queued: reserved ? [plugin.key] : [],
+      lanes: { [crawlQueueLane(plugin)]: reserved ? 1 : 0 },
+    }),
+  );
+  return reserved
+    ? { status: "queued", shopKey: plugin.key }
+    : { status: "skipped", reason: "dispatch_lease_active", shopKey: plugin.key };
 }
 
 export async function dispatchScheduledCrawl(
@@ -133,30 +224,11 @@ export async function dispatchScheduledCrawl(
   shopKey: string | null | undefined,
   { now = new Date() }: DispatchAtOptions = {},
 ): Promise<DispatchResult> {
-  if (!env.CRAWL_QUEUE) throw new Error("CRAWL_QUEUE binding is not configured");
   const plugin = getShopPlugin(shopKey);
   if (!plugin) return { status: "rejected", reason: "unknown_shop" };
-  const resolvedShopKey = plugin.key;
   if (!getShopEnabled(env, plugin.definition)) return { status: "rejected", reason: "disabled" };
   if (!isConfigured(env, plugin)) return { status: "rejected", reason: "configuration_missing" };
-
-  const state = await getShopState(env.DB, resolvedShopKey);
-  const settings = getCrawlerSettings(env);
-  if (isDispatchLeaseActive(state, now, settings.dispatchLeaseMinutes)) {
-    return { status: "skipped", reason: "dispatch_lease_active", shopKey: resolvedShopKey };
-  }
-
-  const queuedAt = now.toISOString();
-  const reserved = await enqueueReservedCrawl(
-    env,
-    resolvedShopKey,
-    true,
-    queuedAt,
-    settings.dispatchLeaseMinutes,
-  );
-  return reserved
-    ? { status: "queued", shopKey: resolvedShopKey }
-    : { status: "skipped", reason: "dispatch_lease_active", shopKey: resolvedShopKey };
+  return dispatchOneCrawl(env, plugin, true, now);
 }
 
 export async function dispatchForcedCrawl(
@@ -164,25 +236,30 @@ export async function dispatchForcedCrawl(
   shopKey: string | null | undefined,
   { now = new Date() }: DispatchAtOptions = {},
 ): Promise<DispatchResult> {
-  if (!env.CRAWL_QUEUE) throw new Error("CRAWL_QUEUE binding is not configured");
   const plugin = getShopPlugin(shopKey);
   if (!plugin) return { status: "rejected", reason: "unknown_shop" };
-  const resolvedShopKey = plugin.key;
   if (!getShopEnabled(env, plugin.definition)) return { status: "rejected", reason: "disabled" };
   if (!isConfigured(env, plugin)) return { status: "rejected", reason: "configuration_missing" };
+  return dispatchOneCrawl(env, plugin, true, now);
+}
 
-  const settings = getCrawlerSettings(env);
-  const queuedAt = now.toISOString();
-  const reserved = await enqueueReservedCrawl(
-    env,
-    resolvedShopKey,
-    true,
-    queuedAt,
-    settings.dispatchLeaseMinutes,
+function matchingDispatchReservation(
+  state: ShopCrawlLeaseState | null,
+  shopKey: string,
+  requestedAt: string,
+): boolean {
+  if (!state) return false;
+  const dispatchToken = crawlDispatchToken(shopKey, requestedAt);
+  return (
+    state.queued_token === dispatchToken || (!state.queued_token && state.queued_at === requestedAt)
   );
-  return reserved
-    ? { status: "queued", shopKey: resolvedShopKey }
-    : { status: "skipped", reason: "dispatch_lease_active", shopKey: resolvedShopKey };
+}
+
+function retryAfterLeaseSeconds(state: ShopCrawlLeaseState | null, now: Date): number | null {
+  if (!state?.crawl_lease_until) return null;
+  const leaseUntil = new Date(state.crawl_lease_until).getTime();
+  if (!Number.isFinite(leaseUntil) || leaseUntil <= now.getTime()) return null;
+  return Math.max(1, Math.ceil((leaseUntil - now.getTime()) / 1000) + CRAWL_RETRY_SAFETY_SECONDS);
 }
 
 export async function consumeCrawlMessage(
@@ -205,7 +282,8 @@ export async function consumeCrawlMessage(
     return { status: "skipped", reason: "not_due", shopKey: resolvedShopKey };
   }
 
-  const claimedAt = new Date().toISOString();
+  const claimedAtDate = new Date();
+  const claimedAt = claimedAtDate.toISOString();
   const crawlLeaseToken = await tryClaimShopCrawl(
     env.DB,
     resolvedShopKey,
@@ -214,15 +292,41 @@ export async function consumeCrawlMessage(
     CRAWL_EXECUTION_LEASE_MINUTES,
   );
   if (!crawlLeaseToken) {
+    const state = (await getShopState(env.DB, resolvedShopKey)) as ShopCrawlLeaseState | null;
+    const retryAfterSeconds = matchingDispatchReservation(state, resolvedShopKey, requestedAt)
+      ? retryAfterLeaseSeconds(state, claimedAtDate)
+      : null;
+    if (retryAfterSeconds != null) {
+      console.log(
+        JSON.stringify({
+          event: "crawl_queue_single_flight_deferred",
+          shopKey: resolvedShopKey,
+          requestedAt,
+          jobId: body.jobId || crawlDispatchToken(resolvedShopKey, requestedAt),
+          batchRunId: body.batchRunId || null,
+          retryAfterSeconds,
+          observedAt: claimedAt,
+        }),
+      );
+      return {
+        status: "skipped",
+        reason: "crawl_in_progress",
+        shopKey: resolvedShopKey,
+        retryAfterSeconds,
+      };
+    }
+
     console.log(
       JSON.stringify({
-        event: "crawl_queue_duplicate_suppressed",
+        event: "crawl_queue_stale_delivery_suppressed",
         shopKey: resolvedShopKey,
         requestedAt,
+        jobId: body.jobId || crawlDispatchToken(resolvedShopKey, requestedAt),
+        batchRunId: body.batchRunId || null,
         observedAt: claimedAt,
       }),
     );
-    return { status: "skipped", reason: "not_due", shopKey: resolvedShopKey };
+    return { status: "skipped", reason: "stale_dispatch", shopKey: resolvedShopKey };
   }
 
   try {
