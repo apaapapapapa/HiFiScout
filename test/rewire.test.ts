@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
 import {
   discoverRewirePageUrls,
   parseRewireListing,
@@ -66,6 +67,47 @@ test("REWIRE parser extracts listing facts and availability", () => {
   assert.equal(withoutSellerCode.stockStatus, "in_stock");
   assert.equal(withoutSellerCode.rawCategory, "アンプ");
   assert.deepEqual(withoutSellerCode.metadata, {});
+});
+
+test("REWIRE parser decodes numeric entities and classifies known floorstanding speakers", () => {
+  const items = parseRewireListing(`
+    <article>
+      <a href="/webshop/2026/08/20/tannoy-rectangular-grf/">
+        Rectangular GRF 15&#8243;Monitor Red / Monitor Red 15インチ タンノイ スピーカー
+        #R10101 ¥1,650,000(税込) スピーカー
+      </a>
+    </article>
+    <article>
+      <a href="/webshop/2026/08/21/mcintosh-xrt22-mq107/">
+        XRT22 + MQ107 マッキントッシュ スピーカーシステム 【最強の音場再現力】
+        #R10102 ¥778,900(税込) スピーカー
+      </a>
+    </article>`);
+
+  assert.equal(items.length, 2);
+
+  const tannoy = items[0];
+  assert.match(tannoy.title, /15″Monitor Red/u);
+  assert.doesNotMatch(tannoy.title, /&#8243;/u);
+  assert.equal(tannoy.rawCategory, "フロア型");
+  assert.equal(tannoy.metadata?.rewireSellerCategory, "スピーカー");
+  assert.equal(normalizeCatalogProduct(tannoy).primaryCategoryId, "speaker_floorstanding");
+
+  const mcintosh = items[1];
+  assert.equal(mcintosh.rawCategory, "フロア型");
+  assert.equal(mcintosh.metadata?.rewireSellerCategory, "スピーカー");
+  assert.equal(normalizeCatalogProduct(mcintosh).primaryCategoryId, "speaker_floorstanding");
+});
+
+test("REWIRE does not force every seller speaker bucket into a floorstanding leaf", () => {
+  const [item] = parseRewireListing(`
+    <a href="/webshop/2026/08/03/rogers-ls35a/">
+      Rogers LS3/5A #R10046 ¥398,000(税込) スピーカー
+    </a>`);
+
+  assert.ok(item);
+  assert.equal(item.rawCategory, "スピーカー");
+  assert.equal(item.metadata?.rewireSellerCategory, undefined);
 });
 
 test("REWIRE parser ignores non-listing product links without a price", () => {
