@@ -16,6 +16,7 @@ const GOJUON_KEYS = [
   "soundpit",
   "shimamusen",
   "dynamic-audio",
+  "tereon",
   "hifido",
   "formusic",
   "fujiya-avic",
