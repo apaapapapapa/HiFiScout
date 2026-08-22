@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { repairActiveListingProjectionGaps } from "../src/db/product-search-gap-repair.js";
+import {
+  repairActiveListingProjectionGaps,
+  repairProductSearchProjection,
+} from "../src/db/product-search-gap-repair.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 
 const NOW = "2026-08-22T09:30:00.000Z";
@@ -116,5 +119,48 @@ test("repairs a missing search membership even when Identity already exists", as
       )
       .get(listingId)?.count,
     1,
+  );
+});
+
+test("global projection repair removes inactive memberships that bounded gap repair cannot see", async () => {
+  const { sqlite, db } = migratedSqlite();
+  const listingId = insertActiveListing(sqlite, "stale-inactive-membership");
+
+  await repairActiveListingProjectionGaps(db, {
+    evaluatedAt: NOW,
+    batchSize: 5,
+    maxListings: 10,
+  });
+  assert.equal(
+    sqlite
+      .prepare(
+        "SELECT COUNT(*) AS count FROM product_search_entity_offers WHERE listing_product_id = ?",
+      )
+      .get(listingId)?.count,
+    1,
+  );
+
+  // Simulate a migration or interrupted write that deactivates the source row without refreshing
+  // its derived Product Search membership.
+  sqlite.prepare("UPDATE products SET is_active = 0 WHERE id = ?").run(listingId);
+
+  const result = await repairProductSearchProjection(db, {
+    evaluatedAt: NOW,
+    batchSize: 5,
+    maxListings: 10,
+  });
+
+  assert.equal(result.activeGapRepair.repairedCount, 0);
+  assert.equal(result.consistencyBefore.inactive_offer_memberships, 1);
+  assert.ok(result.rebuildResult);
+  assert.equal(result.consistencyAfter.ok, true);
+  assert.equal(result.repaired, true);
+  assert.equal(
+    sqlite
+      .prepare(
+        "SELECT COUNT(*) AS count FROM product_search_entity_offers WHERE listing_product_id = ?",
+      )
+      .get(listingId)?.count,
+    0,
   );
 });
