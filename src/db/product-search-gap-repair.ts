@@ -31,11 +31,16 @@ function positiveBoundedInteger(value: number | undefined, fallback: number, max
 }
 
 /**
- * An active listing needs projection repair when any stage is missing, or when Product Identity
- * already points at a verified Catalog product but the Product Search membership still points at an
- * unresolved fallback entity. The latter is a completed upstream transition with a stale read
- * model, so treating it as a gap is both safe and sufficient to move the listing to its Catalog
- * entity through the normal dependency-ordered refresh path.
+ * An active listing needs projection repair when any stage is missing, when Product Identity
+ * already points at a verified Catalog product but Product Search still points at a fallback, or
+ * when a historical fallback entity contains an offer belonging to a different listing.
+ *
+ * Current Product Search semantics are deliberately strict: unresolved fallback entities are
+ * one-listing entities (`fallback_listing_id === listing_product_id`). Older read-model revisions
+ * could leave multiple offers under one fallback. Once the seed listing later becomes matched,
+ * that legacy grouping keeps the old entity alive even after the seed offer moves to Catalog.
+ * Selecting the misplaced member listing lets the normal projection refresh move it back to its own
+ * fallback entity and prune the abandoned seed entity.
  */
 const ACTIVE_PROJECTION_GAP_PREDICATE = `
   NOT EXISTS (
@@ -58,6 +63,14 @@ const ACTIVE_PROJECTION_GAP_PREDICATE = `
     JOIN knowledge_catalog_products kp
       ON kp.id = r.catalog_product_id AND kp.verification_status = 'verified'
     WHERE o.listing_product_id = p.id
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM product_search_entity_offers o
+    JOIN product_search_entities e
+      ON e.id = o.entity_id AND e.entity_kind = 'unresolved_listing'
+    WHERE o.listing_product_id = p.id
+      AND e.fallback_listing_id <> p.id
   )
 `;
 
