@@ -156,9 +156,9 @@ async function adminJson<T>(path: string, init: RequestInit = {}): Promise<T> {
 function hasActiveFilters(): boolean {
   return Boolean(
     queryInput.value.trim() ||
-      shopKeyInput.value.trim() ||
-      categoryFilter.value ||
-      scopeFilter.value !== "active",
+    shopKeyInput.value.trim() ||
+    categoryFilter.value ||
+    scopeFilter.value !== "active",
   );
 }
 
@@ -225,7 +225,9 @@ function cell(): HTMLTableCellElement {
   return document.createElement("td");
 }
 
-function stackCell(...lines: Array<{ text: string; strong?: boolean; className?: string }>): HTMLTableCellElement {
+function stackCell(
+  ...lines: Array<{ text: string; strong?: boolean; className?: string }>
+): HTMLTableCellElement {
   const td = cell();
   const stack = document.createElement("div");
   stack.className = "listing-cell-stack";
@@ -297,7 +299,12 @@ function renderRow(product: ListingProduct): HTMLTableRowElement {
   const priceStack = document.createElement("div");
   priceStack.className = "listing-cell-stack";
   appendText(priceStack, "span", priceText(product.priceYen), "listing-price");
-  const stock = appendText(priceStack, "span", stockText(product.stockStatus), "listing-status-badge");
+  const stock = appendText(
+    priceStack,
+    "span",
+    stockText(product.stockStatus),
+    "listing-status-badge",
+  );
   stock.dataset.state = product.stockStatus;
   priceCell.append(priceStack);
   tr.append(priceCell);
@@ -313,7 +320,8 @@ function renderRow(product: ListingProduct): HTMLTableRowElement {
     "override-badge",
   );
   badge.dataset.active = labels.length ? "true" : "false";
-  if (product.overrides.updatedAt) badge.title = `最終補正: ${dateText(product.overrides.updatedAt)}`;
+  if (product.overrides.updatedAt)
+    badge.title = `最終補正: ${dateText(product.overrides.updatedAt)}`;
   tr.append(overrideCell);
 
   const actionCell = cell();

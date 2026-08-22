@@ -2,10 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { listingAdminCategoryIds } from "../src/db/listing-admin-repository.js";
-import {
-  parseListingAdminListQuery,
-  parseListingAdminUpdate,
-} from "../src/http/listing-admin.js";
+import { parseListingAdminListQuery, parseListingAdminUpdate } from "../src/http/listing-admin.js";
 
 test("listing admin query canonicalizes filters and defaults to active listings", () => {
   const url = new URL(

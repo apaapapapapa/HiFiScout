@@ -28,10 +28,7 @@ import {
   startKnowledgeCatalogExport,
 } from "./knowledge-catalog-export/service.js";
 import type { ProductAuditExportScope } from "./product-audit-export/types.js";
-import type {
-  ListingAdminListOptions,
-  ListingAdminUpdateInput,
-} from "./http/listing-admin.js";
+import type { ListingAdminListOptions, ListingAdminUpdateInput } from "./http/listing-admin.js";
 
 /**
  * Internal Catalog Admin capability. Cloudflare exposes this class only through the named Service

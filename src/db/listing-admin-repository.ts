@@ -5,10 +5,7 @@ import {
   getCategory,
 } from "../catalog/categories.js";
 import { normalizeIdentityModel } from "../catalog/product-identity.js";
-import type {
-  ListingAdminListOptions,
-  ListingAdminUpdateInput,
-} from "../http/listing-admin.js";
+import type { ListingAdminListOptions, ListingAdminUpdateInput } from "../http/listing-admin.js";
 import { refreshListingProjections } from "./listing-projection-refresh.js";
 import type { QueryableDatabase, ReadableDatabase } from "./types.js";
 
@@ -193,7 +190,10 @@ function overrideState(row: ListingAdminRow): OverrideState {
   };
 }
 
-async function loadListing(db: ReadableDatabase, listingId: number): Promise<ListingAdminRow | null> {
+async function loadListing(
+  db: ReadableDatabase,
+  listingId: number,
+): Promise<ListingAdminRow | null> {
   return db
     .prepare(`${LISTING_SELECT} WHERE p.id = ? LIMIT 1`)
     .bind(listingId)
@@ -311,7 +311,9 @@ export async function updateListingAdminProduct(
   const manufacturerOverridden = merged.manufacturerId !== null;
   const modelOverridden = merged.model !== null;
   const categoryOverridden = merged.primaryCategoryId !== null;
-  const manufacturerId = manufacturerOverridden ? merged.manufacturerId || "" : existing.manufacturer_id;
+  const manufacturerId = manufacturerOverridden
+    ? merged.manufacturerId || ""
+    : existing.manufacturer_id;
   const manufacturerName = manufacturerOverridden
     ? merged.manufacturerName || ""
     : existing.manufacturer;
@@ -346,13 +348,29 @@ export async function updateListingAdminProduct(
         manufacturerName,
         manufacturerId,
         manufacturerId,
-        manufacturerOverridden ? (manufacturerId ? "resolved" : "unresolved") : existing.manufacturer_resolution_status,
-        manufacturerOverridden ? (manufacturerId ? "verified_alias" : "none") : existing.manufacturer_resolution_method,
-        manufacturerOverridden ? (manufacturerId ? "high" : "none") : existing.manufacturer_resolution_confidence,
+        manufacturerOverridden
+          ? manufacturerId
+            ? "resolved"
+            : "unresolved"
+          : existing.manufacturer_resolution_status,
+        manufacturerOverridden
+          ? manufacturerId
+            ? "verified_alias"
+            : "none"
+          : existing.manufacturer_resolution_method,
+        manufacturerOverridden
+          ? manufacturerId
+            ? "high"
+            : "none"
+          : existing.manufacturer_resolution_confidence,
         model,
         normalizedModel,
         modelOverridden ? (model ? "resolved" : "unresolved") : existing.model_resolution_status,
-        modelOverridden ? (model ? "seller_model_annotated" : "none") : existing.model_resolution_method,
+        modelOverridden
+          ? model
+            ? "seller_model_annotated"
+            : "none"
+          : existing.model_resolution_method,
         modelOverridden ? (model ? "high" : "none") : existing.model_resolution_confidence,
         categoryName,
         categoryId,
@@ -365,11 +383,15 @@ export async function updateListingAdminProduct(
   ];
 
   if (categoryOverridden) {
-    statements.push(db.prepare("DELETE FROM product_categories WHERE product_id = ?").bind(listingId));
+    statements.push(
+      db.prepare("DELETE FROM product_categories WHERE product_id = ?").bind(listingId),
+    );
     for (const category of merged.categoryIds || []) {
       statements.push(
         db
-          .prepare("INSERT OR IGNORE INTO product_categories(product_id, category_id) VALUES (?, ?)")
+          .prepare(
+            "INSERT OR IGNORE INTO product_categories(product_id, category_id) VALUES (?, ?)",
+          )
           .bind(listingId, category),
       );
     }
