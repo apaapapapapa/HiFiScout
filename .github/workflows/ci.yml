@@ -11,7 +11,9 @@ permissions:
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # PR updates may cancel stale validation, but every main push must reach a terminal
+  # conclusion so the workflow_run deployment gate can observe a successful CI run.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -53,6 +55,9 @@ jobs:
 
   playwright-browser-cache:
     if: github.event_name == 'push'
+    # Cache warming is an optimization, not a release-quality gate. A transient browser
+    # download/cache failure must not suppress the production deployment after test/build pass.
+    continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
