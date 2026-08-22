@@ -83,6 +83,7 @@ test("Hifido parser handles rendered list-item markup with duplicate product lin
   assert.equal(product.sourcePublishedAt, "2026-08-09T15:00:00.000Z");
 });
 
+// Mirrors the observed public product header ordering: source id -> seller category -> Japan -> shop/date.
 test("Hifido detail enrichment reads only seller metadata after the exact source id", () => {
   const html = `
     <main>
