@@ -4,6 +4,7 @@ import {
   categorySearchAliases,
   getCategory,
 } from "../catalog/categories.js";
+import { normalizeIdentityModel } from "../catalog/product-identity.js";
 import { refreshListingProjections } from "./listing-projection-refresh.js";
 import type {
   KnowledgeCatalogLifecycleStatus,
@@ -14,6 +15,15 @@ import type {
 const LISTING_PAGE_SIZE = 100;
 const WRITE_BATCH_SIZE = 50;
 const CATEGORY_PROJECTION_TOKEN_PREFIX = "category:admin:";
+
+function normalizeCatalogAdminSearchText(value: string): string {
+  return value
+    .normalize("NFKC")
+    .replace(/[‐‑‒–—―－]/g, "-")
+    .replace(/\s+/gu, " ")
+    .trim()
+    .toLowerCase();
+}
 
 interface KnowledgeCatalogAdminListOptions {
   query: string;
@@ -156,13 +166,33 @@ export async function listKnowledgeCatalogAdminProducts(
   const params: unknown[] = [options.afterId];
 
   if (options.query) {
-    const pattern = `%${options.query.toLowerCase()}%`;
+    const textQuery = normalizeCatalogAdminSearchText(options.query);
+    const identityQuery = normalizeIdentityModel(options.query).toLowerCase();
     where.push(`(
-      LOWER(kp.canonical_name) LIKE ? OR
-      LOWER(kp.canonical_model) LIKE ? OR
-      LOWER(kp.manufacturer_id) LIKE ?
+      INSTR(LOWER(kp.canonical_name), ?) > 0 OR
+      INSTR(LOWER(kp.canonical_model), ?) > 0 OR
+      INSTR(LOWER(kp.manufacturer_id), ?) > 0 OR
+      (? <> '' AND INSTR(LOWER(kp.normalized_model), ?) > 0) OR
+      EXISTS (
+        SELECT 1
+        FROM knowledge_catalog_aliases search_alias
+        WHERE search_alias.product_id = kp.id
+          AND (
+            INSTR(LOWER(search_alias.alias), ?) > 0 OR
+            (? <> '' AND INSTR(LOWER(search_alias.normalized_alias), ?) > 0)
+          )
+      )
     )`);
-    params.push(pattern, pattern, pattern);
+    params.push(
+      textQuery,
+      textQuery,
+      textQuery,
+      identityQuery,
+      identityQuery,
+      textQuery,
+      identityQuery,
+      identityQuery,
+    );
   }
   if (options.manufacturerId) {
     where.push("kp.manufacturer_id = ?");
