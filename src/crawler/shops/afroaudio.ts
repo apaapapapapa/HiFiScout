@@ -48,6 +48,41 @@ const CONDITION_MARKER_PATTERN = /[〖【]([^〗】]+)[〗】]/gu;
 const SELLER_CONDITION_PATTERN = /^(?:開封未使用|未使用|新品|[SABC]ランク|現状|ジャンク)$/iu;
 const ANY_CONDITION_MARKER_PATTERN = /[〖【][^〗】]+[〗】]/u;
 
+/**
+ * Afro Audio titles are presentation strings of the form
+ *   manufacturer + model + product type + translated manufacturer.
+ * The product type and translated manufacturer are useful evidence in `title`, but they are not
+ * part of the model shown on a HiFiScout card. Keep the markers deliberately category-shaped so
+ * descriptive model names such as "Acoustic Resolution Exciter" remain untouched.
+ */
+const SELLER_PRODUCT_TYPE_MARKERS: readonly RegExp[] = [
+  /\s+(?:SACD\/CD|SACD|CD)(?:デッキ|プレーヤー)/iu,
+  /\s+(?:プリメイン|パワー|プリアンプ|真空管)アンプ/u,
+  /\s+パッシブコントローラー/u,
+  /\s+フォノイコライザー/u,
+  /\s+(?:MC|MM)カートリッジ/iu,
+  /\s+カートリッジ/u,
+  /\s+ターンテーブル/u,
+  /\s+スピーカー/u,
+  /\s+ヘッド(?:ホン|フォン)/u,
+  /\s+昇圧トランス/u,
+  /\s+仮想アース/u,
+  /\s+オプションボード/u,
+  /\s+アームベース/u,
+  /\s+セレクター/u,
+  /\s+電源(?:ユニット)?/u,
+  /\s+(?:RCA|XLR|USB|LAN|同軸|デジタル|電源)?ケーブル/iu,
+  /\s+(?:RCA|XLR)?アダプター(?:ペア)?/iu,
+];
+
+const MODEL_PREFIX_OVERRIDES: readonly {
+  manufacturer: RegExp;
+  prefix: RegExp;
+}[] = [
+  { manufacturer: /^アスカ$/u, prefix: /^ASUKA\s+/iu },
+  { manufacturer: /^光城精工$/u, prefix: /^KOJO(?:\s+TECHNOLOGY)?\s+/iu },
+];
+
 function listingPage(category: AfroAudioCategory, page = 1): AfroAudioPage {
   const url = new URL("/products/list", BASE_URL);
   url.searchParams.set("category_id", String(category.id));
@@ -159,6 +194,31 @@ function productCode(text: string): string {
   return text.match(/@\s*(\d+)/u)?.[1] || "";
 }
 
+function conciseAfroAudioModel(rawModel: string, manufacturer: string): string {
+  const original = cleanText(rawModel);
+  if (!original) return "";
+
+  let value = original
+    .replace(/\s*@\s*\d+(?:\s+\d+)?[\s\S]*$/u, "")
+    .replace(/\s*[〖【][^〗】]+[〗】]\s*$/u, "")
+    .trim();
+
+  for (const override of MODEL_PREFIX_OVERRIDES) {
+    if (override.manufacturer.test(manufacturer)) {
+      value = value.replace(override.prefix, "").trim();
+    }
+  }
+
+  const markerIndexes = SELLER_PRODUCT_TYPE_MARKERS.map((pattern) => value.search(pattern)).filter(
+    (index) => index >= 0,
+  );
+  if (markerIndexes.length > 0) {
+    value = value.slice(0, Math.min(...markerIndexes)).trim();
+  }
+
+  return value || original;
+}
+
 export function parseAfroAudioListing(
   html: string,
   page: Partial<AfroAudioPage> = {},
@@ -185,7 +245,7 @@ export function parseAfroAudioListing(
       title,
       rawManufacturer: manufacturer,
       manufacturer,
-      model: model || title,
+      model: conciseAfroAudioModel(model || title, manufacturer),
       rawCategory: page.rawCategory || "",
       category: inferCategory(title),
       conditionText: conditionText(sellerTitle),

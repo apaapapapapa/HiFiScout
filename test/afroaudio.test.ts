@@ -46,7 +46,8 @@ test("Afro Audio parser extracts seller facts and canonical availability", () =>
   assert.equal(available.sourceId, "30094");
   assert.equal(available.title, "Accuphase DP-570 CDデッキ アキュフェーズ");
   assert.equal(available.manufacturer, "Accuphase");
-  assert.match(available.model, /DP-570/);
+  assert.equal(available.model, "DP-570");
+  assert.equal(normalizeCatalogProduct(available).model, "DP-570");
   assert.equal(available.priceYen, 650000);
   assert.equal(available.stockStatus, "in_stock");
   assert.equal(available.rawCategory, "プレーヤー");
@@ -55,9 +56,11 @@ test("Afro Audio parser extracts seller facts and canonical availability", () =>
   assert.equal(available.metadata?.productCode, "60834");
 
   assert.equal(items[1].title, "Accuphase E-307 プリメインアンプ アキュフェーズ");
+  assert.equal(items[1].model, "E-307");
   assert.equal(items[1].conditionText, "Cランク");
   assert.equal(items[1].stockStatus, "sold_out");
   assert.equal(items[2].title, "MICRO DD-8 ターンテーブル マイクロ");
+  assert.equal(items[2].model, "DD-8");
   assert.equal(items[2].conditionText, "Bランク");
   assert.equal(items[2].stockStatus, "sold_out");
 });
@@ -94,7 +97,54 @@ test("Afro Audio parser separates rank and resolves CH Precision canonically", (
   assert.equal(normalized.manufacturerResolutionMethod, "bootstrap_alias");
 
   assert.equal(items[1].title, "アスカ ASUKA AS-XLRM-H3B Type F XLRアダプターペア 〖元箱〗");
+  assert.equal(items[1].model, "AS-XLRM-H3B Type F");
   assert.equal(items[1].conditionText, "Bランク");
+});
+
+test("Afro Audio keeps seller titles as evidence but removes card-model presentation noise", () => {
+  const html = `
+    <a href="/products/detail/60001">
+      〖Bランク〗光城精工 Crystal E 仮想アース KOJO TECHNOLOGY
+      @60001 60001 ￥30,000 税込 在庫あり
+    </a>
+    <a href="/products/detail/53077">
+      〖Bランク〗アスカ ASUKA AS-XLRM-H2B Type F XLRアダプターペア 〖元箱〗
+      @53077 53077 ￥25,000 税込 在庫あり
+    </a>
+    <a href="/products/detail/59086">
+      〖Aランク〗ortofon T-2000 昇圧トランス オルトフォン
+      @59086 59086 ￥180,000 税込 在庫あり
+    </a>
+    <a href="/products/detail/59277">
+      〖Bランク〗SHURE M44G MMカートリッジ シュアー
+      @59277 59277 ￥12,000 税込 在庫あり
+    </a>
+    <a href="/products/detail/54696">
+      〖現状〗リン LINN LP12用 インナープラッター
+      @54696 54696 ￥15,000 税込 在庫あり
+    </a>`;
+
+  const items = parseAfroAudioListing(html, {
+    rawCategory: "アナログパーツ・フォノイコライザー",
+  });
+  assert.equal(items.length, 5);
+
+  assert.equal(items[0].title, "光城精工 Crystal E 仮想アース KOJO TECHNOLOGY");
+  assert.equal(items[0].model, "Crystal E");
+
+  assert.equal(items[1].title, "アスカ ASUKA AS-XLRM-H2B Type F XLRアダプターペア 〖元箱〗");
+  assert.equal(items[1].model, "AS-XLRM-H2B Type F");
+
+  assert.equal(items[2].title, "ortofon T-2000 昇圧トランス オルトフォン");
+  assert.equal(items[2].model, "T-2000");
+  assert.equal(normalizeCatalogProduct(items[2]).model, "T-2000");
+
+  assert.equal(items[3].title, "SHURE M44G MMカートリッジ シュアー");
+  assert.equal(items[3].model, "M44G");
+
+  // There is no separate seller model number for this part, so keep the useful product identity.
+  assert.equal(items[4].title, "リン LINN LP12用 インナープラッター");
+  assert.equal(items[4].model, "LINN LP12用 インナープラッター");
 });
 
 test("Afro Audio parser de-duplicates links and ignores footer availability labels", () => {
@@ -110,6 +160,7 @@ test("Afro Audio parser de-duplicates links and ignores footer availability labe
   assert.equal(items.length, 1);
   assert.equal(items[0].sourceId, "30123");
   assert.equal(items[0].title, "LUXMAN L-509Z プリメインアンプ ラックスマン");
+  assert.equal(items[0].model, "L-509Z");
   assert.equal(items[0].conditionText, "Bランク");
   assert.equal(items[0].priceYen, 780000);
   assert.equal(items[0].stockStatus, "in_stock");
