@@ -41,6 +41,11 @@ import {
 } from "./sound-support.js";
 import { avacAdapter } from "./avac.js";
 import { tereonAdapter } from "./tereon.js";
+import {
+  HOME_SHOKAI_CATEGORY_MAPPING,
+  HOME_SHOKAI_CATEGORY_POLICY,
+  homeShokaiAdapter,
+} from "./home-shokai.js";
 // shop-generator:imports
 
 export { getShopActivityPolicy } from "./registry.js";
@@ -223,6 +228,23 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
     defaultRequestDelayMs: 1500,
     defaultMaxPages: 10,
   }),
+  defineShopPlugin(
+    homeShokaiAdapter,
+    {
+      key: "home-shokai",
+      name: "ホーム商会",
+      baseUrl: "https://www.homeshokai.jp",
+      defaultIntervalMinutes: 60,
+      defaultRequestDelayMs: 1500,
+      defaultMaxPages: 2,
+    },
+    {
+      catalog: {
+        categoryMapping: HOME_SHOKAI_CATEGORY_MAPPING,
+        categoryPolicy: HOME_SHOKAI_CATEGORY_POLICY,
+      },
+    },
+  ),
   // shop-generator:plugins
 ]);
 
