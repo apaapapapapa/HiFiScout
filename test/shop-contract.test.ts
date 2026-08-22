@@ -125,7 +125,7 @@ function registerStub(
 }
 
 test("all shop plugins satisfy the final crawler contract", () => {
-  assert.equal(SHOP_PLUGINS.length, 10);
+  assert.equal(SHOP_PLUGINS.length, 11);
   assert.equal(new Set(SHOP_PLUGINS.map((plugin) => plugin.key)).size, SHOP_PLUGINS.length);
 
   for (const plugin of SHOP_PLUGINS) {
@@ -296,7 +296,6 @@ test("every deployed variable under a shop prefix is one that shop can actually 
     );
   }
 });
-
 test("generic crawler and orchestration code names no concrete shop", () => {
   const tokens = [
     ...new Set(

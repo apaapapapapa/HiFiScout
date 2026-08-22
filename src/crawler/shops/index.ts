@@ -33,6 +33,7 @@ import { SHIMAMUSEN_CATEGORY_POLICY, shimamusenAdapter } from "./shimamusen.js";
 import { dynamicAudioAdapter } from "./dynamic-audio.js";
 import { afroAudioAdapter } from "./afroaudio.js";
 import { osakayaAdapter } from "./osakaya.js";
+import { soundPitAdapter } from "./soundpit.js";
 // shop-generator:imports
 
 export { getShopActivityPolicy } from "./registry.js";
@@ -177,6 +178,13 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
     },
     { catalog: { categoryPolicy: OSAKAYA_CATEGORY_POLICY } },
   ),
+  defineShopPlugin(soundPitAdapter, {
+    key: "soundpit",
+    name: "SOUND PIT",
+    baseUrl: "https://sound-pit.jp",
+    defaultIntervalMinutes: 60,
+    defaultMaxPages: 50,
+  }),
   // shop-generator:plugins
 ]);
 
