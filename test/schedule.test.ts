@@ -18,6 +18,10 @@ const wranglerConfig = JSON.parse(
   fs.readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8"),
 );
 const schedulerSource = fs.readFileSync(new URL("../src/scheduled.ts", import.meta.url), "utf8");
+const deployWorkflow = fs.readFileSync(
+  new URL("../.github/workflows/deploy.yml", import.meta.url),
+  "utf8",
+);
 
 test("shop interval is evaluated independently", () => {
   const now = new Date("2026-08-11T00:30:00.000Z");
@@ -118,4 +122,35 @@ test("Knowledge Catalog verification is dispatched to its dedicated queue", () =
   assert.equal(consumer?.max_batch_size, 1);
   assert.equal(consumer?.max_concurrency, 4);
   assert.equal(consumer?.dead_letter_queue, "hifiscout-knowledge-verification-dlq");
+});
+
+test("Product Audit exports are serialized through a dedicated queue", () => {
+  const producer = wranglerConfig.queues.producers.find(
+    (item: { binding?: string }) => item.binding === "PRODUCT_AUDIT_EXPORT_QUEUE",
+  );
+  assert.equal(producer?.queue, "hifiscout-product-audit-export");
+
+  const consumer = wranglerConfig.queues.consumers.find(
+    (item: { queue?: string }) => item.queue === "hifiscout-product-audit-export",
+  );
+  assert.equal(consumer?.max_batch_size, 1);
+  assert.equal(consumer?.max_batch_timeout, 1);
+  assert.equal(consumer?.max_retries, 10);
+  assert.equal(consumer?.retry_delay, 30);
+  assert.equal(consumer?.max_concurrency, 1);
+  assert.equal(consumer?.dead_letter_queue, "hifiscout-product-audit-export-dlq");
+
+  const deadLetterConsumer = wranglerConfig.queues.consumers.find(
+    (item: { queue?: string }) => item.queue === "hifiscout-product-audit-export-dlq",
+  );
+  assert.equal(deadLetterConsumer?.max_batch_size, 1);
+  assert.equal(deadLetterConsumer?.max_batch_timeout, 1);
+  assert.equal(deadLetterConsumer?.max_retries, 3);
+  assert.equal(deadLetterConsumer?.retry_delay, 30);
+  assert.equal(deadLetterConsumer?.max_concurrency, 1);
+  assert.match(deployWorkflow, /hifiscout-product-audit-exports\|product-audit-exports\/\|10/);
+  assert.match(
+    deployWorkflow,
+    /for queue in hifiscout-product-audit-export hifiscout-product-audit-export-dlq/,
+  );
 });

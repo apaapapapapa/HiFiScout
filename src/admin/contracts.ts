@@ -1,3 +1,8 @@
+import type {
+  ProductAuditExportJob,
+  ProductAuditExportScope,
+} from "../product-audit-export/types.js";
+
 export interface CatalogAdminListOptions {
   query: string;
   manufacturerId: string;
@@ -12,13 +17,7 @@ export interface CatalogAdminUpdateInput {
   primaryCategoryId: string;
 }
 
-export type CatalogAdminProductExportScope = "active" | "all";
-
-export interface CatalogAdminProductExportOptions {
-  scope: CatalogAdminProductExportScope;
-  afterId: number;
-  limit: number;
-}
+export type CatalogAdminProductExportScope = ProductAuditExportScope;
 
 /** One seller listing enriched with the identity/search state an AI needs for data-quality review. */
 export interface CatalogAdminProductExportRow {
@@ -72,15 +71,13 @@ export interface CatalogAdminProductExportRow {
   sourcePublishedAt: string;
 }
 
-export interface CatalogAdminProductExportPage {
-  items: CatalogAdminProductExportRow[];
-  nextAfterId: number | null;
-}
-
 export interface CatalogAdminRpc {
   listProducts(options: CatalogAdminListOptions): Promise<unknown>;
   updateProduct(productId: number, input: CatalogAdminUpdateInput): Promise<unknown>;
-  exportProductAuditPage(
-    options: CatalogAdminProductExportOptions,
-  ): Promise<CatalogAdminProductExportPage>;
+  startProductAuditExport(scope: ProductAuditExportScope): Promise<ProductAuditExportJob>;
+  latestProductAuditExportJob(
+    scope: ProductAuditExportScope,
+  ): Promise<ProductAuditExportJob | null>;
+  getProductAuditExportJob(jobId: string): Promise<ProductAuditExportJob | null>;
+  downloadProductAuditExport(jobId: string): Promise<Response>;
 }

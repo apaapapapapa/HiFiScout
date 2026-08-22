@@ -33,6 +33,7 @@ export type EnvBindingName =
   | "DB"
   | "CRAWL_QUEUE"
   | "KNOWLEDGE_CATALOG_QUEUE"
+  | "PRODUCT_AUDIT_EXPORT_QUEUE"
   | "API_RATE_LIMITER"
   | "BROWSER"
   | "ASSETS";

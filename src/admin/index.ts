@@ -2,11 +2,6 @@ import { canonicalCategoryDefinitions, getCategory } from "../catalog/categories
 import type { CategoryDefinition } from "../catalog/types.js";
 import type { CatalogAdminProductExportScope, CatalogAdminRpc } from "./contracts.js";
 import {
-  PRODUCT_AUDIT_CSV_BOM,
-  productAuditCsvHeader,
-  productAuditCsvRow,
-} from "./product-audit-csv.js";
-import {
   parseKnowledgeCatalogAdminListQuery,
   parseKnowledgeCatalogAdminUpdate,
 } from "../http/knowledge-catalog-admin.js";
@@ -20,9 +15,10 @@ interface CatalogAdminEnv {
 }
 
 const COLLECTION_PATH = "/api/admin/knowledge-catalog/products";
-const PRODUCT_EXPORT_PATH = "/api/admin/products/export.csv";
+const PRODUCT_EXPORT_COLLECTION_PATH = "/api/admin/product-audit-exports";
+const PRODUCT_EXPORT_JOB_PATH =
+  /^\/api\/admin\/product-audit-exports\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(\/download)?$/iu;
 const PRODUCT_PATH = /^\/api\/admin\/knowledge-catalog\/products\/(\d{1,15})$/;
-const PRODUCT_EXPORT_PAGE_SIZE = 500;
 const ADMIN_ASSET_PATHS = new Set([
   "/catalog-admin.html",
   "/catalog-admin.css",
@@ -40,6 +36,7 @@ const ADMIN_CONTENT_SECURITY_POLICY = [
   "frame-ancestors 'none'",
   "form-action 'self'",
 ].join("; ");
+const REQUEST_BODY_TOO_LARGE = Symbol("request_body_too_large");
 
 /** Browser hardening is enforced by the Worker so Access policy changes cannot remove it. */
 export function withCatalogAdminSecurityHeaders(response: Response): Response {
@@ -68,26 +65,51 @@ function json(value: unknown, init: ResponseInit = {}): Response {
   return withCatalogAdminSecurityHeaders(new Response(JSON.stringify(value), { ...init, headers }));
 }
 
-function csv(value: string, filename: string): Response {
-  return withCatalogAdminSecurityHeaders(
-    new Response(value, {
-      headers: {
-        "content-type": "text/csv; charset=utf-8",
-        "content-disposition": `attachment; filename="${filename}"`,
-        "cache-control": "no-store",
-      },
-    }),
-  );
-}
-
-async function readJsonBody(request: Request): Promise<unknown> {
-  const raw = await request.text();
+async function readJsonBody(
+  request: Request,
+  maxBytes = 64 * 1024,
+): Promise<unknown | typeof REQUEST_BODY_TOO_LARGE> {
+  if (!request.body) return undefined;
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let byteLength = 0;
+  for (;;) {
+    const result = await reader.read();
+    if (result.done) break;
+    byteLength += result.value.byteLength;
+    if (byteLength > maxBytes) {
+      await reader.cancel("request_body_too_large");
+      return REQUEST_BODY_TOO_LARGE;
+    }
+    chunks.push(result.value);
+  }
+  const bytes = new Uint8Array(byteLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const raw = new TextDecoder().decode(bytes);
   if (!raw.trim()) return undefined;
   try {
     return JSON.parse(raw) as unknown;
   } catch {
     return null;
   }
+}
+
+function isJsonRequest(request: Request): boolean {
+  return (
+    request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() ===
+    "application/json"
+  );
+}
+
+function isSameOriginBrowserMutation(request: Request, url: URL): boolean {
+  const origin = request.headers.get("origin");
+  if (origin && origin !== url.origin) return false;
+  const fetchSite = request.headers.get("sec-fetch-site");
+  return !fetchSite || fetchSite === "same-origin";
 }
 
 function categoryHierarchy(category: CategoryDefinition): CategoryDefinition[] {
@@ -137,31 +159,13 @@ async function adminAsset(env: CatalogAdminEnv, request: Request): Promise<Respo
   return withCatalogAdminSecurityHeaders(await env.ADMIN_ASSETS.fetch(request));
 }
 
-function productExportScope(url: URL): CatalogAdminProductExportScope | null {
-  const value = url.searchParams.get("scope") || "active";
+function productExportScope(value: unknown): CatalogAdminProductExportScope | null {
   return value === "active" || value === "all" ? value : null;
 }
 
-async function productAuditCsv(
-  env: CatalogAdminEnv,
-  scope: CatalogAdminProductExportScope,
-): Promise<Response> {
-  const lines = [`${PRODUCT_AUDIT_CSV_BOM}${productAuditCsvHeader()}`];
-  let afterId = 0;
-  for (;;) {
-    const page = await env.CATALOG_ADMIN.exportProductAuditPage({
-      scope,
-      afterId,
-      limit: PRODUCT_EXPORT_PAGE_SIZE,
-    });
-    for (const item of page.items) lines.push(productAuditCsvRow(item));
-    if (page.nextAfterId === null) break;
-    if (page.nextAfterId <= afterId) throw new Error("catalog_admin_export_cursor_did_not_advance");
-    afterId = page.nextAfterId;
-  }
-
-  const date = new Date().toISOString().slice(0, 10);
-  return csv(`${lines.join("\r\n")}\r\n`, `hifiscout-product-audit-${scope}-${date}.csv`);
+function productExportScopeFromBody(value: unknown): CatalogAdminProductExportScope | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  return productExportScope((value as Record<string, unknown>).scope);
 }
 
 export async function handleAuthenticatedCatalogAdminRequest(
@@ -173,10 +177,50 @@ export async function handleAuthenticatedCatalogAdminRequest(
   if (request.method === "GET" && url.pathname === "/api/meta") {
     return json({ categoryFacets: categoryFacets() });
   }
-  if (request.method === "GET" && url.pathname === PRODUCT_EXPORT_PATH) {
-    const scope = productExportScope(url);
+  if (request.method === "POST" && url.pathname === PRODUCT_EXPORT_COLLECTION_PATH) {
+    if (!isJsonRequest(request)) {
+      return json({ error: "application_json_required" }, { status: 415 });
+    }
+    if (!isSameOriginBrowserMutation(request, url)) {
+      return json({ error: "same_origin_required" }, { status: 403 });
+    }
+    const body = await readJsonBody(request, 1024);
+    if (body === REQUEST_BODY_TOO_LARGE) {
+      return json({ error: "request_body_too_large" }, { status: 413 });
+    }
+    if (body === null) return json({ error: "invalid_json" }, { status: 400 });
+    const scope = productExportScopeFromBody(body);
     if (!scope) return json({ error: "invalid_product_export_scope" }, { status: 400 });
-    return productAuditCsv(env, scope);
+    try {
+      const job = await env.CATALOG_ADMIN.startProductAuditExport(scope);
+      return json(job, { status: job.status === "failed" ? 503 : 202 });
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          message: "product audit export could not be queued",
+          scope,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+      return json({ error: "product_audit_export_start_failed" }, { status: 503 });
+    }
+  }
+  if (request.method === "GET" && url.pathname === PRODUCT_EXPORT_COLLECTION_PATH) {
+    const scope = productExportScope(url.searchParams.get("scope"));
+    if (!scope) return json({ error: "invalid_product_export_scope" }, { status: 400 });
+    return json({ job: await env.CATALOG_ADMIN.latestProductAuditExportJob(scope) });
+  }
+
+  const exportJobMatch = url.pathname.match(PRODUCT_EXPORT_JOB_PATH);
+  if (request.method === "GET" && exportJobMatch) {
+    const jobId = exportJobMatch[1];
+    if (exportJobMatch[2]) {
+      return withCatalogAdminSecurityHeaders(
+        await env.CATALOG_ADMIN.downloadProductAuditExport(jobId),
+      );
+    }
+    const job = await env.CATALOG_ADMIN.getProductAuditExportJob(jobId);
+    return job ? json(job) : json({ error: "not_found" }, { status: 404 });
   }
   if (request.method === "GET" && url.pathname === COLLECTION_PATH) {
     const options = parseKnowledgeCatalogAdminListQuery(url);
@@ -191,6 +235,9 @@ export async function handleAuthenticatedCatalogAdminRequest(
       return json({ error: "invalid_id" }, { status: 400 });
     }
     const body = await readJsonBody(request);
+    if (body === REQUEST_BODY_TOO_LARGE) {
+      return json({ error: "request_body_too_large" }, { status: 413 });
+    }
     if (body === null) return json({ error: "invalid_json" }, { status: 400 });
     const input = parseKnowledgeCatalogAdminUpdate(body);
     if (!input) return json({ error: "invalid_catalog_update" }, { status: 400 });
