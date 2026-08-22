@@ -19,7 +19,5 @@ docs/public/db/
 # TypeScript/JavaScript generated artifacts
 .generated/
 dist/
-public/app.js
-public/catalog-url-state.js
-public/shop-links.js
-admin-public/catalog-admin.js
+public/*.js
+admin-public/*.js
