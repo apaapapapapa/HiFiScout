@@ -253,6 +253,7 @@ R2 lifecycle rules are provisioned by the production deploy workflow using prefi
 - `evidence/medium/`: 90 days
 - `evidence/long/`: 365 days
 - `product-audit-exports/`: 10 days (covers the 24-hour generation deadline plus 7-day download window)
+- `knowledge-catalog-exports/`: 10 days (covers the same generation and download windows)
 
 The application records `expires_at` in D1, and the existing daily retention cleanup removes expired evidence metadata in bounded batches. Object deletion itself is delegated to R2 lifecycle rules rather than a custom lifecycle engine.
 
@@ -260,25 +261,49 @@ The application records `expires_at` in D1, and the existing daily retention cle
 
 Evidence archival is best-effort. Missing bindings, hashing/database errors, and R2 write failures are logged and returned as archive failures; they are not thrown into the product crawl update path. A crawler failure remains a crawler failure for its original reason, not because evidence could not be stored.
 
-### Product Audit CSV generation
+### Asynchronous admin CSV generation
 
-The Access-protected Catalog Admin starts Product Audit CSV exports as persistent D1 jobs instead
-of reading every listing in one HTTP request. A dedicated Queue processes one bounded page at a
-time with a single concurrent consumer and a delay between pages. Each page becomes a deterministic
-R2 chunk under `product-audit-exports/{jobId}/`; the completed job streams those already-generated
-chunks in order, so download performs no product joins or CSV re-encoding.
+The Access-protected Catalog Admin starts Product Audit and Knowledge Catalog CSV exports as
+persistent D1 jobs instead of reading an entire dataset in one HTTP request. Both job kinds share
+the existing `hifiscout-product-audit-export` Queue and DLQ. The physical name is retained for a
+backward-compatible rollout; the message `kind` selects the consumer. Its single-concurrency
+configuration is the aggregate CPU bound across both exports, so one job kind can wait behind the
+other but the two expensive readers cannot run concurrently.
 
-The job captures a maximum listing-ID horizon at creation, uses cursor and chunk compare-and-swap
-fields for at-least-once Queue delivery, and permits only one running job per scope. It is not a
-transactional point-in-time snapshot: active state and joined canonical fields are read when each
-page runs, so the CSV intentionally reflects bounded, eventually consistent interval semantics.
+Each delivery processes one bounded page and enqueues its continuation with a delay. Each page
+becomes a deterministic R2 chunk below a job-kind-specific prefix; a completed download streams
+those already-generated chunks in order and performs no catalog joins or CSV re-encoding.
+Lifecycle state remains in the separate `product_audit_export_jobs` and
+`knowledge_catalog_export_jobs` tables so each domain keeps its own horizon and active-job
+constraint without weakening the established Product Audit schema.
 
-Generation has a 24-hour deadline and a 900-chunk cap (250 rows per chunk), keeping both generation
-work and the later streaming download below explicit per-invocation bounds. A five-minute recovery
-path re-enqueues stale cursors, while a compare-and-swap throttle prevents repeated POST or polling
-requests from flooding the Queue. Completed exports are available through the Access Worker for 7
-days. Daily maintenance removes expired D1 job metadata in bounded batches, while the R2 lifecycle
-rule removes the private chunks after 10 days.
+Product Audit jobs retain separate `active` and `all` scopes, capture a maximum listing-ID horizon,
+and write 250-row chunks under `product-audit-exports/{jobId}/`. Knowledge Catalog jobs have no
+scope and permit only one active export, capture a maximum catalog-product-ID horizon, and write
+100-row chunks under `knowledge-catalog-exports/{jobId}/`. The smaller catalog page bounds the
+additional category, alias, source, candidate, identity, and verification-attempt lookups.
+Category, alias, source, and identity collections also have per-product scan limits. Category,
+alias, and source count columns are named `*_count_capped`; the adjacent `*_truncated` flag
+distinguishes an exact count from the cap-plus-one lower bound. Identity counts are explicitly
+named `*_sampled`, because the exporter samples at most 101 identities before joining listing
+activity, and `identity_sample_truncated` identifies larger sets.
+Direct D1 text/JSON projections are length-bounded before they leave SQLite. CSV serialization also
+enforces per-cell and per-row character budgets; `csv_fields_truncated` names any affected columns
+instead of silently allowing a single pathological value to inflate an entire chunk. Oversized
+`*_json` cells remain valid JSON sentinel objects with truncation metadata.
+
+Each job uses cursor, chunk, and lease compare-and-swap fields for at-least-once Queue delivery.
+Neither export is a transactional point-in-time snapshot: the ID horizon is fixed at creation, but
+mutable fields and joins are read when each page runs, so the CSV intentionally reflects bounded,
+eventually consistent interval semantics.
+
+Both job kinds have a 24-hour generation deadline, five-second continuation delay, and 900-chunk
+cap. That bounds Product Audit at 225,000 rows and Knowledge Catalog at 90,000 rows while keeping
+the later streaming download below an explicit R2-operation bound. The general five-minute cron
+re-enqueues stale cursors for both job tables, while compare-and-swap throttles prevent repeated
+POST or polling requests from flooding the Queue. Completed exports are available through the
+Access Worker for 7 days. Daily maintenance removes expired rows from both D1 job tables in bounded
+batches, while independent 10-day R2 lifecycle rules remove their private chunks.
 
 ## Observability and capacity monitoring
 
@@ -341,7 +366,12 @@ The Repository boundary is deliberately preserved so that a future PostgreSQL im
 
 ## Deployment requirements
 
-`wrangler.jsonc` binds `EVIDENCE_BUCKET` to the `hifiscout-evidence` R2 bucket. The production deployment workflow creates the bucket if necessary and reconciles the four HiFiScout-owned lifecycle rules before deploying the Worker.
+`wrangler.jsonc` binds `EVIDENCE_BUCKET` to the `hifiscout-evidence` R2 bucket. The production deployment workflow creates the bucket if necessary and reconciles the five HiFiScout-owned lifecycle rules before deploying the Worker. Both CSV job kinds intentionally reuse the existing serialized Product Audit Queue and DLQ; deployment does not create or rename a queue for Knowledge Catalog exports.
+
+The Catalog Admin deployment is triggered only after a successful main Worker deployment and
+checks out that exact deployment SHA. This keeps the Service Binding RPC contract aligned during
+forward deploys and rollbacks; the main entrypoint also implements the shared `CatalogAdminRpc`
+interface at compile time.
 
 The Cloudflare API token used by deployment therefore needs the permission required to create/configure R2 buckets and lifecycle rules (`Workers R2 Storage Write`) in addition to the permissions already required by the Worker/D1 deployment.
 

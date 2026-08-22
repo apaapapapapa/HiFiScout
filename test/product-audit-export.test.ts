@@ -9,6 +9,10 @@ import {
   productAuditCsvRow,
 } from "../src/admin/product-audit-csv.js";
 import { listProductAuditExportPage } from "../src/db/product-audit-export-repository.js";
+import {
+  encodeProductAuditExportChunk,
+  PRODUCT_AUDIT_EXPORT_PAGE_SIZE,
+} from "../src/product-audit-export/csv.js";
 import type {
   ProductAuditExportJob,
   ProductAuditExportScope,
@@ -448,4 +452,70 @@ test("product audit repository exports active rows by default and all history on
     [activeId, inactiveId],
   );
   assert.equal(all.items[1]?.searchEntityKey, "");
+
+  const oversizedText = "x".repeat(100_000);
+  const nulTerminatedTitle = `seller-title\0${"y".repeat(100_000)}`;
+  sqlite
+    .prepare(`
+      UPDATE products SET
+        shop_key = @wide,
+        source_id = @wide,
+        source_url = @wide,
+        condition_text = @wide,
+        title = @nulTitle,
+        raw_manufacturer = @wide,
+        manufacturer = @wide,
+        manufacturer_id = @wide,
+        canonical_manufacturer_id = @wide,
+        raw_model = @wide,
+        model = @wide,
+        normalized_model = @wide,
+        raw_category = @wide,
+        category = @wide,
+        primary_category_id = @wide,
+        category_ids = @wide,
+        first_seen_at = @wide,
+        last_seen_at = @wide,
+        last_changed_at = @wide,
+        last_activity_at = @wide,
+        source_published_at = @wide
+      WHERE id = @id
+    `)
+    .run({ wide: oversizedText, nulTitle: nulTerminatedTitle, id: inactiveId });
+
+  const bounded = await listProductAuditExportPage(db, {
+    scope: "all",
+    afterId: activeId,
+    maxId: inactiveId,
+    limit: 1_000,
+  });
+  const boundedRow = bounded.items[0];
+  assert.ok(boundedRow);
+  for (const value of Object.values(boundedRow)) {
+    if (typeof value !== "string") continue;
+    assert.ok(value.length <= 2_048, "every D1 text projection has a fixed character ceiling");
+    assert.equal(value.includes("\0"), false, "an embedded NUL cannot bypass SQLite length() caps");
+  }
+  assert.match(boundedRow.title, / \[truncated\]$/u);
+  assert.match(boundedRow.sourceUrl, / \[truncated\]$/u);
+  assert.ok(boundedRow.firstSeenAt.length <= 128);
+
+  const stored = sqlite
+    .prepare("SELECT title, source_url FROM products WHERE id = ?")
+    .get(inactiveId) as { title: string; source_url: string };
+  assert.equal(
+    stored.title,
+    nulTerminatedTitle,
+    "export caps must not rewrite seller raw evidence",
+  );
+  assert.equal(stored.source_url, oversizedText);
+
+  const maximumPageChunk = encodeProductAuditExportChunk(
+    Array.from({ length: PRODUCT_AUDIT_EXPORT_PAGE_SIZE }, () => boundedRow),
+    0,
+  );
+  assert.ok(
+    maximumPageChunk.byteLength < 16 * 1024 * 1024,
+    "one 250-row Queue delivery remains well below the Worker memory ceiling",
+  );
 });

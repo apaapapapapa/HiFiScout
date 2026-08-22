@@ -3,6 +3,26 @@ import type { ProductAuditExportScope } from "../product-audit-export/types.js";
 
 export type { ProductAuditExportScope } from "../product-audit-export/types.js";
 
+const MAX_PAGE_SIZE = 250;
+const SQL_IDENTIFIER_CHARACTER_LIMIT = 256;
+const SQL_TEXT_CHARACTER_LIMIT = 1_024;
+const SQL_EVIDENCE_CHARACTER_LIMIT = 2_048;
+const SQL_URL_CHARACTER_LIMIT = 2_048;
+const SQL_TIMESTAMP_CHARACTER_LIMIT = 128;
+const SQL_TRUNCATION_MARKER = " [truncated]";
+
+/** Bounds export-only projections without changing the seller evidence stored in D1. */
+function boundedSqlText(expression: string, limit = SQL_TEXT_CHARACTER_LIMIT): string {
+  const prefixLimit = Math.max(0, limit - SQL_TRUNCATION_MARKER.length);
+  return `CASE
+    WHEN instr(${expression}, char(0)) > 0
+      THEN substr(${expression}, 1, MIN(instr(${expression}, char(0)) - 1, ${prefixLimit})) || '${SQL_TRUNCATION_MARKER}'
+    WHEN length(${expression}) > ${limit}
+      THEN substr(${expression}, 1, ${prefixLimit}) || '${SQL_TRUNCATION_MARKER}'
+    ELSE ${expression}
+  END`;
+}
+
 export interface ProductAuditExportOptions {
   scope: ProductAuditExportScope;
   afterId: number;
@@ -193,7 +213,7 @@ export async function listProductAuditExportPage(
   db: ReadableDatabase,
   options: ProductAuditExportOptions,
 ): Promise<ProductAuditExportPage> {
-  const limit = Math.min(1000, Math.max(1, Number(options.limit) || 1));
+  const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, Number(options.limit) || 1));
   const afterId = Math.max(0, Number(options.afterId) || 0);
   const maxId = Math.max(0, Number.isSafeInteger(options.maxId) ? Number(options.maxId) : 0);
   const activeClause = options.scope === "active" ? "AND p.is_active = 1" : "";
@@ -201,63 +221,63 @@ export async function listProductAuditExportPage(
     .prepare(`
       SELECT
         p.id AS listing_id,
-        p.shop_key,
-        p.source_id,
-        p.source_url,
+        ${boundedSqlText("p.shop_key", SQL_IDENTIFIER_CHARACTER_LIMIT)} AS shop_key,
+        ${boundedSqlText("p.source_id")} AS source_id,
+        ${boundedSqlText("p.source_url", SQL_URL_CHARACTER_LIMIT)} AS source_url,
         p.is_active,
-        p.stock_status,
+        ${boundedSqlText("p.stock_status", 128)} AS stock_status,
         p.price_yen,
-        p.condition_text,
-        p.title,
-        p.raw_manufacturer,
-        p.manufacturer,
-        p.manufacturer_id,
-        p.canonical_manufacturer_id,
-        p.manufacturer_resolution_status,
-        p.manufacturer_resolution_method,
-        p.manufacturer_resolution_confidence,
-        p.raw_model,
-        p.model,
-        p.normalized_model,
-        p.model_resolution_status,
-        p.model_resolution_method,
-        p.model_resolution_confidence,
-        p.raw_category,
-        p.category,
-        p.primary_category_id,
-        p.category_ids,
-        p.classification_status,
-        e.entity_key AS search_entity_key,
-        e.entity_kind AS search_entity_kind,
-        e.primary_category_id AS search_entity_primary_category_id,
+        ${boundedSqlText("p.condition_text", SQL_EVIDENCE_CHARACTER_LIMIT)} AS condition_text,
+        ${boundedSqlText("p.title", SQL_EVIDENCE_CHARACTER_LIMIT)} AS title,
+        ${boundedSqlText("p.raw_manufacturer")} AS raw_manufacturer,
+        ${boundedSqlText("p.manufacturer")} AS manufacturer,
+        ${boundedSqlText("p.manufacturer_id", SQL_IDENTIFIER_CHARACTER_LIMIT)} AS manufacturer_id,
+        ${boundedSqlText("p.canonical_manufacturer_id", SQL_IDENTIFIER_CHARACTER_LIMIT)} AS canonical_manufacturer_id,
+        ${boundedSqlText("p.manufacturer_resolution_status", 128)} AS manufacturer_resolution_status,
+        ${boundedSqlText("p.manufacturer_resolution_method", 128)} AS manufacturer_resolution_method,
+        ${boundedSqlText("p.manufacturer_resolution_confidence", 128)} AS manufacturer_resolution_confidence,
+        ${boundedSqlText("p.raw_model", SQL_EVIDENCE_CHARACTER_LIMIT)} AS raw_model,
+        ${boundedSqlText("p.model")} AS model,
+        ${boundedSqlText("p.normalized_model")} AS normalized_model,
+        ${boundedSqlText("p.model_resolution_status", 128)} AS model_resolution_status,
+        ${boundedSqlText("p.model_resolution_method", 128)} AS model_resolution_method,
+        ${boundedSqlText("p.model_resolution_confidence", 128)} AS model_resolution_confidence,
+        ${boundedSqlText("p.raw_category", SQL_EVIDENCE_CHARACTER_LIMIT)} AS raw_category,
+        ${boundedSqlText("p.category")} AS category,
+        ${boundedSqlText("p.primary_category_id", SQL_IDENTIFIER_CHARACTER_LIMIT)} AS primary_category_id,
+        ${boundedSqlText("p.category_ids", SQL_EVIDENCE_CHARACTER_LIMIT)} AS category_ids,
+        ${boundedSqlText("p.classification_status", 128)} AS classification_status,
+        ${boundedSqlText("e.entity_key")} AS search_entity_key,
+        ${boundedSqlText("e.entity_kind", 128)} AS search_entity_kind,
+        ${boundedSqlText("e.primary_category_id", SQL_IDENTIFIER_CHARACTER_LIMIT)} AS search_entity_primary_category_id,
         e.offer_count AS search_entity_offer_count,
         e.shop_count AS search_entity_shop_count,
-        r.status AS identity_status,
-        r.match_method AS identity_match_method,
-        r.confidence AS identity_confidence,
+        ${boundedSqlText("r.status", 128)} AS identity_status,
+        ${boundedSqlText("r.match_method", 128)} AS identity_match_method,
+        ${boundedSqlText("r.confidence", 128)} AS identity_confidence,
         r.catalog_product_id AS identity_catalog_product_id,
         r.candidate_catalog_product_id AS identity_candidate_catalog_product_id,
-        kp.canonical_name AS catalog_canonical_name,
-        kp.canonical_model AS catalog_canonical_model,
+        ${boundedSqlText("kp.canonical_name")} AS catalog_canonical_name,
+        ${boundedSqlText("kp.canonical_model")} AS catalog_canonical_model,
         (
-          SELECT kpc.category_id
+          SELECT ${boundedSqlText("kpc.category_id", SQL_IDENTIFIER_CHARACTER_LIMIT)}
           FROM knowledge_catalog_product_categories kpc
           WHERE kpc.product_id = kp.id AND kpc.is_primary = 1
           LIMIT 1
         ) AS catalog_primary_category_id,
-        candidate_kp.canonical_name AS candidate_catalog_canonical_name,
-        candidate_kp.canonical_model AS candidate_catalog_canonical_model,
+        ${boundedSqlText("candidate_kp.canonical_name")} AS candidate_catalog_canonical_name,
+        ${boundedSqlText("candidate_kp.canonical_model")} AS candidate_catalog_canonical_model,
         (
-          SELECT candidate_kpc.category_id
+          SELECT ${boundedSqlText("candidate_kpc.category_id", SQL_IDENTIFIER_CHARACTER_LIMIT)}
           FROM knowledge_catalog_product_categories candidate_kpc
           WHERE candidate_kpc.product_id = candidate_kp.id AND candidate_kpc.is_primary = 1
           LIMIT 1
         ) AS candidate_catalog_primary_category_id,
-        p.first_seen_at,
-        p.last_seen_at,
-        p.last_changed_at,
-        p.last_activity_at,
-        p.source_published_at
+        ${boundedSqlText("p.first_seen_at", SQL_TIMESTAMP_CHARACTER_LIMIT)} AS first_seen_at,
+        ${boundedSqlText("p.last_seen_at", SQL_TIMESTAMP_CHARACTER_LIMIT)} AS last_seen_at,
+        ${boundedSqlText("p.last_changed_at", SQL_TIMESTAMP_CHARACTER_LIMIT)} AS last_changed_at,
+        ${boundedSqlText("p.last_activity_at", SQL_TIMESTAMP_CHARACTER_LIMIT)} AS last_activity_at,
+        ${boundedSqlText("p.source_published_at", SQL_TIMESTAMP_CHARACTER_LIMIT)} AS source_published_at
       FROM products p
       LEFT JOIN product_search_entity_offers membership
         ON membership.listing_product_id = p.id

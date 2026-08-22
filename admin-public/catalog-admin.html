@@ -136,16 +136,39 @@
           <summary class="export-summary">
             <span class="export-summary-copy">
               <span class="eyebrow">AI DATA AUDIT</span>
-              <strong id="product-audit-heading">登録商品をCSVで診断</strong>
-              <span>重複・カテゴリ・メーカー/型番の品質確認用データを生成します。</span>
+              <strong id="csv-export-heading">カタログと登録商品をCSVで診断</strong>
+              <span>Catalog・重複・カテゴリ・メーカー/型番の品質確認用データを生成します。</span>
             </span>
             <span class="summary-chevron" aria-hidden="true"></span>
           </summary>
-          <div class="export-content" aria-labelledby="product-audit-heading">
+          <div class="export-content" aria-labelledby="csv-export-heading">
             <p class="export-description">
-              店舗ごとの生データ、正規化済みメーカー・型番、カテゴリ、Product Identity、検索上の同一製品グループを1行1listingで出力します。CSVをAIに渡して、重複表示・カテゴリ誤り・メーカー/型番の正規化漏れを確認できます。
+              Knowledge Catalogは検証状態やカテゴリ・alias・source・Product Identityを1行1製品で、登録商品は店舗ごとの生データや検索上の同一製品グループを1行1listingで出力します。CSVをAIに渡して、重複表示・カテゴリ誤り・メーカー/型番の正規化漏れを確認できます。
             </p>
             <div class="export-jobs">
+              <section class="export-job" aria-labelledby="export-catalog-heading">
+                <div>
+                  <span class="job-kicker">CATALOG</span>
+                  <h3 id="export-catalog-heading">Knowledge Catalog</h3>
+                  <p class="export-job-description">
+                    検証状態を含むカタログ全件を100件ずつ低負荷で処理します。上限90,000件・生成期限24時間です。
+                  </p>
+                  <p
+                    id="export-catalog-status"
+                    class="export-status"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    最新の生成状況を確認しています…
+                  </p>
+                </div>
+                <div class="export-job-actions">
+                  <button id="export-catalog-generate" type="button" disabled>CSVを生成</button>
+                  <a id="export-catalog-download" class="button-link secondary-button" hidden>
+                    ダウンロード
+                  </a>
+                </div>
+              </section>
               <section class="export-job" aria-labelledby="export-active-heading">
                 <div>
                   <span class="job-kicker">RECOMMENDED</span>
@@ -190,7 +213,7 @@
               </section>
             </div>
             <p class="export-note">
-              通常の品質確認には「掲載中商品」を推奨します。「全履歴」には販売終了・非掲載の商品も含まれます。生成ボタンを押すと250件ずつバックグラウンドで処理し、画面を閉じても継続します。完成したCSVは7日間ダウンロードできます。1回の上限は225,000件、生成期限は24時間です。
+              Knowledge Catalogは100件ずつ、登録商品は250件ずつバックグラウンドで処理し、画面を閉じても継続します。通常の商品監査には「掲載中商品」を推奨し、「全履歴」には販売終了・非掲載の商品も含まれます。完成したCSVは7日間ダウンロードできます。Knowledge Catalogは最大90,000件、登録商品は最大225,000件、生成期限はいずれも24時間です。
             </p>
           </div>
         </details>

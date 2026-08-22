@@ -1,10 +1,10 @@
 export {};
 
-type ProductAuditExportScope = "active" | "all";
+const CSV_EXPORT_KEYS = ["catalog", "product-audit-active", "product-audit-all"] as const;
+type CsvExportKey = (typeof CSV_EXPORT_KEYS)[number];
 
-interface ProductAuditExportJob {
+interface CsvExportJob {
   id: string;
-  scope: ProductAuditExportScope;
   status: "queued" | "processing" | "ready" | "failed";
   rowCount: number;
   byteCount: number;
@@ -40,14 +40,22 @@ interface CatalogUpdateResponse {
   refreshedListings: number;
 }
 
-interface ProductAuditExportLatestResponse {
-  job: ProductAuditExportJob | null;
+interface CsvExportLatestResponse {
+  job: CsvExportJob | null;
 }
 
-interface ProductAuditExportElements {
+interface CsvExportElements {
   generate: HTMLButtonElement;
   status: HTMLElement;
   download: HTMLAnchorElement;
+}
+
+interface CsvExportTarget {
+  collectionUrl: string;
+  latestUrl: string;
+  startBody: object;
+  downloadUrl(jobId: string): string;
+  elements: CsvExportElements;
 }
 
 interface EditSnapshot {
@@ -87,21 +95,46 @@ const editChangeStatus = element<HTMLElement>("edit-change-status");
 const closeEditButton = element<HTMLButtonElement>("close-edit");
 const cancelEdit = element<HTMLButtonElement>("cancel-edit");
 const saveEdit = element<HTMLButtonElement>("save-edit");
-const productAuditExportElements = {
-  active: {
-    generate: element<HTMLButtonElement>("export-active-generate"),
-    status: element<HTMLElement>("export-active-status"),
-    download: element<HTMLAnchorElement>("export-active-download"),
+const csvExportTargets = {
+  catalog: {
+    collectionUrl: "/api/admin/knowledge-catalog-exports",
+    latestUrl: "/api/admin/knowledge-catalog-exports",
+    startBody: {},
+    downloadUrl: (jobId) =>
+      `/api/admin/knowledge-catalog-exports/${encodeURIComponent(jobId)}/download`,
+    elements: {
+      generate: element<HTMLButtonElement>("export-catalog-generate"),
+      status: element<HTMLElement>("export-catalog-status"),
+      download: element<HTMLAnchorElement>("export-catalog-download"),
+    },
   },
-  all: {
-    generate: element<HTMLButtonElement>("export-all-generate"),
-    status: element<HTMLElement>("export-all-status"),
-    download: element<HTMLAnchorElement>("export-all-download"),
+  "product-audit-active": {
+    collectionUrl: "/api/admin/product-audit-exports",
+    latestUrl: "/api/admin/product-audit-exports?scope=active",
+    startBody: { scope: "active" },
+    downloadUrl: (jobId) =>
+      `/api/admin/product-audit-exports/${encodeURIComponent(jobId)}/download`,
+    elements: {
+      generate: element<HTMLButtonElement>("export-active-generate"),
+      status: element<HTMLElement>("export-active-status"),
+      download: element<HTMLAnchorElement>("export-active-download"),
+    },
   },
-} satisfies Record<ProductAuditExportScope, ProductAuditExportElements>;
+  "product-audit-all": {
+    collectionUrl: "/api/admin/product-audit-exports",
+    latestUrl: "/api/admin/product-audit-exports?scope=all",
+    startBody: { scope: "all" },
+    downloadUrl: (jobId) =>
+      `/api/admin/product-audit-exports/${encodeURIComponent(jobId)}/download`,
+    elements: {
+      generate: element<HTMLButtonElement>("export-all-generate"),
+      status: element<HTMLElement>("export-all-status"),
+      download: element<HTMLAnchorElement>("export-all-download"),
+    },
+  },
+} satisfies Record<CsvExportKey, CsvExportTarget>;
 
-const PRODUCT_AUDIT_EXPORT_SCOPES = ["active", "all"] as const;
-const PRODUCT_AUDIT_EXPORT_POLL_MS = 5_000;
+const CSV_EXPORT_POLL_MS = 5_000;
 
 let categories: CategoryFacet[] = [];
 let currentAfterId = 0;
@@ -112,14 +145,26 @@ let editingSnapshot: EditSnapshot | null = null;
 let busy = false;
 let saving = false;
 let catalogReady = false;
-let productAuditExportPollTimer: number | null = null;
-const productAuditExportJobs: Record<ProductAuditExportScope, ProductAuditExportJob | null> = {
-  active: null,
-  all: null,
+let csvExportPollTimer: number | null = null;
+const csvExportJobs: Record<CsvExportKey, CsvExportJob | null> = {
+  catalog: null,
+  "product-audit-active": null,
+  "product-audit-all": null,
 };
-const productAuditExportBusy: Record<ProductAuditExportScope, boolean> = {
-  active: true,
-  all: true,
+const csvExportBusy: Record<CsvExportKey, boolean> = {
+  catalog: true,
+  "product-audit-active": true,
+  "product-audit-all": true,
+};
+const csvExportRequestEpoch: Record<CsvExportKey, number> = {
+  catalog: 0,
+  "product-audit-active": 0,
+  "product-audit-all": 0,
+};
+const csvExportLatestInFlight: Record<CsvExportKey, Promise<void> | null> = {
+  catalog: null,
+  "product-audit-active": null,
+  "product-audit-all": null,
 };
 
 function message(value: string, kind: "info" | "error" | "success" = "info"): void {
@@ -197,33 +242,39 @@ async function adminJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   );
 }
 
-function productAuditExportDate(value: string | null): string {
+function csvExportDate(value: string | null): string {
   if (!value) return "—";
   const date = new Date(value);
   return Number.isNaN(date.valueOf()) ? value : date.toLocaleString("ja-JP");
 }
 
-function productAuditExportBytes(value: number): string {
+function csvExportBytes(value: number): string {
   if (value < 1_024) return `${value.toLocaleString("ja-JP")} B`;
   if (value < 1_024 * 1_024) return `${(value / 1_024).toFixed(1)} KB`;
   return `${(value / (1_024 * 1_024)).toFixed(1)} MB`;
 }
 
-function productAuditExportExpired(job: ProductAuditExportJob): boolean {
+function csvExportExpired(job: CsvExportJob): boolean {
   if (job.status !== "ready" || !job.expiresAt) return false;
   const expiresAt = Date.parse(job.expiresAt);
   return Number.isFinite(expiresAt) && expiresAt <= Date.now();
 }
 
-function productAuditExportActive(job: ProductAuditExportJob | null): boolean {
+function csvExportActive(job: CsvExportJob | null): boolean {
   return job?.status === "queued" || job?.status === "processing";
 }
 
-function productAuditExportFailureMessage(error: string): string {
+function csvExportFailureMessage(error: string): string {
   if (error === "product_audit_export_too_large") {
     return "225,000件の上限を超えました。対象を掲載中商品に絞ってください。";
   }
-  if (error === "product_audit_export_generation_deadline_exceeded") {
+  if (error === "knowledge_catalog_export_too_large") {
+    return "90,000件の上限を超えました。";
+  }
+  if (
+    error === "product_audit_export_generation_deadline_exceeded" ||
+    error === "knowledge_catalog_export_generation_deadline_exceeded"
+  ) {
     return "24時間の生成期限を超えました。もう一度生成してください。";
   }
   if (error === "queue_delivery_exhausted") {
@@ -232,14 +283,15 @@ function productAuditExportFailureMessage(error: string): string {
   return error;
 }
 
-function renderProductAuditExport(scope: ProductAuditExportScope): void {
-  const elements = productAuditExportElements[scope];
-  const job = productAuditExportJobs[scope];
-  const active = productAuditExportActive(job);
-  const expired = job ? productAuditExportExpired(job) : false;
+function renderCsvExport(key: CsvExportKey): void {
+  const target = csvExportTargets[key];
+  const elements = target.elements;
+  const job = csvExportJobs[key];
+  const active = csvExportActive(job);
+  const expired = job ? csvExportExpired(job) : false;
 
-  elements.generate.disabled = productAuditExportBusy[scope] || active;
-  elements.generate.textContent = productAuditExportBusy[scope]
+  elements.generate.disabled = csvExportBusy[key] || active;
+  elements.generate.textContent = csvExportBusy[key]
     ? "受付中…"
     : active
       ? "生成中…"
@@ -248,7 +300,7 @@ function renderProductAuditExport(scope: ProductAuditExportScope): void {
         : "CSVを生成";
   elements.download.hidden = !job || job.status !== "ready" || expired;
   if (!elements.download.hidden && job) {
-    elements.download.href = `/api/admin/product-audit-exports/${encodeURIComponent(job.id)}/download`;
+    elements.download.href = target.downloadUrl(job.id);
   } else {
     elements.download.removeAttribute("href");
   }
@@ -261,7 +313,7 @@ function renderProductAuditExport(scope: ProductAuditExportScope): void {
   if (job.status === "queued") {
     elements.status.textContent = job.rowCount
       ? `${job.rowCount.toLocaleString("ja-JP")}件を生成済みです。次のバッチを待っています…`
-      : `生成待ちです（受付: ${productAuditExportDate(job.createdAt)}）。`;
+      : `生成待ちです（受付: ${csvExportDate(job.createdAt)}）。`;
     return;
   }
   if (job.status === "processing") {
@@ -271,7 +323,7 @@ function renderProductAuditExport(scope: ProductAuditExportScope): void {
   if (job.status === "failed") {
     elements.status.dataset.kind = "error";
     elements.status.textContent = job.error
-      ? `生成に失敗しました: ${productAuditExportFailureMessage(job.error)}`
+      ? `生成に失敗しました: ${csvExportFailureMessage(job.error)}`
       : "生成に失敗しました。もう一度お試しください。";
     return;
   }
@@ -282,102 +334,103 @@ function renderProductAuditExport(scope: ProductAuditExportScope): void {
   }
 
   elements.status.dataset.kind = "success";
-  elements.status.textContent = `${job.rowCount.toLocaleString("ja-JP")}件（${productAuditExportBytes(job.byteCount)}）の生成が完了しました。有効期限: ${productAuditExportDate(job.expiresAt)}`;
+  elements.status.textContent = `${job.rowCount.toLocaleString("ja-JP")}件（${csvExportBytes(job.byteCount)}）の生成が完了しました。有効期限: ${csvExportDate(job.expiresAt)}`;
 }
 
-function renderProductAuditExportError(
-  scope: ProductAuditExportScope,
-  error: unknown,
-  action = "生成状況を確認",
-): void {
-  renderProductAuditExport(scope);
-  const status = productAuditExportElements[scope].status;
+function renderCsvExportError(key: CsvExportKey, error: unknown, action = "生成状況を確認"): void {
+  renderCsvExport(key);
+  const status = csvExportTargets[key].elements.status;
   status.dataset.kind = "error";
   status.textContent = `CSVの${action}できません: ${errorText(error)}`;
 }
 
-async function loadLatestProductAuditExport(
-  scope: ProductAuditExportScope,
-  releaseInitialLock = false,
-): Promise<void> {
+async function loadLatestCsvExport(key: CsvExportKey, releaseInitialLock = false): Promise<void> {
+  const existing = csvExportLatestInFlight[key];
+  if (existing) {
+    await existing;
+    return;
+  }
+
+  const epoch = csvExportRequestEpoch[key];
+  const request = (async (): Promise<void> => {
+    let failure: unknown = null;
+    try {
+      const result = await adminJson<CsvExportLatestResponse>(csvExportTargets[key].latestUrl);
+      if (csvExportRequestEpoch[key] === epoch) csvExportJobs[key] = result.job;
+    } catch (error) {
+      failure = error;
+    } finally {
+      if (releaseInitialLock && csvExportRequestEpoch[key] === epoch) {
+        csvExportBusy[key] = false;
+      }
+    }
+
+    if (csvExportRequestEpoch[key] !== epoch) return;
+    if (failure) {
+      renderCsvExportError(key, failure);
+    } else {
+      renderCsvExport(key);
+    }
+  })();
+  csvExportLatestInFlight[key] = request;
+  try {
+    await request;
+  } finally {
+    if (csvExportLatestInFlight[key] === request) csvExportLatestInFlight[key] = null;
+  }
+}
+
+function scheduleCsvExportPoll(): void {
+  if (csvExportPollTimer !== null) {
+    window.clearTimeout(csvExportPollTimer);
+    csvExportPollTimer = null;
+  }
+  if (!CSV_EXPORT_KEYS.some((key) => csvExportActive(csvExportJobs[key]))) {
+    return;
+  }
+  csvExportPollTimer = window.setTimeout(() => {
+    csvExportPollTimer = null;
+    void pollCsvExports();
+  }, CSV_EXPORT_POLL_MS);
+}
+
+async function pollCsvExports(): Promise<void> {
+  const keys = CSV_EXPORT_KEYS.filter((key) => csvExportActive(csvExportJobs[key]));
+  await Promise.all(keys.map((key) => loadLatestCsvExport(key)));
+  scheduleCsvExportPoll();
+}
+
+async function loadCsvExports(): Promise<void> {
+  await Promise.all(CSV_EXPORT_KEYS.map((key) => loadLatestCsvExport(key, true)));
+  scheduleCsvExportPoll();
+}
+
+async function generateCsvExport(key: CsvExportKey): Promise<void> {
+  if (csvExportBusy[key] || csvExportActive(csvExportJobs[key])) return;
+  const epoch = ++csvExportRequestEpoch[key];
+  csvExportBusy[key] = true;
+  renderCsvExport(key);
   let failure: unknown = null;
   try {
-    const result = await adminJson<ProductAuditExportLatestResponse>(
-      `/api/admin/product-audit-exports?scope=${scope}`,
-    );
-    productAuditExportJobs[scope] = result.job;
+    const target = csvExportTargets[key];
+    const job = await adminJson<CsvExportJob>(target.collectionUrl, {
+      method: "POST",
+      body: JSON.stringify(target.startBody),
+    });
+    if (csvExportRequestEpoch[key] === epoch) csvExportJobs[key] = job;
   } catch (error) {
     failure = error;
   } finally {
-    if (releaseInitialLock) productAuditExportBusy[scope] = false;
+    if (csvExportRequestEpoch[key] === epoch) csvExportBusy[key] = false;
   }
 
+  if (csvExportRequestEpoch[key] !== epoch) return;
   if (failure) {
-    renderProductAuditExportError(scope, failure);
+    renderCsvExportError(key, failure, "生成を開始");
   } else {
-    renderProductAuditExport(scope);
+    renderCsvExport(key);
   }
-}
-
-function scheduleProductAuditExportPoll(): void {
-  if (productAuditExportPollTimer !== null) {
-    window.clearTimeout(productAuditExportPollTimer);
-    productAuditExportPollTimer = null;
-  }
-  if (
-    !PRODUCT_AUDIT_EXPORT_SCOPES.some((scope) =>
-      productAuditExportActive(productAuditExportJobs[scope]),
-    )
-  ) {
-    return;
-  }
-  productAuditExportPollTimer = window.setTimeout(() => {
-    productAuditExportPollTimer = null;
-    void pollProductAuditExports();
-  }, PRODUCT_AUDIT_EXPORT_POLL_MS);
-}
-
-async function pollProductAuditExports(): Promise<void> {
-  const scopes = PRODUCT_AUDIT_EXPORT_SCOPES.filter((scope) =>
-    productAuditExportActive(productAuditExportJobs[scope]),
-  );
-  await Promise.all(scopes.map((scope) => loadLatestProductAuditExport(scope)));
-  scheduleProductAuditExportPoll();
-}
-
-async function loadProductAuditExports(): Promise<void> {
-  await Promise.all(
-    PRODUCT_AUDIT_EXPORT_SCOPES.map((scope) => loadLatestProductAuditExport(scope, true)),
-  );
-  scheduleProductAuditExportPoll();
-}
-
-async function generateProductAuditExport(scope: ProductAuditExportScope): Promise<void> {
-  if (productAuditExportBusy[scope] || productAuditExportActive(productAuditExportJobs[scope]))
-    return;
-  productAuditExportBusy[scope] = true;
-  renderProductAuditExport(scope);
-  let failure: unknown = null;
-  try {
-    productAuditExportJobs[scope] = await adminJson<ProductAuditExportJob>(
-      "/api/admin/product-audit-exports",
-      {
-        method: "POST",
-        body: JSON.stringify({ scope }),
-      },
-    );
-  } catch (error) {
-    failure = error;
-  } finally {
-    productAuditExportBusy[scope] = false;
-  }
-
-  if (failure) {
-    renderProductAuditExportError(scope, failure, "生成を開始");
-  } else {
-    renderProductAuditExport(scope);
-  }
-  scheduleProductAuditExportPoll();
+  scheduleCsvExportPoll();
 }
 
 function categoryName(id: string): string {
@@ -654,14 +707,14 @@ editForm.addEventListener("submit", (event) => {
   event.preventDefault();
   void save();
 });
-for (const scope of PRODUCT_AUDIT_EXPORT_SCOPES) {
-  productAuditExportElements[scope].generate.addEventListener("click", () => {
-    void generateProductAuditExport(scope);
+for (const key of CSV_EXPORT_KEYS) {
+  csvExportTargets[key].elements.generate.addEventListener("click", () => {
+    void generateCsvExport(key);
   });
 }
 
 async function start(): Promise<void> {
-  void loadProductAuditExports();
+  void loadCsvExports();
   try {
     await loadCategories();
     updateInteractionState();

@@ -124,11 +124,23 @@ test("Knowledge Catalog verification is dispatched to its dedicated queue", () =
   assert.equal(consumer?.dead_letter_queue, "hifiscout-knowledge-verification-dlq");
 });
 
-test("Product Audit exports are serialized through a dedicated queue", () => {
+test("admin CSV exports share the existing serialized Product Audit queue", () => {
   const producer = wranglerConfig.queues.producers.find(
     (item: { binding?: string }) => item.binding === "PRODUCT_AUDIT_EXPORT_QUEUE",
   );
   assert.equal(producer?.queue, "hifiscout-product-audit-export");
+  assert.equal(
+    wranglerConfig.queues.producers.some(
+      (item: { binding?: string }) => item.binding === "KNOWLEDGE_CATALOG_EXPORT_QUEUE",
+    ),
+    false,
+  );
+  assert.equal(
+    wranglerConfig.queues.consumers.some(
+      (item: { queue?: string }) => item.queue === "hifiscout-knowledge-catalog-export",
+    ),
+    false,
+  );
 
   const consumer = wranglerConfig.queues.consumers.find(
     (item: { queue?: string }) => item.queue === "hifiscout-product-audit-export",
@@ -148,7 +160,13 @@ test("Product Audit exports are serialized through a dedicated queue", () => {
   assert.equal(deadLetterConsumer?.max_retries, 3);
   assert.equal(deadLetterConsumer?.retry_delay, 30);
   assert.equal(deadLetterConsumer?.max_concurrency, 1);
+  assert.match(schedulerSource, /recoverStaleProductAuditExportJobs/);
+  assert.match(schedulerSource, /recoverStaleKnowledgeCatalogExportJobs/);
   assert.match(deployWorkflow, /hifiscout-product-audit-exports\|product-audit-exports\/\|10/);
+  assert.match(
+    deployWorkflow,
+    /hifiscout-knowledge-catalog-exports\|knowledge-catalog-exports\/\|10/,
+  );
   assert.match(
     deployWorkflow,
     /for queue in hifiscout-product-audit-export hifiscout-product-audit-export-dlq/,

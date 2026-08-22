@@ -1,7 +1,11 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 
 import worker from "./index.js";
-import type { CatalogAdminListOptions, CatalogAdminUpdateInput } from "./admin/contracts.js";
+import type {
+  CatalogAdminListOptions,
+  CatalogAdminRpc,
+  CatalogAdminUpdateInput,
+} from "./admin/contracts.js";
 import {
   listKnowledgeCatalogAdminProducts,
   updateKnowledgeCatalogAdminProduct,
@@ -13,19 +17,45 @@ import {
   latestProductAuditExportJob,
   startProductAuditExport,
 } from "./product-audit-export/service.js";
+import {
+  createKnowledgeCatalogExportDownloadResponse,
+  getKnowledgeCatalogExportJob,
+  latestKnowledgeCatalogExportJob,
+  startKnowledgeCatalogExport,
+} from "./knowledge-catalog-export/service.js";
 import type { ProductAuditExportScope } from "./product-audit-export/types.js";
 
 /**
  * Internal Catalog Admin capability. Cloudflare exposes this class only through the named Service
  * Binding configured on the dedicated Access-protected admin Worker; it has no public HTTP route.
  */
-export class CatalogAdminService extends WorkerEntrypoint<Env> {
+export class CatalogAdminService extends WorkerEntrypoint<Env> implements CatalogAdminRpc {
   async listProducts(options: CatalogAdminListOptions) {
     return listKnowledgeCatalogAdminProducts(this.env.DB, options);
   }
 
   async updateProduct(productId: number, input: CatalogAdminUpdateInput) {
     return updateKnowledgeCatalogAdminProduct(this.env.DB, productId, input);
+  }
+
+  async startKnowledgeCatalogExport() {
+    return startKnowledgeCatalogExport(this.env.DB, this.env.PRODUCT_AUDIT_EXPORT_QUEUE);
+  }
+
+  async latestKnowledgeCatalogExportJob() {
+    return latestKnowledgeCatalogExportJob(this.env.DB, this.env.PRODUCT_AUDIT_EXPORT_QUEUE);
+  }
+
+  async getKnowledgeCatalogExportJob(jobId: string) {
+    return getKnowledgeCatalogExportJob(this.env.DB, jobId);
+  }
+
+  async downloadKnowledgeCatalogExport(jobId: string): Promise<Response> {
+    return createKnowledgeCatalogExportDownloadResponse(
+      this.env.DB,
+      this.env.EVIDENCE_BUCKET,
+      jobId,
+    );
   }
 
   /**

@@ -62,6 +62,7 @@ jobs:
           hifiscout-evidence-medium|evidence/medium/|90
           hifiscout-evidence-long|evidence/long/|365
           hifiscout-product-audit-exports|product-audit-exports/|10
+          hifiscout-knowledge-catalog-exports|knowledge-catalog-exports/|10
           RULES
       - name: Install deploy-only Worker dependency
         shell: bash

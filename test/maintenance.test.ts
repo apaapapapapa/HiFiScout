@@ -52,6 +52,21 @@ test("expired Product Audit exports are deleted in a bounded daily batch", async
   assert.equal(result.deleted.productAuditExports, 1);
 });
 
+test("expired Knowledge Catalog exports are deleted in a bounded daily batch", async () => {
+  const now = new Date("2026-08-11T00:00:00.000Z");
+  const db = captureDatabase();
+  const result = await runRetentionCleanup({ DB: db }, { now });
+
+  const cleanup = db.calls.find((statement) =>
+    /DELETE FROM knowledge_catalog_export_jobs/.test(statement.sql),
+  );
+  assert.ok(cleanup);
+  assert.match(cleanup.sql, /expires_at IS NOT NULL AND expires_at <= \?/);
+  assert.match(cleanup.sql, /ORDER BY expires_at ASC, id ASC[\s\S]*LIMIT \?/);
+  assert.deepEqual(cleanup.binds, [now.toISOString(), 500]);
+  assert.equal(result.deleted.knowledgeCatalogExports, 1);
+});
+
 test("retention delete batches are capped at 1000 rows", () => {
   const result = retentionCutoffs(
     { RETENTION_DELETE_BATCH_SIZE: "5000" },
