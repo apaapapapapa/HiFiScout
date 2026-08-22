@@ -17,6 +17,7 @@ export const SHOP_FILTER_READINGS: Readonly<Record<string, string>> = Object.fre
   ippinkan: "いっぴんかん",
   audiounion: "おーでぃおゆにおん",
   osakaya: "きゃびんおおさかや",
+  "sound-support": "さうんどさぽーと",
   soundpit: "さうんどぴっと",
   shimamusen: "しまむせん",
   "dynamic-audio": "だいなみっくおーでぃお",

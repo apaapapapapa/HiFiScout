@@ -26,6 +26,7 @@ test("shop search filter follows Japanese gojuon reading order", () => {
       "ippinkan",
       "audiounion",
       "osakaya",
+      "sound-support",
       "soundpit",
       "shimamusen",
       "dynamic-audio",
