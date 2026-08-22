@@ -6,17 +6,9 @@ import {
   sortShopsByJapaneseReading,
 } from "../frontend/shop-options.js";
 import { SHOP_PLUGINS } from "../src/crawler/shops/index.js";
-import type { MetaShop } from "../src/api/contracts.js";
 
-function metaShop(key: string, name: string): MetaShop {
-  return {
-    key,
-    name,
-    enabled: true,
-    intervalMinutes: 60,
-    sync: null,
-    health: null,
-  };
+function shop(key: string, name: string) {
+  return { key, name };
 }
 
 test("shop search-filter readings cover every registered shop", () => {
@@ -27,10 +19,10 @@ test("shop search-filter readings cover every registered shop", () => {
 });
 
 test("shop search filter follows Japanese gojuon reading order", () => {
-  const shops = SHOP_PLUGINS.map((plugin) => metaShop(plugin.key, plugin.name));
+  const shops = SHOP_PLUGINS.map((plugin) => shop(plugin.key, plugin.name));
 
   assert.deepEqual(
-    sortShopsByJapaneseReading(shops).map((shop) => shop.key),
+    sortShopsByJapaneseReading(shops).map((entry) => entry.key),
     [
       "avac",
       "afroaudio",
@@ -48,13 +40,13 @@ test("shop search filter follows Japanese gojuon reading order", () => {
   );
 });
 
-test("sorting does not mutate the meta shop order used by other UI surfaces", () => {
-  const shops = [metaShop("hifido", "ハイファイ堂"), metaShop("avac", "アバック")];
-  const originalKeys = shops.map((shop) => shop.key);
+test("sorting does not mutate the source order used by other UI surfaces", () => {
+  const shops = [shop("hifido", "ハイファイ堂"), shop("avac", "アバック")];
+  const originalKeys = shops.map((entry) => entry.key);
 
   const sorted = sortShopsByJapaneseReading(shops);
 
-  assert.deepEqual(shops.map((shop) => shop.key), originalKeys);
-  assert.deepEqual(sorted.map((shop) => shop.key), ["avac", "hifido"]);
+  assert.deepEqual(shops.map((entry) => entry.key), originalKeys);
+  assert.deepEqual(sorted.map((entry) => entry.key), ["avac", "hifido"]);
   assert.notEqual(sorted, shops);
 });
