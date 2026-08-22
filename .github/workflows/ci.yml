@@ -1,292 +1,87 @@
 name: CI
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  # PR updates may cancel stale validation, but every main push must reach a terminal
+  # conclusion so the workflow_run deployment gate can observe a successful CI run.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  stage-hifido-finalization:
-    if: github.head_ref == 'fix/finalize-data-quality-remediation'
-    permissions:
-      contents: write
+  test:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
+      # No history is needed: the source gate is repository-wide rather than diff-scoped, and
+      # `check:no-js-source` reads the index with `git ls-files`.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: ${{ github.head_ref }}
-          fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Apply conservative Hifido detail-category enrichment
+      # Same gate contributors run locally: lint, format check, TypeScript-only check, type check,
+      # unit tests. Keeping it as one script means CI and `npm run verify` cannot drift apart.
+      - run: npm run check
+      - run: npm run db:migrate:local
+      - name: Verify listing admin overrides survive crawler writes
+        run: npx tsx scripts/verify-listing-admin-overrides.ts
+      - name: Verify D1 FTS search migration
+        run: npx tsx scripts/verify-search-integration.ts
+      - run: npm run build
+
+  dependency-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Verify npm registry signatures and provenance
+        run: npm audit signatures
+      - name: Fail on high or critical dependency vulnerabilities
+        run: npm audit --audit-level=high
+
+  playwright-browser-cache:
+    if: github.event_name == 'push'
+    # Cache warming is an optimization, not a release-quality gate. A transient browser
+    # download/cache failure must not suppress the production deployment after test/build pass.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Install E2E dependencies
+        working-directory: e2e
+        run: npm install --no-package-lock
+      - name: Resolve installed Playwright version
+        id: playwright-version
+        working-directory: e2e
         shell: bash
         run: |
-          set -euo pipefail
-          python <<'PY'
-          from pathlib import Path
-
-          hifido = Path('src/crawler/shops/hifido.ts')
-          text = hifido.read_text()
-          import_old = 'import { cleanText, inferCategory, inferStockStatus, parseYen } from "../normalize.js";\nimport { availabilityFromSignals } from "../availability.js";\nimport type { CrawlerEnv, SellerProduct, ShopAdapter } from "../types.js";\n'
-          import_new = 'import { collectListingCategoryEvidence } from "../../catalog/category-evidence.js";\nimport { cleanText, inferCategory, inferStockStatus, parseYen } from "../normalize.js";\nimport { availabilityFromSignals } from "../availability.js";\nimport type { CategoryEvidenceInput, NormalizedCatalogProduct } from "../../catalog/types.js";\nimport type { CrawlerEnv, SellerProduct, ShopAdapter } from "../types.js";\n'
-          assert text.count(import_old) == 1
-          text = text.replace(import_old, import_new, 1)
-
-          mapping_end = '''export const HIFIDO_CATEGORY_MAPPING = Object.freeze({
-  スピーカー: "speaker",
-  スピーカーアクセサリー: "accessory",
-  コントロールアンプ: "pre_amp",
-  プリアンプ: "pre_amp",
-  プリメインアンプ: "integrated_amp",
-  パワーアンプ: "power_amp",
-  AVアンプ: "av_amp",
-  ヘッドホンアンプ: "headphone_amp",
-  レコードプレーヤー: "turntable",
-  CDトランスポート: "transport",
-  SACDトランスポート: "transport",
-  CDプレーヤー: "cd_sacd_player",
-  SACDプレーヤー: "cd_sacd_player",
-  "SACD/CDプレーヤー": "cd_sacd_player",
-  "D/Aコンバータ": "dac",
-  "D/Aコンバーター": "dac",
-  DAコンバータ: "dac",
-  DAコンバーター: "dac",
-  ネットワークプレーヤー: "network_player",
-  ネットワークプレイヤー: "network_player",
-  ネットワークトランスポート: "transport",
-  トーンアーム: "tonearm",
-  カートリッジ: "cartridge",
-  昇圧トランス: "phono_step_up_transformer",
-  フォノイコライザー: "phono_eq",
-  ヘッドホン: "headphone",
-  イヤホン: "earphone",
-  ケーブル: "cable",
-  アクセサリー: "accessory",
-  インシュレータ: "accessory",
-  インシュレーター: "accessory",
-  真空管: "vacuum_tube",
-  ラック: "rack",
-  その他オーディオ機器: "other",
-});
-'''
-          assert text.count(mapping_end) == 1
-          text = text.replace(mapping_end, mapping_end + '''
-export const HIFIDO_CATEGORY_POLICY = Object.freeze({
-  sellerCategory: Object.freeze({ default: "authoritative" as const }),
-  parserHint: "corroborative" as const,
-  enrichment: Object.freeze({
-    maxRequestsPerCrawl: 10,
-    cacheHours: 168,
-  }),
-});
-''', 1)
-
-          marker = '''function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-'''
-          assert text.count(marker) == 1
-          extractor = marker + r'''
-/**
- * Detail pages render the listing source id immediately before the seller category, then country,
- * shop and arrival metadata. Use only that header segment. Category words in descriptions, global
- * navigation or footer links must never become strong evidence.
- */
-function detailSellerCategory(html: string, sourceId: string): string {
-  if (!sourceId) return "";
-  const sanitized = String(html || "")
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, " ");
-  const escapedSourceId = escapeRegExp(sourceId);
-  const markerRe = new RegExp(
-    `>\s*(?:&nbsp;\s*)*${escapedSourceId}(?:\s*&nbsp;)*\s*<`,
-    "gi",
-  );
-  for (const match of sanitized.matchAll(markerRe)) {
-    const start = (match.index ?? 0) + match[0].length;
-    const visible = htmlToText(sanitized.slice(start, start + 1800)).slice(0, 320);
-    // The seller category is part of the compact product header. Stop before country/store/date so
-    // later description prose cannot be interpreted as metadata even if it contains category words.
-    const boundary = visible.search(
-      /(?:^|\s)(?:日本|ウェブ店|大須本店|秋葉原店|日本橋店|福岡店|20\d{2}-\d{1,2}-\d{1,2}(?:\s+\d{1,2}:\d{2}:\d{2})?入荷)(?:\s|$)/u,
-    );
-    const header = cleanText(boundary >= 0 ? visible.slice(0, boundary) : visible.slice(0, 120));
-    const category =
-      header.match(new RegExp(`(?:^|\s)(${CATEGORY_NAMES})(?:（[^）]+）)?(?=\s|$)`, "i"))?.[1] ||
-      "";
-    const normalized = normalizeHifidoCategory(category);
-    if (normalized) return normalized;
-  }
-  return "";
-}
-
-export function extractHifidoDetailCategoryEvidence(
-  html: string,
-  product: Partial<Pick<NormalizedCatalogProduct, "sourceId">> = {},
-): CategoryEvidenceInput[] {
-  const rawCategory = detailSellerCategory(html, cleanText(product.sourceId || ""));
-  if (!rawCategory) return [];
-  const evidence = collectListingCategoryEvidence({
-    rawCategory,
-    categoryMapping: HIFIDO_CATEGORY_MAPPING,
-    categoryPolicy: HIFIDO_CATEGORY_POLICY,
-  }).evidence.filter((item) => item.source === "seller_category");
-  return evidence.map((item) => ({
-    ...item,
-    source: "detail_metadata",
-    value: rawCategory,
-  }));
-}
-'''
-          text = text.replace(marker, extractor, 1)
-          hifido.write_text(text)
-
-          index = Path('src/crawler/shops/index.ts')
-          text = index.read_text()
-          old_import = 'import { HIFIDO_CATEGORY_MAPPING, hifidoAdapter } from "./hifido.js";\n'
-          new_import = '''import {
-  HIFIDO_CATEGORY_MAPPING,
-  HIFIDO_CATEGORY_POLICY,
-  extractHifidoDetailCategoryEvidence,
-  hifidoAdapter,
-} from "./hifido.js";
-'''
-          assert text.count(old_import) == 1
-          text = text.replace(old_import, new_import, 1)
-          old_cap = '''      transport: { kind: "relay" },
-      catalog: { categoryMapping: HIFIDO_CATEGORY_MAPPING },
-      activityPolicy: HIFIDO_ACTIVITY_POLICY,
-'''
-          new_cap = '''      transport: { kind: "relay" },
-      catalog: {
-        categoryMapping: HIFIDO_CATEGORY_MAPPING,
-        categoryPolicy: HIFIDO_CATEGORY_POLICY,
-      },
-      detailCategoryEvidence: { extract: extractHifidoDetailCategoryEvidence },
-      activityPolicy: HIFIDO_ACTIVITY_POLICY,
-'''
-          assert text.count(old_cap) == 1
-          text = text.replace(old_cap, new_cap, 1)
-          index.write_text(text)
-
-          tests = Path('test/hifido.test.ts')
-          text = tests.read_text()
-          old_import = '''import {
-  hifidoAdapter,
-  hifidoRecheckPage,
-  parseHifidoListing,
-} from "../src/crawler/shops/hifido.js";
-'''
-          new_import = '''import {
-  HIFIDO_CATEGORY_POLICY,
-  extractHifidoDetailCategoryEvidence,
-  hifidoAdapter,
-  hifidoRecheckPage,
-  parseHifidoListing,
-} from "../src/crawler/shops/hifido.js";
-'''
-          assert text.count(old_import) == 1
-          text = text.replace(old_import, new_import, 1)
-          anchor = 'test("Hifido keeps three recent pages and adds one rotating stale recheck page", () => {\n'
-          added = r'''test("Hifido detail enrichment reads only seller metadata after the exact source id", () => {
-  const html = `
-    <main>
-      <div class="product-number">26-49399-07355-00</div>
-      <div class="genre">アクセサリー</div>
-      <div>日本</div>
-      <div>大須本店</div>
-      <div>2026-03-28 19:59:16入荷</div>
-      <p>説明文ではカートリッジやケーブルにも触れるが、分類根拠にはしない。</p>
-    </main>`;
-  assert.deepEqual(
-    extractHifidoDetailCategoryEvidence(html, { sourceId: "26-49399-07355-00" }),
-    [
-      {
-        categoryIds: ["other_accessory"],
-        source: "detail_metadata",
-        strength: "supporting",
-        value: "アクセサリー",
-      },
-    ],
-  );
-  assert.equal(HIFIDO_CATEGORY_POLICY.enrichment.maxRequestsPerCrawl, 10);
-  assert.equal(
-    hifidoPlugin.capabilities.detailCategoryEvidence?.extract,
-    extractHifidoDetailCategoryEvidence,
-  );
-});
-
-test("Hifido detail enrichment never scans description or source-id attributes as category metadata", () => {
-  const proseOnly = `
-    <a href="/26-49399-07355-00.html">SRBN</a>
-    <p>このアクセサリーはスピーカーやカートリッジにも利用できます。</p>`;
-  assert.deepEqual(
-    extractHifidoDetailCategoryEvidence(proseOnly, { sourceId: "26-49399-07355-00" }),
-    [],
-  );
-
-  const lateDescription = `
-    <div>26-49399-07355-00</div>
-    <div>日本</div>
-    <div>大須本店</div>
-    <p>説明文: ケーブルとアクセサリーを組み合わせて利用できます。</p>`;
-  assert.deepEqual(
-    extractHifidoDetailCategoryEvidence(lateDescription, { sourceId: "26-49399-07355-00" }),
-    [],
-  );
-});
-
-'''
-          assert text.count(anchor) == 1
-          text = text.replace(anchor, added + anchor, 1)
-          tests.write_text(text)
-
-          drain = Path('scripts/resolver-replay-drain.ts')
-          text = drain.read_text().replace(
-            'Seed once through the real database only at that boundary, while retaining one-listing claims.',
-            'Seed once through the real database only at that boundary, while retaining bounded batch claims.',
-          )
-          drain.write_text(text)
-
-          doc = Path('docs/data-quality-remediation.md')
-          text = doc.read_text()
-          old = '''**残作業（P0 外に切り出し）**: `hifido` の `detailCategoryEvidence` は未実装のままです。
-実装には hifido の**商品詳細ページの実 HTML**が必要ですが、リポジトリにフィクスチャがなく、
-アダプタが知っているのは一覧ページの構造だけです。マークアップを推測して抽出器を書くと、
-本指示書自身が警告する「構造化されていない箇所からの strong 証拠」を作り込むことになるため、
-実 HTML を採取するまで着手しません。なお hifido の未分類はそもそも E-3（`CATEGORY_RE` の
-ブロック内自由文検索）と N-1（レコード部門 1,771 件）の寄与が大きく、補完の期待値は
-fujiya-avic ほど高くありません。
-'''
-          new = '''**追加対応（2026-08-22）**: `hifido` にも `detailCategoryEvidence` を登録しました。公開されている
-実商品ページでは商品番号の直後に seller category、その後に国・店舗・入荷日時が並ぶことを確認できるため、
-抽出器は**本文全体を走査せず**、HTML 上で完全一致する `sourceId` のテキストノード直後から、
-国・店舗・入荷日時より前の短いヘッダ区間だけを対象にします。URL 属性中の source id、商品説明、
-グローバルナビゲーション、フッターに現れるカテゴリ語は証拠にしません。カテゴリ名は既存の
-`HIFIDO_CATEGORY_MAPPING` / seller-category policy を通して `detail_metadata` 証拠へ変換し、
-広い seller bucket は従来どおり supporting に降格します。補完は 1 crawl 最大 10 request、
-未解決結果も 168 時間キャッシュして relay と Hifido への負荷を抑えます。
-'''
-          assert text.count(old) == 1
-          text = text.replace(old, new, 1)
-          doc.write_text(text)
-          PY
-      - name: Validate final remediation changes
-        run: npm run verify
-      - name: Commit production-only changes
-        shell: bash
-        run: |
-          set -euo pipefail
-          git checkout origin/main -- .github/workflows/ci.yml
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/crawler/shops/hifido.ts src/crawler/shops/index.ts test/hifido.test.ts docs/data-quality-remediation.md scripts/resolver-replay-drain.ts .github/workflows/ci.yml
-          git diff --cached --quiet && exit 0
-          git commit -m 'fix: complete Hifido detail category remediation'
-          git push origin HEAD:${{ github.head_ref }}
+          version="$(node -p "require('@playwright/test/package.json').version")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright Chromium
+        id: playwright-cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-chromium-${{ steps.playwright-version.outputs.version }}
+      - name: Install Chromium on cache miss
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        working-directory: e2e
+        run: npx playwright install chromium
