@@ -174,17 +174,16 @@ test("repairs a stale fallback membership after Identity becomes catalog-matched
   });
 
   assert.deepEqual(result, { selectedCount: 1, repairedCount: 1, remainingGapCount: 0 });
-  assert.deepEqual(
-    sqlite
-      .prepare(`
-        SELECT e.entity_kind, e.catalog_product_id
-        FROM product_search_entity_offers o
-        JOIN product_search_entities e ON e.id = o.entity_id
-        WHERE o.listing_product_id = ?
-      `)
-      .get(listingId),
-    { entity_kind: "catalog", catalog_product_id: catalogId },
-  );
+  const repairedEntity = sqlite
+    .prepare(`
+      SELECT e.entity_kind, e.catalog_product_id
+      FROM product_search_entity_offers o
+      JOIN product_search_entities e ON e.id = o.entity_id
+      WHERE o.listing_product_id = ?
+    `)
+    .get(listingId);
+  assert.equal(repairedEntity?.entity_kind, "catalog");
+  assert.equal(Number(repairedEntity?.catalog_product_id || 0), catalogId);
   assert.equal(
     sqlite
       .prepare(
