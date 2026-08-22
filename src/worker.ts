@@ -10,6 +10,10 @@ import {
   listKnowledgeCatalogAdminProducts,
   updateKnowledgeCatalogAdminProduct,
 } from "./db/knowledge-catalog-admin-repository.js";
+import {
+  listListingAdminProducts,
+  updateListingAdminProduct,
+} from "./db/listing-admin-repository.js";
 import { listProductAuditExportPage } from "./db/product-audit-export-repository.js";
 import {
   createProductAuditExportDownloadResponse,
@@ -24,6 +28,7 @@ import {
   startKnowledgeCatalogExport,
 } from "./knowledge-catalog-export/service.js";
 import type { ProductAuditExportScope } from "./product-audit-export/types.js";
+import type { ListingAdminListOptions, ListingAdminUpdateInput } from "./http/listing-admin.js";
 
 /**
  * Internal Catalog Admin capability. Cloudflare exposes this class only through the named Service
@@ -36,6 +41,14 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
 
   async updateProduct(productId: number, input: CatalogAdminUpdateInput) {
     return updateKnowledgeCatalogAdminProduct(this.env.DB, productId, input);
+  }
+
+  async listListings(options: ListingAdminListOptions) {
+    return listListingAdminProducts(this.env.DB, options);
+  }
+
+  async updateListing(listingId: number, input: ListingAdminUpdateInput) {
+    return updateListingAdminProduct(this.env.DB, listingId, input);
   }
 
   async startKnowledgeCatalogExport() {

@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 concurrency:
   group: cloudflare-catalog-admin-production
@@ -92,3 +93,25 @@ jobs:
             exit 1
           fi
           echo "Cloudflare Access login page reached without a redirect loop."
+      - name: Publish Catalog Admin deployment status
+        if: ${{ always() }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ADMIN_DEPLOY_STATUS: ${{ job.status }}
+          DEPLOY_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          ADMIN_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          case "$ADMIN_DEPLOY_STATUS" in
+            success) state=success ;;
+            failure|cancelled) state=failure ;;
+            *) state=error ;;
+          esac
+
+          gh api --method POST "/repos/${GITHUB_REPOSITORY}/statuses/${DEPLOY_HEAD_SHA}" \
+            -f state="$state" \
+            -f context="deployment/catalog-admin" \
+            -f description="Catalog Admin deployment: ${ADMIN_DEPLOY_STATUS}" \
+            -f target_url="$ADMIN_RUN_URL"
