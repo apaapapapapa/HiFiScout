@@ -33,6 +33,7 @@ const APPS: Record<AdminAppKey, AdminAppConfig> = {
 const mountedApps = new Set<AdminAppKey>();
 const loadedApps = new Set<AdminAppKey>();
 const loadingApps = new Map<AdminAppKey, Promise<void>>();
+let legacyScriptQueue: Promise<void> = Promise.resolve();
 
 function element<T extends HTMLElement>(id: string): T {
   const value = document.getElementById(id);
@@ -131,6 +132,48 @@ function showLoadFailure(config: AdminAppConfig, error: unknown): void {
   status.textContent = `管理画面を読み込めません: ${error instanceof Error ? error.message : String(error)}`;
 }
 
+async function initializeLegacyScript(config: AdminAppConfig): Promise<void> {
+  const panel = element<HTMLElement>(config.panelId);
+  const nodes = legacyNodes(panel);
+  const originalIds = nodes.map((node) => node.id);
+  const legacyIds = new Set<string>();
+
+  for (const node of nodes) {
+    const legacyId = node.dataset.legacyId;
+    if (!legacyId) throw new Error(`Missing data-legacy-id in ${config.panelId}`);
+    if (legacyIds.has(legacyId)) throw new Error(`Duplicate legacy id: ${legacyId}`);
+    legacyIds.add(legacyId);
+    node.id = legacyId;
+  }
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = config.scriptSrc;
+      script.async = false;
+      script.dataset.adminApp = config.key;
+      script.addEventListener("load", () => resolve(), { once: true });
+      script.addEventListener(
+        "error",
+        () => reject(new Error(`Failed to load ${config.scriptSrc}`)),
+        { once: true },
+      );
+      document.body.appendChild(script);
+    });
+    loadedApps.add(config.key);
+  } finally {
+    nodes.forEach((node, index) => {
+      node.id = originalIds[index] || "";
+    });
+  }
+}
+
+function queueLegacyScript(config: AdminAppConfig): Promise<void> {
+  const run = legacyScriptQueue.then(() => initializeLegacyScript(config));
+  legacyScriptQueue = run.catch(() => undefined);
+  return run;
+}
+
 async function loadLegacyApp(config: AdminAppConfig): Promise<void> {
   if (loadedApps.has(config.key)) return;
   const existing = loadingApps.get(config.key);
@@ -138,39 +181,7 @@ async function loadLegacyApp(config: AdminAppConfig): Promise<void> {
 
   const request = (async (): Promise<void> => {
     await mountFragment(config);
-    const panel = element<HTMLElement>(config.panelId);
-    const nodes = legacyNodes(panel);
-    const originalIds = nodes.map((node) => node.id);
-    const legacyIds = new Set<string>();
-
-    for (const node of nodes) {
-      const legacyId = node.dataset.legacyId;
-      if (!legacyId) throw new Error(`Missing data-legacy-id in ${config.panelId}`);
-      if (legacyIds.has(legacyId)) throw new Error(`Duplicate legacy id: ${legacyId}`);
-      legacyIds.add(legacyId);
-      node.id = legacyId;
-    }
-
-    try {
-      await new Promise<void>((resolve, reject) => {
-        const script = document.createElement("script");
-        script.src = config.scriptSrc;
-        script.async = false;
-        script.dataset.adminApp = config.key;
-        script.addEventListener("load", () => resolve(), { once: true });
-        script.addEventListener(
-          "error",
-          () => reject(new Error(`Failed to load ${config.scriptSrc}`)),
-          { once: true },
-        );
-        document.body.appendChild(script);
-      });
-      loadedApps.add(config.key);
-    } finally {
-      nodes.forEach((node, index) => {
-        node.id = originalIds[index] || "";
-      });
-    }
+    await queueLegacyScript(config);
   })();
 
   loadingApps.set(config.key, request);
