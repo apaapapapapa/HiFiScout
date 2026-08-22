@@ -31,10 +31,9 @@ export const dateFmt = new Intl.DateTimeFormat("ja-JP", {
   minute: "2-digit",
 });
 
-/** Missing timestamps stay missing; treating `null` as epoch produces a false 20,000-day delay. */
+/** `new Date(null)` is the epoch, which is what the untyped version produced for a null column. */
 export function safeDate(value: string | null): Date | null {
-  if (!value) return null;
-  const date = new Date(value);
+  const date = new Date(value ?? 0);
   return Number.isFinite(date.getTime()) ? date : null;
 }
 
