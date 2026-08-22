@@ -39,7 +39,8 @@ function positiveBoundedInteger(value: number | undefined, fallback: number, max
  * to share `l-<representative id>`. If that representative is promoted between bounded writes, its
  * own offer may already move to Catalog while peers remain attached to the now-stale fallback. In
  * that state the peer is the row that must be replayed so the unresolved group can elect a current
- * representative and the obsolete entity can be pruned.
+ * representative and the obsolete entity can be pruned. This is the listing-scoped counterpart of
+ * the `stale_fallback_entities` invariant reported by Product Search consistency checks.
  */
 const ACTIVE_PROJECTION_GAP_PREDICATE = `
   NOT EXISTS (
