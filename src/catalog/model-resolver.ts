@@ -10,6 +10,7 @@ import {
   manufacturerPrefixPattern,
   normalizeManufacturerKey,
 } from "./manufacturers.js";
+import { PRESENTATION_COLOR_PATTERNS } from "./model-presentation-color.js";
 import { identityModelParts, normalizeIdentityModel } from "./product-identity.js";
 import type {
   ManufacturerAliasEvidence,
@@ -19,7 +20,7 @@ import type {
   ResolutionStatus,
 } from "./types.js";
 
-export const MODEL_RESOLVER_VERSION = 4;
+export const MODEL_RESOLVER_VERSION = 5;
 
 export type ModelResolver = (input: ModelResolutionInput) => ModelResolutionResult;
 type PreparedModelResolver = ReadonlyMap<string, readonly RegExp[]>;
@@ -55,6 +56,10 @@ const ANNOTATION_RULES: readonly AnnotationRule[] = [
     pattern:
       /[【《[［(（]?\s*(?:元箱付き?|元箱有り?|元箱|箱付き?|純正箱|取扱説明書付き?|説明書付き?|取説付き?|リモコン付き?|付属品完備|付属品付き?|ケーブル付き?)\s*[】》\]］)）]?/gu,
   },
+  ...PRESENTATION_COLOR_PATTERNS.map((pattern) => ({
+    name: "presentation_color",
+    pattern,
+  })),
   {
     name: "seller_sku",
     pattern:
@@ -65,15 +70,6 @@ const ANNOTATION_RULES: readonly AnnotationRule[] = [
   {
     name: "shipping",
     pattern: /\s*(?:※\s*)?送料無料\s*$/gu,
-  },
-  {
-    name: "presentation_color",
-    pattern:
-      /\s*\/\s*(?:ブラック|ホワイト|シルバー|ゴールド|レッド|ブルー|ブラウン|黒|白|銀|BLACK|WHITE|SILVER|GOLD)(?:\s*[（(]?\s*(?:ペア|PAIR)\s*[）)]?)?\s*$/iu,
-  },
-  {
-    name: "presentation_color",
-    pattern: /\s*[（(](?:B|S|BK|WH|W|K|N|ブラック|ホワイト|シルバー|黒|白|銀)[）)]\s*$/iu,
   },
   {
     // Some seller list pages append both a Japanese product-type label and a Japanese brand
