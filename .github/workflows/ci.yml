@@ -85,3 +85,106 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         working-directory: e2e
         run: npx playwright install chromium
+
+  inspect-hifido-relay-detail:
+    if: github.event_name == 'pull_request' && github.head_ref == 'fix/finalize-data-quality-remediation'
+    permissions:
+      contents: write
+      id-token: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      AWS_REGION: ap-northeast-1
+      FUNCTION_NAME: hifiscout-audiounion-fetcher
+      CLOUDFLARE_ACCOUNT_ID: 9af87af4dbc00be3bfd4c8af3f52f684
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6
+        with:
+          role-to-assume: ${{ vars.AWS_LAMBDA_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Fetch live Hifido detail through Tokyo relay
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(npx wrangler d1 execute DB --remote --json --command "SELECT source_id, source_url, title, raw_category FROM products WHERE is_active = 1 AND shop_key = 'hifido' AND source_url LIKE 'https://www.hifido.co.jp/%' AND title NOT LIKE '%枚セット%' AND title NOT LIKE '%枚組%' ORDER BY CASE WHEN classification_status = 'unclassified' THEN 0 ELSE 1 END, id DESC LIMIT 1;")"
+          row="$(jq -c '.[0].results[0] // {}' <<< "$response")"
+          detail_url="$(jq -r '.source_url // empty' <<< "$row")"
+          source_id="$(jq -r '.source_id // empty' <<< "$row")"
+          title="$(jq -r '.title // empty' <<< "$row")"
+          echo "Selected Hifido listing: $(jq -c '{source_id,title,raw_category}' <<< "$row")"
+          test -n "$detail_url"
+
+          relay_token="$(aws lambda get-function-configuration --region "$AWS_REGION" --function-name "$FUNCTION_NAME" --query 'Environment.Variables.RELAY_TOKEN' --output text)"
+          relay_url="$(aws lambda get-function-url-config --region "$AWS_REGION" --function-name "$FUNCTION_NAME" --query 'FunctionUrl' --output text)"
+          test -n "$relay_token"
+          test "$relay_token" != 'None'
+          test -n "$relay_url"
+          test "$relay_url" != 'None'
+
+          request_body="$(jq -cn --arg url "$detail_url" '{url: $url, requestDelayMs: 0}')"
+          headers_file="$RUNNER_TEMP/hifido-detail-headers.txt"
+          body_file="$RUNNER_TEMP/hifido-detail.html"
+          status="$(curl -sS --max-time 35 -D "$headers_file" -o "$body_file" -w '%{http_code}' -X POST "$relay_url" -H "Authorization: Bearer $relay_token" -H 'Content-Type: application/json' --data "$request_body")"
+          echo "Hifido relay HTTP status: $status"
+          grep -i '^x-hifiscout-aws-region:' "$headers_file" || true
+          grep -i '^x-hifiscout-upstream-status:' "$headers_file" || true
+          test "$status" = '200'
+          test -s "$body_file"
+
+          SOURCE_ID="$source_id" TITLE="$title" BODY_FILE="$body_file" node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const bytes = readFileSync(process.env.BODY_FILE);
+          let html;
+          try { html = new TextDecoder('euc-jp').decode(bytes); }
+          catch { html = new TextDecoder('utf-8').decode(bytes); }
+          const sourceId = process.env.SOURCE_ID || '';
+          const title = process.env.TITLE || '';
+          const needles = [
+            sourceId,
+            title,
+            'genre', 'ジャンル', 'カテゴリ', 'メーカー',
+            'アクセサリー', 'ケーブル', 'スピーカー', 'アンプ', 'プレーヤー',
+            'ヘッドホン', 'イヤホン', 'カートリッジ', 'トーンアーム', 'ラック',
+            'チューナー', 'クロック', 'トランスポート',
+          ].filter(Boolean);
+          const snippets = [];
+          for (const needle of needles) {
+            let start = 0;
+            while (start < html.length) {
+              const index = html.toLowerCase().indexOf(needle.toLowerCase(), start);
+              if (index < 0) break;
+              const snippet = html
+                .slice(Math.max(0, index - 420), Math.min(html.length, index + needle.length + 720))
+                .replace(/\s+/gu, ' ')
+                .trim();
+              if (!snippets.includes(snippet)) snippets.push(snippet);
+              start = index + Math.max(1, needle.length);
+              if (snippets.length >= 24) break;
+            }
+            if (snippets.length >= 24) break;
+          }
+          console.log(`HIFIDO_DETAIL_HTML_LENGTH=${html.length}`);
+          console.log(`HIFIDO_STRUCTURAL_SNIPPETS=${snippets.length}`);
+          snippets.forEach((snippet, index) => console.log(`HIFIDO_SNIPPET_${index + 1}: ${snippet}`));
+          NODE
+      - name: Remove transient relay diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout origin/main -- .github/workflows/ci.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/ci.yml
+          git diff --cached --quiet && exit 0
+          git commit -m 'chore: remove Hifido relay diagnostic'
+          git push origin HEAD:${{ github.head_ref }}
