@@ -6,7 +6,8 @@
  * model suffixes such as `SE` and compact model names such as `FS-700S3/B` remain identity-bearing.
  */
 
-const PRESENTATION_FINISH_NAME = String.raw`(?:シャンパンゴールド|ピアノブラック|サテンブラック|マットブラック|ダークシルバー|ブラック|ホワイト|シルバー|ゴールド|チタニウム|チタン|グレー|グレイ|レッド|ブルー|グリーン|ブラウン|ベージュ|ナチュラル|ウォールナット|ウォルナット|ローズウッド|チェリー|メープル|オーク|黒|白|銀|金|CHAMPAGNE\s+GOLD|PIANO\s+BLACK|SATIN\s+(?:BLACK|WHITE)|MATTE\s+(?:BLACK|WHITE)|GLOSS\s+(?:BLACK|WHITE)|HIGH\s+GLOSS\s+(?:BLACK|WHITE)|DARK\s+SILVER|TITANIUM(?:\s+(?:GRAY|GREY))?|BLACK|WHITE|SILVER|GOLD|GRAY|GREY|RED|BLUE|GREEN|BROWN|BEIGE|NATURAL|WALNUT|ROSEWOOD|CHERRY|MAPLE|OAK)`;
+const JAPANESE_QUALIFIED_FINISH = String.raw`(?:(?:サテン|マット|グロス|ハイグロス)[・\s]?(?:ブラック|ホワイト)|ピアノ[・\s]?ブラック|シャンパン[・\s]?ゴールド|ダーク[・\s]?シルバー)`;
+const PRESENTATION_FINISH_NAME = String.raw`(?:${JAPANESE_QUALIFIED_FINISH}|ブラック|ホワイト|シルバー|ゴールド|チタニウム|チタン|グレー|グレイ|レッド|ブルー|グリーン|ブラウン|ベージュ|ナチュラル|ウォールナット|ウォルナット|ローズウッド|チェリー|メープル|オーク|黒|白|銀|金|CHAMPAGNE\s+GOLD|PIANO\s+BLACK|SATIN\s+(?:BLACK|WHITE)|MATTE\s+(?:BLACK|WHITE)|GLOSS\s+(?:BLACK|WHITE)|HIGH\s+GLOSS\s+(?:BLACK|WHITE)|DARK\s+SILVER|TITANIUM(?:\s+(?:GRAY|GREY))?|BLACK|WHITE|SILVER|GOLD|GRAY|GREY|RED|BLUE|GREEN|BROWN|BEIGE|NATURAL|WALNUT|ROSEWOOD|CHERRY|MAPLE|OAK)`;
 const PRESENTATION_FINISH_CODE = String.raw`(?:B|S|BK|BLK|WH|W|K|N|SLV|SIL|GRY)`;
 const PRESENTATION_FINISH_SUFFIX = String.raw`(?:\s*(?:色|仕上げ|FINISH))?`;
 const PRESENTATION_PAIR_SUFFIX = String.raw`(?:\s*[（(]?\s*(?:ペア|PAIR)\s*[）)]?)?`;
@@ -28,11 +29,11 @@ export const PRESENTATION_COLOR_PATTERNS: readonly RegExp[] = [
   finishPattern(
     String.raw`(?:\s+(?:\/|\||,)\s+|\s+-\s+)${PRESENTATION_FINISH_CODE}${PRESENTATION_FINISH_SUFFIX}${PRESENTATION_PAIR_SUFFIX}\s*$`,
   ),
-  // Bracketed names/codes: `D-1000 (S)`, `D-1000 [BLACK]`, `D-1000【シルバー】`.
+  // Bracketed names/codes: `D-1000 (S)`, `D-1000 [BLACK]`, `802D4W(サテン・ホワイト)`.
   finishPattern(
     String.raw`\s*(?:\(|（|\[|［|【)\s*(?:${PRESENTATION_FINISH_NAME}|${PRESENTATION_FINISH_CODE})${PRESENTATION_FINISH_SUFFIX}\s*(?:\)|）|\]|］|】)${PRESENTATION_PAIR_SUFFIX}\s*$`,
   ),
-  // Bare long-form finish suffixes: `D-1000 ブラック`, `805 D4 Signature Walnut`.
+  // Bare long-form finish suffixes: `D-1000 ブラック`, `805D3 グロスブラック`.
   finishPattern(
     String.raw`\s+${PRESENTATION_FINISH_NAME}${PRESENTATION_FINISH_SUFFIX}${PRESENTATION_PAIR_SUFFIX}\s*$`,
   ),
