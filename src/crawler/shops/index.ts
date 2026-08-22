@@ -46,6 +46,11 @@ import {
 } from "./sound-support.js";
 import { avacAdapter } from "./avac.js";
 import { tereonAdapter } from "./tereon.js";
+import {
+  AUDIO_SPACE_CORE_CATEGORY_MAPPING,
+  AUDIO_SPACE_CORE_CATEGORY_POLICY,
+  audioSpaceCoreAdapter,
+} from "./audio-space-core.js";
 // shop-generator:imports
 
 export { getShopActivityPolicy } from "./registry.js";
@@ -232,6 +237,21 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
     defaultRequestDelayMs: 1500,
     defaultMaxPages: 10,
   }),
+  defineShopPlugin(
+    audioSpaceCoreAdapter,
+    {
+      key: "audio-space-core",
+      name: "オーディオスペースコア",
+      baseUrl: "https://www.as-core.co.jp",
+      defaultIntervalMinutes: 60,
+    },
+    {
+      catalog: {
+        categoryMapping: AUDIO_SPACE_CORE_CATEGORY_MAPPING,
+        categoryPolicy: AUDIO_SPACE_CORE_CATEGORY_POLICY,
+      },
+    },
+  ),
   // shop-generator:plugins
 ]);
 
