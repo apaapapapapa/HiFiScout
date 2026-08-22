@@ -501,11 +501,11 @@ test("product audit repository exports active rows by default and all history on
   assert.ok(boundedRow.firstSeenAt.length <= 128);
 
   const stored = sqlite
-    .prepare("SELECT title, source_url FROM products WHERE id = ?")
-    .get(inactiveId) as { title: string; source_url: string };
-  assert.equal(
-    stored.title,
-    nulTerminatedTitle,
+    .prepare("SELECT CAST(title AS BLOB) AS title_bytes, source_url FROM products WHERE id = ?")
+    .get(inactiveId) as { title_bytes: Uint8Array; source_url: string };
+  assert.deepEqual(
+    stored.title_bytes,
+    new TextEncoder().encode(nulTerminatedTitle),
     "export caps must not rewrite seller raw evidence",
   );
   assert.equal(stored.source_url, oversizedText);
