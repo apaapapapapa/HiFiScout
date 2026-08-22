@@ -44,12 +44,14 @@ function sameIdentity(left: string, right: string): string {
 
 /**
  * Exact text identity is not enough when the taxonomy says the rows are different product types.
- * `other` is ignored because it represents missing specificity, not contradictory evidence.
+ * `unclassified` and `other` are both ignored because they represent missing specificity, not
+ * contradictory evidence: `unclassified` is the classifier's "no answer", and `other` was that
+ * sentinel's id until the two were split, so listings still carry it for the same reason.
  */
 function categoryCompatible(alias: string): string {
   return `(
     SELECT COUNT(DISTINCT CASE
-      WHEN peer.primary_category_id <> 'other' THEN peer.primary_category_id
+      WHEN peer.primary_category_id NOT IN ('other', 'unclassified') THEN peer.primary_category_id
       ELSE NULL
     END)
     FROM products peer

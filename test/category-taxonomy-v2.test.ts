@@ -40,11 +40,13 @@ test("top-level taxonomy has explicit required order", () => {
       "accessories",
       "dj_dtm",
       "other",
+      // The "not classified" sentinel sorts last and is neither filterable nor classifiable.
+      "unclassified",
     ],
   );
   assert.deepEqual(
     top().map((category) => category.order),
-    [1, 2, 3, 4, 5, 6, 7, 8],
+    [1, 2, 3, 4, 5, 6, 7, 8, 99],
   );
 });
 
@@ -72,11 +74,17 @@ test("group parents are filterable but never classifiable", () => {
     "accessories",
     "cable",
   ]);
+  // Everything that is not a group parent is a classifiable leaf, except the sentinel: it is the
+  // classifier's "no answer", so no classifier may target it.
   assert.ok(
-    CATEGORIES.filter((category) => !groupIds.has(category.id)).every(
-      (category) => category.classifiable,
-    ),
+    CATEGORIES.filter(
+      (category) => !groupIds.has(category.id) && category.id !== "unclassified",
+    ).every((category) => category.classifiable),
   );
+  const unclassified = getCategory("unclassified");
+  assert.ok(unclassified);
+  assert.equal(unclassified.classifiable, false);
+  assert.equal(unclassified.filterable, false);
 });
 
 test("children retain required definition order", () => {
@@ -218,8 +226,10 @@ test("speaker classification uses the requested five canonical leaves", () => {
   assert.equal(classify("Subwoofer Model D").primaryCategoryId, "subwoofer");
   assert.equal(classify("Active Speaker Model E").primaryCategoryId, "active_speaker");
   assert.equal(classify("Active Bookshelf Speaker Model F").primaryCategoryId, "active_speaker");
+  // A generic speaker title is still the real `other` leaf: `category-rules.ts` gives it a
+  // deliberate terminal label. A bare "SUB" matches no rule at all, so it is the sentinel.
   assert.equal(classify("Speaker Model G").primaryCategoryId, "other");
-  assert.equal(classify("SUB Model H").primaryCategoryId, "other");
+  assert.equal(classify("SUB Model H").primaryCategoryId, "unclassified");
   assert.equal(getCategory("speaker_floorstanding")?.name, "フロア型・トールボーイ");
 });
 

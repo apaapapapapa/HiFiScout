@@ -12,6 +12,7 @@ import { categoryIdForClassification } from "../catalog/categories.js";
 import { errorMessage, isRecord } from "../types.js";
 import type {
   CategoryClassification,
+  CategoryEvidenceInput,
   CategoryId,
   NormalizedCatalogProduct,
 } from "../catalog/types.js";
@@ -67,6 +68,46 @@ function sameIdentity(
     (existing?.model || "") === (product.model || "") &&
     (existing?.manufacturer_id || "") === (product.manufacturerId || "")
   );
+}
+
+/** The identity {@link sameIdentity} compares against, as a map key. */
+function identityKey(product: NormalizedCatalogProduct): string {
+  return JSON.stringify([product.manufacturerId || "", product.model || "", product.title]);
+}
+
+function groupByIdentity(
+  products: readonly NormalizedCatalogProduct[],
+): Map<string, NormalizedCatalogProduct[]> {
+  const groups = new Map<string, NormalizedCatalogProduct[]>();
+  for (const product of products) {
+    const key = identityKey(product);
+    const group = groups.get(key);
+    if (group) group.push(product);
+    else groups.set(key, [product]);
+  }
+  return groups;
+}
+
+/** What one crawl decided about a product identity, shared by every listing of that product. */
+interface DetailDecision {
+  /** A classification some copy already resolved from a detail page on an earlier crawl. */
+  cached: CategoryClassification | null;
+  cachedCheckedAt: string | null;
+  /** A recent detail check that found nothing; the whole identity waits out `cacheHours`. */
+  recentlyChecked: boolean;
+  recentCheckedAt: string | null;
+  /** Evidence this crawl fetched for the identity, or null when no request was made. */
+  detailEvidence: CategoryEvidenceInput[] | null;
+}
+
+function newDetailDecision(): DetailDecision {
+  return {
+    cached: null,
+    cachedCheckedAt: null,
+    recentlyChecked: false,
+    recentCheckedAt: null,
+    detailEvidence: null,
+  };
 }
 
 function classificationMetadata(
@@ -219,73 +260,106 @@ export async function enrichProductCategories({
   let cacheHits = 0;
   let enrichedCount = 0;
 
+  // Decide once per product identity, not once per listing. Shops re-list the same stock under
+  // several source ids, and the detail budget used to be spent walking listings in crawl order, so
+  // copies before the cut-off were classified from their detail page while identical copies after
+  // it stayed unclassified. That made the stored category a function of crawl position rather than
+  // of the product, and the two answers then survived side by side in D1.
+  const decisions = new Map<string, DetailDecision>();
+  for (const [key, group] of groupByIdentity(unresolved)) {
+    const decision = newDetailDecision();
+    decisions.set(key, decision);
+
+    for (const product of group) {
+      const existing = existingBySourceId.get(product.sourceId);
+      const cached = cachedClassification(existing, product);
+      if (!cached) continue;
+      decision.cached = cached;
+      const detailCheckedAt = classificationMetadata(existing)?.detailCheckedAt;
+      decision.cachedCheckedAt = typeof detailCheckedAt === "string" ? detailCheckedAt : null;
+      break;
+    }
+    if (decision.cached) continue;
+
+    for (const product of group) {
+      const existing = existingBySourceId.get(product.sourceId);
+      if (!recentUnresolvedCheck(existing, product, policy.enrichment.cacheHours, now)) continue;
+      const detailCheckedAt = classificationMetadata(existing)?.detailCheckedAt;
+      decision.recentlyChecked = true;
+      decision.recentCheckedAt = typeof detailCheckedAt === "string" ? detailCheckedAt : null;
+      break;
+    }
+    if (decision.recentlyChecked) continue;
+
+    // Any copy answers for the identity: they share title, model and manufacturer, which is all
+    // the extractor keys off.
+    const target = group.find((product) => product.sourceUrl);
+    if (!target || detailRequests >= maxRequests) continue;
+
+    detailRequests += 1;
+    try {
+      const html = await transport.fetchHtmlPage(target.sourceUrl, fetchOptions);
+      const detailEvidence = await extractor(html, target);
+      decision.detailEvidence = Array.isArray(detailEvidence) ? detailEvidence : [];
+    } catch (error) {
+      console.warn(
+        JSON.stringify({
+          event: "category_detail_enrichment_failed",
+          shopKey: adapter.key,
+          sourceId: target.sourceId,
+          message: errorMessage(error),
+        }),
+      );
+    }
+  }
+
   const enriched: NormalizedCatalogProduct[] = [];
   for (const product of baseProducts) {
     if (product.classificationStatus === "classified") {
       enriched.push(product);
       continue;
     }
+    const decision = decisions.get(identityKey(product));
 
-    const existing = existingBySourceId.get(product.sourceId);
-    const cached = cachedClassification(existing, product);
-    if (cached) {
+    if (decision?.cached) {
       cacheHits += 1;
       enrichedCount += 1;
-      const metadata = classificationMetadata(existing);
       enriched.push(
         applyCategoryClassification(
           product,
-          cached,
+          decision.cached,
           product.categoryEvidence,
-          typeof metadata?.detailCheckedAt === "string"
-            ? { detailCheckedAt: metadata.detailCheckedAt }
-            : {},
+          decision.cachedCheckedAt ? { detailCheckedAt: decision.cachedCheckedAt } : {},
         ),
       );
       continue;
     }
 
-    if (recentUnresolvedCheck(existing, product, policy.enrichment.cacheHours, now)) {
+    if (decision?.recentlyChecked) {
       cacheHits += 1;
-      const detailCheckedAt = classificationMetadata(existing)?.detailCheckedAt;
       enriched.push(
-        typeof detailCheckedAt === "string"
-          ? withDetailCheckMetadata(product, detailCheckedAt)
+        decision.recentCheckedAt
+          ? withDetailCheckMetadata(product, decision.recentCheckedAt)
           : product,
       );
       continue;
     }
 
-    if (!product.sourceUrl || detailRequests >= maxRequests) {
-      enriched.push(product);
-      continue;
-    }
-
-    detailRequests += 1;
-    try {
-      const html = await transport.fetchHtmlPage(product.sourceUrl, fetchOptions);
-      const detailEvidence = await extractor(html, product);
-      const evidence = [
-        ...(product.categoryEvidence || []),
-        ...(Array.isArray(detailEvidence) ? detailEvidence : []),
-      ];
+    // Detail evidence belongs to the identity, but it is still combined with each listing's own
+    // seller evidence: two copies that really do carry different seller categories stay free to
+    // classify differently, while identical copies cannot.
+    if (decision?.detailEvidence) {
+      const evidence = [...(product.categoryEvidence || []), ...decision.detailEvidence];
       const classification = classifyCategoryEvidence(evidence);
       const updated = applyCategoryClassification(product, classification, evidence, {
         detailCheckedAt: checkedAt,
       });
       if (updated.classificationStatus === "classified") enrichedCount += 1;
       enriched.push(updated);
-    } catch (error) {
-      console.warn(
-        JSON.stringify({
-          event: "category_detail_enrichment_failed",
-          shopKey: adapter.key,
-          sourceId: product.sourceId,
-          message: errorMessage(error),
-        }),
-      );
-      enriched.push(product);
+      continue;
     }
+
+    enriched.push(product);
   }
 
   return {

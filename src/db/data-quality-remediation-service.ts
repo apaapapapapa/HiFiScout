@@ -277,7 +277,17 @@ async function replayDerivedListing(
     },
   };
   const metadataJson = JSON.stringify(nextMetadata);
-  const categoryIdsJson = JSON.stringify(classification.categoryIds);
+  // Derive the persisted list exactly like the crawl path does. `unresolved()` returns an empty
+  // `categoryIds` as an in-memory contract — `category-enricher.ts` and `page-verification.ts`
+  // read it as "not classified" — but a persisted row always carries one leaf, because
+  // `catalogFields()` recomputes `[primaryCategoryId]` in `product-write-repository.ts` and
+  // `unclassified-persistence.test.ts` pins that. Storing the classifier's empty array here gave
+  // unclassified rows two DB shapes depending on which writer touched them last.
+  const categoryIdsJson = JSON.stringify(
+    classification.categoryIds.length
+      ? classification.categoryIds
+      : [classification.primaryCategoryId],
+  );
   const token = `dq-replay:${evaluatedAt}:${row.id}`;
 
   const result = await db

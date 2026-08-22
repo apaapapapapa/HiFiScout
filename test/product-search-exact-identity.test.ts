@@ -26,7 +26,8 @@ test("exact unresolved grouping is gated on resolved manufacturer/model evidence
   assert.match(sql, /kp\.verification_status = 'verified'/);
   assert.match(sql, /r\.status = 'matched'/);
   assert.match(sql, /COUNT\(DISTINCT CASE/);
-  assert.match(sql, /primary_category_id <> 'other'/);
+  // Both ids mean "no specific category", so neither may look like contradictory evidence.
+  assert.match(sql, /primary_category_id NOT IN \('other', 'unclassified'\)/);
   assert.doesNotMatch(sql, /candidate_catalog_product_id|model_stem|LIKE|levenshtein/i);
 });
 
@@ -63,9 +64,13 @@ test("forward migration applies the same conservative identity gates", () => {
     "normalized_model",
     "verification_status = 'verified'",
     "COUNT(DISTINCT CASE",
-    "primary_category_id <> 'other'",
   ]) {
     assert.ok(runtime.includes(invariant), invariant);
     assert.ok(backfill.includes(invariant), invariant);
   }
+  // The "no specific category" test is the one gate whose spelling has moved. 0036 ran when a
+  // single id meant both "その他" and "未分類"; the runtime now names the sentinel as well, which
+  // keeps the same rows groupable after migration 0041 rewrites them.
+  assert.ok(backfill.includes("primary_category_id <> 'other'"));
+  assert.ok(runtime.includes("primary_category_id NOT IN ('other', 'unclassified')"));
 });

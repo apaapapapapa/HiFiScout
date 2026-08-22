@@ -89,6 +89,16 @@ test("every ordering aggregate the search reads has an index behind it", () => {
   assert.match(migration, /ON product_search_entity_offers\(entity_id, shop_key\)/);
 });
 
+/**
+ * 0021 froze these statements as they read when the Phase 4 backfill ran, and one literal has
+ * moved since: an uncategorized verified catalog product now projects the `unclassified` sentinel
+ * instead of borrowing the real `other` leaf. Migration 0041 repairs the rows 0021 wrote, so the
+ * derivation is still single-sourced — the frozen text simply predates the rename.
+ */
+function asBackfilled(sql: string): string {
+  return sql.split("'unclassified'").join("'other'");
+}
+
 test("the backfill is the same derivation the running sync uses, not a second definition", () => {
   const backfill = normalized(migration);
   for (const sql of [
@@ -98,7 +108,8 @@ test("the backfill is the same derivation the running sync uses, not a second de
     upsertFallbackOffersSql(),
     deleteEmptyEntitiesSql(),
   ]) {
-    assert.ok(backfill.includes(normalized(sql)), normalized(sql).slice(0, 80));
+    const expected = normalized(asBackfilled(sql));
+    assert.ok(backfill.includes(expected), expected.slice(0, 80));
   }
 });
 

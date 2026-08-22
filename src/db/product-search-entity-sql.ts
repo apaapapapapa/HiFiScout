@@ -45,6 +45,10 @@ export function scopeClause(column: string, count: number): string {
  * Canonical facts come from the Knowledge Catalog, never from a seller listing: the listing only
  * decides *whether* the entity is currently needed. Display manufacturer and the seller-evidence
  * search terms are filled in by the refresh statements below.
+ *
+ * A verified product with no category row falls back to the `unclassified` sentinel rather than
+ * the `other` leaf: `other` is a real category a product can belong to (tuner, equalizer,
+ * channel divider), so borrowing it here made "no category recorded" indistinguishable from it.
  */
 export function upsertCatalogEntitiesSql(listingScope = ""): string {
   return `
@@ -63,7 +67,7 @@ export function upsertCatalogEntitiesSql(listingScope = ""): string {
              WHERE kpc.product_id = kp.id
              ORDER BY kpc.is_primary DESC, kpc.category_id
              LIMIT 1
-           ), 'other'),
+           ), 'unclassified'),
            TRIM(kp.manufacturer_id),
            TRIM(
              kp.canonical_model || ' ' || kp.normalized_model || ' ' ||

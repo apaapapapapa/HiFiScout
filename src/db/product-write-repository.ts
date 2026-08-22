@@ -7,9 +7,11 @@
  */
 
 import {
+  UNCLASSIFIED_CATEGORY_ID,
   categoryClosureIds,
   categoryIdForFilter,
   categorySearchAliases,
+  isUnclassifiedCategoryId,
 } from "../catalog/categories.js";
 import { normalizeFeatureFacts } from "../catalog/product-features.js";
 import { manufacturerIdForFilter, normalizeManufacturerKey } from "../catalog/manufacturers.js";
@@ -97,8 +99,11 @@ async function runBatches(
 }
 
 function catalogFields(product: CatalogProductUpsertInput): CatalogFields {
+  // An unmapped seller category means "we could not decide", which is the sentinel — not the
+  // `other` leaf a product can legitimately belong to.
   const primaryCategoryId =
-    categoryIdForFilter(product.primaryCategoryId || product.category || "") || "other";
+    categoryIdForFilter(product.primaryCategoryId || product.category || "") ||
+    UNCLASSIFIED_CATEGORY_ID;
   const categoryIds = [primaryCategoryId];
   const rawManufacturer = product.rawManufacturer ?? product.manufacturer ?? "";
   const canonicalManufacturerId =
@@ -139,15 +144,17 @@ function catalogFields(product: CatalogProductUpsertInput): CatalogFields {
     categoryIdsJson: JSON.stringify(categoryIds),
     classificationStatus:
       product.classificationStatus ||
-      (primaryCategoryId === "other" ? "unclassified" : "classified"),
+      (isUnclassifiedCategoryId(primaryCategoryId) ? "unclassified" : "classified"),
     searchAliases: product.searchAliases ?? categorySearchAliases(categoryIds),
     featureFacts: normalizeFeatureFacts(product.featureFacts || []),
   };
 }
 
 function existingCatalogFields(existing: ExistingProductRow): ExistingCatalogFields {
+  // Same fallback as `catalogFields()`, so an unchanged row never looks changed to the diff below.
   const primaryCategoryId =
-    categoryIdForFilter(existing.primary_category_id || existing.category) || "other";
+    categoryIdForFilter(existing.primary_category_id || existing.category) ||
+    UNCLASSIFIED_CATEGORY_ID;
   return {
     rawManufacturer: existing.raw_manufacturer ?? existing.manufacturer ?? "",
     normalizedRawManufacturer:

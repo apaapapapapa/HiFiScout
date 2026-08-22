@@ -79,7 +79,7 @@ test("known mixed seller buckets stay unresolved instead of becoming fallback cl
     { categoryPolicy: FUJIYA_CATEGORY_POLICY },
   );
   assert.equal(fujiya.classificationStatus, "unclassified");
-  assert.equal(fujiya.primaryCategoryId, "other");
+  assert.equal(fujiya.primaryCategoryId, "unclassified");
 
   const forMusic = normalizeCatalogProduct(
     parsedProduct({
@@ -95,7 +95,7 @@ test("known mixed seller buckets stay unresolved instead of becoming fallback cl
     },
   );
   assert.equal(forMusic.classificationStatus, "unclassified");
-  assert.equal(forMusic.primaryCategoryId, "other");
+  assert.equal(forMusic.primaryCategoryId, "unclassified");
 });
 
 test("Hifido recognizes supported seller categories that previously became blank", () => {
@@ -126,5 +126,5 @@ test("Hifido recognizes supported seller categories that previously became blank
 });
 
 test("category metadata version advances so stale rows are replayable", () => {
-  assert.equal(CATEGORY_CLASSIFICATION_METADATA_VERSION, 12);
+  assert.equal(CATEGORY_CLASSIFICATION_METADATA_VERSION, 13);
 });

@@ -71,8 +71,17 @@ export type ClassifiableCategoryId =
   | "dj_dtm"
   | "other";
 
-/** Every id present in `CATEGORIES` (51 entries). */
-export type CategoryId = CategoryGroupId | ClassifiableCategoryId;
+/**
+ * The answer "the classifier could not decide", which is not a category a product belongs to.
+ *
+ * It exists as its own id because `other` is a real, intentional leaf — tuners, equalizers,
+ * channel dividers — and sharing one id made "we don't know" indistinguishable from "genuinely
+ * miscellaneous" everywhere downstream, including the public category filter.
+ */
+export type UnclassifiedCategoryId = "unclassified";
+
+/** Every id present in `CATEGORIES` (53 entries). */
+export type CategoryId = CategoryGroupId | ClassifiableCategoryId | UnclassifiedCategoryId;
 
 /**
  * Pre-taxonomy-v2 ids still accepted on input and rewritten by `LEGACY_ALIASES`.
