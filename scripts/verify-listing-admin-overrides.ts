@@ -15,7 +15,10 @@ import { isRecord } from "../src/types.js";
 
 const suffix = `listing-admin-integration-${process.pid}`;
 const now = "2026-08-22T00:00:00.000Z";
-const statementFile = join(mkdtempSync(join(tmpdir(), "hifiscout-listing-admin-check-")), "statement.sql");
+const statementFile = join(
+  mkdtempSync(join(tmpdir(), "hifiscout-listing-admin-check-")),
+  "statement.sql",
+);
 
 function d1(command: string): Record<string, unknown>[] {
   writeFileSync(statementFile, command, "utf8");
