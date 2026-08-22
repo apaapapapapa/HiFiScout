@@ -8,10 +8,6 @@ function addMinutes(iso: string, minutes: number): string {
   return new Date(new Date(iso).getTime() + Math.max(1, minutes) * 60_000).toISOString();
 }
 
-function subtractMinutes(iso: string, minutes: number): string {
-  return new Date(new Date(iso).getTime() - Math.max(1, minutes) * 60_000).toISOString();
-}
-
 /** Stable identity for one dispatch. Queue messages already carry both components. */
 export function crawlDispatchToken(shopKey: string, requestedAt: string): string {
   return `${shopKey}:${requestedAt}`;
@@ -87,11 +83,13 @@ export async function markShopFailure(
 }
 
 /**
- * Atomically reserves one shop before its message is sent.
+ * Atomically reserves one shop before its child message is sent.
  *
- * The token lets a later recovery dispatch supersede an old queued message without allowing that
- * old message to execute when it eventually reaches the consumer. A live crawl lease also blocks
- * reservation even if `queued_at` was accidentally cleared.
+ * A queued reservation is deliberately not time-expired here. Replacing an old token while its
+ * message is still waiting moves that shop to the tail of the queue and can starve it indefinitely.
+ * Queue retry/DLQ handling owns recovery instead; the scheduler only creates a new child job after
+ * the previous reservation has been released. `leaseMinutes` remains in the signature for rollout
+ * compatibility with callers/config and is intentionally ignored.
  */
 export async function reserveShopDispatch(
   db: QueryableDatabase,
@@ -99,8 +97,8 @@ export async function reserveShopDispatch(
   queuedAt: string,
   leaseMinutes: number,
 ): Promise<string | null> {
+  void leaseMinutes;
   const dispatchToken = crawlDispatchToken(shopKey, queuedAt);
-  const staleBefore = subtractMinutes(queuedAt, leaseMinutes);
   const result = await db
     .prepare(`
       INSERT INTO shop_sync_state (shop_key, queued_at, queued_token)
@@ -108,10 +106,10 @@ export async function reserveShopDispatch(
       ON CONFLICT(shop_key) DO UPDATE SET
         queued_at = excluded.queued_at,
         queued_token = excluded.queued_token
-      WHERE (shop_sync_state.queued_at IS NULL OR shop_sync_state.queued_at <= ?)
+      WHERE shop_sync_state.queued_at IS NULL
         AND (shop_sync_state.crawl_lease_until IS NULL OR shop_sync_state.crawl_lease_until <= ?)
     `)
-    .bind(shopKey, queuedAt, dispatchToken, staleBefore, queuedAt)
+    .bind(shopKey, queuedAt, dispatchToken, queuedAt)
     .run();
   return changes(result) > 0 ? dispatchToken : null;
 }
@@ -137,7 +135,7 @@ export async function releaseShopDispatch(
  *
  * Queue consumers have a 15-minute wall-clock limit. Callers use a lease longer than that limit,
  * so two live consumer invocations cannot crawl the same shop concurrently. The dispatch-token
- * predicate also rejects stale/superseded queue messages after a recovery dispatch.
+ * predicate also rejects stale queue deliveries after the owning child job has completed.
  */
 export async function tryClaimShopCrawl(
   db: QueryableDatabase,
