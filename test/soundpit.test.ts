@@ -120,15 +120,12 @@ test("Sound Pit detail parser preserves ASK and sold-out semantics", () => {
 });
 
 test("Sound Pit adapter is a partial latest-arrivals feed registered for hourly crawling", () => {
-  assert.deepEqual(initialPageQueue(soundPitAdapter, 50), [
-    { url: "https://sound-pit.jp/pg98.html", kind: "index" },
-  ]);
+  const indexPage: SoundPitPage = { url: "https://sound-pit.jp/pg98.html", kind: "index" };
+  assert.deepEqual(initialPageQueue(soundPitAdapter, 50), [indexPage]);
+  assert.deepEqual(soundPitAdapter.parse(listingHtml, indexPage), []);
   assert.equal(soundPitAdapter.discovery.coverage, "partial");
   assert.deepEqual(
-    discoverPages(soundPitAdapter, listingHtml, {
-      url: "https://sound-pit.jp/pg98.html",
-      kind: "index",
-    }),
+    discoverPages(soundPitAdapter, listingHtml, indexPage),
     discoverSoundPitDetails(listingHtml),
   );
 
