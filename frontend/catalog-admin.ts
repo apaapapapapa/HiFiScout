@@ -495,8 +495,19 @@ function updateResultSummary(itemCount: number): void {
     : `${itemCount}件表示 · すべてのCatalog`;
 }
 
-async function load(afterId: number, resetHistory = false): Promise<void> {
+async function load(
+  afterId: number,
+  resetHistory = false,
+  targetHistory: number[] | null = null,
+): Promise<void> {
   if (busy) return;
+  if (resetHistory) {
+    currentAfterId = 0;
+    nextAfterId = null;
+    history = [];
+    pagePosition.textContent = "ページ —";
+    updateInteractionState();
+  }
   setBusy(true);
   message("Catalogを読み込んでいます…");
   try {
@@ -506,6 +517,7 @@ async function load(afterId: number, resetHistory = false): Promise<void> {
     currentAfterId = afterId;
     nextAfterId = result.nextAfterId;
     if (resetHistory) history = [];
+    else if (targetHistory) history = targetHistory;
     render(result.items);
     updateResultSummary(result.items.length);
     catalogReady = true;
@@ -582,7 +594,6 @@ function clearFilters(): void {
   queryInput.value = "";
   manufacturerInput.value = "";
   categoryFilter.value = "";
-  history = [];
   updateInteractionState();
   void load(0, true);
   queryInput.focus();
@@ -594,7 +605,6 @@ function closeEditDialog(): void {
 
 searchForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  history = [];
   void load(0, true);
 });
 resetSearch.addEventListener("click", clearFilters);
@@ -603,13 +613,12 @@ for (const control of [queryInput, manufacturerInput, categoryFilter]) {
   control.addEventListener("change", updateInteractionState);
 }
 previousButton.addEventListener("click", () => {
-  const previous = history.pop();
-  if (previous !== undefined) void load(previous);
+  const previous = history.at(-1);
+  if (previous !== undefined) void load(previous, false, history.slice(0, -1));
 });
 nextButton.addEventListener("click", () => {
   if (nextAfterId === null) return;
-  history.push(currentAfterId);
-  void load(nextAfterId);
+  void load(nextAfterId, false, [...history, currentAfterId]);
 });
 closeEditButton.addEventListener("click", closeEditDialog);
 cancelEdit.addEventListener("click", closeEditDialog);
