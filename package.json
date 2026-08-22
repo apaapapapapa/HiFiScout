@@ -33,7 +33,7 @@
     "build": "npm run build:frontend && npm run build:worker && npm run build:admin-worker && npm run build:lambda",
     "build:frontend": "npm run build:frontend:public && npm run build:frontend:admin",
     "build:frontend:public": "esbuild frontend/app.ts frontend/catalog-url-state.ts frontend/shop-filter-order.ts frontend/shop-links.ts --bundle --outdir=public --format=iife --target=es2022",
-    "build:frontend:admin": "esbuild frontend/admin-console.ts frontend/catalog-admin.ts frontend/listing-admin.ts --bundle --outdir=admin-public --format=iife --target=es2022",
+    "build:frontend:admin": "esbuild frontend/admin-console.ts frontend/catalog-admin.ts frontend/catalog-admin-operations.ts frontend/listing-admin.ts --bundle --outdir=admin-public --format=iife --target=es2022",
     "build:worker": "wrangler deploy --dry-run --outdir dist/worker",
     "build:admin-worker": "wrangler deploy --dry-run --config wrangler.admin.jsonc --outdir dist/admin-worker",
     "build:lambda": "tsx scripts/ensure-directories.ts dist/audiounion-lambda && esbuild infra/audiounion-lambda/index.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/audiounion-lambda/index.mjs",
