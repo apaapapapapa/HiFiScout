@@ -34,6 +34,7 @@ import { dynamicAudioAdapter } from "./dynamic-audio.js";
 import { afroAudioAdapter } from "./afroaudio.js";
 import { osakayaAdapter } from "./osakaya.js";
 import { soundPitAdapter } from "./soundpit.js";
+import { avacAdapter } from "./avac.js";
 // shop-generator:imports
 
 export { getShopActivityPolicy } from "./registry.js";
@@ -182,6 +183,13 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
     key: "soundpit",
     name: "SOUND PIT",
     baseUrl: "https://sound-pit.jp",
+    defaultIntervalMinutes: 60,
+    defaultMaxPages: 50,
+  }),
+  defineShopPlugin(avacAdapter, {
+    key: "avac",
+    name: "アバック",
+    baseUrl: "https://www.avac.co.jp",
     defaultIntervalMinutes: 60,
     defaultMaxPages: 50,
   }),
