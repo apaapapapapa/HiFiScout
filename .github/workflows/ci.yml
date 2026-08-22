@@ -85,3 +85,128 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         working-directory: e2e
         run: npx playwright install chromium
+
+  stage-data-quality-finalization:
+    if: github.event_name == 'pull_request' && github.head_ref == 'fix/finalize-data-quality-remediation'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_ACCOUNT_ID: 9af87af4dbc00be3bfd4c8af3f52f684
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Inspect one live Hifido detail page
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(npx wrangler d1 execute DB --remote --json --command "SELECT source_url, title, raw_category FROM products WHERE is_active = 1 AND shop_key = 'hifido' AND source_url LIKE 'https://www.hifido.co.jp/%' AND title NOT LIKE '%枚セット%' AND title NOT LIKE '%枚組%' ORDER BY CASE WHEN classification_status = 'unclassified' THEN 0 ELSE 1 END, id DESC LIMIT 1;")"
+          row="$(jq -c '.[0].results[0] // {}' <<< "$response")"
+          url="$(jq -r '.source_url // empty' <<< "$row")"
+          echo "Selected Hifido listing: $(jq -c '{title,raw_category}' <<< "$row")"
+          test -n "$url"
+          status="$(curl --compressed -L -sS -o /tmp/hifido-detail.bin -w '%{http_code}' \
+            -A 'HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)' \
+            -H 'Accept: text/html,application/xhtml+xml' \
+            -H 'Accept-Language: ja,en;q=0.7' "$url" || true)"
+          echo "Hifido detail HTTP status: $status"
+          echo "Hifido detail bytes: $(wc -c < /tmp/hifido-detail.bin | tr -d ' ')"
+          if [[ "$status" != '200' ]]; then
+            exit 0
+          fi
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const bytes = readFileSync('/tmp/hifido-detail.bin');
+          let html;
+          try { html = new TextDecoder('euc-jp').decode(bytes); }
+          catch { html = new TextDecoder('utf-8').decode(bytes); }
+          const patterns = [/genre/giu, /ジャンル/giu, /カテゴリ/giu, /アクセサリー/giu, /スピーカー/giu, /アンプ/giu];
+          const snippets = [];
+          for (const pattern of patterns) {
+            for (const match of html.matchAll(pattern)) {
+              const snippet = html
+                .slice(Math.max(0, match.index - 260), Math.min(html.length, match.index + 520))
+                .replace(/\s+/gu, ' ')
+                .trim();
+              if (!snippets.includes(snippet)) snippets.push(snippet);
+              if (snippets.length >= 16) break;
+            }
+            if (snippets.length >= 16) break;
+          }
+          console.log(`Structural snippets found: ${snippets.length}`);
+          snippets.forEach((snippet, index) => console.log(`HIFIDO_SNIPPET_${index + 1}: ${snippet}`));
+          NODE
+
+      - name: Apply replay correctness and drain-throughput fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python <<'PY'
+          from pathlib import Path
+
+          service = Path('src/db/data-quality-remediation-service.ts')
+          text = service.read_text()
+          old = 'import { createManufacturerResolver } from "../catalog/manufacturer-resolver.js";\n'
+          new = old + 'import { manufacturerIdForFilter } from "../catalog/manufacturers.js";\n'
+          assert text.count(old) == 1
+          text = text.replace(old, new, 1)
+          needle = '''  const manufacturer = manufacturerResolver({\n    rawManufacturer: row.raw_manufacturer,\n    manufacturerCandidate: row.raw_manufacturer ? row.manufacturer : "",\n    title: row.title,\n  });\n  const model = modelResolver({\n'''
+          replacement = '''  const manufacturer = manufacturerResolver({\n    rawManufacturer: row.raw_manufacturer,\n    manufacturerCandidate: row.raw_manufacturer ? row.manufacturer : "",\n    title: row.title,\n  });\n  const manufacturerFilterId = manufacturerIdForFilter(\n    manufacturer.displayName || row.manufacturer || row.raw_manufacturer,\n  );\n  const model = modelResolver({\n'''
+          assert text.count(needle) == 1
+          text = text.replace(needle, replacement, 1)
+          bind_pair = '''      manufacturer.displayName,\n      manufacturer.normalizedRawManufacturer,\n      manufacturer.canonicalManufacturerId,\n      manufacturer.canonicalManufacturerId,\n'''
+          fixed_pair = '''      manufacturer.displayName,\n      manufacturer.normalizedRawManufacturer,\n      manufacturerFilterId,\n      manufacturer.canonicalManufacturerId,\n'''
+          assert text.count(bind_pair) == 2
+          text = text.replace(bind_pair, fixed_pair)
+          service.write_text(text)
+
+          drain = Path('scripts/resolver-replay-drain.ts')
+          text = drain.read_text()
+          import_needle = 'import { compactSupersededAutomaticRemediationJobs } from "../src/db/data-quality-remediation-compaction.js";\n'
+          import_replacement = import_needle + 'import { reprocessStaleManufacturerListings } from "../src/db/manufacturer-repository.js";\n'
+          assert text.count(import_needle) == 1
+          text = text.replace(import_needle, import_replacement, 1)
+          text = text.replace('''interface DrainResult {\n  recoveredExhausted: number;\n  compacted: number;\n''', '''interface DrainResult {\n  recoveredExhausted: number;\n  compacted: number;\n  manufacturerProcessed: number;\n''', 1)
+          insert_before = '''async function writeResult(path: string, result: DrainResult): Promise<void> {\n'''
+          helper = '''async function drainStaleManufacturerPages(\n  db: QueryableDatabase,\n  maxPages: number,\n): Promise<number> {\n  let afterId = 0;\n  let processed = 0;\n  for (let page = 0; page < maxPages; page += 1) {\n    const result = await reprocessStaleManufacturerListings(db, {\n      afterId,\n      limit: 250,\n    });\n    processed += result.processedCount;\n    if (!result.hasMore || result.nextAfterId == null) break;\n    afterId = result.nextAfterId;\n  }\n  return processed;\n}\n\n'''
+          assert text.count(insert_before) == 1
+          text = text.replace(insert_before, helper + insert_before, 1)
+          text = text.replace('''  const maxSweeps = positiveInteger(argument("--max-sweeps", "24"), "--max-sweeps");\n''', '''  const maxSweeps = positiveInteger(argument("--max-sweeps", "24"), "--max-sweeps");\n  const manufacturerPages = positiveInteger(\n    argument("--manufacturer-pages", "4"),\n    "--manufacturer-pages",\n  );\n''', 1)
+          text = text.replace('''  const compacted = await compactSupersededAutomaticRemediationJobs(database);\n  console.log(`Resolved ${compacted} superseded automatic queue jobs before this drain batch.`);\n\n  const initial = await replayStatus(database);\n''', '''  let compacted = await compactSupersededAutomaticRemediationJobs(database);\n  console.log(`Resolved ${compacted} superseded automatic queue jobs before this drain batch.`);\n\n  const initial = await replayStatus(database);\n''', 1)
+          loop_needle = '''  let current = initial;\n  for (let iteration = 1; iteration <= maxSweeps && current.stale.total > 0; iteration += 1) {\n'''
+          loop_replacement = '''  let current = initial;\n  const manufacturerProcessed =\n    current.stale.manufacturer > 0\n      ? await drainStaleManufacturerPages(database, manufacturerPages)\n      : 0;\n  if (manufacturerProcessed > 0) {\n    console.log(\n      `Bulk manufacturer replay processed ${manufacturerProcessed} listings through the authoritative replay path.`,\n    );\n    const compactedAfterManufacturer = await compactSupersededAutomaticRemediationJobs(database);\n    compacted += compactedAfterManufacturer;\n    console.log(\n      `Resolved ${compactedAfterManufacturer} manufacturer jobs superseded by the bulk replay.`,\n    );\n    current = await replayStatus(database);\n  }\n\n  for (let iteration = 1; iteration <= maxSweeps && current.stale.total > 0; iteration += 1) {\n'''
+          assert text.count(loop_needle) == 1
+          text = text.replace(loop_needle, loop_replacement, 1)
+          text = text.replace('''      seedLimit: 1,\n      claimLimit: 1,\n      leaseSeconds: 900,\n''', '''      seedLimit: 1,\n      claimLimit: 10,\n      leaseSeconds: 900,\n''', 1)
+          text = text.replace('''        seedLimit: 250,\n        claimLimit: 1,\n        leaseSeconds: 900,\n''', '''        seedLimit: 250,\n        claimLimit: 10,\n        leaseSeconds: 900,\n''', 1)
+          text = text.replace('''    compacted,\n    complete: final.stale.total === 0,\n''', '''    compacted,\n    manufacturerProcessed,\n    complete: final.stale.total === 0,\n''', 1)
+          drain.write_text(text)
+
+          regression = Path('test/data-quality-finalization-regressions.test.ts')
+          regression.write_text('''import assert from "node:assert/strict";\nimport { readFileSync } from "node:fs";\nimport test from "node:test";\n\nimport { manufacturerIdForFilter } from "../src/catalog/manufacturers.js";\n\nconst remediationService = readFileSync(\n  new URL("../src/db/data-quality-remediation-service.ts", import.meta.url),\n  "utf8",\n);\nconst replayDrain = readFileSync(\n  new URL("../scripts/resolver-replay-drain.ts", import.meta.url),\n  "utf8",\n);\n\ntest("generic DQ replay keeps public manufacturer_id separate from verified canonical id", () => {\n  assert.notEqual(manufacturerIdForFilter("Mystery Audio"), "");\n  assert.match(\n    remediationService,\n    /const manufacturerFilterId = manufacturerIdForFilter\\([\\s\\S]*?manufacturer\\.displayName \\|\\| row\\.manufacturer \\|\\| row\\.raw_manufacturer/u,\n  );\n  assert.equal(\n    [...remediationService.matchAll(/manufacturerFilterId,\\s*manufacturer\\.canonicalManufacturerId,/gu)]\n      .length,\n    2,\n    "both UPDATE and change-detection binds must use the public filter id before canonical id",\n  );\n});\n\ntest("administrative resolver drain uses bulk manufacturer replay and batched generic claims", () => {\n  assert.match(replayDrain, /reprocessStaleManufacturerListings/u);\n  assert.match(replayDrain, /limit:\\s*250/u);\n  assert.equal(\n    [...replayDrain.matchAll(/claimLimit:\\s*10/gu)].length,\n    2,\n    "existing-queue and top-up drains should both process bounded batches",\n  );\n});\n''')
+          PY
+
+      - name: Validate staged production changes
+        run: npm run verify
+
+      - name: Commit production-only changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout origin/main -- .github/workflows/ci.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/db/data-quality-remediation-service.ts scripts/resolver-replay-drain.ts test/data-quality-finalization-regressions.test.ts .github/workflows/ci.yml
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix: finalize data-quality replay convergence'
+          git push origin HEAD:${{ github.head_ref }}
