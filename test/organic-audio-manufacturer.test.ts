@@ -22,10 +22,13 @@ test("Organic Audio is a canonical multi-word manufacturer", () => {
     model: "Reference Series Interconnect RCA",
   });
 
-  assert.deepEqual(splitManufacturerModel("Organic Audio Reference Series Interconnect RCA", "generic"), {
-    manufacturer: "Organic Audio",
-    model: "Reference Series Interconnect RCA",
-  });
+  assert.deepEqual(
+    splitManufacturerModel("Organic Audio Reference Series Interconnect RCA", "generic"),
+    {
+      manufacturer: "Organic Audio",
+      model: "Reference Series Interconnect RCA",
+    },
+  );
 });
 
 test("legacy first-token Organic evidence resolves to Organic Audio", () => {
