@@ -122,7 +122,10 @@ function updateError(error: unknown): Response {
   return json({ error: "listing_admin_update_failed" }, { status: 500 });
 }
 
-async function handleAdminEntryRequest(request: Request, env: AdminEnv): Promise<Response> {
+export async function handleAuthenticatedAdminEntryRequest(
+  request: Request,
+  env: AdminEnv,
+): Promise<Response> {
   const url = new URL(request.url);
 
   if (request.method === "GET" && url.pathname === LISTING_COLLECTION_PATH) {
@@ -186,6 +189,6 @@ export default {
       audience: env.ACCESS_AUD || "",
     });
     if (!claims) return json({ error: "cloudflare_access_required" }, { status: 403 });
-    return handleAdminEntryRequest(request, env);
+    return handleAuthenticatedAdminEntryRequest(request, env);
   },
 } satisfies ExportedHandler<AdminEnv>;
