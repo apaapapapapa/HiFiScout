@@ -6,6 +6,8 @@ interface AdminAppConfig {
   key: AdminAppKey;
   panelId: string;
   scriptSrc: string;
+  fragmentSrc: string;
+  selectors: readonly string[];
   tabId: string;
 }
 
@@ -14,16 +16,21 @@ const APPS: Record<AdminAppKey, AdminAppConfig> = {
     key: "catalog",
     panelId: "catalog-pane",
     scriptSrc: "/catalog-admin.js",
+    fragmentSrc: "/catalog-admin.html",
+    selectors: ["#status-message", "#catalog-controls", "#edit-dialog"],
     tabId: "admin-tab-catalog",
   },
   listings: {
     key: "listings",
     panelId: "listings-pane",
     scriptSrc: "/listing-admin.js",
+    fragmentSrc: "/listing-admin.html",
+    selectors: ["#status-message", "#listing-controls", "#edit-dialog"],
     tabId: "admin-tab-listings",
   },
 };
 
+const mountedApps = new Set<AdminAppKey>();
 const loadedApps = new Set<AdminAppKey>();
 const loadingApps = new Map<AdminAppKey, Promise<void>>();
 
@@ -37,14 +44,89 @@ function requestedTab(): AdminAppKey {
   return window.location.hash === "#listings" ? "listings" : "catalog";
 }
 
+function loadStatus(panel: HTMLElement): HTMLElement {
+  const value = panel.querySelector<HTMLElement>("[data-admin-load-status]");
+  if (!value) throw new Error(`Missing load status in #${panel.id}`);
+  return value;
+}
+
+function mountPoint(panel: HTMLElement): HTMLElement {
+  const value = panel.querySelector<HTMLElement>("[data-admin-mount]");
+  if (!value) throw new Error(`Missing mount point in #${panel.id}`);
+  return value;
+}
+
+function rewriteIdReferences(root: ParentNode, ids: Map<string, string>): void {
+  const tokenAttributes = ["for", "aria-labelledby", "aria-describedby", "aria-controls"] as const;
+  for (const node of root.querySelectorAll<HTMLElement>("*")) {
+    for (const attribute of tokenAttributes) {
+      const value = node.getAttribute(attribute);
+      if (!value) continue;
+      node.setAttribute(
+        attribute,
+        value
+          .split(/\s+/u)
+          .map((token) => ids.get(token) || token)
+          .join(" "),
+      );
+    }
+    const href = node.getAttribute("href");
+    if (href?.startsWith("#")) {
+      const replacement = ids.get(href.slice(1));
+      if (replacement) node.setAttribute("href", `#${replacement}`);
+    }
+  }
+}
+
+function namespaceFragment(root: ParentNode, key: AdminAppKey): void {
+  const ids = new Map<string, string>();
+  for (const node of root.querySelectorAll<HTMLElement>("[id]")) {
+    const legacyId = node.id;
+    const namespacedId = `${key}-${legacyId}`;
+    node.dataset.legacyId = legacyId;
+    node.id = namespacedId;
+    ids.set(legacyId, namespacedId);
+  }
+  rewriteIdReferences(root, ids);
+}
+
+async function mountFragment(config: AdminAppConfig): Promise<void> {
+  if (mountedApps.has(config.key)) return;
+  const panel = element<HTMLElement>(config.panelId);
+  const status = loadStatus(panel);
+  status.hidden = false;
+  status.dataset.kind = "info";
+  status.textContent = "管理機能を読み込んでいます…";
+
+  const response = await fetch(config.fragmentSrc, {
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: { "x-admin-fragment": "1" },
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+  const source = new DOMParser().parseFromString(await response.text(), "text/html");
+  const fragment = document.createDocumentFragment();
+  for (const selector of config.selectors) {
+    const node = source.querySelector(selector);
+    if (!node) throw new Error(`Missing ${selector} in ${config.fragmentSrc}`);
+    fragment.appendChild(document.importNode(node, true));
+  }
+  namespaceFragment(fragment, config.key);
+  mountPoint(panel).replaceChildren(fragment);
+  mountedApps.add(config.key);
+  status.hidden = true;
+  status.textContent = "";
+}
+
 function legacyNodes(panel: HTMLElement): HTMLElement[] {
   return Array.from(panel.querySelectorAll<HTMLElement>("[data-legacy-id]"));
 }
 
 function showLoadFailure(config: AdminAppConfig, error: unknown): void {
   const panel = element<HTMLElement>(config.panelId);
-  const status = panel.querySelector<HTMLElement>('[data-legacy-id="status-message"]');
-  if (!status) return;
+  const status = loadStatus(panel);
+  status.hidden = false;
   status.dataset.kind = "error";
   status.textContent = `管理画面を読み込めません: ${error instanceof Error ? error.message : String(error)}`;
 }
@@ -55,6 +137,7 @@ async function loadLegacyApp(config: AdminAppConfig): Promise<void> {
   if (existing) return existing;
 
   const request = (async (): Promise<void> => {
+    await mountFragment(config);
     const panel = element<HTMLElement>(config.panelId);
     const nodes = legacyNodes(panel);
     const originalIds = nodes.map((node) => node.id);
@@ -133,8 +216,7 @@ for (const config of Object.values(APPS)) {
   tab.addEventListener("keydown", (event) => {
     if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
       event.preventDefault();
-      const next: AdminAppKey = config.key === "catalog" ? "listings" : "catalog";
-      focusTab(next);
+      focusTab(config.key === "catalog" ? "listings" : "catalog");
       return;
     }
     if (event.key === "Home") {
