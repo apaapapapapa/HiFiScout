@@ -101,7 +101,9 @@ Read the route/API source before adding hard-coded request or response examples 
 
 ## Operations
 
-`main` is deployed through `.github/workflows/deploy.yml`. CI is defined in `.github/workflows/ci.yml`; deployed-environment E2E is separate. D1 migrations are applied in order and applied migration files must never be edited.
+`main` is deployed through `.github/workflows/deploy.yml`. That workflow owns resource provisioning, migrations, Worker deployment, and the immediate runtime smoke check. Deeper Product Search, Product Identity, and data-quality invariants run afterward in `.github/workflows/production-operational-health.yml`, so a production data-state incident cannot rewrite an already successful Worker deployment as if it never happened. CI is defined in `.github/workflows/ci.yml`; deployed-environment E2E is separate. D1 migrations are applied in order and applied migration files must never be edited.
+
+Crawler dispatch state is interpreted through `src/crawler/crawl-lifecycle.ts`. The persisted queue reservation and execution lease form the explicit `idle` / `queued` / `executing` lifecycle; watchdog recovery must re-send the same logical child rather than replacing its dispatch identity.
 
 Operational workflows that remain in the repository must represent repeatable production operations, not one-time migration steps. Completed one-off workflows and their helper scripts should be removed once the permanent runtime path replaces them; Git history remains the archive.
 
