@@ -117,7 +117,9 @@ interface ListingFacts {
   readonly soldOut: boolean;
 }
 
-function splitProductFacts(core: string): Pick<ListingFacts, "manufacturer" | "model" | "rawCategory"> {
+function splitProductFacts(
+  core: string,
+): Pick<ListingFacts, "manufacturer" | "model" | "rawCategory"> {
   const direct = core.match(PRODUCT_FACTS_RE);
   if (direct) {
     return {

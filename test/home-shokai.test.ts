@@ -99,10 +99,7 @@ test("Home Shokai adapter covers the two requested inventory snapshots and is re
   const targets = initialPageQueue(homeShokaiAdapter, 10);
   assert.deepEqual(
     targets.map((page) => page.url),
-    [
-      "https://www.homeshokai.jp/itemlist.php?a=2",
-      "https://www.homeshokai.jp/itemlist.php?a=3",
-    ],
+    ["https://www.homeshokai.jp/itemlist.php?a=2", "https://www.homeshokai.jp/itemlist.php?a=3"],
   );
   assert.equal(homeShokaiAdapter.discovery.coverage, "complete");
   assert.equal("discoverTargets" in homeShokaiAdapter.discovery, false);
