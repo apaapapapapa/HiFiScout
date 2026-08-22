@@ -10,6 +10,7 @@ const GOJUON_KEYS = [
   "avac",
   "afroaudio",
   "ippinkan",
+  "audio-space-core",
   "audiounion",
   "osakaya",
   "sound-support",
