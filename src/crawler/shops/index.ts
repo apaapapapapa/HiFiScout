@@ -40,6 +40,7 @@ import {
   soundSupportAdapter,
 } from "./sound-support.js";
 import { avacAdapter } from "./avac.js";
+import { tereonAdapter } from "./tereon.js";
 // shop-generator:imports
 
 export { getShopActivityPolicy } from "./registry.js";
@@ -213,6 +214,14 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
     baseUrl: "https://www.avac.co.jp",
     defaultIntervalMinutes: 60,
     defaultMaxPages: 50,
+  }),
+  defineShopPlugin(tereonAdapter, {
+    key: "tereon",
+    name: "テレオン",
+    baseUrl: "https://www.tereon-tsuhan.com",
+    defaultIntervalMinutes: 60,
+    defaultRequestDelayMs: 1500,
+    defaultMaxPages: 10,
   }),
   // shop-generator:plugins
 ]);
