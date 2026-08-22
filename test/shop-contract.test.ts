@@ -373,7 +373,10 @@ test("targetUrl rejects cross-origin and malformed discovery targets", () => {
   const adapter = registerStub();
   assert.equal(targetUrl(adapter, "https://example.com/ok"), "https://example.com/ok");
   assert.throws(() => targetUrl(adapter, "https://evil.example/"), /outside shop origin/);
-  assert.throws(() => targetUrl(adapter, { url: "http://example.com/insecure" }), /outside shop origin/);
+  assert.throws(
+    () => targetUrl(adapter, { url: "http://example.com/insecure" }),
+    /outside shop origin/,
+  );
   assert.throws(() => targetUrl(adapter, { url: "not-a-url" }), /invalid discovery target/);
 });
 
@@ -405,7 +408,8 @@ test("transportConfigurationRequired cannot be attached to a non-relay plugin", 
 test("relayConfiguration rejects incomplete or insecure values", () => {
   assert.throws(() => relayConfiguration({}), /CRAWL_RELAY_URL/);
   assert.throws(
-    () => relayConfiguration({ CRAWL_RELAY_URL: "http:\/\/relay.example", CRAWL_RELAY_TOKEN: "token" }),
+    () =>
+      relayConfiguration({ CRAWL_RELAY_URL: "http:\/\/relay.example", CRAWL_RELAY_TOKEN: "token" }),
     /https/,
   );
   assert.throws(
