@@ -47,6 +47,7 @@ test("Afro Audio parser extracts seller facts and canonical availability", () =>
   assert.equal(available.title, "Accuphase DP-570 CDデッキ アキュフェーズ");
   assert.equal(available.manufacturer, "Accuphase");
   assert.equal(available.model, "DP-570");
+  assert.equal(normalizeCatalogProduct(available).model, "DP-570");
   assert.equal(available.priceYen, 650000);
   assert.equal(available.stockStatus, "in_stock");
   assert.equal(available.rawCategory, "プレーヤー");
@@ -136,6 +137,7 @@ test("Afro Audio keeps seller titles as evidence but removes card-model presenta
 
   assert.equal(items[2].title, "ortofon T-2000 昇圧トランス オルトフォン");
   assert.equal(items[2].model, "T-2000");
+  assert.equal(normalizeCatalogProduct(items[2]).model, "T-2000");
 
   assert.equal(items[3].title, "SHURE M44G MMカートリッジ シュアー");
   assert.equal(items[3].model, "M44G");
