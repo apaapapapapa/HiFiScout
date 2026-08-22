@@ -21,6 +21,7 @@ export const SHOP_FILTER_READINGS: Readonly<Record<string, string>> = Object.fre
   soundpit: "さうんどぴっと",
   shimamusen: "しまむせん",
   "dynamic-audio": "だいなみっくおーでぃお",
+  tereon: "てれおん",
   hifido: "はいふぁいどう",
   formusic: "ふぉーみゅーじっく",
   "fujiya-avic": "ふじやえーびっく",
