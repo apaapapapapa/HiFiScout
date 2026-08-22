@@ -7,10 +7,7 @@
  */
 
 import { consumeCrawlMessage } from "./crawler/dispatch.js";
-import {
-  isCrawlDeadLetterQueueName,
-  isCrawlQueueName,
-} from "./crawler/queue-lanes.js";
+import { isCrawlDeadLetterQueueName, isCrawlQueueName } from "./crawler/queue-lanes.js";
 import { crawlDispatchToken, releaseShopDispatch } from "./db/shop-state-repository.js";
 import { getSyncHealth, logSyncHealth } from "./health.js";
 import {
@@ -133,9 +130,13 @@ async function consumeCrawlBatch(batch: MessageBatch<CrawlQueueMessage>, env: En
     }
 
     if (result.status === "failed") {
-      console.error(JSON.stringify({ event: "crawl_queue_job_failed", ...job, ...result, ...timing }));
+      console.error(
+        JSON.stringify({ event: "crawl_queue_job_failed", ...job, ...result, ...timing }),
+      );
     } else {
-      console.log(JSON.stringify({ event: "crawl_queue_job_completed", ...job, ...result, ...timing }));
+      console.log(
+        JSON.stringify({ event: "crawl_queue_job_completed", ...job, ...result, ...timing }),
+      );
     }
     const health = await getSyncHealth(env);
     logSyncHealth(health);
