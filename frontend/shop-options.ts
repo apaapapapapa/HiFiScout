@@ -8,8 +8,8 @@ export interface ShopFilterOption {
  * Japanese gojuon readings shared by user-facing shop lists that need Japanese reading order.
  *
  * Display names intentionally stay unchanged. Keep this map exhaustive: the unit test compares it
- * with the registered shop plugins so every newly registered shop, including Tereon, has an
- * explicit reading instead of silently falling back to Latin or kanji code-point ordering.
+ * with the registered shop plugins so every newly registered shop has an explicit reading instead
+ * of silently falling back to Latin or kanji code-point ordering.
  */
 export const SHOP_FILTER_READINGS: Readonly<Record<string, string>> = Object.freeze({
   avac: "あばっく",
@@ -25,6 +25,7 @@ export const SHOP_FILTER_READINGS: Readonly<Record<string, string>> = Object.fre
   hifido: "はいふぁいどう",
   formusic: "ふぉーみゅーじっく",
   "fujiya-avic": "ふじやえーびっく",
+  "home-shokai": "ほーむしょうかい",
   "u-audio": "ゆーおーでぃお",
 });
 
