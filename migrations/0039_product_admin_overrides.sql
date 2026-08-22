@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS product_admin_overrides (
   model TEXT,
   normalized_model TEXT,
   primary_category_id TEXT,
+  category_ids TEXT CHECK (category_ids IS NULL OR json_valid(category_ids)),
   category_name TEXT,
   search_aliases TEXT,
   created_at TEXT NOT NULL,
@@ -183,56 +184,8 @@ WHEN EXISTS (
   FROM product_admin_overrides o
   WHERE o.listing_product_id = NEW.product_id
     AND o.primary_category_id IS NOT NULL
-    AND NEW.category_id NOT IN (
-      SELECT value
-      FROM json_each(
-        CASE o.primary_category_id
-          WHEN 'integrated_amp' THEN '["integrated_amp","amplifier"]'
-          WHEN 'pre_amp' THEN '["pre_amp","amplifier"]'
-          WHEN 'power_amp' THEN '["power_amp","amplifier"]'
-          WHEN 'headphone_amp' THEN '["headphone_amp","amplifier"]'
-          WHEN 'av_amp' THEN '["av_amp","amplifier"]'
-          WHEN 'dac' THEN '["dac","digital"]'
-          WHEN 'network_player' THEN '["network_player","digital"]'
-          WHEN 'cd_sacd_player' THEN '["cd_sacd_player","digital"]'
-          WHEN 'transport' THEN '["transport","digital"]'
-          WHEN 'dap' THEN '["dap","digital"]'
-          WHEN 'network_switch' THEN '["network_switch","digital"]'
-          WHEN 'optical_isolator' THEN '["optical_isolator","digital"]'
-          WHEN 'router' THEN '["router","digital"]'
-          WHEN 'music_server' THEN '["music_server","digital"]'
-          WHEN 'master_clock' THEN '["master_clock","digital"]'
-          WHEN 'turntable' THEN '["turntable","analog"]'
-          WHEN 'tonearm' THEN '["tonearm","analog"]'
-          WHEN 'cartridge' THEN '["cartridge","analog"]'
-          WHEN 'headshell' THEN '["headshell","analog"]'
-          WHEN 'phono_eq' THEN '["phono_eq","analog"]'
-          WHEN 'phono_step_up_transformer' THEN '["phono_step_up_transformer","analog"]'
-          WHEN 'speaker_bookshelf' THEN '["speaker_bookshelf","speaker"]'
-          WHEN 'speaker_floorstanding' THEN '["speaker_floorstanding","speaker"]'
-          WHEN 'center_speaker' THEN '["center_speaker","speaker"]'
-          WHEN 'subwoofer' THEN '["subwoofer","speaker"]'
-          WHEN 'active_speaker' THEN '["active_speaker","speaker"]'
-          WHEN 'wired_headphone' THEN '["wired_headphone","headphone_group"]'
-          WHEN 'wired_earphone' THEN '["wired_earphone","headphone_group"]'
-          WHEN 'btw_headphone' THEN '["btw_headphone","headphone_group"]'
-          WHEN 'btw_earphone' THEN '["btw_earphone","headphone_group"]'
-          WHEN 'cable_xlr' THEN '["cable_xlr","cable"]'
-          WHEN 'cable_rca' THEN '["cable_rca","cable"]'
-          WHEN 'cable_phono' THEN '["cable_phono","cable"]'
-          WHEN 'cable_usb' THEN '["cable_usb","cable"]'
-          WHEN 'cable_lan' THEN '["cable_lan","cable"]'
-          WHEN 'cable_digital' THEN '["cable_digital","cable"]'
-          WHEN 'cable_power' THEN '["cable_power","cable"]'
-          WHEN 'cable_other' THEN '["cable_other","cable"]'
-          WHEN 'rack' THEN '["rack","accessories"]'
-          WHEN 'power_strip' THEN '["power_strip","accessories"]'
-          WHEN 'clean_power' THEN '["clean_power","accessories"]'
-          WHEN 'vacuum_tube' THEN '["vacuum_tube","accessories"]'
-          WHEN 'other_accessory' THEN '["other_accessory","accessories"]'
-          ELSE json_array(o.primary_category_id)
-        END
-      )
+    AND NOT EXISTS (
+      SELECT 1 FROM json_each(o.category_ids) WHERE value = NEW.category_id
     )
 )
 BEGIN
