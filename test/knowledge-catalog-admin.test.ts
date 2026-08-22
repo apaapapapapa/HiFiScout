@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { listKnowledgeCatalogAdminCandidates } from "../src/db/knowledge-catalog-admin-operations.js";
 import {
   catalogAdminCategoryIds,
   listKnowledgeCatalogAdminProducts,
 } from "../src/db/knowledge-catalog-admin-repository.js";
 import {
+  parseKnowledgeCatalogAdminCreate,
   parseKnowledgeCatalogAdminListQuery,
+  parseKnowledgeCatalogAdminMerge,
   parseKnowledgeCatalogAdminUpdate,
 } from "../src/http/knowledge-catalog-admin.js";
 import { captureDatabase } from "./helpers/d1.js";
@@ -117,6 +120,24 @@ test("catalog admin manufacturer filter includes canonical and legacy ids", asyn
   assert.ok(ids.includes("marklevinson"));
 });
 
+test("catalog admin pending candidate search uses manufacturer compatibility", async () => {
+  const db = captureDatabase();
+  await listKnowledgeCatalogAdminCandidates(db, {
+    query: "mark-levinson",
+    manufacturerId: "",
+    categoryId: "",
+    afterId: 0,
+    limit: 50,
+  });
+
+  const { sql, binds } = db.calls[0];
+  assert.match(sql, /kc\.review_status = 'pending'/);
+  assert.match(sql, /kc\.manufacturer_id IN \(SELECT value FROM json_each\(\?\)\)/);
+  const ids = JSON.parse(String(binds[5])) as string[];
+  assert.ok(ids.includes("mark-levinson"));
+  assert.ok(ids.includes("marklevinson"));
+});
+
 test("catalog admin update accepts only canonical leaf categories", () => {
   assert.deepEqual(
     parseKnowledgeCatalogAdminUpdate({
@@ -147,6 +168,47 @@ test("catalog admin update accepts only canonical leaf categories", () => {
     }),
     null,
   );
+});
+
+test("catalog admin manual create canonicalizes manufacturer and validates evidence URL", () => {
+  assert.deepEqual(
+    parseKnowledgeCatalogAdminCreate({
+      manufacturerId: "Mark Levinson",
+      canonicalModel: "  No.5101  ",
+      canonicalName: "  MARK LEVINSON No.5101  ",
+      lifecycleStatus: "active",
+      primaryCategoryId: "turntable",
+      sourceUrl: "https://example.test/evidence",
+    }),
+    {
+      manufacturerId: "mark-levinson",
+      canonicalModel: "No.5101",
+      canonicalName: "MARK LEVINSON No.5101",
+      lifecycleStatus: "active",
+      primaryCategoryId: "turntable",
+      sourceUrl: "https://example.test/evidence",
+    },
+  );
+
+  assert.equal(
+    parseKnowledgeCatalogAdminCreate({
+      manufacturerId: "Mark Levinson",
+      canonicalModel: "No.5101",
+      canonicalName: "MARK LEVINSON No.5101",
+      lifecycleStatus: "active",
+      primaryCategoryId: "turntable",
+      sourceUrl: "javascript:alert(1)",
+    }),
+    null,
+  );
+});
+
+test("catalog admin manual merge accepts only positive product ids", () => {
+  assert.deepEqual(parseKnowledgeCatalogAdminMerge({ sourceProductId: 42 }), {
+    sourceProductId: 42,
+  });
+  assert.equal(parseKnowledgeCatalogAdminMerge({ sourceProductId: 0 }), null);
+  assert.equal(parseKnowledgeCatalogAdminMerge({ sourceProductId: 1.5 }), null);
 });
 
 test("catalog admin category propagation stores the leaf and its search ancestors", () => {
