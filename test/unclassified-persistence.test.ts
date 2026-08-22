@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { runDataQualityRemediationSweep } from "../src/db/data-quality-remediation-service.js";
 import { upsertProducts } from "../src/db/product-write-repository.js";
 import type { CatalogProductUpsertInput } from "../src/catalog/types.js";
-import { asQueryableDatabase } from "./helpers/d1.js";
+import { asQueryableDatabase, captureDatabase } from "./helpers/d1.js";
 
 interface CapturedStatement {
   sql: string;
@@ -98,4 +99,91 @@ test("unclassified products persist the canonical other leaf instead of stale se
   assert.ok(update);
   assert.ok(update.binds.includes('["other"]'));
   assert.ok(update.binds.includes("unclassified"));
+});
+
+const REPLAY_JOB_ROW = {
+  id: 1,
+  work_key: "auto:classify_category:7",
+  work_type: "classify_category",
+  listing_product_id: 7,
+  entity_id: "7",
+  reason: "stale classifier version",
+  source: "auto",
+  status: "processing",
+  priority: 100,
+  attempt_count: 1,
+  max_attempts: 3,
+  available_at: "2026-08-22T00:00:00.000Z",
+  claimed_at: "2026-08-22T00:00:00.000Z",
+  lease_expires_at: "2026-08-22T00:05:00.000Z",
+  resolved_at: null,
+  last_error: "",
+  created_at: "2026-08-22T00:00:00.000Z",
+  updated_at: "2026-08-22T00:00:00.000Z",
+};
+
+/** A listing with no category evidence at all, so the classifier answers "unclassified". */
+const UNCLASSIFIED_LISTING_ROW = {
+  id: 7,
+  shop_key: "fujiya-avic",
+  source_id: "listing-7",
+  manufacturer: "Example",
+  raw_manufacturer: "Example",
+  normalized_raw_manufacturer: "example",
+  manufacturer_id: "example",
+  canonical_manufacturer_id: "example",
+  manufacturer_resolution_status: "resolved",
+  manufacturer_resolution_method: "bootstrap_alias",
+  manufacturer_resolution_confidence: "high",
+  manufacturer_resolver_version: 1,
+  model: "EX-1",
+  raw_model: "EX-1",
+  normalized_model: "EX1",
+  model_resolution_status: "resolved",
+  model_resolution_method: "seller_model",
+  model_resolution_confidence: "medium",
+  model_resolver_version: 1,
+  title: "Example EX-1",
+  category: "",
+  raw_category: "",
+  primary_category_id: "other",
+  category_ids: '["other"]',
+  classification_status: "unclassified",
+  search_aliases: "",
+  metadata_json: "{}",
+  remediation_projection_required: 0,
+  remediation_projection_token: "",
+};
+
+test("the data-quality replay persists the same unclassified shape the crawl path writes", async () => {
+  const db = captureDatabase((statement) => {
+    const sql = statement.sql;
+    if (/WHEN p\.manufacturer_resolver_version < \? THEN 'resolve_manufacturer'/.test(sql))
+      return [];
+    if (/FROM data_quality_remediation_queue INDEXED BY idx_dq_remediation_queue_pending/.test(sql))
+      return [{ id: 1 }];
+    if (/SELECT \*\s+FROM data_quality_remediation_queue\s+WHERE id IN/.test(sql))
+      return [REPLAY_JOB_ROW];
+    if (/SELECT attempt_count, max_attempts FROM data_quality_remediation_queue/.test(sql))
+      return [{ attempt_count: 1, max_attempts: 3 }];
+    if (/FROM products\s+WHERE id = \?/.test(sql)) return [UNCLASSIFIED_LISTING_ROW];
+    return [];
+  });
+
+  await runDataQualityRemediationSweep(db, {
+    seedLimit: 10,
+    claimLimit: 10,
+    leaseSeconds: 300,
+    now: new Date("2026-08-22T00:00:00.000Z"),
+  });
+
+  const replay = db.calls.find((call) => /UPDATE products\s+SET manufacturer = \?/.test(call.sql));
+  assert.ok(replay, "a classify_category job must replay the listing's derived fields");
+  assert.equal(replay.binds[15], "unclassified", "the replay writes the unclassified sentinel");
+  assert.equal(
+    replay.binds[16],
+    '["unclassified"]',
+    "the replay must persist [primary_category_id], never the classifier's in-memory empty array",
+  );
+  assert.equal(replay.binds[17], "unclassified");
 });

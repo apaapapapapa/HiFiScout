@@ -68,38 +68,36 @@
 
 ## 2. 最優先（P0）— これを直さないと他の修正が定着しない
 
-### P0-1. 詳細ページによるカテゴリ補完が本番で一度も動いていない 🔷
+### P0-1. 詳細ページによるカテゴリ補完 ✅ **当初の所見を棄却／(A) を選択**
 
-**対象**: `src/crawler/category-enricher.ts:179-190`、`src/crawler/shops/fujiya-avic.ts:123`
+**訂正（2026-08-22 対応時）**: 「全店舗で完全に死んでいる」という当初の所見は**誤りです**。
 
-**現状**:
-`enrichProductCategories()` は先頭で `adapter.capabilities.detailCategoryEvidence?.extract` を取得し、関数でなければ即座に return します（`category-enricher.ts:179-190`）。
+`src/crawler/shops/index.ts:102` は `fujiya-avic` に対して
+`detailCategoryEvidence: { extract: extractFujiyaDetailCategoryEvidence }` を**実際に登録しています**。
+当初の grep はこの行を「型定義」と誤読していました。実装は `fujiya-avic.ts:92-104` にあり、
+`FUJIYA_CATEGORY_POLICY.enrichment`（`maxRequestsPerCrawl: 20` / `cacheHours: 168`）も
+`category-enricher.ts` から参照されています。`test/category-enricher.test.ts` は
+`result.detailRequests === 1` をアサートしており、(A) の完了条件はすでに満たされています。
 
-```
-const extractor = adapter.capabilities.detailCategoryEvidence?.extract;
-if (typeof extractor !== "function") {
-  return { products: baseProducts, ..., detailRequests: 0, enrichedCount: 0, ... };
-}
-```
+補完は fujiya-avic では**本番で動作しています**。この事実は §4 の E-2 にも波及します
+（「詳細ページ由来ではありえません」という記述は成り立ちません。P0-2 を参照）。
 
-`src/crawler/shops/` 配下で `detailCategoryEvidence` を定義しているアダプタは**1つもありません**（grep のヒットは `index.ts` と `registry.ts` の型定義のみ）。
+**方針**: **(A) 実装する**を選択。理由は、機構がすでに存在し稼働しており、削除すると未分類
+5,047 件の唯一の自動回収経路を失うためです。抽出は `metaDescriptions()` →
+`productLeadText()` の順で**構造化された先頭要素に限定**され、本文全体は渡していません
+（doc が警告した strength=`"strong"` の暴発は起きていません）。
 
-つまり、未分類出品を解決するために設計された仕組みが**全店舗で完全に死んでいます**。`fujiya-avic.ts:123` の `maxRequestsPerCrawl: 20` および `cacheHours: 168` は設定されているだけで一度も参照されません。
-
-**なぜ最優先か**: 未分類 5,047 件（60.2%）の主要な回収経路がこれです。これが動いていない前提で分類ルールをいじると、本来 enricher が解決すべき問題をルール表に押し込むことになり、ルール表が肥大化して §4 のような誤分類を増やします。
-
-**変更内容**: 次のどちらかを選び、選んだ理由をコミットメッセージに書く。
-
-- **(A) 実装する** — 少なくとも `fujiya-avic` と `hifido` に `capabilities.detailCategoryEvidence.extract` を実装する。抽出したテキストは `categoryEvidenceFromText()` に渡す（`src/catalog/category-evidence.ts:52-64`）。**注意**: 同関数は既定で strength を `"strong"` にするため（`category-evidence.ts:57`）、詳細ページ本文をそのまま渡すと本文中の「ケーブル」等が強い証拠として終端分類を発生させます。抽出はパンくず／カテゴリ欄など**構造化された箇所に限定**し、本文全体を渡さないこと。
-- **(B) 削除する** — enricher の詳細取得パスと `enrichment` ポリシー設定（`fujiya-avic.ts:120-124`、`src/catalog/category-evidence.ts:46-49`、`src/catalog/types.ts:365,378`）を削除し、未分類は別経路（ナレッジカタログ／手動）で解決する方針を `docs/data-quality.md` に明記する。
-
-**完了条件**:
-- (A) の場合: `enrichProductCategories` の戻り値 `detailRequests > 0` を検証するユニットテストを `test/` に追加。
-- (B) の場合: `grep -rn "maxRequestsPerCrawl\|detailCategoryEvidence" src/` が型定義以外にヒットしないこと。
+**残作業（P0 外に切り出し）**: `hifido` の `detailCategoryEvidence` は未実装のままです。
+実装には hifido の**商品詳細ページの実 HTML**が必要ですが、リポジトリにフィクスチャがなく、
+アダプタが知っているのは一覧ページの構造だけです。マークアップを推測して抽出器を書くと、
+本指示書自身が警告する「構造化されていない箇所からの strong 証拠」を作り込むことになるため、
+実 HTML を採取するまで着手しません。なお hifido の未分類はそもそも E-3（`CATEGORY_RE` の
+ブロック内自由文検索）と N-1（レコード部門 1,771 件）の寄与が大きく、補完の期待値は
+fujiya-avic ほど高くありません。
 
 ---
 
-### P0-2. 分類・メーカー解決が非決定的 ⚠️ **機構未確認**
+### P0-2. 分類・メーカー解決が非決定的 ✅ **機構特定済み／カテゴリ側は修正済み**
 
 **対象**: 機構の特定が先。候補は `src/db/data-quality-remediation-service.ts` と `src/db/product-write-repository.ts`
 
@@ -146,6 +144,50 @@ FROM products WHERE is_active = 1
 GROUP BY shop_key, title, raw_category HAVING c > 1;
 ```
 
+#### 対応（2026-08-22）— 特定された機構
+
+**カテゴリ側の機構は「詳細補完の予算が出品単位で消費されていたこと」です。** 仮説にあった
+リメディエーション再生の競合ではありません。
+
+`enrichProductCategories()` は未分類出品を**クロール順に1件ずつ**走査し、
+`detailRequests >= policy.enrichment.maxRequestsPerCrawl` になった時点で以降を素通しにして
+いました。fujiya-avic の予算は 20 件/クロールで、同店の未分類は約 1,180 件あるため、予算は
+毎回途中で尽きます。同一商品が別 `source_id` で複数出品されていると、**予算の境界をまたいだ
+グループだけが分裂**します。境界より前の複製は詳細ページから終端カテゴリを得て `classified`
+になり、後ろの複製は未分類のまま残ります。
+
+これは P0-1 の訂正と整合します。補完が動いているのは fujiya-avic だけで、本節の分裂例も
+**すべて fujiya-avic** です。E-2 の `cable_other` 過剰マッチ（`MAGNETAR UDP900` ×4 が
+`cable_other` 3件 / `other` 1件）も同じ機構で、「詳細ページ由来ではありえません」という
+§4 の記述は成り立ちません。
+
+再現テスト: `test/category-enrichment-determinism.test.ts`。同一商品3件・予算1件で走らせると
+修正前は `['btw_earphone', 'other', 'other']` を返し、監査が観測した分裂形状をそのまま再現します。
+
+**修正**: 補完の判断単位を「出品」から「商品同定（`manufacturerId` + `model` + `title`、
+`sameIdentity()` と同じ三つ組）」に変更しました（`src/crawler/category-enricher.ts`）。
+
+1. 未分類出品を同定キーでグループ化し、**1グループにつき詳細リクエストは最大1回**。
+   予算は出品数ではなく商品数を数えるようになり、グループ内での分裂が構造的に起きません。
+2. 取得した詳細証拠は各出品の**自前の seller 証拠と合成**します。seller カテゴリが実際に
+   異なる複製は、これまでどおり異なる結果になれます。
+3. グループ内のいずれかの複製が過去クロールで詳細分類をキャッシュ済みなら、**同定単位で
+   全複製に適用**します。これが既存の分裂行を次回クロールで収束させる経路です。
+4. 「詳細を見たが決まらなかった」も同定単位でキャッシュし、`cacheHours` を複製ごとに
+   払い直さないようにしました。
+
+回帰テストは、複製グループが常に単一の結果を持つこと、および**入力順を反転しても結果が
+変わらないこと**をアサートします。
+
+**メーカー側について**: `manufacturer_id` の分裂は別機構です。解決器自体は与えられた
+エイリアス証拠に対して純粋関数で、非決定性は `listManufacturerAliasEvidence(db)` が返す
+**D1 上の運用エイリアスが時間とともに増える**ことに由来します。書き込み時刻が違う行は違う
+語彙で解決され、収束はレート制限されたリメディエーション再生に委ねられています（設計どおり
+の最終収束であって、書き込み経路の競合ではありません）。なお本節の集計は
+`raw_manufacturer` でグルーピングしていないため、(shop, title, raw_category) が同じでも
+seller のメーカー欄が異なる行を含んでおり、59 グループ / 207 件は上振れしています。恒久対応は
+N-3 の担当範囲です。
+
 ---
 
 ### P0-3. 未分類行に2種類の DB 表現がある ✅ 検証済み
@@ -172,6 +214,17 @@ GROUP BY shop_key, title, raw_category HAVING c > 1;
 **副次的な同種違反**（別チケット可）: 分類済み 19 行が2要素のクロージャを保持しています（例 `["pre_amp","amplifier"]`、`["master_clock","digital"]`）。書き込み元は `src/db/knowledge-catalog-repository.ts:336` と `src/db/knowledge-catalog-admin-repository.ts:245`。`migrations/0013_category_feature_model.sql` が宣言する「カテゴリは単一リーフ」不変条件に反します。
 
 **完了条件**: `SELECT COUNT(*) FROM products WHERE classification_status='unclassified' AND category_ids='[]'` が 0。
+
+#### 対応（2026-08-22）✅
+
+- `src/db/data-quality-remediation-service.ts` の `categoryIdsJson` を `catalogFields()` と同じ
+  導出に揃えました（空配列なら `[primaryCategoryId]`）。分類器の `categoryIds: []` はメモリ上の
+  契約のまま**変更していません**。
+- 既存行は `migrations/0040_normalize_unclassified_category_ids.sql` が修復します
+  （`classification_status='unclassified'` かつ `category_ids` が空/NULL/`[]` の行のみ）。
+  `category_ids` は検索読み取りモデルに射影されないため、投影の再構築は不要です。
+- `test/unclassified-persistence.test.ts` に再生パス側のテストを追加しました。クロールパスの
+  既存テストと並んで、両方の書き込み経路が同じ形を書くことを固定します。
 
 ---
 
@@ -206,6 +259,31 @@ category: getCategory(row.primary_category_id)?.name ?? ""
 - `src/catalog/categories.ts:891-897` の `normalizeCategory()` は3つめの書き込み経路で、`primaryCategoryId:"other"` + `categoryIds:["other"]` + `displayName:"その他"` を書きつつ `classificationStatus:"unclassified"` にします。P0-3 の 1,994 件の発生源はおそらくここです。
 
 **やってはいけないこと**: `other` リーフを削除・転用しないこと。256 件の「その他」のうち 184 件は本物の雑多カテゴリ（チューナー、イコライザー、チャンネルデバイダー等）です。修正は**未分類側に専用 ID を与える**ことであり、`other` には手を触れません。
+
+#### 対応（2026-08-22）✅
+
+センチネル `unclassified`（表示名「未分類」、`classifiable:false` / `filterable:false`）を追加し、
+`other` リーフには一切手を触れていません。
+
+| 指示 | 実装 |
+| --- | --- |
+| 1. センチネル追加 | `src/catalog/categories.ts` の `UNCLASSIFIED_CATEGORY_ID`、型は `UnclassifiedCategoryId`（`src/catalog/types.ts`） |
+| 2. `unresolved()` の切り替え | `src/catalog/category-classifier.ts`。あわせて `normalizeCategory()` と `catalogFields()` のフォールバックも `other` からセンチネルへ（3つ目の書き込み経路） |
+| 3. `未分類` の表示 | 追加不要でした。`product-search-entity-mapper.ts` は ID から名前を再導出するので、定義があるだけで「未分類」を返します |
+| 4. 検索エンティティへの射影 | fallback エンティティは `p.primary_category_id` をそのまま写すため自動。カタログエンティティの `COALESCE(..., 'other')` はセンチネルに変更 |
+| 5. 「その他」フィルタの非拡張 | `unclassified` は `parentId: null` かつ `classifiable:false` なので `categoryClosureIds()` が空を返し、`categoryFilterIds("other")` に含まれません。`test/unclassified-category-sentinel.test.ts` で固定 |
+| 6. バージョン bump とバックフィル | `CLASSIFICATION_METADATA_VERSION` 12 → 13、`migrations/0041_separate_unclassified_category_sentinel.sql` |
+
+**落とし穴への対応**:
+
+- バックフィルの条件は `classification_status='unclassified'` です（`category_ids='[]'` では 1,994 件を取りこぼす）。テストが `category_ids = '[]'` を含まないことをアサートしています。
+- 検索エンティティは**代表出品経由**でのみ移します（`fallback_listing_id IN (...)`）。0036 の完全一致グルーピングにより、分類済みの代表を持つエンティティに未分類の出品が同居しうるため、出品数とエンティティ数は一致しません。
+- バージョン bump により全出品が `classify_category` 再生の対象になります（`STALE_SELECTORS` の `category_version`）。マイグレーションはその高速路であり、取りこぼしはキューが収束させます。
+
+**波及した既存挙動（意図的に保存）**:
+
+- `src/db/product-search-exact-identity.ts` の `categoryCompatible()` は「カテゴリ未特定」を衝突とみなさない判定です。センチネル分離前は `other` 一つがその役割を兼ねていたため、`NOT IN ('other', 'unclassified')` に広げてグルーピング結果を現状どおりに保っています。
+- 出品管理画面のカテゴリ選択は、センチネルを**保存可能な選択肢として出しません**（API 側も `categoryIdForClassification()` で拒否済み）。未分類の出品は「未選択」で開き、実在するリーフを選ぶまで保存できません。
 
 ---
 
@@ -692,11 +770,15 @@ N-3 参照。実際に異なるブランドの商品であり、解決は正し�
 
 依存関係を考慮した順序です。**P0-2 の機構特定を飛ばさないでください** — 非決定性が残ったままルールを直すと、修正の効果が測定できません。
 
+> **進捗（2026-08-22）**: P0 の 4 項目は対応済みです — P0-1 は所見を訂正のうえ (A) を選択
+> （hifido のみ実 HTML 待ちで残置）、P0-2 はカテゴリ側の機構を特定して修正、P0-3 と P0-4 は
+> 実装＋バックフィル済み。以下の表の P0 行は履歴として残しています。
+
 | 順 | 項目 | 影響件数 | 種別 |
 | ---: | --- | ---: | --- |
 | 1 | **N-1** hifido レコード部門の除外 | **1,771**（21.1%） | クローラ範囲 |
-| 2 | **P0-3** `category_ids` の二重表現を解消 | 3,053 | 1行修正 |
-| 3 | **P0-2** 非決定性の**機構特定**（修正は特定後） | 655+ | 調査 |
+| 2 | ~~**P0-3** `category_ids` の二重表現を解消~~ ✅ | 3,053 | 1行修正 |
+| 3 | ~~**P0-2** 非決定性の**機構特定**~~ ✅（カテゴリ側は修正済み。メーカー側は N-3） | 655+ | 調査 |
 | 4 | **G-1** `category-rules.ts:111` からスピーカー削除 | 48〜54 が凍結解除、~500 が補完対象に | 1行修正 |
 | 5 | **N-2** `MANUFACTURER_SOURCE` にブランド追加 | **5,955 が同定経路に到達**（71%） | データ追加 |
 | 6 | **N-3** `manufacturer_id` 書き込みの一貫性 | 1,549 + 2,272 | 2箇所修正 |
@@ -704,8 +786,8 @@ N-3 参照。実際に異なるブランドの商品であり、解決は正し�
 | 8 | **E-1** ワイヤレスのルール追加 | 43 | ルール追加 |
 | 9 | **N-4** プレースホルダーブランドのストップリスト | 85（公開ファセット汚染） | ストップリスト |
 | 10 | **E-2** `cable_other` 過剰マッチの**調査**（修正は調査後） | 53 | 調査 |
-| 11 | **P0-4** 未分類センチネル ID の分離 | 5,047（UX） | 大（migration 必須） |
-| 12 | **P0-1** 詳細補完の実装 or 削除の決定 | 5,047 の回収経路 | 大 |
+| 11 | ~~**P0-4** 未分類センチネル ID の分離~~ ✅ | 5,047（UX） | 大（migration 必須） |
+| 12 | ~~**P0-1** 詳細補完の実装 or 削除の決定~~ ✅ (A) を選択（hifido は残置） | 5,047 の回収経路 | 大 |
 | 13 | **G-2** DAP のタイトル判定 | 最低 40+ | ルール追加 |
 | 14 | **N-5** 末尾和文製品種別語の注釈ルール | 56 | ルール追加 |
 

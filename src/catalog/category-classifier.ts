@@ -1,4 +1,9 @@
-import { categoryIdForClassification, categorySearchAliases, getCategory } from "./categories.js";
+import {
+  UNCLASSIFIED_CATEGORY_ID,
+  categoryIdForClassification,
+  categorySearchAliases,
+  getCategory,
+} from "./categories.js";
 import {
   CATEGORY_EVIDENCE_STRENGTHS,
   isCategoryEvidenceStrength,
@@ -42,7 +47,9 @@ function unresolved(
 ): CategoryClassification {
   const candidateCategoryIds = [...new Set(evidence.map((item) => item.categoryId))];
   return {
-    primaryCategoryId: "other",
+    // The sentinel, never the `other` leaf: `other` is a real category (tuner, equalizer,
+    // channel divider) that a product can genuinely belong to.
+    primaryCategoryId: UNCLASSIFIED_CATEGORY_ID,
     categoryIds: [],
     displayName: "未分類",
     classificationStatus: "unclassified",

@@ -48,7 +48,7 @@ test("DAC inference requires a DAC-specific expression rather than generic conve
   assert.equal(normalizeCategory({ title: "D/A Converter Model X" }).primaryCategoryId, "dac");
   assert.equal(
     normalizeCategory({ title: "AC Power Converter Model X" }).primaryCategoryId,
-    "other",
+    "unclassified",
   );
 });
 
@@ -100,7 +100,7 @@ test("unknown products remain visible but are explicitly unclassified", () => {
   const product = normalizeCatalogProduct(
     parsedProduct({ title: "Mystery Device XYZ", rawCategory: "特殊機器" }),
   );
-  assert.equal(product.primaryCategoryId, "other");
+  assert.equal(product.primaryCategoryId, "unclassified");
   assert.deepEqual(product.categoryIds, []);
   assert.equal(product.category, "未分類");
   assert.equal(product.classificationStatus, "unclassified");
@@ -177,7 +177,7 @@ test("a corroborative seller category alone remains unclassified instead of beco
       categoryPolicy: { sellerCategory: { categories: { dap: "corroborative" } } },
     },
   );
-  assert.equal(product.primaryCategoryId, "other");
+  assert.equal(product.primaryCategoryId, "unclassified");
   assert.deepEqual(product.categoryIds, []);
   assert.equal(product.category, "未分類");
   assert.equal(product.classificationStatus, "unclassified");

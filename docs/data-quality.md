@@ -15,12 +15,29 @@ Snapshot quality and crawl-run quality are semantically separate even though the
 Snapshot metrics are calculated in D1 with `COUNT(*)` and `SUM(CASE ...)` over active listings for one shop. Products are not loaded wholesale into a Worker.
 
 - Manufacturer Unknown: listings whose dedicated `manufacturer_resolution_status` is not `resolved`, split into missing and non-empty raw seller values. Raw evidence, normalized raw keys, canonical IDs, method, confidence, and resolver version are stored explicitly; bounded metadata keeps the corresponding explanation for compatibility and audit.
-- Category Unclassified: `classification_status != 'classified'`. Canonical `other` remains separate as `other_category_count`.
+- Category Unclassified: `classification_status != 'classified'`. Canonical `other` remains separate as `other_category_count`; both counts are gated on `classification_status`, so the unclassified backlog has never been mixed into the `other` metric.
 - Product Identity Unresolved: denominator is every active listing. Explicit `unresolved` resolution rows count as unresolved, and any active listing with no `product_identity_resolutions` row is also treated as unresolved instead of disappearing from the metric. Stored/API detail `identityResolutionMissingCount` is derived as `active listings - matched - unresolved`, making coverage gaps directly observable.
 - Inventory Unknown: `stock_status = 'unknown'`; all other canonical availability states are treated as known.
 - Model Missing: denominator is `model_expected_count`, not all products. Canonical accessory leaves (`cable`, `rack`, `power_accessory`, `vacuum_tube`, `other_accessory`) and canonical `other` are excluded from the model-required population so products that legitimately may not have a model number are not counted as extraction failures. A listing counts as extracted only when its dedicated `model_resolution_status` is `resolved`; a `candidate` listing has a model the resolver could not fully classify and is counted as an extraction failure rather than as a success.
 
 Every ratio retains count and denominator. A zero denominator produces `rate: null` and `status: unknown` rather than an artificial 0% or 100%.
+
+### The unclassified sentinel
+
+"The classifier could not decide" has its own category id, `unclassified` (display name `未分類`).
+It is deliberately neither `classifiable` nor `filterable`: no classifier may target it, it never
+appears as a public filter option, and `categoryFilterIds("other")` does not expand to it.
+
+It exists because `other` is a real, intentional leaf — tuner, equalizer, channel divider — and the
+classifier used to answer with that same id. Since the search read model re-derives the label from
+the stored id (`src/db/product-search-entity-mapper.ts`), the stored `未分類` was discarded and the
+whole backlog surfaced to users as `その他`, inside the same filter as the genuine ones.
+
+Three write paths produce it, and all three must agree:
+`unresolved()` in `src/catalog/category-classifier.ts`, the fallback in `normalizeCategory()`, and
+the fallback in `catalogFields()` (`src/db/product-write-repository.ts`). The classifier's in-memory
+`categoryIds: []` is a separate contract — `category-enricher.ts` and `page-verification.ts` read an
+empty list as "not classified" — but every persisted row carries `[primary_category_id]`.
 
 For Product Identity specifically, the invariant is:
 

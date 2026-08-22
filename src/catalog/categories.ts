@@ -10,6 +10,13 @@ import type {
 } from "./types.js";
 import { inferExplicitCategoryIds } from "./category-rules.js";
 
+/** @see UnclassifiedCategoryId */
+export const UNCLASSIFIED_CATEGORY_ID = "unclassified" as const;
+
+export function isUnclassifiedCategoryId(value: string): boolean {
+  return value === UNCLASSIFIED_CATEGORY_ID;
+}
+
 /** Taxonomy rows as authored; `selectable` is derived from `filterable` below. */
 const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
   {
@@ -723,6 +730,18 @@ const AUTHORED_CATEGORIES: readonly Omit<CategoryDefinition, "selectable">[] = [
       "チャンネルデバイダー",
     ],
   },
+  {
+    // The sentinel for "not classified yet", deliberately neither classifiable nor filterable: no
+    // classifier may target it as an answer, and it must never appear as a public filter option.
+    // It still needs a definition so `getCategory()` can give the read model a display name.
+    id: UNCLASSIFIED_CATEGORY_ID,
+    name: "未分類",
+    parentId: null,
+    order: 99,
+    classifiable: false,
+    filterable: false,
+    aliases: [],
+  },
 ];
 
 const CATEGORY_SOURCE: readonly CategoryDefinition[] = AUTHORED_CATEGORIES.map((category) =>
@@ -889,9 +908,11 @@ export function normalizeCategory({
     primaryCategoryId = inferLeaf(title);
     if (primaryCategoryId) source = "title_inference";
   }
-  primaryCategoryId ||= "other";
-  const primary = getCategory(primaryCategoryId) ?? getCategory("other");
-  if (!primary) throw new Error("Missing required fallback category: other");
+  // Nothing matched, so this is the sentinel, not the `other` leaf. Writing `other` here was one
+  // of the three paths that made "未分類" indistinguishable from "その他" in the read model.
+  primaryCategoryId ||= UNCLASSIFIED_CATEGORY_ID;
+  const primary = getCategory(primaryCategoryId) ?? getCategory(UNCLASSIFIED_CATEGORY_ID);
+  if (!primary) throw new Error("Missing required fallback category: unclassified");
   return {
     primaryCategoryId: primary.id,
     categoryIds: [primary.id],

@@ -167,7 +167,8 @@ function editIsDirty(): boolean {
   return (
     editManufacturerId.value.trim().toLowerCase() !== editingSnapshot.manufacturerId ||
     editModel.value.trim() !== editingSnapshot.model ||
-    editCategory.value !== editingSnapshot.primaryCategoryId
+    // Clearing the select back to "unset" is not an edit: an override must name a real leaf.
+    (editCategory.value !== "" && editCategory.value !== editingSnapshot.primaryCategoryId)
   );
 }
 
@@ -353,6 +354,12 @@ function populateCategories(): void {
   categoryFilter.appendChild(all);
 
   editCategory.replaceChildren();
+  // A listing the classifier could not decide has no category selected, so the dialog needs a
+  // state for that. Saving it is not possible: the API only accepts a classifiable leaf.
+  const unset = document.createElement("option");
+  unset.value = "";
+  unset.textContent = "未分類（未選択）";
+  editCategory.appendChild(unset);
   for (const category of categories) {
     if (category.filterable) {
       const option = document.createElement("option");
@@ -410,12 +417,19 @@ function closeEdit(force = false): void {
   updateInteractionState();
 }
 
+/** Only a classifiable leaf is selectable; anything else — the sentinel included — is "unset". */
+function classifiableCategoryId(primaryCategoryId: string): string {
+  return categories.some((category) => category.id === primaryCategoryId && category.classifiable)
+    ? primaryCategoryId
+    : "";
+}
+
 function openEdit(product: ListingProduct): void {
   editingId = product.id;
   editingSnapshot = {
     manufacturerId: product.canonicalManufacturerId || product.manufacturerId || "",
     model: product.model || "",
-    primaryCategoryId: product.primaryCategoryId || "other",
+    primaryCategoryId: classifiableCategoryId(product.primaryCategoryId),
   };
   editTitle.textContent = product.title;
   editSource.textContent = `${product.shopKey} / ${product.sourceId} / listing #${product.id}`;
@@ -443,7 +457,8 @@ async function saveEditing(): Promise<void> {
   const primaryCategoryId = editCategory.value;
   if (manufacturerId !== editingSnapshot.manufacturerId) input.manufacturerId = manufacturerId;
   if (model !== editingSnapshot.model) input.model = model;
-  if (primaryCategoryId !== editingSnapshot.primaryCategoryId) {
+  // "unset" is where an unclassified listing starts, never something to submit: the API rejects it.
+  if (primaryCategoryId && primaryCategoryId !== editingSnapshot.primaryCategoryId) {
     input.primaryCategoryId = primaryCategoryId;
   }
 
