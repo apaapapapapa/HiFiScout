@@ -12,15 +12,12 @@
   "queues": {
     "producers": [
       { "binding": "CRAWL_QUEUE", "queue": "hifiscout-crawl" },
-      { "binding": "KNOWLEDGE_CATALOG_QUEUE", "queue": "hifiscout-knowledge-verification" },
-      { "binding": "PRODUCT_AUDIT_EXPORT_QUEUE", "queue": "hifiscout-product-audit-export" }
+      { "binding": "KNOWLEDGE_CATALOG_QUEUE", "queue": "hifiscout-knowledge-verification" }
     ],
     "consumers": [
       { "queue": "hifiscout-crawl", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 3, "retry_delay": 60, "dead_letter_queue": "hifiscout-crawl-dlq", "max_concurrency": 4 },
       { "queue": "hifiscout-knowledge-verification", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 100, "retry_delay": 300, "dead_letter_queue": "hifiscout-knowledge-verification-dlq", "max_concurrency": 4 },
-      { "queue": "hifiscout-knowledge-verification-dlq", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 3, "retry_delay": 300, "max_concurrency": 1 },
-      { "queue": "hifiscout-product-audit-export", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 10, "retry_delay": 30, "dead_letter_queue": "hifiscout-product-audit-export-dlq", "max_concurrency": 1 },
-      { "queue": "hifiscout-product-audit-export-dlq", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 3, "retry_delay": 30, "max_concurrency": 1 }
+      { "queue": "hifiscout-knowledge-verification-dlq", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 3, "retry_delay": 300, "max_concurrency": 1 }
     ]
   },
   "ratelimits": [{ "name": "API_RATE_LIMITER", "namespace_id": "541721", "simple": { "limit": 120, "period": 60 } }],
@@ -36,6 +33,7 @@
     "AFROAUDIO_ENABLED": "true",
     "OSAKAYA_ENABLED": "true",
     "SOUNDPIT_ENABLED": "true",
+    "SOUND_SUPPORT_ENABLED": "true",
     "AVAC_ENABLED": "true",
     "AUDIOUNION_INTERVAL_MINUTES": "60",
     "IPPINKAN_INTERVAL_MINUTES": "60",
@@ -48,6 +46,7 @@
     "AFROAUDIO_INTERVAL_MINUTES": "60",
     "OSAKAYA_INTERVAL_MINUTES": "60",
     "SOUNDPIT_INTERVAL_MINUTES": "60",
+    "SOUND_SUPPORT_INTERVAL_MINUTES": "60",
     "AVAC_INTERVAL_MINUTES": "60",
     "AUDIOUNION_REQUEST_DELAY_MS": "10000",
     "IPPINKAN_REQUEST_DELAY_MS": "1200",
@@ -60,6 +59,7 @@
     "AFROAUDIO_REQUEST_DELAY_MS": "1200",
     "OSAKAYA_REQUEST_DELAY_MS": "1200",
     "SOUNDPIT_REQUEST_DELAY_MS": "1200",
+    "SOUND_SUPPORT_REQUEST_DELAY_MS": "1200",
     "AVAC_REQUEST_DELAY_MS": "1500",
     "AUDIOUNION_INVENTORY_RECHECK_ENABLED": "true",
     "AUDIOUNION_INVENTORY_RECHECK_MIN_AGE_HOURS": "24",
@@ -73,6 +73,7 @@
     "AFROAUDIO_MAX_PAGES": "50",
     "OSAKAYA_MAX_PAGES": "20",
     "SOUNDPIT_MAX_PAGES": "50",
+    "SOUND_SUPPORT_MAX_PAGES": "20",
     "AVAC_MAX_PAGES": "50",
     "HIFIDO_RECHECK_MAX_PAGE": "120",
     "CRAWL_REQUEST_DELAY_MS": "1200",

@@ -34,6 +34,11 @@ import { dynamicAudioAdapter } from "./dynamic-audio.js";
 import { afroAudioAdapter } from "./afroaudio.js";
 import { osakayaAdapter } from "./osakaya.js";
 import { soundPitAdapter } from "./soundpit.js";
+import {
+  SOUND_SUPPORT_CATEGORY_MAPPING,
+  SOUND_SUPPORT_CATEGORY_POLICY,
+  soundSupportAdapter,
+} from "./sound-support.js";
 import { avacAdapter } from "./avac.js";
 // shop-generator:imports
 
@@ -186,6 +191,22 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
     defaultIntervalMinutes: 60,
     defaultMaxPages: 50,
   }),
+  defineShopPlugin(
+    soundSupportAdapter,
+    {
+      key: "sound-support",
+      name: "Sound Support",
+      baseUrl: "https://sound-support.jp",
+      defaultIntervalMinutes: 60,
+      defaultMaxPages: 20,
+    },
+    {
+      catalog: {
+        categoryMapping: SOUND_SUPPORT_CATEGORY_MAPPING,
+        categoryPolicy: SOUND_SUPPORT_CATEGORY_POLICY,
+      },
+    },
+  ),
   defineShopPlugin(avacAdapter, {
     key: "avac",
     name: "アバック",
