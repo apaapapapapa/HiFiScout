@@ -11,7 +11,7 @@ import {
 } from "../db/shop-state-repository.js";
 import { syncProductSearchEntities } from "../db/product-search-entity-repository.js";
 import { recheckShopInventory } from "./inventory-recheck.js";
-import { crawlQueueSender } from "./queue-lanes.js";
+import { crawlQueueLane, crawlQueueSender } from "./queue-lanes.js";
 import { crawlShop, isShopDue } from "./run.js";
 import { getShopPlugin, SHOP_PLUGINS } from "./shops/index.js";
 import { isTransportConfigured } from "./transport.js";
@@ -134,8 +134,7 @@ function logBatchDispatch(
   for (const shopKey of queued) {
     const candidate = candidateByKey.get(shopKey);
     if (!candidate) continue;
-    const destination = crawlQueueSender({} as CrawlerEnv, candidate.adapter);
-    if (destination) lanes[destination.lane] += 1;
+    lanes[crawlQueueLane(candidate.adapter)] += 1;
   }
   console.log(
     JSON.stringify({
@@ -208,6 +207,7 @@ async function dispatchOneCrawl(
       candidateCount: 1,
       queuedCount: reserved ? 1 : 0,
       queued: reserved ? [plugin.key] : [],
+      lanes: { [crawlQueueLane(plugin)]: reserved ? 1 : 0 },
     }),
   );
   return reserved
