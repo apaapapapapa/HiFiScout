@@ -12,6 +12,7 @@ import type { NormalizedCatalogProduct } from "../src/catalog/types.js";
 import type { CategoryEnrichmentProductRow } from "../src/db/types.js";
 import { detailFetchOptions, emptyCatalogDb, parsedProduct } from "./helpers/fixtures.js";
 
+// These regressions exercise the two post-merge review findings from #270 and #271 end to end.
 test("DAP accessory guard covers accessory words before the brand as well as after it", () => {
   for (const title of [
     "ケース Astell&Kern SP2000",
