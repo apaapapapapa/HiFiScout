@@ -8,7 +8,9 @@ const MIGRATION_DIRECTORY = new URL("../migrations/", import.meta.url);
 function databaseBeforeExactIdentityBackfill(): DatabaseSync {
   const sqlite = new DatabaseSync(":memory:");
   const migrations = readdirSync(MIGRATION_DIRECTORY)
-    .filter((file) => file.endsWith(".sql") && file < "0036_group_exact_unresolved_product_offers.sql")
+    .filter(
+      (file) => file.endsWith(".sql") && file < "0036_group_exact_unresolved_product_offers.sql",
+    )
     .sort();
   for (const file of migrations) {
     sqlite.exec(readFileSync(new URL(file, MIGRATION_DIRECTORY), "utf8"));
@@ -63,7 +65,11 @@ function insertListing(sqlite: DatabaseSync, fixture: ListingFixture): number {
   return Number(result.lastInsertRowid);
 }
 
-function createFallbackEntity(sqlite: DatabaseSync, listingId: number, fixture: ListingFixture): number {
+function createFallbackEntity(
+  sqlite: DatabaseSync,
+  listingId: number,
+  fixture: ListingFixture,
+): number {
   const result = sqlite
     .prepare(`
       INSERT INTO product_search_entities(
@@ -186,7 +192,9 @@ test("0036 groups only safe exact identities and prunes only affected fallback e
   const abandonedFiberEntityId =
     listingIds[0]! < listingIds[1]! ? originalEntityIds[1]! : originalEntityIds[0]!;
   assert.equal(
-    sqlite.prepare("SELECT 1 FROM product_search_entities WHERE id = ?").get(abandonedFiberEntityId),
+    sqlite
+      .prepare("SELECT 1 FROM product_search_entities WHERE id = ?")
+      .get(abandonedFiberEntityId),
     undefined,
   );
 
