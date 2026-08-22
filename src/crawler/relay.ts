@@ -6,6 +6,8 @@ import type {
 } from "./types.js";
 import { decodeHtmlResponse } from "./fetch.js";
 
+const RELAY_HTTP_TIMEOUT_MS = 30_000;
+
 function configured(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
@@ -53,6 +55,9 @@ async function requestRelayPage(
       requestDelayMs: Number(requestDelayMs) || 0,
     }),
     redirect: "follow",
+    // Relay calls must fail inside the crawl result/backoff path before a stalled relay invocation
+    // can consume the Cloudflare Queue worker's full wall-clock budget.
+    signal: AbortSignal.timeout(RELAY_HTTP_TIMEOUT_MS),
   });
 
   const upstreamStatus = Number.parseInt(

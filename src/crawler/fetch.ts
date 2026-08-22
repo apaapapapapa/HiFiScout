@@ -2,6 +2,7 @@ import type { AugmentedCrawlError, FetchHtmlPageOptions } from "./types.js";
 import { fetchRobotsPolicy, getCrawlDelayMs, isPathAllowed } from "./robots.js";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const CRAWL_HTTP_TIMEOUT_MS = 30_000;
 
 function responseCharset(contentType = ""): string {
   const raw = contentType.match(/charset\s*=\s*["']?([^;"'\s]+)/i)?.[1]?.toLowerCase();
@@ -62,6 +63,10 @@ export async function fetchHtmlPage(
       "Cache-Control": "no-cache",
     },
     redirect: "follow",
+    // A single upstream that never answers must fail inside the crawler's catch/backoff path
+    // instead of consuming the Queue worker's 15-minute wall-clock budget and disappearing as a
+    // hard kill with only last_attempt_at advanced.
+    signal: AbortSignal.timeout(CRAWL_HTTP_TIMEOUT_MS),
   });
 
   if (response.status === 403 || response.status === 429) {
