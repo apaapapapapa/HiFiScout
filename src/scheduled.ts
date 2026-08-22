@@ -22,6 +22,7 @@ import {
   claimKnowledgeCatalogVerifierVersion,
   knowledgeCatalogVerifierState,
 } from "./db/knowledge-catalog-verifier-state-repository.js";
+import { repairActiveListingProjectionGaps } from "./db/product-search-gap-repair.js";
 import { getSyncHealth, logSyncHealth } from "./health.js";
 import {
   dispatchKnowledgeCatalogDailyVerification,
@@ -46,12 +47,13 @@ function logDispatchResult(cron: string, dispatch: DispatchResult): void {
 }
 
 /**
- * Retention cleanup and the daily verification dispatch are independent, so both are attempted
+ * Retention, projection self-healing and daily verification are independent, so all are attempted
  * even when one fails — but the first failure is still rethrown so the cron is reported as failed.
  */
 async function runDailyMaintenance(env: Env) {
-  const [retention, catalog] = await Promise.allSettled([
+  const [retention, projectionRepair, catalog] = await Promise.allSettled([
     runRetentionCleanup(env),
+    repairActiveListingProjectionGaps(env.DB),
     dispatchKnowledgeCatalogDailyVerification(env),
   ]);
   if (retention.status === "rejected") {
@@ -59,6 +61,14 @@ async function runDailyMaintenance(env: Env) {
       JSON.stringify({
         event: "daily_retention_failed",
         message: errorMessage(retention.reason),
+      }),
+    );
+  }
+  if (projectionRepair.status === "rejected") {
+    console.error(
+      JSON.stringify({
+        event: "product_search_projection_repair_failed",
+        message: errorMessage(projectionRepair.reason),
       }),
     );
   }
@@ -71,8 +81,13 @@ async function runDailyMaintenance(env: Env) {
     );
   }
   if (retention.status === "rejected") throw retention.reason;
+  if (projectionRepair.status === "rejected") throw projectionRepair.reason;
   if (catalog.status === "rejected") throw catalog.reason;
-  return { retention: retention.value, catalog: catalog.value };
+  return {
+    retention: retention.value,
+    projectionRepair: projectionRepair.value,
+    catalog: catalog.value,
+  };
 }
 
 export async function runScheduled(cron: string, env: Env) {
