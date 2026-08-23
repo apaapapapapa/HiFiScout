@@ -1,0 +1,42 @@
+name: DQ State Probe
+
+on:
+  push:
+    branches: [fix/resolver-replay-batch-timeout]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_ACCOUNT_ID: 9af87af4dbc00be3bfd4c8af3f52f684
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Query production resolver state
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute DB --remote --json --command "
+            SELECT
+              COUNT(*) AS active_listings,
+              SUM(CASE WHEN manufacturer_resolver_version < 7 THEN 1 ELSE 0 END) AS stale_manufacturer,
+              SUM(CASE WHEN model_resolver_version < 6 THEN 1 ELSE 0 END) AS stale_model,
+              SUM(CASE WHEN COALESCE(CAST(json_extract(metadata_json, '$.categoryClassification.version') AS INTEGER), 0) < 14 THEN 1 ELSE 0 END) AS stale_category,
+              SUM(CASE WHEN remediation_projection_required = 1 THEN 1 ELSE 0 END) AS projection_dirty
+            FROM products WHERE is_active = 1;
+            SELECT
+              SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+              SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END) AS processing,
+              SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) AS resolved,
+              SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed
+            FROM data_quality_remediation_queue;
+          "
