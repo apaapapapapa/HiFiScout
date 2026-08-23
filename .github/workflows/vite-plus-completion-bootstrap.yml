@@ -1,0 +1,33 @@
+name: Vite+ completion bootstrap
+
+on:
+  push:
+    branches: [fix/complete-vite-plus-migration]
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.17.0
+        with:
+          version: "0.2.9"
+          node-version: "22"
+          run-install: false
+          cache: false
+      - name: Inventory remaining legacy Node toolchain entrypoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -RInE 'actions/setup-node|(^|[[:space:]])npm (ci|run|exec|pack|audit)|(^|[[:space:]])npx (wrangler|playwright|tsx|vitepress|vitest|vite|oxlint|oxfmt)' .github package.json README.md AGENTS.md docs || true
+      - name: Verify official Vite+ migration is idempotent
+        shell: bash
+        run: |
+          set -euo pipefail
+          vp migrate --no-interactive
+          git diff --exit-code
