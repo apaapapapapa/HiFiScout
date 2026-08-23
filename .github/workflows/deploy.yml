@@ -28,6 +28,22 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ env.DEPLOY_SHA }}
+      - name: Record deployment identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid deployment SHA: $DEPLOY_SHA" >&2
+            exit 1
+          fi
+          printf '%s\n' "$DEPLOY_SHA" > deployment-sha.txt
+      - name: Publish deployment identity artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: deployment-identity
+          path: deployment-sha.txt
+          retention-days: 1
+          if-no-files-found: error
       - name: Resolve production base URL
         shell: bash
         env:
