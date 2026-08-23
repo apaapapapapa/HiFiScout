@@ -73,7 +73,7 @@ test("Sound Support listing parser extracts selling price instead of MSRP and pr
   assert.match(products[1]?.conditionText || "", /売約済/u);
 });
 
-test("Sound Support adapter crawls all inventory categories directly and is registered hourly", () => {
+test("Sound Support adapter crawls all inventory categories directly and follows the crawl rotation", () => {
   const targets = initialPageQueue(soundSupportAdapter, 20);
   assert.equal(targets.length, 10);
   assert.deepEqual(
@@ -96,7 +96,7 @@ test("Sound Support adapter crawls all inventory categories directly and is regi
 
   const plugin = getShopPlugin("sound-support");
   assert.ok(plugin);
-  assert.equal(plugin.definition.defaultIntervalMinutes, 60);
+  assert.equal(plugin.definition.defaultIntervalMinutes, 140);
   assert.equal(plugin.definition.defaultMaxPages, 20);
   assert.equal(plugin.definition.envPrefix, "SOUND_SUPPORT");
 
