@@ -23,18 +23,6 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Inspect worker test environment setup
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo '--- relevant source paths ---'
-          find . -path './node_modules' -prune -o -type f \( -name 'env.ts' -o -name 'worker.ts' \) -print
-          echo '--- validateEnv references ---'
-          grep -R -n --exclude-dir=node_modules 'validateEnv\|Missing Cloudflare environment binding' . || true
-          for file in test/worker-queue-handler.test.ts test/dedup-estimation-runtime-integration.test.ts test/product-search-fallback.test.ts; do
-            echo "--- $file ---"
-            sed -n '1,110p' "$file"
-          done
       - name: Migrate Node test imports and package scripts
         shell: bash
         run: |
@@ -62,10 +50,28 @@ jobs:
           pkg.scripts['test:unit:verbose'] = 'vitest run --reporter=verbose';
           fs.writeFileSync('package.json', `${JSON.stringify(pkg, null, 2)}\n`);
           NODE
+          mkdir -p test/stubs
+          cat > test/stubs/cloudflare-workers.ts <<'EOF'
+          /** Minimal Node-side stand-in for Cloudflare's runtime-only WorkerEntrypoint. */
+          export class WorkerEntrypoint<Env = unknown> {
+            constructor(
+              public readonly ctx: ExecutionContext,
+              public readonly env: Env,
+            ) {}
+          }
+          EOF
           cat > vitest.config.ts <<'EOF'
+          import { fileURLToPath } from "node:url";
           import { defineConfig } from "vitest/config";
 
           export default defineConfig({
+            resolve: {
+              alias: {
+                "cloudflare:workers": fileURLToPath(
+                  new URL("./test/stubs/cloudflare-workers.ts", import.meta.url),
+                ),
+              },
+            },
             test: {
               environment: "node",
               include: ["test/**/*.test.ts"],
