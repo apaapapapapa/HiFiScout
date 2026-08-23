@@ -19,6 +19,8 @@ import { PRODUCT_AUDIT_EXPORT_MAX_CHUNKS } from "../src/product-audit-export/csv
 import type { ProductAuditExportQueueMessage } from "../src/product-audit-export/types.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 
+const RECENT_NOW = new Date(Date.now() - 60_000);
+
 interface StoredObject {
   bytes: Uint8Array<ArrayBuffer>;
   customMetadata: Record<string, string>;
@@ -238,7 +240,7 @@ test("one delivery writes only 250 rows, retries are idempotent, and ready CSV s
   const ids = insertProducts(sqlite, 251);
   const { queue, sent } = fakeQueue();
   const { bucket, objects } = fakeBucket();
-  const now = new Date("2026-08-22T00:00:00.000Z");
+  const now = new Date(RECENT_NOW);
   const job = await startProductAuditExport(db, queue, "active", now);
   assert.equal(job.maxListingId, ids.at(-1));
 
@@ -363,12 +365,7 @@ test("a delivery in the DLQ cannot fail a cursor that still has a live lease", a
   const { db } = migratedSqlite();
   const { queue, sent } = fakeQueue();
   const { bucket } = fakeBucket();
-  const job = await startProductAuditExport(
-    db,
-    queue,
-    "active",
-    new Date("2026-08-22T00:00:00.000Z"),
-  );
+  const job = await startProductAuditExport(db, queue, "active", new Date(RECENT_NOW));
   const original = sent[0]?.body;
   assert.ok(original);
   const claimedAt = new Date();
