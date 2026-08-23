@@ -1,0 +1,50 @@
+name: Publish commit status
+description: Publish a workflow outcome against an exact commit SHA.
+
+inputs:
+  github-token:
+    description: GitHub token with statuses:write permission.
+    required: true
+  sha:
+    description: Exact commit SHA the workflow operated on.
+    required: true
+  job-status:
+    description: GitHub Actions job status.
+    required: true
+  context:
+    description: Commit status context.
+    required: true
+  description-prefix:
+    description: Human-readable prefix used in the status description.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Publish status
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        STATUS_SHA: ${{ inputs.sha }}
+        JOB_STATUS: ${{ inputs.job-status }}
+        STATUS_CONTEXT: ${{ inputs.context }}
+        DESCRIPTION_PREFIX: ${{ inputs.description-prefix }}
+      run: |
+        set -euo pipefail
+        if [[ ! "$STATUS_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+          echo "Invalid status SHA: $STATUS_SHA" >&2
+          exit 1
+        fi
+
+        case "$JOB_STATUS" in
+          success) state=success ;;
+          failure|cancelled) state=failure ;;
+          *) state=error ;;
+        esac
+
+        run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+        gh api --method POST "/repos/${GITHUB_REPOSITORY}/statuses/${STATUS_SHA}" \
+          -f state="$state" \
+          -f context="$STATUS_CONTEXT" \
+          -f description="${DESCRIPTION_PREFIX}: ${JOB_STATUS}" \
+          -f target_url="$run_url"
