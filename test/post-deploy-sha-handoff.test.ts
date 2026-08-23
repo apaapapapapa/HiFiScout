@@ -41,13 +41,7 @@ test("E2E, Ops, and Catalog Admin publish independent status against the resolve
   assert.match(e2e, /DEPLOY_SHA: \$\{\{ steps\.deployment\.outputs\.sha \}\}/u);
   assert.match(operationalHealth, /context="operations\/data-platform"/u);
   assert.match(operationalHealth, /context="operations\/knowledge-catalog"/u);
-  assert.match(
-    operationalHealth,
-    /DEPLOY_SHA: \$\{\{ steps\.deployment\.outputs\.sha \}\}/u,
-  );
+  assert.match(operationalHealth, /DEPLOY_SHA: \$\{\{ steps\.deployment\.outputs\.sha \}\}/u);
   assert.match(catalogAdmin, /context="deployment\/catalog-admin"/u);
-  assert.match(
-    catalogAdmin,
-    /DEPLOY_HEAD_SHA: \$\{\{ steps\.deployment\.outputs\.sha \}\}/u,
-  );
+  assert.match(catalogAdmin, /DEPLOY_HEAD_SHA: \$\{\{ steps\.deployment\.outputs\.sha \}\}/u);
 });
