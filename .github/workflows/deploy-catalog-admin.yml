@@ -7,6 +7,7 @@ on:
     branches: [main]
 
 permissions:
+  actions: read
   contents: read
   statuses: write
 
@@ -25,9 +26,27 @@ jobs:
       CATALOG_ADMIN_WORKER: hifiscout-admin
       CATALOG_ADMIN_DOMAIN: hifiscout-admin.tokyojp.workers.dev
     steps:
+      - name: Download deployed SHA
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: deployment-identity
+          path: .deployment
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
+      - name: Resolve deployed SHA
+        id: deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(tr -d '\r\n' < .deployment/deployment-sha.txt)"
+          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid deployed SHA: $sha" >&2
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ steps.deployment.outputs.sha }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
@@ -94,12 +113,12 @@ jobs:
           fi
           echo "Cloudflare Access login page reached without a redirect loop."
       - name: Publish Catalog Admin deployment status
-        if: ${{ always() }}
+        if: always() && steps.deployment.outputs.sha != ''
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           ADMIN_DEPLOY_STATUS: ${{ job.status }}
-          DEPLOY_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          DEPLOY_HEAD_SHA: ${{ steps.deployment.outputs.sha }}
           ADMIN_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
