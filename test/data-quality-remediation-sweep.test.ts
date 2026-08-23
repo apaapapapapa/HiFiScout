@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { runDataQualityRemediationSweep } from "../src/db/data-quality-remediation-service.js";
 import { captureDatabase } from "./helpers/d1.js";
 

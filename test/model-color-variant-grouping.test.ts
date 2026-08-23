@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { DatabaseSync } from "node:sqlite";
-import test from "node:test";
+import { test } from "vitest";
 
 import { resolveModel } from "../src/catalog/model-resolver.js";
 import { refreshListingProjections } from "../src/db/listing-projection-refresh.js";

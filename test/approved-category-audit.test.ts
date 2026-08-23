@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import test from "node:test";
+import { test } from "vitest";
 
 const correctionMigration = await readFile(
   new URL("../migrations/0031_correct_audited_product_categories.sql", import.meta.url),

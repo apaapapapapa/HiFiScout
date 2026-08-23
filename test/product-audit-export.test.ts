@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import type { CatalogAdminProductExportRow, CatalogAdminRpc } from "../src/admin/contracts.js";
 import { handleAuthenticatedCatalogAdminRequest } from "../src/admin/index.js";

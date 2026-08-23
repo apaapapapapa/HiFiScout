@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import { resolveModel } from "../src/catalog/model-resolver.js";
 import { splitManufacturerModel } from "../src/crawler/normalize.js";

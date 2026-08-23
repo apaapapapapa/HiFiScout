@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import { repairActiveListingProjectionGaps } from "../src/db/product-search-gap-repair.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
