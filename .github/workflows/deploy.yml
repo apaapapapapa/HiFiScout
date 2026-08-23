@@ -101,28 +101,13 @@ jobs:
       # in Production Operational Health. A data-state incident must not rewrite a successful
       # deployment as if the new Worker never reached production.
 
-      # Publish against the exact SHA this job checked out. A separate workflow_run reporter sees
-      # the Deploy workflow's own default-branch SHA, which can differ from the CI SHA that actually
-      # authorized the deployment when runs overlap.
       - name: Publish deployment status
         if: always()
         continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-          DEPLOY_JOB_STATUS: ${{ job.status }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          case "$DEPLOY_JOB_STATUS" in
-            success) state=success ;;
-            failure) state=failure ;;
-            *) state=error ;;
-          esac
-
-          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          gh api --method POST "/repos/${GITHUB_REPOSITORY}/statuses/${DEPLOY_SHA}" \
-            -f state="$state" \
-            -f context="deployment/cloudflare" \
-            -f description="Cloudflare deployment: ${DEPLOY_JOB_STATUS}" \
-            -f target_url="$run_url"
+        uses: ./.github/actions/publish-commit-status
+        with:
+          github-token: ${{ github.token }}
+          sha: ${{ env.DEPLOY_SHA }}
+          job-status: ${{ job.status }}
+          context: deployment/cloudflare
+          description-prefix: Cloudflare deployment
