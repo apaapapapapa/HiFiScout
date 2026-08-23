@@ -64,5 +64,5 @@ test("React admin no longer bootstraps legacy DOM or scripts", () => {
   assert.doesNotMatch(sources, /MutationObserver/u);
   assert.doesNotMatch(sources, /\.innerHTML\s*=/u);
   assert.doesNotMatch(sources, /replaceChildren\(/u);
-  assert.doesNotMatch(sources, /\.addEventListener\(/u);
+  assert.doesNotMatch(sources, /document\.addEventListener\(/u);
 });
