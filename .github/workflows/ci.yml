@@ -24,9 +24,18 @@ jobs:
       # `check:no-js-source` reads the index with `git ls-files`.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/setup-node-deps
-      # Same gate contributors run locally: lint, format check, TypeScript-only check, type check,
-      # unit tests. Keeping it as one script means CI and `npm run verify` cannot drift apart.
-      - run: npm run check
+      # Split while diagnosing the crawl-schedule change so GitHub's step summary identifies the
+      # exact constituent check even when job-log downloads are unavailable.
+      - name: Lint
+        run: npm run lint
+      - name: Format check
+        run: npm run format:check
+      - name: TypeScript-only source check
+        run: npm run check:no-js-source
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm run test:unit
       - run: npm run db:migrate:local
       - name: Verify listing admin overrides survive crawler writes
         run: npx tsx scripts/verify-listing-admin-overrides.ts
