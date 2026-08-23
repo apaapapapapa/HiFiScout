@@ -1,3 +1,4 @@
+/** Pure display models for React; this module never emits markup or mutates the DOM. */
 import { relativeTime, safeDate, yen } from "./format.js";
 import { sortShopsByJapaneseReading } from "./shop-options.js";
 import type { MetaCategoryFacet, MetaResponse, MetaShop } from "../src/api/contracts.js";
