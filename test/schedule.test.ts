@@ -12,9 +12,9 @@ import {
 } from "../src/crawler/schedule.js";
 import {
   CRAWL_ROTATION_CRON,
-  DAILY_MAINTENANCE_CRON,
   GENERAL_CRON,
-  KNOWLEDGE_CATALOG_MONTHLY_CRON,
+  isDailyMaintenanceSlot,
+  isKnowledgeCatalogMonthlySlot,
 } from "../src/scheduled.js";
 
 const wranglerConfig = JSON.parse(
@@ -122,7 +122,6 @@ test("dedicated shops are excluded from the shared rotation", () => {
   );
   assert.equal(shopForCron(GENERAL_CRON), null);
   assert.equal(shopForCron(CRAWL_ROTATION_CRON), null);
-  assert.equal(shopForCron(DAILY_MAINTENANCE_CRON), null);
   assert.equal(shopForCron(""), null);
 });
 
@@ -133,17 +132,37 @@ test("scheduled crawl dispatch uses policy and the scheduled event timestamp", (
   assert.doesNotMatch(schedulerSource, /dispatchDueCrawls/);
 });
 
-test("every cron the scheduler handles is declared in wrangler, and vice versa", () => {
+test("production cron configuration stays within the Cloudflare Free trigger limit", () => {
   const crons: string[] = wranglerConfig.triggers?.crons || [];
   const handled = [
     GENERAL_CRON,
     CRAWL_ROTATION_CRON,
-    DAILY_MAINTENANCE_CRON,
-    KNOWLEDGE_CATALOG_MONTHLY_CRON,
     ...shopsWithDedicatedCron().map((plugin) => plugin.definition.scheduleCron),
   ];
 
+  assert.equal(crons.length, 5);
+  assert.ok(crons.length <= 5);
   assert.deepEqual([...crons].sort(), [...handled].sort());
+  assert.ok(!crons.includes("17 18 * * *"));
+  assert.ok(!crons.includes("23 3 1 * *"));
+});
+
+test("daily and monthly maintenance piggyback on the five-minute general cron", () => {
+  assert.equal(isDailyMaintenanceSlot(new Date("2026-08-24T18:20:00.000Z")), true);
+  assert.equal(isDailyMaintenanceSlot(new Date("2026-08-24T18:15:00.000Z")), false);
+  assert.equal(isDailyMaintenanceSlot(new Date("invalid")), false);
+
+  assert.equal(isKnowledgeCatalogMonthlySlot(new Date("2026-09-01T03:25:00.000Z")), true);
+  assert.equal(isKnowledgeCatalogMonthlySlot(new Date("2026-09-02T03:25:00.000Z")), false);
+  assert.equal(isKnowledgeCatalogMonthlySlot(new Date("2026-09-01T03:20:00.000Z")), false);
+  assert.equal(isKnowledgeCatalogMonthlySlot(new Date("invalid")), false);
+
+  assert.match(schedulerSource, /isDailyMaintenanceSlot\(scheduledAt\)/);
+  assert.match(schedulerSource, /isKnowledgeCatalogMonthlySlot\(scheduledAt\)/);
+  assert.match(schedulerSource, /runDailyMaintenance\(env\)/);
+  assert.match(schedulerSource, /runRetentionCleanup\(env\)/);
+  assert.match(schedulerSource, /dispatchKnowledgeCatalogDailyVerification\(env\)/);
+  assert.match(schedulerSource, /dispatchKnowledgeCatalogMonthlyRecheck\(env\)/);
 });
 
 test("large item-count drops are rejected only after a meaningful baseline", () => {
@@ -153,15 +172,6 @@ test("large item-count drops are rejected only after a meaningful baseline", () 
 });
 
 test("Knowledge Catalog verification is dispatched to its dedicated queue", () => {
-  const crons = wranglerConfig.triggers?.crons || [];
-  assert.equal(crons.length, 7);
-  assert.ok(crons.includes("17 18 * * *"));
-  assert.ok(crons.includes("23 3 1 * *"));
-  assert.ok(!crons.includes("43 4 * * *"));
-  assert.match(schedulerSource, /runDailyMaintenance\(env\)/);
-  assert.match(schedulerSource, /runRetentionCleanup\(env\)/);
-  assert.match(schedulerSource, /dispatchKnowledgeCatalogDailyVerification\(env\)/);
-  assert.match(schedulerSource, /dispatchKnowledgeCatalogMonthlyRecheck\(env\)/);
   assert.equal(wranglerConfig.vars.KNOWLEDGE_CATALOG_DAILY_VERIFY_MAX_CANDIDATES, "200");
   assert.equal(wranglerConfig.vars.KNOWLEDGE_CATALOG_REVIEW_INTERVAL_DAYS, "30");
 

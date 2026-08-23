@@ -8,7 +8,7 @@
   "observability": { "enabled": true },
   "browser": { "binding": "BROWSER" },
   "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": ["/api/*"] },
-  "triggers": { "crons": ["*/5 * * * *", "6-56/10 * * * *", "1 * * * *", "31 * * * *", "30 12 * * *", "17 18 * * *", "23 3 1 * *"] },
+  "triggers": { "crons": ["*/5 * * * *", "6-56/10 * * * *", "1 * * * *", "31 * * * *", "30 12 * * *"] },
   "queues": {
     "producers": [
       { "binding": "CRAWL_QUEUE", "queue": "hifiscout-crawl" },
@@ -140,7 +140,7 @@
     "EVIDENCE_BURST_SAMPLE_RATE": "10",
     "EVIDENCE_STORAGE_WARNING_BYTES": "8000000000",
     "AUDIOUNION_ENTRY_URL": "https://www.audiounion.jp/st/new_arrival_used.html",
-    "CRAWLER_USER_AGENT": "HiFiScoutBot/0.1 (+https://github.com/apaapapapa/HiFiScout)"
+    "CRAWLER_USER_AGENT": "HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)"
   },
   "r2_buckets": [{ "binding": "EVIDENCE_BUCKET", "bucket_name": "hifiscout-evidence" }],
   "d1_databases": [{ "binding": "DB" }]
