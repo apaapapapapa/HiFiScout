@@ -2,7 +2,7 @@ name: E2E
 
 on:
   workflow_run:
-    workflows: ['Deploy Cloudflare']
+    workflows: ["Deploy Cloudflare"]
     types: [completed]
   workflow_dispatch:
     inputs:
@@ -66,17 +66,9 @@ jobs:
           source .github/config/production.env
           base_url="${INPUT_BASE_URL:-${REPOSITORY_E2E_BASE_URL:-${REPOSITORY_PRODUCTION_BASE_URL:-$PRODUCTION_BASE_URL}}}"
           echo "E2E_BASE_URL=${base_url%/}" >> "$GITHUB_ENV"
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: e2e/package.json
-      - name: Install E2E dependencies
-        working-directory: e2e
-        run: npm install --no-package-lock
+      - uses: ./.github/actions/setup-node-deps
       - name: Resolve installed Playwright version
         id: playwright-version
-        working-directory: e2e
         shell: bash
         run: |
           version="$(node -p "require('@playwright/test/package.json').version")"
@@ -89,29 +81,16 @@ jobs:
           key: playwright-${{ runner.os }}-${{ runner.arch }}-chromium-${{ steps.playwright-version.outputs.version }}
       - name: Install Chromium on cache miss
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        working-directory: e2e
         run: npx playwright install chromium
       - name: Run Playwright user-flow regression suite
-        working-directory: e2e
-        run: npm test
+        run: npm run test:e2e
       - name: Publish E2E status
         if: always() && steps.deployment.outputs.sha != ''
         continue-on-error: true
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          E2E_STATUS: ${{ job.status }}
-          DEPLOY_SHA: ${{ steps.deployment.outputs.sha }}
-        run: |
-          set -euo pipefail
-          case "$E2E_STATUS" in
-            success) state=success ;;
-            failure|cancelled) state=failure ;;
-            *) state=error ;;
-          esac
-          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          gh api --method POST "/repos/${GITHUB_REPOSITORY}/statuses/${DEPLOY_SHA}" \
-            -f state="$state" \
-            -f context="verification/e2e" \
-            -f description="E2E: ${E2E_STATUS}" \
-            -f target_url="$run_url"
+        uses: ./.github/actions/publish-commit-status
+        with:
+          github-token: ${{ github.token }}
+          sha: ${{ steps.deployment.outputs.sha }}
+          job-status: ${{ job.status }}
+          context: verification/e2e
+          description-prefix: E2E
