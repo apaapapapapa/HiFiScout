@@ -23,6 +23,26 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Inspect Node mock method call sites
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          for (const name of fs.readdirSync('test').filter((name) => name.endsWith('.test.ts'))) {
+            const file = path.join('test', name);
+            const lines = fs.readFileSync(file, 'utf8').split('\n');
+            const hits = lines.flatMap((line, index) => line.includes('mock.method') ? [index] : []);
+            if (!hits.length) continue;
+            console.log(`--- ${file} ---`);
+            for (const index of hits) {
+              const start = Math.max(0, index - 3);
+              const end = Math.min(lines.length, index + 9);
+              console.log(lines.slice(start, end).map((line, offset) => `${start + offset + 1}: ${line}`).join('\n'));
+            }
+          }
+          NODE
       - name: Migrate Node test imports and package scripts
         shell: bash
         run: |
