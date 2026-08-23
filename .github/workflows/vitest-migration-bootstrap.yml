@@ -1,0 +1,123 @@
+name: Bootstrap Vitest migration
+
+on:
+  push:
+    branches: [refactor/vitest-unit-runner]
+    paths:
+      - .github/workflows/vitest-migration-bootstrap.yml
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: refactor/vitest-unit-runner
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Migrate Node test imports and package scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+
+          const testDir = path.resolve('test');
+          const files = fs.readdirSync(testDir)
+            .filter((name) => name.endsWith('.test.ts'))
+            .map((name) => path.join(testDir, name));
+
+          const imports = new Set();
+          let migrated = 0;
+          for (const file of files) {
+            let source = fs.readFileSync(file, 'utf8');
+            for (const match of source.matchAll(/^import .* from ["']node:test["'];$/gm)) {
+              imports.add(match[0]);
+            }
+            const before = source;
+            source = source.replace(/^import test from ["']node:test["'];$/gm, 'import { test } from "vitest";');
+            source = source.replace(/^(import\s+\{[^}]+\}\s+from\s+)["']node:test["'];$/gm, '$1"vitest";');
+            if (source !== before) {
+              fs.writeFileSync(file, source);
+              migrated += 1;
+            }
+          }
+
+          console.log(`Migrated ${migrated} test files from node:test.`);
+          console.log('Observed node:test import forms:');
+          for (const line of [...imports].sort()) console.log(`  ${line}`);
+
+          const leftovers = files.filter((file) => /node:test/.test(fs.readFileSync(file, 'utf8')));
+          if (leftovers.length) {
+            console.error('Unmigrated node:test references:');
+            for (const file of leftovers) console.error(`  ${file}`);
+            process.exit(1);
+          }
+
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          pkg.scripts['test:unit'] = 'vitest run --reporter=dot';
+          pkg.scripts['test:unit:verbose'] = 'vitest run --reporter=verbose';
+          fs.writeFileSync('package.json', `${JSON.stringify(pkg, null, 2)}\n`);
+          NODE
+
+          cat > vitest.config.ts <<'EOF'
+          import { defineConfig } from "vitest/config";
+
+          export default defineConfig({
+            test: {
+              environment: "node",
+              include: ["test/**/*.test.ts"],
+            },
+          });
+          EOF
+
+          node <<'NODE'
+          const fs = require('node:fs');
+          const file = 'docs/testing-strategy.md';
+          let source = fs.readFileSync(file, 'utf8');
+          source = source.replace(
+            "HiFiScout follows a test pyramid: most behavior is verified in-process with Node's test runner, while browser E2E coverage is intentionally small and runs only against a deployed development environment.",
+            "HiFiScout follows a test pyramid: most behavior is verified in-process with Vitest, while browser E2E coverage is intentionally small and runs only against a deployed development environment.",
+          );
+          source = source.replace(
+            "Run with `npm test` or `npm run test:unit`, or as part of `npm run verify`. A single file runs with\n`npx tsx --test test/<name>.test.ts`.",
+            "Run with `npm test` or `npm run test:unit`, or as part of `npm run verify`. A single file runs with\n`npx vitest run test/<name>.test.ts`.",
+          );
+          source = source.replace(
+            "The default reporter is `dot`: a passing run prints one character per test instead of one line, and\nfailing tests still print their assertion, diff, and stack in full. `npm run test:unit:verbose` uses\nthe `spec` reporter when you need to read passing test names.",
+            "The default reporter is `dot`: a passing run prints compact progress instead of one line per test, and\nfailing tests still print their assertion, diff, and stack in full. `npm run test:unit:verbose` uses\nVitest's verbose reporter when you need to read passing test names.",
+          );
+          source = source.replace(
+            "Use the Node test runner and in-memory fakes to verify boundaries between modules:",
+            "Use Vitest and in-memory fakes to verify boundaries between modules:",
+          );
+          source = source.replace(
+            "the fast Node test suite, and Wrangler dry-run validation.",
+            "the fast Vitest suite, and Wrangler dry-run validation.",
+          );
+          fs.writeFileSync(file, source);
+          NODE
+
+      - name: Install Vitest and refresh lockfile
+        run: npm install --save-dev vitest@4.1.11
+      - name: Format migrated files
+        run: npm run format
+      - name: Validate Vitest migration
+        run: npm run check
+      - name: Remove bootstrap workflow and commit migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/vitest-migration-bootstrap.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json vitest.config.ts docs/testing-strategy.md test
+          git commit -m "test: migrate unit runner to Vitest"
+          git push origin HEAD:refactor/vitest-unit-runner
