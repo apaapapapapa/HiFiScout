@@ -22,7 +22,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
       - uses: ./.github/actions/setup-node-deps
-      - name: Complete one-time Vite+ workflow migration
+      - name: Generate one-time Vite+ workflow migration payloads
         shell: bash
         run: |
           set -euo pipefail
@@ -30,10 +30,14 @@ jobs:
           from pathlib import Path
           import re
 
+          output_dir = Path('.vite-plus-migration/workflows')
+          output_dir.mkdir(parents=True, exist_ok=True)
+
           for path in Path('.github/workflows').glob('*.yml'):
               if path.name in {'autofix.yml', 'vite-plus-sweep.yml'}:
                   continue
-              text = path.read_text(encoding='utf-8')
+              original = path.read_text(encoding='utf-8')
+              text = original
               text = re.sub(
                   r'(?m)^      - name: Setup Node\.js\n        uses: actions/setup-node@[^\n]+\n        with:\n          node-version: 22\n(?:          cache: npm\n)?\n?',
                   '      - uses: ./.github/actions/setup-node-deps\n\n',
@@ -58,7 +62,8 @@ jobs:
               }
               for old, new in replacements.items():
                   text = text.replace(old, new)
-              path.write_text(text, encoding='utf-8')
+              if text != original:
+                  (output_dir / path.name).write_text(text, encoding='utf-8')
 
           for path in [Path('README.md'), Path('AGENTS.md'), *Path('docs').rglob('*.md')]:
               text = path.read_text(encoding='utf-8')
@@ -77,16 +82,16 @@ jobs:
           else
             vp fmt "${files[@]}"
           fi
-      - name: Commit Vite+ migration changes
+      - name: Commit migration payloads and docs
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet; then
-            echo "No migration changes required."
+          if [ -z "$(git status --porcelain -- .vite-plus-migration README.md AGENTS.md docs)" ]; then
+            echo "No migration payload or documentation changes required."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -u
-          git commit -m "refactor: route CI and operations through Vite+"
+          git add -A .vite-plus-migration README.md AGENTS.md docs
+          git commit -m "chore: generate Vite+ workflow migration payloads"
           git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
