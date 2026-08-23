@@ -1,11 +1,19 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { SHOP_DEFINITIONS, getShopEnabled, getShopRequestDelayMs } from "../src/config.js";
+import {
+  SHOP_DEFINITIONS,
+  getShopEnabled,
+  getShopIntervalMinutes,
+  getShopRequestDelayMs,
+} from "../src/config.js";
 import { isShopDue, isSuspiciousItemDrop } from "../src/crawler/run.js";
 import {
-  sharedSweepExclusions,
+  ROUND_ROBIN_CRAWL_CRON,
+  ROUND_ROBIN_INTERVAL_MINUTES,
+  roundRobinShops,
   shopForCron,
+  shopForRoundRobinSlot,
   shopsWithDedicatedCron,
 } from "../src/crawler/schedule.js";
 import {
@@ -63,28 +71,63 @@ test("a dedicated shop cron is declared in wrangler and owns that shop alone", (
   }
 });
 
-test("the shared sweep skips exactly the shops that own a cron", () => {
-  assert.deepEqual(
-    [...sharedSweepExclusions()].sort(),
-    shopsWithDedicatedCron()
-      .map((plugin) => plugin.key)
-      .sort(),
+test("requested dedicated crawl cadences are staggered", () => {
+  assert.equal(shopForCron("1 * * * *")?.key, "audiounion");
+  assert.equal(shopForCron("31 * * * *")?.key, "hifido");
+  // Cloudflare cron is UTC, so 12:30 UTC is 21:30 JST.
+  assert.equal(shopForCron("30 12 * * *")?.key, "fujiya-avic");
+  assert.equal(shopForCron(GENERAL_CRON), null);
+  assert.equal(shopForCron(ROUND_ROBIN_CRAWL_CRON), null);
+});
+
+test("all other shops rotate one at a time every 15 minutes", () => {
+  const shops = roundRobinShops();
+  assert.equal(shops.length, 14);
+  assert.equal(ROUND_ROBIN_CRAWL_CRON, "7,22,37,52 * * * *");
+  assert.equal(ROUND_ROBIN_INTERVAL_MINUTES, 15);
+  assert.ok(!shops.some((plugin) => ["audiounion", "hifido", "fujiya-avic"].includes(plugin.key)));
+
+  const anchor = Date.parse("1970-01-01T00:07:00.000Z");
+  for (let index = 0; index < shops.length; index += 1) {
+    assert.equal(
+      shopForRoundRobinSlot(anchor + index * ROUND_ROBIN_INTERVAL_MINUTES * 60_000),
+      shops[index],
+    );
+  }
+  assert.equal(
+    shopForRoundRobinSlot(anchor + shops.length * ROUND_ROBIN_INTERVAL_MINUTES * 60_000),
+    shops[0],
   );
-  // Non-crawl crons must fall through to the shared sweep rather than dispatching a shop.
-  assert.equal(shopForCron("*/5 * * * *"), null);
-  assert.equal(shopForCron("17 18 * * *"), null);
-  assert.equal(shopForCron(""), null);
+});
+
+test("production health intervals match the staggered crawl cadence", () => {
+  const roundRobinCadence = roundRobinShops().length * ROUND_ROBIN_INTERVAL_MINUTES;
+  assert.equal(roundRobinCadence, 210);
+  for (const plugin of roundRobinShops()) {
+    assert.equal(
+      getShopIntervalMinutes(wranglerConfig.vars, plugin.definition),
+      roundRobinCadence,
+      `${plugin.key} health interval must match its round-robin cadence`,
+    );
+  }
+  assert.equal(getShopIntervalMinutes(wranglerConfig.vars, SHOP_DEFINITIONS.audiounion), 60);
+  assert.equal(getShopIntervalMinutes(wranglerConfig.vars, SHOP_DEFINITIONS.hifido), 60);
+  assert.equal(getShopIntervalMinutes(wranglerConfig.vars, SHOP_DEFINITIONS["fujiya-avic"]), 1440);
 });
 
 test("scheduled crawl dispatch is resolved by policy rather than by shop name", () => {
   assert.match(schedulerSource, /shopForCron\(cron\)/);
-  assert.match(schedulerSource, /sharedSweepExclusions\(\)/);
+  assert.match(schedulerSource, /shopForRoundRobinSlot\(scheduledTimeMs\)/);
+  assert.match(schedulerSource, /recoverStalledCrawlDispatches/);
+  assert.match(schedulerSource, /controller\.scheduledTime/);
+  assert.doesNotMatch(schedulerSource, /dispatchDueCrawls/);
 });
 
 test("every cron the scheduler handles is declared in wrangler, and vice versa", () => {
   const crons: string[] = wranglerConfig.triggers?.crons || [];
   const handled = [
     GENERAL_CRON,
+    ROUND_ROBIN_CRAWL_CRON,
     DAILY_MAINTENANCE_CRON,
     KNOWLEDGE_CATALOG_MONTHLY_CRON,
     ...shopsWithDedicatedCron().map((plugin) => plugin.definition.scheduleCron),
@@ -101,7 +144,7 @@ test("large item-count drops are rejected only after a meaningful baseline", () 
 
 test("Knowledge Catalog verification is dispatched to its dedicated queue", () => {
   const crons = wranglerConfig.triggers?.crons || [];
-  assert.equal(crons.length, 5);
+  assert.equal(crons.length, 7);
   assert.ok(crons.includes("17 18 * * *"));
   assert.ok(crons.includes("23 3 1 * *"));
   assert.ok(!crons.includes("43 4 * * *"));
