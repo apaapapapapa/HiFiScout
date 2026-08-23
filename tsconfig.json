@@ -4,7 +4,8 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["node"],
+    "types": ["node", "react", "react-dom"],
+    "jsx": "react-jsx",
     "strict": true,
     // Both pass with zero findings today, so they cost nothing to keep and catch the next
     // half-written branch or forgotten `break`.
@@ -29,6 +30,7 @@
     "e2e/**/*.ts",
     "infra/**/*.ts",
     "frontend/**/*.ts",
+    "frontend/**/*.tsx",
     "docs/**/*.ts",
     "docs/**/*.mts",
     ".generated/**/*.d.ts"

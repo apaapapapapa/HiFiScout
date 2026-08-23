@@ -1,90 +1,72 @@
-(() => {
-  const shopListingUrls = Object.freeze({
-    audiounion: "https://www.audiounion.jp/st/new_arrival_used.html",
-    ippinkan: "https://ippinkan.jp/shopbrand/U100000/",
-    "fujiya-avic": "https://www.fujiya-avic.co.jp/shop/e/ea-usednw_s1/?ps=50",
-    hifido: "https://www.hifido.co.jp/?L=50&LNG=J&O=0&OD=0",
-    formusic: "https://shop.formusic.jp/",
-    "u-audio": "https://www.u-audio.com/",
-  });
+/**
+ * Final DOM decoration for product-card markup.
+ *
+ * Product cards deliberately stay deterministic string builders because their escaping and exact
+ * markup are extensively unit-tested. React calls this decorator after committing a new product
+ * list, replacing the old standalone MutationObserver/bootstrap script.
+ */
 
-  type ShopKey = keyof typeof shopListingUrls;
+const shopListingUrls = Object.freeze({
+  audiounion: "https://www.audiounion.jp/st/new_arrival_used.html",
+  ippinkan: "https://ippinkan.jp/shopbrand/U100000/",
+  "fujiya-avic": "https://www.fujiya-avic.co.jp/shop/e/ea-usednw_s1/?ps=50",
+  hifido: "https://www.hifido.co.jp/?L=50&LNG=J&O=0&OD=0",
+  formusic: "https://shop.formusic.jp/",
+  "u-audio": "https://www.u-audio.com/",
+});
 
-  function isShopKey(value: string): value is ShopKey {
-    return value in shopListingUrls;
-  }
+type ShopKey = keyof typeof shopListingUrls;
 
-  function shopKeyFromElement(element: Element): string {
-    const className = [...element.classList].find((name) => name.startsWith("shop-"));
-    return className ? className.slice("shop-".length) : "";
-  }
+function isShopKey(value: string): value is ShopKey {
+  return value in shopListingUrls;
+}
 
-  function decorateManufacturer(card: Element): void {
-    const maker = card.querySelector<HTMLElement>(".maker");
-    if (!maker || maker.querySelector("[data-manufacturer-filter]")) return;
+function shopKeyFromElement(element: Element): string {
+  const className = [...element.classList].find((name) => name.startsWith("shop-"));
+  return className ? className.slice("shop-".length) : "";
+}
 
-    const manufacturer = maker.textContent?.trim() || "";
-    if (!manufacturer || manufacturer === "メーカー不明") return;
+function decorateManufacturer(card: Element): void {
+  const maker = card.querySelector<HTMLElement>(".maker");
+  if (!maker || maker.querySelector("[data-manufacturer-filter]")) return;
 
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "manufacturer-filter-link";
-    button.dataset.manufacturerFilter = manufacturer;
-    button.textContent = manufacturer;
-    button.title = `${manufacturer}の商品に絞り込む`;
-    button.setAttribute("aria-label", `${manufacturer}の商品に絞り込む`);
-    maker.replaceChildren(button);
-  }
+  const manufacturer = maker.textContent?.trim() || "";
+  if (!manufacturer || manufacturer === "メーカー不明") return;
 
-  function decorateCard(card: Element): void {
-    card.querySelector(".actions .shop-link")?.remove();
-    decorateManufacturer(card);
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "manufacturer-filter-link";
+  button.dataset.manufacturerFilter = manufacturer;
+  button.textContent = manufacturer;
+  button.title = `${manufacturer}の商品に絞り込む`;
+  button.setAttribute("aria-label", `${manufacturer}の商品に絞り込む`);
+  maker.replaceChildren(button);
+}
 
-    const shop = card.querySelector<HTMLElement>(".card-top .shop");
-    if (!shop || shop.matches("a")) return;
+function decorateCard(card: Element): void {
+  card.querySelector(".actions .shop-link")?.remove();
+  decorateManufacturer(card);
 
-    const shopKey = shopKeyFromElement(shop);
-    if (!isShopKey(shopKey)) return;
-    const href = shopListingUrls[shopKey];
+  const shop = card.querySelector<HTMLElement>(".card-top .shop");
+  if (!shop || shop.matches("a")) return;
 
-    const link = document.createElement("a");
-    link.className = `${shop.className} shop-new-arrivals-link`;
-    link.href = href;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.textContent = shop.textContent;
-    link.title = "販売店の新着・中古一覧を開く";
-    link.setAttribute("aria-label", `${shop.textContent}の新着・中古一覧を開く`);
-    shop.replaceWith(link);
-  }
+  const shopKey = shopKeyFromElement(shop);
+  if (!isShopKey(shopKey)) return;
+  const href = shopListingUrls[shopKey];
 
-  function decorateProducts(root: Document | Element = document): void {
-    if (root instanceof Element && root.matches(".card")) decorateCard(root);
-    root.querySelectorAll(".card").forEach(decorateCard);
-  }
+  const link = document.createElement("a");
+  link.className = `${shop.className} shop-new-arrivals-link`;
+  link.href = href;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = shop.textContent;
+  link.title = "販売店の新着・中古一覧を開く";
+  link.setAttribute("aria-label", `${shop.textContent}の新着・中古一覧を開く`);
+  shop.replaceWith(link);
+}
 
-  const products = document.getElementById("products");
-  if (!products) return;
-
-  products.addEventListener("click", (event) => {
-    if (!(event.target instanceof Element)) return;
-    const button = event.target.closest<HTMLElement>("[data-manufacturer-filter]");
-    if (!button) return;
-
-    const manufacturer = button.dataset.manufacturerFilter?.trim();
-    const input = document.querySelector<HTMLInputElement>("#manufacturer");
-    if (!manufacturer || !input) return;
-
-    input.value = manufacturer;
-    input.dispatchEvent(new Event("change", { bubbles: true }));
-  });
-
-  decorateProducts(products);
-  new MutationObserver((mutations) => {
-    for (const mutation of mutations) {
-      for (const node of mutation.addedNodes) {
-        if (node instanceof Element) decorateProducts(node);
-      }
-    }
-  }).observe(products, { childList: true, subtree: true });
-})();
+/** Decorate one committed React product-list subtree. Safe to call repeatedly. */
+export function decorateProducts(root: Element): void {
+  if (root.matches(".card")) decorateCard(root);
+  root.querySelectorAll(".card").forEach(decorateCard);
+}
