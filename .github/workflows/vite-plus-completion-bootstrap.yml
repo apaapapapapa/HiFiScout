@@ -3,6 +3,8 @@ name: Vite+ completion bootstrap
 on:
   push:
     branches: [fix/complete-vite-plus-migration]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
