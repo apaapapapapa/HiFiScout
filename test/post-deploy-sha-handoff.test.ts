@@ -12,6 +12,10 @@ const catalogAdmin = readFileSync(
   new URL("../.github/workflows/deploy-catalog-admin.yml", import.meta.url),
   "utf8",
 );
+const statusAction = readFileSync(
+  new URL("../.github/actions/publish-commit-status/action.yml", import.meta.url),
+  "utf8",
+);
 
 const downstreamWorkflows = [e2e, operationalHealth, catalogAdmin];
 
@@ -38,12 +42,19 @@ test("every automatic post-deploy workflow resolves identity from the triggering
   }
 });
 
+test("deployment and post-deploy workflows use one commit-status implementation", () => {
+  for (const workflow of [deploy, ...downstreamWorkflows]) {
+    assert.match(workflow, /uses: \.\/\.github\/actions\/publish-commit-status/u);
+  }
+  assert.match(statusAction, /failure\|cancelled\) state=failure/u);
+  assert.match(statusAction, /statuses\/\$\{STATUS_SHA\}/u);
+});
+
 test("E2E, Ops, and Catalog Admin publish independent status against the resolved deployed SHA", () => {
-  assert.match(e2e, /context="verification\/e2e"/u);
-  assert.match(e2e, /DEPLOY_SHA: \$\{\{ steps\.deployment\.outputs\.sha \}\}/u);
-  assert.match(operationalHealth, /context="operations\/data-platform"/u);
-  assert.match(operationalHealth, /context="operations\/knowledge-catalog"/u);
-  assert.match(operationalHealth, /DEPLOY_SHA: \$\{\{ steps\.deployment\.outputs\.sha \}\}/u);
-  assert.match(catalogAdmin, /context="deployment\/catalog-admin"/u);
-  assert.match(catalogAdmin, /DEPLOY_HEAD_SHA: \$\{\{ steps\.deployment\.outputs\.sha \}\}/u);
+  assert.match(e2e, /sha: \$\{\{ steps\.deployment\.outputs\.sha \}\}/u);
+  assert.match(e2e, /context: verification\/e2e/u);
+  assert.match(operationalHealth, /context: operations\/data-platform/u);
+  assert.match(operationalHealth, /context: operations\/knowledge-catalog/u);
+  assert.match(catalogAdmin, /sha: \$\{\{ steps\.deployment\.outputs\.sha \}\}/u);
+  assert.match(catalogAdmin, /context: deployment\/catalog-admin/u);
 });
