@@ -10,4 +10,6 @@ runs:
         version: "0.2.9"
         node-version: "22"
         cache: true
-        run-install: true
+        run-install: |
+          - cwd: .
+            args: ['--frozen-lockfile']
