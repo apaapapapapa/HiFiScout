@@ -56,7 +56,8 @@ jobs:
           pending="$(jq -r '.[1].pending' <<< "$STATE")"
           processing="$(jq -r '.[1].processing' <<< "$STATE")"
           failed="$(jq -r '.[1].failed' <<< "$STATE")"
+          context="diagnostic/dq-s${stale}-p${pending}-x${processing}-f${failed}"
           gh api --method POST "/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
             -f state=success \
-            -f context='diagnostic/dq-state' \
+            -f context="$context" \
             -f description="stale=${stale} pending=${pending} processing=${processing} failed=${failed}"
