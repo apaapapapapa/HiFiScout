@@ -63,12 +63,15 @@ test("admin assets disable Cloudflare HTML canonical redirects", () => {
   assert.match(config, /"html_handling"\s*:\s*"none"/u);
 });
 
-test("all legacy admin page and fragment URLs are retired", async () => {
+test("all legacy admin pages, fragments, and scripts are retired", async () => {
   for (const pathname of [
     "/catalog-admin",
     "/listing-admin",
     "/catalog-admin.html",
     "/listing-admin.html",
+    "/catalog-admin.js",
+    "/catalog-admin-operations.js",
+    "/listing-admin.js",
   ]) {
     for (const headers of [{}, { "x-admin-fragment": "1" }]) {
       const seenPaths: string[] = [];
