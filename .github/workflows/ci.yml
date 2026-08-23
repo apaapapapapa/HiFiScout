@@ -11,8 +11,6 @@ permissions:
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
-  # PR updates may cancel stale validation, but every main push must reach a terminal
-  # conclusion so the workflow_run deployment gate can observe a successful CI run.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -20,13 +18,37 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      # No history is needed: the source gate is repository-wide rather than diff-scoped, and
-      # `check:no-js-source` reads the index with `git ls-files`.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/setup-node-deps
-      # Same gate contributors run locally: lint, format check, TypeScript-only check, type check,
-      # unit tests. Keeping it as one script means CI and `npm run verify` cannot drift apart.
-      - run: npm run check
+      - name: Lint
+        run: npm run lint
+      - name: Format check
+        run: npm run format:check
+      - name: TypeScript-only source check
+        run: npm run check:no-js-source
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Capture unit-test output
+        shell: bash
+        run: |
+          set +e
+          npm run test:unit > unit-test.log 2>&1
+          status=$?
+          cat unit-test.log
+          echo "$status" > unit-test.exit
+          exit 0
+      - name: Upload unit-test diagnostic
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: unit-test-diagnostic
+          path: |
+            unit-test.log
+            unit-test.exit
+          retention-days: 1
+          if-no-files-found: error
+      - name: Enforce unit-test result
+        shell: bash
+        run: test "$(cat unit-test.exit)" = "0"
       - run: npm run db:migrate:local
       - name: Verify listing admin overrides survive crawler writes
         run: npx tsx scripts/verify-listing-admin-overrides.ts
@@ -47,8 +69,6 @@ jobs:
 
   playwright-browser-cache:
     if: github.event_name == 'push'
-    # Cache warming is an optimization, not a release-quality gate. A transient browser
-    # download/cache failure must not suppress the production deployment after test/build pass.
     continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 10
