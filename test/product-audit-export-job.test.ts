@@ -96,7 +96,7 @@ function r2Object(
     etag: "test-etag",
     httpEtag: '"test-etag"',
     checksums: { toJSON: () => ({}) },
-    uploaded: new Date("2026-08-22T00:00:00.000Z"),
+    uploaded: new Date(),
     customMetadata: { ...stored.customMetadata },
     storageClass: "Standard",
     writeHttpMetadata() {},
@@ -188,7 +188,7 @@ test("starting an export reuses the in-flight scope and never creates parallel j
   const { sqlite, db } = migratedSqlite();
   insertProducts(sqlite, 1);
   const { queue, sent } = fakeQueue();
-  const now = new Date("2026-08-22T00:00:00.000Z");
+  const now = new Date();
 
   const first = await startProductAuditExport(db, queue, "active", now);
   const second = await startProductAuditExport(db, queue, "active", now);
@@ -216,7 +216,7 @@ test("a stale cursor is re-enqueued once and an overdue scope can start a replac
   const { sqlite, db } = migratedSqlite();
   insertProducts(sqlite, 1);
   const { queue, sent } = fakeQueue();
-  const createdAt = new Date("2026-08-22T00:00:00.000Z");
+  const createdAt = new Date();
   const first = await startProductAuditExport(db, queue, "active", createdAt);
   sent.length = 0;
 
@@ -238,7 +238,7 @@ test("one delivery writes only 250 rows, retries are idempotent, and ready CSV s
   const ids = insertProducts(sqlite, 251);
   const { queue, sent } = fakeQueue();
   const { bucket, objects } = fakeBucket();
-  const now = new Date("2026-08-22T00:00:00.000Z");
+  const now = new Date();
   const job = await startProductAuditExport(db, queue, "active", now);
   assert.equal(job.maxListingId, ids.at(-1));
 
@@ -334,7 +334,7 @@ test("a future DLQ delivery cannot fail a job whose predecessor owns the current
     db,
     queue,
     "active",
-    new Date("2026-08-22T00:00:00.000Z"),
+    new Date(),
   );
   const future = fakeMessage({
     kind: "product_audit_export",
@@ -367,7 +367,7 @@ test("a delivery in the DLQ cannot fail a cursor that still has a live lease", a
     db,
     queue,
     "active",
-    new Date("2026-08-22T00:00:00.000Z"),
+    new Date(),
   );
   const original = sent[0]?.body;
   assert.ok(original);

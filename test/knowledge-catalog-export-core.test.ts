@@ -34,7 +34,7 @@ import {
   unindexedScans,
 } from "./helpers/query-plan.js";
 
-const NOW = "2026-08-22T00:00:00.000Z";
+const NOW = new Date().toISOString();
 
 function parseCsvLine(line: string): string[] {
   const fields: string[] = [];
@@ -598,7 +598,7 @@ test("singleton job emits one 100-row chunk per delivery and streams a stable CS
   assert.equal(response.headers.get("content-length"), String(ready?.byteCount));
   assert.match(
     response.headers.get("content-disposition") || "",
-    /hifiscout-knowledge-catalog-2026-08-22\.csv/u,
+    new RegExp(`hifiscout-knowledge-catalog-${NOW.slice(0, 10)}\\.csv`, "u"),
   );
   const bytes = new Uint8Array(await response.arrayBuffer());
   assert.deepEqual(Array.from(bytes.slice(0, 3)), [0xef, 0xbb, 0xbf]);
