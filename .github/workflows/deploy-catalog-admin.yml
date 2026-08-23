@@ -47,11 +47,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ steps.deployment.outputs.sha }}
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/setup-node-deps
       - name: Build catalog admin browser assets
         run: npm run build:frontend:admin
       - name: Deploy fail-closed admin Worker
@@ -114,23 +110,10 @@ jobs:
           echo "Cloudflare Access login page reached without a redirect loop."
       - name: Publish Catalog Admin deployment status
         if: always() && steps.deployment.outputs.sha != ''
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ADMIN_DEPLOY_STATUS: ${{ job.status }}
-          DEPLOY_HEAD_SHA: ${{ steps.deployment.outputs.sha }}
-          ADMIN_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          set -euo pipefail
-
-          case "$ADMIN_DEPLOY_STATUS" in
-            success) state=success ;;
-            failure|cancelled) state=failure ;;
-            *) state=error ;;
-          esac
-
-          gh api --method POST "/repos/${GITHUB_REPOSITORY}/statuses/${DEPLOY_HEAD_SHA}" \
-            -f state="$state" \
-            -f context="deployment/catalog-admin" \
-            -f description="Catalog Admin deployment: ${ADMIN_DEPLOY_STATUS}" \
-            -f target_url="$ADMIN_RUN_URL"
+        uses: ./.github/actions/publish-commit-status
+        with:
+          github-token: ${{ github.token }}
+          sha: ${{ steps.deployment.outputs.sha }}
+          job-status: ${{ job.status }}
+          context: deployment/catalog-admin
+          description-prefix: Catalog Admin deployment
