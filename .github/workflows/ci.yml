@@ -34,6 +34,8 @@ jobs:
         run: npm run check:no-js-source
       - name: Typecheck
         run: npm run typecheck
+      - name: Schedule unit tests
+        run: vp test run test/schedule.test.ts --reporter=dot
       - name: Unit tests
         run: npm run test:unit
       - run: npm run db:migrate:local
