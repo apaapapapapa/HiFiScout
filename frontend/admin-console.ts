@@ -5,7 +5,7 @@ type AdminAppKey = "catalog" | "listings";
 interface AdminAppConfig {
   key: AdminAppKey;
   panelId: string;
-  scriptSrc: string;
+  scriptSrcs: readonly string[];
   fragmentSrc: string;
   selectors: readonly string[];
   tabId: string;
@@ -15,7 +15,7 @@ const APPS: Record<AdminAppKey, AdminAppConfig> = {
   catalog: {
     key: "catalog",
     panelId: "catalog-pane",
-    scriptSrc: "/catalog-admin.js",
+    scriptSrcs: ["/catalog-admin.js", "/catalog-admin-operations.js"],
     fragmentSrc: "/catalog-admin.html",
     selectors: ["#status-message", "#catalog-controls", "#edit-dialog"],
     tabId: "admin-tab-catalog",
@@ -23,7 +23,7 @@ const APPS: Record<AdminAppKey, AdminAppConfig> = {
   listings: {
     key: "listings",
     panelId: "listings-pane",
-    scriptSrc: "/listing-admin.js",
+    scriptSrcs: ["/listing-admin.js"],
     fragmentSrc: "/listing-admin.html",
     selectors: ["#status-message", "#listing-controls", "#edit-dialog"],
     tabId: "admin-tab-listings",
@@ -132,7 +132,22 @@ function showLoadFailure(config: AdminAppConfig, error: unknown): void {
   status.textContent = `管理画面を読み込めません: ${error instanceof Error ? error.message : String(error)}`;
 }
 
-async function initializeLegacyScript(config: AdminAppConfig): Promise<void> {
+function appendLegacyScript(config: AdminAppConfig, scriptSrc: string): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = scriptSrc;
+    script.async = false;
+    script.dataset.adminApp = config.key;
+    script.dataset.adminFeature = scriptSrc;
+    script.addEventListener("load", () => resolve(), { once: true });
+    script.addEventListener("error", () => reject(new Error(`Failed to load ${scriptSrc}`)), {
+      once: true,
+    });
+    document.body.appendChild(script);
+  });
+}
+
+async function initializeLegacyScripts(config: AdminAppConfig): Promise<void> {
   const panel = element<HTMLElement>(config.panelId);
   const nodes = legacyNodes(panel);
   const originalIds = nodes.map((node) => node.id);
@@ -146,20 +161,11 @@ async function initializeLegacyScript(config: AdminAppConfig): Promise<void> {
     node.id = legacyId;
   }
 
+  // Every feature for one fragment must bind while the fragment exposes its original IDs.
   try {
-    await new Promise<void>((resolve, reject) => {
-      const script = document.createElement("script");
-      script.src = config.scriptSrc;
-      script.async = false;
-      script.dataset.adminApp = config.key;
-      script.addEventListener("load", () => resolve(), { once: true });
-      script.addEventListener(
-        "error",
-        () => reject(new Error(`Failed to load ${config.scriptSrc}`)),
-        { once: true },
-      );
-      document.body.appendChild(script);
-    });
+    for (const scriptSrc of config.scriptSrcs) {
+      await appendLegacyScript(config, scriptSrc);
+    }
     loadedApps.add(config.key);
   } finally {
     nodes.forEach((node, index) => {
@@ -168,8 +174,8 @@ async function initializeLegacyScript(config: AdminAppConfig): Promise<void> {
   }
 }
 
-function queueLegacyScript(config: AdminAppConfig): Promise<void> {
-  const run = legacyScriptQueue.then(() => initializeLegacyScript(config));
+function queueLegacyScripts(config: AdminAppConfig): Promise<void> {
+  const run = legacyScriptQueue.then(() => initializeLegacyScripts(config));
   legacyScriptQueue = run.catch(() => undefined);
   return run;
 }
@@ -181,7 +187,7 @@ async function loadLegacyApp(config: AdminAppConfig): Promise<void> {
 
   const request = (async (): Promise<void> => {
     await mountFragment(config);
-    await queueLegacyScript(config);
+    await queueLegacyScripts(config);
   })();
 
   loadingApps.set(config.key, request);
