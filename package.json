@@ -32,18 +32,24 @@
     "types:worker": "tsx scripts/ensure-directories.ts .generated && tsx scripts/run-quiet.ts wrangler types .generated/worker-configuration.d.ts",
     "build": "npm run build:frontend && npm run build:worker && npm run build:admin-worker && npm run build:lambda",
     "build:frontend": "npm run build:frontend:public && npm run build:frontend:admin",
-    "build:frontend:public": "esbuild frontend/app.ts frontend/catalog-url-state.ts frontend/shop-filter-order.ts frontend/shop-links.ts --bundle --outdir=public --format=iife --target=es2022",
+    "build:frontend:public": "esbuild frontend/app.tsx --bundle --outfile=public/app.js --format=iife --target=es2022 --define:process.env.NODE_ENV=\\\"production\\\"",
     "build:frontend:admin": "esbuild frontend/admin-console.ts frontend/catalog-admin.ts frontend/catalog-admin-operations.ts frontend/listing-admin.ts --bundle --outdir=admin-public --format=iife --target=es2022",
     "build:worker": "wrangler deploy --dry-run --outdir dist/worker",
     "build:admin-worker": "wrangler deploy --dry-run --config wrangler.admin.jsonc --outdir dist/admin-worker",
     "build:lambda": "tsx scripts/ensure-directories.ts dist/audiounion-lambda && esbuild infra/audiounion-lambda/index.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/audiounion-lambda/index.mjs",
     "check:no-js-source": "tsx scripts/check-no-first-party-js.ts"
   },
+  "dependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
   "devDependencies": {
     "@cloudflare/playwright": "^1.3.0",
     "@playwright/test": "^1.62.0",
     "@types/aws-lambda": "^8.10.162",
     "@types/node": "^22.20.1",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
     "esbuild": "^0.28.2",
     "oxfmt": "^0.63.0",
     "oxlint": "^1.78.0",
