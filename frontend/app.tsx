@@ -1,2 +1,5 @@
-/** Stable public bundle entrypoint. The UI is implemented entirely in React. */
+/**
+ * Stable public bundle entrypoint.
+ * Keep `/app.js` as the deployment contract while the UI itself lives in `public-app.tsx`.
+ */
 import "./public-app.js";
