@@ -1,6 +1,6 @@
 # Testing strategy
 
-HiFiScout follows a test pyramid: most behavior is verified in-process with Vitest through Vite+, while browser E2E coverage is intentionally small and runs only against a deployed development environment.
+HiFiScout follows a test pyramid: most behavior is verified in-process with Vitest, while browser E2E coverage is intentionally small and runs only against a deployed development environment.
 
 ## Pyramid
 
@@ -19,7 +19,7 @@ A regression should be added at this layer whenever the bug can be reproduced wi
 
 ### 2. Component / contract tests — small middle layer
 
-Use the Vite+ Vitest runner and in-memory fakes to verify boundaries between modules: Worker route handlers with fake D1 responses, repository SQL behavior through a D1-shaped fake, crawler orchestration with mocked fetch/browser adapters, and the common shop contract.
+Use Vitest and in-memory fakes to verify boundaries between modules: Worker route handlers with fake D1 responses, repository SQL behavior through a D1-shaped fake, crawler orchestration with mocked fetch/browser adapters, and the common shop contract.
 
 Do not call retailer sites from CI. Remote shop availability, anti-bot behavior, rate limits, and regional routing are operational concerns and should be covered by health/observability rather than deterministic CI tests.
 
@@ -40,18 +40,19 @@ Tests against live data deliberately avoid assertions such as a specific product
 
 ## Running E2E locally
 
+From the repository root:
+
 ```sh
-cd e2e
-npm install --no-package-lock
+vp install --frozen-lockfile
 vp exec playwright install chromium
-E2E_BASE_URL=https://hifiscout.raha3415kohei.workers.dev npm test
+E2E_BASE_URL=https://hifiscout.raha3415kohei.workers.dev vp run test:e2e
 ```
 
 `E2E_BASE_URL` can point at another deployed development environment. The checked-in default is the existing workers.dev environment.
 
 ## CI policy
 
-The normal `CI` workflow runs migrations, `scripts/verify-search-integration.ts` against that locally migrated D1, the fast Vite+ unit-test suite (Vitest), and Wrangler dry-run validation. It does not install a browser.
+The normal `CI` workflow runs migrations, `scripts/verify-search-integration.ts` against that locally migrated D1, the fast Vitest suite, and Wrangler dry-run validation. It does not install a browser.
 
 The search integration check exists because two behaviors cannot be proven by asserting on generated SQL: that the FTS5 trigram index actually resolves a query like `TAD 1000`, and that two shops' confirmed listings really collapse into one search entity while an unconfirmed listing stays on its own. Those are properties of the database, so they are verified against a real one.
 
