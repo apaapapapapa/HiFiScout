@@ -73,8 +73,11 @@ test("all legacy admin pages, fragments, and scripts are retired", async () => {
     "/catalog-admin-operations.js",
     "/listing-admin.js",
   ]) {
-    for (const headers of [{}, { "x-admin-fragment": "1" }]) {
+    for (const useFragmentHeader of [false, true]) {
       const seenPaths: string[] = [];
+      const headers: HeadersInit | undefined = useFragmentHeader
+        ? { "x-admin-fragment": "1" }
+        : undefined;
       const response = await handleAuthenticatedAdminEntryRequest(
         new Request(`https://admin.example.test${pathname}`, { headers }),
         adminEnv(seenPaths),
