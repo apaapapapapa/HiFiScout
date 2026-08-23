@@ -56,9 +56,10 @@ jobs:
         run: |
           set -euo pipefail
           # Administrative replay must not consume the production Worker's daily invocation quota.
+          # Keep each batch below the 20-minute job timeout so the continuation dispatch can run.
           result=.generated/remediation-drain-result.json
           npx tsx scripts/resolver-replay-drain.ts \
-            --max-sweeps 64 \
+            --max-sweeps 24 \
             --output "$result"
 
           complete="$(jq -r '.complete' "$result")"
