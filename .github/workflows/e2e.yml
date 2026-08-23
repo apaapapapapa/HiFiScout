@@ -81,9 +81,9 @@ jobs:
           key: playwright-${{ runner.os }}-${{ runner.arch }}-chromium-${{ steps.playwright-version.outputs.version }}
       - name: Install Chromium on cache miss
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install chromium
+        run: vp exec playwright install chromium
       - name: Run Playwright user-flow regression suite
-        run: npm run test:e2e
+        run: vp run test:e2e
       - name: Publish E2E status
         if: always() && steps.deployment.outputs.sha != ''
         continue-on-error: true

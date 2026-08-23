@@ -24,10 +24,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
+      - uses: ./.github/actions/setup-node-deps
 
       - name: Bootstrap existing 0.x version tag
         shell: bash
@@ -43,4 +40,4 @@ jobs:
       - name: Semantic Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx --yes semantic-release@25.0.8
+        run: vp dlx semantic-release@25.0.8

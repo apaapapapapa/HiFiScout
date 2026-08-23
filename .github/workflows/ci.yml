@@ -25,14 +25,14 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/setup-node-deps
       # Same gate contributors run locally: lint, format check, TypeScript-only check, type check,
-      # unit tests. Keeping it as one script means CI and `npm run verify` cannot drift apart.
-      - run: npm run check
-      - run: npm run db:migrate:local
+      # unit tests. Keeping it as one script means CI and `vp run verify` cannot drift apart.
+      - run: vp run check
+      - run: vp run db:migrate:local
       - name: Verify listing admin overrides survive crawler writes
-        run: npx tsx scripts/verify-listing-admin-overrides.ts
+        run: vp exec tsx scripts/verify-listing-admin-overrides.ts
       - name: Verify D1 FTS search migration
-        run: npx tsx scripts/verify-search-integration.ts
-      - run: npm run build
+        run: vp exec tsx scripts/verify-search-integration.ts
+      - run: vp run build
 
   dependency-security:
     runs-on: ubuntu-latest
@@ -41,9 +41,9 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/setup-node-deps
       - name: Verify npm registry signatures and provenance
-        run: npm audit signatures
+        run: vp pm audit signatures
       - name: Fail on high or critical dependency vulnerabilities
-        run: npm audit --audit-level=high
+        run: vp pm audit --audit-level=high
 
   playwright-browser-cache:
     if: github.event_name == 'push'
@@ -69,4 +69,4 @@ jobs:
           key: playwright-${{ runner.os }}-${{ runner.arch }}-chromium-${{ steps.playwright-version.outputs.version }}
       - name: Install Chromium on cache miss
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install chromium
+        run: vp exec playwright install chromium

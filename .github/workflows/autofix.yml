@@ -22,55 +22,6 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
       - uses: ./.github/actions/setup-node-deps
-      - name: Generate one-time Vite+ workflow migration payloads
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-          import re
-
-          output_dir = Path('.vite-plus-migration/workflows')
-          output_dir.mkdir(parents=True, exist_ok=True)
-
-          for path in Path('.github/workflows').glob('*.yml'):
-              if path.name in {'autofix.yml', 'vite-plus-sweep.yml'}:
-                  continue
-              original = path.read_text(encoding='utf-8')
-              text = original
-              text = re.sub(
-                  r'(?m)^      - name: Setup Node\.js\n        uses: actions/setup-node@[^\n]+\n        with:\n          node-version: 22\n(?:          cache: npm\n)?\n?',
-                  '      - uses: ./.github/actions/setup-node-deps\n\n',
-                  text,
-              )
-              text = re.sub(
-                  r'(?m)^      - uses: actions/setup-node@[^\n]+\n        with:\n          node-version: 22\n(?:          cache: npm\n)?\n?',
-                  '      - uses: ./.github/actions/setup-node-deps\n',
-                  text,
-              )
-              text = re.sub(r'(?m)^      - name: Install dependencies\n        run: npm ci\n\n?', '', text)
-              text = re.sub(r'(?m)^      - run: npm ci\n', '', text)
-              replacements = {
-                  'npm run ': 'vp run ',
-                  'npm audit signatures': 'vp pm audit signatures',
-                  'npm audit --audit-level=high': 'vp pm audit --audit-level=high',
-                  'npx tsx ': 'vp exec tsx ',
-                  'npx wrangler ': 'vp exec wrangler ',
-                  'npx playwright ': 'vp exec playwright ',
-                  'npx --yes semantic-release@25.0.8': 'vp dlx semantic-release@25.0.8',
-                  'npm pack @cloudflare/playwright@1.3.5 --silent': 'vp pm pack @cloudflare/playwright@1.3.5 --silent',
-              }
-              for old, new in replacements.items():
-                  text = text.replace(old, new)
-              if text != original:
-                  (output_dir / path.name).write_text(text, encoding='utf-8')
-
-          for path in [Path('README.md'), Path('AGENTS.md'), *Path('docs').rglob('*.md')]:
-              text = path.read_text(encoding='utf-8')
-              text = text.replace('npm run ', 'vp run ')
-              text = text.replace('npx playwright ', 'vp exec playwright ')
-              path.write_text(text, encoding='utf-8')
-          PY
       - name: Apply Vite+ formatter to changed source files
         shell: bash
         run: |
@@ -79,19 +30,19 @@ jobs:
           mapfile -t files < <(git diff --name-only --diff-filter=ACMR "origin/${{ github.event.pull_request.base.ref }}...HEAD" -- '*.js' '*.mjs' '*.cjs' '*.jsx' '*.ts' '*.mts' '*.cts' '*.tsx')
           if ((${#files[@]} == 0)); then
             echo "No changed JavaScript/TypeScript source files to format."
-          else
-            vp fmt "${files[@]}"
+            exit 0
           fi
-      - name: Commit migration payloads and docs
+          vp fmt "${files[@]}"
+      - name: Commit formatting changes
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "$(git status --porcelain -- .vite-plus-migration README.md AGENTS.md docs)" ]; then
-            echo "No migration payload or documentation changes required."
+          if git diff --quiet; then
+            echo "No formatting changes required."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A .vite-plus-migration README.md AGENTS.md docs
-          git commit -m "chore: generate Vite+ workflow migration payloads"
+          git add -u
+          git commit -m "style: apply Vite+ formatter"
           git push origin "HEAD:${{ github.event.pull_request.head.ref }}"

@@ -31,11 +31,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.sha }}
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/setup-node-deps
 
       - name: Wait for the production deployment of this commit
         if: github.event_name == 'push'
@@ -71,7 +67,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          info="$(npx wrangler d1 info DB --json)"
+          info="$(vp exec wrangler d1 info DB --json)"
           id="$(jq -r '.uuid // .database_id // .id // empty' <<< "$info")"
           if [[ -z "$id" ]]; then
             echo 'Could not resolve the deployed DB binding to an explicit D1 id.' >&2
@@ -83,4 +79,4 @@ jobs:
       - name: Apply manual category authority and refresh projections
         env:
           D1_DATABASE_ID: ${{ steps.d1.outputs.database_id }}
-        run: npx tsx scripts/apply-manual-category-authority.ts
+        run: vp exec tsx scripts/apply-manual-category-authority.ts
