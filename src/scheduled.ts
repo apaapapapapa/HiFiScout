@@ -2,11 +2,18 @@
  * Cron handling.
  *
  * Which cron does what is decided here; *which shop* a crawl cron belongs to is decided by
- * `crawler/schedule.ts` from adapter metadata, so adding a shop never touches this file.
+ * `crawler/schedule.ts` from adapter metadata and the deterministic round-robin policy.
  */
 
-import { dispatchDueCrawls, dispatchScheduledCrawl } from "./crawler/dispatch.js";
-import { sharedSweepExclusions, shopForCron } from "./crawler/schedule.js";
+import {
+  dispatchScheduledCrawl,
+  recoverStalledCrawlDispatches,
+} from "./crawler/dispatch.js";
+import {
+  ROUND_ROBIN_CRAWL_CRON,
+  shopForCron,
+  shopForRoundRobinSlot,
+} from "./crawler/schedule.js";
 import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from "./catalog/knowledge-verification/verifier.js";
 import { runDataQualityRemediationSweep } from "./db/data-quality-remediation-service.js";
 import {
@@ -35,7 +42,7 @@ import { errorMessage } from "./types.js";
 import type { DispatchResult } from "./crawler/types.js";
 import type { QueryableDatabase } from "./db/types.js";
 
-/** The shared sweep. Also the trigger that gets a chance to bootstrap a verifier rollout. */
+/** Five-minute watchdog/maintenance trigger. Normal crawl starts use separate staggered triggers. */
 export const GENERAL_CRON = "*/5 * * * *";
 export const DAILY_MAINTENANCE_CRON = "17 18 * * *";
 export const KNOWLEDGE_CATALOG_MONTHLY_CRON = "23 3 1 * *";
@@ -118,13 +125,29 @@ async function runDailyMaintenance(env: Env) {
   };
 }
 
-export async function runScheduled(cron: string, env: Env) {
+export async function runScheduled(cron: string, env: Env, scheduledTimeMs = Date.now()) {
   if (cron === DAILY_MAINTENANCE_CRON) return runDailyMaintenance(env);
   if (cron === KNOWLEDGE_CATALOG_MONTHLY_CRON) return dispatchKnowledgeCatalogMonthlyRecheck(env);
+
+  const scheduledAt = new Date(scheduledTimeMs);
+  let dispatch: DispatchResult;
   const dedicated = shopForCron(cron);
-  const dispatch = dedicated
-    ? await dispatchScheduledCrawl(env, dedicated.key)
-    : await dispatchDueCrawls(env, { excludeShopKeys: sharedSweepExclusions() });
+  if (dedicated) {
+    dispatch = await dispatchScheduledCrawl(env, dedicated.key, { now: scheduledAt });
+  } else if (cron === ROUND_ROBIN_CRAWL_CRON) {
+    const shop = shopForRoundRobinSlot(scheduledTimeMs);
+    dispatch = shop
+      ? await dispatchScheduledCrawl(env, shop.key, { now: scheduledAt })
+      : { status: "skipped", queued: [] };
+  } else if (cron === GENERAL_CRON) {
+    const recovered = await recoverStalledCrawlDispatches(env, { now: scheduledAt });
+    dispatch = recovered.length
+      ? { status: "queued", queued: recovered }
+      : { status: "skipped", queued: [] };
+  } else {
+    dispatch = { status: "skipped", queued: [] };
+  }
+
   logDispatchResult(cron, dispatch);
   const health = await getSyncHealth(env);
   logSyncHealth(health);
@@ -235,15 +258,15 @@ export async function bootstrapKnowledgeCatalogReview(env: Env) {
 }
 
 /**
- * Crawl dispatch, catalog verification rollout, and data-quality replay are independent bounded
- * tasks. Remediation shares the five-minute trigger but never performs a recrawl.
+ * Crawl watchdog, catalog verification rollout, and data-quality replay are independent bounded
+ * tasks. Normal crawl starts are staggered onto dedicated or 15-minute round-robin triggers.
  */
 export function handleScheduled(
   controller: ScheduledController,
   env: Env,
   ctx: ExecutionContext,
 ): void {
-  ctx.waitUntil(runScheduled(controller.cron, env));
+  ctx.waitUntil(runScheduled(controller.cron, env, controller.scheduledTime));
   if (controller.cron === GENERAL_CRON) {
     ctx.waitUntil(bootstrapKnowledgeCatalogReview(env));
     ctx.waitUntil(repairGeneralCronProjectionGaps(env.DB));
