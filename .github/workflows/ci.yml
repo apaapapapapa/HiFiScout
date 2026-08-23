@@ -20,44 +20,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # No history is needed: the source gate is repository-wide rather than diff-scoped, and
+      # `check:no-js-source` reads the index with `git ls-files`.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/setup-node-deps
-      - name: Lint
-        run: npm run lint
-      - name: Format check
-        run: npm run format:check
-      - name: TypeScript-only source check
-        run: npm run check:no-js-source
-      - name: Typecheck
-        run: npm run typecheck
-      - name: Locate failing unit test
-        id: locate-unit-failure
-        continue-on-error: true
-        shell: bash
-        run: |
-          set -u
-          mkdir -p .diagnostics
-          : > .diagnostics/failing-unit-test.txt
-          while IFS= read -r file; do
-            if ! vp test run "$file" --reporter=dot >/dev/null 2>&1; then
-              printf '%s\n' "$file" > .diagnostics/failing-unit-test.txt
-              exit 1
-            fi
-          done < <(find test -type f -name '*.test.ts' | sort)
-      - name: Upload unit-test diagnostic
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: failing-unit-test
-          path: .diagnostics/failing-unit-test.txt
-          retention-days: 1
-          if-no-files-found: error
-      - name: Enforce unit-test diagnostic result
-        if: steps.locate-unit-failure.outcome == 'failure'
-        run: exit 1
-      - name: Unit tests
-        if: steps.locate-unit-failure.outcome == 'success'
-        run: npm run test:unit
+      # Same gate contributors run locally: lint, format check, TypeScript-only check, type check,
+      # unit tests. Keeping it as one script means CI and `npm run verify` cannot drift apart.
+      - run: npm run check
       - run: npm run db:migrate:local
       - name: Verify listing admin overrides survive crawler writes
         run: npx tsx scripts/verify-listing-admin-overrides.ts
@@ -78,6 +47,8 @@ jobs:
 
   playwright-browser-cache:
     if: github.event_name == 'push'
+    # Cache warming is an optimization, not a release-quality gate. A transient browser
+    # download/cache failure must not suppress the production deployment after test/build pass.
     continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 10
