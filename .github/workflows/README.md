@@ -1,6 +1,6 @@
 # GitHub Actions responsibility map
 
-HiFiScout keeps workflow orchestration thin. Domain behavior, repair logic, and data-quality rules belong in application or maintenance scripts; workflows select when to run them and report the result.
+HiFiScout keeps workflow orchestration thin. Domain behavior, repair logic, and data-quality rules belong in application or maintenance scripts; workflows select when to run them and report the result. The organized baseline is 17 workflow YAML files; adding another workflow should require a responsibility that cannot fit an existing owner.
 
 ## Validation
 
