@@ -1,14 +1,27 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 
 const indexUrl = new URL("../public/index.html", import.meta.url);
 const packageUrl = new URL("../package.json", import.meta.url);
+const appUrl = new URL("../frontend/public-app.tsx", import.meta.url);
+const componentsUrl = new URL("../frontend/public-components.tsx", import.meta.url);
 
-test("the public catalog mounts through the React entrypoint", async () => {
-  const [html, packageText] = await Promise.all([
+const retiredUiSources = [
+  "app.tsx",
+  "product-view.ts",
+  "shop-links.ts",
+  "shop-filter-order.ts",
+  "catalog-url-state.ts",
+  "dom.ts",
+].map((name) => new URL(`../frontend/${name}`, import.meta.url));
+
+test("the public catalog mounts through the native React entrypoint", async () => {
+  const [html, packageText, appSource, componentSource] = await Promise.all([
     readFile(indexUrl, "utf8"),
     readFile(packageUrl, "utf8"),
+    readFile(appUrl, "utf8"),
+    readFile(componentsUrl, "utf8"),
   ]);
   const packageJson = JSON.parse(packageText) as {
     scripts?: Record<string, string>;
@@ -18,7 +31,17 @@ test("the public catalog mounts through the React entrypoint", async () => {
   assert.match(html, /<div id="root"><\/div>/u);
   assert.match(html, /<script type="module" src="\/app\.js"><\/script>/u);
   assert.doesNotMatch(html, /catalog-url-state\.js|shop-filter-order\.js|shop-links\.js/u);
-  assert.match(packageJson.scripts?.["build:frontend:public"] ?? "", /frontend\/app\.tsx/u);
+  assert.match(packageJson.scripts?.["build:frontend:public"] ?? "", /frontend\/public-app\.tsx/u);
   assert.ok(packageJson.dependencies?.react);
   assert.ok(packageJson.dependencies?.["react-dom"]);
+
+  const publicUiSource = `${appSource}\n${componentSource}`;
+  assert.doesNotMatch(
+    publicUiSource,
+    /dangerouslySetInnerHTML|\.innerHTML\s*=|MutationObserver|document\.createElement|replaceChildren/u,
+  );
+
+  for (const source of retiredUiSources) {
+    await assert.rejects(access(source));
+  }
 });
