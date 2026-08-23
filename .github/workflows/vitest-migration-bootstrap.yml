@@ -23,26 +23,6 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Inspect Node mock method call sites
-        shell: bash
-        run: |
-          set -euo pipefail
-          node <<'NODE'
-          const fs = require('node:fs');
-          const path = require('node:path');
-          for (const name of fs.readdirSync('test').filter((name) => name.endsWith('.test.ts'))) {
-            const file = path.join('test', name);
-            const lines = fs.readFileSync(file, 'utf8').split('\n');
-            const hits = lines.flatMap((line, index) => line.includes('mock.method') ? [index] : []);
-            if (!hits.length) continue;
-            console.log(`--- ${file} ---`);
-            for (const index of hits) {
-              const start = Math.max(0, index - 3);
-              const end = Math.min(lines.length, index + 9);
-              console.log(lines.slice(start, end).map((line, offset) => `${start + offset + 1}: ${line}`).join('\n'));
-            }
-          }
-          NODE
       - name: Migrate Node test imports and package scripts
         shell: bash
         run: |
@@ -56,17 +36,18 @@ jobs:
             .filter((name) => name.endsWith('.test.ts'))
             .map((name) => path.join(testDir, name));
 
-          const imports = new Set();
           let migrated = 0;
           for (const file of files) {
             let source = fs.readFileSync(file, 'utf8');
-            for (const match of source.matchAll(/^import .* from ["']node:test["'];$/gm)) {
-              imports.add(match[0]);
-            }
             const before = source;
             source = source.replace(/^import test from ["']node:test["'];$/gm, 'import { test } from "vitest";');
-            source = source.replace(/^import \{ mock \} from ["']node:test["'];$/gm, 'import { vi as mock } from "vitest";');
+            source = source.replace(/^import \{ mock \} from ["']node:test["'];$/gm, 'import { vi } from "vitest";');
             source = source.replace(/^(import\s+\{[^}]+\}\s+from\s+)["']node:test["'];$/gm, '$1"vitest";');
+            source = source.replace(
+              /\bmock\.method\(\s*([A-Za-z_$][\w$]*),\s*(["'][^"']+["']),\s*/g,
+              'vi.spyOn($1, $2).mockImplementation(',
+            );
+            source = source.replace(/\bmock\.restoreAll\(\)/g, 'vi.restoreAllMocks()');
             if (source !== before) {
               fs.writeFileSync(file, source);
               migrated += 1;
@@ -74,12 +55,12 @@ jobs:
           }
 
           console.log(`Migrated ${migrated} test files from node:test.`);
-          console.log('Observed node:test import forms:');
-          for (const line of [...imports].sort()) console.log(`  ${line}`);
-
-          const leftovers = files.filter((file) => /node:test/.test(fs.readFileSync(file, 'utf8')));
+          const leftovers = files.filter((file) => {
+            const source = fs.readFileSync(file, 'utf8');
+            return /node:test|\bmock\.(?:method|restoreAll)\b/.test(source);
+          });
           if (leftovers.length) {
-            console.error('Unmigrated node:test references:');
+            console.error('Unmigrated Node test-runner references:');
             for (const file of leftovers) console.error(`  ${file}`);
             process.exit(1);
           }
