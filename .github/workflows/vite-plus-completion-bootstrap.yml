@@ -3,35 +3,109 @@ name: Vite+ completion bootstrap
 on:
   push:
     branches: [fix/complete-vite-plus-migration]
-  pull_request:
-    branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  audit:
+  migrate:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: fix/complete-vite-plus-migration
+          fetch-depth: 0
+      - name: Configure git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1.17.0
         with:
           version: "0.2.9"
-          node-version: "22"
           run-install: false
           cache: false
-      - name: Inventory remaining legacy Node toolchain entrypoints
+      - name: Route CI/CD and docs through Vite+
         shell: bash
         run: |
           set -euo pipefail
-          grep -RInE 'actions/setup-node|(^|[[:space:]])npm (ci|run|exec|pack|audit)|(^|[[:space:]])npx (wrangler|playwright|tsx|vitepress|vitest|vite|oxlint|oxfmt)' .github package.json README.md AGENTS.md docs || true
-      - name: Show canonical Vite+ runtime and migration diff
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          workflows = Path('.github/workflows')
+          for path in workflows.glob('*.yml'):
+              if path.name == 'vite-plus-completion-bootstrap.yml':
+                  continue
+              text = path.read_text(encoding='utf-8')
+              text = re.sub(
+                  r'(?m)^      - name: Setup Node\.js\n        uses: actions/setup-node@[^\n]+\n        with:\n          node-version: 22\n(?:          cache: npm\n)?',
+                  '      - uses: ./.github/actions/setup-node-deps\n',
+                  text,
+              )
+              text = re.sub(
+                  r'(?m)^      - uses: actions/setup-node@[^\n]+\n        with:\n          node-version: 22\n(?:          cache: npm\n)?',
+                  '      - uses: ./.github/actions/setup-node-deps\n',
+                  text,
+              )
+              text = re.sub(r'(?m)^      - name: Install dependencies\n        run: npm ci\n', '', text)
+              text = re.sub(r'(?m)^      - run: npm ci\n', '', text)
+              replacements = {
+                  'npm run ': 'vp run ',
+                  'npm audit signatures': 'vp pm audit signatures',
+                  'npm audit --audit-level=high': 'vp pm audit --audit-level=high',
+                  'npx tsx ': 'vp exec tsx ',
+                  'npx wrangler ': 'vp exec wrangler ',
+                  'npx playwright ': 'vp exec playwright ',
+                  'npx --yes semantic-release@25.0.8': 'vp dlx semantic-release@25.0.8',
+                  'npm pack @cloudflare/playwright@1.3.5 --silent': 'vp pm pack @cloudflare/playwright@1.3.5 --silent',
+              }
+              for old, new in replacements.items():
+                  text = text.replace(old, new)
+              path.write_text(text, encoding='utf-8')
+
+          for path in [Path('README.md'), Path('AGENTS.md'), *Path('docs').rglob('*.md')]:
+              text = path.read_text(encoding='utf-8')
+              text = text.replace('npm run ', 'vp run ')
+              text = text.replace('npx playwright ', 'vp exec playwright ')
+              path.write_text(text, encoding='utf-8')
+          PY
+      - name: Finalize official Vite+ migration and lockfile
         shell: bash
         run: |
           set -euo pipefail
           vp migrate --no-interactive
           vp env pin 22 --target dev-engines
-          git diff -- package.json
-          exit 1
+          vp install
+      - name: Assert no legacy project Node toolchain entrypoints remain
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RInE \
+            --exclude='vite-plus-completion-bootstrap.yml' \
+            'actions/setup-node|(^|[[:space:]])npm (ci|run|exec|pack|audit)|(^|[[:space:]])npx (wrangler|playwright|tsx|vitepress|vitest|vite|oxlint|oxfmt)' \
+            .github package.json README.md AGENTS.md docs; then
+            echo 'Legacy Node/Vite toolchain entrypoint remains.' >&2
+            exit 1
+          fi
+      - name: Validate migrated project
+        shell: bash
+        run: |
+          set -euo pipefail
+          vp run check
+          vp run build
+          vp pm audit signatures
+          vp pm audit --audit-level=high
+      - name: Commit completed migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A
+          git commit -m "refactor: complete Vite+ migration across CI/CD"
+          vp migrate --no-interactive
+          git diff --exit-code
+          rm .github/workflows/vite-plus-completion-bootstrap.yml
+          git add -A
+          git commit -m "chore: remove Vite+ completion bootstrap"
+          git push origin HEAD:fix/complete-vite-plus-migration
