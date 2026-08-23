@@ -34,7 +34,7 @@ function assertAdminSecurityHeaders(response: Response): void {
   assert.match(response.headers.get("content-security-policy") || "", /default-src 'self'/u);
 }
 
-test("admin root serves the single unified console entrypoint", async () => {
+test("admin root serves the single React console entrypoint", async () => {
   const seenPaths: string[] = [];
   const response = await handleAuthenticatedAdminEntryRequest(
     new Request("https://admin.example.test/?ignored=1"),
@@ -63,51 +63,37 @@ test("admin assets disable Cloudflare HTML canonical redirects", () => {
   assert.match(config, /"html_handling"\s*:\s*"none"/u);
 });
 
-test("legacy clean admin page URLs are retired", async () => {
-  for (const pathname of ["/catalog-admin", "/listing-admin"]) {
-    const seenPaths: string[] = [];
-    const response = await handleAuthenticatedAdminEntryRequest(
-      new Request(`https://admin.example.test${pathname}`),
-      adminEnv(seenPaths),
-    );
+test("all legacy admin page and fragment URLs are retired", async () => {
+  for (const pathname of [
+    "/catalog-admin",
+    "/listing-admin",
+    "/catalog-admin.html",
+    "/listing-admin.html",
+  ]) {
+    for (const headers of [{}, { "x-admin-fragment": "1" }]) {
+      const seenPaths: string[] = [];
+      const response = await handleAuthenticatedAdminEntryRequest(
+        new Request(`https://admin.example.test${pathname}`, { headers }),
+        adminEnv(seenPaths),
+      );
 
-    assert.equal(response.status, 404);
-    assert.deepEqual(seenPaths, []);
-    assertAdminSecurityHeaders(response);
+      assert.equal(response.status, 404, `${pathname} must stay retired`);
+      assert.deepEqual(seenPaths, []);
+      assertAdminSecurityHeaders(response);
+    }
   }
 });
 
-test("legacy HTML is only exposed as an internal tab fragment", async () => {
-  for (const pathname of ["/catalog-admin.html", "/listing-admin.html"]) {
-    const directPaths: string[] = [];
-    const direct = await handleAuthenticatedAdminEntryRequest(
-      new Request(`https://admin.example.test${pathname}`),
-      adminEnv(directPaths),
-    );
-    assert.equal(direct.status, 404);
-    assert.deepEqual(directPaths, []);
-
-    const fragmentPaths: string[] = [];
-    const fragment = await handleAuthenticatedAdminEntryRequest(
-      new Request(`https://admin.example.test${pathname}`, {
-        headers: { "x-admin-fragment": "1" },
-      }),
-      adminEnv(fragmentPaths),
-    );
-    assert.equal(fragment.status, 200);
-    assert.deepEqual(fragmentPaths, [pathname]);
-    assertAdminSecurityHeaders(fragment);
-  }
-});
-
-test("unified admin shell exposes accessible tabs and no legacy page links", () => {
+test("admin HTML is only a React mount shell", () => {
   const html = readFileSync(new URL("../admin-public/index.html", import.meta.url), "utf8");
 
-  assert.match(html, /role="tablist"/u);
-  assert.match(html, /id="admin-tab-catalog"/u);
-  assert.match(html, /id="admin-tab-listings"/u);
-  assert.match(html, /aria-controls="catalog-pane"/u);
-  assert.match(html, /aria-controls="listings-pane"/u);
-  assert.doesNotMatch(html, /href="\/catalog-admin"/u);
-  assert.doesNotMatch(html, /href="\/listing-admin"/u);
+  assert.match(html, /id="admin-root"/u);
+  assert.match(html, /<script src="\/admin-console\.js"><\/script>/u);
+  assert.doesNotMatch(html, /role="tablist"/u);
+  assert.doesNotMatch(html, /catalog-pane/u);
+  assert.doesNotMatch(html, /listings-pane/u);
+  assert.doesNotMatch(html, /catalog-admin\.js/u);
+  assert.doesNotMatch(html, /listing-admin\.js/u);
+  assert.doesNotMatch(html, /catalog-admin\.html/u);
+  assert.doesNotMatch(html, /listing-admin\.html/u);
 });
