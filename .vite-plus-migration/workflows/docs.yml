@@ -1,0 +1,103 @@
+name: Developer Docs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: read
+
+concurrency:
+  group: docs-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-node-deps
+      # The SchemaSpy JDBC driver is downloaded from Maven Central on a cache miss only. The key
+      # tracks the generator script, which is where the driver version is declared.
+      - name: Cache SchemaSpy JDBC driver
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: .cache/docs/drivers
+          key: schemaspy-driver-${{ hashFiles('scripts/docs/generate-db-docs.sh') }}
+      - name: Configure GitHub Pages
+        id: pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+      - name: Validate module dependencies
+        run: vp run docs:architecture:check
+      - name: Build developer documentation
+        run: vp run docs:build
+        env:
+          DOCS_BASE: "${{ steps.pages.outputs.base_path }}/"
+      - name: Validate generated report links
+        run: |
+          test -f docs/.vitepress/dist/db/index.html
+          test -f docs/.vitepress/dist/generated/dependencies.html
+          python - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+
+          class AnchorParser(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.anchors = []
+
+              def handle_starttag(self, tag, attrs):
+                  if tag == "a":
+                      self.anchors.append(dict(attrs))
+
+          cases = [
+              (Path("docs/.vitepress/dist/database/index.html"), "../db/index.html"),
+              (
+                  Path("docs/.vitepress/dist/architecture/dependencies.html"),
+                  "../generated/dependencies.html",
+              ),
+          ]
+
+          for path, expected_href in cases:
+              parser = AnchorParser()
+              parser.feed(path.read_text(encoding="utf-8"))
+              if not any(
+                  anchor.get("href") == expected_href and anchor.get("target") == "_self"
+                  for anchor in parser.anchors
+              ):
+                  raise SystemExit(f"missing static report link {expected_href} in {path}")
+          PY
+      - name: Upload developer documentation
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: developer-docs
+          path: docs/.vitepress/dist
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload GitHub Pages artifact
+        if: github.event_name == 'push'
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        with:
+          path: docs/.vitepress/dist
+
+  deploy:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

@@ -1,0 +1,96 @@
+name: E2E
+
+on:
+  workflow_run:
+    workflows: ["Deploy Cloudflare"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: E2E target base URL
+        required: false
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  statuses: write
+
+concurrency:
+  group: hifiscout-e2e
+  cancel-in-progress: true
+
+jobs:
+  playwright:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download deployed SHA
+        if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: deployment-identity
+          path: .deployment
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
+      - name: Resolve deployed SHA
+        id: deployment
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = 'workflow_run' ]; then
+            sha="$(tr -d '\r\n' < .deployment/deployment-sha.txt)"
+          else
+            sha="$MANUAL_SHA"
+          fi
+          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid deployed SHA: $sha" >&2
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ steps.deployment.outputs.sha }}
+      - name: Resolve E2E base URL
+        shell: bash
+        env:
+          INPUT_BASE_URL: ${{ inputs.base_url }}
+          REPOSITORY_E2E_BASE_URL: ${{ vars.E2E_BASE_URL }}
+          REPOSITORY_PRODUCTION_BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
+        run: |
+          set -euo pipefail
+          source .github/config/production.env
+          base_url="${INPUT_BASE_URL:-${REPOSITORY_E2E_BASE_URL:-${REPOSITORY_PRODUCTION_BASE_URL:-$PRODUCTION_BASE_URL}}}"
+          echo "E2E_BASE_URL=${base_url%/}" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/setup-node-deps
+      - name: Resolve installed Playwright version
+        id: playwright-version
+        shell: bash
+        run: |
+          version="$(node -p "require('@playwright/test/package.json').version")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Restore Playwright Chromium cache
+        id: playwright-cache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-chromium-${{ steps.playwright-version.outputs.version }}
+      - name: Install Chromium on cache miss
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: vp exec playwright install chromium
+      - name: Run Playwright user-flow regression suite
+        run: vp run test:e2e
+      - name: Publish E2E status
+        if: always() && steps.deployment.outputs.sha != ''
+        continue-on-error: true
+        uses: ./.github/actions/publish-commit-status
+        with:
+          github-token: ${{ github.token }}
+          sha: ${{ steps.deployment.outputs.sha }}
+          job-status: ${{ job.status }}
+          context: verification/e2e
+          description-prefix: E2E

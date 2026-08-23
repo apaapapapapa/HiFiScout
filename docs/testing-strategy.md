@@ -43,7 +43,7 @@ Tests against live data deliberately avoid assertions such as a specific product
 ```sh
 cd e2e
 npm install --no-package-lock
-npx playwright install chromium
+vp exec playwright install chromium
 E2E_BASE_URL=https://hifiscout.raha3415kohei.workers.dev npm test
 ```
 

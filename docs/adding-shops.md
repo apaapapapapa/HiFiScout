@@ -11,7 +11,7 @@ type union in `src/crawler/types.ts`.
 Use the scaffold generator:
 
 ```bash
-npm run create-shop -- \
+vp run create-shop -- \
   --key example-audio \
   --name "Example Audio" \
   --base-url https://example.com \
@@ -209,7 +209,7 @@ other editorial content.
 4. Map seller availability to the canonical tri-state and test contradictory/uncertain cases.
 5. Define seller-category mapping/policy and optional detail evidence where listing evidence is weak.
 6. Add parser assertions for raw fields, availability, classification and factual metadata.
-7. Run `npm run verify`, `npm run docs:architecture:check`, and `npm run build`.
+7. Run `vp run verify`, `vp run docs:architecture:check`, and `vp run build`.
 8. Check robots.txt and the site's current terms.
 9. Declare the shop's `<PREFIX>_*` values in `wrangler.jsonc`; relay collectors also require
    `CRAWL_RELAY_URL` and `CRAWL_RELAY_TOKEN`.

@@ -1,0 +1,82 @@
+name: Apply Manual Category Authority
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'migrations/0033_add_audited_model_aliases.sql'
+      - 'src/db/manual-category-authority-repository.ts'
+      - 'src/crawler/category-enricher.ts'
+      - 'scripts/apply-manual-category-authority.ts'
+      - '.github/workflows/apply-manual-category-authority.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: manual-category-authority-production
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      CLOUDFLARE_ACCOUNT_ID: 9af87af4dbc00be3bfd4c8af3f52f684
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: ./.github/actions/setup-node-deps
+
+      - name: Wait for the production deployment of this commit
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 120); do
+            runs="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/actions/workflows/deploy.yml/runs" -f branch=main -f head_sha="${GITHUB_SHA}" -f per_page=20)"
+            run="$(jq -c '[.workflow_runs[] | select(.head_sha == env.GITHUB_SHA and (.conclusion // "") != "skipped")] | sort_by(.created_at) | last // empty' <<< "$runs")"
+            if [[ -z "$run" ]]; then
+              echo "Waiting for Deploy Cloudflare run for ${GITHUB_SHA} (${attempt}/120)"
+              sleep 15
+              continue
+            fi
+            status="$(jq -r '.status' <<< "$run")"
+            conclusion="$(jq -r '.conclusion // ""' <<< "$run")"
+            run_id="$(jq -r '.id' <<< "$run")"
+            echo "Deploy Cloudflare run ${run_id}: status=${status} conclusion=${conclusion:-pending}"
+            if [[ "$status" == "completed" ]]; then
+              if [[ "$conclusion" != "success" ]]; then
+                echo "Deploy Cloudflare did not succeed for ${GITHUB_SHA}." >&2
+                exit 1
+              fi
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "Timed out waiting for Deploy Cloudflare for ${GITHUB_SHA}." >&2
+          exit 1
+
+      - name: Resolve production D1 binding
+        id: d1
+        shell: bash
+        run: |
+          set -euo pipefail
+          info="$(vp exec wrangler d1 info DB --json)"
+          id="$(jq -r '.uuid // .database_id // .id // empty' <<< "$info")"
+          if [[ -z "$id" ]]; then
+            echo 'Could not resolve the deployed DB binding to an explicit D1 id.' >&2
+            jq . <<< "$info" >&2
+            exit 1
+          fi
+          echo "database_id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Apply manual category authority and refresh projections
+        env:
+          D1_DATABASE_ID: ${{ steps.d1.outputs.database_id }}
+        run: vp exec tsx scripts/apply-manual-category-authority.ts

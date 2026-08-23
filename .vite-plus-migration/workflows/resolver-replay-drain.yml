@@ -1,0 +1,155 @@
+name: Resolver Replay Drain
+
+on:
+  workflow_run:
+    workflows: ['Deploy Cloudflare']
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+  statuses: write
+
+concurrency:
+  group: production-resolver-replay-drain
+  cancel-in-progress: false
+
+jobs:
+  drain:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_ACCOUNT_ID: 9af87af4dbc00be3bfd4c8af3f52f684
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+      - uses: ./.github/actions/setup-node-deps
+
+      - name: Resolve inherited production D1 binding
+        id: d1
+        shell: bash
+        run: |
+          set -euo pipefail
+          info="$(vp exec wrangler d1 info DB --json)"
+          id="$(jq -r '.uuid // .database_id // .id // empty' <<< "$info")"
+          if [[ -z "$id" ]]; then
+            echo 'Could not resolve the deployed DB binding to an explicit D1 id.' >&2
+            jq . <<< "$info" >&2
+            exit 1
+          fi
+          echo "database_id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Process one bounded replay batch through the D1 REST API
+        id: drain
+        shell: bash
+        env:
+          D1_DATABASE_ID: ${{ steps.d1.outputs.database_id }}
+        run: |
+          set -euo pipefail
+          # Administrative replay must not consume the production Worker's daily invocation quota.
+          # Keep each batch below the 20-minute job timeout so the continuation dispatch can run.
+          result=.generated/remediation-drain-result.json
+          vp exec tsx scripts/resolver-replay-drain.ts \
+            --max-sweeps 24 \
+            --output "$result"
+
+          complete="$(jq -r '.complete' "$result")"
+          remaining="$(jq -r '.remaining' "$result")"
+          compacted="$(jq -r '.compacted' "$result")"
+          echo "complete=$complete" >> "$GITHUB_OUTPUT"
+          echo "remaining=$remaining" >> "$GITHUB_OUTPUT"
+
+          {
+            echo '## Resolver Replay Drain Batch'
+            echo
+            echo "Transport: direct Cloudflare D1 REST API (no Worker invocation)"
+            echo "Superseded jobs compacted: $compacted"
+            echo "Completed: $complete"
+            echo "Remaining stale signals: $remaining"
+            echo
+            echo '### Initial after compaction'
+            echo '```json'
+            jq .initial "$result"
+            echo '```'
+            echo
+            echo '### Final'
+            echo '```json'
+            jq .final "$result"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify production search read-model consistency
+        if: steps.drain.outputs.complete == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          result="$(vp exec wrangler d1 execute DB --remote --json --command "
+            SELECT
+              (SELECT COUNT(*) FROM products WHERE is_active = 1) AS active_listings,
+              (SELECT COUNT(*) FROM product_search_entity_offers) AS offer_count,
+              (SELECT COUNT(*) FROM products p
+                WHERE p.is_active = 1
+                  AND NOT EXISTS (
+                    SELECT 1 FROM product_search_entity_offers o
+                    WHERE o.listing_product_id = p.id
+                  )) AS unmembered_active_listings,
+              (SELECT COUNT(*) FROM product_search_entity_offers o
+                JOIN products p ON p.id = o.listing_product_id
+                WHERE p.is_active = 0) AS inactive_offer_memberships,
+              (SELECT COUNT(*) FROM product_search_entities e
+                WHERE NOT EXISTS (
+                  SELECT 1 FROM product_search_entity_offers o WHERE o.entity_id = e.id
+                )) AS entities_without_offers;")"
+          row="$(jq -c '.[0].results[0] // {}' <<< "$result")"
+          jq . <<< "$row"
+          jq -e '
+            .active_listings == .offer_count and
+            .unmembered_active_listings == 0 and
+            .inactive_offer_memberships == 0 and
+            .entities_without_offers == 0
+          ' <<< "$row" >/dev/null
+
+      - name: Publish replay convergence status
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          if [[ "${{ steps.drain.outcome }}" != 'success' ]]; then
+            state='failure'
+            description='Resolver replay batch failed'
+          elif [[ "${{ steps.drain.outputs.complete }}" == 'true' ]]; then
+            state='success'
+            description='Resolver replay fully converged'
+          else
+            state='pending'
+            description="Resolver replay: ${{ steps.drain.outputs.remaining }} stale signals remain"
+          fi
+          gh api --method POST "/repos/${GITHUB_REPOSITORY}/statuses/${TARGET_SHA}" \
+            -f state="$state" \
+            -f context='data-quality/resolver-replay' \
+            -f description="$description" \
+            -f target_url="$run_url"
+
+      - name: Continue replay or trigger full audit
+        if: steps.drain.outcome == 'success'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ steps.drain.outputs.complete }}" == 'true' ]]; then
+            echo 'Resolver replay converged; dispatching the exhaustive product audit.'
+            gh workflow run product-data-audit.yml --repo "$GITHUB_REPOSITORY" --ref main
+          else
+            echo "${{ steps.drain.outputs.remaining }} stale signals remain; dispatching the next bounded batch."
+            gh workflow run resolver-replay-drain.yml --repo "$GITHUB_REPOSITORY" --ref main
+          fi
