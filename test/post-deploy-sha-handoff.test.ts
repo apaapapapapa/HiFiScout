@@ -28,6 +28,8 @@ test("Deploy persists the exact CI-authorized SHA before mutating production", (
 
 test("every automatic post-deploy workflow resolves identity from the triggering Deploy artifact", () => {
   for (const workflow of downstreamWorkflows) {
+    assert.match(workflow, /actions: read/u);
+    assert.match(workflow, /statuses: write/u);
     assert.match(workflow, /actions\/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093/u);
     assert.match(workflow, /name: deployment-identity/u);
     assert.match(workflow, /run-id: \$\{\{ github\.event\.workflow_run\.id \}\}/u);
