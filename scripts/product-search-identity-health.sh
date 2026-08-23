@@ -26,39 +26,22 @@ split_groups="$(query "
     COUNT(DISTINCT m.entity_id) AS entity_count
   FROM products p
   JOIN product_search_entity_offers m ON m.listing_product_id = p.id
+  LEFT JOIN product_identity_resolutions r
+    ON r.listing_product_id = p.id AND r.status = 'matched'
+  LEFT JOIN knowledge_catalog_products kp
+    ON kp.id = r.catalog_product_id AND kp.verification_status = 'verified'
   WHERE p.is_active = 1
     AND p.model_resolution_status = 'resolved'
     AND COALESCE(p.canonical_manufacturer_id, '') <> ''
     AND COALESCE(p.normalized_model, '') <> ''
-    AND NOT EXISTS (
-      SELECT 1
-      FROM product_identity_resolutions r
-      JOIN knowledge_catalog_products kp
-        ON kp.id = r.catalog_product_id AND kp.verification_status = 'verified'
-      WHERE r.listing_product_id = p.id AND r.status = 'matched'
-    )
-    AND (
-      SELECT COUNT(DISTINCT CASE
-        WHEN peer.primary_category_id <> 'other' THEN peer.primary_category_id
-        ELSE NULL
-      END)
-      FROM products peer
-      WHERE peer.is_active = 1
-        AND peer.model_resolution_status = 'resolved'
-        AND COALESCE(peer.canonical_manufacturer_id, '') <> ''
-        AND COALESCE(peer.normalized_model, '') <> ''
-        AND NOT EXISTS (
-          SELECT 1
-          FROM product_identity_resolutions r2
-          JOIN knowledge_catalog_products kp2
-            ON kp2.id = r2.catalog_product_id AND kp2.verification_status = 'verified'
-          WHERE r2.listing_product_id = peer.id AND r2.status = 'matched'
-        )
-        AND peer.canonical_manufacturer_id = p.canonical_manufacturer_id
-        AND peer.normalized_model = p.normalized_model
-    ) <= 1
+    AND kp.id IS NULL
   GROUP BY p.canonical_manufacturer_id, p.normalized_model
-  HAVING COUNT(*) > 1 AND COUNT(DISTINCT m.entity_id) > 1
+  HAVING COUNT(*) > 1
+    AND COUNT(DISTINCT m.entity_id) > 1
+    AND COUNT(DISTINCT CASE
+      WHEN p.primary_category_id <> 'other' THEN p.primary_category_id
+      ELSE NULL
+    END) <= 1
   ORDER BY listing_count DESC, shop_count DESC
   LIMIT 50;")"
 
