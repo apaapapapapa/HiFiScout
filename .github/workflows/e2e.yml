@@ -12,7 +12,9 @@ on:
         type: string
 
 permissions:
+  actions: read
   contents: read
+  statuses: write
 
 concurrency:
   group: hifiscout-e2e
@@ -24,7 +26,35 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Download deployed SHA
+        if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: deployment-identity
+          path: .deployment
+          github-token: ${{ github.token }}
+          run-id: ${{ github.event.workflow_run.id }}
+      - name: Resolve deployed SHA
+        id: deployment
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = 'workflow_run' ]; then
+            sha="$(tr -d '\r\n' < .deployment/deployment-sha.txt)"
+          else
+            sha="$MANUAL_SHA"
+          fi
+          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid deployed SHA: $sha" >&2
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ steps.deployment.outputs.sha }}
       - name: Resolve E2E base URL
         shell: bash
         env:
@@ -64,3 +94,24 @@ jobs:
       - name: Run Playwright user-flow regression suite
         working-directory: e2e
         run: npm test
+      - name: Publish E2E status
+        if: always() && steps.deployment.outputs.sha != ''
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          E2E_STATUS: ${{ job.status }}
+          DEPLOY_SHA: ${{ steps.deployment.outputs.sha }}
+        run: |
+          set -euo pipefail
+          case "$E2E_STATUS" in
+            success) state=success ;;
+            failure|cancelled) state=failure ;;
+            *) state=error ;;
+          esac
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          gh api --method POST "/repos/${GITHUB_REPOSITORY}/statuses/${DEPLOY_SHA}" \
+            -f state="$state" \
+            -f context="verification/e2e" \
+            -f description="E2E: ${E2E_STATUS}" \
+            -f target_url="$run_url"
