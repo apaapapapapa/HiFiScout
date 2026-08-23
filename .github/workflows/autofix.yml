@@ -22,7 +22,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
       - uses: ./.github/actions/setup-node-deps
-      - name: Apply oxfmt to changed source files
+      - name: Apply Vite+ formatter to changed source files
         shell: bash
         run: |
           set -euo pipefail
@@ -32,7 +32,7 @@ jobs:
             echo "No changed JavaScript/TypeScript source files to format."
             exit 0
           fi
-          npx oxfmt "${files[@]}"
+          vp fmt "${files[@]}"
       - name: Commit formatting changes
         shell: bash
         run: |
@@ -44,5 +44,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -u
-          git commit -m "style: apply oxfmt"
+          git commit -m "style: apply Vite+ formatter"
           git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
