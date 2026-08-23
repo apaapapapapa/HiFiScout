@@ -30,7 +30,13 @@ export function CategoryOptions({ meta }: CategoryOptionsProps) {
   if (!meta) return null;
   const model = categoryOptionModel(meta);
   if (model.legacy.length) {
-    return <>{model.legacy.map((value) => <option key={value}>{value}</option>)}</>;
+    return (
+      <>
+        {model.legacy.map((value) => (
+          <option key={value}>{value}</option>
+        ))}
+      </>
+    );
   }
   let separator = 0;
   return (
@@ -41,12 +47,18 @@ export function CategoryOptions({ meta }: CategoryOptionsProps) {
             ────────────
           </option>
         ) : (
-          <option key={entry.id} value={entry.id}>{entry.name}</option>
+          <option key={entry.id} value={entry.id}>
+            {entry.name}
+          </option>
         ),
       )}
       {model.groups.map((group) => (
         <optgroup key={group.label} label={group.label}>
-          {group.values.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}
+          {group.values.map((entry) => (
+            <option key={entry.id} value={entry.id}>
+              {entry.name}
+            </option>
+          ))}
         </optgroup>
       ))}
     </>
@@ -135,13 +147,21 @@ export function ProductCard({
         <div className="card-top">
           <ShopChip product={product} shopName={shopName} />
           <div className="badges">
-            {activity.isNew ? <span className="badge">NEW</span> : activity.isRecentlyUpdated ? <span className="badge">UPDATED</span> : null}
+            {activity.isNew ? (
+              <span className="badge">NEW</span>
+            ) : activity.isRecentlyUpdated ? (
+              <span className="badge">UPDATED</span>
+            ) : null}
             {priceDropped(product) ? <span className="badge">PRICE DOWN</span> : null}
-            {product.identity_kind === "catalog" && product.shop_count > 1 ? <span className="badge badge-compare">比較</span> : null}
+            {product.identity_kind === "catalog" && product.shop_count > 1 ? (
+              <span className="badge badge-compare">比較</span>
+            ) : null}
           </div>
         </div>
         <p className="maker">
-          {manufacturer === "メーカー不明" ? manufacturer : (
+          {manufacturer === "メーカー不明" ? (
+            manufacturer
+          ) : (
             <button
               type="button"
               className="manufacturer-filter-link"
@@ -165,7 +185,12 @@ export function ProductCard({
               {title}
             </button>
           ) : (
-            <a className="product-title-link" href={sourceUrl} target="_blank" rel="noopener noreferrer">
+            <a
+              className="product-title-link"
+              href={sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               {title}
             </a>
           )}
@@ -176,8 +201,12 @@ export function ProductCard({
         </div>
       </div>
       <div className="product-commerce">
-        <div className="price-row"><strong>{priceSummary(product)}</strong></div>
-        <div className={`stock ${offerAvailabilityClass(product)}`}>{offerAvailability(product)}</div>
+        <div className="price-row">
+          <strong>{priceSummary(product)}</strong>
+        </div>
+        <div className={`stock ${offerAvailabilityClass(product)}`}>
+          {offerAvailability(product)}
+        </div>
         <p className="updated">{updated}</p>
       </div>
       <div className="actions">
@@ -210,7 +239,8 @@ export function LegacyFavoritesNotice({ count }: { count: number }) {
   if (!count) return null;
   return (
     <div className="legacy-favorites-note">
-      旧形式で保存されたお気に入りが{count}件あります。商品情報が保存されていないため表示できません。
+      旧形式で保存されたお気に入りが{count}
+      件あります。商品情報が保存されていないため表示できません。
     </div>
   );
 }
@@ -235,7 +265,9 @@ export function EmptyProducts({
   return (
     <div className="empty">
       <strong>条件に一致する商品はありません。</strong>
-      <button type="button" data-clear-all onClick={onClear}>条件をすべて解除</button>
+      <button type="button" data-clear-all onClick={onClear}>
+        条件をすべて解除
+      </button>
     </div>
   );
 }
@@ -244,7 +276,9 @@ export function ProductError({ message, onRetry }: { message: string; onRetry: (
   return (
     <div className="empty">
       <strong>{message}</strong>
-      <button type="button" data-retry onClick={onRetry}>再読み込み</button>
+      <button type="button" data-retry onClick={onRetry}>
+        再読み込み
+      </button>
     </div>
   );
 }
@@ -273,13 +307,24 @@ function OfferRow({
       <p className="offer-title">{offer.title}</p>
       <div className="offer-commerce">
         <strong>{price}</strong>
-        {dropped && offer.previous_price_yen != null ? <del>{yen.format(offer.previous_price_yen)}</del> : null}
+        {dropped && offer.previous_price_yen != null ? (
+          <del>{yen.format(offer.previous_price_yen)}</del>
+        ) : null}
       </div>
       <div className="offer-actions">
-        <button type="button" data-history={offer.listing_product_id} onClick={() => onHistory(offer.listing_product_id)}>
+        <button
+          type="button"
+          data-history={offer.listing_product_id}
+          onClick={() => onHistory(offer.listing_product_id)}
+        >
           価格履歴
         </button>
-        <a className="shop-link" href={safeExternalUrl(offer.source_url)} target="_blank" rel="noopener noreferrer">
+        <a
+          className="shop-link"
+          href={safeExternalUrl(offer.source_url)}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           販売店で確認 ↗
         </a>
       </div>
@@ -292,13 +337,23 @@ export function OffersContent({
   shopName,
   onHistory,
 }: {
-  state: { kind: "loading" } | { kind: "error" } | { kind: "ready"; data: ProductDetailResponse } | null;
+  state:
+    | { kind: "loading" }
+    | { kind: "error" }
+    | { kind: "ready"; data: ProductDetailResponse }
+    | null;
   shopName: (shopKey: string) => string;
   onHistory: (listingId: number) => void;
 }) {
   if (!state) return null;
   if (state.kind === "loading") return <p className="loading-dialog">在庫情報を取得中…</p>;
-  if (state.kind === "error") return <><h2 id="offers-title">在庫一覧</h2><p>在庫情報を取得できませんでした。</p></>;
+  if (state.kind === "error")
+    return (
+      <>
+        <h2 id="offers-title">在庫一覧</h2>
+        <p>在庫情報を取得できませんでした。</p>
+      </>
+    );
   const { product, offers } = state.data;
   const heading = product.model || product.representative_offer?.title || "商品";
   return (
@@ -306,14 +361,25 @@ export function OffersContent({
       <p className="maker">{product.manufacturer || "メーカー不明"}</p>
       <h2 id="offers-title">{heading}</h2>
       {product.identity_kind === "catalog" ? (
-        <p className="offers-note">{product.shop_count}店舗 / {product.offer_count}件の在庫</p>
+        <p className="offers-note">
+          {product.shop_count}店舗 / {product.offer_count}件の在庫
+        </p>
       ) : (
         <p className="offers-note">この商品はまだ他店の在庫と照合できていません。</p>
       )}
       <ol className="offers">
-        {offers.length ? offers.map((offer) => (
-          <OfferRow key={offer.listing_product_id} offer={offer} shopName={shopName} onHistory={onHistory} />
-        )) : <li>表示できる在庫がありません。</li>}
+        {offers.length ? (
+          offers.map((offer) => (
+            <OfferRow
+              key={offer.listing_product_id}
+              offer={offer}
+              shopName={shopName}
+              onHistory={onHistory}
+            />
+          ))
+        ) : (
+          <li>表示できる在庫がありません。</li>
+        )}
       </ol>
     </>
   );
@@ -322,26 +388,42 @@ export function OffersContent({
 export function HistoryContent({
   state,
 }: {
-  state: { kind: "loading" } | { kind: "error" } | { kind: "ready"; data: ProductHistoryResponse } | null;
+  state:
+    | { kind: "loading" }
+    | { kind: "error" }
+    | { kind: "ready"; data: ProductHistoryResponse }
+    | null;
 }) {
   if (!state) return null;
   if (state.kind === "loading") return <p className="loading-dialog">価格履歴を取得中…</p>;
-  if (state.kind === "error") return <><h2 id="history-title">価格履歴</h2><p>価格履歴を取得できませんでした。</p></>;
+  if (state.kind === "error")
+    return (
+      <>
+        <h2 id="history-title">価格履歴</h2>
+        <p>価格履歴を取得できませんでした。</p>
+      </>
+    );
   const { product, history } = state.data;
   return (
     <>
       <p className="maker">{product.manufacturer}</p>
       <h2 id="history-title">{product.model || product.title}</h2>
       <ol className="history">
-        {history.length ? history.map((entry: PriceHistoryEntry, index) => (
-          <Fragment key={`${entry.observed_at}-${index}`}>
-            <li>
-              <time>{new Date(entry.observed_at).toLocaleString("ja-JP")}</time>
-              <strong>{yen.format(entry.price_yen)}</strong>
-              {index > 0 && entry.price_yen < history[index - 1].price_yen ? <span>↓</span> : null}
-            </li>
-          </Fragment>
-        )) : <li>履歴はまだありません。</li>}
+        {history.length ? (
+          history.map((entry: PriceHistoryEntry, index) => (
+            <Fragment key={`${entry.observed_at}-${index}`}>
+              <li>
+                <time>{new Date(entry.observed_at).toLocaleString("ja-JP")}</time>
+                <strong>{yen.format(entry.price_yen)}</strong>
+                {index > 0 && entry.price_yen < history[index - 1].price_yen ? (
+                  <span>↓</span>
+                ) : null}
+              </li>
+            </Fragment>
+          ))
+        ) : (
+          <li>履歴はまだありません。</li>
+        )}
       </ol>
     </>
   );
