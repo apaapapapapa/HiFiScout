@@ -1,4 +1,4 @@
-import { test } from "vitest";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { fujiyaAvicAdapter, parseFujiyaResultCount } from "../src/crawler/shops/fujiya-avic.js";
 import { coverageDecision, initialPageQueue } from "../src/crawler/strategies.js";

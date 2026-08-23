@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { test } from "vite-plus/test";
 import { PRODUCT_LIST_COLUMNS, toProductListItem } from "../src/db/product-row-mapper.js";
 import type { ProductRow } from "../src/db/types.js";
 

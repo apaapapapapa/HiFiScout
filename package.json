@@ -5,16 +5,16 @@
   "type": "module",
   "scripts": {
     "test": "npm run test:unit",
-    "test:unit": "vitest run --reporter=dot",
-    "test:unit:verbose": "vitest run --reporter=verbose",
+    "test:unit": "vp test run --reporter=dot",
+    "test:unit:verbose": "vp test run --reporter=verbose",
     "test:e2e": "playwright test --config e2e/playwright.config.ts",
     "fix": "npm run format && npm run lint:fix",
     "check": "npm run lint && npm run format:check && npm run check:no-js-source && npm run typecheck && npm run test:unit",
     "verify": "npm run fix && npm run check",
-    "lint": "oxlint . --deny-warnings",
-    "lint:fix": "oxlint . --fix",
-    "format": "oxfmt --no-error-on-unmatched-pattern \"**/*.ts\" \"**/*.mts\" \"**/*.cts\" \"**/*.tsx\"",
-    "format:check": "oxfmt --check --no-error-on-unmatched-pattern \"**/*.ts\" \"**/*.mts\" \"**/*.cts\" \"**/*.tsx\"",
+    "lint": "vp lint . --deny-warnings",
+    "lint:fix": "vp lint . --fix",
+    "format": "vp fmt --no-error-on-unmatched-pattern \"**/*.ts\" \"**/*.mts\" \"**/*.cts\" \"**/*.tsx\"",
+    "format:check": "vp fmt --check --no-error-on-unmatched-pattern \"**/*.ts\" \"**/*.mts\" \"**/*.cts\" \"**/*.tsx\"",
     "dev": "npm run build:frontend && wrangler dev --test-scheduled",
     "deploy": "npm run build:frontend && wrangler d1 migrations apply DB --remote && wrangler deploy",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
@@ -32,11 +32,11 @@
     "types:worker": "tsx scripts/ensure-directories.ts .generated && tsx scripts/run-quiet.ts wrangler types .generated/worker-configuration.d.ts",
     "build": "npm run build:frontend && npm run build:worker && npm run build:admin-worker && npm run build:lambda",
     "build:frontend": "npm run build:frontend:public && npm run build:frontend:admin",
-    "build:frontend:public": "esbuild frontend/app.tsx --bundle --outfile=public/app.js --format=iife --target=es2022 --define:process.env.NODE_ENV=\\\"production\\\"",
-    "build:frontend:admin": "esbuild frontend/admin-console.tsx --bundle --outfile=admin-public/admin-console.js --format=iife --target=es2022 --define:process.env.NODE_ENV=\\\"production\\\"",
+    "build:frontend:public": "vp build --mode public",
+    "build:frontend:admin": "vp build --mode admin",
     "build:worker": "wrangler deploy --dry-run --outdir dist/worker",
     "build:admin-worker": "wrangler deploy --dry-run --config wrangler.admin.jsonc --outdir dist/admin-worker",
-    "build:lambda": "tsx scripts/ensure-directories.ts dist/audiounion-lambda && esbuild infra/audiounion-lambda/index.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/audiounion-lambda/index.mjs",
+    "build:lambda": "vp build --mode lambda",
     "check:no-js-source": "tsx scripts/check-no-first-party-js.ts"
   },
   "dependencies": {
@@ -50,17 +50,15 @@
     "@types/node": "^22.20.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
-    "esbuild": "^0.28.2",
-    "oxfmt": "^0.63.0",
-    "oxlint": "^1.78.0",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2",
+    "vite-plus": "0.2.9",
     "vitepress": "^1.6.4",
-    "vitest": "^4.1.11",
     "wrangler": "^4.45.0"
   },
   "overrides": {
-    "vite": "6.4.3"
+    "vite": "npm:@voidzero-dev/vite-plus-core@0.2.9",
+    "vitest": "4.1.10"
   },
   "release": {
     "branches": [
@@ -96,5 +94,12 @@
         }
       ]
     ]
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "npm",
+      "version": "12.0.2",
+      "onFail": "download"
+    }
   }
 }

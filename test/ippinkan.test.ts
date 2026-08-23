@@ -1,4 +1,4 @@
-import { test } from "vitest";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { ippinkanAdapter } from "../src/crawler/shops/ippinkan.js";
 

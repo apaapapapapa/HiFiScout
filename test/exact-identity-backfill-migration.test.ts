@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import { test } from "vitest";
+import { test } from "vite-plus/test";
 
 const MIGRATION_DIRECTORY = new URL("../migrations/", import.meta.url);
 

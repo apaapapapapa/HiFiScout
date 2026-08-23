@@ -1,4 +1,4 @@
-import { test } from "vitest";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { parseFtsSearchQuery, quoteFtsTerm } from "../src/search/fts-query.js";
 

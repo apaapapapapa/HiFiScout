@@ -1,4 +1,4 @@
-import { test } from "vitest";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import type { VerifiedKnowledgeSource } from "../src/catalog/knowledge-verification/types.js";

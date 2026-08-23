@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { test } from "vite-plus/test";
 
 import { normalizeCategory } from "../src/catalog/categories.js";
 import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";

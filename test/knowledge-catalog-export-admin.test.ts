@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { test } from "vite-plus/test";
 
 import type { CatalogAdminRpc } from "../src/admin/contracts.js";
 import { handleAuthenticatedCatalogAdminRequest } from "../src/admin/index.js";

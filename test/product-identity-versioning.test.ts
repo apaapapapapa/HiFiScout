@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { test } from "vitest";
+import { test } from "vite-plus/test";
 import { IDENTITY_RESOLVER_VERSION } from "../src/catalog/resolution-versions.js";
 import { syncProductIdentityResolutions } from "../src/db/product-identity-repository.js";
 import { sqliteD1 } from "./helpers/sqlite-d1.js";
