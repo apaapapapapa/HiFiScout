@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { syncShopRows } from "../frontend/product-view.js";
+import { syncShopPresentations } from "../frontend/product-presentation.js";
 import { SHOP_FILTER_READINGS, sortShopsByJapaneseReading } from "../frontend/shop-options.js";
 import type { MetaShop } from "../src/api/contracts.js";
 import { SHOP_PLUGINS } from "../src/crawler/shops/index.js";
@@ -60,9 +60,8 @@ test("shop search filter follows Japanese gojuon reading order", () => {
 test("sync status details follows the same Japanese gojuon reading order", () => {
   const shops = SHOP_PLUGINS.map((plugin) => metaShop(plugin.key, plugin.name));
   const namesByKey = new Map(SHOP_PLUGINS.map((plugin) => [plugin.key, plugin.name]));
-  const markup = syncShopRows(shops, Date.UTC(2026, 7, 22, 0, 0, 0));
-  const renderedNames = [...markup.matchAll(/<span class="sync-shop-name">([^<]+)<\/span>/g)].map(
-    (match) => match[1],
+  const renderedNames = syncShopPresentations(shops, Date.UTC(2026, 7, 22, 0, 0, 0)).map(
+    (entry) => entry.name,
   );
 
   assert.deepEqual(
