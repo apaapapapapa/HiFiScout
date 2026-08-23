@@ -5,8 +5,8 @@
  * `crawler/schedule.ts` from adapter metadata, so adding a shop never touches this file.
  */
 
-import { dispatchDueCrawls, dispatchScheduledCrawl } from "./crawler/dispatch.js";
-import { sharedSweepExclusions, shopForCron } from "./crawler/schedule.js";
+import { dispatchScheduledCrawl, recoverStalledCrawlDispatches } from "./crawler/dispatch.js";
+import { roundRobinShopForScheduledTime, shopForCron } from "./crawler/schedule.js";
 import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from "./catalog/knowledge-verification/verifier.js";
 import { runDataQualityRemediationSweep } from "./db/data-quality-remediation-service.js";
 import {
@@ -35,8 +35,10 @@ import { errorMessage } from "./types.js";
 import type { DispatchResult } from "./crawler/types.js";
 import type { QueryableDatabase } from "./db/types.js";
 
-/** The shared sweep. Also the trigger that gets a chance to bootstrap a verifier rollout. */
+/** Five-minute maintenance/watchdog sweep. It no longer starts new shop crawls. */
 export const GENERAL_CRON = "*/5 * * * *";
+/** One non-dedicated shop is selected on each tick, giving a ten-minute round-robin start cadence. */
+export const CRAWL_ROTATION_CRON = "6-56/10 * * * *";
 export const DAILY_MAINTENANCE_CRON = "17 18 * * *";
 export const KNOWLEDGE_CATALOG_MONTHLY_CRON = "23 3 1 * *";
 
@@ -48,6 +50,11 @@ function logDispatchResult(cron: string, dispatch: DispatchResult): void {
   if (dispatch.status === "rejected" || (dispatch.status === "skipped" && "reason" in dispatch)) {
     console.warn(JSON.stringify(entry));
   } else console.log(JSON.stringify(entry));
+}
+
+async function logCurrentSyncHealth(env: Env): Promise<void> {
+  const health = await getSyncHealth(env);
+  logSyncHealth(health);
 }
 
 /**
@@ -118,16 +125,28 @@ async function runDailyMaintenance(env: Env) {
   };
 }
 
-export async function runScheduled(cron: string, env: Env) {
+export async function runScheduled(cron: string, env: Env, scheduledAt = new Date()) {
   if (cron === DAILY_MAINTENANCE_CRON) return runDailyMaintenance(env);
   if (cron === KNOWLEDGE_CATALOG_MONTHLY_CRON) return dispatchKnowledgeCatalogMonthlyRecheck(env);
+
+  if (cron === GENERAL_CRON) {
+    const recovered = await recoverStalledCrawlDispatches(env, { now: scheduledAt });
+    await logCurrentSyncHealth(env);
+    return recovered.length
+      ? ({ status: "queued", queued: recovered } satisfies DispatchResult)
+      : ({ status: "skipped", queued: [] } satisfies DispatchResult);
+  }
+
   const dedicated = shopForCron(cron);
-  const dispatch = dedicated
-    ? await dispatchScheduledCrawl(env, dedicated.key)
-    : await dispatchDueCrawls(env, { excludeShopKeys: sharedSweepExclusions() });
+  const rotating =
+    cron === CRAWL_ROTATION_CRON ? roundRobinShopForScheduledTime(scheduledAt) : null;
+  const selected = dedicated || rotating;
+  const dispatch: DispatchResult = selected
+    ? await dispatchScheduledCrawl(env, selected.key, { now: scheduledAt })
+    : { status: "skipped", queued: [] };
+
   logDispatchResult(cron, dispatch);
-  const health = await getSyncHealth(env);
-  logSyncHealth(health);
+  await logCurrentSyncHealth(env);
   return dispatch;
 }
 
@@ -243,7 +262,8 @@ export function handleScheduled(
   env: Env,
   ctx: ExecutionContext,
 ): void {
-  ctx.waitUntil(runScheduled(controller.cron, env));
+  const scheduledAt = new Date(controller.scheduledTime);
+  ctx.waitUntil(runScheduled(controller.cron, env, scheduledAt));
   if (controller.cron === GENERAL_CRON) {
     ctx.waitUntil(bootstrapKnowledgeCatalogReview(env));
     ctx.waitUntil(repairGeneralCronProjectionGaps(env.DB));

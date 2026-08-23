@@ -137,7 +137,7 @@ test("AVAC adapter covers audio plus the HiFi-relevant VISUAL leaves", () => {
 
   const plugin = getShopPlugin("avac");
   assert.ok(plugin);
-  assert.equal(plugin.definition.defaultIntervalMinutes, 60);
+  assert.equal(plugin.definition.defaultIntervalMinutes, 140);
   assert.equal(plugin.definition.defaultMaxPages, 50);
   assert.equal(plugin.definition.envPrefix, "AVAC");
 });
