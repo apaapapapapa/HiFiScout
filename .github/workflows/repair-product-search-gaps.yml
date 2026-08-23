@@ -2,7 +2,7 @@ name: Repair Product Search Projection Gaps
 
 on:
   workflow_run:
-    workflows: ["Deploy Cloudflare"]
+    workflows: ["Production Operational Health"]
     types: [completed]
     branches: [main]
 
@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   repair-and-rerun:
-    # The repair command itself refuses to rerun a deployment when no projection gap existed.
+    # The repair command itself refuses to rerun health verification when no projection gap exists.
     if: github.event.workflow_run.conclusion == 'failure'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -53,19 +53,19 @@ jobs:
           D1_DATABASE_ID: ${{ steps.d1.outputs.database_id }}
         run: |
           set -euo pipefail
-          # Only a real projection gap is allowed to trigger an automatic deploy rerun.
-          # Unrelated deploy failures stop here instead of entering a rerun loop.
+          # Only a real projection gap may trigger an automatic operational-health rerun.
+          # Unrelated health failures stop here instead of entering a rerun loop.
           npx tsx scripts/repair-product-search-gaps.ts \
             --batch-size 20 \
             --max-listings 100 \
             --require-repair
 
-      - name: Re-run failed Cloudflare deployment jobs
+      - name: Re-run failed operational health jobs
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          FAILED_DEPLOY_RUN_ID: ${{ github.event.workflow_run.id }}
+          FAILED_HEALTH_RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
           set -euo pipefail
-          echo "Projection gaps repaired; rerunning failed jobs in Deploy Cloudflare run ${FAILED_DEPLOY_RUN_ID}."
-          gh run rerun "$FAILED_DEPLOY_RUN_ID" --failed --repo "$GITHUB_REPOSITORY"
+          echo "Projection gaps repaired; rerunning failed jobs in Production Operational Health run ${FAILED_HEALTH_RUN_ID}."
+          gh run rerun "$FAILED_HEALTH_RUN_ID" --failed --repo "$GITHUB_REPOSITORY"
