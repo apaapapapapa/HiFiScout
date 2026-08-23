@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  verify:
+  data-platform:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -33,3 +33,23 @@ jobs:
       - run: npm ci
       - name: Verify production data platform and data quality
         run: bash scripts/production-operational-health.sh
+
+  knowledge-catalog:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+      - name: Resolve production base URL
+        shell: bash
+        env:
+          REPOSITORY_PRODUCTION_BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
+        run: |
+          set -euo pipefail
+          source .github/config/production.env
+          base_url="${REPOSITORY_PRODUCTION_BASE_URL:-$PRODUCTION_BASE_URL}"
+          echo "PRODUCTION_BASE_URL=${base_url%/}" >> "$GITHUB_ENV"
+      - name: Verify Knowledge Catalog runtime operations
+        run: bash scripts/knowledge-catalog-operational-health.sh
