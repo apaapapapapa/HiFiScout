@@ -207,8 +207,8 @@ test("live metadata exposes the complete canonical taxonomy including zero-count
     parentId: "digital",
   });
   expect(facets.find((category) => category.id === "headshell")).toMatchObject({
-    name: "　ヘッドシェル",
-    parentId: "analog",
+    name: "　　ヘッドシェル",
+    parentId: "cartridge",
   });
   expect(facets.find((category) => category.id === "cable_xlr")).toMatchObject({
     name: "　　XLRケーブル",
