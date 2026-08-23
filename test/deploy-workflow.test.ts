@@ -18,3 +18,9 @@ test("deployment status is owned by the workflow that knows the deployed SHA", (
   assert.match(deployWorkflow, /context: deployment\/cloudflare/u);
   assert.equal(existsSync(legacyDeployStatusUrl), false);
 });
+
+test("deployment uses the shared Vite+ package-manager bootstrap", () => {
+  assert.match(deployWorkflow, /uses: \.\/\.github\/actions\/setup-node-deps/u);
+  assert.doesNotMatch(deployWorkflow, /uses: actions\/setup-node@/u);
+  assert.doesNotMatch(deployWorkflow, /- run: npm ci/u);
+});
