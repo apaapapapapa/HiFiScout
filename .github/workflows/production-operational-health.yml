@@ -54,34 +54,21 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ steps.deployment.outputs.sha }}
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/setup-node-deps
       - name: Verify production data platform and data quality
         run: bash scripts/production-operational-health.sh
+      - name: Verify Product Search identity grouping
+        run: bash scripts/product-search-identity-health.sh
       - name: Publish data-platform health status
         if: always() && steps.deployment.outputs.sha != ''
         continue-on-error: true
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          HEALTH_STATUS: ${{ job.status }}
-          DEPLOY_SHA: ${{ steps.deployment.outputs.sha }}
-        run: |
-          set -euo pipefail
-          case "$HEALTH_STATUS" in
-            success) state=success ;;
-            failure|cancelled) state=failure ;;
-            *) state=error ;;
-          esac
-          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          gh api --method POST "/repos/${GITHUB_REPOSITORY}/statuses/${DEPLOY_SHA}" \
-            -f state="$state" \
-            -f context="operations/data-platform" \
-            -f description="Data platform health: ${HEALTH_STATUS}" \
-            -f target_url="$run_url"
+        uses: ./.github/actions/publish-commit-status
+        with:
+          github-token: ${{ github.token }}
+          sha: ${{ steps.deployment.outputs.sha }}
+          job-status: ${{ job.status }}
+          context: operations/data-platform
+          description-prefix: Data platform health
 
   knowledge-catalog:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
@@ -131,21 +118,10 @@ jobs:
       - name: Publish Knowledge Catalog health status
         if: always() && steps.deployment.outputs.sha != ''
         continue-on-error: true
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          HEALTH_STATUS: ${{ job.status }}
-          DEPLOY_SHA: ${{ steps.deployment.outputs.sha }}
-        run: |
-          set -euo pipefail
-          case "$HEALTH_STATUS" in
-            success) state=success ;;
-            failure|cancelled) state=failure ;;
-            *) state=error ;;
-          esac
-          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          gh api --method POST "/repos/${GITHUB_REPOSITORY}/statuses/${DEPLOY_SHA}" \
-            -f state="$state" \
-            -f context="operations/knowledge-catalog" \
-            -f description="Knowledge Catalog health: ${HEALTH_STATUS}" \
-            -f target_url="$run_url"
+        uses: ./.github/actions/publish-commit-status
+        with:
+          github-token: ${{ github.token }}
+          sha: ${{ steps.deployment.outputs.sha }}
+          job-status: ${{ job.status }}
+          context: operations/knowledge-catalog
+          description-prefix: Knowledge Catalog health
