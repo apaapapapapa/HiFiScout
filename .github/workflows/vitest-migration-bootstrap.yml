@@ -27,13 +27,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo '--- src/env.ts ---'
-          sed -n '1,130p' src/env.ts
-          echo '--- src/worker.ts around env validation ---'
-          sed -n '275,325p' src/worker.ts
+          echo '--- relevant source paths ---'
+          find . -path './node_modules' -prune -o -type f \( -name 'env.ts' -o -name 'worker.ts' \) -print
+          echo '--- validateEnv references ---'
+          grep -R -n --exclude-dir=node_modules 'validateEnv\|Missing Cloudflare environment binding' . || true
           for file in test/worker-queue-handler.test.ts test/dedup-estimation-runtime-integration.test.ts test/product-search-fallback.test.ts; do
             echo "--- $file ---"
-            sed -n '1,90p' "$file"
+            sed -n '1,110p' "$file"
           done
       - name: Migrate Node test imports and package scripts
         shell: bash
@@ -42,9 +42,7 @@ jobs:
           node <<'NODE'
           const fs = require('node:fs');
           const path = require('node:path');
-          const files = fs.readdirSync('test')
-            .filter((name) => name.endsWith('.test.ts'))
-            .map((name) => path.join('test', name));
+          const files = fs.readdirSync('test').filter((name) => name.endsWith('.test.ts')).map((name) => path.join('test', name));
           let migrated = 0;
           for (const file of files) {
             let source = fs.readFileSync(file, 'utf8');
@@ -54,18 +52,11 @@ jobs:
             source = source.replace(/^(import\s+\{[^}]+\}\s+from\s+)["']node:test["'];$/gm, '$1"vitest";');
             source = source.replace(/\bmock\.method\(\s*([A-Za-z_$][\w$]*),\s*(["'][^"']+["']),\s*/g, 'vi.spyOn($1, $2).mockImplementation(');
             source = source.replace(/\bmock\.restoreAll\(\)/g, 'vi.restoreAllMocks()');
-            if (source !== before) {
-              fs.writeFileSync(file, source);
-              migrated += 1;
-            }
+            if (source !== before) { fs.writeFileSync(file, source); migrated += 1; }
           }
           console.log(`Migrated ${migrated} test files from node:test.`);
           const leftovers = files.filter((file) => /node:test|\bmock\.(?:method|restoreAll)\b/.test(fs.readFileSync(file, 'utf8')));
-          if (leftovers.length) {
-            console.error('Unmigrated Node test-runner references:');
-            for (const file of leftovers) console.error(`  ${file}`);
-            process.exit(1);
-          }
+          if (leftovers.length) { console.error(leftovers.join('\n')); process.exit(1); }
           const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
           pkg.scripts['test:unit'] = 'vitest run --reporter=dot';
           pkg.scripts['test:unit:verbose'] = 'vitest run --reporter=verbose';
