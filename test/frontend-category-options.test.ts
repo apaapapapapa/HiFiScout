@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
-import { categoryOptions } from "../frontend/product-view.js";
+import { CategoryOptions } from "../frontend/public-components.js";
 import type { MetaCategoryFacet, MetaResponse } from "../src/api/contracts.js";
 
 function facet(
@@ -28,8 +30,12 @@ function meta(categoryFacets: MetaCategoryFacet[], categories: string[] = []): M
   };
 }
 
+function renderOptions(value: MetaResponse): string {
+  return renderToStaticMarkup(createElement(CategoryOptions, { meta: value }));
+}
+
 test("category options preserve server order and separate non-classifiable parents", () => {
-  const markup = categoryOptions(
+  const markup = renderOptions(
     meta([
       facet({ id: "amplifier", name: "アンプ" }),
       facet({
@@ -52,7 +58,7 @@ test("category options preserve server order and separate non-classifiable paren
   assert.equal((markup.match(/data-category-separator="true"/g) || []).length, 4);
   assert.match(
     markup,
-    /^<option disabled data-category-separator="true">────────────<\/option><option value="amplifier">アンプ<\/option>/u,
+    /^<option disabled="" data-category-separator="true">────────────<\/option><option value="amplifier">アンプ<\/option>/u,
   );
   assert.ok(markup.indexOf('value="amplifier"') < markup.indexOf('value="integrated_amp"'));
   assert.ok(markup.indexOf('value="integrated_amp"') < markup.indexOf('value="digital"'));
@@ -60,11 +66,11 @@ test("category options preserve server order and separate non-classifiable paren
   assert.ok(markup.indexOf('value="dac"') < markup.indexOf('value="dj_dtm"'));
   assert.match(
     markup,
-    /<option value="dac">　DAC<\/option><option disabled data-category-separator="true">────────────<\/option><option value="dj_dtm">DJ機器・DTM<\/option><option disabled data-category-separator="true">────────────<\/option>$/u,
+    /<option value="dac">　DAC<\/option><option disabled="" data-category-separator="true">────────────<\/option><option value="dj_dtm">DJ機器・DTM<\/option><option disabled="" data-category-separator="true">────────────<\/option>$/u,
   );
 });
 
 test("legacy category fallback stays escaped when facets are unavailable", () => {
-  const markup = categoryOptions(meta([], ["DAC", "A&B <Other>"]));
+  const markup = renderOptions(meta([], ["DAC", "A&B <Other>"]));
   assert.equal(markup, "<option>DAC</option><option>A&amp;B &lt;Other&gt;</option>");
 });
