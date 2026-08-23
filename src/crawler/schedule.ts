@@ -10,6 +10,7 @@
 import { SHOP_PLUGINS } from "./shops/index.js";
 import type { ShopPlugin } from "./types.js";
 
+/** Must stay aligned with the ten-minute cadence declared by CRAWL_ROTATION_CRON. */
 const ROUND_ROBIN_SLOT_MS = 10 * 60_000;
 
 /** Shops that own a cron trigger. */
