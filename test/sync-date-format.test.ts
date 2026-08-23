@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { syncShopRows } from "../frontend/product-view.js";
+import { syncShopPresentations } from "../frontend/product-presentation.js";
 import type { MetaShop } from "../src/api/contracts.js";
 
 test("a shop with no successful sync renders unavailable instead of an epoch age", () => {
@@ -18,8 +18,9 @@ test("a shop with no successful sync renders unavailable instead of an epoch age
     },
   } as unknown as MetaShop;
 
-  const markup = syncShopRows([shop], Date.parse("2026-08-23T00:00:00.000Z"));
+  const [presentation] = syncShopPresentations([shop], Date.parse("2026-08-23T00:00:00.000Z"));
 
-  assert.match(markup, /未取得/u);
-  assert.doesNotMatch(markup, /日前/u);
+  assert.equal(presentation?.relative, "未取得");
+  assert.equal(presentation?.exact, "未取得");
+  assert.doesNotMatch(presentation?.relative ?? "", /日前/u);
 });

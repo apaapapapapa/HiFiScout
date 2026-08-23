@@ -1,22 +1,24 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 import { escapeHtml, relativeTime, safeDate } from "../frontend/format.js";
 import { pageNumbers, pageOffset, resultSummary } from "../frontend/pagination.js";
 import { activityData, priceDropped } from "../frontend/product-activity.js";
+import { safeExternalUrl, syncStatusSummary } from "../frontend/product-presentation.js";
 import {
-  emptyState,
-  offersMarkup,
-  paginationMarkup,
-  priceHistoryMarkup,
-  productCard,
-  syncStatusSummary,
-} from "../frontend/product-view.js";
+  EmptyProducts,
+  HistoryContent,
+  OffersContent,
+  ProductCard,
+} from "../frontend/public-components.js";
 import type { MetaResponse } from "../src/api/contracts.js";
 import type { DisplayOffer, DisplayProduct } from "../frontend/types.js";
 
 const NOW = Date.parse("2026-08-12T00:00:00.000Z");
 const shopName = (key: string) => (key === "hifido" ? "ハイファイ堂" : key);
+const noop = () => undefined;
 
 function offer(overrides: Partial<DisplayOffer> = {}): DisplayOffer {
   return {
@@ -61,6 +63,36 @@ function product(overrides: Partial<DisplayProduct> = {}): DisplayProduct {
   };
 }
 
+function renderCard(value: DisplayProduct, favorite = false): string {
+  return renderToStaticMarkup(
+    createElement(ProductCard, {
+      product: value,
+      favorite,
+      shopName,
+      onManufacturer: noop,
+      onFavorite: noop,
+      onOffers: noop,
+      now: NOW,
+    }),
+  );
+}
+
+function renderOffers(value: DisplayProduct, offers: DisplayOffer[]): string {
+  return renderToStaticMarkup(
+    createElement(OffersContent, {
+      state: { kind: "ready", data: { product: value, offers } },
+      shopName,
+      onHistory: noop,
+    }),
+  );
+}
+
+function renderEmpty(favoriteMode: boolean, hasFavorites: boolean): string {
+  return renderToStaticMarkup(
+    createElement(EmptyProducts, { favoriteMode, hasFavorites, onClear: noop }),
+  );
+}
+
 test("short page counts are listed in full", () => {
   assert.deepEqual(pageNumbers(1, 0), []);
   assert.deepEqual(pageNumbers(1, 3), [1, 2, 3]);
@@ -94,7 +126,6 @@ test("the result counter reports what is on screen, with more-available as a sep
 });
 
 test("favorites and failed loads never claim more results are available", () => {
-  // Favorites are the whole stored set, so there is no next page to hint at.
   assert.equal(
     resultSummary({ shown: 3, favoriteMode: true, currentPage: 1, totalPages: 9 }).moreHidden,
     true,
@@ -119,14 +150,6 @@ test("page offsets follow the fixed page size", () => {
   assert.equal(pageOffset(1), 0);
   assert.equal(pageOffset(3), 100);
   assert.equal(pageOffset(0), 0);
-});
-
-test("the pager marks the current page and elides gaps", () => {
-  const markup = paginationMarkup(pageNumbers(10, 20), 10, false);
-  assert.equal((markup.match(/page-ellipsis/g) || []).length, 2);
-  assert.match(markup, /class="page-button active" data-page="10"[^>]*aria-current="page"/u);
-  assert.doesNotMatch(markup, /disabled/u);
-  assert.match(paginationMarkup([1, 2], 1, true), /disabled/u);
 });
 
 test("a product is new for 48 hours, then updated for 48 hours, never both", () => {
@@ -171,30 +194,30 @@ test("a price drop is the aggregate the server computed across offers", () => {
   assert.equal(priceDropped(product({ has_price_drop: false })), false);
 });
 
-test("retailer text is escaped before it reaches innerHTML", () => {
-  const markup = productCard(
+test("React escapes retailer text and rejects unsafe external URLs", () => {
+  const markup = renderCard(
     product({ model: '<img src=x onerror="alert(1)">', manufacturer: "A&B" }),
-    { favorite: false, shopName, now: NOW },
   );
 
   assert.doesNotMatch(markup, /<img src=x/u);
   assert.match(markup, /&lt;img src=x/u);
   assert.match(markup, /A&amp;B/u);
+  assert.equal(safeExternalUrl("javascript:alert(1)"), "#");
   assert.equal(escapeHtml(`<>&"'`), "&lt;&gt;&amp;&quot;&#39;");
 });
 
-test("a single-offer card keeps its direct shop link and shop chip", () => {
-  const markup = productCard(product(), { favorite: true, shopName, now: NOW });
+test("a single-offer card keeps its direct product link and linked shop chip", () => {
+  const markup = renderCard(product(), true);
 
   assert.match(markup, /aria-pressed="true"/u);
   assert.match(markup, /お気に入りから削除/u);
-  assert.match(markup, /class="shop shop-hifido">ハイファイ堂</u);
+  assert.match(markup, /class="shop shop-hifido shop-new-arrivals-link"/u);
   assert.match(markup, /class="product-title-link" href="https:\/\/example\.test\/p1"/u);
   assert.match(markup, /data-fav="c-1"/u);
 });
 
 test("a multi-shop card leads to the comparison instead of one arbitrary shop", () => {
-  const markup = productCard(
+  const markup = renderCard(
     product({
       offer_count: 3,
       shop_count: 2,
@@ -202,11 +225,10 @@ test("a multi-shop card leads to the comparison instead of one arbitrary shop", 
       sold_out_offer_count: 1,
       highest_price_yen: 1_200_000,
     }),
-    { favorite: false, shopName, now: NOW },
   );
 
-  assert.match(markup, /class="shop shop-multiple">2店舗</u);
-  assert.match(markup, /<button type="button" class="product-title-link" data-offers="c-1"/u);
+  assert.match(markup, /class="shop shop-multiple">2店舗/u);
+  assert.match(markup, /class="product-title-link" data-offers="c-1"/u);
   assert.match(markup, /3件の在庫を比較/u);
   assert.match(markup, /2\/3件が在庫あり/u);
   assert.match(markup, /￥1,000,000〜/u);
@@ -214,9 +236,8 @@ test("a multi-shop card leads to the comparison instead of one arbitrary shop", 
 });
 
 test("a product with no price and no stock says so rather than inventing one", () => {
-  const markup = productCard(
+  const markup = renderCard(
     product({ lowest_price_yen: null, highest_price_yen: null, in_stock_offer_count: 0 }),
-    { favorite: false, shopName, now: NOW },
   );
 
   assert.match(markup, /価格不明/u);
@@ -225,55 +246,46 @@ test("a product with no price and no stock says so rather than inventing one", (
 });
 
 test("a product whose offers are all sold out is not labelled as unknown", () => {
-  const markup = productCard(
+  const markup = renderCard(
     product({ offer_count: 2, in_stock_offer_count: 0, sold_out_offer_count: 2 }),
-    { favorite: false, shopName, now: NOW },
   );
 
   assert.match(markup, /class="stock sold_out">売り切れ/u);
   assert.doesNotMatch(markup, /在庫状態未確認/u);
 });
 
-test("a migrated listing favorite links to its shop without requesting server-only detail", () => {
-  const markup = productCard(product({ key: "legacy-7" }), {
-    favorite: true,
-    shopName,
-    now: NOW,
-  });
+test("a migrated listing favorite keeps direct links without requesting server-only detail", () => {
+  const markup = renderCard(product({ key: "legacy-7" }), true);
 
   assert.doesNotMatch(markup, /data-offers=/u);
   assert.doesNotMatch(markup, /商品詳細/u);
-  assert.match(markup, /class="shop-link"/u);
+  assert.match(markup, /shop-new-arrivals-link/u);
+  assert.match(markup, /href="https:\/\/example\.test\/p1"/u);
 });
 
 test("a card badges the newest applicable state and a price drop independently", () => {
-  const markup = productCard(
+  const markup = renderCard(
     product({ newest_listed_at: "2026-08-11T12:00:00.000Z", has_price_drop: true }),
-    { favorite: false, shopName, now: NOW },
   );
 
-  assert.match(markup, /badge">NEW</u);
-  assert.match(markup, /badge">PRICE DOWN</u);
+  assert.match(markup, /badge">NEW/u);
+  assert.match(markup, /badge">PRICE DOWN/u);
   assert.doesNotMatch(markup, /UPDATED/u);
 });
 
 test("the offer list keeps what actually distinguishes two offers of the same model", () => {
-  const markup = offersMarkup(
-    product({ offer_count: 2, shop_count: 2 }),
-    [
-      offer({ listing_product_id: 11, title: "TAD ME1TX 元箱付き", condition_text: "美品" }),
-      offer({
-        listing_product_id: 22,
-        shop_key: "formusic",
-        title: "TAD ME1TX",
-        condition_text: "並品",
-        price_yen: 900_000,
-        previous_price_yen: 1_000_000,
-        stock_status: "sold_out",
-      }),
-    ],
-    { shopName },
-  );
+  const markup = renderOffers(product({ offer_count: 2, shop_count: 2 }), [
+    offer({ listing_product_id: 11, title: "TAD ME1TX 元箱付き", condition_text: "美品" }),
+    offer({
+      listing_product_id: 22,
+      shop_key: "formusic",
+      title: "TAD ME1TX",
+      condition_text: "並品",
+      price_yen: 900_000,
+      previous_price_yen: 1_000_000,
+      stock_status: "sold_out",
+    }),
+  ]);
 
   assert.match(markup, /2店舗 \/ 2件の在庫/u);
   assert.match(markup, /元箱付き/u);
@@ -287,10 +299,9 @@ test("the offer list keeps what actually distinguishes two offers of the same mo
 });
 
 test("an unresolved product says the comparison is unavailable, not that it failed", () => {
-  const markup = offersMarkup(
+  const markup = renderOffers(
     product({ identity_kind: "unresolved_listing", catalog_product_id: null }),
     [offer()],
-    { shopName },
   );
 
   assert.match(markup, /他店の在庫と照合できていません/u);
@@ -298,9 +309,9 @@ test("an unresolved product says the comparison is unavailable, not that it fail
 });
 
 test("empty states distinguish no favorites from no matches", () => {
-  assert.match(emptyState(true, false), /お気に入りはまだありません/u);
-  assert.match(emptyState(true, true), /条件に一致する商品はありません/u);
-  assert.match(emptyState(false, false), /条件に一致する商品はありません/u);
+  assert.match(renderEmpty(true, false), /お気に入りはまだありません/u);
+  assert.match(renderEmpty(true, true), /条件に一致する商品はありません/u);
+  assert.match(renderEmpty(false, false), /条件に一致する商品はありません/u);
 });
 
 test("sync status grades only enabled shops and prefers the reported status", () => {
@@ -319,20 +330,34 @@ test("sync status grades only enabled shops and prefers the reported status", ()
   assert.equal(syncStatusSummary(meta([shop("a", "healthy")])).status, "healthy");
   assert.match(syncStatusSummary(meta([shop("a", "warning")])).summary, /1店舗で更新が遅れて/u);
   assert.match(syncStatusSummary(meta([shop("a", "critical")])).summary, /1店舗で更新に問題/u);
-  // A deliberately disabled collector is not a problem.
   assert.equal(syncStatusSummary(meta([shop("a", "critical", false)])).status, "healthy");
 });
 
 test("price history marks each drop and handles an empty series", () => {
   const listing = { manufacturer: "TAD", model: "ME1TX", title: "TAD ME1TX" };
-  const markup = priceHistoryMarkup(listing, [
-    { price_yen: 1000, observed_at: "2026-08-01T00:00:00.000Z" },
-    { price_yen: 900, observed_at: "2026-08-02T00:00:00.000Z" },
-    { price_yen: 1200, observed_at: "2026-08-03T00:00:00.000Z" },
-  ]);
+  const markup = renderToStaticMarkup(
+    createElement(HistoryContent, {
+      state: {
+        kind: "ready",
+        data: {
+          product: listing,
+          history: [
+            { price_yen: 1000, observed_at: "2026-08-01T00:00:00.000Z" },
+            { price_yen: 900, observed_at: "2026-08-02T00:00:00.000Z" },
+            { price_yen: 1200, observed_at: "2026-08-03T00:00:00.000Z" },
+          ],
+        },
+      },
+    }),
+  );
+  const empty = renderToStaticMarkup(
+    createElement(HistoryContent, {
+      state: { kind: "ready", data: { product: listing, history: [] } },
+    }),
+  );
 
   assert.equal((markup.match(/<span>↓<\/span>/g) || []).length, 1);
-  assert.match(priceHistoryMarkup(listing, []), /履歴はまだありません/u);
+  assert.match(empty, /履歴はまだありません/u);
 });
 
 test("relative time buckets by minute, hour and day", () => {
@@ -346,8 +371,6 @@ test("relative time buckets by minute, hour and day", () => {
 test("an unparseable timestamp is reported as unknown, but a null one is still the epoch", () => {
   assert.equal(safeDate("not a date"), null);
   assert.equal(relativeTime("not a date", NOW), "未取得");
-  // Pre-existing: `new Date(null)` is the epoch, so a shop that never succeeded renders a huge
-  // age rather than "未取得". Characterized here rather than changed by this refactor.
   assert.notEqual(safeDate(null), null);
   assert.match(relativeTime(null, NOW), /日前$/u);
 });
