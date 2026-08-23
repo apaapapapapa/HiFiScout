@@ -27,9 +27,11 @@ jobs:
         run: |
           set -euo pipefail
           grep -RInE 'actions/setup-node|(^|[[:space:]])npm (ci|run|exec|pack|audit)|(^|[[:space:]])npx (wrangler|playwright|tsx|vitepress|vitest|vite|oxlint|oxfmt)' .github package.json README.md AGENTS.md docs || true
-      - name: Verify official Vite+ migration is idempotent
+      - name: Show canonical Vite+ runtime and migration diff
         shell: bash
         run: |
           set -euo pipefail
           vp migrate --no-interactive
-          git diff --exit-code
+          vp env pin 22 --target dev-engines
+          git diff -- package.json
+          exit 1
