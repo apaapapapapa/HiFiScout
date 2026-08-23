@@ -5,10 +5,7 @@ import test from "node:test";
 const packageJson = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 ) as { scripts?: Record<string, string> };
-const adminConsole = readFileSync(
-  new URL("../frontend/admin-console.ts", import.meta.url),
-  "utf8",
-);
+const adminConsole = readFileSync(new URL("../frontend/admin-console.ts", import.meta.url), "utf8");
 
 test("admin frontend builds each feature as an independent protected asset", () => {
   const command = packageJson.scripts?.["build:frontend:admin"] || "";

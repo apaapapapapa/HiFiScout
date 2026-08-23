@@ -140,11 +140,9 @@ function appendLegacyScript(config: AdminAppConfig, scriptSrc: string): Promise<
     script.dataset.adminApp = config.key;
     script.dataset.adminFeature = scriptSrc;
     script.addEventListener("load", () => resolve(), { once: true });
-    script.addEventListener(
-      "error",
-      () => reject(new Error(`Failed to load ${scriptSrc}`)),
-      { once: true },
-    );
+    script.addEventListener("error", () => reject(new Error(`Failed to load ${scriptSrc}`)), {
+      once: true,
+    });
     document.body.appendChild(script);
   });
 }
