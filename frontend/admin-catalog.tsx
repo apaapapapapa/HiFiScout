@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 import {
@@ -301,7 +295,9 @@ function CsvExportCard({
   return (
     <section className="export-job">
       <div>
-        <span className={`job-kicker${config.muted ? " job-kicker-muted" : ""}`}>{config.kicker}</span>
+        <span className={`job-kicker${config.muted ? " job-kicker-muted" : ""}`}>
+          {config.kicker}
+        </span>
         <h3>{config.title}</h3>
         <p className="export-job-description">{config.description}</p>
         <p className="export-status" role="status" aria-live="polite" data-kind={statusKind}>
@@ -530,9 +526,9 @@ export function CatalogAdmin() {
 
   const editDirty = Boolean(
     editing &&
-      (editName.trim() !== editing.canonicalName ||
-        editCategory !== editing.primaryCategoryId ||
-        editLifecycle !== editing.lifecycleStatus),
+    (editName.trim() !== editing.canonicalName ||
+      editCategory !== editing.primaryCategoryId ||
+      editLifecycle !== editing.lifecycleStatus),
   );
 
   const openEdit = (product: CatalogProduct) => {
@@ -733,7 +729,12 @@ export function CatalogAdmin() {
   const filterableCategories = categories.filter((category) => category.filterable);
 
   return (
-    <section id="catalog-pane" className="admin-pane" role="tabpanel" aria-labelledby="admin-tab-catalog">
+    <section
+      id="catalog-pane"
+      className="admin-pane"
+      role="tabpanel"
+      aria-labelledby="admin-tab-catalog"
+    >
       <div className="admin-pane-heading">
         <div>
           <p className="eyebrow">CATALOG OPERATIONS</p>
@@ -755,8 +756,15 @@ export function CatalogAdmin() {
                 <p>製品名・型番・メーカー・カテゴリを組み合わせて対象を絞り込めます。</p>
               </div>
               <div className="header-actions">
-                <span className="keyboard-hint"><kbd>Enter</kbd> で検索</span>
-                <button className="secondary-button" type="button" disabled={operationBusy} onClick={() => openCreate(null)}>
+                <span className="keyboard-hint">
+                  <kbd>Enter</kbd> で検索
+                </span>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={operationBusy}
+                  onClick={() => openCreate(null)}
+                >
                   ＋ Catalogを追加
                 </button>
               </div>
@@ -771,7 +779,9 @@ export function CatalogAdmin() {
                   autoComplete="off"
                   value={catalogDraft.q}
                   disabled={catalogBusy}
-                  onChange={(event) => setCatalogDraft((value) => ({ ...value, q: event.currentTarget.value }))}
+                  onChange={(event) =>
+                    setCatalogDraft((value) => ({ ...value, q: event.currentTarget.value }))
+                  }
                 />
               </label>
               <label className="search-field">
@@ -784,7 +794,12 @@ export function CatalogAdmin() {
                   autoComplete="off"
                   value={catalogDraft.manufacturerId}
                   disabled={catalogBusy}
-                  onChange={(event) => setCatalogDraft((value) => ({ ...value, manufacturerId: event.currentTarget.value }))}
+                  onChange={(event) =>
+                    setCatalogDraft((value) => ({
+                      ...value,
+                      manufacturerId: event.currentTarget.value,
+                    }))
+                  }
                 />
               </label>
               <label className="search-field">
@@ -793,17 +808,28 @@ export function CatalogAdmin() {
                   id="catalog-category-filter"
                   value={catalogDraft.categoryId}
                   disabled={catalogBusy}
-                  onChange={(event) => setCatalogDraft((value) => ({ ...value, categoryId: event.currentTarget.value }))}
+                  onChange={(event) =>
+                    setCatalogDraft((value) => ({
+                      ...value,
+                      categoryId: event.currentTarget.value,
+                    }))
+                  }
                 >
                   <option value="">すべてのカテゴリ</option>
-                  {filterableCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                  {filterableCategories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
                 </select>
               </label>
               <div className="search-actions">
                 <button
                   className="tertiary-button"
                   type="button"
-                  disabled={catalogBusy || !Object.values(catalogDraft).some((value) => value.trim())}
+                  disabled={
+                    catalogBusy || !Object.values(catalogDraft).some((value) => value.trim())
+                  }
                   onClick={() => {
                     setCatalogDraft(EMPTY_FILTERS);
                     setCatalogApplied(EMPTY_FILTERS);
@@ -812,83 +838,654 @@ export function CatalogAdmin() {
                 >
                   条件をクリア
                 </button>
-                <button type="submit" disabled={catalogBusy}>検索</button>
+                <button type="submit" disabled={catalogBusy}>
+                  検索
+                </button>
               </div>
             </form>
           </section>
 
-          <section className={`panel table-panel${catalogBusy ? " is-loading" : ""}`} aria-label="Knowledge Catalog 一覧" aria-busy={catalogBusy}>
+          <section
+            className={`panel table-panel${catalogBusy ? " is-loading" : ""}`}
+            aria-label="Knowledge Catalog 一覧"
+            aria-busy={catalogBusy}
+          >
             <div className="table-toolbar">
-              <div><p className="eyebrow">VERIFIED</p><h2>Catalog一覧</h2></div>
-              <p className="result-summary" aria-live="polite">{catalogSummary}</p>
+              <div>
+                <p className="eyebrow">VERIFIED</p>
+                <h2>Catalog一覧</h2>
+              </div>
+              <p className="result-summary" aria-live="polite">
+                {catalogSummary}
+              </p>
             </div>
             <div className="table-wrap">
               <table>
-                <thead><tr><th>ID</th><th>メーカー</th><th>型番</th><th>表示名</th><th>カテゴリ</th><th>状態</th><th>listing</th><th>更新日時</th><th>操作</th></tr></thead>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>メーカー</th>
+                    <th>型番</th>
+                    <th>表示名</th>
+                    <th>カテゴリ</th>
+                    <th>状態</th>
+                    <th>listing</th>
+                    <th>更新日時</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
                 <tbody>
                   {catalogItems.map((product) => (
                     <tr key={product.id} data-catalog-id={product.id}>
-                      <td data-label="ID" className="id-cell">{product.id}</td>
+                      <td data-label="ID" className="id-cell">
+                        {product.id}
+                      </td>
                       <td data-label="メーカー">{product.manufacturerId}</td>
-                      <td data-label="型番" className="model-cell">{product.canonicalModel}</td>
-                      <td data-label="表示名" className="name-cell">{product.canonicalName}</td>
-                      <td data-label="カテゴリ"><span className="category-badge">{categoryName(product.primaryCategoryId)}</span></td>
-                      <td data-label="状態"><span className={`lifecycle-badge ${lifecycleClass(product.lifecycleStatus)}`}>{lifecycleName(product.lifecycleStatus)}</span></td>
-                      <td data-label="listing"><span className="count-badge">{product.matchedListingCount}</span></td>
-                      <td data-label="更新日時" className="updated-cell">{dateText(product.updatedAt)}</td>
-                      <td data-label="操作" className="row-actions"><button type="button" className="secondary-button compact" aria-label={`${product.canonicalName} を編集`} onClick={() => openEdit(product)}>編集</button></td>
+                      <td data-label="型番" className="model-cell">
+                        {product.canonicalModel}
+                      </td>
+                      <td data-label="表示名" className="name-cell">
+                        {product.canonicalName}
+                      </td>
+                      <td data-label="カテゴリ">
+                        <span className="category-badge">
+                          {categoryName(product.primaryCategoryId)}
+                        </span>
+                      </td>
+                      <td data-label="状態">
+                        <span
+                          className={`lifecycle-badge ${lifecycleClass(product.lifecycleStatus)}`}
+                        >
+                          {lifecycleName(product.lifecycleStatus)}
+                        </span>
+                      </td>
+                      <td data-label="listing">
+                        <span className="count-badge">{product.matchedListingCount}</span>
+                      </td>
+                      <td data-label="更新日時" className="updated-cell">
+                        {dateText(product.updatedAt)}
+                      </td>
+                      <td data-label="操作" className="row-actions">
+                        <button
+                          type="button"
+                          className="secondary-button compact"
+                          aria-label={`${product.canonicalName} を編集`}
+                          onClick={() => openEdit(product)}
+                        >
+                          編集
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            {!catalogItems.length ? <p className="empty-state"><strong>条件に一致するCatalogがありません。</strong><span>検索条件を減らすか、条件をクリアして再検索してください。</span></p> : null}
+            {!catalogItems.length ? (
+              <p className="empty-state">
+                <strong>条件に一致するCatalogがありません。</strong>
+                <span>検索条件を減らすか、条件をクリアして再検索してください。</span>
+              </p>
+            ) : null}
             <div className="pagination-bar">
               <span>ページ {catalogHistory.length + 1}</span>
               <nav className="pagination" aria-label="Catalogページング">
-                <button className="secondary-button" type="button" disabled={catalogBusy || !catalogHistory.length} onClick={() => {
-                  const previous = catalogHistory.at(-1);
-                  if (previous !== undefined) void loadCatalog(catalogApplied, previous, catalogHistory.slice(0, -1));
-                }}>← 前へ</button>
-                <button className="secondary-button" type="button" disabled={catalogBusy || catalogNextAfterId === null} onClick={() => {
-                  if (catalogNextAfterId !== null) void loadCatalog(catalogApplied, catalogNextAfterId, [...catalogHistory, catalogAfterId]);
-                }}>次へ →</button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={catalogBusy || !catalogHistory.length}
+                  onClick={() => {
+                    const previous = catalogHistory.at(-1);
+                    if (previous !== undefined)
+                      void loadCatalog(catalogApplied, previous, catalogHistory.slice(0, -1));
+                  }}
+                >
+                  ← 前へ
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={catalogBusy || catalogNextAfterId === null}
+                  onClick={() => {
+                    if (catalogNextAfterId !== null)
+                      void loadCatalog(catalogApplied, catalogNextAfterId, [
+                        ...catalogHistory,
+                        catalogAfterId,
+                      ]);
+                  }}
+                >
+                  次へ →
+                </button>
               </nav>
             </div>
           </section>
 
           <section className="panel workspace-panel" aria-labelledby="candidate-search-heading">
-            <div className="panel-heading"><div><p className="eyebrow">MANUAL VERIFICATION</p><h2 id="candidate-search-heading">未検証候補を確認</h2><p>自動VerifyでCatalogへ昇格できなかった候補を検索し、人手で確認して検証済みにできます。</p></div></div>
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">MANUAL VERIFICATION</p>
+                <h2 id="candidate-search-heading">未検証候補を確認</h2>
+                <p>
+                  自動VerifyでCatalogへ昇格できなかった候補を検索し、人手で確認して検証済みにできます。
+                </p>
+              </div>
+            </div>
             <form className="search-grid" onSubmit={submitCandidateSearch}>
-              <label className="search-field search-field-wide"><span>候補を検索</span><input type="search" placeholder="製品名 / 型番 / manufacturer id" autoComplete="off" value={candidateDraft.q} disabled={candidateBusy || operationBusy} onChange={(event) => setCandidateDraft((value) => ({ ...value, q: event.currentTarget.value }))} /></label>
-              <label className="search-field"><span>Manufacturer ID</span><input type="text" placeholder="mark-levinson" spellCheck={false} autoComplete="off" value={candidateDraft.manufacturerId} disabled={candidateBusy || operationBusy} onChange={(event) => setCandidateDraft((value) => ({ ...value, manufacturerId: event.currentTarget.value }))} /></label>
-              <label className="search-field"><span>カテゴリ</span><select value={candidateDraft.categoryId} disabled={candidateBusy || operationBusy} onChange={(event) => setCandidateDraft((value) => ({ ...value, categoryId: event.currentTarget.value }))}><option value="">すべてのカテゴリ</option>{filterableCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
-              <div className="search-actions"><button className="tertiary-button" type="button" disabled={candidateBusy || operationBusy || !Object.values(candidateDraft).some((value) => value.trim())} onClick={() => { setCandidateDraft(EMPTY_FILTERS); setCandidateApplied(EMPTY_FILTERS); void loadCandidates(EMPTY_FILTERS, 0, []); }}>条件をクリア</button><button type="submit" disabled={candidateBusy || operationBusy}>候補を検索</button></div>
+              <label className="search-field search-field-wide">
+                <span>候補を検索</span>
+                <input
+                  type="search"
+                  placeholder="製品名 / 型番 / manufacturer id"
+                  autoComplete="off"
+                  value={candidateDraft.q}
+                  disabled={candidateBusy || operationBusy}
+                  onChange={(event) =>
+                    setCandidateDraft((value) => ({ ...value, q: event.currentTarget.value }))
+                  }
+                />
+              </label>
+              <label className="search-field">
+                <span>Manufacturer ID</span>
+                <input
+                  type="text"
+                  placeholder="mark-levinson"
+                  spellCheck={false}
+                  autoComplete="off"
+                  value={candidateDraft.manufacturerId}
+                  disabled={candidateBusy || operationBusy}
+                  onChange={(event) =>
+                    setCandidateDraft((value) => ({
+                      ...value,
+                      manufacturerId: event.currentTarget.value,
+                    }))
+                  }
+                />
+              </label>
+              <label className="search-field">
+                <span>カテゴリ</span>
+                <select
+                  value={candidateDraft.categoryId}
+                  disabled={candidateBusy || operationBusy}
+                  onChange={(event) =>
+                    setCandidateDraft((value) => ({
+                      ...value,
+                      categoryId: event.currentTarget.value,
+                    }))
+                  }
+                >
+                  <option value="">すべてのカテゴリ</option>
+                  {filterableCategories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="search-actions">
+                <button
+                  className="tertiary-button"
+                  type="button"
+                  disabled={
+                    candidateBusy ||
+                    operationBusy ||
+                    !Object.values(candidateDraft).some((value) => value.trim())
+                  }
+                  onClick={() => {
+                    setCandidateDraft(EMPTY_FILTERS);
+                    setCandidateApplied(EMPTY_FILTERS);
+                    void loadCandidates(EMPTY_FILTERS, 0, []);
+                  }}
+                >
+                  条件をクリア
+                </button>
+                <button type="submit" disabled={candidateBusy || operationBusy}>
+                  候補を検索
+                </button>
+              </div>
             </form>
-            <div className="table-toolbar"><div><p className="eyebrow">PENDING</p><h2>未検証候補</h2></div><p className="result-summary" aria-live="polite">{candidateSummary}</p></div>
-            <div className="table-wrap"><table><thead><tr><th>ID</th><th>メーカー</th><th>型番</th><th>サンプル</th><th>カテゴリ</th><th>状態</th><th>listing</th><th>更新日時</th><th>操作</th></tr></thead><tbody>{candidateItems.map((candidate) => {
-              const manufacturer = candidate.observedManufacturer || candidate.manufacturerId;
-              const model = candidate.observedModel || candidate.normalizedModel;
-              const primaryCategory = candidate.candidateCategoryIds.find((id) => categories.some((category) => category.id === id && category.classifiable)) || "";
-              return <tr key={candidate.id}><td data-label="ID" className="id-cell">{candidate.id}</td><td data-label="メーカー">{manufacturer}</td><td data-label="型番" className="model-cell">{model}</td><td data-label="サンプル" className="name-cell">{candidate.sampleTitle || `${manufacturer} ${model}`.trim()}</td><td data-label="カテゴリ"><span className="category-badge">{categoryName(primaryCategory)}</span></td><td data-label="状態"><span className="lifecycle-badge lifecycle-unknown">{candidateStatus(candidate.verificationStatus)}</span></td><td data-label="listing"><span className="count-badge">{candidate.activeListingCount}</span></td><td data-label="更新日時" className="updated-cell">{dateText(candidate.updatedAt)}</td><td data-label="操作" className="row-actions"><button type="button" className="secondary-button compact" disabled={operationBusy} onClick={() => openCreate(candidate)}>手動Verify</button></td></tr>;
-            })}</tbody></table></div>
-            {!candidateItems.length ? <p className="empty-state"><strong>条件に一致する未検証候補がありません。</strong><span>検索条件を減らすか、Catalog一覧も確認してください。</span></p> : null}
-            <div className="pagination-bar"><span>ページ {candidateHistory.length + 1}</span><nav className="pagination" aria-label="未検証候補ページング"><button className="secondary-button" type="button" disabled={candidateBusy || operationBusy || !candidateHistory.length} onClick={() => { const previous = candidateHistory.at(-1); if (previous !== undefined) void loadCandidates(candidateApplied, previous, candidateHistory.slice(0, -1)); }}>← 前へ</button><button className="secondary-button" type="button" disabled={candidateBusy || operationBusy || candidateNextAfterId === null} onClick={() => { if (candidateNextAfterId !== null) void loadCandidates(candidateApplied, candidateNextAfterId, [...candidateHistory, candidateAfterId]); }}>次へ →</button></nav></div>
+            <div className="table-toolbar">
+              <div>
+                <p className="eyebrow">PENDING</p>
+                <h2>未検証候補</h2>
+              </div>
+              <p className="result-summary" aria-live="polite">
+                {candidateSummary}
+              </p>
+            </div>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>メーカー</th>
+                    <th>型番</th>
+                    <th>サンプル</th>
+                    <th>カテゴリ</th>
+                    <th>状態</th>
+                    <th>listing</th>
+                    <th>更新日時</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {candidateItems.map((candidate) => {
+                    const manufacturer = candidate.observedManufacturer || candidate.manufacturerId;
+                    const model = candidate.observedModel || candidate.normalizedModel;
+                    const primaryCategory =
+                      candidate.candidateCategoryIds.find((id) =>
+                        categories.some((category) => category.id === id && category.classifiable),
+                      ) || "";
+                    return (
+                      <tr key={candidate.id}>
+                        <td data-label="ID" className="id-cell">
+                          {candidate.id}
+                        </td>
+                        <td data-label="メーカー">{manufacturer}</td>
+                        <td data-label="型番" className="model-cell">
+                          {model}
+                        </td>
+                        <td data-label="サンプル" className="name-cell">
+                          {candidate.sampleTitle || `${manufacturer} ${model}`.trim()}
+                        </td>
+                        <td data-label="カテゴリ">
+                          <span className="category-badge">{categoryName(primaryCategory)}</span>
+                        </td>
+                        <td data-label="状態">
+                          <span className="lifecycle-badge lifecycle-unknown">
+                            {candidateStatus(candidate.verificationStatus)}
+                          </span>
+                        </td>
+                        <td data-label="listing">
+                          <span className="count-badge">{candidate.activeListingCount}</span>
+                        </td>
+                        <td data-label="更新日時" className="updated-cell">
+                          {dateText(candidate.updatedAt)}
+                        </td>
+                        <td data-label="操作" className="row-actions">
+                          <button
+                            type="button"
+                            className="secondary-button compact"
+                            disabled={operationBusy}
+                            onClick={() => openCreate(candidate)}
+                          >
+                            手動Verify
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {!candidateItems.length ? (
+              <p className="empty-state">
+                <strong>条件に一致する未検証候補がありません。</strong>
+                <span>検索条件を減らすか、Catalog一覧も確認してください。</span>
+              </p>
+            ) : null}
+            <div className="pagination-bar">
+              <span>ページ {candidateHistory.length + 1}</span>
+              <nav className="pagination" aria-label="未検証候補ページング">
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={candidateBusy || operationBusy || !candidateHistory.length}
+                  onClick={() => {
+                    const previous = candidateHistory.at(-1);
+                    if (previous !== undefined)
+                      void loadCandidates(
+                        candidateApplied,
+                        previous,
+                        candidateHistory.slice(0, -1),
+                      );
+                  }}
+                >
+                  ← 前へ
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={candidateBusy || operationBusy || candidateNextAfterId === null}
+                  onClick={() => {
+                    if (candidateNextAfterId !== null)
+                      void loadCandidates(candidateApplied, candidateNextAfterId, [
+                        ...candidateHistory,
+                        candidateAfterId,
+                      ]);
+                  }}
+                >
+                  次へ →
+                </button>
+              </nav>
+            </div>
           </section>
 
           <details className="panel export-panel">
-            <summary className="export-summary"><span className="export-summary-copy"><span className="eyebrow">AI DATA AUDIT</span><strong>カタログと登録商品をCSVで診断</strong><span>Catalog・重複・カテゴリ・メーカー/型番の品質確認用データを生成します。</span></span><span className="summary-chevron" aria-hidden="true" /></summary>
-            <div className="export-content"><p className="export-description">Knowledge Catalogは検証状態やカテゴリ・alias・source・Product Identityを1行1製品で、登録商品は店舗ごとの生データや検索上の同一製品グループを1行1listingで出力します。CSVをAIに渡して、重複表示・カテゴリ誤り・メーカー/型番の正規化漏れを確認できます。</p><div className="export-jobs">{CSV_EXPORT_KEYS.map((key) => <CsvExportCard key={key} config={CSV_EXPORT_CONFIG[key]} state={csvStates[key]} onGenerate={() => void generateCsvExport(key)} />)}</div><p className="export-note">Knowledge Catalogは100件ずつ、登録商品は250件ずつバックグラウンドで処理し、画面を閉じても継続します。通常の商品監査には「掲載中商品」を推奨し、「全履歴」には販売終了・非掲載の商品も含まれます。完成したCSVは7日間ダウンロードできます。</p></div>
+            <summary className="export-summary">
+              <span className="export-summary-copy">
+                <span className="eyebrow">AI DATA AUDIT</span>
+                <strong>カタログと登録商品をCSVで診断</strong>
+                <span>Catalog・重複・カテゴリ・メーカー/型番の品質確認用データを生成します。</span>
+              </span>
+              <span className="summary-chevron" aria-hidden="true" />
+            </summary>
+            <div className="export-content">
+              <p className="export-description">
+                Knowledge Catalogは検証状態やカテゴリ・alias・source・Product
+                Identityを1行1製品で、登録商品は店舗ごとの生データや検索上の同一製品グループを1行1listingで出力します。CSVをAIに渡して、重複表示・カテゴリ誤り・メーカー/型番の正規化漏れを確認できます。
+              </p>
+              <div className="export-jobs">
+                {CSV_EXPORT_KEYS.map((key) => (
+                  <CsvExportCard
+                    key={key}
+                    config={CSV_EXPORT_CONFIG[key]}
+                    state={csvStates[key]}
+                    onGenerate={() => void generateCsvExport(key)}
+                  />
+                ))}
+              </div>
+              <p className="export-note">
+                Knowledge
+                Catalogは100件ずつ、登録商品は250件ずつバックグラウンドで処理し、画面を閉じても継続します。通常の商品監査には「掲載中商品」を推奨し、「全履歴」には販売終了・非掲載の商品も含まれます。完成したCSVは7日間ダウンロードできます。
+              </p>
+            </div>
           </details>
         </>
       ) : null}
 
-      <dialog ref={editDialogRef} onClose={() => setEditing(null)} onCancel={(event) => { if (editDirty) { event.preventDefault(); setEditWarning(true); } }}>
-        {editing ? <form className="edit-form" onSubmit={(event) => void saveEdit(event)}><div className="dialog-heading"><div><p className="eyebrow">EDIT CATALOG</p><h2>Catalog情報を修正</h2></div><button className="icon-button" type="button" aria-label="編集画面を閉じる" onClick={() => setEditing(null)}>×</button></div><div className="identity-card"><span>変更対象</span><p className="identity">{editing.manufacturerId} / {editing.canonicalModel} (#{editing.id})</p><p className="identity-note">メーカーと型番を変える場合は、正しいCatalogを追加してから重複統合を利用してください。</p></div><label><span>表示名</span><input type="text" maxLength={300} required value={editName} onChange={(event) => { setEditName(event.currentTarget.value); setEditWarning(false); }} /></label><label><span>主カテゴリ</span><select required value={editCategory} onChange={(event) => { setEditCategory(event.currentTarget.value); setEditWarning(false); }}>{classifiableCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><label><span>ライフサイクル</span><select required value={editLifecycle} onChange={(event) => { setEditLifecycle(event.currentTarget.value as LifecycleStatus); setEditWarning(false); }}><option value="unknown">不明</option><option value="active">現行</option><option value="discontinued">生産完了</option></select></label><div className="edit-impact"><strong>保存時の処理</strong><p>このCatalogに一致済みのlistingも再分類・再投影されます。</p></div><p className="edit-change-status" data-dirty={editWarning ? "warning" : editDirty ? "true" : "false"}>{editWarning ? "未保存の変更があります。キャンセルで破棄できます。" : editDirty ? "未保存の変更があります。" : "変更すると保存できます。"}</p><div className="dialog-actions"><button className="secondary-button" type="button" onClick={() => setEditing(null)}>キャンセル</button><button type="submit" disabled={catalogBusy || editSaving || !editDirty}>{editSaving ? "保存中…" : "変更を保存"}</button></div><div className="edit-impact"><strong>重複CatalogをこのCatalogへ統合</strong><p>統合元のalias・source・検証履歴・Product IdentityをこのCatalogへ移し、統合元Catalogを削除します。</p><label><span>統合元 Catalog ID</span><input type="number" min="1" step="1" inputMode="numeric" placeholder="例: 123" value={mergeSourceId} onChange={(event) => setMergeSourceId(event.currentTarget.value)} /></label><p className="edit-change-status" data-dirty={mergeStatus ? "warning" : "false"}>{mergeStatus}</p><div className="dialog-actions"><button className="secondary-button" type="button" disabled={operationBusy || !Number.isSafeInteger(Number(mergeSourceId)) || Number(mergeSourceId) <= 0 || Number(mergeSourceId) === editing.id} onClick={() => void mergeCatalog()}>{operationBusy ? "処理中…" : "このCatalogへ統合"}</button></div></div></form> : null}
+      <dialog
+        ref={editDialogRef}
+        onClose={() => setEditing(null)}
+        onCancel={(event) => {
+          if (editDirty) {
+            event.preventDefault();
+            setEditWarning(true);
+          }
+        }}
+      >
+        {editing ? (
+          <form className="edit-form" onSubmit={(event) => void saveEdit(event)}>
+            <div className="dialog-heading">
+              <div>
+                <p className="eyebrow">EDIT CATALOG</p>
+                <h2>Catalog情報を修正</h2>
+              </div>
+              <button
+                className="icon-button"
+                type="button"
+                aria-label="編集画面を閉じる"
+                onClick={() => setEditing(null)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="identity-card">
+              <span>変更対象</span>
+              <p className="identity">
+                {editing.manufacturerId} / {editing.canonicalModel} (#{editing.id})
+              </p>
+              <p className="identity-note">
+                メーカーと型番を変える場合は、正しいCatalogを追加してから重複統合を利用してください。
+              </p>
+            </div>
+            <label>
+              <span>表示名</span>
+              <input
+                type="text"
+                maxLength={300}
+                required
+                value={editName}
+                onChange={(event) => {
+                  setEditName(event.currentTarget.value);
+                  setEditWarning(false);
+                }}
+              />
+            </label>
+            <label>
+              <span>主カテゴリ</span>
+              <select
+                required
+                value={editCategory}
+                onChange={(event) => {
+                  setEditCategory(event.currentTarget.value);
+                  setEditWarning(false);
+                }}
+              >
+                {classifiableCategories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>ライフサイクル</span>
+              <select
+                required
+                value={editLifecycle}
+                onChange={(event) => {
+                  setEditLifecycle(event.currentTarget.value as LifecycleStatus);
+                  setEditWarning(false);
+                }}
+              >
+                <option value="unknown">不明</option>
+                <option value="active">現行</option>
+                <option value="discontinued">生産完了</option>
+              </select>
+            </label>
+            <div className="edit-impact">
+              <strong>保存時の処理</strong>
+              <p>このCatalogに一致済みのlistingも再分類・再投影されます。</p>
+            </div>
+            <p
+              className="edit-change-status"
+              data-dirty={editWarning ? "warning" : editDirty ? "true" : "false"}
+            >
+              {editWarning
+                ? "未保存の変更があります。キャンセルで破棄できます。"
+                : editDirty
+                  ? "未保存の変更があります。"
+                  : "変更すると保存できます。"}
+            </p>
+            <div className="dialog-actions">
+              <button className="secondary-button" type="button" onClick={() => setEditing(null)}>
+                キャンセル
+              </button>
+              <button type="submit" disabled={catalogBusy || editSaving || !editDirty}>
+                {editSaving ? "保存中…" : "変更を保存"}
+              </button>
+            </div>
+            <div className="edit-impact">
+              <strong>重複CatalogをこのCatalogへ統合</strong>
+              <p>
+                統合元のalias・source・検証履歴・Product
+                IdentityをこのCatalogへ移し、統合元Catalogを削除します。
+              </p>
+              <label>
+                <span>統合元 Catalog ID</span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  inputMode="numeric"
+                  placeholder="例: 123"
+                  value={mergeSourceId}
+                  onChange={(event) => setMergeSourceId(event.currentTarget.value)}
+                />
+              </label>
+              <p className="edit-change-status" data-dirty={mergeStatus ? "warning" : "false"}>
+                {mergeStatus}
+              </p>
+              <div className="dialog-actions">
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={
+                    operationBusy ||
+                    !Number.isSafeInteger(Number(mergeSourceId)) ||
+                    Number(mergeSourceId) <= 0 ||
+                    Number(mergeSourceId) === editing.id
+                  }
+                  onClick={() => void mergeCatalog()}
+                >
+                  {operationBusy ? "処理中…" : "このCatalogへ統合"}
+                </button>
+              </div>
+            </div>
+          </form>
+        ) : null}
       </dialog>
 
       <dialog ref={createDialogRef} onClose={() => setCreateMode(null)}>
-        {createMode ? <form className="edit-form" onSubmit={(event) => void submitManualCatalog(event)}><div className="dialog-heading"><div><p className="eyebrow">MANUAL VERIFICATION</p><h2>{createMode.candidate ? "未検証候補を手動Verify" : "Catalogを手動追加"}</h2></div><button className="icon-button" type="button" aria-label="手動追加画面を閉じる" onClick={() => setCreateMode(null)}>×</button></div>{createMode.candidate ? <div className="identity-card"><span>未検証候補</span><p className="identity">{createMode.candidate.observedManufacturer || createMode.candidate.manufacturerId} / {createMode.candidate.observedModel || createMode.candidate.normalizedModel} (#{createMode.candidate.id})</p><p className="identity-note">{createMode.candidate.sampleTitle}</p></div> : null}<label><span>Manufacturer ID / メーカー名</span><input type="text" maxLength={100} required autoComplete="off" value={createDraft.manufacturerId} onChange={(event) => setCreateDraft((value) => ({ ...value, manufacturerId: event.currentTarget.value }))} /></label><label><span>型番</span><input type="text" maxLength={200} required autoComplete="off" value={createDraft.canonicalModel} onChange={(event) => setCreateDraft((value) => ({ ...value, canonicalModel: event.currentTarget.value }))} /></label><label><span>表示名</span><input type="text" maxLength={300} required autoComplete="off" value={createDraft.canonicalName} onChange={(event) => setCreateDraft((value) => ({ ...value, canonicalName: event.currentTarget.value }))} /></label><label><span>主カテゴリ</span><select required value={createDraft.primaryCategoryId} onChange={(event) => setCreateDraft((value) => ({ ...value, primaryCategoryId: event.currentTarget.value }))}><option value="">カテゴリを選択</option>{classifiableCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label><label><span>ライフサイクル</span><select required value={createDraft.lifecycleStatus} onChange={(event) => setCreateDraft((value) => ({ ...value, lifecycleStatus: event.currentTarget.value as LifecycleStatus }))}><option value="unknown">不明</option><option value="active">現行</option><option value="discontinued">生産完了</option></select></label><label><span>確認元URL（任意）</span><input type="url" maxLength={1000} placeholder="https://..." autoComplete="off" value={createDraft.sourceUrl} onChange={(event) => setCreateDraft((value) => ({ ...value, sourceUrl: event.currentTarget.value }))} /></label><div className="edit-impact"><strong>手動Verifyとして記録</strong><p>manual_verified sourceを残し、Product Identityの再評価と検索projection更新を実行します。</p></div><div className="dialog-actions"><button className="secondary-button" type="button" onClick={() => setCreateMode(null)}>キャンセル</button><button type="submit" disabled={operationBusy}>{operationBusy ? "処理中…" : createMode.candidate ? "候補を手動Verify" : "検証済みとして登録"}</button></div></form> : null}
+        {createMode ? (
+          <form className="edit-form" onSubmit={(event) => void submitManualCatalog(event)}>
+            <div className="dialog-heading">
+              <div>
+                <p className="eyebrow">MANUAL VERIFICATION</p>
+                <h2>{createMode.candidate ? "未検証候補を手動Verify" : "Catalogを手動追加"}</h2>
+              </div>
+              <button
+                className="icon-button"
+                type="button"
+                aria-label="手動追加画面を閉じる"
+                onClick={() => setCreateMode(null)}
+              >
+                ×
+              </button>
+            </div>
+            {createMode.candidate ? (
+              <div className="identity-card">
+                <span>未検証候補</span>
+                <p className="identity">
+                  {createMode.candidate.observedManufacturer || createMode.candidate.manufacturerId}{" "}
+                  / {createMode.candidate.observedModel || createMode.candidate.normalizedModel} (#
+                  {createMode.candidate.id})
+                </p>
+                <p className="identity-note">{createMode.candidate.sampleTitle}</p>
+              </div>
+            ) : null}
+            <label>
+              <span>Manufacturer ID / メーカー名</span>
+              <input
+                type="text"
+                maxLength={100}
+                required
+                autoComplete="off"
+                value={createDraft.manufacturerId}
+                onChange={(event) =>
+                  setCreateDraft((value) => ({
+                    ...value,
+                    manufacturerId: event.currentTarget.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              <span>型番</span>
+              <input
+                type="text"
+                maxLength={200}
+                required
+                autoComplete="off"
+                value={createDraft.canonicalModel}
+                onChange={(event) =>
+                  setCreateDraft((value) => ({
+                    ...value,
+                    canonicalModel: event.currentTarget.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              <span>表示名</span>
+              <input
+                type="text"
+                maxLength={300}
+                required
+                autoComplete="off"
+                value={createDraft.canonicalName}
+                onChange={(event) =>
+                  setCreateDraft((value) => ({
+                    ...value,
+                    canonicalName: event.currentTarget.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              <span>主カテゴリ</span>
+              <select
+                required
+                value={createDraft.primaryCategoryId}
+                onChange={(event) =>
+                  setCreateDraft((value) => ({
+                    ...value,
+                    primaryCategoryId: event.currentTarget.value,
+                  }))
+                }
+              >
+                <option value="">カテゴリを選択</option>
+                {classifiableCategories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>ライフサイクル</span>
+              <select
+                required
+                value={createDraft.lifecycleStatus}
+                onChange={(event) =>
+                  setCreateDraft((value) => ({
+                    ...value,
+                    lifecycleStatus: event.currentTarget.value as LifecycleStatus,
+                  }))
+                }
+              >
+                <option value="unknown">不明</option>
+                <option value="active">現行</option>
+                <option value="discontinued">生産完了</option>
+              </select>
+            </label>
+            <label>
+              <span>確認元URL（任意）</span>
+              <input
+                type="url"
+                maxLength={1000}
+                placeholder="https://..."
+                autoComplete="off"
+                value={createDraft.sourceUrl}
+                onChange={(event) =>
+                  setCreateDraft((value) => ({ ...value, sourceUrl: event.currentTarget.value }))
+                }
+              />
+            </label>
+            <div className="edit-impact">
+              <strong>手動Verifyとして記録</strong>
+              <p>
+                manual_verified sourceを残し、Product
+                Identityの再評価と検索projection更新を実行します。
+              </p>
+            </div>
+            <div className="dialog-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => setCreateMode(null)}
+              >
+                キャンセル
+              </button>
+              <button type="submit" disabled={operationBusy}>
+                {operationBusy
+                  ? "処理中…"
+                  : createMode.candidate
+                    ? "候補を手動Verify"
+                    : "検証済みとして登録"}
+              </button>
+            </div>
+          </form>
+        ) : null}
       </dialog>
     </section>
   );

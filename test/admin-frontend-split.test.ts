@@ -5,9 +5,18 @@ import test from "node:test";
 const packageJson = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 ) as { scripts?: Record<string, string> };
-const adminConsole = readFileSync(new URL("../frontend/admin-console.tsx", import.meta.url), "utf8");
-const catalogAdmin = readFileSync(new URL("../frontend/admin-catalog.tsx", import.meta.url), "utf8");
-const listingAdmin = readFileSync(new URL("../frontend/admin-listings.tsx", import.meta.url), "utf8");
+const adminConsole = readFileSync(
+  new URL("../frontend/admin-console.tsx", import.meta.url),
+  "utf8",
+);
+const catalogAdmin = readFileSync(
+  new URL("../frontend/admin-catalog.tsx", import.meta.url),
+  "utf8",
+);
+const listingAdmin = readFileSync(
+  new URL("../frontend/admin-listings.tsx", import.meta.url),
+  "utf8",
+);
 
 test("admin frontend builds one React application bundle", () => {
   const command = packageJson.scripts?.["build:frontend:admin"] || "";
@@ -28,7 +37,11 @@ test("legacy admin sources and HTML fragments are removed", () => {
     "../admin-public/catalog-admin.html",
     "../admin-public/listing-admin.html",
   ]) {
-    assert.equal(existsSync(new URL(relative, import.meta.url)), false, `${relative} must be removed`);
+    assert.equal(
+      existsSync(new URL(relative, import.meta.url)),
+      false,
+      `${relative} must be removed`,
+    );
   }
 });
 

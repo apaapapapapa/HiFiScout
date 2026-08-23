@@ -71,13 +71,18 @@ function AdminConsole() {
         </a>
         <div className="header-copy">
           <p className="eyebrow eyebrow-inverse">ADMIN OPERATIONS</p>
-          <h1>HiFiScout <span>管理コンソール</span></h1>
+          <h1>
+            HiFiScout <span>管理コンソール</span>
+          </h1>
           <p className="lede">
             Catalogと販売店から取得した登録商品を、ひとつの画面から検索・監査・修正できます。
           </p>
         </div>
         <div className="header-actions">
-          <span className="access-badge"><span aria-hidden="true" />Cloudflare Access 保護中</span>
+          <span className="access-badge">
+            <span aria-hidden="true" />
+            Cloudflare Access 保護中
+          </span>
           <a
             className="header-link"
             href="https://hifiscout.tokyojp.workers.dev/"
@@ -122,8 +127,12 @@ function AdminConsole() {
         </div>
       </nav>
 
-      <div hidden={activeTab !== "catalog"}>{mountedTabs.has("catalog") ? <CatalogAdmin /> : null}</div>
-      <div hidden={activeTab !== "listings"}>{mountedTabs.has("listings") ? <ListingAdmin /> : null}</div>
+      <div hidden={activeTab !== "catalog"}>
+        {mountedTabs.has("catalog") ? <CatalogAdmin /> : null}
+      </div>
+      <div hidden={activeTab !== "listings"}>
+        {mountedTabs.has("listings") ? <ListingAdmin /> : null}
+      </div>
     </main>
   );
 }

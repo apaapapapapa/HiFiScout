@@ -170,9 +170,9 @@ export function ListingAdmin() {
         setReady(true);
         const hasFilters = Boolean(
           filters.q.trim() ||
-            filters.shopKey.trim() ||
-            filters.categoryId ||
-            filters.scope !== "active",
+          filters.shopKey.trim() ||
+          filters.categoryId ||
+          filters.scope !== "active",
         );
         setStatus({
           text: hasFilters ? "検索条件を反映しました。" : "登録商品を表示しています。",
@@ -239,17 +239,21 @@ export function ListingAdmin() {
 
   const initialEditDraft: EditDraft | null = editing
     ? {
-        manufacturerId: (editing.canonicalManufacturerId || editing.manufacturerId || "").toLowerCase(),
+        manufacturerId: (
+          editing.canonicalManufacturerId ||
+          editing.manufacturerId ||
+          ""
+        ).toLowerCase(),
         model: editing.model || "",
         primaryCategoryId: classifiableCategoryId(editing.primaryCategoryId),
       }
     : null;
   const editDirty = Boolean(
     initialEditDraft &&
-      (editDraft.manufacturerId.trim().toLowerCase() !== initialEditDraft.manufacturerId ||
-        editDraft.model.trim() !== initialEditDraft.model ||
-        (editDraft.primaryCategoryId !== "" &&
-          editDraft.primaryCategoryId !== initialEditDraft.primaryCategoryId)),
+    (editDraft.manufacturerId.trim().toLowerCase() !== initialEditDraft.manufacturerId ||
+      editDraft.model.trim() !== initialEditDraft.model ||
+      (editDraft.primaryCategoryId !== "" &&
+        editDraft.primaryCategoryId !== initialEditDraft.primaryCategoryId)),
   );
 
   const closeEdit = (force = false) => {
@@ -329,7 +333,9 @@ export function ListingAdmin() {
                 <h2 id="listing-search-heading">登録商品を検索・編集</h2>
                 <p>商品名・型番・メーカー・店舗・カテゴリで対象listingを絞り込めます。</p>
               </div>
-              <span className="keyboard-hint"><kbd>Enter</kbd> で検索</span>
+              <span className="keyboard-hint">
+                <kbd>Enter</kbd> で検索
+              </span>
             </div>
             <form className="search-grid listing-search-grid" onSubmit={submitSearch}>
               <label className="search-field search-field-wide">
@@ -341,7 +347,9 @@ export function ListingAdmin() {
                   autoComplete="off"
                   value={draft.q}
                   disabled={busy}
-                  onChange={(event) => setDraft((value) => ({ ...value, q: event.currentTarget.value }))}
+                  onChange={(event) =>
+                    setDraft((value) => ({ ...value, q: event.currentTarget.value }))
+                  }
                 />
               </label>
               <label className="search-field">
@@ -353,7 +361,9 @@ export function ListingAdmin() {
                   autoComplete="off"
                   value={draft.shopKey}
                   disabled={busy}
-                  onChange={(event) => setDraft((value) => ({ ...value, shopKey: event.currentTarget.value }))}
+                  onChange={(event) =>
+                    setDraft((value) => ({ ...value, shopKey: event.currentTarget.value }))
+                  }
                 />
               </label>
               <label className="search-field">
@@ -362,11 +372,15 @@ export function ListingAdmin() {
                   id="listings-category-filter"
                   value={draft.categoryId}
                   disabled={busy}
-                  onChange={(event) => setDraft((value) => ({ ...value, categoryId: event.currentTarget.value }))}
+                  onChange={(event) =>
+                    setDraft((value) => ({ ...value, categoryId: event.currentTarget.value }))
+                  }
                 >
                   <option value="">すべてのカテゴリ</option>
                   {filterableCategories.map((category) => (
-                    <option key={category.id} value={category.id}>{category.name}</option>
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -400,7 +414,9 @@ export function ListingAdmin() {
                 >
                   条件をクリア
                 </button>
-                <button type="submit" disabled={busy}>検索</button>
+                <button type="submit" disabled={busy}>
+                  検索
+                </button>
               </div>
             </form>
           </section>
@@ -411,45 +427,142 @@ export function ListingAdmin() {
             aria-busy={busy}
           >
             <div className="table-toolbar">
-              <div><p className="eyebrow">RESULTS</p><h2>登録商品一覧</h2></div>
+              <div>
+                <p className="eyebrow">RESULTS</p>
+                <h2>登録商品一覧</h2>
+              </div>
               <p className="result-summary" aria-live="polite">
                 {items.length ? `${items.length.toLocaleString("ja-JP")}件を表示` : "該当 0件"}
               </p>
             </div>
             <div className="table-wrap">
               <table className="listing-table">
-                <thead><tr><th>ID / 店舗</th><th>商品</th><th>メーカー</th><th>型番</th><th>カテゴリ</th><th>価格 / 在庫</th><th>最終確認</th><th>補正</th><th>操作</th></tr></thead>
+                <thead>
+                  <tr>
+                    <th>ID / 店舗</th>
+                    <th>商品</th>
+                    <th>メーカー</th>
+                    <th>型番</th>
+                    <th>カテゴリ</th>
+                    <th>価格 / 在庫</th>
+                    <th>最終確認</th>
+                    <th>補正</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
                 <tbody>
                   {items.map((product) => {
                     const labels = overrideLabels(product);
                     return (
                       <tr key={product.id}>
-                        <StackCell lines={[{ text: `#${product.id}`, strong: true }, { text: product.shopKey }, { text: product.sourceId, className: "listing-muted" }]} />
-                        <td><span className="listing-title">{product.title}</span>{!product.isActive ? <small className="listing-muted">掲載終了</small> : null}</td>
-                        <StackCell lines={[{ text: product.manufacturer || "—", strong: true }, { text: product.canonicalManufacturerId || product.manufacturerId || "ID未解決" }, { text: product.rawManufacturer || "—", className: "raw-value" }]} />
-                        <StackCell lines={[{ text: product.model || "—", strong: true }, { text: product.normalizedModel || "normalized未解決" }, { text: product.rawModel || "—", className: "raw-value" }]} />
-                        <StackCell lines={[{ text: product.category || "—", strong: true }, { text: product.primaryCategoryId || "未分類" }, { text: product.rawCategory || "—", className: "raw-value" }]} />
-                        <td><div className="listing-cell-stack"><span className="listing-price">{priceText(product.priceYen)}</span><span className="listing-status-badge" data-state={product.stockStatus}>{stockText(product.stockStatus)}</span></div></td>
+                        <StackCell
+                          lines={[
+                            { text: `#${product.id}`, strong: true },
+                            { text: product.shopKey },
+                            { text: product.sourceId, className: "listing-muted" },
+                          ]}
+                        />
+                        <td>
+                          <span className="listing-title">{product.title}</span>
+                          {!product.isActive ? (
+                            <small className="listing-muted">掲載終了</small>
+                          ) : null}
+                        </td>
+                        <StackCell
+                          lines={[
+                            { text: product.manufacturer || "—", strong: true },
+                            {
+                              text:
+                                product.canonicalManufacturerId ||
+                                product.manufacturerId ||
+                                "ID未解決",
+                            },
+                            { text: product.rawManufacturer || "—", className: "raw-value" },
+                          ]}
+                        />
+                        <StackCell
+                          lines={[
+                            { text: product.model || "—", strong: true },
+                            { text: product.normalizedModel || "normalized未解決" },
+                            { text: product.rawModel || "—", className: "raw-value" },
+                          ]}
+                        />
+                        <StackCell
+                          lines={[
+                            { text: product.category || "—", strong: true },
+                            { text: product.primaryCategoryId || "未分類" },
+                            { text: product.rawCategory || "—", className: "raw-value" },
+                          ]}
+                        />
+                        <td>
+                          <div className="listing-cell-stack">
+                            <span className="listing-price">{priceText(product.priceYen)}</span>
+                            <span className="listing-status-badge" data-state={product.stockStatus}>
+                              {stockText(product.stockStatus)}
+                            </span>
+                          </div>
+                        </td>
                         <StackCell lines={[{ text: dateText(product.lastSeenAt), strong: true }]} />
-                        <td><span className="override-badge" data-active={labels.length ? "true" : "false"} title={product.overrides.updatedAt ? `最終補正: ${dateText(product.overrides.updatedAt)}` : undefined}>{labels.length ? labels.join(" / ") : "なし"}</span></td>
-                        <td><button type="button" className="secondary-button" onClick={() => openEdit(product)}>編集</button></td>
+                        <td>
+                          <span
+                            className="override-badge"
+                            data-active={labels.length ? "true" : "false"}
+                            title={
+                              product.overrides.updatedAt
+                                ? `最終補正: ${dateText(product.overrides.updatedAt)}`
+                                : undefined
+                            }
+                          >
+                            {labels.length ? labels.join(" / ") : "なし"}
+                          </span>
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => openEdit(product)}
+                          >
+                            編集
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
             </div>
-            {!items.length ? <p className="empty-state"><strong>条件に一致する登録商品がありません。</strong><span>検索条件を減らすか、全履歴へ切り替えて再検索してください。</span></p> : null}
+            {!items.length ? (
+              <p className="empty-state">
+                <strong>条件に一致する登録商品がありません。</strong>
+                <span>検索条件を減らすか、全履歴へ切り替えて再検索してください。</span>
+              </p>
+            ) : null}
             <div className="pagination-bar">
               <span>ページ {history.length + 1}</span>
               <nav className="pagination" aria-label="登録商品ページング">
-                <button className="secondary-button" type="button" disabled={busy || !history.length} onClick={() => {
-                  const previous = history.at(-1);
-                  if (previous !== undefined) void loadListings(applied, previous, history.slice(0, -1));
-                }}>← 前へ</button>
-                <button className="secondary-button" type="button" disabled={busy || nextAfterId === null} onClick={() => {
-                  if (nextAfterId !== null) void loadListings(applied, nextAfterId, [...history, currentAfterId]);
-                }}>次へ →</button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={busy || !history.length}
+                  onClick={() => {
+                    const previous = history.at(-1);
+                    if (previous !== undefined)
+                      void loadListings(applied, previous, history.slice(0, -1));
+                  }}
+                >
+                  ← 前へ
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={busy || nextAfterId === null}
+                  onClick={() => {
+                    if (nextAfterId !== null)
+                      void loadListings(applied, nextAfterId, [...history, currentAfterId]);
+                  }}
+                >
+                  次へ →
+                </button>
               </nav>
             </div>
           </section>
@@ -468,16 +581,116 @@ export function ListingAdmin() {
       >
         {editing ? (
           <form className="edit-form" onSubmit={(event) => void saveEditing(event)}>
-            <div className="dialog-heading"><div><p className="eyebrow">EDIT LISTING</p><h2>登録商品を修正</h2></div><button className="icon-button" type="button" aria-label="編集画面を閉じる" onClick={() => closeEdit()}>×</button></div>
-            <div className="identity-card listing-identity-card"><span>変更対象</span><p className="identity">{editing.title}</p><p className="identity-note">{editing.shopKey} / {editing.sourceId} / listing #{editing.id}</p>{sourceUrl ? <a className="source-link" href={sourceUrl} target="_blank" rel="noreferrer">販売店の商品ページを開く ↗</a> : null}</div>
-            <div className="source-evidence"><strong>販売店の取得値</strong><dl><div><dt>メーカー</dt><dd>{editing.rawManufacturer || "—"}</dd></div><div><dt>型番</dt><dd>{editing.rawModel || "—"}</dd></div><div><dt>カテゴリ</dt><dd>{editing.rawCategory || "—"}</dd></div></dl></div>
-            <label><span>Canonical Manufacturer ID</span><input type="text" maxLength={100} autoComplete="off" value={editDraft.manufacturerId} onChange={(event) => setEditDraft((value) => ({ ...value, manufacturerId: event.currentTarget.value }))} /><small>例: luxman。空欄にするとメーカー未解決として固定します。</small></label>
-            <label><span>型番</span><input type="text" maxLength={200} autoComplete="off" value={editDraft.model} onChange={(event) => setEditDraft((value) => ({ ...value, model: event.currentTarget.value }))} /><small>検索とProduct Identityに使う正規化後の型番です。</small></label>
-            <label><span>主カテゴリ</span><select required value={editDraft.primaryCategoryId} onChange={(event) => setEditDraft((value) => ({ ...value, primaryCategoryId: event.currentTarget.value }))}><option value="">未分類（未選択）</option>{classifiableCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
-            <div className="edit-impact"><strong>保存時の処理</strong><p>手動補正を永続化し、検索インデックス → Product Identity → 製品グループの順で再投影します。次回クロールでも補正は保持されます。</p></div>
-            <div className="read-only-note">タイトル・価格・在庫・商品URLは販売店の一次情報として保持するため、この画面では変更できません。</div>
-            <p className="edit-change-status" data-dirty={editDirty ? "true" : "false"}>{editDirty ? "未保存の変更があります。" : "変更すると保存できます。"}</p>
-            <div className="dialog-actions"><button className="secondary-button" type="button" onClick={() => closeEdit()}>キャンセル</button><button type="submit" disabled={busy || saving || !editDirty}>{saving ? "保存中…" : "変更を保存"}</button></div>
+            <div className="dialog-heading">
+              <div>
+                <p className="eyebrow">EDIT LISTING</p>
+                <h2>登録商品を修正</h2>
+              </div>
+              <button
+                className="icon-button"
+                type="button"
+                aria-label="編集画面を閉じる"
+                onClick={() => closeEdit()}
+              >
+                ×
+              </button>
+            </div>
+            <div className="identity-card listing-identity-card">
+              <span>変更対象</span>
+              <p className="identity">{editing.title}</p>
+              <p className="identity-note">
+                {editing.shopKey} / {editing.sourceId} / listing #{editing.id}
+              </p>
+              {sourceUrl ? (
+                <a className="source-link" href={sourceUrl} target="_blank" rel="noreferrer">
+                  販売店の商品ページを開く ↗
+                </a>
+              ) : null}
+            </div>
+            <div className="source-evidence">
+              <strong>販売店の取得値</strong>
+              <dl>
+                <div>
+                  <dt>メーカー</dt>
+                  <dd>{editing.rawManufacturer || "—"}</dd>
+                </div>
+                <div>
+                  <dt>型番</dt>
+                  <dd>{editing.rawModel || "—"}</dd>
+                </div>
+                <div>
+                  <dt>カテゴリ</dt>
+                  <dd>{editing.rawCategory || "—"}</dd>
+                </div>
+              </dl>
+            </div>
+            <label>
+              <span>Canonical Manufacturer ID</span>
+              <input
+                type="text"
+                maxLength={100}
+                autoComplete="off"
+                value={editDraft.manufacturerId}
+                onChange={(event) =>
+                  setEditDraft((value) => ({ ...value, manufacturerId: event.currentTarget.value }))
+                }
+              />
+              <small>例: luxman。空欄にするとメーカー未解決として固定します。</small>
+            </label>
+            <label>
+              <span>型番</span>
+              <input
+                type="text"
+                maxLength={200}
+                autoComplete="off"
+                value={editDraft.model}
+                onChange={(event) =>
+                  setEditDraft((value) => ({ ...value, model: event.currentTarget.value }))
+                }
+              />
+              <small>検索とProduct Identityに使う正規化後の型番です。</small>
+            </label>
+            <label>
+              <span>主カテゴリ</span>
+              <select
+                required
+                value={editDraft.primaryCategoryId}
+                onChange={(event) =>
+                  setEditDraft((value) => ({
+                    ...value,
+                    primaryCategoryId: event.currentTarget.value,
+                  }))
+                }
+              >
+                <option value="">未分類（未選択）</option>
+                {classifiableCategories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="edit-impact">
+              <strong>保存時の処理</strong>
+              <p>
+                手動補正を永続化し、検索インデックス → Product Identity →
+                製品グループの順で再投影します。次回クロールでも補正は保持されます。
+              </p>
+            </div>
+            <div className="read-only-note">
+              タイトル・価格・在庫・商品URLは販売店の一次情報として保持するため、この画面では変更できません。
+            </div>
+            <p className="edit-change-status" data-dirty={editDirty ? "true" : "false"}>
+              {editDirty ? "未保存の変更があります。" : "変更すると保存できます。"}
+            </p>
+            <div className="dialog-actions">
+              <button className="secondary-button" type="button" onClick={() => closeEdit()}>
+                キャンセル
+              </button>
+              <button type="submit" disabled={busy || saving || !editDirty}>
+                {saving ? "保存中…" : "変更を保存"}
+              </button>
+            </div>
           </form>
         ) : null}
       </dialog>
