@@ -35,12 +35,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node_action='actions/setup-'node
-          npm_cmd='n''pm'
-          npx_cmd='n''px'
-          pattern="${node_action}|${npm_cmd} (ci|run|exec|pack|audit|install)([[:space:]]|$)|${npx_cmd} (wrangler|playwright|tsx|vitepress|vitest|vite|oxlint|oxfmt)([[:space:]]|$)"
-          if grep -RInE "$pattern" .github/workflows package.json README.md AGENTS.md docs; then
-            echo 'Legacy Node/Vite toolchain entrypoint remains; route it through Vite+.' >&2
+          if grep -RInE 'uses:[[:space:]]+actions/setup-node@|run:[[:space:]]+(npm|npx)([[:space:]]|$)|^[[:space:]]+(npm|npx)[[:space:]]' .github/workflows; then
+            echo 'A workflow bypasses Vite+ runtime/tool resolution.' >&2
+            exit 1
+          fi
+          if grep -RInE '^[[:space:]]*(npm|npx)[[:space:]]' README.md AGENTS.md docs; then
+            echo 'Documentation contains a standalone npm/npx command; document the Vite+ entrypoint instead.' >&2
             exit 1
           fi
       # Same gate contributors run locally: lint, format check, TypeScript-only check, type check,
@@ -59,10 +59,12 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/setup-node-deps
+      # Vite+ 0.2.9's `vp pm audit` does not accept npm's positional `signatures`
+      # subcommand. Run the project-pinned npm inside the Vite+ environment instead.
       - name: Verify npm registry signatures and provenance
-        run: vp pm audit signatures
+        run: vp env exec npm audit signatures
       - name: Fail on high or critical dependency vulnerabilities
-        run: vp pm audit --audit-level=high
+        run: vp env exec npm audit --audit-level=high
 
   playwright-browser-cache:
     if: github.event_name == 'push'
