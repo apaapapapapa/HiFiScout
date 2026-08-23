@@ -1,0 +1,72 @@
+name: Vite+ workflow sweep
+
+on:
+  push:
+    branches: [fix/complete-vite-plus-migration]
+
+permissions:
+  contents: write
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: fix/complete-vite-plus-migration
+          fetch-depth: 0
+      - name: Route remaining project tooling through Vite+
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          for path in Path('.github/workflows').glob('*.yml'):
+              if path.name == 'vite-plus-sweep.yml':
+                  continue
+              text = path.read_text(encoding='utf-8')
+              text = re.sub(
+                  r'(?m)^      - name: Setup Node\.js\n        uses: actions/setup-node@[^\n]+\n        with:\n          node-version: 22\n(?:          cache: npm\n)?\n?',
+                  '      - uses: ./.github/actions/setup-node-deps\n\n',
+                  text,
+              )
+              text = re.sub(
+                  r'(?m)^      - uses: actions/setup-node@[^\n]+\n        with:\n          node-version: 22\n(?:          cache: npm\n)?\n?',
+                  '      - uses: ./.github/actions/setup-node-deps\n',
+                  text,
+              )
+              text = re.sub(r'(?m)^      - name: Install dependencies\n        run: npm ci\n\n?', '', text)
+              text = re.sub(r'(?m)^      - run: npm ci\n', '', text)
+              replacements = {
+                  'npm run ': 'vp run ',
+                  'npm audit signatures': 'vp pm audit signatures',
+                  'npm audit --audit-level=high': 'vp pm audit --audit-level=high',
+                  'npx tsx ': 'vp exec tsx ',
+                  'npx wrangler ': 'vp exec wrangler ',
+                  'npx playwright ': 'vp exec playwright ',
+                  'npx --yes semantic-release@25.0.8': 'vp dlx semantic-release@25.0.8',
+                  'npm pack @cloudflare/playwright@1.3.5 --silent': 'vp pm pack @cloudflare/playwright@1.3.5 --silent',
+              }
+              for old, new in replacements.items():
+                  text = text.replace(old, new)
+              path.write_text(text, encoding='utf-8')
+
+          for path in [Path('README.md'), Path('AGENTS.md'), *Path('docs').rglob('*.md')]:
+              text = path.read_text(encoding='utf-8')
+              text = text.replace('npm run ', 'vp run ')
+              text = text.replace('npx playwright ', 'vp exec playwright ')
+              path.write_text(text, encoding='utf-8')
+          PY
+
+          if git diff --quiet; then
+            echo "No remaining workflow/doc replacements."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "refactor: route CI and operations through Vite+"
+          git push origin HEAD:fix/complete-vite-plus-migration
