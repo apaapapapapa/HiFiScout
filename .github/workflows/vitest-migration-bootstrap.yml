@@ -45,6 +45,7 @@ jobs:
             }
             const before = source;
             source = source.replace(/^import test from ["']node:test["'];$/gm, 'import { test } from "vitest";');
+            source = source.replace(/^import \{ mock \} from ["']node:test["'];$/gm, 'import { vi as mock } from "vitest";');
             source = source.replace(/^(import\s+\{[^}]+\}\s+from\s+)["']node:test["'];$/gm, '$1"vitest";');
             if (source !== before) {
               fs.writeFileSync(file, source);
