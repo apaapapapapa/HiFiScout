@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { test } from "vite-plus/test";
 
 import { repairGeneralCronProjectionGaps } from "../src/scheduled.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";

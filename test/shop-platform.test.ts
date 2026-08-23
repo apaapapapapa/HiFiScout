@@ -1,4 +1,4 @@
-import { test } from "vitest";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { availabilityFromSignals, availabilityFromText } from "../src/crawler/availability.js";
 import { validateSellerProducts } from "../src/crawler/seller-facts.js";

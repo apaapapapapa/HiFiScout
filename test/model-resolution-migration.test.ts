@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import { test } from "vitest";
+import { test } from "vite-plus/test";
 import { MODEL_RESOLVER_VERSION } from "../src/catalog/model-resolver.js";
 
 const migration = readFileSync(

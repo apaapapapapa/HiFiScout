@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { test } from "vitest";
+import { test } from "vite-plus/test";
 
 const script = readFileSync(
   new URL("../scripts/product-search-identity-health.sh", import.meta.url),

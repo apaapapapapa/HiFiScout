@@ -5,16 +5,16 @@
   "type": "module",
   "scripts": {
     "test": "npm run test:unit",
-    "test:unit": "vitest run --reporter=dot",
-    "test:unit:verbose": "vitest run --reporter=verbose",
+    "test:unit": "vp test run --reporter=dot",
+    "test:unit:verbose": "vp test run --reporter=verbose",
     "test:e2e": "playwright test --config e2e/playwright.config.ts",
     "fix": "npm run format && npm run lint:fix",
     "check": "npm run lint && npm run format:check && npm run check:no-js-source && npm run typecheck && npm run test:unit",
     "verify": "npm run fix && npm run check",
-    "lint": "oxlint . --deny-warnings",
-    "lint:fix": "oxlint . --fix",
-    "format": "oxfmt --no-error-on-unmatched-pattern \"**/*.ts\" \"**/*.mts\" \"**/*.cts\" \"**/*.tsx\"",
-    "format:check": "oxfmt --check --no-error-on-unmatched-pattern \"**/*.ts\" \"**/*.mts\" \"**/*.cts\" \"**/*.tsx\"",
+    "lint": "vp lint . --deny-warnings",
+    "lint:fix": "vp lint . --fix",
+    "format": "vp fmt --no-error-on-unmatched-pattern \"**/*.ts\" \"**/*.mts\" \"**/*.cts\" \"**/*.tsx\"",
+    "format:check": "vp fmt --check --no-error-on-unmatched-pattern \"**/*.ts\" \"**/*.mts\" \"**/*.cts\" \"**/*.tsx\"",
     "dev": "npm run build:frontend && wrangler dev --test-scheduled",
     "deploy": "npm run build:frontend && wrangler d1 migrations apply DB --remote && wrangler deploy",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
@@ -51,16 +51,14 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "esbuild": "^0.28.2",
-    "oxfmt": "^0.63.0",
-    "oxlint": "^1.78.0",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2",
+    "vite-plus": "0.2.9",
     "vitepress": "^1.6.4",
-    "vitest": "^4.1.11",
     "wrangler": "^4.45.0"
   },
   "overrides": {
-    "vite": "8.2.2"
+    "vite": "npm:@voidzero-dev/vite-plus-core@0.2.9"
   },
   "release": {
     "branches": [
@@ -96,5 +94,12 @@
         }
       ]
     ]
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "npm",
+      "version": "12.0.2",
+      "onFail": "download"
+    }
   }
 }

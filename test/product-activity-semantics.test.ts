@@ -1,4 +1,4 @@
-import { test } from "vitest";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { searchProducts } from "../src/db/product-search-repository.js";
 import { upsertProducts } from "../src/db/product-write-repository.js";

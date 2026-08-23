@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { test } from "vitest";
+import { test } from "vite-plus/test";
 
 const root = new URL("../", import.meta.url);
 const workflowDirectory = new URL("../.github/workflows/", import.meta.url);
