@@ -154,6 +154,7 @@ test("live metadata exposes the complete canonical taxonomy including zero-count
     "turntable",
     "tonearm",
     "cartridge",
+    "headshell",
     "phono_eq",
     "phono_step_up_transformer",
     "speaker",
@@ -204,6 +205,10 @@ test("live metadata exposes the complete canonical taxonomy including zero-count
   expect(facets.find((category) => category.id === "transport")).toMatchObject({
     name: "　トランスポート",
     parentId: "digital",
+  });
+  expect(facets.find((category) => category.id === "headshell")).toMatchObject({
+    name: "　ヘッドシェル",
+    parentId: "analog",
   });
   expect(facets.find((category) => category.id === "cable_xlr")).toMatchObject({
     name: "　　XLRケーブル",
