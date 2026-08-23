@@ -34,6 +34,9 @@ const RETIRED_LEGACY_PATHS = new Set([
   "/listing-admin",
   "/catalog-admin.html",
   "/listing-admin.html",
+  "/catalog-admin.js",
+  "/catalog-admin-operations.js",
+  "/listing-admin.js",
 ]);
 const REQUEST_BODY_TOO_LARGE = Symbol("request_body_too_large");
 
