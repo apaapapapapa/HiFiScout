@@ -53,13 +53,11 @@ jobs:
           source .github/config/production.env
           base_url="${REPOSITORY_PRODUCTION_BASE_URL:-$PRODUCTION_BASE_URL}"
           echo "PRODUCTION_BASE_URL=${base_url%/}" >> "$GITHUB_ENV"
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-          cache: npm
-      # Every `npx wrangler` below resolves to the Wrangler installed here, pinned by
-      # package-lock.json. CI already exercises that exact binary through `npm run build:worker`.
-      - run: npm ci
+      # Use the same Vite+/Node/package-manager bootstrap as CI. package.json devEngines pins the
+      # package manager, so actions/setup-node's npm cache probe can fail before npm is upgraded.
+      - uses: ./.github/actions/setup-node-deps
+      # Every `npx wrangler` below resolves to the Wrangler installed by the shared setup action,
+      # pinned by package-lock.json. CI already exercises that exact binary through build:worker.
       - name: Provision required Cloudflare resources
         run: bash scripts/provision-production-resources.sh
       - name: Install deploy-only Worker dependency
