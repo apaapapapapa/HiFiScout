@@ -20,14 +20,8 @@ test("workflow count does not grow beyond the organized baseline", () => {
 });
 
 test("production repair and duplicate search audit are not autonomous workflows", () => {
-  assert.equal(
-    existsSync(new URL("repair-product-search-gaps.yml", workflowDirectory)),
-    false,
-  );
-  assert.equal(
-    existsSync(new URL("product-search-identity-audit.yml", workflowDirectory)),
-    false,
-  );
+  assert.equal(existsSync(new URL("repair-product-search-gaps.yml", workflowDirectory)), false);
+  assert.equal(existsSync(new URL("product-search-identity-audit.yml", workflowDirectory)), false);
   assert.match(opsWorkflow, /bash scripts\/product-search-identity-health\.sh/u);
   assert.equal(existsSync(new URL("scripts/repair-product-search-gaps.ts", root)), true);
 });
@@ -39,5 +33,8 @@ test("E2E uses the root locked toolchain and excludes protected admin API monito
   assert.doesNotMatch(ciWorkflow, /npm install --no-package-lock/u);
   assert.equal(existsSync(new URL("e2e/package.json", root)), false);
   assert.equal(existsSync(new URL("e2e/tests/data-quality-api.spec.ts", root)), false);
-  assert.equal(packageJson.scripts?.["test:e2e"], "playwright test --config e2e/playwright.config.ts");
+  assert.equal(
+    packageJson.scripts?.["test:e2e"],
+    "playwright test --config e2e/playwright.config.ts",
+  );
 });
