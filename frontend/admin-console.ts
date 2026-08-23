@@ -161,6 +161,7 @@ async function initializeLegacyScripts(config: AdminAppConfig): Promise<void> {
     node.id = legacyId;
   }
 
+  // Every feature for one fragment must bind while the fragment exposes its original IDs.
   try {
     for (const scriptSrc of config.scriptSrcs) {
       await appendLegacyScript(config, scriptSrc);
