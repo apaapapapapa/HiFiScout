@@ -26,13 +26,15 @@ const CONSOLE_ASSET_PATHS = new Set([
   "/admin-console.css",
   "/admin-console.js",
   "/catalog-admin.css",
-  "/catalog-admin.js",
   "/hifiscout-mark.jpg",
   "/listing-admin.css",
-  "/listing-admin.js",
 ]);
-const INTERNAL_FRAGMENT_PATHS = new Set(["/catalog-admin.html", "/listing-admin.html"]);
-const LEGACY_PAGE_PATHS = new Set(["/catalog-admin", "/listing-admin"]);
+const RETIRED_LEGACY_PATHS = new Set([
+  "/catalog-admin",
+  "/listing-admin",
+  "/catalog-admin.html",
+  "/listing-admin.html",
+]);
 const REQUEST_BODY_TOO_LARGE = Symbol("request_body_too_large");
 
 function json(value: unknown, init: ResponseInit = {}): Response {
@@ -104,8 +106,7 @@ function isAdminEntryRoute(pathname: string): boolean {
   return (
     pathname === "/" ||
     CONSOLE_ASSET_PATHS.has(pathname) ||
-    INTERNAL_FRAGMENT_PATHS.has(pathname) ||
-    LEGACY_PAGE_PATHS.has(pathname) ||
+    RETIRED_LEGACY_PATHS.has(pathname) ||
     pathname === LISTING_COLLECTION_PATH ||
     LISTING_PATH.test(pathname)
   );
@@ -168,13 +169,7 @@ export async function handleAuthenticatedAdminEntryRequest(
   if (request.method === "GET" && CONSOLE_ASSET_PATHS.has(url.pathname)) {
     return adminAsset(env, request);
   }
-  if (request.method === "GET" && INTERNAL_FRAGMENT_PATHS.has(url.pathname)) {
-    if (request.headers.get("x-admin-fragment") !== "1") {
-      return json({ error: "not_found" }, { status: 404 });
-    }
-    return adminAsset(env, request);
-  }
-  if (request.method === "GET" && LEGACY_PAGE_PATHS.has(url.pathname)) {
+  if (request.method === "GET" && RETIRED_LEGACY_PATHS.has(url.pathname)) {
     return json({ error: "not_found" }, { status: 404 });
   }
   return json({ error: "not_found" }, { status: 404 });
