@@ -5,31 +5,64 @@ import test from "node:test";
 const packageJson = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 ) as { scripts?: Record<string, string> };
-const adminConsole = readFileSync(new URL("../frontend/admin-console.ts", import.meta.url), "utf8");
+const adminConsole = readFileSync(
+  new URL("../frontend/admin-console.tsx", import.meta.url),
+  "utf8",
+);
+const catalogAdmin = readFileSync(
+  new URL("../frontend/admin-catalog.tsx", import.meta.url),
+  "utf8",
+);
+const listingAdmin = readFileSync(
+  new URL("../frontend/admin-listings.tsx", import.meta.url),
+  "utf8",
+);
 
-test("admin frontend builds each feature as an independent protected asset", () => {
+test("admin frontend builds one React application bundle", () => {
   const command = packageJson.scripts?.["build:frontend:admin"] || "";
-  assert.match(command, /frontend\/admin-console\.ts/u);
-  assert.match(command, /frontend\/catalog-admin\.ts/u);
-  assert.match(command, /frontend\/catalog-admin-operations\.ts/u);
-  assert.match(command, /frontend\/listing-admin\.ts/u);
-  assert.doesNotMatch(command, /catalog-admin-bundle/u);
-  assert.equal(existsSync(new URL("../frontend/catalog-admin-bundle.ts", import.meta.url)), false);
+  assert.match(command, /frontend\/admin-console\.tsx/u);
+  assert.match(command, /--outfile=admin-public\/admin-console\.js/u);
+  assert.match(command, /process\.env\.NODE_ENV/u);
+  assert.doesNotMatch(command, /frontend\/catalog-admin\.ts/u);
+  assert.doesNotMatch(command, /frontend\/catalog-admin-operations\.ts/u);
+  assert.doesNotMatch(command, /frontend\/listing-admin\.ts/u);
 });
 
-test("unified admin shell loads catalog features explicitly and listing independently", () => {
-  assert.match(
-    adminConsole,
-    /scriptSrcs: \["\/catalog-admin\.js", "\/catalog-admin-operations\.js"\]/u,
-  );
-  assert.match(adminConsole, /scriptSrcs: \["\/listing-admin\.js"\]/u);
-  assert.match(adminConsole, /for \(const scriptSrc of config\.scriptSrcs\)/u);
-  assert.match(adminConsole, /await appendLegacyScript\(config, scriptSrc\)/u);
+test("legacy admin sources and HTML fragments are removed", () => {
+  for (const relative of [
+    "../frontend/admin-console.ts",
+    "../frontend/catalog-admin.ts",
+    "../frontend/catalog-admin-operations.ts",
+    "../frontend/listing-admin.ts",
+    "../admin-public/catalog-admin.html",
+    "../admin-public/listing-admin.html",
+  ]) {
+    assert.equal(
+      existsSync(new URL(relative, import.meta.url)),
+      false,
+      `${relative} must be removed`,
+    );
+  }
 });
 
-test("all scripts for one mounted fragment initialize under one legacy-id ownership window", () => {
-  const restoreIndex = adminConsole.indexOf("nodes.forEach((node, index)");
-  const loadIndex = adminConsole.indexOf("for (const scriptSrc of config.scriptSrcs)");
-  assert.ok(loadIndex >= 0);
-  assert.ok(restoreIndex > loadIndex);
+test("admin shell and both workspaces are React components", () => {
+  assert.match(adminConsole, /from "react"/u);
+  assert.match(adminConsole, /createRoot/u);
+  assert.match(adminConsole, /<CatalogAdmin/u);
+  assert.match(adminConsole, /<ListingAdmin/u);
+  assert.match(catalogAdmin, /useState/u);
+  assert.match(catalogAdmin, /useEffect/u);
+  assert.match(listingAdmin, /useState/u);
+  assert.match(listingAdmin, /useEffect/u);
+});
+
+test("React admin no longer bootstraps legacy DOM or scripts", () => {
+  const sources = [adminConsole, catalogAdmin, listingAdmin].join("\n");
+  assert.doesNotMatch(sources, /DOMParser/u);
+  assert.doesNotMatch(sources, /createElement\(["']script["']/u);
+  assert.doesNotMatch(sources, /appendChild\(script/u);
+  assert.doesNotMatch(sources, /MutationObserver/u);
+  assert.doesNotMatch(sources, /\.innerHTML\s*=/u);
+  assert.doesNotMatch(sources, /replaceChildren\(/u);
+  assert.doesNotMatch(sources, /document\.addEventListener\(/u);
 });
