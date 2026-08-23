@@ -330,12 +330,7 @@ test("a future DLQ delivery cannot fail a job whose predecessor owns the current
   const { db } = migratedSqlite();
   const { queue } = fakeQueue();
   const { bucket } = fakeBucket();
-  const job = await startProductAuditExport(
-    db,
-    queue,
-    "active",
-    new Date(),
-  );
+  const job = await startProductAuditExport(db, queue, "active", new Date());
   const future = fakeMessage({
     kind: "product_audit_export",
     jobId: job.id,
@@ -363,12 +358,7 @@ test("a delivery in the DLQ cannot fail a cursor that still has a live lease", a
   const { db } = migratedSqlite();
   const { queue, sent } = fakeQueue();
   const { bucket } = fakeBucket();
-  const job = await startProductAuditExport(
-    db,
-    queue,
-    "active",
-    new Date(),
-  );
+  const job = await startProductAuditExport(db, queue, "active", new Date());
   const original = sent[0]?.body;
   assert.ok(original);
   const claimedAt = new Date();
