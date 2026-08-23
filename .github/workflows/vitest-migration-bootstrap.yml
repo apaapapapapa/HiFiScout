@@ -1,8 +1,9 @@
 name: Bootstrap Vitest migration
 
 on:
-  push:
-    branches: [refactor/vitest-unit-runner]
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
     paths:
       - .github/workflows/vitest-migration-bootstrap.yml
 
@@ -11,12 +12,13 @@ permissions:
 
 jobs:
   migrate:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: refactor/vitest-unit-runner
+          ref: ${{ github.event.pull_request.head.ref }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
@@ -120,4 +122,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add package.json package-lock.json vitest.config.ts docs/testing-strategy.md test
           git commit -m "test: migrate unit runner to Vitest"
-          git push origin HEAD:refactor/vitest-unit-runner
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
