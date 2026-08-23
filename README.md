@@ -56,30 +56,31 @@ Prefer these sources over historical PR descriptions, completed migration plans,
 
 ## Local development
 
-Requires Node.js 22+.
+Requires Vite+ 0.2.9. Vite+ manages the project's Node.js 22 toolchain and npm version.
 
 ```bash
-npm ci
-npm run db:migrate:local
-npm run build:frontend
-npm run dev
+vp env use 22
+vp install
+vp run db:migrate:local
+vp run build:frontend
+vp run dev
 ```
 
 Run all pre-commit checks with one command:
 
 ```bash
-npm run verify
+vp run verify
 ```
 
-`npm run verify` applies formatting/lint fixes, then runs the read-only gate (`lint`, `format:check`, TypeScript-only source check, `typecheck`, and unit tests). See `AGENTS.md` for repository rules used by coding agents.
+`vp run verify` applies formatting/lint fixes, then runs the read-only gate (`lint`, `format:check`, TypeScript-only source check, `typecheck`, and unit tests). See `AGENTS.md` for repository rules used by coding agents.
 
 Useful commands:
 
 ```bash
-npm run test:unit
-npm run typecheck
-npm run build
-npm run create-shop -- <shop-key>
+vp run test:unit
+vp run typecheck
+vp run build
+vp run create-shop -- <shop-key>
 ```
 
 The application is TypeScript-only. Generated JavaScript in `public/`, `admin-public/`, `dist/`, and `.generated/` is build output, not source of truth.

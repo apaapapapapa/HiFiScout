@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { test } from "vite-plus/test";
 import { remediationOperationalMetrics } from "../src/db/data-quality-remediation-metrics.js";
 
 test("remediation operational metrics expose backlog and terminal failure rate", () => {

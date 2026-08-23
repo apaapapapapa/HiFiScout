@@ -1,16 +1,16 @@
 # Testing strategy
 
-HiFiScout follows a test pyramid: most behavior is verified in-process with Vitest, while browser E2E coverage is intentionally small and runs only against a deployed development environment.
+HiFiScout follows a test pyramid: most behavior is verified in-process with Vitest through Vite+, while browser E2E coverage is intentionally small and runs only against a deployed development environment.
 
 ## Pyramid
 
 ### 1. Unit tests — default and largest layer
 
-Run with `npm test` or `npm run test:unit`, or as part of `npm run verify`. A single file runs with
-`npx vitest run test/<name>.test.ts`.
+Run with `vp run test` or `vp run test:unit`, or as part of `vp run verify`. A single file runs with
+`vp test run test/<name>.test.ts`.
 
 The default reporter is `dot`: a passing run prints compact progress instead of one line per test, and
-failing tests still print their assertion, diff, and stack in full. `npm run test:unit:verbose` uses
+failing tests still print their assertion, diff, and stack in full. `vp run test:unit:verbose` uses
 Vitest's verbose reporter when you need to read passing test names.
 
 Keep parsing, normalization, category inference, query construction, scheduling decisions, guards, and shop-specific mapping rules here. Prefer pure functions and deterministic fixtures. Stub network, browser, queue, and D1 boundaries rather than exercising remote services.
@@ -19,7 +19,7 @@ A regression should be added at this layer whenever the bug can be reproduced wi
 
 ### 2. Component / contract tests — small middle layer
 
-Use Vitest and in-memory fakes to verify boundaries between modules: Worker route handlers with fake D1 responses, repository SQL behavior through a D1-shaped fake, crawler orchestration with mocked fetch/browser adapters, and the common shop contract.
+Use the Vite+ Vitest runner and in-memory fakes to verify boundaries between modules: Worker route handlers with fake D1 responses, repository SQL behavior through a D1-shaped fake, crawler orchestration with mocked fetch/browser adapters, and the common shop contract.
 
 Do not call retailer sites from CI. Remote shop availability, anti-bot behavior, rate limits, and regional routing are operational concerns and should be covered by health/observability rather than deterministic CI tests.
 
@@ -51,7 +51,7 @@ E2E_BASE_URL=https://hifiscout.raha3415kohei.workers.dev npm test
 
 ## CI policy
 
-The normal `CI` workflow runs migrations, `scripts/verify-search-integration.ts` against that locally migrated D1, the fast Vitest suite, and Wrangler dry-run validation. It does not install a browser.
+The normal `CI` workflow runs migrations, `scripts/verify-search-integration.ts` against that locally migrated D1, the fast Vite+ unit-test suite (Vitest), and Wrangler dry-run validation. It does not install a browser.
 
 The search integration check exists because two behaviors cannot be proven by asserting on generated SQL: that the FTS5 trigram index actually resolves a query like `TAD 1000`, and that two shops' confirmed listings really collapse into one search entity while an unconfirmed listing stays on its own. Those are properties of the database, so they are verified against a real one.
 

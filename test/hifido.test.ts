@@ -1,4 +1,4 @@
-import { test } from "vitest";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { SHOP_DEFINITIONS, getShopMaxPages } from "../src/config.js";
 import {

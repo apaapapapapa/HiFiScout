@@ -1,4 +1,4 @@
-import { test } from "vitest";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import { sanitizedCatalogSearch, sanitizedCatalogUrl } from "../frontend/catalog-url-sanitizer.js";

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { test } from "vite-plus/test";
 
 import { listingAdminCategoryIds } from "../src/db/listing-admin-repository.js";
 import { parseListingAdminListQuery, parseListingAdminUpdate } from "../src/http/listing-admin.js";

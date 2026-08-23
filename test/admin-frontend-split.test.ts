@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
-import { test } from "vitest";
+import { test } from "vite-plus/test";
 
 const packageJson = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 ) as { scripts?: Record<string, string> };
+const viteConfig = readFileSync(new URL("../vite.config.ts", import.meta.url), "utf8");
 const adminConsole = readFileSync(
   new URL("../frontend/admin-console.tsx", import.meta.url),
   "utf8",
@@ -18,14 +19,14 @@ const listingAdmin = readFileSync(
   "utf8",
 );
 
-test("admin frontend builds one React application bundle", () => {
+test("admin frontend builds one React application bundle with Vite+", () => {
   const command = packageJson.scripts?.["build:frontend:admin"] || "";
-  assert.match(command, /frontend\/admin-console\.tsx/u);
-  assert.match(command, /--outfile=admin-public\/admin-console\.js/u);
-  assert.match(command, /process\.env\.NODE_ENV/u);
-  assert.doesNotMatch(command, /frontend\/catalog-admin\.ts/u);
-  assert.doesNotMatch(command, /frontend\/catalog-admin-operations\.ts/u);
-  assert.doesNotMatch(command, /frontend\/listing-admin\.ts/u);
+  assert.equal(command, "vp build --mode admin");
+  assert.match(viteConfig, /\.\/frontend\/admin-console\.tsx/u);
+  assert.match(viteConfig, /"admin-public"/u);
+  assert.match(viteConfig, /"admin-console\.js"/u);
+  assert.match(viteConfig, /process\.env\.NODE_ENV/u);
+  assert.doesNotMatch(command, /esbuild/u);
 });
 
 test("legacy admin sources and HTML fragments are removed", () => {

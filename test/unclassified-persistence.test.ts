@@ -1,4 +1,4 @@
-import { test } from "vitest";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import { runDataQualityRemediationSweep } from "../src/db/data-quality-remediation-service.js";

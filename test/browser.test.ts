@@ -1,4 +1,4 @@
-import { test } from "vitest";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { createBrowserHtmlFetcher } from "../src/crawler/browser.js";
 

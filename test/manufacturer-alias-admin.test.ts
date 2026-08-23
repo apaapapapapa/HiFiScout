@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { test } from "vite-plus/test";
 import { parseManufacturerAliasAdminRequest } from "../src/http/manufacturer-alias-admin.js";
 
 test("manufacturer alias admin input is bounded and explicit", () => {
