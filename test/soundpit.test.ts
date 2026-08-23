@@ -119,7 +119,7 @@ test("Sound Pit detail parser preserves ASK and sold-out semantics", () => {
   assert.match(sold.conditionText, /売約済/u);
 });
 
-test("Sound Pit adapter is a partial latest-arrivals feed registered for hourly crawling", () => {
+test("Sound Pit adapter is a partial latest-arrivals feed following the crawl rotation", () => {
   const indexPage: SoundPitPage = { url: "https://sound-pit.jp/pg98.html", kind: "index" };
   assert.deepEqual(initialPageQueue(soundPitAdapter, 50), [indexPage]);
   assert.deepEqual(soundPitAdapter.parse(listingHtml, indexPage), []);
@@ -131,7 +131,7 @@ test("Sound Pit adapter is a partial latest-arrivals feed registered for hourly 
 
   const plugin = getShopPlugin("soundpit");
   assert.ok(plugin);
-  assert.equal(plugin.definition.defaultIntervalMinutes, 60);
+  assert.equal(plugin.definition.defaultIntervalMinutes, 140);
   assert.equal(plugin.definition.defaultMaxPages, 50);
   assert.equal(plugin.definition.envPrefix, "SOUNDPIT");
 });
