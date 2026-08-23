@@ -53,29 +53,23 @@ jobs:
           source .github/config/production.env
           base_url="${REPOSITORY_PRODUCTION_BASE_URL:-$PRODUCTION_BASE_URL}"
           echo "PRODUCTION_BASE_URL=${base_url%/}" >> "$GITHUB_ENV"
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-          cache: npm
-      # Every `npx wrangler` below resolves to the Wrangler installed here, pinned by
-      # package-lock.json. CI already exercises that exact binary through `npm run build:worker`.
-      - run: npm ci
+      - uses: ./.github/actions/setup-node-deps
       - name: Provision required Cloudflare resources
         run: bash scripts/provision-production-resources.sh
       - name: Install deploy-only Worker dependency
         shell: bash
         run: |
           set -euo pipefail
-          tarball="$(npm pack @cloudflare/playwright@1.3.5 --silent)"
+          tarball="$(vp pm pack @cloudflare/playwright@1.3.5 --silent)"
           mkdir -p node_modules/@cloudflare/playwright
           tar -xzf "$tarball" -C node_modules/@cloudflare/playwright --strip-components=1
           rm -f "$tarball"
       - name: Apply backward-compatible D1 migrations
-        run: npx wrangler d1 migrations apply DB --remote
+        run: vp exec wrangler d1 migrations apply DB --remote
       - name: Build browser assets from TypeScript source
-        run: npm run build:frontend
+        run: vp run build:frontend
       - name: Deploy Worker and static assets
-        run: npx wrangler deploy
+        run: vp exec wrangler deploy
       - name: Check production runtime health
         shell: bash
         run: |
