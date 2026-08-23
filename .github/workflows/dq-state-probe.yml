@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 jobs:
   probe:
@@ -22,10 +23,11 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Query production resolver state
+        id: probe
         shell: bash
         run: |
           set -euo pipefail
-          npx wrangler d1 execute DB --remote --json --command "
+          raw="$(npx wrangler d1 execute DB --remote --json --command "
             SELECT
               COUNT(*) AS active_listings,
               SUM(CASE WHEN manufacturer_resolver_version < 7 THEN 1 ELSE 0 END) AS stale_manufacturer,
@@ -39,4 +41,22 @@ jobs:
               SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) AS resolved,
               SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed
             FROM data_quality_remediation_queue;
-          "
+          ")"
+          jq . <<< "$raw"
+          state="$(jq -c '[.[].results[0]]' <<< "$raw")"
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+      - name: Publish probe state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATE: ${{ steps.probe.outputs.state }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          stale="$(jq -r '.[0].stale_manufacturer + .[0].stale_model + .[0].stale_category + .[0].projection_dirty' <<< "$STATE")"
+          pending="$(jq -r '.[1].pending' <<< "$STATE")"
+          processing="$(jq -r '.[1].processing' <<< "$STATE")"
+          failed="$(jq -r '.[1].failed' <<< "$STATE")"
+          gh api --method POST "/repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+            -f state=success \
+            -f context='diagnostic/dq-state' \
+            -f description="stale=${stale} pending=${pending} processing=${processing} failed=${failed}"
