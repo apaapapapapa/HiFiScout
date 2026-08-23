@@ -42,6 +42,10 @@ test("the public catalog mounts through the native React entrypoint", async () =
     publicUiSource,
     /dangerouslySetInnerHTML|\.innerHTML\s*=|MutationObserver|document\.createElement|replaceChildren/u,
   );
+  assert.doesNotMatch(
+    publicUiSource,
+    /product-view|shop-links|shop-filter-order|catalog-url-state|\.\/dom\.js/u,
+  );
 
   for (const source of retiredUiSources) {
     await assert.rejects(access(source));
