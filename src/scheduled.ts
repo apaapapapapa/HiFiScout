@@ -5,15 +5,8 @@
  * `crawler/schedule.ts` from adapter metadata and the deterministic round-robin policy.
  */
 
-import {
-  dispatchScheduledCrawl,
-  recoverStalledCrawlDispatches,
-} from "./crawler/dispatch.js";
-import {
-  ROUND_ROBIN_CRAWL_CRON,
-  shopForCron,
-  shopForRoundRobinSlot,
-} from "./crawler/schedule.js";
+import { dispatchScheduledCrawl, recoverStalledCrawlDispatches } from "./crawler/dispatch.js";
+import { ROUND_ROBIN_CRAWL_CRON, shopForCron, shopForRoundRobinSlot } from "./crawler/schedule.js";
 import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from "./catalog/knowledge-verification/verifier.js";
 import { runDataQualityRemediationSweep } from "./db/data-quality-remediation-service.js";
 import {
