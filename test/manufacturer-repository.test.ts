@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { MANUFACTURER_RESOLVER_VERSION } from "../src/catalog/manufacturer-resolver.js";
 import { normalizeManufacturerKey } from "../src/catalog/manufacturers.js";
 import { MODEL_RESOLVER_VERSION } from "../src/catalog/model-resolver.js";

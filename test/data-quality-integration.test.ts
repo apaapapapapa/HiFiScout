@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { evaluateQuality } from "../src/data-quality/quality-evaluator.js";
 
 function crawlOutcome(overrides = {}) {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { RESOLUTION_VERSIONS } from "../src/catalog/resolution-versions.js";
 import {
   claimDataQualityRemediationBatch,

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import test from "node:test";
+import { test } from "vitest";
 import { MODEL_RESOLVER_VERSION } from "../src/catalog/model-resolver.js";
 import {
   listUnresolvedModelGroups,

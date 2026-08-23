@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import test from "node:test";
+import { test } from "vitest";
 
 const migration = readFileSync(
   new URL("../migrations/0023_manufacturer_resolution.sql", import.meta.url),

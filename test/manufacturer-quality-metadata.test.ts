@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { manufacturerIdForFilter } from "../src/catalog/manufacturers.js";
 import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
 import { parsedProduct } from "./helpers/fixtures.js";

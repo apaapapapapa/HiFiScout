@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import { knowledgeCatalogKey } from "../src/catalog/knowledge-catalog.js";
 import { findManualVerifiedCategoryMatches } from "../src/db/manual-category-authority-repository.js";

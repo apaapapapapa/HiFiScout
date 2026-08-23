@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { createD1RestDatabase } from "../scripts/lib/d1-rest-database.js";
 
 interface CapturedRequest {

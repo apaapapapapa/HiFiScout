@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 
 import { manufacturerFilterIds } from "../src/catalog/manufacturers.js";

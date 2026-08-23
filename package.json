@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "npm run test:unit",
-    "test:unit": "tsx --test --test-reporter=dot test/*.test.ts",
-    "test:unit:verbose": "tsx --test test/*.test.ts",
+    "test:unit": "vitest run --reporter=dot",
+    "test:unit:verbose": "vitest run --reporter=verbose",
     "test:e2e": "playwright test --config e2e/playwright.config.ts",
     "fix": "npm run format && npm run lint:fix",
     "check": "npm run lint && npm run format:check && npm run check:no-js-source && npm run typecheck && npm run test:unit",
@@ -56,27 +56,45 @@
     "tsx": "^4.23.12",
     "typescript": "^7.0.2",
     "vitepress": "^1.6.4",
+    "vitest": "^4.1.11",
     "wrangler": "^4.45.0"
   },
   "overrides": {
     "vite": "6.4.3"
   },
   "release": {
-    "branches": ["main"],
+    "branches": [
+      "main"
+    ],
     "tagFormat": "v${version}",
     "plugins": [
       [
         "@semantic-release/commit-analyzer",
         {
           "releaseRules": [
-            { "type": "security", "release": "patch" },
-            { "type": "perf", "release": "patch" },
-            { "type": "refactor", "release": "patch" }
+            {
+              "type": "security",
+              "release": "patch"
+            },
+            {
+              "type": "perf",
+              "release": "patch"
+            },
+            {
+              "type": "refactor",
+              "release": "patch"
+            }
           ]
         }
       ],
       "@semantic-release/release-notes-generator",
-      ["@semantic-release/github", { "successComment": false, "failComment": false }]
+      [
+        "@semantic-release/github",
+        {
+          "successComment": false,
+          "failComment": false
+        }
+      ]
     ]
   }
 }

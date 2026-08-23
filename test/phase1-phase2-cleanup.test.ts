@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import test from "node:test";
+import { test } from "vitest";
 
 const migration = readFileSync(
   new URL("../migrations/0020_phase1_phase2_cleanup.sql", import.meta.url),

@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { productSearchDetail, searchProducts } from "../src/db/product-search-repository.js";
 import { captureDatabase } from "./helpers/d1.js";

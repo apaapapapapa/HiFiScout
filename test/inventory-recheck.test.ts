@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { recheckShopInventory } from "../src/crawler/inventory-recheck.js";
 import { getShopPlugin } from "../src/crawler/shops/index.js";

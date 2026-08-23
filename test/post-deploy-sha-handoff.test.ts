@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import test from "node:test";
+import { test } from "vitest";
 
 const deploy = readFileSync(new URL("../.github/workflows/deploy.yml", import.meta.url), "utf8");
 const e2e = readFileSync(new URL("../.github/workflows/e2e.yml", import.meta.url), "utf8");

@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { createRelayHtmlFetcher } from "../src/crawler/relay.js";
 import { isRecord } from "../src/types.js";

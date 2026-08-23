@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { DatabaseSync } from "node:sqlite";
-import test from "node:test";
+import { test } from "vitest";
 
 import {
   claimDataQualityRemediationBatch,

@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { audioUnionAdapter } from "../src/crawler/shops/audiounion.js";
 

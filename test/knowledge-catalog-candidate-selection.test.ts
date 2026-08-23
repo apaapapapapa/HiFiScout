@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 
 import { listPendingKnowledgeCatalogCandidates } from "../src/db/knowledge-catalog-verification-repository.js";

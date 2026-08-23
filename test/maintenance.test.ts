@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { retentionCutoffs, runRetentionCleanup } from "../src/maintenance.js";
 import { captureDatabase } from "./helpers/d1.js";
 
