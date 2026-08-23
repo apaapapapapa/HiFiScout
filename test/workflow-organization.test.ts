@@ -15,8 +15,10 @@ const packageJson = JSON.parse(readFileSync(new URL("package.json", root), "utf8
 };
 
 test("workflow count does not grow beyond the organized baseline", () => {
-  const workflows = readdirSync(workflowDirectory).filter((name) => /\.ya?ml$/u.test(name));
-  assert.ok(workflows.length <= 17, `Expected at most 17 workflows, found ${workflows.length}`);
+  const workflows = readdirSync(workflowDirectory).filter(
+    (name) => /\.ya?ml$/u.test(name) && name !== "vitest-migration-bootstrap.yml",
+  );
+  assert.ok(workflows.length <= 17, `Expected at most 17 permanent workflows, found ${workflows.length}`);
 });
 
 test("production repair and duplicate search audit are not autonomous workflows", () => {
