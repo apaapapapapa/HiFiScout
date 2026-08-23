@@ -5,10 +5,7 @@
  * `crawler/schedule.ts` from adapter metadata, so adding a shop never touches this file.
  */
 
-import {
-  dispatchScheduledCrawl,
-  recoverStalledCrawlDispatches,
-} from "./crawler/dispatch.js";
+import { dispatchScheduledCrawl, recoverStalledCrawlDispatches } from "./crawler/dispatch.js";
 import { roundRobinShopForScheduledTime, shopForCron } from "./crawler/schedule.js";
 import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from "./catalog/knowledge-verification/verifier.js";
 import { runDataQualityRemediationSweep } from "./db/data-quality-remediation-service.js";
