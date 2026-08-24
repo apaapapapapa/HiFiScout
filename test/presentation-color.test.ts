@@ -13,11 +13,12 @@ import { toProductSearchItem } from "../src/db/product-search-entity-mapper.js";
 import { entityRow } from "./helpers/product-search.js";
 
 /**
- * The finish is presentation, not identity.
+ * A color word is not sufficient evidence that text is presentation rather than identity.
  *
- * Two colours of one product must stay one card — that is what the model resolver's colour removal
- * has always been for — while the finish the seller named still reaches the shopper. These tests
- * hold both halves: the model never gains the finish back, and the finish is never lost.
+ * Audio manufacturers use color words as model/grade names (Ortofon Cadenza/2M are canonical
+ * examples), while retailers also append actual finishes to otherwise identical products. These
+ * tests hold the conservative boundary: ambiguous bare colors stay in identity; explicit seller
+ * presentation syntax may move the finish beside the model.
  */
 
 test("every spelling of one finish normalizes to a single label", () => {
@@ -40,7 +41,6 @@ test("every spelling of one finish normalizes to a single label", () => {
   for (const [spelling, expected] of spellings) {
     assert.equal(normalizePresentationColor(spelling)?.name, expected, spelling);
   }
-  // A qualified finish is its own thing to look at, not a synonym for the plain one.
   assert.notEqual(
     normalizePresentationColor("グロスブラック")?.id,
     normalizePresentationColor("ブラック")?.id,
@@ -53,6 +53,7 @@ test("labels are catalog-ordered and a two-tone finish stays one label", () => {
     "ブラック",
     "シルバー",
   ]);
+  assert.equal(presentationColorLabel(["ブラック/ゴールド"]), "ブラック/ゴールド");
   assert.equal(presentationColorLabel(["ブラック", "ゴールド"]), "ブラック/ゴールド");
   assert.equal(presentationColorLabel([]), "");
 });
@@ -62,17 +63,16 @@ test("a product lists the finishes its offers are in, without inventing any", ()
     "ブラック",
     "シルバー",
   ]);
-  // A two-tone offer is one finish to buy; splitting it would advertise a plain gold nobody listed.
   assert.deepEqual(presentationColorList(["ブラック/ゴールド"]), ["ブラック/ゴールド"]);
   assert.deepEqual(presentationColorList(["", "ラッカー塗装"]), []);
 });
 
-test("the finish leaves the model and is reported beside it", () => {
+test("explicit seller presentation syntax moves the finish beside the model", () => {
   const cases: [string, string, string, string][] = [
     ["802D4 B グロス・ブラック(ペア)", "bowers-wilkins", "802D4 B", "グロスブラック"],
-    ["MC Cadenza Black", "ortofon", "MC Cadenza", "ブラック"],
-    ["LS-R0 BLACK", "orb", "LS-R0", "ブラック"],
     ["A25 [ブラック]", "arcam", "A25", "ブラック"],
+    ["A25 COLOR: BLACK", "arcam", "A25", "ブラック"],
+    ["A25 - BLACK", "arcam", "A25", "ブラック"],
     [
       "91E ブラック/ゴールド 真空管プリメインアンプ",
       "western-electric",
@@ -85,19 +85,48 @@ test("the finish leaves the model and is reported beside it", () => {
     const result = resolveModel({ rawModel, title: "", manufacturerId });
     assert.equal(result.model, model, rawModel);
     assert.equal(presentationColorLabel(result.presentationColors), color, rawModel);
-    // The finish must not survive in identity, or the colours stop grouping.
-    assert.ok(!result.normalizedModel.includes("BLACK"), rawModel);
   }
 });
 
-test("a finish still sitting in the model is not also reported beside it", () => {
-  // `FS-700S3/B` is a model, not a finish code: the colour rules reject it, so nothing is claimed.
+test("ambiguous bare color words remain identity-bearing", () => {
+  const models = [
+    ["MC Cadenza Black", "ortofon"],
+    ["MC Cadenza Bronze", "ortofon"],
+    ["MC Cadenza Blue", "ortofon"],
+    ["MC Cadenza Red", "ortofon"],
+    ["2M Black", "ortofon"],
+    ["2M Bronze", "ortofon"],
+    ["2M Blue", "ortofon"],
+    ["2M Red", "ortofon"],
+    // This is a real finish in seller data, but bare BLACK alone is not enough evidence to remove
+    // it safely without verified product-finish knowledge. Prefer a temporary split to a false merge.
+    ["LS-R0 BLACK", "orb"],
+  ] as const;
+
+  for (const [rawModel, manufacturerId] of models) {
+    const result = resolveModel({ rawModel, title: "", manufacturerId });
+    assert.equal(result.model, rawModel, rawModel);
+    assert.deepEqual(result.presentationColors, [], rawModel);
+  }
+});
+
+test("explicit finish syntax does not erase a color-bearing model name", () => {
+  const result = resolveModel({
+    rawModel: "MC Cadenza Black [ブラック]",
+    title: "",
+    manufacturerId: "ortofon",
+  });
+  assert.equal(result.model, "MC Cadenza Black");
+  assert.equal(presentationColorLabel(result.presentationColors), "ブラック");
+});
+
+test("compact model suffixes remain identity-bearing", () => {
   const compact = resolveModel({ rawModel: "FS-700S3/B", title: "", manufacturerId: "luxman" });
   assert.equal(compact.model, "FS-700S3/B");
   assert.deepEqual(compact.presentationColors, []);
 });
 
-test("one product, several finishes, one card", () => {
+test("color-bearing Ortofon models remain separate product identities", () => {
   const black = normalizeCatalogProduct({
     sourceId: "1",
     manufacturer: "ortofon",
@@ -119,18 +148,11 @@ test("one product, several finishes, one card", () => {
     sourceUrl: "https://example.test/2",
   });
 
-  // Same identity, so both listings aggregate into one entity …
-  assert.equal(black.normalizedModel, bronze.normalizedModel);
-  assert.equal(black.model, "MC Cadenza");
-  assert.equal(bronze.model, "MC Cadenza");
-  // … and only the finish tells them apart.
-  assert.equal(black.presentationColor, "ブラック");
-  assert.equal(bronze.presentationColor, "ブロンズ");
-
-  const card = toProductSearchItem(
-    entityRow({ model: "MC Cadenza", presentation_colors: "シルバー,ブラック" }),
-  );
-  assert.deepEqual(card.presentation_colors, ["ブラック", "シルバー"]);
+  assert.equal(black.model, "MC Cadenza Black");
+  assert.equal(bronze.model, "MC Cadenza Bronze");
+  assert.notEqual(black.normalizedModel, bronze.normalizedModel);
+  assert.equal(black.presentationColor, "");
+  assert.equal(bronze.presentationColor, "");
 });
 
 test("a card shows the finishes of the offers that matched its filters", () => {
