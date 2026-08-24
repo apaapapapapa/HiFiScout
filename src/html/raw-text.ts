@@ -16,7 +16,7 @@ const DEFAULT_TAGS: readonly RawTextTag[] = ["script", "style"];
 
 /**
  * HTML ends a tag name on ASCII whitespace only. JavaScript's `\s` also matches NBSP and the
- * Unicode spaces, which is how `</script >` written inside a script body once passed for an
+ * Unicode spaces, which is how `</script >` written inside a script body once passed for an
  * end tag.
  */
 function isAsciiWhitespace(char: string | undefined): boolean {
@@ -26,6 +26,13 @@ function isAsciiWhitespace(char: string | undefined): boolean {
 /** Whitespace, `/` and `>` are the only things that may follow a tag name. */
 function isTagNameDelimiter(char: string | undefined): boolean {
   return char === ">" || char === "/" || isAsciiWhitespace(char);
+}
+
+/** A tag name starts with an ASCII letter. Anything else after `<` is text a reader sees. */
+function isTagNameStart(char: string | undefined): boolean {
+  if (!char) return false;
+  const code = char.charCodeAt(0);
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
 }
 
 /** Index of the `>` closing a tag, skipping quoted attribute values so `data-x="a>b"` survives. */
@@ -62,25 +69,63 @@ export interface RawTextElement {
   readonly end: number;
 }
 
+/** A span a reader never sees: a raw text element, or the comment one may be hiding in. */
+interface HiddenSpan {
+  readonly start: number;
+  readonly end: number;
+  readonly element: RawTextElement | null;
+}
+
+/** End of a `<!-- … -->` comment, or the end of the input for one the document never closes. */
+function commentEnd(html: string, open: number): number {
+  const close = html.indexOf("-->", open + 4);
+  return close < 0 ? html.length : close + 3;
+}
+
 /**
- * Every raw text element in document order.
+ * Walks `html` once, reporting what a reader never sees.
  *
- * Inside one, only its own end tag matters: a `<` in `for (i = 0; i < n; i++)` is script text, not
- * markup, and a scanner that reads it as a tag swallows the real end tag along with it.
+ * The walk exists because a `<` is only sometimes a tag. Inside a raw text element it is script or
+ * style text — `for (i = 0; i < n; i++)` — and a scanner that reads it as a tag consumes the real
+ * end tag along with it. Inside another tag's quoted attribute (`data-example="<script>"`) or
+ * inside a comment it is likewise ordinary text, and treating one of those as a start tag would
+ * open an element that never closes and swallow the rest of the page.
  */
-export function rawTextElements(
-  html: string,
-  tags: readonly RawTextTag[] = DEFAULT_TAGS,
-): RawTextElement[] {
-  const elements: RawTextElement[] = [];
+function hiddenSpans(html: string, tags: readonly RawTextTag[]): HiddenSpan[] {
+  const spans: HiddenSpan[] = [];
   let cursor = 0;
 
   while (cursor < html.length) {
     const open = html.indexOf("<", cursor);
     if (open < 0) break;
+    const after = html[open + 1];
+
+    if (html.startsWith("<!--", open)) {
+      const end = commentEnd(html, open);
+      spans.push({ start: open, end, element: null });
+      cursor = end;
+      continue;
+    }
+
+    // Doctypes, processing instructions and bogus comments run to the next `>` and are left alone:
+    // the callers' own tag stripping already drops them, and they carry no text worth hiding.
+    if (after === "!" || after === "?") {
+      const end = tagEnd(html, open + 1);
+      if (end < 0) break;
+      cursor = end + 1;
+      continue;
+    }
 
     const tag = tags.find((candidate) => matchesTagName(html, open + 1, candidate));
     if (!tag) {
+      // Another element's start or end tag: step over the whole tag, quoted attributes included.
+      if (isTagNameStart(after) || (after === "/" && isTagNameStart(html[open + 2]))) {
+        const end = tagEnd(html, open + 1);
+        if (end < 0) break;
+        cursor = end + 1;
+        continue;
+      }
+      // A `<` that starts nothing — ordinary text such as `1 < 2`.
       cursor = open + 1;
       continue;
     }
@@ -105,36 +150,55 @@ export function rawTextElements(
       break;
     }
 
-    elements.push({
-      tag,
-      attributes: html.slice(open + 1 + tag.length, startTagEnd),
-      body: html.slice(bodyStart, bodyEnd),
+    spans.push({
       start: open,
       end,
+      element: {
+        tag,
+        attributes: html.slice(open + 1 + tag.length, startTagEnd),
+        body: html.slice(bodyStart, bodyEnd),
+        start: open,
+        end,
+      },
     });
     cursor = end;
   }
 
-  return elements;
+  return spans;
+}
+
+/** Every raw text element in document order, ignoring any written inside a comment. */
+export function rawTextElements(
+  html: string,
+  tags: readonly RawTextTag[] = DEFAULT_TAGS,
+): RawTextElement[] {
+  return hiddenSpans(html, tags)
+    .map((span) => span.element)
+    .filter((element): element is RawTextElement => element !== null);
 }
 
 /**
- * The document with its raw text elements replaced by a space. Other markup is left alone, so
- * callers can still turn `<br>` and block closings into line breaks afterwards.
+ * The document with everything a reader never sees replaced by a space.
+ *
+ * Comments go with the raw text elements. The walk has to recognise them either way, and a
+ * commented-out `<script>` holds the same model numbers and prices as a live one — left in place,
+ * the callers' `<[^>]*>` stripping would take the comment delimiters and hand the body back as text.
+ *
+ * Other markup is untouched, so callers can still turn `<br>` and block closings into line breaks.
  */
 export function stripRawTextElements(
   html: unknown = "",
   tags: readonly RawTextTag[] = DEFAULT_TAGS,
 ): string {
   const source = String(html ?? "");
-  const elements = rawTextElements(source, tags);
-  if (!elements.length) return source;
+  const spans = hiddenSpans(source, tags);
+  if (!spans.length) return source;
 
   let output = "";
   let cursor = 0;
-  for (const element of elements) {
-    output += `${source.slice(cursor, element.start)} `;
-    cursor = element.end;
+  for (const span of spans) {
+    output += `${source.slice(cursor, span.start)} `;
+    cursor = span.end;
   }
   return output + source.slice(cursor);
 }

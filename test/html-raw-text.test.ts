@@ -41,6 +41,27 @@ test("a quoted attribute value may contain the character that ends the start tag
   );
 });
 
+test("a `<` that starts no tag is text, wherever it appears", () => {
+  // Quoted attribute values and comments hold text, not markup. Opening an element on one of
+  // these swallows the rest of the page, because nothing later closes it.
+  assert.equal(
+    stripRawTextElements(`<div data-example="<script>">PRICE 999</div>`),
+    `<div data-example="<script>">PRICE 999</div>`,
+  );
+  assert.equal(stripRawTextElements("<!-- <script> --><p>PRICE 999</p>"), " <p>PRICE 999</p>");
+  assert.equal(stripRawTextElements("<p>1 < 2 and 3 > 2</p>"), "<p>1 < 2 and 3 > 2</p>");
+});
+
+test("a commented-out script is removed with its comment, not handed back as text", () => {
+  // Its body names the same models and prices a live one does, and the callers' `<[^>]*>`
+  // stripping would take the comment delimiters and leave the body behind.
+  assert.equal(
+    stripRawTextElements("<!-- <script>var price = 999;</script> --><p>X</p>"),
+    " <p>X</p>",
+  );
+  assert.equal(stripRawTextElements("<!-- unterminated <script>"), " ");
+});
+
 test("an element the document never closes runs to the end of the input", () => {
   assert.equal(stripRawTextElements("<p>X</p><script>var price = 999;"), "<p>X</p> ");
 });
@@ -79,7 +100,8 @@ test("JSON-LD bodies come back unparsed, and only from real ld+json script tags"
     <script type="application/ld+json" data-hydrate>{"n":"C"}</script data-astro>
     <script type="application/ld+json">{"n":"</script >"}</script>
     <script-x type="application/ld+json">{"n":"E"}</script-x>
-    <script type="text/javascript">{"n":"F"}</script>`;
+    <script type="text/javascript">{"n":"F"}</script>
+    <!-- <script type="application/ld+json">{"n":"G"}</script> -->`;
 
   assert.deepEqual(jsonLdScriptBodies(html), [
     `{"n":"A"}`,
