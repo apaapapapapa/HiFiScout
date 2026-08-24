@@ -54,6 +54,39 @@ test("Catalog Admin clean routes fetch the clean asset URL instead of the .html 
   }
 });
 
+test("Catalog Admin duplicate review passes a validated cursor to the RPC", async () => {
+  const received: unknown[] = [];
+  const env = {
+    ...adminEnv([]),
+    CATALOG_ADMIN: {
+      async listDuplicates(options: unknown): Promise<unknown> {
+        received.push(options);
+        return { items: [], nextAfterKey: null, hasMore: false };
+      },
+    },
+  } as unknown as Parameters<typeof handleAuthenticatedCatalogAdminRequest>[1];
+
+  const response = await handleAuthenticatedCatalogAdminRequest(
+    new Request(
+      "https://admin.example.test/api/admin/knowledge-catalog/duplicates?manufacturerId=LUXMAN&afterKey=L509MK2&limit=5",
+    ),
+    env,
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(received, [{ manufacturerId: "luxman", afterKey: "L509MK2", limit: 5 }]);
+  assertAdminSecurityHeaders(response);
+
+  const rejected = await handleAuthenticatedCatalogAdminRequest(
+    new Request("https://admin.example.test/api/admin/knowledge-catalog/duplicates?limit=0"),
+    env,
+  );
+
+  assert.equal(rejected.status, 400);
+  assert.deepEqual(await rejected.json(), { error: "invalid_catalog_duplicate_query" });
+  assert.equal(received.length, 1, "an invalid query never reaches the RPC");
+});
+
 test("Catalog Admin JSON responses carry the same browser security policy", async () => {
   const response = await handleAuthenticatedCatalogAdminRequest(
     new Request("https://admin.example.test/api/meta"),

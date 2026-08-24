@@ -3,10 +3,12 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 import worker from "./index.js";
 import type {
   CatalogAdminCreateInput,
+  CatalogAdminDuplicateListOptions,
   CatalogAdminListOptions,
   CatalogAdminRpc,
   CatalogAdminUpdateInput,
 } from "./admin/contracts.js";
+import { listKnowledgeCatalogDuplicates } from "./db/knowledge-catalog-duplicate-repository.js";
 import {
   listKnowledgeCatalogAdminProducts,
   updateKnowledgeCatalogAdminProduct,
@@ -48,6 +50,10 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
 
   async listCandidates(options: CatalogAdminListOptions) {
     return listKnowledgeCatalogAdminCandidates(this.env.DB, options);
+  }
+
+  async listDuplicates(options: CatalogAdminDuplicateListOptions) {
+    return listKnowledgeCatalogDuplicates(this.env.DB, options);
   }
 
   async createProduct(input: CatalogAdminCreateInput) {

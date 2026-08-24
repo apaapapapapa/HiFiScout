@@ -28,9 +28,27 @@ export interface KnowledgeCatalogAdminMergeInput {
   sourceProductId: number;
 }
 
+export interface KnowledgeCatalogDuplicateListOptions {
+  manufacturerId: string;
+  afterKey: string;
+  limit: number;
+}
+
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 100;
+const DEFAULT_DUPLICATE_LIMIT = 20;
+const MAX_DUPLICATE_LIMIT = 50;
+/** A bucket key is derived from a bounded model, so anything longer cannot address a real page. */
+const MAX_DUPLICATE_CURSOR_LENGTH = 300;
 
+/** A cursor is echoed back from a previous page, so it never carries control characters. */
+function hasControlCharacter(value: string): boolean {
+  for (const character of value) {
+    const code = character.codePointAt(0) || 0;
+    if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) return true;
+  }
+  return false;
+}
 function boundedText(value: string | null, maxLength: number): string | null {
   if (value === null) return "";
   const text = value.trim();
@@ -74,6 +92,37 @@ export function parseKnowledgeCatalogAdminListQuery(
     manufacturerId: (manufacturerId || "").toLowerCase(),
     categoryId: categoryId || "",
     afterId,
+    limit: requestedLimit,
+  };
+}
+
+/**
+ * Duplicate review pages on the SQL bucket key rather than an id, because a duplicate set has to
+ * arrive whole: half a set cannot be merged, and cursoring by id would split one.
+ */
+export function parseKnowledgeCatalogDuplicateListQuery(
+  url: URL,
+): KnowledgeCatalogDuplicateListOptions | null {
+  const manufacturerId = boundedText(url.searchParams.get("manufacturerId"), 100);
+  if (manufacturerId === null) return null;
+  if (manufacturerId && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(manufacturerId.toLowerCase())) {
+    return null;
+  }
+
+  const afterKey = boundedText(url.searchParams.get("afterKey"), MAX_DUPLICATE_CURSOR_LENGTH);
+  if (afterKey === null || hasControlCharacter(afterKey)) return null;
+
+  const requestedLimit = optionalNonNegativeInteger(
+    url.searchParams.get("limit"),
+    DEFAULT_DUPLICATE_LIMIT,
+  );
+  if (requestedLimit === null || requestedLimit < 1 || requestedLimit > MAX_DUPLICATE_LIMIT) {
+    return null;
+  }
+
+  return {
+    manufacturerId: (manufacturerId || "").toLowerCase(),
+    afterKey,
     limit: requestedLimit,
   };
 }

@@ -76,6 +76,33 @@ interface MergeResponse {
   replayComplete: boolean;
 }
 
+interface DuplicateProduct {
+  id: number;
+  manufacturerId: string;
+  canonicalModel: string;
+  canonicalName: string;
+  lifecycleStatus: LifecycleStatus;
+  primaryCategoryId: string;
+  matchedListingCount: number;
+  aliasCount: number;
+  sourceCount: number;
+  updatedAt: string;
+}
+
+interface DuplicateGroup {
+  groupKey: string;
+  manufacturerId: string;
+  identityModel: string;
+  suggestedTargetId: number;
+  products: DuplicateProduct[];
+}
+
+interface DuplicateListResponse {
+  items: DuplicateGroup[];
+  nextAfterKey: string | null;
+  hasMore: boolean;
+}
+
 const CSV_EXPORT_KEYS = ["catalog", "product-audit-active", "product-audit-all"] as const;
 type CsvExportKey = (typeof CSV_EXPORT_KEYS)[number];
 
@@ -352,6 +379,17 @@ export function CatalogAdmin() {
   const [candidateHistory, setCandidateHistory] = useState<number[]>([]);
   const [candidateBusy, setCandidateBusy] = useState(true);
 
+  const [duplicateManufacturerDraft, setDuplicateManufacturerDraft] = useState("");
+  const [duplicateManufacturerApplied, setDuplicateManufacturerApplied] = useState("");
+  const [duplicateItems, setDuplicateItems] = useState<DuplicateGroup[]>([]);
+  const [duplicateAfterKey, setDuplicateAfterKey] = useState("");
+  const [duplicateNextAfterKey, setDuplicateNextAfterKey] = useState<string | null>(null);
+  const [duplicateHistory, setDuplicateHistory] = useState<string[]>([]);
+  const [duplicateBusy, setDuplicateBusy] = useState(true);
+  /** Survivor chosen per group; a group falls back to the server's suggestion until touched. */
+  const [duplicateTargets, setDuplicateTargets] = useState<Record<string, number>>({});
+  const [mergingGroupKey, setMergingGroupKey] = useState("");
+
   const [editing, setEditing] = useState<CatalogProduct | null>(null);
   const [editName, setEditName] = useState("");
   const [editCategory, setEditCategory] = useState("");
@@ -429,6 +467,34 @@ export function CatalogAdmin() {
     [],
   );
 
+  const loadDuplicates = useCallback(
+    async (manufacturerId: string, afterKey: string, nextHistory: string[]) => {
+      setDuplicateBusy(true);
+      const params = new URLSearchParams({ limit: "20" });
+      if (manufacturerId.trim()) params.set("manufacturerId", manufacturerId.trim().toLowerCase());
+      if (afterKey) params.set("afterKey", afterKey);
+      try {
+        const result = await adminJson<DuplicateListResponse>(
+          `/api/admin/knowledge-catalog/duplicates?${params}`,
+        );
+        setDuplicateItems(result.items);
+        setDuplicateAfterKey(afterKey);
+        setDuplicateNextAfterKey(result.nextAfterKey);
+        setDuplicateHistory(nextHistory);
+        // A reloaded page carries fresh suggestions, so stale choices must not survive it.
+        setDuplicateTargets({});
+      } catch (error) {
+        setStatus({
+          text: `重複Catalogを読み込めません: ${catalogErrorText(error)}`,
+          kind: "error",
+        });
+      } finally {
+        setDuplicateBusy(false);
+      }
+    },
+    [],
+  );
+
   const loadLatestCsvExport = useCallback(async (key: CsvExportKey, initial = false) => {
     try {
       const result = await adminJson<CsvExportLatestResponse>(CSV_EXPORT_CONFIG[key].latestUrl);
@@ -459,12 +525,14 @@ export function CatalogAdmin() {
         await Promise.all([
           loadCatalog(EMPTY_FILTERS, 0, []),
           loadCandidates(EMPTY_FILTERS, 0, []),
+          loadDuplicates("", "", []),
           ...CSV_EXPORT_KEYS.map((key) => loadLatestCsvExport(key, true)),
         ]);
       } catch (error) {
         if (!cancelled) {
           setCatalogBusy(false);
           setCandidateBusy(false);
+          setDuplicateBusy(false);
           setStatus({
             text: `管理画面を初期化できません: ${catalogErrorText(error)}`,
             kind: "error",
@@ -475,7 +543,7 @@ export function CatalogAdmin() {
     return () => {
       cancelled = true;
     };
-  }, [loadCatalog, loadCandidates, loadLatestCsvExport]);
+  }, [loadCatalog, loadCandidates, loadDuplicates, loadLatestCsvExport]);
 
   useEffect(() => {
     const activeKeys = CSV_EXPORT_KEYS.filter((key) => csvExportActive(csvStates[key].job));
@@ -524,6 +592,14 @@ export function CatalogAdmin() {
       : `${candidateItems.length}件表示 · 未検証候補`;
   }, [candidateApplied, candidateItems.length, categoryName]);
 
+  const duplicateSummary = useMemo(() => {
+    const scope = duplicateManufacturerApplied.trim()
+      ? `メーカー ${duplicateManufacturerApplied.trim()}`
+      : "すべてのメーカー";
+    const catalogCount = duplicateItems.reduce((total, group) => total + group.products.length, 0);
+    return `${duplicateItems.length}グループ · Catalog ${catalogCount}件 · ${scope}`;
+  }, [duplicateItems, duplicateManufacturerApplied]);
+
   const editDirty = Boolean(
     editing &&
     (editName.trim() !== editing.canonicalName ||
@@ -569,6 +645,12 @@ export function CatalogAdmin() {
     event.preventDefault();
     setCandidateApplied(candidateDraft);
     void loadCandidates(candidateDraft, 0, []);
+  };
+
+  const submitDuplicateSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setDuplicateManufacturerApplied(duplicateManufacturerDraft);
+    void loadDuplicates(duplicateManufacturerDraft, "", []);
   };
 
   const saveEdit = async (event: FormEvent<HTMLFormElement>) => {
@@ -693,6 +775,54 @@ export function CatalogAdmin() {
       setStatus({ text: `Catalogを統合できません: ${text}`, kind: "error" });
     } finally {
       setOperationBusy(false);
+    }
+  };
+
+  const mergeDuplicateGroup = async (group: DuplicateGroup) => {
+    if (operationBusy) return;
+    const targetId = duplicateTargets[group.groupKey] ?? group.suggestedTargetId;
+    const sources = group.products.filter((product) => product.id !== targetId);
+    if (!sources.length) return;
+    const sourceLabel = sources.map((product) => `#${product.id}`).join(", ");
+    if (
+      !window.confirm(
+        `Catalog ${sourceLabel} を Catalog #${targetId} へ統合します。\n\n#${targetId} を残し、${sources.length}件は削除されます。alias・source・検証履歴・Product Identityは残す側へ移します。続行しますか？`,
+      )
+    ) {
+      return;
+    }
+    setOperationBusy(true);
+    setMergingGroupKey(group.groupKey);
+    let mergedCount = 0;
+    let movedListings = 0;
+    try {
+      // One request per source: each merge replays the surviving Catalog, so a failure part-way
+      // leaves the merges already applied consistent instead of half-written.
+      for (const source of sources) {
+        const result = await adminJson<MergeResponse>(
+          `/api/admin/knowledge-catalog/products/${targetId}/merge`,
+          { method: "POST", body: JSON.stringify({ sourceProductId: source.id }) },
+        );
+        mergedCount += 1;
+        movedListings += result.movedMatchedListings;
+      }
+      setStatus({
+        text: `Catalog #${targetId} に${mergedCount}件を統合し、${movedListings}件の一致済みlistingを移行しました。`,
+        kind: "success",
+      });
+    } catch (error) {
+      const text = catalogErrorText(error);
+      setStatus({
+        text: mergedCount
+          ? `${mergedCount}件を統合しましたが、残りを統合できません: ${text}`
+          : `Catalogを統合できません: ${text}`,
+        kind: "error",
+      });
+    } finally {
+      setOperationBusy(false);
+      setMergingGroupKey("");
+      await loadDuplicates(duplicateManufacturerApplied, duplicateAfterKey, duplicateHistory);
+      await loadCatalog(catalogApplied, catalogAfterId, catalogHistory);
     }
   };
 
@@ -951,6 +1081,217 @@ export function CatalogAdmin() {
                         ...catalogHistory,
                         catalogAfterId,
                       ]);
+                  }}
+                >
+                  次へ →
+                </button>
+              </nav>
+            </div>
+          </section>
+
+          <section
+            className={`panel workspace-panel${duplicateBusy ? " is-loading" : ""}`}
+            aria-labelledby="duplicate-heading"
+            aria-busy={duplicateBusy}
+          >
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">DUPLICATE CATALOGS</p>
+                <h2 id="duplicate-heading">同一製品の重複Catalogを統合</h2>
+                <p>
+                  区切り記号・改訂表記・旧manufacturer
+                  idの違いだけで別Catalogになった検証済みレコードをまとめます。残すCatalogを選ぶと、他のalias・source・検証履歴・Product
+                  Identityがそこへ移り、重複側は削除されます。
+                </p>
+              </div>
+            </div>
+            <form className="search-grid duplicate-search" onSubmit={submitDuplicateSearch}>
+              <label className="search-field">
+                <span>Manufacturer ID</span>
+                <input
+                  type="text"
+                  placeholder="luxman"
+                  spellCheck={false}
+                  autoComplete="off"
+                  value={duplicateManufacturerDraft}
+                  disabled={duplicateBusy || operationBusy}
+                  onChange={(event) => setDuplicateManufacturerDraft(event.currentTarget.value)}
+                />
+              </label>
+              <div className="search-actions">
+                <button
+                  className="tertiary-button"
+                  type="button"
+                  disabled={duplicateBusy || operationBusy || !duplicateManufacturerDraft.trim()}
+                  onClick={() => {
+                    setDuplicateManufacturerDraft("");
+                    setDuplicateManufacturerApplied("");
+                    void loadDuplicates("", "", []);
+                  }}
+                >
+                  条件をクリア
+                </button>
+                <button type="submit" disabled={duplicateBusy || operationBusy}>
+                  重複を再検出
+                </button>
+              </div>
+            </form>
+            <div className="table-toolbar">
+              <div>
+                <p className="eyebrow">REVIEW</p>
+                <h2>重複候補</h2>
+              </div>
+              <p className="result-summary" aria-live="polite">
+                {duplicateSummary}
+              </p>
+            </div>
+            <div className="duplicate-groups">
+              {duplicateItems.map((group) => {
+                const targetId = duplicateTargets[group.groupKey] ?? group.suggestedTargetId;
+                const merging = mergingGroupKey === group.groupKey;
+                return (
+                  <article className="duplicate-group" key={group.groupKey}>
+                    <div className="duplicate-group-heading">
+                      <div>
+                        <p className="eyebrow">{group.manufacturerId}</p>
+                        <h3>{group.identityModel}</h3>
+                      </div>
+                      <span className="count-badge">{group.products.length}件</span>
+                    </div>
+                    <div className="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>残す</th>
+                            <th>ID</th>
+                            <th>メーカー</th>
+                            <th>型番</th>
+                            <th>表示名</th>
+                            <th>カテゴリ</th>
+                            <th>状態</th>
+                            <th>listing</th>
+                            <th>alias/source</th>
+                            <th>更新日時</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {group.products.map((product) => (
+                            <tr
+                              key={product.id}
+                              data-catalog-id={product.id}
+                              data-merge-target={product.id === targetId ? "true" : "false"}
+                            >
+                              <td data-label="残す">
+                                <input
+                                  type="radio"
+                                  name={`duplicate-target-${group.groupKey}`}
+                                  value={product.id}
+                                  checked={product.id === targetId}
+                                  disabled={duplicateBusy || operationBusy}
+                                  aria-label={`Catalog #${product.id} を残す`}
+                                  onChange={() =>
+                                    setDuplicateTargets((targets) => ({
+                                      ...targets,
+                                      [group.groupKey]: product.id,
+                                    }))
+                                  }
+                                />
+                              </td>
+                              <td data-label="ID" className="id-cell">
+                                {product.id}
+                              </td>
+                              <td data-label="メーカー">{product.manufacturerId}</td>
+                              <td data-label="型番" className="model-cell">
+                                {product.canonicalModel}
+                              </td>
+                              <td data-label="表示名" className="name-cell">
+                                {product.canonicalName}
+                              </td>
+                              <td data-label="カテゴリ">
+                                <span className="category-badge">
+                                  {categoryName(product.primaryCategoryId)}
+                                </span>
+                              </td>
+                              <td data-label="状態">
+                                <span
+                                  className={`lifecycle-badge ${lifecycleClass(product.lifecycleStatus)}`}
+                                >
+                                  {lifecycleName(product.lifecycleStatus)}
+                                </span>
+                              </td>
+                              <td data-label="listing">
+                                <span className="count-badge">{product.matchedListingCount}</span>
+                              </td>
+                              <td data-label="alias/source">
+                                {product.aliasCount} / {product.sourceCount}
+                              </td>
+                              <td data-label="更新日時" className="updated-cell">
+                                {dateText(product.updatedAt)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="duplicate-group-actions">
+                      <p className="duplicate-group-note">
+                        Catalog #{targetId} を残し、他の{group.products.length - 1}
+                        件をここへ統合します。
+                      </p>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        disabled={duplicateBusy || operationBusy}
+                        onClick={() => void mergeDuplicateGroup(group)}
+                      >
+                        {merging ? "統合しています…" : "このグループを統合"}
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+            {!duplicateItems.length ? (
+              <p className="empty-state">
+                <strong>統合が必要な重複Catalogはありません。</strong>
+                <span>
+                  {duplicateNextAfterKey !== null
+                    ? "このページには該当がありませんでした。次へで続きを確認してください。"
+                    : "同一製品を指す検証済みCatalogは見つかりませんでした。"}
+                </span>
+              </p>
+            ) : null}
+            <div className="pagination-bar">
+              <span>ページ {duplicateHistory.length + 1}</span>
+              <nav className="pagination" aria-label="重複Catalogページング">
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={duplicateBusy || operationBusy || !duplicateHistory.length}
+                  onClick={() => {
+                    const previous = duplicateHistory.at(-1);
+                    if (previous !== undefined) {
+                      void loadDuplicates(
+                        duplicateManufacturerApplied,
+                        previous,
+                        duplicateHistory.slice(0, -1),
+                      );
+                    }
+                  }}
+                >
+                  ← 前へ
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={duplicateBusy || operationBusy || duplicateNextAfterKey === null}
+                  onClick={() => {
+                    if (duplicateNextAfterKey !== null) {
+                      void loadDuplicates(duplicateManufacturerApplied, duplicateNextAfterKey, [
+                        ...duplicateHistory,
+                        duplicateAfterKey,
+                      ]);
+                    }
                   }}
                 >
                   次へ →

@@ -6,6 +6,7 @@ import {
   parseKnowledgeCatalogAdminListQuery,
   parseKnowledgeCatalogAdminMerge,
   parseKnowledgeCatalogAdminUpdate,
+  parseKnowledgeCatalogDuplicateListQuery,
 } from "../http/knowledge-catalog-admin.js";
 import { verifyCloudflareAccessRequest } from "./access.js";
 
@@ -18,6 +19,7 @@ interface CatalogAdminEnv {
 
 const COLLECTION_PATH = "/api/admin/knowledge-catalog/products";
 const CANDIDATE_COLLECTION_PATH = "/api/admin/knowledge-catalog/candidates";
+const DUPLICATE_COLLECTION_PATH = "/api/admin/knowledge-catalog/duplicates";
 const CANDIDATE_VERIFY_PATH = /^\/api\/admin\/knowledge-catalog\/candidates\/(\d{1,15})\/verify$/u;
 const PRODUCT_PATH = /^\/api\/admin\/knowledge-catalog\/products\/(\d{1,15})$/u;
 const PRODUCT_MERGE_PATH = /^\/api\/admin\/knowledge-catalog\/products\/(\d{1,15})\/merge$/u;
@@ -362,6 +364,11 @@ export async function handleAuthenticatedCatalogAdminRequest(
     const options = parseKnowledgeCatalogAdminListQuery(url);
     if (!options) return json({ error: "invalid_catalog_query" }, { status: 400 });
     return json(await env.CATALOG_ADMIN.listCandidates(options));
+  }
+  if (request.method === "GET" && url.pathname === DUPLICATE_COLLECTION_PATH) {
+    const options = parseKnowledgeCatalogDuplicateListQuery(url);
+    if (!options) return json({ error: "invalid_catalog_duplicate_query" }, { status: 400 });
+    return json(await env.CATALOG_ADMIN.listDuplicates(options));
   }
   if (request.method === "POST" && url.pathname === COLLECTION_PATH) {
     const body = await mutationBody(request, url);

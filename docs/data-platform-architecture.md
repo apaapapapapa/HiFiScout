@@ -209,6 +209,17 @@ Ambiguous exact-normalization collisions or ambiguous aliases are also left unre
 
 The governing rule is that a false positive merge is more damaging than a false negative. An unresolved listing is valid system state.
 
+### Duplicate catalog review
+
+`knowledge_catalog_products` is unique on `(manufacturer_id, normalized_model)`, and catalog normalization keeps separators. One product can therefore hold two verified rows: `PMA-2500NE` beside `PMA2500NE`, `L-509 MK II` beside `L-509MKII`, or a canonical manufacturer id beside the fallback id the resolver produced before it learned that manufacturer. Listings then split across both rows and the same product appears twice in search.
+
+`GET /api/admin/knowledge-catalog/duplicates` reports those sets. Detection runs in two stages, because neither half can be done alone:
+
+1. SQL buckets verified rows by a key that drops the separators and folds the `MARK`/`MK` revision spellings. The key is a deliberate over-approximation of the identity normalizer, and paging walks bucket keys rather than row ids so a set is never split across pages.
+2. TypeScript re-keys each bucket with `normalizeIdentityModel` and the manufacturer resolver — the same pair Product Identity matches on — and keeps only the sub-groups with more than one member.
+
+A bucket that is too coarse therefore costs a discarded row, never a reported group: two manufacturers that share a model string fall apart in stage 2, and a model that normalizes to no identity at all is never reported. Detection only proposes. Merging stays the existing operator-confirmed `POST /api/admin/knowledge-catalog/products/{id}/merge`, which moves the losing row's aliases, sources, verification attempts, and identity resolutions onto the surviving catalog and then replays it.
+
 ## Evidence Archive
 
 ### Archive decisions
