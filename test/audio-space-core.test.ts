@@ -56,9 +56,9 @@ const html = `
   </tr>
 </table>`;
 
-test("Audio Space Core parser preserves seller facts and unique detail ids", () => {
+test("Audio Space Core parser keeps current inventory and ignores sold history", () => {
   const items = parseAudioSpaceCoreListing(html);
-  assert.equal(items.length, 5);
+  assert.equal(items.length, 3);
 
   const cheviot = items.find((item) => item.model === "CHEVIOT");
   assert.ok(cheviot);
@@ -78,13 +78,7 @@ test("Audio Space Core parser preserves seller facts and unique detail ids", () 
   assert.equal(negotiating.stockStatus, "unknown");
   assert.match(negotiating.conditionText, /商談中/u);
 
-  const duplicateModels = items.filter((item) => item.model === "CL310JET");
-  assert.deepEqual(duplicateModels.map((item) => item.sourceId).sort(), [
-    "/CL310JETb",
-    "/CL310JETc",
-  ]);
-  assert.ok(duplicateModels.every((item) => item.stockStatus === "sold_out"));
-  assert.ok(duplicateModels.every((item) => item.priceYen === null));
+  assert.equal(items.some((item) => item.model === "CL310JET"), false);
 
   const dac = items.find((item) => item.model === "ElgarPlus1394");
   assert.ok(dac);
