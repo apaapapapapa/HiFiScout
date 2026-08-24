@@ -17,7 +17,7 @@ Every rule in `.dependency-cruiser.json` has `error` severity, so `vp run docs:a
 
 Each rule carries a `comment` describing the failure it prevents, and that text is what the check prints on a violation. Add new rules the same way: state the regression, not the restriction.
 
-dependency-cruiser parses the TypeScript sources with its own pinned `typescript@6.0.2`, supplied through the `npx --package` invocation in the `docs:architecture*` scripts. dependency-cruiser 18.1.0 does not yet accept the project's `typescript@7` compiler, and without a compatible parser it silently cruises zero modules instead of failing.
+dependency-cruiser parses the TypeScript sources with its own pinned `typescript@6.0.2`, supplied through the `vp dlx --package` invocation in the `docs:architecture*` scripts. dependency-cruiser 18.1.0 does not yet accept the project's `typescript@7` compiler, and without a compatible parser it silently cruises zero modules instead of failing.
 
 ## Generation
 

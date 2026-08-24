@@ -61,6 +61,10 @@ import {
 
 export { getShopActivityPolicy } from "./registry.js";
 
+const ROUND_ROBIN_INTERVAL_MINUTES = 140;
+const HOURLY_INTERVAL_MINUTES = 60;
+const DAILY_INTERVAL_MINUTES = 24 * 60;
+
 /** Hifido re-lists the same stock with edited titles, so only price and stock are user activity. */
 const HIFIDO_ACTIVITY_POLICY: Readonly<ProductActivityPolicy> = Object.freeze({
   ...DEFAULT_PRODUCT_ACTIVITY_POLICY,
@@ -87,7 +91,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       key: "audiounion",
       name: "Audio Union",
       baseUrl: "https://www.audiounion.jp",
-      defaultIntervalMinutes: 30,
+      defaultIntervalMinutes: HOURLY_INTERVAL_MINUTES,
       defaultRequestDelayMs: 10_000,
       scheduleCron: "1 * * * *",
       transportConfigurationRequired: true,
@@ -102,7 +106,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
     key: "ippinkan",
     name: "逸品館",
     baseUrl: "https://ippinkan.jp",
-    defaultIntervalMinutes: 30,
+    defaultIntervalMinutes: ROUND_ROBIN_INTERVAL_MINUTES,
   }),
   defineShopPlugin(
     fujiyaAvicAdapter,
@@ -110,9 +114,10 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       key: "fujiya-avic",
       name: "フジヤエービック",
       baseUrl: "https://www.fujiya-avic.co.jp",
-      defaultIntervalMinutes: 30,
+      defaultIntervalMinutes: DAILY_INTERVAL_MINUTES,
       defaultMaxPages: 50,
-      scheduleCron: "30 * * * *",
+      // Cloudflare Cron uses UTC: 12:30 UTC = 21:30 JST.
+      scheduleCron: "30 12 * * *",
     },
     {
       catalog: { categoryPolicy: FUJIYA_CATEGORY_POLICY },
@@ -125,8 +130,9 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       key: "hifido",
       name: "ハイファイ堂",
       baseUrl: "https://www.hifido.co.jp",
-      defaultIntervalMinutes: 30,
+      defaultIntervalMinutes: HOURLY_INTERVAL_MINUTES,
       defaultMaxPages: 3,
+      scheduleCron: "31 * * * *",
     },
     {
       transport: { kind: "relay" },
@@ -144,7 +150,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       key: "formusic",
       name: "FOR MUSIC",
       baseUrl: "https://shop.formusic.jp",
-      defaultIntervalMinutes: 30,
+      defaultIntervalMinutes: ROUND_ROBIN_INTERVAL_MINUTES,
     },
     {
       catalog: {
@@ -159,7 +165,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       key: "u-audio",
       name: "U-AUDIO",
       baseUrl: "https://www.u-audio.com",
-      defaultIntervalMinutes: 60,
+      defaultIntervalMinutes: ROUND_ROBIN_INTERVAL_MINUTES,
       defaultMaxPages: 50,
     },
     {
@@ -175,7 +181,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       key: "shimamusen",
       name: "シマムセン",
       baseUrl: "https://www.shimamusen.com",
-      defaultIntervalMinutes: 60,
+      defaultIntervalMinutes: ROUND_ROBIN_INTERVAL_MINUTES,
       defaultMaxPages: 20,
     },
     { catalog: { categoryPolicy: SHIMAMUSEN_CATEGORY_POLICY } },
@@ -184,14 +190,14 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
     key: "dynamic-audio",
     name: "DYNAMIC AUDIO",
     baseUrl: "https://dynamicaudio5used.wordpress.com",
-    defaultIntervalMinutes: 60,
+    defaultIntervalMinutes: ROUND_ROBIN_INTERVAL_MINUTES,
     defaultMaxPages: 30,
   }),
   defineShopPlugin(afroAudioAdapter, {
     key: "afroaudio",
     name: "アフロオーディオ",
     baseUrl: "https://afroaudio.jp",
-    defaultIntervalMinutes: 60,
+    defaultIntervalMinutes: ROUND_ROBIN_INTERVAL_MINUTES,
     defaultMaxPages: 50,
   }),
   defineShopPlugin(
@@ -200,7 +206,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       key: "osakaya",
       name: "CAVIN大阪屋",
       baseUrl: "https://osakaya.com",
-      defaultIntervalMinutes: 60,
+      defaultIntervalMinutes: ROUND_ROBIN_INTERVAL_MINUTES,
       defaultMaxPages: 20,
     },
     { catalog: { categoryPolicy: OSAKAYA_CATEGORY_POLICY } },
@@ -209,7 +215,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
     key: "soundpit",
     name: "SOUND PIT",
     baseUrl: "https://sound-pit.jp",
-    defaultIntervalMinutes: 60,
+    defaultIntervalMinutes: ROUND_ROBIN_INTERVAL_MINUTES,
     defaultMaxPages: 50,
   }),
   defineShopPlugin(
@@ -218,7 +224,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       key: "sound-support",
       name: "Sound Support",
       baseUrl: "https://sound-support.jp",
-      defaultIntervalMinutes: 60,
+      defaultIntervalMinutes: ROUND_ROBIN_INTERVAL_MINUTES,
       defaultMaxPages: 20,
     },
     {
@@ -232,14 +238,14 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
     key: "avac",
     name: "アバック",
     baseUrl: "https://www.avac.co.jp",
-    defaultIntervalMinutes: 60,
+    defaultIntervalMinutes: ROUND_ROBIN_INTERVAL_MINUTES,
     defaultMaxPages: 50,
   }),
   defineShopPlugin(tereonAdapter, {
     key: "tereon",
     name: "テレオン",
     baseUrl: "https://www.tereon-tsuhan.com",
-    defaultIntervalMinutes: 60,
+    defaultIntervalMinutes: ROUND_ROBIN_INTERVAL_MINUTES,
     defaultRequestDelayMs: 1500,
     defaultMaxPages: 10,
   }),
@@ -249,7 +255,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       key: "audio-space-core",
       name: "オーディオスペースコア",
       baseUrl: "https://www.as-core.co.jp",
-      defaultIntervalMinutes: 60,
+      defaultIntervalMinutes: ROUND_ROBIN_INTERVAL_MINUTES,
     },
     {
       catalog: {
@@ -263,7 +269,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
     name: "REWIRE",
     baseUrl: "https://rewire.co.jp",
     defaultEnabled: false,
-    defaultIntervalMinutes: 60,
+    defaultIntervalMinutes: ROUND_ROBIN_INTERVAL_MINUTES,
     defaultRequestDelayMs: 1500,
     defaultMaxPages: 30,
   }),
@@ -273,7 +279,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       key: "home-shokai",
       name: "ホーム商会",
       baseUrl: "https://www.homeshokai.jp",
-      defaultIntervalMinutes: 60,
+      defaultIntervalMinutes: ROUND_ROBIN_INTERVAL_MINUTES,
       defaultRequestDelayMs: 1500,
       defaultMaxPages: 2,
     },

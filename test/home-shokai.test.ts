@@ -95,7 +95,7 @@ test("Home Shokai parser extracts special-price products without mistaking categ
   assert.equal(products[2]?.priceYen, 356400);
 });
 
-test("Home Shokai adapter covers the two requested inventory snapshots and is registered hourly", () => {
+test("Home Shokai adapter covers the two requested inventory snapshots and follows the crawl rotation", () => {
   const targets = initialPageQueue(homeShokaiAdapter, 10);
   assert.deepEqual(
     targets.map((page) => page.url),
@@ -106,7 +106,7 @@ test("Home Shokai adapter covers the two requested inventory snapshots and is re
 
   const plugin = getShopPlugin("home-shokai");
   assert.ok(plugin);
-  assert.equal(plugin.definition.defaultIntervalMinutes, 60);
+  assert.equal(plugin.definition.defaultIntervalMinutes, 140);
   assert.equal(plugin.definition.defaultMaxPages, 2);
   assert.equal(plugin.definition.envPrefix, "HOME_SHOKAI");
 

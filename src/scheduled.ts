@@ -5,8 +5,8 @@
  * `crawler/schedule.ts` from adapter metadata, so adding a shop never touches this file.
  */
 
-import { dispatchDueCrawls, dispatchScheduledCrawl } from "./crawler/dispatch.js";
-import { sharedSweepExclusions, shopForCron } from "./crawler/schedule.js";
+import { dispatchScheduledCrawl, recoverStalledCrawlDispatches } from "./crawler/dispatch.js";
+import { roundRobinShopForScheduledTime, shopForCron } from "./crawler/schedule.js";
 import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from "./catalog/knowledge-verification/verifier.js";
 import { runDataQualityRemediationSweep } from "./db/data-quality-remediation-service.js";
 import {
@@ -35,19 +35,50 @@ import { errorMessage } from "./types.js";
 import type { DispatchResult } from "./crawler/types.js";
 import type { QueryableDatabase } from "./db/types.js";
 
-/** The shared sweep. Also the trigger that gets a chance to bootstrap a verifier rollout. */
+/** Five-minute maintenance/watchdog sweep. It no longer starts new shop crawls. */
 export const GENERAL_CRON = "*/5 * * * *";
-export const DAILY_MAINTENANCE_CRON = "17 18 * * *";
-export const KNOWLEDGE_CATALOG_MONTHLY_CRON = "23 3 1 * *";
+/** One non-dedicated shop is selected on each tick, giving a ten-minute round-robin start cadence. */
+export const CRAWL_ROTATION_CRON = "6-56/10 * * * *";
+
+/**
+ * Cloudflare Free permits five cron triggers per account. Crawl dispatch consumes all five, so the
+ * less time-sensitive daily/monthly jobs piggyback on GENERAL_CRON instead of owning triggers.
+ * Times are the first five-minute tick after the former dedicated schedule.
+ */
+const DAILY_MAINTENANCE_UTC_HOUR = 18;
+const DAILY_MAINTENANCE_UTC_MINUTE = 20;
+const KNOWLEDGE_CATALOG_MONTHLY_UTC_DAY = 1;
+const KNOWLEDGE_CATALOG_MONTHLY_UTC_HOUR = 3;
+const KNOWLEDGE_CATALOG_MONTHLY_UTC_MINUTE = 25;
 
 const GENERAL_PROJECTION_REPAIR_BATCH_SIZE = 5;
 const GENERAL_PROJECTION_REPAIR_MAX_LISTINGS = 20;
+
+export function isDailyMaintenanceSlot(scheduledAt: Date): boolean {
+  return (
+    scheduledAt.getUTCHours() === DAILY_MAINTENANCE_UTC_HOUR &&
+    scheduledAt.getUTCMinutes() === DAILY_MAINTENANCE_UTC_MINUTE
+  );
+}
+
+export function isKnowledgeCatalogMonthlySlot(scheduledAt: Date): boolean {
+  return (
+    scheduledAt.getUTCDate() === KNOWLEDGE_CATALOG_MONTHLY_UTC_DAY &&
+    scheduledAt.getUTCHours() === KNOWLEDGE_CATALOG_MONTHLY_UTC_HOUR &&
+    scheduledAt.getUTCMinutes() === KNOWLEDGE_CATALOG_MONTHLY_UTC_MINUTE
+  );
+}
 
 function logDispatchResult(cron: string, dispatch: DispatchResult): void {
   const entry = { event: "crawl_dispatch", cron, ...dispatch };
   if (dispatch.status === "rejected" || (dispatch.status === "skipped" && "reason" in dispatch)) {
     console.warn(JSON.stringify(entry));
   } else console.log(JSON.stringify(entry));
+}
+
+async function logCurrentSyncHealth(env: Env): Promise<void> {
+  const health = await getSyncHealth(env);
+  logSyncHealth(health);
 }
 
 /**
@@ -118,16 +149,25 @@ async function runDailyMaintenance(env: Env) {
   };
 }
 
-export async function runScheduled(cron: string, env: Env) {
-  if (cron === DAILY_MAINTENANCE_CRON) return runDailyMaintenance(env);
-  if (cron === KNOWLEDGE_CATALOG_MONTHLY_CRON) return dispatchKnowledgeCatalogMonthlyRecheck(env);
+export async function runScheduled(cron: string, env: Env, scheduledAt = new Date()) {
+  if (cron === GENERAL_CRON) {
+    const recovered = await recoverStalledCrawlDispatches(env, { now: scheduledAt });
+    await logCurrentSyncHealth(env);
+    return recovered.length
+      ? ({ status: "queued", queued: recovered } satisfies DispatchResult)
+      : ({ status: "skipped", queued: [] } satisfies DispatchResult);
+  }
+
   const dedicated = shopForCron(cron);
-  const dispatch = dedicated
-    ? await dispatchScheduledCrawl(env, dedicated.key)
-    : await dispatchDueCrawls(env, { excludeShopKeys: sharedSweepExclusions() });
+  const rotating =
+    cron === CRAWL_ROTATION_CRON ? roundRobinShopForScheduledTime(scheduledAt) : null;
+  const selected = dedicated || rotating;
+  const dispatch: DispatchResult = selected
+    ? await dispatchScheduledCrawl(env, selected.key, { now: scheduledAt })
+    : { status: "skipped", queued: [] };
+
   logDispatchResult(cron, dispatch);
-  const health = await getSyncHealth(env);
-  logSyncHealth(health);
+  await logCurrentSyncHealth(env);
   return dispatch;
 }
 
@@ -243,8 +283,13 @@ export function handleScheduled(
   env: Env,
   ctx: ExecutionContext,
 ): void {
-  ctx.waitUntil(runScheduled(controller.cron, env));
+  const scheduledAt = new Date(controller.scheduledTime);
+  ctx.waitUntil(runScheduled(controller.cron, env, scheduledAt));
   if (controller.cron === GENERAL_CRON) {
+    if (isDailyMaintenanceSlot(scheduledAt)) ctx.waitUntil(runDailyMaintenance(env));
+    if (isKnowledgeCatalogMonthlySlot(scheduledAt)) {
+      ctx.waitUntil(dispatchKnowledgeCatalogMonthlyRecheck(env));
+    }
     ctx.waitUntil(bootstrapKnowledgeCatalogReview(env));
     ctx.waitUntil(repairGeneralCronProjectionGaps(env.DB));
     // Keep the cron claim itself listing-scoped. Projection code is also listing-scoped, but a

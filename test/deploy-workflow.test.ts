@@ -3,8 +3,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { test } from "vite-plus/test";
 
 const deployWorkflowUrl = new URL("../.github/workflows/deploy.yml", import.meta.url);
+const resolverReplayWorkflowUrl = new URL(
+  "../.github/workflows/resolver-replay-drain.yml",
+  import.meta.url,
+);
 const legacyDeployStatusUrl = new URL("../.github/workflows/deploy-status.yml", import.meta.url);
 const deployWorkflow = readFileSync(deployWorkflowUrl, "utf8");
+const resolverReplayWorkflow = readFileSync(resolverReplayWorkflowUrl, "utf8");
 
 test("deployment status is owned by the workflow that knows the deployed SHA", () => {
   assert.match(
@@ -17,4 +22,15 @@ test("deployment status is owned by the workflow that knows the deployed SHA", (
   assert.match(deployWorkflow, /sha: \$\{\{ env\.DEPLOY_SHA \}\}/u);
   assert.match(deployWorkflow, /context: deployment\/cloudflare/u);
   assert.equal(existsSync(legacyDeployStatusUrl), false);
+});
+
+test("production workflows use the shared Vite+ package-manager bootstrap", () => {
+  for (const [name, workflow] of [
+    ["deployment", deployWorkflow],
+    ["resolver replay", resolverReplayWorkflow],
+  ] as const) {
+    assert.match(workflow, /uses: \.\/\.github\/actions\/setup-node-deps/u, name);
+    assert.doesNotMatch(workflow, /uses: actions\/setup-node@/u, name);
+    assert.doesNotMatch(workflow, /- run: npm ci/u, name);
+  }
 });
