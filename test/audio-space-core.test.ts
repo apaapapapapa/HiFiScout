@@ -1,5 +1,7 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 
 import {
   audioSpaceCoreAdapter,
@@ -95,4 +97,31 @@ test("Audio Space Core adapter declares the used page as one complete storefront
   assert.deepEqual(initialPageQueue(audioSpaceCoreAdapter, 40), ["https://www.as-core.co.jp/used"]);
   assert.equal(audioSpaceCoreAdapter.discovery.coverage, "complete");
   assert.deepEqual(discoverPages(audioSpaceCoreAdapter, "", "https://www.as-core.co.jp/used"), []);
+});
+
+test("Audio Space Core baseline reset migration works with an existing sync-state row", () => {
+  const sqlite = new DatabaseSync(":memory:");
+  try {
+    sqlite.exec(`
+      CREATE TABLE shop_sync_state (
+        shop_key TEXT PRIMARY KEY,
+        last_item_count INTEGER NOT NULL
+      );
+      INSERT INTO shop_sync_state (shop_key, last_item_count)
+      VALUES ('audio-space-core', 1200);
+    `);
+
+    const migration = readFileSync(
+      new URL("../migrations/0049_reset_audio_space_core_item_baseline.sql", import.meta.url),
+      "utf8",
+    );
+    sqlite.exec(migration);
+
+    const row = sqlite
+      .prepare("SELECT last_item_count FROM shop_sync_state WHERE shop_key = 'audio-space-core'")
+      .get() as { last_item_count: number };
+    assert.equal(row.last_item_count, 0);
+  } finally {
+    sqlite.close();
+  }
 });
