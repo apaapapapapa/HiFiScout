@@ -1,4 +1,5 @@
 import { categoryEvidenceFromText } from "../../catalog/category-evidence.js";
+import { stripRawTextElements } from "../../html/raw-text.js";
 import { cleanText } from "../normalize.js";
 import { parseProductPage } from "../parser.js";
 import type { CategoryEvidenceInput, NormalizedCatalogProduct } from "../../catalog/types.js";
@@ -118,11 +119,7 @@ function productLeadText(
   html: string,
   product: Partial<Pick<NormalizedCatalogProduct, "model" | "title">> = {},
 ): string {
-  const visible = cleanText(
-    String(html || "")
-      .replace(/<script(?:[ \t\n\f\r/][^>]*)?>[\s\S]*?<\/script(?:[ \t\n\f\r/][^>]*)?>/gi, " ")
-      .replace(/<style(?:[ \t\n\f\r/][^>]*)?>[\s\S]*?<\/style(?:[ \t\n\f\r/][^>]*)?>/gi, " "),
-  );
+  const visible = cleanText(stripRawTextElements(html));
   const needle = cleanText(product.model || product.title || "");
   if (!needle) return visible.slice(0, 1200);
   const index = visible.toLowerCase().indexOf(needle.toLowerCase());

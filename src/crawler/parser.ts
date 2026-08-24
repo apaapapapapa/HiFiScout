@@ -2,6 +2,7 @@ import type { StockStatus } from "../catalog/types.js";
 import { isRecord } from "../types.js";
 import { normalizeManufacturer } from "../catalog/manufacturers.js";
 import type { ManufacturerNormalizationResult } from "../catalog/types.js";
+import { jsonLdScriptBodies } from "../html/raw-text.js";
 import { availabilityFromSignals } from "./availability.js";
 import {
   cleanText,
@@ -47,19 +48,14 @@ interface InferredManufacturerModel {
 /**
  * Typed boundary: third-party JSON-LD, so every decoded document stays `unknown`.
  *
- * The end tag follows the HTML rule rather than a literal `</script>`: a block a browser closes
- * with `</script >` or `</script data-x>` is a block whose product facts the crawler would
- * otherwise drop entirely and fall back to guessing from markup. The delimiter is HTML's ASCII
- * whitespace and not JavaScript's `\s`, so a `</script\u00a0>` inside the JSON payload — which a
- * browser keeps inside the script — cannot truncate the block into unparseable JSON.
+ * A block the reader fails to find is a block whose product facts the crawler drops, falling
+ * back to guessing the product from markup — so where one ends is `jsonLdScriptBodies`' problem.
  */
 function decodeJsonLd(html: string): unknown[] {
   const results: unknown[] = [];
-  const re =
-    /<script[ \t\n\f\r/][^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script(?:[ \t\n\f\r/][^>]*)?>/gi;
-  for (const match of html.matchAll(re)) {
+  for (const body of jsonLdScriptBodies(html)) {
     try {
-      results.push(JSON.parse(match[1].trim()));
+      results.push(JSON.parse(body.trim()));
     } catch {
       // Ignore malformed third-party JSON-LD and continue to the HTML fallback.
     }

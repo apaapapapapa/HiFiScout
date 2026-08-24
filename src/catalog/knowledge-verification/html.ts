@@ -8,6 +8,7 @@
  * network, so nothing may throw on malformed markup.
  */
 
+import { jsonLdScriptBodies, stripRawTextElements } from "../../html/raw-text.js";
 import { isRecord } from "../../types.js";
 
 /** NFKC-normalized, whitespace-collapsed text. The basis for every comparison downstream. */
@@ -55,21 +56,12 @@ export function stripTags(value: unknown = ""): string {
 /**
  * Text a reader would see: scripts and styles removed before tags are stripped.
  *
- * The closing tags allow trailing content (`</script >`, `</script data-x>`) because HTML parsers
- * accept those. A stricter `</script>` would leave the script body in the text, and script bodies
- * routinely mention model numbers and availability wording — exactly what the classifier reads.
- *
- * Both tags still require ASCII whitespace, `/` or `>` right after the name — the set HTML itself
- * ends a tag name on, not JavaScript's `\s`, which also matches NBSP. A looser delimiter ends the
- * script at a `</script-x>` or `</script\u00a0>` written inside a JavaScript string, where a browser
- * reads ordinary script text, releasing the rest of the script into the page text produced here.
+ * Script bodies routinely mention model numbers and availability wording — exactly what the
+ * classifier reads — so where such an element ends must be decided the way a browser decides it.
+ * `stripRawTextElements` owns that decision.
  */
 export function visibleText(html: unknown = ""): string {
-  return stripTags(
-    String(html)
-      .replace(/<script(?:[ \t\n\f\r/][^>]*)?>[\s\S]*?<\/script(?:[ \t\n\f\r/][^>]*)?>/gi, " ")
-      .replace(/<style(?:[ \t\n\f\r/][^>]*)?>[\s\S]*?<\/style(?:[ \t\n\f\r/][^>]*)?>/gi, " "),
-  );
+  return stripTags(stripRawTextElements(html));
 }
 
 /** For building the synthetic single-product documents the index strategies re-verify. */
@@ -116,18 +108,15 @@ export function breadcrumbText(html: string): string {
 /**
  * Unparseable JSON-LD blocks are skipped: one bad script must not hide the rest of the page.
  *
- * Tag names are delimited the way HTML delimits them — ASCII whitespace, `/` or `>` — so
- * `</script data-x>` still closes a block while `<script-x …>` and a `</script\u00a0>` inside the
- * JSON payload do not. Verification reads a missing block as "the page does not state this", so
- * both skipping a well-formed block and truncating one into unparseable JSON read as evidence.
+ * Verification reads a missing block as "the page does not state this", so a block skipped or
+ * truncated by the reader would read as evidence — which is why finding them is not this
+ * module's job.
  */
 export function jsonLdValues(html: string): unknown[] {
   const values: unknown[] = [];
-  for (const match of String(html).matchAll(
-    /<script[ \t\n\f\r/][^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script(?:[ \t\n\f\r/][^>]*)?>/gi,
-  )) {
+  for (const body of jsonLdScriptBodies(html)) {
     try {
-      values.push(JSON.parse(decodeHtml(match[1]).trim()));
+      values.push(JSON.parse(decodeHtml(body).trim()));
     } catch {}
   }
   return values;

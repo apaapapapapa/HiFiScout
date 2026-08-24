@@ -1,5 +1,6 @@
 import { stripManufacturerListingLabels } from "../../catalog/manufacturers.js";
 import { availabilityFromSignals } from "../availability.js";
+import { stripRawTextElements } from "../../html/raw-text.js";
 import { cleanText, parseYen, splitManufacturerModel } from "../normalize.js";
 import type { SellerProduct, ShopAdapter } from "../types.js";
 
@@ -42,9 +43,7 @@ function absoluteUrl(href: string): string | null {
 
 function stripTags(html = ""): string {
   return cleanText(
-    String(html)
-      .replace(/<script(?:[ \t\n\f\r/][^>]*)?>[\s\S]*?<\/script(?:[ \t\n\f\r/][^>]*)?>/gi, " ")
-      .replace(/<style(?:[ \t\n\f\r/][^>]*)?>[\s\S]*?<\/style(?:[ \t\n\f\r/][^>]*)?>/gi, " ")
+    stripRawTextElements(html)
       .replace(/<br\s*\/?>/gi, " ")
       .replace(/<[^>]+>/g, " "),
   );

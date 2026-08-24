@@ -1,4 +1,5 @@
 import { availabilityFromSignals } from "../availability.js";
+import { stripRawTextElements } from "../../html/raw-text.js";
 import { cleanText, inferCategory, parseYen, splitManufacturerModel } from "../normalize.js";
 import type { CrawlPageObject, SellerProduct, ShopAdapter } from "../types.js";
 
@@ -56,12 +57,7 @@ function listingPage(category: AvacCategory, page = 1): AvacPage {
 }
 
 function visibleText(html: unknown = ""): string {
-  return cleanText(
-    String(html)
-      .replace(/<script(?:[ \t\n\f\r/][^>]*)?>[\s\S]*?<\/script(?:[ \t\n\f\r/][^>]*)?>/gi, " ")
-      .replace(/<style(?:[ \t\n\f\r/][^>]*)?>[\s\S]*?<\/style(?:[ \t\n\f\r/][^>]*)?>/gi, " ")
-      .replace(/<br\s*\/?>/gi, " "),
-  );
+  return cleanText(stripRawTextElements(html).replace(/<br\s*\/?>/gi, " "));
 }
 
 function canonicalProductLink(

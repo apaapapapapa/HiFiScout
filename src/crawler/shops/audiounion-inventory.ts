@@ -3,16 +3,14 @@
  * pages express availability.
  */
 
+import { stripRawTextElements } from "../../html/raw-text.js";
 import { availabilityFromSignals } from "../availability.js";
 import type { InventoryClassification, InventoryRecheckPolicy } from "../types.js";
 
 const DETAIL_PATH = /^\/ct\/detail\/used\/\d+\/?$/;
 
 function visibleText(html: unknown): string {
-  return String(html || "")
-    .replace(/<script(?:[ \t\n\f\r/][^>]*)?>[\s\S]*?<\/script(?:[ \t\n\f\r/][^>]*)?>/gi, " ")
-    .replace(/<style(?:[ \t\n\f\r/][^>]*)?>[\s\S]*?<\/style(?:[ \t\n\f\r/][^>]*)?>/gi, " ")
-    .replace(/<noscript(?:[ \t\n\f\r/][^>]*)?>[\s\S]*?<\/noscript(?:[ \t\n\f\r/][^>]*)?>/gi, " ")
+  return stripRawTextElements(html, ["script", "style", "noscript"])
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;|&#160;/gi, " ")
     .replace(/&yen;|&#165;/gi, "¥")
