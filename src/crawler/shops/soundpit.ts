@@ -17,8 +17,8 @@ export interface SoundPitPage extends CrawlPageObject {
 
 function visibleLines(html: string): string[] {
   return String(html || "")
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, " ")
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, " ")
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/(?:p|div|h[1-6]|li|td|tr|section|article|figure)>/gi, "\n")
     .split(/\n+/u)

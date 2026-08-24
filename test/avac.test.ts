@@ -141,3 +141,17 @@ test("AVAC adapter covers audio plus the HiFi-relevant VISUAL leaves", () => {
   assert.equal(plugin.definition.defaultMaxPages, 50);
   assert.equal(plugin.definition.envPrefix, "AVAC");
 });
+
+test("AVAC parser ignores script bodies closed with an attributed end tag", () => {
+  const scripted = `
+<div class="product">
+  <a href="/buy/products/detail/50001">〖中古〗LUXMAN MU-80〖コード10-100488〗8chパワーアンプ</a>
+  <script>window.badge = "売り切れ ￥1,000 (税込)";</script${"\t\n      data-extra"}>
+  <p>￥327,800 (税込)</p>
+  <button>カートに入れる</button>
+</div>`;
+
+  const [product] = parseAvacListing(scripted, audioPage);
+  assert.equal(product.priceYen, 327800);
+  assert.equal(product.stockStatus, "in_stock");
+});

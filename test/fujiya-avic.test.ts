@@ -1,6 +1,10 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
-import { fujiyaAvicAdapter, parseFujiyaResultCount } from "../src/crawler/shops/fujiya-avic.js";
+import {
+  extractFujiyaDetailCategoryEvidence,
+  fujiyaAvicAdapter,
+  parseFujiyaResultCount,
+} from "../src/crawler/shops/fujiya-avic.js";
 import { coverageDecision, initialPageQueue } from "../src/crawler/strategies.js";
 
 function initialPages() {
@@ -181,4 +185,18 @@ test("Fujiya DJ/DTM listings remain classifiable from the new arrivals feed", ()
   assert.equal(item.category, "DJ機器・DTM");
   assert.equal(item.priceYen, 39800);
   assert.equal(item.stockStatus, "in_stock");
+});
+
+test("Fujiya detail evidence ignores script bodies closed with an attributed end tag", () => {
+  const evidence = extractFujiyaDetailCategoryEvidence(
+    `<html><body>
+      <script>window.analytics = { copy: "MODEL10/FBはパワーアンプです。" };</script${"\t\n      data-extra"}>
+      <p>MODEL10/FBはプリメインアンプです。</p>
+    </body></html>`,
+    { model: "MODEL10/FB" },
+  );
+  assert.deepEqual(
+    evidence.map((item) => item.categoryIds),
+    [["integrated_amp"]],
+  );
 });

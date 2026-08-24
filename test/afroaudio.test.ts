@@ -247,3 +247,28 @@ test("Afro Audio adapter starts from audio-only top-level categories", () => {
   ]);
   assert.equal(afroAudioAdapter.discovery.coverage, "complete");
 });
+
+test("Afro Audio parser ignores script bodies closed with an attributed end tag", () => {
+  const scripted = `
+<section class="product-list">
+  <article>
+    <a href="/products/detail/30094">
+      <script>window.badge = "〖Cランク〗 ￥1,000 税込 販売済";</script${"\t\n      data-extra"}>
+      NEW 〖Aランク〗Accuphase DP-570 CDデッキ アキュフェーズ
+      @60834 60834 ￥650,000 税込 在庫あり
+    </a>
+  </article>
+</section>`;
+
+  const [product] = parseAfroAudioListing(scripted, {
+    url: "https://afroaudio.jp/products/list?category_id=1",
+    page: 1,
+    categoryId: 1,
+    rawCategory: "プレーヤー",
+  });
+  assert.equal(product.title, "Accuphase DP-570 CDデッキ アキュフェーズ");
+  assert.equal(product.conditionText, "Aランク");
+  assert.equal(product.priceYen, 650000);
+  assert.equal(product.stockStatus, "in_stock");
+  assert.equal(product.metadata?.productCode, "60834");
+});

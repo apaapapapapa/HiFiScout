@@ -43,8 +43,8 @@ function absoluteUrl(href: string): string | null {
 function stripTags(html = ""): string {
   return cleanText(
     String(html)
-      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, " ")
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, " ")
       .replace(/<br\s*\/?>/gi, " ")
       .replace(/<[^>]+>/g, " "),
   );

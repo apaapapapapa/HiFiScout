@@ -53,6 +53,12 @@ test("Cloudflare Access team domain accepts only HTTPS cloudflareaccess.com orig
   assert.equal(normalizeCloudflareAccessTeamDomain("https://example.com"), null);
   assert.equal(normalizeCloudflareAccessTeamDomain("http://team.cloudflareaccess.com"), null);
   assert.equal(normalizeCloudflareAccessTeamDomain("https://team.cloudflareaccess.com/path"), null);
+  // The provisioning script publishes this value into `$GITHUB_OUTPUT`, where an embedded
+  // newline would declare additional workflow outputs.
+  assert.equal(
+    normalizeCloudflareAccessTeamDomain("team.cloudflareaccess.com\naccess_aud=injected"),
+    null,
+  );
 });
 
 test("Cloudflare Access JWT verifies signature, issuer, audience and expiry", async () => {
