@@ -59,15 +59,16 @@ export function stripTags(value: unknown = ""): string {
  * accept those. A stricter `</script>` would leave the script body in the text, and script bodies
  * routinely mention model numbers and availability wording — exactly what the classifier reads.
  *
- * Both tags still require whitespace, `/` or `>` right after the name. A word boundary would end
- * the script at a `</script-x>` written inside a JavaScript string, which a browser reads as ordinary
- * script text — releasing the rest of the script into the page text this function exists to produce.
+ * Both tags still require ASCII whitespace, `/` or `>` right after the name — the set HTML itself
+ * ends a tag name on, not JavaScript's `\s`, which also matches NBSP. A looser delimiter ends the
+ * script at a `</script-x>` or `</script\u00a0>` written inside a JavaScript string, where a browser
+ * reads ordinary script text, releasing the rest of the script into the page text produced here.
  */
 export function visibleText(html: unknown = ""): string {
   return stripTags(
     String(html)
-      .replace(/<script(?:[\s/][^>]*)?>[\s\S]*?<\/script(?:[\s/][^>]*)?>/gi, " ")
-      .replace(/<style(?:[\s/][^>]*)?>[\s\S]*?<\/style(?:[\s/][^>]*)?>/gi, " "),
+      .replace(/<script(?:[ \t\n\f\r/][^>]*)?>[\s\S]*?<\/script(?:[ \t\n\f\r/][^>]*)?>/gi, " ")
+      .replace(/<style(?:[ \t\n\f\r/][^>]*)?>[\s\S]*?<\/style(?:[ \t\n\f\r/][^>]*)?>/gi, " "),
   );
 }
 
@@ -112,11 +113,18 @@ export function breadcrumbText(html: string): string {
   return clean(values.join(" "));
 }
 
-/** Unparseable JSON-LD blocks are skipped: one bad script must not hide the rest of the page. */
+/**
+ * Unparseable JSON-LD blocks are skipped: one bad script must not hide the rest of the page.
+ *
+ * Tag names are delimited the way HTML delimits them — ASCII whitespace, `/` or `>` — so
+ * `</script data-x>` still closes a block while `<script-x …>` and a `</script\u00a0>` inside the
+ * JSON payload do not. Verification reads a missing block as "the page does not state this", so
+ * both skipping a well-formed block and truncating one into unparseable JSON read as evidence.
+ */
 export function jsonLdValues(html: string): unknown[] {
   const values: unknown[] = [];
   for (const match of String(html).matchAll(
-    /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
+    /<script[ \t\n\f\r/][^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script(?:[ \t\n\f\r/][^>]*)?>/gi,
   )) {
     try {
       values.push(JSON.parse(decodeHtml(match[1]).trim()));

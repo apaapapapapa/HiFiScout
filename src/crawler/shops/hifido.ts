@@ -110,8 +110,8 @@ function absoluteUrl(href: string): string | null {
 function htmlToText(html: string): string {
   return cleanText(
     html
-      .replace(/<script(?:[\s/][^>]*)?>[\s\S]*?<\/script(?:[\s/][^>]*)?>/gi, " ")
-      .replace(/<style(?:[\s/][^>]*)?>[\s\S]*?<\/style(?:[\s/][^>]*)?>/gi, " ")
+      .replace(/<script(?:[ \t\n\f\r/][^>]*)?>[\s\S]*?<\/script(?:[ \t\n\f\r/][^>]*)?>/gi, " ")
+      .replace(/<style(?:[ \t\n\f\r/][^>]*)?>[\s\S]*?<\/style(?:[ \t\n\f\r/][^>]*)?>/gi, " ")
       .replace(/<br\s*\/?\s*>/gi, " ")
       .replace(/<\/(?:p|li|div|article|section|tr|td|h\d)>/gi, " "),
   );
@@ -167,8 +167,8 @@ function escapeRegExp(value: string): string {
 function detailSellerCategory(html: string, sourceId: string): string {
   if (!sourceId) return "";
   const sanitized = String(html || "")
-    .replace(/<script(?:[\s/][^>]*)?>[\s\S]*?<\/script(?:[\s/][^>]*)?>/gi, " ")
-    .replace(/<style(?:[\s/][^>]*)?>[\s\S]*?<\/style(?:[\s/][^>]*)?>/gi, " ");
+    .replace(/<script(?:[ \t\n\f\r/][^>]*)?>[\s\S]*?<\/script(?:[ \t\n\f\r/][^>]*)?>/gi, " ")
+    .replace(/<style(?:[ \t\n\f\r/][^>]*)?>[\s\S]*?<\/style(?:[ \t\n\f\r/][^>]*)?>/gi, " ");
   const escapedSourceId = escapeRegExp(sourceId);
   const markerRe = new RegExp(`>\\s*(?:&nbsp;\\s*)*${escapedSourceId}(?:\\s*&nbsp;)*\\s*<`, "gi");
   for (const match of sanitized.matchAll(markerRe)) {

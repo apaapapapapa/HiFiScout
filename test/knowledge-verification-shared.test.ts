@@ -64,6 +64,11 @@ test("script removal follows the end tags a browser accepts, and only those", ()
     visibleText(`<script>var s = "</script-x>"; var price = 999;</script><p>SA-11</p>`),
     "SA-11",
   );
+  // A no-break space is whitespace to JavaScript's `\s` but not to an HTML tokenizer.
+  assert.equal(
+    visibleText(`<script>var s = "</script\u00a0>"; var price = 999;</script><p>SA-11</p>`),
+    "SA-11",
+  );
   assert.equal(visibleText(`<style>.a:after{content:"</style-x>"}</style><p>OK</p>`), "OK");
 });
 
@@ -130,14 +135,17 @@ test("JSON-LD reading skips malformed blocks and flattens @graph containers", ()
   const html = `
     <script type="application/ld+json">{"@type":"Product","name":"A"}</script>
     <script type="application/ld+json">{ not json }</script>
-    <script type="application/ld+json">{"@graph":[{"@type":["Thing","Product"],"name":"B"}]}</script>`;
+    <script type="application/ld+json">{"@graph":[{"@type":["Thing","Product"],"name":"B"}]}</script>
+    <script type="application/ld+json" data-hydrate>{"@type":"Product","name":"C"}</script data-astro>
+    <script-x type="application/ld+json">{"@type":"Product","name":"D"}</script-x>`;
   const nodes = jsonLdValues(html).flatMap((value) => flattenJsonLd(value));
   const products = nodes.filter(isProductNode);
 
-  assert.equal(products.length, 2);
+  // C closes the way a browser accepts; D is a different tag name and is not JSON-LD at all.
+  assert.equal(products.length, 3);
   assert.deepEqual(
     products.map((node) => node.name),
-    ["A", "B"],
+    ["A", "B", "C"],
   );
 });
 

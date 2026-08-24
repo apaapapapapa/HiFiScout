@@ -253,7 +253,7 @@ test("Afro Audio parser ignores script bodies whatever end tag spelling they use
 <section class="product-list">
   <article>
     <a href="/products/detail/30094">
-      <script>window.badge = "</script-x>〖Cランク〗 ￥1,000 税込 販売済";</script${"\t\n      data-extra"}>
+      <script>window.badge = "</script-x></script\u00a0>〖Cランク〗 ￥1,000 税込 販売済";</script${"\t\n      data-extra"}>
       NEW 〖Aランク〗Accuphase DP-570 CDデッキ アキュフェーズ
       @60834 60834 ￥650,000 税込 在庫あり
     </a>

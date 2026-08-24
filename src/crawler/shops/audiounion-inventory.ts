@@ -10,9 +10,9 @@ const DETAIL_PATH = /^\/ct\/detail\/used\/\d+\/?$/;
 
 function visibleText(html: unknown): string {
   return String(html || "")
-    .replace(/<script(?:[\s/][^>]*)?>[\s\S]*?<\/script(?:[\s/][^>]*)?>/gi, " ")
-    .replace(/<style(?:[\s/][^>]*)?>[\s\S]*?<\/style(?:[\s/][^>]*)?>/gi, " ")
-    .replace(/<noscript(?:[\s/][^>]*)?>[\s\S]*?<\/noscript(?:[\s/][^>]*)?>/gi, " ")
+    .replace(/<script(?:[ \t\n\f\r/][^>]*)?>[\s\S]*?<\/script(?:[ \t\n\f\r/][^>]*)?>/gi, " ")
+    .replace(/<style(?:[ \t\n\f\r/][^>]*)?>[\s\S]*?<\/style(?:[ \t\n\f\r/][^>]*)?>/gi, " ")
+    .replace(/<noscript(?:[ \t\n\f\r/][^>]*)?>[\s\S]*?<\/noscript(?:[ \t\n\f\r/][^>]*)?>/gi, " ")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;|&#160;/gi, " ")
     .replace(/&yen;|&#165;/gi, "¥")
