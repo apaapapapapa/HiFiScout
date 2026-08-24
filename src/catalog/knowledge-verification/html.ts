@@ -112,11 +112,17 @@ export function breadcrumbText(html: string): string {
   return clean(values.join(" "));
 }
 
-/** Unparseable JSON-LD blocks are skipped: one bad script must not hide the rest of the page. */
+/**
+ * Unparseable JSON-LD blocks are skipped: one bad script must not hide the rest of the page.
+ *
+ * Tag names are delimited the way HTML delimits them, so `</script data-x>` still closes a block
+ * and `<script-x type="application/ld+json">` is not one. Verification reads a missing block as
+ * "the page does not state this", so skipping a well-formed block would read as evidence.
+ */
 export function jsonLdValues(html: string): unknown[] {
   const values: unknown[] = [];
   for (const match of String(html).matchAll(
-    /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
+    /<script[\s/][^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script(?:[\s/][^>]*)?>/gi,
   )) {
     try {
       values.push(JSON.parse(decodeHtml(match[1]).trim()));

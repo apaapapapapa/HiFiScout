@@ -44,10 +44,17 @@ interface InferredManufacturerModel {
   model: string;
 }
 
-/** Typed boundary: third-party JSON-LD, so every decoded document stays `unknown`. */
+/**
+ * Typed boundary: third-party JSON-LD, so every decoded document stays `unknown`.
+ *
+ * The end tag follows the HTML rule rather than a literal `</script>`: a block a browser closes
+ * with `</script >` or `</script data-x>` is a block whose product facts the crawler would
+ * otherwise drop entirely and fall back to guessing from markup.
+ */
 function decodeJsonLd(html: string): unknown[] {
   const results: unknown[] = [];
-  const re = /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  const re =
+    /<script[\s/][^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script(?:[\s/][^>]*)?>/gi;
   for (const match of html.matchAll(re)) {
     try {
       results.push(JSON.parse(match[1].trim()));

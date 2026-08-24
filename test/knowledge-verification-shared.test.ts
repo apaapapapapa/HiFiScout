@@ -130,14 +130,17 @@ test("JSON-LD reading skips malformed blocks and flattens @graph containers", ()
   const html = `
     <script type="application/ld+json">{"@type":"Product","name":"A"}</script>
     <script type="application/ld+json">{ not json }</script>
-    <script type="application/ld+json">{"@graph":[{"@type":["Thing","Product"],"name":"B"}]}</script>`;
+    <script type="application/ld+json">{"@graph":[{"@type":["Thing","Product"],"name":"B"}]}</script>
+    <script type="application/ld+json" data-hydrate>{"@type":"Product","name":"C"}</script data-astro>
+    <script-x type="application/ld+json">{"@type":"Product","name":"D"}</script-x>`;
   const nodes = jsonLdValues(html).flatMap((value) => flattenJsonLd(value));
   const products = nodes.filter(isProductNode);
 
-  assert.equal(products.length, 2);
+  // C closes the way a browser accepts; D is a different tag name and is not JSON-LD at all.
+  assert.equal(products.length, 3);
   assert.deepEqual(
     products.map((node) => node.name),
-    ["A", "B"],
+    ["A", "B", "C"],
   );
 });
 
