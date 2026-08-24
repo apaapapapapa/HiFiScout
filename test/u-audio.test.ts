@@ -82,3 +82,8 @@ test("U-AUDIO pagination crawls all outlet pages before used categories", () => 
     },
   ]);
 });
+
+test("U-AUDIO result count ignores script bodies closed with an attributed end tag", () => {
+  const scripted = `<script>window.total = "全 999 件";</script${"\t\n      data-extra"}>${html}`;
+  assert.equal(parseUAudioResultCount(scripted), 41);
+});

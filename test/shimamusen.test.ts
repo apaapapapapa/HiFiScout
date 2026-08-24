@@ -71,3 +71,23 @@ test("Shimamusen adapter starts from all three requested entry pages", () => {
   ]);
   assert.equal(shimamusenAdapter.discovery.coverage, "complete");
 });
+
+test("Shimamusen parser ignores script bodies closed with an attributed end tag", () => {
+  const scripted = `
+<ul class="item-list">
+  <li>
+    <a href="/shopdetail/000000019689/063/Y/page1/order/">〖展示処分品〗ESOTERIC N-01XD SE ネットワークプレーヤー</a>
+    <script>window.badge = "販売価格1円(税込) SOLD OUT 商談中";</script${"\t\n      data-extra"}>
+    <span class="price">販売価格1,589,000円(税込)</span>
+    <span class="maker">ESOTERIC</span>
+  </li>
+</ul>`;
+
+  const [product] = parseShimamusenListing(scripted, {
+    url: "https://www.shimamusen.com/shopbrand/063/Y/",
+    kind: "展示処分品",
+  });
+  assert.equal(product.priceYen, 1589000);
+  assert.equal(product.stockStatus, "in_stock");
+  assert.equal(product.conditionText, "展示処分品");
+});

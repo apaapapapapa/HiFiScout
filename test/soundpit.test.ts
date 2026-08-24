@@ -135,3 +135,29 @@ test("Sound Pit adapter is a partial latest-arrivals feed following the crawl ro
   assert.equal(plugin.definition.defaultMaxPages, 50);
   assert.equal(plugin.definition.envPrefix, "SOUNDPIT");
 });
+
+test("Sound Pit discovery ignores script bodies closed with an attributed end tag", () => {
+  const scripted = `
+<div class="used-item">
+  <p>GamuT</p>
+  <p>Hi-Fi Lobster Chair</p>
+  <p>リスニングチェア</p>
+  <script>
+    window.maker = "偽メーカー";
+    window.model = "偽モデル";
+    window.category = "偽カテゴリー";
+  </script${"\t\n      data-extra"}>
+  <a href="pg555.html">詳細はこちら</a>
+</div>`;
+
+  assert.deepEqual(discoverSoundPitDetails(scripted), [
+    {
+      url: "https://sound-pit.jp/pg555.html",
+      kind: "detail",
+      soldOut: false,
+      fallbackManufacturer: "GamuT",
+      fallbackModel: "Hi-Fi Lobster Chair",
+      fallbackCategory: "リスニングチェア",
+    },
+  ]);
+});

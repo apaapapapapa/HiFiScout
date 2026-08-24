@@ -120,8 +120,8 @@ function productLeadText(
 ): string {
   const visible = cleanText(
     String(html || "")
-      .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style\b[\s\S]*?<\/style>/gi, " "),
+      .replace(/<script(?:[\s/][^>]*)?>[\s\S]*?<\/script(?:[\s/][^>]*)?>/gi, " ")
+      .replace(/<style(?:[\s/][^>]*)?>[\s\S]*?<\/style(?:[\s/][^>]*)?>/gi, " "),
   );
   const needle = cleanText(product.model || product.title || "");
   if (!needle) return visible.slice(0, 1200);

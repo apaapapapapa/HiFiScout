@@ -202,3 +202,21 @@ test("REWIRE adapter starts from the complete used and vintage index", () => {
   ]);
   assert.equal(rewireAdapter.discovery.coverage, "complete");
 });
+
+test("REWIRE parser ignores script bodies closed with an attributed end tag", () => {
+  const scripted = `
+<section class="used-products">
+  <article>
+    <a href="/webshop/2026/08/03/paradigm-founder-120h/">
+      <script>window.badge = "Sold Out ¥1,000(税込) アンプ";</script${"\t\n      data-extra"}>
+      Paradigm Founder 120H #R10045 ¥778,800(税込) スピーカー
+    </a>
+  </article>
+</section>`;
+
+  const [product] = parseRewireListing(scripted);
+  assert.equal(product.title, "Paradigm Founder 120H");
+  assert.equal(product.priceYen, 778800);
+  assert.equal(product.rawCategory, "スピーカー");
+  assert.equal(product.stockStatus, "in_stock");
+});

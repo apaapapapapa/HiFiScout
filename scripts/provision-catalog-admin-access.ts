@@ -1,5 +1,7 @@
 import { appendFile } from "node:fs/promises";
 
+import { normalizeCloudflareAccessTeamDomain } from "../src/admin/access.js";
+
 interface ApiEnvelope<T> {
   success: boolean;
   result: T;
@@ -222,7 +224,22 @@ function teamDomain(organization: ZeroTrustOrganization): string {
   const raw = String(organization.auth_domain || "").trim();
   if (!raw) throw new Error("Zero Trust organization has no auth_domain");
   const hostname = raw.includes(".") ? raw : `${raw}.cloudflareaccess.com`;
-  return `https://${hostname.replace(/^https?:\/\//, "").replace(/\/$/, "")}`;
+  // An unusable value is returned as-is so the publish guard can name it in its error.
+  return normalizeCloudflareAccessTeamDomain(hostname) || hostname;
+}
+
+/**
+ * `$GITHUB_OUTPUT` is a key/value file, so a newline inside a value would let a Cloudflare API
+ * response declare extra workflow outputs. Both published values also have to survive the admin
+ * Worker's own checks, so publish exactly what it accepts and fail loudly on anything else.
+ */
+function isValidTeamDomain(value: string): boolean {
+  return normalizeCloudflareAccessTeamDomain(value) === value;
+}
+
+/** Access AUD tags are hex digests. */
+function isValidAccessAud(value: string): boolean {
+  return /^[0-9a-f]{32,128}$/u.test(value);
 }
 
 const organization = await ensureOrganization();
@@ -233,7 +250,11 @@ const application = await ensureApplication(identityProvider.id, workerId);
 await ensurePolicy(application.id as string, identityProvider.id);
 
 const accessTeamDomain = teamDomain(organization);
-const accessAud = application.aud as string;
+const accessAud = String(application.aud || "");
+if (!isValidTeamDomain(accessTeamDomain)) {
+  throw new Error(`Unexpected Access team domain: ${accessTeamDomain}`);
+}
+if (!isValidAccessAud(accessAud)) throw new Error("Unexpected Access AUD format");
 console.log(`Cloudflare Access application ready: ${appName}`);
 console.log(`Admin domain: https://${adminDomain}`);
 console.log(`Admin Worker ID: ${workerId}`);
