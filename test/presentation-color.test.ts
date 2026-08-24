@@ -72,6 +72,7 @@ test("explicit seller presentation syntax moves the finish beside the model", ()
     ["802D4 B グロス・ブラック(ペア)", "bowers-wilkins", "802D4 B", "グロスブラック"],
     ["A25 [ブラック]", "arcam", "A25", "ブラック"],
     ["A25 COLOR: BLACK", "arcam", "A25", "ブラック"],
+    ["A25 BLACK FINISH", "arcam", "A25", "ブラック"],
     ["A25 - BLACK", "arcam", "A25", "ブラック"],
     [
       "91E ブラック/ゴールド 真空管プリメインアンプ",
