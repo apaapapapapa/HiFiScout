@@ -39,6 +39,15 @@ test("JSON-LD is read from every end tag a browser accepts, and from script tags
     parseProductPage(`<script-x type="application/ld+json">${product}</script-x>`, options),
     [],
   );
+
+  // A no-break space is whitespace to JavaScript's `\s` but not to an HTML tokenizer. Ending the
+  // block there would hand `JSON.parse` a truncated document and discard the product entirely.
+  const withNoBreakSpace = product.replace('"name":"', `"note":"</script\u00a0>","name":"`);
+  const [item] = parseProductPage(
+    `<script type="application/ld+json">${withNoBreakSpace}</script>`,
+    options,
+  );
+  assert.equal(item?.priceYen, 780000);
 });
 
 test("Ippinkan listing condition marker is retained as factual metadata but removed from model", () => {

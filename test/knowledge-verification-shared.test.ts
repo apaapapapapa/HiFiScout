@@ -64,6 +64,11 @@ test("script removal follows the end tags a browser accepts, and only those", ()
     visibleText(`<script>var s = "</script-x>"; var price = 999;</script><p>SA-11</p>`),
     "SA-11",
   );
+  // A no-break space is whitespace to JavaScript's `\s` but not to an HTML tokenizer.
+  assert.equal(
+    visibleText(`<script>var s = "</script\u00a0>"; var price = 999;</script><p>SA-11</p>`),
+    "SA-11",
+  );
   assert.equal(visibleText(`<style>.a:after{content:"</style-x>"}</style><p>OK</p>`), "OK");
 });
 

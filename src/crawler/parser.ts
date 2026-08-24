@@ -49,12 +49,14 @@ interface InferredManufacturerModel {
  *
  * The end tag follows the HTML rule rather than a literal `</script>`: a block a browser closes
  * with `</script >` or `</script data-x>` is a block whose product facts the crawler would
- * otherwise drop entirely and fall back to guessing from markup.
+ * otherwise drop entirely and fall back to guessing from markup. The delimiter is HTML's ASCII
+ * whitespace and not JavaScript's `\s`, so a `</script\u00a0>` inside the JSON payload — which a
+ * browser keeps inside the script — cannot truncate the block into unparseable JSON.
  */
 function decodeJsonLd(html: string): unknown[] {
   const results: unknown[] = [];
   const re =
-    /<script[\s/][^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script(?:[\s/][^>]*)?>/gi;
+    /<script[ \t\n\f\r/][^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script(?:[ \t\n\f\r/][^>]*)?>/gi;
   for (const match of html.matchAll(re)) {
     try {
       results.push(JSON.parse(match[1].trim()));
