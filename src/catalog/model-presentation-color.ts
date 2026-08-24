@@ -133,7 +133,8 @@ const PRESENTATION_FINISH_CODE = alternation(PRESENTATION_COLORS.flatMap((color)
 const SAFE_BARE_FINISH_NAME = alternation(
   spellingsFor(PRESENTATION_COLORS.filter((color) => SAFE_BARE_FINISH_IDS.has(color.id))),
 );
-const PRESENTATION_FINISH_SUFFIX = String.raw`(?:\s*(?:色|仕上げ|FINISH))?`;
+const PRESENTATION_FINISH_QUALIFIER = String.raw`(?:色|仕上げ|FINISH)`;
+const PRESENTATION_FINISH_SUFFIX = String.raw`(?:\s*${PRESENTATION_FINISH_QUALIFIER})?`;
 const PRESENTATION_PAIR_SUFFIX = String.raw`(?:\s*[（(]?\s*(?:ペア|PAIR)\s*[）)]?)?`;
 
 function finishPattern(source: string): RegExp {
@@ -149,6 +150,10 @@ export const PRESENTATION_COLOR_PATTERNS: readonly RegExp[] = [
   // Explicit labels: `カラー: ブラック`, `finish: silver`.
   finishPattern(
     String.raw`\s+(?:カラー|色|仕上げ|COLOR|COLOUR|FINISH)\s*[:：]?\s*(${PRESENTATION_FINISH_NAME})${PRESENTATION_FINISH_SUFFIX}${PRESENTATION_PAIR_SUFFIX}\s*$`,
+  ),
+  // Explicit suffix qualifiers: `ブラック仕上げ`, `BLACK FINISH`.
+  finishPattern(
+    String.raw`\s+(${PRESENTATION_FINISH_NAME})\s*${PRESENTATION_FINISH_QUALIFIER}${PRESENTATION_PAIR_SUFFIX}\s*$`,
   ),
   // Two-tone syntax is presentation evidence in seller prose: `91E ブラック/ゴールド`.
   finishPattern(
@@ -188,9 +193,7 @@ for (const color of PRESENTATION_COLORS) {
   }
 }
 
-/**
- * One seller spelling to one finish, or null when the spelling is not a finish this catalog knows.
- */
+/** One seller spelling to one finish, or null when the spelling is not in the finish vocabulary. */
 export function normalizePresentationColor(
   value: unknown = "",
 ): PresentationColorDefinition | null {
