@@ -9,6 +9,7 @@ import {
   bootstrapManufacturers,
   manufacturerPrefixPattern,
   normalizeManufacturerKey,
+  stripBracketedManufacturerAlias,
 } from "./manufacturers.js";
 import { PRESENTATION_COLOR_PATTERNS } from "./model-presentation-color.js";
 import { identityModelParts, normalizeIdentityModel } from "./product-identity.js";
@@ -20,10 +21,16 @@ import type {
   ResolutionStatus,
 } from "./types.js";
 
-export const MODEL_RESOLVER_VERSION = 6;
+export const MODEL_RESOLVER_VERSION = 7;
 
 export type ModelResolver = (input: ModelResolutionInput) => ModelResolutionResult;
-type PreparedModelResolver = ReadonlyMap<string, readonly RegExp[]>;
+
+interface ManufacturerPresentation {
+  readonly patterns: readonly RegExp[];
+  readonly aliases: readonly string[];
+}
+
+type PreparedModelResolver = ReadonlyMap<string, ManufacturerPresentation>;
 
 interface AnnotationRule {
   readonly name: string;
@@ -35,17 +42,37 @@ interface StrippedModel {
   removed: string[];
 }
 
+const OPENING_BRACKETS = String.raw`【《[［(（`;
+const CLOSING_BRACKETS = String.raw`】》\]］)）`;
+const BRACKETED_ANNOTATION_TAIL = 10;
+
+/**
+ * A seller annotation either stands bare or fills a bracketed group.
+ *
+ * Accepting the opening and closing bracket as independently optional characters is what let
+ * `【新品在庫限り】` lose only the vocabulary a rule knows and keep the malformed `在庫限り】`. The
+ * bracketed branch therefore requires its closing bracket, absorbing a short remainder with it.
+ */
+function annotationPattern(words: string, flags: string = "gu"): RegExp {
+  return new RegExp(
+    String.raw`(?:[${OPENING_BRACKETS}]\s*(?:${words})[^${CLOSING_BRACKETS}]{0,${BRACKETED_ANNOTATION_TAIL}}\s*[${CLOSING_BRACKETS}]|(?:${words}))`,
+    flags,
+  );
+}
+
 const ANNOTATION_RULES: readonly AnnotationRule[] = [
   {
     name: "listing_state",
-    pattern:
-      /[【《[［(（]?\s*(?:販売済み?|売約済み?|ご成約|商談中|予約済み?|完売|売切れ?|品切れ?|お取り寄せ|1セットのみ|色選択)\s*[】》\]］)）]?/gu,
+    pattern: annotationPattern(
+      String.raw`販売済み?|売約済み?|ご成約|商談中|予約済み?|完売|売切れ?|品切れ?|お取り寄せ|1セットのみ|色選択`,
+    ),
   },
-  { name: "listing_state", pattern: /[【《[［(（]?\s*SOLD(?:\s*OUT)?\s*[】》\]］)）]?/giu },
+  { name: "listing_state", pattern: annotationPattern(String.raw`SOLD(?:\s*OUT)?`, "giu") },
   {
     name: "condition",
-    pattern:
-      /[【《[［(（]?\s*(?:中古美品|中古|極美品|美品|良品|並品|新品同様|新同品|新品|未使用品|未使用|未使用開封品|開封品|展示処分品|展示品|デモ機|アウトレット|訳あり|B級品|ジャンク品?|保証書付き?|保証付き?)\s*[】》\]］)）]?/gu,
+    pattern: annotationPattern(
+      String.raw`中古美品|中古|極美品|美品|良品|並品|新品同様|新同品|新品|未使用品|未使用|未使用開封品|開封品|展示処分品|展示品|デモ機|アウトレット|訳あり|B級品|ジャンク品?|保証書付き?|保証付き?`,
+    ),
   },
   {
     name: "condition",
@@ -53,8 +80,9 @@ const ANNOTATION_RULES: readonly AnnotationRule[] = [
   },
   {
     name: "packaging",
-    pattern:
-      /[【《[［(（]?\s*(?:元箱付き?|元箱有り?|元箱|箱付き?|純正箱|取扱説明書付き?|説明書付き?|取説付き?|リモコン付き?|付属品完備|付属品付き?|ケーブル付き?)\s*[】》\]］)）]?/gu,
+    pattern: annotationPattern(
+      String.raw`元箱付き?|元箱有り?|元箱|箱付き?|純正箱|取扱説明書付き?|説明書付き?|取説付き?|リモコン付き?|付属品完備|付属品付き?|ケーブル付き?`,
+    ),
   },
   ...PRESENTATION_COLOR_PATTERNS.map((pattern) => ({
     name: "presentation_color",
@@ -68,13 +96,24 @@ const ANNOTATION_RULES: readonly AnnotationRule[] = [
   { name: "seller_sku", pattern: /\s*[[［]\s*[A-Z0-9][A-Z0-9._/-]{3,}\s*[\]］]\s*$/iu },
   { name: "seller_sku", pattern: /\s*《[^》]{1,40}》\s*/gu },
   {
+    // Delivery terms are footnoted with `※`: `※送料無料`, `※配達設置費・送料別途相談`. The marker
+    // is the seller's own "this is not the product" signal, so the note it introduces is removed
+    // whole rather than by enumerating every wording.
+    name: "shipping",
+    pattern: /\s*※\s*[^※]*?(?:送料|配送|配達|運賃|発送|設置費)[^※]*$/u,
+  },
+  {
     name: "shipping",
     pattern: /\s*(?:※\s*)?送料無料\s*$/gu,
   },
   {
+    // `\p{Script=Han}`/`\p{Script=Katakana}` prefix: a product type is often written with a
+    // qualifier fused to it (`真空管プリメインアンプ`, `天井埋込スピーカー`), and the qualifier is
+    // as much presentation as the type word. It can only extend the match inside the single
+    // whitespace-delimited token the type word already ends.
     name: "product_type_suffix",
     pattern:
-      /\s+(?:プリメインアンプ|インテグレーテッドアンプ|パワーアンプ|プリアンプ|コントロールアンプ|AVアンプ|ヘッドホンアンプ|フォノイコライザー|レコードプレーヤー|ターンテーブル|CDプレーヤー|SACD(?:\/CD)?プレーヤー|CDトランスポート|SACDトランスポート|ネットワークプレーヤー|ネットワークプレイヤー|ネットワークトランスポート|D\/Aコンバータ(?:ー)?|DAコンバータ(?:ー)?|サブウーファー|スピーカー|ヘッドホン|イヤホン|トーンアーム|カートリッジ|昇圧トランス|チューナー|イコライザー)\s*$/gu,
+      /\s+[\p{Script=Han}\p{Script=Katakana}ー]{0,8}(?:プリメインアンプ|インテグレーテッドアンプ|パワーアンプ|プリアンプ|コントロールアンプ|AVアンプ|ヘッドホンアンプ|フォノイコライザー|レコードプレーヤー|ターンテーブル|CDプレーヤー|SACD(?:\/CD)?プレーヤー|CDトランスポート|SACDトランスポート|ネットワークプレーヤー|ネットワークプレイヤー|ネットワークトランスポート|D\/Aコンバータ(?:ー)?|DAコンバータ(?:ー)?|サブウーファー|スピーカー|ヘッドホン|イヤホン|トーンアーム|カートリッジ|昇圧トランス|チューナー|イコライザー)\s*$/gu,
   },
   {
     // Some seller list pages append both a Japanese product-type label and a Japanese brand
@@ -97,6 +136,7 @@ const UNCLASSIFIED_RULES: readonly AnnotationRule[] = [
   },
 ];
 
+const ANNOTATION_PASS_LIMIT = 4;
 const TITLE_MODEL_MAX_TOKENS = 3;
 const BRACKETED_ALIAS_MIN_COMMON_PREFIX = 12;
 const BRACKETED_ALIAS_MIN_COMMON_RATIO = 0.65;
@@ -105,8 +145,35 @@ function clean(value: unknown = ""): string {
   return String(value).normalize("NFKC").replace(/\s+/g, " ").trim();
 }
 
+const BRACKET_OPENERS = new Set("([{【《［（〖");
+const BRACKET_CLOSERS = new Set(")]}】》］）〗");
+
+/**
+ * Drop bracket delimiters left without a partner.
+ *
+ * Removing a manufacturer alias or an annotation from inside a bracketed group strands the other
+ * delimiter — `Bowers&Wilkins(B&W) 802D4 B` resolves through `B&W` to `) 802D4 B`. Pairing is
+ * deliberately lenient about *which* bracket closes which, because a seller who opens with `(` and
+ * closes with `）` still wrote one group.
+ */
+function dropOrphanBrackets(value: string): string {
+  const characters = [...value];
+  const open: number[] = [];
+  const orphans = new Set<number>();
+  characters.forEach((character, index) => {
+    if (BRACKET_OPENERS.has(character)) open.push(index);
+    else if (BRACKET_CLOSERS.has(character)) {
+      if (open.length) open.pop();
+      else orphans.add(index);
+    }
+  });
+  for (const index of open) orphans.add(index);
+  if (!orphans.size) return value;
+  return characters.filter((_, index) => !orphans.has(index)).join("");
+}
+
 function tidy(value: string): string {
-  return value
+  return dropOrphanBrackets(value)
     .replace(/\s+/g, " ")
     .replace(/^[\s\-/_,:：|]+/u, "")
     .replace(/[\s\-/_,:：|]+$/u, "")
@@ -160,11 +227,18 @@ function stripSellerAnnotations(value: string): StrippedModel {
   const preferred = preferredBracketedModelAlias(value);
   const removed = [...preferred.removed];
   let text = preferred.text;
-  for (const rule of ANNOTATION_RULES) {
-    const next = tidy(text.replace(rule.pattern, " "));
-    if (!next || next === text) continue;
-    if (!removed.includes(rule.name)) removed.push(rule.name);
-    text = next;
+  // Rules run to a fixed point. A seller who stacks annotations (`… シルバー 真空管プリメインアンプ`)
+  // hides each one behind the last, and which of them survives should not depend on the order the
+  // rules happen to be written in.
+  for (let pass = 0; pass < ANNOTATION_PASS_LIMIT; pass += 1) {
+    const before = text;
+    for (const rule of ANNOTATION_RULES) {
+      const next = tidy(text.replace(rule.pattern, " "));
+      if (!next || next === text) continue;
+      if (!removed.includes(rule.name)) removed.push(rule.name);
+      text = next;
+    }
+    if (text === before) break;
   }
   return { text, removed };
 }
@@ -199,10 +273,15 @@ function looksLikeModel(value: string): boolean {
   return tokens.length > 0 && tokens.length <= TITLE_MODEL_MAX_TOKENS && /\d/u.test(value);
 }
 
-function stripManufacturerPresentation(value: string, patterns: readonly RegExp[]): string {
-  for (const pattern of patterns) {
-    const stripped = tidy(value.replace(pattern, " "));
-    if (stripped && stripped !== value) return stripped;
+function stripManufacturerPresentation(
+  value: string,
+  presentation: ManufacturerPresentation,
+): string {
+  for (const pattern of presentation.patterns) {
+    const withoutPrefix = value.replace(pattern, " ");
+    if (withoutPrefix === value) continue;
+    const stripped = tidy(stripBracketedManufacturerAlias(withoutPrefix, presentation.aliases));
+    if (stripped) return stripped;
   }
   return value;
 }
@@ -237,15 +316,19 @@ function presentationPatterns(
   }
 
   return new Map(
-    [...byManufacturer].map(([id, entries]) => [
-      id,
-      entries
-        .sort(
-          (left, right) =>
-            right.alias.length - left.alias.length || left.alias.localeCompare(right.alias),
-        )
-        .map((entry) => entry.pattern),
-    ]),
+    [...byManufacturer].map(([id, entries]) => {
+      const sorted = [...entries].sort(
+        (left, right) =>
+          right.alias.length - left.alias.length || left.alias.localeCompare(right.alias),
+      );
+      return [
+        id,
+        {
+          patterns: sorted.map((entry) => entry.pattern),
+          aliases: sorted.map((entry) => entry.alias),
+        },
+      ];
+    }),
   );
 }
 
@@ -272,9 +355,9 @@ function resolvePreparedModel(
   const source = fromSeller ? rawModel : manufacturerId ? clean(input.title) : "";
   if (!source) return unresolvedResult(rawModel, rawModel);
 
-  const patterns = prepared.get(manufacturerId) || [];
-  const withoutManufacturer = patterns.length
-    ? stripManufacturerPresentation(source, patterns)
+  const presentation = prepared.get(manufacturerId);
+  const withoutManufacturer = presentation?.patterns.length
+    ? stripManufacturerPresentation(source, presentation)
     : source;
   const stripped = stripSellerAnnotations(withoutManufacturer);
   const safe = preservesModelIdentity(withoutManufacturer, stripped.text);

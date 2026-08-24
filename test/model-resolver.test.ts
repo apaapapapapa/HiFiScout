@@ -135,6 +135,73 @@ test("verified manufacturer presentation tokens are removed from the seller mode
   assert.equal(operational.model, "D-1000");
 });
 
+test("a bracketed second spelling of the manufacturer never strands its bracket", () => {
+  const bothSpellings = resolve(
+    "Bowers&Wilkins(B&W) 802D4 B グロス・ブラック(ペア)",
+    "bowers-wilkins",
+  );
+  assert.equal(bothSpellings.model, "802D4 B");
+  assert.equal(bothSpellings.status, "resolved");
+
+  // Rows written before this rule stored the half-consumed alias, so replay has to repair them.
+  const stored = resolve("B&W) 802D4 B グロス・ブラック(ペア)", "bowers-wilkins");
+  assert.equal(stored.model, "802D4 B");
+});
+
+test("an annotation inside a bracketed group takes the whole group with it", () => {
+  const cases: [string, string][] = [
+    ["A5 プリメインアンプ 【新品在庫限り】", "A5"],
+    ["D-1000 【中古品】", "D-1000"],
+    ["D-1000 (未使用開封品)", "D-1000"],
+  ];
+  for (const [input, expected] of cases) {
+    const result = resolve(input);
+    assert.equal(result.model, expected, input);
+    assert.equal(result.status, "resolved", input);
+  }
+});
+
+test("a shipping note marked with ※ is removed whatever its wording", () => {
+  const freeShipping = resolve("D-1000 ※送料無料");
+  assert.equal(freeShipping.model, "D-1000");
+  assert.deepEqual(freeShipping.removedAnnotations, ["shipping"]);
+
+  const negotiated = resolve("D-1000 MK2 ※配達設置費・送料別途相談");
+  assert.equal(negotiated.model, "D-1000 MK2");
+  assert.deepEqual(negotiated.removedAnnotations, ["shipping"]);
+  assert.equal(negotiated.normalizedModel, "D1000MK2");
+
+  // A `※` note about anything else is still unclassified rather than deleted.
+  const other = resolve("D-1000 ※展示品につき保証条件が異なります");
+  assert.equal(other.status, "candidate");
+  assert.ok(other.model.includes("※"));
+});
+
+test("a product type fused to its qualifier is still a product type", () => {
+  const cases: [string, string][] = [
+    ["91E ブラック/ゴールド 真空管プリメインアンプ", "91E"],
+    ["CRS3 天井埋込スピーカー", "CRS3"],
+    ["N-01XD SE ネットワークプレーヤー", "N-01XD SE"],
+  ];
+  for (const [input, expected] of cases) {
+    const result = resolve(input);
+    assert.equal(result.model, expected, input);
+    assert.ok(result.removedAnnotations.includes("product_type_suffix"), input);
+  }
+});
+
+test("stacked annotations are all removed regardless of the order the rules run in", () => {
+  // `シルバー` only reaches the end of the string once the product type in front of it is gone,
+  // and the colour rule is written before the product-type rule.
+  const result = resolve("V70 ClassA シルバー 真空管プリメインアンプ", "octave");
+
+  assert.equal(result.model, "V70 ClassA");
+  assert.deepEqual([...result.removedAnnotations].sort(), [
+    "presentation_color",
+    "product_type_suffix",
+  ]);
+});
+
 test("an unverified alias is not treated as a removable brand token", () => {
   const pending: ManufacturerAliasEvidence[] = [
     {

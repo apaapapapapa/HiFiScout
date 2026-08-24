@@ -38,6 +38,11 @@ const MANUFACTURER_SOURCE: readonly ManufacturerSourceEntry[] = [
   ["linear-technology", "Linear Technology", ["linear technology"]],
   ["kef", "KEF", ["kef"]],
   ["jbl", "JBL", ["jbl"]],
+  [
+    "western-electric",
+    "Western Electric",
+    ["western electric", "ウエスタンエレクトリック", "ウェスタン・エレクトリック"],
+  ],
   ["tannoy", "TANNOY", ["tannoy", "タンノイ"]],
   ["focal", "Focal", ["focal", "フォーカル"]],
   ["dali", "DALI", ["dali", "ダリ"]],
@@ -262,6 +267,29 @@ export function normalizeManufacturer(value: unknown = ""): ManufacturerNormaliz
   return { id: fallbackId(key), displayName: raw, matchedAlias: false };
 }
 
+const BRACKETED_PREFIX = /^\s*[([［（【]\s*([^)\]］）】]{1,40})\s*[)\]］）】]/u;
+
+/**
+ * Remove a bracketed second spelling of the manufacturer that already matched as a prefix.
+ *
+ * Retailers write both spellings of one brand — `Bowers&Wilkins(B&W) 802D4 B`. Stripping the
+ * bracketed alias as a whole group is what keeps the leading-separator cleanup below from eating
+ * the opening bracket alone and stranding its closing bracket at the head of the model.
+ */
+export function stripBracketedManufacturerAlias(
+  value: unknown = "",
+  aliases: readonly string[] = [],
+): string {
+  const text = String(value);
+  const match = text.match(BRACKETED_PREFIX);
+  if (!match) return text;
+  const key = normalizeManufacturerKey(match[1]);
+  if (!key) return text;
+  return aliases.some((alias) => normalizeManufacturerKey(alias) === key)
+    ? text.slice(match[0].length)
+    : text;
+}
+
 export function splitKnownManufacturerModel(value: unknown = ""): ManufacturerModelSplit | null {
   const raw = cleanSourceText(stripManufacturerListingLabels(value));
   if (!raw) return null;
@@ -269,8 +297,10 @@ export function splitKnownManufacturerModel(value: unknown = ""): ManufacturerMo
   for (const candidate of PREFIX_ALIASES) {
     const match = raw.match(candidate.pattern);
     if (!match) continue;
-    const model = raw
-      .slice(match[0].length)
+    const model = stripBracketedManufacturerAlias(raw.slice(match[0].length), [
+      candidate.manufacturer.name,
+      ...candidate.manufacturer.aliases,
+    ])
       .replace(/^[\s・･_\-/&+.,'"()（）]+/, "")
       .trim();
     return {

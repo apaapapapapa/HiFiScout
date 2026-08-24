@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
+import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
 import { parseShimamusenListing } from "../src/crawler/shops/shimamusen.js";
 
 test("Shimamusen promotional prefixes never become manufacturer or model identity", () => {
@@ -28,4 +29,38 @@ test("Shimamusen promotional prefixes never become manufacturer or model identit
   assert.match(items[1].model, /^Stereo 70s/u);
   assert.equal(items[2].manufacturer, "ELAC");
   assert.match(items[2].model, /^Debut ConneX DCB41/u);
+});
+
+/**
+ * The three shapes a Shimamusen listing title uses to say something that is not the product: the
+ * brand written twice with the second spelling bracketed, a `※` delivery footnote, and a product
+ * type fused to its qualifier. Each one had survived into the displayed model.
+ */
+test("Shimamusen listing prose never reaches the displayed model", () => {
+  const html = `
+    <ul>
+      <li>
+        <a href="/shopdetail/000000020101/036/Y/page1/order/">【特価品】Bowers&Wilkins(B&W) 802D4 B グロス・ブラック(ペア)</a>
+        <span class="price">販売価格3,000,000円(税込)</span>
+      </li>
+      <li>
+        <a href="/shopdetail/000000020102/ct826/page1/order/">【中古品】JBL D30085 HARTSFIELD(ペア) ※配達設置費・送料別途相談</a>
+        <span class="price">販売価格2,000,000円(税込)</span>
+      </li>
+      <li>
+        <a href="/shopdetail/000000020103/063/Y/page1/order/">【展示処分品】Western Electric 91E ブラック/ゴールド 真空管プリメインアンプ</a>
+        <span class="price">販売価格1,500,000円(税込)</span>
+      </li>
+    </ul>`;
+
+  const [bowers, jbl, western] = parseShimamusenListing(html, { kind: "中古品" }).map((item) =>
+    normalizeCatalogProduct(item),
+  );
+
+  assert.equal(bowers.manufacturer, "Bowers & Wilkins");
+  assert.equal(bowers.model, "802D4 B");
+  assert.equal(jbl.manufacturer, "JBL");
+  assert.equal(jbl.model, "D30085 HARTSFIELD(ペア)");
+  assert.equal(western.manufacturer, "Western Electric");
+  assert.equal(western.model, "91E");
 });
