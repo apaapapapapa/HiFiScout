@@ -89,8 +89,10 @@ for (const scenario of CASES) {
   });
 }
 
-test("multi-word manufacturer repair remains on resolver version 7", () => {
-  assert.equal(MANUFACTURER_RESOLVER_VERSION, 7);
+test("rows written before the multi-word manufacturer repair stay replay-eligible", () => {
+  // The repair shipped at resolver version 7. Later bootstrap-catalog changes bump the version
+  // again, and every bump keeps the pre-repair rows below it eligible for replay.
+  assert.ok(MANUFACTURER_RESOLVER_VERSION >= 7);
 });
 
 test("title evidence still cannot override arbitrary explicit manufacturer text", () => {
