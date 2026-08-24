@@ -137,8 +137,9 @@ const UNCLASSIFIED_LISTING_ROW = {
   manufacturer_resolution_confidence: "high",
   manufacturer_resolver_version: 1,
   model: "EX-1",
-  raw_model: "EX-1",
+  raw_model: "EX-1 ブラック",
   normalized_model: "EX1",
+  presentation_color: "",
   model_resolution_status: "resolved",
   model_resolution_method: "seller_model",
   model_resolution_confidence: "medium",
@@ -179,11 +180,16 @@ test("the data-quality replay persists the same unclassified shape the crawl pat
 
   const replay = db.calls.find((call) => /UPDATE products\s+SET manufacturer = \?/.test(call.sql));
   assert.ok(replay, "a classify_category job must replay the listing's derived fields");
-  assert.equal(replay.binds[15], "unclassified", "the replay writes the unclassified sentinel");
+  assert.equal(replay.binds[10], "ブラック", "the replay persists every model-resolver field");
+  assert.equal(replay.binds[16], "unclassified", "the replay writes the unclassified sentinel");
   assert.equal(
-    replay.binds[16],
+    replay.binds[17],
     '["unclassified"]',
     "the replay must persist [primary_category_id], never the classifier's in-memory empty array",
   );
-  assert.equal(replay.binds[17], "unclassified");
+  assert.equal(replay.binds[18], "unclassified");
+  const metadata = JSON.parse(String(replay.binds[20])) as {
+    modelNormalization?: { presentationColors?: string[] };
+  };
+  assert.deepEqual(metadata.modelNormalization?.presentationColors, ["ブラック"]);
 });

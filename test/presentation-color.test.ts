@@ -99,6 +99,11 @@ test("ambiguous bare color words remain identity-bearing", () => {
     ["2M Bronze", "ortofon"],
     ["2M Blue", "ortofon"],
     ["2M Red", "ortofon"],
+    // Transliteration does not turn the Black cartridge into a presentation finish.
+    ["MC Cadenza ブラック", "ortofon"],
+    // Monitor Red is a Tannoy driver generation, not the cabinet's paint colour.
+    ["Rectangular GRF 15′′Monitor Red", "tannoy"],
+    ["Rectangular GRF 15′′Monitor レッド", "tannoy"],
     // This is a real finish in seller data, but bare BLACK alone is not enough evidence to remove
     // it safely without verified product-finish knowledge. Prefer a temporary split to a false merge.
     ["LS-R0 BLACK", "orb"],
@@ -108,6 +113,20 @@ test("ambiguous bare color words remain identity-bearing", () => {
     const result = resolveModel({ rawModel, title: "", manufacturerId });
     assert.equal(result.model, rawModel, rawModel);
     assert.deepEqual(result.presentationColors, [], rawModel);
+  }
+});
+
+test("verified product lines may use a bare English presentation colour", () => {
+  const cases: [string, string, string][] = [
+    ["D-1000 BLACK", "D-1000", "ブラック"],
+    ["D-1000 MK2 SILVER", "D-1000 MK2", "シルバー"],
+    ["D-1000TX Walnut", "D-1000TX", "ウォールナット"],
+  ];
+
+  for (const [rawModel, model, color] of cases) {
+    const result = resolveModel({ rawModel, title: "", manufacturerId: "tad" });
+    assert.equal(result.model, model, rawModel);
+    assert.equal(presentationColorLabel(result.presentationColors), color, rawModel);
   }
 });
 

@@ -104,6 +104,32 @@ const SAFE_BARE_FINISH_IDS = new Set([
   "champagne-gold",
 ]);
 
+/**
+ * Product lines where a plain trailing colour is verified presentation rather than identity.
+ *
+ * Keep this deliberately narrower than a manufacturer-wide allowlist. TAD's own model table, for
+ * example, identifies D-1000 family variants with `-S`/`-K` while naming the product D-1000; that
+ * makes a seller's bare `D-1000 SILVER` safe to group. It says nothing about every other TAD model.
+ */
+const BARE_PRESENTATION_MODEL_LINES: ReadonlyMap<string, readonly RegExp[]> = new Map([
+  ["tad", [/^D[\s-]?1000(?:\s*(?:MK2|MKII|TX))?(?=$|\s)/iu]],
+]);
+
+/**
+ * Product lines where the colour word is a model or grade and must survive even in Japanese.
+ *
+ * The ordinary conservative rule already keeps bare English colour words. This list protects the
+ * same identity when a Japanese seller transliterates it: `MC Cadenza ブラック` is still the Black
+ * cartridge, and Tannoy's Monitor Red/Gold/Silver names driver generations rather than finishes.
+ */
+const COLOR_BEARING_MODEL_LINES: ReadonlyMap<string, readonly RegExp[]> = new Map([
+  ["ortofon", [/(?:^|[\s/_-])2M(?=$|[\s/_-])/iu, /\b(?:Cadenza|Quintet|Rondo)\b/iu]],
+  [
+    "tannoy",
+    [/(?:^|[^A-Za-z0-9])Monitor\s+(?:Red|Gold|Silver|レッド|ゴールド|シルバー)(?=$|[\s/_-])/iu],
+  ],
+]);
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -130,9 +156,6 @@ function spellingsFor(colors: readonly PresentationColorDefinition[]): string[] 
 
 const PRESENTATION_FINISH_NAME = alternation(spellingsFor(PRESENTATION_COLORS));
 const PRESENTATION_FINISH_CODE = alternation(PRESENTATION_COLORS.flatMap((color) => color.codes));
-const SAFE_BARE_FINISH_NAME = alternation(
-  spellingsFor(PRESENTATION_COLORS.filter((color) => SAFE_BARE_FINISH_IDS.has(color.id))),
-);
 const PRESENTATION_FINISH_QUALIFIER = String.raw`(?:色|仕上げ|FINISH)`;
 const PRESENTATION_FINISH_SUFFIX = String.raw`(?:\s*${PRESENTATION_FINISH_QUALIFIER})?`;
 const PRESENTATION_PAIR_SUFFIX = String.raw`(?:\s*[（(]?\s*(?:ペア|PAIR)\s*[）)]?)?`;
@@ -171,11 +194,12 @@ export const PRESENTATION_COLOR_PATTERNS: readonly RegExp[] = [
   finishPattern(
     String.raw`\s*(?:\(|（|\[|［|【)\s*((?:${PRESENTATION_FINISH_NAME}|${PRESENTATION_FINISH_CODE}))${PRESENTATION_FINISH_SUFFIX}\s*(?:\)|）|\]|］|】)${PRESENTATION_PAIR_SUFFIX}\s*$`,
   ),
-  // Only self-describing qualified finishes are safe when written as an otherwise bare suffix.
-  finishPattern(
-    String.raw`\s+(${SAFE_BARE_FINISH_NAME})${PRESENTATION_FINISH_SUFFIX}${PRESENTATION_PAIR_SUFFIX}\s*$`,
-  ),
 ];
+
+/** Bare suffixes need the manufacturer/model-aware policy below before they may be removed. */
+export const PRESENTATION_BARE_COLOR_PATTERN = finishPattern(
+  String.raw`\s+(${PRESENTATION_FINISH_NAME})${PRESENTATION_FINISH_SUFFIX}${PRESENTATION_PAIR_SUFFIX}\s*$`,
+);
 
 /** Same shape of key as the manufacturer normalizer: spelling noise folded, characters kept. */
 function presentationColorKey(value: unknown = ""): string {
@@ -199,6 +223,33 @@ export function normalizePresentationColor(
 ): PresentationColorDefinition | null {
   const key = presentationColorKey(value);
   return key ? (BY_ALIAS.get(key) ?? null) : null;
+}
+
+/**
+ * Whether the bare colour suffix on one resolved manufacturer's model is safe to move aside.
+ *
+ * Japanese colour words and qualified finishes such as `GLOSS BLACK` carry presentation meaning
+ * on their own, except on the explicit identity-bearing lines above. Plain English colour words
+ * require positive product-line evidence; otherwise a temporary split is safer than a false merge.
+ */
+export function canStripBarePresentationColor(
+  manufacturerId: unknown = "",
+  model: unknown = "",
+): boolean {
+  const id = String(manufacturerId).trim().toLowerCase();
+  const value = String(model).trim();
+  const match = value.match(PRESENTATION_BARE_COLOR_PATTERN);
+  const capture = match?.[1]?.trim() ?? "";
+  const color = normalizePresentationColor(capture);
+  if (!color) return false;
+
+  const identityLines = COLOR_BEARING_MODEL_LINES.get(id) ?? [];
+  if (identityLines.some((line) => line.test(value))) return false;
+
+  if (SAFE_BARE_FINISH_IDS.has(color.id) || !/[A-Za-z]/u.test(capture)) return true;
+
+  const presentationLines = BARE_PRESENTATION_MODEL_LINES.get(id) ?? [];
+  return presentationLines.some((line) => line.test(value));
 }
 
 /** Canonical labels in catalog order, deduplicated. The stored and rendered spelling. */

@@ -12,7 +12,9 @@ import {
   stripBracketedManufacturerAlias,
 } from "./manufacturers.js";
 import {
+  PRESENTATION_BARE_COLOR_PATTERN,
   PRESENTATION_COLOR_PATTERNS,
+  canStripBarePresentationColor,
   presentationColorLabel,
   presentationColorLabels,
 } from "./model-presentation-color.js";
@@ -39,6 +41,7 @@ type PreparedModelResolver = ReadonlyMap<string, ManufacturerPresentation>;
 interface AnnotationRule {
   readonly name: string;
   readonly pattern: RegExp;
+  readonly requiresBarePresentationEvidence?: boolean;
 }
 
 interface StrippedModel {
@@ -97,6 +100,11 @@ const ANNOTATION_RULES: readonly AnnotationRule[] = [
     name: "presentation_color",
     pattern,
   })),
+  {
+    name: "presentation_color",
+    pattern: PRESENTATION_BARE_COLOR_PATTERN,
+    requiresBarePresentationEvidence: true,
+  },
   {
     name: "seller_sku",
     pattern:
@@ -232,7 +240,7 @@ function preferredBracketedModelAlias(value: string): StrippedModel {
   return { text: alias, removed: ["seller_model_alias"], colors: [] };
 }
 
-function stripSellerAnnotations(value: string): StrippedModel {
+function stripSellerAnnotations(value: string, manufacturerId: string): StrippedModel {
   const preferred = preferredBracketedModelAlias(value);
   const removed = [...preferred.removed];
   const colors: string[] = [];
@@ -243,6 +251,12 @@ function stripSellerAnnotations(value: string): StrippedModel {
   for (let pass = 0; pass < ANNOTATION_PASS_LIMIT; pass += 1) {
     const before = text;
     for (const rule of ANNOTATION_RULES) {
+      if (
+        rule.requiresBarePresentationEvidence &&
+        !canStripBarePresentationColor(manufacturerId, text)
+      ) {
+        continue;
+      }
       const next = tidy(text.replace(rule.pattern, " "));
       if (!next || next === text) continue;
       if (!removed.includes(rule.name)) removed.push(rule.name);
@@ -376,7 +390,7 @@ function resolvePreparedModel(
   const withoutManufacturer = presentation?.patterns.length
     ? stripManufacturerPresentation(source, presentation)
     : source;
-  const stripped = stripSellerAnnotations(withoutManufacturer);
+  const stripped = stripSellerAnnotations(withoutManufacturer, manufacturerId);
   const safe = preservesModelIdentity(withoutManufacturer, stripped.text);
   const model = safe ? stripped.text : withoutManufacturer;
   const normalizedModel = normalizeIdentityModel(model);

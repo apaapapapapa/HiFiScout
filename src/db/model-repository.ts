@@ -105,6 +105,16 @@ export async function resolveProductCatalogFields(
   );
 }
 
+/** `model (normalized/finish/status)`, the shape remediation history is read in. */
+function modelAuditValue(
+  model: string,
+  normalizedModel: string,
+  presentationColor: string,
+  status: string,
+): string {
+  return `${model} (${normalizedModel || "-"}/${presentationColor || "-"}/${status})`;
+}
+
 export async function selectStaleModelListings(
   db: ReadableDatabase,
   { afterId = 0, limit }: ModelReplayOptions = {},
@@ -221,8 +231,19 @@ export async function reprocessStaleModelListings(
         shopKey: row.shop_key,
         sourceId: row.source_id,
         field: "model",
-        previousValue: `${row.model} (${row.normalized_model || "-"}/${row.model_resolution_status})`,
-        newValue: `${resolution.model} (${resolution.normalizedModel || "-"}/${resolution.status})`,
+        // A replay may move only the finish; include it so the audit event still has a real diff.
+        previousValue: modelAuditValue(
+          row.model,
+          row.normalized_model,
+          row.presentation_color,
+          row.model_resolution_status,
+        ),
+        newValue: modelAuditValue(
+          resolution.model,
+          resolution.normalizedModel,
+          presentationColor,
+          resolution.status,
+        ),
         reason: "model_resolver_version_replay",
         resolverMethod: resolution.method,
         resolverConfidence: resolution.confidence,
