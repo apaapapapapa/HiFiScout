@@ -1,4 +1,5 @@
 import { availabilityFromSignals } from "../availability.js";
+import { stripRawTextElements } from "../../html/raw-text.js";
 import { cleanText, inferCategory, parseYen } from "../normalize.js";
 import type { CrawlPageObject, SellerProduct, ShopAdapter } from "../types.js";
 
@@ -16,9 +17,7 @@ export interface SoundPitPage extends CrawlPageObject {
 }
 
 function visibleLines(html: string): string[] {
-  return String(html || "")
-    .replace(/<script(?:[ \t\n\f\r/][^>]*)?>[\s\S]*?<\/script(?:[ \t\n\f\r/][^>]*)?>/gi, " ")
-    .replace(/<style(?:[ \t\n\f\r/][^>]*)?>[\s\S]*?<\/style(?:[ \t\n\f\r/][^>]*)?>/gi, " ")
+  return stripRawTextElements(html)
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/(?:p|div|h[1-6]|li|td|tr|section|article|figure)>/gi, "\n")
     .split(/\n+/u)

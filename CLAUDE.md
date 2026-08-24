@@ -32,6 +32,7 @@ Run `npm run verify` once near the end of a change instead of invoking formatter
 | `src/catalog/` | categories, manufacturers, normalization, identity/catalog logic |
 | `src/db/` | repositories and persistence types |
 | `src/search/` | FTS/query helpers |
+| `src/html/` | HTML raw text element scanning shared by every text-reading parser |
 | `src/data-quality/` | quality evaluation and remediation runtime |
 | `src/evidence/` | R2 evidence archive |
 | `frontend/` | browser TypeScript |
