@@ -58,12 +58,16 @@ export function stripTags(value: unknown = ""): string {
  * The closing tags allow trailing content (`</script >`, `</script data-x>`) because HTML parsers
  * accept those. A stricter `</script>` would leave the script body in the text, and script bodies
  * routinely mention model numbers and availability wording — exactly what the classifier reads.
+ *
+ * Both tags still require whitespace, `/` or `>` right after the name. A word boundary would end
+ * the script at a `</script-x>` written inside a JavaScript string, which a browser reads as ordinary
+ * script text — releasing the rest of the script into the page text this function exists to produce.
  */
 export function visibleText(html: unknown = ""): string {
   return stripTags(
     String(html)
-      .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, " ")
-      .replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, " "),
+      .replace(/<script(?:[\s/][^>]*)?>[\s\S]*?<\/script(?:[\s/][^>]*)?>/gi, " ")
+      .replace(/<style(?:[\s/][^>]*)?>[\s\S]*?<\/style(?:[\s/][^>]*)?>/gi, " "),
   );
 }
 

@@ -58,8 +58,8 @@ function listingPage(category: AvacCategory, page = 1): AvacPage {
 function visibleText(html: unknown = ""): string {
   return cleanText(
     String(html)
-      .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, " ")
-      .replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, " ")
+      .replace(/<script(?:[\s/][^>]*)?>[\s\S]*?<\/script(?:[\s/][^>]*)?>/gi, " ")
+      .replace(/<style(?:[\s/][^>]*)?>[\s\S]*?<\/style(?:[\s/][^>]*)?>/gi, " ")
       .replace(/<br\s*\/?>/gi, " "),
   );
 }
