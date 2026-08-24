@@ -88,8 +88,7 @@ async function runProjectionBatch(
   );
   return results.reduce(
     (removed, result, index) =>
-      removed +
-      (statements[index]?.countsAsRemoval ? Number(result?.meta?.changes || 0) : 0),
+      removed + (statements[index]?.countsAsRemoval ? Number(result?.meta?.changes || 0) : 0),
     0,
   );
 }
