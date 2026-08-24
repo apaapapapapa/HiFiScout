@@ -39,8 +39,8 @@ export function shopsForCron(cron: string): ShopPlugin[] {
  * Select exactly one shop for a dedicated cron event.
  *
  * A cron owned by one shop simply returns that shop. When multiple shops share the same trigger,
- * the sequence is anchored at minute :01 and advances every 30 minutes. With AudioUnion first and
- * HiFiDo second in registry order this yields :01 AudioUnion, :31 HiFiDo, then repeats hourly.
+ * the sequence is anchored at minute :01 and advances every 30 minutes, so two shops sharing an
+ * hourly trigger take the :01 and :31 firings in registry order and each keeps an hourly cadence.
  */
 export function shopForCronAtScheduledTime(cron: string, scheduledAt: Date): ShopPlugin | null {
   const shops = shopsForCron(cron);

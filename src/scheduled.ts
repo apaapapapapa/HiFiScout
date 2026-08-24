@@ -41,10 +41,10 @@ export const GENERAL_CRON = "*/5 * * * *";
 export const CRAWL_ROTATION_CRON = "6-56/10 * * * *";
 
 /**
- * Cloudflare Free permits five cron triggers per account. AudioUnion and HiFiDo share one trigger,
- * so production now uses four and keeps one spare. Less time-sensitive daily/monthly jobs still
- * piggyback on GENERAL_CRON rather than consuming another trigger. Times are the first five-minute
- * tick after the former dedicated schedule.
+ * Cloudflare Free permits five cron triggers per account. Shops with a dedicated cadence may share
+ * one trigger, so production stays under that limit with a slot to spare. Less time-sensitive
+ * daily/monthly jobs still piggyback on GENERAL_CRON rather than consuming another trigger. Times
+ * are the first five-minute tick after the former dedicated schedule.
  */
 const DAILY_MAINTENANCE_UTC_HOUR = 18;
 const DAILY_MAINTENANCE_UTC_MINUTE = 20;
