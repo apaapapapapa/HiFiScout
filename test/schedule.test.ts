@@ -73,23 +73,19 @@ test("AudioUnion and HiFiDo share one cron and alternate every thirty minutes fr
     ["audiounion", "hifido"],
   );
   assert.equal(
-    shopForCronAtScheduledTime(SHARED_HOURLY_CRON, new Date("2026-08-24T00:01:00.000Z"))
-      ?.key,
+    shopForCronAtScheduledTime(SHARED_HOURLY_CRON, new Date("2026-08-24T00:01:00.000Z"))?.key,
     "audiounion",
   );
   assert.equal(
-    shopForCronAtScheduledTime(SHARED_HOURLY_CRON, new Date("2026-08-24T00:31:00.000Z"))
-      ?.key,
+    shopForCronAtScheduledTime(SHARED_HOURLY_CRON, new Date("2026-08-24T00:31:00.000Z"))?.key,
     "hifido",
   );
   assert.equal(
-    shopForCronAtScheduledTime(SHARED_HOURLY_CRON, new Date("2026-08-24T01:01:00.000Z"))
-      ?.key,
+    shopForCronAtScheduledTime(SHARED_HOURLY_CRON, new Date("2026-08-24T01:01:00.000Z"))?.key,
     "audiounion",
   );
   assert.equal(
-    shopForCronAtScheduledTime(SHARED_HOURLY_CRON, new Date("2026-08-24T01:31:00.000Z"))
-      ?.key,
+    shopForCronAtScheduledTime(SHARED_HOURLY_CRON, new Date("2026-08-24T01:31:00.000Z"))?.key,
     "hifido",
   );
   assert.equal(shopForCronAtScheduledTime(SHARED_HOURLY_CRON, new Date("invalid")), null);
@@ -172,7 +168,9 @@ test("production cron configuration leaves one spare Cloudflare Free trigger", (
   const crons: string[] = wranglerConfig.triggers?.crons || [];
   const dedicatedCrons = [
     ...new Set(
-      shopsWithDedicatedCron().map((plugin) => plugin.definition.scheduleCron).filter(Boolean),
+      shopsWithDedicatedCron()
+        .map((plugin) => plugin.definition.scheduleCron)
+        .filter(Boolean),
     ),
   ];
   const handled = [GENERAL_CRON, CRAWL_ROTATION_CRON, ...dedicatedCrons];
