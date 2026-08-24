@@ -38,7 +38,7 @@ function writes(db: { calls: readonly CapturedStatement[] }): CapturedStatement[
   return db.calls.filter((statement) => /^\s*(INSERT|DELETE|UPDATE)/.test(statement.sql));
 }
 
-test("entity rows are written before the memberships that point at them", async () => {
+test("entity and membership transitions are committed atomically before aggregate refresh", async () => {
   const db = captureDatabase(syncResults());
   await syncProductSearchEntities(db, "hifido", ["source-1"]);
 
@@ -61,10 +61,28 @@ test("entity rows are written before the memberships that point at them", async 
     "membership",
     "membership",
     "membership",
+    "prune",
+    "prune",
     "refresh",
     "refresh",
     "prune",
   ]);
+  assert.equal(db.batched.length, 8);
+  assert.deepEqual(
+    writes({ calls: db.batched }).map((statement) =>
+      /DELETE FROM product_search_entities/.test(statement.sql) ? "prune" : "projection-write",
+    ),
+    [
+      "projection-write",
+      "projection-write",
+      "projection-write",
+      "projection-write",
+      "projection-write",
+      "projection-write",
+      "prune",
+      "prune",
+    ],
+  );
 });
 
 test("catalog grouping still requires a matched resolution against a verified product", async () => {
@@ -146,9 +164,10 @@ test("entities the listings are leaving are refreshed alongside the ones they jo
 
   await syncProductSearchEntities(db, "hifido", ["source-1"]);
 
-  const prune = writes(db).find((statement) =>
+  const prunes = writes(db).filter((statement) =>
     /DELETE FROM product_search_entities/.test(statement.sql),
   );
+  const prune = prunes.at(-1);
   assert.ok(prune);
   assert.deepEqual([...prune.binds].sort(), [12, 55]);
   assert.match(prune.sql, /NOT EXISTS/);

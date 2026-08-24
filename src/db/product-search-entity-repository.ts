@@ -68,6 +68,31 @@ async function runStatement(
   return Number(result?.meta?.changes || 0);
 }
 
+interface ProjectionBatchStatement {
+  sql: string;
+  binds: readonly unknown[];
+  countsAsRemoval?: boolean;
+}
+
+/**
+ * D1 `batch()` is a transaction. Keeping entity creation, membership movement and scoped empty
+ * entity pruning in one batch prevents a Worker termination from committing only half of a
+ * Product Search projection transition.
+ */
+async function runProjectionBatch(
+  db: QueryableDatabase,
+  statements: readonly ProjectionBatchStatement[],
+): Promise<number> {
+  const results = await db.batch(
+    statements.map(({ sql, binds }) => db.prepare(sql).bind(...binds)),
+  );
+  return results.reduce(
+    (removed, result, index) =>
+      removed + (statements[index]?.countsAsRemoval ? Number(result?.meta?.changes || 0) : 0),
+    0,
+  );
+}
+
 async function selectNumbers(
   db: QueryableDatabase,
   sql: string,
@@ -167,6 +192,28 @@ async function entityIdsForListings(
   return found;
 }
 
+function emptyEntityPruneStatements(
+  entityIds: readonly number[],
+  listingIds: readonly number[],
+): ProjectionBatchStatement[] {
+  const statements: ProjectionBatchStatement[] = [];
+  for (const entityChunk of chunks([...new Set(entityIds)])) {
+    statements.push({
+      sql: deleteEmptyEntitiesSql(scopeClause("id", entityChunk.length)),
+      binds: entityChunk,
+      countsAsRemoval: true,
+    });
+  }
+  for (const listingChunk of chunks([...new Set(listingIds)])) {
+    statements.push({
+      sql: deleteEmptyEntitiesSql(scopeClause("fallback_listing_id", listingChunk.length)),
+      binds: listingChunk,
+      countsAsRemoval: true,
+    });
+  }
+  return statements;
+}
+
 async function refreshEntities(
   db: QueryableDatabase,
   entityIds: readonly number[],
@@ -188,9 +235,11 @@ async function refreshEntities(
 /**
  * Brings the product-level model in line with one shop's latest crawl.
  *
- * Entity rows are written before membership so a member always has an entity to point at, and the
- * affected entity set is captured both before and after the membership rewrite: a listing that has
- * just been matched must also re-aggregate the fallback entity it is leaving behind.
+ * Entity rows are written before membership so a member always has an entity to point at. Each
+ * listing chunk is committed as one D1 batch transaction, including pruning entities the chunk
+ * leaves behind and transient per-listing fallback entities superseded by exact-identity grouping.
+ * The affected entity set is still captured before and after the rewrite so surviving entities get
+ * their stored aggregates and FTS evidence refreshed.
  */
 export async function syncProductSearchEntities(
   db: QueryableDatabase,
@@ -211,15 +260,22 @@ export async function syncProductSearchEntities(
   // try to point at it.
   const listingIds = [...new Set([...seeds, ...peers])].sort((left, right) => left - right);
 
-  const before = await entityIdsForListings(db, listingIds);
+  const before = new Set<number>();
+  let removedDuringProjection = 0;
   for (const chunk of chunks(listingIds)) {
+    const chunkBefore = [...new Set(await entityIdsForListings(db, chunk))];
+    for (const entityId of chunkBefore) before.add(entityId);
+
     const listingScope = scopeClause("p.id", chunk.length);
-    await runStatement(db, upsertCatalogEntitiesSql(listingScope), chunk);
-    await runStatement(db, upsertFallbackEntitiesSql(listingScope), chunk);
-    await runStatement(db, deleteInactiveOffersSql(listingScope), chunk);
-    await runStatement(db, upsertCatalogOffersSql(listingScope), chunk);
-    await runStatement(db, upsertFallbackOffersSql(listingScope), chunk);
-    await runStatement(db, upsertExactIdentityGroupOffersSql(listingScope), chunk);
+    removedDuringProjection += await runProjectionBatch(db, [
+      { sql: upsertCatalogEntitiesSql(listingScope), binds: chunk },
+      { sql: upsertFallbackEntitiesSql(listingScope), binds: chunk },
+      { sql: deleteInactiveOffersSql(listingScope), binds: chunk },
+      { sql: upsertCatalogOffersSql(listingScope), binds: chunk },
+      { sql: upsertFallbackOffersSql(listingScope), binds: chunk },
+      { sql: upsertExactIdentityGroupOffersSql(listingScope), binds: chunk },
+      ...emptyEntityPruneStatements(chunkBefore, chunk),
+    ]);
   }
   const after = await entityIdsForListings(db, listingIds);
 
@@ -228,7 +284,7 @@ export async function syncProductSearchEntities(
   return {
     listing_count: listingIds.length,
     entity_count: affected.length,
-    removed_entity_count: removedCount,
+    removed_entity_count: removedDuringProjection + removedCount,
   };
 }
 
