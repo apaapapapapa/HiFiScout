@@ -16,6 +16,7 @@ import { classifyCategoryEvidence, summarizeCategoryEvidence } from "./category-
 import { collectListingCategoryEvidence } from "./category-evidence.js";
 import { resolveManufacturer, MANUFACTURER_RESOLVER_VERSION } from "./manufacturer-resolver.js";
 import { manufacturerIdForFilter, normalizeManufacturerKey } from "./manufacturers.js";
+import { presentationColorLabel } from "./model-presentation-color.js";
 import { resolveModel, MODEL_RESOLVER_VERSION } from "./model-resolver.js";
 import { inferFeatureFacts, normalizeFeatureFacts } from "./product-features.js";
 
@@ -133,6 +134,7 @@ export function normalizeCatalogProduct(
       model: model.model,
       rawModel: model.rawModel,
       normalizedModel: model.normalizedModel,
+      presentationColor: presentationColorLabel(model.presentationColors),
       modelResolutionStatus: model.status,
       modelResolutionMethod: model.method,
       modelResolutionConfidence: model.confidence,
@@ -157,6 +159,7 @@ export function normalizeCatalogProduct(
           normalizedModel: model.normalizedModel,
           removedAnnotations: model.removedAnnotations,
           unclassifiedTokens: model.unclassifiedTokens,
+          presentationColors: model.presentationColors,
         },
       } satisfies ProductMetadata,
     },

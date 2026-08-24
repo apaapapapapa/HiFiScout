@@ -30,6 +30,7 @@ function entityRow(primaryCategoryId: string): ProductSearchEntityRow {
     manufacturer: "Example",
     model: "EX-1",
     normalized_model: "EX1",
+    presentation_colors: "",
     primary_category_id: primaryCategoryId,
     offer_count: 1,
     in_stock_offer_count: 1,

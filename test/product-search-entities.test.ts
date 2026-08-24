@@ -63,6 +63,8 @@ test("entity and membership transitions are committed atomically before aggregat
     "membership",
     "prune",
     "prune",
+    // Aggregates, finishes and search terms are three statements, in that order.
+    "refresh",
     "refresh",
     "refresh",
     "prune",

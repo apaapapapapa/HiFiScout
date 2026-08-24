@@ -343,6 +343,7 @@ async function loadOfferAggregates(
     const result = await db
       .prepare(`
         SELECT m.entity_id AS entity_id,
+               group_concat(DISTINCT NULLIF(p.presentation_color, '')) AS presentation_colors,
                COUNT(*) AS offer_count,
                SUM(CASE WHEN p.stock_status = 'in_stock' THEN 1 ELSE 0 END) AS in_stock_offer_count,
                SUM(CASE WHEN p.stock_status = 'sold_out' THEN 1 ELSE 0 END) AS sold_out_offer_count,

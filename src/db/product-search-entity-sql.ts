@@ -241,6 +241,33 @@ export function refreshEntityAggregatesSql(entityScope = ""): string {
   `;
 }
 
+/**
+ * Recomputes the finishes an entity's offers are in.
+ *
+ * Its own statement for the same reason the search terms are: {@link refreshEntityAggregatesSql} is
+ * copied verbatim into the repair migrations that replay it, so growing it would leave those
+ * migrations describing SQL that no longer exists. A finish also changes on a different cadence
+ * from a price — only when a listing joins, leaves, or is re-resolved.
+ *
+ * `group_concat` gives no ordering guarantee, which is deliberate here: the read mapper orders the
+ * labels by the finish catalog, so the card is stable however SQLite happened to concatenate them.
+ */
+export function refreshEntityPresentationColorsSql(entityScope = ""): string {
+  return `
+    UPDATE product_search_entities AS e
+    SET presentation_colors = agg.presentation_colors
+    FROM (
+      SELECT m.entity_id AS entity_id,
+             COALESCE(group_concat(DISTINCT NULLIF(p.presentation_color, '')), '') AS presentation_colors
+      FROM product_search_entity_offers m
+      JOIN products p ON p.id = m.listing_product_id
+      WHERE p.is_active = 1${entityScope}
+      GROUP BY m.entity_id
+    ) AS agg
+    WHERE e.id = agg.entity_id AND e.presentation_colors IS NOT agg.presentation_colors
+  `;
+}
+
 /** How many member listings may contribute seller evidence to one entity's search terms. */
 export const SEARCH_TERM_OFFER_SAMPLE = 3;
 

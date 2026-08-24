@@ -151,6 +151,7 @@ test("model replay keeps empty raw evidence and recovers after downstream failur
       model TEXT NOT NULL,
       raw_model TEXT NOT NULL,
       normalized_model TEXT NOT NULL,
+      presentation_color TEXT NOT NULL DEFAULT '',
       model_resolution_status TEXT NOT NULL,
       model_resolution_method TEXT NOT NULL,
       model_resolution_confidence TEXT NOT NULL,

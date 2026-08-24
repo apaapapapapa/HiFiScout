@@ -94,6 +94,8 @@ export interface ProductRow {
   manufacturer_resolver_version: number;
   raw_model: string;
   normalized_model: string;
+  /** Canonical finish label, or `""`. Never part of `normalized_model`; see the 0050 migration. */
+  presentation_color: string;
   model_resolution_status: ResolutionStatus;
   model_resolution_method: ModelResolutionMethod;
   model_resolution_confidence: ResolutionConfidence;
@@ -139,6 +141,7 @@ export type ExistingProductRow = Pick<
   | "model"
   | "raw_model"
   | "normalized_model"
+  | "presentation_color"
   | "model_resolution_status"
   | "model_resolution_method"
   | "model_resolution_confidence"
@@ -687,6 +690,8 @@ export interface ProductSearchEntityRow {
   manufacturer: string;
   model: string;
   normalized_model: string;
+  /** Comma-joined canonical finishes of the member offers, in no particular order. */
+  presentation_colors: string;
   primary_category_id: string;
   offer_count: number;
   in_stock_offer_count: number;
@@ -705,6 +710,8 @@ export interface ProductSearchEntityRow {
 /** Per-entity aggregates recomputed over the offers that satisfy the active offer filters. */
 export interface ProductSearchOfferAggregateRow {
   entity_id: number;
+  /** Null when no matching offer named a finish; `""` is not distinguished from it. */
+  presentation_colors: string | null;
   offer_count: number;
   in_stock_offer_count: number;
   sold_out_offer_count: number;
@@ -724,6 +731,7 @@ export interface ProductSearchOfferRow {
   source_url: string;
   title: string;
   condition_text: string;
+  presentation_color: string;
   price_yen: number | null;
   previous_price_yen: number | null;
   stock_status: StockStatus;

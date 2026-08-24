@@ -88,6 +88,8 @@ export interface ProductOffer {
   source_url: string;
   title: string;
   condition_text: string;
+  /** Canonical finish this shop listed, or `""`. One spelling per finish across every shop. */
+  presentation_color: string;
   price_yen: number | null;
   previous_price_yen: number | null;
   stock_status: StockStatus;
@@ -112,6 +114,14 @@ export interface ProductSearchItem {
   manufacturer: string;
   manufacturer_id: string;
   model: string;
+  /**
+   * Finishes the matching offers are in, in catalog order.
+   *
+   * The finish is not in `model` by design — that is what lets two colours of one product be one
+   * card — so it is listed here for the card to render beside the name. Optional only for
+   * pre-colour favorite snapshots.
+   */
+  presentation_colors?: string[];
   primary_category_id: string;
   /** Canonical leaf plus its ancestor ids. Optional only for pre-Phase-4 favorite snapshots. */
   category_ids?: string[];

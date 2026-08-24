@@ -9,6 +9,7 @@ import {
   offerAvailability,
   offerAvailabilityClass,
   priceSummary,
+  productColors,
   safeExternalUrl,
   stockLabel,
   syncShopPresentations,
@@ -131,6 +132,7 @@ export function ProductCard({
 }: ProductCardProps) {
   const activity = activityData(product, now);
   const title = product.model || product.representative_offer?.title || "商品名不明";
+  const colors = productColors(product);
   const multiOffer = product.offer_count > 1;
   const sourceUrl = safeExternalUrl(product.representative_offer?.source_url);
   const condition = multiOffer ? "" : product.representative_offer?.condition_text || "";
@@ -194,6 +196,16 @@ export function ProductCard({
               {title}
             </a>
           )}
+          {/* Beside the name, not inside it: the model is what groups the colours together. */}
+          {colors.length ? (
+            <span className="product-colors">
+              {colors.map((color) => (
+                <span className="product-color" key={color}>
+                  {color}
+                </span>
+              ))}
+            </span>
+          ) : null}
         </h2>
         <div className="product-submeta">
           <span className="category">{product.category || "カテゴリ不明"}</span>
@@ -301,6 +313,9 @@ function OfferRow({
     <li className="offer">
       <div className="offer-head">
         <span className={`offer-shop shop-${offer.shop_key}`}>{shopName(offer.shop_key)}</span>
+        {offer.presentation_color ? (
+          <span className="product-color">{offer.presentation_color}</span>
+        ) : null}
         {offer.condition_text ? <span className="condition">{offer.condition_text}</span> : null}
         <span className={`stock ${offer.stock_status}`}>{stockLabel(offer.stock_status)}</span>
       </div>
@@ -356,10 +371,22 @@ export function OffersContent({
     );
   const { product, offers } = state.data;
   const heading = product.model || product.representative_offer?.title || "商品";
+  const colors = productColors(product);
   return (
     <>
       <p className="maker">{product.manufacturer || "メーカー不明"}</p>
-      <h2 id="offers-title">{heading}</h2>
+      <h2 id="offers-title">
+        {heading}
+        {colors.length ? (
+          <span className="product-colors">
+            {colors.map((color) => (
+              <span className="product-color" key={color}>
+                {color}
+              </span>
+            ))}
+          </span>
+        ) : null}
+      </h2>
       {product.identity_kind === "catalog" ? (
         <p className="offers-note">
           {product.shop_count}店舗 / {product.offer_count}件の在庫

@@ -51,6 +51,7 @@ function existingProduct(overrides: Partial<ExistingProductRow> = {}): ExistingP
     model: "ME1TX",
     raw_model: "ME1TX",
     normalized_model: "me1tx",
+    presentation_color: "",
     model_resolution_status: "resolved",
     model_resolution_method: "seller_model",
     model_resolution_confidence: "medium",

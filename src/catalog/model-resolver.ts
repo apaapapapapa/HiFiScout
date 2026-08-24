@@ -11,7 +11,11 @@ import {
   normalizeManufacturerKey,
   stripBracketedManufacturerAlias,
 } from "./manufacturers.js";
-import { PRESENTATION_COLOR_PATTERNS } from "./model-presentation-color.js";
+import {
+  PRESENTATION_COLOR_PATTERNS,
+  presentationColorLabel,
+  presentationColorLabels,
+} from "./model-presentation-color.js";
 import { identityModelParts, normalizeIdentityModel } from "./product-identity.js";
 import type {
   ManufacturerAliasEvidence,
@@ -21,7 +25,7 @@ import type {
   ResolutionStatus,
 } from "./types.js";
 
-export const MODEL_RESOLVER_VERSION = 7;
+export const MODEL_RESOLVER_VERSION = 8;
 
 export type ModelResolver = (input: ModelResolutionInput) => ModelResolutionResult;
 
@@ -40,7 +44,12 @@ interface AnnotationRule {
 interface StrippedModel {
   text: string;
   removed: string[];
+  /** Raw finish captures, in the order they appeared in the source text. */
+  colors: string[];
 }
+
+/** The rule whose captures are kept instead of discarded with the text they matched. */
+const PRESENTATION_COLOR_RULE = "presentation_color";
 
 const OPENING_BRACKETS = String.raw`【《[［(（`;
 const CLOSING_BRACKETS = String.raw`】》\]］)）`;
@@ -198,34 +207,35 @@ function commonPrefixLength(left: string, right: string): number {
  */
 function preferredBracketedModelAlias(value: string): StrippedModel {
   const match = value.match(/^(.+?)\s+\[([A-Za-z0-9][A-Za-z0-9 ._+/-]{4,})\]\s*$/u);
-  if (!match) return { text: value, removed: [] };
+  if (!match) return { text: value, removed: [], colors: [] };
 
   const leading = tidy(match[1]);
   const alias = tidy(match[2]);
   const normalizedLeading = normalizeIdentityModel(leading);
   const normalizedAlias = normalizeIdentityModel(alias);
   const shorterLength = Math.min(normalizedLeading.length, normalizedAlias.length);
-  if (!shorterLength) return { text: value, removed: [] };
+  if (!shorterLength) return { text: value, removed: [], colors: [] };
 
   const common = commonPrefixLength(normalizedLeading, normalizedAlias);
   if (
     common < BRACKETED_ALIAS_MIN_COMMON_PREFIX ||
     common / shorterLength < BRACKETED_ALIAS_MIN_COMMON_RATIO
   ) {
-    return { text: value, removed: [] };
+    return { text: value, removed: [], colors: [] };
   }
 
   const sourceVariants = identityModelParts(value).variants;
   const aliasVariants = identityModelParts(alias).variants;
   if (!sourceVariants.every((variant) => aliasVariants.includes(variant))) {
-    return { text: value, removed: [] };
+    return { text: value, removed: [], colors: [] };
   }
-  return { text: alias, removed: ["seller_model_alias"] };
+  return { text: alias, removed: ["seller_model_alias"], colors: [] };
 }
 
 function stripSellerAnnotations(value: string): StrippedModel {
   const preferred = preferredBracketedModelAlias(value);
   const removed = [...preferred.removed];
+  const colors: string[] = [];
   let text = preferred.text;
   // Rules run to a fixed point. A seller who stacks annotations (`… シルバー 真空管プリメインアンプ`)
   // hides each one behind the last, and which of them survives should not depend on the order the
@@ -236,11 +246,17 @@ function stripSellerAnnotations(value: string): StrippedModel {
       const next = tidy(text.replace(rule.pattern, " "));
       if (!next || next === text) continue;
       if (!removed.includes(rule.name)) removed.push(rule.name);
+      if (rule.name === PRESENTATION_COLOR_RULE) {
+        // Every colour pattern is anchored at the end, so each further match sits to the left of
+        // the one before it. Unshifting recovers the order the seller wrote (`ブラック/ゴールド`).
+        const capture = text.match(rule.pattern)?.[1];
+        if (capture) colors.unshift(capture);
+      }
       text = next;
     }
     if (text === before) break;
   }
-  return { text, removed };
+  return { text, removed, colors };
 }
 
 function isSubsequence(needle: string, haystack: string): boolean {
@@ -342,6 +358,7 @@ function unresolvedResult(rawModel: string, model: string): ModelResolutionResul
     confidence: "none",
     removedAnnotations: [],
     unclassifiedTokens: [],
+    presentationColors: [],
   };
 }
 
@@ -365,6 +382,10 @@ function resolvePreparedModel(
   const normalizedModel = normalizeIdentityModel(model);
   if (!normalizedModel) return unresolvedResult(rawModel, model || rawModel);
 
+  // A finish is only reported when its text actually left the model. When the identity guard rolls
+  // the strip back, the colour is still sitting in `model`, and claiming it twice would put it on
+  // the card beside a model that already spells it out.
+  const presentationColors = safe ? presentationColorLabels(stripped.colors) : [];
   const unclassifiedTokens = [
     ...(safe ? [] : ["identity_guard"]),
     ...unclassifiedResidue(model),
@@ -380,6 +401,7 @@ function resolvePreparedModel(
       confidence: "low",
       removedAnnotations: safe ? stripped.removed : [],
       unclassifiedTokens,
+      presentationColors,
     };
   }
 
@@ -394,6 +416,7 @@ function resolvePreparedModel(
       confidence: "medium",
       removedAnnotations: stripped.removed,
       unclassifiedTokens,
+      presentationColors,
     };
   }
   return {
@@ -405,6 +428,7 @@ function resolvePreparedModel(
     confidence: "high",
     removedAnnotations: stripped.removed,
     unclassifiedTokens,
+    presentationColors,
   };
 }
 
@@ -440,6 +464,7 @@ export function applyModelResolution(
     rawModel: resolution.rawModel,
     model: resolution.model,
     normalizedModel: resolution.normalizedModel,
+    presentationColor: presentationColorLabel(resolution.presentationColors),
     modelResolutionStatus: resolution.status,
     modelResolutionMethod: resolution.method,
     modelResolutionConfidence: resolution.confidence,
@@ -453,6 +478,7 @@ export function applyModelResolution(
         normalizedModel: resolution.normalizedModel,
         removedAnnotations: resolution.removedAnnotations,
         unclassifiedTokens: resolution.unclassifiedTokens,
+        presentationColors: resolution.presentationColors,
       },
     },
   };

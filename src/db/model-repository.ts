@@ -12,6 +12,7 @@ import {
   applyManufacturerResolution,
   createManufacturerResolver,
 } from "../catalog/manufacturer-resolver.js";
+import { presentationColorLabel } from "../catalog/model-presentation-color.js";
 import {
   applyModelResolution,
   createModelResolver,
@@ -63,6 +64,7 @@ interface ModelReplayListingRow {
   model: string;
   raw_model: string;
   normalized_model: string;
+  presentation_color: string;
   model_resolution_status: string;
   model_resolution_method: string;
   model_resolution_confidence: string;
@@ -111,7 +113,8 @@ export async function selectStaleModelListings(
   const result = await db
     .prepare(`
       SELECT id, shop_key, source_id, canonical_manufacturer_id, model, raw_model, normalized_model,
-             model_resolution_status, model_resolution_method, model_resolution_confidence,
+             presentation_color, model_resolution_status, model_resolution_method,
+             model_resolution_confidence,
              model_resolver_version, remediation_projection_required, title, metadata_json
       FROM products
       WHERE is_active = 1 AND id > ?
@@ -159,9 +162,11 @@ export async function reprocessStaleModelListings(
       title: row.title,
       manufacturerId: row.canonical_manufacturer_id,
     });
+    const presentationColor = presentationColorLabel(resolution.presentationColors);
     const moved =
       row.model !== resolution.model ||
       row.normalized_model !== resolution.normalizedModel ||
+      (row.presentation_color ?? "") !== presentationColor ||
       row.model_resolution_status !== resolution.status ||
       row.model_resolution_method !== resolution.method ||
       row.model_resolution_confidence !== resolution.confidence;
@@ -173,6 +178,7 @@ export async function reprocessStaleModelListings(
       normalizedModel: resolution.normalizedModel,
       removedAnnotations: resolution.removedAnnotations,
       unclassifiedTokens: resolution.unclassifiedTokens,
+      presentationColors: resolution.presentationColors,
     };
     // The resolver version means the algorithm ran. The separate pending bit remains set until all
     // downstream read models have refreshed, so a failure cannot make this row disappear from the
@@ -181,7 +187,7 @@ export async function reprocessStaleModelListings(
       db
         .prepare(`
           UPDATE products SET
-            model = ?, normalized_model = ?, model_resolution_status = ?,
+            model = ?, normalized_model = ?, presentation_color = ?, model_resolution_status = ?,
             model_resolution_method = ?, model_resolution_confidence = ?,
             model_resolver_version = ?,
             remediation_projection_required = 1,
@@ -196,6 +202,7 @@ export async function reprocessStaleModelListings(
         .bind(
           resolution.model,
           resolution.normalizedModel,
+          presentationColor,
           resolution.status,
           resolution.method,
           resolution.confidence,

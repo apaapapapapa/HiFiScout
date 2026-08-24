@@ -150,6 +150,11 @@ export function isProductOffer(value: unknown): value is ProductOffer {
     "last_seen_at",
   ] as const;
   if (!stringFields.every((field) => typeof value[field] === "string")) return false;
+  // Optional for the same reason `category_ids` is: a favorite stored by an older build predates
+  // the field, and discarding the card over a finish label would lose the user's favorite.
+  if (value.presentation_color !== undefined && typeof value.presentation_color !== "string") {
+    return false;
+  }
 
   return (
     isNonNegativeInteger(value.listing_product_id) &&
@@ -181,6 +186,9 @@ export function isProductSearchItem(value: unknown): value is ProductSearchItem 
   ] as const;
   if (!stringFields.every((field) => typeof value[field] === "string")) return false;
   if (!value.key) return false;
+  if (value.presentation_colors !== undefined && !isStringArray(value.presentation_colors)) {
+    return false;
+  }
 
   return (
     (value.identity_kind === "catalog" || value.identity_kind === "unresolved_listing") &&

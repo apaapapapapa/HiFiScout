@@ -9,6 +9,19 @@ export function stockLabel(status: DisplayOffer["stock_status"]): string {
   return status === "sold_out" ? "売り切れ" : "在庫状態未確認";
 }
 
+/**
+ * The finishes to show beside a product name.
+ *
+ * A product groups its colours rather than splitting into one card per colour, so this can be
+ * several labels. Falls back to the representative offer for a card restored from a favorite
+ * written before the product-level field existed.
+ */
+export function productColors(product: DisplayProduct): string[] {
+  if (product.presentation_colors?.length) return product.presentation_colors;
+  const offerColor = product.representative_offer?.presentation_color;
+  return offerColor ? [offerColor] : [];
+}
+
 export function priceSummary(product: DisplayProduct): string {
   if (product.lowest_price_yen == null) return "価格不明";
   const from = yen.format(product.lowest_price_yen);
