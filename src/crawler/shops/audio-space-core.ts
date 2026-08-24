@@ -107,18 +107,16 @@ function parseSection(sectionHtml: string, rawCategory: string): SellerProduct[]
     const rowText = cleanText(rowMatch[1]);
     if (!manufacturer || !saleText) continue;
 
-    const soldOut = SOLD_PATTERN.test(saleText) || SOLD_PATTERN.test(rowText);
+    // The used page keeps a long historical archive of sold items below the current inventory.
+    // Treat those rows as history, not as listings to re-normalize and rewrite on every crawl.
+    if (SOLD_PATTERN.test(saleText) || SOLD_PATTERN.test(rowText)) continue;
+
     const negotiating = NEGOTIATING_PATTERN.test(rowText);
-    const stockStatus = availabilityFromSignals({
-      soldOut,
-      inStock: !soldOut && !negotiating,
-    });
+    const stockStatus = availabilityFromSignals({ inStock: !negotiating });
     const category =
       CATEGORY_BY_SELLER_LABEL[rawCategory] ||
       inferCategory(`${rawCategory} ${productName} ${anchor.label}`);
-    const conditionText = [noteText, soldOut ? "売約済み" : "", negotiating ? "商談中" : ""]
-      .filter(Boolean)
-      .join(" ");
+    const conditionText = [noteText, negotiating ? "商談中" : ""].filter(Boolean).join(" ");
 
     products.push({
       sourceId: stableSourceId(anchor.href, anchor.label),
@@ -129,7 +127,7 @@ function parseSection(sectionHtml: string, rawCategory: string): SellerProduct[]
       rawCategory,
       category,
       conditionText,
-      priceYen: soldOut ? null : parseYen(saleText),
+      priceYen: parseYen(saleText),
       stockStatus,
       sourceUrl: anchor.href,
     });
