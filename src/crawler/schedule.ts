@@ -16,6 +16,7 @@ import type { ShopPlugin } from "./types.js";
 const ROUND_ROBIN_SLOT_MS = 10 * 60_000;
 /** Shared dedicated trigger starts at :01 and advances to the next shop every 30 minutes. */
 const SHARED_DEDICATED_SLOT_MS = 30 * 60_000;
+/** :01 is the phase anchor, so every hour starts with the first registered shared shop. */
 const SHARED_DEDICATED_ANCHOR_OFFSET_MS = 60_000;
 
 /** Shops that own or share a dedicated cron trigger. */
