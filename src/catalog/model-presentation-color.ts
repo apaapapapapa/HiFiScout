@@ -1,17 +1,17 @@
 /**
  * Seller-facing color and finish presentations that do not change product identity.
  *
- * Long-form finish names are safe as trailing annotations. Short color codes are accepted only
- * behind strong presentation syntax (brackets or a whitespace-delimited separator), so legitimate
- * model suffixes such as `SE` and compact model names such as `FS-700S3/B` remain identity-bearing.
+ * A color word is only a *candidate* presentation token. Audio manufacturers also use color words
+ * as model/grade names (`MC Cadenza Black`, `2M Blue`), so a bare plain color suffix is deliberately
+ * kept in the model. We remove a color only when seller syntax makes the presentation intent clear,
+ * or when the finish wording is self-describing (for example `グロスブラック`).
  *
- * A finish is not identity — `MC Cadenza Black` and `MC Cadenza Bronze` are one catalog product,
- * and removing the finish is what lets the two group together. It is still the thing a shopper is
- * looking at, so the patterns capture what they remove and the capture is normalized to one
- * spelling per finish here, rather than being deleted along with the text.
+ * Short color codes are accepted only behind strong presentation syntax (brackets or a
+ * whitespace-delimited separator), so legitimate model suffixes such as `SE` and compact model
+ * names such as `FS-700S3/B` remain identity-bearing.
  *
- * The catalog below is the single source for both: the match patterns are generated from the same
- * spellings the normalizer looks up, so a finish cannot be recognized by one and not the other.
+ * The catalog below is the single source for both matching and canonical display spelling, so a
+ * finish cannot be recognized by the normalizer and missed by the matcher, or the reverse.
  */
 
 import type { PresentationColorDefinition } from "./types.js";
@@ -21,13 +21,13 @@ import type { PresentationColorDefinition } from "./types.js";
  *
  * Order is display order: a product offered in several finishes lists them this way rather than in
  * whatever order its offers happened to be aggregated. Qualified finishes stay separate entries —
- * `グロスブラック` and `ピアノブラック` are different products to look at, and folding them into
+ * `グロスブラック` and `ピアノブラック` are different things to look at, and folding them into
  * `ブラック` would claim a listing said something it did not.
  *
- * `aliases` are long-form spellings, matched on their own. `codes` are the short forms, which are
- * ambiguous enough (`B`, `S`, `N`) that the patterns only accept them inside brackets or behind a
- * whitespace-delimited separator. Multi-word spellings are written with their words separated;
- * any separator, or none, matches (`グロス ブラック` covers `グロス・ブラック` and `グロスブラック`).
+ * `aliases` are long-form spellings. `codes` are short forms, which are ambiguous enough (`B`, `S`,
+ * `N`) that the patterns only accept them inside explicit presentation syntax. Multi-word spellings
+ * are written with their words separated; any separator, or none, matches (`グロス ブラック`
+ * covers `グロス・ブラック` and `グロスブラック`).
  */
 const PRESENTATION_COLOR_SOURCE: readonly (readonly [
   id: string,
@@ -85,6 +85,25 @@ export const PRESENTATION_COLORS: readonly PresentationColorDefinition[] =
     Object.freeze({ id, name, aliases, codes, order }),
   );
 
+/**
+ * Bare suffix removal is intentionally narrower than recognition.
+ *
+ * These qualified surface descriptions carry presentation semantics in the wording itself. Plain
+ * `Black`, `Blue`, `Bronze`, `Gold`, wood names, etc. do not: audio manufacturers routinely use
+ * those as identity-bearing model or grade names, so they require explicit seller syntax instead.
+ */
+const SAFE_BARE_FINISH_IDS = new Set([
+  "gloss-black",
+  "satin-black",
+  "matte-black",
+  "piano-black",
+  "gloss-white",
+  "satin-white",
+  "matte-white",
+  "dark-silver",
+  "champagne-gold",
+]);
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -105,10 +124,15 @@ function alternation(spellings: readonly string[]): string {
   return `(?:${unique.map(spellingPattern).join("|")})`;
 }
 
-const PRESENTATION_FINISH_NAME = alternation(
-  PRESENTATION_COLORS.flatMap((color) => [color.name, ...color.aliases]),
-);
+function spellingsFor(colors: readonly PresentationColorDefinition[]): string[] {
+  return colors.flatMap((color) => [color.name, ...color.aliases]);
+}
+
+const PRESENTATION_FINISH_NAME = alternation(spellingsFor(PRESENTATION_COLORS));
 const PRESENTATION_FINISH_CODE = alternation(PRESENTATION_COLORS.flatMap((color) => color.codes));
+const SAFE_BARE_FINISH_NAME = alternation(
+  spellingsFor(PRESENTATION_COLORS.filter((color) => SAFE_BARE_FINISH_IDS.has(color.id))),
+);
 const PRESENTATION_FINISH_SUFFIX = String.raw`(?:\s*(?:色|仕上げ|FINISH))?`;
 const PRESENTATION_PAIR_SUFFIX = String.raw`(?:\s*[（(]?\s*(?:ペア|PAIR)\s*[）)]?)?`;
 
@@ -126,7 +150,11 @@ export const PRESENTATION_COLOR_PATTERNS: readonly RegExp[] = [
   finishPattern(
     String.raw`\s+(?:カラー|色|仕上げ|COLOR|COLOUR|FINISH)\s*[:：]?\s*(${PRESENTATION_FINISH_NAME})${PRESENTATION_FINISH_SUFFIX}${PRESENTATION_PAIR_SUFFIX}\s*$`,
   ),
-  // Long-form delimited seller variants are self-describing even without whitespace.
+  // Two-tone syntax is presentation evidence in seller prose: `91E ブラック/ゴールド`.
+  finishPattern(
+    String.raw`\s+(${PRESENTATION_FINISH_NAME}\s*\/\s*${PRESENTATION_FINISH_NAME})${PRESENTATION_FINISH_SUFFIX}${PRESENTATION_PAIR_SUFFIX}\s*$`,
+  ),
+  // Delimited seller variants are explicit enough even for otherwise ambiguous plain color names.
   finishPattern(
     String.raw`(?:\s*(?:\/|\||,)\s*|\s+-\s+)(${PRESENTATION_FINISH_NAME})${PRESENTATION_FINISH_SUFFIX}${PRESENTATION_PAIR_SUFFIX}\s*$`,
   ),
@@ -138,9 +166,9 @@ export const PRESENTATION_COLOR_PATTERNS: readonly RegExp[] = [
   finishPattern(
     String.raw`\s*(?:\(|（|\[|［|【)\s*((?:${PRESENTATION_FINISH_NAME}|${PRESENTATION_FINISH_CODE}))${PRESENTATION_FINISH_SUFFIX}\s*(?:\)|）|\]|］|】)${PRESENTATION_PAIR_SUFFIX}\s*$`,
   ),
-  // Bare long-form finish suffixes: `D-1000 ブラック`, `805D3 グロスブラック`.
+  // Only self-describing qualified finishes are safe when written as an otherwise bare suffix.
   finishPattern(
-    String.raw`\s+(${PRESENTATION_FINISH_NAME})${PRESENTATION_FINISH_SUFFIX}${PRESENTATION_PAIR_SUFFIX}\s*$`,
+    String.raw`\s+(${SAFE_BARE_FINISH_NAME})${PRESENTATION_FINISH_SUFFIX}${PRESENTATION_PAIR_SUFFIX}\s*$`,
   ),
 ];
 
@@ -162,10 +190,6 @@ for (const color of PRESENTATION_COLORS) {
 
 /**
  * One seller spelling to one finish, or null when the spelling is not a finish this catalog knows.
- *
- * Null is not a failure to record: an unrecognized capture means the pattern removed something the
- * catalog cannot name, and the caller keeps the raw text out of the displayed label rather than
- * inventing a finish for it.
  */
 export function normalizePresentationColor(
   value: unknown = "",
@@ -178,8 +202,12 @@ export function normalizePresentationColor(
 export function presentationColorLabels(values: readonly string[] = []): string[] {
   const found = new Map<string, PresentationColorDefinition>();
   for (const value of values) {
-    const color = normalizePresentationColor(value);
-    if (color) found.set(color.id, color);
+    // A captured two-tone finish is one seller presentation, but each component still normalizes
+    // through the same catalog before the canonical label is re-joined by presentationColorLabel.
+    for (const part of String(value).split("/")) {
+      const color = normalizePresentationColor(part);
+      if (color) found.set(color.id, color);
+    }
   }
   return [...found.values()].sort((left, right) => left.order - right.order).map((c) => c.name);
 }
