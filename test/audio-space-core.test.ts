@@ -78,7 +78,10 @@ test("Audio Space Core parser keeps current inventory and ignores sold history",
   assert.equal(negotiating.stockStatus, "unknown");
   assert.match(negotiating.conditionText, /商談中/u);
 
-  assert.equal(items.some((item) => item.model === "CL310JET"), false);
+  assert.equal(
+    items.some((item) => item.model === "CL310JET"),
+    false,
+  );
 
   const dac = items.find((item) => item.model === "ElgarPlus1394");
   assert.ok(dac);
