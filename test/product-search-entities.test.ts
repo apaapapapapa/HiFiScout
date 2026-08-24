@@ -237,3 +237,43 @@ test("consistency reports every invariant separately and summarises them into on
   assert.equal(report.stale_fallback_entities, 3);
   assert.equal(report.fts_integrity_ok, true);
 });
+
+test("a failing FTS integrity check is drift, not an exception the caller has to handle", async () => {
+  const db = captureDatabase();
+  const prepare = db.prepare.bind(db);
+  const failing = {
+    ...db,
+    prepare(sql: string) {
+      if (/integrity-check/.test(sql)) {
+        return {
+          bind() {
+            return {
+              async run() {
+                throw new Error("database disk image is malformed");
+              },
+            };
+          },
+        };
+      }
+      return prepare(sql);
+    },
+  } as typeof db;
+
+  const report = await productSearchEntityConsistency(failing);
+  assert.equal(report.fts_integrity_ok, false);
+  assert.equal(report.ok, false);
+});
+
+test("entity keys namespace the two id spaces that would otherwise collide", () => {
+  assert.equal(productSearchKey("catalog", 12), "c-12");
+  assert.equal(productSearchKey("unresolved_listing", 12), "l-12");
+  assert.deepEqual(parseProductSearchKey("c-12"), { kind: "catalog", id: 12 });
+  assert.deepEqual(parseProductSearchKey("l-12"), { kind: "unresolved_listing", id: 12 });
+  assert.notDeepEqual(parseProductSearchKey("c-12"), parseProductSearchKey("l-12"));
+});
+
+test("anything that is not a well-formed key is rejected rather than coerced", () => {
+  for (const value of ["", "12", "c-", "c-0", "c--1", "x-12", "c-12 ", "c-12;DROP", null]) {
+    assert.equal(parseProductSearchKey(value), null, String(value));
+  }
+});
