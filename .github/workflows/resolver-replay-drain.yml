@@ -35,7 +35,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          info="$(npx wrangler d1 info DB --json)"
+          info="$(vp exec wrangler d1 info DB --json)"
           id="$(jq -r '.uuid // .database_id // .id // empty' <<< "$info")"
           if [[ -z "$id" ]]; then
             echo 'Could not resolve the deployed DB binding to an explicit D1 id.' >&2
@@ -54,7 +54,7 @@ jobs:
           # Administrative replay must not consume the production Worker's daily invocation quota.
           # Keep each batch below the 20-minute job timeout so the continuation dispatch can run.
           result=.generated/remediation-drain-result.json
-          npx tsx scripts/resolver-replay-drain.ts \
+          vp exec tsx scripts/resolver-replay-drain.ts \
             --max-sweeps 24 \
             --output "$result"
 
@@ -88,7 +88,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          result="$(npx wrangler d1 execute DB --remote --json --command "
+          result="$(vp exec wrangler d1 execute DB --remote --json --command "
             SELECT
               (SELECT COUNT(*) FROM products WHERE is_active = 1) AS active_listings,
               (SELECT COUNT(*) FROM product_search_entity_offers) AS offer_count,

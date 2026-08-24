@@ -15,23 +15,19 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/setup-node-deps
 
       - name: Require fully converged resolver replay
         shell: bash
         run: |
           set -euo pipefail
-          versions="$(npx tsx --eval 'import { RESOLUTION_VERSIONS } from "./src/catalog/resolution-versions.ts"; process.stdout.write(JSON.stringify(RESOLUTION_VERSIONS));')"
+          versions="$(vp exec tsx --eval 'import { RESOLUTION_VERSIONS } from "./src/catalog/resolution-versions.ts"; process.stdout.write(JSON.stringify(RESOLUTION_VERSIONS));')"
           manufacturer_version="$(jq -r '.manufacturer' <<< "$versions")"
           model_version="$(jq -r '.model' <<< "$versions")"
           category_version="$(jq -r '.category' <<< "$versions")"
           identity_version="$(jq -r '.identity' <<< "$versions")"
 
-          response="$(npx wrangler d1 execute DB --remote --json --command "
+          response="$(vp exec wrangler d1 execute DB --remote --json --command "
             SELECT
               COUNT(*) AS active_listings,
               SUM(CASE WHEN p.manufacturer_resolver_version < ${manufacturer_version} THEN 1 ELSE 0 END) AS stale_manufacturer,
@@ -114,7 +110,7 @@ jobs:
             ORDER BY p.id
             LIMIT ${page_size};"
 
-            response="$(npx wrangler d1 execute DB --remote --json --command "$sql")"
+            response="$(vp exec wrangler d1 execute DB --remote --json --command "$sql")"
             rows="$(jq -c '.[0].results // []' <<< "$response")"
             count="$(jq 'length' <<< "$rows")"
             if [[ "$count" -eq 0 ]]; then
@@ -125,7 +121,7 @@ jobs:
             cursor="$(jq -r '.[-1].id' <<< "$rows")"
           done
 
-          count_response="$(npx wrangler d1 execute DB --remote --json --command 'SELECT COUNT(*) AS count FROM products WHERE is_active = 1;')"
+          count_response="$(vp exec wrangler d1 execute DB --remote --json --command 'SELECT COUNT(*) AS count FROM products WHERE is_active = 1;')"
           expected="$(jq -r '.[0].results[0].count' <<< "$count_response")"
           actual="$(wc -l < "$output" | tr -d ' ')"
           if [[ "$actual" != "$expected" ]]; then
@@ -133,7 +129,7 @@ jobs:
             exit 1
           fi
 
-          npx wrangler d1 execute DB --remote --json --command "SELECT
+          vp exec wrangler d1 execute DB --remote --json --command "SELECT
             m.id AS manufacturer_id,
             m.canonical_name,
             m.verification_status AS manufacturer_verification_status,
@@ -144,7 +140,7 @@ jobs:
           LEFT JOIN knowledge_catalog_manufacturer_aliases a ON a.manufacturer_id = m.id
           ORDER BY m.id, a.id;" > manufacturer-catalog.json
 
-          npx wrangler d1 execute DB --remote --json --command "SELECT
+          vp exec wrangler d1 execute DB --remote --json --command "SELECT
             p.id,
             p.manufacturer_id,
             p.canonical_model,

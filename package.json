@@ -4,40 +4,40 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "npm run test:unit",
+    "test": "vp run test:unit",
     "test:unit": "vp test run --reporter=dot",
     "test:unit:verbose": "vp test run --reporter=verbose",
-    "test:e2e": "playwright test --config e2e/playwright.config.ts",
-    "fix": "npm run format && npm run lint:fix",
-    "check": "npm run lint && npm run format:check && npm run check:no-js-source && npm run typecheck && npm run test:unit",
-    "verify": "npm run fix && npm run check",
+    "test:e2e": "vp exec playwright test --config e2e/playwright.config.ts",
+    "fix": "vp run format && vp run lint:fix",
+    "check": "vp run lint && vp run format:check && vp run check:no-js-source && vp run typecheck && vp run test:unit",
+    "verify": "vp run fix && vp run check",
     "lint": "vp lint . --deny-warnings",
     "lint:fix": "vp lint . --fix",
     "format": "vp fmt --no-error-on-unmatched-pattern \"**/*.ts\" \"**/*.mts\" \"**/*.cts\" \"**/*.tsx\"",
     "format:check": "vp fmt --check --no-error-on-unmatched-pattern \"**/*.ts\" \"**/*.mts\" \"**/*.cts\" \"**/*.tsx\"",
-    "dev": "npm run build:frontend && wrangler dev --test-scheduled",
-    "deploy": "npm run build:frontend && wrangler d1 migrations apply DB --remote && wrangler deploy",
-    "db:migrate:local": "wrangler d1 migrations apply DB --local",
-    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
-    "create-shop": "tsx scripts/create-shop.ts",
-    "docs:api": "npx --yes --package typedoc@0.28.20 --package typedoc-plugin-markdown@4.12.0 --package typescript@6.0.2 typedoc && tsx scripts/docs/publish-api-docs.ts",
-    "docs:architecture:check": "npx --yes --package typescript@6.0.2 --package dependency-cruiser@18.1.0 depcruise src frontend --config .dependency-cruiser.json --ts-config tsconfig.json --output-type err",
-    "docs:architecture": "tsx scripts/ensure-directories.ts docs/public/generated && npx --yes --package typescript@6.0.2 --package dependency-cruiser@18.1.0 depcruise src frontend --config .dependency-cruiser.json --ts-config tsconfig.json --output-type html --output-to docs/public/generated/dependencies.html",
+    "dev": "vp run build:frontend && vp exec wrangler dev --test-scheduled",
+    "deploy": "vp run build:frontend && vp exec wrangler d1 migrations apply DB --remote && vp exec wrangler deploy",
+    "db:migrate:local": "vp exec wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "vp exec wrangler d1 migrations apply DB --remote",
+    "create-shop": "vp exec tsx scripts/create-shop.ts",
+    "docs:api": "vp dlx -p typedoc-plugin-markdown@4.12.0 -p typescript@6.0.2 typedoc@0.28.20 && vp exec tsx scripts/docs/publish-api-docs.ts",
+    "docs:architecture:check": "vp dlx -p typescript@6.0.2 dependency-cruiser@18.1.0 src frontend --config .dependency-cruiser.json --ts-config tsconfig.json --output-type err",
+    "docs:architecture": "vp exec tsx scripts/ensure-directories.ts docs/public/generated && vp dlx -p typescript@6.0.2 dependency-cruiser@18.1.0 src frontend --config .dependency-cruiser.json --ts-config tsconfig.json --output-type html --output-to docs/public/generated/dependencies.html",
     "docs:db": "bash scripts/docs/generate-db-docs.sh",
-    "docs:generate": "npm run docs:api && npm run docs:architecture && npm run docs:db",
-    "docs:build": "npm run docs:generate && npx vitepress build docs",
-    "docs:dev": "npm run docs:generate && npx vitepress dev docs",
-    "docs:preview": "npx vitepress preview docs",
-    "typecheck": "npm run types:worker && tsc --noEmit",
-    "types:worker": "tsx scripts/ensure-directories.ts .generated && tsx scripts/run-quiet.ts wrangler types .generated/worker-configuration.d.ts",
-    "build": "npm run build:frontend && npm run build:worker && npm run build:admin-worker && npm run build:lambda",
-    "build:frontend": "npm run build:frontend:public && npm run build:frontend:admin",
+    "docs:generate": "vp run docs:api && vp run docs:architecture && vp run docs:db",
+    "docs:build": "vp run docs:generate && vp exec vitepress build docs",
+    "docs:dev": "vp run docs:generate && vp exec vitepress dev docs",
+    "docs:preview": "vp exec vitepress preview docs",
+    "typecheck": "vp run types:worker && vp exec tsc --noEmit",
+    "types:worker": "vp exec tsx scripts/ensure-directories.ts .generated && vp exec tsx scripts/run-quiet.ts wrangler types .generated/worker-configuration.d.ts",
+    "build": "vp run build:frontend && vp run build:worker && vp run build:admin-worker && vp run build:lambda",
+    "build:frontend": "vp run build:frontend:public && vp run build:frontend:admin",
     "build:frontend:public": "vp build --mode public",
     "build:frontend:admin": "vp build --mode admin",
-    "build:worker": "wrangler deploy --dry-run --outdir dist/worker",
-    "build:admin-worker": "wrangler deploy --dry-run --config wrangler.admin.jsonc --outdir dist/admin-worker",
+    "build:worker": "vp exec wrangler deploy --dry-run --outdir dist/worker",
+    "build:admin-worker": "vp exec wrangler deploy --dry-run --config wrangler.admin.jsonc --outdir dist/admin-worker",
     "build:lambda": "vp build --mode lambda",
-    "check:no-js-source": "tsx scripts/check-no-first-party-js.ts"
+    "check:no-js-source": "vp exec tsx scripts/check-no-first-party-js.ts"
   },
   "dependencies": {
     "react": "^19.2.8",
@@ -57,8 +57,7 @@
     "wrangler": "^4.45.0"
   },
   "overrides": {
-    "vite": "npm:@voidzero-dev/vite-plus-core@0.2.9",
-    "vitest": "4.1.10"
+    "vite": "npm:@voidzero-dev/vite-plus-core@0.2.9"
   },
   "release": {
     "branches": [
@@ -99,6 +98,11 @@
     "packageManager": {
       "name": "npm",
       "version": "12.0.2",
+      "onFail": "download"
+    },
+    "runtime": {
+      "name": "node",
+      "version": "22.23.2",
       "onFail": "download"
     }
   }

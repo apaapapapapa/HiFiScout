@@ -20,9 +20,9 @@ test("browser E2E owns user-flow regression only", () => {
 });
 
 test("post-deploy operational health owns data and Knowledge Catalog monitoring independently", () => {
-  assert.match(operationalWorkflow, /\n  data-platform:\n/u);
+  assert.match(operationalWorkflow, /\r?\n  data-platform:\r?\n/u);
   assert.match(operationalWorkflow, /bash scripts\/production-operational-health\.sh/u);
-  assert.match(operationalWorkflow, /\n  knowledge-catalog:\n/u);
+  assert.match(operationalWorkflow, /\r?\n  knowledge-catalog:\r?\n/u);
   assert.match(operationalWorkflow, /bash scripts\/knowledge-catalog-operational-health\.sh/u);
   assert.match(operationalWorkflow, /PRODUCTION_BASE_URL/u);
 });

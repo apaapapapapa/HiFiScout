@@ -34,9 +34,9 @@ jobs:
         id: pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
       - name: Validate module dependencies
-        run: npm run docs:architecture:check
+        run: vp run docs:architecture:check
       - name: Build developer documentation
-        run: npm run docs:build
+        run: vp run docs:build
         env:
           DOCS_BASE: "${{ steps.pages.outputs.base_path }}/"
       - name: Validate generated report links

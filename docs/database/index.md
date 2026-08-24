@@ -18,5 +18,5 @@ This keeps `migrations/*.sql` as the schema source of truth. No production D1 cr
 Docker is required for SchemaSpy generation.
 
 ```sh
-npm run docs:db
+vp run docs:db
 ```

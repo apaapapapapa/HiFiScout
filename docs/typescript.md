@@ -6,7 +6,7 @@ HiFiScout is a TypeScript application. First-party JavaScript source (`.js`, `.m
 
 `tsconfig.json` uses `strict: true` and `noEmit: true`. `allowJs`, `checkJs`, `strict: false`, `noImplicitAny: false`, and `strictNullChecks: false` are intentionally not used. `skipLibCheck` is limited to third-party/runtime declaration compatibility; all first-party source directories remain in the TypeScript program.
 
-Run `npm run typecheck` before opening or updating a PR. The command regenerates Cloudflare binding/runtime declarations with Wrangler and then runs `tsc --noEmit`.
+Run `vp run typecheck` before opening or updating a PR. The command regenerates Cloudflare binding/runtime declarations with Wrangler and then runs `tsc --noEmit`.
 
 ## Modules and imports
 
@@ -14,13 +14,13 @@ The repository remains ESM (`"type": "module"`). TypeScript uses ESNext modules 
 
 ## Runtime boundaries
 
-Wrangler owns Cloudflare binding declarations. `npm run types:worker` writes them to `.generated/worker-configuration.d.ts`; generated declarations and JavaScript build artifacts are not hand edited or committed.
+Wrangler owns Cloudflare binding declarations. `vp run types:worker` writes them to `.generated/worker-configuration.d.ts`; generated declarations and JavaScript build artifacts are not hand edited or committed.
 
 External HTML/HTTP/query-string/D1/queue/environment input remains runtime-validated where the application already validates it. TypeScript types do not replace runtime validation. DB row shapes are kept separate from domain/API shapes at repository boundaries when their structures differ.
 
 ## Execution and builds
 
-- Node scripts/tests: `tsx` (`npm test`, `npm run create-shop`, search verification scripts).
+- Node scripts/tests: `tsx` (`npm test`, `vp run create-shop`, search verification scripts).
 - Browser source: `frontend/*.ts` -> generated `public/*.js` via esbuild. Static HTML/CSS remain unchanged.
 - Cloudflare Worker: Wrangler consumes `src/index.ts` directly; no second Worker transpilation layer is added.
 - Lambda relay: `infra/audiounion-lambda/index.ts` -> generated ESM artifact under `dist/audiounion-lambda/` via esbuild.
@@ -32,4 +32,4 @@ Prefer domain-local `type`/`interface` declarations, string-literal unions for s
 
 ## JavaScript source guard
 
-`npm run check:no-js-source` examines tracked files and fails if first-party JavaScript source/config is reintroduced. Generated browser/Worker/Lambda JavaScript stays ignored and is produced during build/deploy.
+`vp run check:no-js-source` examines tracked files and fails if first-party JavaScript source/config is reintroduced. Generated browser/Worker/Lambda JavaScript stays ignored and is produced during build/deploy.

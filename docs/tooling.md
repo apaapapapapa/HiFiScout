@@ -13,32 +13,32 @@ The command-line tools are version-pinned and invoked only by documentation scri
 
 TypeDoc, dependency-cruiser, and SchemaSpy are pinned at their invocation site because they cannot share the application's TypeScript 7 dependency. VitePress has no such conflict, so it is pinned by `package-lock.json` and run from `node_modules` instead of being re-downloaded on every `docs:build`, `docs:dev`, and `docs:preview`.
 
-TypeDoc 0.28 and dependency-cruiser 18 support TypeScript through version 6, while the application uses TypeScript 7. Their documentation commands therefore run with a pinned TypeScript 6.0.2 parser. Type checking remains the responsibility of `npm run typecheck`; these tools only convert or inspect the source model.
+TypeDoc 0.28 and dependency-cruiser 18 support TypeScript through version 6, while the application uses TypeScript 7. Their documentation commands therefore run with a pinned TypeScript 6.0.2 parser. Type checking remains the responsibility of `vp run typecheck`; these tools only convert or inspect the source model.
 
 ## Commands
 
 Generate all references:
 
 ```sh
-npm run docs:generate
+vp run docs:generate
 ```
 
 Build the complete static site:
 
 ```sh
-npm run docs:build
+vp run docs:build
 ```
 
 Run the site locally:
 
 ```sh
-npm run docs:dev
+vp run docs:dev
 ```
 
 Validate source dependency rules without building documentation:
 
 ```sh
-npm run docs:architecture:check
+vp run docs:architecture:check
 ```
 
 ## Keeping command output small
@@ -53,7 +53,7 @@ that, and none of them reduce diagnostic detail:
 | `--test-reporter=dot` in `test:unit` | A passing 467-test run prints ~2.8 KB instead of ~47 KB; failures still print assertion, diff, and stack |
 | `scripts/run-quiet.ts` | Captures a child command's output and prints it only on a non-zero exit |
 
-`npm run types:worker` is wrapped in `run-quiet.ts` because `wrangler types` re-prints the whole
+`vp run types:worker` is wrapped in `run-quiet.ts` because `wrangler types` re-prints the whole
 generated `Env` interface on every invocation. Wrap further tooling the same way when it is noisy
 on success:
 

@@ -6,7 +6,7 @@ HiFiScout uses dependency-cruiser to analyze ES module imports under `src/` and 
 
 ## CI architecture check
 
-Every rule in `.dependency-cruiser.json` has `error` severity, so `npm run docs:architecture:check` fails the build instead of reporting advice. The rules encode boundaries that are already load-bearing:
+Every rule in `.dependency-cruiser.json` has `error` severity, so `vp run docs:architecture:check` fails the build instead of reporting advice. The rules encode boundaries that are already load-bearing:
 
 - **Acyclic** — first-party dependencies under `src/` and `frontend/` must stay acyclic.
 - **Contract boundary** — `src/api/contracts.ts` may depend only on the catalog type vocabulary, `frontend/` may reach `src/` only through that one file, and `src/` never imports `frontend/`. The browser bundle therefore shares the HTTP contracts and nothing else.
@@ -17,13 +17,13 @@ Every rule in `.dependency-cruiser.json` has `error` severity, so `npm run docs:
 
 Each rule carries a `comment` describing the failure it prevents, and that text is what the check prints on a violation. Add new rules the same way: state the regression, not the restriction.
 
-dependency-cruiser parses the TypeScript sources with its own pinned `typescript@6.0.2`, supplied through the `npx --package` invocation in the `docs:architecture*` scripts. dependency-cruiser 18.1.0 does not yet accept the project's `typescript@7` compiler, and without a compatible parser it silently cruises zero modules instead of failing.
+dependency-cruiser parses the TypeScript sources with its own pinned `typescript@6.0.2`, supplied through the `vp dlx --package` invocation in the `docs:architecture*` scripts. dependency-cruiser 18.1.0 does not yet accept the project's `typescript@7` compiler, and without a compatible parser it silently cruises zero modules instead of failing.
 
 ## Generation
 
 ```sh
-npm run docs:architecture:check
-npm run docs:architecture
+vp run docs:architecture:check
+vp run docs:architecture
 ```
 
 The first command fails on configured architecture violations. The second produces the self-contained HTML report embedded in the VitePress output.

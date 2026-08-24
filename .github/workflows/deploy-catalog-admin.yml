@@ -49,18 +49,18 @@ jobs:
           ref: ${{ steps.deployment.outputs.sha }}
       - uses: ./.github/actions/setup-node-deps
       - name: Build catalog admin browser assets
-        run: npm run build:frontend:admin
+        run: vp run build:frontend:admin
       - name: Deploy fail-closed admin Worker
         run: >-
-          npx wrangler deploy --config wrangler.admin.jsonc
+          vp exec wrangler deploy --config wrangler.admin.jsonc
           --var ACCESS_TEAM_DOMAIN:https://invalid.cloudflareaccess.com
           --var ACCESS_AUD:unconfigured
       - name: Provision Cloudflare Access
         id: access
-        run: npx tsx scripts/provision-catalog-admin-access.ts
+        run: vp exec tsx scripts/provision-catalog-admin-access.ts
       - name: Deploy admin Worker with Access verification
         run: >-
-          npx wrangler deploy --config wrangler.admin.jsonc
+          vp exec wrangler deploy --config wrangler.admin.jsonc
           --var ACCESS_TEAM_DOMAIN:${{ steps.access.outputs.access_team_domain }}
           --var ACCESS_AUD:${{ steps.access.outputs.access_aud }}
       - name: Verify public Worker no longer exposes Catalog Admin

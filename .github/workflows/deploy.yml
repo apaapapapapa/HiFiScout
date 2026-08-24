@@ -56,7 +56,7 @@ jobs:
       # Use the same Vite+/Node/package-manager bootstrap as CI. package.json devEngines pins the
       # package manager, so actions/setup-node's npm cache probe can fail before npm is upgraded.
       - uses: ./.github/actions/setup-node-deps
-      # Every `npx wrangler` below resolves to the Wrangler installed by the shared setup action,
+      # Every `vp exec wrangler` below resolves to the Wrangler installed by the shared setup action,
       # pinned by package-lock.json. CI already exercises that exact binary through build:worker.
       - name: Provision required Cloudflare resources
         run: bash scripts/provision-production-resources.sh
@@ -64,16 +64,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tarball="$(npm pack @cloudflare/playwright@1.3.5 --silent)"
+          tarball="$(vp env exec npm pack @cloudflare/playwright@1.3.5 --silent)"
           mkdir -p node_modules/@cloudflare/playwright
           tar -xzf "$tarball" -C node_modules/@cloudflare/playwright --strip-components=1
           rm -f "$tarball"
       - name: Apply backward-compatible D1 migrations
-        run: npx wrangler d1 migrations apply DB --remote
+        run: vp exec wrangler d1 migrations apply DB --remote
       - name: Build browser assets from TypeScript source
-        run: npm run build:frontend
+        run: vp run build:frontend
       - name: Deploy Worker and static assets
-        run: npx wrangler deploy
+        run: vp exec wrangler deploy
       - name: Check production runtime health
         shell: bash
         run: |
