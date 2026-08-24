@@ -223,13 +223,16 @@ test("registration rejects a definition the platform could not run safely", () =
 
 test("the registry rejects shops that would silently share configuration", () => {
   assert.throws(() => createShopRegistry([registerStub(), registerStub()]), /duplicate shop key/);
-  assert.throws(
-    () =>
-      createShopRegistry([
-        registerStub({ key: "one-shop", scheduleCron: "5 * * * *" }),
-        registerStub({ key: "two-shop", scheduleCron: "5 * * * *" }),
-      ]),
-    /share the cron/,
+
+  // Sharing one dedicated cron is deliberate: the scheduler derives a single owner per firing from
+  // the scheduled event timestamp, so only shop identity has to stay unique in the registry.
+  const shared = createShopRegistry([
+    registerStub({ key: "one-shop", scheduleCron: "5,35 * * * *" }),
+    registerStub({ key: "two-shop", scheduleCron: "5,35 * * * *" }),
+  ]);
+  assert.deepEqual(
+    shared.map((plugin) => plugin.key),
+    ["one-shop", "two-shop"],
   );
 });
 

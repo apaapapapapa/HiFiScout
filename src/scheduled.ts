@@ -6,7 +6,7 @@
  */
 
 import { dispatchScheduledCrawl, recoverStalledCrawlDispatches } from "./crawler/dispatch.js";
-import { roundRobinShopForScheduledTime, shopForCron } from "./crawler/schedule.js";
+import { roundRobinShopForScheduledTime, shopForCronAtScheduledTime } from "./crawler/schedule.js";
 import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from "./catalog/knowledge-verification/verifier.js";
 import { runDataQualityRemediationSweep } from "./db/data-quality-remediation-service.js";
 import {
@@ -41,9 +41,10 @@ export const GENERAL_CRON = "*/5 * * * *";
 export const CRAWL_ROTATION_CRON = "6-56/10 * * * *";
 
 /**
- * Cloudflare Free permits five cron triggers per account. Crawl dispatch consumes all five, so the
- * less time-sensitive daily/monthly jobs piggyback on GENERAL_CRON instead of owning triggers.
- * Times are the first five-minute tick after the former dedicated schedule.
+ * Cloudflare Free permits five cron triggers per account. Shops with a dedicated cadence may share
+ * one trigger, so production stays under that limit with a slot to spare. Less time-sensitive
+ * daily/monthly jobs still piggyback on GENERAL_CRON rather than consuming another trigger. Times
+ * are the first five-minute tick after the former dedicated schedule.
  */
 const DAILY_MAINTENANCE_UTC_HOUR = 18;
 const DAILY_MAINTENANCE_UTC_MINUTE = 20;
@@ -158,7 +159,7 @@ export async function runScheduled(cron: string, env: Env, scheduledAt = new Dat
       : ({ status: "skipped", queued: [] } satisfies DispatchResult);
   }
 
-  const dedicated = shopForCron(cron);
+  const dedicated = shopForCronAtScheduledTime(cron, scheduledAt);
   const rotating =
     cron === CRAWL_ROTATION_CRON ? roundRobinShopForScheduledTime(scheduledAt) : null;
   const selected = dedicated || rotating;

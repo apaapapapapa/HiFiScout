@@ -6,7 +6,8 @@ import { isShopDue, isSuspiciousItemDrop } from "../src/crawler/run.js";
 import {
   roundRobinShopForScheduledTime,
   sharedSweepExclusions,
-  shopForCron,
+  shopForCronAtScheduledTime,
+  shopsForCron,
   shopsInRoundRobin,
   shopsWithDedicatedCron,
 } from "../src/crawler/schedule.js";
@@ -25,6 +26,8 @@ const provisionProductionResources = fs.readFileSync(
   new URL("../scripts/provision-production-resources.sh", import.meta.url),
   "utf8",
 );
+
+const SHARED_HOURLY_CRON = "1,31 * * * *";
 
 test("shop interval is evaluated independently", () => {
   const now = new Date("2026-08-11T00:30:00.000Z");
@@ -54,8 +57,8 @@ test("shop request delay overrides the global fallback", () => {
 });
 
 test("dedicated crawl schedules match the requested cadence", () => {
-  assert.equal(SHOP_DEFINITIONS.audiounion.scheduleCron, "1 * * * *");
-  assert.equal(SHOP_DEFINITIONS.hifido.scheduleCron, "31 * * * *");
+  assert.equal(SHOP_DEFINITIONS.audiounion.scheduleCron, SHARED_HOURLY_CRON);
+  assert.equal(SHOP_DEFINITIONS.hifido.scheduleCron, SHARED_HOURLY_CRON);
   // Cloudflare Cron is UTC, so 12:30 UTC is 21:30 JST.
   assert.equal(SHOP_DEFINITIONS["fujiya-avic"].scheduleCron, "30 12 * * *");
 
@@ -64,7 +67,31 @@ test("dedicated crawl schedules match the requested cadence", () => {
   assert.equal(wranglerConfig.vars.FUJIYA_AVIC_INTERVAL_MINUTES, "1440");
 });
 
-test("a dedicated shop cron is declared in wrangler and owns that shop alone", () => {
+test("AudioUnion and HiFiDo share one cron and alternate every thirty minutes from :01", () => {
+  assert.deepEqual(
+    shopsForCron(SHARED_HOURLY_CRON).map((plugin) => plugin.key),
+    ["audiounion", "hifido"],
+  );
+  assert.equal(
+    shopForCronAtScheduledTime(SHARED_HOURLY_CRON, new Date("2026-08-24T00:01:00.000Z"))?.key,
+    "audiounion",
+  );
+  assert.equal(
+    shopForCronAtScheduledTime(SHARED_HOURLY_CRON, new Date("2026-08-24T00:31:00.000Z"))?.key,
+    "hifido",
+  );
+  assert.equal(
+    shopForCronAtScheduledTime(SHARED_HOURLY_CRON, new Date("2026-08-24T01:01:00.000Z"))?.key,
+    "audiounion",
+  );
+  assert.equal(
+    shopForCronAtScheduledTime(SHARED_HOURLY_CRON, new Date("2026-08-24T01:31:00.000Z"))?.key,
+    "hifido",
+  );
+  assert.equal(shopForCronAtScheduledTime(SHARED_HOURLY_CRON, new Date("invalid")), null);
+});
+
+test("dedicated shop crons are declared in wrangler and may be shared", () => {
   const crons: string[] = wranglerConfig.triggers?.crons || [];
   const dedicated = shopsWithDedicatedCron();
   assert.equal(dedicated.length, 3);
@@ -73,8 +100,13 @@ test("a dedicated shop cron is declared in wrangler and owns that shop alone", (
     const cron = plugin.definition.scheduleCron;
     assert.ok(cron);
     assert.ok(crons.includes(cron), `${plugin.key} cron ${cron} is missing from wrangler.jsonc`);
-    assert.equal(shopForCron(cron), plugin);
+    assert.ok(shopsForCron(cron).includes(plugin));
   }
+
+  assert.equal(
+    shopForCronAtScheduledTime("30 12 * * *", new Date("2026-08-24T12:30:00.000Z"))?.key,
+    "fujiya-avic",
+  );
 });
 
 test("all non-dedicated shops share one ten-minute round robin", () => {
@@ -120,29 +152,35 @@ test("dedicated shops are excluded from the shared rotation", () => {
       .map((plugin) => plugin.key)
       .sort(),
   );
-  assert.equal(shopForCron(GENERAL_CRON), null);
-  assert.equal(shopForCron(CRAWL_ROTATION_CRON), null);
-  assert.equal(shopForCron(""), null);
+  assert.deepEqual(shopsForCron(GENERAL_CRON), []);
+  assert.deepEqual(shopsForCron(CRAWL_ROTATION_CRON), []);
+  assert.deepEqual(shopsForCron(""), []);
 });
 
 test("scheduled crawl dispatch uses policy and the scheduled event timestamp", () => {
-  assert.match(schedulerSource, /shopForCron\(cron\)/);
+  assert.match(schedulerSource, /shopForCronAtScheduledTime\(cron, scheduledAt\)/);
   assert.match(schedulerSource, /roundRobinShopForScheduledTime\(scheduledAt\)/);
   assert.match(schedulerSource, /new Date\(controller\.scheduledTime\)/);
   assert.doesNotMatch(schedulerSource, /dispatchDueCrawls/);
 });
 
-test("production cron configuration stays within the Cloudflare Free trigger limit", () => {
+test("production cron configuration leaves one spare Cloudflare Free trigger", () => {
   const crons: string[] = wranglerConfig.triggers?.crons || [];
-  const handled = [
-    GENERAL_CRON,
-    CRAWL_ROTATION_CRON,
-    ...shopsWithDedicatedCron().map((plugin) => plugin.definition.scheduleCron),
+  const dedicatedCrons = [
+    ...new Set(
+      shopsWithDedicatedCron()
+        .map((plugin) => plugin.definition.scheduleCron)
+        .filter(Boolean),
+    ),
   ];
+  const handled = [GENERAL_CRON, CRAWL_ROTATION_CRON, ...dedicatedCrons];
 
-  assert.equal(crons.length, 5);
+  assert.equal(crons.length, 4);
   assert.ok(crons.length <= 5);
   assert.deepEqual([...crons].sort(), [...handled].sort());
+  assert.ok(crons.includes(SHARED_HOURLY_CRON));
+  assert.ok(!crons.includes("1 * * * *"));
+  assert.ok(!crons.includes("31 * * * *"));
   assert.ok(!crons.includes("17 18 * * *"));
   assert.ok(!crons.includes("23 3 1 * *"));
 });

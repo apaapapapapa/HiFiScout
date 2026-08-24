@@ -64,6 +64,7 @@ export { getShopActivityPolicy } from "./registry.js";
 const ROUND_ROBIN_INTERVAL_MINUTES = 140;
 const HOURLY_INTERVAL_MINUTES = 60;
 const DAILY_INTERVAL_MINUTES = 24 * 60;
+const SHARED_HOURLY_CRON = "1,31 * * * *";
 
 /** Hifido re-lists the same stock with edited titles, so only price and stock are user activity. */
 const HIFIDO_ACTIVITY_POLICY: Readonly<ProductActivityPolicy> = Object.freeze({
@@ -93,7 +94,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       baseUrl: "https://www.audiounion.jp",
       defaultIntervalMinutes: HOURLY_INTERVAL_MINUTES,
       defaultRequestDelayMs: 10_000,
-      scheduleCron: "1 * * * *",
+      scheduleCron: SHARED_HOURLY_CRON,
       transportConfigurationRequired: true,
     },
     {
@@ -132,7 +133,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       baseUrl: "https://www.hifido.co.jp",
       defaultIntervalMinutes: HOURLY_INTERVAL_MINUTES,
       defaultMaxPages: 3,
-      scheduleCron: "31 * * * *",
+      scheduleCron: SHARED_HOURLY_CRON,
     },
     {
       transport: { kind: "relay" },

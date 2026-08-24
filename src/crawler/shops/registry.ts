@@ -201,21 +201,16 @@ export function defineShopPlugin<TPage extends CrawlPage>(
 /** Validate cross-plugin invariants once when the composition root is evaluated. */
 export function createShopRegistry(plugins: readonly ShopPlugin[]): readonly ShopPlugin[] {
   const seenKeys = new Set<string>();
-  const seenCrons = new Map<string, string>();
 
   for (const plugin of plugins) {
-    const { key, scheduleCron } = plugin.definition;
+    const { key } = plugin.definition;
     if (seenKeys.has(key)) throw new Error(`duplicate shop key in registry: ${key}`);
     seenKeys.add(key);
-
-    if (!scheduleCron) continue;
-    const cronOwner = seenCrons.get(scheduleCron);
-    if (cronOwner) {
-      throw new Error(`shops ${cronOwner} and ${key} share the cron ${scheduleCron}`);
-    }
-    seenCrons.set(scheduleCron, key);
   }
 
+  // Multiple shops may intentionally share one scheduleCron. The scheduler selects exactly one
+  // owner for each trigger event from ScheduledController.scheduledTime, so cron uniqueness is not
+  // a registry invariant; shop identity remains unique here.
   return Object.freeze([...plugins]);
 }
 
