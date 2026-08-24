@@ -59,6 +59,7 @@ interface CatalogFields {
   manufacturerResolverVersion: number;
   rawModel: string;
   normalizedModel: string;
+  presentationColor: string;
   modelResolutionStatus: ResolutionStatus;
   modelResolutionMethod: ModelResolutionMethod;
   modelResolutionConfidence: ResolutionConfidence;
@@ -131,6 +132,7 @@ function catalogFields(product: CatalogProductUpsertInput): CatalogFields {
     manufacturerResolverVersion: MANUFACTURER_RESOLVER_VERSION,
     rawModel,
     normalizedModel,
+    presentationColor: product.presentationColor ?? "",
     modelResolutionStatus:
       product.modelResolutionStatus || (normalizedModel ? "resolved" : "unresolved"),
     modelResolutionMethod:
@@ -178,6 +180,7 @@ function existingCatalogFields(existing: ExistingProductRow): ExistingCatalogFie
       existing.manufacturer_resolver_version || MANUFACTURER_RESOLVER_VERSION,
     rawModel: existing.raw_model ?? existing.model ?? "",
     normalizedModel: existing.normalized_model || normalizeIdentityModel(existing.model),
+    presentationColor: existing.presentation_color ?? "",
     modelResolutionStatus:
       existing.model_resolution_status || (existing.model ? "resolved" : "unresolved"),
     modelResolutionMethod:
@@ -256,7 +259,7 @@ export async function selectExistingProducts(
              normalized_raw_manufacturer, canonical_manufacturer_id,
              manufacturer_resolution_status, manufacturer_resolution_method,
              manufacturer_resolution_confidence, manufacturer_resolver_version,
-             model, raw_model, normalized_model, model_resolution_status,
+             model, raw_model, normalized_model, presentation_color, model_resolution_status,
              model_resolution_method, model_resolution_confidence, model_resolver_version, title,
              category, raw_category, primary_category_id, category_ids, classification_status, search_aliases,
              condition_text, price_yen, stock_status, source_url, source_published_at, metadata_json,
@@ -321,6 +324,7 @@ function listingChanged(existing: ExistingProductRow, product: CatalogProductUps
     existing.model !== product.model ||
     previous.rawModel !== current.rawModel ||
     previous.normalizedModel !== current.normalizedModel ||
+    previous.presentationColor !== current.presentationColor ||
     previous.modelResolutionStatus !== current.modelResolutionStatus ||
     previous.modelResolutionMethod !== current.modelResolutionMethod ||
     previous.modelResolutionConfidence !== current.modelResolutionConfidence ||
@@ -543,7 +547,7 @@ export async function upsertProducts(
           shop_key, source_id, manufacturer, raw_manufacturer, normalized_raw_manufacturer,
           manufacturer_id, canonical_manufacturer_id, manufacturer_resolution_status,
           manufacturer_resolution_method, manufacturer_resolution_confidence,
-          manufacturer_resolver_version, model, raw_model, normalized_model,
+          manufacturer_resolver_version, model, raw_model, normalized_model, presentation_color,
           model_resolution_status, model_resolution_method, model_resolution_confidence,
           model_resolver_version, title,
           category, raw_category, primary_category_id, category_ids, classification_status, search_aliases,
@@ -551,7 +555,7 @@ export async function upsertProducts(
           first_seen_at, last_seen_at, last_changed_at, last_activity_at, is_active
         ) VALUES (
           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?, ?,
           ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, 1
         )
@@ -571,6 +575,7 @@ export async function upsertProducts(
             product.model,
             fields.rawModel,
             fields.normalizedModel,
+            fields.presentationColor,
             fields.modelResolutionStatus,
             fields.modelResolutionMethod,
             fields.modelResolutionConfidence,
@@ -614,6 +619,7 @@ export async function upsertProducts(
           manufacturer_id = ?, canonical_manufacturer_id = ?, manufacturer_resolution_status = ?,
           manufacturer_resolution_method = ?, manufacturer_resolution_confidence = ?,
           manufacturer_resolver_version = ?, model = ?, raw_model = ?, normalized_model = ?,
+          presentation_color = ?,
           model_resolution_status = ?, model_resolution_method = ?, model_resolution_confidence = ?,
           model_resolver_version = ?, title = ?,
           category = ?, raw_category = ?, primary_category_id = ?, category_ids = ?,
@@ -636,6 +642,7 @@ export async function upsertProducts(
             product.model,
             fields.rawModel,
             fields.normalizedModel,
+            fields.presentationColor,
             fields.modelResolutionStatus,
             fields.modelResolutionMethod,
             fields.modelResolutionConfidence,

@@ -12,6 +12,7 @@
 
 import { categoryClosureIds, getCategory } from "../catalog/categories.js";
 import { normalizeManufacturer } from "../catalog/manufacturers.js";
+import { presentationColorList } from "../catalog/model-presentation-color.js";
 import { NEW_OFFER_WINDOW_MS } from "./product-search-entity-sql.js";
 import type { ProductOffer, ProductSearchItem } from "../api/contracts.js";
 import type {
@@ -31,6 +32,7 @@ export const PRODUCT_SEARCH_ENTITY_COLUMNS = [
   "manufacturer",
   "model",
   "normalized_model",
+  "presentation_colors",
   "primary_category_id",
   "offer_count",
   "in_stock_offer_count",
@@ -50,6 +52,7 @@ const PRODUCT_OFFER_COLUMNS = [
   "source_url",
   "title",
   "condition_text",
+  "presentation_color",
   "price_yen",
   "previous_price_yen",
   "stock_status",
@@ -96,6 +99,7 @@ export function toProductOffer(row: ProductSearchOfferRow): ProductOffer {
     source_url: safeProductSourceUrl(row.source_url),
     title: row.title,
     condition_text: row.condition_text,
+    presentation_color: row.presentation_color ?? "",
     price_yen: row.price_yen,
     previous_price_yen: row.previous_price_yen,
     stock_status: row.stock_status,
@@ -146,6 +150,11 @@ export function toProductSearchItem(
     manufacturer: publicManufacturer,
     manufacturer_id: publicManufacturerId,
     model: row.model,
+    // From the same summary as every other aggregate: a card that filtered to one shop must show
+    // the finishes that shop offers, not the ones the product exists in somewhere else.
+    presentation_colors: presentationColorList(
+      String(summary.presentation_colors ?? "").split(","),
+    ),
     primary_category_id: row.primary_category_id,
     category_ids: categoryClosureIds(row.primary_category_id),
     category: getCategory(row.primary_category_id)?.name ?? "",

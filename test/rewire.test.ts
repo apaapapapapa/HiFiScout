@@ -127,8 +127,9 @@ test("REWIRE parser decodes numeric entities and classifies known floorstanding 
   assert.equal(tannoy.metadata?.rewireSellerCategory, "スピーカー");
   const normalizedTannoy = normalizeCatalogProduct(tannoy);
   assert.equal(normalizedTannoy.primaryCategoryId, "speaker_floorstanding");
-  // The shared model resolver removes the finish color so color variants converge on one model.
-  assert.equal(normalizedTannoy.model, "Rectangular GRF 15′′Monitor");
+  // Monitor Red is the identity-bearing driver generation, not a cabinet finish.
+  assert.equal(normalizedTannoy.model, "Rectangular GRF 15′′Monitor Red");
+  assert.equal(normalizedTannoy.presentationColor, "");
 
   const mcintosh = items[1];
   assert.equal(mcintosh.sourceId, "R09442");

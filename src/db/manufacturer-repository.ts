@@ -4,6 +4,7 @@ import {
   resolveManufacturer,
 } from "../catalog/manufacturer-resolver.js";
 import { manufacturerIdForFilter, normalizeManufacturerKey } from "../catalog/manufacturers.js";
+import { presentationColorLabel } from "../catalog/model-presentation-color.js";
 import { createModelResolver, MODEL_RESOLVER_VERSION } from "../catalog/model-resolver.js";
 import type {
   ManufacturerAliasEvidence,
@@ -72,6 +73,7 @@ interface ManufacturerReplayListingRow {
   model: string;
   raw_model: string;
   normalized_model: string;
+  presentation_color: string;
   model_resolution_status: string;
   model_resolution_method: string;
   model_resolution_confidence: string;
@@ -238,7 +240,7 @@ export async function selectListingsAffectedByManufacturerAlias(
       SELECT id, shop_key, source_id, manufacturer, raw_manufacturer, manufacturer_id,
              canonical_manufacturer_id, manufacturer_resolution_status,
              manufacturer_resolution_method, manufacturer_resolution_confidence,
-             manufacturer_resolver_version, model, raw_model, normalized_model,
+             manufacturer_resolver_version, model, raw_model, normalized_model, presentation_color,
              model_resolution_status, model_resolution_method, model_resolution_confidence,
              model_resolver_version, remediation_projection_required, title, metadata_json
       FROM products
@@ -274,14 +276,25 @@ function manufacturerResolutionMoved(
 function modelResolutionMoved(
   row: ManufacturerReplayListingRow,
   next: ModelResolutionResult,
+  presentationColor: string,
 ): boolean {
   return (
     row.model !== next.model ||
     row.normalized_model !== next.normalizedModel ||
+    (row.presentation_color ?? "") !== presentationColor ||
     row.model_resolution_status !== next.status ||
     row.model_resolution_method !== next.method ||
     row.model_resolution_confidence !== next.confidence
   );
+}
+
+function modelAuditValue(
+  model: string,
+  normalizedModel: string,
+  presentationColor: string,
+  status: string,
+): string {
+  return `${model} (${normalizedModel || "-"}/${presentationColor || "-"}/${status})`;
 }
 
 export async function selectStaleManufacturerListings(
@@ -294,7 +307,7 @@ export async function selectStaleManufacturerListings(
       SELECT id, shop_key, source_id, manufacturer, raw_manufacturer, manufacturer_id,
              canonical_manufacturer_id, manufacturer_resolution_status,
              manufacturer_resolution_method, manufacturer_resolution_confidence,
-             manufacturer_resolver_version, model, raw_model, normalized_model,
+             manufacturer_resolver_version, model, raw_model, normalized_model, presentation_color,
              model_resolution_status, model_resolution_method, model_resolution_confidence,
              model_resolver_version, remediation_projection_required, title, metadata_json
       FROM products
@@ -335,11 +348,12 @@ async function reprocessManufacturerRows(
       title: row.title,
       manufacturerId: resolution.canonicalManufacturerId,
     });
+    const presentationColor = presentationColorLabel(model.presentationColors);
     const manufacturerFilterId = manufacturerIdForFilter(
       resolution.displayName || row.manufacturer || row.raw_manufacturer,
     );
     const manufacturerMoved = manufacturerResolutionMoved(row, resolution);
-    const modelMoved = modelResolutionMoved(row, model);
+    const modelMoved = modelResolutionMoved(row, model, presentationColor);
     const moved = manufacturerMoved || modelMoved;
     const metadata = {
       version: MANUFACTURER_RESOLVER_VERSION,
@@ -358,6 +372,7 @@ async function reprocessManufacturerRows(
       normalizedModel: model.normalizedModel,
       removedAnnotations: model.removedAnnotations,
       unclassifiedTokens: model.unclassifiedTokens,
+      presentationColors: model.presentationColors,
     };
     statements.push(
       db
@@ -367,7 +382,7 @@ async function reprocessManufacturerRows(
             canonical_manufacturer_id = ?, manufacturer_resolution_status = ?,
             manufacturer_resolution_method = ?, manufacturer_resolution_confidence = ?,
             manufacturer_resolver_version = ?,
-            model = ?, normalized_model = ?, model_resolution_status = ?,
+            model = ?, normalized_model = ?, presentation_color = ?, model_resolution_status = ?,
             model_resolution_method = ?, model_resolution_confidence = ?,
             model_resolver_version = ?, remediation_projection_required = 1,
             remediation_projection_token = ?,
@@ -392,6 +407,7 @@ async function reprocessManufacturerRows(
           MANUFACTURER_RESOLVER_VERSION,
           model.model,
           model.normalizedModel,
+          presentationColor,
           model.status,
           model.method,
           model.confidence,
@@ -428,8 +444,18 @@ async function reprocessManufacturerRows(
           shopKey: row.shop_key,
           sourceId: row.source_id,
           field: "model",
-          previousValue: `${row.model} (${row.normalized_model || "-"}/${row.model_resolution_status})`,
-          newValue: `${model.model} (${model.normalizedModel || "-"}/${model.status})`,
+          previousValue: modelAuditValue(
+            row.model,
+            row.normalized_model,
+            row.presentation_color,
+            row.model_resolution_status,
+          ),
+          newValue: modelAuditValue(
+            model.model,
+            model.normalizedModel,
+            presentationColor,
+            model.status,
+          ),
           reason,
           resolverMethod: model.method,
           resolverConfidence: model.confidence,

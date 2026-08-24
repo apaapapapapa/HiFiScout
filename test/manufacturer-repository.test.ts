@@ -159,9 +159,10 @@ test("verified alias replay updates only derived fields and invokes downstream r
     manufacturer_resolution_method: "none",
     manufacturer_resolution_confidence: "none",
     manufacturer_resolver_version: 1,
-    model: "Example Audio Japan X-1 中古",
-    raw_model: "Example Audio Japan X-1 中古",
+    model: "Example Audio Japan X-1 ブラック 中古",
+    raw_model: "Example Audio Japan X-1 ブラック 中古",
     normalized_model: "EXAMPLEAUDIOJAPANX1",
+    presentation_color: "",
     model_resolution_status: "resolved",
     model_resolution_method: "legacy_normalization",
     model_resolution_confidence: "medium",
@@ -230,6 +231,11 @@ test("verified alias replay updates only derived fields and invokes downstream r
   assert.match(update.sql, /model_resolver_version = \?/);
   assert.ok(update.binds.includes("X-1"));
   assert.ok(update.binds.includes("X1"));
+  assert.ok(update.binds.includes("ブラック"));
+  const modelMetadata = JSON.parse(String(update.binds[17])) as {
+    presentationColors?: string[];
+  };
+  assert.deepEqual(modelMetadata.presentationColors, ["ブラック"]);
 
   // Alias-driven corrections are auditable too, for both fields that moved.
   const events = db.batched.filter((statement) =>
@@ -240,6 +246,7 @@ test("verified alias replay updates only derived fields and invokes downstream r
   assert.ok(events[0].binds.includes("example-audio (resolved)"));
   assert.ok(events[0].binds.includes("verified_manufacturer_alias:exampleaudiojapan"));
   assert.ok(events[1].binds.includes("model"));
+  assert.ok(events[1].binds.includes("X-1 (X1/ブラック/resolved)"));
   assert.ok(db.calls.some((call) => /product_search_projection/.test(call.sql)));
   assert.ok(db.calls.some((call) => /canonical_manufacturer_id/.test(call.sql)));
   assert.ok(db.calls.some((call) => /SELECT id FROM products/.test(call.sql)));
@@ -293,6 +300,7 @@ test("runtime manufacturer replay replaces migration approximations with authori
     model: "X-1",
     raw_model: "X-1",
     normalized_model: "X1",
+    presentation_color: "",
     model_resolution_status: "resolved",
     model_resolution_method: "legacy_normalization",
     model_resolution_confidence: "medium",
@@ -353,6 +361,7 @@ test("manufacturer replay recovers after downstream failure without rewriting se
     model: "Example Audio Japan X-1 中古",
     raw_model: "Example Audio Japan X-1 中古",
     normalized_model: "EXAMPLEAUDIOJAPANX1",
+    presentation_color: "",
     model_resolution_status: "resolved",
     model_resolution_method: "legacy_normalization",
     model_resolution_confidence: "medium",
@@ -382,10 +391,11 @@ test("manufacturer replay recovers after downstream failure without rewriting se
           state.manufacturer_resolver_version = Number(statement.binds[7]);
           state.model = String(statement.binds[8]);
           state.normalized_model = String(statement.binds[9]);
-          state.model_resolution_status = String(statement.binds[10]);
-          state.model_resolution_method = String(statement.binds[11]);
-          state.model_resolution_confidence = String(statement.binds[12]);
-          state.model_resolver_version = Number(statement.binds[13]);
+          state.presentation_color = String(statement.binds[10]);
+          state.model_resolution_status = String(statement.binds[11]);
+          state.model_resolution_method = String(statement.binds[12]);
+          state.model_resolution_confidence = String(statement.binds[13]);
+          state.model_resolver_version = Number(statement.binds[14]);
           state.remediation_projection_required = 1;
         }
         if (/SET remediation_projection_required = 0/.test(statement.sql)) {

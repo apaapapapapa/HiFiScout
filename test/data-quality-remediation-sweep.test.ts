@@ -40,6 +40,7 @@ const LISTING_ROW = {
   model: "D-1000MK2",
   raw_model: "D-1000 MK2",
   normalized_model: "D1000MK2",
+  presentation_color: "",
   model_resolution_status: "resolved",
   model_resolution_method: "title_extraction",
   model_resolution_confidence: "high",

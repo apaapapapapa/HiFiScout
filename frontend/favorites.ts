@@ -134,6 +134,7 @@ export function migrateListingFavorite(entry: Record<string, unknown>): DisplayP
       source_url: text(entry.source_url),
       title: text(entry.title),
       condition_text: text(entry.condition_text),
+      presentation_color: text(entry.presentation_color),
       price_yen: price,
       previous_price_yen: previousPrice,
       stock_status: status,

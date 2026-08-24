@@ -22,6 +22,7 @@ function offer(overrides: Partial<DisplayOffer> = {}): DisplayOffer {
     shop_key: "hifido",
     source_url: "https://example.test/p1",
     title: "TAD ME1TX",
+    presentation_color: "",
     condition_text: "中古",
     price_yen: 1_000_000,
     previous_price_yen: null,

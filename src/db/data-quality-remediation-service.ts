@@ -5,6 +5,7 @@ import {
 import { collectListingCategoryEvidence } from "../catalog/category-evidence.js";
 import { createManufacturerResolver } from "../catalog/manufacturer-resolver.js";
 import { manufacturerIdForFilter } from "../catalog/manufacturers.js";
+import { presentationColorLabel } from "../catalog/model-presentation-color.js";
 import { createModelResolver } from "../catalog/model-resolver.js";
 import { inferFeatureFacts } from "../catalog/product-features.js";
 import { RESOLUTION_VERSIONS } from "../catalog/resolution-versions.js";
@@ -40,6 +41,7 @@ interface RemediationListingRow {
   model: string;
   raw_model: string;
   normalized_model: string;
+  presentation_color: string;
   model_resolution_status: string;
   model_resolution_method: string;
   model_resolution_confidence: string;
@@ -198,7 +200,7 @@ async function loadListing(
              manufacturer_id, canonical_manufacturer_id,
              manufacturer_resolution_status, manufacturer_resolution_method,
              manufacturer_resolution_confidence, manufacturer_resolver_version,
-             model, raw_model, normalized_model, model_resolution_status,
+             model, raw_model, normalized_model, presentation_color, model_resolution_status,
              model_resolution_method, model_resolution_confidence, model_resolver_version,
              title, category, raw_category, primary_category_id, category_ids,
              classification_status, search_aliases, metadata_json,
@@ -244,6 +246,9 @@ async function replayDerivedListing(
     title: row.title,
     manufacturerId: manufacturer.canonicalManufacturerId,
   });
+  // This replay advances `model_resolver_version`, so it must persist every field owned by that
+  // resolver. Otherwise a row handled here becomes current while its extracted finish stays empty.
+  const presentationColor = presentationColorLabel(model.presentationColors);
 
   const metadata = metadataObject(row.metadata_json);
   const evidence = storedCategoryEvidence(row, metadata);
@@ -267,6 +272,7 @@ async function replayDerivedListing(
       normalizedModel: model.normalizedModel,
       removedAnnotations: model.removedAnnotations,
       unclassifiedTokens: model.unclassifiedTokens,
+      presentationColors: model.presentationColors,
     },
     categoryClassification: {
       ...classificationMetadata(metadata),
@@ -307,6 +313,7 @@ async function replayDerivedListing(
           manufacturer_resolver_version = ?,
           model = ?,
           normalized_model = ?,
+          presentation_color = ?,
           model_resolution_status = ?,
           model_resolution_method = ?,
           model_resolution_confidence = ?,
@@ -331,6 +338,7 @@ async function replayDerivedListing(
           OR manufacturer_resolver_version IS NOT ?
           OR model IS NOT ?
           OR normalized_model IS NOT ?
+          OR presentation_color IS NOT ?
           OR model_resolution_status IS NOT ?
           OR model_resolution_method IS NOT ?
           OR model_resolution_confidence IS NOT ?
@@ -354,6 +362,7 @@ async function replayDerivedListing(
       RESOLUTION_VERSIONS.manufacturer,
       model.model,
       model.normalizedModel,
+      presentationColor,
       model.status,
       model.method,
       model.confidence,
@@ -376,6 +385,7 @@ async function replayDerivedListing(
       RESOLUTION_VERSIONS.manufacturer,
       model.model,
       model.normalizedModel,
+      presentationColor,
       model.status,
       model.method,
       model.confidence,

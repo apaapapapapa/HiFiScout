@@ -21,6 +21,7 @@ function staleListing(overrides: Record<string, unknown> = {}) {
     model: "D-1000 MK2 中古",
     raw_model: "D-1000 MK2 中古",
     normalized_model: "D1000MK2",
+    presentation_color: "",
     model_resolution_status: "resolved",
     model_resolution_method: "legacy_normalization",
     model_resolution_confidence: "medium",
@@ -140,6 +141,32 @@ test("replay records before/after provenance only for listings that actually mov
   assert.ok(update?.binds.includes(MODEL_RESOLVER_VERSION));
 });
 
+test("a finish-only replay records distinct before and after audit values", async () => {
+  const db = replayDatabase(
+    staleListing({
+      model: "D-1000",
+      raw_model: "D-1000 ブラック",
+      normalized_model: "D1000",
+      presentation_color: "",
+      model_resolution_method: "seller_model_annotated",
+      model_resolution_confidence: "high",
+      title: "TAD D-1000 ブラック",
+    }),
+  );
+
+  const result = await reprocessStaleModelListings(db, {
+    evaluatedAt: "2026-08-15T00:00:00.000Z",
+  });
+
+  assert.equal(result.changedCount, 1);
+  const event = db.batched.find((statement) =>
+    /INSERT INTO data_quality_remediation_events/.test(statement.sql),
+  );
+  assert.ok(event);
+  assert.ok(event.binds.includes("D-1000 (D1000/-/resolved)"));
+  assert.ok(event.binds.includes("D-1000 (D1000/ブラック/resolved)"));
+});
+
 test("model replay keeps empty raw evidence and recovers after downstream failure", async () => {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec(`
@@ -151,6 +178,7 @@ test("model replay keeps empty raw evidence and recovers after downstream failur
       model TEXT NOT NULL,
       raw_model TEXT NOT NULL,
       normalized_model TEXT NOT NULL,
+      presentation_color TEXT NOT NULL DEFAULT '',
       model_resolution_status TEXT NOT NULL,
       model_resolution_method TEXT NOT NULL,
       model_resolution_confidence TEXT NOT NULL,

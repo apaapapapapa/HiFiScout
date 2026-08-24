@@ -448,6 +448,24 @@ export interface InferFeatureFactsOptions {
 }
 
 // ---------------------------------------------------------------------------
+// Presentation colors (src/catalog/model-presentation-color.ts)
+// ---------------------------------------------------------------------------
+
+/**
+ * One finish and every seller spelling of it. `order` is display order, not precedence.
+ *
+ * `codes` are the short forms (`BK`, `S`), separated from `aliases` because they are ambiguous
+ * enough that the match patterns only accept them behind explicit presentation syntax.
+ */
+export interface PresentationColorDefinition {
+  readonly id: string;
+  readonly name: string;
+  readonly aliases: readonly string[];
+  readonly codes: readonly string[];
+  readonly order: number;
+}
+
+// ---------------------------------------------------------------------------
 // Manufacturers (src/catalog/manufacturers.ts)
 // ---------------------------------------------------------------------------
 
@@ -562,6 +580,14 @@ export interface ModelResolutionResult {
   removedAnnotations: string[];
   /** Residue that could not be classified as merchandising, so it was kept rather than deleted. */
   unclassifiedTokens: string[];
+  /**
+   * Canonical finish labels the annotation rules removed, left to right.
+   *
+   * Deliberately not part of `model`: the finish is what keeps two colors of one product from
+   * grouping, so it travels beside the model instead of inside it. Empty when the removal was
+   * rolled back by the identity guard — a finish is only reported when it was actually taken out.
+   */
+  presentationColors: string[];
 }
 
 export interface ModelNormalizationMetadata {
@@ -572,6 +598,8 @@ export interface ModelNormalizationMetadata {
   normalizedModel: string;
   removedAnnotations: string[];
   unclassifiedTokens: string[];
+  /** Canonical finish labels taken out of the model, kept as the evidence behind the stored one. */
+  presentationColors?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -622,6 +650,13 @@ export interface NormalizedCatalogProduct extends CategoryClassificationFields {
   model: string;
   rawModel: string;
   normalizedModel: string;
+  /**
+   * Canonical finish label, or `""` when the listing named none.
+   *
+   * Beside the model rather than inside it: identity must not see it, or two colors of one product
+   * stop grouping — but the shopper must, or the finish the seller wrote just disappears.
+   */
+  presentationColor: string;
   modelResolutionStatus: ResolutionStatus;
   modelResolutionMethod: ModelResolutionMethod;
   modelResolutionConfidence: ResolutionConfidence;
@@ -654,6 +689,7 @@ export interface CatalogProductUpsertInput {
   model: string;
   rawModel?: string;
   normalizedModel?: string;
+  presentationColor?: string;
   modelResolutionStatus?: ResolutionStatus;
   modelResolutionMethod?: ModelResolutionMethod;
   modelResolutionConfidence?: ResolutionConfidence;

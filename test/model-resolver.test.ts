@@ -362,6 +362,7 @@ test("applying resolution records replayable metadata without touching seller ev
     normalizedModel: "D1000MK2",
     removedAnnotations: ["condition"],
     unclassifiedTokens: [],
+    presentationColors: [],
   });
   assert.equal(applied.metadata.keep, true);
 });

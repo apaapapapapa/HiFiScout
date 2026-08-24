@@ -22,6 +22,7 @@ import {
   deleteEmptyEntitiesSql,
   deleteInactiveOffersSql,
   refreshEntityAggregatesSql,
+  refreshEntityPresentationColorsSql,
   refreshEntitySearchTermsSql,
   scopeClause,
   upsertCatalogEntitiesSql,
@@ -222,6 +223,7 @@ async function refreshEntities(
   for (const chunk of chunks(entityIds)) {
     const offerScope = scopeClause("m.entity_id", chunk.length);
     await runStatement(db, refreshEntityAggregatesSql(offerScope), chunk);
+    await runStatement(db, refreshEntityPresentationColorsSql(offerScope), chunk);
     await runStatement(db, refreshEntitySearchTermsSql(offerScope), chunk);
     removedCount += await runStatement(
       db,
@@ -304,6 +306,7 @@ export async function rebuildProductSearchEntities(
   const fallbackOffers = await runStatement(db, upsertFallbackOffersSql());
   const exactIdentityOffers = await runStatement(db, upsertExactIdentityGroupOffersSql());
   await runStatement(db, refreshEntityAggregatesSql());
+  await runStatement(db, refreshEntityPresentationColorsSql());
   await runStatement(db, refreshEntitySearchTermsSql());
   const removed = await runStatement(db, deleteEmptyEntitiesSql());
   const totals = await db
