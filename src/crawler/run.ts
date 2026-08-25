@@ -25,6 +25,12 @@ import {
   finishCrawlRunSuccess,
   startCrawlRun,
 } from "../db/crawl-run-repository.js";
+import {
+  clearCrawlRunWorkItems,
+  completeCrawlRunStage,
+  recordCrawlRunWorkSet,
+  type ResumableCrawlStage,
+} from "../db/crawl-run-continuation-repository.js";
 import { archiveEvidence } from "../evidence/evidence-archive.js";
 import { enrichProductCategories } from "./category-enricher.js";
 import { createCrawlStageRecorder } from "./crawl-stages.js";
@@ -184,8 +190,14 @@ async function syncDerivedProductState(
   products: readonly NormalizedCatalogProduct[],
   observedAt: string,
   stages: CrawlStageRecorder,
+  crawlRunId: number,
 ): Promise<DerivedProductState> {
   const sourceIds = products.map((product) => product.sourceId);
+  // A stage that finishes inline is one a continuation no longer owes. Recording it as the stage
+  // completes, rather than once at the end, is what makes an invocation killed part-way resume
+  // from where it stopped instead of from the beginning.
+  const settle = (stage: ResumableCrawlStage) =>
+    completeCrawlRunStage(env.DB, crawlRunId, stage, observedAt);
   let searchProjection = { changedCount: 0 };
   let identity = {
     identity_exact_match_count: 0,
@@ -214,6 +226,7 @@ async function syncDerivedProductState(
       },
       () => syncProductSearchProjections(env.DB, adapter.key, sourceIds),
     );
+    await settle("search_projection");
   } catch {
     // Reported by the stage recorder.
   }
@@ -228,6 +241,7 @@ async function syncDerivedProductState(
       },
       () => syncProductIdentityResolutions(env.DB, adapter.key, sourceIds, observedAt),
     );
+    await settle("identity_resolution");
   } catch {
     // Reported by the stage recorder.
   }
@@ -242,6 +256,7 @@ async function syncDerivedProductState(
       },
       () => syncProductSearchEntities(env.DB, adapter.key, sourceIds),
     );
+    await settle("search_entity");
   } catch {
     // Reported by the stage recorder.
   }
@@ -502,12 +517,22 @@ export async function crawlShop(
           activityPolicy: getShopActivityPolicy(adapter),
         }),
     );
+    // The seller is never needed again from here: the listings are written, and this records which
+    // of them the derived stages still owe work for. An invocation killed after this point leaves
+    // durable pending work instead of losing the whole crawl.
+    await recordCrawlRunWorkSet(env.DB, {
+      crawlRunId: runId,
+      generation: observedAt,
+      sourceIds: products.map((product) => product.sourceId),
+      recordedAt: observedAt,
+    });
     const derived = await syncDerivedProductState(
       env,
       adapter,
       products,
       observedAt,
       stageRecorder,
+      runId,
     );
     const featureFactCount = await stageRecorder.run(
       "feature_facts",
@@ -531,6 +556,8 @@ export async function crawlShop(
         currentItemCount: items.size,
       }),
     );
+    // Every derived stage finished inline, so nothing is left for a continuation to read.
+    await clearCrawlRunWorkItems(env.DB, runId);
     await markShopSuccess(env.DB, adapter.key, observedAt, items.size);
     const diagnosticParts = [];
     if (pageDiagnostic != null) diagnosticParts.push(`diag=${JSON.stringify(pageDiagnostic)}`);
