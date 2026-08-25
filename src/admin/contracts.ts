@@ -12,6 +12,12 @@ export interface CatalogAdminListOptions {
   limit: number;
 }
 
+export interface CatalogAdminDuplicateListOptions {
+  manufacturerId: string;
+  afterKey: string;
+  limit: number;
+}
+
 export interface CatalogAdminUpdateInput {
   canonicalName: string;
   lifecycleStatus: "unknown" | "active" | "discontinued";
@@ -81,6 +87,7 @@ export interface CatalogAdminProductExportRow {
 export interface CatalogAdminRpc {
   listProducts(options: CatalogAdminListOptions): Promise<unknown>;
   listCandidates(options: CatalogAdminListOptions): Promise<unknown>;
+  listDuplicates(options: CatalogAdminDuplicateListOptions): Promise<unknown>;
   createProduct(input: CatalogAdminCreateInput): Promise<unknown>;
   verifyCandidate(candidateId: number, input: CatalogAdminCreateInput): Promise<unknown>;
   updateProduct(productId: number, input: CatalogAdminUpdateInput): Promise<unknown>;
