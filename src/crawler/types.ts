@@ -486,7 +486,8 @@ export interface CrawlSuccessResult {
 export interface CrawlFailedResult {
   status: "failed";
   shopKey: string;
-  crawlRunId: number;
+  /** Null when the failure happened before the run row itself could be created. */
+  crawlRunId: number | null;
   error: string;
   dataQuality: QualityEvaluation | null;
 }

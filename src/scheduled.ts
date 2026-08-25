@@ -5,6 +5,7 @@
  * `crawler/schedule.ts` from adapter metadata, so adding a shop never touches this file.
  */
 
+import { recoverStalledCrawlRuns } from "./crawler/crawl-run-recovery.js";
 import { dispatchScheduledCrawl, recoverStalledCrawlDispatches } from "./crawler/dispatch.js";
 import { roundRobinShopForScheduledTime, shopForCronAtScheduledTime } from "./crawler/schedule.js";
 import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from "./catalog/knowledge-verification/verifier.js";
@@ -152,6 +153,10 @@ async function runDailyMaintenance(env: Env) {
 
 export async function runScheduled(cron: string, env: Env, scheduledAt = new Date()) {
   if (cron === GENERAL_CRON) {
+    // Runs are reconciled before dispatches: an abandoned run records the shop failure, and the
+    // backoff that failure applies is what stops a shop that keeps timing out from being redialled
+    // on the very next tick.
+    await recoverStalledCrawlRuns(env.DB, { now: scheduledAt });
     const recovered = await recoverStalledCrawlDispatches(env, { now: scheduledAt });
     await logCurrentSyncHealth(env);
     return recovered.length

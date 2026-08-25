@@ -106,6 +106,8 @@ Read the route/API source before adding hard-coded request or response examples 
 
 Crawler dispatch state is interpreted through `src/crawler/crawl-lifecycle.ts`. The persisted queue reservation and execution lease form the explicit `idle` / `queued` / `executing` lifecycle; watchdog recovery must re-send the same logical child rather than replacing its dispatch identity.
 
+A crawl reports its progress as stages (`src/crawler/crawl-stages.ts`). Every stage logs `crawl_stage_start` and then `crawl_stage_complete` with its input count and duration, so a `crawl_stage_start` with no completion identifies where an invocation died — a Queue invocation killed at the platform's wall-clock limit runs no catch or finally block and leaves no exception behind. Runs left `running` past the execution lease are closed by `recoverStalledCrawlRuns` on the general cron, which also records the interruption against shop health so an abandoned crawl degrades the shop and applies the normal backoff instead of looking merely busy.
+
 Operational workflows that remain in the repository must represent repeatable production operations, not one-time migration steps. Completed one-off workflows and their helper scripts should be removed once the permanent runtime path replaces them; Git history remains the archive.
 
 D1 Time Travel is the first-line point-in-time recovery mechanism. `.github/workflows/backup.yml` also exports D1 on a schedule and may copy backups to R2 when configured.

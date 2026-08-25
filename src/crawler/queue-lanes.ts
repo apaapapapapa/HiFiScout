@@ -20,13 +20,27 @@ const HEAVY_PAGE_THRESHOLD = 30;
 type CrawlQueueSender = Pick<Queue<CrawlQueueMessage>, "send">;
 
 /**
+ * Whether the shop's own definition proves the crawl is small.
+ *
+ * A shop that omits `defaultMaxPages` inherits the deployment-wide page budget, not a budget of
+ * zero — so reading the missing value as a small inventory classified dynamically paginated shops
+ * as fast no matter how many pages they went on to discover. Absence is unknown size, and unknown
+ * size is only safe to treat as small when the shop cannot discover further pages at all.
+ */
+function provablySmall(plugin: ShopPlugin): boolean {
+  const declaredMaxPages = plugin.definition.defaultMaxPages;
+  if (declaredMaxPages == null) return !plugin.discovery.discoverTargets;
+  return declaredMaxPages < HEAVY_PAGE_THRESHOLD;
+}
+
+/**
  * Keep slow transports and broad inventories from consuming the same concurrency pool as the
- * small direct collectors. The lane is operational scheduling metadata; it never changes parsing.
+ * small direct collectors. The lane is operational scheduling metadata; it never changes parsing,
+ * and correctness must never depend on a shop being classified correctly.
  */
 export function crawlQueueLane(plugin: ShopPlugin): CrawlQueueLane {
   if (plugin.capabilities.transport?.kind === "relay") return "relay";
-  if ((plugin.definition.defaultMaxPages || 0) >= HEAVY_PAGE_THRESHOLD) return "heavy";
-  return "fast";
+  return provablySmall(plugin) ? "fast" : "heavy";
 }
 
 /** New lane names plus the legacy queue retained temporarily so already-enqueued work can drain. */

@@ -38,7 +38,7 @@ type RuntimeEnv = CrawlerEnv & { DB: QueryableDatabase };
 type ProductSearchEntitySync = typeof syncProductSearchEntities;
 
 /** Cloudflare Queue consumer invocations have a 15-minute wall-clock limit. */
-const CRAWL_EXECUTION_LEASE_MINUTES = 20;
+export const CRAWL_EXECUTION_LEASE_MINUTES = 20;
 const CRAWL_RETRY_SAFETY_SECONDS = 5;
 
 interface DispatchOptions {
