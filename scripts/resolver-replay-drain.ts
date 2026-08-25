@@ -291,7 +291,20 @@ async function main(): Promise<void> {
     current = await replayStatus(database);
   }
 
-  for (let iteration = 1; iteration <= maxSweeps && current.stale.total > 0; iteration += 1) {
+  // A bulk model page already followed the authoritative projection/identity/entity path. When
+  // model version drift is the only signal left, dispatch the next bulk page immediately instead
+  // of spending most of the job timeout replaying another 240 model rows one at a time.
+  const genericSweepLimit =
+    modelProcessed > 0 && current.stale.model === current.stale.total ? 0 : maxSweeps;
+  if (genericSweepLimit === 0) {
+    console.log("Only model version drift remains; skipping redundant generic queue claims.");
+  }
+
+  for (
+    let iteration = 1;
+    iteration <= genericSweepLimit && current.stale.total > 0;
+    iteration += 1
+  ) {
     let sweep = await runDataQualityRemediationSweep(queueOnlyDatabase, {
       seedLimit: 1,
       claimLimit: 10,
