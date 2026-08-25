@@ -86,13 +86,7 @@ test("stale model selection can prioritize one seller without changing the globa
   await selectStaleModelListings(db, { shopKey: "shimamusen", limit: 250 });
 
   assert.match(db.calls[0].sql, /\? = '' OR shop_key = \?/);
-  assert.deepEqual(db.calls[0].binds, [
-    0,
-    "shimamusen",
-    "shimamusen",
-    MODEL_RESOLVER_VERSION,
-    251,
-  ]);
+  assert.deepEqual(db.calls[0].binds, [0, "shimamusen", "shimamusen", MODEL_RESOLVER_VERSION, 251]);
 });
 
 test("replay rewrites only derived model fields and leaves seller facts alone", async () => {
