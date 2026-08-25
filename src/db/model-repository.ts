@@ -32,6 +32,8 @@ export interface ModelReplayOptions {
   afterId?: number;
   limit?: number;
   evaluatedAt?: string;
+  /** Optional seller scope for prioritizing a shop-specific resolver change. */
+  shopKey?: string;
 }
 
 export interface ModelReplayResult {
@@ -127,7 +129,7 @@ function modelAuditValue(
 
 export async function selectStaleModelListings(
   db: ReadableDatabase,
-  { afterId = 0, limit }: ModelReplayOptions = {},
+  { afterId = 0, limit, shopKey = "" }: ModelReplayOptions = {},
 ): Promise<{ rows: ModelReplayListingRow[]; hasMore: boolean }> {
   const take = boundedLimit(limit);
   const result = await db
@@ -138,11 +140,12 @@ export async function selectStaleModelListings(
              model_resolver_version, remediation_projection_required, title, metadata_json
       FROM products
       WHERE is_active = 1 AND id > ?
+        AND (? = '' OR shop_key = ?)
         AND (model_resolver_version < ? OR remediation_projection_required = 1)
       ORDER BY id
       LIMIT ?
     `)
-    .bind(afterId, MODEL_RESOLVER_VERSION, take + 1)
+    .bind(afterId, shopKey, shopKey, MODEL_RESOLVER_VERSION, take + 1)
     .all<ModelReplayListingRow>();
   const rows = result.results || [];
   return { rows: rows.slice(0, take), hasMore: rows.length > take };

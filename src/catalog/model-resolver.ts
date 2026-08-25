@@ -155,6 +155,16 @@ const ANNOTATION_RULES: readonly AnnotationRule[] = [
   },
 ];
 
+/**
+ * Shops whose model resolver behavior is narrower than the global rules.
+ *
+ * A resolver version bump makes every active listing replay-eligible. Administrative replay uses
+ * this list to refresh the directly affected shops first, before draining the global backlog.
+ */
+export const MODEL_RESOLVER_SCOPED_SHOPS: readonly string[] = Object.freeze([
+  ...new Set(ANNOTATION_RULES.flatMap((rule) => (rule.shopKey ? [rule.shopKey] : []))),
+]);
+
 const UNCLASSIFIED_RULES: readonly AnnotationRule[] = [
   { name: "seller_bracket", pattern: /[【】《》[\]［］]/u },
   { name: "seller_number", pattern: /(?:^|[^A-Za-z0-9])\d{5,}(?:$|[^A-Za-z0-9])/u },

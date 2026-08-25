@@ -1,8 +1,10 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { MODEL_RESOLVER_SCOPED_SHOPS } from "../src/catalog/model-resolver.js";
 import { RESOLUTION_VERSIONS } from "../src/catalog/resolution-versions.js";
 import { compactSupersededAutomaticRemediationJobs } from "../src/db/data-quality-remediation-compaction.js";
 import { reprocessStaleManufacturerListings } from "../src/db/manufacturer-repository.js";
+import { reprocessStaleModelListings } from "../src/db/model-repository.js";
 import { runDataQualityRemediationSweep } from "../src/db/data-quality-remediation-service.js";
 import type { QueryableDatabase } from "../src/db/types.js";
 import { createD1RestDatabase } from "./lib/d1-rest-database.js";
@@ -47,6 +49,7 @@ interface DrainResult {
   recoveredExhausted: number;
   compacted: number;
   manufacturerProcessed: number;
+  modelProcessed: number;
   complete: boolean;
   remaining: number;
   initial: ReplayStatus;
@@ -199,6 +202,26 @@ async function drainStaleManufacturerPages(
   return processed;
 }
 
+async function drainStaleModelPages(
+  db: QueryableDatabase,
+  maxPages: number,
+  shopKey?: string,
+): Promise<number> {
+  let afterId = 0;
+  let processed = 0;
+  for (let page = 0; page < maxPages; page += 1) {
+    const result = await reprocessStaleModelListings(db, {
+      afterId,
+      limit: 250,
+      shopKey,
+    });
+    processed += result.processedCount;
+    if (!result.hasMore || result.nextAfterId == null) break;
+    afterId = result.nextAfterId;
+  }
+  return processed;
+}
+
 async function writeResult(path: string, result: DrainResult): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, `${JSON.stringify(result, null, 2)}\n`, "utf8");
@@ -210,6 +233,7 @@ async function main(): Promise<void> {
     argument("--manufacturer-pages", "4"),
     "--manufacturer-pages",
   );
+  const modelPages = positiveInteger(argument("--model-pages", "4"), "--model-pages");
   const output = argument("--output", ".generated/remediation-drain-result.json");
   const database = createD1RestDatabase({
     accountId: requiredEnv("CLOUDFLARE_ACCOUNT_ID"),
@@ -245,6 +269,25 @@ async function main(): Promise<void> {
     console.log(
       `Resolved ${compactedAfterManufacturer} manufacturer jobs superseded by the bulk replay.`,
     );
+    current = await replayStatus(database);
+  }
+
+  let modelProcessed = 0;
+  if (current.stale.model > 0) {
+    // Shop-specific rule changes are the user-visible reason for many model version bumps. Replay
+    // those small inventories first, then use the same page-batched path for the global backlog.
+    for (const shopKey of MODEL_RESOLVER_SCOPED_SHOPS) {
+      modelProcessed += await drainStaleModelPages(database, modelPages, shopKey);
+    }
+    modelProcessed += await drainStaleModelPages(database, modelPages);
+  }
+  if (modelProcessed > 0) {
+    console.log(
+      `Bulk model replay processed ${modelProcessed} listings through the authoritative replay path.`,
+    );
+    const compactedAfterModel = await compactSupersededAutomaticRemediationJobs(database);
+    compacted += compactedAfterModel;
+    console.log(`Resolved ${compactedAfterModel} model jobs superseded by the bulk replay.`);
     current = await replayStatus(database);
   }
 
@@ -293,6 +336,7 @@ async function main(): Promise<void> {
     recoveredExhausted,
     compacted,
     manufacturerProcessed,
+    modelProcessed,
     complete: final.stale.total === 0,
     remaining: final.stale.total,
     initial,

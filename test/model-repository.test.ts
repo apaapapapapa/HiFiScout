@@ -75,9 +75,24 @@ test("stale model selection is bounded and cursor-restartable", async () => {
 
   assert.equal(selected.rows.length, 1);
   assert.equal(selected.hasMore, true);
-  assert.deepEqual(db.calls[0].binds, [10, MODEL_RESOLVER_VERSION, 2]);
+  assert.deepEqual(db.calls[0].binds, [10, "", "", MODEL_RESOLVER_VERSION, 2]);
   assert.match(db.calls[0].sql, /ORDER BY id/);
   assert.match(db.calls[0].sql, /model_resolver_version < \?/);
+});
+
+test("stale model selection can prioritize one seller without changing the global default", async () => {
+  const db = captureDatabase([staleListing({ shop_key: "shimamusen" })]);
+
+  await selectStaleModelListings(db, { shopKey: "shimamusen", limit: 250 });
+
+  assert.match(db.calls[0].sql, /\? = '' OR shop_key = \?/);
+  assert.deepEqual(db.calls[0].binds, [
+    0,
+    "shimamusen",
+    "shimamusen",
+    MODEL_RESOLVER_VERSION,
+    251,
+  ]);
 });
 
 test("replay rewrites only derived model fields and leaves seller facts alone", async () => {
