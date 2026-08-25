@@ -909,8 +909,8 @@ export function CatalogAdmin() {
                   autoComplete="off"
                   value={catalogDraft.q}
                   disabled={catalogBusy}
-                  onChange={(event) =>
-                    setCatalogDraft((value) => ({ ...value, q: event.currentTarget.value }))
+                  onChange={({ currentTarget: { value: nextValue } }) =>
+                    setCatalogDraft((value) => ({ ...value, q: nextValue }))
                   }
                 />
               </label>
@@ -924,10 +924,10 @@ export function CatalogAdmin() {
                   autoComplete="off"
                   value={catalogDraft.manufacturerId}
                   disabled={catalogBusy}
-                  onChange={(event) =>
+                  onChange={({ currentTarget: { value: nextValue } }) =>
                     setCatalogDraft((value) => ({
                       ...value,
-                      manufacturerId: event.currentTarget.value,
+                      manufacturerId: nextValue,
                     }))
                   }
                 />
@@ -938,10 +938,10 @@ export function CatalogAdmin() {
                   id="catalog-category-filter"
                   value={catalogDraft.categoryId}
                   disabled={catalogBusy}
-                  onChange={(event) =>
+                  onChange={({ currentTarget: { value: nextValue } }) =>
                     setCatalogDraft((value) => ({
                       ...value,
-                      categoryId: event.currentTarget.value,
+                      categoryId: nextValue,
                     }))
                   }
                 >
@@ -1115,7 +1115,9 @@ export function CatalogAdmin() {
                   autoComplete="off"
                   value={duplicateManufacturerDraft}
                   disabled={duplicateBusy || operationBusy}
-                  onChange={(event) => setDuplicateManufacturerDraft(event.currentTarget.value)}
+                  onChange={({ currentTarget: { value: nextValue } }) =>
+                    setDuplicateManufacturerDraft(nextValue)
+                  }
                 />
               </label>
               <div className="search-actions">
@@ -1319,8 +1321,8 @@ export function CatalogAdmin() {
                   autoComplete="off"
                   value={candidateDraft.q}
                   disabled={candidateBusy || operationBusy}
-                  onChange={(event) =>
-                    setCandidateDraft((value) => ({ ...value, q: event.currentTarget.value }))
+                  onChange={({ currentTarget: { value: nextValue } }) =>
+                    setCandidateDraft((value) => ({ ...value, q: nextValue }))
                   }
                 />
               </label>
@@ -1333,10 +1335,10 @@ export function CatalogAdmin() {
                   autoComplete="off"
                   value={candidateDraft.manufacturerId}
                   disabled={candidateBusy || operationBusy}
-                  onChange={(event) =>
+                  onChange={({ currentTarget: { value: nextValue } }) =>
                     setCandidateDraft((value) => ({
                       ...value,
-                      manufacturerId: event.currentTarget.value,
+                      manufacturerId: nextValue,
                     }))
                   }
                 />
@@ -1346,10 +1348,10 @@ export function CatalogAdmin() {
                 <select
                   value={candidateDraft.categoryId}
                   disabled={candidateBusy || operationBusy}
-                  onChange={(event) =>
+                  onChange={({ currentTarget: { value: nextValue } }) =>
                     setCandidateDraft((value) => ({
                       ...value,
-                      categoryId: event.currentTarget.value,
+                      categoryId: nextValue,
                     }))
                   }
                 >
@@ -1575,8 +1577,8 @@ export function CatalogAdmin() {
                 maxLength={300}
                 required
                 value={editName}
-                onChange={(event) => {
-                  setEditName(event.currentTarget.value);
+                onChange={({ currentTarget: { value: nextValue } }) => {
+                  setEditName(nextValue);
                   setEditWarning(false);
                 }}
               />
@@ -1586,8 +1588,8 @@ export function CatalogAdmin() {
               <select
                 required
                 value={editCategory}
-                onChange={(event) => {
-                  setEditCategory(event.currentTarget.value);
+                onChange={({ currentTarget: { value: nextValue } }) => {
+                  setEditCategory(nextValue);
                   setEditWarning(false);
                 }}
               >
@@ -1603,8 +1605,8 @@ export function CatalogAdmin() {
               <select
                 required
                 value={editLifecycle}
-                onChange={(event) => {
-                  setEditLifecycle(event.currentTarget.value as LifecycleStatus);
+                onChange={({ currentTarget: { value: nextValue } }) => {
+                  setEditLifecycle(nextValue as LifecycleStatus);
                   setEditWarning(false);
                 }}
               >
@@ -1650,7 +1652,9 @@ export function CatalogAdmin() {
                   inputMode="numeric"
                   placeholder="例: 123"
                   value={mergeSourceId}
-                  onChange={(event) => setMergeSourceId(event.currentTarget.value)}
+                  onChange={({ currentTarget: { value: nextValue } }) =>
+                    setMergeSourceId(nextValue)
+                  }
                 />
               </label>
               <p className="edit-change-status" data-dirty={mergeStatus ? "warning" : "false"}>
@@ -1712,10 +1716,10 @@ export function CatalogAdmin() {
                 required
                 autoComplete="off"
                 value={createDraft.manufacturerId}
-                onChange={(event) =>
+                onChange={({ currentTarget: { value: nextValue } }) =>
                   setCreateDraft((value) => ({
                     ...value,
-                    manufacturerId: event.currentTarget.value,
+                    manufacturerId: nextValue,
                   }))
                 }
               />
@@ -1728,10 +1732,10 @@ export function CatalogAdmin() {
                 required
                 autoComplete="off"
                 value={createDraft.canonicalModel}
-                onChange={(event) =>
+                onChange={({ currentTarget: { value: nextValue } }) =>
                   setCreateDraft((value) => ({
                     ...value,
-                    canonicalModel: event.currentTarget.value,
+                    canonicalModel: nextValue,
                   }))
                 }
               />
@@ -1744,10 +1748,10 @@ export function CatalogAdmin() {
                 required
                 autoComplete="off"
                 value={createDraft.canonicalName}
-                onChange={(event) =>
+                onChange={({ currentTarget: { value: nextValue } }) =>
                   setCreateDraft((value) => ({
                     ...value,
-                    canonicalName: event.currentTarget.value,
+                    canonicalName: nextValue,
                   }))
                 }
               />
@@ -1757,10 +1761,10 @@ export function CatalogAdmin() {
               <select
                 required
                 value={createDraft.primaryCategoryId}
-                onChange={(event) =>
+                onChange={({ currentTarget: { value: nextValue } }) =>
                   setCreateDraft((value) => ({
                     ...value,
-                    primaryCategoryId: event.currentTarget.value,
+                    primaryCategoryId: nextValue,
                   }))
                 }
               >
@@ -1777,10 +1781,10 @@ export function CatalogAdmin() {
               <select
                 required
                 value={createDraft.lifecycleStatus}
-                onChange={(event) =>
+                onChange={({ currentTarget: { value: nextValue } }) =>
                   setCreateDraft((value) => ({
                     ...value,
-                    lifecycleStatus: event.currentTarget.value as LifecycleStatus,
+                    lifecycleStatus: nextValue as LifecycleStatus,
                   }))
                 }
               >
@@ -1797,8 +1801,8 @@ export function CatalogAdmin() {
                 placeholder="https://..."
                 autoComplete="off"
                 value={createDraft.sourceUrl}
-                onChange={(event) =>
-                  setCreateDraft((value) => ({ ...value, sourceUrl: event.currentTarget.value }))
+                onChange={({ currentTarget: { value: nextValue } }) =>
+                  setCreateDraft((value) => ({ ...value, sourceUrl: nextValue }))
                 }
               />
             </label>
