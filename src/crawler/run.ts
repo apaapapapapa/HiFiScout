@@ -412,9 +412,11 @@ export async function crawlShop(
     }
 
     const observedAt = nowIso(new Date());
-    const manufacturerResolvedProducts = await resolveProductCatalogFields(env.DB, [
-      ...items.values(),
-    ]);
+    const manufacturerResolvedProducts = await resolveProductCatalogFields(
+      env.DB,
+      [...items.values()],
+      { shopKey: adapter.key },
+    );
     const enrichment = await enrichProductCategories({
       db: env.DB,
       adapter,

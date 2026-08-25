@@ -105,6 +105,31 @@ test("replay rewrites only derived model fields and leaves seller facts alone", 
   assert.ok(update.binds.includes(MODEL_RESOLVER_VERSION));
 });
 
+test("replay removes Shimamusen serials from existing displayed models", async () => {
+  const db = replayDatabase(
+    staleListing({
+      shop_key: "shimamusen",
+      canonical_manufacturer_id: "accuphase",
+      model: "C-3900 (I0Y154)",
+      raw_model: "C-3900 (I0Y154)",
+      normalized_model: "C3900I0Y154",
+      title: "【中古品】Accuphase C-3900 (I0Y154) ※送料無料",
+    }),
+  );
+
+  const result = await reprocessStaleModelListings(db, {
+    evaluatedAt: "2026-08-25T00:00:00.000Z",
+  });
+
+  assert.equal(result.processedCount, 1);
+  assert.equal(result.changedCount, 1);
+  const update = db.batched.find((statement) => /UPDATE products SET/.test(statement.sql));
+  assert.ok(update);
+  assert.equal(update.binds[0], "C-3900");
+  assert.equal(update.binds[1], "C3900");
+  assert.ok(update.binds.some((value) => String(value).includes("seller_serial")));
+});
+
 test("replay records before/after provenance only for listings that actually moved", async () => {
   const changed = replayDatabase(staleListing());
   await reprocessStaleModelListings(changed, { evaluatedAt: "2026-08-15T00:00:00.000Z" });

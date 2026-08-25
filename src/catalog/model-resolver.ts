@@ -27,7 +27,7 @@ import type {
   ResolutionStatus,
 } from "./types.js";
 
-export const MODEL_RESOLVER_VERSION = 8;
+export const MODEL_RESOLVER_VERSION = 9;
 
 export type ModelResolver = (input: ModelResolutionInput) => ModelResolutionResult;
 
@@ -42,6 +42,7 @@ interface AnnotationRule {
   readonly name: string;
   readonly pattern: RegExp;
   readonly requiresBarePresentationEvidence?: boolean;
+  readonly shopKey?: string;
 }
 
 interface StrippedModel {
@@ -104,6 +105,16 @@ const ANNOTATION_RULES: readonly AnnotationRule[] = [
     name: "presentation_color",
     pattern: PRESENTATION_BARE_COLOR_PATTERN,
     requiresBarePresentationEvidence: true,
+  },
+  {
+    name: "seller_serial",
+    shopKey: "shimamusen",
+    // Shimamusen appends per-unit serials to used-product titles: `C-3900 (I0Y154)`,
+    // `AP-505 (2080013)`, `D-03X (G40601378C)`. NFKC has already normalized full-width
+    // parentheses. Requiring 6-20 contiguous alphanumerics and at least three digits leaves
+    // `(ペア)`, manufacturer aliases and ordinary bracketed presentation untouched; the identity
+    // guard below still vetoes removal if a recognized revision token would be lost.
+    pattern: /\s*\((?=[A-Z0-9]{6,20}\))(?=(?:[A-Z]*\d){3})[A-Z0-9]+\)\s*/giu,
   },
   {
     name: "seller_sku",
@@ -240,7 +251,11 @@ function preferredBracketedModelAlias(value: string): StrippedModel {
   return { text: alias, removed: ["seller_model_alias"], colors: [] };
 }
 
-function stripSellerAnnotations(value: string, manufacturerId: string): StrippedModel {
+function stripSellerAnnotations(
+  value: string,
+  manufacturerId: string,
+  shopKey: string,
+): StrippedModel {
   const preferred = preferredBracketedModelAlias(value);
   const removed = [...preferred.removed];
   const colors: string[] = [];
@@ -251,6 +266,7 @@ function stripSellerAnnotations(value: string, manufacturerId: string): Stripped
   for (let pass = 0; pass < ANNOTATION_PASS_LIMIT; pass += 1) {
     const before = text;
     for (const rule of ANNOTATION_RULES) {
+      if (rule.shopKey && rule.shopKey !== shopKey) continue;
       if (
         rule.requiresBarePresentationEvidence &&
         !canStripBarePresentationColor(manufacturerId, text)
@@ -382,6 +398,7 @@ function resolvePreparedModel(
 ): ModelResolutionResult {
   const rawModel = clean(input.rawModel);
   const manufacturerId = clean(input.manufacturerId).toLowerCase();
+  const shopKey = clean(input.shopKey).toLowerCase();
   const fromSeller = Boolean(rawModel);
   const source = fromSeller ? rawModel : manufacturerId ? clean(input.title) : "";
   if (!source) return unresolvedResult(rawModel, rawModel);
@@ -390,7 +407,7 @@ function resolvePreparedModel(
   const withoutManufacturer = presentation?.patterns.length
     ? stripManufacturerPresentation(source, presentation)
     : source;
-  const stripped = stripSellerAnnotations(withoutManufacturer, manufacturerId);
+  const stripped = stripSellerAnnotations(withoutManufacturer, manufacturerId, shopKey);
   const safe = preservesModelIdentity(withoutManufacturer, stripped.text);
   const model = safe ? stripped.text : withoutManufacturer;
   const normalizedModel = normalizeIdentityModel(model);
@@ -463,6 +480,7 @@ export function resolveModel(
 export function applyModelResolution(
   product: NormalizedCatalogProduct,
   aliasesOrResolver: readonly ManufacturerAliasEvidence[] | ModelResolver = [],
+  shopKey = "",
 ): NormalizedCatalogProduct {
   const resolver =
     typeof aliasesOrResolver === "function"
@@ -472,6 +490,7 @@ export function applyModelResolution(
     rawModel: product.rawModel,
     title: product.title,
     manufacturerId: product.manufacturerId,
+    shopKey,
   });
   return {
     ...product,

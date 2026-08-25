@@ -22,6 +22,11 @@ import { inferFeatureFacts, normalizeFeatureFacts } from "./product-features.js"
 
 const CLASSIFICATION_METADATA_VERSION = 14;
 
+export interface CatalogNormalizationContext {
+  /** Source seller used by narrowly scoped model-annotation rules. */
+  readonly shopKey?: string;
+}
+
 function clean(value: unknown = ""): string {
   return String(value).normalize("NFKC").replace(/\s+/g, " ").trim();
 }
@@ -91,6 +96,7 @@ export function applyCategoryClassification<T extends CategoryClassifiableProduc
 export function normalizeCatalogProduct(
   product: CatalogNormalizationInput,
   config: CategoryNormalizationConfig = {},
+  context: CatalogNormalizationContext = {},
 ): NormalizedCatalogProduct {
   const rawManufacturer = clean(product.rawManufacturer ?? product.manufacturer ?? "");
   const manufacturerCandidate = clean(product.manufacturer || rawManufacturer);
@@ -107,6 +113,7 @@ export function normalizeCatalogProduct(
     rawModel: product.rawModel ?? product.model ?? "",
     title: product.title,
     manufacturerId: manufacturer.canonicalManufacturerId,
+    shopKey: context.shopKey,
   });
   const metadata: Record<string, unknown> = isRecord(product.metadata) ? product.metadata : {};
   const { evidence } = collectListingCategoryEvidence({
@@ -171,8 +178,9 @@ export function normalizeCatalogProduct(
 export function normalizeCatalogProducts(
   products: readonly CatalogNormalizationInput[],
   config: CategoryNormalizationConfig = {},
+  context: CatalogNormalizationContext = {},
 ): NormalizedCatalogProduct[] {
-  return products.map((product) => normalizeCatalogProduct(product, config));
+  return products.map((product) => normalizeCatalogProduct(product, config, context));
 }
 
 export const CATEGORY_CLASSIFICATION_METADATA_VERSION = CLASSIFICATION_METADATA_VERSION;
