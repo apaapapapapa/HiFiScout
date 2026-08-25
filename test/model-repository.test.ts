@@ -75,9 +75,18 @@ test("stale model selection is bounded and cursor-restartable", async () => {
 
   assert.equal(selected.rows.length, 1);
   assert.equal(selected.hasMore, true);
-  assert.deepEqual(db.calls[0].binds, [10, MODEL_RESOLVER_VERSION, 2]);
+  assert.deepEqual(db.calls[0].binds, [10, "", "", MODEL_RESOLVER_VERSION, 2]);
   assert.match(db.calls[0].sql, /ORDER BY id/);
   assert.match(db.calls[0].sql, /model_resolver_version < \?/);
+});
+
+test("stale model selection can prioritize one seller without changing the global default", async () => {
+  const db = captureDatabase([staleListing({ shop_key: "shimamusen" })]);
+
+  await selectStaleModelListings(db, { shopKey: "shimamusen", limit: 250 });
+
+  assert.match(db.calls[0].sql, /\? = '' OR shop_key = \?/);
+  assert.deepEqual(db.calls[0].binds, [0, "shimamusen", "shimamusen", MODEL_RESOLVER_VERSION, 251]);
 });
 
 test("replay rewrites only derived model fields and leaves seller facts alone", async () => {
@@ -103,6 +112,31 @@ test("replay rewrites only derived model fields and leaves seller facts alone", 
   }
   assert.ok(update.binds.includes("D-1000 MK2"));
   assert.ok(update.binds.includes(MODEL_RESOLVER_VERSION));
+});
+
+test("replay removes Shimamusen serials from existing displayed models", async () => {
+  const db = replayDatabase(
+    staleListing({
+      shop_key: "shimamusen",
+      canonical_manufacturer_id: "accuphase",
+      model: "C-3900 (I0Y154)",
+      raw_model: "C-3900 (I0Y154)",
+      normalized_model: "C3900I0Y154",
+      title: "【中古品】Accuphase C-3900 (I0Y154) ※送料無料",
+    }),
+  );
+
+  const result = await reprocessStaleModelListings(db, {
+    evaluatedAt: "2026-08-25T00:00:00.000Z",
+  });
+
+  assert.equal(result.processedCount, 1);
+  assert.equal(result.changedCount, 1);
+  const update = db.batched.find((statement) => /UPDATE products SET/.test(statement.sql));
+  assert.ok(update);
+  assert.equal(update.binds[0], "C-3900");
+  assert.equal(update.binds[1], "C3900");
+  assert.ok(update.binds.some((value) => String(value).includes("seller_serial")));
 });
 
 test("replay records before/after provenance only for listings that actually moved", async () => {

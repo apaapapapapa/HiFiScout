@@ -69,6 +69,7 @@ jobs:
             echo
             echo "Transport: direct Cloudflare D1 REST API (no Worker invocation)"
             echo "Superseded jobs compacted: $compacted"
+            echo "Model listings bulk replayed: $(jq -r '.modelProcessed' "$result")"
             echo "Completed: $complete"
             echo "Remaining stale signals: $remaining"
             echo

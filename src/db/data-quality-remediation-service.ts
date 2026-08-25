@@ -245,6 +245,7 @@ async function replayDerivedListing(
     rawModel: row.raw_model,
     title: row.title,
     manufacturerId: manufacturer.canonicalManufacturerId,
+    shopKey: row.shop_key,
   });
   // This replay advances `model_resolver_version`, so it must persist every field owned by that
   // resolver. Otherwise a row handled here becomes current while its extracted finish stays empty.

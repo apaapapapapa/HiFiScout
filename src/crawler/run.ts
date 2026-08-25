@@ -430,7 +430,7 @@ export async function crawlShop(
     const manufacturerResolvedProducts = await stageRecorder.run(
       "manufacturer_resolution",
       { inputCount: items.size },
-      () => resolveProductCatalogFields(env.DB, [...items.values()]),
+      () => resolveProductCatalogFields(env.DB, [...items.values()], { shopKey: adapter.key }),
     );
     const enrichment = await stageRecorder.run(
       "category_enrichment",

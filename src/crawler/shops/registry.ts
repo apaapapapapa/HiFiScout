@@ -192,7 +192,9 @@ export function defineShopPlugin<TPage extends CrawlPage>(
     capabilities: runtimeCapabilities,
     parse: function normalizedParse(...args: [html: string, page?: TPage]) {
       const sellerProducts = validateSellerProducts(parse.apply(plugin, args), plugin);
-      return normalizeCatalogProducts(sellerProducts, runtimeCapabilities.catalog || {});
+      return normalizeCatalogProducts(sellerProducts, runtimeCapabilities.catalog || {}, {
+        shopKey: plugin.key,
+      });
     },
   };
   return Object.freeze(plugin);

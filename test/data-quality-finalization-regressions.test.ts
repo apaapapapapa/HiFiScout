@@ -30,8 +30,11 @@ test("generic DQ replay keeps public manufacturer_id separate from verified cano
   );
 });
 
-test("administrative resolver drain uses bulk manufacturer replay and batched generic claims", () => {
+test("administrative resolver drain uses bulk resolver replay and batched generic claims", () => {
   assert.match(replayDrain, /reprocessStaleManufacturerListings/u);
+  assert.match(replayDrain, /reprocessStaleModelListings/u);
+  assert.match(replayDrain, /MODEL_RESOLVER_SCOPED_SHOPS/u);
+  assert.match(replayDrain, /current\.stale\.model === current\.stale\.total/u);
   assert.match(replayDrain, /limit:\s*250/u);
   assert.equal(
     [...replayDrain.matchAll(/claimLimit:\s*10/gu)].length,

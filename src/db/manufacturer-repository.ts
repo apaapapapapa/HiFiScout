@@ -347,6 +347,7 @@ async function reprocessManufacturerRows(
       rawModel: row.raw_model,
       title: row.title,
       manufacturerId: resolution.canonicalManufacturerId,
+      shopKey: row.shop_key,
     });
     const presentationColor = presentationColorLabel(model.presentationColors);
     const manufacturerFilterId = manufacturerIdForFilter(
