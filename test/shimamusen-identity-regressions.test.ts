@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
+import { resolveModel } from "../src/catalog/model-resolver.js";
 import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
+import { getShopPlugin } from "../src/crawler/shops/index.js";
 import { parseShimamusenListing } from "../src/crawler/shops/shimamusen.js";
 
 test("Shimamusen promotional prefixes never become manufacturer or model identity", () => {
@@ -63,4 +65,60 @@ test("Shimamusen listing prose never reaches the displayed model", () => {
   assert.equal(jbl.model, "D30085 HARTSFIELD(ペア)");
   assert.equal(western.manufacturer, "Western Electric");
   assert.equal(western.model, "91E");
+});
+
+test("Shimamusen per-unit serials stay in raw evidence but leave the displayed model", () => {
+  const examples = [
+    ["Accuphase C-3900 (I0Y154)", "C-3900"],
+    ["Accuphase DP-510（G1Y854）", "DP-510"],
+    ["TEAC AP-505 (2080013)", "AP-505"],
+    ["McIntosh C46 (XE1913)", "C46"],
+    ["LUXMAN D-03X (G40601378C)", "D-03X"],
+    ["DENON PMA-1600NE (AHX15181203016)", "PMA-1600NE"],
+  ] as const;
+  const html = `<ul>${examples
+    .map(
+      ([title], index) => `
+        <li>
+          <a href="/shopdetail/${String(21_000 + index).padStart(12, "0")}/ct826/page1/order/">
+            【中古品】${title} ※送料無料《北海道・沖縄・離島を除く》
+          </a>
+          <span class="price">販売価格100,000円(税込)</span>
+        </li>`,
+    )
+    .join("")}</ul>`;
+  const plugin = getShopPlugin("shimamusen");
+  assert.ok(plugin);
+
+  const products = plugin.parse(html, "https://www.shimamusen.com/shopbrand/ct826/");
+
+  assert.deepEqual(
+    products.map((product) => product.model),
+    examples.map(([, model]) => model),
+  );
+  assert.ok(products.every((product) => /\([A-Z0-9]+\)/iu.test(product.rawModel)));
+  assert.ok(products.every((product) => /[（(][A-Z0-9]+[）)]/iu.test(product.title)));
+  assert.ok(
+    products.every((product) =>
+      product.metadata.modelNormalization?.removedAnnotations.includes("seller_serial"),
+    ),
+  );
+});
+
+test("Shimamusen serial removal is seller-scoped and preserves other parenthetical text", () => {
+  const anotherSeller = resolveModel({
+    rawModel: "C-3900 (I0Y154)",
+    manufacturerId: "accuphase",
+    shopKey: "another-shop",
+  });
+  const pair = resolveModel({
+    rawModel: "D30085 HARTSFIELD(ペア)",
+    manufacturerId: "jbl",
+    shopKey: "shimamusen",
+  });
+
+  assert.equal(anotherSeller.model, "C-3900 (I0Y154)");
+  assert.equal(pair.model, "D30085 HARTSFIELD(ペア)");
+  assert.ok(!anotherSeller.removedAnnotations.includes("seller_serial"));
+  assert.ok(!pair.removedAnnotations.includes("seller_serial"));
 });

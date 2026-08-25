@@ -46,6 +46,12 @@ export interface ModelReplayDependencies {
   refreshListings?: typeof refreshListingProjections;
 }
 
+export interface ResolveProductCatalogFieldsOptions {
+  aliases?: readonly ManufacturerAliasEvidence[];
+  /** Source seller used by narrowly scoped model-annotation rules. */
+  shopKey?: string;
+}
+
 export interface UnresolvedModelGroup {
   canonicalManufacturerId: string;
   normalizedModel: string;
@@ -95,13 +101,17 @@ function boundedLimit(value: number | undefined): number {
 export async function resolveProductCatalogFields(
   db: ReadableDatabase,
   products: readonly NormalizedCatalogProduct[],
-  aliases?: readonly ManufacturerAliasEvidence[],
+  options: ResolveProductCatalogFieldsOptions = {},
 ): Promise<NormalizedCatalogProduct[]> {
-  const evidence = aliases ?? (await listManufacturerAliasEvidence(db));
+  const evidence = options.aliases ?? (await listManufacturerAliasEvidence(db));
   const manufacturerResolver = createManufacturerResolver(evidence);
   const modelResolver = createModelResolver(evidence);
   return products.map((product) =>
-    applyModelResolution(applyManufacturerResolution(product, manufacturerResolver), modelResolver),
+    applyModelResolution(
+      applyManufacturerResolution(product, manufacturerResolver),
+      modelResolver,
+      options.shopKey,
+    ),
   );
 }
 
@@ -171,6 +181,7 @@ export async function reprocessStaleModelListings(
       rawModel: row.raw_model,
       title: row.title,
       manufacturerId: row.canonical_manufacturer_id,
+      shopKey: row.shop_key,
     });
     const presentationColor = presentationColorLabel(resolution.presentationColors);
     const moved =

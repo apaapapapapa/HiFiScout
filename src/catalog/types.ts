@@ -564,6 +564,8 @@ export interface ModelResolutionInput {
   rawModel?: unknown;
   title?: unknown;
   manufacturerId?: unknown;
+  /** Seller identity used only by explicitly scoped annotation rules. */
+  shopKey?: unknown;
 }
 
 export interface ModelResolutionResult {
