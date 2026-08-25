@@ -347,8 +347,8 @@ export function ListingAdmin() {
                   autoComplete="off"
                   value={draft.q}
                   disabled={busy}
-                  onChange={(event) =>
-                    setDraft((value) => ({ ...value, q: event.currentTarget.value }))
+                  onChange={({ currentTarget: { value: nextValue } }) =>
+                    setDraft((value) => ({ ...value, q: nextValue }))
                   }
                 />
               </label>
@@ -361,8 +361,8 @@ export function ListingAdmin() {
                   autoComplete="off"
                   value={draft.shopKey}
                   disabled={busy}
-                  onChange={(event) =>
-                    setDraft((value) => ({ ...value, shopKey: event.currentTarget.value }))
+                  onChange={({ currentTarget: { value: nextValue } }) =>
+                    setDraft((value) => ({ ...value, shopKey: nextValue }))
                   }
                 />
               </label>
@@ -372,8 +372,8 @@ export function ListingAdmin() {
                   id="listings-category-filter"
                   value={draft.categoryId}
                   disabled={busy}
-                  onChange={(event) =>
-                    setDraft((value) => ({ ...value, categoryId: event.currentTarget.value }))
+                  onChange={({ currentTarget: { value: nextValue } }) =>
+                    setDraft((value) => ({ ...value, categoryId: nextValue }))
                   }
                 >
                   <option value="">すべてのカテゴリ</option>
@@ -390,10 +390,10 @@ export function ListingAdmin() {
                   id="listings-listing-scope"
                   value={draft.scope}
                   disabled={busy}
-                  onChange={(event) =>
+                  onChange={({ currentTarget: { value: nextValue } }) =>
                     setDraft((value) => ({
                       ...value,
-                      scope: event.currentTarget.value === "all" ? "all" : "active",
+                      scope: nextValue === "all" ? "all" : "active",
                     }))
                   }
                 >
@@ -631,8 +631,8 @@ export function ListingAdmin() {
                 maxLength={100}
                 autoComplete="off"
                 value={editDraft.manufacturerId}
-                onChange={(event) =>
-                  setEditDraft((value) => ({ ...value, manufacturerId: event.currentTarget.value }))
+                onChange={({ currentTarget: { value: nextValue } }) =>
+                  setEditDraft((value) => ({ ...value, manufacturerId: nextValue }))
                 }
               />
               <small>例: luxman。空欄にするとメーカー未解決として固定します。</small>
@@ -644,8 +644,8 @@ export function ListingAdmin() {
                 maxLength={200}
                 autoComplete="off"
                 value={editDraft.model}
-                onChange={(event) =>
-                  setEditDraft((value) => ({ ...value, model: event.currentTarget.value }))
+                onChange={({ currentTarget: { value: nextValue } }) =>
+                  setEditDraft((value) => ({ ...value, model: nextValue }))
                 }
               />
               <small>検索とProduct Identityに使う正規化後の型番です。</small>
@@ -655,10 +655,10 @@ export function ListingAdmin() {
               <select
                 required
                 value={editDraft.primaryCategoryId}
-                onChange={(event) =>
+                onChange={({ currentTarget: { value: nextValue } }) =>
                   setEditDraft((value) => ({
                     ...value,
-                    primaryCategoryId: event.currentTarget.value,
+                    primaryCategoryId: nextValue,
                   }))
                 }
               >

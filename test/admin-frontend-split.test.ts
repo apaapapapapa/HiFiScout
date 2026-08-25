@@ -67,3 +67,9 @@ test("React admin no longer bootstraps legacy DOM or scripts", () => {
   assert.doesNotMatch(sources, /replaceChildren\(/u);
   assert.doesNotMatch(sources, /document\.addEventListener\(/u);
 });
+
+test("admin change handlers snapshot control values before queued state updaters", () => {
+  const sources = [catalogAdmin, listingAdmin].join("\n");
+  assert.doesNotMatch(sources, /event\.currentTarget\.value/u);
+  assert.match(sources, /currentTarget: \{ value: nextValue \}/u);
+});
