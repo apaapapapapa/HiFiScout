@@ -27,6 +27,7 @@ import {
 } from "../db/crawl-run-repository.js";
 import { archiveEvidence } from "../evidence/evidence-archive.js";
 import { enrichProductCategories } from "./category-enricher.js";
+import { createCrawlStageRecorder } from "./crawl-stages.js";
 import { SHOP_PLUGINS, getShopActivityPolicy } from "./shops/index.js";
 import { createTransport, isTransportConfigured } from "./transport.js";
 import { errorMessage } from "../types.js";
@@ -41,10 +42,12 @@ import type {
   QueryableDatabase,
   ShopSyncStateRow,
 } from "../db/types.js";
+import type { CrawlStageRecorder } from "./crawl-stages.js";
 import type {
   AugmentedCrawlError,
   CrawlerEnv,
   CrawlResult,
+  HtmlTransport,
   RobotsCache,
   ShopPlugin,
 } from "./types.js";
@@ -119,7 +122,7 @@ function evidenceOutcome(
 async function safeSaveDataQuality(
   env: RuntimeEnv,
   adapter: ShopPlugin,
-  runId: number,
+  runId: number | null,
   evaluatedAt: string,
   run: Partial<QualityCounts>,
 ): Promise<(QualityEvaluation & { evaluatedAt: string; crawlRunId: number | null }) | null> {
@@ -180,7 +183,9 @@ async function syncDerivedProductState(
   adapter: ShopPlugin,
   products: readonly NormalizedCatalogProduct[],
   observedAt: string,
+  stages: CrawlStageRecorder,
 ): Promise<DerivedProductState> {
+  const sourceIds = products.map((product) => product.sourceId);
   let searchProjection = { changedCount: 0 };
   let identity = {
     identity_exact_match_count: 0,
@@ -196,53 +201,49 @@ async function syncDerivedProductState(
     removed_entity_count: 0,
   };
 
+  // Each projection keeps swallowing its own failure: stale grouping is a read-model repair, not a
+  // reason to discard a completed collection. The stage recorder owns the failure log so a slow or
+  // failing projection is reported with the duration and run id the one-shot budget is judged on.
   try {
-    searchProjection = await syncProductSearchProjections(
-      env.DB,
-      adapter.key,
-      products.map((product) => product.sourceId),
+    searchProjection = await stages.run(
+      "search_projection",
+      {
+        inputCount: sourceIds.length,
+        failureEvent: "product_search_projection_sync_failure",
+        changedCount: (result) => result.changedCount,
+      },
+      () => syncProductSearchProjections(env.DB, adapter.key, sourceIds),
     );
-  } catch (error) {
-    console.warn(
-      JSON.stringify({
-        event: "product_search_projection_sync_failure",
-        shopKey: adapter.key,
-        message: errorMessage(error),
-      }),
-    );
+  } catch {
+    // Reported by the stage recorder.
   }
 
   try {
-    identity = await syncProductIdentityResolutions(
-      env.DB,
-      adapter.key,
-      products.map((product) => product.sourceId),
-      observedAt,
+    identity = await stages.run(
+      "identity_resolution",
+      {
+        inputCount: sourceIds.length,
+        failureEvent: "product_identity_sync_failure",
+        changedCount: (result) => result.identity_resolution_write_count,
+      },
+      () => syncProductIdentityResolutions(env.DB, adapter.key, sourceIds, observedAt),
     );
-  } catch (error) {
-    console.warn(
-      JSON.stringify({
-        event: "product_identity_sync_failure",
-        shopKey: adapter.key,
-        message: errorMessage(error),
-      }),
-    );
+  } catch {
+    // Reported by the stage recorder.
   }
 
   try {
-    searchEntities = await syncProductSearchEntities(
-      env.DB,
-      adapter.key,
-      products.map((product) => product.sourceId),
+    searchEntities = await stages.run(
+      "search_entity",
+      {
+        inputCount: sourceIds.length,
+        failureEvent: "product_search_entity_sync_failure",
+        changedCount: (result) => result.entity_count,
+      },
+      () => syncProductSearchEntities(env.DB, adapter.key, sourceIds),
     );
-  } catch (error) {
-    console.warn(
-      JSON.stringify({
-        event: "product_search_entity_sync_failure",
-        shopKey: adapter.key,
-        message: errorMessage(error),
-      }),
-    );
+  } catch {
+    // Reported by the stage recorder.
   }
 
   return { searchProjection, identity, searchEntities };
@@ -285,14 +286,11 @@ export async function crawlShop(
     return { shopKey: adapter.key, status: "skipped", reason: "not_due" };
 
   const startedAt = nowIso(now);
-  await markShopAttempt(env.DB, adapter.key, startedAt);
-  const runId = await startCrawlRun(env.DB, adapter.key, startedAt);
-  const settings = getCrawlerSettings(env);
-  const maxPages = getShopMaxPages(env, definition, settings.maxPagesPerShop);
-  const pageLimit = maxPages + adapter.discovery.policy.extraPageBudget;
-  const requestDelayMs = getShopRequestDelayMs(env, definition, settings.requestDelayMs);
-  const robotsCache: RobotsCache = new Map();
   const items = new Map<string, NormalizedCatalogProduct>();
+  const evidenceMetrics: EvidenceMetrics = { expected: 0, archived: 0, failed: 0 };
+  let runId: number | null = null;
+  let stages: CrawlStageRecorder | null = null;
+  let transport: HtmlTransport | null = null;
   let pageCount = 0;
   let parseAttemptCount = 0;
   let parseFailureCount = 0;
@@ -302,10 +300,25 @@ export async function crawlShop(
   let pageDiagnostic: unknown = null;
   let lastEvidenceHtml = "";
   let classificationEvidenceHtml = "";
-  const evidenceMetrics: EvidenceMetrics = { expected: 0, archived: 0, failed: 0 };
-  const transport = createTransport(env, adapter.capabilities.transport?.kind, fetchFn);
 
+  // The attempt is recorded first because it is what claims this tick, but everything after it has
+  // to reach the terminal accounting below. Run creation, settings and transport construction used
+  // to sit outside the boundary, so a failure in any of them escaped uncaught and left the shop
+  // with an advanced attempt, no error timestamp and an unchanged failure count — indistinguishable
+  // from the state a hard termination leaves, and invisible to shop health either way.
+  await markShopAttempt(env.DB, adapter.key, startedAt);
   try {
+    runId = await startCrawlRun(env.DB, adapter.key, startedAt);
+    const stageRecorder = createCrawlStageRecorder(adapter.key, runId);
+    stages = stageRecorder;
+    const settings = getCrawlerSettings(env);
+    const maxPages = getShopMaxPages(env, definition, settings.maxPagesPerShop);
+    const pageLimit = maxPages + adapter.discovery.policy.extraPageBudget;
+    const requestDelayMs = getShopRequestDelayMs(env, definition, settings.requestDelayMs);
+    const robotsCache: RobotsCache = new Map();
+    const activeTransport = createTransport(env, adapter.capabilities.transport?.kind, fetchFn);
+    transport = activeTransport;
+    const fetchParseStage = stageRecorder.begin("fetch_parse", { inputCount: pageLimit });
     const pageQueue = initialPageQueue(adapter, maxPages, env, { now, intervalMinutes, state });
     const queuedUrls = new Set(pageQueue.map((page) => targetUrl(adapter, page)));
 
@@ -315,7 +328,7 @@ export async function crawlShop(
       const url = targetUrl(adapter, page);
       let html;
       try {
-        html = await transport.fetchHtmlPage(url, {
+        html = await activeTransport.fetchHtmlPage(url, {
           baseUrl: adapter.baseUrl,
           userAgent: settings.userAgent,
           requestDelayMs,
@@ -411,24 +424,36 @@ export async function crawlShop(
       );
     }
 
+    fetchParseStage.complete(items.size);
+
     const observedAt = nowIso(new Date());
-    const manufacturerResolvedProducts = await resolveProductCatalogFields(env.DB, [
-      ...items.values(),
-    ]);
-    const enrichment = await enrichProductCategories({
-      db: env.DB,
-      adapter,
-      products: manufacturerResolvedProducts,
-      transport,
-      fetchOptions: {
-        baseUrl: adapter.baseUrl,
-        userAgent: settings.userAgent,
-        requestDelayMs,
-        fetchFn,
-        robotsCache,
+    const manufacturerResolvedProducts = await stageRecorder.run(
+      "manufacturer_resolution",
+      { inputCount: items.size },
+      () => resolveProductCatalogFields(env.DB, [...items.values()]),
+    );
+    const enrichment = await stageRecorder.run(
+      "category_enrichment",
+      {
+        inputCount: manufacturerResolvedProducts.length,
+        changedCount: (result) => result.enrichedCount,
       },
-      now: new Date(observedAt),
-    });
+      () =>
+        enrichProductCategories({
+          db: env.DB,
+          adapter,
+          products: manufacturerResolvedProducts,
+          transport: activeTransport,
+          fetchOptions: {
+            baseUrl: adapter.baseUrl,
+            userAgent: settings.userAgent,
+            requestDelayMs,
+            fetchFn,
+            robotsCache,
+          },
+          now: new Date(observedAt),
+        }),
+    );
     const products = enrichment.products;
     logUnclassifiedProducts(adapter, products);
 
@@ -467,40 +492,45 @@ export async function crawlShop(
       evidenceOutcome(evidenceMetrics, result);
     }
 
-    const { changedCount, activityCount, touchedCount, deactivatedCount } = await upsertProducts(
-      env.DB,
-      adapter.key,
+    const { changedCount, activityCount, touchedCount, deactivatedCount } = await stageRecorder.run(
+      "listing_write",
+      { inputCount: products.length, changedCount: (result) => result.changedCount },
+      () =>
+        upsertProducts(env.DB, adapter.key, products, observedAt, {
+          deactivateMissing,
+          touchIntervalMinutes: settings.productTouchIntervalMinutes,
+          activityPolicy: getShopActivityPolicy(adapter),
+        }),
+    );
+    const derived = await syncDerivedProductState(
+      env,
+      adapter,
       products,
       observedAt,
-      {
-        deactivateMissing,
-        touchIntervalMinutes: settings.productTouchIntervalMinutes,
-        activityPolicy: getShopActivityPolicy(adapter),
-      },
+      stageRecorder,
     );
-    const derived = await syncDerivedProductState(env, adapter, products, observedAt);
-    const featureFactCount = await syncObservedProductFeatureFacts(
-      env.DB,
-      adapter.key,
-      products,
-      observedAt,
+    const featureFactCount = await stageRecorder.run(
+      "feature_facts",
+      { inputCount: products.length, changedCount: (result) => result },
+      () => syncObservedProductFeatureFacts(env.DB, adapter.key, products, observedAt),
     );
-    const metadataChangedCount = await syncProductMetadata(
-      env.DB,
-      adapter.key,
-      products,
-      observedAt,
+    const metadataChangedCount = await stageRecorder.run(
+      "product_metadata",
+      { inputCount: products.length, changedCount: (result) => result },
+      () => syncProductMetadata(env.DB, adapter.key, products, observedAt),
     );
-    const quality = await safeSaveDataQuality(env, adapter, runId, observedAt, {
-      parseAttemptCount,
-      parseSuccessCount: Math.max(0, parseAttemptCount - parseFailureCount),
-      parseFailureCount,
-      evidenceExpectedEventCount: evidenceMetrics.expected,
-      evidenceArchivedEventCount: evidenceMetrics.archived,
-      evidenceArchiveFailureCount: evidenceMetrics.failed,
-      previousItemCount: Number.isFinite(previousItemCount) ? previousItemCount : null,
-      currentItemCount: items.size,
-    });
+    const quality = await stageRecorder.run("data_quality", { inputCount: items.size }, () =>
+      safeSaveDataQuality(env, adapter, runId, observedAt, {
+        parseAttemptCount,
+        parseSuccessCount: Math.max(0, parseAttemptCount - parseFailureCount),
+        parseFailureCount,
+        evidenceExpectedEventCount: evidenceMetrics.expected,
+        evidenceArchivedEventCount: evidenceMetrics.archived,
+        evidenceArchiveFailureCount: evidenceMetrics.failed,
+        previousItemCount: Number.isFinite(previousItemCount) ? previousItemCount : null,
+        currentItemCount: items.size,
+      }),
+    );
     await markShopSuccess(env.DB, adapter.key, observedAt, items.size);
     const diagnosticParts = [];
     if (pageDiagnostic != null) diagnosticParts.push(`diag=${JSON.stringify(pageDiagnostic)}`);
@@ -528,6 +558,9 @@ export async function crawlShop(
       diagnosticParts.push(`identity=${JSON.stringify(derived.identity)}`);
     }
     if (quality) diagnosticParts.push(`quality=${JSON.stringify({ status: quality.status })}`);
+    // Stage durations are kept on the run row as well as in the logs: a stalled successor is
+    // diagnosed against what the last completed run actually cost, and logs age out first.
+    diagnosticParts.push(`stages=${JSON.stringify(stageRecorder.stageDurationsMs())}`);
     const diagnosticSuffix = diagnosticParts.length ? ` | ${diagnosticParts.join(" | ")}` : "";
     await finishCrawlRunSuccess(env.DB, runId, {
       finishedAt: observedAt,
@@ -563,6 +596,20 @@ export async function crawlShop(
     const crawlError: AugmentedCrawlError =
       error instanceof Error ? error : new Error(String(error));
     const failedAt = nowIso(new Date());
+    // The stage the run was in when it threw. A run that never reached one failed during its own
+    // setup, which is the case that previously escaped the boundary entirely.
+    const failedStage = stages?.activeStage || null;
+    console.warn(
+      JSON.stringify({
+        event: "crawl_failed",
+        shopKey: adapter.key,
+        crawlRunId: runId,
+        failedStage,
+        lastCompletedStage: stages?.lastCompletedStage || null,
+        stageDurationsMs: stages?.stageDurationsMs() || {},
+        message: crawlError.message,
+      }),
+    );
     evidenceMetrics.expected += 1;
     if (lastEvidenceHtml) {
       const evidence = await archiveEvidence({
@@ -595,11 +642,13 @@ export async function crawlShop(
       crawlError.message,
       state?.consecutive_failures || 0,
     );
-    await finishCrawlRunFailure(env.DB, runId, {
-      finishedAt: failedAt,
-      pageCount,
-      message: crawlError.message,
-    });
+    if (runId !== null) {
+      await finishCrawlRunFailure(env.DB, runId, {
+        finishedAt: failedAt,
+        pageCount,
+        message: failedStage ? `${failedStage}: ${crawlError.message}` : crawlError.message,
+      });
+    }
     return {
       shopKey: adapter.key,
       status: "failed",
@@ -608,7 +657,7 @@ export async function crawlShop(
       dataQuality: quality,
     };
   } finally {
-    await transport.close?.();
+    await transport?.close?.();
   }
 }
 
