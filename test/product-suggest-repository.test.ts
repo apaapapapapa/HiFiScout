@@ -45,6 +45,7 @@ test("mixed FTS and short terms keep the short term as a post-FTS predicate", as
   assert.equal(db.calls.length, 1);
   const { sql, binds } = db.calls[0];
   assert.match(sql, /product_search_entities_fts MATCH \?/);
+  assert.equal(binds[0], '("Marantz")');
   assert.match(sql, /e\.manufacturer_terms LIKE \? ESCAPE/);
   assert.match(sql, /e\.normalized_model LIKE \? ESCAPE/);
   assert.match(sql, /e\.model_terms LIKE \? ESCAPE/);
