@@ -140,7 +140,11 @@ try {
 
   const fallback = rowsFor(rows, "fallback");
   assert.equal(fallback[0]?.entity_kind, "unresolved_listing", "a candidate must not be merged");
-  assert.equal(numberFrom(fallback, "members"), 1, "an unresolved listing stays searchable on its own");
+  assert.equal(
+    numberFrom(fallback, "members"),
+    1,
+    "an unresolved listing stays searchable on its own",
+  );
 
   assert.equal(
     numberFrom(rowsFor(rows, "membership"), "wrong"),
