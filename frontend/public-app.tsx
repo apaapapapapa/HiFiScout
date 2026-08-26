@@ -216,7 +216,12 @@ function FilterPanel({
             onChange={(event) => onValueChange("maxPrice", event.currentTarget.value, true)}
           />
         </label>
-        <fieldset className="filter-features">
+        {/*
+          Feature matching is a server-side predicate over stored facts. Favorites are matched
+          locally against snapshots that carry none, so the control is disabled there rather than
+          left to look applied while the results ignore it. The selection itself survives.
+        */}
+        <fieldset className="filter-features" disabled={filters.favoritesOnly}>
           <legend>機能</legend>
           {FEATURE_DEFINITIONS.map((feature) => (
             <label className="check" key={feature.id}>
@@ -229,6 +234,9 @@ function FilterPanel({
               <span>{feature.name}</span>
             </label>
           ))}
+          {filters.favoritesOnly ? (
+            <p className="filter-note">お気に入り表示中は機能で絞り込めません</p>
+          ) : null}
         </fieldset>
         <label className="check">
           <input

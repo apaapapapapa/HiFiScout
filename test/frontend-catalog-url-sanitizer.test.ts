@@ -99,3 +99,25 @@ test("the hash is preserved when the query is rewritten", () => {
     "/?q=LUXMAN#results",
   );
 });
+
+test("a shared feature selection survives the bootstrap sanitizer", () => {
+  // The sanitizer runs before the app reads the URL, so a parameter it forgets is not merely
+  // unsanitized — it is erased from the shared link before any control can pick it up.
+  assert.equal(
+    sanitizedCatalogSearch("?feature=phono_input&feature=dac"),
+    "feature=dac&feature=phono_input",
+  );
+  assert.equal(sanitizedCatalogSearch("?feature=dac,network_playback").split("&").length, 2);
+});
+
+test("a feature outside the vocabulary is dropped like any other rejected value", () => {
+  assert.equal(sanitizedCatalogSearch("?feature=teleport"), "");
+  assert.equal(sanitizedCatalogSearch("?feature=teleport&feature=dac"), "feature=dac");
+});
+
+test("a link the app itself wrote needs no rewrite", () => {
+  // Feature parameters are emitted in the same position as `filterUrlParams`, so reloading a URL
+  // the app produced does not push a corrected one over it.
+  const own = "?q=LUXMAN&sort=priceAsc&feature=dac&feature=phono_input&priceDropped=true";
+  assert.equal(sanitizedCatalogUrl("/", own, ""), null);
+});

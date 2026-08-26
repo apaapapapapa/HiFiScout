@@ -189,3 +189,29 @@ test("the filter UI derives its options from the shared vocabulary", () => {
   );
   assert.equal(parsed.features.length, FEATURE_DEFINITIONS.length);
 });
+
+test("features are not claimed as active while favorites are shown locally", () => {
+  const selected = { features: ["dac"] as const };
+  const labels = { shop: "", category: "" };
+
+  assert.ok(
+    activeFilterEntries(filters({ ...selected }), labels).some((entry) =>
+      featureFromFilterId(entry.id),
+    ),
+  );
+
+  // Favorites are matched against stored snapshots, which carry no feature facts, so the predicate
+  // cannot run there. A chip and a filter count claiming otherwise would misreport the results.
+  const inFavorites = activeFilterEntries(filters({ ...selected, favoritesOnly: true }), labels);
+  assert.equal(
+    inFavorites.filter((entry) => featureFromFilterId(entry.id)).length,
+    0,
+    "no feature chip while the predicate cannot be applied",
+  );
+
+  // The selection itself survives, so it applies again as soon as the mode is turned off.
+  assert.deepEqual(
+    productSearchParams(filters({ ...selected, favoritesOnly: true })).getAll("feature"),
+    ["dac"],
+  );
+});

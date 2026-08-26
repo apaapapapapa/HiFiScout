@@ -8,7 +8,13 @@
  *
  * Dropping is deliberate rather than clamping. A truncated 101-character search is a different
  * search, and silently running it would be worse than ignoring the parameter.
+ *
+ * Every shareable parameter has to be listed here. This is an allowlist, and it runs before the app
+ * reads the URL, so a parameter that is merely forgotten is not passed through — it is erased from
+ * a shared link before anything can act on it.
  */
+
+import { parseFeatureParams } from "./filters.js";
 
 /** Mirrors the server's per-parameter character limits. */
 const TEXT_LIMITS = [
@@ -47,6 +53,11 @@ export function sanitizedCatalogSearch(search: string): string {
 
   const sort = source.get("sort");
   if (sort && SHAREABLE_SORTS.includes(sort)) params.set("sort", sort);
+
+  // Emitted between `sort` and the toggles to match `filterUrlParams`, so a link the app wrote is
+  // already clean and reloading it does not rewrite the address bar. Validation and de-duplication
+  // are the filter module's, so the accepted vocabulary is not restated here.
+  for (const feature of parseFeatureParams(source)) params.append("feature", feature);
 
   // Only the non-default state is carried: `inStock` defaults on, the other two default off.
   if (source.get("inStock") === "false") params.set("inStock", "false");

@@ -197,12 +197,17 @@ export function activeFilterEntries(filters: ProductFilters, labels: FilterLabel
   if (maxPrice != null) {
     entries.push({ id: "maxPrice", label: `${yen.format(maxPrice)}以下`, detail: true });
   }
-  for (const feature of featureParams(filters.features)) {
-    entries.push({
-      id: featureFilterId(feature),
-      label: FEATURE_NAMES.get(feature) || feature,
-      detail: true,
-    });
+  // Favorites are matched locally against stored snapshots, which carry no feature facts, so the
+  // predicate cannot be applied there. The selection is kept — it applies again the moment the mode
+  // is turned off — but claiming it as an active filter while results ignore it would be a lie.
+  if (!filters.favoritesOnly) {
+    for (const feature of featureParams(filters.features)) {
+      entries.push({
+        id: featureFilterId(feature),
+        label: FEATURE_NAMES.get(feature) || feature,
+        detail: true,
+      });
+    }
   }
   if (filters.inStock) entries.push({ id: "inStock", label: "在庫あり", detail: true });
   if (filters.recentOnly) {
