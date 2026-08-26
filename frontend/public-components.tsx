@@ -434,17 +434,33 @@ export function buildPriceHistorySparkline(
   if (!history.length) return null;
 
   const prices = history.map((entry) => entry.price_yen);
+  const timestamps = history.map((entry) => Date.parse(entry.observed_at));
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
   const priceRange = maxPrice - minPrice;
   const innerWidth = HISTORY_SPARKLINE_WIDTH - HISTORY_SPARKLINE_PADDING * 2;
   const innerHeight = HISTORY_SPARKLINE_HEIGHT - HISTORY_SPARKLINE_PADDING * 2;
+  const firstTimestamp = timestamps[0] ?? 0;
+  const lastTimestamp = timestamps.at(-1) ?? firstTimestamp;
+  const timeRange = lastTimestamp - firstTimestamp;
+  const canScaleByTime =
+    history.length > 1 &&
+    timeRange > 0 &&
+    timestamps.every((timestamp, index) => {
+      const previousTimestamp = timestamps[index - 1];
+      return Number.isFinite(timestamp) &&
+        (previousTimestamp == null || timestamp >= previousTimestamp);
+    });
 
   const points = history.map((entry, index) => {
+    const timestamp = timestamps[index] ?? firstTimestamp;
     const x =
       history.length === 1
         ? HISTORY_SPARKLINE_WIDTH / 2
-        : HISTORY_SPARKLINE_PADDING + (innerWidth * index) / (history.length - 1);
+        : canScaleByTime
+          ? HISTORY_SPARKLINE_PADDING +
+            ((timestamp - firstTimestamp) / timeRange) * innerWidth
+          : HISTORY_SPARKLINE_PADDING + (innerWidth * index) / (history.length - 1);
     const y =
       priceRange === 0
         ? HISTORY_SPARKLINE_HEIGHT / 2
