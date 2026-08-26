@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { useId } from "react";
 
 import { isLegacyFavoriteKey } from "./favorites.js";
 import { dateFmt, yen } from "./format.js";
@@ -412,6 +412,87 @@ export function OffersContent({
   );
 }
 
+const HISTORY_SPARKLINE_WIDTH = 320;
+const HISTORY_SPARKLINE_HEIGHT = 88;
+const HISTORY_SPARKLINE_PADDING = 8;
+
+interface HistorySparklinePoint {
+  x: number;
+  y: number;
+}
+
+export interface PriceHistorySparkline {
+  path: string;
+  points: HistorySparklinePoint[];
+  minPrice: number;
+  maxPrice: number;
+}
+
+export function buildPriceHistorySparkline(
+  history: readonly PriceHistoryEntry[],
+): PriceHistorySparkline | null {
+  if (!history.length) return null;
+
+  const prices = history.map((entry) => entry.price_yen);
+  const minPrice = Math.min(...prices);
+  const maxPrice = Math.max(...prices);
+  const priceRange = maxPrice - minPrice;
+  const innerWidth = HISTORY_SPARKLINE_WIDTH - HISTORY_SPARKLINE_PADDING * 2;
+  const innerHeight = HISTORY_SPARKLINE_HEIGHT - HISTORY_SPARKLINE_PADDING * 2;
+
+  const points = history.map((entry, index) => {
+    const x =
+      history.length === 1
+        ? HISTORY_SPARKLINE_WIDTH / 2
+        : HISTORY_SPARKLINE_PADDING + (innerWidth * index) / (history.length - 1);
+    const y =
+      priceRange === 0
+        ? HISTORY_SPARKLINE_HEIGHT / 2
+        : HISTORY_SPARKLINE_PADDING + ((maxPrice - entry.price_yen) / priceRange) * innerHeight;
+    return { x, y };
+  });
+
+  const [first, ...rest] = points;
+  const path = first
+    ? rest.reduce((value, point) => `${value} H ${point.x} V ${point.y}`, `M ${first.x} ${first.y}`)
+    : "";
+
+  return { path, points, minPrice, maxPrice };
+}
+
+function PriceHistorySparkline({ history }: { history: readonly PriceHistoryEntry[] }) {
+  const chart = buildPriceHistorySparkline(history);
+  const id = useId();
+  if (!chart) return null;
+
+  const titleId = `${id}-title`;
+  const descriptionId = `${id}-description`;
+  const latestPrice = history.at(-1)?.price_yen ?? chart.maxPrice;
+  const description = `${history.length}件の価格履歴。最安値${yen.format(chart.minPrice)}、最高値${yen.format(chart.maxPrice)}、最新価格${yen.format(latestPrice)}。`;
+
+  return (
+    <svg
+      className="history-sparkline"
+      viewBox={`0 0 ${HISTORY_SPARKLINE_WIDTH} ${HISTORY_SPARKLINE_HEIGHT}`}
+      role="img"
+      aria-labelledby={`${titleId} ${descriptionId}`}
+    >
+      <title id={titleId}>価格推移</title>
+      <desc id={descriptionId}>{description}</desc>
+      {chart.path ? <path className="history-sparkline-line" d={chart.path} /> : null}
+      {chart.points.map((point, index) => (
+        <circle
+          className="history-sparkline-point"
+          key={`${history[index].observed_at}-${index}`}
+          cx={point.x}
+          cy={point.y}
+          r="2.5"
+        />
+      ))}
+    </svg>
+  );
+}
+
 export function HistoryContent({
   state,
 }: {
@@ -435,18 +516,15 @@ export function HistoryContent({
     <>
       <p className="maker">{product.manufacturer}</p>
       <h2 id="history-title">{product.model || product.title}</h2>
+      {history.length ? <PriceHistorySparkline history={history} /> : null}
       <ol className="history">
         {history.length ? (
           history.map((entry: PriceHistoryEntry, index) => (
-            <Fragment key={`${entry.observed_at}-${index}`}>
-              <li>
-                <time>{new Date(entry.observed_at).toLocaleString("ja-JP")}</time>
-                <strong>{yen.format(entry.price_yen)}</strong>
-                {index > 0 && entry.price_yen < history[index - 1].price_yen ? (
-                  <span>↓</span>
-                ) : null}
-              </li>
-            </Fragment>
+            <li key={`${entry.observed_at}-${index}`}>
+              <time>{new Date(entry.observed_at).toLocaleString("ja-JP")}</time>
+              <strong>{yen.format(entry.price_yen)}</strong>
+              {index > 0 && entry.price_yen < history[index - 1].price_yen ? <span>↓</span> : null}
+            </li>
           ))
         ) : (
           <li>履歴はまだありません。</li>
