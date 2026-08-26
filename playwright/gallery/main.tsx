@@ -1,7 +1,3 @@
-import "../../admin-public/admin-console.css";
-import "../../admin-public/catalog-admin.css";
-import "../../admin-public/listing-admin.css";
-
 import { createElement } from "react";
 import type { ComponentType } from "react";
 import { createRoot } from "react-dom/client";
