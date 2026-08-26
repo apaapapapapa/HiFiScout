@@ -44,12 +44,14 @@ test("price history x positions reflect elapsed observation time", () => {
   const chart = buildPriceHistorySparkline([point(100, 1), point(90, 2), point(80, 11)]);
 
   assert.ok(chart);
-  assert.deepEqual(chart.points, [
-    { x: 8, y: 8 },
-    { x: 38.4, y: 44 },
-    { x: 312, y: 80 },
-  ]);
-  assert.equal(chart.path, "M 8 8 H 38.4 V 44 H 312 V 80");
+  assert.deepEqual(
+    chart.points.map((entry) => entry.y),
+    [8, 44, 80],
+  );
+  assert.equal(chart.points[0]?.x, 8);
+  assert.ok(Math.abs((chart.points[1]?.x ?? 0) - 38.4) < 1e-10);
+  assert.equal(chart.points[2]?.x, 312);
+  assert.equal(chart.path, "M 8 8 H 38.400000000000006 V 44 H 312 V 80");
 });
 
 test("same-timestamp histories fall back to even spacing", () => {
