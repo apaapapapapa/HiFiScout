@@ -152,7 +152,9 @@ function AdminConsole() {
               onKeyDown={(event) => handleTabKey(event, "listings")}
             >
               <span className="admin-tab-title">登録商品</span>
-              <span className="admin-tab-description">店舗listing・メーカー・型番・カテゴリ補正</span>
+              <span className="admin-tab-description">
+                店舗listing・メーカー・型番・カテゴリ補正
+              </span>
             </button>
           </div>
         </div>
