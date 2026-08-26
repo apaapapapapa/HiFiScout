@@ -25,7 +25,7 @@ export function suggestionRequestPath(value: string): string | null {
   return `/api/suggest?q=${encodeURIComponent(query)}`;
 }
 
-/** Lightweight typeahead only; selecting a datalist option still goes through the normal q search. */
+/** Lightweight typeahead fetch; selection still feeds the application's existing normal q search. */
 export function useSearchSuggestions(api: ApiClient, query: string): string[] {
   const [suggestions, setSuggestions] = useState<string[]>([]);
 
