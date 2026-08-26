@@ -19,6 +19,7 @@ import {
   filterUrlParams,
   parseUrlFilters,
   productSearchParams,
+  savedSearchFeedPath,
 } from "./filters.js";
 import { featureFromFilterId } from "./filters.js";
 import type { ProductFilters, ProductView, ToggleId, UrlValueId } from "./filters.js";
@@ -387,6 +388,7 @@ function App() {
 
   const shopName = useCallback((key: string) => shops[key]?.name || key || "ショップ不明", [shops]);
   const favoriteCount = favorites.products.size + favorites.legacyIds.size;
+  const feedPath = useMemo(() => savedSearchFeedPath(filters), [filters]);
 
   const selectedCategoryLabel = useMemo(() => {
     if (!filters.category || !meta) return "";
@@ -645,7 +647,8 @@ function App() {
     setHistoryState({ kind: "loading" });
     try {
       const data = await api.fetchJson(`/api/products/${listingId}/history`);
-      if (!isProductHistoryResponse(data)) throw new TypeError("Unexpected history payload");
+      if (!isProductHistoryResponse(data))
+        throw new TypeError("Unexpected product history payload");
       setHistoryState({ kind: "ready", data });
     } catch (error) {
       console.error(error);
@@ -661,6 +664,11 @@ function App() {
     if (historyState !== null && historyDialogRef.current && !historyDialogRef.current.open)
       historyDialogRef.current.showModal();
   }, [historyState]);
+
+  useEffect(() => {
+    const discovery = document.querySelector<HTMLLinkElement>("link[data-saved-search-feed]");
+    if (discovery) discovery.href = feedPath;
+  }, [feedPath]);
 
   useEffect(() => {
     const query = window.matchMedia(MOBILE_QUERY);
@@ -876,6 +884,17 @@ function App() {
             更新中
           </span>
           <div className="result-tools">
+            {!favoriteMode ? (
+              <a
+                className="clear-all"
+                href={feedPath}
+                rel="alternate"
+                type="application/atom+xml"
+                title="現在の検索条件をAtomフィードで購読"
+              >
+                検索を購読
+              </a>
+            ) : null}
             <label className="sort-control">
               <span>並び順</span>
               <select

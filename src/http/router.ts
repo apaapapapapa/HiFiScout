@@ -8,6 +8,8 @@
  */
 
 import { checkPublicApiRateLimit } from "../api-guard.js";
+import { productSearchAtomFeed } from "../api/atom-feed.js";
+import { canonicalFeedQueryUrl, parseFeedQuery, validateFeedQuery } from "../api/feed-query.js";
 import { parseProductQuery, validateProductQuery } from "../api/product-query.js";
 import {
   canonicalSuggestQueryUrl,
@@ -51,11 +53,13 @@ import {
   parseReplayRequest,
 } from "./remediation-admin.js";
 import { meta } from "./meta.js";
-import { cachedJson, json } from "./response.js";
+import { cachedAtom, cachedJson, json } from "./response.js";
 import type { CrawlerEnv } from "../crawler/types.js";
 
 /** Seconds the edge may serve a cached read response. */
 const READ_CACHE_TTL_SECONDS = 30;
+/** Feed readers poll on their own cadence; a longer window avoids needless D1 reads. */
+const FEED_CACHE_TTL_SECONDS = 120;
 
 /** Seller-listing price history. Listing-scoped by design; product search lives elsewhere. */
 const PRODUCT_HISTORY_PATH = /^\/api\/products\/(\d+)\/history$/;
@@ -93,6 +97,17 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext): Pro
     return cachedJson(cacheRequest, ctx, READ_CACHE_TTL_SECONDS, async () => ({
       suggestions: await suggestProducts(env.DB, query.q),
     }));
+  }
+  if (request.method === "GET" && url.pathname === "/api/feed") {
+    const validationError = validateFeedQuery(url);
+    if (validationError) return json({ error: validationError }, { status: 400 });
+    const query = parseFeedQuery(url);
+    const canonicalUrl = canonicalFeedQueryUrl(url, query);
+    const cacheRequest = new Request(canonicalUrl.toString(), request);
+    return cachedAtom(cacheRequest, ctx, FEED_CACHE_TTL_SECONDS, async () => {
+      const result = await searchProducts(env.DB, query);
+      return productSearchAtomFeed(result.items, canonicalUrl);
+    });
   }
   if (request.method === "GET" && url.pathname === "/api/product-search") {
     // Validate before parsing so a hostile query is rejected rather than silently normalized.

@@ -11,6 +11,7 @@ import {
   parseProductQuery,
   validateProductQuery,
 } from "./api/product-query.js";
+import { catalogHtmlWithFeedAutodiscovery } from "./http/catalog-feed-autodiscovery.js";
 import { handleHttp } from "./http/router.js";
 import { handleQueue } from "./queue.js";
 import type { WorkerQueueMessage } from "./queue.js";
@@ -46,7 +47,11 @@ async function handlePublicHttp(
     }
   }
 
-  return handleHttp(request, env, ctx);
+  const response = await handleHttp(request, env, ctx);
+  if (request.method === "GET" && url.pathname === "/") {
+    return catalogHtmlWithFeedAutodiscovery(response, url);
+  }
+  return response;
 }
 
 export default {

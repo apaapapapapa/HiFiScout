@@ -23,6 +23,27 @@ test("public API rate limiter keys by actor and route bucket", async () => {
   assert.deepEqual(keys, ["203.0.113.10:products"]);
 });
 
+test("feed has its own public rate-limit bucket", async () => {
+  const keys: string[] = [];
+  const env = {
+    API_RATE_LIMITER: {
+      async limit({ key }: { key: string }) {
+        keys.push(key);
+        return { success: true };
+      },
+    },
+  };
+  const request = new Request("https://example.test/api/feed?manufacturer=LUXMAN", {
+    headers: { "cf-connecting-ip": "203.0.113.15" },
+  });
+
+  const result = await checkPublicApiRateLimit(request, env);
+
+  assert.equal(result.allowed, true);
+  assert.equal(result.bucket, "feed");
+  assert.deepEqual(keys, ["203.0.113.15:feed"]);
+});
+
 test("suggest has its own public rate-limit bucket", async () => {
   const keys: string[] = [];
   const env = {

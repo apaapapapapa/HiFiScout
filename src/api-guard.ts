@@ -2,6 +2,7 @@
 export type ApiRateLimitBucket =
   | "products"
   | "product-search"
+  | "feed"
   | "suggest"
   | "history"
   | "meta"
@@ -29,6 +30,7 @@ export interface ApiRateLimitResult {
 
 function apiBucket(pathname: string): ApiRateLimitBucket | null {
   if (pathname === "/api/products") return "products";
+  if (pathname === "/api/feed") return "feed";
   if (pathname === "/api/suggest") return "suggest";
   if (
     pathname === "/api/product-search" ||
