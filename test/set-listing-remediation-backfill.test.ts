@@ -59,7 +59,9 @@ test("category-version backfill seeds the active inventory once and drains acros
   const { sqlite, db } = migratedSqlite();
   await seedCurrentInventory(db);
 
-  const setRow = sqlite.prepare("SELECT id FROM products WHERE source_id = 'set-1'").get() as unknown as {
+  const setRow = sqlite
+    .prepare("SELECT id FROM products WHERE source_id = 'set-1'")
+    .get() as unknown as {
     id: number;
   };
   const setId = Number(setRow.id);
@@ -108,10 +110,9 @@ test("category-version backfill seeds the active inventory once and drains acros
     .get(setId) as unknown as { entity_key: string };
   const entityKey = entityRow.entity_key;
   const before = await searchProducts(db, productQuery("?includeTotal=true"));
-  assert.deepEqual(
-    before.items.find((item) => item.key === entityKey)?.direct_category_ids,
-    ["transport"],
-  );
+  assert.deepEqual(before.items.find((item) => item.key === entityKey)?.direct_category_ids, [
+    "transport",
+  ]);
 
   const first = await runDataQualityRemediationSweep(db, {
     seedLimit: 10,
@@ -127,7 +128,10 @@ test("category-version backfill seeds the active inventory once and drains acros
   const workTypes = sqlite
     .prepare("SELECT DISTINCT work_type FROM data_quality_remediation_queue ORDER BY work_type")
     .all() as unknown as { work_type: string }[];
-  assert.deepEqual(workTypes.map((row) => row.work_type), ["classify_category"]);
+  assert.deepEqual(
+    workTypes.map((row) => row.work_type),
+    ["classify_category"],
+  );
 
   const second = await runDataQualityRemediationSweep(db, {
     seedLimit: 10,
@@ -176,7 +180,10 @@ test("category-version backfill seeds the active inventory once and drains acros
       ORDER BY category_id
     `)
     .all(setId) as unknown as { category_id: string }[];
-  assert.deepEqual(directMembership.map((row) => row.category_id), ["dac", "transport"]);
+  assert.deepEqual(
+    directMembership.map((row) => row.category_id),
+    ["dac", "transport"],
+  );
 
   const after = await searchProducts(db, productQuery("?includeTotal=true"));
   const replayed = after.items.find((item) => item.key === entityKey);
