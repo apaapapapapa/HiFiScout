@@ -71,7 +71,7 @@ The projection contains:
 - title
 - canonical/raw category terms and existing category search aliases
 
-The crawler refreshes only listings observed in the current crawl. The repository compares the calculated projection with the persisted one and skips unchanged writes. SQL triggers provide a safe baseline for product writes performed outside that path and keep FTS rows synchronized.
+The crawler refreshes only the listings whose inputs actually moved in the current crawl: the ones it inserted, changed, reactivated, or deactivated. A listing the seller re-reported unchanged projects to exactly what is already stored, so re-deriving the whole inventory every time bought nothing and made the cost of a routine crawl track the size of the shop. Stale resolver versions and Knowledge Catalog edits are replayed by the remediation queue, which is a resumable worker of its own rather than something hidden inside a normal crawl. The repository compares the calculated projection with the persisted one and skips unchanged writes. SQL triggers provide a safe baseline for product writes performed outside that path and keep FTS rows synchronized.
 
 Migration 0017 deliberately retained the old `products_fts` table because production migrations run before the replacement Worker is deployed. After all application search callers had moved to `product_search_fts`, migration 0020 removed the retired `products_fts` virtual table and its three `products_fts_*` triggers. D1 therefore maintains only the active search index and no longer pays duplicate FTS write/storage cost.
 
@@ -338,6 +338,8 @@ Application-level structured logs expose:
 Raw user search text is deliberately not logged; the fields above are counts and classifications.
 
 Each crawl summary additionally carries `searchEntities` with the listings resynced, entities touched, and entities retired by that crawl. Entity sync runs after identity resolution, because which product a listing belongs to is decided by the resolution written in the step before it. A failure there logs `product_search_entity_sync_failure` and leaves the crawl successful: stale grouping is a read-model repair, not a reason to discard a completed collection.
+
+`syncProductSearchEntities` is scoped strictly to the listings it is given and the identity peers they regroup. Retiring the memberships of listings that disappeared is a shop-wide question, and answering it inside every call made the cost of a chunk depend on the size of the shop; it is the crawl's own `membership_cleanup` stage, which walks the same set in bounded chunks after the entity refresh and reports as `membership_cleanup` in the crawl summary.
 
 `GET /api/admin/data-platform/status` (ADMIN_TOKEN protected) reports bounded D1 counts useful for migration/capacity decisions:
 

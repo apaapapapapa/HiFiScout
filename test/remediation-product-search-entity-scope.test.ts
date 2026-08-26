@@ -5,7 +5,7 @@ import { syncProductSearchEntities } from "../src/db/product-search-entity-repos
 import { captureDatabase } from "./helpers/d1.js";
 import type { CapturedStatement } from "./helpers/d1.js";
 
-test("remediation entity sync does not expand into shop-wide inactive memberships", async () => {
+test("entity sync never expands into shop-wide inactive memberships", async () => {
   let queriedInactiveShopMembers = false;
   const db = captureDatabase((statement: CapturedStatement) => {
     if (/SELECT id FROM products WHERE shop_key/.test(statement.sql)) return [{ id: 7 }];
@@ -19,9 +19,7 @@ test("remediation entity sync does not expand into shop-wide inactive membership
     return [];
   });
 
-  const result = await syncProductSearchEntities(db, "hifido", ["source-1"], {
-    includeInactiveShopMembers: false,
-  });
+  const result = await syncProductSearchEntities(db, "hifido", ["source-1"]);
 
   assert.equal(queriedInactiveShopMembers, false);
   assert.equal(result.listing_count, 1);

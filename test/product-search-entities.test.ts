@@ -13,19 +13,14 @@ import type { CapturedStatement, StatementResults } from "./helpers/d1.js";
 /** Answers the id lookups a sync performs, so the write statements receive a real scope. */
 function syncResults({
   listingIds = [7],
-  staleIds = [] as number[],
   entityIds = [21],
 }: {
   listingIds?: number[];
-  staleIds?: number[];
   entityIds?: number[];
 } = {}): StatementResults {
   return (statement: CapturedStatement) => {
     if (/SELECT id FROM products WHERE shop_key/.test(statement.sql)) {
       return listingIds.map((id) => ({ id }));
-    }
-    if (/p\.shop_key = \? AND p\.is_active = 0/.test(statement.sql)) {
-      return staleIds.map((id) => ({ listing_product_id: id }));
     }
     if (/entity_id AS entity_id|id AS entity_id/.test(statement.sql)) {
       return entityIds.map((id) => ({ entity_id: id }));
@@ -137,17 +132,19 @@ test("a newly confirmed listing is not pulled back by the fallback entity it is 
   assert.match(fallbackMembership.sql, /kp\.verification_status = 'verified'/);
 });
 
-test("a listing the crawl never saw because it went inactive is still re-aggregated", async () => {
-  const db = captureDatabase(syncResults({ listingIds: [7], staleIds: [99] }));
-  const result = await syncProductSearchEntities(db, "hifido", ["source-1"]);
+test("a departed listing handed to the sync has its membership retired", async () => {
+  // Which listings have gone is the `membership_cleanup` stage's question; it answers it in bounded
+  // chunks and hands them here. This is the half that has to retire them once it does.
+  const db = captureDatabase(syncResults({ listingIds: [99] }));
+  const result = await syncProductSearchEntities(db, "hifido", ["source-gone"]);
 
-  assert.equal(result.listing_count, 2);
+  assert.equal(result.listing_count, 1);
   const cleanup = writes(db).find((statement) =>
     /DELETE FROM product_search_entity_offers/.test(statement.sql),
   );
   assert.ok(cleanup);
   assert.match(cleanup.sql, /p\.is_active = 0/);
-  assert.deepEqual(cleanup.binds, [7, 99]);
+  assert.deepEqual(cleanup.binds, [99]);
 });
 
 test("entities the listings are leaving are refreshed alongside the ones they join", async () => {
@@ -176,7 +173,7 @@ test("entities the listings are leaving are refreshed alongside the ones they jo
 });
 
 test("a shop with nothing to sync performs no writes at all", async () => {
-  const db = captureDatabase(syncResults({ listingIds: [], staleIds: [], entityIds: [] }));
+  const db = captureDatabase(syncResults({ listingIds: [], entityIds: [] }));
   const result = await syncProductSearchEntities(db, "hifido", []);
 
   assert.deepEqual(result, { listing_count: 0, entity_count: 0, removed_entity_count: 0 });

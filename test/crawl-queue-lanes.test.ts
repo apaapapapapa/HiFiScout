@@ -8,7 +8,18 @@ import {
 } from "../src/crawler/queue-lanes.js";
 import { getShopPlugin } from "../src/crawler/shops/index.js";
 import { defineShopPlugin } from "../src/crawler/shops/registry.js";
+import type { CrawlWorkloadObservation } from "../src/db/crawl-workload-repository.js";
 import type { ShopAdapter } from "../src/crawler/types.js";
+
+function observed(overrides: Partial<CrawlWorkloadObservation> = {}): CrawlWorkloadObservation {
+  return {
+    shopKey: "home-shokai",
+    peakItemCount: 0,
+    budgetExhaustedCount: 0,
+    lastBudgetExhaustedAt: null,
+    ...overrides,
+  };
+}
 
 function shop(key: string) {
   const plugin = getShopPlugin(key);
@@ -61,6 +72,24 @@ test("a shop that can discover pages without declaring a cap is not treated as s
   // Absence only stays safe when the shop cannot reach past its seeded targets at all.
   assert.equal(crawlQueueLane(uncappedPlugin({ discoverTargets: undefined })), "fast");
   assert.equal(crawlQueueLane(uncappedPlugin({ discoverTargets: () => [] })), "heavy");
+});
+
+test("a shop that turned out to be large is scheduled from what it cost, not what it declares", () => {
+  const small = shop("home-shokai");
+  assert.equal(crawlQueueLane(small), "fast");
+  assert.equal(crawlQueueLane(small, null), "fast", "a shop with no history keeps its declaration");
+
+  assert.equal(crawlQueueLane(small, observed({ peakItemCount: 745 })), "heavy");
+  // Handing derived work to the continuation sweep is the direct evidence that one invocation was
+  // not enough, so it promotes on its own without waiting for an inventory threshold.
+  assert.equal(crawlQueueLane(small, observed({ budgetExhaustedCount: 1 })), "heavy");
+});
+
+test("observed workload never demotes a lane and never overrides the relay transport", () => {
+  // Both signals are high-water marks, so a quiet crawl after a large one cannot flap the shop back
+  // into the pool it outgrew.
+  assert.equal(crawlQueueLane(shop("fujiya-avic"), observed({ peakItemCount: 1 })), "heavy");
+  assert.equal(crawlQueueLane(shop("hifido"), observed({ peakItemCount: 100_000 })), "relay");
 });
 
 test("new crawl queues and rollout legacy queues are routed explicitly", () => {

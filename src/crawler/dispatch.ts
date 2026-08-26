@@ -19,6 +19,11 @@ import {
   type CrawlLifecycleRow,
 } from "./crawl-lifecycle.js";
 import { recheckShopInventory } from "./inventory-recheck.js";
+import {
+  getCrawlWorkloadObservation,
+  listCrawlWorkloadObservations,
+  type CrawlWorkloadObservation,
+} from "../db/crawl-workload-repository.js";
 import { crawlQueueLane, crawlQueueSender } from "./queue-lanes.js";
 import { crawlShop, isShopDue } from "./run.js";
 import { getShopPlugin, SHOP_PLUGINS } from "./shops/index.js";
@@ -108,8 +113,9 @@ async function enqueueReservedCrawl(
   requestedAt: string,
   batchRunId: string,
   leaseMinutes: number,
+  observation?: CrawlWorkloadObservation | null,
 ): Promise<boolean> {
-  const destination = crawlQueueSender(env, plugin);
+  const destination = crawlQueueSender(env, plugin, observation);
   if (!destination) throw new Error(`crawl queue binding is not configured for ${plugin.key}`);
   const dispatchToken = await reserveShopDispatch(env.DB, plugin.key, requestedAt, leaseMinutes);
   if (!dispatchToken) return false;
@@ -140,13 +146,14 @@ function logBatchDispatch(
   requestedAt: string,
   queued: readonly string[],
   candidates: readonly DueDispatchCandidate[],
+  observations: ReadonlyMap<string, CrawlWorkloadObservation>,
 ): void {
   const candidateByKey = new Map(candidates.map((candidate) => [candidate.adapter.key, candidate]));
   const lanes = { fast: 0, heavy: 0, relay: 0 };
   for (const shopKey of queued) {
     const candidate = candidateByKey.get(shopKey);
     if (!candidate) continue;
-    lanes[crawlQueueLane(candidate.adapter)] += 1;
+    lanes[crawlQueueLane(candidate.adapter, observations.get(shopKey))] += 1;
   }
   console.log(
     JSON.stringify({
@@ -177,6 +184,7 @@ export async function recoverStalledCrawlDispatches(
 ): Promise<string[]> {
   const recovered: string[] = [];
   const states = (await listShopStates(env.DB)) as CrawlLifecycleRow[];
+  const observations = await listCrawlWorkloadObservations(env.DB);
   const recoveredAt = now.toISOString();
   const batchRunId = `crawl-recovery:${recoveredAt}:${crypto.randomUUID()}`;
 
@@ -184,7 +192,7 @@ export async function recoverStalledCrawlDispatches(
     if (!shouldRecoverDispatch(state, now, recoveryMinutes) || !state.queued_at) continue;
     const plugin = getShopPlugin(state.shop_key);
     if (!plugin || !getShopEnabled(env, plugin.definition) || !isConfigured(env, plugin)) continue;
-    const destination = crawlQueueSender(env, plugin);
+    const destination = crawlQueueSender(env, plugin, observations.get(state.shop_key));
     if (!destination) {
       console.error(
         JSON.stringify({
@@ -253,6 +261,7 @@ export async function dispatchDueCrawls(
   const candidates = dueDispatchCandidates(env, await listShopStates(env.DB), now, {
     excludeShopKeys,
   });
+  const observations = await listCrawlWorkloadObservations(env.DB);
   const queuedAt = now.toISOString();
   const batchRunId = newBatchRunId(queuedAt);
   const queued: string[] = [];
@@ -265,11 +274,12 @@ export async function dispatchDueCrawls(
       queuedAt,
       batchRunId,
       settings.dispatchLeaseMinutes,
+      observations.get(adapter.key),
     );
     if (reserved) queued.push(adapter.key);
   }
 
-  logBatchDispatch(batchRunId, queuedAt, queued, candidates);
+  logBatchDispatch(batchRunId, queuedAt, queued, candidates, observations);
   return queued.length ? { status: "queued", queued } : { status: "skipped", queued };
 }
 
@@ -285,6 +295,7 @@ async function dispatchOneCrawl(
     return { status: "skipped", reason: "dispatch_lease_active", shopKey: plugin.key };
   }
 
+  const observation = await getCrawlWorkloadObservation(env.DB, plugin.key);
   const queuedAt = now.toISOString();
   const batchRunId = newBatchRunId(queuedAt);
   const reserved = await enqueueReservedCrawl(
@@ -294,6 +305,7 @@ async function dispatchOneCrawl(
     queuedAt,
     batchRunId,
     settings.dispatchLeaseMinutes,
+    observation,
   );
   console.log(
     JSON.stringify({
@@ -303,7 +315,7 @@ async function dispatchOneCrawl(
       candidateCount: 1,
       queuedCount: reserved ? 1 : 0,
       queued: reserved ? [plugin.key] : [],
-      lanes: { [crawlQueueLane(plugin)]: reserved ? 1 : 0 },
+      lanes: { [crawlQueueLane(plugin, observation)]: reserved ? 1 : 0 },
     }),
   );
   return reserved

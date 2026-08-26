@@ -40,17 +40,6 @@ import type {
 /** D1 caps bound variables per statement; every scoped statement stays well below that limit. */
 const CHUNK_SIZE = 40;
 
-export interface ProductSearchEntitySyncOptions {
-  /**
-   * Include inactive memberships from the whole shop in this sync.
-   *
-   * Crawls set this implicitly through the default because they are authoritative for shop
-   * inventory and must retire disappeared offers. Resolver remediation is listing-scoped and sets
-   * it to false so replaying ten stale listings cannot expand into a shop-wide projection pass.
-   */
-  includeInactiveShopMembers?: boolean;
-}
-
 function chunks<T>(values: readonly T[], size = CHUNK_SIZE): T[][] {
   const result: T[][] = [];
   for (let i = 0; i < values.length; i += size) result.push(values.slice(i, i + size));
@@ -127,24 +116,6 @@ async function listingIdsForSources(
     );
   }
   return found;
-}
-
-/**
- * Listings this shop deactivated that still hold membership.
- *
- * A crawl reports what it saw, so a listing that disappeared is never in `sourceIds` — without
- * this, a sold-out offer would keep inflating its product's offer count forever.
- */
-async function staleMemberListingIds(db: QueryableDatabase, shopKey: string): Promise<number[]> {
-  return selectNumbers(
-    db,
-    `SELECT m.listing_product_id AS listing_product_id
-     FROM product_search_entity_offers m
-     JOIN products p ON p.id = m.listing_product_id
-     WHERE p.shop_key = ? AND p.is_active = 0`,
-    [shopKey],
-    "listing_product_id",
-  );
 }
 
 /**
@@ -235,23 +206,25 @@ async function refreshEntities(
 }
 
 /**
- * Brings the product-level model in line with one shop's latest crawl.
+ * Brings the product-level model in line with the listings it is given.
  *
  * Entity rows are written before membership so a member always has an entity to point at. Each
  * listing chunk is committed as one D1 batch transaction, including pruning entities the chunk
  * leaves behind and transient per-listing fallback entities superseded by exact-identity grouping.
  * The affected entity set is still captured before and after the rewrite so surviving entities get
  * their stored aggregates and FTS evidence refreshed.
+ *
+ * Strictly scoped to `sourceIds` and the identity peers they regroup. Retiring the memberships of
+ * listings that disappeared is a shop-wide question, and answering it here made the cost of every
+ * call depend on the size of the shop rather than on the work asked for; it belongs to the crawl's
+ * `membership_cleanup` stage, which walks the same set in bounded chunks.
  */
 export async function syncProductSearchEntities(
   db: QueryableDatabase,
   shopKey: string,
   sourceIds: readonly string[] = [],
-  { includeInactiveShopMembers = true }: ProductSearchEntitySyncOptions = {},
 ): Promise<ProductSearchEntitySyncResult> {
-  const observed = await listingIdsForSources(db, shopKey, sourceIds);
-  const stale = includeInactiveShopMembers ? await staleMemberListingIds(db, shopKey) : [];
-  const seeds = [...new Set([...observed, ...stale])];
+  const seeds = [...new Set(await listingIdsForSources(db, shopKey, sourceIds))];
   if (!seeds.length) {
     return { listing_count: 0, entity_count: 0, removed_entity_count: 0 };
   }

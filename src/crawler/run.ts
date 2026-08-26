@@ -6,12 +6,9 @@ import {
   getShopRequestDelayMs,
 } from "../config.js";
 import { saveDataQualityRun } from "../db/data-quality-repository.js";
-import { syncProductIdentityResolutions } from "../db/product-identity-repository.js";
 import { syncObservedProductFeatureFacts } from "../db/product-feature-repository.js";
 import { syncProductMetadata } from "../db/product-metadata-repository.js";
 import { resolveProductCatalogFields } from "../db/model-repository.js";
-import { syncProductSearchEntities } from "../db/product-search-entity-repository.js";
-import { syncProductSearchProjections } from "../db/product-search-projection-repository.js";
 import { upsertProducts } from "../db/product-write-repository.js";
 import {
   getShopState,
@@ -27,10 +24,18 @@ import {
 } from "../db/crawl-run-repository.js";
 import {
   clearCrawlRunWorkItems,
-  completeCrawlRunStage,
+  nextPendingCrawlRunStage,
   recordCrawlRunWorkSet,
-  type ResumableCrawlStage,
 } from "../db/crawl-run-continuation-repository.js";
+import {
+  DERIVED_WORK_BUDGET_MS,
+  crawlStageFailureEvent,
+  crawlStageScope,
+  drainCrawlRunStage,
+  emptyDerivedWorkMetrics,
+  type DerivedWorkMetrics,
+} from "./crawl-continuation.js";
+import { recordCrawlWorkloadObservation } from "../db/crawl-workload-repository.js";
 import { archiveEvidence } from "../evidence/evidence-archive.js";
 import { enrichProductCategories } from "./category-enricher.js";
 import { createCrawlStageRecorder } from "./crawl-stages.js";
@@ -41,8 +46,6 @@ import type { NormalizedCatalogProduct } from "../catalog/types.js";
 import type {
   EvidenceArchiveResult,
   EvidenceReason,
-  IdentitySyncMetrics,
-  ProductSearchEntitySyncResult,
   QualityCounts,
   QualityEvaluation,
   QueryableDatabase,
@@ -171,97 +174,91 @@ async function safeSaveDataQuality(
   }
 }
 
-interface DerivedProductState {
-  searchProjection: { changedCount: number };
-  identity: IdentitySyncMetrics;
-  searchEntities: ProductSearchEntitySyncResult;
+interface DerivedProductState extends DerivedWorkMetrics {
+  /** True when work remains for the continuation sweep, for either reason below. */
+  pending: boolean;
+  /**
+   * True when the invocation ran out of budget rather than hitting a failing stage.
+   *
+   * The two are kept apart because this one is the workload signal: needing a second invocation is
+   * evidence about how large the shop is, while a failing projection is evidence about D1.
+   */
+  deferred: boolean;
+}
+
+interface DerivedWorkOptions {
+  /** Listings this crawl changed, which is what the run-scoped stages were given. */
+  workSetSize: number;
+  budgetMs: number;
+  /** Start of the whole invocation, so fetch and parse count against the same budget. */
+  startedAtMs: number;
 }
 
 /**
- * Rebuilds everything downstream of the listing write, in dependency order.
+ * Drives everything downstream of the listing write, in dependency order and within a budget.
  *
- * Search entities go last on purpose: which product a listing belongs to is decided by the identity
- * resolution written in the step before it, so running them the other way round would group this
- * crawl's listings against the previous crawl's identities.
+ * The stages, their order and their chunking all come from the durable checkpoint written just
+ * before this, so the crawl that owns the work runs exactly the code the cron sweep would run if
+ * this invocation were killed. Stopping on the budget is therefore an ordinary outcome rather than
+ * a failure: the remaining chunks are already durable and the sweep picks them up.
  */
 async function syncDerivedProductState(
   env: RuntimeEnv,
   adapter: ShopPlugin,
-  products: readonly NormalizedCatalogProduct[],
   observedAt: string,
   stages: CrawlStageRecorder,
   crawlRunId: number,
+  { workSetSize, budgetMs, startedAtMs }: DerivedWorkOptions,
 ): Promise<DerivedProductState> {
-  const sourceIds = products.map((product) => product.sourceId);
-  // A stage that finishes inline is one a continuation no longer owes. Recording it as the stage
-  // completes, rather than once at the end, is what makes an invocation killed part-way resume
-  // from where it stopped instead of from the beginning.
-  const settle = (stage: ResumableCrawlStage) =>
-    completeCrawlRunStage(env.DB, crawlRunId, stage, observedAt);
-  let searchProjection = { changedCount: 0 };
-  let identity = {
-    identity_exact_match_count: 0,
-    identity_alias_match_count: 0,
-    identity_fuzzy_match_count: 0,
-    identity_unresolved_count: 0,
-    identity_veto_count: 0,
-    identity_resolution_write_count: 0,
-  };
-  let searchEntities: ProductSearchEntitySyncResult = {
-    listing_count: 0,
-    entity_count: 0,
-    removed_entity_count: 0,
+  const run = { crawlRunId, shopKey: adapter.key, generation: observedAt };
+  const metrics = emptyDerivedWorkMetrics();
+
+  const defer = (stage: string): DerivedProductState => {
+    console.log(
+      JSON.stringify({
+        event: "crawl_derived_work_deferred",
+        shopKey: adapter.key,
+        crawlRunId,
+        stage,
+        elapsedMs: Date.now() - startedAtMs,
+        budgetMs,
+      }),
+    );
+    return { ...metrics, pending: true, deferred: true };
   };
 
-  // Each projection keeps swallowing its own failure: stale grouping is a read-model repair, not a
-  // reason to discard a completed collection. The stage recorder owns the failure log so a slow or
-  // failing projection is reported with the duration and run id the one-shot budget is judged on.
-  try {
-    searchProjection = await stages.run(
-      "search_projection",
-      {
-        inputCount: sourceIds.length,
-        failureEvent: "product_search_projection_sync_failure",
-        changedCount: (result) => result.changedCount,
-      },
-      () => syncProductSearchProjections(env.DB, adapter.key, sourceIds),
-    );
-    await settle("search_projection");
-  } catch {
-    // Reported by the stage recorder.
-  }
+  for (;;) {
+    const checkpoint = await nextPendingCrawlRunStage(env.DB, crawlRunId);
+    if (!checkpoint) return { ...metrics, pending: false, deferred: false };
+    if (Date.now() - startedAtMs >= budgetMs) return defer(checkpoint.stage);
 
-  try {
-    identity = await stages.run(
-      "identity_resolution",
-      {
-        inputCount: sourceIds.length,
-        failureEvent: "product_identity_sync_failure",
-        changedCount: (result) => result.identity_resolution_write_count,
-      },
-      () => syncProductIdentityResolutions(env.DB, adapter.key, sourceIds, observedAt),
-    );
-    await settle("identity_resolution");
-  } catch {
-    // Reported by the stage recorder.
+    let completed: boolean;
+    try {
+      completed = await stages
+        .run(
+          checkpoint.stage,
+          {
+            // Cleanup walks the shop's leftover memberships rather than this run's listings, so the
+            // work set size would misdescribe what it was handed.
+            ...(crawlStageScope(checkpoint.stage) === "run" ? { inputCount: workSetSize } : {}),
+            failureEvent: crawlStageFailureEvent(checkpoint.stage),
+            changedCount: (result) => result.changedCount,
+          },
+          () =>
+            drainCrawlRunStage(env.DB, run, checkpoint, {
+              budgetMs,
+              startedAtMs,
+              metrics,
+            }),
+        )
+        .then((result) => result.completed);
+    } catch {
+      // Reported by the stage recorder, and left pending for the sweep to replay. Later stages read
+      // what this one writes, so the crawl stops here rather than projecting against stale state.
+      return { ...metrics, pending: true, deferred: false };
+    }
+    if (!completed) return defer(checkpoint.stage);
   }
-
-  try {
-    searchEntities = await stages.run(
-      "search_entity",
-      {
-        inputCount: sourceIds.length,
-        failureEvent: "product_search_entity_sync_failure",
-        changedCount: (result) => result.entity_count,
-      },
-      () => syncProductSearchEntities(env.DB, adapter.key, sourceIds),
-    );
-    await settle("search_entity");
-  } catch {
-    // Reported by the stage recorder.
-  }
-
-  return { searchProjection, identity, searchEntities };
 }
 
 export function isShopDue(
@@ -301,6 +298,9 @@ export async function crawlShop(
     return { shopKey: adapter.key, status: "skipped", reason: "not_due" };
 
   const startedAt = nowIso(now);
+  // The budget is measured from here, not from the start of the derived work: what the platform
+  // kills is the whole invocation, so fetch and parse have to count against the same clock.
+  const invocationStartedAtMs = Date.now();
   const items = new Map<string, NormalizedCatalogProduct>();
   const evidenceMetrics: EvidenceMetrics = { expected: 0, archived: 0, failed: 0 };
   let runId: number | null = null;
@@ -507,33 +507,36 @@ export async function crawlShop(
       evidenceOutcome(evidenceMetrics, result);
     }
 
-    const { changedCount, activityCount, touchedCount, deactivatedCount } = await stageRecorder.run(
-      "listing_write",
-      { inputCount: products.length, changedCount: (result) => result.changedCount },
-      () =>
-        upsertProducts(env.DB, adapter.key, products, observedAt, {
-          deactivateMissing,
-          touchIntervalMinutes: settings.productTouchIntervalMinutes,
-          activityPolicy: getShopActivityPolicy(adapter),
-        }),
-    );
+    const { changedCount, activityCount, touchedCount, deactivatedCount, derivedSourceIds } =
+      await stageRecorder.run(
+        "listing_write",
+        { inputCount: products.length, changedCount: (result) => result.changedCount },
+        () =>
+          upsertProducts(env.DB, adapter.key, products, observedAt, {
+            deactivateMissing,
+            touchIntervalMinutes: settings.productTouchIntervalMinutes,
+            activityPolicy: getShopActivityPolicy(adapter),
+          }),
+      );
     // The seller is never needed again from here: the listings are written, and this records which
     // of them the derived stages still owe work for. An invocation killed after this point leaves
     // durable pending work instead of losing the whole crawl.
+    //
+    // Only the delta is recorded. A listing nobody touched projects to exactly what is already
+    // stored, so re-projecting the whole inventory on every routine crawl bought nothing and was
+    // the work that could not fit in one invocation. Stale resolver versions and catalog edits are
+    // replayed by the remediation queue, which is a resumable worker of its own.
     await recordCrawlRunWorkSet(env.DB, {
       crawlRunId: runId,
       generation: observedAt,
-      sourceIds: products.map((product) => product.sourceId),
+      sourceIds: derivedSourceIds,
       recordedAt: observedAt,
     });
-    const derived = await syncDerivedProductState(
-      env,
-      adapter,
-      products,
-      observedAt,
-      stageRecorder,
-      runId,
-    );
+    const derived = await syncDerivedProductState(env, adapter, observedAt, stageRecorder, runId, {
+      workSetSize: derivedSourceIds.length,
+      budgetMs: DERIVED_WORK_BUDGET_MS,
+      startedAtMs: invocationStartedAtMs,
+    });
     const featureFactCount = await stageRecorder.run(
       "feature_facts",
       { inputCount: products.length, changedCount: (result) => result },
@@ -556,8 +559,14 @@ export async function crawlShop(
         currentItemCount: items.size,
       }),
     );
-    // Every derived stage finished inline, so nothing is left for a continuation to read.
-    await clearCrawlRunWorkItems(env.DB, runId);
+    // Only once no stage still owes a chunk. Freeing the work set while one is pending would leave
+    // the sweep a stage it could not read, and it would silently settle it as if it had run.
+    if (!derived.pending) await clearCrawlRunWorkItems(env.DB, runId);
+    await recordCrawlWorkloadObservation(env.DB, adapter.key, {
+      itemCount: items.size,
+      budgetExhausted: derived.deferred,
+      observedAt,
+    });
     await markShopSuccess(env.DB, adapter.key, observedAt, items.size);
     const diagnosticParts = [];
     if (pageDiagnostic != null) diagnosticParts.push(`diag=${JSON.stringify(pageDiagnostic)}`);
@@ -576,6 +585,12 @@ export async function crawlShop(
     }
     if (derived.searchEntities.entity_count || derived.searchEntities.removed_entity_count) {
       diagnosticParts.push(`search_entities=${JSON.stringify(derived.searchEntities)}`);
+    }
+    if (derived.membershipCleanup.listing_count) {
+      diagnosticParts.push(`membership_cleanup=${JSON.stringify(derived.membershipCleanup)}`);
+    }
+    if (derived.pending) {
+      diagnosticParts.push(derived.deferred ? "derived_work=deferred" : "derived_work=incomplete");
     }
     if (
       derived.identity.identity_resolution_write_count ||
