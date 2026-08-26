@@ -9,6 +9,11 @@
 
 import { checkPublicApiRateLimit } from "../api-guard.js";
 import { parseProductQuery, validateProductQuery } from "../api/product-query.js";
+import {
+  canonicalSuggestQueryUrl,
+  parseSuggestQuery,
+  validateSuggestQuery,
+} from "../api/suggest-query.js";
 import { SHOP_DEFINITIONS } from "../config.js";
 import { dispatchForcedCrawl } from "../crawler/dispatch.js";
 import { dataPlatformStatus } from "../db/data-platform-status-repository.js";
@@ -35,6 +40,7 @@ import {
   rebuildProductSearchEntities,
 } from "../db/product-search-entity-repository.js";
 import { productSearchDetail, searchProducts } from "../db/product-search-repository.js";
+import { suggestProducts } from "../db/product-suggest-repository.js";
 import { getSyncHealth } from "../health.js";
 import { knowledgeCatalogStatus } from "./knowledge-catalog-status.js";
 import { parseManufacturerAliasAdminRequest } from "./manufacturer-alias-admin.js";
@@ -79,6 +85,15 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext): Pro
   const rate = await checkPublicApiRateLimit(request, env);
   if (!rate.allowed) return json({ error: "rate_limited" }, { status: 429 });
 
+  if (request.method === "GET" && url.pathname === "/api/suggest") {
+    const validationError = validateSuggestQuery(url);
+    if (validationError) return json({ error: validationError }, { status: 400 });
+    const query = parseSuggestQuery(url);
+    const cacheRequest = new Request(canonicalSuggestQueryUrl(url, query).toString(), request);
+    return cachedJson(cacheRequest, ctx, READ_CACHE_TTL_SECONDS, async () => ({
+      suggestions: await suggestProducts(env.DB, query.q),
+    }));
+  }
   if (request.method === "GET" && url.pathname === "/api/product-search") {
     // Validate before parsing so a hostile query is rejected rather than silently normalized.
     const validationError = validateProductQuery(url);
