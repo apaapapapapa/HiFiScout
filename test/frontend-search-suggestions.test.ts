@@ -16,7 +16,9 @@ test("browser accepts only bounded string suggestion payloads", () => {
   assert.equal(isSuggestResponse({ suggestions: ["Marantz PM-14S1", "Marantz"] }), true);
   assert.equal(isSuggestResponse({ suggestions: ["Marantz", 14] }), false);
   assert.equal(
-    isSuggestResponse({ suggestions: Array.from({ length: MAX_SUGGESTIONS + 1 }, (_, i) => `M${i}`) }),
+    isSuggestResponse({
+      suggestions: Array.from({ length: MAX_SUGGESTIONS + 1 }, (_, i) => `M${i}`),
+    }),
     false,
   );
 });

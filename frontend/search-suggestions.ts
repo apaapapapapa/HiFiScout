@@ -1,9 +1,6 @@
 import { useEffect, useState } from "react";
 
-import {
-  MAX_SUGGEST_QUERY_LENGTH,
-  MIN_SUGGEST_QUERY_LENGTH,
-} from "../src/api/contracts.js";
+import { MAX_SUGGEST_QUERY_LENGTH, MIN_SUGGEST_QUERY_LENGTH } from "../src/api/contracts.js";
 import { isSuggestResponse } from "./api-client.js";
 import type { ApiClient } from "./api-client.js";
 
