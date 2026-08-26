@@ -32,6 +32,7 @@ function apiBucket(pathname: string): ApiRateLimitBucket | null {
   if (pathname === "/api/products") return "products";
   if (pathname === "/api/feed") return "feed";
   if (pathname === "/api/suggest") return "suggest";
+  if (pathname === "/p" || pathname.startsWith("/p/")) return "product-search";
   if (
     pathname === "/api/product-search" ||
     /^\/api\/product-search\/[a-z]-\d{1,15}$/.test(pathname)
