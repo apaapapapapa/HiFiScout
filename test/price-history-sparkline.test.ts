@@ -3,10 +3,7 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import {
-  HistoryContent,
-  buildPriceHistorySparkline,
-} from "../frontend/public-components.js";
+import { HistoryContent, buildPriceHistorySparkline } from "../frontend/public-components.js";
 import type { PriceHistoryEntry, ProductHistoryResponse } from "../frontend/types.js";
 
 const listing: ProductHistoryResponse["product"] = {
