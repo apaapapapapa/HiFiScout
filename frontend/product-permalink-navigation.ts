@@ -1,4 +1,4 @@
-import { productKeyFromPermalinkPath, productPermalinkPath } from "../src/api/product-permalink.js";
+import { productKeyFromPermalinkPath, productPermalinkPath } from "./product-permalink.js";
 
 const HISTORY_STATE_KEY = "hifiscoutProductPermalink";
 let suppressOfferPush = false;
