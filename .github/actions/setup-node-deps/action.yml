@@ -1,5 +1,5 @@
 name: Setup Vite+ dependencies
-description: Install Vite+, the project-pinned Node.js/package manager, and locked dependencies
+description: Restore or install Vite+, the project-pinned Node.js/package manager, and locked dependencies
 
 inputs:
   task-cache:
@@ -14,14 +14,35 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Setup Vite+
+    - name: Restore Vite+ runtime
+      id: vite-plus-runtime
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      with:
+        path: ~/.vite-plus
+        key: vite-plus-runtime-${{ runner.os }}-${{ runner.arch }}-0.2.9
+    - name: Activate cached Vite+
+      if: steps.vite-plus-runtime.outputs.cache-hit == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "${HOME}/.vite-plus/bin" >> "${GITHUB_PATH}"
+        "${HOME}/.vite-plus/bin/vp" --version
+    - name: Install Vite+ on runtime cache miss
+      if: steps.vite-plus-runtime.outputs.cache-hit != 'true'
       uses: voidzero-dev/setup-vp@v1.17.0
       with:
         version: "0.2.9"
-        cache: true
-        run-install: |
-          - cwd: .
-            args: ['--frozen-lockfile']
+        cache: false
+    - name: Restore locked dependencies
+      id: locked-dependencies
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      with:
+        path: node_modules
+        key: vite-plus-deps-${{ runner.os }}-${{ runner.arch }}-0.2.9-${{ hashFiles('package.json', 'package-lock.json') }}
+    - name: Install locked dependencies on cache miss
+      if: steps.locked-dependencies.outputs.cache-hit != 'true'
+      shell: bash
+      run: vp install --frozen-lockfile
     - name: Restore Vite+ task cache
       if: inputs.task-cache == 'true'
       uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
