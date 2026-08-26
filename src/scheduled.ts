@@ -5,6 +5,7 @@
  * `crawler/schedule.ts` from adapter metadata, so adding a shop never touches this file.
  */
 
+import { resumeInterruptedCrawlRuns } from "./crawler/crawl-continuation.js";
 import { recoverStalledCrawlRuns } from "./crawler/crawl-run-recovery.js";
 import { dispatchScheduledCrawl, recoverStalledCrawlDispatches } from "./crawler/dispatch.js";
 import { roundRobinShopForScheduledTime, shopForCronAtScheduledTime } from "./crawler/schedule.js";
@@ -302,6 +303,10 @@ export function handleScheduled(
     // worker-level timeout cannot be caught reliably inside a ten-job sweep; claiming one job makes
     // the lease/retry boundary match the expensive projection boundary.
     ctx.waitUntil(runDataQualityRemediationSweep(env.DB, { claimLimit: 1 }));
+    // Derived work an interrupted crawl left owing. The pending stages are durable in D1 before
+    // any of them is attempted, so the sweep is the dispatch: there is no window in which a run is
+    // owed a continuation that was never sent.
+    ctx.waitUntil(resumeInterruptedCrawlRuns(env.DB));
     ctx.waitUntil(recoverStaleProductAuditExportJobs(env.DB, env.PRODUCT_AUDIT_EXPORT_QUEUE));
     ctx.waitUntil(recoverStaleKnowledgeCatalogExportJobs(env.DB, env.PRODUCT_AUDIT_EXPORT_QUEUE));
   }
