@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
+import { syncProductMetadata } from "../src/db/product-metadata-repository.js";
 import { upsertProducts } from "../src/db/product-write-repository.js";
 import type { CatalogProductUpsertInput } from "../src/catalog/types.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
@@ -157,4 +158,32 @@ test("title feature facts are rewritten only for the listings whose title moved"
     "2026-08-25T02:00:00.000Z",
   );
   assert.equal(moved.featureFactCount, 1, "only the listing whose title moved is rewritten");
+});
+
+test("a metadata-only change is invisible to the derived delta but still has to be stored", async () => {
+  const { sqlite, db } = emptyDatabase();
+  const products = [listing("v-1")];
+  await upsertProducts(db, SHOP, products, FIRST);
+
+  // The negative cache for detail-page fetches lives only here: it is written exactly when the
+  // check did *not* classify, so every column `listingChanged` compares is left alone.
+  const checked = [
+    { ...products[0]!, metadata: { categoryClassification: { detailCheckedAt: SECOND } } },
+  ];
+
+  const result = await upsertProducts(db, SHOP, checked, SECOND);
+  assert.deepEqual(
+    result.derivedSourceIds,
+    [],
+    "the projection delta cannot see a change confined to metadata",
+  );
+
+  // Which is why the metadata pass is handed the whole observed set and compares the stored JSON
+  // itself. Scoping it to the delta would drop the timestamp and re-fetch that seller page forever.
+  const changed = await syncProductMetadata(db, SHOP, checked, SECOND);
+  assert.equal(changed, 1);
+  const stored = sqlite
+    .prepare("SELECT metadata_json FROM products WHERE shop_key = ? AND source_id = ?")
+    .get(SHOP, "v-1") as { metadata_json: string | null };
+  assert.match(String(stored.metadata_json), /detailCheckedAt/u);
 });

@@ -538,21 +538,22 @@ export async function crawlShop(
       sourceIds: derivedSourceIds,
       recordedAt: observedAt,
     });
-    const derivedSourceIdSet = new Set(derivedSourceIds);
     const derived = await syncDerivedProductState(env, adapter, observedAt, stageRecorder, runId, {
       workSetSize: derivedSourceIds.length,
       budgetMs: DERIVED_WORK_BUDGET_MS,
       startedAtMs: invocationStartedAtMs,
     });
-    // Metadata follows the same delta as everything else. A listing the seller re-reported
-    // unchanged carries the metadata already stored, and the drift a rule change leaves behind is
-    // the remediation worker's to replay — it compares `metadata_json` directly and is resumable,
-    // where doing it here charged every crawl for a whole-inventory pass to catch a rare case.
-    const changedProducts = products.filter((product) => derivedSourceIdSet.has(product.sourceId));
+    // Deliberately the whole observed set, not the derived delta. `listingChanged` never compares
+    // `metadata_json`, so a change confined to metadata is invisible to that delta — and some are
+    // only ever produced here, never recoverable later: `categoryClassification.detailCheckedAt` is
+    // the negative cache for detail-page fetches, written exactly when the check did *not* classify
+    // and therefore left every listing column alone. Dropping it would re-fetch that seller page on
+    // every crawl. `syncProductMetadata` computes its own delta by comparing the stored JSON, so
+    // this pass writes only what actually moved.
     const metadataChangedCount = await stageRecorder.run(
       "product_metadata",
-      { inputCount: changedProducts.length, changedCount: (result) => result },
-      () => syncProductMetadata(env.DB, adapter.key, changedProducts, observedAt),
+      { inputCount: products.length, changedCount: (result) => result },
+      () => syncProductMetadata(env.DB, adapter.key, products, observedAt),
     );
     const quality = await stageRecorder.run("data_quality", { inputCount: items.size }, () =>
       safeSaveDataQuality(env, adapter, runId, observedAt, {
