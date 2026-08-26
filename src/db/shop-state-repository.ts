@@ -59,6 +59,32 @@ export async function markShopSuccess(
     .run();
 }
 
+/**
+ * Records that a shop's derived work is complete as of this generation.
+ *
+ * Separate from {@link markShopSuccess} because the two answer different questions: a crawl can
+ * collect a complete inventory and still owe projection chunks to the continuation sweep, which is
+ * an ordinary outcome rather than a failure. Whoever finishes that work advances this — the crawl
+ * when it drains its stages inline, the sweep when it finishes them later.
+ *
+ * The watermark only moves forward. The sweep can complete an older run after a newer crawl has
+ * already reported, and letting that drag the watermark backwards would invent a regression.
+ */
+export async function markShopProjectionComplete(
+  db: QueryableDatabase,
+  shopKey: string,
+  projectedAt: string,
+): Promise<void> {
+  await db
+    .prepare(`
+      UPDATE shop_sync_state
+      SET last_projection_at = ?
+      WHERE shop_key = ? AND (last_projection_at IS NULL OR last_projection_at < ?)
+    `)
+    .bind(projectedAt, shopKey, projectedAt)
+    .run();
+}
+
 export async function markShopFailure(
   db: QueryableDatabase,
   shopKey: string,

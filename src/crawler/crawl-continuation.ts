@@ -16,6 +16,7 @@ import {
   type ResumableCrawlRun,
   type ResumableCrawlStage,
 } from "../db/crawl-run-continuation-repository.js";
+import { markShopProjectionComplete } from "../db/shop-state-repository.js";
 import { syncProductIdentityResolutions } from "../db/product-identity-repository.js";
 import { syncProductSearchEntities } from "../db/product-search-entity-repository.js";
 import { syncProductSearchProjections } from "../db/product-search-projection-repository.js";
@@ -354,6 +355,10 @@ export async function resumeCrawlRun(
     // Every run-scoped stage walked the same work set, so it is only unreferenced once the last
     // stage has finished.
     await clearCrawlRunWorkItems(db, run.crawlRunId);
+    // The crawl left its inventory watermark advanced and its projection watermark behind. This is
+    // where that gap closes, so a shop finished by the sweep reads as consistent rather than as one
+    // whose projections never caught up.
+    await markShopProjectionComplete(db, run.shopKey, run.generation);
     console.log(
       JSON.stringify({
         event: "crawl_run_continuation_complete",

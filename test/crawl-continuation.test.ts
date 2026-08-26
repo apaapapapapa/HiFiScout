@@ -508,3 +508,58 @@ test("a run held open only by cleanup does not hand its consumed work to the nex
   // it — the bulk work this design exists to avoid, repeated for as long as cleanup keeps failing.
   assert.deepEqual(workItems(sqlite, next.crawlRunId), ["r-9"]);
 });
+
+function seedShopState(sqlite: Sqlite, lastSuccessAt: string): void {
+  sqlite
+    .prepare(`
+      INSERT INTO shop_sync_state (shop_key, last_success_at, last_projection_at)
+      VALUES (?, ?, NULL)
+      ON CONFLICT(shop_key) DO UPDATE SET last_success_at = excluded.last_success_at
+    `)
+    .run(SHOP, lastSuccessAt);
+}
+
+function projectionWatermark(sqlite: Sqlite): string | null {
+  return (
+    (
+      sqlite
+        .prepare("SELECT last_projection_at FROM shop_sync_state WHERE shop_key = ?")
+        .get(SHOP) as { last_projection_at: string | null } | undefined
+    )?.last_projection_at ?? null
+  );
+}
+
+test("finishing a run's derived work is what advances the projection watermark", async () => {
+  const database = emptyDatabase();
+  const { sqlite, db } = database;
+  seedShopState(sqlite, GENERATION);
+  const run = await arrangeInterruptedRun(database, ["t-1", "t-2", "t-3"]);
+
+  // The crawl already reported its inventory. Until the derived work is finished the shop is
+  // fresh but not consistent, and the watermark has to say so rather than follow the crawl.
+  const partial = await resumeCrawlRun(db, run, { now: NOW, chunkSize: 1, maxChunks: 1 });
+  assert.equal(partial.hasMore, true);
+  assert.equal(projectionWatermark(sqlite), null, "an unfinished run claims nothing");
+
+  let guard = 0;
+  while ((await resumeCrawlRun(db, run, { now: NOW })).hasMore && guard < 10) guard += 1;
+  assert.ok(guard < 10, "resume converges");
+  assert.equal(projectionWatermark(sqlite), GENERATION);
+});
+
+test("the projection watermark never moves backwards", async () => {
+  const database = emptyDatabase();
+  const { sqlite, db } = database;
+  const newer = "2026-08-25T18:00:00.000Z";
+  seedShopState(sqlite, newer);
+  sqlite
+    .prepare("UPDATE shop_sync_state SET last_projection_at = ? WHERE shop_key = ?")
+    .run(newer, SHOP);
+
+  // The sweep can finish an older generation after a newer crawl has already reported. Letting it
+  // drag the watermark back would invent a consistency regression that never happened.
+  const older = await arrangeInterruptedRun(database, ["u-1"]);
+  await resumeCrawlRun(db, older, { now: NOW });
+
+  assert.equal(projectionWatermark(sqlite), newer);
+});

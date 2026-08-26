@@ -187,12 +187,22 @@ export type ShopHealthReason =
   | "sync_stale"
   | "recent_failure"
   | "sync_delayed"
+  | "projection_stale"
+  | "projection_delayed"
   | "ok";
 
 export interface ShopHealthSummary {
   status: ShopHealthStatus;
   ageMinutes: number | null;
   reason: ShopHealthReason;
+  /**
+   * Minutes since this shop's derived work was last fully complete, when that trails its inventory.
+   *
+   * Null when the projection is level with the last successful crawl. A number here means search
+   * and identity are still catching up: ordinary for a few minutes after a crawl deferred its
+   * remaining chunks, and evidence of a stuck stage when it keeps growing.
+   */
+  projectionAgeMinutes: number | null;
 }
 
 export interface ShopHealthEntry extends ShopHealthSummary {
@@ -202,6 +212,7 @@ export interface ShopHealthEntry extends ShopHealthSummary {
   configured: boolean;
   intervalMinutes: number;
   lastSuccessAt: string | null;
+  lastProjectionAt: string | null;
   lastAttemptAt: string | null;
   lastItemCount: number | null;
   consecutiveFailures: number;
@@ -229,6 +240,8 @@ export interface MetaShopSyncState {
   shop_key: string;
   last_attempt_at: string | null;
   last_success_at: string | null;
+  /** When the shop's derived work was last fully complete; trails `last_success_at` while owed. */
+  last_projection_at: string | null;
   last_error_at: string | null;
   consecutive_failures: number;
   backoff_until: string | null;

@@ -16,7 +16,6 @@ export type CrawlStage =
   | "identity_resolution"
   | "search_entity"
   | "membership_cleanup"
-  | "feature_facts"
   | "product_metadata"
   | "data_quality";
 
