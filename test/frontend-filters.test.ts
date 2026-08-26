@@ -1,8 +1,10 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
+import { FEATURE_DEFINITIONS } from "../src/api/contracts.js";
 import {
   activeFilterEntries,
+  featureFromFilterId,
   filterUrlParams,
   parseUrlFilters,
   productSearchParams,
@@ -18,6 +20,7 @@ function filters(overrides: Partial<ProductFilters> = {}): ProductFilters {
     minPrice: "",
     maxPrice: "",
     sort: "newest",
+    features: [],
     inStock: true,
     favoritesOnly: false,
     recentOnly: false,
@@ -131,4 +134,84 @@ test("a category without a resolved label falls back to its id", () => {
     category: "",
   });
   assert.equal(entry.label, "pre_amp");
+});
+
+test("selected features reach the API as repeated, sorted parameters", () => {
+  const params = productSearchParams(filters({ features: ["phono_input", "dac"] }));
+
+  // Sorted on the way out so two users who ticked the same boxes in a different order collapse
+  // onto the one edge-cache key the server canonicalises to.
+  assert.deepEqual(params.getAll("feature"), ["dac", "phono_input"]);
+});
+
+test("a feature selection survives the address bar", () => {
+  const url = filterUrlParams(filters({ features: ["headphone_output", "dac"] }), "list");
+  assert.equal(url.getAll("feature").join(","), "dac,headphone_output");
+
+  const parsed = parseUrlFilters(`?${url.toString()}`);
+  assert.deepEqual(parsed.features, ["dac", "headphone_output"]);
+});
+
+test("the shared comma-separated form is accepted and de-duplicated", () => {
+  const parsed = parseUrlFilters("?feature=dac,phono_input&feature=dac");
+  assert.deepEqual(parsed.features, ["dac", "phono_input"]);
+});
+
+test("a feature outside the vocabulary never becomes filter state", () => {
+  // The server answers 400 feature_invalid for these; the UI must not offer to round-trip one.
+  assert.deepEqual(parseUrlFilters("?feature=teleport&feature=dac").features, ["dac"]);
+});
+
+test("each selected feature is its own removable, counted chip", () => {
+  const entries = activeFilterEntries(filters({ features: ["dac", "network_playback"] }), {
+    shop: "",
+    category: "",
+  });
+  const features = entries.filter((entry) => featureFromFilterId(entry.id));
+
+  assert.deepEqual(
+    features.map((entry) => entry.label),
+    ["DAC搭載", "ネットワーク対応"],
+  );
+  assert.ok(
+    features.every((entry) => entry.detail),
+    "features count toward the mobile filter badge",
+  );
+  assert.equal(featureFromFilterId(features[0]!.id), "dac");
+  assert.equal(featureFromFilterId("shop"), null);
+});
+
+test("the filter UI derives its options from the shared vocabulary", () => {
+  // Ids repeated in the frontend are how four working filters shipped unreachable: the server
+  // gained them and no second edit ever exposed them.
+  const parsed = parseUrlFilters(
+    `?${FEATURE_DEFINITIONS.map((feature) => `feature=${feature.id}`).join("&")}`,
+  );
+  assert.equal(parsed.features.length, FEATURE_DEFINITIONS.length);
+});
+
+test("features are not claimed as active while favorites are shown locally", () => {
+  const selected = { features: ["dac"] as const };
+  const labels = { shop: "", category: "" };
+
+  assert.ok(
+    activeFilterEntries(filters({ ...selected }), labels).some((entry) =>
+      featureFromFilterId(entry.id),
+    ),
+  );
+
+  // Favorites are matched against stored snapshots, which carry no feature facts, so the predicate
+  // cannot run there. A chip and a filter count claiming otherwise would misreport the results.
+  const inFavorites = activeFilterEntries(filters({ ...selected, favoritesOnly: true }), labels);
+  assert.equal(
+    inFavorites.filter((entry) => featureFromFilterId(entry.id)).length,
+    0,
+    "no feature chip while the predicate cannot be applied",
+  );
+
+  // The selection itself survives, so it applies again as soon as the mode is turned off.
+  assert.deepEqual(
+    productSearchParams(filters({ ...selected, favoritesOnly: true })).getAll("feature"),
+    ["dac"],
+  );
 });

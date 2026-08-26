@@ -422,6 +422,28 @@ export interface FeatureDefinition {
   readonly order: number;
 }
 
+/**
+ * The feature vocabulary, in display order.
+ *
+ * It lives beside {@link FeatureId} rather than with the inference rules because it is the set of
+ * accepted `?feature=` values as much as it is a crawl concern: the query validator, the filter UI
+ * and the fact writer all have to agree on it, and a list repeated for any of them would let a new
+ * feature ship in one place and not another.
+ */
+export const FEATURE_DEFINITIONS: readonly FeatureDefinition[] = Object.freeze([
+  Object.freeze({ id: "dac", name: "DAC搭載", order: 1 }),
+  Object.freeze({ id: "network_playback", name: "ネットワーク対応", order: 2 }),
+  Object.freeze({ id: "headphone_output", name: "ヘッドホン出力", order: 3 }),
+  Object.freeze({ id: "phono_input", name: "フォノ入力", order: 4 }),
+]);
+
+const FEATURE_IDS = new Set<string>(FEATURE_DEFINITIONS.map((feature) => feature.id));
+
+/** Narrows an untrusted feature id against the vocabulary above. */
+export function isFeatureId(value: unknown): value is FeatureId {
+  return typeof value === "string" && FEATURE_IDS.has(value);
+}
+
 /** Loose input to `normalizeFeatureFacts()`; every field is re-validated/coerced. */
 export interface FeatureFactInput {
   featureId?: string;

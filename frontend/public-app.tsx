@@ -20,6 +20,7 @@ import {
   parseUrlFilters,
   productSearchParams,
 } from "./filters.js";
+import { featureFromFilterId } from "./filters.js";
 import type { ProductFilters, ProductView, ToggleId, UrlValueId } from "./filters.js";
 import {
   FAVORITES_KEY,
@@ -42,7 +43,8 @@ import {
   SyncShopRows,
 } from "./public-components.js";
 import { sortShopsByJapaneseReading } from "./shop-options.js";
-import type { MetaResponse, MetaShop } from "../src/api/contracts.js";
+import { FEATURE_DEFINITIONS } from "../src/api/contracts.js";
+import type { FeatureId, MetaResponse, MetaShop } from "../src/api/contracts.js";
 import type {
   DisplayProduct,
   PageState,
@@ -77,6 +79,7 @@ function filtersFromLocation(favoritesOnly = false): ProductFilters {
   const parsed = parseUrlFilters(location.search);
   return {
     ...parsed.values,
+    features: parsed.features,
     inStock: parsed.inStock,
     favoritesOnly,
     recentOnly: parsed.recentOnly,
@@ -102,6 +105,7 @@ interface FilterPanelProps {
   open: boolean;
   onValueChange: (id: UrlValueId, value: string, debounced?: boolean) => void;
   onToggleChange: (id: ToggleId, checked: boolean) => void;
+  onFeatureChange: (feature: FeatureId, checked: boolean) => void;
   onClose: () => void;
   onClear: () => void;
 }
@@ -113,6 +117,7 @@ function FilterPanel({
   open,
   onValueChange,
   onToggleChange,
+  onFeatureChange,
   onClose,
   onClear,
 }: FilterPanelProps) {
@@ -220,6 +225,28 @@ function FilterPanel({
             onChange={(event) => onValueChange("maxPrice", event.currentTarget.value, true)}
           />
         </label>
+        {/*
+          Feature matching is a server-side predicate over stored facts. Favorites are matched
+          locally against snapshots that carry none, so the control is disabled there rather than
+          left to look applied while the results ignore it. The selection itself survives.
+        */}
+        <fieldset className="filter-features" disabled={filters.favoritesOnly}>
+          <legend>機能</legend>
+          {FEATURE_DEFINITIONS.map((feature) => (
+            <label className="check" key={feature.id}>
+              <input
+                id={`feature-${feature.id}`}
+                type="checkbox"
+                checked={filters.features.includes(feature.id)}
+                onChange={(event) => onFeatureChange(feature.id, event.currentTarget.checked)}
+              />
+              <span>{feature.name}</span>
+            </label>
+          ))}
+          {filters.favoritesOnly ? (
+            <p className="filter-note">お気に入り表示中は機能で絞り込めません</p>
+          ) : null}
+        </fieldset>
         <label className="check">
           <input
             id="inStock"
@@ -530,10 +557,23 @@ function App() {
     [commitFilters],
   );
 
+  const changeFeature = useCallback(
+    (feature: FeatureId, checked: boolean) => {
+      const current = filtersRef.current.features;
+      const features = checked
+        ? [...new Set([...current, feature])]
+        : current.filter((selected) => selected !== feature);
+      commitFilters({ ...filtersRef.current, features });
+    },
+    [commitFilters],
+  );
+
   const clearFilter = useCallback(
     (id: string) => {
       const next = { ...filtersRef.current };
-      if (
+      const feature = featureFromFilterId(id);
+      if (feature) next.features = next.features.filter((selected) => selected !== feature);
+      else if (
         id === "inStock" ||
         id === "favoritesOnly" ||
         id === "recentOnly" ||
@@ -563,6 +603,7 @@ function App() {
       minPrice: "",
       maxPrice: "",
       sort: filtersRef.current.sort || DEFAULT_SORT,
+      features: [],
       inStock: false,
       favoritesOnly: false,
       recentOnly: false,
@@ -791,6 +832,7 @@ function App() {
           open={filterOpen}
           onValueChange={changeValue}
           onToggleChange={changeToggle}
+          onFeatureChange={changeFeature}
           onClose={() => setFilterOpen(false)}
           onClear={clearAllFilters}
         />

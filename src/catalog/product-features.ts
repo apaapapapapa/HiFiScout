@@ -1,19 +1,10 @@
+import { isFeatureId } from "./types.js";
 import type {
-  FeatureDefinition,
   FeatureFact,
   FeatureFactInput,
   FeatureId,
   InferFeatureFactsOptions,
 } from "./types.js";
-
-export const FEATURE_DEFINITIONS: readonly FeatureDefinition[] = Object.freeze([
-  Object.freeze({ id: "dac", name: "DAC搭載", order: 1 }),
-  Object.freeze({ id: "network_playback", name: "ネットワーク対応", order: 2 }),
-  Object.freeze({ id: "headphone_output", name: "ヘッドホン出力", order: 3 }),
-  Object.freeze({ id: "phono_input", name: "フォノ入力", order: 4 }),
-]);
-
-const FEATURE_IDS = new Set<string>(FEATURE_DEFINITIONS.map((feature) => feature.id));
 
 /**
  * Ordered match table. The explicit tuple element type stops TypeScript widening each pair to
@@ -31,10 +22,6 @@ const PRESENT_RULES: readonly (readonly [FeatureId, RegExp])[] = [
   ["headphone_output", /headphone\s*(?:out|output|jack)|ヘッドホン(?:出力|端子)/i],
   ["phono_input", /phono\s*(?:in|input)|フォノ入力/i],
 ];
-
-export function isFeatureId(value: unknown): value is FeatureId {
-  return typeof value === "string" && FEATURE_IDS.has(value);
-}
 
 export function inferFeatureFacts(
   text: string = "",

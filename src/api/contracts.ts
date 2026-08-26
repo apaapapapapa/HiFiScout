@@ -6,14 +6,26 @@
  * that adds, renames or retypes a column must never silently change a public payload. Rows are
  * mapped onto these DTOs by explicit mappers at the repository boundary.
  *
- * The module is intentionally dependency-light — only type-only imports of the catalog domain —
- * so `frontend/` can consume it without pulling any server module into the browser bundle.
+ * The module is intentionally dependency-light — it reaches only into the catalog type vocabulary —
+ * so `frontend/` can consume it without pulling any server module into the browser bundle. The few
+ * values it carries are query vocabulary the browser has to agree with, not behaviour.
  *
  * These are compile-time contracts only. Runtime validation of untrusted input (HTTP responses,
  * localStorage, query strings) still belongs to the guards at each boundary.
  */
 
-import type { StockStatus } from "../catalog/types.js";
+import { FEATURE_DEFINITIONS } from "../catalog/types.js";
+import type { FeatureDefinition, FeatureId, StockStatus } from "../catalog/types.js";
+
+/**
+ * Accepted `?feature=` values, in display order.
+ *
+ * Re-exported rather than restated: the browser bundle may reach only this module, and a filter UI
+ * that listed the ids itself would let a new feature ship server-side while staying unreachable —
+ * which is exactly how the four existing filters ended up with no way to select them.
+ */
+export { FEATURE_DEFINITIONS };
+export type { FeatureDefinition, FeatureId };
 
 // ---------------------------------------------------------------------------
 // seller listings (/api/products/:id/history)

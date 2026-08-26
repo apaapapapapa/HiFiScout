@@ -6,7 +6,7 @@
  * pure functions and are unit-tested without a database.
  */
 
-import { isFeatureId } from "../catalog/product-features.js";
+import { isFeatureId } from "../catalog/types.js";
 import { PRODUCT_QUERY_SORTS } from "./contracts.js";
 import type { ProductQuerySort } from "./contracts.js";
 
