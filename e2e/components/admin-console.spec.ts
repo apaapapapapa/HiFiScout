@@ -53,6 +53,9 @@ const listingProduct = {
 };
 
 async function mockAdminApi(page: Page): Promise<void> {
+  let catalog = { ...catalogProduct };
+  let listing = { ...listingProduct };
+
   await page.route("**/api/**", async (route: Route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -61,9 +64,23 @@ async function mockAdminApi(page: Page): Promise<void> {
 
     if (url.pathname === "/api/meta") return json({ categoryFacets: categories });
     if (url.pathname === "/api/admin/knowledge-catalog/products" && request.method() === "GET") {
-      return json({ items: [catalogProduct], nextAfterId: null });
+      return json({ items: [catalog], nextAfterId: null });
     }
-    if (/^\/api\/admin\/knowledge-catalog\/products\/\d+$/u.test(url.pathname)) {
+    if (
+      /^\/api\/admin\/knowledge-catalog\/products\/\d+$/u.test(url.pathname) &&
+      request.method() === "PATCH"
+    ) {
+      const input = request.postDataJSON() as {
+        canonicalName?: string;
+        primaryCategoryId?: string;
+        lifecycleStatus?: "unknown" | "active" | "discontinued";
+      };
+      catalog = {
+        ...catalog,
+        canonicalName: input.canonicalName ?? catalog.canonicalName,
+        primaryCategoryId: input.primaryCategoryId ?? catalog.primaryCategoryId,
+        lifecycleStatus: input.lifecycleStatus ?? catalog.lifecycleStatus,
+      };
       return json({ refreshedListings: 2 });
     }
     if (url.pathname === "/api/admin/knowledge-catalog/candidates") {
@@ -75,17 +92,15 @@ async function mockAdminApi(page: Page): Promise<void> {
     if (url.pathname === "/api/admin/knowledge-catalog-exports") return json({ job: null });
     if (url.pathname === "/api/admin/product-audit-exports") return json({ job: null });
     if (url.pathname === "/api/admin/listings" && request.method() === "GET") {
-      return json({ items: [listingProduct], nextAfterId: null, hasMore: false });
+      return json({ items: [listing], nextAfterId: null, hasMore: false });
     }
     if (/^\/api\/admin\/listings\/\d+$/u.test(url.pathname) && request.method() === "PATCH") {
       const input = request.postDataJSON() as { presentationColor?: string };
-      return json({
-        listing: {
-          ...listingProduct,
-          presentationColor: input.presentationColor ?? listingProduct.presentationColor,
-        },
-        refreshedListings: 1,
-      });
+      listing = {
+        ...listing,
+        presentationColor: input.presentationColor ?? listing.presentationColor,
+      };
+      return json({ listing, refreshedListings: 1 });
     }
     return json({ error: "unmocked_admin_api" }, 500);
   });
@@ -117,6 +132,7 @@ test("admin catalog screen uses the shared POM for search and edit flows", async
   await expect(admin.catalog.editDialog).toBeVisible();
   await admin.catalog.editName().fill("LUXMAN D-1000 Reference");
   await admin.catalog.saveButton().click();
+  await expect(admin.catalog.catalogRow(11)).toContainText("LUXMAN D-1000 Reference");
   await expect(admin.catalog.status).toContainText("保存しました");
 });
 
@@ -140,5 +156,5 @@ test("admin listings screen uses the shared POM for tab, search, and color edit 
   await expect(admin.listings.editDialog).toBeVisible();
   await admin.listings.presentationColor().fill("ブラック/ゴールド");
   await admin.listings.saveButton().click();
-  await expect(admin.listings.status).toContainText("listing #21 を保存");
+  await expect(admin.listings.listingRow(21)).toContainText("色: ブラック/ゴールド");
 });
