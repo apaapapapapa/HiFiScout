@@ -37,6 +37,7 @@ interface ListingAdminRow {
   category: string;
   primary_category_id: string;
   classification_status: string;
+  presentation_color: string;
   last_seen_at: string;
   last_changed_at: string;
   last_activity_at: string;
@@ -48,6 +49,7 @@ interface ListingAdminRow {
   override_category_ids: string | null;
   override_category_name: string | null;
   override_search_aliases: string | null;
+  override_presentation_color: string | null;
   override_created_at: string | null;
   override_updated_at: string | null;
 }
@@ -72,6 +74,7 @@ export interface ListingAdminProduct {
   category: string;
   primaryCategoryId: string;
   classificationStatus: string;
+  presentationColor: string;
   lastSeenAt: string;
   lastChangedAt: string;
   lastActivityAt: string;
@@ -79,6 +82,7 @@ export interface ListingAdminProduct {
     manufacturerId: string | null;
     model: string | null;
     primaryCategoryId: string | null;
+    presentationColor: string | null;
     updatedAt: string | null;
   };
 }
@@ -103,6 +107,7 @@ interface OverrideState {
   categoryIds: string[] | null;
   categoryName: string | null;
   searchAliases: string | null;
+  presentationColor: string | null;
   createdAt: string | null;
 }
 
@@ -118,7 +123,8 @@ const LISTING_SELECT = `
          p.manufacturer_resolver_version, p.raw_model, p.model, p.normalized_model,
          p.model_resolution_status, p.model_resolution_method, p.model_resolution_confidence,
          p.model_resolver_version, p.raw_category, p.category, p.primary_category_id,
-         p.classification_status, p.last_seen_at, p.last_changed_at, p.last_activity_at,
+         p.classification_status, p.presentation_color, p.last_seen_at, p.last_changed_at,
+         p.last_activity_at,
          o.manufacturer_id AS override_manufacturer_id,
          o.manufacturer_name AS override_manufacturer_name,
          o.model AS override_model,
@@ -127,6 +133,7 @@ const LISTING_SELECT = `
          o.category_ids AS override_category_ids,
          o.category_name AS override_category_name,
          o.search_aliases AS override_search_aliases,
+         o.presentation_color AS override_presentation_color,
          o.created_at AS override_created_at,
          o.updated_at AS override_updated_at
   FROM products p
@@ -164,6 +171,7 @@ function toProduct(row: ListingAdminRow): ListingAdminProduct {
     category: row.category || "",
     primaryCategoryId: row.primary_category_id || "",
     classificationStatus: row.classification_status || "",
+    presentationColor: row.presentation_color || "",
     lastSeenAt: row.last_seen_at || "",
     lastChangedAt: row.last_changed_at || "",
     lastActivityAt: row.last_activity_at || "",
@@ -171,6 +179,7 @@ function toProduct(row: ListingAdminRow): ListingAdminProduct {
       manufacturerId: row.override_manufacturer_id,
       model: row.override_model,
       primaryCategoryId: row.override_primary_category_id,
+      presentationColor: row.override_presentation_color,
       updatedAt: row.override_updated_at,
     },
   };
@@ -186,6 +195,7 @@ function overrideState(row: ListingAdminRow): OverrideState {
     categoryIds: parseJsonStrings(row.override_category_ids),
     categoryName: row.override_category_name,
     searchAliases: row.override_search_aliases,
+    presentationColor: row.override_presentation_color,
     createdAt: row.override_created_at,
   };
 }
@@ -224,9 +234,10 @@ export async function listListingAdminProducts(
     where.push(`(
       LOWER(p.title) LIKE ? OR LOWER(p.source_id) LIKE ? OR LOWER(p.shop_key) LIKE ? OR
       LOWER(p.manufacturer) LIKE ? OR LOWER(p.raw_manufacturer) LIKE ? OR
-      LOWER(p.manufacturer_id) LIKE ? OR LOWER(p.model) LIKE ? OR LOWER(p.raw_model) LIKE ?
+      LOWER(p.manufacturer_id) LIKE ? OR LOWER(p.model) LIKE ? OR LOWER(p.raw_model) LIKE ? OR
+      LOWER(p.presentation_color) LIKE ?
     )`);
-    params.push(pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern);
+    params.push(pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern);
   }
 
   const result = await db
@@ -295,6 +306,9 @@ export async function updateListingAdminProduct(
     merged.model = input.model;
     merged.normalizedModel = normalizeIdentityModel(input.model);
   }
+  if (input.presentationColor !== undefined) {
+    merged.presentationColor = input.presentationColor;
+  }
   if (input.primaryCategoryId !== undefined) {
     const categoryIds = listingAdminCategoryIds(input.primaryCategoryId);
     const category = getCategory(input.primaryCategoryId);
@@ -311,6 +325,7 @@ export async function updateListingAdminProduct(
   const manufacturerOverridden = merged.manufacturerId !== null;
   const modelOverridden = merged.model !== null;
   const categoryOverridden = merged.primaryCategoryId !== null;
+  const presentationColorOverridden = merged.presentationColor !== null;
   const manufacturerId = manufacturerOverridden
     ? merged.manufacturerId || ""
     : existing.manufacturer_id;
@@ -328,6 +343,9 @@ export async function updateListingAdminProduct(
   const searchAliases = categoryOverridden
     ? merged.searchAliases || ""
     : categorySearchAliases([categoryId]);
+  const presentationColor = presentationColorOverridden
+    ? merged.presentationColor || ""
+    : existing.presentation_color;
 
   const statements: D1PreparedStatement[] = [
     db.prepare("DELETE FROM product_admin_overrides WHERE listing_product_id = ?").bind(listingId),
@@ -340,7 +358,7 @@ export async function updateListingAdminProduct(
             model = ?, normalized_model = ?, model_resolution_status = ?,
             model_resolution_method = ?, model_resolution_confidence = ?,
             category = ?, primary_category_id = ?, category_ids = json_array(?),
-            classification_status = ?, search_aliases = ?,
+            classification_status = ?, search_aliases = ?, presentation_color = ?,
             remediation_projection_required = 1, remediation_projection_token = ?
         WHERE id = ?
       `)
@@ -377,6 +395,7 @@ export async function updateListingAdminProduct(
         categoryId,
         categoryOverridden ? "classified" : existing.classification_status,
         searchAliases,
+        presentationColor,
         token,
         listingId,
       ),
@@ -402,8 +421,9 @@ export async function updateListingAdminProduct(
       .prepare(`
         INSERT INTO product_admin_overrides(
           listing_product_id, manufacturer_id, manufacturer_name, model, normalized_model,
-          primary_category_id, category_ids, category_name, search_aliases, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          primary_category_id, category_ids, category_name, search_aliases, presentation_color,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       .bind(
         listingId,
@@ -415,6 +435,7 @@ export async function updateListingAdminProduct(
         merged.categoryIds === null ? null : JSON.stringify(merged.categoryIds),
         merged.categoryName,
         merged.searchAliases,
+        merged.presentationColor,
         merged.createdAt || updatedAt,
         updatedAt,
       ),

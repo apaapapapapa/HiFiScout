@@ -86,6 +86,10 @@ interface UpsertProductsOptions {
   activityPolicy?: Readonly<ProductActivityPolicy>;
 }
 
+type ExistingProductWithOverrides = ExistingProductRow & {
+  override_presentation_color?: string | null;
+};
+
 async function runBatches(
   db: QueryableDatabase,
   statements: D1PreparedStatement[],
@@ -263,7 +267,12 @@ export async function selectExistingProducts(
              model_resolution_method, model_resolution_confidence, model_resolver_version, title,
              category, raw_category, primary_category_id, category_ids, classification_status, search_aliases,
              condition_text, price_yen, stock_status, source_url, source_published_at, metadata_json,
-             first_seen_at, last_seen_at, last_activity_at, is_active
+             first_seen_at, last_seen_at, last_activity_at, is_active,
+             (
+               SELECT presentation_color
+               FROM product_admin_overrides
+               WHERE listing_product_id = products.id
+             ) AS override_presentation_color
       FROM products WHERE shop_key = ? AND source_id IN (${placeholders})
     `)
       .bind(shopKey, ...chunk)
@@ -311,6 +320,8 @@ export async function deactivateProductsBySourceIds(
 function listingChanged(existing: ExistingProductRow, product: CatalogProductUpsertInput): boolean {
   const current = catalogFields(product);
   const previous = existingCatalogFields(existing);
+  const overridePresentationColor = (existing as ExistingProductWithOverrides)
+    .override_presentation_color;
   return (
     existing.manufacturer !== product.manufacturer ||
     previous.rawManufacturer !== current.rawManufacturer ||
@@ -324,7 +335,8 @@ function listingChanged(existing: ExistingProductRow, product: CatalogProductUps
     existing.model !== product.model ||
     previous.rawModel !== current.rawModel ||
     previous.normalizedModel !== current.normalizedModel ||
-    previous.presentationColor !== current.presentationColor ||
+    (overridePresentationColor == null &&
+      previous.presentationColor !== current.presentationColor) ||
     previous.modelResolutionStatus !== current.modelResolutionStatus ||
     previous.modelResolutionMethod !== current.modelResolutionMethod ||
     previous.modelResolutionConfidence !== current.modelResolutionConfidence ||

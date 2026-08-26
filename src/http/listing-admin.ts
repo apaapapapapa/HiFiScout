@@ -1,4 +1,8 @@
 import { categoryIdForClassification, categoryIdForFilter } from "../catalog/categories.js";
+import {
+  normalizePresentationColor,
+  presentationColorLabel,
+} from "../catalog/model-presentation-color.js";
 import { isRecord } from "../types.js";
 
 export interface ListingAdminListOptions {
@@ -13,12 +17,18 @@ export interface ListingAdminListOptions {
 export interface ListingAdminUpdateInput {
   manufacturerId?: string;
   model?: string;
+  presentationColor?: string;
   primaryCategoryId?: string;
 }
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 100;
-const ALLOWED_UPDATE_KEYS = new Set(["manufacturerId", "model", "primaryCategoryId"]);
+const ALLOWED_UPDATE_KEYS = new Set([
+  "manufacturerId",
+  "model",
+  "presentationColor",
+  "primaryCategoryId",
+]);
 
 function boundedText(value: string | null, maxLength: number): string | null {
   if (value === null) return "";
@@ -73,6 +83,14 @@ function bodyText(value: unknown, maxLength: number): string | null {
   return text.length <= maxLength ? text : null;
 }
 
+function canonicalPresentationColor(value: string): string | null {
+  if (!value) return "";
+  const parts = value.split("/").map((part) => part.trim());
+  if (!parts.length || parts.some((part) => !part || !normalizePresentationColor(part)))
+    return null;
+  return presentationColorLabel(parts);
+}
+
 export function parseListingAdminUpdate(value: unknown): ListingAdminUpdateInput | null {
   if (!isRecord(value)) return null;
   const keys = Object.keys(value);
@@ -91,6 +109,14 @@ export function parseListingAdminUpdate(value: unknown): ListingAdminUpdateInput
     const model = bodyText(value.model, 200);
     if (model === null) return null;
     input.model = model;
+  }
+
+  if (Object.hasOwn(value, "presentationColor")) {
+    const presentationColor = bodyText(value.presentationColor, 100);
+    if (presentationColor === null) return null;
+    const canonical = canonicalPresentationColor(presentationColor);
+    if (canonical === null) return null;
+    input.presentationColor = canonical;
   }
 
   if (Object.hasOwn(value, "primaryCategoryId")) {
