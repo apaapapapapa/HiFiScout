@@ -26,11 +26,19 @@ test("suggest accepts only one bounded q parameter", () => {
   );
 });
 
-test("suggest bounds length by code points rather than UTF-16 units", () => {
-  const value = "🎧".repeat(MAX_SUGGEST_QUERY_LENGTH);
+test("suggest bounds raw and normalized code-point length", () => {
+  const emoji = "🎧".repeat(MAX_SUGGEST_QUERY_LENGTH);
   assert.equal(
-    validateSuggestQuery(new URL(`https://example.test/api/suggest?q=${encodeURIComponent(value)}`)),
+    validateSuggestQuery(new URL(`https://example.test/api/suggest?q=${encodeURIComponent(emoji)}`)),
     null,
+  );
+
+  const expandsUnderNfkc = "㍿".repeat(MAX_SUGGEST_QUERY_LENGTH);
+  assert.equal(
+    validateSuggestQuery(
+      new URL(`https://example.test/api/suggest?q=${encodeURIComponent(expandsUnderNfkc)}`),
+    ),
+    "q_too_long",
   );
 });
 
@@ -38,5 +46,8 @@ test("suggest input and edge-cache URL are canonicalized", () => {
   const url = new URL("https://example.test/api/suggest?q=%EF%BC%B0%EF%BC%AD%20%20%2014s1");
   const query = parseSuggestQuery(url);
   assert.deepEqual(query, { q: "PM 14s1" });
-  assert.equal(canonicalSuggestQueryUrl(url, query).toString(), "https://example.test/api/suggest?q=PM+14s1");
+  assert.equal(
+    canonicalSuggestQueryUrl(url, query).toString(),
+    "https://example.test/api/suggest?q=PM+14s1",
+  );
 });
