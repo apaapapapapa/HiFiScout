@@ -29,7 +29,9 @@ test("suggest accepts only one bounded q parameter", () => {
 test("suggest bounds raw and normalized code-point length", () => {
   const emoji = "🎧".repeat(MAX_SUGGEST_QUERY_LENGTH);
   assert.equal(
-    validateSuggestQuery(new URL(`https://example.test/api/suggest?q=${encodeURIComponent(emoji)}`)),
+    validateSuggestQuery(
+      new URL(`https://example.test/api/suggest?q=${encodeURIComponent(emoji)}`),
+    ),
     null,
   );
 

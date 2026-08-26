@@ -17,8 +17,7 @@ interface ProductSuggestRow {
   normalized_model: string;
 }
 
-const SUGGEST_COLUMNS =
-  "e.id, e.manufacturer_id, e.manufacturer, e.model, e.normalized_model";
+const SUGGEST_COLUMNS = "e.id, e.manufacturer_id, e.manufacturer, e.model, e.normalized_model";
 
 function escapedLike(value: string): string {
   return value.replace(/[\\%_]/g, "\\$&");
