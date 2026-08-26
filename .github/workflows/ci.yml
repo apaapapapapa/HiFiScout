@@ -82,6 +82,30 @@ jobs:
       - name: Verify D1 FTS search migration
         run: vp exec tsx scripts/verify-search-integration.ts
 
+  component:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: ./.github/actions/setup-node-deps
+      - name: Resolve installed Playwright version
+        id: playwright-version
+        shell: bash
+        run: |
+          version="$(node -p "require('@playwright/test/package.json').version")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Restore Playwright Chromium cache
+        id: playwright-cache
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-chromium-${{ steps.playwright-version.outputs.version }}
+      - name: Install Chromium on cache miss
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: vp exec playwright install chromium
+      - name: Run Playwright component suite
+        run: vp exec playwright test --config e2e/playwright.components.config.ts
+
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -113,6 +137,7 @@ jobs:
       - typecheck
       - unit-test
       - integration
+      - component
       - build
       - dependency-security
     if: always()
@@ -126,6 +151,7 @@ jobs:
           TYPECHECK_RESULT: ${{ needs.typecheck.result }}
           UNIT_RESULT: ${{ needs.unit-test.result }}
           INTEGRATION_RESULT: ${{ needs.integration.result }}
+          COMPONENT_RESULT: ${{ needs.component.result }}
           BUILD_RESULT: ${{ needs.build.result }}
           DEPENDENCY_RESULT: ${{ needs.dependency-security.result }}
         run: |
@@ -135,6 +161,7 @@ jobs:
             "${TYPECHECK_RESULT}" \
             "${UNIT_RESULT}" \
             "${INTEGRATION_RESULT}" \
+            "${COMPONENT_RESULT}" \
             "${BUILD_RESULT}" \
             "${DEPENDENCY_RESULT}"; do
             if [[ "${result}" != "success" ]]; then

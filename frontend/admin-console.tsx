@@ -42,7 +42,7 @@ function scrollToAdminTarget(selector: string): void {
   target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
 }
 
-function AdminConsole() {
+export function AdminConsole() {
   const [activeTab, setActiveTab] = useState<AdminTab>(requestedTab);
   const [mountedTabs, setMountedTabs] = useState<Set<AdminTab>>(() => new Set([requestedTab()]));
   const activeSectionLabel =
@@ -188,5 +188,4 @@ function AdminConsole() {
 }
 
 const root = document.getElementById("admin-root");
-if (!root) throw new Error("Missing #admin-root");
-createRoot(root).render(<AdminConsole />);
+if (root) createRoot(root).render(<AdminConsole />);
