@@ -74,6 +74,57 @@ jobs:
         run: vp run build:frontend
       - name: Deploy Worker and static assets
         run: vp exec wrangler deploy
+      - name: Check saved-search Atom feed and autodiscovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          feed_headers="$(mktemp)"
+          feed_body="$(mktemp)"
+          catalog_body="$(mktemp)"
+          trap 'rm -f "$feed_headers" "$feed_body" "$catalog_body"' EXIT
+
+          feed_status="$(curl -sS --retry 3 --retry-delay 2 -D "$feed_headers" -o "$feed_body" -w '%{http_code}' \
+            "${PRODUCTION_BASE_URL}/api/feed?manufacturer=TAD&inStock=true&limit=2")"
+          if [[ "$feed_status" != "200" ]]; then
+            echo "Production Atom feed returned HTTP ${feed_status}:" >&2
+            cat "$feed_body" >&2
+            exit 1
+          fi
+
+          content_type="$(awk 'BEGIN { IGNORECASE=1 } /^content-type:/ { sub(/^[^:]+:[[:space:]]*/, ""); sub(/\r$/, ""); print; exit }' "$feed_headers")"
+          cache_control="$(awk 'BEGIN { IGNORECASE=1 } /^cache-control:/ { sub(/^[^:]+:[[:space:]]*/, ""); sub(/\r$/, ""); print; exit }' "$feed_headers")"
+          [[ "$content_type" == application/atom+xml* ]] || {
+            echo "Unexpected Atom Content-Type: ${content_type}" >&2
+            exit 1
+          }
+          [[ "$cache_control" == *"max-age=120"* ]] || {
+            echo "Unexpected Atom Cache-Control: ${cache_control}" >&2
+            exit 1
+          }
+
+          python - "$feed_body" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          root = ET.parse(sys.argv[1]).getroot()
+          atom = "{http://www.w3.org/2005/Atom}"
+          assert root.tag == f"{atom}feed"
+          for name in ("id", "title", "updated"):
+              assert root.find(f"{atom}{name}") is not None, name
+          assert any(link.get("rel") == "self" for link in root.findall(f"{atom}link"))
+          for entry in root.findall(f"{atom}entry"):
+              for name in ("id", "title", "updated"):
+                  assert entry.find(f"{atom}{name}") is not None, f"entry/{name}"
+          PY
+
+          catalog_status="$(curl -sS --retry 3 --retry-delay 2 -o "$catalog_body" -w '%{http_code}' \
+            "${PRODUCTION_BASE_URL}/?manufacturer=TAD&newOnly=true")"
+          if [[ "$catalog_status" != "200" ]]; then
+            echo "Filtered catalog returned HTTP ${catalog_status}" >&2
+            exit 1
+          fi
+          grep -F 'data-saved-search-feed' "$catalog_body" >/dev/null
+          grep -F 'href="/api/feed?manufacturer=TAD&amp;inStock=true&amp;newOnly=true"' "$catalog_body" >/dev/null
       - name: Check production runtime health
         shell: bash
         run: |
