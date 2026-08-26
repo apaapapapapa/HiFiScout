@@ -9,11 +9,7 @@
 
 import { checkPublicApiRateLimit } from "../api-guard.js";
 import { productSearchAtomFeed } from "../api/atom-feed.js";
-import {
-  canonicalFeedQueryUrl,
-  parseFeedQuery,
-  validateFeedQuery,
-} from "../api/feed-query.js";
+import { canonicalFeedQueryUrl, parseFeedQuery, validateFeedQuery } from "../api/feed-query.js";
 import { parseProductQuery, validateProductQuery } from "../api/product-query.js";
 import {
   canonicalSuggestQueryUrl,

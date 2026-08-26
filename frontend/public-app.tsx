@@ -647,7 +647,8 @@ function App() {
     setHistoryState({ kind: "loading" });
     try {
       const data = await api.fetchJson(`/api/products/${listingId}/history`);
-      if (!isProductHistoryResponse(data)) throw new TypeError("Unexpected product history payload");
+      if (!isProductHistoryResponse(data))
+        throw new TypeError("Unexpected product history payload");
       setHistoryState({ kind: "ready", data });
     } catch (error) {
       console.error(error);

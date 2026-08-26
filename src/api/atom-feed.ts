@@ -104,9 +104,7 @@ function entryTitle(item: ProductSearchItem): string {
 
 function atomEntry(item: ProductSearchItem): string {
   const offer = item.representative_offer;
-  const link = offer?.source_url
-    ? `\n    <link href="${escapeXml(offer.source_url)}" />`
-    : "";
+  const link = offer?.source_url ? `\n    <link href="${escapeXml(offer.source_url)}" />` : "";
   return `  <entry>
     <id>${escapeXml(`urn:hifiscout:product:${item.key}`)}</id>
     <title>${escapeXml(entryTitle(item))}</title>
