@@ -21,7 +21,7 @@ export default defineConfig({
   },
   webServer: {
     command: "vp dev playwright/gallery --host 127.0.0.1 --port 4173 --strictPort",
-    url: galleryUrl,
+    port: 4173,
     reuseExistingServer: !process.env.CI,
     stdout: "pipe",
     stderr: "pipe",
