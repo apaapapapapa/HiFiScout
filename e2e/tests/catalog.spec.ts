@@ -168,6 +168,7 @@ test("changing a shop filter refreshes the API and exposes a removable filter ch
     throw new Error("Expected at least one selectable shop option");
   }
   const firstShopLabel = (await firstShopOption.textContent())?.trim() || firstShopValue;
+  const firstShopFilterLabel = firstShopLabel.replace(/\s+\(\d+\)$/u, "");
 
   const filteredResponsePromise = page.waitForResponse((response: Response) => {
     if (!isProductsRequest(response)) return false;
@@ -179,12 +180,12 @@ test("changing a shop filter refreshes the API and exposes a removable filter ch
 
   expect(filteredResponse.ok()).toBeTruthy();
   await expect(page.locator("#shop")).toHaveValue(firstShopValue);
-  await expect(page.locator("#active-filters")).toContainText(firstShopLabel);
+  await expect(page.locator("#active-filters")).toContainText(firstShopFilterLabel);
   await expect(page).toHaveURL(new RegExp(`shop=${encodeURIComponent(firstShopValue)}`));
 
   await page.locator('[data-clear-filter="shop"]').click();
   await expect(page.locator("#shop")).toHaveValue("");
-  await expect(page.locator("#active-filters")).not.toContainText(firstShopLabel);
+  await expect(page.locator("#active-filters")).not.toContainText(firstShopFilterLabel);
   await expect(page.locator("#count")).toHaveText(/^\d+$/);
 });
 
