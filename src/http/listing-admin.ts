@@ -1,5 +1,5 @@
 import { categoryIdForClassification, categoryIdForFilter } from "../catalog/categories.js";
-import { normalizePresentationColor } from "../catalog/model-presentation-color.js";
+import { presentationColorLabel } from "../catalog/model-presentation-color.js";
 import { isRecord } from "../types.js";
 
 export interface ListingAdminListOptions {
@@ -81,12 +81,7 @@ function bodyText(value: unknown, maxLength: number): string | null {
 }
 
 function canonicalPresentationColor(value: string): string | null {
-  if (!value) return "";
-  const parts = value.split("/").map((part) => part.trim());
-  if (!parts.length || parts.some((part) => !part)) return null;
-  const colors = parts.map((part) => normalizePresentationColor(part));
-  if (colors.some((color) => color === null)) return null;
-  return colors.map((color) => color?.name || "").join("/");
+  return value ? presentationColorLabel(value) : "";
 }
 
 export function parseListingAdminUpdate(value: unknown): ListingAdminUpdateInput | null {
