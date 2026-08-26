@@ -26,6 +26,8 @@ function browserBundle(entry: string, outDir: string, fileName: string, name: st
   };
 }
 
+const ciShell = (command: string): string => `bash -lc ${JSON.stringify(command)}`;
+
 export default defineConfig(({ mode }) => ({
   publicDir: false,
   resolve: {
@@ -46,27 +48,23 @@ export default defineConfig(({ mode }) => ({
   },
   run: {
     tasks: {
-      "ci:lint": "vp lint . --deny-warnings",
-      "ci:format-check":
+      "ci:lint": ciShell("vp lint . --deny-warnings"),
+      "ci:format-check": ciShell(
         'vp fmt --check --no-error-on-unmatched-pattern "**/*.ts" "**/*.mts" "**/*.cts" "**/*.tsx"',
-      "ci:no-js-source": "vp exec tsx scripts/check-no-first-party-js.ts",
-      "ci:types-worker": [
-        "vp exec tsx scripts/ensure-directories.ts .generated",
-        "vp exec tsx scripts/run-quiet.ts wrangler types .generated/worker-configuration.d.ts",
-      ],
+      ),
+      "ci:no-js-source": ciShell("vp exec tsx scripts/check-no-first-party-js.ts"),
+      "ci:types-worker": ciShell(
+        "vp exec tsx scripts/ensure-directories.ts .generated && vp exec tsx scripts/run-quiet.ts wrangler types .generated/worker-configuration.d.ts",
+      ),
       "ci:typecheck": {
-        command: "vp exec tsc --noEmit",
+        command: ciShell("vp exec tsc --noEmit"),
         dependsOn: ["ci:types-worker"],
       },
-      "ci:test-shard-1": "vp test run --reporter=dot --shard=1/2",
-      "ci:test-shard-2": "vp test run --reporter=dot --shard=2/2",
-      "ci:build": [
-        "vp build --mode public",
-        "vp build --mode admin",
-        "vp exec wrangler deploy --dry-run --outdir dist/worker",
-        "vp exec wrangler deploy --dry-run --config wrangler.admin.jsonc --outdir dist/admin-worker",
-        "vp build --mode lambda",
-      ],
+      "ci:test-shard-1": ciShell("vp test run --reporter=dot --shard=1/2"),
+      "ci:test-shard-2": ciShell("vp test run --reporter=dot --shard=2/2"),
+      "ci:build": ciShell(
+        "vp build --mode public && vp build --mode admin && vp exec wrangler deploy --dry-run --outdir dist/worker && vp exec wrangler deploy --dry-run --config wrangler.admin.jsonc --outdir dist/admin-worker && vp build --mode lambda",
+      ),
     },
   },
   ...(mode === "public"
