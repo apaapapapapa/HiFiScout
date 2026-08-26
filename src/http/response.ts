@@ -13,7 +13,13 @@ export function json(data: unknown, init: ResponseInit = {}): Response {
   });
 }
 
-async function cachedResponse(
+/**
+ * Serves a successful public read through Cloudflare's edge cache.
+ *
+ * Error responses are deliberately not inserted: a transient lookup miss, validation failure, or
+ * rate-limit response must never become the cached representation of a public URL.
+ */
+export async function cachedResponse(
   request: Request,
   ctx: ExecutionContext,
   load: () => Response | Promise<Response>,
@@ -23,7 +29,7 @@ async function cachedResponse(
   const cached = await cache.match(request);
   if (cached) return cached;
   const response = await load();
-  ctx.waitUntil(cache.put(request, response.clone()));
+  if (response.ok) ctx.waitUntil(cache.put(request, response.clone()));
   return response;
 }
 
