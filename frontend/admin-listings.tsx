@@ -501,7 +501,11 @@ export function ListingAdmin() {
                         <StackCell
                           lines={[
                             { text: product.model || "—", strong: true },
-                            { text: product.presentationColor ? `色: ${product.presentationColor}` : "色: —" },
+                            {
+                              text: product.presentationColor
+                                ? `色: ${product.presentationColor}`
+                                : "色: —",
+                            },
                             { text: product.normalizedModel || "normalized未解決" },
                             { text: product.rawModel || "—", className: "raw-value" },
                           ]}
@@ -688,7 +692,8 @@ export function ListingAdmin() {
                 ))}
               </datalist>
               <small>
-                Catalogの標準色辞書へ正規化します。2色仕上げは「ブラック/ゴールド」のように / で区切れます。空欄は色なしとして固定します。
+                Catalogの標準色辞書へ正規化します。2色仕上げは「ブラック/ゴールド」のように /
+                で区切れます。空欄は色なしとして固定します。
               </small>
             </label>
             <label>
