@@ -3,6 +3,11 @@ import {
   summarizeCategoryEvidence,
 } from "../catalog/category-classifier.js";
 import { collectListingCategoryEvidence } from "../catalog/category-evidence.js";
+import {
+  componentCategoryIds,
+  detectListingComponents,
+  listingCategorySet,
+} from "../catalog/listing-components.js";
 import { createManufacturerResolver } from "../catalog/manufacturer-resolver.js";
 import { manufacturerIdForFilter } from "../catalog/manufacturers.js";
 import { presentationColorLabel } from "../catalog/model-presentation-color.js";
@@ -254,6 +259,17 @@ async function replayDerivedListing(
   const metadata = metadataObject(row.metadata_json);
   const evidence = storedCategoryEvidence(row, metadata);
   const classification = classifyCategoryEvidence(evidence);
+  // The same derivation the crawl path runs, from the same stored seller evidence. A replay that
+  // recomputed the classification but not the component set would leave a set listing with a
+  // primary category that is not one of its own — the crawl and the replay have to agree.
+  const components = detectListingComponents(
+    { rawModel: row.raw_model, title: row.title },
+    { manufacturerId: manufacturer.canonicalManufacturerId, shopKey: row.shop_key },
+  );
+  const categorySet = listingCategorySet(
+    classification,
+    componentCategoryIds(components.components),
+  );
   const nextMetadata = {
     ...metadata,
     manufacturerNormalization: {
@@ -278,11 +294,11 @@ async function replayDerivedListing(
     categoryClassification: {
       ...classificationMetadata(metadata),
       version: RESOLUTION_VERSIONS.category,
-      state: classification.classificationState,
-      status: classification.classificationStatus,
-      reason: classification.classificationReason,
-      source: classification.classificationSource,
-      categoryIds: classification.categoryIds,
+      state: categorySet.classificationState,
+      status: categorySet.classificationStatus,
+      reason: categorySet.classificationReason,
+      source: categorySet.classificationSource,
+      categoryIds: categorySet.categoryIds,
       candidateCategoryIds: classification.candidateCategoryIds,
       evidence: summarizeCategoryEvidence(evidence),
     },
@@ -295,10 +311,9 @@ async function replayDerivedListing(
   // `unclassified-persistence.test.ts` pins that. Storing the classifier's empty array here gave
   // unclassified rows two DB shapes depending on which writer touched them last.
   const categoryIdsJson = JSON.stringify(
-    classification.categoryIds.length
-      ? classification.categoryIds
-      : [classification.primaryCategoryId],
+    categorySet.categoryIds.length ? categorySet.categoryIds : [categorySet.primaryCategoryId],
   );
+  const directCategoryIdsJson = JSON.stringify(categorySet.directCategoryIds);
   const token = `dq-replay:${evaluatedAt}:${row.id}`;
 
   const result = await db
@@ -322,6 +337,7 @@ async function replayDerivedListing(
           category = ?,
           primary_category_id = ?,
           category_ids = ?,
+          direct_category_ids = ?,
           classification_status = ?,
           search_aliases = ?,
           metadata_json = ?,
@@ -347,6 +363,7 @@ async function replayDerivedListing(
           OR category IS NOT ?
           OR primary_category_id IS NOT ?
           OR category_ids IS NOT ?
+          OR direct_category_ids IS NOT ?
           OR classification_status IS NOT ?
           OR search_aliases IS NOT ?
           OR metadata_json IS NOT ?
@@ -368,11 +385,12 @@ async function replayDerivedListing(
       model.method,
       model.confidence,
       RESOLUTION_VERSIONS.model,
-      classification.displayName,
-      classification.primaryCategoryId,
+      categorySet.displayName,
+      categorySet.primaryCategoryId,
       categoryIdsJson,
-      classification.classificationStatus,
-      classification.searchAliases,
+      directCategoryIdsJson,
+      categorySet.classificationStatus,
+      categorySet.searchAliases,
       metadataJson,
       token,
       row.id,
@@ -391,11 +409,12 @@ async function replayDerivedListing(
       model.method,
       model.confidence,
       RESOLUTION_VERSIONS.model,
-      classification.displayName,
-      classification.primaryCategoryId,
+      categorySet.displayName,
+      categorySet.primaryCategoryId,
       categoryIdsJson,
-      classification.classificationStatus,
-      classification.searchAliases,
+      directCategoryIdsJson,
+      categorySet.classificationStatus,
+      categorySet.searchAliases,
       metadataJson,
     )
     .run();

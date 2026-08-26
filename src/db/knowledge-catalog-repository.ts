@@ -333,7 +333,8 @@ function buildReclassificationStatements(
       db
         .prepare(`
       UPDATE products
-      SET category = ?, primary_category_id = ?, category_ids = ?, classification_status = 'classified',
+      SET category = ?, primary_category_id = ?, category_ids = ?, direct_category_ids = ?,
+          classification_status = 'classified',
           search_aliases = ?, remediation_projection_required = 1, remediation_projection_token = ?
       WHERE id = ?
     `)
@@ -341,6 +342,8 @@ function buildReclassificationStatements(
           primary.name,
           primary.id,
           JSON.stringify(categoryIds),
+          // The catalog answered for one product, so the listing is directly in that one category.
+          JSON.stringify([primary.id]),
           categorySearchAliases(categoryIds),
           projectionToken,
           product.id,
@@ -353,9 +356,9 @@ function buildReclassificationStatements(
       statements.push(
         db
           .prepare(
-            "INSERT OR IGNORE INTO product_categories(product_id, category_id) VALUES (?, ?)",
+            "INSERT OR IGNORE INTO product_categories(product_id, category_id, is_direct) VALUES (?, ?, ?)",
           )
-          .bind(product.id, categoryId),
+          .bind(product.id, categoryId, categoryId === primary.id ? 1 : 0),
       );
     }
 

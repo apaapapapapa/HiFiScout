@@ -8,11 +8,14 @@
 
 import {
   UNCLASSIFIED_CATEGORY_ID,
-  categoryClosureIds,
   categoryIdForFilter,
   categorySearchAliases,
   isUnclassifiedCategoryId,
 } from "../catalog/categories.js";
+import {
+  listingCategoryClosureIds,
+  listingDirectCategoryIds,
+} from "../catalog/listing-components.js";
 import { normalizeFeatureFacts } from "../catalog/product-features.js";
 import { manufacturerIdForFilter, normalizeManufacturerKey } from "../catalog/manufacturers.js";
 import { MANUFACTURER_RESOLVER_VERSION } from "../catalog/manufacturer-resolver.js";
@@ -68,12 +71,17 @@ interface CatalogFields {
   primaryCategoryId: CategoryId;
   categoryIds: CategoryId[];
   categoryIdsJson: string;
+  directCategoryIds: CategoryId[];
+  directCategoryIdsJson: string;
   classificationStatus: ClassificationStatus;
   searchAliases: string;
   featureFacts: FeatureFact[];
 }
 
-interface ExistingCatalogFields extends Omit<CatalogFields, "categoryIds" | "featureFacts"> {}
+interface ExistingCatalogFields extends Omit<
+  CatalogFields,
+  "categoryIds" | "directCategoryIds" | "featureFacts"
+> {}
 
 interface InitialActivity {
   at: string;
@@ -110,6 +118,12 @@ function catalogFields(product: CatalogProductUpsertInput): CatalogFields {
     categoryIdForFilter(product.primaryCategoryId || product.category || "") ||
     UNCLASSIFIED_CATEGORY_ID;
   const categoryIds = [primaryCategoryId];
+  // Re-normalized rather than trusted: this repository accepts a loose input, and a caller that
+  // supplies nothing must still store the primary as the listing's one direct category.
+  const directCategoryIds = listingDirectCategoryIds(
+    product.directCategoryIds || [],
+    primaryCategoryId,
+  );
   const rawManufacturer = product.rawManufacturer ?? product.manufacturer ?? "";
   const canonicalManufacturerId =
     product.manufacturerResolutionStatus === "candidate" ||
@@ -148,12 +162,25 @@ function catalogFields(product: CatalogProductUpsertInput): CatalogFields {
     primaryCategoryId,
     categoryIds,
     categoryIdsJson: JSON.stringify(categoryIds),
+    directCategoryIds,
+    directCategoryIdsJson: JSON.stringify(directCategoryIds),
     classificationStatus:
       product.classificationStatus ||
       (isUnclassifiedCategoryId(primaryCategoryId) ? "unclassified" : "classified"),
     searchAliases: product.searchAliases ?? categorySearchAliases(categoryIds),
     featureFacts: normalizeFeatureFacts(product.featureFacts || []),
   };
+}
+
+/** Stored `direct_category_ids`, or nothing for a row written before the column existed. */
+function parseStoredCategoryIds(value: string | null | undefined): string[] {
+  if (!value) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 function existingCatalogFields(existing: ExistingProductRow): ExistingCatalogFields {
@@ -195,6 +222,16 @@ function existingCatalogFields(existing: ExistingProductRow): ExistingCatalogFie
     rawCategory: existing.raw_category ?? existing.category ?? "",
     primaryCategoryId,
     categoryIdsJson: JSON.stringify([primaryCategoryId]),
+    // The one stored category column this function reads instead of reconstructing. A set's direct
+    // categories cannot be re-derived from the primary, so reconstructing would report every set
+    // listing as changed on every crawl; normalizing both sides through the same function is what
+    // keeps a legacy or aliased stored value from looking like a change either.
+    directCategoryIdsJson: JSON.stringify(
+      listingDirectCategoryIds(
+        parseStoredCategoryIds(existing.direct_category_ids),
+        primaryCategoryId,
+      ),
+    ),
     classificationStatus:
       existing.classification_status ||
       (primaryCategoryId === "other" ? "unclassified" : "classified"),
@@ -265,7 +302,8 @@ export async function selectExistingProducts(
              manufacturer_resolution_confidence, manufacturer_resolver_version,
              model, raw_model, normalized_model, presentation_color, model_resolution_status,
              model_resolution_method, model_resolution_confidence, model_resolver_version, title,
-             category, raw_category, primary_category_id, category_ids, classification_status, search_aliases,
+             category, raw_category, primary_category_id, category_ids, direct_category_ids,
+             classification_status, search_aliases,
              condition_text, price_yen, stock_status, source_url, source_published_at, metadata_json,
              first_seen_at, last_seen_at, last_activity_at, is_active,
              (
@@ -346,6 +384,7 @@ function listingChanged(existing: ExistingProductRow, product: CatalogProductUps
     previous.rawCategory !== current.rawCategory ||
     previous.primaryCategoryId !== current.primaryCategoryId ||
     previous.categoryIdsJson !== current.categoryIdsJson ||
+    previous.directCategoryIdsJson !== current.directCategoryIdsJson ||
     previous.classificationStatus !== current.classificationStatus ||
     previous.searchAliases !== current.searchAliases ||
     existing.condition_text !== product.conditionText ||
@@ -398,7 +437,8 @@ function categoriesChanged(
   const previous = existingCatalogFields(existing);
   return (
     previous.primaryCategoryId !== current.primaryCategoryId ||
-    previous.categoryIdsJson !== current.categoryIdsJson
+    previous.categoryIdsJson !== current.categoryIdsJson ||
+    previous.directCategoryIdsJson !== current.directCategoryIdsJson
   );
 }
 
@@ -452,16 +492,19 @@ async function syncProductCategories(
     const productId = idBySource.get(product.sourceId);
     if (!productId) continue;
     const fields = catalogFields(product);
+    const directIds = new Set<string>(fields.directCategoryIds);
     statements.push(
       db.prepare("DELETE FROM product_categories WHERE product_id = ?").bind(productId),
     );
-    for (const categoryId of categoryClosureIds(fields.primaryCategoryId)) {
+    // The union closure of every direct category, taken once. A parent two components share is one
+    // row, not two, which is what keeps the parent facet from counting the same listing twice.
+    for (const categoryId of listingCategoryClosureIds(fields.directCategoryIds)) {
       statements.push(
         db
           .prepare(
-            "INSERT OR IGNORE INTO product_categories(product_id, category_id) VALUES (?, ?)",
+            "INSERT OR IGNORE INTO product_categories(product_id, category_id, is_direct) VALUES (?, ?, ?)",
           )
-          .bind(productId, categoryId),
+          .bind(productId, categoryId, directIds.has(categoryId) ? 1 : 0),
       );
     }
   }
@@ -566,13 +609,14 @@ export async function upsertProducts(
           manufacturer_resolver_version, model, raw_model, normalized_model, presentation_color,
           model_resolution_status, model_resolution_method, model_resolution_confidence,
           model_resolver_version, title,
-          category, raw_category, primary_category_id, category_ids, classification_status, search_aliases,
+          category, raw_category, primary_category_id, category_ids, direct_category_ids,
+          classification_status, search_aliases,
           condition_text, price_yen, previous_price_yen, stock_status, source_url, source_published_at,
           first_seen_at, last_seen_at, last_changed_at, last_activity_at, is_active
         ) VALUES (
           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?,
           ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, 1
         )
       `)
@@ -601,6 +645,7 @@ export async function upsertProducts(
             fields.rawCategory,
             fields.primaryCategoryId,
             fields.categoryIdsJson,
+            fields.directCategoryIdsJson,
             fields.classificationStatus,
             fields.searchAliases,
             product.conditionText,
@@ -639,6 +684,7 @@ export async function upsertProducts(
           model_resolution_status = ?, model_resolution_method = ?, model_resolution_confidence = ?,
           model_resolver_version = ?, title = ?,
           category = ?, raw_category = ?, primary_category_id = ?, category_ids = ?,
+          direct_category_ids = ?,
           classification_status = ?, search_aliases = ?, condition_text = ?,
           previous_price_yen = CASE WHEN ? THEN price_yen ELSE previous_price_yen END,
           price_yen = ?, stock_status = ?, source_url = ?, source_published_at = ?, last_seen_at = ?, last_changed_at = ?,
@@ -668,6 +714,7 @@ export async function upsertProducts(
             fields.rawCategory,
             fields.primaryCategoryId,
             fields.categoryIdsJson,
+            fields.directCategoryIdsJson,
             fields.classificationStatus,
             fields.searchAliases,
             product.conditionText,

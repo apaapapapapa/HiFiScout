@@ -11,10 +11,24 @@
  * is.
  */
 
-import { categoryIdForFilter, getCategory, canonicalCategoryDefinitions } from "./categories.js";
+import {
+  canonicalCategoryDefinitions,
+  categoryClosureIds,
+  categoryIdForFilter,
+  categorySearchAliases,
+  getCategory,
+} from "./categories.js";
 import { UNCLASSIFIED_CATEGORY_ID } from "./categories.js";
+import { inferExplicitCategoryIds } from "./category-rules.js";
 import { resolveModel } from "./model-resolver.js";
-import type { CategoryId } from "./types.js";
+import type {
+  CategoryClassification,
+  CategoryId,
+  ClassificationReason,
+  ClassificationSource,
+  ClassificationState,
+  ClassificationStatus,
+} from "./types.js";
 
 /**
  * Characters a seller may put between two products.
@@ -102,6 +116,10 @@ export function detectListingComponents(
   if (!source) return { isBundle: false, components: [] };
 
   const segments = source.split(BOUNDARY_PATTERN);
+  // Most listings name one product and carry no separator at all. Leaving before the resolver runs
+  // keeps this pass off the hot path for them rather than paying an extra resolution per crawl.
+  if (segments.length < 2) return { isBundle: false, components: [] };
+
   const components: ListingComponent[] = [];
   const seen = new Set<string>();
   for (const segment of segments) {
@@ -145,7 +163,130 @@ export function directCategoryIds(categoryIds: readonly string[]): CategoryId[] 
   }
 
   if (!classified.size) return sawUnclassified ? [UNCLASSIFIED_CATEGORY_ID] : [];
-  return [...classified].sort(
-    (left, right) => (CANONICAL_ORDER.get(left) ?? 0) - (CANONICAL_ORDER.get(right) ?? 0),
+  return [...classified].sort(byCanonicalOrder);
+}
+
+function byCanonicalOrder(left: CategoryId, right: CategoryId): number {
+  return (CANONICAL_ORDER.get(left) ?? 0) - (CANONICAL_ORDER.get(right) ?? 0);
+}
+
+/**
+ * The category each component names in its own seller text, one entry per component.
+ *
+ * A component that names none contributes the `unclassified` sentinel rather than nothing, so
+ * "no component said anything" stays distinguishable from "one component was classified and the
+ * rest were silent" — {@link directCategoryIds} then drops the sentinel in the second case.
+ */
+export function componentCategoryIds(components: readonly ListingComponent[]): CategoryId[] {
+  return components.map(
+    (component) =>
+      inferExplicitCategoryIds(component.segment, { context: "title" })[0] ||
+      UNCLASSIFIED_CATEGORY_ID,
   );
+}
+
+/**
+ * The categories a listing is *directly* in: what its card shows and what a category filter matches.
+ *
+ * Components decide it when they can. When they cannot — an ordinary single-product listing, or a
+ * set whose components name no category of their own — the listing classification the existing
+ * pipeline already produced decides instead. That fallback is what keeps every non-set listing
+ * exactly as it is today: with no components, this returns `[primaryCategoryId]` and nothing
+ * downstream can tell the difference.
+ */
+export function listingDirectCategoryIds(
+  componentCategories: readonly string[],
+  primaryCategoryId: string,
+): CategoryId[] {
+  const fromComponents = directCategoryIds(componentCategories);
+  const anyClassified = fromComponents.some((id) => id !== UNCLASSIFIED_CATEGORY_ID);
+  return anyClassified ? fromComponents : directCategoryIds([primaryCategoryId]);
+}
+
+/**
+ * Every category id whose filter must match this listing: each direct category and its ancestors.
+ *
+ * The union is taken once across the whole set, so a parent two components share is one membership
+ * and not two — a transport plus a DAC is a single `digital` listing, which is what stops the
+ * shared parent's facet from counting the same card twice.
+ */
+export function listingCategoryClosureIds(directIds: readonly string[]): CategoryId[] {
+  const closure = new Set<CategoryId>();
+  for (const directId of directIds) {
+    for (const ancestorId of categoryClosureIds(directId)) closure.add(ancestorId);
+  }
+  return [...closure].sort(byCanonicalOrder);
+}
+
+/**
+ * The single representative category the pre-existing contract still needs.
+ *
+ * Kept deterministic in both directions: a primary that is still one of the direct categories
+ * survives, so re-reading a listing never reshuffles its representative category, and when the
+ * listing classification named something the components did not, the canonical taxonomy picks the
+ * replacement rather than parse order. For a listing with one direct category — every non-set
+ * listing — this returns that category, which is the primary it already had.
+ */
+export function listingPrimaryCategoryId(
+  directIds: readonly CategoryId[],
+  primaryCategoryId: string,
+): CategoryId {
+  if (directIds.includes(primaryCategoryId as CategoryId)) return primaryCategoryId as CategoryId;
+  return directIds[0] ?? UNCLASSIFIED_CATEGORY_ID;
+}
+
+/**
+ * A listing's category fields once its components have had their say.
+ *
+ * Every field a writer needs to persist, produced in one place because there are two writers: the
+ * crawl path and the data-quality replay. Deriving this twice is how the two would drift, and a
+ * replay that recomputed the classification but not the set would leave rows whose stored primary
+ * is not one of their own categories.
+ */
+export interface ListingCategorySet {
+  directCategoryIds: CategoryId[];
+  primaryCategoryId: CategoryId;
+  /** The single-product classification result. Unchanged unless the primary itself moved. */
+  categoryIds: CategoryId[];
+  displayName: string;
+  classificationStatus: ClassificationStatus;
+  classificationState: ClassificationState;
+  classificationReason: ClassificationReason;
+  classificationSource: ClassificationSource;
+  searchAliases: string;
+  /** True when the components named categories the listing-level classification did not. */
+  promoted: boolean;
+}
+
+/**
+ * Combine a listing classification with what its component products say about themselves.
+ *
+ * With no components — every listing that sells one product — this returns the classification
+ * unchanged, field for field, with `directCategoryIds` holding the primary alone. That identity is
+ * the whole safety argument for the change: a non-set listing cannot notice this function exists.
+ */
+export function listingCategorySet(
+  classification: CategoryClassification,
+  componentCategories: readonly string[],
+): ListingCategorySet {
+  const directIds = listingDirectCategoryIds(componentCategories, classification.primaryCategoryId);
+  const primaryCategoryId = listingPrimaryCategoryId(directIds, classification.primaryCategoryId);
+  const promoted = primaryCategoryId !== classification.primaryCategoryId;
+  const promotedCategory = promoted ? getCategory(primaryCategoryId) : null;
+  return {
+    directCategoryIds: directIds,
+    primaryCategoryId,
+    categoryIds: promoted ? [primaryCategoryId] : classification.categoryIds,
+    displayName: promotedCategory?.name ?? classification.displayName,
+    classificationStatus: promoted ? "classified" : classification.classificationStatus,
+    classificationState: promoted ? "classified" : classification.classificationState,
+    classificationReason: promoted ? "" : classification.classificationReason,
+    classificationSource: promoted ? "component_evidence" : classification.classificationSource,
+    // Aliases for every direct category, so the second product in a set is searchable by the name
+    // of its own category too. One direct category yields byte-identical aliases to today.
+    searchAliases: directIds.length
+      ? categorySearchAliases(directIds)
+      : classification.searchAliases,
+    promoted,
+  };
 }

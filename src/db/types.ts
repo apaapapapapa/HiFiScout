@@ -108,6 +108,13 @@ export interface ProductRow {
   primary_category_id: string;
   /** JSON `string[]`; parse to `unknown` then narrow. */
   category_ids: string;
+  /**
+   * JSON `string[]` of the listing's direct categories — one per distinct component product.
+   *
+   * Nullable only for rows that predate the 0055 migration's backfill. Distinct from
+   * `category_ids`, which stays the single-product classification result.
+   */
+  direct_category_ids: string | null;
   classification_status: ClassificationStatus;
   search_aliases: string;
   last_inventory_checked_at: string | null;
@@ -151,6 +158,7 @@ export type ExistingProductRow = Pick<
   | "raw_category"
   | "primary_category_id"
   | "category_ids"
+  | "direct_category_ids"
   | "classification_status"
   | "search_aliases"
   | "condition_text"
@@ -203,6 +211,8 @@ export type PriceHistoryPoint = Pick<PriceHistoryRow, "price_yen" | "observed_at
 export interface ProductCategoryRow {
   product_id: number;
   category_id: string;
+  /** 1 for a category a component product is in, 0 for an ancestor kept so a parent filter matches. */
+  is_direct: SqliteBool;
 }
 
 export interface ProductFeatureFactRow {
