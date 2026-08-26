@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
+import { PRESENTATION_COLORS } from "../src/catalog/model-presentation-color.js";
 import {
   EMPTY_STATUS,
   adminJson,
@@ -14,6 +15,7 @@ interface ListingOverrides {
   manufacturerId: string | null;
   model: string | null;
   primaryCategoryId: string | null;
+  presentationColor: string | null;
   updatedAt: string | null;
 }
 
@@ -37,6 +39,7 @@ interface ListingProduct {
   category: string;
   primaryCategoryId: string;
   classificationStatus: string;
+  presentationColor: string;
   lastSeenAt: string;
   lastChangedAt: string;
   lastActivityAt: string;
@@ -66,6 +69,7 @@ const EMPTY_FILTERS: ListingFilters = { q: "", shopKey: "", categoryId: "", scop
 interface EditDraft {
   manufacturerId: string;
   model: string;
+  presentationColor: string;
   primaryCategoryId: string;
 }
 
@@ -95,6 +99,7 @@ function overrideLabels(product: ListingProduct): string[] {
   if (product.overrides.manufacturerId !== null) labels.push("メーカー");
   if (product.overrides.model !== null) labels.push("型番");
   if (product.overrides.primaryCategoryId !== null) labels.push("カテゴリ");
+  if (product.overrides.presentationColor !== null) labels.push("色");
   return labels;
 }
 
@@ -147,6 +152,7 @@ export function ListingAdmin() {
   const [editDraft, setEditDraft] = useState<EditDraft>({
     manufacturerId: "",
     model: "",
+    presentationColor: "",
     primaryCategoryId: "",
   });
   const [saving, setSaving] = useState(false);
@@ -233,6 +239,7 @@ export function ListingAdmin() {
     setEditDraft({
       manufacturerId: product.canonicalManufacturerId || product.manufacturerId || "",
       model: product.model || "",
+      presentationColor: product.presentationColor || "",
       primaryCategoryId: classifiableCategoryId(product.primaryCategoryId),
     });
   };
@@ -245,6 +252,7 @@ export function ListingAdmin() {
           ""
         ).toLowerCase(),
         model: editing.model || "",
+        presentationColor: editing.presentationColor || "",
         primaryCategoryId: classifiableCategoryId(editing.primaryCategoryId),
       }
     : null;
@@ -252,6 +260,7 @@ export function ListingAdmin() {
     initialEditDraft &&
     (editDraft.manufacturerId.trim().toLowerCase() !== initialEditDraft.manufacturerId ||
       editDraft.model.trim() !== initialEditDraft.model ||
+      editDraft.presentationColor.trim() !== initialEditDraft.presentationColor ||
       (editDraft.primaryCategoryId !== "" &&
         editDraft.primaryCategoryId !== initialEditDraft.primaryCategoryId)),
   );
@@ -270,12 +279,21 @@ export function ListingAdmin() {
   const saveEditing = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!editing || !initialEditDraft || saving || !editDirty) return;
-    const input: { manufacturerId?: string; model?: string; primaryCategoryId?: string } = {};
+    const input: {
+      manufacturerId?: string;
+      model?: string;
+      presentationColor?: string;
+      primaryCategoryId?: string;
+    } = {};
     const manufacturerId = editDraft.manufacturerId.trim().toLowerCase();
     const model = editDraft.model.trim();
+    const presentationColor = editDraft.presentationColor.trim();
     const primaryCategoryId = editDraft.primaryCategoryId;
     if (manufacturerId !== initialEditDraft.manufacturerId) input.manufacturerId = manufacturerId;
     if (model !== initialEditDraft.model) input.model = model;
+    if (presentationColor !== initialEditDraft.presentationColor) {
+      input.presentationColor = presentationColor;
+    }
     if (primaryCategoryId && primaryCategoryId !== initialEditDraft.primaryCategoryId) {
       input.primaryCategoryId = primaryCategoryId;
     }
@@ -316,7 +334,7 @@ export function ListingAdmin() {
           <p className="eyebrow">LISTING OPERATIONS</p>
           <h2>登録商品 管理</h2>
           <p>
-            販売店から取得したlistingのメーカー・型番・カテゴリを、永続的な手動補正として修正します。
+            販売店から取得したlistingのメーカー・型番・カテゴリ・色を、永続的な手動補正として修正します。
           </p>
         </div>
       </div>
@@ -331,7 +349,7 @@ export function ListingAdmin() {
               <div>
                 <p className="eyebrow">LISTING WORKSPACE</p>
                 <h2 id="listing-search-heading">登録商品を検索・編集</h2>
-                <p>商品名・型番・メーカー・店舗・カテゴリで対象listingを絞り込めます。</p>
+                <p>商品名・型番・メーカー・色・店舗・カテゴリで対象listingを絞り込めます。</p>
               </div>
               <span className="keyboard-hint">
                 <kbd>Enter</kbd> で検索
@@ -343,7 +361,7 @@ export function ListingAdmin() {
                 <input
                   id="listings-listing-query"
                   type="search"
-                  placeholder="商品名 / 型番 / メーカー / source id"
+                  placeholder="商品名 / 型番 / メーカー / 色 / source id"
                   autoComplete="off"
                   value={draft.q}
                   disabled={busy}
@@ -442,7 +460,7 @@ export function ListingAdmin() {
                     <th>ID / 店舗</th>
                     <th>商品</th>
                     <th>メーカー</th>
-                    <th>型番</th>
+                    <th>型番 / 色</th>
                     <th>カテゴリ</th>
                     <th>価格 / 在庫</th>
                     <th>最終確認</th>
@@ -483,6 +501,7 @@ export function ListingAdmin() {
                         <StackCell
                           lines={[
                             { text: product.model || "—", strong: true },
+                            { text: product.presentationColor ? `色: ${product.presentationColor}` : "色: —" },
                             { text: product.normalizedModel || "normalized未解決" },
                             { text: product.rawModel || "—", className: "raw-value" },
                           ]}
@@ -649,6 +668,28 @@ export function ListingAdmin() {
                 }
               />
               <small>検索とProduct Identityに使う正規化後の型番です。</small>
+            </label>
+            <label>
+              <span>表示色 / 仕上げ</span>
+              <input
+                type="text"
+                maxLength={100}
+                autoComplete="off"
+                list="listing-presentation-colors"
+                placeholder="ブラック / シルバー / ブラック/ゴールド"
+                value={editDraft.presentationColor}
+                onChange={({ currentTarget: { value: nextValue } }) =>
+                  setEditDraft((value) => ({ ...value, presentationColor: nextValue }))
+                }
+              />
+              <datalist id="listing-presentation-colors">
+                {PRESENTATION_COLORS.map((color) => (
+                  <option key={color.id} value={color.name} />
+                ))}
+              </datalist>
+              <small>
+                Catalogの標準色辞書へ正規化します。2色仕上げは「ブラック/ゴールド」のように / で区切れます。空欄は色なしとして固定します。
+              </small>
             </label>
             <label>
               <span>主カテゴリ</span>
