@@ -1,7 +1,6 @@
 /** Query-string contract for the bounded `/api/suggest` typeahead endpoint. */
 
-/** Matches the public product-search free-text ceiling while keeping cache keys bounded. */
-export const MAX_SUGGEST_QUERY_LENGTH = 100;
+import { MAX_SUGGEST_QUERY_LENGTH } from "./contracts.js";
 
 export interface SuggestQuery {
   q: string;

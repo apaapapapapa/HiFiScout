@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
+import { MAX_SUGGEST_QUERY_LENGTH } from "../src/api/contracts.js";
 import {
-  MAX_SUGGEST_QUERY_LENGTH,
   canonicalSuggestQueryUrl,
   parseSuggestQuery,
   validateSuggestQuery,

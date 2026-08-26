@@ -7,6 +7,7 @@
  * merely because its top-level collections exist.
  */
 
+import { MAX_SUGGESTIONS } from "../src/api/contracts.js";
 import type {
   MetaCategoryFacet,
   MetaManufacturerFacet,
@@ -19,6 +20,7 @@ import type {
   ShopHealthEntry,
   ShopHealthReason,
   ShopHealthStatus,
+  SuggestResponse,
 } from "../src/api/contracts.js";
 import type { ProductDetailResponse, ProductHistoryResponse, ProductsResponse } from "./types.js";
 
@@ -236,6 +238,14 @@ export function isMetaResponse(value: unknown): value is MetaResponse {
     isStringArray(value.categories) &&
     Array.isArray(value.categoryFacets) &&
     value.categoryFacets.every(isMetaCategoryFacet)
+  );
+}
+
+export function isSuggestResponse(value: unknown): value is SuggestResponse {
+  return (
+    isRecord(value) &&
+    isStringArray(value.suggestions) &&
+    value.suggestions.length <= MAX_SUGGESTIONS
   );
 }
 

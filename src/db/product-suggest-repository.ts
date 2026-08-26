@@ -2,13 +2,11 @@
 
 import { normalizeManufacturer, splitKnownManufacturerModel } from "../catalog/manufacturers.js";
 import { normalizeIdentityModel } from "../catalog/product-identity.js";
+import { MAX_SUGGESTIONS, MIN_SUGGEST_QUERY_LENGTH } from "../api/contracts.js";
 import { parseFtsSearchQuery, quoteFtsTerm } from "../search/fts-query.js";
 import type { FtsSearchPlan } from "../search/fts-query.js";
 import type { QueryableDatabase } from "./types.js";
 
-/** Public response ceiling. The database candidate window is separately bounded below. */
-export const MAX_SUGGESTIONS = 8;
-const MIN_SUGGEST_QUERY_LENGTH = 3;
 const MAX_SUGGEST_CANDIDATES = 24;
 
 interface ProductSuggestRow {

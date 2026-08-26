@@ -171,6 +171,21 @@ export interface ProductSearchDetailResponse {
 }
 
 // ---------------------------------------------------------------------------
+// /api/suggest
+// ---------------------------------------------------------------------------
+
+/** Minimum normalized query size before typeahead may touch D1. */
+export const MIN_SUGGEST_QUERY_LENGTH = 3;
+/** Matches the public product-search free-text ceiling while keeping cache keys bounded. */
+export const MAX_SUGGEST_QUERY_LENGTH = 100;
+/** Public response ceiling; the database candidate window is separately bounded. */
+export const MAX_SUGGESTIONS = 8;
+
+export interface SuggestResponse {
+  suggestions: string[];
+}
+
+// ---------------------------------------------------------------------------
 // /api/products/:id/history
 // ---------------------------------------------------------------------------
 
