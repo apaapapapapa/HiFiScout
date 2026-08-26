@@ -159,6 +159,9 @@ function FilterPanel({
             {shops.map((shop) => (
               <option key={shop.key} value={shop.key}>
                 {shop.name}
+                {isNonNegativeInteger(shop.activeProductCount)
+                  ? ` (${shop.activeProductCount})`
+                  : ""}
               </option>
             ))}
           </select>
@@ -175,9 +178,17 @@ function FilterPanel({
             onChange={(event) => onValueChange("manufacturer", event.currentTarget.value, true)}
           />
           <datalist id="manufacturer-options">
-            {(meta?.manufacturers ?? []).map((value) => (
-              <option key={value} value={value} />
-            ))}
+            {meta?.manufacturerFacets?.length
+              ? meta.manufacturerFacets.map((facet) => (
+                  <option
+                    key={facet.name}
+                    value={facet.name}
+                    label={`${facet.name} (${facet.activeProductCount})`}
+                  />
+                ))
+              : (meta?.manufacturers ?? []).map((value) => (
+                  <option key={value} value={value} />
+                ))}
           </datalist>
         </label>
         <label>
