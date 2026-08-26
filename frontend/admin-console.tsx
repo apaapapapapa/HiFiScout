@@ -45,6 +45,8 @@ function scrollToAdminTarget(selector: string): void {
 function AdminConsole() {
   const [activeTab, setActiveTab] = useState<AdminTab>(requestedTab);
   const [mountedTabs, setMountedTabs] = useState<Set<AdminTab>>(() => new Set([requestedTab()]));
+  const activeSectionLabel =
+    activeTab === "catalog" ? "Knowledge Catalog 内の機能" : "登録商品 内の機能";
 
   useEffect(() => {
     const onPopState = () => {
@@ -160,13 +162,7 @@ function AdminConsole() {
         </div>
         <div className="admin-menu-group admin-menu-secondary">
           <span className="admin-menu-label">機能へ移動</span>
-          <div
-            className="admin-section-links"
-            role="group"
-            aria-label={
-              activeTab === "catalog" ? "Knowledge Catalog 内の機能" : "登録商品 内の機能"
-            }
-          >
+          <div className="admin-section-links" role="group" aria-label={activeSectionLabel}>
             {ADMIN_SECTION_LINKS[activeTab].map((item) => (
               <button
                 key={item.selector}
