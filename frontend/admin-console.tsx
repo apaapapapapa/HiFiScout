@@ -160,7 +160,11 @@ function AdminConsole() {
         </div>
         <div className="admin-menu-group admin-menu-secondary">
           <span className="admin-menu-label">機能へ移動</span>
-          <div className="admin-section-links" aria-label={`${activeTab} 内の機能`}>
+          <div
+            className="admin-section-links"
+            role="group"
+            aria-label={activeTab === "catalog" ? "Knowledge Catalog 内の機能" : "登録商品 内の機能"}
+          >
             {ADMIN_SECTION_LINKS[activeTab].map((item) => (
               <button
                 key={item.selector}
