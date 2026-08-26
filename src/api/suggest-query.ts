@@ -7,6 +7,10 @@ export interface SuggestQuery {
   q: string;
 }
 
+function normalizedSuggestText(value: string): string {
+  return value.normalize("NFKC").replace(/\s+/gu, " ").trim();
+}
+
 /** Reject cache-buster parameters, repetitions, and oversized input before touching D1. */
 export function validateSuggestQuery(url: URL): string | null {
   const params = url.searchParams;
@@ -15,15 +19,19 @@ export function validateSuggestQuery(url: URL): string | null {
   }
   if (params.getAll("q").length > 1) return "q_repeated";
   const value = params.get("q");
-  if (value != null && [...value].length > MAX_SUGGEST_QUERY_LENGTH) return "q_too_long";
+  if (
+    value != null &&
+    ([...value].length > MAX_SUGGEST_QUERY_LENGTH ||
+      [...normalizedSuggestText(value)].length > MAX_SUGGEST_QUERY_LENGTH)
+  ) {
+    return "q_too_long";
+  }
   return null;
 }
 
 /** Normalize equivalent user input before both FTS construction and cache-key construction. */
 export function parseSuggestQuery(url: URL): SuggestQuery {
-  return {
-    q: (url.searchParams.get("q") || "").normalize("NFKC").replace(/\s+/gu, " ").trim(),
-  };
+  return { q: normalizedSuggestText(url.searchParams.get("q") || "") };
 }
 
 /** Canonical edge-cache URL for a validated suggestion request. */
