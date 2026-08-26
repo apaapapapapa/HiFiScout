@@ -10,6 +10,10 @@ const adminConsole = readFileSync(
   new URL("../frontend/admin-console.tsx", import.meta.url),
   "utf8",
 );
+const adminConsoleCss = readFileSync(
+  new URL("../admin-public/admin-console.css", import.meta.url),
+  "utf8",
+);
 const catalogAdmin = readFileSync(
   new URL("../frontend/admin-catalog.tsx", import.meta.url),
   "utf8",
@@ -55,6 +59,25 @@ test("admin shell and both workspaces are React components", () => {
   assert.match(catalogAdmin, /useEffect/u);
   assert.match(listingAdmin, /useState/u);
   assert.match(listingAdmin, /useEffect/u);
+});
+
+test("admin console keeps workspace navigation available while scrolling", () => {
+  for (const label of [
+    "Catalog検索・編集",
+    "重複Catalog統合",
+    "未検証候補",
+    "CSV診断",
+    "登録商品を検索",
+    "登録商品一覧",
+  ]) {
+    assert.match(adminConsole, new RegExp(label, "u"));
+  }
+  assert.match(adminConsole, /scrollIntoView/u);
+  assert.match(adminConsole, /prefers-reduced-motion/u);
+  assert.match(adminConsoleCss, /\.admin-section-links/u);
+  assert.match(adminConsoleCss, /\.admin-section-link/u);
+  assert.match(adminConsoleCss, /position:\s*sticky/u);
+  assert.doesNotMatch(adminConsoleCss, /position:\s*static/u);
 });
 
 test("React admin no longer bootstraps legacy DOM or scripts", () => {
