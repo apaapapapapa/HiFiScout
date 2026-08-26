@@ -8,6 +8,7 @@ import {
   filterUrlParams,
   parseUrlFilters,
   productSearchParams,
+  savedSearchFeedPath,
 } from "../frontend/filters.js";
 import type { ProductFilters } from "../frontend/filters.js";
 
@@ -32,6 +33,26 @@ function filters(overrides: Partial<ProductFilters> = {}): ProductFilters {
 test("the default query asks only for the first page of in-stock listings", () => {
   const params = productSearchParams(filters());
   assert.equal(params.toString(), "sort=newest&inStock=true&limit=50");
+});
+
+test("the saved-search feed carries filters but not UI sorting or pagination", () => {
+  assert.equal(
+    savedSearchFeedPath(
+      filters({
+        q: "TAD 1000",
+        shop: "hifido",
+        manufacturer: "TAD",
+        category: "dac",
+        sort: "priceAsc",
+        features: ["phono_input", "dac"],
+        inStock: true,
+        recentOnly: true,
+        priceDropped: true,
+      }),
+    ),
+    "/api/feed?q=TAD+1000&shop=hifido&manufacturer=TAD&category=dac&feature=dac&feature=phono_input&inStock=true&newOnly=true&priceDropped=true",
+  );
+  assert.equal(savedSearchFeedPath(filters({ inStock: false })), "/api/feed");
 });
 
 test("a cursor supersedes offset paging", () => {
