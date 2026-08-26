@@ -29,6 +29,7 @@ test("meta response accepts valid counted manufacturer facets", () => {
 });
 
 test("meta response rejects malformed manufacturer facet collections and values", () => {
+  assert.equal(isMetaResponse({ ...baseMeta, manufacturerFacets: null }), false);
   assert.equal(isMetaResponse({ ...baseMeta, manufacturerFacets: { length: 1 } }), false);
   assert.equal(
     isMetaResponse({ ...baseMeta, manufacturerFacets: [{ name: 123, activeProductCount: 1 }] }),
