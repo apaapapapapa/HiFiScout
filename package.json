@@ -7,6 +7,8 @@
     "test": "vp run test:unit",
     "test:unit": "vp test run --reporter=dot",
     "test:unit:verbose": "vp test run --reporter=verbose",
+    "test:unit:shard:1": "vp test run --reporter=dot --shard=1/2",
+    "test:unit:shard:2": "vp test run --reporter=dot --shard=2/2",
     "test:e2e": "vp exec playwright test --config e2e/playwright.config.ts",
     "fix": "vp run format && vp run lint:fix",
     "check": "vp run lint && vp run format:check && vp run check:no-js-source && vp run typecheck && vp run test:unit",
