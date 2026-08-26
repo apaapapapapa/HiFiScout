@@ -259,20 +259,21 @@ export async function selectExistingProducts(
     const placeholders = chunk.map(() => "?").join(",");
     const result = await db
       .prepare(`
-      SELECT p.id, p.source_id, p.manufacturer, p.raw_manufacturer, p.manufacturer_id,
-             p.normalized_raw_manufacturer, p.canonical_manufacturer_id,
-             p.manufacturer_resolution_status, p.manufacturer_resolution_method,
-             p.manufacturer_resolution_confidence, p.manufacturer_resolver_version,
-             p.model, p.raw_model, p.normalized_model, p.presentation_color, p.model_resolution_status,
-             p.model_resolution_method, p.model_resolution_confidence, p.model_resolver_version, p.title,
-             p.category, p.raw_category, p.primary_category_id, p.category_ids, p.classification_status,
-             p.search_aliases, p.condition_text, p.price_yen, p.stock_status, p.source_url,
-             p.source_published_at, p.metadata_json, p.first_seen_at, p.last_seen_at,
-             p.last_activity_at, p.is_active,
-             o.presentation_color AS override_presentation_color
-      FROM products p
-      LEFT JOIN product_admin_overrides o ON o.listing_product_id = p.id
-      WHERE p.shop_key = ? AND p.source_id IN (${placeholders})
+      SELECT id, source_id, manufacturer, raw_manufacturer, manufacturer_id,
+             normalized_raw_manufacturer, canonical_manufacturer_id,
+             manufacturer_resolution_status, manufacturer_resolution_method,
+             manufacturer_resolution_confidence, manufacturer_resolver_version,
+             model, raw_model, normalized_model, presentation_color, model_resolution_status,
+             model_resolution_method, model_resolution_confidence, model_resolver_version, title,
+             category, raw_category, primary_category_id, category_ids, classification_status, search_aliases,
+             condition_text, price_yen, stock_status, source_url, source_published_at, metadata_json,
+             first_seen_at, last_seen_at, last_activity_at, is_active,
+             (
+               SELECT presentation_color
+               FROM product_admin_overrides
+               WHERE listing_product_id = products.id
+             ) AS override_presentation_color
+      FROM products WHERE shop_key = ? AND source_id IN (${placeholders})
     `)
       .bind(shopKey, ...chunk)
       .all<ExistingProductRow>();
