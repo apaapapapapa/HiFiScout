@@ -1,5 +1,6 @@
 import { useId } from "react";
 
+import { getCategory } from "../src/catalog/categories.js";
 import { isLegacyFavoriteKey } from "./favorites.js";
 import { dateFmt, yen } from "./format.js";
 import { activityData, priceDropped } from "./product-activity.js";
@@ -121,6 +122,13 @@ function ShopChip({
   return <span className={`shop shop-${shopKey}`}>{label}</span>;
 }
 
+function productCategoryLabels(product: DisplayProduct): string[] {
+  const labels = (product.direct_category_ids || [])
+    .map((categoryId) => getCategory(categoryId)?.name || "")
+    .filter(Boolean);
+  return labels.length ? labels : [product.category || "カテゴリ不明"];
+}
+
 export function ProductCard({
   product,
   favorite,
@@ -133,6 +141,7 @@ export function ProductCard({
   const activity = activityData(product, now);
   const title = product.model || product.representative_offer?.title || "商品名不明";
   const colors = productColors(product);
+  const categories = productCategoryLabels(product);
   const multiOffer = product.offer_count > 1;
   const sourceUrl = safeExternalUrl(product.representative_offer?.source_url);
   const condition = multiOffer ? "" : product.representative_offer?.condition_text || "";
@@ -208,7 +217,14 @@ export function ProductCard({
           ) : null}
         </h2>
         <div className="product-submeta">
-          <span className="category">{product.category || "カテゴリ不明"}</span>
+          {categories.map((category) => (
+            <span
+              className={categories.length > 1 ? "category product-color" : "category"}
+              key={category}
+            >
+              {category}
+            </span>
+          ))}
           {condition ? <span className="condition">{condition}</span> : null}
         </div>
       </div>

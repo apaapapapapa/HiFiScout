@@ -58,8 +58,9 @@ test("entity and membership transitions are committed atomically before aggregat
     "membership",
     "prune",
     "prune",
-    // Aggregates, finishes, category membership (an upsert and its stale-row sweep) and search
-    // terms, in that order.
+    // Aggregates, finishes, category membership (upsert + stale-row sweep), direct-category
+    // presentation and search terms, in that order.
+    "refresh",
     "refresh",
     "refresh",
     "refresh",

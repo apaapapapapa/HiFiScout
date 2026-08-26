@@ -18,6 +18,7 @@ import {
   exactIdentityPeerIdsSql,
   upsertExactIdentityGroupOffersSql,
 } from "./product-search-exact-identity.js";
+import { refreshEntityDirectCategoryIdsSql } from "./product-search-entity-direct-categories.js";
 import {
   deleteEmptyEntitiesSql,
   deleteInactiveOffersSql,
@@ -203,6 +204,11 @@ async function refreshEntities(
       deleteStaleEntityCategoriesSql(scopeClause("entity_id", chunk.length)),
       chunk,
     );
+    await runStatement(
+      db,
+      refreshEntityDirectCategoryIdsSql(scopeClause("source.id", chunk.length)),
+      chunk,
+    );
     await runStatement(db, refreshEntitySearchTermsSql(offerScope), chunk);
     removedCount += await runStatement(
       db,
@@ -290,6 +296,7 @@ export async function rebuildProductSearchEntities(
   await runStatement(db, refreshEntityPresentationColorsSql());
   await runStatement(db, upsertEntityCategoriesSql());
   await runStatement(db, deleteStaleEntityCategoriesSql());
+  await runStatement(db, refreshEntityDirectCategoryIdsSql());
   await runStatement(db, refreshEntitySearchTermsSql());
   const removed = await runStatement(db, deleteEmptyEntitiesSql());
   const totals = await db

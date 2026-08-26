@@ -25,7 +25,7 @@ import { presentationColorLabel } from "./model-presentation-color.js";
 import { resolveModel, MODEL_RESOLVER_VERSION } from "./model-resolver.js";
 import { inferFeatureFacts, normalizeFeatureFacts } from "./product-features.js";
 
-const CLASSIFICATION_METADATA_VERSION = 14;
+const CLASSIFICATION_METADATA_VERSION = 15;
 
 export interface CatalogNormalizationContext {
   /** Source seller used by narrowly scoped model-annotation rules. */

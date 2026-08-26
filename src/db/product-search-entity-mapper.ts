@@ -11,6 +11,7 @@
  */
 
 import { categoryClosureIds, getCategory } from "../catalog/categories.js";
+import { directCategoryIds } from "../catalog/listing-components.js";
 import { normalizeManufacturer } from "../catalog/manufacturers.js";
 import { presentationColorList } from "../catalog/model-presentation-color.js";
 import { NEW_OFFER_WINDOW_MS } from "./product-search-entity-sql.js";
@@ -20,6 +21,11 @@ import type {
   ProductSearchOfferAggregateRow,
   ProductSearchOfferRow,
 } from "./types.js";
+
+type ProductSearchEntityColumn = keyof ProductSearchEntityRow | "direct_category_ids";
+type ProductSearchEntityWithDirectCategories = ProductSearchEntityRow & {
+  direct_category_ids?: string | null;
+};
 
 /** Entity columns backing {@link ProductSearchItem} and the sort/cursor values, in schema order. */
 export const PRODUCT_SEARCH_ENTITY_COLUMNS = [
@@ -33,6 +39,7 @@ export const PRODUCT_SEARCH_ENTITY_COLUMNS = [
   "model",
   "normalized_model",
   "presentation_colors",
+  "direct_category_ids",
   "primary_category_id",
   "offer_count",
   "in_stock_offer_count",
@@ -44,7 +51,7 @@ export const PRODUCT_SEARCH_ENTITY_COLUMNS = [
   "latest_activity_at",
   "newest_listed_at",
   "has_price_drop",
-] as const satisfies readonly (keyof ProductSearchEntityRow)[];
+] as const satisfies readonly ProductSearchEntityColumn[];
 
 /** Listing columns backing {@link ProductOffer}. `id` is aliased to keep the DTO name in SQL. */
 const PRODUCT_OFFER_COLUMNS = [
@@ -134,6 +141,12 @@ export function toProductSearchItem(
 ): ProductSearchItem {
   const summary = aggregate ?? row;
   const newestListedAt = summary.newest_listed_at ?? null;
+  const directCategories = directCategoryIds(
+    String((row as ProductSearchEntityWithDirectCategories).direct_category_ids ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
   // Read models are eventually repaired by the versioned remediation queue, but cards must never
   // expose a seller condition badge as part of the brand while that backfill is still catching up.
   // Bootstrap-known brands also recover their canonical public id here; operational aliases keep
@@ -157,6 +170,7 @@ export function toProductSearchItem(
     ),
     primary_category_id: row.primary_category_id,
     category_ids: categoryClosureIds(row.primary_category_id),
+    direct_category_ids: directCategories,
     category: getCategory(row.primary_category_id)?.name ?? "",
     offer_count: Number(summary.offer_count || 0),
     in_stock_offer_count: Number(summary.in_stock_offer_count || 0),

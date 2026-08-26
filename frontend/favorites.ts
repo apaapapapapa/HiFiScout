@@ -68,6 +68,7 @@ function stockStatus(value: unknown): DisplayOffer["stock_status"] {
 /** Explicit field list: a snapshot must not grow just because the API item did. */
 export function favoriteSnapshot(product: DisplayProduct): DisplayProduct {
   const categoryIds = stringArray(product.category_ids);
+  const directCategoryIds = stringArray(product.direct_category_ids);
   return {
     key: product.key,
     identity_kind: product.identity_kind,
@@ -77,6 +78,7 @@ export function favoriteSnapshot(product: DisplayProduct): DisplayProduct {
     model: product.model,
     primary_category_id: product.primary_category_id,
     ...(categoryIds ? { category_ids: [...categoryIds] } : {}),
+    ...(directCategoryIds ? { direct_category_ids: [...directCategoryIds] } : {}),
     category: product.category,
     offer_count: product.offer_count,
     in_stock_offer_count: product.in_stock_offer_count,
@@ -108,6 +110,7 @@ export function migrateListingFavorite(entry: Record<string, unknown>): DisplayP
   const status = stockStatus(entry.stock_status);
   const previousPrice = nullableNumber(entry.previous_price_yen);
   const categoryIds = stringArray(entry.category_ids);
+  const directCategoryIds = stringArray(entry.direct_category_ids);
   return {
     key: `${LEGACY_FAVORITE_PREFIX}${listingId}`,
     identity_kind: "unresolved_listing",
@@ -117,6 +120,7 @@ export function migrateListingFavorite(entry: Record<string, unknown>): DisplayP
     model: text(entry.model) || text(entry.title),
     primary_category_id: text(entry.primary_category_id),
     ...(categoryIds ? { category_ids: [...categoryIds] } : {}),
+    ...(directCategoryIds ? { direct_category_ids: [...directCategoryIds] } : {}),
     category: text(entry.category),
     offer_count: 1,
     in_stock_offer_count: status === "in_stock" ? 1 : 0,
