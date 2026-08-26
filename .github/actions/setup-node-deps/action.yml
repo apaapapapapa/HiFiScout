@@ -39,7 +39,7 @@ runs:
       uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
         path: node_modules
-        key: vite-plus-deps-${{ runner.os }}-${{ runner.arch }}-0.2.9-${{ hashFiles('package.json', 'package-lock.json') }}
+        key: vite-plus-deps-${{ runner.os }}-${{ runner.arch }}-0.2.9-${{ hashFiles('package.json', 'package-lock.json', '.npmrc') }}
     - name: Install locked dependencies on cache miss
       if: steps.locked-dependencies.outputs.cache-hit != 'true'
       shell: bash
