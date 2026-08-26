@@ -98,7 +98,7 @@ test("Atom output uses stable ids, observed timestamps, seller links, and escape
   assert.match(xml, /<updated>2026-08-25T10:00:00\.000Z<\/updated>/u);
   assert.match(xml, /a=1&amp;b=2/u);
   assert.match(xml, /&lt;L-507Z&gt; &quot;中古&quot; &amp; demo/u);
-  assert.doesNotMatch(xml, /\u0001/u);
+  assert.equal(xml.includes(String.fromCharCode(1)), false);
   assert.match(xml, /価格: 300,000円〜320,000円/u);
 });
 
