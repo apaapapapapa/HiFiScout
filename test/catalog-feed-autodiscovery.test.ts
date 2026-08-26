@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "vite-plus/test";
 
 import {
@@ -62,4 +63,12 @@ test("rewritten catalog responses discard validators for the original static ass
   assert.equal(rewritten.headers.get("etag"), null);
   assert.equal(rewritten.headers.get("last-modified"), null);
   assert.match(await rewritten.text(), /manufacturer=TAD&amp;inStock=true/u);
+});
+
+test("Cloudflare routes the catalog root through the Worker before serving static assets", () => {
+  const config = JSON.parse(
+    readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8"),
+  ) as { assets?: { run_worker_first?: unknown } };
+
+  assert.deepEqual(config.assets?.run_worker_first, ["/api/*", "/"]);
 });
