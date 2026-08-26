@@ -70,7 +70,7 @@ export class CatalogPage {
   }
 
   pageButton(pageNumber: number): Locator {
-    return this.pagination.getByRole("button", { name: String(pageNumber), exact: true });
+    return this.pagination.getByRole("button", { name: String(pageNumber) });
   }
 
   pageIndicator(pageNumber: number): Locator {
