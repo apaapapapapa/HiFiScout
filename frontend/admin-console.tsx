@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
-import { createRoot } from "react-dom/client";
 
 import { CatalogAdmin } from "./admin-catalog.js";
 import { ListingAdmin } from "./admin-listings.js";
@@ -42,7 +41,7 @@ function scrollToAdminTarget(selector: string): void {
   target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
 }
 
-function AdminConsole() {
+export function AdminConsole() {
   const [activeTab, setActiveTab] = useState<AdminTab>(requestedTab);
   const [mountedTabs, setMountedTabs] = useState<Set<AdminTab>>(() => new Set([requestedTab()]));
   const activeSectionLabel =
@@ -186,7 +185,3 @@ function AdminConsole() {
     </main>
   );
 }
-
-const root = document.getElementById("admin-root");
-if (!root) throw new Error("Missing #admin-root");
-createRoot(root).render(<AdminConsole />);

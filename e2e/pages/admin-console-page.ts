@@ -1,24 +1,26 @@
 import type { Locator, Page } from "@playwright/test";
 
+import { CatalogAdminPage } from "./catalog-admin-page.js";
+import { ListingAdminPage } from "./listing-admin-page.js";
+
 export class AdminConsolePage {
   readonly heading: Locator;
   readonly catalogTab: Locator;
   readonly listingsTab: Locator;
-  readonly catalogPane: Locator;
-  readonly listingsPane: Locator;
   readonly sectionLinks: Locator;
+  readonly catalog: CatalogAdminPage;
+  readonly listings: ListingAdminPage;
 
-  constructor(readonly page: Page) {
-    this.heading = page.getByRole("heading", { name: "HiFiScout 管理コンソール" });
-    this.catalogTab = page.getByRole("tab", { name: /Knowledge Catalog/u });
-    this.listingsTab = page.getByRole("tab", { name: /登録商品/u });
-    this.catalogPane = page.locator("#catalog-pane");
-    this.listingsPane = page.locator("#listings-pane");
-    this.sectionLinks = page.getByRole("group", { name: /内の機能/u }).getByRole("button");
-  }
-
-  async goto(hash = ""): Promise<void> {
-    await this.page.goto(`/${hash}`);
+  constructor(
+    readonly root: Locator,
+    readonly page: Page,
+  ) {
+    this.heading = root.getByRole("heading", { name: "HiFiScout 管理コンソール" });
+    this.catalogTab = root.getByRole("tab", { name: /Knowledge Catalog/u });
+    this.listingsTab = root.getByRole("tab", { name: /登録商品/u });
+    this.sectionLinks = root.getByRole("group", { name: /内の機能/u }).getByRole("button");
+    this.catalog = new CatalogAdminPage(root.locator("#catalog-pane"));
+    this.listings = new ListingAdminPage(root.locator("#listings-pane"));
   }
 
   async openCatalog(): Promise<void> {
@@ -30,6 +32,6 @@ export class AdminConsolePage {
   }
 
   sectionLink(name: string): Locator {
-    return this.page.getByRole("button", { name, exact: true });
+    return this.root.getByRole("button", { name, exact: true });
   }
 }
