@@ -64,6 +64,7 @@ test("history sparkline has an accessible name and description while retaining t
     markup,
     /<desc id="[^"]+">3件の価格履歴。最安値￥0、最高値￥200、最新価格￥200。<\/desc>/u,
   );
+  assert.match(markup, /<ol class="history">/u);
   assert.equal((markup.match(/<li>/g) || []).length, 3);
   assert.equal((markup.match(/<circle /g) || []).length, 3);
   assert.equal((markup.match(/<span>↓<\/span>/g) || []).length, 1);
