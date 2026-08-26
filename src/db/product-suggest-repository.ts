@@ -2,7 +2,11 @@
 
 import { normalizeManufacturer, splitKnownManufacturerModel } from "../catalog/manufacturers.js";
 import { normalizeIdentityModel } from "../catalog/product-identity.js";
-import { MAX_SUGGESTIONS, MIN_SUGGEST_QUERY_LENGTH } from "../api/contracts.js";
+import {
+  MAX_SUGGESTIONS,
+  MAX_SUGGEST_QUERY_LENGTH,
+  MIN_SUGGEST_QUERY_LENGTH,
+} from "../api/contracts.js";
 import { parseFtsSearchQuery, quoteFtsTerm } from "../search/fts-query.js";
 import type { FtsSearchPlan } from "../search/fts-query.js";
 import type { QueryableDatabase } from "./types.js";
@@ -135,7 +139,7 @@ export async function suggestProducts(db: QueryableDatabase, q: string): Promise
     const candidates = modelMatch ? [combined, manufacturer] : [manufacturer, combined];
 
     for (const candidate of candidates) {
-      if (!candidate) continue;
+      if (!candidate || [...candidate].length > MAX_SUGGEST_QUERY_LENGTH) continue;
       const key = suggestionKey(candidate);
       if (!key || seen.has(key)) continue;
       seen.add(key);
