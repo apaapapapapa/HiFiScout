@@ -54,6 +54,12 @@ test("listing admin update accepts only canonical correction fields", () => {
     },
   );
 
+  assert.deepEqual(parseListingAdminUpdate({ presentationColor: "gold/black" }), {
+    presentationColor: "ブラック/ゴールド",
+  });
+  assert.deepEqual(parseListingAdminUpdate({ presentationColor: "black/black" }), {
+    presentationColor: "ブラック",
+  });
   assert.deepEqual(parseListingAdminUpdate({ manufacturerId: "" }), { manufacturerId: "" });
   assert.deepEqual(parseListingAdminUpdate({ presentationColor: "" }), { presentationColor: "" });
   assert.equal(parseListingAdminUpdate({}), null);
