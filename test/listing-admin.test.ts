@@ -43,20 +43,25 @@ test("listing admin update accepts only canonical correction fields", () => {
     parseListingAdminUpdate({
       manufacturerId: " LUXMAN ",
       model: " D-1000mk2 ",
+      presentationColor: " black / gold ",
       primaryCategoryId: "turntable",
     }),
     {
       manufacturerId: "luxman",
       model: "D-1000mk2",
+      presentationColor: "ブラック/ゴールド",
       primaryCategoryId: "turntable",
     },
   );
 
   assert.deepEqual(parseListingAdminUpdate({ manufacturerId: "" }), { manufacturerId: "" });
+  assert.deepEqual(parseListingAdminUpdate({ presentationColor: "" }), { presentationColor: "" });
   assert.equal(parseListingAdminUpdate({}), null);
   assert.equal(parseListingAdminUpdate({ title: "manual title" }), null);
   assert.equal(parseListingAdminUpdate({ primaryCategoryId: "analog" }), null);
   assert.equal(parseListingAdminUpdate({ manufacturerId: "bad manufacturer id" }), null);
+  assert.equal(parseListingAdminUpdate({ presentationColor: "purple" }), null);
+  assert.equal(parseListingAdminUpdate({ presentationColor: "ブラック/unknown" }), null);
 });
 
 test("listing admin category override stores the leaf and its filter ancestors", () => {
