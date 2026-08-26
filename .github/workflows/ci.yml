@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, test/admin-playwright-pom]
   pull_request:
     branches: [main]
 
