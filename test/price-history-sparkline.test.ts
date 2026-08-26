@@ -40,6 +40,18 @@ test("price history path changes price with horizontal then vertical step segmen
   ]);
 });
 
+test("price history x positions reflect elapsed observation time", () => {
+  const chart = buildPriceHistorySparkline([point(100, 1), point(90, 2), point(80, 11)]);
+
+  assert.ok(chart);
+  assert.deepEqual(chart.points, [
+    { x: 8, y: 8 },
+    { x: 38.4, y: 44 },
+    { x: 312, y: 80 },
+  ]);
+  assert.equal(chart.path, "M 8 8 H 38.4 V 44 H 312 V 80");
+});
+
 test("flat and one-point price histories normalize without invalid coordinates", () => {
   const flat = buildPriceHistorySparkline([point(100, 1), point(100, 2)]);
   const single = buildPriceHistorySparkline([point(100, 1)]);
