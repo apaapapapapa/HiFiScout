@@ -35,11 +35,17 @@ test("meta response rejects malformed manufacturer facet collections and values"
     false,
   );
   assert.equal(
-    isMetaResponse({ ...baseMeta, manufacturerFacets: [{ name: "LUXMAN", activeProductCount: -1 }] }),
+    isMetaResponse({
+      ...baseMeta,
+      manufacturerFacets: [{ name: "LUXMAN", activeProductCount: -1 }],
+    }),
     false,
   );
   assert.equal(
-    isMetaResponse({ ...baseMeta, manufacturerFacets: [{ name: "LUXMAN", activeProductCount: 1.5 }] }),
+    isMetaResponse({
+      ...baseMeta,
+      manufacturerFacets: [{ name: "LUXMAN", activeProductCount: 1.5 }],
+    }),
     false,
   );
 });
@@ -55,5 +61,8 @@ test("meta response validates optional shop active product counts when present",
   };
 
   assert.equal(isMetaResponse({ ...baseMeta, shops: [{ ...shop, activeProductCount: 4 }] }), true);
-  assert.equal(isMetaResponse({ ...baseMeta, shops: [{ ...shop, activeProductCount: -1 }] }), false);
+  assert.equal(
+    isMetaResponse({ ...baseMeta, shops: [{ ...shop, activeProductCount: -1 }] }),
+    false,
+  );
 });
