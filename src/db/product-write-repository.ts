@@ -13,8 +13,8 @@ import {
   isUnclassifiedCategoryId,
 } from "../catalog/categories.js";
 import {
-  listingCategoryClosureIds,
   listingDirectCategoryIds,
+  listingMembershipCategoryIds,
 } from "../catalog/listing-components.js";
 import { normalizeFeatureFacts } from "../catalog/product-features.js";
 import { manufacturerIdForFilter, normalizeManufacturerKey } from "../catalog/manufacturers.js";
@@ -496,9 +496,10 @@ async function syncProductCategories(
     statements.push(
       db.prepare("DELETE FROM product_categories WHERE product_id = ?").bind(productId),
     );
-    // The union closure of every direct category, taken once. A parent two components share is one
-    // row, not two, which is what keeps the parent facet from counting the same listing twice.
-    for (const categoryId of listingCategoryClosureIds(fields.directCategoryIds)) {
+    for (const categoryId of listingMembershipCategoryIds(
+      fields.primaryCategoryId,
+      fields.directCategoryIds,
+    )) {
       statements.push(
         db
           .prepare(

@@ -224,3 +224,67 @@ test("re-classifying an already-normalized set keeps its component categories", 
 
   assert.deepEqual(reclassified.directCategoryIds, ["dac", "transport"]);
 });
+
+test("the shared parent of a set's components is one closure entry, not one per component", () => {
+  const closure = listingCategoryClosureIds(["transport", "dac"]);
+  assert.equal(closure.filter((id) => id === "digital").length, 1);
+  assert.deepEqual([...closure].sort(), ["dac", "digital", "transport"]);
+});
+
+/**
+ * Several adapters extract a concise model field on purpose, and that field is the better source
+ * for identity because it carries no prose. But the category words are in the prose, so a
+ * component identified from `Grandioso P1` still has to be classified from the stretch of title
+ * that names it.
+ */
+test("a component identified from a concise model is classified from the title", () => {
+  const detection = detectListingComponents(
+    {
+      rawModel: "Grandioso P1 + Grandioso D1",
+      title: "ESOTERIC Grandioso P1 SACDトランスポート + Grandioso D1 DAC",
+    },
+    {},
+  );
+
+  assert.equal(detection.isBundle, true);
+  assert.deepEqual(
+    detection.components.map((component) => component.segment),
+    ["Grandioso P1", "Grandioso D1"],
+  );
+  assert.deepEqual(componentCategoryIds(detection.components), ["transport", "dac"]);
+});
+
+test("a title that names no component leaves the components unclassified", () => {
+  const detection = detectListingComponents(
+    { rawModel: "Grandioso P1 + Grandioso D1", title: "オーディオ機器 まとめ" },
+    {},
+  );
+
+  assert.deepEqual(componentCategoryIds(detection.components), ["unclassified", "unclassified"]);
+});
+
+test("one stretch of title cannot classify two components", () => {
+  const detection = detectListingComponents(
+    { rawModel: "PM-14S1 + PM-14S1SE", title: "Marantz PM-14S1 プリメインアンプ + PM-14S1SE" },
+    {},
+  );
+  const segments = detection.components.map((component) => component.categorySegment);
+
+  assert.equal(new Set(segments).size, segments.length);
+});
+
+test("normalizing a set with a concise model field keeps both categories", () => {
+  const normalized = normalizeCatalogProduct({
+    sourceId: "set-concise",
+    manufacturer: "ESOTERIC",
+    rawModel: "Grandioso P1 + Grandioso D1",
+    model: "Grandioso P1 + Grandioso D1",
+    title: "ESOTERIC Grandioso P1 SACDトランスポート + Grandioso D1 DAC",
+    conditionText: "中古",
+    priceYen: 3000000,
+    stockStatus: "in_stock",
+    sourceUrl: "https://example.test/set-concise",
+  });
+
+  assert.deepEqual(normalized.directCategoryIds, ["dac", "transport"]);
+});

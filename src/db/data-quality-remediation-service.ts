@@ -7,6 +7,7 @@ import {
   componentCategoryIds,
   detectListingComponents,
   listingCategorySet,
+  listingMembershipCategoryIds,
 } from "../catalog/listing-components.js";
 import { createManufacturerResolver } from "../catalog/manufacturer-resolver.js";
 import { manufacturerIdForFilter } from "../catalog/manufacturers.js";
@@ -14,7 +15,7 @@ import { presentationColorLabel } from "../catalog/model-presentation-color.js";
 import { createModelResolver } from "../catalog/model-resolver.js";
 import { inferFeatureFacts } from "../catalog/product-features.js";
 import { RESOLUTION_VERSIONS } from "../catalog/resolution-versions.js";
-import type { CategoryEvidenceInput, FeatureFact } from "../catalog/types.js";
+import type { CategoryEvidenceInput, CategoryId, FeatureFact } from "../catalog/types.js";
 import { errorMessage, isRecord } from "../types.js";
 import { saveDataQualityRun } from "./data-quality-repository.js";
 import {
@@ -227,6 +228,32 @@ function requiresDerivedReplay(workType: DataQualityRemediationWorkType): boolea
 }
 
 /**
+ * Rewrite one listing's category membership to the closure of its direct categories.
+ *
+ * The same set `upsertProducts` writes, so the crawl path and the replay leave identical rows. The
+ * 0039 admin-override triggers make both statements no-ops while an operator override stands.
+ */
+async function rebuildListingCategories(
+  db: QueryableDatabase,
+  listingProductId: number,
+  primaryCategoryId: string,
+  directCategoryIds: readonly CategoryId[],
+): Promise<void> {
+  const direct = new Set<string>([primaryCategoryId]);
+  const statements = [
+    db.prepare("DELETE FROM product_categories WHERE product_id = ?").bind(listingProductId),
+    ...listingMembershipCategoryIds(primaryCategoryId, directCategoryIds).map((categoryId) =>
+      db
+        .prepare(
+          "INSERT OR IGNORE INTO product_categories(product_id, category_id, is_direct) VALUES (?, ?, ?)",
+        )
+        .bind(listingProductId, categoryId, direct.has(categoryId) ? 1 : 0),
+    ),
+  ];
+  await db.batch(statements);
+}
+
+/**
  * Recompute derived fields and return the projection token that this worker owns. If the product
  * row is already current, ownership stays with the token observed when the row was loaded.
  */
@@ -419,8 +446,21 @@ async function replayDerivedListing(
     )
     .run();
 
+  const changed = Number(result?.meta?.changes || 0) > 0;
+  // A replay that moved a listing's category without rebuilding `product_categories` left it
+  // counted under the category it used to be in — visible today in the facet counts, and a wrong
+  // search result once the filter reads membership. Only on an actual change, so an unchanged
+  // listing is not churned through a delete-and-insert every sweep.
+  if (changed) {
+    await rebuildListingCategories(
+      db,
+      row.id,
+      categorySet.primaryCategoryId,
+      categorySet.directCategoryIds,
+    );
+  }
   await syncTitleFeatureFacts(db, row, evaluatedAt);
-  return Number(result?.meta?.changes || 0) > 0 ? token : row.remediation_projection_token;
+  return changed ? token : row.remediation_projection_token;
 }
 
 /**

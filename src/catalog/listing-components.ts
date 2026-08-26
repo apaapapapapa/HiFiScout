@@ -44,6 +44,16 @@ const BOUNDARY_PATTERN = /[+＋/／&＆・]|セット/gu;
 export interface ListingComponent {
   /** The seller text this component was read from, unmodified. */
   segment: string;
+  /**
+   * The text to read this component's *category* from, which is not always {@link segment}.
+   *
+   * Several adapters extract a concise model field — `Grandioso P1 + Grandioso D1` — and that is
+   * the better source for identity precisely because it carries no prose. But the category words
+   * live in the prose: the title says `Grandioso P1 SACDトランスポート + Grandioso D1 DAC`. So a
+   * component is identified from the model and classified from the matching stretch of title,
+   * falling back to its own segment when no stretch matches.
+   */
+  categorySegment: string;
   model: string;
   normalizedModel: string;
 }
@@ -68,6 +78,29 @@ export interface ListingComponentContext {
 
 function componentSource({ rawModel, model, title }: ListingComponentInput): string {
   return String(rawModel || model || title || "").trim();
+}
+
+/** Case- and width-insensitive, so a model written differently in the title still matches. */
+function matchKey(value: string): string {
+  return value.normalize("NFKC").replace(/\s+/gu, "").toLowerCase();
+}
+
+/**
+ * The stretch of title a component was named in, or `""` when the title does not name it.
+ *
+ * A title segment is claimed by at most one component, so two components cannot both be classified
+ * from the same words.
+ */
+function titleSegmentFor(segment: string, titleSegments: string[]): string {
+  const key = matchKey(segment);
+  if (!key) return "";
+  const index = titleSegments.findIndex(
+    (candidate) => candidate && matchKey(candidate).includes(key),
+  );
+  if (index < 0) return "";
+  const matched = titleSegments[index];
+  titleSegments[index] = "";
+  return matched;
 }
 
 /**
@@ -97,7 +130,12 @@ function componentIdentity(
     shopKey,
   });
   if (resolved.status !== "resolved" || !resolved.normalizedModel) return null;
-  return { segment: trimmed, model: resolved.model, normalizedModel: resolved.normalizedModel };
+  return {
+    segment: trimmed,
+    categorySegment: trimmed,
+    model: resolved.model,
+    normalizedModel: resolved.normalizedModel,
+  };
 }
 
 /**
@@ -120,13 +158,19 @@ export function detectListingComponents(
   // keeps this pass off the hot path for them rather than paying an extra resolution per crawl.
   if (segments.length < 2) return { isBundle: false, components: [] };
 
+  const title = String(input.title || "").trim();
+  // Consumed as components claim them, so the same words cannot classify two products.
+  const titleSegments = title && title !== source ? title.split(BOUNDARY_PATTERN) : [];
   const components: ListingComponent[] = [];
   const seen = new Set<string>();
   for (const segment of segments) {
     const component = componentIdentity(segment, context);
     if (!component || seen.has(component.normalizedModel)) continue;
     seen.add(component.normalizedModel);
-    components.push(component);
+    components.push({
+      ...component,
+      categorySegment: titleSegmentFor(component.segment, titleSegments) || component.segment,
+    });
   }
 
   if (components.length < 2) return { isBundle: false, components: [] };
@@ -180,7 +224,7 @@ function byCanonicalOrder(left: CategoryId, right: CategoryId): number {
 export function componentCategoryIds(components: readonly ListingComponent[]): CategoryId[] {
   return components.map(
     (component) =>
-      inferExplicitCategoryIds(component.segment, { context: "title" })[0] ||
+      inferExplicitCategoryIds(component.categorySegment, { context: "title" })[0] ||
       UNCLASSIFIED_CATEGORY_ID,
   );
 }
@@ -209,6 +253,11 @@ export function listingDirectCategoryIds(
  * The union is taken once across the whole set, so a parent two components share is one membership
  * and not two — a transport plus a DAC is a single `digital` listing, which is what stops the
  * shared parent's facet from counting the same card twice.
+ *
+ * Not yet called with more than one direct category. Widening the stored membership before the
+ * category *filter* reads it would make a set contribute to a facet it then disappears from when
+ * that facet is selected — the count and the results have to start disagreeing never, so both move
+ * in the slice that teaches search to read membership. See {@link listingMembershipCategoryIds}.
  */
 export function listingCategoryClosureIds(directIds: readonly string[]): CategoryId[] {
   const closure = new Set<CategoryId>();
@@ -289,4 +338,24 @@ export function listingCategorySet(
       : classification.searchAliases,
     promoted,
   };
+}
+
+/**
+ * The categories a listing's `product_categories` rows should hold right now.
+ *
+ * Deliberately the closure of the representative category alone, which is exactly what this table
+ * has held since 0013. `direct_category_ids` already records the real set, so the storage and the
+ * semantics are in place; what is not in place yet is a reader. `src/db/product-search-repository.ts`
+ * still filters `product_search_entities.primary_category_id`, and `src/http/meta.ts` counts facets
+ * from this table — so widening this alone would make a set listing add itself to the DAC facet and
+ * then vanish when a user clicked it. Requirement 8 of #376 asks for the opposite: the count and
+ * the filtered results must agree.
+ *
+ * The one edit that lands the set is here, together with the search-side change that reads it.
+ */
+export function listingMembershipCategoryIds(
+  primaryCategoryId: string,
+  _directCategoryIds: readonly string[],
+): CategoryId[] {
+  return listingCategoryClosureIds([primaryCategoryId]);
 }
