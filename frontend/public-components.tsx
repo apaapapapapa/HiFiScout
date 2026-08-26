@@ -448,8 +448,9 @@ export function buildPriceHistorySparkline(
     timeRange > 0 &&
     timestamps.every((timestamp, index) => {
       const previousTimestamp = timestamps[index - 1];
-      return Number.isFinite(timestamp) &&
-        (previousTimestamp == null || timestamp >= previousTimestamp);
+      return (
+        Number.isFinite(timestamp) && (previousTimestamp == null || timestamp >= previousTimestamp)
+      );
     });
 
   const points = history.map((entry, index) => {
@@ -458,8 +459,7 @@ export function buildPriceHistorySparkline(
       history.length === 1
         ? HISTORY_SPARKLINE_WIDTH / 2
         : canScaleByTime
-          ? HISTORY_SPARKLINE_PADDING +
-            ((timestamp - firstTimestamp) / timeRange) * innerWidth
+          ? HISTORY_SPARKLINE_PADDING + ((timestamp - firstTimestamp) / timeRange) * innerWidth
           : HISTORY_SPARKLINE_PADDING + (innerWidth * index) / (history.length - 1);
     const y =
       priceRange === 0
