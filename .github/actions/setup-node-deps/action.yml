@@ -2,6 +2,10 @@ name: Setup Vite+ dependencies
 description: Restore or install Vite+, the project-pinned Node.js/package manager, and locked dependencies
 
 inputs:
+  cache-write:
+    description: Save shared Vite+ runtime and locked dependency caches on misses
+    required: false
+    default: "false"
   task-cache:
     description: Restore and save the Vite+ task result cache
     required: false
@@ -16,7 +20,7 @@ runs:
   steps:
     - name: Restore Vite+ runtime
       id: vite-plus-runtime
-      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
         path: ~/.vite-plus
         key: vite-plus-runtime-${{ runner.os }}-${{ runner.arch }}-0.2.9
@@ -36,7 +40,7 @@ runs:
         run-install: false
     - name: Restore locked dependencies
       id: locked-dependencies
-      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
         path: node_modules
         key: vite-plus-deps-${{ runner.os }}-${{ runner.arch }}-0.2.9-${{ hashFiles('package.json', 'package-lock.json', '.npmrc') }}
@@ -52,3 +56,15 @@ runs:
         key: vite-task-${{ runner.os }}-${{ runner.arch }}-${{ inputs.task-cache-scope }}-${{ hashFiles('package-lock.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
         restore-keys: |
           vite-task-${{ runner.os }}-${{ runner.arch }}-${{ inputs.task-cache-scope }}-${{ hashFiles('package-lock.json') }}-
+    - name: Save locked dependencies
+      if: inputs.cache-write == 'true' && steps.locked-dependencies.outputs.cache-hit != 'true'
+      uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      with:
+        path: node_modules
+        key: vite-plus-deps-${{ runner.os }}-${{ runner.arch }}-0.2.9-${{ hashFiles('package.json', 'package-lock.json', '.npmrc') }}
+    - name: Save Vite+ runtime
+      if: inputs.cache-write == 'true' && steps.vite-plus-runtime.outputs.cache-hit != 'true'
+      uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      with:
+        path: ~/.vite-plus
+        key: vite-plus-runtime-${{ runner.os }}-${{ runner.arch }}-0.2.9
