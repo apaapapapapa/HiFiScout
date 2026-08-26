@@ -12,6 +12,7 @@ import {
   validateProductQuery,
 } from "./api/product-query.js";
 import { catalogHtmlWithFeedAutodiscovery } from "./http/catalog-feed-autodiscovery.js";
+import { handleProductPermalink } from "./http/product-permalink.js";
 import { handleHttp } from "./http/router.js";
 import { handleQueue } from "./queue.js";
 import type { WorkerQueueMessage } from "./queue.js";
@@ -46,6 +47,9 @@ async function handlePublicHttp(
       request = new Request(canonicalUrl.toString(), request);
     }
   }
+
+  const permalinkResponse = await handleProductPermalink(request, env, ctx);
+  if (permalinkResponse) return permalinkResponse;
 
   const response = await handleHttp(request, env, ctx);
   if (request.method === "GET" && url.pathname === "/") {
