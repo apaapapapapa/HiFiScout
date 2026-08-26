@@ -27,7 +27,10 @@ test("product permalink paths accept only exact namespaced keys", () => {
 });
 
 test("catalog sanitizer preserves a valid product path and removes hostile query state", () => {
-  assert.equal(sanitizedCatalogUrl("/p/c-42", "?q=LUXMAN&limit=999", "#offers"), "/p/c-42?q=LUXMAN#offers");
+  assert.equal(
+    sanitizedCatalogUrl("/p/c-42", "?q=LUXMAN&limit=999", "#offers"),
+    "/p/c-42?q=LUXMAN#offers",
+  );
   assert.equal(sanitizedCatalogUrl("/p/c-42", "?q=LUXMAN", ""), null);
   assert.equal(sanitizedCatalogUrl("/p/not-a-key", "?q=LUXMAN", ""), "/?q=LUXMAN");
 });

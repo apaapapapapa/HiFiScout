@@ -1,7 +1,4 @@
-import {
-  productKeyFromPermalinkPath,
-  productPermalinkPath,
-} from "../src/api/product-permalink.js";
+import { productKeyFromPermalinkPath, productPermalinkPath } from "../src/api/product-permalink.js";
 
 const HISTORY_STATE_KEY = "hifiscoutProductPermalink";
 let suppressOfferPush = false;
@@ -27,9 +24,11 @@ function permalinkUrl(key: string): string | null {
 }
 
 function offerTriggerFor(key: string): HTMLElement | null {
-  return [...document.querySelectorAll<HTMLElement>("[data-offers]")].find(
-    (element) => element.dataset.offers === key,
-  ) ?? null;
+  return (
+    [...document.querySelectorAll<HTMLElement>("[data-offers]")].find(
+      (element) => element.dataset.offers === key,
+    ) ?? null
+  );
 }
 
 function hideServerPermalink(): void {
@@ -83,7 +82,8 @@ function install(): void {
   document.addEventListener(
     "click",
     (event) => {
-      const target = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-offers]") : null;
+      const target =
+        event.target instanceof Element ? event.target.closest<HTMLElement>("[data-offers]") : null;
       const key = target?.dataset.offers;
       if (key && !suppressOfferPush) {
         const nextUrl = permalinkUrl(key);
@@ -94,7 +94,10 @@ function install(): void {
         }
       }
 
-      const close = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-permalink-close]") : null;
+      const close =
+        event.target instanceof Element
+          ? event.target.closest<HTMLElement>("[data-permalink-close]")
+          : null;
       if (close) leaveProductRoute();
     },
     true,
@@ -104,7 +107,8 @@ function install(): void {
     "close",
     (event) => {
       if (suppressDialogClose) return;
-      if (!(event.target instanceof HTMLDialogElement) || event.target.id !== "offers-dialog") return;
+      if (!(event.target instanceof HTMLDialogElement) || event.target.id !== "offers-dialog")
+        return;
       leaveProductRoute();
     },
     true,

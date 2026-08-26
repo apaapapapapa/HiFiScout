@@ -51,7 +51,9 @@ function offerHtml(offer: ProductOffer): string {
   const shopName = SHOP_DEFINITIONS[offer.shop_key]?.name || offer.shop_key || "ショップ不明";
   const sourceUrl = safeHttpUrl(offer.source_url);
   const stock = offer.stock_status === "sold_out" ? "売り切れ" : "在庫あり";
-  const color = offer.presentation_color ? `<span>${escapeHtml(offer.presentation_color)}</span>` : "";
+  const color = offer.presentation_color
+    ? `<span>${escapeHtml(offer.presentation_color)}</span>`
+    : "";
   const condition = offer.condition_text ? `<span>${escapeHtml(offer.condition_text)}</span>` : "";
   const link = sourceUrl
     ? `<a class="shop-link" href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">販売ページを開く</a>`

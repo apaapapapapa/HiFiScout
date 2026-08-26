@@ -44,7 +44,9 @@ test("opening product detail writes a permalink and Back/Forward close and reope
     totalCount: 1,
     totalPages: 1,
   }));
-  await routeProductDetail(page, (key) => (key === "c-1" ? { product: item, offers: [listing] } : null));
+  await routeProductDetail(page, (key) =>
+    key === "c-1" ? { product: item, offers: [listing] } : null,
+  );
 
   await page.goto("/?q=LUXMAN");
   await expect(page.locator('.card[data-key="c-1"]')).toBeVisible();
