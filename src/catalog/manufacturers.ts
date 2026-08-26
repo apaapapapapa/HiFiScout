@@ -80,6 +80,7 @@ const MANUFACTURER_SOURCE: readonly ManufacturerSourceEntry[] = [
   ["naim", "Naim", ["naim", "ネイム"]],
   ["chord", "Chord Electronics", ["chord", "chord electronics", "コード"]],
   ["airbow", "AIRBOW", ["airbow", "エアボウ"]],
+  ["aura", "AURA", ["aura"]],
   [
     "astellkern",
     "Astell&Kern",
