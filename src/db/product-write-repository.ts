@@ -334,7 +334,8 @@ function listingChanged(existing: ExistingProductRow, product: CatalogProductUps
     existing.model !== product.model ||
     previous.rawModel !== current.rawModel ||
     previous.normalizedModel !== current.normalizedModel ||
-    (overridePresentationColor == null && previous.presentationColor !== current.presentationColor) ||
+    (overridePresentationColor == null &&
+      previous.presentationColor !== current.presentationColor) ||
     previous.modelResolutionStatus !== current.modelResolutionStatus ||
     previous.modelResolutionMethod !== current.modelResolutionMethod ||
     previous.modelResolutionConfidence !== current.modelResolutionConfidence ||

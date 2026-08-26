@@ -8,7 +8,8 @@ import type { CapturedStatement } from "./helpers/d1.js";
 
 function existingResult(existing: Record<string, unknown>) {
   return (statement: CapturedStatement) => {
-    if (/FROM products p\s+LEFT JOIN product_admin_overrides/.test(statement.sql)) return [existing];
+    if (/FROM products p\s+LEFT JOIN product_admin_overrides/.test(statement.sql))
+      return [existing];
     return [];
   };
 }
