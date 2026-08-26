@@ -16,7 +16,6 @@ export function json(data: unknown, init: ResponseInit = {}): Response {
 async function cachedResponse(
   request: Request,
   ctx: ExecutionContext,
-  ttlSeconds: number,
   load: () => Response | Promise<Response>,
 ): Promise<Response> {
   if (typeof caches === "undefined") return load();
@@ -41,7 +40,7 @@ export async function cachedJson(
   load: () => unknown | Promise<unknown>,
 ): Promise<Response> {
   const cacheControl = `public, max-age=${ttlSeconds}`;
-  return cachedResponse(request, ctx, ttlSeconds, async () =>
+  return cachedResponse(request, ctx, async () =>
     json(await load(), { headers: { "cache-control": cacheControl } }),
   );
 }
@@ -57,7 +56,6 @@ export async function cachedAtom(
   return cachedResponse(
     request,
     ctx,
-    ttlSeconds,
     async () =>
       new Response(await load(), {
         headers: {
