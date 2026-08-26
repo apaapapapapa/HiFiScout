@@ -52,6 +52,21 @@ test("price history x positions reflect elapsed observation time", () => {
   assert.equal(chart.path, "M 8 8 H 38.4 V 44 H 312 V 80");
 });
 
+test("same-timestamp histories fall back to even spacing", () => {
+  const observed_at = "2026-08-01T00:00:00.000Z";
+  const chart = buildPriceHistorySparkline([
+    { price_yen: 100, observed_at },
+    { price_yen: 90, observed_at },
+    { price_yen: 80, observed_at },
+  ]);
+
+  assert.ok(chart);
+  assert.deepEqual(
+    chart.points.map((entry) => entry.x),
+    [8, 160, 312],
+  );
+});
+
 test("flat and one-point price histories normalize without invalid coordinates", () => {
   const flat = buildPriceHistorySparkline([point(100, 1), point(100, 2)]);
   const single = buildPriceHistorySparkline([point(100, 1)]);
