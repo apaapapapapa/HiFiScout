@@ -14,6 +14,11 @@ import type {
 import { isRecord } from "../types.js";
 import { classifyCategoryEvidence, summarizeCategoryEvidence } from "./category-classifier.js";
 import { collectListingCategoryEvidence } from "./category-evidence.js";
+import {
+  componentCategoryIds,
+  detectListingComponents,
+  listingCategorySet,
+} from "./listing-components.js";
 import { resolveManufacturer, MANUFACTURER_RESOLVER_VERSION } from "./manufacturer-resolver.js";
 import { manufacturerIdForFilter, normalizeManufacturerKey } from "./manufacturers.js";
 import { presentationColorLabel } from "./model-presentation-color.js";
@@ -62,6 +67,10 @@ export function applyCategoryClassification<T extends CategoryClassifiableProduc
   evidence: CategoryEvidenceInput[] = product.categoryEvidence || [],
   metadataPatch: CategoryClassificationMetadataOverrides = {},
 ): WithCategoryClassification<T> {
+  // Recomputed here rather than in `normalizeCatalogProduct` because the crawler's enricher applies
+  // a second, better classification later; deriving the set from whichever classification is being
+  // written keeps the two answers from drifting apart.
+  const categorySet = listingCategorySet(classification, product.componentCategoryIds || []);
   const metadata: Record<string, unknown> = isRecord(product.metadata) ? product.metadata : {};
   // Deliberately array-permissive, unlike the `product.metadata` guard above: the original
   // JavaScript tested only `categoryClassification && typeof … === "object"`, so an array-valued
@@ -73,15 +82,18 @@ export function applyCategoryClassification<T extends CategoryClassifiableProduc
       : {};
   return {
     ...product,
-    primaryCategoryId: classification.primaryCategoryId,
-    categoryIds: classification.categoryIds,
-    category: classification.displayName,
-    classificationStatus: classification.classificationStatus,
-    classificationState: classification.classificationState,
-    classificationReason: classification.classificationReason,
-    classificationSource: classification.classificationSource,
+    primaryCategoryId: categorySet.primaryCategoryId,
+    // Still the single-product classification result, deliberately: requirement 3 of the issue is
+    // that this field does not quietly become the set. `directCategoryIds` is the set.
+    categoryIds: categorySet.categoryIds,
+    directCategoryIds: categorySet.directCategoryIds,
+    category: categorySet.displayName,
+    classificationStatus: categorySet.classificationStatus,
+    classificationState: categorySet.classificationState,
+    classificationReason: categorySet.classificationReason,
+    classificationSource: categorySet.classificationSource,
     candidateCategoryIds: classification.candidateCategoryIds,
-    searchAliases: classification.searchAliases,
+    searchAliases: categorySet.searchAliases,
     categoryEvidence: evidence,
     metadata: {
       ...metadata,
@@ -124,6 +136,12 @@ export function normalizeCatalogProduct(
     categoryPolicy: config.categoryPolicy,
   });
   const classification = classifyCategoryEvidence(evidence);
+  // Read from the same seller evidence the model resolver saw, so a set is detected from the text
+  // the seller actually wrote rather than from anything this pipeline has already rewritten.
+  const components = detectListingComponents(
+    { rawModel: product.rawModel ?? product.model ?? "", title: product.title },
+    { manufacturerId: manufacturer.canonicalManufacturerId, shopKey: context.shopKey },
+  );
   const featureFacts = normalizeFeatureFacts([
     ...(Array.isArray(product.featureFacts) ? product.featureFacts : []),
     ...inferFeatureFacts(product.title || "", { source: "title", confidence: 0.8 }),
@@ -147,6 +165,7 @@ export function normalizeCatalogProduct(
       modelResolutionConfidence: model.confidence,
       rawCategory,
       featureFacts,
+      componentCategoryIds: componentCategoryIds(components.components),
       metadata: {
         ...metadata,
         manufacturerNormalization: {

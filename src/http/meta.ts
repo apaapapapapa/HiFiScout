@@ -135,12 +135,15 @@ export async function meta(env: Env): Promise<MetaResponse> {
       WHERE is_active = 1
       GROUP BY shop_key
     `),
+    // Counted over the same rows the category filter selects on, and in the same unit search
+    // returns: cards, not listings. Counting listings here while the filter returned entities made
+    // the number disagree with the results for every product two shops both stock, and a set
+    // listing would have been counted once per category it is in while the filter only found it
+    // under one of them.
     env.DB.prepare(`
-      SELECT pc.category_id AS value, COUNT(DISTINCT pc.product_id) AS active_product_count
-      FROM product_categories pc
-      JOIN products p ON p.id = pc.product_id
-      WHERE p.is_active = 1
-      GROUP BY pc.category_id
+      SELECT ec.category_id AS value, COUNT(DISTINCT ec.entity_id) AS active_product_count
+      FROM product_search_entity_categories ec
+      GROUP BY ec.category_id
     `),
   ]);
 

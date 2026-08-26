@@ -282,6 +282,7 @@ async function propagateCatalogCategoryToMatchedListings(
           .prepare(`
             UPDATE products
             SET category = ?, primary_category_id = ?, category_ids = ?, classification_status = 'classified',
+                direct_category_ids = ?,
                 search_aliases = ?, remediation_projection_required = 1, remediation_projection_token = ?
             WHERE id = ?
           `)
@@ -289,6 +290,8 @@ async function propagateCatalogCategoryToMatchedListings(
             primary.name,
             primary.id,
             JSON.stringify(categoryIds),
+            // An admin decided one category for this listing, so that is its one direct category.
+            JSON.stringify([primary.id]),
             categorySearchAliases(categoryIds),
             token,
             listing.id,
@@ -301,9 +304,9 @@ async function propagateCatalogCategoryToMatchedListings(
         statements.push(
           db
             .prepare(
-              "INSERT OR IGNORE INTO product_categories(product_id, category_id) VALUES (?, ?)",
+              "INSERT OR IGNORE INTO product_categories(product_id, category_id, is_direct) VALUES (?, ?, ?)",
             )
-            .bind(listing.id, categoryId),
+            .bind(listing.id, categoryId, categoryId === primary.id ? 1 : 0),
         );
       }
     }

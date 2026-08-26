@@ -3,13 +3,19 @@ import {
   summarizeCategoryEvidence,
 } from "../catalog/category-classifier.js";
 import { collectListingCategoryEvidence } from "../catalog/category-evidence.js";
+import {
+  componentCategoryIds,
+  detectListingComponents,
+  listingCategorySet,
+  listingMembershipCategoryIds,
+} from "../catalog/listing-components.js";
 import { createManufacturerResolver } from "../catalog/manufacturer-resolver.js";
 import { manufacturerIdForFilter } from "../catalog/manufacturers.js";
 import { presentationColorLabel } from "../catalog/model-presentation-color.js";
 import { createModelResolver } from "../catalog/model-resolver.js";
 import { inferFeatureFacts } from "../catalog/product-features.js";
 import { RESOLUTION_VERSIONS } from "../catalog/resolution-versions.js";
-import type { CategoryEvidenceInput, FeatureFact } from "../catalog/types.js";
+import type { CategoryEvidenceInput, CategoryId, FeatureFact } from "../catalog/types.js";
 import { errorMessage, isRecord } from "../types.js";
 import { saveDataQualityRun } from "./data-quality-repository.js";
 import {
@@ -222,6 +228,32 @@ function requiresDerivedReplay(workType: DataQualityRemediationWorkType): boolea
 }
 
 /**
+ * Rewrite one listing's category membership to the closure of its direct categories.
+ *
+ * The same set `upsertProducts` writes, so the crawl path and the replay leave identical rows. The
+ * 0039 admin-override triggers make both statements no-ops while an operator override stands.
+ */
+async function rebuildListingCategories(
+  db: QueryableDatabase,
+  listingProductId: number,
+  primaryCategoryId: string,
+  directCategoryIds: readonly CategoryId[],
+): Promise<void> {
+  const direct = new Set<string>(directCategoryIds);
+  const statements = [
+    db.prepare("DELETE FROM product_categories WHERE product_id = ?").bind(listingProductId),
+    ...listingMembershipCategoryIds(primaryCategoryId, directCategoryIds).map((categoryId) =>
+      db
+        .prepare(
+          "INSERT OR IGNORE INTO product_categories(product_id, category_id, is_direct) VALUES (?, ?, ?)",
+        )
+        .bind(listingProductId, categoryId, direct.has(categoryId) ? 1 : 0),
+    ),
+  ];
+  await db.batch(statements);
+}
+
+/**
  * Recompute derived fields and return the projection token that this worker owns. If the product
  * row is already current, ownership stays with the token observed when the row was loaded.
  */
@@ -254,6 +286,17 @@ async function replayDerivedListing(
   const metadata = metadataObject(row.metadata_json);
   const evidence = storedCategoryEvidence(row, metadata);
   const classification = classifyCategoryEvidence(evidence);
+  // The same derivation the crawl path runs, from the same stored seller evidence. A replay that
+  // recomputed the classification but not the component set would leave a set listing with a
+  // primary category that is not one of its own — the crawl and the replay have to agree.
+  const components = detectListingComponents(
+    { rawModel: row.raw_model, title: row.title },
+    { manufacturerId: manufacturer.canonicalManufacturerId, shopKey: row.shop_key },
+  );
+  const categorySet = listingCategorySet(
+    classification,
+    componentCategoryIds(components.components),
+  );
   const nextMetadata = {
     ...metadata,
     manufacturerNormalization: {
@@ -278,11 +321,11 @@ async function replayDerivedListing(
     categoryClassification: {
       ...classificationMetadata(metadata),
       version: RESOLUTION_VERSIONS.category,
-      state: classification.classificationState,
-      status: classification.classificationStatus,
-      reason: classification.classificationReason,
-      source: classification.classificationSource,
-      categoryIds: classification.categoryIds,
+      state: categorySet.classificationState,
+      status: categorySet.classificationStatus,
+      reason: categorySet.classificationReason,
+      source: categorySet.classificationSource,
+      categoryIds: categorySet.categoryIds,
       candidateCategoryIds: classification.candidateCategoryIds,
       evidence: summarizeCategoryEvidence(evidence),
     },
@@ -295,10 +338,9 @@ async function replayDerivedListing(
   // `unclassified-persistence.test.ts` pins that. Storing the classifier's empty array here gave
   // unclassified rows two DB shapes depending on which writer touched them last.
   const categoryIdsJson = JSON.stringify(
-    classification.categoryIds.length
-      ? classification.categoryIds
-      : [classification.primaryCategoryId],
+    categorySet.categoryIds.length ? categorySet.categoryIds : [categorySet.primaryCategoryId],
   );
+  const directCategoryIdsJson = JSON.stringify(categorySet.directCategoryIds);
   const token = `dq-replay:${evaluatedAt}:${row.id}`;
 
   const result = await db
@@ -322,6 +364,7 @@ async function replayDerivedListing(
           category = ?,
           primary_category_id = ?,
           category_ids = ?,
+          direct_category_ids = ?,
           classification_status = ?,
           search_aliases = ?,
           metadata_json = ?,
@@ -347,6 +390,7 @@ async function replayDerivedListing(
           OR category IS NOT ?
           OR primary_category_id IS NOT ?
           OR category_ids IS NOT ?
+          OR direct_category_ids IS NOT ?
           OR classification_status IS NOT ?
           OR search_aliases IS NOT ?
           OR metadata_json IS NOT ?
@@ -368,11 +412,12 @@ async function replayDerivedListing(
       model.method,
       model.confidence,
       RESOLUTION_VERSIONS.model,
-      classification.displayName,
-      classification.primaryCategoryId,
+      categorySet.displayName,
+      categorySet.primaryCategoryId,
       categoryIdsJson,
-      classification.classificationStatus,
-      classification.searchAliases,
+      directCategoryIdsJson,
+      categorySet.classificationStatus,
+      categorySet.searchAliases,
       metadataJson,
       token,
       row.id,
@@ -391,17 +436,31 @@ async function replayDerivedListing(
       model.method,
       model.confidence,
       RESOLUTION_VERSIONS.model,
-      classification.displayName,
-      classification.primaryCategoryId,
+      categorySet.displayName,
+      categorySet.primaryCategoryId,
       categoryIdsJson,
-      classification.classificationStatus,
-      classification.searchAliases,
+      directCategoryIdsJson,
+      categorySet.classificationStatus,
+      categorySet.searchAliases,
       metadataJson,
     )
     .run();
 
+  const changed = Number(result?.meta?.changes || 0) > 0;
+  // A replay that moved a listing's category without rebuilding `product_categories` left it
+  // counted under the category it used to be in — visible today in the facet counts, and a wrong
+  // search result once the filter reads membership. Only on an actual change, so an unchanged
+  // listing is not churned through a delete-and-insert every sweep.
+  if (changed) {
+    await rebuildListingCategories(
+      db,
+      row.id,
+      categorySet.primaryCategoryId,
+      categorySet.directCategoryIds,
+    );
+  }
   await syncTitleFeatureFacts(db, row, evaluatedAt);
-  return Number(result?.meta?.changes || 0) > 0 ? token : row.remediation_projection_token;
+  return changed ? token : row.remediation_projection_token;
 }
 
 /**

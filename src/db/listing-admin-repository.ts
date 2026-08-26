@@ -358,6 +358,7 @@ export async function updateListingAdminProduct(
             model = ?, normalized_model = ?, model_resolution_status = ?,
             model_resolution_method = ?, model_resolution_confidence = ?,
             category = ?, primary_category_id = ?, category_ids = json_array(?),
+            direct_category_ids = CASE WHEN ? THEN json_array(?) ELSE direct_category_ids END,
             classification_status = ?, search_aliases = ?, presentation_color = ?,
             remediation_projection_required = 1, remediation_projection_token = ?
         WHERE id = ?
@@ -393,6 +394,11 @@ export async function updateListingAdminProduct(
         categoryName,
         categoryId,
         categoryId,
+        // Only a category override decides the direct set, and only that branch rebuilds
+        // `product_categories` below. Rewriting it for an unrelated model or colour edit would
+        // erase a set's categories and leave the two representations disagreeing.
+        categoryOverridden ? 1 : 0,
+        categoryId,
         categoryOverridden ? "classified" : existing.classification_status,
         searchAliases,
         presentationColor,
@@ -409,9 +415,9 @@ export async function updateListingAdminProduct(
       statements.push(
         db
           .prepare(
-            "INSERT OR IGNORE INTO product_categories(product_id, category_id) VALUES (?, ?)",
+            "INSERT OR IGNORE INTO product_categories(product_id, category_id, is_direct) VALUES (?, ?, ?)",
           )
-          .bind(listingId, category),
+          .bind(listingId, category, category === categoryId ? 1 : 0),
       );
     }
   }

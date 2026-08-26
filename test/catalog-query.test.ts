@@ -5,11 +5,12 @@ import { searchProducts } from "../src/db/product-search-repository.js";
 import { captureDatabase } from "./helpers/d1.js";
 import { productQuery } from "./helpers/product-query.js";
 
-test("canonical category display names filter on the entity's canonical category", async () => {
+test("canonical category display names filter on the entity's category membership", async () => {
   const db = captureDatabase();
   await searchProducts(db, productQuery("?category=プリアンプ"));
 
-  assert.match(db.calls[0].sql, /e\.primary_category_id IN \(\?\)/);
+  assert.match(db.calls[0].sql, /product_search_entity_categories ec/);
+  assert.match(db.calls[0].sql, /ec\.category_id IN \(\?\)/);
   assert.deepEqual(db.calls[0].binds.slice(0, 1), ["pre_amp"]);
 });
 

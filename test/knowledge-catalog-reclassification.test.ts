@@ -66,7 +66,8 @@ test("category reclassification retries a failed downstream projection refresh",
     /remediation_projection_required = 1/.test(statement.sql),
   );
   assert.ok(categoryUpdate);
-  pendingToken = String(categoryUpdate.binds[4]);
+  // 0: display name, 1: primary, 2: closure, 3: direct set, 4: aliases, 5: projection token.
+  pendingToken = String(categoryUpdate.binds[5]);
   assert.match(pendingToken, /^category:/);
   assert.equal(refreshCalls, 1);
   assert.equal(

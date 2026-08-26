@@ -58,7 +58,10 @@ test("entity and membership transitions are committed atomically before aggregat
     "membership",
     "prune",
     "prune",
-    // Aggregates, finishes and search terms are three statements, in that order.
+    // Aggregates, finishes, category membership (an upsert and its stale-row sweep) and search
+    // terms, in that order.
+    "refresh",
+    "refresh",
     "refresh",
     "refresh",
     "refresh",
@@ -202,9 +205,12 @@ test("rebuild is idempotent by construction: every write converges on a unique k
   await rebuildProductSearchEntities(db);
 
   const upserts = writes(db).filter((statement) => /^\s*INSERT INTO/.test(statement.sql));
-  assert.equal(upserts.length, 5);
+  assert.equal(upserts.length, 6);
   for (const statement of upserts) {
-    assert.match(statement.sql, /ON CONFLICT\((entity_key|listing_product_id)\) DO UPDATE SET/);
+    assert.match(
+      statement.sql,
+      /ON CONFLICT\((entity_key|listing_product_id|entity_id, category_id)\) DO UPDATE SET/,
+    );
   }
 });
 

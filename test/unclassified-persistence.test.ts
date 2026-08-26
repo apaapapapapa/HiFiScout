@@ -187,8 +187,13 @@ test("the data-quality replay persists the same unclassified shape the crawl pat
     '["unclassified"]',
     "the replay must persist [primary_category_id], never the classifier's in-memory empty array",
   );
-  assert.equal(replay.binds[18], "unclassified");
-  const metadata = JSON.parse(String(replay.binds[20])) as {
+  assert.equal(
+    replay.binds[18],
+    '["unclassified"]',
+    "an unclassified listing is directly in exactly one category: the sentinel, once",
+  );
+  assert.equal(replay.binds[19], "unclassified");
+  const metadata = JSON.parse(String(replay.binds[21])) as {
     modelNormalization?: { presentationColors?: string[] };
   };
   assert.deepEqual(metadata.modelNormalization?.presentationColors, ["ブラック"]);

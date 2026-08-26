@@ -324,10 +324,23 @@ export interface ManufacturerNormalizationMetadata {
   candidateManufacturerIds?: string[];
 }
 
-/** The eleven fields `applyCategoryClassification` writes onto a product. */
+/** The twelve fields `applyCategoryClassification` writes onto a product. */
 export interface CategoryClassificationFields {
   primaryCategoryId: CategoryId;
+  /**
+   * The single-product classification result — one category, as it has always been.
+   *
+   * Not the set. A listing that sells several products records that in `directCategoryIds`, so
+   * that this field keeps meaning "which category did we classify this product into".
+   */
   categoryIds: CategoryId[];
+  /**
+   * Every category this listing is *directly* in: one per distinct component product.
+   *
+   * `[primaryCategoryId]` for a listing that sells one product, which is nearly all of them.
+   * Ordered by the canonical taxonomy so the card renders the same way on every replay.
+   */
+  directCategoryIds: CategoryId[];
   /** Display name of the resolved category (`classification.displayName`). */
   category: string;
   classificationStatus: ClassificationStatus;
@@ -349,6 +362,14 @@ export type WithCategoryClassification<T> = Omit<T, keyof CategoryClassification
 /** Minimum a value must satisfy to be passed through `applyCategoryClassification`. */
 export interface CategoryClassifiableProduct {
   categoryEvidence?: CategoryEvidenceInput[];
+  /**
+   * One category id per detected component product, `unclassified` where a component named none.
+   *
+   * Survives re-classification because it describes the seller's text rather than any verdict
+   * about it: the crawler's enricher re-applies a classification to an already-normalized product,
+   * and the set it belongs to must not change just because a detail page was read.
+   */
+  componentCategoryIds?: readonly string[];
   metadata?: unknown;
 }
 
@@ -686,6 +707,12 @@ export interface NormalizedCatalogProduct extends CategoryClassificationFields {
   modelResolutionConfidence: ResolutionConfidence;
   title: string;
   rawCategory: string;
+  /**
+   * One category id per detected component product — declared rather than incidental, because the
+   * crawler's enricher re-classifies an already-normalized product and `applyCategoryClassification`
+   * reads this to rebuild the set. A product that lost it would silently collapse to one category.
+   */
+  componentCategoryIds: readonly string[];
   conditionText: string;
   priceYen: number | null;
   stockStatus: StockStatus;
@@ -723,6 +750,8 @@ export interface CatalogProductUpsertInput {
   rawCategory?: string;
   primaryCategoryId?: string;
   categoryIds?: readonly string[];
+  /** Absent for hand-built test products and legacy callers; falls back to the primary category. */
+  directCategoryIds?: readonly string[];
   classificationStatus?: ClassificationStatus;
   searchAliases?: string;
   conditionText: string;

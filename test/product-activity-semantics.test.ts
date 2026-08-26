@@ -61,6 +61,7 @@ function existingProduct(overrides: Partial<ExistingProductRow> = {}): ExistingP
     raw_category: "スピーカー",
     primary_category_id: "speaker",
     category_ids: '["speaker"]',
+    direct_category_ids: '["speaker_other"]',
     classification_status: "classified",
     search_aliases: "スピーカー speaker",
     condition_text: "中古",
