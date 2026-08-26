@@ -1,4 +1,5 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import type { Page, Route } from "@playwright/test";
+import { expect, test } from "../fixtures/catalog-test.js";
 import { offer, product, routeProductDetail, routeProductSearch } from "./product-fixtures.js";
 
 async function routeMeta(page: Page): Promise<void> {
@@ -27,6 +28,7 @@ async function routeMeta(page: Page): Promise<void> {
 
 test("opening product detail writes a permalink and Back/Forward close and reopen it", async ({
   page,
+  catalogPage,
 }) => {
   const listing = offer({
     listing_product_id: 11,
@@ -48,18 +50,18 @@ test("opening product detail writes a permalink and Back/Forward close and reope
     key === "c-1" ? { product: item, offers: [listing] } : null,
   );
 
-  await page.goto("/?q=LUXMAN");
-  await expect(page.locator('.card[data-key="c-1"]')).toBeVisible();
+  await catalogPage.goto("/?q=LUXMAN");
+  await expect(catalogPage.card("c-1")).toBeVisible();
 
-  await page.locator('.card[data-key="c-1"] [data-offers]').last().click();
-  await expect(page.locator("#offers-dialog")).toBeVisible();
+  await catalogPage.openOffers("c-1");
+  await expect(catalogPage.offersDialog).toBeVisible();
   await expect(page).toHaveURL(/\/p\/c-1\?q=LUXMAN$/);
 
   await page.goBack();
   await expect(page).toHaveURL(/\/\?q=LUXMAN$/);
-  await expect(page.locator("#offers-dialog")).not.toBeVisible();
+  await expect(catalogPage.offersDialog).not.toBeVisible();
 
   await page.goForward();
   await expect(page).toHaveURL(/\/p\/c-1\?q=LUXMAN$/);
-  await expect(page.locator("#offers-dialog")).toBeVisible();
+  await expect(catalogPage.offersDialog).toBeVisible();
 });
