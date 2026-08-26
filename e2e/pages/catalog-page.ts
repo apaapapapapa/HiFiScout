@@ -9,6 +9,7 @@ export class CatalogPage {
   readonly manufacturerOptions: Locator;
   readonly products: Locator;
   readonly pagination: Locator;
+  readonly loadMore: Locator;
   readonly searchInput: Locator;
   readonly shop: Locator;
   readonly category: Locator;
@@ -36,6 +37,7 @@ export class CatalogPage {
     this.manufacturerOptions = page.locator("#manufacturer-options option");
     this.products = page.locator("#products");
     this.pagination = page.locator("#pagination");
+    this.loadMore = page.locator("#load-more");
     this.searchInput = page.locator("#q");
     this.shop = page.locator("#shop");
     this.category = page.locator("#category");
