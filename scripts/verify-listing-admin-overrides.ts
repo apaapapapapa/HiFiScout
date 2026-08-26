@@ -7,39 +7,14 @@
  */
 
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { isRecord } from "../src/types.js";
+import { executeLocalD1, rowsFor } from "./lib/local-d1.js";
 
 const suffix = `listing-admin-integration-${process.pid}`;
 const now = "2026-08-22T00:00:00.000Z";
-const statementFile = join(
-  mkdtempSync(join(tmpdir(), "hifiscout-listing-admin-check-")),
-  "statement.sql",
-);
-
-function d1(command: string): Record<string, unknown>[] {
-  writeFileSync(statementFile, command, "utf8");
-  const output = execFileSync(
-    process.platform === "win32" ? "npx.cmd" : "npx",
-    ["wrangler", "d1", "execute", "DB", "--local", "--json", `--file=${statementFile}`],
-    { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, shell: process.platform === "win32" },
-  );
-  const parsed: unknown = JSON.parse(output.slice(output.indexOf("[")));
-  const first = Array.isArray(parsed) ? parsed[0] : undefined;
-  return isRecord(first) && Array.isArray(first.results)
-    ? (first.results as Record<string, unknown>[])
-    : [];
-}
-
-function number(rows: Record<string, unknown>[], column: string): number {
-  return Number(rows[0]?.[column] ?? -1);
-}
+const listingId = `(SELECT id FROM products WHERE shop_key = '${suffix}' AND source_id = '${suffix}')`;
 
 try {
-  d1(`
+  const rows = executeLocalD1(`
     INSERT INTO products(
       shop_key, source_id, manufacturer, model, title, category, condition_text,
       price_yen, stock_status, source_url, first_seen_at, last_seen_at, last_changed_at, is_active,
@@ -55,15 +30,8 @@ try {
       'D1000MK2', 'D1000MK2', 'resolved', 'seller_model', 'high',
       'D/Aコンバーター', 'dac', '["dac"]', 'classified', 'DAC', '${now}'
     );
-  `);
-  const listingId = number(
-    d1(`SELECT id FROM products WHERE shop_key = '${suffix}' AND source_id = '${suffix}';`),
-    "id",
-  );
-  assert.ok(listingId > 0, "fixture listing must exist");
 
-  // This is the state the admin repository writes before persisting the durable override row.
-  d1(`
+    -- This is the state the admin repository writes before persisting the durable override row.
     UPDATE products
     SET manufacturer = 'LUXMAN', manufacturer_id = 'luxman', canonical_manufacturer_id = 'luxman',
         manufacturer_resolution_status = 'resolved', manufacturer_resolution_method = 'verified_alias',
@@ -83,11 +51,9 @@ try {
       ${listingId}, 'luxman', 'LUXMAN', 'D-1000', 'D1000',
       'turntable', '["turntable","analog"]', 'アナログプレーヤー', 'turntable', '${now}', '${now}'
     );
-  `);
 
-  // Simulate the next crawler upsert and its category synchronization. Raw evidence is allowed to
-  // move, but the effective canonical fields and manual category membership must remain corrected.
-  d1(`
+    -- Simulate the next crawler upsert and category synchronization. Raw evidence may move, while
+    -- the effective canonical fields and manual category membership remain corrected by triggers.
     UPDATE products
     SET raw_manufacturer = 'Technical Audio Devices', normalized_raw_manufacturer = 'TECHNICAL AUDIO DEVICES',
         manufacturer = 'TAD', manufacturer_id = 'tad', canonical_manufacturer_id = 'tad',
@@ -101,33 +67,38 @@ try {
     DELETE FROM product_categories WHERE product_id = ${listingId};
     INSERT OR IGNORE INTO product_categories(product_id, category_id) VALUES (${listingId}, 'dac');
     INSERT OR IGNORE INTO product_categories(product_id, category_id) VALUES (${listingId}, 'digital');
-  `);
 
-  const effective = d1(`
-    SELECT manufacturer, canonical_manufacturer_id, model, normalized_model,
+    SELECT 'effective' AS check_name,
+           manufacturer, canonical_manufacturer_id, model, normalized_model,
            category, primary_category_id, classification_status,
            raw_manufacturer, raw_model, raw_category
     FROM products WHERE id = ${listingId};
-  `)[0];
-  assert.equal(effective?.manufacturer, "LUXMAN");
-  assert.equal(effective?.canonical_manufacturer_id, "luxman");
-  assert.equal(effective?.model, "D-1000");
-  assert.equal(effective?.normalized_model, "D1000");
-  assert.equal(effective?.category, "アナログプレーヤー");
-  assert.equal(effective?.primary_category_id, "turntable");
-  assert.equal(effective?.classification_status, "classified");
+
+    SELECT 'category' AS check_name, category_id
+    FROM product_categories
+    WHERE product_id = ${listingId}
+    ORDER BY category_id;
+  `);
+
+  const effective = rowsFor(rows, "effective")[0];
+  assert.ok(effective, "fixture listing must exist");
+  assert.equal(effective.manufacturer, "LUXMAN");
+  assert.equal(effective.canonical_manufacturer_id, "luxman");
+  assert.equal(effective.model, "D-1000");
+  assert.equal(effective.normalized_model, "D1000");
+  assert.equal(effective.category, "アナログプレーヤー");
+  assert.equal(effective.primary_category_id, "turntable");
+  assert.equal(effective.classification_status, "classified");
 
   // Seller evidence remains crawler-owned instead of being hidden by the override.
-  assert.equal(effective?.raw_manufacturer, "Technical Audio Devices");
-  assert.equal(effective?.raw_model, "D1000MK2");
-  assert.equal(effective?.raw_category, "D/Aコンバーター");
+  assert.equal(effective.raw_manufacturer, "Technical Audio Devices");
+  assert.equal(effective.raw_model, "D1000MK2");
+  assert.equal(effective.raw_category, "D/Aコンバーター");
 
-  const categories = d1(`
-    SELECT category_id FROM product_categories WHERE product_id = ${listingId} ORDER BY category_id;
-  `).map((row) => String(row.category_id));
+  const categories = rowsFor(rows, "category").map((row) => String(row.category_id));
   assert.deepEqual(categories, ["analog", "turntable"]);
 
   console.log("listing admin override persistence integration check passed");
 } finally {
-  d1(`DELETE FROM products WHERE shop_key = '${suffix}' AND source_id = '${suffix}';`);
+  executeLocalD1(`DELETE FROM products WHERE shop_key = '${suffix}' AND source_id = '${suffix}';`);
 }
