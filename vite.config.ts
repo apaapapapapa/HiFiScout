@@ -98,7 +98,7 @@ export default defineConfig(({ mode }) => ({
     ? browserBundle("./frontend/app.tsx", "public", "app.js", "HiFiScoutApp")
     : mode === "admin"
       ? browserBundle(
-          "./frontend/admin-console-entry.tsx",
+          "./frontend/admin-console.tsx",
           "admin-public",
           "admin-console.js",
           "HiFiScoutAdmin",

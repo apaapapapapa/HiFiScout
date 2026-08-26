@@ -21,7 +21,9 @@ export default defineConfig({
   },
   webServer: {
     command: "vp dev --host 127.0.0.1 --port 4173 --strictPort",
-    url: galleryUrl,
+    url: "http://127.0.0.1:4173/playwright/gallery/health.html",
     reuseExistingServer: !process.env.CI,
+    stdout: "pipe",
+    stderr: "pipe",
   },
 });

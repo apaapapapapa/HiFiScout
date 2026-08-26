@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import { createRoot } from "react-dom/client";
 
 import { CatalogAdmin } from "./admin-catalog.js";
 import { ListingAdmin } from "./admin-listings.js";
@@ -185,3 +186,6 @@ export function AdminConsole() {
     </main>
   );
 }
+
+const root = document.getElementById("admin-root");
+if (root) createRoot(root).render(<AdminConsole />);
