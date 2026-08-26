@@ -186,9 +186,7 @@ function FilterPanel({
                     label={`${facet.name} (${facet.activeProductCount})`}
                   />
                 ))
-              : (meta?.manufacturers ?? []).map((value) => (
-                  <option key={value} value={value} />
-                ))}
+              : (meta?.manufacturers ?? []).map((value) => <option key={value} value={value} />)}
           </datalist>
         </label>
         <label>
