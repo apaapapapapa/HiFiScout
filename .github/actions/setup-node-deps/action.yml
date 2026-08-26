@@ -1,6 +1,16 @@
 name: Setup Vite+ dependencies
 description: Install Vite+, the project-pinned Node.js/package manager, and locked dependencies
 
+inputs:
+  task-cache:
+    description: Restore and save the Vite+ task result cache
+    required: false
+    default: "false"
+  task-cache-scope:
+    description: Isolate task caches for independent CI jobs
+    required: false
+    default: "default"
+
 runs:
   using: composite
   steps:
@@ -12,3 +22,11 @@ runs:
         run-install: |
           - cwd: .
             args: ['--frozen-lockfile']
+    - name: Restore Vite+ task cache
+      if: inputs.task-cache == 'true'
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      with:
+        path: node_modules/.vite/task-cache
+        key: vite-task-${{ runner.os }}-${{ runner.arch }}-${{ inputs.task-cache-scope }}-${{ hashFiles('package-lock.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: |
+          vite-task-${{ runner.os }}-${{ runner.arch }}-${{ inputs.task-cache-scope }}-${{ hashFiles('package-lock.json') }}-
