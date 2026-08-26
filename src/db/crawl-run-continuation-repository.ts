@@ -6,14 +6,37 @@ import type { QueryableDatabase, ReadableDatabase } from "./types.js";
  * Only stages that can be reconstructed from persisted listings appear here. Feature facts and
  * product metadata are written from the parsed seller objects, which are not stored, so they stay
  * on the one-shot path until a measurement shows they need chunking too.
+ *
+ * `membership_cleanup` is last because it is the one stage scoped to the shop rather than to this
+ * run's listings: retiring the memberships of listings that disappeared has to see the offers the
+ * earlier stages just rewrote.
  */
 export const RESUMABLE_CRAWL_STAGES = [
   "search_projection",
   "identity_resolution",
   "search_entity",
+  "membership_cleanup",
 ] as const;
 
 export type ResumableCrawlStage = (typeof RESUMABLE_CRAWL_STAGES)[number];
+
+/**
+ * Whether a stage walks this run's own work set or the shop's leftover memberships.
+ *
+ * The single definition: the chunk a stage claims, the input count it reports, and which runs still
+ * hold work worth inheriting are all the same question.
+ */
+export const CRAWL_STAGE_SCOPE: Readonly<Record<ResumableCrawlStage, "run" | "shop">> =
+  Object.freeze({
+    search_projection: "run",
+    identity_resolution: "run",
+    search_entity: "run",
+    membership_cleanup: "shop",
+  });
+
+const RUN_SCOPED_CRAWL_STAGES = RESUMABLE_CRAWL_STAGES.filter(
+  (stage) => CRAWL_STAGE_SCOPE[stage] === "run",
+);
 
 /** D1 caps bound variables per statement, so every multi-row write is chunked below that limit. */
 const WRITE_CHUNK_SIZE = 50;
@@ -62,8 +85,8 @@ export async function recordCrawlRunWorkSet(
     recordedAt: string;
   },
 ): Promise<void> {
-  if (!sourceIds.length) return;
-
+  // Written even for an empty delta. A crawl where nothing changed still owes the shop-scoped
+  // cleanup, and the generation is what lets a later crawl retire this one's outstanding work.
   await db
     .prepare("UPDATE crawl_runs SET generation = ? WHERE id = ?")
     .bind(generation, crawlRunId)
@@ -84,6 +107,23 @@ export async function recordCrawlRunWorkSet(
     );
   }
 
+  await inheritOutstandingWorkItems(db, crawlRunId);
+  await ensureCrawlRunStages(db, crawlRunId, recordedAt);
+}
+
+/**
+ * Adds any stage row this run is missing, leaving the ones it has alone.
+ *
+ * The stage list grows as new derived work is added, but a run's rows are written once, when it
+ * records its work set. A run interrupted across a deployment therefore knows only the stages that
+ * existed when it started: without this it would finish those, find nothing pending, free its work
+ * set and count as complete, silently skipping a stage introduced while it was waiting.
+ */
+export async function ensureCrawlRunStages(
+  db: QueryableDatabase,
+  crawlRunId: number,
+  at: string,
+): Promise<void> {
   await db.batch(
     RESUMABLE_CRAWL_STAGES.map((stage) =>
       db
@@ -92,9 +132,50 @@ export async function recordCrawlRunWorkSet(
           VALUES (?, ?, ?, 'pending', ?)
           ON CONFLICT(crawl_run_id, stage) DO NOTHING
         `)
-        .bind(crawlRunId, stage, stageOrdinal(stage), recordedAt),
+        .bind(crawlRunId, stage, stageOrdinal(stage), at),
     ),
   );
+}
+
+/**
+ * Adopts the unfinished work of this shop's earlier runs.
+ *
+ * A crawl records only the listings whose inputs moved, so a listing changed by an interrupted run
+ * is absent from the next run's delta — it already matches what that run wrote. Without this, the
+ * moment the newer run supersedes the older one, that listing's projection would be dropped with it
+ * and stay stale until an unrelated crawl happened to touch it again. Inheriting first means
+ * supersession only ever discards work that has already been taken over.
+ *
+ * Only runs with a run-scoped stage still pending are worth adopting. A run held open solely by the
+ * shop-scoped cleanup has already projected every listing it named, but still holds its work set,
+ * so inheriting from it would copy a fully consumed delta into the next crawl and make it redo the
+ * bulk work from `search_projection` — repeatedly, for as long as that cleanup keeps failing.
+ */
+async function inheritOutstandingWorkItems(
+  db: QueryableDatabase,
+  crawlRunId: number,
+): Promise<void> {
+  const stagePlaceholders = RUN_SCOPED_CRAWL_STAGES.map(() => "?").join(",");
+  await db
+    .prepare(`
+      INSERT OR IGNORE INTO crawl_run_work_items (crawl_run_id, source_id)
+      SELECT ?, w.source_id
+      FROM crawl_run_work_items w
+      WHERE w.crawl_run_id <> ?
+        AND EXISTS (
+          SELECT 1 FROM crawl_runs older
+          JOIN crawl_runs mine ON mine.id = ?
+          WHERE older.id = w.crawl_run_id AND older.shop_key = mine.shop_key
+        )
+        AND EXISTS (
+          SELECT 1 FROM crawl_run_stages s
+          WHERE s.crawl_run_id = w.crawl_run_id
+            AND s.status = 'pending'
+            AND s.stage IN (${stagePlaceholders})
+        )
+    `)
+    .bind(crawlRunId, crawlRunId, crawlRunId, ...RUN_SCOPED_CRAWL_STAGES)
+    .run();
 }
 
 /** The next stage a run still owes, or null when its derived work is complete. */
@@ -128,7 +209,7 @@ export async function nextPendingCrawlRunStage(
   };
 }
 
-/** One bounded slice of a run's observed listings, ordered so the cursor can resume from it. */
+/** One bounded slice of a run's changed listings, ordered so the cursor can resume from it. */
 export async function claimCrawlRunWorkChunk(
   db: ReadableDatabase,
   crawlRunId: number,
@@ -144,6 +225,34 @@ export async function claimCrawlRunWorkChunk(
       LIMIT ?
     `)
     .bind(crawlRunId, afterSourceId, limit)
+    .all<{ source_id: string }>();
+  return (result.results || []).map((row) => row.source_id);
+}
+
+/**
+ * One bounded slice of the shop's listings that are gone but still hold a search-entity offer.
+ *
+ * Cleanup is shop-scoped rather than run-scoped: a listing that disappeared is by definition not in
+ * anything this run observed, so without this its offer would keep inflating its product's offer
+ * count forever. Processing a chunk removes it from this set, and the cursor still advances by
+ * source id so the stage terminates even if a row somehow survives its own cleanup.
+ */
+export async function claimShopMembershipCleanupChunk(
+  db: ReadableDatabase,
+  shopKey: string,
+  afterSourceId: string,
+  limit: number,
+): Promise<string[]> {
+  const result = await db
+    .prepare(`
+      SELECT DISTINCT p.source_id AS source_id
+      FROM product_search_entity_offers m
+      JOIN products p ON p.id = m.listing_product_id
+      WHERE p.shop_key = ? AND p.is_active = 0 AND p.source_id > ?
+      ORDER BY p.source_id
+      LIMIT ?
+    `)
+    .bind(shopKey, afterSourceId, limit)
     .all<{ source_id: string }>();
   return (result.results || []).map((row) => row.source_id);
 }

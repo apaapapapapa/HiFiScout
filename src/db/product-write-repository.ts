@@ -524,6 +524,7 @@ export async function upsertProducts(
       )
     : [];
   const newSourceIds: string[] = [];
+  const changedSourceIds: string[] = [];
   const changedPriceSourceIds: string[] = [];
   const categorySyncSourceIds: string[] = [];
   const featureSyncSourceIds: string[] = [];
@@ -668,6 +669,7 @@ export async function upsertProducts(
           ),
       );
       changedCount += 1;
+      changedSourceIds.push(product.sourceId);
       if (hasActivity) activityCount += 1;
     } else if (shouldTouch(existing, observedAt, touchIntervalMinutes)) {
       writes.push(
@@ -707,5 +709,10 @@ export async function upsertProducts(
   const deactivatedCount = missingSourceIds.length
     ? await deactivateProductsBySourceIds(db, shopKey, missingSourceIds)
     : 0;
-  return { changedCount, activityCount, touchedCount, deactivatedCount };
+  // A listing that disappeared is never in `products`, so its retired membership has to be named
+  // here or nothing downstream would know to stop counting the offer.
+  const derivedSourceIds = [
+    ...new Set([...newSourceIds, ...changedSourceIds, ...missingSourceIds]),
+  ];
+  return { changedCount, activityCount, touchedCount, deactivatedCount, derivedSourceIds };
 }

@@ -75,13 +75,10 @@ export async function refreshListingProjections(
         traceCandidateScopes: true,
       }),
     );
-    // Resolver replay is listing-scoped. Shop-wide inactive membership cleanup belongs to a crawl,
-    // where the observed inventory set is authoritative; pulling it into a remediation pass can
-    // turn a handful of stale listings into an unbounded shop-wide entity projection.
+    // Resolver replay is listing-scoped, and so is the sync: shop-wide inactive membership cleanup
+    // belongs to the crawl's own bounded stage, where the observed inventory set is authoritative.
     await runProjectionStage("search_entity", shopKey, sourceIds.length, () =>
-      syncProductSearchEntities(db, shopKey, sourceIds, {
-        includeInactiveShopMembers: false,
-      }),
+      syncProductSearchEntities(db, shopKey, sourceIds),
     );
   }
 }

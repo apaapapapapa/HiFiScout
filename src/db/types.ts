@@ -1008,6 +1008,16 @@ export interface UpsertProductsResult {
   activityCount: number;
   touchedCount: number;
   deactivatedCount: number;
+  /**
+   * Listings whose canonical, availability or identity inputs actually moved.
+   *
+   * A routine crawl re-reports an inventory that is mostly unchanged, and a listing nobody touched
+   * projects to exactly what is already stored. Naming the delta here is what lets the derived
+   * stages read the listings that changed instead of every listing the shop reported; the peers a
+   * changed listing regroups are expanded by the entity stage itself, and stale resolver versions
+   * stay the remediation queue's work rather than being hidden inside a normal crawl.
+   */
+  derivedSourceIds: string[];
 }
 
 /** `findVerifiedCatalogMatches()` value; `null` marks an ambiguous key. */
