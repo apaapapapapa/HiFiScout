@@ -14,6 +14,11 @@
  * a shared link before anything can act on it.
  */
 
+import {
+  isProductPermalinkRoute,
+  productKeyFromPermalinkPath,
+  productPermalinkPath,
+} from "../src/api/product-permalink.js";
 import { parseFeatureParams } from "./filters.js";
 
 /** Mirrors the server's per-parameter character limits. */
@@ -70,6 +75,12 @@ export function sanitizedCatalogSearch(search: string): string {
   return params.toString();
 }
 
+function sanitizedCatalogPath(pathname: string): string {
+  if (!isProductPermalinkRoute(pathname)) return pathname;
+  const key = productKeyFromPermalinkPath(pathname);
+  return key ? (productPermalinkPath(key) ?? "/") : "/";
+}
+
 /**
  * The path to replace the current URL with, or `null` when it is already clean.
  *
@@ -77,7 +88,8 @@ export function sanitizedCatalogSearch(search: string): string {
  * for a link that needed no correction.
  */
 export function sanitizedCatalogUrl(pathname: string, search: string, hash: string): string | null {
+  const nextPath = sanitizedCatalogPath(pathname);
   const nextSearch = sanitizedCatalogSearch(search);
-  const nextUrl = `${pathname}${nextSearch ? `?${nextSearch}` : ""}${hash}`;
+  const nextUrl = `${nextPath}${nextSearch ? `?${nextSearch}` : ""}${hash}`;
   return nextUrl === `${pathname}${search}${hash}` ? null : nextUrl;
 }
