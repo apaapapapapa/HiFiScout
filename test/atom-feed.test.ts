@@ -67,6 +67,13 @@ test("feed query is chronological, bounded, unpaginated, and canonical", () => {
   );
 });
 
+test("feed preserves a caller limit below its polling cap", () => {
+  const url = new URL("https://example.test/api/feed?limit=10");
+  const query = parseFeedQuery(url);
+  assert.equal(query.limit, 10);
+  assert.equal(canonicalFeedQueryUrl(url, query).search, "?limit=10");
+});
+
 test("feed rejects conflicting sort but ignores malformed pagination", () => {
   assert.equal(
     validateFeedQuery(new URL("https://example.test/api/feed?sort=priceAsc")),
