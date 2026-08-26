@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
-import { MAX_SUGGESTIONS } from "../src/api/contracts.js";
+import { MAX_SUGGESTIONS, MAX_SUGGEST_QUERY_LENGTH } from "../src/api/contracts.js";
 import { normalizeIdentityModel } from "../src/catalog/product-identity.js";
 import { suggestProducts } from "../src/db/product-suggest-repository.js";
 import { captureDatabase } from "./helpers/d1.js";
@@ -85,6 +85,16 @@ test("suggestions are de-duplicated and capped independently of the candidate wi
   assert.equal(result.length, MAX_SUGGESTIONS);
   assert.equal(new Set(result.map((value) => value.toLocaleLowerCase())).size, result.length);
   assert.equal(db.calls[0].binds.at(-1), 24);
+});
+
+test("suggestions that cannot be submitted as q are omitted", async () => {
+  const model = `PM1${"X".repeat(MAX_SUGGEST_QUERY_LENGTH)}`;
+  const db = captureDatabase([row(1, { model })]);
+
+  const result = await suggestProducts(db, "PM1");
+
+  assert.deepEqual(result, ["Marantz"]);
+  assert.ok([...`Marantz ${model}`].length > MAX_SUGGEST_QUERY_LENGTH);
 });
 
 test("empty input does not query D1", async () => {

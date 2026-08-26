@@ -7,7 +7,7 @@
  * merely because its top-level collections exist.
  */
 
-import { MAX_SUGGESTIONS } from "../src/api/contracts.js";
+import { MAX_SUGGESTIONS, MAX_SUGGEST_QUERY_LENGTH } from "../src/api/contracts.js";
 import type {
   MetaCategoryFacet,
   MetaManufacturerFacet,
@@ -245,7 +245,8 @@ export function isSuggestResponse(value: unknown): value is SuggestResponse {
   return (
     isRecord(value) &&
     isStringArray(value.suggestions) &&
-    value.suggestions.length <= MAX_SUGGESTIONS
+    value.suggestions.length <= MAX_SUGGESTIONS &&
+    value.suggestions.every((suggestion) => [...suggestion].length <= MAX_SUGGEST_QUERY_LENGTH)
   );
 }
 
