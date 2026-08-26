@@ -462,18 +462,20 @@ async function syncProductFeatureFacts(
   products: readonly CatalogProductUpsertInput[],
   sourceIds: readonly string[],
   observedAt: string,
-): Promise<void> {
-  if (!sourceIds.length) return;
+): Promise<number> {
+  if (!sourceIds.length) return 0;
   const wanted = new Set(sourceIds);
   const selected = products.filter((product) => wanted.has(product.sourceId));
   const rows = await rowsForSources(db, shopKey, sourceIds);
   const idBySource = new Map(rows.map((row) => [row.source_id, row.id]));
   const statements: D1PreparedStatement[] = [];
+  let factCount = 0;
   for (const product of selected) {
     const productId = idBySource.get(product.sourceId);
     if (!productId) continue;
     // Only title-derived facts are owned by this pass; verified facts from other sources persist.
     const facts = catalogFields(product).featureFacts.filter((fact) => fact.source === "title");
+    factCount += facts.length;
     statements.push(
       db
         .prepare("DELETE FROM product_feature_facts WHERE product_id = ? AND source = 'title'")
@@ -498,6 +500,7 @@ async function syncProductFeatureFacts(
     }
   }
   await runBatches(db, statements);
+  return factCount;
 }
 
 export async function upsertProducts(
@@ -683,7 +686,7 @@ export async function upsertProducts(
 
   await runBatches(db, writes);
   await syncProductCategories(db, shopKey, products, [...new Set(categorySyncSourceIds)]);
-  await syncProductFeatureFacts(
+  const featureFactCount = await syncProductFeatureFacts(
     db,
     shopKey,
     products,
@@ -714,5 +717,12 @@ export async function upsertProducts(
   const derivedSourceIds = [
     ...new Set([...newSourceIds, ...changedSourceIds, ...missingSourceIds]),
   ];
-  return { changedCount, activityCount, touchedCount, deactivatedCount, derivedSourceIds };
+  return {
+    changedCount,
+    activityCount,
+    touchedCount,
+    deactivatedCount,
+    featureFactCount,
+    derivedSourceIds,
+  };
 }

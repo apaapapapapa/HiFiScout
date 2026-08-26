@@ -116,3 +116,76 @@ test("disabled shops do not make overall health unhealthy", () => {
   assert.equal(audioUnion.status, "disabled");
   assert.notEqual(health.status, "critical");
 });
+
+test("fresh listings nobody can search for are not a healthy shop", () => {
+  const now = new Date("2026-08-26T06:00:00.000Z");
+  const base = { intervalMinutes: 30, enabled: true, now, warningFactor: 2, criticalFactor: 6 };
+
+  // The inventory watermark says this shop was crawled five minutes ago. The projection watermark
+  // says its derived work has not completed since yesterday, so search is serving stale grouping.
+  const health = evaluateShopSyncHealth({
+    ...base,
+    state: {
+      last_success_at: "2026-08-26T05:55:00.000Z",
+      last_projection_at: "2026-08-25T18:00:00.000Z",
+    },
+  });
+
+  assert.equal(health.status, "critical");
+  assert.equal(health.reason, "projection_stale");
+  assert.equal(health.ageMinutes, 5, "the inventory is still reported as fresh");
+  assert.equal(health.projectionAgeMinutes, 720);
+});
+
+test("a projection still catching up after a deferred crawl is not a concern", () => {
+  const now = new Date("2026-08-26T06:00:00.000Z");
+  // Handing the remaining chunks to the continuation sweep is an ordinary outcome, so a short lag
+  // must not degrade the shop; only a gap that keeps growing means the sweep stopped finishing.
+  const health = evaluateShopSyncHealth({
+    intervalMinutes: 30,
+    enabled: true,
+    now,
+    warningFactor: 2,
+    criticalFactor: 6,
+    state: {
+      last_success_at: "2026-08-26T05:55:00.000Z",
+      last_projection_at: "2026-08-26T05:40:00.000Z",
+    },
+  });
+
+  assert.equal(health.status, "healthy");
+  assert.equal(health.reason, "ok");
+  assert.equal(health.projectionAgeMinutes, 20);
+});
+
+test("a projection level with the inventory reports no lag at all", () => {
+  const health = evaluateShopSyncHealth({
+    intervalMinutes: 30,
+    enabled: true,
+    now: new Date("2026-08-26T06:00:00.000Z"),
+    state: {
+      last_success_at: "2026-08-26T05:55:00.000Z",
+      last_projection_at: "2026-08-26T05:55:00.000Z",
+    },
+  });
+
+  assert.equal(health.status, "healthy");
+  assert.equal(health.projectionAgeMinutes, null);
+});
+
+test("a worse inventory problem keeps its own reason", () => {
+  const health = evaluateShopSyncHealth({
+    intervalMinutes: 30,
+    enabled: true,
+    now: new Date("2026-08-26T06:00:00.000Z"),
+    state: {
+      last_success_at: "2026-08-26T05:55:00.000Z",
+      last_projection_at: "2026-08-26T04:00:00.000Z",
+      consecutive_failures: 3,
+    },
+  });
+
+  assert.equal(health.status, "critical");
+  assert.equal(health.reason, "repeated_failures");
+  assert.equal(health.projectionAgeMinutes, 120, "the lag is still reported alongside it");
+});

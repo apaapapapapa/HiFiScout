@@ -6,7 +6,6 @@ import {
   getShopRequestDelayMs,
 } from "../config.js";
 import { saveDataQualityRun } from "../db/data-quality-repository.js";
-import { syncObservedProductFeatureFacts } from "../db/product-feature-repository.js";
 import { syncProductMetadata } from "../db/product-metadata-repository.js";
 import { resolveProductCatalogFields } from "../db/model-repository.js";
 import { upsertProducts } from "../db/product-write-repository.js";
@@ -15,6 +14,7 @@ import {
   listShopStates,
   markShopAttempt,
   markShopFailure,
+  markShopProjectionComplete,
   markShopSuccess,
 } from "../db/shop-state-repository.js";
 import {
@@ -507,17 +507,23 @@ export async function crawlShop(
       evidenceOutcome(evidenceMetrics, result);
     }
 
-    const { changedCount, activityCount, touchedCount, deactivatedCount, derivedSourceIds } =
-      await stageRecorder.run(
-        "listing_write",
-        { inputCount: products.length, changedCount: (result) => result.changedCount },
-        () =>
-          upsertProducts(env.DB, adapter.key, products, observedAt, {
-            deactivateMissing,
-            touchIntervalMinutes: settings.productTouchIntervalMinutes,
-            activityPolicy: getShopActivityPolicy(adapter),
-          }),
-      );
+    const {
+      changedCount,
+      activityCount,
+      touchedCount,
+      deactivatedCount,
+      featureFactCount,
+      derivedSourceIds,
+    } = await stageRecorder.run(
+      "listing_write",
+      { inputCount: products.length, changedCount: (result) => result.changedCount },
+      () =>
+        upsertProducts(env.DB, adapter.key, products, observedAt, {
+          deactivateMissing,
+          touchIntervalMinutes: settings.productTouchIntervalMinutes,
+          activityPolicy: getShopActivityPolicy(adapter),
+        }),
+    );
     // The seller is never needed again from here: the listings are written, and this records which
     // of them the derived stages still owe work for. An invocation killed after this point leaves
     // durable pending work instead of losing the whole crawl.
@@ -532,20 +538,21 @@ export async function crawlShop(
       sourceIds: derivedSourceIds,
       recordedAt: observedAt,
     });
+    const derivedSourceIdSet = new Set(derivedSourceIds);
     const derived = await syncDerivedProductState(env, adapter, observedAt, stageRecorder, runId, {
       workSetSize: derivedSourceIds.length,
       budgetMs: DERIVED_WORK_BUDGET_MS,
       startedAtMs: invocationStartedAtMs,
     });
-    const featureFactCount = await stageRecorder.run(
-      "feature_facts",
-      { inputCount: products.length, changedCount: (result) => result },
-      () => syncObservedProductFeatureFacts(env.DB, adapter.key, products, observedAt),
-    );
+    // Metadata follows the same delta as everything else. A listing the seller re-reported
+    // unchanged carries the metadata already stored, and the drift a rule change leaves behind is
+    // the remediation worker's to replay — it compares `metadata_json` directly and is resumable,
+    // where doing it here charged every crawl for a whole-inventory pass to catch a rare case.
+    const changedProducts = products.filter((product) => derivedSourceIdSet.has(product.sourceId));
     const metadataChangedCount = await stageRecorder.run(
       "product_metadata",
-      { inputCount: products.length, changedCount: (result) => result },
-      () => syncProductMetadata(env.DB, adapter.key, products, observedAt),
+      { inputCount: changedProducts.length, changedCount: (result) => result },
+      () => syncProductMetadata(env.DB, adapter.key, changedProducts, observedAt),
     );
     const quality = await stageRecorder.run("data_quality", { inputCount: items.size }, () =>
       safeSaveDataQuality(env, adapter, runId, observedAt, {
@@ -568,6 +575,10 @@ export async function crawlShop(
       observedAt,
     });
     await markShopSuccess(env.DB, adapter.key, observedAt, items.size);
+    // The inventory watermark advances either way: the collection succeeded. The projection
+    // watermark only advances when nothing is still owed, so a crawl that deferred its remaining
+    // chunks or lost a stage reports fresh listings without claiming search has caught up.
+    if (!derived.pending) await markShopProjectionComplete(env.DB, adapter.key, observedAt);
     const diagnosticParts = [];
     if (pageDiagnostic != null) diagnosticParts.push(`diag=${JSON.stringify(pageDiagnostic)}`);
     if (enrichment.detailRequests || enrichment.cacheHits || enrichment.unresolvedCount) {

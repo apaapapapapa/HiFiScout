@@ -37,6 +37,7 @@ export function shopSyncStateRow(
     last_error: null,
     last_item_count: 0,
     queued_at: null,
+    last_projection_at: null,
     ...overrides,
   };
 }

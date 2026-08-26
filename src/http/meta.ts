@@ -77,6 +77,7 @@ function toMetaShopSyncState(row: ShopSyncStateRow): MetaShopSyncState {
     shop_key: row.shop_key,
     last_attempt_at: row.last_attempt_at,
     last_success_at: row.last_success_at,
+    last_projection_at: row.last_projection_at,
     last_error_at: row.last_error_at,
     consecutive_failures: row.consecutive_failures,
     backoff_until: row.backoff_until,

@@ -105,3 +105,56 @@ test("a reactivated listing is derived work even when nothing else about it chan
 
   assert.deepEqual(result.derivedSourceIds, ["b"]);
 });
+
+function factRows(sqlite: ReturnType<typeof migratedSqlite>["sqlite"]): Array<{
+  source_id: string;
+  feature_id: string;
+  verified_at: string;
+}> {
+  return sqlite
+    .prepare(`
+      SELECT p.source_id AS source_id, f.feature_id AS feature_id, f.verified_at AS verified_at
+      FROM product_feature_facts f
+      JOIN products p ON p.id = f.product_id
+      WHERE f.source = 'title'
+      ORDER BY p.source_id, f.feature_id
+    `)
+    .all() as Array<{ source_id: string; feature_id: string; verified_at: string }>;
+}
+
+const PHONO = [
+  {
+    featureId: "phono_input" as const,
+    state: "present" as const,
+    source: "title",
+    confidence: 0.8,
+    verifiedAt: null,
+  },
+];
+
+test("title feature facts are rewritten only for the listings whose title moved", async () => {
+  const { sqlite, db } = emptyDatabase();
+  const products = ["s-1", "s-2"].map((id) => listing(id, { featureFacts: PHONO }));
+
+  const first = await upsertProducts(db, SHOP, products, FIRST);
+  assert.equal(first.featureFactCount, 2);
+  assert.equal(factRows(sqlite).length, 2);
+
+  // The crawl used to repeat this delete-and-insert for the whole inventory on top of the delta
+  // pass, rewriting every listing's facts to the values already stored.
+  const unchanged = await upsertProducts(db, SHOP, products, SECOND);
+  assert.equal(unchanged.featureFactCount, 0);
+  assert.deepEqual(
+    factRows(sqlite).map((row) => row.verified_at),
+    [FIRST, FIRST],
+    "an untouched listing keeps the facts it already had",
+  );
+
+  const moved = await upsertProducts(
+    db,
+    SHOP,
+    [listing("s-1", { title: "DENON PMA-s-1 phono input", featureFacts: PHONO }), products[1]!],
+    "2026-08-25T02:00:00.000Z",
+  );
+  assert.equal(moved.featureFactCount, 1, "only the listing whose title moved is rewritten");
+});

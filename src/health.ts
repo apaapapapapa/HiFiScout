@@ -54,6 +54,33 @@ const SEVERITY: Record<SyncHealthStatus, number> = {
   critical: 3,
 };
 
+function minutesSince(iso: string | null | undefined, now: Date): number {
+  const at = new Date(String(iso));
+  if (!Number.isFinite(at.getTime())) return Number.POSITIVE_INFINITY;
+  return Math.max(0, (now.getTime() - at.getTime()) / 60_000);
+}
+
+/**
+ * How long this shop's derived work has trailed its inventory, or null when it is level.
+ *
+ * A crawl advances the inventory watermark as soon as it has collected a complete listing set, but
+ * advances the projection watermark only once nothing is still owed. Trailing briefly is ordinary —
+ * a crawl that hands its remaining chunks to the continuation sweep does exactly that. A gap that
+ * keeps growing is the signal that matters: the sweep is no longer finishing what crawls start.
+ */
+function projectionLagMinutes(
+  state: Partial<ShopSyncStateRow> | null | undefined,
+  now: Date,
+): number | null {
+  if (!state?.last_success_at) return null;
+  const succeeded = new Date(state.last_success_at);
+  const projected = state.last_projection_at ? new Date(state.last_projection_at) : null;
+  if (!Number.isFinite(succeeded.getTime())) return null;
+  if (projected && Number.isFinite(projected.getTime()) && projected >= succeeded) return null;
+  // Never projected since the watermark existed: the last success is the oldest evidence of it.
+  return minutesSince(state.last_projection_at || state.last_success_at, now);
+}
+
 export function evaluateShopSyncHealth({
   state,
   intervalMinutes,
@@ -63,8 +90,11 @@ export function evaluateShopSyncHealth({
   warningFactor = 2,
   criticalFactor = 6,
 }: EvaluateShopSyncHealthOptions): ShopSyncHealth {
-  if (!enabled) return { status: "disabled", ageMinutes: null, reason: "disabled" };
-  if (!configured) return { status: "critical", ageMinutes: null, reason: "configuration_missing" };
+  const level = { projectionAgeMinutes: null };
+  if (!enabled) return { status: "disabled", ageMinutes: null, reason: "disabled", ...level };
+  if (!configured) {
+    return { status: "critical", ageMinutes: null, reason: "configuration_missing", ...level };
+  }
 
   const failures = Number(state?.consecutive_failures || 0);
   if (!state?.last_success_at) {
@@ -72,29 +102,55 @@ export function evaluateShopSyncHealth({
       status: failures >= 3 ? "critical" : "warning",
       ageMinutes: null,
       reason: failures >= 3 ? "never_succeeded_repeated_failures" : "never_succeeded",
+      ...level,
     };
   }
 
-  const lastSuccess = new Date(state.last_success_at);
-  const ageMinutes = Number.isFinite(lastSuccess.getTime())
-    ? Math.max(0, (now.getTime() - lastSuccess.getTime()) / 60_000)
-    : Number.POSITIVE_INFINITY;
+  const ageMinutes = minutesSince(state.last_success_at, now);
+  const roundedAge = Number.isFinite(ageMinutes) ? Math.round(ageMinutes) : null;
 
-  if (failures >= 3 || ageMinutes > intervalMinutes * criticalFactor) {
-    return {
-      status: "critical",
-      ageMinutes: Number.isFinite(ageMinutes) ? Math.round(ageMinutes) : null,
-      reason: failures >= 3 ? "repeated_failures" : "sync_stale",
-    };
-  }
-  if (failures >= 1 || ageMinutes > intervalMinutes * warningFactor) {
-    return {
-      status: "warning",
-      ageMinutes: Number.isFinite(ageMinutes) ? Math.round(ageMinutes) : null,
-      reason: failures >= 1 ? "recent_failure" : "sync_delayed",
-    };
-  }
-  return { status: "healthy", ageMinutes: Math.round(ageMinutes), reason: "ok" };
+  const lag = projectionLagMinutes(state, now);
+  const projectionAgeMinutes = lag == null || !Number.isFinite(lag) ? null : Math.round(lag);
+  // Graded against the same interval factors as the inventory: a shop whose projections stopped
+  // completing is as stale, in search terms, as one that stopped crawling.
+  const projection: ShopSyncHealth | null =
+    lag == null
+      ? null
+      : lag > intervalMinutes * criticalFactor
+        ? {
+            status: "critical",
+            ageMinutes: roundedAge,
+            reason: "projection_stale",
+            projectionAgeMinutes,
+          }
+        : lag > intervalMinutes * warningFactor
+          ? {
+              status: "warning",
+              ageMinutes: roundedAge,
+              reason: "projection_delayed",
+              projectionAgeMinutes,
+            }
+          : null;
+
+  const sync: ShopSyncHealth =
+    failures >= 3 || ageMinutes > intervalMinutes * criticalFactor
+      ? {
+          status: "critical",
+          ageMinutes: roundedAge,
+          reason: failures >= 3 ? "repeated_failures" : "sync_stale",
+          projectionAgeMinutes,
+        }
+      : failures >= 1 || ageMinutes > intervalMinutes * warningFactor
+        ? {
+            status: "warning",
+            ageMinutes: roundedAge,
+            reason: failures >= 1 ? "recent_failure" : "sync_delayed",
+            projectionAgeMinutes,
+          }
+        : { status: "healthy", ageMinutes: roundedAge, reason: "ok", projectionAgeMinutes };
+
+  // Whichever is worse decides. Fresh listings nobody can search for are not a healthy shop.
+  return projection && SEVERITY[projection.status] > SEVERITY[sync.status] ? projection : sync;
 }
 
 /**
@@ -140,6 +196,7 @@ export function buildSyncHealth(
       configured,
       intervalMinutes,
       lastSuccessAt: state?.last_success_at || null,
+      lastProjectionAt: state?.last_projection_at || null,
       lastAttemptAt: state?.last_attempt_at || null,
       lastItemCount: Number.isFinite(lastItemCount) ? lastItemCount : null,
       consecutiveFailures: Number(state?.consecutive_failures || 0),

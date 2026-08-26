@@ -229,6 +229,8 @@ export interface ShopSyncStateRow {
   last_error: string | null;
   last_item_count: number;
   queued_at: string | null;
+  /** Generation whose derived work is fully complete; trails `last_success_at` while work is owed. */
+  last_projection_at: string | null;
 }
 
 export type CrawlRunStatus = "running" | "success" | "failed" | "skipped";
@@ -1008,6 +1010,8 @@ export interface UpsertProductsResult {
   activityCount: number;
   touchedCount: number;
   deactivatedCount: number;
+  /** Title-derived feature facts rewritten, which only the changed listings needed. */
+  featureFactCount: number;
   /**
    * Listings whose canonical, availability or identity inputs actually moved.
    *
