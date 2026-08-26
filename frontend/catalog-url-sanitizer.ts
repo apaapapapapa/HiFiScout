@@ -18,7 +18,7 @@ import {
   isProductPermalinkRoute,
   productKeyFromPermalinkPath,
   productPermalinkPath,
-} from "../src/api/product-permalink.js";
+} from "./product-permalink.js";
 import { parseFeatureParams } from "./filters.js";
 
 /** Mirrors the server's per-parameter character limits. */
