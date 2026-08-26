@@ -22,6 +22,7 @@ function filters(overrides: Partial<ProductFilters> = {}): ProductFilters {
     minPrice: "",
     maxPrice: "",
     sort: "newest",
+    features: [],
     inStock: false,
     favoritesOnly: true,
     recentOnly: false,

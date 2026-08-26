@@ -10,6 +10,8 @@
  * splits it into product-level and offer-level predicates, and `limit`/`offset` count products.
  */
 
+import { FEATURE_DEFINITIONS } from "../src/api/contracts.js";
+import type { FeatureId } from "../src/api/contracts.js";
 import { yen } from "./format.js";
 import { PAGE_SIZE, pageOffset } from "./pagination.js";
 
@@ -35,7 +37,45 @@ export type ToggleId = (typeof TOGGLE_IDS)[number];
 
 export type ProductView = "cards" | "list";
 
-export type ProductFilters = Record<UrlValueId, string> & Record<ToggleId, boolean>;
+/** Keyed by plain string so untrusted input can be tested for membership without a cast. */
+const FEATURE_NAMES = new Map<string, string>(
+  FEATURE_DEFINITIONS.map((feature) => [feature.id, feature.name]),
+);
+
+/** Chip id for one selected feature, so a single chip can clear a single feature. */
+export function featureFilterId(feature: FeatureId): string {
+  return `feature:${feature}`;
+}
+
+/** The feature a chip id names, or null when the id belongs to another control. */
+export function featureFromFilterId(id: string): FeatureId | null {
+  const feature = id.startsWith("feature:") ? id.slice("feature:".length) : "";
+  return FEATURE_NAMES.has(feature) ? (feature as FeatureId) : null;
+}
+
+/**
+ * Features are a third axis rather than a member of either map above.
+ *
+ * `?feature=` is repeatable, and neither the string map nor the boolean map can hold more than one
+ * value per key. Sorting on the way out is what lets two selections made in a different order
+ * collapse onto the same edge-cache key the server canonicalises to.
+ */
+export type ProductFilters = Record<UrlValueId, string> &
+  Record<ToggleId, boolean> & { features: readonly FeatureId[] };
+
+function featureParams(features: readonly FeatureId[]): FeatureId[] {
+  return [...new Set(features)].sort();
+}
+
+/** Reads the repeated/comma-separated `feature` form, dropping anything outside the vocabulary. */
+export function parseFeatureParams(params: URLSearchParams): FeatureId[] {
+  const requested = params
+    .getAll("feature")
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim())
+    .filter((value): value is FeatureId => FEATURE_NAMES.has(value));
+  return featureParams(requested);
+}
 
 export interface FilterEntry {
   id: string;
@@ -46,6 +86,7 @@ export interface FilterEntry {
 
 export interface UrlFilterState {
   values: Record<UrlValueId, string>;
+  features: FeatureId[];
   inStock: boolean;
   recentOnly: boolean;
   priceDropped: boolean;
@@ -74,6 +115,7 @@ export function productSearchParams(
     const value = filters[id].trim();
     if (value) params.set(id, value);
   }
+  for (const feature of featureParams(filters.features)) params.append("feature", feature);
   if (filters.inStock) params.set("inStock", "true");
   if (filters.recentOnly) params.set("newOnly", "true");
   if (filters.priceDropped) params.set("priceDropped", "true");
@@ -99,6 +141,7 @@ export function filterUrlParams(filters: ProductFilters, view: ProductView): URL
     if (id === "sort" && value === DEFAULT_SORT) continue;
     params.set(id, value);
   }
+  for (const feature of featureParams(filters.features)) params.append("feature", feature);
   if (!filters.inStock) params.set("inStock", "false");
   if (filters.recentOnly) params.set("newOnly", "true");
   if (filters.priceDropped) params.set("priceDropped", "true");
@@ -120,6 +163,7 @@ export function parseUrlFilters(search: string): UrlFilterState {
       maxPrice: params.get("maxPrice") || "",
       sort: params.get("sort") || DEFAULT_SORT,
     },
+    features: parseFeatureParams(params),
     inStock: params.get("inStock") !== "false",
     recentOnly: params.get("newOnly") === "true",
     priceDropped: params.get("priceDropped") === "true",
@@ -152,6 +196,13 @@ export function activeFilterEntries(filters: ProductFilters, labels: FilterLabel
   }
   if (maxPrice != null) {
     entries.push({ id: "maxPrice", label: `${yen.format(maxPrice)}以下`, detail: true });
+  }
+  for (const feature of featureParams(filters.features)) {
+    entries.push({
+      id: featureFilterId(feature),
+      label: FEATURE_NAMES.get(feature) || feature,
+      detail: true,
+    });
   }
   if (filters.inStock) entries.push({ id: "inStock", label: "在庫あり", detail: true });
   if (filters.recentOnly) {
