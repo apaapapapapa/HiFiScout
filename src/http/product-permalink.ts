@@ -50,7 +50,7 @@ function productName(detail: ProductSearchDetailResponse): string {
 function stockLabel(offer: ProductOffer): string {
   if (offer.stock_status === "in_stock") return "在庫あり";
   if (offer.stock_status === "sold_out") return "売り切れ";
-  return "在庫状況不明";
+  return "在庫状態未確認";
 }
 
 function offerHtml(offer: ProductOffer): string {
