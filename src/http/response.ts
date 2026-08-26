@@ -1,4 +1,4 @@
-/** JSON response construction and the edge-cache wrapper the read endpoints share. */
+/** Response construction and edge-cache wrappers shared by read endpoints. */
 
 /** `no-store` by default: an endpoint opts into caching by passing its own `cache-control`. */
 export function json(data: unknown, init: ResponseInit = {}): Response {
@@ -11,6 +11,21 @@ export function json(data: unknown, init: ResponseInit = {}): Response {
     ...init,
     headers,
   });
+}
+
+async function cachedResponse(
+  request: Request,
+  ctx: ExecutionContext,
+  ttlSeconds: number,
+  load: () => Response | Promise<Response>,
+): Promise<Response> {
+  if (typeof caches === "undefined") return load();
+  const cache = (caches as CacheStorage & { readonly default: Cache }).default;
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  const response = await load();
+  ctx.waitUntil(cache.put(request, response.clone()));
+  return response;
 }
 
 /**
@@ -26,13 +41,29 @@ export async function cachedJson(
   load: () => unknown | Promise<unknown>,
 ): Promise<Response> {
   const cacheControl = `public, max-age=${ttlSeconds}`;
-  if (typeof caches === "undefined") {
-    return json(await load(), { headers: { "cache-control": cacheControl } });
-  }
-  const cache = (caches as CacheStorage & { readonly default: Cache }).default;
-  const cached = await cache.match(request);
-  if (cached) return cached;
-  const response = json(await load(), { headers: { "cache-control": cacheControl } });
-  ctx.waitUntil(cache.put(request, response.clone()));
-  return response;
+  return cachedResponse(request, ctx, ttlSeconds, async () =>
+    json(await load(), { headers: { "cache-control": cacheControl } }),
+  );
+}
+
+/** Atom/XML sibling of {@link cachedJson}; keeps XML out of the JSON serializer. */
+export async function cachedAtom(
+  request: Request,
+  ctx: ExecutionContext,
+  ttlSeconds: number,
+  load: () => string | Promise<string>,
+): Promise<Response> {
+  const cacheControl = `public, max-age=${ttlSeconds}`;
+  return cachedResponse(
+    request,
+    ctx,
+    ttlSeconds,
+    async () =>
+      new Response(await load(), {
+        headers: {
+          "content-type": "application/atom+xml; charset=utf-8",
+          "cache-control": cacheControl,
+        },
+      }),
+  );
 }
