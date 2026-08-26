@@ -20,6 +20,24 @@ export const RESUMABLE_CRAWL_STAGES = [
 
 export type ResumableCrawlStage = (typeof RESUMABLE_CRAWL_STAGES)[number];
 
+/**
+ * Whether a stage walks this run's own work set or the shop's leftover memberships.
+ *
+ * The single definition: the chunk a stage claims, the input count it reports, and which runs still
+ * hold work worth inheriting are all the same question.
+ */
+export const CRAWL_STAGE_SCOPE: Readonly<Record<ResumableCrawlStage, "run" | "shop">> =
+  Object.freeze({
+    search_projection: "run",
+    identity_resolution: "run",
+    search_entity: "run",
+    membership_cleanup: "shop",
+  });
+
+const RUN_SCOPED_CRAWL_STAGES = RESUMABLE_CRAWL_STAGES.filter(
+  (stage) => CRAWL_STAGE_SCOPE[stage] === "run",
+);
+
 /** D1 caps bound variables per statement, so every multi-row write is chunked below that limit. */
 const WRITE_CHUNK_SIZE = 50;
 
@@ -90,7 +108,22 @@ export async function recordCrawlRunWorkSet(
   }
 
   await inheritOutstandingWorkItems(db, crawlRunId);
+  await ensureCrawlRunStages(db, crawlRunId, recordedAt);
+}
 
+/**
+ * Adds any stage row this run is missing, leaving the ones it has alone.
+ *
+ * The stage list grows as new derived work is added, but a run's rows are written once, when it
+ * records its work set. A run interrupted across a deployment therefore knows only the stages that
+ * existed when it started: without this it would finish those, find nothing pending, free its work
+ * set and count as complete, silently skipping a stage introduced while it was waiting.
+ */
+export async function ensureCrawlRunStages(
+  db: QueryableDatabase,
+  crawlRunId: number,
+  at: string,
+): Promise<void> {
   await db.batch(
     RESUMABLE_CRAWL_STAGES.map((stage) =>
       db
@@ -99,7 +132,7 @@ export async function recordCrawlRunWorkSet(
           VALUES (?, ?, ?, 'pending', ?)
           ON CONFLICT(crawl_run_id, stage) DO NOTHING
         `)
-        .bind(crawlRunId, stage, stageOrdinal(stage), recordedAt),
+        .bind(crawlRunId, stage, stageOrdinal(stage), at),
     ),
   );
 }
@@ -112,11 +145,17 @@ export async function recordCrawlRunWorkSet(
  * moment the newer run supersedes the older one, that listing's projection would be dropped with it
  * and stay stale until an unrelated crawl happened to touch it again. Inheriting first means
  * supersession only ever discards work that has already been taken over.
+ *
+ * Only runs with a run-scoped stage still pending are worth adopting. A run held open solely by the
+ * shop-scoped cleanup has already projected every listing it named, but still holds its work set,
+ * so inheriting from it would copy a fully consumed delta into the next crawl and make it redo the
+ * bulk work from `search_projection` — repeatedly, for as long as that cleanup keeps failing.
  */
 async function inheritOutstandingWorkItems(
   db: QueryableDatabase,
   crawlRunId: number,
 ): Promise<void> {
+  const stagePlaceholders = RUN_SCOPED_CRAWL_STAGES.map(() => "?").join(",");
   await db
     .prepare(`
       INSERT OR IGNORE INTO crawl_run_work_items (crawl_run_id, source_id)
@@ -130,10 +169,12 @@ async function inheritOutstandingWorkItems(
         )
         AND EXISTS (
           SELECT 1 FROM crawl_run_stages s
-          WHERE s.crawl_run_id = w.crawl_run_id AND s.status = 'pending'
+          WHERE s.crawl_run_id = w.crawl_run_id
+            AND s.status = 'pending'
+            AND s.stage IN (${stagePlaceholders})
         )
     `)
-    .bind(crawlRunId, crawlRunId, crawlRunId)
+    .bind(crawlRunId, crawlRunId, crawlRunId, ...RUN_SCOPED_CRAWL_STAGES)
     .run();
 }
 

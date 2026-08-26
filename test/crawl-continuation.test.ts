@@ -454,3 +454,57 @@ test("a newer run adopts what the interrupted run never projected", async () => 
   );
   assert.equal(countRows(sqlite, "crawl_run_work_items"), 0);
 });
+
+function workItems(sqlite: Sqlite, crawlRunId: number): string[] {
+  return (
+    sqlite
+      .prepare(
+        "SELECT source_id FROM crawl_run_work_items WHERE crawl_run_id = ? ORDER BY source_id",
+      )
+      .all(crawlRunId) as Array<{ source_id: string }>
+  ).map((row) => row.source_id);
+}
+
+test("a run recorded before a stage existed still runs it", async () => {
+  const database = emptyDatabase();
+  const { sqlite, db } = database;
+  const first = await arrangeInterruptedRun(database, ["q-1", "q-2"]);
+  await resumeCrawlRun(db, first, { now: NOW });
+  deactivate(sqlite, "q-1");
+
+  const run = await startFollowUpRun(database, ["q-2"]);
+  // A run written by an earlier deployment carries only the stages that existed then. Without a
+  // backfill it would finish those, find nothing pending and count as complete, leaving the offer
+  // of a listing it deactivated indexed until some later crawl happened to touch the shop.
+  sqlite
+    .prepare("DELETE FROM crawl_run_stages WHERE crawl_run_id = ? AND stage = 'membership_cleanup'")
+    .run(run.crawlRunId);
+  assert.equal(stageRows(sqlite, run.crawlRunId).length, 3);
+
+  const result = await resumeCrawlRun(db, run, { now: NOW });
+
+  assert.ok(result.completedStages.includes("membership_cleanup"));
+  assert.deepEqual(
+    stageRows(sqlite, run.crawlRunId).map((row) => row.status),
+    ["done", "done", "done", "done"],
+  );
+  assert.equal(offerCount(sqlite, "q-1"), 0, "the backfilled stage retired the departed offer");
+});
+
+test("a run held open only by cleanup does not hand its consumed work to the next crawl", async () => {
+  const database = emptyDatabase();
+  const { sqlite, db } = database;
+  const stalled = await arrangeInterruptedRun(database, ["r-1", "r-2", "r-3"]);
+  for (const stage of ["search_projection", "identity_resolution", "search_entity"] as const) {
+    await completeCrawlRunStage(db, stalled.crawlRunId, stage, GENERATION);
+  }
+  // Cleanup is still owed, so the run keeps its work set even though every listing in it is done.
+  assert.equal(workItems(sqlite, stalled.crawlRunId).length, 3);
+
+  insertListing(sqlite, "r-9", "PMA-9000");
+  const next = await startFollowUpRun(database, ["r-9"]);
+
+  // Adopting a fully consumed delta would restart the next crawl at search_projection over all of
+  // it — the bulk work this design exists to avoid, repeated for as long as cleanup keeps failing.
+  assert.deepEqual(workItems(sqlite, next.crawlRunId), ["r-9"]);
+});

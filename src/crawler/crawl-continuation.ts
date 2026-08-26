@@ -1,10 +1,12 @@
 import {
+  CRAWL_STAGE_SCOPE,
   RESUMABLE_CRAWL_STAGES,
   advanceCrawlRunStage,
   claimCrawlRunWorkChunk,
   claimShopMembershipCleanupChunk,
   clearCrawlRunWorkItems,
   completeCrawlRunStage,
+  ensureCrawlRunStages,
   hasNewerCrawlRun,
   listResumableCrawlRuns,
   nextPendingCrawlRunStage,
@@ -42,14 +44,6 @@ const DEFAULT_RUN_LIMIT = 3;
  */
 export const DERIVED_WORK_BUDGET_MS = 5 * 60_000;
 
-/** Whether a stage walks this run's changed listings or the shop's leftover memberships. */
-const STAGE_SCOPE: Readonly<Record<ResumableCrawlStage, "run" | "shop">> = Object.freeze({
-  search_projection: "run",
-  identity_resolution: "run",
-  search_entity: "run",
-  membership_cleanup: "shop",
-});
-
 /** Failure event names already documented for the stages that had their own. */
 const STAGE_FAILURE_EVENTS: Readonly<Record<ResumableCrawlStage, string>> = Object.freeze({
   search_projection: "product_search_projection_sync_failure",
@@ -59,7 +53,7 @@ const STAGE_FAILURE_EVENTS: Readonly<Record<ResumableCrawlStage, string>> = Obje
 });
 
 export function crawlStageScope(stage: ResumableCrawlStage): "run" | "shop" {
-  return STAGE_SCOPE[stage];
+  return CRAWL_STAGE_SCOPE[stage];
 }
 
 export function crawlStageFailureEvent(stage: ResumableCrawlStage): string {
@@ -153,7 +147,7 @@ async function claimStageChunk(
   checkpoint: CrawlRunStageCheckpoint,
   limit: number,
 ): Promise<string[]> {
-  return STAGE_SCOPE[checkpoint.stage] === "shop"
+  return CRAWL_STAGE_SCOPE[checkpoint.stage] === "shop"
     ? claimShopMembershipCleanupChunk(db, run.shopKey, checkpoint.afterSourceId, limit)
     : claimCrawlRunWorkChunk(db, run.crawlRunId, checkpoint.afterSourceId, limit);
 }
@@ -310,6 +304,10 @@ export async function resumeCrawlRun(
     );
     return result;
   }
+
+  // A run recorded by an earlier deployment carries only the stages that existed then, so the
+  // stages added since are created here before anything decides this run owes nothing.
+  await ensureCrawlRunStages(db, run.crawlRunId, now.toISOString());
 
   const maxChunks = options.maxChunks ?? DEFAULT_MAX_CHUNKS;
   for (;;) {
