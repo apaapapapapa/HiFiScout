@@ -22,6 +22,8 @@ jobs:
     outputs:
       run-heavy: ${{ steps.filter.outputs.run-heavy }}
       run-dependency-security: ${{ steps.filter.outputs.run-dependency-security }}
+      run-listing-admin-integration: ${{ steps.filter.outputs.run-listing-admin-integration }}
+      run-search-integration: ${{ steps.filter.outputs.run-search-integration }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -30,6 +32,7 @@ jobs:
         id: filter
         shell: bash
         env:
+          EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.sha }}
         run: |
@@ -37,10 +40,21 @@ jobs:
 
           run_heavy=false
           run_dependency_security=false
+          run_listing_admin_integration=false
+          run_search_integration=false
+
+          # Main remains the exhaustive safety net. Pull requests select expensive D1 checks by
+          # affected subsystem so unrelated code changes do not pay the local-D1 startup cost.
+          if [[ "${EVENT_NAME}" == "push" ]]; then
+            run_listing_admin_integration=true
+            run_search_integration=true
+          fi
 
           if [[ -z "${BASE_SHA}" || "${BASE_SHA}" =~ ^0+$ ]] || ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
             run_heavy=true
             run_dependency_security=true
+            run_listing_admin_integration=true
+            run_search_integration=true
           else
             mapfile -t changed_files < <(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}")
 
@@ -58,11 +72,26 @@ jobs:
                   run_dependency_security=true
                   ;;
               esac
+
+              case "${file}" in
+                package.json|package-lock.json|wrangler.jsonc|migrations/*|.github/workflows/ci.yml|.github/actions/setup-node-deps/action.yml|scripts/lib/local-d1.ts)
+                  run_listing_admin_integration=true
+                  run_search_integration=true
+                  ;;
+                scripts/verify-listing-admin-overrides.ts|src/db/listing-admin-repository.ts|src/db/listing-projection-refresh.ts|src/db/product-write-repository.ts|src/http/listing-admin.ts)
+                  run_listing_admin_integration=true
+                  ;;
+                scripts/verify-search-integration.ts|scripts/repair-product-search-gaps.ts|src/db/product-search-*|src/db/product-suggest-repository.ts|src/search/*|src/api/product-search-key.ts|src/api/suggest-query.ts)
+                  run_search_integration=true
+                  ;;
+              esac
             done
           fi
 
           echo "run-heavy=${run_heavy}" >> "${GITHUB_OUTPUT}"
           echo "run-dependency-security=${run_dependency_security}" >> "${GITHUB_OUTPUT}"
+          echo "run-listing-admin-integration=${run_listing_admin_integration}" >> "${GITHUB_OUTPUT}"
+          echo "run-search-integration=${run_search_integration}" >> "${GITHUB_OUTPUT}"
 
   static-checks:
     needs: changes
@@ -130,7 +159,9 @@ jobs:
 
   integration:
     needs: changes
-    if: needs.changes.outputs.run-heavy == 'true'
+    if: >-
+      needs.changes.outputs.run-listing-admin-integration == 'true' ||
+      needs.changes.outputs.run-search-integration == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -138,8 +169,10 @@ jobs:
       - uses: ./.github/actions/setup-node-deps
       - run: vp run db:migrate:local
       - name: Verify listing admin overrides survive crawler writes
+        if: needs.changes.outputs.run-listing-admin-integration == 'true'
         run: vp exec tsx scripts/verify-listing-admin-overrides.ts
       - name: Verify D1 FTS search migration
+        if: needs.changes.outputs.run-search-integration == 'true'
         run: vp exec tsx scripts/verify-search-integration.ts
 
   build:
