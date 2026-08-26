@@ -42,7 +42,7 @@ import {
   ProductError,
   SyncShopRows,
 } from "./public-components.js";
-import { useSearchSuggestions } from "./search-suggestions.js";
+import { SearchSuggestionInput } from "./search-suggestion-input.js";
 import { sortShopsByJapaneseReading } from "./shop-options.js";
 import { FEATURE_DEFINITIONS } from "../src/api/contracts.js";
 import type { FeatureId, MetaResponse, MetaShop } from "../src/api/contracts.js";
@@ -385,7 +385,6 @@ function App() {
   const offersDialogRef = useRef<HTMLDialogElement>(null);
   const historyDialogRef = useRef<HTMLDialogElement>(null);
 
-  const suggestions = useSearchSuggestions(api, filters.q);
   const shopName = useCallback((key: string) => shops[key]?.name || key || "ショップ不明", [shops]);
   const favoriteCount = favorites.products.size + favorites.legacyIds.size;
 
@@ -623,7 +622,7 @@ function App() {
         const product =
           products.find((candidate) => candidate.key === key) ??
           favoritesRef.current.products.get(key);
-        if (product) next.products.set(key, favoriteSnapshot(product));
+        if (product) next.products.set(product.key, favoriteSnapshot(product));
       }
       persistFavorites(next);
     },
@@ -800,20 +799,11 @@ function App() {
           <label className="search-primary" htmlFor="q">
             <span>検索</span>
             <div className="search-row">
-              <input
-                id="q"
-                type="search"
-                list="search-suggestions"
-                placeholder="例: TAD ME1 / LUXMAN / DAC"
-                autoComplete="off"
+              <SearchSuggestionInput
+                api={api}
                 value={filters.q}
-                onChange={(event) => changeValue("q", event.currentTarget.value, true)}
+                onValueChange={(value, debounced) => changeValue("q", value, debounced)}
               />
-              <datalist id="search-suggestions">
-                {suggestions.map((suggestion) => (
-                  <option key={suggestion} value={suggestion} />
-                ))}
-              </datalist>
               <button
                 id="filter-toggle"
                 className="filter-toggle"
