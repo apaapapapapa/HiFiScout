@@ -42,6 +42,7 @@ import {
   ProductError,
   SyncShopRows,
 } from "./public-components.js";
+import { useSearchSuggestions } from "./search-suggestions.js";
 import { sortShopsByJapaneseReading } from "./shop-options.js";
 import { FEATURE_DEFINITIONS } from "../src/api/contracts.js";
 import type { FeatureId, MetaResponse, MetaShop } from "../src/api/contracts.js";
@@ -384,6 +385,7 @@ function App() {
   const offersDialogRef = useRef<HTMLDialogElement>(null);
   const historyDialogRef = useRef<HTMLDialogElement>(null);
 
+  const suggestions = useSearchSuggestions(api, filters.q);
   const shopName = useCallback((key: string) => shops[key]?.name || key || "ショップ不明", [shops]);
   const favoriteCount = favorites.products.size + favorites.legacyIds.size;
 
@@ -801,11 +803,17 @@ function App() {
               <input
                 id="q"
                 type="search"
+                list="search-suggestions"
                 placeholder="例: TAD ME1 / LUXMAN / DAC"
                 autoComplete="off"
                 value={filters.q}
                 onChange={(event) => changeValue("q", event.currentTarget.value, true)}
               />
+              <datalist id="search-suggestions">
+                {suggestions.map((suggestion) => (
+                  <option key={suggestion} value={suggestion} />
+                ))}
+              </datalist>
               <button
                 id="filter-toggle"
                 className="filter-toggle"
