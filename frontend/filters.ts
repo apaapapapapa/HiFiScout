@@ -127,6 +127,19 @@ export function productSearchParams(
   return params;
 }
 
+/** The account-free subscription address for the current server-side filter state. */
+export function savedSearchFeedPath(filters: ProductFilters): string {
+  const params = productSearchParams(filters);
+  // Feed order and page size are server-owned; neither is part of the saved-search filter contract.
+  params.delete("sort");
+  params.delete("limit");
+  params.delete("cursor");
+  params.delete("offset");
+  params.delete("includeTotal");
+  const search = params.toString();
+  return `/api/feed${search ? `?${search}` : ""}`;
+}
+
 /**
  * The address-bar query.
  *
