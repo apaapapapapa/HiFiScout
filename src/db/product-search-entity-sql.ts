@@ -310,6 +310,51 @@ export function refreshEntitySearchTermsSql(entityScope = ""): string {
 }
 
 /**
+ * Projects an entity's category membership from the listings currently offering it.
+ *
+ * Upsert rather than delete-and-reinsert: these statements are not run inside one transaction, and
+ * emptying an entity's categories first would make it briefly unfilterable — invisible in category
+ * search for the width of the gap. {@link deleteStaleEntityCategoriesSql} removes what is no
+ * longer justified afterwards, so membership only ever grows before it shrinks.
+ *
+ * `MAX(pc.is_direct)` because directness is a property of the strongest claim: if any active offer
+ * has a component product directly in the category, the entity is directly in it.
+ */
+export function upsertEntityCategoriesSql(offerScope = ""): string {
+  return `
+    INSERT INTO product_search_entity_categories(entity_id, category_id, is_direct)
+    SELECT m.entity_id, pc.category_id, MAX(pc.is_direct)
+    FROM product_search_entity_offers m
+    JOIN products p ON p.id = m.listing_product_id
+    JOIN product_categories pc ON pc.product_id = m.listing_product_id
+    WHERE p.is_active = 1${offerScope}
+    GROUP BY m.entity_id, pc.category_id
+    ON CONFLICT(entity_id, category_id) DO UPDATE SET is_direct = excluded.is_direct
+  `;
+}
+
+/**
+ * Drops membership no active offer justifies any more.
+ *
+ * The half that retires a category when the listing that carried it sold out, was re-classified,
+ * or moved to another entity.
+ */
+export function deleteStaleEntityCategoriesSql(entityScope = ""): string {
+  return `
+    DELETE FROM product_search_entity_categories
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM product_search_entity_offers m
+      JOIN products p ON p.id = m.listing_product_id
+      JOIN product_categories pc ON pc.product_id = m.listing_product_id
+      WHERE m.entity_id = product_search_entity_categories.entity_id
+        AND pc.category_id = product_search_entity_categories.category_id
+        AND p.is_active = 1
+    )${entityScope}
+  `;
+}
+
+/**
  * Removes entities that no longer have an active offer.
  *
  * This is what retires a fallback entity once its listing becomes `matched`, and what retires a

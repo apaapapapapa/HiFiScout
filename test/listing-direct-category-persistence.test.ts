@@ -2,7 +2,6 @@ import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { categoryClosureIds } from "../src/catalog/categories.js";
 import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
 import type { CatalogNormalizationInput } from "../src/catalog/types.js";
 import { runDataQualityRemediationSweep } from "../src/db/data-quality-remediation-service.js";
@@ -74,17 +73,7 @@ test("a set listing records both component categories in its direct set", async 
   assert.deepEqual(storedDirectIds(sqlite, "set-1"), ["dac", "transport"]);
 });
 
-/**
- * The invariant that decides when the set may reach `product_categories`.
- *
- * That table is what `src/http/meta.ts` counts category facets from, while the category filter
- * still selects on `product_search_entities.primary_category_id`. So while both are true, a
- * membership row the primary does not imply is a listing that adds itself to a facet and then
- * disappears when a user clicks it — the opposite of requirement 8 of #376. Widening the write and
- * teaching search to read it are therefore one change, and this test fails the moment one of them
- * lands without the other.
- */
-test("stored membership stays exactly what a primary-category filter would return", async () => {
+test("a set listing is a member of both component categories and the parent they share", async () => {
   const { sqlite, db } = migratedSqlite();
   await upsertProducts(
     db,
@@ -100,22 +89,32 @@ test("stored membership stays exactly what a primary-category filter would retur
     OBSERVED_AT,
   );
 
-  const primary = (
-    sqlite.prepare("SELECT primary_category_id FROM products WHERE source_id = ?").get("set-2") as
-      | { primary_category_id: string }
-      | undefined
-  )?.primary_category_id;
-  assert.ok(primary);
-  assert.deepEqual(
-    membership(sqlite, "set-2")
-      .map((row) => row.category_id)
-      .sort(),
-    [...categoryClosureIds(primary)].sort(),
+  assert.deepEqual(membership(sqlite, "set-2"), [
+    { category_id: "dac", is_direct: 1 },
+    { category_id: "digital", is_direct: 0 },
+    { category_id: "transport", is_direct: 1 },
+  ]);
+});
+
+test("the parent two components share is one membership row, not one per component", async () => {
+  const { sqlite, db } = migratedSqlite();
+  await upsertProducts(
+    db,
+    "hifido",
+    [
+      listing({
+        sourceId: "set-3",
+        manufacturer: "ESOTERIC",
+        model: "K-01XD SACDプレーヤー + N-05XD ネットワークプレーヤー",
+        title: "ESOTERIC K-01XD SACDプレーヤー + N-05XD ネットワークプレーヤー",
+      }),
+    ],
+    OBSERVED_AT,
   );
-  assert.deepEqual(
-    membership(sqlite, "set-2").filter((row) => row.is_direct === 1),
-    [{ category_id: primary, is_direct: 1 }],
-  );
+
+  const rows = membership(sqlite, "set-3");
+  assert.equal(rows.filter((row) => row.category_id === "digital").length, 1);
+  assert.equal(rows.filter((row) => row.is_direct === 1).length, 2);
 });
 
 test("a single-product listing keeps exactly the membership it had before", async () => {

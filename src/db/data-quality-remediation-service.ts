@@ -239,7 +239,7 @@ async function rebuildListingCategories(
   primaryCategoryId: string,
   directCategoryIds: readonly CategoryId[],
 ): Promise<void> {
-  const direct = new Set<string>([primaryCategoryId]);
+  const direct = new Set<string>(directCategoryIds);
   const statements = [
     db.prepare("DELETE FROM product_categories WHERE product_id = ?").bind(listingProductId),
     ...listingMembershipCategoryIds(primaryCategoryId, directCategoryIds).map((categoryId) =>

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import type { DatabaseSync } from "node:sqlite";
 import { test } from "vite-plus/test";
 
+import { listingMembershipCategoryIds } from "../src/catalog/listing-components.js";
 import { refreshListingProjections } from "../src/db/listing-projection-refresh.js";
 import { productSearchEntityConsistency } from "../src/db/product-search-entity-repository.js";
 import { searchProducts } from "../src/db/product-search-repository.js";
@@ -96,7 +97,18 @@ function insertListing(sqlite: DatabaseSync, listing: Listing): number {
       listing.model,
       listing.model,
     );
-  return Number(result.lastInsertRowid);
+  const id = Number(result.lastInsertRowid);
+  // The listing write path materializes membership for every listing it stores, and the category
+  // filter reads it, so a fixture that skipped it would be a listing production cannot produce.
+  // Derived rather than spelled out, so a taxonomy change cannot leave this fixture behind.
+  for (const categoryId of listingMembershipCategoryIds("dac", ["dac"])) {
+    sqlite
+      .prepare(
+        "INSERT OR IGNORE INTO product_categories(product_id, category_id, is_direct) VALUES (?, ?, ?)",
+      )
+      .run(id, categoryId, categoryId === "dac" ? 1 : 0);
+  }
+  return id;
 }
 
 /**

@@ -253,11 +253,6 @@ export function listingDirectCategoryIds(
  * The union is taken once across the whole set, so a parent two components share is one membership
  * and not two — a transport plus a DAC is a single `digital` listing, which is what stops the
  * shared parent's facet from counting the same card twice.
- *
- * Not yet called with more than one direct category. Widening the stored membership before the
- * category *filter* reads it would make a set contribute to a facet it then disappears from when
- * that facet is selected — the count and the results have to start disagreeing never, so both move
- * in the slice that teaches search to read membership. See {@link listingMembershipCategoryIds}.
  */
 export function listingCategoryClosureIds(directIds: readonly string[]): CategoryId[] {
   const closure = new Set<CategoryId>();
@@ -341,21 +336,20 @@ export function listingCategorySet(
 }
 
 /**
- * The categories a listing's `product_categories` rows should hold right now.
+ * The categories a listing's `product_categories` rows should hold.
  *
- * Deliberately the closure of the representative category alone, which is exactly what this table
- * has held since 0013. `direct_category_ids` already records the real set, so the storage and the
- * semantics are in place; what is not in place yet is a reader. `src/db/product-search-repository.ts`
- * still filters `product_search_entities.primary_category_id`, and `src/http/meta.ts` counts facets
- * from this table — so widening this alone would make a set listing add itself to the DAC facet and
- * then vanish when a user clicked it. Requirement 8 of #376 asks for the opposite: the count and
- * the filtered results must agree.
+ * The union closure of every direct category, so a listing that sells a transport and a DAC is a
+ * member of both and of the `digital` they share — once, not once per component.
  *
- * The one edit that lands the set is here, together with the search-side change that reads it.
+ * This widened only when search gained a reader for it. While the category filter still selected
+ * on one representative category, a membership row the primary did not imply was a listing that
+ * added itself to a facet and then vanished when a user clicked it; the write and the read had to
+ * move together, and did.
  */
 export function listingMembershipCategoryIds(
   primaryCategoryId: string,
-  _directCategoryIds: readonly string[],
+  directCategoryIds: readonly string[],
 ): CategoryId[] {
-  return listingCategoryClosureIds([primaryCategoryId]);
+  const closure = listingCategoryClosureIds(directCategoryIds);
+  return closure.length ? closure : listingCategoryClosureIds([primaryCategoryId]);
 }

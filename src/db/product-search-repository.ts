@@ -201,14 +201,18 @@ function addProductFilters(query: ProductQuery, where: string[], binds: unknown[
     binds.push(JSON.stringify(manufacturerIds), JSON.stringify(manufacturerPresentations));
   }
   if (query.category) {
+    // Membership, not the one representative category. A listing that sells a transport and a DAC
+    // is in both, so selecting on `primary_category_id` made it findable under whichever of the
+    // two happened to win and invisible under the other. `product_search_entity_categories` is the
+    // same set the facet counts, projected onto the entity so this stays one indexed lookup rather
+    // than a join through the offers on every filtered query.
     const categoryIds = categoryFilterIds(query.category);
-    if (categoryIds.length) {
-      where.push(`e.primary_category_id IN (${categoryIds.map(() => "?").join(",")})`);
-      binds.push(...categoryIds);
-    } else {
-      where.push("e.primary_category_id = ?");
-      binds.push(query.category);
-    }
+    const wanted = categoryIds.length ? categoryIds : [query.category];
+    where.push(`e.id IN (
+      SELECT ec.entity_id FROM product_search_entity_categories ec
+      WHERE ec.category_id IN (${wanted.map(() => "?").join(",")})
+    )`);
+    binds.push(...wanted);
   }
   for (const feature of query.features) {
     // A model property, so evidence from any of the product's listings establishes it.
