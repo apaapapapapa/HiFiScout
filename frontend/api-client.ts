@@ -9,6 +9,7 @@
 
 import type {
   MetaCategoryFacet,
+  MetaManufacturerFacet,
   MetaResponse,
   MetaShop,
   MetaShopSyncState,
@@ -120,8 +121,17 @@ function isMetaShop(value: unknown): value is MetaShop {
     typeof value.name === "string" &&
     typeof value.enabled === "boolean" &&
     isNonNegativeInteger(value.intervalMinutes) &&
+    (value.activeProductCount === undefined || isNonNegativeInteger(value.activeProductCount)) &&
     (value.sync === null || isMetaShopSyncState(value.sync)) &&
     (value.health === null || isShopHealthEntry(value.health))
+  );
+}
+
+function isMetaManufacturerFacet(value: unknown): value is MetaManufacturerFacet {
+  return (
+    isRecord(value) &&
+    typeof value.name === "string" &&
+    isNonNegativeInteger(value.activeProductCount)
   );
 }
 
@@ -220,6 +230,9 @@ export function isMetaResponse(value: unknown): value is MetaResponse {
     Array.isArray(value.shops) &&
     value.shops.every(isMetaShop) &&
     isStringArray(value.manufacturers) &&
+    (value.manufacturerFacets === undefined ||
+      (Array.isArray(value.manufacturerFacets) &&
+        value.manufacturerFacets.every(isMetaManufacturerFacet))) &&
     isStringArray(value.categories) &&
     Array.isArray(value.categoryFacets) &&
     value.categoryFacets.every(isMetaCategoryFacet)
