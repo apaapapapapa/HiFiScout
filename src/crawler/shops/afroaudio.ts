@@ -57,7 +57,7 @@ const ANY_CONDITION_MARKER_PATTERN = /[〖【][^〗】]+[〗】]/u;
  * descriptive model names such as "Acoustic Resolution Exciter" remain untouched.
  */
 const SELLER_PRODUCT_TYPE_MARKERS: readonly RegExp[] = [
-  /\s+(?:SACD\/CD|SACD|CD)(?:デッキ|プレーヤー)/iu,
+  /\s+(?:SACD\/CD|SACD|CD)(?:デッキ|プレーヤー|トランスポート)/iu,
   /\s+(?:プリメイン|パワー|プリアンプ|真空管)アンプ/u,
   /\s+パッシブコントローラー/u,
   /\s+フォノイコライザー/u,
