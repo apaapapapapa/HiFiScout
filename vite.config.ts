@@ -26,6 +26,8 @@ function browserBundle(entry: string, outDir: string, fileName: string, name: st
   };
 }
 
+const ciShell = (command: string): string => `bash -lc ${JSON.stringify(command)}`;
+
 export default defineConfig(({ mode }) => ({
   publicDir: false,
   resolve: {
@@ -43,6 +45,54 @@ export default defineConfig(({ mode }) => ({
   test: {
     environment: "node",
     include: ["test/**/*.test.ts"],
+  },
+  run: {
+    tasks: {
+      "ci:lint": ciShell("vp lint . --deny-warnings"),
+      "ci:format-check": ciShell(
+        'vp fmt --check --no-error-on-unmatched-pattern "**/*.ts" "**/*.mts" "**/*.cts" "**/*.tsx"',
+      ),
+      "ci:no-js-source": ciShell("vp exec tsx scripts/check-no-first-party-js.ts"),
+      "ci:types-worker": {
+        command: ciShell(
+          "vp exec tsx scripts/ensure-directories.ts .generated && vp exec tsx scripts/run-quiet.ts wrangler types .generated/worker-configuration.d.ts",
+        ),
+        input: ["wrangler.jsonc", "package.json", "package-lock.json"],
+        output: [".generated/worker-configuration.d.ts"],
+      },
+      "ci:typecheck": {
+        command: ciShell("vp exec tsc --noEmit"),
+        dependsOn: ["ci:types-worker"],
+        output: [],
+      },
+      "ci:test-shard-1": {
+        command: ciShell("vp test run --reporter=dot --shard=1/2"),
+        output: [],
+      },
+      "ci:test-shard-2": {
+        command: ciShell("vp test run --reporter=dot --shard=2/2"),
+        output: [],
+      },
+      "ci:build-public": ciShell("vp build --mode public"),
+      "ci:build-admin": ciShell("vp build --mode admin"),
+      "ci:build-worker": {
+        command: ciShell("vp exec wrangler deploy --dry-run --outdir dist/worker"),
+        dependsOn: ["ci:build-public"],
+      },
+      "ci:build-admin-worker": {
+        command: ciShell(
+          "vp exec wrangler deploy --dry-run --config wrangler.admin.jsonc --outdir dist/admin-worker",
+        ),
+        dependsOn: ["ci:build-admin"],
+      },
+      "ci:build-lambda": ciShell("vp build --mode lambda"),
+      "ci:build": {
+        command: "true",
+        dependsOn: ["ci:build-worker", "ci:build-admin-worker", "ci:build-lambda"],
+        input: [],
+        output: [],
+      },
+    },
   },
   ...(mode === "public"
     ? browserBundle("./frontend/app.tsx", "public", "app.js", "HiFiScoutApp")
