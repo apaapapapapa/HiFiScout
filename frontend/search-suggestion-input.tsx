@@ -51,9 +51,7 @@ export function SearchSuggestionInput({ api, value, onValueChange }: SearchSugge
     if (event.key === "ArrowUp") {
       event.preventDefault();
       setOpen(true);
-      setActiveIndex((current) =>
-        current <= 0 ? suggestions.length - 1 : current - 1,
-      );
+      setActiveIndex((current) => (current <= 0 ? suggestions.length - 1 : current - 1));
       return;
     }
     if (event.key === "Enter" && listOpen && activeIndex >= 0) {
