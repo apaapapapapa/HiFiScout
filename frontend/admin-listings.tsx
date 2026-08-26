@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
-import { PRESENTATION_COLORS } from "../src/catalog/model-presentation-color.js";
 import {
   EMPTY_STATUS,
   adminJson,
@@ -679,18 +678,12 @@ export function ListingAdmin() {
                 type="text"
                 maxLength={100}
                 autoComplete="off"
-                list="listing-presentation-colors"
                 placeholder="ブラック / シルバー / ブラック/ゴールド"
                 value={editDraft.presentationColor}
                 onChange={({ currentTarget: { value: nextValue } }) =>
                   setEditDraft((value) => ({ ...value, presentationColor: nextValue }))
                 }
               />
-              <datalist id="listing-presentation-colors">
-                {PRESENTATION_COLORS.map((color) => (
-                  <option key={color.id} value={color.name} />
-                ))}
-              </datalist>
               <small>
                 Catalogの標準色辞書へ正規化します。2色仕上げは「ブラック/ゴールド」のように /
                 で区切れます。空欄は色なしとして固定します。
