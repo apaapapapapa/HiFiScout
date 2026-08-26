@@ -1,9 +1,12 @@
-const PRODUCT_KEY_PATTERN = /^(?:c|l)-[1-9]\d{0,14}$/;
+const PRODUCT_KEY_PATTERN = /^(?:c|l)-(\d{1,15})$/;
 const PRODUCT_PERMALINK_PREFIX = "/p/";
 
 /** Browser-side mirror of the public wire-key grammar; never imports server implementation code. */
 export function validProductKey(value: string): boolean {
-  return PRODUCT_KEY_PATTERN.test(value);
+  const match = PRODUCT_KEY_PATTERN.exec(value);
+  if (!match) return false;
+  const id = Number(match[1]);
+  return Number.isSafeInteger(id) && id > 0;
 }
 
 export function isProductPermalinkRoute(pathname: string): boolean {
