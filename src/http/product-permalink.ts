@@ -47,10 +47,15 @@ function productName(detail: ProductSearchDetailResponse): string {
   return [manufacturer, model].filter(Boolean).join(" ") || "商品詳細";
 }
 
+function stockLabel(offer: ProductOffer): string {
+  if (offer.stock_status === "in_stock") return "在庫あり";
+  if (offer.stock_status === "sold_out") return "売り切れ";
+  return "在庫状況不明";
+}
+
 function offerHtml(offer: ProductOffer): string {
   const shopName = SHOP_DEFINITIONS[offer.shop_key]?.name || offer.shop_key || "ショップ不明";
   const sourceUrl = safeHttpUrl(offer.source_url);
-  const stock = offer.stock_status === "sold_out" ? "売り切れ" : "在庫あり";
   const color = offer.presentation_color
     ? `<span>${escapeHtml(offer.presentation_color)}</span>`
     : "";
@@ -60,7 +65,7 @@ function offerHtml(offer: ProductOffer): string {
     : "";
 
   return `<li class="permalink-offer">
-    <div><strong>${escapeHtml(shopName)}</strong><span>${escapeHtml(stock)}</span></div>
+    <div><strong>${escapeHtml(shopName)}</strong><span>${escapeHtml(stockLabel(offer))}</span></div>
     <p>${escapeHtml(offer.title)}</p>
     <p>${escapeHtml(yen(offer.price_yen))} ${condition} ${color}</p>
     ${link}
