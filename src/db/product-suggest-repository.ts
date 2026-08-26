@@ -44,11 +44,7 @@ function ftsSuggestionQuery(plan: FtsSearchPlan, normalizedModel: string): strin
  * narrowed the candidate set. This mirrors product search rather than silently dropping `14` from
  * a query such as `Marantz 14`.
  */
-function addShortTermPredicates(
-  plan: FtsSearchPlan,
-  where: string[],
-  binds: unknown[],
-): void {
+function addShortTermPredicates(plan: FtsSearchPlan, where: string[], binds: unknown[]): void {
   for (const value of plan.shortTerms) {
     const term = `%${escapedLike(value)}%`;
     where.push(`(
@@ -81,7 +77,12 @@ async function loadCandidates(
       CASE WHEN ? <> '' AND e.manufacturer_id = ? THEN 0 ELSE 1 END,`
     : "";
   const orderBinds = normalizedModel
-    ? [normalizedModel, `${escapedLike(normalizedModel)}%`, knownManufacturerId, knownManufacturerId]
+    ? [
+        normalizedModel,
+        `${escapedLike(normalizedModel)}%`,
+        knownManufacturerId,
+        knownManufacturerId,
+      ]
     : [];
   const where = ["product_search_entities_fts MATCH ?"];
   const whereBinds: unknown[] = [ftsQuery];
