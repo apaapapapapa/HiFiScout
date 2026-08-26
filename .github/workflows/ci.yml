@@ -24,10 +24,9 @@ jobs:
       run-dependency-security: ${{ steps.filter.outputs.run-dependency-security }}
       run-listing-admin-integration: ${{ steps.filter.outputs.run-listing-admin-integration }}
       run-search-integration: ${{ steps.filter.outputs.run-search-integration }}
+      run-vite-migration-check: ${{ steps.filter.outputs.run-vite-migration-check }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          fetch-depth: 0
       - name: Classify changed files
         id: filter
         shell: bash
@@ -42,6 +41,14 @@ jobs:
           run_dependency_security=false
           run_listing_admin_integration=false
           run_search_integration=false
+          run_vite_migration_check=false
+
+          # A depth-1 checkout avoids downloading every branch and tag just to compute one diff.
+          # Fetch only the comparison base when it is not already present; if that targeted fetch
+          # cannot resolve the base, the conservative fallback below enables every validation.
+          if [[ -n "${BASE_SHA}" && ! "${BASE_SHA}" =~ ^0+$ ]] && ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            git fetch --no-tags --depth=1 origin "${BASE_SHA}" || true
+          fi
 
           # Main remains the exhaustive safety net. Pull requests select expensive D1 checks by
           # affected subsystem so unrelated code changes do not pay the local-D1 startup cost.
@@ -55,6 +62,7 @@ jobs:
             run_dependency_security=true
             run_listing_admin_integration=true
             run_search_integration=true
+            run_vite_migration_check=true
           else
             mapfile -t changed_files < <(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}")
 
@@ -68,8 +76,14 @@ jobs:
               esac
 
               case "${file}" in
-                package.json|package-lock.json|.github/*)
+                package.json|package-lock.json|.npmrc|.github/*)
                   run_dependency_security=true
+                  ;;
+              esac
+
+              case "${file}" in
+                package.json|package-lock.json|.npmrc|vite.config.*|vitest.config.*|tsconfig*.json|.github/workflows/*|.github/actions/setup-node-deps/*)
+                  run_vite_migration_check=true
                   ;;
               esac
 
@@ -92,6 +106,7 @@ jobs:
           echo "run-dependency-security=${run_dependency_security}" >> "${GITHUB_OUTPUT}"
           echo "run-listing-admin-integration=${run_listing_admin_integration}" >> "${GITHUB_OUTPUT}"
           echo "run-search-integration=${run_search_integration}" >> "${GITHUB_OUTPUT}"
+          echo "run-vite-migration-check=${run_vite_migration_check}" >> "${GITHUB_OUTPUT}"
 
   static-checks:
     needs: changes
@@ -102,9 +117,9 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/setup-node-deps
         with:
-          task-cache: "true"
-          task-cache-scope: static
+          cache-write: "true"
       - name: Verify canonical Vite+ migration state
+        if: needs.changes.outputs.run-vite-migration-check == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -152,9 +167,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/setup-node-deps
-        with:
-          task-cache: "true"
-          task-cache-scope: unit-${{ matrix.shard }}
       - run: vp run ci:test-shard-${{ matrix.shard }}
 
   integration:
