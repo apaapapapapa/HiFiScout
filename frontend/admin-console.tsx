@@ -163,7 +163,9 @@ function AdminConsole() {
           <div
             className="admin-section-links"
             role="group"
-            aria-label={activeTab === "catalog" ? "Knowledge Catalog 内の機能" : "登録商品 内の機能"}
+            aria-label={
+              activeTab === "catalog" ? "Knowledge Catalog 内の機能" : "登録商品 内の機能"
+            }
           >
             {ADMIN_SECTION_LINKS[activeTab].map((item) => (
               <button
