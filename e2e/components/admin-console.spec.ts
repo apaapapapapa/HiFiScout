@@ -95,7 +95,10 @@ test.beforeEach(async ({ page }) => {
   await mockAdminApi(page);
 });
 
-test("admin catalog screen uses the shared POM for search and edit flows", async ({ page, mount }) => {
+test("admin catalog screen uses the shared POM for search and edit flows", async ({
+  page,
+  mount,
+}) => {
   const component = await mount("frontend/admin-console/Default");
   const admin = new AdminConsolePage(component, page);
 

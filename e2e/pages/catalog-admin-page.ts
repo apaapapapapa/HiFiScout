@@ -41,7 +41,9 @@ export class CatalogAdminPage {
   }
 
   async openEditor(id: number): Promise<void> {
-    await this.catalogRow(id).getByRole("button", { name: /を編集$/u }).click();
+    await this.catalogRow(id)
+      .getByRole("button", { name: /を編集$/u })
+      .click();
   }
 
   editName(): Locator {

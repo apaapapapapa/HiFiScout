@@ -20,9 +20,7 @@ const storyModules = import.meta.glob<Record<string, unknown>>("../../frontend/*
 const stories = new Map<string, ComponentType<Record<string, unknown>>>();
 
 for (const [modulePath, storyModule] of Object.entries(storyModules)) {
-  const storyPath = modulePath
-    .replace(/^\.\.\/\.\.\//u, "")
-    .replace(/\.story\.tsx$/u, "");
+  const storyPath = modulePath.replace(/^\.\.\/\.\.\//u, "").replace(/\.story\.tsx$/u, "");
   for (const [exportName, value] of Object.entries(storyModule)) {
     if (typeof value === "function") {
       stories.set(`${storyPath}/${exportName}`, value as ComponentType<Record<string, unknown>>);
