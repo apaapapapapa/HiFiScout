@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
+import { MAX_SUGGESTIONS } from "../src/api/contracts.js";
 import { normalizeIdentityModel } from "../src/catalog/product-identity.js";
-import { MAX_SUGGESTIONS, suggestProducts } from "../src/db/product-suggest-repository.js";
+import { suggestProducts } from "../src/db/product-suggest-repository.js";
 import { captureDatabase } from "./helpers/d1.js";
 
 /**
