@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
+import { normalizeIdentityModel } from "../src/catalog/product-identity.js";
 import { MAX_SUGGESTIONS, suggestProducts } from "../src/db/product-suggest-repository.js";
 import { captureDatabase } from "./helpers/d1.js";
 
+/**
+ * A `product_search_entities` row as the schema actually stores one.
+ *
+ * `normalized_model` is derived rather than written out: every writer of that column goes through
+ * `normalizeIdentityModel`, which upper-cases and strips separators, so a hand-written lower-case
+ * value describes a row that cannot exist — and one that silently takes the manufacturer-first
+ * ordering branch instead of the model-first one the tests below are about.
+ */
 function row(
   id: number,
   overrides: Partial<{
@@ -13,12 +22,13 @@ function row(
     normalized_model: string;
   }> = {},
 ) {
+  const model = overrides.model ?? "PM-14S1";
   return {
     id,
     manufacturer_id: "marantz",
     manufacturer: "",
-    model: "PM-14S1",
-    normalized_model: "pm14s1",
+    model,
+    normalized_model: normalizeIdentityModel(model),
     ...overrides,
   };
 }
@@ -32,7 +42,7 @@ test("model spelling variants use the trigram-indexed normalized model and retur
   assert.equal(db.calls.length, 1);
   assert.match(db.calls[0].sql, /JOIN product_search_entities_fts/);
   assert.match(db.calls[0].sql, /product_search_entities_fts MATCH \?/);
-  assert.match(String(db.calls[0].binds[0]), /normalized_model : "pm14s1"/);
+  assert.match(String(db.calls[0].binds[0]), /normalized_model : "PM14S1"/);
   assert.equal(db.calls[0].binds.at(-1), 24);
   assert.doesNotMatch(db.calls[0].sql, /FROM products\b/);
 });
@@ -65,10 +75,7 @@ test("one- and two-character whole queries never scan D1", async () => {
 
 test("suggestions are de-duplicated and capped independently of the candidate window", async () => {
   const rows = Array.from({ length: 24 }, (_, index) =>
-    row(index + 1, {
-      model: `PM-${index + 1}`,
-      normalized_model: `pm${index + 1}`,
-    }),
+    row(index + 1, { model: `PM-${index + 1}` }),
   );
   const db = captureDatabase(rows);
 
