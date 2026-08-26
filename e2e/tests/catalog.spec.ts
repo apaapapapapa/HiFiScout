@@ -1,4 +1,5 @@
-import { expect, test, type Page, type Response, type Route } from "@playwright/test";
+import type { Page, Response, Route } from "@playwright/test";
+import { expect, test } from "../fixtures/catalog-test.js";
 import { isProductSearchRequest as isProductsRequest, offer, product } from "./product-fixtures.js";
 import type { JsonObject } from "./product-fixtures.js";
 
@@ -107,14 +108,14 @@ async function routeMeta(page: Page, meta: JsonObject = mockMeta()): Promise<voi
   });
 }
 
-test("catalog page boots with live metadata and product API", async ({ page }) => {
+test("catalog page boots with live metadata and product API", async ({ page, catalogPage }) => {
   const metaResponsePromise = page.waitForResponse((response: Response) => {
     const url = new URL(response.url());
     return url.pathname === "/api/meta" && response.request().method() === "GET";
   });
   const productsResponsePromise = page.waitForResponse(isProductsRequest);
 
-  await page.goto("/");
+  await catalogPage.goto();
 
   const [metaResponse, productsResponse] = await Promise.all([
     metaResponsePromise,
@@ -130,19 +131,19 @@ test("catalog page boots with live metadata and product API", async ({ page }) =
   expect(meta.shops.length).toBeGreaterThan(0);
   expect(Array.isArray(products.items)).toBeTruthy();
 
-  await expect(page.getByRole("heading", { name: "HiFiScout" })).toBeVisible();
-  await expect(page.locator("#sync-summary-text")).not.toContainText("取得中");
-  await expect(page.locator("#count")).toHaveText(/^\d+$/);
-  await expect(page.locator("#count-label")).toHaveText("件を表示中");
-  await expect(page.locator("#manufacturer")).toHaveAttribute("type", "search");
-  await expect(page.locator("#manufacturer")).toHaveAttribute("list", "manufacturer-options");
-  await expect(page.locator("#manufacturer-options option").first()).toBeAttached();
-  await expect(page.locator("#products")).toHaveClass(/view-list/);
-  await expect(page.locator('#pagination [data-page="1"]')).toHaveAttribute("aria-current", "page");
+  await expect(catalogPage.heading).toBeVisible();
+  await expect(catalogPage.syncSummaryText).not.toContainText("取得中");
+  await expect(catalogPage.count).toHaveText(/^\d+$/);
+  await expect(catalogPage.countLabel).toHaveText("件を表示中");
+  await expect(catalogPage.manufacturer).toHaveAttribute("type", "search");
+  await expect(catalogPage.manufacturer).toHaveAttribute("list", "manufacturer-options");
+  await expect(catalogPage.manufacturerOptions.first()).toBeAttached();
+  await expect(catalogPage.products).toHaveClass(/view-list/);
+  await expect(catalogPage.pageIndicator(1)).toHaveAttribute("aria-current", "page");
   await expect(page.locator("#load-more")).toHaveCount(0);
 
   if (products.items.length) {
-    const titleControl = page.locator(".product-title-link").first();
+    const titleControl = catalogPage.productTitleControl();
     await expect(titleControl).toBeVisible();
     const tagName = await titleControl.evaluate((element) => element.tagName);
     if (tagName === "BUTTON") {
@@ -157,12 +158,13 @@ test("catalog page boots with live metadata and product API", async ({ page }) =
 
 test("changing a shop filter refreshes the API and exposes a removable filter chip", async ({
   page,
+  catalogPage,
 }) => {
   const initialProductsResponse = page.waitForResponse(isProductsRequest);
-  await page.goto("/");
+  await catalogPage.goto();
   await initialProductsResponse;
 
-  const firstShopOption = page.locator('#shop option:not([value=""])').first();
+  const firstShopOption = catalogPage.firstShopOption();
   const firstShopValue = await firstShopOption.getAttribute("value");
   if (!firstShopValue) {
     throw new Error("Expected at least one selectable shop option");
@@ -175,41 +177,45 @@ test("changing a shop filter refreshes the API and exposes a removable filter ch
     return new URL(response.url()).searchParams.get("shop") === firstShopValue;
   });
 
-  await page.locator("#shop").selectOption(firstShopValue);
+  await catalogPage.selectShop(firstShopValue);
   const filteredResponse = await filteredResponsePromise;
 
   expect(filteredResponse.ok()).toBeTruthy();
-  await expect(page.locator("#shop")).toHaveValue(firstShopValue);
-  await expect(page.locator("#active-filters")).toContainText(firstShopFilterLabel);
+  await expect(catalogPage.shop).toHaveValue(firstShopValue);
+  await expect(catalogPage.activeFilters).toContainText(firstShopFilterLabel);
   await expect(page).toHaveURL(new RegExp(`shop=${encodeURIComponent(firstShopValue)}`));
 
-  await page.locator('[data-clear-filter="shop"]').click();
-  await expect(page.locator("#shop")).toHaveValue("");
-  await expect(page.locator("#active-filters")).not.toContainText(firstShopFilterLabel);
-  await expect(page.locator("#count")).toHaveText(/^\d+$/);
+  await catalogPage.clearFilterButton("shop").click();
+  await expect(catalogPage.shop).toHaveValue("");
+  await expect(catalogPage.activeFilters).not.toContainText(firstShopFilterLabel);
+  await expect(catalogPage.count).toHaveText(/^\d+$/);
 });
 
-test("mobile uses a bottom-sheet filter panel while keeping search visible", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+test("mobile uses a bottom-sheet filter panel while keeping search visible", async ({
+  page,
+  catalogPage,
+}) => {
+  await catalogPage.useMobileViewport();
   const initialProductsResponse = page.waitForResponse(isProductsRequest);
-  await page.goto("/");
+  await catalogPage.goto();
   await initialProductsResponse;
 
-  await expect(page.locator("#q")).toBeVisible();
-  await expect(page.locator("#filter-toggle")).toBeVisible();
-  await expect(page.locator("#filter-panel")).not.toHaveClass(/open/);
+  await expect(catalogPage.searchInput).toBeVisible();
+  await expect(catalogPage.filterToggle).toBeVisible();
+  await expect(catalogPage.filterPanel).not.toHaveClass(/open/);
 
-  await page.locator("#filter-toggle").click();
-  await expect(page.locator("#filter-panel")).toHaveClass(/open/);
-  await expect(page.locator("#filter-toggle")).toHaveAttribute("aria-expanded", "true");
+  await catalogPage.openFilters();
+  await expect(catalogPage.filterPanel).toHaveClass(/open/);
+  await expect(catalogPage.filterToggle).toHaveAttribute("aria-expanded", "true");
 
-  await page.locator("#apply-filters").click();
-  await expect(page.locator("#filter-panel")).not.toHaveClass(/open/);
-  await expect(page.locator("#filter-toggle")).toHaveAttribute("aria-expanded", "false");
+  await catalogPage.applyFilters();
+  await expect(catalogPage.filterPanel).not.toHaveClass(/open/);
+  await expect(catalogPage.filterToggle).toHaveAttribute("aria-expanded", "false");
 });
 
 test("favorites are stored as product snapshots and rendered without a favorites API", async ({
   page,
+  catalogPage,
 }) => {
   let productRequests = 0;
   const first = product();
@@ -249,9 +255,9 @@ test("favorites are stored as product snapshots and rendered without a favorites
     });
   });
 
-  await page.goto("/");
-  await expect(page.getByRole("link", { name: "D-10X" })).toBeVisible();
-  await page.locator('[data-fav="c-1"]').click();
+  await catalogPage.goto();
+  await expect(catalogPage.productTitle("D-10X")).toBeVisible();
+  await catalogPage.addFavorite("c-1");
 
   const stored: unknown = await page.evaluate(() =>
     JSON.parse(localStorage.getItem("hifiscout:favorites") || "[]"),
@@ -263,19 +269,22 @@ test("favorites are stored as product snapshots and rendered without a favorites
     ]),
   );
 
-  await page.locator("#pagination").getByRole("button", { name: "2" }).click();
-  await expect(page.getByRole("link", { name: "ME1TX" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "D-10X" })).toHaveCount(0);
+  await catalogPage.goToPage(2);
+  await expect(catalogPage.productTitle("ME1TX")).toBeVisible();
+  await expect(catalogPage.productTitle("D-10X")).toHaveCount(0);
   const requestsBeforeFavorites = productRequests;
 
-  await page.locator("#favoritesOnly").check();
-  await expect(page.getByRole("link", { name: "D-10X" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "ME1TX" })).toHaveCount(0);
-  await expect(page.locator("#pagination")).toBeEmpty();
+  await catalogPage.showFavoritesOnly();
+  await expect(catalogPage.productTitle("D-10X")).toBeVisible();
+  await expect(catalogPage.productTitle("ME1TX")).toHaveCount(0);
+  await expect(catalogPage.pagination).toBeEmpty();
   expect(productRequests).toBe(requestsBeforeFavorites);
 });
 
-test("sync status summarizes delayed shops and exposes per-shop details", async ({ page }) => {
+test("sync status summarizes delayed shops and exposes per-shop details", async ({
+  page,
+  catalogPage,
+}) => {
   const healthyAt = new Date(Date.now() - 10 * 60_000).toISOString();
   const delayedAt = new Date(Date.now() - 150 * 60_000).toISOString();
   await routeMeta(
@@ -295,17 +304,20 @@ test("sync status summarizes delayed shops and exposes per-shop details", async 
     }),
   );
 
-  await page.goto("/");
-  await expect(page.locator("#sync-summary-text")).toHaveText("⚠ 1店舗で更新が遅れています");
-  await page.locator("#sync-status summary").click();
-  await expect(page.locator("#sync-status-details")).toContainText("Shop A");
-  await expect(page.locator("#sync-status-details")).toContainText("正常");
-  await expect(page.locator("#sync-status-details")).toContainText("Shop B");
-  await expect(page.locator("#sync-status-details")).toContainText("遅延");
-  await expect(page.locator("#sync-status-details")).toContainText("分前");
+  await catalogPage.goto();
+  await expect(catalogPage.syncSummaryText).toHaveText("⚠ 1店舗で更新が遅れています");
+  await catalogPage.openSyncDetails();
+  await expect(catalogPage.syncStatusDetails).toContainText("Shop A");
+  await expect(catalogPage.syncStatusDetails).toContainText("正常");
+  await expect(catalogPage.syncStatusDetails).toContainText("Shop B");
+  await expect(catalogPage.syncStatusDetails).toContainText("遅延");
+  await expect(catalogPage.syncStatusDetails).toContainText("分前");
 });
 
-test("URL restores search state and recent/price-drop filters reach the API", async ({ page }) => {
+test("URL restores search state and recent/price-drop filters reach the API", async ({
+  page,
+  catalogPage,
+}) => {
   await routeMeta(page);
   const requests: URL[] = [];
   await page.route("**/api/product-search?**", async (route: Route) => {
@@ -322,18 +334,18 @@ test("URL restores search state and recent/price-drop filters reach the API", as
     });
   });
 
-  await page.goto(
+  await catalogPage.goto(
     "/?manufacturer=LUXMAN&sort=priceAsc&inStock=false&newOnly=true&priceDropped=true",
   );
 
-  await expect(page.locator("#manufacturer")).toHaveValue("LUXMAN");
-  await expect(page.locator("#sort")).toHaveValue("priceAsc");
-  await expect(page.locator("#inStock")).not.toBeChecked();
-  await expect(page.locator("#recentOnly")).toBeChecked();
-  await expect(page.locator("#priceDropped")).toBeChecked();
-  await expect(page.locator("#active-filters")).toContainText("48時間以内の新着");
-  await expect(page.locator("#active-filters")).toContainText("値下げ商品");
-  await expect(page.locator("#more-available")).toBeVisible();
+  await expect(catalogPage.manufacturer).toHaveValue("LUXMAN");
+  await expect(catalogPage.sort).toHaveValue("priceAsc");
+  await expect(catalogPage.inStock).not.toBeChecked();
+  await expect(catalogPage.recentOnly).toBeChecked();
+  await expect(catalogPage.priceDropped).toBeChecked();
+  await expect(catalogPage.activeFilters).toContainText("48時間以内の新着");
+  await expect(catalogPage.activeFilters).toContainText("値下げ商品");
+  await expect(catalogPage.moreAvailable).toBeVisible();
 
   expect(requests.length).toBeGreaterThan(0);
   const firstRequest = requests[0];
@@ -348,7 +360,7 @@ test("URL restores search state and recent/price-drop filters reach the API", as
   expect(params.get("priceDropped")).toBe("true");
 });
 
-test("browser back restores previous filter state", async ({ page }) => {
+test("browser back restores previous filter state", async ({ page, catalogPage }) => {
   await routeMeta(page);
   await page.route("**/api/product-search?**", (route: Route) =>
     route.fulfill({
@@ -357,13 +369,13 @@ test("browser back restores previous filter state", async ({ page }) => {
     }),
   );
 
-  await page.goto("/");
-  await page.locator("#recentOnly").check();
+  await catalogPage.goto();
+  await catalogPage.enableRecentOnly();
   await expect(page).toHaveURL(/newOnly=true/);
-  await page.locator("#priceDropped").check();
+  await catalogPage.enablePriceDropped();
   await expect(page).toHaveURL(/priceDropped=true/);
 
   await page.goBack();
-  await expect(page.locator("#recentOnly")).toBeChecked();
-  await expect(page.locator("#priceDropped")).not.toBeChecked();
+  await expect(catalogPage.recentOnly).toBeChecked();
+  await expect(catalogPage.priceDropped).not.toBeChecked();
 });

@@ -1,4 +1,5 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import type { Page, Route } from "@playwright/test";
+import { expect, test } from "../fixtures/catalog-test.js";
 import { offer, product as productItem } from "./product-fixtures.js";
 import type { JsonObject } from "./product-fixtures.js";
 
@@ -72,7 +73,7 @@ async function routeMeta(page: Page, meta: JsonObject = catalogMeta()): Promise<
  * bootstrap entry has to rewrite the address bar via `history.replaceState` *before* the catalog
  * script parses it and issues its first request. No unit test can observe that.
  */
-test("the URL is sanitized before the catalog script reads it", async ({ page }) => {
+test("the URL is sanitized before the catalog script reads it", async ({ page, catalogPage }) => {
   await routeMeta(page);
   await page.route("**/api/product-search?**", (route: Route) =>
     route.fulfill({
@@ -87,7 +88,7 @@ test("the URL is sanitized before the catalog script reads it", async ({ page })
   });
 
   const longQuery = "x".repeat(101);
-  await page.goto(
+  await catalogPage.goto(
     `/?q=${longQuery}&minPrice=abc&sort=invalid&inStock=maybe&favoritesOnly=true&cursor=bogus`,
   );
 
@@ -101,13 +102,14 @@ test("the URL is sanitized before the catalog script reads it", async ({ page })
   expect([...new URL(page.url()).searchParams.keys()]).toEqual([]);
 
   // The controls were populated from the corrected URL rather than the original.
-  await expect(page.locator("#q")).toHaveValue("");
-  await expect(page.locator("#sort")).toHaveValue("newest");
-  await expect(page.locator("#products")).not.toContainText("商品の取得に失敗しました。");
+  await expect(catalogPage.searchInput).toHaveValue("");
+  await expect(catalogPage.sort).toHaveValue("newest");
+  await expect(catalogPage.products).not.toContainText("商品の取得に失敗しました。");
 });
 
 test("new and price-drop checkboxes update both the URL and product API query", async ({
   page,
+  catalogPage,
 }) => {
   await routeMeta(page);
   await page.route("**/api/product-search?**", (route: Route) =>
@@ -117,13 +119,13 @@ test("new and price-drop checkboxes update both the URL and product API query", 
     }),
   );
 
-  await page.goto("/");
+  await catalogPage.goto();
 
   const newRequestPromise = page.waitForRequest((request) => {
     const url = new URL(request.url());
     return url.pathname === "/api/product-search" && url.searchParams.get("newOnly") === "true";
   });
-  await page.locator("#recentOnly").check();
+  await catalogPage.enableRecentOnly();
   const newRequest = await newRequestPromise;
   expect(new URL(newRequest.url()).searchParams.get("newOnly")).toBe("true");
   await expect(page).toHaveURL(/newOnly=true/);
@@ -134,7 +136,7 @@ test("new and price-drop checkboxes update both the URL and product API query", 
       url.pathname === "/api/product-search" && url.searchParams.get("priceDropped") === "true"
     );
   });
-  await page.locator("#priceDropped").check();
+  await catalogPage.enablePriceDropped();
   const droppedParams = new URL((await droppedRequestPromise).url()).searchParams;
   expect(droppedParams.get("newOnly")).toBe("true");
   expect(droppedParams.get("priceDropped")).toBe("true");
@@ -146,7 +148,7 @@ test("new and price-drop checkboxes update both the URL and product API query", 
  * summary is recomputed and reapplied to the DOM when a filter change brings back a different page
  * shape — the wiring between a control event, the refetch and the counter.
  */
-test("the result counter is reapplied after a filter change", async ({ page }) => {
+test("the result counter is reapplied after a filter change", async ({ page, catalogPage }) => {
   await routeMeta(page);
   await page.route("**/api/product-search?**", (route: Route) => {
     const params = new URL(route.request().url()).searchParams;
@@ -163,15 +165,15 @@ test("the result counter is reapplied after a filter change", async ({ page }) =
     });
   });
 
-  await page.goto("/");
-  await expect(page.locator("#count")).toHaveText("1");
-  await expect(page.locator("#more-available")).toBeVisible();
+  await catalogPage.goto();
+  await expect(catalogPage.count).toHaveText("1");
+  await expect(catalogPage.moreAvailable).toBeVisible();
 
-  await page.locator("#priceDropped").check();
-  await expect(page.locator("#more-available")).toBeHidden();
+  await catalogPage.enablePriceDropped();
+  await expect(catalogPage.moreAvailable).toBeHidden();
 });
 
-test("healthy metadata renders the simple normal sync summary", async ({ page }) => {
+test("healthy metadata renders the simple normal sync summary", async ({ page, catalogPage }) => {
   const lastSuccessAt = new Date(Date.now() - 12 * 60_000).toISOString();
   await routeMeta(
     page,
@@ -218,9 +220,9 @@ test("healthy metadata renders the simple normal sync summary", async ({ page })
     }),
   );
 
-  await page.goto("/");
-  await expect(page.locator("#sync-summary-text")).toHaveText("データ更新 正常");
-  await page.locator("#sync-status summary").click();
-  await expect(page.locator("#sync-status-details")).toContainText("12分前");
-  await expect(page.locator("#sync-status-details")).toContainText("停止中");
+  await catalogPage.goto();
+  await expect(catalogPage.syncSummaryText).toHaveText("データ更新 正常");
+  await catalogPage.openSyncDetails();
+  await expect(catalogPage.syncStatusDetails).toContainText("12分前");
+  await expect(catalogPage.syncStatusDetails).toContainText("停止中");
 });

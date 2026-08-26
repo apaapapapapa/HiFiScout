@@ -1,4 +1,5 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import type { Page, Route } from "@playwright/test";
+import { expect, test } from "../fixtures/catalog-test.js";
 
 interface CategoryFacet {
   id: string;
@@ -224,23 +225,24 @@ test("live metadata exposes the complete canonical taxonomy including zero-count
 
 test("category selection and browser URL state stay wired for parents and leaves", async ({
   page,
+  catalogPage,
 }) => {
   const requests = await mockCatalog(page);
-  await page.goto("/");
+  await catalogPage.goto();
 
-  await page.locator("#category").selectOption("amplifier");
+  await catalogPage.selectCategory("amplifier");
   await expect(page).toHaveURL(/category=amplifier/);
   expect(lastRequest(requests).searchParams.get("category")).toBe("amplifier");
 
-  await page.locator("#category").selectOption("pre_amp");
+  await catalogPage.selectCategory("pre_amp");
   await expect(page).toHaveURL(/category=pre_amp/);
   expect(lastRequest(requests).searchParams.get("category")).toBe("pre_amp");
 
-  await page.goto("/?category=speaker_bookshelf");
-  await expect(page.locator("#category")).toHaveValue("speaker_bookshelf");
+  await catalogPage.goto("/?category=speaker_bookshelf");
+  await expect(catalogPage.category).toHaveValue("speaker_bookshelf");
   expect(lastRequest(requests).searchParams.get("category")).toBe("speaker_bookshelf");
 
-  await page.goto("/?category=cable_xlr");
-  await expect(page.locator("#category")).toHaveValue("cable_xlr");
+  await catalogPage.goto("/?category=cable_xlr");
+  await expect(catalogPage.category).toHaveValue("cable_xlr");
   expect(lastRequest(requests).searchParams.get("category")).toBe("cable_xlr");
 });

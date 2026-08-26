@@ -1,8 +1,9 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures/catalog-test.js";
 import { offer, product, routeProductSearch } from "./product-fixtures.js";
 
 test("multi-word search is sent to the product API unchanged and renders its result", async ({
   page,
+  catalogPage,
 }) => {
   await page.route("**/api/meta", (route) =>
     route.fulfill({
@@ -51,13 +52,13 @@ test("multi-word search is sent to the product API unchanged and renders its res
     };
   });
 
-  await page.goto("/");
+  await catalogPage.goto();
   const searchRequest = page.waitForRequest((request) => {
     const url = new URL(request.url());
     return url.pathname === "/api/product-search" && url.searchParams.get("q") === "TAD 1000";
   });
-  await page.locator("#q").fill("TAD 1000");
+  await catalogPage.searchFor("TAD 1000");
   await searchRequest;
 
-  await expect(page.getByRole("link", { name: "D1000MK2" })).toBeVisible();
+  await expect(catalogPage.productTitle("D1000MK2")).toBeVisible();
 });

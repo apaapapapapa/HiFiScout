@@ -1,4 +1,5 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import type { Page, Route } from "@playwright/test";
+import { expect, test } from "../fixtures/catalog-test.js";
 import { offer, product, routeProductDetail, routeProductSearch } from "./product-fixtures.js";
 
 /**
@@ -77,7 +78,10 @@ const CROSS_SHOP_PRODUCT = product({
   representative_offer: OFFERS[0],
 });
 
-test("three shops listing one model produce a single product result", async ({ page }) => {
+test("three shops listing one model produce a single product result", async ({
+  page,
+  catalogPage,
+}) => {
   await routeMeta(page);
   await routeProductSearch(page, () => ({
     items: [CROSS_SHOP_PRODUCT],
@@ -90,17 +94,18 @@ test("three shops listing one model produce a single product result", async ({ p
     key === "c-1" ? { product: CROSS_SHOP_PRODUCT, offers: OFFERS } : null,
   );
 
-  await page.goto("/");
+  await catalogPage.goto();
 
-  await expect(page.locator(".card")).toHaveCount(1);
-  await expect(page.locator("#count")).toHaveText("1");
-  await expect(page.locator(".card .shop")).toHaveText("3店舗");
-  await expect(page.locator(".card .price-row")).toContainText("〜");
-  await expect(page.locator(".card .stock")).toContainText("2/3件が在庫あり");
+  await expect(catalogPage.cards).toHaveCount(1);
+  await expect(catalogPage.count).toHaveText("1");
+  await expect(catalogPage.cardShop()).toHaveText("3店舗");
+  await expect(catalogPage.cardPriceRow()).toContainText("〜");
+  await expect(catalogPage.cardStock()).toContainText("2/3件が在庫あり");
 });
 
 test("opening a product reveals every shop's offer with what distinguishes them", async ({
   page,
+  catalogPage,
 }) => {
   await routeMeta(page);
   await routeProductSearch(page, () => ({
@@ -114,25 +119,24 @@ test("opening a product reveals every shop's offer with what distinguishes them"
     return key === "c-1" ? { product: CROSS_SHOP_PRODUCT, offers: OFFERS } : null;
   });
 
-  await page.goto("/");
+  await catalogPage.goto();
   // Offers are not fetched for a page of cards nobody opened.
-  await expect(page.locator(".card")).toHaveCount(1);
+  await expect(catalogPage.cards).toHaveCount(1);
   expect(detailRequests).toBe(0);
 
-  await page.locator('.card [data-offers="c-1"]').first().click();
+  await catalogPage.openOffers("c-1");
 
-  const dialog = page.locator("#offers-dialog");
-  await expect(dialog).toBeVisible();
-  await expect(dialog.locator(".offer")).toHaveCount(3);
-  await expect(dialog).toContainText("Shop A");
-  await expect(dialog).toContainText("Shop C");
-  await expect(dialog).toContainText("元箱付き");
-  await expect(dialog).toContainText("訳あり");
-  await expect(dialog).toContainText("売り切れ");
+  await expect(catalogPage.offersDialog).toBeVisible();
+  await expect(catalogPage.offersDialog.locator(".offer")).toHaveCount(3);
+  await expect(catalogPage.offersDialog).toContainText("Shop A");
+  await expect(catalogPage.offersDialog).toContainText("Shop C");
+  await expect(catalogPage.offersDialog).toContainText("元箱付き");
+  await expect(catalogPage.offersDialog).toContainText("訳あり");
+  await expect(catalogPage.offersDialog).toContainText("売り切れ");
   expect(detailRequests).toBe(1);
 });
 
-test("each offer links to its own shop, not to the product", async ({ page }) => {
+test("each offer links to its own shop, not to the product", async ({ page, catalogPage }) => {
   await routeMeta(page);
   await routeProductSearch(page, () => ({
     items: [CROSS_SHOP_PRODUCT],
@@ -141,17 +145,20 @@ test("each offer links to its own shop, not to the product", async ({ page }) =>
   }));
   await routeProductDetail(page, () => ({ product: CROSS_SHOP_PRODUCT, offers: OFFERS }));
 
-  await page.goto("/");
-  await page.locator('.card [data-offers="c-1"]').first().click();
+  await catalogPage.goto();
+  await catalogPage.openOffers("c-1");
 
-  const links = page.locator("#offers-dialog .offer .shop-link");
+  const links = catalogPage.offerLinks();
   await expect(links).toHaveCount(3);
   await expect(links.nth(0)).toHaveAttribute("href", "https://example.com/shop-a/d10x");
   await expect(links.nth(2)).toHaveAttribute("href", "https://example.com/shop-c/d10x");
   await expect(links.nth(0)).toHaveAttribute("rel", "noopener noreferrer");
 });
 
-test("a shop filter narrows the card summary instead of contradicting it", async ({ page }) => {
+test("a shop filter narrows the card summary instead of contradicting it", async ({
+  page,
+  catalogPage,
+}) => {
   await routeMeta(page);
   await routeProductSearch(page, (url) =>
     url.searchParams.get("shop") === "shop-b"
@@ -181,17 +188,20 @@ test("a shop filter narrows the card summary instead of contradicting it", async
         },
   );
 
-  await page.goto("/");
-  await expect(page.locator(".card .shop")).toHaveText("3店舗");
+  await catalogPage.goto();
+  await expect(catalogPage.cardShop()).toHaveText("3店舗");
 
-  await page.locator("#shop").selectOption("shop-b");
+  await catalogPage.selectShop("shop-b");
 
-  await expect(page.locator(".card .shop")).toHaveText("Shop B");
-  await expect(page.locator(".card .price-row")).not.toContainText("〜");
-  await expect(page.locator(".card")).toHaveCount(1);
+  await expect(catalogPage.cardShop()).toHaveText("Shop B");
+  await expect(catalogPage.cardPriceRow()).not.toContainText("〜");
+  await expect(catalogPage.cards).toHaveCount(1);
 });
 
-test("an unresolved listing stays searchable as a product of its own", async ({ page }) => {
+test("an unresolved listing stays searchable as a product of its own", async ({
+  page,
+  catalogPage,
+}) => {
   const unresolved = product({
     key: "l-77",
     identity_kind: "unresolved_listing",
@@ -215,22 +225,23 @@ test("an unresolved listing stays searchable as a product of its own", async ({ 
     key === "l-77" ? { product: unresolved, offers: [OFFERS[0]] } : null,
   );
 
-  await page.goto("/");
+  await catalogPage.goto();
 
-  await expect(page.locator(".card")).toHaveCount(2);
-  await expect(page.locator("#count")).toHaveText("2");
+  await expect(catalogPage.cards).toHaveCount(2);
+  await expect(catalogPage.count).toHaveText("2");
   // A single-offer product links straight to the shop rather than to a comparison of one.
-  await expect(page.getByRole("link", { name: "SQ-N150" })).toHaveAttribute(
+  await expect(catalogPage.productTitle("SQ-N150")).toHaveAttribute(
     "href",
     "https://example.com/shop-a/sq-n150",
   );
 
-  await page.locator('.card[data-key="l-77"] [data-offers]').click();
-  await expect(page.locator("#offers-dialog")).toContainText("他店の在庫と照合できていません");
+  await catalogPage.openOffers("l-77");
+  await expect(catalogPage.offersDialog).toContainText("他店の在庫と照合できていません");
 });
 
 test("pagination totals count products, and page state survives back navigation", async ({
   page,
+  catalogPage,
 }) => {
   await routeMeta(page);
   await routeProductSearch(page, (url) => {
@@ -249,16 +260,16 @@ test("pagination totals count products, and page state survives back navigation"
   });
   await routeProductDetail(page, () => ({ product: CROSS_SHOP_PRODUCT, offers: OFFERS }));
 
-  await page.goto("/");
-  await expect(page.locator('#pagination [data-page="1"]')).toHaveAttribute("aria-current", "page");
-  await expect(page.locator('#pagination [data-page="2"]')).toBeVisible();
+  await catalogPage.goto();
+  await expect(catalogPage.pageIndicator(1)).toHaveAttribute("aria-current", "page");
+  await expect(catalogPage.pageIndicator(2)).toBeVisible();
 
-  await page.locator("#pagination").getByRole("button", { name: "2" }).click();
-  await expect(page.locator(".card")).toHaveCount(1);
-  await expect(page.locator('.card[data-key="c-2"]')).toBeVisible();
+  await catalogPage.goToPage(2);
+  await expect(catalogPage.cards).toHaveCount(1);
+  await expect(catalogPage.card("c-2")).toBeVisible();
 
-  await page.locator("#recentOnly").check();
+  await catalogPage.enableRecentOnly();
   await expect(page).toHaveURL(/newOnly=true/);
   await page.goBack();
-  await expect(page.locator("#recentOnly")).not.toBeChecked();
+  await expect(catalogPage.recentOnly).not.toBeChecked();
 });
