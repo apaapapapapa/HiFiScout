@@ -42,7 +42,7 @@ const DETAIL = {
     model: 'D<10X>"',
     category: "CD & SACD",
     presentation_colors: ["Black & Silver"],
-    offer_count: 2,
+    offer_count: 3,
     in_stock_offer_count: 1,
     lowest_price_yen: 660000,
     highest_price_yen: 712000,
@@ -66,6 +66,15 @@ const DETAIL = {
       price_yen: 712000,
       stock_status: "sold_out",
     },
+    {
+      shop_key: "unchecked-shop",
+      source_url: "https://example.com/unchecked",
+      title: "D-10X availability unchecked",
+      condition_text: "",
+      presentation_color: "Black",
+      price_yen: null,
+      stock_status: "unknown",
+    },
   ],
 } as unknown as ProductSearchDetailResponse;
 
@@ -82,6 +91,7 @@ test("SSR product HTML exposes factual detail with canonical OGP and noindex", (
   assert.match(html, /D-10X &lt;展示品&gt;/);
   assert.match(html, /660,000円/);
   assert.match(html, /売り切れ/);
+  assert.match(html, /在庫状態未確認/);
   assert.doesNotMatch(html, /javascript:alert/);
   assert.doesNotMatch(html, /<img/i);
 });
