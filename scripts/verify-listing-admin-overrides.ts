@@ -3,7 +3,8 @@
  *
  * The admin write path stores corrected canonical fields while raw seller evidence remains owned by
  * the crawler. This check simulates a later crawl trying to restore its derived manufacturer/model/
- * category and proves the database keeps the explicit admin correction and category closure.
+ * category/presentation colour and proves the database keeps the explicit admin correction and
+ * category closure.
  */
 
 import assert from "node:assert/strict";
@@ -47,13 +48,13 @@ try {
       manufacturer_resolution_status, manufacturer_resolution_method,
       manufacturer_resolution_confidence, raw_model, normalized_model, model_resolution_status,
       model_resolution_method, model_resolution_confidence, raw_category, primary_category_id,
-      category_ids, classification_status, search_aliases, last_activity_at
+      category_ids, classification_status, search_aliases, presentation_color, last_activity_at
     ) VALUES (
       '${suffix}', '${suffix}', 'TAD', 'D1000MK2', 'TAD D1000MK2', 'DAC', '中古',
       500000, 'in_stock', 'https://example.test/${suffix}', '${now}', '${now}', '${now}', 1,
       'TAD', 'TAD', 'tad', 'tad', 'resolved', 'verified_alias', 'high',
       'D1000MK2', 'D1000MK2', 'resolved', 'seller_model', 'high',
-      'D/Aコンバーター', 'dac', '["dac"]', 'classified', 'DAC', '${now}'
+      'D/Aコンバーター', 'dac', '["dac"]', 'classified', 'DAC', 'シルバー', '${now}'
     );
   `);
   const listingId = number(
@@ -71,22 +72,25 @@ try {
         model_resolution_status = 'resolved', model_resolution_method = 'seller_model_annotated',
         model_resolution_confidence = 'high', category = 'アナログプレーヤー',
         primary_category_id = 'turntable', category_ids = '["turntable"]',
-        classification_status = 'classified', search_aliases = 'turntable'
+        classification_status = 'classified', search_aliases = 'turntable', presentation_color = 'ブラック'
     WHERE id = ${listingId};
     DELETE FROM product_categories WHERE product_id = ${listingId};
     INSERT INTO product_categories(product_id, category_id) VALUES (${listingId}, 'turntable');
     INSERT INTO product_categories(product_id, category_id) VALUES (${listingId}, 'analog');
     INSERT INTO product_admin_overrides(
       listing_product_id, manufacturer_id, manufacturer_name, model, normalized_model,
-      primary_category_id, category_ids, category_name, search_aliases, created_at, updated_at
+      primary_category_id, category_ids, category_name, search_aliases, presentation_color,
+      created_at, updated_at
     ) VALUES (
       ${listingId}, 'luxman', 'LUXMAN', 'D-1000', 'D1000',
-      'turntable', '["turntable","analog"]', 'アナログプレーヤー', 'turntable', '${now}', '${now}'
+      'turntable', '["turntable","analog"]', 'アナログプレーヤー', 'turntable', 'ブラック',
+      '${now}', '${now}'
     );
   `);
 
   // Simulate the next crawler upsert and its category synchronization. Raw evidence is allowed to
-  // move, but the effective canonical fields and manual category membership must remain corrected.
+  // move, but the effective canonical fields, presentation colour and manual category membership
+  // must remain corrected.
   d1(`
     UPDATE products
     SET raw_manufacturer = 'Technical Audio Devices', normalized_raw_manufacturer = 'TECHNICAL AUDIO DEVICES',
@@ -96,7 +100,8 @@ try {
         normalized_model = 'D1000MK2', model_resolution_status = 'resolved',
         model_resolution_method = 'seller_model', model_resolution_confidence = 'high',
         raw_category = 'D/Aコンバーター', category = 'DAC', primary_category_id = 'dac',
-        category_ids = '["dac"]', classification_status = 'classified', search_aliases = 'DAC'
+        category_ids = '["dac"]', classification_status = 'classified', search_aliases = 'DAC',
+        presentation_color = 'シルバー'
     WHERE id = ${listingId};
     DELETE FROM product_categories WHERE product_id = ${listingId};
     INSERT OR IGNORE INTO product_categories(product_id, category_id) VALUES (${listingId}, 'dac');
@@ -105,7 +110,7 @@ try {
 
   const effective = d1(`
     SELECT manufacturer, canonical_manufacturer_id, model, normalized_model,
-           category, primary_category_id, classification_status,
+           category, primary_category_id, classification_status, presentation_color,
            raw_manufacturer, raw_model, raw_category
     FROM products WHERE id = ${listingId};
   `)[0];
@@ -116,6 +121,7 @@ try {
   assert.equal(effective?.category, "アナログプレーヤー");
   assert.equal(effective?.primary_category_id, "turntable");
   assert.equal(effective?.classification_status, "classified");
+  assert.equal(effective?.presentation_color, "ブラック");
 
   // Seller evidence remains crawler-owned instead of being hidden by the override.
   assert.equal(effective?.raw_manufacturer, "Technical Audio Devices");
