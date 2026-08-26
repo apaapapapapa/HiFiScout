@@ -255,8 +255,15 @@ export interface MetaShop {
   name: string;
   enabled: boolean;
   intervalMinutes: number;
+  /** Active catalog listings for this shop. Optional for cached pre-facet-count metadata. */
+  activeProductCount?: number;
   sync: MetaShopSyncState | null;
   health: ShopHealthEntry | null;
+}
+
+export interface MetaManufacturerFacet {
+  name: string;
+  activeProductCount: number;
 }
 
 export interface MetaCategoryFacet {
@@ -275,7 +282,10 @@ export interface MetaCategoryFacet {
 export interface MetaResponse {
   status: ShopHealthStatus;
   shops: MetaShop[];
+  /** Legacy manufacturer vocabulary retained for clients that do not consume facet metadata. */
   manufacturers: string[];
+  /** Counted manufacturer facets. Optional for cached pre-facet-count metadata. */
+  manufacturerFacets?: MetaManufacturerFacet[];
   /** Display names of classifiable categories, for the legacy ungrouped `<select>` fallback. */
   categories: string[];
   categoryFacets: MetaCategoryFacet[];

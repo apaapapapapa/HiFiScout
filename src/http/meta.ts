@@ -12,6 +12,7 @@ import { SHOP_DEFINITIONS, getShopEnabled, getShopIntervalMinutes } from "../con
 import { buildSyncHealth } from "../health.js";
 import type {
   MetaCategoryFacet,
+  MetaManufacturerFacet,
   MetaResponse,
   MetaShop,
   MetaShopSyncState,
@@ -20,6 +21,7 @@ import type { CategoryDefinition } from "../catalog/types.js";
 import type { ShopSyncStateRow } from "../db/types.js";
 
 interface MetaFacetRow {
+  facet_kind?: "manufacturer" | "shop";
   manufacturer_id?: string;
   value: string;
   active_product_count?: number | null;
@@ -71,6 +73,22 @@ export function normalizeManufacturerFacetValues(
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
 }
 
+/** Canonicalize manufacturer labels and merge counts for aliases that collapse to one public name. */
+export function normalizeManufacturerFacets(
+  rows: readonly Pick<MetaFacetRow, "value" | "active_product_count">[],
+): MetaManufacturerFacet[] {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const name = normalizeManufacturer(row.value).displayName;
+    if (!name) continue;
+    const count = Number(row.active_product_count || 0);
+    counts.set(name, (counts.get(name) || 0) + (Number.isFinite(count) ? count : 0));
+  }
+  return [...counts.entries()]
+    .map(([name, activeProductCount]) => ({ name, activeProductCount }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
 /** Explicit row -> contract projection: `shop_sync_state` must not define the payload by itself. */
 function toMetaShopSyncState(row: ShopSyncStateRow): MetaShopSyncState {
   return {
@@ -95,23 +113,27 @@ export async function meta(env: Env): Promise<MetaResponse> {
   const byKey = new Map(stateRows.map((row) => [row.shop_key, toMetaShopSyncState(row)]));
   const health = buildSyncHealth(env, stateRows);
   const healthByKey = new Map(health.shops.map((shop) => [shop.shopKey, shop]));
-  // Driven by the registry, not by what happens to be in `shop_sync_state`: a shop that has never
-  // run must still appear, with null sync state.
-  const shops = Object.values(SHOP_DEFINITIONS).map((shop): MetaShop => ({
-    key: shop.key,
-    name: shop.name,
-    enabled: getShopEnabled(env, shop),
-    intervalMinutes: getShopIntervalMinutes(env, shop),
-    sync: byKey.get(shop.key) || null,
-    health: healthByKey.get(shop.key) || null,
-  }));
   const facets = await env.DB.batch<MetaFacetRow>([
+    // Keep shop/manufacturer counts in the existing facet statement so `/api/meta` still uses two
+    // batched facet statements overall. Both branches count the same `products.is_active` rows.
     env.DB.prepare(`
-      SELECT manufacturer_id, MIN(manufacturer) AS value
+      SELECT
+        'manufacturer' AS facet_kind,
+        manufacturer_id,
+        MIN(manufacturer) AS value,
+        COUNT(*) AS active_product_count
       FROM products
       WHERE is_active = 1 AND manufacturer <> ''
       GROUP BY manufacturer_id
-      ORDER BY value
+      UNION ALL
+      SELECT
+        'shop' AS facet_kind,
+        NULL AS manufacturer_id,
+        shop_key AS value,
+        COUNT(*) AS active_product_count
+      FROM products
+      WHERE is_active = 1
+      GROUP BY shop_key
     `),
     env.DB.prepare(`
       SELECT pc.category_id AS value, COUNT(DISTINCT pc.product_id) AS active_product_count
@@ -121,7 +143,30 @@ export async function meta(env: Env): Promise<MetaResponse> {
       GROUP BY pc.category_id
     `),
   ]);
-  const manufacturers = normalizeManufacturerFacetValues(facets[0]?.results || []);
+
+  const vocabularyRows = facets[0]?.results || [];
+  const manufacturerFacets = normalizeManufacturerFacets(
+    vocabularyRows.filter((row) => row.facet_kind === "manufacturer"),
+  );
+  const manufacturers = manufacturerFacets.map((facet) => facet.name);
+  const shopCounts = new Map(
+    vocabularyRows
+      .filter((row) => row.facet_kind === "shop")
+      .map((row) => [row.value, Number(row.active_product_count || 0)] as const),
+  );
+
+  // Driven by the registry, not by what happens to be in `shop_sync_state`: a shop that has never
+  // run must still appear, with null sync state and a zero count when it has no active listings.
+  const shops = Object.values(SHOP_DEFINITIONS).map((shop): MetaShop => ({
+    key: shop.key,
+    name: shop.name,
+    enabled: getShopEnabled(env, shop),
+    intervalMinutes: getShopIntervalMinutes(env, shop),
+    activeProductCount: shopCounts.get(shop.key) || 0,
+    sync: byKey.get(shop.key) || null,
+    health: healthByKey.get(shop.key) || null,
+  }));
+
   const counts = new Map<string, number>();
   for (const row of facets[1]?.results || []) {
     const categoryId = getCategory(row.value)?.id || row.value;
@@ -147,5 +192,12 @@ export async function meta(env: Env): Promise<MetaResponse> {
   const categories = canonicalCategoryDefinitions()
     .filter((category) => category.classifiable)
     .map((category) => category.name);
-  return { status: health.status, shops, manufacturers, categories, categoryFacets };
+  return {
+    status: health.status,
+    shops,
+    manufacturers,
+    manufacturerFacets,
+    categories,
+    categoryFacets,
+  };
 }
