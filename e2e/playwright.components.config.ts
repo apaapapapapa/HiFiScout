@@ -20,8 +20,8 @@ export default defineConfig({
     video: "off",
   },
   webServer: {
-    // Use the gallery as Vite's working directory so /main.tsx resolves to the component harness.
-    command: "vp -C playwright/gallery dev --host 127.0.0.1 --port 4173 --strictPort",
+    // Playwright runs webServer commands from e2e/, so make the gallery Vite's working directory.
+    command: "vp -C ../playwright/gallery dev --host 127.0.0.1 --port 4173 --strictPort",
     port: 4173,
     reuseExistingServer: !process.env.CI,
     stdout: "pipe",
