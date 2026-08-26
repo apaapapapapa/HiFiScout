@@ -86,7 +86,8 @@ function bodyText(value: unknown, maxLength: number): string | null {
 function canonicalPresentationColor(value: string): string | null {
   if (!value) return "";
   const parts = value.split("/").map((part) => part.trim());
-  if (!parts.length || parts.some((part) => !part || !normalizePresentationColor(part))) return null;
+  if (!parts.length || parts.some((part) => !part || !normalizePresentationColor(part)))
+    return null;
   return presentationColorLabel(parts);
 }
 
