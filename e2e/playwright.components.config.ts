@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const galleryUrl = "http://127.0.0.1:4173/playwright/gallery/index.html";
+const galleryUrl = "http://127.0.0.1:4173/";
 
 export default defineConfig({
   testDir: "./components",
@@ -20,8 +20,8 @@ export default defineConfig({
     video: "off",
   },
   webServer: {
-    command: "vp dev --host 127.0.0.1 --port 4173 --strictPort",
-    url: "http://127.0.0.1:4173/playwright/gallery/health.html",
+    command: "vp dev playwright/gallery --host 127.0.0.1 --port 4173 --strictPort",
+    url: galleryUrl,
     reuseExistingServer: !process.env.CI,
     stdout: "pipe",
     stderr: "pipe",
