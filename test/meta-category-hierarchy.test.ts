@@ -6,6 +6,7 @@ import {
   categoryHierarchyDepth,
   compareCategoryHierarchy,
   normalizeManufacturerFacets,
+  normalizeManufacturerFacetValues,
 } from "../src/http/meta.js";
 
 test("metadata category ordering keeps nested cable leaves inside the accessories subtree", () => {
@@ -49,15 +50,15 @@ test("metadata indentation depth follows the complete category ancestry", () => 
 });
 
 test("manufacturer facet normalization merges aliases and sums their active counts", () => {
-  assert.deepEqual(
-    normalizeManufacturerFacets([
-      { value: "LUXMAN", active_product_count: 2 },
-      { value: "【展示処分品】LUXMAN", active_product_count: 3 },
-      { value: "TAD", active_product_count: 1 },
-    ]),
-    [
-      { name: "LUXMAN", activeProductCount: 5 },
-      { name: "TAD", activeProductCount: 1 },
-    ],
-  );
+  const rows = [
+    { value: "LUXMAN", active_product_count: 2 },
+    { value: "【展示処分品】LUXMAN", active_product_count: 3 },
+    { value: "TAD", active_product_count: 1 },
+  ];
+
+  assert.deepEqual(normalizeManufacturerFacets(rows), [
+    { name: "LUXMAN", activeProductCount: 5 },
+    { name: "TAD", activeProductCount: 1 },
+  ]);
+  assert.deepEqual(normalizeManufacturerFacetValues(rows), ["LUXMAN", "TAD"]);
 });
