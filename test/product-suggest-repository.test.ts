@@ -37,17 +37,29 @@ test("model spelling variants use the trigram-indexed normalized model and retur
   assert.doesNotMatch(db.calls[0].sql, /FROM products\b/);
 });
 
-test("one- and two-character suggestions use a bounded entity LIKE fallback", async () => {
+test("mixed FTS and short terms keep the short term as a post-FTS predicate", async () => {
   const db = captureDatabase([row(1)]);
 
-  await suggestProducts(db, "PM");
+  await suggestProducts(db, "Marantz 14");
 
   assert.equal(db.calls.length, 1);
-  assert.doesNotMatch(db.calls[0].sql, /MATCH/);
-  assert.match(db.calls[0].sql, /e\.manufacturer_terms LIKE \?/);
-  assert.match(db.calls[0].sql, /e\.model_terms LIKE \?/);
-  assert.match(db.calls[0].sql, /e\.normalized_model LIKE \?/);
-  assert.deepEqual(db.calls[0].binds, ["%PM%", "%PM%", "%pm%", 24]);
+  const { sql, binds } = db.calls[0];
+  assert.match(sql, /product_search_entities_fts MATCH \?/);
+  assert.match(sql, /e\.manufacturer_terms LIKE \? ESCAPE/);
+  assert.match(sql, /e\.normalized_model LIKE \? ESCAPE/);
+  assert.match(sql, /e\.model_terms LIKE \? ESCAPE/);
+  assert.match(sql, /e\.title_terms LIKE \? ESCAPE/);
+  assert.match(sql, /e\.category_terms LIKE \? ESCAPE/);
+  assert.equal(binds.filter((value) => value === "%14%").length, 5);
+  assert.equal(binds.at(-1), 24);
+});
+
+test("one- and two-character whole queries never scan D1", async () => {
+  for (const query of ["P", "PM"]) {
+    const db = captureDatabase([row(1)]);
+    assert.deepEqual(await suggestProducts(db, query), []);
+    assert.equal(db.calls.length, 0);
+  }
 });
 
 test("suggestions are de-duplicated and capped independently of the candidate window", async () => {
@@ -59,7 +71,7 @@ test("suggestions are de-duplicated and capped independently of the candidate wi
   );
   const db = captureDatabase(rows);
 
-  const result = await suggestProducts(db, "PM");
+  const result = await suggestProducts(db, "PM1");
 
   assert.equal(result.length, MAX_SUGGESTIONS);
   assert.equal(new Set(result.map((value) => value.toLocaleLowerCase())).size, result.length);
