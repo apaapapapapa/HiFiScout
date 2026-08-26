@@ -3,10 +3,12 @@
 import { normalizeManufacturer, splitKnownManufacturerModel } from "../catalog/manufacturers.js";
 import { normalizeIdentityModel } from "../catalog/product-identity.js";
 import { parseFtsSearchQuery, quoteFtsTerm } from "../search/fts-query.js";
+import type { FtsSearchPlan } from "../search/fts-query.js";
 import type { QueryableDatabase } from "./types.js";
 
 /** Public response ceiling. The database candidate window is separately bounded below. */
 export const MAX_SUGGESTIONS = 8;
+const MIN_SUGGEST_QUERY_LENGTH = 3;
 const MAX_SUGGEST_CANDIDATES = 24;
 
 interface ProductSuggestRow {
@@ -28,14 +30,36 @@ function normalizedModelQuery(q: string): string {
   return normalizeIdentityModel(split?.model || q);
 }
 
-function ftsSuggestionQuery(q: string, normalizedModel: string): string {
-  const plan = parseFtsSearchQuery(q);
+function ftsSuggestionQuery(plan: FtsSearchPlan, normalizedModel: string): string {
   const clauses: string[] = [];
   if (plan.ftsQuery) clauses.push(`(${plan.ftsQuery})`);
-  if ([...normalizedModel].length >= 3) {
+  if ([...normalizedModel].length >= MIN_SUGGEST_QUERY_LENGTH) {
     clauses.push(`normalized_model : ${quoteFtsTerm(normalizedModel)}`);
   }
   return clauses.join(" OR ");
+}
+
+/**
+ * Short terms cannot use the trigram index, but mixed queries can still apply them after FTS has
+ * narrowed the candidate set. This mirrors product search rather than silently dropping `14` from
+ * a query such as `Marantz 14`.
+ */
+function addShortTermPredicates(
+  plan: FtsSearchPlan,
+  where: string[],
+  binds: unknown[],
+): void {
+  for (const value of plan.shortTerms) {
+    const term = `%${escapedLike(value)}%`;
+    where.push(`(
+      e.manufacturer_terms LIKE ? ESCAPE '\\'
+      OR e.normalized_model LIKE ? ESCAPE '\\'
+      OR e.model_terms LIKE ? ESCAPE '\\'
+      OR e.title_terms LIKE ? ESCAPE '\\'
+      OR e.category_terms LIKE ? ESCAPE '\\'
+    )`);
+    binds.push(term, term, term, term, term);
+  }
 }
 
 async function loadCandidates(
@@ -43,55 +67,36 @@ async function loadCandidates(
   q: string,
   normalizedModel: string,
 ): Promise<ProductSuggestRow[]> {
-  const ftsQuery = ftsSuggestionQuery(q, normalizedModel);
+  const plan = parseFtsSearchQuery(q);
+  const ftsQuery = ftsSuggestionQuery(plan, normalizedModel);
+  if (!ftsQuery) return [];
+
   const knownManufacturerId = splitKnownManufacturerModel(q)?.id || "";
+  const exactOrder = normalizedModel
+    ? `CASE
+        WHEN e.normalized_model = ? THEN 0
+        WHEN e.normalized_model LIKE ? ESCAPE '\\' THEN 1
+        ELSE 2
+      END,
+      CASE WHEN ? <> '' AND e.manufacturer_id = ? THEN 0 ELSE 1 END,`
+    : "";
+  const orderBinds = normalizedModel
+    ? [normalizedModel, `${escapedLike(normalizedModel)}%`, knownManufacturerId, knownManufacturerId]
+    : [];
+  const where = ["product_search_entities_fts MATCH ?"];
+  const whereBinds: unknown[] = [ftsQuery];
+  addShortTermPredicates(plan, where, whereBinds);
 
-  if (ftsQuery) {
-    const exactOrder = normalizedModel
-      ? `CASE
-          WHEN e.normalized_model = ? THEN 0
-          WHEN e.normalized_model LIKE ? ESCAPE '\\' THEN 1
-          ELSE 2
-        END,
-        CASE WHEN ? <> '' AND e.manufacturer_id = ? THEN 0 ELSE 1 END,`
-      : "";
-    const orderBinds = normalizedModel
-      ? [
-          normalizedModel,
-          `${escapedLike(normalizedModel)}%`,
-          knownManufacturerId,
-          knownManufacturerId,
-        ]
-      : [];
-    const result = await db
-      .prepare(`
-        SELECT ${SUGGEST_COLUMNS}
-        FROM product_search_entities e
-        JOIN product_search_entities_fts ON product_search_entities_fts.rowid = e.id
-        WHERE product_search_entities_fts MATCH ?
-        ORDER BY ${exactOrder} bm25(product_search_entities_fts), e.id
-        LIMIT ?
-      `)
-      .bind(ftsQuery, ...orderBinds, MAX_SUGGEST_CANDIDATES)
-      .all<ProductSuggestRow>();
-    return result.results || [];
-  }
-
-  // One- and two-code-point input is too short for the trigram tokenizer. Keep the fallback scan
-  // bounded by the same candidate limit and restricted to the three entity search columns.
-  const term = `%${escapedLike(q)}%`;
-  const normalizedTerm = normalizedModel ? `%${escapedLike(normalizedModel)}%` : term;
   const result = await db
     .prepare(`
       SELECT ${SUGGEST_COLUMNS}
       FROM product_search_entities e
-      WHERE e.manufacturer_terms LIKE ? ESCAPE '\\'
-         OR e.model_terms LIKE ? ESCAPE '\\'
-         OR e.normalized_model LIKE ? ESCAPE '\\'
-      ORDER BY e.manufacturer_id COLLATE NOCASE, e.normalized_model COLLATE NOCASE, e.id
+      JOIN product_search_entities_fts ON product_search_entities_fts.rowid = e.id
+      WHERE ${where.join(" AND ")}
+      ORDER BY ${exactOrder} bm25(product_search_entities_fts), e.id
       LIMIT ?
     `)
-    .bind(term, term, normalizedTerm, MAX_SUGGEST_CANDIDATES)
+    .bind(...whereBinds, ...orderBinds, MAX_SUGGEST_CANDIDATES)
     .all<ProductSuggestRow>();
   return result.results || [];
 }
@@ -107,11 +112,15 @@ function suggestionKey(value: string): string {
 /**
  * Return canonical manufacturer and manufacturer+model completions, de-duplicated and capped.
  *
+ * One- and two-code-point whole queries intentionally return no suggestions: FTS5's trigram index
+ * cannot serve them, and a leading-wildcard LIKE would scan the entire public read model for every
+ * first keystroke. Mixed queries remain supported because short sub-terms are applied after FTS.
+ *
  * Model matches are emitted before their manufacturer so model-number typeahead does not fill the
  * small response window with repeated brand-only values. Manufacturer searches do the inverse.
  */
 export async function suggestProducts(db: QueryableDatabase, q: string): Promise<string[]> {
-  if (!q) return [];
+  if ([...q].length < MIN_SUGGEST_QUERY_LENGTH) return [];
   const normalizedModel = normalizedModelQuery(q);
   const rows = await loadCandidates(db, q, normalizedModel);
   const suggestions: string[] = [];
