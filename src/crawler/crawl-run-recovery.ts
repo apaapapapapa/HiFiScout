@@ -21,6 +21,20 @@ const STALLED_RUN_BATCH_SIZE = 20;
 const INTERRUPTED_MESSAGE =
   "crawl run abandoned: no terminal outcome recorded before the execution lease expired";
 
+/**
+ * The abandonment message, extended with where the run actually stopped.
+ *
+ * The prefix is unchanged on purpose: it is what operational queries match on, and every historical
+ * row carries it. What follows is the durable heartbeat the run wrote as it advanced, which is the
+ * difference between "this shop stopped, somewhere" and "this shop stopped in collection, after
+ * eleven pages". A run with no heartbeat stopped before its first stage and says so.
+ */
+export function interruptedRunMessage(run: StalledCrawlRunRow): string {
+  const parts = [`stage=${run.current_stage || "none"}`, `pagesDone=${run.pages_done || 0}`];
+  if (run.last_progress_at) parts.push(`lastProgressAt=${run.last_progress_at}`);
+  return `${INTERRUPTED_MESSAGE} (${parts.join(", ")})`;
+}
+
 export interface StalledCrawlRunRecovery {
   crawlRunId: number;
   shopKey: string;
@@ -97,9 +111,10 @@ export async function recoverStalledCrawlRuns(
   const recovered: StalledCrawlRunRecovery[] = [];
 
   for (const run of stalled) {
+    const message = interruptedRunMessage(run);
     const closed = await finishCrawlRunInterrupted(db, run.id, {
       finishedAt: recoveredAt,
-      message: INTERRUPTED_MESSAGE,
+      message,
     });
     if (!closed) continue;
 
@@ -110,7 +125,7 @@ export async function recoverStalledCrawlRuns(
         db,
         run.shop_key,
         recoveredAt,
-        INTERRUPTED_MESSAGE,
+        message,
         Number(state?.consecutive_failures || 0),
       );
     }
@@ -129,6 +144,9 @@ export async function recoverStalledCrawlRuns(
         recoveredAt,
         abandonedAfterMinutes,
         recordedFailure,
+        stoppedInStage: run.current_stage || null,
+        pagesDone: run.pages_done || 0,
+        lastProgressAt: run.last_progress_at || null,
       }),
     );
   }

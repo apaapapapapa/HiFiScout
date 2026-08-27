@@ -36,8 +36,10 @@ import {
   type DerivedWorkMetrics,
 } from "./crawl-continuation.js";
 import { recordCrawlWorkloadObservation } from "../db/crawl-workload-repository.js";
+import { createInvocationDeadline } from "../deadline.js";
 import { archiveEvidence } from "../evidence/evidence-archive.js";
 import { enrichProductCategories } from "./category-enricher.js";
+import { createCrawlRunProgressRecorder } from "./crawl-progress.js";
 import { createCrawlStageRecorder } from "./crawl-stages.js";
 import { SHOP_PLUGINS, getShopActivityPolicy } from "./shops/index.js";
 import { createTransport, isTransportConfigured } from "./transport.js";
@@ -80,6 +82,55 @@ interface EvidenceMetrics {
   expected: number;
   archived: number;
   failed: number;
+}
+
+/**
+ * Cost of one seller page, above which it is worth naming that page on its own.
+ *
+ * Sitting above every page cost observed in production and below the transport's own request
+ * timeout, so it fires for a page that is pathologically slow rather than for a shop that is simply
+ * the slowest of the healthy ones.
+ */
+const SLOW_PAGE_WARNING_MS = 20_000;
+
+interface PageTimingSummary {
+  pages: number;
+  totalMs: number;
+  slowestMs: number;
+  slowestUrl: string;
+}
+
+interface PageTimings {
+  record(shopKey: string, crawlRunId: number | null, url: string, durationMs: number): void;
+  summary(): PageTimingSummary;
+}
+
+/**
+ * What collection actually spent, per page.
+ *
+ * The collection budget has to be set against evidence rather than intuition, and the run summary
+ * only ever carried the stage total — which cannot distinguish a shop with many quick pages from
+ * one with a single page that nearly stalls. Individual pages are logged only when they cross
+ * {@link SLOW_PAGE_WARNING_MS}, so the common case adds no log volume at all.
+ */
+function createPageTimings(): PageTimings {
+  const summary: PageTimingSummary = { pages: 0, totalMs: 0, slowestMs: 0, slowestUrl: "" };
+  return {
+    record(shopKey, crawlRunId, url, durationMs) {
+      summary.pages += 1;
+      summary.totalMs += durationMs;
+      if (durationMs > summary.slowestMs) {
+        summary.slowestMs = durationMs;
+        summary.slowestUrl = url;
+      }
+      if (durationMs >= SLOW_PAGE_WARNING_MS) {
+        console.warn(
+          JSON.stringify({ event: "crawl_page_slow", shopKey, crawlRunId, url, durationMs }),
+        );
+      }
+    },
+    summary: () => ({ ...summary }),
+  };
 }
 
 function nowIso(now = new Date()): string {
@@ -292,15 +343,25 @@ export async function crawlShop(
   if (!isConfigured(env, adapter))
     return { shopKey: adapter.key, status: "skipped", reason: "configuration_missing" };
 
+  // The budgets are measured from here, not from the start of the derived work: what the platform
+  // kills is the whole invocation, so reading shop state, fetch, parse and the derived stages all
+  // have to count against the same clock. `getCrawlerSettings` is a pure read of `env`, so taking
+  // it before the error boundary below costs nothing that the boundary exists to catch.
+  const invocationStartedAtMs = Date.now();
+  const settings = getCrawlerSettings(env);
+  const deadline = createInvocationDeadline(settings.invocationBudgetMs, invocationStartedAtMs);
+  const collectionDeadline = createInvocationDeadline(
+    settings.collectionBudgetMs,
+    invocationStartedAtMs,
+  );
+
   const intervalMinutes = getShopIntervalMinutes(env, definition);
-  const state = await getShopState(env.DB, adapter.key);
+  const state = await deadline.guard("shop_state", () => getShopState(env.DB, adapter.key));
   if (!force && !isShopDue(state, intervalMinutes, now))
     return { shopKey: adapter.key, status: "skipped", reason: "not_due" };
 
   const startedAt = nowIso(now);
-  // The budget is measured from here, not from the start of the derived work: what the platform
-  // kills is the whole invocation, so fetch and parse have to count against the same clock.
-  const invocationStartedAtMs = Date.now();
+  const pageTimings = createPageTimings();
   const items = new Map<string, NormalizedCatalogProduct>();
   const evidenceMetrics: EvidenceMetrics = { expected: 0, archived: 0, failed: 0 };
   let runId: number | null = null;
@@ -321,12 +382,20 @@ export async function crawlShop(
   // to sit outside the boundary, so a failure in any of them escaped uncaught and left the shop
   // with an advanced attempt, no error timestamp and an unchanged failure count — indistinguishable
   // from the state a hard termination leaves, and invisible to shop health either way.
-  await markShopAttempt(env.DB, adapter.key, startedAt);
+  await deadline.guard("shop_attempt", () => markShopAttempt(env.DB, adapter.key, startedAt));
   try {
-    runId = await startCrawlRun(env.DB, adapter.key, startedAt);
-    const stageRecorder = createCrawlStageRecorder(adapter.key, runId);
+    // The id is also held as a const because the deadline guards below close over it, and a `let`
+    // that the catch block can still read keeps its nullable type inside a closure.
+    const crawlRunId = await deadline.guard("crawl_run_start", () =>
+      startCrawlRun(env.DB, adapter.key, startedAt),
+    );
+    runId = crawlRunId;
+    const progress = createCrawlRunProgressRecorder(env.DB, runId, { deadline });
+    const stageRecorder = createCrawlStageRecorder(adapter.key, runId, {
+      deadline,
+      onStageStart: (stage) => progress.record(stage),
+    });
     stages = stageRecorder;
-    const settings = getCrawlerSettings(env);
     const maxPages = getShopMaxPages(env, definition, settings.maxPagesPerShop);
     const pageLimit = maxPages + adapter.discovery.policy.extraPageBudget;
     const requestDelayMs = getShopRequestDelayMs(env, definition, settings.requestDelayMs);
@@ -334,6 +403,7 @@ export async function crawlShop(
     const activeTransport = createTransport(env, adapter.capabilities.transport?.kind, fetchFn);
     transport = activeTransport;
     const fetchParseStage = stageRecorder.begin("fetch_parse", { inputCount: pageLimit });
+    await progress.record("fetch_parse", pageCount);
     const pageQueue = initialPageQueue(adapter, maxPages, env, { now, intervalMinutes, state });
     const queuedUrls = new Set(pageQueue.map((page) => targetUrl(adapter, page)));
 
@@ -341,15 +411,23 @@ export async function crawlShop(
       const page = pageQueue.shift();
       if (!page) break;
       const url = targetUrl(adapter, page);
+      // Page count alone never bounded this loop in time: a page has been observed to cost anywhere
+      // from 1 to 14 seconds, so a page budget that is safe for one seller is minutes of wall clock
+      // for another. Stopping here makes an over-budget collection a failure that names the pages
+      // it did fetch, instead of a kill at the platform limit that records nothing at all.
+      collectionDeadline.check("collection");
+      const pageStartedAtMs = Date.now();
       let html;
       try {
-        html = await activeTransport.fetchHtmlPage(url, {
-          baseUrl: adapter.baseUrl,
-          userAgent: settings.userAgent,
-          requestDelayMs,
-          fetchFn,
-          robotsCache,
-        });
+        html = await collectionDeadline.guard("seller_page", () =>
+          activeTransport.fetchHtmlPage(url, {
+            baseUrl: adapter.baseUrl,
+            userAgent: settings.userAgent,
+            requestDelayMs,
+            fetchFn,
+            robotsCache,
+          }),
+        );
       } catch (error) {
         const fetchError = error instanceof Error ? error : new Error(String(error));
         if (
@@ -364,6 +442,8 @@ export async function crawlShop(
 
       lastEvidenceHtml = html;
       pageCount += 1;
+      pageTimings.record(adapter.key, runId, url, Date.now() - pageStartedAtMs);
+      await progress.record("fetch_parse", pageCount);
       const diagnostic = adapter.capabilities.diagnostics?.diagnosePage(html, page);
       if (diagnostic != null) pageDiagnostic = diagnostic;
       let parsed;
@@ -532,12 +612,14 @@ export async function crawlShop(
     // stored, so re-projecting the whole inventory on every routine crawl bought nothing and was
     // the work that could not fit in one invocation. Stale resolver versions and catalog edits are
     // replayed by the remediation queue, which is a resumable worker of its own.
-    await recordCrawlRunWorkSet(env.DB, {
-      crawlRunId: runId,
-      generation: observedAt,
-      sourceIds: derivedSourceIds,
-      recordedAt: observedAt,
-    });
+    await deadline.guard("crawl_run_work_set", () =>
+      recordCrawlRunWorkSet(env.DB, {
+        crawlRunId,
+        generation: observedAt,
+        sourceIds: derivedSourceIds,
+        recordedAt: observedAt,
+      }),
+    );
     const derived = await syncDerivedProductState(env, adapter, observedAt, stageRecorder, runId, {
       workSetSize: derivedSourceIds.length,
       budgetMs: DERIVED_WORK_BUDGET_MS,
@@ -567,19 +649,25 @@ export async function crawlShop(
         currentItemCount: items.size,
       }),
     );
-    // Only once no stage still owes a chunk. Freeing the work set while one is pending would leave
-    // the sweep a stage it could not read, and it would silently settle it as if it had run.
-    if (!derived.pending) await clearCrawlRunWorkItems(env.DB, runId);
-    await recordCrawlWorkloadObservation(env.DB, adapter.key, {
-      itemCount: items.size,
-      budgetExhausted: derived.deferred,
-      observedAt,
+    // The work budget is spent by the time a crawl reaches its outcome, so the writes that record
+    // that outcome start a budget of their own. It is short because none of them is expensive: what
+    // it bounds is a binding that stops answering, not a write that is merely slow.
+    const successWrites = createInvocationDeadline(settings.terminalBudgetMs);
+    await successWrites.guard("crawl_success_record", async () => {
+      // Only once no stage still owes a chunk. Freeing the work set while one is pending would
+      // leave the sweep a stage it could not read, and it would silently settle it as if it had run.
+      if (!derived.pending) await clearCrawlRunWorkItems(env.DB, crawlRunId);
+      await recordCrawlWorkloadObservation(env.DB, adapter.key, {
+        itemCount: items.size,
+        budgetExhausted: derived.deferred,
+        observedAt,
+      });
+      await markShopSuccess(env.DB, adapter.key, observedAt, items.size);
+      // The inventory watermark advances either way: the collection succeeded. The projection
+      // watermark only advances when nothing is still owed, so a crawl that deferred its remaining
+      // chunks or lost a stage reports fresh listings without claiming search has caught up.
+      if (!derived.pending) await markShopProjectionComplete(env.DB, adapter.key, observedAt);
     });
-    await markShopSuccess(env.DB, adapter.key, observedAt, items.size);
-    // The inventory watermark advances either way: the collection succeeded. The projection
-    // watermark only advances when nothing is still owed, so a crawl that deferred its remaining
-    // chunks or lost a stage reports fresh listings without claiming search has caught up.
-    if (!derived.pending) await markShopProjectionComplete(env.DB, adapter.key, observedAt);
     const diagnosticParts = [];
     if (pageDiagnostic != null) diagnosticParts.push(`diag=${JSON.stringify(pageDiagnostic)}`);
     if (enrichment.detailRequests || enrichment.cacheHits || enrichment.unresolvedCount) {
@@ -613,15 +701,20 @@ export async function crawlShop(
     }
     if (quality) diagnosticParts.push(`quality=${JSON.stringify({ status: quality.status })}`);
     // Stage durations are kept on the run row as well as in the logs: a stalled successor is
-    // diagnosed against what the last completed run actually cost, and logs age out first.
+    // diagnosed against what the last completed run actually cost, and logs age out first. Page
+    // costs are kept for the same reason, and because they are what the collection budget has to be
+    // set against: the stage total alone cannot separate many quick pages from one near-stall.
     diagnosticParts.push(`stages=${JSON.stringify(stageRecorder.stageDurationsMs())}`);
+    diagnosticParts.push(`pages=${JSON.stringify(pageTimings.summary())}`);
     const diagnosticSuffix = diagnosticParts.length ? ` | ${diagnosticParts.join(" | ")}` : "";
-    await finishCrawlRunSuccess(env.DB, runId, {
-      finishedAt: observedAt,
-      itemCount: items.size,
-      pageCount,
-      message: `${changedCount} changed, ${activityCount} activity, ${featureFactCount} feature facts, ${metadataChangedCount} metadata changed, ${touchedCount} touched, ${deactivatedCount} deactivated${diagnosticSuffix}`,
-    });
+    await createInvocationDeadline(settings.terminalBudgetMs).guard("crawl_run_finish", () =>
+      finishCrawlRunSuccess(env.DB, crawlRunId, {
+        finishedAt: observedAt,
+        itemCount: items.size,
+        pageCount,
+        message: `${changedCount} changed, ${activityCount} activity, ${featureFactCount} feature facts, ${metadataChangedCount} metadata changed, ${touchedCount} touched, ${deactivatedCount} deactivated${diagnosticSuffix}`,
+      }),
+    );
     return {
       shopKey: adapter.key,
       status: "success",
@@ -661,48 +754,88 @@ export async function crawlShop(
         failedStage,
         lastCompletedStage: stages?.lastCompletedStage || null,
         stageDurationsMs: stages?.stageDurationsMs() || {},
+        pages: pageTimings.summary(),
         message: crawlError.message,
       }),
     );
+    // Diagnostics run on a budget of their own, ahead of the terminal record and separate from it.
+    // Evidence is an R2 write and quality is a D1 write, and either stalling used to take the whole
+    // catch block with it — which is the shape that leaves a run with no outcome at all. Their
+    // budget is spent before the record's, so neither can consume the time the record needs.
+    const diagnosticWrites = createInvocationDeadline(settings.terminalBudgetMs);
     evidenceMetrics.expected += 1;
     if (lastEvidenceHtml) {
-      const evidence = await archiveEvidence({
-        env,
-        shopKey: adapter.key,
-        crawlRunId: runId,
-        reason: crawlError.evidenceReason || "crawl_validation_failure",
-        html: lastEvidenceHtml,
-        capturedAt: failedAt,
-      });
-      evidenceOutcome(evidenceMetrics, evidence);
+      try {
+        const evidence = await diagnosticWrites.guard("crawl_evidence", () =>
+          archiveEvidence({
+            env,
+            shopKey: adapter.key,
+            crawlRunId: runId,
+            reason: crawlError.evidenceReason || "crawl_validation_failure",
+            html: lastEvidenceHtml,
+            capturedAt: failedAt,
+          }),
+        );
+        evidenceOutcome(evidenceMetrics, evidence);
+      } catch (evidenceError) {
+        evidenceMetrics.failed += 1;
+        console.warn(
+          JSON.stringify({
+            event: "crawl_evidence_archive_failure",
+            shopKey: adapter.key,
+            crawlRunId: runId,
+            message: errorMessage(evidenceError),
+          }),
+        );
+      }
     } else {
       evidenceMetrics.failed += 1;
     }
     const previousItemCount = Number(state?.last_item_count);
-    const quality = await safeSaveDataQuality(env, adapter, runId, failedAt, {
-      parseAttemptCount,
-      parseSuccessCount: Math.max(0, parseAttemptCount - parseFailureCount),
-      parseFailureCount,
-      evidenceExpectedEventCount: evidenceMetrics.expected,
-      evidenceArchivedEventCount: evidenceMetrics.archived,
-      evidenceArchiveFailureCount: evidenceMetrics.failed,
-      previousItemCount: Number.isFinite(previousItemCount) ? previousItemCount : null,
-      currentItemCount: items.size,
-    });
-    await markShopFailure(
-      env.DB,
-      adapter.key,
-      failedAt,
-      crawlError.message,
-      state?.consecutive_failures || 0,
-    );
-    if (runId !== null) {
-      await finishCrawlRunFailure(env.DB, runId, {
-        finishedAt: failedAt,
-        pageCount,
-        message: failedStage ? `${failedStage}: ${crawlError.message}` : crawlError.message,
+    const quality = await diagnosticWrites
+      .guard("data_quality", () =>
+        safeSaveDataQuality(env, adapter, runId, failedAt, {
+          parseAttemptCount,
+          parseSuccessCount: Math.max(0, parseAttemptCount - parseFailureCount),
+          parseFailureCount,
+          evidenceExpectedEventCount: evidenceMetrics.expected,
+          evidenceArchivedEventCount: evidenceMetrics.archived,
+          evidenceArchiveFailureCount: evidenceMetrics.failed,
+          previousItemCount: Number.isFinite(previousItemCount) ? previousItemCount : null,
+          currentItemCount: items.size,
+        }),
+      )
+      .catch((qualityError: unknown) => {
+        console.warn(
+          JSON.stringify({
+            event: "data_quality_evaluation_failure",
+            shop: adapter.key,
+            crawlRunId: runId,
+            message: errorMessage(qualityError),
+          }),
+        );
+        return null;
       });
-    }
+    // Everything above this point is optional. This is not: without it the run stays `running` and
+    // the shop stays silently busy, which is exactly the state the recovery sweep has to guess
+    // about. It gets a fresh budget so a long crawl never arrives here with nothing left to spend.
+    const failureWrites = createInvocationDeadline(settings.terminalBudgetMs);
+    await failureWrites.guard("crawl_failure_record", async () => {
+      await markShopFailure(
+        env.DB,
+        adapter.key,
+        failedAt,
+        crawlError.message,
+        state?.consecutive_failures || 0,
+      );
+      if (runId !== null) {
+        await finishCrawlRunFailure(env.DB, runId, {
+          finishedAt: failedAt,
+          pageCount,
+          message: failedStage ? `${failedStage}: ${crawlError.message}` : crawlError.message,
+        });
+      }
+    });
     return {
       shopKey: adapter.key,
       status: "failed",
@@ -711,7 +844,24 @@ export async function crawlShop(
       dataQuality: quality,
     };
   } finally {
-    await transport?.close?.();
+    // A transport that will not close must not be able to discard an outcome the crawl already
+    // recorded: this runs after both terminal paths, and an exception here would replace their
+    // return value with a rejection the queue reads as a retry.
+    const closeTransport = transport?.close?.bind(transport);
+    if (closeTransport) {
+      await createInvocationDeadline(settings.terminalBudgetMs)
+        .guard("transport_close", () => closeTransport())
+        .catch((closeError: unknown) => {
+          console.warn(
+            JSON.stringify({
+              event: "crawl_transport_close_failure",
+              shopKey: adapter.key,
+              crawlRunId: runId,
+              message: errorMessage(closeError),
+            }),
+          );
+        });
+    }
   }
 }
 

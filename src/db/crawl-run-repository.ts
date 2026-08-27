@@ -51,10 +51,46 @@ export async function finishCrawlRunFailure(
     .run();
 }
 
+export interface CrawlRunProgressInput {
+  /** The stage the run has entered, from the crawler's stage vocabulary. */
+  stage: string;
+  /** Seller pages finished so far. Zero for every stage after collection. */
+  pagesDone: number;
+  observedAt: string;
+}
+
+/**
+ * Records how far a run has got, so a run that never reaches a terminal write can still say where
+ * it stopped.
+ *
+ * The `status` predicate is what makes this safe to call from a deadline-guarded path: a guarded
+ * call is not cancelled when the caller stops waiting for it, so a heartbeat can land after the run
+ * has already been finished. Restricting the write to a `running` row means such a late arrival is
+ * a no-op instead of reopening a settled run's progress fields.
+ */
+export async function recordCrawlRunProgress(
+  db: QueryableDatabase,
+  runId: number,
+  { stage, pagesDone, observedAt }: CrawlRunProgressInput,
+): Promise<void> {
+  await db
+    .prepare(`
+      UPDATE crawl_runs
+      SET current_stage = ?, pages_done = ?, last_progress_at = ?
+      WHERE id = ? AND status = 'running'
+    `)
+    .bind(stage, pagesDone, observedAt, runId)
+    .run();
+}
+
 export interface StalledCrawlRunRow {
   id: number;
   shop_key: string;
   started_at: string;
+  /** Last stage the run reported entering; empty when it stopped before its first heartbeat. */
+  current_stage: string;
+  pages_done: number;
+  last_progress_at: string | null;
 }
 
 /**
@@ -70,7 +106,7 @@ export async function listStalledCrawlRuns(
 ): Promise<StalledCrawlRunRow[]> {
   const result = await db
     .prepare(`
-      SELECT id, shop_key, started_at
+      SELECT id, shop_key, started_at, current_stage, pages_done, last_progress_at
       FROM crawl_runs
       WHERE status = 'running' AND started_at < ?
       ORDER BY started_at
