@@ -11,6 +11,7 @@ import {
   listProductCorrectionReports,
   updateProductCorrectionReport,
 } from "../src/db/product-correction-report-repository.js";
+import type { QueryableDatabase } from "../src/db/types.js";
 import {
   parseProductCorrectionReportAction,
   parseProductCorrectionReportListQuery,
@@ -183,6 +184,54 @@ test("review transitions are audited and acceptance requires a correction refere
       events.map((event) => event.action),
       ["review_started", "accepted"],
     );
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("a lost concurrent review transition does not create an audit event", async () => {
+  const { sqlite, db } = migratedSqlite();
+  const now = new Date("2026-08-27T10:00:00.000Z");
+  try {
+    await createProductCorrectionReport(db, SNAPSHOT, now);
+    const row = sqlite.prepare("SELECT id FROM product_correction_reports LIMIT 1").get() as {
+      id: number;
+    };
+    let injectedRace = false;
+    const racingDb = {
+      prepare: db.prepare,
+      async batch(statements: D1PreparedStatement[]) {
+        if (!injectedRace) {
+          injectedRace = true;
+          sqlite
+            .prepare(
+              "UPDATE product_correction_reports SET status = 'rejected' WHERE id = ? AND status = 'open'",
+            )
+            .run(row.id);
+        }
+        return db.batch(statements);
+      },
+    } as QueryableDatabase;
+
+    await assert.rejects(
+      updateProductCorrectionReport(
+        racingDb,
+        row.id,
+        "duplicate",
+        "same report as #1",
+        new Date("2026-08-27T10:01:00.000Z"),
+      ),
+      /invalid_correction_report_transition/,
+    );
+
+    const report = sqlite
+      .prepare("SELECT status FROM product_correction_reports WHERE id = ?")
+      .get(row.id) as { status: string };
+    const events = sqlite
+      .prepare("SELECT COUNT(*) AS count FROM product_correction_report_events WHERE report_id = ?")
+      .get(row.id) as { count: number };
+    assert.equal(report.status, "rejected");
+    assert.equal(Number(events.count), 0);
   } finally {
     sqlite.close();
   }
