@@ -26,9 +26,13 @@ function priceIndexRow(catalogProductId = 12, askingSampleCount = 4) {
   };
 }
 
-test("price-index projection is thresholded and recomputes the trailing window from the rollup view", async () => {
+function isPriceIndexRead(sql: string): boolean {
+  return /JOIN knowledge_catalog_price_indexes i/.test(sql);
+}
+
+test("price-index projection uses persistent aggregates and scopes the trailing window to requested ids", async () => {
   const db = captureDatabase((statement) =>
-    /FROM knowledge_catalog_price_index_rollup r/.test(statement.sql) ? [priceIndexRow()] : [],
+    isPriceIndexRead(statement.sql) ? [priceIndexRow()] : [],
   );
 
   const summaries = await loadKnowledgeCatalogPriceIndexes(db, [12, 12, null]);
@@ -36,14 +40,18 @@ test("price-index projection is thresholded and recomputes the trailing window f
   assert.equal(summaries.get(12)?.asking_median_yen, 310_000);
   assert.equal(summaries.get(12)?.recent_asking_median_yen, 320_000);
   assert.equal(db.calls.length, 1);
-  assert.match(db.calls[0].sql, /knowledge_catalog_price_index_rollup/);
-  assert.match(db.calls[0].sql, /strftime\('%Y-%m-%dT%H:%M:%fZ', 'now'\)/);
+  assert.match(db.calls[0].sql, /WITH requested\(catalog_product_id\) AS/);
+  assert.match(db.calls[0].sql, /JOIN requested q ON q\.catalog_product_id = s\.catalog_product_id/);
+  assert.match(db.calls[0].sql, /knowledge_catalog_price_index_samples s/);
+  assert.match(db.calls[0].sql, /JOIN knowledge_catalog_price_indexes i/);
+  assert.doesNotMatch(db.calls[0].sql, /knowledge_catalog_price_index_rollup/);
+  assert.match(db.calls[0].sql, /julianday\('now', '-90 days'\)/);
   assert.deepEqual(db.calls[0].binds, [12, PRODUCT_PRICE_INDEX_MIN_ASKING_SAMPLES]);
 });
 
 test("defensive projection omits an index below the named asking-sample threshold", async () => {
   const db = captureDatabase((statement) =>
-    /FROM knowledge_catalog_price_index_rollup r/.test(statement.sql) ? [priceIndexRow(12, 2)] : [],
+    isPriceIndexRead(statement.sql) ? [priceIndexRow(12, 2)] : [],
   );
 
   const summaries = await loadKnowledgeCatalogPriceIndexes(db, [12]);
@@ -63,8 +71,7 @@ test("product search exposes price_index only for resolved catalog products with
   });
   const db = captureDatabase((statement) => {
     if (/SELECT e\.id, e\.entity_key/.test(statement.sql)) return [resolved, unresolved];
-    if (/FROM knowledge_catalog_price_index_rollup r/.test(statement.sql))
-      return [priceIndexRow(12)];
+    if (isPriceIndexRead(statement.sql)) return [priceIndexRow(12)];
     return [];
   });
 
@@ -73,9 +80,7 @@ test("product search exposes price_index only for resolved catalog products with
   assert.equal(response.items[0]?.price_index?.asking_sample_count, 4);
   assert.equal(response.items[0]?.price_index?.listing_end_median_yen, 300_000);
   assert.ok(!Object.hasOwn(response.items[1] || {}, "price_index"));
-  const priceIndexCall = db.calls.find((statement) =>
-    /FROM knowledge_catalog_price_index_rollup r/.test(statement.sql),
-  );
+  const priceIndexCall = db.calls.find((statement) => isPriceIndexRead(statement.sql));
   assert.ok(priceIndexCall);
   assert.deepEqual(priceIndexCall.binds, [12, PRODUCT_PRICE_INDEX_MIN_ASKING_SAMPLES]);
 });
@@ -85,8 +90,7 @@ test("product detail exposes the same optional price-index contract", async () =
     if (/FROM product_search_entities e WHERE e\.entity_key/.test(statement.sql)) {
       return [entityRow({ id: 12, entity_key: "c-12", catalog_product_id: 12 })];
     }
-    if (/FROM knowledge_catalog_price_index_rollup r/.test(statement.sql))
-      return [priceIndexRow(12)];
+    if (isPriceIndexRead(statement.sql)) return [priceIndexRow(12)];
     if (/FROM product_search_entity_offers m/.test(statement.sql)) {
       return [offerRow({ listing_product_id: 100, price_yen: 300_000 })];
     }
