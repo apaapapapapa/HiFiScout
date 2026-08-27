@@ -99,8 +99,11 @@ async function selectCandidates(
         ph.observed_at
       FROM price_history ph
       JOIN products p ON p.id = ph.product_id
+      JOIN product_identity_resolutions pir ON pir.listing_product_id = p.id
       WHERE ph.id > ?
         AND ph.price_yen >= 0
+        AND pir.status = 'matched'
+        AND pir.catalog_product_id IS NOT NULL
       ORDER BY ph.id ASC
       LIMIT ?
     `)
@@ -113,9 +116,9 @@ function sampleUpsertStatement(
   db: QueryableDatabase,
   candidate: PriceIndexBackfillCandidateRow,
 ): D1PreparedStatement {
-  // Identity is deliberately read by this statement inside the same D1 batch transaction that
-  // advances the cursor. A resolver write cannot race between candidate selection and attribution:
-  // whichever identity is current when the transaction executes is the one that receives evidence.
+  // Identity is deliberately read again by this statement inside the same D1 batch transaction
+  // that advances the cursor. A resolver write cannot leave stale catalog attribution between the
+  // initial candidate scan and commit: the transaction uses whichever identity is current then.
   return db
     .prepare(`
       INSERT INTO knowledge_catalog_price_index_samples(
@@ -171,10 +174,10 @@ function sampleUpsertStatement(
  * the ledger: crawler triggers may keep writing newer evidence while a historical backfill is in
  * progress, and replaying an overlapping page is idempotent by the stable price-history event key.
  *
- * Rows that are unresolved when the transaction executes intentionally write no sample while the
- * cursor still advances. If their identity later becomes matched, the price-index identity trigger
- * copies their retained history, so advancing this cursor cannot make a later resolution permanently
- * miss evidence.
+ * Rows that are unresolved at the candidate scan are intentionally skipped. If identity changes
+ * after selection, the transactional upsert rechecks it before attribution. If an unresolved row
+ * later becomes matched, the price-index identity trigger copies its retained history, so advancing
+ * this cursor cannot make a later resolution permanently miss evidence.
  */
 export async function backfillKnowledgeCatalogPriceIndex(
   db: QueryableDatabase,
