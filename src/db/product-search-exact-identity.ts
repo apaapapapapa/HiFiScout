@@ -70,6 +70,31 @@ function representativeListingId(alias: string): string {
 }
 
 /**
+ * True for an active unresolved listing whose safe exact-identity peers are split across multiple
+ * Product Search entities.
+ *
+ * This is intentionally a listing predicate rather than a group count. The bounded projection-gap
+ * repair can select one stranded member as a seed; `syncProductSearchEntities` then expands that
+ * seed to every safe peer and converges the whole identity group in one replay.
+ */
+export function exactIdentitySplitMembershipPredicateSql(alias: string): string {
+  return `${eligible(alias)}
+    AND ${categoryCompatible(alias)}
+    AND EXISTS (
+      SELECT 1
+      FROM product_search_entity_offers current_membership
+      JOIN products peer
+        ON peer.id <> ${alias}.id
+       AND ${sameIdentity(alias, "peer")}
+      JOIN product_search_entity_offers peer_membership
+        ON peer_membership.listing_product_id = peer.id
+      WHERE current_membership.listing_product_id = ${alias}.id
+        AND ${eligible("peer")}
+        AND peer_membership.entity_id <> current_membership.entity_id
+    )`;
+}
+
+/**
  * Expands an incremental crawl/remediation scope to unresolved exact-identity peers.
  *
  * A newly observed listing can otherwise join the shared entity while an older shop's listing stays
