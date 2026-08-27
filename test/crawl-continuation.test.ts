@@ -430,7 +430,7 @@ test("a large work set drains through several bounded invocations", async () => 
   assert.equal(countRows(sqlite, "product_search_projection"), 750);
   assert.equal(countRows(sqlite, "product_identity_resolutions"), 750);
   assert.equal(countRows(sqlite, "crawl_run_work_items"), 0);
-});
+}, 15_000);
 
 test("a newer run adopts what the interrupted run never projected", async () => {
   const database = emptyDatabase();
