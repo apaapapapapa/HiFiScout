@@ -33,9 +33,11 @@ export interface ApiRateLimitResult {
 /**
  * Every public API request gets a bucket before it can reach a handler. Unknown `/api/` paths use
  * a bounded fallback rather than bypassing the limiter, which keeps a future write route from being
- * accidentally exposed without an explicit bucket.
+ * accidentally exposed without an explicit bucket. Retired `/api/admin/*` routes are blocked by the
+ * outer public entrypoint and therefore deliberately remain outside this public limiter.
  */
 export function apiBucket(pathname: string, method = "GET"): ApiRateLimitBucket | null {
+  if (pathname.startsWith("/api/admin/")) return null;
   if (method === "POST" && pathname === "/api/product-correction-reports") {
     return "correction-reports";
   }
