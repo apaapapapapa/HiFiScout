@@ -101,6 +101,29 @@ export interface CrawlerSettings {
   healthCriticalFactor: number;
   dispatchLeaseMinutes: number;
   productTouchIntervalMinutes: number;
+  /**
+   * Wall-clock budget for collecting seller pages, measured from the start of the invocation.
+   *
+   * Reaching it is a recorded failure that names the pages already fetched, rather than a seller
+   * that keeps answering slowly until the platform kills the invocation with nothing to show.
+   */
+  collectionBudgetMs: number;
+  /**
+   * Outer wall-clock bound on one crawl invocation, measured from the same moment.
+   *
+   * This is the backstop for every stage, including the ones that stop gracefully on their own
+   * budget. It has to stay comfortably below the platform's own limit so that exceeding it is a
+   * catchable error the crawl can still record.
+   */
+  invocationBudgetMs: number;
+  /**
+   * Budget for one terminal write phase, started fresh when the outcome is being recorded.
+   *
+   * The work budget is spent by definition once a crawl ends, so the writes that record how it
+   * ended cannot share it. A fresh short budget keeps those writes bounded without giving them a
+   * reason to fail on a crawl that merely took a long time.
+   */
+  terminalBudgetMs: number;
   userAgent: string;
 }
 

@@ -145,7 +145,14 @@ test("recovery closes the run but leaves health to the outcome already recorded 
 });
 
 test("a shop still holding an execution lease keeps its own outcome", () => {
-  const run = { id: 1, shop_key: "ippinkan", started_at: ABANDONED_AT };
+  const run = {
+    id: 1,
+    shop_key: "ippinkan",
+    started_at: ABANDONED_AT,
+    current_stage: "fetch_parse",
+    pages_done: 3,
+    last_progress_at: ABANDONED_AT,
+  };
   const executing = lifecycleRow({
     shop_key: "ippinkan",
     queued_at: ABANDONED_AT,
@@ -177,4 +184,37 @@ test("recovery drains a backlog in bounded batches", async () => {
     4,
     "a recovered run is never handed out twice",
   );
+});
+
+test("an abandoned run reports the stage and page count it stopped at", async () => {
+  const { sqlite, db } = migratedSqlite();
+  const runId = insertRun(sqlite, "ippinkan", ABANDONED_AT);
+  sqlite
+    .prepare(
+      "UPDATE crawl_runs SET current_stage = ?, pages_done = ?, last_progress_at = ? WHERE id = ?",
+    )
+    .run("fetch_parse", 11, "2026-08-25T11:03:00.000Z", runId);
+  insertShopState(sqlite, { shop_key: "ippinkan", last_attempt_at: ABANDONED_AT });
+
+  await recoverStalledCrawlRuns(db, { now: NOW });
+
+  // The prefix is what operational queries match on and must not move; the detail after it is the
+  // difference between "this shop stopped" and "this shop stopped in collection, after 11 pages".
+  const { message } = readRun(sqlite, runId);
+  assert.match(message, /^crawl run abandoned: no terminal outcome recorded/u);
+  assert.match(message, /stage=fetch_parse/u);
+  assert.match(message, /pagesDone=11/u);
+  assert.match(message, /lastProgressAt=2026-08-25T11:03:00\.000Z/u);
+});
+
+test("a run abandoned before its first heartbeat says so", async () => {
+  const { sqlite, db } = migratedSqlite();
+  const runId = insertRun(sqlite, "ippinkan", ABANDONED_AT);
+  insertShopState(sqlite, { shop_key: "ippinkan", last_attempt_at: ABANDONED_AT });
+
+  await recoverStalledCrawlRuns(db, { now: NOW });
+
+  const { message } = readRun(sqlite, runId);
+  assert.match(message, /stage=none/u);
+  assert.match(message, /pagesDone=0/u);
 });

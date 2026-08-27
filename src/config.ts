@@ -118,6 +118,14 @@ export function getCrawlerSettings(env: CrawlerEnv | undefined): CrawlerSettings
     healthCriticalFactor: positiveNumber(env?.SYNC_HEALTH_CRITICAL_FACTOR, 6),
     dispatchLeaseMinutes: positiveInt(env?.CRAWL_DISPATCH_LEASE_MINUTES, 15),
     productTouchIntervalMinutes: positiveInt(env?.PRODUCT_TOUCH_INTERVAL_MINUTES, 1440),
+    // These three nest: collection gives up first, derived work defers next on its own budget in
+    // `src/crawler/crawl-continuation.ts`, and the invocation bound sits above both so an ordinary
+    // deferral never becomes a failure. The whole set, plus the terminal phases that follow it, has
+    // to fit inside Cloudflare's fifteen-minute Queue limit — `test/crawl-deadline.test.ts` is what
+    // keeps that ordering true when one of them is retuned.
+    collectionBudgetMs: positiveInt(env?.CRAWL_COLLECTION_BUDGET_MS, 240_000),
+    invocationBudgetMs: positiveInt(env?.CRAWL_INVOCATION_BUDGET_MS, 600_000),
+    terminalBudgetMs: positiveInt(env?.CRAWL_TERMINAL_BUDGET_MS, 15_000),
     userAgent:
       env?.CRAWLER_USER_AGENT || "HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)",
   };

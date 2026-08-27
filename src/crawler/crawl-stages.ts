@@ -1,4 +1,5 @@
 import { errorMessage } from "../types.js";
+import type { InvocationDeadline } from "../deadline.js";
 
 /**
  * The stages one crawl performs, in execution order.
@@ -36,6 +37,20 @@ export interface CrawlStageHandle {
   fail(error: unknown): void;
 }
 
+export interface CrawlStageRecorderOptions {
+  /**
+   * Outer bound applied to every stage run through {@link CrawlStageRecorder.run}.
+   *
+   * A stage is the unit a crawl can attribute a failure to, so it is also the right unit to bound:
+   * one guard here covers every D1 and R2 call the stage makes, without each repository having to
+   * learn about deadlines. Stages that manage their own budget — the derived-work drains — stop
+   * gracefully long before this fires; it exists for the ones that would otherwise block forever.
+   */
+  deadline?: InvocationDeadline;
+  /** Durable heartbeat, written as each stage is entered. */
+  onStageStart?: (stage: CrawlStage) => Promise<void>;
+}
+
 export interface CrawlStageRecorder {
   /**
    * Opens a stage whose body cannot be wrapped in a callback, such as the paging loop.
@@ -69,6 +84,7 @@ export interface CrawlStageRecorder {
 export function createCrawlStageRecorder(
   shopKey: string,
   crawlRunId: number | null,
+  { deadline, onStageStart }: CrawlStageRecorderOptions = {},
 ): CrawlStageRecorder {
   const durations = new Map<CrawlStage, number>();
   let activeStage: CrawlStage | null = null;
@@ -138,9 +154,10 @@ export function createCrawlStageRecorder(
       operation: () => Promise<T>,
     ): Promise<T> {
       const handle = recorder.begin(stage, options);
+      await onStageStart?.(stage);
       let result: T;
       try {
-        result = await operation();
+        result = await (deadline ? deadline.guard(stage, operation) : operation());
       } catch (error) {
         handle.fail(error);
         throw error;
