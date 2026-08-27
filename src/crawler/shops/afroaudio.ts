@@ -1,7 +1,13 @@
 import { availabilityFromSignals } from "../availability.js";
-import { stripRawTextElements } from "../../html/raw-text.js";
 import { cleanText, inferCategory, parseYen, splitManufacturerModel } from "../normalize.js";
 import type { CrawlPageObject, SellerProduct, ShopAdapter } from "../types.js";
+import {
+  bestListingTitle,
+  collectProductAnchors,
+  discoverLinkedPages,
+  productListingBlocks,
+  type CanonicalProductLink,
+} from "./html-listing.js";
 
 const BASE_URL = "https://afroaudio.jp";
 
@@ -14,13 +20,6 @@ interface AfroAudioPage extends CrawlPageObject {
   page: number;
   categoryId: number;
   rawCategory: string;
-}
-
-interface ProductAnchorRecord {
-  sourceId: string;
-  sourceUrl: string;
-  index: number;
-  titles: string[];
 }
 
 /**
@@ -96,13 +95,7 @@ function listingPage(category: AfroAudioCategory, page = 1): AfroAudioPage {
   };
 }
 
-function visibleText(html: unknown = ""): string {
-  return cleanText(stripRawTextElements(html).replace(/<br\s*\/?>/gi, " "));
-}
-
-function canonicalProductLink(
-  href: string,
-): Pick<ProductAnchorRecord, "sourceId" | "sourceUrl"> | null {
+function canonicalProductLink(href: string): CanonicalProductLink | null {
   try {
     const url = new URL(href, BASE_URL);
     if (url.origin !== BASE_URL) return null;
@@ -114,29 +107,6 @@ function canonicalProductLink(
   } catch {
     return null;
   }
-}
-
-function productAnchorRecords(html: string): ProductAnchorRecord[] {
-  const records = new Map<string, ProductAnchorRecord>();
-  const anchorRe = /<a\b([^>]*?)href\s*=\s*(["'])([^"']+)\2([^>]*)>([\s\S]*?)<\/a>/gi;
-
-  for (const match of String(html || "").matchAll(anchorRe)) {
-    const product = canonicalProductLink(match[3]);
-    if (!product) continue;
-    const title = visibleText(match[5]);
-    const existing = records.get(product.sourceId);
-    if (existing) {
-      if (title) existing.titles.push(title);
-      continue;
-    }
-    records.set(product.sourceId, {
-      ...product,
-      index: match.index || 0,
-      titles: title ? [title] : [],
-    });
-  }
-
-  return [...records.values()].sort((a, b) => a.index - b.index);
 }
 
 function listingTitle(value: string): string {
@@ -159,15 +129,6 @@ function canonicalTitle(value: string): string {
 function titleScore(value: string): number {
   if (!value || /^(?:詳細|商品詳細|more|image|画像)$/iu.test(value)) return -1;
   return (ANY_CONDITION_MARKER_PATTERN.test(value) ? 1000 : 0) + Math.min(value.length, 300);
-}
-
-function bestTitle(record: ProductAnchorRecord, blockText: string): string {
-  return (
-    [...new Set([...record.titles, blockText])]
-      .map(listingTitle)
-      .filter((value) => value.length >= 3)
-      .sort((a, b) => titleScore(b) - titleScore(a))[0] || ""
-  );
 }
 
 function conditionText(title: string): string {
@@ -219,14 +180,13 @@ export function parseAfroAudioListing(
   html: string,
   page: Partial<AfroAudioPage> = {},
 ): SellerProduct[] {
-  const records = productAnchorRecords(html);
   const products: SellerProduct[] = [];
 
-  for (let index = 0; index < records.length; index += 1) {
-    const record = records[index];
-    const end = records[index + 1]?.index ?? String(html).length;
-    const blockText = visibleText(String(html).slice(record.index, end));
-    const sellerTitle = bestTitle(record, blockText);
+  for (const { record, text: blockText } of productListingBlocks(
+    html,
+    collectProductAnchors(html, canonicalProductLink),
+  )) {
+    const sellerTitle = bestListingTitle(record, blockText, listingTitle, titleScore);
     const title = canonicalTitle(sellerTitle);
     if (!title) continue;
 
@@ -260,24 +220,18 @@ export function discoverAfroAudioPageUrls(
 ): AfroAudioPage[] {
   if (!page.categoryId || !page.rawCategory) return [];
   const currentPage = page.page || 1;
-  let maxPage = currentPage;
-
-  for (const match of String(html || "").matchAll(/href\s*=\s*(["'])([^"']+)\1/gi)) {
-    try {
-      const url = new URL(match[2], BASE_URL);
-      if (url.origin !== BASE_URL || url.pathname !== "/products/list") continue;
-      if (url.searchParams.get("category_id") !== String(page.categoryId)) continue;
-      const candidate = Number.parseInt(url.searchParams.get("pageno") || "1", 10);
-      if (Number.isFinite(candidate)) maxPage = Math.max(maxPage, candidate);
-    } catch {
-      continue;
-    }
-  }
-
   const category = { id: page.categoryId, rawCategory: page.rawCategory };
-  return Array.from({ length: Math.max(0, maxPage - currentPage) }, (_, index) =>
-    listingPage(category, currentPage + index + 1),
-  );
+
+  return discoverLinkedPages(html, {
+    baseUrl: BASE_URL,
+    currentPage,
+    pageNumber(url) {
+      if (url.origin !== BASE_URL || url.pathname !== "/products/list") return null;
+      if (url.searchParams.get("category_id") !== String(page.categoryId)) return null;
+      return Number.parseInt(url.searchParams.get("pageno") || "1", 10);
+    },
+    createPage: (pageNumber) => listingPage(category, pageNumber),
+  });
 }
 
 export const afroAudioAdapter = {
