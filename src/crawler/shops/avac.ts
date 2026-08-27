@@ -1,13 +1,13 @@
 import { availabilityFromSignals } from "../availability.js";
-import { cleanText, inferCategory, parseYen, splitManufacturerModel } from "../normalize.js";
-import type { CrawlPageObject, SellerProduct, ShopAdapter } from "../types.js";
 import {
   bestListingTitle,
   collectProductAnchors,
   discoverLinkedPages,
   productListingBlocks,
   type CanonicalProductLink,
-} from "./html-listing.js";
+} from "../html-listing.js";
+import { cleanText, inferCategory, parseYen, splitManufacturerModel } from "../normalize.js";
+import type { CrawlPageObject, SellerProduct, ShopAdapter } from "../types.js";
 
 const BASE_URL = "https://www.avac.co.jp";
 const LIST_PATH = "/buy/used/products/list";
