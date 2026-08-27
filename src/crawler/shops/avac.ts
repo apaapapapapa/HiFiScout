@@ -1,5 +1,11 @@
 import { availabilityFromSignals } from "../availability.js";
-import { stripRawTextElements } from "../../html/raw-text.js";
+import {
+  bestListingTitle,
+  collectProductAnchors,
+  discoverLinkedPages,
+  productListingBlocks,
+  type CanonicalProductLink,
+} from "../html-listing.js";
 import { cleanText, inferCategory, parseYen, splitManufacturerModel } from "../normalize.js";
 import type { CrawlPageObject, SellerProduct, ShopAdapter } from "../types.js";
 
@@ -16,13 +22,6 @@ export interface AvacPage extends CrawlPageObject {
   readonly page: number;
   readonly categoryId: number;
   readonly rawCategory: string;
-}
-
-interface ProductAnchorRecord {
-  readonly sourceId: string;
-  readonly sourceUrl: string;
-  readonly index: number;
-  readonly titles: string[];
 }
 
 /**
@@ -56,13 +55,7 @@ function listingPage(category: AvacCategory, page = 1): AvacPage {
   };
 }
 
-function visibleText(html: unknown = ""): string {
-  return cleanText(stripRawTextElements(html).replace(/<br\s*\/?>/gi, " "));
-}
-
-function canonicalProductLink(
-  href: string,
-): Pick<ProductAnchorRecord, "sourceId" | "sourceUrl"> | null {
+function canonicalProductLink(href: string): CanonicalProductLink | null {
   try {
     const url = new URL(href, BASE_URL);
     if (url.origin !== BASE_URL) return null;
@@ -74,29 +67,6 @@ function canonicalProductLink(
   } catch {
     return null;
   }
-}
-
-function productAnchorRecords(html: string): ProductAnchorRecord[] {
-  const records = new Map<string, ProductAnchorRecord>();
-  const anchorRe = /<a\b([^>]*?)href\s*=\s*(["'])([^"']+)\2([^>]*)>([\s\S]*?)<\/a>/gi;
-
-  for (const match of String(html || "").matchAll(anchorRe)) {
-    const product = canonicalProductLink(match[3]);
-    if (!product) continue;
-    const title = visibleText(match[5]);
-    const existing = records.get(product.sourceId);
-    if (existing) {
-      if (title) existing.titles.push(title);
-      continue;
-    }
-    records.set(product.sourceId, {
-      ...product,
-      index: match.index || 0,
-      titles: title ? [title] : [],
-    });
-  }
-
-  return [...records.values()].sort((a, b) => a.index - b.index);
 }
 
 function listingTitle(value: string): string {
@@ -111,15 +81,6 @@ function titleScore(value: string): number {
     (CONDITION_MARKER_PATTERN.test(value) ? 10_000 : 0) +
     (PRODUCT_CODE_PATTERN.test(value) ? 1_000 : 0) +
     Math.min(value.length, 500)
-  );
-}
-
-function bestTitle(record: ProductAnchorRecord, blockText: string): string {
-  return (
-    [...new Set([...record.titles, blockText])]
-      .map(listingTitle)
-      .filter((value) => value.length >= 3)
-      .sort((a, b) => titleScore(b) - titleScore(a))[0] || ""
   );
 }
 
@@ -163,14 +124,16 @@ function stockStatus(text: string) {
 }
 
 export function parseAvacListing(html: string, page: Partial<AvacPage> = {}): SellerProduct[] {
-  const records = productAnchorRecords(html);
   const products: SellerProduct[] = [];
 
-  for (let index = 0; index < records.length; index += 1) {
-    const record = records[index];
-    const end = records[index + 1]?.index ?? String(html).length;
-    const blockText = visibleText(String(html).slice(record.index, end));
-    const parsedTitle = parseConditionedTitle(bestTitle(record, blockText), page.rawCategory || "");
+  for (const { record, text: blockText } of productListingBlocks(
+    html,
+    collectProductAnchors(html, canonicalProductLink),
+  )) {
+    const parsedTitle = parseConditionedTitle(
+      bestListingTitle(record, blockText, listingTitle, titleScore),
+      page.rawCategory || "",
+    );
 
     // AVAC's `sale_type=2` pages mix 中古, 展示処分品 and アウトレット. These three explicit
     // seller condition markers are the authoritative inclusion rule; unrelated conditions stay out.
@@ -203,26 +166,20 @@ export function parseAvacListing(html: string, page: Partial<AvacPage> = {}): Se
 export function discoverAvacPageUrls(html: string, page: Partial<AvacPage>): AvacPage[] {
   if (!page.categoryId || !page.rawCategory) return [];
   const currentPage = page.page || 1;
-  let maxPage = currentPage;
-
-  for (const match of String(html || "").matchAll(/href\s*=\s*(["'])([^"']+)\1/gi)) {
-    try {
-      const url = new URL(match[2], BASE_URL);
-      if (url.origin !== BASE_URL || url.pathname !== LIST_PATH) continue;
-      if (url.searchParams.get("category_id") !== String(page.categoryId)) continue;
-      const saleType = url.searchParams.get("sale_type");
-      if (saleType && saleType !== SALE_TYPE_USED) continue;
-      const candidate = Number.parseInt(url.searchParams.get("pageno") || "1", 10);
-      if (Number.isFinite(candidate)) maxPage = Math.max(maxPage, candidate);
-    } catch {
-      continue;
-    }
-  }
-
   const category = { id: page.categoryId, rawCategory: page.rawCategory };
-  return Array.from({ length: Math.max(0, maxPage - currentPage) }, (_, index) =>
-    listingPage(category, currentPage + index + 1),
-  );
+
+  return discoverLinkedPages(html, {
+    baseUrl: BASE_URL,
+    currentPage,
+    pageNumber(url) {
+      if (url.origin !== BASE_URL || url.pathname !== LIST_PATH) return null;
+      if (url.searchParams.get("category_id") !== String(page.categoryId)) return null;
+      const saleType = url.searchParams.get("sale_type");
+      if (saleType && saleType !== SALE_TYPE_USED) return null;
+      return Number.parseInt(url.searchParams.get("pageno") || "1", 10);
+    },
+    createPage: (pageNumber) => listingPage(category, pageNumber),
+  });
 }
 
 export const avacAdapter = {
