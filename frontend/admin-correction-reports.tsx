@@ -6,7 +6,7 @@ import {
   PRODUCT_CORRECTION_REPORT_STATUSES,
   type ProductCorrectionReportReason,
   type ProductCorrectionReportStatus,
-} from "../src/api/product-correction-report-contract.js";
+} from "../src/api/contracts.js";
 import { adminJson, dateText, genericErrorText } from "./admin-shared.js";
 
 interface CorrectionReport {

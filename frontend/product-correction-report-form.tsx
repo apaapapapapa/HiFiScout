@@ -4,7 +4,7 @@ import type { FormEvent } from "react";
 import {
   PRODUCT_CORRECTION_REPORT_REASONS,
   type ProductCorrectionReportReason,
-} from "../src/api/product-correction-report-contract.js";
+} from "../src/api/contracts.js";
 
 export interface ProductCorrectionReportTarget {
   listingProductId?: number;
