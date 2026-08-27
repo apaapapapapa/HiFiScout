@@ -23,6 +23,8 @@ function database(): DatabaseSync {
       price_yen INTEGER,
       stock_status TEXT NOT NULL DEFAULT 'unknown',
       last_seen_at TEXT NOT NULL,
+      last_inventory_checked_at TEXT,
+      last_changed_at TEXT,
       is_active INTEGER NOT NULL DEFAULT 1,
       UNIQUE(shop_key, source_id)
     );
@@ -72,8 +74,12 @@ function listing(db: DatabaseSync, stockStatus = "in_stock"): number {
   return Number(
     db
       .prepare(`
-        INSERT INTO products(shop_key, source_id, price_yen, stock_status, last_seen_at, is_active)
-        VALUES ('hifido', 'sold-out-step3', 450000, ?, '2026-08-28T00:00:00Z', 1)
+        INSERT INTO products(
+          shop_key, source_id, price_yen, stock_status, last_seen_at, last_changed_at, is_active
+        ) VALUES (
+          'hifido', 'sold-out-step3', 450000, ?,
+          '2026-08-01T00:00:00Z', '2026-08-28T00:00:00Z', 1
+        )
       `)
       .run(stockStatus).lastInsertRowid,
   );
@@ -106,7 +112,7 @@ test("migration repairs an already-observed active sold-out listing", () => {
   assert.equal(soldOutSignals(db, catalogProductId), 1);
   const sample = db
     .prepare(`
-      SELECT sample_kind, signal_kind, shop_key, source_id
+      SELECT event_key, sample_kind, signal_kind, shop_key, source_id, observed_at
       FROM knowledge_catalog_price_index_samples
       WHERE listing_product_id = ? AND signal_kind = 'sold_out'
     `)
@@ -116,10 +122,12 @@ test("migration repairs an already-observed active sold-out listing", () => {
   assert.equal(sample.signal_kind, "sold_out");
   assert.equal(sample.shop_key, "hifido");
   assert.equal(sample.source_id, "sold-out-step3");
+  assert.equal(sample.observed_at, "2026-08-28T00:00:00Z");
+  assert.equal(sample.event_key, `sold-out-observed:${listingProductId}:2026-08-28T00:00:00Z`);
   db.close();
 });
 
-test("an explicit sold-out transition is retained while active and not duplicated on deactivation", () => {
+test("inventory sold-out uses the change/check time and is not duplicated on deactivation", () => {
   const db = database();
   const catalogProductId = catalogProduct(db);
   const listingProductId = listing(db);
@@ -132,11 +140,22 @@ test("an explicit sold-out transition is retained while active and not duplicate
 
   db.prepare(`
     UPDATE products
-    SET stock_status = 'sold_out', last_seen_at = '2026-08-28T01:00:00Z'
+    SET stock_status = 'sold_out',
+        last_inventory_checked_at = '2026-08-28T01:00:00Z',
+        last_changed_at = '2026-08-28T01:00:00Z'
     WHERE id = ?
   `).run(listingProductId);
 
   assert.equal(soldOutSignals(db, catalogProductId), 1);
+  const sample = db
+    .prepare(`
+      SELECT event_key, observed_at
+      FROM knowledge_catalog_price_index_samples
+      WHERE listing_product_id = ? AND signal_kind = 'sold_out'
+    `)
+    .get(listingProductId) as { event_key: string; observed_at: string };
+  assert.equal(sample.observed_at, "2026-08-28T01:00:00Z");
+  assert.equal(sample.event_key, `sold-out-observed:${listingProductId}:2026-08-28T01:00:00Z`);
   const product = db
     .prepare("SELECT is_active FROM products WHERE id = ?")
     .get(listingProductId) as {
@@ -176,5 +195,13 @@ test("a sold-out listing observed before identity resolution is captured when it
   `).run(catalogProductId, listingProductId);
 
   assert.equal(soldOutSignals(db, catalogProductId), 1);
+  const sample = db
+    .prepare(`
+      SELECT observed_at
+      FROM knowledge_catalog_price_index_samples
+      WHERE listing_product_id = ? AND signal_kind = 'sold_out'
+    `)
+    .get(listingProductId) as { observed_at: string };
+  assert.equal(sample.observed_at, "2026-08-28T00:00:00Z");
   db.close();
 });
