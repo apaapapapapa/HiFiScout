@@ -26,6 +26,16 @@ test("deploy backfill repairs only split safe exact identities with the current 
     assert.ok(backfill.includes(invariant), invariant);
   }
 
+  // Eligibility must include peers whose membership is temporarily absent. Membership decides
+  // whether an existing group is split; it must not narrow category veto or representative choice.
+  assert.ok(
+    backfill.includes(
+      "LEFT JOIN product_search_entity_offers membership ON membership.listing_product_id = p.id",
+    ),
+  );
+  assert.ok(backfill.includes("current_entity_id INTEGER"));
+  assert.ok(backfill.includes("WHERE eligible.current_entity_id IS NOT NULL"));
+
   // Membership-derived projections introduced after the original 0036 backfill must move with the
   // offers, otherwise fixing the split would trade it for stale card/filter state or aggregates.
   for (const projection of [
