@@ -120,7 +120,7 @@ test("migration repairs an already-observed active sold-out listing", () => {
   db.close();
 });
 
-test("an explicit sold-out transition is retained while the listing stays active", () => {
+test("an explicit sold-out transition is retained while active and not duplicated on deactivation", () => {
   const db = database();
   const catalogProductId = catalogProduct(db);
   const listingProductId = listing(db);
@@ -142,6 +142,17 @@ test("an explicit sold-out transition is retained while the listing stays active
     is_active: number;
   };
   assert.equal(product.is_active, 1);
+
+  db.prepare("UPDATE products SET is_active = 0 WHERE id = ?").run(listingProductId);
+  assert.equal(soldOutSignals(db, catalogProductId), 1);
+  const count = db
+    .prepare(`
+      SELECT COUNT(*) AS count
+      FROM knowledge_catalog_price_index_samples
+      WHERE listing_product_id = ? AND signal_kind = 'sold_out'
+    `)
+    .get(listingProductId) as { count: number };
+  assert.equal(count.count, 1);
   db.close();
 });
 
