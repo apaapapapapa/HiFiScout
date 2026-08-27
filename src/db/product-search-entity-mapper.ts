@@ -22,11 +22,6 @@ import type {
   ProductSearchOfferRow,
 } from "./types.js";
 
-type ProductSearchEntityColumn = keyof ProductSearchEntityRow | "direct_category_ids";
-type ProductSearchEntityWithDirectCategories = ProductSearchEntityRow & {
-  direct_category_ids?: string | null;
-};
-
 /** Entity columns backing {@link ProductSearchItem} and the sort/cursor values, in schema order. */
 export const PRODUCT_SEARCH_ENTITY_COLUMNS = [
   "id",
@@ -51,7 +46,7 @@ export const PRODUCT_SEARCH_ENTITY_COLUMNS = [
   "latest_activity_at",
   "newest_listed_at",
   "has_price_drop",
-] as const satisfies readonly ProductSearchEntityColumn[];
+] as const satisfies readonly (keyof ProductSearchEntityRow)[];
 
 /** Listing columns backing {@link ProductOffer}. `id` is aliased to keep the DTO name in SQL. */
 const PRODUCT_OFFER_COLUMNS = [
@@ -142,7 +137,7 @@ export function toProductSearchItem(
   const summary = aggregate ?? row;
   const newestListedAt = summary.newest_listed_at ?? null;
   const directCategories = directCategoryIds(
-    String((row as ProductSearchEntityWithDirectCategories).direct_category_ids ?? "")
+    String(row.direct_category_ids ?? "")
       .split(",")
       .map((value) => value.trim())
       .filter(Boolean),
@@ -171,6 +166,10 @@ export function toProductSearchItem(
     primary_category_id: row.primary_category_id,
     category_ids: categoryClosureIds(row.primary_category_id),
     direct_category_ids: directCategories,
+    // Resolved here rather than in the browser: the frontend may import only `src/api/contracts.ts`
+    // from `src`, so it cannot read the taxonomy, and `primary_category_id`/`category` already
+    // establish that an id travels with its label.
+    direct_categories: directCategories.map((categoryId) => getCategory(categoryId)?.name ?? ""),
     category: getCategory(row.primary_category_id)?.name ?? "",
     offer_count: Number(summary.offer_count || 0),
     in_stock_offer_count: Number(summary.in_stock_offer_count || 0),

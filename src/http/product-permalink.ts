@@ -77,7 +77,13 @@ export function renderProductPermalinkHtml(
   origin: string,
 ): string {
   const name = productName(detail);
-  const category = detail.product.category || "カテゴリ未設定";
+  // The same set of categories the card prints, from the same field, so the two never disagree
+  // about what a listing is — requirement 9 of #376. A listing that sells one product has one
+  // direct category and reads exactly as it did before.
+  const categories = (detail.product.direct_categories ?? []).filter(Boolean);
+  const category = categories.length
+    ? categories.join("／")
+    : detail.product.category || "カテゴリ未設定";
   const canonicalPath = productPermalinkPath(detail.product.key) ?? "/";
   const canonical = new URL(canonicalPath, origin).toString();
   const description = `${name} — ${category}。${detail.product.offer_count}件の出品、${detail.product.in_stock_offer_count}件が在庫あり。${priceSummary(detail)}`;

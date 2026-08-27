@@ -704,6 +704,14 @@ export interface ProductSearchEntityRow {
   normalized_model: string;
   /** Comma-joined canonical finishes of the member offers, in no particular order. */
   presentation_colors: string;
+  /**
+   * Comma-joined direct component categories of the member offers, in no particular order.
+   *
+   * The compact card projection of `product_search_entity_categories`, which stays the source of
+   * truth for filters and facets. `""` for an entity with no direct membership. Canonical order is
+   * imposed at the mapper boundary, exactly as it is for `presentation_colors`.
+   */
+  direct_category_ids: string;
   primary_category_id: string;
   offer_count: number;
   in_stock_offer_count: number;

@@ -142,6 +142,14 @@ export interface ProductSearchItem {
    * Optional only for favorite snapshots written before set-category support.
    */
   direct_category_ids?: string[];
+  /**
+   * Japanese display labels for `direct_category_ids`, in the same order.
+   *
+   * Paired with the ids for the same reason `category` is paired with `primary_category_id`: the
+   * browser bundle may import only this module from `src`, so it has no way to turn a category id
+   * into a label. Optional alongside `direct_category_ids`.
+   */
+  direct_categories?: string[];
   /** Japanese display label for `primary_category_id`; empty when the id is unknown. */
   category: string;
   offer_count: number;

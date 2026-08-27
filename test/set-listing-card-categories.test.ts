@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { test } from "vite-plus/test";
 
 import { ProductCard } from "../frontend/public-components.js";
+import { renderProductPermalinkHtml } from "../src/http/product-permalink.js";
 import type { DisplayProduct } from "../frontend/types.js";
 
 function product(overrides: Partial<DisplayProduct> = {}): DisplayProduct {
@@ -60,24 +61,45 @@ function render(value: DisplayProduct): string {
   );
 }
 
-test("a set card renders every direct category as a wrapping text chip", () => {
-  const markup = render(product({ direct_category_ids: ["dac", "transport"] }));
+test("a set card renders every direct category, in the order the API sent them", () => {
+  const markup = render(
+    product({
+      direct_category_ids: ["dac", "transport"],
+      direct_categories: ["DAC", "トランスポート"],
+    }),
+  );
 
-  const dac = '<span class="category product-color">DAC</span>';
-  const transport = '<span class="category product-color">トランスポート</span>';
+  const dac = '<span class="category">DAC</span>';
+  const transport = '<span class="category">トランスポート</span>';
   assert.ok(markup.includes(dac));
   assert.ok(markup.includes(transport));
   assert.ok(markup.indexOf(dac) < markup.indexOf(transport));
 });
 
-test("a one-category card keeps the exact pre-set category markup", () => {
-  const markup = render(product({ direct_category_ids: ["transport"] }));
+/**
+ * The card carries no taxonomy of its own — the browser bundle may import only
+ * `src/api/contracts.ts` from `src`, so ids alone cannot be turned into labels.
+ */
+test("ids without labels render nothing but the listing's own category", () => {
+  const markup = render(product({ direct_category_ids: ["dac", "transport"] }));
 
   assert.match(
     markup,
     /<div class="product-submeta"><span class="category">トランスポート<\/span>/,
   );
-  assert.doesNotMatch(markup, /class="category product-color"/);
+  assert.doesNotMatch(markup, />DAC<\/span>/);
+});
+
+test("a one-category card keeps the exact pre-set category markup", () => {
+  const markup = render(
+    product({ direct_category_ids: ["transport"], direct_categories: ["トランスポート"] }),
+  );
+
+  assert.match(
+    markup,
+    /<div class="product-submeta"><span class="category">トランスポート<\/span>/,
+  );
+  assert.equal(markup.match(/class="category"/g)?.length, 1);
 });
 
 test("an old favorite without direct categories falls back to the legacy display category", () => {
@@ -88,4 +110,45 @@ test("an old favorite without direct categories falls back to the legacy display
     /<div class="product-submeta"><span class="category">トランスポート<\/span>/,
   );
   assert.doesNotMatch(markup, />DAC<\/span>/);
+  assert.equal(markup.match(/class="category"/g)?.length, 1);
+});
+
+/**
+ * Requirement 9 of #376: a set's permalink page renders the same ProductSearchItem the card does,
+ * so the two must not disagree about which categories the listing is in.
+ */
+test("the permalink page shows the same categories as the card", () => {
+  const item = product({
+    direct_category_ids: ["dac", "transport"],
+    direct_categories: ["DAC", "トランスポート"],
+  });
+  const card = render(item);
+  const permalink = renderProductPermalinkHtml(
+    {
+      product: item,
+      offers: item.representative_offer ? [item.representative_offer] : [],
+    } as never,
+    "https://example.test",
+  );
+
+  for (const label of item.direct_categories ?? []) {
+    assert.ok(card.includes(`>${label}</span>`), `card must print ${label}`);
+  }
+  assert.ok(permalink.includes("<p>DAC／トランスポート</p>"), "permalink must print both");
+});
+
+test("a single-product permalink keeps the one label it always had", () => {
+  const item = product({ direct_category_ids: undefined, direct_categories: undefined });
+  const permalink = renderProductPermalinkHtml(
+    {
+      product: item,
+      offers: item.representative_offer ? [item.representative_offer] : [],
+    } as never,
+    "https://example.test",
+  );
+
+  // Scoped to the category element: the page also prints the seller's title, which names both
+  // products, so a whole-page match would pass for the wrong reason.
+  assert.ok(permalink.includes("<p>トランスポート</p>"));
+  assert.ok(!permalink.includes("<p>トランスポート／DAC</p>"));
 });

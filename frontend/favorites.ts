@@ -69,6 +69,7 @@ function stockStatus(value: unknown): DisplayOffer["stock_status"] {
 export function favoriteSnapshot(product: DisplayProduct): DisplayProduct {
   const categoryIds = stringArray(product.category_ids);
   const directCategoryIds = stringArray(product.direct_category_ids);
+  const directCategories = stringArray(product.direct_categories);
   return {
     key: product.key,
     identity_kind: product.identity_kind,
@@ -79,6 +80,9 @@ export function favoriteSnapshot(product: DisplayProduct): DisplayProduct {
     primary_category_id: product.primary_category_id,
     ...(categoryIds ? { category_ids: [...categoryIds] } : {}),
     ...(directCategoryIds ? { direct_category_ids: [...directCategoryIds] } : {}),
+    // The labels travel with the ids: a favorite is rendered from the snapshot alone, and the
+    // browser cannot turn a category id into a label.
+    ...(directCategories ? { direct_categories: [...directCategories] } : {}),
     category: product.category,
     offer_count: product.offer_count,
     in_stock_offer_count: product.in_stock_offer_count,
@@ -111,6 +115,7 @@ export function migrateListingFavorite(entry: Record<string, unknown>): DisplayP
   const previousPrice = nullableNumber(entry.previous_price_yen);
   const categoryIds = stringArray(entry.category_ids);
   const directCategoryIds = stringArray(entry.direct_category_ids);
+  const directCategories = stringArray(entry.direct_categories);
   return {
     key: `${LEGACY_FAVORITE_PREFIX}${listingId}`,
     identity_kind: "unresolved_listing",
@@ -121,6 +126,7 @@ export function migrateListingFavorite(entry: Record<string, unknown>): DisplayP
     primary_category_id: text(entry.primary_category_id),
     ...(categoryIds ? { category_ids: [...categoryIds] } : {}),
     ...(directCategoryIds ? { direct_category_ids: [...directCategoryIds] } : {}),
+    ...(directCategories ? { direct_categories: [...directCategories] } : {}),
     category: text(entry.category),
     offer_count: 1,
     in_stock_offer_count: status === "in_stock" ? 1 : 0,

@@ -1,6 +1,5 @@
 import { useId } from "react";
 
-import { getCategory } from "../src/catalog/categories.js";
 import { isLegacyFavoriteKey } from "./favorites.js";
 import { dateFmt, yen } from "./format.js";
 import { activityData, priceDropped } from "./product-activity.js";
@@ -122,10 +121,15 @@ function ShopChip({
   return <span className={`shop shop-${shopKey}`}>{label}</span>;
 }
 
+/**
+ * The categories to print on a card, already resolved to labels by the API.
+ *
+ * A listing that sells several products is in several categories; anything else — including a
+ * favorite snapshot saved before the field existed — falls back to the single label it has always
+ * carried, so a card that is not a set renders exactly what it rendered before.
+ */
 function productCategoryLabels(product: DisplayProduct): string[] {
-  const labels = (product.direct_category_ids || [])
-    .map((categoryId) => getCategory(categoryId)?.name || "")
-    .filter(Boolean);
+  const labels = (product.direct_categories || []).filter(Boolean);
   return labels.length ? labels : [product.category || "カテゴリ不明"];
 }
 
@@ -218,10 +222,7 @@ export function ProductCard({
         </h2>
         <div className="product-submeta">
           {categories.map((category) => (
-            <span
-              className={categories.length > 1 ? "category product-color" : "category"}
-              key={category}
-            >
+            <span className="category" key={category}>
               {category}
             </span>
           ))}
