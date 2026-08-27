@@ -4,4 +4,5 @@
  * Keep UI logic out of this file so the public surface has one React application boundary.
  */
 import "./product-permalink-navigation.js";
+import "./product-correction-report-ui.js";
 import "./public-app.js";
