@@ -50,7 +50,10 @@ function scrollToAdminTarget(selector: string): void {
   target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
 }
 
-function setControlledFieldValue(element: HTMLInputElement | HTMLSelectElement, value: string): void {
+function setControlledFieldValue(
+  element: HTMLInputElement | HTMLSelectElement,
+  value: string,
+): void {
   const prototype =
     element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
   const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
