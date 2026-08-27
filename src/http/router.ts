@@ -41,7 +41,10 @@ import {
   productSearchEntityConsistency,
   rebuildProductSearchEntities,
 } from "../db/product-search-entity-repository.js";
-import { productSearchDetail, searchProducts } from "../db/product-search-repository.js";
+import {
+  productSearchDetail,
+  searchProducts,
+} from "../db/product-search-price-index-repository.js";
 import { suggestProducts } from "../db/product-suggest-repository.js";
 import { getSyncHealth } from "../health.js";
 import { knowledgeCatalogStatus } from "./knowledge-catalog-status.js";
