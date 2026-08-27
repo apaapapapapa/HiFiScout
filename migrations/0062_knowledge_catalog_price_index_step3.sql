@@ -2,6 +2,10 @@
 -- listing remains present in the crawler result set. Step 1 captured that signal only when the
 -- listing was later deactivated, which loses evidence for shops (notably HiFiDo) that continue to
 -- publish sold-out listings.
+--
+-- Sold-out chronology uses last_changed_at first. Inventory rechecks update that field to checkedAt
+-- while deliberately leaving last_seen_at unchanged, so the retained evidence reflects the actual
+-- availability observation rather than an older crawl heartbeat.
 
 CREATE TRIGGER IF NOT EXISTS trg_products_price_index_sold_out_observed
 AFTER UPDATE OF stock_status ON products
@@ -21,7 +25,12 @@ BEGIN
     observed_at
   )
   SELECT
-    'sold-out-observed:' || NEW.id || ':' || COALESCE(NULLIF(NEW.last_seen_at, ''), 'unknown'),
+    'sold-out-observed:' || NEW.id || ':' || COALESCE(
+      NULLIF(NEW.last_changed_at, ''),
+      NULLIF(NEW.last_inventory_checked_at, ''),
+      NULLIF(NEW.last_seen_at, ''),
+      'unknown'
+    ),
     pir.catalog_product_id,
     NEW.id,
     NULL,
@@ -30,7 +39,12 @@ BEGIN
     'listing_end',
     'sold_out',
     NEW.price_yen,
-    COALESCE(NULLIF(NEW.last_seen_at, ''), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    COALESCE(
+      NULLIF(NEW.last_changed_at, ''),
+      NULLIF(NEW.last_inventory_checked_at, ''),
+      NULLIF(NEW.last_seen_at, ''),
+      strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    )
   FROM product_identity_resolutions pir
   WHERE pir.listing_product_id = NEW.id
     AND pir.status = 'matched'
@@ -63,7 +77,12 @@ BEGIN
     observed_at
   )
   SELECT
-    'sold-out-observed:' || p.id || ':' || COALESCE(NULLIF(p.last_seen_at, ''), 'unknown'),
+    'sold-out-observed:' || p.id || ':' || COALESCE(
+      NULLIF(p.last_changed_at, ''),
+      NULLIF(p.last_inventory_checked_at, ''),
+      NULLIF(p.last_seen_at, ''),
+      'unknown'
+    ),
     NEW.catalog_product_id,
     p.id,
     NULL,
@@ -72,7 +91,12 @@ BEGIN
     'listing_end',
     'sold_out',
     p.price_yen,
-    COALESCE(NULLIF(p.last_seen_at, ''), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    COALESCE(
+      NULLIF(p.last_changed_at, ''),
+      NULLIF(p.last_inventory_checked_at, ''),
+      NULLIF(p.last_seen_at, ''),
+      strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    )
   FROM products p
   WHERE p.id = NEW.listing_product_id
     AND p.stock_status = 'sold_out'
@@ -107,7 +131,12 @@ BEGIN
     observed_at
   )
   SELECT
-    'sold-out-observed:' || p.id || ':' || COALESCE(NULLIF(p.last_seen_at, ''), 'unknown'),
+    'sold-out-observed:' || p.id || ':' || COALESCE(
+      NULLIF(p.last_changed_at, ''),
+      NULLIF(p.last_inventory_checked_at, ''),
+      NULLIF(p.last_seen_at, ''),
+      'unknown'
+    ),
     NEW.catalog_product_id,
     p.id,
     NULL,
@@ -116,7 +145,12 @@ BEGIN
     'listing_end',
     'sold_out',
     p.price_yen,
-    COALESCE(NULLIF(p.last_seen_at, ''), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    COALESCE(
+      NULLIF(p.last_changed_at, ''),
+      NULLIF(p.last_inventory_checked_at, ''),
+      NULLIF(p.last_seen_at, ''),
+      strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    )
   FROM products p
   WHERE p.id = NEW.listing_product_id
     AND p.stock_status = 'sold_out'
@@ -144,7 +178,12 @@ INSERT INTO knowledge_catalog_price_index_samples(
   observed_at
 )
 SELECT
-  'sold-out-observed:' || p.id || ':' || COALESCE(NULLIF(p.last_seen_at, ''), 'unknown'),
+  'sold-out-observed:' || p.id || ':' || COALESCE(
+    NULLIF(p.last_changed_at, ''),
+    NULLIF(p.last_inventory_checked_at, ''),
+    NULLIF(p.last_seen_at, ''),
+    'unknown'
+  ),
   pir.catalog_product_id,
   p.id,
   NULL,
@@ -153,7 +192,12 @@ SELECT
   'listing_end',
   'sold_out',
   p.price_yen,
-  COALESCE(NULLIF(p.last_seen_at, ''), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  COALESCE(
+    NULLIF(p.last_changed_at, ''),
+    NULLIF(p.last_inventory_checked_at, ''),
+    NULLIF(p.last_seen_at, ''),
+    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+  )
 FROM products p
 JOIN product_identity_resolutions pir ON pir.listing_product_id = p.id
 WHERE p.is_active = 1
@@ -191,7 +235,12 @@ BEGIN
   SELECT
     CASE
       WHEN NEW.stock_status = 'sold_out'
-        THEN 'sold-out-observed:' || NEW.id || ':' || COALESCE(NULLIF(NEW.last_seen_at, ''), 'unknown')
+        THEN 'sold-out-observed:' || NEW.id || ':' || COALESCE(
+          NULLIF(NEW.last_changed_at, ''),
+          NULLIF(NEW.last_inventory_checked_at, ''),
+          NULLIF(NEW.last_seen_at, ''),
+          'unknown'
+        )
       ELSE 'listing-end:' || NEW.id || ':' || COALESCE(OLD.last_seen_at, '')
     END,
     pir.catalog_product_id,
@@ -204,7 +253,12 @@ BEGIN
     NEW.price_yen,
     CASE
       WHEN NEW.stock_status = 'sold_out'
-        THEN COALESCE(NULLIF(NEW.last_seen_at, ''), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        THEN COALESCE(
+          NULLIF(NEW.last_changed_at, ''),
+          NULLIF(NEW.last_inventory_checked_at, ''),
+          NULLIF(NEW.last_seen_at, ''),
+          strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+        )
       ELSE strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
     END
   FROM product_identity_resolutions pir
