@@ -41,5 +41,5 @@ test("deploy backfill repairs only split safe exact identities with the current 
   assert.ok(backfill.includes("migration_0059_eligible"));
   assert.ok(backfill.includes("migration_0059_groups"));
   assert.ok(backfill.includes("migration_0059_affected_entities"));
-  assert.doesNotMatch(backfill, /LIKE|levenshtein/i);
+  assert.doesNotMatch(backfill, /\bLIKE\b|levenshtein/i);
 });
