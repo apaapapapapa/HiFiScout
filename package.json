@@ -22,6 +22,7 @@
     "db:migrate:local": "vp exec wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "vp exec wrangler d1 migrations apply DB --remote",
     "create-shop": "vp exec tsx scripts/create-shop.ts",
+    "price-index:backfill": "vp exec tsx scripts/backfill-knowledge-catalog-price-index.ts",
     "docs:api": "vp dlx -p typedoc-plugin-markdown@4.12.0 -p typescript@6.0.2 typedoc@0.28.20 && vp exec tsx scripts/docs/publish-api-docs.ts",
     "docs:architecture:check": "vp dlx -p typescript@6.0.2 dependency-cruiser@18.1.0 src frontend --config .dependency-cruiser.json --ts-config tsconfig.json --output-type err",
     "docs:architecture": "vp exec tsx scripts/ensure-directories.ts docs/public/generated && vp dlx -p typescript@6.0.2 dependency-cruiser@18.1.0 src frontend --config .dependency-cruiser.json --ts-config tsconfig.json --output-type html --output-to docs/public/generated/dependencies.html",
