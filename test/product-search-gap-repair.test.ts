@@ -269,6 +269,7 @@ test("repairs safe exact identities that drift across multiple search entities",
     0,
   );
 
+  // The repaired state must remain stable across later bounded maintenance sweeps.
   const second = await repairActiveListingProjectionGaps(db, {
     evaluatedAt: NOW,
     batchSize: 1,
