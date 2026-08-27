@@ -121,6 +121,18 @@ function ShopChip({
   return <span className={`shop shop-${shopKey}`}>{label}</span>;
 }
 
+/**
+ * The categories to print on a card, already resolved to labels by the API.
+ *
+ * A listing that sells several products is in several categories; anything else — including a
+ * favorite snapshot saved before the field existed — falls back to the single label it has always
+ * carried, so a card that is not a set renders exactly what it rendered before.
+ */
+function productCategoryLabels(product: DisplayProduct): string[] {
+  const labels = (product.direct_categories || []).filter(Boolean);
+  return labels.length ? labels : [product.category || "カテゴリ不明"];
+}
+
 export function ProductCard({
   product,
   favorite,
@@ -133,6 +145,7 @@ export function ProductCard({
   const activity = activityData(product, now);
   const title = product.model || product.representative_offer?.title || "商品名不明";
   const colors = productColors(product);
+  const categories = productCategoryLabels(product);
   const multiOffer = product.offer_count > 1;
   const sourceUrl = safeExternalUrl(product.representative_offer?.source_url);
   const condition = multiOffer ? "" : product.representative_offer?.condition_text || "";
@@ -208,7 +221,11 @@ export function ProductCard({
           ) : null}
         </h2>
         <div className="product-submeta">
-          <span className="category">{product.category || "カテゴリ不明"}</span>
+          {categories.map((category) => (
+            <span className="category" key={category}>
+              {category}
+            </span>
+          ))}
           {condition ? <span className="condition">{condition}</span> : null}
         </div>
       </div>

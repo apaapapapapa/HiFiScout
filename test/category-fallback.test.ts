@@ -126,5 +126,9 @@ test("Hifido recognizes supported seller categories that previously became blank
 });
 
 test("category metadata version advances so stale rows are replayable", () => {
-  assert.equal(CATEGORY_CLASSIFICATION_METADATA_VERSION, 14);
+  // A literal on purpose: bumping the classifier is what makes every stored listing eligible for
+  // the remediation replay, so it cannot be done without editing this line and thinking about the
+  // backfill it starts. Raised to 15 by the set-category work, which changed what a listing's
+  // categories mean.
+  assert.equal(CATEGORY_CLASSIFICATION_METADATA_VERSION, 15);
 });
