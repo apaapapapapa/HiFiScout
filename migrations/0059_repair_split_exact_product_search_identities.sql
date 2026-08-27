@@ -21,11 +21,13 @@ CREATE TABLE migration_0059_eligible (
   normalized_model TEXT NOT NULL,
   primary_category_id TEXT NOT NULL,
   shop_key TEXT NOT NULL,
-  current_entity_id INTEGER NOT NULL
+  current_entity_id INTEGER
 );
 
--- Resolve exact-identity eligibility once and retain current membership so the next GROUP BY can
--- select only identities that are actually split. A verified Catalog match remains authoritative.
+-- Resolve exact-identity eligibility once for every peer, including listings whose membership is
+-- temporarily missing. Membership is nullable here and is used only to decide whether the existing
+-- offers are split; category compatibility and representative selection must see the same complete
+-- peer set as the runtime rule. A verified Catalog match remains authoritative.
 INSERT INTO migration_0059_eligible(
   listing_id,
   canonical_manufacturer_id,
@@ -42,7 +44,7 @@ SELECT
   p.shop_key,
   membership.entity_id
 FROM products p
-JOIN product_search_entity_offers membership ON membership.listing_product_id = p.id
+LEFT JOIN product_search_entity_offers membership ON membership.listing_product_id = p.id
 LEFT JOIN product_identity_resolutions resolution ON resolution.listing_product_id = p.id
 LEFT JOIN knowledge_catalog_products catalog
   ON catalog.id = resolution.catalog_product_id
@@ -64,8 +66,9 @@ CREATE TABLE migration_0059_groups (
   PRIMARY KEY(canonical_manufacturer_id, normalized_model)
 );
 
--- Restrict the migration to persisted drift: multiple eligible listings that currently point at
--- multiple entities and have no contradictory specific category evidence.
+-- Restrict the migration to persisted drift: multiple eligible listings whose existing memberships
+-- point at multiple entities and that have no contradictory specific category evidence. NULL
+-- membership does not manufacture a split, but its listing still participates in both safety gates.
 INSERT INTO migration_0059_groups(
   canonical_manufacturer_id,
   normalized_model,
@@ -89,13 +92,14 @@ CREATE TABLE migration_0059_affected_entities (
 );
 
 -- Capture source entities before membership moves so their aggregates/categories can be refreshed
--- or the row can be pruned when it becomes empty.
+-- or the row can be pruned when it becomes empty. Unmembered eligible peers have no source entity.
 INSERT OR IGNORE INTO migration_0059_affected_entities(id)
 SELECT eligible.current_entity_id
 FROM migration_0059_eligible eligible
 JOIN migration_0059_groups grouped
   ON grouped.canonical_manufacturer_id = eligible.canonical_manufacturer_id
- AND grouped.normalized_model = eligible.normalized_model;
+ AND grouped.normalized_model = eligible.normalized_model
+WHERE eligible.current_entity_id IS NOT NULL;
 
 -- The deterministic destination is the representative listing's fallback entity. Re-create it if
 -- an interrupted historical write pruned that row, and refresh its canonical seller projection.
@@ -138,6 +142,8 @@ JOIN product_search_entities entity
   ON entity.entity_key = 'l-' || grouped.representative_listing_id;
 
 -- Converge every eligible member of each split group onto the deterministic representative entity.
+-- This also restores a missing membership for a peer once the full identity group passes the safety
+-- gates, matching the runtime sync's peer expansion semantics.
 INSERT INTO product_search_entity_offers(listing_product_id, entity_id, shop_key)
 SELECT eligible.listing_id, entity.id, eligible.shop_key
 FROM migration_0059_eligible eligible
