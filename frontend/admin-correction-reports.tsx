@@ -61,7 +61,8 @@ function targetUrl(report: CorrectionReport): string {
 
 function targetLabel(report: CorrectionReport): string {
   const product = [report.snapshot.manufacturer, report.snapshot.model].filter(Boolean).join(" ");
-  const listing = report.listingProductId === null ? "商品全体" : `listing #${report.listingProductId}`;
+  const listing =
+    report.listingProductId === null ? "商品全体" : `listing #${report.listingProductId}`;
   return `${product || report.productKey} / ${listing}`;
 }
 
@@ -97,7 +98,9 @@ export function CorrectionReportsAdmin() {
         );
         setItems((current) => (append ? [...current, ...result.items] : result.items));
         setNextBeforeId(result.nextBeforeId);
-        setMessage(result.items.length ? "報告キューを表示しています。" : "該当する報告はありません。");
+        setMessage(
+          result.items.length ? "報告キューを表示しています。" : "該当する報告はありません。",
+        );
       } catch (error) {
         setMessage(`報告の取得に失敗しました: ${genericErrorText(error)}`);
       } finally {
@@ -119,7 +122,9 @@ export function CorrectionReportsAdmin() {
   const act = async (report: CorrectionReport, action: "review_started" | ResolutionAction) => {
     const note = notes[report.id]?.trim() || "";
     if (action !== "review_started" && !note) {
-      setMessage("解決操作には監査メモを入力してください。補正済みの場合は実施した補正を記録します。");
+      setMessage(
+        "解決操作には監査メモを入力してください。補正済みの場合は実施した補正を記録します。",
+      );
       return;
     }
     setBusy(true);
@@ -138,51 +143,175 @@ export function CorrectionReportsAdmin() {
   };
 
   return (
-    <section id="correction-reports-pane" className="admin-pane" aria-labelledby="correction-reports-heading">
+    <section
+      id="correction-reports-pane"
+      className="admin-pane"
+      aria-labelledby="correction-reports-heading"
+    >
       <div className="section-heading">
         <p className="eyebrow">DATA QUALITY FEEDBACK</p>
         <h2 id="correction-reports-heading">情報の誤り報告</h2>
-        <p>匿名報告は候補です。報告から直接データを変更せず、既存のCatalog/登録商品補正を完了してから「補正済み」にします。</p>
+        <p>
+          匿名報告は候補です。報告から直接データを変更せず、既存のCatalog/登録商品補正を完了してから「補正済み」にします。
+        </p>
       </div>
 
       <form className="admin-filter-grid" onSubmit={submitFilters}>
-        <label>状態<select value={status} onChange={(event) => setStatus(event.currentTarget.value as ProductCorrectionReportStatus | "")}><option value="">すべて</option>{PRODUCT_CORRECTION_REPORT_STATUSES.map((value) => <option key={value} value={value}>{STATUS_LABELS[value]}</option>)}</select></label>
-        <label>理由<select value={reason} onChange={(event) => setReason(event.currentTarget.value as ProductCorrectionReportReason | "")}><option value="">すべて</option>{PRODUCT_CORRECTION_REPORT_REASONS.map((value) => <option key={value} value={value}>{REASON_LABELS[value]}</option>)}</select></label>
-        <label>ショップ<input value={shopKey} onChange={(event) => setShopKey(event.currentTarget.value)} placeholder="shop key" /></label>
-        <label>期間<select value={maxAgeDays} onChange={(event) => setMaxAgeDays(event.currentTarget.value)}><option value="7">7日</option><option value="30">30日</option><option value="90">90日</option><option value="180">180日</option><option value="">全期間</option></select></label>
-        <button type="submit" disabled={busy}>絞り込む</button>
+        <label>
+          状態
+          <select
+            value={status}
+            onChange={(event) =>
+              setStatus(event.currentTarget.value as ProductCorrectionReportStatus | "")
+            }
+          >
+            <option value="">すべて</option>
+            {PRODUCT_CORRECTION_REPORT_STATUSES.map((value) => (
+              <option key={value} value={value}>
+                {STATUS_LABELS[value]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          理由
+          <select
+            value={reason}
+            onChange={(event) =>
+              setReason(event.currentTarget.value as ProductCorrectionReportReason | "")
+            }
+          >
+            <option value="">すべて</option>
+            {PRODUCT_CORRECTION_REPORT_REASONS.map((value) => (
+              <option key={value} value={value}>
+                {REASON_LABELS[value]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          ショップ
+          <input
+            value={shopKey}
+            onChange={(event) => setShopKey(event.currentTarget.value)}
+            placeholder="shop key"
+          />
+        </label>
+        <label>
+          期間
+          <select value={maxAgeDays} onChange={(event) => setMaxAgeDays(event.currentTarget.value)}>
+            <option value="7">7日</option>
+            <option value="30">30日</option>
+            <option value="90">90日</option>
+            <option value="180">180日</option>
+            <option value="">全期間</option>
+          </select>
+        </label>
+        <button type="submit" disabled={busy}>
+          絞り込む
+        </button>
       </form>
 
-      <p className="status-line" role="status" aria-live="polite">{message}</p>
+      <p className="status-line" role="status" aria-live="polite">
+        {message}
+      </p>
       <div className="table-scroll">
         <table className="listing-table">
-          <thead><tr><th>報告</th><th>対象</th><th>内容</th><th>状態 / 対応</th></tr></thead>
+          <thead>
+            <tr>
+              <th>報告</th>
+              <th>対象</th>
+              <th>内容</th>
+              <th>状態 / 対応</th>
+            </tr>
+          </thead>
           <tbody>
             {items.map((report) => (
               <tr key={report.id}>
-                <td><strong>#{report.id}</strong><br /><span>{REASON_LABELS[report.reason]}</span><br /><small>{dateText(report.createdAt)}</small></td>
-                <td><a href={targetUrl(report)}>{targetLabel(report)}</a><br /><small>{report.snapshot.category || "カテゴリ不明"}</small><br />{report.snapshot.shopKey ? <small>{report.snapshot.shopKey}</small> : null}</td>
+                <td>
+                  <strong>#{report.id}</strong>
+                  <br />
+                  <span>{REASON_LABELS[report.reason]}</span>
+                  <br />
+                  <small>{dateText(report.createdAt)}</small>
+                </td>
+                <td>
+                  <a href={targetUrl(report)}>{targetLabel(report)}</a>
+                  <br />
+                  <small>{report.snapshot.category || "カテゴリ不明"}</small>
+                  <br />
+                  {report.snapshot.shopKey ? <small>{report.snapshot.shopKey}</small> : null}
+                </td>
                 <td>{report.explanation || <span>説明なし</span>}</td>
                 <td>
                   <strong>{STATUS_LABELS[report.status]}</strong>
-                  {report.status === "open" ? <div><button type="button" disabled={busy} onClick={() => void act(report, "review_started")}>確認を開始</button></div> : null}
+                  {report.status === "open" ? (
+                    <div>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void act(report, "review_started")}
+                      >
+                        確認を開始
+                      </button>
+                    </div>
+                  ) : null}
                   {report.status === "in_review" || report.status === "open" ? (
                     <>
-                      <label><span className="sr-only">監査メモ</span><textarea value={notes[report.id] || ""} maxLength={500} placeholder="補正内容、却下理由、重複先など" onChange={(event) => setNotes((current) => ({ ...current, [report.id]: event.currentTarget.value }))} /></label>
+                      <label>
+                        <span className="sr-only">監査メモ</span>
+                        <textarea
+                          value={notes[report.id] || ""}
+                          maxLength={500}
+                          placeholder="補正内容、却下理由、重複先など"
+                          onChange={(event) =>
+                            setNotes((current) => ({
+                              ...current,
+                              [report.id]: event.currentTarget.value,
+                            }))
+                          }
+                        />
+                      </label>
                       <div className="offer-actions">
-                        {report.status === "in_review" ? <button type="button" disabled={busy} onClick={() => void act(report, "accepted")}>補正済み</button> : null}
-                        <button type="button" disabled={busy} onClick={() => void act(report, "rejected")}>却下</button>
-                        <button type="button" disabled={busy} onClick={() => void act(report, "duplicate")}>重複</button>
+                        {report.status === "in_review" ? (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void act(report, "accepted")}
+                          >
+                            補正済み
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void act(report, "rejected")}
+                        >
+                          却下
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void act(report, "duplicate")}
+                        >
+                          重複
+                        </button>
                       </div>
                     </>
-                  ) : report.resolutionNote ? <small>{report.resolutionNote}</small> : null}
+                  ) : report.resolutionNote ? (
+                    <small>{report.resolutionNote}</small>
+                  ) : null}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      {nextBeforeId !== null ? <button type="button" disabled={busy} onClick={() => void load(nextBeforeId, true)}>さらに読み込む</button> : null}
+      {nextBeforeId !== null ? (
+        <button type="button" disabled={busy} onClick={() => void load(nextBeforeId, true)}>
+          さらに読み込む
+        </button>
+      ) : null}
     </section>
   );
 }

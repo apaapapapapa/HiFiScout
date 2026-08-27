@@ -79,7 +79,8 @@ export function AdminConsole() {
   const handleTabKey = (event: ReactKeyboardEvent<HTMLButtonElement>, tab: AdminTab) => {
     let target: AdminTab | null = null;
     const index = ADMIN_TABS.indexOf(tab);
-    if (event.key === "ArrowLeft") target = ADMIN_TABS[(index + ADMIN_TABS.length - 1) % ADMIN_TABS.length];
+    if (event.key === "ArrowLeft")
+      target = ADMIN_TABS[(index + ADMIN_TABS.length - 1) % ADMIN_TABS.length];
     else if (event.key === "ArrowRight") target = ADMIN_TABS[(index + 1) % ADMIN_TABS.length];
     else if (event.key === "Home") target = ADMIN_TABS[0];
     else if (event.key === "End") target = ADMIN_TABS[ADMIN_TABS.length - 1];
@@ -161,7 +162,9 @@ export function AdminConsole() {
               onKeyDown={(event) => handleTabKey(event, "listings")}
             >
               <span className="admin-tab-title">登録商品</span>
-              <span className="admin-tab-description">店舗listing・メーカー・型番・カテゴリ補正</span>
+              <span className="admin-tab-description">
+                店舗listing・メーカー・型番・カテゴリ補正
+              </span>
             </button>
             <button
               id="admin-tab-reports"
@@ -196,13 +199,28 @@ export function AdminConsole() {
         </div>
       </nav>
 
-      <div id="catalog-pane" role="tabpanel" aria-labelledby="admin-tab-catalog" hidden={activeTab !== "catalog"}>
+      <div
+        id="catalog-pane"
+        role="tabpanel"
+        aria-labelledby="admin-tab-catalog"
+        hidden={activeTab !== "catalog"}
+      >
         {mountedTabs.has("catalog") ? <CatalogAdmin /> : null}
       </div>
-      <div id="listings-pane" role="tabpanel" aria-labelledby="admin-tab-listings" hidden={activeTab !== "listings"}>
+      <div
+        id="listings-pane"
+        role="tabpanel"
+        aria-labelledby="admin-tab-listings"
+        hidden={activeTab !== "listings"}
+      >
         {mountedTabs.has("listings") ? <ListingAdmin /> : null}
       </div>
-      <div id="reports-pane" role="tabpanel" aria-labelledby="admin-tab-reports" hidden={activeTab !== "reports"}>
+      <div
+        id="reports-pane"
+        role="tabpanel"
+        aria-labelledby="admin-tab-reports"
+        hidden={activeTab !== "reports"}
+      >
         {mountedTabs.has("reports") ? <CorrectionReportsAdmin /> : null}
       </div>
     </main>

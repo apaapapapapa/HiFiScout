@@ -68,10 +68,12 @@ export async function handleProductCorrectionReport(
 ): Promise<Response> {
   const url = new URL(request.url);
   if (!isJsonRequest(request)) return json({ error: "application_json_required" }, { status: 415 });
-  if (!isSameOriginMutation(request, url)) return json({ error: "same_origin_required" }, { status: 403 });
+  if (!isSameOriginMutation(request, url))
+    return json({ error: "same_origin_required" }, { status: 403 });
 
   const body = await readBoundedJson(request);
-  if (body === REQUEST_BODY_TOO_LARGE) return json({ error: "request_body_too_large" }, { status: 413 });
+  if (body === REQUEST_BODY_TOO_LARGE)
+    return json({ error: "request_body_too_large" }, { status: 413 });
   if (body === null) return json({ error: "invalid_json" }, { status: 400 });
   const input = parseProductCorrectionReportRequest(body);
   if (!input) return json({ error: "invalid_correction_report" }, { status: 400 });
@@ -81,7 +83,9 @@ export async function handleProductCorrectionReport(
   const offer =
     input.listingProductId === undefined
       ? null
-      : detail.offers.find((candidate) => candidate.listing_product_id === input.listingProductId) || null;
+      : detail.offers.find(
+          (candidate) => candidate.listing_product_id === input.listingProductId,
+        ) || null;
   if (input.listingProductId !== undefined && !offer) {
     return json({ error: "report_listing_not_in_product" }, { status: 400 });
   }

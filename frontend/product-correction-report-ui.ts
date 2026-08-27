@@ -16,14 +16,18 @@ interface ReportTarget {
 }
 
 export function correctionReportTargets(dialog: ParentNode): ReportTarget[] {
-  const heading = dialog.querySelector<HTMLElement>("#offers-title")?.textContent?.trim() || "この商品";
+  const heading =
+    dialog.querySelector<HTMLElement>("#offers-title")?.textContent?.trim() || "この商品";
   const targets: ReportTarget[] = [{ label: `${heading}（商品全体）` }];
   for (const offer of dialog.querySelectorAll<HTMLElement>(".offer")) {
     const history = offer.querySelector<HTMLElement>("[data-history]");
     const listingProductId = Number(history?.dataset.history || 0);
     if (!Number.isSafeInteger(listingProductId) || listingProductId <= 0) continue;
-    const shop = offer.querySelector<HTMLElement>(".offer-shop")?.textContent?.trim() || "ショップ不明";
-    const title = offer.querySelector<HTMLElement>(".offer-title")?.textContent?.trim() || `listing #${listingProductId}`;
+    const shop =
+      offer.querySelector<HTMLElement>(".offer-shop")?.textContent?.trim() || "ショップ不明";
+    const title =
+      offer.querySelector<HTMLElement>(".offer-title")?.textContent?.trim() ||
+      `listing #${listingProductId}`;
     targets.push({ listingProductId, label: `${shop}: ${title}` });
   }
   return targets;
@@ -104,7 +108,11 @@ function reportPanel(productKey: string, dialog: HTMLElement): HTMLElement {
       reason: reasonSelect.value,
       explanation: explanation.value,
     };
-    const controls = [...form.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement>("input, select, textarea, button")];
+    const controls = [
+      ...form.querySelectorAll<
+        HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement
+      >("input, select, textarea, button"),
+    ];
     controls.forEach((control) => {
       control.disabled = true;
     });
@@ -152,7 +160,8 @@ if (typeof document !== "undefined") {
   document.addEventListener(
     "click",
     (event) => {
-      const target = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-offers]") : null;
+      const target =
+        event.target instanceof Element ? event.target.closest<HTMLElement>("[data-offers]") : null;
       const key = target?.dataset.offers?.trim() || "";
       if (!key) return;
       activeProductKey = key;

@@ -222,8 +222,10 @@ function transitionAllowed(
   current: ProductCorrectionReportStatus,
   action: ProductCorrectionReportAdminAction,
 ): boolean {
-  if (current === "open") return action === "review_started" || action === "rejected" || action === "duplicate";
-  if (current === "in_review") return action === "accepted" || action === "rejected" || action === "duplicate";
+  if (current === "open")
+    return action === "review_started" || action === "rejected" || action === "duplicate";
+  if (current === "in_review")
+    return action === "accepted" || action === "rejected" || action === "duplicate";
   return false;
 }
 
@@ -236,8 +238,10 @@ export async function updateProductCorrectionReport(
 ): Promise<ProductCorrectionReport | null> {
   const current = await getProductCorrectionReport(db, reportId);
   if (!current) return null;
-  if (!transitionAllowed(current.status, action)) throw new Error("invalid_correction_report_transition");
-  if (action === "accepted" && !note.trim()) throw new Error("correction_report_resolution_reference_required");
+  if (!transitionAllowed(current.status, action))
+    throw new Error("invalid_correction_report_transition");
+  if (action === "accepted" && !note.trim())
+    throw new Error("correction_report_resolution_reference_required");
   if ((action === "rejected" || action === "duplicate") && !note.trim()) {
     throw new Error("correction_report_resolution_note_required");
   }

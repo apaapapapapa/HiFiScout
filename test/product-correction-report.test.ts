@@ -79,7 +79,9 @@ test("public correction report contract accepts only bounded factual input", () 
 test("admin correction report queries and actions are bounded", () => {
   assert.deepEqual(
     parseProductCorrectionReportListQuery(
-      new URL("https://admin.example/api/admin/correction-reports?status=open&reason=wrong_model&shopKey=Example-Shop&maxAgeDays=30&limit=25"),
+      new URL(
+        "https://admin.example/api/admin/correction-reports?status=open&reason=wrong_model&shopKey=Example-Shop&maxAgeDays=30&limit=25",
+      ),
     ),
     {
       status: "open",
@@ -96,10 +98,13 @@ test("admin correction report queries and actions are bounded", () => {
     ),
     null,
   );
-  assert.deepEqual(parseProductCorrectionReportAction({ action: "accepted", note: "override event #9" }), {
-    action: "accepted",
-    note: "override event #9",
-  });
+  assert.deepEqual(
+    parseProductCorrectionReportAction({ action: "accepted", note: "override event #9" }),
+    {
+      action: "accepted",
+      note: "override event #9",
+    },
+  );
   assert.equal(parseProductCorrectionReportAction({ action: "accepted", note: "<script>" }), null);
   assert.equal(parseProductCorrectionReportAction({ action: "delete", note: "x" }), null);
 });
@@ -116,7 +121,9 @@ test("duplicate open correction reports collapse inside the bounded window", asy
       accepted: true,
       deduplicated: true,
     });
-    const count = sqlite.prepare("SELECT COUNT(*) AS count FROM product_correction_reports").get() as {
+    const count = sqlite
+      .prepare("SELECT COUNT(*) AS count FROM product_correction_reports")
+      .get() as {
       count: number;
     };
     assert.equal(Number(count.count), 1);
@@ -130,14 +137,18 @@ test("review transitions are audited and acceptance requires a correction refere
   const now = new Date("2026-08-27T10:00:00.000Z");
   try {
     await createProductCorrectionReport(db, SNAPSHOT, now);
-    const listed = await listProductCorrectionReports(db, {
-      status: "open",
-      reason: "",
-      shopKey: "",
-      maxAgeDays: null,
-      beforeId: null,
-      limit: 10,
-    }, now);
+    const listed = await listProductCorrectionReports(
+      db,
+      {
+        status: "open",
+        reason: "",
+        shopKey: "",
+        maxAgeDays: null,
+        beforeId: null,
+        limit: 10,
+      },
+      now,
+    );
     assert.equal(listed.items.length, 1);
     const reportId = listed.items[0].id;
 
@@ -164,9 +175,14 @@ test("review transitions are audited and acceptance requires a correction refere
     assert.equal(accepted?.resolutionNote, "listing admin override completed");
 
     const events = sqlite
-      .prepare("SELECT action FROM product_correction_report_events WHERE report_id = ? ORDER BY id")
+      .prepare(
+        "SELECT action FROM product_correction_report_events WHERE report_id = ? ORDER BY id",
+      )
       .all(reportId) as Array<{ action: string }>;
-    assert.deepEqual(events.map((event) => event.action), ["review_started", "accepted"]);
+    assert.deepEqual(
+      events.map((event) => event.action),
+      ["review_started", "accepted"],
+    );
   } finally {
     sqlite.close();
   }
@@ -183,7 +199,9 @@ test("correction report cleanup is retention-aware and batch bounded", async () 
       new Date("2025-01-02T00:00:00.000Z"),
     );
     assert.equal(await cleanupProductCorrectionReports(db, 1, now), 1);
-    const afterFirst = sqlite.prepare("SELECT COUNT(*) AS count FROM product_correction_reports").get() as {
+    const afterFirst = sqlite
+      .prepare("SELECT COUNT(*) AS count FROM product_correction_reports")
+      .get() as {
       count: number;
     };
     assert.equal(Number(afterFirst.count), 1);
@@ -197,13 +215,15 @@ test("migration rejects unrecognised report vocabulary", () => {
   const { sqlite } = migratedSqlite();
   try {
     assert.throws(() =>
-      sqlite.prepare(`
+      sqlite
+        .prepare(`
         INSERT INTO product_correction_reports(
           product_key, listing_product_id, reason, explanation,
           snapshot_manufacturer, snapshot_model, snapshot_category, snapshot_shop_key,
           status, resolution_note, created_at, updated_at, resolved_at
         ) VALUES ('c-1', NULL, 'made_up', '', '', '', '', '', 'open', '', '2026-01-01', '2026-01-01', NULL)
-      `).run(),
+      `)
+        .run(),
     );
   } finally {
     sqlite.close();
