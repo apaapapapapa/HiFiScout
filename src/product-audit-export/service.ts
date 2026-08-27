@@ -7,10 +7,7 @@ import {
   staleProductAuditExportJobs,
 } from "../db/product-audit-export-job-repository.js";
 import type { QueryableDatabase } from "../db/types.js";
-import {
-  createCsvExportDownloadResponse,
-  exportEnqueueIsStale,
-} from "../export/service.js";
+import { createCsvExportDownloadResponse, exportEnqueueIsStale } from "../export/service.js";
 import { PRODUCT_AUDIT_EXPORT_MAX_CHUNKS, productAuditExportChunkKey } from "./csv.js";
 import type {
   ProductAuditExportJob,
@@ -46,11 +43,7 @@ export async function startProductAuditExport(
   };
   const shouldEnqueue =
     created.created ||
-    (exportEnqueueIsStale(
-      created.job.updatedAt,
-      now,
-      PRODUCT_AUDIT_EXPORT_STALE_ENQUEUE_SECONDS,
-    ) &&
+    (exportEnqueueIsStale(created.job.updatedAt, now, PRODUCT_AUDIT_EXPORT_STALE_ENQUEUE_SECONDS) &&
       (await reserveProductAuditExportEnqueue(
         db,
         created.job.id,
@@ -160,12 +153,17 @@ export async function createProductAuditExportDownloadResponse(
   jobId: string,
   now: Date = new Date(),
 ): Promise<Response> {
-  return createCsvExportDownloadResponse(await getProductAuditExportJob(db, jobId), bucket, {
-    errorPrefix: "product_audit_export",
-    maxChunks: PRODUCT_AUDIT_EXPORT_MAX_CHUNKS,
-    chunkKey: productAuditExportChunkKey,
-    filename: productAuditExportFilename,
-  }, now);
+  return createCsvExportDownloadResponse(
+    await getProductAuditExportJob(db, jobId),
+    bucket,
+    {
+      errorPrefix: "product_audit_export",
+      maxChunks: PRODUCT_AUDIT_EXPORT_MAX_CHUNKS,
+      chunkKey: productAuditExportChunkKey,
+      filename: productAuditExportFilename,
+    },
+    now,
+  );
 }
 
 export { getLatestProductAuditExportJob, getProductAuditExportJob };

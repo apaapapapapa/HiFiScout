@@ -13,11 +13,7 @@ interface CsvExportDownloadOptions<T extends CsvExportDownloadJob> {
   readonly filename: (job: T) => string;
 }
 
-export function exportEnqueueIsStale(
-  updatedAt: string,
-  now: Date,
-  staleSeconds: number,
-): boolean {
+export function exportEnqueueIsStale(updatedAt: string, now: Date, staleSeconds: number): boolean {
   const updatedAtMs = Date.parse(updatedAt);
   return !Number.isFinite(updatedAtMs) || updatedAtMs <= now.getTime() - staleSeconds * 1000;
 }

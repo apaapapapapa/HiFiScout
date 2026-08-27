@@ -77,10 +77,7 @@ interface LinkedPageDiscoveryOptions<T> {
   readonly createPage: (page: number) => T;
 }
 
-export function discoverLinkedPages<T>(
-  html: string,
-  options: LinkedPageDiscoveryOptions<T>,
-): T[] {
+export function discoverLinkedPages<T>(html: string, options: LinkedPageDiscoveryOptions<T>): T[] {
   let maxPage = options.currentPage;
 
   for (const match of String(html || "").matchAll(/href\s*=\s*(["'])([^"']+)\1/gi)) {

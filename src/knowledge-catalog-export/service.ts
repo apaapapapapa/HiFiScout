@@ -7,10 +7,7 @@ import {
   staleKnowledgeCatalogExportJobs,
 } from "../db/knowledge-catalog-export-job-repository.js";
 import type { QueryableDatabase } from "../db/types.js";
-import {
-  createCsvExportDownloadResponse,
-  exportEnqueueIsStale,
-} from "../export/service.js";
+import { createCsvExportDownloadResponse, exportEnqueueIsStale } from "../export/service.js";
 import { KNOWLEDGE_CATALOG_EXPORT_MAX_CHUNKS, knowledgeCatalogExportChunkKey } from "./csv.js";
 import type { KnowledgeCatalogExportJob, KnowledgeCatalogExportQueueMessage } from "./types.js";
 
@@ -154,12 +151,17 @@ export async function createKnowledgeCatalogExportDownloadResponse(
   jobId: string,
   now: Date = new Date(),
 ): Promise<Response> {
-  return createCsvExportDownloadResponse(await getKnowledgeCatalogExportJob(db, jobId), bucket, {
-    errorPrefix: "knowledge_catalog_export",
-    maxChunks: KNOWLEDGE_CATALOG_EXPORT_MAX_CHUNKS,
-    chunkKey: knowledgeCatalogExportChunkKey,
-    filename,
-  }, now);
+  return createCsvExportDownloadResponse(
+    await getKnowledgeCatalogExportJob(db, jobId),
+    bucket,
+    {
+      errorPrefix: "knowledge_catalog_export",
+      maxChunks: KNOWLEDGE_CATALOG_EXPORT_MAX_CHUNKS,
+      chunkKey: knowledgeCatalogExportChunkKey,
+      filename,
+    },
+    now,
+  );
 }
 
 export { getKnowledgeCatalogExportJob };
