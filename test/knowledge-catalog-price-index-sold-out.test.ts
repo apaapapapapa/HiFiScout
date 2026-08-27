@@ -111,12 +111,11 @@ test("migration repairs an already-observed active sold-out listing", () => {
       WHERE listing_product_id = ? AND signal_kind = 'sold_out'
     `)
     .get(listingProductId) as Record<string, unknown> | undefined;
-  assert.deepEqual(sample, {
-    sample_kind: "listing_end",
-    signal_kind: "sold_out",
-    shop_key: "hifido",
-    source_id: "sold-out-step3",
-  });
+  assert.ok(sample);
+  assert.equal(sample.sample_kind, "listing_end");
+  assert.equal(sample.signal_kind, "sold_out");
+  assert.equal(sample.shop_key, "hifido");
+  assert.equal(sample.source_id, "sold-out-step3");
   db.close();
 });
 
