@@ -3,15 +3,17 @@ import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createRoot } from "react-dom/client";
 
 import { CatalogAdmin } from "./admin-catalog.js";
+import { CorrectionReportsAdmin } from "./admin-correction-reports.js";
 import { ListingAdmin } from "./admin-listings.js";
 
-type AdminTab = "catalog" | "listings";
+type AdminTab = "catalog" | "listings" | "reports";
 
 interface AdminSectionLink {
   label: string;
   selector: string;
 }
 
+const ADMIN_TABS: readonly AdminTab[] = ["catalog", "listings", "reports"];
 const ADMIN_SECTION_LINKS: Record<AdminTab, readonly AdminSectionLink[]> = {
   catalog: [
     { label: "Catalog検索・編集", selector: "#catalog-search-heading" },
@@ -23,15 +25,18 @@ const ADMIN_SECTION_LINKS: Record<AdminTab, readonly AdminSectionLink[]> = {
     { label: "登録商品を検索", selector: "#listing-search-heading" },
     { label: "登録商品一覧", selector: ".listing-table" },
   ],
+  reports: [{ label: "誤り報告キュー", selector: "#correction-reports-heading" }],
 };
 
 function requestedTab(): AdminTab {
-  return window.location.hash === "#listings" ? "listings" : "catalog";
+  if (window.location.hash === "#listings") return "listings";
+  if (window.location.hash === "#reports") return "reports";
+  return "catalog";
 }
 
 function tabUrl(tab: AdminTab): string {
   const url = new URL(window.location.href);
-  url.hash = tab === "listings" ? "listings" : "";
+  url.hash = tab === "catalog" ? "" : tab;
   return url.toString();
 }
 
@@ -46,7 +51,11 @@ export function AdminConsole() {
   const [activeTab, setActiveTab] = useState<AdminTab>(requestedTab);
   const [mountedTabs, setMountedTabs] = useState<Set<AdminTab>>(() => new Set([requestedTab()]));
   const activeSectionLabel =
-    activeTab === "catalog" ? "Knowledge Catalog 内の機能" : "登録商品 内の機能";
+    activeTab === "catalog"
+      ? "Knowledge Catalog 内の機能"
+      : activeTab === "listings"
+        ? "登録商品 内の機能"
+        : "情報の誤り報告 内の機能";
 
   useEffect(() => {
     const onPopState = () => {
@@ -69,13 +78,11 @@ export function AdminConsole() {
 
   const handleTabKey = (event: ReactKeyboardEvent<HTMLButtonElement>, tab: AdminTab) => {
     let target: AdminTab | null = null;
-    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-      target = tab === "catalog" ? "listings" : "catalog";
-    } else if (event.key === "Home") {
-      target = "catalog";
-    } else if (event.key === "End") {
-      target = "listings";
-    }
+    const index = ADMIN_TABS.indexOf(tab);
+    if (event.key === "ArrowLeft") target = ADMIN_TABS[(index + ADMIN_TABS.length - 1) % ADMIN_TABS.length];
+    else if (event.key === "ArrowRight") target = ADMIN_TABS[(index + 1) % ADMIN_TABS.length];
+    else if (event.key === "Home") target = ADMIN_TABS[0];
+    else if (event.key === "End") target = ADMIN_TABS[ADMIN_TABS.length - 1];
     if (!target) return;
     event.preventDefault();
     selectTab(target);
@@ -105,7 +112,7 @@ export function AdminConsole() {
             HiFiScout <span>管理コンソール</span>
           </h1>
           <p className="lede">
-            Catalogと販売店から取得した登録商品を、ひとつの画面から検索・監査・修正できます。
+            Catalogと販売店から取得した登録商品、利用者からの事実誤り報告を、ひとつの画面から検索・監査・修正できます。
           </p>
         </div>
         <div className="header-actions">
@@ -154,9 +161,21 @@ export function AdminConsole() {
               onKeyDown={(event) => handleTabKey(event, "listings")}
             >
               <span className="admin-tab-title">登録商品</span>
-              <span className="admin-tab-description">
-                店舗listing・メーカー・型番・カテゴリ補正
-              </span>
+              <span className="admin-tab-description">店舗listing・メーカー・型番・カテゴリ補正</span>
+            </button>
+            <button
+              id="admin-tab-reports"
+              className="admin-tab"
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "reports"}
+              aria-controls="reports-pane"
+              tabIndex={activeTab === "reports" ? 0 : -1}
+              onClick={() => selectTab("reports")}
+              onKeyDown={(event) => handleTabKey(event, "reports")}
+            >
+              <span className="admin-tab-title">誤り報告</span>
+              <span className="admin-tab-description">匿名報告の確認・監査・解決</span>
             </button>
           </div>
         </div>
@@ -177,11 +196,14 @@ export function AdminConsole() {
         </div>
       </nav>
 
-      <div hidden={activeTab !== "catalog"}>
+      <div id="catalog-pane" role="tabpanel" aria-labelledby="admin-tab-catalog" hidden={activeTab !== "catalog"}>
         {mountedTabs.has("catalog") ? <CatalogAdmin /> : null}
       </div>
-      <div hidden={activeTab !== "listings"}>
+      <div id="listings-pane" role="tabpanel" aria-labelledby="admin-tab-listings" hidden={activeTab !== "listings"}>
         {mountedTabs.has("listings") ? <ListingAdmin /> : null}
+      </div>
+      <div id="reports-pane" role="tabpanel" aria-labelledby="admin-tab-reports" hidden={activeTab !== "reports"}>
+        {mountedTabs.has("reports") ? <CorrectionReportsAdmin /> : null}
       </div>
     </main>
   );
