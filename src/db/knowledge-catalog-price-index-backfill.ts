@@ -3,7 +3,6 @@ import type { QueryableDatabase } from "./types.js";
 interface PriceIndexBackfillCandidateRow {
   id: number;
   listing_product_id: number;
-  catalog_product_id: number;
   shop_key: string;
   source_id: string;
   price_yen: number;
@@ -94,7 +93,6 @@ async function selectCandidates(
       SELECT
         ph.id,
         p.id AS listing_product_id,
-        pir.catalog_product_id,
         p.shop_key,
         p.source_id,
         ph.price_yen,
@@ -103,7 +101,7 @@ async function selectCandidates(
       JOIN products p ON p.id = ph.product_id
       JOIN product_identity_resolutions pir ON pir.listing_product_id = p.id
       WHERE ph.id > ?
-        AND ph.price_yen > 0
+        AND ph.price_yen >= 0
         AND pir.status = 'matched'
         AND pir.catalog_product_id IS NOT NULL
       ORDER BY ph.id ASC
@@ -118,6 +116,9 @@ function sampleUpsertStatement(
   db: QueryableDatabase,
   candidate: PriceIndexBackfillCandidateRow,
 ): D1PreparedStatement {
+  // Identity is deliberately read again by this statement inside the same D1 batch transaction
+  // that advances the cursor. A resolver write cannot leave stale catalog attribution between the
+  // initial candidate scan and commit: the transaction uses whichever identity is current then.
   return db
     .prepare(`
       INSERT INTO knowledge_catalog_price_index_samples(
@@ -131,7 +132,12 @@ function sampleUpsertStatement(
         signal_kind,
         price_yen,
         observed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, 'asking', 'asking', ?, ?)
+      )
+      SELECT ?, pir.catalog_product_id, ?, ?, ?, ?, 'asking', 'asking', ?, ?
+      FROM product_identity_resolutions pir
+      WHERE pir.listing_product_id = ?
+        AND pir.status = 'matched'
+        AND pir.catalog_product_id IS NOT NULL
       ON CONFLICT(event_key) DO UPDATE SET
         catalog_product_id = excluded.catalog_product_id,
         listing_product_id = excluded.listing_product_id,
@@ -150,13 +156,13 @@ function sampleUpsertStatement(
     `)
     .bind(
       `asking:price-history:${candidate.id}`,
-      candidate.catalog_product_id,
       candidate.listing_product_id,
       candidate.id,
       candidate.shop_key,
       candidate.source_id,
       candidate.price_yen,
       candidate.observed_at,
+      candidate.listing_product_id,
     );
 }
 
@@ -168,9 +174,10 @@ function sampleUpsertStatement(
  * the ledger: crawler triggers may keep writing newer evidence while a historical backfill is in
  * progress, and replaying an overlapping page is idempotent by the stable price-history event key.
  *
- * Rows that are unresolved at the time this page passes are intentionally skipped. If their
- * identity later becomes matched, the price-index identity trigger copies their retained history,
- * so advancing this cursor cannot make a later resolution permanently miss evidence.
+ * Rows that are unresolved at the candidate scan are intentionally skipped. If identity changes
+ * after selection, the transactional upsert rechecks it before attribution. If an unresolved row
+ * later becomes matched, the price-index identity trigger copies its retained history, so advancing
+ * this cursor cannot make a later resolution permanently miss evidence.
  */
 export async function backfillKnowledgeCatalogPriceIndex(
   db: QueryableDatabase,

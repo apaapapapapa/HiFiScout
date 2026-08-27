@@ -41,7 +41,11 @@ import {
   productSearchEntityConsistency,
   rebuildProductSearchEntities,
 } from "../db/product-search-entity-repository.js";
-import { productSearchDetail, searchProducts } from "../db/product-search-repository.js";
+import {
+  productSearchDetail,
+  searchProducts,
+} from "../db/product-search-price-index-repository.js";
+import { searchProducts as searchBaseProducts } from "../db/product-search-repository.js";
 import { suggestProducts } from "../db/product-suggest-repository.js";
 import { getSyncHealth } from "../health.js";
 import { knowledgeCatalogStatus } from "./knowledge-catalog-status.js";
@@ -105,7 +109,7 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext): Pro
     const canonicalUrl = canonicalFeedQueryUrl(url, query);
     const cacheRequest = new Request(canonicalUrl.toString(), request);
     return cachedAtom(cacheRequest, ctx, FEED_CACHE_TTL_SECONDS, async () => {
-      const result = await searchProducts(env.DB, query);
+      const result = await searchBaseProducts(env.DB, query);
       return productSearchAtomFeed(result.items, canonicalUrl);
     });
   }
