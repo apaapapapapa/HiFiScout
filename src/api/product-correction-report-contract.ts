@@ -1,8 +1,5 @@
 import { PRODUCT_CORRECTION_REPORT_REASONS } from "./contracts.js";
-import type {
-  ProductCorrectionReportReason,
-  ProductCorrectionReportRequest,
-} from "./contracts.js";
+import type { ProductCorrectionReportReason, ProductCorrectionReportRequest } from "./contracts.js";
 import { parseProductSearchKey } from "./product-search-key.js";
 
 export {
