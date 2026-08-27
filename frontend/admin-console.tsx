@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -36,6 +36,9 @@ function requestedTab(): AdminTab {
 
 function tabUrl(tab: AdminTab): string {
   const url = new URL(window.location.href);
+  url.searchParams.delete("q");
+  url.searchParams.delete("shopKey");
+  url.searchParams.delete("scope");
   url.hash = tab === "catalog" ? "" : tab;
   return url.toString();
 }
@@ -47,9 +50,52 @@ function scrollToAdminTarget(selector: string): void {
   target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
 }
 
+function setControlledFieldValue(element: HTMLInputElement | HTMLSelectElement, value: string): void {
+  const prototype =
+    element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+  if (setter) setter.call(element, value);
+  else element.value = value;
+  element.dispatchEvent(
+    new Event(element instanceof HTMLSelectElement ? "change" : "input", { bubbles: true }),
+  );
+}
+
+function applyDeepLinkFilters(tab: AdminTab): boolean {
+  const params = new URLSearchParams(window.location.search);
+  const query = params.get("q")?.trim() || "";
+  if (tab === "catalog") {
+    if (!query) return true;
+    const input = document.querySelector<HTMLInputElement>("#catalog-catalog-query");
+    if (!input || input.disabled) return false;
+    const form = input.closest("form");
+    if (!form) return false;
+    setControlledFieldValue(input, query);
+    window.requestAnimationFrame(() => form.requestSubmit());
+    return true;
+  }
+  if (tab === "listings") {
+    if (!query) return true;
+    const queryInput = document.querySelector<HTMLInputElement>("#listings-listing-query");
+    const shopInput = document.querySelector<HTMLInputElement>("#listings-shop-key");
+    const scopeSelect = document.querySelector<HTMLSelectElement>("#listings-listing-scope");
+    if (!queryInput || queryInput.disabled || !shopInput || !scopeSelect) return false;
+    const form = queryInput.closest("form");
+    if (!form) return false;
+    setControlledFieldValue(queryInput, query);
+    const shopKey = params.get("shopKey")?.trim() || "";
+    if (shopKey) setControlledFieldValue(shopInput, shopKey);
+    if (params.get("scope") === "all") setControlledFieldValue(scopeSelect, "all");
+    window.requestAnimationFrame(() => form.requestSubmit());
+    return true;
+  }
+  return true;
+}
+
 export function AdminConsole() {
   const [activeTab, setActiveTab] = useState<AdminTab>(requestedTab);
   const [mountedTabs, setMountedTabs] = useState<Set<AdminTab>>(() => new Set([requestedTab()]));
+  const appliedDeepLink = useRef<string | null>(null);
   const activeSectionLabel =
     activeTab === "catalog"
       ? "Knowledge Catalog 内の機能"
@@ -66,6 +112,29 @@ export function AdminConsole() {
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
+
+  useEffect(() => {
+    if (activeTab === "reports") return;
+    const params = new URLSearchParams(window.location.search);
+    if (!params.get("q")?.trim()) return;
+    const deepLinkKey = `${activeTab}:${window.location.search}`;
+    if (appliedDeepLink.current === deepLinkKey) return;
+    let cancelled = false;
+    let retryTimer = 0;
+    const tryApply = () => {
+      if (cancelled) return;
+      if (applyDeepLinkFilters(activeTab)) {
+        appliedDeepLink.current = deepLinkKey;
+        return;
+      }
+      retryTimer = window.setTimeout(tryApply, 50);
+    };
+    tryApply();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(retryTimer);
+    };
+  }, [activeTab]);
 
   const selectTab = (tab: AdminTab, updateHistory = true) => {
     setActiveTab(tab);
@@ -199,20 +268,10 @@ export function AdminConsole() {
         </div>
       </nav>
 
-      <div
-        id="catalog-pane"
-        role="tabpanel"
-        aria-labelledby="admin-tab-catalog"
-        hidden={activeTab !== "catalog"}
-      >
+      <div hidden={activeTab !== "catalog"}>
         {mountedTabs.has("catalog") ? <CatalogAdmin /> : null}
       </div>
-      <div
-        id="listings-pane"
-        role="tabpanel"
-        aria-labelledby="admin-tab-listings"
-        hidden={activeTab !== "listings"}
-      >
+      <div hidden={activeTab !== "listings"}>
         {mountedTabs.has("listings") ? <ListingAdmin /> : null}
       </div>
       <div
