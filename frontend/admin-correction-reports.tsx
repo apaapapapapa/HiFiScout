@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
-import {
-  PRODUCT_CORRECTION_REPORT_REASONS,
-  PRODUCT_CORRECTION_REPORT_STATUSES,
-  type ProductCorrectionReportReason,
-  type ProductCorrectionReportStatus,
+import type {
+  ProductCorrectionReportReason,
+  ProductCorrectionReportStatus,
 } from "../src/api/contracts.js";
 import { adminJson, dateText, genericErrorText } from "./admin-shared.js";
 
@@ -45,6 +43,13 @@ const STATUS_LABELS: Record<ProductCorrectionReportStatus, string> = {
   rejected: "却下",
   duplicate: "重複",
 };
+
+const PRODUCT_CORRECTION_REPORT_REASONS = Object.keys(
+  REASON_LABELS,
+) as ProductCorrectionReportReason[];
+const PRODUCT_CORRECTION_REPORT_STATUSES = Object.keys(
+  STATUS_LABELS,
+) as ProductCorrectionReportStatus[];
 
 type ResolutionAction = "accepted" | "rejected" | "duplicate";
 

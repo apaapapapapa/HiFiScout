@@ -1,10 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
-import {
-  PRODUCT_CORRECTION_REPORT_REASONS,
-  type ProductCorrectionReportReason,
-} from "../src/api/contracts.js";
+import type { ProductCorrectionReportReason } from "../src/api/contracts.js";
 
 export interface ProductCorrectionReportTarget {
   listingProductId?: number;
@@ -25,6 +22,9 @@ const REASON_LABELS: Record<ProductCorrectionReportReason, string> = {
   stale_or_missing_offer: "在庫が古い・不足している",
   other_factual_error: "その他の事実誤り",
 };
+const PRODUCT_CORRECTION_REPORT_REASONS = Object.keys(
+  REASON_LABELS,
+) as ProductCorrectionReportReason[];
 
 type SubmissionState = "idle" | "submitting" | "success" | "error";
 
