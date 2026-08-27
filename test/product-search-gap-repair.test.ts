@@ -263,9 +263,9 @@ test("repairs safe exact identities that drift across multiple search entities",
     1,
   );
   assert.equal(
-    sqlite.prepare("SELECT COUNT(*) AS count FROM product_search_entities WHERE id = ?").get(
-      strandedEntityId,
-    )?.count,
+    sqlite
+      .prepare("SELECT COUNT(*) AS count FROM product_search_entities WHERE id = ?")
+      .get(strandedEntityId)?.count,
     0,
   );
 
