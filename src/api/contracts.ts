@@ -330,3 +330,37 @@ export interface MetaResponse {
   categories: string[];
   categoryFacets: MetaCategoryFacet[];
 }
+
+// ---------------------------------------------------------------------------
+// /api/product-correction-reports
+// ---------------------------------------------------------------------------
+
+/** Public reason vocabulary shared by the anonymous report form and the Worker validator. */
+export const PRODUCT_CORRECTION_REPORT_REASONS = [
+  "wrong_manufacturer",
+  "wrong_model",
+  "wrong_category",
+  "incorrect_grouping",
+  "stale_or_missing_offer",
+  "other_factual_error",
+] as const;
+
+export type ProductCorrectionReportReason = (typeof PRODUCT_CORRECTION_REPORT_REASONS)[number];
+
+/** Review states shared by the Access-protected admin UI and the Worker. */
+export const PRODUCT_CORRECTION_REPORT_STATUSES = [
+  "open",
+  "in_review",
+  "accepted",
+  "rejected",
+  "duplicate",
+] as const;
+
+export type ProductCorrectionReportStatus = (typeof PRODUCT_CORRECTION_REPORT_STATUSES)[number];
+
+export interface ProductCorrectionReportRequest {
+  productKey: string;
+  listingProductId?: number;
+  reason: ProductCorrectionReportReason;
+  explanation?: string;
+}

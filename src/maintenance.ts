@@ -1,5 +1,6 @@
 import { getMaintenanceSettings } from "./config.js";
 import type { CrawlerEnv, MaintenanceSettings } from "./crawler/types.js";
+import { cleanupProductCorrectionReports } from "./db/product-correction-report-repository.js";
 import type { QueryableDatabase } from "./db/types.js";
 
 /** `runRetentionCleanup` always writes, so the database binding is required here. */
@@ -21,6 +22,7 @@ export interface RetentionCleanupCounts {
   knowledgeCatalogExports: number;
   dataQualityRuns: number;
   remediationQueue: number;
+  correctionReports: number;
   crawlRuns: number;
   priceHistory: number;
   inactiveProducts: number;
@@ -127,6 +129,11 @@ export async function runRetentionCleanup(
     .bind(dataQualityBefore, limit)
     .run();
 
+  // Anonymous reports are operational review records, not permanent user content. Pending reports
+  // expire after 180 days and resolved audit records after 730 days; both paths share this bounded
+  // delete batch so cleanup cannot turn into an unbounded maintenance invocation.
+  const correctionReports = await cleanupProductCorrectionReports(env.DB, limit, now);
+
   const crawlRuns = await env.DB.prepare(`
     DELETE FROM crawl_runs
     WHERE id IN (
@@ -176,6 +183,7 @@ export async function runRetentionCleanup(
       knowledgeCatalogExports: changes(knowledgeCatalogExports),
       dataQualityRuns: changes(dataQualityRuns),
       remediationQueue: changes(remediationQueue),
+      correctionReports,
       crawlRuns: changes(crawlRuns),
       priceHistory: changes(priceHistory),
       inactiveProducts: changes(inactiveProducts),

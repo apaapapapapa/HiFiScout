@@ -7,10 +7,24 @@ import {
   type ListingAdminListOptions,
   type ListingAdminUpdateInput,
 } from "../http/listing-admin.js";
+import {
+  parseProductCorrectionReportAction,
+  parseProductCorrectionReportListQuery,
+} from "../http/product-correction-report-admin.js";
+import type {
+  ProductCorrectionReportAdminAction,
+  ProductCorrectionReportListOptions,
+} from "../db/product-correction-report-repository.js";
 
 interface ListingAdminRpc extends CatalogAdminRpc {
   listListings(options: ListingAdminListOptions): Promise<unknown>;
   updateListing(listingId: number, input: ListingAdminUpdateInput): Promise<unknown>;
+  listCorrectionReports(options: ProductCorrectionReportListOptions): Promise<unknown>;
+  updateCorrectionReport(
+    reportId: number,
+    action: ProductCorrectionReportAdminAction,
+    note: string,
+  ): Promise<unknown>;
 }
 
 interface AdminEnv {
@@ -22,6 +36,8 @@ interface AdminEnv {
 
 const LISTING_COLLECTION_PATH = "/api/admin/listings";
 const LISTING_PATH = /^\/api\/admin\/listings\/(\d{1,15})$/u;
+const CORRECTION_REPORT_COLLECTION_PATH = "/api/admin/correction-reports";
+const CORRECTION_REPORT_PATH = /^\/api\/admin\/correction-reports\/(\d{1,15})$/u;
 const CONSOLE_ASSET_PATHS = new Set([
   "/admin-console.css",
   "/admin-console.js",
@@ -111,7 +127,9 @@ function isAdminEntryRoute(pathname: string): boolean {
     CONSOLE_ASSET_PATHS.has(pathname) ||
     RETIRED_LEGACY_PATHS.has(pathname) ||
     pathname === LISTING_COLLECTION_PATH ||
-    LISTING_PATH.test(pathname)
+    LISTING_PATH.test(pathname) ||
+    pathname === CORRECTION_REPORT_COLLECTION_PATH ||
+    CORRECTION_REPORT_PATH.test(pathname)
   );
 }
 
@@ -127,6 +145,19 @@ function updateError(error: unknown): Response {
   return json({ error: "listing_admin_update_failed" }, { status: 500 });
 }
 
+function correctionReportUpdateError(error: unknown): Response {
+  const message = error instanceof Error ? error.message : String(error);
+  if (
+    message === "invalid_correction_report_transition" ||
+    message === "correction_report_resolution_reference_required" ||
+    message === "correction_report_resolution_note_required"
+  ) {
+    return json({ error: message }, { status: 409 });
+  }
+  console.error(JSON.stringify({ message: "correction report update failed", error: message }));
+  return json({ error: "correction_report_update_failed" }, { status: 500 });
+}
+
 export async function handleAuthenticatedAdminEntryRequest(
   request: Request,
   env: AdminEnv,
@@ -137,6 +168,39 @@ export async function handleAuthenticatedAdminEntryRequest(
     const options = parseListingAdminListQuery(url);
     if (!options) return json({ error: "invalid_listing_query" }, { status: 400 });
     return json(await env.CATALOG_ADMIN.listListings(options));
+  }
+
+  if (request.method === "GET" && url.pathname === CORRECTION_REPORT_COLLECTION_PATH) {
+    const options = parseProductCorrectionReportListQuery(url);
+    if (!options) return json({ error: "invalid_correction_report_query" }, { status: 400 });
+    return json(await env.CATALOG_ADMIN.listCorrectionReports(options));
+  }
+
+  const correctionReportMatch = url.pathname.match(CORRECTION_REPORT_PATH);
+  if (request.method === "PATCH" && correctionReportMatch) {
+    if (!isJsonRequest(request))
+      return json({ error: "application_json_required" }, { status: 415 });
+    if (!isSameOriginBrowserMutation(request, url))
+      return json({ error: "same_origin_required" }, { status: 403 });
+    const reportId = Number(correctionReportMatch[1]);
+    if (!Number.isSafeInteger(reportId) || reportId <= 0)
+      return json({ error: "invalid_id" }, { status: 400 });
+    const body = await readJsonBody(request, 4 * 1024);
+    if (body === REQUEST_BODY_TOO_LARGE)
+      return json({ error: "request_body_too_large" }, { status: 413 });
+    if (body === null) return json({ error: "invalid_json" }, { status: 400 });
+    const parsed = parseProductCorrectionReportAction(body);
+    if (!parsed) return json({ error: "invalid_correction_report_action" }, { status: 400 });
+    try {
+      const result = await env.CATALOG_ADMIN.updateCorrectionReport(
+        reportId,
+        parsed.action,
+        parsed.note,
+      );
+      return result ? json(result) : json({ error: "not_found" }, { status: 404 });
+    } catch (error) {
+      return correctionReportUpdateError(error);
+    }
   }
 
   const listingMatch = url.pathname.match(LISTING_PATH);

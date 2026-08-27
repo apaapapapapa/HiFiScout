@@ -23,6 +23,14 @@ import {
   listListingAdminProducts,
   updateListingAdminProduct,
 } from "./db/listing-admin-repository.js";
+import {
+  listProductCorrectionReports,
+  updateProductCorrectionReport,
+} from "./db/product-correction-report-repository.js";
+import type {
+  ProductCorrectionReportAdminAction,
+  ProductCorrectionReportListOptions,
+} from "./db/product-correction-report-repository.js";
 import { listProductAuditExportPage } from "./db/product-audit-export-repository.js";
 import {
   createProductAuditExportDownloadResponse,
@@ -78,6 +86,18 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
 
   async updateListing(listingId: number, input: ListingAdminUpdateInput) {
     return updateListingAdminProduct(this.env.DB, listingId, input);
+  }
+
+  async listCorrectionReports(options: ProductCorrectionReportListOptions) {
+    return listProductCorrectionReports(this.env.DB, options);
+  }
+
+  async updateCorrectionReport(
+    reportId: number,
+    action: ProductCorrectionReportAdminAction,
+    note: string,
+  ) {
+    return updateProductCorrectionReport(this.env.DB, reportId, action, note);
   }
 
   async startKnowledgeCatalogExport() {

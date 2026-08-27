@@ -6,7 +6,9 @@ export type ApiRateLimitBucket =
   | "suggest"
   | "history"
   | "meta"
-  | "health";
+  | "health"
+  | "correction-reports"
+  | "unknown-api";
 
 /**
  * The slice of `Env` this guard reads. The binding is optional so tests (and any deployment
@@ -28,7 +30,18 @@ export interface ApiRateLimitResult {
   bucket?: ApiRateLimitBucket;
 }
 
-function apiBucket(pathname: string): ApiRateLimitBucket | null {
+/**
+ * Every public API request gets a bucket before it can reach a handler. Unknown `/api/` paths use
+ * a bounded fallback rather than bypassing the limiter, which keeps a future write route from being
+ * accidentally exposed without an explicit bucket. Retired `/api/admin/*` routes are blocked by the
+ * outer public entrypoint and therefore deliberately remain outside this public limiter.
+ */
+export function apiBucket(pathname: string, method = "GET"): ApiRateLimitBucket | null {
+  if (pathname.startsWith("/api/admin/")) return null;
+  if (method === "POST" && pathname === "/api/product-correction-reports") {
+    return "correction-reports";
+  }
+  if (method !== "GET") return pathname.startsWith("/api/") ? "unknown-api" : null;
   if (pathname === "/api/products") return "products";
   if (pathname === "/api/feed") return "feed";
   if (pathname === "/api/suggest") return "suggest";
@@ -42,20 +55,21 @@ function apiBucket(pathname: string): ApiRateLimitBucket | null {
   if (/^\/api\/products\/\d+\/history$/.test(pathname)) return "history";
   if (pathname === "/api/meta") return "meta";
   if (pathname === "/api/health") return "health";
-  return null;
+  return pathname.startsWith("/api/") ? "unknown-api" : null;
 }
 
 export async function checkPublicApiRateLimit(
   request: ApiRateLimitRequest,
   env: ApiRateLimitEnv,
 ): Promise<ApiRateLimitResult> {
-  if (request.method !== "GET" || !env.API_RATE_LIMITER) return { allowed: true };
+  if (!env.API_RATE_LIMITER) return { allowed: true };
   const url = new URL(request.url);
-  const bucket = apiBucket(url.pathname);
+  const bucket = apiBucket(url.pathname, request.method);
   if (!bucket) return { allowed: true };
 
   // HiFiScout is anonymous. A high per-IP ceiling is used only as an abuse brake;
-  // normal traffic is primarily protected by edge response caching.
+  // normal read traffic is primarily protected by edge response caching. The identity is transient
+  // and never persisted with a correction report.
   const actor = request.headers.get("cf-connecting-ip") || "unknown";
   const result = await env.API_RATE_LIMITER.limit({ key: `${actor}:${bucket}` });
   return { allowed: result.success, bucket };

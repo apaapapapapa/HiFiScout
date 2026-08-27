@@ -86,6 +86,49 @@ test("suggest has its own public rate-limit bucket", async () => {
   assert.deepEqual(keys, ["203.0.113.20:suggest"]);
 });
 
+test("correction report writes use a dedicated public rate-limit bucket", async () => {
+  const keys: string[] = [];
+  const env = {
+    API_RATE_LIMITER: {
+      async limit({ key }: { key: string }) {
+        keys.push(key);
+        return { success: true };
+      },
+    },
+  };
+  const request = new Request("https://example.test/api/product-correction-reports", {
+    method: "POST",
+    headers: { "cf-connecting-ip": "203.0.113.30" },
+  });
+
+  const result = await checkPublicApiRateLimit(request, env);
+
+  assert.equal(result.allowed, true);
+  assert.equal(result.bucket, "correction-reports");
+  assert.deepEqual(keys, ["203.0.113.30:correction-reports"]);
+});
+
+test("unknown public API paths do not bypass the limiter", async () => {
+  const keys: string[] = [];
+  const env = {
+    API_RATE_LIMITER: {
+      async limit({ key }: { key: string }) {
+        keys.push(key);
+        return { success: true };
+      },
+    },
+  };
+  const request = new Request("https://example.test/api/future-write", {
+    method: "POST",
+    headers: { "cf-connecting-ip": "203.0.113.31" },
+  });
+
+  const result = await checkPublicApiRateLimit(request, env);
+
+  assert.equal(result.bucket, "unknown-api");
+  assert.deepEqual(keys, ["203.0.113.31:unknown-api"]);
+});
+
 test("admin endpoints are not subject to the public limiter", async () => {
   let called = false;
   const env = {
