@@ -1,4 +1,5 @@
 import { refreshListingProjections } from "./listing-projection-refresh.js";
+import { exactIdentitySplitMembershipPredicateSql } from "./product-search-exact-identity.js";
 import type { QueryableDatabase } from "./types.js";
 
 interface ProjectionGapRow {
@@ -31,16 +32,22 @@ function positiveBoundedInteger(value: number | undefined, fallback: number, max
 }
 
 /**
- * An active listing needs projection repair when any stage is missing, or when it belongs to a
- * fallback entity whose representative listing has already become a verified Catalog match.
+ * An active listing needs projection repair when any stage is missing, when it belongs to a
+ * fallback entity whose representative listing has already become a verified Catalog match, or
+ * when a safe exact manufacturer/model identity is split across multiple fallback entities.
  *
  * The representative clause deliberately follows the entity membership rather than only checking
  * the current listing's own Identity row. Exact-identity grouping allows several unresolved offers
  * to share `l-<representative id>`. If that representative is promoted between bounded writes, its
  * own offer may already move to Catalog while peers remain attached to the now-stale fallback. In
  * that state the peer is the row that must be replayed so the unresolved group can elect a current
- * representative and the obsolete entity can be pruned. This is the listing-scoped counterpart of
- * the `stale_fallback_entities` invariant reported by Product Search consistency checks.
+ * representative and the obsolete entity can be pruned.
+ *
+ * The exact-identity split clause catches a different interrupted-write/drift state: all required
+ * rows already exist, but memberships that are safe to group no longer point to one entity. A
+ * single selected listing is sufficient because the search-entity sync expands it to every safe
+ * exact peer before rewriting membership. Both clauses are listing-scoped counterparts of the
+ * invariants reported by Product Search operational checks.
  */
 const ACTIVE_PROJECTION_GAP_PREDICATE = `
   NOT EXISTS (
@@ -66,6 +73,7 @@ const ACTIVE_PROJECTION_GAP_PREDICATE = `
       AND representative_kp.verification_status = 'verified'
     WHERE o.listing_product_id = p.id
   )
+  OR (${exactIdentitySplitMembershipPredicateSql("p")})
 `;
 
 async function selectActiveProjectionGaps(
