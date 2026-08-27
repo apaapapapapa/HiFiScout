@@ -81,7 +81,9 @@ function applyDeepLinkFilters(tab: AdminTab): boolean {
     if (!query) return true;
     const queryInput = document.querySelector<HTMLInputElement>("#listings-listing-query");
     const shopInput = document.querySelector<HTMLInputElement>("#listings-shop-key");
-    const scopeSelect = document.querySelector<HTMLSelectElement>("#listings-listing-scope");
+    const scopeSelect = document.getElementById(
+      "listings-listing-scope",
+    ) as HTMLSelectElement | null;
     if (!queryInput || queryInput.disabled || !shopInput || !scopeSelect) return false;
     const form = queryInput.closest("form");
     if (!form) return false;
