@@ -167,3 +167,64 @@ ON CONFLICT(event_key) DO UPDATE SET
   source_id = excluded.source_id,
   price_yen = excluded.price_yen,
   observed_at = excluded.observed_at;
+
+-- Replace Step 1's deactivation trigger so a strong sold-out signal already captured while active
+-- is not counted again when that same listing later disappears. If sold_out and deactivation happen
+-- in one UPDATE, both triggers share the same event key, so trigger execution order is immaterial.
+DROP TRIGGER IF EXISTS trg_price_index_listing_deactivate;
+CREATE TRIGGER trg_price_index_listing_deactivate
+AFTER UPDATE OF is_active ON products
+WHEN OLD.is_active = 1 AND NEW.is_active = 0
+BEGIN
+  INSERT INTO knowledge_catalog_price_index_samples(
+    event_key,
+    catalog_product_id,
+    listing_product_id,
+    source_price_history_id,
+    shop_key,
+    source_id,
+    sample_kind,
+    signal_kind,
+    price_yen,
+    observed_at
+  )
+  SELECT
+    CASE
+      WHEN NEW.stock_status = 'sold_out'
+        THEN 'sold-out-observed:' || NEW.id || ':' || COALESCE(NULLIF(NEW.last_seen_at, ''), 'unknown')
+      ELSE 'listing-end:' || NEW.id || ':' || COALESCE(OLD.last_seen_at, '')
+    END,
+    pir.catalog_product_id,
+    NEW.id,
+    NULL,
+    NEW.shop_key,
+    NEW.source_id,
+    'listing_end',
+    CASE WHEN NEW.stock_status = 'sold_out' THEN 'sold_out' ELSE 'deactivated' END,
+    NEW.price_yen,
+    CASE
+      WHEN NEW.stock_status = 'sold_out'
+        THEN COALESCE(NULLIF(NEW.last_seen_at, ''), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      ELSE strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    END
+  FROM product_identity_resolutions pir
+  WHERE pir.listing_product_id = NEW.id
+    AND pir.status = 'matched'
+    AND pir.catalog_product_id IS NOT NULL
+    AND (
+      NEW.stock_status <> 'sold_out'
+      OR NOT EXISTS (
+        SELECT 1
+        FROM knowledge_catalog_price_index_samples s
+        WHERE s.listing_product_id = NEW.id
+          AND s.signal_kind = 'sold_out'
+      )
+    )
+  ON CONFLICT(event_key) DO UPDATE SET
+    catalog_product_id = excluded.catalog_product_id,
+    signal_kind = excluded.signal_kind,
+    shop_key = excluded.shop_key,
+    source_id = excluded.source_id,
+    price_yen = excluded.price_yen,
+    observed_at = excluded.observed_at;
+END;
