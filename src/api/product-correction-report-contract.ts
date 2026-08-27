@@ -1,32 +1,19 @@
+import { PRODUCT_CORRECTION_REPORT_REASONS } from "./contracts.js";
+import type {
+  ProductCorrectionReportReason,
+  ProductCorrectionReportRequest,
+} from "./contracts.js";
 import { parseProductSearchKey } from "./product-search-key.js";
 
-export const PRODUCT_CORRECTION_REPORT_REASONS = [
-  "wrong_manufacturer",
-  "wrong_model",
-  "wrong_category",
-  "incorrect_grouping",
-  "stale_or_missing_offer",
-  "other_factual_error",
-] as const;
-
-export type ProductCorrectionReportReason = (typeof PRODUCT_CORRECTION_REPORT_REASONS)[number];
-
-export const PRODUCT_CORRECTION_REPORT_STATUSES = [
-  "open",
-  "in_review",
-  "accepted",
-  "rejected",
-  "duplicate",
-] as const;
-
-export type ProductCorrectionReportStatus = (typeof PRODUCT_CORRECTION_REPORT_STATUSES)[number];
-
-export interface ProductCorrectionReportRequest {
-  productKey: string;
-  listingProductId?: number;
-  reason: ProductCorrectionReportReason;
-  explanation?: string;
-}
+export {
+  PRODUCT_CORRECTION_REPORT_REASONS,
+  PRODUCT_CORRECTION_REPORT_STATUSES,
+} from "./contracts.js";
+export type {
+  ProductCorrectionReportReason,
+  ProductCorrectionReportRequest,
+  ProductCorrectionReportStatus,
+} from "./contracts.js";
 
 export const PRODUCT_CORRECTION_REPORT_MAX_BODY_BYTES = 2 * 1024;
 export const PRODUCT_CORRECTION_REPORT_MAX_EXPLANATION_CHARS = 500;
