@@ -5,6 +5,7 @@ import { test } from "vite-plus/test";
 import {
   EXACT_IDENTITY_SPLIT_COUNT_SQL,
   exactIdentityPeerIdsSql,
+  exactIdentitySplitMembershipPredicateSql,
   upsertExactIdentityGroupOffersSql,
 } from "../src/db/product-search-exact-identity.js";
 
@@ -46,6 +47,17 @@ test("incremental sync can expand a changed listing to every safe exact peer", (
   assert.match(sql, /peer\.normalized_model = seed\.normalized_model/);
   assert.match(sql, /peer\.model_resolution_status = 'resolved'/);
   assert.doesNotMatch(sql, /peer\.shop_key = seed\.shop_key/);
+});
+
+test("bounded repair can identify one member of a split safe exact identity", () => {
+  const sql = exactIdentitySplitMembershipPredicateSql("p");
+
+  assert.match(sql, /p\.model_resolution_status = 'resolved'/);
+  assert.match(sql, /peer\.canonical_manufacturer_id = p\.canonical_manufacturer_id/);
+  assert.match(sql, /peer\.normalized_model = p\.normalized_model/);
+  assert.match(sql, /peer_membership\.entity_id <> current_membership\.entity_id/);
+  assert.match(sql, /primary_category_id NOT IN \('other', 'unclassified'\)/);
+  assert.doesNotMatch(sql, /LIKE|levenshtein/i);
 });
 
 test("production audit detects a safe exact identity split across multiple entities", () => {
