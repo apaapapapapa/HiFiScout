@@ -249,7 +249,7 @@ export async function updateProductCorrectionReport(
   const status = nextStatus(action);
   const at = now.toISOString();
   const resolved = status === "accepted" || status === "rejected" || status === "duplicate";
-  await db.batch([
+  const results = await db.batch([
     db
       .prepare(`
         UPDATE product_correction_reports
@@ -261,10 +261,15 @@ export async function updateProductCorrectionReport(
       .prepare(`
         INSERT INTO product_correction_report_events(
           report_id, action, previous_status, new_status, note, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?)
+        )
+        SELECT ?, ?, ?, ?, ?, ?
+        WHERE changes() = 1
       `)
       .bind(reportId, action, current.status, status, note.trim(), at),
   ]);
+  if (Number(results[0]?.meta?.changes || 0) !== 1) {
+    throw new Error("invalid_correction_report_transition");
+  }
   return getProductCorrectionReport(db, reportId);
 }
 
