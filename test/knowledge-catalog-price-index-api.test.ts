@@ -41,7 +41,10 @@ test("price-index projection uses persistent aggregates and scopes the trailing 
   assert.equal(summaries.get(12)?.recent_asking_median_yen, 320_000);
   assert.equal(db.calls.length, 1);
   assert.match(db.calls[0].sql, /WITH requested\(catalog_product_id\) AS/);
-  assert.match(db.calls[0].sql, /JOIN requested q ON q\.catalog_product_id = s\.catalog_product_id/);
+  assert.match(
+    db.calls[0].sql,
+    /JOIN requested q ON q\.catalog_product_id = s\.catalog_product_id/,
+  );
   assert.match(db.calls[0].sql, /knowledge_catalog_price_index_samples s/);
   assert.match(db.calls[0].sql, /JOIN knowledge_catalog_price_indexes i/);
   assert.doesNotMatch(db.calls[0].sql, /knowledge_catalog_price_index_rollup/);
