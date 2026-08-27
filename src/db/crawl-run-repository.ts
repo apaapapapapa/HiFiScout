@@ -25,6 +25,15 @@ export async function startCrawlRun(
   return run.meta.last_row_id;
 }
 
+/**
+ * Both terminal writes claim the run the way {@link finishCrawlRunInterrupted} does: the first
+ * outcome to land wins and every later one is a no-op.
+ *
+ * This is not only about two recovery sweeps racing. A deadline-guarded write is not cancelled when
+ * its caller stops waiting for it, so a terminal write that timed out can still arrive after the
+ * crawl has recorded the opposite outcome. Without the claim, which of the two a run ends up
+ * reporting would depend on how late the slow one happened to be.
+ */
 export async function finishCrawlRunSuccess(
   db: QueryableDatabase,
   runId: number,
@@ -32,7 +41,7 @@ export async function finishCrawlRunSuccess(
 ): Promise<void> {
   await db
     .prepare(
-      "UPDATE crawl_runs SET finished_at = ?, status = 'success', item_count = ?, page_count = ?, message = ? WHERE id = ?",
+      "UPDATE crawl_runs SET finished_at = ?, status = 'success', item_count = ?, page_count = ?, message = ? WHERE id = ? AND status = 'running'",
     )
     .bind(finishedAt, itemCount, pageCount, message, runId)
     .run();
@@ -45,7 +54,7 @@ export async function finishCrawlRunFailure(
 ): Promise<void> {
   await db
     .prepare(
-      "UPDATE crawl_runs SET finished_at = ?, status = 'failed', page_count = ?, message = ? WHERE id = ?",
+      "UPDATE crawl_runs SET finished_at = ?, status = 'failed', page_count = ?, message = ? WHERE id = ? AND status = 'running'",
     )
     .bind(finishedAt, pageCount, String(message).slice(0, 1000), runId)
     .run();

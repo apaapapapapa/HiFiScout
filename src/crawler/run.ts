@@ -36,7 +36,7 @@ import {
   type DerivedWorkMetrics,
 } from "./crawl-continuation.js";
 import { recordCrawlWorkloadObservation } from "../db/crawl-workload-repository.js";
-import { createInvocationDeadline } from "../deadline.js";
+import { createInvocationDeadline, isDeadlineExceeded } from "../deadline.js";
 import { archiveEvidence } from "../evidence/evidence-archive.js";
 import { enrichProductCategories } from "./category-enricher.js";
 import { createCrawlRunProgressRecorder } from "./crawl-progress.js";
@@ -165,6 +165,80 @@ function logUnclassifiedProducts(
 
 function crawlEvidenceError(message: string, reason: EvidenceReason): AugmentedCrawlError {
   return Object.assign(new Error(message), { evidenceReason: reason });
+}
+
+/**
+ * Archives one evidence snapshot without letting it decide the crawl's outcome.
+ *
+ * `archiveEvidence` already answers with a failed result rather than throwing, but the R2 put and
+ * the D1 insert inside it are raw binding calls, and two of its three call sites sit between
+ * recorded stages where nothing else would bound them. A stall in either would consume the
+ * invocation exactly as an unguarded crawl did — which is the failure this whole change exists to
+ * remove, so evidence must not be the one place it survives. It is diagnostics either way: a
+ * snapshot that could not be stored is counted and moved past, never raised into the crawl.
+ *
+ * The bound is a slice of its own rather than the crawl's remaining budget. A guard waits until the
+ * budget it was given is gone, so handing evidence the invocation budget would let one stalled
+ * snapshot spend everything the listing write and the derived stages still needed.
+ */
+async function archiveCrawlEvidence(
+  budgetMs: number,
+  metrics: EvidenceMetrics,
+  options: NonNullable<Parameters<typeof archiveEvidence>[0]>,
+): Promise<void> {
+  try {
+    evidenceOutcome(
+      metrics,
+      await createInvocationDeadline(budgetMs).guard("crawl_evidence", () =>
+        archiveEvidence(options),
+      ),
+    );
+  } catch (error) {
+    metrics.failed += 1;
+    console.warn(
+      JSON.stringify({
+        event: "crawl_evidence_archive_failure",
+        shopKey: options.shopKey,
+        crawlRunId: options.crawlRunId ?? null,
+        reason: options.reason ?? null,
+        message: errorMessage(error),
+      }),
+    );
+  }
+}
+
+/**
+ * Runs one terminal write phase of a *successful* crawl, without letting it report a failed one.
+ *
+ * A guard cannot cancel the write it stopped waiting for. If a slow success write were raised into
+ * the crawl's catch block, that block would record a failure and apply backoff, and the write still
+ * in flight would then land `markShopSuccess` on top of it — leaving shop health contradicting the
+ * run row, with which one won decided by how late the slow write happened to be. A stalled
+ * bookkeeping write is also not a failed crawl in the first place: the listings are written and the
+ * seller is done with. So the timeout is reported as what it is and the crawl keeps its outcome.
+ *
+ * Only the deadline is absorbed. A real error from the write itself still belongs to the crawl.
+ */
+async function recordCrawlSuccessPhase(
+  budgetMs: number,
+  phase: string,
+  context: { shopKey: string; crawlRunId: number },
+  write: () => Promise<unknown>,
+): Promise<void> {
+  try {
+    await createInvocationDeadline(budgetMs).guard(phase, write);
+  } catch (error) {
+    if (!isDeadlineExceeded(error)) throw error;
+    console.warn(
+      JSON.stringify({
+        event: "crawl_terminal_write_timeout",
+        shopKey: context.shopKey,
+        crawlRunId: context.crawlRunId,
+        phase,
+        message: errorMessage(error),
+      }),
+    );
+  }
 }
 
 function evidenceOutcome(
@@ -555,15 +629,14 @@ export async function crawlShop(
     if (enrichment.unresolvedCount > 0) {
       evidenceMetrics.expected += 1;
       if (classificationEvidenceHtml) {
-        const result = await archiveEvidence({
+        await archiveCrawlEvidence(settings.terminalBudgetMs, evidenceMetrics, {
           env,
           shopKey: adapter.key,
-          crawlRunId: runId,
+          crawlRunId,
           reason: "classification_unresolved",
           html: classificationEvidenceHtml,
           capturedAt: observedAt,
         });
-        evidenceOutcome(evidenceMetrics, result);
       } else {
         evidenceMetrics.failed += 1;
       }
@@ -576,15 +649,14 @@ export async function crawlShop(
       (items.size - previousItemCount) / previousItemCount <= -0.2
     ) {
       evidenceMetrics.expected += 1;
-      const result = await archiveEvidence({
+      await archiveCrawlEvidence(settings.terminalBudgetMs, evidenceMetrics, {
         env,
         shopKey: adapter.key,
-        crawlRunId: runId,
+        crawlRunId,
         reason: "unexpected_item_count",
         html: lastEvidenceHtml,
         capturedAt: observedAt,
       });
-      evidenceOutcome(evidenceMetrics, result);
     }
 
     const {
@@ -652,22 +724,29 @@ export async function crawlShop(
     // The work budget is spent by the time a crawl reaches its outcome, so the writes that record
     // that outcome start a budget of their own. It is short because none of them is expensive: what
     // it bounds is a binding that stops answering, not a write that is merely slow.
-    const successWrites = createInvocationDeadline(settings.terminalBudgetMs);
-    await successWrites.guard("crawl_success_record", async () => {
-      // Only once no stage still owes a chunk. Freeing the work set while one is pending would
-      // leave the sweep a stage it could not read, and it would silently settle it as if it had run.
-      if (!derived.pending) await clearCrawlRunWorkItems(env.DB, crawlRunId);
-      await recordCrawlWorkloadObservation(env.DB, adapter.key, {
-        itemCount: items.size,
-        budgetExhausted: derived.deferred,
-        observedAt,
-      });
-      await markShopSuccess(env.DB, adapter.key, observedAt, items.size);
-      // The inventory watermark advances either way: the collection succeeded. The projection
-      // watermark only advances when nothing is still owed, so a crawl that deferred its remaining
-      // chunks or lost a stage reports fresh listings without claiming search has caught up.
-      if (!derived.pending) await markShopProjectionComplete(env.DB, adapter.key, observedAt);
-    });
+    const outcomeContext = { shopKey: adapter.key, crawlRunId };
+    await recordCrawlSuccessPhase(
+      settings.terminalBudgetMs,
+      "crawl_success_record",
+      outcomeContext,
+      async () => {
+        // Only once no stage still owes a chunk. Freeing the work set while one is pending would
+        // leave the sweep a stage it could not read, and it would silently settle it as if it had
+        // run.
+        if (!derived.pending) await clearCrawlRunWorkItems(env.DB, crawlRunId);
+        await recordCrawlWorkloadObservation(env.DB, adapter.key, {
+          itemCount: items.size,
+          budgetExhausted: derived.deferred,
+          observedAt,
+        });
+        await markShopSuccess(env.DB, adapter.key, observedAt, items.size);
+        // The inventory watermark advances either way: the collection succeeded. The projection
+        // watermark only advances when nothing is still owed, so a crawl that deferred its
+        // remaining chunks or lost a stage reports fresh listings without claiming search has
+        // caught up.
+        if (!derived.pending) await markShopProjectionComplete(env.DB, adapter.key, observedAt);
+      },
+    );
     const diagnosticParts = [];
     if (pageDiagnostic != null) diagnosticParts.push(`diag=${JSON.stringify(pageDiagnostic)}`);
     if (enrichment.detailRequests || enrichment.cacheHits || enrichment.unresolvedCount) {
@@ -707,13 +786,17 @@ export async function crawlShop(
     diagnosticParts.push(`stages=${JSON.stringify(stageRecorder.stageDurationsMs())}`);
     diagnosticParts.push(`pages=${JSON.stringify(pageTimings.summary())}`);
     const diagnosticSuffix = diagnosticParts.length ? ` | ${diagnosticParts.join(" | ")}` : "";
-    await createInvocationDeadline(settings.terminalBudgetMs).guard("crawl_run_finish", () =>
-      finishCrawlRunSuccess(env.DB, crawlRunId, {
-        finishedAt: observedAt,
-        itemCount: items.size,
-        pageCount,
-        message: `${changedCount} changed, ${activityCount} activity, ${featureFactCount} feature facts, ${metadataChangedCount} metadata changed, ${touchedCount} touched, ${deactivatedCount} deactivated${diagnosticSuffix}`,
-      }),
+    await recordCrawlSuccessPhase(
+      settings.terminalBudgetMs,
+      "crawl_run_finish",
+      outcomeContext,
+      () =>
+        finishCrawlRunSuccess(env.DB, crawlRunId, {
+          finishedAt: observedAt,
+          itemCount: items.size,
+          pageCount,
+          message: `${changedCount} changed, ${activityCount} activity, ${featureFactCount} feature facts, ${metadataChangedCount} metadata changed, ${touchedCount} touched, ${deactivatedCount} deactivated${diagnosticSuffix}`,
+        }),
     );
     return {
       shopKey: adapter.key,
@@ -758,41 +841,26 @@ export async function crawlShop(
         message: crawlError.message,
       }),
     );
-    // Diagnostics run on a budget of their own, ahead of the terminal record and separate from it.
+    // Diagnostics run on budgets of their own, ahead of the terminal record and separate from it.
     // Evidence is an R2 write and quality is a D1 write, and either stalling used to take the whole
-    // catch block with it — which is the shape that leaves a run with no outcome at all. Their
-    // budget is spent before the record's, so neither can consume the time the record needs.
-    const diagnosticWrites = createInvocationDeadline(settings.terminalBudgetMs);
+    // catch block with it — which is the shape that leaves a run with no outcome at all. Each is
+    // bounded on its own, so neither can consume the time the record below needs.
+    const qualityWrite = createInvocationDeadline(settings.terminalBudgetMs);
     evidenceMetrics.expected += 1;
     if (lastEvidenceHtml) {
-      try {
-        const evidence = await diagnosticWrites.guard("crawl_evidence", () =>
-          archiveEvidence({
-            env,
-            shopKey: adapter.key,
-            crawlRunId: runId,
-            reason: crawlError.evidenceReason || "crawl_validation_failure",
-            html: lastEvidenceHtml,
-            capturedAt: failedAt,
-          }),
-        );
-        evidenceOutcome(evidenceMetrics, evidence);
-      } catch (evidenceError) {
-        evidenceMetrics.failed += 1;
-        console.warn(
-          JSON.stringify({
-            event: "crawl_evidence_archive_failure",
-            shopKey: adapter.key,
-            crawlRunId: runId,
-            message: errorMessage(evidenceError),
-          }),
-        );
-      }
+      await archiveCrawlEvidence(settings.terminalBudgetMs, evidenceMetrics, {
+        env,
+        shopKey: adapter.key,
+        crawlRunId: runId,
+        reason: crawlError.evidenceReason || "crawl_validation_failure",
+        html: lastEvidenceHtml,
+        capturedAt: failedAt,
+      });
     } else {
       evidenceMetrics.failed += 1;
     }
     const previousItemCount = Number(state?.last_item_count);
-    const quality = await diagnosticWrites
+    const quality = await qualityWrite
       .guard("data_quality", () =>
         safeSaveDataQuality(env, adapter, runId, failedAt, {
           parseAttemptCount,
