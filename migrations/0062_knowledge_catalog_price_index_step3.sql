@@ -9,32 +9,39 @@ WHEN NEW.stock_status = 'sold_out'
  AND OLD.stock_status <> 'sold_out'
 BEGIN
   INSERT INTO knowledge_catalog_price_index_samples(
+    event_key,
     catalog_product_id,
+    listing_product_id,
+    source_price_history_id,
+    shop_key,
+    source_id,
     sample_kind,
     signal_kind,
     price_yen,
-    observed_at,
-    listing_product_id,
-    source_price_history_id,
-    event_key
+    observed_at
   )
-  SELECT r.catalog_product_id,
-         'listing_end',
-         'sold_out',
-         NEW.price_yen,
-         COALESCE(NULLIF(NEW.last_seen_at, ''), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-         NEW.id,
-         NULL,
-         'sold-out:' || NEW.id || ':' || COALESCE(NULLIF(NEW.last_seen_at, ''), 'unknown')
-  FROM product_identity_resolutions r
-  WHERE r.listing_product_id = NEW.id
-    AND r.status = 'matched'
-    AND r.catalog_product_id IS NOT NULL
+  SELECT
+    'sold-out-observed:' || NEW.id || ':' || COALESCE(NULLIF(NEW.last_seen_at, ''), 'unknown'),
+    pir.catalog_product_id,
+    NEW.id,
+    NULL,
+    NEW.shop_key,
+    NEW.source_id,
+    'listing_end',
+    'sold_out',
+    NEW.price_yen,
+    COALESCE(NULLIF(NEW.last_seen_at, ''), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  FROM product_identity_resolutions pir
+  WHERE pir.listing_product_id = NEW.id
+    AND pir.status = 'matched'
+    AND pir.catalog_product_id IS NOT NULL
   ON CONFLICT(event_key) DO UPDATE SET
     catalog_product_id = excluded.catalog_product_id,
+    listing_product_id = excluded.listing_product_id,
+    shop_key = excluded.shop_key,
+    source_id = excluded.source_id,
     price_yen = excluded.price_yen,
-    observed_at = excluded.observed_at,
-    listing_product_id = excluded.listing_product_id;
+    observed_at = excluded.observed_at;
 END;
 
 -- If the sold-out observation happened before identity resolution, capture the current strong
@@ -44,31 +51,38 @@ AFTER INSERT ON product_identity_resolutions
 WHEN NEW.status = 'matched' AND NEW.catalog_product_id IS NOT NULL
 BEGIN
   INSERT INTO knowledge_catalog_price_index_samples(
+    event_key,
     catalog_product_id,
+    listing_product_id,
+    source_price_history_id,
+    shop_key,
+    source_id,
     sample_kind,
     signal_kind,
     price_yen,
-    observed_at,
-    listing_product_id,
-    source_price_history_id,
-    event_key
+    observed_at
   )
-  SELECT NEW.catalog_product_id,
-         'listing_end',
-         'sold_out',
-         p.price_yen,
-         COALESCE(NULLIF(p.last_seen_at, ''), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-         p.id,
-         NULL,
-         'sold-out:' || p.id || ':' || COALESCE(NULLIF(p.last_seen_at, ''), 'unknown')
+  SELECT
+    'sold-out-observed:' || p.id || ':' || COALESCE(NULLIF(p.last_seen_at, ''), 'unknown'),
+    NEW.catalog_product_id,
+    p.id,
+    NULL,
+    p.shop_key,
+    p.source_id,
+    'listing_end',
+    'sold_out',
+    p.price_yen,
+    COALESCE(NULLIF(p.last_seen_at, ''), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
   FROM products p
   WHERE p.id = NEW.listing_product_id
     AND p.stock_status = 'sold_out'
   ON CONFLICT(event_key) DO UPDATE SET
     catalog_product_id = excluded.catalog_product_id,
+    listing_product_id = excluded.listing_product_id,
+    shop_key = excluded.shop_key,
+    source_id = excluded.source_id,
     price_yen = excluded.price_yen,
-    observed_at = excluded.observed_at,
-    listing_product_id = excluded.listing_product_id;
+    observed_at = excluded.observed_at;
 END;
 
 -- Identity commonly transitions unresolved -> matched by UPDATE rather than INSERT. Re-check the
@@ -81,61 +95,75 @@ WHEN NEW.status = 'matched'
  AND (OLD.status <> 'matched' OR OLD.catalog_product_id IS NOT NEW.catalog_product_id)
 BEGIN
   INSERT INTO knowledge_catalog_price_index_samples(
+    event_key,
     catalog_product_id,
+    listing_product_id,
+    source_price_history_id,
+    shop_key,
+    source_id,
     sample_kind,
     signal_kind,
     price_yen,
-    observed_at,
-    listing_product_id,
-    source_price_history_id,
-    event_key
+    observed_at
   )
-  SELECT NEW.catalog_product_id,
-         'listing_end',
-         'sold_out',
-         p.price_yen,
-         COALESCE(NULLIF(p.last_seen_at, ''), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-         p.id,
-         NULL,
-         'sold-out:' || p.id || ':' || COALESCE(NULLIF(p.last_seen_at, ''), 'unknown')
+  SELECT
+    'sold-out-observed:' || p.id || ':' || COALESCE(NULLIF(p.last_seen_at, ''), 'unknown'),
+    NEW.catalog_product_id,
+    p.id,
+    NULL,
+    p.shop_key,
+    p.source_id,
+    'listing_end',
+    'sold_out',
+    p.price_yen,
+    COALESCE(NULLIF(p.last_seen_at, ''), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
   FROM products p
   WHERE p.id = NEW.listing_product_id
     AND p.stock_status = 'sold_out'
   ON CONFLICT(event_key) DO UPDATE SET
     catalog_product_id = excluded.catalog_product_id,
+    listing_product_id = excluded.listing_product_id,
+    shop_key = excluded.shop_key,
+    source_id = excluded.source_id,
     price_yen = excluded.price_yen,
-    observed_at = excluded.observed_at,
-    listing_product_id = excluded.listing_product_id;
+    observed_at = excluded.observed_at;
 END;
 
 -- Repair already-known active sold-out listings. Inactive rows were already eligible for the Step 1
 -- deactivation trigger, so this intentionally targets the gap that review identified.
 INSERT INTO knowledge_catalog_price_index_samples(
+  event_key,
   catalog_product_id,
+  listing_product_id,
+  source_price_history_id,
+  shop_key,
+  source_id,
   sample_kind,
   signal_kind,
   price_yen,
-  observed_at,
-  listing_product_id,
-  source_price_history_id,
-  event_key
+  observed_at
 )
-SELECT r.catalog_product_id,
-       'listing_end',
-       'sold_out',
-       p.price_yen,
-       COALESCE(NULLIF(p.last_seen_at, ''), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-       p.id,
-       NULL,
-       'sold-out:' || p.id || ':' || COALESCE(NULLIF(p.last_seen_at, ''), 'unknown')
+SELECT
+  'sold-out-observed:' || p.id || ':' || COALESCE(NULLIF(p.last_seen_at, ''), 'unknown'),
+  pir.catalog_product_id,
+  p.id,
+  NULL,
+  p.shop_key,
+  p.source_id,
+  'listing_end',
+  'sold_out',
+  p.price_yen,
+  COALESCE(NULLIF(p.last_seen_at, ''), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 FROM products p
-JOIN product_identity_resolutions r ON r.listing_product_id = p.id
+JOIN product_identity_resolutions pir ON pir.listing_product_id = p.id
 WHERE p.is_active = 1
   AND p.stock_status = 'sold_out'
-  AND r.status = 'matched'
-  AND r.catalog_product_id IS NOT NULL
+  AND pir.status = 'matched'
+  AND pir.catalog_product_id IS NOT NULL
 ON CONFLICT(event_key) DO UPDATE SET
   catalog_product_id = excluded.catalog_product_id,
+  listing_product_id = excluded.listing_product_id,
+  shop_key = excluded.shop_key,
+  source_id = excluded.source_id,
   price_yen = excluded.price_yen,
-  observed_at = excluded.observed_at,
-  listing_product_id = excluded.listing_product_id;
+  observed_at = excluded.observed_at;
