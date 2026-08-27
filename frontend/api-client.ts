@@ -201,6 +201,12 @@ export function isProductSearchItem(value: unknown): value is ProductSearchItem 
   if (value.presentation_colors !== undefined && !isStringArray(value.presentation_colors)) {
     return false;
   }
+  // The card maps over these directly, so a stored value that is truthy but not an array would
+  // throw while rendering instead of being discarded as the malformed entry it is. `category_ids`
+  // needs no check here only because every reader of it goes through a defensive `stringArray`.
+  for (const field of ["direct_category_ids", "direct_categories"] as const) {
+    if (value[field] !== undefined && !isStringArray(value[field])) return false;
+  }
 
   return (
     (value.identity_kind === "catalog" || value.identity_kind === "unresolved_listing") &&

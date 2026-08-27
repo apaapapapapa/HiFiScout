@@ -20,6 +20,7 @@ function product(): DisplayProduct {
     primary_category_id: "transport",
     category_ids: ["transport", "digital"],
     direct_category_ids: ["dac", "transport"],
+    direct_categories: ["DAC", "トランスポート"],
     category: "トランスポート",
     offer_count: 1,
     in_stock_offer_count: 1,
@@ -66,4 +67,25 @@ test("pre-direct-category favorite snapshots remain valid", () => {
   const store = parseFavoriteStorage(JSON.stringify([oldSnapshot]), isProductSearchItem);
   assert.equal(store.products.has("l-1"), true);
   assert.equal(store.products.get("l-1")?.direct_category_ids, undefined);
+});
+
+/**
+ * A favorite is read back from localStorage, which anything can have written. The card maps over
+ * the direct-category fields, so a truthy non-array must be rejected by the guard rather than
+ * reaching the render and throwing there.
+ */
+test("a snapshot whose direct categories are not arrays is discarded, not rendered", () => {
+  const sound = favoriteSnapshot({
+    ...product(),
+    direct_categories: ["DAC", "トランスポート"],
+  });
+  assert.equal(isProductSearchItem(sound), true);
+
+  for (const malformed of [
+    { ...sound, direct_category_ids: "dac" },
+    { ...sound, direct_categories: "DAC" },
+    { ...sound, direct_categories: [1] },
+  ]) {
+    assert.equal(isProductSearchItem(malformed), false, JSON.stringify(malformed));
+  }
 });
