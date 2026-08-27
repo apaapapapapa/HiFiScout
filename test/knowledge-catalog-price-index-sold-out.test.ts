@@ -138,7 +138,9 @@ test("an explicit sold-out transition is retained while active and not duplicate
   `).run(listingProductId);
 
   assert.equal(soldOutSignals(db, catalogProductId), 1);
-  const product = db.prepare("SELECT is_active FROM products WHERE id = ?").get(listingProductId) as {
+  const product = db
+    .prepare("SELECT is_active FROM products WHERE id = ?")
+    .get(listingProductId) as {
     is_active: number;
   };
   assert.equal(product.is_active, 1);

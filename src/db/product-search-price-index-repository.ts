@@ -21,8 +21,10 @@ export interface PriceIndexedProductSearchResponse extends Omit<ProductSearchRes
   items: PriceIndexedProductSearchItem[];
 }
 
-export interface PriceIndexedProductSearchDetailResponse
-  extends Omit<ProductSearchDetailResponse, "product"> {
+export interface PriceIndexedProductSearchDetailResponse extends Omit<
+  ProductSearchDetailResponse,
+  "product"
+> {
   product: PriceIndexedProductSearchItem;
 }
 

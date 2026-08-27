@@ -63,7 +63,8 @@ test("product search exposes price_index only for resolved catalog products with
   });
   const db = captureDatabase((statement) => {
     if (/SELECT e\.id, e\.entity_key/.test(statement.sql)) return [resolved, unresolved];
-    if (/FROM knowledge_catalog_price_index_rollup r/.test(statement.sql)) return [priceIndexRow(12)];
+    if (/FROM knowledge_catalog_price_index_rollup r/.test(statement.sql))
+      return [priceIndexRow(12)];
     return [];
   });
 
@@ -84,7 +85,8 @@ test("product detail exposes the same optional price-index contract", async () =
     if (/FROM product_search_entities e WHERE e\.entity_key/.test(statement.sql)) {
       return [entityRow({ id: 12, entity_key: "c-12", catalog_product_id: 12 })];
     }
-    if (/FROM knowledge_catalog_price_index_rollup r/.test(statement.sql)) return [priceIndexRow(12)];
+    if (/FROM knowledge_catalog_price_index_rollup r/.test(statement.sql))
+      return [priceIndexRow(12)];
     if (/FROM product_search_entity_offers m/.test(statement.sql)) {
       return [offerRow({ listing_product_id: 100, price_yen: 300_000 })];
     }
