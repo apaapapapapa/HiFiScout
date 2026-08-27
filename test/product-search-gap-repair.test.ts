@@ -193,3 +193,86 @@ test("repairs a stale fallback membership after Identity becomes catalog-matched
     0,
   );
 });
+
+test("repairs safe exact identities that drift across multiple search entities", async () => {
+  const { sqlite, db } = migratedSqlite();
+  const firstListingId = insertActiveListing(sqlite, "split-exact-1");
+  const secondListingId = insertActiveListing(sqlite, "split-exact-2");
+
+  // Establish the healthy grouped state first so Identity/search projections are realistic.
+  const initial = await repairActiveListingProjectionGaps(db, {
+    evaluatedAt: NOW,
+    batchSize: 5,
+    maxListings: 10,
+  });
+  assert.deepEqual(initial, { selectedCount: 2, repairedCount: 2, remainingGapCount: 0 });
+  assert.equal(
+    sqlite
+      .prepare(`
+        SELECT COUNT(DISTINCT entity_id) AS count
+        FROM product_search_entity_offers
+        WHERE listing_product_id IN (?, ?)
+      `)
+      .get(firstListingId, secondListingId)?.count,
+    1,
+  );
+
+  // Simulate persisted drift where every projection row exists but one exact peer is stranded in
+  // its own fallback entity. This is the production failure that a missing-row-only repair misses.
+  sqlite
+    .prepare(`
+      INSERT INTO product_search_entities(entity_key, entity_kind, fallback_listing_id)
+      VALUES (?, 'unresolved_listing', ?)
+    `)
+    .run(`l-${secondListingId}`, secondListingId);
+  const strandedEntityId = Number(
+    sqlite
+      .prepare("SELECT id FROM product_search_entities WHERE entity_key = ?")
+      .get(`l-${secondListingId}`)?.id || 0,
+  );
+  sqlite
+    .prepare("UPDATE product_search_entity_offers SET entity_id = ? WHERE listing_product_id = ?")
+    .run(strandedEntityId, secondListingId);
+
+  assert.equal(
+    sqlite
+      .prepare(`
+        SELECT COUNT(DISTINCT entity_id) AS count
+        FROM product_search_entity_offers
+        WHERE listing_product_id IN (?, ?)
+      `)
+      .get(firstListingId, secondListingId)?.count,
+    2,
+  );
+
+  // One seed is enough: search-entity sync expands it to every exact peer and converges the group.
+  const result = await repairActiveListingProjectionGaps(db, {
+    evaluatedAt: NOW,
+    batchSize: 1,
+    maxListings: 10,
+  });
+  assert.deepEqual(result, { selectedCount: 1, repairedCount: 1, remainingGapCount: 0 });
+  assert.equal(
+    sqlite
+      .prepare(`
+        SELECT COUNT(DISTINCT entity_id) AS count
+        FROM product_search_entity_offers
+        WHERE listing_product_id IN (?, ?)
+      `)
+      .get(firstListingId, secondListingId)?.count,
+    1,
+  );
+  assert.equal(
+    sqlite.prepare("SELECT COUNT(*) AS count FROM product_search_entities WHERE id = ?").get(
+      strandedEntityId,
+    )?.count,
+    0,
+  );
+
+  const second = await repairActiveListingProjectionGaps(db, {
+    evaluatedAt: NOW,
+    batchSize: 1,
+    maxListings: 10,
+  });
+  assert.deepEqual(second, { selectedCount: 0, repairedCount: 0, remainingGapCount: 0 });
+});
