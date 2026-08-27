@@ -99,7 +99,9 @@ export function ProductCorrectionReportForm({ detail }: { detail: ProductDetailR
             name="reason"
             value={reason}
             disabled={disabled}
-            onChange={(event) => setReason(event.currentTarget.value as ProductCorrectionReportReason)}
+            onChange={(event) =>
+              setReason(event.currentTarget.value as ProductCorrectionReportReason)
+            }
           >
             {PRODUCT_CORRECTION_REPORT_REASONS.map((value) => (
               <option key={value} value={value}>
