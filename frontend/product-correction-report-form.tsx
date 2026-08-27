@@ -5,7 +5,17 @@ import {
   PRODUCT_CORRECTION_REPORT_REASONS,
   type ProductCorrectionReportReason,
 } from "../src/api/product-correction-report-contract.js";
-import type { ProductDetailResponse } from "./types.js";
+
+export interface ProductCorrectionReportTarget {
+  listingProductId?: number;
+  label: string;
+}
+
+export interface ProductCorrectionReportFormProps {
+  productKey: string;
+  productLabel: string;
+  targets: readonly ProductCorrectionReportTarget[];
+}
 
 const REASON_LABELS: Record<ProductCorrectionReportReason, string> = {
   wrong_manufacturer: "メーカーが違う",
@@ -18,12 +28,15 @@ const REASON_LABELS: Record<ProductCorrectionReportReason, string> = {
 
 type SubmissionState = "idle" | "submitting" | "success" | "error";
 
-export function ProductCorrectionReportForm({ detail }: { detail: ProductDetailResponse }) {
+export function ProductCorrectionReportForm({
+  productKey,
+  productLabel,
+  targets,
+}: ProductCorrectionReportFormProps) {
   const [listingProductId, setListingProductId] = useState("");
   const [reason, setReason] = useState<ProductCorrectionReportReason>("wrong_manufacturer");
   const [explanation, setExplanation] = useState("");
   const [submissionState, setSubmissionState] = useState<SubmissionState>("idle");
-  const productKey = detail.product.key;
 
   useEffect(() => {
     setListingProductId("");
@@ -32,8 +45,6 @@ export function ProductCorrectionReportForm({ detail }: { detail: ProductDetailR
     setSubmissionState("idle");
   }, [productKey]);
 
-  const heading =
-    detail.product.model || detail.product.representative_offer?.title || detail.product.key;
   const disabled = submissionState === "submitting";
   const statusText =
     submissionState === "submitting"
@@ -71,7 +82,7 @@ export function ProductCorrectionReportForm({ detail }: { detail: ProductDetailR
   };
 
   return (
-    <details className="offers-note correction-report-panel">
+    <details className="offers-note correction-report-panel" data-correction-report={productKey}>
       <summary>情報の誤りを報告</summary>
       <p>
         報告は匿名の確認候補として保存され、内容を確認してから補正します。連絡先や個人情報は入力しないでください。
@@ -85,10 +96,13 @@ export function ProductCorrectionReportForm({ detail }: { detail: ProductDetailR
             disabled={disabled}
             onChange={(event) => setListingProductId(event.currentTarget.value)}
           >
-            <option value="">{heading}（商品全体）</option>
-            {detail.offers.map((offer) => (
-              <option key={offer.listing_product_id} value={offer.listing_product_id}>
-                {offer.shop_key}: {offer.title}
+            <option value="">{productLabel}（商品全体）</option>
+            {targets.map((target) => (
+              <option
+                key={target.listingProductId ?? "product"}
+                value={target.listingProductId == null ? "" : String(target.listingProductId)}
+              >
+                {target.label}
               </option>
             ))}
           </select>
