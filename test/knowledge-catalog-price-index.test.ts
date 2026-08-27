@@ -216,9 +216,9 @@ test("price changes and listing ends update incrementally and survive listing re
   assert.equal(
     Number(
       (
-        db
-          .prepare("SELECT COUNT(*) AS count FROM knowledge_catalog_price_index_samples")
-          .get() as { count: number }
+        db.prepare("SELECT COUNT(*) AS count FROM knowledge_catalog_price_index_samples").get() as {
+          count: number;
+        }
       ).count,
     ),
     5,
@@ -247,9 +247,9 @@ test("late identity resolution backfills samples and matched reassignment moves 
   assert.equal(
     Number(
       (
-        db
-          .prepare("SELECT COUNT(*) AS count FROM knowledge_catalog_price_index_samples")
-          .get() as { count: number }
+        db.prepare("SELECT COUNT(*) AS count FROM knowledge_catalog_price_index_samples").get() as {
+          count: number;
+        }
       ).count,
     ),
     0,
@@ -294,9 +294,9 @@ test("late identity resolution backfills samples and matched reassignment moves 
   assert.equal(
     Number(
       (
-        db
-          .prepare("SELECT COUNT(*) AS count FROM knowledge_catalog_price_index_samples")
-          .get() as { count: number }
+        db.prepare("SELECT COUNT(*) AS count FROM knowledge_catalog_price_index_samples").get() as {
+          count: number;
+        }
       ).count,
     ),
     0,
