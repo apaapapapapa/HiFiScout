@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 import {
@@ -50,11 +50,15 @@ type ResolutionAction = "accepted" | "rejected" | "duplicate";
 
 function targetUrl(report: CorrectionReport): string {
   const url = new URL(window.location.origin);
+  const query = [report.snapshot.manufacturer, report.snapshot.model]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  url.searchParams.set("q", query || report.productKey);
   if (report.listingProductId !== null) {
-    url.searchParams.set("listing", String(report.listingProductId));
+    if (report.snapshot.shopKey) url.searchParams.set("shopKey", report.snapshot.shopKey);
+    url.searchParams.set("scope", "all");
     url.hash = "listings";
-  } else {
-    url.searchParams.set("productKey", report.productKey);
   }
   return url.toString();
 }
@@ -76,6 +80,7 @@ export function CorrectionReportsAdmin() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [notes, setNotes] = useState<Record<number, string>>({});
+  const requestSequence = useRef(0);
 
   const params = useMemo(() => {
     const value = new URLSearchParams({ limit: "50" });
@@ -88,6 +93,7 @@ export function CorrectionReportsAdmin() {
 
   const load = useCallback(
     async (beforeId: number | null = null, append = false) => {
+      const sequence = ++requestSequence.current;
       setBusy(true);
       setMessage("報告を読み込んでいます…");
       try {
@@ -96,15 +102,17 @@ export function CorrectionReportsAdmin() {
         const result = await adminJson<CorrectionReportListResponse>(
           `/api/admin/correction-reports?${query}`,
         );
+        if (sequence !== requestSequence.current) return;
         setItems((current) => (append ? [...current, ...result.items] : result.items));
         setNextBeforeId(result.nextBeforeId);
         setMessage(
           result.items.length ? "報告キューを表示しています。" : "該当する報告はありません。",
         );
       } catch (error) {
+        if (sequence !== requestSequence.current) return;
         setMessage(`報告の取得に失敗しました: ${genericErrorText(error)}`);
       } finally {
-        setBusy(false);
+        if (sequence === requestSequence.current) setBusy(false);
       }
     },
     [params],
@@ -113,6 +121,13 @@ export function CorrectionReportsAdmin() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(
+    () => () => {
+      requestSequence.current += 1;
+    },
+    [],
+  );
 
   const submitFilters = (event: FormEvent) => {
     event.preventDefault();
