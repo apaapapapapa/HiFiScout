@@ -14,18 +14,14 @@ declare global {
   }
 }
 
-const storyModules = import.meta.glob<Record<string, unknown>>("../../frontend/**/*.story.tsx", {
-  eager: true,
-});
-const stories = new Map<string, ComponentType<Record<string, unknown>>>();
+type StoryModule = Record<string, unknown>;
 
-for (const [modulePath, storyModule] of Object.entries(storyModules)) {
+const storyModules = import.meta.glob<StoryModule>("../../frontend/**/*.story.tsx");
+const storyLoaders = new Map<string, () => Promise<StoryModule>>();
+
+for (const [modulePath, loadStoryModule] of Object.entries(storyModules)) {
   const storyPath = modulePath.replace(/^\.\.\/\.\.\//u, "").replace(/\.story\.tsx$/u, "");
-  for (const [exportName, value] of Object.entries(storyModule)) {
-    if (typeof value === "function") {
-      stories.set(`${storyPath}/${exportName}`, value as ComponentType<Record<string, unknown>>);
-    }
-  }
+  storyLoaders.set(storyPath, loadStoryModule);
 }
 
 const container = document.getElementById("root");
@@ -37,9 +33,21 @@ function afterRender(): Promise<void> {
 }
 
 window.mount = async ({ story, props = {} }) => {
-  const Story = stories.get(story);
-  if (!Story) throw new Error(`Unknown component story: ${story}`);
-  root.render(createElement(Story, props));
+  const separator = story.lastIndexOf("/");
+  if (separator <= 0 || separator === story.length - 1) {
+    throw new Error(`Invalid component story: ${story}`);
+  }
+
+  const storyPath = story.slice(0, separator);
+  const exportName = story.slice(separator + 1);
+  const loadStoryModule = storyLoaders.get(storyPath);
+  if (!loadStoryModule) throw new Error(`Unknown component story module: ${storyPath}`);
+
+  const storyModule = await loadStoryModule();
+  const Story = storyModule[exportName];
+  if (typeof Story !== "function") throw new Error(`Unknown component story: ${story}`);
+
+  root.render(createElement(Story as ComponentType<Record<string, unknown>>, props));
   await afterRender();
 };
 
