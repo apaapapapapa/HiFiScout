@@ -21,8 +21,13 @@ interface PriceIndexProjectionRow {
   listing_end_median_yen: number | null;
   sold_out_signal_count: number;
   deactivated_signal_count: number;
-  listing_end_observations_json: string | null;
   last_computed_at: string;
+}
+
+interface ListingEndObservationRow {
+  price_yen: number | null;
+  observed_at: string;
+  signal_kind: string;
 }
 
 function chunks(values: readonly number[]): number[][] {
@@ -48,32 +53,6 @@ function nullableNumber(value: number | null): number | null {
   return value == null ? null : Number(value);
 }
 
-function listingEndObservations(raw: string | null): ProductPriceIndexListingEndObservation[] {
-  if (!raw) return [];
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.flatMap((entry): ProductPriceIndexListingEndObservation[] => {
-      if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return [];
-      const value = entry as Record<string, unknown>;
-      const price = Number(value.price_yen);
-      const observedAt = value.observed_at;
-      const signal = value.signal_kind;
-      if (
-        !Number.isFinite(price) ||
-        price < 0 ||
-        typeof observedAt !== "string" ||
-        (signal !== "sold_out" && signal !== "deactivated")
-      ) {
-        return [];
-      }
-      return [{ price_yen: price, observed_at: observedAt, signal_kind: signal }];
-    });
-  } catch {
-    return [];
-  }
-}
-
 function toSummary(row: PriceIndexProjectionRow): ProductPriceIndexSummary | null {
   const askingSampleCount = Number(row.asking_sample_count || 0);
   const median = nullableNumber(row.asking_median_yen);
@@ -97,7 +76,6 @@ function toSummary(row: PriceIndexProjectionRow): ProductPriceIndexSummary | nul
     listing_end_median_yen: nullableNumber(row.listing_end_median_yen),
     sold_out_signal_count: Number(row.sold_out_signal_count || 0),
     deactivated_signal_count: Number(row.deactivated_signal_count || 0),
-    listing_end_observations: listingEndObservations(row.listing_end_observations_json),
     last_computed_at: row.last_computed_at,
   };
 }
@@ -106,9 +84,9 @@ function toSummary(row: PriceIndexProjectionRow): ProductPriceIndexSummary | nul
  * Loads public price-index summaries for catalog products only.
  *
  * Lifetime and listing-end statistics come from the persistent Step 1 aggregate table. Only the
- * time-sensitive trailing-90-day median is recalculated at read time. Recent listing-end evidence
- * is also bounded and scoped to the requested catalog ids before ranking. Ordinary API reads
- * therefore avoid materializing the all-products rollup while keeping the UI evidence factual.
+ * time-sensitive trailing-90-day median is recalculated at read time, and its sample scan is joined
+ * to the requested catalog ids before ranking. Ordinary API reads therefore avoid materializing the
+ * all-products rollup while still letting old "recent" samples age out without a write.
  */
 export async function loadKnowledgeCatalogPriceIndexes(
   db: QueryableDatabase,
@@ -153,40 +131,6 @@ export async function loadKnowledgeCatalogPriceIndexes(
             ) AS recent_asking_median_yen
           FROM recent_ranked
           GROUP BY catalog_product_id
-        ),
-        listing_end_ranked AS (
-          SELECT
-            s.catalog_product_id,
-            s.price_yen,
-            s.observed_at,
-            s.signal_kind,
-            ROW_NUMBER() OVER (
-              PARTITION BY s.catalog_product_id
-              ORDER BY s.observed_at DESC, s.id DESC
-            ) AS recent_order
-          FROM knowledge_catalog_price_index_samples s
-          JOIN requested q ON q.catalog_product_id = s.catalog_product_id
-          WHERE s.sample_kind = 'listing_end'
-            AND s.price_yen IS NOT NULL
-        ),
-        listing_end_recent AS (
-          SELECT catalog_product_id, price_yen, observed_at, signal_kind, recent_order
-          FROM listing_end_ranked
-          WHERE recent_order <= ${LISTING_END_OBSERVATION_LIMIT}
-          ORDER BY catalog_product_id, recent_order
-        ),
-        listing_end_json AS (
-          SELECT
-            catalog_product_id,
-            json_group_array(
-              json_object(
-                'price_yen', price_yen,
-                'observed_at', observed_at,
-                'signal_kind', signal_kind
-              )
-            ) AS listing_end_observations_json
-          FROM listing_end_recent
-          GROUP BY catalog_product_id
         )
         SELECT i.catalog_product_id,
                i.asking_sample_count,
@@ -198,12 +142,10 @@ export async function loadKnowledgeCatalogPriceIndexes(
                i.listing_end_median_yen,
                i.sold_out_signal_count,
                i.deactivated_signal_count,
-               COALESCE(e.listing_end_observations_json, '[]') AS listing_end_observations_json,
                strftime('%Y-%m-%dT%H:%M:%fZ', 'now') AS last_computed_at
         FROM requested q
         JOIN knowledge_catalog_price_indexes i ON i.catalog_product_id = q.catalog_product_id
         LEFT JOIN recent_stats r ON r.catalog_product_id = i.catalog_product_id
-        LEFT JOIN listing_end_json e ON e.catalog_product_id = i.catalog_product_id
         WHERE i.asking_sample_count >= ?
       `)
       .bind(...chunk, PRODUCT_PRICE_INDEX_MIN_ASKING_SAMPLES)
@@ -214,4 +156,40 @@ export async function loadKnowledgeCatalogPriceIndexes(
     }
   }
   return summaries;
+}
+
+/**
+ * Loads the small factual listing-end evidence list shown only on the product-detail surface.
+ * Search cards use aggregate statistics only, so this event read never scales with page size.
+ */
+export async function loadKnowledgeCatalogListingEndObservations(
+  db: QueryableDatabase,
+  catalogProductId: number,
+): Promise<ProductPriceIndexListingEndObservation[]> {
+  if (!Number.isSafeInteger(catalogProductId) || catalogProductId <= 0) return [];
+  const result = await db
+    .prepare(`
+      SELECT price_yen, observed_at, signal_kind
+      FROM knowledge_catalog_price_index_samples
+      WHERE catalog_product_id = ?
+        AND sample_kind = 'listing_end'
+        AND price_yen IS NOT NULL
+      ORDER BY observed_at DESC, id DESC
+      LIMIT ?
+    `)
+    .bind(catalogProductId, LISTING_END_OBSERVATION_LIMIT)
+    .all<ListingEndObservationRow>();
+
+  return (result.results || []).flatMap((row): ProductPriceIndexListingEndObservation[] => {
+    const price = nullableNumber(row.price_yen);
+    if (
+      price == null ||
+      price < 0 ||
+      typeof row.observed_at !== "string" ||
+      (row.signal_kind !== "sold_out" && row.signal_kind !== "deactivated")
+    ) {
+      return [];
+    }
+    return [{ price_yen: price, observed_at: row.observed_at, signal_kind: row.signal_kind }];
+  });
 }
