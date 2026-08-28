@@ -44,7 +44,7 @@ export default defineConfig(({ mode }) => ({
   },
   test: {
     environment: "node",
-    include: ["test/**/*.test.ts"],
+    include: ["test/**/*.test.ts", "test/**/*.test.tsx"],
   },
   run: {
     tasks: {
