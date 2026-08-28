@@ -30,8 +30,11 @@ export interface ProductPriceIndexSummary {
   sold_out_signal_count: number;
   /** Generic deactivation/disappearance evidence; kept separate from explicit sold-out signals. */
   deactivated_signal_count: number;
-  /** Most recent price-bearing listing-end observations, newest first and bounded by the API. */
-  listing_end_observations: ProductPriceIndexListingEndObservation[];
+  /**
+   * Most recent price-bearing listing-end observations. Detail-only and bounded by the API so
+   * ordinary search pages do not carry a historical-event payload they never render.
+   */
+  listing_end_observations?: ProductPriceIndexListingEndObservation[];
   /** Timestamp at which this API projection was calculated. */
   last_computed_at: string;
 }
