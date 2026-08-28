@@ -11,6 +11,8 @@
  * - `priceAsc` / `priceDesc` — the product's lowest offer price. When the caller asked for in-stock
  *   offers the aggregate switches to the lowest *in-stock* price, so "cheapest first" never orders
  *   by a price that is not for sale.
+ * - `dealScore` — persisted basis-point deviation from the retained asking-price median. Negative
+ *   values are cheaper relative to the product's own market, so ascending order is best-deal first.
  *
  * Unfiltered sorts read the stored entity aggregates. A request that narrows offers beyond what a
  * stored aggregate represents may instead order by a request-scoped aggregate supplied by the
@@ -25,6 +27,10 @@ import type {
   ProductSearchEntityRow,
   ProductSearchSortDefinition,
 } from "./types.js";
+
+// Step 5 adds this persistence-only ordering column without widening the public entity DTO. The
+// repository selects it as `request_sort_value` for cursor minting, so it never leaks into API rows.
+const DEAL_SCORE_COLUMN = "deal_score" as ProductSearchSortDefinition["column"];
 
 const ACTIVITY_SORTS: Readonly<Record<ProductQuerySort, ProductSearchSortDefinition | null>> = {
   newest: {
@@ -47,6 +53,12 @@ const ACTIVITY_SORTS: Readonly<Record<ProductQuerySort, ProductSearchSortDefinit
   },
   priceAsc: null,
   priceDesc: null,
+  dealScore: {
+    key: "dealScore",
+    column: DEAL_SCORE_COLUMN,
+    direction: "ASC",
+    idDirection: "ASC",
+  },
 };
 
 export function sortDefinition(
@@ -136,8 +148,9 @@ export function addCursorPredicate(
 /**
  * Mints the cursor from the value the ORDER BY actually used.
  *
- * `valueOverride` is supplied for a request-scoped aggregate; otherwise the stored entity column
- * remains the source. The tie-breaker is the internal entity id, which is never exposed directly.
+ * `valueOverride` is supplied for a request-scoped aggregate or the persistence-only deal score;
+ * otherwise the stored DTO-backed entity column remains the source. The tie-breaker is the internal
+ * entity id, which is never exposed directly.
  */
 export function cursorFor(
   row: ProductSearchEntityRow,
