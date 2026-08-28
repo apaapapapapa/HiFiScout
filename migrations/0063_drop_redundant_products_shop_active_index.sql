@@ -1,0 +1,18 @@
+-- `products` is the table every crawl writes hardest, and it carries 24 indexes. Each listing
+-- upsert pays for all of them, on a D1 instance that is one Durable Object shared with every other
+-- caller, so a redundant index is write CPU spent for nothing.
+--
+-- `idx_products_shop_active(shop_key, is_active)` (0001) is a strict prefix of
+-- `idx_products_shop_active_quality(shop_key, is_active, classification_status,
+-- primary_category_id)` (0019), so every lookup the narrow index can serve, the wider one serves
+-- with the same access method. Comparing `EXPLAIN QUERY PLAN` across the shop-scoped product
+-- queries with and without it, exactly one plan changes, and it changes from
+--   SEARCH products USING INDEX idx_products_shop_active (shop_key=? AND is_active=?)
+-- to
+--   SEARCH products USING INDEX idx_products_shop_active_quality (shop_key=? AND is_active=?)
+-- -- the same seek on a wider key. The shop+source lookups keep using the unique constraint's own
+-- index, and the Data Quality aggregate keeps its covering scan.
+--
+-- The remaining indexes are not obviously redundant and are deliberately left alone: retiring any
+-- of them needs its own measurement, not a guess.
+DROP INDEX IF EXISTS idx_products_shop_active;

@@ -197,10 +197,10 @@ test("daily and monthly maintenance piggyback on the five-minute general cron", 
 
   assert.match(schedulerSource, /isDailyMaintenanceSlot\(scheduledAt\)/);
   assert.match(schedulerSource, /isKnowledgeCatalogMonthlySlot\(scheduledAt\)/);
-  assert.match(schedulerSource, /runDailyMaintenance\(env\)/);
+  assert.match(schedulerSource, /run: runDailyMaintenance/);
   assert.match(schedulerSource, /runRetentionCleanup\(env\)/);
   assert.match(schedulerSource, /dispatchKnowledgeCatalogDailyVerification\(env\)/);
-  assert.match(schedulerSource, /dispatchKnowledgeCatalogMonthlyRecheck\(env\)/);
+  assert.match(schedulerSource, /run: dispatchKnowledgeCatalogMonthlyRecheck/);
 });
 
 test("large item-count drops are rejected only after a meaningful baseline", () => {

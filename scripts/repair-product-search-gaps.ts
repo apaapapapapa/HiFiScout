@@ -36,10 +36,13 @@ const database = createD1RestDatabase({
 const result = await repairActiveListingProjectionGaps(database, {
   batchSize: positiveInteger(argument("--batch-size", "20"), "--batch-size"),
   maxListings: positiveInteger(argument("--max-listings", "100"), "--max-listings"),
+  // This script exists to assert that the repair converged, so it is one of the callers that has to
+  // pay for the full outstanding-gap count.
+  countRemainingGaps: true,
 });
 
 console.log(JSON.stringify({ event: "product_search_projection_gap_repair", ...result }));
-if (result.remainingGapCount > 0) {
+if ((result.remainingGapCount ?? 0) > 0) {
   throw new Error(
     `${result.remainingGapCount} active listing Product Search projection gaps remain after bounded repair`,
   );

@@ -57,7 +57,9 @@ export type EnvSecretName = "CRAWL_RELAY_URL" | "CRAWL_RELAY_TOKEN" | "ADMIN_TOK
 export type UndeclaredEnvVarName =
   | "DATA_QUALITY_RETENTION_DAYS"
   | "KNOWLEDGE_CATALOG_SOURCE_MAX_CATALOG_PAGES"
-  | "KNOWLEDGE_CATALOG_SOURCE_REGISTRY_JSON";
+  | "KNOWLEDGE_CATALOG_SOURCE_REGISTRY_JSON"
+  | "REMEDIATION_QUEUE_DELETE_LIMIT"
+  | "REMEDIATION_QUEUE_RETENTION_DAYS";
 
 export type EnvVarName = GeneratedEnvVarName | EnvSecretName | UndeclaredEnvVarName;
 
@@ -137,9 +139,19 @@ export interface InventoryRecheckSettings {
 export interface MaintenanceSettings {
   crawlRunRetentionDays: number;
   dataQualityRetentionDays: number;
+  /**
+   * How long a settled remediation job is kept. Much shorter than the other horizons because this
+   * queue is the one that accrues faster than it is read — see `getMaintenanceSettings`.
+   */
+  remediationQueueRetentionDays: number;
   priceHistoryRetentionDays: number;
   inactiveProductRetentionDays: number;
   deleteBatchSize: number;
+  /**
+   * Total rows the remediation queue may shed in one retention run, taken in `deleteBatchSize`
+   * statements. Sized to outpace the queue's own accrual rather than to match the other tables.
+   */
+  remediationQueueDeleteLimit: number;
 }
 
 // ---------------------------------------------------------------------------
