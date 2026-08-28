@@ -904,6 +904,7 @@ function App() {
               >
                 <option value="newest">新着・更新順</option>
                 <option value="oldest">更新が古い順</option>
+                <option value="dealScore">相場より割安な順</option>
                 <option value="priceAsc">価格が安い順</option>
                 <option value="priceDesc">価格が高い順</option>
               </select>
