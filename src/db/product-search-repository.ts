@@ -111,7 +111,7 @@ interface OfferFilter {
 }
 
 interface ProductSearchPageRow extends ProductSearchEntityRow {
-  /** Present when ORDER BY uses a persistence-only or request-derived sort column. */
+  /** Present when ORDER BY uses a persistence-only or request-scoped sort value. */
   request_sort_value?: string | number | null;
 }
 
@@ -173,6 +173,9 @@ function relevanceOrder(q: string, plan: FtsSearchPlan | null, rankBinds: unknow
 /** Product-level filters: they describe the product, so they never look at an individual offer. */
 function addProductFilters(query: ProductQuery, where: string[], binds: unknown[]): void {
   if (query.manufacturer) {
+    // A visible canonical facet can race ahead of resolver replay. Keep matching the old ids, and
+    // also the seller presentation itself so a Japanese-only alias whose old id was a badge-specific
+    // hash (for example `【中古品】ラックスマン`) cannot disappear during that window.
     const manufacturerIds = manufacturerFilterIds(query.manufacturer);
     const manufacturerPresentations = manufacturerFilterPresentations(query.manufacturer).map(
       (presentation) => presentation.toLowerCase().replace(/\s+/gu, ""),
@@ -198,6 +201,11 @@ function addProductFilters(query: ProductQuery, where: string[], binds: unknown[
     binds.push(JSON.stringify(manufacturerIds), JSON.stringify(manufacturerPresentations));
   }
   if (query.category) {
+    // Membership, not the one representative category. A listing that sells a transport and a DAC
+    // is in both, so selecting on `primary_category_id` made it findable under whichever of the
+    // two happened to win and invisible under the other. `product_search_entity_categories` is the
+    // same set the facet counts, projected onto the entity so this stays one indexed lookup rather
+    // than a join through the offers on every filtered query.
     const categoryIds = categoryFilterIds(query.category);
     const wanted = categoryIds.length ? categoryIds : [query.category];
     where.push(`e.id IN (
@@ -207,6 +215,7 @@ function addProductFilters(query: ProductQuery, where: string[], binds: unknown[
     binds.push(...wanted);
   }
   for (const feature of query.features) {
+    // A model property, so evidence from any of the product's listings establishes it.
     where.push(`EXISTS (
       SELECT 1 FROM product_search_entity_offers m
       JOIN product_feature_facts pff ON pff.product_id = m.listing_product_id
@@ -216,6 +225,13 @@ function addProductFilters(query: ProductQuery, where: string[], binds: unknown[
   }
 }
 
+/**
+ * The offer-level predicate, as one conjunction to be evaluated against a single listing row.
+ *
+ * Returned rather than appended so the identical predicate can be reused by the summary,
+ * representative-offer and request-scoped sort queries. The numbers on a card and the sort key are
+ * therefore computed over exactly the offers that made the product match.
+ */
 function offerFilter(query: ProductQuery): OfferFilter {
   const predicates: string[] = [];
   const binds: unknown[] = [];
@@ -245,6 +261,12 @@ function offerFilter(query: ProductQuery): OfferFilter {
   };
 }
 
+/**
+ * Keeps a product only when one offer satisfies every offer-level predicate at once.
+ *
+ * Entities always hold at least one active offer, so with no offer filters there is nothing to
+ * add and the entity indexes can serve the query on their own.
+ */
 function addOfferFilter(filter: OfferFilter, where: string[], binds: unknown[]): void {
   if (!filter.active) return;
   where.push(`EXISTS (
@@ -256,9 +278,12 @@ function addOfferFilter(filter: OfferFilter, where: string[], binds: unknown[]):
 }
 
 /**
- * Deal score is intentionally exempt: it is the persisted product-level ranking required by
- * #342, not an aggregate of the subset selected by shop/stock/price filters. Keeping that one
- * ordering on `e.deal_score` is what preserves indexed keyset pagination and cursor stability.
+ * Stored entity aggregates are valid only while the request has not narrowed the relevant offers.
+ *
+ * The in-stock-only price case is the one exception: `lowest_in_stock_price_yen` is already stored
+ * specifically for that predicate. Every other offer filter changes the value the user sees, so an
+ * explicit sort must use the same matching subset. `dealScore` is deliberately another exception:
+ * it is the persisted product-level ranking required for stable indexed keyset pagination.
  */
 function needsRequestScopedSort(
   query: ProductQuery,
@@ -276,6 +301,7 @@ function needsRequestScopedSort(
   );
 }
 
+/** A stable cursor namespace for an ordering derived from request-level offer predicates. */
 function offerSortScopeKey(query: ProductQuery): string {
   return [
     query.shop,
@@ -289,6 +315,12 @@ function offerSortScopeKey(query: ProductQuery): string {
     .join("|");
 }
 
+/**
+ * Aggregate sort values over exactly the offers accepted by {@link offerFilter}.
+ *
+ * This is an inner join, so it also proves a matching offer exists. The existing `EXISTS` remains
+ * in the WHERE clause because the count query shares that predicate and must not depend on ORDER BY.
+ */
 function requestScopedSortJoin(filter: OfferFilter): string {
   return ` JOIN (
     SELECT m.entity_id AS entity_id,
@@ -303,6 +335,7 @@ function requestScopedSortJoin(filter: OfferFilter): string {
   ) matching_sort ON matching_sort.entity_id = e.id`;
 }
 
+/** Recomputes the card summary over the matching offers, so it cannot contradict the filter. */
 async function loadOfferAggregates(
   db: QueryableDatabase,
   entityIds: readonly number[],
@@ -341,6 +374,7 @@ async function loadOfferAggregates(
   return aggregates;
 }
 
+/** One representative offer per product, in a single windowed query rather than one per result. */
 async function loadRepresentativeOffers(
   db: QueryableDatabase,
   entityIds: readonly number[],
@@ -382,6 +416,7 @@ export async function searchProducts(
   const filter = offerFilter(query);
   addOfferFilter(filter, where, binds);
 
+  // Snapshot before the cursor predicate: the total must count the whole result set.
   const countWhere = [...where];
   const countBinds = [...binds];
   const relevance = usesRelevanceOrder(query);
@@ -414,6 +449,7 @@ export async function searchProducts(
     totalCount = Number(countResult.results?.[0]?.total || 0);
   }
 
+  // One extra row decides `hasMore` without a second count query.
   const paginationSql = query.offset > 0 ? "LIMIT ? OFFSET ?" : "LIMIT ?";
   const paginationBinds = query.offset > 0 ? [query.limit + 1, query.offset] : [query.limit + 1];
   const result = await db
@@ -474,6 +510,12 @@ export async function searchProducts(
   };
 }
 
+/**
+ * One product and every eligible active offer beneath it.
+ *
+ * Unfiltered on purpose: the detail view is where a user compares shops, so it shows the whole
+ * offer set rather than the subset that happened to satisfy the list request they arrived from.
+ */
 export async function productSearchDetail(
   db: QueryableDatabase,
   key: string,
