@@ -8,6 +8,15 @@
  */
 export const PRODUCT_PRICE_INDEX_MIN_ASKING_SAMPLES = 3;
 
+export type ProductPriceIndexListingEndSignal = "sold_out" | "deactivated";
+
+/** One bounded, factual observation captured when a listing ended or was explicitly sold out. */
+export interface ProductPriceIndexListingEndObservation {
+  price_yen: number;
+  observed_at: string;
+  signal_kind: ProductPriceIndexListingEndSignal;
+}
+
 export interface ProductPriceIndexSummary {
   asking_sample_count: number;
   asking_median_yen: number;
@@ -21,6 +30,11 @@ export interface ProductPriceIndexSummary {
   sold_out_signal_count: number;
   /** Generic deactivation/disappearance evidence; kept separate from explicit sold-out signals. */
   deactivated_signal_count: number;
+  /**
+   * Most recent price-bearing listing-end observations. Detail-only and bounded by the API so
+   * ordinary search pages do not carry a historical-event payload they never render.
+   */
+  listing_end_observations?: ProductPriceIndexListingEndObservation[];
   /** Timestamp at which this API projection was calculated. */
   last_computed_at: string;
 }

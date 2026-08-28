@@ -1,11 +1,14 @@
 import {
   PRODUCT_PRICE_INDEX_MIN_ASKING_SAMPLES,
+  type ProductPriceIndexListingEndObservation,
   type ProductPriceIndexSummary,
 } from "../api/price-index.js";
 import type { QueryableDatabase } from "./types.js";
 
 /** Keep one statement comfortably below D1's bound-parameter ceiling. */
 const PRICE_INDEX_READ_CHUNK_SIZE = 90;
+/** Detail UI shows recent evidence, not an unbounded listing-end log. */
+const LISTING_END_OBSERVATION_LIMIT = 5;
 
 interface PriceIndexProjectionRow {
   catalog_product_id: number;
@@ -19,6 +22,12 @@ interface PriceIndexProjectionRow {
   sold_out_signal_count: number;
   deactivated_signal_count: number;
   last_computed_at: string;
+}
+
+interface ListingEndObservationRow {
+  price_yen: number | null;
+  observed_at: string;
+  signal_kind: string;
 }
 
 function chunks(values: readonly number[]): number[][] {
@@ -147,4 +156,40 @@ export async function loadKnowledgeCatalogPriceIndexes(
     }
   }
   return summaries;
+}
+
+/**
+ * Loads the small factual listing-end evidence list shown only on the product-detail surface.
+ * Search cards use aggregate statistics only, so this event read never scales with page size.
+ */
+export async function loadKnowledgeCatalogListingEndObservations(
+  db: QueryableDatabase,
+  catalogProductId: number,
+): Promise<ProductPriceIndexListingEndObservation[]> {
+  if (!Number.isSafeInteger(catalogProductId) || catalogProductId <= 0) return [];
+  const result = await db
+    .prepare(`
+      SELECT price_yen, observed_at, signal_kind
+      FROM knowledge_catalog_price_index_samples
+      WHERE catalog_product_id = ?
+        AND sample_kind = 'listing_end'
+        AND price_yen IS NOT NULL
+      ORDER BY observed_at DESC, id DESC
+      LIMIT ?
+    `)
+    .bind(catalogProductId, LISTING_END_OBSERVATION_LIMIT)
+    .all<ListingEndObservationRow>();
+
+  return (result.results || []).flatMap((row): ProductPriceIndexListingEndObservation[] => {
+    const price = nullableNumber(row.price_yen);
+    if (
+      price == null ||
+      price < 0 ||
+      typeof row.observed_at !== "string" ||
+      (row.signal_kind !== "sold_out" && row.signal_kind !== "deactivated")
+    ) {
+      return [];
+    }
+    return [{ price_yen: price, observed_at: row.observed_at, signal_kind: row.signal_kind }];
+  });
 }

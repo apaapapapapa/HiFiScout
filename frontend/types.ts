@@ -19,13 +19,41 @@ import type {
   ProductSearchResponse,
 } from "../src/api/contracts.js";
 
-/** A rendered product. Identical to the contract: the guard validates every field the UI reads. */
-export type DisplayProduct = ProductSearchItem;
+export type DisplayPriceIndexListingEndSignal = "sold_out" | "deactivated";
+
+export interface DisplayPriceIndexListingEndObservation {
+  price_yen: number;
+  observed_at: string;
+  signal_kind: DisplayPriceIndexListingEndSignal;
+}
+
+/** Browser-validated view of the optional Step 3 price-index projection. */
+export interface DisplayPriceIndexSummary {
+  asking_sample_count: number;
+  asking_median_yen: number;
+  asking_min_yen: number;
+  asking_max_yen: number;
+  recent_asking_median_yen: number | null;
+  listing_end_sample_count: number;
+  listing_end_median_yen: number | null;
+  sold_out_signal_count: number;
+  deactivated_signal_count: number;
+  listing_end_observations: DisplayPriceIndexListingEndObservation[];
+  last_computed_at: string;
+}
+
+/**
+ * A rendered product. Step 3 adds the price index at the repository boundary, so the browser widens
+ * the base shared contract with the same optional field while older favorite snapshots stay valid.
+ */
+export type DisplayProduct = ProductSearchItem & { price_index?: DisplayPriceIndexSummary };
 
 /** One shop's offer under a product. */
 export type DisplayOffer = ProductOffer;
 
-export type ProductsResponse = ProductSearchResponse;
+export interface ProductsResponse extends Omit<ProductSearchResponse, "items"> {
+  items: DisplayProduct[];
+}
 
 export interface ProductDetailResponse {
   product: DisplayProduct;
