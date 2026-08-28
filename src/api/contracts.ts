@@ -37,7 +37,13 @@ export type { FeatureDefinition, FeatureId };
  * The vocabulary survived the move to product-level search, but each value is now defined over
  * offer aggregates rather than one listing's columns — see `product-search-cursor.ts`.
  */
-export type ProductQuerySort = "newest" | "oldest" | "updated" | "priceAsc" | "priceDesc";
+export type ProductQuerySort =
+  | "newest"
+  | "oldest"
+  | "updated"
+  | "priceAsc"
+  | "priceDesc"
+  | "dealScore";
 
 export const PRODUCT_QUERY_SORTS: readonly ProductQuerySort[] = [
   "newest",
@@ -45,6 +51,7 @@ export const PRODUCT_QUERY_SORTS: readonly ProductQuerySort[] = [
   "updated",
   "priceAsc",
   "priceDesc",
+  "dealScore",
 ];
 
 /**

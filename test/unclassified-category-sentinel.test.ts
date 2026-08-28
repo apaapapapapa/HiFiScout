@@ -43,6 +43,7 @@ function entityRow(primaryCategoryId: string): ProductSearchEntityRow {
     latest_activity_at: null,
     newest_listed_at: null,
     has_price_drop: 0,
+    deal_score: null,
   };
 }
 

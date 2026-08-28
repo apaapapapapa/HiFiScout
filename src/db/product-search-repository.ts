@@ -111,7 +111,7 @@ interface OfferFilter {
 }
 
 interface ProductSearchPageRow extends ProductSearchEntityRow {
-  /** Present only when ORDER BY was computed from the matching offer subset. */
+  /** Present when ORDER BY uses a persistence-only or request-scoped sort value. */
   request_sort_value?: string | number | null;
 }
 
@@ -282,14 +282,15 @@ function addOfferFilter(filter: OfferFilter, where: string[], binds: unknown[]):
  *
  * The in-stock-only price case is the one exception: `lowest_in_stock_price_yen` is already stored
  * specifically for that predicate. Every other offer filter changes the value the user sees, so an
- * explicit sort must use the same matching subset.
+ * explicit sort must use the same matching subset. `dealScore` is deliberately another exception:
+ * it is the persisted product-level ranking required for stable indexed keyset pagination.
  */
 function needsRequestScopedSort(
   query: ProductQuery,
   filter: OfferFilter,
   relevance: boolean,
 ): boolean {
-  if (relevance || !filter.active) return false;
+  if (relevance || !filter.active || query.sort === "dealScore") return false;
   if (query.sort !== "priceAsc" && query.sort !== "priceDesc") return true;
   return Boolean(
     query.shop ||
@@ -425,6 +426,7 @@ export async function searchProducts(
     ? { ...baseSort, key: `${baseSort.key}|offers:${offerSortScopeKey(query)}` }
     : baseSort;
   const sortColumn = requestScopedSort ? `matching_sort.${sort.column}` : `e.${sort.column}`;
+  const explicitSortValue = requestScopedSort || query.sort === "dealScore";
   if (!relevance) addCursorPredicate(where, binds, sort, decodeCursor(query.cursor), sortColumn);
 
   const rankBinds: unknown[] = [];
@@ -433,7 +435,7 @@ export async function searchProducts(
     : sortOrderBy(sort, sortColumn);
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const sortJoin = requestScopedSort ? requestScopedSortJoin(filter) : "";
-  const sortSelect = requestScopedSort ? `, ${sortColumn} AS request_sort_value` : "";
+  const sortSelect = explicitSortValue ? `, ${sortColumn} AS request_sort_value` : "";
   const sortJoinBinds = requestScopedSort ? filter.binds : [];
 
   let totalCount = null;
@@ -500,7 +502,7 @@ export async function searchProducts(
     hasMore,
     nextCursor:
       !relevance && hasMore && last
-        ? cursorFor(last, sort, requestScopedSort ? (last.request_sort_value ?? null) : undefined)
+        ? cursorFor(last, sort, explicitSortValue ? (last.request_sort_value ?? null) : undefined)
         : null,
     ...(query.includeTotal
       ? { totalCount, totalPages: Math.ceil((totalCount ?? 0) / query.limit) }

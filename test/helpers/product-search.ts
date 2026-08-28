@@ -32,6 +32,7 @@ export function entityRow(
     latest_activity_at: "2026-08-12T00:00:00Z",
     newest_listed_at: "2026-08-12T00:00:00Z",
     has_price_drop: 0,
+    deal_score: null,
     ...overrides,
   } as ProductSearchEntityRow;
 }
