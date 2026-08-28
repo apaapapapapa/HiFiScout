@@ -5,7 +5,10 @@ import type {
   ProductSearchResponse,
 } from "../api/contracts.js";
 import type { ProductPriceIndexSummary } from "../api/price-index.js";
-import { loadKnowledgeCatalogPriceIndexes } from "./knowledge-catalog-price-index-read.js";
+import {
+  loadKnowledgeCatalogListingEndObservations,
+  loadKnowledgeCatalogPriceIndexes,
+} from "./knowledge-catalog-price-index-read.js";
 import {
   productSearchDetail as baseProductSearchDetail,
   searchProducts as baseSearchProducts,
@@ -52,7 +55,7 @@ export async function searchProducts(
   return { ...response, items: await addPriceIndexes(db, response.items) };
 }
 
-/** Public `/api/product-search/:key` read with the same price-index contract as search cards. */
+/** Public detail adds the bounded, dated listing-end observations needed only by the Step 4 UI. */
 export async function productSearchDetail(
   db: QueryableDatabase,
   key: string,
@@ -60,5 +63,23 @@ export async function productSearchDetail(
   const response = await baseProductSearchDetail(db, key);
   if (!response) return null;
   const [product] = await addPriceIndexes(db, [response.product]);
-  return product ? { ...response, product } : response;
+  if (!product) return response;
+
+  const catalogProductId = product.catalog_product_id;
+  if (!product.price_index || catalogProductId == null) return { ...response, product };
+
+  const listingEndObservations = await loadKnowledgeCatalogListingEndObservations(
+    db,
+    catalogProductId,
+  );
+  return {
+    ...response,
+    product: {
+      ...product,
+      price_index: {
+        ...product.price_index,
+        listing_end_observations: listingEndObservations,
+      },
+    },
+  };
 }
