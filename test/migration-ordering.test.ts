@@ -25,13 +25,22 @@ function migrationFiles(): string[] {
 }
 
 /**
- * Prefix collisions already in `main`.
+ * Collisions already in `main`, by the exact files that collide.
  *
  * These are applied in production and cannot be renamed, so they are recorded rather than fixed.
- * The list only ever shrinks — by a migration being deleted, never by a new pair being added. A new
- * collision fails the test below instead of joining this list.
+ *
+ * Recording filenames rather than the bare prefix is what makes the allowance narrow: an allowance
+ * held per prefix would excuse `0063` itself, so a *third* migration numbered `0063` would inherit
+ * the exemption and land the very collision this file exists to stop. Each group has to match
+ * exactly, so the only edit this list ever accepts is a group leaving it.
  */
-const KNOWN_DUPLICATE_PREFIXES: readonly string[] = ["0058", "0063"];
+const KNOWN_DUPLICATES: readonly (readonly string[])[] = [
+  ["0058_crawl_run_progress.sql", "0058_product_correction_reports.sql"],
+  [
+    "0063_drop_redundant_products_shop_active_index.sql",
+    "0063_knowledge_catalog_price_index_deal_score.sql",
+  ],
+];
 
 test("a new migration takes a number no other migration has", () => {
   const byPrefix = new Map<string, string[]>();
@@ -41,22 +50,18 @@ test("a new migration takes a number no other migration has", () => {
     byPrefix.set(prefix, [...(byPrefix.get(prefix) || []), file]);
   }
 
-  const duplicates = [...byPrefix.entries()].filter(([, files]) => files.length > 1);
-  const unexpected = duplicates.filter(([prefix]) => !KNOWN_DUPLICATE_PREFIXES.includes(prefix));
+  // Comparing the whole set of colliding groups at once covers every way this can go wrong with one
+  // assertion: a new collision adds a group, a third file under an existing prefix reshapes one, and
+  // a collision that stopped being real removes one — which is the reminder to drop it from the list.
+  const duplicates = [...byPrefix.values()]
+    .filter((files) => files.length > 1)
+    .map((files) => [...files].sort());
 
   assert.deepEqual(
-    unexpected.map(([, files]) => files),
-    [],
-    "two migrations share an ordering prefix; renumber the unmerged one before it reaches production",
+    duplicates,
+    KNOWN_DUPLICATES.map((group) => [...group].sort()),
+    "the set of migrations sharing an ordering prefix changed; renumber the unmerged one before it reaches production",
   );
-
-  // The recorded pairs have to stay real, or the allowance silently starts excusing a live collision.
-  for (const prefix of KNOWN_DUPLICATE_PREFIXES) {
-    assert.ok(
-      (byPrefix.get(prefix)?.length ?? 0) > 1,
-      `${prefix} is no longer a duplicate; drop it from KNOWN_DUPLICATE_PREFIXES`,
-    );
-  }
 });
 
 test("migration prefixes are contiguous, so a gap means a lost file", () => {
