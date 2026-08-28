@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { renderToStaticMarkup } from "react-dom/server";
 import { test } from "vite-plus/test";
 
+import { favoriteSnapshot } from "../frontend/favorites.js";
 import {
   ProductPriceIndexSummary,
   RelativePriceBadge,
@@ -103,8 +104,25 @@ test("price-index detail keeps asking and listing-end evidence separate and date
   assert.match(html, /売り切れ表示を確認/);
   assert.match(html, /掲載終了を確認/);
   assert.match(html, /2026-08-26T03:00:00.000Z/);
+  assert.match(html, /<time[^>]*>2026[^<]*<\/time>/);
   assert.match(html, /販売実績を示すものではありません/);
   assert.doesNotMatch(html, /成約価格|取引価格|売買価格/);
+});
+
+test("favorite snapshots preserve the validated aggregate used by the card badge", () => {
+  const original = product();
+  const snapshot = favoriteSnapshot(original);
+
+  assert.equal(snapshot.price_index?.asking_median_yen, 300_000);
+  assert.equal(relativePriceBadge(snapshot)?.label, "相場比 −18%");
+  assert.deepEqual(
+    snapshot.price_index?.listing_end_observations,
+    original.price_index?.listing_end_observations,
+  );
+  assert.notEqual(
+    snapshot.price_index?.listing_end_observations,
+    original.price_index?.listing_end_observations,
+  );
 });
 
 test("older Step 3 payloads without observation arrays remain renderable", () => {
