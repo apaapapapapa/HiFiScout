@@ -1,9 +1,9 @@
 import { dateFmt, yen } from "./format.js";
 import type {
-  ProductPriceIndexListingEndObservation,
-  ProductPriceIndexSummary,
-} from "../src/api/price-index.js";
-import type { DisplayProduct } from "./types.js";
+  DisplayPriceIndexListingEndObservation,
+  DisplayPriceIndexSummary,
+  DisplayProduct,
+} from "./types.js";
 
 interface RelativePriceBadgeModel {
   label: string;
@@ -27,7 +27,7 @@ function isNullableNonNegativeNumber(value: unknown): value is number | null {
   return value === null || isNonNegativeNumber(value);
 }
 
-function listingEndObservation(value: unknown): ProductPriceIndexListingEndObservation | null {
+function listingEndObservation(value: unknown): DisplayPriceIndexListingEndObservation | null {
   if (!isRecord(value)) return null;
   if (!isNonNegativeNumber(value.price_yen)) return null;
   if (typeof value.observed_at !== "string" || !Number.isFinite(Date.parse(value.observed_at))) {
@@ -48,7 +48,7 @@ function listingEndObservation(value: unknown): ProductPriceIndexListingEndObser
  * badge into a rendering failure. The listing-end observation array was added with Step 4, so an
  * older cached Step 3 payload is treated as an empty observation list during rollout.
  */
-export function productPriceIndex(product: DisplayProduct): ProductPriceIndexSummary | null {
+export function productPriceIndex(product: DisplayProduct): DisplayPriceIndexSummary | null {
   const raw: unknown = product.price_index;
   if (!isRecord(raw)) return null;
   if (
@@ -130,7 +130,7 @@ export function RelativePriceBadge({ product }: { product: DisplayProduct }) {
 function ListingEndObservations({
   observations,
 }: {
-  observations: readonly ProductPriceIndexListingEndObservation[];
+  observations: readonly DisplayPriceIndexListingEndObservation[];
 }) {
   if (!observations.length) return null;
   return (
