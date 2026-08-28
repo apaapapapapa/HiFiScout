@@ -115,5 +115,8 @@ test("older Step 3 payloads without observation arrays remain renderable", () =>
   const index = productPriceIndex(legacy);
   assert.ok(index);
   assert.deepEqual(index.listing_end_observations, []);
-  assert.match(renderToStaticMarkup(<ProductPriceIndexSummary product={legacy} />), /掲載終了時価格/);
+  assert.match(
+    renderToStaticMarkup(<ProductPriceIndexSummary product={legacy} />),
+    /掲載終了時価格/,
+  );
 });
