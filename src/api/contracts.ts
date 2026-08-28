@@ -301,7 +301,6 @@ export interface MetaShop {
   key: string;
   name: string;
   enabled: boolean;
-  configured: boolean;
   intervalMinutes: number;
   /** Active catalog listings for this shop. Optional for cached pre-facet-count metadata. */
   activeProductCount?: number;
