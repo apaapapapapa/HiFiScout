@@ -1,9 +1,17 @@
-import { dateFmt, yen } from "./format.js";
+import { yen } from "./format.js";
 import type {
   DisplayPriceIndexListingEndObservation,
   DisplayPriceIndexSummary,
   DisplayProduct,
 } from "./types.js";
+
+const listingEndDateFmt = new Intl.DateTimeFormat("ja-JP", {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+});
 
 interface RelativePriceBadgeModel {
   label: string;
@@ -138,7 +146,7 @@ function ListingEndObservations({
       {observations.map((observation, index) => (
         <li key={`${observation.observed_at}-${observation.price_yen}-${index}`}>
           <time dateTime={observation.observed_at}>
-            {dateFmt.format(new Date(observation.observed_at))}
+            {listingEndDateFmt.format(new Date(observation.observed_at))}
           </time>
           <strong>{yen.format(observation.price_yen)}</strong>
           <span>
