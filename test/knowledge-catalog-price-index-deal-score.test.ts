@@ -74,7 +74,11 @@ test("0063 migration persists and incrementally refreshes catalog deal scores", 
     SET lowest_in_stock_price_yen = NULL, lowest_price_yen = 72000
     WHERE entity_key = 'c-101';
   `);
-  assert.equal(dealScore(sqlite), -4000, "active-price fallback is used when no in-stock price exists");
+  assert.equal(
+    dealScore(sqlite),
+    -4000,
+    "active-price fallback is used when no in-stock price exists",
+  );
 
   sqlite.exec("DELETE FROM knowledge_catalog_price_indexes WHERE catalog_product_id = 101");
   assert.equal(dealScore(sqlite), null, "removing the index clears the denormalized score");
