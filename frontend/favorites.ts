@@ -239,10 +239,31 @@ export function favoriteMatchesFilters(
   return true;
 }
 
-/** Price sorts push unpriced products last in both directions; everything else is by recency. */
+/** Same score semantics as the persisted entity column, reconstructed from a favorite snapshot. */
+function favoriteDealScore(product: DisplayProduct): number | null {
+  const index = productPriceIndex(product);
+  if (!index || index.asking_median_yen <= 0) return null;
+  const offer = product.representative_offer;
+  const current =
+    offer?.stock_status === "in_stock" && offer.price_yen != null
+      ? offer.price_yen
+      : product.lowest_price_yen;
+  if (current == null) return null;
+  return Math.round(((current - index.asking_median_yen) * 10_000) / index.asking_median_yen);
+}
+
+/** Price and deal-score sorts push unavailable values last; everything else is by recency. */
 export function sortFavorites(products: DisplayProduct[], sort: string): DisplayProduct[] {
   const sorted = [...products];
   sorted.sort((left, right) => {
+    if (sort === "dealScore") {
+      const leftScore = favoriteDealScore(left);
+      const rightScore = favoriteDealScore(right);
+      if (leftScore == null && rightScore == null) return 0;
+      if (leftScore == null) return 1;
+      if (rightScore == null) return -1;
+      return leftScore - rightScore;
+    }
     if (sort === "priceAsc" || sort === "priceDesc") {
       if (left.lowest_price_yen == null && right.lowest_price_yen == null) return 0;
       if (left.lowest_price_yen == null) return 1;
