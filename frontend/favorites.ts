@@ -27,6 +27,7 @@ import {
   normalizedSearchText,
   priceDropped,
 } from "./product-activity.js";
+import { productPriceIndex } from "./price-index-ui.js";
 import type { ProductFilters } from "./filters.js";
 import type { DisplayOffer, DisplayProduct } from "./types.js";
 
@@ -70,6 +71,7 @@ export function favoriteSnapshot(product: DisplayProduct): DisplayProduct {
   const categoryIds = stringArray(product.category_ids);
   const directCategoryIds = stringArray(product.direct_category_ids);
   const directCategories = stringArray(product.direct_categories);
+  const priceIndex = productPriceIndex(product);
   return {
     key: product.key,
     identity_kind: product.identity_kind,
@@ -94,6 +96,14 @@ export function favoriteSnapshot(product: DisplayProduct): DisplayProduct {
     newest_listed_at: product.newest_listed_at,
     has_new_offer: product.has_new_offer,
     has_price_drop: product.has_price_drop,
+    ...(priceIndex
+      ? {
+          price_index: {
+            ...priceIndex,
+            listing_end_observations: [...priceIndex.listing_end_observations],
+          },
+        }
+      : {}),
     representative_offer: product.representative_offer ? { ...product.representative_offer } : null,
   };
 }
