@@ -3,6 +3,7 @@ import { useId } from "react";
 import { isLegacyFavoriteKey } from "./favorites.js";
 import { dateFmt, yen } from "./format.js";
 import { activityData, priceDropped } from "./product-activity.js";
+import { ProductPriceIndexSummary, RelativePriceBadge } from "./price-index-ui.js";
 import {
   SHOP_LISTING_URLS,
   categoryOptionModel,
@@ -168,6 +169,7 @@ export function ProductCard({
               <span className="badge">UPDATED</span>
             ) : null}
             {priceDropped(product) ? <span className="badge">PRICE DOWN</span> : null}
+            <RelativePriceBadge product={product} />
             {product.identity_kind === "catalog" && product.shop_count > 1 ? (
               <span className="badge badge-compare">比較</span>
             ) : null}
@@ -411,6 +413,7 @@ export function OffersContent({
       ) : (
         <p className="offers-note">この商品はまだ他店の在庫と照合できていません。</p>
       )}
+      <ProductPriceIndexSummary product={product} />
       <ol className="offers">
         {offers.length ? (
           offers.map((offer) => (
