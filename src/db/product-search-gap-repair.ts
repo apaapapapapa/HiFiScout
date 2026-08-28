@@ -12,12 +12,22 @@ export interface ProductSearchGapRepairOptions {
   evaluatedAt?: string;
   batchSize?: number;
   maxListings?: number;
+  /**
+   * Also report how many gaps are left after this pass.
+   *
+   * Off by default because the count is the one unbounded statement in this file: it scans every
+   * active listing through three correlated subqueries, and its cost grows with the catalog while
+   * the repair itself stays bounded to `maxListings`. Callers that only need to know whether they
+   * repaired anything already have {@link ProductSearchGapRepairResult.repairedCount}.
+   */
+  countRemainingGaps?: boolean;
 }
 
 export interface ProductSearchGapRepairResult {
   selectedCount: number;
   repairedCount: number;
-  remainingGapCount: number;
+  /** Gaps still outstanding, or `null` when the caller did not ask to pay for the count. */
+  remainingGapCount: number | null;
 }
 
 const DEFAULT_BATCH_SIZE = 20;
@@ -142,6 +152,7 @@ export async function repairActiveListingProjectionGaps(
     evaluatedAt = new Date().toISOString(),
     batchSize: requestedBatchSize,
     maxListings: requestedMaxListings,
+    countRemainingGaps = false,
   }: ProductSearchGapRepairOptions = {},
 ): Promise<ProductSearchGapRepairResult> {
   const batchSize = positiveBoundedInteger(requestedBatchSize, DEFAULT_BATCH_SIZE, 50);
@@ -175,6 +186,6 @@ export async function repairActiveListingProjectionGaps(
   return {
     selectedCount,
     repairedCount,
-    remainingGapCount: await countActiveProjectionGaps(db),
+    remainingGapCount: countRemainingGaps ? await countActiveProjectionGaps(db) : null,
   };
 }

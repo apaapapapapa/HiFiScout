@@ -97,7 +97,10 @@ export async function repairGeneralCronProjectionGaps(db: QueryableDatabase) {
     batchSize: GENERAL_PROJECTION_REPAIR_BATCH_SIZE,
     maxListings: GENERAL_PROJECTION_REPAIR_MAX_LISTINGS,
   });
-  if (result.repairedCount > 0 || result.remainingGapCount > 0) {
+  // The outstanding-gap count is deliberately not requested here: it is the one unbounded query in
+  // the repair, and this caller only needs to know whether it did anything. `runDailyMaintenance`
+  // pays for the authoritative number once a day.
+  if (result.repairedCount > 0) {
     console.log(
       JSON.stringify({
         event: "general_product_search_projection_repair",
@@ -108,16 +111,30 @@ export async function repairGeneralCronProjectionGaps(db: QueryableDatabase) {
   return result;
 }
 
+/** `Promise.allSettled`'s per-operation outcome, for work that must not be started in parallel. */
+async function settled<T>(operation: () => Promise<T>): Promise<PromiseSettledResult<T>> {
+  try {
+    return { status: "fulfilled", value: await operation() };
+  } catch (reason) {
+    return { status: "rejected", reason };
+  }
+}
+
 /**
  * Retention, projection self-healing and daily verification are independent, so all are attempted
  * even when one fails — but the first failure is still rethrown so the cron is reported as failed.
  */
 async function runDailyMaintenance(env: Env) {
-  const [retention, projectionRepair, catalog] = await Promise.allSettled([
-    runRetentionCleanup(env),
-    repairActiveListingProjectionGaps(env.DB),
-    dispatchKnowledgeCatalogDailyVerification(env),
-  ]);
+  // Awaited one at a time rather than through `Promise.allSettled` on three already-running
+  // promises. These are the heaviest statements the system issues — a retention drain, the
+  // unbounded gap count, a verification dispatch — and starting them together made the daily slot
+  // the single largest concurrent load on the one D1 instance. The semantics are unchanged: all
+  // three are still attempted, and the first failure is still the one rethrown.
+  const retention = await settled(() => runRetentionCleanup(env));
+  const projectionRepair = await settled(() =>
+    repairActiveListingProjectionGaps(env.DB, { countRemainingGaps: true }),
+  );
+  const catalog = await settled(() => dispatchKnowledgeCatalogDailyVerification(env));
   if (retention.status === "rejected") {
     console.error(
       JSON.stringify({
@@ -281,9 +298,131 @@ export async function bootstrapKnowledgeCatalogReview(env: Env) {
   });
 }
 
+interface ScheduledWork {
+  name: string;
+  run(env: Env): Promise<unknown>;
+}
+
+interface MaintenanceTask extends ScheduledWork {
+  /**
+   * General-cron ticks between two runs of this task. `1` is every five minutes.
+   *
+   * Tasks are additionally offset by their position in the table, so two tasks that share a cadence
+   * never land on the same tick.
+   */
+  everyTicks: number;
+}
+
+const GENERAL_CRON_INTERVAL_MS = 5 * 60 * 1000;
+
 /**
- * Crawl dispatch, catalog verification rollout, and data-quality replay are independent bounded
- * tasks. Remediation shares the five-minute trigger but never performs a recrawl.
+ * Background work the general cron owns, and how often each piece actually needs to run.
+ *
+ * Every entry here used to be started on every five-minute tick, all at once. D1 is a single
+ * Durable Object shared by every caller, so that turned each tick into a burst of concurrent query
+ * trees against one instance — enough to have it reset under its own CPU limit, which takes down
+ * whatever else was talking to D1 at that moment, crawl consumers included.
+ *
+ * Two properties fix that, and both matter: nothing here is frequent enough to deserve a
+ * five-minute cadence, and the ones that are due run one after another rather than together.
+ */
+const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
+  {
+    // Derived work an interrupted crawl left owing. The pending stages are durable in D1 before any
+    // of them is attempted, so the sweep is the dispatch: there is no window in which a run is owed
+    // a continuation that was never sent. Kept the most frequent of these because it is the one
+    // that finishes crawls.
+    name: "resume_interrupted_crawl_runs",
+    everyTicks: 2,
+    run: (env) => resumeInterruptedCrawlRuns(env.DB),
+  },
+  {
+    // Keep the cron claim itself listing-scoped. Projection code is also listing-scoped, but a
+    // worker-level timeout cannot be caught reliably inside a ten-job sweep; claiming one job makes
+    // the lease/retry boundary match the expensive projection boundary.
+    name: "data_quality_remediation_sweep",
+    everyTicks: 2,
+    run: (env) => runDataQualityRemediationSweep(env.DB, { claimLimit: 1 }),
+  },
+  {
+    name: "product_search_projection_repair",
+    everyTicks: 6,
+    run: (env) => repairGeneralCronProjectionGaps(env.DB),
+  },
+  // Both export recoveries treat a job as stuck after two minutes, so they stay near the old
+  // cadence: stretching them to an hour would leave a user-visible export sitting for an hour to
+  // save two bounded index lookups. Sequencing, not starvation, is what these two needed.
+  {
+    name: "stale_product_audit_export_jobs",
+    everyTicks: 2,
+    run: (env) => recoverStaleProductAuditExportJobs(env.DB, env.PRODUCT_AUDIT_EXPORT_QUEUE),
+  },
+  {
+    name: "stale_knowledge_catalog_export_jobs",
+    everyTicks: 2,
+    run: (env) => recoverStaleKnowledgeCatalogExportJobs(env.DB, env.PRODUCT_AUDIT_EXPORT_QUEUE),
+  },
+  {
+    // A one-shot rollout that has already happened costs a conditional write and three reads every
+    // time it is asked. Hourly is plenty for a bootstrap that only has to fire once.
+    name: "knowledge_catalog_review_bootstrap",
+    everyTicks: 12,
+    run: (env) => bootstrapKnowledgeCatalogReview(env),
+  },
+];
+
+/**
+ * The tasks due on this tick.
+ *
+ * The tick number comes from the wall clock rather than a counter so it survives isolate churn, and
+ * the `+ index` offset is what spreads same-cadence tasks over different ticks instead of stacking
+ * them on the ones divisible by their period.
+ */
+export function dueMaintenanceTasks(scheduledAt: Date): MaintenanceTask[] {
+  const tick = Math.floor(scheduledAt.getTime() / GENERAL_CRON_INTERVAL_MS);
+  return MAINTENANCE_TASKS.filter((task, index) => (tick + index) % task.everyTicks === 0);
+}
+
+/**
+ * Runs the due maintenance one task at a time.
+ *
+ * Sequential is the point: these are independent, and a few seconds of ordering costs none of them
+ * anything it cares about, while starting them together is what made a tick a burst.
+ *
+ * One task failing must not skip the rest, so each is caught on its own. That does mean a failure
+ * here no longer surfaces as the cron's own outcome — a named `scheduled_maintenance_failed` line
+ * is a better signal than an anonymous cron exception that could have come from any of seven
+ * places, which is what the fan-out produced.
+ */
+async function runGeneralCronMaintenance(env: Env, scheduledAt: Date): Promise<void> {
+  const tasks: ScheduledWork[] = [...dueMaintenanceTasks(scheduledAt)];
+  if (isDailyMaintenanceSlot(scheduledAt)) {
+    tasks.push({ name: "daily_maintenance", run: runDailyMaintenance });
+  }
+  if (isKnowledgeCatalogMonthlySlot(scheduledAt)) {
+    tasks.push({
+      name: "knowledge_catalog_monthly_recheck",
+      run: dispatchKnowledgeCatalogMonthlyRecheck,
+    });
+  }
+  for (const task of tasks) {
+    try {
+      await task.run(env);
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          event: "scheduled_maintenance_failed",
+          task: task.name,
+          message: errorMessage(error),
+        }),
+      );
+    }
+  }
+}
+
+/**
+ * Two task trees per tick, not seven: the crawl watchdog, which every cron runs, and whichever
+ * background maintenance is due. Remediation shares the five-minute trigger but never recrawls.
  */
 export function handleScheduled(
   controller: ScheduledController,
@@ -293,21 +432,6 @@ export function handleScheduled(
   const scheduledAt = new Date(controller.scheduledTime);
   ctx.waitUntil(runScheduled(controller.cron, env, scheduledAt));
   if (controller.cron === GENERAL_CRON) {
-    if (isDailyMaintenanceSlot(scheduledAt)) ctx.waitUntil(runDailyMaintenance(env));
-    if (isKnowledgeCatalogMonthlySlot(scheduledAt)) {
-      ctx.waitUntil(dispatchKnowledgeCatalogMonthlyRecheck(env));
-    }
-    ctx.waitUntil(bootstrapKnowledgeCatalogReview(env));
-    ctx.waitUntil(repairGeneralCronProjectionGaps(env.DB));
-    // Keep the cron claim itself listing-scoped. Projection code is also listing-scoped, but a
-    // worker-level timeout cannot be caught reliably inside a ten-job sweep; claiming one job makes
-    // the lease/retry boundary match the expensive projection boundary.
-    ctx.waitUntil(runDataQualityRemediationSweep(env.DB, { claimLimit: 1 }));
-    // Derived work an interrupted crawl left owing. The pending stages are durable in D1 before
-    // any of them is attempted, so the sweep is the dispatch: there is no window in which a run is
-    // owed a continuation that was never sent.
-    ctx.waitUntil(resumeInterruptedCrawlRuns(env.DB));
-    ctx.waitUntil(recoverStaleProductAuditExportJobs(env.DB, env.PRODUCT_AUDIT_EXPORT_QUEUE));
-    ctx.waitUntil(recoverStaleKnowledgeCatalogExportJobs(env.DB, env.PRODUCT_AUDIT_EXPORT_QUEUE));
+    ctx.waitUntil(runGeneralCronMaintenance(env, scheduledAt));
   }
 }

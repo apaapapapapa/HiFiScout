@@ -60,6 +60,7 @@ test("repairs missing Identity and Product Search membership for an active listi
     evaluatedAt: NOW,
     batchSize: 1,
     maxListings: 10,
+    countRemainingGaps: true,
   });
 
   assert.deepEqual(result, { selectedCount: 1, repairedCount: 1, remainingGapCount: 0 });
@@ -84,6 +85,7 @@ test("repairs missing Identity and Product Search membership for an active listi
     evaluatedAt: NOW,
     batchSize: 1,
     maxListings: 10,
+    countRemainingGaps: true,
   });
   assert.deepEqual(second, { selectedCount: 0, repairedCount: 0, remainingGapCount: 0 });
 });
@@ -106,6 +108,7 @@ test("repairs a missing search membership even when Identity already exists", as
     evaluatedAt: NOW,
     batchSize: 5,
     maxListings: 10,
+    countRemainingGaps: true,
   });
 
   assert.deepEqual(result, { selectedCount: 1, repairedCount: 1, remainingGapCount: 0 });
@@ -128,6 +131,7 @@ test("repairs a stale fallback membership after Identity becomes catalog-matched
     evaluatedAt: NOW,
     batchSize: 5,
     maxListings: 10,
+    countRemainingGaps: true,
   });
   assert.equal(
     sqlite
@@ -171,6 +175,7 @@ test("repairs a stale fallback membership after Identity becomes catalog-matched
     evaluatedAt: NOW,
     batchSize: 5,
     maxListings: 10,
+    countRemainingGaps: true,
   });
 
   assert.deepEqual(result, { selectedCount: 1, repairedCount: 1, remainingGapCount: 0 });
@@ -204,6 +209,7 @@ test("repairs safe exact identities that drift across multiple search entities",
     evaluatedAt: NOW,
     batchSize: 5,
     maxListings: 10,
+    countRemainingGaps: true,
   });
   assert.deepEqual(initial, { selectedCount: 2, repairedCount: 2, remainingGapCount: 0 });
   assert.equal(
@@ -250,6 +256,7 @@ test("repairs safe exact identities that drift across multiple search entities",
     evaluatedAt: NOW,
     batchSize: 1,
     maxListings: 10,
+    countRemainingGaps: true,
   });
   assert.deepEqual(result, { selectedCount: 1, repairedCount: 1, remainingGapCount: 0 });
   assert.equal(
@@ -274,6 +281,7 @@ test("repairs safe exact identities that drift across multiple search entities",
     evaluatedAt: NOW,
     batchSize: 1,
     maxListings: 10,
+    countRemainingGaps: true,
   });
   assert.deepEqual(second, { selectedCount: 0, repairedCount: 0, remainingGapCount: 0 });
 });

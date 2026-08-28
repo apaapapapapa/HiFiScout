@@ -12,6 +12,7 @@ export interface RetentionCutoffs {
   settings: MaintenanceSettings;
   crawlRunsBefore: string;
   dataQualityBefore: string;
+  remediationQueueBefore: string;
   priceHistoryBefore: string;
   inactiveProductsBefore: string;
 }
@@ -45,6 +46,7 @@ export function retentionCutoffs(env: CrawlerEnv, now = new Date()): RetentionCu
     settings,
     crawlRunsBefore: cutoffIso(now, settings.crawlRunRetentionDays),
     dataQualityBefore: cutoffIso(now, settings.dataQualityRetentionDays),
+    remediationQueueBefore: cutoffIso(now, settings.remediationQueueRetentionDays),
     priceHistoryBefore: cutoffIso(now, settings.priceHistoryRetentionDays),
     inactiveProductsBefore: cutoffIso(now, settings.inactiveProductRetentionDays),
   };
@@ -52,6 +54,46 @@ export function retentionCutoffs(env: CrawlerEnv, now = new Date()): RetentionCu
 
 function changes(result: D1Response): number {
   return Number(result?.meta?.changes || 0);
+}
+
+/**
+ * Ages resolved remediation jobs out, in bounded statements, until the horizon is clear. Failed
+ * jobs are left alone, as before: they are the ones worth keeping for diagnosis.
+ *
+ * Every other table in this cleanup is a log that accrues at the rate the system does work, so one
+ * capped statement a day keeps up. This queue accrues one row per active listing per resolver
+ * version bump and never reuses a settled row, which is how it reached 78k rows without a single
+ * delete becoming eligible. A single delete is not enough to drain that, and one enormous delete
+ * is exactly the kind of write that has D1 reset itself — so this shards the work the way
+ * Cloudflare's own guidance says to, and stops at `totalLimit` so a backlog is spread over runs
+ * instead of spent in one.
+ */
+async function pruneRemediationQueue(
+  db: QueryableDatabase,
+  { before, batchSize, totalLimit }: { before: string; batchSize: number; totalLimit: number },
+): Promise<number> {
+  let deleted = 0;
+  while (deleted < totalLimit) {
+    const wanted = Math.min(batchSize, totalLimit - deleted);
+    const batch = await db
+      .prepare(`
+        DELETE FROM data_quality_remediation_queue
+        WHERE id IN (
+          SELECT id FROM data_quality_remediation_queue
+          WHERE status = 'resolved' AND resolved_at IS NOT NULL AND resolved_at < ?
+          ORDER BY resolved_at ASC, id ASC
+          LIMIT ?
+        )
+      `)
+      .bind(before, wanted)
+      .run();
+    const removed = changes(batch);
+    deleted += removed;
+    // A batch that came back short means the horizon is exhausted. Stopping on that rather than on
+    // an empty batch saves the one wasted round trip that would otherwise end every drained run.
+    if (removed < wanted) break;
+  }
+  return deleted;
 }
 
 export async function runRetentionCleanup(
@@ -62,6 +104,7 @@ export async function runRetentionCleanup(
     settings,
     crawlRunsBefore,
     dataQualityBefore,
+    remediationQueueBefore,
     priceHistoryBefore,
     inactiveProductsBefore,
   } = retentionCutoffs(env, now);
@@ -115,19 +158,11 @@ export async function runRetentionCleanup(
     .bind(dataQualityBefore, limit)
     .run();
 
-  // Completed remediation jobs are operational history, not a permanent per-listing ledger. Keep
-  // failures for diagnosis, but age successful jobs out with the same retention horizon as DQ runs.
-  const remediationQueue = await env.DB.prepare(`
-    DELETE FROM data_quality_remediation_queue
-    WHERE id IN (
-      SELECT id FROM data_quality_remediation_queue
-      WHERE status = 'resolved' AND resolved_at IS NOT NULL AND resolved_at < ?
-      ORDER BY resolved_at ASC, id ASC
-      LIMIT ?
-    )
-  `)
-    .bind(dataQualityBefore, limit)
-    .run();
+  const remediationQueue = await pruneRemediationQueue(env.DB, {
+    before: remediationQueueBefore,
+    batchSize: limit,
+    totalLimit: settings.remediationQueueDeleteLimit,
+  });
 
   // Anonymous reports are operational review records, not permanent user content. Pending reports
   // expire after 180 days and resolved audit records after 730 days; both paths share this bounded
@@ -182,7 +217,7 @@ export async function runRetentionCleanup(
       productAuditExports: changes(productAuditExports),
       knowledgeCatalogExports: changes(knowledgeCatalogExports),
       dataQualityRuns: changes(dataQualityRuns),
-      remediationQueue: changes(remediationQueue),
+      remediationQueue,
       correctionReports,
       crawlRuns: changes(crawlRuns),
       priceHistory: changes(priceHistory),

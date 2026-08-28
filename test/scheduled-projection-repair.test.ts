@@ -9,9 +9,11 @@ test("general cron projection repair is safe when there are no active gaps", asy
 
   const result = await repairGeneralCronProjectionGaps(db);
 
+  // `null` rather than `0`: the scheduled caller deliberately does not buy the outstanding-gap
+  // count, which is the one statement in the repair whose cost grows with the whole catalog.
   assert.deepEqual(result, {
     selectedCount: 0,
     repairedCount: 0,
-    remainingGapCount: 0,
+    remainingGapCount: null,
   });
 });

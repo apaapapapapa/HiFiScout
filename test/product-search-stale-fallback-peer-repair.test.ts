@@ -140,6 +140,7 @@ test("repairs an unresolved peer left on a fallback represented by a now-matched
     evaluatedAt: NOW,
     batchSize: 5,
     maxListings: 10,
+    countRemainingGaps: true,
   });
 
   assert.deepEqual(result, { selectedCount: 1, repairedCount: 1, remainingGapCount: 0 });

@@ -151,12 +151,32 @@ export function getShopInventoryRecheckSettings(
   };
 }
 
+/**
+ * Retention horizons, and the two the remediation queue needs of its own.
+ *
+ * Every other table here is a log: rows arrive at roughly the rate the system does work, so a long
+ * horizon and a modest batch keep up. The remediation queue is not. A resolver version bump seeds
+ * one job per active listing, the resolved rows are never reused (the archive trigger rewrites the
+ * work key so the same listing can be seeded again), and the table had reached 78k rows — all of
+ * them settled — before anything was eligible to be deleted at all. Sharing the 180-day
+ * data-quality horizon meant the first delete would not run until the table held over a million
+ * rows, and a 500-row daily batch could not have drained it afterwards either.
+ *
+ * So this queue gets a horizon measured in days and a batch that clears more than a day of accrual
+ * in one pass. Settled jobs are operational history; the durable state they produced lives in
+ * `products` and the projection tables.
+ */
 export function getMaintenanceSettings(env: CrawlerEnv | undefined): MaintenanceSettings {
   return {
     crawlRunRetentionDays: positiveInt(env?.CRAWL_RUN_RETENTION_DAYS, 30),
     dataQualityRetentionDays: positiveInt(env?.DATA_QUALITY_RETENTION_DAYS, 180),
+    remediationQueueRetentionDays: positiveInt(env?.REMEDIATION_QUEUE_RETENTION_DAYS, 7),
     priceHistoryRetentionDays: positiveInt(env?.PRICE_HISTORY_RETENTION_DAYS, 1095),
     inactiveProductRetentionDays: positiveInt(env?.INACTIVE_PRODUCT_RETENTION_DAYS, 365),
     deleteBatchSize: Math.min(1000, positiveInt(env?.RETENTION_DELETE_BATCH_SIZE, 500)),
+    remediationQueueDeleteLimit: Math.min(
+      100_000,
+      positiveInt(env?.REMEDIATION_QUEUE_DELETE_LIMIT, 40_000),
+    ),
   };
 }
