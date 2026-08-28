@@ -18,14 +18,20 @@ import type {
   ProductSearchItem,
   ProductSearchResponse,
 } from "../src/api/contracts.js";
+import type { ProductPriceIndexSummary } from "../src/api/price-index.js";
 
-/** A rendered product. Identical to the contract: the guard validates every field the UI reads. */
-export type DisplayProduct = ProductSearchItem;
+/**
+ * A rendered product. Step 3 adds the price index at the repository boundary, so the browser widens
+ * the base shared contract with the same optional field while older favorite snapshots stay valid.
+ */
+export type DisplayProduct = ProductSearchItem & { price_index?: ProductPriceIndexSummary };
 
 /** One shop's offer under a product. */
 export type DisplayOffer = ProductOffer;
 
-export type ProductsResponse = ProductSearchResponse;
+export interface ProductsResponse extends Omit<ProductSearchResponse, "items"> {
+  items: DisplayProduct[];
+}
 
 export interface ProductDetailResponse {
   product: DisplayProduct;
