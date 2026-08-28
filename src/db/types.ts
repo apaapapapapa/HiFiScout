@@ -680,7 +680,7 @@ export interface ProjectionSyncResult {
 }
 
 // ---------------------------------------------------------------------------
-// product search entities (migration 0021)
+// product search entities (migration 0021, 0063)
 // ---------------------------------------------------------------------------
 
 export type ProductSearchEntityKind = "catalog" | "unresolved_listing";
@@ -725,6 +725,8 @@ export interface ProductSearchEntityRow {
   latest_activity_at: string | null;
   newest_listed_at: string | null;
   has_price_drop: 0 | 1;
+  /** Basis-point deviation from the asking median; NULL when the product has no valid index. */
+  deal_score: number | null;
 }
 
 /** Per-entity aggregates recomputed over the offers that satisfy the active offer filters. */
@@ -808,7 +810,8 @@ export interface ProductSearchSortDefinition {
     | "newest_listed_at"
     | "latest_activity_at"
     | "lowest_price_yen"
-    | "lowest_in_stock_price_yen";
+    | "lowest_in_stock_price_yen"
+    | "deal_score";
   direction: "ASC" | "DESC";
   idDirection: "ASC" | "DESC";
 }
