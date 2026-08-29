@@ -17,7 +17,25 @@ export async function startCrawlRun(
   db: QueryableDatabase,
   shopKey: string,
   startedAt: string,
+  collectionRunId?: string,
 ): Promise<number> {
+  if (collectionRunId) {
+    await db
+      .prepare(`
+        INSERT INTO crawl_runs (shop_key, started_at, status, collection_run_id)
+        VALUES (?, ?, 'running', ?)
+        ON CONFLICT(collection_run_id) DO NOTHING
+      `)
+      .bind(shopKey, startedAt, collectionRunId)
+      .run();
+    const existing = await db
+      .prepare("SELECT id FROM crawl_runs WHERE collection_run_id = ?")
+      .bind(collectionRunId)
+      .first<{ id: number }>();
+    if (!existing) throw new Error(`crawl run was not persisted: ${collectionRunId}`);
+    return existing.id;
+  }
+
   const run = await db
     .prepare("INSERT INTO crawl_runs (shop_key, started_at, status) VALUES (?, ?, 'running')")
     .bind(shopKey, startedAt)
