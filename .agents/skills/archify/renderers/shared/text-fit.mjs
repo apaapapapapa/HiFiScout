@@ -16,7 +16,7 @@
 // `minimum` font sizes are not, because renderers set node text at different
 // sizes (architecture sublabels are 9px, the rest are 7px).
 
-import { textUnits } from './utils.mjs';
+import { textUnits } from "./utils.mjs";
 
 // widthFactor: px of advance width per text unit, per px of font size.
 // horizontalPadding: total px reserved inside the box so text never touches

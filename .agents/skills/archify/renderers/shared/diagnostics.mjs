@@ -1,21 +1,21 @@
-import fs from 'node:fs';
-import path from 'node:path';
+import fs from "node:fs";
+import path from "node:path";
 
-const DIAGNOSTIC_MODE = process.env.ARCHIFY_DIAGNOSTIC_FORMAT === 'json';
+const DIAGNOSTIC_MODE = process.env.ARCHIFY_DIAGNOSTIC_FORMAT === "json";
 const recorded = [];
 const recordedMessages = new Set();
-const boundaryKey = Symbol.for('archify.renderer-diagnostic-boundary');
+const boundaryKey = Symbol.for("archify.renderer-diagnostic-boundary");
 
 function plainObject(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));
 }
 
 function normalizedDiagnostic(diagnostic) {
-  const message = String(diagnostic?.message || 'Archify could not classify this failure.').trim();
+  const message = String(diagnostic?.message || "Archify could not classify this failure.").trim();
   return {
-    code: String(diagnostic?.code || 'internal/unclassified'),
-    severity: diagnostic?.severity === 'warning' ? 'warning' : 'error',
+    code: String(diagnostic?.code || "internal/unclassified"),
+    severity: diagnostic?.severity === "warning" ? "warning" : "error",
     message,
     subject: plainObject(diagnostic?.subject),
     evidence: plainObject(diagnostic?.evidence),
@@ -40,49 +40,53 @@ export function throwDiagnosticError(message, diagnostics) {
   throw error;
 }
 
-export function throwDiagnosticProblems(prefix, problems, { code = 'layout/constraint', subject = {} } = {}) {
+export function throwDiagnosticProblems(
+  prefix,
+  problems,
+  { code = "layout/constraint", subject = {} } = {},
+) {
   const messages = (problems || []).map((problem) => String(problem));
   for (const message of messages) {
     recordDiagnostic({
       code,
-      severity: 'error',
+      severity: "error",
       message,
       subject,
       evidence: {},
       supportedFixes: [],
     });
   }
-  throw new Error(`${prefix}:\n- ${messages.join('\n- ')}`);
+  throw new Error(`${prefix}:\n- ${messages.join("\n- ")}`);
 }
 
 function fallbackDiagnostic(error) {
   const input = process.argv[2] ? path.resolve(process.argv[2]) : undefined;
   if (error instanceof SyntaxError) {
     return normalizedDiagnostic({
-      code: 'input/json-parse',
-      severity: 'error',
+      code: "input/json-parse",
+      severity: "error",
       message: `Input JSON could not be parsed: ${error.message}`,
       subject: { input },
       evidence: { reason: error.message },
-      supportedFixes: ['repair the JSON syntax and run validation again'],
+      supportedFixes: ["repair the JSON syntax and run validation again"],
     });
   }
-  if (error?.code === 'ENOENT' || error?.code === 'EACCES' || error?.code === 'EISDIR') {
+  if (error?.code === "ENOENT" || error?.code === "EACCES" || error?.code === "EISDIR") {
     return normalizedDiagnostic({
-      code: 'input/read',
-      severity: 'error',
+      code: "input/read",
+      severity: "error",
       message: `Input could not be read: ${error.message}`,
       subject: { input },
       evidence: { systemCode: error.code, reason: error.message },
-      supportedFixes: ['provide one readable JSON input file'],
+      supportedFixes: ["provide one readable JSON input file"],
     });
   }
   return normalizedDiagnostic({
-    code: 'internal/unclassified',
-    severity: 'error',
-    message: error?.message || 'Renderer failed without a diagnostic.',
+    code: "internal/unclassified",
+    severity: "error",
+    message: error?.message || "Renderer failed without a diagnostic.",
     subject: { input },
-    evidence: { errorName: error?.name || 'Error' },
+    evidence: { errorName: error?.name || "Error" },
     supportedFixes: [],
   });
 }
@@ -90,12 +94,16 @@ function rendererFailure(error) {
   const attached = Array.isArray(error?.archifyDiagnostics)
     ? error.archifyDiagnostics.map(normalizedDiagnostic)
     : [];
-  const diagnostics = recorded.length ? recorded : (attached.length ? attached : [fallbackDiagnostic(error)]);
+  const diagnostics = recorded.length
+    ? recorded
+    : attached.length
+      ? attached
+      : [fallbackDiagnostic(error)];
   return {
     schemaVersion: 1,
     ok: false,
-    source: 'renderer',
-    error: error?.message || 'Renderer failed without a diagnostic.',
+    source: "renderer",
+    error: error?.message || "Renderer failed without a diagnostic.",
     diagnostics,
   };
 }
@@ -103,7 +111,7 @@ function rendererFailure(error) {
 export function installRendererDiagnosticBoundary() {
   if (!DIAGNOSTIC_MODE || globalThis[boundaryKey]) return;
   globalThis[boundaryKey] = true;
-  process.on('uncaughtException', (error) => {
+  process.on("uncaughtException", (error) => {
     const payload = `${JSON.stringify(rendererFailure(error))}\n`;
     try {
       fs.writeSync(process.stderr.fd, payload);

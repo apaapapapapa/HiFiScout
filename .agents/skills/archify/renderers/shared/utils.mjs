@@ -1,7 +1,7 @@
-const ESCAPE_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+const ESCAPE_MAP = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 
 export function esc(value) {
-  return String(value ?? '').replace(/[&<>"']/g, (c) => ESCAPE_MAP[c]);
+  return String(value ?? "").replace(/[&<>"']/g, (c) => ESCAPE_MAP[c]);
 }
 
 export function renderDefinitions() {
@@ -26,19 +26,19 @@ export function renderDefinitions() {
 }
 
 const SIGIL_TONE = {
-  frontend: 'frontend',
-  start: 'frontend',
-  backend: 'backend',
-  active: 'backend',
-  database: 'database',
-  success: 'database',
-  cloud: 'cloud',
-  waiting: 'cloud',
-  security: 'security',
-  failure: 'security',
-  messagebus: 'messagebus',
-  external: 'external',
-  neutral: 'external',
+  frontend: "frontend",
+  start: "frontend",
+  backend: "backend",
+  active: "backend",
+  database: "database",
+  success: "database",
+  cloud: "cloud",
+  waiting: "cloud",
+  security: "security",
+  failure: "security",
+  messagebus: "messagebus",
+  external: "external",
+  neutral: "external",
 };
 
 const SIGIL_SHAPE = {
@@ -74,8 +74,8 @@ const SIGIL_SHAPE = {
 // viewer overlay, so it survives canonical export while adding no focus target,
 // accessible name, layout box, or interaction state of its own.
 export function renderSemanticSigil(kind, { x, y, size = 11 } = {}) {
-  const normalized = Object.hasOwn(SIGIL_SHAPE, kind) ? kind : 'neutral';
-  const tone = SIGIL_TONE[normalized] || 'external';
+  const normalized = Object.hasOwn(SIGIL_SHAPE, kind) ? kind : "neutral";
+  const tone = SIGIL_TONE[normalized] || "external";
   const scale = size / 16;
   return `<g aria-hidden="true" data-semantic-sigil="${esc(normalized)}" class="semantic-sigil s-${tone}" transform="translate(${x} ${y}) scale(${scale})">
             ${SIGIL_SHAPE[normalized]}
@@ -86,40 +86,58 @@ export function renderCards(cards) {
   const list = Array.isArray(cards) ? cards : [];
   return `    <!-- Info Cards -->
     <div class="cards">
-${list.map((card) => `      <div class="card">
+${list
+  .map(
+    (card) => `      <div class="card">
         <div class="card-header">
           <div class="card-dot ${esc(card.dot)}"></div>
           <h3>${esc(card.title)}</h3>
         </div>
         <ul>
-${card.items.map((item) => `          <li>&bull; ${esc(item)}</li>`).join('\n')}
+${card.items.map((item) => `          <li>&bull; ${esc(item)}</li>`).join("\n")}
         </ul>
-      </div>`).join('\n\n')}
+      </div>`,
+  )
+  .join("\n\n")}
     </div>`;
 }
 
-const SVG_SLOT_RE = /      <!-- ARCHIFY:SVG_SLOT_START -->[\s\S]*?      <!-- ARCHIFY:SVG_SLOT_END -->/;
-const CARDS_SLOT_RE = /    <!-- ARCHIFY:CARDS_SLOT_START -->[\s\S]*?    <!-- ARCHIFY:CARDS_SLOT_END -->/;
-const SUBTITLE_SLOT_RE = /^([ \t]*)<p class="subtitle">\[Subtitle description\]<\/p>[ \t]*(\r?\n)?/m;
-const GUIDED_VIEWS_PLACEHOLDER = '<!-- ARCHIFY:GUIDED_VIEWS_DATA -->';
-const SOURCE_EVIDENCE_PLACEHOLDER = '    <!-- ARCHIFY:SOURCE_EVIDENCE_DATA -->';
+const SVG_SLOT_RE =
+  /      <!-- ARCHIFY:SVG_SLOT_START -->[\s\S]*?      <!-- ARCHIFY:SVG_SLOT_END -->/;
+const CARDS_SLOT_RE =
+  /    <!-- ARCHIFY:CARDS_SLOT_START -->[\s\S]*?    <!-- ARCHIFY:CARDS_SLOT_END -->/;
+const SUBTITLE_SLOT_RE =
+  /^([ \t]*)<p class="subtitle">\[Subtitle description\]<\/p>[ \t]*(\r?\n)?/m;
+const GUIDED_VIEWS_PLACEHOLDER = "<!-- ARCHIFY:GUIDED_VIEWS_DATA -->";
+const SOURCE_EVIDENCE_PLACEHOLDER = "    <!-- ARCHIFY:SOURCE_EVIDENCE_DATA -->";
 
 const TEMPLATE_PLACEHOLDERS = [
   '<html lang="en" data-theme="dark" data-preset="[VISUAL PRESET]">',
-  '<title>[PROJECT NAME] Architecture Diagram</title>',
-  '<h1>[PROJECT NAME] Architecture</h1>',
+  "<title>[PROJECT NAME] Architecture Diagram</title>",
+  "<h1>[PROJECT NAME] Architecture</h1>",
   GUIDED_VIEWS_PLACEHOLDER,
 ];
 
-export function applyTemplate(template, { title, subtitle, svg, cards, visualPreset = 'classic', guidedViews = [], sourceEvidence = null }) {
+export function applyTemplate(
+  template,
+  {
+    title,
+    subtitle,
+    svg,
+    cards,
+    visualPreset = "classic",
+    guidedViews = [],
+    sourceEvidence = null,
+  },
+) {
   if (!SVG_SLOT_RE.test(template)) {
-    throw new Error('applyTemplate: template missing ARCHIFY:SVG_SLOT sentinel');
+    throw new Error("applyTemplate: template missing ARCHIFY:SVG_SLOT sentinel");
   }
   if (!CARDS_SLOT_RE.test(template)) {
-    throw new Error('applyTemplate: template missing ARCHIFY:CARDS_SLOT sentinel');
+    throw new Error("applyTemplate: template missing ARCHIFY:CARDS_SLOT sentinel");
   }
   if (!SUBTITLE_SLOT_RE.test(template)) {
-    throw new Error('applyTemplate: template missing subtitle placeholder');
+    throw new Error("applyTemplate: template missing subtitle placeholder");
   }
   for (const ph of TEMPLATE_PLACEHOLDERS) {
     if (!template.includes(ph)) {
@@ -130,34 +148,46 @@ export function applyTemplate(template, { title, subtitle, svg, cards, visualPre
   // Silently dropping verified evidence would be misleading, so the new slot
   // becomes mandatory only for the opt-in evidence path.
   if (sourceEvidence && !template.includes(SOURCE_EVIDENCE_PLACEHOLDER)) {
-    throw new Error(`applyTemplate: repository evidence requires placeholder ${JSON.stringify(SOURCE_EVIDENCE_PLACEHOLDER)}`);
+    throw new Error(
+      `applyTemplate: repository evidence requires placeholder ${JSON.stringify(SOURCE_EVIDENCE_PLACEHOLDER)}`,
+    );
   }
   // Function replacers: a literal `$&`, `$'`, `$\`` or `$$` in titles, labels,
   // or rendered SVG must not be interpreted as a replacement pattern.
   const guidedViewsJson = JSON.stringify(guidedViews)
-    .replaceAll('<', '\\u003c')
-    .replaceAll('>', '\\u003e')
-    .replaceAll('&', '\\u0026');
+    .replaceAll("<", "\\u003c")
+    .replaceAll(">", "\\u003e")
+    .replaceAll("&", "\\u0026");
   const sourceEvidenceJson = JSON.stringify(sourceEvidence)
-    .replaceAll('<', '\\u003c')
-    .replaceAll('>', '\\u003e')
-    .replaceAll('&', '\\u0026');
-  const renderedSubtitle = typeof subtitle === 'string' && subtitle.trim()
-    ? `<p class="subtitle">${esc(subtitle)}</p>`
-    : '';
+    .replaceAll("<", "\\u003c")
+    .replaceAll(">", "\\u003e")
+    .replaceAll("&", "\\u0026");
+  const renderedSubtitle =
+    typeof subtitle === "string" && subtitle.trim()
+      ? `<p class="subtitle">${esc(subtitle)}</p>`
+      : "";
   return template
-    .replace(TEMPLATE_PLACEHOLDERS[0], () => `<html lang="en" data-theme="dark" data-preset="${esc(visualPreset)}">`)
+    .replace(
+      TEMPLATE_PLACEHOLDERS[0],
+      () => `<html lang="en" data-theme="dark" data-preset="${esc(visualPreset)}">`,
+    )
     .replace(TEMPLATE_PLACEHOLDERS[1], () => `<title>${esc(title)} Diagram</title>`)
     .replace(TEMPLATE_PLACEHOLDERS[2], () => `<h1>${esc(title)}</h1>`)
-    .replace(SUBTITLE_SLOT_RE, (_match, indent, newline = '') => renderedSubtitle
-      ? `${indent}${renderedSubtitle}${newline}`
-      : '')
+    .replace(SUBTITLE_SLOT_RE, (_match, indent, newline = "") =>
+      renderedSubtitle ? `${indent}${renderedSubtitle}${newline}` : "",
+    )
     .replace(SVG_SLOT_RE, () => svg)
     .replace(CARDS_SLOT_RE, () => cards)
-    .replace(GUIDED_VIEWS_PLACEHOLDER, () => `<script id="archify-guided-views-data" type="application/json">${guidedViewsJson}</script>`)
-    .replace(SOURCE_EVIDENCE_PLACEHOLDER, () => sourceEvidence
-      ? `    <script id="archify-source-evidence-data" type="application/json">${sourceEvidenceJson}</script>`
-      : '');
+    .replace(
+      GUIDED_VIEWS_PLACEHOLDER,
+      () =>
+        `<script id="archify-guided-views-data" type="application/json">${guidedViewsJson}</script>`,
+    )
+    .replace(SOURCE_EVIDENCE_PLACEHOLDER, () =>
+      sourceEvidence
+        ? `    <script id="archify-source-evidence-data" type="application/json">${sourceEvidenceJson}</script>`
+        : "",
+    );
 }
 
 // CJK and other wide/fullwidth glyphs render at roughly twice the advance
@@ -165,10 +195,11 @@ export function applyTemplate(template, { title, subtitle, svg, cards, visualPre
 // forms (notably U+FF61–U+FF9F Katakana) out of this set. The explicit ranges
 // also cover vertical punctuation and supplementary East Asian scripts that
 // literal glyph ranges made difficult to audit.
-const FULLWIDTH_RE = /[\u1100-\u115F\u2329-\u232A\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE10-\uFE19\uFE30-\uFE6F\uFF01-\uFF60\uFFE0-\uFFE6\u{16FE0}-\u{18DFF}\u{1AFF0}-\u{1AFFF}\u{1B000}-\u{1B2FF}\u{1F000}-\u{1FAFF}\u{20000}-\u{3FFFD}]/u;
+const FULLWIDTH_RE =
+  /[\u1100-\u115F\u2329-\u232A\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE10-\uFE19\uFE30-\uFE6F\uFF01-\uFF60\uFFE0-\uFFE6\u{16FE0}-\u{18DFF}\u{1AFF0}-\u{1AFFF}\u{1B000}-\u{1B2FF}\u{1F000}-\u{1FAFF}\u{20000}-\u{3FFFD}]/u;
 
 export function textUnits(text) {
   let units = 0;
-  for (const ch of String(text ?? '')) units += FULLWIDTH_RE.test(ch) ? 2 : 1;
+  for (const ch of String(text ?? "")) units += FULLWIDTH_RE.test(ch) ? 2 : 1;
   return units;
 }

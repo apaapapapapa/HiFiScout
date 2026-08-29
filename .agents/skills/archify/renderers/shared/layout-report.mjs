@@ -32,8 +32,8 @@ export function connectionPath(conn, routed, labelAt) {
     from: conn.from,
     to: conn.to,
     label: conn.label ?? null,
-    variant: conn.variant ?? 'default',
-    route: conn.route ?? 'auto',
+    variant: conn.variant ?? "default",
+    route: conn.route ?? "auto",
     points: routed.points.map(([x, y]) => [Math.round(x), Math.round(y)]),
     ...(labelAt ? { labelAt: labelAt.map(Math.round) } : {}),
   };
