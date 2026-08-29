@@ -96,6 +96,8 @@ jobs:
                           for item in parsed_error.get("errors", [])[:3]
                           if isinstance(item, dict)
                       )
+                      if not detail:
+                          detail = raw[:240].replace("\n", " ")
                   except json.JSONDecodeError:
                       detail = "Cloudflare API error"
                   print(f"api_check={label} status=HTTP_{error.code} detail={detail[:240]}")
@@ -275,7 +277,7 @@ jobs:
                   "datasets": [],
                   "from": INCIDENT_FROM,
                   "to": INCIDENT_TO,
-                  "limit": 5000,
+                  "limit": 2000,
               },
               label="telemetry_keys",
           )
@@ -347,12 +349,12 @@ jobs:
               filters: list[dict[str, Any]],
               *,
               label: str,
-              limit: int = 5000,
+              limit: int = 2000,
           ) -> dict[str, list[dict[str, Any]]]:
               result = telemetry(
                   "query",
                   {
-                      "queryId": label,
+                      "queryId": re.sub(r"[^a-z0-9-]", "-", label.lower())[:64],
                       "timeframe": {"from": from_ms, "to": to_ms},
                       "dry": True,
                       "limit": limit,
@@ -581,7 +583,7 @@ jobs:
                   "queryId": "hifiscout_incident_d1_errors_deep",
                   "timeframe": {"from": INCIDENT_FROM, "to": INCIDENT_TO},
                   "dry": True,
-                  "limit": 5000,
+                  "limit": 2000,
                   "view": "events",
                   "parameters": {
                       "datasets": [],
@@ -701,7 +703,7 @@ jobs:
                   HISTORY_TO,
                   cpu_fail_filters,
                   label="hifiscout_direct_exceeded_cpu_history",
-                  limit=5000,
+                  limit=2000,
               )
               print(f"direct_exceeded_cpu_group_count={len(direct_cpu_failures)}")
 
