@@ -27,6 +27,13 @@ GitHub Actions also auto-formats pull requests as a defense-in-depth measure. Do
 - Vendored third-party agent skills are not first-party source. Archify is pinned by `skills-lock.json` and lives under `.agents/skills/archify/`; do not edit its vendored JavaScript as application source.
 - `vp run verify` covers `typecheck`, `format:check`, `lint`, and `check:no-js-source`; run it before publishing changes.
 
+## Vendored Archify skill
+
+- Treat `.agents/skills/archify` as the working directory for every relative path and CLI example in its upstream `SKILL.md`. For example, run `(cd .agents/skills/archify && node bin/archify.mjs doctor)` rather than resolving `bin/` from the HiFiScout repository root.
+- Keep the skill byte-identical to the version recorded in `skills-lock.json`. Do not patch files under `.agents/skills/archify`; update the pinned upstream skill instead.
+- The vendored `package.json` is upstream repository metadata, and its `npm test` entry expects repository-root harness files that are intentionally outside the installed skill artifact. HiFiScout validates the installed artifact with `vp exec tsx scripts/check-vendored-agent-skills.ts`, which checks the lockfile content hash and runs Archify's `doctor` command.
+- `check:no-js-source` performs the same integrity/runtime verification before exempting Archify's upstream JavaScript from the first-party TypeScript-only rule.
+
 ## Keeping agent output small
 
 An agent's context window is a real budget, and command output is charged against it on every
