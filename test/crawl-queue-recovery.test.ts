@@ -6,7 +6,6 @@ import { recoverStalledCrawlDispatches } from "../src/crawler/dispatch.js";
 import {
   crawlDispatchToken,
   getShopState,
-  markShopQueued,
   reserveShopDispatch,
   tryClaimShopCrawl,
 } from "../src/db/shop-state-repository.js";
