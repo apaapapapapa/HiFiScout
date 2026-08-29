@@ -68,10 +68,7 @@ test("a reclaimed finalizer reuses one logical crawl run and reconciles its term
   const firstRunId = await startCrawlRun(db, "test-shop", "2026-08-29T00:01:00.100Z");
   const secondRunId = await startCrawlRun(db, "test-shop", "2026-08-29T00:01:00.200Z");
   assert.equal(secondRunId, firstRunId);
-  assert.equal(
-    Number(sqlite.prepare("SELECT COUNT(*) AS count FROM crawl_runs").get()?.count),
-    1,
-  );
+  assert.equal(Number(sqlite.prepare("SELECT COUNT(*) AS count FROM crawl_runs").get()?.count), 1);
 
   await finishCrawlRunSuccess(db, firstRunId, {
     finishedAt: "2026-08-29T00:01:30.000Z",
@@ -90,10 +87,7 @@ test("a reclaimed finalizer reuses one logical crawl run and reconciles its term
   const session = await getCrawlFetchSession(db, "finalize-run");
   assert.equal(session?.status, "completed");
   assert.equal(session?.final_crawl_run_id, firstRunId);
-  assert.equal(
-    Number(sqlite.prepare("SELECT COUNT(*) AS count FROM crawl_runs").get()?.count),
-    1,
-  );
+  assert.equal(Number(sqlite.prepare("SELECT COUNT(*) AS count FROM crawl_runs").get()?.count), 1);
 });
 
 test("failed sessions immediately discard staged HTML and product payloads", async () => {
