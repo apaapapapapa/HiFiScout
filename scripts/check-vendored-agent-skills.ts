@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
@@ -59,6 +60,13 @@ async function computeSkillFolderHash(directory: string): Promise<string> {
   return hash.digest("hex");
 }
 
+function verifyArchifyRuntime(): void {
+  execFileSync(process.execPath, [resolve(skillDirectory, "bin/archify.mjs"), "doctor"], {
+    encoding: "utf8",
+    stdio: "pipe",
+  });
+}
+
 export async function verifyVendoredAgentSkills(): Promise<void> {
   const lock = JSON.parse(await readFile(lockPath, "utf8")) as SkillLockFile;
   const entry = lock.skills[skillName];
@@ -79,12 +87,14 @@ export async function verifyVendoredAgentSkills(): Promise<void> {
       `${skillName} vendored content does not match skills-lock.json: expected ${entry.computedHash}, got ${actualHash}`,
     );
   }
+
+  verifyArchifyRuntime();
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   try {
     await verifyVendoredAgentSkills();
-    console.log("Vendored agent skills match skills-lock.json.");
+    console.log("Vendored agent skills match skills-lock.json and pass their runtime check.");
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);
     process.exitCode = 1;
