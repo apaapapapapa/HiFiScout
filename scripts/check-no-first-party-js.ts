@@ -1,5 +1,7 @@
 import { execFileSync } from "node:child_process";
 
+const vendoredJavaScriptPrefixes = [".agents/skills/archify/"] as const;
+
 const trackedFiles = execFileSync(
   "git",
   ["ls-files", "-z", "--", "*.js", "*.mjs", "*.cjs", "*.jsx"],
@@ -7,6 +9,9 @@ const trackedFiles = execFileSync(
 )
   .split("\0")
   .filter(Boolean)
+  .filter(
+    (file) => !vendoredJavaScriptPrefixes.some((prefix) => file.startsWith(prefix)),
+  )
   .sort();
 
 if (trackedFiles.length > 0) {
