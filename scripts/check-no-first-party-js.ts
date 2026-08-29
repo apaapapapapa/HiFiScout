@@ -1,6 +1,10 @@
 import { execFileSync } from "node:child_process";
 
+import { verifyVendoredAgentSkills } from "./check-vendored-agent-skills.ts";
+
 const vendoredJavaScriptPrefixes = [".agents/skills/archify/"] as const;
+
+await verifyVendoredAgentSkills();
 
 const trackedFiles = execFileSync(
   "git",
