@@ -1,11 +1,12 @@
 # GitHub Actions responsibility map
 
-HiFiScout keeps workflow orchestration thin. Domain behavior, repair logic, and data-quality rules belong in application or maintenance scripts; workflows select when to run them and report the result. The organized baseline is 17 workflow YAML files; adding another workflow should require a responsibility that cannot fit an existing owner.
+HiFiScout keeps workflow orchestration thin. Domain behavior, repair logic, and data-quality rules belong in application or maintenance scripts; workflows select when to run them and report the result. The organized baseline is 18 workflow YAML files; adding another workflow should require a responsibility that cannot fit an existing owner.
 
 ## Validation
 
 - `ci.yml` — release-quality source checks, D1 integration checks, build, and non-gating Playwright browser cache warming.
-- `docs.yml` — architecture boundary check plus documentation build/publish.
+- `docs.yml` — architecture boundary check plus deterministic documentation build/publish.
+- `codex-docs.yml` — best-effort AI-assisted architecture refresh. It may update only `docs/ai-generated/**`, validates the candidate with Archify and a full VitePress build, and opens/updates a documentation PR. Missing credentials, Codex usage limits, timeouts, invalid output, or publication restrictions retain the last committed snapshot and do not block deterministic docs publication.
 - `codeql.yml` — CodeQL security analysis.
 - `secret-scan.yml` — secret scanning.
 - `autofix.yml` — PR formatting/lint autofix only.
@@ -48,3 +49,4 @@ These workflows are intentionally separate from deployment and post-deploy verif
 4. Do not encode autonomous production repair loops in Actions YAML.
 5. Reuse `.github/actions/publish-commit-status` for custom commit statuses.
 6. Use the root `package-lock.json`; do not create an unlocked secondary Node dependency installation for E2E.
+7. Keep optional AI generation outside deterministic validation/deployment ownership. AI failures must degrade to the last committed artifact rather than fail the documentation site.
