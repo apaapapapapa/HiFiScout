@@ -1,5 +1,6 @@
 import { getMaintenanceSettings } from "./config.js";
 import type { CrawlerEnv, MaintenanceSettings } from "./crawler/types.js";
+import { deleteTerminalCrawlFetchSessions } from "./db/crawl-fetch-session-repository.js";
 import { cleanupProductCorrectionReports } from "./db/product-correction-report-repository.js";
 import type { QueryableDatabase } from "./db/types.js";
 
@@ -24,6 +25,7 @@ export interface RetentionCleanupCounts {
   dataQualityRuns: number;
   remediationQueue: number;
   correctionReports: number;
+  crawlFetchSessions: number;
   crawlRuns: number;
   priceHistory: number;
   inactiveProducts: number;
@@ -169,6 +171,14 @@ export async function runRetentionCleanup(
   // delete batch so cleanup cannot turn into an unbounded maintenance invocation.
   const correctionReports = await cleanupProductCorrectionReports(env.DB, limit, now);
 
+  // Fetch staging is operational crawl telemetry, so it follows the crawl-run retention horizon.
+  // The FK cascade removes the per-page frontier rows with the terminal session. Active sessions are
+  // never eligible, and the same bounded delete limit keeps retention from becoming a D1 CPU spike.
+  const crawlFetchSessions = await deleteTerminalCrawlFetchSessions(env.DB, {
+    finalizedBefore: crawlRunsBefore,
+    limit,
+  });
+
   const crawlRuns = await env.DB.prepare(`
     DELETE FROM crawl_runs
     WHERE id IN (
@@ -219,6 +229,7 @@ export async function runRetentionCleanup(
       dataQualityRuns: changes(dataQualityRuns),
       remediationQueue,
       correctionReports,
+      crawlFetchSessions,
       crawlRuns: changes(crawlRuns),
       priceHistory: changes(priceHistory),
       inactiveProducts: changes(inactiveProducts),
