@@ -199,9 +199,7 @@ function scalarParameterSchema(parameter: QueryParameterContract): JsonSchema {
   return schema;
 }
 
-export function openApiQueryParameter(
-  parameter: QueryParameterContract,
-): Record<string, unknown> {
+export function openApiQueryParameter(parameter: QueryParameterContract): Record<string, unknown> {
   const scalarSchema = scalarParameterSchema(parameter);
   const arrayLike = parameter.repeatable || parameter.commaSeparated;
   return {

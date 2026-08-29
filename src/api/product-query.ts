@@ -66,8 +66,7 @@ export const PRODUCT_QUERY_PARAMETERS = [
     commaSeparated: true,
     maxLength: MAX_FEATURE_PARAM_LENGTH,
     enum: FEATURE_IDS,
-    description:
-      "Required product feature. May be repeated or supplied as a comma-separated list.",
+    description: "Required product feature. May be repeated or supplied as a comma-separated list.",
   },
   {
     name: "minPrice",
@@ -123,7 +122,8 @@ export const PRODUCT_QUERY_PARAMETERS = [
     name: "sort",
     type: "string",
     enum: PRODUCT_QUERY_SORTS,
-    description: "Explicit result ordering. Omitting it enables relevance ordering for text search.",
+    description:
+      "Explicit result ordering. Omitting it enables relevance ordering for text search.",
   },
 ] as const satisfies readonly QueryParameterContract[];
 
