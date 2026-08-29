@@ -48,6 +48,12 @@ export interface CrawlFetchPageInput {
   ordinal: number;
 }
 
+interface CollectionCrawlRunRow {
+  id: number;
+  status: "running" | "success" | "failed";
+  message: string | null;
+}
+
 function changes(result: D1Result<unknown> | null | undefined): number {
   return Number(result?.meta?.changes || 0);
 }
@@ -57,7 +63,19 @@ export async function getCrawlFetchSession(
   runId: string,
 ): Promise<CrawlFetchSessionRow | null> {
   return db
-    .prepare("SELECT * FROM crawl_fetch_sessions WHERE run_id = ?")
+    .prepare(`
+      SELECT s.*
+      FROM crawl_fetch_sessions s
+      WHERE s.run_id = ?
+        AND (
+          s.status NOT IN ('collecting', 'finalizing')
+          OR s.next_phase <> 'fetch'
+          OR s.next_page_key IS NULL
+          OR EXISTS (
+            SELECT 1 FROM crawl_fetch_pages p WHERE p.run_id = s.run_id
+          )
+        )
+    `)
     .bind(runId)
     .first<CrawlFetchSessionRow>();
 }
@@ -97,9 +115,10 @@ export async function ensureCrawlFetchSession(
     .run();
   const created = changes(insert) > 0;
 
-  // The session insert and the initial frontier are separate calls. If the isolate is killed between
-  // them, a redelivery must repair the missing pages instead of permanently finalizing an empty run.
-  // INSERT OR IGNORE also makes the ordinary duplicate-delivery path a no-op.
+  // Session creation and the frontier are intentionally repairable. If the isolate is killed after
+  // the session row lands but before the frontier does, getCrawlFetchSession() hides that incomplete
+  // active row from ensureSession(), which comes back through here and replays these idempotent
+  // INSERTs. A normal duplicate delivery simply hits INSERT OR IGNORE and changes nothing.
   if (input.pages.length) {
     await db.batch(
       input.pages.map((page) =>
@@ -157,6 +176,27 @@ export async function listActiveCrawlFetchSessions(
   return result.results || [];
 }
 
+export async function deleteTerminalCrawlFetchSessions(
+  db: QueryableDatabase,
+  { finalizedBefore, limit }: { finalizedBefore: string; limit: number },
+): Promise<number> {
+  const result = await db
+    .prepare(`
+      DELETE FROM crawl_fetch_sessions
+      WHERE run_id IN (
+        SELECT run_id FROM crawl_fetch_sessions
+        WHERE status IN ('completed', 'failed')
+          AND finalized_at IS NOT NULL
+          AND finalized_at < ?
+        ORDER BY finalized_at ASC, run_id ASC
+        LIMIT ?
+      )
+    `)
+    .bind(finalizedBefore, limit)
+    .run();
+  return changes(result);
+}
+
 export function decodeCrawlFetchPage(row: Pick<CrawlFetchPageRow, "page_json">): CrawlPage {
   const value: unknown = JSON.parse(row.page_json);
   if (typeof value === "string") return value;
@@ -171,12 +211,56 @@ export function decodeCrawlFetchPage(row: Pick<CrawlFetchPageRow, "page_json">):
   throw new Error("invalid staged crawl page");
 }
 
+async function clearStagedPayloads(db: QueryableDatabase, runId: string): Promise<void> {
+  await db
+    .prepare(`
+      UPDATE crawl_fetch_pages
+      SET html_text = NULL, products_json = NULL
+      WHERE run_id = ?
+    `)
+    .bind(runId)
+    .run();
+}
+
+async function reconcileFinishedCollectionRun(
+  db: QueryableDatabase,
+  runId: string,
+  observedAt: string,
+): Promise<boolean> {
+  const crawlRun = await db
+    .prepare("SELECT id, status, message FROM crawl_runs WHERE collection_run_id = ?")
+    .bind(runId)
+    .first<CollectionCrawlRunRow>();
+  if (!crawlRun || crawlRun.status === "running") return false;
+
+  if (crawlRun.status === "success") {
+    await completeCrawlFetchSession(db, {
+      runId,
+      finalizedAt: observedAt,
+      crawlRunId: crawlRun.id,
+    });
+  } else {
+    await failCrawlFetchSession(db, {
+      runId,
+      failedAt: observedAt,
+      message: crawlRun.message || "crawl finalization failed",
+      crawlRunId: crawlRun.id,
+    });
+  }
+  return true;
+}
+
 export async function claimCrawlFetchFinalization(
   db: QueryableDatabase,
   runId: string,
   claimedAt: string,
   staleBefore: string,
 ): Promise<boolean> {
+  // A hard kill may happen after crawlShop's terminal write but before the fetch-session terminal
+  // write. In that case the crawl run is the durable source of truth and redelivery must reconcile
+  // the session instead of running publish a second time.
+  if (await reconcileFinishedCollectionRun(db, runId, claimedAt)) return false;
+
   const result = await db
     .prepare(`
       UPDATE crawl_fetch_sessions
@@ -186,7 +270,21 @@ export async function claimCrawlFetchFinalization(
     `)
     .bind(claimedAt, claimedAt, runId, staleBefore)
     .run();
-  return changes(result) > 0;
+  if (changes(result) === 0) return false;
+
+  // Reserve the logical crawl run before publish starts. startCrawlRun() reuses this row while its
+  // collection session is finalizing, so a stale-finalizer reclaim cannot create a second run.
+  await db
+    .prepare(`
+      INSERT INTO crawl_runs (shop_key, started_at, status, collection_run_id)
+      SELECT shop_key, ?, 'running', run_id
+      FROM crawl_fetch_sessions
+      WHERE run_id = ?
+      ON CONFLICT(collection_run_id) DO NOTHING
+    `)
+    .bind(claimedAt, runId)
+    .run();
+  return true;
 }
 
 export async function completeCrawlFetchSession(
@@ -216,19 +314,27 @@ export async function failCrawlFetchSession(
   db: QueryableDatabase,
   input: { runId: string; failedAt: string; message: string; crawlRunId?: number | null },
 ): Promise<void> {
-  await db
-    .prepare(`
-      UPDATE crawl_fetch_sessions
-      SET status = 'failed', final_crawl_run_id = COALESCE(?, final_crawl_run_id),
-          next_phase = NULL, next_page_key = NULL, finalized_at = ?, updated_at = ?, error_message = ?
-      WHERE run_id = ?
-    `)
-    .bind(
-      input.crawlRunId ?? null,
-      input.failedAt,
-      input.failedAt,
-      input.message.slice(0, 1000),
-      input.runId,
-    )
-    .run();
+  await db.batch([
+    db
+      .prepare(`
+        UPDATE crawl_fetch_sessions
+        SET status = 'failed', final_crawl_run_id = COALESCE(?, final_crawl_run_id),
+            next_phase = NULL, next_page_key = NULL, finalized_at = ?, updated_at = ?, error_message = ?
+        WHERE run_id = ?
+      `)
+      .bind(
+        input.crawlRunId ?? null,
+        input.failedAt,
+        input.failedAt,
+        input.message.slice(0, 1000),
+        input.runId,
+      ),
+    db
+      .prepare(`
+        UPDATE crawl_fetch_pages
+        SET html_text = NULL, products_json = NULL
+        WHERE run_id = ?
+      `)
+      .bind(input.runId),
+  ]);
 }
