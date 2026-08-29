@@ -54,6 +54,14 @@ test("OpenAPI 3.1 is generated from the runtime route contracts", () => {
     },
   });
 
+  const productItem = document.components?.schemas.ProductSearchItem;
+  assert.deepEqual(productItem?.properties?.price_index, {
+    $ref: "#/components/schemas/ProductPriceIndexSummary",
+  });
+  assert.equal(productItem?.required?.includes("price_index"), false);
+  assert.deepEqual(productItem?.properties?.representative_offer?.type, ["object", "null"]);
+  assert.ok(document.components?.schemas.ProductPriceIndexSummary);
+
   const suggest = document.paths["/api/suggest"]?.get as { operationId?: string };
   assert.equal(suggest.operationId, "suggestProducts");
   assert.ok(document.components?.schemas.ProductSearchResponse);
