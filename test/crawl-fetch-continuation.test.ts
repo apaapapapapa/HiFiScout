@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
 import {
+  claimCrawlFetchFinalization,
+  completeCrawlFetchSession,
   ensureCrawlFetchSession,
   getCrawlFetchSession,
   listCrawlFetchPages,
@@ -151,6 +153,49 @@ test("duplicate continuation writes do not advance a page or session twice", asy
   assert.equal(session.pages_parsed, 1);
   assert.equal(session.continuation_sequence, 2);
   assert.equal(session.next_phase, "finalize");
+});
+
+test("finalization is single-flight for duplicate deliveries", async () => {
+  const { db } = migratedSqlite();
+  const runId = "synthetic:finalize";
+
+  await ensureCrawlFetchSession(db, {
+    runId,
+    shopKey: "synthetic",
+    requestedAt: REQUESTED_AT,
+    maxPages: 0,
+    pageLimit: 0,
+    pages: [],
+    createdAt: REQUESTED_AT,
+  });
+
+  const firstClaim = await claimCrawlFetchFinalization(
+    db,
+    runId,
+    "2026-08-29T00:01:00.000Z",
+    "2026-08-28T23:59:00.000Z",
+  );
+  const duplicateClaim = await claimCrawlFetchFinalization(
+    db,
+    runId,
+    "2026-08-29T00:01:01.000Z",
+    "2026-08-28T23:59:01.000Z",
+  );
+  assert.equal(firstClaim, true);
+  assert.equal(duplicateClaim, false);
+
+  await completeCrawlFetchSession(db, {
+    runId,
+    finalizedAt: "2026-08-29T00:01:02.000Z",
+    crawlRunId: 42,
+  });
+  const afterCompletion = await claimCrawlFetchFinalization(
+    db,
+    runId,
+    "2026-08-29T00:02:00.000Z",
+    "2026-08-29T00:01:59.000Z",
+  );
+  assert.equal(afterCompletion, false);
 });
 
 test("staging a partial collection never mutates existing listing activity or price history", async () => {
