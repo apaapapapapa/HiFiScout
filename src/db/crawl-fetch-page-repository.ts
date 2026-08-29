@@ -16,17 +16,21 @@ export async function recordCrawlFetchPageFetched(
 ): Promise<void> {
   const nextSequence = input.currentSequence + 1;
   await db.batch([
-    db.prepare(`
+    db
+      .prepare(`
       UPDATE crawl_fetch_pages
       SET state = 'fetched', html_text = ?, html_bytes = ?, fetched_at = ?
       WHERE run_id = ? AND page_key = ? AND state = 'pending'
-    `).bind(input.html, input.htmlBytes, input.fetchedAt, input.runId, input.pageKey),
-    db.prepare(`
+    `)
+      .bind(input.html, input.htmlBytes, input.fetchedAt, input.runId, input.pageKey),
+    db
+      .prepare(`
       UPDATE crawl_fetch_sessions
       SET pages_fetched = pages_fetched + 1,
           continuation_sequence = ?, next_phase = 'parse', next_page_key = ?, updated_at = ?
       WHERE run_id = ? AND status = 'collecting' AND continuation_sequence = ?
-    `).bind(nextSequence, input.pageKey, input.fetchedAt, input.runId, input.currentSequence),
+    `)
+      .bind(nextSequence, input.pageKey, input.fetchedAt, input.runId, input.currentSequence),
   ]);
 }
 
@@ -42,25 +46,29 @@ export async function recordCrawlFetchPageIgnored(
 ): Promise<void> {
   const nextSequence = input.currentSequence + 1;
   await db.batch([
-    db.prepare(`
+    db
+      .prepare(`
       UPDATE crawl_fetch_pages
       SET state = 'ignored', html_text = NULL, products_json = NULL, parsed_at = ?
       WHERE run_id = ? AND page_key = ? AND state = 'pending'
-    `).bind(input.ignoredAt, input.runId, input.pageKey),
-    db.prepare(`
+    `)
+      .bind(input.ignoredAt, input.runId, input.pageKey),
+    db
+      .prepare(`
       UPDATE crawl_fetch_sessions
       SET coverage_incomplete = 1, last_completed_page = ?, continuation_sequence = ?,
           next_phase = ?, next_page_key = ?, updated_at = ?
       WHERE run_id = ? AND status = 'collecting' AND continuation_sequence = ?
-    `).bind(
-      input.pageKey,
-      nextSequence,
-      input.nextPageKey ? "fetch" : "finalize",
-      input.nextPageKey,
-      input.ignoredAt,
-      input.runId,
-      input.currentSequence,
-    ),
+    `)
+      .bind(
+        input.pageKey,
+        nextSequence,
+        input.nextPageKey ? "fetch" : "finalize",
+        input.nextPageKey,
+        input.ignoredAt,
+        input.runId,
+        input.currentSequence,
+      ),
   ]);
 }
 
@@ -79,51 +87,79 @@ export async function recordCrawlFetchPageParsed(
   },
 ): Promise<void> {
   const nextSequence = input.currentSequence + 1;
-  const statements = input.discoveredPages.map((page) => db.prepare(`
+  const statements = input.discoveredPages.map((page) =>
+    db
+      .prepare(`
     INSERT OR IGNORE INTO crawl_fetch_pages
       (run_id, page_key, page_json, ordinal, state)
     VALUES (?, ?, ?, ?, 'pending')
-  `).bind(input.runId, page.key, JSON.stringify(page.page), page.ordinal));
+  `)
+      .bind(input.runId, page.key, JSON.stringify(page.page), page.ordinal),
+  );
 
-  statements.push(db.prepare(`
+  statements.push(
+    db
+      .prepare(`
     UPDATE crawl_fetch_pages
     SET state = 'parsed', products_json = ?, item_count = ?, html_text = NULL, parsed_at = ?
     WHERE run_id = ? AND page_key = ? AND state = 'fetched'
-  `).bind(JSON.stringify(input.products), input.products.length, input.parsedAt, input.runId, input.pageKey));
+  `)
+      .bind(
+        JSON.stringify(input.products),
+        input.products.length,
+        input.parsedAt,
+        input.runId,
+        input.pageKey,
+      ),
+  );
 
   if (input.reachedEnd) {
-    statements.push(db.prepare(`
+    statements.push(
+      db
+        .prepare(`
       UPDATE crawl_fetch_pages SET state = 'ignored'
       WHERE run_id = ? AND state = 'pending'
-    `).bind(input.runId));
+    `)
+        .bind(input.runId),
+    );
   }
 
-  statements.push(db.prepare(`
+  statements.push(
+    db
+      .prepare(`
     UPDATE crawl_fetch_sessions
     SET pages_parsed = pages_parsed + 1,
         coverage_incomplete = CASE WHEN ? = 1 THEN 1 ELSE coverage_incomplete END,
         reached_end = CASE WHEN ? = 1 THEN 1 ELSE reached_end END,
         last_completed_page = ?, continuation_sequence = ?, next_phase = ?, next_page_key = ?, updated_at = ?
     WHERE run_id = ? AND status = 'collecting' AND continuation_sequence = ?
-  `).bind(
-    input.coverageIncomplete ? 1 : 0,
-    input.reachedEnd ? 1 : 0,
-    input.pageKey,
-    nextSequence,
-    input.nextPageKey && !input.reachedEnd ? "fetch" : "finalize",
-    input.reachedEnd ? null : input.nextPageKey,
-    input.parsedAt,
-    input.runId,
-    input.currentSequence,
-  ));
+  `)
+      .bind(
+        input.coverageIncomplete ? 1 : 0,
+        input.reachedEnd ? 1 : 0,
+        input.pageKey,
+        nextSequence,
+        input.nextPageKey && !input.reachedEnd ? "fetch" : "finalize",
+        input.reachedEnd ? null : input.nextPageKey,
+        input.parsedAt,
+        input.runId,
+        input.currentSequence,
+      ),
+  );
   await db.batch(statements);
 }
 
-export async function stagedCrawlFetchItemCount(db: QueryableDatabase, runId: string): Promise<number> {
-  const row = await db.prepare(`
+export async function stagedCrawlFetchItemCount(
+  db: QueryableDatabase,
+  runId: string,
+): Promise<number> {
+  const row = await db
+    .prepare(`
     SELECT COALESCE(SUM(item_count), 0) AS item_count
     FROM crawl_fetch_pages WHERE run_id = ? AND state = 'parsed'
-  `).bind(runId).first<{ item_count: number }>();
+  `)
+    .bind(runId)
+    .first<{ item_count: number }>();
   return Number(row?.item_count || 0);
 }
 
@@ -149,7 +185,10 @@ export function nextPendingPageKey(
   pages: readonly CrawlFetchPageRow[],
   excludingPageKey?: string,
 ): string | null {
-  return pages.find((page) => page.state === "pending" && page.page_key !== excludingPageKey)?.page_key || null;
+  return (
+    pages.find((page) => page.state === "pending" && page.page_key !== excludingPageKey)
+      ?.page_key || null
+  );
 }
 
 export async function setPublishedCrawlPageCount(
@@ -157,5 +196,8 @@ export async function setPublishedCrawlPageCount(
   crawlRunId: number,
   pageCount: number,
 ): Promise<void> {
-  await db.prepare("UPDATE crawl_runs SET page_count = ? WHERE id = ?").bind(pageCount, crawlRunId).run();
+  await db
+    .prepare("UPDATE crawl_runs SET page_count = ? WHERE id = ?")
+    .bind(pageCount, crawlRunId)
+    .run();
 }
