@@ -605,6 +605,12 @@ jobs:
               }
           )
           print("d1_request_ids=" + ",".join(d1_request_ids))
+          for index, event in enumerate(d1_events):
+              if isinstance(event, dict):
+                  print(
+                      f"d1_event[{index}]="
+                      + compact(safe_projection(event))[:12000]
+                  )
           by_request = {item["request_id"]: item for item in incident_summaries}
           for rid in d1_request_ids:
               item = by_request.get(rid)
@@ -643,6 +649,70 @@ jobs:
           outcomes = collections.Counter(item["outcome"] for item in history)
           print(f"history_queue_invocation_count={len(history)}")
           print(f"history_outcomes={compact(dict(sorted(outcomes.items())))}")
+          exceeded_cpu_history = [item for item in history if item["outcome"] == "exceededCpu"]
+          target_deploy_ms = 1787908535768  # 2026-08-28T09:15:35.768Z
+          print(
+              "history_exceeded_cpu_timing="
+              + compact(
+                  {
+                      "before_target_deploy": sum(
+                          1 for item in exceeded_cpu_history
+                          if (item["last_event_ms"] or 0) < target_deploy_ms
+                      ),
+                      "after_target_deploy": sum(
+                          1 for item in exceeded_cpu_history
+                          if (item["last_event_ms"] or 0) >= target_deploy_ms
+                      ),
+                      "within_60m_before": sum(
+                          1 for item in exceeded_cpu_history
+                          if target_deploy_ms - 60 * 60 * 1000
+                          <= (item["last_event_ms"] or 0) < target_deploy_ms
+                      ),
+                      "within_60m_after": sum(
+                          1 for item in exceeded_cpu_history
+                          if target_deploy_ms
+                          <= (item["last_event_ms"] or 0) < target_deploy_ms + 60 * 60 * 1000
+                      ),
+                  }
+              )
+          )
+
+          exceeded_cpu_shop_stage: collections.Counter[tuple[str, str]] = collections.Counter()
+          for group_id, events in history_groups.items():
+              item = group_summary(group_id, events)
+              if item["outcome"] != "exceededCpu":
+                  continue
+              shop_keys = sorted(
+                  {
+                      str(value)
+                      for value in scalar_values(
+                          events,
+                          lambda path, value: bool(path)
+                          and path[-1].lower() in {"shopkey", "shop_key"}
+                          and isinstance(value, str),
+                      )
+                  }
+              )
+              stages = sorted(
+                  {
+                      str(value)
+                      for value in scalar_values(
+                          events,
+                          lambda path, value: bool(path)
+                          and path[-1].lower() == "stage"
+                          and isinstance(value, str),
+                      )
+                  }
+              )
+              exceeded_cpu_shop_stage[(
+                  ",".join(shop_keys) or "missing",
+                  ",".join(stages) or "missing",
+              )] += 1
+          for (shop_key, stage), count in exceeded_cpu_shop_stage.most_common():
+              print(
+                  "history_exceeded_cpu_shop_stage="
+                  + compact({"shopKey": shop_key, "stage": stage, "count": count})
+              )
           cpu_values = sorted(
               float(item["cpu_time_ms"])
               for item in history
