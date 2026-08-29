@@ -160,11 +160,13 @@ export function validateQueryContract(
 
   for (const parameter of parameters) {
     if (!parameter.enum) continue;
-    const values = params
-      .getAll(parameter.name)
-      .flatMap((value) => (parameter.commaSeparated ? value.split(",") : [value]))
-      .map((value) => value.trim())
-      .filter(Boolean);
+    const rawValues = params.getAll(parameter.name);
+    const values = parameter.commaSeparated
+      ? rawValues
+          .flatMap((value) => value.split(","))
+          .map((value) => value.trim())
+          .filter(Boolean)
+      : rawValues;
     if (values.some((value) => !parameter.enum?.includes(value))) {
       return `${parameter.name}_invalid`;
     }
