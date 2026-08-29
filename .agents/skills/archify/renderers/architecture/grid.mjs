@@ -1,7 +1,7 @@
 /** Grid placement for architecture IR (#8). Not auto-layout — fixed cell math only. */
 
 export const DEFAULT_GRID = {
-  mode: "grid",
+  mode: 'grid',
   origin: [40, 80],
   cols: 4,
   gapX: 30,
@@ -12,7 +12,7 @@ export const DEFAULT_GRID = {
 
 export function gridLayout(arch) {
   const raw = arch.layout;
-  if (!raw || raw.mode !== "grid") return null;
+  if (!raw || raw.mode !== 'grid') return null;
   return { ...DEFAULT_GRID, ...raw };
 }
 
@@ -32,10 +32,8 @@ export function resolveComponentPos(component, grid) {
 
 export function validateGridPlacement(arch, grid, problems) {
   if (!grid) return;
-  if (arch.layout !== undefined && arch.layout.mode !== "grid") {
-    problems.push(
-      'layout.mode must be "grid" when layout is set (free placement omits layout entirely).',
-    );
+  if (arch.layout !== undefined && arch.layout.mode !== 'grid') {
+    problems.push('layout.mode must be "grid" when layout is set (free placement omits layout entirely).');
     return;
   }
   const seen = new Map();
@@ -44,9 +42,7 @@ export function validateGridPlacement(arch, grid, problems) {
     const hasCell = Number.isInteger(c.row) && Number.isInteger(c.col);
     if (hasPos) continue; // pos wins; row/col are optional hints only
     if (!hasPos && !hasCell) {
-      problems.push(
-        `Component "${c.id}" needs pos [x,y] or grid row/col when layout.mode is "grid".`,
-      );
+      problems.push(`Component "${c.id}" needs pos [x,y] or grid row/col when layout.mode is "grid".`);
       continue;
     }
     if (c.row < 0 || c.col < 0) {
@@ -54,15 +50,11 @@ export function validateGridPlacement(arch, grid, problems) {
       continue;
     }
     if (c.col >= grid.cols) {
-      problems.push(
-        `Component "${c.id}" col ${c.col} exceeds layout.cols ${grid.cols} (valid: 0..${grid.cols - 1}).`,
-      );
+      problems.push(`Component "${c.id}" col ${c.col} exceeds layout.cols ${grid.cols} (valid: 0..${grid.cols - 1}).`);
     }
     const key = `${c.row},${c.col}`;
     if (seen.has(key)) {
-      problems.push(
-        `Components "${seen.get(key)}" and "${c.id}" share grid cell row ${c.row} col ${c.col}.`,
-      );
+      problems.push(`Components "${seen.get(key)}" and "${c.id}" share grid cell row ${c.row} col ${c.col}.`);
     } else {
       seen.set(key, c.id);
     }

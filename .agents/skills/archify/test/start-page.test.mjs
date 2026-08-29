@@ -1,42 +1,36 @@
-import { test } from "node:test";
-import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import vm from "node:vm";
-import { fileURLToPath } from "node:url";
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import vm from 'node:vm';
+import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const skillRoot = path.resolve(__dirname, "..");
-const repoRoot = path.resolve(skillRoot, "..");
+const skillRoot = path.resolve(__dirname, '..');
+const repoRoot = path.resolve(skillRoot, '..');
 
-test("start page: checked-in HTML is reproducible from canonical scenario recipes", () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "archify-start-page-"));
-  const generated = path.join(tmp, "start.html");
+test('start page: checked-in HTML is reproducible from canonical scenario recipes', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'archify-start-page-'));
+  const generated = path.join(tmp, 'start.html');
   try {
-    execFileSync(process.execPath, [path.join(repoRoot, "scripts/build-start.mjs"), generated]);
+    execFileSync(process.execPath, [path.join(repoRoot, 'scripts/build-start.mjs'), generated]);
     assert.equal(
-      fs.readFileSync(generated, "utf8"),
-      fs.readFileSync(path.join(repoRoot, "docs/start.html"), "utf8"),
+      fs.readFileSync(generated, 'utf8'),
+      fs.readFileSync(path.join(repoRoot, 'docs/start.html'), 'utf8'),
     );
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
 
-test("start page: offers five bounded bilingual starts without ingesting source content", () => {
-  const html = fs.readFileSync(path.join(repoRoot, "docs/start.html"), "utf8");
+test('start page: offers five bounded bilingual starts without ingesting source content', () => {
+  const html = fs.readFileSync(path.join(repoRoot, 'docs/start.html'), 'utf8');
   assert.doesNotMatch(html, /\[\[[A-Z0-9_]+\]\]/);
-  assert.match(
-    html,
-    /npx -y skills add tt-a1i\/archify --skill archify --agent codex --global --copy --yes/,
-  );
-  assert.match(
-    html,
-    /npx -y skills add tt-a1i\/archify --skill archify --agent codex --copy --yes/,
-  );
-  for (const agent of ["cursor", "codex", "claude-code", "opencode"]) {
+  assert.match(html, /npx -y skills add tt-a1i\/archify --skill archify --agent codex --global --copy --yes/);
+  assert.match(html, /npx -y skills add tt-a1i\/archify --skill archify --agent codex --copy --yes/);
+  for (const agent of ['cursor', 'codex', 'claude-code', 'opencode']) {
     assert.match(html, new RegExp(`role="tab" data-agent="${agent}"`));
   }
   assert.match(html, /data-en="One install\."/);
@@ -49,21 +43,11 @@ test("start page: offers five bounded bilingual starts without ingesting source 
   assert.match(html, /data-en="Copy install \+ prompt"/);
   assert.match(html, /data-zh="复制安装命令 \+ 提示词"/);
 
-  const dataMatch = html.match(
-    /<script id="start-data" type="application\/json">([\s\S]*?)<\/script>/,
-  );
+  const dataMatch = html.match(/<script id="start-data" type="application\/json">([\s\S]*?)<\/script>/);
   assert.ok(dataMatch);
   const data = JSON.parse(dataMatch[1]);
-  assert.deepEqual(Object.keys(data), [
-    "architecture",
-    "workflow",
-    "sequence",
-    "dataflow",
-    "lifecycle",
-  ]);
-  assert.ok(
-    Object.values(data).every((entry) => entry.en.prompt && entry.zh.prompt && entry.proof),
-  );
+  assert.deepEqual(Object.keys(data), ['architecture', 'workflow', 'sequence', 'dataflow', 'lifecycle']);
+  assert.ok(Object.values(data).every((entry) => entry.en.prompt && entry.zh.prompt && entry.proof));
 
   const scriptMatch = html.match(/<script>\n([\s\S]*?)\n  <\/script>\n<\/body>/);
   assert.ok(scriptMatch);
@@ -84,24 +68,24 @@ test("start page: offers five bounded bilingual starts without ingesting source 
   assert.doesNotMatch(scriptMatch[1], /innerHTML/);
 });
 
-test("generated artifacts omit the promotional footer and shortcut manual", () => {
+test('generated artifacts omit the promotional footer and shortcut manual', () => {
   const examples = {
-    architecture: "web-app.architecture.json",
-    workflow: "agent-tool-call.workflow.json",
-    sequence: "cache-miss-request.sequence.json",
-    dataflow: "product-analytics.dataflow.json",
-    lifecycle: "agent-run.lifecycle.json",
+    architecture: 'web-app.architecture.json',
+    workflow: 'agent-tool-call.workflow.json',
+    sequence: 'cache-miss-request.sequence.json',
+    dataflow: 'product-analytics.dataflow.json',
+    lifecycle: 'agent-run.lifecycle.json',
   };
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "archify-start-artifacts-"));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'archify-start-artifacts-'));
   try {
     for (const [type, input] of Object.entries(examples)) {
       const out = path.join(tmp, `${type}.html`);
       execFileSync(process.execPath, [
         path.join(skillRoot, `renderers/${type}/render-${type}.mjs`),
-        path.join(skillRoot, "examples", input),
+        path.join(skillRoot, 'examples', input),
         out,
       ]);
-      const html = fs.readFileSync(out, "utf8");
+      const html = fs.readFileSync(out, 'utf8');
       assert.doesNotMatch(html, /<p class="footer">/, `${type}: footer element`);
       assert.doesNotMatch(html, /Built with Archify/, `${type}: product signature`);
       assert.doesNotMatch(html, /Create yours/, `${type}: promotional CTA`);
@@ -117,50 +101,51 @@ test("generated artifacts omit the promotional footer and shortcut manual", () =
   }
 });
 
-test("viewer gives wide screens a larger canvas without forcing a subtitle row", () => {
-  const template = fs.readFileSync(path.join(skillRoot, "assets", "template.html"), "utf8");
+test('viewer gives wide screens a larger canvas without forcing a subtitle row', () => {
+  const template = fs.readFileSync(path.join(skillRoot, 'assets', 'template.html'), 'utf8');
   assert.match(template, /max-width: var\(--archify-reader-width, 1440px\)/);
   assert.match(template, /Archify\.readerLayout = \(function \(\)/);
 
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "archify-title-hierarchy-"));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'archify-title-hierarchy-'));
   try {
-    const input = JSON.parse(
-      fs.readFileSync(path.join(skillRoot, "examples", "web-app.architecture.json"), "utf8"),
-    );
+    const input = JSON.parse(fs.readFileSync(
+      path.join(skillRoot, 'examples', 'web-app.architecture.json'),
+      'utf8',
+    ));
     delete input.meta.subtitle;
-    const source = path.join(tmp, "without-subtitle.architecture.json");
-    const output = path.join(tmp, "without-subtitle.html");
+    const source = path.join(tmp, 'without-subtitle.architecture.json');
+    const output = path.join(tmp, 'without-subtitle.html');
     fs.writeFileSync(source, `${JSON.stringify(input, null, 2)}\n`);
     execFileSync(process.execPath, [
-      path.join(skillRoot, "renderers", "architecture", "render-architecture.mjs"),
+      path.join(skillRoot, 'renderers', 'architecture', 'render-architecture.mjs'),
       source,
       output,
     ]);
-    assert.doesNotMatch(fs.readFileSync(output, "utf8"), /class="subtitle"/);
+    assert.doesNotMatch(fs.readFileSync(output, 'utf8'), /class="subtitle"/);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
 
-test("artifact-to-install measurement plan separates observable funnel steps from first-diagram success", () => {
+test('artifact-to-install measurement plan separates observable funnel steps from first-diagram success', () => {
   const plan = fs.readFileSync(
-    path.join(repoRoot, "docs/artifact-install-v2-measurement.md"),
-    "utf8",
+    path.join(repoRoot, 'docs/artifact-install-v2-measurement.md'),
+    'utf8',
   );
 
   for (const required of [
-    "start_view",
-    "starter_copy",
-    "global_install_copy",
-    "project_install_copy",
-    "prompt_copy",
-    "proof_open",
-    "starter_copy / start_view",
-    "First-diagram success is not observable from this static page",
-    "No network request",
-    "source=artifact",
-    "source=gallery",
+    'start_view',
+    'starter_copy',
+    'global_install_copy',
+    'project_install_copy',
+    'prompt_copy',
+    'proof_open',
+    'starter_copy / start_view',
+    'First-diagram success is not observable from this static page',
+    'No network request',
+    'source=artifact',
+    'source=gallery',
   ]) {
-    assert.match(plan, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), required);
+    assert.match(plan, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), required);
   }
 });

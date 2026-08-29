@@ -1,19 +1,19 @@
-import { test } from "node:test";
-import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(__dirname, "..", "..");
+const repoRoot = path.resolve(__dirname, '..', '..');
 
 function workflowStep(workflow, name) {
   const marker = `      - name: ${name}`;
   const start = workflow.indexOf(marker);
   assert.notEqual(start, -1, `workflow is missing the "${name}" step`);
-  const next = workflow.indexOf("\n      - ", start + marker.length);
+  const next = workflow.indexOf('\n      - ', start + marker.length);
   return workflow.slice(start, next === -1 ? workflow.length : next);
 }
 
@@ -25,36 +25,18 @@ function workflowJob(workflow, name) {
   return workflow.slice(start, next === -1 ? workflow.length : start + marker.length + next);
 }
 
-test("release smokes the exact archive built for the release before freshness and upload", () => {
-  const workflow = fs.readFileSync(
-    path.join(repoRoot, ".github", "workflows", "release.yml"),
-    "utf8",
-  );
-  const tagGate = workflowStep(workflow, "Tag must match package.json version");
-  const build = workflowStep(workflow, "Build skill archive");
-  const smoke = workflowStep(
-    workflow,
-    "Validate the exact release archive without installing dependencies",
-  );
-  const freshness = workflowStep(workflow, "Committed zip must match the build (same gate as CI)");
-  const upload = workflowStep(workflow, "Create GitHub Release with the zip attached");
+test('release smokes the exact archive built for the release before freshness and upload', () => {
+  const workflow = fs.readFileSync(path.join(repoRoot, '.github', 'workflows', 'release.yml'), 'utf8');
+  const tagGate = workflowStep(workflow, 'Tag must match package.json version');
+  const build = workflowStep(workflow, 'Build skill archive');
+  const smoke = workflowStep(workflow, 'Validate the exact release archive without installing dependencies');
+  const freshness = workflowStep(workflow, 'Committed zip must match the build (same gate as CI)');
+  const upload = workflowStep(workflow, 'Create GitHub Release with the zip attached');
 
-  assert.ok(
-    workflow.indexOf(tagGate) < workflow.indexOf(build),
-    "tag/version gate must precede the release build",
-  );
-  assert.ok(
-    workflow.indexOf(build) < workflow.indexOf(smoke),
-    "release smoke must follow the archive build",
-  );
-  assert.ok(
-    workflow.indexOf(smoke) < workflow.indexOf(freshness),
-    "release smoke must inspect the built archive before it is restored",
-  );
-  assert.ok(
-    workflow.indexOf(freshness) < workflow.indexOf(upload),
-    "freshness must pass before release upload",
-  );
+  assert.ok(workflow.indexOf(tagGate) < workflow.indexOf(build), 'tag/version gate must precede the release build');
+  assert.ok(workflow.indexOf(build) < workflow.indexOf(smoke), 'release smoke must follow the archive build');
+  assert.ok(workflow.indexOf(smoke) < workflow.indexOf(freshness), 'release smoke must inspect the built archive before it is restored');
+  assert.ok(workflow.indexOf(freshness) < workflow.indexOf(upload), 'freshness must pass before release upload');
 
   assert.match(tagGate, /require\('\.\/archify\/package\.json'\)\.version/);
   assert.match(tagGate, /GITHUB_REF_NAME#v/);
@@ -67,18 +49,12 @@ test("release smokes the exact archive built for the release before freshness an
   assert.match(upload, /files: archify\.zip/);
 });
 
-test("release tags with a SemVer prerelease are marked prerelease and never become latest", () => {
-  const workflow = fs.readFileSync(
-    path.join(repoRoot, ".github", "workflows", "release.yml"),
-    "utf8",
-  );
-  const classifier = workflowStep(workflow, "Classify stable and prerelease tags");
-  const upload = workflowStep(workflow, "Create GitHub Release with the zip attached");
+test('release tags with a SemVer prerelease are marked prerelease and never become latest', () => {
+  const workflow = fs.readFileSync(path.join(repoRoot, '.github', 'workflows', 'release.yml'), 'utf8');
+  const classifier = workflowStep(workflow, 'Classify stable and prerelease tags');
+  const upload = workflowStep(workflow, 'Create GitHub Release with the zip attached');
 
-  assert.ok(
-    workflow.indexOf(classifier) < workflow.indexOf(upload),
-    "release kind must be known before upload",
-  );
+  assert.ok(workflow.indexOf(classifier) < workflow.indexOf(upload), 'release kind must be known before upload');
   assert.match(classifier, /version="\$\{GITHUB_REF_NAME#v\}"/);
   assert.match(classifier, /if \[\[ "\$version" == \*-\* \]\]/);
   assert.match(classifier, /echo "prerelease=true" >> "\$GITHUB_OUTPUT"/);
@@ -89,36 +65,34 @@ test("release tags with a SemVer prerelease are marked prerelease and never beco
   assert.match(upload, /make_latest: \$\{\{ steps\.release-kind\.outputs\.make_latest \}\}/);
 });
 
-test("package smoke rejects every dependency or repository-only artifact", () => {
-  const packageSmoke = path.join(repoRoot, "scripts", "package-smoke.mjs");
+test('package smoke rejects every dependency or repository-only artifact', () => {
+  const packageSmoke = path.join(repoRoot, 'scripts', 'package-smoke.mjs');
   const forbidden = [
-    { relative: "node_modules", kind: "directory" },
-    { relative: "package-lock.json", kind: "file" },
-    { relative: path.join("scripts", "generate-validators.mjs"), kind: "file" },
-    { relative: "test", kind: "directory" },
-    { relative: ".hive", kind: "directory" },
-    { relative: ".workbuddy", kind: "directory" },
+    { relative: 'node_modules', kind: 'directory' },
+    { relative: 'package-lock.json', kind: 'file' },
+    { relative: path.join('scripts', 'generate-validators.mjs'), kind: 'file' },
+    { relative: 'test', kind: 'directory' },
+    { relative: '.hive', kind: 'directory' },
+    { relative: '.workbuddy', kind: 'directory' },
   ];
 
   for (const { relative, kind } of forbidden) {
-    const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "archify-package-gate-"));
+    const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'archify-package-gate-'));
     try {
-      fs.mkdirSync(path.join(fixture, "bin"), { recursive: true });
-      fs.writeFileSync(path.join(fixture, "bin", "archify.mjs"), "");
+      fs.mkdirSync(path.join(fixture, 'bin'), { recursive: true });
+      fs.writeFileSync(path.join(fixture, 'bin', 'archify.mjs'), '');
       const target = path.join(fixture, relative);
-      if (kind === "directory") fs.mkdirSync(target, { recursive: true });
+      if (kind === 'directory') fs.mkdirSync(target, { recursive: true });
       else {
         fs.mkdirSync(path.dirname(target), { recursive: true });
-        fs.writeFileSync(target, "");
+        fs.writeFileSync(target, '');
       }
 
-      const result = spawnSync(process.execPath, [packageSmoke, fixture], { encoding: "utf8" });
+      const result = spawnSync(process.execPath, [packageSmoke, fixture], { encoding: 'utf8' });
       assert.notEqual(result.status, 0, `${relative} must fail package smoke`);
       assert.match(
         `${result.stdout}\n${result.stderr}`,
-        new RegExp(
-          `packaged skill must not contain ${relative.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
-        ),
+        new RegExp(`packaged skill must not contain ${relative.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
         `${relative} must be rejected explicitly`,
       );
     } finally {
@@ -127,74 +101,64 @@ test("package smoke rejects every dependency or repository-only artifact", () =>
   }
 });
 
-test("package smoke rejects every dependency metadata field in a built package", () => {
-  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "archify-built-package-gate-"));
+test('package smoke rejects every dependency metadata field in a built package', () => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'archify-built-package-gate-'));
   try {
-    const archive = path.join(fixture, "archify.zip");
-    const build = spawnSync(path.join(repoRoot, "scripts", "build-zip.sh"), [archive], {
+    const archive = path.join(fixture, 'archify.zip');
+    const build = spawnSync(path.join(repoRoot, 'scripts', 'build-zip.sh'), [archive], {
       cwd: repoRoot,
-      encoding: "utf8",
+      encoding: 'utf8',
     });
     assert.equal(build.status, 0, `${build.stdout}\n${build.stderr}`);
 
-    const extracted = path.join(fixture, "extracted");
+    const extracted = path.join(fixture, 'extracted');
     fs.mkdirSync(extracted);
-    const unzip = spawnSync("unzip", ["-q", archive, "-d", extracted], { encoding: "utf8" });
+    const unzip = spawnSync('unzip', ['-q', archive, '-d', extracted], { encoding: 'utf8' });
     assert.equal(unzip.status, 0, `${unzip.stdout}\n${unzip.stderr}`);
-    const builtPackage = path.join(extracted, "archify");
+    const builtPackage = path.join(extracted, 'archify');
     const dependencyFields = {
-      dependencies: { runtime: "1.0.0" },
-      devDependencies: { build: "1.0.0" },
-      optionalDependencies: { optional: "1.0.0" },
-      peerDependencies: { peer: "1.0.0" },
-      bundledDependencies: ["bundled"],
-      bundleDependencies: ["bundle-alias"],
+      dependencies: { runtime: '1.0.0' },
+      devDependencies: { build: '1.0.0' },
+      optionalDependencies: { optional: '1.0.0' },
+      peerDependencies: { peer: '1.0.0' },
+      bundledDependencies: ['bundled'],
+      bundleDependencies: ['bundle-alias'],
     };
 
     for (const [field, value] of Object.entries(dependencyFields)) {
       const caseRoot = path.join(fixture, field);
       fs.cpSync(builtPackage, caseRoot, { recursive: true });
-      const packagePath = path.join(caseRoot, "package.json");
-      const packageJson = JSON.parse(fs.readFileSync(packagePath, "utf8"));
+      const packagePath = path.join(caseRoot, 'package.json');
+      const packageJson = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
       packageJson[field] = value;
       fs.writeFileSync(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
 
-      const result = spawnSync(
-        process.execPath,
-        [path.join(repoRoot, "scripts", "package-smoke.mjs"), caseRoot],
-        {
-          encoding: "utf8",
-        },
-      );
+      const result = spawnSync(process.execPath, [path.join(repoRoot, 'scripts', 'package-smoke.mjs'), caseRoot], {
+        encoding: 'utf8',
+      });
       assert.notEqual(result.status, 0, `${field} must fail package smoke`);
-      assert.match(
-        `${result.stdout}\n${result.stderr}`,
-        new RegExp(`dependency metadata: ${field}\\b`),
-      );
+      assert.match(`${result.stdout}\n${result.stderr}`, new RegExp(`dependency metadata: ${field}\\b`));
     }
   } finally {
     fs.rmSync(fixture, { recursive: true, force: true });
   }
 });
 
-test("CI tests the declared Node floor plus every maintained current lane", () => {
-  const packageJson = JSON.parse(
-    fs.readFileSync(path.join(repoRoot, "archify", "package.json"), "utf8"),
-  );
-  assert.equal(packageJson.engines?.node, ">=18");
+test('CI tests the declared Node floor plus every maintained current lane', () => {
+  const packageJson = JSON.parse(fs.readFileSync(path.join(repoRoot, 'archify', 'package.json'), 'utf8'));
+  assert.equal(packageJson.engines?.node, '>=18');
 
-  const workflow = fs.readFileSync(path.join(repoRoot, ".github", "workflows", "ci.yml"), "utf8");
-  const testJob = workflowJob(workflow, "test");
-  const versions = testJob
-    .match(/node-version:\s*\[([^\]]+)\]/)?.[1]
-    .split(",")
+  const workflow = fs.readFileSync(path.join(repoRoot, '.github', 'workflows', 'ci.yml'), 'utf8');
+  const testJob = workflowJob(workflow, 'test');
+  const versions = testJob.match(/node-version:\s*\[([^\]]+)\]/)?.[1]
+    .split(',')
     .map((version) => Number(version.trim()));
-  assert.ok(versions, "test job must declare an explicit Node version matrix");
+  assert.ok(versions, 'test job must declare an explicit Node version matrix');
   for (const version of [18, 20, 22, 24]) {
     assert.ok(versions.includes(version), `test matrix must cover Node ${version}`);
   }
 
-  const packageSmokeJob = workflowJob(workflow, "package-smoke");
+  const packageSmokeJob = workflowJob(workflow, 'package-smoke');
   assert.match(packageSmokeJob, /os:\s*\[ubuntu-latest, macos-latest, windows-latest\]/);
   assert.match(packageSmokeJob, /node-version:\s*22/);
 });
