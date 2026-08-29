@@ -239,6 +239,7 @@ test("staging a partial collection never mutates existing listing activity or pr
   const history = sqlite.prepare("SELECT COUNT(*) AS count FROM price_history").get() as {
     count: number;
   };
-  assert.deepEqual(listing, { is_active: 1, price_yen: 100000 });
+  assert.equal(listing.is_active, 1);
+  assert.equal(listing.price_yen, 100000);
   assert.equal(history.count, 1);
 });
