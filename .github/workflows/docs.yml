@@ -47,6 +47,8 @@ jobs:
           test -f docs/.vitepress/dist/generated/dependencies.html
           test -f docs/.vitepress/dist/generated/openapi.json
           test -f docs/.vitepress/dist/generated/openapi.html
+          test -f docs/.vitepress/dist/generated/ai-architecture.html
+          test -f docs/.vitepress/dist/ai-generated/architecture-overview.html
           test -f docs/.vitepress/dist/reference/api/index.html
           grep -q '^flowchart ' docs/.vitepress/dist/generated/architecture.mmd
           python - <<'PY'
@@ -75,6 +77,10 @@ jobs:
               (
                   Path("docs/.vitepress/dist/architecture/dependencies.html"),
                   "../generated/dependencies.html",
+              ),
+              (
+                  Path("docs/.vitepress/dist/ai-generated/architecture-overview.html"),
+                  "../generated/ai-architecture.html",
               ),
               (
                   Path("docs/.vitepress/dist/reference/http-api.html"),
