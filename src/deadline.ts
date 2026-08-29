@@ -104,7 +104,19 @@ export function createInvocationDeadline(
 
       let timer: ReturnType<typeof setTimeout> | undefined;
       const expiry = new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => reject(exceeded(label)), remaining);
+        const arm = (): void => {
+          const waitMs = remainingMs();
+          if (waitMs <= 0) {
+            reject(exceeded(label));
+            return;
+          }
+          // setTimeout may fire just before Date.now() reaches the requested wall-clock boundary
+          // because the scheduler and wall clock have different resolution. Re-check the actual
+          // deadline when it fires and, if necessary, wait only the small remainder. This keeps the
+          // invariant that a DeadlineExceededError is emitted only after expired() becomes true.
+          timer = setTimeout(arm, waitMs);
+        };
+        arm();
       });
       try {
         // The operation is invoked inside the race so a synchronous throw arrives as a rejection
