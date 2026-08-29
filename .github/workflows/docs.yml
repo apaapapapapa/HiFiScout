@@ -42,10 +42,13 @@ jobs:
       - name: Validate generated report links
         run: |
           test -f docs/.vitepress/dist/db/index.html
+          test -f docs/.vitepress/dist/generated/architecture.html
+          test -f docs/.vitepress/dist/generated/architecture.mmd
           test -f docs/.vitepress/dist/generated/dependencies.html
           test -f docs/.vitepress/dist/generated/openapi.json
           test -f docs/.vitepress/dist/generated/openapi.html
           test -f docs/.vitepress/dist/reference/api/index.html
+          grep -q '^flowchart ' docs/.vitepress/dist/generated/architecture.mmd
           python - <<'PY'
           from html.parser import HTMLParser
           from pathlib import Path
@@ -61,6 +64,14 @@ jobs:
 
           cases = [
               (Path("docs/.vitepress/dist/database/index.html"), "../db/index.html"),
+              (
+                  Path("docs/.vitepress/dist/architecture/dependencies.html"),
+                  "../generated/architecture.html",
+              ),
+              (
+                  Path("docs/.vitepress/dist/architecture/dependencies.html"),
+                  "../generated/architecture.mmd",
+              ),
               (
                   Path("docs/.vitepress/dist/architecture/dependencies.html"),
                   "../generated/dependencies.html",
