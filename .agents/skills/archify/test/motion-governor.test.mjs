@@ -1,82 +1,65 @@
-import { test } from "node:test";
-import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const skillRoot = path.resolve(__dirname, "..");
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "archify-motion-governor-"));
+const skillRoot = path.resolve(__dirname, '..');
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'archify-motion-governor-'));
 
 const CASES = {
-  architecture: "web-app.architecture.json",
-  workflow: "agent-tool-call.workflow.json",
-  sequence: "cache-miss-request.sequence.json",
-  dataflow: "product-analytics.dataflow.json",
-  lifecycle: "agent-run.lifecycle.json",
+  architecture: 'web-app.architecture.json',
+  workflow: 'agent-tool-call.workflow.json',
+  sequence: 'cache-miss-request.sequence.json',
+  dataflow: 'product-analytics.dataflow.json',
+  lifecycle: 'agent-run.lifecycle.json',
 };
 
-function render(mode, example, animation = "trace") {
-  const doc = JSON.parse(fs.readFileSync(path.join(skillRoot, "examples", example), "utf8"));
+function render(mode, example, animation = 'trace') {
+  const doc = JSON.parse(fs.readFileSync(path.join(skillRoot, 'examples', example), 'utf8'));
   doc.meta = { ...doc.meta };
   if (animation) doc.meta.animation = animation;
   else delete doc.meta.animation;
-  const input = path.join(tmp, `${mode}-${animation || "static"}.json`);
-  const output = path.join(tmp, `${mode}-${animation || "static"}.html`);
+  const input = path.join(tmp, `${mode}-${animation || 'static'}.json`);
+  const output = path.join(tmp, `${mode}-${animation || 'static'}.html`);
   fs.writeFileSync(input, JSON.stringify(doc));
-  execFileSync(
-    "node",
-    [path.join(skillRoot, `renderers/${mode}/render-${mode}.mjs`), input, output],
-    {
-      stdio: ["ignore", "ignore", "pipe"],
-    },
-  );
-  return fs.readFileSync(output, "utf8");
+  execFileSync('node', [path.join(skillRoot, `renderers/${mode}/render-${mode}.mjs`), input, output], {
+    stdio: ['ignore', 'ignore', 'pipe'],
+  });
+  return fs.readFileSync(output, 'utf8');
 }
 
 function svgBlock(html) {
-  return html.match(/<svg\b[\s\S]*?<\/svg>/)?.[0] || "";
+  return html.match(/<svg\b[\s\S]*?<\/svg>/)?.[0] || '';
 }
 
-test("all renderers inherit one viewer-only Live/Still Motion Governor", () => {
+test('all renderers inherit one viewer-only Live/Still Motion Governor', () => {
   for (const [mode, example] of Object.entries(CASES)) {
     const html = render(mode, example);
     assert.match(html, /id="btn-motion"[^>]+hidden[^>]+aria-label="Pause motion"/, mode);
     assert.match(html, /Archify\.motionGovernor = \(function \(\)/, mode);
-    assert.match(
-      html,
-      /var capable = !!\(svg && svg\.getAttribute\('data-animation'\) === 'trace'\)/,
-      mode,
-    );
+    assert.match(html, /var capable = !!\(svg && svg\.getAttribute\('data-animation'\) === 'trace'\)/, mode);
     assert.match(svgBlock(html), /data-animation="trace"/, mode);
     assert.doesNotMatch(svgBlock(html), /data-motion-(?:capable|owner)|motion-control/, mode);
   }
 });
 
-test("static artifacts stay truly still while trace artifacts opt into ambient motion", () => {
-  const html = render("architecture", CASES.architecture, null);
+test('static artifacts stay truly still while trace artifacts opt into ambient motion', () => {
+  const html = render('architecture', CASES.architecture, null);
   const svg = svgBlock(html);
   assert.doesNotMatch(svg, /data-animation=/);
   assert.match(html, /\.pulse-dot \{[\s\S]*?animation: none;/);
-  assert.match(
-    html,
-    /html\[data-motion-capable="true"\] \.pulse-dot \{ animation: pulse 2s infinite; \}/,
-  );
-  assert.match(
-    html,
-    /html\[data-motion-capable="true"\]\[data-preset="signal-flow"\]\[data-ambient-motion="running"\] \.diagram-container::before/,
-  );
+  assert.match(html, /html\[data-motion-capable="true"\] \.pulse-dot \{ animation: pulse 2s infinite; \}/);
+  assert.match(html, /html\[data-motion-capable="true"\]\[data-preset="signal-flow"\]\[data-ambient-motion="running"\] \.diagram-container::before/);
   assert.match(html, /if \(!capable\) \{[\s\S]*?btn\.hidden = true;[\s\S]*?capable: false/);
-  assert.match(
-    html,
-    /html\.setAttribute\('data-motion-capable', 'true'\);[\s\S]*?btn\.hidden = false/,
-  );
+  assert.match(html, /html\.setAttribute\('data-motion-capable', 'true'\);[\s\S]*?btn\.hidden = false/);
 });
 
-test("reader pause is persistent, explicit, and reduced-motion aware", () => {
-  const html = render("workflow", CASES.workflow);
+test('reader pause is persistent, explicit, and reduced-motion aware', () => {
+  const html = render('workflow', CASES.workflow);
   assert.match(html, /var STORAGE_KEY = 'archify-motion'/);
   assert.match(html, /localStorage\.setItem\(STORAGE_KEY, 'still'\)/);
   assert.match(html, /localStorage\.removeItem\(STORAGE_KEY\)/);
@@ -92,12 +75,9 @@ test("reader pause is persistent, explicit, and reduced-motion aware", () => {
   assert.match(html, /html\[data-motion="still"\] \.story-trail-flow/);
 });
 
-test("strong semantic intent receives the single motion budget", () => {
-  const html = render("workflow", CASES.workflow);
-  assert.match(
-    html,
-    /if \(svg\.hasAttribute\('data-story-playing'\) \|\| svg\.hasAttribute\('data-story-follow'\)\) return 'story'/,
-  );
+test('strong semantic intent receives the single motion budget', () => {
+  const html = render('workflow', CASES.workflow);
+  assert.match(html, /if \(svg\.hasAttribute\('data-story-playing'\) \|\| svg\.hasAttribute\('data-story-follow'\)\) return 'story'/);
   assert.match(html, /if \(svg\.hasAttribute\('data-story-active'\)\) return 'chapter'/);
   assert.match(html, /data-route-picking'[\s\S]*?return 'route'/);
   assert.match(html, /data-lens-active'\)\) return 'lens'/);
@@ -115,23 +95,17 @@ test("strong semantic intent receives the single motion budget", () => {
   assert.doesNotMatch(html, /archify-route-probe-flow[^;]*infinite/);
 });
 
-test("motion control is mobile-contained, embed-safe, and export-neutral", () => {
-  const html = render("sequence", CASES.sequence);
+test('motion control is mobile-contained, embed-safe, and export-neutral', () => {
+  const html = render('sequence', CASES.sequence);
   assert.match(html, /\.toolbar #btn-motion\[hidden\] \{ display: none !important; \}/);
   assert.match(html, /\.toolbar button \{[\s\S]*?min-height: 2\.75rem;/);
-  assert.match(
-    html,
-    /@media \(max-width: 360px\) \{[\s\S]*?\.toolbar #btn-motion \{ min-width: 4\.4rem;/,
-  );
+  assert.match(html, /@media \(max-width: 360px\) \{[\s\S]*?\.toolbar #btn-motion \{ min-width: 4\.4rem;/);
   assert.match(html, /#theme-label, #preset-label, #present-label \{ display: none; \}/);
   assert.match(html, /html\[data-embed="true"\] \.diagram-container::before/);
   assert.match(html, /html\[data-share-playback="true"\] \.diagram-container::before/);
-  assert.match(
-    html,
-    /Still also parks bounded[\s\S]*?viewer signals without discarding their static meaning/,
-  );
+  assert.match(html, /Still also parks bounded[\s\S]*?viewer signals without discarding their static meaning/);
   assert.match(html, /recordExportReceipt\('svg', blob, d\.canonicalStateClean\)/);
   assert.doesNotMatch(svgBlock(html), /btn-motion|data-motion=|data-motion-owner/);
 });
 
-process.on("exit", () => fs.rmSync(tmp, { recursive: true, force: true }));
+process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }));

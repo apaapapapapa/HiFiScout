@@ -1,46 +1,34 @@
 #!/usr/bin/env node
 
-import fs from "node:fs";
-import path from "node:path";
-import {
-  collectAmbiguousCorridors,
-  collectBorderRuns,
-  collectLabelRouteClearance,
-  collectRouteRhythmIssues,
-  routeBudgetMetrics,
-} from "../renderers/shared/geometry.mjs";
+import fs from 'node:fs';
+import path from 'node:path';
+import { collectAmbiguousCorridors, collectBorderRuns, collectLabelRouteClearance, collectRouteRhythmIssues, routeBudgetMetrics } from '../renderers/shared/geometry.mjs';
 
 const input = process.argv[2];
 
-if (!input || input === "-h" || input === "--help") {
-  console.error("Usage: node scripts/check-render-output.mjs <diagram.html>");
+if (!input || input === '-h' || input === '--help') {
+  console.error('Usage: node scripts/check-render-output.mjs <diagram.html>');
   process.exit(input ? 0 : 2);
 }
 
 const htmlPath = path.resolve(input);
 let html;
 try {
-  html = fs.readFileSync(htmlPath, "utf8");
+  html = fs.readFileSync(htmlPath, 'utf8');
 } catch (err) {
-  console.error(
-    JSON.stringify(
-      {
-        ok: false,
-        file: htmlPath,
-        checks: [{ name: "file_readable", ok: false, details: [err.message] }],
-      },
-      null,
-      2,
-    ),
-  );
+  console.error(JSON.stringify({
+    ok: false,
+    file: htmlPath,
+    checks: [{ name: 'file_readable', ok: false, details: [err.message] }],
+  }, null, 2));
   process.exit(1);
 }
 
 const checks = [];
 let composition = {
   schemaVersion: 1,
-  profile: "standard",
-  status: "pass",
+  profile: 'standard',
+  status: 'pass',
   summary: { errors: 0, warnings: 0 },
   metrics: {
     properCrossings: 0,
@@ -68,28 +56,23 @@ function addCheck(name, ok, details = []) {
 }
 
 const svgMatches = [...html.matchAll(/<svg\b[\s\S]*?<\/svg>/gi)];
-addCheck("single_svg", svgMatches.length === 1, [`found ${svgMatches.length} <svg> block(s)`]);
+addCheck('single_svg', svgMatches.length === 1, [`found ${svgMatches.length} <svg> block(s)`]);
 
 if (svgMatches.length === 1) {
   const svg = svgMatches[0][0];
-  const svgRoot = svg.match(/<svg\b[^>]*>/i)?.[0] || "";
+  const svgRoot = svg.match(/<svg\b[^>]*>/i)?.[0] || '';
   const svgAttrs = parseAttrs(svgRoot);
-  const qualityProfile = svgAttrs["data-quality-profile"] || "standard";
-  const qualityGatesEnforced = svgAttrs["data-quality-gates"] !== "advisory";
-  addCheck("finite_svg", !/\b(?:NaN|undefined|Infinity|-Infinity)\b/.test(svg));
-  const legendStart = svg.indexOf("<!-- Legend -->");
+  const qualityProfile = svgAttrs['data-quality-profile'] || 'standard';
+  const qualityGatesEnforced = svgAttrs['data-quality-gates'] !== 'advisory';
+  addCheck('finite_svg', !/\b(?:NaN|undefined|Infinity|-Infinity)\b/.test(svg));
+  const legendStart = svg.indexOf('<!-- Legend -->');
   const beforeLegend = legendStart >= 0 ? svg.slice(0, legendStart) : svg;
   const arrows = collectArrows(beforeLegend);
-  const diagonal = arrows.flatMap((arrow) =>
-    diagonalStraightSegments(arrow).map((segment) => ({ arrow, ...segment })),
-  );
+  const diagonal = arrows.flatMap((arrow) => diagonalStraightSegments(arrow).map((segment) => ({ arrow, ...segment })));
   addCheck(
-    "orthogonal_arrows",
+    'orthogonal_arrows',
     diagonal.length === 0,
-    diagonal.map(
-      ({ arrow, segmentIndex }) =>
-        `${arrow.kind} ${arrow.index} segment ${segmentIndex + 1}: ${arrow.raw}`,
-    ),
+    diagonal.map(({ arrow, segmentIndex }) => `${arrow.kind} ${arrow.index} segment ${segmentIndex + 1}: ${arrow.raw}`),
   );
   const relationshipCrossings = collectRelationshipCrossings(arrows);
   const compositionFrames = collectCompositionFrames(beforeLegend);
@@ -110,45 +93,35 @@ if (svgMatches.length === 1) {
   const routeRhythmIssues = collectRouteRhythmIssues({ routedRelations: routedRelationships });
   const ambiguousCorridors = collectAmbiguousCorridors({ routedRelations: routedRelationships });
   const relationshipLabels = collectRelationshipLabelMasks(beforeLegend, arrows);
-  const labelClearanceThreshold = qualityProfile === "showcase" ? 4 : 2;
+  const labelClearanceThreshold = qualityProfile === 'showcase' ? 4 : 2;
   const labelRouteMeasurements = collectLabelRouteClearance({
     labels: relationshipLabels,
-    routedRelations: arrows.map((arrow) => ({
-      relation: arrow,
-      relationIndex: arrow.index,
-      points: arrow.routePoints,
-    })),
+    routedRelations: arrows.map((arrow) => ({ relation: arrow, relationIndex: arrow.index, points: arrow.routePoints })),
     threshold: Number.MAX_VALUE,
   });
   const labelRouteClearance = collectLabelRouteClearance({
     labels: relationshipLabels,
-    routedRelations: arrows.map((arrow) => ({
-      relation: arrow,
-      relationIndex: arrow.index,
-      points: arrow.routePoints,
-    })),
+    routedRelations: arrows.map((arrow) => ({ relation: arrow, relationIndex: arrow.index, points: arrow.routePoints })),
     threshold: labelClearanceThreshold,
   });
-  const crossingIsError = qualityProfile === "showcase";
-  const corridorIsError = qualityProfile === "showcase";
-  const rhythmIsError = qualityProfile === "showcase";
-  const labelClearanceIsError = qualityProfile === "showcase";
-  const compositionErrors =
-    (qualityGatesEnforced ? containerBorderRuns.length : 0) +
-    (crossingIsError ? relationshipCrossings.length : 0) +
-    (corridorIsError ? ambiguousCorridors.length : 0) +
-    (labelClearanceIsError ? labelRouteClearance.length : 0) +
-    (rhythmIsError ? routeRhythmIssues.length : 0);
-  const compositionWarnings =
-    (qualityGatesEnforced ? 0 : containerBorderRuns.length) +
-    (crossingIsError ? 0 : relationshipCrossings.length) +
-    (corridorIsError ? 0 : ambiguousCorridors.length) +
-    (labelClearanceIsError ? 0 : labelRouteClearance.length) +
-    (rhythmIsError ? 0 : routeRhythmIssues.length);
+  const crossingIsError = qualityProfile === 'showcase';
+  const corridorIsError = qualityProfile === 'showcase';
+  const rhythmIsError = qualityProfile === 'showcase';
+  const labelClearanceIsError = qualityProfile === 'showcase';
+  const compositionErrors = (qualityGatesEnforced ? containerBorderRuns.length : 0)
+    + (crossingIsError ? relationshipCrossings.length : 0)
+    + (corridorIsError ? ambiguousCorridors.length : 0)
+    + (labelClearanceIsError ? labelRouteClearance.length : 0)
+    + (rhythmIsError ? routeRhythmIssues.length : 0);
+  const compositionWarnings = (qualityGatesEnforced ? 0 : containerBorderRuns.length)
+    + (crossingIsError ? 0 : relationshipCrossings.length)
+    + (corridorIsError ? 0 : ambiguousCorridors.length)
+    + (labelClearanceIsError ? 0 : labelRouteClearance.length)
+    + (rhythmIsError ? 0 : routeRhythmIssues.length);
   composition = {
     schemaVersion: 1,
     profile: qualityProfile,
-    status: compositionErrors ? "fail" : "pass",
+    status: compositionErrors ? 'fail' : 'pass',
     summary: {
       errors: compositionErrors,
       warnings: compositionWarnings,
@@ -166,8 +139,8 @@ if (svgMatches.length === 1) {
     suggestedLimits: { bendsPerRelationship: 2, stretch: 1.35, segmentPx: 16, microSegmentPx: 8 },
     issues: [
       ...containerBorderRuns.map((hit) => ({
-        severity: qualityGatesEnforced ? "error" : "warning",
-        code: "composition/container-border-run",
+        severity: qualityGatesEnforced ? 'error' : 'warning',
+        code: 'composition/container-border-run',
         relationship: relationshipRecord(hit.relation),
         frame: frameRecord(hit.frame),
         side: hit.side,
@@ -177,9 +150,9 @@ if (svgMatches.length === 1) {
         to: hit.overlapEnd.map((value) => Math.round(value * 10) / 10),
       })),
       ...labelRouteClearance.map((hit) => ({
-        severity: labelClearanceIsError ? "error" : "warning",
-        code: "composition/label-route-clearance",
-        label: hit.label?.label || hit.labelRelation?.label || "",
+        severity: labelClearanceIsError ? 'error' : 'warning',
+        code: 'composition/label-route-clearance',
+        label: hit.label?.label || hit.labelRelation?.label || '',
         labelRelationship: relationshipRecord(hit.labelRelation),
         otherRelationship: relationshipRecord(hit.otherRelation),
         segmentIndex: hit.segmentIndex,
@@ -191,15 +164,15 @@ if (svgMatches.length === 1) {
         to: hit.end.map((value) => Math.round(value * 10) / 10),
       })),
       ...relationshipCrossings.map((hit) => ({
-        severity: crossingIsError ? "error" : "warning",
-        code: "composition/proper-crossing",
+        severity: crossingIsError ? 'error' : 'warning',
+        code: 'composition/proper-crossing',
         relationship: relationshipRecord(hit.left),
         otherRelationship: relationshipRecord(hit.right),
         point: hit.point.map((value) => Math.round(value * 10) / 10),
       })),
       ...ambiguousCorridors.map((hit) => ({
-        severity: corridorIsError ? "error" : "warning",
-        code: "composition/ambiguous-corridor",
+        severity: corridorIsError ? 'error' : 'warning',
+        code: 'composition/ambiguous-corridor',
         relationship: relationshipRecord(hit.left.relation),
         otherRelationship: relationshipRecord(hit.right.relation),
         segmentIndex: hit.leftSegment,
@@ -209,7 +182,7 @@ if (svgMatches.length === 1) {
         to: hit.overlapEnd.map((value) => Math.round(value * 10) / 10),
       })),
       ...routeRhythmIssues.map((hit) => ({
-        severity: rhythmIsError ? "error" : "warning",
+        severity: rhythmIsError ? 'error' : 'warning',
         code: hit.code,
         relationship: relationshipRecord(hit.relation),
         segmentIndex: hit.segmentIndex,
@@ -221,44 +194,39 @@ if (svgMatches.length === 1) {
     ],
   };
   addCheck(
-    "label_route_clearance",
+    'label_route_clearance',
     !labelClearanceIsError || labelRouteClearance.length === 0,
-    labelRouteClearance.map(
-      (hit) =>
-        `[composition/label-route-clearance] ${qualityProfile} label "${hit.label?.label || hit.labelRelation?.label || ""}" on ${relationshipName(hit.labelRelation)} is ${Math.round(hit.clearance * 10) / 10}px from ${relationshipName(hit.otherRelation)} segment ${hit.segmentIndex} [${formatPoint(hit.start)}] -> [${formatPoint(hit.end)}]${hit.intersectionLength > 0 ? ` with ${Math.round(hit.intersectionLength * 10) / 10}px hidden by the mask` : ""} (minimum ${hit.threshold}px) — use renderer-supported label controls (message y for sequence; otherwise labelAt, labelDx, labelDy, or labelSegment), or adjust the other relationship route/via/channel.`,
-    ),
+    labelRouteClearance.map((hit) => (
+      `[composition/label-route-clearance] ${qualityProfile} label "${hit.label?.label || hit.labelRelation?.label || ''}" on ${relationshipName(hit.labelRelation)} is ${Math.round(hit.clearance * 10) / 10}px from ${relationshipName(hit.otherRelation)} segment ${hit.segmentIndex} [${formatPoint(hit.start)}] -> [${formatPoint(hit.end)}]${hit.intersectionLength > 0 ? ` with ${Math.round(hit.intersectionLength * 10) / 10}px hidden by the mask` : ''} (minimum ${hit.threshold}px) — use renderer-supported label controls (message y for sequence; otherwise labelAt, labelDx, labelDy, or labelSegment), or adjust the other relationship route/via/channel.`
+    )),
   );
   addCheck(
-    "relationship_crossings",
+    'relationship_crossings',
     !crossingIsError || relationshipCrossings.length === 0,
-    relationshipCrossings.map(
-      (hit) =>
-        `[composition/proper-crossing] ${qualityProfile} ${relationshipName(hit.left)} crosses ${relationshipName(hit.right)} at [${formatPoint(hit.point)}]`,
-    ),
+    relationshipCrossings.map((hit) => (
+      `[composition/proper-crossing] ${qualityProfile} ${relationshipName(hit.left)} crosses ${relationshipName(hit.right)} at [${formatPoint(hit.point)}]`
+    )),
   );
   addCheck(
-    "relationship_corridors",
+    'relationship_corridors',
     !corridorIsError || ambiguousCorridors.length === 0,
-    ambiguousCorridors.map(
-      (hit) =>
-        `[composition/ambiguous-corridor] ${qualityProfile} ${relationshipName(hit.left.relation)} shares a ${Math.round(hit.overlapLength * 10) / 10}px corridor with ${relationshipName(hit.right.relation)} at [${formatPoint(hit.overlapStart)}] -> [${formatPoint(hit.overlapEnd)}]`,
-    ),
+    ambiguousCorridors.map((hit) => (
+      `[composition/ambiguous-corridor] ${qualityProfile} ${relationshipName(hit.left.relation)} shares a ${Math.round(hit.overlapLength * 10) / 10}px corridor with ${relationshipName(hit.right.relation)} at [${formatPoint(hit.overlapStart)}] -> [${formatPoint(hit.overlapEnd)}]`
+    )),
   );
   addCheck(
-    "container_border_runs",
+    'container_border_runs',
     !qualityGatesEnforced || containerBorderRuns.length === 0,
-    containerBorderRuns.map(
-      (hit) =>
-        `[composition/container-border-run] ${relationshipName(hit.relation)} follows ${frameName(hit.frame)} ${hit.side} border for ${Math.round(hit.overlapLength * 10) / 10}px on segment ${hit.segmentIndex} [${formatPoint(hit.overlapStart)}] -> [${formatPoint(hit.overlapEnd)}]`,
-    ),
+    containerBorderRuns.map((hit) => (
+      `[composition/container-border-run] ${relationshipName(hit.relation)} follows ${frameName(hit.frame)} ${hit.side} border for ${Math.round(hit.overlapLength * 10) / 10}px on segment ${hit.segmentIndex} [${formatPoint(hit.overlapStart)}] -> [${formatPoint(hit.overlapEnd)}]`
+    )),
   );
   addCheck(
-    "route_rhythm",
+    'route_rhythm',
     !rhythmIsError || routeRhythmIssues.length === 0,
-    routeRhythmIssues.map(
-      (hit) =>
-        `[${hit.code}] ${qualityProfile} ${relationshipName(hit.relation)} has a ${Math.round(hit.length * 10) / 10}px ${hit.position} segment ${hit.segmentIndex} [${formatPoint(hit.start)}] -> [${formatPoint(hit.end)}]`,
-    ),
+    routeRhythmIssues.map((hit) => (
+      `[${hit.code}] ${qualityProfile} ${relationshipName(hit.relation)} has a ${Math.round(hit.length * 10) / 10}px ${hit.position} segment ${hit.segmentIndex} [${formatPoint(hit.start)}] -> [${formatPoint(hit.end)}]`
+    )),
   );
 
   if (legendStart >= 0) {
@@ -266,18 +234,16 @@ if (svgMatches.length === 1) {
     const legendBoxes = collectLegendBoxes(legendFragment);
     const collisions = collectLegendCollisions(arrows, legendBoxes);
     addCheck(
-      "legend_clearance",
+      'legend_clearance',
       collisions.length === 0,
-      collisions.map(
-        (hit) => `${hit.arrow.kind} ${hit.arrow.index} crosses legend ${hit.box.label}`,
-      ),
+      collisions.map((hit) => `${hit.arrow.kind} ${hit.arrow.index} crosses legend ${hit.box.label}`),
     );
   } else {
-    addCheck("legend_clearance", true, ["no legend marker found"]);
+    addCheck('legend_clearance', true, ['no legend marker found']);
   }
 }
 
-const ok = checks.every((check) => check.ok) && composition.status !== "fail";
+const ok = checks.every((check) => check.ok) && composition.status !== 'fail';
 console.log(JSON.stringify({ ok, file: htmlPath, checks, composition }, null, 2));
 process.exit(ok ? 0 : 1);
 
@@ -290,26 +256,26 @@ function collectArrows(fragment) {
     if (!/\bclass="[^"]*\ba-(?:default|emphasis|security|dashed)\b/.test(raw)) continue;
     if (!/\bmarker-end=/.test(raw)) continue;
     const attrs = parseAttrs(raw);
-    const segments =
-      tag[1].toLowerCase() === "line" ? lineSegments(attrs) : pathSegments(attrs.d || "");
-    const borderSegments =
-      tag[1].toLowerCase() === "line" ? segments : straightPathSegments(attrs.d || "");
+    const segments = tag[1].toLowerCase() === 'line'
+      ? lineSegments(attrs)
+      : pathSegments(attrs.d || '');
+    const borderSegments = tag[1].toLowerCase() === 'line'
+      ? segments
+      : straightPathSegments(attrs.d || '');
     arrows.push({
       kind: tag[1].toLowerCase(),
-      index: (index += 1),
+      index: index += 1,
       raw,
       segments,
       borderSegments,
-      routePoints:
-        parseRoutePoints(attrs["data-composition-points"]) ||
-        (borderSegments.length
-          ? [borderSegments[0].start, ...borderSegments.map((segment) => segment.end)]
-          : []),
-      from: attrs["data-edge-from"] || attrs["data-composition-edge-from"],
-      to: attrs["data-edge-to"] || attrs["data-composition-edge-to"],
-      id: attrs["data-edge-id"] || attrs["data-composition-edge-id"],
-      key: attrs["data-edge-key"],
-      label: attrs["data-edge-label"],
+      routePoints: parseRoutePoints(attrs['data-composition-points']) || (
+        borderSegments.length ? [borderSegments[0].start, ...borderSegments.map((segment) => segment.end)] : []
+      ),
+      from: attrs['data-edge-from'] || attrs['data-composition-edge-from'],
+      to: attrs['data-edge-to'] || attrs['data-composition-edge-to'],
+      id: attrs['data-edge-id'] || attrs['data-composition-edge-id'],
+      key: attrs['data-edge-key'],
+      label: attrs['data-edge-label'],
       offset: tag.index,
     });
   }
@@ -319,54 +285,45 @@ function collectArrows(fragment) {
 
 function collectRelationshipLabelMasks(fragment, arrows) {
   const labels = [];
-  for (const match of fragment.matchAll(
-    /<g\b[^>]*\bdata-edge-(?:key|id|from)="[^"]*"[^>]*>[\s\S]*?<\/g>/gi,
-  )) {
+  for (const match of fragment.matchAll(/<g\b[^>]*\bdata-edge-(?:key|id|from)="[^"]*"[^>]*>[\s\S]*?<\/g>/gi)) {
     const group = match[0];
-    const groupAttrs = parseAttrs(group.match(/<g\b[^>]*>/i)?.[0] || "");
+    const groupAttrs = parseAttrs(group.match(/<g\b[^>]*>/i)?.[0] || '');
     const rectTag = [...group.matchAll(/<rect\b[^>]*>/gi)]
       .map((item) => item[0])
       .find((tag) => /\bclass="[^"]*\bc-mask\b/.test(tag));
     if (!rectTag) continue;
     const attrs = parseAttrs(rectTag);
     const rect = {
-      x: numberAttr(attrs, "x"),
-      y: numberAttr(attrs, "y"),
-      width: numberAttr(attrs, "width"),
-      height: numberAttr(attrs, "height"),
+      x: numberAttr(attrs, 'x'),
+      y: numberAttr(attrs, 'y'),
+      width: numberAttr(attrs, 'width'),
+      height: numberAttr(attrs, 'height'),
     };
     if (![rect.x, rect.y, rect.width, rect.height].every(Number.isFinite)) continue;
     const groupStart = match.index;
     const groupEnd = groupStart + group.length;
-    const containedOwner = arrows.find(
-      (arrow) =>
-        arrow.offset > groupStart &&
-        arrow.offset < groupEnd &&
-        arrow.from === groupAttrs["data-edge-from"] &&
-        arrow.to === groupAttrs["data-edge-to"] &&
-        (!groupAttrs["data-edge-id"] || !arrow.id || arrow.id === groupAttrs["data-edge-id"]),
-    );
-    const owner =
-      arrows.find(
-        (arrow) =>
-          groupAttrs["data-edge-key"] !== undefined && arrow.key === groupAttrs["data-edge-key"],
-      ) ||
-      containedOwner ||
-      arrows.find(
-        (arrow) =>
-          arrow.id === groupAttrs["data-edge-id"] &&
-          arrow.from === groupAttrs["data-edge-from"] &&
-          arrow.to === groupAttrs["data-edge-to"],
-      );
+    const containedOwner = arrows.find((arrow) => (
+      arrow.offset > groupStart
+      && arrow.offset < groupEnd
+      && arrow.from === groupAttrs['data-edge-from']
+      && arrow.to === groupAttrs['data-edge-to']
+      && (!groupAttrs['data-edge-id'] || !arrow.id || arrow.id === groupAttrs['data-edge-id'])
+    ));
+    const owner = arrows.find((arrow) => (
+      groupAttrs['data-edge-key'] !== undefined && arrow.key === groupAttrs['data-edge-key']
+    )) || containedOwner || arrows.find((arrow) => (
+      arrow.id === groupAttrs['data-edge-id']
+      && arrow.from === groupAttrs['data-edge-from']
+      && arrow.to === groupAttrs['data-edge-to']
+    ));
     if (!owner) continue;
-    if (owner.key === undefined && groupAttrs["data-edge-key"] !== undefined)
-      owner.key = groupAttrs["data-edge-key"];
-    if (!owner.id && groupAttrs["data-edge-id"]) owner.id = groupAttrs["data-edge-id"];
-    if (!owner.label && groupAttrs["data-edge-label"]) owner.label = groupAttrs["data-edge-label"];
+    if (owner.key === undefined && groupAttrs['data-edge-key'] !== undefined) owner.key = groupAttrs['data-edge-key'];
+    if (!owner.id && groupAttrs['data-edge-id']) owner.id = groupAttrs['data-edge-id'];
+    if (!owner.label && groupAttrs['data-edge-label']) owner.label = groupAttrs['data-edge-label'];
     labels.push({
       relation: owner,
       relationIndex: owner.index,
-      label: groupAttrs["data-edge-label"] || "",
+      label: groupAttrs['data-edge-label'] || '',
       rect,
     });
   }
@@ -374,9 +331,7 @@ function collectRelationshipLabelMasks(fragment, arrows) {
 }
 
 function roundedRect(rect) {
-  return Object.fromEntries(
-    Object.entries(rect).map(([key, value]) => [key, Math.round(value * 10) / 10]),
-  );
+  return Object.fromEntries(Object.entries(rect).map(([key, value]) => [key, Math.round(value * 10) / 10]));
 }
 
 function roundedRouteMetrics(metrics) {
@@ -384,16 +339,13 @@ function roundedRouteMetrics(metrics) {
     ...metrics,
     maxStretch: metrics.maxStretch == null ? null : Math.round(metrics.maxStretch * 1000) / 1000,
     minSegmentPx: metrics.minSegmentPx == null ? null : Math.round(metrics.minSegmentPx * 10) / 10,
-    minInteriorSegmentPx:
-      metrics.minInteriorSegmentPx == null
-        ? null
-        : Math.round(metrics.minInteriorSegmentPx * 10) / 10,
+    minInteriorSegmentPx: metrics.minInteriorSegmentPx == null ? null : Math.round(metrics.minInteriorSegmentPx * 10) / 10,
   };
 }
 
 function parseRoutePoints(value) {
   if (!value) return null;
-  const points = value.split(";").map((pair) => pair.split(",").map(Number));
+  const points = value.split(';').map((pair) => pair.split(',').map(Number));
   return points.length >= 2 && points.every(isPoint) ? points : null;
 }
 
@@ -408,12 +360,7 @@ function collectRelationshipCrossings(arrows) {
       let point = null;
       for (const leftSegment of left.segments) {
         for (const rightSegment of right.segments) {
-          point = properSegmentIntersection(
-            leftSegment.start,
-            leftSegment.end,
-            rightSegment.start,
-            rightSegment.end,
-          );
+          point = properSegmentIntersection(leftSegment.start, leftSegment.end, rightSegment.start, rightSegment.end);
           if (point) break;
         }
         if (point) break;
@@ -436,9 +383,8 @@ function relationshipRecord(arrow) {
     id: arrow.id,
     from: arrow.from,
     to: arrow.to,
-    label: arrow.label || "",
-    collectionIndex:
-      Number.isInteger(stableIndex) && stableIndex >= 0 ? stableIndex : arrow.index - 1,
+    label: arrow.label || '',
+    collectionIndex: Number.isInteger(stableIndex) && stableIndex >= 0 ? stableIndex : arrow.index - 1,
     artifactIndex: arrow.index,
   };
 }
@@ -447,29 +393,30 @@ function collectCompositionFrames(fragment) {
   const frames = [];
   for (const match of fragment.matchAll(/<(rect|path|line)\b[^>]*>/gi)) {
     const attrs = parseAttrs(match[0]);
-    const kind = attrs["data-composition-frame-kind"];
+    const kind = attrs['data-composition-frame-kind'];
     if (!kind) continue;
-    const identity = attrs["data-composition-frame-id"] || frames.length;
-    if (match[1].toLowerCase() === "rect") {
+    const identity = attrs['data-composition-frame-id'] || frames.length;
+    if (match[1].toLowerCase() === 'rect') {
       const frame = {
         kind,
         id: identity,
-        x: numberAttr(attrs, "x"),
-        y: numberAttr(attrs, "y"),
-        width: numberAttr(attrs, "width"),
-        height: numberAttr(attrs, "height"),
-        radius: numberAttr(attrs, "rx") || 0,
+        x: numberAttr(attrs, 'x'),
+        y: numberAttr(attrs, 'y'),
+        width: numberAttr(attrs, 'width'),
+        height: numberAttr(attrs, 'height'),
+        radius: numberAttr(attrs, 'rx') || 0,
       };
       if ([frame.x, frame.y, frame.width, frame.height].every(Number.isFinite)) frames.push(frame);
       continue;
     }
-    const segments =
-      match[1].toLowerCase() === "line" ? lineSegments(attrs) : pathSegments(attrs.d || "");
+    const segments = match[1].toLowerCase() === 'line'
+      ? lineSegments(attrs)
+      : pathSegments(attrs.d || '');
     for (const [segmentIndex, segment] of segments.entries()) {
       frames.push({
         kind,
         id: segments.length > 1 ? `${identity}:${segmentIndex}` : identity,
-        shape: "line",
+        shape: 'line',
         start: segment.start,
         end: segment.end,
       });
@@ -479,7 +426,7 @@ function collectCompositionFrames(fragment) {
 }
 
 function frameName(frame) {
-  return `${frame.kind || "frame"} "${frame.id}"`;
+  return `${frame.kind || 'frame'} "${frame.id}"`;
 }
 
 function frameRecord(frame) {
@@ -487,12 +434,12 @@ function frameRecord(frame) {
 }
 
 function formatPoint(point) {
-  return point.map((value) => Math.round(value * 10) / 10).join(", ");
+  return point.map((value) => Math.round(value * 10) / 10).join(', ');
 }
 
 function lineSegments(attrs) {
-  const start = [numberAttr(attrs, "x1"), numberAttr(attrs, "y1")];
-  const end = [numberAttr(attrs, "x2"), numberAttr(attrs, "y2")];
+  const start = [numberAttr(attrs, 'x1'), numberAttr(attrs, 'y1')];
+  const end = [numberAttr(attrs, 'x2'), numberAttr(attrs, 'y2')];
   if (!isPoint(start) || !isPoint(end)) return [];
   return [{ start, end }];
 }
@@ -514,7 +461,7 @@ function straightPathSegments(d) {
   const tokens = d.match(/[MLHVQZmlhvqz]|[-+]?(?:\d*\.)?\d+(?:e[-+]?\d+)?/g) || [];
   const segments = [];
   let i = 0;
-  let command = "";
+  let command = '';
   let current = [0, 0];
   let start = null;
   while (i < tokens.length) {
@@ -522,21 +469,21 @@ function straightPathSegments(d) {
     if (!command) break;
     const absolute = command === command.toUpperCase();
     switch (command.toUpperCase()) {
-      case "M":
-      case "L": {
+      case 'M':
+      case 'L': {
         let first = true;
         while (i + 1 < tokens.length && !isCommand(tokens[i])) {
           const point = [Number.parseFloat(tokens[i++]), Number.parseFloat(tokens[i++])];
           if (!point.every(Number.isFinite)) break;
           const next = absolute ? point : [current[0] + point[0], current[1] + point[1]];
-          if (command.toUpperCase() === "L" || !first) segments.push({ start: current, end: next });
+          if (command.toUpperCase() === 'L' || !first) segments.push({ start: current, end: next });
           current = next;
           if (!start) start = current;
           first = false;
         }
         break;
       }
-      case "H": {
+      case 'H': {
         while (i < tokens.length && !isCommand(tokens[i])) {
           const value = Number.parseFloat(tokens[i++]);
           if (!Number.isFinite(value)) break;
@@ -546,7 +493,7 @@ function straightPathSegments(d) {
         }
         break;
       }
-      case "V": {
+      case 'V': {
         while (i < tokens.length && !isCommand(tokens[i])) {
           const value = Number.parseFloat(tokens[i++]);
           if (!Number.isFinite(value)) break;
@@ -556,26 +503,21 @@ function straightPathSegments(d) {
         }
         break;
       }
-      case "Q": {
+      case 'Q': {
         while (i + 3 < tokens.length && !isCommand(tokens[i])) {
           const values = [0, 0, 0, 0].map(() => Number.parseFloat(tokens[i++]));
           if (!values.every(Number.isFinite)) break;
-          const control = absolute
-            ? values.slice(0, 2)
-            : [current[0] + values[0], current[1] + values[1]];
-          const end = absolute
-            ? values.slice(2, 4)
-            : [current[0] + values[2], current[1] + values[3]];
-          if (Math.abs(crossProduct(current, control, end)) <= 1e-9)
-            segments.push({ start: current, end });
+          const control = absolute ? values.slice(0, 2) : [current[0] + values[0], current[1] + values[1]];
+          const end = absolute ? values.slice(2, 4) : [current[0] + values[2], current[1] + values[3]];
+          if (Math.abs(crossProduct(current, control, end)) <= 1e-9) segments.push({ start: current, end });
           current = end;
         }
         break;
       }
-      case "Z":
+      case 'Z':
         if (start) segments.push({ start: current, end: start });
         current = start || current;
-        command = "";
+        command = '';
         break;
       default:
         return [];
@@ -585,11 +527,11 @@ function straightPathSegments(d) {
 }
 
 function diagonalStraightSegments(arrow) {
-  return arrow.borderSegments.flatMap(({ start, end }, segmentIndex) =>
+  return arrow.borderSegments.flatMap(({ start, end }, segmentIndex) => (
     Math.abs(start[0] - end[0]) > 0.01 && Math.abs(start[1] - end[1]) > 0.01
       ? [{ segmentIndex, start, end }]
-      : [],
-  );
+      : []
+  ));
 }
 
 function collectLegendBoxes(fragment) {
@@ -597,10 +539,10 @@ function collectLegendBoxes(fragment) {
 
   for (const match of fragment.matchAll(/<rect\b[^>]*>/gi)) {
     const attrs = parseAttrs(match[0]);
-    const x = numberAttr(attrs, "x");
-    const y = numberAttr(attrs, "y");
-    const width = numberAttr(attrs, "width");
-    const height = numberAttr(attrs, "height");
+    const x = numberAttr(attrs, 'x');
+    const y = numberAttr(attrs, 'y');
+    const width = numberAttr(attrs, 'width');
+    const height = numberAttr(attrs, 'height');
     if ([x, y, width, height].every(Number.isFinite)) {
       boxes.push({ x1: x, y1: y, x2: x + width, y2: y + height, label: `rect@${x},${y}` });
     }
@@ -630,15 +572,15 @@ function collectLegendCollisions(arrows, boxes) {
 }
 
 function textBox(attrs, text) {
-  const x = numberAttr(attrs, "x");
-  const y = numberAttr(attrs, "y");
-  const fontSize = Number.parseFloat(attrs["font-size"] || "10");
+  const x = numberAttr(attrs, 'x');
+  const y = numberAttr(attrs, 'y');
+  const fontSize = Number.parseFloat(attrs['font-size'] || '10');
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(fontSize)) return null;
   const width = estimatedTextWidth(text, fontSize);
-  const anchor = attrs["text-anchor"] || "start";
+  const anchor = attrs['text-anchor'] || 'start';
   let x1 = x;
-  if (anchor === "middle") x1 = x - width / 2;
-  if (anchor === "end") x1 = x - width;
+  if (anchor === 'middle') x1 = x - width / 2;
+  if (anchor === 'end') x1 = x - width;
   return {
     x1,
     y1: y - fontSize,
@@ -658,7 +600,7 @@ function pointsFromPath(d) {
   const tokens = d.match(/[MLHVQZmlhvqz]|[-+]?(?:\d*\.)?\d+(?:e[-+]?\d+)?/g) || [];
   const points = [];
   let i = 0;
-  let command = "";
+  let command = '';
   let current = [0, 0];
   let start = null;
 
@@ -668,8 +610,8 @@ function pointsFromPath(d) {
 
     const absolute = command === command.toUpperCase();
     switch (command.toUpperCase()) {
-      case "M":
-      case "L": {
+      case 'M':
+      case 'L': {
         while (i + 1 < tokens.length && !isCommand(tokens[i])) {
           const x = Number.parseFloat(tokens[i++]);
           const y = Number.parseFloat(tokens[i++]);
@@ -680,7 +622,7 @@ function pointsFromPath(d) {
         }
         break;
       }
-      case "H": {
+      case 'H': {
         while (i < tokens.length && !isCommand(tokens[i])) {
           const x = Number.parseFloat(tokens[i++]);
           if (!Number.isFinite(x)) break;
@@ -689,7 +631,7 @@ function pointsFromPath(d) {
         }
         break;
       }
-      case "V": {
+      case 'V': {
         while (i < tokens.length && !isCommand(tokens[i])) {
           const y = Number.parseFloat(tokens[i++]);
           if (!Number.isFinite(y)) break;
@@ -698,7 +640,7 @@ function pointsFromPath(d) {
         }
         break;
       }
-      case "Q": {
+      case 'Q': {
         while (i + 3 < tokens.length && !isCommand(tokens[i])) {
           const controlX = Number.parseFloat(tokens[i++]);
           const controlY = Number.parseFloat(tokens[i++]);
@@ -708,25 +650,23 @@ function pointsFromPath(d) {
           const control = absolute
             ? [controlX, controlY]
             : [current[0] + controlX, current[1] + controlY];
-          const end = absolute ? [endX, endY] : [current[0] + endX, current[1] + endY];
+          const end = absolute
+            ? [endX, endY]
+            : [current[0] + endX, current[1] + endY];
           const startPoint = current;
           for (let step = 1; step <= 8; step += 1) {
             const amount = step / 8;
             const remaining = 1 - amount;
             points.push([
-              remaining * remaining * startPoint[0] +
-                2 * remaining * amount * control[0] +
-                amount * amount * end[0],
-              remaining * remaining * startPoint[1] +
-                2 * remaining * amount * control[1] +
-                amount * amount * end[1],
+              remaining * remaining * startPoint[0] + 2 * remaining * amount * control[0] + amount * amount * end[0],
+              remaining * remaining * startPoint[1] + 2 * remaining * amount * control[1] + amount * amount * end[1],
             ]);
           }
           current = end;
         }
         break;
       }
-      case "Z": {
+      case 'Z': {
         if (start) points.push(start);
         break;
       }
@@ -744,8 +684,7 @@ function properSegmentIntersection(a, b, c, d) {
   const cdA = crossProduct(c, d, a);
   const cdB = crossProduct(c, d, b);
   const epsilon = 1e-9;
-  const opposite = (left, right) =>
-    (left > epsilon && right < -epsilon) || (left < -epsilon && right > epsilon);
+  const opposite = (left, right) => (left > epsilon && right < -epsilon) || (left < -epsilon && right > epsilon);
   if (!opposite(abC, abD) || !opposite(cdA, cdB)) return null;
   const denominator = (a[0] - b[0]) * (c[1] - d[1]) - (a[1] - b[1]) * (c[0] - d[0]);
   if (Math.abs(denominator) < epsilon) return null;
@@ -765,22 +704,10 @@ function segmentIntersectsBox(segment, box) {
   const { start, end } = segment;
   if (pointInsideBox(start, box) || pointInsideBox(end, box)) return true;
   const edges = [
-    [
-      [box.x1, box.y1],
-      [box.x2, box.y1],
-    ],
-    [
-      [box.x2, box.y1],
-      [box.x2, box.y2],
-    ],
-    [
-      [box.x2, box.y2],
-      [box.x1, box.y2],
-    ],
-    [
-      [box.x1, box.y2],
-      [box.x1, box.y1],
-    ],
+    [[box.x1, box.y1], [box.x2, box.y1]],
+    [[box.x2, box.y1], [box.x2, box.y2]],
+    [[box.x2, box.y2], [box.x1, box.y2]],
+    [[box.x1, box.y2], [box.x1, box.y1]],
   ];
   return edges.some(([a, b]) => segmentsIntersect(start, end, a, b));
 }
@@ -806,12 +733,10 @@ function orientation(a, b, c) {
 }
 
 function onSegment(a, b, c) {
-  return (
-    b[0] <= Math.max(a[0], c[0]) + 1e-9 &&
-    b[0] + 1e-9 >= Math.min(a[0], c[0]) &&
-    b[1] <= Math.max(a[1], c[1]) + 1e-9 &&
-    b[1] + 1e-9 >= Math.min(a[1], c[1])
-  );
+  return b[0] <= Math.max(a[0], c[0]) + 1e-9
+    && b[0] + 1e-9 >= Math.min(a[0], c[0])
+    && b[1] <= Math.max(a[1], c[1]) + 1e-9
+    && b[1] + 1e-9 >= Math.min(a[1], c[1]);
 }
 
 function pointInsideBox(point, box) {
@@ -847,5 +772,5 @@ function isPoint(point) {
 }
 
 function stripTags(value) {
-  return value.replace(/<[^>]*>/g, "");
+  return value.replace(/<[^>]*>/g, '');
 }
