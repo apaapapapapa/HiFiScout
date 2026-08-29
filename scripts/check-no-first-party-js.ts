@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 
-import { verifyVendoredAgentSkills } from "./check-vendored-agent-skills.ts";
+import { verifyVendoredAgentSkills } from "./check-vendored-agent-skills";
 
 const vendoredJavaScriptPrefixes = [".agents/skills/archify/"] as const;
 
