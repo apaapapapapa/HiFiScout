@@ -1,3 +1,5 @@
+import typedocSidebar from "../reference/api/typedoc-sidebar.json";
+
 const configuredBase = process.env.DOCS_BASE?.trim();
 const base = configuredBase ? `${configuredBase.replace(/\/+$/, "")}/` : "/";
 
@@ -33,7 +35,7 @@ export default {
         text: "Reference",
         items: [
           { text: "HTTP API", link: "/reference/http-api" },
-          { text: "Source API", link: "/reference/api/" },
+          { text: "Source API", link: "/reference/api/", items: typedocSidebar },
           { text: "Database Schema", link: "/database/" },
         ],
       },
