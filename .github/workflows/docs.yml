@@ -36,19 +36,17 @@ jobs:
       - name: Validate module dependencies
         run: vp run docs:architecture:check
       - name: Build developer documentation
-        run: |
-          set +e
-          vp run docs:build
-          status=$?
-          set -e
-          if [ "$status" -ne 0 ]; then
-            echo "::group::Generated TypeDoc lucide-react references"
-            grep -R -n -C 8 -E 'lucide-react|AlertOctagon' docs/reference/api || true
-            echo "::endgroup::"
-          fi
-          exit "$status"
+        run: vp run docs:build
         env:
           DOCS_BASE: "${{ steps.pages.outputs.base_path }}/"
+      - name: Upload generated TypeDoc diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: typedoc-debug
+          path: docs/reference/api
+          if-no-files-found: error
+          retention-days: 1
       - name: Validate generated report links
         run: |
           test -f docs/.vitepress/dist/db/index.html
@@ -121,4 +119,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        uses: actions/deploy-pages@d6db90164ac5c48632c6b24a0339c27f5614fb0b # v4
