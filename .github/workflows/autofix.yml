@@ -27,9 +27,12 @@ jobs:
         run: |
           set -euo pipefail
           git fetch --no-tags origin "${{ github.event.pull_request.base.ref }}"
-          mapfile -t files < <(git diff --name-only --diff-filter=ACMR "origin/${{ github.event.pull_request.base.ref }}...HEAD" -- '*.js' '*.mjs' '*.cjs' '*.jsx' '*.ts' '*.mts' '*.cts' '*.tsx')
+          mapfile -t files < <(
+            git diff --name-only --diff-filter=ACMR "origin/${{ github.event.pull_request.base.ref }}...HEAD" -- '*.js' '*.mjs' '*.cjs' '*.jsx' '*.ts' '*.mts' '*.cts' '*.tsx' |
+              grep -v '^\.agents/skills/archify/' || true
+          )
           if ((${#files[@]} == 0)); then
-            echo "No changed JavaScript/TypeScript source files to format."
+            echo "No changed first-party JavaScript/TypeScript source files to format."
             exit 0
           fi
           vp fmt "${files[@]}"
