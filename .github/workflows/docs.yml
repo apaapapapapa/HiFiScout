@@ -36,7 +36,17 @@ jobs:
       - name: Validate module dependencies
         run: vp run docs:architecture:check
       - name: Build developer documentation
-        run: vp run docs:build
+        run: |
+          set +e
+          vp run docs:build
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "::group::Generated TypeDoc lucide-react references"
+            grep -R -n -C 8 -E 'lucide-react|AlertOctagon' docs/reference/api || true
+            echo "::endgroup::"
+          fi
+          exit "$status"
         env:
           DOCS_BASE: "${{ steps.pages.outputs.base_path }}/"
       - name: Validate generated report links
