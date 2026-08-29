@@ -344,18 +344,16 @@ async function processFetch(
       }),
     );
   } finally {
-    await transport
-      .close?.()
-      .catch((error: unknown) =>
-        console.warn(
-          JSON.stringify({
-            event: "crawl_fetch_transport_close_failed",
-            shopKey: plugin.key,
-            runId: session.run_id,
-            message: errorMessage(error),
-          }),
-        ),
-      );
+    await transport.close?.().catch((error: unknown) =>
+      console.warn(
+        JSON.stringify({
+          event: "crawl_fetch_transport_close_failed",
+          shopKey: plugin.key,
+          runId: session.run_id,
+          message: errorMessage(error),
+        }),
+      ),
+    );
   }
   return continued(env, plugin, body, session.run_id);
 }
@@ -591,18 +589,16 @@ async function processFinalize(
     }
     return { kind: "terminal", runId: session.run_id, result };
   } finally {
-    await originalTransport
-      .close?.()
-      .catch((error: unknown) =>
-        console.warn(
-          JSON.stringify({
-            event: "crawl_finalize_transport_close_failed",
-            shopKey: plugin.key,
-            runId: session.run_id,
-            message: errorMessage(error),
-          }),
-        ),
-      );
+    await originalTransport.close?.().catch((error: unknown) =>
+      console.warn(
+        JSON.stringify({
+          event: "crawl_finalize_transport_close_failed",
+          shopKey: plugin.key,
+          runId: session.run_id,
+          message: errorMessage(error),
+        }),
+      ),
+    );
   }
 }
 
