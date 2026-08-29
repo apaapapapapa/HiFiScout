@@ -47,6 +47,8 @@ jobs:
           test -f docs/.vitepress/dist/generated/dependencies.html
           test -f docs/.vitepress/dist/generated/openapi.json
           test -f docs/.vitepress/dist/generated/openapi.html
+          test -f docs/.vitepress/dist/generated/ai-architecture.html
+          test -f docs/.vitepress/dist/ai-generated/architecture-overview.html
           test -f docs/.vitepress/dist/reference/api/index.html
           grep -q '^flowchart ' docs/.vitepress/dist/generated/architecture.mmd
           python - <<'PY'
@@ -75,6 +77,10 @@ jobs:
               (
                   Path("docs/.vitepress/dist/architecture/dependencies.html"),
                   "../generated/dependencies.html",
+              ),
+              (
+                  Path("docs/.vitepress/dist/ai-generated/architecture-overview.html"),
+                  "../generated/ai-architecture.html",
               ),
               (
                   Path("docs/.vitepress/dist/reference/http-api.html"),
@@ -107,6 +113,251 @@ jobs:
         uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
         with:
           path: docs/.vitepress/dist
+
+  refresh-ai:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Detect architecture-relevant changes
+        id: changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${{ github.event.before }}"
+          should_generate=false
+          if [[ -z "$base" || "$base" =~ ^0+$ ]]; then
+            should_generate=true
+          else
+            changed="$(git diff --name-only "$base" "$GITHUB_SHA")"
+            if printf '%s\n' "$changed" | grep -Eq '^(\.agents/skills/archify/|frontend/|infra/|migrations/|scripts/|src/|package\.json$|package-lock\.json$|vite\.config\.ts$|wrangler[^/]*\.jsonc$)'; then
+              should_generate=true
+            fi
+          fi
+          echo "should-generate=${should_generate}" >> "$GITHUB_OUTPUT"
+          if [[ "$should_generate" != "true" ]]; then
+            echo "No architecture-relevant source changed; Codex refresh skipped." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: ./.github/actions/setup-node-deps
+        if: steps.changes.outputs.should-generate == 'true'
+      - name: Verify vendored Archify
+        if: steps.changes.outputs.should-generate == 'true'
+        run: vp exec tsx scripts/check-vendored-agent-skills.ts
+      - name: Generate documentation with Codex
+        id: codex
+        if: steps.changes.outputs.should-generate == 'true'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CODEX_DOCS_MODEL: ${{ vars.CODEX_DOCS_MODEL }}
+        shell: bash
+        run: |
+          set -u
+
+          restore_fallback() {
+            git reset --hard HEAD >/dev/null
+            git clean -fd >/dev/null
+          }
+
+          report_status() {
+            local status="$1"
+            local detail="$2"
+            echo "status=${status}" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Codex documentation refresh"
+              echo
+              echo "- Status: \`${status}\`"
+              echo "- Detail: ${detail}"
+              echo "- Source commit: \`${GITHUB_SHA}\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+          }
+
+          if [[ -z "${OPENAI_API_KEY:-}" ]]; then
+            report_status "fallback-no-api-key" "OPENAI_API_KEY is not configured; the last committed documentation remains authoritative."
+            echo "::warning::Codex documentation refresh skipped because OPENAI_API_KEY is not configured."
+            exit 0
+          fi
+
+          model="${CODEX_DOCS_MODEL:-gpt-5.6-sol}"
+          sed "s/{{SOURCE_COMMIT}}/${GITHUB_SHA}/g" .github/codex/docs-prompt.md > /tmp/codex-docs-prompt.md
+
+          set +e
+          timeout 12m npx -y @openai/codex@0.128.0 exec \
+            --ephemeral \
+            --sandbox workspace-write \
+            --model "$model" \
+            - < /tmp/codex-docs-prompt.md > /tmp/codex-docs.log 2>&1
+          codex_exit=$?
+          set -e
+
+          if [[ "$codex_exit" -ne 0 ]]; then
+            status="fallback-codex-error"
+            detail="Codex exited with status ${codex_exit}; the last committed documentation is retained."
+            if [[ "$codex_exit" -eq 124 ]]; then
+              status="fallback-timeout"
+              detail="Codex exceeded the 12 minute generation budget; the last committed documentation is retained."
+            elif grep -Eiq 'rate.?limit|usage.?limit|quota|insufficient_quota|credit' /tmp/codex-docs.log; then
+              status="fallback-usage-limit"
+              detail="Codex reported a usage, quota, rate-limit, or credit constraint; the last committed documentation is retained."
+            elif grep -Eiq 'auth|api.?key|unauthorized|forbidden' /tmp/codex-docs.log; then
+              status="fallback-auth"
+              detail="Codex authentication was unavailable; the last committed documentation is retained."
+            fi
+            restore_fallback
+            report_status "$status" "$detail"
+            echo "::warning::${detail}"
+            exit 0
+          fi
+
+          changed="$({ git diff --name-only; git ls-files --others --exclude-standard; } | sort -u)"
+          unexpected="$(printf '%s\n' "$changed" | grep -v '^docs/ai-generated/' || true)"
+          if [[ -n "$unexpected" ]]; then
+            restore_fallback
+            report_status "fallback-scope-rejected" "Codex changed files outside docs/ai-generated; all generated changes were discarded."
+            echo "::warning::Codex documentation refresh was discarded because it exceeded the allowed path scope."
+            exit 0
+          fi
+
+          if [[ ! -s docs/ai-generated/architecture-overview.md || ! -s docs/ai-generated/architecture.json ]]; then
+            restore_fallback
+            report_status "fallback-incomplete" "Codex did not produce the required Markdown and Archify JSON artifacts."
+            echo "::warning::Codex documentation refresh did not produce all required artifacts."
+            exit 0
+          fi
+
+          if ! grep -Fq "source_commit: ${GITHUB_SHA}" docs/ai-generated/architecture-overview.md; then
+            restore_fallback
+            report_status "fallback-stale-metadata" "Generated Markdown did not identify the current source commit."
+            echo "::warning::Codex documentation refresh was discarded because source_commit metadata was stale or missing."
+            exit 0
+          fi
+
+          report_status "generated" "Codex produced scoped candidate documentation; deterministic validation follows."
+
+      - name: Validate, deliver, and build candidate documentation
+        id: validate
+        if: steps.codex.outputs.status == 'generated'
+        shell: bash
+        run: |
+          set -u
+
+          restore_fallback() {
+            git reset --hard HEAD >/dev/null
+            git clean -fd >/dev/null
+          }
+
+          reject() {
+            local status="$1"
+            local detail="$2"
+            restore_fallback
+            echo "status=${status}" >> "$GITHUB_OUTPUT"
+            {
+              echo
+              echo "### Candidate validation"
+              echo
+              echo "- Status: \`${status}\`"
+              echo "- Detail: ${detail}"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::${detail}"
+            exit 0
+          }
+
+          set +e
+          (
+            cd .agents/skills/archify
+            node bin/archify.mjs validate architecture "$GITHUB_WORKSPACE/docs/ai-generated/architecture.json" --quality showcase --json >/tmp/archify-validate.json &&
+              node bin/archify.mjs deliver architecture "$GITHUB_WORKSPACE/docs/ai-generated/architecture.json" "$GITHUB_WORKSPACE/docs/ai-generated/architecture.html" --quality showcase --json >/tmp/archify-deliver.json
+          )
+          archify_exit=$?
+          set -e
+          if [[ "$archify_exit" -ne 0 ]]; then
+            reject "fallback-archify-invalid" "Archify showcase validation or delivery failed; the last committed documentation is retained."
+          fi
+
+          changed="$({ git diff --name-only; git ls-files --others --exclude-standard; } | sort -u)"
+          unexpected="$(printf '%s\n' "$changed" | grep -v '^docs/ai-generated/' || true)"
+          if [[ -n "$unexpected" ]]; then
+            reject "fallback-delivery-scope-rejected" "Candidate delivery changed files outside docs/ai-generated; all generated changes were discarded."
+          fi
+
+          set +e
+          vp run docs:build >/tmp/codex-docs-build.log 2>&1
+          docs_exit=$?
+          set -e
+          if [[ "$docs_exit" -ne 0 ]]; then
+            tail -n 80 /tmp/codex-docs-build.log
+            reject "fallback-vitepress-invalid" "The candidate failed the complete VitePress documentation build; the last committed documentation is retained."
+          fi
+
+          if [[ ! -f docs/.vitepress/dist/generated/ai-architecture.html || ! -f docs/.vitepress/dist/ai-generated/architecture-overview.html ]]; then
+            reject "fallback-vitepress-missing-output" "The candidate build did not contain the expected AI documentation outputs."
+          fi
+
+          echo "status=validated" >> "$GITHUB_OUTPUT"
+          {
+            echo
+            echo "### Candidate validation"
+            echo
+            echo "- Status: \`validated\`"
+            echo "- Archify: showcase validation and deterministic delivery passed"
+            echo "- VitePress: full documentation build passed"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish documentation update PR
+        if: steps.validate.outputs.status == 'validated'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -u
+
+          if git diff --quiet -- docs/ai-generated && [[ -z "$(git ls-files --others --exclude-standard docs/ai-generated)" ]]; then
+            echo "No documentation changes were produced." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B automation/codex-docs
+          git add docs/ai-generated
+          git commit -m "docs: refresh AI architecture snapshot"
+
+          set +e
+          git push --force origin HEAD:automation/codex-docs >/tmp/codex-docs-push.log 2>&1
+          push_exit=$?
+          set -e
+          if [[ "$push_exit" -ne 0 ]]; then
+            echo "::warning::Generated documentation passed validation but could not be pushed; the published VitePress site will continue using the last committed snapshot."
+            echo "- Publication: skipped because the automation branch could not be pushed" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          existing_pr="$(gh pr list --head automation/codex-docs --base main --state open --json number --jq '.[0].number // empty' 2>/dev/null || true)"
+          if [[ -n "$existing_pr" ]]; then
+            echo "- Publication: updated PR #${existing_pr}" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          set +e
+          pr_url="$(gh pr create \
+            --base main \
+            --head automation/codex-docs \
+            --title "docs: refresh AI architecture snapshot" \
+            --body $'Automated Codex + Archify documentation refresh.\n\nThe generator is best-effort: Codex availability, quota, authentication, timeout, and publication failures never block the existing VitePress documentation. This PR is created only after Archify showcase validation and a complete VitePress build pass.' 2>/tmp/codex-docs-pr.log)"
+          pr_exit=$?
+          set -e
+          if [[ "$pr_exit" -ne 0 ]]; then
+            echo "::warning::Generated documentation was pushed but GitHub Actions could not create the PR; the published VitePress site will continue using the last committed snapshot."
+            echo "- Publication: branch pushed, PR creation unavailable" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "- Publication: ${pr_url}" >> "$GITHUB_STEP_SUMMARY"
 
   deploy:
     if: github.event_name == 'push'

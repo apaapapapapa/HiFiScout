@@ -15,6 +15,7 @@ export default {
     nav: [
       { text: "Guide", link: "/" },
       { text: "Architecture", link: "/data-platform-architecture" },
+      { text: "AI Architecture", link: "/ai-generated/architecture-overview" },
       { text: "HTTP API", link: "/reference/http-api" },
       { text: "Source API", link: "/reference/api/" },
       { text: "Database", link: "/database/" },
@@ -29,6 +30,7 @@ export default {
         items: [
           { text: "Data Platform", link: "/data-platform-architecture" },
           { text: "Architecture Graph", link: "/architecture/dependencies" },
+          { text: "AI-assisted Snapshot", link: "/ai-generated/architecture-overview" },
         ],
       },
       {
