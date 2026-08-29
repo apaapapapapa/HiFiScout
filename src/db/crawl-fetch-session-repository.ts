@@ -56,7 +56,10 @@ export async function getCrawlFetchSession(
   db: QueryableDatabase,
   runId: string,
 ): Promise<CrawlFetchSessionRow | null> {
-  return db.prepare("SELECT * FROM crawl_fetch_sessions WHERE run_id = ?").bind(runId).first<CrawlFetchSessionRow>();
+  return db
+    .prepare("SELECT * FROM crawl_fetch_sessions WHERE run_id = ?")
+    .bind(runId)
+    .first<CrawlFetchSessionRow>();
 }
 
 export async function ensureCrawlFetchSession(
@@ -72,31 +75,43 @@ export async function ensureCrawlFetchSession(
   },
 ): Promise<{ session: CrawlFetchSessionRow; created: boolean }> {
   const first = input.pages[0] || null;
-  const insert = await db.prepare(`
-    INSERT INTO crawl_fetch_sessions (
-      run_id, shop_key, requested_at, max_pages, page_limit,
-      continuation_sequence, next_phase, next_page_key, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
-    ON CONFLICT(run_id) DO NOTHING
-  `).bind(
-    input.runId,
-    input.shopKey,
-    input.requestedAt,
-    input.maxPages,
-    input.pageLimit,
-    first ? "fetch" : "finalize",
-    first?.key || null,
-    input.createdAt,
-    input.createdAt,
-  ).run();
+  const insert = await db
+    .prepare(`
+      INSERT INTO crawl_fetch_sessions (
+        run_id, shop_key, requested_at, max_pages, page_limit,
+        continuation_sequence, next_phase, next_page_key, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
+      ON CONFLICT(run_id) DO NOTHING
+    `)
+    .bind(
+      input.runId,
+      input.shopKey,
+      input.requestedAt,
+      input.maxPages,
+      input.pageLimit,
+      first ? "fetch" : "finalize",
+      first?.key || null,
+      input.createdAt,
+      input.createdAt,
+    )
+    .run();
   const created = changes(insert) > 0;
 
-  if (created && input.pages.length) {
-    await db.batch(input.pages.map((page) => db.prepare(`
-      INSERT OR IGNORE INTO crawl_fetch_pages
-        (run_id, page_key, page_json, ordinal, state)
-      VALUES (?, ?, ?, ?, 'pending')
-    `).bind(input.runId, page.key, JSON.stringify(page.page), page.ordinal)));
+  // The session insert and the initial frontier are separate calls. If the isolate is killed between
+  // them, a redelivery must repair the missing pages instead of permanently finalizing an empty run.
+  // INSERT OR IGNORE also makes the ordinary duplicate-delivery path a no-op.
+  if (input.pages.length) {
+    await db.batch(
+      input.pages.map((page) =>
+        db
+          .prepare(`
+            INSERT OR IGNORE INTO crawl_fetch_pages
+              (run_id, page_key, page_json, ordinal, state)
+            VALUES (?, ?, ?, ?, 'pending')
+          `)
+          .bind(input.runId, page.key, JSON.stringify(page.page), page.ordinal),
+      ),
+    );
   }
 
   const session = await getCrawlFetchSession(db, input.runId);
@@ -112,24 +127,45 @@ export async function getCrawlFetchPage(
   runId: string,
   pageKey: string,
 ): Promise<CrawlFetchPageRow | null> {
-  return db.prepare("SELECT * FROM crawl_fetch_pages WHERE run_id = ? AND page_key = ?")
-    .bind(runId, pageKey).first<CrawlFetchPageRow>();
+  return db
+    .prepare("SELECT * FROM crawl_fetch_pages WHERE run_id = ? AND page_key = ?")
+    .bind(runId, pageKey)
+    .first<CrawlFetchPageRow>();
 }
 
 export async function listCrawlFetchPages(
   db: QueryableDatabase,
   runId: string,
 ): Promise<CrawlFetchPageRow[]> {
-  const result = await db.prepare(
-    "SELECT * FROM crawl_fetch_pages WHERE run_id = ? ORDER BY ordinal ASC",
-  ).bind(runId).all<CrawlFetchPageRow>();
+  const result = await db
+    .prepare("SELECT * FROM crawl_fetch_pages WHERE run_id = ? ORDER BY ordinal ASC")
+    .bind(runId)
+    .all<CrawlFetchPageRow>();
+  return result.results || [];
+}
+
+export async function listActiveCrawlFetchSessions(
+  db: QueryableDatabase,
+): Promise<CrawlFetchSessionRow[]> {
+  const result = await db
+    .prepare(`
+      SELECT * FROM crawl_fetch_sessions
+      WHERE status IN ('collecting', 'finalizing')
+      ORDER BY updated_at ASC
+    `)
+    .all<CrawlFetchSessionRow>();
   return result.results || [];
 }
 
 export function decodeCrawlFetchPage(row: Pick<CrawlFetchPageRow, "page_json">): CrawlPage {
   const value: unknown = JSON.parse(row.page_json);
   if (typeof value === "string") return value;
-  if (value !== null && typeof value === "object" && "url" in value && typeof (value as { url?: unknown }).url === "string") {
+  if (
+    value !== null &&
+    typeof value === "object" &&
+    "url" in value &&
+    typeof (value as { url?: unknown }).url === "string"
+  ) {
     return value as { url: string };
   }
   throw new Error("invalid staged crawl page");
@@ -141,12 +177,15 @@ export async function claimCrawlFetchFinalization(
   claimedAt: string,
   staleBefore: string,
 ): Promise<boolean> {
-  const result = await db.prepare(`
-    UPDATE crawl_fetch_sessions
-    SET status = 'finalizing', finalization_claimed_at = ?, updated_at = ?
-    WHERE run_id = ? AND next_phase = 'finalize'
-      AND (status = 'collecting' OR (status = 'finalizing' AND finalization_claimed_at <= ?))
-  `).bind(claimedAt, claimedAt, runId, staleBefore).run();
+  const result = await db
+    .prepare(`
+      UPDATE crawl_fetch_sessions
+      SET status = 'finalizing', finalization_claimed_at = ?, updated_at = ?
+      WHERE run_id = ? AND next_phase = 'finalize'
+        AND (status = 'collecting' OR (status = 'finalizing' AND finalization_claimed_at <= ?))
+    `)
+    .bind(claimedAt, claimedAt, runId, staleBefore)
+    .run();
   return changes(result) > 0;
 }
 
@@ -154,22 +193,42 @@ export async function completeCrawlFetchSession(
   db: QueryableDatabase,
   input: { runId: string; finalizedAt: string; crawlRunId: number | null },
 ): Promise<void> {
-  await db.prepare(`
-    UPDATE crawl_fetch_sessions
-    SET status = 'completed', final_crawl_run_id = ?, next_phase = NULL, next_page_key = NULL,
-        finalized_at = ?, updated_at = ?, error_message = NULL
-    WHERE run_id = ?
-  `).bind(input.crawlRunId, input.finalizedAt, input.finalizedAt, input.runId).run();
+  await db.batch([
+    db
+      .prepare(`
+        UPDATE crawl_fetch_sessions
+        SET status = 'completed', final_crawl_run_id = ?, next_phase = NULL, next_page_key = NULL,
+            finalized_at = ?, updated_at = ?, error_message = NULL
+        WHERE run_id = ?
+      `)
+      .bind(input.crawlRunId, input.finalizedAt, input.finalizedAt, input.runId),
+    db
+      .prepare(`
+        UPDATE crawl_fetch_pages
+        SET html_text = NULL, products_json = NULL
+        WHERE run_id = ?
+      `)
+      .bind(input.runId),
+  ]);
 }
 
 export async function failCrawlFetchSession(
   db: QueryableDatabase,
   input: { runId: string; failedAt: string; message: string; crawlRunId?: number | null },
 ): Promise<void> {
-  await db.prepare(`
-    UPDATE crawl_fetch_sessions
-    SET status = 'failed', final_crawl_run_id = COALESCE(?, final_crawl_run_id),
-        next_phase = NULL, next_page_key = NULL, finalized_at = ?, updated_at = ?, error_message = ?
-    WHERE run_id = ?
-  `).bind(input.crawlRunId ?? null, input.failedAt, input.failedAt, input.message.slice(0, 1000), input.runId).run();
+  await db
+    .prepare(`
+      UPDATE crawl_fetch_sessions
+      SET status = 'failed', final_crawl_run_id = COALESCE(?, final_crawl_run_id),
+          next_phase = NULL, next_page_key = NULL, finalized_at = ?, updated_at = ?, error_message = ?
+      WHERE run_id = ?
+    `)
+    .bind(
+      input.crawlRunId ?? null,
+      input.failedAt,
+      input.failedAt,
+      input.message.slice(0, 1000),
+      input.runId,
+    )
+    .run();
 }
