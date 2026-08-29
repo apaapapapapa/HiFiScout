@@ -34,7 +34,7 @@ const html = `<!doctype html>
     import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.esm.min.mjs";
 
     const dark = globalThis.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
-    mermaid.initialize({ startOnLoad: true, securityLevel: "strict", theme: dark ? "dark" : "default" });
+    mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: dark ? "dark" : "default" });
     mermaid.run({ querySelector: ".mermaid" }).catch((error) => {
       console.error(error);
       document.querySelector("#architecture")?.classList.add("fallback");
