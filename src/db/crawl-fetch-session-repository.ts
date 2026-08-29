@@ -211,17 +211,6 @@ export function decodeCrawlFetchPage(row: Pick<CrawlFetchPageRow, "page_json">):
   throw new Error("invalid staged crawl page");
 }
 
-async function clearStagedPayloads(db: QueryableDatabase, runId: string): Promise<void> {
-  await db
-    .prepare(`
-      UPDATE crawl_fetch_pages
-      SET html_text = NULL, products_json = NULL
-      WHERE run_id = ?
-    `)
-    .bind(runId)
-    .run();
-}
-
 async function reconcileFinishedCollectionRun(
   db: QueryableDatabase,
   runId: string,
