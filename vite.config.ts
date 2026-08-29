@@ -28,6 +28,8 @@ function browserBundle(entry: string, outDir: string, fileName: string, name: st
 
 const ciShell = (command: string): string => `bash -lc ${JSON.stringify(command)}`;
 
+const vendoredAgentSkillPatterns = [".agents/skills/archify/**"];
+
 export default defineConfig(({ mode }) => ({
   publicDir: false,
   resolve: {
@@ -36,11 +38,12 @@ export default defineConfig(({ mode }) => ({
     },
   },
   lint: {
+    ignorePatterns: vendoredAgentSkillPatterns,
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
     rules: { "vite-plus/prefer-vite-plus-imports": "error" },
   },
   fmt: {
-    ignorePatterns: [],
+    ignorePatterns: vendoredAgentSkillPatterns,
   },
   test: {
     environment: "node",
