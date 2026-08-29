@@ -4,6 +4,13 @@
 -- staging first; only a complete frontier is published through the normal crawl write path. This
 -- prevents an interrupted partial inventory from deactivating listings that were never observed.
 
+-- A resumed finalizer must reopen the same logical crawl run rather than create a second one.
+-- Normal/direct crawls leave this nullable and preserve the existing one-row-per-attempt behavior.
+ALTER TABLE crawl_runs ADD COLUMN collection_run_id TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_crawl_runs_collection_run
+  ON crawl_runs(collection_run_id)
+  WHERE collection_run_id IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS crawl_fetch_sessions (
   run_id TEXT PRIMARY KEY,
   shop_key TEXT NOT NULL,
