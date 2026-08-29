@@ -9,6 +9,7 @@ import type {
 const MANUFACTURER_SOURCE: readonly ManufacturerSourceEntry[] = [
   ["luxman", "LUXMAN", ["luxman", "ラックスマン"]],
   ["accuphase", "Accuphase", ["accuphase", "アキュフェーズ"]],
+  ["acoustic-revive", "ACOUSTIC REVIVE", ["acoustic revive", "アコースティックリバイブ"]],
   ["tad", "TAD", ["tad", "technical audio devices", "テクニカルオーディオデバイセズ"]],
   [
     "bowers-wilkins",
