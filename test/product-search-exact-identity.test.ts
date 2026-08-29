@@ -13,6 +13,10 @@ const migration = readFileSync(
   new URL("../migrations/0036_group_exact_unresolved_product_offers.sql", import.meta.url),
   "utf8",
 );
+const driftRepairMigration = readFileSync(
+  new URL("../migrations/0067_repair_exact_identity_search_drift.sql", import.meta.url),
+  "utf8",
+);
 
 function normalized(sql: string): string {
   return sql.replace(/\s+/g, " ").trim();
@@ -85,4 +89,23 @@ test("forward migration applies the same conservative identity gates", () => {
   // keeps the same rows groupable after migration 0041 rewrites them.
   assert.ok(backfill.includes("primary_category_id <> 'other'"));
   assert.ok(runtime.includes("primary_category_id NOT IN ('other', 'unclassified')"));
+});
+
+test("drift repair migration replays the current conservative grouping rule", () => {
+  const repair = normalized(driftRepairMigration);
+
+  for (const invariant of [
+    "model_resolution_status = 'resolved'",
+    "canonical_manufacturer_id",
+    "normalized_model",
+    "verification_status = 'verified'",
+    "primary_category_id NOT IN ('other', 'unclassified')",
+    "ON CONFLICT(listing_product_id) DO UPDATE SET",
+  ]) {
+    assert.ok(repair.includes(invariant), invariant);
+  }
+  assert.ok(repair.includes("CREATE INDEX migration_0067_eligible_identity"));
+  assert.ok(repair.includes("migration_0067_affected_entities"));
+  assert.ok(repair.includes("DELETE FROM product_search_entities"));
+  assert.doesNotMatch(repair, /LIKE|levenshtein/i);
 });
