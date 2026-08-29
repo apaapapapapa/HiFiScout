@@ -9,9 +9,7 @@ const trackedFiles = execFileSync(
 )
   .split("\0")
   .filter(Boolean)
-  .filter(
-    (file) => !vendoredJavaScriptPrefixes.some((prefix) => file.startsWith(prefix)),
-  )
+  .filter((file) => !vendoredJavaScriptPrefixes.some((prefix) => file.startsWith(prefix)))
   .sort();
 
 if (trackedFiles.length > 0) {

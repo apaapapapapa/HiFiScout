@@ -1,24 +1,24 @@
-import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import fs from 'node:fs';
-import http from 'node:http';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import fs from "node:fs";
+import http from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { openLoopbackUrl } from './open-artifact.mjs';
-import { resolveOutputPath } from '../renderers/shared/output-path.mjs';
+import { openLoopbackUrl } from "./open-artifact.mjs";
+import { resolveOutputPath } from "../renderers/shared/output-path.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const cliPath = path.join(here, 'archify.mjs');
-const loopbackHost = '127.0.0.1';
+const cliPath = path.join(here, "archify.mjs");
+const loopbackHost = "127.0.0.1";
 const defaultDebounceMs = 400;
 const defaultPollMs = 800;
 const defaultStopGraceMs = 3000;
 const defaultStopKillMs = 750;
-const diagramTypes = new Set(['architecture', 'workflow', 'sequence', 'dataflow', 'lifecycle']);
+const diagramTypes = new Set(["architecture", "workflow", "sequence", "dataflow", "lifecycle"]);
 
 function sha256(value) {
-  return createHash('sha256').update(value).digest('hex');
+  return createHash("sha256").update(value).digest("hex");
 }
 
 function sourceDigest(inputPath) {
@@ -26,14 +26,14 @@ function sourceDigest(inputPath) {
     const bytes = fs.readFileSync(inputPath);
     return { hash: sha256(bytes), bytes, missing: false };
   } catch (error) {
-    return { hash: `unreadable:${error.code || 'unknown'}`, bytes: null, missing: true };
+    return { hash: `unreadable:${error.code || "unknown"}`, bytes: null, missing: true };
   }
 }
 
 function initialAuthoredOutput(inputPath) {
   try {
-    const source = JSON.parse(fs.readFileSync(inputPath, 'utf8'));
-    if (typeof source?.meta?.output === 'string' && source.meta.output) {
+    const source = JSON.parse(fs.readFileSync(inputPath, "utf8"));
+    if (typeof source?.meta?.output === "string" && source.meta.output) {
       return source.meta.output;
     }
   } catch {
@@ -136,13 +136,13 @@ function previewPage() {
 }
 
 function compactMessage(value) {
-  let text = String(value || 'Preview build failed without a diagnostic.').trim();
+  let text = String(value || "Preview build failed without a diagnostic.").trim();
   const lines = text.split(/\r?\n/);
   const errorLine = lines.findIndex((line) => /^Error:\s/.test(line));
-  if (errorLine > 0) text = lines.slice(errorLine).join('\n');
+  if (errorLine > 0) text = lines.slice(errorLine).join("\n");
   const relevant = text.split(/\r?\n/);
   const stackLine = relevant.findIndex((line, index) => index > 0 && /^\s*at\s/.test(line));
-  if (stackLine > 0) text = relevant.slice(0, stackLine).join('\n');
+  if (stackLine > 0) text = relevant.slice(0, stackLine).join("\n");
   return text.length > 6000 ? `${text.slice(0, 6000)}\n… diagnostic truncated` : text;
 }
 
@@ -156,17 +156,17 @@ function redactDiagnostic(value, paths) {
 }
 
 function safeJson(value) {
-  return JSON.stringify(value).replace(/</g, '\\u003c');
+  return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
 function responseHeaders(contentType) {
   return {
-    'Cache-Control': 'no-store',
-    'Content-Type': contentType,
-    'Cross-Origin-Resource-Policy': 'same-origin',
-    'Referrer-Policy': 'no-referrer',
-    'X-Content-Type-Options': 'nosniff',
-    'X-Frame-Options': 'SAMEORIGIN',
+    "Cache-Control": "no-store",
+    "Content-Type": contentType,
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "SAMEORIGIN",
   };
 }
 
@@ -181,7 +181,7 @@ function parseReceipt(stdout) {
 export async function startPreview(options) {
   const type = options.type;
   if (!diagramTypes.has(type)) throw new Error(`Unknown diagram type "${type}".`);
-  if (options.quality && !['standard', 'showcase'].includes(options.quality)) {
+  if (options.quality && !["standard", "showcase"].includes(options.quality)) {
     throw new Error(`Unknown quality profile "${options.quality}".`);
   }
   const inputPath = path.resolve(options.input);
@@ -190,19 +190,23 @@ export async function startPreview(options) {
     authoredOutput: initialAuthoredOutput(inputPath),
     defaultOutput: `${type}.html`,
     inputPaths: [inputPath],
-    inputDescription: 'its JSON input',
+    inputDescription: "its JSON input",
     cwd: options.cwd || process.cwd(),
   };
   const { outputPath } = resolveOutputPath(outputRequest);
   const outputDirectory = path.dirname(outputPath);
   const debounceMs = Number.isFinite(options.debounceMs) ? options.debounceMs : defaultDebounceMs;
   const pollMs = Number.isFinite(options.pollMs) ? options.pollMs : defaultPollMs;
-  const stopGraceMs = Number.isFinite(options.stopGraceMs) ? Math.max(0, options.stopGraceMs) : defaultStopGraceMs;
-  const stopKillMs = Number.isFinite(options.stopKillMs) ? Math.max(0, options.stopKillMs) : defaultStopKillMs;
+  const stopGraceMs = Number.isFinite(options.stopGraceMs)
+    ? Math.max(0, options.stopGraceMs)
+    : defaultStopGraceMs;
+  const stopKillMs = Number.isFinite(options.stopKillMs)
+    ? Math.max(0, options.stopKillMs)
+    : defaultStopKillMs;
   const shouldOpen = options.open !== false;
 
   fs.mkdirSync(outputDirectory, { recursive: true });
-  const stagingDirectory = fs.mkdtempSync(path.join(outputDirectory, '.archify-preview-'));
+  const stagingDirectory = fs.mkdtempSync(path.join(outputDirectory, ".archify-preview-"));
 
   let port = 0;
   let watcher;
@@ -225,7 +229,7 @@ export async function startPreview(options) {
   const clients = new Set();
   const state = {
     schemaVersion: 1,
-    status: 'checking',
+    status: "checking",
     generation: 0,
     revision: 0,
     lastVerified: null,
@@ -233,7 +237,9 @@ export async function startPreview(options) {
   };
 
   let resolveClosed;
-  const closed = new Promise((resolve) => { resolveClosed = resolve; });
+  const closed = new Promise((resolve) => {
+    resolveClosed = resolve;
+  });
 
   function publicState() {
     return JSON.parse(JSON.stringify(state));
@@ -251,13 +257,13 @@ export async function startPreview(options) {
   const server = http.createServer((req, res) => {
     const expectedHost = `${loopbackHost}:${port}`;
     if (req.headers.host !== expectedHost) {
-      res.writeHead(403, responseHeaders('text/plain; charset=utf-8'));
-      res.end('Forbidden host');
+      res.writeHead(403, responseHeaders("text/plain; charset=utf-8"));
+      res.end("Forbidden host");
       return;
     }
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
-      res.writeHead(405, { ...responseHeaders('text/plain; charset=utf-8'), Allow: 'GET, HEAD' });
-      res.end('Method not allowed');
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      res.writeHead(405, { ...responseHeaders("text/plain; charset=utf-8"), Allow: "GET, HEAD" });
+      res.end("Method not allowed");
       return;
     }
 
@@ -265,66 +271,75 @@ export async function startPreview(options) {
     try {
       url = new URL(req.url, `http://${expectedHost}`);
     } catch {
-      res.writeHead(400, responseHeaders('text/plain; charset=utf-8'));
-      res.end('Bad request');
+      res.writeHead(400, responseHeaders("text/plain; charset=utf-8"));
+      res.end("Bad request");
       return;
     }
 
-    if (url.pathname === '/') {
+    if (url.pathname === "/") {
       res.writeHead(200, {
-        ...responseHeaders('text/html; charset=utf-8'),
-        'Content-Security-Policy': "default-src 'none'; frame-src 'self'; connect-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'",
-        'Content-Length': page.byteLength,
+        ...responseHeaders("text/html; charset=utf-8"),
+        "Content-Security-Policy":
+          "default-src 'none'; frame-src 'self'; connect-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'",
+        "Content-Length": page.byteLength,
       });
-      if (req.method === 'HEAD') res.end();
+      if (req.method === "HEAD") res.end();
       else res.end(page);
       return;
     }
-    if (url.pathname === '/state') {
+    if (url.pathname === "/state") {
       const body = Buffer.from(`${safeJson(publicState())}\n`);
-      res.writeHead(200, { ...responseHeaders('application/json; charset=utf-8'), 'Content-Length': body.byteLength });
-      if (req.method === 'HEAD') res.end();
+      res.writeHead(200, {
+        ...responseHeaders("application/json; charset=utf-8"),
+        "Content-Length": body.byteLength,
+      });
+      if (req.method === "HEAD") res.end();
       else res.end(body);
       return;
     }
-    if (url.pathname === '/artifact.html') {
+    if (url.pathname === "/artifact.html") {
       if (!artifactBuffer) {
-        res.writeHead(404, responseHeaders('text/plain; charset=utf-8'));
-        res.end('No verified artifact yet');
+        res.writeHead(404, responseHeaders("text/plain; charset=utf-8"));
+        res.end("No verified artifact yet");
         return;
       }
-      res.writeHead(200, { ...responseHeaders('text/html; charset=utf-8'), 'Content-Length': artifactBuffer.byteLength });
-      if (req.method === 'HEAD') res.end();
+      res.writeHead(200, {
+        ...responseHeaders("text/html; charset=utf-8"),
+        "Content-Length": artifactBuffer.byteLength,
+      });
+      if (req.method === "HEAD") res.end();
       else res.end(artifactBuffer);
       return;
     }
-    if (url.pathname === '/events' && req.method === 'GET') {
+    if (url.pathname === "/events" && req.method === "GET") {
       res.writeHead(200, {
-        ...responseHeaders('text/event-stream; charset=utf-8'),
-        Connection: 'keep-alive',
+        ...responseHeaders("text/event-stream; charset=utf-8"),
+        Connection: "keep-alive",
       });
-      res.write('retry: 1000\n\n');
+      res.write("retry: 1000\n\n");
       clients.add(res);
       sendState(res);
-      req.on('close', () => clients.delete(res));
+      req.on("close", () => clients.delete(res));
       return;
     }
 
-    res.writeHead(404, responseHeaders('text/plain; charset=utf-8'));
-    res.end('Not found');
+    res.writeHead(404, responseHeaders("text/plain; charset=utf-8"));
+    res.end("Not found");
   });
 
   try {
     await new Promise((resolve, reject) => {
-      server.once('error', reject);
+      server.once("error", reject);
       server.listen(0, loopbackHost, () => {
-        server.off('error', reject);
+        server.off("error", reject);
         port = server.address().port;
         resolve();
       });
     });
   } catch (error) {
-    try { server.close(); } catch {}
+    try {
+      server.close();
+    } catch {}
     fs.rmSync(stagingDirectory, { recursive: true, force: true });
     throw error;
   }
@@ -348,11 +363,13 @@ export async function startPreview(options) {
   function signalActiveChild(signal) {
     if (!child || child.exitCode !== null || child.signalCode !== null) return;
     try {
-      if (process.platform !== 'win32' && child.pid) process.kill(-child.pid, signal);
+      if (process.platform !== "win32" && child.pid) process.kill(-child.pid, signal);
       else child.kill(signal);
     } catch (error) {
-      if (error.code === 'ESRCH') return;
-      try { child.kill(signal); } catch {}
+      if (error.code === "ESRCH") return;
+      try {
+        child.kill(signal);
+      } catch {}
     }
   }
 
@@ -373,10 +390,10 @@ export async function startPreview(options) {
     stopGraceTimer = setTimeout(() => {
       stopGraceTimer = undefined;
       if (!child) return finishStop();
-      signalActiveChild('SIGTERM');
+      signalActiveChild("SIGTERM");
       stopKillTimer = setTimeout(() => {
         stopKillTimer = undefined;
-        signalActiveChild('SIGKILL');
+        signalActiveChild("SIGKILL");
       }, stopKillMs);
     }, stopGraceMs);
   }
@@ -394,7 +411,7 @@ export async function startPreview(options) {
       clearTimeout(stopKillTimer);
       stopGraceTimer = undefined;
       stopKillTimer = undefined;
-      signalActiveChild('SIGKILL');
+      signalActiveChild("SIGKILL");
     } else if (child) {
       startBoundedChildDrain();
     } else {
@@ -404,37 +421,36 @@ export async function startPreview(options) {
   }
 
   function publishFailure(receipt, stdout, stderr, candidatePath, snapshotPath) {
-    const repairDetails = receipt?.diagnostics
-      ?.slice(0, 12)
-      .map((entry) => {
-        const fix = entry.supportedFixes?.length ? `\nFix: ${entry.supportedFixes.join('; ')}` : '';
+    const repairDetails =
+      receipt?.diagnostics?.slice(0, 12).map((entry) => {
+        const fix = entry.supportedFixes?.length ? `\nFix: ${entry.supportedFixes.join("; ")}` : "";
         return `[${entry.code}] ${entry.message}${fix}`;
       }) || [];
-    const checkerDetails = receipt?.checker?.checks
-      ?.filter((check) => !check.ok)
-      .flatMap((check) => check.details || [])
-      .filter(Boolean)
-      .slice(0, 12) || [];
-    const diagnostic = [
-      receipt?.error,
-      ...(repairDetails.length ? repairDetails : checkerDetails),
-    ].filter(Boolean).join('\n') || stderr || stdout;
-    state.status = 'needs-fix';
+    const checkerDetails =
+      receipt?.checker?.checks
+        ?.filter((check) => !check.ok)
+        .flatMap((check) => check.details || [])
+        .filter(Boolean)
+        .slice(0, 12) || [];
+    const diagnostic =
+      [receipt?.error, ...(repairDetails.length ? repairDetails : checkerDetails)]
+        .filter(Boolean)
+        .join("\n") ||
+      stderr ||
+      stdout;
+    state.status = "needs-fix";
     state.failure = {
-      stage: receipt?.stage || 'render',
-      message: redactDiagnostic(
-        diagnostic,
-        [
-          [inputPath, '<input.json>'],
-          [outputPath, '<output.html>'],
-          [snapshotPath, '<input.json>'],
-          [candidatePath, '<candidate.html>'],
-          [stagingDirectory, '<preview-staging>'],
-          [path.resolve(here, '..'), '<archify-skill>'],
-          [path.resolve(options.cwd || process.cwd()), '<working-directory>'],
-          ...(options.repoRoot ? [[path.resolve(options.repoRoot), '<repo-root>']] : []),
-        ],
-      ),
+      stage: receipt?.stage || "render",
+      message: redactDiagnostic(diagnostic, [
+        [inputPath, "<input.json>"],
+        [outputPath, "<output.html>"],
+        [snapshotPath, "<input.json>"],
+        [candidatePath, "<candidate.html>"],
+        [stagingDirectory, "<preview-staging>"],
+        [path.resolve(here, ".."), "<archify-skill>"],
+        [path.resolve(options.cwd || process.cwd()), "<working-directory>"],
+        ...(options.repoRoot ? [[path.resolve(options.repoRoot), "<repo-root>"]] : []),
+      ]),
     };
     broadcast();
   }
@@ -445,13 +461,15 @@ export async function startPreview(options) {
       candidate = fs.readFileSync(candidatePath);
       const digest = sha256(candidate);
       if (digest !== receipt?.artifact?.sha256) {
-        throw new Error('Verified candidate bytes do not match the delivery receipt.');
+        throw new Error("Verified candidate bytes do not match the delivery receipt.");
       }
       resolveOutputPath(outputRequest);
       const sameArtifact = state.lastVerified?.sha256 === digest;
       let outputMatches = false;
       if (sameArtifact) {
-        try { outputMatches = sha256(fs.readFileSync(outputPath)) === digest; } catch {}
+        try {
+          outputMatches = sha256(fs.readFileSync(outputPath)) === digest;
+        } catch {}
       }
       const currentSource = sourceDigest(inputPath);
       if (currentSource.hash !== generationHash) {
@@ -460,7 +478,7 @@ export async function startPreview(options) {
       if (!sameArtifact || !outputMatches) fs.renameSync(candidatePath, outputPath);
       artifactBuffer = candidate;
       lastGoodSourceHash = generationHash;
-      state.status = 'verified';
+      state.status = "verified";
       if (!sameArtifact) {
         state.revision += 1;
         state.lastVerified = {
@@ -476,7 +494,12 @@ export async function startPreview(options) {
       broadcast();
       return { committed: true, supersededBy: null };
     } catch (error) {
-      publishFailure({ stage: 'commit', error: `Could not publish the verified preview: ${error.message}` }, '', '', candidatePath);
+      publishFailure(
+        { stage: "commit", error: `Could not publish the verified preview: ${error.message}` },
+        "",
+        "",
+        candidatePath,
+      );
       return { committed: false, supersededBy: null };
     }
   }
@@ -486,7 +509,7 @@ export async function startPreview(options) {
     activeHash = digest.hash;
     activeEpoch = epoch;
     state.generation += 1;
-    state.status = 'checking';
+    state.status = "checking";
     state.failure = null;
     broadcast();
 
@@ -494,35 +517,48 @@ export async function startPreview(options) {
     const snapshotPath = path.join(stagingDirectory, `generation-${state.generation}.json`);
     if (digest.bytes !== null) {
       try {
-        fs.writeFileSync(snapshotPath, digest.bytes, { flag: 'wx', mode: 0o600 });
+        fs.writeFileSync(snapshotPath, digest.bytes, { flag: "wx", mode: 0o600 });
       } catch (error) {
         publishFailure(
-          { stage: 'prepare', error: `Could not snapshot the observed input: ${error.message}` },
-          '',
-          '',
+          { stage: "prepare", error: `Could not snapshot the observed input: ${error.message}` },
+          "",
+          "",
           candidatePath,
           snapshotPath,
         );
         return;
       }
     }
-    const args = [options.deliveryCli || cliPath, 'deliver', type, snapshotPath, candidatePath, '--json'];
-    if (options.quality) args.push('--quality', options.quality);
-    if (options.repoRoot) args.push('--repo-root', path.resolve(options.repoRoot));
-    let stdout = '';
-    let stderr = '';
+    const args = [
+      options.deliveryCli || cliPath,
+      "deliver",
+      type,
+      snapshotPath,
+      candidatePath,
+      "--json",
+    ];
+    if (options.quality) args.push("--quality", options.quality);
+    if (options.repoRoot) args.push("--repo-root", path.resolve(options.repoRoot));
+    let stdout = "";
+    let stderr = "";
     child = spawn(process.execPath, args, {
       cwd: options.cwd || process.cwd(),
       env: process.env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      detached: process.platform !== 'win32',
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: process.platform !== "win32",
     });
-    child.stdout.setEncoding('utf8');
-    child.stderr.setEncoding('utf8');
-    child.stdout.on('data', (chunk) => { stdout += chunk; });
-    child.stderr.on('data', (chunk) => { stderr += chunk; });
-    child.on('error', (error) => { stderr += error.message; });
-    child.on('close', (code) => {
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", (error) => {
+      stderr += error.message;
+    });
+    child.on("close", (code) => {
       const receipt = parseReceipt(stdout);
       const generationEpoch = activeEpoch;
       const generationHash = activeHash;
@@ -538,8 +574,12 @@ export async function startPreview(options) {
       } else if (!stopping && !stale) {
         publishFailure(receipt, stdout, stderr, candidatePath, snapshotPath);
       }
-      try { fs.rmSync(candidatePath, { force: true }); } catch {}
-      try { fs.rmSync(snapshotPath, { force: true }); } catch {}
+      try {
+        fs.rmSync(candidatePath, { force: true });
+      } catch {}
+      try {
+        fs.rmSync(snapshotPath, { force: true });
+      } catch {}
 
       if (stopping) {
         finishStop();
@@ -563,8 +603,8 @@ export async function startPreview(options) {
         return;
       }
       if (digest.hash === lastGoodSourceHash) {
-        if (state.status !== 'verified' && state.lastVerified) {
-          state.status = 'verified';
+        if (state.status !== "verified" && state.lastVerified) {
+          state.status = "verified";
           state.failure = null;
           broadcast();
         }
@@ -603,7 +643,7 @@ export async function startPreview(options) {
     try {
       opener = openLoopbackUrl(url);
     } catch {
-      opener = { requested: true, status: 'unsupported', target: url, method: null };
+      opener = { requested: true, status: "unsupported", target: url, method: null };
     }
   }
 
@@ -625,24 +665,26 @@ export async function runPreview(options) {
   console.log(`preview ${preview.url}`);
   console.log(`watching ${preview.input}`);
   console.log(`output ${preview.output}`);
-  if (preview.opener && preview.opener.status !== 'opened') {
-    console.error(`Could not open the preview (${preview.opener.status}). Open it manually: ${preview.url}`);
+  if (preview.opener && preview.opener.status !== "opened") {
+    console.error(
+      `Could not open the preview (${preview.opener.status}). Open it manually: ${preview.url}`,
+    );
   }
 
   let signalCount = 0;
   const stop = () => {
     signalCount += 1;
     if (signalCount === 1) {
-      console.log('\nstopping preview…');
+      console.log("\nstopping preview…");
       preview.stop();
     } else {
-      console.log('\nforcing preview shutdown…');
+      console.log("\nforcing preview shutdown…");
       preview.stop({ force: true });
     }
   };
-  process.on('SIGINT', stop);
-  process.on('SIGTERM', stop);
+  process.on("SIGINT", stop);
+  process.on("SIGTERM", stop);
   await preview.closed;
-  process.off('SIGINT', stop);
-  process.off('SIGTERM', stop);
+  process.off("SIGINT", stop);
+  process.off("SIGTERM", stop);
 }

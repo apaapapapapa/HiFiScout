@@ -1,22 +1,26 @@
-import assert from 'node:assert/strict';
-import { execFileSync, spawn } from 'node:child_process';
-import { once } from 'node:events';
-import fs from 'node:fs';
-import net from 'node:net';
-import os from 'node:os';
-import path from 'node:path';
-import { pathToFileURL, fileURLToPath } from 'node:url';
+import assert from "node:assert/strict";
+import { execFileSync, spawn } from "node:child_process";
+import { once } from "node:events";
+import fs from "node:fs";
+import net from "node:net";
+import os from "node:os";
+import path from "node:path";
+import { pathToFileURL, fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const skillRoot = path.resolve(__dirname, '..');
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'archify-webm-artifact-'));
+const skillRoot = path.resolve(__dirname, "..");
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "archify-webm-artifact-"));
 const externalReachSource = process.env.ARCHIFY_REACH_CARD_SOURCE
   ? path.resolve(process.env.ARCHIFY_REACH_CARD_SOURCE)
-  : '';
+  : "";
 const externalReachOutput = process.env.ARCHIFY_REACH_CARD_OUTPUT
   ? path.resolve(process.env.ARCHIFY_REACH_CARD_OUTPUT)
-  : '';
-assert.equal(Boolean(externalReachSource), Boolean(externalReachOutput), 'ARCHIFY_REACH_CARD_SOURCE and ARCHIFY_REACH_CARD_OUTPUT must be set together');
+  : "";
+assert.equal(
+  Boolean(externalReachSource),
+  Boolean(externalReachOutput),
+  "ARCHIFY_REACH_CARD_SOURCE and ARCHIFY_REACH_CARD_OUTPUT must be set together",
+);
 
 function executable(candidates) {
   for (const candidate of candidates) {
@@ -26,62 +30,77 @@ function executable(candidates) {
       continue;
     }
     try {
-      return execFileSync('sh', ['-c', `command -v "$1"`, 'archify-which', candidate], { encoding: 'utf8' }).trim();
+      return execFileSync("sh", ["-c", `command -v "$1"`, "archify-which", candidate], {
+        encoding: "utf8",
+      }).trim();
     } catch (_) {
       // Try the next platform-specific name.
     }
   }
-  return '';
+  return "";
 }
 
 const chrome = executable([
   process.env.ARCHIFY_CHROME,
-  'google-chrome',
-  'google-chrome-stable',
-  'chromium',
-  'chromium-browser',
-  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  "google-chrome",
+  "google-chrome-stable",
+  "chromium",
+  "chromium-browser",
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 ]);
-const ffmpeg = executable([process.env.ARCHIFY_FFMPEG, 'ffmpeg']);
+const ffmpeg = executable([process.env.ARCHIFY_FFMPEG, "ffmpeg"]);
 
-assert.ok(chrome, 'Chrome/Chromium is required for the WebM artifact smoke test (or set ARCHIFY_CHROME)');
-assert.ok(ffmpeg, 'ffmpeg is required for the WebM artifact smoke test (or set ARCHIFY_FFMPEG)');
+assert.ok(
+  chrome,
+  "Chrome/Chromium is required for the WebM artifact smoke test (or set ARCHIFY_CHROME)",
+);
+assert.ok(ffmpeg, "ffmpeg is required for the WebM artifact smoke test (or set ARCHIFY_FFMPEG)");
 
-const source = JSON.parse(fs.readFileSync(path.join(skillRoot, 'examples/web-app.architecture.json'), 'utf8'));
-source.meta.animation = 'trace';
-source.meta.visual_preset = 'signal-flow';
+const source = JSON.parse(
+  fs.readFileSync(path.join(skillRoot, "examples/web-app.architecture.json"), "utf8"),
+);
+source.meta.animation = "trace";
+source.meta.visual_preset = "signal-flow";
 
-const input = path.join(tmp, 'motion.architecture.json');
-const output = path.join(tmp, 'motion.html');
+const input = path.join(tmp, "motion.architecture.json");
+const output = path.join(tmp, "motion.html");
 fs.writeFileSync(input, JSON.stringify(source));
-execFileSync(process.execPath, [
-  path.join(skillRoot, 'renderers/architecture/render-architecture.mjs'),
-  input,
-  output,
-], { stdio: ['ignore', 'ignore', 'pipe'] });
+execFileSync(
+  process.execPath,
+  [path.join(skillRoot, "renderers/architecture/render-architecture.mjs"), input, output],
+  { stdio: ["ignore", "ignore", "pipe"] },
+);
 
-const sequenceOutput = path.join(tmp, 'sequence.html');
-execFileSync(process.execPath, [
-  path.join(skillRoot, 'renderers/sequence/render-sequence.mjs'),
-  path.join(skillRoot, 'examples/cache-miss-request.sequence.json'),
-  sequenceOutput,
-], { stdio: ['ignore', 'ignore', 'pipe'] });
+const sequenceOutput = path.join(tmp, "sequence.html");
+execFileSync(
+  process.execPath,
+  [
+    path.join(skillRoot, "renderers/sequence/render-sequence.mjs"),
+    path.join(skillRoot, "examples/cache-miss-request.sequence.json"),
+    sequenceOutput,
+  ],
+  { stdio: ["ignore", "ignore", "pipe"] },
+);
 
 const routeOutputs = {
   architecture: output,
   sequence: sequenceOutput,
 };
 for (const [mode, example] of Object.entries({
-  workflow: 'agent-tool-call.workflow.json',
-  dataflow: 'product-analytics.dataflow.json',
-  lifecycle: 'agent-run.lifecycle.json',
+  workflow: "agent-tool-call.workflow.json",
+  dataflow: "product-analytics.dataflow.json",
+  lifecycle: "agent-run.lifecycle.json",
 })) {
   const rendered = path.join(tmp, `${mode}.html`);
-  execFileSync(process.execPath, [
-    path.join(skillRoot, `renderers/${mode}/render-${mode}.mjs`),
-    path.join(skillRoot, 'examples', example),
-    rendered,
-  ], { stdio: ['ignore', 'ignore', 'pipe'] });
+  execFileSync(
+    process.execPath,
+    [
+      path.join(skillRoot, `renderers/${mode}/render-${mode}.mjs`),
+      path.join(skillRoot, "examples", example),
+      rendered,
+    ],
+    { stdio: ["ignore", "ignore", "pipe"] },
+  );
   routeOutputs[mode] = rendered;
 }
 
@@ -89,106 +108,124 @@ function renderLegendFixture(mode, name, document) {
   const inputPath = path.join(tmp, `${name}.${mode}.json`);
   const outputPath = path.join(tmp, `${name}.${mode}.html`);
   fs.writeFileSync(inputPath, JSON.stringify(document));
-  execFileSync(process.execPath, [
-    path.join(skillRoot, `renderers/${mode}/render-${mode}.mjs`),
-    inputPath,
-    outputPath,
-  ], { stdio: ['ignore', 'ignore', 'pipe'] });
+  execFileSync(
+    process.execPath,
+    [path.join(skillRoot, `renderers/${mode}/render-${mode}.mjs`), inputPath, outputPath],
+    { stdio: ["ignore", "ignore", "pipe"] },
+  );
   return outputPath;
 }
 
 const legendOutputs = {
-  dataflow: renderLegendFixture('dataflow', 'issue-52-default-flow', {
+  dataflow: renderLegendFixture("dataflow", "issue-52-default-flow", {
     schema_version: 1,
-    diagram_type: 'dataflow',
-    meta: { title: 'Default Flow With Store' },
-    stages: [{ label: 'Input' }, { label: 'Output' }],
+    diagram_type: "dataflow",
+    meta: { title: "Default Flow With Store" },
+    stages: [{ label: "Input" }, { label: "Output" }],
     nodes: [
-      { id: 'input', type: 'backend', label: 'Input', stage: 0, row: 0 },
-      { id: 'output', type: 'database', label: 'Output Store', stage: 1, row: 0 },
+      { id: "input", type: "backend", label: "Input", stage: 0, row: 0 },
+      { id: "output", type: "database", label: "Output Store", stage: 1, row: 0 },
     ],
-    flows: [{ from: 'input', to: 'output', label: 'request', route: 'straight' }],
+    flows: [{ from: "input", to: "output", label: "request", route: "straight" }],
   }),
-  lifecycle: renderLegendFixture('lifecycle', 'issue-52-no-waiting', {
+  lifecycle: renderLegendFixture("lifecycle", "issue-52-no-waiting", {
     schema_version: 1,
-    diagram_type: 'lifecycle',
-    meta: { title: 'No Waiting or Failure', viewBox: [720, 566] },
-    lanes: [{ id: 'main', label: 'Lifecycle' }],
+    diagram_type: "lifecycle",
+    meta: { title: "No Waiting or Failure", viewBox: [720, 566] },
+    lanes: [{ id: "main", label: "Lifecycle" }],
     states: [
-      { id: 'started', type: 'start', label: 'Started', lane: 'main', col: 0 },
-      { id: 'running', type: 'active', label: 'Running', lane: 'main', col: 1 },
-      { id: 'completed', type: 'success', label: 'Completed', lane: 'main', col: 2 },
+      { id: "started", type: "start", label: "Started", lane: "main", col: 0 },
+      { id: "running", type: "active", label: "Running", lane: "main", col: 1 },
+      { id: "completed", type: "success", label: "Completed", lane: "main", col: 2 },
     ],
-    transitions: [{ from: 'started', to: 'running' }, { from: 'running', to: 'completed' }],
+    transitions: [
+      { from: "started", to: "running" },
+      { from: "running", to: "completed" },
+    ],
   }),
-  custom: renderLegendFixture('architecture', 'issue-52-custom-label', {
+  custom: renderLegendFixture("architecture", "issue-52-custom-label", {
     schema_version: 1,
-    diagram_type: 'architecture',
+    diagram_type: "architecture",
     meta: {
-      title: 'Custom Legend Label',
+      title: "Custom Legend Label",
       viewBox: [720, 420],
       legend: {
         entries: {
-          frontend: { label: 'Reader <UI> & ops' },
-          external: { label: 'Future integration', visible: true },
+          frontend: { label: "Reader <UI> & ops" },
+          external: { label: "Future integration", visible: true },
         },
       },
-      views: [{ id: 'main', label: 'Main', focus: ['ui', 'store'] }],
+      views: [{ id: "main", label: "Main", focus: ["ui", "store"] }],
     },
     components: [
-      { id: 'ui', type: 'frontend', label: 'UI', pos: [60, 90] },
-      { id: 'store', type: 'database', label: 'Store', pos: [300, 90] },
+      { id: "ui", type: "frontend", label: "UI", pos: [60, 90] },
+      { id: "store", type: "database", label: "Store", pos: [300, 90] },
     ],
     connections: [],
   }),
-  hidden: renderLegendFixture('dataflow', 'issue-52-hidden', {
+  hidden: renderLegendFixture("dataflow", "issue-52-hidden", {
     schema_version: 1,
-    diagram_type: 'dataflow',
-    meta: { title: 'Hidden Legend', legend: { mode: 'hidden', entries: { database: { visible: true } } } },
-    stages: [{ label: 'Input' }, { label: 'Output' }],
+    diagram_type: "dataflow",
+    meta: {
+      title: "Hidden Legend",
+      legend: { mode: "hidden", entries: { database: { visible: true } } },
+    },
+    stages: [{ label: "Input" }, { label: "Output" }],
     nodes: [
-      { id: 'input', type: 'backend', label: 'Input', stage: 0, row: 0 },
-      { id: 'output', type: 'backend', label: 'Output', stage: 1, row: 0 },
+      { id: "input", type: "backend", label: "Input", stage: 0, row: 0 },
+      { id: "output", type: "backend", label: "Output", stage: 1, row: 0 },
     ],
-    flows: [{ from: 'input', to: 'output', label: 'request', route: 'straight' }],
+    flows: [{ from: "input", to: "output", label: "request", route: "straight" }],
   }),
 };
 
 const parallelSource = JSON.parse(JSON.stringify(source));
-parallelSource.meta.title = 'Parallel Route Identity';
-parallelSource.connections[0].label = '';
+parallelSource.meta.title = "Parallel Route Identity";
+parallelSource.connections[0].label = "";
 parallelSource.connections.splice(1, 0, {
-  id: 'users-to-cdn-alternate',
-  from: 'users',
-  to: 'cdn',
-  label: '',
+  id: "users-to-cdn-alternate",
+  from: "users",
+  to: "cdn",
+  label: "",
 });
-const parallelInput = path.join(tmp, 'parallel.architecture.json');
-const parallelOutput = path.join(tmp, 'parallel.html');
+const parallelInput = path.join(tmp, "parallel.architecture.json");
+const parallelOutput = path.join(tmp, "parallel.html");
 fs.writeFileSync(parallelInput, JSON.stringify(parallelSource));
-execFileSync(process.execPath, [
-  path.join(skillRoot, 'renderers/architecture/render-architecture.mjs'),
-  parallelInput,
-  parallelOutput,
-], { stdio: ['ignore', 'ignore', 'pipe'] });
+execFileSync(
+  process.execPath,
+  [
+    path.join(skillRoot, "renderers/architecture/render-architecture.mjs"),
+    parallelInput,
+    parallelOutput,
+  ],
+  { stdio: ["ignore", "ignore", "pipe"] },
+);
 
-const specialSourceLabel = '入口 <script>window.__routeLabelExecuted = true</script> 汉字 🚀 with an intentionally very long endpoint label';
-const specialTargetLabel = '终点服务 ✅ emoji + CJK + a second deliberately long endpoint label for header fitting';
+const specialSourceLabel =
+  "入口 <script>window.__routeLabelExecuted = true</script> 汉字 🚀 with an intentionally very long endpoint label";
+const specialTargetLabel =
+  "终点服务 ✅ emoji + CJK + a second deliberately long endpoint label for header fitting";
 const specialComponents = Array.from({ length: 11 }, (_, index) => ({
-  id: index === 0 ? 'Route_Source-01' : index === 10 ? 'Route_Target-10' : `route_step-${index}`,
-  type: index === 0 ? 'external' : index === 10 ? 'database' : 'backend',
-  label: index === 0 ? specialSourceLabel : index === 10 ? specialTargetLabel : `步骤 ${index} · service_${index} ⚙️`,
+  id: index === 0 ? "Route_Source-01" : index === 10 ? "Route_Target-10" : `route_step-${index}`,
+  type: index === 0 ? "external" : index === 10 ? "database" : "backend",
+  label:
+    index === 0
+      ? specialSourceLabel
+      : index === 10
+        ? specialTargetLabel
+        : `步骤 ${index} · service_${index} ⚙️`,
   sublabel: `hop ${index}`,
   pos: [40 + index * 820, 280],
   size: [index === 0 || index === 10 ? 780 : 220, 72],
 }));
 const specialRouteSource = {
   schema_version: 1,
-  diagram_type: 'architecture',
+  diagram_type: "architecture",
   meta: {
-    title: '多语言 Route Share Card 🚀 with a deliberately long original diagram title that must fit safely',
-    subtitle: 'Ten exact authored hops',
-    animation: 'trace',
+    title:
+      "多语言 Route Share Card 🚀 with a deliberately long original diagram title that must fit safely",
+    subtitle: "Ten exact authored hops",
+    animation: "trace",
   },
   components: specialComponents,
   boundaries: [],
@@ -196,20 +233,28 @@ const specialRouteSource = {
     id: `route_edge-${index + 1}`,
     from: component.id,
     to: specialComponents[index + 1].id,
-    label: '',
+    label: "",
   })),
   cards: [],
 };
-const specialRouteInput = path.join(tmp, 'special-route.architecture.json');
-const specialRouteOutput = path.join(tmp, 'special-route.html');
+const specialRouteInput = path.join(tmp, "special-route.architecture.json");
+const specialRouteOutput = path.join(tmp, "special-route.html");
 fs.writeFileSync(specialRouteInput, JSON.stringify(specialRouteSource));
-execFileSync(process.execPath, [
-  path.join(skillRoot, 'renderers/architecture/render-architecture.mjs'),
-  specialRouteInput,
-  specialRouteOutput,
-], { stdio: ['ignore', 'ignore', 'pipe'] });
+execFileSync(
+  process.execPath,
+  [
+    path.join(skillRoot, "renderers/architecture/render-architecture.mjs"),
+    specialRouteInput,
+    specialRouteOutput,
+  ],
+  { stdio: ["ignore", "ignore", "pipe"] },
+);
 
-assert.equal(typeof WebSocket, 'function', 'Node.js 22+ is required for the Chrome DevTools smoke harness');
+assert.equal(
+  typeof WebSocket,
+  "function",
+  "Node.js 22+ is required for the Chrome DevTools smoke harness",
+);
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -217,14 +262,11 @@ function delay(ms) {
 
 async function waitForExit(child, timeoutMs) {
   if (child.exitCode !== null || child.signalCode !== null) return true;
-  return Promise.race([
-    once(child, 'exit').then(() => true),
-    delay(timeoutMs).then(() => false),
-  ]);
+  return Promise.race([once(child, "exit").then(() => true), delay(timeoutMs).then(() => false)]);
 }
 
 async function removeTempTree(directory) {
-  const transientCodes = new Set(['EBUSY', 'ENOTEMPTY', 'EPERM']);
+  const transientCodes = new Set(["EBUSY", "ENOTEMPTY", "EPERM"]);
   let lastError;
   for (let attempt = 0; attempt < 8; attempt += 1) {
     try {
@@ -236,7 +278,9 @@ async function removeTempTree(directory) {
       await delay(100 * (attempt + 1));
     }
   }
-  console.warn(`warning: temporary Chrome profile cleanup deferred (${lastError?.code || 'unknown'}): ${directory}`);
+  console.warn(
+    `warning: temporary Chrome profile cleanup deferred (${lastError?.code || "unknown"}): ${directory}`,
+  );
 }
 
 async function withTimeout(promise, ms, label) {
@@ -256,8 +300,8 @@ async function withTimeout(promise, ms, label) {
 async function freePort() {
   const server = net.createServer();
   await new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', resolve);
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
   });
   const port = server.address().port;
   await new Promise((resolve) => server.close(resolve));
@@ -276,19 +320,24 @@ async function devtoolsEndpoint(port, chromeProcess, diagnostics) {
     await delay(50);
   }
   const stderr = diagnostics().trim();
-  const exit = chromeProcess.exitCode === null ? 'still running' : `exited with code ${chromeProcess.exitCode}`;
-  throw new Error(`Chrome did not expose a DevTools endpoint (${exit})${stderr ? `:\n${stderr}` : ''}`);
+  const exit =
+    chromeProcess.exitCode === null
+      ? "still running"
+      : `exited with code ${chromeProcess.exitCode}`;
+  throw new Error(
+    `Chrome did not expose a DevTools endpoint (${exit})${stderr ? `:\n${stderr}` : ""}`,
+  );
 }
 
 async function connectCdp(webSocketUrl) {
   const socket = new WebSocket(webSocketUrl);
   await new Promise((resolve, reject) => {
-    socket.addEventListener('open', resolve, { once: true });
-    socket.addEventListener('error', reject, { once: true });
+    socket.addEventListener("open", resolve, { once: true });
+    socket.addEventListener("error", reject, { once: true });
   });
   let nextId = 0;
   const pending = new Map();
-  socket.addEventListener('message', (event) => {
+  socket.addEventListener("message", (event) => {
     const message = JSON.parse(String(event.data));
     if (!message.id || !pending.has(message.id)) return;
     const request = pending.get(message.id);
@@ -296,8 +345,9 @@ async function connectCdp(webSocketUrl) {
     if (message.error) request.reject(new Error(message.error.message));
     else request.resolve(message.result);
   });
-  socket.addEventListener('close', () => {
-    for (const request of pending.values()) request.reject(new Error('Chrome DevTools connection closed'));
+  socket.addEventListener("close", () => {
+    for (const request of pending.values())
+      request.reject(new Error("Chrome DevTools connection closed"));
     pending.clear();
   });
   return {
@@ -313,34 +363,46 @@ async function connectCdp(webSocketUrl) {
 }
 
 async function evaluate(cdp, sessionId, expression, awaitPromise = false) {
-  const response = await cdp.send('Runtime.evaluate', {
-    expression,
-    awaitPromise,
-    returnByValue: true,
-  }, sessionId);
+  const response = await cdp.send(
+    "Runtime.evaluate",
+    {
+      expression,
+      awaitPromise,
+      returnByValue: true,
+    },
+    sessionId,
+  );
   if (response.exceptionDetails) {
-    throw new Error(response.exceptionDetails.exception?.description || response.exceptionDetails.text || 'browser evaluation failed');
+    throw new Error(
+      response.exceptionDetails.exception?.description ||
+        response.exceptionDetails.text ||
+        "browser evaluation failed",
+    );
   }
   return response.result?.value;
 }
 
 const port = await freePort();
-let chromeStderr = '';
-const chromeProcess = spawn(chrome, [
-  '--headless=new',
-  '--disable-gpu',
-  '--disable-dev-shm-usage',
-  '--no-sandbox',
-  '--allow-file-access-from-files',
-  '--autoplay-policy=no-user-gesture-required',
-  '--log-level=3',
-  `--user-data-dir=${path.join(tmp, 'chrome-profile')}`,
-  '--remote-debugging-address=127.0.0.1',
-  `--remote-debugging-port=${port}`,
-  'about:blank',
-], { stdio: ['ignore', 'ignore', 'pipe'] });
-chromeProcess.stderr.setEncoding('utf8');
-chromeProcess.stderr.on('data', (chunk) => {
+let chromeStderr = "";
+const chromeProcess = spawn(
+  chrome,
+  [
+    "--headless=new",
+    "--disable-gpu",
+    "--disable-dev-shm-usage",
+    "--no-sandbox",
+    "--allow-file-access-from-files",
+    "--autoplay-policy=no-user-gesture-required",
+    "--log-level=3",
+    `--user-data-dir=${path.join(tmp, "chrome-profile")}`,
+    "--remote-debugging-address=127.0.0.1",
+    `--remote-debugging-port=${port}`,
+    "about:blank",
+  ],
+  { stdio: ["ignore", "ignore", "pipe"] },
+);
+chromeProcess.stderr.setEncoding("utf8");
+chromeProcess.stderr.on("data", (chunk) => {
   chromeStderr = `${chromeStderr}${chunk}`.slice(-64 * 1024);
 });
 
@@ -349,17 +411,21 @@ let targetId;
 
 try {
   cdp = await connectCdp(await devtoolsEndpoint(port, chromeProcess, () => chromeStderr));
-  ({ targetId } = await cdp.send('Target.createTarget', { url: 'about:blank' }));
-  const { sessionId } = await cdp.send('Target.attachToTarget', { targetId, flatten: true });
-  await cdp.send('Page.enable', {}, sessionId);
-  await cdp.send('Runtime.enable', {}, sessionId);
+  ({ targetId } = await cdp.send("Target.createTarget", { url: "about:blank" }));
+  const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
+  await cdp.send("Page.enable", {}, sessionId);
+  await cdp.send("Runtime.enable", {}, sessionId);
 
   async function navigateReady(file, condition, label) {
     const url = file instanceof URL ? file.href : pathToFileURL(file).href;
-    await cdp.send('Page.navigate', { url }, sessionId);
+    await cdp.send("Page.navigate", { url }, sessionId);
     let ready = false;
     for (let attempt = 0; attempt < 100 && !ready; attempt += 1) {
-      ready = await evaluate(cdp, sessionId, `document.readyState === "complete" && (${condition})`);
+      ready = await evaluate(
+        cdp,
+        sessionId,
+        `document.readyState === "complete" && (${condition})`,
+      );
       if (!ready) await delay(50);
     }
     assert.equal(ready, true, `${label} did not expose its browser export surface`);
@@ -368,9 +434,12 @@ try {
   async function verifyResolvedLegendContract(outputs) {
     async function inspectKinds(file, expectedKinds, theme) {
       const url = new URL(pathToFileURL(file).href);
-      url.searchParams.set('theme', theme);
-      await navigateReady(url, '!!(window.Archify && Archify.semanticLens)', `legend ${theme}`);
-      const result = await evaluate(cdp, sessionId, `(() => {
+      url.searchParams.set("theme", theme);
+      await navigateReady(url, "!!(window.Archify && Archify.semanticLens)", `legend ${theme}`);
+      const result = await evaluate(
+        cdp,
+        sessionId,
+        `(() => {
         var svg = document.querySelector('.diagram-container > svg');
         var entries = Array.from(svg.querySelectorAll('[data-legend-semantic-kind]'));
         var vb = svg.viewBox.baseVal;
@@ -387,26 +456,38 @@ try {
             return box.x >= vb.x && box.y >= vb.y && box.x + box.width <= vb.x + vb.width && box.y + box.height <= vb.y + vb.height;
           })
         };
-      })()`);
+      })()`,
+      );
       assert.equal(result.theme, theme);
       assert.deepEqual(result.kinds, expectedKinds);
       assert.equal(result.inside, true);
       return result;
     }
 
-    for (const theme of ['dark', 'light']) {
-      const dataflow = await inspectKinds(outputs.dataflow, ['database', 'default'], theme);
+    for (const theme of ["dark", "light"]) {
+      const dataflow = await inspectKinds(outputs.dataflow, ["database", "default"], theme);
       assert.equal(dataflow.bridge, true);
-      assert.deepEqual(dataflow.roles, ['button', null]);
-      assert.deepEqual(dataflow.aria, ['Inspect data store, 1 node', null]);
-      assert.deepEqual(dataflow.counts, ['1', null]);
+      assert.deepEqual(dataflow.roles, ["button", null]);
+      assert.deepEqual(dataflow.aria, ["Inspect data store, 1 node", null]);
+      assert.deepEqual(dataflow.counts, ["1", null]);
       assert.equal(dataflow.tabStops, 1);
-      const lifecycle = await inspectKinds(outputs.lifecycle, ['start', 'active', 'success'], theme);
+      const lifecycle = await inspectKinds(
+        outputs.lifecycle,
+        ["start", "active", "success"],
+        theme,
+      );
       assert.equal(lifecycle.bridge, true);
     }
 
-    await navigateReady(outputs.dataflow, '!!(window.Archify && Archify.semanticLens && Archify.exportMenu)', 'Dataflow database legend runtime');
-    const databaseRuntime = await evaluate(cdp, sessionId, String.raw`(async function () {
+    await navigateReady(
+      outputs.dataflow,
+      "!!(window.Archify && Archify.semanticLens && Archify.exportMenu)",
+      "Dataflow database legend runtime",
+    );
+    const databaseRuntime = await evaluate(
+      cdp,
+      sessionId,
+      String.raw`(async function () {
       var entry = document.querySelector('[data-legend-kind="database"]');
       entry.focus();
       entry.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
@@ -432,14 +513,23 @@ try {
         URL.createObjectURL = originalCreateObjectURL;
         HTMLAnchorElement.prototype.click = originalAnchorClick;
       }
-    })()`, true);
-    assert.deepEqual(databaseRuntime.selected, ['database']);
+    })()`,
+      true,
+    );
+    assert.deepEqual(databaseRuntime.selected, ["database"]);
     assert.equal(databaseRuntime.lensOpen, true);
-    assert.deepEqual(databaseRuntime.exportedKinds, ['database', 'default']);
+    assert.deepEqual(databaseRuntime.exportedKinds, ["database", "default"]);
     assert.equal(databaseRuntime.exportedBridgeResidue, 0);
 
-    await navigateReady(outputs.custom, '!!(window.Archify && Archify.semanticLens && Archify.exportMenu)', 'custom legend runtime');
-    const runtime = await evaluate(cdp, sessionId, String.raw`(async function () {
+    await navigateReady(
+      outputs.custom,
+      "!!(window.Archify && Archify.semanticLens && Archify.exportMenu)",
+      "custom legend runtime",
+    );
+    const runtime = await evaluate(
+      cdp,
+      sessionId,
+      String.raw`(async function () {
       var svg = document.querySelector('.diagram-container > svg');
       var entries = Array.from(svg.querySelectorAll('[data-legend-semantic-kind]'));
       var interactive = entries.filter(function (entry) { return entry.hasAttribute('data-legend-kind'); });
@@ -498,58 +588,92 @@ try {
         URL.createObjectURL = originalCreateObjectURL;
         HTMLAnchorElement.prototype.click = originalAnchorClick;
       }
-    })()`, true);
-    assert.deepEqual(runtime.labels, ['Inspect Reader <UI> & ops, 1 node', 'Inspect Database, 1 node']);
-    assert.deepEqual(runtime.roles, ['button', 'button', null]);
-    assert.deepEqual(runtime.counts, ['1', '1']);
+    })()`,
+      true,
+    );
+    assert.deepEqual(runtime.labels, [
+      "Inspect Reader <UI> & ops, 1 node",
+      "Inspect Database, 1 node",
+    ]);
+    assert.deepEqual(runtime.roles, ["button", "button", null]);
+    assert.deepEqual(runtime.counts, ["1", "1"]);
     assert.equal(runtime.tabStops, 1);
     assert.equal(runtime.arrowMoved, true);
-    assert.deepEqual(runtime.selected, ['database']);
+    assert.deepEqual(runtime.selected, ["database"]);
     assert.equal(runtime.lensOpen, false);
     assert.equal(runtime.guidedActivated, true);
-    assert.equal(runtime.guidedActive, 'main');
+    assert.equal(runtime.guidedActive, "main");
     assert.equal(runtime.visualMatrix.length, 8);
     for (const entry of runtime.visualMatrix) {
-      assert.deepEqual(entry.kinds, ['frontend', 'database', 'external']);
-      assert.deepEqual(entry.labels, ['Reader <UI> & ops', 'Database', 'Future integration']);
+      assert.deepEqual(entry.kinds, ["frontend", "database", "external"]);
+      assert.deepEqual(entry.labels, ["Reader <UI> & ops", "Database", "Future integration"]);
     }
     assert.equal(runtime.forcedUnusedInteractive, false);
-    assert.deepEqual(runtime.exportedKinds, ['frontend', 'database', 'external']);
+    assert.deepEqual(runtime.exportedKinds, ["frontend", "database", "external"]);
     assert.equal(runtime.exportedBridgeResidue, 0);
-    assert.deepEqual(runtime.exportedLabels, ['Reader <UI> & ops', 'Database', 'Future integration']);
+    assert.deepEqual(runtime.exportedLabels, [
+      "Reader <UI> & ops",
+      "Database",
+      "Future integration",
+    ]);
 
-    await cdp.send('Emulation.setEmulatedMedia', { media: 'print' }, sessionId);
-    const printState = await evaluate(cdp, sessionId, `(() => ({
+    await cdp.send("Emulation.setEmulatedMedia", { media: "print" }, sessionId);
+    const printState = await evaluate(
+      cdp,
+      sessionId,
+      `(() => ({
       legendDisplay: getComputedStyle(document.querySelector('[data-legend]')).display,
       runtimeBadgesHidden: Array.from(document.querySelectorAll('[data-legend-bridge-runtime]')).every(function (entry) { return getComputedStyle(entry).display === 'none'; })
-    }))()`);
-    assert.notEqual(printState.legendDisplay, 'none');
+    }))()`,
+    );
+    assert.notEqual(printState.legendDisplay, "none");
     assert.equal(printState.runtimeBadgesHidden, true);
-    await cdp.send('Emulation.setEmulatedMedia', { media: '' }, sessionId);
+    await cdp.send("Emulation.setEmulatedMedia", { media: "" }, sessionId);
 
     const embedUrl = new URL(pathToFileURL(outputs.custom).href);
-    embedUrl.searchParams.set('embed', '1');
-    await navigateReady(embedUrl, '!!(window.Archify && Archify.semanticLens)', 'embedded legend');
-    const embed = await evaluate(cdp, sessionId, `(() => ({
+    embedUrl.searchParams.set("embed", "1");
+    await navigateReady(embedUrl, "!!(window.Archify && Archify.semanticLens)", "embedded legend");
+    const embed = await evaluate(
+      cdp,
+      sessionId,
+      `(() => ({
       roles: document.querySelectorAll('[data-legend-kind][role]').length,
       runtime: document.querySelectorAll('[data-legend-bridge-runtime]').length,
       kinds: Array.from(document.querySelectorAll('[data-legend-semantic-kind]')).map(function (entry) { return entry.getAttribute('data-legend-semantic-kind'); })
-    }))()`);
-    assert.deepEqual(embed, { roles: 0, runtime: 0, kinds: ['frontend', 'database', 'external'] });
+    }))()`,
+    );
+    assert.deepEqual(embed, { roles: 0, runtime: 0, kinds: ["frontend", "database", "external"] });
 
-    await navigateReady(outputs.hidden, '!!(window.Archify && Archify.semanticLens)', 'hidden legend');
-    const hidden = await evaluate(cdp, sessionId, `(() => ({
+    await navigateReady(
+      outputs.hidden,
+      "!!(window.Archify && Archify.semanticLens)",
+      "hidden legend",
+    );
+    const hidden = await evaluate(
+      cdp,
+      sessionId,
+      `(() => ({
       root: !!document.querySelector('[data-legend]'),
       bridge: !!document.querySelector('[data-legend-bridge]'),
       title: Array.from(document.querySelectorAll('.diagram-container svg text')).some(function (text) { return text.textContent.trim() === 'Legend'; })
-    }))()`);
+    }))()`,
+    );
     assert.deepEqual(hidden, { root: false, bridge: false, title: false });
-    console.log('ok legend runtime: labels, counts, keyboard, export, print, embed, hidden, and dual themes');
+    console.log(
+      "ok legend runtime: labels, counts, keyboard, export, print, embed, hidden, and dual themes",
+    );
   }
 
   async function verifySemanticPassportDismissal(file) {
-    await navigateReady(file, '!!(window.Archify && Archify.focus && document.querySelector("#btn-focus-clear"))', 'Semantic Passport dismissal');
-    const result = await evaluate(cdp, sessionId, `(() => {
+    await navigateReady(
+      file,
+      '!!(window.Archify && Archify.focus && document.querySelector("#btn-focus-clear"))',
+      "Semantic Passport dismissal",
+    );
+    const result = await evaluate(
+      cdp,
+      sessionId,
+      `(() => {
       var chip = document.querySelector('#focus-chip');
       var close = document.querySelector('#btn-focus-clear');
       var container = document.querySelector('.diagram-container');
@@ -594,62 +718,121 @@ try {
         afterNode: afterNode,
         neighborId: neighbor.getAttribute('data-node-id')
       };
-    })()`);
-    assert.equal(result?.ok, true, result?.error || 'Semantic Passport smoke failed');
-    assert.equal(result.layout.label, 'Close semantic passport');
-    assert.equal(result.layout.title, 'Close');
-    assert.equal(result.layout.text, '×');
-    assert.ok(result.layout.topGap >= 0 && result.layout.topGap <= 16, `Semantic Passport close top gap ${result.layout.topGap}px`);
-    assert.ok(result.layout.rightGap >= 0 && result.layout.rightGap <= 16, `Semantic Passport close right gap ${result.layout.rightGap}px`);
+    })()`,
+    );
+    assert.equal(result?.ok, true, result?.error || "Semantic Passport smoke failed");
+    assert.equal(result.layout.label, "Close semantic passport");
+    assert.equal(result.layout.title, "Close");
+    assert.equal(result.layout.text, "×");
+    assert.ok(
+      result.layout.topGap >= 0 && result.layout.topGap <= 16,
+      `Semantic Passport close top gap ${result.layout.topGap}px`,
+    );
+    assert.ok(
+      result.layout.rightGap >= 0 && result.layout.rightGap <= 16,
+      `Semantic Passport close right gap ${result.layout.rightGap}px`,
+    );
     assert.deepEqual(result.afterClose, { hidden: true, active: null });
-    assert.equal(result.restoredFocus, 'clients');
-    assert.deepEqual(result.afterInside, { hidden: false, active: 'clients' });
+    assert.equal(result.restoredFocus, "clients");
+    assert.deepEqual(result.afterInside, { hidden: false, active: "clients" });
     assert.deepEqual(result.afterOutside, { hidden: true, active: null });
     assert.deepEqual(result.afterNode, { hidden: false, active: result.neighborId });
-    console.log('ok Semantic Passport: close control, focus return, inside preservation, and outside dismissal');
+    console.log(
+      "ok Semantic Passport: close control, focus return, inside preservation, and outside dismissal",
+    );
   }
 
   async function verifyArchitectureDeltaNavigator(file) {
-    const readyCondition = '!!document.querySelector("#review-play") && !document.querySelector("#review-play").disabled';
+    const readyCondition =
+      '!!document.querySelector("#review-play") && !document.querySelector("#review-play").disabled';
     async function waitForSelected(changeKey, label) {
       for (let attempt = 0; attempt < 80; attempt += 1) {
-        if (await evaluate(cdp, sessionId, `document.querySelector('.change-row[aria-current="step"]')?.dataset.changeKey === ${JSON.stringify(changeKey)}`)) return;
+        if (
+          await evaluate(
+            cdp,
+            sessionId,
+            `document.querySelector('.change-row[aria-current="step"]')?.dataset.changeKey === ${JSON.stringify(changeKey)}`,
+          )
+        )
+          return;
         await delay(50);
       }
       assert.fail(`${label} did not select ${changeKey} within the bounded wait`);
     }
     async function waitForReviewFinished(label) {
       for (let attempt = 0; attempt < 400; attempt += 1) {
-        const done = await evaluate(cdp, sessionId, `document.querySelector('#review-play').getAttribute('aria-pressed') === 'false' && document.querySelector('#review-play').textContent === 'Replay'`);
+        const done = await evaluate(
+          cdp,
+          sessionId,
+          `document.querySelector('#review-play').getAttribute('aria-pressed') === 'false' && document.querySelector('#review-play').textContent === 'Replay'`,
+        );
         if (done) return;
         await delay(50);
       }
       assert.fail(`${label} did not finish within the bounded wait`);
     }
-    await navigateReady(file, readyCondition, 'architecture-delta navigator');
-    const initial = await evaluate(cdp, sessionId, `({
+    await navigateReady(file, readyCondition, "architecture-delta navigator");
+    const initial = await evaluate(
+      cdp,
+      sessionId,
+      `({
       status: document.querySelector('#review-status').textContent,
       selected: document.querySelectorAll('.change-row[aria-current="step"]').length,
       current: document.querySelectorAll('[data-delta-review-current]').length,
       rows: document.querySelectorAll('.change-row').length
-    })`);
-    assert.deepEqual(initial, { status: 'Overview · 11 authored changes', selected: 0, current: 0, rows: 11 });
+    })`,
+    );
+    assert.deepEqual(initial, {
+      status: "Overview · 11 authored changes",
+      selected: 0,
+      current: 0,
+      rows: 11,
+    });
 
     await evaluate(cdp, sessionId, `document.querySelector('#review-play').click()`);
-    await waitForSelected('relationship:fraud-check', 'architecture-delta initial playback');
-    const advanced = await evaluate(cdp, sessionId, `({
+    await waitForSelected("relationship:fraud-check", "architecture-delta initial playback");
+    const advanced = await evaluate(
+      cdp,
+      sessionId,
+      `({
       selected: document.querySelector('.change-row[aria-current="step"]')?.dataset.changeKey,
       pressed: document.querySelector('#review-play').getAttribute('aria-pressed')
-    })`);
-    assert.deepEqual(advanced, { selected: 'relationship:fraud-check', pressed: 'true' });
+    })`,
+    );
+    assert.deepEqual(advanced, { selected: "relationship:fraud-check", pressed: "true" });
 
-    await evaluate(cdp, sessionId, `document.querySelector('[role="tab"][data-target="base"]').click()`);
-    const pausedKey = await evaluate(cdp, sessionId, `document.querySelector('.change-row[aria-current="step"]')?.dataset.changeKey`);
+    await evaluate(
+      cdp,
+      sessionId,
+      `document.querySelector('[role="tab"][data-target="base"]').click()`,
+    );
+    const pausedKey = await evaluate(
+      cdp,
+      sessionId,
+      `document.querySelector('.change-row[aria-current="step"]')?.dataset.changeKey`,
+    );
     await delay(1550);
-    assert.equal(await evaluate(cdp, sessionId, `document.querySelector('.change-row[aria-current="step"]')?.dataset.changeKey`), pausedKey);
-    assert.equal(await evaluate(cdp, sessionId, `document.querySelector('#review-play').getAttribute('aria-pressed')`), 'false');
+    assert.equal(
+      await evaluate(
+        cdp,
+        sessionId,
+        `document.querySelector('.change-row[aria-current="step"]')?.dataset.changeKey`,
+      ),
+      pausedKey,
+    );
+    assert.equal(
+      await evaluate(
+        cdp,
+        sessionId,
+        `document.querySelector('#review-play').getAttribute('aria-pressed')`,
+      ),
+      "false",
+    );
 
-    const overview = await evaluate(cdp, sessionId, `(() => {
+    const overview = await evaluate(
+      cdp,
+      sessionId,
+      `(() => {
       document.querySelector('[role="tab"][data-target="delta"]').click();
       document.querySelector('#review-overview').click();
       return {
@@ -657,58 +840,92 @@ try {
         current: document.querySelectorAll('[data-delta-review-current]').length,
         selected: document.querySelectorAll('.change-row[aria-current="step"]').length
       };
-    })()`);
+    })()`,
+    );
     assert.deepEqual(overview, { active: false, current: 0, selected: 0 });
 
-    await navigateReady(file, readyCondition, 'architecture-delta manual lifecycle navigator');
+    await navigateReady(file, readyCondition, "architecture-delta manual lifecycle navigator");
     await evaluate(cdp, sessionId, `document.querySelector('#review-play').click()`);
-    await waitForSelected('relationship:fraud-check', 'architecture-delta previous control');
-    const previousPause = await evaluate(cdp, sessionId, `(() => {
+    await waitForSelected("relationship:fraud-check", "architecture-delta previous control");
+    const previousPause = await evaluate(
+      cdp,
+      sessionId,
+      `(() => {
       document.querySelector('#review-previous').click();
       return {
         selected: document.querySelector('.change-row[aria-current="step"]')?.dataset.changeKey,
         pressed: document.querySelector('#review-play').getAttribute('aria-pressed')
       };
-    })()`);
-    assert.deepEqual(previousPause, { selected: 'component:fraud', pressed: 'false' });
+    })()`,
+    );
+    assert.deepEqual(previousPause, { selected: "component:fraud", pressed: "false" });
     await delay(1450);
-    assert.equal(await evaluate(cdp, sessionId, `document.querySelector('.change-row[aria-current="step"]')?.dataset.changeKey`), 'component:fraud');
+    assert.equal(
+      await evaluate(
+        cdp,
+        sessionId,
+        `document.querySelector('.change-row[aria-current="step"]')?.dataset.changeKey`,
+      ),
+      "component:fraud",
+    );
 
     await evaluate(cdp, sessionId, `document.querySelector('#review-play').click()`);
-    const nextPause = await evaluate(cdp, sessionId, `(() => {
+    const nextPause = await evaluate(
+      cdp,
+      sessionId,
+      `(() => {
       document.querySelector('#review-next').click();
       return {
         selected: document.querySelector('.change-row[aria-current="step"]')?.dataset.changeKey,
         pressed: document.querySelector('#review-play').getAttribute('aria-pressed')
       };
-    })()`);
-    assert.deepEqual(nextPause, { selected: 'relationship:fraud-check', pressed: 'false' });
+    })()`,
+    );
+    assert.deepEqual(nextPause, { selected: "relationship:fraud-check", pressed: "false" });
 
     await evaluate(cdp, sessionId, `document.querySelector('#review-play').click()`);
-    const rowPause = await evaluate(cdp, sessionId, `(() => {
+    const rowPause = await evaluate(
+      cdp,
+      sessionId,
+      `(() => {
       document.querySelector('.change-row[data-change-key="component:queue"]').click();
       return {
         selected: document.querySelector('.change-row[aria-current="step"]')?.dataset.changeKey,
         pressed: document.querySelector('#review-play').getAttribute('aria-pressed')
       };
-    })()`);
-    assert.deepEqual(rowPause, { selected: 'component:queue', pressed: 'false' });
+    })()`,
+    );
+    assert.deepEqual(rowPause, { selected: "component:queue", pressed: "false" });
 
-    await navigateReady(file, readyCondition, 'architecture-delta focus lifecycle navigator');
-    const focusedPause = await evaluate(cdp, sessionId, `(() => {
+    await navigateReady(file, readyCondition, "architecture-delta focus lifecycle navigator");
+    const focusedPause = await evaluate(
+      cdp,
+      sessionId,
+      `(() => {
       document.querySelector('#review-play').click();
       document.querySelector('#review-next').focus();
       return {
         selected: document.querySelector('.change-row[aria-current="step"]')?.dataset.changeKey,
         pressed: document.querySelector('#review-play').getAttribute('aria-pressed')
       };
-    })()`);
-    assert.deepEqual(focusedPause, { selected: 'component:fraud', pressed: 'false' });
+    })()`,
+    );
+    assert.deepEqual(focusedPause, { selected: "component:fraud", pressed: "false" });
     await delay(1450);
-    assert.equal(await evaluate(cdp, sessionId, `document.querySelector('.change-row[aria-current="step"]')?.dataset.changeKey`), 'component:fraud');
+    assert.equal(
+      await evaluate(
+        cdp,
+        sessionId,
+        `document.querySelector('.change-row[aria-current="step"]')?.dataset.changeKey`,
+      ),
+      "component:fraud",
+    );
 
-    await navigateReady(file, readyCondition, 'architecture-delta hidden lifecycle navigator');
-    const hiddenPause = await evaluate(cdp, sessionId, `(() => {
+    await navigateReady(file, readyCondition, "architecture-delta hidden lifecycle navigator");
+    const hiddenPause = await evaluate(
+      cdp,
+      sessionId,
+      `(() => {
       document.querySelector('#review-play').click();
       Object.defineProperty(document, 'hidden', { configurable: true, get: function () { return true; } });
       document.dispatchEvent(new Event('visibilitychange'));
@@ -717,13 +934,24 @@ try {
         selected: document.querySelector('.change-row[aria-current="step"]')?.dataset.changeKey,
         pressed: document.querySelector('#review-play').getAttribute('aria-pressed')
       };
-    })()`);
-    assert.deepEqual(hiddenPause, { hidden: true, selected: 'component:fraud', pressed: 'false' });
+    })()`,
+    );
+    assert.deepEqual(hiddenPause, { hidden: true, selected: "component:fraud", pressed: "false" });
     await delay(1450);
-    assert.equal(await evaluate(cdp, sessionId, `document.querySelector('.change-row[aria-current="step"]')?.dataset.changeKey`), 'component:fraud');
+    assert.equal(
+      await evaluate(
+        cdp,
+        sessionId,
+        `document.querySelector('.change-row[aria-current="step"]')?.dataset.changeKey`,
+      ),
+      "component:fraud",
+    );
 
-    await navigateReady(file, readyCondition, 'architecture-delta print lifecycle navigator');
-    const printPause = await evaluate(cdp, sessionId, `(() => {
+    await navigateReady(file, readyCondition, "architecture-delta print lifecycle navigator");
+    const printPause = await evaluate(
+      cdp,
+      sessionId,
+      `(() => {
       document.querySelector('#review-play').click();
       window.dispatchEvent(new Event('beforeprint'));
       return {
@@ -731,12 +959,27 @@ try {
         selected: document.querySelectorAll('.change-row[aria-current="step"]').length,
         pressed: document.querySelector('#review-play').getAttribute('aria-pressed')
       };
-    })()`);
-    assert.deepEqual(printPause, { status: 'Overview · 11 authored changes', selected: 0, pressed: 'false' });
+    })()`,
+    );
+    assert.deepEqual(printPause, {
+      status: "Overview · 11 authored changes",
+      selected: 0,
+      pressed: "false",
+    });
     await delay(1450);
-    assert.equal(await evaluate(cdp, sessionId, `document.querySelectorAll('.change-row[aria-current="step"]').length`), 0);
+    assert.equal(
+      await evaluate(
+        cdp,
+        sessionId,
+        `document.querySelectorAll('.change-row[aria-current="step"]').length`,
+      ),
+      0,
+    );
 
-    const keyboard = await evaluate(cdp, sessionId, `(() => {
+    const keyboard = await evaluate(
+      cdp,
+      sessionId,
+      `(() => {
       document.querySelector('details').open = true;
       var first = document.querySelector('.change-row');
       first.click();
@@ -744,37 +987,67 @@ try {
       var focused = document.activeElement.dataset.changeKey;
       document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       return { focused: focused, selected: document.querySelector('.change-row[aria-current="step"]').dataset.changeKey };
-    })()`);
-    assert.deepEqual(keyboard, { focused: 'relationship:fraud-check', selected: 'relationship:fraud-check' });
+    })()`,
+    );
+    assert.deepEqual(keyboard, {
+      focused: "relationship:fraud-check",
+      selected: "relationship:fraud-check",
+    });
 
-    await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] }, sessionId);
-    await navigateReady(file, readyCondition, 'architecture-delta reduced-motion navigator');
+    await cdp.send(
+      "Emulation.setEmulatedMedia",
+      { features: [{ name: "prefers-reduced-motion", value: "reduce" }] },
+      sessionId,
+    );
+    await navigateReady(file, readyCondition, "architecture-delta reduced-motion navigator");
     await evaluate(cdp, sessionId, `document.querySelector('#review-play').click()`);
     await delay(1550);
-    const reduced = await evaluate(cdp, sessionId, `({
+    const reduced = await evaluate(
+      cdp,
+      sessionId,
+      `({
       selected: document.querySelector('.change-row[aria-current="step"]')?.dataset.changeKey,
       pressed: document.querySelector('#review-play').getAttribute('aria-pressed'),
       nextDisabled: document.querySelector('#review-next').disabled
-    })`);
-    assert.deepEqual(reduced, { selected: 'component:fraud', pressed: 'false', nextDisabled: false });
+    })`,
+    );
+    assert.deepEqual(reduced, {
+      selected: "component:fraud",
+      pressed: "false",
+      nextDisabled: false,
+    });
     await evaluate(cdp, sessionId, `document.querySelector('#review-next').click()`);
 
     await evaluate(cdp, sessionId, `document.querySelector('.change-row').click()`);
-    await cdp.send('Emulation.setEmulatedMedia', { media: 'print' }, sessionId);
+    await cdp.send("Emulation.setEmulatedMedia", { media: "print" }, sessionId);
     await delay(200);
-    const printState = await evaluate(cdp, sessionId, `({
+    const printState = await evaluate(
+      cdp,
+      sessionId,
+      `({
       strip: getComputedStyle(document.querySelector('.review-strip')).display,
       base: getComputedStyle(document.querySelector('[data-view="base"]')).display,
       delta: getComputedStyle(document.querySelector('[data-view="delta"]')).display,
       head: getComputedStyle(document.querySelector('[data-view="head"]')).display,
       current: getComputedStyle(document.querySelector('[data-delta-review-current]')).opacity,
       same: getComputedStyle(document.querySelector('[data-view="delta"] [data-delta-state="same"]')).opacity
-    })`);
-    assert.deepEqual(printState, { strip: 'none', base: 'none', delta: 'block', head: 'none', current: '1', same: '1' });
-    await cdp.send('Emulation.setEmulatedMedia', { media: 'screen', features: [] }, sessionId);
+    })`,
+    );
+    assert.deepEqual(printState, {
+      strip: "none",
+      base: "none",
+      delta: "block",
+      head: "none",
+      current: "1",
+      same: "1",
+    });
+    await cdp.send("Emulation.setEmulatedMedia", { media: "screen", features: [] }, sessionId);
 
-    await navigateReady(file, readyCondition, 'architecture-delta tamper navigator');
-    const tampered = await evaluate(cdp, sessionId, `(() => {
+    await navigateReady(file, readyCondition, "architecture-delta tamper navigator");
+    const tampered = await evaluate(
+      cdp,
+      sessionId,
+      `(() => {
       var companion = document.querySelector('[data-view="delta"] g[data-edge-id="fraud-check"]');
       companion.parentNode.insertBefore(companion.cloneNode(true), companion.nextSibling);
       document.querySelector('.change-row[data-change-key="relationship:fraud-check"]').click();
@@ -783,34 +1056,67 @@ try {
         disabled: Array.from(document.querySelectorAll('.review-step,.change-row')).every(function (button) { return button.disabled; }),
         canvases: document.querySelectorAll('[data-view]').length
       };
-    })()`);
-    assert.deepEqual(tampered, { status: 'Review unavailable · compare identity mismatch', disabled: true, canvases: 3 });
+    })()`,
+    );
+    assert.deepEqual(tampered, {
+      status: "Review unavailable · compare identity mismatch",
+      disabled: true,
+      canvases: 3,
+    });
 
-    await navigateReady(file, readyCondition, 'architecture-delta finite navigator');
+    await navigateReady(file, readyCondition, "architecture-delta finite navigator");
     await evaluate(cdp, sessionId, `document.querySelector('#review-play').click()`);
-    await waitForReviewFinished('architecture-delta finite playback');
-    const finished = await evaluate(cdp, sessionId, `({
+    await waitForReviewFinished("architecture-delta finite playback");
+    const finished = await evaluate(
+      cdp,
+      sessionId,
+      `({
       selected: document.querySelector('.change-row[aria-current="step"]')?.dataset.changeKey,
       label: document.querySelector('#review-play').textContent,
       pressed: document.querySelector('#review-play').getAttribute('aria-pressed')
-    })`);
-    assert.deepEqual(finished, { selected: 'relationship:publish-order', label: 'Replay', pressed: 'false' });
+    })`,
+    );
+    assert.deepEqual(finished, {
+      selected: "relationship:publish-order",
+      label: "Replay",
+      pressed: "false",
+    });
     await evaluate(cdp, sessionId, `document.querySelector('#review-play').click()`);
-    const replayStarted = await evaluate(cdp, sessionId, `({
+    const replayStarted = await evaluate(
+      cdp,
+      sessionId,
+      `({
       selected: document.querySelector('.change-row[aria-current="step"]')?.dataset.changeKey,
       label: document.querySelector('#review-play').textContent,
       pressed: document.querySelector('#review-play').getAttribute('aria-pressed')
-    })`);
-    assert.deepEqual(replayStarted, { selected: 'component:fraud', label: 'Pause', pressed: 'true' });
-    await waitForReviewFinished('architecture-delta replay playback');
-    const replayFinished = await evaluate(cdp, sessionId, `({
+    })`,
+    );
+    assert.deepEqual(replayStarted, {
+      selected: "component:fraud",
+      label: "Pause",
+      pressed: "true",
+    });
+    await waitForReviewFinished("architecture-delta replay playback");
+    const replayFinished = await evaluate(
+      cdp,
+      sessionId,
+      `({
       selected: document.querySelector('.change-row[aria-current="step"]')?.dataset.changeKey,
       label: document.querySelector('#review-play').textContent,
       pressed: document.querySelector('#review-play').getAttribute('aria-pressed')
-    })`);
-    assert.deepEqual(replayFinished, { selected: 'relationship:publish-order', label: 'Replay', pressed: 'false' });
+    })`,
+    );
+    assert.deepEqual(replayFinished, {
+      selected: "relationship:publish-order",
+      label: "Replay",
+      pressed: "false",
+    });
 
-    const exportProof = await withTimeout(evaluate(cdp, sessionId, String.raw`(async function () {
+    const exportProof = await withTimeout(
+      evaluate(
+        cdp,
+        sessionId,
+        String.raw`(async function () {
       var frames = Array.from(document.querySelectorAll('.snapshot-frame'));
       var explorers = frames.map(function (frame) {
         var child = frame.contentWindow;
@@ -837,23 +1143,41 @@ try {
         size: blob.size,
         signature: Array.from(bytes.slice(0, 8)).map(function (byte) { return byte.toString(16).padStart(2, '0'); }).join('')
       };
-    })()`, true), 15_000, 'Architecture Delta export');
+    })()`,
+        true,
+      ),
+      15_000,
+      "Architecture Delta export",
+    );
     assert.deepEqual(exportProof.explorers, [true, true]);
     assert.equal(exportProof.stable, true);
     assert.equal(exportProof.reviewResidue, 0);
     assert.equal(exportProof.boundaryStyle, true);
     assert.equal(exportProof.markerStyle, true);
     assert.equal(exportProof.frameStyle, true);
-    assert.deepEqual(exportProof.boundaryMarkers, ['~', '~']);
-    assert.equal(exportProof.type, 'image/png');
-    assert.ok(exportProof.size > 20_000, `Architecture Delta Share Card is unexpectedly small (${exportProof.size} bytes)`);
-    assert.equal(exportProof.signature, '89504e470d0a1a0a');
-    console.log(`ok Architecture Delta navigator + export: exact identity, complete explorers, static SVG, and ${exportProof.size}-byte Share Card`);
+    assert.deepEqual(exportProof.boundaryMarkers, ["~", "~"]);
+    assert.equal(exportProof.type, "image/png");
+    assert.ok(
+      exportProof.size > 20_000,
+      `Architecture Delta Share Card is unexpectedly small (${exportProof.size} bytes)`,
+    );
+    assert.equal(exportProof.signature, "89504e470d0a1a0a");
+    console.log(
+      `ok Architecture Delta navigator + export: exact identity, complete explorers, static SVG, and ${exportProof.size}-byte Share Card`,
+    );
   }
 
   async function captureShareCard(file, label) {
-    await navigateReady(file, '!!(window.Archify && Archify.exportMenu && Archify.exportMenu.shareCard)', label);
-    const sharePayload = await withTimeout(evaluate(cdp, sessionId, String.raw`(async function () {
+    await navigateReady(
+      file,
+      "!!(window.Archify && Archify.exportMenu && Archify.exportMenu.shareCard)",
+      label,
+    );
+    const sharePayload = await withTimeout(
+      evaluate(
+        cdp,
+        sessionId,
+        String.raw`(async function () {
       try {
         var blob = await Archify.exportMenu.shareCard();
         var bytes = new Uint8Array(await blob.arrayBuffer());
@@ -865,44 +1189,83 @@ try {
       } catch (error) {
         return { ok: false, error: String(error && error.message || error) };
       }
-    })()`, true), 10_000, `${label} Share Card export`);
+    })()`,
+        true,
+      ),
+      10_000,
+      `${label} Share Card export`,
+    );
 
-    assert.equal(sharePayload?.ok, true, sharePayload?.error || `${label} Share Card export failed`);
-    assert.equal(sharePayload.type, 'image/png');
-    assert.ok(sharePayload.size > 20_000, `${label} Share Card is unexpectedly small (${sharePayload.size} bytes)`);
+    assert.equal(
+      sharePayload?.ok,
+      true,
+      sharePayload?.error || `${label} Share Card export failed`,
+    );
+    assert.equal(sharePayload.type, "image/png");
+    assert.ok(
+      sharePayload.size > 20_000,
+      `${label} Share Card is unexpectedly small (${sharePayload.size} bytes)`,
+    );
 
-    const png = Buffer.from(sharePayload.base64, 'base64');
-    assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', `${label} output is not a PNG`);
+    const png = Buffer.from(sharePayload.base64, "base64");
+    assert.equal(
+      png.subarray(0, 8).toString("hex"),
+      "89504e470d0a1a0a",
+      `${label} output is not a PNG`,
+    );
     assert.equal(png.readUInt32BE(16), 1200, `${label} Share Card width`);
     assert.equal(png.readUInt32BE(20), 630, `${label} Share Card height`);
 
     const pngPath = path.join(tmp, `${label}.share-card.png`);
     fs.writeFileSync(pngPath, png);
-    const pixels = execFileSync(ffmpeg, [
-      '-v', 'error',
-      '-i', pngPath,
-      '-vf', 'scale=120:63',
-      '-frames:v', '1',
-      '-f', 'rawvideo',
-      '-pix_fmt', 'rgb24',
-      '-',
-    ], { maxBuffer: 4 * 1024 * 1024 });
+    const pixels = execFileSync(
+      ffmpeg,
+      [
+        "-v",
+        "error",
+        "-i",
+        pngPath,
+        "-vf",
+        "scale=120:63",
+        "-frames:v",
+        "1",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "rgb24",
+        "-",
+      ],
+      { maxBuffer: 4 * 1024 * 1024 },
+    );
     const colors = new Set();
     const counts = new Map();
     for (let offset = 0; offset < pixels.length; offset += 3) {
-      const color = pixels.subarray(offset, offset + 3).toString('hex');
+      const color = pixels.subarray(offset, offset + 3).toString("hex");
       colors.add(color);
       counts.set(color, (counts.get(color) || 0) + 1);
     }
     const largestColorShare = Math.max(...counts.values()) / (pixels.length / 3);
     assert.ok(colors.size >= 24, `${label} Share Card has only ${colors.size} sampled colors`);
-    assert.ok(largestColorShare < 0.96, `${label} Share Card is visually near-blank (${Math.round(largestColorShare * 100)}% one color)`);
-    console.log(`ok ${label} Share Card: ${sharePayload.size} bytes, 1200x630, ${colors.size} sampled colors`);
+    assert.ok(
+      largestColorShare < 0.96,
+      `${label} Share Card is visually near-blank (${Math.round(largestColorShare * 100)}% one color)`,
+    );
+    console.log(
+      `ok ${label} Share Card: ${sharePayload.size} bytes, 1200x630, ${colors.size} sampled colors`,
+    );
   }
 
   async function captureCopiedShareCard(file, label) {
-    await navigateReady(file, '!!(window.Archify && Archify.exportMenu && Archify.exportMenu.copyShareCard)', label);
-    const copiedPayload = await withTimeout(evaluate(cdp, sessionId, String.raw`(async function () {
+    await navigateReady(
+      file,
+      "!!(window.Archify && Archify.exportMenu && Archify.exportMenu.copyShareCard)",
+      label,
+    );
+    const copiedPayload = await withTimeout(
+      evaluate(
+        cdp,
+        sessionId,
+        String.raw`(async function () {
       try {
         Object.defineProperty(window, 'ClipboardItem', {
           configurable: true,
@@ -941,28 +1304,51 @@ try {
       } catch (error) {
         return { ok: false, error: String(error && error.message || error) };
       }
-    })()`, true), 10_000, `${label} Copy Share Card`);
+    })()`,
+        true,
+      ),
+      10_000,
+      `${label} Copy Share Card`,
+    );
 
-    assert.equal(copiedPayload?.ok, true, copiedPayload?.error || `${label} Copy Share Card failed`);
-    assert.equal(copiedPayload.type, 'image/png');
+    assert.equal(
+      copiedPayload?.ok,
+      true,
+      copiedPayload?.error || `${label} Copy Share Card failed`,
+    );
+    assert.equal(copiedPayload.type, "image/png");
     assert.ok(copiedPayload.size > 20_000, `${label} copied Share Card is unexpectedly small`);
-    const png = Buffer.from(copiedPayload.base64, 'base64');
-    assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', `${label} copied output is not a PNG`);
+    const png = Buffer.from(copiedPayload.base64, "base64");
+    assert.equal(
+      png.subarray(0, 8).toString("hex"),
+      "89504e470d0a1a0a",
+      `${label} copied output is not a PNG`,
+    );
     assert.equal(png.readUInt32BE(16), 1200, `${label} copied Share Card width`);
     assert.equal(png.readUInt32BE(20), 630, `${label} copied Share Card height`);
     assert.deepEqual(copiedPayload.receipt, {
-      format: 'share-card',
-      width: '1200',
-      height: '630',
-      canonical: 'true',
+      format: "share-card",
+      width: "1200",
+      height: "630",
+      canonical: "true",
       error: null,
     });
-    console.log(`ok ${label} Copy Share Card: ${copiedPayload.size} bytes, image/png, truthful receipt`);
+    console.log(
+      `ok ${label} Copy Share Card: ${copiedPayload.size} bytes, image/png, truthful receipt`,
+    );
   }
 
   async function captureRouteShareCard(file, label, sourceId, targetId, options = {}) {
-    await navigateReady(file, '!!(window.Archify && Archify.routeProbe && Archify.exportMenu && Archify.exportMenu.downloadRouteShareCard)', label);
-    const routePayload = await withTimeout(evaluate(cdp, sessionId, String.raw`(async function () {
+    await navigateReady(
+      file,
+      "!!(window.Archify && Archify.routeProbe && Archify.exportMenu && Archify.exportMenu.downloadRouteShareCard)",
+      label,
+    );
+    const routePayload = await withTimeout(
+      evaluate(
+        cdp,
+        sessionId,
+        String.raw`(async function () {
       try {
         window.alert = function (message) { window.__archifyRouteAlert = message; };
         Archify.routeProbe.begin({ source: ${JSON.stringify(sourceId)}, focusNode: false });
@@ -1270,31 +1656,60 @@ try {
       } catch (error) {
         return { ok: false, error: String(error && error.message || error) };
       }
-    })()`, true), 25_000, `${label} Route Card export`);
+    })()`,
+        true,
+      ),
+      25_000,
+      `${label} Route Card export`,
+    );
 
-    assert.equal(routePayload?.ok, true, routePayload?.error || `${label} Route Card export failed`);
-    assert.equal(routePayload.type, 'image/png');
-    assert.ok(routePayload.size > 20_000, `${label} Route Card is unexpectedly small (${routePayload.size} bytes)`);
-    const png = Buffer.from(routePayload.base64, 'base64');
-    assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', `${label} Route Card is not a PNG`);
+    assert.equal(
+      routePayload?.ok,
+      true,
+      routePayload?.error || `${label} Route Card export failed`,
+    );
+    assert.equal(routePayload.type, "image/png");
+    assert.ok(
+      routePayload.size > 20_000,
+      `${label} Route Card is unexpectedly small (${routePayload.size} bytes)`,
+    );
+    const png = Buffer.from(routePayload.base64, "base64");
+    assert.equal(
+      png.subarray(0, 8).toString("hex"),
+      "89504e470d0a1a0a",
+      `${label} Route Card is not a PNG`,
+    );
     assert.equal(png.readUInt32BE(16), 1200, `${label} Route Card width`);
     assert.equal(png.readUInt32BE(20), 630, `${label} Route Card height`);
     const pngPath = path.join(tmp, `${label}.route-share-card.png`);
     fs.writeFileSync(pngPath, png);
-    const sampledPixels = execFileSync(ffmpeg, [
-      '-v', 'error',
-      '-i', pngPath,
-      '-vf', 'scale=120:63',
-      '-frames:v', '1',
-      '-f', 'rawvideo',
-      '-pix_fmt', 'rgb24',
-      '-',
-    ], { maxBuffer: 4 * 1024 * 1024 });
+    const sampledPixels = execFileSync(
+      ffmpeg,
+      [
+        "-v",
+        "error",
+        "-i",
+        pngPath,
+        "-vf",
+        "scale=120:63",
+        "-frames:v",
+        "1",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "rgb24",
+        "-",
+      ],
+      { maxBuffer: 4 * 1024 * 1024 },
+    );
     const sampledColors = new Set();
     for (let offset = 0; offset < sampledPixels.length; offset += 3) {
-      sampledColors.add(sampledPixels.subarray(offset, offset + 3).toString('hex'));
+      sampledColors.add(sampledPixels.subarray(offset, offset + 3).toString("hex"));
     }
-    assert.ok(sampledColors.size >= 20, `${label} Route Card has only ${sampledColors.size} sampled colors`);
+    assert.ok(
+      sampledColors.size >= 20,
+      `${label} Route Card has only ${sampledColors.size} sampled colors`,
+    );
     assert.equal(routePayload.routeShare, true);
     assert.deepEqual(routePayload.matchedNodeIds, routePayload.snapshot.nodeIds);
     assert.deepEqual(routePayload.matchedEdgeKeys, routePayload.expectedEdgeKeys);
@@ -1307,64 +1722,101 @@ try {
     assert.equal(routePayload.liveUnchanged, true, routePayload.liveDiff);
     assert.equal(routePayload.menuResolved, true);
     assert.equal(routePayload.duplicateGeometryRejected, true);
-    assert.match(routePayload.duplicateExportError, /Trace a route before exporting a Route Share Card/);
+    assert.match(
+      routePayload.duplicateExportError,
+      /Trace a route before exporting a Route Share Card/,
+    );
     assert.equal(routePayload.emptyGeometryRejected, true);
-    assert.match(routePayload.emptyGeometryExportError, /Trace a route before exporting a Route Share Card/);
+    assert.match(
+      routePayload.emptyGeometryExportError,
+      /Trace a route before exporting a Route Share Card/,
+    );
     assert.match(routePayload.toBlobError, /toBlob returned null for Share Card/);
     assert.match(routePayload.missingToBlobError, /canvas\.toBlob unavailable for Share Card/);
     assert.match(routePayload.missingContextError, /2D canvas context unavailable for Share Card/);
     assert.ok(routePayload.imageDecodeError);
     assert.match(routePayload.unknownVariantError, /Unknown Share Card variant: unknown/);
     assert.equal(routePayload.routeLabelExecuted, false);
-    assert.deepEqual(routePayload.headerMetrics.map((metric) => metric.y), [62, 87]);
-    assert.ok(routePayload.headerMetrics.every((metric) => metric.width <= metric.maxWidth + 0.5), `${label} title/subtitle overflowed the Share Card header`);
-    assert.deepEqual(routePayload.svgReceipt, { format: 'svg', variant: null, canonical: 'true' });
-    assert.deepEqual(routePayload.pngReceipt, { format: 'png', variant: null, canonical: 'true' });
+    assert.deepEqual(
+      routePayload.headerMetrics.map((metric) => metric.y),
+      [62, 87],
+    );
+    assert.ok(
+      routePayload.headerMetrics.every((metric) => metric.width <= metric.maxWidth + 0.5),
+      `${label} title/subtitle overflowed the Share Card header`,
+    );
+    assert.deepEqual(routePayload.svgReceipt, { format: "svg", variant: null, canonical: "true" });
+    assert.deepEqual(routePayload.pngReceipt, { format: "png", variant: null, canonical: "true" });
     assert.equal(routePayload.exportedSvgRouteResidue, false);
     assert.equal(routePayload.exportedSvgDualTheme, true);
     assert.equal(routePayload.asyncClearStable, true);
     assert.equal(routePayload.hiddenAfterClear, true);
     assert.equal(routePayload.staleSnapshot, null);
     assert.match(routePayload.staleError, /Trace a route before exporting a Route Share Card/);
-    assert.ok(routePayload.routeFingerprints.every((fingerprint) => fingerprint === routePayload.routeFingerprints[0]), `${label} Route source changed across Journey state`);
+    assert.ok(
+      routePayload.routeFingerprints.every(
+        (fingerprint) => fingerprint === routePayload.routeFingerprints[0],
+      ),
+      `${label} Route source changed across Journey state`,
+    );
     assert.match(routePayload.downloads[0], /-route-share-card\.png$/);
     assert.doesNotMatch(routePayload.downloads[0], /-route-.+-to-.+\.png$/);
     assert.deepEqual(routePayload.routeReceipt, {
-      format: 'share-card',
-      variant: 'route',
-      width: '1200',
-      height: '630',
-      canonical: 'false',
-      routeStateClean: 'true',
+      format: "share-card",
+      variant: "route",
+      width: "1200",
+      height: "630",
+      canonical: "false",
+      routeStateClean: "true",
       error: null,
     });
     assert.deepEqual(routePayload.ordinaryReceipt, {
-      format: 'share-card',
+      format: "share-card",
       variant: null,
-      width: '1200',
-      height: '630',
-      canonical: 'true',
+      width: "1200",
+      height: "630",
+      canonical: "true",
       routeStateClean: null,
       error: null,
     });
     assert.equal(routePayload.failedReceipt.format, null);
     assert.equal(routePayload.failedReceipt.variant, null);
-    assert.equal(routePayload.failedReceipt.errorFormat, 'share-card');
-    assert.match(routePayload.failedReceipt.error, /Trace a route before exporting a Route Share Card/);
-    if (options.expectedHops !== undefined) assert.equal(routePayload.snapshot.hops, options.expectedHops);
-    if (options.expectedSourceLabel !== undefined) assert.equal(routePayload.snapshot.source.label, options.expectedSourceLabel);
-    if (options.expectedTargetLabel !== undefined) assert.equal(routePayload.snapshot.target.label, options.expectedTargetLabel);
-    console.log(`ok ${label} Route Card: ${routePayload.size} bytes, ${routePayload.snapshot.nodeIds.length} nodes, ${routePayload.snapshot.edges.length} exact hops`);
+    assert.equal(routePayload.failedReceipt.errorFormat, "share-card");
+    assert.match(
+      routePayload.failedReceipt.error,
+      /Trace a route before exporting a Route Share Card/,
+    );
+    if (options.expectedHops !== undefined)
+      assert.equal(routePayload.snapshot.hops, options.expectedHops);
+    if (options.expectedSourceLabel !== undefined)
+      assert.equal(routePayload.snapshot.source.label, options.expectedSourceLabel);
+    if (options.expectedTargetLabel !== undefined)
+      assert.equal(routePayload.snapshot.target.label, options.expectedTargetLabel);
+    console.log(
+      `ok ${label} Route Card: ${routePayload.size} bytes, ${routePayload.snapshot.nodeIds.length} nodes, ${routePayload.snapshot.edges.length} exact hops`,
+    );
   }
 
   async function verifyDynamicReducedMotionRoute(file, label, sourceId, targetId) {
-    await cdp.send('Emulation.setEmulatedMedia', {
-      features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }],
-    }, sessionId);
-    await navigateReady(file, '!!(window.Archify && Archify.routeProbe && Archify.exportMenu && Archify.motionGovernor)', label);
+    await cdp.send(
+      "Emulation.setEmulatedMedia",
+      {
+        features: [{ name: "prefers-reduced-motion", value: "no-preference" }],
+      },
+      sessionId,
+    );
+    await navigateReady(
+      file,
+      "!!(window.Archify && Archify.routeProbe && Archify.exportMenu && Archify.motionGovernor)",
+      label,
+    );
 
     async function sourceFingerprint() {
-      return withTimeout(evaluate(cdp, sessionId, String.raw`(async function () {
+      return withTimeout(
+        evaluate(
+          cdp,
+          sessionId,
+          String.raw`(async function () {
         var originalCreateObjectURL = URL.createObjectURL.bind(URL);
         var sourcePromise = null;
         URL.createObjectURL = function (blob) {
@@ -1383,10 +1835,18 @@ try {
         } finally {
           URL.createObjectURL = originalCreateObjectURL;
         }
-      })()`, true), 10_000, `${label} source fingerprint`);
+      })()`,
+          true,
+        ),
+        10_000,
+        `${label} source fingerprint`,
+      );
     }
 
-    const setup = await evaluate(cdp, sessionId, `(function () {
+    const setup = await evaluate(
+      cdp,
+      sessionId,
+      `(function () {
       Archify.routeProbe.begin({ source: ${JSON.stringify(sourceId)}, focusNode: false });
       if (!Archify.routeProbe.choose(${JSON.stringify(targetId)}, { updateUrl: false })) return { resolved: false };
       Archify.routeProbe.showOverview({ reveal: false });
@@ -1396,36 +1856,63 @@ try {
         playing: Archify.routeProbe.isJourneyPlaying(),
         motion: document.documentElement.getAttribute('data-motion')
       };
-    })()`);
-    assert.deepEqual(setup, { resolved: true, started: true, playing: true, motion: 'live' });
+    })()`,
+    );
+    assert.deepEqual(setup, { resolved: true, started: true, playing: true, motion: "live" });
     const before = await sourceFingerprint();
 
-    await cdp.send('Emulation.setEmulatedMedia', {
-      features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
-    }, sessionId);
+    await cdp.send(
+      "Emulation.setEmulatedMedia",
+      {
+        features: [{ name: "prefers-reduced-motion", value: "reduce" }],
+      },
+      sessionId,
+    );
     let reduced = null;
     for (let attempt = 0; attempt < 50; attempt += 1) {
-      reduced = await evaluate(cdp, sessionId, `({
+      reduced = await evaluate(
+        cdp,
+        sessionId,
+        `({
         matches: matchMedia('(prefers-reduced-motion: reduce)').matches,
         motion: document.documentElement.getAttribute('data-motion'),
         playing: Archify.routeProbe.isJourneyPlaying()
-      })`);
-      if (reduced.matches && reduced.motion === 'still' && !reduced.playing) break;
+      })`,
+      );
+      if (reduced.matches && reduced.motion === "still" && !reduced.playing) break;
       await delay(20);
     }
-    assert.deepEqual(reduced, { matches: true, motion: 'still', playing: false });
+    assert.deepEqual(reduced, { matches: true, motion: "still", playing: false });
     const after = await sourceFingerprint();
-    assert.equal(after, before, `${label} source changed after dynamic reduced-motion paused Journey`);
+    assert.equal(
+      after,
+      before,
+      `${label} source changed after dynamic reduced-motion paused Journey`,
+    );
 
-    await cdp.send('Emulation.setEmulatedMedia', {
-      features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }],
-    }, sessionId);
-    console.log(`ok ${label}: dynamic reduced-motion paused Journey without changing Route Card source`);
+    await cdp.send(
+      "Emulation.setEmulatedMedia",
+      {
+        features: [{ name: "prefers-reduced-motion", value: "no-preference" }],
+      },
+      sessionId,
+    );
+    console.log(
+      `ok ${label}: dynamic reduced-motion paused Journey without changing Route Card source`,
+    );
   }
 
   async function captureRouteVisualMatrix(file, label, sourceId, targetId) {
-    await navigateReady(file, '!!(window.Archify && Archify.preset && Archify.routeProbe && Archify.exportMenu)', label);
-    const matrix = await withTimeout(evaluate(cdp, sessionId, String.raw`(async function () {
+    await navigateReady(
+      file,
+      "!!(window.Archify && Archify.preset && Archify.routeProbe && Archify.exportMenu)",
+      label,
+    );
+    const matrix = await withTimeout(
+      evaluate(
+        cdp,
+        sessionId,
+        String.raw`(async function () {
       Archify.routeProbe.begin({ source: ${JSON.stringify(sourceId)}, focusNode: false });
       if (!Archify.routeProbe.choose(${JSON.stringify(targetId)}, { updateUrl: false })) {
         throw new Error('route did not resolve');
@@ -1457,23 +1944,47 @@ try {
         }
       }
       return { identity: identity, results: results };
-    })()`, true), 20_000, `${label} Route visual matrix`);
+    })()`,
+        true,
+      ),
+      20_000,
+      `${label} Route visual matrix`,
+    );
 
     assert.equal(matrix.results.length, 8);
     for (const result of matrix.results) {
-      assert.equal(result.type, 'image/png', `${label} ${result.preset}/${result.theme} MIME`);
+      assert.equal(result.type, "image/png", `${label} ${result.preset}/${result.theme} MIME`);
       assert.equal(result.width, 1200, `${label} ${result.preset}/${result.theme} width`);
       assert.equal(result.height, 630, `${label} ${result.preset}/${result.theme} height`);
-      assert.ok(result.size > 20_000, `${label} ${result.preset}/${result.theme} is unexpectedly small`);
-      assert.equal(result.identity, matrix.identity, `${label} ${result.preset}/${result.theme} changed route identity`);
+      assert.ok(
+        result.size > 20_000,
+        `${label} ${result.preset}/${result.theme} is unexpectedly small`,
+      );
+      assert.equal(
+        result.identity,
+        matrix.identity,
+        `${label} ${result.preset}/${result.theme} changed route identity`,
+      );
     }
-    assert.equal(new Set(matrix.results.map((result) => result.hash)).size, 8, `${label} presets/themes should produce eight distinct PNGs`);
+    assert.equal(
+      new Set(matrix.results.map((result) => result.hash)).size,
+      8,
+      `${label} presets/themes should produce eight distinct PNGs`,
+    );
     console.log(`ok ${label} Route visual matrix: Classic/Flow/Blueprint/Editorial x dark/light`);
   }
 
   async function captureReachShareCard(file, label, originId, direction, options = {}) {
-    await navigateReady(file, '!!(window.Archify && Archify.focus && Archify.focus.reachabilitySnapshot && Archify.exportMenu && Archify.exportMenu.downloadReachShareCard)', label);
-    const reachPayload = await withTimeout(evaluate(cdp, sessionId, String.raw`(async function () {
+    await navigateReady(
+      file,
+      "!!(window.Archify && Archify.focus && Archify.focus.reachabilitySnapshot && Archify.exportMenu && Archify.exportMenu.downloadReachShareCard)",
+      label,
+    );
+    const reachPayload = await withTimeout(
+      evaluate(
+        cdp,
+        sessionId,
+        String.raw`(async function () {
       try {
         window.alert = function (message) { window.__archifyReachAlert = String(message); };
         if (!Archify.focus.set(${JSON.stringify(originId)}, { toggle: false, updateUrl: false })) {
@@ -1674,13 +2185,29 @@ try {
       } catch (error) {
         return { ok: false, error: String(error && error.message || error) };
       }
-    })()`, true), options.matrix ? 35_000 : 15_000, `${label} Reach Card export`);
+    })()`,
+        true,
+      ),
+      options.matrix ? 35_000 : 15_000,
+      `${label} Reach Card export`,
+    );
 
-    assert.equal(reachPayload?.ok, true, reachPayload?.error || `${label} Reach Card export failed`);
-    assert.equal(reachPayload.type, 'image/png');
-    assert.ok(reachPayload.size > 20_000, `${label} Reach Card is unexpectedly small (${reachPayload.size} bytes)`);
-    const png = Buffer.from(reachPayload.base64, 'base64');
-    assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', `${label} Reach Card is not a PNG`);
+    assert.equal(
+      reachPayload?.ok,
+      true,
+      reachPayload?.error || `${label} Reach Card export failed`,
+    );
+    assert.equal(reachPayload.type, "image/png");
+    assert.ok(
+      reachPayload.size > 20_000,
+      `${label} Reach Card is unexpectedly small (${reachPayload.size} bytes)`,
+    );
+    const png = Buffer.from(reachPayload.base64, "base64");
+    assert.equal(
+      png.subarray(0, 8).toString("hex"),
+      "89504e470d0a1a0a",
+      `${label} Reach Card is not a PNG`,
+    );
     assert.equal(png.readUInt32BE(16), 1200, `${label} Reach Card width`);
     assert.equal(png.readUInt32BE(20), 630, `${label} Reach Card height`);
     if (options.outputPath) {
@@ -1688,8 +2215,14 @@ try {
       fs.writeFileSync(options.outputPath, png);
     }
     assert.equal(reachPayload.reachDirection, direction);
-    assert.deepEqual(reachPayload.matchedNodeIds.slice().sort(), reachPayload.snapshot.nodeIds.slice().sort());
-    assert.deepEqual(reachPayload.matchedEdgeKeys.slice().sort(), reachPayload.expectedEdgeKeys.slice().sort());
+    assert.deepEqual(
+      reachPayload.matchedNodeIds.slice().sort(),
+      reachPayload.snapshot.nodeIds.slice().sort(),
+    );
+    assert.deepEqual(
+      reachPayload.matchedEdgeKeys.slice().sort(),
+      reachPayload.expectedEdgeKeys.slice().sort(),
+    );
     assert.equal(reachPayload.originCount, 1);
     assert.equal(reachPayload.reachLiveResidue, false);
     assert.equal(reachPayload.routeResidue, false);
@@ -1700,80 +2233,129 @@ try {
     assert.equal(reachPayload.liveUnchanged, true);
     assert.equal(reachPayload.menuResolved, true);
     assert.equal(reachPayload.duplicateGeometryRejected, true);
-    assert.match(reachPayload.duplicateExportError, /Trace authored reach before exporting a Reach Share Card/);
+    assert.match(
+      reachPayload.duplicateExportError,
+      /Trace authored reach before exporting a Reach Share Card/,
+    );
     assert.equal(reachPayload.downloadStable, true);
     assert.match(reachPayload.downloads[0], new RegExp(`-${direction}-reach-share-card\\.png$`));
     assert.deepEqual(reachPayload.reachReceipt, {
-      format: 'share-card',
-      variant: 'reach',
-      width: '1200',
-      height: '630',
-      canonical: 'false',
+      format: "share-card",
+      variant: "reach",
+      width: "1200",
+      height: "630",
+      canonical: "false",
       routeStateClean: null,
-      reachStateClean: 'true',
+      reachStateClean: "true",
       error: null,
     });
     assert.equal(reachPayload.hiddenAfterClear, true);
     assert.equal(reachPayload.staleSnapshot, null);
-    assert.match(reachPayload.staleError, /Trace authored reach before exporting a Reach Share Card/);
+    assert.match(
+      reachPayload.staleError,
+      /Trace authored reach before exporting a Reach Share Card/,
+    );
     assert.equal(reachPayload.failedReceipt.format, null);
     assert.equal(reachPayload.failedReceipt.variant, null);
-    assert.equal(reachPayload.failedReceipt.errorFormat, 'share-card');
-    assert.match(reachPayload.failedReceipt.error, /Trace authored reach before exporting a Reach Share Card/);
+    assert.equal(reachPayload.failedReceipt.errorFormat, "share-card");
+    assert.match(
+      reachPayload.failedReceipt.error,
+      /Trace authored reach before exporting a Reach Share Card/,
+    );
     assert.ok(reachPayload.canonicalSize > 20_000);
     assert.equal(reachPayload.canonicalReachResidue, false);
     if (options.matrix) {
       assert.equal(reachPayload.matrix.length, 8);
-      assert.equal(new Set(reachPayload.matrix.map((entry) => entry.hash)).size, 8, `${label} Reach presets/themes should produce eight distinct PNGs`);
+      assert.equal(
+        new Set(reachPayload.matrix.map((entry) => entry.hash)).size,
+        8,
+        `${label} Reach presets/themes should produce eight distinct PNGs`,
+      );
       for (const entry of reachPayload.matrix) {
-        assert.equal(entry.type, 'image/png');
+        assert.equal(entry.type, "image/png");
         assert.equal(entry.width, 1200);
         assert.equal(entry.height, 630);
         assert.ok(entry.size > 20_000);
       }
     }
-    console.log(`ok ${label} Reach Card: ${reachPayload.size} bytes, ${reachPayload.snapshot.nodeIds.length} nodes, ${reachPayload.snapshot.edges.length} authored links`);
+    console.log(
+      `ok ${label} Reach Card: ${reachPayload.size} bytes, ${reachPayload.snapshot.nodeIds.length} nodes, ${reachPayload.snapshot.edges.length} authored links`,
+    );
   }
 
   await verifyResolvedLegendContract(legendOutputs);
-  await verifySemanticPassportDismissal(path.resolve(skillRoot, '../docs/gallery/artifacts/production-deployment.architecture.html'));
-  await verifyArchitectureDeltaNavigator(path.resolve(skillRoot, '../examples/checkout-platform-delta.html'));
-  await captureShareCard(output, 'architecture-wide');
-  await captureShareCard(sequenceOutput, 'sequence-tall');
-  await captureCopiedShareCard(output, 'architecture-wide');
-  await captureRouteShareCard(routeOutputs.architecture, 'architecture-route', 'users', 'api', { journeyInvariance: true });
-  await captureRouteShareCard(routeOutputs.workflow, 'workflow-route', 'user', 'approval');
-  await captureRouteShareCard(routeOutputs.sequence, 'sequence-route', 'web', 'db');
-  await captureRouteShareCard(routeOutputs.dataflow, 'dataflow-route', 'web', 'dashboard');
-  await captureRouteShareCard(routeOutputs.lifecycle, 'lifecycle-route', 'executing', 'cancelled');
-  await captureRouteShareCard(parallelOutput, 'parallel-route', 'users', 'cdn');
-  await captureRouteShareCard(specialRouteOutput, 'special-10-hop-route', 'Route_Source-01', 'Route_Target-10', {
-    expectedHops: 10,
-    expectedSourceLabel: specialSourceLabel,
-    expectedTargetLabel: specialTargetLabel,
+  await verifySemanticPassportDismissal(
+    path.resolve(skillRoot, "../docs/gallery/artifacts/production-deployment.architecture.html"),
+  );
+  await verifyArchitectureDeltaNavigator(
+    path.resolve(skillRoot, "../examples/checkout-platform-delta.html"),
+  );
+  await captureShareCard(output, "architecture-wide");
+  await captureShareCard(sequenceOutput, "sequence-tall");
+  await captureCopiedShareCard(output, "architecture-wide");
+  await captureRouteShareCard(routeOutputs.architecture, "architecture-route", "users", "api", {
+    journeyInvariance: true,
   });
-  await captureRouteVisualMatrix(routeOutputs.architecture, 'architecture-route', 'users', 'api');
-  await captureRouteVisualMatrix(routeOutputs.sequence, 'sequence-route', 'web', 'db');
-  await captureReachShareCard(routeOutputs.architecture, 'architecture-reach', 'users', 'downstream', { matrix: true });
-  await captureReachShareCard(routeOutputs.workflow, 'workflow-reach', 'user', 'downstream');
-  await captureReachShareCard(routeOutputs.sequence, 'sequence-reach', 'web', 'downstream');
-  await captureReachShareCard(routeOutputs.dataflow, 'dataflow-reach', 'web', 'downstream');
-  await captureReachShareCard(routeOutputs.lifecycle, 'lifecycle-reach', 'executing', 'downstream');
+  await captureRouteShareCard(routeOutputs.workflow, "workflow-route", "user", "approval");
+  await captureRouteShareCard(routeOutputs.sequence, "sequence-route", "web", "db");
+  await captureRouteShareCard(routeOutputs.dataflow, "dataflow-route", "web", "dashboard");
+  await captureRouteShareCard(routeOutputs.lifecycle, "lifecycle-route", "executing", "cancelled");
+  await captureRouteShareCard(parallelOutput, "parallel-route", "users", "cdn");
+  await captureRouteShareCard(
+    specialRouteOutput,
+    "special-10-hop-route",
+    "Route_Source-01",
+    "Route_Target-10",
+    {
+      expectedHops: 10,
+      expectedSourceLabel: specialSourceLabel,
+      expectedTargetLabel: specialTargetLabel,
+    },
+  );
+  await captureRouteVisualMatrix(routeOutputs.architecture, "architecture-route", "users", "api");
+  await captureRouteVisualMatrix(routeOutputs.sequence, "sequence-route", "web", "db");
+  await captureReachShareCard(
+    routeOutputs.architecture,
+    "architecture-reach",
+    "users",
+    "downstream",
+    { matrix: true },
+  );
+  await captureReachShareCard(routeOutputs.workflow, "workflow-reach", "user", "downstream");
+  await captureReachShareCard(routeOutputs.sequence, "sequence-reach", "web", "downstream");
+  await captureReachShareCard(routeOutputs.dataflow, "dataflow-reach", "web", "downstream");
+  await captureReachShareCard(routeOutputs.lifecycle, "lifecycle-reach", "executing", "downstream");
   if (externalReachSource) {
-    assert.ok(fs.existsSync(externalReachSource), `external Reach Card source does not exist: ${externalReachSource}`);
+    assert.ok(
+      fs.existsSync(externalReachSource),
+      `external Reach Card source does not exist: ${externalReachSource}`,
+    );
     await captureReachShareCard(
       externalReachSource,
-      'external-reach',
-      process.env.ARCHIFY_REACH_CARD_ORIGIN || 'router',
-      process.env.ARCHIFY_REACH_CARD_DIRECTION || 'downstream',
+      "external-reach",
+      process.env.ARCHIFY_REACH_CARD_ORIGIN || "router",
+      process.env.ARCHIFY_REACH_CARD_DIRECTION || "downstream",
       { outputPath: externalReachOutput },
     );
     console.log(`ok external Reach Card artifact: ${externalReachOutput}`);
   }
-  await verifyDynamicReducedMotionRoute(routeOutputs.architecture, 'architecture-route reduced motion', 'users', 'api');
-  await navigateReady(output, '!!(window.Archify && Archify.motion && Archify.motion.canRecord())', 'motion artifact');
+  await verifyDynamicReducedMotionRoute(
+    routeOutputs.architecture,
+    "architecture-route reduced motion",
+    "users",
+    "api",
+  );
+  await navigateReady(
+    output,
+    "!!(window.Archify && Archify.motion && Archify.motion.canRecord())",
+    "motion artifact",
+  );
 
-  const payload = await withTimeout(evaluate(cdp, sessionId, String.raw`(async function () {
+  const payload = await withTimeout(
+    evaluate(
+      cdp,
+      sessionId,
+      String.raw`(async function () {
     try {
       var blob = await Archify.motion.recordWebm({ duration: 1400, fps: 12 });
       var bytes = new Uint8Array(await blob.arrayBuffer());
@@ -1785,35 +2367,43 @@ try {
     } catch (error) {
       return { ok: false, error: String(error && error.message || error) };
     }
-  })()`, true), 20_000, 'WebM recording');
-  assert.equal(payload?.ok, true, payload?.error || 'WebM recording failed');
+  })()`,
+      true,
+    ),
+    20_000,
+    "WebM recording",
+  );
+  assert.equal(payload?.ok, true, payload?.error || "WebM recording failed");
   assert.match(payload.type, /^video\/webm/);
   assert.ok(payload.size > 10_000, `WebM is unexpectedly small (${payload.size} bytes)`);
 
-  const webm = path.join(tmp, 'motion.webm');
-  fs.writeFileSync(webm, Buffer.from(payload.base64, 'base64'));
-  const frameMd5 = execFileSync(ffmpeg, [
-    '-v', 'error',
-    '-i', webm,
-    '-vf', 'fps=6,scale=320:-2',
-    '-f', 'framemd5',
-    '-',
-  ], { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 });
+  const webm = path.join(tmp, "motion.webm");
+  fs.writeFileSync(webm, Buffer.from(payload.base64, "base64"));
+  const frameMd5 = execFileSync(
+    ffmpeg,
+    ["-v", "error", "-i", webm, "-vf", "fps=6,scale=320:-2", "-f", "framemd5", "-"],
+    { encoding: "utf8", maxBuffer: 4 * 1024 * 1024 },
+  );
   const hashes = frameMd5
-    .split('\n')
-    .filter((line) => line && !line.startsWith('#'))
-    .map((line) => line.split(',').at(-1).trim());
+    .split("\n")
+    .filter((line) => line && !line.startsWith("#"))
+    .map((line) => line.split(",").at(-1).trim());
   const uniqueFrames = new Set(hashes);
 
   assert.ok(hashes.length >= 4, `decoded only ${hashes.length} WebM frames`);
-  assert.ok(uniqueFrames.size >= 2, 'decoded WebM frames are static');
-  console.log(`ok WebM artifact: ${payload.size} bytes, ${hashes.length} sampled frames, ${uniqueFrames.size} unique`);
+  assert.ok(uniqueFrames.size >= 2, "decoded WebM frames are static");
+  console.log(
+    `ok WebM artifact: ${payload.size} bytes, ${hashes.length} sampled frames, ${uniqueFrames.size} unique`,
+  );
 } finally {
-  if (cdp && targetId) await withTimeout(cdp.send('Target.closeTarget', { targetId }), 500, 'target close').catch(() => {});
+  if (cdp && targetId)
+    await withTimeout(cdp.send("Target.closeTarget", { targetId }), 500, "target close").catch(
+      () => {},
+    );
   if (cdp) cdp.socket.close();
-  chromeProcess.kill('SIGTERM');
+  chromeProcess.kill("SIGTERM");
   if (!(await waitForExit(chromeProcess, 1000))) {
-    chromeProcess.kill('SIGKILL');
+    chromeProcess.kill("SIGKILL");
     await waitForExit(chromeProcess, 1000);
   }
   await removeTempTree(tmp);

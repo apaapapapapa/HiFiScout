@@ -1,16 +1,16 @@
-import * as validators from './generated-validators.mjs';
-import { throwDiagnosticError } from './diagnostics.mjs';
+import * as validators from "./generated-validators.mjs";
+import { throwDiagnosticError } from "./diagnostics.mjs";
 
 // "/nodes/3/label" reads much better as "/nodes/3 (id: "router") /label" for the
 // LLM fixing the JSON; resolve the nearest enclosing element's id or label.
 function annotatedPath(instancePath, data) {
-  if (!instancePath) return { path: '/', identity: null };
+  if (!instancePath) return { path: "/", identity: null };
   let node = data;
   let hint = null;
-  for (const seg of instancePath.split('/').slice(1)) {
-    if (node == null || typeof node !== 'object') break;
+  for (const seg of instancePath.split("/").slice(1)) {
+    if (node == null || typeof node !== "object") break;
     node = node[/^\d+$/.test(seg) ? Number(seg) : seg];
-    if (node && typeof node === 'object' && !Array.isArray(node)) {
+    if (node && typeof node === "object" && !Array.isArray(node)) {
       const tag = node.id ?? node.label;
       if (tag != null) hint = String(tag);
     }
@@ -26,13 +26,13 @@ function annotatePath(instancePath, data) {
 }
 
 function formatErrors(errors, data) {
-  return errors.map((e) => {
-    const where = annotatePath(e.instancePath, data);
-    const detail = e.params && Object.keys(e.params).length
-      ? ' ' + JSON.stringify(e.params)
-      : '';
-    return `  ${where} ${e.message}${detail}`;
-  }).join('\n');
+  return errors
+    .map((e) => {
+      const where = annotatePath(e.instancePath, data);
+      const detail = e.params && Object.keys(e.params).length ? " " + JSON.stringify(e.params) : "";
+      return `  ${where} ${e.message}${detail}`;
+    })
+    .join("\n");
 }
 
 export function validateSchema(diagramType, data) {
@@ -53,25 +53,27 @@ export function validateSchema(diagramType, data) {
         expected: error.schema,
         ...error.params,
       };
-      const supportedFixes = {
-        additionalProperties: [`remove unsupported property ${JSON.stringify(error.params?.additionalProperty)}`],
-        required: [`add required property ${JSON.stringify(error.params?.missingProperty)}`],
-        type: [`use ${JSON.stringify(error.params?.type)} at ${annotated.path}`],
-        enum: [`choose one of ${JSON.stringify(error.params?.allowedValues || [])}`],
-        pattern: [`match the required pattern ${JSON.stringify(error.params?.pattern)}`],
-        minimum: [`use a value ${error.params?.comparison || '>='} ${error.params?.limit}`],
-        maximum: [`use a value ${error.params?.comparison || '<='} ${error.params?.limit}`],
-        minItems: [`provide at least ${error.params?.limit} item(s)`],
-        maxItems: [`provide at most ${error.params?.limit} item(s)`],
-        minLength: [`provide at least ${error.params?.limit} character(s)`],
-        maxLength: [`provide at most ${error.params?.limit} character(s)`],
-      }[error.keyword] || [];
-      const detail = error.params && Object.keys(error.params).length
-        ? ` ${JSON.stringify(error.params)}`
-        : '';
+      const supportedFixes =
+        {
+          additionalProperties: [
+            `remove unsupported property ${JSON.stringify(error.params?.additionalProperty)}`,
+          ],
+          required: [`add required property ${JSON.stringify(error.params?.missingProperty)}`],
+          type: [`use ${JSON.stringify(error.params?.type)} at ${annotated.path}`],
+          enum: [`choose one of ${JSON.stringify(error.params?.allowedValues || [])}`],
+          pattern: [`match the required pattern ${JSON.stringify(error.params?.pattern)}`],
+          minimum: [`use a value ${error.params?.comparison || ">="} ${error.params?.limit}`],
+          maximum: [`use a value ${error.params?.comparison || "<="} ${error.params?.limit}`],
+          minItems: [`provide at least ${error.params?.limit} item(s)`],
+          maxItems: [`provide at most ${error.params?.limit} item(s)`],
+          minLength: [`provide at least ${error.params?.limit} character(s)`],
+          maxLength: [`provide at most ${error.params?.limit} character(s)`],
+        }[error.keyword] || [];
+      const detail =
+        error.params && Object.keys(error.params).length ? ` ${JSON.stringify(error.params)}` : "";
       return {
         code: `schema/${error.keyword}`,
-        severity: 'error',
+        severity: "error",
         message: `${annotatePath(error.instancePath, data)} ${error.message}${detail}`,
         subject,
         evidence,
