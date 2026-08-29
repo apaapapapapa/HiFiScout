@@ -1,14 +1,16 @@
 /**
- * `/api/products` query-string handling.
+ * `/api/product-search` query-string handling.
  *
  * Validation and parsing live at the HTTP boundary so the search repository receives an already
  * normalized value object and never has to know about `URL`/`URLSearchParams`. Both halves are
  * pure functions and are unit-tested without a database.
  */
 
-import { isFeatureId } from "../catalog/types.js";
+import { FEATURE_DEFINITIONS } from "../catalog/types.js";
 import { PRODUCT_QUERY_SORTS } from "./contracts.js";
+import { validateQueryContract } from "./route-contract.js";
 import type { ProductQuerySort } from "./contracts.js";
+import type { QueryParameterContract } from "./route-contract.js";
 
 export const DEFAULT_PAGE_SIZE = 50;
 export const MAX_PAGE_SIZE = 100;
@@ -18,27 +20,114 @@ export const MAX_OFFSET = 10_000;
 /** Maximum accepted code-point length per string parameter. */
 const LENGTH_LIMITS = { q: 100, shop: 80, manufacturer: 100, category: 100, cursor: 1024 };
 const MAX_FEATURE_PARAM_LENGTH = 200;
-const NUMERIC_PARAMS = ["minPrice", "maxPrice", "limit", "offset"] as const;
-const BOOLEAN_PARAMS = ["inStock", "newOnly", "priceDropped", "includeTotal"] as const;
-const SINGLE_VALUE_PARAMS = [
-  "q",
-  "shop",
-  "manufacturer",
-  "category",
-  "inStock",
-  "newOnly",
-  "priceDropped",
-  "minPrice",
-  "maxPrice",
-  "sort",
-  "cursor",
-  "limit",
-  "offset",
-  "includeTotal",
-] as const;
-const ALLOWED_PARAMS = new Set<string>([...SINGLE_VALUE_PARAMS, "feature"]);
+const FEATURE_IDS = FEATURE_DEFINITIONS.map((feature) => feature.id);
 
-/** Normalized `/api/products` request. Every field is already clamped and defaulted. */
+/**
+ * Machine-readable query contract shared by runtime validation and OpenAPI generation.
+ *
+ * `limit` deliberately has no OpenAPI maximum: larger non-negative values are accepted and then
+ * clamped to `MAX_PAGE_SIZE`, preserving the existing HTTP behavior.
+ */
+export const PRODUCT_QUERY_PARAMETERS = [
+  {
+    name: "q",
+    type: "string",
+    maxLength: LENGTH_LIMITS.q,
+    description: "Free-text product search. Leading and trailing whitespace is ignored.",
+  },
+  {
+    name: "shop",
+    type: "string",
+    maxLength: LENGTH_LIMITS.shop,
+    description: "Restrict matches to offers from one shop key.",
+  },
+  {
+    name: "manufacturer",
+    type: "string",
+    maxLength: LENGTH_LIMITS.manufacturer,
+    description: "Restrict matches to one manufacturer display name.",
+  },
+  {
+    name: "category",
+    type: "string",
+    maxLength: LENGTH_LIMITS.category,
+    description: "Restrict matches to a canonical category id.",
+  },
+  {
+    name: "cursor",
+    type: "string",
+    maxLength: LENGTH_LIMITS.cursor,
+    description: "Opaque keyset-pagination cursor returned by the previous response.",
+  },
+  {
+    name: "feature",
+    type: "string",
+    repeatable: true,
+    commaSeparated: true,
+    maxLength: MAX_FEATURE_PARAM_LENGTH,
+    enum: FEATURE_IDS,
+    description: "Required product feature. May be repeated or supplied as a comma-separated list.",
+  },
+  {
+    name: "minPrice",
+    type: "integer",
+    minimum: 0,
+    maxDigits: 12,
+    description: "Minimum offer price in JPY.",
+  },
+  {
+    name: "maxPrice",
+    type: "integer",
+    minimum: 0,
+    maxDigits: 12,
+    description: "Maximum offer price in JPY.",
+  },
+  {
+    name: "limit",
+    type: "integer",
+    minimum: 0,
+    maxDigits: 12,
+    description: `Requested page size; normalized into the range 1-${MAX_PAGE_SIZE}.`,
+  },
+  {
+    name: "offset",
+    type: "integer",
+    minimum: 0,
+    maximum: MAX_OFFSET,
+    maximumError: "offset_too_large",
+    maxDigits: 12,
+    description: `Offset pagination, bounded to ${MAX_OFFSET}.`,
+  },
+  {
+    name: "inStock",
+    type: "boolean",
+    description: "Return only products with a matching in-stock offer.",
+  },
+  {
+    name: "newOnly",
+    type: "boolean",
+    description: "Return only products with a newly observed matching offer.",
+  },
+  {
+    name: "priceDropped",
+    type: "boolean",
+    description: "Return only products with a matching price drop.",
+  },
+  {
+    name: "includeTotal",
+    type: "boolean",
+    description: "Include totalCount and totalPages in the response.",
+  },
+  {
+    name: "sort",
+    type: "string",
+    enum: PRODUCT_QUERY_SORTS,
+    description:
+      "Explicit result ordering. Omitting it enables relevance ordering for text search.",
+  },
+] as const satisfies readonly QueryParameterContract[];
+
+/** Normalized `/api/product-search` request. Every field is already clamped and defaulted. */
 export interface ProductQuery {
   /** Trimmed free-text search; empty when absent. */
   q: string;
@@ -91,40 +180,11 @@ function integerParam(params: URLSearchParams, key: string): number | null {
 /**
  * Rejects oversized and malformed query parameters before any SQL is built.
  *
- * Unknown keys are rejected instead of ignored: otherwise an attacker can append arbitrary cache
- * busters to semantically identical searches and force D1 to execute every request.
- *
- * Returns an error code for the 400 response, or `null` when the query is acceptable.
+ * The constraints are declared once in `PRODUCT_QUERY_PARAMETERS`; that same metadata is rendered
+ * into the OpenAPI description, so changing an accepted value cannot silently leave docs stale.
  */
 export function validateProductQuery(url: URL): string | null {
-  const params = url.searchParams;
-  for (const key of params.keys()) {
-    if (!ALLOWED_PARAMS.has(key)) return "parameter_unknown";
-  }
-  for (const key of SINGLE_VALUE_PARAMS) {
-    if (params.getAll(key).length > 1) return `${key}_repeated`;
-  }
-  for (const [key, maxLength] of Object.entries(LENGTH_LIMITS)) {
-    const value = params.get(key);
-    if (value != null && [...value].length > maxLength) return `${key}_too_long`;
-  }
-  for (const value of params.getAll("feature")) {
-    if ([...value].length > MAX_FEATURE_PARAM_LENGTH) return "feature_too_long";
-  }
-  if (requestedFeatures(params).some((feature) => !isFeatureId(feature))) return "feature_invalid";
-  for (const key of NUMERIC_PARAMS) {
-    const value = params.get(key);
-    if (value != null && !/^\d{1,12}$/.test(value)) return `${key}_invalid`;
-  }
-  const offset = integerParam(params, "offset");
-  if (offset != null && offset > MAX_OFFSET) return "offset_too_large";
-  for (const key of BOOLEAN_PARAMS) {
-    const value = params.get(key);
-    if (value != null && value !== "true" && value !== "false") return `${key}_invalid`;
-  }
-  const sort = params.get("sort");
-  if (sort && !isProductQuerySort(sort)) return "sort_invalid";
-  return null;
+  return validateQueryContract(url, PRODUCT_QUERY_PARAMETERS);
 }
 
 /**

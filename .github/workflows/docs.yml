@@ -43,6 +43,9 @@ jobs:
         run: |
           test -f docs/.vitepress/dist/db/index.html
           test -f docs/.vitepress/dist/generated/dependencies.html
+          test -f docs/.vitepress/dist/generated/openapi.json
+          test -f docs/.vitepress/dist/generated/openapi.html
+          test -f docs/.vitepress/dist/reference/api/index.html
           python - <<'PY'
           from html.parser import HTMLParser
           from pathlib import Path
@@ -61,6 +64,14 @@ jobs:
               (
                   Path("docs/.vitepress/dist/architecture/dependencies.html"),
                   "../generated/dependencies.html",
+              ),
+              (
+                  Path("docs/.vitepress/dist/reference/http-api.html"),
+                  "../generated/openapi.html",
+              ),
+              (
+                  Path("docs/.vitepress/dist/reference/http-api.html"),
+                  "../generated/openapi.json",
               ),
           ]
 

@@ -1,3 +1,5 @@
+import typedocSidebar from "../reference/api/typedoc-sidebar.json";
+
 const configuredBase = process.env.DOCS_BASE?.trim();
 const base = configuredBase ? `${configuredBase.replace(/\/+$/, "")}/` : "/";
 
@@ -13,7 +15,8 @@ export default {
     nav: [
       { text: "Guide", link: "/" },
       { text: "Architecture", link: "/data-platform-architecture" },
-      { text: "API", link: "/reference/api" },
+      { text: "HTTP API", link: "/reference/http-api" },
+      { text: "Source API", link: "/reference/api/" },
       { text: "Database", link: "/database/" },
     ],
     sidebar: [
@@ -31,7 +34,8 @@ export default {
       {
         text: "Reference",
         items: [
-          { text: "Source API", link: "/reference/api" },
+          { text: "HTTP API", link: "/reference/http-api" },
+          { text: "Source API", link: "/reference/api/", items: typedocSidebar },
           { text: "Database Schema", link: "/database/" },
         ],
       },
@@ -44,6 +48,6 @@ export default {
         ],
       },
     ],
-    socialLinks: [{ icon: "github", link: "https://github.com/apaapapapa/HiFiScout" }],
+    socialLinks: [{ icon: "github", link: "https://github.com/apaapapapapa/HiFiScout" }],
   },
 };

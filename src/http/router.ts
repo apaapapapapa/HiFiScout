@@ -10,12 +10,6 @@
 import { checkPublicApiRateLimit } from "../api-guard.js";
 import { productSearchAtomFeed } from "../api/atom-feed.js";
 import { canonicalFeedQueryUrl, parseFeedQuery, validateFeedQuery } from "../api/feed-query.js";
-import { parseProductQuery, validateProductQuery } from "../api/product-query.js";
-import {
-  canonicalSuggestQueryUrl,
-  parseSuggestQuery,
-  validateSuggestQuery,
-} from "../api/suggest-query.js";
 import { SHOP_DEFINITIONS } from "../config.js";
 import { dispatchForcedCrawl } from "../crawler/dispatch.js";
 import { dataPlatformStatus } from "../db/data-platform-status-repository.js";
@@ -41,22 +35,19 @@ import {
   productSearchEntityConsistency,
   rebuildProductSearchEntities,
 } from "../db/product-search-entity-repository.js";
-import {
-  productSearchDetail,
-  searchProducts,
-} from "../db/product-search-price-index-repository.js";
+import { productSearchDetail } from "../db/product-search-price-index-repository.js";
 import { searchProducts as searchBaseProducts } from "../db/product-search-repository.js";
-import { suggestProducts } from "../db/product-suggest-repository.js";
 import { getSyncHealth } from "../health.js";
 import { knowledgeCatalogStatus } from "./knowledge-catalog-status.js";
 import { parseManufacturerAliasAdminRequest } from "./manufacturer-alias-admin.js";
+import { meta } from "./meta.js";
+import { handlePublicContractRoute } from "./public-routes.js";
 import {
   DATA_QUALITY_REBUILD_ORDER,
   parseCatalogReplayRequest,
   parseDataQualityRebuildRequest,
   parseReplayRequest,
 } from "./remediation-admin.js";
-import { meta } from "./meta.js";
 import { cachedAtom, cachedJson, json } from "./response.js";
 import type { CrawlerEnv } from "../crawler/types.js";
 
@@ -93,15 +84,9 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext): Pro
   const rate = await checkPublicApiRateLimit(request, env);
   if (!rate.allowed) return json({ error: "rate_limited" }, { status: 429 });
 
-  if (request.method === "GET" && url.pathname === "/api/suggest") {
-    const validationError = validateSuggestQuery(url);
-    if (validationError) return json({ error: validationError }, { status: 400 });
-    const query = parseSuggestQuery(url);
-    const cacheRequest = new Request(canonicalSuggestQueryUrl(url, query).toString(), request);
-    return cachedJson(cacheRequest, ctx, READ_CACHE_TTL_SECONDS, async () => ({
-      suggestions: await suggestProducts(env.DB, query.q),
-    }));
-  }
+  const contractResponse = await handlePublicContractRoute(request, env, ctx);
+  if (contractResponse) return contractResponse;
+
   if (request.method === "GET" && url.pathname === "/api/feed") {
     const validationError = validateFeedQuery(url);
     if (validationError) return json({ error: validationError }, { status: 400 });
@@ -112,13 +97,6 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext): Pro
       const result = await searchBaseProducts(env.DB, query);
       return productSearchAtomFeed(result.items, canonicalUrl);
     });
-  }
-  if (request.method === "GET" && url.pathname === "/api/product-search") {
-    // Validate before parsing so a hostile query is rejected rather than silently normalized.
-    const validationError = validateProductQuery(url);
-    if (validationError) return json({ error: validationError }, { status: 400 });
-    const query = parseProductQuery(url);
-    return cachedJson(request, ctx, READ_CACHE_TTL_SECONDS, () => searchProducts(env.DB, query));
   }
   const detailMatch = url.pathname.match(PRODUCT_SEARCH_DETAIL_PATH);
   if (request.method === "GET" && detailMatch) {

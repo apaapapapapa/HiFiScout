@@ -17,6 +17,7 @@ test("product query validation rejects oversized and malformed inputs", () => {
   assert.equal(validateProductQuery(url(`?q=${"x".repeat(101)}`)), "q_too_long");
   assert.equal(validateProductQuery(url("?limit=-1")), "limit_invalid");
   assert.equal(validateProductQuery(url("?sort=random")), "sort_invalid");
+  assert.equal(validateProductQuery(url("?sort=%20updated")), "sort_invalid");
   assert.equal(validateProductQuery(url("?q=TAD&limit=50&sort=newest")), null);
   assert.equal(validateProductQuery(url("?sort=updated")), null);
   assert.equal(validateProductQuery(url("?sort=oldest")), null);
@@ -44,6 +45,7 @@ test("feature parameters are length-checked before they are resolved", () => {
   assert.equal(validateProductQuery(url(`?feature=${"d".repeat(201)}`)), "feature_too_long");
   assert.equal(validateProductQuery(url("?feature=magic")), "feature_invalid");
   assert.equal(validateProductQuery(url("?feature=dac,network_playback")), null);
+  assert.equal(validateProductQuery(url("?feature=dac,%20network_playback")), null);
 });
 
 test("an absent query parses to the default page of newest listings", () => {
