@@ -30,6 +30,7 @@ test("ACOUSTIC REVIVE is a canonical multi-word manufacturer", () => {
 });
 
 test("legacy ACOUSTIC first-token evidence re-resolves from the full title", () => {
+  // Stored rows created before this manufacturer was known must converge without a fresh crawl.
   const result = resolveManufacturer({
     rawManufacturer: "ACOUSTIC",
     manufacturerCandidate: "ACOUSTIC",
