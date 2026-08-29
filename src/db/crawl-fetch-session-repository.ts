@@ -263,13 +263,14 @@ export async function claimCrawlFetchFinalization(
 
   // Reserve the logical crawl run before publish starts. startCrawlRun() reuses this row while its
   // collection session is finalizing, so a stale-finalizer reclaim cannot create a second run.
+  // INSERT OR IGNORE lets SQLite/D1 apply the partial unique collection_run_id index without naming
+  // an ON CONFLICT target that would have to repeat the index predicate verbatim.
   await db
     .prepare(`
-      INSERT INTO crawl_runs (shop_key, started_at, status, collection_run_id)
+      INSERT OR IGNORE INTO crawl_runs (shop_key, started_at, status, collection_run_id)
       SELECT shop_key, ?, 'running', run_id
       FROM crawl_fetch_sessions
       WHERE run_id = ?
-      ON CONFLICT(collection_run_id) DO NOTHING
     `)
     .bind(claimedAt, runId)
     .run();
