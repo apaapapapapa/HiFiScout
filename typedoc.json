@@ -3,7 +3,6 @@
   "entryPoints": ["src/index.ts"],
   "tsconfig": "tsconfig.json",
   "plugin": ["typedoc-plugin-markdown", "typedoc-vitepress-theme"],
-  "theme": "vitepress",
   "name": "HiFiScout Source API Reference",
   "out": "docs/reference/api",
   "docsRoot": "docs",
