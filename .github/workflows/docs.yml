@@ -36,15 +36,23 @@ jobs:
       - name: Validate module dependencies
         run: vp run docs:architecture:check
       - name: Build developer documentation
-        run: vp run docs:build
+        run: |
+          mkdir -p .cache/docs
+          set +e
+          vp run docs:build 2>&1 | tee .cache/docs/build.log
+          status=${PIPESTATUS[0]}
+          set -e
+          exit "$status"
         env:
           DOCS_BASE: "${{ steps.pages.outputs.base_path }}/"
-      - name: Upload generated TypeDoc diagnostics
+      - name: Upload developer docs diagnostics
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: typedoc-debug
-          path: docs/reference/api
+          name: docs-debug
+          path: |
+            .cache/docs/build.log
+            docs/reference/api
           if-no-files-found: error
           retention-days: 1
       - name: Validate generated report links
