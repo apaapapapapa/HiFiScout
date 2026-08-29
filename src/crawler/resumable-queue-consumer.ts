@@ -307,16 +307,19 @@ async function processFetch(
         robotsCache,
       });
     } catch (error) {
-      if (/HTTP 404/.test(errorMessage(error)) && shouldContinueAfterEmpty(plugin)) {
-        const pages = await listCrawlFetchPages(env.DB, session.run_id);
-        await recordCrawlFetchPageIgnored(env.DB, {
-          runId: session.run_id,
-          pageKey,
-          ignoredAt: new Date().toISOString(),
-          currentSequence: session.continuation_sequence,
-          nextPageKey: nextPendingPageKey(pages, pageKey),
-        });
-        return continued(env, plugin, body, session.run_id);
+      if (/HTTP 404/.test(errorMessage(error))) {
+        const previousItems = await stagedCrawlFetchItemCount(env.DB, session.run_id);
+        if (shouldContinueAfterEmpty(plugin) || previousItems === 0) {
+          const pages = await listCrawlFetchPages(env.DB, session.run_id);
+          await recordCrawlFetchPageIgnored(env.DB, {
+            runId: session.run_id,
+            pageKey,
+            ignoredAt: new Date().toISOString(),
+            currentSequence: session.continuation_sequence,
+            nextPageKey: nextPendingPageKey(pages, pageKey),
+          });
+          return continued(env, plugin, body, session.run_id);
+        }
       }
       return failCollection(env, plugin, session.run_id, error);
     }
@@ -670,11 +673,6 @@ export async function consumeResumableCrawlMessage(
       kind: "terminal",
       result: { status: "skipped", reason: "not_due", shopKey: plugin.key },
     };
-  if (!isTransportConfigured(env, plugin.capabilities.transport?.kind))
-    return {
-      kind: "terminal",
-      result: { status: "skipped", reason: "configuration_missing", shopKey: plugin.key },
-    };
 
   const runId = body.collectionRunId || canonicalRunId(plugin.key, body.requestedAt);
   const claimedAtDate = new Date();
@@ -708,6 +706,14 @@ export async function consumeResumableCrawlMessage(
 
   let terminal = false;
   try {
+    if (!isTransportConfigured(env, plugin.capabilities.transport?.kind)) {
+      terminal = true;
+      return {
+        kind: "terminal",
+        runId,
+        result: { status: "skipped", reason: "configuration_missing", shopKey: plugin.key },
+      };
+    }
     const result = await executeContinuation(env, plugin, body, runId);
     terminal = result.kind === "terminal";
     return result;
