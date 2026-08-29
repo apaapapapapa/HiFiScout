@@ -27,7 +27,7 @@ import type {
   ResolutionStatus,
 } from "./types.js";
 
-export const MODEL_RESOLVER_VERSION = 9;
+export const MODEL_RESOLVER_VERSION = 10;
 
 export type ModelResolver = (input: ModelResolutionInput) => ModelResolutionResult;
 
@@ -342,6 +342,47 @@ function stripManufacturerPresentation(
   return value;
 }
 
+function isTrailingManufacturerAliasFragment(
+  value: string,
+  presentation: ManufacturerPresentation,
+): boolean {
+  const normalizedValue = normalizeManufacturerKey(value);
+  if (!normalizedValue) return false;
+
+  return presentation.aliases.some((alias) => {
+    const tokens = clean(alias).split(/\s+/u).filter(Boolean);
+    if (tokens.length < 2) return false;
+    return tokens
+      .slice(1)
+      .some((_, index) => normalizeManufacturerKey(tokens.slice(index + 1).join(" ")) === normalizedValue);
+  });
+}
+
+/**
+ * Before multi-word manufacturers were known, the crawler split at the first token. That left the
+ * remaining manufacturer token in immutable seller model evidence (`ACOUSTIC` + `REVIVE BWA-4`).
+ * Recover only when the title independently proves the full manufacturer prefix and the extra raw
+ * model prefix is a trailing segment of a verified manufacturer presentation.
+ */
+function recoverLegacyTruncatedManufacturerModel(
+  value: string,
+  title: string,
+  presentation: ManufacturerPresentation,
+): string {
+  const titleModel = stripManufacturerPresentation(title, presentation);
+  if (!titleModel || titleModel === title) return value;
+
+  const sourceTokens = clean(value).split(/\s+/u).filter(Boolean);
+  const titleTokens = clean(titleModel).split(/\s+/u).filter(Boolean);
+  if (!titleTokens.length || sourceTokens.length <= titleTokens.length) return value;
+
+  const sourceTail = sourceTokens.slice(-titleTokens.length).join(" ");
+  if (normalizeIdentityModel(sourceTail) !== normalizeIdentityModel(titleModel)) return value;
+
+  const extraPrefix = sourceTokens.slice(0, -titleTokens.length).join(" ");
+  return isTrailingManufacturerAliasFragment(extraPrefix, presentation) ? titleModel : value;
+}
+
 function presentationPatterns(
   operationalAliases: readonly ManufacturerAliasEvidence[],
 ): PreparedModelResolver {
@@ -414,9 +455,13 @@ function resolvePreparedModel(
   if (!source) return unresolvedResult(rawModel, rawModel);
 
   const presentation = prepared.get(manufacturerId);
+  const recoveredSource =
+    fromSeller && presentation
+      ? recoverLegacyTruncatedManufacturerModel(source, clean(input.title), presentation)
+      : source;
   const withoutManufacturer = presentation?.patterns.length
-    ? stripManufacturerPresentation(source, presentation)
-    : source;
+    ? stripManufacturerPresentation(recoveredSource, presentation)
+    : recoveredSource;
   const stripped = stripSellerAnnotations(withoutManufacturer, manufacturerId, shopKey);
   const safe = preservesModelIdentity(withoutManufacturer, stripped.text);
   const model = safe ? stripped.text : withoutManufacturer;
