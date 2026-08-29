@@ -28,7 +28,7 @@ export default {
         text: "Architecture",
         items: [
           { text: "Data Platform", link: "/data-platform-architecture" },
-          { text: "Module Dependencies", link: "/architecture/dependencies" },
+          { text: "Architecture Graph", link: "/architecture/dependencies" },
         ],
       },
       {
