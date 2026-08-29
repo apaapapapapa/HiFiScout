@@ -5,7 +5,14 @@
  * Worker uses without pulling database or Cloudflare runtime code into Node.
  */
 
-export type JsonSchemaScalarType = "array" | "boolean" | "integer" | "null" | "number" | "object" | "string";
+export type JsonSchemaScalarType =
+  | "array"
+  | "boolean"
+  | "integer"
+  | "null"
+  | "number"
+  | "object"
+  | "string";
 
 export interface JsonSchema {
   $ref?: string;
@@ -13,6 +20,7 @@ export interface JsonSchema {
   description?: string;
   enum?: readonly (string | number | boolean | null)[];
   format?: string;
+  pattern?: string;
   minimum?: number;
   maximum?: number;
   minLength?: number;
@@ -21,6 +29,8 @@ export interface JsonSchema {
   properties?: Readonly<Record<string, JsonSchema>>;
   required?: readonly string[];
   additionalProperties?: boolean | JsonSchema;
+  anyOf?: readonly JsonSchema[];
+  oneOf?: readonly JsonSchema[];
 }
 
 export type QueryNormalization = "nfkc-space";
@@ -163,7 +173,11 @@ export function validateQueryContract(
   return null;
 }
 
-export function routeMatches(contract: RouteContract, request: Request, url = new URL(request.url)): boolean {
+export function routeMatches(
+  contract: RouteContract,
+  request: Request,
+  url = new URL(request.url),
+): boolean {
   return request.method === contract.method && url.pathname === contract.path;
 }
 
@@ -173,13 +187,21 @@ function scalarParameterSchema(parameter: QueryParameterContract): JsonSchema {
     description: parameter.description,
   };
   if (parameter.enum) schema.enum = parameter.enum;
-  if (parameter.maxLength != null && parameter.type === "string") schema.maxLength = parameter.maxLength;
-  if (parameter.minimum != null && parameter.type === "integer") schema.minimum = parameter.minimum;
-  if (parameter.maximum != null && parameter.type === "integer") schema.maximum = parameter.maximum;
+  if (parameter.maxLength != null && parameter.type === "string") {
+    schema.maxLength = parameter.maxLength;
+  }
+  if (parameter.minimum != null && parameter.type === "integer") {
+    schema.minimum = parameter.minimum;
+  }
+  if (parameter.maximum != null && parameter.type === "integer") {
+    schema.maximum = parameter.maximum;
+  }
   return schema;
 }
 
-export function openApiQueryParameter(parameter: QueryParameterContract): Record<string, unknown> {
+export function openApiQueryParameter(
+  parameter: QueryParameterContract,
+): Record<string, unknown> {
   const scalarSchema = scalarParameterSchema(parameter);
   const arrayLike = parameter.repeatable || parameter.commaSeparated;
   return {
