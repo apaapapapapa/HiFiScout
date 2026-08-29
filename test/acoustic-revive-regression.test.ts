@@ -1,0 +1,64 @@
+import assert from "node:assert/strict";
+import { test } from "vite-plus/test";
+
+import { resolveManufacturer } from "../src/catalog/manufacturer-resolver.js";
+import {
+  normalizeManufacturer,
+  splitKnownManufacturerModel,
+} from "../src/catalog/manufacturers.js";
+import { parseTereonListing } from "../src/crawler/shops/tereon.js";
+import { splitManufacturerModel } from "../src/crawler/normalize.js";
+
+test("ACOUSTIC REVIVE is a canonical multi-word manufacturer", () => {
+  assert.deepEqual(normalizeManufacturer("ACOUSTIC REVIVE"), {
+    id: "acoustic-revive",
+    displayName: "ACOUSTIC REVIVE",
+    matchedAlias: true,
+  });
+
+  assert.deepEqual(splitKnownManufacturerModel("ACOUSTIC REVIVE BWA-4"), {
+    id: "acoustic-revive",
+    displayName: "ACOUSTIC REVIVE",
+    rawManufacturer: "ACOUSTIC REVIVE",
+    model: "BWA-4",
+  });
+
+  assert.deepEqual(splitManufacturerModel("ACOUSTIC REVIVE BWA-4", "tereon"), {
+    manufacturer: "ACOUSTIC REVIVE",
+    model: "BWA-4",
+  });
+});
+
+test("legacy ACOUSTIC first-token evidence re-resolves from the full title", () => {
+  const result = resolveManufacturer({
+    rawManufacturer: "ACOUSTIC",
+    manufacturerCandidate: "ACOUSTIC",
+    title: "ACOUSTIC REVIVE BWA-4",
+  });
+
+  assert.equal(result.status, "resolved");
+  assert.equal(result.canonicalManufacturerId, "acoustic-revive");
+  assert.equal(result.displayName, "ACOUSTIC REVIVE");
+  assert.equal(result.method, "title_bootstrap_alias");
+});
+
+test("Tereon keeps ACOUSTIC REVIVE separate from the BWA-4 model", () => {
+  const html = `
+    <div>
+      <a href="/shopdetail/000000008999/004/X/page1/order/">中古品：ACOUSTIC REVIVE BWA-4</a>
+      ACOUSTIC REVIVE 29,800円（税込）
+    </div>`;
+
+  const [item] = parseTereonListing(html, {
+    url: "https://www.tereon-tsuhan.com/shopbrand/004/X/",
+    page: 1,
+    conditionCode: "004",
+    conditionText: "中古品",
+  });
+
+  assert.ok(item);
+  assert.equal(item.title, "ACOUSTIC REVIVE BWA-4");
+  assert.equal(item.rawManufacturer, "ACOUSTIC REVIVE");
+  assert.equal(item.manufacturer, "ACOUSTIC REVIVE");
+  assert.equal(item.model, "BWA-4");
+});
