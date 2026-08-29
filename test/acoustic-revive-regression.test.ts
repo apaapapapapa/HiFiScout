@@ -6,7 +6,7 @@ import {
   normalizeManufacturer,
   splitKnownManufacturerModel,
 } from "../src/catalog/manufacturers.js";
-import { resolveModel } from "../src/catalog/model-resolver.js";
+import { MODEL_RESOLVER_VERSION, resolveModel } from "../src/catalog/model-resolver.js";
 import { parseTereonListing } from "../src/crawler/shops/tereon.js";
 import { splitManufacturerModel } from "../src/crawler/normalize.js";
 
@@ -45,6 +45,9 @@ test("legacy ACOUSTIC first-token evidence re-resolves from the full title", () 
 });
 
 test("legacy truncated manufacturer tail is removed from the stored model", () => {
+  // Advancing the resolver version makes already-stamped rows eligible for the repair replay.
+  assert.equal(MODEL_RESOLVER_VERSION, 10);
+
   const result = resolveModel({
     rawModel: "REVIVE BWA-4",
     title: "ACOUSTIC REVIVE BWA-4",
