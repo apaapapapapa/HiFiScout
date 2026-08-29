@@ -157,6 +157,25 @@ export async function listActiveCrawlFetchSessions(
   return result.results || [];
 }
 
+export async function deleteTerminalCrawlFetchSessions(
+  db: QueryableDatabase,
+  { finalizedBefore, limit }: { finalizedBefore: string; limit: number },
+): Promise<number> {
+  const result = await db
+    .prepare(`
+      DELETE FROM crawl_fetch_sessions
+      WHERE run_id IN (
+        SELECT run_id FROM crawl_fetch_sessions
+        WHERE status IN ('completed', 'failed') AND finalized_at < ?
+        ORDER BY finalized_at
+        LIMIT ?
+      )
+    `)
+    .bind(finalizedBefore, limit)
+    .run();
+  return changes(result);
+}
+
 export function decodeCrawlFetchPage(row: Pick<CrawlFetchPageRow, "page_json">): CrawlPage {
   const value: unknown = JSON.parse(row.page_json);
   if (typeof value === "string") return value;
@@ -216,19 +235,27 @@ export async function failCrawlFetchSession(
   db: QueryableDatabase,
   input: { runId: string; failedAt: string; message: string; crawlRunId?: number | null },
 ): Promise<void> {
-  await db
-    .prepare(`
-      UPDATE crawl_fetch_sessions
-      SET status = 'failed', final_crawl_run_id = COALESCE(?, final_crawl_run_id),
-          next_phase = NULL, next_page_key = NULL, finalized_at = ?, updated_at = ?, error_message = ?
-      WHERE run_id = ?
-    `)
-    .bind(
-      input.crawlRunId ?? null,
-      input.failedAt,
-      input.failedAt,
-      input.message.slice(0, 1000),
-      input.runId,
-    )
-    .run();
+  await db.batch([
+    db
+      .prepare(`
+        UPDATE crawl_fetch_sessions
+        SET status = 'failed', final_crawl_run_id = COALESCE(?, final_crawl_run_id),
+            next_phase = NULL, next_page_key = NULL, finalized_at = ?, updated_at = ?, error_message = ?
+        WHERE run_id = ?
+      `)
+      .bind(
+        input.crawlRunId ?? null,
+        input.failedAt,
+        input.failedAt,
+        input.message.slice(0, 1000),
+        input.runId,
+      ),
+    db
+      .prepare(`
+        UPDATE crawl_fetch_pages
+        SET html_text = NULL, products_json = NULL
+        WHERE run_id = ?
+      `)
+      .bind(input.runId),
+  ]);
 }
