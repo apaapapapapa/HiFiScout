@@ -18,6 +18,26 @@ export async function startCrawlRun(
   shopKey: string,
   startedAt: string,
 ): Promise<number> {
+  // Resumable collection reserves its logical crawl row when finalization is claimed. Reusing that
+  // row is what makes a hard-killed finalizer reopen the same run instead of creating a second run
+  // and repeating downstream work under a new identity. Ordinary crawls have no matching active
+  // fetch session and fall through to the historical INSERT below.
+  const reserved = await db
+    .prepare(`
+      SELECT cr.id
+      FROM crawl_runs cr
+      JOIN crawl_fetch_sessions s ON s.run_id = cr.collection_run_id
+      WHERE cr.shop_key = ?
+        AND cr.status = 'running'
+        AND s.status = 'finalizing'
+        AND s.final_crawl_run_id IS NULL
+      ORDER BY s.finalization_claimed_at DESC, cr.id DESC
+      LIMIT 1
+    `)
+    .bind(shopKey)
+    .first<{ id: number }>();
+  if (reserved) return reserved.id;
+
   const run = await db
     .prepare("INSERT INTO crawl_runs (shop_key, started_at, status) VALUES (?, ?, 'running')")
     .bind(shopKey, startedAt)
