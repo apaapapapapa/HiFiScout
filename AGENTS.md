@@ -24,6 +24,7 @@ GitHub Actions also auto-formats pull requests as a defense-in-depth measure. Do
 
 - New first-party application, test, script, E2E, infrastructure, frontend, and tooling source must be TypeScript (or a non-JavaScript declarative format).
 - Do not add tracked `.js`, `.mjs`, `.cjs`, or `.jsx` first-party source/config files. Generated JavaScript belongs in ignored build output only.
+- Vendored third-party agent skills are not first-party source. Archify is pinned by `skills-lock.json` and lives under `.agents/skills/archify/`; do not edit its vendored JavaScript as application source.
 - `vp run verify` covers `typecheck`, `format:check`, `lint`, and `check:no-js-source`; run it before publishing changes.
 
 ## Keeping agent output small
