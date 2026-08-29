@@ -354,7 +354,10 @@ function isTrailingManufacturerAliasFragment(
     if (tokens.length < 2) return false;
     return tokens
       .slice(1)
-      .some((_, index) => normalizeManufacturerKey(tokens.slice(index + 1).join(" ")) === normalizedValue);
+      .some(
+        (_, index) =>
+          normalizeManufacturerKey(tokens.slice(index + 1).join(" ")) === normalizedValue,
+      );
   });
 }
 
