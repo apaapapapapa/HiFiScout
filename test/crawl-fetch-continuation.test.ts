@@ -24,28 +24,40 @@ function syntheticPages(count: number) {
   }));
 }
 
-test("a 50-page collection advances through durable fetch/parse boundaries", async () => {
+test("a first-run dynamically discovered 50-page collection stays bounded by page continuations", async () => {
   const { db } = migratedSqlite();
   const pages = syntheticPages(50);
-  const runId = "synthetic:50-pages";
+  const firstPage = pages[0];
+  assert.ok(firstPage);
+  const runId = "synthetic:first-run-dynamic-50-pages";
 
+  // Model a first run with no historical workload observation: only the seed page is
+  // known up front. Every later page is discovered by parsing the previous page.
   await ensureCrawlFetchSession(db, {
     runId,
     shopKey: "synthetic",
     requestedAt: REQUESTED_AT,
     maxPages: 50,
     pageLimit: 50,
-    pages,
+    pages: [firstPage],
     createdAt: REQUESTED_AT,
   });
 
   for (let index = 0; index < pages.length; index += 1) {
     const page = pages[index];
+    const nextPage = pages[index + 1];
     assert.ok(page);
+
     let session = await getCrawlFetchSession(db, runId);
     assert.ok(session);
     assert.equal(session.next_phase, "fetch");
     assert.equal(session.next_page_key, page.key);
+    assert.equal(session.continuation_sequence, index * 2);
+
+    // Before this invocation only pages discovered so far are durable. The entire
+    // unexpectedly large frontier is never materialized or processed in one unit.
+    let storedPages = await listCrawlFetchPages(db, runId);
+    assert.equal(storedPages.length, index + 1);
 
     await recordCrawlFetchPageFetched(db, {
       runId,
@@ -60,18 +72,34 @@ test("a 50-page collection advances through durable fetch/parse boundaries", asy
     assert.ok(session);
     assert.equal(session.next_phase, "parse");
     assert.equal(session.next_page_key, page.key);
+    assert.equal(session.continuation_sequence, index * 2 + 1);
 
     await recordCrawlFetchPageParsed(db, {
       runId,
       pageKey: page.key,
       products: [],
-      discoveredPages: [],
+      discoveredPages: nextPage ? [nextPage] : [],
       parsedAt: REQUESTED_AT,
       currentSequence: session.continuation_sequence,
-      nextPageKey: pages[index + 1]?.key || null,
+      nextPageKey: nextPage?.key || null,
       coverageIncomplete: false,
       reachedEnd: false,
     });
+
+    session = await getCrawlFetchSession(db, runId);
+    assert.ok(session);
+    assert.equal(session.continuation_sequence, (index + 1) * 2);
+    if (nextPage) {
+      assert.equal(session.next_phase, "fetch");
+      assert.equal(session.next_page_key, nextPage.key);
+    } else {
+      assert.equal(session.next_phase, "finalize");
+      assert.equal(session.next_page_key, null);
+    }
+
+    storedPages = await listCrawlFetchPages(db, runId);
+    assert.equal(storedPages.length, Math.min(index + 2, pages.length));
+    assert.equal(storedPages.filter((candidate) => candidate.state === "parsed").length, index + 1);
   }
 
   const session = await getCrawlFetchSession(db, runId);
