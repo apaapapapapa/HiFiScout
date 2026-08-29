@@ -6,7 +6,10 @@
  * unrecognised batch is retried rather than acked, so a misrouted message is never silently lost.
  */
 
-import { consumeCrawlMessage } from "./crawler/dispatch.js";
+import {
+  consumeResumableCrawlMessage,
+  type ResumableCrawlQueueMessage,
+} from "./crawler/resumable-queue-consumer.js";
 import { isCrawlDeadLetterQueueName, isCrawlQueueName } from "./crawler/queue-lanes.js";
 import { crawlDispatchToken, releaseShopDispatch } from "./db/shop-state-repository.js";
 import { getSyncHealth, logSyncHealth } from "./health.js";
@@ -89,32 +92,34 @@ function queueWaitMs(requestedAt: string, receivedAtMs: number): number | null {
 }
 
 /**
- * Shop-origin failures are acked because `crawlShop` has already persisted its independent backoff.
- * A duplicate delivery that arrives while the same child job still owns a live crawl lease is
- * different: retry it after that lease instead of acknowledging and losing the job.
+ * Crawl collection is deliberately one durable unit per invocation. A continuation that was
+ * successfully enqueued is acked immediately; only single-flight/contention is retried in-place.
+ * Shop failures are still terminal because the consumer has already persisted their backoff.
  */
 async function consumeCrawlBatch(batch: MessageBatch<CrawlQueueMessage>, env: Env): Promise<void> {
   for (const message of batch.messages) {
     const receivedAtMs = Date.now();
     const queueReceivedAt = new Date(receivedAtMs).toISOString();
-    const result = await consumeCrawlMessage(env, message.body);
+    const body = message.body as ResumableCrawlQueueMessage;
+    const result = await consumeResumableCrawlMessage(env, body);
     const completedAtMs = Date.now();
     const timing = {
-      requestedAt: message.body.requestedAt,
+      requestedAt: body.requestedAt,
       queueReceivedAt,
       completedAt: new Date(completedAtMs).toISOString(),
-      queueWaitMs: queueWaitMs(message.body.requestedAt, receivedAtMs),
+      queueWaitMs: queueWaitMs(body.requestedAt, receivedAtMs),
       crawlDurationMs: Math.max(0, completedAtMs - receivedAtMs),
     };
     const job = {
       queue: batch.queue,
-      jobId:
-        message.body.jobId || crawlDispatchToken(message.body.shopKey, message.body.requestedAt),
-      batchRunId: message.body.batchRunId || null,
-      lane: message.body.lane || null,
+      jobId: body.jobId || crawlDispatchToken(body.shopKey, body.requestedAt),
+      batchRunId: body.batchRunId || null,
+      lane: body.lane || null,
+      collectionRunId: body.collectionRunId || result.runId || null,
+      continuation: body.continuation || null,
     };
 
-    if (result.status === "skipped" && result.reason === "crawl_in_progress") {
+    if (result.kind === "retry") {
       const retryAfterSeconds = Math.max(1, result.retryAfterSeconds || 60);
       console.log(
         JSON.stringify({
@@ -129,13 +134,22 @@ async function consumeCrawlBatch(batch: MessageBatch<CrawlQueueMessage>, env: En
       continue;
     }
 
-    if (result.status === "failed") {
+    if (result.kind === "continued") {
+      console.log(
+        JSON.stringify({ event: "crawl_queue_job_continued", ...job, ...result, ...timing }),
+      );
+      message.ack();
+      continue;
+    }
+
+    const crawlResult = result.result;
+    if (crawlResult.status === "failed") {
       console.error(
-        JSON.stringify({ event: "crawl_queue_job_failed", ...job, ...result, ...timing }),
+        JSON.stringify({ event: "crawl_queue_job_failed", ...job, ...crawlResult, ...timing }),
       );
     } else {
       console.log(
-        JSON.stringify({ event: "crawl_queue_job_completed", ...job, ...result, ...timing }),
+        JSON.stringify({ event: "crawl_queue_job_completed", ...job, ...crawlResult, ...timing }),
       );
     }
     const health = await getSyncHealth(env);

@@ -39,7 +39,8 @@ export type EnvBindingName =
   | "PRODUCT_AUDIT_EXPORT_QUEUE"
   | "API_RATE_LIMITER"
   | "BROWSER"
-  | "ASSETS";
+  | "ASSETS"
+  | "CF_VERSION_METADATA";
 
 /** Every `vars` entry declared in `wrangler.jsonc`, taken straight from the generated `Env`. */
 export type GeneratedEnvVarName = Exclude<keyof Env, EnvBindingName>;

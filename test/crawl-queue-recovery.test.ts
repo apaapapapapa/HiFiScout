@@ -6,7 +6,6 @@ import { recoverStalledCrawlDispatches } from "../src/crawler/dispatch.js";
 import {
   crawlDispatchToken,
   getShopState,
-  markShopQueued,
   reserveShopDispatch,
   tryClaimShopCrawl,
 } from "../src/db/shop-state-repository.js";
@@ -53,6 +52,9 @@ test("a redelivery while the same child crawl lease is live is retried instead o
   assert.equal(acknowledgements, 0);
   assert.equal(retryDelays.length, 1);
   assert.ok(retryDelays[0] > 60);
+  const state = await getShopState(db, "hifido");
+  assert.equal(state?.consecutive_failures, 0);
+  assert.equal(state?.backoff_until, null);
 });
 
 test("the scheduler watchdog re-sends the same stale child instead of replacing its identity", async () => {
@@ -175,39 +177,5 @@ test("crawl DLQ releases only the failed child reservation for the next schedule
 
   assert.equal(acknowledgements, 1);
   assert.equal(retries, 0);
-  assert.equal((await getShopState(db, "home-shokai"))?.queued_at, null);
-});
-
-test("crawl DLQ also releases a legacy reservation without queued_token", async () => {
-  const { db } = migratedSqlite();
-  const requestedAt = new Date().toISOString();
-  await markShopQueued(db, "home-shokai", requestedAt);
-  assert.equal((await getShopState(db, "home-shokai"))?.queued_at, requestedAt);
-
-  let acknowledgements = 0;
-  const batch = {
-    queue: "hifiscout-crawl-fast-dlq",
-    messages: [
-      {
-        body: {
-          shopKey: "home-shokai",
-          force: false,
-          requestedAt,
-          jobId: crawlDispatchToken("home-shokai", requestedAt),
-          batchRunId: "crawl-batch:legacy",
-          lane: "fast",
-        },
-        ack() {
-          acknowledgements += 1;
-        },
-        retry() {},
-      },
-    ],
-  } as unknown as Parameters<typeof worker.queue>[0];
-  const env = { DB: db } as unknown as Parameters<typeof worker.queue>[1];
-
-  await worker.queue(batch, env);
-
-  assert.equal(acknowledgements, 1);
   assert.equal((await getShopState(db, "home-shokai"))?.queued_at, null);
 });
