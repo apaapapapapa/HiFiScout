@@ -1,4 +1,4 @@
-import { normalizeCategory } from "./categories.js";
+import { categoryFilterIds, normalizeCategory } from "./categories.js";
 import { inferExplicitCategoryIds } from "./category-rules.js";
 import type {
   CategoryPolicyInput,
@@ -13,13 +13,8 @@ import type {
 } from "./types.js";
 
 const BROAD_SELLER_CATEGORY_IDS: ReadonlySet<string> = new Set([
-  "other",
-  "other_accessory",
-  "cable_other",
-  "wired_headphone",
-  "wired_earphone",
-  "clean_power",
-  "cartridge",
+  "SPK.LOUDSPEAKER",
+  "ANA.CARTRIDGE",
 ]);
 
 function mode(value: unknown, fallback: CategoryPolicyMode): CategoryPolicyMode {
@@ -96,7 +91,11 @@ export function sellerCategoryEvidence(
     BROAD_SELLER_CATEGORY_IDS.has(normalized.primaryCategoryId);
   const fallbackMode = inferredBroadLabel ? "corroborative" : policy.sellerCategory.default;
   const categoryId = normalized.primaryCategoryId;
-  const requestedMode = mode(policy.sellerCategory.categories?.[categoryId], fallbackMode);
+  const configuredMode = Object.entries(policy.sellerCategory.categories).find(
+    ([configuredCategoryId]) =>
+      configuredCategoryId === categoryId || categoryFilterIds(configuredCategoryId).includes(categoryId),
+  )?.[1];
+  const requestedMode = mode(configuredMode, fallbackMode);
   const strength = strengthForMode(requestedMode);
   return strength
     ? [
@@ -120,7 +119,7 @@ export function parserHintEvidence(
     normalized.classificationStatus === "classified"
       ? normalized.categoryIds
       : inferExplicitCategoryIds(hintedCategory, { context: "hint" });
-  if (!categoryIds.length || categoryIds[0] === "other") return [];
+  if (!categoryIds.length || categoryIds[0] === "unclassified") return [];
   const strength = strengthForMode(policy.parserHint);
   return strength
     ? [

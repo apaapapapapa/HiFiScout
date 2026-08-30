@@ -16,11 +16,20 @@ import {
 } from "./types.js";
 
 const SAFE_SUPPORTING_SELLER_FALLBACKS: ReadonlyMap<string, CategoryId> = new Map([
-  ["アクセサリー", "other_accessory"],
-  ["ケーブル", "cable_other"],
-  ["カートリッジ", "cartridge"],
-  ["cartridge", "cartridge"],
+  ["スピーカー", "SPK.LOUDSPEAKER"],
+  ["speaker", "SPK.LOUDSPEAKER"],
+  ["speaker-system", "SPK.LOUDSPEAKER"],
+  ["中古スピーカー", "SPK.LOUDSPEAKER"],
+  ["カートリッジ", "ANA.CARTRIDGE"],
+  ["cartridge", "ANA.CARTRIDGE"],
 ]);
+
+const CONFIDENCE_BY_STRENGTH = Object.freeze({
+  verified: 1,
+  authoritative: 0.95,
+  strong: 0.8,
+  supporting: 0.6,
+});
 
 function normalizedEvidence(
   evidence: readonly CategoryEvidenceInput[] = [],
@@ -29,7 +38,7 @@ function normalizedEvidence(
     .map((item) => {
       const values = item.categoryIds ?? (item.categoryId ? [item.categoryId] : []);
       const categoryId =
-        values.map((value) => categoryIdForClassification(value)).find(Boolean) || null;
+        values.map((value) => categoryIdForClassification(value, item.value)).find(Boolean) || null;
       return {
         categoryId,
         categoryIds: categoryId ? [categoryId] : [],
@@ -47,8 +56,7 @@ function unresolved(
 ): CategoryClassification {
   const candidateCategoryIds = [...new Set(evidence.map((item) => item.categoryId))];
   return {
-    // The sentinel, never the `other` leaf: `other` is a real category (tuner, equalizer,
-    // channel divider) that a product can genuinely belong to.
+    // The sentinel, never a public catch-all leaf.
     primaryCategoryId: UNCLASSIFIED_CATEGORY_ID,
     categoryIds: [],
     displayName: "未分類",
@@ -58,6 +66,7 @@ function unresolved(
     classificationSource: state,
     candidateCategoryIds,
     searchAliases: "",
+    confidence: state === "ambiguous" ? 0.25 : 0,
   };
 }
 
@@ -66,21 +75,27 @@ function classified(
   tierEvidence: readonly ResolvedCategoryEvidenceItem[],
 ): CategoryClassification {
   const primary = getCategory(categoryId);
+  if (!primary?.classifiable) return unresolved("unclassified", tierEvidence);
   const sources = [
     ...new Set(
       tierEvidence.filter((item) => item.categoryId === categoryId).map((item) => item.source),
     ),
   ];
   return {
-    primaryCategoryId: primary?.id || "other",
-    categoryIds: [primary?.id || "other"],
-    displayName: primary?.name || "その他",
+    primaryCategoryId: primary.id,
+    categoryIds: [primary.id],
+    displayName: primary.name,
     classificationStatus: "classified",
     classificationState: "classified",
     classificationReason: "",
     classificationSource: sources.join("+") || "classified",
     candidateCategoryIds: [],
-    searchAliases: categorySearchAliases([primary?.id || "other"]),
+    searchAliases: categorySearchAliases([primary.id]),
+    confidence: Math.max(
+      ...tierEvidence
+        .filter((item) => item.categoryId === categoryId)
+        .map((item) => CONFIDENCE_BY_STRENGTH[item.strength]),
+    ),
   };
 }
 
