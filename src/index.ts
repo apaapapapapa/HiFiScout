@@ -75,9 +75,24 @@ async function handlePublicHttp(
 async function handleWorkerQueue(
   batch: MessageBatch<WorkerQueueMessage>,
   env: Env,
-  ctx: ExecutionContext,
+  ctx?: ExecutionContext,
 ): Promise<void> {
-  ctx.waitUntil(observeCrawlQueueDelivery(batch, env));
+  const observation = observeCrawlQueueDelivery(batch, env);
+  if (ctx?.waitUntil) {
+    ctx.waitUntil(observation);
+  } else {
+    // Unit/integration callers historically invoke this composition-root handler without a
+    // Cloudflare ExecutionContext. Keep the new observer best-effort there too: Phase 1 telemetry
+    // must never change Queue acknowledgement/retry semantics.
+    void observation.catch((error) => {
+      console.warn(
+        JSON.stringify({
+          event: "crawl_queue_observation_failed",
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    });
+  }
   return handleQueue(batch, env);
 }
 
