@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 
 import {
   fetchPreparedDirectHtmlPage,
@@ -56,11 +56,15 @@ test("canary dispatch goes to the Durable Object and never the Queue", async () 
     },
   } as unknown as Env;
 
-  const route = await deliverCrawlDispatch(env, MESSAGE, {
-    send: async () => {
-      queueSends += 1;
-    },
-  });
+  const route = await deliverCrawlDispatch(
+    env,
+    MESSAGE,
+    {
+      send: async () => {
+        queueSends += 1;
+      },
+    } as unknown as Parameters<typeof deliverCrawlDispatch>[2],
+  );
 
   assert.equal(route, "durable_object");
   assert.equal(doFetches, 1);
@@ -77,7 +81,7 @@ test("non-canary dispatch keeps the existing Queue path", async () => {
       send: async () => {
         queueSends += 1;
       },
-    },
+    } as unknown as Parameters<typeof deliverCrawlDispatch>[2],
   );
   assert.equal(route, "queue");
   assert.equal(queueSends, 1);
