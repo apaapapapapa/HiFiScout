@@ -124,6 +124,7 @@ test("live metadata exposes the complete canonical taxonomy including zero-count
   const meta: { taxonomyVersion?: string; categoryFacets?: CategoryFacet[] } =
     await response.json();
   const facets = meta.categoryFacets ?? [];
+  // Keep the deployed metadata contract anchored to the same canonical registry used by the Worker.
   const expectedFacets = CATEGORIES.filter((category) => category.filterable).map((category) => ({
     id: category.id,
     name: `${category.parentId ? "　" : ""}${category.name}`,
