@@ -1,6 +1,7 @@
 import { refreshListingProjections } from "./listing-projection-refresh.js";
 import { exactIdentitySplitMembershipPredicateSql } from "./product-search-exact-identity.js";
 import type { QueryableDatabase } from "./types.js";
+import { errorMessage } from "../types.js";
 
 interface ProjectionGapRow {
   id: number;
@@ -13,11 +14,23 @@ export interface ProductSearchGapRepairOptions {
   batchSize?: number;
   maxListings?: number;
   /**
+   * Continue past a projection failure by retrying the selected batch one listing at a time.
+   *
+   * This is intended for the bounded five-minute maintenance sweep: a single poison listing must
+   * not permanently starve every higher-id gap. The failed listing remains a gap and is retried on
+   * the next sweep. Strict/authoritative callers should leave this disabled so any failed repair is
+   * surfaced immediately.
+   *
+   * When omitted, bounded callers that do not request the unbounded remaining-gap count use the
+   * resilient mode, while callers asking for the authoritative remaining count remain fail-fast.
+   */
+  continueOnRefreshError?: boolean;
+  /**
    * Also report how many gaps are left after this pass.
    *
    * Off by default because the count is the one unbounded statement in this file: it scans every
-   * active listing through three correlated subqueries, and its cost grows with the catalog while
-   * the repair itself stays bounded to `maxListings`. Callers that only need to know whether they
+   * active listing through correlated subqueries, and its cost grows with the catalog while the
+   * repair itself stays bounded to `maxListings`. Callers that only need to know whether they
    * repaired anything already have {@link ProductSearchGapRepairResult.repairedCount}.
    */
   countRemainingGaps?: boolean;
@@ -26,6 +39,8 @@ export interface ProductSearchGapRepairOptions {
 export interface ProductSearchGapRepairResult {
   selectedCount: number;
   repairedCount: number;
+  /** Selected listings that still failed after per-listing isolation. Present only when non-zero. */
+  failedCount?: number;
   /** Gaps still outstanding, or `null` when the caller did not ask to pay for the count. */
   remainingGapCount: number | null;
 }
@@ -137,14 +152,73 @@ async function countSeedGaps(
   return Number(row?.gap_count || 0);
 }
 
+async function refreshAndVerify(
+  db: QueryableDatabase,
+  gaps: readonly ProjectionGapRow[],
+  evaluatedAt: string,
+): Promise<void> {
+  await refreshListingProjections(db, gaps, evaluatedAt);
+  const remaining = await countSeedGaps(
+    db,
+    gaps.map((gap) => Number(gap.id)),
+  );
+  if (remaining > 0) {
+    throw new Error(
+      `Product Search projection repair did not converge for ${remaining}/${gaps.length} selected active listings`,
+    );
+  }
+}
+
+async function refreshSelectedGaps(
+  db: QueryableDatabase,
+  gaps: readonly ProjectionGapRow[],
+  evaluatedAt: string,
+  continueOnRefreshError: boolean,
+): Promise<{ repairedCount: number; failedCount: number }> {
+  try {
+    await refreshAndVerify(db, gaps, evaluatedAt);
+    return { repairedCount: gaps.length, failedCount: 0 };
+  } catch (error) {
+    if (!continueOnRefreshError) throw error;
+    console.warn(
+      JSON.stringify({
+        event: "product_search_projection_repair_batch_failed",
+        listingIds: gaps.map((gap) => gap.id),
+        message: errorMessage(error),
+      }),
+    );
+  }
+
+  let repairedCount = 0;
+  let failedCount = 0;
+  for (const gap of gaps) {
+    try {
+      await refreshAndVerify(db, [gap], evaluatedAt);
+      repairedCount += 1;
+    } catch (error) {
+      failedCount += 1;
+      console.warn(
+        JSON.stringify({
+          event: "product_search_projection_repair_listing_failed",
+          listingId: gap.id,
+          shopKey: gap.shop_key,
+          sourceId: gap.source_id,
+          message: errorMessage(error),
+        }),
+      );
+    }
+  }
+  return { repairedCount, failedCount };
+}
+
 /**
  * Repairs bounded active-listing gaps left by an interrupted write between the listing table and
  * the derived Identity/Product Search read model.
  *
  * The repair never fabricates placeholder rows. It reruns the same dependency-ordered projection
  * path used by catalog/listing remediation: search projection -> Product Identity -> search entity.
- * A batch that does not converge is treated as an error so callers cannot silently skip a corrupt
- * listing by advancing the cursor beyond it.
+ * The five-minute bounded sweep isolates a failing listing so it cannot starve later gaps; strict
+ * callers still fail fast unless they explicitly opt into the resilient mode.
  */
 export async function repairActiveListingProjectionGaps(
   db: QueryableDatabase,
@@ -153,6 +227,7 @@ export async function repairActiveListingProjectionGaps(
     batchSize: requestedBatchSize,
     maxListings: requestedMaxListings,
     countRemainingGaps = false,
+    continueOnRefreshError = !countRemainingGaps,
   }: ProductSearchGapRepairOptions = {},
 ): Promise<ProductSearchGapRepairResult> {
   const batchSize = positiveBoundedInteger(requestedBatchSize, DEFAULT_BATCH_SIZE, 50);
@@ -160,6 +235,7 @@ export async function repairActiveListingProjectionGaps(
 
   let selectedCount = 0;
   let repairedCount = 0;
+  let failedCount = 0;
   let afterId = 0;
 
   while (selectedCount < maxListings) {
@@ -167,25 +243,22 @@ export async function repairActiveListingProjectionGaps(
     const gaps = await selectActiveProjectionGaps(db, afterId, limit);
     if (!gaps.length) break;
 
+    // Advance the bounded scan before repair. In resilient mode this is the key starvation guard:
+    // a poison row remains a gap for the next cron, but it cannot trap every higher-id listing
+    // behind the same failed first batch forever.
     selectedCount += gaps.length;
     afterId = Number(gaps[gaps.length - 1]?.id || afterId);
-    await refreshListingProjections(db, gaps, evaluatedAt);
 
-    const remainingInBatch = await countSeedGaps(
-      db,
-      gaps.map((gap) => Number(gap.id)),
-    );
-    if (remainingInBatch > 0) {
-      throw new Error(
-        `Product Search projection repair did not converge for ${remainingInBatch}/${gaps.length} selected active listings`,
-      );
-    }
-    repairedCount += gaps.length;
+    const refreshed = await refreshSelectedGaps(db, gaps, evaluatedAt, continueOnRefreshError);
+    repairedCount += refreshed.repairedCount;
+    failedCount += refreshed.failedCount;
   }
 
-  return {
+  const result: ProductSearchGapRepairResult = {
     selectedCount,
     repairedCount,
     remainingGapCount: countRemainingGaps ? await countActiveProjectionGaps(db) : null,
   };
+  if (failedCount > 0) result.failedCount = failedCount;
+  return result;
 }
