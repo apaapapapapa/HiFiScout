@@ -56,15 +56,11 @@ test("canary dispatch goes to the Durable Object and never the Queue", async () 
     },
   } as unknown as Env;
 
-  const route = await deliverCrawlDispatch(
-    env,
-    MESSAGE,
-    {
-      send: async () => {
-        queueSends += 1;
-      },
-    } as unknown as Parameters<typeof deliverCrawlDispatch>[2],
-  );
+  const route = await deliverCrawlDispatch(env, MESSAGE, {
+    send: async () => {
+      queueSends += 1;
+    },
+  } as unknown as Parameters<typeof deliverCrawlDispatch>[2]);
 
   assert.equal(route, "durable_object");
   assert.equal(doFetches, 1);
@@ -74,15 +70,11 @@ test("canary dispatch goes to the Durable Object and never the Queue", async () 
 test("non-canary dispatch keeps the existing Queue path", async () => {
   let queueSends = 0;
   const env = { CRAWL_DO_CANARY_SHOPS: "home-shokai" } as unknown as Env;
-  const route = await deliverCrawlDispatch(
-    env,
-    { ...MESSAGE, shopKey: "ippinkan" },
-    {
-      send: async () => {
-        queueSends += 1;
-      },
-    } as unknown as Parameters<typeof deliverCrawlDispatch>[2],
-  );
+  const route = await deliverCrawlDispatch(env, { ...MESSAGE, shopKey: "ippinkan" }, {
+    send: async () => {
+      queueSends += 1;
+    },
+  } as unknown as Parameters<typeof deliverCrawlDispatch>[2]);
   assert.equal(route, "queue");
   assert.equal(queueSends, 1);
 });
