@@ -424,8 +424,27 @@ async function runGeneralCronMaintenance(env: Env, scheduledAt: Date): Promise<v
 }
 
 /**
- * Two task trees per tick, not seven: the crawl watchdog, which every cron runs, and whichever
- * background maintenance is due. Remediation shares the five-minute trigger but never recrawls.
+ * Runs the GENERAL_CRON watchdog and maintenance as one sequential task tree.
+ *
+ * The watchdog and maintenance both issue D1 work. Starting them through separate `waitUntil`
+ * calls lets the two query trees contend inside the same isolate, undermining the maintenance
+ * serialization above. Maintenance must still run when the watchdog fails, while the watchdog
+ * failure must remain visible as the cron outcome.
+ */
+export async function runGeneralCronTick<T>(
+  scheduledWork: () => Promise<T>,
+  maintenanceWork: () => Promise<void>,
+): Promise<T> {
+  const scheduledResult = await settled(scheduledWork);
+  const maintenanceResult = await settled(maintenanceWork);
+  if (scheduledResult.status === "rejected") throw scheduledResult.reason;
+  if (maintenanceResult.status === "rejected") throw maintenanceResult.reason;
+  return scheduledResult.value;
+}
+
+/**
+ * GENERAL_CRON uses one task tree so its D1 work is serialized. Other crawl crons keep the direct
+ * scheduled path because they do not own the general maintenance sweep.
  */
 export function handleScheduled(
   controller: ScheduledController,
@@ -433,8 +452,14 @@ export function handleScheduled(
   ctx: ExecutionContext,
 ): void {
   const scheduledAt = new Date(controller.scheduledTime);
-  ctx.waitUntil(runScheduled(controller.cron, env, scheduledAt));
   if (controller.cron === GENERAL_CRON) {
-    ctx.waitUntil(runGeneralCronMaintenance(env, scheduledAt));
+    ctx.waitUntil(
+      runGeneralCronTick(
+        () => runScheduled(controller.cron, env, scheduledAt),
+        () => runGeneralCronMaintenance(env, scheduledAt),
+      ),
+    );
+    return;
   }
+  ctx.waitUntil(runScheduled(controller.cron, env, scheduledAt));
 }
