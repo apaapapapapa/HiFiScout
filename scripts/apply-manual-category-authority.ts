@@ -198,7 +198,7 @@ async function verifyTargets(db: QueryableDatabase): Promise<void> {
         )
       ORDER BY p.id
     `)
-    .bind(UNCLASSIFIED_CATEGORY_ID, ...AUDIT_SOURCES)
+    .bind(...AUDIT_SOURCES, UNCLASSIFIED_CATEGORY_ID)
     .all<ManualCategoryMismatchRow>();
   if ((result.results || []).length) {
     throw new Error(
