@@ -73,6 +73,10 @@ search_drift_count() {
   jq '[.[0] | .unmembered_active_listings, .inactive_offer_memberships, .entities_without_offers, .stale_fallback_entities, .ineligible_catalog_entities, .offer_count_mismatches] | map(. // 0) | add' <<< "$1"
 }
 
+search_non_stale_drift_count() {
+  jq '[.[0] | .unmembered_active_listings, .inactive_offer_memberships, .entities_without_offers, .ineligible_catalog_entities, .offer_count_mismatches] | map(. // 0) | add' <<< "$1"
+}
+
 verify_audiounion_inventory
 
 identity="$(query "
@@ -209,19 +213,43 @@ stale_resolver_versions="$(query "
   FROM products
   WHERE is_active = 1;")"
 
-# Listing writes and search projection refreshes are separate bounded D1 writes. A concurrent crawl
-# can expose a short intermediate state, so retry transient drift before declaring operational
-# health degraded. This is deliberately post-deploy and no longer changes deployment success.
-search_entities="[]"
-search_drift=1
-for attempt in 1 2 3 4 5; do
+# Listing writes and search projection refreshes are separate bounded D1 writes. Most intermediate
+# states should disappear within seconds, so keep the short retry window. A stale fallback is the
+# special case: the bounded projection repair is deliberately scheduled on GENERAL_CRON every five
+# minutes, so post-deploy health must allow exactly one scheduler convergence window before calling
+# that state unhealthy. Other kinds of drift do not get this extended grace period.
+GENERAL_CRON_INTERVAL_SECONDS=300
+PROJECTION_REPAIR_GRACE_SECONDS=45
+search_entities="$(read_search_entities)"
+search_drift="$(search_drift_count "$search_entities")"
+if [ "$search_drift" -ne 0 ]; then
+  non_stale_drift="$(search_non_stale_drift_count "$search_entities")"
+  stale_fallback="$(jq '.[0].stale_fallback_entities // 0' <<< "$search_entities")"
+  if [ "$non_stale_drift" -eq 0 ] && [ "$stale_fallback" -gt 0 ]; then
+    now_epoch="$(date +%s)"
+    next_general_tick="$(( ((now_epoch / GENERAL_CRON_INTERVAL_SECONDS) + 1) * GENERAL_CRON_INTERVAL_SECONDS ))"
+    wait_seconds="$(( next_general_tick - now_epoch + PROJECTION_REPAIR_GRACE_SECONDS ))"
+    echo "Only stale fallback entities remain; waiting ${wait_seconds}s for the next five-minute projection-repair tick." >&2
+    jq . <<< "$search_entities" >&2
+    sleep "$wait_seconds"
+  else
+    echo "Product search read model is still inconsistent (observation 1/5); retrying in 10s." >&2
+    jq . <<< "$search_entities" >&2
+    sleep 10
+  fi
+fi
+
+for attempt in 2 3 4 5; do
+  if [ "$search_drift" -eq 0 ]; then
+    break
+  fi
   search_entities="$(read_search_entities)"
   search_drift="$(search_drift_count "$search_entities")"
   if [ "$search_drift" -eq 0 ]; then
     break
   fi
   if [ "$attempt" -lt 5 ]; then
-    echo "Product search read model is temporarily inconsistent (attempt ${attempt}/5); retrying in 10s." >&2
+    echo "Product search read model is still inconsistent (observation ${attempt}/5); retrying in 10s." >&2
     jq . <<< "$search_entities" >&2
     sleep 10
   fi
@@ -266,7 +294,7 @@ if [ "$identity_missing_count" -ne 0 ]; then
   exit 1
 fi
 if [ "$search_drift" -ne 0 ]; then
-  echo "Product search read model drifted after 5 observations; POST /api/admin/product-search/rebuild repairs it." >&2
+  echo "Product search read model drifted after its allowed convergence window; POST /api/admin/product-search/rebuild repairs it." >&2
   jq . <<< "$search_entities" >&2
   exit 1
 fi
