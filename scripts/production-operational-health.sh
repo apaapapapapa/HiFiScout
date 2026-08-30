@@ -1,13 +1,44 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+D1_QUERY_MAX_ATTEMPTS=3
+D1_QUERY_RETRY_SECONDS=5
+
 query() {
-  npx wrangler d1 execute DB --remote --json --command "$1" | jq '.[0].results // []'
+  local sql="$1"
+  local attempt output stderr_file
+
+  stderr_file="$(mktemp)"
+  for attempt in $(seq 1 "$D1_QUERY_MAX_ATTEMPTS"); do
+    if output="$(npx wrangler d1 execute DB --remote --json --command "$sql" 2>"$stderr_file")"; then
+      if jq -e 'type == "array" and (.[0]? | type == "object") and ((.[0].results? // null) | type == "array")' >/dev/null 2>&1 <<< "$output"; then
+        rm -f "$stderr_file"
+        jq '.[0].results' <<< "$output"
+        return 0
+      fi
+      echo "Remote D1 query returned an unexpected JSON shape (attempt ${attempt}/${D1_QUERY_MAX_ATTEMPTS})." >&2
+      if ! jq -c '.' <<< "$output" >&2 2>/dev/null; then
+        printf '%s\n' "$output" >&2
+      fi
+    else
+      echo "Remote D1 query failed (attempt ${attempt}/${D1_QUERY_MAX_ATTEMPTS})." >&2
+      cat "$stderr_file" >&2
+    fi
+
+    if [ "$attempt" -lt "$D1_QUERY_MAX_ATTEMPTS" ]; then
+      sleep "$D1_QUERY_RETRY_SECONDS"
+      : > "$stderr_file"
+    fi
+  done
+
+  rm -f "$stderr_file"
+  echo "Remote D1 query failed after ${D1_QUERY_MAX_ATTEMPTS} attempts." >&2
+  return 1
 }
 
 verify_audiounion_inventory() {
   local result row in_stock
-  result="$(npx wrangler d1 execute DB --remote --json --command "
+  result="$(query "
     SELECT
       COUNT(*) AS active_count,
       SUM(CASE WHEN stock_status = 'in_stock' THEN 1 ELSE 0 END) AS in_stock_count,
@@ -15,7 +46,7 @@ verify_audiounion_inventory() {
       MAX(last_seen_at) AS latest_seen_at
     FROM products
     WHERE shop_key = 'audiounion' AND is_active = 1;")"
-  row="$(jq -c '.[0].results[0] // {}' <<< "$result")"
+  row="$(jq -c '.[0] // {}' <<< "$result")"
   echo 'AudioUnion inventory state:'
   jq . <<< "$row"
   in_stock="$(jq -r '.in_stock_count // 0' <<< "$row")"
