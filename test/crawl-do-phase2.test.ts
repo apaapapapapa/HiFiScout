@@ -56,6 +56,8 @@ test("canary dispatch goes to the Durable Object and never the Queue", async () 
     },
   } as unknown as Env;
 
+  // Queue.send's concrete response shape follows the generated Cloudflare runtime types; this mock
+  // intentionally exercises only the delivery side effect that the orchestration contract uses.
   const route = await deliverCrawlDispatch(env, MESSAGE, {
     send: async () => {
       queueSends += 1;
