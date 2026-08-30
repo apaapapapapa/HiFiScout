@@ -72,21 +72,21 @@ test("components are reported only for a set, never for a lone product", () => {
 
 test("direct categories are de-duplicated and ordered by the canonical taxonomy", () => {
   // Two components in one category contribute that category once.
-  assert.deepEqual(directCategoryIds(["dac", "dac"]), ["dac"]);
+  assert.deepEqual(directCategoryIds(["dac", "dac"]), ["PRC.DAC"]);
 
   // Order follows the taxonomy, not the order the components were parsed in.
-  const forward = directCategoryIds(["transport", "dac"]);
-  const reversed = directCategoryIds(["dac", "transport"]);
+  const forward = directCategoryIds(["SRC.DISC", "PRC.DAC"]);
+  const reversed = directCategoryIds(["PRC.DAC", "SRC.DISC"]);
   assert.deepEqual(forward, reversed);
   assert.equal(forward.length, 2);
 });
 
 test("unclassified survives only while nothing is known", () => {
-  assert.deepEqual(directCategoryIds(["unclassified", "dac"]), ["dac"]);
+  assert.deepEqual(directCategoryIds(["unclassified", "dac"]), ["PRC.DAC"]);
   assert.deepEqual(directCategoryIds(["unclassified", "unclassified"]), ["unclassified"]);
   assert.deepEqual(directCategoryIds([]), []);
 });
 
 test("values outside the taxonomy are not category membership", () => {
-  assert.deepEqual(directCategoryIds(["not_a_category", "dac"]), ["dac"]);
+  assert.deepEqual(directCategoryIds(["not_a_category", "dac"]), ["PRC.DAC"]);
 });

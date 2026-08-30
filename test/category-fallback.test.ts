@@ -14,7 +14,7 @@ import { FUJIYA_CATEGORY_POLICY } from "../src/crawler/shops/fujiya-avic.js";
 import { HIFIDO_CATEGORY_MAPPING, parseHifidoListing } from "../src/crawler/shops/hifido.js";
 import { parsedProduct } from "./helpers/fixtures.js";
 
-test("broad seller accessory evidence classifies only as the final fallback", () => {
+test("broad seller accessory evidence stays unclassified while specific titles classify", () => {
   const broadOnly = normalizeCatalogProduct(
     parsedProduct({
       manufacturer: "Example",
@@ -25,9 +25,8 @@ test("broad seller accessory evidence classifies only as the final fallback", ()
     }),
     { categoryMapping: { アクセサリー: "accessory" } },
   );
-  assert.equal(broadOnly.primaryCategoryId, "other_accessory");
-  assert.equal(broadOnly.classificationStatus, "classified");
-  assert.equal(broadOnly.classificationSource, "seller_category");
+  assert.equal(broadOnly.primaryCategoryId, "unclassified");
+  assert.equal(broadOnly.classificationStatus, "unclassified");
 
   const specificTitle = normalizeCatalogProduct(
     parsedProduct({
@@ -39,11 +38,11 @@ test("broad seller accessory evidence classifies only as the final fallback", ()
     }),
     { categoryMapping: { アクセサリー: "accessory" } },
   );
-  assert.equal(specificTitle.primaryCategoryId, "cable_usb");
+  assert.equal(specificTitle.primaryCategoryId, "CAB.DATA");
   assert.equal(specificTitle.classificationSource, "title");
 });
 
-test("persisted supporting evidence for exact safe seller buckets is replayable", () => {
+test("persisted broad legacy evidence cannot recreate removed catch-all leaves", () => {
   const accessory = classifyCategoryEvidence([
     {
       categoryIds: ["other_accessory"],
@@ -52,8 +51,8 @@ test("persisted supporting evidence for exact safe seller buckets is replayable"
       value: "アクセサリー",
     },
   ]);
-  assert.equal(accessory.primaryCategoryId, "other_accessory");
-  assert.equal(accessory.classificationStatus, "classified");
+  assert.equal(accessory.primaryCategoryId, "unclassified");
+  assert.equal(accessory.classificationStatus, "unclassified");
 
   const cable = classifyCategoryEvidence([
     {
@@ -63,8 +62,8 @@ test("persisted supporting evidence for exact safe seller buckets is replayable"
       value: "ケーブル",
     },
   ]);
-  assert.equal(cable.primaryCategoryId, "cable_other");
-  assert.equal(cable.classificationStatus, "classified");
+  assert.equal(cable.primaryCategoryId, "unclassified");
+  assert.equal(cable.classificationStatus, "unclassified");
 });
 
 test("known mixed seller buckets stay unresolved instead of becoming fallback classifications", () => {
@@ -121,14 +120,14 @@ test("Hifido recognizes supported seller categories that previously became blank
         normalizeCatalogProduct(product, { categoryMapping: HIFIDO_CATEGORY_MAPPING })
           .primaryCategoryId,
     ),
-    ["transport", "phono_eq"],
+    ["SRC.DISC", "AMP.PHONO"],
   );
 });
 
 test("category metadata version advances so stale rows are replayable", () => {
   // A literal on purpose: bumping the classifier is what makes every stored listing eligible for
   // the remediation replay, so it cannot be done without editing this line and thinking about the
-  // backfill it starts. Raised to 15 by the set-category work, which changed what a listing's
-  // categories mean.
-  assert.equal(CATEGORY_CLASSIFICATION_METADATA_VERSION, 15);
+  // backfill it starts. Raised to 16 by taxonomy v3, which changes both category ids and the
+  // category/facet boundary.
+  assert.equal(CATEGORY_CLASSIFICATION_METADATA_VERSION, 16);
 });

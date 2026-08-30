@@ -21,7 +21,7 @@ test("catalog admin list query validates and canonicalizes filters", () => {
   assert.deepEqual(parseKnowledgeCatalogAdminListQuery(url), {
     query: "D-1000",
     manufacturerId: "luxman",
-    categoryId: "turntable",
+    categoryId: "ANA.TURNTABLE",
     afterId: 12,
     limit: 25,
   });
@@ -148,7 +148,7 @@ test("catalog admin update accepts only canonical leaf categories", () => {
     {
       canonicalName: "LUXMAN D-1000",
       lifecycleStatus: "discontinued",
-      primaryCategoryId: "turntable",
+      primaryCategoryId: "ANA.TURNTABLE",
     },
   );
 
@@ -164,7 +164,7 @@ test("catalog admin update accepts only canonical leaf categories", () => {
     parseKnowledgeCatalogAdminUpdate({
       canonicalName: "Example",
       lifecycleStatus: "retired",
-      primaryCategoryId: "turntable",
+      primaryCategoryId: "ANA.TURNTABLE",
     }),
     null,
   );
@@ -185,7 +185,7 @@ test("catalog admin manual create canonicalizes manufacturer and validates evide
       canonicalModel: "No.5101",
       canonicalName: "MARK LEVINSON No.5101",
       lifecycleStatus: "active",
-      primaryCategoryId: "turntable",
+      primaryCategoryId: "ANA.TURNTABLE",
       sourceUrl: "https://example.test/evidence",
     },
   );
@@ -212,6 +212,6 @@ test("catalog admin manual merge accepts only positive product ids", () => {
 });
 
 test("catalog admin category propagation stores the leaf and its search ancestors", () => {
-  assert.deepEqual(catalogAdminCategoryIds("turntable"), ["turntable", "analog"]);
+  assert.deepEqual(catalogAdminCategoryIds("turntable"), ["ANA.TURNTABLE", "ANA"]);
   assert.deepEqual(catalogAdminCategoryIds("analog"), []);
 });

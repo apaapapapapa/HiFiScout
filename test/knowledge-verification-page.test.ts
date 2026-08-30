@@ -26,8 +26,8 @@ test("official JSON-LD Product verifies exact model and category", async () => {
 
   assert.equal(result.status, "verified");
   assert.equal(result.canonicalModel, "K-01XD");
-  assert.equal(result.primaryCategoryId, "cd_sacd_player");
-  assert.deepEqual(result.categoryIds, ["cd_sacd_player"]);
+  assert.equal(result.primaryCategoryId, "SRC.DISC");
+  assert.deepEqual(result.categoryIds, ["SRC.DISC"]);
   assert.equal(result.contentHash.length, 64);
 });
 
@@ -44,7 +44,7 @@ test("official title and h1 can verify a model when JSON-LD is absent", async ()
   });
 
   assert.equal(result.status, "verified");
-  assert.equal(result.primaryCategoryId, "cd_sacd_player");
+  assert.equal(result.primaryCategoryId, "SRC.DISC");
 });
 
 test("official page that confirms the model but not the category remains ambiguous", async () => {
@@ -87,7 +87,7 @@ test("global navigation near a model cannot become category evidence", async () 
   });
 
   assert.equal(result.status, "verified");
-  assert.equal(result.primaryCategoryId, "wired_headphone");
+  assert.equal(result.primaryCategoryId, "PER.HEADPHONE");
 });
 
 test("navigation-only category text leaves a confirmed model ambiguous", async () => {
@@ -152,8 +152,8 @@ test("model-local context wins over a sibling product on a grouped page", async 
   });
 
   assert.equal(result.status, "verified");
-  assert.equal(result.primaryCategoryId, "cd_sacd_player");
-  assert.deepEqual(result.categoryIds, ["cd_sacd_player"]);
+  assert.equal(result.primaryCategoryId, "SRC.DISC");
+  assert.deepEqual(result.categoryIds, ["SRC.DISC"]);
 });
 
 test("a nearby preceding official category label classifies the model", async () => {
@@ -169,5 +169,5 @@ test("a nearby preceding official category label classifies the model", async ()
   });
 
   assert.equal(result.status, "verified");
-  assert.equal(result.primaryCategoryId, "integrated_amp");
+  assert.equal(result.primaryCategoryId, "AMP.INTEGRATED");
 });

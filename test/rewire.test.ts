@@ -126,7 +126,7 @@ test("REWIRE parser decodes numeric entities and classifies known floorstanding 
   assert.equal(tannoy.rawCategory, "フロア型");
   assert.equal(tannoy.metadata?.rewireSellerCategory, "スピーカー");
   const normalizedTannoy = normalizeCatalogProduct(tannoy);
-  assert.equal(normalizedTannoy.primaryCategoryId, "speaker_floorstanding");
+  assert.equal(normalizedTannoy.primaryCategoryId, "SPK.LOUDSPEAKER");
   // Monitor Red is the identity-bearing driver generation, not a cabinet finish.
   assert.equal(normalizedTannoy.model, "Rectangular GRF 15′′Monitor Red");
   assert.equal(normalizedTannoy.presentationColor, "");
@@ -138,7 +138,7 @@ test("REWIRE parser decodes numeric entities and classifies known floorstanding 
   assert.equal(mcintosh.rawCategory, "フロア型");
   assert.equal(mcintosh.metadata?.rewireSellerCategory, "McIntosh");
   const normalizedMcIntosh = normalizeCatalogProduct(mcintosh);
-  assert.equal(normalizedMcIntosh.primaryCategoryId, "speaker_floorstanding");
+  assert.equal(normalizedMcIntosh.primaryCategoryId, "SPK.LOUDSPEAKER");
   assert.equal(normalizedMcIntosh.model, "XRT22 + MQ107");
 });
 

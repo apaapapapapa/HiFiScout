@@ -9,44 +9,34 @@ import {
   normalizeManufacturerFacetValues,
 } from "../src/http/meta.js";
 
-test("metadata category ordering keeps nested cable leaves inside the accessories subtree", () => {
+test("metadata category ordering keeps every product type immediately after its v3 root", () => {
   const ids = canonicalCategoryDefinitions()
     .filter((category) => category.filterable)
     .sort(compareCategoryHierarchy)
     .map((category) => category.id);
 
-  const accessoriesIndex = ids.indexOf("accessories");
-  assert.notEqual(accessoriesIndex, -1);
-  assert.deepEqual(ids.slice(accessoriesIndex, accessoriesIndex + 15), [
-    "accessories",
-    "cable",
-    "cable_xlr",
-    "cable_rca",
-    "cable_phono",
-    "cable_usb",
-    "cable_lan",
-    "cable_digital",
-    "cable_power",
-    "cable_other",
-    "rack",
-    "power_strip",
-    "clean_power",
-    "vacuum_tube",
-    "other_accessory",
+  const cableIndex = ids.indexOf("CAB");
+  assert.notEqual(cableIndex, -1);
+  assert.deepEqual(ids.slice(cableIndex, cableIndex + 8), [
+    "CAB",
+    "CAB.ANALOG",
+    "CAB.DIGITAL",
+    "CAB.SPEAKER",
+    "CAB.PERSONAL",
+    "CAB.DATA",
+    "CAB.ADAPTER",
+    "PWR",
   ]);
 });
 
 test("metadata indentation depth follows the complete category ancestry", () => {
-  const accessories = getCategory("accessories");
-  const cable = getCategory("cable");
-  const xlr = getCategory("cable_xlr");
-  assert.ok(accessories);
+  const cable = getCategory("CAB");
+  const analog = getCategory("CAB.ANALOG");
   assert.ok(cable);
-  assert.ok(xlr);
+  assert.ok(analog);
 
-  assert.equal(categoryHierarchyDepth(accessories), 0);
-  assert.equal(categoryHierarchyDepth(cable), 1);
-  assert.equal(categoryHierarchyDepth(xlr), 2);
+  assert.equal(categoryHierarchyDepth(cable), 0);
+  assert.equal(categoryHierarchyDepth(analog), 1);
 });
 
 test("manufacturer facet normalization merges aliases and sums their active counts", () => {

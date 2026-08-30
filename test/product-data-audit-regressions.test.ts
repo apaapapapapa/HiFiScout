@@ -10,14 +10,14 @@ import { parsedProduct } from "./helpers/fixtures.js";
 test("vacuum-tube amplifiers classify by product type rather than tube technology", () => {
   assert.equal(
     normalizeCategory({ title: "Western Electric 91E 真空管プリメインアンプ" }).primaryCategoryId,
-    "integrated_amp",
+    "AMP.INTEGRATED",
   );
   assert.equal(
     normalizeCategory({ title: "OCTAVE V70 ClassA vacuum tube integrated amplifier" })
       .primaryCategoryId,
-    "integrated_amp",
+    "AMP.INTEGRATED",
   );
-  assert.equal(normalizeCategory({ title: "12AX7 真空管" }).primaryCategoryId, "vacuum_tube");
+  assert.equal(normalizeCategory({ title: "12AX7 真空管" }).primaryCategoryId, "ACC.TUBE");
 });
 
 test("Fujiya broad seller buckets cannot override explicit product-type evidence", () => {
@@ -36,8 +36,8 @@ test("Fujiya broad seller buckets cannot override explicit product-type evidence
     { categoryPolicy: FUJIYA_CATEGORY_POLICY },
   );
 
-  assert.equal(cable.primaryCategoryId, "cable_other");
-  assert.equal(receiver.primaryCategoryId, "av_amp");
+  assert.equal(cable.primaryCategoryId, "CAB.PERSONAL");
+  assert.equal(receiver.primaryCategoryId, "AMP.RECEIVER");
 });
 
 test("Osaka-ya AV merchandising bucket lets an explicit power-amplifier title win", () => {
@@ -51,5 +51,5 @@ test("Osaka-ya AV merchandising bucket lets an explicit power-amplifier title wi
     { categoryPolicy: plugin.capabilities.catalog?.categoryPolicy },
   );
 
-  assert.equal(product.primaryCategoryId, "power_amp");
+  assert.equal(product.primaryCategoryId, "AMP.POWER");
 });

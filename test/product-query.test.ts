@@ -48,6 +48,23 @@ test("feature parameters are length-checked before they are resolved", () => {
   assert.equal(validateProductQuery(url("?feature=dac,%20network_playback")), null);
 });
 
+test("typed facet parameters validate, parse, and de-duplicate", () => {
+  assert.equal(validateProductQuery(url("?facet=connectivity:wireless")), null);
+  assert.equal(validateProductQuery(url("?facet=unknown:value")), "invalid_facet");
+  assert.equal(validateProductQuery(url("?facet=connectivity:unknown")), "invalid_facet");
+  assert.equal(validateProductQuery(url("?facet=connectivity")), "invalid_facet");
+
+  assert.deepEqual(
+    parseProductQuery(
+      url("?facet=connectivity:wireless,protocol:bluetooth&facet=connectivity:wireless"),
+    ).facets,
+    [
+      { facetId: "connectivity", value: "wireless" },
+      { facetId: "protocol", value: "bluetooth" },
+    ],
+  );
+});
+
 test("an absent query parses to the default page of newest listings", () => {
   const query = parseProductQuery(url(""));
 
@@ -57,6 +74,7 @@ test("an absent query parses to the default page of newest listings", () => {
     manufacturer: "",
     category: "",
     features: [],
+    facets: [],
     inStock: false,
     newOnly: false,
     priceDropped: false,
@@ -96,6 +114,15 @@ test("canonical query URLs collapse semantically equivalent cache keys", () => {
 
   assert.equal(firstCanonical.toString(), secondCanonical.toString());
   assert.equal(firstCanonical.search, "?q=TAD&feature=dac&feature=network_playback&limit=50");
+});
+
+test("canonical query URLs sort typed facet selections", () => {
+  const request = url("?facet=protocol:bluetooth&facet=connectivity:wireless");
+  const canonical = canonicalProductQueryUrl(request, parseProductQuery(request));
+  assert.equal(
+    canonical.search,
+    "?facet=connectivity%3Awireless&facet=protocol%3Abluetooth&limit=50",
+  );
 });
 
 test("an unknown sort falls back to newest without reporting an explicit sort choice", () => {

@@ -23,6 +23,7 @@ function filters(overrides: Partial<ProductFilters> = {}): ProductFilters {
     maxPrice: "",
     sort: "newest",
     features: [],
+    facets: [],
     inStock: false,
     favoritesOnly: true,
     recentOnly: false,
@@ -64,9 +65,9 @@ test("offer-filtered price sort orders by the same matching offers shown on the 
 });
 
 test("product favorites retain category ancestors so group filters match like server search", () => {
-  const product = toProductSearchItem(entityRow({ primary_category_id: "speaker_bookshelf" }));
-  const closure = categoryClosureIds("speaker_bookshelf");
-  const parent = closure.find((categoryId) => categoryId !== "speaker_bookshelf");
+  const product = toProductSearchItem(entityRow({ primary_category_id: "SPK.LOUDSPEAKER" }));
+  const closure = categoryClosureIds("SPK.LOUDSPEAKER");
+  const parent = closure.find((categoryId) => categoryId !== "SPK.LOUDSPEAKER");
   assert.ok(parent);
   assert.deepEqual(product.category_ids, closure);
 

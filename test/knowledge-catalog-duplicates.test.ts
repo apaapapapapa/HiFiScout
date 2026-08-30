@@ -67,7 +67,7 @@ function insertMatchedListings(
             manufacturer_resolution_status, model, raw_model, normalized_model,
             model_resolution_status, primary_category_id, category_ids, classification_status
           ) VALUES ('shop', ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 'resolved', ?, ?, ?, 'resolved',
-                    'integrated_amp', '["integrated_amp"]', 'classified')
+                    'AMP.INTEGRATED', '["AMP.INTEGRATED"]', 'classified')
         `)
         .run(
           sourceId,
@@ -122,7 +122,7 @@ function insertCatalog(sqlite: Sqlite, seed: CatalogSeed): number {
       INSERT INTO knowledge_catalog_product_categories (product_id, category_id, is_primary)
       VALUES (?, ?, 1)
     `)
-    .run(productId, seed.primaryCategoryId ?? "integrated_amp");
+    .run(productId, seed.primaryCategoryId ?? "AMP.INTEGRATED");
   insertMatchedListings(sqlite, productId, seed.matchedListings ?? 0, seed);
   return productId;
 }

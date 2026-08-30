@@ -171,8 +171,8 @@ test("verified catalog evidence overrides a conflicting seller category", () => 
     ...catalogEvidence,
   ]);
   assert.equal(result.classificationStatus, "classified");
-  assert.equal(result.primaryCategoryId, "cd_sacd_player");
-  assert.deepEqual(result.categoryIds, ["cd_sacd_player"]);
+  assert.equal(result.primaryCategoryId, "SRC.DISC");
+  assert.deepEqual(result.categoryIds, ["SRC.DISC"]);
   assert.equal(result.classificationSource, "knowledge_catalog");
 });
 
@@ -185,8 +185,8 @@ test("legacy multi-category catalog evidence is reduced to one primary category"
     }),
   );
   assert.equal(result.classificationStatus, "classified");
-  assert.equal(result.primaryCategoryId, "dac");
-  assert.deepEqual(result.categoryIds, ["dac"]);
+  assert.equal(result.primaryCategoryId, "PRC.DAC");
+  assert.deepEqual(result.categoryIds, ["PRC.DAC"]);
 });
 
 test("classification impact reports only reductions", () => {

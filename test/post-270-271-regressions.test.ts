@@ -23,11 +23,11 @@ test("DAP accessory guard covers accessory words before the brand as well as aft
     "Astell&Kern SP2000用 レザーケース",
     "FiiO M23 保護フィルム",
   ]) {
-    assert.notEqual(inferExplicitCategoryIds(title)[0], "dap", title);
+    assert.notEqual(inferExplicitCategoryIds(title)[0], "SRC.DAP", title);
   }
 
   for (const title of ["Astell&Kern SP2000", "FiiO M23", "HiBy R6 III", "Cayin N7"]) {
-    assert.equal(inferExplicitCategoryIds(title)[0], "dap", title);
+    assert.equal(inferExplicitCategoryIds(title)[0], "SRC.DAP", title);
   }
 });
 
@@ -98,7 +98,7 @@ test("cached detail enrichment replays evidence instead of copying only the fina
   assert.equal(result.detailRequests, 0);
   assert.equal(result.cacheHits, 2);
   for (const product of result.products) {
-    assert.equal(product.primaryCategoryId, "btw_earphone");
+    assert.equal(product.primaryCategoryId, "PER.EARPHONE");
     assert.equal(product.classificationStatus, "classified");
     assert.ok(
       product.categoryEvidence.some((item) => item.source === "detail_metadata"),

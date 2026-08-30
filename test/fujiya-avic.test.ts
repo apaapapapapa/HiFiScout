@@ -197,6 +197,6 @@ test("Fujiya detail evidence ignores script bodies closed with an attributed end
   );
   assert.deepEqual(
     evidence.map((item) => item.categoryIds),
-    [["integrated_amp"]],
+    [["AMP.INTEGRATED"]],
   );
 });

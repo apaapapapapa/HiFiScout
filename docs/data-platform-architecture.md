@@ -113,8 +113,9 @@ When the caller explicitly selects `newest`, `oldest`, `updated`, `priceAsc`, or
 
 Filters split by what they describe, and the split is load-bearing:
 
-- **Product-level** — `manufacturer`, `category`, `feature` — restrict the entity. A group category expands to its descendants at query time.
+- **Product-level** — `manufacturer`, `category`, `facet`, `feature` — restrict the entity. A group category expands to its descendants at query time.
   - `category` matches the entity's *membership*, not its one representative category. A listing is one sale and may hold several products — a transport and a DAC sold together — so it belongs to every category its component products are in, and to the ancestors they share, once each. Membership is projected from the listings currently offering the entity into `product_search_entity_categories`, which is also what the category facet counts, so the number beside a category and the cards that category returns are the same set read twice rather than two calculations that can drift.
+  - repeated `facet=<dimension>:<value>` selections are ORed within one dimension and ANDed between dimensions. `connector_a=xlr OR rca` plus `signal_type=analog`, for example, means `(xlr OR rca) AND analog`; each dimension is one product-level `EXISTS` over the entity's offers.
 - **Offer-level** — `shop`, `inStock`, `minPrice`, `maxPrice`, `newOnly`, `priceDropped` — are evaluated inside one `EXISTS`, so they must all hold for the *same* offer. Satisfying `shop=A` with one listing and `maxPrice` with another shop's listing would be a wrong answer, not a lenient one.
 
 When offer filters are active, the card summary — offer count, shop count, lowest price, activity — is recomputed over the matching offers, so a card can never contradict the filter that produced it.
@@ -131,6 +132,35 @@ Explicit sorting follows the same offer subset as the card whenever an offer fil
 The cursor records both the aggregate variant and, for request-scoped sorts, the offer-filter scope that defined it. A cursor therefore cannot resume under an ordering whose visible card values were calculated from a different offer subset. `items`, `hasMore`, `totalCount`, `totalPages` and cursor movement all operate on entities before any offer is loaded.
 
 Offer summaries and representative offers are loaded in chunks of 40 entity ids to stay under D1's bind-parameter ceiling. At the maximum `limit=100`, a filtered list response therefore costs at most eight statements: an optional count, the entity page, up to three offer-aggregate chunks and up to three representative-offer chunks. Unfiltered responses skip the aggregate loader. The query count is bounded by page size, not result cardinality, and there is no per-result offer lookup.
+
+## Taxonomy v3: product types, facets, and capabilities
+
+The three vocabularies answer different questions and must not be collapsed into one category tree:
+
+| Axis | Question | Examples | Persistence / query |
+| --- | --- | --- | --- |
+| Category | What kind of product is it? | `SRC.DISC`, `PRC.DAC`, `CAB.ANALOG` | canonical leaf/ancestor membership; `?category=` |
+| Facet | What orthogonal form or context describes it? | wireless, Bluetooth, XLR, studio | evidence-bearing `product_facet_facts`; `?facet=id:value` |
+| Capability | What function can it perform? | DAC, network playback, phono input | existing `product_feature_facts`; `?feature=` |
+
+Categories are deliberately limited to stable product types. Wireless versus wired, connector shape,
+signal type, active versus passive, portability, application, and use case are facets. A built-in DAC
+or network playback is a capability. This prevents the category tree from multiplying every product
+type by every possible attribute combination.
+
+Only canonical leaves are classifiable. Roots such as `SRC`, `PRC`, and `CAB` are public filter
+groups, not classifier outputs. `unclassified` is an internal, non-filterable sentinel; taxonomy v3
+has no canonical `other` product type. A multi-product listing keeps every component leaf in
+`direct_category_ids`, derives its ancestor closure for membership, and chooses one deterministic
+`primary_category_id` only as its representative label. Product Identity and price history continue
+to identify the product/listing independently of that representative category.
+
+Migration `0068_category_taxonomy_v3.sql` preserves legacy URLs, saved searches, overrides, and
+stored rows through an explicit alias/migration registry. Deterministic legacy ids map directly;
+ambiguous ids such as transport, XLR cable, and old `other` inspect title/category evidence and fall
+back to `unclassified` rather than guessing. The migration records every decision in
+`taxonomy_v3_migration_audit`, rebuilds category search membership, and backfills facet facts without
+changing listing ids, Knowledge Catalog identity links, price history, or price-index samples.
 
 ## Product Identity Resolution
 

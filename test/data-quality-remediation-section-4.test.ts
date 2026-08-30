@@ -22,10 +22,10 @@ test("E-1 wireless earphone model families do not fall through to wired earphone
     "HUAWEI FreeBuds Pro 4",
     "SONY LinkBuds Fit",
   ]) {
-    assert.equal(category(title), "btw_earphone", title);
+    assert.equal(category(title), "PER.EARPHONE", title);
   }
 
-  assert.equal(category("SENNHEISER IE 600 Earphones"), "wired_earphone");
+  assert.equal(category("SENNHEISER IE 600 Earphones"), "PER.EARPHONE");
 });
 
 test("E-1 wireless headphone model families classify before wired headphone", () => {
@@ -37,11 +37,11 @@ test("E-1 wireless headphone model families classify before wired headphone", ()
     "SENNHEISER MOMENTUM 4 Wireless",
     "Apple AirPods Max",
   ]) {
-    assert.equal(category(title), "btw_headphone", title);
+    assert.equal(category(title), "PER.HEADPHONE", title);
   }
 
-  assert.equal(category("Apple AirPods Pro 3"), "btw_earphone");
-  assert.equal(category("Apple AirPods Max"), "btw_headphone");
+  assert.equal(category("Apple AirPods Pro 3"), "PER.EARPHONE");
+  assert.equal(category("Apple AirPods Max"), "PER.HEADPHONE");
 });
 
 test("E-2 Fujiya detail evidence does not turn a non-cable product into cable_other", () => {
@@ -59,7 +59,7 @@ test("E-2 Fujiya detail evidence still accepts cable evidence for a listing that
   );
   assert.deepEqual(
     evidence.map((item) => item.categoryIds),
-    [["cable_power"]],
+    [["PWR.CORD"]],
   );
 });
 

@@ -17,6 +17,20 @@ const DAP_MODEL_PATTERN = new RegExp(
   "i",
 );
 
+/**
+ * A product can mention its detachable cable without becoming a cable listing. These narrow
+ * patterns run before the cable rules, while their negative suffix guards keep actual headphone
+ * cables, amplifiers, stands, cases, and replacement wear parts in their own product types.
+ */
+const HEADPHONE_PRODUCT_PATTERN =
+  /\bheadphones?\b(?!\s*(?:amp|amplifier|cables?|cords?|outputs?|jacks?|stands?|cases?|covers?|pads?|parts?))|ヘッドホン(?!\s*(?:アンプ|ケーブル|コード|出力|端子|スタンド|ケース|カバー|パッド|部品))/i;
+const EARPHONE_PRODUCT_PATTERN =
+  /\b(?:earphones?|earbuds?|iem)\b(?!\s*(?:cables?|cords?|outputs?|jacks?|cases?|covers?|tips?|parts?))|イヤホン(?!\s*(?:ケーブル|コード|出力|端子|ケース|カバー|ピース|部品))/i;
+const HEADPHONE_AMPLIFIER_PATTERN =
+  /headphone[\s-]?(?:amp|amplifier)|energizer|ヘッドホンアンプ|エナジャイザー/i;
+const INTEGRATED_AMPLIFIER_PATTERN =
+  /integrated\s+(?:amp|amplifier)|プリメインアンプ|インテグレーテッドアンプ/i;
+
 /** `SYS.MULTIFUNCTION` requires explicit co-equal positioning and at least three major roles. */
 function isCoEqualMultifunction(value: string): boolean {
   if (!/(?:all[\s-]*in[\s-]*one|multi[\s-]*function|複合オーディオ|オールインワン)/i.test(value))
@@ -40,6 +54,11 @@ function isCoEqualMultifunction(value: string): boolean {
 
 const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
   ["PWR.CORD", /\b(?:ac|power|mains)\b.*(?:\bcables?\b|cord)|(?:電源|ac)\s*(?:ケーブル|コード)/i],
+  ["CAB.SPEAKER", /speaker\s+cables?|スピーカーケーブル/i],
+  [
+    "CAB.PERSONAL",
+    /(?:headphone|earphone|iem)\s+cables?|(?:ヘッドホン|イヤホン|iem)\s*ケーブル|リケーブル/i,
+  ],
   [
     "CAB.DATA",
     /\b(?:usb|lan|ethernet|network)\b.*\bcables?\b|(?:usb|lan|イーサネット|ネットワーク)\s*ケーブル/i,
@@ -48,14 +67,9 @@ const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
     "CAB.DIGITAL",
     /\b(?:digital|s\/?pdif|aes\/?ebu|aes3|toslink|optical|coaxial|hdmi)\b.*(?:\bcables?\b|interconnect)|(?:デジタル|同軸デジタル|光デジタル|hdmi|aes\/?ebu)\s*ケーブル/i,
   ],
-  ["CAB.SPEAKER", /speaker\s+cables?|スピーカーケーブル/i],
-  [
-    "CAB.PERSONAL",
-    /(?:headphone|earphone|iem)\s+cables?|(?:ヘッドホン|イヤホン|iem)\s*ケーブル|リケーブル/i,
-  ],
   [
     "CAB.ANALOG",
-    /\b(?:phono|tonearm|xlr|rca|analog|balanced)\b.*(?:\bcables?\b|interconnect)|(?:フォノ|トーンアーム|xlr|rca|アナログ|バランス)\s*(?:ケーブル|インターコネクト)/i,
+    /\b(?:phono|tonearm|rca|analog|balanced)\b.*(?:\bcables?\b|interconnect)|\bxlr\b.*\binterconnect\b|(?:フォノ|トーンアーム|rca|アナログ|バランス)\s*(?:ケーブル|インターコネクト)|xlr\s*インターコネクト/i,
   ],
   ["CAB.ADAPTER", /passive\s+(?:adapter|splitter)|(?:無増幅|パッシブ)(?:変換|分岐)|変換プラグ/i],
   ["PWR.REGEN", /ac\s*regenerator|power\s*regenerator|電源リジェネレータ(?:ー)?/i],
@@ -85,7 +99,7 @@ const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
     "SIG.WIRELESS",
     /wireless\s+(?:transmitter|receiver|adapter)|bluetooth\s+(?:transmitter|receiver|adapter)|ワイヤレス(?:送信機|受信機|アダプタ)|bluetooth(?:送信機|受信機)/i,
   ],
-  ["AMP.INTEGRATED", /integrated\s+(?:amp|amplifier)|プリメインアンプ|インテグレーテッドアンプ/i],
+  ["AMP.INTEGRATED", INTEGRATED_AMPLIFIER_PATTERN],
   [
     "AMP.RECEIVER",
     /\b(?:stereo|av|audio\s+video)\s+(?:receiver|amplifier|amp)\b|network\s+receiver|av(?:サラウンド)?(?:レシーバ(?:ー)?|アンプ)|\bavr[-\s]?[a-z0-9]|ステレオレシーバ(?:ー)?/i,
@@ -94,12 +108,12 @@ const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
     "PRC.PROCESSOR",
     /av\s+(?:preamp|pre[\s-]?pro|processor)|surround\s+processor|room\s+correction|audio\s+processor|graphic\s+equalizer|(?<!phono\s)\bequalizer\b|channel\s+divider|\bcrossover\b|avプリアンプ|サラウンドプロセッサ|音場補正|ルーム補正|(?<!フォノ)イコライザ(?:ー)?|チャンネル(?:デバイダ|ディバイダ)(?:ー)?|周波数分割/i,
   ],
+  ["AMP.HEADPHONE", HEADPHONE_AMPLIFIER_PATTERN],
   [
     "AMP.PRE",
     /pre[\s-]?(?:amp|amplifier)|control\s+(?:amp|amplifier)|linestage\s+preamplifier|プリアンプ|コントロールアンプ/i,
   ],
   ["AMP.POWER", /power[\s-]?(?:amp|amplifier)|パワーアンプ/i],
-  ["AMP.HEADPHONE", /headphone[\s-]?(?:amp|amplifier)|energizer|ヘッドホンアンプ|エナジャイザー/i],
   [
     "AMP.STEPUP",
     /(?:mc|moving\s+coil)\s+(?:step[\s-]*up\s+)?transformer|step[\s-]*up\s+transformer|(?:mc)?昇圧トランス|ヘッドアンプ/i,
@@ -125,7 +139,7 @@ const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
   ["SRC.DAP", DAP_MODEL_PATTERN],
   [
     "PRC.DDC",
-    /\bddc\b|digital\s+(?:interface|format)\s+(?:converter|bridge)|usb\s+bridge|reclocker|デジタル(?:インターフェース|フォーマット)変換|リクロッカ(?:ー)?/i,
+    /\bddc\b|digital\s+(?:(?:interface|format)\s+)?(?:converter|bridge)|usb\s+bridge|reclocker|デジタル(?:インターフェース|フォーマット)変換|リクロッカ(?:ー)?/i,
   ],
   ["PRC.ADC", /\badc\b|a\s*[/-]\s*d\s*(?:converter|コンバータ(?:ー)?)|ad\s*コンバータ(?:ー)?/i],
   [
@@ -214,6 +228,10 @@ export function inferExplicitCategoryIds(
   const value = String(text || "").normalize("NFKC");
   if (!value.trim()) return [];
   if (isCoEqualMultifunction(value)) return ["SYS.MULTIFUNCTION"];
+  if (INTEGRATED_AMPLIFIER_PATTERN.test(value)) return ["AMP.INTEGRATED"];
+  if (HEADPHONE_AMPLIFIER_PATTERN.test(value)) return ["AMP.HEADPHONE"];
+  if (EARPHONE_PRODUCT_PATTERN.test(value)) return ["PER.EARPHONE"];
+  if (HEADPHONE_PRODUCT_PATTERN.test(value)) return ["PER.HEADPHONE"];
   for (const [id, pattern] of RULES) if (pattern.test(value)) return [id];
   return [];
 }

@@ -70,10 +70,10 @@ test("a set listing records both component categories in its direct set", async 
     OBSERVED_AT,
   );
 
-  assert.deepEqual(storedDirectIds(sqlite, "set-1"), ["dac", "transport"]);
+  assert.deepEqual(storedDirectIds(sqlite, "set-1"), ["SRC.DISC", "PRC.DAC"]);
 });
 
-test("a set listing is a member of both component categories and the parent they share", async () => {
+test("a set listing is a member of both component categories and both v3 roots", async () => {
   const { sqlite, db } = migratedSqlite();
   await upsertProducts(
     db,
@@ -90,9 +90,10 @@ test("a set listing is a member of both component categories and the parent they
   );
 
   assert.deepEqual(membership(sqlite, "set-2"), [
-    { category_id: "dac", is_direct: 1 },
-    { category_id: "digital", is_direct: 0 },
-    { category_id: "transport", is_direct: 1 },
+    { category_id: "PRC", is_direct: 0 },
+    { category_id: "PRC.DAC", is_direct: 1 },
+    { category_id: "SRC", is_direct: 0 },
+    { category_id: "SRC.DISC", is_direct: 1 },
   ]);
 });
 
@@ -113,7 +114,7 @@ test("the parent two components share is one membership row, not one per compone
   );
 
   const rows = membership(sqlite, "set-3");
-  assert.equal(rows.filter((row) => row.category_id === "digital").length, 1);
+  assert.equal(rows.filter((row) => row.category_id === "SRC").length, 1);
   assert.equal(rows.filter((row) => row.is_direct === 1).length, 2);
 });
 
@@ -133,10 +134,10 @@ test("a single-product listing keeps exactly the membership it had before", asyn
     OBSERVED_AT,
   );
 
-  assert.deepEqual(storedDirectIds(sqlite, "single-1"), ["integrated_amp"]);
+  assert.deepEqual(storedDirectIds(sqlite, "single-1"), ["AMP.INTEGRATED"]);
   assert.deepEqual(membership(sqlite, "single-1"), [
-    { category_id: "amplifier", is_direct: 0 },
-    { category_id: "integrated_amp", is_direct: 1 },
+    { category_id: "AMP", is_direct: 0 },
+    { category_id: "AMP.INTEGRATED", is_direct: 1 },
   ]);
 });
 
@@ -157,7 +158,7 @@ test("re-reading an unchanged set listing is not a change", async () => {
     0,
     "the stored direct set must round-trip, or every set listing rewrites itself on every crawl",
   );
-  assert.deepEqual(storedDirectIds(sqlite, "set-4"), ["dac", "transport"]);
+  assert.deepEqual(storedDirectIds(sqlite, "set-4"), ["SRC.DISC", "PRC.DAC"]);
 });
 
 /**
@@ -195,10 +196,10 @@ test("the migration backfills a pre-existing listing from its primary category",
   assert.equal(backfills.length, 2, "both backfills must still be present in the migration");
   for (const statement of backfills) sqlite.exec(statement);
 
-  assert.deepEqual(storedDirectIds(sqlite, "legacy-1"), ["integrated_amp"]);
+  assert.deepEqual(storedDirectIds(sqlite, "legacy-1"), ["AMP.INTEGRATED"]);
   assert.deepEqual(membership(sqlite, "legacy-1"), [
-    { category_id: "amplifier", is_direct: 0 },
-    { category_id: "integrated_amp", is_direct: 1 },
+    { category_id: "AMP", is_direct: 0 },
+    { category_id: "AMP.INTEGRATED", is_direct: 1 },
   ]);
 });
 
@@ -295,7 +296,7 @@ test("the data-quality replay writes the same direct set the crawl path writes",
     title: SET_TITLE,
   }).directCategoryIds;
 
-  assert.deepEqual(crawlDirectIds, ["dac", "transport"]);
+  assert.deepEqual(crawlDirectIds, ["SRC.DISC", "PRC.DAC"]);
   assert.equal(replay.binds[18], JSON.stringify(crawlDirectIds));
 });
 
@@ -321,7 +322,7 @@ test("an admin edit that is not a category override leaves the direct set alone"
     OBSERVED_AT,
   );
   const before = storedDirectIds(sqlite, "set-admin");
-  assert.deepEqual(before, ["dac", "transport"]);
+  assert.deepEqual(before, ["SRC.DISC", "PRC.DAC"]);
 
   const id = (
     sqlite.prepare("SELECT id FROM products WHERE source_id = ?").get("set-admin") as
@@ -358,5 +359,5 @@ test("an admin category override replaces the direct set with the one category c
 
   await updateListingAdminProduct(db, id, { primaryCategoryId: "dac" }, OBSERVED_AT);
 
-  assert.deepEqual(storedDirectIds(sqlite, "set-override"), ["dac"]);
+  assert.deepEqual(storedDirectIds(sqlite, "set-override"), ["PRC.DAC"]);
 });

@@ -94,14 +94,10 @@ test("Hifido detail enrichment reads only seller metadata after the exact source
       <div>2026-03-28 19:59:16入荷</div>
       <p>説明文ではカートリッジやケーブルにも触れるが、分類根拠にはしない。</p>
     </main>`;
-  assert.deepEqual(extractHifidoDetailCategoryEvidence(html, { sourceId: "26-49399-07355-00" }), [
-    {
-      categoryIds: ["other_accessory"],
-      source: "detail_metadata",
-      strength: "supporting",
-      value: "アクセサリー",
-    },
-  ]);
+  assert.deepEqual(
+    extractHifidoDetailCategoryEvidence(html, { sourceId: "26-49399-07355-00" }),
+    [],
+  );
   assert.equal(HIFIDO_CATEGORY_POLICY.enrichment.maxRequestsPerCrawl, 10);
   assert.equal(
     hifidoPlugin.capabilities.detailCategoryEvidence?.extract,
