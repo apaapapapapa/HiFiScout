@@ -83,7 +83,9 @@ test("inactive taxonomy-v3 migration rows replay complete facets when reactivate
       WHERE id = 1201
     `)
     .get() as { is_active: number; version: number; taxonomy_version: string };
-  assert.deepEqual(migrated, { is_active: 0, version: 15, taxonomy_version: "v3" });
+  assert.equal(migrated.is_active, 0);
+  assert.equal(migrated.version, 15);
+  assert.equal(migrated.taxonomy_version, "v3");
   assert.deepEqual(targetFacets(sqlite), []);
 
   // Keep unrelated resolver stages current so this regression isolates the taxonomy-v3 replay.
