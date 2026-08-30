@@ -67,7 +67,8 @@ function parseStoredDirectCategoryIds(value: string): string[] {
  *
  * `unclassified` is taxonomy-v3's internal pending/failure sentinel, not a category a manual
  * authority job can authoritatively assign. Such catalog rows stay deferred for evidence review.
- * Other non-selectable values remain hard failures so malformed roots cannot be silently skipped.
+ * Taxonomy roots are filterable browse nodes but are not product types, so every other
+ * non-classifiable value remains a hard failure rather than being silently assigned.
  */
 export function planManualCategoryAuthority(
   currentCategoryId: string,
@@ -77,8 +78,8 @@ export function planManualCategoryAuthority(
   if (expectedCategoryId === UNCLASSIFIED_CATEGORY_ID) return null;
 
   const category = getCategory(expectedCategoryId);
-  if (!category?.selectable) {
-    throw new Error(`manual category target has non-selectable category ${expectedCategoryId}`);
+  if (!category?.classifiable) {
+    throw new Error(`manual category target has non-classifiable category ${expectedCategoryId}`);
   }
 
   const preserved = parseStoredDirectCategoryIds(storedDirectCategoryIds).filter(
