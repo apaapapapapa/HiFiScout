@@ -160,7 +160,9 @@ stored rows through an explicit alias/migration registry. Deterministic legacy i
 ambiguous ids such as transport, XLR cable, and old `other` inspect title/category evidence and fall
 back to `unclassified` rather than guessing. The migration records every decision in
 `taxonomy_v3_migration_audit`, rebuilds category search membership, and backfills facet facts without
-changing listing ids, Knowledge Catalog identity links, price history, or price-index samples.
+changing listing ids, Knowledge Catalog identity links, price history, or price-index samples. The
+SQL facet backfill is only a compatibility baseline: migrated rows deliberately retain a stale
+classifier version so the existing bounded remediation queue replays the complete facet vocabulary.
 
 ## Product Identity Resolution
 

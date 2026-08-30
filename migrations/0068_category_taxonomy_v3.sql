@@ -621,7 +621,10 @@ SET primary_category_id = (
     ),
     metadata_json = json_set(
       CASE WHEN json_valid(COALESCE(p.metadata_json, '')) THEN p.metadata_json ELSE '{}' END,
-      '$.categoryClassification.version', 16,
+      -- The migration establishes the v3 product type immediately, but its SQL facet backfill is
+      -- intentionally only a compatibility baseline. Leave every migrated row one version stale
+      -- so the bounded remediation selector replays the complete TypeScript facet vocabulary.
+      '$.categoryClassification.version', 15,
       '$.categoryClassification.taxonomyVersion', 'v3',
       '$.categoryClassification.state', CASE WHEN (
         SELECT r.new_category_id FROM migration_0068_resolved r

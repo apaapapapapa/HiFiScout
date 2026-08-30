@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "vite-plus/test";
+import { RESOLUTION_VERSIONS } from "../src/catalog/resolution-versions.js";
+import { seedDataQualityRemediationQueue } from "../src/db/data-quality-remediation-queue-repository.js";
+import { sqliteD1 } from "./helpers/sqlite-d1.js";
 
 const MIGRATIONS = new URL("../migrations/", import.meta.url);
 const V3_MIGRATION = "0068_category_taxonomy_v3.sql";
@@ -83,7 +86,7 @@ function rows(sqlite: DatabaseSync, sql: string): Record<string, unknown>[] {
     .map((row) => ({ ...row }));
 }
 
-test("taxonomy v3 migrates evidence and facets without splitting durable product identity", () => {
+test("taxonomy v3 migrates evidence and facets without splitting durable product identity", async () => {
   const sqlite = databaseBeforeV3();
   const legacyProducts: readonly LegacyProduct[] = [
     {
@@ -341,6 +344,42 @@ test("taxonomy v3 migrates evidence and facets without splitting durable product
       },
     ],
   );
+
+  const migratedVersions = rows(
+    sqlite,
+    `SELECT id,
+            json_extract(metadata_json, '$.categoryClassification.version') AS version,
+            json_extract(metadata_json, '$.categoryClassification.taxonomyVersion') AS taxonomy_version
+     FROM products
+     WHERE id BETWEEN 101 AND 109
+     ORDER BY id`,
+  );
+  assert.equal(migratedVersions.length, 9);
+  assert.ok(
+    migratedVersions.every(
+      (row) => Number(row.version) < RESOLUTION_VERSIONS.category && row.taxonomy_version === "v3",
+    ),
+    "SQL facet backfill must leave every migrated row eligible for complete bounded replay",
+  );
+
+  // Isolate category staleness from the earlier resolver stages, then execute the real automatic
+  // selector. The migration must not merely *look* stale: every legacy row has to be seedable.
+  sqlite
+    .prepare(
+      "UPDATE products SET manufacturer_resolver_version = ?, model_resolver_version = ? WHERE id BETWEEN 101 AND 109",
+    )
+    .run(RESOLUTION_VERSIONS.manufacturer, RESOLUTION_VERSIONS.model);
+  sqlite
+    .prepare(
+      "UPDATE product_identity_resolutions SET identity_resolver_version = ? WHERE listing_product_id BETWEEN 101 AND 109",
+    )
+    .run(RESOLUTION_VERSIONS.identity);
+  const replay = await seedDataQualityRemediationQueue(sqliteD1(sqlite), {
+    limit: 20,
+    now: "2026-08-30T00:00:00.000Z",
+  });
+  assert.equal(replay.selectedCount, 9);
+  assert.ok(replay.workKeys.every((key) => key.startsWith("auto:classify_category:")));
 
   assert.deepEqual(
     rows(
