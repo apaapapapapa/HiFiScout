@@ -43,7 +43,7 @@
   "ratelimits": [{ "name": "API_RATE_LIMITER", "namespace_id": "541721", "simple": { "limit": 120, "period": 60 } }],
   "vars": {
     "CRAWL_DO_SHADOW_SHOPS": "",
-    "CRAWL_DO_CANARY_SHOPS": "home-shokai",
+    "CRAWL_DO_CANARY_SHOPS": "home-shokai,ippinkan,u-audio",
     "AUDIOUNION_ENABLED": "true",
     "IPPINKAN_ENABLED": "true",
     "FUJIYA_AVIC_ENABLED": "true",
