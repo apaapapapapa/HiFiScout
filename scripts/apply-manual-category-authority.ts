@@ -1,4 +1,12 @@
-import { categorySearchAliases, getCategory } from "../src/catalog/categories.js";
+import {
+  UNCLASSIFIED_CATEGORY_ID,
+  categorySearchAliases,
+  getCategory,
+} from "../src/catalog/categories.js";
+import {
+  directCategoryIds,
+  listingMembershipCategoryIds,
+} from "../src/catalog/listing-components.js";
 import { refreshListingProjections } from "../src/db/listing-projection-refresh.js";
 import type { QueryableDatabase } from "../src/db/types.js";
 import { createD1RestDatabase } from "./lib/d1-rest-database.js";
@@ -9,6 +17,7 @@ const AUDIT_SOURCES = [
 ] as const;
 const AUDIT_SOURCE_PLACEHOLDERS = AUDIT_SOURCES.map(() => "?").join(",");
 const CATEGORY_PROJECTION_TOKEN_PREFIX = "category:manual-audit:";
+export const USER_CONFIRMED_SWITCH_CATEGORY_ID = "SIG.NETWORK" as const;
 
 interface ManualCategoryTargetRow {
   id: number;
@@ -17,6 +26,7 @@ interface ManualCategoryTargetRow {
   manufacturer_id: string;
   model: string;
   current_category_id: string;
+  direct_category_ids: string;
   expected_category_id: string;
   catalog_product_id: number;
 }
@@ -27,10 +37,67 @@ interface ManualCategoryMismatchRow extends ManualCategoryTargetRow {
   entity_category_id: string | null;
 }
 
+export interface ManualCategoryAuthorityPlan {
+  categoryId: string;
+  categoryName: string;
+  directCategoryIds: readonly string[];
+  membershipCategoryIds: readonly string[];
+  searchAliases: string;
+}
+
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is required`);
   return value;
+}
+
+function parseStoredDirectCategoryIds(value: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(value || "[]");
+    return Array.isArray(parsed)
+      ? parsed.filter((categoryId): categoryId is string => typeof categoryId === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Plan one manual authority update without collapsing bundle membership.
+ *
+ * `unclassified` is taxonomy-v3's internal pending/failure sentinel, not a category a manual
+ * authority job can authoritatively assign. Such catalog rows stay deferred for evidence review.
+ * Taxonomy roots are filterable browse nodes but are not product types, so every other
+ * non-classifiable value remains a hard failure rather than being silently assigned.
+ */
+export function planManualCategoryAuthority(
+  currentCategoryId: string,
+  storedDirectCategoryIds: string,
+  expectedCategoryId: string,
+): ManualCategoryAuthorityPlan | null {
+  if (expectedCategoryId === UNCLASSIFIED_CATEGORY_ID) return null;
+
+  const category = getCategory(expectedCategoryId);
+  if (!category?.classifiable) {
+    throw new Error(`manual category target has non-classifiable category ${expectedCategoryId}`);
+  }
+
+  const preserved = parseStoredDirectCategoryIds(storedDirectCategoryIds).filter(
+    (categoryId) => categoryId !== currentCategoryId,
+  );
+  const nextDirectCategoryIds = directCategoryIds([...preserved, category.id]);
+  const nextMembershipCategoryIds = listingMembershipCategoryIds(
+    category.id,
+    nextDirectCategoryIds,
+  );
+
+  return {
+    categoryId: category.id,
+    categoryName: category.name,
+    directCategoryIds: nextDirectCategoryIds,
+    membershipCategoryIds: nextMembershipCategoryIds,
+    searchAliases: categorySearchAliases(nextDirectCategoryIds),
+  };
 }
 
 async function loadTargets(db: QueryableDatabase): Promise<ManualCategoryTargetRow[]> {
@@ -43,6 +110,7 @@ async function loadTargets(db: QueryableDatabase): Promise<ManualCategoryTargetR
         p.canonical_manufacturer_id AS manufacturer_id,
         p.model,
         p.primary_category_id AS current_category_id,
+        p.direct_category_ids,
         kpc.category_id AS expected_category_id,
         kp.id AS catalog_product_id
       FROM products p
@@ -88,6 +156,7 @@ async function verifyTargets(db: QueryableDatabase): Promise<void> {
         p.canonical_manufacturer_id AS manufacturer_id,
         p.model,
         p.primary_category_id AS current_category_id,
+        p.direct_category_ids,
         kpc.category_id AS expected_category_id,
         kp.id AS catalog_product_id,
         e.id AS entity_id,
@@ -110,16 +179,27 @@ async function verifyTargets(db: QueryableDatabase): Promise<void> {
       LEFT JOIN product_search_entities e ON e.id = o.entity_id
       WHERE p.is_active = 1
         AND p.model_resolution_status <> 'resolved'
+        AND kpc.category_id <> ?
         AND (p.model = kp.canonical_model OR p.model = ka.alias)
         AND (
           p.primary_category_id <> kpc.category_id
           OR p.classification_status <> 'classified'
+          OR NOT EXISTS (
+            SELECT 1 FROM json_each(p.direct_category_ids) direct
+            WHERE direct.value = kpc.category_id
+          )
+          OR NOT EXISTS (
+            SELECT 1 FROM product_categories pc
+            WHERE pc.product_id = p.id
+              AND pc.category_id = kpc.category_id
+              AND pc.is_direct = 1
+          )
           OR e.id IS NULL
           OR e.primary_category_id <> kpc.category_id
         )
       ORDER BY p.id
     `)
-    .bind(...AUDIT_SOURCES)
+    .bind(...AUDIT_SOURCES, UNCLASSIFIED_CATEGORY_ID)
     .all<ManualCategoryMismatchRow>();
   if ((result.results || []).length) {
     throw new Error(
@@ -143,12 +223,13 @@ async function verifyTargets(db: QueryableDatabase): Promise<void> {
           )
         )
         AND (
-          p.primary_category_id <> 'network_switch'
+          p.primary_category_id <> ?
           OR e.id IS NULL
-          OR e.primary_category_id <> 'network_switch'
+          OR e.primary_category_id <> ?
         )
       ORDER BY p.id
     `)
+    .bind(USER_CONFIRMED_SWITCH_CATEGORY_ID, USER_CONFIRMED_SWITCH_CATEGORY_ID)
     .all<ManualCategoryMismatchRow>();
   if ((switches.results || []).length) {
     throw new Error(
@@ -163,13 +244,17 @@ export async function applyManualCategoryAuthority(db: QueryableDatabase): Promi
   const statements: D1PreparedStatement[] = [];
   const tokens = new Map<number, string>();
   const refreshTargets: Array<{ id: number; shop_key: string; source_id: string }> = [];
+  const deferredTargets: Array<{ catalogProductId: number; listingId: number }> = [];
 
   for (const target of targets) {
-    const category = getCategory(target.expected_category_id);
-    if (!category?.selectable) {
-      throw new Error(
-        `manual category target ${target.catalog_product_id} has non-selectable category ${target.expected_category_id}`,
-      );
+    const plan = planManualCategoryAuthority(
+      target.current_category_id,
+      target.direct_category_ids,
+      target.expected_category_id,
+    );
+    if (!plan) {
+      deferredTargets.push({ catalogProductId: target.catalog_product_id, listingId: target.id });
+      continue;
     }
 
     const projectionToken = `${CATEGORY_PROJECTION_TOKEN_PREFIX}${crypto.randomUUID()}`;
@@ -179,16 +264,17 @@ export async function applyManualCategoryAuthority(db: QueryableDatabase): Promi
       db
         .prepare(`
           UPDATE products
-          SET category = ?, primary_category_id = ?, category_ids = ?,
+          SET category = ?, primary_category_id = ?, category_ids = ?, direct_category_ids = ?,
               classification_status = 'classified', search_aliases = ?,
               remediation_projection_required = 1, remediation_projection_token = ?
           WHERE id = ?
         `)
         .bind(
-          category.name,
-          category.id,
-          JSON.stringify([category.id]),
-          categorySearchAliases([category.id]),
+          plan.categoryName,
+          plan.categoryId,
+          JSON.stringify([plan.categoryId]),
+          JSON.stringify(plan.directCategoryIds),
+          plan.searchAliases,
           projectionToken,
           target.id,
         ),
@@ -196,11 +282,19 @@ export async function applyManualCategoryAuthority(db: QueryableDatabase): Promi
     statements.push(
       db.prepare("DELETE FROM product_categories WHERE product_id = ?").bind(target.id),
     );
-    statements.push(
-      db
-        .prepare("INSERT OR IGNORE INTO product_categories(product_id, category_id) VALUES (?, ?)")
-        .bind(target.id, category.id),
-    );
+    for (const membershipCategoryId of plan.membershipCategoryIds) {
+      statements.push(
+        db
+          .prepare(
+            "INSERT OR IGNORE INTO product_categories(product_id, category_id, is_direct) VALUES (?, ?, ?)",
+          )
+          .bind(
+            target.id,
+            membershipCategoryId,
+            plan.directCategoryIds.includes(membershipCategoryId) ? 1 : 0,
+          ),
+      );
+    }
   }
 
   await runBatches(db, statements);
@@ -225,6 +319,8 @@ export async function applyManualCategoryAuthority(db: QueryableDatabase): Promi
       auditSources: AUDIT_SOURCES,
       targetCount: targets.length,
       changedCount: refreshTargets.length,
+      deferredUnclassifiedCount: deferredTargets.length,
+      deferredUnclassifiedTargets: deferredTargets,
     }),
   );
   return refreshTargets.length;
