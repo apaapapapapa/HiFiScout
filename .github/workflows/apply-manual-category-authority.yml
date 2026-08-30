@@ -7,6 +7,7 @@ on:
       - 'migrations/0033_add_audited_model_aliases.sql'
       - 'src/db/manual-category-authority-repository.ts'
       - 'src/crawler/category-enricher.ts'
+      - 'scripts/reclassify-knowledge-catalog-products.ts'
       - 'scripts/apply-manual-category-authority.ts'
       - '.github/workflows/apply-manual-category-authority.yml'
   workflow_dispatch:
@@ -75,6 +76,11 @@ jobs:
             exit 1
           fi
           echo "database_id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Reclassify resolved Knowledge Catalog products
+        env:
+          D1_DATABASE_ID: ${{ steps.d1.outputs.database_id }}
+        run: vp exec tsx scripts/reclassify-knowledge-catalog-products.ts
 
       - name: Apply manual category authority and refresh projections
         env:
