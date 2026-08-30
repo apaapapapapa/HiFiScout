@@ -77,6 +77,15 @@ export interface ResumableCrawlQueueMessage extends CrawlQueueMessage {
   continuation?: CrawlContinuationDescriptor;
 }
 
+export interface ResumableCrawlConsumeOptions {
+  /** Queue is the legacy transport; return_only lets a Durable Object persist the next command. */
+  continuationDelivery?: "queue" | "return_only";
+  /** Create/read the D1 session and return its canonical continuation without executing it. */
+  initializeOnly?: boolean;
+  /** Prepared direct fetch supplied by the Phase 2 DO after Alarm-based seller pacing. */
+  fetchHtmlPage?: (url: string, options: FetchHtmlPageOptions) => Promise<string>;
+}
+
 export type ResumableCrawlConsumeResult =
   | {
       kind: "retry";
@@ -92,6 +101,7 @@ export type ResumableCrawlConsumeResult =
       sequence: number;
       phase: CrawlFetchContinuationPhase;
       pageKey: string | null;
+      continuationMessage: ResumableCrawlQueueMessage;
     }
   | { kind: "terminal"; runId?: string; result: CrawlResult };
 
@@ -147,18 +157,15 @@ function continuationFromSession(
   };
 }
 
-async function sendContinuation(
-  env: RuntimeEnv,
+function buildContinuationMessage(
   plugin: ShopPlugin,
   source: ResumableCrawlQueueMessage,
   session: CrawlFetchSessionRow,
-): Promise<void> {
+): ResumableCrawlQueueMessage {
   const continuation = continuationFromSession(session);
-  if (!continuation) return;
+  if (!continuation) throw new Error(`active crawl session has no continuation: ${session.run_id}`);
   const lane = source.lane || crawlQueueLane(plugin);
-  const queue = queueForLane(env, lane);
-  if (!queue) throw new Error(`crawl queue binding is not configured for ${plugin.key}`);
-  const message: ResumableCrawlQueueMessage = {
+  return {
     ...source,
     shopKey: plugin.key,
     requestedAt: session.requested_at,
@@ -167,12 +174,24 @@ async function sendContinuation(
     collectionRunId: session.run_id,
     continuation,
   };
+}
+
+async function sendContinuation(
+  env: RuntimeEnv,
+  plugin: ShopPlugin,
+  message: ResumableCrawlQueueMessage,
+): Promise<void> {
+  const continuation = message.continuation;
+  if (!continuation) return;
+  const lane = message.lane || crawlQueueLane(plugin);
+  const queue = queueForLane(env, lane);
+  if (!queue) throw new Error(`crawl queue binding is not configured for ${plugin.key}`);
   await queue.send(message);
   console.log(
     JSON.stringify({
       event: "crawl_fetch_continuation_enqueued",
       shopKey: plugin.key,
-      runId: session.run_id,
+      runId: message.collectionRunId,
       sequence: continuation.sequence,
       phase: continuation.phase,
       pageKey: continuation.pageKey || null,
@@ -265,10 +284,14 @@ async function continued(
   plugin: ShopPlugin,
   body: ResumableCrawlQueueMessage,
   runId: string,
+  options: ResumableCrawlConsumeOptions,
 ): Promise<ResumableCrawlConsumeResult> {
   const session = await getCrawlFetchSession(env.DB, runId);
   if (!session) throw new Error(`crawl fetch session disappeared: ${runId}`);
-  await sendContinuation(env, plugin, body, session);
+  const continuationMessage = buildContinuationMessage(plugin, body, session);
+  if (options.continuationDelivery !== "return_only") {
+    await sendContinuation(env, plugin, continuationMessage);
+  }
   return {
     kind: "continued",
     shopKey: plugin.key,
@@ -276,6 +299,7 @@ async function continued(
     sequence: session.continuation_sequence,
     phase: session.next_phase || "finalize",
     pageKey: session.next_page_key,
+    continuationMessage,
   };
 }
 
@@ -284,28 +308,34 @@ async function processFetch(
   plugin: ShopPlugin,
   session: CrawlFetchSessionRow,
   body: ResumableCrawlQueueMessage,
+  options: ResumableCrawlConsumeOptions,
 ): Promise<ResumableCrawlConsumeResult> {
   const pageKey = session.next_page_key;
   if (!pageKey) throw new Error(`fetch continuation has no page: ${session.run_id}`);
   const row = await getCrawlFetchPage(env.DB, session.run_id, pageKey);
   if (!row) throw new Error(`crawl frontier page not found: ${pageKey}`);
-  if (row.state !== "pending") return continued(env, plugin, body, session.run_id);
+  if (row.state !== "pending") return continued(env, plugin, body, session.run_id, options);
 
   const settings = getCrawlerSettings(env);
   const requestDelayMs = getShopRequestDelayMs(env, plugin.definition, settings.requestDelayMs);
-  const transport = createTransport(env, plugin.capabilities.transport?.kind, globalThis.fetch);
+  const transport = options.fetchHtmlPage
+    ? null
+    : createTransport(env, plugin.capabilities.transport?.kind, globalThis.fetch);
   const robotsCache: RobotsCache = new Map();
+  const fetchOptions: FetchHtmlPageOptions = {
+    baseUrl: plugin.baseUrl,
+    userAgent: settings.userAgent,
+    requestDelayMs,
+    fetchFn: globalThis.fetch,
+    robotsCache,
+  };
   const startedAtMs = Date.now();
   try {
     let html: string;
     try {
-      html = await transport.fetchHtmlPage(pageKey, {
-        baseUrl: plugin.baseUrl,
-        userAgent: settings.userAgent,
-        requestDelayMs,
-        fetchFn: globalThis.fetch,
-        robotsCache,
-      });
+      html = options.fetchHtmlPage
+        ? await options.fetchHtmlPage(pageKey, fetchOptions)
+        : await transport!.fetchHtmlPage(pageKey, fetchOptions);
     } catch (error) {
       if (/HTTP 404/.test(errorMessage(error))) {
         const previousItems = await stagedCrawlFetchItemCount(env.DB, session.run_id);
@@ -318,7 +348,7 @@ async function processFetch(
             currentSequence: session.continuation_sequence,
             nextPageKey: nextPendingPageKey(pages, pageKey),
           });
-          return continued(env, plugin, body, session.run_id);
+          return continued(env, plugin, body, session.run_id, options);
         }
       }
       return failCollection(env, plugin, session.run_id, error);
@@ -347,7 +377,7 @@ async function processFetch(
       }),
     );
   } finally {
-    await transport.close?.().catch((error: unknown) =>
+    await transport?.close?.().catch((error: unknown) =>
       console.warn(
         JSON.stringify({
           event: "crawl_fetch_transport_close_failed",
@@ -358,7 +388,7 @@ async function processFetch(
       ),
     );
   }
-  return continued(env, plugin, body, session.run_id);
+  return continued(env, plugin, body, session.run_id, options);
 }
 
 async function processParse(
@@ -366,13 +396,14 @@ async function processParse(
   plugin: ShopPlugin,
   session: CrawlFetchSessionRow,
   body: ResumableCrawlQueueMessage,
+  options: ResumableCrawlConsumeOptions,
 ): Promise<ResumableCrawlConsumeResult> {
   const pageKey = session.next_page_key;
   if (!pageKey) throw new Error(`parse continuation has no page: ${session.run_id}`);
   const row = await getCrawlFetchPage(env.DB, session.run_id, pageKey);
   if (!row) throw new Error(`crawl frontier page not found: ${pageKey}`);
   if (row.state !== "fetched" || row.html_text == null)
-    return continued(env, plugin, body, session.run_id);
+    return continued(env, plugin, body, session.run_id, options);
 
   const page = decodeCrawlFetchPage(row);
   const parseStartedAt = performance.now();
@@ -438,7 +469,7 @@ async function processParse(
       workerVersion: workerVersion(env),
     }),
   );
-  return continued(env, plugin, body, session.run_id);
+  return continued(env, plugin, body, session.run_id, options);
 }
 
 function stagedFetchFunction(
@@ -610,6 +641,7 @@ async function executeContinuation(
   plugin: ShopPlugin,
   body: ResumableCrawlQueueMessage,
   runId: string,
+  options: ResumableCrawlConsumeOptions,
 ): Promise<ResumableCrawlConsumeResult> {
   let session = await ensureSession(env, plugin, body, runId);
   if (session.status === "completed")
@@ -631,6 +663,10 @@ async function executeContinuation(
       },
     };
 
+  if (options.initializeOnly && !body.continuation) {
+    return continued(env, plugin, body, runId, options);
+  }
+
   const deliveredSequence = body.continuation?.sequence ?? 0;
   if (deliveredSequence > session.continuation_sequence)
     return {
@@ -640,7 +676,8 @@ async function executeContinuation(
       reason: "continuation_ahead",
       retryAfterSeconds: 5,
     };
-  if (deliveredSequence < session.continuation_sequence) return continued(env, plugin, body, runId);
+  if (deliveredSequence < session.continuation_sequence)
+    return continued(env, plugin, body, runId, options);
 
   const canonical = continuationFromSession(session);
   if (!canonical) throw new Error(`active crawl session has no continuation: ${runId}`);
@@ -649,11 +686,11 @@ async function executeContinuation(
     (body.continuation.phase !== canonical.phase ||
       (body.continuation.pageKey || null) !== (canonical.pageKey || null))
   ) {
-    return continued(env, plugin, body, runId);
+    return continued(env, plugin, body, runId, options);
   }
 
-  if (canonical.phase === "fetch") return processFetch(env, plugin, session, body);
-  if (canonical.phase === "parse") return processParse(env, plugin, session, body);
+  if (canonical.phase === "fetch") return processFetch(env, plugin, session, body, options);
+  if (canonical.phase === "parse") return processParse(env, plugin, session, body, options);
   session = (await getCrawlFetchSession(env.DB, runId)) || session;
   return processFinalize(env, plugin, session);
 }
@@ -661,6 +698,7 @@ async function executeContinuation(
 export async function consumeResumableCrawlMessage(
   env: RuntimeEnv,
   body: ResumableCrawlQueueMessage,
+  options: ResumableCrawlConsumeOptions = {},
 ): Promise<ResumableCrawlConsumeResult> {
   const plugin = getShopPlugin(body.shopKey);
   if (!plugin)
@@ -714,7 +752,7 @@ export async function consumeResumableCrawlMessage(
         result: { status: "skipped", reason: "configuration_missing", shopKey: plugin.key },
       };
     }
-    const result = await executeContinuation(env, plugin, body, runId);
+    const result = await executeContinuation(env, plugin, body, runId, options);
     terminal = result.kind === "terminal";
     return result;
   } finally {
