@@ -232,6 +232,10 @@ if [ "$search_drift" -ne 0 ]; then
     echo "Only stale fallback entities remain; waiting ${wait_seconds}s for the next five-minute projection-repair tick." >&2
     jq . <<< "$search_entities" >&2
     sleep "$wait_seconds"
+  else
+    echo "Product search read model is still inconsistent (observation 1/5); retrying in 10s." >&2
+    jq . <<< "$search_entities" >&2
+    sleep 10
   fi
 fi
 
