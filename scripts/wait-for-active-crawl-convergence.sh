@@ -5,6 +5,8 @@ D1_QUERY_MAX_ATTEMPTS=3
 D1_QUERY_RETRY_SECONDS=5
 ACTIVE_CRAWL_CONVERGENCE_MAX_WAIT_SECONDS="${ACTIVE_CRAWL_CONVERGENCE_MAX_WAIT_SECONDS:-480}"
 ACTIVE_CRAWL_CONVERGENCE_POLL_SECONDS="${ACTIVE_CRAWL_CONVERGENCE_POLL_SECONDS:-15}"
+GENERAL_CRON_INTERVAL_SECONDS="${GENERAL_CRON_INTERVAL_SECONDS:-300}"
+PROJECTION_REPAIR_GRACE_SECONDS="${PROJECTION_REPAIR_GRACE_SECONDS:-45}"
 
 query() {
   local sql="$1"
@@ -59,21 +61,44 @@ read_blocking_sessions() {
     ORDER BY s.shop_key;"
 }
 
+read_identity_gap_rows() {
+  query "
+    SELECT
+      p.id,
+      p.shop_key,
+      p.source_id,
+      p.title,
+      p.raw_manufacturer,
+      p.canonical_manufacturer_id,
+      p.raw_model,
+      p.normalized_model,
+      p.primary_category_id,
+      p.last_seen_at
+    FROM products p
+    LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
+    WHERE p.is_active = 1
+      AND r.listing_product_id IS NULL
+    ORDER BY p.id
+    LIMIT 25;"
+}
+
 if ! [[ "$ACTIVE_CRAWL_CONVERGENCE_MAX_WAIT_SECONDS" =~ ^[0-9]+$ ]] || \
-   ! [[ "$ACTIVE_CRAWL_CONVERGENCE_POLL_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
-  echo "Invalid active crawl convergence timing configuration." >&2
+   ! [[ "$ACTIVE_CRAWL_CONVERGENCE_POLL_SECONDS" =~ ^[1-9][0-9]*$ ]] || \
+   ! [[ "$GENERAL_CRON_INTERVAL_SECONDS" =~ ^[1-9][0-9]*$ ]] || \
+   ! [[ "$PROJECTION_REPAIR_GRACE_SECONDS" =~ ^[0-9]+$ ]]; then
+  echo "Invalid crawl/projection convergence timing configuration." >&2
   exit 2
 fi
 
 started_epoch="$(date +%s)"
+active_wait_exhausted=0
 
 while true; do
   blocking_sessions="$(read_blocking_sessions)"
   blocking_count="$(jq '[.[].active_session_count // 0] | add // 0' <<< "$blocking_sessions")"
 
   if [ "$blocking_count" -eq 0 ]; then
-    echo "No active crawl is currently responsible for unresolved Product Identity coverage."
-    exit 0
+    break
   fi
 
   now_epoch="$(date +%s)"
@@ -81,7 +106,8 @@ while true; do
   if [ "$elapsed_seconds" -ge "$ACTIVE_CRAWL_CONVERGENCE_MAX_WAIT_SECONDS" ]; then
     echo "Active crawl convergence wait reached ${ACTIVE_CRAWL_CONVERGENCE_MAX_WAIT_SECONDS}s; continuing to the strict health checks." >&2
     jq . <<< "$blocking_sessions" >&2
-    exit 0
+    active_wait_exhausted=1
+    break
   fi
 
   remaining_seconds="$((ACTIVE_CRAWL_CONVERGENCE_MAX_WAIT_SECONDS - elapsed_seconds))"
@@ -94,3 +120,36 @@ while true; do
   jq . <<< "$blocking_sessions" >&2
   sleep "$sleep_seconds"
 done
+
+if [ "$active_wait_exhausted" -eq 1 ]; then
+  exit 0
+fi
+
+identity_gaps="$(read_identity_gap_rows)"
+identity_gap_count="$(jq 'length' <<< "$identity_gaps")"
+if [ "$identity_gap_count" -eq 0 ]; then
+  echo "No active crawl or post-crawl Product Identity coverage gap requires convergence time."
+  exit 0
+fi
+
+# Missing Identity rows are one of the exact gap types repaired by the bounded GENERAL_CRON
+# projection sweep. A deployment can finish between a crawl commit and that five-minute sweep, so
+# give the repair one scheduler tick before the strict health gate decides the state is persistent.
+# This is intentionally one-shot: a poison listing remains visible to the strict check after the
+# grace window instead of turning a permanent production defect into an indefinitely green deploy.
+now_epoch="$(date +%s)"
+next_general_tick="$(( ((now_epoch / GENERAL_CRON_INTERVAL_SECONDS) + 1) * GENERAL_CRON_INTERVAL_SECONDS ))"
+wait_seconds="$((next_general_tick - now_epoch + PROJECTION_REPAIR_GRACE_SECONDS))"
+
+echo "${identity_gap_count} active listing(s) still lack Product Identity after crawl completion; waiting ${wait_seconds}s for one bounded GENERAL_CRON projection-repair tick." >&2
+jq . <<< "$identity_gaps" >&2
+sleep "$wait_seconds"
+
+remaining_identity_gaps="$(read_identity_gap_rows)"
+remaining_identity_gap_count="$(jq 'length' <<< "$remaining_identity_gaps")"
+if [ "$remaining_identity_gap_count" -gt 0 ]; then
+  echo "Product Identity gaps remain after the GENERAL_CRON convergence window; strict health checks will fail if they are still authoritative." >&2
+  jq . <<< "$remaining_identity_gaps" >&2
+else
+  echo "Product Identity coverage converged during the GENERAL_CRON repair window."
+fi
