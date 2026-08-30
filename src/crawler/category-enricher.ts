@@ -149,6 +149,7 @@ function cachedClassification(
     classificationSource: "cached_detail",
     candidateCategoryIds: [],
     searchAliases: existing.search_aliases || "",
+    confidence: Math.max(0, Math.min(1, Number(metadata.confidence) || 1)),
   };
 }
 

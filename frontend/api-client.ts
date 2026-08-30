@@ -11,6 +11,7 @@ import { MAX_SUGGESTIONS, MAX_SUGGEST_QUERY_LENGTH } from "../src/api/contracts.
 import type {
   MetaCategoryFacet,
   MetaManufacturerFacet,
+  MetaProductFacet,
   MetaResponse,
   MetaShop,
   MetaShopSyncState,
@@ -151,6 +152,39 @@ function isMetaCategoryFacet(value: unknown): value is MetaCategoryFacet {
   );
 }
 
+function isMetaProductFacet(value: unknown): value is MetaProductFacet {
+  return (
+    isRecord(value) &&
+    typeof value.facetId === "string" &&
+    typeof value.value === "string" &&
+    typeof value.name === "string" &&
+    typeof value.group === "string" &&
+    isNonNegativeInteger(value.order) &&
+    isNonNegativeInteger(value.activeProductCount)
+  );
+}
+
+function isTaxonomyHealth(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    [
+      "activeProductCount",
+      "unclassifiedProductCount",
+      "lowConfidenceProductCount",
+      "legacyCategoryResidueCount",
+      "legacyOtherResidualCount",
+      "migratedCategoryShiftCount",
+    ].every((field) => isNonNegativeInteger(value[field]))
+  );
+}
+
+function isLegacyCategoryAliases(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    Object.values(value).every((categoryIds) => isStringArray(categoryIds))
+  );
+}
+
 export function isProductOffer(value: unknown): value is ProductOffer {
   if (!isRecord(value)) return false;
   const stringFields = [
@@ -243,7 +277,13 @@ export function isMetaResponse(value: unknown): value is MetaResponse {
         value.manufacturerFacets.every(isMetaManufacturerFacet))) &&
     isStringArray(value.categories) &&
     Array.isArray(value.categoryFacets) &&
-    value.categoryFacets.every(isMetaCategoryFacet)
+    value.categoryFacets.every(isMetaCategoryFacet) &&
+    (value.taxonomyVersion === undefined || value.taxonomyVersion === "v3") &&
+    (value.facets === undefined ||
+      (Array.isArray(value.facets) && value.facets.every(isMetaProductFacet))) &&
+    (value.legacyCategoryAliases === undefined ||
+      isLegacyCategoryAliases(value.legacyCategoryAliases)) &&
+    (value.taxonomyHealth === undefined || isTaxonomyHealth(value.taxonomyHealth))
   );
 }
 

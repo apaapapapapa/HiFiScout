@@ -16,6 +16,8 @@ import { sanitizedCatalogUrl } from "./catalog-url-sanitizer.js";
 import {
   DEFAULT_SORT,
   activeFilterEntries,
+  facetFromFilterId,
+  facetSelectionKey,
   filterUrlParams,
   parseUrlFilters,
   productSearchParams,
@@ -45,8 +47,13 @@ import {
 } from "./public-components.js";
 import { SearchSuggestionInput } from "./search-suggestion-input.js";
 import { sortShopsByJapaneseReading } from "./shop-options.js";
-import { FEATURE_DEFINITIONS } from "../src/api/contracts.js";
-import type { FeatureId, MetaResponse, MetaShop } from "../src/api/contracts.js";
+import { FACET_DEFINITIONS, FEATURE_DEFINITIONS } from "../src/api/contracts.js";
+import type {
+  FacetSelection,
+  FeatureId,
+  MetaResponse,
+  MetaShop,
+} from "../src/api/contracts.js";
 import type {
   DisplayProduct,
   PageState,
@@ -82,6 +89,7 @@ function filtersFromLocation(favoritesOnly = false): ProductFilters {
   return {
     ...parsed.values,
     features: parsed.features,
+    facets: parsed.facets,
     inStock: parsed.inStock,
     favoritesOnly,
     recentOnly: parsed.recentOnly,
@@ -108,6 +116,7 @@ interface FilterPanelProps {
   onValueChange: (id: UrlValueId, value: string, debounced?: boolean) => void;
   onToggleChange: (id: ToggleId, checked: boolean) => void;
   onFeatureChange: (feature: FeatureId, checked: boolean) => void;
+  onFacetChange: (facet: FacetSelection, checked: boolean) => void;
   onClose: () => void;
   onClear: () => void;
 }
@@ -120,11 +129,31 @@ function FilterPanel({
   onValueChange,
   onToggleChange,
   onFeatureChange,
+  onFacetChange,
   onClose,
   onClear,
 }: FilterPanelProps) {
   const panelRef = useRef<HTMLElement>(null);
   const shops = useMemo(() => sortShopsByJapaneseReading(meta?.shops ?? []), [meta]);
+  const selectedCategoryRoots = useMemo(() => {
+    if (!filters.category) return new Set<string>();
+    const canonicalIds =
+      meta?.legacyCategoryAliases?.[filters.category] ?? [filters.category];
+    return new Set(canonicalIds.map((categoryId) => categoryId.split(".")[0] || categoryId));
+  }, [filters.category, meta]);
+  const selectedFacetIds = new Set(filters.facets.map((facet) => facet.facetId));
+  const visibleFacets = FACET_DEFINITIONS.filter(
+    (facet) =>
+      selectedFacetIds.has(facet.id) ||
+      facet.categoryRootIds.length === 0 ||
+      facet.categoryRootIds.some((rootId) => selectedCategoryRoots.has(rootId)),
+  );
+  const facetCounts = new Map(
+    (meta?.facets ?? []).map((facet) => [
+      `${facet.facetId}:${facet.value}`,
+      facet.activeProductCount,
+    ]),
+  );
 
   useEffect(() => {
     if (!panelRef.current) return;
@@ -249,6 +278,31 @@ function FilterPanel({
             <p className="filter-note">お気に入り表示中は機能で絞り込めません</p>
           ) : null}
         </fieldset>
+        {visibleFacets.map((facet) => (
+          <fieldset className="filter-features" disabled={filters.favoritesOnly} key={facet.id}>
+            <legend>{facet.name}</legend>
+            {facet.values.map((value) => {
+              const selection: FacetSelection = { facetId: facet.id, value: value.id };
+              const key = facetSelectionKey(selection);
+              const count = facetCounts.get(key);
+              return (
+                <label className="check" key={key}>
+                  <input
+                    id={`facet-${facet.id}-${value.id}`}
+                    type="checkbox"
+                    checked={filters.facets.some(
+                      (selected) => facetSelectionKey(selected) === key,
+                    )}
+                    onChange={(event) =>
+                      onFacetChange(selection, event.currentTarget.checked)
+                    }
+                  />
+                  <span>{value.name}{isNonNegativeInteger(count) ? ` (${count})` : ""}</span>
+                </label>
+              );
+            })}
+          </fieldset>
+        ))}
         <label className="check">
           <input
             id="inStock"
@@ -571,11 +625,28 @@ function App() {
     [commitFilters],
   );
 
+  const changeFacet = useCallback(
+    (facet: FacetSelection, checked: boolean) => {
+      const key = facetSelectionKey(facet);
+      const current = filtersRef.current.facets;
+      const facets = checked
+        ? [...new Map([...current, facet].map((item) => [facetSelectionKey(item), item])).values()]
+        : current.filter((selected) => facetSelectionKey(selected) !== key);
+      commitFilters({ ...filtersRef.current, facets });
+    },
+    [commitFilters],
+  );
+
   const clearFilter = useCallback(
     (id: string) => {
       const next = { ...filtersRef.current };
       const feature = featureFromFilterId(id);
+      const facet = facetFromFilterId(id);
       if (feature) next.features = next.features.filter((selected) => selected !== feature);
+      else if (facet) {
+        const key = facetSelectionKey(facet);
+        next.facets = next.facets.filter((selected) => facetSelectionKey(selected) !== key);
+      }
       else if (
         id === "inStock" ||
         id === "favoritesOnly" ||
@@ -607,6 +678,7 @@ function App() {
       maxPrice: "",
       sort: filtersRef.current.sort || DEFAULT_SORT,
       features: [],
+      facets: [],
       inStock: false,
       favoritesOnly: false,
       recentOnly: false,
@@ -729,6 +801,14 @@ function App() {
         ]);
         if (current.shop && !validShops.has(current.shop)) current.shop = "";
         if (current.category && !validCategories.has(current.category)) current.category = "";
+        if (result.facets) {
+          const validFacets = new Set(
+            result.facets.map((facet) => `${facet.facetId}:${facet.value}`),
+          );
+          current.facets = current.facets.filter((facet) =>
+            validFacets.has(facetSelectionKey(facet)),
+          );
+        }
         filtersRef.current = current;
         setFilters(current);
         const nextView = initialView();
@@ -839,6 +919,7 @@ function App() {
           onValueChange={changeValue}
           onToggleChange={changeToggle}
           onFeatureChange={changeFeature}
+          onFacetChange={changeFacet}
           onClose={() => setFilterOpen(false)}
           onClear={clearAllFilters}
         />

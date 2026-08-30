@@ -240,9 +240,8 @@ export function accumulateKnowledgeCatalogCandidateRows(
       candidate.unclassifiedCount += 1;
       if (row.title) candidate.sampleTitle = clean(row.title);
     } else if (categoryIds.includes("other")) {
-      // Explicit "other" is valid for genuinely out-of-taxonomy products, but it should still be
-      // reviewed ahead of already well-classified catalog entries because official evidence may
-      // reveal a more specific canonical category.
+      // A remaining legacy `other` is migration residue and stays high-priority until replay or
+      // official evidence places it in a v3 product type (or the internal sentinel).
       candidate.otherCount += 1;
     }
     candidate.firstSeenAt = earlier(candidate.firstSeenAt, row.first_seen_at);

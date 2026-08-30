@@ -17,6 +17,8 @@
 import { FACET_DEFINITIONS, FEATURE_DEFINITIONS } from "../catalog/types.js";
 import type {
   FacetDefinition,
+  FacetId,
+  FacetSelection,
   FeatureDefinition,
   FeatureId,
   StockStatus,
@@ -31,7 +33,7 @@ import type {
  * which is exactly how the four existing filters ended up with no way to select them.
  */
 export { FACET_DEFINITIONS, FEATURE_DEFINITIONS };
-export type { FacetDefinition, FeatureDefinition, FeatureId };
+export type { FacetDefinition, FacetId, FacetSelection, FeatureDefinition, FeatureId };
 
 // ---------------------------------------------------------------------------
 // seller listings (/api/products/:id/history)
@@ -360,10 +362,14 @@ export interface MetaResponse {
   /** Display names of classifiable categories, for the legacy ungrouped `<select>` fallback. */
   categories: string[];
   categoryFacets: MetaCategoryFacet[];
-  taxonomyVersion: TaxonomyVersion;
-  facets: MetaProductFacet[];
-  legacyCategoryAliases: Readonly<Record<string, readonly string[]>>;
-  taxonomyHealth: TaxonomyHealthSummary;
+  /** Optional only for cached metadata written before taxonomy v3. */
+  taxonomyVersion?: TaxonomyVersion;
+  /** Optional only for cached metadata written before taxonomy v3. */
+  facets?: MetaProductFacet[];
+  /** Optional only for cached metadata written before taxonomy v3. */
+  legacyCategoryAliases?: Readonly<Record<string, readonly string[]>>;
+  /** Optional only for cached metadata written before taxonomy v3. */
+  taxonomyHealth?: TaxonomyHealthSummary;
 }
 
 // ---------------------------------------------------------------------------

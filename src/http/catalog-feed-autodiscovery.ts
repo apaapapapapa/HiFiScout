@@ -1,7 +1,8 @@
 /** Server-side Atom autodiscovery for the public catalog HTML. */
 
 import { isFeatureId } from "../catalog/types.js";
-import { requestedFeatures } from "../api/product-query.js";
+import { requestedFacetSelections, requestedFeatures } from "../api/product-query.js";
+import { facetSelectionKey } from "../catalog/product-facets.js";
 
 const TEXT_LIMITS = [
   { key: "q", maxLength: 100 },
@@ -40,6 +41,11 @@ export function catalogFeedPath(url: URL): string {
 
   for (const feature of requestedFeatures(source).filter(isFeatureId).sort()) {
     params.append("feature", feature);
+  }
+  for (const facet of requestedFacetSelections(source).sort((left, right) =>
+    facetSelectionKey(left).localeCompare(facetSelectionKey(right)),
+  )) {
+    params.append("facet", facetSelectionKey(facet));
   }
 
   if (source.get("inStock") !== "false") params.set("inStock", "true");

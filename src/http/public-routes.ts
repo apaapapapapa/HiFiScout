@@ -4,6 +4,7 @@ import {
   validateSuggestQuery,
 } from "../api/suggest-query.js";
 import { parseProductQuery, validateProductQuery } from "../api/product-query.js";
+import { LEGACY_CATEGORY_MIGRATION_RULES, TAXONOMY_VERSION } from "../catalog/categories.js";
 import { PRODUCT_SEARCH_ROUTE, SUGGEST_ROUTE } from "../api/public-route-contracts.js";
 import { routeMatches } from "../api/route-contract.js";
 import { searchProducts } from "../db/product-search-price-index-repository.js";
@@ -25,6 +26,19 @@ const runtimeRoutes: readonly RuntimeRoute[] = [
       const validationError = validateProductQuery(url);
       if (validationError) return json({ error: validationError }, { status: 400 });
       const query = parseProductQuery(url);
+      const legacyRule = LEGACY_CATEGORY_MIGRATION_RULES.find(
+        (rule) => rule.legacyId === query.category,
+      );
+      if (legacyRule) {
+        console.info(
+          JSON.stringify({
+            event: "legacy_category_alias_used",
+            taxonomyVersion: TAXONOMY_VERSION,
+            legacyCategoryId: legacyRule.legacyId,
+            canonicalCategoryIds: legacyRule.categoryIds,
+          }),
+        );
+      }
       return cachedJson(request, ctx, READ_CACHE_TTL_SECONDS, () => searchProducts(env.DB, query));
     },
   },

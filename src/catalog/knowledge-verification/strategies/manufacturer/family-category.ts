@@ -23,7 +23,7 @@ const MODEL_FAMILIES: readonly ModelFamily[] = Object.freeze([
   {
     manufacturerId: "stax",
     pattern: /^SRM(?:[-\s]|\d)/,
-    categoryId: "headphone_amp",
+    categoryId: "AMP.HEADPHONE",
     // STAX SRM units drive electrostatic headphones. Some advertise their built-in DAC more
     // prominently than the amplifier role, so generic text classification chooses DAC.
     reason: "electrostatic_driver_unit",
@@ -31,7 +31,7 @@ const MODEL_FAMILIES: readonly ModelFamily[] = Object.freeze([
   {
     manufacturerId: "mcintosh",
     pattern: /^MHA(?:[-\s]|\d)/,
-    categoryId: "headphone_amp",
+    categoryId: "AMP.HEADPHONE",
     // McIntosh MHA is the dedicated headphone-amplifier family. Titles read "Headphone Power
     // Amplifier", which a generic power-amplifier rule matches too broadly.
     reason: "dedicated_headphone_amplifier_family",

@@ -10,8 +10,8 @@
  * splits it into product-level and offer-level predicates, and `limit`/`offset` count products.
  */
 
-import { FEATURE_DEFINITIONS } from "../src/api/contracts.js";
-import type { FeatureId } from "../src/api/contracts.js";
+import { FACET_DEFINITIONS, FEATURE_DEFINITIONS } from "../src/api/contracts.js";
+import type { FacetSelection, FeatureId } from "../src/api/contracts.js";
 import { yen } from "./format.js";
 import { PAGE_SIZE, pageOffset } from "./pagination.js";
 
@@ -41,6 +41,14 @@ export type ProductView = "cards" | "list";
 const FEATURE_NAMES = new Map<string, string>(
   FEATURE_DEFINITIONS.map((feature) => [feature.id, feature.name]),
 );
+const FACET_NAMES = new Map<string, string>(
+  FACET_DEFINITIONS.flatMap((facet) =>
+    facet.values.map((value) => [
+      `${facet.id}:${value.id}`,
+      `${facet.name}: ${value.name}`,
+    ] as const),
+  ),
+);
 
 /** Chip id for one selected feature, so a single chip can clear a single feature. */
 export function featureFilterId(feature: FeatureId): string {
@@ -53,6 +61,21 @@ export function featureFromFilterId(id: string): FeatureId | null {
   return FEATURE_NAMES.has(feature) ? (feature as FeatureId) : null;
 }
 
+export function facetSelectionKey(selection: FacetSelection): string {
+  return `${selection.facetId}:${selection.value}`;
+}
+
+export function facetFilterId(selection: FacetSelection): string {
+  return `facet:${facetSelectionKey(selection)}`;
+}
+
+export function facetFromFilterId(id: string): FacetSelection | null {
+  const key = id.startsWith("facet:") ? id.slice("facet:".length) : "";
+  const separator = key.indexOf(":");
+  if (separator <= 0 || !FACET_NAMES.has(key)) return null;
+  return { facetId: key.slice(0, separator) as FacetSelection["facetId"], value: key.slice(separator + 1) };
+}
+
 /**
  * Features are a third axis rather than a member of either map above.
  *
@@ -61,10 +84,19 @@ export function featureFromFilterId(id: string): FeatureId | null {
  * collapse onto the same edge-cache key the server canonicalises to.
  */
 export type ProductFilters = Record<UrlValueId, string> &
-  Record<ToggleId, boolean> & { features: readonly FeatureId[] };
+  Record<ToggleId, boolean> & {
+    features: readonly FeatureId[];
+    facets: readonly FacetSelection[];
+  };
 
 function featureParams(features: readonly FeatureId[]): FeatureId[] {
   return [...new Set(features)].sort();
+}
+
+function facetParams(facets: readonly FacetSelection[]): FacetSelection[] {
+  return [...new Map(facets.map((facet) => [facetSelectionKey(facet), facet])).values()].sort(
+    (left, right) => facetSelectionKey(left).localeCompare(facetSelectionKey(right)),
+  );
 }
 
 /** Reads the repeated/comma-separated `feature` form, dropping anything outside the vocabulary. */
@@ -77,6 +109,20 @@ export function parseFeatureParams(params: URLSearchParams): FeatureId[] {
   return featureParams(requested);
 }
 
+export function parseFacetParams(params: URLSearchParams): FacetSelection[] {
+  const selections: FacetSelection[] = [];
+  for (const raw of params.getAll("facet").flatMap((value) => value.split(","))) {
+    const key = raw.trim();
+    const separator = key.indexOf(":");
+    if (separator <= 0 || !FACET_NAMES.has(key)) continue;
+    selections.push({
+      facetId: key.slice(0, separator) as FacetSelection["facetId"],
+      value: key.slice(separator + 1),
+    });
+  }
+  return facetParams(selections);
+}
+
 export interface FilterEntry {
   id: string;
   label: string;
@@ -87,6 +133,7 @@ export interface FilterEntry {
 export interface UrlFilterState {
   values: Record<UrlValueId, string>;
   features: FeatureId[];
+  facets: FacetSelection[];
   inStock: boolean;
   recentOnly: boolean;
   priceDropped: boolean;
@@ -116,6 +163,7 @@ export function productSearchParams(
     if (value) params.set(id, value);
   }
   for (const feature of featureParams(filters.features)) params.append("feature", feature);
+  for (const facet of facetParams(filters.facets)) params.append("facet", facetSelectionKey(facet));
   if (filters.inStock) params.set("inStock", "true");
   if (filters.recentOnly) params.set("newOnly", "true");
   if (filters.priceDropped) params.set("priceDropped", "true");
@@ -155,6 +203,7 @@ export function filterUrlParams(filters: ProductFilters, view: ProductView): URL
     params.set(id, value);
   }
   for (const feature of featureParams(filters.features)) params.append("feature", feature);
+  for (const facet of facetParams(filters.facets)) params.append("facet", facetSelectionKey(facet));
   if (!filters.inStock) params.set("inStock", "false");
   if (filters.recentOnly) params.set("newOnly", "true");
   if (filters.priceDropped) params.set("priceDropped", "true");
@@ -177,6 +226,7 @@ export function parseUrlFilters(search: string): UrlFilterState {
       sort: params.get("sort") || DEFAULT_SORT,
     },
     features: parseFeatureParams(params),
+    facets: parseFacetParams(params),
     inStock: params.get("inStock") !== "false",
     recentOnly: params.get("newOnly") === "true",
     priceDropped: params.get("priceDropped") === "true",
@@ -218,6 +268,14 @@ export function activeFilterEntries(filters: ProductFilters, labels: FilterLabel
       entries.push({
         id: featureFilterId(feature),
         label: FEATURE_NAMES.get(feature) || feature,
+        detail: true,
+      });
+    }
+    for (const facet of facetParams(filters.facets)) {
+      const key = facetSelectionKey(facet);
+      entries.push({
+        id: facetFilterId(facet),
+        label: FACET_NAMES.get(key) || key,
         detail: true,
       });
     }

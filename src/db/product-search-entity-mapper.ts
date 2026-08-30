@@ -10,7 +10,12 @@
  * would be contradicting its own filter.
  */
 
-import { categoryClosureIds, getCategory } from "../catalog/categories.js";
+import {
+  UNCLASSIFIED_CATEGORY_ID,
+  categoryClosureIds,
+  categoryIdForClassification,
+  getCategory,
+} from "../catalog/categories.js";
 import { directCategoryIds } from "../catalog/listing-components.js";
 import { normalizeManufacturer } from "../catalog/manufacturers.js";
 import { presentationColorList } from "../catalog/model-presentation-color.js";
@@ -137,12 +142,17 @@ export function toProductSearchItem(
 ): ProductSearchItem {
   const summary = aggregate ?? row;
   const newestListedAt = summary.newest_listed_at ?? null;
-  const directCategories = directCategoryIds(
+  const publicPrimaryCategoryId =
+    categoryIdForClassification(row.primary_category_id) || UNCLASSIFIED_CATEGORY_ID;
+  const parsedDirectCategories = directCategoryIds(
     String(row.direct_category_ids ?? "")
       .split(",")
       .map((value) => value.trim())
       .filter(Boolean),
   );
+  const directCategories = parsedDirectCategories.length
+    ? parsedDirectCategories
+    : [publicPrimaryCategoryId];
   // Read models are eventually repaired by the versioned remediation queue, but cards must never
   // expose a seller condition badge as part of the brand while that backfill is still catching up.
   // Bootstrap-known brands also recover their canonical public id here; operational aliases keep
@@ -164,14 +174,14 @@ export function toProductSearchItem(
     presentation_colors: presentationColorList(
       String(summary.presentation_colors ?? "").split(","),
     ),
-    primary_category_id: row.primary_category_id,
-    category_ids: categoryClosureIds(row.primary_category_id),
+    primary_category_id: publicPrimaryCategoryId,
+    category_ids: categoryClosureIds(publicPrimaryCategoryId),
     direct_category_ids: directCategories,
     // Resolved here rather than in the browser: the frontend may import only `src/api/contracts.ts`
     // from `src`, so it cannot read the taxonomy, and `primary_category_id`/`category` already
     // establish that an id travels with its label.
     direct_categories: directCategories.map((categoryId) => getCategory(categoryId)?.name ?? ""),
-    category: getCategory(row.primary_category_id)?.name ?? "",
+    category: getCategory(publicPrimaryCategoryId)?.name ?? "",
     offer_count: Number(summary.offer_count || 0),
     in_stock_offer_count: Number(summary.in_stock_offer_count || 0),
     sold_out_offer_count: Number(summary.sold_out_offer_count || 0),

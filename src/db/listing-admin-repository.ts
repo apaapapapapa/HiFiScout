@@ -1,4 +1,5 @@
 import {
+  UNCLASSIFIED_CATEGORY_ID,
   categoryClosureIds,
   categoryIdForClassification,
   categorySearchAliases,
@@ -337,7 +338,7 @@ export async function updateListingAdminProduct(
     ? merged.normalizedModel || ""
     : existing.normalized_model;
   const categoryId = categoryOverridden
-    ? merged.primaryCategoryId || "other"
+    ? merged.primaryCategoryId || UNCLASSIFIED_CATEGORY_ID
     : existing.primary_category_id;
   const categoryName = categoryOverridden ? merged.categoryName || "" : existing.category;
   const searchAliases = categoryOverridden
