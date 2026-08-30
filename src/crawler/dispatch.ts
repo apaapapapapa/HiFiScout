@@ -24,6 +24,7 @@ import {
   listCrawlWorkloadObservations,
   type CrawlWorkloadObservation,
 } from "../db/crawl-workload-repository.js";
+import { deliverCrawlDispatch } from "./orchestration.js";
 import { crawlQueueLane, crawlQueueSender } from "./queue-lanes.js";
 import { crawlShop, isShopDue } from "./run.js";
 import { getShopPlugin, SHOP_PLUGINS } from "./shops/index.js";
@@ -129,7 +130,7 @@ async function enqueueReservedCrawl(
     lane: destination.lane,
   };
   try {
-    await destination.queue.send(message);
+    await deliverCrawlDispatch(env as unknown as Env, message, destination.queue);
     return true;
   } catch (error) {
     await releaseShopDispatch(env.DB, plugin.key, dispatchToken);
@@ -217,7 +218,11 @@ export async function recoverStalledCrawlDispatches(
     };
 
     try {
-      await destination.queue.send(message);
+      const transport = await deliverCrawlDispatch(
+        env as unknown as Env,
+        message,
+        destination.queue,
+      );
       await markShopDispatchSent(env.DB, plugin.key, dispatchToken, recoveredAt);
       recovered.push(plugin.key);
       console.warn(
@@ -229,6 +234,7 @@ export async function recoverStalledCrawlDispatches(
           jobId: dispatchToken,
           batchRunId,
           lane: destination.lane,
+          transport,
         }),
       );
     } catch (error) {
