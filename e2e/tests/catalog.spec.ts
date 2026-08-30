@@ -1,6 +1,6 @@
 import type { Page, Response, Route } from "@playwright/test";
 import { expect, test } from "../fixtures/catalog-test.js";
-import { isProductSearchRequest as isProductsRequest, offer, product } from "./product-fixtures.js";
+import { offer, product } from "./product-fixtures.js";
 import type { JsonObject } from "./product-fixtures.js";
 
 type HealthStatus = "healthy" | "warning" | "critical" | "disabled";
@@ -108,28 +108,23 @@ async function routeMeta(page: Page, meta: JsonObject = mockMeta()): Promise<voi
   });
 }
 
-test("catalog page boots with live metadata and product API", async ({ page, catalogPage }) => {
+test("catalog page boots with live metadata and rendered results", async ({
+  page,
+  catalogPage,
+}) => {
   const metaResponsePromise = page.waitForResponse((response: Response) => {
     const url = new URL(response.url());
     return url.pathname === "/api/meta" && response.request().method() === "GET";
   });
-  const productsResponsePromise = page.waitForResponse(isProductsRequest);
 
   await catalogPage.goto();
 
-  const [metaResponse, productsResponse] = await Promise.all([
-    metaResponsePromise,
-    productsResponsePromise,
-  ]);
-
+  const metaResponse = await metaResponsePromise;
   expect(metaResponse.ok()).toBeTruthy();
-  expect(productsResponse.ok()).toBeTruthy();
 
   const meta = await metaResponse.json();
-  const products = await productsResponse.json();
   expect(Array.isArray(meta.shops)).toBeTruthy();
   expect(meta.shops.length).toBeGreaterThan(0);
-  expect(Array.isArray(products.items)).toBeTruthy();
 
   await expect(catalogPage.heading).toBeVisible();
   await expect(catalogPage.syncSummaryText).not.toContainText("取得中");
@@ -142,7 +137,8 @@ test("catalog page boots with live metadata and product API", async ({ page, cat
   await expect(catalogPage.pageIndicator(1)).toHaveAttribute("aria-current", "page");
   await expect(page.locator("#load-more")).toHaveCount(0);
 
-  if (products.items.length) {
+  const visibleCount = Number((await catalogPage.count.textContent()) || 0);
+  if (visibleCount > 0) {
     const titleControl = catalogPage.productTitleControl();
     await expect(titleControl).toBeVisible();
     const tagName = await titleControl.evaluate((element) => element.tagName);
@@ -156,13 +152,13 @@ test("catalog page boots with live metadata and product API", async ({ page, cat
   }
 });
 
-test("changing a shop filter refreshes the API and exposes a removable filter chip", async ({
+test("changing a shop filter refreshes search and exposes a removable filter chip", async ({
   page,
   catalogPage,
 }) => {
-  const initialProductsResponse = page.waitForResponse(isProductsRequest);
   await catalogPage.goto();
-  await initialProductsResponse;
+  await expect(catalogPage.syncSummaryText).not.toContainText("取得中");
+  await expect(catalogPage.count).toHaveText(/^\d+$/);
 
   const firstShopOption = catalogPage.firstShopOption();
   const firstShopValue = await firstShopOption.getAttribute("value");
@@ -171,19 +167,23 @@ test("changing a shop filter refreshes the API and exposes a removable filter ch
   }
   const firstShopLabel = (await firstShopOption.textContent())?.trim() || firstShopValue;
   const firstShopFilterLabel = firstShopLabel.replace(/\s+\(\d+\)$/u, "");
-
-  const filteredResponsePromise = page.waitForResponse((response: Response) => {
-    if (!isProductsRequest(response)) return false;
-    return new URL(response.url()).searchParams.get("shop") === firstShopValue;
+  const filteredRequestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return (
+      url.pathname === "/api/product-search" &&
+      request.method() === "GET" &&
+      url.searchParams.get("shop") === firstShopValue
+    );
   });
 
   await catalogPage.selectShop(firstShopValue);
-  const filteredResponse = await filteredResponsePromise;
+  const filteredRequest = await filteredRequestPromise;
 
-  expect(filteredResponse.ok()).toBeTruthy();
+  expect(new URL(filteredRequest.url()).searchParams.get("shop")).toBe(firstShopValue);
   await expect(catalogPage.shop).toHaveValue(firstShopValue);
   await expect(catalogPage.activeFilters).toContainText(firstShopFilterLabel);
   await expect(page).toHaveURL(new RegExp(`shop=${encodeURIComponent(firstShopValue)}`));
+  await expect(catalogPage.count).toHaveText(/^\d+$/);
 
   await catalogPage.clearFilterButton("shop").click();
   await expect(catalogPage.shop).toHaveValue("");
@@ -192,13 +192,12 @@ test("changing a shop filter refreshes the API and exposes a removable filter ch
 });
 
 test("mobile uses a bottom-sheet filter panel while keeping search visible", async ({
-  page,
   catalogPage,
 }) => {
   await catalogPage.useMobileViewport();
-  const initialProductsResponse = page.waitForResponse(isProductsRequest);
   await catalogPage.goto();
-  await initialProductsResponse;
+  await expect(catalogPage.syncSummaryText).not.toContainText("取得中");
+  await expect(catalogPage.count).toHaveText(/^\d+$/);
 
   await expect(catalogPage.searchInput).toBeVisible();
   await expect(catalogPage.filterToggle).toBeVisible();
