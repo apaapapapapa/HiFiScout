@@ -1,4 +1,5 @@
 import type { Page, Route } from "@playwright/test";
+import { CATEGORIES, TAXONOMY_VERSION } from "../../src/catalog/categories.js";
 import { expect, test } from "../fixtures/catalog-test.js";
 
 interface CategoryFacet {
@@ -14,19 +15,19 @@ interface CategoryFacet {
 
 const categoryFacets: CategoryFacet[] = [
   {
-    id: "amplifier",
+    id: "AMP",
     name: "アンプ",
     parentId: null,
-    order: 1,
+    order: 3,
     classifiable: false,
     filterable: true,
     group: null,
     activeProductCount: 2,
   },
   {
-    id: "integrated_amp",
+    id: "AMP.INTEGRATED",
     name: "　プリメインアンプ",
-    parentId: "amplifier",
+    parentId: "AMP",
     order: 1,
     classifiable: true,
     filterable: true,
@@ -34,9 +35,9 @@ const categoryFacets: CategoryFacet[] = [
     activeProductCount: 1,
   },
   {
-    id: "pre_amp",
+    id: "AMP.PRE",
     name: "　プリアンプ",
-    parentId: "amplifier",
+    parentId: "AMP",
     order: 2,
     classifiable: true,
     filterable: true,
@@ -44,19 +45,19 @@ const categoryFacets: CategoryFacet[] = [
     activeProductCount: 1,
   },
   {
-    id: "speaker",
+    id: "SPK",
     name: "スピーカー",
     parentId: null,
-    order: 4,
+    order: 2,
     classifiable: false,
     filterable: true,
     group: null,
     activeProductCount: 1,
   },
   {
-    id: "speaker_bookshelf",
-    name: "　ブックシェルフ",
-    parentId: "speaker",
+    id: "SPK.LOUDSPEAKER",
+    name: "　スピーカー",
+    parentId: "SPK",
     order: 1,
     classifiable: true,
     filterable: true,
@@ -64,29 +65,19 @@ const categoryFacets: CategoryFacet[] = [
     activeProductCount: 1,
   },
   {
-    id: "accessories",
-    name: "アクセサリー",
+    id: "CAB",
+    name: "ケーブル",
     parentId: null,
-    order: 6,
+    order: 8,
     classifiable: false,
     filterable: true,
     group: null,
     activeProductCount: 1,
   },
   {
-    id: "cable",
-    name: "　ケーブル",
-    parentId: "accessories",
-    order: 1,
-    classifiable: false,
-    filterable: true,
-    group: null,
-    activeProductCount: 1,
-  },
-  {
-    id: "cable_xlr",
-    name: "　　XLRケーブル",
-    parentId: "cable",
+    id: "CAB.ANALOG",
+    name: "　Analog Interconnect",
+    parentId: "CAB",
     order: 1,
     classifiable: true,
     filterable: true,
@@ -130,90 +121,43 @@ test("live metadata exposes the complete canonical taxonomy including zero-count
 }) => {
   const response = await request.get("/api/meta");
   expect(response.ok()).toBeTruthy();
-  const meta: { categoryFacets?: CategoryFacet[] } = await response.json();
+  const meta: { taxonomyVersion?: string; categoryFacets?: CategoryFacet[] } = await response.json();
   const facets = meta.categoryFacets ?? [];
+  const expectedFacets = CATEGORIES.filter((category) => category.filterable).map((category) => ({
+    id: category.id,
+    name: `${category.parentId ? "　" : ""}${category.name}`,
+    parentId: category.parentId,
+    order: category.order,
+    classifiable: category.classifiable,
+    filterable: category.filterable,
+    group: null,
+  }));
 
-  expect(facets.map((category) => category.id)).toEqual([
-    "amplifier",
-    "integrated_amp",
-    "pre_amp",
-    "power_amp",
-    "headphone_amp",
-    "av_amp",
-    "digital",
-    "dac",
-    "network_player",
-    "cd_sacd_player",
-    "transport",
-    "dap",
-    "network_switch",
-    "optical_isolator",
-    "router",
-    "music_server",
-    "master_clock",
-    "analog",
-    "turntable",
-    "tonearm",
-    "cartridge",
-    "headshell",
-    "phono_eq",
-    "phono_step_up_transformer",
-    "speaker",
-    "speaker_bookshelf",
-    "speaker_floorstanding",
-    "center_speaker",
-    "subwoofer",
-    "active_speaker",
-    "headphone_group",
-    "wired_headphone",
-    "wired_earphone",
-    "btw_headphone",
-    "btw_earphone",
-    "accessories",
-    "cable",
-    "cable_xlr",
-    "cable_rca",
-    "cable_phono",
-    "cable_usb",
-    "cable_lan",
-    "cable_digital",
-    "cable_power",
-    "cable_other",
-    "rack",
-    "power_strip",
-    "clean_power",
-    "vacuum_tube",
-    "other_accessory",
-    "dj_dtm",
-    "other",
-  ]);
-  expect(facets.find((category) => category.id === "amplifier")).toMatchObject({
+  expect(meta.taxonomyVersion).toBe(TAXONOMY_VERSION);
+  expect(
+    facets.map(({ activeProductCount: _activeProductCount, ...category }) => category),
+  ).toEqual(expectedFacets);
+  expect(facets.find((category) => category.id === "AMP")).toMatchObject({
     name: "アンプ",
     group: null,
     classifiable: false,
     filterable: true,
   });
-  expect(facets.find((category) => category.id === "speaker")).toMatchObject({
-    name: "スピーカー",
-    group: null,
-    classifiable: false,
-    filterable: true,
-  });
-  expect(facets.find((category) => category.id === "pre_amp")).toMatchObject({
+  expect(facets.find((category) => category.id === "AMP.PRE")).toMatchObject({
     name: "　プリアンプ",
-    parentId: "amplifier",
+    parentId: "AMP",
   });
-  expect(facets.find((category) => category.id === "transport")).toMatchObject({
-    name: "　トランスポート",
-    parentId: "digital",
+  expect(facets.find((category) => category.id === "SRC.DISC")).toMatchObject({
+    name: "　Disc Player / Disc Transport",
+    parentId: "SRC",
   });
-  expect(facets.find((category) => category.id === "headshell")).toMatchObject({
-    name: "　　ヘッドシェル",
-    parentId: "cartridge",
+  expect(facets.find((category) => category.id === "ANA.HEADSHELL")).toMatchObject({
+    name: "　ヘッドシェル",
+    parentId: "ANA",
   });
-  expect(facets.find((category) => category.id === "cable_xlr")).toMatchObject({
-    name: "　　XLRケーブル",
-    parentId: "cable",
+  expect(facets.find((category) => category.id === "CAB.ANALOG")).toMatchObject({
+    name: "　Analog Interconnect",
+    parentId: "CAB",
   });
   expect(
     facets.every(
@@ -230,19 +174,19 @@ test("category selection and browser URL state stay wired for parents and leaves
   const requests = await mockCatalog(page);
   await catalogPage.goto();
 
-  await catalogPage.selectCategory("amplifier");
-  await expect(page).toHaveURL(/category=amplifier/);
-  expect(lastRequest(requests).searchParams.get("category")).toBe("amplifier");
+  await catalogPage.selectCategory("AMP");
+  await expect(page).toHaveURL(/category=AMP/);
+  expect(lastRequest(requests).searchParams.get("category")).toBe("AMP");
 
-  await catalogPage.selectCategory("pre_amp");
-  await expect(page).toHaveURL(/category=pre_amp/);
-  expect(lastRequest(requests).searchParams.get("category")).toBe("pre_amp");
+  await catalogPage.selectCategory("AMP.PRE");
+  await expect(page).toHaveURL(/category=AMP\.PRE/);
+  expect(lastRequest(requests).searchParams.get("category")).toBe("AMP.PRE");
 
-  await catalogPage.goto("/?category=speaker_bookshelf");
-  await expect(catalogPage.category).toHaveValue("speaker_bookshelf");
-  expect(lastRequest(requests).searchParams.get("category")).toBe("speaker_bookshelf");
+  await catalogPage.goto("/?category=SPK.LOUDSPEAKER");
+  await expect(catalogPage.category).toHaveValue("SPK.LOUDSPEAKER");
+  expect(lastRequest(requests).searchParams.get("category")).toBe("SPK.LOUDSPEAKER");
 
-  await catalogPage.goto("/?category=cable_xlr");
-  await expect(catalogPage.category).toHaveValue("cable_xlr");
-  expect(lastRequest(requests).searchParams.get("category")).toBe("cable_xlr");
+  await catalogPage.goto("/?category=CAB.ANALOG");
+  await expect(catalogPage.category).toHaveValue("CAB.ANALOG");
+  expect(lastRequest(requests).searchParams.get("category")).toBe("CAB.ANALOG");
 });
