@@ -30,10 +30,10 @@ test("manual category authority preserves other bundle direct categories while r
   assert.ok(!plan.directCategoryIds.includes("SRC.DISC"));
 });
 
-test("manual category authority still rejects non-selectable taxonomy roots", () => {
+test("manual category authority rejects taxonomy roots as non-classifiable product types", () => {
   assert.throws(
     () => planManualCategoryAuthority("PRC.DAC", '["PRC.DAC"]', "SIG"),
-    /non-selectable category SIG/,
+    /non-classifiable category SIG/,
   );
 });
 
