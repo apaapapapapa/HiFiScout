@@ -13,9 +13,21 @@ type FacetRule = readonly [FacetId, string, RegExp];
 
 /** Independent rules: dual-mode products intentionally emit both wired and wireless facts. */
 const FACET_RULES: readonly FacetRule[] = [
-  ["connectivity", "wireless", /\bwireless\b|\bbluetooth\b|\bwi[\s-]?fi\b|ワイヤレス|無線|ブルートゥース|\bwf-\d|\bwh-\d{4}|\bwi-\d|\btour\s+pro\b|\bopen(?:fit|dots|run)\w*\b|\bairpods\b|\blinkbuds\b|\bfreebuds\b|quietcomfort|\bpx[78]\b|\bmomentum\s+\d+/i],
-  ["connectivity", "wired", /\bwired\b|\b(?:usb|lan|ethernet|xlr|rca|hdmi|toslink)\b|有線|ケーブル接続|着脱式ケーブル/i],
-  ["protocol", "bluetooth", /\bbluetooth\b|ブルートゥース|\bwf-\d|\bwh-\d{4}|\bwi-\d|\btour\s+pro\b|\bopen(?:fit|dots|run)\w*\b|\bairpods\b|\blinkbuds\b|\bfreebuds\b|quietcomfort|\bpx[78]\b|\bmomentum\s+\d+/i],
+  [
+    "connectivity",
+    "wireless",
+    /\bwireless\b|\bbluetooth\b|\bwi[\s-]?fi\b|ワイヤレス|無線|ブルートゥース|\bwf-\d|\bwh-\d{4}|\bwi-\d|\btour\s+pro\b|\bopen(?:fit|dots|run)\w*\b|\bairpods\b|\blinkbuds\b|\bfreebuds\b|quietcomfort|\bpx[78]\b|\bmomentum\s+\d+/i,
+  ],
+  [
+    "connectivity",
+    "wired",
+    /\bwired\b|\b(?:usb|lan|ethernet|xlr|rca|hdmi|toslink)\b|有線|ケーブル接続|着脱式ケーブル/i,
+  ],
+  [
+    "protocol",
+    "bluetooth",
+    /\bbluetooth\b|ブルートゥース|\bwf-\d|\bwh-\d{4}|\bwi-\d|\btour\s+pro\b|\bopen(?:fit|dots|run)\w*\b|\bairpods\b|\blinkbuds\b|\bfreebuds\b|quietcomfort|\bpx[78]\b|\bmomentum\s+\d+/i,
+  ],
   ["protocol", "wifi", /\bwi[\s-]?fi\b|無線lan/i],
   ["protocol", "ethernet", /\bethernet\b|\blan\b|イーサネット|有線lan/i],
   ["form_factor", "bookshelf", /book[\s-]?shelf|stand[\s-]?mount|ブックシェルフ/i],
@@ -48,8 +60,16 @@ const FACET_RULES: readonly FacetRule[] = [
   ["signal_type", "data", /\b(?:usb|lan|ethernet)\b.*\bcable\b|(?:usb|lan|ネットワーク)ケーブル/i],
   ["signal_type", "speaker", /speaker\s+cable|スピーカーケーブル/i],
   ["signal_type", "power", /\b(?:ac|power|mains)\b.*(?:cable|cord)|電源(?:ケーブル|コード)/i],
-  ["signal_type", "analog", /\banalog\b|\b(?:rca|phono)\b.*(?:cable|interconnect)|アナログ(?:ケーブル|インターコネクト)|フォノケーブル/i],
-  ["network_device_type", "switch", /network\s+switch|ethernet\s+switch|switching\s+hub|ネットワークスイッチ|スイッチングハブ/i],
+  [
+    "signal_type",
+    "analog",
+    /\banalog\b|\b(?:rca|phono)\b.*(?:cable|interconnect)|アナログ(?:ケーブル|インターコネクト)|フォノケーブル/i,
+  ],
+  [
+    "network_device_type",
+    "switch",
+    /network\s+switch|ethernet\s+switch|switching\s+hub|ネットワークスイッチ|スイッチングハブ/i,
+  ],
   ["network_device_type", "router", /audio\s+router|ネットワークルータ|オーディオルータ/i],
   ["network_device_type", "bridge", /digital\s+bridge|usb\s+bridge|デジタルブリッジ/i],
   ["technology", "tube", /vacuum\s+tube|tube\s+(?:amp|amplifier)|真空管/i],
@@ -59,7 +79,11 @@ const FACET_RULES: readonly FacetRule[] = [
   ["application", "phono", /\bphono\b|フォノ|トーンアーム/i],
   ["processor_type", "room_correction", /room\s+correction|音場補正|ルーム補正/i],
   ["processor_type", "equalizer", /(?<!phono\s)\bequalizer\b|(?<!フォノ)イコライザ/i],
-  ["processor_type", "crossover", /\bcrossover\b|channel\s+divider|チャンネル(?:デバイダ|ディバイダ)/i],
+  [
+    "processor_type",
+    "crossover",
+    /\bcrossover\b|channel\s+divider|チャンネル(?:デバイダ|ディバイダ)/i,
+  ],
   ["processor_type", "av", /\bav\b|audio\s+video|サラウンド/i],
   ["portability", "portable", /\bportable\b|ポータブル/i],
   ["portability", "battery_powered", /battery[\s-]?powered|バッテリー駆動/i],
@@ -75,25 +99,43 @@ export function normalizeFacetFacts(facts: readonly FacetFactInput[] = []): Face
     if (!isFacetId(fact?.facetId) || !isFacetValue(fact.facetId, fact.value)) continue;
     const source = String(fact.source || "unknown");
     const key = `${fact.facetId}:${fact.value}:${source}`;
-    byKey.set(key, { facetId: fact.facetId, value: String(fact.value), source, confidence: confidenceValue(fact.confidence), verifiedAt: fact.verifiedAt || null });
+    byKey.set(key, {
+      facetId: fact.facetId,
+      value: String(fact.value),
+      source,
+      confidence: confidenceValue(fact.confidence),
+      verifiedAt: fact.verifiedAt || null,
+    });
   }
   return [...byKey.values()];
 }
 
 export function inferFacetFacts(
   text: string = "",
-  { source = "title", confidence = 0.8, verifiedAt = null, legacyCategoryIds = [] }: InferFacetFactsOptions = {},
+  {
+    source = "title",
+    confidence = 0.8,
+    verifiedAt = null,
+    legacyCategoryIds = [],
+  }: InferFacetFactsOptions = {},
 ): FacetFact[] {
   const value = String(text || "").normalize("NFKC");
   const facts: FacetFactInput[] = [];
   if (value.trim()) {
     for (const [facetId, facetValue, pattern] of FACET_RULES) {
-      if (pattern.test(value)) facts.push({ facetId, value: facetValue, source, confidence, verifiedAt });
+      if (pattern.test(value))
+        facts.push({ facetId, value: facetValue, source, confidence, verifiedAt });
     }
   }
   for (const legacyCategoryId of legacyCategoryIds) {
     for (const facet of legacyCategoryFacetSelections(legacyCategoryId)) {
-      facts.push({ facetId: facet.facetId, value: facet.value, source: "legacy_category", confidence: 0.9, verifiedAt });
+      facts.push({
+        facetId: facet.facetId,
+        value: facet.value,
+        source: "legacy_category",
+        confidence: 0.9,
+        verifiedAt,
+      });
     }
   }
   return normalizeFacetFacts(facts);
@@ -104,7 +146,9 @@ export function parseFacetSelection(value: string = ""): FacetSelection | null {
   if (separator <= 0) return null;
   const facetId = value.slice(0, separator);
   const facetValue = value.slice(separator + 1);
-  return isFacetId(facetId) && isFacetValue(facetId, facetValue) ? { facetId, value: facetValue } : null;
+  return isFacetId(facetId) && isFacetValue(facetId, facetValue)
+    ? { facetId, value: facetValue }
+    : null;
 }
 
 export function facetSelectionKey(value: FacetSelection): string {

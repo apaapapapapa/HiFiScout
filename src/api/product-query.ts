@@ -265,7 +265,8 @@ export function canonicalProductQueryUrl(url: URL, query: ProductQuery): URL {
   for (const feature of [...query.features].sort()) params.append("feature", feature);
   for (const facet of [...query.facets].sort((left, right) =>
     facetSelectionKey(left).localeCompare(facetSelectionKey(right)),
-  )) params.append("facet", facetSelectionKey(facet));
+  ))
+    params.append("facet", facetSelectionKey(facet));
   if (query.inStock) params.set("inStock", "true");
   if (query.newOnly) params.set("newOnly", "true");
   if (query.priceDropped) params.set("priceDropped", "true");

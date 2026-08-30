@@ -93,7 +93,8 @@ export function sellerCategoryEvidence(
   const categoryId = normalized.primaryCategoryId;
   const configuredMode = Object.entries(policy.sellerCategory.categories).find(
     ([configuredCategoryId]) =>
-      configuredCategoryId === categoryId || categoryFilterIds(configuredCategoryId).includes(categoryId),
+      configuredCategoryId === categoryId ||
+      categoryFilterIds(configuredCategoryId).includes(categoryId),
   )?.[1];
   const requestedMode = mode(configuredMode, fallbackMode);
   const strength = strengthForMode(requestedMode);

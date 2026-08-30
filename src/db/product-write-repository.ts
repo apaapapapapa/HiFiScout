@@ -824,13 +824,7 @@ export async function upsertProducts(
     [...new Set(featureSyncSourceIds)],
     observedAt,
   );
-  await syncProductFacetFacts(
-    db,
-    shopKey,
-    products,
-    [...new Set(facetSyncSourceIds)],
-    observedAt,
-  );
+  await syncProductFacetFacts(db, shopKey, products, [...new Set(facetSyncSourceIds)], observedAt);
 
   // Ids are only known after the inserts land, so history is written in a second pass.
   const historySourceIds = [...new Set([...newSourceIds, ...changedPriceSourceIds])];

@@ -554,7 +554,9 @@ export interface FacetDefinition {
   readonly values: readonly FacetValueDefinition[];
 }
 
-function facetValues(...values: readonly (readonly [string, string])[]): readonly FacetValueDefinition[] {
+function facetValues(
+  ...values: readonly (readonly [string, string])[]
+): readonly FacetValueDefinition[] {
   return Object.freeze(
     values.map(([id, name], index) => Object.freeze({ id, name, order: index + 1 })),
   );
@@ -565,20 +567,146 @@ function facetGroups(...groups: readonly CategoryGroupId[]): readonly CategoryGr
 }
 
 export const FACET_DEFINITIONS: readonly FacetDefinition[] = Object.freeze([
-  Object.freeze({ id: "connectivity", name: "接続方式", order: 1, categoryRootIds: facetGroups("PER", "SPK", "SRC", "SIG"), values: facetValues(["wired", "有線"], ["wireless", "ワイヤレス"]) }),
-  Object.freeze({ id: "protocol", name: "通信規格", order: 2, categoryRootIds: facetGroups("PER", "SRC", "SIG", "CAB"), values: facetValues(["bluetooth", "Bluetooth"], ["wifi", "Wi-Fi"], ["ethernet", "Ethernet"]) }),
-  Object.freeze({ id: "form_factor", name: "形状", order: 3, categoryRootIds: facetGroups("SPK", "SYS"), values: facetValues(["bookshelf", "ブックシェルフ"], ["floorstanding", "フロア型"], ["desktop", "デスクトップ"], ["one_box", "一体型"]) }),
-  Object.freeze({ id: "channel_role", name: "チャンネル用途", order: 4, categoryRootIds: facetGroups("SPK"), values: facetValues(["center", "センター"], ["surround", "サラウンド"]) }),
-  Object.freeze({ id: "amplification_mode", name: "増幅方式", order: 5, categoryRootIds: facetGroups("SPK"), values: facetValues(["active", "アクティブ"], ["passive", "パッシブ"]) }),
-  Object.freeze({ id: "use_case", name: "用途", order: 6, categoryRootIds: facetGroups(), values: facetValues(["home", "ホーム"], ["studio", "スタジオ"], ["dj", "DJ"], ["pa", "PA / SR"]) }),
-  Object.freeze({ id: "connector_a", name: "端子A", order: 7, categoryRootIds: facetGroups("CAB"), values: facetValues(["xlr", "XLR"], ["rca", "RCA"], ["usb", "USB"], ["ethernet", "Ethernet"], ["hdmi", "HDMI"], ["optical", "光"], ["coaxial", "同軸"]) }),
-  Object.freeze({ id: "connector_b", name: "端子B", order: 8, categoryRootIds: facetGroups("CAB"), values: facetValues(["xlr", "XLR"], ["rca", "RCA"], ["usb", "USB"], ["ethernet", "Ethernet"], ["hdmi", "HDMI"], ["optical", "光"], ["coaxial", "同軸"]) }),
-  Object.freeze({ id: "signal_type", name: "信号種別", order: 9, categoryRootIds: facetGroups("CAB"), values: facetValues(["analog", "アナログ"], ["digital", "デジタル"], ["data", "データ"], ["speaker", "スピーカー"], ["power", "電源"]) }),
-  Object.freeze({ id: "network_device_type", name: "ネットワーク機器", order: 10, categoryRootIds: facetGroups("SIG"), values: facetValues(["switch", "スイッチ"], ["router", "ルーター"], ["bridge", "ブリッジ"]) }),
-  Object.freeze({ id: "technology", name: "技術方式", order: 11, categoryRootIds: facetGroups("AMP", "PWR", "ACC"), values: facetValues(["tube", "真空管"], ["solid_state", "ソリッドステート"], ["class_d", "Class-D"], ["transformer", "トランス"]) }),
-  Object.freeze({ id: "application", name: "用途領域", order: 12, categoryRootIds: facetGroups("CAB", "AMP"), values: facetValues(["phono", "フォノ"]) }),
-  Object.freeze({ id: "processor_type", name: "処理種別", order: 13, categoryRootIds: facetGroups("PRC"), values: facetValues(["room_correction", "ルーム補正"], ["equalizer", "イコライザー"], ["crossover", "クロスオーバー"], ["av", "AV処理"]) }),
-  Object.freeze({ id: "portability", name: "可搬性", order: 14, categoryRootIds: facetGroups("PER", "SRC", "SPK"), values: facetValues(["portable", "ポータブル"], ["battery_powered", "バッテリー駆動"]) }),
+  Object.freeze({
+    id: "connectivity",
+    name: "接続方式",
+    order: 1,
+    categoryRootIds: facetGroups("PER", "SPK", "SRC", "SIG"),
+    values: facetValues(["wired", "有線"], ["wireless", "ワイヤレス"]),
+  }),
+  Object.freeze({
+    id: "protocol",
+    name: "通信規格",
+    order: 2,
+    categoryRootIds: facetGroups("PER", "SRC", "SIG", "CAB"),
+    values: facetValues(["bluetooth", "Bluetooth"], ["wifi", "Wi-Fi"], ["ethernet", "Ethernet"]),
+  }),
+  Object.freeze({
+    id: "form_factor",
+    name: "形状",
+    order: 3,
+    categoryRootIds: facetGroups("SPK", "SYS"),
+    values: facetValues(
+      ["bookshelf", "ブックシェルフ"],
+      ["floorstanding", "フロア型"],
+      ["desktop", "デスクトップ"],
+      ["one_box", "一体型"],
+    ),
+  }),
+  Object.freeze({
+    id: "channel_role",
+    name: "チャンネル用途",
+    order: 4,
+    categoryRootIds: facetGroups("SPK"),
+    values: facetValues(["center", "センター"], ["surround", "サラウンド"]),
+  }),
+  Object.freeze({
+    id: "amplification_mode",
+    name: "増幅方式",
+    order: 5,
+    categoryRootIds: facetGroups("SPK"),
+    values: facetValues(["active", "アクティブ"], ["passive", "パッシブ"]),
+  }),
+  Object.freeze({
+    id: "use_case",
+    name: "用途",
+    order: 6,
+    categoryRootIds: facetGroups(),
+    values: facetValues(
+      ["home", "ホーム"],
+      ["studio", "スタジオ"],
+      ["dj", "DJ"],
+      ["pa", "PA / SR"],
+    ),
+  }),
+  Object.freeze({
+    id: "connector_a",
+    name: "端子A",
+    order: 7,
+    categoryRootIds: facetGroups("CAB"),
+    values: facetValues(
+      ["xlr", "XLR"],
+      ["rca", "RCA"],
+      ["usb", "USB"],
+      ["ethernet", "Ethernet"],
+      ["hdmi", "HDMI"],
+      ["optical", "光"],
+      ["coaxial", "同軸"],
+    ),
+  }),
+  Object.freeze({
+    id: "connector_b",
+    name: "端子B",
+    order: 8,
+    categoryRootIds: facetGroups("CAB"),
+    values: facetValues(
+      ["xlr", "XLR"],
+      ["rca", "RCA"],
+      ["usb", "USB"],
+      ["ethernet", "Ethernet"],
+      ["hdmi", "HDMI"],
+      ["optical", "光"],
+      ["coaxial", "同軸"],
+    ),
+  }),
+  Object.freeze({
+    id: "signal_type",
+    name: "信号種別",
+    order: 9,
+    categoryRootIds: facetGroups("CAB"),
+    values: facetValues(
+      ["analog", "アナログ"],
+      ["digital", "デジタル"],
+      ["data", "データ"],
+      ["speaker", "スピーカー"],
+      ["power", "電源"],
+    ),
+  }),
+  Object.freeze({
+    id: "network_device_type",
+    name: "ネットワーク機器",
+    order: 10,
+    categoryRootIds: facetGroups("SIG"),
+    values: facetValues(["switch", "スイッチ"], ["router", "ルーター"], ["bridge", "ブリッジ"]),
+  }),
+  Object.freeze({
+    id: "technology",
+    name: "技術方式",
+    order: 11,
+    categoryRootIds: facetGroups("AMP", "PWR", "ACC"),
+    values: facetValues(
+      ["tube", "真空管"],
+      ["solid_state", "ソリッドステート"],
+      ["class_d", "Class-D"],
+      ["transformer", "トランス"],
+    ),
+  }),
+  Object.freeze({
+    id: "application",
+    name: "用途領域",
+    order: 12,
+    categoryRootIds: facetGroups("CAB", "AMP"),
+    values: facetValues(["phono", "フォノ"]),
+  }),
+  Object.freeze({
+    id: "processor_type",
+    name: "処理種別",
+    order: 13,
+    categoryRootIds: facetGroups("PRC"),
+    values: facetValues(
+      ["room_correction", "ルーム補正"],
+      ["equalizer", "イコライザー"],
+      ["crossover", "クロスオーバー"],
+      ["av", "AV処理"],
+    ),
+  }),
+  Object.freeze({
+    id: "portability",
+    name: "可搬性",
+    order: 14,
+    categoryRootIds: facetGroups("PER", "SRC", "SPK"),
+    values: facetValues(["portable", "ポータブル"], ["battery_powered", "バッテリー駆動"]),
+  }),
 ]);
 
 const FACET_BY_ID = new Map(FACET_DEFINITIONS.map((facet) => [facet.id, facet]));

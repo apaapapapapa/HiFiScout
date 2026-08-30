@@ -43,10 +43,9 @@ const FEATURE_NAMES = new Map<string, string>(
 );
 const FACET_NAMES = new Map<string, string>(
   FACET_DEFINITIONS.flatMap((facet) =>
-    facet.values.map((value) => [
-      `${facet.id}:${value.id}`,
-      `${facet.name}: ${value.name}`,
-    ] as const),
+    facet.values.map(
+      (value) => [`${facet.id}:${value.id}`, `${facet.name}: ${value.name}`] as const,
+    ),
   ),
 );
 
@@ -73,7 +72,10 @@ export function facetFromFilterId(id: string): FacetSelection | null {
   const key = id.startsWith("facet:") ? id.slice("facet:".length) : "";
   const separator = key.indexOf(":");
   if (separator <= 0 || !FACET_NAMES.has(key)) return null;
-  return { facetId: key.slice(0, separator) as FacetSelection["facetId"], value: key.slice(separator + 1) };
+  return {
+    facetId: key.slice(0, separator) as FacetSelection["facetId"],
+    value: key.slice(separator + 1),
+  };
 }
 
 /**

@@ -7,10 +7,7 @@ import type {
   IdentityVeto,
   ProductIdentityResolution,
 } from "./types.js";
-import {
-  categoryIdForClassification,
-  isUnclassifiedCategoryId,
-} from "./categories.js";
+import { categoryIdForClassification, isUnclassifiedCategoryId } from "./categories.js";
 
 const ROMAN_TO_NUMBER: Readonly<Record<string, string>> = Object.freeze({
   I: "1",

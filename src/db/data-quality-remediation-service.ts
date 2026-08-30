@@ -78,9 +78,7 @@ interface StoredFeatureFactRow {
   confidence: number;
 }
 
-function facetKey(
-  fact: Pick<FacetFact, "facetId" | "value" | "source" | "confidence">,
-): string {
+function facetKey(fact: Pick<FacetFact, "facetId" | "value" | "source" | "confidence">): string {
   return `${fact.facetId}:${fact.value}:${fact.source}:${Number(fact.confidence)}`;
 }
 

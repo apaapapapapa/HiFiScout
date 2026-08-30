@@ -62,7 +62,10 @@ const OFFICIAL_INDEXES: Readonly<Record<string, readonly OfficialIndex[]>> = Obj
       categoryId: "ANA.TURNTABLE",
       sourceType: "manufacturer_archive",
     },
-    { url: "https://www.denon.com/ja-jp/category/turntable-cartridges/", categoryId: "ANA.CARTRIDGE" },
+    {
+      url: "https://www.denon.com/ja-jp/category/turntable-cartridges/",
+      categoryId: "ANA.CARTRIDGE",
+    },
     {
       url: "https://www.denon.com/ja-jp/category/network-audio-players/",
       categoryId: "SRC.STREAMER",

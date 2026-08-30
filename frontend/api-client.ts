@@ -179,10 +179,7 @@ function isTaxonomyHealth(value: unknown): boolean {
 }
 
 function isLegacyCategoryAliases(value: unknown): boolean {
-  return (
-    isRecord(value) &&
-    Object.values(value).every((categoryIds) => isStringArray(categoryIds))
-  );
+  return isRecord(value) && Object.values(value).every((categoryIds) => isStringArray(categoryIds));
 }
 
 export function isProductOffer(value: unknown): value is ProductOffer {
