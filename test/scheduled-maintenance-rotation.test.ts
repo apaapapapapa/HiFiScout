@@ -13,13 +13,23 @@ function ticks(count: number): Date[] {
 
 test("a tick starts only the maintenance that is actually due", () => {
   // The whole point of the rotation: one tick must not be the moment every background task talks
-  // to D1 at once. An hour of ticks is a full cycle of the slowest cadence in the table.
+  // to D1 at once. Projection repair is intentionally due every tick, so the hourly bootstrap can
+  // raise the sequential task count to four without reintroducing concurrent D1 fan-out.
   const perTick = ticks(12).map((at) => dueMaintenanceTasks(at).length);
 
   assert.ok(
-    Math.max(...perTick) <= 3,
-    `no tick should start more than three tasks, saw ${JSON.stringify(perTick)}`,
+    Math.max(...perTick) <= 4,
+    `no tick should start more than four sequential tasks, saw ${JSON.stringify(perTick)}`,
   );
+});
+
+test("projection repair runs on every general-cron tick", () => {
+  for (const at of ticks(12)) {
+    assert.ok(
+      dueMaintenanceTasks(at).some((task) => task.name === "product_search_projection_repair"),
+      `${at.toISOString()} should run product search projection repair`,
+    );
+  }
 });
 
 test("every maintenance task still runs within an hour", () => {
