@@ -230,11 +230,14 @@ export async function deliverCrawlDispatch(
   };
   const id = env.CRAWL_SCHEDULER.idFromName(message.shopKey);
   const stub = env.CRAWL_SCHEDULER.get(id);
-  const response = await stub.fetch(`https://crawl-scheduler.internal${CRAWL_SCHEDULER_START_PATH}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(command),
-  });
+  const response = await stub.fetch(
+    `https://crawl-scheduler.internal${CRAWL_SCHEDULER_START_PATH}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(command),
+    },
+  );
   if (!response.ok) {
     throw new Error(`crawl scheduler returned HTTP ${response.status}`);
   }

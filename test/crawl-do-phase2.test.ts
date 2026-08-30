@@ -23,10 +23,10 @@ const MESSAGE: CrawlQueueMessage = {
 };
 
 test("Phase 2 canary is an exact explicit allowlist", () => {
-  assert.deepEqual([...selectedCrawlDoCanaryShops(" home-shokai, ippinkan ,")], [
-    "home-shokai",
-    "ippinkan",
-  ]);
+  assert.deepEqual(
+    [...selectedCrawlDoCanaryShops(" home-shokai, ippinkan ,")],
+    ["home-shokai", "ippinkan"],
+  );
   assert.equal(shouldExecuteCrawlWithDurableObject("home-shokai", "home-shokai"), true);
   assert.equal(shouldExecuteCrawlWithDurableObject("home-shokai", "hifido"), false);
 });
