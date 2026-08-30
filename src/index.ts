@@ -12,6 +12,7 @@ import {
   parseProductQuery,
   validateProductQuery,
 } from "./api/product-query.js";
+import { observeCrawlQueueDelivery } from "./crawler/orchestration.js";
 import { catalogHtmlWithFeedAutodiscovery } from "./http/catalog-feed-autodiscovery.js";
 import { handleProductCorrectionReport } from "./http/product-correction-report.js";
 import { handleProductPermalink } from "./http/product-permalink.js";
@@ -67,8 +68,36 @@ async function handlePublicHttp(
   return response;
 }
 
+/**
+ * Phase 0/1 crawl observation is deliberately side-band. Queue remains authoritative, while the
+ * execution context keeps the baseline/DO-shadow probe alive after the normal consumer returns.
+ */
+async function handleWorkerQueue(
+  batch: MessageBatch<WorkerQueueMessage>,
+  env: Env,
+  ctx?: ExecutionContext,
+): Promise<void> {
+  const observation = observeCrawlQueueDelivery(batch, env);
+  if (ctx?.waitUntil) {
+    ctx.waitUntil(observation);
+  } else {
+    // Unit/integration callers historically invoke this composition-root handler without a
+    // Cloudflare ExecutionContext. Keep the new observer best-effort there too: Phase 1 telemetry
+    // must never change Queue acknowledgement/retry semantics.
+    void observation.catch((error) => {
+      console.warn(
+        JSON.stringify({
+          event: "crawl_queue_observation_failed",
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    });
+  }
+  return handleQueue(batch, env);
+}
+
 export default {
   fetch: handlePublicHttp,
   scheduled: handleScheduled,
-  queue: handleQueue,
+  queue: handleWorkerQueue,
 } satisfies ExportedHandler<Env, WorkerQueueMessage>;

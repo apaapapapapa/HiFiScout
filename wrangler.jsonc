@@ -6,6 +6,12 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "observability": { "enabled": true, "traces": { "enabled": true } },
+  "exports": {
+    "CrawlScheduler": { "type": "durable-object", "storage": "sqlite" }
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "CRAWL_SCHEDULER", "class_name": "CrawlScheduler" }]
+  },
   "version_metadata": { "binding": "CF_VERSION_METADATA" },
   "browser": { "binding": "BROWSER" },
   "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": ["/api/*", "/"] },
@@ -36,6 +42,7 @@
   },
   "ratelimits": [{ "name": "API_RATE_LIMITER", "namespace_id": "541721", "simple": { "limit": 120, "period": 60 } }],
   "vars": {
+    "CRAWL_DO_SHADOW_SHOPS": "home-shokai",
     "AUDIOUNION_ENABLED": "true",
     "IPPINKAN_ENABLED": "true",
     "FUJIYA_AVIC_ENABLED": "true",
