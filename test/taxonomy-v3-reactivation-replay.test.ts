@@ -120,7 +120,9 @@ test("inactive taxonomy-v3 migration rows replay complete facets when reactivate
 
   // Make the trigger-generated work immediately claimable without depending on the host clock.
   sqlite
-    .prepare("UPDATE data_quality_remediation_queue SET available_at = ?, updated_at = ? WHERE listing_product_id = 1201")
+    .prepare(
+      "UPDATE data_quality_remediation_queue SET available_at = ?, updated_at = ? WHERE listing_product_id = 1201",
+    )
     .run(AT, AT);
 
   const sweep = await runDataQualityRemediationSweep(sqliteD1(sqlite), {
