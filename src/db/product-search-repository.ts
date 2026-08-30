@@ -223,6 +223,21 @@ function addProductFilters(query: ProductQuery, where: string[], binds: unknown[
     )`);
     binds.push(feature);
   }
+  const facetsById = new Map<string, string[]>();
+  for (const facet of query.facets) {
+    const values = facetsById.get(facet.facetId) || [];
+    if (!values.includes(facet.value)) values.push(facet.value);
+    facetsById.set(facet.facetId, values);
+  }
+  for (const [facetId, values] of facetsById) {
+    where.push(`EXISTS (
+      SELECT 1 FROM product_search_entity_offers m
+      JOIN product_facet_facts pff ON pff.product_id = m.listing_product_id
+      WHERE m.entity_id = e.id AND pff.facet_id = ?
+        AND pff.facet_value IN (${values.map(() => "?").join(",")})
+    )`);
+    binds.push(facetId, ...values);
+  }
 }
 
 /**

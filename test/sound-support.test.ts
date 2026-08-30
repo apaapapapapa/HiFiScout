@@ -107,5 +107,5 @@ test("Sound Support adapter crawls all inventory categories directly and follows
   };
   const [normalized] = plugin.parse(listingHtml, categoryPage);
   assert.ok(normalized);
-  assert.equal(normalized.primaryCategoryId, "pre_amp");
+  assert.equal(normalized.primaryCategoryId, "AMP.PRE");
 });

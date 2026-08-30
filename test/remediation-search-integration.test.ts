@@ -101,12 +101,12 @@ function insertListing(sqlite: DatabaseSync, listing: Listing): number {
   // The listing write path materializes membership for every listing it stores, and the category
   // filter reads it, so a fixture that skipped it would be a listing production cannot produce.
   // Derived rather than spelled out, so a taxonomy change cannot leave this fixture behind.
-  for (const categoryId of listingMembershipCategoryIds("dac", ["dac"])) {
+  for (const categoryId of listingMembershipCategoryIds("PRC.DAC", ["PRC.DAC"])) {
     sqlite
       .prepare(
         "INSERT OR IGNORE INTO product_categories(product_id, category_id, is_direct) VALUES (?, ?, ?)",
       )
-      .run(id, categoryId, categoryId === "dac" ? 1 : 0);
+      .run(id, categoryId, categoryId === "PRC.DAC" ? 1 : 0);
   }
   return id;
 }

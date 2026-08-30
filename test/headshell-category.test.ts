@@ -18,28 +18,30 @@ function classify(title: string, rawCategory = "") {
   );
 }
 
-test("headshell is a classifiable child of cartridge", () => {
+test("headshell is an independent classifiable analog product type", () => {
   const headshell = getCategory("headshell");
   assert.ok(headshell);
   assert.equal(headshell.name, "ヘッドシェル");
-  assert.equal(headshell.parentId, "cartridge");
+  assert.equal(headshell.parentId, "ANA");
   assert.equal(headshell.classifiable, true);
   assert.equal(headshell.filterable, true);
-  assert.deepEqual(categoryClosureIds("headshell"), ["headshell", "cartridge", "analog"]);
-  assert.deepEqual(categoryFilterIds("headshell"), ["headshell"]);
-  assert.ok(categoryFilterIds("cartridge").includes("headshell"));
-  assert.ok(categoryFilterIds("analog").includes("headshell"));
+  assert.deepEqual(categoryClosureIds("headshell"), ["ANA.HEADSHELL", "ANA"]);
+  assert.ok(categoryFilterIds("headshell").includes("ANA.HEADSHELL"));
+  assert.equal(categoryFilterIds("ANA.CARTRIDGE").includes("ANA.HEADSHELL"), false);
+  assert.ok(categoryFilterIds("ANA").includes("ANA.HEADSHELL"));
 });
 
 test("headshell titles classify more specifically than the cartridge seller bucket", () => {
-  assert.deepEqual(inferExplicitCategoryIds("Ortofon LH-4000 Headshell"), ["headshell"]);
-  assert.deepEqual(inferExplicitCategoryIds("Audio-Technica AT-LH15H ヘッドシェル"), ["headshell"]);
+  assert.deepEqual(inferExplicitCategoryIds("Ortofon LH-4000 Headshell"), ["ANA.HEADSHELL"]);
+  assert.deepEqual(inferExplicitCategoryIds("Audio-Technica AT-LH15H ヘッドシェル"), [
+    "ANA.HEADSHELL",
+  ]);
 
   const headshell = classify("Audio-Technica AT-LH15H ヘッドシェル", "カートリッジ");
-  assert.equal(headshell.primaryCategoryId, "headshell");
-  assert.deepEqual(headshell.categoryIds, ["headshell"]);
+  assert.equal(headshell.primaryCategoryId, "ANA.HEADSHELL");
+  assert.deepEqual(headshell.categoryIds, ["ANA.HEADSHELL"]);
 
   const cartridge = classify("Audio-Technica AT33PTG/II", "カートリッジ");
-  assert.equal(cartridge.primaryCategoryId, "cartridge");
-  assert.deepEqual(cartridge.categoryIds, ["cartridge"]);
+  assert.equal(cartridge.primaryCategoryId, "ANA.CARTRIDGE");
+  assert.deepEqual(cartridge.categoryIds, ["ANA.CARTRIDGE"]);
 });

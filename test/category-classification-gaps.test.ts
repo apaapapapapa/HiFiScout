@@ -14,45 +14,51 @@ function classify(title: string, rawCategory = "") {
   );
 }
 
-// --- G-1: a generic speaker word must not produce a terminal label -------------------------------
+// --- G-1: v3 has one broad loudspeaker product type and independent properties -------------------
 
-test("a generic speaker title stays undecided instead of being frozen as その他", () => {
+test("a generic speaker title lands on the broad loudspeaker product type", () => {
   for (const title of ["2Wayスピーカー", "JBL 2115Aスピーカー", "PCスピーカー", "Speaker System"]) {
     const product = classify(title);
-    assert.equal(product.classificationStatus, "unclassified", title);
-    assert.equal(product.primaryCategoryId, "unclassified", title);
+    assert.equal(product.classificationStatus, "classified", title);
+    assert.equal(product.primaryCategoryId, "SPK.LOUDSPEAKER", title);
   }
 });
 
-test("the speaker rule still resolves the specific leaves and the soundbar it was written for", () => {
-  assert.equal(classify("サウンドバー YAS-109").primaryCategoryId, "other");
-  assert.equal(classify("JBL Sound Bar SB-1").primaryCategoryId, "other");
+test("speaker shapes become facets while subwoofers and soundbars remain product types", () => {
+  assert.equal(classify("サウンドバー YAS-109").primaryCategoryId, "SPK.SOUNDBAR");
+  assert.equal(classify("JBL Sound Bar SB-1").primaryCategoryId, "SPK.SOUNDBAR");
   assert.equal(
     classify("KEF ブックシェルフ型スピーカー LS50").primaryCategoryId,
-    "speaker_bookshelf",
+    "SPK.LOUDSPEAKER",
   );
-  assert.equal(classify("フロア型スピーカー Model X").primaryCategoryId, "speaker_floorstanding");
-  assert.equal(classify("センタースピーカー NS-C210").primaryCategoryId, "center_speaker");
-  assert.equal(classify("サブウーファー SW-1").primaryCategoryId, "subwoofer");
-  assert.equal(classify("アクティブスピーカー AS-1").primaryCategoryId, "active_speaker");
-  // The cable rules sit above the speaker rule, so this is unaffected by the change.
-  assert.equal(classify("スピーカーケーブル 3m").primaryCategoryId, "cable_other");
+  assert.equal(classify("フロア型スピーカー Model X").primaryCategoryId, "SPK.LOUDSPEAKER");
+  assert.equal(classify("センタースピーカー NS-C210").primaryCategoryId, "SPK.LOUDSPEAKER");
+  assert.equal(classify("サブウーファー SW-1").primaryCategoryId, "SPK.SUBWOOFER");
+  const active = classify("アクティブスピーカー AS-1");
+  assert.equal(active.primaryCategoryId, "SPK.LOUDSPEAKER");
+  assert.ok(
+    active.facetFacts.some(
+      (fact) => fact.facetId === "amplification_mode" && fact.value === "active",
+    ),
+  );
+  assert.equal(classify("スピーカーケーブル 3m").primaryCategoryId, "CAB.SPEAKER");
 });
 
-test("no generic classifiable speaker leaf was reintroduced", () => {
-  const speaker = getCategory("speaker");
-  assert.ok(speaker);
-  assert.equal(speaker.classifiable, false, "a その他スピーカー bucket is useless as a filter");
-  // The group parent is unreachable as a classification answer, which is what keeps a bare
-  // "スピーカー" seller bucket from landing anywhere at all.
-  assert.equal(categoryIdForClassification("speaker"), null);
+test("the speaker root is a filter group and the loudspeaker leaf is classifiable", () => {
+  const root = getCategory("SPK");
+  const loudspeaker = getCategory("SPK.LOUDSPEAKER");
+  assert.ok(root);
+  assert.ok(loudspeaker);
+  assert.equal(root.classifiable, false);
+  assert.equal(loudspeaker.classifiable, true);
+  assert.equal(categoryIdForClassification("speaker"), "SPK.LOUDSPEAKER");
 });
 
-test("a bare speaker seller bucket no longer lands on the その他 leaf", () => {
+test("a bare speaker seller bucket maps to the broad loudspeaker type", () => {
   for (const rawCategory of ["スピーカー", "speaker", "speaker-system", "中古スピーカー"]) {
     const product = classify("Example Model X", rawCategory);
-    assert.equal(product.classificationStatus, "unclassified", rawCategory);
-    assert.notEqual(product.primaryCategoryId, "other", rawCategory);
+    assert.equal(product.classificationStatus, "classified", rawCategory);
+    assert.equal(product.primaryCategoryId, "SPK.LOUDSPEAKER", rawCategory);
   }
 });
 
@@ -77,7 +83,7 @@ test("named DAP model families classify from the title, not from the composite s
   for (const title of CLEAR_DAP_TITLES) {
     // The real listings carry Fujiya's composite bucket, which stays corroborative by policy.
     const product = classify(title, "DAP・ヘッドホンアンプ");
-    assert.equal(product.primaryCategoryId, "dap", title);
+    assert.equal(product.primaryCategoryId, "SRC.DAP", title);
     assert.equal(product.classificationStatus, "classified", title);
   }
 });
@@ -85,18 +91,18 @@ test("named DAP model families classify from the title, not from the composite s
 test("the composite DAP bucket alone still classifies nothing", () => {
   const product = classify("Example Model", "DAP・ヘッドホンアンプ");
   assert.equal(product.classificationStatus, "unclassified");
-  assert.deepEqual(product.candidateCategoryIds, ["headphone_amp"]);
+  assert.deepEqual(product.candidateCategoryIds, ["AMP.HEADPHONE"]);
 });
 
 test("a model number never outranks an explicit product-type word from the same brand", () => {
-  assert.equal(classify("FiiO フィーオ FH19 イヤホン").primaryCategoryId, "wired_earphone");
-  assert.equal(classify("FiiO フィーオ LC-RE PRO 交換ケーブル").primaryCategoryId, "cable_other");
+  assert.equal(classify("FiiO フィーオ FH19 イヤホン").primaryCategoryId, "PER.EARPHONE");
+  assert.equal(classify("FiiO フィーオ LC-RE PRO 交換ケーブル").primaryCategoryId, "unclassified");
   assert.equal(
     classify("Astell&Kern PA10 ポータブルヘッドホンアンプ").primaryCategoryId,
-    "headphone_amp",
+    "AMP.HEADPHONE",
   );
-  assert.equal(classify("FiiO フィーオ K11 R2R DAC").primaryCategoryId, "dac");
-  assert.equal(classify("Shanling シャンリン ME800 イヤホン").primaryCategoryId, "wired_earphone");
+  assert.equal(classify("FiiO フィーオ K11 R2R DAC").primaryCategoryId, "PRC.DAC");
+  assert.equal(classify("Shanling シャンリン ME800 イヤホン").primaryCategoryId, "PER.EARPHONE");
 });
 
 test("accessories named after a player model are not players", () => {
@@ -107,7 +113,7 @@ test("accessories named after a player model are not players", () => {
     "HiBy ハイビー R6 III ガラスフィルム",
     "Cayin カイン N7 レザーケース",
   ]) {
-    assert.notEqual(inferExplicitCategoryIds(title)[0], "dap", title);
+    assert.notEqual(inferExplicitCategoryIds(title)[0], "SRC.DAP", title);
   }
 });
 
@@ -138,9 +144,9 @@ test("coarse seller buckets never classify a listing on their own", () => {
 
 test("アナログプレーヤー names the turntable leaf as a seller bucket and in a title", () => {
   const bucket = classify("Example Model X", "アナログプレーヤー");
-  assert.equal(bucket.primaryCategoryId, "turntable");
-  assert.equal(bucket.classificationStatus, "classified");
-  assert.equal(classify("DENON アナログプレーヤー DP-3000NE").primaryCategoryId, "turntable");
+  assert.equal(bucket.primaryCategoryId, "unclassified");
+  assert.deepEqual(bucket.candidateCategoryIds, ["ANA.TURNTABLE"]);
+  assert.equal(classify("DENON アナログプレーヤー DP-3000NE").primaryCategoryId, "ANA.TURNTABLE");
 });
 
 /**
@@ -151,10 +157,10 @@ test("アナログプレーヤー names the turntable leaf as a seller bucket an
  */
 test("a specific seller bucket is still inferred, and still held at the corroborative tier", () => {
   for (const [rawCategory, expected] of [
-    ["ブックシェルフスピーカー(ペア)", "speaker_bookshelf"],
-    ["フロア型スピーカー(ペア)", "speaker_floorstanding"],
-    ["管球式フォノイコライザー", "phono_eq"],
-    ["ステレオパワーアンプ", "power_amp"],
+    ["ブックシェルフスピーカー(ペア)", "SPK.LOUDSPEAKER"],
+    ["フロア型スピーカー(ペア)", "SPK.LOUDSPEAKER"],
+    ["管球式フォノイコライザー", "AMP.PHONO"],
+    ["ステレオパワーアンプ", "AMP.POWER"],
   ] as const) {
     assert.equal(inferExplicitCategoryIds(rawCategory)[0], expected, rawCategory);
     const product = classify("Example Model X", rawCategory);
@@ -165,6 +171,6 @@ test("a specific seller bucket is still inferred, and still held at the corrobor
 
 test("a coarse bucket still yields to a title that does name a product type", () => {
   const product = classify("LUXMAN プリメインアンプ L-507Z", "アンプ・スピーカー・プレーヤー");
-  assert.equal(product.primaryCategoryId, "integrated_amp");
+  assert.equal(product.primaryCategoryId, "AMP.INTEGRATED");
   assert.equal(product.classificationStatus, "classified");
 });

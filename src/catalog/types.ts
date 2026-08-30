@@ -15,16 +15,108 @@
 
 /** Non-classifiable grouping categories. */
 export type CategoryGroupId =
+  | "PER"
+  | "SPK"
+  | "AMP"
+  | "SRC"
+  | "ANA"
+  | "PRC"
+  | "SIG"
+  | "CAB"
+  | "PWR"
+  | "ACC"
+  | "SYS"
+  | "REC";
+
+/** Categories a product can actually be classified into. Some may also parent a more specific category. */
+export type ClassifiableCategoryId =
+  | "PER.HEADPHONE"
+  | "PER.EARPHONE"
+  | "SPK.LOUDSPEAKER"
+  | "SPK.SUBWOOFER"
+  | "SPK.SOUNDBAR"
+  | "AMP.INTEGRATED"
+  | "AMP.PRE"
+  | "AMP.POWER"
+  | "AMP.HEADPHONE"
+  | "AMP.RECEIVER"
+  | "AMP.PHONO"
+  | "AMP.STEPUP"
+  | "SRC.STREAMER"
+  | "SRC.DAP"
+  | "SRC.DISC"
+  | "SRC.SERVER"
+  | "SRC.TUNER"
+  | "ANA.TURNTABLE"
+  | "ANA.TONEARM"
+  | "ANA.CARTRIDGE"
+  | "ANA.STYLUS"
+  | "ANA.HEADSHELL"
+  | "ANA.TAPE"
+  | "PRC.DAC"
+  | "PRC.ADC"
+  | "PRC.DDC"
+  | "PRC.PROCESSOR"
+  | "PRC.CLOCK"
+  | "SIG.NETWORK"
+  | "SIG.ISOLATOR"
+  | "SIG.SELECTOR"
+  | "SIG.WIRELESS"
+  | "CAB.ANALOG"
+  | "CAB.DIGITAL"
+  | "CAB.SPEAKER"
+  | "CAB.PERSONAL"
+  | "CAB.DATA"
+  | "CAB.ADAPTER"
+  | "PWR.CORD"
+  | "PWR.DISTRIBUTION"
+  | "PWR.CONDITIONER"
+  | "PWR.REGEN"
+  | "PWR.SUPPLY"
+  | "PWR.BATTERY"
+  | "ACC.FURNITURE"
+  | "ACC.STAND"
+  | "ACC.ISOLATION"
+  | "ACC.ACOUSTIC"
+  | "ACC.WEAR"
+  | "ACC.CASE"
+  | "ACC.MAINTENANCE"
+  | "ACC.TUBE"
+  | "ACC.PART"
+  | "SYS.MULTIFUNCTION"
+  | "SYS.COMPLETE"
+  | "REC.INTERFACE"
+  | "REC.MIC"
+  | "REC.MIXER"
+  | "REC.RECORDER"
+  | "REC.MICPRE"
+  | "REC.MONITOR"
+  | "REC.DJ";
+
+/**
+ * The answer "the classifier could not decide", which is not a category a product belongs to.
+ *
+ * It exists as its own id because `other` is a real, intentional leaf — tuners, equalizers,
+ * channel dividers — and sharing one id made "we don't know" indistinguishable from "genuinely
+ * miscellaneous" everywhere downstream, including the public category filter.
+ */
+export type UnclassifiedCategoryId = "unclassified";
+
+/** Every id present in the taxonomy-v3 registry. */
+export type CategoryId = CategoryGroupId | ClassifiableCategoryId | UnclassifiedCategoryId;
+
+/**
+ * Pre-taxonomy-v2 ids still accepted on input and rewritten by `LEGACY_ALIASES`.
+ * They are NOT `CategoryId`s and must never be produced.
+ */
+export type LegacyCategoryAlias =
   | "amplifier"
   | "digital"
   | "analog"
   | "speaker"
   | "headphone_group"
   | "accessories"
-  | "cable";
-
-/** Categories a product can actually be classified into. Some may also parent a more specific category. */
-export type ClassifiableCategoryId =
+  | "cable"
   | "integrated_amp"
   | "pre_amp"
   | "power_amp"
@@ -69,25 +161,7 @@ export type ClassifiableCategoryId =
   | "vacuum_tube"
   | "other_accessory"
   | "dj_dtm"
-  | "other";
-
-/**
- * The answer "the classifier could not decide", which is not a category a product belongs to.
- *
- * It exists as its own id because `other` is a real, intentional leaf — tuners, equalizers,
- * channel dividers — and sharing one id made "we don't know" indistinguishable from "genuinely
- * miscellaneous" everywhere downstream, including the public category filter.
- */
-export type UnclassifiedCategoryId = "unclassified";
-
-/** Every id present in `CATEGORIES` (53 entries). */
-export type CategoryId = CategoryGroupId | ClassifiableCategoryId | UnclassifiedCategoryId;
-
-/**
- * Pre-taxonomy-v2 ids still accepted on input and rewritten by `LEGACY_ALIASES`.
- * They are NOT `CategoryId`s and must never be produced.
- */
-export type LegacyCategoryAlias =
+  | "other"
   | "network_transport"
   | "cd_sacd_transport"
   | "accessory"
@@ -95,6 +169,17 @@ export type LegacyCategoryAlias =
   | "headphone"
   | "earphone"
   | "power_accessory";
+
+export type TaxonomyVersion = "v3";
+
+export type LegacyCategoryMigrationStrategy = "deterministic" | "evidence" | "unclassified";
+
+export interface LegacyCategoryMigrationRule {
+  readonly legacyId: LegacyCategoryAlias;
+  readonly strategy: LegacyCategoryMigrationStrategy;
+  readonly categoryIds: readonly ClassifiableCategoryId[];
+  readonly facetSelections: readonly FacetSelection[];
+}
 
 export interface CategoryDefinition {
   readonly id: CategoryId;
@@ -270,11 +355,14 @@ export interface CategoryClassification {
   classificationSource: ClassificationSource;
   candidateCategoryIds: CategoryId[];
   searchAliases: string;
+  /** Numeric certainty used by rollout quality gates. */
+  confidence: number;
 }
 
 /** `metadata.categoryClassification` block written by `applyCategoryClassification`. */
 export interface CategoryClassificationMetadata {
   version: number;
+  taxonomyVersion: TaxonomyVersion;
   state: ClassificationState;
   status: ClassificationStatus;
   reason: ClassificationReason;
@@ -282,6 +370,7 @@ export interface CategoryClassificationMetadata {
   categoryIds: CategoryId[];
   candidateCategoryIds: CategoryId[];
   evidence: CategoryEvidenceSummaryItem[];
+  confidence: number;
   /** Added by the crawler's detail-page enrichment pass. */
   detailCheckedAt?: string;
   /** Added by the knowledge-catalog enrichment pass. */
@@ -349,6 +438,7 @@ export interface CategoryClassificationFields {
   classificationSource: ClassificationSource;
   candidateCategoryIds: CategoryId[];
   searchAliases: string;
+  classificationConfidence: number;
   categoryEvidence: CategoryEvidenceInput[];
   metadata: ProductMetadata & {
     categoryClassification: CategoryClassificationMetadata & Record<string, unknown>;
@@ -430,6 +520,230 @@ export interface ListingCategoryEvidence {
 }
 
 // ---------------------------------------------------------------------------
+// Product facets (orthogonal to primary category)
+// ---------------------------------------------------------------------------
+
+export type FacetId =
+  | "connectivity"
+  | "protocol"
+  | "form_factor"
+  | "channel_role"
+  | "amplification_mode"
+  | "use_case"
+  | "connector_a"
+  | "connector_b"
+  | "signal_type"
+  | "network_device_type"
+  | "technology"
+  | "application"
+  | "processor_type"
+  | "portability";
+
+export interface FacetValueDefinition {
+  readonly id: string;
+  readonly name: string;
+  readonly order: number;
+}
+
+export interface FacetDefinition {
+  readonly id: FacetId;
+  readonly name: string;
+  readonly order: number;
+  /** Empty means globally applicable; otherwise the UI reveals it for these category roots. */
+  readonly categoryRootIds: readonly CategoryGroupId[];
+  readonly values: readonly FacetValueDefinition[];
+}
+
+function facetValues(
+  ...values: readonly (readonly [string, string])[]
+): readonly FacetValueDefinition[] {
+  return Object.freeze(
+    values.map(([id, name], index) => Object.freeze({ id, name, order: index + 1 })),
+  );
+}
+
+function facetGroups(...groups: readonly CategoryGroupId[]): readonly CategoryGroupId[] {
+  return Object.freeze(groups);
+}
+
+export const FACET_DEFINITIONS: readonly FacetDefinition[] = Object.freeze([
+  Object.freeze({
+    id: "connectivity",
+    name: "接続方式",
+    order: 1,
+    categoryRootIds: facetGroups("PER", "SPK", "SRC", "SIG"),
+    values: facetValues(["wired", "有線"], ["wireless", "ワイヤレス"]),
+  }),
+  Object.freeze({
+    id: "protocol",
+    name: "通信規格",
+    order: 2,
+    categoryRootIds: facetGroups("PER", "SRC", "SIG", "CAB"),
+    values: facetValues(["bluetooth", "Bluetooth"], ["wifi", "Wi-Fi"], ["ethernet", "Ethernet"]),
+  }),
+  Object.freeze({
+    id: "form_factor",
+    name: "形状",
+    order: 3,
+    categoryRootIds: facetGroups("SPK", "SYS"),
+    values: facetValues(
+      ["bookshelf", "ブックシェルフ"],
+      ["floorstanding", "フロア型"],
+      ["desktop", "デスクトップ"],
+      ["one_box", "一体型"],
+    ),
+  }),
+  Object.freeze({
+    id: "channel_role",
+    name: "チャンネル用途",
+    order: 4,
+    categoryRootIds: facetGroups("SPK"),
+    values: facetValues(["center", "センター"], ["surround", "サラウンド"]),
+  }),
+  Object.freeze({
+    id: "amplification_mode",
+    name: "増幅方式",
+    order: 5,
+    categoryRootIds: facetGroups("SPK"),
+    values: facetValues(["active", "アクティブ"], ["passive", "パッシブ"]),
+  }),
+  Object.freeze({
+    id: "use_case",
+    name: "用途",
+    order: 6,
+    categoryRootIds: facetGroups(),
+    values: facetValues(
+      ["home", "ホーム"],
+      ["studio", "スタジオ"],
+      ["dj", "DJ"],
+      ["pa", "PA / SR"],
+    ),
+  }),
+  Object.freeze({
+    id: "connector_a",
+    name: "端子A",
+    order: 7,
+    categoryRootIds: facetGroups("CAB"),
+    values: facetValues(
+      ["xlr", "XLR"],
+      ["rca", "RCA"],
+      ["usb", "USB"],
+      ["ethernet", "Ethernet"],
+      ["hdmi", "HDMI"],
+      ["optical", "光"],
+      ["coaxial", "同軸"],
+    ),
+  }),
+  Object.freeze({
+    id: "connector_b",
+    name: "端子B",
+    order: 8,
+    categoryRootIds: facetGroups("CAB"),
+    values: facetValues(
+      ["xlr", "XLR"],
+      ["rca", "RCA"],
+      ["usb", "USB"],
+      ["ethernet", "Ethernet"],
+      ["hdmi", "HDMI"],
+      ["optical", "光"],
+      ["coaxial", "同軸"],
+    ),
+  }),
+  Object.freeze({
+    id: "signal_type",
+    name: "信号種別",
+    order: 9,
+    categoryRootIds: facetGroups("CAB"),
+    values: facetValues(
+      ["analog", "アナログ"],
+      ["digital", "デジタル"],
+      ["data", "データ"],
+      ["speaker", "スピーカー"],
+      ["power", "電源"],
+    ),
+  }),
+  Object.freeze({
+    id: "network_device_type",
+    name: "ネットワーク機器",
+    order: 10,
+    categoryRootIds: facetGroups("SIG"),
+    values: facetValues(["switch", "スイッチ"], ["router", "ルーター"], ["bridge", "ブリッジ"]),
+  }),
+  Object.freeze({
+    id: "technology",
+    name: "技術方式",
+    order: 11,
+    categoryRootIds: facetGroups("AMP", "PWR", "ACC"),
+    values: facetValues(
+      ["tube", "真空管"],
+      ["solid_state", "ソリッドステート"],
+      ["class_d", "Class-D"],
+      ["transformer", "トランス"],
+    ),
+  }),
+  Object.freeze({
+    id: "application",
+    name: "用途領域",
+    order: 12,
+    categoryRootIds: facetGroups("CAB", "AMP"),
+    values: facetValues(["phono", "フォノ"]),
+  }),
+  Object.freeze({
+    id: "processor_type",
+    name: "処理種別",
+    order: 13,
+    categoryRootIds: facetGroups("PRC"),
+    values: facetValues(
+      ["room_correction", "ルーム補正"],
+      ["equalizer", "イコライザー"],
+      ["crossover", "クロスオーバー"],
+      ["av", "AV処理"],
+    ),
+  }),
+  Object.freeze({
+    id: "portability",
+    name: "可搬性",
+    order: 14,
+    categoryRootIds: facetGroups("PER", "SRC", "SPK"),
+    values: facetValues(["portable", "ポータブル"], ["battery_powered", "バッテリー駆動"]),
+  }),
+]);
+
+const FACET_BY_ID = new Map(FACET_DEFINITIONS.map((facet) => [facet.id, facet]));
+
+export function isFacetId(value: unknown): value is FacetId {
+  return typeof value === "string" && FACET_BY_ID.has(value as FacetId);
+}
+
+export function isFacetValue(facetId: FacetId, value: unknown): boolean {
+  return (
+    typeof value === "string" &&
+    Boolean(FACET_BY_ID.get(facetId)?.values.some((candidate) => candidate.id === value))
+  );
+}
+
+export interface FacetSelection {
+  facetId: FacetId;
+  value: string;
+}
+
+export interface FacetFactInput {
+  facetId?: string;
+  value?: string;
+  source?: string;
+  confidence?: number;
+  verifiedAt?: string | null;
+}
+
+export interface FacetFact {
+  facetId: FacetId;
+  value: string;
+  source: string;
+  confidence: number;
+  verifiedAt: string | null;
+}
+
+// ---------------------------------------------------------------------------
 // Feature facts (src/catalog/product-features.ts)
 // ---------------------------------------------------------------------------
 
@@ -457,6 +771,10 @@ export const FEATURE_DEFINITIONS: readonly FeatureDefinition[] = Object.freeze([
   Object.freeze({ id: "headphone_output", name: "ヘッドホン出力", order: 3 }),
   Object.freeze({ id: "phono_input", name: "フォノ入力", order: 4 }),
 ]);
+
+/** Product capabilities retain the existing feature-fact storage and query contract. */
+export type CapabilityId = FeatureId;
+export const CAPABILITY_DEFINITIONS = FEATURE_DEFINITIONS;
 
 const FEATURE_IDS = new Set<string>(FEATURE_DEFINITIONS.map((feature) => feature.id));
 
@@ -674,6 +992,7 @@ export interface CatalogNormalizationInput {
   sourcePublishedAt?: string | null;
   metadata?: Record<string, unknown>;
   featureFacts?: FeatureFactInput[];
+  facetFacts?: FacetFactInput[];
   categoryEvidence?: CategoryEvidenceInput[];
 }
 
@@ -719,6 +1038,7 @@ export interface NormalizedCatalogProduct extends CategoryClassificationFields {
   sourceUrl: string;
   sourcePublishedAt?: string | null;
   featureFacts: FeatureFact[];
+  facetFacts: FacetFact[];
 }
 
 /**
@@ -761,6 +1081,7 @@ export interface CatalogProductUpsertInput {
   sourcePublishedAt?: string | null;
   metadata?: Record<string, unknown>;
   featureFacts?: FeatureFact[];
+  facetFacts?: FacetFact[];
 }
 
 // ---------------------------------------------------------------------------

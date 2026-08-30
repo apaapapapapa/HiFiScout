@@ -74,8 +74,8 @@ export function createMarantzCdSacdIndexStrategy({
           httpStatus: response.status || 200,
           canonicalModel: originalModel,
           canonicalName: `Marantz ${matchedAlias}`,
-          categoryIds: ["cd_sacd_player"],
-          primaryCategoryId: "cd_sacd_player",
+          categoryIds: ["SRC.DISC"],
+          primaryCategoryId: "SRC.DISC",
           contentHash: await sha256Hex(html),
           message: "verified_from_marantz_cd_sacd_index_v5",
         };

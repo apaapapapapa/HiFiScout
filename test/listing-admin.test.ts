@@ -11,7 +11,7 @@ test("listing admin query canonicalizes filters and defaults to active listings"
   assert.deepEqual(parseListingAdminListQuery(url), {
     query: "D-1000",
     shopKey: "audiounion",
-    categoryId: "turntable",
+    categoryId: "ANA.TURNTABLE",
     activeOnly: true,
     afterId: 12,
     limit: 25,
@@ -50,7 +50,7 @@ test("listing admin update accepts only canonical correction fields", () => {
       manufacturerId: "luxman",
       model: "D-1000mk2",
       presentationColor: "ブラック/ゴールド",
-      primaryCategoryId: "turntable",
+      primaryCategoryId: "ANA.TURNTABLE",
     },
   );
 
@@ -71,6 +71,6 @@ test("listing admin update accepts only canonical correction fields", () => {
 });
 
 test("listing admin category override stores the leaf and its filter ancestors", () => {
-  assert.deepEqual(listingAdminCategoryIds("turntable"), ["turntable", "analog"]);
+  assert.deepEqual(listingAdminCategoryIds("turntable"), ["ANA.TURNTABLE", "ANA"]);
   assert.deepEqual(listingAdminCategoryIds("analog"), []);
 });

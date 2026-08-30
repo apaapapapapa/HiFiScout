@@ -8,7 +8,7 @@
 
 import {
   UNCLASSIFIED_CATEGORY_ID,
-  categoryIdForFilter,
+  categoryIdForClassification,
   categorySearchAliases,
   isUnclassifiedCategoryId,
 } from "../catalog/categories.js";
@@ -17,6 +17,7 @@ import {
   listingMembershipCategoryIds,
 } from "../catalog/listing-components.js";
 import { normalizeFeatureFacts } from "../catalog/product-features.js";
+import { normalizeFacetFacts } from "../catalog/product-facets.js";
 import { manufacturerIdForFilter, normalizeManufacturerKey } from "../catalog/manufacturers.js";
 import { MANUFACTURER_RESOLVER_VERSION } from "../catalog/manufacturer-resolver.js";
 import { MODEL_RESOLVER_VERSION } from "../catalog/model-resolver.js";
@@ -25,6 +26,7 @@ import type {
   CatalogProductUpsertInput,
   CategoryId,
   ClassificationStatus,
+  FacetFact,
   FeatureFact,
   ManufacturerResolutionMethod,
   ManufacturerResolutionStatus,
@@ -76,11 +78,12 @@ interface CatalogFields {
   classificationStatus: ClassificationStatus;
   searchAliases: string;
   featureFacts: FeatureFact[];
+  facetFacts: FacetFact[];
 }
 
 interface ExistingCatalogFields extends Omit<
   CatalogFields,
-  "categoryIds" | "directCategoryIds" | "featureFacts"
+  "categoryIds" | "directCategoryIds" | "featureFacts" | "facetFacts"
 > {}
 
 interface InitialActivity {
@@ -114,9 +117,14 @@ async function runBatches(
 function catalogFields(product: CatalogProductUpsertInput): CatalogFields {
   // An unmapped seller category means "we could not decide", which is the sentinel — not the
   // `other` leaf a product can legitimately belong to.
+  const categoryEvidence = [product.rawCategory, product.category, product.title]
+    .filter(Boolean)
+    .join(" ");
   const primaryCategoryId =
-    categoryIdForFilter(product.primaryCategoryId || product.category || "") ||
-    UNCLASSIFIED_CATEGORY_ID;
+    categoryIdForClassification(
+      product.primaryCategoryId || product.category || "",
+      categoryEvidence,
+    ) || UNCLASSIFIED_CATEGORY_ID;
   const categoryIds = [primaryCategoryId];
   // Re-normalized rather than trusted: this repository accepts a loose input, and a caller that
   // supplies nothing must still store the primary as the listing's one direct category.
@@ -169,6 +177,7 @@ function catalogFields(product: CatalogProductUpsertInput): CatalogFields {
       (isUnclassifiedCategoryId(primaryCategoryId) ? "unclassified" : "classified"),
     searchAliases: product.searchAliases ?? categorySearchAliases(categoryIds),
     featureFacts: normalizeFeatureFacts(product.featureFacts || []),
+    facetFacts: normalizeFacetFacts(product.facetFacts || []),
   };
 }
 
@@ -186,8 +195,10 @@ function parseStoredCategoryIds(value: string | null | undefined): string[] {
 function existingCatalogFields(existing: ExistingProductRow): ExistingCatalogFields {
   // Same fallback as `catalogFields()`, so an unchanged row never looks changed to the diff below.
   const primaryCategoryId =
-    categoryIdForFilter(existing.primary_category_id || existing.category) ||
-    UNCLASSIFIED_CATEGORY_ID;
+    categoryIdForClassification(
+      existing.primary_category_id || existing.category,
+      [existing.raw_category, existing.category, existing.title].filter(Boolean).join(" "),
+    ) || UNCLASSIFIED_CATEGORY_ID;
   return {
     rawManufacturer: existing.raw_manufacturer ?? existing.manufacturer ?? "",
     normalizedRawManufacturer:
@@ -234,7 +245,7 @@ function existingCatalogFields(existing: ExistingProductRow): ExistingCatalogFie
     ),
     classificationStatus:
       existing.classification_status ||
-      (primaryCategoryId === "other" ? "unclassified" : "classified"),
+      (isUnclassifiedCategoryId(primaryCategoryId) ? "unclassified" : "classified"),
     searchAliases: existing.search_aliases ?? categorySearchAliases([primaryCategoryId]),
   };
 }
@@ -559,6 +570,57 @@ async function syncProductFeatureFacts(
   return factCount;
 }
 
+const CRAWL_OWNED_FACET_SOURCES = ["title", "seller_category", "legacy_category"] as const;
+
+async function syncProductFacetFacts(
+  db: QueryableDatabase,
+  shopKey: string,
+  products: readonly CatalogProductUpsertInput[],
+  sourceIds: readonly string[],
+  observedAt: string,
+): Promise<void> {
+  if (!sourceIds.length) return;
+  const wanted = new Set(sourceIds);
+  const selected = products.filter((product) => wanted.has(product.sourceId));
+  const rows = await rowsForSources(db, shopKey, sourceIds);
+  const idBySource = new Map(rows.map((row) => [row.source_id, row.id]));
+  const statements: D1PreparedStatement[] = [];
+
+  for (const product of selected) {
+    const productId = idBySource.get(product.sourceId);
+    if (!productId) continue;
+    const facts = catalogFields(product).facetFacts;
+    const placeholders = CRAWL_OWNED_FACET_SOURCES.map(() => "?").join(",");
+    statements.push(
+      db
+        .prepare(
+          `DELETE FROM product_facet_facts WHERE product_id = ? AND source IN (${placeholders})`,
+        )
+        .bind(productId, ...CRAWL_OWNED_FACET_SOURCES),
+    );
+    for (const fact of facts) {
+      statements.push(
+        db
+          .prepare(`
+        INSERT OR REPLACE INTO product_facet_facts(
+          product_id, facet_id, facet_value, source, confidence, verified_at
+        ) VALUES (?, ?, ?, ?, ?, ?)
+      `)
+          .bind(
+            productId,
+            fact.facetId,
+            fact.value,
+            fact.source,
+            fact.confidence,
+            fact.verifiedAt || observedAt,
+          ),
+      );
+    }
+  }
+
+  await runBatches(db, statements);
+}
+
 export async function upsertProducts(
   db: QueryableDatabase,
   shopKey: string,
@@ -587,6 +649,7 @@ export async function upsertProducts(
   const changedPriceSourceIds: string[] = [];
   const categorySyncSourceIds: string[] = [];
   const featureSyncSourceIds: string[] = [];
+  const facetSyncSourceIds: string[] = [];
   const writes: D1PreparedStatement[] = [];
   let changedCount = 0;
   let activityCount = 0;
@@ -600,6 +663,7 @@ export async function upsertProducts(
       newSourceIds.push(product.sourceId);
       categorySyncSourceIds.push(product.sourceId);
       featureSyncSourceIds.push(product.sourceId);
+      facetSyncSourceIds.push(product.sourceId);
       writes.push(
         db
           .prepare(`
@@ -671,6 +735,13 @@ export async function upsertProducts(
     if (priceChanged) changedPriceSourceIds.push(product.sourceId);
     if (categoriesChanged(existing, product)) categorySyncSourceIds.push(product.sourceId);
     if (existing.title !== product.title) featureSyncSourceIds.push(product.sourceId);
+    if (
+      existing.title !== product.title ||
+      existing.category !== product.category ||
+      (existing.raw_category ?? existing.category ?? "") !== fields.rawCategory
+    ) {
+      facetSyncSourceIds.push(product.sourceId);
+    }
 
     if (changed) {
       writes.push(
@@ -753,6 +824,7 @@ export async function upsertProducts(
     [...new Set(featureSyncSourceIds)],
     observedAt,
   );
+  await syncProductFacetFacts(db, shopKey, products, [...new Set(facetSyncSourceIds)], observedAt);
 
   // Ids are only known after the inserts land, so history is written in a second pass.
   const historySourceIds = [...new Set([...newSourceIds, ...changedPriceSourceIds])];

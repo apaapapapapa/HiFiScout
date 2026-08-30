@@ -52,14 +52,14 @@ function facetCounts(sqlite: ReturnType<typeof migratedSqlite>["sqlite"]): Map<s
   return new Map(rows.map((row) => [row.value, Number(row.active_product_count)]));
 }
 
-/** Acceptance case 1: both leaves and the parent they share return the same one card. */
-test("a set listing is found under either component category and under the parent", async () => {
+/** Acceptance case 1: both leaves and both v3 roots return the same one card. */
+test("a set listing is found under either component category and either v3 root", async () => {
   const { sqlite, db } = migratedSqlite();
   await seed(db, [
     listing({ sourceId: "set-1", manufacturer: "ESOTERIC", model: SET_TITLE, title: SET_TITLE }),
   ]);
 
-  for (const category of ["transport", "dac", "digital"]) {
+  for (const category of ["SRC.DISC", "PRC.DAC", "SRC", "PRC", "transport", "dac"]) {
     const found = await searchProducts(db, productQuery(`?category=${category}&includeTotal=true`));
     assert.equal(found.totalCount, 1, `?category=${category} must return the set listing`);
     assert.equal(found.items.length, 1);
@@ -94,17 +94,18 @@ test("every category facet count equals the cards that category filter returns",
   }
 });
 
-/** The set contributes one to the parent, not one per component. */
-test("a set contributes one card to the parent it shares, not one per component", async () => {
+/** The set contributes one card to each product type and root. */
+test("a set contributes one card to each v3 category membership", async () => {
   const { sqlite, db } = migratedSqlite();
   await seed(db, [
     listing({ sourceId: "set-1", manufacturer: "ESOTERIC", model: SET_TITLE, title: SET_TITLE }),
   ]);
 
   const counts = facetCounts(sqlite);
-  assert.equal(counts.get("digital"), 1);
-  assert.equal(counts.get("transport"), 1);
-  assert.equal(counts.get("dac"), 1);
+  assert.equal(counts.get("SRC"), 1);
+  assert.equal(counts.get("SRC.DISC"), 1);
+  assert.equal(counts.get("PRC"), 1);
+  assert.equal(counts.get("PRC.DAC"), 1);
 });
 
 /** Acceptance case 7: a single product behaves exactly as it always has. */
@@ -119,11 +120,11 @@ test("a single-product listing is found under its category and its parent only",
     }),
   ]);
 
-  for (const category of ["integrated_amp", "amplifier"]) {
+  for (const category of ["AMP.INTEGRATED", "AMP", "integrated_amp", "amplifier"]) {
     const found = await searchProducts(db, productQuery(`?category=${category}&includeTotal=true`));
     assert.equal(found.totalCount, 1, `?category=${category} must return the listing`);
   }
-  for (const category of ["dac", "digital", "transport"]) {
+  for (const category of ["PRC.DAC", "PRC", "SRC.DISC", "SRC"]) {
     const found = await searchProducts(db, productQuery(`?category=${category}&includeTotal=true`));
     assert.equal(found.totalCount, 0, `?category=${category} must not return an amplifier`);
   }
@@ -139,7 +140,7 @@ test("a listing that goes inactive leaves the categories it was found under", as
     title: SET_TITLE,
   });
   await seed(db, [set]);
-  assert.equal((await searchProducts(db, productQuery("?category=dac"))).items.length, 1);
+  assert.equal((await searchProducts(db, productQuery("?category=PRC.DAC"))).items.length, 1);
 
   await upsertProducts(db, SHOP, [], "2026-08-27T00:00:00.000Z", { deactivateMissing: true });
   await refreshListingProjections(
@@ -148,8 +149,8 @@ test("a listing that goes inactive leaves the categories it was found under", as
     "2026-08-27T00:00:00.000Z",
   );
 
-  assert.equal((await searchProducts(db, productQuery("?category=dac"))).items.length, 0);
-  assert.equal((await searchProducts(db, productQuery("?category=transport"))).items.length, 0);
+  assert.equal((await searchProducts(db, productQuery("?category=PRC.DAC"))).items.length, 0);
+  assert.equal((await searchProducts(db, productQuery("?category=SRC.DISC"))).items.length, 0);
   // The facet counts this projection on its own, with no join back to the entity, so a row left
   // behind by a pruned entity would be a category claiming a card that no longer exists.
   assert.equal(facetCounts(sqlite).size, 0, "membership must not outlive the entity it names");

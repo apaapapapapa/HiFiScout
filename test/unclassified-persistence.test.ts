@@ -39,7 +39,7 @@ function captureDb(existing: Record<string, unknown> & { id: number; source_id: 
   });
 }
 
-test("unclassified products persist the canonical other leaf instead of stale seller categories", async () => {
+test("unclassified products persist the sentinel without public category membership", async () => {
   const existing = {
     id: 1,
     source_id: "p1",
@@ -92,12 +92,11 @@ test("unclassified products persist the canonical other leaf instead of stale se
   const insert = categoryStatements.find((statement) =>
     /INSERT OR IGNORE INTO product_categories/.test(statement.sql),
   );
-  assert.ok(insert);
-  assert.ok(insert.binds.includes("other"));
+  assert.equal(insert, undefined);
 
   const update = db.statements.find((statement) => /UPDATE products SET/.test(statement.sql));
   assert.ok(update);
-  assert.ok(update.binds.includes('["other"]'));
+  assert.ok(update.binds.includes('["unclassified"]'));
   assert.ok(update.binds.includes("unclassified"));
 });
 

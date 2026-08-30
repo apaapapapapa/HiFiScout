@@ -113,10 +113,10 @@ function officialCategoryIds(text: unknown = ""): ClassifiableCategoryId[] {
       value,
     )
   ) {
-    ids.add("cd_sacd_player");
+    ids.add("SRC.DISC");
   }
   if (/\bphono\s+(?:equalizer\s+)?amplifier\b|フォノ(?:イコライザー)?アンプ/i.test(value)) {
-    ids.add("phono_eq");
+    ids.add("AMP.PHONO");
   }
   return [...ids];
 }

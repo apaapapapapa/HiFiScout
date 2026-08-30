@@ -14,6 +14,7 @@ import type {
 import { isRecord } from "../types.js";
 import { classifyCategoryEvidence, summarizeCategoryEvidence } from "./category-classifier.js";
 import { collectListingCategoryEvidence } from "./category-evidence.js";
+import { TAXONOMY_VERSION, categoryMappingValue } from "./categories.js";
 import {
   componentCategoryIds,
   detectListingComponents,
@@ -24,8 +25,9 @@ import { manufacturerIdForFilter, normalizeManufacturerKey } from "./manufacture
 import { presentationColorLabel } from "./model-presentation-color.js";
 import { resolveModel, MODEL_RESOLVER_VERSION } from "./model-resolver.js";
 import { inferFeatureFacts, normalizeFeatureFacts } from "./product-features.js";
+import { inferFacetFacts, normalizeFacetFacts } from "./product-facets.js";
 
-const CLASSIFICATION_METADATA_VERSION = 15;
+const CLASSIFICATION_METADATA_VERSION = 16;
 
 export interface CatalogNormalizationContext {
   /** Source seller used by narrowly scoped model-annotation rules. */
@@ -44,6 +46,7 @@ function classificationMetadata(
   return {
     ...existing,
     version: CLASSIFICATION_METADATA_VERSION,
+    taxonomyVersion: TAXONOMY_VERSION,
     state: classification.classificationState,
     status: classification.classificationStatus,
     reason: classification.classificationReason,
@@ -51,6 +54,7 @@ function classificationMetadata(
     categoryIds: classification.categoryIds,
     candidateCategoryIds: classification.candidateCategoryIds,
     evidence: summarizeCategoryEvidence(evidence),
+    confidence: classification.confidence,
   };
 }
 
@@ -94,6 +98,7 @@ export function applyCategoryClassification<T extends CategoryClassifiableProduc
     classificationSource: categorySet.classificationSource,
     candidateCategoryIds: classification.candidateCategoryIds,
     searchAliases: categorySet.searchAliases,
+    classificationConfidence: classification.confidence,
     categoryEvidence: evidence,
     metadata: {
       ...metadata,
@@ -146,6 +151,16 @@ export function normalizeCatalogProduct(
     ...(Array.isArray(product.featureFacts) ? product.featureFacts : []),
     ...inferFeatureFacts(product.title || "", { source: "title", confidence: 0.8 }),
   ]);
+  const mappedLegacyCategory = categoryMappingValue(config.categoryMapping, rawCategory);
+  const facetFacts = normalizeFacetFacts([
+    ...(Array.isArray(product.facetFacts) ? product.facetFacts : []),
+    ...inferFacetFacts(product.title || "", {
+      source: "title",
+      confidence: 0.8,
+      legacyCategoryIds: mappedLegacyCategory ? [mappedLegacyCategory] : [],
+    }),
+    ...inferFacetFacts(rawCategory, { source: "seller_category", confidence: 0.7 }),
+  ]);
   return applyCategoryClassification(
     {
       ...product,
@@ -165,6 +180,7 @@ export function normalizeCatalogProduct(
       modelResolutionConfidence: model.confidence,
       rawCategory,
       featureFacts,
+      facetFacts,
       componentCategoryIds: componentCategoryIds(components.components),
       metadata: {
         ...metadata,

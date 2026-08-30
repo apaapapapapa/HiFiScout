@@ -56,39 +56,42 @@ const OFFICIAL_INDEXES: Readonly<Record<string, readonly OfficialIndex[]>> = Obj
       url: "https://www.denon.com/ja-jp/category/archive-av-receivers/",
       sourceType: "manufacturer_archive",
     },
-    { url: "https://www.denon.com/ja-jp/category/turntables/", categoryId: "turntable" },
+    { url: "https://www.denon.com/ja-jp/category/turntables/", categoryId: "ANA.TURNTABLE" },
     {
       url: "https://www.denon.com/category/archive-turntables/",
-      categoryId: "turntable",
+      categoryId: "ANA.TURNTABLE",
       sourceType: "manufacturer_archive",
     },
-    { url: "https://www.denon.com/ja-jp/category/turntable-cartridges/", categoryId: "cartridge" },
+    {
+      url: "https://www.denon.com/ja-jp/category/turntable-cartridges/",
+      categoryId: "ANA.CARTRIDGE",
+    },
     {
       url: "https://www.denon.com/ja-jp/category/network-audio-players/",
-      categoryId: "network_player",
+      categoryId: "SRC.STREAMER",
     },
     {
       url: "https://www.denon.com/category/archive-network-audio-players/",
-      categoryId: "network_player",
+      categoryId: "SRC.STREAMER",
       sourceType: "manufacturer_archive",
     },
-    { url: "https://www.denon.com/ja-jp/category/sound-bars/", categoryId: "soundbar" },
+    { url: "https://www.denon.com/ja-jp/category/sound-bars/", categoryId: "SPK.SOUNDBAR" },
     {
       url: "https://www.denon.com/category/archive-sound-bars/",
-      categoryId: "soundbar",
+      categoryId: "SPK.SOUNDBAR",
       sourceType: "manufacturer_archive",
     },
-    { url: "https://www.denon.com/ja-jp/category/cd-players/", categoryId: "cd_sacd_player" },
+    { url: "https://www.denon.com/ja-jp/category/cd-players/", categoryId: "SRC.DISC" },
     {
       url: "https://www.denon.com/ja-jp/category/archive-cd-players/",
-      categoryId: "cd_sacd_player",
+      categoryId: "SRC.DISC",
       sourceType: "manufacturer_archive",
     },
     {
       url: "https://www.denon.com/ja-jp/category/archive-amplifiers/",
       sourceType: "manufacturer_archive",
     },
-    { url: "https://www.denon.com/ja-jp/category/perl/", categoryId: "earphone" },
+    { url: "https://www.denon.com/ja-jp/category/perl/", categoryId: "PER.EARPHONE" },
     { url: "https://www.denon.com/ja-jp/category/all-audio-components/" },
   ],
   esoteric: [
@@ -106,12 +109,12 @@ const OFFICIAL_INDEXES: Readonly<Record<string, readonly OfficialIndex[]>> = Obj
 
 const CATEGORY_LABELS: Readonly<Record<string, string>> = Object.freeze({
   av_receiver: "AV Receiver",
-  cartridge: "Cartridge",
-  cd_sacd_player: "CD/SACD Player",
-  earphone: "Earphones",
-  network_player: "Network Audio Player",
-  soundbar: "Soundbar",
-  turntable: "Turntable",
+  "ANA.CARTRIDGE": "Cartridge",
+  "SRC.DISC": "CD/SACD Player",
+  "PER.EARPHONE": "Earphones",
+  "SRC.STREAMER": "Network Audio Player",
+  "SPK.SOUNDBAR": "Soundbar",
+  "ANA.TURNTABLE": "Turntable",
 });
 
 function blockEntries(html: string = ""): BlockEntry[] {

@@ -79,7 +79,7 @@ test("generic discovery finds a same-origin product link and stays on the offici
   });
 
   assert.equal(result.status, "verified");
-  assert.equal(result.primaryCategoryId, "power_amp");
+  assert.equal(result.primaryCategoryId, "AMP.POWER");
   const requestedUrls = new Set(requested);
   assert.equal(requestedUrls.has("https://example.com/catalog"), true);
   assert.equal(requestedUrls.has("https://example.com/products/ABC-1.html"), true);
@@ -108,7 +108,7 @@ test("generic discovery matches model-bearing anchor text even when the URL is o
   });
 
   assert.equal(result.status, "verified");
-  assert.equal(result.primaryCategoryId, "power_amp");
+  assert.equal(result.primaryCategoryId, "AMP.POWER");
   assert.equal(new Set(requested).has("https://example.com/item/931"), true);
 });
 
@@ -132,7 +132,7 @@ test("an official category index verifies a simplified model and keeps the listi
   });
 
   assert.equal(result.status, "verified");
-  assert.equal(result.primaryCategoryId, "turntable");
+  assert.equal(result.primaryCategoryId, "ANA.TURNTABLE");
   assert.equal(result.canonicalModel, "DP-400-BK [DP400BKEM]");
 });
 
@@ -175,7 +175,7 @@ test("an index that mentions the model without a category inherits the nearest h
   });
 
   assert.equal(result.status, "verified");
-  assert.equal(result.primaryCategoryId, "other");
+  assert.equal(result.primaryCategoryId, "SRC.TUNER");
 });
 
 test("an ambiguous index result outranks a later strategy's plain miss", async () => {
@@ -270,8 +270,8 @@ test("a manufacturer strategy with its own source verifies before the registry i
 
   assert.equal(result.status, "verified");
   assert.equal(result.canonicalModel, "SACD10/FB");
-  assert.equal(result.primaryCategoryId, "cd_sacd_player");
-  assert.deepEqual(result.categoryIds, ["cd_sacd_player"]);
+  assert.equal(result.primaryCategoryId, "SRC.DISC");
+  assert.deepEqual(result.categoryIds, ["SRC.DISC"]);
   assert.equal(result.sourceUrl, officialIndex);
   assert.match(result.message, /marantz_cd_sacd_index_v5/);
   assert.deepEqual(requested, [officialIndex]);
@@ -299,7 +299,7 @@ test("generic discovery promotes a manufacturer that only the expanded registry 
   });
 
   assert.equal(result.status, "verified");
-  assert.equal(result.primaryCategoryId, "wired_headphone");
+  assert.equal(result.primaryCategoryId, "PER.HEADPHONE");
   const requestedUrls = new Set(requested);
   assert.equal(requestedUrls.has("https://stax.co.jp/product/"), true);
   assert.equal(requestedUrls.has("https://stax.co.jp/product/sr-x9000/"), true);
@@ -326,8 +326,8 @@ test("STAX SRM driver units stay in the headphone amplifier category", async () 
   });
 
   assert.equal(result.status, "verified");
-  assert.equal(result.primaryCategoryId, "headphone_amp");
-  assert.deepEqual(result.categoryIds, ["headphone_amp"]);
+  assert.equal(result.primaryCategoryId, "AMP.HEADPHONE");
+  assert.deepEqual(result.categoryIds, ["AMP.HEADPHONE"]);
   assert.match(result.message, /official_family_v5/);
 });
 
@@ -352,8 +352,8 @@ test("McIntosh MHA products stay in the headphone amplifier category", async () 
   });
 
   assert.equal(result.status, "verified");
-  assert.equal(result.primaryCategoryId, "headphone_amp");
-  assert.deepEqual(result.categoryIds, ["headphone_amp"]);
+  assert.equal(result.primaryCategoryId, "AMP.HEADPHONE");
+  assert.deepEqual(result.categoryIds, ["AMP.HEADPHONE"]);
   assert.match(result.message, /official_family_v5/);
 });
 
@@ -410,7 +410,7 @@ test("rechecking a stored source applies the same family category correction", a
   });
 
   assert.equal(result.status, "verified");
-  assert.equal(result.primaryCategoryId, "headphone_amp");
+  assert.equal(result.primaryCategoryId, "AMP.HEADPHONE");
   assert.match(result.message, /official_family_v5/);
 });
 

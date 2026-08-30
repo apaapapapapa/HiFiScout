@@ -34,7 +34,7 @@ test("a component's own text decides its category", () => {
     componentCategoryIds(
       componentsOf("ESOTERIC Grandioso P1 SACDトランスポート + Grandioso D1 DAC"),
     ),
-    ["transport", "dac"],
+    ["SRC.DISC", "PRC.DAC"],
   );
 });
 
@@ -47,42 +47,39 @@ test("a component that names no category contributes the unclassified sentinel",
 
 test("one classified component decides the set even when its siblings are silent", () => {
   assert.deepEqual(
-    listingDirectCategoryIds(["unclassified", "power_amp", "unclassified"], "unclassified"),
-    ["power_amp"],
+    listingDirectCategoryIds(["unclassified", "AMP.POWER", "unclassified"], "unclassified"),
+    ["AMP.POWER"],
   );
 });
 
 test("a set whose components name nothing falls back to the listing classification", () => {
-  assert.deepEqual(listingDirectCategoryIds(["unclassified", "unclassified"], "dac"), ["dac"]);
+  assert.deepEqual(listingDirectCategoryIds(["unclassified", "unclassified"], "PRC.DAC"), [
+    "PRC.DAC",
+  ]);
 });
 
 test("a listing with no components is directly in its own primary category", () => {
-  assert.deepEqual(listingDirectCategoryIds([], "integrated_amp"), ["integrated_amp"]);
+  assert.deepEqual(listingDirectCategoryIds([], "AMP.INTEGRATED"), ["AMP.INTEGRATED"]);
 });
 
-test("the filter closure counts a shared parent once", () => {
-  const closure = listingCategoryClosureIds(["transport", "dac"]);
-  assert.equal(
-    closure.filter((id) => id === "digital").length,
-    1,
-    "a transport and a DAC are one digital listing, not two",
-  );
-  assert.deepEqual([...closure].sort(), ["dac", "digital", "transport"]);
+test("the filter closure contains each v3 product type and root once", () => {
+  const closure = listingCategoryClosureIds(["SRC.DISC", "PRC.DAC"]);
+  assert.deepEqual(closure, ["SRC", "SRC.DISC", "PRC", "PRC.DAC"]);
 });
 
 test("the filter closure is ordered by the taxonomy, not by the order it was given", () => {
   assert.deepEqual(
-    listingCategoryClosureIds(["dac", "transport"]),
-    listingCategoryClosureIds(["transport", "dac"]),
+    listingCategoryClosureIds(["PRC.DAC", "SRC.DISC"]),
+    listingCategoryClosureIds(["SRC.DISC", "PRC.DAC"]),
   );
 });
 
 test("a primary that is still one of the direct categories survives", () => {
-  assert.equal(listingPrimaryCategoryId(["transport", "dac"], "dac"), "dac");
+  assert.equal(listingPrimaryCategoryId(["SRC.DISC", "PRC.DAC"], "PRC.DAC"), "PRC.DAC");
 });
 
 test("a primary the components did not name is replaced from the taxonomy", () => {
-  const directIds = listingDirectCategoryIds(["pre_amp", "power_amp"], "unclassified");
+  const directIds = listingDirectCategoryIds(["AMP.PRE", "AMP.POWER"], "unclassified");
   assert.equal(listingPrimaryCategoryId(directIds, "unclassified"), directIds[0]);
 });
 
@@ -109,7 +106,7 @@ test("a set the listing classifier already agrees with keeps its representative 
   const classification = classificationOf(title);
   const set = listingCategorySet(classification, componentCategoryIds(componentsOf(title)));
 
-  assert.deepEqual(set.directCategoryIds, ["pre_amp", "power_amp"]);
+  assert.deepEqual(set.directCategoryIds, ["AMP.PRE", "AMP.POWER"]);
   assert.equal(set.promoted, false);
   assert.equal(set.primaryCategoryId, classification.primaryCategoryId);
   assert.equal(set.categoryIds.length, 1, "the single-product classification stays single");
@@ -127,11 +124,12 @@ test("a representative category none of the components share is replaced, not le
       classificationSource: "unclassified",
       candidateCategoryIds: [],
       searchAliases: "",
+      confidence: 0,
     },
-    ["pre_amp", "power_amp"],
+    ["AMP.PRE", "AMP.POWER"],
   );
 
-  assert.deepEqual(set.directCategoryIds, ["pre_amp", "power_amp"]);
+  assert.deepEqual(set.directCategoryIds, ["AMP.PRE", "AMP.POWER"]);
   assert.equal(set.promoted, true);
   assert.equal(set.classificationStatus, "classified");
   assert.equal(set.classificationSource, "component_evidence");
@@ -154,8 +152,8 @@ test("normalization carries a set's categories through to the product", () => {
     sourceUrl: "https://example.test/set-1",
   });
 
-  // Taxonomy order, which puts `dac` ahead of `transport` whatever the seller wrote first.
-  assert.deepEqual(normalized.directCategoryIds, ["dac", "transport"]);
+  // Taxonomy order, independent of the order in which the seller wrote the components.
+  assert.deepEqual(normalized.directCategoryIds, ["SRC.DISC", "PRC.DAC"]);
   assert.equal(normalized.categoryIds.length, 1);
   assert.ok(normalized.directCategoryIds.includes(normalized.primaryCategoryId));
 });
@@ -173,7 +171,7 @@ test("normalizing a single product leaves it in exactly one direct category", ()
   });
 
   assert.deepEqual(normalized.directCategoryIds, [normalized.primaryCategoryId]);
-  assert.equal(normalized.primaryCategoryId, "integrated_amp");
+  assert.equal(normalized.primaryCategoryId, "AMP.INTEGRATED");
 });
 
 test("a DAC-equipped integrated amplifier is one product in one category", () => {
@@ -208,11 +206,11 @@ test("re-classifying an already-normalized set keeps its component categories", 
     stockStatus: "in_stock",
     sourceUrl: "https://example.test/set-enriched",
   });
-  assert.deepEqual(normalized.directCategoryIds, ["dac", "transport"]);
+  assert.deepEqual(normalized.directCategoryIds, ["SRC.DISC", "PRC.DAC"]);
 
   const reclassified = applyCategoryClassification(normalized, {
-    primaryCategoryId: "transport",
-    categoryIds: ["transport"],
+    primaryCategoryId: "SRC.DISC",
+    categoryIds: ["SRC.DISC"],
     displayName: "トランスポート",
     classificationStatus: "classified",
     classificationState: "classified",
@@ -220,15 +218,17 @@ test("re-classifying an already-normalized set keeps its component categories", 
     classificationSource: "detail_page",
     candidateCategoryIds: [],
     searchAliases: "transport",
+    confidence: 1,
   });
 
-  assert.deepEqual(reclassified.directCategoryIds, ["dac", "transport"]);
+  assert.deepEqual(reclassified.directCategoryIds, ["SRC.DISC", "PRC.DAC"]);
 });
 
-test("the shared parent of a set's components is one closure entry, not one per component", () => {
-  const closure = listingCategoryClosureIds(["transport", "dac"]);
-  assert.equal(closure.filter((id) => id === "digital").length, 1);
-  assert.deepEqual([...closure].sort(), ["dac", "digital", "transport"]);
+test("the roots of a set's components are materialized once", () => {
+  const closure = listingCategoryClosureIds(["SRC.DISC", "PRC.DAC"]);
+  assert.equal(closure.filter((id) => id === "SRC").length, 1);
+  assert.equal(closure.filter((id) => id === "PRC").length, 1);
+  assert.deepEqual(closure, ["SRC", "SRC.DISC", "PRC", "PRC.DAC"]);
 });
 
 /**
@@ -251,7 +251,7 @@ test("a component identified from a concise model is classified from the title",
     detection.components.map((component) => component.segment),
     ["Grandioso P1", "Grandioso D1"],
   );
-  assert.deepEqual(componentCategoryIds(detection.components), ["transport", "dac"]);
+  assert.deepEqual(componentCategoryIds(detection.components), ["SRC.DISC", "PRC.DAC"]);
 });
 
 test("a title that names no component leaves the components unclassified", () => {
@@ -286,5 +286,5 @@ test("normalizing a set with a concise model field keeps both categories", () =>
     sourceUrl: "https://example.test/set-concise",
   });
 
-  assert.deepEqual(normalized.directCategoryIds, ["dac", "transport"]);
+  assert.deepEqual(normalized.directCategoryIds, ["SRC.DISC", "PRC.DAC"]);
 });

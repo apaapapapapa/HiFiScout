@@ -69,7 +69,7 @@ test("verified exact catalog match classifies before seller detail enrichment", 
 
   assert.equal(result.catalogMatches, 1);
   assert.equal(result.detailRequests, 0);
-  assert.equal(result.products[0].primaryCategoryId, "pre_amp");
+  assert.equal(result.products[0].primaryCategoryId, "AMP.PRE");
   assert.equal(result.products[0].classificationSource, "knowledge_catalog");
   assert.equal(result.products[0].metadata.categoryClassification.catalogProductId, 10);
   assert.equal(result.products[0].metadata.categoryClassification.catalogMatchType, "exact");
@@ -115,7 +115,7 @@ test("derived Marantz model aliases reuse one verified catalog classification ac
 
   assert.equal(result.catalogMatches, 1);
   assert.equal(result.detailRequests, 0);
-  assert.equal(result.products[0].primaryCategoryId, "cd_sacd_player");
+  assert.equal(result.products[0].primaryCategoryId, "SRC.DISC");
   assert.equal(result.products[0].metadata.categoryClassification.catalogProductId, 20);
   assert.equal(
     result.products[0].metadata.categoryClassification.catalogMatchType,
@@ -218,7 +218,7 @@ test("manual-verified exact model may classify a candidate model without weakeni
   });
 
   assert.equal(result.catalogMatches, 1);
-  assert.equal(result.products[0].primaryCategoryId, "network_switch");
+  assert.equal(result.products[0].primaryCategoryId, "SIG.NETWORK");
   assert.equal(result.products[0].classificationStatus, "classified");
   assert.equal(result.products[0].metadata.categoryClassification.catalogProductId, 224);
 });

@@ -111,7 +111,7 @@ test("category-version backfill seeds the active inventory once and drains acros
   const entityKey = entityRow.entity_key;
   const before = await searchProducts(db, productQuery("?includeTotal=true"));
   assert.deepEqual(before.items.find((item) => item.key === entityKey)?.direct_category_ids, [
-    "transport",
+    "unclassified",
   ]);
 
   const first = await runDataQualityRemediationSweep(db, {
@@ -170,7 +170,7 @@ test("category-version backfill seeds the active inventory once and drains acros
   const storedSet = sqlite
     .prepare("SELECT direct_category_ids FROM products WHERE id = ?")
     .get(setId) as unknown as { direct_category_ids: string };
-  assert.deepEqual(JSON.parse(storedSet.direct_category_ids), ["dac", "transport"]);
+  assert.deepEqual(JSON.parse(storedSet.direct_category_ids), ["SRC.DISC", "PRC.DAC"]);
 
   const directMembership = sqlite
     .prepare(`
@@ -182,16 +182,16 @@ test("category-version backfill seeds the active inventory once and drains acros
     .all(setId) as unknown as { category_id: string }[];
   assert.deepEqual(
     directMembership.map((row) => row.category_id),
-    ["dac", "transport"],
+    ["PRC.DAC", "SRC.DISC"],
   );
 
   const after = await searchProducts(db, productQuery("?includeTotal=true"));
   const replayed = after.items.find((item) => item.key === entityKey);
-  // This is the empirical taxonomy-order assertion requested by the issue handoff: DAC precedes
-  // transport regardless of component order or SQLite row order.
-  assert.deepEqual(replayed?.direct_category_ids, ["dac", "transport"]);
+  // This is the empirical taxonomy-order assertion requested by the issue handoff: the canonical
+  // source type precedes the processing type regardless of component or SQLite row order.
+  assert.deepEqual(replayed?.direct_category_ids, ["SRC.DISC", "PRC.DAC"]);
 
-  for (const category of ["dac", "transport", "digital"]) {
+  for (const category of ["PRC.DAC", "SRC.DISC", "PRC", "SRC", "dac", "transport"]) {
     const found = await searchProducts(db, productQuery(`?category=${category}&includeTotal=true`));
     assert.equal(
       found.items.some((item) => item.key === entityKey),

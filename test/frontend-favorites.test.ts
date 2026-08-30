@@ -70,6 +70,7 @@ function filters(overrides: Partial<ProductFilters> = {}): ProductFilters {
     maxPrice: "",
     sort: "newest",
     features: [],
+    facets: [],
     inStock: false,
     favoritesOnly: true,
     recentOnly: false,

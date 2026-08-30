@@ -1,22 +1,7 @@
 import type { ClassifiableCategoryId } from "./types.js";
 
-/**
- * Digital audio player model families, each anchored to its own brand.
- *
- * A bare `M23` or `R6` identifies nothing, and matching one would be actively harmful: those
- * strings also appear in other brands' cable and earphone model numbers. Every family therefore
- * requires the brand token to appear in the same text, close to the model.
- *
- * The brand comes from the title rather than from `manufacturer_id` because none of these brands
- * are in `MANUFACTURER_SOURCE` yet — a rule keyed on the resolved id would classify nothing until
- * that separate brand-coverage work lands, and shop titles carry the brand anyway.
- *
- * Each entry lists only the families that are unambiguously players for that brand. Brands that
- * also sell amplifiers, dongles or earphones keep those out: FiiO's `K`/`Q`/`BTR`/`FH` lines,
- * Cayin's `C9`/`RU`, HiBy's `FC`, Shanling's `UA`/`ME` and Astell&Kern's `PA` are deliberately
- * absent, so a portable amplifier is still read as one.
- */
-const DAP_MODEL_FAMILIES: readonly (readonly [brand: RegExp, models: RegExp])[] = [
+/** Product-type-only inference. Properties are inferred independently in `product-facets.ts`. */
+const DAP_MODEL_FAMILIES: readonly (readonly [RegExp, RegExp])[] = [
   [/astell\s*&?\s*kern|アステル(?:アンドケルン)?/, /\b(?:kann|sp\d{3,4}|se\d{3}|sr\d{2})\b/],
   [/cayin|カイン/, /\bn\d{1,2}[a-z]{0,3}\b/],
   [/hiby|ハイビー/, /\brs?\d{1,2}(?:\s*(?:i{1,3}|gen\s*\d|pro|saber))?\b/],
@@ -25,188 +10,228 @@ const DAP_MODEL_FAMILIES: readonly (readonly [brand: RegExp, models: RegExp])[] 
   [/ibasso|アイバッソ/, /\bdx\d{2,3}\b/],
   [/luxury\s*&?\s*precision|ラグジュアリー(?:アンドプレシジョン)?/, /\b(?:lp|p|e)\d{1,2}\b/],
 ];
-
-/**
- * A bounded gap between the two halves, so a shop title that puts a katakana reading between brand
- * and model still matches while an unrelated brand elsewhere in the same string cannot lend its
- * name to a model number.
- */
-const DAP_BRAND_MODEL_GAP = /[^]{0,32}?/;
-
-/**
- * A player's model number also names the accessories sold for it, and those are not players.
- *
- * This guard is anchored to the beginning of the whole input, not to the position where the brand
- * happens to match. RegExp#test searches for a match at every position, so an unanchored lookahead
- * let titles such as `ケース Astell&Kern SP2000` skip past the accessory word and start matching at
- * `Astell&Kern`. Blocking on the whole title keeps accessory-first and accessory-last spellings
- * symmetric. A genuine player whose title advertises a bundled case remains conservatively
- * unclassified so enrichment or the Knowledge Catalog can recover it instead of assigning a wrong
- * terminal label.
- */
 const DAP_ACCESSORY_GUARD =
   /^(?![^]*(?:ケース|カバー|フィルム|ストラップ|\bcase\b|\bcover\b|\bfilm\b|\bstrap\b))/;
-
 const DAP_MODEL_PATTERN = new RegExp(
-  `${DAP_ACCESSORY_GUARD.source}[^]*?(?:${DAP_MODEL_FAMILIES.map(
-    ([brand, models]) => `(?:${brand.source})${DAP_BRAND_MODEL_GAP.source}(?:${models.source})`,
-  ).join("|")})`,
+  `${DAP_ACCESSORY_GUARD.source}[^]*?(?:${DAP_MODEL_FAMILIES.map(([brand, models]) => `(?:${brand.source})[^]{0,32}?(?:${models.source})`).join("|")})`,
   "i",
 );
 
 /**
- * Ordered match table: the first pattern that matches wins, so entry order is behaviour.
- * The explicit tuple element type stops TypeScript widening each pair to
- * `(string | RegExp)[]`, which would erase the category id at every call site.
+ * A product can mention its detachable cable without becoming a cable listing. These narrow
+ * patterns run before the cable rules, while their negative suffix guards keep actual headphone
+ * cables, amplifiers, stands, cases, and replacement wear parts in their own product types.
  */
+const HEADPHONE_PRODUCT_PATTERN =
+  /\bheadphones?\b(?!\s*(?:amp|amplifier|cables?|cords?|outputs?|jacks?|stands?|cases?|covers?|pads?|parts?))|ヘッドホン(?!\s*(?:アンプ|ケーブル|コード|出力|端子|スタンド|ケース|カバー|パッド|部品))/i;
+const EARPHONE_PRODUCT_PATTERN =
+  /\b(?:earphones?|earbuds?|iem)\b(?!\s*(?:cables?|cords?|outputs?|jacks?|cases?|covers?|tips?|parts?))|イヤホン(?!\s*(?:ケーブル|コード|出力|端子|ケース|カバー|ピース|部品))/i;
+const HEADPHONE_AMPLIFIER_PATTERN =
+  /headphone[\s-]?(?:amp|amplifier)|energizer|ヘッドホンアンプ|エナジャイザー/i;
+const INTEGRATED_AMPLIFIER_PATTERN =
+  /integrated\s+(?:amp|amplifier)|プリメインアンプ|インテグレーテッドアンプ/i;
+
+/** `SYS.MULTIFUNCTION` requires explicit co-equal positioning and at least three major roles. */
+function isCoEqualMultifunction(value: string): boolean {
+  if (!/(?:all[\s-]*in[\s-]*one|multi[\s-]*function|複合オーディオ|オールインワン)/i.test(value))
+    return false;
+  if (
+    /integrated\s+(?:amp|amplifier)|プリメインアンプ|network\s+(?:audio\s+)?player|streaming\s+player|receiver|レシーバ|disc\s+player|cd\s*\/\s*sacd\s*プレーヤー/i.test(
+      value,
+    )
+  )
+    return false;
+  const roles = [
+    /\bdac\b|d\s*[/-]\s*a\s*(?:converter|コンバータ(?:ー)?)/i,
+    /headphone[\s-]*(?:amp|amplifier)|ヘッドホンアンプ/i,
+    /stream(?:er|ing)|network\s+(?:playback|transport)|ネットワーク再生/i,
+    /pre[\s-]?(?:amp|amplifier)|プリアンプ/i,
+    /power[\s-]?(?:amp|amplifier)|パワーアンプ/i,
+    /music\s+server|ミュージックサーバ/i,
+  ].filter((pattern) => pattern.test(value));
+  return roles.length >= 3;
+}
+
 const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
-  ["cable_usb", /\busb\b.*(?:\bcables?\b|interconnect)|usb\s*ケーブル|オーディオusbケーブル/i],
+  ["PWR.CORD", /\b(?:ac|power|mains)\b.*(?:\bcables?\b|cord)|(?:電源|ac)\s*(?:ケーブル|コード)/i],
+  ["CAB.SPEAKER", /speaker\s+cables?|スピーカーケーブル/i],
   [
-    "cable_lan",
-    /\b(?:lan|ethernet|network)\b.*\bcables?\b|(?:lan|イーサネット|ネットワーク)\s*ケーブル/i,
+    "CAB.PERSONAL",
+    /(?:headphone|earphone|iem)\s+cables?|(?:ヘッドホン|イヤホン|iem)\s*ケーブル|リケーブル/i,
   ],
   [
-    "cable_phono",
-    /\b(?:phono|tonearm)\b.*(?:\bcables?\b|interconnect)|フォノ(?:用)?ケーブル|トーンアームケーブル/i,
+    "CAB.DATA",
+    /\b(?:usb|lan|ethernet|network)\b.*\bcables?\b|(?:usb|lan|イーサネット|ネットワーク)\s*ケーブル/i,
   ],
   [
-    "cable_power",
-    /\b(?:ac|power|mains)\b.*(?:\bcables?\b|cord)|(?:電源|ac)\s*(?:ケーブル|コード)/i,
+    "CAB.DIGITAL",
+    /\b(?:digital|s\/?pdif|aes\/?ebu|aes3|toslink|optical|coaxial|hdmi)\b.*(?:\bcables?\b|interconnect)|(?:デジタル|同軸デジタル|光デジタル|hdmi|aes\/?ebu)\s*ケーブル/i,
   ],
   [
-    "cable_digital",
-    /\b(?:digital|s\/?pdif|aes\/?ebu|toslink|optical|coaxial|hdmi)\b.*(?:\bcables?\b|interconnect)|(?:デジタル|同軸デジタル|光デジタル|hdmi)\s*ケーブル/i,
+    "CAB.ANALOG",
+    /\b(?:phono|tonearm|rca|analog|balanced)\b.*(?:\bcables?\b|interconnect)|\bxlr\b.*\binterconnect\b|(?:フォノ|トーンアーム|rca|アナログ|バランス)\s*(?:ケーブル|インターコネクト)|xlr\s*インターコネクト/i,
   ],
-  ["cable_xlr", /\bxlr\b.*(?:\bcables?\b|interconnect)|xlr\s*(?:ケーブル|インターコネクト)/i],
-  ["cable_rca", /\brca\b.*(?:\bcables?\b|interconnect)|rca\s*(?:ケーブル|インターコネクト)/i],
-  ["cable_other", /\bcables?\b|ケーブル/i],
+  ["CAB.ADAPTER", /passive\s+(?:adapter|splitter)|(?:無増幅|パッシブ)(?:変換|分岐)|変換プラグ/i],
+  ["PWR.REGEN", /ac\s*regenerator|power\s*regenerator|電源リジェネレータ(?:ー)?/i],
   [
-    "clean_power",
-    /power\s*(?:conditioner|regenerator)|ac\s*regenerator|clean\s*power|クリーン電源|電源コンディショナ(?:ー)?|電源リジェネレータ(?:ー)?/i,
+    "PWR.CONDITIONER",
+    /power\s*conditioner|clean\s*power|isolation\s*transformer|クリーン電源|電源コンディショナ(?:ー)?|アイソレーション(?:トランス)?/i,
   ],
-  ["power_strip", /power\s*(?:strip|distributor|distribution)|電源タップ|電源ボックス/i],
+  ["PWR.DISTRIBUTION", /power\s*(?:strip|distributor|distribution)|電源タップ|電源ボックス|pdu\b/i],
   [
-    "network_switch",
-    /switching\s+hub|network\s+switch|ethernet\s+switch|スイッチングハブ|ネットワークスイッチ/i,
+    "PWR.SUPPLY",
+    /linear\s+(?:power\s+)?supply|external\s+power\s+supply|\b(?:ac|dc)\s*power\s*supply|リニア電源|外部電源|dc電源/i,
   ],
+  ["PWR.BATTERY", /\bups\b|battery\s+(?:power|supply)|バッテリー電源|無停電電源/i],
   [
-    "optical_isolator",
-    /optical\s+isolator|fiber\s+isolator|fibre\s+isolator|光アイソレータ(?:ー)?|光絶縁/i,
-  ],
-  ["router", /\b(?:audio\s+)?router\b|オーディオルータ(?:ー)?|ルータ(?:ー)?/i],
-  [
-    "music_server",
-    /music\s+server|audio\s+server|music\s+library\s+server|ミュージックサーバ(?:ー)?|オーディオサーバ(?:ー)?/i,
+    "SIG.NETWORK",
+    /switching\s+hub|network\s+switch|ethernet\s+switch|audio\s+router|スイッチングハブ|ネットワークスイッチ|オーディオルータ(?:ー)?/i,
   ],
   [
-    "master_clock",
+    "SIG.ISOLATOR",
+    /(?:signal|usb|lan|optical|fiber|fibre|analog)\s+isolator|光アイソレータ(?:ー)?|信号アイソレータ(?:ー)?|光絶縁/i,
+  ],
+  [
+    "SIG.SELECTOR",
+    /(?:audio|signal|input)?\s*(?:selector|distributor|matrix)|セレクタ(?:ー)?|ディストリビュータ(?:ー)?|分配器/i,
+  ],
+  [
+    "SIG.WIRELESS",
+    /wireless\s+(?:transmitter|receiver|adapter)|bluetooth\s+(?:transmitter|receiver|adapter)|ワイヤレス(?:送信機|受信機|アダプタ)|bluetooth(?:送信機|受信機)/i,
+  ],
+  ["AMP.INTEGRATED", INTEGRATED_AMPLIFIER_PATTERN],
+  [
+    "AMP.RECEIVER",
+    /\b(?:stereo|av|audio\s+video)\s+(?:receiver|amplifier|amp)\b|network\s+receiver|av(?:サラウンド)?(?:レシーバ(?:ー)?|アンプ)|\bavr[-\s]?[a-z0-9]|ステレオレシーバ(?:ー)?/i,
+  ],
+  [
+    "PRC.PROCESSOR",
+    /av\s+(?:preamp|pre[\s-]?pro|processor)|surround\s+processor|room\s+correction|audio\s+processor|graphic\s+equalizer|(?<!phono\s)\bequalizer\b|channel\s+divider|\bcrossover\b|avプリアンプ|サラウンドプロセッサ|音場補正|ルーム補正|(?<!フォノ)イコライザ(?:ー)?|チャンネル(?:デバイダ|ディバイダ)(?:ー)?|周波数分割/i,
+  ],
+  ["AMP.HEADPHONE", HEADPHONE_AMPLIFIER_PATTERN],
+  [
+    "AMP.PRE",
+    /pre[\s-]?(?:amp|amplifier)|control\s+(?:amp|amplifier)|linestage\s+preamplifier|プリアンプ|コントロールアンプ/i,
+  ],
+  ["AMP.POWER", /power[\s-]?(?:amp|amplifier)|パワーアンプ/i],
+  [
+    "AMP.STEPUP",
+    /(?:mc|moving\s+coil)\s+(?:step[\s-]*up\s+)?transformer|step[\s-]*up\s+transformer|(?:mc)?昇圧トランス|ヘッドアンプ/i,
+  ],
+  ["AMP.PHONO", /phono\s+(?:equalizer|eq|stage|amp)|フォノイコライザー|フォノアンプ/i],
+  [
+    "SRC.STREAMER",
+    /network\s+(?:audio\s+)?(?:player|transport)|network\s+cd\s+receiver|streaming\s+(?:player|transport)|\bstreamer\b|ネットワーク(?:オーディオ)?(?:プレーヤー|プレイヤー|トランスポート)|ストリーミングトランスポート/i,
+  ],
+  [
+    "SRC.DISC",
+    /(?:sacd|cd|dvd|blu[\s-]?ray)\s*(?:\/\s*(?:sacd|cd|dvd))?\s*(?:player|transport|プレーヤー|プレイヤー|トランスポート)|super\s+audio\s+cd\s+transport|disc\s+(?:player|transport)|(?:sacd\s*\/\s*cd|cd\s*\/\s*sacd)/i,
+  ],
+  [
+    "SRC.SERVER",
+    /music\s+(?:server|ripper)|audio\s+server|music\s+library\s+server|ミュージックサーバ(?:ー)?|オーディオサーバ(?:ー)?|リッパー/i,
+  ],
+  ["SRC.TUNER", /(?:dds\s+)?(?:fm|am\s*\/\s*fm)\s+stereo\s+tuner|\btuner\b|チューナー/i],
+  [
+    "SRC.DAP",
+    /\bdap\b|digital\s+audio\s+player|デジタルオーディオ(?:プレーヤー|プレイヤー)|ポータブルオーディオ(?:プレーヤー|プレイヤー)/i,
+  ],
+  ["SRC.DAP", DAP_MODEL_PATTERN],
+  [
+    "PRC.DDC",
+    /\bddc\b|digital\s+(?:(?:interface|format)\s+)?(?:converter|bridge)|usb\s+bridge|reclocker|デジタル(?:インターフェース|フォーマット)変換|リクロッカ(?:ー)?/i,
+  ],
+  ["PRC.ADC", /\badc\b|a\s*[/-]\s*d\s*(?:converter|コンバータ(?:ー)?)|ad\s*コンバータ(?:ー)?/i],
+  [
+    "PRC.CLOCK",
     /master\s+clock(?:\s+generator)?|clock\s+generator|マスタークロック(?:ジェネレータ(?:ー)?)?|クロックジェネレータ(?:ー)?/i,
   ],
   [
-    "other_accessory",
-    /\baccessor(?:y|ies)\b|insulator|インシュレータ(?:ー)?|アクセサリ(?:ー)?|hdmi\s*(?:switcher|switch)|hdmiスイッチャー|dust\s*cover|ダストカバー/i,
-  ],
-  ["rack", /audio\s+rack|オーディオラック/i],
-  [
-    "av_amp",
-    /\bav\s+(?:receiver|amplifier|amp)\b|audio\s+video\s+receiver|av(?:サラウンド)?(?:レシーバ(?:ー)?|アンプ)|\bavr[-\s]?[a-z0-9]/i,
+    "PRC.DAC",
+    /\bdac\b|d\s*[/-]\s*a\s*(?:converter|コンバータ(?:ー)?)|da\s*コンバータ(?:ー)?|d\/aコンバータ(?:ー)?/i,
   ],
   [
-    "other",
-    /voicing\s+equalizer|graphic\s+equalizer|(?<!phono\s)\bequalizer\b|音場補正|(?<!フォノ)イコライザ(?:ー)?|frequency\s+dividing\s+network|channel\s+divider|\bcrossover\b|チャンネル(?:デバイダ|ディバイダ)(?:ー)?|周波数分割|(?:dds\s+)?(?:fm|am\s*\/\s*fm)\s+stereo\s+tuner|\btuner\b|チューナー/i,
-  ],
-  ["integrated_amp", /integrated\s+(?:amp|amplifier)|プリメインアンプ|インテグレーテッドアンプ/i],
-  [
-    "pre_amp",
-    /pre[\s-]?(?:amp|amplifier)|control\s+(?:amp|amplifier)|linestage\s+preamplifier|プリアンプ|コントロールアンプ/i,
-  ],
-  ["power_amp", /power[\s-]?(?:amp|amplifier)|パワーアンプ/i],
-  ["headphone_amp", /headphone[\s-]?(?:amp|amplifier)|ヘッドホンアンプ/i],
-  // "vacuum tube" describes the implementation of an amplifier as often as it describes a
-  // replacement tube. Product-type amplifier evidence must therefore win before the tube-accessory
-  // fallback; a bare 12AX7/真空管 listing still lands here.
-  ["vacuum_tube", /vacuum\s+tube|真空管/i],
-  [
-    "transport",
-    /(?:network(?:\s+audio)?|streaming)\s+transport|ネットワーク(?:オーディオ)?トランスポート|ストリーミングトランスポート|(?:sacd|cd)\s*(?:\/\s*(?:sacd|cd))?\s*(?:transport|トランスポート)|super\s+audio\s+cd\s+transport|(?:cd|sacd)\s*\/\s*(?:sacd|cd)\s*トランスポート/i,
-  ],
-  [
-    "network_player",
-    /network\s+(?:audio\s+)?player|network\s+cd\s+receiver|streaming\s+player|ネットワーク(?:オーディオ)?(?:プレーヤー|プレイヤー)/i,
-  ],
-  [
-    "cd_sacd_player",
-    /network\s+cd\s+receiver|(?:sacd|cd)\s*(?:\/\s*(?:sacd|cd))?\s*(?:player|プレーヤー|プレイヤー)|(?:sacd\s*\/\s*cd|cd\s*\/\s*sacd)(?!\s*トランスポート)/i,
-  ],
-  [
-    "phono_step_up_transformer",
-    /(?:mc|moving\s+coil)\s+(?:step[\s-]*up\s+)?transformer|step[\s-]*up\s+transformer|(?:mc)?昇圧トランス/i,
-  ],
-  ["phono_eq", /phono\s+(?:equalizer|eq|stage)|フォノイコライザー|フォノアンプ/i],
-  [
-    "turntable",
+    "ANA.TURNTABLE",
     /\bturntable\b|record\s+player|ターンテーブル|(?:レコード|アナログ)(?:プレーヤー|プレイヤー)/i,
   ],
-  ["tonearm", /tone\s*arm|トーンアーム/i],
-  ["headshell", /\bhead\s*shell\b|ヘッドシェル/i],
-  ["cartridge", /\bcartridge\b|カートリッジ/i],
+  ["ANA.TONEARM", /tone\s*arm|トーンアーム/i],
+  ["ANA.HEADSHELL", /\bhead\s*shell\b|ヘッドシェル/i],
+  ["ANA.STYLUS", /replacement\s+stylus|交換針|レコード針/i],
+  ["ANA.CARTRIDGE", /\bcartridge\b|カートリッジ/i],
   [
-    "dap",
-    /\bdap\b|digital\s+audio\s+player|デジタルオーディオ(?:プレーヤー|プレイヤー)|ポータブルオーディオ(?:プレーヤー|プレイヤー)/i,
+    "ANA.TAPE",
+    /tape\s+deck|cassette\s+deck|open[\s-]*reel|テープデッキ|カセットデッキ|オープンリール/i,
   ],
-  // Deliberately below the cable, amplifier and earphone-word rules above: an explicit product-type
-  // word in the title beats a model number every time, so a brand's replacement cable or portable
-  // amplifier keeps its own category even though the brand also makes players.
-  ["dap", DAP_MODEL_PATTERN],
+  ["ACC.FURNITURE", /audio\s+(?:rack|furniture)|オーディオラック|オーディオ家具/i],
   [
-    "active_speaker",
-    /\bactive\b.*\bspeakers?\b|powered\s+(?:speakers?|monitors?)|アクティブ.*スピーカー|パワードスピーカー/i,
-  ],
-  ["center_speaker", /cent(?:er|re)(?:\s+channel)?\s+speaker|センター(?:・)?スピーカー/i],
-  ["speaker_bookshelf", /bookshelf(?:\s+speaker)?|stand[\s-]?mount|ブックシェルフ(?:型)?/i],
-  [
-    "speaker_floorstanding",
-    /floor[\s-]?standing|tower\s+speaker|トールボーイ|フロア型|フロアスタンディング/i,
-  ],
-  ["subwoofer", /sub[\s-]?woofer|スーパーウーファー|サブウーファー/i],
-  // Soundbars only. A generic "speaker" word must NOT resolve here: `other` is a terminal leaf, and
-  // `enrichProductCategories()` skips classified products, so labelling a bare `2Wayスピーカー` as
-  // "その他" froze it permanently — worse than leaving it unclassified, where the detail-page and
-  // Knowledge Catalog paths can still reach it. The alternative was introduced by the
-  // `speaker_other` leaf removal (#189) rewriting that id to `other`, not by a design decision.
-  // Do not add a generic classifiable speaker leaf back: `speaker` is `classifiable:false` on
-  // purpose, and a "その他スピーカー" bucket is useless as a buyer-facing filter.
-  ["other", /\bsound\s*bars?\b|サウンドバー/i],
-  [
-    "btw_earphone",
-    /(?:bluetooth|wireless|true\s+wireless|\btws\b).*?(?:earphones?|earbuds?|\biem\b)|(?:earphones?|earbuds?|\biem\b).*?(?:bluetooth|wireless|true\s+wireless|\btws\b)|(?:bluetooth|ワイヤレス|完全ワイヤレス).*?イヤホン|イヤホン.*?(?:bluetooth|ワイヤレス|完全ワイヤレス)|\bearbuds?\b|\bwf-\d|\btour\s+pro\b|\bopen(?:fit|dots|run)\w*\b|\bairpods\b(?!\s*max)|\blinkbuds\b|\bfreebuds\b|quietcomfort.*\bearbuds?\b/i,
+    "ACC.STAND",
+    /speaker\s+stand|headphone\s+stand|equipment\s+(?:stand|mount)|スピーカースタンド|ヘッドホンスタンド|機器スタンド|マウント/i,
   ],
   [
-    "btw_headphone",
-    /(?:bluetooth|wireless).*?headphones?|headphones?.*?(?:bluetooth|wireless)|(?:bluetooth|ワイヤレス).*?ヘッドホン|ヘッドホン.*?(?:bluetooth|ワイヤレス)|\bwh-\d{4}|\bwi-\d|quietcomfort\s+(?:ultra\s+)?headphones|\bpx[78]\b|\bmomentum\s+\d+\s+wireless\b|\bairpods\s+max\b/i,
+    "ACC.ISOLATION",
+    /insulator|isolation\s+(?:board|footer)|spike|インシュレータ(?:ー)?|オーディオボード|フッタ(?:ー)?|スパイク/i,
   ],
-  ["wired_earphone", /\bearphones?\b|\biem\b|イヤホン/i],
-  ["wired_headphone", /\bheadphones?\b|ヘッドホン/i],
-  ["dj_dtm", /\bdj\b|\bddj[-\s]|rekordbox|serato|\bmidi\b|オーディオインターフェース/i],
   [
-    "dac",
-    /\bdac\b|d\s*[/-]\s*a\s*(?:converter|コンバータ(?:ー)?)|da\s*コンバータ(?:ー)?|d\/aコンバータ(?:ー)?/i,
+    "ACC.ACOUSTIC",
+    /acoustic\s+(?:panel|absorber|diffuser|treatment)|bass\s+trap|吸音|拡散パネル|ルームアコースティック|ベーストラップ/i,
+  ],
+  ["ACC.WEAR", /ear\s*(?:pad|tip)|headband|イヤーパッド|イヤーピース|ヘッドバンド/i],
+  [
+    "ACC.CASE",
+    /(?:equipment|headphone|earphone|record)?\s*(?:case|cover|bag)|ケース|カバー|バッグ|ダストカバー/i,
+  ],
+  [
+    "ACC.MAINTENANCE",
+    /clean(?:er|ing)|maintenance|stylus\s+brush|クリーニング|メンテナンス|接点復活/i,
+  ],
+  ["ACC.TUBE", /vacuum\s+tube|replacement\s+tube|真空管/i],
+  [
+    "ACC.PART",
+    /replacement\s+(?:driver|terminal|knob|board)|diy\s+part|交換部品|補修部品|ドライバーユニット|ターミナル|ノブ/i,
+  ],
+  ["SPK.SUBWOOFER", /sub[\s-]?woofer|スーパーウーファー|サブウーファー/i],
+  ["SPK.SOUNDBAR", /\bsound\s*bars?\b|サウンドバー/i],
+  [
+    "SPK.LOUDSPEAKER",
+    /\b(?:active|powered|bookshelf|stand[\s-]?mount|floor[\s-]?standing|tower|cent(?:er|re)(?:\s+channel)?|surround)?\s*(?:loud)?speakers?\b|powered\s+monitors?|アクティブ.*スピーカー|パワードスピーカー|ブックシェルフ(?:型)?|トールボーイ|フロア型|フロアスタンディング|センター(?:・)?スピーカー|サラウンドスピーカー|スピーカー/i,
+  ],
+  [
+    "PER.EARPHONE",
+    /\bwf-\d|\btour\s+pro\b|\bopen(?:fit|dots|run)\w*\b|\bairpods\b(?!\s*max)|\blinkbuds\b|\bfreebuds\b|quietcomfort.*\bearbuds?\b/i,
+  ],
+  [
+    "PER.HEADPHONE",
+    /\bwh-\d{4}|\bwi-\d|quietcomfort\s+(?:ultra\s+)?headphones|\bpx[78]\b|\bmomentum\s+\d+\s+wireless\b|\bairpods\s+max\b/i,
+  ],
+  ["PER.EARPHONE", /\bearphones?\b|\bearbuds?\b|\biem\b|イヤホン|イヤーモニター/i],
+  ["PER.HEADPHONE", /\bheadphones?\b|\bheadset\b|ヘッドホン|ヘッドセット/i],
+  ["REC.INTERFACE", /audio\s+interface|オーディオインターフェース/i],
+  ["REC.MICPRE", /mic(?:rophone)?\s+pre(?:amp)?|channel\s+strip|マイクプリ|チャンネルストリップ/i],
+  ["REC.MONITOR", /monitor\s+controller|モニターコントローラ(?:ー)?/i],
+  ["REC.MIXER", /mixing\s+console|audio\s+mixer|ミキサー|ミキシングコンソール/i],
+  ["REC.RECORDER", /field\s+recorder|digital\s+recorder|レコーダー|録音機/i],
+  ["REC.MIC", /\bmicrophones?\b|\bmic\b|マイクロフォン|マイク(?:$|\s)/i],
+  [
+    "REC.DJ",
+    /dj\s+(?:controller|player|system)|\bddj[-\s]|rekordbox\s+controller|DJコントローラ(?:ー)?|デジタルDJ/i,
+  ],
+  [
+    "SYS.COMPLETE",
+    /complete\s+audio\s+system|packaged\s+audio\s+system|一体型オーディオシステム|コンポーネントシステム/i,
   ],
 ];
 
-/**
- * The second argument is accepted (and ignored) so callers can document the text they are
- * matching: `{ context: "title" | "seller" | "hint" | "detail" }`. The rule table itself is
- * context-independent.
- */
 export function inferExplicitCategoryIds(
   text: string = "",
   _options?: { context?: string },
 ): ClassifiableCategoryId[] {
   const value = String(text || "").normalize("NFKC");
   if (!value.trim()) return [];
-  for (const [id, pattern] of RULES) {
-    if (pattern.test(value)) return [id];
-  }
+  if (isCoEqualMultifunction(value)) return ["SYS.MULTIFUNCTION"];
+  if (INTEGRATED_AMPLIFIER_PATTERN.test(value)) return ["AMP.INTEGRATED"];
+  if (HEADPHONE_AMPLIFIER_PATTERN.test(value)) return ["AMP.HEADPHONE"];
+  if (EARPHONE_PRODUCT_PATTERN.test(value)) return ["PER.EARPHONE"];
+  if (HEADPHONE_PRODUCT_PATTERN.test(value)) return ["PER.HEADPHONE"];
+  for (const [id, pattern] of RULES) if (pattern.test(value)) return [id];
   return [];
 }

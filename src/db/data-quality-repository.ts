@@ -29,6 +29,10 @@ const MODEL_OPTIONAL_CATEGORIES = [
   "other",
 ];
 const MODEL_OPTIONAL_SQL = MODEL_OPTIONAL_CATEGORIES.map((category) => `'${category}'`).join(",");
+const MODEL_OPTIONAL_PREDICATE = `(p.primary_category_id LIKE 'CAB.%'
+  OR p.primary_category_id LIKE 'PWR.%'
+  OR p.primary_category_id LIKE 'ACC.%'
+  OR p.primary_category_id IN (${MODEL_OPTIONAL_SQL}))`;
 const STATUS_RANK: Readonly<Record<QualityStatus, number>> = {
   unknown: 0,
   healthy: 1,
@@ -111,9 +115,9 @@ export async function readDataQualitySnapshot(
         SUM(CASE WHEN r.status = 'unresolved' AND r.candidate_catalog_product_id IS NOT NULL THEN 1 ELSE 0 END) AS identity_candidate_count,
         SUM(CASE WHEN p.stock_status <> 'unknown' THEN 1 ELSE 0 END) AS inventory_known_count,
         SUM(CASE WHEN p.stock_status = 'unknown' THEN 1 ELSE 0 END) AS inventory_unknown_count,
-        SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN (${MODEL_OPTIONAL_SQL}) THEN 1 ELSE 0 END) AS model_expected_count,
-        SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN (${MODEL_OPTIONAL_SQL}) AND p.model_resolution_status = 'resolved' THEN 1 ELSE 0 END) AS model_extracted_count,
-        SUM(CASE WHEN p.classification_status = 'classified' AND p.primary_category_id NOT IN (${MODEL_OPTIONAL_SQL}) AND p.model_resolution_status <> 'resolved' THEN 1 ELSE 0 END) AS model_missing_count
+        SUM(CASE WHEN p.classification_status = 'classified' AND NOT ${MODEL_OPTIONAL_PREDICATE} THEN 1 ELSE 0 END) AS model_expected_count,
+        SUM(CASE WHEN p.classification_status = 'classified' AND NOT ${MODEL_OPTIONAL_PREDICATE} AND p.model_resolution_status = 'resolved' THEN 1 ELSE 0 END) AS model_extracted_count,
+        SUM(CASE WHEN p.classification_status = 'classified' AND NOT ${MODEL_OPTIONAL_PREDICATE} AND p.model_resolution_status <> 'resolved' THEN 1 ELSE 0 END) AS model_missing_count
       FROM products p
       LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
       WHERE p.shop_key = ? AND p.is_active = 1

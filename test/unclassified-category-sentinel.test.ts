@@ -64,12 +64,13 @@ test("the sentinel is a real definition but never a classifier target or a publi
   assert.equal(categorySearchAliases([UNCLASSIFIED_CATEGORY_ID]), "");
 });
 
-test("filtering by その他 returns the real leaf only, never the unclassified backlog", () => {
-  for (const filter of ["other", "その他"]) {
-    const ids = categoryFilterIds(filter);
-    assert.ok(ids.includes("other"), filter);
-    assert.equal(ids.includes(UNCLASSIFIED_CATEGORY_ID), false, filter);
-  }
+test("the removed other id resolves only to compatible product types", () => {
+  const ids = categoryFilterIds("other");
+  assert.ok(ids.includes("SRC.TUNER"));
+  assert.ok(ids.includes("PRC.PROCESSOR"));
+  assert.ok(ids.includes("other"), "the stale stored id remains readable during migration");
+  assert.equal(ids.includes(UNCLASSIFIED_CATEGORY_ID), false);
+  assert.deepEqual(categoryFilterIds("その他"), []);
 });
 
 test("search results say 未分類 instead of re-deriving その他 from the id", () => {
@@ -77,9 +78,9 @@ test("search results say 未分類 instead of re-deriving その他 from the id"
   assert.equal(unclassified.category, "未分類");
   assert.deepEqual(unclassified.category_ids, []);
 
-  const genuinelyOther = toProductSearchItem(entityRow("other"));
-  assert.equal(genuinelyOther.category, "その他");
-  assert.deepEqual(genuinelyOther.category_ids, ["other"]);
+  const staleOther = toProductSearchItem(entityRow("other"));
+  assert.equal(staleOther.category, "未分類");
+  assert.deepEqual(staleOther.category_ids, []);
 });
 
 test("a verified catalog product without a category projects the sentinel", () => {

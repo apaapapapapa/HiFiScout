@@ -1,6 +1,7 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
+import { categoryFilterIds } from "../src/catalog/categories.js";
 import { searchProducts } from "../src/db/product-search-repository.js";
 import { captureDatabase } from "./helpers/d1.js";
 import { productQuery } from "./helpers/product-query.js";
@@ -9,9 +10,12 @@ test("canonical category display names filter on the entity's category membershi
   const db = captureDatabase();
   await searchProducts(db, productQuery("?category=プリアンプ"));
 
+  const acceptedIds = categoryFilterIds("プリアンプ");
+  assert.ok(acceptedIds.includes("AMP.PRE"));
+  assert.ok(acceptedIds.includes("pre_amp"));
   assert.match(db.calls[0].sql, /product_search_entity_categories ec/);
-  assert.match(db.calls[0].sql, /ec\.category_id IN \(\?\)/);
-  assert.deepEqual(db.calls[0].binds.slice(0, 1), ["pre_amp"]);
+  assert.match(db.calls[0].sql, /ec\.category_id IN \(/);
+  assert.deepEqual(db.calls[0].binds.slice(0, acceptedIds.length), acceptedIds);
 });
 
 test("manufacturer aliases filter through canonical, legacy id, and stale presentation", async () => {

@@ -41,8 +41,8 @@ test("Fujiya unresolved model is classified from product-specific detail evidenc
     now: new Date("2026-08-11T10:00:00Z"),
   });
   const [classified] = result.products;
-  assert.equal(classified.primaryCategoryId, "cd_sacd_player");
-  assert.deepEqual(classified.categoryIds, ["cd_sacd_player"]);
+  assert.equal(classified.primaryCategoryId, "SRC.DISC");
+  assert.deepEqual(classified.categoryIds, ["SRC.DISC"]);
   assert.equal(classified.classificationStatus, "classified");
   assert.equal(result.detailRequests, 1);
   assert.equal(result.enrichedCount, 1);
@@ -62,7 +62,7 @@ test("Fujiya detail extraction stops at product-specific metadata and ignores re
   );
   assert.deepEqual(
     evidence.map((item) => item.categoryIds),
-    [["integrated_amp"]],
+    [["AMP.INTEGRATED"]],
   );
 });
 
@@ -113,7 +113,7 @@ test("cached detail classification is reused for the same product identity witho
   });
   assert.equal(result.detailRequests, 0);
   assert.equal(result.cacheHits, 1);
-  assert.equal(result.products[0].primaryCategoryId, "cd_sacd_player");
+  assert.equal(result.products[0].primaryCategoryId, "SRC.DISC");
 });
 
 test("successful unresolved detail checks are cached briefly, but fetch failures remain retryable", async () => {

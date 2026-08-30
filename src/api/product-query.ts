@@ -7,9 +7,11 @@
  */
 
 import { FEATURE_DEFINITIONS } from "../catalog/types.js";
+import { facetSelectionKey, parseFacetSelection } from "../catalog/product-facets.js";
 import { PRODUCT_QUERY_SORTS } from "./contracts.js";
 import { validateQueryContract } from "./route-contract.js";
 import type { ProductQuerySort } from "./contracts.js";
+import type { FacetSelection } from "../catalog/types.js";
 import type { QueryParameterContract } from "./route-contract.js";
 
 export const DEFAULT_PAGE_SIZE = 50;
@@ -20,6 +22,7 @@ export const MAX_OFFSET = 10_000;
 /** Maximum accepted code-point length per string parameter. */
 const LENGTH_LIMITS = { q: 100, shop: 80, manufacturer: 100, category: 100, cursor: 1024 };
 const MAX_FEATURE_PARAM_LENGTH = 200;
+const MAX_FACET_PARAM_LENGTH = 200;
 const FEATURE_IDS = FEATURE_DEFINITIONS.map((feature) => feature.id);
 
 /**
@@ -67,6 +70,14 @@ export const PRODUCT_QUERY_PARAMETERS = [
     maxLength: MAX_FEATURE_PARAM_LENGTH,
     enum: FEATURE_IDS,
     description: "Required product feature. May be repeated or supplied as a comma-separated list.",
+  },
+  {
+    name: "facet",
+    type: "string",
+    repeatable: true,
+    commaSeparated: true,
+    maxLength: MAX_FACET_PARAM_LENGTH,
+    description: "Required typed facet as facet_id:value. May be repeated or comma-separated.",
   },
   {
     name: "minPrice",
@@ -136,6 +147,8 @@ export interface ProductQuery {
   category: string;
   /** De-duplicated, validated feature ids. */
   features: string[];
+  /** OR within one facet id, AND across distinct facet ids. */
+  facets: FacetSelection[];
   inStock: boolean;
   newOnly: boolean;
   priceDropped: boolean;
@@ -167,6 +180,15 @@ export function requestedFeatures(params: URLSearchParams): string[] {
   ];
 }
 
+export function requestedFacetSelections(params: URLSearchParams): FacetSelection[] {
+  const byKey = new Map<string, FacetSelection>();
+  for (const value of params.getAll("facet").flatMap((entry) => entry.split(","))) {
+    const selection = parseFacetSelection(value.trim());
+    if (selection) byKey.set(facetSelectionKey(selection), selection);
+  }
+  return [...byKey.values()];
+}
+
 function isProductQuerySort(value: string | null): value is ProductQuerySort {
   return value != null && (PRODUCT_QUERY_SORTS as readonly string[]).includes(value);
 }
@@ -184,7 +206,14 @@ function integerParam(params: URLSearchParams, key: string): number | null {
  * into the OpenAPI description, so changing an accepted value cannot silently leave docs stale.
  */
 export function validateProductQuery(url: URL): string | null {
-  return validateQueryContract(url, PRODUCT_QUERY_PARAMETERS);
+  const contractError = validateQueryContract(url, PRODUCT_QUERY_PARAMETERS);
+  if (contractError) return contractError;
+  const requested = url.searchParams
+    .getAll("facet")
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim())
+    .filter(Boolean);
+  return requested.some((value) => !parseFacetSelection(value)) ? "invalid_facet" : null;
 }
 
 /**
@@ -204,6 +233,7 @@ export function parseProductQuery(url: URL): ProductQuery {
     manufacturer: trimmed(params, "manufacturer"),
     category: trimmed(params, "category"),
     features: requestedFeatures(params),
+    facets: requestedFacetSelections(params),
     inStock: params.get("inStock") === "true",
     newOnly: params.get("newOnly") === "true",
     priceDropped: params.get("priceDropped") === "true",
@@ -233,6 +263,10 @@ export function canonicalProductQueryUrl(url: URL, query: ProductQuery): URL {
   if (query.manufacturer) params.set("manufacturer", query.manufacturer);
   if (query.category) params.set("category", query.category);
   for (const feature of [...query.features].sort()) params.append("feature", feature);
+  for (const facet of [...query.facets].sort((left, right) =>
+    facetSelectionKey(left).localeCompare(facetSelectionKey(right)),
+  ))
+    params.append("facet", facetSelectionKey(facet));
   if (query.inStock) params.set("inStock", "true");
   if (query.newOnly) params.set("newOnly", "true");
   if (query.priceDropped) params.set("priceDropped", "true");

@@ -76,7 +76,7 @@ test("a detail budget smaller than the duplicate group still classifies every co
   // the cut-off stayed `other`/unclassified while their identical siblings became a real leaf.
   assert.deepEqual(
     result.products.map((product) => product.primaryCategoryId),
-    ["btw_earphone", "btw_earphone", "btw_earphone"],
+    ["PER.EARPHONE", "PER.EARPHONE", "PER.EARPHONE"],
   );
   assert.deepEqual(
     result.products.map((product) => product.classificationStatus),
@@ -125,7 +125,7 @@ test("a copy already classified from a detail page classifies its siblings witho
 
   assert.deepEqual(
     result.products.map((product) => product.primaryCategoryId),
-    ["btw_earphone", "btw_earphone", "btw_earphone"],
+    ["PER.EARPHONE", "PER.EARPHONE", "PER.EARPHONE"],
   );
   assert.equal(result.detailRequests, 0);
   assert.equal(result.cacheHits, 3);

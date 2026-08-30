@@ -7,6 +7,7 @@ import type {
   IdentityVeto,
   ProductIdentityResolution,
 } from "./types.js";
+import { categoryIdForClassification, isUnclassifiedCategoryId } from "./categories.js";
 
 const ROMAN_TO_NUMBER: Readonly<Record<string, string>> = Object.freeze({
   I: "1",
@@ -246,8 +247,17 @@ function categoryCompatible(
 ): boolean {
   const listingCategory = product.primaryCategoryId || product.primary_category_id || "";
   const candidateCategories = candidate.categoryIds || candidate.category_ids || [];
-  if (!listingCategory || listingCategory === "other" || !candidateCategories.length) return true;
-  return candidateCategories.includes(listingCategory);
+  const canonicalListingCategory = categoryIdForClassification(listingCategory);
+  if (
+    !canonicalListingCategory ||
+    isUnclassifiedCategoryId(canonicalListingCategory) ||
+    !candidateCategories.length
+  ) {
+    return true;
+  }
+  return candidateCategories.some(
+    (categoryId) => categoryIdForClassification(categoryId) === canonicalListingCategory,
+  );
 }
 
 function candidateView(candidate: IdentityCandidateInput): IdentityCandidateView {

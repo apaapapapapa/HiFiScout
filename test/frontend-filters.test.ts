@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { FEATURE_DEFINITIONS } from "../src/api/contracts.js";
 import {
   activeFilterEntries,
+  facetFromFilterId,
   featureFromFilterId,
   filterUrlParams,
   parseUrlFilters,
@@ -22,6 +23,7 @@ function filters(overrides: Partial<ProductFilters> = {}): ProductFilters {
     maxPrice: "",
     sort: "newest",
     features: [],
+    facets: [],
     inStock: true,
     favoritesOnly: false,
     recentOnly: false,
@@ -171,6 +173,54 @@ test("a feature selection survives the address bar", () => {
 
   const parsed = parseUrlFilters(`?${url.toString()}`);
   assert.deepEqual(parsed.features, ["dac", "headphone_output"]);
+});
+
+test("facet selections survive API, feed, URL, and removable-chip serialization", () => {
+  const selected = [
+    { facetId: "protocol", value: "bluetooth" },
+    { facetId: "connectivity", value: "wireless" },
+  ] as const;
+  const state = filters({ facets: selected });
+
+  assert.deepEqual(productSearchParams(state).getAll("facet"), [
+    "connectivity:wireless",
+    "protocol:bluetooth",
+  ]);
+  assert.match(savedSearchFeedPath(state), /facet=connectivity%3Awireless/);
+
+  const url = filterUrlParams(state, "list");
+  assert.deepEqual(parseUrlFilters(`?${url}`).facets, [
+    { facetId: "connectivity", value: "wireless" },
+    { facetId: "protocol", value: "bluetooth" },
+  ]);
+
+  const entries = activeFilterEntries(state, { shop: "", category: "" });
+  const facets = entries.filter((entry) => facetFromFilterId(entry.id));
+  assert.deepEqual(
+    facets.map((entry) => entry.label),
+    ["接続方式: ワイヤレス", "通信規格: Bluetooth"],
+  );
+  assert.ok(facets.every((entry) => entry.detail));
+  assert.deepEqual(facetFromFilterId(facets[0]!.id), {
+    facetId: "connectivity",
+    value: "wireless",
+  });
+});
+
+test("shared facet parameters are validated, de-duplicated, and hidden in favorites mode", () => {
+  const parsed = parseUrlFilters(
+    "?facet=connectivity:wireless,protocol:bluetooth&facet=connectivity:wireless&facet=unknown:value",
+  );
+  assert.deepEqual(parsed.facets, [
+    { facetId: "connectivity", value: "wireless" },
+    { facetId: "protocol", value: "bluetooth" },
+  ]);
+
+  const entries = activeFilterEntries(filters({ facets: parsed.facets, favoritesOnly: true }), {
+    shop: "",
+    category: "",
+  });
+  assert.equal(entries.filter((entry) => facetFromFilterId(entry.id)).length, 0);
 });
 
 test("the shared comma-separated form is accepted and de-duplicated", () => {

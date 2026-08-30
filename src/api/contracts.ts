@@ -14,8 +14,16 @@
  * localStorage, query strings) still belongs to the guards at each boundary.
  */
 
-import { FEATURE_DEFINITIONS } from "../catalog/types.js";
-import type { FeatureDefinition, FeatureId, StockStatus } from "../catalog/types.js";
+import { FACET_DEFINITIONS, FEATURE_DEFINITIONS } from "../catalog/types.js";
+import type {
+  FacetDefinition,
+  FacetId,
+  FacetSelection,
+  FeatureDefinition,
+  FeatureId,
+  StockStatus,
+  TaxonomyVersion,
+} from "../catalog/types.js";
 
 /**
  * Accepted `?feature=` values, in display order.
@@ -24,8 +32,8 @@ import type { FeatureDefinition, FeatureId, StockStatus } from "../catalog/types
  * that listed the ids itself would let a new feature ship server-side while staying unreachable —
  * which is exactly how the four existing filters ended up with no way to select them.
  */
-export { FEATURE_DEFINITIONS };
-export type { FeatureDefinition, FeatureId };
+export { FACET_DEFINITIONS, FEATURE_DEFINITIONS };
+export type { FacetDefinition, FacetId, FacetSelection, FeatureDefinition, FeatureId };
 
 // ---------------------------------------------------------------------------
 // seller listings (/api/products/:id/history)
@@ -326,6 +334,24 @@ export interface MetaCategoryFacet {
   activeProductCount: number;
 }
 
+export interface MetaProductFacet {
+  facetId: string;
+  value: string;
+  name: string;
+  group: string;
+  order: number;
+  activeProductCount: number;
+}
+
+export interface TaxonomyHealthSummary {
+  activeProductCount: number;
+  unclassifiedProductCount: number;
+  lowConfidenceProductCount: number;
+  legacyCategoryResidueCount: number;
+  legacyOtherResidualCount: number;
+  migratedCategoryShiftCount: number;
+}
+
 export interface MetaResponse {
   status: ShopHealthStatus;
   shops: MetaShop[];
@@ -336,6 +362,14 @@ export interface MetaResponse {
   /** Display names of classifiable categories, for the legacy ungrouped `<select>` fallback. */
   categories: string[];
   categoryFacets: MetaCategoryFacet[];
+  /** Optional only for cached metadata written before taxonomy v3. */
+  taxonomyVersion?: TaxonomyVersion;
+  /** Optional only for cached metadata written before taxonomy v3. */
+  facets?: MetaProductFacet[];
+  /** Optional only for cached metadata written before taxonomy v3. */
+  legacyCategoryAliases?: Readonly<Record<string, readonly string[]>>;
+  /** Optional only for cached metadata written before taxonomy v3. */
+  taxonomyHealth?: TaxonomyHealthSummary;
 }
 
 // ---------------------------------------------------------------------------

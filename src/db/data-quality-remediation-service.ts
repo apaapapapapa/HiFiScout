@@ -3,6 +3,7 @@ import {
   summarizeCategoryEvidence,
 } from "../catalog/category-classifier.js";
 import { collectListingCategoryEvidence } from "../catalog/category-evidence.js";
+import { TAXONOMY_VERSION } from "../catalog/categories.js";
 import {
   componentCategoryIds,
   detectListingComponents,
@@ -14,8 +15,14 @@ import { manufacturerIdForFilter } from "../catalog/manufacturers.js";
 import { presentationColorLabel } from "../catalog/model-presentation-color.js";
 import { createModelResolver } from "../catalog/model-resolver.js";
 import { inferFeatureFacts } from "../catalog/product-features.js";
+import { inferFacetFacts, normalizeFacetFacts } from "../catalog/product-facets.js";
 import { RESOLUTION_VERSIONS } from "../catalog/resolution-versions.js";
-import type { CategoryEvidenceInput, CategoryId, FeatureFact } from "../catalog/types.js";
+import type {
+  CategoryEvidenceInput,
+  CategoryId,
+  FacetFact,
+  FeatureFact,
+} from "../catalog/types.js";
 import { errorMessage, isRecord } from "../types.js";
 import { saveDataQualityRun } from "./data-quality-repository.js";
 import {
@@ -69,6 +76,10 @@ interface StoredFeatureFactRow {
   state: string;
   source: string;
   confidence: number;
+}
+
+function facetKey(fact: Pick<FacetFact, "facetId" | "value" | "source" | "confidence">): string {
+  return `${fact.facetId}:${fact.value}:${fact.source}:${Number(fact.confidence)}`;
 }
 
 interface PreparedRemediationJob {
@@ -193,6 +204,52 @@ async function syncTitleFeatureFacts(
   }
   await db.batch(statements);
   return true;
+}
+
+async function syncDerivedFacetFacts(
+  db: QueryableDatabase,
+  row: RemediationListingRow,
+  evaluatedAt: string,
+): Promise<void> {
+  const next = normalizeFacetFacts([
+    ...inferFacetFacts(row.title, {
+      source: "title",
+      confidence: 0.8,
+      verifiedAt: evaluatedAt,
+    }),
+    ...inferFacetFacts(row.raw_category, {
+      source: "seller_category",
+      confidence: 0.7,
+      verifiedAt: evaluatedAt,
+    }),
+  ]);
+  const statements: D1PreparedStatement[] = [
+    db
+      .prepare(`
+        DELETE FROM product_facet_facts
+        WHERE product_id = ? AND source IN ('title', 'seller_category')
+      `)
+      .bind(row.id),
+  ];
+  for (const fact of next.sort((left, right) => facetKey(left).localeCompare(facetKey(right)))) {
+    statements.push(
+      db
+        .prepare(`
+          INSERT OR REPLACE INTO product_facet_facts(
+            product_id, facet_id, facet_value, source, confidence, verified_at
+          ) VALUES (?, ?, ?, ?, ?, ?)
+        `)
+        .bind(
+          row.id,
+          fact.facetId,
+          fact.value,
+          fact.source,
+          fact.confidence,
+          fact.verifiedAt || evaluatedAt,
+        ),
+    );
+  }
+  await db.batch(statements);
 }
 
 async function loadListing(
@@ -321,6 +378,7 @@ async function replayDerivedListing(
     categoryClassification: {
       ...classificationMetadata(metadata),
       version: RESOLUTION_VERSIONS.category,
+      taxonomyVersion: TAXONOMY_VERSION,
       state: categorySet.classificationState,
       status: categorySet.classificationStatus,
       reason: categorySet.classificationReason,
@@ -328,6 +386,7 @@ async function replayDerivedListing(
       categoryIds: categorySet.categoryIds,
       candidateCategoryIds: classification.candidateCategoryIds,
       evidence: summarizeCategoryEvidence(evidence),
+      confidence: classification.confidence,
     },
   };
   const metadataJson = JSON.stringify(nextMetadata);
@@ -460,6 +519,7 @@ async function replayDerivedListing(
     );
   }
   await syncTitleFeatureFacts(db, row, evaluatedAt);
+  await syncDerivedFacetFacts(db, row, evaluatedAt);
   return changed ? token : row.remediation_projection_token;
 }
 

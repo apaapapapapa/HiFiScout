@@ -109,7 +109,12 @@ function firstExplicitDetailEvidence(
     // seller buckets and explicit title rules remain available for genuine model-only cable rows.
     const filtered = productTitleDeclaresCable(product)
       ? evidence
-      : evidence.filter((item) => !item.categoryIds?.some((id) => id.startsWith("cable_")));
+      : evidence.filter(
+          (item) =>
+            !item.categoryIds?.some(
+              (id) => id.startsWith("cable_") || id.startsWith("CAB.") || id === "PWR.CORD",
+            ),
+        );
     if (filtered.length) return filtered;
   }
   return [];

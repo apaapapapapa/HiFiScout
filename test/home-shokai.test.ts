@@ -112,9 +112,9 @@ test("Home Shokai adapter covers the two requested inventory snapshots and follo
 
   const [normalizedPreamp] = plugin.parse(consignmentHtml, consignmentPage);
   assert.ok(normalizedPreamp);
-  assert.equal(normalizedPreamp.primaryCategoryId, "pre_amp");
+  assert.equal(normalizedPreamp.primaryCategoryId, "AMP.PRE");
 
   const [normalizedTurntable] = plugin.parse(specialHtml, specialPage);
   assert.ok(normalizedTurntable);
-  assert.equal(normalizedTurntable.primaryCategoryId, "turntable");
+  assert.equal(normalizedTurntable.primaryCategoryId, "ANA.TURNTABLE");
 });
