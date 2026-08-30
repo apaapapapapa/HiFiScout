@@ -23,11 +23,7 @@ test("manual category authority rebuilds canonical direct and ancestor membershi
 });
 
 test("manual category authority preserves other bundle direct categories while replacing primary", () => {
-  const plan = planManualCategoryAuthority(
-    "SRC.DISC",
-    '["SRC.DISC","PRC.DAC"]',
-    "SRC.STREAMER",
-  );
+  const plan = planManualCategoryAuthority("SRC.DISC", '["SRC.DISC","PRC.DAC"]', "SRC.STREAMER");
   assert.ok(plan);
   assert.deepEqual(plan.directCategoryIds, ["SRC.STREAMER", "PRC.DAC"]);
   assert.deepEqual(plan.membershipCategoryIds, ["SRC", "SRC.STREAMER", "PRC", "PRC.DAC"]);
