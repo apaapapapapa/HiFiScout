@@ -323,8 +323,9 @@ const GENERAL_CRON_INTERVAL_MS = 5 * 60 * 1000;
  * trees against one instance — enough to have it reset under its own CPU limit, which takes down
  * whatever else was talking to D1 at that moment, crawl consumers included.
  *
- * Two properties fix that, and both matter: nothing here is frequent enough to deserve a
- * five-minute cadence, and the ones that are due run one after another rather than together.
+ * Two properties fix that, and both matter: the projection repair is the one five-minute exception
+ * because it is the bounded convergence path for user-facing search; less urgent work is rotated,
+ * and everything that is due runs one after another rather than together.
  */
 const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
   {
@@ -345,8 +346,10 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
     run: (env) => runDataQualityRemediationSweep(env.DB, { claimLimit: 1 }),
   },
   {
+    // This is the bounded convergence mechanism promised by repairGeneralCronProjectionGaps: if a
+    // crawl commits between sweeps, stale fallback search state is repaired by the very next tick.
     name: "product_search_projection_repair",
-    everyTicks: 6,
+    everyTicks: 1,
     run: (env) => repairGeneralCronProjectionGaps(env.DB),
   },
   // Both export recoveries treat a job as stuck after two minutes, so they stay near the old
