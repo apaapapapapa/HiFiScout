@@ -1,7 +1,10 @@
 import { crawlDispatchToken } from "../db/shop-state-repository.js";
 import { isCrawlQueueName } from "./queue-lanes.js";
+import { getShopPlugin } from "./shops/index.js";
+import type { CrawlQueueMessage } from "./types.js";
 
 export const CRAWL_SCHEDULER_OBSERVE_PATH = "/observe-checkpoint";
+export const CRAWL_SCHEDULER_START_PATH = "/start-crawl";
 export const CRAWL_SCHEDULER_COMMAND_VERSION = 1 as const;
 
 interface QueueMessageView {
@@ -34,6 +37,12 @@ export interface CrawlSchedulerObserveCommand {
   requestedAt: string;
   jobId: string;
   runId: string;
+}
+
+export interface CrawlSchedulerStartCommand {
+  schemaVersion: typeof CRAWL_SCHEDULER_COMMAND_VERSION;
+  type: "start_crawl";
+  message: CrawlQueueMessage;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -69,7 +78,7 @@ function crawlDeliveryBody(value: unknown): CrawlDeliveryBody | null {
   };
 }
 
-export function selectedCrawlDoShadowShops(value: string | null | undefined): ReadonlySet<string> {
+function selectedShops(value: string | null | undefined): ReadonlySet<string> {
   return new Set(
     String(value || "")
       .split(",")
@@ -78,11 +87,43 @@ export function selectedCrawlDoShadowShops(value: string | null | undefined): Re
   );
 }
 
+export function selectedCrawlDoShadowShops(value: string | null | undefined): ReadonlySet<string> {
+  return selectedShops(value);
+}
+
+export function selectedCrawlDoCanaryShops(value: string | null | undefined): ReadonlySet<string> {
+  return selectedShops(value);
+}
+
 export function shouldObserveCrawlWithDurableObject(
   configuredShops: string | null | undefined,
   shopKey: string,
 ): boolean {
   return selectedCrawlDoShadowShops(configuredShops).has(shopKey);
+}
+
+export function shouldExecuteCrawlWithDurableObject(
+  configuredShops: string | null | undefined,
+  shopKey: string,
+): boolean {
+  return selectedCrawlDoCanaryShops(configuredShops).has(shopKey);
+}
+
+/**
+ * Phase 2 is deliberately narrower than "all non-relay shops". A canary must have bounded page
+ * count and no capability that can issue seller HTTP during finalization, because every seller wait
+ * is owned explicitly by the DO Alarm pacing protocol.
+ */
+export function isCrawlDoCanaryEligible(shopKey: string): boolean {
+  const plugin = getShopPlugin(shopKey);
+  if (!plugin) return false;
+  const transport = plugin.capabilities.transport?.kind || "direct";
+  return (
+    transport === "direct" &&
+    (plugin.definition.defaultMaxPages || Number.POSITIVE_INFINITY) <= 5 &&
+    !plugin.capabilities.inventoryRecheck &&
+    !plugin.capabilities.detailCategoryEvidence
+  );
 }
 
 export function buildCrawlSchedulerObserveCommand(
@@ -119,6 +160,8 @@ function logBaselineDelivery(queue: string, body: CrawlDeliveryBody): void {
 
 async function scheduleShadowObservation(env: Env, body: CrawlDeliveryBody): Promise<void> {
   if (body.continuation) return;
+  // The authoritative canary and the Phase 1 observer must never compete for one shop object.
+  if (shouldExecuteCrawlWithDurableObject(env.CRAWL_DO_CANARY_SHOPS, body.shopKey)) return;
   if (!shouldObserveCrawlWithDurableObject(env.CRAWL_DO_SHADOW_SHOPS, body.shopKey)) return;
 
   const command = buildCrawlSchedulerObserveCommand(body);
@@ -162,12 +205,59 @@ async function scheduleShadowObservation(env: Env, body: CrawlDeliveryBody): Pro
 }
 
 /**
+ * Delivers an immutable dispatch identity to exactly one control-plane transport. Phase 2 canary
+ * shops use their per-shop Durable Object; every other shop stays on its existing Queue lane. The
+ * decision is an explicit allowlist only — workload lane, Queue quota and runtime cost never alter
+ * correctness routing.
+ */
+export async function deliverCrawlDispatch(
+  env: Env,
+  message: CrawlQueueMessage,
+  queue: Pick<Queue<CrawlQueueMessage>, "send">,
+): Promise<"durable_object" | "queue"> {
+  if (!shouldExecuteCrawlWithDurableObject(env.CRAWL_DO_CANARY_SHOPS, message.shopKey)) {
+    await queue.send(message);
+    return "queue";
+  }
+  if (!isCrawlDoCanaryEligible(message.shopKey)) {
+    throw new Error(`crawl DO canary shop is not eligible: ${message.shopKey}`);
+  }
+
+  const command: CrawlSchedulerStartCommand = {
+    schemaVersion: CRAWL_SCHEDULER_COMMAND_VERSION,
+    type: "start_crawl",
+    message,
+  };
+  const id = env.CRAWL_SCHEDULER.idFromName(message.shopKey);
+  const stub = env.CRAWL_SCHEDULER.get(id);
+  const response = await stub.fetch(`https://crawl-scheduler.internal${CRAWL_SCHEDULER_START_PATH}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(command),
+  });
+  if (!response.ok) {
+    throw new Error(`crawl scheduler returned HTTP ${response.status}`);
+  }
+  console.log(
+    JSON.stringify({
+      event: "crawl_do_canary_dispatched",
+      shopKey: message.shopKey,
+      requestedAt: message.requestedAt,
+      jobId: message.jobId || crawlDispatchToken(message.shopKey, message.requestedAt),
+      batchRunId: message.batchRunId || null,
+      lane: message.lane || null,
+    }),
+  );
+  return "durable_object";
+}
+
+/**
  * Phase 0/1 observation hook.
  *
  * Every crawl Queue delivery emits one baseline event. Initial deliveries for explicitly selected
  * shops are also mirrored to the per-shop Durable Object, which wakes by Alarm and reads the
- * authoritative D1 checkpoint without mutating crawl lifecycle state. The existing Queue consumer
- * remains the only executor until the Phase 2 canary deliberately changes that boundary.
+ * authoritative D1 checkpoint without mutating crawl lifecycle state. Phase 2 canary deliveries do
+ * not enter Queue at all, so they are intentionally absent from this baseline hook.
  */
 export async function observeCrawlQueueDelivery(batch: QueueBatchView, env: Env): Promise<void> {
   if (!isCrawlQueueName(batch.queue)) return;
