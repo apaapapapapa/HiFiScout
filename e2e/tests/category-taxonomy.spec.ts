@@ -121,7 +121,8 @@ test("live metadata exposes the complete canonical taxonomy including zero-count
 }) => {
   const response = await request.get("/api/meta");
   expect(response.ok()).toBeTruthy();
-  const meta: { taxonomyVersion?: string; categoryFacets?: CategoryFacet[] } = await response.json();
+  const meta: { taxonomyVersion?: string; categoryFacets?: CategoryFacet[] } =
+    await response.json();
   const facets = meta.categoryFacets ?? [];
   const expectedFacets = CATEGORIES.filter((category) => category.filterable).map((category) => ({
     id: category.id,

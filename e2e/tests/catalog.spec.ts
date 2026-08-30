@@ -108,7 +108,10 @@ async function routeMeta(page: Page, meta: JsonObject = mockMeta()): Promise<voi
   });
 }
 
-test("catalog page boots with live metadata and rendered results", async ({ page, catalogPage }) => {
+test("catalog page boots with live metadata and rendered results", async ({
+  page,
+  catalogPage,
+}) => {
   const metaResponsePromise = page.waitForResponse((response: Response) => {
     const url = new URL(response.url());
     return url.pathname === "/api/meta" && response.request().method() === "GET";
