@@ -152,7 +152,10 @@ test("catalog page boots with live metadata and rendered results", async ({
   }
 });
 
-test("changing a shop filter exposes a removable filter chip", async ({ page, catalogPage }) => {
+test("changing a shop filter refreshes search and exposes a removable filter chip", async ({
+  page,
+  catalogPage,
+}) => {
   await catalogPage.goto();
   await expect(catalogPage.syncSummaryText).not.toContainText("取得中");
   await expect(catalogPage.count).toHaveText(/^\d+$/);
@@ -164,9 +167,19 @@ test("changing a shop filter exposes a removable filter chip", async ({ page, ca
   }
   const firstShopLabel = (await firstShopOption.textContent())?.trim() || firstShopValue;
   const firstShopFilterLabel = firstShopLabel.replace(/\s+\(\d+\)$/u, "");
+  const filteredRequestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return (
+      url.pathname === "/api/product-search" &&
+      request.method() === "GET" &&
+      url.searchParams.get("shop") === firstShopValue
+    );
+  });
 
   await catalogPage.selectShop(firstShopValue);
+  const filteredRequest = await filteredRequestPromise;
 
+  expect(new URL(filteredRequest.url()).searchParams.get("shop")).toBe(firstShopValue);
   await expect(catalogPage.shop).toHaveValue(firstShopValue);
   await expect(catalogPage.activeFilters).toContainText(firstShopFilterLabel);
   await expect(page).toHaveURL(new RegExp(`shop=${encodeURIComponent(firstShopValue)}`));
