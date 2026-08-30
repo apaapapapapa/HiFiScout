@@ -8,10 +8,10 @@ import {
 } from "../src/crawler/orchestration.js";
 
 test("phase 1 DO selection is an explicit shop allowlist", () => {
-  assert.deepEqual([...selectedCrawlDoShadowShops(" home-shokai, ippinkan ,,home-shokai ")], [
-    "home-shokai",
-    "ippinkan",
-  ]);
+  assert.deepEqual(
+    [...selectedCrawlDoShadowShops(" home-shokai, ippinkan ,,home-shokai ")],
+    ["home-shokai", "ippinkan"],
+  );
   assert.equal(shouldObserveCrawlWithDurableObject("home-shokai,ippinkan", "home-shokai"), true);
   assert.equal(shouldObserveCrawlWithDurableObject("home-shokai,ippinkan", "hifido"), false);
   assert.equal(shouldObserveCrawlWithDurableObject("", "home-shokai"), false);

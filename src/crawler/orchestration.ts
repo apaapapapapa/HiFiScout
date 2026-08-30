@@ -62,7 +62,9 @@ function crawlDeliveryBody(value: unknown): CrawlDeliveryBody | null {
     ...(typeof value.jobId === "string" ? { jobId: value.jobId } : {}),
     ...(typeof value.batchRunId === "string" ? { batchRunId: value.batchRunId } : {}),
     ...(typeof value.lane === "string" ? { lane: value.lane } : {}),
-    ...(typeof value.collectionRunId === "string" ? { collectionRunId: value.collectionRunId } : {}),
+    ...(typeof value.collectionRunId === "string"
+      ? { collectionRunId: value.collectionRunId }
+      : {}),
     ...(continuation ? { continuation } : {}),
   };
 }
@@ -123,11 +125,14 @@ async function scheduleShadowObservation(env: Env, body: CrawlDeliveryBody): Pro
   try {
     const id = env.CRAWL_SCHEDULER.idFromName(body.shopKey);
     const stub = env.CRAWL_SCHEDULER.get(id);
-    const response = await stub.fetch(`https://crawl-scheduler.internal${CRAWL_SCHEDULER_OBSERVE_PATH}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(command),
-    });
+    const response = await stub.fetch(
+      `https://crawl-scheduler.internal${CRAWL_SCHEDULER_OBSERVE_PATH}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(command),
+      },
+    );
     if (!response.ok) {
       throw new Error(`crawl scheduler returned HTTP ${response.status}`);
     }
@@ -164,10 +169,7 @@ async function scheduleShadowObservation(env: Env, body: CrawlDeliveryBody): Pro
  * authoritative D1 checkpoint without mutating crawl lifecycle state. The existing Queue consumer
  * remains the only executor until the Phase 2 canary deliberately changes that boundary.
  */
-export async function observeCrawlQueueDelivery(
-  batch: QueueBatchView,
-  env: Env,
-): Promise<void> {
+export async function observeCrawlQueueDelivery(batch: QueueBatchView, env: Env): Promise<void> {
   if (!isCrawlQueueName(batch.queue)) return;
   for (const message of batch.messages) {
     const body = crawlDeliveryBody(message.body);

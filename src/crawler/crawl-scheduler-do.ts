@@ -22,7 +22,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function parseCrawlSchedulerObserveCommand(value: unknown): CrawlSchedulerObserveCommand | null {
+export function parseCrawlSchedulerObserveCommand(
+  value: unknown,
+): CrawlSchedulerObserveCommand | null {
   if (!isRecord(value)) return null;
   if (value.schemaVersion !== CRAWL_SCHEDULER_COMMAND_VERSION) return null;
   if (value.type !== "observe_checkpoint") return null;
