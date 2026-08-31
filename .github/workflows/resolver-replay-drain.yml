@@ -1,15 +1,10 @@
 name: Resolver Replay Drain
 
 on:
-  workflow_run:
-    workflows: ['Deploy Cloudflare']
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
-  actions: write
   statuses: write
 
 concurrency:
@@ -18,7 +13,6 @@ concurrency:
 
 jobs:
   drain:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -27,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.sha }}
       - uses: ./.github/actions/setup-node-deps
 
       - name: Resolve inherited production D1 binding
@@ -52,7 +46,8 @@ jobs:
         run: |
           set -euo pipefail
           # Administrative replay must not consume the production Worker's daily invocation quota.
-          # Keep each batch below the 20-minute job timeout so the continuation dispatch can run.
+          # Keep each batch below the 20-minute job timeout so an operator can inspect the result
+          # before explicitly starting another maintenance batch.
           result=.generated/remediation-drain-result.json
           vp exec tsx scripts/resolver-replay-drain.ts \
             --max-sweeps 24 \
@@ -120,7 +115,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TARGET_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          TARGET_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
@@ -140,17 +135,13 @@ jobs:
             -f description="$description" \
             -f target_url="$run_url"
 
-      - name: Continue replay or trigger full audit
+      - name: Report next manual action
         if: steps.drain.outcome == 'success'
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if [[ "${{ steps.drain.outputs.complete }}" == 'true' ]]; then
-            echo 'Resolver replay converged; dispatching the exhaustive product audit.'
-            gh workflow run product-data-audit.yml --repo "$GITHUB_REPOSITORY" --ref main
+            echo 'Resolver replay converged. Run Product Data Audit manually if an exhaustive audit is required.'
           else
-            echo "${{ steps.drain.outputs.remaining }} stale signals remain; dispatching the next bounded batch."
-            gh workflow run resolver-replay-drain.yml --repo "$GITHUB_REPOSITORY" --ref main
+            echo "${{ steps.drain.outputs.remaining }} stale signals remain. Inspect this batch, then manually dispatch Resolver Replay Drain again if appropriate."
           fi
