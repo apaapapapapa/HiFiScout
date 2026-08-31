@@ -191,11 +191,7 @@ async function countSeedGaps(
   // If a refresh did not even restore Identity/offer coverage, fail that listing immediately rather
   // than spending more D1 CPU on peer-group drift verification. Once coverage is present, verify the
   // lower-priority derived membership invariants for the same tiny listing scope.
-  const critical = await countSeedGapsForPredicate(
-    db,
-    listingIds,
-    CRITICAL_COVERAGE_GAP_PREDICATE,
-  );
+  const critical = await countSeedGapsForPredicate(db, listingIds, CRITICAL_COVERAGE_GAP_PREDICATE);
   if (critical > 0) return critical;
   return countSeedGapsForPredicate(db, listingIds, DERIVED_MEMBERSHIP_GAP_PREDICATE);
 }
