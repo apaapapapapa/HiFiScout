@@ -61,6 +61,7 @@ function poisonIdentityWrites(db: QueryableDatabase, poisonListingId: number): Q
   };
 }
 
+// Reject the old all-in-one selector so this test guards the production D1 CPU failure mode.
 function rejectCombinedGapSelector(db: QueryableDatabase): QueryableDatabase {
   return {
     prepare(sql: string) {
