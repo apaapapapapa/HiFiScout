@@ -61,7 +61,10 @@ function poisonIdentityWrites(db: QueryableDatabase, poisonListingId: number): Q
   };
 }
 
-function poisonSearchEntityWrites(db: QueryableDatabase, poisonListingId: number): QueryableDatabase {
+function poisonSearchEntityWrites(
+  db: QueryableDatabase,
+  poisonListingId: number,
+): QueryableDatabase {
   return {
     prepare: db.prepare.bind(db),
     async batch(statements) {
