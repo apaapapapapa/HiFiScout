@@ -113,9 +113,10 @@ export function renderProductPermalinkHtml(
   <link rel="icon" type="image/jpeg" href="/hifiscout-mark.jpg">
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/brand.css">
+  <link rel="stylesheet" href="/design-system.css">
   <style>
     #product-permalink-page{position:fixed;inset:0;z-index:1000;overflow:auto;background:#f7f6f2;padding:24px}
-    #product-permalink-page .permalink-shell{max-width:920px;margin:0 auto;background:#fff;border-radius:16px;padding:24px;box-shadow:0 12px 40px rgba(0,0,0,.12)}
+    #product-permalink-page .permalink-shell{display:block;max-width:920px;margin:0 auto;background:#fff;border-radius:16px;padding:24px;box-shadow:0 12px 40px rgba(0,0,0,.12)}
     #product-permalink-page .permalink-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}
     #product-permalink-page .permalink-offers{list-style:none;padding:0;display:grid;gap:12px}
     #product-permalink-page .permalink-offer{border:1px solid #ddd8ce;border-radius:12px;padding:16px}

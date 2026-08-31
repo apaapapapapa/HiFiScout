@@ -61,6 +61,26 @@ function poisonIdentityWrites(db: QueryableDatabase, poisonListingId: number): Q
   };
 }
 
+function poisonSearchProjectionWrites(
+  db: QueryableDatabase,
+  poisonListingId: number,
+): QueryableDatabase {
+  return {
+    prepare: db.prepare.bind(db),
+    async batch(statements) {
+      const containsPoisonProjectionWrite = statements.some((statement) => {
+        const inspectable = statement as unknown as { sql?: string; binds?: unknown[] };
+        return (
+          inspectable.sql?.includes("INSERT INTO product_search_projection") === true &&
+          Number(inspectable.binds?.[0]) === poisonListingId
+        );
+      });
+      if (containsPoisonProjectionWrite) throw new Error("synthetic poison projection write");
+      return db.batch(statements);
+    },
+  };
+}
+
 // Reject the old all-in-one selector so this test guards the original production D1 CPU failure.
 function rejectCombinedGapSelector(db: QueryableDatabase): QueryableDatabase {
   return {
@@ -124,6 +144,39 @@ function recordDerivedSelectorCursors(db: QueryableDatabase): {
       },
     } as QueryableDatabase,
   };
+}
+
+function forceGapSelectorRows(
+  db: QueryableDatabase,
+  staleListingIds: readonly number[],
+  exactIdentityListingIds: readonly number[],
+): QueryableDatabase {
+  const selector = (ids: readonly number[]) => {
+    const idList = ids.length ? ids.map((id) => Number(id)).join(",") : "NULL";
+    return db.prepare(`
+      SELECT id, shop_key, source_id
+      FROM products
+      WHERE id > ? AND id IN (${idList})
+      ORDER BY id
+      LIMIT ?
+    `);
+  };
+
+  return {
+    prepare(sql: string) {
+      if (!sql.includes("p.id > ?")) return db.prepare(sql);
+      if (sql.includes("representative_r") && !sql.includes("current_membership")) {
+        return selector(staleListingIds);
+      }
+      if (sql.includes("current_membership")) {
+        return selector(exactIdentityListingIds);
+      }
+      return db.prepare(sql);
+    },
+    batch(statements) {
+      return db.batch(statements);
+    },
+  } as QueryableDatabase;
 }
 
 test("bounded repair isolates a poison listing instead of starving later gaps", async () => {
@@ -247,6 +300,42 @@ test("derived gap scan restarts from zero after repairing a higher-id critical g
     0,
     "derived gaps below a repaired critical id must remain eligible in the same bounded sweep",
   );
+});
+
+test("a poison listing is attempted only once when stale and exact-identity phases overlap", async () => {
+  const { sqlite, db } = migratedSqlite();
+  const poisonId = insertActiveListing(sqlite, "cross-phase-poison");
+  const healthyId = insertActiveListing(sqlite, "cross-phase-healthy");
+
+  await repairActiveListingProjectionGaps(db, {
+    evaluatedAt: NOW,
+    batchSize: 2,
+    maxListings: 2,
+  });
+
+  // Force the poison listing's first projection stage to need a write. The injected failure is
+  // listing-scoped and occurs before exact-identity peer expansion, so a later healthy listing can
+  // prove that the failed id did not consume a second phase budget slot.
+  sqlite
+    .prepare(
+      "UPDATE product_search_projection SET title = 'synthetic-stale-title' WHERE product_id = ?",
+    )
+    .run(poisonId);
+
+  const poisonDb = poisonSearchProjectionWrites(db, poisonId);
+  const overlappingDb = forceGapSelectorRows(poisonDb, [poisonId], [poisonId, healthyId]);
+  const result = await repairActiveListingProjectionGaps(overlappingDb, {
+    evaluatedAt: NOW,
+    batchSize: 2,
+    maxListings: 2,
+  });
+
+  assert.deepEqual(result, {
+    selectedCount: 2,
+    repairedCount: 1,
+    failedCount: 1,
+    remainingGapCount: null,
+  });
 });
 
 test("authoritative counted repair remains fail-fast for a poison listing", async () => {
