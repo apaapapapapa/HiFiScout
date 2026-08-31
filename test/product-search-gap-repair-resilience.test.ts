@@ -61,21 +61,21 @@ function poisonIdentityWrites(db: QueryableDatabase, poisonListingId: number): Q
   };
 }
 
-function poisonSearchEntityWrites(
+function poisonSearchProjectionWrites(
   db: QueryableDatabase,
   poisonListingId: number,
 ): QueryableDatabase {
   return {
     prepare: db.prepare.bind(db),
     async batch(statements) {
-      const containsPoisonMembershipWrite = statements.some((statement) => {
+      const containsPoisonProjectionWrite = statements.some((statement) => {
         const inspectable = statement as unknown as { sql?: string; binds?: unknown[] };
         return (
-          inspectable.sql?.includes("INSERT INTO product_search_entity_offers") === true &&
-          inspectable.binds?.some((value) => Number(value) === poisonListingId) === true
+          inspectable.sql?.includes("INSERT INTO product_search_projection") === true &&
+          Number(inspectable.binds?.[0]) === poisonListingId
         );
       });
-      if (containsPoisonMembershipWrite) throw new Error("synthetic poison membership write");
+      if (containsPoisonProjectionWrite) throw new Error("synthetic poison projection write");
       return db.batch(statements);
     },
   };
@@ -313,7 +313,14 @@ test("a poison listing is attempted only once when stale and exact-identity phas
     maxListings: 2,
   });
 
-  const poisonDb = poisonSearchEntityWrites(db, poisonId);
+  // Force the poison listing's first projection stage to need a write. The injected failure is
+  // listing-scoped and occurs before exact-identity peer expansion, so a later healthy listing can
+  // prove that the failed id did not consume a second phase budget slot.
+  sqlite
+    .prepare("UPDATE product_search_projection SET title = 'synthetic-stale-title' WHERE product_id = ?")
+    .run(poisonId);
+
+  const poisonDb = poisonSearchProjectionWrites(db, poisonId);
   const overlappingDb = forceGapSelectorRows(poisonDb, [poisonId], [poisonId, healthyId]);
   const result = await repairActiveListingProjectionGaps(overlappingDb, {
     evaluatedAt: NOW,
