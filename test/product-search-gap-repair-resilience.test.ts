@@ -61,6 +61,24 @@ function poisonIdentityWrites(db: QueryableDatabase, poisonListingId: number): Q
   };
 }
 
+function rejectCombinedGapSelector(db: QueryableDatabase): QueryableDatabase {
+  return {
+    prepare(sql: string) {
+      if (
+        sql.includes("p.id > ?") &&
+        sql.includes("current_membership") &&
+        sql.includes("product_identity_resolutions r")
+      ) {
+        throw new Error("synthetic expensive combined gap selector");
+      }
+      return db.prepare(sql);
+    },
+    batch(statements) {
+      return db.batch(statements);
+    },
+  } as QueryableDatabase;
+}
+
 test("bounded repair isolates a poison listing instead of starving later gaps", async () => {
   const { sqlite, db } = migratedSqlite();
   const firstId = insertActiveListing(sqlite, "healthy-before");
@@ -95,6 +113,40 @@ test("bounded repair isolates a poison listing instead of starving later gaps", 
       )
       .get(poisonId)?.count,
     0,
+  );
+});
+
+test("critical coverage gaps are selected before expensive exact-identity drift", async () => {
+  const { sqlite, db } = migratedSqlite();
+  const listingId = insertActiveListing(sqlite, "critical-coverage");
+  const selectorGuardDb = rejectCombinedGapSelector(db);
+
+  const result = await repairActiveListingProjectionGaps(selectorGuardDb, {
+    evaluatedAt: NOW,
+    batchSize: 1,
+    maxListings: 1,
+  });
+
+  assert.deepEqual(result, {
+    selectedCount: 1,
+    repairedCount: 1,
+    remainingGapCount: null,
+  });
+  assert.equal(
+    sqlite
+      .prepare(
+        "SELECT COUNT(*) AS count FROM product_identity_resolutions WHERE listing_product_id = ?",
+      )
+      .get(listingId)?.count,
+    1,
+  );
+  assert.equal(
+    sqlite
+      .prepare(
+        "SELECT COUNT(*) AS count FROM product_search_entity_offers WHERE listing_product_id = ?",
+      )
+      .get(listingId)?.count,
+    1,
   );
 });
 
