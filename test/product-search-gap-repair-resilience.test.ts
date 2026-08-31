@@ -61,7 +61,7 @@ function poisonIdentityWrites(db: QueryableDatabase, poisonListingId: number): Q
   };
 }
 
-// Reject the old all-in-one selector so this test guards the production D1 CPU failure mode.
+// Reject the old all-in-one selector so this test guards the original production D1 CPU failure.
 function rejectCombinedGapSelector(db: QueryableDatabase): QueryableDatabase {
   return {
     prepare(sql: string) {
@@ -71,6 +71,25 @@ function rejectCombinedGapSelector(db: QueryableDatabase): QueryableDatabase {
         sql.includes("product_identity_resolutions r")
       ) {
         throw new Error("synthetic expensive combined gap selector");
+      }
+      return db.prepare(sql);
+    },
+    batch(statements) {
+      return db.batch(statements);
+    },
+  } as QueryableDatabase;
+}
+
+// #437 separated cursors but still combined stale fallback detection with exact-identity peer scans.
+function rejectCombinedStaleAndExactIdentitySelector(db: QueryableDatabase): QueryableDatabase {
+  return {
+    prepare(sql: string) {
+      if (
+        sql.includes("p.id > ?") &&
+        sql.includes("representative_r") &&
+        sql.includes("current_membership")
+      ) {
+        throw new Error("synthetic stale fallback selector CPU exhaustion");
       }
       return db.prepare(sql);
     },
@@ -90,11 +109,7 @@ function recordDerivedSelectorCursors(db: QueryableDatabase): {
     db: {
       prepare(sql: string) {
         const statement = db.prepare(sql);
-        if (
-          !sql.includes("p.id > ?") ||
-          !sql.includes("current_membership") ||
-          !sql.includes("entity_kind = 'unresolved_listing'")
-        ) {
+        if (!sql.includes("p.id > ?") || !sql.includes("current_membership")) {
           return statement;
         }
         return {
@@ -180,6 +195,30 @@ test("critical coverage gaps are selected before expensive exact-identity drift"
       .get(listingId)?.count,
     1,
   );
+});
+
+test("stale fallback selection does not evaluate exact-identity peer drift", async () => {
+  const { sqlite, db } = migratedSqlite();
+  insertActiveListing(sqlite, "selector-cpu-guard");
+
+  await repairActiveListingProjectionGaps(db, {
+    evaluatedAt: NOW,
+    batchSize: 1,
+    maxListings: 1,
+  });
+
+  const selectorGuardDb = rejectCombinedStaleAndExactIdentitySelector(db);
+  const result = await repairActiveListingProjectionGaps(selectorGuardDb, {
+    evaluatedAt: NOW,
+    batchSize: 1,
+    maxListings: 1,
+  });
+
+  assert.deepEqual(result, {
+    selectedCount: 0,
+    repairedCount: 0,
+    remainingGapCount: null,
+  });
 });
 
 test("derived gap scan restarts from zero after repairing a higher-id critical gap", async () => {
