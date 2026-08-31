@@ -80,6 +80,37 @@ function rejectCombinedGapSelector(db: QueryableDatabase): QueryableDatabase {
   } as QueryableDatabase;
 }
 
+function recordDerivedSelectorCursors(db: QueryableDatabase): {
+  db: QueryableDatabase;
+  afterIds: number[];
+} {
+  const afterIds: number[] = [];
+  return {
+    afterIds,
+    db: {
+      prepare(sql: string) {
+        const statement = db.prepare(sql);
+        if (
+          !sql.includes("p.id > ?") ||
+          !sql.includes("current_membership") ||
+          !sql.includes("entity_kind = 'unresolved_listing'")
+        ) {
+          return statement;
+        }
+        return {
+          bind(...values: unknown[]) {
+            afterIds.push(Number(values[0]));
+            return statement.bind(...values);
+          },
+        } as ReturnType<QueryableDatabase["prepare"]>;
+      },
+      batch(statements) {
+        return db.batch(statements);
+      },
+    } as QueryableDatabase,
+  };
+}
+
 test("bounded repair isolates a poison listing instead of starving later gaps", async () => {
   const { sqlite, db } = migratedSqlite();
   const firstId = insertActiveListing(sqlite, "healthy-before");
@@ -148,6 +179,34 @@ test("critical coverage gaps are selected before expensive exact-identity drift"
       )
       .get(listingId)?.count,
     1,
+  );
+});
+
+test("derived gap scan restarts from zero after repairing a higher-id critical gap", async () => {
+  const { sqlite, db } = migratedSqlite();
+  const lowerId = insertActiveListing(sqlite, "lower-derived-candidate");
+
+  await repairActiveListingProjectionGaps(db, {
+    evaluatedAt: NOW,
+    batchSize: 1,
+    maxListings: 1,
+  });
+
+  const higherId = insertActiveListing(sqlite, "higher-critical-gap");
+  assert.ok(higherId > lowerId);
+
+  const recorded = recordDerivedSelectorCursors(db);
+  await repairActiveListingProjectionGaps(recorded.db, {
+    evaluatedAt: NOW,
+    batchSize: 1,
+    maxListings: 2,
+  });
+
+  assert.ok(recorded.afterIds.length > 0, "expected the derived gap selector to run");
+  assert.equal(
+    recorded.afterIds[0],
+    0,
+    "derived gaps below a repaired critical id must remain eligible in the same bounded sweep",
   );
 });
 
