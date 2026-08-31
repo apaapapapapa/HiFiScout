@@ -317,7 +317,9 @@ test("a poison listing is attempted only once when stale and exact-identity phas
   // listing-scoped and occurs before exact-identity peer expansion, so a later healthy listing can
   // prove that the failed id did not consume a second phase budget slot.
   sqlite
-    .prepare("UPDATE product_search_projection SET title = 'synthetic-stale-title' WHERE product_id = ?")
+    .prepare(
+      "UPDATE product_search_projection SET title = 'synthetic-stale-title' WHERE product_id = ?",
+    )
     .run(poisonId);
 
   const poisonDb = poisonSearchProjectionWrites(db, poisonId);
