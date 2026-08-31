@@ -60,7 +60,7 @@ function positiveBoundedInteger(value: number | undefined, fallback: number, max
  * Missing Identity or offer membership is the highest-priority projection gap. These two indexed
  * existence checks are deliberately kept separate from the more expensive drift predicates below.
  *
- * Putting all four gap kinds in one OR made SQLite evaluate exact-identity peer/category correlated
+ * Putting every gap kind in one OR made SQLite evaluate exact-identity peer/category correlated
  * subqueries while merely trying to find a handful of missing rows. On the production catalog that
  * selector can consume the D1 isolate CPU budget before refreshListingProjections is ever reached,
  * leaving the same critical coverage gaps behind on every five-minute repair tick.
@@ -78,7 +78,14 @@ const CRITICAL_COVERAGE_GAP_PREDICATE = `
   )
 `;
 
-/** A fallback entity is stale once its representative has a verified Catalog match. */
+/**
+ * A fallback entity is stale once its representative has a verified Catalog match.
+ *
+ * Keep this as its own bounded phase. Combining it with exact-identity split detection under one OR
+ * reintroduced the same D1 CPU hazard as the original all-in-one selector: SQLite could evaluate
+ * the correlated peer/category scan across the active catalog before returning the single stale
+ * fallback listing that production health was waiting for.
+ */
 const STALE_FALLBACK_GAP_PREDICATE = `
   EXISTS (
     SELECT 1
@@ -95,20 +102,14 @@ const STALE_FALLBACK_GAP_PREDICATE = `
   )
 `;
 
-/**
- * Lower-priority drift assumes the listing already has the critical projection rows. It may inspect
- * exact-identity peers, so it is only evaluated after critical coverage has consumed its share of
- * the bounded repair budget.
- */
-const DERIVED_MEMBERSHIP_GAP_PREDICATE = `
-  (${STALE_FALLBACK_GAP_PREDICATE})
-  OR (${exactIdentitySplitMembershipPredicateSql("p")})
-`;
+/** Lowest-priority drift: this is the only bounded phase that performs exact-identity peer scans. */
+const EXACT_IDENTITY_MEMBERSHIP_GAP_PREDICATE = exactIdentitySplitMembershipPredicateSql("p");
 
 /** Full authoritative predicate retained for daily counts and strict verification. */
 const ACTIVE_PROJECTION_GAP_PREDICATE = `
   (${CRITICAL_COVERAGE_GAP_PREDICATE})
-  OR (${DERIVED_MEMBERSHIP_GAP_PREDICATE})
+  OR (${STALE_FALLBACK_GAP_PREDICATE})
+  OR (${EXACT_IDENTITY_MEMBERSHIP_GAP_PREDICATE})
 `;
 
 async function selectProjectionGapsByPredicate(
@@ -169,12 +170,19 @@ async function countSeedGaps(
 ): Promise<number> {
   if (!listingIds.length) return 0;
 
-  // If a refresh did not even restore Identity/offer coverage, fail that listing immediately rather
-  // than spending more D1 CPU on peer-group drift verification. Once coverage is present, verify the
-  // lower-priority derived membership invariants for the same tiny listing scope.
+  // Verify in the same priority order as selection. Do not pay for exact-identity peer scans when a
+  // selected listing still has a cheaper coverage or stale-fallback invariant outstanding.
   const critical = await countSeedGapsForPredicate(db, listingIds, CRITICAL_COVERAGE_GAP_PREDICATE);
   if (critical > 0) return critical;
-  return countSeedGapsForPredicate(db, listingIds, DERIVED_MEMBERSHIP_GAP_PREDICATE);
+
+  const staleFallback = await countSeedGapsForPredicate(
+    db,
+    listingIds,
+    STALE_FALLBACK_GAP_PREDICATE,
+  );
+  if (staleFallback > 0) return staleFallback;
+
+  return countSeedGapsForPredicate(db, listingIds, EXACT_IDENTITY_MEMBERSHIP_GAP_PREDICATE);
 }
 
 async function refreshAndVerify(
@@ -263,8 +271,8 @@ export async function repairActiveListingProjectionGaps(
   let failedCount = 0;
 
   const repairPhase = async (predicate: string): Promise<void> => {
-    // Each priority class owns its cursor. Reusing the critical cursor here can indefinitely starve
-    // a lower-id stale fallback whenever fresh higher-id critical gaps arrive between cron ticks.
+    // Each priority class owns its cursor. Reusing a higher-priority cursor can indefinitely starve
+    // a lower-id gap whenever fresh higher-id work arrives between cron ticks.
     let afterId = 0;
 
     while (selectedCount < maxListings) {
@@ -283,12 +291,15 @@ export async function repairActiveListingProjectionGaps(
     }
   };
 
-  // Preserve critical-first priority, but let derived membership start from id 0 with whatever
-  // bounded budget remains. This gives stale fallback/exact-identity drift a fair chance to converge
-  // in the same GENERAL_CRON tick after newly crawled critical rows are repaired.
+  // Keep the cheap, user-visible invariants ahead of the correlated peer scan. All phases start at
+  // id 0 and share only the overall work budget, so neither cursor position nor SQL evaluation cost
+  // can prevent a stale fallback from being attempted before exact-identity drift.
   await repairPhase(CRITICAL_COVERAGE_GAP_PREDICATE);
   if (selectedCount < maxListings) {
-    await repairPhase(DERIVED_MEMBERSHIP_GAP_PREDICATE);
+    await repairPhase(STALE_FALLBACK_GAP_PREDICATE);
+  }
+  if (selectedCount < maxListings) {
+    await repairPhase(EXACT_IDENTITY_MEMBERSHIP_GAP_PREDICATE);
   }
 
   const result: ProductSearchGapRepairResult = {
