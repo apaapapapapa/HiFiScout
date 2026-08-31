@@ -57,24 +57,15 @@ function positiveBoundedInteger(value: number | undefined, fallback: number, max
 }
 
 /**
- * An active listing needs projection repair when any stage is missing, when it belongs to a
- * fallback entity whose representative listing has already become a verified Catalog match, or
- * when a safe exact manufacturer/model identity is split across multiple fallback entities.
+ * Missing Identity or offer membership is the highest-priority projection gap. These two indexed
+ * existence checks are deliberately kept separate from the more expensive drift predicates below.
  *
- * The representative clause deliberately follows the entity membership rather than only checking
- * the current listing's own Identity row. Exact-identity grouping allows several unresolved offers
- * to share `l-<representative id>`. If that representative is promoted between bounded writes, its
- * own offer may already move to Catalog while peers remain attached to the now-stale fallback. In
- * that state the peer is the row that must be replayed so the unresolved group can elect a current
- * representative and the obsolete entity can be pruned.
- *
- * The exact-identity split clause catches a different interrupted-write/drift state: all required
- * rows already exist, but memberships that are safe to group no longer point to one entity. A
- * single selected listing is sufficient because the search-entity sync expands it to every safe
- * exact peer before rewriting membership. Both clauses are listing-scoped counterparts of the
- * invariants reported by Product Search operational checks.
+ * Putting all four gap kinds in one OR made SQLite evaluate exact-identity peer/category correlated
+ * subqueries while merely trying to find a handful of missing rows. On the production catalog that
+ * selector can consume the D1 isolate CPU budget before refreshListingProjections is ever reached,
+ * leaving the same critical coverage gaps behind on every five-minute repair tick.
  */
-const ACTIVE_PROJECTION_GAP_PREDICATE = `
+const CRITICAL_COVERAGE_GAP_PREDICATE = `
   NOT EXISTS (
     SELECT 1
     FROM product_identity_resolutions r
@@ -85,7 +76,11 @@ const ACTIVE_PROJECTION_GAP_PREDICATE = `
     FROM product_search_entity_offers o
     WHERE o.listing_product_id = p.id
   )
-  OR EXISTS (
+`;
+
+/** A fallback entity is stale once its representative has a verified Catalog match. */
+const STALE_FALLBACK_GAP_PREDICATE = `
+  EXISTS (
     SELECT 1
     FROM product_search_entity_offers o
     JOIN product_search_entities e
@@ -98,13 +93,29 @@ const ACTIVE_PROJECTION_GAP_PREDICATE = `
       AND representative_kp.verification_status = 'verified'
     WHERE o.listing_product_id = p.id
   )
+`;
+
+/**
+ * Lower-priority drift assumes the listing already has the critical projection rows. It may inspect
+ * exact-identity peers, so it is only evaluated after a cheap critical-coverage selector returns no
+ * work for the current cursor window.
+ */
+const DERIVED_MEMBERSHIP_GAP_PREDICATE = `
+  (${STALE_FALLBACK_GAP_PREDICATE})
   OR (${exactIdentitySplitMembershipPredicateSql("p")})
 `;
 
-async function selectActiveProjectionGaps(
+/** Full authoritative predicate retained for daily counts and strict verification. */
+const ACTIVE_PROJECTION_GAP_PREDICATE = `
+  (${CRITICAL_COVERAGE_GAP_PREDICATE})
+  OR (${DERIVED_MEMBERSHIP_GAP_PREDICATE})
+`;
+
+async function selectProjectionGapsByPredicate(
   db: QueryableDatabase,
   afterId: number,
   limit: number,
+  predicate: string,
 ): Promise<ProjectionGapRow[]> {
   const result = await db
     .prepare(`
@@ -112,13 +123,32 @@ async function selectActiveProjectionGaps(
       FROM products p
       WHERE p.is_active = 1
         AND p.id > ?
-        AND (${ACTIVE_PROJECTION_GAP_PREDICATE})
+        AND (${predicate})
       ORDER BY p.id
       LIMIT ?
     `)
     .bind(afterId, limit)
     .all<ProjectionGapRow>();
   return result.results || [];
+}
+
+async function selectActiveProjectionGaps(
+  db: QueryableDatabase,
+  afterId: number,
+  limit: number,
+): Promise<ProjectionGapRow[]> {
+  // Critical coverage must never wait behind the peer-group drift scan. Returning this batch as
+  // soon as any rows are found also bounds each query tree: the next loop iteration advances the
+  // cursor before lower-priority drift is considered.
+  const critical = await selectProjectionGapsByPredicate(
+    db,
+    afterId,
+    limit,
+    CRITICAL_COVERAGE_GAP_PREDICATE,
+  );
+  if (critical.length) return critical;
+
+  return selectProjectionGapsByPredicate(db, afterId, limit, DERIVED_MEMBERSHIP_GAP_PREDICATE);
 }
 
 async function countActiveProjectionGaps(db: QueryableDatabase): Promise<number> {
@@ -133,11 +163,11 @@ async function countActiveProjectionGaps(db: QueryableDatabase): Promise<number>
   return Number(row?.gap_count || 0);
 }
 
-async function countSeedGaps(
+async function countSeedGapsForPredicate(
   db: QueryableDatabase,
   listingIds: readonly number[],
+  predicate: string,
 ): Promise<number> {
-  if (!listingIds.length) return 0;
   const placeholders = listingIds.map(() => "?").join(",");
   const row = await db
     .prepare(`
@@ -145,11 +175,29 @@ async function countSeedGaps(
       FROM products p
       WHERE p.id IN (${placeholders})
         AND p.is_active = 1
-        AND (${ACTIVE_PROJECTION_GAP_PREDICATE})
+        AND (${predicate})
     `)
     .bind(...listingIds)
     .first<{ gap_count: number }>();
   return Number(row?.gap_count || 0);
+}
+
+async function countSeedGaps(
+  db: QueryableDatabase,
+  listingIds: readonly number[],
+): Promise<number> {
+  if (!listingIds.length) return 0;
+
+  // If a refresh did not even restore Identity/offer coverage, fail that listing immediately rather
+  // than spending more D1 CPU on peer-group drift verification. Once coverage is present, verify the
+  // lower-priority derived membership invariants for the same tiny listing scope.
+  const critical = await countSeedGapsForPredicate(
+    db,
+    listingIds,
+    CRITICAL_COVERAGE_GAP_PREDICATE,
+  );
+  if (critical > 0) return critical;
+  return countSeedGapsForPredicate(db, listingIds, DERIVED_MEMBERSHIP_GAP_PREDICATE);
 }
 
 async function refreshAndVerify(
