@@ -126,6 +126,39 @@ function recordDerivedSelectorCursors(db: QueryableDatabase): {
   };
 }
 
+function forceGapSelectorRows(
+  db: QueryableDatabase,
+  staleListingIds: readonly number[],
+  exactIdentityListingIds: readonly number[],
+): QueryableDatabase {
+  const selector = (ids: readonly number[]) => {
+    const idList = ids.length ? ids.map((id) => Number(id)).join(",") : "NULL";
+    return db.prepare(`
+      SELECT id, shop_key, source_id
+      FROM products
+      WHERE id > ? AND id IN (${idList})
+      ORDER BY id
+      LIMIT ?
+    `);
+  };
+
+  return {
+    prepare(sql: string) {
+      if (!sql.includes("p.id > ?")) return db.prepare(sql);
+      if (sql.includes("representative_r") && !sql.includes("current_membership")) {
+        return selector(staleListingIds);
+      }
+      if (sql.includes("current_membership")) {
+        return selector(exactIdentityListingIds);
+      }
+      return db.prepare(sql);
+    },
+    batch(statements) {
+      return db.batch(statements);
+    },
+  } as QueryableDatabase;
+}
+
 test("bounded repair isolates a poison listing instead of starving later gaps", async () => {
   const { sqlite, db } = migratedSqlite();
   const firstId = insertActiveListing(sqlite, "healthy-before");
@@ -247,6 +280,33 @@ test("derived gap scan restarts from zero after repairing a higher-id critical g
     0,
     "derived gaps below a repaired critical id must remain eligible in the same bounded sweep",
   );
+});
+
+test("a poison listing is attempted only once when stale and exact-identity phases overlap", async () => {
+  const { sqlite, db } = migratedSqlite();
+  const poisonId = insertActiveListing(sqlite, "cross-phase-poison");
+  const healthyId = insertActiveListing(sqlite, "cross-phase-healthy");
+
+  await repairActiveListingProjectionGaps(db, {
+    evaluatedAt: NOW,
+    batchSize: 2,
+    maxListings: 2,
+  });
+
+  const poisonDb = poisonIdentityWrites(db, poisonId);
+  const overlappingDb = forceGapSelectorRows(poisonDb, [poisonId], [poisonId, healthyId]);
+  const result = await repairActiveListingProjectionGaps(overlappingDb, {
+    evaluatedAt: NOW,
+    batchSize: 2,
+    maxListings: 2,
+  });
+
+  assert.deepEqual(result, {
+    selectedCount: 2,
+    repairedCount: 1,
+    failedCount: 1,
+    remainingGapCount: null,
+  });
 });
 
 test("authoritative counted repair remains fail-fast for a poison listing", async () => {
