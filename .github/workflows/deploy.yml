@@ -69,7 +69,39 @@ jobs:
           tar -xzf "$tarball" -C node_modules/@cloudflare/playwright --strip-components=1
           rm -f "$tarball"
       - name: Apply backward-compatible D1 migrations
-        run: vp exec wrangler d1 migrations apply DB --remote
+        shell: bash
+        run: |
+          set -euo pipefail
+          max_attempts=4
+
+          for attempt in $(seq 1 "$max_attempts"); do
+            log_file="$(mktemp)"
+            set +e
+            vp exec wrangler d1 migrations apply DB --remote 2>&1 | tee "$log_file"
+            status=${PIPESTATUS[0]}
+            set -e
+
+            if (( status == 0 )); then
+              rm -f "$log_file"
+              exit 0
+            fi
+
+            if ! grep -Fq 'code: 7429' "$log_file"; then
+              rm -f "$log_file"
+              exit "$status"
+            fi
+
+            if (( attempt == max_attempts )); then
+              rm -f "$log_file"
+              echo "D1 migration apply still hit CPU reset after ${max_attempts} attempts." >&2
+              exit "$status"
+            fi
+
+            delay_seconds=$((attempt * 60))
+            echo "::warning title=D1 migration retry::D1 CPU reset (7429) on attempt ${attempt}/${max_attempts}; retrying in ${delay_seconds}s."
+            rm -f "$log_file"
+            sleep "$delay_seconds"
+          done
       - name: Build browser assets from TypeScript source
         run: vp run build:frontend
       - name: Deploy Worker and static assets
