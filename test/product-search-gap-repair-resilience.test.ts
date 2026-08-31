@@ -61,6 +61,23 @@ function poisonIdentityWrites(db: QueryableDatabase, poisonListingId: number): Q
   };
 }
 
+function poisonSearchEntityWrites(db: QueryableDatabase, poisonListingId: number): QueryableDatabase {
+  return {
+    prepare: db.prepare.bind(db),
+    async batch(statements) {
+      const containsPoisonMembershipWrite = statements.some((statement) => {
+        const inspectable = statement as unknown as { sql?: string; binds?: unknown[] };
+        return (
+          inspectable.sql?.includes("INSERT INTO product_search_entity_offers") === true &&
+          inspectable.binds?.some((value) => Number(value) === poisonListingId) === true
+        );
+      });
+      if (containsPoisonMembershipWrite) throw new Error("synthetic poison membership write");
+      return db.batch(statements);
+    },
+  };
+}
+
 // Reject the old all-in-one selector so this test guards the original production D1 CPU failure.
 function rejectCombinedGapSelector(db: QueryableDatabase): QueryableDatabase {
   return {
@@ -293,7 +310,7 @@ test("a poison listing is attempted only once when stale and exact-identity phas
     maxListings: 2,
   });
 
-  const poisonDb = poisonIdentityWrites(db, poisonId);
+  const poisonDb = poisonSearchEntityWrites(db, poisonId);
   const overlappingDb = forceGapSelectorRows(poisonDb, [poisonId], [poisonId, healthyId]);
   const result = await repairActiveListingProjectionGaps(overlappingDb, {
     evaluatedAt: NOW,
