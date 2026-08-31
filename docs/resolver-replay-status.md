@@ -8,4 +8,4 @@ The workflow publishes the commit status context `data-quality/resolver-replay` 
 - `success`: replay fully converged. If an exhaustive validation is required, manually run **Product Data Audit**; convergence does not dispatch it automatically.
 - `failure`: the replay batch itself failed and requires investigation before another manual dispatch.
 
-The status target links to the exact GitHub Actions run that produced the state. Neither deployment nor a `pending` replay status starts another replay batch automatically, and replay convergence does not launch the Product Data Audit automatically.
+The status target links to the exact GitHub Actions run that produced the state. Neither deployment nor a `pending` replay status starts another replay batch automatically, and replay convergence does not launch the Product Data Audit automatically. A subsequent batch or audit therefore always represents an explicit operator decision.
