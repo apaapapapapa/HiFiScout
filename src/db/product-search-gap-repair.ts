@@ -97,8 +97,8 @@ const STALE_FALLBACK_GAP_PREDICATE = `
 
 /**
  * Lower-priority drift assumes the listing already has the critical projection rows. It may inspect
- * exact-identity peers, so it is only evaluated after a cheap critical-coverage selector returns no
- * work for the current cursor window.
+ * exact-identity peers, so it is only evaluated after critical coverage has consumed its share of
+ * the bounded repair budget.
  */
 const DERIVED_MEMBERSHIP_GAP_PREDICATE = `
   (${STALE_FALLBACK_GAP_PREDICATE})
@@ -130,25 +130,6 @@ async function selectProjectionGapsByPredicate(
     .bind(afterId, limit)
     .all<ProjectionGapRow>();
   return result.results || [];
-}
-
-async function selectActiveProjectionGaps(
-  db: QueryableDatabase,
-  afterId: number,
-  limit: number,
-): Promise<ProjectionGapRow[]> {
-  // Critical coverage must never wait behind the peer-group drift scan. Returning this batch as
-  // soon as any rows are found also bounds each query tree: the next loop iteration advances the
-  // cursor before lower-priority drift is considered.
-  const critical = await selectProjectionGapsByPredicate(
-    db,
-    afterId,
-    limit,
-    CRITICAL_COVERAGE_GAP_PREDICATE,
-  );
-  if (critical.length) return critical;
-
-  return selectProjectionGapsByPredicate(db, afterId, limit, DERIVED_MEMBERSHIP_GAP_PREDICATE);
 }
 
 async function countActiveProjectionGaps(db: QueryableDatabase): Promise<number> {
@@ -280,22 +261,34 @@ export async function repairActiveListingProjectionGaps(
   let selectedCount = 0;
   let repairedCount = 0;
   let failedCount = 0;
-  let afterId = 0;
 
-  while (selectedCount < maxListings) {
-    const limit = Math.min(batchSize, maxListings - selectedCount);
-    const gaps = await selectActiveProjectionGaps(db, afterId, limit);
-    if (!gaps.length) break;
+  const repairPhase = async (predicate: string): Promise<void> => {
+    // Each priority class owns its cursor. Reusing the critical cursor here can indefinitely starve
+    // a lower-id stale fallback whenever fresh higher-id critical gaps arrive between cron ticks.
+    let afterId = 0;
 
-    // Advance the bounded scan before repair. In resilient mode this is the key starvation guard:
-    // a poison row remains a gap for the next cron, but it cannot trap every higher-id listing
-    // behind the same failed first batch forever.
-    selectedCount += gaps.length;
-    afterId = Number(gaps[gaps.length - 1]?.id || afterId);
+    while (selectedCount < maxListings) {
+      const limit = Math.min(batchSize, maxListings - selectedCount);
+      const gaps = await selectProjectionGapsByPredicate(db, afterId, limit, predicate);
+      if (!gaps.length) break;
 
-    const refreshed = await refreshSelectedGaps(db, gaps, evaluatedAt, continueOnRefreshError);
-    repairedCount += refreshed.repairedCount;
-    failedCount += refreshed.failedCount;
+      // Advance the bounded scan before repair. In resilient mode this is the key poison-listing
+      // starvation guard: a failed row stays a gap for the next cron but cannot trap later ids.
+      selectedCount += gaps.length;
+      afterId = Number(gaps[gaps.length - 1]?.id || afterId);
+
+      const refreshed = await refreshSelectedGaps(db, gaps, evaluatedAt, continueOnRefreshError);
+      repairedCount += refreshed.repairedCount;
+      failedCount += refreshed.failedCount;
+    }
+  };
+
+  // Preserve critical-first priority, but let derived membership start from id 0 with whatever
+  // bounded budget remains. This gives stale fallback/exact-identity drift a fair chance to converge
+  // in the same GENERAL_CRON tick after newly crawled critical rows are repaired.
+  await repairPhase(CRITICAL_COVERAGE_GAP_PREDICATE);
+  if (selectedCount < maxListings) {
+    await repairPhase(DERIVED_MEMBERSHIP_GAP_PREDICATE);
   }
 
   const result: ProductSearchGapRepairResult = {
