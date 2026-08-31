@@ -269,6 +269,7 @@ export async function repairActiveListingProjectionGaps(
   let selectedCount = 0;
   let repairedCount = 0;
   let failedCount = 0;
+  const attemptedListingIds = new Set<number>();
 
   const repairPhase = async (predicate: string): Promise<void> => {
     // Each priority class owns its cursor. Reusing a higher-priority cursor can indefinitely starve
@@ -280,20 +281,31 @@ export async function repairActiveListingProjectionGaps(
       const gaps = await selectProjectionGapsByPredicate(db, afterId, limit, predicate);
       if (!gaps.length) break;
 
-      // Advance the bounded scan before repair. In resilient mode this is the key poison-listing
-      // starvation guard: a failed row stays a gap for the next cron but cannot trap later ids.
-      selectedCount += gaps.length;
+      // Always advance using the raw selector batch. A row attempted in an earlier phase can still
+      // satisfy this predicate after a failed refresh; skipping it must not trap the phase cursor.
       afterId = Number(gaps[gaps.length - 1]?.id || afterId);
+      const unattemptedGaps = gaps.filter((gap) => !attemptedListingIds.has(Number(gap.id)));
+      if (!unattemptedGaps.length) continue;
 
-      const refreshed = await refreshSelectedGaps(db, gaps, evaluatedAt, continueOnRefreshError);
+      // The sweep budget is per unique listing, not per predicate match. Carry attempted ids across
+      // phases so one poison listing cannot consume multiple slots or inflate failedCount.
+      for (const gap of unattemptedGaps) attemptedListingIds.add(Number(gap.id));
+      selectedCount += unattemptedGaps.length;
+
+      const refreshed = await refreshSelectedGaps(
+        db,
+        unattemptedGaps,
+        evaluatedAt,
+        continueOnRefreshError,
+      );
       repairedCount += refreshed.repairedCount;
       failedCount += refreshed.failedCount;
     }
   };
 
   // Keep the cheap, user-visible invariants ahead of the correlated peer scan. All phases start at
-  // id 0 and share only the overall work budget, so neither cursor position nor SQL evaluation cost
-  // can prevent a stale fallback from being attempted before exact-identity drift.
+  // id 0 and share the overall work budget plus the attempted-id set: cursor position cannot starve
+  // a lower-id phase, while overlapping predicates cannot spend the budget twice on one listing.
   await repairPhase(CRITICAL_COVERAGE_GAP_PREDICATE);
   if (selectedCount < maxListings) {
     await repairPhase(STALE_FALLBACK_GAP_PREDICATE);
