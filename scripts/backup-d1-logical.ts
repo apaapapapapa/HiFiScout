@@ -129,7 +129,9 @@ export function buildWithoutRowidDumpQuery(
     .map((column, index) => `quote(${quoteIdentifier(column.name)}) AS __pk${index}`)
     .join(", ");
   const where =
-    cursorLiterals == null ? "" : ` WHERE ${keysetAfterPredicate(primaryKeyColumns, cursorLiterals)}`;
+    cursorLiterals == null
+      ? ""
+      : ` WHERE ${keysetAfterPredicate(primaryKeyColumns, cursorLiterals)}`;
   const orderBy = primaryKeyColumns.map((column) => quoteIdentifier(column.name)).join(", ");
   return `SELECT ${insertStatementExpression(table, columns)} AS statement, ${cursorColumns} FROM ${quotedTable}${where} ORDER BY ${orderBy} LIMIT ${limit}`;
 }
@@ -141,7 +143,9 @@ function assertIntegerLiteral(value: unknown, context: string): string {
 }
 
 async function tableColumns(db: QueryableDatabase, table: string): Promise<TableColumnRow[]> {
-  const result = await db.prepare(`PRAGMA table_xinfo(${quoteIdentifier(table)})`).all<TableColumnRow>();
+  const result = await db
+    .prepare(`PRAGMA table_xinfo(${quoteIdentifier(table)})`)
+    .all<TableColumnRow>();
   return result.results || [];
 }
 
@@ -264,7 +268,10 @@ export async function exportLogicalD1Backup(
 
 async function main(): Promise<void> {
   const output = argument("--output", ".generated/hifiscout-d1-logical-backup.sql");
-  const batchSize = positiveInteger(argument("--batch-size", String(DEFAULT_BATCH_SIZE)), "--batch-size");
+  const batchSize = positiveInteger(
+    argument("--batch-size", String(DEFAULT_BATCH_SIZE)),
+    "--batch-size",
+  );
   const db = createD1RestDatabase({
     accountId: requiredEnv("CLOUDFLARE_ACCOUNT_ID"),
     databaseId: requiredEnv("D1_DATABASE_ID"),
@@ -274,7 +281,9 @@ async function main(): Promise<void> {
     batchSize,
     sourceSha: process.env.GITHUB_SHA,
   });
-  console.log(`Logical D1 backup written to ${output}: ${result.tableCount} tables, ${result.rowCount} rows`);
+  console.log(
+    `Logical D1 backup written to ${output}: ${result.tableCount} tables, ${result.rowCount} rows`,
+  );
 }
 
 if (process.argv[1]?.endsWith("backup-d1-logical.ts")) {

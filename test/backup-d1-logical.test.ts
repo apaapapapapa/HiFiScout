@@ -66,10 +66,7 @@ test("WITHOUT ROWID backup advances by its ordered primary-key tuple", () => {
   );
 
   assert.match(query, /"shop_key" > 'audio-union'/u);
-  assert.match(
-    query,
-    /"shop_key" = 'audio-union' AND "source_id" > '00123'/u,
-  );
+  assert.match(query, /"shop_key" = 'audio-union' AND "source_id" > '00123'/u);
   assert.match(query, /ORDER BY "shop_key", "source_id" LIMIT 250/u);
 });
 
