@@ -18,6 +18,7 @@ interface CapturedStatement {
   binds: unknown[];
   bind(...binds: unknown[]): CapturedStatement;
   first(): Promise<null>;
+  all(): Promise<{ results: never[] }>;
   run(): Promise<{ meta: { last_row_id: number } }>;
 }
 
@@ -35,6 +36,9 @@ function captureDb() {
         },
         async first() {
           return null;
+        },
+        async all() {
+          return { results: [] };
         },
         async run() {
           return {

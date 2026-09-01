@@ -1,6 +1,12 @@
-import { manufacturerFilterIds, manufacturerIdForFilter } from "../catalog/manufacturers.js";
-import { normalizeIdentityModel } from "../catalog/product-identity.js";
+import {
+  catalogIdentity,
+  catalogIdentityManufacturerIds,
+} from "../catalog/knowledge-catalog-identity.js";
 import type { KnowledgeCatalogDuplicateListOptions } from "../http/knowledge-catalog-admin.js";
+import {
+  canonicalCatalogIdentityOrder,
+  catalogIdentityBucketKeySql,
+} from "./knowledge-catalog-identity.js";
 import type { KnowledgeCatalogLifecycleStatus, ReadableDatabase } from "./types.js";
 
 /**
@@ -10,45 +16,6 @@ import type { KnowledgeCatalogLifecycleStatus, ReadableDatabase } from "./types.
  */
 const KEY_SCAN_FACTOR = 4;
 const MAX_SCANNED_KEYS = 400;
-
-/**
- * Separators the catalog model normalizer keeps but the identity normalizer drops. They are the
- * reason `PMA-2500NE` and `PMA2500NE` can both hold a row under
- * `UNIQUE(manufacturer_id, normalized_model)` while naming one product.
- */
-const KEY_SEPARATORS: readonly string[] = [" ", "-", "_", ".", "/"];
-
-/**
- * Revision spellings folded by literal replacement, longest first so `MKIII` is not consumed as
- * `MKII` followed by a stray `I`.
- */
-const KEY_REVISION_MARKERS: readonly (readonly [string, string])[] = [
-  ["MARKIII", "MK3"],
-  ["MARKIV", "MK4"],
-  ["MARKII", "MK2"],
-  ["MARKI", "MK1"],
-  ["MKIII", "MK3"],
-  ["MKIV", "MK4"],
-  ["MKII", "MK2"],
-  ["MKI", "MK1"],
-];
-
-/**
- * SQL bucket key.
- *
- * A deliberate over-approximation of {@link normalizeIdentityModel}: coarse enough that two rows
- * naming one product land in the same bucket, and every bucket is re-checked in TypeScript with
- * the real normalizer. A bucket that is too coarse therefore only costs a discarded row, never a
- * wrong group. The literals are module constants, never caller input.
- */
-export function duplicateBucketKeySql(column: string): string {
-  let expression = `UPPER(${column})`;
-  for (const separator of KEY_SEPARATORS) expression = `REPLACE(${expression}, '${separator}', '')`;
-  for (const [spelling, canonical] of KEY_REVISION_MARKERS) {
-    expression = `REPLACE(${expression}, '${spelling}', '${canonical}')`;
-  }
-  return expression;
-}
 
 export interface KnowledgeCatalogDuplicateProduct {
   id: number;
@@ -117,20 +84,17 @@ function toDuplicateProduct(row: DuplicateRow): KnowledgeCatalogDuplicateProduct
   };
 }
 
-/**
- * The Catalog a merge should keep: the record carrying the most matched listings, then the one
- * verified first, then the lowest id. Keeping the busiest record moves the fewest identities and
- * leaves the longest-standing entry in place.
- */
+/** The Catalog a merge should keep, chosen by the shared canonical-survivor order. */
 function suggestedTarget(
   rows: readonly DuplicateRow[],
   matchedListings: Map<number, number>,
 ): number {
-  return [...rows].sort(
-    (left, right) =>
-      (matchedListings.get(Number(right.id)) || 0) - (matchedListings.get(Number(left.id)) || 0) ||
-      (left.first_verified_at || "").localeCompare(right.first_verified_at || "") ||
-      Number(left.id) - Number(right.id),
+  return canonicalCatalogIdentityOrder(
+    rows.map((row) => ({
+      id: Number(row.id),
+      matchedListingCount: matchedListings.get(Number(row.id)) || 0,
+      firstVerifiedAt: row.first_verified_at || "",
+    })),
   )[0].id;
 }
 
@@ -144,22 +108,22 @@ function suggestedTarget(
 function refineBucket(rows: readonly DuplicateRow[]): RefinedGroup[] {
   const groups = new Map<string, RefinedGroup>();
   for (const row of rows) {
-    const identityModel = normalizeIdentityModel(row.canonical_model);
     // A model that normalizes away entirely carries no identity to compare, so it can never be
     // reported as a duplicate of anything.
-    if (!identityModel) continue;
-    const manufacturerId = manufacturerIdForFilter(row.manufacturer_id) || row.manufacturer_id;
-    const key = `${manufacturerId} ${identityModel}`;
+    const identity = catalogIdentity(row.manufacturer_id, row.canonical_model);
+    if (!identity) continue;
+    const key = `${identity.manufacturerId} ${identity.model}`;
     const group = groups.get(key);
     if (group) group.products.push(row);
-    else groups.set(key, { manufacturerId, identityModel, products: [row] });
+    else {
+      groups.set(key, {
+        manufacturerId: identity.manufacturerId,
+        identityModel: identity.model,
+        products: [row],
+      });
+    }
   }
   return [...groups.values()].filter((group) => group.products.length > 1);
-}
-
-function duplicateManufacturerIds(value: string): string[] {
-  const raw = value.normalize("NFKC").trim().toLowerCase();
-  return [...new Set([raw, ...manufacturerFilterIds(value)])].filter(Boolean);
 }
 
 /**
@@ -177,7 +141,7 @@ export async function listKnowledgeCatalogDuplicates(
   db: ReadableDatabase,
   options: KnowledgeCatalogDuplicateListOptions,
 ): Promise<KnowledgeCatalogDuplicateListResult> {
-  const bucketKey = duplicateBucketKeySql("kp.normalized_model");
+  const bucketKey = catalogIdentityBucketKeySql("kp.normalized_model");
   const scannedKeys = Math.min(options.limit * KEY_SCAN_FACTOR, MAX_SCANNED_KEYS);
   const where = ["kp.verification_status = 'verified'"];
   const params: unknown[] = [];
@@ -185,7 +149,7 @@ export async function listKnowledgeCatalogDuplicates(
     // Expanding to every id the resolver treats as the same manufacturer keeps the legacy-id
     // duplicates -- the ones this screen exists for -- inside the filtered scan.
     where.push("kp.manufacturer_id IN (SELECT value FROM json_each(?))");
-    params.push(JSON.stringify(duplicateManufacturerIds(options.manufacturerId)));
+    params.push(JSON.stringify(catalogIdentityManufacturerIds(options.manufacturerId)));
   }
 
   const result = await db

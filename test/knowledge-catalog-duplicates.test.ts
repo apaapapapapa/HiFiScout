@@ -5,10 +5,8 @@ import { normalizeCatalogModel } from "../src/catalog/knowledge-catalog.js";
 import { manufacturerIdForFilter } from "../src/catalog/manufacturers.js";
 import { normalizeIdentityModel } from "../src/catalog/product-identity.js";
 import { mergeKnowledgeCatalogAdminProducts } from "../src/db/knowledge-catalog-admin-operations.js";
-import {
-  duplicateBucketKeySql,
-  listKnowledgeCatalogDuplicates,
-} from "../src/db/knowledge-catalog-duplicate-repository.js";
+import { listKnowledgeCatalogDuplicates } from "../src/db/knowledge-catalog-duplicate-repository.js";
+import { catalogIdentityBucketKeySql } from "../src/db/knowledge-catalog-identity.js";
 import { parseKnowledgeCatalogDuplicateListQuery } from "../src/http/knowledge-catalog-admin.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 
@@ -129,8 +127,8 @@ function insertCatalog(sqlite: Sqlite, seed: CatalogSeed): number {
 
 const ALL = { manufacturerId: "", afterKey: "", limit: 20 };
 
-test("duplicate bucket key folds the separators and revisions the identity model drops", () => {
-  const sql = duplicateBucketKeySql("kp.normalized_model");
+test("identity bucket key folds the separators and revisions the identity model drops", () => {
+  const sql = catalogIdentityBucketKeySql("kp.normalized_model");
   assert.match(sql, /REPLACE\(.*, '-', ''\)/u);
   assert.match(sql, /REPLACE\(.*, ' ', ''\)/u);
   // Longest first, so MKIII never decays into MK2 plus a stray I.

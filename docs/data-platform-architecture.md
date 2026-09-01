@@ -246,12 +246,24 @@ The governing rule is that a false positive merge is more damaging than a false 
 
 `knowledge_catalog_products` is unique on `(manufacturer_id, normalized_model)`, and catalog normalization keeps separators. One product can therefore hold two verified rows: `PMA-2500NE` beside `PMA2500NE`, `L-509 MK II` beside `L-509MKII`, or a canonical manufacturer id beside the fallback id the resolver produced before it learned that manufacturer. Listings then split across both rows and the same product appears twice in search.
 
+`src/catalog/knowledge-catalog-identity.ts` holds the one rule that decides whether two catalog rows name the same product: the canonical manufacturer id from the resolver, plus `normalizeIdentityModel`. Promotion, manual admin writes, duplicate detection, and automatic convergence all ask that module, so none of them can decide "same product" differently from the others.
+
 `GET /api/admin/knowledge-catalog/duplicates` reports those sets. Detection runs in two stages, because neither half can be done alone:
 
-1. SQL buckets verified rows by a key that drops the separators and folds the `MARK`/`MK` revision spellings. The key is a deliberate over-approximation of the identity normalizer, and paging walks bucket keys rather than row ids so a set is never split across pages.
-2. TypeScript re-keys each bucket with `normalizeIdentityModel` and the manufacturer resolver — the same pair Product Identity matches on — and keeps only the sub-groups with more than one member.
+1. SQL buckets verified rows by a key that drops the separators and folds the `MARK`/`MK` revision spellings. The key is a deliberate over-approximation of the identity rule, and paging walks bucket keys rather than row ids so a set is never split across pages.
+2. TypeScript re-keys each bucket with the identity rule and keeps only the sub-groups with more than one member.
 
-A bucket that is too coarse therefore costs a discarded row, never a reported group: two manufacturers that share a model string fall apart in stage 2, and a model that normalizes to no identity at all is never reported. Detection only proposes. Merging stays the existing operator-confirmed `POST /api/admin/knowledge-catalog/products/{id}/merge`, which moves the losing row's aliases, sources, verification attempts, and identity resolutions onto the surviving catalog and then replays it.
+A bucket that is too coarse therefore costs a discarded row, never a reported group: two manufacturers that share a model string fall apart in stage 2, and a model that normalizes to no identity at all is never reported.
+
+### Preventing and converging duplicate catalogs
+
+Writing is guarded at both ends.
+
+Before inserting a catalog row, every writer looks the product up by logical identity rather than by the storage key. The unique index is read first because it answers the common case without a scan; only when it holds no verified row is the identity bucket scanned, and every row that scan returns is re-checked with the real identity rule. A promotion whose model differs from an existing catalog entry only in separators, revision spelling, or a legacy manufacturer id therefore converges onto that entry instead of creating a second one.
+
+Rows written before that rule reached every writer are collapsed by the review run's finalizer, which converges a bounded number of duplicate sets per run using the same detection query the admin screen uses and the same reference move as the operator-confirmed merge. The survivor is a deterministic function of the set — most matched listings, then earliest verification, then lowest id — never row order, so repeating a pass never picks a different survivor. Each merge is one `db.batch`: aliases and sources are copied, candidates, verification attempts and identity resolutions are re-pointed, retention-safe price-index samples are re-pointed explicitly so `ON DELETE CASCADE` cannot take market evidence with the duplicate, and only then is the duplicate deleted. The survivor is left owed a remediation replay, which the same finalizer drains, so its newly inherited listings are re-resolved and their projections refreshed in the same pass. A converged catalog yields no duplicate sets, so re-running the pass — including after a partial failure — changes nothing.
+
+`POST /api/admin/knowledge-catalog/products/{id}/merge` remains available for the sets an operator wants to resolve directly, including a survivor that carries no primary category, which automatic convergence deliberately leaves alone.
 
 ## Evidence Archive
 
