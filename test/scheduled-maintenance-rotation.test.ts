@@ -13,8 +13,8 @@ function ticks(count: number): Date[] {
 
 test("a tick starts only the maintenance that is actually due", () => {
   // The whole point of the rotation: one tick must not be the moment every background task talks
-  // to D1 at once. Projection repair is intentionally due every tick, so the hourly bootstrap can
-  // raise the sequential task count to four without reintroducing concurrent D1 fan-out.
+  // to D1 at once. Projection repair is intentionally due every tick; ten-minute work is offset so
+  // the hourly bootstrap can still fit without exceeding four sequential tasks.
   const perTick = ticks(12).map((at) => dueMaintenanceTasks(at).length);
 
   assert.ok(
@@ -40,6 +40,7 @@ test("every maintenance task still runs within an hour", () => {
     [...seen].sort(),
     [
       "data_quality_remediation_sweep",
+      "knowledge_catalog_queue_quota_recovery",
       "knowledge_catalog_review_bootstrap",
       "product_search_projection_repair",
       "resume_interrupted_crawl_runs",
@@ -51,19 +52,30 @@ test("every maintenance task still runs within an hour", () => {
 });
 
 test("tasks sharing a cadence are offset onto different ticks", () => {
-  // Four tasks run every other tick. Left unoffset they would all land together and rebuild half
-  // the burst this replaced, so the offset has to keep them paired across alternating ticks.
+  // Five tasks run every other tick. Left unoffset they would all land together and rebuild the
+  // burst this replaced, so their table offsets have to split them across alternating ticks.
   const tenMinutely = new Set([
     "resume_interrupted_crawl_runs",
     "data_quality_remediation_sweep",
     "stale_product_audit_export_jobs",
     "stale_knowledge_catalog_export_jobs",
+    "knowledge_catalog_queue_quota_recovery",
   ]);
 
   for (const at of ticks(12)) {
     const due = dueMaintenanceTasks(at).filter((task) => tenMinutely.has(task.name));
-    assert.equal(due.length, 2, `${at.toISOString()} started ${due.length} ten-minute tasks`);
+    assert.ok(
+      due.length === 2 || due.length === 3,
+      `${at.toISOString()} started ${due.length} ten-minute tasks`,
+    );
   }
+});
+
+test("quota recovery probes every ten minutes without raising the per-tick cap", () => {
+  const firesIn = ticks(4).filter((at) =>
+    dueMaintenanceTasks(at).some((task) => task.name === "knowledge_catalog_queue_quota_recovery"),
+  );
+  assert.equal(firesIn.length, 2, "queue quota recovery should run every ten minutes");
 });
 
 test("export recovery stays close to the two-minute threshold it exists to enforce", () => {
