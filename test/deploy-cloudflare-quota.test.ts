@@ -4,9 +4,10 @@ import { test } from "vite-plus/test";
 
 const workflow = readFileSync(new URL("../.github/workflows/deploy.yml", import.meta.url), "utf8");
 
-test("production smoke is deferred only after the D1 daily row-read quota signature is confirmed", () => {
+test("production smoke is deferred only after an actual D1 row read confirms the daily quota signature", () => {
   assert.match(workflow, /Detect exhausted D1 runtime quota/);
-  assert.match(workflow, /SELECT 1 AS ok/);
+  assert.match(workflow, /SELECT id FROM products LIMIT 1/);
+  assert.doesNotMatch(workflow, /--command 'SELECT 1 AS ok;'/);
   assert.match(workflow, /grep -Fq 'code: 7500'/);
   assert.match(workflow, /exceeded D1's free tier daily row read limit/);
   assert.match(workflow, /PRODUCTION_RUNTIME_CHECK_DEFERRED=d1_daily_quota/);
