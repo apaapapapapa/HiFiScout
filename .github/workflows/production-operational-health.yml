@@ -20,7 +20,8 @@ jobs:
   data-platform:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The bounded crawl/search convergence windows can stack; leave headroom for setup and D1 queries.
+    timeout-minutes: 35
     env:
       CLOUDFLARE_ACCOUNT_ID: 9af87af4dbc00be3bfd4c8af3f52f684
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
