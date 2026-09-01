@@ -1,6 +1,10 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
-import { createRelayHtmlFetcher } from "../src/crawler/relay.js";
+import {
+  createRelayHtmlFetcher,
+  fetchPreparedRelayHtmlPage,
+  prepareRelayFetchPermit,
+} from "../src/crawler/relay.js";
 import { isRecord } from "../src/types.js";
 
 test("relay transport forwards target, delay and crawler identity", async () => {
@@ -33,6 +37,120 @@ test("relay transport forwards target, delay and crawler identity", async () => 
     userAgent: "HiFiScoutBot/0.1",
     requestDelayMs: 10_000,
   });
+});
+
+test("relay PREPARE returns scheduler metadata without seller HTML", async () => {
+  let requestedOptions: RequestInit = {};
+  const permit = await prepareRelayFetchPermit(
+    {
+      relayUrl: "https://relay.example/",
+      relayToken: "secret-token",
+      fetchFn: async (_url, options) => {
+        requestedOptions = options || {};
+        return Response.json({
+          operation: "prepared",
+          permit: "opaque.signed",
+          targetUrl: "https://www.audiounion.jp/st/new_arrival_used.html",
+          requestedUserAgent: "HiFiScoutBot/0.1",
+          effectiveUserAgent: "HiFiScoutBot/0.1",
+          effectiveDelayMs: 12_000,
+          issuedAtMs: 1_000,
+          notBeforeMs: 13_000,
+          expiresAtMs: 313_000,
+        });
+      },
+    },
+    "https://www.audiounion.jp/st/new_arrival_used.html",
+    { userAgent: "HiFiScoutBot/0.1", requestDelayMs: 5_000 },
+  );
+
+  assert.deepEqual(permit, {
+    permit: "opaque.signed",
+    targetUrl: "https://www.audiounion.jp/st/new_arrival_used.html",
+    requestedUserAgent: "HiFiScoutBot/0.1",
+    effectiveUserAgent: "HiFiScoutBot/0.1",
+    effectiveDelayMs: 12_000,
+    issuedAtMs: 1_000,
+    notBeforeMs: 13_000,
+    expiresAtMs: 313_000,
+  });
+  assert.deepEqual(JSON.parse(String(requestedOptions.body)), {
+    operation: "prepare",
+    url: "https://www.audiounion.jp/st/new_arrival_used.html",
+    userAgent: "HiFiScoutBot/0.1",
+    requestDelayMs: 5_000,
+  });
+});
+
+test("relay FETCH exchanges the exact prepared URL and UA for HTML", async () => {
+  const bodies: unknown[] = [];
+  const html = await fetchPreparedRelayHtmlPage(
+    {
+      relayUrl: "https://relay.example/",
+      relayToken: "secret-token",
+      fetchFn: async (_url, options) => {
+        bodies.push(JSON.parse(String(options?.body)));
+        return new Response("<html>prepared</html>", {
+          status: 200,
+          headers: {
+            "content-type": "text/html; charset=utf-8",
+            "x-hifiscout-upstream-status": "200",
+          },
+        });
+      },
+    },
+    {
+      permit: "opaque.signed",
+      targetUrl: "https://www.audiounion.jp/st/new_arrival_used.html",
+      requestedUserAgent: "HiFiScoutBot/0.1",
+      effectiveUserAgent: "HiFiScoutBot/0.1",
+      effectiveDelayMs: 10_000,
+      issuedAtMs: 1_000,
+      notBeforeMs: 11_000,
+      expiresAtMs: 311_000,
+    },
+    "https://www.audiounion.jp/st/new_arrival_used.html",
+    { userAgent: "HiFiScoutBot/0.1" },
+  );
+
+  assert.equal(html, "<html>prepared</html>");
+  assert.deepEqual(bodies, [
+    {
+      operation: "fetch",
+      permit: "opaque.signed",
+      url: "https://www.audiounion.jp/st/new_arrival_used.html",
+      userAgent: "HiFiScoutBot/0.1",
+    },
+  ]);
+});
+
+test("relay FETCH refuses local permit URL or UA substitution", async () => {
+  const permit = {
+    permit: "opaque.signed",
+    targetUrl: "https://www.audiounion.jp/st/new_arrival_used.html",
+    requestedUserAgent: "HiFiScoutBot/0.1",
+    effectiveUserAgent: "HiFiScoutBot/0.1",
+    effectiveDelayMs: 10_000,
+    issuedAtMs: 1_000,
+    notBeforeMs: 11_000,
+    expiresAtMs: 311_000,
+  };
+  const config = {
+    relayUrl: "https://relay.example/",
+    relayToken: "secret-token",
+    fetchFn: async () => {
+      throw new Error("relay must not be called");
+    },
+  };
+
+  await assert.rejects(
+    fetchPreparedRelayHtmlPage(config, permit, "https://www.hifido.co.jp/?L=50&LNG=J&O=0&OD=0"),
+    /relay permit target mismatch/,
+  );
+  await assert.rejects(
+    fetchPreparedRelayHtmlPage(config, permit, permit.targetUrl, { userAgent: "OtherBot/1.0" }),
+    /relay permit user-agent mismatch/,
+  );
 });
 
 test("relay transport preserves upstream crawl status", async () => {
