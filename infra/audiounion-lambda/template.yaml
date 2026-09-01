@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: HiFiScout AudioUnion HTML relay in AWS Tokyo region
+Description: HiFiScout AudioUnion/Hifido HTML relay with signed permits in AWS Tokyo region
 
 Parameters:
   RelayToken:
