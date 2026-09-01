@@ -302,7 +302,7 @@ test("derived gap scan restarts from zero after repairing a higher-id critical g
   );
 });
 
-test("a poison listing is attempted only once when stale and exact-identity phases overlap", async () => {
+test("a stale-fallback listing bypasses poisoned projection writes and consumes one phase slot", async () => {
   const { sqlite, db } = migratedSqlite();
   const poisonId = insertActiveListing(sqlite, "cross-phase-poison");
   const healthyId = insertActiveListing(sqlite, "cross-phase-healthy");
@@ -313,9 +313,9 @@ test("a poison listing is attempted only once when stale and exact-identity phas
     maxListings: 2,
   });
 
-  // Force the poison listing's first projection stage to need a write. The injected failure is
-  // listing-scoped and occurs before exact-identity peer expansion, so a later healthy listing can
-  // prove that the failed id did not consume a second phase budget slot.
+  // The stale-fallback phase now repairs only entity membership. A projection write poisoned below
+  // must therefore be irrelevant, and the attempted-id set must still prevent the same listing from
+  // consuming a second exact-identity phase slot.
   sqlite
     .prepare(
       "UPDATE product_search_projection SET title = 'synthetic-stale-title' WHERE product_id = ?",
@@ -332,8 +332,7 @@ test("a poison listing is attempted only once when stale and exact-identity phas
 
   assert.deepEqual(result, {
     selectedCount: 2,
-    repairedCount: 1,
-    failedCount: 1,
+    repairedCount: 2,
     remainingGapCount: null,
   });
 });
