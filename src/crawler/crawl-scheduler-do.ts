@@ -511,9 +511,14 @@ export class CrawlScheduler extends DurableObject<Env> {
     let html: string | null = null;
     let errorMessage: string | null = null;
     try {
-      html = await fetchPreparedRelayHtmlPage(relayConfiguration(this.env), relayPermit, targetUrl, {
-        userAgent: settings.userAgent,
-      });
+      html = await fetchPreparedRelayHtmlPage(
+        relayConfiguration(this.env),
+        relayPermit,
+        targetUrl,
+        {
+          userAgent: settings.userAgent,
+        },
+      );
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : String(error);
     }
