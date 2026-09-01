@@ -7,6 +7,10 @@ const migrationSql = readFileSync(
   new URL("../migrations/0060_knowledge_catalog_price_index.sql", import.meta.url),
   "utf8",
 );
+const triggerUpsertMigrationSql = readFileSync(
+  new URL("../migrations/0070_price_index_trigger_upsert.sql", import.meta.url),
+  "utf8",
+);
 
 type IndexRow = {
   catalog_product_id: number;
@@ -302,5 +306,44 @@ test("late identity resolution backfills samples and matched reassignment moves 
     0,
   );
 
+  db.close();
+});
+
+test("identity UPSERT adds evidence to an existing catalog price index", () => {
+  const db = createPreMigrationDatabase();
+  db.exec(migrationSql);
+  db.exec(triggerUpsertMigrationSql);
+  const catalogProductId = insertCatalogProduct(db, "C-2");
+
+  const existingListingId = insertListing(db, "existing-index", 100);
+  db.prepare(`
+    INSERT INTO product_identity_resolutions(listing_product_id, catalog_product_id, status)
+    VALUES (?, ?, 'matched')
+  `).run(existingListingId, catalogProductId);
+  db.prepare(`
+    INSERT INTO price_history(product_id, price_yen, observed_at)
+    VALUES (?, 100, '2026-09-01T00:00:00.000Z')
+  `).run(existingListingId);
+  assert.equal(getIndex(db, catalogProductId)?.asking_sample_count, 1);
+
+  const replayedListingId = insertListing(db, "identity-upsert", 200);
+  db.prepare(`
+    INSERT INTO product_identity_resolutions(listing_product_id, catalog_product_id, status)
+    VALUES (?, NULL, 'unresolved')
+  `).run(replayedListingId);
+  db.prepare(`
+    INSERT INTO price_history(product_id, price_yen, observed_at)
+    VALUES (?, 200, '2026-09-01T00:01:00.000Z')
+  `).run(replayedListingId);
+
+  db.prepare(`
+    INSERT INTO product_identity_resolutions(listing_product_id, catalog_product_id, status)
+    VALUES (?, ?, 'matched')
+    ON CONFLICT(listing_product_id) DO UPDATE SET
+      catalog_product_id = excluded.catalog_product_id,
+      status = excluded.status
+  `).run(replayedListingId, catalogProductId);
+
+  assert.equal(getIndex(db, catalogProductId)?.asking_sample_count, 2);
   db.close();
 });

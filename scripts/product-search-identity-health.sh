@@ -17,7 +17,8 @@ query() {
   return 1
 }
 
-split_groups="$(query "
+read_split_groups() {
+  query "
   SELECT
     p.canonical_manufacturer_id,
     p.normalized_model,
@@ -39,11 +40,28 @@ split_groups="$(query "
   HAVING COUNT(*) > 1
     AND COUNT(DISTINCT m.entity_id) > 1
     AND COUNT(DISTINCT CASE
-      WHEN p.primary_category_id <> 'other' THEN p.primary_category_id
+      WHEN p.primary_category_id NOT IN ('other', 'unclassified') THEN p.primary_category_id
       ELSE NULL
     END) <= 1
   ORDER BY listing_count DESC, shop_count DESC
-  LIMIT 50;")"
+  LIMIT 50;"
+}
+
+split_groups="$(read_split_groups)"
+if [ "$(jq 'length' <<< "$split_groups")" -ne 0 ]; then
+  # The deploy can finish just after a five-minute GENERAL_CRON boundary. The newly deployed repair
+  # path has not had an opportunity to run in that case, so allow exactly one subsequent tick plus a
+  # small execution grace period. Persistent drift is still reported by the second observation.
+  GENERAL_CRON_INTERVAL_SECONDS=300
+  PROJECTION_REPAIR_GRACE_SECONDS=45
+  now_epoch="$(date +%s)"
+  next_general_tick="$(( ((now_epoch / GENERAL_CRON_INTERVAL_SECONDS) + 1) * GENERAL_CRON_INTERVAL_SECONDS ))"
+  wait_seconds="$(( next_general_tick - now_epoch + PROJECTION_REPAIR_GRACE_SECONDS ))"
+  echo "Safe exact identities are split before the first post-deploy repair tick; waiting ${wait_seconds}s for bounded convergence." >&2
+  jq . <<< "$split_groups" >&2
+  sleep "$wait_seconds"
+  split_groups="$(read_split_groups)"
+fi
 
 echo 'Safe exact identities still split across cards:'
 jq . <<< "$split_groups"
