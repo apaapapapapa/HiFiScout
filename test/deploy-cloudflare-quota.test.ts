@@ -4,26 +4,24 @@ import { test } from "vite-plus/test";
 
 const workflow = readFileSync(new URL("../.github/workflows/deploy.yml", import.meta.url), "utf8");
 
-test("production smoke is deferred only after an actual D1 row read confirms the daily quota signature", () => {
-  assert.match(workflow, /Detect exhausted D1 runtime quota/);
-  assert.match(workflow, /SELECT id FROM products LIMIT 1/);
-  assert.doesNotMatch(workflow, /--command 'SELECT 1 AS ok;'/);
-  assert.match(workflow, /grep -Fq 'code: 7500'/);
-  assert.match(workflow, /exceeded D1's free tier daily row read limit/);
+test("production smoke defers only when the failing Worker request is correlated to D1 row-read quota", () => {
+  assert.doesNotMatch(workflow, /Detect exhausted D1 runtime quota/);
+  assert.doesNotMatch(workflow, /SELECT id FROM products LIMIT 1/);
+  assert.match(workflow, /wrangler tail hifiscout --format=json/);
+  assert.match(workflow, /diagnostic_ray/);
+  assert.match(workflow, /event\.request\.headers\["cf-ray"\]/);
+  assert.match(workflow, /D1_ERROR: Your account has exceeded D1's free tier daily row read limit/);
   assert.match(workflow, /PRODUCTION_RUNTIME_CHECK_DEFERRED=d1_daily_quota/);
+  assert.match(workflow, /correlated by CF-Ray/);
   assert.match(
     workflow,
-    /Production Atom\/catalog smoke check deferred because the D1 daily row-read quota signature was confirmed/,
-  );
-  assert.match(
-    workflow,
-    /Production runtime health check deferred because the D1 daily row-read quota signature was confirmed/,
+    /Production runtime health check deferred because the failing production request was correlated/,
   );
 });
 
-test("generic code 7500 and non-quota probe failures keep production smoke fail-closed", () => {
-  assert.match(workflow, /D1 availability probe inconclusive/);
-  assert.match(workflow, /did not confirm the free-tier daily row-read quota signature/);
-  assert.match(workflow, /production smoke checks will still run/);
+test("generic 1101 and unrelated tail failures keep production smoke fail-closed", () => {
+  assert.match(workflow, /Worker tail did not correlate this request to the D1 daily row-read quota signature/);
+  assert.match(workflow, /Diagnostic replay returned HTTP/);
   assert.doesNotMatch(workflow, /1101.*PRODUCTION_RUNTIME_CHECK_DEFERRED/s);
+  assert.match(workflow, /exit 1/);
 });
