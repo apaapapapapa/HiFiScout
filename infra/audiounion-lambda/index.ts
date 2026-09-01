@@ -458,7 +458,8 @@ export function createHandler({
         return jsonResponse(400, { error: "invalid_json" });
       }
 
-      const operation = body.operation === "prepare" || body.operation === "fetch" ? body.operation : "legacy";
+      const operation =
+        body.operation === "prepare" || body.operation === "fetch" ? body.operation : "legacy";
       if (operation === "fetch") {
         const secret = relayPermitSecret(env);
         if (!secret) return jsonResponse(500, { error: "relay_permit_secret_not_configured" });

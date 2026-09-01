@@ -320,11 +320,8 @@ test("FETCH rejects permit reuse for another URL or user-agent", async () => {
   });
 
   const prepared = JSON.parse(
-    (
-      await handler(
-        event({ operation: "prepare", url: ENTRY_URL, userAgent: "HiFiScoutBot/0.1" }),
-      )
-    ).body,
+    (await handler(event({ operation: "prepare", url: ENTRY_URL, userAgent: "HiFiScoutBot/0.1" })))
+      .body,
   );
   nowMs = prepared.notBeforeMs;
 
@@ -375,11 +372,8 @@ test("FETCH rejects tampered and expired permits", async () => {
   });
 
   const prepared = JSON.parse(
-    (
-      await handler(
-        event({ operation: "prepare", url: ENTRY_URL, userAgent: "HiFiScoutBot/0.1" }),
-      )
-    ).body,
+    (await handler(event({ operation: "prepare", url: ENTRY_URL, userAgent: "HiFiScoutBot/0.1" })))
+      .body,
   );
 
   const tampered = await handler(
