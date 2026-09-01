@@ -6,7 +6,9 @@ interface FailedReviewFinishedAtRow {
   finished_at: string | null;
 }
 
-export function isKnowledgeCatalogQueueDailyWriteLimit(message: string | null | undefined): boolean {
+export function isKnowledgeCatalogQueueDailyWriteLimit(
+  message: string | null | undefined,
+): boolean {
   return String(message || "")
     .toLowerCase()
     .includes(DAILY_QUEUE_WRITE_LIMIT.toLowerCase());

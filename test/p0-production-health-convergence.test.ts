@@ -80,8 +80,5 @@ test("stale fallback repair goes directly to transactional entity membership syn
     gapRepairSource,
     /repairPhase\(STALE_FALLBACK_GAP_PREDICATE, refreshStaleFallbackMembershipOnly\)/u,
   );
-  assert.match(
-    gapRepairSource,
-    /await syncProductSearchEntities\(db, shopKey, sourceIds\)/u,
-  );
+  assert.match(gapRepairSource, /await syncProductSearchEntities\(db, shopKey, sourceIds\)/u);
 });
