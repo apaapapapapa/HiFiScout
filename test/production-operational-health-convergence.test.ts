@@ -33,5 +33,5 @@ test("production operational health runs convergence gate before strict checks",
 
   assert.ok(waitIndex >= 0, "workflow must invoke the active-crawl convergence gate");
   assert.ok(strictIndex > waitIndex, "strict production health must run after convergence wait");
-  assert.match(workflow, /data-platform:[\s\S]*?timeout-minutes: 20/);
+  assert.match(workflow, /data-platform:[\s\S]*?timeout-minutes: 35/);
 });
