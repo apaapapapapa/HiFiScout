@@ -1,8 +1,4 @@
-import {
-  getCrawlerSettings,
-  getShopIntervalMinutes,
-  getShopMaxPages,
-} from "../config.js";
+import { getCrawlerSettings, getShopIntervalMinutes, getShopMaxPages } from "../config.js";
 import {
   ensureCrawlFetchSession,
   getCrawlFetchSession,
@@ -39,7 +35,9 @@ function queueForLane(
 function buildContinuationMessage(
   plugin: ShopPlugin,
   source: ResumableCrawlQueueMessage,
-  session: Awaited<ReturnType<typeof getCrawlFetchSession>> extends infer T ? NonNullable<T> : never,
+  session: Awaited<ReturnType<typeof getCrawlFetchSession>> extends infer T
+    ? NonNullable<T>
+    : never,
 ): ResumableCrawlQueueMessage {
   const continuation = continuationFromSession(session);
   if (!continuation) throw new Error(`active crawl session has no continuation: ${session.run_id}`);
