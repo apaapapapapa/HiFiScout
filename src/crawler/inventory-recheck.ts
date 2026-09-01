@@ -161,11 +161,7 @@ export async function prepareShopInventoryRecheck(
     status: "ready",
     targetUrl: candidate.source_url,
     userAgent: crawlerSettings.userAgent,
-    requestDelayMs: getShopRequestDelayMs(
-      env,
-      plugin.definition,
-      crawlerSettings.requestDelayMs,
-    ),
+    requestDelayMs: getShopRequestDelayMs(env, plugin.definition, crawlerSettings.requestDelayMs),
   };
 }
 

@@ -9,10 +9,7 @@ import {
   prepareDirectFetchPermit,
   type DirectFetchPermit,
 } from "./direct-pacing.js";
-import {
-  prepareShopInventoryRecheck,
-  recheckShopInventory,
-} from "./inventory-recheck.js";
+import { prepareShopInventoryRecheck, recheckShopInventory } from "./inventory-recheck.js";
 import {
   CRAWL_SCHEDULER_COMMAND_VERSION,
   CRAWL_SCHEDULER_OBSERVE_PATH,
@@ -541,9 +538,7 @@ export class CrawlScheduler extends DurableObject<Env> {
                 : {}),
         },
       );
-      const nextOriginNotBeforeMs = directPermit
-        ? Date.now() + directPermit.effectiveDelayMs
-        : 0;
+      const nextOriginNotBeforeMs = directPermit ? Date.now() + directPermit.effectiveDelayMs : 0;
 
       if (result.kind === "continued") {
         await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
