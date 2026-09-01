@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'infra/audiounion-lambda/index.ts'
+      - 'infra/audiounion-lambda/template.yaml'
       - '.github/workflows/deploy-audiounion-lambda.yml'
   workflow_dispatch:
 
@@ -40,6 +41,59 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_LAMBDA_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: Ensure relay permit signing secret
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          environment_json="$(aws lambda get-function-configuration \
+            --region "$AWS_REGION" \
+            --function-name "$FUNCTION_NAME" \
+            --query 'Environment.Variables' \
+            --output json)"
+          permit_secret="$(jq -r '.RELAY_PERMIT_SECRET // empty' <<< "$environment_json")"
+
+          if [ "${#permit_secret}" -ge 32 ]; then
+            echo "Relay permit signing secret is already configured."
+            exit 0
+          fi
+
+          permit_secret="$(openssl rand -hex 32)"
+          jq -n \
+            --argjson vars "$environment_json" \
+            --arg permit_secret "$permit_secret" \
+            '{Variables: ($vars + {RELAY_PERMIT_SECRET: $permit_secret})}' \
+            > "$RUNNER_TEMP/lambda-environment.json"
+
+          aws lambda update-function-configuration \
+            --region "$AWS_REGION" \
+            --function-name "$FUNCTION_NAME" \
+            --environment "file://$RUNNER_TEMP/lambda-environment.json" \
+            --query '{FunctionName:FunctionName,LastUpdateStatus:LastUpdateStatus}'
+
+          for attempt in $(seq 1 30); do
+            status="$(aws lambda get-function-configuration \
+              --region "$AWS_REGION" \
+              --function-name "$FUNCTION_NAME" \
+              --query 'LastUpdateStatus' \
+              --output text)"
+            echo "Lambda configuration update status: $status (attempt $attempt/30)"
+            if [ "$status" = "Successful" ]; then
+              exit 0
+            fi
+            if [ "$status" = "Failed" ]; then
+              aws lambda get-function-configuration \
+                --region "$AWS_REGION" \
+                --function-name "$FUNCTION_NAME" \
+                --query '{LastUpdateStatus:LastUpdateStatus,Reason:LastUpdateStatusReason,ReasonCode:LastUpdateStatusReasonCode}'
+              exit 1
+            fi
+            sleep 2
+          done
+
+          echo "Timed out waiting for Lambda configuration update to complete."
+          exit 1
 
       - name: Build Lambda bundle from TypeScript source
         run: vp run build:lambda
@@ -153,7 +207,7 @@ jobs:
           jq -e '.[] | select(.name == "CRAWL_RELAY_TOKEN")' <<< "$secrets" >/dev/null
           echo "Shared relay secrets are registered in Cloudflare."
 
-      - name: Probe relay-backed shops through Tokyo relay
+      - name: Probe Relay PREPARE/FETCH for AudioUnion and Hifido
         shell: bash
         run: |
           set -euo pipefail
@@ -179,58 +233,77 @@ jobs:
             ORDER BY last_seen_at DESC
             LIMIT 1;")"
           detail_url="$(jq -r '.[0].results[0].source_url // empty' <<< "$product_json")"
-
           if [ -z "$detail_url" ]; then
             echo "No active AudioUnion used-detail URL is available for the deployment probe."
             exit 1
           fi
 
-          request_body="$(jq -cn --arg url "$detail_url" '{url: $url, requestDelayMs: 0}')"
-          headers_file="$RUNNER_TEMP/audiounion-detail-headers.txt"
-          body_file="$RUNNER_TEMP/audiounion-detail.html"
-          status="$(curl -sS --max-time 35 \
-            -D "$headers_file" \
-            -o "$body_file" \
-            -w '%{http_code}' \
-            -X POST "$relay_url" \
-            -H "Authorization: Bearer $relay_token" \
-            -H 'Content-Type: application/json' \
-            --data "$request_body")"
-
-          echo "AudioUnion detail probe HTTP status: $status"
-          grep -i '^x-hifiscout-aws-region:' "$headers_file" || true
-          if [ "$status" = "409" ]; then
-            echo "AudioUnion used-detail access is disallowed by the current robots.txt policy."
-            exit 1
-          fi
-          if [ "$status" != "200" ]; then
-            echo "AudioUnion used-detail probe did not return HTTP 200."
-            exit 1
-          fi
-          grep -qi '^x-hifiscout-aws-region:[[:space:]]*ap-northeast-1' "$headers_file"
-          test -s "$body_file"
-
           hifido_url='https://www.hifido.co.jp/?L=50&LNG=J&O=0&OD=0'
-          request_body="$(jq -cn --arg url "$hifido_url" '{url: $url, requestDelayMs: 0}')"
-          headers_file="$RUNNER_TEMP/hifido-relay-headers.txt"
-          body_file="$RUNNER_TEMP/hifido-relay.html"
-          status="$(curl -sS --max-time 35 \
-            -D "$headers_file" \
-            -o "$body_file" \
-            -w '%{http_code}' \
-            -X POST "$relay_url" \
-            -H "Authorization: Bearer $relay_token" \
-            -H 'Content-Type: application/json' \
-            --data "$request_body")"
 
-          echo "Hifido relay HTTP status: $status"
-          grep -i '^x-hifiscout-aws-region:' "$headers_file" || true
-          grep -i '^x-hifiscout-upstream-status:' "$headers_file" || true
-          test "$status" = "200"
-          grep -qi '^x-hifiscout-aws-region:[[:space:]]*ap-northeast-1' "$headers_file"
-          test -s "$body_file"
-          grep -Eqi 'list-item|ハイファイ堂|hifido' "$body_file"
-          echo "AudioUnion and Hifido are reachable through the Tokyo relay."
+          prepare_relay() {
+            local target_url="$1"
+            local output_file="$2"
+            local request_body status
+            request_body="$(jq -cn --arg url "$target_url" \
+              '{operation: "prepare", url: $url, requestDelayMs: 0}')"
+            status="$(curl -sS --max-time 15 \
+              -o "$output_file" \
+              -w '%{http_code}' \
+              -X POST "$relay_url" \
+              -H "Authorization: Bearer $relay_token" \
+              -H 'Content-Type: application/json' \
+              --data "$request_body")"
+            echo "Relay PREPARE $target_url -> HTTP $status"
+            test "$status" = "200"
+            jq -e '.permit and .targetUrl and .requestedUserAgent and (.notBeforeMs | type == "number")' \
+              "$output_file" >/dev/null
+          }
+
+          audiounion_prepare="$RUNNER_TEMP/audiounion-prepare.json"
+          hifido_prepare="$RUNNER_TEMP/hifido-prepare.json"
+          prepare_relay "$detail_url" "$audiounion_prepare"
+          prepare_relay "$hifido_url" "$hifido_prepare"
+
+          max_not_before_ms="$(jq -s 'map(.notBeforeMs) | max' \
+            "$audiounion_prepare" "$hifido_prepare")"
+          now_ms="$(date +%s%3N)"
+          if [ "$now_ms" -lt "$max_not_before_ms" ]; then
+            wait_ms=$((max_not_before_ms - now_ms + 1000))
+            wait_seconds=$(((wait_ms + 999) / 1000))
+            echo "Waiting $wait_seconds seconds outside Lambda until both permits are valid."
+            sleep "$wait_seconds"
+          fi
+
+          fetch_relay() {
+            local prepared_file="$1"
+            local headers_file="$2"
+            local body_file="$3"
+            local request_body status
+            request_body="$(jq -cn --slurpfile prepared "$prepared_file" \
+              '{operation: "fetch", permit: $prepared[0].permit, url: $prepared[0].targetUrl, userAgent: $prepared[0].requestedUserAgent}')"
+            status="$(curl -sS --max-time 15 \
+              -D "$headers_file" \
+              -o "$body_file" \
+              -w '%{http_code}' \
+              -X POST "$relay_url" \
+              -H "Authorization: Bearer $relay_token" \
+              -H 'Content-Type: application/json' \
+              --data "$request_body")"
+            echo "Relay FETCH $(jq -r '.targetUrl' "$prepared_file") -> HTTP $status"
+            test "$status" = "200"
+            grep -qi '^x-hifiscout-aws-region:[[:space:]]*ap-northeast-1' "$headers_file"
+            test -s "$body_file"
+          }
+
+          audiounion_headers="$RUNNER_TEMP/audiounion-detail-headers.txt"
+          audiounion_body="$RUNNER_TEMP/audiounion-detail.html"
+          hifido_headers="$RUNNER_TEMP/hifido-relay-headers.txt"
+          hifido_body="$RUNNER_TEMP/hifido-relay.html"
+          fetch_relay "$audiounion_prepare" "$audiounion_headers" "$audiounion_body"
+          fetch_relay "$hifido_prepare" "$hifido_headers" "$hifido_body"
+
+          grep -Eqi 'list-item|ハイファイ堂|hifido' "$hifido_body"
+          echo "AudioUnion and Hifido PREPARE/FETCH protocol verified through the Tokyo relay."
 
       - name: Verify deployment
         run: |
