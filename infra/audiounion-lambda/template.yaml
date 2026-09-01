@@ -1,9 +1,13 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: HiFiScout AudioUnion HTML relay in AWS Tokyo region
+Description: HiFiScout AudioUnion/Hifido HTML relay with signed permits in AWS Tokyo region
 
 Parameters:
   RelayToken:
+    Type: String
+    NoEcho: true
+    MinLength: 32
+  RelayPermitSecret:
     Type: String
     NoEcho: true
     MinLength: 32
@@ -12,7 +16,7 @@ Parameters:
     Default: https://www.audiounion.jp/st/new_arrival_used.html
   CrawlerUserAgent:
     Type: String
-    Default: HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)
+    Default: HiFiScoutBot/0.1 (+https://github.com/apaapapapa/HiFiScout)
   MinimumRequestDelayMs:
     Type: Number
     Default: 10000
@@ -33,6 +37,7 @@ Resources:
       Environment:
         Variables:
           RELAY_TOKEN: !Ref RelayToken
+          RELAY_PERMIT_SECRET: !Ref RelayPermitSecret
           AUDIOUNION_ENTRY_URL: !Ref AudioUnionEntryUrl
           CRAWLER_USER_AGENT: !Ref CrawlerUserAgent
           MIN_REQUEST_DELAY_MS: !Ref MinimumRequestDelayMs
@@ -41,7 +46,7 @@ Resources:
 
 Outputs:
   FunctionUrl:
-    Description: Configure this as the Cloudflare secret AUDIOUNION_RELAY_URL
+    Description: Configure this as the Cloudflare secret CRAWL_RELAY_URL
     Value: !GetAtt AudioUnionFetcherUrl.FunctionUrl
   FunctionName:
     Value: !Ref AudioUnionFetcher
