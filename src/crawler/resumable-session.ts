@@ -8,7 +8,6 @@ import {
 } from "../db/crawl-fetch-session-repository.js";
 import { getShopState, markShopFailure } from "../db/shop-state-repository.js";
 import { errorMessage } from "../types.js";
-import { crawlQueueLane } from "./queue-lanes.js";
 import {
   canonicalRunId,
   continuationFromSession,
@@ -19,20 +18,7 @@ import {
   type ResumableRuntimeEnv,
 } from "./resumable-queue-contract.js";
 import { initialPageQueue, targetUrl } from "./strategies.js";
-import type { CrawlPage, CrawlQueueLane, CrawlQueueMessage, ShopPlugin } from "./types.js";
-
-function queueForLane(
-  env: ResumableRuntimeEnv,
-  lane: CrawlQueueLane,
-): Pick<Queue<CrawlQueueMessage>, "send"> | null {
-  const queue =
-    lane === "fast"
-      ? env.CRAWL_FAST_QUEUE
-      : lane === "heavy"
-        ? env.CRAWL_HEAVY_QUEUE
-        : env.CRAWL_RELAY_QUEUE;
-  return queue || env.CRAWL_QUEUE || null;
-}
+import type { CrawlPage, ShopPlugin } from "./types.js";
 
 function buildContinuationMessage(
   plugin: ShopPlugin,
@@ -41,41 +27,15 @@ function buildContinuationMessage(
 ): ResumableCrawlQueueMessage {
   const continuation = continuationFromSession(session);
   if (!continuation) throw new Error(`active crawl session has no continuation: ${session.run_id}`);
-  const lane = source.lane || crawlQueueLane(plugin);
   return {
     ...source,
     shopKey: plugin.key,
     requestedAt: session.requested_at,
     jobId: source.jobId || canonicalRunId(plugin.key, session.requested_at),
-    lane,
+    lane: undefined,
     collectionRunId: session.run_id,
     continuation,
   };
-}
-
-async function sendContinuation(
-  env: ResumableRuntimeEnv,
-  plugin: ShopPlugin,
-  message: ResumableCrawlQueueMessage,
-): Promise<void> {
-  const continuation = message.continuation;
-  if (!continuation) return;
-  const lane = message.lane || crawlQueueLane(plugin);
-  const queue = queueForLane(env, lane);
-  if (!queue) throw new Error(`crawl queue binding is not configured for ${plugin.key}`);
-  await queue.send(message);
-  console.log(
-    JSON.stringify({
-      event: "crawl_fetch_continuation_enqueued",
-      shopKey: plugin.key,
-      runId: message.collectionRunId,
-      sequence: continuation.sequence,
-      phase: continuation.phase,
-      pageKey: continuation.pageKey || null,
-      lane,
-      workerVersion: workerVersion(env),
-    }),
-  );
 }
 
 function pageInputs(plugin: ShopPlugin, pages: readonly CrawlPage[]): CrawlFetchPageInput[] {
@@ -163,12 +123,10 @@ export async function continued(
   runId: string,
   options: ResumableCrawlConsumeOptions,
 ): Promise<ResumableCrawlConsumeResult> {
+  void options;
   const session = await getCrawlFetchSession(env.DB, runId);
   if (!session) throw new Error(`crawl fetch session disappeared: ${runId}`);
   const continuationMessage = buildContinuationMessage(plugin, body, session);
-  if (options.continuationDelivery !== "return_only") {
-    await sendContinuation(env, plugin, continuationMessage);
-  }
   return {
     kind: "continued",
     shopKey: plugin.key,
