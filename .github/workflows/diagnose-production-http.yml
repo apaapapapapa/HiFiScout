@@ -1,0 +1,45 @@
+name: Diagnose Production HTTP
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/diagnose-production-http.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe production surfaces
+        shell: bash
+        run: |
+          set -uo pipefail
+          base="https://hifiscout.tokyojp.workers.dev"
+          probe() {
+            local label="$1"
+            local path="$2"
+            local headers body status
+            headers="$(mktemp)"
+            body="$(mktemp)"
+            status="$(curl -sS --max-time 20 -D "$headers" -o "$body" -w '%{http_code}' "${base}${path}" || true)"
+            echo "=== ${label} ${path} ==="
+            echo "HTTP ${status}"
+            grep -Ei '^(content-type|cf-ray|server|cache-control):' "$headers" || true
+            head -c 600 "$body" || true
+            echo
+            rm -f "$headers" "$body"
+          }
+
+          # Static asset bypasses the Worker. Root executes Worker then ASSETS.fetch.
+          probe static-asset "/styles.css"
+          probe worker-root "/"
+          # Unknown API and meta exercise the API guard without D1 reads.
+          probe api-unknown "/api/__diagnostic_not_found"
+          probe api-meta "/api/meta"
+          # Health catches its own D1 failure and should never become Cloudflare 1101.
+          probe api-health "/api/health"
+          probe api-feed "/api/feed?manufacturer=TAD&inStock=true&limit=2"
