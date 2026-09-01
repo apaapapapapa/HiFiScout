@@ -103,6 +103,30 @@ test("selected relay lane dispatch bypasses Queue", async () => {
   assert.equal(queueSends, 0);
 });
 
+test("relay lane alone does not opt an unselected shop into the DO path", async () => {
+  const message: CrawlQueueMessage = {
+    shopKey: "hifido",
+    force: true,
+    requestedAt: "2026-09-01T14:31:00.000Z",
+    jobId: "crawl:hifido:phase5-unselected",
+    batchRunId: "batch:phase5",
+    lane: "relay",
+  };
+  let queueSends = 0;
+  const env = {
+    CRAWL_DO_CANARY_SHOPS: "home-shokai,ippinkan,u-audio,audiounion",
+  } as unknown as Env;
+
+  const route = await deliverCrawlDispatch(env, message, {
+    send: async () => {
+      queueSends += 1;
+    },
+  } as unknown as Parameters<typeof deliverCrawlDispatch>[2]);
+
+  assert.equal(route, "queue");
+  assert.equal(queueSends, 1);
+});
+
 test("inventory PREPARE discovery is read-only until the paced FETCH alarm", async () => {
   const audioUnion = plugin("audiounion");
   let attempts = 0;
@@ -124,7 +148,7 @@ test("inventory PREPARE discovery is read-only until the paced FETCH alarm", asy
   assert.deepEqual(preparation, {
     status: "ready",
     targetUrl: DETAIL_URL,
-    userAgent: "HiFiScoutBot/0.1 (+https://github.com/apaapapapa/HiFiScout)",
+    userAgent: "HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)",
     requestDelayMs: 10000,
   });
   assert.equal(attempts, 0);
