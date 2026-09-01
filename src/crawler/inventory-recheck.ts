@@ -30,6 +30,8 @@ import type {
   CrawlerEnv,
   InventoryRecheckResult,
   InventoryRecheckSettings,
+  RelayPage,
+  RelayPageOptions,
   ShopPlugin,
 } from "./types.js";
 
@@ -70,8 +72,18 @@ interface InventoryRepository {
 interface InventoryRecheckOptions {
   now?: Date;
   fetchFn?: typeof fetch;
+  fetchPage?: (url: string, options: RelayPageOptions) => Promise<RelayPage>;
   repository?: InventoryRepository;
 }
+
+export type InventoryRecheckPreparation =
+  | {
+      status: "ready";
+      targetUrl: string;
+      userAgent: string;
+      requestDelayMs: number;
+    }
+  | { status: "skipped"; reason: "disabled" | "no_candidate" | "invalid_detail_url" };
 
 const defaultRepository = {
   selectInventoryRecheckCandidate,
@@ -103,6 +115,54 @@ function relayFailureReason(error: unknown): InventoryRecheckResult["reason"] {
   )
     return `relay_http_${error.relayStatus}`;
   return "relay_error";
+}
+
+async function inventoryCandidate(
+  env: InventoryRecheckEnv,
+  plugin: ShopPlugin,
+  now: Date,
+  repository: InventoryRepository,
+): Promise<InventoryRecheckCandidateRow | null> {
+  const settings = getShopInventoryRecheckSettings(env, plugin.definition);
+  return repository.selectInventoryRecheckCandidate(env.DB, plugin.key, {
+    staleBefore: isoBefore(now, settings.minListingAgeHours),
+    retryBefore: isoBefore(now, settings.intervalHours),
+  });
+}
+
+/**
+ * Resolves the exact detail URL that the scheduler must pace before inventory recheck.
+ *
+ * This is intentionally read-only: no attempt timestamp is changed until the later FETCH alarm
+ * actually invokes {@link recheckShopInventory}. A crash between PREPARE and FETCH therefore leaves
+ * the same candidate eligible and lets the Durable Object resume from its stored permit.
+ */
+export async function prepareShopInventoryRecheck(
+  env: InventoryRecheckEnv,
+  plugin: ShopPlugin,
+  {
+    now = new Date(),
+    repository = defaultRepository,
+  }: Pick<InventoryRecheckOptions, "now" | "repository"> = {},
+): Promise<InventoryRecheckPreparation> {
+  const policy = plugin.capabilities.inventoryRecheck;
+  if (!policy) return { status: "skipped", reason: "disabled" };
+  const settings = getShopInventoryRecheckSettings(env, plugin.definition);
+  if (!settings.enabled) return { status: "skipped", reason: "disabled" };
+
+  const candidate = await inventoryCandidate(env, plugin, now, repository);
+  if (!candidate) return { status: "skipped", reason: "no_candidate" };
+  if (!policy.isDetailUrl(candidate.source_url)) {
+    return { status: "skipped", reason: "invalid_detail_url" };
+  }
+
+  const crawlerSettings = getCrawlerSettings(env);
+  return {
+    status: "ready",
+    targetUrl: candidate.source_url,
+    userAgent: crawlerSettings.userAgent,
+    requestDelayMs: getShopRequestDelayMs(env, plugin.definition, crawlerSettings.requestDelayMs),
+  };
 }
 
 async function recordUnavailable(
@@ -137,7 +197,8 @@ async function recordUnavailable(
  * Rechecks one stale listing for `plugin`.
  *
  * Returns `{ status: "skipped", reason: "disabled" }` for a shop that declares no policy, so
- * callers can invoke it unconditionally.
+ * callers can invoke it unconditionally. A Durable Object may inject `fetchPage` after a
+ * PREPARE/Alarm/FETCH handshake; the legacy Queue path still constructs the Relay transport here.
  */
 export async function recheckShopInventory(
   env: InventoryRecheckEnv,
@@ -145,6 +206,7 @@ export async function recheckShopInventory(
   {
     now = new Date(),
     fetchFn = fetch,
+    fetchPage,
     repository = defaultRepository,
   }: InventoryRecheckOptions = {},
 ): Promise<InventoryRecheckResult> {
@@ -156,10 +218,7 @@ export async function recheckShopInventory(
   const attemptedAt = now.toISOString();
 
   try {
-    const candidate = await repository.selectInventoryRecheckCandidate(env.DB, plugin.key, {
-      staleBefore: isoBefore(now, settings.minListingAgeHours),
-      retryBefore: isoBefore(now, settings.intervalHours),
-    });
+    const candidate = await inventoryCandidate(env, plugin, now, repository);
     if (!candidate) return { status: "skipped", reason: "no_candidate" };
 
     await repository.markInventoryCheckAttempt(env.DB, candidate.id, attemptedAt);
@@ -173,9 +232,6 @@ export async function recheckShopInventory(
       };
     }
 
-    const { relayUrl, relayToken } = relayConfiguration(env);
-    const relay = createRelayHtmlFetcher({ relayUrl, relayToken, fetchFn });
-    if (!relay.fetchPage) throw new Error("relay_fetch_page_unavailable");
     const crawlerSettings = getCrawlerSettings(env);
     const requestDelayMs = getShopRequestDelayMs(
       env,
@@ -185,10 +241,20 @@ export async function recheckShopInventory(
 
     let page;
     try {
-      page = await relay.fetchPage(candidate.source_url, {
-        userAgent: crawlerSettings.userAgent,
-        requestDelayMs,
-      });
+      if (fetchPage) {
+        page = await fetchPage(candidate.source_url, {
+          userAgent: crawlerSettings.userAgent,
+          requestDelayMs,
+        });
+      } else {
+        const { relayUrl, relayToken } = relayConfiguration(env);
+        const relay = createRelayHtmlFetcher({ relayUrl, relayToken, fetchFn });
+        if (!relay.fetchPage) throw new Error("relay_fetch_page_unavailable");
+        page = await relay.fetchPage(candidate.source_url, {
+          userAgent: crawlerSettings.userAgent,
+          requestDelayMs,
+        });
+      }
     } catch (error) {
       return {
         status: "deferred",

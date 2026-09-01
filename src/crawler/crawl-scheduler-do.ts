@@ -1,13 +1,20 @@
 import { DurableObject } from "cloudflare:workers";
 
-import { getCrawlerSettings, getShopRequestDelayMs } from "../config.js";
+import { getCrawlerSettings, getShopRequestDelayMs, shopEnvVarName } from "../config.js";
+import {
+  getCrawlFetchDetailPage,
+  recordCrawlFetchDetailPage,
+} from "../db/crawl-fetch-detail-repository.js";
 import { getCrawlFetchSession } from "../db/crawl-fetch-session-repository.js";
+import { syncProductSearchEntities } from "../db/product-search-entity-repository.js";
 import { crawlDispatchToken } from "../db/shop-state-repository.js";
+import { planStagedCategoryDetailFetches } from "./category-enrichment-pacing.js";
 import {
   fetchPreparedDirectHtmlPage,
   prepareDirectFetchPermit,
   type DirectFetchPermit,
 } from "./direct-pacing.js";
+import { prepareShopInventoryRecheck, recheckShopInventory } from "./inventory-recheck.js";
 import {
   CRAWL_SCHEDULER_COMMAND_VERSION,
   CRAWL_SCHEDULER_OBSERVE_PATH,
@@ -17,10 +24,18 @@ import {
   type CrawlSchedulerStartCommand,
 } from "./orchestration.js";
 import {
+  fetchPreparedRelayHtmlPage,
+  fetchPreparedRelayPage,
+  prepareRelayFetchPermit,
+  type RelayFetchPermit,
+} from "./relay.js";
+import {
   consumeResumableCrawlMessage,
   type ResumableCrawlQueueMessage,
 } from "./resumable-queue-consumer.js";
 import { getShopPlugin } from "./shops/index.js";
+import { relayConfiguration } from "./transport.js";
+import type { ShopPlugin } from "./types.js";
 
 const OBSERVATION_STORAGE_KEY = "phase1_checkpoint_observation";
 const EXECUTION_STORAGE_KEY = "phase2_crawl_execution";
@@ -39,7 +54,14 @@ interface StoredExecution {
   message: ResumableCrawlQueueMessage;
   acceptedAt: string;
   nextOriginNotBeforeMs: number;
+  /** Phase 2/3 direct-page permit. Kept for storage compatibility with already-running DOs. */
   permit?: DirectFetchPermit;
+  /** Phase 5 Relay PREPARE permit for listing, category-detail or inventory HTTP. */
+  relayPermit?: RelayFetchPermit;
+  /** Detail URL bound to relayPermit while a category-enrichment fetch waits on its Alarm. */
+  detailTargetUrl?: string;
+  /** Durable hand-off: finalization owns no seller HTTP; the DO runs inventory after D1 commit. */
+  inventoryRecheckPending?: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -105,14 +127,34 @@ function alarmAt(timestampMs: number): number {
   return Math.max(Date.now() + MIN_ALARM_DELAY_MS, timestampMs);
 }
 
+function isRelayPlugin(plugin: ShopPlugin): boolean {
+  return plugin.capabilities.transport?.kind === "relay";
+}
+
+/**
+ * Finalization historically invokes inventory recheck inline. On the DO path that would bypass the
+ * Alarm-owned PREPARE/FETCH authority, so the scheduler suppresses only that legacy side effect and
+ * performs it durably after the D1 crawl commit. The Queue path receives the original env unchanged.
+ */
+function withoutInlineInventoryRecheck(env: Env, plugin: ShopPlugin): Env {
+  if (!plugin.capabilities.inventoryRecheck) return env;
+  const setting = shopEnvVarName(plugin.definition, "INVENTORY_RECHECK_ENABLED");
+  return new Proxy(env, {
+    get(target, property, receiver) {
+      if (property === setting) return "false";
+      return Reflect.get(target, property, receiver);
+    },
+  });
+}
+
 /**
  * Per-shop crawl control plane.
  *
- * Phase 1 observation remains available for non-canary shops. Phase 2 adds one authoritative
- * canary path: the DO persists only immutable continuation/timing metadata, while D1 remains the
- * source of truth for crawl progress. Every Alarm executes at most one bounded state-machine step.
- * Seller pacing is split into `robots -> Alarm -> target`, so no request-delay sleep runs inside a
- * DO invocation and the old seller-origin ordering is preserved.
+ * Every Alarm performs one bounded crawl transition or one Relay PREPARE/FETCH transition. D1 is
+ * the authoritative crawl state; DO storage contains only immutable continuation/timing metadata.
+ * Seller waits are represented by Alarm timestamps, never sleep/setTimeout. Phase 5 extends the
+ * same authority to Relay-backed listing pages, Hifido category-detail pages and Audio Union
+ * inventory detail rechecks.
  */
 export class CrawlScheduler extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
@@ -133,7 +175,7 @@ export class CrawlScheduler extends DurableObject<Env> {
     if (!command) return new Response("invalid command", { status: 400 });
     const message = command.message;
     if (!isCrawlDoCanaryEligible(message.shopKey)) {
-      return new Response("shop is not eligible for Phase 2 canary", { status: 400 });
+      return new Response("shop is not eligible for DO execution", { status: 400 });
     }
 
     const existing = await this.ctx.storage.get<StoredExecution>(EXECUTION_STORAGE_KEY);
@@ -237,18 +279,313 @@ export class CrawlScheduler extends DurableObject<Env> {
     await this.runShadowObservation();
   }
 
+  private async runInventoryRecheckStep(
+    execution: StoredExecution,
+    plugin: ShopPlugin,
+  ): Promise<void> {
+    const startedAtMs = Date.now();
+    if (!isRelayPlugin(plugin) || !plugin.capabilities.inventoryRecheck) {
+      await this.ctx.storage.delete(EXECUTION_STORAGE_KEY);
+      return;
+    }
+
+    let relayPermit = execution.relayPermit;
+    if (!relayPermit) {
+      const preparation = await prepareShopInventoryRecheck(this.env, plugin);
+      if (preparation.status !== "ready") {
+        await this.ctx.storage.delete(EXECUTION_STORAGE_KEY);
+        console.log(
+          JSON.stringify({
+            event: "crawl_do_inventory_recheck_skipped",
+            shopKey: plugin.key,
+            runId: execution.message.collectionRunId || null,
+            reason: preparation.reason,
+            activeMs: Date.now() - startedAtMs,
+          }),
+        );
+        return;
+      }
+
+      try {
+        relayPermit = await prepareRelayFetchPermit(
+          relayConfiguration(this.env),
+          preparation.targetUrl,
+          {
+            userAgent: preparation.userAgent,
+            requestDelayMs: preparation.requestDelayMs,
+          },
+        );
+      } catch (error) {
+        // Inventory recheck is best-effort and never changes the committed crawl outcome. Preserve
+        // the legacy deferred semantics rather than turning Relay/robots policy into a crawl failure.
+        await this.ctx.storage.delete(EXECUTION_STORAGE_KEY);
+        console.warn(
+          JSON.stringify({
+            event: "crawl_do_inventory_recheck_deferred",
+            shopKey: plugin.key,
+            runId: execution.message.collectionRunId || null,
+            message: error instanceof Error ? error.message : String(error),
+            activeMs: Date.now() - startedAtMs,
+          }),
+        );
+        return;
+      }
+
+      await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
+        ...execution,
+        relayPermit,
+      });
+      await this.ctx.storage.setAlarm(alarmAt(relayPermit.notBeforeMs));
+      console.log(
+        JSON.stringify({
+          event: "crawl_do_inventory_recheck_prepared",
+          shopKey: plugin.key,
+          runId: execution.message.collectionRunId || null,
+          targetUrl: relayPermit.targetUrl,
+          effectiveDelayMs: relayPermit.effectiveDelayMs,
+          notBeforeMs: relayPermit.notBeforeMs,
+          activeMs: Date.now() - startedAtMs,
+        }),
+      );
+      return;
+    }
+
+    if (Date.now() < relayPermit.notBeforeMs) {
+      await this.ctx.storage.setAlarm(alarmAt(relayPermit.notBeforeMs));
+      return;
+    }
+    if (Date.now() >= relayPermit.expiresAtMs) {
+      await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
+        ...execution,
+        relayPermit: undefined,
+      });
+      await this.ctx.storage.setAlarm(alarmAt(Date.now()));
+      return;
+    }
+
+    const prepared = relayPermit;
+    const result = await recheckShopInventory(this.env, plugin, {
+      fetchPage: (url, options) =>
+        fetchPreparedRelayPage(relayConfiguration(this.env), prepared, url, options),
+    });
+    if (result.status === "checked" && result.sourceId) {
+      await syncProductSearchEntities(this.env.DB, plugin.key, [result.sourceId]);
+    }
+    await this.ctx.storage.delete(EXECUTION_STORAGE_KEY);
+    console.log(
+      JSON.stringify({
+        event: "crawl_do_inventory_recheck_completed",
+        shopKey: plugin.key,
+        runId: execution.message.collectionRunId || null,
+        status: result.status,
+        reason: "reason" in result ? result.reason : null,
+        outcome: "outcome" in result ? result.outcome : null,
+        productId: "productId" in result ? result.productId || null : null,
+        activeMs: Date.now() - startedAtMs,
+      }),
+    );
+  }
+
+  /**
+   * Runs at most one Hifido/Relay detail request per Alarm. The existing category enricher is used
+   * as a side-effect-free planner so its cache/identity/budget rules remain authoritative. HTML (or
+   * the best-effort failure) is persisted in D1; finalization consumes only those staged attempts.
+   */
+  private async runDetailCategoryEnrichmentStep(
+    execution: StoredExecution,
+    plugin: ShopPlugin,
+  ): Promise<boolean> {
+    const runId = execution.message.collectionRunId;
+    if (!runId || !isRelayPlugin(plugin) || !plugin.capabilities.detailCategoryEvidence) {
+      return false;
+    }
+
+    const startedAtMs = Date.now();
+    const targets = await planStagedCategoryDetailFetches(this.env, plugin, runId);
+    let targetUrl: string | null = null;
+    for (const candidate of targets) {
+      if (!(await getCrawlFetchDetailPage(this.env.DB, runId, candidate))) {
+        targetUrl = candidate;
+        break;
+      }
+    }
+
+    if (!targetUrl) {
+      if (execution.relayPermit || execution.detailTargetUrl) {
+        await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
+          ...execution,
+          relayPermit: undefined,
+          detailTargetUrl: undefined,
+        });
+        await this.ctx.storage.setAlarm(alarmAt(Date.now()));
+        return true;
+      }
+      return false;
+    }
+
+    if (execution.detailTargetUrl && execution.detailTargetUrl !== targetUrl) {
+      await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
+        ...execution,
+        relayPermit: undefined,
+        detailTargetUrl: undefined,
+      });
+      await this.ctx.storage.setAlarm(alarmAt(Date.now()));
+      return true;
+    }
+
+    const settings = getCrawlerSettings(this.env);
+    const requestDelayMs = getShopRequestDelayMs(
+      this.env,
+      plugin.definition,
+      settings.requestDelayMs,
+    );
+    let relayPermit = execution.detailTargetUrl === targetUrl ? execution.relayPermit : undefined;
+
+    if (!relayPermit) {
+      try {
+        relayPermit = await prepareRelayFetchPermit(relayConfiguration(this.env), targetUrl, {
+          userAgent: settings.userAgent,
+          requestDelayMs,
+        });
+      } catch (error) {
+        await recordCrawlFetchDetailPage(this.env.DB, {
+          runId,
+          targetUrl,
+          errorMessage: error instanceof Error ? error.message : String(error),
+          fetchedAt: new Date().toISOString(),
+        });
+        await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
+          ...execution,
+          relayPermit: undefined,
+          detailTargetUrl: undefined,
+        });
+        await this.ctx.storage.setAlarm(alarmAt(Date.now()));
+        console.warn(
+          JSON.stringify({
+            event: "crawl_do_detail_fetch_prepare_failed",
+            shopKey: plugin.key,
+            runId,
+            targetUrl,
+            message: error instanceof Error ? error.message : String(error),
+            activeMs: Date.now() - startedAtMs,
+          }),
+        );
+        return true;
+      }
+
+      await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
+        ...execution,
+        relayPermit,
+        detailTargetUrl: targetUrl,
+      });
+      await this.ctx.storage.setAlarm(alarmAt(relayPermit.notBeforeMs));
+      console.log(
+        JSON.stringify({
+          event: "crawl_do_detail_fetch_prepared",
+          shopKey: plugin.key,
+          runId,
+          targetUrl,
+          effectiveDelayMs: relayPermit.effectiveDelayMs,
+          notBeforeMs: relayPermit.notBeforeMs,
+          expiresAtMs: relayPermit.expiresAtMs,
+          activeMs: Date.now() - startedAtMs,
+        }),
+      );
+      return true;
+    }
+
+    if (Date.now() < relayPermit.notBeforeMs) {
+      await this.ctx.storage.setAlarm(alarmAt(relayPermit.notBeforeMs));
+      return true;
+    }
+    if (Date.now() >= relayPermit.expiresAtMs) {
+      await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
+        ...execution,
+        relayPermit: undefined,
+        detailTargetUrl: undefined,
+      });
+      await this.ctx.storage.setAlarm(alarmAt(Date.now()));
+      return true;
+    }
+
+    let html: string | null = null;
+    let errorMessage: string | null = null;
+    try {
+      html = await fetchPreparedRelayHtmlPage(
+        relayConfiguration(this.env),
+        relayPermit,
+        targetUrl,
+        {
+          userAgent: settings.userAgent,
+        },
+      );
+    } catch (error) {
+      errorMessage = error instanceof Error ? error.message : String(error);
+    }
+    await recordCrawlFetchDetailPage(this.env.DB, {
+      runId,
+      targetUrl,
+      html,
+      errorMessage,
+      fetchedAt: new Date().toISOString(),
+    });
+    await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
+      ...execution,
+      relayPermit: undefined,
+      detailTargetUrl: undefined,
+    });
+    await this.ctx.storage.setAlarm(alarmAt(Date.now()));
+    console.log(
+      JSON.stringify({
+        event: "crawl_do_detail_fetch_completed",
+        shopKey: plugin.key,
+        runId,
+        targetUrl,
+        status: errorMessage ? "failed" : "fetched",
+        htmlBytes: html == null ? 0 : new TextEncoder().encode(html).byteLength,
+        activeMs: Date.now() - startedAtMs,
+      }),
+    );
+    return true;
+  }
+
   private async runCanaryStep(execution: StoredExecution): Promise<void> {
     const startedAtMs = Date.now();
     const { message } = execution;
     const plugin = getShopPlugin(message.shopKey);
     if (!plugin || !isCrawlDoCanaryEligible(plugin.key)) {
       await this.ctx.storage.delete(EXECUTION_STORAGE_KEY);
-      throw new Error(`crawl DO canary became ineligible: ${message.shopKey}`);
+      throw new Error(`crawl DO shop became ineligible: ${message.shopKey}`);
     }
 
     try {
+      if (execution.inventoryRecheckPending && message.collectionRunId) {
+        const session = await getCrawlFetchSession(this.env.DB, message.collectionRunId);
+        if (session?.status === "completed") {
+          await this.runInventoryRecheckStep(execution, plugin);
+          return;
+        }
+        if (session?.status === "failed") {
+          await this.ctx.storage.delete(EXECUTION_STORAGE_KEY);
+          return;
+        }
+      }
+
       const continuation = message.continuation;
-      if (!execution.permit && continuation?.phase === "fetch" && continuation.pageKey) {
+      if (
+        continuation?.phase === "finalize" &&
+        (await this.runDetailCategoryEnrichmentStep(execution, plugin))
+      ) {
+        return;
+      }
+
+      let preparationError: unknown = null;
+      if (
+        !execution.permit &&
+        !execution.relayPermit &&
+        continuation?.phase === "fetch" &&
+        continuation.pageKey
+      ) {
         if (Date.now() < execution.nextOriginNotBeforeMs) {
           await this.ctx.storage.setAlarm(alarmAt(execution.nextOriginNotBeforeMs));
           return;
@@ -259,60 +596,139 @@ export class CrawlScheduler extends DurableObject<Env> {
           plugin.definition,
           settings.requestDelayMs,
         );
-        const permit = await prepareDirectFetchPermit(continuation.pageKey, {
-          baseUrl: plugin.baseUrl,
-          userAgent: settings.userAgent,
-          requestDelayMs,
-          fetchFn: globalThis.fetch,
-        });
-        await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
-          ...execution,
-          permit,
-        });
-        await this.ctx.storage.setAlarm(alarmAt(permit.notBeforeMs));
-        console.log(
-          JSON.stringify({
-            event: "crawl_do_canary_fetch_prepared",
-            shopKey: plugin.key,
-            requestedAt: message.requestedAt,
-            jobId: executionIdentity(message),
-            pageKey: continuation.pageKey,
-            effectiveDelayMs: permit.effectiveDelayMs,
-            notBeforeMs: permit.notBeforeMs,
-          }),
-        );
-        return;
+        try {
+          if (isRelayPlugin(plugin)) {
+            const relayPermit = await prepareRelayFetchPermit(
+              relayConfiguration(this.env),
+              continuation.pageKey,
+              {
+                userAgent: settings.userAgent,
+                requestDelayMs,
+              },
+            );
+            await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
+              ...execution,
+              relayPermit,
+            });
+            await this.ctx.storage.setAlarm(alarmAt(relayPermit.notBeforeMs));
+            console.log(
+              JSON.stringify({
+                event: "crawl_do_relay_fetch_prepared",
+                shopKey: plugin.key,
+                requestedAt: message.requestedAt,
+                jobId: executionIdentity(message),
+                pageKey: continuation.pageKey,
+                effectiveDelayMs: relayPermit.effectiveDelayMs,
+                notBeforeMs: relayPermit.notBeforeMs,
+                expiresAtMs: relayPermit.expiresAtMs,
+              }),
+            );
+            return;
+          }
+
+          const permit = await prepareDirectFetchPermit(continuation.pageKey, {
+            baseUrl: plugin.baseUrl,
+            userAgent: settings.userAgent,
+            requestDelayMs,
+            fetchFn: globalThis.fetch,
+          });
+          await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
+            ...execution,
+            permit,
+          });
+          await this.ctx.storage.setAlarm(alarmAt(permit.notBeforeMs));
+          console.log(
+            JSON.stringify({
+              event: "crawl_do_canary_fetch_prepared",
+              shopKey: plugin.key,
+              requestedAt: message.requestedAt,
+              jobId: executionIdentity(message),
+              pageKey: continuation.pageKey,
+              effectiveDelayMs: permit.effectiveDelayMs,
+              notBeforeMs: permit.notBeforeMs,
+            }),
+          );
+          return;
+        } catch (error) {
+          // Route policy/robots preparation failures through the ordinary resumable fetch failure
+          // path so a permanent failure cannot wedge the DO execution forever.
+          preparationError = error;
+        }
       }
 
       if (execution.permit && Date.now() < execution.permit.notBeforeMs) {
         await this.ctx.storage.setAlarm(alarmAt(execution.permit.notBeforeMs));
         return;
       }
+      if (execution.relayPermit && Date.now() < execution.relayPermit.notBeforeMs) {
+        await this.ctx.storage.setAlarm(alarmAt(execution.relayPermit.notBeforeMs));
+        return;
+      }
+      if (execution.relayPermit && Date.now() >= execution.relayPermit.expiresAtMs) {
+        await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
+          ...execution,
+          relayPermit: undefined,
+          detailTargetUrl: undefined,
+        });
+        await this.ctx.storage.setAlarm(alarmAt(Date.now()));
+        return;
+      }
 
-      const permit = execution.permit;
-      const result = await consumeResumableCrawlMessage(this.env, message, {
-        continuationDelivery: "return_only",
-        initializeOnly: !message.continuation,
-        ...(permit
-          ? {
-              fetchHtmlPage: (url, options) =>
-                fetchPreparedDirectHtmlPage(permit, url, {
-                  userAgent: options.userAgent,
-                  fetchFn: globalThis.fetch,
-                }),
-            }
-          : {}),
-      });
-      const nextOriginNotBeforeMs = permit
-        ? Date.now() + permit.effectiveDelayMs
-        : execution.nextOriginNotBeforeMs;
+      let activeExecution = execution;
+      if (
+        continuation?.phase === "finalize" &&
+        plugin.capabilities.inventoryRecheck &&
+        !execution.inventoryRecheckPending
+      ) {
+        activeExecution = { ...execution, inventoryRecheckPending: true };
+        await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, activeExecution);
+      }
+
+      const directPermit = activeExecution.permit;
+      const relayPermit = activeExecution.relayPermit;
+      const preparedRelayConfig = relayPermit ? relayConfiguration(this.env) : null;
+      const result = await consumeResumableCrawlMessage(
+        withoutInlineInventoryRecheck(this.env, plugin),
+        message,
+        {
+          continuationDelivery: "return_only",
+          initializeOnly: !message.continuation,
+          requireStagedDetailFetches:
+            isRelayPlugin(plugin) && Boolean(plugin.capabilities.detailCategoryEvidence),
+          ...(preparationError
+            ? {
+                fetchHtmlPage: async () => {
+                  throw preparationError;
+                },
+              }
+            : relayPermit && preparedRelayConfig
+              ? {
+                  fetchHtmlPage: (url, options) =>
+                    fetchPreparedRelayHtmlPage(preparedRelayConfig, relayPermit, url, {
+                      userAgent: options.userAgent,
+                    }),
+                }
+              : directPermit
+                ? {
+                    fetchHtmlPage: (url, options) =>
+                      fetchPreparedDirectHtmlPage(directPermit, url, {
+                        userAgent: options.userAgent,
+                        fetchFn: globalThis.fetch,
+                      }),
+                  }
+                : {}),
+        },
+      );
+      const nextOriginNotBeforeMs = directPermit ? Date.now() + directPermit.effectiveDelayMs : 0;
 
       if (result.kind === "continued") {
         await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
-          ...execution,
+          ...activeExecution,
           message: result.continuationMessage,
           nextOriginNotBeforeMs,
           permit: undefined,
+          relayPermit: undefined,
+          detailTargetUrl: undefined,
         });
         await this.ctx.storage.setAlarm(alarmAt(Date.now()));
         console.log(
@@ -323,6 +739,7 @@ export class CrawlScheduler extends DurableObject<Env> {
             sequence: result.sequence,
             phase: result.phase,
             pageKey: result.pageKey,
+            transport: isRelayPlugin(plugin) ? "relay" : "direct",
             activeMs: Date.now() - startedAtMs,
           }),
         );
@@ -331,9 +748,11 @@ export class CrawlScheduler extends DurableObject<Env> {
 
       if (result.kind === "retry") {
         await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
-          ...execution,
+          ...activeExecution,
           nextOriginNotBeforeMs,
           permit: undefined,
+          relayPermit: undefined,
+          detailTargetUrl: undefined,
         });
         await this.ctx.storage.setAlarm(
           alarmAt(Date.now() + Math.max(1, result.retryAfterSeconds) * 1000),
@@ -349,6 +768,30 @@ export class CrawlScheduler extends DurableObject<Env> {
           }),
         );
         return;
+      }
+
+      if (activeExecution.inventoryRecheckPending && result.runId) {
+        const session = await getCrawlFetchSession(this.env.DB, result.runId);
+        if (session?.status === "completed") {
+          await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
+            ...activeExecution,
+            message: { ...message, collectionRunId: result.runId },
+            nextOriginNotBeforeMs: 0,
+            permit: undefined,
+            relayPermit: undefined,
+            detailTargetUrl: undefined,
+          });
+          await this.ctx.storage.setAlarm(alarmAt(Date.now()));
+          console.log(
+            JSON.stringify({
+              event: "crawl_do_inventory_recheck_scheduled",
+              shopKey: plugin.key,
+              runId: result.runId,
+              activeMs: Date.now() - startedAtMs,
+            }),
+          );
+          return;
+        }
       }
 
       await this.ctx.storage.delete(EXECUTION_STORAGE_KEY);

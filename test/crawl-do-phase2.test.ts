@@ -31,10 +31,8 @@ test("Phase 2 canary is an exact explicit allowlist", () => {
   assert.equal(shouldExecuteCrawlWithDurableObject("home-shokai", "hifido"), false);
 });
 
-test("home-shokai is eligible while relay shops are excluded", () => {
+test("Phase 2 direct canary remains eligible after later rollout phases", () => {
   assert.equal(isCrawlDoCanaryEligible("home-shokai"), true);
-  assert.equal(isCrawlDoCanaryEligible("hifido"), false);
-  assert.equal(isCrawlDoCanaryEligible("audiounion"), false);
 });
 
 test("canary dispatch goes to the Durable Object and never the Queue", async () => {
