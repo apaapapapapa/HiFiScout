@@ -23,12 +23,7 @@ import {
 } from "./resumable-queue-contract.js";
 import { crawlShop } from "./run.js";
 import { createTransport } from "./transport.js";
-import type {
-  CrawlResult,
-  FetchHtmlPageOptions,
-  HtmlTransport,
-  ShopPlugin,
-} from "./types.js";
+import type { CrawlResult, FetchHtmlPageOptions, HtmlTransport, ShopPlugin } from "./types.js";
 
 const FINALIZE_RECLAIM_MS = 2 * 60_000;
 

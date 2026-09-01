@@ -1,9 +1,5 @@
 import { getCrawlFetchSession } from "../db/crawl-fetch-session-repository.js";
-import {
-  getShopState,
-  releaseShopCrawl,
-  tryClaimShopCrawl,
-} from "../db/shop-state-repository.js";
+import { getShopState, releaseShopCrawl, tryClaimShopCrawl } from "../db/shop-state-repository.js";
 import type { QueryableDatabase } from "../db/types.js";
 import {
   matchesDispatchReservation,
