@@ -110,23 +110,21 @@ export function shouldExecuteCrawlWithDurableObject(
 }
 
 /**
- * Phase 3 removes workload size from the eligibility decision. Large direct collectors use the
- * same one-step-per-Alarm executor as the Phase 2 canary; page count and historical "heavy" lane
- * classification are rollout metadata only and must never change correctness routing.
+ * Capability-based DO eligibility. Workload size and historical Queue lane are rollout metadata,
+ * never correctness-routing signals.
  *
- * Shops that still perform additional seller HTTP outside the ordinary page fetch path remain
- * excluded until that secondary traffic is explicitly placed under the same Alarm pacing authority.
- * Relay transports remain Phase 4/5 work because they require the PREPARE/FETCH permit protocol.
+ * Phase 5 admits Relay-backed collectors because CrawlScheduler now owns Relay PREPARE -> Alarm ->
+ * FETCH pacing. Relay inventory recheck is also scheduler-owned after the D1 crawl commit. Direct
+ * shops with secondary seller HTTP remain excluded until that capability receives the same explicit
+ * pacing seam; detail-category evidence remains excluded for both transports for the same reason.
  */
 export function isCrawlDoCanaryEligible(shopKey: string): boolean {
   const plugin = getShopPlugin(shopKey);
   if (!plugin) return false;
+  if (plugin.capabilities.detailCategoryEvidence) return false;
   const transport = plugin.capabilities.transport?.kind || "direct";
-  return (
-    transport === "direct" &&
-    !plugin.capabilities.inventoryRecheck &&
-    !plugin.capabilities.detailCategoryEvidence
-  );
+  if (transport === "relay") return true;
+  return transport === "direct" && !plugin.capabilities.inventoryRecheck;
 }
 
 export function buildCrawlSchedulerObserveCommand(
@@ -208,10 +206,10 @@ async function scheduleShadowObservation(env: Env, body: CrawlDeliveryBody): Pro
 }
 
 /**
- * Delivers an immutable dispatch identity to exactly one control-plane transport. Phase 2/3
+ * Delivers an immutable dispatch identity to exactly one control-plane transport. Explicitly
  * selected shops use their per-shop Durable Object; every other shop stays on its existing Queue
- * lane. The decision is an explicit allowlist only — workload lane, Queue quota and runtime cost
- * never alter correctness routing.
+ * lane. The decision is an allowlist only — lane, page count, Queue quota and runtime cost never
+ * alter correctness routing.
  */
 export async function deliverCrawlDispatch(
   env: Env,
@@ -262,8 +260,8 @@ export async function deliverCrawlDispatch(
  *
  * Every crawl Queue delivery emits one baseline event. Initial deliveries for explicitly selected
  * shops are also mirrored to the per-shop Durable Object, which wakes by Alarm and reads the
- * authoritative D1 checkpoint without mutating crawl lifecycle state. Phase 2/3 selected deliveries
- * do not enter Queue at all, so they are intentionally absent from this baseline hook.
+ * authoritative D1 checkpoint without mutating crawl lifecycle state. DO-selected deliveries do not
+ * enter Queue at all, so they are intentionally absent from this baseline hook.
  */
 export async function observeCrawlQueueDelivery(batch: QueueBatchView, env: Env): Promise<void> {
   if (!isCrawlQueueName(batch.queue)) return;
