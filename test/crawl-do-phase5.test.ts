@@ -193,6 +193,23 @@ test("inventory recheck accepts the scheduler prepared FETCH seam without Relay 
   assert.equal(available, 1);
 });
 
+test("Hifido detail enrichment is owned by the same Relay Alarm pacing authority", () => {
+  const scheduler = readFileSync(
+    new URL("../src/crawler/crawl-scheduler-do.ts", import.meta.url),
+    "utf8",
+  );
+  const finalizer = readFileSync(
+    new URL("../src/crawler/resumable-finalize.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(scheduler, /planStagedCategoryDetailFetches/);
+  assert.match(scheduler, /detailTargetUrl/);
+  assert.match(scheduler, /recordCrawlFetchDetailPage/);
+  assert.match(finalizer, /getCrawlFetchDetailPage/);
+  assert.match(finalizer, /category detail fetch was not paced by CrawlScheduler/);
+});
+
 test("Phase 5 scheduler has no active waiting primitive", () => {
   const source = readFileSync(
     new URL("../src/crawler/crawl-scheduler-do.ts", import.meta.url),
