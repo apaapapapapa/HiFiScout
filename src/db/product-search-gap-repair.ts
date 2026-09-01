@@ -1,4 +1,5 @@
 import { refreshListingProjections } from "./listing-projection-refresh.js";
+import { syncProductSearchEntities } from "./product-search-entity-repository.js";
 import { exactIdentitySplitMembershipPredicateSql } from "./product-search-exact-identity.js";
 import type { QueryableDatabase } from "./types.js";
 import { errorMessage } from "../types.js";
@@ -8,6 +9,12 @@ interface ProjectionGapRow {
   shop_key: string;
   source_id: string;
 }
+
+type ProjectionGapRepair = (
+  db: QueryableDatabase,
+  gaps: readonly ProjectionGapRow[],
+  evaluatedAt: string,
+) => Promise<void>;
 
 export interface ProductSearchGapRepairOptions {
   evaluatedAt?: string;
@@ -185,12 +192,39 @@ async function countSeedGaps(
   return countSeedGapsForPredicate(db, listingIds, EXACT_IDENTITY_MEMBERSHIP_GAP_PREDICATE);
 }
 
-async function refreshAndVerify(
+const refreshFullProjectionPath: ProjectionGapRepair = async (db, gaps, evaluatedAt) => {
+  await refreshListingProjections(db, gaps, evaluatedAt);
+};
+
+/**
+ * A stale fallback is already past the critical-coverage gate: its listing has Identity and offer
+ * rows, but the offer still points at an unresolved entity whose representative has since become a
+ * verified Catalog match. Re-running projection + Identity work before fixing that membership is
+ * unnecessary and, in production, could consume the D1 CPU budget before entity sync was reached.
+ *
+ * Entity sync is already transactional and expands exact-identity peers itself. Group seeds by shop
+ * only because its incremental API is shop/source scoped, and execute the groups sequentially so a
+ * repair batch never turns into another D1 burst.
+ */
+const refreshStaleFallbackMembershipOnly: ProjectionGapRepair = async (db, gaps) => {
+  const sourceIdsByShop = new Map<string, string[]>();
+  for (const gap of gaps) {
+    const sourceIds = sourceIdsByShop.get(gap.shop_key) || [];
+    sourceIds.push(gap.source_id);
+    sourceIdsByShop.set(gap.shop_key, sourceIds);
+  }
+  for (const [shopKey, sourceIds] of sourceIdsByShop) {
+    await syncProductSearchEntities(db, shopKey, sourceIds);
+  }
+};
+
+async function repairAndVerify(
   db: QueryableDatabase,
   gaps: readonly ProjectionGapRow[],
   evaluatedAt: string,
+  repair: ProjectionGapRepair,
 ): Promise<void> {
-  await refreshListingProjections(db, gaps, evaluatedAt);
+  await repair(db, gaps, evaluatedAt);
   const remaining = await countSeedGaps(
     db,
     gaps.map((gap) => Number(gap.id)),
@@ -207,9 +241,10 @@ async function refreshSelectedGaps(
   gaps: readonly ProjectionGapRow[],
   evaluatedAt: string,
   continueOnRefreshError: boolean,
+  repair: ProjectionGapRepair,
 ): Promise<{ repairedCount: number; failedCount: number }> {
   try {
-    await refreshAndVerify(db, gaps, evaluatedAt);
+    await repairAndVerify(db, gaps, evaluatedAt, repair);
     return { repairedCount: gaps.length, failedCount: 0 };
   } catch (error) {
     if (!continueOnRefreshError) throw error;
@@ -226,7 +261,7 @@ async function refreshSelectedGaps(
   let failedCount = 0;
   for (const gap of gaps) {
     try {
-      await refreshAndVerify(db, [gap], evaluatedAt);
+      await repairAndVerify(db, [gap], evaluatedAt, repair);
       repairedCount += 1;
     } catch (error) {
       failedCount += 1;
@@ -248,10 +283,11 @@ async function refreshSelectedGaps(
  * Repairs bounded active-listing gaps left by an interrupted write between the listing table and
  * the derived Identity/Product Search read model.
  *
- * The repair never fabricates placeholder rows. It reruns the same dependency-ordered projection
- * path used by catalog/listing remediation: search projection -> Product Identity -> search entity.
- * The five-minute bounded sweep isolates a failing listing so it cannot starve later gaps; strict
- * callers still fail fast unless they explicitly opt into the resilient mode.
+ * Critical coverage reruns the same dependency-ordered projection path used by catalog/listing
+ * remediation. Stale fallback membership uses the narrower transactional entity sync because the
+ * prerequisite Identity/offer rows already exist. The five-minute bounded sweep isolates a failing
+ * listing so it cannot starve later gaps; strict callers remain fail-fast unless explicitly opted
+ * into the resilient mode.
  */
 export async function repairActiveListingProjectionGaps(
   db: QueryableDatabase,
@@ -271,7 +307,10 @@ export async function repairActiveListingProjectionGaps(
   let failedCount = 0;
   const attemptedListingIds = new Set<number>();
 
-  const repairPhase = async (predicate: string): Promise<void> => {
+  const repairPhase = async (
+    predicate: string,
+    repair: ProjectionGapRepair = refreshFullProjectionPath,
+  ): Promise<void> => {
     // Each priority class owns its cursor. Reusing a higher-priority cursor can indefinitely starve
     // a lower-id gap whenever fresh higher-id work arrives between cron ticks.
     let afterId = 0;
@@ -297,6 +336,7 @@ export async function repairActiveListingProjectionGaps(
         unattemptedGaps,
         evaluatedAt,
         continueOnRefreshError,
+        repair,
       );
       repairedCount += refreshed.repairedCount;
       failedCount += refreshed.failedCount;
@@ -308,7 +348,7 @@ export async function repairActiveListingProjectionGaps(
   // a lower-id phase, while overlapping predicates cannot spend the budget twice on one listing.
   await repairPhase(CRITICAL_COVERAGE_GAP_PREDICATE);
   if (selectedCount < maxListings) {
-    await repairPhase(STALE_FALLBACK_GAP_PREDICATE);
+    await repairPhase(STALE_FALLBACK_GAP_PREDICATE, refreshStaleFallbackMembershipOnly);
   }
   if (selectedCount < maxListings) {
     await repairPhase(EXACT_IDENTITY_MEMBERSHIP_GAP_PREDICATE);
