@@ -18,22 +18,10 @@
   "triggers": { "crons": ["*/5 * * * *", "6-56/10 * * * *", "1,31 * * * *", "30 12 * * *"] },
   "queues": {
     "producers": [
-      { "binding": "CRAWL_QUEUE", "queue": "hifiscout-crawl" },
-      { "binding": "CRAWL_FAST_QUEUE", "queue": "hifiscout-crawl-fast" },
-      { "binding": "CRAWL_HEAVY_QUEUE", "queue": "hifiscout-crawl-heavy" },
-      { "binding": "CRAWL_RELAY_QUEUE", "queue": "hifiscout-crawl-relay" },
       { "binding": "KNOWLEDGE_CATALOG_QUEUE", "queue": "hifiscout-knowledge-verification" },
       { "binding": "PRODUCT_AUDIT_EXPORT_QUEUE", "queue": "hifiscout-product-audit-export" }
     ],
     "consumers": [
-      { "queue": "hifiscout-crawl", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 3, "retry_delay": 60, "dead_letter_queue": "hifiscout-crawl-dlq", "max_concurrency": 1 },
-      { "queue": "hifiscout-crawl-dlq", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 3, "retry_delay": 60, "max_concurrency": 1 },
-      { "queue": "hifiscout-crawl-fast", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 5, "retry_delay": 60, "dead_letter_queue": "hifiscout-crawl-fast-dlq", "max_concurrency": 2 },
-      { "queue": "hifiscout-crawl-fast-dlq", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 3, "retry_delay": 60, "max_concurrency": 1 },
-      { "queue": "hifiscout-crawl-heavy", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 5, "retry_delay": 60, "dead_letter_queue": "hifiscout-crawl-heavy-dlq", "max_concurrency": 1 },
-      { "queue": "hifiscout-crawl-heavy-dlq", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 3, "retry_delay": 60, "max_concurrency": 1 },
-      { "queue": "hifiscout-crawl-relay", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 5, "retry_delay": 60, "dead_letter_queue": "hifiscout-crawl-relay-dlq", "max_concurrency": 1 },
-      { "queue": "hifiscout-crawl-relay-dlq", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 3, "retry_delay": 60, "max_concurrency": 1 },
       { "queue": "hifiscout-knowledge-verification", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 8, "retry_delay": 300, "dead_letter_queue": "hifiscout-knowledge-verification-dlq", "max_concurrency": 1 },
       { "queue": "hifiscout-knowledge-verification-dlq", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 3, "retry_delay": 300, "max_concurrency": 1 },
       { "queue": "hifiscout-product-audit-export", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 10, "retry_delay": 30, "dead_letter_queue": "hifiscout-product-audit-export-dlq", "max_concurrency": 1 },
@@ -42,8 +30,6 @@
   },
   "ratelimits": [{ "name": "API_RATE_LIMITER", "namespace_id": "541721", "simple": { "limit": 120, "period": 60 } }],
   "vars": {
-    "CRAWL_DO_SHADOW_SHOPS": "",
-    "CRAWL_DO_CANARY_SHOPS": "home-shokai,ippinkan,u-audio,audiounion,hifido",
     "AUDIOUNION_ENABLED": "true",
     "IPPINKAN_ENABLED": "true",
     "FUJIYA_AVIC_ENABLED": "true",
