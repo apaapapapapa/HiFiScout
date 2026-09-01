@@ -22,7 +22,10 @@ test("production smoke defers only when the failing Worker request is correlated
 test("generic 1101 and unrelated tail failures keep production smoke fail-closed", () => {
   const failureBranch = workflow.slice(
     workflow.indexOf("Production Atom feed returned HTTP ${feed_status}"),
-    workflow.indexOf("content_type=", workflow.indexOf("Production Atom feed returned HTTP ${feed_status}")),
+    workflow.indexOf(
+      "content_type=",
+      workflow.indexOf("Production Atom feed returned HTTP ${feed_status}"),
+    ),
   );
   assert.match(
     failureBranch,
