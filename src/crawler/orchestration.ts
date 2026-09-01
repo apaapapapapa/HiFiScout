@@ -113,17 +113,17 @@ export function shouldExecuteCrawlWithDurableObject(
  * Capability-based DO eligibility. Workload size and historical Queue lane are rollout metadata,
  * never correctness-routing signals.
  *
- * Phase 5 admits Relay-backed collectors because CrawlScheduler now owns Relay PREPARE -> Alarm ->
- * FETCH pacing. Relay inventory recheck is also scheduler-owned after the D1 crawl commit. Direct
- * shops with secondary seller HTTP remain excluded until that capability receives the same explicit
- * pacing seam; detail-category evidence remains excluded for both transports for the same reason.
+ * Phase 5 admits Relay-backed collectors because CrawlScheduler owns every seller HTTP transition:
+ * listing pages, Hifido detail-category enrichment and Audio Union inventory recheck all use Relay
+ * PREPARE -> Alarm -> FETCH. Direct shops with secondary seller HTTP remain excluded until that
+ * capability receives the same explicit pacing seam.
  */
 export function isCrawlDoCanaryEligible(shopKey: string): boolean {
   const plugin = getShopPlugin(shopKey);
   if (!plugin) return false;
-  if (plugin.capabilities.detailCategoryEvidence) return false;
   const transport = plugin.capabilities.transport?.kind || "direct";
   if (transport === "relay") return true;
+  if (plugin.capabilities.detailCategoryEvidence) return false;
   return transport === "direct" && !plugin.capabilities.inventoryRecheck;
 }
 
