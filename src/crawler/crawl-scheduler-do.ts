@@ -54,11 +54,11 @@ interface StoredExecution {
   message: ResumableCrawlQueueMessage;
   acceptedAt: string;
   nextOriginNotBeforeMs: number;
-  /** Phase 2/3 direct-page permit. Kept for storage compatibility with already-running DOs. */
+  /** Direct seller permit for either a listing page or a staged detail page. */
   permit?: DirectFetchPermit;
-  /** Phase 5 Relay PREPARE permit for listing, category-detail or inventory HTTP. */
+  /** Relay PREPARE permit for listing, category-detail or inventory HTTP. */
   relayPermit?: RelayFetchPermit;
-  /** Detail URL bound to relayPermit while a category-enrichment fetch waits on its Alarm. */
+  /** Detail URL bound to permit/relayPermit while category enrichment waits on its Alarm. */
   detailTargetUrl?: string;
   /** Durable hand-off: finalization owns no seller HTTP; the DO runs inventory after D1 commit. */
   inventoryRecheckPending?: boolean;
@@ -131,11 +131,6 @@ function isRelayPlugin(plugin: ShopPlugin): boolean {
   return plugin.capabilities.transport?.kind === "relay";
 }
 
-/**
- * Finalization historically invokes inventory recheck inline. On the DO path that would bypass the
- * Alarm-owned PREPARE/FETCH authority, so the scheduler suppresses only that legacy side effect and
- * performs it durably after the D1 crawl commit. The Queue path receives the original env unchanged.
- */
 function withoutInlineInventoryRecheck(env: Env, plugin: ShopPlugin): Env {
   if (!plugin.capabilities.inventoryRecheck) return env;
   const setting = shopEnvVarName(plugin.definition, "INVENTORY_RECHECK_ENABLED");
@@ -148,13 +143,8 @@ function withoutInlineInventoryRecheck(env: Env, plugin: ShopPlugin): Env {
 }
 
 /**
- * Per-shop crawl control plane.
- *
- * Every Alarm performs one bounded crawl transition or one Relay PREPARE/FETCH transition. D1 is
- * the authoritative crawl state; DO storage contains only immutable continuation/timing metadata.
- * Seller waits are represented by Alarm timestamps, never sleep/setTimeout. Phase 5 extends the
- * same authority to Relay-backed listing pages, Hifido category-detail pages and Audio Union
- * inventory detail rechecks.
+ * Per-shop crawl control plane. Every Alarm performs one bounded crawl transition or one prepared
+ * seller request. Seller waits are represented by Alarm timestamps, never sleep/setTimeout.
  */
 export class CrawlScheduler extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
@@ -184,8 +174,6 @@ export class CrawlScheduler extends DurableObject<Env> {
         existing.message.shopKey === message.shopKey &&
         executionIdentity(existing.message) === executionIdentity(message)
       ) {
-        // Recovery/redelivery is idempotent. An immediate Alarm is safe: pacing timestamps and D1
-        // continuation_sequence are rechecked before any seller request.
         await this.ctx.storage.setAlarm(alarmAt(Date.now()));
         return new Response(null, { status: 202 });
       }
@@ -316,8 +304,6 @@ export class CrawlScheduler extends DurableObject<Env> {
           },
         );
       } catch (error) {
-        // Inventory recheck is best-effort and never changes the committed crawl outcome. Preserve
-        // the legacy deferred semantics rather than turning Relay/robots policy into a crawl failure.
         await this.ctx.storage.delete(EXECUTION_STORAGE_KEY);
         console.warn(
           JSON.stringify({
@@ -386,21 +372,21 @@ export class CrawlScheduler extends DurableObject<Env> {
     );
   }
 
-  /**
-   * Runs at most one Hifido/Relay detail request per Alarm. The existing category enricher is used
-   * as a side-effect-free planner so its cache/identity/budget rules remain authoritative. HTML (or
-   * the best-effort failure) is persisted in D1; finalization consumes only those staged attempts.
-   */
+  /** Runs at most one category-detail seller request per Alarm for both direct and Relay shops. */
   private async runDetailCategoryEnrichmentStep(
     execution: StoredExecution,
     plugin: ShopPlugin,
   ): Promise<boolean> {
     const runId = execution.message.collectionRunId;
-    if (!runId || !isRelayPlugin(plugin) || !plugin.capabilities.detailCategoryEvidence) {
-      return false;
-    }
+    if (!runId || !plugin.capabilities.detailCategoryEvidence) return false;
 
     const startedAtMs = Date.now();
+    const relay = isRelayPlugin(plugin);
+    if (!relay && Date.now() < execution.nextOriginNotBeforeMs && !execution.permit) {
+      await this.ctx.storage.setAlarm(alarmAt(execution.nextOriginNotBeforeMs));
+      return true;
+    }
+
     const targets = await planStagedCategoryDetailFetches(this.env, plugin, runId);
     let targetUrl: string | null = null;
     for (const candidate of targets) {
@@ -411,9 +397,10 @@ export class CrawlScheduler extends DurableObject<Env> {
     }
 
     if (!targetUrl) {
-      if (execution.relayPermit || execution.detailTargetUrl) {
+      if (execution.permit || execution.relayPermit || execution.detailTargetUrl) {
         await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
           ...execution,
+          permit: undefined,
           relayPermit: undefined,
           detailTargetUrl: undefined,
         });
@@ -426,6 +413,7 @@ export class CrawlScheduler extends DurableObject<Env> {
     if (execution.detailTargetUrl && execution.detailTargetUrl !== targetUrl) {
       await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
         ...execution,
+        permit: undefined,
         relayPermit: undefined,
         detailTargetUrl: undefined,
       });
@@ -439,14 +427,24 @@ export class CrawlScheduler extends DurableObject<Env> {
       plugin.definition,
       settings.requestDelayMs,
     );
+    let directPermit = execution.detailTargetUrl === targetUrl ? execution.permit : undefined;
     let relayPermit = execution.detailTargetUrl === targetUrl ? execution.relayPermit : undefined;
 
-    if (!relayPermit) {
+    if (!directPermit && !relayPermit) {
       try {
-        relayPermit = await prepareRelayFetchPermit(relayConfiguration(this.env), targetUrl, {
-          userAgent: settings.userAgent,
-          requestDelayMs,
-        });
+        if (relay) {
+          relayPermit = await prepareRelayFetchPermit(relayConfiguration(this.env), targetUrl, {
+            userAgent: settings.userAgent,
+            requestDelayMs,
+          });
+        } else {
+          directPermit = await prepareDirectFetchPermit(targetUrl, {
+            baseUrl: plugin.baseUrl,
+            userAgent: settings.userAgent,
+            requestDelayMs,
+            fetchFn: globalThis.fetch,
+          });
+        }
       } catch (error) {
         await recordCrawlFetchDetailPage(this.env.DB, {
           runId,
@@ -456,6 +454,7 @@ export class CrawlScheduler extends DurableObject<Env> {
         });
         await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
           ...execution,
+          permit: undefined,
           relayPermit: undefined,
           detailTargetUrl: undefined,
         });
@@ -473,34 +472,40 @@ export class CrawlScheduler extends DurableObject<Env> {
         return true;
       }
 
+      const prepared = relayPermit || directPermit;
+      if (!prepared) throw new Error(`detail fetch permit was not prepared for ${plugin.key}`);
       await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
         ...execution,
+        permit: directPermit,
         relayPermit,
         detailTargetUrl: targetUrl,
       });
-      await this.ctx.storage.setAlarm(alarmAt(relayPermit.notBeforeMs));
+      await this.ctx.storage.setAlarm(alarmAt(prepared.notBeforeMs));
       console.log(
         JSON.stringify({
           event: "crawl_do_detail_fetch_prepared",
           shopKey: plugin.key,
           runId,
           targetUrl,
-          effectiveDelayMs: relayPermit.effectiveDelayMs,
-          notBeforeMs: relayPermit.notBeforeMs,
-          expiresAtMs: relayPermit.expiresAtMs,
+          transport: relay ? "relay" : "direct",
+          effectiveDelayMs: prepared.effectiveDelayMs,
+          notBeforeMs: prepared.notBeforeMs,
+          ...(relayPermit ? { expiresAtMs: relayPermit.expiresAtMs } : {}),
           activeMs: Date.now() - startedAtMs,
         }),
       );
       return true;
     }
 
-    if (Date.now() < relayPermit.notBeforeMs) {
-      await this.ctx.storage.setAlarm(alarmAt(relayPermit.notBeforeMs));
+    const notBeforeMs = (relayPermit || directPermit)?.notBeforeMs || 0;
+    if (Date.now() < notBeforeMs) {
+      await this.ctx.storage.setAlarm(alarmAt(notBeforeMs));
       return true;
     }
-    if (Date.now() >= relayPermit.expiresAtMs) {
+    if (relayPermit && Date.now() >= relayPermit.expiresAtMs) {
       await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
         ...execution,
+        permit: undefined,
         relayPermit: undefined,
         detailTargetUrl: undefined,
       });
@@ -511,14 +516,19 @@ export class CrawlScheduler extends DurableObject<Env> {
     let html: string | null = null;
     let errorMessage: string | null = null;
     try {
-      html = await fetchPreparedRelayHtmlPage(
-        relayConfiguration(this.env),
-        relayPermit,
-        targetUrl,
-        {
+      if (relayPermit) {
+        html = await fetchPreparedRelayHtmlPage(
+          relayConfiguration(this.env),
+          relayPermit,
+          targetUrl,
+          { userAgent: settings.userAgent },
+        );
+      } else if (directPermit) {
+        html = await fetchPreparedDirectHtmlPage(directPermit, targetUrl, {
           userAgent: settings.userAgent,
-        },
-      );
+          fetchFn: globalThis.fetch,
+        });
+      }
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : String(error);
     }
@@ -529,8 +539,13 @@ export class CrawlScheduler extends DurableObject<Env> {
       errorMessage,
       fetchedAt: new Date().toISOString(),
     });
+    const nextOriginNotBeforeMs = directPermit
+      ? Date.now() + directPermit.effectiveDelayMs
+      : execution.nextOriginNotBeforeMs;
     await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
       ...execution,
+      nextOriginNotBeforeMs,
+      permit: undefined,
       relayPermit: undefined,
       detailTargetUrl: undefined,
     });
@@ -541,6 +556,7 @@ export class CrawlScheduler extends DurableObject<Env> {
         shopKey: plugin.key,
         runId,
         targetUrl,
+        transport: relay ? "relay" : "direct",
         status: errorMessage ? "failed" : "fetched",
         htmlBytes: html == null ? 0 : new TextEncoder().encode(html).byteLength,
         activeMs: Date.now() - startedAtMs,
@@ -601,10 +617,7 @@ export class CrawlScheduler extends DurableObject<Env> {
             const relayPermit = await prepareRelayFetchPermit(
               relayConfiguration(this.env),
               continuation.pageKey,
-              {
-                userAgent: settings.userAgent,
-                requestDelayMs,
-              },
+              { userAgent: settings.userAgent, requestDelayMs },
             );
             await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
               ...execution,
@@ -650,8 +663,6 @@ export class CrawlScheduler extends DurableObject<Env> {
           );
           return;
         } catch (error) {
-          // Route policy/robots preparation failures through the ordinary resumable fetch failure
-          // path so a permanent failure cannot wedge the DO execution forever.
           preparationError = error;
         }
       }
@@ -693,8 +704,7 @@ export class CrawlScheduler extends DurableObject<Env> {
         {
           continuationDelivery: "return_only",
           initializeOnly: !message.continuation,
-          requireStagedDetailFetches:
-            isRelayPlugin(plugin) && Boolean(plugin.capabilities.detailCategoryEvidence),
+          requireStagedDetailFetches: Boolean(plugin.capabilities.detailCategoryEvidence),
           ...(preparationError
             ? {
                 fetchHtmlPage: async () => {
@@ -815,8 +825,6 @@ export class CrawlScheduler extends DurableObject<Env> {
           message: error instanceof Error ? error.message : String(error),
         }),
       );
-      // Durable Object alarms are at-least-once and retry automatically. Keep the stored command and
-      // rethrow so infrastructure failure cannot be mistaken for a seller/crawl failure.
       throw error;
     }
   }
