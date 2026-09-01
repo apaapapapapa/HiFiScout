@@ -2,6 +2,7 @@ import type {
   CrawlFetchContinuationPhase,
   CrawlFetchSessionRow,
 } from "../db/crawl-fetch-session-repository.js";
+import { crawlDispatchToken } from "../db/shop-state-repository.js";
 import type { QueryableDatabase } from "../db/types.js";
 import type { CrawlQueueMessage, CrawlResult, CrawlerEnv, FetchHtmlPageOptions } from "./types.js";
 
@@ -55,7 +56,7 @@ export function workerVersion(env: CrawlerEnv): string | null {
 }
 
 export function canonicalRunId(shopKey: string, requestedAt: string): string {
-  return `crawl:${shopKey}:${requestedAt}`;
+  return crawlDispatchToken(shopKey, requestedAt);
 }
 
 export function continuationFromSession(
