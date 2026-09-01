@@ -6,6 +6,7 @@ const ENTRY_URL = "https://www.audiounion.jp/st/new_arrival_used.html";
 const DETAIL_URL = "https://www.audiounion.jp/ct/detail/used/223257/";
 const HIFIDO_URL = "https://www.hifido.co.jp/?L=50&LNG=J&O=0&OD=0";
 const TOKEN = `test-${"x".repeat(40)}`;
+const PERMIT_SECRET = `permit-${"s".repeat(48)}`;
 
 function event(body = {}, token = TOKEN) {
   return {
@@ -19,6 +20,7 @@ function event(body = {}, token = TOKEN) {
 function env(overrides = {}) {
   return {
     RELAY_TOKEN: TOKEN,
+    RELAY_PERMIT_SECRET: PERMIT_SECRET,
     AUDIOUNION_ENTRY_URL: ENTRY_URL,
     CRAWLER_USER_AGENT: "HiFiScoutBot/0.1",
     MIN_REQUEST_DELAY_MS: "10000",
@@ -167,6 +169,242 @@ test("Lambda respects robots crawl-delay and returns upstream HTML bytes", async
   assert.deepEqual(sleeps, [12000]);
   assert.equal(calls.length, 2);
   assert.equal(calls[1].options.headers["User-Agent"], "HiFiScoutBot/0.1");
+});
+
+test("PREPARE evaluates robots and returns a signed delay permit without sleeping", async () => {
+  const calls: string[] = [];
+  const sleeps: number[] = [];
+  const nowMs = 1_700_000_000_000;
+  const handler = createHandler({
+    env: env(),
+    nowFn: () => nowMs,
+    nonceFn: () => "nonce-phase4",
+    sleepFn: async (ms) => {
+      sleeps.push(ms);
+    },
+    fetchFn: async (url) => {
+      calls.push(url);
+      if (url.endsWith("/robots.txt")) {
+        return new Response("User-agent: *\nAllow: /st/\nCrawl-delay: 12\n", { status: 200 });
+      }
+      throw new Error("PREPARE must not fetch seller HTML");
+    },
+  });
+
+  const result = await handler(
+    event({
+      operation: "prepare",
+      url: ENTRY_URL,
+      userAgent: "HiFiScoutBot/0.1",
+      requestDelayMs: 5_000,
+    }),
+  );
+  const prepared = JSON.parse(result.body);
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(prepared.operation, "prepared");
+  assert.equal(typeof prepared.permit, "string");
+  assert.ok(prepared.permit.includes("."));
+  assert.equal(prepared.targetUrl, ENTRY_URL);
+  assert.equal(prepared.requestedUserAgent, "HiFiScoutBot/0.1");
+  assert.equal(prepared.effectiveDelayMs, 12_000);
+  assert.equal(prepared.issuedAtMs, nowMs);
+  assert.equal(prepared.notBeforeMs, nowMs + 12_000);
+  assert.equal(prepared.expiresAtMs, nowMs + 12_000 + 5 * 60_000);
+  assert.deepEqual(calls, ["https://www.audiounion.jp/robots.txt"]);
+  assert.deepEqual(sleeps, []);
+});
+
+test("PREPARE never issues a permit when robots disallows the target", async () => {
+  let sellerFetched = false;
+  let slept = false;
+  const handler = createHandler({
+    env: env(),
+    sleepFn: async () => {
+      slept = true;
+    },
+    fetchFn: async (url) => {
+      if (url.endsWith("/robots.txt")) {
+        return new Response("User-agent: *\nDisallow: /st/\n", { status: 200 });
+      }
+      sellerFetched = true;
+      return new Response("<html></html>", { status: 200 });
+    },
+  });
+
+  const result = await handler(event({ operation: "prepare", url: ENTRY_URL }));
+
+  assert.equal(result.statusCode, 409);
+  assert.equal(JSON.parse(result.body).error, "robots_disallowed");
+  assert.equal(sellerFetched, false);
+  assert.equal(slept, false);
+});
+
+test("FETCH rejects notBefore early use, then fetches without robots or sleep", async () => {
+  const calls: string[] = [];
+  const sleeps: number[] = [];
+  let nowMs = 1_700_000_000_000;
+  const html = "<html><body>phase4</body></html>";
+  const handler = createHandler({
+    env: env(),
+    nowFn: () => nowMs,
+    nonceFn: () => "nonce-fetch",
+    sleepFn: async (ms) => {
+      sleeps.push(ms);
+    },
+    fetchFn: async (url) => {
+      calls.push(url);
+      if (url.endsWith("/robots.txt")) {
+        return new Response("User-agent: *\nAllow: /st/\n", { status: 200 });
+      }
+      return new Response(html, {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    },
+  });
+
+  const preparedResult = await handler(
+    event({ operation: "prepare", url: ENTRY_URL, userAgent: "HiFiScoutBot/0.1" }),
+  );
+  const prepared = JSON.parse(preparedResult.body);
+  assert.equal(preparedResult.statusCode, 200);
+
+  const early = await handler(
+    event({
+      operation: "fetch",
+      permit: prepared.permit,
+      url: ENTRY_URL,
+      userAgent: "HiFiScoutBot/0.1",
+    }),
+  );
+  assert.equal(early.statusCode, 425);
+  assert.equal(JSON.parse(early.body).error, "permit_not_ready");
+  assert.deepEqual(calls, ["https://www.audiounion.jp/robots.txt"]);
+
+  nowMs = prepared.notBeforeMs;
+  const fetched = await handler(
+    event({
+      operation: "fetch",
+      permit: prepared.permit,
+      url: ENTRY_URL,
+      userAgent: "HiFiScoutBot/0.1",
+    }),
+  );
+  assert.equal(fetched.statusCode, 200);
+  assert.equal(Buffer.from(fetched.body, "base64").toString("utf8"), html);
+  assert.deepEqual(calls, ["https://www.audiounion.jp/robots.txt", ENTRY_URL]);
+  assert.deepEqual(sleeps, []);
+});
+
+test("FETCH rejects permit reuse for another URL or user-agent", async () => {
+  let nowMs = 1_700_000_000_000;
+  const calls: string[] = [];
+  const handler = createHandler({
+    env: env({ MIN_REQUEST_DELAY_MS: "0" }),
+    nowFn: () => nowMs,
+    nonceFn: () => "nonce-binding",
+    sleepFn: async () => {
+      throw new Error("two-phase protocol must not sleep");
+    },
+    fetchFn: async (url) => {
+      calls.push(url);
+      if (url.endsWith("/robots.txt")) {
+        return new Response("User-agent: *\nAllow: /\n", { status: 200 });
+      }
+      return new Response("<html></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      });
+    },
+  });
+
+  const prepared = JSON.parse(
+    (
+      await handler(
+        event({ operation: "prepare", url: ENTRY_URL, userAgent: "HiFiScoutBot/0.1" }),
+      )
+    ).body,
+  );
+  nowMs = prepared.notBeforeMs;
+
+  const otherUrl = await handler(
+    event({
+      operation: "fetch",
+      permit: prepared.permit,
+      url: DETAIL_URL,
+      userAgent: "HiFiScoutBot/0.1",
+    }),
+  );
+  assert.equal(otherUrl.statusCode, 409);
+  assert.equal(JSON.parse(otherUrl.body).error, "permit_binding_mismatch");
+
+  const otherUa = await handler(
+    event({
+      operation: "fetch",
+      permit: prepared.permit,
+      url: ENTRY_URL,
+      userAgent: "OtherBot/1.0",
+    }),
+  );
+  assert.equal(otherUa.statusCode, 409);
+  assert.equal(JSON.parse(otherUa.body).error, "permit_binding_mismatch");
+  assert.deepEqual(calls, ["https://www.audiounion.jp/robots.txt"]);
+});
+
+test("FETCH rejects tampered and expired permits", async () => {
+  let nowMs = 1_700_000_000_000;
+  let sellerFetches = 0;
+  const handler = createHandler({
+    env: env({ MIN_REQUEST_DELAY_MS: "0" }),
+    nowFn: () => nowMs,
+    nonceFn: () => "nonce-expiry",
+    sleepFn: async () => {
+      throw new Error("two-phase protocol must not sleep");
+    },
+    fetchFn: async (url) => {
+      if (url.endsWith("/robots.txt")) {
+        return new Response("User-agent: *\nAllow: /\n", { status: 200 });
+      }
+      sellerFetches += 1;
+      return new Response("<html></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      });
+    },
+  });
+
+  const prepared = JSON.parse(
+    (
+      await handler(
+        event({ operation: "prepare", url: ENTRY_URL, userAgent: "HiFiScoutBot/0.1" }),
+      )
+    ).body,
+  );
+
+  const tampered = await handler(
+    event({
+      operation: "fetch",
+      permit: `${prepared.permit}x`,
+      url: ENTRY_URL,
+      userAgent: "HiFiScoutBot/0.1",
+    }),
+  );
+  assert.equal(tampered.statusCode, 401);
+  assert.equal(JSON.parse(tampered.body).error, "invalid_permit");
+
+  nowMs = prepared.expiresAtMs;
+  const expired = await handler(
+    event({
+      operation: "fetch",
+      permit: prepared.permit,
+      url: ENTRY_URL,
+      userAgent: "HiFiScoutBot/0.1",
+    }),
+  );
+  assert.equal(expired.statusCode, 410);
+  assert.equal(JSON.parse(expired.body).error, "permit_expired");
+  assert.equal(sellerFetches, 0);
 });
 
 test("Lambda permits Hifido listing fetches through the Tokyo relay", async () => {
