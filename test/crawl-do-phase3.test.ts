@@ -24,21 +24,21 @@ test("Phase 3 heavy rollout targets the direct collectors from #391", () => {
   assert.equal(isCrawlDoCanaryEligible("u-audio"), true);
 });
 
-test("seller HTTP outside the normal direct page path remains excluded", () => {
-  assert.equal(isCrawlDoCanaryEligible("hifido"), false);
-  assert.equal(isCrawlDoCanaryEligible("audiounion"), false);
+test("direct seller HTTP outside the normal page path remains excluded", () => {
+  // Relay-backed collectors moved onto the DO path in Phase 5. Direct collectors that still issue
+  // secondary seller HTTP remain excluded until that capability has an Alarm-owned pacing seam.
   assert.equal(isCrawlDoCanaryEligible("fujiya-avic"), false);
 });
 
-test("production Phase 3 allowlist contains Phase 2 plus the #391 heavy collectors", () => {
+test("production DO allowlist contains the Phase 3 collectors", () => {
   const wrangler = JSON.parse(
     readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8"),
   ) as { vars?: { CRAWL_DO_CANARY_SHOPS?: string } };
 
-  assert.deepEqual(
-    [...selectedCrawlDoCanaryShops(wrangler.vars?.CRAWL_DO_CANARY_SHOPS)],
-    ["home-shokai", "ippinkan", "u-audio"],
-  );
+  const selected = selectedCrawlDoCanaryShops(wrangler.vars?.CRAWL_DO_CANARY_SHOPS);
+  for (const shopKey of ["home-shokai", "ippinkan", "u-audio"]) {
+    assert.equal(selected.has(shopKey), true);
+  }
 });
 
 test("selected heavy lane dispatch uses the Durable Object and never Queue", async () => {
