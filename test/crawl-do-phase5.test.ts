@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { test } from "vite-plus/test";
 
 import {
@@ -208,6 +208,30 @@ test("Hifido detail enrichment is owned by the same Relay Alarm pacing authority
   assert.match(scheduler, /recordCrawlFetchDetailPage/);
   assert.match(finalizer, /getCrawlFetchDetailPage/);
   assert.match(finalizer, /category detail fetch was not paced by CrawlScheduler/);
+});
+
+test("Phase 5 detail staging reuses the migration-0065 crawl frontier", () => {
+  const repository = readFileSync(
+    new URL("../src/db/crawl-fetch-detail-repository.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(repository, /INSERT OR IGNORE INTO crawl_fetch_pages/);
+  assert.match(repository, /state = 'ignored'/);
+  assert.doesNotMatch(repository, /crawl_fetch_detail_pages/);
+  assert.equal(
+    existsSync(new URL("../migrations/0071_crawl_fetch_detail_pacing.sql", import.meta.url)),
+    false,
+  );
+});
+
+test("production deploy skips D1 only when no migrations changed since last success", () => {
+  const workflow = readFileSync(
+    new URL("../.github/workflows/deploy.yml", import.meta.url),
+    "utf8",
+  );
+  assert.match(workflow, /actions\/workflows\/deploy\.yml\/runs\?branch=main&status=success/);
+  assert.match(workflow, /--diff-filter=AM/);
+  assert.match(workflow, /steps\.d1-migrations\.outputs\.required == 'true'/);
 });
 
 test("Phase 5 scheduler has no active waiting primitive", () => {

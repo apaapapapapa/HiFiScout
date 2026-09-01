@@ -1,5 +1,7 @@
 import type { QueryableDatabase } from "./types.js";
 
+const DETAIL_PAGE_KEY_PREFIX = "__hifiscout_category_detail__:";
+
 export interface CrawlFetchDetailPageRow {
   run_id: string;
   target_url: string;
@@ -9,20 +11,70 @@ export interface CrawlFetchDetailPageRow {
   fetched_at: string;
 }
 
+interface DetailStagingRow {
+  html_text: string | null;
+  products_json: string | null;
+  html_bytes: number;
+  fetched_at: string | null;
+}
+
+function detailPageKey(targetUrl: string): string {
+  return `${DETAIL_PAGE_KEY_PREFIX}${targetUrl}`;
+}
+
+function stagedErrorMessage(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "errorMessage" in parsed &&
+      typeof parsed.errorMessage === "string"
+    ) {
+      return parsed.errorMessage;
+    }
+  } catch {
+    // Detail metadata is private staging state. Treat malformed legacy data as no staged error.
+  }
+  return null;
+}
+
+/**
+ * Detail responses reuse the existing crawl_fetch_pages staging table. They are terminal `ignored`
+ * rows with ordinals appended after the parsed listing frontier, so they cannot participate in page
+ * discovery, item counts or the fetch/parse continuation state machine. This keeps Phase 5 schema
+ * compatible with production databases that already have migration 0065 applied.
+ */
 export async function getCrawlFetchDetailPage(
   db: QueryableDatabase,
   runId: string,
   targetUrl: string,
 ): Promise<CrawlFetchDetailPageRow | null> {
-  return db
-    .prepare("SELECT * FROM crawl_fetch_detail_pages WHERE run_id = ? AND target_url = ?")
-    .bind(runId, targetUrl)
-    .first<CrawlFetchDetailPageRow>();
+  const staged = await db
+    .prepare(`
+      SELECT html_text, products_json, html_bytes, fetched_at
+      FROM crawl_fetch_pages
+      WHERE run_id = ? AND page_key = ? AND state = 'ignored'
+    `)
+    .bind(runId, detailPageKey(targetUrl))
+    .first<DetailStagingRow>();
+  if (!staged) return null;
+  if (!staged.fetched_at) throw new Error(`invalid staged category detail fetch: ${targetUrl}`);
+  return {
+    run_id: runId,
+    target_url: targetUrl,
+    html_text: staged.html_text,
+    error_message: stagedErrorMessage(staged.products_json),
+    html_bytes: Number(staged.html_bytes || 0),
+    fetched_at: staged.fetched_at,
+  };
 }
 
 /**
- * Records one completed detail-fetch attempt. The first terminal outcome wins: Alarm redelivery or
- * an infrastructure retry cannot turn one logical seller request into a second unpaced request.
+ * Records one completed detail-fetch attempt in migration-0065 staging. The first terminal outcome
+ * wins: Alarm redelivery or an infrastructure retry cannot turn one logical seller request into a
+ * second unpaced request. Detail rows are appended only after the listing frontier reaches finalize.
  */
 export async function recordCrawlFetchDetailPage(
   db: QueryableDatabase,
@@ -37,13 +89,29 @@ export async function recordCrawlFetchDetailPage(
   const html = input.html ?? null;
   const errorMessage = input.errorMessage?.slice(0, 1000) || null;
   const htmlBytes = html == null ? 0 : new TextEncoder().encode(html).byteLength;
+  const pageKey = detailPageKey(input.targetUrl);
+  const pageJson = JSON.stringify({ kind: "category_detail", targetUrl: input.targetUrl });
+  const metadataJson = errorMessage ? JSON.stringify({ errorMessage }) : null;
+
   await db
     .prepare(`
-      INSERT INTO crawl_fetch_detail_pages
-        (run_id, target_url, html_text, error_message, html_bytes, fetched_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT(run_id, target_url) DO NOTHING
+      INSERT OR IGNORE INTO crawl_fetch_pages
+        (run_id, page_key, page_json, ordinal, state, html_text, products_json,
+         html_bytes, item_count, fetched_at, parsed_at)
+      SELECT ?, ?, ?, COALESCE(MAX(ordinal), -1) + 1, 'ignored', ?, ?, ?, 0, ?, ?
+      FROM crawl_fetch_pages
+      WHERE run_id = ?
     `)
-    .bind(input.runId, input.targetUrl, html, errorMessage, htmlBytes, input.fetchedAt)
+    .bind(
+      input.runId,
+      pageKey,
+      pageJson,
+      html,
+      metadataJson,
+      htmlBytes,
+      input.fetchedAt,
+      input.fetchedAt,
+      input.runId,
+    )
     .run();
 }
