@@ -94,6 +94,14 @@ export function remediationProductLimit(env: KnowledgeCatalogConfigEnv): number 
   return boundedInteger(env.KNOWLEDGE_CATALOG_REMEDIATION_MAX_PRODUCTS, 20, 1, 100);
 }
 
+/**
+ * Logical duplicate sets one finalizer converges. Bounded like every other finalizer sweep so the
+ * run stays predictable; whatever is left over is found again by the next run.
+ */
+export function catalogIdentityConvergenceLimit(env: KnowledgeCatalogConfigEnv): number {
+  return boundedInteger(env.KNOWLEDGE_CATALOG_IDENTITY_CONVERGENCE_MAX_GROUPS, 5, 1, 25);
+}
+
 /** Listings replayed per catalog entry in one finalizer invocation. */
 export function remediationListingLimit(env: KnowledgeCatalogConfigEnv): number {
   return boundedInteger(env.KNOWLEDGE_CATALOG_REMEDIATION_MAX_LISTINGS, 100, 1, 250);

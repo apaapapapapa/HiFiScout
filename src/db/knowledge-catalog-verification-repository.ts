@@ -5,11 +5,11 @@ import type {
   KnowledgeSourceVerification,
   VerifiedKnowledgeSource,
 } from "../catalog/knowledge-verification/types.js";
+import { findCatalogProductByIdentity } from "./knowledge-catalog-identity.js";
 import type {
   DueKnowledgeCatalogProduct,
   DueKnowledgeCatalogProductRow,
   KnowledgeCatalogCandidateRow,
-  KnowledgeCatalogProductRow,
   KnowledgeCatalogPromotionResult,
   PendingKnowledgeCatalogCandidate,
   QueryableDatabase,
@@ -194,15 +194,14 @@ export async function promoteVerifiedKnowledgeCatalogCandidate(
   verification: VerifiedKnowledgeSource,
   verifiedAt: string,
 ): Promise<KnowledgeCatalogPromotionResult> {
-  const existing = await db
-    .prepare(`
-    SELECT id, verification_status
-    FROM knowledge_catalog_products
-    WHERE manufacturer_id = ? AND normalized_model = ?
-    LIMIT 1
-  `)
-    .bind(candidate.manufacturerId, candidate.normalizedModel)
-    .first<Pick<KnowledgeCatalogProductRow, "id" | "verification_status">>();
+  // Promotion converges on logical identity, not on the storage key. `UNIQUE(manufacturer_id,
+  // normalized_model)` treats `C-10` and `C10` as different products; Product Identity does not, so
+  // an exact-key lookup would insert a second Catalog row for a product the catalog already holds.
+  const existing = await findCatalogProductByIdentity(
+    db,
+    candidate.manufacturerId,
+    candidate.normalizedModel,
+  );
 
   if (existing?.verification_status === "rejected") {
     await recordKnowledgeCatalogCandidateVerification(

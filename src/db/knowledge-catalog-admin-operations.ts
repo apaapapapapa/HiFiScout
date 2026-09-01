@@ -5,6 +5,7 @@ import type {
   KnowledgeCatalogAdminCreateInput,
   KnowledgeCatalogAdminListOptions,
 } from "../http/knowledge-catalog-admin.js";
+import { findCatalogProductByIdentity } from "./knowledge-catalog-identity.js";
 import { reprocessVerifiedCatalogProduct } from "./knowledge-catalog-remediation-repository.js";
 import {
   catalogAdminCategoryIds,
@@ -244,27 +245,19 @@ async function loadCatalogState(
     .first<CatalogStateRow>();
 }
 
+/**
+ * The Catalog record a manual write must land on.
+ *
+ * Manual writes go through the same logical-identity lookup as promotion, so an admin entering
+ * `C10` for a product already catalogued as `C-10` updates that record instead of creating a
+ * second one the duplicates screen would then have to report.
+ */
 async function findCatalogStateByIdentity(
   db: ReadableDatabase,
   manufacturerId: string,
   normalizedModel: string,
 ): Promise<CatalogStateRow | null> {
-  return db
-    .prepare(`
-      SELECT kp.id, kp.manufacturer_id, kp.canonical_model, kp.normalized_model,
-             kp.canonical_name, kp.lifecycle_status, kp.verification_status,
-             (
-               SELECT kpc.category_id
-               FROM knowledge_catalog_product_categories kpc
-               WHERE kpc.product_id = kp.id AND kpc.is_primary = 1
-               LIMIT 1
-             ) AS primary_category_id
-      FROM knowledge_catalog_products kp
-      WHERE kp.manufacturer_id = ? AND kp.normalized_model = ?
-      LIMIT 1
-    `)
-    .bind(manufacturerId, normalizedModel)
-    .first<CatalogStateRow>();
+  return findCatalogProductByIdentity(db, manufacturerId, normalizedModel);
 }
 
 function modelAliasStatement(
@@ -391,22 +384,32 @@ async function insertNewCatalogProduct(
   return productId;
 }
 
+/**
+ * Reinstate a rejected record under the spelling the admin just entered.
+ *
+ * The storage key moves with the canonical model. A rejected record found through logical identity
+ * rather than through the exact key still names this product, so leaving `normalized_model` on the
+ * old spelling would keep the record findable only under a model nobody entered again.
+ */
 async function reviveRejectedCatalogProduct(
   db: QueryableDatabase,
   productId: number,
   input: KnowledgeCatalogAdminCreateInput,
+  normalizedModel: string,
   verifiedAt: string,
 ): Promise<void> {
   await db
     .prepare(`
       UPDATE knowledge_catalog_products
-      SET canonical_model = ?, canonical_name = ?, lifecycle_status = ?, verification_status = 'verified',
-          review_status = 'current', first_verified_at = COALESCE(first_verified_at, ?),
+      SET canonical_model = ?, normalized_model = ?, canonical_name = ?, lifecycle_status = ?,
+          verification_status = 'verified', review_status = 'current',
+          first_verified_at = COALESCE(first_verified_at, ?),
           last_verified_at = ?, last_reviewed_at = ?, remediation_after_listing_id = 0, updated_at = ?
       WHERE id = ? AND verification_status = 'rejected'
     `)
     .bind(
       input.canonicalModel,
+      normalizedModel,
       input.canonicalName,
       input.lifecycleStatus,
       verifiedAt,
@@ -517,7 +520,8 @@ export async function createKnowledgeCatalogAdminProduct(
   const productId = existing
     ? Number(existing.id)
     : await insertNewCatalogProduct(db, input, normalizedModel, verifiedAt);
-  if (existing) await reviveRejectedCatalogProduct(db, productId, input, verifiedAt);
+  if (existing)
+    await reviveRejectedCatalogProduct(db, productId, input, normalizedModel, verifiedAt);
 
   const canonicalAlias = modelAliasStatement(db, productId, input.canonicalModel, verifiedAt);
   if (canonicalAlias) await db.batch([canonicalAlias]);
@@ -557,7 +561,7 @@ export async function verifyKnowledgeCatalogAdminCandidate(
     };
   } else if (existing) {
     productId = Number(existing.id);
-    await reviveRejectedCatalogProduct(db, productId, input, verifiedAt);
+    await reviveRejectedCatalogProduct(db, productId, input, normalizedModel, verifiedAt);
   } else {
     productId = await insertNewCatalogProduct(db, input, normalizedModel, verifiedAt);
     created = true;
@@ -575,52 +579,49 @@ function sameManufacturer(left: string, right: string): boolean {
   return left === right || rightIds.some((id) => leftIds.has(id));
 }
 
-export async function mergeKnowledgeCatalogAdminProducts(
+export interface KnowledgeCatalogMergeSource {
+  id: number;
+  canonicalModel: string;
+  canonicalName: string;
+}
+
+/**
+ * Move everything that points at one Catalog row onto another, then remove the duplicate.
+ *
+ * Shared by the admin merge screen and by automatic identity convergence, so a manual merge and an
+ * automatic one move the same dependent rows in the same order. The whole move is one `db.batch`,
+ * so a failure anywhere leaves the duplicate intact and the next attempt starts from the same state
+ * instead of from a half-merged catalog. Statement order is load-bearing:
+ *
+ * 1. the duplicate's model and name become aliases of the survivor, so a seller spelling that only
+ *    the duplicate matched keeps resolving;
+ * 2. aliases, sources, candidates, verification attempts, and identity resolutions are re-pointed;
+ * 3. price-index samples that no listing still resolves -- retention-safe market evidence -- are
+ *    re-pointed explicitly, because `ON DELETE CASCADE` would otherwise delete them along with the
+ *    duplicate. Re-pointing them also rebuilds the survivor's aggregate through the sample
+ *    triggers, so the price index stays one row per catalog product;
+ * 4. only then is the duplicate deleted.
+ */
+export async function mergeKnowledgeCatalogProductReferences(
   db: QueryableDatabase,
   targetProductId: number,
-  sourceProductId: number,
-  mergedAt = new Date().toISOString(),
-): Promise<KnowledgeCatalogAdminMergeResult | null> {
+  source: KnowledgeCatalogMergeSource,
+  mergedAt: string,
+): Promise<void> {
+  const sourceProductId = source.id;
   if (targetProductId === sourceProductId) throw new Error("catalog_admin_merge_same_product");
-  const [target, source] = await Promise.all([
-    loadCatalogState(db, targetProductId),
-    loadCatalogState(db, sourceProductId),
-  ]);
-  if (
-    !target ||
-    !source ||
-    target.verification_status !== "verified" ||
-    source.verification_status !== "verified"
-  ) {
-    return null;
-  }
-  if (!target.primary_category_id) throw new Error("catalog_admin_merge_target_category_missing");
-  if (!sameManufacturer(target.manufacturer_id, source.manufacturer_id)) {
-    throw new Error("catalog_admin_merge_manufacturer_mismatch");
-  }
-
-  const moved = await db
-    .prepare(`
-      SELECT COUNT(*) AS count
-      FROM product_identity_resolutions pir
-      JOIN products p ON p.id = pir.listing_product_id
-      WHERE p.is_active = 1 AND pir.status = 'matched' AND pir.catalog_product_id = ?
-    `)
-    .bind(sourceProductId)
-    .first<{ count: number }>();
-
   const statements: D1PreparedStatement[] = [];
   const canonicalModelAlias = modelAliasStatement(
     db,
     targetProductId,
-    source.canonical_model,
+    source.canonicalModel,
     mergedAt,
   );
   if (canonicalModelAlias) statements.push(canonicalModelAlias);
   const canonicalNameAlias = nameAliasStatement(
     db,
     targetProductId,
-    source.canonical_name,
+    source.canonicalName,
     mergedAt,
   );
   if (canonicalNameAlias) statements.push(canonicalNameAlias);
@@ -675,9 +676,62 @@ export async function mergeKnowledgeCatalogAdminProducts(
         sourceProductId,
         sourceProductId,
       ),
+    db
+      .prepare(`
+        UPDATE knowledge_catalog_price_index_samples
+        SET catalog_product_id = ?
+        WHERE catalog_product_id = ?
+      `)
+      .bind(targetProductId, sourceProductId),
     db.prepare("DELETE FROM knowledge_catalog_products WHERE id = ?").bind(sourceProductId),
   );
   await db.batch(statements);
+}
+
+export async function mergeKnowledgeCatalogAdminProducts(
+  db: QueryableDatabase,
+  targetProductId: number,
+  sourceProductId: number,
+  mergedAt = new Date().toISOString(),
+): Promise<KnowledgeCatalogAdminMergeResult | null> {
+  if (targetProductId === sourceProductId) throw new Error("catalog_admin_merge_same_product");
+  const [target, source] = await Promise.all([
+    loadCatalogState(db, targetProductId),
+    loadCatalogState(db, sourceProductId),
+  ]);
+  if (
+    !target ||
+    !source ||
+    target.verification_status !== "verified" ||
+    source.verification_status !== "verified"
+  ) {
+    return null;
+  }
+  if (!target.primary_category_id) throw new Error("catalog_admin_merge_target_category_missing");
+  if (!sameManufacturer(target.manufacturer_id, source.manufacturer_id)) {
+    throw new Error("catalog_admin_merge_manufacturer_mismatch");
+  }
+
+  const moved = await db
+    .prepare(`
+      SELECT COUNT(*) AS count
+      FROM product_identity_resolutions pir
+      JOIN products p ON p.id = pir.listing_product_id
+      WHERE p.is_active = 1 AND pir.status = 'matched' AND pir.catalog_product_id = ?
+    `)
+    .bind(sourceProductId)
+    .first<{ count: number }>();
+
+  await mergeKnowledgeCatalogProductReferences(
+    db,
+    targetProductId,
+    {
+      id: sourceProductId,
+      canonicalModel: source.canonical_model,
+      canonicalName: source.canonical_name,
+    },
+    mergedAt,
+  );
 
   await recordManualSource(db, targetProductId, "", mergedAt);
   const completed = await completeManualWrite(

@@ -10,6 +10,7 @@
  * is why the paths that make finalization impossible fail the run explicitly.
  */
 
+import { convergeKnowledgeCatalogIdentityDuplicates } from "../db/knowledge-catalog-identity-dedup.js";
 import { reprocessPendingCatalogRemediation } from "../db/knowledge-catalog-remediation-repository.js";
 import { reclassifyProductsFromKnowledgeCatalog } from "../db/knowledge-catalog-repository.js";
 import {
@@ -27,6 +28,7 @@ import {
 import { finishKnowledgeCatalogVerifierVersionSuccess } from "../db/knowledge-catalog-verifier-state-repository.js";
 import {
   addSeconds,
+  catalogIdentityConvergenceLimit,
   classificationImpact,
   finalizeRetrySeconds,
   remediationListingLimit,
@@ -57,8 +59,18 @@ export async function finalizeKnowledgeCatalogVerificationRun(
   }
 
   const beforeClassification = await knowledgeCatalogReviewRunQueueBaseline(env.DB, body.runId);
+  // Catalog rows that name one product are collapsed before anything reads the catalog. Writers can
+  // no longer create them, but rows created before the identity rule reached every writer are still
+  // there, and leaving them would keep listings for one product split across two catalog entries.
+  // Every verification job for this run has finished by now, so no in-flight promotion can be
+  // holding an id this pass removes.
+  const identityConvergence = await convergeKnowledgeCatalogIdentityDuplicates(env.DB, {
+    limit: catalogIdentityConvergenceLimit(env),
+    mergedAt: now.toISOString(),
+  });
   // A newly verified catalog entry must first pass the existing conservative Product Identity
   // resolver. This replay also refreshes the Phase 4 projection/entity for identities that changed.
+  // A survivor of the convergence above is owed a replay too, so its moved listings resolve here.
   const remediation = await reprocessPendingCatalogRemediation(env.DB, {
     productLimit: remediationProductLimit(env),
     limit: remediationListingLimit(env),
@@ -100,7 +112,8 @@ export async function finalizeKnowledgeCatalogVerificationRun(
     ...impact,
     reclassifiedProducts,
     remediation,
-    message: `${body.mode || "daily_candidates"}: ${stats.promoted} catalog promotions, ${stats.rechecked} source rechecks, ${candidateResult.pendingCandidates} pending candidates, ${impact.unclassifiedReduced} unclassified and ${impact.otherReduced} other listings reduced via queue, ${remediation.matchedCount} listings matched by remediation replay${remediation.pendingProducts ? ` (${remediation.pendingProducts} catalog products still owed a replay)` : ""}`,
+    identityConvergence,
+    message: `${body.mode || "daily_candidates"}: ${stats.promoted} catalog promotions, ${stats.rechecked} source rechecks, ${candidateResult.pendingCandidates} pending candidates, ${impact.unclassifiedReduced} unclassified and ${impact.otherReduced} other listings reduced via queue, ${remediation.matchedCount} listings matched by remediation replay${remediation.pendingProducts ? ` (${remediation.pendingProducts} catalog products still owed a replay)` : ""}${identityConvergence.removedProducts ? `, ${identityConvergence.removedProducts} duplicate catalog products merged into ${identityConvergence.convergedGroups} canonical products` : ""}`,
   };
   await finishKnowledgeCatalogReviewRunSuccess(env.DB, body.runId, result);
   // Only a run that claimed a rollout version may close it out; an ordinary run carries zero.
