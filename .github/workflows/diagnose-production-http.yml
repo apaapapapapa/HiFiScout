@@ -13,12 +13,24 @@ jobs:
   diagnose:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      CLOUDFLARE_ACCOUNT_ID: 9af87af4dbc00be3bfd4c8af3f52f684
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
-      - name: Probe production surfaces
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: ./.github/actions/setup-node-deps
+      - name: Probe production surfaces with Worker tail
         shell: bash
         run: |
           set -uo pipefail
           base="https://hifiscout.tokyojp.workers.dev"
+          tail_log="$(mktemp)"
+          trap 'rm -f "$tail_log"' EXIT
+
+          timeout 30s vp exec wrangler tail hifiscout --format=json >"$tail_log" 2>&1 &
+          tail_pid=$!
+          sleep 5
+
           probe() {
             local label="$1"
             local path="$2"
@@ -34,12 +46,15 @@ jobs:
             rm -f "$headers" "$body"
           }
 
-          # Static asset bypasses the Worker. Root executes Worker then ASSETS.fetch.
           probe static-asset "/styles.css"
           probe worker-root "/"
-          # Unknown API and meta exercise the API guard without D1 reads.
           probe api-unknown "/api/__diagnostic_not_found"
           probe api-meta "/api/meta"
-          # Health catches its own D1 failure and should never become Cloudflare 1101.
           probe api-health "/api/health"
           probe api-feed "/api/feed?manufacturer=TAD&inStock=true&limit=2"
+
+          sleep 5
+          kill "$tail_pid" 2>/dev/null || true
+          wait "$tail_pid" 2>/dev/null || true
+          echo "=== worker-tail ==="
+          cat "$tail_log"
