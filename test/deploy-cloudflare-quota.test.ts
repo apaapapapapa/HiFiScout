@@ -19,7 +19,8 @@ test("production smoke is deferred only after D1 code 7500 is confirmed", () => 
   );
 });
 
-test("non-7500 D1 probe failures do not suppress production smoke", () => {
+test("non-7500 D1 probe failures keep production smoke fail-closed", () => {
   assert.match(workflow, /D1 availability probe inconclusive/);
   assert.match(workflow, /production smoke checks will still run/);
+  assert.doesNotMatch(workflow, /1101.*PRODUCTION_RUNTIME_CHECK_DEFERRED/s);
 });
