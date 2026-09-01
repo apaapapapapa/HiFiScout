@@ -1,8 +1,10 @@
 import { getCrawlerSettings, getShopIntervalMinutes, getShopMaxPages } from "../config.js";
 import {
   ensureCrawlFetchSession,
+  failCrawlFetchSession,
   getCrawlFetchSession,
   type CrawlFetchPageInput,
+  type CrawlFetchSessionRow,
 } from "../db/crawl-fetch-session-repository.js";
 import { getShopState, markShopFailure } from "../db/shop-state-repository.js";
 import { errorMessage } from "../types.js";
@@ -35,9 +37,7 @@ function queueForLane(
 function buildContinuationMessage(
   plugin: ShopPlugin,
   source: ResumableCrawlQueueMessage,
-  session: Awaited<ReturnType<typeof getCrawlFetchSession>> extends infer T
-    ? NonNullable<T>
-    : never,
+  session: CrawlFetchSessionRow,
 ): ResumableCrawlQueueMessage {
   const continuation = continuationFromSession(session);
   if (!continuation) throw new Error(`active crawl session has no continuation: ${session.run_id}`);
@@ -87,7 +87,7 @@ export async function ensureSession(
   plugin: ShopPlugin,
   body: ResumableCrawlQueueMessage,
   runId: string,
-) {
+): Promise<CrawlFetchSessionRow> {
   const existing = await getCrawlFetchSession(env.DB, runId);
   if (existing) return existing;
   const settings = getCrawlerSettings(env);
@@ -133,7 +133,6 @@ export async function failCollection(
   const message = errorMessage(error);
   const state = await getShopState(env.DB, plugin.key);
   await markShopFailure(env.DB, plugin.key, failedAt, message, state?.consecutive_failures || 0);
-  const { failCrawlFetchSession } = await import("../db/crawl-fetch-session-repository.js");
   await failCrawlFetchSession(env.DB, { runId, failedAt, message });
   console.warn(
     JSON.stringify({
