@@ -1,8 +1,8 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import type { APIGatewayProxyEventHeaders, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 
 /**
- * One header record for every direction: the two response branches below build
+ * One header record for every direction: the response branches below build
  * different key sets, and the outbound request profiles do the same.
  */
 type RelayHeaders = Record<string, string>;
@@ -21,6 +21,7 @@ interface RelayEvent {
 /** Environment variables the relay reads. `process.env` is assignable to it. */
 interface RelayEnv {
   RELAY_TOKEN?: string;
+  RELAY_PERMIT_SECRET?: string;
   AUDIOUNION_ENTRY_URL?: string;
   CRAWLER_USER_AGENT?: string;
   HIFIDO_USER_AGENT?: string;
@@ -54,17 +55,13 @@ interface RelayResponse extends APIGatewayProxyStructuredResultV2 {
   isBase64Encoded: boolean;
 }
 
-/** JSON payload of every non-proxied response. */
-interface RelayErrorBody {
-  error: string;
-  message?: string;
-}
-
-/** Untrusted request payload: only the three fields below are ever read. */
+/** Untrusted request payload. */
 interface RelayRequestBody {
+  operation?: unknown;
   url?: unknown;
   userAgent?: unknown;
   requestDelayMs?: unknown;
+  permit?: unknown;
 }
 
 interface RobotsRule {
@@ -83,10 +80,23 @@ interface RelayRequestProfile {
   headers: RelayHeaders;
 }
 
+interface RelayPermitClaims {
+  version: 1;
+  targetUrl: string;
+  requestedUserAgent: string;
+  profileUserAgent: string;
+  issuedAtMs: number;
+  notBeforeMs: number;
+  expiresAtMs: number;
+  nonce: string;
+}
+
 interface CreateHandlerOptions {
   fetchFn?: RelayFetch;
   sleepFn?: RelaySleep;
   env?: RelayEnv;
+  nowFn?: () => number;
+  nonceFn?: () => string;
 }
 
 type RelayHandler = (event?: RelayEvent) => Promise<RelayResponse>;
@@ -96,6 +106,10 @@ const DEFAULT_USER_AGENT = "HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/H
 const DEFAULT_HIFIDO_USER_AGENT =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)";
 const DEFAULT_MIN_DELAY_MS = 10_000;
+const RELAY_PERMIT_VERSION = 1 as const;
+const RELAY_PERMIT_TTL_MS = 5 * 60_000;
+const MAX_PERMIT_LENGTH = 4096;
+const PERMIT_SIGNING_CONTEXT = "hifiscout-relay-permit-v1:";
 const AUDIOUNION_HOST = "www.audiounion.jp";
 const HIFIDO_HOST = "www.hifido.co.jp";
 const HIFIDO_ALLOWED_QUERY_KEYS = new Set(["L", "LNG", "O", "OD"]);
@@ -108,7 +122,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function jsonResponse(
   statusCode: number,
-  body: RelayErrorBody,
+  body: Record<string, unknown>,
   headers: RelayHeaders = {},
 ): RelayResponse {
   return {
@@ -325,10 +339,104 @@ function nonNegativeNumber(value: unknown, fallback = 0): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
+function relayPermitSecret(env: RelayEnv): string | null {
+  const secret = String(env.RELAY_PERMIT_SECRET || "");
+  return secret.length >= 32 ? secret : null;
+}
+
+function signPermit(claims: RelayPermitClaims, secret: string): string {
+  const payload = Buffer.from(JSON.stringify(claims), "utf8").toString("base64url");
+  const signature = createHmac("sha256", secret)
+    .update(`${PERMIT_SIGNING_CONTEXT}${payload}`)
+    .digest("base64url");
+  return `${payload}.${signature}`;
+}
+
+function parsePermitClaims(value: unknown): RelayPermitClaims | null {
+  if (!isRecord(value) || value.version !== RELAY_PERMIT_VERSION) return null;
+  const targetUrl = value.targetUrl;
+  const requestedUserAgent = value.requestedUserAgent;
+  const profileUserAgent = value.profileUserAgent;
+  const issuedAtMs = value.issuedAtMs;
+  const notBeforeMs = value.notBeforeMs;
+  const expiresAtMs = value.expiresAtMs;
+  const nonce = value.nonce;
+  if (
+    typeof targetUrl !== "string" ||
+    !targetUrl ||
+    typeof requestedUserAgent !== "string" ||
+    !requestedUserAgent ||
+    typeof profileUserAgent !== "string" ||
+    !profileUserAgent ||
+    typeof nonce !== "string" ||
+    !nonce ||
+    !Number.isSafeInteger(issuedAtMs) ||
+    !Number.isSafeInteger(notBeforeMs) ||
+    !Number.isSafeInteger(expiresAtMs) ||
+    (issuedAtMs as number) > (notBeforeMs as number) ||
+    (notBeforeMs as number) >= (expiresAtMs as number)
+  ) {
+    return null;
+  }
+  return {
+    version: RELAY_PERMIT_VERSION,
+    targetUrl,
+    requestedUserAgent,
+    profileUserAgent,
+    issuedAtMs: issuedAtMs as number,
+    notBeforeMs: notBeforeMs as number,
+    expiresAtMs: expiresAtMs as number,
+    nonce,
+  };
+}
+
+function verifyPermit(value: unknown, secret: string): RelayPermitClaims | null {
+  if (typeof value !== "string" || !value || value.length > MAX_PERMIT_LENGTH) return null;
+  const parts = value.split(".");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+  const [payload, suppliedSignature] = parts;
+  const expectedSignature = createHmac("sha256", secret)
+    .update(`${PERMIT_SIGNING_CONTEXT}${payload}`)
+    .digest("base64url");
+  if (!secureEqual(suppliedSignature, expectedSignature)) return null;
+  try {
+    return parsePermitClaims(JSON.parse(Buffer.from(payload, "base64url").toString("utf8")));
+  } catch {
+    return null;
+  }
+}
+
+async function proxyTarget(
+  fetchFn: RelayFetch,
+  targetUrl: string,
+  profile: RelayRequestProfile,
+  env: RelayEnv,
+): Promise<RelayResponse> {
+  const upstream = await fetchFn(targetUrl, {
+    headers: profile.headers,
+    redirect: "follow",
+  });
+  const bytes = Buffer.from(await upstream.arrayBuffer());
+  const contentType = upstream.headers.get("content-type") || "text/html; charset=utf-8";
+  return {
+    statusCode: upstream.status,
+    headers: {
+      "content-type": contentType,
+      "cache-control": "no-store",
+      "x-hifiscout-upstream-status": String(upstream.status),
+      "x-hifiscout-aws-region": env.AWS_REGION || "unknown",
+    },
+    body: bytes.toString("base64"),
+    isBase64Encoded: true,
+  };
+}
+
 export function createHandler({
   fetchFn = fetch,
   sleepFn = sleep,
   env = process.env,
+  nowFn = Date.now,
+  nonceFn = randomUUID,
 }: CreateHandlerOptions = {}): RelayHandler {
   return async function handler(event: RelayEvent = {}): Promise<RelayResponse> {
     try {
@@ -348,6 +456,48 @@ export function createHandler({
         body = decodeRequestBody(event);
       } catch {
         return jsonResponse(400, { error: "invalid_json" });
+      }
+
+      const operation = body.operation === "prepare" || body.operation === "fetch" ? body.operation : "legacy";
+      if (operation === "fetch") {
+        const secret = relayPermitSecret(env);
+        if (!secret) return jsonResponse(500, { error: "relay_permit_secret_not_configured" });
+        const claims = verifyPermit(body.permit, secret);
+        if (!claims) return jsonResponse(401, { error: "invalid_permit" });
+
+        const nowMs = nowFn();
+        if (nowMs < claims.notBeforeMs) {
+          return jsonResponse(425, {
+            error: "permit_not_ready",
+            notBeforeMs: claims.notBeforeMs,
+          });
+        }
+        if (nowMs >= claims.expiresAtMs) {
+          return jsonResponse(410, { error: "permit_expired" });
+        }
+
+        let requestedUrl: URL;
+        try {
+          requestedUrl = new URL(String(body.url || ""));
+        } catch {
+          return jsonResponse(409, { error: "permit_binding_mismatch" });
+        }
+        const requestedUserAgent = safeUserAgent(body.userAgent, env.CRAWLER_USER_AGENT);
+        if (
+          requestedUrl.toString() !== claims.targetUrl ||
+          requestedUserAgent !== claims.requestedUserAgent
+        ) {
+          return jsonResponse(409, { error: "permit_binding_mismatch" });
+        }
+        if (!isAllowedTarget(requestedUrl, env)) {
+          return jsonResponse(409, { error: "permit_target_no_longer_allowed" });
+        }
+
+        const profile = requestProfile(requestedUrl, requestedUserAgent, env);
+        if (profile.userAgent !== claims.profileUserAgent) {
+          return jsonResponse(409, { error: "permit_profile_changed" });
+        }
+        return proxyTarget(fetchFn, claims.targetUrl, profile, env);
       }
 
       let requestedUrl: URL;
@@ -374,26 +524,42 @@ export function createHandler({
         requestedDelayMs,
         getCrawlDelayMs(robotsText, profile.userAgent),
       );
+
+      if (operation === "prepare") {
+        const secret = relayPermitSecret(env);
+        if (!secret) return jsonResponse(500, { error: "relay_permit_secret_not_configured" });
+        const issuedAtMs = nowFn();
+        const notBeforeMs = issuedAtMs + effectiveDelayMs;
+        const expiresAtMs = notBeforeMs + RELAY_PERMIT_TTL_MS;
+        const claims: RelayPermitClaims = {
+          version: RELAY_PERMIT_VERSION,
+          targetUrl,
+          requestedUserAgent,
+          profileUserAgent: profile.userAgent,
+          issuedAtMs,
+          notBeforeMs,
+          expiresAtMs,
+          nonce: nonceFn(),
+        };
+        return jsonResponse(200, {
+          operation: "prepared",
+          permit: signPermit(claims, secret),
+          targetUrl,
+          requestedUserAgent,
+          effectiveUserAgent: profile.userAgent,
+          effectiveDelayMs,
+          issuedAtMs,
+          notBeforeMs,
+          expiresAtMs,
+          notBefore: new Date(notBeforeMs).toISOString(),
+          expiresAt: new Date(expiresAtMs).toISOString(),
+        });
+      }
+
+      // Compatibility path for the Queue-based relay consumers. Phase 4 adds the permit protocol
+      // without changing production pacing semantics; Phase 5 will move these callers to DO Alarms.
       if (effectiveDelayMs > 0) await sleepFn(effectiveDelayMs);
-
-      const upstream = await fetchFn(targetUrl, {
-        headers: profile.headers,
-        redirect: "follow",
-      });
-      const bytes = Buffer.from(await upstream.arrayBuffer());
-      const contentType = upstream.headers.get("content-type") || "text/html; charset=utf-8";
-
-      return {
-        statusCode: upstream.status,
-        headers: {
-          "content-type": contentType,
-          "cache-control": "no-store",
-          "x-hifiscout-upstream-status": String(upstream.status),
-          "x-hifiscout-aws-region": env.AWS_REGION || "unknown",
-        },
-        body: bytes.toString("base64"),
-        isBase64Encoded: true,
-      };
+      return proxyTarget(fetchFn, targetUrl, profile, env);
     } catch (error) {
       return jsonResponse(502, {
         error: "relay_failure",
