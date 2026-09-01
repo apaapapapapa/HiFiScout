@@ -7,10 +7,6 @@ Parameters:
     Type: String
     NoEcho: true
     MinLength: 32
-  RelayPermitSecret:
-    Type: String
-    NoEcho: true
-    MinLength: 32
   AudioUnionEntryUrl:
     Type: String
     Default: https://www.audiounion.jp/st/new_arrival_used.html
@@ -37,7 +33,6 @@ Resources:
       Environment:
         Variables:
           RELAY_TOKEN: !Ref RelayToken
-          RELAY_PERMIT_SECRET: !Ref RelayPermitSecret
           AUDIOUNION_ENTRY_URL: !Ref AudioUnionEntryUrl
           CRAWLER_USER_AGENT: !Ref CrawlerUserAgent
           MIN_REQUEST_DELAY_MS: !Ref MinimumRequestDelayMs
