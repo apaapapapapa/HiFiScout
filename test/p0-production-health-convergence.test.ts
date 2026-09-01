@@ -37,6 +37,7 @@ test("daily Queues write quota failures wait only until the next UTC quota day",
     ),
     true,
   );
+  assert.equal(isKnowledgeCatalogQueueDailyWriteLimit("upstream verifier timed out"), false);
   assert.equal(
     await shouldDeferKnowledgeCatalogQueueQuotaRecovery(
       db,
