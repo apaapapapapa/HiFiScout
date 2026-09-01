@@ -9,6 +9,7 @@ test("production smoke defers only when the failing Worker request is correlated
   assert.doesNotMatch(workflow, /SELECT id FROM products LIMIT 1/);
   assert.match(workflow, /wrangler tail hifiscout --format=json/);
   assert.match(workflow, /diagnostic_ray/);
+  assert.match(workflow, /\[\[ -n "\$diagnostic_ray" \]\] && jq -se/);
   assert.match(workflow, /event\.request\.headers\["cf-ray"\]/);
   assert.match(workflow, /D1_ERROR: Your account has exceeded D1's free tier daily row read limit/);
   assert.match(workflow, /PRODUCTION_RUNTIME_CHECK_DEFERRED=d1_daily_quota/);
