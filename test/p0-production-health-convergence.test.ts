@@ -58,7 +58,7 @@ test("daily Queues write quota failures wait only until the next UTC quota day",
   );
 });
 
-test("Knowledge Catalog recovery is bounded and rechecked on every five-minute cron tick", () => {
+test("Knowledge Catalog recovery is bounded and rechecked every ten minutes", () => {
   assert.match(
     wranglerSource,
     /"queue": "hifiscout-knowledge-verification", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 8,[^\n]+"max_concurrency": 1/u,
@@ -67,7 +67,7 @@ test("Knowledge Catalog recovery is bounded and rechecked on every five-minute c
     wranglerSource,
     /"queue": "hifiscout-knowledge-verification"[^\n]+"max_retries": 100/u,
   );
-  assert.match(scheduledSource, /name: "knowledge_catalog_queue_quota_recovery",\s+everyTicks: 1/u);
+  assert.match(scheduledSource, /name: "knowledge_catalog_queue_quota_recovery",\s+everyTicks: 2/u);
   assert.match(scheduledSource, /shouldDeferKnowledgeCatalogQueueQuotaRecovery\(/u);
   assert.match(scheduledSource, /reason: "knowledge_catalog_queue_daily_write_limit"/u);
 });
