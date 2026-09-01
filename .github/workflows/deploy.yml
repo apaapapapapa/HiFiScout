@@ -160,20 +160,21 @@ jobs:
             exit 0
           fi
 
-          if grep -Fq 'code: 7500' "$probe_log"; then
+          if grep -Fq 'code: 7500' "$probe_log" && \
+             grep -Fqi "exceeded D1's free tier daily row read limit" "$probe_log"; then
             echo "::warning title=Production runtime smoke deferred::Cloudflare D1 free-tier daily row read quota is exhausted (code 7500). The Worker deployment itself succeeded; D1-dependent smoke checks are deferred until the quota resets."
             echo "PRODUCTION_RUNTIME_CHECK_DEFERRED=d1_daily_quota" >> "$GITHUB_ENV"
             exit 0
           fi
 
-          echo "::warning title=D1 availability probe inconclusive::The optional D1 probe failed for a reason other than code 7500; production smoke checks will still run."
+          echo "::warning title=D1 availability probe inconclusive::The optional D1 probe did not confirm the free-tier daily row-read quota signature; production smoke checks will still run."
           cat "$probe_log" >&2
       - name: Check saved-search Atom feed and autodiscovery
         shell: bash
         run: |
           set -euo pipefail
           if [[ "${PRODUCTION_RUNTIME_CHECK_DEFERRED:-}" == "d1_daily_quota" ]]; then
-            echo "Production Atom/catalog smoke check deferred because D1 code 7500 was confirmed after deployment."
+            echo "Production Atom/catalog smoke check deferred because the D1 daily row-read quota signature was confirmed after deployment."
             exit 0
           fi
 
@@ -229,7 +230,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "${PRODUCTION_RUNTIME_CHECK_DEFERRED:-}" == "d1_daily_quota" ]]; then
-            echo "Production runtime health check deferred because D1 code 7500 was confirmed after deployment."
+            echo "Production runtime health check deferred because the D1 daily row-read quota signature was confirmed after deployment."
             exit 0
           fi
 
