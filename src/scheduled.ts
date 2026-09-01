@@ -313,7 +313,7 @@ export async function bootstrapKnowledgeCatalogReview(env: Env, now = new Date()
 
 /**
  * A failed review caused by the free-tier daily Queue write ceiling needs a different cadence from
- * the ordinary one-shot bootstrap. Probe only that condition every five minutes. On the same UTC
+ * the ordinary one-shot bootstrap. Probe only that condition every ten minutes. On the same UTC
  * day it is a no-op; after the quota day rolls over it delegates to the normal atomic recovery path.
  */
 export async function recoverKnowledgeCatalogQueueQuota(env: Env, now = new Date()) {
@@ -407,16 +407,17 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
     run: (env) => recoverStaleKnowledgeCatalogExportJobs(env.DB, env.PRODUCT_AUDIT_EXPORT_QUEUE),
   },
   {
-    // The normal bootstrap remains hourly. This narrow task only adds a five-minute recovery path
-    // after a known daily Queue quota failure, avoiding an hour of red health after the reset.
+    // The normal bootstrap remains hourly. This narrow task adds a ten-minute recovery path after a
+    // known daily Queue quota failure without making every five-minute tick exceed the D1 task
+    // budget that GENERAL_CRON serialization is intended to enforce.
     name: "knowledge_catalog_queue_quota_recovery",
-    everyTicks: 1,
+    everyTicks: 2,
     run: (env) => recoverKnowledgeCatalogQueueQuota(env),
   },
   {
     // A one-shot rollout that has already happened costs a conditional write and three reads every
     // time it is asked. Hourly is plenty for the ordinary bootstrap; quota recovery is handled by
-    // the narrow five-minute task above.
+    // the narrow ten-minute task above.
     name: "knowledge_catalog_review_bootstrap",
     everyTicks: 12,
     run: (env) => bootstrapKnowledgeCatalogReview(env),
