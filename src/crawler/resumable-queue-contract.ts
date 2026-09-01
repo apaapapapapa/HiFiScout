@@ -1,11 +1,9 @@
-import type { CrawlFetchContinuationPhase, CrawlFetchSessionRow } from "../db/crawl-fetch-session-repository.js";
-import type { QueryableDatabase } from "../db/types.js";
 import type {
-  CrawlQueueMessage,
-  CrawlResult,
-  CrawlerEnv,
-  FetchHtmlPageOptions,
-} from "./types.js";
+  CrawlFetchContinuationPhase,
+  CrawlFetchSessionRow,
+} from "../db/crawl-fetch-session-repository.js";
+import type { QueryableDatabase } from "../db/types.js";
+import type { CrawlQueueMessage, CrawlResult, CrawlerEnv, FetchHtmlPageOptions } from "./types.js";
 
 export type ResumableRuntimeEnv = CrawlerEnv & { DB: QueryableDatabase };
 
