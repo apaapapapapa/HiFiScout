@@ -71,9 +71,12 @@ export function isCrawlDoCanaryEligible(shopKey: string): boolean {
   return transport === "direct" || transport === "relay";
 }
 
-export function buildCrawlSchedulerObserveCommand(
-  body: { shopKey: string; requestedAt: string; jobId?: string; collectionRunId?: string },
-): CrawlSchedulerObserveCommand {
+export function buildCrawlSchedulerObserveCommand(body: {
+  shopKey: string;
+  requestedAt: string;
+  jobId?: string;
+  collectionRunId?: string;
+}): CrawlSchedulerObserveCommand {
   return {
     schemaVersion: CRAWL_SCHEDULER_COMMAND_VERSION,
     type: "observe_checkpoint",
@@ -100,11 +103,14 @@ export async function deliverCrawlDispatch(
   };
   const id = env.CRAWL_SCHEDULER.idFromName(message.shopKey);
   const stub = env.CRAWL_SCHEDULER.get(id);
-  const response = await stub.fetch(`https://crawl-scheduler.internal${CRAWL_SCHEDULER_START_PATH}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(command),
-  });
+  const response = await stub.fetch(
+    `https://crawl-scheduler.internal${CRAWL_SCHEDULER_START_PATH}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(command),
+    },
+  );
   if (!response.ok) {
     throw new Error(`crawl scheduler returned HTTP ${response.status}`);
   }

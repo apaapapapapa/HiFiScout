@@ -227,7 +227,9 @@ export async function dispatchDueCrawls(
   }
 
   logBatchDispatch(batchRunId, dispatchedAt, dispatched, candidates);
-  return dispatched.length ? { status: "queued", queued: dispatched } : { status: "skipped", queued: dispatched };
+  return dispatched.length
+    ? { status: "queued", queued: dispatched }
+    : { status: "skipped", queued: dispatched };
 }
 
 async function dispatchOneCrawl(
