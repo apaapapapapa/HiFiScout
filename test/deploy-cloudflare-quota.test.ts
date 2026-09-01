@@ -20,11 +20,15 @@ test("production smoke defers only when the failing Worker request is correlated
 });
 
 test("generic 1101 and unrelated tail failures keep production smoke fail-closed", () => {
+  const failureBranch = workflow.slice(
+    workflow.indexOf("Production Atom feed returned HTTP ${feed_status}"),
+    workflow.indexOf("content_type=", workflow.indexOf("Production Atom feed returned HTTP ${feed_status}")),
+  );
   assert.match(
-    workflow,
+    failureBranch,
     /Worker tail did not correlate this request to the D1 daily row-read quota signature/,
   );
-  assert.match(workflow, /Diagnostic replay returned HTTP/);
-  assert.doesNotMatch(workflow, /1101.*PRODUCTION_RUNTIME_CHECK_DEFERRED/s);
-  assert.match(workflow, /exit 1/);
+  assert.match(failureBranch, /Diagnostic replay returned HTTP/);
+  assert.doesNotMatch(failureBranch, /PRODUCTION_RUNTIME_CHECK_DEFERRED/);
+  assert.match(failureBranch, /exit 1/);
 });
