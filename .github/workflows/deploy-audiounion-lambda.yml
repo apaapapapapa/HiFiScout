@@ -42,61 +42,30 @@ jobs:
           role-to-assume: ${{ vars.AWS_LAMBDA_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Ensure relay permit signing secret
+      - name: Build Lambda bundle with permit signing key
         shell: bash
         run: |
           set -euo pipefail
+          vp run build:lambda
 
-          environment_json="$(aws lambda get-function-configuration \
-            --region "$AWS_REGION" \
-            --function-name "$FUNCTION_NAME" \
-            --query 'Environment.Variables' \
-            --output json)"
-          permit_secret="$(jq -r '.RELAY_PERMIT_SECRET // empty' <<< "$environment_json")"
-
-          if [ "${#permit_secret}" -ge 32 ]; then
-            echo "Relay permit signing secret is already configured."
-            exit 0
-          fi
-
+          # The deploy role intentionally only needs code-update permission. Generate a fresh
+          # signer per deployment and inject it into the private Lambda bundle instead of
+          # requiring lambda:UpdateFunctionConfiguration or sharing the key with Cloudflare.
           permit_secret="$(openssl rand -hex 32)"
-          jq -n \
-            --argjson vars "$environment_json" \
-            --arg permit_secret "$permit_secret" \
-            '{Variables: ($vars + {RELAY_PERMIT_SECRET: $permit_secret})}' \
-            > "$RUNNER_TEMP/lambda-environment.json"
+          echo "::add-mask::$permit_secret"
+          RELAY_PERMIT_SECRET="$permit_secret" node --input-type=module <<'NODE'
+          import { readFile, writeFile } from "node:fs/promises";
 
-          aws lambda update-function-configuration \
-            --region "$AWS_REGION" \
-            --function-name "$FUNCTION_NAME" \
-            --environment "file://$RUNNER_TEMP/lambda-environment.json" \
-            --query '{FunctionName:FunctionName,LastUpdateStatus:LastUpdateStatus}'
-
-          for attempt in $(seq 1 30); do
-            status="$(aws lambda get-function-configuration \
-              --region "$AWS_REGION" \
-              --function-name "$FUNCTION_NAME" \
-              --query 'LastUpdateStatus' \
-              --output text)"
-            echo "Lambda configuration update status: $status (attempt $attempt/30)"
-            if [ "$status" = "Successful" ]; then
-              exit 0
-            fi
-            if [ "$status" = "Failed" ]; then
-              aws lambda get-function-configuration \
-                --region "$AWS_REGION" \
-                --function-name "$FUNCTION_NAME" \
-                --query '{LastUpdateStatus:LastUpdateStatus,Reason:LastUpdateStatusReason,ReasonCode:LastUpdateStatusReasonCode}'
-              exit 1
-            fi
-            sleep 2
-          done
-
-          echo "Timed out waiting for Lambda configuration update to complete."
-          exit 1
-
-      - name: Build Lambda bundle from TypeScript source
-        run: vp run build:lambda
+          const path = "dist/audiounion-lambda/index.mjs";
+          const secret = process.env.RELAY_PERMIT_SECRET;
+          if (!secret || secret.length < 32) {
+            throw new Error("relay permit signing secret generation failed");
+          }
+          const source = await readFile(path, "utf8");
+          const prefix = `process.env.RELAY_PERMIT_SECRET = ${JSON.stringify(secret)};\n`;
+          await writeFile(path, `${prefix}${source}`, "utf8");
+          NODE
+          unset permit_secret
 
       - name: Package Lambda
         run: |
