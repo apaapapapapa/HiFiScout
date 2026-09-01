@@ -20,7 +20,10 @@ test("production smoke defers only when the failing Worker request is correlated
 });
 
 test("generic 1101 and unrelated tail failures keep production smoke fail-closed", () => {
-  assert.match(workflow, /Worker tail did not correlate this request to the D1 daily row-read quota signature/);
+  assert.match(
+    workflow,
+    /Worker tail did not correlate this request to the D1 daily row-read quota signature/,
+  );
   assert.match(workflow, /Diagnostic replay returned HTTP/);
   assert.doesNotMatch(workflow, /1101.*PRODUCTION_RUNTIME_CHECK_DEFERRED/s);
   assert.match(workflow, /exit 1/);
