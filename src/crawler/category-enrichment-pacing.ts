@@ -25,11 +25,7 @@ export async function planStagedCategoryDetailFetches(
   if (!staged.length) return [];
   const products = await resolveProductCatalogFields(env.DB, staged, { shopKey: plugin.key });
   const settings = getCrawlerSettings(env);
-  const requestDelayMs = getShopRequestDelayMs(
-    env,
-    plugin.definition,
-    settings.requestDelayMs,
-  );
+  const requestDelayMs = getShopRequestDelayMs(env, plugin.definition, settings.requestDelayMs);
   const targets: string[] = [];
 
   await enrichProductCategories({
