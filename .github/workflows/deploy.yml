@@ -151,8 +151,11 @@ jobs:
           probe_log="$(mktemp)"
           trap 'rm -f "$probe_log"' EXIT
 
+          # A constant-only SELECT does not read table rows, so it can succeed after the D1
+          # free-tier row-read budget is already exhausted. Probe one row from the oldest,
+          # guaranteed application table instead; production always has product rows.
           set +e
-          vp exec wrangler d1 execute DB --remote --command 'SELECT 1 AS ok;' >"$probe_log" 2>&1
+          vp exec wrangler d1 execute DB --remote --command 'SELECT id FROM products LIMIT 1;' >"$probe_log" 2>&1
           probe_status=$?
           set -e
 
