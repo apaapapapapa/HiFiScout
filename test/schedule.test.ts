@@ -221,7 +221,8 @@ test("Knowledge Catalog verification is dispatched to its dedicated queue", () =
     (item: { queue?: string }) => item.queue === "hifiscout-knowledge-verification",
   );
   assert.equal(consumer?.max_batch_size, 1);
-  assert.equal(consumer?.max_concurrency, 4);
+  assert.equal(consumer?.max_retries, 8);
+  assert.equal(consumer?.max_concurrency, 1);
   assert.equal(consumer?.dead_letter_queue, "hifiscout-knowledge-verification-dlq");
 });
 
