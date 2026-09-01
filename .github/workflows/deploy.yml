@@ -144,53 +144,67 @@ jobs:
         run: vp run build:frontend
       - name: Deploy Worker and static assets
         run: vp exec wrangler deploy
-      - name: Detect exhausted D1 runtime quota
-        shell: bash
-        run: |
-          set -euo pipefail
-          probe_log="$(mktemp)"
-          trap 'rm -f "$probe_log"' EXIT
-
-          # A constant-only SELECT does not read table rows, so it can succeed after the D1
-          # free-tier row-read budget is already exhausted. Probe one row from the oldest,
-          # guaranteed application table instead; production always has product rows.
-          set +e
-          vp exec wrangler d1 execute DB --remote --command 'SELECT id FROM products LIMIT 1;' >"$probe_log" 2>&1
-          probe_status=$?
-          set -e
-
-          if (( probe_status == 0 )); then
-            exit 0
-          fi
-
-          if grep -Fq 'code: 7500' "$probe_log" && \
-             grep -Fqi "exceeded D1's free tier daily row read limit" "$probe_log"; then
-            echo "::warning title=Production runtime smoke deferred::Cloudflare D1 free-tier daily row read quota is exhausted (code 7500). The Worker deployment itself succeeded; D1-dependent smoke checks are deferred until the quota resets."
-            echo "PRODUCTION_RUNTIME_CHECK_DEFERRED=d1_daily_quota" >> "$GITHUB_ENV"
-            exit 0
-          fi
-
-          echo "::warning title=D1 availability probe inconclusive::The optional D1 probe did not confirm the free-tier daily row-read quota signature; production smoke checks will still run."
-          cat "$probe_log" >&2
       - name: Check saved-search Atom feed and autodiscovery
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${PRODUCTION_RUNTIME_CHECK_DEFERRED:-}" == "d1_daily_quota" ]]; then
-            echo "Production Atom/catalog smoke check deferred because the D1 daily row-read quota signature was confirmed after deployment."
-            exit 0
-          fi
-
           feed_headers="$(mktemp)"
           feed_body="$(mktemp)"
           catalog_body="$(mktemp)"
-          trap 'rm -f "$feed_headers" "$feed_body" "$catalog_body"' EXIT
+          diagnostic_headers="$(mktemp)"
+          diagnostic_body="$(mktemp)"
+          tail_log="$(mktemp)"
+          tail_pid=""
+          cleanup() {
+            if [[ -n "$tail_pid" ]]; then
+              kill "$tail_pid" 2>/dev/null || true
+              wait "$tail_pid" 2>/dev/null || true
+            fi
+            rm -f "$feed_headers" "$feed_body" "$catalog_body" \
+              "$diagnostic_headers" "$diagnostic_body" "$tail_log"
+          }
+          trap cleanup EXIT
 
           feed_status="$(curl -sS --retry 3 --retry-delay 2 -D "$feed_headers" -o "$feed_body" -w '%{http_code}' \
             "${PRODUCTION_BASE_URL}/api/feed?manufacturer=TAD&inStock=true&limit=2")"
           if [[ "$feed_status" != "200" ]]; then
+            # Cloudflare's outer 1101 page hides the Worker exception. Reproduce the same request
+            # while tailing the deployed Worker, then correlate the response CF-Ray with that exact
+            # tail event. Only the quota-specific D1 message from the matching request may defer the
+            # smoke check; generic 1101s and unrelated concurrent quota errors remain fail-closed.
+            timeout 30s vp exec wrangler tail hifiscout --format=json >"$tail_log" 2>&1 &
+            tail_pid=$!
+            sleep 5
+            diagnostic_status="$(curl -sS --max-time 20 -D "$diagnostic_headers" -o "$diagnostic_body" -w '%{http_code}' \
+              "${PRODUCTION_BASE_URL}/api/feed?manufacturer=TAD&inStock=true&limit=2" || true)"
+            sleep 3
+            kill "$tail_pid" 2>/dev/null || true
+            wait "$tail_pid" 2>/dev/null || true
+            tail_pid=""
+
+            diagnostic_ray="$(awk 'BEGIN { IGNORECASE=1 } /^cf-ray:/ { sub(/^[^:]+:[[:space:]]*/, ""); sub(/\r$/, ""); ray=$0 } END { print ray }' "$diagnostic_headers")"
+            diagnostic_ray="${diagnostic_ray%%-*}"
+            quota_message="D1_ERROR: Your account has exceeded D1's free tier daily row read limit."
+
+            if [[ -n "$diagnostic_ray" ]] && jq -se \
+              --arg ray "$diagnostic_ray" \
+              --arg quota "$quota_message" \
+              '[.[]
+                | select((.event.request.headers["cf-ray"] // "") == $ray)
+                | .exceptions[]?
+                | select((.message // "") | contains($quota))]
+               | length > 0' "$tail_log" >/dev/null; then
+              echo "::warning title=Production runtime smoke deferred::The failing Atom request was correlated by CF-Ray to Cloudflare D1 free-tier daily row-read quota exhaustion. The Worker deployment itself succeeded; D1-dependent smoke checks are deferred until the quota resets."
+              echo "PRODUCTION_RUNTIME_CHECK_DEFERRED=d1_daily_quota" >> "$GITHUB_ENV"
+              exit 0
+            fi
+
             echo "Production Atom feed returned HTTP ${feed_status}:" >&2
             cat "$feed_body" >&2
+            echo "Diagnostic replay returned HTTP ${diagnostic_status}; CF-Ray=${diagnostic_ray:-missing}." >&2
+            cat "$diagnostic_body" >&2
+            echo "Worker tail did not correlate this request to the D1 daily row-read quota signature:" >&2
+            cat "$tail_log" >&2
             exit 1
           fi
 
@@ -233,7 +247,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "${PRODUCTION_RUNTIME_CHECK_DEFERRED:-}" == "d1_daily_quota" ]]; then
-            echo "Production runtime health check deferred because the D1 daily row-read quota signature was confirmed after deployment."
+            echo "Production runtime health check deferred because the failing production request was correlated to the D1 daily row-read quota signature."
             exit 0
           fi
 
