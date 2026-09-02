@@ -19,27 +19,24 @@ const MESSAGE: CrawlQueueMessage = {
   requestedAt: "2026-08-30T00:00:00.000Z",
   jobId: "crawl:home-shokai:test",
   batchRunId: "batch:test",
-  lane: "fast",
 };
 
-test("Phase 2 canary is an exact explicit allowlist", () => {
+test("Phase 6 routes every eligible shop through DO regardless of the legacy allowlist", () => {
   assert.deepEqual(
     [...selectedCrawlDoCanaryShops(" home-shokai, ippinkan ,")],
     ["home-shokai", "ippinkan"],
   );
   assert.equal(shouldExecuteCrawlWithDurableObject("home-shokai", "home-shokai"), true);
-  assert.equal(shouldExecuteCrawlWithDurableObject("home-shokai", "hifido"), false);
+  assert.equal(shouldExecuteCrawlWithDurableObject("home-shokai", "hifido"), true);
 });
 
-test("Phase 2 direct canary remains eligible after later rollout phases", () => {
+test("Phase 2 direct canary remains eligible after the Phase 6 cutover", () => {
   assert.equal(isCrawlDoCanaryEligible("home-shokai"), true);
 });
 
-test("canary dispatch goes to the Durable Object and never the Queue", async () => {
-  let queueSends = 0;
+test("direct crawl dispatch goes to the Durable Object", async () => {
   let doFetches = 0;
   const env = {
-    CRAWL_DO_CANARY_SHOPS: "home-shokai",
     CRAWL_SCHEDULER: {
       idFromName: (name: string) => ({ name }),
       get: () => ({
@@ -54,29 +51,17 @@ test("canary dispatch goes to the Durable Object and never the Queue", async () 
     },
   } as unknown as Env;
 
-  // Queue.send's concrete response shape follows the generated Cloudflare runtime types; this mock
-  // intentionally exercises only the delivery side effect that the orchestration contract uses.
-  const route = await deliverCrawlDispatch(env, MESSAGE, {
-    send: async () => {
-      queueSends += 1;
-    },
-  } as unknown as Parameters<typeof deliverCrawlDispatch>[2]);
+  const route = await deliverCrawlDispatch(env, MESSAGE);
 
   assert.equal(route, "durable_object");
   assert.equal(doFetches, 1);
-  assert.equal(queueSends, 0);
 });
 
-test("non-canary dispatch keeps the existing Queue path", async () => {
-  let queueSends = 0;
-  const env = { CRAWL_DO_CANARY_SHOPS: "home-shokai" } as unknown as Env;
-  const route = await deliverCrawlDispatch(env, { ...MESSAGE, shopKey: "ippinkan" }, {
-    send: async () => {
-      queueSends += 1;
-    },
-  } as unknown as Parameters<typeof deliverCrawlDispatch>[2]);
-  assert.equal(route, "queue");
-  assert.equal(queueSends, 1);
+test("unknown shops are rejected before a Durable Object dispatch", async () => {
+  await assert.rejects(
+    deliverCrawlDispatch({} as Env, { ...MESSAGE, shopKey: "unknown-shop" }),
+    /not eligible for DO execution/,
+  );
 });
 
 test("direct permit preserves robots -> wait -> target without sleeping", async () => {

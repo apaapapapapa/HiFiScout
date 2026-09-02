@@ -34,7 +34,6 @@ const GENERIC_MODULES = [
   "src/crawler/crawl-stages.ts",
   "src/crawler/dispatch.ts",
   "src/crawler/inventory-recheck.ts",
-  "src/crawler/queue-lanes.ts",
   "src/crawler/run.ts",
   "src/crawler/schedule.ts",
   "src/crawler/seller-facts.ts",

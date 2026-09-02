@@ -6,11 +6,7 @@ import {
   prepareShopInventoryRecheck,
   recheckShopInventory,
 } from "../src/crawler/inventory-recheck.js";
-import {
-  deliverCrawlDispatch,
-  isCrawlDoCanaryEligible,
-  selectedCrawlDoCanaryShops,
-} from "../src/crawler/orchestration.js";
+import { deliverCrawlDispatch, isCrawlDoCanaryEligible } from "../src/crawler/orchestration.js";
 import { getShopPlugin } from "../src/crawler/shops/index.js";
 import type { InventoryRecheckCandidateRow } from "../src/db/types.js";
 import type { CrawlQueueMessage } from "../src/crawler/types.js";
@@ -46,85 +42,78 @@ function inventoryEnv() {
   } as unknown as Env;
 }
 
-test("Phase 5 makes both Relay-backed collectors DO eligible", () => {
+function schedulerEnv(onMessage: (message: CrawlQueueMessage) => void): Env {
+  return {
+    CRAWL_SCHEDULER: {
+      idFromName: (name: string) => ({ name }),
+      get: () => ({
+        fetch: async (_url: string, init: RequestInit) => {
+          const body = JSON.parse(String(init.body)) as {
+            type: string;
+            message: CrawlQueueMessage;
+          };
+          assert.equal(body.type, "start_crawl");
+          onMessage(body.message);
+          return new Response(null, { status: 202 });
+        },
+      }),
+    },
+  } as unknown as Env;
+}
+
+test("Phase 5 Relay collectors and Phase 6 direct-detail collectors are DO eligible", () => {
   assert.equal(plugin("audiounion").capabilities.transport?.kind, "relay");
   assert.equal(plugin("hifido").capabilities.transport?.kind, "relay");
   assert.equal(isCrawlDoCanaryEligible("audiounion"), true);
   assert.equal(isCrawlDoCanaryEligible("hifido"), true);
-  assert.equal(isCrawlDoCanaryEligible("fujiya-avic"), false);
+  assert.equal(isCrawlDoCanaryEligible("fujiya-avic"), true);
 });
 
-test("production Phase 5 allowlist includes Audio Union and Hifido", () => {
+test("Phase 6 no longer needs a production DO rollout allowlist", () => {
   const wrangler = JSON.parse(
     readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8"),
   ) as { vars?: { CRAWL_DO_CANARY_SHOPS?: string } };
 
-  assert.deepEqual(
-    [...selectedCrawlDoCanaryShops(wrangler.vars?.CRAWL_DO_CANARY_SHOPS)],
-    ["home-shokai", "ippinkan", "u-audio", "audiounion", "hifido"],
-  );
+  assert.equal(wrangler.vars?.CRAWL_DO_CANARY_SHOPS, undefined);
 });
 
-test("selected relay lane dispatch bypasses Queue", async () => {
+test("relay collector dispatch goes directly to the Durable Object", async () => {
   const message: CrawlQueueMessage = {
     shopKey: "hifido",
     force: true,
     requestedAt: "2026-09-01T14:30:00.000Z",
     jobId: "crawl:hifido:phase5",
     batchRunId: "batch:phase5",
-    lane: "relay",
   };
-  let queueSends = 0;
-  let doCommands = 0;
-  const env = {
-    CRAWL_DO_CANARY_SHOPS: "home-shokai,ippinkan,u-audio,audiounion,hifido",
-    CRAWL_SCHEDULER: {
-      idFromName: (name: string) => ({ name }),
-      get: () => ({
-        fetch: async (_url: string, init: RequestInit) => {
-          doCommands += 1;
-          const body = JSON.parse(String(init.body));
-          assert.equal(body.type, "start_crawl");
-          assert.deepEqual(body.message, message);
-          return new Response(null, { status: 202 });
-        },
-      }),
-    },
-  } as unknown as Env;
+  const delivered: CrawlQueueMessage[] = [];
 
-  const route = await deliverCrawlDispatch(env, message, {
-    send: async () => {
-      queueSends += 1;
-    },
-  } as unknown as Parameters<typeof deliverCrawlDispatch>[2]);
+  const route = await deliverCrawlDispatch(
+    schedulerEnv((body) => delivered.push(body)),
+    message,
+  );
 
   assert.equal(route, "durable_object");
-  assert.equal(doCommands, 1);
-  assert.equal(queueSends, 0);
+  assert.deepEqual(delivered, [message]);
 });
 
-test("relay lane alone does not opt an unselected shop into the DO path", async () => {
+test("legacy rollout configuration no longer disables a Relay collector", async () => {
   const message: CrawlQueueMessage = {
     shopKey: "hifido",
     force: true,
     requestedAt: "2026-09-01T14:31:00.000Z",
-    jobId: "crawl:hifido:phase5-unselected",
-    batchRunId: "batch:phase5",
-    lane: "relay",
+    jobId: "crawl:hifido:phase6",
+    batchRunId: "batch:phase6",
   };
-  let queueSends = 0;
-  const env = {
-    CRAWL_DO_CANARY_SHOPS: "home-shokai,ippinkan,u-audio,audiounion",
-  } as unknown as Env;
+  const delivered: CrawlQueueMessage[] = [];
+  const env = schedulerEnv((body) => delivered.push(body)) as Env & {
+    CRAWL_DO_CANARY_SHOPS?: string;
+  };
+  env.CRAWL_DO_CANARY_SHOPS = "home-shokai,ippinkan,u-audio,audiounion";
 
-  const route = await deliverCrawlDispatch(env, message, {
-    send: async () => {
-      queueSends += 1;
-    },
-  } as unknown as Parameters<typeof deliverCrawlDispatch>[2]);
+  const route = await deliverCrawlDispatch(env, message);
 
-  assert.equal(route, "queue");
-  assert.equal(queueSends, 1);
+  assert.equal(route, "durable_object");
+  assert.deepEqual(delivered, [message]);
 });
 
 test("inventory PREPARE discovery is read-only until the paced FETCH alarm", async () => {
