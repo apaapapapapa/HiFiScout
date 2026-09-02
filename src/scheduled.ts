@@ -208,6 +208,9 @@ export async function runScheduled(cron: string, env: Env, scheduledAt = new Dat
  */
 const STRANDED_REVIEW_RUN_MS = 30 * 60 * 1000;
 
+/** Why a stranded run was failed, recorded on the run and read back by the recovery below. */
+const STRANDED_REVIEW_RUN_MESSAGE = "knowledge_catalog_review_run_stranded_without_live_jobs";
+
 interface StrandedReviewRun {
   runId: number;
   totalJobs: number;
@@ -282,23 +285,24 @@ export async function bootstrapKnowledgeCatalogReview(env: Env, now = new Date()
       ? KNOWLEDGE_CATALOG_VERIFIER_VERSION
       : 0;
 
-  if (latestReview?.status === "running") {
+  let reviewStatus = latestReview?.status;
+  let reviewMessage = latestReview?.message;
+  if (reviewStatus === "running") {
     const stranded = await strandedKnowledgeCatalogReviewRun(
       env.DB,
-      Number(latestReview.id || 0),
+      Number(latestReview?.id || 0),
       now,
     );
     if (!stranded) {
       return { status: "skipped", reason: "knowledge_catalog_review_in_progress" };
     }
     // Nothing can advance this run any more, and `running` is what makes the branch above skip
-    // every later tick, so leaving it would block Knowledge Catalog review forever. Failing it
-    // hands the run to the recovery path below on the next tick.
+    // every later tick, so leaving it would block Knowledge Catalog review forever.
     await finishKnowledgeCatalogReviewRunFailure(
       env.DB,
       stranded.runId,
       now.toISOString(),
-      "knowledge_catalog_review_run_stranded_without_live_jobs",
+      STRANDED_REVIEW_RUN_MESSAGE,
     );
     console.warn(
       JSON.stringify({
@@ -308,17 +312,16 @@ export async function bootstrapKnowledgeCatalogReview(env: Env, now = new Date()
         lastActivityAt: stranded.lastActivityAt,
       }),
     );
-    return { status: "recovered", reason: "knowledge_catalog_review_run_stranded" };
+    // Recovery runs in this same tick rather than the next one. The bootstrap is hourly, so
+    // returning here would leave the catalog waiting another hour for the successor run it
+    // already knows it needs.
+    reviewStatus = "failed";
+    reviewMessage = STRANDED_REVIEW_RUN_MESSAGE;
   }
-  if (latestReview?.status === "failed") {
-    const failedRunId = Number(latestReview.id || 0);
+  if (reviewStatus === "failed") {
+    const failedRunId = Number(latestReview?.id || 0);
     if (
-      await shouldDeferKnowledgeCatalogQueueQuotaRecovery(
-        env.DB,
-        failedRunId,
-        latestReview.message,
-        now,
-      )
+      await shouldDeferKnowledgeCatalogQueueQuotaRecovery(env.DB, failedRunId, reviewMessage, now)
     ) {
       return { status: "skipped", reason: "knowledge_catalog_queue_daily_write_limit" };
     }
