@@ -192,8 +192,9 @@ export async function repairGeneralCronProjectionGaps(db: QueryableDatabase) {
     phases: "coverage",
   });
   // The outstanding-gap count is deliberately not requested here: it is the one unbounded query in
-  // the repair, and this caller only needs to know whether it did anything. `runDailyMaintenance`
-  // pays for the authoritative number once a day.
+  // the repair, and this caller only needs to know whether it did anything. No scheduled caller
+  // asks for it any more -- the authoritative number is the operator's, on demand, through
+  // `scripts/repair-product-search-gaps.ts`.
   if (result.repairedCount > 0) {
     console.log(
       JSON.stringify({

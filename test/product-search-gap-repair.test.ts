@@ -307,19 +307,3 @@ test("the outstanding-gap count is issued only when a caller asks to pay for it"
   assert.equal(unboundedGapCounts(asking.executed).length, 1);
   assert.equal(result.remainingGapCount, 0, "asking for it must still return a number");
 });
-
-test("declining the count does not quietly change the repair's failure semantics", async () => {
-  // `continueOnRefreshError` defaults to `!countRemainingGaps`, so dropping the count from a strict
-  // caller would otherwise flip it into the resilient per-listing mode the bounded sweep uses. The
-  // two settings are independent when stated, and the daily pass depends on that.
-  const { db } = migratedSqlite();
-  const recording = recordingDatabase(db);
-
-  const result = await repairActiveListingProjectionGaps(recording.db, {
-    countRemainingGaps: false,
-    continueOnRefreshError: false,
-  });
-
-  assert.deepEqual(unboundedGapCounts(recording.executed), []);
-  assert.equal(result.remainingGapCount, null);
-});

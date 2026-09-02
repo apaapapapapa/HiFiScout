@@ -132,7 +132,12 @@ const STALE_FALLBACK_GAP_PREDICATE = `
 /** Lowest-priority drift: this is the only bounded phase that performs exact-identity peer scans. */
 const EXACT_IDENTITY_MEMBERSHIP_GAP_PREDICATE = exactIdentitySplitMembershipPredicateSql("p");
 
-/** Full authoritative predicate retained for daily counts and strict verification. */
+/**
+ * Full authoritative predicate, used by the on-demand operator count and by strict verification.
+ *
+ * No scheduled caller evaluates it: it is the union of all three families, so it carries the
+ * exact-identity self-join that dominates the cost.
+ */
 const ACTIVE_PROJECTION_GAP_PREDICATE = `
   (${CRITICAL_COVERAGE_GAP_PREDICATE})
   OR (${STALE_FALLBACK_GAP_PREDICATE})
