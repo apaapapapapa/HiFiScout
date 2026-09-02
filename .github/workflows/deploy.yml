@@ -183,7 +183,6 @@ jobs:
             tail_pid=""
 
             diagnostic_ray="$(awk 'BEGIN { IGNORECASE=1 } /^cf-ray:/ { sub(/^[^:]+:[[:space:]]*/, ""); sub(/\r$/, ""); ray=$0 } END { print ray }' "$diagnostic_headers")"
-            diagnostic_ray="${diagnostic_ray%%-*}"
             quota_message="D1_ERROR: Your account has exceeded D1's free tier daily row read limit."
 
             if [[ -n "$diagnostic_ray" ]] && jq -se \
