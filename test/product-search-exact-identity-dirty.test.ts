@@ -416,3 +416,101 @@ test("the backlog count is what separates a trigger miss from ordinary queue dep
     "a drained queue makes a scan repair unambiguous",
   );
 });
+
+test("rewriting a listing without changing its identity leaves the queue alone", () => {
+  // `AFTER UPDATE OF` fires on assignment, not on difference, and the crawl write path sets every
+  // column of a changed listing in one statement. Without the WHEN clause a price move marked the
+  // identity dirty, which made the cost track changed listings rather than changed identities.
+  const { sqlite } = migratedSqlite();
+  insertListing(sqlite, { id: 1 });
+  clearDirty(sqlite);
+
+  // The shape of the real crawl update: identity columns re-assigned to the values already stored,
+  // alongside the fields that actually moved.
+  sqlite
+    .prepare(`
+      UPDATE products SET
+        canonical_manufacturer_id = 'luxman', normalized_model = 'c10',
+        model_resolution_status = 'resolved', primary_category_id = 'amplifier',
+        is_active = 1, price_yen = 250000, last_seen_at = ?
+      WHERE id = 1
+    `)
+    .run("2026-09-03T00:00:00.000Z");
+
+  assert.deepEqual(dirtyRows(sqlite), [], "a price move is not an identity change");
+});
+
+test("a real identity change still marks, even alongside untouched columns", () => {
+  const { sqlite } = migratedSqlite();
+  insertListing(sqlite, { id: 1 });
+  clearDirty(sqlite);
+
+  sqlite
+    .prepare(`
+      UPDATE products SET
+        canonical_manufacturer_id = 'luxman', normalized_model = 'c10x',
+        model_resolution_status = 'resolved', primary_category_id = 'amplifier', is_active = 1
+      WHERE id = 1
+    `)
+    .run();
+
+  assert.deepEqual(
+    dirtyRows(sqlite).map((row) => row.key),
+    ["luxman|c10", "luxman|c10x"],
+  );
+});
+
+test("only the drifted members are seeded, and peers converge the rest", async () => {
+  // The seed set is the drifted members, not the group. In the groupable case peer expansion already
+  // reaches every member across every shop, so seeding the whole group only made this run once per
+  // shop over the same union.
+  const { sqlite, db } = migratedSqlite();
+  insertListing(sqlite, { id: 1, shopKey: "shop-a" });
+  insertListing(sqlite, { id: 2, shopKey: "shop-b" });
+  insertListing(sqlite, { id: 3, shopKey: "shop-c" });
+  splitIntoSeparateEntities(sqlite, [1, 2, 3]);
+
+  const result = await repairDirtyExactIdentities(db);
+
+  assert.equal(result.repairedIdentities, 1);
+  const keys = sqlite
+    .prepare(`
+      SELECT DISTINCT e.entity_key AS key
+      FROM product_search_entity_offers o
+      JOIN product_search_entities e ON e.id = o.entity_id
+    `)
+    .all() as { key: string }[];
+  assert.deepEqual(
+    keys.map((row) => row.key),
+    ["l-1"],
+    "all three shops should end up on the representative's entity",
+  );
+});
+
+test("a member already at its expected key is left out of the take-apart resync", async () => {
+  const { sqlite, db } = migratedSqlite();
+  insertListing(sqlite, { id: 1, shopKey: "shop-a", categoryId: "amplifier" });
+  insertListing(sqlite, { id: 2, shopKey: "shop-b", categoryId: "amplifier" });
+  insertListing(sqlite, { id: 3, shopKey: "shop-c", categoryId: "amplifier" });
+  splitIntoSeparateEntities(sqlite, [1, 2, 3]);
+  await repairDirtyExactIdentities(db);
+
+  // Listing 3 acquires a conflicting category, so the group must come apart. Listing 1 is already at
+  // `l-1`, which is what it should have on its own, so it needs no seed.
+  sqlite.prepare("UPDATE products SET primary_category_id = 'speaker' WHERE id = 3").run();
+  const result = await repairDirtyExactIdentities(db);
+
+  assert.equal(result.repairedIdentities, 1);
+  const memberships = sqlite
+    .prepare(`
+      SELECT o.listing_product_id AS listing, e.entity_key AS key
+      FROM product_search_entity_offers o
+      JOIN product_search_entities e ON e.id = o.entity_id
+      ORDER BY o.listing_product_id
+    `)
+    .all() as { listing: number; key: string }[];
+  assert.deepEqual(
+    memberships.map((row) => `${row.listing}:${row.key}`),
+    ["1:l-1", "2:l-2", "3:l-3"],
+  );
+});

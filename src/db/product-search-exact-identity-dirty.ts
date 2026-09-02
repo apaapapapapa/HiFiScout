@@ -11,7 +11,7 @@
  * doing often: with the identity fixed, deriving the grouping the group *should* have becomes one
  * indexed lookup of its members, with no correlated subquery and no self-join. That also lets this
  * check be the stronger one -- the scan can only find groups that need merging, while a recorded
- * change just as often means a group needs taking apart. See {@link needsResync}.
+ * change just as often means a group needs taking apart. See {@link driftedMembers}.
  *
  * Claim semantics are built for a Worker that can be killed at any point:
  *
@@ -174,7 +174,7 @@ async function identityMembers(
 }
 
 /**
- * Whether this group's current membership disagrees with the one grouping would derive.
+ * The members whose current membership disagrees with the one grouping would derive.
  *
  * Asking only "is this group split across entities?" -- the shape of `EXACT_IDENTITY_SPLIT_COUNT_SQL`
  * and of the scan predicate -- covers merges and nothing else, while several of the transitions the
@@ -192,11 +192,14 @@ async function identityMembers(
  *   * categories compatible -> every member belongs to `l-<lowest member id>`
  *   * categories in conflict -> every member belongs to its own `l-<id>`
  *
+ * Returning the drifted members rather than a yes/no is what makes the repair minimal, because this
+ * set is exactly the seed set the resync needs -- see the call site.
+ *
  * A member with no membership row at all is a coverage gap, which is the five-minute sweep's phase,
  * so it is not counted as drift here.
  */
-function needsResync(members: readonly IdentityMemberRow[]): boolean {
-  if (!members.length) return false;
+function driftedMembers(members: readonly IdentityMemberRow[]): IdentityMemberRow[] {
+  if (!members.length) return [];
 
   const specificCategories = new Set(
     members
@@ -207,7 +210,7 @@ function needsResync(members: readonly IdentityMemberRow[]): boolean {
   // Members arrive ordered by id, so the representative is the first of them.
   const representativeId = members[0]?.id;
 
-  return members.some((member) => {
+  return members.filter((member) => {
     if (member.entity_key === null || member.entity_key === undefined) return false;
     const expected = groupable ? `l-${representativeId}` : `l-${member.id}`;
     return member.entity_key !== expected;
@@ -284,15 +287,22 @@ export async function repairDirtyExactIdentities(
         identity.canonical_manufacturer_id,
         identity.normalized_model,
       );
-      if (needsResync(members)) {
-        // Every member is a seed, not just one. Entity sync does expand a seed to its exact-identity
-        // peers, but that expansion applies `categoryCompatible` -- so in exactly the case that
-        // needs the group taken apart, the members that must be separated are not peers any more and
-        // would never be revisited. Seeding them all re-derives each membership directly. Grouped by
-        // shop only because the incremental API is shop/source scoped, and run sequentially so a
-        // repair never becomes a D1 burst.
+      const drifted = driftedMembers(members);
+      if (drifted.length) {
+        // Seed the drifted members and only those. Both halves of that are load-bearing:
+        //
+        //   * seeding one member is not enough, because entity sync expands a seed through
+        //     `categoryCompatible` -- so in exactly the case that needs the group taken apart, the
+        //     members to separate are no longer peers and would never be revisited;
+        //   * seeding every member is more than enough, and costs the most where it hurts. In the
+        //     groupable case peer expansion already reaches the whole group across every shop, so
+        //     the extra seeds change nothing except to run this loop once per shop, each pass
+        //     redoing the same union. A member already at its expected key needs no seed either way.
+        //
+        // Grouped by shop only because the incremental API is shop/source scoped, and run
+        // sequentially so a repair never becomes a D1 burst.
         const sourceIdsByShop = new Map<string, string[]>();
-        for (const member of members) {
+        for (const member of drifted) {
           const sourceIds = sourceIdsByShop.get(member.shop_key) || [];
           sourceIds.push(member.source_id);
           sourceIdsByShop.set(member.shop_key, sourceIds);
