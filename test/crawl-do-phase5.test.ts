@@ -48,7 +48,10 @@ function schedulerEnv(onMessage: (message: CrawlQueueMessage) => void): Env {
       idFromName: (name: string) => ({ name }),
       get: () => ({
         fetch: async (_url: string, init: RequestInit) => {
-          const body = JSON.parse(String(init.body)) as { type: string; message: CrawlQueueMessage };
+          const body = JSON.parse(String(init.body)) as {
+            type: string;
+            message: CrawlQueueMessage;
+          };
           assert.equal(body.type, "start_crawl");
           onMessage(body.message);
           return new Response(null, { status: 202 });
@@ -84,7 +87,10 @@ test("relay collector dispatch goes directly to the Durable Object", async () =>
   };
   const delivered: CrawlQueueMessage[] = [];
 
-  const route = await deliverCrawlDispatch(schedulerEnv((body) => delivered.push(body)), message);
+  const route = await deliverCrawlDispatch(
+    schedulerEnv((body) => delivered.push(body)),
+    message,
+  );
 
   assert.equal(route, "durable_object");
   assert.deepEqual(delivered, [message]);
