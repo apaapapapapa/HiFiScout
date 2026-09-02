@@ -30,10 +30,7 @@ test("runtime smoke confirms D1 quota independently when tail correlation is una
   assert.match(workflow, /wrangler d1 execute DB --remote --command 'SELECT 1;'/);
   assert.match(workflow, /quota_probe_status != 0/);
   assert.match(workflow, /grep -Fq 'code: 7500' "\$quota_probe"/);
-  assert.match(
-    workflow,
-    /grep -Fq "exceeded D1's free tier daily row read limit" "\$quota_probe"/,
-  );
+  assert.match(workflow, /grep -Fq "exceeded D1's free tier daily row read limit" "\$quota_probe"/);
   assert.match(workflow, /echo "deferred=d1_daily_quota" >> "\$GITHUB_OUTPUT"/);
   assert.match(
     workflow,
