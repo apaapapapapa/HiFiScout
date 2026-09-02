@@ -252,6 +252,7 @@ jobs:
         if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.d1-apply.outputs.deferred != 'd1_daily_quota'
         run: vp exec wrangler deploy
       - name: Check saved-search Atom feed and autodiscovery
+        id: runtime-smoke
         if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.d1-apply.outputs.deferred != 'd1_daily_quota'
         shell: bash
         run: |
@@ -273,13 +274,18 @@ jobs:
           }
           trap cleanup EXIT
 
+          defer_for_d1_quota() {
+            echo "::warning title=Production runtime smoke deferred::$1 The Worker deployment itself succeeded; deployment confirmation and D1-dependent smoke checks are deferred until the quota-reset retry."
+            echo "deferred=d1_daily_quota" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+
           feed_status="$(curl -sS --retry 3 --retry-delay 2 -D "$feed_headers" -o "$feed_body" -w '%{http_code}' \
             "${PRODUCTION_BASE_URL}/api/feed?manufacturer=TAD&inStock=true&limit=2")"
           if [[ "$feed_status" != "200" ]]; then
             # Cloudflare's outer 1101 page hides the Worker exception. Reproduce the same request
             # while tailing the deployed Worker, then correlate the response CF-Ray with that exact
-            # tail event. Only the quota-specific D1 message from the matching request may defer the
-            # smoke check; generic 1101s and unrelated concurrent quota errors remain fail-closed.
+            # tail event. This remains the strongest attribution signal when tail delivery works.
             timeout 30s vp exec wrangler tail hifiscout --format=json >"$tail_log" 2>&1 &
             tail_pid=$!
             sleep 5
@@ -301,10 +307,24 @@ jobs:
                 | .exceptions[]?
                 | select((.message // "") | contains($quota))]
                | length > 0' "$tail_log" >/dev/null; then
-              echo "::warning title=Production runtime smoke deferred::The failing Atom request was correlated by CF-Ray to Cloudflare D1 free-tier daily row-read quota exhaustion. The Worker deployment itself succeeded; D1-dependent smoke checks are deferred until the quota resets."
-              echo "PRODUCTION_RUNTIME_CHECK_DEFERRED=d1_daily_quota" >> "$GITHUB_ENV"
-              exit 0
+              defer_for_d1_quota "The failing Atom request was correlated by CF-Ray to Cloudflare D1 free-tier daily row-read quota exhaustion."
             fi
+
+            # Tail delivery itself is best-effort and can produce no event even for the request just
+            # replayed. In that case, prove the account-wide D1 gate directly. The feed is D1-backed,
+            # so an exact 7500 row-read quota response means the smoke cannot be meaningfully judged.
+            quota_probe="$(mktemp)"
+            set +e
+            vp exec wrangler d1 execute DB --remote --command 'SELECT 1;' >"$quota_probe" 2>&1
+            quota_probe_status=$?
+            set -e
+            if (( quota_probe_status != 0 )) && \
+              grep -Fq 'code: 7500' "$quota_probe" && \
+              grep -Fq "exceeded D1's free tier daily row read limit" "$quota_probe"; then
+              rm -f "$quota_probe"
+              defer_for_d1_quota "Worker tail did not deliver a correlatable event, but an independent minimal D1 remote query confirmed the exact account-wide row-read quota exhaustion signature (7500)."
+            fi
+            rm -f "$quota_probe"
 
             echo "Production Atom feed returned HTTP ${feed_status}:" >&2
             cat "$feed_body" >&2
@@ -350,14 +370,10 @@ jobs:
           grep -F 'data-saved-search-feed' "$catalog_body" >/dev/null
           grep -F 'href="/api/feed?manufacturer=TAD&amp;inStock=true&amp;newOnly=true"' "$catalog_body" >/dev/null
       - name: Check production runtime health
-        if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.d1-apply.outputs.deferred != 'd1_daily_quota'
+        if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.d1-apply.outputs.deferred != 'd1_daily_quota' && steps.runtime-smoke.outputs.deferred != 'd1_daily_quota'
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${PRODUCTION_RUNTIME_CHECK_DEFERRED:-}" == "d1_daily_quota" ]]; then
-            echo "Production runtime health check deferred because the failing production request was correlated to the D1 daily row-read quota signature."
-            exit 0
-          fi
 
           health_body="$(mktemp)"
           trap 'rm -f "$health_body"' EXIT
@@ -378,13 +394,13 @@ jobs:
 
       # Publish deployment identity only after the Worker and deployment-owned smoke checks succeed.
       # A quota-deferred or scheduled no-op run deliberately has no identity artifact, so downstream
-      # workflows cannot mistake an undeployed SHA for the production revision.
+      # workflows cannot mistake an unconfirmed SHA for the production revision.
       - name: Record deployment identity
-        if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.d1-apply.outputs.deferred != 'd1_daily_quota'
+        if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.d1-apply.outputs.deferred != 'd1_daily_quota' && steps.runtime-smoke.outputs.deferred != 'd1_daily_quota'
         shell: bash
         run: printf '%s\n' "$DEPLOY_SHA" > deployment-sha.txt
       - name: Publish deployment identity artifact
-        if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.d1-apply.outputs.deferred != 'd1_daily_quota'
+        if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.d1-apply.outputs.deferred != 'd1_daily_quota' && steps.runtime-smoke.outputs.deferred != 'd1_daily_quota'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: deployment-identity
@@ -405,4 +421,4 @@ jobs:
           sha: ${{ env.DEPLOY_SHA }}
           job-status: ${{ job.status }}
           context: deployment/cloudflare
-          description-prefix: ${{ steps.d1-apply.outputs.deferred == 'd1_daily_quota' && 'Cloudflare deployment deferred by D1 quota' || steps.d1-migrations.outputs.already_deployed == 'true' && 'Cloudflare deployment already current' || 'Cloudflare deployment' }}
+          description-prefix: ${{ (steps.d1-apply.outputs.deferred == 'd1_daily_quota' || steps.runtime-smoke.outputs.deferred == 'd1_daily_quota') && 'Cloudflare deployment deferred by D1 quota' || steps.d1-migrations.outputs.already_deployed == 'true' && 'Cloudflare deployment already current' || 'Cloudflare deployment' }}
