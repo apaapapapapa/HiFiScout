@@ -35,7 +35,9 @@ import { getShopPlugin } from "./shops/index.js";
 import { relayConfiguration } from "./transport.js";
 import type { ShopPlugin } from "./types.js";
 
-const EXECUTION_STORAGE_KEY = "crawl_execution";
+// Durable Object storage namespaces must stay stable across Worker deployments so an in-flight
+// execution created by an older isolate remains visible to the new runtime and its scheduled Alarm.
+const EXECUTION_STORAGE_KEY = "phase2_crawl_execution";
 const MIN_ALARM_DELAY_MS = 1;
 
 interface StoredExecution {
