@@ -13,6 +13,7 @@ import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from "./catalog/knowledge-verifica
 import { runDataQualityRemediationSweep } from "./db/data-quality-remediation-service.js";
 import {
   deadLetterOutstandingKnowledgeCatalogVerificationJobsForRun,
+  knowledgeCatalogReviewRunLiveness,
   knowledgeCatalogVerificationQueueStatus,
 } from "./db/knowledge-catalog-verification-queue-repository.js";
 import {
@@ -200,6 +201,46 @@ export async function runScheduled(cron: string, env: Env, scheduledAt = new Dat
 }
 
 /**
+ * How long a `running` review run with no live jobs is left alone before it is declared stranded.
+ *
+ * A job is only ever momentarily between states, so this is far longer than any such window; it
+ * exists so a run whose finalizer is mid-flight is never failed out from under itself.
+ */
+const STRANDED_REVIEW_RUN_MS = 30 * 60 * 1000;
+
+interface StrandedReviewRun {
+  runId: number;
+  totalJobs: number;
+  lastActivityAt: string;
+}
+
+/**
+ * A review run that says `running` but that nothing can finish.
+ *
+ * The finalizer is what moves a run to `success`, and the dead-letter consumer is what moves a run
+ * whose finalizer died to `failed`. Those are two separate writes, so a finalizer that dead-letters
+ * while D1 is refusing writes closes the job without failing the run, and the run then says
+ * `running` with every one of its jobs terminal. Detecting that from the jobs themselves keeps the
+ * recovery independent of which write was lost.
+ */
+async function strandedKnowledgeCatalogReviewRun(
+  db: Env["DB"],
+  runId: number,
+  now: Date,
+): Promise<StrandedReviewRun | null> {
+  if (!runId) return null;
+  const liveness = await knowledgeCatalogReviewRunLiveness(db, runId);
+  if (liveness.liveJobs > 0) return null;
+  // A run that has not created its jobs yet is still dispatching, not stranded.
+  if (!liveness.totalJobs) return null;
+  const lastActivity = Date.parse(liveness.lastActivityAt);
+  if (Number.isFinite(lastActivity) && now.getTime() - lastActivity < STRANDED_REVIEW_RUN_MS) {
+    return null;
+  }
+  return { runId, totalJobs: liveness.totalJobs, lastActivityAt: liveness.lastActivityAt };
+}
+
+/**
  * One-shot rollout of a new verifier version.
  *
  * The version claim is an atomic conditional write, so of the many Worker instances that run the
@@ -242,7 +283,32 @@ export async function bootstrapKnowledgeCatalogReview(env: Env, now = new Date()
       : 0;
 
   if (latestReview?.status === "running") {
-    return { status: "skipped", reason: "knowledge_catalog_review_in_progress" };
+    const stranded = await strandedKnowledgeCatalogReviewRun(
+      env.DB,
+      Number(latestReview.id || 0),
+      now,
+    );
+    if (!stranded) {
+      return { status: "skipped", reason: "knowledge_catalog_review_in_progress" };
+    }
+    // Nothing can advance this run any more, and `running` is what makes the branch above skip
+    // every later tick, so leaving it would block Knowledge Catalog review forever. Failing it
+    // hands the run to the recovery path below on the next tick.
+    await finishKnowledgeCatalogReviewRunFailure(
+      env.DB,
+      stranded.runId,
+      now.toISOString(),
+      "knowledge_catalog_review_run_stranded_without_live_jobs",
+    );
+    console.warn(
+      JSON.stringify({
+        event: "knowledge_catalog_stranded_review_run_failed",
+        runId: stranded.runId,
+        totalJobs: stranded.totalJobs,
+        lastActivityAt: stranded.lastActivityAt,
+      }),
+    );
+    return { status: "recovered", reason: "knowledge_catalog_review_run_stranded" };
   }
   if (latestReview?.status === "failed") {
     const failedRunId = Number(latestReview.id || 0);
