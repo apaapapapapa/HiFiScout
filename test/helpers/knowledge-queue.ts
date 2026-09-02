@@ -11,7 +11,9 @@ import { asQueryableDatabase } from "./d1.js";
 import type {
   KnowledgeCatalogQueueEnv,
   KnowledgeCatalogQueueMessage,
+  LegacyKnowledgeCatalogJobMessage,
 } from "../../src/knowledge-catalog/types.js";
+import type { QueryableDatabase } from "../../src/db/types.js";
 
 export interface QueueStatement {
   sql: string;
@@ -99,6 +101,11 @@ export function knowledgeJobRow(overrides: Record<string, unknown> = {}) {
     lease_expires_at: null,
     finished_at: null,
     last_message: "",
+    payload_json: JSON.stringify({
+      mode: "daily_candidates",
+      preferRetries: false,
+      verifierVersion: 0,
+    }),
     ...overrides,
   };
 }
@@ -112,7 +119,7 @@ export interface RecordedQueueMessage {
 }
 
 export function queueMessage(
-  body: Partial<KnowledgeCatalogQueueMessage> = {},
+  body: Partial<LegacyKnowledgeCatalogJobMessage> = {},
 ): RecordedQueueMessage {
   const acks: number[] = [];
   const retries: Array<{ delaySeconds?: number }> = [];
@@ -140,6 +147,24 @@ export function queueMessage(
   };
 }
 
+export function runWakeMessage(runId = 3): RecordedQueueMessage {
+  const acks: number[] = [];
+  const retries: Array<{ delaySeconds?: number }> = [];
+  return {
+    acks,
+    retries,
+    message: {
+      body: { kind: "knowledge_catalog_run_wakeup", runId },
+      ack() {
+        acks.push(1);
+      },
+      retry(options: { delaySeconds?: number } = {}) {
+        retries.push(options);
+      },
+    } as unknown as Message<KnowledgeCatalogQueueMessage>,
+  };
+}
+
 export interface SentQueueMessage {
   body: KnowledgeCatalogQueueMessage;
   options?: { delaySeconds?: number };
@@ -147,15 +172,12 @@ export interface SentQueueMessage {
 
 type KnowledgeQueueBinding = KnowledgeCatalogQueueEnv["KNOWLEDGE_CATALOG_QUEUE"];
 
-/** Records what dispatch enqueued, so a test can assert the finalizer's delay and the batch size. */
+/** Records run wake-ups emitted by dispatch and bounded consumer slices. */
 export function queueBinding() {
   const sent: SentQueueMessage[] = [];
   const binding = {
     async send(body: KnowledgeCatalogQueueMessage, options?: QueueSendOptions) {
       sent.push({ body, ...(options ? { options } : {}) });
-    },
-    async sendBatch(messages: Iterable<MessageSendRequest<KnowledgeCatalogQueueMessage>>) {
-      for (const message of messages) sent.push({ body: message.body });
     },
   };
   // Cloudflare's send methods resolve to backlog metadata that dispatch awaits and ignores. The
@@ -164,7 +186,7 @@ export function queueBinding() {
 }
 
 export function queueEnv(
-  db: ReturnType<typeof queueDatabase>,
+  db: QueryableDatabase,
   binding = queueBinding().binding,
   overrides: Partial<KnowledgeCatalogQueueEnv> = {},
 ): KnowledgeCatalogQueueEnv {

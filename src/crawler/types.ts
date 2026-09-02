@@ -347,6 +347,15 @@ export interface ShopAdapter<TPage extends CrawlPage = CrawlPage> {
   parse(html: string, page?: TPage): SellerProduct[];
 }
 
+/** Synchronous parser stages measured around the same work production executes. */
+export interface ShopParseStageResult {
+  readonly products: NormalizedCatalogProduct[];
+  /** Shop-owned HTML extraction and the shared seller-fact contract check. */
+  readonly rawParseMs: number;
+  /** Shared manufacturer/model/category/facet normalization. */
+  readonly normalizeMs: number;
+}
+
 /** A registered shop after validation, frozen composition and central normalization wrapping. */
 export interface ShopPlugin<TPage extends CrawlPage = CrawlPage> extends Omit<
   ShopAdapter<TPage>,
@@ -355,6 +364,8 @@ export interface ShopPlugin<TPage extends CrawlPage = CrawlPage> extends Omit<
   readonly definition: Readonly<ShopDefinition>;
   readonly capabilities: Readonly<ShopRuntimeCapabilities<TPage>>;
   parse(html: string, page?: TPage): NormalizedCatalogProduct[];
+  /** Production parser entry point with substage timings for Workers Observability correlation. */
+  parseWithStages(html: string, page?: TPage): ShopParseStageResult;
 }
 
 // ---------------------------------------------------------------------------

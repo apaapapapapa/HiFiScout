@@ -191,10 +191,21 @@ export function defineShopPlugin<TPage extends CrawlPage>(
     definition: validated,
     capabilities: runtimeCapabilities,
     parse: function normalizedParse(...args: [html: string, page?: TPage]) {
+      return plugin.parseWithStages(...args).products;
+    },
+    parseWithStages: function timedNormalizedParse(...args: [html: string, page?: TPage]) {
+      const rawParseStartedAt = performance.now();
       const sellerProducts = validateSellerProducts(parse.apply(plugin, args), plugin);
-      return normalizeCatalogProducts(sellerProducts, runtimeCapabilities.catalog || {}, {
+      const rawParseMs = performance.now() - rawParseStartedAt;
+      const normalizeStartedAt = performance.now();
+      const products = normalizeCatalogProducts(sellerProducts, runtimeCapabilities.catalog || {}, {
         shopKey: plugin.key,
       });
+      return {
+        products,
+        rawParseMs,
+        normalizeMs: performance.now() - normalizeStartedAt,
+      };
     },
   };
   return Object.freeze(plugin);

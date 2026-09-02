@@ -39,8 +39,17 @@ interface VerificationQueueBatchRow {
   run_id?: number;
 }
 
+interface VerificationRunWakeStateRow {
+  outstanding_jobs?: number | null;
+  next_available_at?: string | null;
+}
+
 function addSeconds(iso: string, seconds: number): string {
   return new Date(new Date(iso).getTime() + Math.max(1, Number(seconds) || 1) * 1000).toISOString();
+}
+
+function addMilliseconds(iso: string, milliseconds: number): string {
+  return new Date(new Date(iso).getTime() + Math.max(0, Number(milliseconds) || 0)).toISOString();
 }
 
 async function runBatches(db: QueryableDatabase, statements: D1PreparedStatement[]): Promise<void> {
@@ -77,6 +86,7 @@ function jobFromRow(
     leaseExpiresAt: row.lease_expires_at,
     finishedAt: row.finished_at,
     lastMessage: row.last_message || "",
+    payloadJson: row.payload_json || "",
   };
 }
 
@@ -91,8 +101,8 @@ export async function createKnowledgeCatalogVerificationJobs(
       .prepare(`
         INSERT INTO knowledge_catalog_verification_jobs (
           run_id, job_key, job_type, target_id, manufacturer_id, hostname, status,
-          enqueued_at, available_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?)
+          enqueued_at, available_at, payload_json, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)
         ON CONFLICT(job_key) DO NOTHING
       `)
       .bind(
@@ -104,6 +114,7 @@ export async function createKnowledgeCatalogVerificationJobs(
         job.hostname || "",
         enqueuedAt,
         enqueuedAt,
+        job.payloadJson,
         enqueuedAt,
         enqueuedAt,
       ),
@@ -121,6 +132,125 @@ export async function createKnowledgeCatalogVerificationJobs(
   return (result.results || [])
     .map((row) => jobFromRow(row))
     .filter((job): job is KnowledgeCatalogVerificationJob => job !== null);
+}
+
+/**
+ * Atomically claims one due job selected from a run.
+ *
+ * Source jobs are preferred and a finalizer is invisible until every source job is terminal. An
+ * active domain lease also removes that hostname from the candidate set, allowing another domain
+ * in the same run to make progress without violating source pacing.
+ */
+export async function claimNextKnowledgeCatalogVerificationJobForRun(
+  db: QueryableDatabase,
+  runId: number,
+  claimedAt: string,
+  leaseSeconds: number,
+): Promise<KnowledgeCatalogVerificationJob | null> {
+  // A selection can lose its conditional claim to another duplicate wake-up. Retry a small,
+  // bounded number of times so the invocation can pick a different job instead of spinning.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const selected = await db
+      .prepare(`
+        SELECT job.id
+        FROM knowledge_catalog_verification_jobs job
+        WHERE job.run_id = ?
+          AND (
+            (job.status IN ('queued', 'retrying')
+              AND (job.available_at IS NULL OR job.available_at <= ?))
+            OR (job.status = 'processing'
+              AND (job.lease_expires_at IS NULL OR job.lease_expires_at <= ?))
+          )
+          AND (
+            job.job_type <> 'finalize'
+            OR NOT EXISTS (
+              SELECT 1
+              FROM knowledge_catalog_verification_jobs target
+              WHERE target.run_id = job.run_id
+                AND target.job_type <> 'finalize'
+                AND target.status IN ('queued', 'processing', 'retrying')
+            )
+          )
+          AND (
+            job.hostname = ''
+            OR NOT EXISTS (
+              SELECT 1
+              FROM knowledge_catalog_verification_domain_leases domain_lease
+              WHERE domain_lease.hostname = job.hostname
+                AND domain_lease.leased_until > ?
+                AND domain_lease.job_id <> job.id
+            )
+          )
+        ORDER BY CASE WHEN job.job_type = 'finalize' THEN 1 ELSE 0 END,
+                 COALESCE(job.available_at, job.enqueued_at),
+                 job.id
+        LIMIT 1
+      `)
+      .bind(runId, claimedAt, claimedAt, claimedAt)
+      .first<{ id?: number | null }>();
+    const jobId = number(selected?.id);
+    if (!jobId) return null;
+    const claimed = await claimKnowledgeCatalogVerificationJob(db, jobId, claimedAt, leaseSeconds);
+    if (claimed) return claimed;
+  }
+  return null;
+}
+
+export interface KnowledgeCatalogVerificationRunWakeState {
+  outstandingJobs: number;
+  /** Earliest time another job can be claimed, or `null` after the run becomes terminal. */
+  nextAvailableAt: string | null;
+}
+
+/** What a bounded wake invocation should do after its current slice. */
+export async function knowledgeCatalogVerificationRunWakeState(
+  db: QueryableDatabase,
+  runId: number,
+  now: string,
+): Promise<KnowledgeCatalogVerificationRunWakeState> {
+  const row = await db
+    .prepare(`
+      WITH target_state AS (
+        SELECT COUNT(*) AS live_targets
+        FROM knowledge_catalog_verification_jobs
+        WHERE run_id = ?
+          AND job_type <> 'finalize'
+          AND status IN ('queued', 'processing', 'retrying')
+      ), eligible_jobs AS (
+        SELECT job.*, domain_lease.leased_until AS domain_leased_until,
+               domain_lease.job_id AS domain_job_id
+        FROM knowledge_catalog_verification_jobs job
+        LEFT JOIN knowledge_catalog_verification_domain_leases domain_lease
+          ON domain_lease.hostname = job.hostname
+        CROSS JOIN target_state
+        WHERE job.run_id = ?
+          AND job.status IN ('queued', 'processing', 'retrying')
+          AND (job.job_type <> 'finalize' OR target_state.live_targets = 0)
+      )
+      SELECT
+        (
+          SELECT COUNT(*)
+          FROM knowledge_catalog_verification_jobs
+          WHERE run_id = ? AND status IN ('queued', 'processing', 'retrying')
+        ) AS outstanding_jobs,
+        MIN(
+          CASE
+            WHEN status = 'processing' THEN COALESCE(lease_expires_at, ?)
+            WHEN status = 'retrying' AND available_at > ? THEN available_at
+            WHEN hostname <> ''
+              AND domain_leased_until > ?
+              AND domain_job_id <> id THEN domain_leased_until
+            ELSE ?
+          END
+        ) AS next_available_at
+      FROM eligible_jobs
+    `)
+    .bind(runId, runId, runId, now, now, now, now)
+    .first<VerificationRunWakeStateRow>();
+  return {
+    outstandingJobs: number(row?.outstanding_jobs),
+    nextAvailableAt: row?.next_available_at || null,
+  };
 }
 
 export async function claimKnowledgeCatalogVerificationJob(
@@ -318,8 +448,21 @@ export async function releaseKnowledgeCatalogVerificationDomainLease(
   db: QueryableDatabase,
   hostname: string,
   jobId: number,
+  releasedAt?: string,
+  pacingMilliseconds = 0,
 ): Promise<void> {
   if (!hostname) return;
+  if (releasedAt && pacingMilliseconds > 0) {
+    await db
+      .prepare(`
+        UPDATE knowledge_catalog_verification_domain_leases
+        SET job_id = 0, leased_until = ?, updated_at = ?
+        WHERE hostname = ? AND job_id = ?
+      `)
+      .bind(addMilliseconds(releasedAt, pacingMilliseconds), releasedAt, hostname, jobId)
+      .run();
+    return;
+  }
   await db
     .prepare(`
       DELETE FROM knowledge_catalog_verification_domain_leases

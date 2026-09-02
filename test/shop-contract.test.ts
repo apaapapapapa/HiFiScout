@@ -138,6 +138,7 @@ test("all shop plugins satisfy the final crawler contract", () => {
     assert.ok(["complete", "partial", "unknown"].includes(plugin.discovery.coverage));
     assert.equal(typeof plugin.discovery.initialTargets, "function");
     assert.equal(typeof plugin.parse, "function");
+    assert.equal(typeof plugin.parseWithStages, "function");
     assert.equal(typeof plugin.capabilities, "object");
     assert.equal(plugin.definition.key, plugin.key);
     assert.equal(plugin.definition.name, plugin.name);
@@ -153,6 +154,34 @@ test("all shop plugins satisfy the final crawler contract", () => {
       assert.equal(legacyField in plugin, false, `${plugin.key} still exposes ${legacyField}`);
     }
   }
+});
+
+test("registered parsing exposes stage timings without changing normalized output", () => {
+  const plugin = registerStub(
+    {},
+    {
+      parse: () => [
+        {
+          sourceId: "used-1",
+          sourceUrl: "https://example.com/used/1",
+          title: "LUXMAN D-10X",
+          rawManufacturer: "LUXMAN",
+          manufacturer: "LUXMAN",
+          model: "D-10X",
+          rawCategory: "CD/SACD",
+          category: "CD/SACDプレーヤー",
+          conditionText: "中古",
+          priceYen: 780_000,
+          stockStatus: "in_stock",
+        },
+      ],
+    },
+  );
+
+  const staged = plugin.parseWithStages("<html></html>");
+  assert.deepEqual(staged.products, plugin.parse("<html></html>"));
+  assert.ok(Number.isFinite(staged.rawParseMs) && staged.rawParseMs >= 0);
+  assert.ok(Number.isFinite(staged.normalizeMs) && staged.normalizeMs >= 0);
 });
 
 test("registered plugins, definitions and discovery policies are immutable", () => {

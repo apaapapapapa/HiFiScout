@@ -141,6 +141,7 @@ export async function processFinalize(
       initialTargets: () => [syntheticUrl],
     },
     parse: () => products,
+    parseWithStages: () => ({ products, rawParseMs: 0, normalizeMs: 0 }),
   };
 
   const originalTransport = createTransport(

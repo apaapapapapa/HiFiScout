@@ -40,9 +40,9 @@ function isKnowledgeCatalogBatch(
   return batch.messages.every(
     (message) =>
       isRecord(message.body) &&
-      typeof message.body.jobId === "number" &&
       typeof message.body.runId === "number" &&
-      typeof message.body.jobType === "string",
+      (message.body.kind === "knowledge_catalog_run_wakeup" ||
+        (typeof message.body.jobId === "number" && typeof message.body.jobType === "string")),
   );
 }
 

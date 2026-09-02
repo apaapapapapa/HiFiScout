@@ -32,6 +32,7 @@ import {
 } from "./db/product-search-exact-identity-dirty.js";
 import { repairActiveListingProjectionGaps } from "./db/product-search-gap-repair.js";
 import { getSyncHealth, logSyncHealth } from "./health.js";
+import type { SyncHealthEnv, SyncHealthReport } from "./health.js";
 import {
   dispatchKnowledgeCatalogDailyVerification,
   dispatchKnowledgeCatalogMonthlyRecheck,
@@ -100,9 +101,78 @@ function logDispatchResult(cron: string, dispatch: DispatchResult): void {
   } else console.log(JSON.stringify(entry));
 }
 
-async function logCurrentSyncHealth(env: Env): Promise<void> {
-  const health = await getSyncHealth(env);
-  logSyncHealth(health);
+export type ScheduledSyncHealthReadReason = "general_cron" | "abnormal_dispatch";
+
+export interface ScheduledSyncHealthMeasurement {
+  health: SyncHealthReport;
+  rowsRead: number;
+  rowsWritten: number;
+  countedStatements: number;
+}
+
+/**
+ * Decides when a scheduled trigger is allowed to pay for the full cross-shop health snapshot.
+ *
+ * GENERAL_CRON is the authoritative five-minute cadence. Ordinary crawl triggers already read and
+ * update the one shop they dispatch, so repeating the whole-table snapshot after every successful
+ * dispatch only multiplies D1 reads. Rejected/lease-blocked dispatches retain an immediate snapshot
+ * because that is the diagnostic path operators need when a trigger did not do its normal work.
+ */
+export function scheduledSyncHealthReadReason(
+  cron: string,
+  dispatch: DispatchResult,
+): ScheduledSyncHealthReadReason | null {
+  if (cron === GENERAL_CRON) return "general_cron";
+  if (dispatch.status === "rejected" || (dispatch.status === "skipped" && "reason" in dispatch)) {
+    return "abnormal_dispatch";
+  }
+  return null;
+}
+
+/** Reads the authoritative snapshot through D1's own per-statement rows_read accounting. */
+export async function measureScheduledSyncHealth(
+  env: SyncHealthEnv,
+  now = new Date(),
+): Promise<ScheduledSyncHealthMeasurement> {
+  const accounting = accountReads(env.DB);
+  const health = await getSyncHealth({ ...env, DB: accounting.db }, now);
+  return {
+    health,
+    rowsRead: accounting.rowsRead(),
+    rowsWritten: accounting.rowsWritten(),
+    countedStatements: accounting.countedStatements(),
+  };
+}
+
+async function logCurrentSyncHealth(
+  env: Env,
+  cron: string,
+  reason: ScheduledSyncHealthReadReason,
+  now: Date,
+): Promise<void> {
+  const measurement = await measureScheduledSyncHealth(env, now);
+  logSyncHealth(measurement.health);
+  console.log(
+    JSON.stringify({
+      event: "scheduled_sync_health_d1_usage",
+      cron,
+      reason,
+      status: measurement.health.status,
+      rowsRead: measurement.rowsRead,
+      rowsWritten: measurement.rowsWritten,
+      countedStatements: measurement.countedStatements,
+    }),
+  );
+}
+
+async function logScheduledSyncHealthIfNeeded(
+  env: Env,
+  cron: string,
+  dispatch: DispatchResult,
+  now: Date,
+): Promise<void> {
+  const reason = scheduledSyncHealthReadReason(cron, dispatch);
+  if (reason) await logCurrentSyncHealth(env, cron, reason, now);
 }
 
 /**
@@ -212,10 +282,11 @@ export async function runScheduled(cron: string, env: Env, scheduledAt = new Dat
     // on the very next tick.
     await recoverStalledCrawlRuns(env.DB, { now: scheduledAt });
     const recovered = await recoverStalledCrawlDispatches(env, { now: scheduledAt });
-    await logCurrentSyncHealth(env);
-    return recovered.length
+    const dispatch: DispatchResult = recovered.length
       ? ({ status: "queued", queued: recovered } satisfies DispatchResult)
       : ({ status: "skipped", queued: [] } satisfies DispatchResult);
+    await logScheduledSyncHealthIfNeeded(env, cron, dispatch, scheduledAt);
+    return dispatch;
   }
 
   const dedicated = shopForCronAtScheduledTime(cron, scheduledAt);
@@ -227,7 +298,7 @@ export async function runScheduled(cron: string, env: Env, scheduledAt = new Dat
     : { status: "skipped", queued: [] };
 
   logDispatchResult(cron, dispatch);
-  await logCurrentSyncHealth(env);
+  await logScheduledSyncHealthIfNeeded(env, cron, dispatch, scheduledAt);
   return dispatch;
 }
 

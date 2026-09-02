@@ -76,6 +76,10 @@ export default defineConfig(({ mode }) => ({
         command: ciShell("vp test run --reporter=dot --shard=2/2"),
         output: [],
       },
+      "ci:parser-benchmark": {
+        command: ciShell("vp exec tsx scripts/parser-cpu-benchmark.ts --check"),
+        output: [],
+      },
       "ci:build-public": ciShell("vp build --mode public"),
       "ci:build-admin": ciShell("vp build --mode admin"),
       "ci:build-worker": {

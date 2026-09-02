@@ -407,6 +407,15 @@ Each crawl summary additionally carries `searchEntities` with the listings resyn
 
 Cloudflare already provides D1 platform analytics for database storage size, read/write query volume, rows read/written, and query latency. HiFiScout does not copy these time-series metrics into D1. Operators should use the Cloudflare D1 Metrics view / GraphQL Analytics API and Worker observability for platform error/timeout signals.
 
+Parser performance has two complementary signals. CI runs sanitized, production-shaped HTML
+fixtures without live seller requests and compares raw parse, catalog normalization, and page
+discovery CPU against source-controlled same-process relative baselines. Absolute microseconds are
+diagnostic only because hosted runner speed is not stable. In production,
+`crawl_fetch_page_parsed` logs `htmlBytes`, `itemCount`, `rawParseMs`, `normalizeMs`, `discoverMs`,
+and `parserPipelineMs` so expensive input shapes and stages can be identified. Cloudflare Workers
+Observability remains authoritative: after rollout, verify `exceededCpu` stays at zero and compare
+invocation CPU p95/p99 with the previous release before treating the parser change as healthy.
+
 No current D1 product/storage limit is hard-coded into application logic. Capacity decisions should compare measured usage with the currently documented platform limit at operational-review time.
 
 ## Why no Vector DB
@@ -461,6 +470,8 @@ Unit/regression tests cover:
 - product-unit totals, offsets, and keyset cursors, including cursors being scoped to the aggregate/filter semantics that minted them
 - favorite product snapshots preserving category ancestors so group-category filters match the same products as server search
 - a page of results costing a bounded number of statements instead of one lookup per result
+- offline production-shaped parser fixtures enforcing relative CPU regression thresholds for raw
+  parse, catalog normalization, and page discovery
 - the migration backfill being the same derivation the incremental sync runs, not a second definition of grouping
 - consistency reporting each read-model invariant separately, and the rebuild converging on re-run
 

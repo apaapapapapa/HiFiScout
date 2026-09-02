@@ -130,15 +130,17 @@ export async function processParse(
   }
 
   const page = decodeCrawlFetchPage(row);
-  const parseStartedAt = performance.now();
-  let products;
+  let parsed;
   try {
-    products = plugin.parse(row.html_text, page);
+    parsed = plugin.parseWithStages(row.html_text, page);
   } catch (error) {
     return failCollection(env, plugin, session.run_id, error);
   }
-  const parseMs = performance.now() - parseStartedAt;
+  const products = parsed.products;
+  const discoveryStartedAt = performance.now();
   const discovered = discoverPages(plugin, row.html_text, page);
+  const discoverMs = performance.now() - discoveryStartedAt;
+  const parseMs = parsed.rawParseMs + parsed.normalizeMs;
   const pages = await listCrawlFetchPages(env.DB, session.run_id);
   const known = new Set(pages.map((candidate) => candidate.page_key));
   const accepted: CrawlFetchPageInput[] = [];
@@ -187,6 +189,10 @@ export async function processParse(
       htmlBytes: row.html_bytes,
       itemCount: products.length,
       parseMs,
+      rawParseMs: parsed.rawParseMs,
+      normalizeMs: parsed.normalizeMs,
+      discoverMs,
+      parserPipelineMs: parseMs + discoverMs,
       discoveredCount: accepted.length,
       coverageIncomplete,
       reachedEnd,

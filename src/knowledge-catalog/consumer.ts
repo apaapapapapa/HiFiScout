@@ -13,15 +13,20 @@
 
 import {
   acquireKnowledgeCatalogVerificationDomainLease,
+  claimNextKnowledgeCatalogVerificationJobForRun,
   claimKnowledgeCatalogVerificationJob,
   completeKnowledgeCatalogVerificationJob,
   deadLetterKnowledgeCatalogVerificationJob,
   getKnowledgeCatalogVerificationJob,
   incrementKnowledgeCatalogVerificationSourceAttempt,
+  knowledgeCatalogVerificationRunWakeState,
   releaseKnowledgeCatalogVerificationDomainLease,
   retryKnowledgeCatalogVerificationJob,
 } from "../db/knowledge-catalog-verification-queue-repository.js";
-import { finishKnowledgeCatalogReviewRunFailure } from "../db/knowledge-catalog-review-repository.js";
+import {
+  finishKnowledgeCatalogReviewRunFailure,
+  knowledgeCatalogReviewRunStatus,
+} from "../db/knowledge-catalog-review-repository.js";
 import { finishKnowledgeCatalogVerifierVersionFailure } from "../db/knowledge-catalog-verifier-state-repository.js";
 import { finalizeKnowledgeCatalogVerificationRun } from "./finalize.js";
 import {
@@ -31,7 +36,10 @@ import {
   isRetryableKnowledgeCatalogVerification,
   jobLeaseSeconds,
   knowledgeCatalogRetryDelaySeconds,
+  sourceRequestDelayMs,
   transientMaxAttempts,
+  wakeMaxJobs,
+  wakeWallBudgetMs,
 } from "./policy.js";
 import {
   isDueProduct,
@@ -39,10 +47,12 @@ import {
   verifyCandidateTarget,
   verifyProductRecheckTarget,
 } from "./targets.js";
-import { errorMessage } from "../types.js";
+import { errorMessage, isRecord } from "../types.js";
 import { createVerifier } from "./verifier.js";
 import type { KnowledgeCatalogVerificationJob } from "../db/types.js";
 import type {
+  KnowledgeCatalogJobPayload,
+  LegacyKnowledgeCatalogJobMessage,
   KnowledgeCatalogQueueEnv,
   KnowledgeCatalogQueueMessage,
   VerificationTargetResult,
@@ -57,6 +67,54 @@ const JOB_TYPES = ["candidate", "product_recheck", "finalize"];
  * consumer error may be a transient Worker fault worth more chances.
  */
 const DELIVERY_ATTEMPT_MULTIPLIER = 2;
+
+interface ProcessedKnowledgeCatalogJob {
+  result: Record<string, unknown>;
+  retryDelaySeconds?: number;
+}
+
+function wait(milliseconds: number): Promise<void> {
+  return milliseconds > 0
+    ? new Promise((resolve) => setTimeout(resolve, milliseconds))
+    : Promise.resolve();
+}
+
+function isLegacyJobMessage(
+  body: KnowledgeCatalogQueueMessage,
+): body is LegacyKnowledgeCatalogJobMessage {
+  return "jobId" in body;
+}
+
+function isDispatchMode(value: unknown): value is KnowledgeCatalogJobPayload["mode"] {
+  return value === "daily_candidates" || value === "monthly_recheck";
+}
+
+function persistedJobPayload(job: KnowledgeCatalogVerificationJob): KnowledgeCatalogJobPayload {
+  let value: unknown;
+  try {
+    value = JSON.parse(job.payloadJson);
+  } catch {
+    throw new Error(`knowledge_catalog_job_payload_invalid:${job.id}`);
+  }
+  if (!isRecord(value) || !isDispatchMode(value.mode)) {
+    throw new Error(`knowledge_catalog_job_payload_invalid:${job.id}`);
+  }
+  return {
+    mode: value.mode,
+    preferRetries: Boolean(value.preferRetries),
+    verifierVersion: Number(value.verifierVersion || 0),
+    ...(isRecord(value.target) ? { target: value.target } : {}),
+  };
+}
+
+function legacyJobPayload(body: LegacyKnowledgeCatalogJobMessage): KnowledgeCatalogJobPayload {
+  return {
+    mode: body.mode,
+    preferRetries: Boolean(body.preferRetries),
+    verifierVersion: Number(body.verifierVersion || 0),
+    ...(body.target ? { target: body.target } : {}),
+  };
+}
 
 function unclaimableRetryDelaySeconds(
   env: KnowledgeCatalogQueueEnv,
@@ -85,17 +143,16 @@ export interface ConsumeOptions {
  */
 async function retrySourceJob(
   env: KnowledgeCatalogQueueEnv,
-  body: KnowledgeCatalogQueueMessage,
-  message: Message<KnowledgeCatalogQueueMessage>,
+  payload: KnowledgeCatalogJobPayload,
   job: KnowledgeCatalogVerificationJob,
   result: VerificationTargetResult,
-): Promise<boolean> {
+): Promise<ProcessedKnowledgeCatalogJob | null> {
   const sourceAttempts = job.sourceAttempts;
   if (
     !isRetryableKnowledgeCatalogVerification(result.verification) ||
     sourceAttempts >= transientMaxAttempts(env)
   ) {
-    return false;
+    return null;
   }
   const delaySeconds = knowledgeCatalogRetryDelaySeconds(sourceAttempts);
   const now = new Date();
@@ -106,19 +163,18 @@ async function retrySourceJob(
     result.verification.message || `transient_${result.outcome}`,
     now.toISOString(),
   );
-  message.retry({ delaySeconds });
   console.warn(
     JSON.stringify({
       event: "knowledge_catalog_queue_source_retry",
-      runId: body.runId,
+      runId: job.runId,
       jobId: job.id,
-      targetId: body.target?.id || null,
+      targetId: payload.target?.id || null,
       sourceAttempts,
       delaySeconds,
       message: result.verification.message || "",
     }),
   );
-  return true;
+  return { result: { status: "retrying" }, retryDelaySeconds: delaySeconds };
 }
 
 /**
@@ -129,13 +185,12 @@ async function retrySourceJob(
  */
 async function consumeSourceJob(
   env: KnowledgeCatalogQueueEnv,
-  body: KnowledgeCatalogQueueMessage,
-  message: Message<KnowledgeCatalogQueueMessage>,
+  payload: KnowledgeCatalogJobPayload,
   job: KnowledgeCatalogVerificationJob,
   buildVerifier: VerifierFactory,
-) {
+): Promise<ProcessedKnowledgeCatalogJob> {
   const now = new Date();
-  const hostname = body.hostname || job.hostname;
+  const hostname = job.hostname;
   const acquired = await acquireKnowledgeCatalogVerificationDomainLease(
     env.DB,
     hostname,
@@ -153,8 +208,10 @@ async function consumeSourceJob(
       `domain_busy:${hostname}`,
       now.toISOString(),
     );
-    message.retry({ delaySeconds });
-    return { status: "retrying", reason: "domain_busy", hostname };
+    return {
+      result: { status: "retrying", reason: "domain_busy", hostname },
+      retryDelaySeconds: delaySeconds,
+    };
   }
 
   try {
@@ -166,14 +223,20 @@ async function consumeSourceJob(
     job.sourceAttempts = sourceAttempts;
     const verifier = buildVerifier(env);
     let result: VerificationTargetResult;
-    if (body.jobType === "product_recheck") {
-      if (!isDueProduct(body.target)) throw new Error("invalid_product_recheck_target");
-      result = await verifyProductRecheckTarget(env.DB, body.target, verifier, now.toISOString());
+    if (job.jobType === "product_recheck") {
+      if (!isDueProduct(payload.target)) throw new Error("invalid_product_recheck_target");
+      result = await verifyProductRecheckTarget(
+        env.DB,
+        payload.target,
+        verifier,
+        now.toISOString(),
+      );
     } else {
-      if (!isPendingCandidate(body.target)) throw new Error("invalid_candidate_target");
-      result = await verifyCandidateTarget(env.DB, body.target, verifier, now.toISOString());
+      if (!isPendingCandidate(payload.target)) throw new Error("invalid_candidate_target");
+      result = await verifyCandidateTarget(env.DB, payload.target, verifier, now.toISOString());
     }
-    if (await retrySourceJob(env, body, message, job, result)) return { status: "retrying" };
+    const retry = await retrySourceJob(env, payload, job, result);
+    if (retry) return retry;
 
     const finishedAt = new Date().toISOString();
     await completeKnowledgeCatalogVerificationJob(
@@ -187,35 +250,119 @@ async function consumeSourceJob(
       },
       finishedAt,
     );
-    message.ack();
     console.log(
       JSON.stringify({
         event: "knowledge_catalog_queue_job_completed",
-        runId: body.runId,
+        runId: job.runId,
         jobId: job.id,
-        jobType: body.jobType,
-        targetId: body.target?.id || null,
-        manufacturerId: body.target?.manufacturerId || "",
+        jobType: job.jobType,
+        targetId: payload.target?.id || null,
+        manufacturerId: payload.target?.manufacturerId || "",
         outcome: result.outcome,
         sourceAttempts,
       }),
     );
-    return { status: "completed", outcome: result.outcome };
+    return { result: { status: "completed", outcome: result.outcome } };
   } finally {
-    await releaseKnowledgeCatalogVerificationDomainLease(env.DB, hostname, job.id);
+    await releaseKnowledgeCatalogVerificationDomainLease(
+      env.DB,
+      hostname,
+      job.id,
+      new Date().toISOString(),
+      sourceRequestDelayMs(env),
+    );
   }
 }
 
-export async function consumeKnowledgeCatalogVerificationMessage(
+async function processClaimedKnowledgeCatalogVerificationJob(
+  env: KnowledgeCatalogQueueEnv,
+  job: KnowledgeCatalogVerificationJob,
+  buildVerifier: VerifierFactory,
+  payloadOverride?: KnowledgeCatalogJobPayload,
+): Promise<ProcessedKnowledgeCatalogJob> {
+  let payload: KnowledgeCatalogJobPayload = payloadOverride ?? {
+    mode: "daily_candidates",
+    preferRetries: false,
+    verifierVersion: 0,
+  };
+
+  try {
+    payload = payloadOverride ?? persistedJobPayload(job);
+    if (job.jobType === "finalize") {
+      const finalized = await finalizeKnowledgeCatalogVerificationRun(env, payload, job);
+      if ("delaySeconds" in finalized && Number(finalized.delaySeconds || 0) > 0) {
+        const { delaySeconds, ...result } = finalized;
+        return { result, retryDelaySeconds: Number(delaySeconds) };
+      }
+      return { result: finalized };
+    }
+    return await consumeSourceJob(env, payload, job, buildVerifier);
+  } catch (error) {
+    const maxAttempts = transientMaxAttempts(env);
+    const delaySeconds = knowledgeCatalogRetryDelaySeconds(
+      Math.min(job.deliveryAttempts, maxAttempts),
+    );
+    if (job.deliveryAttempts < maxAttempts * DELIVERY_ATTEMPT_MULTIPLIER) {
+      const retryAt = new Date();
+      await retryKnowledgeCatalogVerificationJob(
+        env.DB,
+        job.id,
+        addSeconds(retryAt, delaySeconds),
+        `consumer_error:${errorMessage(error)}`,
+        retryAt.toISOString(),
+      );
+      console.error(
+        JSON.stringify({
+          event: "knowledge_catalog_queue_consumer_retry",
+          runId: job.runId,
+          jobId: job.id,
+          delaySeconds,
+          message: errorMessage(error),
+        }),
+      );
+      return {
+        result: { status: "retrying", reason: "consumer_error" },
+        retryDelaySeconds: delaySeconds,
+      };
+    }
+
+    const finishedAt = new Date().toISOString();
+    await deadLetterKnowledgeCatalogVerificationJob(
+      env.DB,
+      job.id,
+      `consumer_error_exhausted:${errorMessage(error)}`,
+      finishedAt,
+    );
+    // A target job that dies is one missing result; a finalizer that dies leaves the run running.
+    if (job.jobType === "finalize") {
+      await finishKnowledgeCatalogReviewRunFailure(
+        env.DB,
+        job.runId,
+        finishedAt,
+        errorMessage(error),
+      );
+      if (Number(payload.verifierVersion || 0) > 0) {
+        await finishKnowledgeCatalogVerifierVersionFailure(
+          env.DB,
+          Number(payload.verifierVersion),
+          finishedAt,
+          errorMessage(error),
+        );
+      }
+    }
+    return { result: { status: "dead_letter", reason: "consumer_error_exhausted" } };
+  }
+}
+
+async function consumeLegacyKnowledgeCatalogJobMessage(
   env: KnowledgeCatalogQueueEnv,
   message: Message<KnowledgeCatalogQueueMessage>,
-  { createVerifier: buildVerifier = createVerifier }: ConsumeOptions = {},
+  body: LegacyKnowledgeCatalogJobMessage,
+  buildVerifier: VerifierFactory,
 ) {
-  const body = message.body;
   const jobId = Number(body.jobId || 0);
   const runId = Number(body.runId || 0);
   if (!jobId || !runId || !JOB_TYPES.includes(body.jobType)) {
-    // Nothing can route this; retrying would redeliver it until the queue gave up.
     console.error(JSON.stringify({ event: "knowledge_catalog_queue_invalid_message", body }));
     message.ack();
     return { status: "ignored", reason: "invalid_message" };
@@ -234,8 +381,6 @@ export async function consumeKnowledgeCatalogVerificationMessage(
       message.ack();
       return { status: "ignored", reason: "job_terminal_or_missing" };
     }
-    // Redelivery can race a valid D1 lease after a Worker interruption. ACK would delete
-    // the only Queue message and strand the row in `processing` forever.
     const delaySeconds = unclaimableRetryDelaySeconds(env, current, now);
     message.retry({ delaySeconds });
     return {
@@ -245,60 +390,141 @@ export async function consumeKnowledgeCatalogVerificationMessage(
     };
   }
 
-  try {
-    if (body.jobType === "finalize") {
-      return await finalizeKnowledgeCatalogVerificationRun(env, body, message, job);
-    }
-    return await consumeSourceJob(env, body, message, job, buildVerifier);
-  } catch (error) {
-    const maxAttempts = transientMaxAttempts(env);
-    const delaySeconds = knowledgeCatalogRetryDelaySeconds(
-      Math.min(job.deliveryAttempts, maxAttempts),
+  const processed = await processClaimedKnowledgeCatalogVerificationJob(
+    env,
+    job,
+    buildVerifier,
+    legacyJobPayload(body),
+  );
+  if (processed.retryDelaySeconds) {
+    message.retry({ delaySeconds: processed.retryDelaySeconds });
+  } else {
+    message.ack();
+  }
+  return processed.result;
+}
+
+async function consumeKnowledgeCatalogRunWakeMessage(
+  env: KnowledgeCatalogQueueEnv,
+  message: Message<KnowledgeCatalogQueueMessage>,
+  runId: number,
+  buildVerifier: VerifierFactory,
+) {
+  if (!runId) {
+    console.error(
+      JSON.stringify({ event: "knowledge_catalog_queue_invalid_message", body: message.body }),
     );
-    if (job.deliveryAttempts < maxAttempts * DELIVERY_ATTEMPT_MULTIPLIER) {
-      const retryAt = new Date();
-      await retryKnowledgeCatalogVerificationJob(
+    message.ack();
+    return { status: "ignored", reason: "invalid_message" };
+  }
+
+  const startedAt = Date.now();
+  const maxJobs = wakeMaxJobs(env);
+  const wallBudgetMs = wakeWallBudgetMs(env);
+  let processedJobs = 0;
+  const outcomes: Record<string, number> = {};
+  let state: Awaited<ReturnType<typeof knowledgeCatalogVerificationRunWakeState>> | null = null;
+
+  while (
+    processedJobs < maxJobs &&
+    (processedJobs === 0 || Date.now() - startedAt < wallBudgetMs)
+  ) {
+    const claimedAt = new Date().toISOString();
+    const job = await claimNextKnowledgeCatalogVerificationJobForRun(
+      env.DB,
+      runId,
+      claimedAt,
+      jobLeaseSeconds(env),
+    );
+    if (!job) {
+      const observedAt = new Date();
+      state = await knowledgeCatalogVerificationRunWakeState(
         env.DB,
-        job.id,
-        addSeconds(retryAt, delaySeconds),
-        `consumer_error:${errorMessage(error)}`,
-        retryAt.toISOString(),
+        runId,
+        observedAt.toISOString(),
       );
-      message.retry({ delaySeconds });
+      const nextAt = Date.parse(state.nextAvailableAt || "");
+      const waitMs = Number.isFinite(nextAt) ? Math.max(0, nextAt - observedAt.getTime()) : 0;
+      const remainingWallMs = wallBudgetMs - (Date.now() - startedAt);
+      if (
+        state.outstandingJobs > 0 &&
+        waitMs > 0 &&
+        waitMs < remainingWallMs &&
+        processedJobs < maxJobs
+      ) {
+        // A sub-second persistent domain cooldown should not cost another Queue write. Waiting here
+        // keeps the old per-domain request spacing while one wake still drains multiple jobs.
+        await wait(waitMs);
+        state = null;
+        continue;
+      }
+      break;
+    }
+    state = null;
+    const processed = await processClaimedKnowledgeCatalogVerificationJob(env, job, buildVerifier);
+    processedJobs += 1;
+    const status = String(processed.result.status || "unknown");
+    outcomes[status] = (outcomes[status] || 0) + 1;
+  }
+
+  const now = new Date();
+  state ??= await knowledgeCatalogVerificationRunWakeState(env.DB, runId, now.toISOString());
+  let nextDelaySeconds: number | null = null;
+  if (state.outstandingJobs > 0) {
+    const nextAt = Date.parse(state.nextAvailableAt || "");
+    nextDelaySeconds = Number.isFinite(nextAt)
+      ? Math.max(1, Math.ceil((nextAt - now.getTime()) / 1000))
+      : 1;
+    try {
+      await env.KNOWLEDGE_CATALOG_QUEUE.send(
+        { kind: "knowledge_catalog_run_wakeup", runId },
+        { delaySeconds: nextDelaySeconds },
+      );
+    } catch (error) {
       console.error(
         JSON.stringify({
-          event: "knowledge_catalog_queue_consumer_retry",
+          event: "knowledge_catalog_run_wakeup_enqueue_failed",
           runId,
-          jobId,
-          delaySeconds,
+          processedJobs,
+          outstandingJobs: state.outstandingJobs,
           message: errorMessage(error),
         }),
       );
-      return { status: "retrying", reason: "consumer_error" };
+      // Every completed job is terminal in D1, so redelivery safely resumes at the next one.
+      message.retry();
+      return { status: "retrying", reason: "next_wakeup_enqueue_failed" };
     }
-
-    const finishedAt = new Date().toISOString();
-    await deadLetterKnowledgeCatalogVerificationJob(
-      env.DB,
-      job.id,
-      `consumer_error_exhausted:${errorMessage(error)}`,
-      finishedAt,
-    );
-    // A target job that dies is one missing result; a finalizer that dies leaves the run running.
-    if (body.jobType === "finalize") {
-      await finishKnowledgeCatalogReviewRunFailure(env.DB, runId, finishedAt, errorMessage(error));
-      if (Number(body.verifierVersion || 0) > 0) {
-        await finishKnowledgeCatalogVerifierVersionFailure(
-          env.DB,
-          Number(body.verifierVersion),
-          finishedAt,
-          errorMessage(error),
-        );
-      }
-    }
-    message.ack();
-    return { status: "dead_letter", reason: "consumer_error_exhausted" };
   }
+
+  message.ack();
+  const result = {
+    status: state.outstandingJobs > 0 ? "continued" : "settled",
+    runId,
+    processedJobs,
+    outstandingJobs: state.outstandingJobs,
+    nextDelaySeconds,
+    elapsedMs: Date.now() - startedAt,
+    outcomes,
+  };
+  console.log(JSON.stringify({ event: "knowledge_catalog_run_wakeup_processed", ...result }));
+  return result;
+}
+
+export async function consumeKnowledgeCatalogVerificationMessage(
+  env: KnowledgeCatalogQueueEnv,
+  message: Message<KnowledgeCatalogQueueMessage>,
+  { createVerifier: buildVerifier = createVerifier }: ConsumeOptions = {},
+) {
+  const body = message.body;
+  if (isLegacyJobMessage(body)) {
+    return consumeLegacyKnowledgeCatalogJobMessage(env, message, body, buildVerifier);
+  }
+  return consumeKnowledgeCatalogRunWakeMessage(
+    env,
+    message,
+    Number(body.runId || 0),
+    buildVerifier,
+  );
 }
 
 export async function consumeKnowledgeCatalogVerificationBatch(
@@ -312,11 +538,91 @@ export async function consumeKnowledgeCatalogVerificationBatch(
   }
 }
 
+interface DeadLetteredRunWakeRecovery {
+  action: "stale" | "settled" | "rewoken" | "recovery_enqueue_failed";
+  runStatus: string | null;
+  outstandingJobs: number;
+  nextDelaySeconds: number | null;
+}
+
+/**
+ * A run wake-up contains no unique work; D1 owns every target and the finalizer.
+ *
+ * An at-least-once duplicate can exhaust delivery after another copy has already progressed or
+ * completed the run. Failing durable rows from that stale Queue message would let an obsolete
+ * delivery overwrite live work. Instead, terminal runs are ignored and a still-running run with
+ * outstanding work gets a fresh wake-up. If that recovery enqueue also fails, the durable rows are
+ * intentionally left intact for the scheduled stranded-run watchdog rather than being destroyed.
+ */
+async function recoverDeadLetteredKnowledgeCatalogRunWake(
+  env: KnowledgeCatalogQueueEnv,
+  runId: number,
+  observedAt: Date,
+): Promise<DeadLetteredRunWakeRecovery> {
+  const runStatus = await knowledgeCatalogReviewRunStatus(env.DB, runId);
+  if (runStatus !== "running") {
+    return {
+      action: "stale",
+      runStatus,
+      outstandingJobs: 0,
+      nextDelaySeconds: null,
+    };
+  }
+
+  const state = await knowledgeCatalogVerificationRunWakeState(
+    env.DB,
+    runId,
+    observedAt.toISOString(),
+  );
+  if (state.outstandingJobs <= 0) {
+    return {
+      action: "settled",
+      runStatus,
+      outstandingJobs: 0,
+      nextDelaySeconds: null,
+    };
+  }
+
+  const nextAt = Date.parse(state.nextAvailableAt || "");
+  const nextDelaySeconds = Number.isFinite(nextAt)
+    ? Math.max(1, Math.ceil((nextAt - observedAt.getTime()) / 1000))
+    : 1;
+  try {
+    await env.KNOWLEDGE_CATALOG_QUEUE.send(
+      { kind: "knowledge_catalog_run_wakeup", runId },
+      { delaySeconds: nextDelaySeconds },
+    );
+    return {
+      action: "rewoken",
+      runStatus,
+      outstandingJobs: state.outstandingJobs,
+      nextDelaySeconds,
+    };
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: "knowledge_catalog_run_wakeup_dlq_recovery_enqueue_failed",
+        runId,
+        outstandingJobs: state.outstandingJobs,
+        nextDelaySeconds,
+        message: errorMessage(error),
+      }),
+    );
+    return {
+      action: "recovery_enqueue_failed",
+      runStatus,
+      outstandingJobs: state.outstandingJobs,
+      nextDelaySeconds,
+    };
+  }
+}
+
 /**
  * Last stop for messages Cloudflare gave up redelivering.
  *
- * The job row is closed so the finalizer stops waiting on it, and a dead finalizer fails its run
- * so a rollout is never left reporting itself as still running.
+ * Legacy messages own one durable job, so their job row is closed and a dead legacy finalizer
+ * fails its run. A run-level wake-up owns no durable work and is therefore only recovered or
+ * treated as stale; it must never fail rows that another delivery may already be processing.
  */
 export async function consumeKnowledgeCatalogVerificationDeadLetterBatch(
   env: KnowledgeCatalogQueueEnv,
@@ -324,9 +630,30 @@ export async function consumeKnowledgeCatalogVerificationDeadLetterBatch(
 ): Promise<void> {
   for (const message of batch.messages) {
     const body = message.body;
-    const jobId = Number(body.jobId || 0);
     const runId = Number(body.runId || 0);
+    if (!isLegacyJobMessage(body)) {
+      const recovery = runId
+        ? await recoverDeadLetteredKnowledgeCatalogRunWake(env, runId, new Date())
+        : {
+            action: "stale" as const,
+            runStatus: null,
+            outstandingJobs: 0,
+            nextDelaySeconds: null,
+          };
+      console.error(
+        JSON.stringify({
+          event: "knowledge_catalog_queue_dead_letter",
+          kind: body.kind,
+          runId: runId || null,
+          ...recovery,
+        }),
+      );
+      message.ack();
+      continue;
+    }
+
     const finishedAt = new Date().toISOString();
+    const jobId = Number(body.jobId || 0);
     if (jobId) {
       await deadLetterKnowledgeCatalogVerificationJob(
         env.DB,

@@ -363,9 +363,9 @@ export async function finishKnowledgeCatalogReviewRunSuccess(
   db: QueryableDatabase,
   runId: number,
   result: ReviewRunSuccessResult,
-): Promise<void> {
+): Promise<boolean> {
   const outcomes = result.verificationOutcomes || {};
-  await db
+  const update = await db
     .prepare(`
     UPDATE knowledge_catalog_review_runs
     SET finished_at = ?, status = 'success', catalog_products = ?, due_products = ?, candidates = ?,
@@ -374,7 +374,7 @@ export async function finishKnowledgeCatalogReviewRunSuccess(
         active_products_before = ?, active_products_after = ?, unclassified_before = ?, unclassified_after = ?,
         other_before = ?, other_after = ?, verification_verified = ?, verification_not_found = ?,
         verification_ambiguous = ?, verification_unsupported = ?, verification_error = ?, message = ?
-    WHERE id = ?
+    WHERE id = ? AND status = 'running'
   `)
     .bind(
       result.finishedAt,
@@ -403,6 +403,18 @@ export async function finishKnowledgeCatalogReviewRunSuccess(
       runId,
     )
     .run();
+  return Number(update?.meta?.changes || 0) > 0;
+}
+
+export async function knowledgeCatalogReviewRunStatus(
+  db: QueryableDatabase,
+  runId: number,
+): Promise<string | null> {
+  const row = await db
+    .prepare("SELECT status FROM knowledge_catalog_review_runs WHERE id = ?")
+    .bind(runId)
+    .first<{ status?: string | null }>();
+  return row?.status || null;
 }
 
 export async function finishKnowledgeCatalogReviewRunFailure(
@@ -415,7 +427,7 @@ export async function finishKnowledgeCatalogReviewRunFailure(
     .prepare(`
     UPDATE knowledge_catalog_review_runs
     SET finished_at = ?, status = 'failed', message = ?
-    WHERE id = ?
+    WHERE id = ? AND status = 'running'
   `)
     .bind(finishedAt, String(message || "").slice(0, 1000), runId)
     .run();
