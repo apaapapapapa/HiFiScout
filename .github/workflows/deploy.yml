@@ -298,8 +298,24 @@ jobs:
 
             diagnostic_ray="$(awk 'BEGIN { IGNORECASE=1 } /^cf-ray:/ { sub(/^[^:]+:[[:space:]]*/, ""); sub(/\r$/, ""); ray=$0 } END { print ray }' "$diagnostic_headers")"
             quota_message="D1_ERROR: Your account has exceeded D1's free tier daily row read limit."
+            matching_tail_event_count=0
 
-            if [[ -n "$diagnostic_ray" ]] && jq -se \
+            if [[ -n "$diagnostic_ray" ]]; then
+              set +e
+              matching_tail_event_count="$(jq -se \
+                --arg ray "$diagnostic_ray" \
+                '[.[] | select((.event.request.headers["cf-ray"] // "") == $ray)] | length' \
+                "$tail_log")"
+              tail_match_status=$?
+              set -e
+              if (( tail_match_status != 0 )); then
+                # An unparsable tail is not equivalent to an empty tail. Keep fail-closed rather
+                # than allowing an independent account-level quota to mask an unknown Worker error.
+                matching_tail_event_count=-1
+              fi
+            fi
+
+            if (( matching_tail_event_count > 0 )) && jq -se \
               --arg ray "$diagnostic_ray" \
               --arg quota "$quota_message" \
               '[.[]
@@ -311,26 +327,28 @@ jobs:
             fi
 
             # Tail delivery itself is best-effort and can produce no event even for the request just
-            # replayed. In that case, prove the account-wide D1 gate directly. The feed is D1-backed,
-            # so an exact 7500 row-read quota response means the smoke cannot be meaningfully judged.
-            quota_probe="$(mktemp)"
-            set +e
-            vp exec wrangler d1 execute DB --remote --command 'SELECT 1;' >"$quota_probe" 2>&1
-            quota_probe_status=$?
-            set -e
-            if (( quota_probe_status != 0 )) && \
-              grep -Fq 'code: 7500' "$quota_probe" && \
-              grep -Fq "exceeded D1's free tier daily row read limit" "$quota_probe"; then
+            # replayed. Only when zero events match that request may the account-wide D1 gate stand in
+            # for request correlation. A correlated non-quota exception must continue to fail closed.
+            if (( matching_tail_event_count == 0 )); then
+              quota_probe="$(mktemp)"
+              set +e
+              vp exec wrangler d1 execute DB --remote --command 'SELECT 1;' >"$quota_probe" 2>&1
+              quota_probe_status=$?
+              set -e
+              if (( quota_probe_status != 0 )) && \
+                grep -Fq 'code: 7500' "$quota_probe" && \
+                grep -Fq "exceeded D1's free tier daily row read limit" "$quota_probe"; then
+                rm -f "$quota_probe"
+                defer_for_d1_quota "Worker tail delivered no event matching the diagnostic CF-Ray, but an independent minimal D1 remote query confirmed the exact account-wide row-read quota exhaustion signature (7500)."
+              fi
               rm -f "$quota_probe"
-              defer_for_d1_quota "Worker tail did not deliver a correlatable event, but an independent minimal D1 remote query confirmed the exact account-wide row-read quota exhaustion signature (7500)."
             fi
-            rm -f "$quota_probe"
 
             echo "Production Atom feed returned HTTP ${feed_status}:" >&2
             cat "$feed_body" >&2
             echo "Diagnostic replay returned HTTP ${diagnostic_status}; CF-Ray=${diagnostic_ray:-missing}." >&2
             cat "$diagnostic_body" >&2
-            echo "Worker tail did not correlate this request to the D1 daily row-read quota signature:" >&2
+            echo "Worker tail did not prove that this request was caused by the D1 daily row-read quota signature (matching events: ${matching_tail_event_count}):" >&2
             cat "$tail_log" >&2
             exit 1
           fi
