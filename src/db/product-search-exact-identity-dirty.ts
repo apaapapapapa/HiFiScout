@@ -8,9 +8,10 @@
  * the size of the change set.
  *
  * The dirty unit is the identity, which is what makes a group check here cheap enough to be worth
- * doing often: with the identity fixed, both "do the categories agree?" and "is the group split
- * across entities?" become one indexed lookup of that group's members, with no correlated subquery
- * and no self-join.
+ * doing often: with the identity fixed, deriving the grouping the group *should* have becomes one
+ * indexed lookup of its members, with no correlated subquery and no self-join. That also lets this
+ * check be the stronger one -- the scan can only find groups that need merging, while a recorded
+ * change just as often means a group needs taking apart. See {@link needsResync}.
  *
  * Claim semantics are built for a Worker that can be killed at any point:
  *
@@ -47,7 +48,7 @@ interface IdentityMemberRow {
   shop_key: string;
   source_id: string;
   primary_category_id: string | null;
-  entity_id: number | null;
+  entity_key: string | null;
 }
 
 export interface ExactIdentityDirtyRepairOptions {
@@ -62,7 +63,7 @@ export interface ExactIdentityDirtyRepairOptions {
 
 export interface ExactIdentityDirtyRepairResult {
   claimedIdentities: number;
-  /** Claimed identities that were genuinely split and were resynced. */
+  /** Claimed identities whose membership disagreed with the derived grouping and were resynced. */
   repairedIdentities: number;
   /** Claimed identities that turned out to need no work -- the common case. */
   cleanIdentities: number;
@@ -150,9 +151,10 @@ async function identityMembers(
 ): Promise<IdentityMemberRow[]> {
   const result = await db
     .prepare(`
-      SELECT p.id, p.shop_key, p.source_id, p.primary_category_id, o.entity_id
+      SELECT p.id, p.shop_key, p.source_id, p.primary_category_id, e.entity_key
       FROM products p
       LEFT JOIN product_search_entity_offers o ON o.listing_product_id = p.id
+      LEFT JOIN product_search_entities e ON e.id = o.entity_id
       WHERE p.canonical_manufacturer_id = ?
         AND p.normalized_model = ?
         AND p.is_active = 1
@@ -172,28 +174,44 @@ async function identityMembers(
 }
 
 /**
- * Whether this identity group is a split that grouping should collapse.
+ * Whether this group's current membership disagrees with the one grouping would derive.
  *
- * Mirrors `EXACT_IDENTITY_SPLIT_COUNT_SQL`: more than one member, their categories not in conflict,
- * and their memberships spread over more than one entity. A member with no membership row at all is
- * a coverage gap, which is the five-minute sweep's phase, not this one.
+ * Asking only "is this group split across entities?" -- the shape of `EXACT_IDENTITY_SPLIT_COUNT_SQL`
+ * and of the scan predicate -- covers merges and nothing else, while several of the transitions the
+ * triggers record need the opposite. Two grouped listings that acquire conflicting specific
+ * categories are no longer groupable but stay consolidated under one entity; a representative that
+ * is deactivated leaves its peers pointing at an entity keyed for a listing that is no longer in the
+ * group. Both are one entity, so a split test calls them clean -- and here that would delete the
+ * only signal that they changed, because neither the coverage phase nor the split scan looks for a
+ * membership that exists and is wrong.
+ *
+ * So compare against what `syncProductSearchEntities` would actually produce. `upsertFallbackOffers`
+ * puts every listing in `l-<own id>` and `upsertExactIdentityGroupOffers` then moves the groupable
+ * ones to `l-<representative>`, so the expected key is fully determined by the group:
+ *
+ *   * categories compatible -> every member belongs to `l-<lowest member id>`
+ *   * categories in conflict -> every member belongs to its own `l-<id>`
+ *
+ * A member with no membership row at all is a coverage gap, which is the five-minute sweep's phase,
+ * so it is not counted as drift here.
  */
-function isSplitGroup(members: readonly IdentityMemberRow[]): boolean {
-  if (members.length < 2) return false;
+function needsResync(members: readonly IdentityMemberRow[]): boolean {
+  if (!members.length) return false;
 
   const specificCategories = new Set(
     members
       .map((member) => member.primary_category_id || "")
       .filter((categoryId) => categoryId && !UNSPECIFIC_CATEGORY_IDS.has(categoryId)),
   );
-  if (specificCategories.size > 1) return false;
+  const groupable = specificCategories.size <= 1;
+  // Members arrive ordered by id, so the representative is the first of them.
+  const representativeId = members[0]?.id;
 
-  const entityIds = new Set(
-    members
-      .map((member) => member.entity_id)
-      .filter((entityId): entityId is number => entityId !== null && entityId !== undefined),
-  );
-  return entityIds.size > 1;
+  return members.some((member) => {
+    if (member.entity_key === null || member.entity_key === undefined) return false;
+    const expected = groupable ? `l-${representativeId}` : `l-${member.id}`;
+    return member.entity_key !== expected;
+  });
 }
 
 /**
@@ -219,7 +237,13 @@ async function clearClaim(
     .run();
 }
 
-async function countBacklogIdentities(db: QueryableDatabase): Promise<number> {
+/**
+ * Identities still waiting to be repaired.
+ *
+ * Exported because the hourly safety-net scan cannot interpret its own result without it: a repair
+ * there means a trigger did not fire only when there was nothing left in the queue to explain it.
+ */
+export async function countDirtyExactIdentityBacklog(db: QueryableDatabase): Promise<number> {
   const row = await firstMeasured<{ backlog: number }>(
     db.prepare("SELECT COUNT(*) AS backlog FROM product_search_exact_identity_dirty"),
   );
@@ -260,11 +284,22 @@ export async function repairDirtyExactIdentities(
         identity.canonical_manufacturer_id,
         identity.normalized_model,
       );
-      if (isSplitGroup(members)) {
-        // One member is enough: entity sync expands a seed to its exact-identity peers itself, and
-        // every member of this group is by definition such a peer.
-        const seed = members[0];
-        if (seed) await syncProductSearchEntities(db, seed.shop_key, [seed.source_id]);
+      if (needsResync(members)) {
+        // Every member is a seed, not just one. Entity sync does expand a seed to its exact-identity
+        // peers, but that expansion applies `categoryCompatible` -- so in exactly the case that
+        // needs the group taken apart, the members that must be separated are not peers any more and
+        // would never be revisited. Seeding them all re-derives each membership directly. Grouped by
+        // shop only because the incremental API is shop/source scoped, and run sequentially so a
+        // repair never becomes a D1 burst.
+        const sourceIdsByShop = new Map<string, string[]>();
+        for (const member of members) {
+          const sourceIds = sourceIdsByShop.get(member.shop_key) || [];
+          sourceIds.push(member.source_id);
+          sourceIdsByShop.set(member.shop_key, sourceIds);
+        }
+        for (const [shopKey, sourceIds] of sourceIdsByShop) {
+          await syncProductSearchEntities(db, shopKey, sourceIds);
+        }
         repairedIdentities += 1;
       } else {
         cleanIdentities += 1;
@@ -291,6 +326,6 @@ export async function repairDirtyExactIdentities(
     cleanIdentities,
     failedIdentities,
     releasedStaleClaims,
-    backlog: countBacklog ? await countBacklogIdentities(db) : null,
+    backlog: countBacklog ? await countDirtyExactIdentityBacklog(db) : null,
   };
 }

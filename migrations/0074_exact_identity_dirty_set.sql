@@ -41,6 +41,33 @@ CREATE TABLE IF NOT EXISTS product_search_exact_identity_dirty (
 CREATE INDEX IF NOT EXISTS idx_exact_identity_dirty_queue
   ON product_search_exact_identity_dirty(claimed_at, marked_at);
 
+-- Seed every identity that exists today.
+--
+-- The triggers only record identities that change from now on, so an empty table would mean the
+-- change-driven pass never looks at the drift already in production. The hourly scan would keep
+-- repairing it, and each of those repairs would be indistinguishable from a trigger that failed to
+-- fire -- which would poison the very measurement that decides whether the scan can be relaxed.
+-- Seeding states the honest starting position: nothing has been verified by the new path yet.
+--
+-- Deliberately broader than the eligibility predicate: no `NOT EXISTS` against resolutions and no
+-- category check, because 0036 established that correlated subqueries per product exceed D1's CPU
+-- budget, and this only needs to be an over-approximation. An identity seeded that turns out to need
+-- nothing is one indexed lookup and is then gone; one missed would be reported as a coverage hole.
+INSERT INTO product_search_exact_identity_dirty(
+  canonical_manufacturer_id, normalized_model, marked_at
+)
+SELECT
+  p.canonical_manufacturer_id,
+  p.normalized_model,
+  strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+FROM products p
+WHERE p.is_active = 1
+  AND p.model_resolution_status = 'resolved'
+  AND COALESCE(p.canonical_manufacturer_id, '') <> ''
+  AND COALESCE(p.normalized_model, '') <> ''
+GROUP BY p.canonical_manufacturer_id, p.normalized_model
+ON CONFLICT(canonical_manufacturer_id, normalized_model) DO NOTHING;
+
 -- The repair resolves one identity to its listings, and this is the index that makes that a bounded
 -- search rather than the scan it replaces.
 --

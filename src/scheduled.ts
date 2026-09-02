@@ -26,7 +26,10 @@ import {
   knowledgeCatalogVerifierState,
 } from "./db/knowledge-catalog-verifier-state-repository.js";
 import { accountReads } from "./db/read-accounting.js";
-import { repairDirtyExactIdentities } from "./db/product-search-exact-identity-dirty.js";
+import {
+  countDirtyExactIdentityBacklog,
+  repairDirtyExactIdentities,
+} from "./db/product-search-exact-identity-dirty.js";
 import { repairActiveListingProjectionGaps } from "./db/product-search-gap-repair.js";
 import { getSyncHealth, logSyncHealth } from "./health.js";
 import {
@@ -442,19 +445,23 @@ export async function repairHourlyExactIdentityGaps(db: QueryableDatabase) {
     phases: "exact-identity",
   });
   // This scan is now a safety net rather than the repair path, so what it finds is the measurement
-  // that decides whether the net can be loosened. The dirty set runs every five minutes, so by the
-  // time this hourly pass runs, a split it still has to repair is one the triggers in migration 0074
-  // did not record -- a coverage hole, not a backlog. Logged under its own event so a run of days at
-  // zero is what justifies dropping this to daily, and a non-zero day names the gap instead of
-  // hiding inside the ordinary repair counter.
+  // that decides whether the net can be loosened -- which only works if a repair here means what the
+  // metric claims it means.
+  //
+  // It does not mean that on its own. The change-driven pass claims a bounded batch, so a genuinely
+  // recorded identity that has not yet reached the front of the queue can be repaired here first,
+  // and that is ordinary backlog rather than a trigger that failed to fire. The two are only
+  // distinguishable against the queue: with nothing outstanding, a repair here is a coverage hole and
+  // nothing else. Reporting them as one number would have counted the drain of the migration's own
+  // seed as hundreds of trigger misses.
   if (result.repairedCount > 0) {
-    console.warn(
-      JSON.stringify({
-        event: "exact_identity_dirty_set_missed",
-        missedListings: result.repairedCount,
-        ...result,
-      }),
-    );
+    const backlog = await countDirtyExactIdentityBacklog(db);
+    const entry = { repairedListings: result.repairedCount, dirtyBacklog: backlog, ...result };
+    if (backlog === 0) {
+      console.warn(JSON.stringify({ event: "exact_identity_dirty_set_missed", ...entry }));
+    } else {
+      console.log(JSON.stringify({ event: "exact_identity_full_scan_drained_backlog", ...entry }));
+    }
   }
   return result;
 }

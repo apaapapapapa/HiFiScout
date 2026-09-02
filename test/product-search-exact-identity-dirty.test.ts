@@ -5,6 +5,7 @@ import { test } from "vite-plus/test";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { queryPlan, readsThroughIndex, recordingDatabase } from "./helpers/query-plan.js";
 import {
+  countDirtyExactIdentityBacklog,
   DIRTY_IDENTITY_LEASE_MS,
   repairDirtyExactIdentities,
 } from "../src/db/product-search-exact-identity-dirty.js";
@@ -107,6 +108,7 @@ function clearDirty(sqlite: DatabaseSync): void {
 
 test("inserting a listing marks its identity dirty", () => {
   const { sqlite } = migratedSqlite();
+  clearDirty(sqlite);
   insertListing(sqlite, { id: 1 });
 
   assert.deepEqual(
@@ -341,5 +343,76 @@ test("the per-identity member lookup reads through the identity index, not the t
   assert.equal(
     readsThroughIndex(queryPlan(sqlite, memberLookup), "p", "idx_products_exact_identity"),
     true,
+  );
+});
+
+test("a group that stops being groupable is taken apart, not left consolidated", async () => {
+  // The scan predicate only finds groups that need merging. A change recorded by the triggers just
+  // as often means the opposite, and consolidated-but-wrong is one entity, so a split test calls it
+  // clean -- and clearing the claim would then delete the only signal that anything moved.
+  const { sqlite, db } = migratedSqlite();
+  insertListing(sqlite, { id: 1, categoryId: "amplifier" });
+  insertListing(sqlite, { id: 2, categoryId: "amplifier" });
+  splitIntoSeparateEntities(sqlite, [1, 2]);
+  await repairDirtyExactIdentities(db);
+
+  const grouped = sqlite
+    .prepare("SELECT DISTINCT entity_id FROM product_search_entity_offers")
+    .all();
+  assert.equal(grouped.length, 1, "precondition: the two listings start out grouped");
+
+  sqlite.prepare("UPDATE products SET primary_category_id = 'speaker' WHERE id = 2").run();
+  const result = await repairDirtyExactIdentities(db);
+
+  assert.equal(result.repairedIdentities, 1, "conflicting categories must break the group up");
+  const separated = sqlite
+    .prepare("SELECT DISTINCT entity_id FROM product_search_entity_offers")
+    .all();
+  assert.equal(separated.length, 2);
+});
+
+test("the migration seeds the identities that already exist", () => {
+  // Without this the change-driven pass would never look at the drift already in production, and
+  // every repair the safety-net scan made would be indistinguishable from a trigger that misfired.
+  const { sqlite } = migratedSqlite();
+  clearDirty(sqlite);
+  insertListing(sqlite, { id: 1 });
+  insertListing(sqlite, { id: 2, normalizedModel: "c10x" });
+
+  // Replaying the seed statement is what the migration does on a database that already has rows.
+  sqlite.exec(`
+    INSERT INTO product_search_exact_identity_dirty(
+      canonical_manufacturer_id, normalized_model, marked_at
+    )
+    SELECT p.canonical_manufacturer_id, p.normalized_model,
+           strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    FROM products p
+    WHERE p.is_active = 1
+      AND p.model_resolution_status = 'resolved'
+      AND COALESCE(p.canonical_manufacturer_id, '') <> ''
+      AND COALESCE(p.normalized_model, '') <> ''
+    GROUP BY p.canonical_manufacturer_id, p.normalized_model
+    ON CONFLICT(canonical_manufacturer_id, normalized_model) DO NOTHING
+  `);
+
+  assert.deepEqual(
+    dirtyRows(sqlite).map((row) => row.key),
+    ["luxman|c10", "luxman|c10x"],
+  );
+});
+
+test("the backlog count is what separates a trigger miss from ordinary queue depth", async () => {
+  const { sqlite, db } = migratedSqlite();
+  clearDirty(sqlite);
+  assert.equal(await countDirtyExactIdentityBacklog(db), 0);
+
+  insertListing(sqlite, { id: 1 });
+  assert.equal(await countDirtyExactIdentityBacklog(db), 1);
+
+  await repairDirtyExactIdentities(db);
+  assert.equal(
+    await countDirtyExactIdentityBacklog(db),
+    0,
+    "a drained queue makes a scan repair unambiguous",
   );
 });
