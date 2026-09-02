@@ -233,12 +233,26 @@ async function settled<T>(operation: () => Promise<T>): Promise<PromiseSettledRe
 async function runDailyMaintenance(env: Env) {
   // Awaited one at a time rather than through `Promise.allSettled` on three already-running
   // promises. These are the heaviest statements the system issues — a retention drain, the
-  // unbounded gap count, a verification dispatch — and starting them together made the daily slot
-  // the single largest concurrent load on the one D1 instance. The semantics are unchanged: all
-  // three are still attempted, and the first failure is still the one rethrown.
+  // a verification dispatch — and starting them together made the daily slot the single largest
+  // concurrent load on the one D1 instance. The semantics are unchanged: all three are still
+  // attempted, and the first failure is still the one rethrown.
   const retention = await settled(() => runRetentionCleanup(env));
   const projectionRepair = await settled(() =>
-    repairActiveListingProjectionGaps(env.DB, { countRemainingGaps: true }),
+    repairActiveListingProjectionGaps(env.DB, {
+      // No outstanding-gap count. It is the one unbounded statement in the repair -- an aggregate
+      // over every active listing through correlated subqueries, most of that cost in the
+      // exact-identity family -- and nothing consumed the number: this function returns it, and
+      // `runGeneralCronMaintenance` discards what a task returns, so it was never logged, alerted
+      // on, or compared. The authoritative count still exists where it is actually read, on demand,
+      // in `scripts/repair-product-search-gaps.ts`; per-invariant drift is reported continuously by
+      // `GET /api/admin/product-search/consistency`, which the deploy pipeline already fails on.
+      countRemainingGaps: false,
+      // Stated rather than inherited. `continueOnRefreshError` defaults to `!countRemainingGaps`,
+      // so dropping the count would otherwise have silently turned the daily pass from fail-fast
+      // into the resilient per-listing mode the five-minute sweep uses. The daily pass is the
+      // strict one, and that is not what this change is about.
+      continueOnRefreshError: false,
+    }),
   );
   const catalog = await settled(() => dispatchKnowledgeCatalogDailyVerification(env));
   if (retention.status === "rejected") {

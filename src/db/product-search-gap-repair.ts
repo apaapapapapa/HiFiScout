@@ -54,6 +54,11 @@ export interface ProductSearchGapRepairOptions {
    * active listing through correlated subqueries, and its cost grows with the catalog while the
    * repair itself stays bounded to `maxListings`. Callers that only need to know whether they
    * repaired anything already have {@link ProductSearchGapRepairResult.repairedCount}.
+   *
+   * Ask for it only where the number is read. That is `scripts/repair-product-search-gaps.ts`,
+   * which exits non-zero on a remaining gap, and is the operator's authoritative on-demand count.
+   * The scheduled callers do not: continuous per-invariant drift is what
+   * `GET /api/admin/product-search/consistency` reports, and the deploy pipeline fails on it.
    */
   countRemainingGaps?: boolean;
 }
