@@ -57,6 +57,16 @@ An entity exists only while it holds at least one active offer, which is what re
 
 `GET /api/admin/product-search/consistency` reports drift per invariant: active listings with no membership, memberships pointing at inactive listings, entities with no offers, fallback entities whose listing is now matched, catalog entities whose product is no longer eligible, stale offer-count aggregates, and FTS index integrity. The deploy pipeline fails on any of them rather than leaving a product quietly unsearchable.
 
+### Repairing exact-identity splits
+
+Listings that share an exact pre-catalog identity belong in one fallback entity. Detecting when they are not — a split — is a question no index can answer as a listing predicate, because `exactIdentitySplitMembershipPredicateSql` joins `products` to itself on identity. Asking it across the active catalog therefore costs the size of the catalog whether or not anything drifted, which is what made it the dominant scheduled D1 reader.
+
+Repair is driven by change instead. The triggers in migration 0074 record the **identity**, not the listing, in `product_search_exact_identity_dirty`. The identity is the right unit for three reasons: peers need no discovery because every member of a group shares it; a listing that leaves an identity marks the one it left as well as the one it joined, so the peers it stranded are still covered; and repeated writes to one identity collapse onto one row, so a busy crawl cannot inflate the backlog beyond the identities it actually touched. None of that requires the self-join the scan exists to perform.
+
+`repairDirtyExactIdentities` claims a bounded batch in `marked_at` order and, with the identity fixed, resolves the group through `idx_products_exact_identity` — an indexed search rather than a scan. Only a group that is genuinely split pays for a `syncProductSearchEntities` replay. `claimed_at` doubles as the claim token: re-marking clears it, so an identity changed mid-repair survives the clearing delete, and a claim abandoned by a killed isolate is released once it outlives its lease.
+
+The full scan remains as a correctness safety net on its hourly cadence. Because the change-driven pass runs every five minutes, anything the scan still repairs is a hole in trigger coverage rather than a backlog, and is logged as `exact_identity_dirty_set_missed`. Sustained zeroes are what would justify relaxing the safety net's cadence; the scan is not removed on the strength of the design alone.
+
 ### Search projection
 
 `product_search_projection` decouples listing search vocabulary from the physical shape of `products` and feeds the seller evidence folded into each entity's search terms. Its FTS5 external-content table is `product_search_fts` with the trigram tokenizer.

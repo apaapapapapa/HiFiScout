@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
-import { accountReads } from "../src/db/read-accounting.js";
+import { accountReads, firstMeasured } from "../src/db/read-accounting.js";
 import { asQueryableDatabase } from "./helpers/d1.js";
 
 interface Recorded {
@@ -10,12 +10,15 @@ interface Recorded {
 }
 
 /** A database that reports the row counts D1 reports, so the wrapper has something to add up. */
-function meteredDatabase(rowsPerStatement: Record<string, { read: number; written: number }>) {
+function meteredDatabase(
+  rowsPerStatement: Record<string, { read: number; written: number }>,
+  rows: unknown[] = [],
+) {
   const statements: Recorded[] = [];
   const build = (sql: string, binds: unknown[]) => {
     const usage = rowsPerStatement[sql] ?? { read: 0, written: 0 };
     const result = {
-      results: [],
+      results: rows,
       meta: { rows_read: usage.read, rows_written: usage.written },
     };
     const statement = {
@@ -97,4 +100,26 @@ test("a first() call is not counted, so a total is a lower bound", async () => {
   // D1 returns no meta for first(); reporting 0 here is honest, inventing a number would not be.
   assert.equal(accounting.rowsRead(), 0);
   assert.equal(accounting.countedStatements(), 0);
+});
+
+test("firstMeasured counts the reads a first() call would have hidden", async () => {
+  // The statements worth measuring are the ones that return one row and read the whole table, so
+  // the un-countable call was covering exactly the wrong half of the budget.
+  const source = meteredDatabase({ "SELECT COUNT(*)": { read: 8000, written: 0 } });
+  const accounting = accountReads(source);
+
+  await firstMeasured(accounting.db.prepare("SELECT COUNT(*)"));
+
+  assert.equal(accounting.rowsRead(), 8000);
+  assert.equal(accounting.countedStatements(), 1);
+});
+
+test("firstMeasured returns the first row, or null over an empty result", async () => {
+  const source = accountReads(
+    meteredDatabase({ "SELECT one": { read: 1, written: 0 } }, [{ gap_count: 3 }]),
+  );
+  const empty = accountReads(meteredDatabase({ "SELECT none": { read: 1, written: 0 } }));
+
+  assert.deepEqual(await firstMeasured(source.db.prepare("SELECT one")), { gap_count: 3 });
+  assert.equal(await firstMeasured(empty.db.prepare("SELECT none")), null);
 });

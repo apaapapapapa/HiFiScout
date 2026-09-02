@@ -26,6 +26,7 @@ import {
   knowledgeCatalogVerifierState,
 } from "./db/knowledge-catalog-verifier-state-repository.js";
 import { accountReads } from "./db/read-accounting.js";
+import { repairDirtyExactIdentities } from "./db/product-search-exact-identity-dirty.js";
 import { repairActiveListingProjectionGaps } from "./db/product-search-gap-repair.js";
 import { getSyncHealth, logSyncHealth } from "./health.js";
 import {
@@ -62,6 +63,17 @@ const KNOWLEDGE_CATALOG_MONTHLY_UTC_MINUTE = 25;
 
 const GENERAL_PROJECTION_REPAIR_BATCH_SIZE = 5;
 const GENERAL_PROJECTION_REPAIR_MAX_LISTINGS = 20;
+
+/**
+ * Identities the five-minute tick claims from the dirty set.
+ *
+ * Higher than the listing budget above because the unit is different and so is the cost: a clean
+ * identity -- the common case, since most changes do not split a group -- is one indexed lookup,
+ * and only the genuinely split ones pay for a resync. A crawl commonly touches more distinct
+ * identities than this in five minutes, so the queue is expected to carry a backlog between ticks;
+ * it drains in `marked_at` order, which is why a busy identity cannot starve a quiet one.
+ */
+const GENERAL_EXACT_IDENTITY_DIRTY_LIMIT = 25;
 
 export function isDailyMaintenanceSlot(scheduledAt: Date): boolean {
   return (
@@ -117,7 +129,19 @@ export async function repairGeneralCronProjectionGaps(db: QueryableDatabase) {
       }),
     );
   }
-  return result;
+
+  // The change-driven half of exact-identity repair rides on this tick rather than taking a slot of
+  // its own in the task table. That is the whole claim being made: with the identity known up front
+  // the check is an indexed lookup of one group, so it is cheap enough to run twelve times an hour,
+  // where the scan it replaces was not cheap enough to run once. Keeping it here also keeps the
+  // per-tick task count -- and the D1 concurrency that count exists to bound -- unchanged.
+  const dirty = await repairDirtyExactIdentities(db, {
+    limit: GENERAL_EXACT_IDENTITY_DIRTY_LIMIT,
+  });
+  if (dirty.claimedIdentities > 0) {
+    console.log(JSON.stringify({ event: "general_exact_identity_dirty_repair", ...dirty }));
+  }
+  return { ...result, dirtyExactIdentities: dirty };
 }
 
 /** `Promise.allSettled`'s per-operation outcome, for work that must not be started in parallel. */
@@ -417,9 +441,19 @@ export async function repairHourlyExactIdentityGaps(db: QueryableDatabase) {
     // let a sustained coverage backlog spend the whole budget and skip the phase this task is for.
     phases: "exact-identity",
   });
+  // This scan is now a safety net rather than the repair path, so what it finds is the measurement
+  // that decides whether the net can be loosened. The dirty set runs every five minutes, so by the
+  // time this hourly pass runs, a split it still has to repair is one the triggers in migration 0074
+  // did not record -- a coverage hole, not a backlog. Logged under its own event so a run of days at
+  // zero is what justifies dropping this to daily, and a non-zero day names the gap instead of
+  // hiding inside the ordinary repair counter.
   if (result.repairedCount > 0) {
-    console.log(
-      JSON.stringify({ event: "hourly_product_search_exact_identity_repair", ...result }),
+    console.warn(
+      JSON.stringify({
+        event: "exact_identity_dirty_set_missed",
+        missedListings: result.repairedCount,
+        ...result,
+      }),
     );
   }
   return result;
