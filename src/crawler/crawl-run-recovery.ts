@@ -4,31 +4,24 @@ import {
   type StalledCrawlRunRow,
 } from "../db/crawl-run-repository.js";
 import { listShopStates, markShopFailure } from "../db/shop-state-repository.js";
-import { readCrawlLifecycle, type CrawlLifecycleRow } from "./crawl-lifecycle.js";
-import { CRAWL_EXECUTION_LEASE_MINUTES } from "./dispatch.js";
+import { readCrawlLifecycle, type CrawlDispatchStateRow } from "./crawl-lifecycle.js";
 import type { QueryableDatabase } from "../db/types.js";
 
 /**
- * Extra wait beyond the execution lease before a run counts as abandoned.
+ * Minimum age before a run with no owning dispatch reservation can be classified as orphaned.
  *
- * The lease already outlives the platform's own invocation limit, so the grace only covers clock
- * skew between the Worker that opened the run and the sweep that closes it.
+ * A valid Phase-7 dispatch is never age-expired here: the scheduler re-delivers the same token to
+ * its Durable Object, which can resume from D1. This window only protects recently released runs
+ * from being classified while their terminal writes are still settling.
  */
-const STALLED_RUN_GRACE_MINUTES = 5;
+const STALLED_RUN_ORPHAN_MINUTES = 25;
 /** One bounded page per sweep; a backlog drains over successive five-minute ticks. */
 const STALLED_RUN_BATCH_SIZE = 20;
 
 const INTERRUPTED_MESSAGE =
-  "crawl run abandoned: no terminal outcome recorded before the execution lease expired";
+  "crawl run abandoned: no terminal outcome recorded after its dispatch reservation was released";
 
-/**
- * The abandonment message, extended with where the run actually stopped.
- *
- * The prefix is unchanged on purpose: it is what operational queries match on, and every historical
- * row carries it. What follows is the durable heartbeat the run wrote as it advanced, which is the
- * difference between "this shop stopped, somewhere" and "this shop stopped in collection, after
- * eleven pages". A run with no heartbeat stopped before its first stage and says so.
- */
+/** The abandonment message, extended with the last durable crawl heartbeat. */
 export function interruptedRunMessage(run: StalledCrawlRunRow): string {
   const parts = [`stage=${run.current_stage || "none"}`, `pagesDone=${run.pages_done || 0}`];
   if (run.last_progress_at) parts.push(`lastProgressAt=${run.last_progress_at}`);
@@ -56,20 +49,18 @@ function timestampMs(value: string | null | undefined): number | null {
 }
 
 /**
- * Whether the abandoned run is still the shop's open question.
+ * Whether an orphaned run is still the shop's open question.
  *
- * This is the stalled signature the incident showed: an attempt with no terminal timestamp after
- * it. If a later crawl already recorded success or failure, that outcome is the current truth and
- * re-reporting this run would inflate the failure count and the backoff derived from it. A shop
- * whose lease is live is likewise left alone — that execution will record its own outcome.
+ * Any valid dispatch reservation means the Durable Object still owns a recoverable generation, so
+ * neither the run nor shop health may be rewritten by this D1 sweep. A later terminal outcome is
+ * authoritative as well.
  */
 export function shouldRecordStalledRunFailure(
-  state: CrawlLifecycleRow | undefined,
+  state: CrawlDispatchStateRow | undefined,
   run: StalledCrawlRunRow,
-  now: Date,
 ): boolean {
   if (!state) return false;
-  if (readCrawlLifecycle(state, now).phase === "executing") return false;
+  if (readCrawlLifecycle(state).phase === "dispatched") return false;
   const startedAtMs = timestampMs(run.started_at);
   if (startedAtMs == null) return false;
   const lastSuccessMs = timestampMs(state.last_success_at);
@@ -81,36 +72,35 @@ export function shouldRecordStalledRunFailure(
 }
 
 /**
- * Closes crawl runs that no consumer can still finish, and makes the interruption visible.
+ * Closes only crawl runs whose Durable Object generation is no longer reserved.
  *
- * Without this, a hard-terminated crawl leaves `crawl_runs` permanently `running` and leaves shop
- * health reporting only an advancing attempt: the shop looks busy rather than broken, which is how
- * a shop went three days without a completed crawl while no failure was ever recorded. Recording
- * the failure also applies the normal backoff, so a shop that keeps timing out stops being retried
- * every rotation tick.
- *
- * The sweep is shop-agnostic by construction: it reads `crawl_runs`, not the shop registry.
+ * A reserved Phase-7 generation is recoverable regardless of age: the scheduler watchdog sends the
+ * same immutable token back to the same DO. Therefore this sweep must never race a live/recoverable
+ * dispatch merely because wall-clock time passed.
  */
 export async function recoverStalledCrawlRuns(
   db: QueryableDatabase,
   {
     now = new Date(),
-    graceMinutes = STALLED_RUN_GRACE_MINUTES,
+    graceMinutes = 0,
     limit = STALLED_RUN_BATCH_SIZE,
   }: RecoverStalledCrawlRunsOptions = {},
 ): Promise<StalledCrawlRunRecovery[]> {
-  const abandonedAfterMinutes = CRAWL_EXECUTION_LEASE_MINUTES + Math.max(0, graceMinutes);
+  const abandonedAfterMinutes = STALLED_RUN_ORPHAN_MINUTES + Math.max(0, graceMinutes);
   const startedBefore = new Date(now.getTime() - abandonedAfterMinutes * 60_000).toISOString();
   const stalled = await listStalledCrawlRuns(db, { startedBefore, limit });
   if (!stalled.length) return [];
 
   const states = new Map(
-    ((await listShopStates(db)) as CrawlLifecycleRow[]).map((row) => [row.shop_key, row]),
+    ((await listShopStates(db)) as CrawlDispatchStateRow[]).map((row) => [row.shop_key, row]),
   );
   const recoveredAt = now.toISOString();
   const recovered: StalledCrawlRunRecovery[] = [];
 
   for (const run of stalled) {
+    const state = states.get(run.shop_key);
+    if (state && readCrawlLifecycle(state).phase === "dispatched") continue;
+
     const message = interruptedRunMessage(run);
     const closed = await finishCrawlRunInterrupted(db, run.id, {
       finishedAt: recoveredAt,
@@ -118,8 +108,7 @@ export async function recoverStalledCrawlRuns(
     });
     if (!closed) continue;
 
-    const state = states.get(run.shop_key);
-    const recordedFailure = shouldRecordStalledRunFailure(state, run, now);
+    const recordedFailure = shouldRecordStalledRunFailure(state, run);
     if (recordedFailure) {
       await markShopFailure(
         db,
