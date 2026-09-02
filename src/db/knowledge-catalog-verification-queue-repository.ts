@@ -432,6 +432,48 @@ export async function knowledgeCatalogVerificationRunStats(
   };
 }
 
+export interface KnowledgeCatalogReviewRunLiveness {
+  /** Jobs the queue can still deliver: queued, processing, or awaiting a retry. */
+  liveJobs: number;
+  /** Every job the run created, the finalizer included. */
+  totalJobs: number;
+  /** The most recent write to any of the run's jobs, or `""` when the run created none. */
+  lastActivityAt: string;
+}
+
+/**
+ * Whether a review run still has work the queue can deliver.
+ *
+ * Unlike {@link knowledgeCatalogVerificationRunStats} this counts the finalizer too, because the
+ * question it answers is whether anything at all can still advance the run. A run whose finalizer
+ * is dead-lettered has no live jobs and can never reach `success` or `failed` on its own.
+ */
+export async function knowledgeCatalogReviewRunLiveness(
+  db: QueryableDatabase,
+  runId: number,
+): Promise<KnowledgeCatalogReviewRunLiveness> {
+  const row = await db
+    .prepare(`
+      SELECT
+        SUM(CASE WHEN status IN ('queued', 'processing', 'retrying') THEN 1 ELSE 0 END) AS live_jobs,
+        COUNT(*) AS total_jobs,
+        MAX(updated_at) AS last_activity_at
+      FROM knowledge_catalog_verification_jobs
+      WHERE run_id = ?
+    `)
+    .bind(runId)
+    .first<{
+      live_jobs: number | null;
+      total_jobs: number | null;
+      last_activity_at: string | null;
+    }>();
+  return {
+    liveJobs: number(row?.live_jobs),
+    totalJobs: number(row?.total_jobs),
+    lastActivityAt: row?.last_activity_at || "",
+  };
+}
+
 export async function knowledgeCatalogVerificationQueueStatus(
   db: QueryableDatabase,
 ): Promise<KnowledgeCatalogVerificationQueueStatus> {
