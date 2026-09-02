@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
-import { dueMaintenanceTasks } from "../src/scheduled.js";
+import { dueMaintenanceTasks, isDailyMaintenanceSlot } from "../src/scheduled.js";
 
 const TICK_MS = 5 * 60 * 1000;
 
@@ -42,6 +42,7 @@ test("every maintenance task still runs within an hour", () => {
       "data_quality_remediation_sweep",
       "knowledge_catalog_queue_quota_recovery",
       "knowledge_catalog_review_bootstrap",
+      "product_search_exact_identity_repair",
       "product_search_projection_repair",
       "resume_interrupted_crawl_runs",
       "stale_knowledge_catalog_export_jobs",
@@ -49,6 +50,18 @@ test("every maintenance task still runs within an hour", () => {
     ],
     "an hour of ticks should cover every task exactly once or more",
   );
+});
+
+test("the daily slot keeps the concurrency it had before the hourly task was added", () => {
+  // The runner appends daily_maintenance to whatever is already due, so a task inserted into the
+  // table can quietly make the heaviest slot of the day heavier still. Offsets are stated per task
+  // rather than taken from array position precisely so that adding one cannot do that.
+  const dailySlot = ticks(288).find((at) => isDailyMaintenanceSlot(at));
+  assert.ok(dailySlot, "the day should contain the daily maintenance slot");
+
+  const concurrent = dueMaintenanceTasks(dailySlot).length + 1;
+
+  assert.equal(concurrent, 4, "three regular tasks plus daily maintenance, as before");
 });
 
 test("tasks sharing a cadence are offset onto different ticks", () => {

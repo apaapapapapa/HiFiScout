@@ -25,6 +25,7 @@ import {
   claimKnowledgeCatalogVerifierVersion,
   knowledgeCatalogVerifierState,
 } from "./db/knowledge-catalog-verifier-state-repository.js";
+import { accountReads } from "./db/read-accounting.js";
 import { repairActiveListingProjectionGaps } from "./db/product-search-gap-repair.js";
 import { getSyncHealth, logSyncHealth } from "./health.js";
 import {
@@ -101,6 +102,9 @@ export async function repairGeneralCronProjectionGaps(db: QueryableDatabase) {
   const result = await repairActiveListingProjectionGaps(db, {
     batchSize: GENERAL_PROJECTION_REPAIR_BATCH_SIZE,
     maxListings: GENERAL_PROJECTION_REPAIR_MAX_LISTINGS,
+    // The exact-identity peer scan is the expensive, lowest-priority phase, and every tick pays for
+    // its selector even when there is nothing to repair. `repairHourlyExactIdentityGaps` owns it.
+    phases: "coverage",
   });
   // The outstanding-gap count is deliberately not requested here: it is the one unbounded query in
   // the repair, and this caller only needs to know whether it did anything. `runDailyMaintenance`
@@ -396,6 +400,32 @@ export async function bootstrapKnowledgeCatalogReview(env: Env, now = new Date()
 }
 
 /**
+ * The exact-identity split-membership phase, on its own hourly cadence.
+ *
+ * Its selector is the only one that joins `products` to itself on identity, so unlike the coverage
+ * and stale-fallback phases it cannot be answered from an index alone: a tick pays for it across
+ * every active listing even when nothing is drifting. The drift it repairs is also the least
+ * user-visible of the three -- two listings for one product sitting in separate search entities --
+ * so paying for it twelve times an hour bought very little and cost the D1 read budget a great
+ * deal. The cheaper phases keep the five-minute cadence they need.
+ */
+export async function repairHourlyExactIdentityGaps(db: QueryableDatabase) {
+  const result = await repairActiveListingProjectionGaps(db, {
+    batchSize: GENERAL_PROJECTION_REPAIR_BATCH_SIZE,
+    maxListings: GENERAL_PROJECTION_REPAIR_MAX_LISTINGS,
+    // Only this phase. The phases share one work budget, so running the cheap ones here too would
+    // let a sustained coverage backlog spend the whole budget and skip the phase this task is for.
+    phases: "exact-identity",
+  });
+  if (result.repairedCount > 0) {
+    console.log(
+      JSON.stringify({ event: "hourly_product_search_exact_identity_repair", ...result }),
+    );
+  }
+  return result;
+}
+
+/**
  * A failed review caused by the free-tier daily Queue write ceiling needs a different cadence from
  * the ordinary one-shot bootstrap. Probe only that condition every ten minutes. On the same UTC
  * day it is a no-op; after the quota day rolls over it delegates to the normal atomic recovery path.
@@ -429,13 +459,16 @@ interface ScheduledWork {
 }
 
 interface MaintenanceTask extends ScheduledWork {
-  /**
-   * General-cron ticks between two runs of this task. `1` is every five minutes.
-   *
-   * Tasks are additionally offset by their position in the table, so two tasks that share a cadence
-   * never land on the same tick.
-   */
+  /** General-cron ticks between two runs of this task. `1` is every five minutes. */
   everyTicks: number;
+  /**
+   * Which tick of its cadence this task lands on, so two tasks sharing a cadence do not stack.
+   *
+   * Stated per task rather than taken from the table's ordering: deriving it from array position
+   * meant inserting one task silently moved every task after it onto a different tick, which is how
+   * a new hourly task pushed the 18:20 UTC daily slot from four concurrent tasks to five.
+   */
+  offset: number;
 }
 
 const GENERAL_CRON_INTERVAL_MS = 5 * 60 * 1000;
@@ -460,6 +493,7 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
     // that finishes crawls.
     name: "resume_interrupted_crawl_runs",
     everyTicks: 2,
+    offset: 0,
     run: (env) => resumeInterruptedCrawlRuns(env.DB),
   },
   {
@@ -468,6 +502,7 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
     // the lease/retry boundary match the expensive projection boundary.
     name: "data_quality_remediation_sweep",
     everyTicks: 2,
+    offset: 1,
     run: (env) => runDataQualityRemediationSweep(env.DB, { claimLimit: 1 }),
   },
   {
@@ -475,7 +510,17 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
     // crawl commits between sweeps, stale fallback search state is repaired by the very next tick.
     name: "product_search_projection_repair",
     everyTicks: 1,
+    offset: 2,
     run: (env) => repairGeneralCronProjectionGaps(env.DB),
+  },
+  {
+    // Split out of the five-minute sweep because its selector is the only one that cannot be
+    // answered from an index, so it was charging the read budget for a full identity self-join
+    // every tick to repair the least user-visible drift of the three.
+    name: "product_search_exact_identity_repair",
+    everyTicks: 12,
+    offset: 0,
+    run: (env) => repairHourlyExactIdentityGaps(env.DB),
   },
   // Both export recoveries treat a job as stuck after two minutes, so they stay near the old
   // cadence: stretching them to an hour would leave a user-visible export sitting for an hour to
@@ -483,11 +528,13 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
   {
     name: "stale_product_audit_export_jobs",
     everyTicks: 2,
+    offset: 3,
     run: (env) => recoverStaleProductAuditExportJobs(env.DB, env.PRODUCT_AUDIT_EXPORT_QUEUE),
   },
   {
     name: "stale_knowledge_catalog_export_jobs",
     everyTicks: 2,
+    offset: 4,
     run: (env) => recoverStaleKnowledgeCatalogExportJobs(env.DB, env.PRODUCT_AUDIT_EXPORT_QUEUE),
   },
   {
@@ -496,6 +543,7 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
     // budget that GENERAL_CRON serialization is intended to enforce.
     name: "knowledge_catalog_queue_quota_recovery",
     everyTicks: 2,
+    offset: 5,
     run: (env) => recoverKnowledgeCatalogQueueQuota(env),
   },
   {
@@ -504,6 +552,7 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
     // the narrow ten-minute task above.
     name: "knowledge_catalog_review_bootstrap",
     everyTicks: 12,
+    offset: 6,
     run: (env) => bootstrapKnowledgeCatalogReview(env),
   },
 ];
@@ -512,12 +561,12 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
  * The tasks due on this tick.
  *
  * The tick number comes from the wall clock rather than a counter so it survives isolate churn, and
- * the `+ index` offset is what spreads same-cadence tasks over different ticks instead of stacking
- * them on the ones divisible by their period.
+ * each task's own offset is what spreads same-cadence tasks over different ticks instead of
+ * stacking them on the ones divisible by their period.
  */
 export function dueMaintenanceTasks(scheduledAt: Date): MaintenanceTask[] {
   const tick = Math.floor(scheduledAt.getTime() / GENERAL_CRON_INTERVAL_MS);
-  return MAINTENANCE_TASKS.filter((task, index) => (tick + index) % task.everyTicks === 0);
+  return MAINTENANCE_TASKS.filter((task) => (tick + task.offset) % task.everyTicks === 0);
 }
 
 /**
@@ -543,14 +592,31 @@ async function runGeneralCronMaintenance(env: Env, scheduledAt: Date): Promise<v
     });
   }
   for (const task of tasks) {
+    // Measured per task rather than per tick: the point of the number is to say which task is
+    // spending the day's read budget, which a tick-level total cannot answer.
+    const accounting = accountReads(env.DB);
+    const measuredEnv = { ...env, DB: accounting.db } as Env;
     try {
-      await task.run(env);
+      await task.run(measuredEnv);
     } catch (error) {
       console.error(
         JSON.stringify({
           event: "scheduled_maintenance_failed",
           task: task.name,
           message: errorMessage(error),
+          rowsRead: accounting.rowsRead(),
+        }),
+      );
+      continue;
+    }
+    if (accounting.rowsRead() > 0) {
+      console.log(
+        JSON.stringify({
+          event: "scheduled_maintenance_d1_usage",
+          task: task.name,
+          rowsRead: accounting.rowsRead(),
+          rowsWritten: accounting.rowsWritten(),
+          countedStatements: accounting.countedStatements(),
         }),
       );
     }

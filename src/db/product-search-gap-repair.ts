@@ -33,6 +33,20 @@ export interface ProductSearchGapRepairOptions {
    */
   continueOnRefreshError?: boolean;
   /**
+   * Which phases this pass runs.
+   *
+   * The exact-identity phase is the one whose selector joins `products` to itself on identity, so
+   * its cost per candidate listing is far above the other two, and it is also the lowest-priority
+   * drift. Splitting it onto its own cadence needs both halves to be selectable: the phases share
+   * one work budget, so a `coverage` pass that fills the budget would otherwise starve the phase
+   * the hourly pass exists to run.
+   *
+   * - `all` runs every phase in priority order, which is what strict and daily callers want.
+   * - `coverage` is critical coverage and stale fallback, the five-minute sweep.
+   * - `exact-identity` is the peer scan alone, with the whole budget to itself.
+   */
+  phases?: "all" | "coverage" | "exact-identity";
+  /**
    * Also report how many gaps are left after this pass.
    *
    * Off by default because the count is the one unbounded statement in this file: it scans every
@@ -297,6 +311,7 @@ export async function repairActiveListingProjectionGaps(
     maxListings: requestedMaxListings,
     countRemainingGaps = false,
     continueOnRefreshError = !countRemainingGaps,
+    phases = "all",
   }: ProductSearchGapRepairOptions = {},
 ): Promise<ProductSearchGapRepairResult> {
   const batchSize = positiveBoundedInteger(requestedBatchSize, DEFAULT_BATCH_SIZE, 50);
@@ -346,11 +361,13 @@ export async function repairActiveListingProjectionGaps(
   // Keep the cheap, user-visible invariants ahead of the correlated peer scan. All phases start at
   // id 0 and share the overall work budget plus the attempted-id set: cursor position cannot starve
   // a lower-id phase, while overlapping predicates cannot spend the budget twice on one listing.
-  await repairPhase(CRITICAL_COVERAGE_GAP_PREDICATE);
-  if (selectedCount < maxListings) {
-    await repairPhase(STALE_FALLBACK_GAP_PREDICATE, refreshStaleFallbackMembershipOnly);
+  if (phases !== "exact-identity") {
+    await repairPhase(CRITICAL_COVERAGE_GAP_PREDICATE);
+    if (selectedCount < maxListings) {
+      await repairPhase(STALE_FALLBACK_GAP_PREDICATE, refreshStaleFallbackMembershipOnly);
+    }
   }
-  if (selectedCount < maxListings) {
+  if (phases !== "coverage" && selectedCount < maxListings) {
     await repairPhase(EXACT_IDENTITY_MEMBERSHIP_GAP_PREDICATE);
   }
 
