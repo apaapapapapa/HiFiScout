@@ -13,7 +13,10 @@ test("Phase 7 runtime has no Queue-era crawl lease or shadow control path", () =
   const executor = source("../src/crawler/resumable-crawl-executor.ts");
 
   assert.doesNotMatch(repository, /queued_at|queued_token|queued_last_sent_at|crawl_lease_/);
-  assert.doesNotMatch(repository, /tryClaimShopCrawl|releaseShopCrawl|markShopQueued|clearShopQueued/);
+  assert.doesNotMatch(
+    repository,
+    /tryClaimShopCrawl|releaseShopCrawl|markShopQueued|clearShopQueued/,
+  );
   assert.doesNotMatch(scheduler, /observe-checkpoint|shadow|canary/i);
   assert.doesNotMatch(orchestration, /observe-checkpoint|shadow|canary/i);
   assert.doesNotMatch(executor, /tryClaimShopCrawl|crawl_lease_/);

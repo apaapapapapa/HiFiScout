@@ -72,9 +72,7 @@ export function readCrawlLifecycle(
 }
 
 /** A valid logical child remains reserved until its Durable Object execution terminates. */
-export function hasDispatchReservation(
-  state: CrawlDispatchStateRow | null | undefined,
-): boolean {
+export function hasDispatchReservation(state: CrawlDispatchStateRow | null | undefined): boolean {
   return readCrawlLifecycle(state).phase === "dispatched";
 }
 

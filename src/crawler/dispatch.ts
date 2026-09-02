@@ -12,10 +12,7 @@ import {
   shouldRecoverDispatch,
   type CrawlDispatchStateRow,
 } from "./crawl-lifecycle.js";
-import {
-  deliverCrawlDispatch,
-  type CrawlDispatchMessage,
-} from "./orchestration.js";
+import { deliverCrawlDispatch, type CrawlDispatchMessage } from "./orchestration.js";
 import { isShopDue } from "./run.js";
 import { getShopPlugin, SHOP_PLUGINS } from "./shops/index.js";
 import { isTransportConfigured } from "./transport.js";
@@ -43,9 +40,7 @@ function isConfigured(env: CrawlerEnv, plugin: ShopPlugin): boolean {
 }
 
 /** A logical dispatch remains reserved until the owning Durable Object reaches a terminal state. */
-export function isDispatchReservationActive(
-  state: ShopSyncStateRow | null | undefined,
-): boolean {
+export function isDispatchReservationActive(state: ShopSyncStateRow | null | undefined): boolean {
   return hasDispatchReservation(state as CrawlDispatchStateRow | null | undefined);
 }
 
@@ -84,12 +79,7 @@ async function dispatchReservedCrawl(
   batchRunId: string,
   recoveryMinutes: number,
 ): Promise<boolean> {
-  const dispatchToken = await reserveShopDispatch(
-    env.DB,
-    plugin.key,
-    requestedAt,
-    recoveryMinutes,
-  );
+  const dispatchToken = await reserveShopDispatch(env.DB, plugin.key, requestedAt, recoveryMinutes);
   if (!dispatchToken) return false;
 
   const message: CrawlDispatchMessage = {
@@ -145,7 +135,8 @@ export async function recoverStalledCrawlDispatches(
   const batchRunId = `crawl-recovery:${recoveredAt}:${crypto.randomUUID()}`;
 
   for (const state of states) {
-    if (!shouldRecoverDispatch(state, now, recoveryMinutes) || !state.dispatch_requested_at) continue;
+    if (!shouldRecoverDispatch(state, now, recoveryMinutes) || !state.dispatch_requested_at)
+      continue;
     const plugin = getShopPlugin(state.shop_key);
     if (!plugin || !getShopEnabled(env, plugin.definition) || !isConfigured(env, plugin)) continue;
     if (!state.dispatch_token) continue;

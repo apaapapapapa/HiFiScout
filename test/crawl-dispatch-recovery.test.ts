@@ -3,10 +3,7 @@ import assert from "node:assert/strict";
 
 import { recoverStalledCrawlDispatches } from "../src/crawler/dispatch.js";
 import type { CrawlDispatchMessage } from "../src/crawler/orchestration.js";
-import {
-  crawlDispatchToken,
-  reserveShopDispatch,
-} from "../src/db/shop-state-repository.js";
+import { crawlDispatchToken, reserveShopDispatch } from "../src/db/shop-state-repository.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 
 function recoveryEnv(
