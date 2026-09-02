@@ -28,6 +28,13 @@ import type {
 
 type RuntimeEnv = CrawlerEnv & { DB: QueryableDatabase };
 
+/**
+ * Conservative upper bound used to classify a crawl run as abandoned. The transport is now a
+ * Durable Object Alarm, but keeping the historical execution window prevents recovery from
+ * prematurely charging a live/resumable run as failed during the Phase 6 cutover.
+ */
+export const CRAWL_EXECUTION_LEASE_MINUTES = 20;
+
 interface DispatchOptions {
   now?: Date;
   excludeShopKeys?: string[];
