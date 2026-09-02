@@ -38,7 +38,7 @@ const EXACT_IDENTITY_SELECTOR = /FROM product_search_entity_offers current_membe
 test("the five-minute sweep runs the cheap phases and skips the identity self-join", async () => {
   const db = selectorRecorder();
 
-  await repairActiveListingProjectionGaps(db, { includeExactIdentityPhase: false });
+  await repairActiveListingProjectionGaps(db, { phases: "coverage" });
 
   assert.equal(db.selectors.length, 2, "critical coverage and stale fallback still run every tick");
   assert.equal(
@@ -46,6 +46,17 @@ test("the five-minute sweep runs the cheap phases and skips the identity self-jo
     false,
     "the peer scan is what the five-minute cadence could not afford",
   );
+});
+
+test("the hourly pass runs the identity self-join and nothing else", async () => {
+  const db = selectorRecorder();
+
+  // The phases share one work budget. Running the cheap ones here too would let a sustained
+  // coverage backlog spend it before the phase this pass exists for was ever selected.
+  await repairActiveListingProjectionGaps(db, { phases: "exact-identity" });
+
+  assert.equal(db.selectors.length, 1);
+  assert.ok(EXACT_IDENTITY_SELECTOR.test(db.selectors[0]));
 });
 
 test("the default keeps every phase, so strict and daily callers are unchanged", async () => {
