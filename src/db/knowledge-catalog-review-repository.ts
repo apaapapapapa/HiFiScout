@@ -292,12 +292,14 @@ export async function startKnowledgeCatalogReviewRun(
 
 export async function latestKnowledgeCatalogReviewRunState(
   db: QueryableDatabase,
-): Promise<Pick<KnowledgeCatalogReviewRunRow, "id" | "status" | "message"> | null> {
+): Promise<Pick<KnowledgeCatalogReviewRunRow, "id" | "status" | "message" | "started_at"> | null> {
+  // `started_at` is what dates a run that never got as far as creating its jobs; without it such a
+  // run has no timestamp of its own to age against.
   return db
     .prepare(
-      "SELECT id, status, message FROM knowledge_catalog_review_runs ORDER BY id DESC LIMIT 1",
+      "SELECT id, status, message, started_at FROM knowledge_catalog_review_runs ORDER BY id DESC LIMIT 1",
     )
-    .first<Pick<KnowledgeCatalogReviewRunRow, "id" | "status" | "message">>();
+    .first<Pick<KnowledgeCatalogReviewRunRow, "id" | "status" | "message" | "started_at">>();
 }
 
 export async function startKnowledgeCatalogRecoveryReviewRun(
