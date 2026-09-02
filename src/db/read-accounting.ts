@@ -10,9 +10,10 @@
  * work and then ask what that work read.
  *
  * `first()` is deliberately a pass-through: D1 returns the row itself there, with no `meta`, so its
- * reads cannot be counted without changing the call into `all()`. Totals are therefore a lower
- * bound, and the modules that own the heavy scans should prefer `all()` when they want to be
- * measurable.
+ * reads cannot be counted without changing the call into `all()`. A wrapper cannot make that change
+ * on the caller's behalf -- `first()` and `all()` return different shapes -- so the call site has to
+ * opt in, which is what {@link firstMeasured} is for. Anything still calling `first()` directly is
+ * uncounted, and a total is a lower bound to that extent.
  */
 
 import type { QueryableDatabase } from "./types.js";
@@ -36,6 +37,23 @@ export interface ReadAccounting {
 function count(value: unknown): number {
   const numeric = Number(value);
   return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
+}
+
+/**
+ * Runs a single-row query through `all()` so its reads are visible to {@link accountReads}.
+ *
+ * `first()` is the natural call for a `COUNT(*)` or a lookup, and it is exactly the wrong one for
+ * the statements worth measuring: an aggregate over an unindexed predicate returns one row and can
+ * read the whole table, so the queries that dominate the read budget were the ones contributing
+ * nothing to the total. `all()` carries the same `meta` every other statement does.
+ *
+ * The result shape is `first()`'s, so this is a drop-in at the call site. Use it for aggregates and
+ * for lookups that already constrain themselves to one row; it does not add a `LIMIT`, because
+ * silently bounding a caller's query would change what the measurement is measuring.
+ */
+export async function firstMeasured<T>(statement: D1PreparedStatement): Promise<T | null> {
+  const result = await statement.all<T>();
+  return result.results?.[0] ?? null;
 }
 
 /**

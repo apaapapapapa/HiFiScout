@@ -15,5 +15,16 @@ test("general cron projection repair is safe when there are no active gaps", asy
     selectedCount: 0,
     repairedCount: 0,
     remainingGapCount: null,
+    // The change-driven exact-identity pass shares this tick. An empty database has nothing marked,
+    // so it claims nothing -- and `backlog` is `null` for the same reason `remainingGapCount` is:
+    // the five-minute caller does not buy counts it has no use for.
+    dirtyExactIdentities: {
+      claimedIdentities: 0,
+      repairedIdentities: 0,
+      cleanIdentities: 0,
+      failedIdentities: 0,
+      releasedStaleClaims: 0,
+      backlog: null,
+    },
   });
 });

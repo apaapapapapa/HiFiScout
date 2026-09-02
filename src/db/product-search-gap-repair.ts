@@ -1,6 +1,7 @@
 import { refreshListingProjections } from "./listing-projection-refresh.js";
 import { syncProductSearchEntities } from "./product-search-entity-repository.js";
 import { exactIdentitySplitMembershipPredicateSql } from "./product-search-exact-identity.js";
+import { firstMeasured } from "./read-accounting.js";
 import type { QueryableDatabase } from "./types.js";
 import { errorMessage } from "../types.js";
 
@@ -155,14 +156,17 @@ async function selectProjectionGapsByPredicate(
 }
 
 async function countActiveProjectionGaps(db: QueryableDatabase): Promise<number> {
-  const row = await db
-    .prepare(`
+  // Measured, not `first()`: this is the single most expensive statement in the file -- an aggregate
+  // over every active listing through correlated subqueries -- and `first()` carries no `meta`, so
+  // as a plain `first()` it was the biggest reader contributing nothing to the D1 usage totals.
+  const row = await firstMeasured<{ gap_count: number }>(
+    db.prepare(`
       SELECT COUNT(*) AS gap_count
       FROM products p
       WHERE p.is_active = 1
         AND (${ACTIVE_PROJECTION_GAP_PREDICATE})
-    `)
-    .first<{ gap_count: number }>();
+    `),
+  );
   return Number(row?.gap_count || 0);
 }
 
@@ -172,16 +176,19 @@ async function countSeedGapsForPredicate(
   predicate: string,
 ): Promise<number> {
   const placeholders = listingIds.map(() => "?").join(",");
-  const row = await db
-    .prepare(`
-      SELECT COUNT(*) AS gap_count
-      FROM products p
-      WHERE p.id IN (${placeholders})
-        AND p.is_active = 1
-        AND (${predicate})
-    `)
-    .bind(...listingIds)
-    .first<{ gap_count: number }>();
+  // Bounded by id, but the exact-identity predicate still runs correlated peer scans per listing, so
+  // this is measured for the same reason as the unbounded count above.
+  const row = await firstMeasured<{ gap_count: number }>(
+    db
+      .prepare(`
+        SELECT COUNT(*) AS gap_count
+        FROM products p
+        WHERE p.id IN (${placeholders})
+          AND p.is_active = 1
+          AND (${predicate})
+      `)
+      .bind(...listingIds),
+  );
   return Number(row?.gap_count || 0);
 }
 
