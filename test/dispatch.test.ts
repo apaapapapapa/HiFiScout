@@ -1,6 +1,7 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
-import { dueDispatchCandidates, isDispatchLeaseActive } from "../src/crawler/dispatch.js";
+import { dueDispatchCandidates, isDispatchReservationActive } from "../src/crawler/dispatch.js";
+import { crawlDispatchToken } from "../src/db/shop-state-repository.js";
 import { shopSyncStateRow } from "./helpers/fixtures.js";
 
 const ONLY_HIFIDO = {
@@ -32,27 +33,37 @@ const HIFIDO_AND_AUDIOUNION = {
   AUDIOUNION_INTERVAL_MINUTES: "60",
 };
 
-test("a queued child job stays reserved regardless of queue wait", () => {
-  const now = new Date("2026-08-11T06:00:00.000Z");
-  assert.equal(isDispatchLeaseActive({ queued_at: "2026-08-11T05:50:00.000Z" }, now, 15), true);
-  assert.equal(isDispatchLeaseActive({ queued_at: "2026-08-11T05:40:00.000Z" }, now, 15), true);
+test("an active Durable Object dispatch remains reserved regardless of elapsed time", () => {
+  const requestedAt = "2026-08-11T05:50:00.000Z";
+  assert.equal(
+    isDispatchReservationActive({
+      ...shopSyncStateRow({ shop_key: "hifido" }),
+      dispatch_requested_at: requestedAt,
+      dispatch_token: crawlDispatchToken("hifido", requestedAt),
+    } as never),
+    true,
+  );
 });
 
-test("a due shop is not moved to the queue tail while its child job is still reserved", () => {
+test("a due shop is not selected while its Durable Object dispatch is still reserved", () => {
   const now = new Date("2026-08-11T06:00:00.000Z");
-  for (const queuedAt of ["2026-08-11T05:50:00.000Z", "2026-08-11T05:00:00.000Z"]) {
+  for (const requestedAt of ["2026-08-11T05:50:00.000Z", "2026-08-11T05:00:00.000Z"]) {
     const candidates = dueDispatchCandidates(
       ONLY_HIFIDO,
       [
-        shopSyncStateRow({
-          shop_key: "hifido",
-          last_attempt_at: "2026-08-11T05:00:00.000Z",
-          queued_at: queuedAt,
-        }),
+        {
+          ...shopSyncStateRow({
+            shop_key: "hifido",
+            last_attempt_at: "2026-08-11T05:00:00.000Z",
+          }),
+          dispatch_requested_at: requestedAt,
+          dispatch_token: crawlDispatchToken("hifido", requestedAt),
+          dispatch_last_sent_at: requestedAt,
+        } as never,
       ],
       now,
     );
-    assert.equal(candidates.length, 0, queuedAt);
+    assert.equal(candidates.length, 0, requestedAt);
   }
 });
 

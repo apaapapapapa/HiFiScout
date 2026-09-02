@@ -2,33 +2,30 @@ import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import {
   crawlDispatchToken,
-  releaseShopCrawl,
   releaseShopDispatch,
   reserveShopDispatch,
-  tryClaimShopCrawl,
 } from "../src/db/shop-state-repository.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 
-interface LeaseState {
-  queued_at: string | null;
-  queued_token: string | null;
-  crawl_lease_token: string | null;
-  crawl_lease_until: string | null;
+interface DispatchState {
+  dispatch_requested_at: string | null;
+  dispatch_token: string | null;
+  dispatch_last_sent_at: string | null;
 }
 
-function leaseState(
+function dispatchState(
   sqlite: ReturnType<typeof migratedSqlite>["sqlite"],
   shopKey: string,
-): LeaseState {
+): DispatchState {
   return sqlite
     .prepare(
-      `SELECT queued_at, queued_token, crawl_lease_token, crawl_lease_until
+      `SELECT dispatch_requested_at, dispatch_token, dispatch_last_sent_at
        FROM shop_sync_state WHERE shop_key = ?`,
     )
-    .get(shopKey) as unknown as LeaseState;
+    .get(shopKey) as unknown as DispatchState;
 }
 
-test("long queue wait keeps one dispatch and one live crawl per shop", async () => {
+test("one immutable dispatch generation is reserved per shop until explicit release", async () => {
   const { sqlite, db } = migratedSqlite();
   const requestedAt = "2026-08-21T00:00:00.000Z";
   const dispatchToken = await reserveShopDispatch(db, "hifido", requestedAt, 120);
@@ -36,34 +33,22 @@ test("long queue wait keeps one dispatch and one live crawl per shop", async () 
 
   assert.equal(await reserveShopDispatch(db, "hifido", "2026-08-21T01:30:00.000Z", 120), null);
 
-  const crawlToken = await tryClaimShopCrawl(
-    db,
-    "hifido",
-    requestedAt,
-    "2026-08-21T01:31:00.000Z",
-    20,
-  );
-  assert.ok(crawlToken);
+  const active = dispatchState(sqlite, "hifido");
+  assert.equal(active.dispatch_requested_at, requestedAt);
+  assert.equal(active.dispatch_token, dispatchToken);
+  assert.equal(active.dispatch_last_sent_at, requestedAt);
 
-  assert.equal(
-    await tryClaimShopCrawl(db, "hifido", requestedAt, "2026-08-21T01:32:00.000Z", 20),
-    null,
-  );
+  await releaseShopDispatch(db, "hifido", "wrong-token");
+  assert.equal(dispatchState(sqlite, "hifido").dispatch_token, dispatchToken);
 
-  await releaseShopCrawl(db, "hifido", crawlToken, requestedAt);
-  const released = leaseState(sqlite, "hifido");
-  assert.equal(released.queued_at, null);
-  assert.equal(released.queued_token, null);
-  assert.equal(released.crawl_lease_token, null);
-  assert.equal(released.crawl_lease_until, null);
-
-  assert.equal(
-    await tryClaimShopCrawl(db, "hifido", requestedAt, "2026-08-21T01:33:00.000Z", 20),
-    null,
-  );
+  await releaseShopDispatch(db, "hifido", dispatchToken);
+  const released = dispatchState(sqlite, "hifido");
+  assert.equal(released.dispatch_requested_at, null);
+  assert.equal(released.dispatch_token, null);
+  assert.equal(released.dispatch_last_sent_at, null);
 });
 
-test("a stale-looking queued child cannot be superseded before explicit release", async () => {
+test("a quiet dispatch cannot be superseded before its owning token is released", async () => {
   const { db } = migratedSqlite();
   const oldRequestedAt = "2026-08-21T00:00:00.000Z";
   const newRequestedAt = "2026-08-21T02:01:00.000Z";

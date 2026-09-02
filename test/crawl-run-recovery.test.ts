@@ -5,26 +5,28 @@ import {
   recoverStalledCrawlRuns,
   shouldRecordStalledRunFailure,
 } from "../src/crawler/crawl-run-recovery.js";
-import type { CrawlLifecycleRow } from "../src/crawler/crawl-lifecycle.js";
+import type { CrawlDispatchStateRow } from "../src/crawler/crawl-lifecycle.js";
+import { crawlDispatchToken } from "../src/db/shop-state-repository.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { shopSyncStateRow } from "./helpers/fixtures.js";
 
 type Sqlite = ReturnType<typeof migratedSqlite>["sqlite"];
 
 const NOW = new Date("2026-08-25T12:00:00.000Z");
-/** Older than the twenty-minute execution lease plus the recovery grace. */
+/** Older than the conservative stalled-run window plus recovery grace. */
 const ABANDONED_AT = "2026-08-25T11:00:00.000Z";
 const RECENT_AT = "2026-08-25T11:58:00.000Z";
 
-function lifecycleRow(overrides: Partial<CrawlLifecycleRow> & { shop_key: string }) {
+function lifecycleRow(
+  overrides: Partial<CrawlDispatchStateRow> & { shop_key: string },
+): CrawlDispatchStateRow {
   return {
     ...shopSyncStateRow({ shop_key: overrides.shop_key }),
-    queued_token: null,
-    queued_last_sent_at: null,
-    crawl_lease_token: null,
-    crawl_lease_until: null,
+    dispatch_requested_at: null,
+    dispatch_token: null,
+    dispatch_last_sent_at: null,
     ...overrides,
-  } as CrawlLifecycleRow;
+  };
 }
 
 function insertRun(sqlite: Sqlite, shopKey: string, startedAt: string, status = "running"): number {
@@ -35,12 +37,15 @@ function insertRun(sqlite: Sqlite, shopKey: string, startedAt: string, status = 
   );
 }
 
-function insertShopState(sqlite: Sqlite, row: Partial<CrawlLifecycleRow> & { shop_key: string }) {
+function insertShopState(
+  sqlite: Sqlite,
+  row: Partial<CrawlDispatchStateRow> & { shop_key: string },
+) {
   sqlite
     .prepare(`
       INSERT INTO shop_sync_state (
         shop_key, last_attempt_at, last_success_at, last_error_at, consecutive_failures,
-        crawl_lease_token, crawl_lease_until, queued_at
+        dispatch_requested_at, dispatch_token, dispatch_last_sent_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `)
     .run(
@@ -49,9 +54,9 @@ function insertShopState(sqlite: Sqlite, row: Partial<CrawlLifecycleRow> & { sho
       row.last_success_at ?? null,
       row.last_error_at ?? null,
       row.consecutive_failures ?? 0,
-      row.crawl_lease_token ?? null,
-      row.crawl_lease_until ?? null,
-      row.queued_at ?? null,
+      row.dispatch_requested_at ?? null,
+      row.dispatch_token ?? null,
+      row.dispatch_last_sent_at ?? null,
     );
 }
 
@@ -99,14 +104,13 @@ test("an abandoned run is closed and charged to shop health", async () => {
   assert.equal(run.finished_at, NOW.toISOString());
   assert.match(run.message, /abandoned/u);
 
-  // The incident's signature was an attempt that never became a failure, so health never moved.
   const state = readShopState(sqlite, "ippinkan");
   assert.equal(state.last_error_at, NOW.toISOString());
   assert.equal(state.consecutive_failures, 3);
   assert.ok(state.backoff_until, "a recorded failure applies the normal backoff");
 });
 
-test("a run younger than the execution lease is left alone", async () => {
+test("a recent run is left alone", async () => {
   const { sqlite, db } = migratedSqlite();
   const runId = insertRun(sqlite, "ippinkan", RECENT_AT);
   insertShopState(sqlite, { shop_key: "ippinkan", last_attempt_at: RECENT_AT });
@@ -128,7 +132,6 @@ test("a finished run is never reopened or recharged", async () => {
 test("recovery closes the run but leaves health to the outcome already recorded after it", async () => {
   const { sqlite, db } = migratedSqlite();
   const runId = insertRun(sqlite, "ippinkan", ABANDONED_AT);
-  // A later crawl already succeeded, so this abandoned row is history, not the open question.
   insertShopState(sqlite, {
     shop_key: "ippinkan",
     last_attempt_at: "2026-08-25T11:40:00.000Z",
@@ -144,7 +147,7 @@ test("recovery closes the run but leaves health to the outcome already recorded 
   assert.equal(readShopState(sqlite, "ippinkan").consecutive_failures, 0);
 });
 
-test("a shop still holding an execution lease keeps its own outcome", () => {
+test("an active Durable Object dispatch keeps ownership of its own outcome", () => {
   const run = {
     id: 1,
     shop_key: "ippinkan",
@@ -153,20 +156,18 @@ test("a shop still holding an execution lease keeps its own outcome", () => {
     pages_done: 3,
     last_progress_at: ABANDONED_AT,
   };
-  const executing = lifecycleRow({
+  const token = crawlDispatchToken("ippinkan", ABANDONED_AT);
+  const dispatched = lifecycleRow({
     shop_key: "ippinkan",
-    queued_at: ABANDONED_AT,
-    crawl_lease_token: "lease",
-    crawl_lease_until: "2026-08-25T12:10:00.000Z",
+    dispatch_requested_at: ABANDONED_AT,
+    dispatch_token: token,
+    dispatch_last_sent_at: ABANDONED_AT,
   });
-  assert.equal(shouldRecordStalledRunFailure(executing, run, NOW), false);
+  assert.equal(shouldRecordStalledRunFailure(dispatched, run), false);
 
-  const expired = lifecycleRow({
-    ...executing,
-    crawl_lease_until: "2026-08-25T11:10:00.000Z",
-  });
-  assert.equal(shouldRecordStalledRunFailure(expired, run, NOW), true);
-  assert.equal(shouldRecordStalledRunFailure(undefined, run, NOW), false);
+  const idle = lifecycleRow({ shop_key: "ippinkan" });
+  assert.equal(shouldRecordStalledRunFailure(idle, run), true);
+  assert.equal(shouldRecordStalledRunFailure(undefined, run), false);
 });
 
 test("recovery drains a backlog in bounded batches", async () => {
@@ -198,8 +199,6 @@ test("an abandoned run reports the stage and page count it stopped at", async ()
 
   await recoverStalledCrawlRuns(db, { now: NOW });
 
-  // The prefix is what operational queries match on and must not move; the detail after it is the
-  // difference between "this shop stopped" and "this shop stopped in collection, after 11 pages".
   const { message } = readRun(sqlite, runId);
   assert.match(message, /^crawl run abandoned: no terminal outcome recorded/u);
   assert.match(message, /stage=fetch_parse/u);

@@ -1,7 +1,6 @@
 import { getCrawlerSettings, getShopEnabled, getShopIntervalMinutes } from "../config.js";
 import {
-  clearShopQueued,
-  crawlDispatchToken,
+  clearShopDispatch,
   getShopState,
   listShopStates,
   markShopDispatchSent,
@@ -11,29 +10,16 @@ import {
 import {
   hasDispatchReservation,
   shouldRecoverDispatch,
-  type CrawlLifecycleRow,
+  type CrawlDispatchStateRow,
 } from "./crawl-lifecycle.js";
-import { deliverCrawlDispatch } from "./orchestration.js";
+import { deliverCrawlDispatch, type CrawlDispatchMessage } from "./orchestration.js";
 import { isShopDue } from "./run.js";
 import { getShopPlugin, SHOP_PLUGINS } from "./shops/index.js";
 import { isTransportConfigured } from "./transport.js";
 import type { QueryableDatabase, ShopSyncStateRow } from "../db/types.js";
-import type {
-  CrawlQueueMessage,
-  CrawlerEnv,
-  DispatchResult,
-  DueDispatchCandidate,
-  ShopPlugin,
-} from "./types.js";
+import type { CrawlerEnv, DispatchResult, DueDispatchCandidate, ShopPlugin } from "./types.js";
 
 type RuntimeEnv = CrawlerEnv & { DB: QueryableDatabase };
-
-/**
- * Conservative upper bound used to classify a crawl run as abandoned. The transport is now a
- * Durable Object Alarm, but keeping the historical execution window prevents recovery from
- * prematurely charging a live/resumable run as failed during the Phase 6 cutover.
- */
-export const CRAWL_EXECUTION_LEASE_MINUTES = 20;
 
 interface DispatchOptions {
   now?: Date;
@@ -53,18 +39,9 @@ function isConfigured(env: CrawlerEnv, plugin: ShopPlugin): boolean {
   return isTransportConfigured(env, plugin.capabilities.transport?.kind);
 }
 
-/**
- * A reserved child stays reserved until CrawlScheduler accepts it or recovery explicitly retries the
- * same immutable dispatch identity. Time alone never creates a replacement dispatch.
- */
-export function isDispatchLeaseActive(
-  state: Partial<Pick<ShopSyncStateRow, "queued_at">> | null | undefined,
-  now = new Date(),
-  leaseMinutes = 15,
-): boolean {
-  void now;
-  void leaseMinutes;
-  return hasDispatchReservation(state);
+/** A logical dispatch remains reserved until the owning Durable Object reaches a terminal state. */
+export function isDispatchReservationActive(state: ShopSyncStateRow | null | undefined): boolean {
+  return hasDispatchReservation(state as CrawlDispatchStateRow | null | undefined);
 }
 
 export function dueDispatchCandidates(
@@ -83,15 +60,15 @@ export function dueDispatchCandidates(
     if (!isConfigured(env, plugin)) return null;
     const intervalMinutes = getShopIntervalMinutes(env, definition);
     if (!isShopDue(state, intervalMinutes, now)) return null;
-    if (isDispatchLeaseActive(state, now)) return null;
+    if (isDispatchReservationActive(state)) return null;
     return { adapter: plugin, state, lastAttempt: state?.last_attempt_at || "" };
   })
     .filter((candidate): candidate is DueDispatchCandidate => candidate !== null)
     .sort((a, b) => a.lastAttempt.localeCompare(b.lastAttempt));
 }
 
-export async function clearQueued(db: QueryableDatabase, shopKey: string): Promise<void> {
-  return clearShopQueued(db, shopKey);
+export async function clearDispatch(db: QueryableDatabase, shopKey: string): Promise<void> {
+  return clearShopDispatch(db, shopKey);
 }
 
 async function dispatchReservedCrawl(
@@ -100,12 +77,12 @@ async function dispatchReservedCrawl(
   force: boolean,
   requestedAt: string,
   batchRunId: string,
-  leaseMinutes: number,
+  recoveryMinutes: number,
 ): Promise<boolean> {
-  const dispatchToken = await reserveShopDispatch(env.DB, plugin.key, requestedAt, leaseMinutes);
+  const dispatchToken = await reserveShopDispatch(env.DB, plugin.key, requestedAt, recoveryMinutes);
   if (!dispatchToken) return false;
 
-  const message: CrawlQueueMessage = {
+  const message: CrawlDispatchMessage = {
     shopKey: plugin.key,
     force,
     requestedAt,
@@ -144,10 +121,7 @@ function logBatchDispatch(
   );
 }
 
-/**
- * Re-delivers an orphaned logical child to the same per-shop Durable Object without changing its
- * requestedAt/token. CrawlScheduler and the D1 lifecycle claim make this idempotent.
- */
+/** Re-deliver a quiet logical child to the same per-shop Durable Object using the same token. */
 export async function recoverStalledCrawlDispatches(
   env: RuntimeEnv,
   {
@@ -156,35 +130,36 @@ export async function recoverStalledCrawlDispatches(
   }: RecoveryOptions = {},
 ): Promise<string[]> {
   const recovered: string[] = [];
-  const states = (await listShopStates(env.DB)) as CrawlLifecycleRow[];
+  const states = (await listShopStates(env.DB)) as CrawlDispatchStateRow[];
   const recoveredAt = now.toISOString();
   const batchRunId = `crawl-recovery:${recoveredAt}:${crypto.randomUUID()}`;
 
   for (const state of states) {
-    if (!shouldRecoverDispatch(state, now, recoveryMinutes) || !state.queued_at) continue;
+    if (!shouldRecoverDispatch(state, now, recoveryMinutes) || !state.dispatch_requested_at)
+      continue;
     const plugin = getShopPlugin(state.shop_key);
     if (!plugin || !getShopEnabled(env, plugin.definition) || !isConfigured(env, plugin)) continue;
+    if (!state.dispatch_token) continue;
 
-    const dispatchToken = state.queued_token || crawlDispatchToken(plugin.key, state.queued_at);
-    const message: CrawlQueueMessage = {
+    const message: CrawlDispatchMessage = {
       shopKey: plugin.key,
       force: true,
-      requestedAt: state.queued_at,
-      jobId: dispatchToken,
+      requestedAt: state.dispatch_requested_at,
+      jobId: state.dispatch_token,
       batchRunId,
     };
 
     try {
       const transport = await deliverCrawlDispatch(env as unknown as Env, message);
-      await markShopDispatchSent(env.DB, plugin.key, dispatchToken, recoveredAt);
+      await markShopDispatchSent(env.DB, plugin.key, state.dispatch_token, recoveredAt);
       recovered.push(plugin.key);
       console.warn(
         JSON.stringify({
           event: "crawl_dispatch_recovered",
           shopKey: plugin.key,
-          requestedAt: state.queued_at,
+          requestedAt: state.dispatch_requested_at,
           recoveredAt,
-          jobId: dispatchToken,
+          jobId: state.dispatch_token,
           batchRunId,
           transport,
         }),
@@ -194,8 +169,8 @@ export async function recoverStalledCrawlDispatches(
         JSON.stringify({
           event: "crawl_dispatch_recovery_failed",
           shopKey: plugin.key,
-          requestedAt: state.queued_at,
-          jobId: dispatchToken,
+          requestedAt: state.dispatch_requested_at,
+          jobId: state.dispatch_token,
           message: error instanceof Error ? error.message : String(error),
         }),
       );
@@ -247,7 +222,7 @@ async function dispatchOneCrawl(
 ): Promise<DispatchResult> {
   const state = await getShopState(env.DB, plugin.key);
   const settings = getCrawlerSettings(env);
-  if (isDispatchLeaseActive(state, now, settings.dispatchLeaseMinutes)) {
+  if (isDispatchReservationActive(state)) {
     return { status: "skipped", reason: "dispatch_lease_active", shopKey: plugin.key };
   }
 

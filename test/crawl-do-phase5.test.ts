@@ -6,10 +6,13 @@ import {
   prepareShopInventoryRecheck,
   recheckShopInventory,
 } from "../src/crawler/inventory-recheck.js";
-import { deliverCrawlDispatch, isCrawlDoCanaryEligible } from "../src/crawler/orchestration.js";
+import {
+  deliverCrawlDispatch,
+  isCrawlDoEligible,
+  type CrawlDispatchMessage,
+} from "../src/crawler/orchestration.js";
 import { getShopPlugin } from "../src/crawler/shops/index.js";
 import type { InventoryRecheckCandidateRow } from "../src/db/types.js";
-import type { CrawlQueueMessage } from "../src/crawler/types.js";
 
 const DETAIL_URL = "https://www.audiounion.jp/ct/detail/used/223257/";
 
@@ -42,7 +45,7 @@ function inventoryEnv() {
   } as unknown as Env;
 }
 
-function schedulerEnv(onMessage: (message: CrawlQueueMessage) => void): Env {
+function schedulerEnv(onMessage: (message: CrawlDispatchMessage) => void): Env {
   return {
     CRAWL_SCHEDULER: {
       idFromName: (name: string) => ({ name }),
@@ -50,7 +53,7 @@ function schedulerEnv(onMessage: (message: CrawlQueueMessage) => void): Env {
         fetch: async (_url: string, init: RequestInit) => {
           const body = JSON.parse(String(init.body)) as {
             type: string;
-            message: CrawlQueueMessage;
+            message: CrawlDispatchMessage;
           };
           assert.equal(body.type, "start_crawl");
           onMessage(body.message);
@@ -61,15 +64,15 @@ function schedulerEnv(onMessage: (message: CrawlQueueMessage) => void): Env {
   } as unknown as Env;
 }
 
-test("Phase 5 Relay collectors and Phase 6 direct-detail collectors are DO eligible", () => {
+test("Phase 5 Relay collectors and direct-detail collectors are DO eligible", () => {
   assert.equal(plugin("audiounion").capabilities.transport?.kind, "relay");
   assert.equal(plugin("hifido").capabilities.transport?.kind, "relay");
-  assert.equal(isCrawlDoCanaryEligible("audiounion"), true);
-  assert.equal(isCrawlDoCanaryEligible("hifido"), true);
-  assert.equal(isCrawlDoCanaryEligible("fujiya-avic"), true);
+  assert.equal(isCrawlDoEligible("audiounion"), true);
+  assert.equal(isCrawlDoEligible("hifido"), true);
+  assert.equal(isCrawlDoEligible("fujiya-avic"), true);
 });
 
-test("Phase 6 no longer needs a production DO rollout allowlist", () => {
+test("Phase 7 no longer needs a production DO rollout allowlist", () => {
   const wrangler = JSON.parse(
     readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8"),
   ) as { vars?: { CRAWL_DO_CANARY_SHOPS?: string } };
@@ -78,14 +81,14 @@ test("Phase 6 no longer needs a production DO rollout allowlist", () => {
 });
 
 test("relay collector dispatch goes directly to the Durable Object", async () => {
-  const message: CrawlQueueMessage = {
+  const message: CrawlDispatchMessage = {
     shopKey: "hifido",
     force: true,
     requestedAt: "2026-09-01T14:30:00.000Z",
     jobId: "crawl:hifido:phase5",
     batchRunId: "batch:phase5",
   };
-  const delivered: CrawlQueueMessage[] = [];
+  const delivered: CrawlDispatchMessage[] = [];
 
   const route = await deliverCrawlDispatch(
     schedulerEnv((body) => delivered.push(body)),
@@ -97,14 +100,14 @@ test("relay collector dispatch goes directly to the Durable Object", async () =>
 });
 
 test("legacy rollout configuration no longer disables a Relay collector", async () => {
-  const message: CrawlQueueMessage = {
+  const message: CrawlDispatchMessage = {
     shopKey: "hifido",
     force: true,
     requestedAt: "2026-09-01T14:31:00.000Z",
-    jobId: "crawl:hifido:phase6",
-    batchRunId: "batch:phase6",
+    jobId: "crawl:hifido:phase7",
+    batchRunId: "batch:phase7",
   };
-  const delivered: CrawlQueueMessage[] = [];
+  const delivered: CrawlDispatchMessage[] = [];
   const env = schedulerEnv((body) => delivered.push(body)) as Env & {
     CRAWL_DO_CANARY_SHOPS?: string;
   };
@@ -134,12 +137,12 @@ test("inventory PREPARE discovery is read-only until the paced FETCH alarm", asy
     repository,
   });
 
-  assert.deepEqual(preparation, {
-    status: "ready",
-    targetUrl: DETAIL_URL,
-    userAgent: "HiFiScoutBot/0.1 (+https://github.com/apaapapapapa/HiFiScout)",
-    requestDelayMs: 10000,
-  });
+  assert.equal(preparation.status, "ready");
+  if (preparation.status === "ready") {
+    assert.equal(preparation.targetUrl, DETAIL_URL);
+    assert.equal(preparation.requestDelayMs, 10000);
+    assert.match(preparation.userAgent, /^HiFiScoutBot\/0\.1/);
+  }
   assert.equal(attempts, 0);
 });
 
