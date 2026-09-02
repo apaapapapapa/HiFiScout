@@ -514,3 +514,35 @@ test("a member already at its expected key is left out of the take-apart resync"
     ["1:l-1", "2:l-2", "3:l-3"],
   );
 });
+
+test("a groupable identity is resynced once, however many shops it spans", async () => {
+  // Peer expansion reaches every member of a groupable group across every shop, so the first seed
+  // already converges the identity. Any further seed only recomputes the same union, which would
+  // leave the repair cost proportional to the number of drifted shops.
+  const { sqlite, db } = migratedSqlite();
+  insertListing(sqlite, { id: 1, shopKey: "shop-a" });
+  insertListing(sqlite, { id: 2, shopKey: "shop-b" });
+  insertListing(sqlite, { id: 3, shopKey: "shop-c" });
+  splitIntoSeparateEntities(sqlite, [1, 2, 3]);
+  const recording = recordingDatabase(db);
+
+  await repairDirtyExactIdentities(recording.db);
+
+  // One statement per `syncProductSearchEntities` call resolves that call's own seeds.
+  const seedResolutions = recording.executed.filter((statement) =>
+    /SELECT id FROM products WHERE shop_key = \? AND source_id IN/u.test(statement.sql),
+  );
+  assert.equal(seedResolutions.length, 1, "three drifted shops must still cost one resync");
+
+  const keys = sqlite
+    .prepare(`
+      SELECT DISTINCT e.entity_key AS key
+      FROM product_search_entity_offers o
+      JOIN product_search_entities e ON e.id = o.entity_id
+    `)
+    .all() as { key: string }[];
+  assert.deepEqual(
+    keys.map((row) => row.key),
+    ["l-1"],
+  );
+});
