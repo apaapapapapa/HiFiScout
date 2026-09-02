@@ -39,11 +39,16 @@ test("crawl lifecycle makes idle and dispatched states explicit", () => {
   assert.equal(dispatched.phase, "dispatched");
   assert.equal(dispatched.dispatchToken, dispatchToken);
   assert.equal(dispatched.lastSentAt, requestedAt);
-  assert.equal(hasDispatchReservation(lifecycleRow({
-    shop_key: "home-shokai",
-    dispatch_requested_at: requestedAt,
-    dispatch_token: dispatchToken,
-  })), true);
+  assert.equal(
+    hasDispatchReservation(
+      lifecycleRow({
+        shop_key: "home-shokai",
+        dispatch_requested_at: requestedAt,
+        dispatch_token: dispatchToken,
+      }),
+    ),
+    true,
+  );
 });
 
 test("a dispatched generation becomes recoverable only after its quiet window", () => {
@@ -55,14 +60,8 @@ test("a dispatched generation becomes recoverable only after its quiet window", 
     dispatch_last_sent_at: requestedAt,
   });
 
-  assert.equal(
-    shouldRecoverDispatch(state, new Date("2026-08-23T00:29:59.000Z"), 30),
-    false,
-  );
-  assert.equal(
-    shouldRecoverDispatch(state, new Date("2026-08-23T00:30:00.000Z"), 30),
-    true,
-  );
+  assert.equal(shouldRecoverDispatch(state, new Date("2026-08-23T00:29:59.000Z"), 30), false);
+  assert.equal(shouldRecoverDispatch(state, new Date("2026-08-23T00:30:00.000Z"), 30), true);
 });
 
 test("missing or malformed dispatch identity is surfaced instead of inferred", () => {

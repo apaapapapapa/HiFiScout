@@ -1,9 +1,6 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
-import {
-  dueDispatchCandidates,
-  isDispatchReservationActive,
-} from "../src/crawler/dispatch.js";
+import { dueDispatchCandidates, isDispatchReservationActive } from "../src/crawler/dispatch.js";
 import { crawlDispatchToken } from "../src/db/shop-state-repository.js";
 import { shopSyncStateRow } from "./helpers/fixtures.js";
 
