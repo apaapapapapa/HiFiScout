@@ -352,3 +352,48 @@ test("authoritative counted repair remains fail-fast for a poison listing", asyn
     /synthetic poison identity write/,
   );
 });
+
+test("declining the count keeps a strict caller fail-fast", async () => {
+  // The daily pass now asks for `continueOnRefreshError: false` explicitly instead of inheriting it
+  // from `countRemainingGaps`. Asserting the option is passed proves nothing -- an implementation
+  // that ignored it would still satisfy that -- so this drives a real refresh failure through the
+  // combination the daily caller actually uses.
+  const { sqlite, db } = migratedSqlite();
+  const poisonId = insertActiveListing(sqlite, "strict-uncounted-poison");
+  const poisonDb = poisonIdentityWrites(db, poisonId);
+
+  await assert.rejects(
+    repairActiveListingProjectionGaps(poisonDb, {
+      evaluatedAt: NOW,
+      batchSize: 1,
+      maxListings: 1,
+      countRemainingGaps: false,
+      continueOnRefreshError: false,
+    }),
+    /synthetic poison identity write/,
+  );
+});
+
+test("the two settings are independent: an uncounted resilient caller still isolates", async () => {
+  // The contrast that makes the assertion above meaningful. Same poison, same absent count, only
+  // `continueOnRefreshError` differs -- so a failure to honour it would show up as one of these two
+  // tests failing rather than as both quietly agreeing.
+  const { sqlite, db } = migratedSqlite();
+  const poisonId = insertActiveListing(sqlite, "resilient-uncounted-poison");
+  const poisonDb = poisonIdentityWrites(db, poisonId);
+
+  const result = await repairActiveListingProjectionGaps(poisonDb, {
+    evaluatedAt: NOW,
+    batchSize: 1,
+    maxListings: 1,
+    countRemainingGaps: false,
+    continueOnRefreshError: true,
+  });
+
+  assert.deepEqual(result, {
+    selectedCount: 1,
+    repairedCount: 0,
+    failedCount: 1,
+    remainingGapCount: null,
+  });
+});
