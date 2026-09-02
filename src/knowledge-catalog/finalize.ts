@@ -1,10 +1,10 @@
 /**
  * Closing out a review run.
  *
- * The finalizer is a job like any other, enqueued behind the targets with a delay. It cannot know
- * when the targets finish, so it re-checks and re-queues itself until nothing is outstanding. That
- * is the whole reason it exists: reclassification has to happen after every verification has
- * landed, or products would be reclassified from a half-populated catalog.
+ * The finalizer is a durable job like any other. The run-level selector hides it until the targets
+ * are terminal; the legacy job-message path may still reach it early and therefore retains the
+ * outstanding-work retry. Reclassification has to happen after every verification has landed, or
+ * products would be reclassified from a half-populated catalog.
  *
  * It is also what records the run's result, so a run that never finalizes stays `running` — which
  * is why the paths that make finalization impossible fail the run explicitly.
@@ -16,6 +16,7 @@ import { reclassifyProductsFromKnowledgeCatalog } from "../db/knowledge-catalog-
 import {
   activeProductClassificationStats,
   finishKnowledgeCatalogReviewRunSuccess,
+  knowledgeCatalogReviewRunStatus,
   knowledgeCatalogCandidateStats,
   knowledgeCatalogStats,
 } from "../db/knowledge-catalog-review-repository.js";
@@ -35,16 +36,29 @@ import {
   remediationProductLimit,
 } from "./policy.js";
 import type { KnowledgeCatalogVerificationJob } from "../db/types.js";
-import type { KnowledgeCatalogQueueEnv, KnowledgeCatalogQueueMessage } from "./types.js";
+import type { KnowledgeCatalogJobPayload, KnowledgeCatalogQueueEnv } from "./types.js";
 
 export async function finalizeKnowledgeCatalogVerificationRun(
   env: KnowledgeCatalogQueueEnv,
-  body: KnowledgeCatalogQueueMessage,
-  message: Message<KnowledgeCatalogQueueMessage>,
+  payload: KnowledgeCatalogJobPayload,
   job: KnowledgeCatalogVerificationJob,
 ) {
+  const runStatus = await knowledgeCatalogReviewRunStatus(env.DB, job.runId);
+  if (runStatus !== "running") {
+    // A Worker can finish the run and be interrupted before it closes the finalizer job. A later
+    // delivery only repairs that marker; it must not replay remediation/reclassification.
+    const finishedAt = new Date().toISOString();
+    await completeKnowledgeCatalogVerificationJob(
+      env.DB,
+      job.id,
+      { outcome: "skipped", message: `run_already_${runStatus || "missing"}` },
+      finishedAt,
+    );
+    return { status: "ignored", reason: `run_${runStatus || "missing"}` };
+  }
+
   const now = new Date();
-  const stats = await knowledgeCatalogVerificationRunStats(env.DB, body.runId);
+  const stats = await knowledgeCatalogVerificationRunStats(env.DB, job.runId);
   if (stats.outstanding > 0) {
     const delaySeconds = finalizeRetrySeconds(env);
     await retryKnowledgeCatalogVerificationJob(
@@ -54,11 +68,10 @@ export async function finalizeKnowledgeCatalogVerificationRun(
       `waiting_for_${stats.outstanding}_verification_jobs`,
       now.toISOString(),
     );
-    message.retry({ delaySeconds });
-    return { status: "retrying", reason: "verification_jobs_outstanding", ...stats };
+    return { status: "retrying", reason: "verification_jobs_outstanding", delaySeconds, ...stats };
   }
 
-  const beforeClassification = await knowledgeCatalogReviewRunQueueBaseline(env.DB, body.runId);
+  const beforeClassification = await knowledgeCatalogReviewRunQueueBaseline(env.DB, job.runId);
   // Catalog rows that name one product are collapsed before anything reads the catalog. Writers can
   // no longer create them, but rows created before the identity rule reached every writer are still
   // there, and leaving them would keep listings for one product split across two catalog entries.
@@ -94,7 +107,7 @@ export async function finalizeKnowledgeCatalogVerificationRun(
     stats.outcomes.notFound + stats.outcomes.ambiguous + stats.outcomes.error;
   const result = {
     status: "success",
-    mode: body.mode || "daily_candidates",
+    mode: payload.mode || "daily_candidates",
     finishedAt,
     ...catalogResult,
     ...candidateResult,
@@ -106,21 +119,21 @@ export async function finalizeKnowledgeCatalogVerificationRun(
     verificationOutcomes: stats.outcomes,
     dueProductsChecked: stats.productRecheckJobs,
     candidatesChecked: stats.candidateJobs,
-    retryFirst: Boolean(body.preferRetries),
+    retryFirst: Boolean(payload.preferRetries),
     beforeClassification,
     afterClassification,
     ...impact,
     reclassifiedProducts,
     remediation,
     identityConvergence,
-    message: `${body.mode || "daily_candidates"}: ${stats.promoted} catalog promotions, ${stats.rechecked} source rechecks, ${candidateResult.pendingCandidates} pending candidates, ${impact.unclassifiedReduced} unclassified and ${impact.otherReduced} other listings reduced via queue, ${remediation.matchedCount} listings matched by remediation replay${remediation.pendingProducts ? ` (${remediation.pendingProducts} catalog products still owed a replay)` : ""}${identityConvergence.removedProducts ? `, ${identityConvergence.removedProducts} duplicate catalog products merged into ${identityConvergence.convergedGroups} canonical products` : ""}`,
+    message: `${payload.mode || "daily_candidates"}: ${stats.promoted} catalog promotions, ${stats.rechecked} source rechecks, ${candidateResult.pendingCandidates} pending candidates, ${impact.unclassifiedReduced} unclassified and ${impact.otherReduced} other listings reduced via queue, ${remediation.matchedCount} listings matched by remediation replay${remediation.pendingProducts ? ` (${remediation.pendingProducts} catalog products still owed a replay)` : ""}${identityConvergence.removedProducts ? `, ${identityConvergence.removedProducts} duplicate catalog products merged into ${identityConvergence.convergedGroups} canonical products` : ""}`,
   };
-  await finishKnowledgeCatalogReviewRunSuccess(env.DB, body.runId, result);
+  const finished = await finishKnowledgeCatalogReviewRunSuccess(env.DB, job.runId, result);
   // Only a run that claimed a rollout version may close it out; an ordinary run carries zero.
-  if (Number(body.verifierVersion || 0) > 0) {
+  if (finished && Number(payload.verifierVersion || 0) > 0) {
     await finishKnowledgeCatalogVerifierVersionSuccess(
       env.DB,
-      Number(body.verifierVersion),
+      Number(payload.verifierVersion),
       finishedAt,
       result.message,
     );
@@ -132,9 +145,10 @@ export async function finalizeKnowledgeCatalogVerificationRun(
     { outcome: "skipped", message: "queue_run_finalized" },
     finishedAt,
   );
-  message.ack();
-  console.log(
-    JSON.stringify({ event: "knowledge_catalog_queue_finalized", runId: body.runId, ...result }),
-  );
+  if (finished) {
+    console.log(
+      JSON.stringify({ event: "knowledge_catalog_queue_finalized", runId: job.runId, ...result }),
+    );
+  }
   return result;
 }

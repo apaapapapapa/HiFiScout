@@ -16,13 +16,19 @@ import type { KnowledgeCatalogJobType, QueryableDatabase } from "../db/types.js"
 /** Which dispatcher enqueued a knowledge-catalog verification run. */
 export type KnowledgeCatalogDispatchMode = "daily_candidates" | "monthly_recheck";
 
+/** The only message produced for a new verification run. D1 owns every unit of work. */
+export interface KnowledgeCatalogRunWakeMessage {
+  kind: "knowledge_catalog_run_wakeup";
+  runId: number;
+}
+
 /**
- * Body of a `KNOWLEDGE_CATALOG_QUEUE` message.
+ * Job-level message emitted by Workers deployed before run wake-ups.
  *
- * `hostname`/`target` are absent on the `"finalize"` message, which is sent on its own with a
- * delay after the target batch.
+ * It remains readable during the rolling deployment so already-enqueued work is not stranded. New
+ * dispatches never create this shape.
  */
-export interface KnowledgeCatalogQueueMessage {
+export interface LegacyKnowledgeCatalogJobMessage {
   jobId: number;
   runId: number;
   jobType: KnowledgeCatalogJobType;
@@ -30,6 +36,18 @@ export interface KnowledgeCatalogQueueMessage {
   preferRetries: boolean;
   verifierVersion: number;
   hostname?: string;
+  target?: KnowledgeSourceCandidate;
+}
+
+export type KnowledgeCatalogQueueMessage =
+  | KnowledgeCatalogRunWakeMessage
+  | LegacyKnowledgeCatalogJobMessage;
+
+/** Immutable context persisted on every job created for a run. */
+export interface KnowledgeCatalogJobPayload {
+  mode: KnowledgeCatalogDispatchMode;
+  preferRetries: boolean;
+  verifierVersion: number;
   target?: KnowledgeSourceCandidate;
 }
 
@@ -51,6 +69,8 @@ export interface KnowledgeCatalogConfigEnv extends KnowledgeVerificationEnv {
   readonly KNOWLEDGE_CATALOG_QUEUE_DOMAIN_RETRY_SECONDS?: string;
   readonly KNOWLEDGE_CATALOG_QUEUE_TRANSIENT_MAX_ATTEMPTS?: string;
   readonly KNOWLEDGE_CATALOG_QUEUE_FINALIZE_RETRY_SECONDS?: string;
+  readonly KNOWLEDGE_CATALOG_QUEUE_WAKE_MAX_JOBS?: string;
+  readonly KNOWLEDGE_CATALOG_QUEUE_WAKE_WALL_BUDGET_MS?: string;
   readonly KNOWLEDGE_CATALOG_IDENTITY_CONVERGENCE_MAX_GROUPS?: string;
   readonly KNOWLEDGE_CATALOG_REMEDIATION_MAX_PRODUCTS?: string;
   readonly KNOWLEDGE_CATALOG_REMEDIATION_MAX_LISTINGS?: string;
@@ -64,7 +84,7 @@ export interface KnowledgeCatalogConfigEnv extends KnowledgeVerificationEnv {
  */
 export interface KnowledgeCatalogQueueEnv extends KnowledgeCatalogConfigEnv {
   DB: QueryableDatabase;
-  KNOWLEDGE_CATALOG_QUEUE: Pick<Queue<KnowledgeCatalogQueueMessage>, "send" | "sendBatch">;
+  KNOWLEDGE_CATALOG_QUEUE: Pick<Queue<KnowledgeCatalogQueueMessage>, "send">;
 }
 
 export interface DispatchOptions {

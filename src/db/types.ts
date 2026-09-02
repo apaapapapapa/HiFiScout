@@ -490,6 +490,7 @@ export interface KnowledgeCatalogVerificationJobRow {
   lease_expires_at: string | null;
   finished_at: string | null;
   last_message: string;
+  payload_json: string;
   created_at: string;
   updated_at: string;
 }
@@ -515,6 +516,7 @@ export interface KnowledgeCatalogVerificationJob {
   leaseExpiresAt: string | null;
   finishedAt: string | null;
   lastMessage: string;
+  payloadJson: string;
 }
 
 export interface KnowledgeCatalogVerificationJobSpec {
@@ -523,6 +525,7 @@ export interface KnowledgeCatalogVerificationJobSpec {
   targetId: number | null;
   manufacturerId: string;
   hostname: string;
+  payloadJson: string;
 }
 
 export interface CompleteKnowledgeCatalogVerificationJobInput {

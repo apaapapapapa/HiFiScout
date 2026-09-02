@@ -246,7 +246,7 @@ test("a job that fails while holding a domain lease still releases it", async ()
 
   assert.deepEqual(result, { status: "retrying", reason: "consumer_error" });
   assert.equal(
-    db.ran("DELETE FROM knowledge_catalog_verification_domain_leases").length,
+    db.ran("SET job_id = 0, leased_until = ?").length,
     1,
     "a lease that outlived its job would block the whole manufacturer until it expired",
   );
@@ -272,6 +272,9 @@ test("a job that has exhausted its delivery budget is dead-lettered, not retried
 
 test("finalization waits while verification jobs are still outstanding", async () => {
   const db = queueDatabase((sql) => {
+    if (sql.includes("SELECT status FROM knowledge_catalog_review_runs")) {
+      return { row: { status: "running" } };
+    }
     if (sql.includes("SELECT * FROM knowledge_catalog_verification_jobs")) {
       return { row: knowledgeJobRow({ job_type: "finalize", target_id: null, hostname: "" }) };
     }
@@ -295,6 +298,9 @@ test("finalization waits while verification jobs are still outstanding", async (
 
 test("finalization completes the run and the verifier rollout once nothing is outstanding", async () => {
   const db = queueDatabase((sql) => {
+    if (sql.includes("SELECT status FROM knowledge_catalog_review_runs")) {
+      return { row: { status: "running" } };
+    }
     if (sql.includes("SELECT * FROM knowledge_catalog_verification_jobs")) {
       return { row: knowledgeJobRow({ job_type: "finalize", target_id: null, hostname: "" }) };
     }
@@ -317,6 +323,9 @@ test("finalization completes the run and the verifier rollout once nothing is ou
 
 test("a rollout is only recorded as finished when its version was claimed", async () => {
   const db = queueDatabase((sql) => {
+    if (sql.includes("SELECT status FROM knowledge_catalog_review_runs")) {
+      return { row: { status: "running" } };
+    }
     if (sql.includes("SELECT * FROM knowledge_catalog_verification_jobs")) {
       return { row: knowledgeJobRow({ job_type: "finalize", target_id: null, hostname: "" }) };
     }
@@ -332,6 +341,28 @@ test("a rollout is only recorded as finished when its version was claimed", asyn
     0,
     "an ordinary run must not close out a rollout it never started",
   );
+});
+
+test("finalizer redelivery after run success only repairs the job marker", async () => {
+  const db = queueDatabase((sql) => {
+    if (sql.includes("SELECT status FROM knowledge_catalog_review_runs")) {
+      return { row: { status: "success" } };
+    }
+    if (sql.includes("SELECT * FROM knowledge_catalog_verification_jobs")) {
+      return { row: knowledgeJobRow({ job_type: "finalize", target_id: null, hostname: "" }) };
+    }
+    return {};
+  });
+  const { message, acks, retries } = queueMessage({ jobType: "finalize", verifierVersion: 5 });
+
+  const result = await consumeKnowledgeCatalogVerificationMessage(queueEnv(db), message);
+
+  assert.deepEqual(result, { status: "ignored", reason: "run_success" });
+  assert.equal(acks.length, 1);
+  assert.equal(retries.length, 0);
+  assert.equal(db.ran("COUNT(*) AS target_jobs").length, 0);
+  assert.equal(db.ran("UPDATE knowledge_catalog_verifier_state").length, 0);
+  assert.equal(db.ran("SET status = 'completed'").length, 1);
 });
 
 test("a dead-lettered finalizer fails its run so a rollout never looks stuck as running", async () => {

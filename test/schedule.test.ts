@@ -212,6 +212,8 @@ test("large item-count drops are rejected only after a meaningful baseline", () 
 test("Knowledge Catalog verification is dispatched to its dedicated queue", () => {
   assert.equal(wranglerConfig.vars.KNOWLEDGE_CATALOG_DAILY_VERIFY_MAX_CANDIDATES, "200");
   assert.equal(wranglerConfig.vars.KNOWLEDGE_CATALOG_REVIEW_INTERVAL_DAYS, "30");
+  assert.equal(wranglerConfig.vars.KNOWLEDGE_CATALOG_QUEUE_WAKE_MAX_JOBS, "8");
+  assert.equal(wranglerConfig.vars.KNOWLEDGE_CATALOG_QUEUE_WAKE_WALL_BUDGET_MS, "25000");
 
   const producer = wranglerConfig.queues.producers.find(
     (item: { binding?: string }) => item.binding === "KNOWLEDGE_CATALOG_QUEUE",

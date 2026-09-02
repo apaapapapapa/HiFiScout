@@ -22,6 +22,9 @@ const DEFAULT_DOMAIN_RETRY_SECONDS = 60;
 const DEFAULT_TRANSIENT_MAX_ATTEMPTS = 4;
 const DEFAULT_TRANSIENT_RETRY_SECONDS = 300;
 const DEFAULT_FINALIZE_RETRY_SECONDS = 300;
+const DEFAULT_SOURCE_REQUEST_DELAY_MS = 500;
+const DEFAULT_WAKE_MAX_JOBS = 8;
+const DEFAULT_WAKE_WALL_BUDGET_MS = 25_000;
 
 function boundedInteger(value: unknown, fallback: number, min: number, max: number): number {
   const parsed = Number(value);
@@ -114,6 +117,31 @@ export function finalizeRetrySeconds(env: KnowledgeCatalogConfigEnv): number {
     DEFAULT_FINALIZE_RETRY_SECONDS,
     30,
     1800,
+  );
+}
+
+/** Minimum space between source requests, including the boundary between two durable jobs. */
+export function sourceRequestDelayMs(env: KnowledgeCatalogConfigEnv): number {
+  return boundedInteger(
+    env.KNOWLEDGE_CATALOG_SOURCE_REQUEST_DELAY_MS,
+    DEFAULT_SOURCE_REQUEST_DELAY_MS,
+    0,
+    60_000,
+  );
+}
+
+/** Hard cap on durable jobs claimed by one run-level Queue wake-up. */
+export function wakeMaxJobs(env: KnowledgeCatalogConfigEnv): number {
+  return boundedInteger(env.KNOWLEDGE_CATALOG_QUEUE_WAKE_MAX_JOBS, DEFAULT_WAKE_MAX_JOBS, 1, 25);
+}
+
+/** Wall backstop checked between jobs; the count cap remains authoritative during one job. */
+export function wakeWallBudgetMs(env: KnowledgeCatalogConfigEnv): number {
+  return boundedInteger(
+    env.KNOWLEDGE_CATALOG_QUEUE_WAKE_WALL_BUDGET_MS,
+    DEFAULT_WAKE_WALL_BUDGET_MS,
+    1_000,
+    120_000,
   );
 }
 

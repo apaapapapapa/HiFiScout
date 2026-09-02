@@ -9,11 +9,11 @@
 
 import { createKnowledgeSourceVerifier } from "../catalog/knowledge-verification/verifier.js";
 import { createRobotsRespectingFetch } from "../crawler/robots-respecting-fetch.js";
+import { sourceRequestDelayMs } from "./policy.js";
 import type { KnowledgeSourceVerifier } from "../catalog/knowledge-verification/types.js";
 import type { KnowledgeCatalogQueueEnv } from "./types.js";
 
 const DEFAULT_USER_AGENT = "HiFiScoutBot/0.1";
-const DEFAULT_REQUEST_DELAY_MS = 500;
 
 export type VerifierFactory = (
   env: KnowledgeCatalogQueueEnv,
@@ -26,8 +26,7 @@ function sourceFetcher(
 ): typeof fetch {
   return createRobotsRespectingFetch(fetchImpl, {
     userAgent: env.CRAWLER_USER_AGENT || DEFAULT_USER_AGENT,
-    minimumDelayMs:
-      Number(env.KNOWLEDGE_CATALOG_SOURCE_REQUEST_DELAY_MS) || DEFAULT_REQUEST_DELAY_MS,
+    minimumDelayMs: sourceRequestDelayMs(env),
   });
 }
 
