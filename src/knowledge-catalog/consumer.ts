@@ -16,7 +16,6 @@ import {
   claimNextKnowledgeCatalogVerificationJobForRun,
   claimKnowledgeCatalogVerificationJob,
   completeKnowledgeCatalogVerificationJob,
-  deadLetterOutstandingKnowledgeCatalogVerificationJobsForRun,
   deadLetterKnowledgeCatalogVerificationJob,
   getKnowledgeCatalogVerificationJob,
   incrementKnowledgeCatalogVerificationSourceAttempt,
@@ -24,7 +23,10 @@ import {
   releaseKnowledgeCatalogVerificationDomainLease,
   retryKnowledgeCatalogVerificationJob,
 } from "../db/knowledge-catalog-verification-queue-repository.js";
-import { finishKnowledgeCatalogReviewRunFailure } from "../db/knowledge-catalog-review-repository.js";
+import {
+  finishKnowledgeCatalogReviewRunFailure,
+  knowledgeCatalogReviewRunStatus,
+} from "../db/knowledge-catalog-review-repository.js";
 import { finishKnowledgeCatalogVerifierVersionFailure } from "../db/knowledge-catalog-verifier-state-repository.js";
 import { finalizeKnowledgeCatalogVerificationRun } from "./finalize.js";
 import {
@@ -536,11 +538,91 @@ export async function consumeKnowledgeCatalogVerificationBatch(
   }
 }
 
+interface DeadLetteredRunWakeRecovery {
+  action: "stale" | "settled" | "rewoken" | "recovery_enqueue_failed";
+  runStatus: string | null;
+  outstandingJobs: number;
+  nextDelaySeconds: number | null;
+}
+
+/**
+ * A run wake-up contains no unique work; D1 owns every target and the finalizer.
+ *
+ * An at-least-once duplicate can exhaust delivery after another copy has already progressed or
+ * completed the run. Failing durable rows from that stale Queue message would let an obsolete
+ * delivery overwrite live work. Instead, terminal runs are ignored and a still-running run with
+ * outstanding work gets a fresh wake-up. If that recovery enqueue also fails, the durable rows are
+ * intentionally left intact for the scheduled stranded-run watchdog rather than being destroyed.
+ */
+async function recoverDeadLetteredKnowledgeCatalogRunWake(
+  env: KnowledgeCatalogQueueEnv,
+  runId: number,
+  observedAt: Date,
+): Promise<DeadLetteredRunWakeRecovery> {
+  const runStatus = await knowledgeCatalogReviewRunStatus(env.DB, runId);
+  if (runStatus !== "running") {
+    return {
+      action: "stale",
+      runStatus,
+      outstandingJobs: 0,
+      nextDelaySeconds: null,
+    };
+  }
+
+  const state = await knowledgeCatalogVerificationRunWakeState(
+    env.DB,
+    runId,
+    observedAt.toISOString(),
+  );
+  if (state.outstandingJobs <= 0) {
+    return {
+      action: "settled",
+      runStatus,
+      outstandingJobs: 0,
+      nextDelaySeconds: null,
+    };
+  }
+
+  const nextAt = Date.parse(state.nextAvailableAt || "");
+  const nextDelaySeconds = Number.isFinite(nextAt)
+    ? Math.max(1, Math.ceil((nextAt - observedAt.getTime()) / 1000))
+    : 1;
+  try {
+    await env.KNOWLEDGE_CATALOG_QUEUE.send(
+      { kind: "knowledge_catalog_run_wakeup", runId },
+      { delaySeconds: nextDelaySeconds },
+    );
+    return {
+      action: "rewoken",
+      runStatus,
+      outstandingJobs: state.outstandingJobs,
+      nextDelaySeconds,
+    };
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: "knowledge_catalog_run_wakeup_dlq_recovery_enqueue_failed",
+        runId,
+        outstandingJobs: state.outstandingJobs,
+        nextDelaySeconds,
+        message: errorMessage(error),
+      }),
+    );
+    return {
+      action: "recovery_enqueue_failed",
+      runStatus,
+      outstandingJobs: state.outstandingJobs,
+      nextDelaySeconds,
+    };
+  }
+}
+
 /**
  * Last stop for messages Cloudflare gave up redelivering.
  *
- * The job row is closed so the finalizer stops waiting on it, and a dead finalizer fails its run
- * so a rollout is never left reporting itself as still running.
+ * Legacy messages own one durable job, so their job row is closed and a dead legacy finalizer
+ * fails its run. A run-level wake-up owns no durable work and is therefore only recovered or
+ * treated as stale; it must never fail rows that another delivery may already be processing.
  */
 export async function consumeKnowledgeCatalogVerificationDeadLetterBatch(
   env: KnowledgeCatalogQueueEnv,
@@ -549,54 +631,28 @@ export async function consumeKnowledgeCatalogVerificationDeadLetterBatch(
   for (const message of batch.messages) {
     const body = message.body;
     const runId = Number(body.runId || 0);
-    const finishedAt = new Date().toISOString();
     if (!isLegacyJobMessage(body)) {
-      if (runId) {
-        await deadLetterOutstandingKnowledgeCatalogVerificationJobsForRun(
-          env.DB,
-          runId,
-          finishedAt,
-          "knowledge_catalog_run_wakeup_delivery_exhausted",
-        );
-        await finishKnowledgeCatalogReviewRunFailure(
-          env.DB,
-          runId,
-          finishedAt,
-          "knowledge_catalog_run_wakeup_delivery_exhausted",
-        );
-        const finalizer = await env.DB.prepare(`
-          SELECT payload_json
-          FROM knowledge_catalog_verification_jobs
-          WHERE run_id = ? AND job_type = 'finalize'
-          LIMIT 1
-        `)
-          .bind(runId)
-          .first<{ payload_json?: string | null }>();
-        let verifierVersion = 0;
-        try {
-          const payload = JSON.parse(finalizer?.payload_json || "") as unknown;
-          verifierVersion = isRecord(payload) ? Number(payload.verifierVersion || 0) : 0;
-        } catch {}
-        if (verifierVersion > 0) {
-          await finishKnowledgeCatalogVerifierVersionFailure(
-            env.DB,
-            verifierVersion,
-            finishedAt,
-            "knowledge_catalog_run_wakeup_delivery_exhausted",
-          );
-        }
-      }
+      const recovery = runId
+        ? await recoverDeadLetteredKnowledgeCatalogRunWake(env, runId, new Date())
+        : {
+            action: "stale" as const,
+            runStatus: null,
+            outstandingJobs: 0,
+            nextDelaySeconds: null,
+          };
       console.error(
         JSON.stringify({
           event: "knowledge_catalog_queue_dead_letter",
           kind: body.kind,
           runId: runId || null,
+          ...recovery,
         }),
       );
       message.ack();
       continue;
     }
 
+    const finishedAt = new Date().toISOString();
     const jobId = Number(body.jobId || 0);
     if (jobId) {
       await deadLetterKnowledgeCatalogVerificationJob(
