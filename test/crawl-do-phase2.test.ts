@@ -7,13 +7,11 @@ import {
 } from "../src/crawler/direct-pacing.js";
 import {
   deliverCrawlDispatch,
-  isCrawlDoCanaryEligible,
-  selectedCrawlDoCanaryShops,
-  shouldExecuteCrawlWithDurableObject,
+  isCrawlDoEligible,
+  type CrawlDispatchMessage,
 } from "../src/crawler/orchestration.js";
-import type { CrawlQueueMessage } from "../src/crawler/types.js";
 
-const MESSAGE: CrawlQueueMessage = {
+const MESSAGE: CrawlDispatchMessage = {
   shopKey: "home-shokai",
   force: true,
   requestedAt: "2026-08-30T00:00:00.000Z",
@@ -21,17 +19,10 @@ const MESSAGE: CrawlQueueMessage = {
   batchRunId: "batch:test",
 };
 
-test("Phase 6 routes every eligible shop through DO regardless of the legacy allowlist", () => {
-  assert.deepEqual(
-    [...selectedCrawlDoCanaryShops(" home-shokai, ippinkan ,")],
-    ["home-shokai", "ippinkan"],
-  );
-  assert.equal(shouldExecuteCrawlWithDurableObject("home-shokai", "home-shokai"), true);
-  assert.equal(shouldExecuteCrawlWithDurableObject("home-shokai", "hifido"), true);
-});
-
-test("Phase 2 direct canary remains eligible after the Phase 6 cutover", () => {
-  assert.equal(isCrawlDoCanaryEligible("home-shokai"), true);
+test("Phase 7 routes registered crawl shops through the Durable Object without rollout allowlists", () => {
+  assert.equal(isCrawlDoEligible("home-shokai"), true);
+  assert.equal(isCrawlDoEligible("hifido"), true);
+  assert.equal(isCrawlDoEligible("unknown-shop"), false);
 });
 
 test("direct crawl dispatch goes to the Durable Object", async () => {
