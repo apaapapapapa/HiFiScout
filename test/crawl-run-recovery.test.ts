@@ -163,11 +163,11 @@ test("an active Durable Object dispatch keeps ownership of its own outcome", () 
     dispatch_token: token,
     dispatch_last_sent_at: ABANDONED_AT,
   });
-  assert.equal(shouldRecordStalledRunFailure(dispatched, run, NOW), false);
+  assert.equal(shouldRecordStalledRunFailure(dispatched, run), false);
 
   const idle = lifecycleRow({ shop_key: "ippinkan" });
-  assert.equal(shouldRecordStalledRunFailure(idle, run, NOW), true);
-  assert.equal(shouldRecordStalledRunFailure(undefined, run, NOW), false);
+  assert.equal(shouldRecordStalledRunFailure(idle, run), true);
+  assert.equal(shouldRecordStalledRunFailure(undefined, run), false);
 });
 
 test("recovery drains a backlog in bounded batches", async () => {
