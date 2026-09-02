@@ -19,15 +19,32 @@ const statusAction = readFileSync(
 
 const downstreamWorkflows = [e2e, operationalHealth, catalogAdmin];
 
-test("Deploy persists the exact CI-authorized SHA before mutating production", () => {
-  assert.match(deploy, /DEPLOY_SHA:/u);
+test("Deploy publishes the exact CI-authorized SHA only after production is confirmed", () => {
+  assert.match(deploy, /echo "DEPLOY_SHA=\$target_sha" >> "\$GITHUB_ENV"/u);
+  assert.match(deploy, /ref: \$\{\{ steps\.target\.outputs\.sha \}\}/u);
   assert.match(deploy, /printf '%s\\n' "\$DEPLOY_SHA" > deployment-sha\.txt/u);
   assert.match(deploy, /name: deployment-identity/u);
   assert.match(deploy, /actions\/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02/u);
-  assert.ok(
-    deploy.indexOf("Publish deployment identity artifact") <
-      deploy.indexOf("Apply backward-compatible D1 migrations"),
-  );
+
+  const applyMigrations = deploy.indexOf("Apply backward-compatible D1 migrations");
+  const deployWorker = deploy.indexOf("Deploy Worker and static assets");
+  const runtimeHealth = deploy.indexOf("Check production runtime health");
+  const publishIdentity = deploy.indexOf("Publish deployment identity artifact");
+  assert.ok(applyMigrations >= 0);
+  assert.ok(deployWorker > applyMigrations);
+  assert.ok(runtimeHealth > deployWorker);
+  assert.ok(publishIdentity > runtimeHealth);
+
+  const identitySection = deploy.slice(deploy.indexOf("Record deployment identity"));
+  assert.match(identitySection, /steps\.d1-migrations\.outputs\.already_deployed != 'true'/u);
+  assert.match(identitySection, /steps\.d1-apply\.outputs\.deferred != 'd1_daily_quota'/u);
+});
+
+test("Deploy reads the production baseline from deployment-identity content", () => {
+  assert.match(deploy, /actions\/artifacts\?name=deployment-identity&per_page=100/u);
+  assert.match(deploy, /unzip -p "\$zip_file" deployment-sha\.txt/u);
+  assert.match(deploy, /last_deployed_sha="\$candidate"/u);
+  assert.doesNotMatch(deploy, /last_deployed_sha="\$run_sha"/u);
 });
 
 test("every automatic post-deploy workflow resolves identity from the triggering Deploy artifact", () => {
@@ -38,6 +55,8 @@ test("every automatic post-deploy workflow resolves identity from the triggering
     assert.match(workflow, /name: deployment-identity/u);
     assert.match(workflow, /run-id: \$\{\{ github\.event\.workflow_run\.id \}\}/u);
     assert.match(workflow, /deployment-sha\.txt/u);
+    assert.match(workflow, /available=false/u);
+    assert.match(workflow, /steps\.deployment\.outputs\.available == 'true'/u);
     assert.doesNotMatch(workflow, /ref: \$\{\{ github\.event\.workflow_run\.head_sha \}\}/u);
   }
 });

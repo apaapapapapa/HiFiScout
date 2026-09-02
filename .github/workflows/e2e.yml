@@ -28,6 +28,7 @@ jobs:
     steps:
       - name: Download deployed SHA
         if: github.event_name == 'workflow_run'
+        continue-on-error: true
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: deployment-identity
@@ -43,6 +44,11 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = 'workflow_run' ]; then
+            if [[ ! -s .deployment/deployment-sha.txt ]]; then
+              echo "::notice title=E2E skipped::Deploy Cloudflare completed without a new deployment identity; the deployment was deferred or already current."
+              echo "available=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             sha="$(tr -d '\r\n' < .deployment/deployment-sha.txt)"
           else
             sha="$MANUAL_SHA"
@@ -51,11 +57,14 @@ jobs:
             echo "Invalid deployed SHA: $sha" >&2
             exit 1
           fi
+          echo "available=true" >> "$GITHUB_OUTPUT"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        if: steps.deployment.outputs.available == 'true'
         with:
           ref: ${{ steps.deployment.outputs.sha }}
       - name: Resolve E2E base URL
+        if: steps.deployment.outputs.available == 'true'
         shell: bash
         env:
           INPUT_BASE_URL: ${{ inputs.base_url }}
@@ -67,25 +76,29 @@ jobs:
           base_url="${INPUT_BASE_URL:-${REPOSITORY_E2E_BASE_URL:-${REPOSITORY_PRODUCTION_BASE_URL:-$PRODUCTION_BASE_URL}}}"
           echo "E2E_BASE_URL=${base_url%/}" >> "$GITHUB_ENV"
       - uses: ./.github/actions/setup-node-deps
+        if: steps.deployment.outputs.available == 'true'
       - name: Resolve installed Playwright version
+        if: steps.deployment.outputs.available == 'true'
         id: playwright-version
         shell: bash
         run: |
           version="$(node -p "require('@playwright/test/package.json').version")"
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Restore Playwright Chromium cache
+        if: steps.deployment.outputs.available == 'true'
         id: playwright-cache
         uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ runner.arch }}-chromium-${{ steps.playwright-version.outputs.version }}
       - name: Install Chromium on cache miss
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        if: steps.deployment.outputs.available == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
         run: vp exec playwright install chromium
       - name: Run Playwright user-flow regression suite
+        if: steps.deployment.outputs.available == 'true'
         run: vp run test:e2e
       - name: Publish E2E status
-        if: always() && steps.deployment.outputs.sha != ''
+        if: always() && steps.deployment.outputs.available == 'true' && steps.deployment.outputs.sha != ''
         continue-on-error: true
         uses: ./.github/actions/publish-commit-status
         with:

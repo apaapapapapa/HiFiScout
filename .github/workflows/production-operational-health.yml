@@ -28,6 +28,7 @@ jobs:
     steps:
       - name: Download deployed SHA
         if: github.event_name == 'workflow_run'
+        continue-on-error: true
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: deployment-identity
@@ -43,6 +44,11 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = 'workflow_run' ]; then
+            if [[ ! -s .deployment/deployment-sha.txt ]]; then
+              echo "::notice title=Data-platform health skipped::Deploy Cloudflare completed without a new deployment identity; the deployment was deferred or already current."
+              echo "available=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             sha="$(tr -d '\r\n' < .deployment/deployment-sha.txt)"
           else
             sha="$MANUAL_SHA"
@@ -51,19 +57,25 @@ jobs:
             echo "Invalid deployed SHA: $sha" >&2
             exit 1
           fi
+          echo "available=true" >> "$GITHUB_OUTPUT"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        if: steps.deployment.outputs.available == 'true'
         with:
           ref: ${{ steps.deployment.outputs.sha }}
       - uses: ./.github/actions/setup-node-deps
+        if: steps.deployment.outputs.available == 'true'
       - name: Wait for active crawl convergence
+        if: steps.deployment.outputs.available == 'true'
         run: bash scripts/wait-for-active-crawl-convergence.sh
       - name: Verify production data platform and data quality
+        if: steps.deployment.outputs.available == 'true'
         run: bash scripts/production-operational-health.sh
       - name: Verify Product Search identity grouping
+        if: steps.deployment.outputs.available == 'true'
         run: bash scripts/product-search-identity-health.sh
       - name: Publish data-platform health status
-        if: always() && steps.deployment.outputs.sha != ''
+        if: always() && steps.deployment.outputs.available == 'true' && steps.deployment.outputs.sha != ''
         continue-on-error: true
         uses: ./.github/actions/publish-commit-status
         with:
@@ -80,6 +92,7 @@ jobs:
     steps:
       - name: Download deployed SHA
         if: github.event_name == 'workflow_run'
+        continue-on-error: true
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: deployment-identity
@@ -95,6 +108,11 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = 'workflow_run' ]; then
+            if [[ ! -s .deployment/deployment-sha.txt ]]; then
+              echo "::notice title=Knowledge Catalog health skipped::Deploy Cloudflare completed without a new deployment identity; the deployment was deferred or already current."
+              echo "available=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             sha="$(tr -d '\r\n' < .deployment/deployment-sha.txt)"
           else
             sha="$MANUAL_SHA"
@@ -103,11 +121,14 @@ jobs:
             echo "Invalid deployed SHA: $sha" >&2
             exit 1
           fi
+          echo "available=true" >> "$GITHUB_OUTPUT"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        if: steps.deployment.outputs.available == 'true'
         with:
           ref: ${{ steps.deployment.outputs.sha }}
       - name: Resolve production base URL
+        if: steps.deployment.outputs.available == 'true'
         shell: bash
         env:
           REPOSITORY_PRODUCTION_BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
@@ -117,9 +138,10 @@ jobs:
           base_url="${REPOSITORY_PRODUCTION_BASE_URL:-$PRODUCTION_BASE_URL}"
           echo "PRODUCTION_BASE_URL=${base_url%/}" >> "$GITHUB_ENV"
       - name: Verify Knowledge Catalog runtime operations
+        if: steps.deployment.outputs.available == 'true'
         run: bash scripts/knowledge-catalog-operational-health.sh
       - name: Publish Knowledge Catalog health status
-        if: always() && steps.deployment.outputs.sha != ''
+        if: always() && steps.deployment.outputs.available == 'true' && steps.deployment.outputs.sha != ''
         continue-on-error: true
         uses: ./.github/actions/publish-commit-status
         with:
