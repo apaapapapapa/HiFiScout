@@ -22,11 +22,13 @@ test("Cloudflare deploy defers only the recognized D1 daily row-read quota", asy
   );
 });
 
-test("runtime smoke confirms D1 quota independently when tail correlation is unavailable", async () => {
+test("runtime smoke confirms D1 quota independently only when tail correlation is unavailable", async () => {
   const workflow = await readWorkflow("deploy.yml");
 
   assert.match(workflow, /id: runtime-smoke/);
   assert.match(workflow, /wrangler tail hifiscout --format=json/);
+  assert.match(workflow, /matching_tail_event_count > 0/);
+  assert.match(workflow, /if \(\( matching_tail_event_count == 0 \)\); then/);
   assert.match(workflow, /wrangler d1 execute DB --remote --command 'SELECT 1;'/);
   assert.match(workflow, /quota_probe_status != 0/);
   assert.match(workflow, /grep -Fq 'code: 7500' "\$quota_probe"/);
