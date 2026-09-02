@@ -19,10 +19,10 @@ const DISPATCH_COLUMNS = [
 ] as const;
 
 const BRIDGE_TRIGGERS = [
-  "trg_shop_sync_dispatch_to_legacy_insert",
-  "trg_shop_sync_dispatch_to_legacy_update",
-  "trg_shop_sync_legacy_to_dispatch_insert",
-  "trg_shop_sync_legacy_to_dispatch_update",
+  "trg_shop_sync_state_legacy_dispatch_insert",
+  "trg_shop_sync_state_legacy_dispatch_update",
+  "trg_shop_sync_state_dispatch_legacy_insert",
+  "trg_shop_sync_state_dispatch_legacy_update",
 ] as const;
 
 test("Phase 7 production schema keeps dispatch state and physically removes Queue-era crawl state", () => {
