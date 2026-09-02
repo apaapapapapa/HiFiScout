@@ -68,10 +68,7 @@ async function handlePublicHttp(
 }
 
 /** Crawl Queues are gone in Phase 6; this entrypoint serves the remaining non-crawl Queue jobs. */
-async function handleWorkerQueue(
-  batch: MessageBatch<WorkerQueueMessage>,
-  env: Env,
-): Promise<void> {
+async function handleWorkerQueue(batch: MessageBatch<WorkerQueueMessage>, env: Env): Promise<void> {
   return handleQueue(batch, env);
 }
 
