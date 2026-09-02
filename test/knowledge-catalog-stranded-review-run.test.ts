@@ -19,6 +19,9 @@ function scheduler(liveness: { live_jobs: number; total_jobs: number; last_activ
     if (sql.includes("INSERT OR IGNORE INTO knowledge_catalog_verifier_state")) {
       return { changes: 0 };
     }
+    // The successor claim loses, which stops the case short of a full queue dispatch. What this
+    // fixture is for is whether the claim is reached at all, not what dispatch then does with it.
+    if (sql.includes("INSERT INTO knowledge_catalog_review_runs")) return { changes: 0 };
     if (sql.includes("live_jobs")) return { row: liveness };
     if (sql.includes("FROM knowledge_catalog_verifier_state")) {
       return { row: { version: 5, status: "success" } };
@@ -69,15 +72,11 @@ test("a running review run whose jobs just went terminal is not failed yet", asy
   );
 });
 
-test("a running review run nothing can finish is failed so recovery can start", async () => {
+test("a running review run nothing can finish is failed and recovered in one tick", async () => {
   const { db, env } = scheduler({ live_jobs: 0, total_jobs: 201, last_activity_at: LONG_AGO });
 
   const result = await bootstrapKnowledgeCatalogReview(env, NOW);
 
-  assert.deepEqual(result, {
-    status: "recovered",
-    reason: "knowledge_catalog_review_run_stranded",
-  });
   const [failure] = db.ran("SET finished_at = ?, status = 'failed'");
   assert.ok(failure, "the stranded run is what blocks every later tick");
   assert.deepEqual(failure.binds, [
@@ -85,6 +84,15 @@ test("a running review run nothing can finish is failed so recovery can start", 
     "knowledge_catalog_review_run_stranded_without_live_jobs",
     39,
   ]);
+  // The bootstrap is hourly. Failing the run and then waiting for the next tick to recover it
+  // would cost the catalog a second idle hour it does not need.
+  const [recovery] = db.ran("INSERT INTO knowledge_catalog_review_runs");
+  assert.ok(recovery, "the successor run is claimed in the same tick that failed the stranded one");
+  assert.deepEqual(recovery.binds.slice(-2), [39, 39]);
+  assert.deepEqual(result, {
+    status: "skipped",
+    reason: "knowledge_catalog_recovery_already_claimed",
+  });
 });
 
 test("a running review run that has not created its jobs yet is still dispatching", async () => {
