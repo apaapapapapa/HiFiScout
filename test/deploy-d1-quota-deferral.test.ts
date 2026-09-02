@@ -22,6 +22,30 @@ test("Cloudflare deploy defers only the recognized D1 daily row-read quota", asy
   );
 });
 
+test("scheduled retries use only the newest CI-approved quota-deferred SHA", async () => {
+  const workflow = await readWorkflow("deploy.yml");
+
+  assert.match(
+    workflow,
+    /actions\/workflows\/ci\.yml\/runs\?branch=main&status=success&per_page=1/,
+  );
+  assert.match(workflow, /\.context == "deployment\/cloudflare"/);
+  assert.match(workflow, /Cloudflare deployment deferred by D1 quota/);
+  assert.match(workflow, /ref: \$\{\{ steps\.target\.outputs\.sha \}\}/);
+  assert.doesNotMatch(workflow, /DEPLOY_SHA:.*github\.sha/);
+});
+
+test("deployment baseline comes from the identity artifact content and is retained", async () => {
+  const workflow = await readWorkflow("deploy.yml");
+
+  assert.match(workflow, /actions\/artifacts\?name=deployment-identity&per_page=100/);
+  assert.match(workflow, /actions\/artifacts\/\$\{artifact_id\}\/zip/);
+  assert.match(workflow, /unzip -p "\$zip_file" deployment-sha\.txt/);
+  assert.match(workflow, /last_deployed_sha="\$candidate"/);
+  assert.match(workflow, /retention-days: 90/);
+  assert.doesNotMatch(workflow, /last_deployed_sha="\$run_sha"/);
+});
+
 test("post-deploy workflows never substitute workflow_run.head_sha for a deferred deployment", async () => {
   for (const name of ["e2e.yml", "production-operational-health.yml", "deploy-catalog-admin.yml"]) {
     const workflow = await readWorkflow(name);
