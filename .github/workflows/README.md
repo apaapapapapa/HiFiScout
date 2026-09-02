@@ -17,7 +17,9 @@ HiFiScout keeps workflow orchestration thin. Domain behavior, repair logic, and 
 - `deploy-audiounion-lambda.yml` — deploy the AudioUnion relay Lambda.
 - `sync-audiounion-relay-secret.yml` — synchronize the relay credential required by the public Worker.
 
-`Deploy Cloudflare` publishes a one-day `deployment-identity` artifact. Every automatic downstream workflow must consume that artifact and operate on the exact deployed SHA; `workflow_run.head_sha` is not a deployment identity.
+`Deploy Cloudflare` publishes a one-day `deployment-identity` artifact only after the public Worker and deployment-owned smoke checks succeed. Every automatic downstream workflow must consume that artifact and operate on the exact deployed SHA; `workflow_run.head_sha` is not a deployment identity.
+
+Cloudflare D1 free-tier daily row-read exhaustion (`7500`) is an external capacity gate, not evidence that the candidate Worker is invalid. If it blocks required migrations, `Deploy Cloudflare` succeeds as **deferred**, does not publish `deployment-identity`, leaves production on the last confirmed deployed SHA, and retries after the midnight-UTC quota reset. A successful scheduled no-op likewise publishes no new deployment identity. Downstream E2E, operational-health, and Catalog Admin workflows must therefore treat a missing `deployment-identity` from an otherwise successful `Deploy Cloudflare` run as “no new public deployment” and exit successfully without operating on `workflow_run.head_sha`.
 
 ## Post-deploy verification
 
@@ -43,7 +45,7 @@ These workflows are intentionally separate from deployment and post-deploy verif
 ## Rules for new workflows
 
 1. Prefer extending an existing responsibility owner over adding another Deploy fan-out.
-2. Keep deploy success limited to deployment/migration/smoke-test failures; broad data-state incidents belong to operational health.
+2. Keep deploy success limited to deployment/migration/smoke-test failures; broad data-state incidents belong to operational health. Explicitly recognized account-wide quota exhaustion may defer a deployment only when the workflow preserves the previous deployment identity and schedules a bounded retry.
 3. Keep E2E focused on observable user behavior. API/data invariants belong in unit, contract, integration, or operational checks.
 4. Do not encode autonomous production repair loops in Actions YAML.
 5. Reuse `.github/actions/publish-commit-status` for custom commit statuses.

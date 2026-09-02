@@ -27,6 +27,7 @@ jobs:
       CATALOG_ADMIN_DOMAIN: hifiscout-admin.tokyojp.workers.dev
     steps:
       - name: Download deployed SHA
+        continue-on-error: true
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: deployment-identity
@@ -38,32 +39,45 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [[ ! -s .deployment/deployment-sha.txt ]]; then
+            echo "::notice title=Catalog Admin deploy skipped::Deploy Cloudflare completed without a new deployment identity; the public deployment was deferred or already current."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           sha="$(tr -d '\r\n' < .deployment/deployment-sha.txt)"
           if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
             echo "Invalid deployed SHA: $sha" >&2
             exit 1
           fi
+          echo "available=true" >> "$GITHUB_OUTPUT"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        if: steps.deployment.outputs.available == 'true'
         with:
           ref: ${{ steps.deployment.outputs.sha }}
       - uses: ./.github/actions/setup-node-deps
+        if: steps.deployment.outputs.available == 'true'
       - name: Build catalog admin browser assets
+        if: steps.deployment.outputs.available == 'true'
         run: vp run build:frontend:admin
       - name: Deploy fail-closed admin Worker
+        if: steps.deployment.outputs.available == 'true'
         run: >-
           vp exec wrangler deploy --config wrangler.admin.jsonc
           --var ACCESS_TEAM_DOMAIN:https://invalid.cloudflareaccess.com
           --var ACCESS_AUD:unconfigured
       - name: Provision Cloudflare Access
+        if: steps.deployment.outputs.available == 'true'
         id: access
         run: vp exec tsx scripts/provision-catalog-admin-access.ts
       - name: Deploy admin Worker with Access verification
+        if: steps.deployment.outputs.available == 'true'
         run: >-
           vp exec wrangler deploy --config wrangler.admin.jsonc
           --var ACCESS_TEAM_DOMAIN:${{ steps.access.outputs.access_team_domain }}
           --var ACCESS_AUD:${{ steps.access.outputs.access_aud }}
       - name: Verify public Worker no longer exposes Catalog Admin
+        if: steps.deployment.outputs.available == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -80,6 +94,7 @@ jobs:
             exit 1
           fi
       - name: Verify Cloudflare Access protects admin Worker without redirect loops
+        if: steps.deployment.outputs.available == 'true'
         shell: bash
         env:
           ADMIN_URL: ${{ steps.access.outputs.admin_url }}
@@ -109,7 +124,7 @@ jobs:
           fi
           echo "Cloudflare Access login page reached without a redirect loop."
       - name: Publish Catalog Admin deployment status
-        if: always() && steps.deployment.outputs.sha != ''
+        if: always() && steps.deployment.outputs.available == 'true' && steps.deployment.outputs.sha != ''
         uses: ./.github/actions/publish-commit-status
         with:
           github-token: ${{ github.token }}
