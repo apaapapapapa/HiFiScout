@@ -8,13 +8,19 @@ import { queueDatabase } from "./helpers/knowledge-queue.js";
 const NOW = new Date("2026-09-02T00:00:00.000Z");
 const LONG_AGO = "2026-09-01T16:44:20.627Z";
 const JUST_NOW = "2026-09-01T23:55:00.000Z";
+/** Past the no-live-jobs threshold but inside the far longer deliverable one. */
+const AN_HOUR_AGO = "2026-09-01T23:00:00.000Z";
+const STARTED_AT = "2026-09-01T15:31:19.577Z";
 
 /**
  * The scheduler reads the verifier claim, the verifier state, the queue status and the latest
  * review before it decides anything, so every case has to answer all four the same way: the version
  * is already claimed and the latest review is `running`.
  */
-function scheduler(liveness: { live_jobs: number; total_jobs: number; last_activity_at: string }) {
+function scheduler(
+  liveness: { live_jobs: number; total_jobs: number; last_activity_at: string },
+  startedAt = STARTED_AT,
+) {
   const db = queueDatabase((sql) => {
     if (sql.includes("INSERT OR IGNORE INTO knowledge_catalog_verifier_state")) {
       return { changes: 0 };
@@ -27,7 +33,14 @@ function scheduler(liveness: { live_jobs: number; total_jobs: number; last_activ
       return { row: { version: 5, status: "success" } };
     }
     if (sql.includes("SELECT id, status, message")) {
-      return { row: { id: 39, status: "running", message: "queue dispatch started" } };
+      return {
+        row: {
+          id: 39,
+          status: "running",
+          message: "queue dispatch started",
+          started_at: startedAt,
+        },
+      };
     }
     return {};
   });
@@ -95,11 +108,57 @@ test("a running review run nothing can finish is failed and recovered in one tic
   });
 });
 
-test("a running review run that has not created its jobs yet is still dispatching", async () => {
-  const { db, env } = scheduler({ live_jobs: 0, total_jobs: 0, last_activity_at: "" });
+test("a running review run that has just started dispatching is left alone", async () => {
+  const { db, env } = scheduler({ live_jobs: 0, total_jobs: 0, last_activity_at: "" }, JUST_NOW);
 
   const result = await bootstrapKnowledgeCatalogReview(env, NOW);
 
   assert.deepEqual(result, { status: "skipped", reason: "knowledge_catalog_review_in_progress" });
   assert.deepEqual(db.ran("SET finished_at = ?, status = 'failed'"), []);
+});
+
+// A Worker hard-killed during dispatch leaves the run looking busy in one of two ways, and neither
+// state can ever advance: no consumer will claim a job row whose message was never sent, and a run
+// with no jobs has nothing to claim at all. Left alone, both block every later bootstrap forever.
+
+test("a run interrupted before it created any jobs is stranded once it goes quiet", async () => {
+  const { db, env } = scheduler({ live_jobs: 0, total_jobs: 0, last_activity_at: "" }, STARTED_AT);
+
+  await bootstrapKnowledgeCatalogReview(env, NOW);
+
+  const [failure] = db.ran("SET finished_at = ?, status = 'failed'");
+  assert.ok(failure, "a run that never created a job cannot create one later");
+  assert.equal(failure.binds[2], 39);
+});
+
+test("a run holding queued rows whose messages were never sent is stranded once it goes quiet", async () => {
+  const { db, env } = scheduler({
+    live_jobs: 200,
+    total_jobs: 201,
+    last_activity_at: "2026-09-01T15:31:20.000Z",
+  });
+
+  await bootstrapKnowledgeCatalogReview(env, NOW);
+
+  const [failure] = db.ran("SET finished_at = ?, status = 'failed'");
+  assert.ok(failure, "queued rows with no message behind them are not deliverable work");
+  assert.equal(failure.binds[2], 39);
+});
+
+test("a working run whose live jobs are inside a lease window is left alone", async () => {
+  // Job and domain leases are bounded at 1800s, so a quiet stretch this long is normal work.
+  const { db, env } = scheduler({
+    live_jobs: 12,
+    total_jobs: 201,
+    last_activity_at: AN_HOUR_AGO,
+  });
+
+  const result = await bootstrapKnowledgeCatalogReview(env, NOW);
+
+  assert.deepEqual(result, { status: "skipped", reason: "knowledge_catalog_review_in_progress" });
+  assert.deepEqual(
+    db.ran("SET finished_at = ?, status = 'failed'"),
+    [],
+    "a lease-bounded quiet stretch is not a stranded run",
+  );
 });

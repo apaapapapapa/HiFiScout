@@ -203,10 +203,24 @@ export async function runScheduled(cron: string, env: Env, scheduledAt = new Dat
 /**
  * How long a `running` review run with no live jobs is left alone before it is declared stranded.
  *
- * A job is only ever momentarily between states, so this is far longer than any such window; it
- * exists so a run whose finalizer is mid-flight is never failed out from under itself.
+ * Nothing can move such a run, so its own last write already settles the question; this only has to
+ * outlast the moment a job spends between states, so a finalizer mid-flight is never failed out
+ * from under itself.
  */
 const STRANDED_REVIEW_RUN_MS = 30 * 60 * 1000;
+
+/**
+ * How long a `running` review run that still looks deliverable is left alone.
+ *
+ * Two states look deliverable but need not be. A run interrupted before it created any jobs has
+ * nothing to deliver, and a run interrupted between inserting `queued` rows and sending their
+ * messages has rows no consumer will ever claim -- in both cases every later bootstrap would report
+ * `knowledge_catalog_review_in_progress` forever. Neither can be told apart from healthy work by
+ * inspection, so they are told apart by silence instead. Job and domain leases are bounded at 1800
+ * seconds, so a genuinely working run cannot be quiet this long, and the threshold is well clear of
+ * that ceiling rather than equal to it.
+ */
+const STALLED_REVIEW_RUN_MS = 120 * 60 * 1000;
 
 /** Why a stranded run was failed, recorded on the run and read back by the recovery below. */
 const STRANDED_REVIEW_RUN_MESSAGE = "knowledge_catalog_review_run_stranded_without_live_jobs";
@@ -218,29 +232,34 @@ interface StrandedReviewRun {
 }
 
 /**
- * A review run that says `running` but that nothing can finish.
+ * A review run that says `running` but that nothing will finish.
  *
  * The finalizer is what moves a run to `success`, and the dead-letter consumer is what moves a run
  * whose finalizer died to `failed`. Those are two separate writes, so a finalizer that dead-letters
  * while D1 is refusing writes closes the job without failing the run, and the run then says
- * `running` with every one of its jobs terminal. Detecting that from the jobs themselves keeps the
- * recovery independent of which write was lost.
+ * `running` with every one of its jobs terminal.
+ *
+ * A hard kill during dispatch strands a run just as permanently while leaving it looking busy: no
+ * jobs at all, or `queued` rows whose queue messages were never sent. Progress, not job state, is
+ * therefore what decides -- a run is stranded once nothing about it has moved for long enough, and
+ * how long that is depends only on whether anything could still have moved it.
  */
 async function strandedKnowledgeCatalogReviewRun(
   db: Env["DB"],
-  runId: number,
+  run: { id?: unknown; started_at?: unknown },
   now: Date,
 ): Promise<StrandedReviewRun | null> {
+  const runId = Number(run.id || 0);
   if (!runId) return null;
   const liveness = await knowledgeCatalogReviewRunLiveness(db, runId);
-  if (liveness.liveJobs > 0) return null;
-  // A run that has not created its jobs yet is still dispatching, not stranded.
-  if (!liveness.totalJobs) return null;
-  const lastActivity = Date.parse(liveness.lastActivityAt);
-  if (Number.isFinite(lastActivity) && now.getTime() - lastActivity < STRANDED_REVIEW_RUN_MS) {
-    return null;
-  }
-  return { runId, totalJobs: liveness.totalJobs, lastActivityAt: liveness.lastActivityAt };
+  // A run with no jobs has no timestamp of its own; it is dated by when it started.
+  const lastActivityAt = liveness.lastActivityAt || String(run.started_at || "");
+  const lastActivity = Date.parse(lastActivityAt);
+  if (!Number.isFinite(lastActivity)) return null;
+  const deliverable = liveness.liveJobs > 0 || liveness.totalJobs === 0;
+  const idleFor = deliverable ? STALLED_REVIEW_RUN_MS : STRANDED_REVIEW_RUN_MS;
+  if (now.getTime() - lastActivity < idleFor) return null;
+  return { runId, totalJobs: liveness.totalJobs, lastActivityAt };
 }
 
 /**
@@ -288,11 +307,7 @@ export async function bootstrapKnowledgeCatalogReview(env: Env, now = new Date()
   let reviewStatus = latestReview?.status;
   let reviewMessage = latestReview?.message;
   if (reviewStatus === "running") {
-    const stranded = await strandedKnowledgeCatalogReviewRun(
-      env.DB,
-      Number(latestReview?.id || 0),
-      now,
-    );
+    const stranded = await strandedKnowledgeCatalogReviewRun(env.DB, latestReview ?? {}, now);
     if (!stranded) {
       return { status: "skipped", reason: "knowledge_catalog_review_in_progress" };
     }
