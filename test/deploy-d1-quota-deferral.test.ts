@@ -18,7 +18,26 @@ test("Cloudflare deploy defers only the recognized D1 daily row-read quota", asy
   assert.ok(migrations >= 0 && deploy > migrations && identity > deploy);
   assert.match(
     workflow.slice(identity),
-    /if: steps\.d1-migrations\.outputs\.already_deployed != 'true' && steps\.d1-apply\.outputs\.deferred != 'd1_daily_quota'/,
+    /steps\.runtime-smoke\.outputs\.deferred != 'd1_daily_quota'/,
+  );
+});
+
+test("runtime smoke confirms D1 quota independently when tail correlation is unavailable", async () => {
+  const workflow = await readWorkflow("deploy.yml");
+
+  assert.match(workflow, /id: runtime-smoke/);
+  assert.match(workflow, /wrangler tail hifiscout --format=json/);
+  assert.match(workflow, /wrangler d1 execute DB --remote --command 'SELECT 1;'/);
+  assert.match(workflow, /quota_probe_status != 0/);
+  assert.match(workflow, /grep -Fq 'code: 7500' "\$quota_probe"/);
+  assert.match(
+    workflow,
+    /grep -Fq "exceeded D1's free tier daily row read limit" "\$quota_probe"/,
+  );
+  assert.match(workflow, /echo "deferred=d1_daily_quota" >> "\$GITHUB_OUTPUT"/);
+  assert.match(
+    workflow,
+    /steps\.d1-apply\.outputs\.deferred == 'd1_daily_quota' \|\| steps\.runtime-smoke\.outputs\.deferred == 'd1_daily_quota'/,
   );
 });
 
