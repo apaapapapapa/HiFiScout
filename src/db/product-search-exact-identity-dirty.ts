@@ -11,7 +11,7 @@
  * doing often: with the identity fixed, deriving the grouping the group *should* have becomes one
  * indexed lookup of its members, with no correlated subquery and no self-join. That also lets this
  * check be the stronger one -- the scan can only find groups that need merging, while a recorded
- * change just as often means a group needs taking apart. See {@link needsResync}.
+ * change just as often means a group needs taking apart. See {@link resyncSeeds}.
  *
  * Claim semantics are built for a Worker that can be killed at any point:
  *
@@ -174,7 +174,7 @@ async function identityMembers(
 }
 
 /**
- * Whether this group's current membership disagrees with the one grouping would derive.
+ * The members whose current membership disagrees with the one grouping would derive.
  *
  * Asking only "is this group split across entities?" -- the shape of `EXACT_IDENTITY_SPLIT_COUNT_SQL`
  * and of the scan predicate -- covers merges and nothing else, while several of the transitions the
@@ -192,11 +192,24 @@ async function identityMembers(
  *   * categories compatible -> every member belongs to `l-<lowest member id>`
  *   * categories in conflict -> every member belongs to its own `l-<id>`
  *
+ * What comes back is the seed set for the resync, not a yes/no, and the two cases need different
+ * amounts of it:
+ *
+ *   * categories compatible -> one drifted member. Entity sync expands a seed to its
+ *     exact-identity peers, and when the group is groupable that expansion reaches every member in
+ *     every shop, so the first seed already converges the identity and any further seed only
+ *     recomputes the same union.
+ *   * categories in conflict -> every drifted member. That same expansion applies
+ *     `categoryCompatible`, so the members that must be separated are no longer peers of each other
+ *     and none of them would be revisited by another's seed.
+ *
+ * Either way a member already sitting at its expected key is not a seed: nothing about it changes.
+ *
  * A member with no membership row at all is a coverage gap, which is the five-minute sweep's phase,
  * so it is not counted as drift here.
  */
-function needsResync(members: readonly IdentityMemberRow[]): boolean {
-  if (!members.length) return false;
+function resyncSeeds(members: readonly IdentityMemberRow[]): IdentityMemberRow[] {
+  if (!members.length) return [];
 
   const specificCategories = new Set(
     members
@@ -207,11 +220,12 @@ function needsResync(members: readonly IdentityMemberRow[]): boolean {
   // Members arrive ordered by id, so the representative is the first of them.
   const representativeId = members[0]?.id;
 
-  return members.some((member) => {
+  const drifted = members.filter((member) => {
     if (member.entity_key === null || member.entity_key === undefined) return false;
     const expected = groupable ? `l-${representativeId}` : `l-${member.id}`;
     return member.entity_key !== expected;
   });
+  return groupable ? drifted.slice(0, 1) : drifted;
 }
 
 /**
@@ -284,15 +298,14 @@ export async function repairDirtyExactIdentities(
         identity.canonical_manufacturer_id,
         identity.normalized_model,
       );
-      if (needsResync(members)) {
-        // Every member is a seed, not just one. Entity sync does expand a seed to its exact-identity
-        // peers, but that expansion applies `categoryCompatible` -- so in exactly the case that
-        // needs the group taken apart, the members that must be separated are not peers any more and
-        // would never be revisited. Seeding them all re-derives each membership directly. Grouped by
-        // shop only because the incremental API is shop/source scoped, and run sequentially so a
-        // repair never becomes a D1 burst.
+      const seeds = resyncSeeds(members);
+      if (seeds.length) {
+        // Grouped by shop only because the incremental API is shop/source scoped, and run
+        // sequentially so a repair never becomes a D1 burst. `resyncSeeds` has already reduced the
+        // groupable case to a single seed, so this loop runs once there however many shops the
+        // identity spans; only a take-apart, where peer expansion reaches nobody, iterates.
         const sourceIdsByShop = new Map<string, string[]>();
-        for (const member of members) {
+        for (const member of seeds) {
           const sourceIds = sourceIdsByShop.get(member.shop_key) || [];
           sourceIds.push(member.source_id);
           sourceIdsByShop.set(member.shop_key, sourceIds);
