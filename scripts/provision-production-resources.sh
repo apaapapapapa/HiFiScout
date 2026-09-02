@@ -28,11 +28,9 @@ ensure_queue() {
   fi
 }
 
+# Crawl control no longer uses Cloudflare Queues. Keep provisioning only post-commit data-plane
+# Queues that remain intentionally in scope.
 for queue in \
-  hifiscout-crawl hifiscout-crawl-dlq \
-  hifiscout-crawl-fast hifiscout-crawl-fast-dlq \
-  hifiscout-crawl-heavy hifiscout-crawl-heavy-dlq \
-  hifiscout-crawl-relay hifiscout-crawl-relay-dlq \
   hifiscout-knowledge-verification hifiscout-knowledge-verification-dlq \
   hifiscout-product-audit-export hifiscout-product-audit-export-dlq; do
   ensure_queue "$queue"
