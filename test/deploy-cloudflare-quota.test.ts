@@ -13,7 +13,7 @@ test("production smoke defers only when the failing Worker request is correlated
   assert.match(workflow, /event\.request\.headers\["cf-ray"\]/);
   assert.doesNotMatch(workflow, /diagnostic_ray="\$\{diagnostic_ray%%-\*\}"/);
   assert.match(workflow, /CF-Ray=\$\{diagnostic_ray:-missing\}/);
-  assert.match(workflow, /select\(\(\.event\.request\.headers\["cf-ray"\] \|\| ""\) == \$ray\)/);
+  assert.match(workflow, /select\(\(\.event\.request\.headers\["cf-ray"\] \/\/ ""\) == \$ray\)/);
   assert.match(workflow, /D1_ERROR: Your account has exceeded D1's free tier daily row read limit/);
   assert.match(workflow, /PRODUCTION_RUNTIME_CHECK_DEFERRED=d1_daily_quota/);
   assert.match(workflow, /correlated by CF-Ray/);
