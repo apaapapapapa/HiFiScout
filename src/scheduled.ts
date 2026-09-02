@@ -25,6 +25,7 @@ import {
   claimKnowledgeCatalogVerifierVersion,
   knowledgeCatalogVerifierState,
 } from "./db/knowledge-catalog-verifier-state-repository.js";
+import { accountReads } from "./db/read-accounting.js";
 import { repairActiveListingProjectionGaps } from "./db/product-search-gap-repair.js";
 import { getSyncHealth, logSyncHealth } from "./health.js";
 import {
@@ -101,6 +102,9 @@ export async function repairGeneralCronProjectionGaps(db: QueryableDatabase) {
   const result = await repairActiveListingProjectionGaps(db, {
     batchSize: GENERAL_PROJECTION_REPAIR_BATCH_SIZE,
     maxListings: GENERAL_PROJECTION_REPAIR_MAX_LISTINGS,
+    // The exact-identity peer scan is the expensive, lowest-priority phase, and every tick pays for
+    // its selector even when there is nothing to repair. `repairHourlyExactIdentityGaps` owns it.
+    includeExactIdentityPhase: false,
   });
   // The outstanding-gap count is deliberately not requested here: it is the one unbounded query in
   // the repair, and this caller only needs to know whether it did anything. `runDailyMaintenance`
@@ -396,6 +400,29 @@ export async function bootstrapKnowledgeCatalogReview(env: Env, now = new Date()
 }
 
 /**
+ * The exact-identity split-membership phase, on its own hourly cadence.
+ *
+ * Its selector is the only one that joins `products` to itself on identity, so unlike the coverage
+ * and stale-fallback phases it cannot be answered from an index alone: a tick pays for it across
+ * every active listing even when nothing is drifting. The drift it repairs is also the least
+ * user-visible of the three -- two listings for one product sitting in separate search entities --
+ * so paying for it twelve times an hour bought very little and cost the D1 read budget a great
+ * deal. The cheaper phases keep the five-minute cadence they need.
+ */
+export async function repairHourlyExactIdentityGaps(db: QueryableDatabase) {
+  const result = await repairActiveListingProjectionGaps(db, {
+    batchSize: GENERAL_PROJECTION_REPAIR_BATCH_SIZE,
+    maxListings: GENERAL_PROJECTION_REPAIR_MAX_LISTINGS,
+  });
+  if (result.repairedCount > 0) {
+    console.log(
+      JSON.stringify({ event: "hourly_product_search_exact_identity_repair", ...result }),
+    );
+  }
+  return result;
+}
+
+/**
  * A failed review caused by the free-tier daily Queue write ceiling needs a different cadence from
  * the ordinary one-shot bootstrap. Probe only that condition every ten minutes. On the same UTC
  * day it is a no-op; after the quota day rolls over it delegates to the normal atomic recovery path.
@@ -477,6 +504,14 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
     everyTicks: 1,
     run: (env) => repairGeneralCronProjectionGaps(env.DB),
   },
+  {
+    // Split out of the five-minute sweep because its selector is the only one that cannot be
+    // answered from an index, so it was charging the read budget for a full identity self-join
+    // every tick to repair the least user-visible drift of the three.
+    name: "product_search_exact_identity_repair",
+    everyTicks: 12,
+    run: (env) => repairHourlyExactIdentityGaps(env.DB),
+  },
   // Both export recoveries treat a job as stuck after two minutes, so they stay near the old
   // cadence: stretching them to an hour would leave a user-visible export sitting for an hour to
   // save two bounded index lookups. Sequencing, not starvation, is what these two needed.
@@ -543,14 +578,31 @@ async function runGeneralCronMaintenance(env: Env, scheduledAt: Date): Promise<v
     });
   }
   for (const task of tasks) {
+    // Measured per task rather than per tick: the point of the number is to say which task is
+    // spending the day's read budget, which a tick-level total cannot answer.
+    const accounting = accountReads(env.DB);
+    const measuredEnv = { ...env, DB: accounting.db } as Env;
     try {
-      await task.run(env);
+      await task.run(measuredEnv);
     } catch (error) {
       console.error(
         JSON.stringify({
           event: "scheduled_maintenance_failed",
           task: task.name,
           message: errorMessage(error),
+          rowsRead: accounting.rowsRead(),
+        }),
+      );
+      continue;
+    }
+    if (accounting.rowsRead() > 0) {
+      console.log(
+        JSON.stringify({
+          event: "scheduled_maintenance_d1_usage",
+          task: task.name,
+          rowsRead: accounting.rowsRead(),
+          rowsWritten: accounting.rowsWritten(),
+          countedStatements: accounting.countedStatements(),
         }),
       );
     }

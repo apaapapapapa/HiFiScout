@@ -42,6 +42,7 @@ test("every maintenance task still runs within an hour", () => {
       "data_quality_remediation_sweep",
       "knowledge_catalog_queue_quota_recovery",
       "knowledge_catalog_review_bootstrap",
+      "product_search_exact_identity_repair",
       "product_search_projection_repair",
       "resume_interrupted_crawl_runs",
       "stale_knowledge_catalog_export_jobs",

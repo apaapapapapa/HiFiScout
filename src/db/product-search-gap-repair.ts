@@ -33,6 +33,14 @@ export interface ProductSearchGapRepairOptions {
    */
   continueOnRefreshError?: boolean;
   /**
+   * Run the correlated exact-identity peer scan.
+   *
+   * This is the one phase whose selector joins `products` to itself on identity, so its cost per
+   * candidate listing is far above the other two, and it is also the lowest-priority drift. The
+   * five-minute sweep leaves it off and an hourly pass owns it; strict and daily callers keep it.
+   */
+  includeExactIdentityPhase?: boolean;
+  /**
    * Also report how many gaps are left after this pass.
    *
    * Off by default because the count is the one unbounded statement in this file: it scans every
@@ -297,6 +305,7 @@ export async function repairActiveListingProjectionGaps(
     maxListings: requestedMaxListings,
     countRemainingGaps = false,
     continueOnRefreshError = !countRemainingGaps,
+    includeExactIdentityPhase = true,
   }: ProductSearchGapRepairOptions = {},
 ): Promise<ProductSearchGapRepairResult> {
   const batchSize = positiveBoundedInteger(requestedBatchSize, DEFAULT_BATCH_SIZE, 50);
@@ -350,7 +359,7 @@ export async function repairActiveListingProjectionGaps(
   if (selectedCount < maxListings) {
     await repairPhase(STALE_FALLBACK_GAP_PREDICATE, refreshStaleFallbackMembershipOnly);
   }
-  if (selectedCount < maxListings) {
+  if (includeExactIdentityPhase && selectedCount < maxListings) {
     await repairPhase(EXACT_IDENTITY_MEMBERSHIP_GAP_PREDICATE);
   }
 
