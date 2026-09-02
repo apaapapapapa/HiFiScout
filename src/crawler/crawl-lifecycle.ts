@@ -28,13 +28,13 @@ export function readCrawlLifecycle(
   state: CrawlDispatchStateRow | null | undefined,
 ): CrawlLifecycleSnapshot {
   if (!state?.dispatch_requested_at) {
+    const partial = Boolean(state?.dispatch_token || state?.dispatch_last_sent_at);
     return {
-      phase: "idle",
+      phase: partial ? "invalid" : "idle",
       requestedAt: null,
-      dispatchToken: null,
-      lastSentAt: null,
-      invalidReason:
-        state?.dispatch_token || state?.dispatch_last_sent_at ? "partial_dispatch" : null,
+      dispatchToken: state?.dispatch_token || null,
+      lastSentAt: state?.dispatch_last_sent_at || null,
+      invalidReason: partial ? "partial_dispatch" : null,
     };
   }
 
