@@ -28,12 +28,76 @@ jobs:
     env:
       CLOUDFLARE_ACCOUNT_ID: 9af87af4dbc00be3bfd4c8af3f52f684
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      DEPLOY_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
     steps:
+      - name: Resolve deployment target
+        id: target
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SHA: ${{ github.sha }}
+          WORKFLOW_RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          target_sha=""
+
+          case "$EVENT_NAME" in
+            workflow_run)
+              target_sha="$WORKFLOW_RUN_SHA"
+              ;;
+            workflow_dispatch)
+              target_sha="$EVENT_SHA"
+              ;;
+            schedule)
+              # Never deploy the schedule event's default-branch SHA. It may have reached main
+              # while CI is still running or failing. Retry only the newest SHA that completed CI
+              # successfully and whose latest deployment status says it was quota-deferred.
+              target_sha="$(gh api \
+                -H 'Accept: application/vnd.github+json' \
+                "/repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=main&status=success&per_page=1" \
+                --jq '.workflow_runs[0].head_sha // ""')"
+
+              if [[ ! "$target_sha" =~ ^[0-9a-f]{40}$ ]]; then
+                echo "::notice title=Scheduled deployment retry skipped::No successful main CI SHA is available."
+                echo "available=false" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+
+              deployment_status="$(gh api \
+                -H 'Accept: application/vnd.github+json' \
+                "/repos/${GITHUB_REPOSITORY}/commits/${target_sha}/status" \
+                --jq '[.statuses[] | select(.context == "deployment/cloudflare")][0] | [(.state // ""), (.description // "")] | @tsv')"
+              IFS=$'\t' read -r deployment_state deployment_description <<< "$deployment_status"
+
+              if [[ "$deployment_state" != "success" || \
+                "$deployment_description" != "Cloudflare deployment deferred by D1 quota"* ]]; then
+                echo "::notice title=Scheduled deployment retry skipped::Latest successful main CI SHA ${target_sha} is not currently D1-quota-deferred."
+                echo "available=false" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              ;;
+            *)
+              echo "Unsupported deployment event: $EVENT_NAME" >&2
+              exit 1
+              ;;
+          esac
+
+          if [[ ! "$target_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid deployment target SHA: $target_sha" >&2
+            exit 1
+          fi
+
+          echo "available=true" >> "$GITHUB_OUTPUT"
+          echo "sha=$target_sha" >> "$GITHUB_OUTPUT"
+          echo "DEPLOY_SHA=$target_sha" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        if: steps.target.outputs.available == 'true'
         with:
-          ref: ${{ env.DEPLOY_SHA }}
+          ref: ${{ steps.target.outputs.sha }}
+
       - name: Resolve production base URL
+        if: steps.target.outputs.available == 'true'
         shell: bash
         env:
           REPOSITORY_PRODUCTION_BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
@@ -42,6 +106,7 @@ jobs:
           source .github/config/production.env
           base_url="${REPOSITORY_PRODUCTION_BASE_URL:-$PRODUCTION_BASE_URL}"
           echo "PRODUCTION_BASE_URL=${base_url%/}" >> "$GITHUB_ENV"
+
       - name: Determine required D1 migrations
         id: d1-migrations
         shell: bash
@@ -49,48 +114,57 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+
+          # A scheduled run with no eligible deferred CI-approved SHA is an intentional no-op. Set
+          # the same output that the later deployment steps already use so none of them can run.
+          if [[ "${{ steps.target.outputs.available }}" != "true" ]]; then
+            echo "already_deployed=true" >> "$GITHUB_OUTPUT"
+            echo "required=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           if [[ ! "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "Invalid deployment SHA: $DEPLOY_SHA" >&2
             exit 1
           fi
 
-          # A successful workflow can also mean "safely deferred" when D1's account-wide daily
-          # read quota is exhausted. Only a successful run that published deployment-identity is an
-          # authoritative production baseline, because that artifact is emitted after smoke checks.
-          successful_runs="$(gh api \
+          # deployment-identity is the authority for what production actually runs. A Deploy
+          # workflow run's head_sha can differ from the CI-authorized SHA stored in that artifact,
+          # so read deployment-sha.txt from the newest valid unexpired artifact itself.
+          artifact_rows="$(gh api \
             -H 'Accept: application/vnd.github+json' \
-            "/repos/${GITHUB_REPOSITORY}/actions/workflows/deploy.yml/runs?branch=main&status=success&per_page=100" \
-            --jq '.workflow_runs[] | [.id, .head_sha] | @tsv')"
+            "/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=deployment-identity&per_page=100" \
+            --jq '.artifacts | map(select(.expired == false)) | sort_by(.created_at) | reverse[] | [.id, .created_at] | @tsv')"
           last_deployed_sha=""
-          if [[ -n "$successful_runs" ]]; then
-            while IFS=$'\t' read -r run_id run_sha; do
-              [[ -n "$run_id" && "$run_sha" =~ ^[0-9a-f]{40}$ ]] || continue
-              identity_count="$(gh api \
+          if [[ -n "$artifact_rows" ]]; then
+            while IFS=$'\t' read -r artifact_id _created_at; do
+              [[ "$artifact_id" =~ ^[0-9]+$ ]] || continue
+              tmp_dir="$(mktemp -d)"
+              zip_file="$tmp_dir/deployment-identity.zip"
+              if gh api \
                 -H 'Accept: application/vnd.github+json' \
-                "/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/artifacts?per_page=100" \
-                --jq '[.artifacts[] | select(.name == "deployment-identity" and .expired == false)] | length')"
-              if (( identity_count > 0 )); then
-                last_deployed_sha="$run_sha"
-                break
+                "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > "$zip_file"; then
+                candidate="$(unzip -p "$zip_file" deployment-sha.txt 2>/dev/null | tr -d '\r\n' || true)"
+                if [[ "$candidate" =~ ^[0-9a-f]{40}$ ]]; then
+                  last_deployed_sha="$candidate"
+                  rm -rf "$tmp_dir"
+                  break
+                fi
               fi
-            done <<< "$successful_runs"
+              rm -rf "$tmp_dir"
+            done <<< "$artifact_rows"
           fi
 
           echo "already_deployed=false" >> "$GITHUB_OUTPUT"
           if [[ -z "$last_deployed_sha" ]]; then
-            echo "No successful production deployment baseline found; D1 migrations are required."
+            echo "No confirmed production deployment identity artifact found; D1 migrations are required."
             echo "required=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          if [[ ! "$last_deployed_sha" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "Invalid successful deployment SHA: $last_deployed_sha" >&2
-            exit 1
-          fi
-
           echo "last_deployed_sha=$last_deployed_sha" >> "$GITHUB_OUTPUT"
           if [[ "$last_deployed_sha" == "$DEPLOY_SHA" ]]; then
-            echo "Production already runs $DEPLOY_SHA; scheduled retry is a no-op."
+            echo "Production already runs $DEPLOY_SHA; deployment is a no-op."
             echo "already_deployed=true" >> "$GITHUB_OUTPUT"
             echo "required=false" >> "$GITHUB_OUTPUT"
             exit 0
@@ -101,13 +175,14 @@ jobs:
             "$last_deployed_sha" "$DEPLOY_SHA" -- 'migrations/*.sql')"
 
           if [[ -n "$changed_migrations" ]]; then
-            echo "D1 migrations added or modified since the last successful production deployment:"
+            echo "D1 migrations added or modified since the last confirmed production deployment:"
             printf '%s\n' "$changed_migrations"
             echo "required=true" >> "$GITHUB_OUTPUT"
           else
-            echo "No D1 migration additions/modifications since successful deploy $last_deployed_sha; skipping remote migration API."
+            echo "No D1 migration additions/modifications since deployed SHA $last_deployed_sha; skipping remote migration API."
             echo "required=false" >> "$GITHUB_OUTPUT"
           fi
+
       # Use the same Vite+/Node/package-manager bootstrap as CI. package.json devEngines pins the
       # package manager, so actions/setup-node's npm cache probe can fail before npm is upgraded.
       - uses: ./.github/actions/setup-node-deps
@@ -314,7 +389,7 @@ jobs:
         with:
           name: deployment-identity
           path: deployment-sha.txt
-          retention-days: 1
+          retention-days: 90
           if-no-files-found: error
 
       # Product-search consistency, identity coverage and data-quality baselines intentionally live
@@ -322,7 +397,7 @@ jobs:
       # deployment as if the new Worker never reached production.
 
       - name: Publish deployment status
-        if: always()
+        if: always() && steps.target.outputs.available == 'true'
         continue-on-error: true
         uses: ./.github/actions/publish-commit-status
         with:
