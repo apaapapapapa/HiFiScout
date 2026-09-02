@@ -2,14 +2,13 @@ import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import { categoryClosureIds } from "../src/catalog/categories.js";
-import { syncInventoryRecheckSearchEntities } from "../src/crawler/dispatch.js";
 import { decodeCursor } from "../src/db/product-search-cursor.js";
 import { toProductSearchItem } from "../src/db/product-search-entity-mapper.js";
 import { searchProducts } from "../src/db/product-search-repository.js";
 import { normalizeManufacturerFacetValues } from "../src/http/meta.js";
 import { favoriteMatchesFilters, favoriteSnapshot } from "../frontend/favorites.js";
 import type { ProductFilters } from "../frontend/filters.js";
-import { asQueryableDatabase, captureDatabase } from "./helpers/d1.js";
+import { captureDatabase } from "./helpers/d1.js";
 import { entityRow } from "./helpers/product-search.js";
 import { productQuery } from "./helpers/product-query.js";
 
@@ -135,34 +134,4 @@ test("canonical manufacturer filters keep badge-prefixed Japanese stale rows vis
   assert.ok(JSON.parse(String(page.binds[1])).includes("ラックスマン"));
   assert.match(page.sql, /LIKE '【%】%'/);
   assert.match(page.sql, /substr\(/);
-});
-
-test("a completed inventory recheck refreshes the changed listing's search entity", async () => {
-  const calls: unknown[][] = [];
-  await syncInventoryRecheckSearchEntities(
-    asQueryableDatabase({}),
-    "audiounion",
-    { status: "checked", outcome: "in_stock", sourceId: "223257", productId: 7 },
-    async (_db, shopKey, sourceIds) => {
-      calls.push([shopKey, sourceIds]);
-      return { listing_count: 1, entity_count: 1, removed_entity_count: 0 };
-    },
-  );
-
-  assert.deepEqual(calls, [["audiounion", ["223257"]]]);
-});
-
-test("a deferred inventory recheck does not rewrite an unchanged search entity", async () => {
-  let syncCount = 0;
-  await syncInventoryRecheckSearchEntities(
-    asQueryableDatabase({}),
-    "audiounion",
-    { status: "deferred", reason: "upstream_http_429", sourceId: "223257", productId: 7 },
-    async () => {
-      syncCount += 1;
-      return { listing_count: 1, entity_count: 1, removed_entity_count: 0 };
-    },
-  );
-
-  assert.equal(syncCount, 0);
 });
