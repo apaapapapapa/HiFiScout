@@ -729,7 +729,9 @@ export class CrawlScheduler extends DurableObject<Env> {
                 : {}),
         },
       );
-      const nextOriginNotBeforeMs = directPermit ? Date.now() + directPermit.effectiveDelayMs : 0;
+      const nextOriginNotBeforeMs = directPermit
+        ? Date.now() + directPermit.effectiveDelayMs
+        : activeExecution.nextOriginNotBeforeMs;
 
       if (result.kind === "continued") {
         await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
