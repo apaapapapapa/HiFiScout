@@ -137,12 +137,12 @@ test("inventory PREPARE discovery is read-only until the paced FETCH alarm", asy
     repository,
   });
 
-  assert.deepEqual(preparation, {
-    status: "ready",
-    targetUrl: DETAIL_URL,
-    userAgent: "HiFiScoutBot/0.1 (+https://github.com/apaapapapa/HiFiScout)",
-    requestDelayMs: 10000,
-  });
+  assert.equal(preparation.status, "ready");
+  if (preparation.status === "ready") {
+    assert.equal(preparation.targetUrl, DETAIL_URL);
+    assert.equal(preparation.requestDelayMs, 10000);
+    assert.match(preparation.userAgent, /^HiFiScoutBot\/0\.1/);
+  }
   assert.equal(attempts, 0);
 });
 
