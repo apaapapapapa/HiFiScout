@@ -70,6 +70,15 @@ jobs:
       - uses: ./.github/actions/setup-node-deps
       - run: vp run ci:test-shard-${{ matrix.shard }}
 
+  parser-cpu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: ./.github/actions/setup-node-deps
+      - name: Compare parser stages with relative CPU baselines
+        run: vp run ci:parser-benchmark
+
   integration:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -136,6 +145,7 @@ jobs:
       - static-checks
       - typecheck
       - unit-test
+      - parser-cpu
       - integration
       - component
       - build
@@ -150,6 +160,7 @@ jobs:
           STATIC_RESULT: ${{ needs.static-checks.result }}
           TYPECHECK_RESULT: ${{ needs.typecheck.result }}
           UNIT_RESULT: ${{ needs.unit-test.result }}
+          PARSER_CPU_RESULT: ${{ needs.parser-cpu.result }}
           INTEGRATION_RESULT: ${{ needs.integration.result }}
           COMPONENT_RESULT: ${{ needs.component.result }}
           BUILD_RESULT: ${{ needs.build.result }}
@@ -160,6 +171,7 @@ jobs:
             "${STATIC_RESULT}" \
             "${TYPECHECK_RESULT}" \
             "${UNIT_RESULT}" \
+            "${PARSER_CPU_RESULT}" \
             "${INTEGRATION_RESULT}" \
             "${COMPONENT_RESULT}" \
             "${BUILD_RESULT}" \
