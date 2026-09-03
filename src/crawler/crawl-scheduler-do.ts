@@ -69,6 +69,8 @@ interface StoredExecution {
   inventoryRecheckPending?: boolean;
   /** Aggregate D1 usage for the paced detail phase; emitted once when the plan is exhausted. */
   detailDbUsage?: StoredDetailDbUsage;
+  /** Durable marker preventing terminal-check reads from producing duplicate completion metrics. */
+  detailDbUsageLogged?: boolean;
 }
 
 interface StoredDetailDbUsage {
@@ -421,8 +423,13 @@ export class CrawlScheduler extends DurableObject<Env> {
         await this.ctx.storage.setAlarm(alarmAt(Date.now()));
         return true;
       }
+      if (execution.detailDbUsageLogged) return false;
       const detailUsage = currentDetailDbUsage();
       const total = sumDbUsageMetrics(detailUsage.fence, detailUsage.commit);
+      // Persist the durable marker before logging so every later finalization retry skips emission.
+      execution.detailDbUsage = undefined;
+      execution.detailDbUsageLogged = true;
+      await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, execution);
       console.log(
         JSON.stringify({
           event: "detail_enrichment_db_usage",
@@ -436,8 +443,6 @@ export class CrawlScheduler extends DurableObject<Env> {
           ...total,
         }),
       );
-      // Finalization may retry, but the completed detail phase must emit its aggregate only once.
-      execution.detailDbUsage = undefined;
       return false;
     }
 
