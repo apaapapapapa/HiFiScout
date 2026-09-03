@@ -23,6 +23,8 @@ interface Harness {
   context: DetailEnrichmentPlanContext;
   /** Every call to the expensive planning pass. */
   planCalls: string[];
+  /** The instant each planning pass was asked to evaluate the enrichment policy at. */
+  planInstants: string[];
   /** Every fence lookup, so a linear rescan of processed targets is visible as growth. */
   fenceLookups: string[];
   /** URLs the fence considers already attempted by this run. */
@@ -35,9 +37,11 @@ function harness(
   committed = new Set<string>(),
 ): Harness {
   const planCalls: string[] = [];
+  const planInstants: string[] = [];
   const fenceLookups: string[] = [];
   return {
     planCalls,
+    planInstants,
     fenceLookups,
     committed,
     context: {
@@ -51,8 +55,9 @@ function harness(
           storage.set(key, JSON.parse(JSON.stringify(value)));
         },
       },
-      async planTargets(runId: string) {
+      async planTargets(runId: string, decidedAt: Date) {
         planCalls.push(runId);
+        planInstants.push(decidedAt.toISOString());
         return targetsByRun[runId] ?? [];
       },
       async isCommitted(_runId: string, targetUrl: string) {
@@ -188,4 +193,32 @@ test("a restarted Durable Object resumes from stored state instead of replanning
   assert.deepEqual(restarted.planCalls, [], "the surviving plan is read, not rebuilt");
   assert.equal(resumed.cursor, 1);
   assert.equal(await nextUncommittedDetailTarget(restarted.context, resumed), TARGETS[1]);
+});
+
+test("the decided instant is recorded once and survives every later read", async () => {
+  // Enrichment eligibility is time-dependent, so finalization has to evaluate it at the instant the
+  // plan did rather than at its own. That only works if the instant is part of the plan and is not
+  // refreshed by the Alarms that walk it.
+  const storage = durableStorage();
+  const held = harness(storage, { [RUN]: TARGETS });
+  const planned = new Date("2026-09-01T00:00:00.000Z");
+  held.context.now = () => planned;
+
+  const plan = await detailEnrichmentPlan(held.context, RUN);
+  assert.equal(plan.decidedAt, planned.toISOString());
+  assert.deepEqual(
+    held.planInstants,
+    [planned.toISOString()],
+    "the planner is asked the question at the instant the plan records",
+  );
+
+  // A later Alarm, well past the shop's cache window, and then a cursor advance on top of it.
+  held.context.now = () => new Date("2026-09-08T00:00:00.000Z");
+  const later = await detailEnrichmentPlan(held.context, RUN);
+  assert.equal(later.decidedAt, planned.toISOString(), "the clock moved; the decision did not");
+  await advanceDetailPlanCursor(held.context, later, 2);
+
+  const persisted = storage.get(DETAIL_PLAN_STORAGE_KEY) as StoredDetailEnrichmentPlan;
+  assert.equal(persisted.decidedAt, planned.toISOString());
+  assert.equal(persisted.cursor, 2, "walking the plan rewrites it without disturbing the instant");
 });

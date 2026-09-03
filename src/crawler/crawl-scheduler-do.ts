@@ -11,9 +11,11 @@ import { crawlDispatchToken } from "../db/shop-state-repository.js";
 import { planStagedCategoryDetailFetches } from "./category-enrichment-pacing.js";
 import {
   advanceDetailPlanCursor,
+  DETAIL_PLAN_STORAGE_KEY,
   detailEnrichmentPlan,
   nextUncommittedDetailTarget,
   type DetailEnrichmentPlanContext,
+  type StoredDetailEnrichmentPlan,
 } from "./detail-enrichment-plan.js";
 import {
   fetchPreparedDirectHtmlPage,
@@ -293,6 +295,20 @@ export class CrawlScheduler extends DurableObject<Env> {
     );
   }
 
+  /**
+   * The instant this run's detail enrichment was planned, if it has been planned.
+   *
+   * Finalization evaluates the same time-dependent eligibility policy the plan did, so it is given
+   * the plan's instant rather than its own clock. Absent when the run has no plan -- either the shop
+   * has no detail evidence or the phase was never reached -- and finalization then behaves as it did
+   * before, on the current time.
+   */
+  private async storedDetailDecisionAt(runId: string | undefined): Promise<string | undefined> {
+    if (!runId) return undefined;
+    const stored = await this.ctx.storage.get<StoredDetailEnrichmentPlan>(DETAIL_PLAN_STORAGE_KEY);
+    return stored && stored.runId === runId ? stored.decidedAt : undefined;
+  }
+
   /** Binds the plan policy to this Durable Object's storage, planner, fence and log vocabulary. */
   private detailPlanContext(plugin: ShopPlugin): DetailEnrichmentPlanContext {
     return {
@@ -300,7 +316,8 @@ export class CrawlScheduler extends DurableObject<Env> {
         get: (key) => this.ctx.storage.get(key),
         put: (key, value) => this.ctx.storage.put(key, value),
       },
-      planTargets: (runId) => planStagedCategoryDetailFetches(this.env, plugin, runId),
+      planTargets: (runId, decidedAt) =>
+        planStagedCategoryDetailFetches(this.env, plugin, runId, decidedAt),
       isCommitted: async (runId, targetUrl) =>
         Boolean(await getCrawlFetchDetailPage(this.env.DB, runId, targetUrl)),
       log: (event) => {
@@ -656,6 +673,9 @@ export class CrawlScheduler extends DurableObject<Env> {
       const directPermit = activeExecution.permit;
       const relayPermit = activeExecution.relayPermit;
       const preparedRelayConfig = relayPermit ? relayConfiguration(this.env) : null;
+      // Read rather than plan: this only surfaces the instant an existing plan already recorded, so
+      // a run that never entered the detail phase is not made to pay for planning here.
+      const detailDecisionAt = await this.storedDetailDecisionAt(execution.message.collectionRunId);
       const result = await executeResumableCrawlStep(
         withoutInlineInventoryRecheck(this.env, plugin),
         message,
@@ -663,6 +683,10 @@ export class CrawlScheduler extends DurableObject<Env> {
           continuationDelivery: "return_only",
           initializeOnly: !message.continuation,
           requireStagedDetailFetches: Boolean(plugin.capabilities.detailCategoryEvidence),
+          // Finalization re-runs the same time-dependent enrichment policy. Handing it the instant
+          // the plan was built keeps the two answers identical, so a cache entry expiring during
+          // the paced fetches cannot make finalization demand a URL the plan never staged.
+          ...(detailDecisionAt ? { detailDecisionAt } : {}),
           ...(preparationError
             ? {
                 fetchHtmlPage: async () => {

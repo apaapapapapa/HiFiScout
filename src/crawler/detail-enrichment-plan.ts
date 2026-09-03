@@ -42,16 +42,30 @@ export interface StoredDetailEnrichmentPlan {
   runId: string;
   targets: string[];
   cursor: number;
+  /**
+   * The instant the enrichment policy was evaluated, carried so finalization can evaluate it again
+   * at the same instant.
+   *
+   * Eligibility is time-dependent: a listing whose unresolved category was checked recently is
+   * suppressed until `cacheHours` elapses, and then becomes a target. Planning once and finalizing
+   * later therefore asks the same question of two different clocks, and a cache entry expiring
+   * between them yields a URL that finalization requires but the plan never fetched -- which
+   * `requireStagedDetailFetches` turns into a failed crawl. Freezing the instant makes the two
+   * agree by construction rather than by how long the paced fetches happened to take.
+   */
+  decidedAt: string;
 }
 
 export interface DetailEnrichmentPlanContext {
   storage: DetailEnrichmentPlanStorage;
-  /** The expensive planning pass. Called at most once per run. */
-  planTargets(runId: string): Promise<string[]>;
+  /** The expensive planning pass. Called at most once per run, at the instant it is given. */
+  planTargets(runId: string, decidedAt: Date): Promise<string[]>;
   /** `crawl_fetch_detail_pages`: whether this run already committed an attempt for the URL. */
   isCommitted(runId: string, targetUrl: string): Promise<boolean>;
   /** Structured logging, shaped by the caller so the DO keeps its own event vocabulary. */
   log?(event: DetailEnrichmentPlanEvent): void;
+  /** Overridable clock; the planning instant is stored on the plan. */
+  now?(): Date;
 }
 
 export type DetailEnrichmentPlanEvent =
@@ -80,8 +94,14 @@ export async function detailEnrichmentPlan(
   // trusting the key keeps a previous run's targets out of this run's cursor.
   if (stored && stored.runId === runId) return stored;
 
-  const targets = await context.planTargets(runId);
-  const plan: StoredDetailEnrichmentPlan = { runId, targets, cursor: 0 };
+  const decidedAt = context.now?.() ?? new Date();
+  const targets = await context.planTargets(runId, decidedAt);
+  const plan: StoredDetailEnrichmentPlan = {
+    runId,
+    targets,
+    cursor: 0,
+    decidedAt: decidedAt.toISOString(),
+  };
   await context.storage.put<StoredDetailEnrichmentPlan>(DETAIL_PLAN_STORAGE_KEY, plan);
   context.log?.({ kind: "plan_created", runId, targetCount: targets.length });
   return plan;
