@@ -2,6 +2,8 @@ import type { NormalizedCatalogProduct } from "../catalog/types.js";
 import type { QueryableDatabase } from "./types.js";
 import type { CrawlFetchPageInput, CrawlFetchPageRow } from "./crawl-fetch-session-repository.js";
 
+const PAGE_KEY_LOOKUP_CHUNK_SIZE = 50;
+
 export async function recordCrawlFetchPageFetched(
   db: QueryableDatabase,
   input: {
@@ -17,19 +19,49 @@ export async function recordCrawlFetchPageFetched(
   await db.batch([
     db
       .prepare(`
-      UPDATE crawl_fetch_pages
-      SET state = 'fetched', html_text = ?, html_bytes = ?, fetched_at = ?
-      WHERE run_id = ? AND page_key = ? AND state = 'pending'
-    `)
-      .bind(input.html, input.htmlBytes, input.fetchedAt, input.runId, input.pageKey),
+        UPDATE crawl_fetch_pages
+        SET state = 'fetched', html_text = ?, html_bytes = ?, fetched_at = ?
+        WHERE run_id = ? AND page_key = ? AND state = 'pending'
+          AND EXISTS (
+            SELECT 1 FROM crawl_fetch_sessions s
+            WHERE s.run_id = ? AND s.status = 'collecting'
+              AND s.continuation_sequence = ? AND s.next_phase = 'fetch'
+              AND s.next_page_key = ?
+          )
+      `)
+      .bind(
+        input.html,
+        input.htmlBytes,
+        input.fetchedAt,
+        input.runId,
+        input.pageKey,
+        input.runId,
+        input.currentSequence,
+        input.pageKey,
+      ),
     db
       .prepare(`
-      UPDATE crawl_fetch_sessions
-      SET pages_fetched = pages_fetched + 1,
-          continuation_sequence = ?, next_phase = 'parse', next_page_key = ?, updated_at = ?
-      WHERE run_id = ? AND status = 'collecting' AND continuation_sequence = ?
-    `)
-      .bind(nextSequence, input.pageKey, input.fetchedAt, input.runId, input.currentSequence),
+        UPDATE crawl_fetch_sessions
+        SET pages_fetched = pages_fetched + 1,
+            continuation_sequence = ?, next_phase = 'parse', next_page_key = ?, updated_at = ?
+        WHERE run_id = ? AND status = 'collecting' AND continuation_sequence = ?
+          AND next_phase = 'fetch' AND next_page_key = ?
+          AND EXISTS (
+            SELECT 1 FROM crawl_fetch_pages p
+            WHERE p.run_id = crawl_fetch_sessions.run_id AND p.page_key = ?
+              AND p.state = 'fetched' AND p.fetched_at = ?
+          )
+      `)
+      .bind(
+        nextSequence,
+        input.pageKey,
+        input.fetchedAt,
+        input.runId,
+        input.currentSequence,
+        input.pageKey,
+        input.pageKey,
+        input.fetchedAt,
+      ),
   ]);
 }
 
@@ -47,18 +79,37 @@ export async function recordCrawlFetchPageIgnored(
   await db.batch([
     db
       .prepare(`
-      UPDATE crawl_fetch_pages
-      SET state = 'ignored', html_text = NULL, products_json = NULL, parsed_at = ?
-      WHERE run_id = ? AND page_key = ? AND state = 'pending'
-    `)
-      .bind(input.ignoredAt, input.runId, input.pageKey),
+        UPDATE crawl_fetch_pages
+        SET state = 'ignored', html_text = NULL, products_json = NULL, parsed_at = ?
+        WHERE run_id = ? AND page_key = ? AND state = 'pending'
+          AND EXISTS (
+            SELECT 1 FROM crawl_fetch_sessions s
+            WHERE s.run_id = ? AND s.status = 'collecting'
+              AND s.continuation_sequence = ? AND s.next_phase = 'fetch'
+              AND s.next_page_key = ?
+          )
+      `)
+      .bind(
+        input.ignoredAt,
+        input.runId,
+        input.pageKey,
+        input.runId,
+        input.currentSequence,
+        input.pageKey,
+      ),
     db
       .prepare(`
-      UPDATE crawl_fetch_sessions
-      SET coverage_incomplete = 1, last_completed_page = ?, continuation_sequence = ?,
-          next_phase = ?, next_page_key = ?, updated_at = ?
-      WHERE run_id = ? AND status = 'collecting' AND continuation_sequence = ?
-    `)
+        UPDATE crawl_fetch_sessions
+        SET coverage_incomplete = 1, last_completed_page = ?, continuation_sequence = ?,
+            next_phase = ?, next_page_key = ?, updated_at = ?
+        WHERE run_id = ? AND status = 'collecting' AND continuation_sequence = ?
+          AND next_phase = 'fetch' AND next_page_key = ?
+          AND EXISTS (
+            SELECT 1 FROM crawl_fetch_pages p
+            WHERE p.run_id = crawl_fetch_sessions.run_id AND p.page_key = ?
+              AND p.state = 'ignored' AND p.parsed_at = ?
+          )
+      `)
       .bind(
         input.pageKey,
         nextSequence,
@@ -67,6 +118,9 @@ export async function recordCrawlFetchPageIgnored(
         input.ignoredAt,
         input.runId,
         input.currentSequence,
+        input.pageKey,
+        input.pageKey,
+        input.ignoredAt,
       ),
   ]);
 }
@@ -89,25 +143,48 @@ export async function recordCrawlFetchPageParsed(
   const statements = input.discoveredPages.map((page) =>
     db
       .prepare(`
-    INSERT OR IGNORE INTO crawl_fetch_pages
-      (run_id, page_key, page_json, ordinal, state)
-    VALUES (?, ?, ?, ?, 'pending')
-  `)
-      .bind(input.runId, page.key, JSON.stringify(page.page), page.ordinal),
+        INSERT OR IGNORE INTO crawl_fetch_pages
+          (run_id, page_key, page_json, ordinal, state)
+        SELECT ?, ?, ?, ?, 'pending'
+        WHERE EXISTS (
+          SELECT 1 FROM crawl_fetch_sessions s
+          WHERE s.run_id = ? AND s.status = 'collecting'
+            AND s.continuation_sequence = ? AND s.next_phase = 'parse'
+            AND s.next_page_key = ?
+        )
+      `)
+      .bind(
+        input.runId,
+        page.key,
+        JSON.stringify(page.page),
+        page.ordinal,
+        input.runId,
+        input.currentSequence,
+        input.pageKey,
+      ),
   );
 
   statements.push(
     db
       .prepare(`
-    UPDATE crawl_fetch_pages
-    SET state = 'parsed', products_json = ?, item_count = ?, html_text = NULL, parsed_at = ?
-    WHERE run_id = ? AND page_key = ? AND state = 'fetched'
-  `)
+        UPDATE crawl_fetch_pages
+        SET state = 'parsed', products_json = ?, item_count = ?, html_text = NULL, parsed_at = ?
+        WHERE run_id = ? AND page_key = ? AND state = 'fetched'
+          AND EXISTS (
+            SELECT 1 FROM crawl_fetch_sessions s
+            WHERE s.run_id = ? AND s.status = 'collecting'
+              AND s.continuation_sequence = ? AND s.next_phase = 'parse'
+              AND s.next_page_key = ?
+          )
+      `)
       .bind(
         JSON.stringify(input.products),
         input.products.length,
         input.parsedAt,
         input.runId,
+        input.pageKey,
+        input.runId,
+        input.currentSequence,
         input.pageKey,
       ),
   );
@@ -116,24 +193,42 @@ export async function recordCrawlFetchPageParsed(
     statements.push(
       db
         .prepare(`
-      UPDATE crawl_fetch_pages SET state = 'ignored'
-      WHERE run_id = ? AND state = 'pending'
-    `)
-        .bind(input.runId),
+          UPDATE crawl_fetch_pages SET state = 'ignored'
+          WHERE run_id = ? AND state = 'pending'
+            AND EXISTS (
+              SELECT 1 FROM crawl_fetch_sessions s
+              WHERE s.run_id = ? AND s.status = 'collecting'
+                AND s.continuation_sequence = ? AND s.next_phase = 'parse'
+                AND s.next_page_key = ?
+            )
+        `)
+        .bind(input.runId, input.runId, input.currentSequence, input.pageKey),
     );
   }
 
   statements.push(
     db
       .prepare(`
-    UPDATE crawl_fetch_sessions
-    SET pages_parsed = pages_parsed + 1,
-        coverage_incomplete = CASE WHEN ? = 1 THEN 1 ELSE coverage_incomplete END,
-        reached_end = CASE WHEN ? = 1 THEN 1 ELSE reached_end END,
-        last_completed_page = ?, continuation_sequence = ?, next_phase = ?, next_page_key = ?, updated_at = ?
-    WHERE run_id = ? AND status = 'collecting' AND continuation_sequence = ?
-  `)
+        UPDATE crawl_fetch_sessions
+        SET pages_parsed = pages_parsed + 1,
+            staged_item_count = staged_item_count + ?,
+            frontier_count = frontier_count + ?,
+            next_ordinal = next_ordinal + ?,
+            coverage_incomplete = CASE WHEN ? = 1 THEN 1 ELSE coverage_incomplete END,
+            reached_end = CASE WHEN ? = 1 THEN 1 ELSE reached_end END,
+            last_completed_page = ?, continuation_sequence = ?, next_phase = ?, next_page_key = ?, updated_at = ?
+        WHERE run_id = ? AND status = 'collecting' AND continuation_sequence = ?
+          AND next_phase = 'parse' AND next_page_key = ?
+          AND EXISTS (
+            SELECT 1 FROM crawl_fetch_pages p
+            WHERE p.run_id = crawl_fetch_sessions.run_id AND p.page_key = ?
+              AND p.state = 'parsed' AND p.parsed_at = ?
+          )
+      `)
       .bind(
+        input.products.length,
+        input.discoveredPages.length,
+        input.discoveredPages.length,
         input.coverageIncomplete ? 1 : 0,
         input.reachedEnd ? 1 : 0,
         input.pageKey,
@@ -143,54 +238,73 @@ export async function recordCrawlFetchPageParsed(
         input.parsedAt,
         input.runId,
         input.currentSequence,
+        input.pageKey,
+        input.pageKey,
+        input.parsedAt,
       ),
   );
   await db.batch(statements);
 }
 
 /**
- * What a page step needs to know about the rest of the run.
+ * Returns only discovered candidates that are already part of this run.
  *
- * The frontier decisions -- which page keys are already known, what the next ordinal is, which page
- * is still pending, how many items the run has staged -- are four cheap facts about every page of
- * the run. They used to be answered by `listCrawlFetchPages`, which is `SELECT *`: `page_json`, and
- * the `products_json` of every page parsed so far. Parsing page N therefore re-read the products of
- * pages 1..N-1, so the payload a run moved grew with the square of its page count, once per step,
- * to compute a maximum and a set membership.
- *
- * `idx_crawl_fetch_pages_frontier` is `(run_id, state, ordinal)`, so this is answered from index
- * entries plus one row lookup each for `page_key` and `item_count`, and the ordering it needs comes
- * from the index rather than a sort.
+ * Discovery is bounded by the plugin/page limit, so membership checks are candidate-sized rather
+ * than frontier-sized. Keeping chunks below D1's bind-variable ceiling also makes the statement
+ * count predictable even for a plugin that returns an unusually large candidate list.
  */
-export interface CrawlFetchFrontierRow {
-  page_key: string;
-  ordinal: number;
-  state: CrawlFetchPageRow["state"];
-  item_count: number;
-}
-
-export async function listCrawlFetchPageFrontier(
+export async function knownCrawlFetchPageKeys(
   db: QueryableDatabase,
   runId: string,
-): Promise<CrawlFetchFrontierRow[]> {
-  const result = await db
-    .prepare(`
-      SELECT page_key, ordinal, state, item_count
-      FROM crawl_fetch_pages
-      WHERE run_id = ?
-      ORDER BY ordinal ASC
-    `)
-    .bind(runId)
-    .all<CrawlFetchFrontierRow>();
-  return result.results || [];
+  pageKeys: readonly string[],
+): Promise<Set<string>> {
+  const unique = [...new Set(pageKeys.filter(Boolean))];
+  const known = new Set<string>();
+  for (let offset = 0; offset < unique.length; offset += PAGE_KEY_LOOKUP_CHUNK_SIZE) {
+    const chunk = unique.slice(offset, offset + PAGE_KEY_LOOKUP_CHUNK_SIZE);
+    if (!chunk.length) continue;
+    const placeholders = chunk.map(() => "?").join(",");
+    const result = await db
+      .prepare(`
+        SELECT page_key
+        FROM crawl_fetch_pages
+        WHERE run_id = ? AND page_key IN (${placeholders})
+      `)
+      .bind(runId, ...chunk)
+      .all<Pick<CrawlFetchPageRow, "page_key">>();
+    for (const row of result.results || []) known.add(row.page_key);
+  }
+  return known;
 }
 
-/** Items staged by the pages this run has parsed, from a frontier already in hand. */
-export function stagedItemCount(frontier: readonly CrawlFetchFrontierRow[]): number {
-  return frontier.reduce(
-    (total, page) => (page.state === "parsed" ? total + Number(page.item_count || 0) : total),
-    0,
-  );
+/** The next unit of current work, found through `(run_id, state, ordinal)` and stopped by LIMIT 1. */
+export async function nextPendingCrawlFetchPageKey(
+  db: QueryableDatabase,
+  runId: string,
+  excludingPageKey?: string,
+): Promise<string | null> {
+  const row = excludingPageKey
+    ? await db
+        .prepare(`
+          SELECT page_key
+          FROM crawl_fetch_pages
+          WHERE run_id = ? AND state = 'pending' AND page_key <> ?
+          ORDER BY ordinal ASC
+          LIMIT 1
+        `)
+        .bind(runId, excludingPageKey)
+        .first<Pick<CrawlFetchPageRow, "page_key">>()
+    : await db
+        .prepare(`
+          SELECT page_key
+          FROM crawl_fetch_pages
+          WHERE run_id = ? AND state = 'pending'
+          ORDER BY ordinal ASC
+          LIMIT 1
+        `)
+        .bind(runId)
+        .first<Pick<CrawlFetchPageRow, "page_key">>();
+  return row?.page_key ?? null;
 }
 
 export async function stagedCrawlFetchItemCount(
@@ -199,9 +313,10 @@ export async function stagedCrawlFetchItemCount(
 ): Promise<number> {
   const row = await db
     .prepare(`
-    SELECT COALESCE(SUM(item_count), 0) AS item_count
-    FROM crawl_fetch_pages WHERE run_id = ? AND state = 'parsed'
-  `)
+      SELECT staged_item_count AS item_count
+      FROM crawl_fetch_sessions
+      WHERE run_id = ?
+    `)
     .bind(runId)
     .first<{ item_count: number }>();
   return Number(row?.item_count || 0);
@@ -210,21 +325,9 @@ export async function stagedCrawlFetchItemCount(
 /**
  * Every listing this run has parsed, deduplicated by source id, in page order.
  *
- * The rows this needs are a minority of the run's staging table: `parsed` pages carrying a product
- * array. It used to reach them through the general `listCrawlFetchPages`, which is `SELECT *` over
- * every row of the run -- so the pending frontier, the fetched-but-unparsed pages and every staged
- * detail response came back too, each carrying the seller HTML that made it worth staging, and were
- * dropped by the loop below. On a shop staging tens of pages of HTML that is the largest read in
- * the phase, and none of it was ever used.
- *
- * So the filter moves into the query, which also narrows the columns to the one that is read.
- * `idx_crawl_fetch_pages_frontier` is `(run_id, state, ordinal)`, so the equality on state and the
- * ordering are both served by an index the schema already has -- no scan, no temporary sort, and no
- * new index for this.
- *
- * Page order is preserved because it decides the dedupe: a shop that re-lists the same source id on
- * a later page overwrites the earlier copy, and reordering the pages would silently change which
- * copy survives.
+ * This is the intentionally O(P) finalization read: it happens once per complete crawl rather than
+ * once per page step. `idx_crawl_fetch_pages_frontier` is `(run_id, state, ordinal)`, so the filter
+ * and ordering are served by the existing index without a temporary sort.
  */
 export async function loadStagedCrawlProducts(
   db: QueryableDatabase,
@@ -250,16 +353,6 @@ export async function loadStagedCrawlProducts(
     }
   }
   return [...products.values()];
-}
-
-export function nextPendingPageKey(
-  pages: readonly Pick<CrawlFetchPageRow, "page_key" | "state">[],
-  excludingPageKey?: string,
-): string | null {
-  return (
-    pages.find((page) => page.state === "pending" && page.page_key !== excludingPageKey)
-      ?.page_key || null
-  );
 }
 
 export async function setPublishedCrawlPageCount(
