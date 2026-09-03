@@ -38,7 +38,35 @@ import type { ShopPlugin } from "./types.js";
 // Durable Object storage namespaces must stay stable across Worker deployments so an in-flight
 // execution created by an older isolate remains visible to the new runtime and its scheduled Alarm.
 const EXECUTION_STORAGE_KEY = "phase2_crawl_execution";
+/**
+ * The detail-enrichment target list for the crawl run currently executing.
+ *
+ * Stable across deployments for the same reason as the execution key: an Alarm scheduled by an
+ * older isolate has to find the plan the older isolate wrote, or it would replan and undo the whole
+ * point of storing it.
+ */
+const DETAIL_PLAN_STORAGE_KEY = "phase5_detail_enrichment_plan";
 const MIN_ALARM_DELAY_MS = 1;
+
+/**
+ * Which category-detail pages this run intends to fetch, and how far through them it has got.
+ *
+ * Planning is what costs: it loads the run's whole staged inventory and resolves every listing
+ * against the catalog. That answer does not change between Alarms of the same run, so it is
+ * computed once and read back afterwards. Only the target URLs are kept -- deliberately not the
+ * listings or their HTML, because this lives in Durable Object storage.
+ *
+ * `runId` is part of the record rather than the key so a plan belonging to a previous run is
+ * recognised and replaced instead of silently reused. That is also why a finished plan is not
+ * deleted: deleting it would make "this run has nothing left to fetch" indistinguishable from "this
+ * run has not planned yet", and the next Alarm would replan -- the exact cost this removes. One
+ * superseded record per shop is the cheaper end of that trade.
+ */
+interface StoredDetailEnrichmentPlan {
+  runId: string;
+  targets: string[];
+  cursor: number;
+}
 
 interface StoredExecution {
   message: ResumableCrawlQueueMessage;
@@ -287,6 +315,101 @@ export class CrawlScheduler extends DurableObject<Env> {
     );
   }
 
+  /**
+   * The run's detail-enrichment plan, computed on first use and read back afterwards.
+   *
+   * Planning is the expensive half of this phase: it reads the run's entire staged inventory out of
+   * D1 and resolves every staged listing against the catalog. Doing that per Alarm made the cost of
+   * enriching M pages grow with M on both counts, for an answer that is the same every time.
+   *
+   * An empty plan is stored like any other. "Nothing to fetch" and "not planned yet" have to be
+   * distinguishable, or a run with no detail targets replans on every Alarm -- the worst case of the
+   * behaviour this replaces.
+   */
+  private async detailEnrichmentPlan(
+    runId: string,
+    plugin: ShopPlugin,
+  ): Promise<StoredDetailEnrichmentPlan> {
+    const stored = await this.ctx.storage.get<StoredDetailEnrichmentPlan>(DETAIL_PLAN_STORAGE_KEY);
+    // A plan from an earlier run is not a plan for this one. Matching on the stored id rather than
+    // trusting the key keeps a previous run's targets from leaking into this run's cursor.
+    if (stored && stored.runId === runId) return stored;
+
+    const targets = await planStagedCategoryDetailFetches(this.env, plugin, runId);
+    const plan: StoredDetailEnrichmentPlan = { runId, targets, cursor: 0 };
+    await this.ctx.storage.put<StoredDetailEnrichmentPlan>(DETAIL_PLAN_STORAGE_KEY, plan);
+    console.log(
+      JSON.stringify({
+        event: "crawl_do_detail_plan_created",
+        shopKey: plugin.key,
+        runId,
+        targetCount: targets.length,
+      }),
+    );
+    return plan;
+  }
+
+  /**
+   * The next target that D1 has no record of, advancing the cursor over any that it does.
+   *
+   * The cursor is an optimisation, not the authority: `crawl_fetch_detail_pages` remains the record
+   * of what was actually fetched. That matters for the window between committing a detail page and
+   * persisting the advanced cursor -- a kill there leaves the cursor pointing at a target already
+   * committed, and re-fetching it would be a seller request this run has already made. Skipping it
+   * here costs one indexed lookup and keeps the request count unchanged.
+   *
+   * In the ordinary case the loop runs once, on a target D1 has never seen.
+   */
+  private async nextUncommittedDetailTarget(
+    plan: StoredDetailEnrichmentPlan,
+    plugin: ShopPlugin,
+  ): Promise<string | null> {
+    let cursor = plan.cursor;
+    let skipped = 0;
+    while (cursor < plan.targets.length) {
+      const candidate = plan.targets[cursor];
+      if (!candidate) {
+        cursor += 1;
+        continue;
+      }
+      if (!(await getCrawlFetchDetailPage(this.env.DB, plan.runId, candidate))) {
+        if (cursor !== plan.cursor) await this.advanceDetailPlanCursor(plan, cursor);
+        return candidate;
+      }
+      skipped += 1;
+      cursor += 1;
+    }
+    if (cursor !== plan.cursor) await this.advanceDetailPlanCursor(plan, cursor);
+    if (skipped > 0) {
+      console.log(
+        JSON.stringify({
+          event: "crawl_do_detail_target_already_committed",
+          shopKey: plugin.key,
+          runId: plan.runId,
+          skipped,
+          cursor,
+          targetCount: plan.targets.length,
+        }),
+      );
+    }
+    return null;
+  }
+
+  /**
+   * Moves the plan forward.
+   *
+   * Only ever called after the corresponding detail page is committed to D1. Advancing first would
+   * mean a failure between the two silently drops a target: the cursor would already have passed it
+   * and nothing else names it.
+   */
+  private async advanceDetailPlanCursor(
+    plan: StoredDetailEnrichmentPlan,
+    cursor: number,
+  ): Promise<void> {
+    plan.cursor = cursor;
+    await this.ctx.storage.put<StoredDetailEnrichmentPlan>(DETAIL_PLAN_STORAGE_KEY, plan);
+  }
+
   /** Runs at most one category-detail seller request per Alarm for both direct and Relay shops. */
   private async runDetailCategoryEnrichmentStep(
     execution: StoredExecution,
@@ -302,14 +425,8 @@ export class CrawlScheduler extends DurableObject<Env> {
       return true;
     }
 
-    const targets = await planStagedCategoryDetailFetches(this.env, plugin, runId);
-    let targetUrl: string | null = null;
-    for (const candidate of targets) {
-      if (!(await getCrawlFetchDetailPage(this.env.DB, runId, candidate))) {
-        targetUrl = candidate;
-        break;
-      }
-    }
+    const plan = await this.detailEnrichmentPlan(runId, plugin);
+    const targetUrl = await this.nextUncommittedDetailTarget(plan, plugin);
 
     if (!targetUrl) {
       if (execution.permit || execution.relayPermit || execution.detailTargetUrl) {
@@ -367,6 +484,9 @@ export class CrawlScheduler extends DurableObject<Env> {
           errorMessage: error instanceof Error ? error.message : String(error),
           fetchedAt: new Date().toISOString(),
         });
+        // The fence now records this target as attempted, so the plan may move past it. After the
+        // commit, never before: the reverse order drops the target on a failure between the two.
+        await this.advanceDetailPlanCursor(plan, plan.cursor + 1);
         await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
           ...execution,
           permit: undefined,
@@ -454,6 +574,9 @@ export class CrawlScheduler extends DurableObject<Env> {
       errorMessage,
       fetchedAt: new Date().toISOString(),
     });
+    // D1 commit first, then the cursor. A kill in between leaves the cursor pointing at a committed
+    // target, which the skip in `nextUncommittedDetailTarget` resolves without re-asking the seller.
+    await this.advanceDetailPlanCursor(plan, plan.cursor + 1);
     const nextOriginNotBeforeMs = directPermit
       ? Date.now() + directPermit.effectiveDelayMs
       : execution.nextOriginNotBeforeMs;
