@@ -1,4 +1,5 @@
 import { RESOLUTION_VERSIONS } from "../catalog/resolution-versions.js";
+import { firstMeasured } from "./read-accounting.js";
 import type { QueryableDatabase } from "./types.js";
 
 export type DataQualityRemediationWorkType =
@@ -71,21 +72,28 @@ interface FullRebuildRow {
   id: number;
 }
 
-interface QueueMetricRow {
-  pending: number | null;
-  processing: number | null;
-  resolved: number | null;
-  failed: number | null;
-  oldest_pending_at: string | null;
+interface StatusCountRow {
+  count: number | null;
+  oldest_created_at: string | null;
 }
 
-export interface QueueMetrics {
+/**
+ * The outstanding work, and nothing about work that has finished.
+ *
+ * This is what the scheduled sweep needs: whether there is a backlog, how old it is, and whether a
+ * lease is out. None of it grows with retained history, which is the point -- see
+ * {@link dataQualityRemediationActiveQueueMetrics}.
+ */
+export interface ActiveQueueMetrics {
   pending: number;
   processing: number;
-  resolved: number;
-  failed: number;
   backlog: number;
   oldestPendingAt: string | null;
+}
+
+export interface QueueMetrics extends ActiveQueueMetrics {
+  resolved: number;
+  failed: number;
 }
 
 export interface EnqueueRemediationInput {
@@ -619,28 +627,87 @@ export async function retryOrFailDataQualityRemediationJob(
   return status;
 }
 
+/**
+ * Counts one status, through the partial index that exists for it.
+ *
+ * One statement per status rather than one `CASE` aggregate over all of them. The single-statement
+ * form reads the whole table -- there is no index that can answer `SUM(CASE WHEN status = ...)`
+ * across every status at once -- so it costs the entire retained history to report a backlog of
+ * two. Even `WHERE status IN ('pending', 'processing')` cannot be served: the two partial indexes
+ * are separate objects and the planner falls back to a scan plus a temporary b-tree for the grouping.
+ * Statement count is the cheaper thing to spend here.
+ *
+ * `firstMeasured` rather than `first` so the rows are visible to the D1 read accounting. `first()`
+ * carries no `meta`, which is how a query that reads the whole table reported nothing at all.
+ */
+async function countByStatus(
+  db: QueryableDatabase,
+  status: DataQualityRemediationStatus,
+): Promise<StatusCountRow> {
+  const row = await firstMeasured<StatusCountRow>(
+    db
+      .prepare(`
+        SELECT COUNT(*) AS count, MIN(created_at) AS oldest_created_at
+        FROM data_quality_remediation_queue
+        WHERE status = ?
+      `)
+      .bind(status),
+  );
+  return { count: number(row?.count), oldest_created_at: row?.oldest_created_at || null };
+}
+
+function earliest(left: string | null, right: string | null): string | null {
+  if (!left) return right;
+  if (!right) return left;
+  return left <= right ? left : right;
+}
+
+/**
+ * Queue state for the scheduled sweep: outstanding work only.
+ *
+ * The sweep that calls this claims a handful of jobs and resolves them. It used to finish by
+ * recomputing lifetime totals over the whole queue -- tens of thousands of terminal rows read to
+ * report that one job had been handled. Those totals are not what the sweep decides anything with,
+ * and its own per-run counts (`resolved`, `failed`, `retried`) already say what the run did.
+ *
+ * Reads scale with the backlog, not with retained history. Lifetime totals live on
+ * {@link dataQualityRemediationQueueMetrics}, which the admin status endpoint calls on demand.
+ */
+export async function dataQualityRemediationActiveQueueMetrics(
+  db: QueryableDatabase,
+): Promise<ActiveQueueMetrics> {
+  const [pending, processing] = await Promise.all([
+    countByStatus(db, "pending"),
+    countByStatus(db, "processing"),
+  ]);
+  return {
+    pending: number(pending.count),
+    processing: number(processing.count),
+    backlog: number(pending.count) + number(processing.count),
+    // Both states are outstanding work, so the oldest of either is the age of the backlog.
+    oldestPendingAt: earliest(pending.oldest_created_at, processing.oldest_created_at),
+  };
+}
+
+/**
+ * Lifetime queue totals, including terminal history.
+ *
+ * On-demand only -- the admin data-quality status endpoint. Counting `resolved` is inherently
+ * proportional to the retained resolved history; it is served by the partial resolved index, so it
+ * walks index entries rather than table rows, but it is not bounded and must not be put on a
+ * scheduled path. Use {@link dataQualityRemediationActiveQueueMetrics} there.
+ */
 export async function dataQualityRemediationQueueMetrics(
   db: QueryableDatabase,
 ): Promise<QueueMetrics> {
-  const row = await db
-    .prepare(`
-      SELECT
-        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
-        SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END) AS processing,
-        SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) AS resolved,
-        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
-        MIN(CASE WHEN status IN ('pending', 'processing') THEN created_at END) AS oldest_pending_at
-      FROM data_quality_remediation_queue
-    `)
-    .first<QueueMetricRow>();
-  const pending = number(row?.pending);
-  const processing = number(row?.processing);
+  const [active, resolved, failed] = await Promise.all([
+    dataQualityRemediationActiveQueueMetrics(db),
+    countByStatus(db, "resolved"),
+    countByStatus(db, "failed"),
+  ]);
   return {
-    pending,
-    processing,
-    resolved: number(row?.resolved),
-    failed: number(row?.failed),
-    backlog: pending + processing,
-    oldestPendingAt: row?.oldest_pending_at || null,
+    ...active,
+    resolved: number(resolved.count),
+    failed: number(failed.count),
   };
 }

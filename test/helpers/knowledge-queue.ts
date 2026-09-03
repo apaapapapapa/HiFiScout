@@ -25,6 +25,13 @@ export interface QueueStatementResponse {
   changes?: number;
   /** `meta.last_row_id`, for inserts whose id the caller reads back. Defaults to 1. */
   lastRowId?: number;
+  /**
+   * The single row this statement answers with.
+   *
+   * D1 defines `first()` as the first row of `all()`, so a statement configured with `row` answers
+   * both -- otherwise a caller that switches to `all()` to make its reads countable would silently
+   * start seeing no rows.
+   */
   row?: unknown;
   rows?: unknown[];
 }
@@ -53,7 +60,7 @@ export function queueDatabase(respond: (sql: string) => QueueStatementResponse =
         const response = respond(sql);
         return {
           async all() {
-            return { results: response.rows || [] };
+            return { results: response.rows || (response.row ? [response.row] : []) };
           },
           async first() {
             return response.row ?? null;
