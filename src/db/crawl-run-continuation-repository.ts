@@ -352,7 +352,13 @@ export async function clearCrawlRunWorkItems(
 }
 
 /**
- * Runs whose derived work is unfinished, oldest first.
+ * Runs whose derived work is unfinished, in crawl creation order.
+ *
+ * Recovery starts from the partial index that contains only pending stage rows. Picking the
+ * smallest pending ordinal gives one representative row per run, so LIMIT can stop in current-work
+ * order without ever walking terminal crawl history. Crawl ids are monotonically assigned when a
+ * run is created, making this the same fairness direction as the former started_at ordering without
+ * paying for a history-sized sort.
  *
  * A run is only resumable once it carries a generation, because that is written with the work set:
  * a run that died before the listing write has nothing to resume and must be recrawled instead.
@@ -364,13 +370,17 @@ export async function listResumableCrawlRuns(
   const result = await db
     .prepare(`
       SELECT r.id, r.shop_key, r.generation
-      FROM crawl_runs r
-      WHERE r.generation <> ''
-        AND EXISTS (
-          SELECT 1 FROM crawl_run_stages s
-          WHERE s.crawl_run_id = r.id AND s.status = 'pending'
+      FROM crawl_run_stages s
+      JOIN crawl_runs r ON r.id = s.crawl_run_id
+      WHERE s.status = 'pending'
+        AND r.generation <> ''
+        AND s.ordinal = (
+          SELECT MIN(p.ordinal)
+          FROM crawl_run_stages p
+          WHERE p.crawl_run_id = s.crawl_run_id
+            AND p.status = 'pending'
         )
-      ORDER BY r.started_at
+      ORDER BY s.crawl_run_id
       LIMIT ?
     `)
     .bind(limit)
