@@ -9,6 +9,7 @@ import {
   DETAIL_PLAN_PROGRESS_KEY,
   DETAIL_PLAN_TARGETS_KEY_PREFIX,
   DETAIL_PLAN_VERSION,
+  LEGACY_DETAIL_PLAN_KEY,
   nextUncommittedDetailTarget,
   storedDetailDecisionAt,
   type DetailEnrichmentPlanContext,
@@ -358,15 +359,84 @@ test("a shorter plan releases the target records the longer one occupied", async
   );
 });
 
-test("a plan stored in an older shape is replanned rather than misread", async () => {
-  // A deployment that changes the stored shape leaves records an older isolate wrote. Guessing at
-  // them would be worse than replanning, which the D1 fence already makes free of seller requests.
+/** Exactly what the previous release leaves in storage for a run still in flight. */
+function legacyPlan(runId: string, targets: readonly string[], cursor: number, decidedAt: string) {
+  return { runId, targets: [...targets], cursor, decidedAt };
+}
+
+test("a run in flight across the deployment keeps its plan instead of replanning", async () => {
+  // The previous release stored the whole plan under its own key. Replanning here is not free:
+  // it would evaluate the time-dependent eligibility policy at a later instant, and an unresolved
+  // check that expired since would become a target the fence has never seen -- a seller request the
+  // run never budgeted for.
+  const storage = durableStorage();
+  const decidedAt = "2026-09-01T00:00:00.000Z";
+  storage.set(LEGACY_DETAIL_PLAN_KEY, legacyPlan(RUN, TARGETS, 1, decidedAt));
+  const held = harness(storage, { [RUN]: TARGETS });
+  held.context.now = () => new Date("2026-09-08T00:00:00.000Z");
+
+  const progress = await detailEnrichmentProgress(held.context, RUN);
+
+  assert.deepEqual(held.planCalls, [], "the carried-over plan is adopted, not recomputed");
+  assert.equal(progress.version, DETAIL_PLAN_VERSION);
+  assert.equal(progress.targetCount, TARGETS.length);
+  assert.equal(progress.cursor, 1, "the run resumes where it had got to");
+  assert.equal(progress.decidedAt, decidedAt, "and keeps the instant its targets were decided at");
+  assert.equal(
+    await nextUncommittedDetailTarget(held.context, progress),
+    TARGETS[1],
+    "the adopted targets are the ones that get walked",
+  );
+  assert.equal(storage.has(LEGACY_DETAIL_PLAN_KEY), false, "the superseded record is released");
+
+  // And the adoption is paid once: the next Alarm reads the record this one wrote.
+  const second = await detailEnrichmentProgress(held.context, RUN);
+  assert.equal(second.decidedAt, decidedAt);
+  assert.deepEqual(held.planCalls, []);
+});
+
+test("a carried-over plan belonging to an earlier run is discarded, not adopted", async () => {
+  const storage = durableStorage();
+  storage.set(
+    LEGACY_DETAIL_PLAN_KEY,
+    legacyPlan("run-old", TARGETS, 2, "2026-09-01T00:00:00.000Z"),
+  );
+  const held = harness(storage, { [RUN]: ["https://shop.test/fresh"] });
+
+  const progress = await detailEnrichmentProgress(held.context, RUN);
+
+  assert.deepEqual(held.planCalls, [RUN], "a different run's plan is not this run's plan");
+  assert.equal(progress.cursor, 0);
+  assert.equal(
+    await nextUncommittedDetailTarget(held.context, progress),
+    "https://shop.test/fresh",
+  );
+  assert.equal(storage.has(LEGACY_DETAIL_PLAN_KEY), false, "the leftover is not left behind");
+});
+
+test("a carried-over plan without usable targets is replanned rather than trusted", async () => {
+  const storage = durableStorage();
+  storage.set(LEGACY_DETAIL_PLAN_KEY, { runId: RUN, cursor: 0, decidedAt: "" });
+  const held = harness(storage, { [RUN]: TARGETS });
+
+  const progress = await detailEnrichmentProgress(held.context, RUN);
+
+  assert.deepEqual(held.planCalls, [RUN]);
+  assert.equal(progress.targetCount, TARGETS.length);
+  assert.equal(storage.has(LEGACY_DETAIL_PLAN_KEY), false);
+});
+
+test("a progress record of an unrecognised version is replanned rather than misread", async () => {
+  // The guard that makes a future shape change safe the way this one was: a record this release
+  // cannot read is replaced, and the D1 fence keeps that free of extra seller requests.
   const storage = durableStorage();
   storage.set(DETAIL_PLAN_PROGRESS_KEY, {
     runId: RUN,
-    targets: TARGETS,
+    targetCount: TARGETS.length,
+    chunkCount: 1,
     cursor: 2,
     decidedAt: "2026-09-01T00:00:00.000Z",
+    version: DETAIL_PLAN_VERSION + 1,
   });
   const held = harness(storage, { [RUN]: TARGETS });
 

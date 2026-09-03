@@ -40,6 +40,26 @@ export const DETAIL_PLAN_PROGRESS_KEY = "phase5_detail_enrichment_progress";
 export const DETAIL_PLAN_TARGETS_KEY_PREFIX = "phase5_detail_enrichment_targets:";
 
 /**
+ * Where the previous release kept the whole plan, targets inline.
+ *
+ * A separate key rather than a reuse of it, so that rolling *back* to that release finds its own
+ * shape rather than one it would read as a plan with no targets. The cost of that choice is that
+ * this release cannot see an in-flight run's plan either -- which is what {@link adoptLegacyPlan}
+ * exists to fix, because silently replanning is not free: replanning evaluates the time-dependent
+ * eligibility policy at a later instant, and a cache entry that expired since the original plan
+ * would add a target the fence has never seen, costing the run a seller request it had not budgeted.
+ */
+export const LEGACY_DETAIL_PLAN_KEY = "phase5_detail_enrichment_plan";
+
+/** The previous release's record, read only to carry a run that spans this deployment. */
+interface LegacyDetailEnrichmentPlan {
+  runId: string;
+  targets: string[];
+  cursor: number;
+  decidedAt: string;
+}
+
+/**
  * Shape version of the stored progress record.
  *
  * A record written by an isolate that stored the plan differently is not readable as this shape, and
@@ -114,7 +134,14 @@ export interface DetailEnrichmentPlanContext {
 }
 
 export type DetailEnrichmentPlanEvent =
-  | { kind: "plan_created"; runId: string; targetCount: number; chunkCount: number }
+  | {
+      kind: "plan_created";
+      runId: string;
+      targetCount: number;
+      chunkCount: number;
+      /** Whether the targets were computed now, or carried over from the previous release. */
+      source: "planned" | "adopted";
+    }
   | {
       kind: "already_committed";
       runId: string;
@@ -153,39 +180,118 @@ export async function detailEnrichmentProgress(
   // trusting the key keeps a previous run's targets out of this run's cursor.
   if (isCurrentProgress(stored, runId)) return stored;
 
+  const adopted = await adoptLegacyPlan(context, runId, supersededChunkCount);
+  if (adopted) return adopted;
+
   const decidedAt = context.now?.() ?? new Date();
   const targets = await context.planTargets(runId, decidedAt);
-  const chunkCount = chunkCountFor(targets.length);
+  return storePlan(context, {
+    runId,
+    targets,
+    cursor: 0,
+    decidedAt: decidedAt.toISOString(),
+    supersededChunkCount,
+    source: "planned",
+  });
+}
 
-  // Chunks first, then the progress record that makes them reachable. The reverse order would
-  // publish a target count whose targets are not all stored yet, and a kill in between would leave
-  // an Alarm reading past the end of what exists.
+/**
+ * Writes a plan as a progress record plus its immutable target chunks.
+ *
+ * Chunks first, then the progress record that makes them reachable. The reverse order would publish
+ * a target count whose targets are not all stored yet, and a kill in between would leave an Alarm
+ * reading past the end of what exists.
+ */
+async function storePlan(
+  context: DetailEnrichmentPlanContext,
+  input: {
+    runId: string;
+    targets: readonly string[];
+    cursor: number;
+    decidedAt: string;
+    supersededChunkCount: number;
+    source: "planned" | "adopted";
+  },
+): Promise<DetailEnrichmentProgress> {
+  const chunkCount = chunkCountFor(input.targets.length);
   for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
     const offset = chunkIndex * DETAIL_PLAN_CHUNK_SIZE;
     await context.storage.put<DetailEnrichmentTargetChunk>(detailPlanTargetsKey(chunkIndex), {
-      runId,
+      runId: input.runId,
       chunkIndex,
-      targets: targets.slice(offset, offset + DETAIL_PLAN_CHUNK_SIZE),
+      targets: input.targets.slice(offset, offset + DETAIL_PLAN_CHUNK_SIZE),
     });
   }
   // A previous run's plan may have occupied more chunks than this one does. Those records are never
   // read -- reads are bounded by this run's `chunkCount` and check the id they carry -- but leaving
   // them would let a shop's storage keep the high-water mark of every plan it has ever made.
-  for (let chunkIndex = chunkCount; chunkIndex < supersededChunkCount; chunkIndex += 1) {
+  for (let chunkIndex = chunkCount; chunkIndex < input.supersededChunkCount; chunkIndex += 1) {
     await context.storage.delete(detailPlanTargetsKey(chunkIndex));
   }
 
   const progress: DetailEnrichmentProgress = {
-    runId,
-    targetCount: targets.length,
+    runId: input.runId,
+    targetCount: input.targets.length,
     chunkCount,
-    cursor: 0,
-    decidedAt: decidedAt.toISOString(),
+    cursor: input.cursor,
+    decidedAt: input.decidedAt,
     version: DETAIL_PLAN_VERSION,
   };
   await context.storage.put<DetailEnrichmentProgress>(DETAIL_PLAN_PROGRESS_KEY, progress);
-  context.log?.({ kind: "plan_created", runId, targetCount: targets.length, chunkCount });
+  context.log?.({
+    kind: "plan_created",
+    runId: input.runId,
+    targetCount: input.targets.length,
+    chunkCount,
+    source: input.source,
+  });
   return progress;
+}
+
+/**
+ * Carries a run that was already in flight when this release was deployed.
+ *
+ * Without this the run would find no progress record and replan -- which is not the free operation
+ * it looks like. Replanning evaluates the time-dependent eligibility policy at a *later* instant, so
+ * an unresolved check that expired since the original plan turns into a target the fence has never
+ * seen, and the run makes a seller request its budget never accounted for. Adopting the previous
+ * record keeps the run's targets, its position in them, and above all the instant they were decided
+ * at, so nothing about what it fetches changes.
+ *
+ * The legacy record is removed either way: adopted, it has been superseded; belonging to another
+ * run, it is a leftover that nothing will read again.
+ */
+async function adoptLegacyPlan(
+  context: DetailEnrichmentPlanContext,
+  runId: string,
+  supersededChunkCount: number,
+): Promise<DetailEnrichmentProgress | null> {
+  const legacy = await context.storage.get<LegacyDetailEnrichmentPlan>(LEGACY_DETAIL_PLAN_KEY);
+  const usable =
+    legacy?.runId === runId &&
+    Array.isArray(legacy.targets) &&
+    legacy.targets.every((target) => typeof target === "string") &&
+    typeof legacy.decidedAt === "string" &&
+    Boolean(legacy.decidedAt);
+  if (!legacy || !usable) {
+    if (legacy) await context.storage.delete(LEGACY_DETAIL_PLAN_KEY);
+    return null;
+  }
+
+  const adopted = await storePlan(context, {
+    runId,
+    targets: legacy.targets,
+    // A cursor outside the target list would let the walk read past the end; the fence would still
+    // prevent a repeated request, but the plan would look finished when it is not.
+    cursor: Math.min(Math.max(Math.trunc(legacy.cursor) || 0, 0), legacy.targets.length),
+    decidedAt: legacy.decidedAt,
+    supersededChunkCount,
+    source: "adopted",
+  });
+  // After the new records exist, never before: a kill in between leaves the legacy record readable
+  // and the adoption simply happens again.
+  await context.storage.delete(LEGACY_DETAIL_PLAN_KEY);
+  return adopted;
 }
 
 /**

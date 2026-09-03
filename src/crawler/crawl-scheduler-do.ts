@@ -335,6 +335,7 @@ export class CrawlScheduler extends DurableObject<Env> {
               runId: event.runId,
               targetCount: event.targetCount,
               chunkCount: event.chunkCount,
+              source: event.source,
             }),
           );
           return;
