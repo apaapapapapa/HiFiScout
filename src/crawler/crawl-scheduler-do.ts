@@ -423,6 +423,10 @@ export class CrawlScheduler extends DurableObject<Env> {
       }
       const detailUsage = currentDetailDbUsage();
       const total = sumDbUsageMetrics(detailUsage.fence, detailUsage.commit);
+      // Persist consumption before logging. If finalization fails after this point, a retry reloads
+      // the cleared aggregate and cannot emit the same completed detail-phase metric twice.
+      execution.detailDbUsage = undefined;
+      await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, execution);
       console.log(
         JSON.stringify({
           event: "detail_enrichment_db_usage",
@@ -436,8 +440,6 @@ export class CrawlScheduler extends DurableObject<Env> {
           ...total,
         }),
       );
-      // Finalization may retry, but the completed detail phase must emit its aggregate only once.
-      execution.detailDbUsage = undefined;
       return false;
     }
 
