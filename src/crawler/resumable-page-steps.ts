@@ -6,12 +6,11 @@ import {
   type CrawlFetchSessionRow,
 } from "../db/crawl-fetch-session-repository.js";
 import {
-  listCrawlFetchPageFrontier,
-  nextPendingPageKey,
+  knownCrawlFetchPageKeys,
+  nextPendingCrawlFetchPageKey,
   recordCrawlFetchPageFetched,
   recordCrawlFetchPageIgnored,
   recordCrawlFetchPageParsed,
-  stagedItemCount,
 } from "../db/crawl-fetch-page-repository.js";
 import { errorMessage } from "../types.js";
 import {
@@ -61,16 +60,16 @@ export async function processFetch(
         : await transport!.fetchHtmlPage(pageKey, fetchOptions);
     } catch (error) {
       if (/HTTP 404/.test(errorMessage(error))) {
-        // One frontier read answers both questions this branch asks -- how much the run has staged,
-        // and which page comes next -- where it used to aggregate and then read the whole run.
-        const frontier = await listCrawlFetchPageFrontier(env.DB, session.run_id);
-        if (shouldContinueAfterEmpty(plugin) || stagedItemCount(frontier) === 0) {
+        // The staged item count is durable session state and pending work is an indexed LIMIT 1.
+        // Neither fact requires rereading the run's frontier.
+        if (shouldContinueAfterEmpty(plugin) || session.staged_item_count === 0) {
+          const nextPageKey = await nextPendingCrawlFetchPageKey(env.DB, session.run_id, pageKey);
           await recordCrawlFetchPageIgnored(env.DB, {
             runId: session.run_id,
             pageKey,
             ignoredAt: new Date().toISOString(),
             currentSequence: session.continuation_sequence,
-            nextPageKey: nextPendingPageKey(frontier, pageKey),
+            nextPageKey,
           });
           return continued(env, plugin, body, session.run_id, options);
         }
@@ -142,32 +141,43 @@ export async function processParse(
   const discovered = discoverPages(plugin, row.html_text, page);
   const discoverMs = performance.now() - discoveryStartedAt;
   const parseMs = parsed.rawParseMs + parsed.normalizeMs;
-  // Every frontier fact this step needs, in one narrow read: the known page keys, the next ordinal,
-  // the next pending page, and what the run has staged so far.
-  const frontier = await listCrawlFetchPageFrontier(env.DB, session.run_id);
-  const known = new Set(frontier.map((candidate) => candidate.page_key));
+
+  const discoveredCandidates = (discovered || []).map((candidate) => ({
+    key: targetUrl(plugin, candidate),
+    page: candidate,
+  }));
+  const known = await knownCrawlFetchPageKeys(
+    env.DB,
+    session.run_id,
+    discoveredCandidates.map((candidate) => candidate.key),
+  );
   const accepted: CrawlFetchPageInput[] = [];
   let coverageIncomplete = discovered == null;
-  let nextOrdinal = frontier.reduce((max, candidate) => Math.max(max, candidate.ordinal), -1) + 1;
+  let frontierCount = session.frontier_count;
+  let nextOrdinal = session.next_ordinal;
 
-  if (discovered) {
-    for (const candidate of discovered) {
-      const key = targetUrl(plugin, candidate);
-      if (known.has(key)) continue;
-      if (known.size >= session.page_limit) {
-        coverageIncomplete = true;
-        continue;
-      }
-      known.add(key);
-      accepted.push({ key, page: candidate, ordinal: nextOrdinal++ });
+  for (const candidate of discoveredCandidates) {
+    if (known.has(candidate.key)) continue;
+    if (frontierCount >= session.page_limit) {
+      coverageIncomplete = true;
+      continue;
     }
+    // Add locally as well as in D1 so duplicate candidates in the same discovery result cannot
+    // consume multiple ordinals or inflate the aggregate update.
+    known.add(candidate.key);
+    frontierCount += 1;
+    accepted.push({ key: candidate.key, page: candidate.page, ordinal: nextOrdinal++ });
   }
 
-  const previousItems = stagedItemCount(frontier);
   if (!products.length && plugin.discovery.discoverTargets) coverageIncomplete = true;
   const reachedEnd =
-    products.length === 0 && previousItems > 0 && !shouldContinueAfterEmpty(plugin);
-  let nextPageKey = nextPendingPageKey(frontier, pageKey) || accepted[0]?.key || null;
+    products.length === 0 &&
+    session.staged_item_count > 0 &&
+    !shouldContinueAfterEmpty(plugin);
+  let nextPageKey =
+    (await nextPendingCrawlFetchPageKey(env.DB, session.run_id, pageKey)) ||
+    accepted[0]?.key ||
+    null;
   if (reachedEnd && nextPageKey) coverageIncomplete = true;
   if (reachedEnd) nextPageKey = null;
 
