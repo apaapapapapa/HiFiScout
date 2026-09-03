@@ -171,9 +171,7 @@ export async function processParse(
 
   if (!products.length && plugin.discovery.discoverTargets) coverageIncomplete = true;
   const reachedEnd =
-    products.length === 0 &&
-    session.staged_item_count > 0 &&
-    !shouldContinueAfterEmpty(plugin);
+    products.length === 0 && session.staged_item_count > 0 && !shouldContinueAfterEmpty(plugin);
   let nextPageKey =
     (await nextPendingCrawlFetchPageKey(env.DB, session.run_id, pageKey)) ||
     accepted[0]?.key ||

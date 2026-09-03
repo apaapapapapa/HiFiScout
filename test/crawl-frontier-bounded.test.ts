@@ -180,7 +180,9 @@ for (const cardinality of [100, 1_000, 10_000] as const) {
     const { sqlite, db } = await createSession(cardinality);
     // Make the first page no longer pending so the selector has to seek to the next pending ordinal.
     sqlite
-      .prepare("UPDATE crawl_fetch_pages SET state = 'parsed' WHERE run_id = 'run-1' AND page_key = 'page-0'")
+      .prepare(
+        "UPDATE crawl_fetch_pages SET state = 'parsed' WHERE run_id = 'run-1' AND page_key = 'page-0'",
+      )
       .run();
     const recording = recordingDatabase(db);
 
@@ -188,7 +190,9 @@ for (const cardinality of [100, 1_000, 10_000] as const) {
 
     assert.equal(next, "page-1");
     assert.equal(selects(recording.executed).length, 1, "one bounded D1 SELECT per step");
-    assertNoGrowingTableScans(sqlite, recording.executed, { label: `${cardinality}-page frontier` });
+    assertNoGrowingTableScans(sqlite, recording.executed, {
+      label: `${cardinality}-page frontier`,
+    });
     assertNoSortBeforeLimit(sqlite, recording.executed, `${cardinality}-page frontier`);
     const plan = queryPlan(sqlite, selects(recording.executed)[0]!);
     assert.ok(
