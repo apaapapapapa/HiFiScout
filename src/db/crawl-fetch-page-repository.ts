@@ -1,7 +1,6 @@
 import type { NormalizedCatalogProduct } from "../catalog/types.js";
 import type { QueryableDatabase } from "./types.js";
 import type { CrawlFetchPageInput, CrawlFetchPageRow } from "./crawl-fetch-session-repository.js";
-import { listCrawlFetchPages } from "./crawl-fetch-session-repository.js";
 
 export async function recordCrawlFetchPageFetched(
   db: QueryableDatabase,
@@ -163,14 +162,41 @@ export async function stagedCrawlFetchItemCount(
   return Number(row?.item_count || 0);
 }
 
+/**
+ * Every listing this run has parsed, deduplicated by source id, in page order.
+ *
+ * The rows this needs are a minority of the run's staging table: `parsed` pages carrying a product
+ * array. It used to reach them through the general `listCrawlFetchPages`, which is `SELECT *` over
+ * every row of the run -- so the pending frontier, the fetched-but-unparsed pages and every staged
+ * detail response came back too, each carrying the seller HTML that made it worth staging, and were
+ * dropped by the loop below. On a shop staging tens of pages of HTML that is the largest read in
+ * the phase, and none of it was ever used.
+ *
+ * So the filter moves into the query, which also narrows the columns to the one that is read.
+ * `idx_crawl_fetch_pages_frontier` is `(run_id, state, ordinal)`, so the equality on state and the
+ * ordering are both served by an index the schema already has -- no scan, no temporary sort, and no
+ * new index for this.
+ *
+ * Page order is preserved because it decides the dedupe: a shop that re-lists the same source id on
+ * a later page overwrites the earlier copy, and reordering the pages would silently change which
+ * copy survives.
+ */
 export async function loadStagedCrawlProducts(
   db: QueryableDatabase,
   runId: string,
 ): Promise<NormalizedCatalogProduct[]> {
-  const rows = await listCrawlFetchPages(db, runId);
+  const result = await db
+    .prepare(`
+      SELECT page_key, products_json
+      FROM crawl_fetch_pages
+      WHERE run_id = ? AND state = 'parsed' AND products_json IS NOT NULL
+      ORDER BY ordinal ASC
+    `)
+    .bind(runId)
+    .all<Pick<CrawlFetchPageRow, "page_key" | "products_json">>();
   const products = new Map<string, NormalizedCatalogProduct>();
-  for (const row of rows) {
-    if (row.state !== "parsed" || !row.products_json) continue;
+  for (const row of result.results || []) {
+    if (!row.products_json) continue;
     const parsed: unknown = JSON.parse(row.products_json);
     if (!Array.isArray(parsed)) throw new Error(`invalid staged products for ${row.page_key}`);
     for (const product of parsed as NormalizedCatalogProduct[]) {
