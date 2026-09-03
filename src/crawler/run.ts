@@ -9,6 +9,7 @@ import { saveDataQualityRun } from "../db/data-quality-repository.js";
 import { syncProductMetadata } from "../db/product-metadata-repository.js";
 import { resolveProductCatalogFields } from "../db/model-repository.js";
 import { upsertProducts } from "../db/product-write-repository.js";
+import { accountReads, dbUsageMetrics, sumDbUsageMetrics } from "../db/read-accounting.js";
 import {
   getShopState,
   listShopStates,
@@ -606,10 +607,14 @@ export async function crawlShop(
     fetchParseStage.complete(items.size);
 
     const observedAt = nowIso(new Date());
+    const manufacturerAliasAccounting = accountReads(env.DB);
     const manufacturerResolvedProducts = await stageRecorder.run(
       "manufacturer_resolution",
       { inputCount: items.size },
-      () => resolveProductCatalogFields(env.DB, [...items.values()], { shopKey: adapter.key }),
+      () =>
+        resolveProductCatalogFields(manufacturerAliasAccounting.db, [...items.values()], {
+          shopKey: adapter.key,
+        }),
     );
     const enrichment = await stageRecorder.run(
       "category_enrichment",
@@ -636,6 +641,25 @@ export async function crawlShop(
           // detail page the plan never staged.
           now: enrichmentDecidedAt ?? new Date(observedAt),
         }),
+    );
+    const categoryDbUsage = sumDbUsageMetrics(
+      dbUsageMetrics(manufacturerAliasAccounting),
+      enrichment.dbUsage,
+    );
+    console.log(
+      JSON.stringify({
+        event: "category_enrichment_db_usage",
+        runId,
+        shopKey: adapter.key,
+        inputCount: manufacturerResolvedProducts.length,
+        unresolvedCount: enrichment.unresolvedCount,
+        detailRequestCount: enrichment.detailRequests,
+        manufacturerAliasRowsRead: manufacturerAliasAccounting.rowsRead(),
+        knowledgeCatalogRowsRead: enrichment.dbUsage.knowledgeCatalogRowsRead,
+        manualAuthorityRowsRead: enrichment.dbUsage.manualAuthorityRowsRead,
+        existingListingRowsRead: enrichment.dbUsage.existingListingRowsRead,
+        ...categoryDbUsage,
+      }),
     );
     const products = enrichment.products;
     logUnclassifiedProducts(adapter, products);

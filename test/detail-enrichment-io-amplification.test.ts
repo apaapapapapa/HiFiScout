@@ -8,6 +8,7 @@ import {
   recordCrawlFetchDetailPage,
 } from "../src/db/crawl-fetch-detail-repository.js";
 import { loadStagedCrawlProducts } from "../src/db/crawl-fetch-page-repository.js";
+import { firstCrawlFetchPageKey } from "../src/db/crawl-fetch-session-repository.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { queryPlan, readsThroughIndex, recordingDatabase } from "./helpers/query-plan.js";
 
@@ -198,6 +199,29 @@ test("a source id listed on two pages keeps the later page's copy", async () => 
   assert.deepEqual(
     products.map((product) => product.title),
     ["second"],
+  );
+});
+
+test("finalization reads only the first staged page key for its synthetic seed", async () => {
+  const { sqlite, db } = migratedSqlite();
+  seedSession(sqlite, RUN);
+  seedPages(sqlite, RUN, [
+    { key: "p1", ordinal: 0, state: "parsed", products: [{ sourceId: "a", title: "A" }] },
+    { key: "p2", ordinal: 1, state: "fetched", html: "<html>large payload</html>" },
+  ]);
+  const recording = recordingDatabase(db);
+
+  assert.equal(await firstCrawlFetchPageKey(recording.db, RUN), "p1");
+
+  const statement = recording.executed[0];
+  assert.ok(statement);
+  assert.doesNotMatch(statement.sql, /SELECT\s+\*|html_text|products_json|html_bytes/iu);
+  assert.ok(
+    readsThroughIndex(
+      queryPlan(sqlite, statement),
+      "crawl_fetch_pages",
+      "sqlite_autoindex_crawl_fetch_pages_2",
+    ),
   );
 });
 

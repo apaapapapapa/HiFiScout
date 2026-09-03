@@ -7,7 +7,14 @@ import {
 } from "../db/crawl-fetch-detail-repository.js";
 import { getCrawlFetchSession } from "../db/crawl-fetch-session-repository.js";
 import { syncProductSearchEntities } from "../db/product-search-entity-repository.js";
+import {
+  accountReads,
+  dbUsageMetrics,
+  sumDbUsageMetrics,
+  type DbUsageMetrics,
+} from "../db/read-accounting.js";
 import { crawlDispatchToken } from "../db/shop-state-repository.js";
+import type { QueryableDatabase } from "../db/types.js";
 import { planStagedCategoryDetailFetches } from "./category-enrichment-pacing.js";
 import {
   advanceDetailPlanCursor,
@@ -60,6 +67,24 @@ interface StoredExecution {
   detailTargetUrl?: string;
   /** Durable hand-off: finalization owns no seller HTTP; the DO runs inventory after D1 commit. */
   inventoryRecheckPending?: boolean;
+  /** Aggregate D1 usage for the paced detail phase; emitted once when the plan is exhausted. */
+  detailDbUsage?: StoredDetailDbUsage;
+}
+
+interface StoredDetailDbUsage {
+  fence: DbUsageMetrics;
+  commit: DbUsageMetrics;
+}
+
+function accumulatedDetailDbUsage(
+  stored: StoredDetailDbUsage | undefined,
+  fence: DbUsageMetrics,
+  commit: DbUsageMetrics,
+): StoredDetailDbUsage {
+  return {
+    fence: sumDbUsageMetrics(stored?.fence ?? sumDbUsageMetrics(), fence),
+    commit: sumDbUsageMetrics(stored?.commit ?? sumDbUsageMetrics(), commit),
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -320,12 +345,15 @@ export class CrawlScheduler extends DurableObject<Env> {
   }
 
   /** Binds the plan policy to this Durable Object's storage, planner, fence and log vocabulary. */
-  private detailPlanContext(plugin: ShopPlugin): DetailEnrichmentPlanContext {
+  private detailPlanContext(
+    plugin: ShopPlugin,
+    fenceDb: QueryableDatabase = this.env.DB,
+  ): DetailEnrichmentPlanContext {
     return {
       storage: this.detailPlanStorage(),
       planTargets: (runId, decidedAt) =>
         planStagedCategoryDetailFetches(this.env, plugin, runId, decidedAt),
-      isCommitted: (runId, targetUrl) => hasCrawlFetchDetailPage(this.env.DB, runId, targetUrl),
+      isCommitted: (runId, targetUrl) => hasCrawlFetchDetailPage(fenceDb, runId, targetUrl),
       log: (event) => {
         if (event.kind === "plan_created") {
           console.log(
@@ -369,7 +397,15 @@ export class CrawlScheduler extends DurableObject<Env> {
       return true;
     }
 
-    const planContext = this.detailPlanContext(plugin);
+    const fenceAccounting = accountReads(this.env.DB);
+    const commitAccounting = accountReads(this.env.DB);
+    const currentDetailDbUsage = (): StoredDetailDbUsage =>
+      accumulatedDetailDbUsage(
+        execution.detailDbUsage,
+        dbUsageMetrics(fenceAccounting),
+        dbUsageMetrics(commitAccounting),
+      );
+    const planContext = this.detailPlanContext(plugin, fenceAccounting.db);
     const progress = await detailEnrichmentProgress(planContext, runId);
     const targetUrl = await nextUncommittedDetailTarget(planContext, progress);
 
@@ -377,6 +413,7 @@ export class CrawlScheduler extends DurableObject<Env> {
       if (execution.permit || execution.relayPermit || execution.detailTargetUrl) {
         await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
           ...execution,
+          detailDbUsage: currentDetailDbUsage(),
           permit: undefined,
           relayPermit: undefined,
           detailTargetUrl: undefined,
@@ -384,12 +421,30 @@ export class CrawlScheduler extends DurableObject<Env> {
         await this.ctx.storage.setAlarm(alarmAt(Date.now()));
         return true;
       }
+      const detailUsage = currentDetailDbUsage();
+      const total = sumDbUsageMetrics(detailUsage.fence, detailUsage.commit);
+      console.log(
+        JSON.stringify({
+          event: "detail_enrichment_db_usage",
+          shopKey: plugin.key,
+          runId,
+          targetCount: progress.targetCount,
+          fenceRowsRead: detailUsage.fence.rowsRead,
+          commitRowsRead: detailUsage.commit.rowsRead,
+          fenceStatements: detailUsage.fence.statementCount,
+          commitStatements: detailUsage.commit.statementCount,
+          ...total,
+        }),
+      );
+      // Finalization may retry, but the completed detail phase must emit its aggregate only once.
+      execution.detailDbUsage = undefined;
       return false;
     }
 
     if (execution.detailTargetUrl && execution.detailTargetUrl !== targetUrl) {
       await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
         ...execution,
+        detailDbUsage: currentDetailDbUsage(),
         permit: undefined,
         relayPermit: undefined,
         detailTargetUrl: undefined,
@@ -423,7 +478,7 @@ export class CrawlScheduler extends DurableObject<Env> {
           });
         }
       } catch (error) {
-        await recordCrawlFetchDetailPage(this.env.DB, {
+        await recordCrawlFetchDetailPage(commitAccounting.db, {
           runId,
           targetUrl,
           errorMessage: error instanceof Error ? error.message : String(error),
@@ -434,6 +489,7 @@ export class CrawlScheduler extends DurableObject<Env> {
         await advanceDetailPlanCursor(planContext, progress, progress.cursor + 1);
         await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
           ...execution,
+          detailDbUsage: currentDetailDbUsage(),
           permit: undefined,
           relayPermit: undefined,
           detailTargetUrl: undefined,
@@ -456,6 +512,7 @@ export class CrawlScheduler extends DurableObject<Env> {
       if (!prepared) throw new Error(`detail fetch permit was not prepared for ${plugin.key}`);
       await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
         ...execution,
+        detailDbUsage: currentDetailDbUsage(),
         permit: directPermit,
         relayPermit,
         detailTargetUrl: targetUrl,
@@ -479,12 +536,17 @@ export class CrawlScheduler extends DurableObject<Env> {
 
     const notBeforeMs = (relayPermit || directPermit)?.notBeforeMs || 0;
     if (Date.now() < notBeforeMs) {
+      await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
+        ...execution,
+        detailDbUsage: currentDetailDbUsage(),
+      });
       await this.ctx.storage.setAlarm(alarmAt(notBeforeMs));
       return true;
     }
     if (relayPermit && Date.now() >= relayPermit.expiresAtMs) {
       await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
         ...execution,
+        detailDbUsage: currentDetailDbUsage(),
         permit: undefined,
         relayPermit: undefined,
         detailTargetUrl: undefined,
@@ -512,7 +574,7 @@ export class CrawlScheduler extends DurableObject<Env> {
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : String(error);
     }
-    await recordCrawlFetchDetailPage(this.env.DB, {
+    await recordCrawlFetchDetailPage(commitAccounting.db, {
       runId,
       targetUrl,
       html,
@@ -527,6 +589,7 @@ export class CrawlScheduler extends DurableObject<Env> {
       : execution.nextOriginNotBeforeMs;
     await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
       ...execution,
+      detailDbUsage: currentDetailDbUsage(),
       nextOriginNotBeforeMs,
       permit: undefined,
       relayPermit: undefined,
