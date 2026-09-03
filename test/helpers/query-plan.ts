@@ -25,10 +25,13 @@ export interface RecordingDatabase {
 
 export function recordingDatabase(inner: QueryableDatabase): RecordingDatabase {
   const executed: ExecutedStatement[] = [];
+  // `batch` runs the statements it is given, so handing it wrapped ones would record each twice --
+  // once here, once when the batch calls its `run`. The originals go to the batch instead.
+  const originals = new WeakMap<object, D1PreparedStatement>();
   const wrap = (sql: string, binds: SQLInputValue[]) => {
     const statement = inner.prepare(sql).bind(...binds);
     const remember = () => executed.push({ sql, binds });
-    return {
+    const wrapped = {
       sql,
       binds,
       bind: (...next: SQLInputValue[]) => wrap(sql, next),
@@ -45,6 +48,8 @@ export function recordingDatabase(inner: QueryableDatabase): RecordingDatabase {
         return statement.run();
       },
     };
+    originals.set(wrapped, statement);
+    return wrapped;
   };
   return {
     executed,
@@ -56,7 +61,11 @@ export function recordingDatabase(inner: QueryableDatabase): RecordingDatabase {
         for (const statement of statements as ExecutedStatement[]) {
           executed.push({ sql: statement.sql, binds: statement.binds });
         }
-        return inner.batch(statements as D1PreparedStatement[]);
+        return inner.batch(
+          (statements as object[]).map(
+            (statement) => originals.get(statement) ?? (statement as D1PreparedStatement),
+          ),
+        );
       },
     }),
   };
