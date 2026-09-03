@@ -1,4 +1,5 @@
 import type { QueryableDatabase } from "./types.js";
+import { firstMeasured } from "./read-accounting.js";
 
 const DETAIL_PAGE_KEY_PREFIX = "__hifiscout_category_detail__:";
 
@@ -51,14 +52,15 @@ export async function getCrawlFetchDetailPage(
   runId: string,
   targetUrl: string,
 ): Promise<CrawlFetchDetailPageRow | null> {
-  const staged = await db
-    .prepare(`
+  const staged = await firstMeasured<DetailStagingRow>(
+    db
+      .prepare(`
       SELECT html_text, products_json, html_bytes, fetched_at
       FROM crawl_fetch_pages
       WHERE run_id = ? AND page_key = ? AND state = 'ignored'
     `)
-    .bind(runId, detailPageKey(targetUrl))
-    .first<DetailStagingRow>();
+      .bind(runId, detailPageKey(targetUrl)),
+  );
   if (!staged) return null;
   if (!staged.fetched_at) throw new Error(`invalid staged category detail fetch: ${targetUrl}`);
   return {
@@ -92,15 +94,16 @@ export async function hasCrawlFetchDetailPage(
   runId: string,
   targetUrl: string,
 ): Promise<boolean> {
-  const staged = await db
-    .prepare(`
+  const staged = await firstMeasured<{ committed: number }>(
+    db
+      .prepare(`
       SELECT 1 AS committed
       FROM crawl_fetch_pages
       WHERE run_id = ? AND page_key = ? AND state = 'ignored'
       LIMIT 1
     `)
-    .bind(runId, detailPageKey(targetUrl))
-    .first<{ committed: number }>();
+      .bind(runId, detailPageKey(targetUrl)),
+  );
   return staged != null;
 }
 

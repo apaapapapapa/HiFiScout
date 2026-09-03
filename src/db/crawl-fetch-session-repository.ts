@@ -1,4 +1,5 @@
 import type { CrawlPage } from "../crawler/types.js";
+import { firstMeasured } from "./read-accounting.js";
 import type { QueryableDatabase, SqliteBool } from "./types.js";
 
 export type CrawlFetchSessionStatus = "collecting" | "finalizing" | "completed" | "failed";
@@ -161,6 +162,25 @@ export async function listCrawlFetchPages(
     .bind(runId)
     .all<CrawlFetchPageRow>();
   return result.results || [];
+}
+
+/** First listing-page key without materializing every staged row and its seller payload. */
+export async function firstCrawlFetchPageKey(
+  db: QueryableDatabase,
+  runId: string,
+): Promise<string | null> {
+  const row = await firstMeasured<Pick<CrawlFetchPageRow, "page_key">>(
+    db
+      .prepare(`
+        SELECT page_key
+        FROM crawl_fetch_pages
+        WHERE run_id = ?
+        ORDER BY ordinal ASC
+        LIMIT 1
+      `)
+      .bind(runId),
+  );
+  return row?.page_key ?? null;
 }
 
 export async function listActiveCrawlFetchSessions(

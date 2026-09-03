@@ -179,8 +179,8 @@ export type ProductPriceLookupRow = Pick<ProductRow, "id" | "source_id" | "price
 
 export type ProductMetadataLookupRow = Pick<ProductRow, "id" | "source_id" | "metadata_json">;
 
-/** Subset of `products` read by the crawler's category enricher. */
-export type CategoryEnrichmentProductRow = Pick<
+/** Exact existing-listing projection needed by category cache and identity decisions. */
+export type ExistingCategoryEnrichmentState = Pick<
   ProductRow,
   | "source_id"
   | "title"
