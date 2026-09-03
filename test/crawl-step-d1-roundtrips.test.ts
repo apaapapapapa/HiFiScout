@@ -175,8 +175,8 @@ test("the page result is committed before the cursor moves off it", async () => 
   await step(held, "fetch", 0);
   const { statements } = await step(held, "parse", 0);
 
-  const pageWrite = statements.findIndex((sql) => sql.startsWith('UPDATE crawl_fetch_pages'));
-  const sessionWrite = statements.findIndex((sql) => sql.startsWith('UPDATE crawl_fetch_sessions'));
+  const pageWrite = statements.findIndex((sql) => sql.startsWith("UPDATE crawl_fetch_pages"));
+  const sessionWrite = statements.findIndex((sql) => sql.startsWith("UPDATE crawl_fetch_sessions"));
   assert.ok(pageWrite >= 0 && sessionWrite >= 0, `expected both writes:\n${statements.join("\n")}`);
   assert.ok(
     pageWrite < sessionWrite,
