@@ -2,7 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 
 import { getCrawlerSettings, getShopRequestDelayMs, shopEnvVarName } from "../config.js";
 import {
-  getCrawlFetchDetailPage,
+  hasCrawlFetchDetailPage,
   recordCrawlFetchDetailPage,
 } from "../db/crawl-fetch-detail-repository.js";
 import { getCrawlFetchSession } from "../db/crawl-fetch-session-repository.js";
@@ -318,8 +318,7 @@ export class CrawlScheduler extends DurableObject<Env> {
       },
       planTargets: (runId, decidedAt) =>
         planStagedCategoryDetailFetches(this.env, plugin, runId, decidedAt),
-      isCommitted: async (runId, targetUrl) =>
-        Boolean(await getCrawlFetchDetailPage(this.env.DB, runId, targetUrl)),
+      isCommitted: (runId, targetUrl) => hasCrawlFetchDetailPage(this.env.DB, runId, targetUrl),
       log: (event) => {
         if (event.kind === "plan_created") {
           console.log(
