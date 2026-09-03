@@ -10,6 +10,14 @@ import { syncProductSearchEntities } from "../db/product-search-entity-repositor
 import { crawlDispatchToken } from "../db/shop-state-repository.js";
 import { planStagedCategoryDetailFetches } from "./category-enrichment-pacing.js";
 import {
+  advanceDetailPlanCursor,
+  DETAIL_PLAN_STORAGE_KEY,
+  detailEnrichmentPlan,
+  nextUncommittedDetailTarget,
+  type DetailEnrichmentPlanContext,
+  type StoredDetailEnrichmentPlan,
+} from "./detail-enrichment-plan.js";
+import {
   fetchPreparedDirectHtmlPage,
   prepareDirectFetchPermit,
   type DirectFetchPermit,
@@ -287,6 +295,57 @@ export class CrawlScheduler extends DurableObject<Env> {
     );
   }
 
+  /**
+   * The instant this run's detail enrichment was planned, if it has been planned.
+   *
+   * Finalization evaluates the same time-dependent eligibility policy the plan did, so it is given
+   * the plan's instant rather than its own clock. Absent when the run has no plan -- either the shop
+   * has no detail evidence or the phase was never reached -- and finalization then behaves as it did
+   * before, on the current time.
+   */
+  private async storedDetailDecisionAt(runId: string | undefined): Promise<string | undefined> {
+    if (!runId) return undefined;
+    const stored = await this.ctx.storage.get<StoredDetailEnrichmentPlan>(DETAIL_PLAN_STORAGE_KEY);
+    return stored && stored.runId === runId ? stored.decidedAt : undefined;
+  }
+
+  /** Binds the plan policy to this Durable Object's storage, planner, fence and log vocabulary. */
+  private detailPlanContext(plugin: ShopPlugin): DetailEnrichmentPlanContext {
+    return {
+      storage: {
+        get: (key) => this.ctx.storage.get(key),
+        put: (key, value) => this.ctx.storage.put(key, value),
+      },
+      planTargets: (runId, decidedAt) =>
+        planStagedCategoryDetailFetches(this.env, plugin, runId, decidedAt),
+      isCommitted: async (runId, targetUrl) =>
+        Boolean(await getCrawlFetchDetailPage(this.env.DB, runId, targetUrl)),
+      log: (event) => {
+        if (event.kind === "plan_created") {
+          console.log(
+            JSON.stringify({
+              event: "crawl_do_detail_plan_created",
+              shopKey: plugin.key,
+              runId: event.runId,
+              targetCount: event.targetCount,
+            }),
+          );
+          return;
+        }
+        console.log(
+          JSON.stringify({
+            event: "crawl_do_detail_target_already_committed",
+            shopKey: plugin.key,
+            runId: event.runId,
+            skipped: event.skipped,
+            cursor: event.cursor,
+            targetCount: event.targetCount,
+          }),
+        );
+      },
+    };
+  }
+
   /** Runs at most one category-detail seller request per Alarm for both direct and Relay shops. */
   private async runDetailCategoryEnrichmentStep(
     execution: StoredExecution,
@@ -302,14 +361,9 @@ export class CrawlScheduler extends DurableObject<Env> {
       return true;
     }
 
-    const targets = await planStagedCategoryDetailFetches(this.env, plugin, runId);
-    let targetUrl: string | null = null;
-    for (const candidate of targets) {
-      if (!(await getCrawlFetchDetailPage(this.env.DB, runId, candidate))) {
-        targetUrl = candidate;
-        break;
-      }
-    }
+    const planContext = this.detailPlanContext(plugin);
+    const plan = await detailEnrichmentPlan(planContext, runId);
+    const targetUrl = await nextUncommittedDetailTarget(planContext, plan);
 
     if (!targetUrl) {
       if (execution.permit || execution.relayPermit || execution.detailTargetUrl) {
@@ -367,6 +421,9 @@ export class CrawlScheduler extends DurableObject<Env> {
           errorMessage: error instanceof Error ? error.message : String(error),
           fetchedAt: new Date().toISOString(),
         });
+        // The fence now records this target as attempted, so the plan may move past it. After the
+        // commit, never before: the reverse order drops the target on a failure between the two.
+        await advanceDetailPlanCursor(planContext, plan, plan.cursor + 1);
         await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
           ...execution,
           permit: undefined,
@@ -454,6 +511,9 @@ export class CrawlScheduler extends DurableObject<Env> {
       errorMessage,
       fetchedAt: new Date().toISOString(),
     });
+    // D1 commit first, then the cursor. A kill in between leaves the cursor pointing at a committed
+    // target, which the skip in `nextUncommittedDetailTarget` resolves without re-asking the seller.
+    await advanceDetailPlanCursor(planContext, plan, plan.cursor + 1);
     const nextOriginNotBeforeMs = directPermit
       ? Date.now() + directPermit.effectiveDelayMs
       : execution.nextOriginNotBeforeMs;
@@ -613,6 +673,9 @@ export class CrawlScheduler extends DurableObject<Env> {
       const directPermit = activeExecution.permit;
       const relayPermit = activeExecution.relayPermit;
       const preparedRelayConfig = relayPermit ? relayConfiguration(this.env) : null;
+      // Read rather than plan: this only surfaces the instant an existing plan already recorded, so
+      // a run that never entered the detail phase is not made to pay for planning here.
+      const detailDecisionAt = await this.storedDetailDecisionAt(execution.message.collectionRunId);
       const result = await executeResumableCrawlStep(
         withoutInlineInventoryRecheck(this.env, plugin),
         message,
@@ -620,6 +683,10 @@ export class CrawlScheduler extends DurableObject<Env> {
           continuationDelivery: "return_only",
           initializeOnly: !message.continuation,
           requireStagedDetailFetches: Boolean(plugin.capabilities.detailCategoryEvidence),
+          // Finalization re-runs the same time-dependent enrichment policy. Handing it the instant
+          // the plan was built keeps the two answers identical, so a cache entry expiring during
+          // the paced fetches cannot make finalization demand a URL the plan never staged.
+          ...(detailDecisionAt ? { detailDecisionAt } : {}),
           ...(preparationError
             ? {
                 fetchHtmlPage: async () => {

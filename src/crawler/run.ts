@@ -76,6 +76,16 @@ interface CrawlShopOptions {
   force?: boolean;
   now?: Date;
   fetchFn?: typeof fetch;
+  /**
+   * The instant category enrichment should evaluate its cache-age policy at, when some earlier
+   * phase already evaluated it and this run has to reach the same answer.
+   *
+   * Separate from `now`, which drives scheduling and the recorded start time: a resumable crawl
+   * finalizes minutes to hours after its Durable Object decided which detail pages to fetch, and
+   * must not be told the crawl itself started back then. Defaults to the observation instant, which
+   * is what a single-invocation crawl has always used.
+   */
+  enrichmentDecidedAt?: Date;
 }
 
 interface EvidenceMetrics {
@@ -409,7 +419,7 @@ export function isSuspiciousItemDrop(
 export async function crawlShop(
   env: RuntimeEnv,
   adapter: ShopPlugin,
-  { force = false, now = new Date(), fetchFn = fetch }: CrawlShopOptions = {},
+  { force = false, now = new Date(), fetchFn = fetch, enrichmentDecidedAt }: CrawlShopOptions = {},
 ): Promise<CrawlResult> {
   const definition = adapter.definition;
   if (!getShopEnabled(env, definition))
@@ -620,7 +630,11 @@ export async function crawlShop(
             fetchFn,
             robotsCache,
           },
-          now: new Date(observedAt),
+          // Pinned by a resumable crawl to the instant its detail fetches were planned. The policy
+          // is time-dependent -- an unresolved check expires and its listing becomes a target -- so
+          // planning and finalization have to ask the same clock or finalization can require a
+          // detail page the plan never staged.
+          now: enrichmentDecidedAt ?? new Date(observedAt),
         }),
     );
     const products = enrichment.products;

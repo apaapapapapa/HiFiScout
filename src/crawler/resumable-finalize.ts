@@ -27,6 +27,20 @@ import type { CrawlResult, FetchHtmlPageOptions, HtmlTransport, ShopPlugin } fro
 
 const FINALIZE_RECLAIM_MS = 2 * 60_000;
 
+/**
+ * The pinned enrichment instant, when the caller supplied one that is actually a time.
+ *
+ * The value crosses a queue message, so an unparseable one is possible; letting it through would
+ * reach `toISOString()` inside enrichment and fail the crawl over a field that only exists to make
+ * two clocks agree. Falling back to the crawl's own clock restores exactly the behaviour this
+ * refines, which is a far smaller loss than the run.
+ */
+function pinnedEnrichmentInstant(value: string | undefined): Date | undefined {
+  if (!value) return undefined;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
 function stagedFetchFunction(
   env: ResumableRuntimeEnv,
   plugin: ShopPlugin,
@@ -149,9 +163,14 @@ export async function processFinalize(
     plugin.capabilities.transport?.kind,
     globalThis.fetch,
   );
+  // The instant the Durable Object planned this run's detail fetches. Enrichment alone is pinned to
+  // it -- the crawl's own clock stays current -- so the eligibility policy cannot drift between
+  // planning and finalization while the paced fetches run.
+  const enrichmentDecidedAt = pinnedEnrichmentInstant(options.detailDecisionAt);
   try {
     const result = await crawlShop(env, publishAdapter, {
       force: true,
+      ...(enrichmentDecidedAt ? { enrichmentDecidedAt } : {}),
       fetchFn: stagedFetchFunction(
         env,
         plugin,
