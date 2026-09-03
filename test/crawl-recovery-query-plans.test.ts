@@ -125,13 +125,25 @@ test("crawl recovery access paths stay current-work sized at 100, 1k and 10k his
     const resumable = await listResumableCrawlRuns(fixture.db, 1);
     const stalled = await listStalledCrawlRuns(fixture.db, { startedBefore: CUTOFF, limit: 1 });
 
-    assert.equal(resumable.length, 1, `${terminalHistory}: resumable LIMIT must stop at current work`);
+    assert.equal(
+      resumable.length,
+      1,
+      `${terminalHistory}: resumable LIMIT must stop at current work`,
+    );
     assert.equal(stalled.length, 1, `${terminalHistory}: stalled LIMIT must stop at current work`);
-    assert.equal(selects(fixture.executed).length, 2, `${terminalHistory}: statement count drifted`);
+    assert.equal(
+      selects(fixture.executed).length,
+      2,
+      `${terminalHistory}: statement count drifted`,
+    );
     assertNoGrowingTableScans(fixture.sqlite, fixture.executed, {
       label: `${terminalHistory} terminal crawl rows`,
     });
-    assertNoSortBeforeLimit(fixture.sqlite, fixture.executed, `${terminalHistory} terminal crawl rows`);
+    assertNoSortBeforeLimit(
+      fixture.sqlite,
+      fixture.executed,
+      `${terminalHistory} terminal crawl rows`,
+    );
 
     // Partial-index cardinality is the cost invariant that elapsed-time assertions cannot make
     // deterministic in CI. Terminal history is absent from both access paths by construction.
@@ -149,7 +161,15 @@ test("crawl recovery access paths stay current-work sized at 100, 1k and 10k his
         )
         .get()?.count ?? 0,
     );
-    assert.equal(pendingIndexRows, 2, `${terminalHistory}: pending index grew with terminal history`);
-    assert.equal(runningIndexRows, 2, `${terminalHistory}: running index grew with terminal history`);
+    assert.equal(
+      pendingIndexRows,
+      2,
+      `${terminalHistory}: pending index grew with terminal history`,
+    );
+    assert.equal(
+      runningIndexRows,
+      2,
+      `${terminalHistory}: running index grew with terminal history`,
+    );
   }
 });
