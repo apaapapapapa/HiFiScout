@@ -148,6 +148,51 @@ export async function recordCrawlFetchPageParsed(
   await db.batch(statements);
 }
 
+/**
+ * What a page step needs to know about the rest of the run.
+ *
+ * The frontier decisions -- which page keys are already known, what the next ordinal is, which page
+ * is still pending, how many items the run has staged -- are four cheap facts about every page of
+ * the run. They used to be answered by `listCrawlFetchPages`, which is `SELECT *`: `page_json`, and
+ * the `products_json` of every page parsed so far. Parsing page N therefore re-read the products of
+ * pages 1..N-1, so the payload a run moved grew with the square of its page count, once per step,
+ * to compute a maximum and a set membership.
+ *
+ * `idx_crawl_fetch_pages_frontier` is `(run_id, state, ordinal)`, so this is answered from index
+ * entries plus one row lookup each for `page_key` and `item_count`, and the ordering it needs comes
+ * from the index rather than a sort.
+ */
+export interface CrawlFetchFrontierRow {
+  page_key: string;
+  ordinal: number;
+  state: CrawlFetchPageRow["state"];
+  item_count: number;
+}
+
+export async function listCrawlFetchPageFrontier(
+  db: QueryableDatabase,
+  runId: string,
+): Promise<CrawlFetchFrontierRow[]> {
+  const result = await db
+    .prepare(`
+      SELECT page_key, ordinal, state, item_count
+      FROM crawl_fetch_pages
+      WHERE run_id = ?
+      ORDER BY ordinal ASC
+    `)
+    .bind(runId)
+    .all<CrawlFetchFrontierRow>();
+  return result.results || [];
+}
+
+/** Items staged by the pages this run has parsed, from a frontier already in hand. */
+export function stagedItemCount(frontier: readonly CrawlFetchFrontierRow[]): number {
+  return frontier.reduce(
+    (total, page) => (page.state === "parsed" ? total + Number(page.item_count || 0) : total),
+    0,
+  );
+}
+
 export async function stagedCrawlFetchItemCount(
   db: QueryableDatabase,
   runId: string,
@@ -208,7 +253,7 @@ export async function loadStagedCrawlProducts(
 }
 
 export function nextPendingPageKey(
-  pages: readonly CrawlFetchPageRow[],
+  pages: readonly Pick<CrawlFetchPageRow, "page_key" | "state">[],
   excludingPageKey?: string,
 ): string | null {
   return (

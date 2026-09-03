@@ -14,7 +14,7 @@ import { runDataQualityRemediationSweep } from "./db/data-quality-remediation-se
 import {
   deadLetterOutstandingKnowledgeCatalogVerificationJobsForRun,
   knowledgeCatalogReviewRunLiveness,
-  knowledgeCatalogVerificationQueueStatus,
+  latestKnowledgeCatalogVerificationRunId,
 } from "./db/knowledge-catalog-verification-queue-repository.js";
 import {
   finishKnowledgeCatalogReviewRunFailure,
@@ -408,9 +408,12 @@ export async function bootstrapKnowledgeCatalogReview(env: Env, now = new Date()
     });
   }
 
-  const [state, queue, latestReview] = await Promise.all([
+  // Whether the queue has ever been bootstrapped is the only thing this path asks of it. It used to
+  // ask through the full queue status, which aggregated every verification job ever recorded and
+  // then had every count discarded here.
+  const [state, latestVerificationRunId, latestReview] = await Promise.all([
     knowledgeCatalogVerifierState(env.DB),
-    knowledgeCatalogVerificationQueueStatus(env.DB),
+    latestKnowledgeCatalogVerificationRunId(env.DB),
     latestKnowledgeCatalogReviewRunState(env.DB),
   ]);
 
@@ -495,7 +498,7 @@ export async function bootstrapKnowledgeCatalogReview(env: Env, now = new Date()
       throw error;
     }
   }
-  if (queue.latestRunId) {
+  if (latestVerificationRunId) {
     return { status: "skipped", reason: "knowledge_catalog_queue_already_bootstrapped" };
   }
   console.log(

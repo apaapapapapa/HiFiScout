@@ -2,16 +2,16 @@ import { getCrawlerSettings, getShopRequestDelayMs } from "../config.js";
 import {
   decodeCrawlFetchPage,
   getCrawlFetchPage,
-  listCrawlFetchPages,
   type CrawlFetchPageInput,
   type CrawlFetchSessionRow,
 } from "../db/crawl-fetch-session-repository.js";
 import {
+  listCrawlFetchPageFrontier,
   nextPendingPageKey,
   recordCrawlFetchPageFetched,
   recordCrawlFetchPageIgnored,
   recordCrawlFetchPageParsed,
-  stagedCrawlFetchItemCount,
+  stagedItemCount,
 } from "../db/crawl-fetch-page-repository.js";
 import { errorMessage } from "../types.js";
 import {
@@ -61,15 +61,16 @@ export async function processFetch(
         : await transport!.fetchHtmlPage(pageKey, fetchOptions);
     } catch (error) {
       if (/HTTP 404/.test(errorMessage(error))) {
-        const previousItems = await stagedCrawlFetchItemCount(env.DB, session.run_id);
-        if (shouldContinueAfterEmpty(plugin) || previousItems === 0) {
-          const pages = await listCrawlFetchPages(env.DB, session.run_id);
+        // One frontier read answers both questions this branch asks -- how much the run has staged,
+        // and which page comes next -- where it used to aggregate and then read the whole run.
+        const frontier = await listCrawlFetchPageFrontier(env.DB, session.run_id);
+        if (shouldContinueAfterEmpty(plugin) || stagedItemCount(frontier) === 0) {
           await recordCrawlFetchPageIgnored(env.DB, {
             runId: session.run_id,
             pageKey,
             ignoredAt: new Date().toISOString(),
             currentSequence: session.continuation_sequence,
-            nextPageKey: nextPendingPageKey(pages, pageKey),
+            nextPageKey: nextPendingPageKey(frontier, pageKey),
           });
           return continued(env, plugin, body, session.run_id, options);
         }
@@ -141,11 +142,13 @@ export async function processParse(
   const discovered = discoverPages(plugin, row.html_text, page);
   const discoverMs = performance.now() - discoveryStartedAt;
   const parseMs = parsed.rawParseMs + parsed.normalizeMs;
-  const pages = await listCrawlFetchPages(env.DB, session.run_id);
-  const known = new Set(pages.map((candidate) => candidate.page_key));
+  // Every frontier fact this step needs, in one narrow read: the known page keys, the next ordinal,
+  // the next pending page, and what the run has staged so far.
+  const frontier = await listCrawlFetchPageFrontier(env.DB, session.run_id);
+  const known = new Set(frontier.map((candidate) => candidate.page_key));
   const accepted: CrawlFetchPageInput[] = [];
   let coverageIncomplete = discovered == null;
-  let nextOrdinal = pages.reduce((max, candidate) => Math.max(max, candidate.ordinal), -1) + 1;
+  let nextOrdinal = frontier.reduce((max, candidate) => Math.max(max, candidate.ordinal), -1) + 1;
 
   if (discovered) {
     for (const candidate of discovered) {
@@ -160,11 +163,11 @@ export async function processParse(
     }
   }
 
-  const previousItems = await stagedCrawlFetchItemCount(env.DB, session.run_id);
+  const previousItems = stagedItemCount(frontier);
   if (!products.length && plugin.discovery.discoverTargets) coverageIncomplete = true;
   const reachedEnd =
     products.length === 0 && previousItems > 0 && !shouldContinueAfterEmpty(plugin);
-  let nextPageKey = nextPendingPageKey(pages, pageKey) || accepted[0]?.key || null;
+  let nextPageKey = nextPendingPageKey(frontier, pageKey) || accepted[0]?.key || null;
   if (reachedEnd && nextPageKey) coverageIncomplete = true;
   if (reachedEnd) nextPageKey = null;
 

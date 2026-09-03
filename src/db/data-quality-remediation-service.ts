@@ -27,7 +27,7 @@ import { errorMessage, isRecord } from "../types.js";
 import { saveDataQualityRun } from "./data-quality-repository.js";
 import {
   claimDataQualityRemediationBatch,
-  dataQualityRemediationQueueMetrics,
+  dataQualityRemediationActiveQueueMetrics,
   resolveDataQualityRemediationJob,
   retryOrFailDataQualityRemediationJob,
   seedDataQualityRemediationQueue,
@@ -110,7 +110,7 @@ export interface RunDataQualityRemediationSweepResult {
   failed: number;
   retried: number;
   affectedShops: string[];
-  queue: Awaited<ReturnType<typeof dataQualityRemediationQueueMetrics>>;
+  queue: Awaited<ReturnType<typeof dataQualityRemediationActiveQueueMetrics>>;
 }
 
 function metadataObject(value: string): Record<string, unknown> {
@@ -731,7 +731,9 @@ export async function runDataQualityRemediationSweep(
     }
   }
 
-  const queue = await dataQualityRemediationQueueMetrics(db);
+  // Outstanding work only. What this sweep itself did is already counted above, so recomputing
+  // lifetime totals here would read the whole retained history to report a backlog of two.
+  const queue = await dataQualityRemediationActiveQueueMetrics(db);
   const result: RunDataQualityRemediationSweepResult = {
     seeded: seeded.workKeys.length,
     claimed: jobs.length,
