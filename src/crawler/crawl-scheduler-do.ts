@@ -2,7 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 
 import { getCrawlerSettings, getShopRequestDelayMs, shopEnvVarName } from "../config.js";
 import {
-  getCrawlFetchDetailPage,
+  hasCrawlFetchDetailPage,
   recordCrawlFetchDetailPage,
 } from "../db/crawl-fetch-detail-repository.js";
 import { getCrawlFetchSession } from "../db/crawl-fetch-session-repository.js";
@@ -11,11 +11,11 @@ import { crawlDispatchToken } from "../db/shop-state-repository.js";
 import { planStagedCategoryDetailFetches } from "./category-enrichment-pacing.js";
 import {
   advanceDetailPlanCursor,
-  DETAIL_PLAN_STORAGE_KEY,
-  detailEnrichmentPlan,
+  detailEnrichmentProgress,
   nextUncommittedDetailTarget,
+  storedDetailDecisionAt,
   type DetailEnrichmentPlanContext,
-  type StoredDetailEnrichmentPlan,
+  type DetailEnrichmentPlanStorage,
 } from "./detail-enrichment-plan.js";
 import {
   fetchPreparedDirectHtmlPage,
@@ -303,23 +303,29 @@ export class CrawlScheduler extends DurableObject<Env> {
    * has no detail evidence or the phase was never reached -- and finalization then behaves as it did
    * before, on the current time.
    */
-  private async storedDetailDecisionAt(runId: string | undefined): Promise<string | undefined> {
+  private async detailDecisionAt(runId: string | undefined): Promise<string | undefined> {
     if (!runId) return undefined;
-    const stored = await this.ctx.storage.get<StoredDetailEnrichmentPlan>(DETAIL_PLAN_STORAGE_KEY);
-    return stored && stored.runId === runId ? stored.decidedAt : undefined;
+    return storedDetailDecisionAt(this.detailPlanStorage(), runId);
+  }
+
+  /** The Durable Object's own storage, as the narrow surface the plan policy is written against. */
+  private detailPlanStorage(): DetailEnrichmentPlanStorage {
+    return {
+      get: (key) => this.ctx.storage.get(key),
+      put: (key, value) => this.ctx.storage.put(key, value),
+      delete: async (key) => {
+        await this.ctx.storage.delete(key);
+      },
+    };
   }
 
   /** Binds the plan policy to this Durable Object's storage, planner, fence and log vocabulary. */
   private detailPlanContext(plugin: ShopPlugin): DetailEnrichmentPlanContext {
     return {
-      storage: {
-        get: (key) => this.ctx.storage.get(key),
-        put: (key, value) => this.ctx.storage.put(key, value),
-      },
+      storage: this.detailPlanStorage(),
       planTargets: (runId, decidedAt) =>
         planStagedCategoryDetailFetches(this.env, plugin, runId, decidedAt),
-      isCommitted: async (runId, targetUrl) =>
-        Boolean(await getCrawlFetchDetailPage(this.env.DB, runId, targetUrl)),
+      isCommitted: (runId, targetUrl) => hasCrawlFetchDetailPage(this.env.DB, runId, targetUrl),
       log: (event) => {
         if (event.kind === "plan_created") {
           console.log(
@@ -328,6 +334,8 @@ export class CrawlScheduler extends DurableObject<Env> {
               shopKey: plugin.key,
               runId: event.runId,
               targetCount: event.targetCount,
+              chunkCount: event.chunkCount,
+              source: event.source,
             }),
           );
           return;
@@ -362,8 +370,8 @@ export class CrawlScheduler extends DurableObject<Env> {
     }
 
     const planContext = this.detailPlanContext(plugin);
-    const plan = await detailEnrichmentPlan(planContext, runId);
-    const targetUrl = await nextUncommittedDetailTarget(planContext, plan);
+    const progress = await detailEnrichmentProgress(planContext, runId);
+    const targetUrl = await nextUncommittedDetailTarget(planContext, progress);
 
     if (!targetUrl) {
       if (execution.permit || execution.relayPermit || execution.detailTargetUrl) {
@@ -423,7 +431,7 @@ export class CrawlScheduler extends DurableObject<Env> {
         });
         // The fence now records this target as attempted, so the plan may move past it. After the
         // commit, never before: the reverse order drops the target on a failure between the two.
-        await advanceDetailPlanCursor(planContext, plan, plan.cursor + 1);
+        await advanceDetailPlanCursor(planContext, progress, progress.cursor + 1);
         await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
           ...execution,
           permit: undefined,
@@ -513,7 +521,7 @@ export class CrawlScheduler extends DurableObject<Env> {
     });
     // D1 commit first, then the cursor. A kill in between leaves the cursor pointing at a committed
     // target, which the skip in `nextUncommittedDetailTarget` resolves without re-asking the seller.
-    await advanceDetailPlanCursor(planContext, plan, plan.cursor + 1);
+    await advanceDetailPlanCursor(planContext, progress, progress.cursor + 1);
     const nextOriginNotBeforeMs = directPermit
       ? Date.now() + directPermit.effectiveDelayMs
       : execution.nextOriginNotBeforeMs;
@@ -675,7 +683,7 @@ export class CrawlScheduler extends DurableObject<Env> {
       const preparedRelayConfig = relayPermit ? relayConfiguration(this.env) : null;
       // Read rather than plan: this only surfaces the instant an existing plan already recorded, so
       // a run that never entered the detail phase is not made to pay for planning here.
-      const detailDecisionAt = await this.storedDetailDecisionAt(execution.message.collectionRunId);
+      const detailDecisionAt = await this.detailDecisionAt(execution.message.collectionRunId);
       const result = await executeResumableCrawlStep(
         withoutInlineInventoryRecheck(this.env, plugin),
         message,

@@ -72,6 +72,39 @@ export async function getCrawlFetchDetailPage(
 }
 
 /**
+ * Whether this run already committed a detail-fetch attempt for the target.
+ *
+ * The crash-recovery fence only ever asks *whether* a target was committed, and the answer is one
+ * bit. {@link getCrawlFetchDetailPage} answers it by loading the staged detail page -- its HTML, its
+ * metadata, its byte count -- which the fence then discards. Once per skipped target that is a
+ * whole seller page serialised by D1, transferred to the isolate, and dropped; the plan cursor asks
+ * it once per Alarm and once per target it recovers past.
+ *
+ * The `(run_id, page_key)` primary key answers this without visiting the row, so the cost is the
+ * index seek and nothing else.
+ *
+ * Deliberately without the `fetched_at` validation the full read performs: a fence answers "already
+ * attempted", and a row that exists but is malformed still means this run must not ask the seller
+ * again. Finalization, which needs the response itself, keeps that check.
+ */
+export async function hasCrawlFetchDetailPage(
+  db: QueryableDatabase,
+  runId: string,
+  targetUrl: string,
+): Promise<boolean> {
+  const staged = await db
+    .prepare(`
+      SELECT 1 AS committed
+      FROM crawl_fetch_pages
+      WHERE run_id = ? AND page_key = ? AND state = 'ignored'
+      LIMIT 1
+    `)
+    .bind(runId, detailPageKey(targetUrl))
+    .first<{ committed: number }>();
+  return staged != null;
+}
+
+/**
  * Records one completed detail-fetch attempt in migration-0065 staging. The first terminal outcome
  * wins: Alarm redelivery or an infrastructure retry cannot turn one logical seller request into a
  * second unpaced request. Detail rows are appended only after the listing frontier reaches finalize.
