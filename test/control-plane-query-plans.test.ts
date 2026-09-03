@@ -15,6 +15,7 @@ import {
   assertNoGrowingTableScans,
   assertNoSortBeforeLimit,
   queryPlan,
+  readsThroughCoveringIndex,
   readsThroughIndex,
   recordingDatabase,
   selects,
@@ -155,10 +156,26 @@ test("the admin lifetime audit reads its counts through indexes, not the table",
   assertNoGrowingTableScans(sqlite, executed, { label: "lifetime audit" });
   assert.equal(selects(executed).length, 4, "one statement per status");
   const plans = selects(executed).map((statement) => queryPlan(sqlite, statement));
+  // Covering, not merely indexed. Selecting one column the partial index does not carry -- the age
+  // of the oldest row, which nothing here reads -- keeps the same `USING INDEX` wording while making
+  // the walk fetch every matching row: 12.792 ms against 1.297 ms over 100k resolved rows.
   for (const index of ["idx_dq_remediation_queue_resolved", "idx_dq_remediation_queue_failed"]) {
     assert.ok(
-      plans.some((plan) => readsThroughIndex(plan, "data_quality_remediation_queue", index)),
-      `the terminal counts must walk ${index} rather than the table`,
+      plans.some((plan) =>
+        readsThroughCoveringIndex(plan, "data_quality_remediation_queue", index),
+      ),
+      `the terminal counts must be answered from ${index} alone; plans were:\n${plans
+        .map((plan) => plan.map((step) => step.detail).join(" | "))
+        .join("\n")}`,
+    );
+  }
+  for (const statement of selects(executed)) {
+    if (!/status = \?/u.test(statement.sql)) continue;
+    const terminal = statement.binds.some((bind) => bind === "resolved" || bind === "failed");
+    if (!terminal) continue;
+    assert.ok(
+      !/MIN\(created_at\)/u.test(statement.sql),
+      `a terminal count must not ask for an age nothing reads:\n${statement.sql.trim()}`,
     );
   }
 });

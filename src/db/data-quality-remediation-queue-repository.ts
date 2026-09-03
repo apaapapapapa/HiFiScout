@@ -640,7 +640,32 @@ export async function retryOrFailDataQualityRemediationJob(
  * `firstMeasured` rather than `first` so the rows are visible to the D1 read accounting. `first()`
  * carries no `meta`, which is how a query that reads the whole table reported nothing at all.
  */
-async function countByStatus(
+async function countStatus(
+  db: QueryableDatabase,
+  status: DataQualityRemediationStatus,
+): Promise<number> {
+  const row = await firstMeasured<{ count: number | null }>(
+    db
+      .prepare(`
+        SELECT COUNT(*) AS count
+        FROM data_quality_remediation_queue
+        WHERE status = ?
+      `)
+      .bind(status),
+  );
+  return number(row?.count);
+}
+
+/**
+ * The same count, plus how long the oldest row of that status has been waiting.
+ *
+ * Kept separate from {@link countStatus} because the two are not the same query to SQLite. No
+ * partial index carries `created_at`, so asking for it turns a covering index walk into one that
+ * fetches every matching base-table row: measured on the retained resolved history at 100k rows,
+ * 1.297 ms covering against 12.792 ms not. That is worth paying where the answer is used and where
+ * the set is the backlog; it is pure waste on a terminal status, whose age nothing reads.
+ */
+async function countStatusWithAge(
   db: QueryableDatabase,
   status: DataQualityRemediationStatus,
 ): Promise<StatusCountRow> {
@@ -677,8 +702,8 @@ export async function dataQualityRemediationActiveQueueMetrics(
   db: QueryableDatabase,
 ): Promise<ActiveQueueMetrics> {
   const [pending, processing] = await Promise.all([
-    countByStatus(db, "pending"),
-    countByStatus(db, "processing"),
+    countStatusWithAge(db, "pending"),
+    countStatusWithAge(db, "processing"),
   ]);
   return {
     pending: number(pending.count),
@@ -693,21 +718,17 @@ export async function dataQualityRemediationActiveQueueMetrics(
  * Lifetime queue totals, including terminal history.
  *
  * On-demand only -- the admin data-quality status endpoint. Counting `resolved` is inherently
- * proportional to the retained resolved history; it is served by the partial resolved index, so it
- * walks index entries rather than table rows, but it is not bounded and must not be put on a
- * scheduled path. Use {@link dataQualityRemediationActiveQueueMetrics} there.
+ * proportional to the retained resolved history; it is served by the partial resolved index as a
+ * covering read, so it walks index entries rather than table rows, but it is not bounded and must
+ * not be put on a scheduled path. Use {@link dataQualityRemediationActiveQueueMetrics} there.
  */
 export async function dataQualityRemediationQueueMetrics(
   db: QueryableDatabase,
 ): Promise<QueueMetrics> {
   const [active, resolved, failed] = await Promise.all([
     dataQualityRemediationActiveQueueMetrics(db),
-    countByStatus(db, "resolved"),
-    countByStatus(db, "failed"),
+    countStatus(db, "resolved"),
+    countStatus(db, "failed"),
   ]);
-  return {
-    ...active,
-    resolved: number(resolved.count),
-    failed: number(failed.count),
-  };
+  return { ...active, resolved, failed };
 }

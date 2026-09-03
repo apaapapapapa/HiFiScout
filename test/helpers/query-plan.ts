@@ -115,6 +115,23 @@ export function unindexedScans(
   return [...new Set(scans)];
 }
 
+/**
+ * Whether the plan answers from the index alone, never visiting the table's rows.
+ *
+ * Stronger than {@link readsThroughIndex}, and the difference is worth asserting where a query
+ * selects only indexed columns: adding one column the index does not carry silently turns a
+ * covering walk into one that fetches every matching row, at the same `USING INDEX` wording.
+ */
+export function readsThroughCoveringIndex(
+  plan: readonly PlanStep[],
+  table: string,
+  index: string,
+): boolean {
+  return plan.some((step) =>
+    new RegExp(`^(SCAN|SEARCH) ${table}\\b.*USING COVERING INDEX ${index}\\b`).test(step.detail),
+  );
+}
+
 /** Whether the plan reads `table` through the named index, rather than however it likes. */
 export function readsThroughIndex(
   plan: readonly PlanStep[],
