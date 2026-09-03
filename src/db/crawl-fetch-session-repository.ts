@@ -17,6 +17,9 @@ export interface CrawlFetchSessionRow {
   reached_end: SqliteBool;
   pages_fetched: number;
   pages_parsed: number;
+  staged_item_count: number;
+  frontier_count: number;
+  next_ordinal: number;
   last_completed_page: string | null;
   continuation_sequence: number;
   next_phase: CrawlFetchContinuationPhase | null;
@@ -81,6 +84,19 @@ export async function getCrawlFetchSession(
     .first<CrawlFetchSessionRow>();
 }
 
+function uniqueFrontierPages(pages: readonly CrawlFetchPageInput[]): CrawlFetchPageInput[] {
+  const keys = new Set<string>();
+  const ordinals = new Set<number>();
+  const unique: CrawlFetchPageInput[] = [];
+  for (const page of pages) {
+    if (keys.has(page.key) || ordinals.has(page.ordinal)) continue;
+    keys.add(page.key);
+    ordinals.add(page.ordinal);
+    unique.push(page);
+  }
+  return unique;
+}
+
 export async function ensureCrawlFetchSession(
   db: QueryableDatabase,
   input: {
@@ -93,13 +109,16 @@ export async function ensureCrawlFetchSession(
     createdAt: string;
   },
 ): Promise<{ session: CrawlFetchSessionRow; created: boolean }> {
-  const first = input.pages[0] || null;
+  const pages = uniqueFrontierPages(input.pages);
+  const first = pages[0] || null;
+  const nextOrdinal = pages.reduce((next, page) => Math.max(next, page.ordinal + 1), 0);
   const insert = await db
     .prepare(`
       INSERT INTO crawl_fetch_sessions (
         run_id, shop_key, requested_at, max_pages, page_limit,
+        staged_item_count, frontier_count, next_ordinal,
         continuation_sequence, next_phase, next_page_key, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, 0, ?, ?, ?, ?)
       ON CONFLICT(run_id) DO NOTHING
     `)
     .bind(
@@ -108,6 +127,8 @@ export async function ensureCrawlFetchSession(
       input.requestedAt,
       input.maxPages,
       input.pageLimit,
+      pages.length,
+      nextOrdinal,
       first ? "fetch" : "finalize",
       first?.key || null,
       input.createdAt,
@@ -119,10 +140,12 @@ export async function ensureCrawlFetchSession(
   // Session creation and the frontier are intentionally repairable. If the isolate is killed after
   // the session row lands but before the frontier does, getCrawlFetchSession() hides that incomplete
   // active row from ensureSession(), which comes back through here and replays these idempotent
-  // INSERTs. A normal duplicate delivery simply hits INSERT OR IGNORE and changes nothing.
-  if (input.pages.length) {
+  // INSERTs. A normal duplicate delivery simply hits INSERT OR IGNORE and changes nothing. The
+  // aggregate values were written with the session, so this repair does not need to scan the
+  // frontier or increment counters a second time.
+  if (pages.length) {
     await db.batch(
-      input.pages.map((page) =>
+      pages.map((page) =>
         db
           .prepare(`
             INSERT OR IGNORE INTO crawl_fetch_pages
