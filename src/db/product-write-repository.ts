@@ -40,6 +40,7 @@ import {
   type ProductActivityPolicy,
 } from "./product-activity-policy.js";
 import type {
+  ExistingCategoryEnrichmentState,
   ExistingProductRow,
   ProductLookupRow,
   ProductPriceLookupRow,
@@ -326,6 +327,41 @@ export async function selectExistingProducts(
     `)
       .bind(shopKey, ...chunk)
       .all<ExistingProductRow>();
+    rows.push(...(result.results || []));
+  }
+  return rows;
+}
+
+/**
+ * Existing listing state used only by category-enrichment cache and identity decisions.
+ *
+ * The upsert lookup above deliberately carries every column needed to decide whether a listing
+ * write changed. Category enrichment needs ten of those columns and never reads price, stock,
+ * activity, source-publishing or resolver state. It also does not consume the admin presentation
+ * colour override, so this query must not inherit that correlated lookup merely because the write
+ * path does.
+ */
+export async function selectExistingCategoryEnrichmentStates(
+  db: ReadableDatabase,
+  shopKey: string,
+  sourceIds: readonly string[],
+  chunkSize = LOOKUP_CHUNK_SIZE,
+): Promise<ExistingCategoryEnrichmentState[]> {
+  const uniqueIds = [...new Set(sourceIds)];
+  const rows: ExistingCategoryEnrichmentState[] = [];
+  for (let i = 0; i < uniqueIds.length; i += chunkSize) {
+    const chunk = uniqueIds.slice(i, i + chunkSize);
+    if (!chunk.length) continue;
+    const placeholders = chunk.map(() => "?").join(",");
+    const result = await db
+      .prepare(`
+        SELECT source_id, title, model, manufacturer_id, category, primary_category_id,
+               category_ids, classification_status, search_aliases, metadata_json
+        FROM products
+        WHERE shop_key = ? AND source_id IN (${placeholders})
+      `)
+      .bind(shopKey, ...chunk)
+      .all<ExistingCategoryEnrichmentState>();
     rows.push(...(result.results || []));
   }
   return rows;

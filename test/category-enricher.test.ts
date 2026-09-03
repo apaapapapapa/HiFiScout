@@ -8,8 +8,13 @@ import {
 import { enrichProductCategories } from "../src/crawler/category-enricher.js";
 import { extractFujiyaDetailCategoryEvidence } from "../src/crawler/shops/fujiya-avic.js";
 import { getShopPlugin } from "../src/crawler/shops/index.js";
-import type { CategoryEnrichmentProductRow } from "../src/db/types.js";
+import {
+  selectExistingCategoryEnrichmentStates,
+  selectExistingProducts,
+} from "../src/db/product-write-repository.js";
+import type { ExistingCategoryEnrichmentState } from "../src/db/types.js";
 import { detailFetchOptions, emptyCatalogDb, parsedProduct } from "./helpers/fixtures.js";
+import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 
 const fujiyaAvicPlugin = getShopPlugin("fujiya-avic");
 if (!fujiyaAvicPlugin) throw new Error("fujiya-avic plugin missing");
@@ -78,7 +83,7 @@ test("cached detail classification is reused for the same product identity witho
     }),
     fujiyaAvicPlugin.capabilities.catalog,
   );
-  const existingRows: CategoryEnrichmentProductRow[] = [
+  const existingRows: ExistingCategoryEnrichmentState[] = [
     {
       source_id: "d10x",
       manufacturer_id: product.manufacturerId,
@@ -161,4 +166,94 @@ test("successful unresolved detail checks are cached briefly, but fetch failures
   });
   assert.equal(failed.detailRequests, 1);
   assert.equal(failed.products[0].metadata.categoryClassification.detailCheckedAt, undefined);
+});
+
+test("lightweight existing rows preserve cache, identity, budget, and target sequence", async () => {
+  const cached = normalizeCatalogProduct(
+    parsedProduct({
+      sourceId: "cached",
+      manufacturer: "LUXMAN",
+      model: "D-10X",
+      title: "LUXMAN D-10X",
+      rawCategory: "DAP",
+      sourceUrl: "https://www.fujiya-avic.co.jp/shop/g/gcached/",
+    }),
+    fujiyaAvicPlugin.capabilities.catalog,
+  );
+  const uncached = normalizeCatalogProduct(
+    parsedProduct({
+      sourceId: "uncached",
+      manufacturer: "Example",
+      model: "UNKNOWN-1",
+      title: "Example UNKNOWN-1",
+      rawCategory: "DAP",
+      sourceUrl: "https://www.fujiya-avic.co.jp/shop/g/guncached/",
+    }),
+    fujiyaAvicPlugin.capabilities.catalog,
+  );
+  const { sqlite, db } = migratedSqlite();
+  sqlite
+    .prepare(`
+      INSERT INTO products(
+        shop_key, source_id, manufacturer, manufacturer_id, model, title, category,
+        primary_category_id, category_ids, classification_status, search_aliases, metadata_json,
+        source_url, first_seen_at, last_seen_at, last_changed_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+    .run(
+      fujiyaAvicPlugin.key,
+      cached.sourceId,
+      cached.manufacturer,
+      cached.manufacturerId,
+      cached.model,
+      cached.title,
+      "CD/SACDプレーヤー",
+      "cd_sacd_player",
+      '["cd_sacd_player"]',
+      "classified",
+      "CD/SACDプレーヤー cd player sacd player",
+      JSON.stringify({
+        categoryClassification: {
+          version: CATEGORY_CLASSIFICATION_METADATA_VERSION,
+          state: "classified",
+          detailCheckedAt: "2026-08-10T10:00:00.000Z",
+        },
+      }),
+      cached.sourceUrl,
+      "2026-08-10T10:00:00.000Z",
+      "2026-08-10T10:00:00.000Z",
+      "2026-08-10T10:00:00.000Z",
+    );
+
+  const sourceIds = [cached.sourceId, uncached.sourceId];
+  const [fullRows, lightweightRows] = await Promise.all([
+    selectExistingProducts(db, fujiyaAvicPlugin.key, sourceIds),
+    selectExistingCategoryEnrichmentStates(db, fujiyaAvicPlugin.key, sourceIds),
+  ]);
+  const run = async (existingRows: ExistingCategoryEnrichmentState[]) => {
+    const targets: string[] = [];
+    const result = await enrichProductCategories({
+      db,
+      adapter: fujiyaAvicPlugin,
+      products: [cached, uncached],
+      existingRows,
+      transport: {
+        async fetchHtmlPage(url) {
+          targets.push(url);
+          return "<html><body><h1>UNKNOWN-1</h1><p>中古商品です。</p></body></html>";
+        },
+      },
+      fetchOptions: detailFetchOptions(),
+      now: new Date("2026-08-11T10:00:00Z"),
+    });
+    return { result, targets };
+  };
+
+  const before = await run(fullRows);
+  const after = await run(lightweightRows);
+
+  assert.deepEqual(after.targets, before.targets);
+  assert.equal(after.result.detailRequests, before.result.detailRequests);
+  assert.equal(after.result.cacheHits, before.result.cacheHits);
+  assert.deepEqual(after.result.products, before.result.products);
 });

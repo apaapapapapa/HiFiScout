@@ -510,6 +510,18 @@ export interface CategoryEnrichmentCounters {
   unresolvedCount: number;
 }
 
+/** D1 work performed while deriving category evidence and restoring category cache state. */
+export interface CategoryEnrichmentDbMetrics {
+  knowledgeCatalogRowsRead: number;
+  manualAuthorityRowsRead: number;
+  existingListingRowsRead: number;
+  rowsRead: number;
+  rowsWritten: number;
+  statementCount: number;
+  returnedRows: number;
+  durationMs: number;
+}
+
 export interface CrawlSuccessResult {
   status: "success";
   shopKey: string;
@@ -546,6 +558,7 @@ export type CrawlResult = CrawlSkippedResult | CrawlSuccessResult | CrawlFailedR
 export interface CategoryEnrichmentResult extends CategoryEnrichmentCounters {
   products: NormalizedCatalogProduct[];
   catalogMatches: number;
+  dbUsage: CategoryEnrichmentDbMetrics;
 }
 
 // ---------------------------------------------------------------------------
