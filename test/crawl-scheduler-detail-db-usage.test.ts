@@ -32,7 +32,10 @@ test("detail enrichment DB usage is emitted once across finalization retries", a
 
   assert.ok(retryGuardIndex >= 0, "already-emitted completion metrics must be skipped on retry");
   assert.ok(clearIndex > retryGuardIndex, "the first completion must clear accumulated usage");
-  assert.ok(markLoggedIndex > clearIndex, "the first completion must set the durable emitted marker");
+  assert.ok(
+    markLoggedIndex > clearIndex,
+    "the first completion must set the durable emitted marker",
+  );
   assert.ok(persistIndex > markLoggedIndex, "the emitted marker must be persisted before logging");
   assert.ok(metricIndex > persistIndex, "metric must be emitted only after persisted consumption");
 });
