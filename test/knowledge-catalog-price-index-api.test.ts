@@ -6,7 +6,7 @@ import {
   productSearchDetail,
   searchProducts,
 } from "../src/db/product-search-price-index-repository.js";
-import { captureDatabase } from "./helpers/d1.js";
+import { asQueryableDatabase, captureDatabase } from "./helpers/d1.js";
 import { entityRow, offerRow } from "./helpers/product-search.js";
 import { productQuery } from "./helpers/product-query.js";
 
@@ -27,10 +27,10 @@ function priceIndexRow(catalogProductId = 12, askingSampleCount = 4) {
 }
 
 function isPriceIndexRead(sql: string): boolean {
-  return /JOIN knowledge_catalog_price_indexes i/.test(sql);
+  return /FROM knowledge_catalog_price_indexes/.test(sql);
 }
 
-test("price-index projection uses persistent aggregates and scopes the trailing window to requested ids", async () => {
+test("price-index public read uses only the persistent projection for requested ids", async () => {
   const db = captureDatabase((statement) =>
     isPriceIndexRead(statement.sql) ? [priceIndexRow()] : [],
   );
@@ -40,16 +40,43 @@ test("price-index projection uses persistent aggregates and scopes the trailing 
   assert.equal(summaries.get(12)?.asking_median_yen, 310_000);
   assert.equal(summaries.get(12)?.recent_asking_median_yen, 320_000);
   assert.equal(db.calls.length, 1);
-  assert.match(db.calls[0].sql, /WITH requested\(catalog_product_id\) AS/);
-  assert.match(
-    db.calls[0].sql,
-    /JOIN requested q ON q\.catalog_product_id = s\.catalog_product_id/,
-  );
-  assert.match(db.calls[0].sql, /knowledge_catalog_price_index_samples s/);
-  assert.match(db.calls[0].sql, /JOIN knowledge_catalog_price_indexes i/);
+  assert.match(db.calls[0].sql, /FROM knowledge_catalog_price_indexes/);
+  assert.match(db.calls[0].sql, /WHERE catalog_product_id IN \(\?\)/);
+  assert.doesNotMatch(db.calls[0].sql, /knowledge_catalog_price_index_samples/);
   assert.doesNotMatch(db.calls[0].sql, /knowledge_catalog_price_index_rollup/);
-  assert.match(db.calls[0].sql, /julianday\('now', '-90 days'\)/);
+  assert.doesNotMatch(db.calls[0].sql, /ROW_NUMBER|COUNT\(\*\) OVER|GROUP BY/);
   assert.deepEqual(db.calls[0].binds, [12, PRODUCT_PRICE_INDEX_MIN_ASKING_SAMPLES]);
+});
+
+test("price-index public read reports D1 rows at request granularity", async () => {
+  const statement = () => ({
+    bind: () => statement(),
+    async all() {
+      return {
+        results: [priceIndexRow()],
+        meta: { rows_read: 2, rows_written: 0 },
+      };
+    },
+  });
+  const db = asQueryableDatabase({ prepare: () => statement() });
+  const lines: string[] = [];
+  const originalLog = console.log;
+  console.log = (line: string) => lines.push(line);
+  try {
+    await loadKnowledgeCatalogPriceIndexes(db, [12]);
+  } finally {
+    console.log = originalLog;
+  }
+
+  assert.deepEqual(JSON.parse(lines.at(-1) || "{}"), {
+    event: "price_index_public_read_d1_usage",
+    requestedProducts: 1,
+    projectionRows: 1,
+    rowsRead: 2,
+    rowsWritten: 0,
+    countedStatements: 1,
+    statementCount: 1,
+  });
 });
 
 test("defensive projection omits an index below the named asking-sample threshold", async () => {

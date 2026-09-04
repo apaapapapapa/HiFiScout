@@ -25,6 +25,10 @@ import {
   claimKnowledgeCatalogVerifierVersion,
   knowledgeCatalogVerifierState,
 } from "./db/knowledge-catalog-verifier-state-repository.js";
+import {
+  backfillRecentPriceIndexes,
+  refreshExpiredRecentPriceIndexes,
+} from "./db/knowledge-catalog-price-index-recent-refresh.js";
 import { accountReads } from "./db/read-accounting.js";
 import {
   countDirtyExactIdentityBacklog,
@@ -587,6 +591,26 @@ export async function recoverKnowledgeCatalogQueueQuota(env: Env, now = new Date
   return bootstrapKnowledgeCatalogReview(env, now);
 }
 
+/**
+ * Advances the initial recent-median backfill and then refreshes only projections currently due.
+ * Both operations are bounded to 25 products; when neither has work, neither reads sample history.
+ */
+export async function maintainRecentPriceIndexes(db: QueryableDatabase, now = new Date()) {
+  const backfill = await backfillRecentPriceIndexes(db, { now });
+  const refresh = await refreshExpiredRecentPriceIndexes(db, { now });
+  const result = {
+    backfillStatus: backfill.status,
+    backfillSelectedProducts: backfill.selectedCount,
+    backfilledProducts: backfill.refreshedCount,
+    backfillHasMore: backfill.hasMore,
+    dueProducts: refresh.selectedCount,
+    refreshedProducts: refresh.refreshedCount,
+    refreshHasMore: refresh.hasMore,
+  };
+  console.log(JSON.stringify({ event: "price_index_recent_refresh", ...result }));
+  return result;
+}
+
 interface ScheduledWork {
   name: string;
   run(env: Env): Promise<unknown>;
@@ -693,6 +717,15 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
     offset: 6,
     run: (env) => bootstrapKnowledgeCatalogReview(env),
   },
+  {
+    // Five-minute precision buys nothing for a ninety-day boundary. The initial rebuild uses the
+    // same bounded task and advances only 25 products per invocation, so deploy never pays for a
+    // history-sized migration query.
+    name: "price_index_recent_refresh",
+    everyTicks: 12,
+    offset: 10,
+    run: (env) => maintainRecentPriceIndexes(env.DB),
+  },
 ];
 
 /**
@@ -747,7 +780,7 @@ async function runGeneralCronMaintenance(env: Env, scheduledAt: Date): Promise<v
       );
       continue;
     }
-    if (accounting.rowsRead() > 0) {
+    if (accounting.statementCount() > 0) {
       console.log(
         JSON.stringify({
           event: "scheduled_maintenance_d1_usage",
@@ -755,6 +788,7 @@ async function runGeneralCronMaintenance(env: Env, scheduledAt: Date): Promise<v
           rowsRead: accounting.rowsRead(),
           rowsWritten: accounting.rowsWritten(),
           countedStatements: accounting.countedStatements(),
+          statementCount: accounting.statementCount(),
         }),
       );
     }
