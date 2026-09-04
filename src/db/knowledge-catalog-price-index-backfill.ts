@@ -7,6 +7,9 @@ import type { QueryableDatabase } from "./types.js";
 interface PriceIndexBackfillCandidateRow {
   id: number;
   listing_product_id: number;
+  resolved_catalog_product_id: number;
+  existing_catalog_product_id: number | null;
+  existing_sample: number;
   shop_key: string;
   source_id: string;
   price_yen: number;
@@ -97,6 +100,9 @@ async function selectCandidates(
       SELECT
         ph.id,
         p.id AS listing_product_id,
+        pir.catalog_product_id AS resolved_catalog_product_id,
+        existing.catalog_product_id AS existing_catalog_product_id,
+        CASE WHEN existing.event_key IS NULL THEN 0 ELSE 1 END AS existing_sample,
         p.shop_key,
         p.source_id,
         ph.price_yen,
@@ -104,6 +110,8 @@ async function selectCandidates(
       FROM price_history ph
       JOIN products p ON p.id = ph.product_id
       JOIN product_identity_resolutions pir ON pir.listing_product_id = p.id
+      LEFT JOIN knowledge_catalog_price_index_samples existing
+        ON existing.event_key = 'asking:price-history:' || ph.id
       WHERE ph.id > ?
         AND ph.price_yen >= 0
         AND pir.status = 'matched'
@@ -171,49 +179,120 @@ function sampleUpsertStatement(
 }
 
 /**
- * Whether deferring this page's recomputes is cheaper than letting them fire per row.
+ * Whether this page is worth doing the transaction-time coalescing check at all.
  *
- * Deferring is always a read win -- it replaces one whole-product recompute per row with one per
- * product -- but it is not free in writes, and the unit that decides is D1's `rows_written`, which
- * bills an index entry for every index a write touches on top of the table row itself. The
- * coordination is therefore priced from the schema rather than from row counts:
+ * The decisive check still runs as the first statement of the write transaction. This first pass
+ * exists only to keep obvious no-op/wide pages on the unchanged path without adding the drain
+ * statements. `existing_sample = 0` and a catalog-attribution mismatch are lower bounds on actual
+ * sample mutations: either condition guarantees the upsert will change the row if the same
+ * resolution is still current when the transaction starts.
  *
- *   - `knowledge_catalog_price_index_refresh_deferrals` is keyed `token TEXT PRIMARY KEY`, so it
- *     carries a PK autoindex. Opening the deferral writes a row and an index entry, and closing it
- *     writes both again: four, not the two a row count suggests.
- *   - `knowledge_catalog_price_index_dirty_products` is keyed `catalog_product_id INTEGER PRIMARY
- *     KEY`, a rowid alias with no index of its own, so a marker written and then cleared is two.
- *   - `knowledge_catalog_price_indexes` carries no index at all, so an aggregate rewrite bills one
- *     on either path and the two sides cancel row for row.
- *
- * Over `rows` samples touching `products` distinct products, leaving out the sample writes because
- * both paths perform them identically:
- *
- *     per row  = rows                          (one aggregate rewrite each)
- *     deferred = products + 2 * products + 4   (recomputes, markers, the deferral itself)
- *
- * so deferring is cheaper on writes as well as on reads once `rows >= 3 * products + 5`. At
- * `3 * products + 4` the two paths bill the same and the deferral buys only the read win; below
- * that the coordination costs more than the recomputes it removes, which is what a row-count
- * accounting that missed the PK autoindex hid. `knowledge-catalog-price-index-backfill-coalescing`
- * pins the three schema facts this arithmetic reads and both sides of the boundary, so an index
- * added to any of these tables fails a test rather than silently invalidating the constant.
- *
- * The count used here is of listings, not catalog products, because the candidate scan deliberately
- * does not read attribution -- {@link sampleUpsertStatement} resolves that inside the transaction,
- * and a page must not be able to act on a stale copy of it. A listing resolves to exactly one
- * catalog product, so distinct listings can only ever overcount distinct products, and a page that
- * clears the bound for listings clears it for products with room to spare. The overcount makes this
- * conservative: a page whose separate listings happen to share a catalog product may decline a
- * deferral that would have paid. It never makes it wrong.
- *
- * A page whose rows are all for different listings -- the common shape near the head of
- * `price_history`, where one crawl touches many listings once each -- has nothing to coalesce, and
- * takes the unchanged path rather than paying for a deferral that would save nothing.
+ * Distinct listings are kept as the conservative product bound used by the original gate. The
+ * transaction-time check below uses the actual current catalog IDs and all existing old IDs before
+ * it opens the deferral, so catalog moves and concurrent replay cannot turn this heuristic into a
+ * `rows_written` regression.
  */
 function coalescesRecomputes(candidates: readonly PriceIndexBackfillCandidateRow[]): boolean {
   const listings = new Set(candidates.map((candidate) => candidate.listing_product_id)).size;
-  return candidates.length >= 3 * listings + 5;
+  const guaranteedMutations = candidates.filter(
+    (candidate) =>
+      Number(candidate.existing_sample) === 0 ||
+      candidate.existing_catalog_product_id !== candidate.resolved_catalog_product_id,
+  ).length;
+  return guaranteedMutations >= 3 * listings + 5;
+}
+
+/**
+ * Opens the deferral only when it is still a strict D1 `rows_written` saving at transaction time.
+ *
+ * The pre-scan can race with another backfill invocation or an independent fresh key. Re-evaluating
+ * here, as the first statement of the same D1 `batch()` that performs the sample upserts, closes
+ * that window:
+ *
+ * - `guaranteed_mutations` is a lower bound on rows the upcoming upserts must change: an event is
+ *   absent, or its stored catalog attribution differs from the resolution current in this
+ *   transaction.
+ * - `possible_dirty_products` is an upper bound on products those statements can dirty, even when
+ *   some existing sample differs only in another field: every dirty product is either an existing
+ *   old catalog ID or a current resolved catalog ID for one of the exact selected events.
+ *
+ * Therefore opening only when
+ *
+ *     guaranteed_mutations >= 3 * possible_dirty_products + 5
+ *
+ * implies the actual mutation count also clears the write break-even point. The cursor predicate is
+ * a same-key concurrency fence: after another invocation advances this run, a stale batch cannot
+ * open a deferral merely because its JavaScript gate was computed before that commit.
+ */
+function backfillDeferralOpenStatement(
+  db: QueryableDatabase,
+  token: string,
+  key: string,
+  afterPriceHistoryId: number,
+  candidates: readonly PriceIndexBackfillCandidateRow[],
+): D1PreparedStatement {
+  const candidateIds = candidates.map((candidate) => Number(candidate.id));
+  if (
+    candidateIds.length === 0 ||
+    candidateIds.some((candidateId) => !Number.isSafeInteger(candidateId) || candidateId <= 0)
+  ) {
+    throw new Error("Price-index backfill candidates must have positive safe-integer ids");
+  }
+  const idList = candidateIds.join(", ");
+
+  return db
+    .prepare(`
+      INSERT INTO knowledge_catalog_price_index_refresh_deferrals(token, opened_at)
+      WITH candidate_state AS (
+        SELECT
+          ph.id,
+          pir.catalog_product_id AS resolved_catalog_product_id,
+          existing.catalog_product_id AS existing_catalog_product_id,
+          existing.event_key AS existing_event_key
+        FROM price_history ph
+        JOIN products p ON p.id = ph.product_id
+        JOIN product_identity_resolutions pir ON pir.listing_product_id = p.id
+        LEFT JOIN knowledge_catalog_price_index_samples existing
+          ON existing.event_key = 'asking:price-history:' || ph.id
+        WHERE ph.id IN (${idList})
+          AND ph.price_yen >= 0
+          AND pir.status = 'matched'
+          AND pir.catalog_product_id IS NOT NULL
+      ),
+      possible_dirty_products AS (
+        SELECT resolved_catalog_product_id AS catalog_product_id
+        FROM candidate_state
+        UNION
+        SELECT existing_catalog_product_id
+        FROM candidate_state
+        WHERE existing_catalog_product_id IS NOT NULL
+      ),
+      cost AS (
+        SELECT
+          SUM(
+            CASE
+              WHEN existing_event_key IS NULL
+                OR existing_catalog_product_id IS NOT resolved_catalog_product_id
+                THEN 1
+              ELSE 0
+            END
+          ) AS guaranteed_mutations,
+          (SELECT COUNT(*) FROM possible_dirty_products) AS possible_dirty_products
+        FROM candidate_state
+      )
+      SELECT ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      FROM cost
+      WHERE guaranteed_mutations >= 3 * possible_dirty_products + 5
+        AND EXISTS (
+          SELECT 1
+          FROM knowledge_catalog_price_index_backfill_runs
+          WHERE backfill_key = ?
+            AND status = 'running'
+            AND after_price_history_id = ?
+        )
+      ON CONFLICT(token) DO NOTHING
+    `)
+    .bind(token, key, afterPriceHistoryId);
 }
 
 /**
@@ -221,11 +300,12 @@ function coalescesRecomputes(candidates: readonly PriceIndexBackfillCandidateRow
  *
  * Sample upserts, the aggregate recompute they imply, and cursor advancement are committed in the
  * same D1 `batch()` transaction. A terminated invocation therefore either advances neither side or
- * both sides. A page that repeats catalog products runs under a price-index refresh deferral, so it
- * recomputes each product's aggregate once rather than once per row; the recompute is still inside
- * the transaction, so the aggregate is never observably behind its samples. The job never clears
- * the ledger: crawler triggers may keep writing newer evidence while a historical backfill is in
- * progress, and replaying an overlapping page is idempotent by the stable price-history event key.
+ * both sides. A page that repeats catalog products runs under a price-index refresh deferral only
+ * when the transaction itself proves the coordination is cheaper than the recomputes it replaces.
+ * The recompute is still inside the transaction, so the aggregate is never observably behind its
+ * samples. The job never clears the ledger: crawler triggers may keep writing newer evidence while
+ * a historical backfill is in progress, and replaying an overlapping page is idempotent by the
+ * stable price-history event key.
  *
  * Rows that are unresolved at the candidate scan are intentionally skipped. If identity changes
  * after selection, the transactional upsert rechecks it before attribution. If an unresolved row
@@ -283,6 +363,7 @@ export async function backfillKnowledgeCatalogPriceIndex(
 
   const nextAfterPriceHistoryId = Number(candidates[candidates.length - 1]?.id || 0);
   const nextStatus = hasMore ? "running" : "completed";
+  const currentAfterPriceHistoryId = Number(run.after_price_history_id);
   const stateUpdate = db
     .prepare(`
       UPDATE knowledge_catalog_price_index_backfill_runs
@@ -292,7 +373,7 @@ export async function backfillKnowledgeCatalogPriceIndex(
           completed_at = ?
       WHERE backfill_key = ?
         AND status = 'running'
-        AND after_price_history_id <= ?
+        AND after_price_history_id = ?
     `)
     .bind(
       nextAfterPriceHistoryId,
@@ -300,20 +381,33 @@ export async function backfillKnowledgeCatalogPriceIndex(
       at,
       hasMore ? null : at,
       key,
-      Number(run.after_price_history_id),
+      currentAfterPriceHistoryId,
     );
 
   const pageStatements = [
     ...candidates.map((candidate) => sampleUpsertStatement(db, candidate)),
     stateUpdate,
   ];
-  // One batch, one transaction, and -- when the page repeats products -- one aggregate recompute per
-  // product instead of one per row. The cursor advances inside the same deferral, so a page either
-  // lands whole (samples, aggregates and cursor) or not at all.
+
+  // The JavaScript gate avoids the extra drain statements on obvious no-op/wide pages. When it
+  // passes, replace the helper's unconditional opener with a transaction-time cost gate. The rest
+  // of the helper remains unchanged, preserving one transaction and one drain per changed product.
   const coalesce = coalescesRecomputes(candidates);
-  const results = await db.batch(
-    coalesce ? deferredPriceIndexRefresh(db, `backfill:${key}`, pageStatements) : pageStatements,
-  );
+  const token = `backfill:${key}`;
+  const deferredStatements = coalesce
+    ? deferredPriceIndexRefresh(db, token, pageStatements)
+    : pageStatements;
+  if (coalesce) {
+    deferredStatements[0] = backfillDeferralOpenStatement(
+      db,
+      token,
+      key,
+      currentAfterPriceHistoryId,
+      candidates,
+    );
+  }
+
+  const results = await db.batch(deferredStatements);
   const firstUpsert = coalesce ? DEFERRED_REFRESH_LEADING_STATEMENTS : 0;
   const writtenCount = results
     .slice(firstUpsert, firstUpsert + candidates.length)
