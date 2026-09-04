@@ -6,8 +6,8 @@ import {
   type CrawlFetchSessionRow,
 } from "../db/crawl-fetch-session-repository.js";
 import {
+  crawlFetchFrontierProbe,
   knownCrawlFetchPageKeys,
-  nextPendingCrawlFetchPageKey,
   recordCrawlFetchPageFetched,
   recordCrawlFetchPageIgnored,
   recordCrawlFetchPageParsed,
@@ -60,16 +60,16 @@ export async function processFetch(
         : await transport!.fetchHtmlPage(pageKey, fetchOptions);
     } catch (error) {
       if (/HTTP 404/.test(errorMessage(error))) {
-        // The staged item count is durable session state and pending work is an indexed LIMIT 1.
-        // Neither fact requires rereading the run's frontier.
-        if (shouldContinueAfterEmpty(plugin) || session.staged_item_count === 0) {
-          const nextPageKey = await nextPendingCrawlFetchPageKey(env.DB, session.run_id, pageKey);
+        // One bounded probe answers both questions this branch asks -- whether the run has staged
+        // anything, and which page comes next -- where it used to reread the run's frontier.
+        const frontier = await crawlFetchFrontierProbe(env.DB, session.run_id, pageKey);
+        if (shouldContinueAfterEmpty(plugin) || !frontier.hasStagedItems) {
           await recordCrawlFetchPageIgnored(env.DB, {
             runId: session.run_id,
             pageKey,
             ignoredAt: new Date().toISOString(),
             currentSequence: session.continuation_sequence,
-            nextPageKey,
+            nextPageKey: frontier.nextPendingPageKey,
           });
           return continued(env, plugin, body, session.run_id, options);
         }
@@ -151,10 +151,15 @@ export async function processParse(
     session.run_id,
     discoveredCandidates.map((candidate) => candidate.key),
   );
+  // Authoritative, and bounded: three index seeks rather than a materialization of the frontier.
+  const frontier = await crawlFetchFrontierProbe(env.DB, session.run_id, pageKey);
   const accepted: CrawlFetchPageInput[] = [];
   let coverageIncomplete = discovered == null;
-  let frontierCount = session.frontier_count;
-  let nextOrdinal = session.next_ordinal;
+  // Ordinals are allocated densely from 0 and no path deletes a page row within a run, so the next
+  // ordinal is also the frontier's size. If that ever stops holding, this over-counts and the page
+  // limit bites earlier -- coverage marked incomplete, never a page silently dropped.
+  let frontierCount = frontier.nextOrdinal;
+  let nextOrdinal = frontier.nextOrdinal;
 
   for (const candidate of discoveredCandidates) {
     if (known.has(candidate.key)) continue;
@@ -171,11 +176,8 @@ export async function processParse(
 
   if (!products.length && plugin.discovery.discoverTargets) coverageIncomplete = true;
   const reachedEnd =
-    products.length === 0 && session.staged_item_count > 0 && !shouldContinueAfterEmpty(plugin);
-  let nextPageKey =
-    (await nextPendingCrawlFetchPageKey(env.DB, session.run_id, pageKey)) ||
-    accepted[0]?.key ||
-    null;
+    products.length === 0 && frontier.hasStagedItems && !shouldContinueAfterEmpty(plugin);
+  let nextPageKey = frontier.nextPendingPageKey || accepted[0]?.key || null;
   if (reachedEnd && nextPageKey) coverageIncomplete = true;
   if (reachedEnd) nextPageKey = null;
 

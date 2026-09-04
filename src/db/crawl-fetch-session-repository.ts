@@ -17,9 +17,6 @@ export interface CrawlFetchSessionRow {
   reached_end: SqliteBool;
   pages_fetched: number;
   pages_parsed: number;
-  staged_item_count: number;
-  frontier_count: number;
-  next_ordinal: number;
   last_completed_page: string | null;
   continuation_sequence: number;
   next_phase: CrawlFetchContinuationPhase | null;
@@ -111,14 +108,12 @@ export async function ensureCrawlFetchSession(
 ): Promise<{ session: CrawlFetchSessionRow; created: boolean }> {
   const pages = uniqueFrontierPages(input.pages);
   const first = pages[0] || null;
-  const nextOrdinal = pages.reduce((next, page) => Math.max(next, page.ordinal + 1), 0);
   const insert = await db
     .prepare(`
       INSERT INTO crawl_fetch_sessions (
         run_id, shop_key, requested_at, max_pages, page_limit,
-        staged_item_count, frontier_count, next_ordinal,
         continuation_sequence, next_phase, next_page_key, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, 0, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
       ON CONFLICT(run_id) DO NOTHING
     `)
     .bind(
@@ -127,8 +122,6 @@ export async function ensureCrawlFetchSession(
       input.requestedAt,
       input.maxPages,
       input.pageLimit,
-      pages.length,
-      nextOrdinal,
       first ? "fetch" : "finalize",
       first?.key || null,
       input.createdAt,

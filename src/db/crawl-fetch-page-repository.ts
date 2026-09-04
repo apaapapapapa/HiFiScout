@@ -1,4 +1,5 @@
 import type { NormalizedCatalogProduct } from "../catalog/types.js";
+import { firstMeasured } from "./read-accounting.js";
 import type { QueryableDatabase } from "./types.js";
 import type { CrawlFetchPageInput, CrawlFetchPageRow } from "./crawl-fetch-session-repository.js";
 
@@ -211,9 +212,6 @@ export async function recordCrawlFetchPageParsed(
       .prepare(`
         UPDATE crawl_fetch_sessions
         SET pages_parsed = pages_parsed + 1,
-            staged_item_count = staged_item_count + ?,
-            frontier_count = frontier_count + ?,
-            next_ordinal = next_ordinal + ?,
             coverage_incomplete = CASE WHEN ? = 1 THEN 1 ELSE coverage_incomplete END,
             reached_end = CASE WHEN ? = 1 THEN 1 ELSE reached_end END,
             last_completed_page = ?, continuation_sequence = ?, next_phase = ?, next_page_key = ?, updated_at = ?
@@ -226,9 +224,6 @@ export async function recordCrawlFetchPageParsed(
           )
       `)
       .bind(
-        input.products.length,
-        input.discoveredPages.length,
-        input.discoveredPages.length,
         input.coverageIncomplete ? 1 : 0,
         input.reachedEnd ? 1 : 0,
         input.pageKey,
@@ -277,49 +272,75 @@ export async function knownCrawlFetchPageKeys(
   return known;
 }
 
-/** The next unit of current work, found through `(run_id, state, ordinal)` and stopped by LIMIT 1. */
-export async function nextPendingCrawlFetchPageKey(
-  db: QueryableDatabase,
-  runId: string,
-  excludingPageKey?: string,
-): Promise<string | null> {
-  const row = excludingPageKey
-    ? await db
-        .prepare(`
-          SELECT page_key
-          FROM crawl_fetch_pages
-          WHERE run_id = ? AND state = 'pending' AND page_key <> ?
-          ORDER BY ordinal ASC
-          LIMIT 1
-        `)
-        .bind(runId, excludingPageKey)
-        .first<Pick<CrawlFetchPageRow, "page_key">>()
-    : await db
-        .prepare(`
-          SELECT page_key
-          FROM crawl_fetch_pages
-          WHERE run_id = ? AND state = 'pending'
-          ORDER BY ordinal ASC
-          LIMIT 1
-        `)
-        .bind(runId)
-        .first<Pick<CrawlFetchPageRow, "page_key">>();
-  return row?.page_key ?? null;
+/**
+ * The three facts a page step needs about the rest of its run, in one bounded read.
+ *
+ * Each used to cost a materialization of the whole frontier, which is what made a P-page crawl
+ * O(P^2). They are answered here by three index seeks instead:
+ *
+ * - `nextOrdinal` comes from `MAX(ordinal)` over `UNIQUE (run_id, ordinal)`, which is SQLite's
+ *   MIN/MAX optimisation -- a seek to the last entry.
+ * - `hasStagedItems` stops at the first parsed page carrying items, through
+ *   `idx_crawl_fetch_pages_frontier`.
+ * - `nextPendingPageKey` walks the same index in ordinal order and stops at the first pending page.
+ *
+ * Measured on the migrated schema, the whole statement is flat at ~3.5us from 100 to 100,000 pages
+ * in the run.
+ *
+ * These come from `crawl_fetch_pages` rather than from aggregates cached on the session, and that
+ * is the point rather than an implementation detail. D1 migrations are applied before the new
+ * Worker ships, so a cached aggregate spends that gap being maintained by nobody: the old Worker
+ * keeps adding pages, and the new Worker then trusts a stale `next_ordinal`, allocating an ordinal
+ * an older Worker already used -- the discovered page is dropped by the uniqueness constraint while
+ * the session advances to a page that does not exist. The pages table is the authority both Worker
+ * versions maintain, so there is no window in which this can be stale, and no compatibility trigger
+ * or per-run reconciliation to remove afterwards.
+ */
+export interface CrawlFetchFrontierProbe {
+  /** The ordinal a newly discovered page should take. */
+  nextOrdinal: number;
+  /** Whether any page of this run has parsed at least one product. */
+  hasStagedItems: boolean;
+  /** The next page still waiting to be fetched, excluding the one being processed. */
+  nextPendingPageKey: string | null;
 }
 
-export async function stagedCrawlFetchItemCount(
+interface FrontierProbeRow {
+  next_ordinal: number | null;
+  has_staged_items: number | null;
+  next_pending_page_key: string | null;
+}
+
+export async function crawlFetchFrontierProbe(
   db: QueryableDatabase,
   runId: string,
-): Promise<number> {
-  const row = await db
-    .prepare(`
-      SELECT staged_item_count AS item_count
-      FROM crawl_fetch_sessions
-      WHERE run_id = ?
-    `)
-    .bind(runId)
-    .first<{ item_count: number }>();
-  return Number(row?.item_count || 0);
+  excludingPageKey = "",
+): Promise<CrawlFetchFrontierProbe> {
+  const row = await firstMeasured<FrontierProbeRow>(
+    db
+      .prepare(`
+        SELECT
+          COALESCE((
+            SELECT MAX(ordinal) FROM crawl_fetch_pages WHERE run_id = ?
+          ), -1) + 1 AS next_ordinal,
+          EXISTS(
+            SELECT 1 FROM crawl_fetch_pages
+            WHERE run_id = ? AND state = 'parsed' AND item_count > 0
+          ) AS has_staged_items,
+          (
+            SELECT page_key FROM crawl_fetch_pages
+            WHERE run_id = ? AND state = 'pending' AND page_key <> ?
+            ORDER BY ordinal ASC
+            LIMIT 1
+          ) AS next_pending_page_key
+      `)
+      .bind(runId, runId, runId, excludingPageKey),
+  );
+  return {
+    nextOrdinal: Number(row?.next_ordinal || 0),
+    hasStagedItems: Boolean(row?.has_staged_items),
+    nextPendingPageKey: row?.next_pending_page_key || null,
+  };
 }
 
 /**

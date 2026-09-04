@@ -96,6 +96,8 @@ export function queryPlan(sqlite: DatabaseSync, statement: ExecutedStatement): r
  * - `SCAN t USING INDEX i` / `USING COVERING INDEX i` walks an index in order. It reads every entry,
  *   but through the index the schema provides — which is exactly what these tests are asking for.
  * - `SCAN t VIRTUAL TABLE INDEX 0:M1` is an FTS5 `MATCH`, i.e. the full-text index doing its job.
+ * - `SCAN CONSTANT ROW` is a query with no `FROM` at all — the single synthetic row a `SELECT` of
+ *   scalar subqueries returns. There is no table there to read, let alone to read all of.
  *
  * Only a bare `SCAN <table>` is reported.
  */
@@ -105,6 +107,7 @@ export function unindexedScans(
 ): string[] {
   const scans: string[] = [];
   for (const step of plan) {
+    if (/^SCAN CONSTANT ROW$/.test(step.detail)) continue;
     const table = /^SCAN (\w+)\s*(.*)$/.exec(step.detail);
     if (!table) continue;
     const [, name, qualifier] = table;
