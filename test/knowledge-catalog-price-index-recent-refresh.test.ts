@@ -270,3 +270,31 @@ test("expiry refresh is strict at the boundary and idempotent after repair", asy
   assert.deepEqual(retry, { selectedCount: 0, refreshedCount: 0, hasMore: false });
   sqlite.close();
 });
+
+test("catalog-product deletion cascades without recreating refresh state", () => {
+  const { sqlite } = emptyPriceIndex();
+  insertCatalogProduct(sqlite, 1);
+  insertAskingSample(sqlite, 1, 100000);
+  assert.equal(
+    sqlite
+      .prepare("SELECT COUNT(*) AS count FROM knowledge_catalog_price_index_recent_refreshes")
+      .get()?.count,
+    1,
+  );
+
+  sqlite.prepare("DELETE FROM knowledge_catalog_products WHERE id = 1").run();
+
+  assert.equal(
+    sqlite.prepare("SELECT COUNT(*) AS count FROM knowledge_catalog_price_index_samples").get()
+      ?.count,
+    0,
+  );
+  assert.equal(
+    sqlite
+      .prepare("SELECT COUNT(*) AS count FROM knowledge_catalog_price_index_recent_refreshes")
+      .get()?.count,
+    0,
+    "the sample cascade must not recreate a child row for the deleting catalog product",
+  );
+  sqlite.close();
+});

@@ -111,10 +111,15 @@ WHEN OLD.sample_kind = 'asking'
 BEGIN
   INSERT INTO knowledge_catalog_price_index_recent_refreshes(
     catalog_product_id, next_expiry_at, updated_at
-  ) VALUES (
+  )
+  SELECT
     OLD.catalog_product_id,
     strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-0.001 seconds'),
     strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+  WHERE EXISTS (
+    SELECT 1
+    FROM knowledge_catalog_products
+    WHERE id = OLD.catalog_product_id
   )
   ON CONFLICT(catalog_product_id) DO UPDATE SET
     next_expiry_at = excluded.next_expiry_at,
