@@ -222,8 +222,9 @@ jobs:
             fi
 
             if grep -Fq 'code: 7500' "$log_file" && \
-              grep -Fq "exceeded D1's free tier daily row read limit" "$log_file"; then
-              echo "::warning title=Production deployment deferred::D1 free-tier daily row-read quota is exhausted (7500). Migrations and Worker deployment are deferred until the quota-reset retry; production remains on the last confirmed deployed SHA."
+              { grep -Fq "exceeded D1's free tier daily row read limit" "$log_file" || \
+                grep -Fq "exceeded D1's free tier daily row write limit" "$log_file"; }; then
+              echo "::warning title=Production deployment deferred::A D1 free-tier daily row-read or row-write quota is exhausted (7500). Migrations and Worker deployment are deferred until the quota-reset retry; production remains on the last confirmed deployed SHA."
               echo "deferred=d1_daily_quota" >> "$GITHUB_OUTPUT"
               rm -f "$log_file"
               exit 0

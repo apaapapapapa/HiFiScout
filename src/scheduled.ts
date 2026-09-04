@@ -25,6 +25,10 @@ import {
   claimKnowledgeCatalogVerifierVersion,
   knowledgeCatalogVerifierState,
 } from "./db/knowledge-catalog-verifier-state-repository.js";
+import {
+  backfillRecentPriceIndexes,
+  refreshExpiredRecentPriceIndexes,
+} from "./db/knowledge-catalog-price-index-recent-refresh.js";
 import { accountReads } from "./db/read-accounting.js";
 import {
   countDirtyExactIdentityBacklog,
@@ -188,7 +192,7 @@ export async function repairGeneralCronProjectionGaps(db: QueryableDatabase) {
     batchSize: GENERAL_PROJECTION_REPAIR_BATCH_SIZE,
     maxListings: GENERAL_PROJECTION_REPAIR_MAX_LISTINGS,
     // The exact-identity peer scan is the expensive, lowest-priority phase, and every tick pays for
-    // its selector even when there is nothing to repair. `repairHourlyExactIdentityGaps` owns it.
+    // its selector even when there is nothing to repair. `repairDailyExactIdentityGaps` owns it.
     phases: "coverage",
   });
   // The outstanding-gap count is deliberately not requested here: it is the one unbounded query in
@@ -228,6 +232,26 @@ async function settled<T>(operation: () => Promise<T>): Promise<PromiseSettledRe
 }
 
 /**
+ * The strict daily projection safety pass, excluding the catalog-sized exact-identity scan.
+ *
+ * Exact identity has its own named daily task so its D1 cost remains independently observable. If
+ * this pass used the default `all` phases, the same full scan would run again twenty minutes later
+ * inside `daily_maintenance`, silently turning a daily safety net into a twice-daily one.
+ */
+export async function repairDailyProjectionGaps(db: QueryableDatabase) {
+  return repairActiveListingProjectionGaps(db, {
+    // No outstanding-gap count. It is the one unbounded statement in the repair -- an aggregate
+    // over every active listing through correlated subqueries, and nothing consumes the number.
+    countRemainingGaps: false,
+    // The daily pass is strict: a failed refresh must remain visible instead of being isolated and
+    // skipped as it is in the resilient five-minute convergence pass.
+    continueOnRefreshError: false,
+    // The exact-identity phase is owned by the separately measured daily safety-net task.
+    phases: "coverage",
+  });
+}
+
+/**
  * Retention, projection self-healing and daily verification are independent, so all are attempted
  * even when one fails — but the first failure is still rethrown so the cron is reported as failed.
  */
@@ -238,23 +262,7 @@ async function runDailyMaintenance(env: Env) {
   // concurrent load on the one D1 instance. The semantics are unchanged: all three are still
   // attempted, and the first failure is still the one rethrown.
   const retention = await settled(() => runRetentionCleanup(env));
-  const projectionRepair = await settled(() =>
-    repairActiveListingProjectionGaps(env.DB, {
-      // No outstanding-gap count. It is the one unbounded statement in the repair -- an aggregate
-      // over every active listing through correlated subqueries, most of that cost in the
-      // exact-identity family -- and nothing consumed the number: this function returns it, and
-      // `runGeneralCronMaintenance` discards what a task returns, so it was never logged, alerted
-      // on, or compared. The authoritative count still exists where it is actually read, on demand,
-      // in `scripts/repair-product-search-gaps.ts`; per-invariant drift is reported continuously by
-      // `GET /api/admin/product-search/consistency`, which the deploy pipeline already fails on.
-      countRemainingGaps: false,
-      // Stated rather than inherited. `continueOnRefreshError` defaults to `!countRemainingGaps`,
-      // so dropping the count would otherwise have silently turned the daily pass from fail-fast
-      // into the resilient per-listing mode the five-minute sweep uses. The daily pass is the
-      // strict one, and that is not what this change is about.
-      continueOnRefreshError: false,
-    }),
-  );
+  const projectionRepair = await settled(() => repairDailyProjectionGaps(env.DB));
   const catalog = await settled(() => dispatchKnowledgeCatalogDailyVerification(env));
   if (retention.status === "rejected") {
     console.error(
@@ -516,7 +524,7 @@ export async function bootstrapKnowledgeCatalogReview(env: Env, now = new Date()
 }
 
 /**
- * The exact-identity split-membership phase, on its own hourly cadence.
+ * The exact-identity split-membership phase, on its own daily cadence.
  *
  * Its selector is the only one that joins `products` to itself on identity, so unlike the coverage
  * and stale-fallback phases it cannot be answered from an index alone: a tick pays for it across
@@ -525,7 +533,7 @@ export async function bootstrapKnowledgeCatalogReview(env: Env, now = new Date()
  * so paying for it twelve times an hour bought very little and cost the D1 read budget a great
  * deal. The cheaper phases keep the five-minute cadence they need.
  */
-export async function repairHourlyExactIdentityGaps(db: QueryableDatabase) {
+export async function repairDailyExactIdentityGaps(db: QueryableDatabase) {
   const result = await repairActiveListingProjectionGaps(db, {
     batchSize: GENERAL_PROJECTION_REPAIR_BATCH_SIZE,
     maxListings: GENERAL_PROJECTION_REPAIR_MAX_LISTINGS,
@@ -583,6 +591,26 @@ export async function recoverKnowledgeCatalogQueueQuota(env: Env, now = new Date
   return bootstrapKnowledgeCatalogReview(env, now);
 }
 
+/**
+ * Advances the initial recent-median backfill and then refreshes only projections currently due.
+ * Both operations are bounded to 25 products; when neither has work, neither reads sample history.
+ */
+export async function maintainRecentPriceIndexes(db: QueryableDatabase, now = new Date()) {
+  const backfill = await backfillRecentPriceIndexes(db, { now });
+  const refresh = await refreshExpiredRecentPriceIndexes(db, { now });
+  const result = {
+    backfillStatus: backfill.status,
+    backfillSelectedProducts: backfill.selectedCount,
+    backfilledProducts: backfill.refreshedCount,
+    backfillHasMore: backfill.hasMore,
+    dueProducts: refresh.selectedCount,
+    refreshedProducts: refresh.refreshedCount,
+    refreshHasMore: refresh.hasMore,
+  };
+  console.log(JSON.stringify({ event: "price_index_recent_refresh", ...result }));
+  return result;
+}
+
 interface ScheduledWork {
   name: string;
   run(env: Env): Promise<unknown>;
@@ -602,6 +630,10 @@ interface MaintenanceTask extends ScheduledWork {
 }
 
 const GENERAL_CRON_INTERVAL_MS = 5 * 60 * 1000;
+const GENERAL_CRON_TICKS_PER_DAY = 24 * 12;
+// 18:00 UTC stays clear of the heavier 18:20 daily-maintenance slot. At this offset the task also
+// lands on a tick without the hourly Knowledge Catalog bootstrap, preserving the four-task cap.
+const DAILY_EXACT_IDENTITY_REPAIR_OFFSET = GENERAL_CRON_TICKS_PER_DAY - 18 * 12;
 
 /**
  * Background work the general cron owns, and how often each piece actually needs to run.
@@ -644,13 +676,13 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
     run: (env) => repairGeneralCronProjectionGaps(env.DB),
   },
   {
-    // Split out of the five-minute sweep because its selector is the only one that cannot be
-    // answered from an index, so it was charging the read budget for a full identity self-join
-    // every tick to repair the least user-visible drift of the three.
+    // The dirty-set path above is the normal repair mechanism. This catalog-sized self-join remains
+    // only as a daily correctness safety net and is deliberately separated from daily_maintenance
+    // so its measured rows_read and exact_identity_dirty_set_missed signal stay attributable.
     name: "product_search_exact_identity_repair",
-    everyTicks: 12,
-    offset: 0,
-    run: (env) => repairHourlyExactIdentityGaps(env.DB),
+    everyTicks: GENERAL_CRON_TICKS_PER_DAY,
+    offset: DAILY_EXACT_IDENTITY_REPAIR_OFFSET,
+    run: (env) => repairDailyExactIdentityGaps(env.DB),
   },
   // Both export recoveries treat a job as stuck after two minutes, so they stay near the old
   // cadence: stretching them to an hour would leave a user-visible export sitting for an hour to
@@ -684,6 +716,15 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
     everyTicks: 12,
     offset: 6,
     run: (env) => bootstrapKnowledgeCatalogReview(env),
+  },
+  {
+    // Five-minute precision buys nothing for a ninety-day boundary. The initial rebuild uses the
+    // same bounded task and advances only 25 products per invocation, so deploy never pays for a
+    // history-sized migration query.
+    name: "price_index_recent_refresh",
+    everyTicks: 12,
+    offset: 10,
+    run: (env) => maintainRecentPriceIndexes(env.DB),
   },
 ];
 
@@ -739,7 +780,7 @@ async function runGeneralCronMaintenance(env: Env, scheduledAt: Date): Promise<v
       );
       continue;
     }
-    if (accounting.rowsRead() > 0) {
+    if (accounting.statementCount() > 0) {
       console.log(
         JSON.stringify({
           event: "scheduled_maintenance_d1_usage",
@@ -747,6 +788,7 @@ async function runGeneralCronMaintenance(env: Env, scheduledAt: Date): Promise<v
           rowsRead: accounting.rowsRead(),
           rowsWritten: accounting.rowsWritten(),
           countedStatements: accounting.countedStatements(),
+          statementCount: accounting.statementCount(),
         }),
       );
     }

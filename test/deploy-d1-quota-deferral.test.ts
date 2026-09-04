@@ -4,11 +4,13 @@ import { test } from "vite-plus/test";
 
 const readWorkflow = (name: string) => readFile(`.github/workflows/${name}`, "utf8");
 
-test("Cloudflare deploy defers only the recognized D1 daily row-read quota", async () => {
+test("Cloudflare migration deploy defers recognized D1 daily row quotas", async () => {
   const workflow = await readWorkflow("deploy.yml");
 
   assert.match(workflow, /code: 7500/);
   assert.match(workflow, /exceeded D1's free tier daily row read limit/);
+  assert.match(workflow, /exceeded D1's free tier daily row write limit/);
+  assert.match(workflow, /row-read or row-write quota is exhausted/);
   assert.match(workflow, /deferred=d1_daily_quota/);
   assert.match(workflow, /cron: "15 0 \* \* \*"/);
 

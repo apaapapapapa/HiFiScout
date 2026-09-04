@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
 import { dueMaintenanceTasks, isDailyMaintenanceSlot } from "../src/scheduled.js";
+import { captureDatabase } from "./helpers/d1.js";
 
 const TICK_MS = 5 * 60 * 1000;
 
@@ -32,23 +33,90 @@ test("projection repair runs on every general-cron tick", () => {
   }
 });
 
-test("every maintenance task still runs within an hour", () => {
+test("every sub-daily maintenance task still runs within an hour", () => {
   const seen = new Set(ticks(12).flatMap((at) => dueMaintenanceTasks(at).map((task) => task.name)));
 
-  // Spreading the load must not silently drop work. Twelve ticks is one hour, the longest cadence.
+  // Spreading the load must not silently drop ordinary work. The catalog-sized exact-identity
+  // safety net is intentionally the one exception and has its own daily-cadence assertion below.
   assert.deepEqual(
     [...seen].sort(),
     [
       "data_quality_remediation_sweep",
       "knowledge_catalog_queue_quota_recovery",
       "knowledge_catalog_review_bootstrap",
-      "product_search_exact_identity_repair",
+      "price_index_recent_refresh",
       "product_search_projection_repair",
       "resume_interrupted_crawl_runs",
       "stale_knowledge_catalog_export_jobs",
       "stale_product_audit_export_jobs",
     ],
-    "an hour of ticks should cover every task exactly once or more",
+    "an hour of ticks should cover every sub-daily task exactly once or more",
+  );
+});
+
+test("recent price-index maintenance runs once per hour", () => {
+  const firesIn = ticks(12).filter((at) =>
+    dueMaintenanceTasks(at).some((task) => task.name === "price_index_recent_refresh"),
+  );
+
+  assert.equal(firesIn.length, 1, "the ninety-day expiry projection only needs hourly precision");
+});
+
+test("the scheduled price-index task invokes bounded backfill and expiry maintenance", async () => {
+  const at = ticks(12).find((tick) =>
+    dueMaintenanceTasks(tick).some((task) => task.name === "price_index_recent_refresh"),
+  );
+  assert.ok(at);
+  const task = dueMaintenanceTasks(at).find(
+    (candidate) => candidate.name === "price_index_recent_refresh",
+  );
+  assert.ok(task);
+  const db = captureDatabase((statement) => {
+    if (/FROM knowledge_catalog_price_index_recent_backfill_runs/u.test(statement.sql)) {
+      return [{ after_catalog_product_id: 100, status: "completed" }];
+    }
+    return [];
+  });
+  const lines: string[] = [];
+  const originalLog = console.log;
+  console.log = (line: string) => lines.push(line);
+  try {
+    await task.run({ DB: db } as unknown as Env);
+  } finally {
+    console.log = originalLog;
+  }
+
+  assert.equal(db.calls.length, 2, "completed backfill plus an empty due selector stay bounded");
+  assert.equal(
+    db.calls.some((statement) => /knowledge_catalog_price_index_samples/u.test(statement.sql)),
+    false,
+  );
+  assert.deepEqual(JSON.parse(lines.at(-1) || "{}"), {
+    event: "price_index_recent_refresh",
+    backfillStatus: "completed",
+    backfillSelectedProducts: 0,
+    backfilledProducts: 0,
+    backfillHasMore: false,
+    dueProducts: 0,
+    refreshedProducts: 0,
+    refreshHasMore: false,
+  });
+});
+
+test("the exact-identity full-scan safety net runs once per day", () => {
+  const fullScans = ticks(288).filter((at) =>
+    dueMaintenanceTasks(at).some((task) => task.name === "product_search_exact_identity_repair"),
+  );
+
+  assert.deepEqual(
+    fullScans.map((at) => at.toISOString()),
+    ["2026-08-28T18:00:00.000Z"],
+    "the catalog-sized self-join must not return to an hourly cadence",
+  );
+  assert.equal(
+    fullScans.some(isDailyMaintenanceSlot),
+    false,
+    "the safety scan should not stack on the heavier daily-maintenance slot",
   );
 });
 
