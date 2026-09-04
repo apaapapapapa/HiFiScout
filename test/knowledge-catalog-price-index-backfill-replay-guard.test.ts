@@ -102,9 +102,7 @@ function countBilledCoordinationWrites(sqlite: DatabaseSync): {
       const rows = Number(
         (
           sqlite
-            .prepare(
-              "SELECT COUNT(*) AS n FROM test_replay_guard_billing_log WHERE table_name = ?",
-            )
+            .prepare("SELECT COUNT(*) AS n FROM test_replay_guard_billing_log WHERE table_name = ?")
             .get(table) as { n: number }
         ).n,
       );
