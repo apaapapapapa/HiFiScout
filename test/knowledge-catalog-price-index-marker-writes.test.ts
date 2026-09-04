@@ -20,8 +20,24 @@ import { migratedSqlite } from "./helpers/migrated-sqlite.js";
  * earlier.
  */
 
-const AT = "2026-09-04T00:00:00.000Z";
 const CATALOG_PRODUCT_ID = 9001;
+
+/**
+ * Observation times are derived from SQLite's own clock, not written as literals.
+ *
+ * The trigger compares against `now`: a sample only records an expiry while it is inside the
+ * 90-day recent window, and the expiry it records is its own observation plus 90 days. Fixed dates
+ * therefore stop meaning what the test says they mean as wall-clock time advances -- an observation
+ * chosen to sit inside the window drifts out of it, and the test starts failing on a date rather
+ * than on a change. Offsets keep every relationship true whenever the suite runs.
+ */
+function at(sqlite: DatabaseSync, modifier: string): string {
+  return (
+    sqlite.prepare("SELECT strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?) AS at").get(modifier) as {
+      at: string;
+    }
+  ).at;
+}
 
 interface Marker {
   next_expiry_at: string | null;
@@ -37,12 +53,14 @@ function priceIndexFixture() {
     DELETE FROM knowledge_catalog_products;
     INSERT INTO products
       (shop_key, source_id, title, source_url, first_seen_at, last_seen_at, last_changed_at, is_active)
-    VALUES ('shop', 'src-1', 'Listing', 'https://example.test/1', '${AT}', '${AT}', '${AT}', 1);
+    VALUES ('shop', 'src-1', 'Listing', 'https://example.test/1',
+            datetime('now'), datetime('now'), datetime('now'), 1);
     INSERT INTO knowledge_catalog_manufacturers (id, canonical_name, created_at, updated_at)
-    VALUES ('luxman', 'Luxman', '${AT}', '${AT}');
+    VALUES ('luxman', 'Luxman', datetime('now'), datetime('now'));
     INSERT INTO knowledge_catalog_products
       (id, manufacturer_id, canonical_model, normalized_model, canonical_name, created_at, updated_at)
-    VALUES (${CATALOG_PRODUCT_ID}, 'luxman', 'L-507', 'l507', 'Luxman L-507', '${AT}', '${AT}');
+    VALUES (${CATALOG_PRODUCT_ID}, 'luxman', 'L-507', 'l507', 'Luxman L-507',
+            datetime('now'), datetime('now'));
   `);
   return database;
 }
@@ -78,14 +96,14 @@ function totalChanges(sqlite: DatabaseSync): number {
 
 test("an asking sample that cannot move the expiry does not rewrite the marker", async () => {
   const { sqlite } = priceIndexFixture();
-  insertAskingSample(sqlite, 250_000, AT);
+  insertAskingSample(sqlite, 250_000, at(sqlite, "-30 days"));
   const stored = marker(sqlite);
   assert.ok(stored?.next_expiry_at, "the first asking sample establishes the marker");
 
   const before = totalChanges(sqlite);
   // Observed later than the marker accounts for, so its own expiry falls later and the stored
   // value stands. This is the common shape: asking evidence is append-only.
-  insertAskingSample(sqlite, 249_000, "2026-09-10T00:00:00.000Z");
+  insertAskingSample(sqlite, 249_000, at(sqlite, "-1 day"));
   const changed = totalChanges(sqlite) - before;
   const after = marker(sqlite);
 
@@ -100,12 +118,12 @@ test("an asking sample that cannot move the expiry does not rewrite the marker",
 
 test("an asking sample that does move the expiry earlier still updates the marker", async () => {
   const { sqlite } = priceIndexFixture();
-  insertAskingSample(sqlite, 250_000, AT);
+  insertAskingSample(sqlite, 250_000, at(sqlite, "-30 days"));
   const stored = marker(sqlite);
   assert.ok(stored?.next_expiry_at);
 
   const before = totalChanges(sqlite);
-  insertAskingSample(sqlite, 249_000, "2026-08-20T00:00:00.000Z");
+  insertAskingSample(sqlite, 249_000, at(sqlite, "-80 days"));
   const changed = totalChanges(sqlite) - before;
   const after = marker(sqlite);
 
@@ -113,30 +131,38 @@ test("an asking sample that does move the expiry earlier still updates the marke
     (after?.next_expiry_at ?? "") < stored.next_expiry_at,
     `the earlier observation expires first: ${after?.next_expiry_at} vs ${stored.next_expiry_at}`,
   );
-  assert.notEqual(after?.updated_at, stored.updated_at);
+  // Deliberately not asserted on `updated_at`: both writes take it from `now`, and two statements
+  // inside the same millisecond produce the same string. The moved expiry and the row-change count
+  // are what prove the update happened.
   assert.equal(changed, 3, "sample, aggregate and marker");
 });
 
 test("the first asking sample for a product establishes a marker", async () => {
   const { sqlite } = priceIndexFixture();
   assert.equal(marker(sqlite), undefined);
+  const observedAt = at(sqlite, "-30 days");
 
-  insertAskingSample(sqlite, 250_000, AT);
+  insertAskingSample(sqlite, 250_000, observedAt);
 
   const created = marker(sqlite);
   assert.ok(created?.next_expiry_at, "an absent marker is inserted, not skipped by the condition");
-  assert.match(created.next_expiry_at, /^2026-12-03T/u, "90 days after the observation");
+  const expected = (
+    sqlite
+      .prepare("SELECT strftime('%Y-%m-%dT%H:%M:%fZ', ?, '+90 days') AS at")
+      .get(observedAt) as { at: string }
+  ).at;
+  assert.equal(created.next_expiry_at, expected, "90 days after the observation");
 });
 
 test("a sample older than the recent window leaves the marker alone", async () => {
   // Outside 90 days it cannot contribute to the recent median, so it has no expiry to record.
   const { sqlite } = priceIndexFixture();
-  insertAskingSample(sqlite, 250_000, AT);
+  insertAskingSample(sqlite, 250_000, at(sqlite, "-30 days"));
   const stored = marker(sqlite);
   assert.ok(stored);
 
   const before = totalChanges(sqlite);
-  insertAskingSample(sqlite, 249_000, "2020-01-01T00:00:00.000Z");
+  insertAskingSample(sqlite, 249_000, at(sqlite, "-200 days"));
   const changed = totalChanges(sqlite) - before;
 
   assert.deepEqual(marker(sqlite), stored);
@@ -149,10 +175,12 @@ test("repeated appends cost one marker write, not one per sample", async () => {
   const { sqlite } = priceIndexFixture();
   const before = totalChanges(sqlite);
 
+  // Ten observations in order, each newer than the last and all inside the recent window, so only
+  // the first can establish an expiry and none of the rest can move it earlier.
+  const observations = Array.from({ length: 10 }, (_, index) => at(sqlite, `-${40 - index} days`));
   sqlite.exec("BEGIN");
-  for (let index = 0; index < 10; index += 1) {
-    const day = String(10 + index).padStart(2, "0");
-    insertAskingSample(sqlite, 250_000 - index, `2026-09-${day}T00:00:00.000Z`);
+  for (const [index, observedAt] of observations.entries()) {
+    insertAskingSample(sqlite, 250_000 - index, observedAt);
   }
   sqlite.exec("COMMIT");
 
@@ -160,5 +188,10 @@ test("repeated appends cost one marker write, not one per sample", async () => {
   // 10 samples + 10 aggregate rewrites + 1 marker insert. The aggregate rewrites are the separate
   // recompute amplification; what is asserted here is that the marker contributes exactly one.
   assert.equal(changed, 21, `expected one marker write across ten appends: ${changed} rows`);
-  assert.match(marker(sqlite)?.next_expiry_at ?? "", /^2026-12-09T/u, "the earliest of the ten");
+  const earliest = (
+    sqlite
+      .prepare("SELECT strftime('%Y-%m-%dT%H:%M:%fZ', ?, '+90 days') AS at")
+      .get(observations[0]!) as { at: string }
+  ).at;
+  assert.equal(marker(sqlite)?.next_expiry_at, earliest, "the earliest of the ten");
 });
