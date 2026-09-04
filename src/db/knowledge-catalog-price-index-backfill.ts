@@ -1,3 +1,7 @@
+import {
+  DEFERRED_REFRESH_LEADING_STATEMENTS,
+  deferredPriceIndexRefresh,
+} from "./knowledge-catalog-price-index-deferred-refresh.js";
 import type { QueryableDatabase } from "./types.js";
 
 interface PriceIndexBackfillCandidateRow {
@@ -167,10 +171,43 @@ function sampleUpsertStatement(
 }
 
 /**
+ * Whether deferring this page's recomputes is cheaper than letting them fire per row.
+ *
+ * Deferring is always a read win -- it replaces one whole-product recompute per row with one per
+ * product -- but it is not free in writes: the deferral costs two rows, and each distinct product
+ * costs a dirty marker written and cleared. Against that it saves one aggregate rewrite for every
+ * row beyond the first of its product. Over `rows` samples touching `products` distinct products:
+ *
+ *     saved = rows - products           (aggregate rewrites that no longer happen)
+ *     spent = 2 * products + 2          (the deferral row, plus one marker per product)
+ *
+ * so deferring is cheaper on writes as well as on reads once `rows >= 3 * products + 3`.
+ *
+ * The count used here is of listings, not catalog products, because the candidate scan deliberately
+ * does not read attribution -- {@link sampleUpsertStatement} resolves that inside the transaction,
+ * and a page must not be able to act on a stale copy of it. A listing resolves to exactly one
+ * catalog product, so distinct listings can only ever overcount distinct products, and the
+ * inequality holding for listings means it holds for products too. The overcount makes this
+ * conservative: a page whose separate listings happen to share a catalog product may decline a
+ * deferral that would have paid. It never makes it wrong.
+ *
+ * A page whose rows are all for different listings -- the common shape near the head of
+ * `price_history`, where one crawl touches many listings once each -- has nothing to coalesce, and
+ * takes the unchanged path rather than paying for a deferral that would save nothing.
+ */
+function coalescesRecomputes(candidates: readonly PriceIndexBackfillCandidateRow[]): boolean {
+  const listings = new Set(candidates.map((candidate) => candidate.listing_product_id)).size;
+  return candidates.length >= 3 * listings + 3;
+}
+
+/**
  * Copies one bounded keyset page from retained `price_history` into the permanent sample ledger.
  *
- * Sample upserts and cursor advancement are committed in the same D1 `batch()` transaction. A
- * terminated invocation therefore either advances neither side or both sides. The job never clears
+ * Sample upserts, the aggregate recompute they imply, and cursor advancement are committed in the
+ * same D1 `batch()` transaction. A terminated invocation therefore either advances neither side or
+ * both sides. A page that repeats catalog products runs under a price-index refresh deferral, so it
+ * recomputes each product's aggregate once rather than once per row; the recompute is still inside
+ * the transaction, so the aggregate is never observably behind its samples. The job never clears
  * the ledger: crawler triggers may keep writing newer evidence while a historical backfill is in
  * progress, and replaying an overlapping page is idempotent by the stable price-history event key.
  *
@@ -250,12 +287,20 @@ export async function backfillKnowledgeCatalogPriceIndex(
       Number(run.after_price_history_id),
     );
 
-  const results = await db.batch([
+  const pageStatements = [
     ...candidates.map((candidate) => sampleUpsertStatement(db, candidate)),
     stateUpdate,
-  ]);
+  ];
+  // One batch, one transaction, and -- when the page repeats products -- one aggregate recompute per
+  // product instead of one per row. The cursor advances inside the same deferral, so a page either
+  // lands whole (samples, aggregates and cursor) or not at all.
+  const coalesce = coalescesRecomputes(candidates);
+  const results = await db.batch(
+    coalesce ? deferredPriceIndexRefresh(db, `backfill:${key}`, pageStatements) : pageStatements,
+  );
+  const firstUpsert = coalesce ? DEFERRED_REFRESH_LEADING_STATEMENTS : 0;
   const writtenCount = results
-    .slice(0, candidates.length)
+    .slice(firstUpsert, firstUpsert + candidates.length)
     .reduce((sum, result) => sum + Number(result?.meta?.changes || 0), 0);
 
   return {
