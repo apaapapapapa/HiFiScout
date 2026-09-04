@@ -174,20 +174,36 @@ function sampleUpsertStatement(
  * Whether deferring this page's recomputes is cheaper than letting them fire per row.
  *
  * Deferring is always a read win -- it replaces one whole-product recompute per row with one per
- * product -- but it is not free in writes: the deferral costs two rows, and each distinct product
- * costs a dirty marker written and cleared. Against that it saves one aggregate rewrite for every
- * row beyond the first of its product. Over `rows` samples touching `products` distinct products:
+ * product -- but it is not free in writes, and the unit that decides is D1's `rows_written`, which
+ * bills an index entry for every index a write touches on top of the table row itself. The
+ * coordination is therefore priced from the schema rather than from row counts:
  *
- *     saved = rows - products           (aggregate rewrites that no longer happen)
- *     spent = 2 * products + 2          (the deferral row, plus one marker per product)
+ *   - `knowledge_catalog_price_index_refresh_deferrals` is keyed `token TEXT PRIMARY KEY`, so it
+ *     carries a PK autoindex. Opening the deferral writes a row and an index entry, and closing it
+ *     writes both again: four, not the two a row count suggests.
+ *   - `knowledge_catalog_price_index_dirty_products` is keyed `catalog_product_id INTEGER PRIMARY
+ *     KEY`, a rowid alias with no index of its own, so a marker written and then cleared is two.
+ *   - `knowledge_catalog_price_indexes` carries no index at all, so an aggregate rewrite bills one
+ *     on either path and the two sides cancel row for row.
  *
- * so deferring is cheaper on writes as well as on reads once `rows >= 3 * products + 3`.
+ * Over `rows` samples touching `products` distinct products, leaving out the sample writes because
+ * both paths perform them identically:
+ *
+ *     per row  = rows                          (one aggregate rewrite each)
+ *     deferred = products + 2 * products + 4   (recomputes, markers, the deferral itself)
+ *
+ * so deferring is cheaper on writes as well as on reads once `rows >= 3 * products + 5`. At
+ * `3 * products + 4` the two paths bill the same and the deferral buys only the read win; below
+ * that the coordination costs more than the recomputes it removes, which is what a row-count
+ * accounting that missed the PK autoindex hid. `knowledge-catalog-price-index-backfill-coalescing`
+ * pins the three schema facts this arithmetic reads and both sides of the boundary, so an index
+ * added to any of these tables fails a test rather than silently invalidating the constant.
  *
  * The count used here is of listings, not catalog products, because the candidate scan deliberately
  * does not read attribution -- {@link sampleUpsertStatement} resolves that inside the transaction,
  * and a page must not be able to act on a stale copy of it. A listing resolves to exactly one
- * catalog product, so distinct listings can only ever overcount distinct products, and the
- * inequality holding for listings means it holds for products too. The overcount makes this
+ * catalog product, so distinct listings can only ever overcount distinct products, and a page that
+ * clears the bound for listings clears it for products with room to spare. The overcount makes this
  * conservative: a page whose separate listings happen to share a catalog product may decline a
  * deferral that would have paid. It never makes it wrong.
  *
@@ -197,7 +213,7 @@ function sampleUpsertStatement(
  */
 function coalescesRecomputes(candidates: readonly PriceIndexBackfillCandidateRow[]): boolean {
   const listings = new Set(candidates.map((candidate) => candidate.listing_product_id)).size;
-  return candidates.length >= 3 * listings + 3;
+  return candidates.length >= 3 * listings + 5;
 }
 
 /**

@@ -282,3 +282,147 @@ test("a failed page advances neither the samples nor the cursor", async () => {
     .get() as { n: number };
   assert.equal(Number(open.n), 0, "and no deferral was left open for the next writer");
 });
+
+/**
+ * What D1 bills for a write, which is not what SQLite counts as a row change.
+ *
+ * `rows_written` includes an index entry for every index the write maintains, so a table's cost per
+ * touched row is one plus its index count. `total_changes()` counts only the rows, which is why it
+ * cannot stand in for the billed figure: it reports 1 for an insert into a table whose primary key
+ * is a `TEXT` autoindex, where D1 bills 2.
+ */
+function billingWeight(sqlite: DatabaseSync, table: string): number {
+  return 1 + (sqlite.prepare(`PRAGMA index_list('${table}')`).all() as unknown[]).length;
+}
+
+/** The tables the deferral trades against; the sample writes are common to both paths. */
+const COORDINATION_TABLES = [
+  "knowledge_catalog_price_indexes",
+  "knowledge_catalog_price_index_dirty_products",
+  "knowledge_catalog_price_index_refresh_deferrals",
+] as const;
+
+/** Billed writes across the coordination tables, weighted by each one's live index count. */
+function countBilledWrites(sqlite: DatabaseSync): () => number {
+  sqlite.exec("CREATE TABLE test_billing_log (table_name TEXT NOT NULL)");
+  for (const table of COORDINATION_TABLES) {
+    for (const event of ["INSERT", "UPDATE", "DELETE"] as const) {
+      sqlite.exec(`
+        CREATE TRIGGER test_billing_${table}_${event.toLowerCase()}
+        AFTER ${event} ON ${table}
+        BEGIN INSERT INTO test_billing_log(table_name) VALUES ('${table}'); END;
+      `);
+    }
+  }
+  const rowsFor = (table: string) =>
+    Number(
+      (
+        sqlite
+          .prepare("SELECT COUNT(*) AS n FROM test_billing_log WHERE table_name = ?")
+          .get(table) as { n: number }
+      ).n,
+    );
+  const total = () =>
+    COORDINATION_TABLES.reduce(
+      (sum, table) => sum + rowsFor(table) * billingWeight(sqlite, table),
+      0,
+    );
+  const before = total();
+  return () => total() - before;
+}
+
+test("the tables the gate's constant is derived from carry the indexes it assumes", () => {
+  // The gate spends `3 * listings + 5`, and every term in that comes from a schema fact rather than
+  // from a row count. Pinning them here is what keeps the constant honest: adding an index to any of
+  // these tables changes what a deferral bills, and this fails instead of the arithmetic quietly
+  // becoming wrong.
+  const { sqlite } = backfillFixture();
+
+  assert.equal(
+    billingWeight(sqlite, "knowledge_catalog_price_index_refresh_deferrals"),
+    2,
+    "the deferral is keyed TEXT PRIMARY KEY, so its row carries a PK autoindex entry",
+  );
+  assert.equal(
+    billingWeight(sqlite, "knowledge_catalog_price_index_dirty_products"),
+    1,
+    "the dirty marker is keyed INTEGER PRIMARY KEY, a rowid alias with no index of its own",
+  );
+  assert.equal(
+    billingWeight(sqlite, "knowledge_catalog_price_indexes"),
+    1,
+    "an aggregate rewrite bills the same on either path, so the two sides cancel row for row",
+  );
+});
+
+test("a page one row short of the boundary keeps the per-row path", async () => {
+  // Seven rows for one listing: deferring would bill 1 recompute + 2 markers + 4 for the deferral
+  // itself = 7, exactly what the seven per-row recomputes bill. A wash is not a saving, so the page
+  // is left alone. The gate that missed the PK autoindex deferred from six rows and lost a write.
+  const { sqlite, db } = backfillFixture();
+  listingWithRetainedHistory(sqlite, "boundary-below", 7);
+  const recomputes = countRecomputes(sqlite);
+  const billed = countBilledWrites(sqlite);
+
+  const result = await backfillKnowledgeCatalogPriceIndex(db, {
+    backfillKey: "boundary-below",
+    batchSize: 7,
+  });
+
+  assert.equal(result.writtenCount, 7);
+  assert.equal(recomputes(), 7, "one recompute per row");
+  assert.equal(billed(), 7, "and nothing beyond them: no deferral was opened");
+  assert.equal(
+    Number(
+      (
+        sqlite
+          .prepare("SELECT COUNT(*) AS n FROM knowledge_catalog_price_index_dirty_products")
+          .get() as { n: number }
+      ).n,
+    ),
+    0,
+  );
+});
+
+test("a page at the boundary defers, and bills less than the rows it replaced", async () => {
+  // Eight rows for one listing. Deferred: 1 recompute + 2 marker writes + 4 for the deferral row and
+  // its index entry = 7, against the 8 the per-row path would have billed. The first shape where
+  // coalescing is a strict saving in `rows_written` rather than only in reads.
+  const { sqlite, db } = backfillFixture();
+  listingWithRetainedHistory(sqlite, "boundary-at", 8);
+  const recomputes = countRecomputes(sqlite);
+  const billed = countBilledWrites(sqlite);
+
+  const result = await backfillKnowledgeCatalogPriceIndex(db, {
+    backfillKey: "boundary-at",
+    batchSize: 8,
+  });
+
+  assert.equal(result.writtenCount, 8);
+  assert.equal(recomputes(), 1, "eight samples for one product cost one recompute");
+  assert.equal(billed(), 7, "coordination included, the deferred page bills 7 against 8");
+  const stored = sqlite
+    .prepare(
+      "SELECT asking_sample_count FROM knowledge_catalog_price_indexes WHERE catalog_product_id = ?",
+    )
+    .get(CATALOG_PRODUCT) as { asking_sample_count: number };
+  assert.equal(
+    stored.asking_sample_count,
+    8,
+    "and the aggregate is the same one either path lands",
+  );
+});
+
+test("six rows for one listing -- what the old gate deferred -- stays on the per-row path", async () => {
+  // The case the review names: `3 * products + 3` deferred here, billing 7 against a baseline of 6.
+  const { sqlite, db } = backfillFixture();
+  listingWithRetainedHistory(sqlite, "boundary-regression", 6);
+  const billed = countBilledWrites(sqlite);
+
+  await backfillKnowledgeCatalogPriceIndex(db, {
+    backfillKey: "boundary-regression",
+    batchSize: 6,
+  });
+
+  assert.equal(billed(), 6, "six per-row recomputes, not the seven a deferral would have cost");
+});

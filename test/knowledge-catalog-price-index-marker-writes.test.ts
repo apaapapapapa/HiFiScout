@@ -89,7 +89,17 @@ function marker(sqlite: DatabaseSync): Marker | undefined {
     .get(CATALOG_PRODUCT_ID) as Marker | undefined;
 }
 
-/** Physical row changes, which is what D1 bills as `rows_written`. */
+/**
+ * Physical row changes -- whether a row was written at all, which is what these tests are about.
+ *
+ * Not the billed figure. D1's `rows_written` also charges an index entry per index the write
+ * maintains, and `total_changes()` cannot see those: the marker table carries
+ * `idx_price_index_recent_refresh_due` and the sample ledger four indexes, so a marker write bills 2
+ * and a sample insert 5. The counts below are therefore lower bounds on what is saved, and the
+ * saving they prove is if anything larger than the number shown. What makes them the right
+ * instrument here is that they answer the only question the change turns on -- did the upsert touch
+ * the row, or not.
+ */
 function totalChanges(sqlite: DatabaseSync): number {
   return Number((sqlite.prepare("SELECT total_changes() AS n").get() as { n: number }).n);
 }
