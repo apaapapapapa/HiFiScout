@@ -12,7 +12,7 @@ test("Cloudflare migration deploy defers recognized D1 daily row quotas", async 
   assert.match(workflow, /exceeded D1's free tier daily row write limit/);
   assert.match(workflow, /row-read or row-write quota is exhausted/);
   assert.match(workflow, /deferred=d1_daily_quota/);
-  assert.match(workflow, /cron: "15 0 \* \* \*"/);
+  assert.match(workflow, /cron: "10 0 \* \* \*"/);
 
   const migrations = workflow.indexOf("Apply backward-compatible D1 migrations");
   const deploy = workflow.indexOf("Deploy Worker and static assets");
