@@ -8,7 +8,7 @@ import {
 import { enrichProductCategories } from "../src/crawler/category-enricher.js";
 import { getShopPlugin } from "../src/crawler/shops/index.js";
 import type { NormalizedCatalogProduct } from "../src/catalog/types.js";
-import type { CategoryEnrichmentProductRow } from "../src/db/types.js";
+import type { ExistingCategoryEnrichmentState } from "../src/db/types.js";
 import { detailFetchOptions, emptyCatalogDb, parsedProduct } from "./helpers/fixtures.js";
 
 const plugin = getShopPlugin("fujiya-avic");
@@ -88,7 +88,7 @@ test("a detail budget smaller than the duplicate group still classifies every co
 
 test("a copy already classified from a detail page classifies its siblings without another fetch", async () => {
   const products = sameProductListedTimes(3);
-  const existingRows: CategoryEnrichmentProductRow[] = [
+  const existingRows: ExistingCategoryEnrichmentState[] = [
     {
       source_id: "dup-2",
       manufacturer_id: products[1].manufacturerId,

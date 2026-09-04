@@ -346,6 +346,68 @@ test("the per-identity member lookup reads through the identity index, not the t
   );
 });
 
+test("dirty repair work does not grow with unrelated active catalog size", async () => {
+  // D1's rows_read metadata is not available from the local SQLite adapter, so lock the structural
+  // proxies that determine it: one claimed identity, one indexed member lookup, and a constant
+  // statement count while the active catalog grows by two orders of magnitude.
+  const { sqlite, db } = migratedSqlite();
+  insertListing(sqlite, { id: 1 });
+  insertListing(sqlite, { id: 2 });
+
+  let inserted = 2;
+  const observations: { activeListings: number; statements: number; memberLookups: number }[] = [];
+  for (const activeListings of [100, 1_000, 10_000]) {
+    sqlite.exec("BEGIN");
+    while (inserted < activeListings) {
+      inserted += 1;
+      insertListing(sqlite, {
+        id: inserted,
+        manufacturerId: "unrelated",
+        normalizedModel: "unrelated",
+      });
+    }
+    sqlite.exec("COMMIT");
+
+    clearDirty(sqlite);
+    sqlite
+      .prepare(`
+        INSERT INTO product_search_exact_identity_dirty (
+          canonical_manufacturer_id, normalized_model, marked_at
+        ) VALUES ('luxman', 'c10', ?)
+      `)
+      .run(AT);
+    const recording = recordingDatabase(db);
+
+    const result = await repairDirtyExactIdentities(recording.db);
+    const memberLookups = recording.executed.filter((statement) =>
+      /FROM products p\s+LEFT JOIN product_search_entity_offers/u.test(statement.sql),
+    );
+
+    assert.equal(result.claimedIdentities, 1);
+    assert.equal(result.cleanIdentities, 1);
+    assert.equal(memberLookups.length, 1, "one changed identity should issue one member lookup");
+    assert.equal(
+      readsThroughIndex(queryPlan(sqlite, memberLookups[0]), "p", "idx_products_exact_identity"),
+      true,
+    );
+    observations.push({
+      activeListings,
+      statements: recording.executed.length,
+      memberLookups: memberLookups.length,
+    });
+  }
+
+  assert.deepEqual(
+    observations,
+    [
+      { activeListings: 100, statements: 5, memberLookups: 1 },
+      { activeListings: 1_000, statements: 5, memberLookups: 1 },
+      { activeListings: 10_000, statements: 5, memberLookups: 1 },
+    ],
+    "normal repair must remain O(changed identities), not O(active listings)",
+  );
+});
+
 test("a group that stops being groupable is taken apart, not left consolidated", async () => {
   // The scan predicate only finds groups that need merging. A change recorded by the triggers just
   // as often means the opposite, and consolidated-but-wrong is one entity, so a split test calls it

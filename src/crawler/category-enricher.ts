@@ -7,7 +7,13 @@ import {
 } from "../catalog/product-normalizer.js";
 import { findVerifiedCatalogMatches } from "../db/knowledge-catalog-repository.js";
 import { findManualVerifiedCategoryMatches } from "../db/manual-category-authority-repository.js";
-import { selectExistingProducts } from "../db/product-write-repository.js";
+import { selectExistingCategoryEnrichmentStates } from "../db/product-write-repository.js";
+import {
+  accountReads,
+  dbUsageMetrics,
+  sumDbUsageMetrics,
+  type DbUsageMetrics,
+} from "../db/read-accounting.js";
 import { categoryIdForClassification } from "../catalog/categories.js";
 import { errorMessage, isRecord } from "../types.js";
 import type {
@@ -16,8 +22,9 @@ import type {
   CategoryId,
   NormalizedCatalogProduct,
 } from "../catalog/types.js";
-import type { CategoryEnrichmentProductRow, ReadableDatabase } from "../db/types.js";
+import type { ExistingCategoryEnrichmentState, ReadableDatabase } from "../db/types.js";
 import type {
+  CategoryEnrichmentDbMetrics,
   CategoryEnrichmentResult,
   DetailHtmlFetcher,
   FetchHtmlPageOptions,
@@ -33,7 +40,7 @@ interface EnrichProductCategoriesOptions {
   transport: DetailHtmlFetcher;
   fetchOptions: FetchHtmlPageOptions;
   now?: Date;
-  existingRows?: CategoryEnrichmentProductRow[] | null;
+  existingRows?: ExistingCategoryEnrichmentState[] | null;
 }
 
 function parseJson(value: string | undefined): Record<string, unknown> {
@@ -60,7 +67,7 @@ function parseCategoryIds(value: string): CategoryId[] {
 }
 
 function sameIdentity(
-  existing: CategoryEnrichmentProductRow | undefined,
+  existing: ExistingCategoryEnrichmentState | undefined,
   product: NormalizedCatalogProduct,
 ): boolean {
   return (
@@ -114,7 +121,7 @@ function newDetailDecision(): DetailDecision {
 }
 
 function classificationMetadata(
-  existing: CategoryEnrichmentProductRow | undefined,
+  existing: ExistingCategoryEnrichmentState | undefined,
 ): Record<string, unknown> | null {
   const metadata = parseJson(existing?.metadata_json);
   const classification = metadata.categoryClassification;
@@ -127,7 +134,7 @@ function classificationMetadata(
  * recompute against its own seller evidence.
  */
 function cachedClassification(
-  existing: CategoryEnrichmentProductRow | undefined,
+  existing: ExistingCategoryEnrichmentState | undefined,
   product: NormalizedCatalogProduct,
 ): CategoryClassification | null {
   if (!existing) return null;
@@ -163,7 +170,7 @@ function cachedClassification(
  * path the same semantics as a fresh detail fetch.
  */
 function cachedDetailEvidence(
-  existing: CategoryEnrichmentProductRow | undefined,
+  existing: ExistingCategoryEnrichmentState | undefined,
   product: NormalizedCatalogProduct,
 ): CategoryEvidenceInput[] | null {
   if (!cachedClassification(existing, product)) return null;
@@ -186,7 +193,7 @@ function cachedDetailEvidence(
 }
 
 function recentUnresolvedCheck(
-  existing: CategoryEnrichmentProductRow | undefined,
+  existing: ExistingCategoryEnrichmentState | undefined,
   product: NormalizedCatalogProduct,
   cacheHours: number,
   now: Date,
@@ -223,10 +230,17 @@ async function applyKnowledgeCatalogEvidence(
   db: ReadableDatabase,
   products: NormalizedCatalogProduct[],
   now: Date,
-): Promise<{ products: NormalizedCatalogProduct[]; catalogMatches: number }> {
+): Promise<{
+  products: NormalizedCatalogProduct[];
+  catalogMatches: number;
+  knowledgeCatalogUsage: DbUsageMetrics;
+  manualAuthorityUsage: DbUsageMetrics;
+}> {
+  const knowledgeCatalogAccounting = accountReads(db);
+  const manualAuthorityAccounting = accountReads(db);
   const [matches, manualCategoryMatches] = await Promise.all([
-    findVerifiedCatalogMatches(db, products),
-    findManualVerifiedCategoryMatches(db, products),
+    findVerifiedCatalogMatches(knowledgeCatalogAccounting.db, products),
+    findManualVerifiedCategoryMatches(manualAuthorityAccounting.db, products),
   ]);
   let catalogMatches = 0;
   const catalogMatchedAt = now.toISOString();
@@ -244,7 +258,32 @@ async function applyKnowledgeCatalogEvidence(
       catalogMatchedAt,
     });
   });
-  return { products: updated, catalogMatches };
+  return {
+    products: updated,
+    catalogMatches,
+    knowledgeCatalogUsage: dbUsageMetrics(knowledgeCatalogAccounting),
+    manualAuthorityUsage: dbUsageMetrics(manualAuthorityAccounting),
+  };
+}
+
+function categoryDbUsage(
+  catalog: Pick<
+    Awaited<ReturnType<typeof applyKnowledgeCatalogEvidence>>,
+    "knowledgeCatalogUsage" | "manualAuthorityUsage"
+  >,
+  existingListingUsage: DbUsageMetrics,
+): CategoryEnrichmentDbMetrics {
+  const total = sumDbUsageMetrics(
+    catalog.knowledgeCatalogUsage,
+    catalog.manualAuthorityUsage,
+    existingListingUsage,
+  );
+  return {
+    knowledgeCatalogRowsRead: catalog.knowledgeCatalogUsage.rowsRead,
+    manualAuthorityRowsRead: catalog.manualAuthorityUsage.rowsRead,
+    existingListingRowsRead: existingListingUsage.rowsRead,
+    ...total,
+  };
 }
 
 export async function enrichProductCategories({
@@ -257,10 +296,15 @@ export async function enrichProductCategories({
   existingRows = null,
 }: EnrichProductCategoriesOptions): Promise<CategoryEnrichmentResult> {
   const catalog = await applyKnowledgeCatalogEvidence(db, products, now);
+  let existingListingUsage = sumDbUsageMetrics();
+  const finish = (result: Omit<CategoryEnrichmentResult, "dbUsage">): CategoryEnrichmentResult => ({
+    ...result,
+    dbUsage: categoryDbUsage(catalog, existingListingUsage),
+  });
   const baseProducts = catalog.products;
   const extractor = adapter.capabilities.detailCategoryEvidence?.extract;
   if (typeof extractor !== "function") {
-    return {
+    return finish({
       products: baseProducts,
       catalogMatches: catalog.catalogMatches,
       detailRequests: 0,
@@ -269,7 +313,7 @@ export async function enrichProductCategories({
       unresolvedCount: baseProducts.filter(
         (product) => product.classificationStatus !== "classified",
       ).length,
-    };
+    });
   }
 
   const policy = resolveCategoryPolicy(adapter.capabilities.catalog?.categoryPolicy);
@@ -277,23 +321,26 @@ export async function enrichProductCategories({
     (product) => product.classificationStatus !== "classified",
   );
   if (!unresolved.length) {
-    return {
+    return finish({
       products: baseProducts,
       catalogMatches: catalog.catalogMatches,
       detailRequests: 0,
       cacheHits: 0,
       enrichedCount: 0,
       unresolvedCount: 0,
-    };
+    });
   }
 
-  const rows =
-    existingRows ??
-    (await selectExistingProducts(
-      db,
+  let rows = existingRows;
+  if (rows == null) {
+    const existingListingAccounting = accountReads(db);
+    rows = await selectExistingCategoryEnrichmentStates(
+      existingListingAccounting.db,
       adapter.key,
       unresolved.map((product) => product.sourceId),
-    ));
+    );
+    existingListingUsage = dbUsageMetrics(existingListingAccounting);
+  }
   const existingBySourceId = new Map(rows.map((row) => [row.source_id, row]));
   const maxRequests = policy.enrichment.maxRequestsPerCrawl;
   const checkedAt = now.toISOString();
@@ -423,7 +470,7 @@ export async function enrichProductCategories({
     enriched.push(product);
   }
 
-  return {
+  return finish({
     products: enriched,
     catalogMatches: catalog.catalogMatches,
     detailRequests,
@@ -431,5 +478,5 @@ export async function enrichProductCategories({
     enrichedCount,
     unresolvedCount: enriched.filter((product) => product.classificationStatus !== "classified")
       .length,
-  };
+  });
 }

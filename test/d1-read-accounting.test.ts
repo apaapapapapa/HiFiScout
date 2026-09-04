@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
-import { accountReads, firstMeasured } from "../src/db/read-accounting.js";
+import {
+  accountReads,
+  dbUsageMetrics,
+  firstMeasured,
+  sumDbUsageMetrics,
+} from "../src/db/read-accounting.js";
 import { asQueryableDatabase } from "./helpers/d1.js";
 
 interface Recorded {
@@ -63,6 +68,9 @@ test("accounting adds up the rows D1 reports for all() and run()", async () => {
   assert.equal(accounting.rowsRead(), 8003);
   assert.equal(accounting.rowsWritten(), 1);
   assert.equal(accounting.countedStatements(), 2);
+  assert.equal(accounting.statementCount(), 2);
+  assert.equal(accounting.returnedRows(), 0);
+  assert.ok(accounting.durationMs() >= 0);
 });
 
 test("accounting adds up every statement in a batch", async () => {
@@ -89,6 +97,23 @@ test("accounting leaves the wrapped database's behaviour alone", async () => {
     { sql: "SELECT scan", binds: ["a", "b"] },
     { sql: "SELECT scan", binds: [] },
   ]);
+});
+
+test("failed statements still contribute to statement count and duration", async () => {
+  const source = asQueryableDatabase({
+    prepare: () => ({
+      async all() {
+        throw new Error("D1 unavailable");
+      },
+    }),
+  });
+  const accounting = accountReads(source);
+
+  await assert.rejects(accounting.db.prepare("SELECT scan").all(), /D1 unavailable/u);
+
+  assert.equal(accounting.statementCount(), 1);
+  assert.equal(accounting.countedStatements(), 0);
+  assert.ok(accounting.durationMs() >= 0);
 });
 
 test("a first() call is not counted, so a total is a lower bound", async () => {
@@ -122,4 +147,23 @@ test("firstMeasured returns the first row, or null over an empty result", async 
 
   assert.deepEqual(await firstMeasured(source.db.prepare("SELECT one")), { gap_count: 3 });
   assert.equal(await firstMeasured(empty.db.prepare("SELECT none")), null);
+});
+
+test("usage snapshots combine independently measured query groups", async () => {
+  const staged = accountReads(
+    meteredDatabase({ "SELECT staged": { read: 30, written: 0 } }, [{ page: 1 }]),
+  );
+  const existing = accountReads(
+    meteredDatabase({ "SELECT existing": { read: 4, written: 0 } }, [{ listing: 1 }]),
+  );
+
+  await staged.db.prepare("SELECT staged").all();
+  await existing.db.prepare("SELECT existing").all();
+
+  const total = sumDbUsageMetrics(dbUsageMetrics(staged), dbUsageMetrics(existing));
+  assert.equal(total.rowsRead, 34);
+  assert.equal(total.rowsWritten, 0);
+  assert.equal(total.statementCount, 2);
+  assert.equal(total.returnedRows, 2);
+  assert.ok(total.durationMs >= 0);
 });

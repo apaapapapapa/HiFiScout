@@ -16,22 +16,37 @@
  * uncounted, and a total is a lower bound to that extent.
  */
 
-import type { QueryableDatabase } from "./types.js";
+import type { QueryableDatabase, ReadableDatabase } from "./types.js";
 
 /** The subset of `meta` this cares about; absent fields simply do not contribute. */
 interface CountedResult {
   meta?: { rows_read?: number | null; rows_written?: number | null } | null;
 }
 
-export interface ReadAccounting {
+export interface ReadAccounting<TDatabase extends ReadableDatabase = QueryableDatabase> {
   /** Hand this to the work being measured; it behaves exactly like the database it wraps. */
-  readonly db: QueryableDatabase;
+  readonly db: TDatabase;
   /** Rows D1 reported reading, across every counted statement so far. */
   rowsRead(): number;
   /** Rows D1 reported writing, across every counted statement so far. */
   rowsWritten(): number;
   /** How many statements reported a count, so a zero total can be told from no measurement. */
   countedStatements(): number;
+  /** How many measurable statements were attempted, including failures and results without meta. */
+  statementCount(): number;
+  /** Rows returned to the Worker across measured statements. */
+  returnedRows(): number;
+  /** Wall time spent awaiting measured D1 terminal calls. */
+  durationMs(): number;
+}
+
+/** Stable value shape used by aggregate logs and performance assertions. */
+export interface DbUsageMetrics {
+  rowsRead: number;
+  rowsWritten: number;
+  statementCount: number;
+  returnedRows: number;
+  durationMs: number;
 }
 
 function count(value: unknown): number {
@@ -62,12 +77,19 @@ export async function firstMeasured<T>(statement: D1PreparedStatement): Promise<
  * The wrapper only intercepts the terminal calls that carry `meta` -- `all`, `run` and `batch` --
  * and delegates everything else untouched, so a caller cannot tell it is being measured.
  */
-export function accountReads(db: QueryableDatabase): ReadAccounting {
+export function accountReads(db: QueryableDatabase): ReadAccounting<QueryableDatabase>;
+export function accountReads(db: ReadableDatabase): ReadAccounting<ReadableDatabase>;
+export function accountReads(db: ReadableDatabase): ReadAccounting<ReadableDatabase> {
   let rowsRead = 0;
   let rowsWritten = 0;
   let countedStatements = 0;
+  let statementCount = 0;
+  let returnedRows = 0;
+  let durationMs = 0;
 
   const record = (result: unknown): void => {
+    const results = (result as { results?: unknown[] | null } | null)?.results;
+    if (Array.isArray(results)) returnedRows += results.length;
     const meta = (result as CountedResult | null)?.meta;
     if (!meta) return;
     countedStatements += 1;
@@ -90,33 +112,88 @@ export function accountReads(db: QueryableDatabase): ReadAccounting {
         column === undefined ? statement.first() : statement.first(column),
       raw: (options?: unknown) => (statement.raw as (options?: unknown) => unknown)(options),
       all: async () => {
-        const result = await statement.all();
-        record(result);
-        return result;
+        statementCount += 1;
+        const startedAt = performance.now();
+        try {
+          const result = await statement.all();
+          record(result);
+          return result;
+        } finally {
+          durationMs += performance.now() - startedAt;
+        }
       },
       run: async () => {
-        const result = await statement.run();
-        record(result);
-        return result;
+        statementCount += 1;
+        const startedAt = performance.now();
+        try {
+          const result = await statement.run();
+          record(result);
+          return result;
+        } finally {
+          durationMs += performance.now() - startedAt;
+        }
       },
     } as unknown as D1PreparedStatement;
     originals.set(wrapped, statement);
     return wrapped;
   };
 
-  return {
-    db: {
-      prepare: (query: string) => wrap(db.prepare(query)),
-      batch: async <T>(statements: D1PreparedStatement[]) => {
-        const results = await db.batch<T>(
+  const batch = (db as Partial<QueryableDatabase>).batch;
+  const measuredDb = {
+    prepare: (query: string) => wrap(db.prepare(query)),
+    batch: async <T>(statements: D1PreparedStatement[]) => {
+      if (typeof batch !== "function") {
+        throw new Error("batch() is unavailable on this read-only database");
+      }
+      statementCount += statements.length;
+      const startedAt = performance.now();
+      try {
+        const results = (await batch.call(
+          db,
           statements.map((statement) => originals.get(statement) ?? statement),
-        );
+        )) as D1Result<T>[];
         for (const result of results) record(result);
         return results;
-      },
-    } as QueryableDatabase,
+      } finally {
+        durationMs += performance.now() - startedAt;
+      }
+    },
+  } as QueryableDatabase;
+
+  return {
+    // Overloads expose only the surface the input had. The runtime wrapper has `batch` as well so
+    // a QueryableDatabase keeps its exact behaviour, while a read-only caller cannot access it.
+    db: measuredDb,
     rowsRead: () => rowsRead,
     rowsWritten: () => rowsWritten,
     countedStatements: () => countedStatements,
+    statementCount: () => statementCount,
+    returnedRows: () => returnedRows,
+    durationMs: () => durationMs,
   };
+}
+
+/** Takes one immutable snapshot so callers cannot accidentally mix points in time. */
+export function dbUsageMetrics(accounting: ReadAccounting<ReadableDatabase>): DbUsageMetrics {
+  return {
+    rowsRead: accounting.rowsRead(),
+    rowsWritten: accounting.rowsWritten(),
+    statementCount: accounting.statementCount(),
+    returnedRows: accounting.returnedRows(),
+    durationMs: accounting.durationMs(),
+  };
+}
+
+/** Combines independently measured query groups into one aggregate without losing statement cost. */
+export function sumDbUsageMetrics(...metrics: readonly DbUsageMetrics[]): DbUsageMetrics {
+  return metrics.reduce<DbUsageMetrics>(
+    (total, current) => ({
+      rowsRead: total.rowsRead + current.rowsRead,
+      rowsWritten: total.rowsWritten + current.rowsWritten,
+      statementCount: total.statementCount + current.statementCount,
+      returnedRows: total.returnedRows + current.returnedRows,
+      durationMs: total.durationMs + current.durationMs,
+    }),
+    { rowsRead: 0, rowsWritten: 0, statementCount: 0, returnedRows: 0, durationMs: 0 },
+  );
 }

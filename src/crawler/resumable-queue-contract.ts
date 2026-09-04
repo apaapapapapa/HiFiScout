@@ -28,6 +28,14 @@ export interface ResumableCrawlConsumeOptions {
   fetchHtmlPage?: (url: string, options: FetchHtmlPageOptions) => Promise<string>;
   /** Phase 5 fail-closed guard: finalization may consume staged detail HTTP but never fetch around it. */
   requireStagedDetailFetches?: boolean;
+  /**
+   * The instant the Durable Object planned this run's detail enrichment, ISO-8601.
+   *
+   * Finalization re-evaluates the same time-dependent eligibility policy. Given the planning
+   * instant it reaches the same answer; given its own clock it can decide a URL is required that
+   * the plan never staged, which `requireStagedDetailFetches` reports as a failed crawl.
+   */
+  detailDecisionAt?: string;
 }
 
 export type ResumableCrawlConsumeResult =

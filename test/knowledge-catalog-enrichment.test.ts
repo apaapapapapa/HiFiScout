@@ -4,8 +4,12 @@ import assert from "node:assert/strict";
 import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
 import { enrichProductCategories } from "../src/crawler/category-enricher.js";
 import { getShopPlugin } from "../src/crawler/shops/index.js";
+import { findVerifiedCatalogMatches } from "../src/db/knowledge-catalog-repository.js";
+import { findManualVerifiedCategoryMatches } from "../src/db/manual-category-authority-repository.js";
 import { asQueryableDatabase } from "./helpers/d1.js";
 import { detailFetchOptions, parsedProduct } from "./helpers/fixtures.js";
+import { migratedSqlite } from "./helpers/migrated-sqlite.js";
+import { queryPlan, recordingDatabase, unindexedScans } from "./helpers/query-plan.js";
 
 const fujiyaAvicPlugin = getShopPlugin("fujiya-avic");
 if (!fujiyaAvicPlugin) throw new Error("fujiya-avic plugin missing");
@@ -323,4 +327,45 @@ test("ambiguous model aliases are not used as verified evidence", async () => {
 
   assert.equal(result.catalogMatches, 0);
   assert.equal(result.products[0].classificationStatus, "unclassified");
+});
+
+test("verified and manual category lookups use indexed bounded plans", async () => {
+  const { sqlite, db } = migratedSqlite();
+  const now = "2026-09-03T00:00:00.000Z";
+  const inserted = sqlite
+    .prepare(`
+      INSERT INTO knowledge_catalog_products(
+        manufacturer_id, canonical_model, normalized_model, canonical_name,
+        verification_status, created_at, updated_at
+      ) VALUES ('plan-brand', 'MODEL-1', 'MODEL-1', 'Plan Model', 'verified', ?, ?)
+    `)
+    .run(now, now);
+  const productId = Number(inserted.lastInsertRowid);
+  sqlite
+    .prepare(
+      "INSERT INTO knowledge_catalog_product_categories(product_id, category_id, is_primary) VALUES (?, 'dac', 1)",
+    )
+    .run(productId);
+  sqlite
+    .prepare(`
+      INSERT INTO knowledge_catalog_sources(
+        product_id, source_type, source_url, status, created_at, updated_at
+      ) VALUES (?, 'manual_verified', 'manual://plan', 'active', ?, ?)
+    `)
+    .run(productId, now, now);
+
+  const verifiedRecording = recordingDatabase(db);
+  await findVerifiedCatalogMatches(verifiedRecording.db, [
+    { manufacturerId: "plan-brand", model: "MODEL-1", modelResolutionStatus: "resolved" },
+  ]);
+  const manualRecording = recordingDatabase(db);
+  await findManualVerifiedCategoryMatches(manualRecording.db, [
+    { manufacturerId: "plan-brand", model: "MODEL-1", modelResolutionStatus: "candidate" },
+  ]);
+
+  for (const statement of [...verifiedRecording.executed, ...manualRecording.executed]) {
+    const plan = queryPlan(sqlite, statement);
+    assert.deepEqual(unindexedScans(plan), [], JSON.stringify(plan));
+    assert.ok(!plan.some((step) => /USE TEMP B-TREE/iu.test(step.detail)), JSON.stringify(plan));
+  }
 });

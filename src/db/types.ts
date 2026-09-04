@@ -179,8 +179,8 @@ export type ProductPriceLookupRow = Pick<ProductRow, "id" | "source_id" | "price
 
 export type ProductMetadataLookupRow = Pick<ProductRow, "id" | "source_id" | "metadata_json">;
 
-/** Subset of `products` read by the crawler's category enricher. */
-export type CategoryEnrichmentProductRow = Pick<
+/** Exact existing-listing projection needed by category cache and identity decisions. */
+export type ExistingCategoryEnrichmentState = Pick<
   ProductRow,
   | "source_id"
   | "title"
@@ -562,9 +562,20 @@ export interface KnowledgeCatalogVerificationRunStats {
   sourceAttempts: number;
   promoted: number;
   rechecked: number;
+  /** When the run's oldest still-deliverable job was enqueued, or null once none remain. */
+  oldestPendingAt: string | null;
   outcomes: KnowledgeCatalogVerificationOutcomes;
 }
 
+/**
+ * Verification queue state, scoped to the current review run.
+ *
+ * The counters used to aggregate every verification job ever recorded. Nothing decided anything
+ * with that: the scheduler reads `latestRunId` alone, and an operator looking at the queue wants to
+ * know what the run in progress is doing, not how many jobs have completed since the feature
+ * shipped. Lifetime totals over terminal history are a different question, and a scheduled path is
+ * the wrong place to ask it.
+ */
 export interface KnowledgeCatalogVerificationQueueStatus {
   queued: number;
   processing: number;

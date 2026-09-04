@@ -1,3 +1,4 @@
+import { firstMeasured } from "./read-accounting.js";
 import type {
   CompleteKnowledgeCatalogVerificationJobInput,
   KnowledgeCatalogVerificationJob,
@@ -28,6 +29,7 @@ interface VerificationRunStatsRow {
   ambiguous: number | null;
   unsupported: number | null;
   error: number | null;
+  oldest_pending_at: string | null;
 }
 
 interface VerificationQueueBatchRow {
@@ -525,8 +527,11 @@ export async function knowledgeCatalogVerificationRunStats(
   db: QueryableDatabase,
   runId: number,
 ): Promise<KnowledgeCatalogVerificationRunStats> {
-  const row = await db
-    .prepare(`
+  // Measured rather than `first()`: this is an aggregate, and an aggregate is exactly the statement
+  // whose cost is invisible in the row it returns.
+  const row = await firstMeasured<VerificationRunStatsRow>(
+    db
+      .prepare(`
       SELECT
         COUNT(*) AS target_jobs,
         SUM(CASE WHEN job_type = 'candidate' THEN 1 ELSE 0 END) AS candidate_jobs,
@@ -543,12 +548,14 @@ export async function knowledgeCatalogVerificationRunStats(
         SUM(CASE WHEN outcome = 'not_found' THEN 1 ELSE 0 END) AS not_found,
         SUM(CASE WHEN outcome = 'ambiguous' THEN 1 ELSE 0 END) AS ambiguous,
         SUM(CASE WHEN outcome = 'unsupported' THEN 1 ELSE 0 END) AS unsupported,
-        SUM(CASE WHEN outcome = 'error' THEN 1 ELSE 0 END) AS error
+        SUM(CASE WHEN outcome = 'error' THEN 1 ELSE 0 END) AS error,
+        MIN(CASE WHEN status IN ('queued', 'processing', 'retrying') THEN enqueued_at END)
+          AS oldest_pending_at
       FROM knowledge_catalog_verification_jobs
       WHERE run_id = ? AND job_type <> 'finalize'
     `)
-    .bind(runId)
-    .first<VerificationRunStatsRow>();
+      .bind(runId),
+  );
   const queued = number(row?.queued);
   const processing = number(row?.processing);
   const retrying = number(row?.retrying);
@@ -565,6 +572,7 @@ export async function knowledgeCatalogVerificationRunStats(
     sourceAttempts: number(row?.source_attempts),
     promoted: number(row?.promoted),
     rechecked: number(row?.rechecked),
+    oldestPendingAt: row?.oldest_pending_at || null,
     outcomes: {
       verified: number(row?.verified),
       notFound: number(row?.not_found),
@@ -617,36 +625,53 @@ export async function knowledgeCatalogReviewRunLiveness(
   };
 }
 
-export async function knowledgeCatalogVerificationQueueStatus(
+/**
+ * The run the most recently enqueued verification job belongs to.
+ *
+ * The scheduler asks one question of the verification queue -- has it ever been bootstrapped -- and
+ * this is the whole answer. It used to arrive attached to a lifetime aggregate over every job ever
+ * recorded, which the scheduler then discarded.
+ *
+ * `ORDER BY id DESC LIMIT 1` on the rowid alias walks the table backwards and stops at the first
+ * row, so it costs one row however long the history is. `EXPLAIN QUERY PLAN` calls that a `SCAN`
+ * with no temporary b-tree, which is the shape a `LIMIT` genuinely bounds -- unlike a `SCAN` that
+ * has to sort before it can honour one.
+ */
+export async function latestKnowledgeCatalogVerificationRunId(
   db: QueryableDatabase,
-): Promise<KnowledgeCatalogVerificationQueueStatus> {
-  const results = await db.batch<VerificationQueueBatchRow>([
-    db.prepare(`
-      SELECT
-        SUM(CASE WHEN status = 'queued' THEN 1 ELSE 0 END) AS queued,
-        SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END) AS processing,
-        SUM(CASE WHEN status = 'retrying' THEN 1 ELSE 0 END) AS retrying,
-        SUM(CASE WHEN status = 'dead_letter' THEN 1 ELSE 0 END) AS dead_letter,
-        MIN(CASE WHEN status IN ('queued', 'processing', 'retrying') THEN enqueued_at END) AS oldest_pending_at
-      FROM knowledge_catalog_verification_jobs
-      WHERE job_type <> 'finalize'
-    `),
+): Promise<number | null> {
+  const row = await firstMeasured<VerificationQueueBatchRow>(
     db.prepare(`
       SELECT run_id
       FROM knowledge_catalog_verification_jobs
       ORDER BY id DESC
       LIMIT 1
     `),
-  ]);
-  const current = results?.[0]?.results?.[0] || {};
-  const latestRunId = number(results?.[1]?.results?.[0]?.run_id);
+  );
+  return number(row?.run_id) || null;
+}
+
+/**
+ * Verification queue state, scoped to the current review run.
+ *
+ * Both halves used to be global: a lifetime aggregate over every job ever recorded, plus the latest
+ * run's own stats. The counters are now the current run's, which is the question an operator is
+ * actually asking and the only one any caller acted on. Reads scale with the run, not with history.
+ */
+export async function knowledgeCatalogVerificationQueueStatus(
+  db: QueryableDatabase,
+): Promise<KnowledgeCatalogVerificationQueueStatus> {
+  const latestRunId = await latestKnowledgeCatalogVerificationRunId(db);
+  const latestRun = latestRunId
+    ? await knowledgeCatalogVerificationRunStats(db, latestRunId)
+    : null;
   return {
-    queued: number(current.queued),
-    processing: number(current.processing),
-    retrying: number(current.retrying),
-    deadLetter: number(current.dead_letter),
-    oldestPendingAt: current.oldest_pending_at || null,
-    latestRun: latestRunId ? await knowledgeCatalogVerificationRunStats(db, latestRunId) : null,
-    latestRunId: latestRunId || null,
+    queued: latestRun?.queued ?? 0,
+    processing: latestRun?.processing ?? 0,
+    retrying: latestRun?.retrying ?? 0,
+    deadLetter: latestRun?.deadLetter ?? 0,
+    oldestPendingAt: latestRun?.oldestPendingAt ?? null,
+    latestRun,
+    latestRunId,
   };
 }

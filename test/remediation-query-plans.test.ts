@@ -13,12 +13,15 @@ import { searchProducts } from "../src/db/product-search-repository.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { productQuery } from "./helpers/product-query.js";
 import {
+  assertNoGrowingTableScans,
   queryPlan,
   readsThroughIndex,
   recordingDatabase,
+  selects,
+  SMALL_REFERENCE_TABLES,
   unindexedScans,
 } from "./helpers/query-plan.js";
-import type { ExecutedStatement } from "./helpers/query-plan.js";
+import type { ScanAllowance } from "./helpers/query-plan.js";
 
 /**
  * The index coverage section 16 asks for, checked against actual query plans.
@@ -37,21 +40,6 @@ import type { ExecutedStatement } from "./helpers/query-plan.js";
 
 /** The listing count is arbitrary; the planner's choice is driven by the schema, not by row count. */
 const LISTING_COUNT = 40;
-
-/**
- * An accepted row-by-row read, tied to the one statement that performs it.
- *
- * `when` is what keeps an exception honest. An allowance listed for the whole recorded workload
- * would also excuse a *different* query that starts scanning the same table, which is the opposite
- * of what this file is for.
- */
-interface ScanAllowance {
-  /** Table or alias, as the plan names it. */
-  readonly tables: readonly string[];
-  /** The statement the allowance covers. */
-  readonly when: RegExp;
-  readonly reason: string;
-}
 
 /**
  * Full table reads the schema does not yet avoid, measured rather than assumed.
@@ -104,65 +92,6 @@ function seedListings(sqlite: DatabaseSync): void {
       `https://example.test/${i}`,
       model,
       model,
-    );
-  }
-}
-
-/**
- * The statements whose plan is worth checking.
- *
- * `WITH` and `INSERT ... SELECT` are included deliberately: the selectors that pick stale listings
- * are a CTE feeding an insert into the queue, so matching only bare `SELECT` would skip the exact
- * queries section 16 is about.
- */
-function selects(executed: readonly ExecutedStatement[]): ExecutedStatement[] {
-  return executed.filter((statement) =>
-    /^\s*(SELECT|WITH|INSERT[\s\S]*\bSELECT\b)/i.test(statement.sql),
-  );
-}
-
-/** Constant-size reference tables; reading one end to end costs nothing that grows. */
-const SMALL_REFERENCE_TABLES = [
-  "knowledge_catalog_products",
-  "knowledge_catalog_product_categories",
-  "knowledge_catalog_aliases",
-  "knowledge_catalog_manufacturers",
-  "knowledge_catalog_manufacturer_aliases",
-];
-
-/**
- * Asserts every statement a repository issued reads the growing tables through an index.
- *
- * Allowances are matched against each statement individually, so an exception granted for one query
- * cannot silently cover a different one that starts scanning the same table.
- */
-function assertNoGrowingTableScans(
-  sqlite: DatabaseSync,
-  executed: readonly ExecutedStatement[],
-  { allowances = [] as ScanAllowance[], label = "" } = {},
-): void {
-  const inspected = selects(executed);
-  assert.ok(inspected.length > 0, `${label}: nothing was executed, so nothing was proven`);
-  const applied = new Set<ScanAllowance>();
-  for (const statement of inspected) {
-    const matching = allowances.filter((allowance) => allowance.when.test(statement.sql));
-    for (const allowance of matching) applied.add(allowance);
-    const scans = unindexedScans(queryPlan(sqlite, statement), [
-      ...SMALL_REFERENCE_TABLES,
-      ...matching.flatMap((allowance) => allowance.tables),
-    ]);
-    assert.deepEqual(
-      scans,
-      [],
-      `${label}: full table read of ${scans.join(", ")} in\n${statement.sql.trim()}`,
-    );
-  }
-  // An allowance nobody needed is a fix that landed without its record being removed.
-  for (const allowance of allowances) {
-    assert.ok(
-      applied.has(allowance),
-      `${label}: no statement matched the recorded allowance for ${allowance.tables.join(", ")} — ` +
-        "if the query no longer scans, delete the KNOWN_UNINDEXED_READS entry",
     );
   }
 }

@@ -2,6 +2,7 @@ import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import {
   deactivateProductsBySourceIds,
+  selectExistingCategoryEnrichmentStates,
   selectExistingProducts,
   selectProductsForHistory,
   upsertProducts,
@@ -9,6 +10,8 @@ import {
 import type { CatalogProductUpsertInput } from "../src/catalog/types.js";
 import { captureDatabase } from "./helpers/d1.js";
 import type { CapturedStatement } from "./helpers/d1.js";
+import { migratedSqlite } from "./helpers/migrated-sqlite.js";
+import { queryPlan, readsThroughIndex, recordingDatabase } from "./helpers/query-plan.js";
 
 type ExistingFixture = Record<string, unknown> & { id: number; source_id: string };
 
@@ -44,6 +47,80 @@ test("existing product lookup only reads source ids observed in the current craw
   assert.deepEqual(db.calls[0].binds, ["hifido", "a", "b"]);
   assert.match(db.calls[0].sql, /source_id IN \(\?,\?\)/);
   assert.doesNotMatch(db.calls[0].sql, /WHERE shop_key = \?\s*$/m);
+});
+
+test("category enrichment lookup selects only its ten decision fields", async () => {
+  const lightweight = captureDatabase();
+  const full = captureDatabase();
+
+  await selectExistingCategoryEnrichmentStates(lightweight, "hifido", ["a", "b"]);
+  await selectExistingProducts(full, "hifido", ["a", "b"]);
+
+  const lightweightSql = lightweight.calls[0]?.sql || "";
+  const fullSql = full.calls[0]?.sql || "";
+  const projection = lightweightSql
+    .slice(
+      lightweightSql.indexOf("SELECT") + "SELECT".length,
+      lightweightSql.lastIndexOf("FROM products"),
+    )
+    .split(",")
+    .map((column) => column.trim())
+    .filter(Boolean);
+  const fullProjection = fullSql
+    .slice(fullSql.indexOf("SELECT") + "SELECT".length, fullSql.lastIndexOf("FROM products"))
+    .split(",")
+    .map((column) => column.trim())
+    .filter(Boolean);
+
+  assert.deepEqual(projection, [
+    "source_id",
+    "title",
+    "model",
+    "manufacturer_id",
+    "category",
+    "primary_category_id",
+    "category_ids",
+    "classification_status",
+    "search_aliases",
+    "metadata_json",
+  ]);
+  assert.ok(projection.length < fullProjection.length);
+  assert.doesNotMatch(lightweightSql, /product_admin_overrides|price_yen|stock_status/u);
+});
+
+test("category enrichment lookup deduplicates source ids before bounded chunking", async () => {
+  const db = captureDatabase();
+
+  await selectExistingCategoryEnrichmentStates(db, "hifido", ["a", "a", "b", "b"], 1);
+
+  assert.equal(db.calls.length, 2);
+  assert.deepEqual(
+    db.calls.map((call) => call.binds),
+    [
+      ["hifido", "a"],
+      ["hifido", "b"],
+    ],
+  );
+});
+
+test("category enrichment lookup uses the existing shop/source identity index", async () => {
+  const { sqlite, db } = migratedSqlite();
+  sqlite
+    .prepare(`
+      INSERT INTO products(
+        shop_key, source_id, title, source_url, first_seen_at, last_seen_at, last_changed_at
+      ) VALUES ('hifido', 'a', 'A', 'https://shop.test/a', '2026-09-03', '2026-09-03', '2026-09-03')
+    `)
+    .run();
+  const recording = recordingDatabase(db);
+
+  await selectExistingCategoryEnrichmentStates(recording.db, "hifido", ["a"]);
+
+  const statement = recording.executed[0];
+  assert.ok(statement);
+  assert.ok(
+    readsThroughIndex(queryPlan(sqlite, statement), "products", "sqlite_autoindex_products_1"),
+  );
 });
 
 test("missing products are deactivated in bounded source-id chunks", async () => {

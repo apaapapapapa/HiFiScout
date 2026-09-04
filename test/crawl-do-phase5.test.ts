@@ -216,12 +216,14 @@ test("Phase 5 detail staging reuses the migration-0065 crawl frontier", () => {
   );
 });
 
-test("production deploy skips D1 only when no migrations changed since last success", () => {
+test("production deploy skips D1 only when no migrations changed since the confirmed deployment", () => {
   const workflow = readFileSync(
     new URL("../.github/workflows/deploy.yml", import.meta.url),
     "utf8",
   );
-  assert.match(workflow, /actions\/workflows\/deploy\.yml\/runs\?branch=main&status=success/);
+  assert.match(workflow, /actions\/artifacts\?name=deployment-identity&per_page=100/);
+  assert.match(workflow, /unzip -p "\$zip_file" deployment-sha\.txt/);
+  assert.doesNotMatch(workflow, /last_deployed_sha="\$run_sha"/);
   assert.match(workflow, /--diff-filter=AM/);
   assert.match(workflow, /steps\.d1-migrations\.outputs\.required == 'true'/);
 });

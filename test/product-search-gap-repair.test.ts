@@ -3,6 +3,7 @@ import { test } from "vite-plus/test";
 
 import { repairActiveListingProjectionGaps } from "../src/db/product-search-gap-repair.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
+import { recordingDatabase } from "./helpers/query-plan.js";
 
 const NOW = "2026-08-22T09:30:00.000Z";
 
@@ -284,4 +285,25 @@ test("repairs safe exact identities that drift across multiple search entities",
     countRemainingGaps: true,
   });
   assert.deepEqual(second, { selectedCount: 0, repairedCount: 0, remainingGapCount: 0 });
+});
+
+/** The unbounded aggregate: the seed-scoped one is the same shape but constrained by `p.id IN (…)`. */
+function unboundedGapCounts(executed: readonly { sql: string }[]): string[] {
+  return executed
+    .map((statement) => statement.sql)
+    .filter((sql) => /COUNT\(\*\) AS gap_count/u.test(sql) && !/p\.id IN \(/u.test(sql));
+}
+
+test("the outstanding-gap count is issued only when a caller asks to pay for it", async () => {
+  // It is the one statement here whose cost grows with the catalog rather than with `maxListings`,
+  // so a caller that does not read the number must not be charged for it.
+  const { db } = migratedSqlite();
+  const silent = recordingDatabase(db);
+  await repairActiveListingProjectionGaps(silent.db, { countRemainingGaps: false });
+  assert.deepEqual(unboundedGapCounts(silent.executed), []);
+
+  const asking = recordingDatabase(db);
+  const result = await repairActiveListingProjectionGaps(asking.db, { countRemainingGaps: true });
+  assert.equal(unboundedGapCounts(asking.executed).length, 1);
+  assert.equal(result.remainingGapCount, 0, "asking for it must still return a number");
 });

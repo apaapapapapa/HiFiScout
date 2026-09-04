@@ -9,7 +9,7 @@ import {
 import { enrichProductCategories } from "../src/crawler/category-enricher.js";
 import { getShopPlugin } from "../src/crawler/shops/index.js";
 import type { NormalizedCatalogProduct } from "../src/catalog/types.js";
-import type { CategoryEnrichmentProductRow } from "../src/db/types.js";
+import type { ExistingCategoryEnrichmentState } from "../src/db/types.js";
 import { detailFetchOptions, emptyCatalogDb, parsedProduct } from "./helpers/fixtures.js";
 
 // These regressions exercise the two post-merge review findings from #270 and #271 end to end.
@@ -52,7 +52,7 @@ function duplicateProducts(): NormalizedCatalogProduct[] {
 
 test("cached detail enrichment replays evidence instead of copying only the final classification", async () => {
   const products = duplicateProducts();
-  const existingRows: CategoryEnrichmentProductRow[] = [
+  const existingRows: ExistingCategoryEnrichmentState[] = [
     {
       source_id: "cached-1",
       manufacturer_id: products[0].manufacturerId,

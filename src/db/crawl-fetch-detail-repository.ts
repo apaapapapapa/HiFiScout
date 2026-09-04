@@ -1,4 +1,5 @@
 import type { QueryableDatabase } from "./types.js";
+import { firstMeasured } from "./read-accounting.js";
 
 const DETAIL_PAGE_KEY_PREFIX = "__hifiscout_category_detail__:";
 
@@ -51,14 +52,15 @@ export async function getCrawlFetchDetailPage(
   runId: string,
   targetUrl: string,
 ): Promise<CrawlFetchDetailPageRow | null> {
-  const staged = await db
-    .prepare(`
+  const staged = await firstMeasured<DetailStagingRow>(
+    db
+      .prepare(`
       SELECT html_text, products_json, html_bytes, fetched_at
       FROM crawl_fetch_pages
       WHERE run_id = ? AND page_key = ? AND state = 'ignored'
     `)
-    .bind(runId, detailPageKey(targetUrl))
-    .first<DetailStagingRow>();
+      .bind(runId, detailPageKey(targetUrl)),
+  );
   if (!staged) return null;
   if (!staged.fetched_at) throw new Error(`invalid staged category detail fetch: ${targetUrl}`);
   return {
@@ -69,6 +71,40 @@ export async function getCrawlFetchDetailPage(
     html_bytes: Number(staged.html_bytes || 0),
     fetched_at: staged.fetched_at,
   };
+}
+
+/**
+ * Whether this run already committed a detail-fetch attempt for the target.
+ *
+ * The crash-recovery fence only ever asks *whether* a target was committed, and the answer is one
+ * bit. {@link getCrawlFetchDetailPage} answers it by loading the staged detail page -- its HTML, its
+ * metadata, its byte count -- which the fence then discards. Once per skipped target that is a
+ * whole seller page serialised by D1, transferred to the isolate, and dropped; the plan cursor asks
+ * it once per Alarm and once per target it recovers past.
+ *
+ * The `(run_id, page_key)` primary key answers this without visiting the row, so the cost is the
+ * index seek and nothing else.
+ *
+ * Deliberately without the `fetched_at` validation the full read performs: a fence answers "already
+ * attempted", and a row that exists but is malformed still means this run must not ask the seller
+ * again. Finalization, which needs the response itself, keeps that check.
+ */
+export async function hasCrawlFetchDetailPage(
+  db: QueryableDatabase,
+  runId: string,
+  targetUrl: string,
+): Promise<boolean> {
+  const staged = await firstMeasured<{ committed: number }>(
+    db
+      .prepare(`
+      SELECT 1 AS committed
+      FROM crawl_fetch_pages
+      WHERE run_id = ? AND page_key = ? AND state = 'ignored'
+      LIMIT 1
+    `)
+      .bind(runId, detailPageKey(targetUrl)),
+  );
+  return staged != null;
 }
 
 /**

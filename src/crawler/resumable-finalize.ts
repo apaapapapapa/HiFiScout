@@ -4,8 +4,8 @@ import {
   claimCrawlFetchFinalization,
   completeCrawlFetchSession,
   failCrawlFetchSession,
+  firstCrawlFetchPageKey,
   getCrawlFetchSession,
-  listCrawlFetchPages,
   type CrawlFetchSessionRow,
 } from "../db/crawl-fetch-session-repository.js";
 import {
@@ -13,6 +13,8 @@ import {
   setPublishedCrawlPageCount,
 } from "../db/crawl-fetch-page-repository.js";
 import { syncProductSearchEntities } from "../db/product-search-entity-repository.js";
+import { accountReads, dbUsageMetrics, sumDbUsageMetrics } from "../db/read-accounting.js";
+import type { QueryableDatabase } from "../db/types.js";
 import { errorMessage } from "../types.js";
 import { recheckShopInventory } from "./inventory-recheck.js";
 import {
@@ -27,8 +29,23 @@ import type { CrawlResult, FetchHtmlPageOptions, HtmlTransport, ShopPlugin } fro
 
 const FINALIZE_RECLAIM_MS = 2 * 60_000;
 
+/**
+ * The pinned enrichment instant, when the caller supplied one that is actually a time.
+ *
+ * The value crosses a queue message, so an unparseable one is possible; letting it through would
+ * reach `toISOString()` inside enrichment and fail the crawl over a field that only exists to make
+ * two clocks agree. Falling back to the crawl's own clock restores exactly the behaviour this
+ * refines, which is a far smaller loss than the run.
+ */
+function pinnedEnrichmentInstant(value: string | undefined): Date | undefined {
+  if (!value) return undefined;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
 function stagedFetchFunction(
   env: ResumableRuntimeEnv,
+  detailDb: QueryableDatabase,
   plugin: ShopPlugin,
   runId: string,
   syntheticUrl: string,
@@ -55,7 +72,7 @@ function stagedFetchFunction(
     if (new URL(url).pathname === "/robots.txt") return globalThis.fetch(input, init);
 
     if (plugin.capabilities.detailCategoryEvidence) {
-      const staged = await getCrawlFetchDetailPage(env.DB, runId, url);
+      const staged = await getCrawlFetchDetailPage(detailDb, runId, url);
       if (staged?.error_message) throw new Error(staged.error_message);
       if (staged?.html_text != null) {
         return new Response(staged.html_text, {
@@ -119,9 +136,11 @@ export async function processFinalize(
 
   const claimedSession = await getCrawlFetchSession(env.DB, session.run_id);
   if (!claimedSession) throw new Error(`crawl fetch session disappeared: ${session.run_id}`);
-  const products = await loadStagedCrawlProducts(env.DB, session.run_id);
-  const pages = await listCrawlFetchPages(env.DB, session.run_id);
-  const seedUrl = pages[0]?.page_key || `${plugin.baseUrl}/`;
+  const stagedAccounting = accountReads(env.DB);
+  const products = await loadStagedCrawlProducts(stagedAccounting.db, session.run_id);
+  const seedAccounting = accountReads(env.DB);
+  const seedUrl =
+    (await firstCrawlFetchPageKey(seedAccounting.db, session.run_id)) || `${plugin.baseUrl}/`;
   const synthetic = new URL(seedUrl);
   synthetic.searchParams.set("__hifiscout_staged_run", session.run_id);
   const syntheticUrl = synthetic.toString();
@@ -149,11 +168,18 @@ export async function processFinalize(
     plugin.capabilities.transport?.kind,
     globalThis.fetch,
   );
+  // The instant the Durable Object planned this run's detail fetches. Enrichment alone is pinned to
+  // it -- the crawl's own clock stays current -- so the eligibility policy cannot drift between
+  // planning and finalization while the paced fetches run.
+  const enrichmentDecidedAt = pinnedEnrichmentInstant(options.detailDecisionAt);
+  const detailReplayAccounting = accountReads(env.DB);
   try {
     const result = await crawlShop(env, publishAdapter, {
       force: true,
+      ...(enrichmentDecidedAt ? { enrichmentDecidedAt } : {}),
       fetchFn: stagedFetchFunction(
         env,
+        detailReplayAccounting.db,
         plugin,
         session.run_id,
         syntheticUrl,
@@ -206,6 +232,23 @@ export async function processFinalize(
     }
     return { kind: "terminal", runId: session.run_id, result };
   } finally {
+    const finalizationDbUsage = sumDbUsageMetrics(
+      dbUsageMetrics(stagedAccounting),
+      dbUsageMetrics(seedAccounting),
+      dbUsageMetrics(detailReplayAccounting),
+    );
+    console.log(
+      JSON.stringify({
+        event: "crawl_finalization_db_usage",
+        shopKey: plugin.key,
+        runId: session.run_id,
+        stagedCount: products.length,
+        stagedRowsRead: stagedAccounting.rowsRead(),
+        seedRowsRead: seedAccounting.rowsRead(),
+        detailEvidenceRowsRead: detailReplayAccounting.rowsRead(),
+        ...finalizationDbUsage,
+      }),
+    );
     await originalTransport.close?.().catch((error: unknown) =>
       console.warn(
         JSON.stringify({
