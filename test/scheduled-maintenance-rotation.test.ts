@@ -32,23 +32,40 @@ test("projection repair runs on every general-cron tick", () => {
   }
 });
 
-test("every maintenance task still runs within an hour", () => {
+test("every sub-daily maintenance task still runs within an hour", () => {
   const seen = new Set(ticks(12).flatMap((at) => dueMaintenanceTasks(at).map((task) => task.name)));
 
-  // Spreading the load must not silently drop work. Twelve ticks is one hour, the longest cadence.
+  // Spreading the load must not silently drop ordinary work. The catalog-sized exact-identity
+  // safety net is intentionally the one exception and has its own daily-cadence assertion below.
   assert.deepEqual(
     [...seen].sort(),
     [
       "data_quality_remediation_sweep",
       "knowledge_catalog_queue_quota_recovery",
       "knowledge_catalog_review_bootstrap",
-      "product_search_exact_identity_repair",
       "product_search_projection_repair",
       "resume_interrupted_crawl_runs",
       "stale_knowledge_catalog_export_jobs",
       "stale_product_audit_export_jobs",
     ],
-    "an hour of ticks should cover every task exactly once or more",
+    "an hour of ticks should cover every sub-daily task exactly once or more",
+  );
+});
+
+test("the exact-identity full-scan safety net runs once per day", () => {
+  const fullScans = ticks(288).filter((at) =>
+    dueMaintenanceTasks(at).some((task) => task.name === "product_search_exact_identity_repair"),
+  );
+
+  assert.deepEqual(
+    fullScans.map((at) => at.toISOString()),
+    ["2026-08-28T18:00:00.000Z"],
+    "the catalog-sized self-join must not return to an hourly cadence",
+  );
+  assert.equal(
+    fullScans.some(isDailyMaintenanceSlot),
+    false,
+    "the safety scan should not stack on the heavier daily-maintenance slot",
   );
 });
 

@@ -1,7 +1,7 @@
 /**
  * Change-driven repair for exact-identity search splits.
  *
- * The hourly full scan asks "which of the active listings is in a split identity group?", a question
+ * The full safety scan asks "which of the active listings is in a split identity group?", a question
  * no index can answer: the predicate joins `products` to itself on identity. Its cost is the size of
  * the catalog and is paid whether or not anything drifted. This walks the other way round -- from
  * the identities that actually changed, recorded by the triggers in migration 0074 -- so the cost is
@@ -254,7 +254,7 @@ async function clearClaim(
 /**
  * Identities still waiting to be repaired.
  *
- * Exported because the hourly safety-net scan cannot interpret its own result without it: a repair
+ * Exported because the daily safety-net scan cannot interpret its own result without it: a repair
  * there means a trigger did not fire only when there was nothing left in the queue to explain it.
  */
 export async function countDirtyExactIdentityBacklog(db: QueryableDatabase): Promise<number> {

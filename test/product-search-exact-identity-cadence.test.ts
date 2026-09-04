@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
 import { repairActiveListingProjectionGaps } from "../src/db/product-search-gap-repair.js";
-import { dueMaintenanceTasks } from "../src/scheduled.js";
+import {
+  dueMaintenanceTasks,
+  repairDailyExactIdentityGaps,
+  repairDailyProjectionGaps,
+} from "../src/scheduled.js";
 import { asQueryableDatabase } from "./helpers/d1.js";
 
 /** Records the selector SQL each phase issues; every phase finds nothing, as a healthy tick does. */
@@ -48,18 +52,18 @@ test("the five-minute sweep runs the cheap phases and skips the identity self-jo
   );
 });
 
-test("the hourly pass runs the identity self-join and nothing else", async () => {
+test("the daily safety pass runs the identity self-join and nothing else", async () => {
   const db = selectorRecorder();
 
   // The phases share one work budget. Running the cheap ones here too would let a sustained
   // coverage backlog spend it before the phase this pass exists for was ever selected.
-  await repairActiveListingProjectionGaps(db, { phases: "exact-identity" });
+  await repairDailyExactIdentityGaps(db);
 
   assert.equal(db.selectors.length, 1);
   assert.ok(EXACT_IDENTITY_SELECTOR.test(db.selectors[0]));
 });
 
-test("the default keeps every phase, so strict and daily callers are unchanged", async () => {
+test("the default keeps every phase for explicit full-scan callers", async () => {
   const db = selectorRecorder();
 
   await repairActiveListingProjectionGaps(db);
@@ -72,8 +76,21 @@ test("the default keeps every phase, so strict and daily callers are unchanged",
   );
 });
 
-test("the identity phase is scheduled hourly while the cheap sweep stays five-minutely", () => {
-  const ticks = 12; // one hour of five-minute ticks
+test("daily maintenance does not duplicate the named exact-identity safety scan", async () => {
+  const db = selectorRecorder();
+
+  await repairDailyProjectionGaps(db);
+
+  assert.equal(db.selectors.length, 2, "daily maintenance keeps both bounded coverage phases");
+  assert.equal(
+    db.selectors.some((sql) => EXACT_IDENTITY_SELECTOR.test(sql)),
+    false,
+    "the catalog-sized scan is owned only by its separately measured daily task",
+  );
+});
+
+test("the identity phase is scheduled daily while the cheap sweep stays five-minutely", () => {
+  const ticks = 288; // one day of five-minute ticks
   let sweeps = 0;
   let identityPasses = 0;
   for (let tick = 0; tick < ticks; tick += 1) {
@@ -83,5 +100,5 @@ test("the identity phase is scheduled hourly while the cheap sweep stays five-mi
   }
 
   assert.equal(sweeps, ticks, "projection repair keeps its five-minute convergence promise");
-  assert.equal(identityPasses, 1, "the peer scan is paid for once an hour instead of twelve times");
+  assert.equal(identityPasses, 1, "the peer scan is paid for once a day instead of once an hour");
 });
