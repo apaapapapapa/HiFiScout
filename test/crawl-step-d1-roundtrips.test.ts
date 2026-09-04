@@ -104,7 +104,7 @@ async function step(
   held: Harness,
   stage: "fetch" | "parse",
   page: number,
-): Promise<{ statements: string[] }> {
+): Promise<{ statements: string[]; sql: string[] }> {
   const session = await getCrawlFetchSession(held.inner, held.runId);
   assert.ok(session, "the run should still have a session");
   assert.equal(session.next_phase, stage);
@@ -113,32 +113,36 @@ async function step(
   await run(held.env, plugin, session, held.body, {
     fetchHtmlPage: async () => listingHtml(page),
   });
-  return { statements: statementLines(held.executed) };
+  return {
+    statements: statementLines(held.executed),
+    sql: held.executed.map((statement) => statement.sql),
+  };
 }
 
-test("a parse step reads the frontier once instead of the whole run twice", async () => {
+test("a parse step probes the frontier once instead of materializing it", async () => {
   const held = await harness(4);
   await step(held, "fetch", 0);
 
-  const { statements } = await step(held, "parse", 0);
+  const { statements, sql } = await step(held, "parse", 0);
 
-  // The page being parsed, the frontier, the two writes of the one batched commit, then the session
-  // the continuation is built from. No second aggregate, and no `SELECT *` over the run.
+  // The page being parsed, the frontier probe, the two writes of the one batched commit, then the
+  // session the continuation is built from.
   assert.deepEqual(statements.length, 5, `unexpected statements:\n${statements.join("\n")}`);
   assert.ok(
-    !statements.some((sql) =>
-      /SELECT \* FROM crawl_fetch_pages WHERE run_id = \? ORDER BY/u.test(sql),
+    !sql.some((text) =>
+      /FROM crawl_fetch_pages\s+WHERE run_id = \?\s+ORDER BY ordinal/u.test(text),
     ),
-    `a parse step must not read every column of every page:\n${statements.join("\n")}`,
+    `a parse step must not walk the run's pages:\n${sql.join("\n---\n")}`,
   );
   assert.ok(
-    statements.some((sql) => /SELECT page_key, ordinal, state, item_count/u.test(sql)),
-    `the frontier read should be the narrow one:\n${statements.join("\n")}`,
+    !sql.some((text) => /SUM\(item_count\)/u.test(text)),
+    `the staged-item question is answered by an existence probe:\n${sql.join("\n---\n")}`,
   );
-  assert.ok(
-    !statements.some((sql) => /COALESCE\(SUM\(item_count\)/u.test(sql)),
-    `the staged item count comes from the frontier now:\n${statements.join("\n")}`,
-  );
+  const probe = sql.filter((text) => /AS next_ordinal/u.test(text));
+  assert.equal(probe.length, 1, `one statement carries every frontier fact:\n${sql.join("\n")}`);
+  for (const fact of [/AS next_ordinal/u, /AS has_staged_items/u, /AS next_pending_page_key/u]) {
+    assert.match(probe[0]!, fact);
+  }
 });
 
 test("a step's D1 traffic does not grow with the pages already behind it", async () => {

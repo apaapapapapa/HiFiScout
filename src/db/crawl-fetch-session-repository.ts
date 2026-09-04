@@ -81,6 +81,19 @@ export async function getCrawlFetchSession(
     .first<CrawlFetchSessionRow>();
 }
 
+function uniqueFrontierPages(pages: readonly CrawlFetchPageInput[]): CrawlFetchPageInput[] {
+  const keys = new Set<string>();
+  const ordinals = new Set<number>();
+  const unique: CrawlFetchPageInput[] = [];
+  for (const page of pages) {
+    if (keys.has(page.key) || ordinals.has(page.ordinal)) continue;
+    keys.add(page.key);
+    ordinals.add(page.ordinal);
+    unique.push(page);
+  }
+  return unique;
+}
+
 export async function ensureCrawlFetchSession(
   db: QueryableDatabase,
   input: {
@@ -93,7 +106,8 @@ export async function ensureCrawlFetchSession(
     createdAt: string;
   },
 ): Promise<{ session: CrawlFetchSessionRow; created: boolean }> {
-  const first = input.pages[0] || null;
+  const pages = uniqueFrontierPages(input.pages);
+  const first = pages[0] || null;
   const insert = await db
     .prepare(`
       INSERT INTO crawl_fetch_sessions (
@@ -119,10 +133,12 @@ export async function ensureCrawlFetchSession(
   // Session creation and the frontier are intentionally repairable. If the isolate is killed after
   // the session row lands but before the frontier does, getCrawlFetchSession() hides that incomplete
   // active row from ensureSession(), which comes back through here and replays these idempotent
-  // INSERTs. A normal duplicate delivery simply hits INSERT OR IGNORE and changes nothing.
-  if (input.pages.length) {
+  // INSERTs. A normal duplicate delivery simply hits INSERT OR IGNORE and changes nothing. The
+  // aggregate values were written with the session, so this repair does not need to scan the
+  // frontier or increment counters a second time.
+  if (pages.length) {
     await db.batch(
-      input.pages.map((page) =>
+      pages.map((page) =>
         db
           .prepare(`
             INSERT OR IGNORE INTO crawl_fetch_pages
