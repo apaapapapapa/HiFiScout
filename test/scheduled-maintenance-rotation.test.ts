@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
 import { dueMaintenanceTasks, isDailyMaintenanceSlot } from "../src/scheduled.js";
+import { captureDatabase } from "./helpers/d1.js";
 
 const TICK_MS = 5 * 60 * 1000;
 
@@ -43,6 +44,7 @@ test("every sub-daily maintenance task still runs within an hour", () => {
       "data_quality_remediation_sweep",
       "knowledge_catalog_queue_quota_recovery",
       "knowledge_catalog_review_bootstrap",
+      "price_index_recent_refresh",
       "product_search_projection_repair",
       "resume_interrupted_crawl_runs",
       "stale_knowledge_catalog_export_jobs",
@@ -50,6 +52,55 @@ test("every sub-daily maintenance task still runs within an hour", () => {
     ],
     "an hour of ticks should cover every sub-daily task exactly once or more",
   );
+});
+
+test("recent price-index maintenance runs once per hour", () => {
+  const firesIn = ticks(12).filter((at) =>
+    dueMaintenanceTasks(at).some((task) => task.name === "price_index_recent_refresh"),
+  );
+
+  assert.equal(firesIn.length, 1, "the ninety-day expiry projection only needs hourly precision");
+});
+
+test("the scheduled price-index task invokes bounded backfill and expiry maintenance", async () => {
+  const at = ticks(12).find((tick) =>
+    dueMaintenanceTasks(tick).some((task) => task.name === "price_index_recent_refresh"),
+  );
+  assert.ok(at);
+  const task = dueMaintenanceTasks(at).find(
+    (candidate) => candidate.name === "price_index_recent_refresh",
+  );
+  assert.ok(task);
+  const db = captureDatabase((statement) => {
+    if (/FROM knowledge_catalog_price_index_recent_backfill_runs/u.test(statement.sql)) {
+      return [{ after_catalog_product_id: 100, status: "completed" }];
+    }
+    return [];
+  });
+  const lines: string[] = [];
+  const originalLog = console.log;
+  console.log = (line: string) => lines.push(line);
+  try {
+    await task.run({ DB: db } as unknown as Env);
+  } finally {
+    console.log = originalLog;
+  }
+
+  assert.equal(db.calls.length, 2, "completed backfill plus an empty due selector stay bounded");
+  assert.equal(
+    db.calls.some((statement) => /knowledge_catalog_price_index_samples/u.test(statement.sql)),
+    false,
+  );
+  assert.deepEqual(JSON.parse(lines.at(-1) || "{}"), {
+    event: "price_index_recent_refresh",
+    backfillStatus: "completed",
+    backfillSelectedProducts: 0,
+    backfilledProducts: 0,
+    backfillHasMore: false,
+    dueProducts: 0,
+    refreshedProducts: 0,
+    refreshHasMore: false,
+  });
 });
 
 test("the exact-identity full-scan safety net runs once per day", () => {
