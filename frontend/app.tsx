@@ -5,4 +5,6 @@
  */
 import "./product-permalink-navigation.js";
 import "./product-correction-report-ui.js";
-import "./public-app.js";
+import { mountPublicApp } from "./public-app.js";
+
+mountPublicApp();

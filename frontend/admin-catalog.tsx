@@ -398,12 +398,17 @@ export function CatalogAdmin() {
   const [editWarning, setEditWarning] = useState(false);
   const [mergeSourceId, setMergeSourceId] = useState("");
   const [mergeStatus, setMergeStatus] = useState("");
+  const [mergePreview, setMergePreview] = useState<{
+    source: CatalogProduct;
+    target: CatalogProduct;
+  } | null>(null);
   const editDialogRef = useRef<HTMLDialogElement>(null);
 
   const [createMode, setCreateMode] = useState<{ candidate: CatalogCandidate | null } | null>(null);
   const [createDraft, setCreateDraft] = useState<CreateDraft>(EMPTY_CREATE_DRAFT);
   const [operationBusy, setOperationBusy] = useState(false);
   const createDialogRef = useRef<HTMLDialogElement>(null);
+  const createInitialRef = useRef<CreateDraft>(EMPTY_CREATE_DRAFT);
 
   const [csvStates, setCsvStates] = useState<CsvExportStates>(INITIAL_CSV_STATES);
 
@@ -607,6 +612,59 @@ export function CatalogAdmin() {
       editLifecycle !== editing.lifecycleStatus),
   );
 
+  const closeEdit = () => {
+    if (editSaving || operationBusy) return;
+    if (editDirty && !window.confirm("未保存の変更を破棄して閉じますか？")) {
+      setEditWarning(true);
+      return;
+    }
+    setEditing(null);
+  };
+  const closeCreate = () => {
+    if (operationBusy) return;
+    if (
+      JSON.stringify(createDraft) !== JSON.stringify(createInitialRef.current) &&
+      !window.confirm("未保存の入力を破棄して閉じますか？")
+    )
+      return;
+    setCreateMode(null);
+  };
+  const mergeDescription = (product: CatalogProduct) =>
+    `${product.manufacturerId} / ${product.canonicalModel} (#${product.id})\n${product.canonicalName} · ${categoryName(product.primaryCategoryId)} · 関連商品 ${product.matchedListingCount}件`;
+  const previewMerge = async () => {
+    const sourceId = Number(mergeSourceId);
+    if (
+      !editing ||
+      operationBusy ||
+      editDirty ||
+      !Number.isSafeInteger(sourceId) ||
+      sourceId <= 0 ||
+      sourceId === editing.id
+    )
+      return;
+    setOperationBusy(true);
+    setMergePreview(null);
+    setMergeStatus("統合対象を確認しています…");
+    try {
+      // The existing verified-product endpoint is ordered by ID; one keyset row resolves an exact ID.
+      const readProduct = async (id: number) => {
+        const result = await adminJson<CatalogListResponse>(
+          `/api/admin/knowledge-catalog/products?afterId=${id - 1}&limit=1`,
+        );
+        const product = result.items.find((item) => item.id === id);
+        if (!product) throw new Error(`製品 #${id} が見つかりません。IDを確認してください。`);
+        return product;
+      };
+      const [source, target] = await Promise.all([readProduct(sourceId), readProduct(editing.id)]);
+      setMergePreview({ source, target });
+      setMergeStatus("メーカー・型番・カテゴリと、残る製品を確認してから統合してください。");
+    } catch (error) {
+      setMergeStatus(catalogErrorText(error));
+    } finally {
+      setOperationBusy(false);
+    }
+  };
+
   const openEdit = (product: CatalogProduct) => {
     setEditing(product);
     setEditName(product.canonicalName);
@@ -614,6 +672,7 @@ export function CatalogAdmin() {
     setEditLifecycle(product.lifecycleStatus);
     setEditWarning(false);
     setMergeSourceId("");
+    setMergePreview(null);
     setMergeStatus("");
   };
 
@@ -624,14 +683,16 @@ export function CatalogAdmin() {
       candidate?.candidateCategoryIds.find((id) =>
         categories.some((category) => category.id === id && category.classifiable),
       ) || "";
-    setCreateDraft({
+    const initial: CreateDraft = {
       manufacturerId: candidate?.manufacturerId || "",
       canonicalModel: model,
       canonicalName: candidate ? `${manufacturer} ${model}`.trim() : "",
       primaryCategoryId,
       lifecycleStatus: "unknown",
       sourceUrl: candidate?.sourceUrl || "",
-    });
+    };
+    createInitialRef.current = initial;
+    setCreateDraft(initial);
     setCreateMode({ candidate });
   };
 
@@ -727,10 +788,10 @@ export function CatalogAdmin() {
         ? `既存Catalog #${result.product.id} に候補を紐付けました。`
         : result.created
           ? `Catalog #${result.product.id} を手動追加しました。`
-          : `Catalog #${result.product.id} を手動Verifyしました。`;
+          : `Catalog #${result.product.id} を確認して登録しました。`;
       const replayText = result.replayComplete
         ? `${result.replayedListings}件を再評価し、${result.newlyMatchedListings}件が一致しました。`
-        : `${result.replayedListings}件を再評価し、残りは通常のremediationで継続します。`;
+        : `${result.replayedListings}件を再評価し、残りはバックグラウンドで継続します。`;
       setStatus({ text: `${resultText} ${replayText}`, kind: "success" });
     } catch (error) {
       setStatus({ text: `手動登録できません: ${catalogErrorText(error)}`, kind: "error" });
@@ -740,7 +801,16 @@ export function CatalogAdmin() {
   };
 
   const mergeCatalog = async () => {
-    if (!editing || operationBusy) return;
+    if (
+      !editing ||
+      operationBusy ||
+      editSaving ||
+      editDirty ||
+      !mergePreview ||
+      mergePreview.source.id !== Number(mergeSourceId) ||
+      mergePreview.target.id !== editing.id
+    )
+      return;
     const sourceId = Number(mergeSourceId);
     if (!Number.isSafeInteger(sourceId) || sourceId <= 0 || sourceId === editing.id) {
       setMergeStatus("統合元には、現在のCatalogとは異なる有効なIDを入力してください。");
@@ -748,7 +818,7 @@ export function CatalogAdmin() {
     }
     if (
       !window.confirm(
-        `Catalog #${sourceId} を Catalog #${editing.id} へ統合します。\n\n#${editing.id} を残し、#${sourceId} は削除されます。alias・source・検証履歴・Product Identityは残す側へ移します。続行しますか？`,
+        `残す製品:\n${mergeDescription(mergePreview.target)}\n\n削除して統合する製品:\n${mergeDescription(mergePreview.source)}\n\n別名・出典・検証履歴・関連商品を残す側へ移します。統合しますか？`,
       )
     ) {
       return;
@@ -764,9 +834,9 @@ export function CatalogAdmin() {
       await loadCatalog(catalogApplied, 0, []);
       const replayText = result.replayComplete
         ? "再投影も完了しました。"
-        : "残りの再投影は通常のremediationで継続します。";
+        : "残りの再投影はバックグラウンドで継続します。";
       setStatus({
-        text: `Catalog #${result.removedProductId} を #${result.targetProductId} に統合しました。${result.movedMatchedListings}件の一致済みlistingを移行し、${result.replayedListings}件を再評価しました。${replayText}`,
+        text: `Catalog #${result.removedProductId} を #${result.targetProductId} に統合しました。${result.movedMatchedListings}件の関連商品を移行し、${result.replayedListings}件を再評価しました。${replayText}`,
         kind: "success",
       });
     } catch (error) {
@@ -783,10 +853,12 @@ export function CatalogAdmin() {
     const targetId = duplicateTargets[group.groupKey] ?? group.suggestedTargetId;
     const sources = group.products.filter((product) => product.id !== targetId);
     if (!sources.length) return;
-    const sourceLabel = sources.map((product) => `#${product.id}`).join(", ");
+    const sourceLabel = sources.map(mergeDescription).join("\n\n");
+    const target = group.products.find((product) => product.id === targetId);
+    if (!target) return;
     if (
       !window.confirm(
-        `Catalog ${sourceLabel} を Catalog #${targetId} へ統合します。\n\n#${targetId} を残し、${sources.length}件は削除されます。alias・source・検証履歴・Product Identityは残す側へ移します。続行しますか？`,
+        `残す製品:\n${mergeDescription(target)}\n\n削除して統合する製品:\n${sourceLabel}\n\n${sources.length}件の別名・出典・検証履歴・関連商品を残す側へ移します。統合しますか？`,
       )
     ) {
       return;
@@ -807,7 +879,7 @@ export function CatalogAdmin() {
         movedListings += result.movedMatchedListings;
       }
       setStatus({
-        text: `Catalog #${targetId} に${mergedCount}件を統合し、${movedListings}件の一致済みlistingを移行しました。`,
+        text: `Catalog #${targetId} に${mergedCount}件を統合し、${movedListings}件の関連商品を移行しました。`,
         kind: "success",
       });
     } catch (error) {
@@ -1539,10 +1611,8 @@ export function CatalogAdmin() {
         ref={editDialogRef}
         onClose={() => setEditing(null)}
         onCancel={(event) => {
-          if (editDirty) {
-            event.preventDefault();
-            setEditWarning(true);
-          }
+          event.preventDefault();
+          closeEdit();
         }}
       >
         {editing ? (
@@ -1556,7 +1626,7 @@ export function CatalogAdmin() {
                 className="icon-button"
                 type="button"
                 aria-label="編集画面を閉じる"
-                onClick={() => setEditing(null)}
+                onClick={closeEdit}
               >
                 ×
               </button>
@@ -1601,7 +1671,7 @@ export function CatalogAdmin() {
               </select>
             </label>
             <label>
-              <span>ライフサイクル</span>
+              <span>生産状況</span>
               <select
                 required
                 value={editLifecycle}
@@ -1617,20 +1687,20 @@ export function CatalogAdmin() {
             </label>
             <div className="edit-impact">
               <strong>保存時の処理</strong>
-              <p>このCatalogに一致済みのlistingも再分類・再投影されます。</p>
+              <p>このCatalogに関連する販売店の商品にもカテゴリ・検索表示を反映します。</p>
             </div>
             <p
               className="edit-change-status"
               data-dirty={editWarning ? "warning" : editDirty ? "true" : "false"}
             >
               {editWarning
-                ? "未保存の変更があります。キャンセルで破棄できます。"
+                ? "未保存の変更があります。保存するか、閉じる際に破棄を確認してください。"
                 : editDirty
                   ? "未保存の変更があります。"
                   : "変更すると保存できます。"}
             </p>
             <div className="dialog-actions">
-              <button className="secondary-button" type="button" onClick={() => setEditing(null)}>
+              <button className="secondary-button" type="button" onClick={closeEdit}>
                 キャンセル
               </button>
               <button type="submit" disabled={catalogBusy || editSaving || !editDirty}>
@@ -1640,8 +1710,7 @@ export function CatalogAdmin() {
             <div className="edit-impact">
               <strong>重複CatalogをこのCatalogへ統合</strong>
               <p>
-                統合元のalias・source・検証履歴・Product
-                IdentityをこのCatalogへ移し、統合元Catalogを削除します。
+                統合元の別名・出典・検証履歴・関連商品をこの製品へ移し、統合元の製品情報を削除します。
               </p>
               <label>
                 <span>統合元 Catalog ID</span>
@@ -1652,11 +1721,42 @@ export function CatalogAdmin() {
                   inputMode="numeric"
                   placeholder="例: 123"
                   value={mergeSourceId}
-                  onChange={({ currentTarget: { value: nextValue } }) =>
-                    setMergeSourceId(nextValue)
-                  }
+                  disabled={operationBusy}
+                  onChange={({ currentTarget: { value: nextValue } }) => {
+                    setMergeSourceId(nextValue);
+                    setMergePreview(null);
+                    setMergeStatus("");
+                  }}
                 />
               </label>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={
+                  operationBusy ||
+                  editSaving ||
+                  editDirty ||
+                  !Number.isSafeInteger(Number(mergeSourceId)) ||
+                  Number(mergeSourceId) <= 0 ||
+                  Number(mergeSourceId) === editing.id
+                }
+                onClick={() => void previewMerge()}
+              >
+                統合内容を確認
+              </button>
+              {editDirty ? <p>編集内容を保存してから統合してください。</p> : null}
+              {mergePreview ? (
+                <div className="merge-preview" aria-label="統合内容の確認">
+                  <section>
+                    <h3>残す製品（統合先）</h3>
+                    <p>{mergeDescription(mergePreview.target)}</p>
+                  </section>
+                  <section>
+                    <h3>削除して統合する製品（統合元）</h3>
+                    <p>{mergeDescription(mergePreview.source)}</p>
+                  </section>
+                </div>
+              ) : null}
               <p className="edit-change-status" data-dirty={mergeStatus ? "warning" : "false"}>
                 {mergeStatus}
               </p>
@@ -1666,6 +1766,9 @@ export function CatalogAdmin() {
                   type="button"
                   disabled={
                     operationBusy ||
+                    editSaving ||
+                    editDirty ||
+                    !mergePreview ||
                     !Number.isSafeInteger(Number(mergeSourceId)) ||
                     Number(mergeSourceId) <= 0 ||
                     Number(mergeSourceId) === editing.id
@@ -1680,19 +1783,26 @@ export function CatalogAdmin() {
         ) : null}
       </dialog>
 
-      <dialog ref={createDialogRef} onClose={() => setCreateMode(null)}>
+      <dialog
+        ref={createDialogRef}
+        onClose={() => setCreateMode(null)}
+        onCancel={(event) => {
+          event.preventDefault();
+          closeCreate();
+        }}
+      >
         {createMode ? (
           <form className="edit-form" onSubmit={(event) => void submitManualCatalog(event)}>
             <div className="dialog-heading">
               <div>
                 <p className="eyebrow">MANUAL VERIFICATION</p>
-                <h2>{createMode.candidate ? "未検証候補を手動Verify" : "Catalogを手動追加"}</h2>
+                <h2>{createMode.candidate ? "未検証候補を確認して登録" : "Catalogを手動追加"}</h2>
               </div>
               <button
                 className="icon-button"
                 type="button"
                 aria-label="手動追加画面を閉じる"
-                onClick={() => setCreateMode(null)}
+                onClick={closeCreate}
               >
                 ×
               </button>
@@ -1777,7 +1887,7 @@ export function CatalogAdmin() {
               </select>
             </label>
             <label>
-              <span>ライフサイクル</span>
+              <span>生産状況</span>
               <select
                 required
                 value={createDraft.lifecycleStatus}
@@ -1814,11 +1924,7 @@ export function CatalogAdmin() {
               </p>
             </div>
             <div className="dialog-actions">
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={() => setCreateMode(null)}
-              >
+              <button className="secondary-button" type="button" onClick={closeCreate}>
                 キャンセル
               </button>
               <button type="submit" disabled={operationBusy}>

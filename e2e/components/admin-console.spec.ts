@@ -62,8 +62,32 @@ async function mockAdminApi(page: Page): Promise<void> {
     const json = (body: unknown, status = 200) =>
       route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 
-    if (url.pathname === "/api/meta") return json({ categoryFacets: categories });
+    if (url.pathname === "/api/meta")
+      return json({
+        categoryFacets: categories,
+        shops: [{ key: "audiounion", name: "Audio Union" }],
+      });
     if (url.pathname === "/api/admin/knowledge-catalog/products" && request.method() === "GET") {
+      if (url.searchParams.get("limit") === "1") {
+        const afterId = Number(url.searchParams.get("afterId"));
+        return json({
+          items:
+            afterId === 10
+              ? [catalog]
+              : afterId === 11
+                ? [
+                    {
+                      ...catalog,
+                      id: 12,
+                      canonicalModel: "D-1000 Duplicate",
+                      primaryCategoryId: "amp",
+                      matchedListingCount: 4,
+                    },
+                  ]
+                : [],
+          nextAfterId: null,
+        });
+      }
       return json({ items: [catalog], nextAfterId: null });
     }
     if (
@@ -157,4 +181,57 @@ test("admin listings screen uses the shared POM for tab, search, and color edit 
   await admin.listings.presentationColor().fill("ブラック/ゴールド");
   await admin.listings.saveButton().click();
   await expect(admin.listings.listingRow(21)).toContainText("色: ブラック/ゴールド");
+});
+
+test("every catalog close control confirms before discarding dirty fields", async ({
+  page,
+  mount,
+}) => {
+  const component = await mount("frontend/admin-console/Default");
+  const admin = new AdminConsolePage(component, page);
+  await admin.catalog.openEditor(11);
+  await admin.catalog.editName().fill("Unsaved name");
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await admin.catalog.editDialog.getByRole("button", { name: "編集画面を閉じる" }).click();
+  await expect(admin.catalog.editName()).toHaveValue("Unsaved name");
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.keyboard.press("Escape");
+  await expect(admin.catalog.editDialog).toBeVisible();
+  page.once("dialog", (dialog) => dialog.accept());
+  await admin.catalog.editDialog.getByRole("button", { name: "キャンセル", exact: true }).click();
+  await expect(admin.catalog.editDialog).toBeHidden();
+  await expect(admin.catalog.catalogRow(11)).toContainText("LUXMAN D-1000");
+});
+
+test("shop filters use names and manual merge requires a full identity preview", async ({
+  page,
+  mount,
+}) => {
+  const component = await mount("frontend/admin-console/Default");
+  const admin = new AdminConsolePage(component, page);
+  await admin.openListings();
+  await expect(page.locator("#listings-shop-key")).toHaveJSProperty("tagName", "SELECT");
+  await page.locator("#listings-shop-key").selectOption({ label: "Audio Union" });
+  await expect(page.locator("#listings-shop-key")).toHaveValue("audiounion");
+  await admin.catalogTab.click();
+  await admin.catalog.openEditor(11);
+  const dialog = admin.catalog.editDialog;
+  await dialog.getByLabel("統合元 Catalog ID").fill("12");
+  await expect(
+    dialog.getByRole("button", { name: "このCatalogへ統合", exact: true }),
+  ).toBeDisabled();
+  await dialog.getByRole("button", { name: "統合内容を確認" }).click();
+  await expect(dialog.locator(".merge-preview")).toContainText("残す製品（統合先）");
+  await expect(dialog.locator(".merge-preview")).toContainText("D-1000 Duplicate");
+  await expect(dialog.locator(".merge-preview")).toContainText("アンプ · 関連商品 4件");
+  const confirmation = page.waitForEvent("dialog");
+  const click = dialog.getByRole("button", { name: "このCatalogへ統合", exact: true }).click();
+  const confirm = await confirmation;
+  expect(confirm.message()).toContain("残す製品:");
+  expect(confirm.message()).toContain("D-1000 (#11)");
+  expect(confirm.message()).toContain("D-1000 Duplicate (#12)");
+  expect(confirm.message()).toContain("デジタル · 関連商品 2件");
+  await confirm.dismiss();
+  await click;
+  await expect(dialog).toBeVisible();
 });

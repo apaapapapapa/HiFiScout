@@ -98,3 +98,13 @@ test("Catalog Admin JSON responses carry the same browser security policy", asyn
   assert.equal(response.headers.get("cache-control"), "no-store");
   assertAdminSecurityHeaders(response);
 });
+
+test("admin metadata exposes shop names and keys for the shop selector", async () => {
+  const response = await handleAuthenticatedCatalogAdminRequest(
+    new Request("https://admin.example.test/api/meta"),
+    adminEnv([]),
+  );
+  const meta = (await response.json()) as { shops: { key: string; name: string }[] };
+  assert.ok(meta.shops.some((shop) => shop.key === "hifido" && shop.name === "ハイファイ堂"));
+  assert.equal(new Set(meta.shops.map((shop) => shop.key)).size, meta.shops.length);
+});

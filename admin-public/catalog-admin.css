@@ -1327,3 +1327,9 @@ dialog::backdrop {
     transition-duration: 0.01ms !important;
   }
 }
+
+.merge-preview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 16px 0; }
+.merge-preview section { padding: 16px; border: 1px solid #c9c9c9; border-radius: 8px; }
+.merge-preview h3 { font-size: 15px; }
+.merge-preview p { white-space: pre-line; overflow-wrap: anywhere; line-height: 1.7; }
+@media (max-width: 640px) { .merge-preview { grid-template-columns: 1fr; } }

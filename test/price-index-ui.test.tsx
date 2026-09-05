@@ -78,12 +78,15 @@ test("relative price badge compares the current lowest offer with the asking med
   const badge = relativePriceBadge(product());
 
   assert.deepEqual(badge, {
-    label: "相場比 −18%",
+    label: "出品中央値比 −18%",
     title: "現在の最安出品価格は過去の出品価格中央値より18%低い水準です",
     direction: "below",
   });
   const html = renderToStaticMarkup(<RelativePriceBadge product={product()} />);
-  assert.match(html, /相場比 −18%/);
+  assert.match(html, /出品中央値比 −18%/);
+  assert.match(html, /<details/);
+  assert.match(html, /全期間の出品価格/);
+  assert.match(html, /成約価格ではなく/);
 });
 
 test("a product without a valid price index renders no badge or summary", () => {
@@ -114,7 +117,7 @@ test("favorite snapshots preserve the validated aggregate used by the card badge
   const snapshot = favoriteSnapshot(original);
 
   assert.equal(snapshot.price_index?.asking_median_yen, 300_000);
-  assert.equal(relativePriceBadge(snapshot)?.label, "相場比 −18%");
+  assert.equal(relativePriceBadge(snapshot)?.label, "出品中央値比 −18%");
   assert.deepEqual(
     snapshot.price_index?.listing_end_observations,
     original.price_index?.listing_end_observations,

@@ -129,6 +129,7 @@ function StackCell({
 export function ListingAdmin() {
   const [status, setStatus] = useState<StatusMessage>(EMPTY_STATUS);
   const [categories, setCategories] = useState<CategoryFacet[]>([]);
+  const [shops, setShops] = useState<{ key: string; name: string }[]>([]);
   const filterableCategories = useMemo(
     () => categories.filter((category) => category.filterable),
     [categories],
@@ -202,9 +203,13 @@ export function ListingAdmin() {
     void (async () => {
       setStatus({ text: "管理データを読み込んでいます…", kind: "info" });
       try {
-        const meta = await adminJson<{ categoryFacets: CategoryFacet[] }>("/api/meta");
+        const meta = await adminJson<{
+          categoryFacets: CategoryFacet[];
+          shops?: { key: string; name: string }[];
+        }>("/api/meta");
         if (cancelled) return;
         setCategories(meta.categoryFacets);
+        setShops([...(meta.shops ?? [])].sort((a, b) => a.name.localeCompare(b.name, "ja")));
         await loadListings(EMPTY_FILTERS, 0, []);
       } catch (error) {
         if (!cancelled) {
@@ -371,17 +376,24 @@ export function ListingAdmin() {
               </label>
               <label className="search-field">
                 <span>店舗</span>
-                <input
+                <select
                   id="listings-shop-key"
-                  type="text"
-                  placeholder="audiounion"
-                  autoComplete="off"
                   value={draft.shopKey}
                   disabled={busy}
                   onChange={({ currentTarget: { value: nextValue } }) =>
                     setDraft((value) => ({ ...value, shopKey: nextValue }))
                   }
-                />
+                >
+                  <option value="">すべての店舗</option>
+                  {draft.shopKey && !shops.some((shop) => shop.key === draft.shopKey) ? (
+                    <option value={draft.shopKey}>{draft.shopKey}</option>
+                  ) : null}
+                  {shops.map((shop) => (
+                    <option key={shop.key} value={shop.key}>
+                      {shop.name}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="search-field">
                 <span>カテゴリ</span>
@@ -475,7 +487,11 @@ export function ListingAdmin() {
                         <StackCell
                           lines={[
                             { text: `#${product.id}`, strong: true },
-                            { text: product.shopKey },
+                            {
+                              text:
+                                shops.find((shop) => shop.key === product.shopKey)?.name ??
+                                product.shopKey,
+                            },
                             { text: product.sourceId, className: "listing-muted" },
                           ]}
                         />
@@ -621,7 +637,8 @@ export function ListingAdmin() {
               <span>変更対象</span>
               <p className="identity">{editing.title}</p>
               <p className="identity-note">
-                {editing.shopKey} / {editing.sourceId} / listing #{editing.id}
+                {shops.find((shop) => shop.key === editing.shopKey)?.name ?? editing.shopKey} /
+                店舗商品 {editing.sourceId} / 管理番号 #{editing.id}
               </p>
               {sourceUrl ? (
                 <a className="source-link" href={sourceUrl} target="_blank" rel="noreferrer">

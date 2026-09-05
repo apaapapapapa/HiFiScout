@@ -31,7 +31,7 @@ The separate browser component suite uses `e2e/playwright.components.config.ts`,
 and `playwright/gallery/`. Its mocked API fixtures exercise React UI behavior without a deployed
 Worker or seller network calls. Run it with
 `vp exec playwright test --config e2e/playwright.components.config.ts`; Playwright starts the gallery
-server. This is the `component` job in CI, distinct from deployed E2E.
+server. This is the `component` job in CI, distinct from deployed E2E. Public catalog cases cover initialization retry, loading/empty states, mobile draft application and focus, detail retries, favorite persistence, and responsive layout. Admin cases cover dirty-form close guards and merge confirmation. Price parsing and request timeout/cache behavior stay in Vitest.
 
 ### 4. E2E — minimal deployed smoke layer
 

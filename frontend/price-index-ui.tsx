@@ -107,7 +107,7 @@ export function relativePriceBadge(product: DisplayProduct): RelativePriceBadgeM
   const percent = Math.round(rawPercent);
   if (percent === 0) {
     return {
-      label: "相場比 ±0%",
+      label: "出品中央値比 ±0%",
       title: "現在の最安出品価格は過去の出品価格中央値と同水準です",
       direction: "same",
     };
@@ -116,7 +116,7 @@ export function relativePriceBadge(product: DisplayProduct): RelativePriceBadgeM
   const below = percent < 0;
   const absolute = Math.abs(percent);
   return {
-    label: `相場比 ${below ? "−" : "+"}${absolute}%`,
+    label: `出品中央値比 ${below ? "−" : "+"}${absolute}%`,
     title: `現在の最安出品価格は過去の出品価格中央値より${absolute}%${below ? "低い" : "高い"}水準です`,
     direction: below ? "below" : "above",
   };
@@ -126,12 +126,13 @@ export function RelativePriceBadge({ product }: { product: DisplayProduct }) {
   const badge = relativePriceBadge(product);
   if (!badge) return null;
   return (
-    <span
-      className={`badge price-index-badge price-index-badge-${badge.direction}`}
-      title={badge.title}
-    >
-      {badge.label}
-    </span>
+    <details className={`price-explanation price-index-badge-${badge.direction}`}>
+      <summary className="badge price-index-badge">{badge.label}</summary>
+      <p>
+        {badge.title}。集計開始から全期間の出品価格{productPriceIndex(product)?.asking_sample_count}
+        件を対象にしています。成約価格ではなく、商品の状態・付属品などの差も含みます。
+      </p>
+    </details>
   );
 }
 
@@ -164,11 +165,12 @@ export function ProductPriceIndexSummary({ product }: { product: DisplayProduct 
   if (!index) return null;
 
   return (
-    <section className="price-index-summary" aria-labelledby="price-index-title">
+    <details className="price-index-summary">
+      <summary>出品価格・掲載終了時価格の集計を見る</summary>
       <div className="price-index-heading">
         <div>
           <p className="price-index-kicker">PRICE INDEX</p>
-          <h3 id="price-index-title">中古相場</h3>
+          <h3 id="price-index-title">出品価格の参考値</h3>
         </div>
         <span>{index.asking_sample_count}件の出品価格から集計</span>
       </div>
@@ -218,6 +220,6 @@ export function ProductPriceIndexSummary({ product }: { product: DisplayProduct 
           </p>
         </section>
       </div>
-    </section>
+    </details>
   );
 }

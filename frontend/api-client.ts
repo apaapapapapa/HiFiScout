@@ -353,16 +353,33 @@ export function createApiClient(fetchImpl: typeof fetch = fetch, ttlMs = CACHE_T
   const cache = new Map<string, CachedResponse>();
 
   return {
-    async fetchJson(url: string, { signal }: { signal?: AbortSignal } = {}): Promise<unknown> {
+    async fetchJson(
+      url: string,
+      { signal, refresh = false }: { signal?: AbortSignal; refresh?: boolean } = {},
+    ): Promise<unknown> {
       const cached = cache.get(url);
-      if (cached && cached.expiresAt > Date.now()) return cached.data;
+      signal?.throwIfAborted();
+      if (!refresh && cached && cached.expiresAt > Date.now()) return cached.data;
       if (cached) cache.delete(url);
 
-      const response = await fetchImpl(url, { signal });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data: unknown = await response.json();
-      cache.set(url, { data, expiresAt: Date.now() + ttlMs });
-      return data;
+      const controller = new AbortController();
+      const abort = () => controller.abort(signal?.reason);
+      signal?.addEventListener("abort", abort, { once: true });
+      const timeout = setTimeout(
+        () => controller.abort(new DOMException("Request timed out", "TimeoutError")),
+        15_000,
+      );
+      try {
+        const response = await fetchImpl(url, { signal: controller.signal });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data: unknown = await response.json();
+        controller.signal.throwIfAborted();
+        cache.set(url, { data, expiresAt: Date.now() + ttlMs });
+        return data;
+      } finally {
+        clearTimeout(timeout);
+        signal?.removeEventListener("abort", abort);
+      }
     },
   };
 }

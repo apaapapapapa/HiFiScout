@@ -1,4 +1,4 @@
-@import url("/catalog-admin.css");
+@import url("./catalog-admin.css");
 
 .listing-search-grid {
   grid-template-columns: minmax(280px, 2fr) minmax(150px, 0.8fr) minmax(180px, 1fr) minmax(140px, 0.7fr) auto;
