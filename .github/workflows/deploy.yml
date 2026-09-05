@@ -87,6 +87,16 @@ jobs:
             exit 1
           fi
 
+          # The workflow and checked-out tooling must belong to the same revision. A scheduled
+          # retry can observe yesterday's successful CI while today's main CI is still running;
+          # a delayed workflow_run can likewise refer to superseded code. Let current CI trigger
+          # deployment instead of invoking new workflow commands against an older checkout.
+          if [[ "$target_sha" != "$EVENT_SHA" ]]; then
+            echo "::notice title=Deployment target superseded::CI target ${target_sha} differs from workflow revision ${EVENT_SHA}; waiting for that revision's successful CI."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           echo "available=true" >> "$GITHUB_OUTPUT"
           echo "sha=$target_sha" >> "$GITHUB_OUTPUT"
           echo "DEPLOY_SHA=$target_sha" >> "$GITHUB_ENV"

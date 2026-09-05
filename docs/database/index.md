@@ -29,6 +29,9 @@ Missing or expired identity stops deployment before provisioning. Restore a veri
 identity from deployment records before retrying; absence of an artifact never proves that D1 is
 empty. An initial deployment needs an explicit empty-database bootstrap instead of this existing
 production upgrade path.
+If a scheduled retry or delayed CI event selects an older commit than the workflow revision,
+deployment exits before checkout and waits for the current revision's successful CI. This keeps
+workflow commands and repository tooling at the same revision during the migration-gate rollout.
 
 ```sh
 # Fetch the baseline first; a shallow checkout must contain the referenced commit.
