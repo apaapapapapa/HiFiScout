@@ -22,6 +22,7 @@ import { manufacturerIdForFilter, normalizeManufacturerKey } from "../catalog/ma
 import { MANUFACTURER_RESOLVER_VERSION } from "../catalog/manufacturer-resolver.js";
 import { MODEL_RESOLVER_VERSION } from "../catalog/model-resolver.js";
 import { normalizeIdentityModel } from "../catalog/product-identity.js";
+import { readListingProjectionTokens } from "./listing-projection-pending.js";
 import type {
   CatalogProductUpsertInput,
   CategoryId,
@@ -42,7 +43,6 @@ import {
 import type {
   ExistingCategoryEnrichmentState,
   ExistingProductRow,
-  ProductLookupRow,
   ProductPriceLookupRow,
   ProductRow,
   QueryableDatabase,
@@ -502,159 +502,108 @@ function shouldTouch(
   return observedMs - lastSeenMs >= touchIntervalMinutes * 60_000;
 }
 
-async function rowsForSources(
+/** Each group is one listing's facts, history and trigger-created projection obligation.
+ * Batch packing may combine groups but must never split one across commits. */
+async function runAtomicListingBatches(
   db: QueryableDatabase,
-  shopKey: string,
-  sourceIds: readonly string[],
-): Promise<ProductLookupRow[]> {
-  const rows: ProductLookupRow[] = [];
-  for (let i = 0; i < sourceIds.length; i += LOOKUP_CHUNK_SIZE) {
-    const chunk = sourceIds.slice(i, i + LOOKUP_CHUNK_SIZE);
-    if (!chunk.length) continue;
-    const placeholders = chunk.map(() => "?").join(",");
-    const result = await db
-      .prepare(
-        `SELECT id, source_id FROM products WHERE shop_key = ? AND source_id IN (${placeholders})`,
-      )
-      .bind(shopKey, ...chunk)
-      .all<ProductLookupRow>();
-    rows.push(...(result.results || []));
+  groups: D1PreparedStatement[][],
+): Promise<void> {
+  let batch: D1PreparedStatement[] = [];
+  for (const group of groups) {
+    if (batch.length && batch.length + group.length > 50) {
+      await db.batch(batch);
+      batch = [];
+    }
+    batch.push(...group);
   }
-  return rows;
+  if (batch.length) await db.batch(batch);
 }
 
-async function syncProductCategories(
+function dependentListingWrites(
   db: QueryableDatabase,
   shopKey: string,
-  products: readonly CatalogProductUpsertInput[],
-  sourceIds: readonly string[],
-): Promise<void> {
-  if (!sourceIds.length) return;
-  const wanted = new Set(sourceIds);
-  const selected = products.filter((product) => wanted.has(product.sourceId));
-  const rows = await rowsForSources(db, shopKey, sourceIds);
-  const idBySource = new Map(rows.map((row) => [row.source_id, row.id]));
+  product: CatalogProductUpsertInput,
+  fields: CatalogFields,
+  observedAt: string,
+  flags: { categories: boolean; features: boolean; facets: boolean; history: boolean },
+): D1PreparedStatement[] {
   const statements: D1PreparedStatement[] = [];
-  for (const product of selected) {
-    const productId = idBySource.get(product.sourceId);
-    if (!productId) continue;
-    const fields = catalogFields(product);
-    const directIds = new Set<string>(fields.directCategoryIds);
+  const lookup = "SELECT id FROM products WHERE shop_key = ? AND source_id = ?";
+  const identity = [shopKey, product.sourceId];
+  if (flags.categories) {
     statements.push(
-      db.prepare("DELETE FROM product_categories WHERE product_id = ?").bind(productId),
+      db.prepare(`DELETE FROM product_categories WHERE product_id = (${lookup})`).bind(...identity),
     );
+    const direct = new Set(fields.directCategoryIds);
     for (const categoryId of listingMembershipCategoryIds(
       fields.primaryCategoryId,
       fields.directCategoryIds,
     )) {
       statements.push(
         db
-          .prepare(
-            "INSERT OR IGNORE INTO product_categories(product_id, category_id, is_direct) VALUES (?, ?, ?)",
-          )
-          .bind(productId, categoryId, directIds.has(categoryId) ? 1 : 0),
+          .prepare(`INSERT OR IGNORE INTO product_categories(product_id,category_id,is_direct)
+        SELECT id, ?, ? FROM products WHERE shop_key = ? AND source_id = ?`)
+          .bind(categoryId, direct.has(categoryId) ? 1 : 0, ...identity),
       );
     }
   }
-  await runBatches(db, statements);
-}
-
-async function syncProductFeatureFacts(
-  db: QueryableDatabase,
-  shopKey: string,
-  products: readonly CatalogProductUpsertInput[],
-  sourceIds: readonly string[],
-  observedAt: string,
-): Promise<number> {
-  if (!sourceIds.length) return 0;
-  const wanted = new Set(sourceIds);
-  const selected = products.filter((product) => wanted.has(product.sourceId));
-  const rows = await rowsForSources(db, shopKey, sourceIds);
-  const idBySource = new Map(rows.map((row) => [row.source_id, row.id]));
-  const statements: D1PreparedStatement[] = [];
-  let factCount = 0;
-  for (const product of selected) {
-    const productId = idBySource.get(product.sourceId);
-    if (!productId) continue;
-    // Only title-derived facts are owned by this pass; verified facts from other sources persist.
-    const facts = catalogFields(product).featureFacts.filter((fact) => fact.source === "title");
-    factCount += facts.length;
+  if (flags.features) {
     statements.push(
       db
-        .prepare("DELETE FROM product_feature_facts WHERE product_id = ? AND source = 'title'")
-        .bind(productId),
+        .prepare(
+          `DELETE FROM product_feature_facts WHERE product_id = (${lookup}) AND source = 'title'`,
+        )
+        .bind(...identity),
     );
-    for (const fact of facts) {
+    for (const fact of fields.featureFacts.filter((fact) => fact.source === "title")) {
       statements.push(
         db
-          .prepare(`
-        INSERT OR REPLACE INTO product_feature_facts(product_id, feature_id, state, source, confidence, verified_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `)
+          .prepare(`INSERT OR REPLACE INTO product_feature_facts(product_id,feature_id,state,source,confidence,verified_at)
+        SELECT id, ?, ?, ?, ?, ? FROM products WHERE shop_key = ? AND source_id = ?`)
           .bind(
-            productId,
             fact.featureId,
             fact.state,
             fact.source,
             fact.confidence,
             fact.verifiedAt || observedAt,
+            ...identity,
           ),
       );
     }
   }
-  await runBatches(db, statements);
-  return factCount;
-}
-
-const CRAWL_OWNED_FACET_SOURCES = ["title", "seller_category", "legacy_category"] as const;
-
-async function syncProductFacetFacts(
-  db: QueryableDatabase,
-  shopKey: string,
-  products: readonly CatalogProductUpsertInput[],
-  sourceIds: readonly string[],
-  observedAt: string,
-): Promise<void> {
-  if (!sourceIds.length) return;
-  const wanted = new Set(sourceIds);
-  const selected = products.filter((product) => wanted.has(product.sourceId));
-  const rows = await rowsForSources(db, shopKey, sourceIds);
-  const idBySource = new Map(rows.map((row) => [row.source_id, row.id]));
-  const statements: D1PreparedStatement[] = [];
-
-  for (const product of selected) {
-    const productId = idBySource.get(product.sourceId);
-    if (!productId) continue;
-    const facts = catalogFields(product).facetFacts;
-    const placeholders = CRAWL_OWNED_FACET_SOURCES.map(() => "?").join(",");
+  if (flags.facets) {
     statements.push(
       db
         .prepare(
-          `DELETE FROM product_facet_facts WHERE product_id = ? AND source IN (${placeholders})`,
+          `DELETE FROM product_facet_facts WHERE product_id = (${lookup}) AND source IN ('title','seller_category','legacy_category')`,
         )
-        .bind(productId, ...CRAWL_OWNED_FACET_SOURCES),
+        .bind(...identity),
     );
-    for (const fact of facts) {
+    for (const fact of fields.facetFacts) {
       statements.push(
         db
-          .prepare(`
-        INSERT OR REPLACE INTO product_facet_facts(
-          product_id, facet_id, facet_value, source, confidence, verified_at
-        ) VALUES (?, ?, ?, ?, ?, ?)
-      `)
+          .prepare(`INSERT OR REPLACE INTO product_facet_facts(product_id,facet_id,facet_value,source,confidence,verified_at)
+        SELECT id, ?, ?, ?, ?, ? FROM products WHERE shop_key = ? AND source_id = ?`)
           .bind(
-            productId,
             fact.facetId,
             fact.value,
             fact.source,
             fact.confidence,
             fact.verifiedAt || observedAt,
+            ...identity,
           ),
       );
     }
   }
-
-  await runBatches(db, statements);
+  if (flags.history && product.priceYen != null) {
+    statements.push(
+      db
+        .prepare(`INSERT INTO price_history (product_id, price_yen, observed_at)
+      SELECT id, price_yen, ? FROM products WHERE shop_key = ? AND source_id = ?`)
+        .bind(observedAt, ...identity),
+    );
+  }
+  return statements;
 }
 
 export async function upsertProducts(
@@ -682,14 +631,12 @@ export async function upsertProducts(
     : [];
   const newSourceIds: string[] = [];
   const changedSourceIds: string[] = [];
-  const changedPriceSourceIds: string[] = [];
-  const categorySyncSourceIds: string[] = [];
-  const featureSyncSourceIds: string[] = [];
-  const facetSyncSourceIds: string[] = [];
   const writes: D1PreparedStatement[] = [];
   let changedCount = 0;
   let activityCount = 0;
   let touchedCount = 0;
+  let featureFactCount = 0;
+  const atomicGroups: D1PreparedStatement[][] = [];
 
   for (const product of products) {
     const fields = catalogFields(product);
@@ -697,9 +644,6 @@ export async function upsertProducts(
     if (!existing) {
       const firstActivity = initialActivity(product, observedAt);
       newSourceIds.push(product.sourceId);
-      categorySyncSourceIds.push(product.sourceId);
-      featureSyncSourceIds.push(product.sourceId);
-      facetSyncSourceIds.push(product.sourceId);
       writes.push(
         db
           .prepare(`
@@ -760,6 +704,16 @@ export async function upsertProducts(
             firstActivity.at,
           ),
       );
+      writes.push(
+        ...dependentListingWrites(db, shopKey, product, fields, observedAt, {
+          categories: true,
+          features: true,
+          facets: true,
+          history: true,
+        }),
+      );
+      featureFactCount += fields.featureFacts.filter((fact) => fact.source === "title").length;
+      atomicGroups.push(writes.splice(0));
       changedCount += 1;
       if (firstActivity.userFacing) activityCount += 1;
       continue;
@@ -768,16 +722,12 @@ export async function upsertProducts(
     const priceChanged = existing.price_yen !== product.priceYen && product.priceYen != null;
     const changed = listingChanged(existing, product);
     const hasActivity = activityChanged(existing, product, activityPolicy);
-    if (priceChanged) changedPriceSourceIds.push(product.sourceId);
-    if (categoriesChanged(existing, product)) categorySyncSourceIds.push(product.sourceId);
-    if (existing.title !== product.title) featureSyncSourceIds.push(product.sourceId);
-    if (
-      existing.title !== product.title ||
+    const syncCategories = categoriesChanged(existing, product);
+    const syncFeatures = existing.title !== product.title;
+    const syncFacets =
+      syncFeatures ||
       existing.category !== product.category ||
-      (existing.raw_category ?? existing.category ?? "") !== fields.rawCategory
-    ) {
-      facetSyncSourceIds.push(product.sourceId);
-    }
+      (existing.raw_category ?? existing.category ?? "") !== fields.rawCategory;
 
     if (changed) {
       // SQLite writes every index named by SET, including same-value assignments. Keep the
@@ -830,6 +780,16 @@ export async function upsertProducts(
           .prepare(`UPDATE products SET ${assignments.join(", ")} WHERE id = ?`)
           .bind(...columns.map((column) => values[column]), observedAt, existing.id),
       );
+      writes.push(
+        ...dependentListingWrites(db, shopKey, product, fields, observedAt, {
+          categories: syncCategories,
+          features: syncFeatures,
+          facets: syncFacets,
+          history: priceChanged,
+        }),
+      );
+      if (syncFeatures)
+        featureFactCount += fields.featureFacts.filter((fact) => fact.source === "title").length;
       changedCount += 1;
       changedSourceIds.push(product.sourceId);
       if (hasActivity) activityCount += 1;
@@ -841,41 +801,24 @@ export async function upsertProducts(
       );
       touchedCount += 1;
     }
+    if (writes.length) atomicGroups.push(writes.splice(0));
   }
 
-  await runBatches(db, writes);
-  await syncProductCategories(db, shopKey, products, [...new Set(categorySyncSourceIds)]);
-  const featureFactCount = await syncProductFeatureFacts(
-    db,
-    shopKey,
-    products,
-    [...new Set(featureSyncSourceIds)],
-    observedAt,
-  );
-  await syncProductFacetFacts(db, shopKey, products, [...new Set(facetSyncSourceIds)], observedAt);
-
-  // Ids are only known after the inserts land, so history is written in a second pass.
-  const historySourceIds = [...new Set([...newSourceIds, ...changedPriceSourceIds])];
-  if (historySourceIds.length) {
-    const rows = await selectProductsForHistory(db, shopKey, historySourceIds);
-    const historyWrites = rows
-      .filter((row) => row.price_yen != null)
-      .map((row) =>
-        db
-          .prepare(
-            "INSERT INTO price_history (product_id, price_yen, observed_at) VALUES (?, ?, ?)",
-          )
-          .bind(row.id, row.price_yen, observedAt),
-      );
-    await runBatches(db, historyWrites);
-  }
+  await runAtomicListingBatches(db, atomicGroups);
   const deactivatedCount = missingSourceIds.length
     ? await deactivateProductsBySourceIds(db, shopKey, missingSourceIds)
     : 0;
   // A listing that disappeared is never in `products`, so its retired membership has to be named
   // here or nothing downstream would know to stop counting the offer.
   const derivedSourceIds = [
-    ...new Set([...newSourceIds, ...changedSourceIds, ...missingSourceIds]),
+    ...new Set([
+      ...newSourceIds,
+      ...changedSourceIds,
+      ...missingSourceIds,
+      ...(await readListingProjectionTokens(db, shopKey, [...observedSourceIds])).map(
+        (row) => row.source_id,
+      ),
+    ]),
   ];
   return {
     changedCount,

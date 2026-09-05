@@ -280,7 +280,14 @@ test("draining reads the ledger through the catalog index, never end to end", as
     label: "price index drain",
     allowances: [
       {
-        tables: ["catalog_ids", "asking_ranked", "recent_asking_ranked", "listing_end_ranked"],
+        tables: [
+          "scoped",
+          "asking_latest",
+          "catalog_ids",
+          "asking_ranked",
+          "recent_asking_ranked",
+          "listing_end_ranked",
+        ],
         when: /FROM knowledge_catalog_price_index_dirty_products/u,
         reason:
           "co-routines over `scoped`, which the plan below is asserted to restrict to the dirty " +

@@ -34,6 +34,10 @@ export function eligibleExactIdentitySql(alias: string): string {
     AND ${alias}.model_resolution_status = 'resolved'
     AND COALESCE(${alias}.canonical_manufacturer_id, '') <> ''
     AND COALESCE(${alias}.normalized_model, '') <> ''
+    AND NOT EXISTS (
+      SELECT 1 FROM product_identity_resolutions veto
+      WHERE veto.listing_product_id = ${alias}.id AND veto.match_method = 'vetoed'
+    )
     AND NOT ${hasVerifiedCatalogMatch(alias)}`;
 }
 

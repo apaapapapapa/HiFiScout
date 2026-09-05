@@ -741,6 +741,7 @@ export interface ProductSearchEntityRow {
   has_price_drop: 0 | 1;
   /** Basis-point deviation from the asking median; NULL when the product has no valid index. */
   deal_score: number | null;
+  listing_deal_score?: number | null;
 }
 
 /** Per-entity aggregates recomputed over the offers that satisfy the active offer filters. */
@@ -825,7 +826,8 @@ export interface ProductSearchSortDefinition {
     | "latest_activity_at"
     | "lowest_price_yen"
     | "lowest_in_stock_price_yen"
-    | "deal_score";
+    | "deal_score"
+    | "listing_deal_score";
   direction: "ASC" | "DESC";
   idDirection: "ASC" | "DESC";
 }

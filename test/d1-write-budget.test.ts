@@ -70,7 +70,8 @@ test("D1 bills zero for unchanged catalog decisions, search replay and candidate
       NEXT,
     );
     assert.equal(priceResult.activityCount, 1);
-    assert.ok(changed.rowsWritten() <= 16, `price/history wrote ${changed.rowsWritten()} rows`);
+    // Two added writes retain the atomic projection obligation and its fairness index.
+    assert.ok(changed.rowsWritten() <= 18, `price/history wrote ${changed.rowsWritten()} rows`);
     const row = await db
       .prepare(
         "SELECT price_yen, previous_price_yen, last_changed_at, last_activity_at FROM products WHERE source_id='one'",

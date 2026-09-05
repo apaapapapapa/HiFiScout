@@ -6,7 +6,7 @@ import { accountReads } from "../src/db/read-accounting.js";
 import { invocationBudget } from "../src/db/invocation-budget.js";
 import { applyMigration, localD1 } from "./helpers/local-d1.js";
 
-test("real D1 backfill admits at most 1000 samples, meters index writes and bills no cooldown writes", async () => {
+test("real D1 independent-listing backfill admits 500 samples within the existing row budget", async () => {
   const { db, dispose } = await localD1();
   try {
     for (const migration of workingMigrations(process.cwd())) await applyMigration(db, migration);
@@ -37,11 +37,11 @@ test("real D1 backfill admits at most 1000 samples, meters index writes and bill
     const measured = accountReads(calls.db);
     const now = new Date("2026-09-05T01:00:00.000Z");
     const result = await backfillRecentPriceIndexes(measured.db, { now });
-    assert.equal(result.selectedCount, 2, "three products exceed the page's sample budget");
-    assert.equal(result.afterCatalogProductId, 2);
+    assert.equal(result.selectedCount, 1, "a second 500-sample product exceeds the page budget");
+    assert.equal(result.afterCatalogProductId, 1);
     assert.equal(result.hasMore, true);
     assert.equal(calls.metrics().d1Calls, 3, "selectors plus one atomic batch");
-    assert.equal(measured.countedStatements(), 8);
+    assert.equal(measured.countedStatements(), 6);
     assert.ok(measured.rowsRead() > 1000, "verify real workerd metadata, not a zero-valued mock");
     assert.ok(measured.rowsRead() <= 20000, `backfill read ${measured.rowsRead()} rows`);
     assert.ok(
@@ -74,6 +74,10 @@ test("real D1 backfill admits at most 1000 samples, meters index writes and bill
     assert.ok(cooldown.rowsRead() <= 2);
     assert.equal(
       (await backfillRecentPriceIndexes(db, { now: new Date("2026-09-05T02:00:00.000Z") })).status,
+      "running",
+    );
+    assert.equal(
+      (await backfillRecentPriceIndexes(db, { now: new Date("2026-09-05T03:00:00.000Z") })).status,
       "completed",
     );
   } finally {

@@ -7,17 +7,16 @@
  * about something else, `ambiguous` says the page is about this model but its category cannot be
  * trusted, and only the latter is worth re-reviewing.
  *
- * Category evidence is read in descending order of authority, stopping at the first level that
- * classifies:
+ * Category evidence is read in descending order of authority. A conflict is a terminal verdict;
+ * only a lack of evidence permits fallback to a weaker tier:
  *
  * 1. structured JSON-LD `category` / `name`;
  * 2. model-local semantic blocks and nearby product-content text;
  * 3. page-level description and breadcrumb, which are demoted to `strong` because they describe
  *    the page rather than the model.
  *
- * The complete visible page text may prove that a model is present. Category inference is stricter:
- * global navigation/header/footer/aside chrome is removed first so menus and sibling-navigation
- * labels cannot become product facts.
+ * Model and category evidence must refer to product content. Global navigation/header/footer/aside
+ * chrome cannot prove either fact about the candidate.
  */
 
 import { classifyCategoryEvidence } from "../category-classifier.js";
@@ -63,6 +62,11 @@ export interface VerifyOfficialProductPageOptions {
   sourceUrl?: string;
   sourceType?: string;
   httpStatus?: number;
+  /** Injected at the verifier composition root; evaluated only on already-scoped evidence. */
+  additionalCategoryIds?: (
+    text: string,
+    candidate: KnowledgeSourceCandidate,
+  ) => ClassifiableCategoryId[];
 }
 
 function firstElementText(html: string, tag: string): string {
@@ -76,25 +80,22 @@ function firstElementText(html: string, tag: string): string {
  * Prefer a semantic main/article container when one exists. On older manufacturer sites that lack
  * either element, remove the standard global-chrome containers before converting the body to text.
  */
-function productContentText(html: string): string {
-  const value = String(html);
+function productContentHtml(html: string): string {
+  const value = String(html).replace(/<(nav|header|footer|aside)\b[^>]*>[\s\S]*?<\/\1>/gi, " ");
   const semantic = value.match(/<(main|article)\b[^>]*>([\s\S]*?)<\/\1>/i)?.[2];
-  const scoped =
-    semantic ?? value.replace(/<(nav|header|footer|aside)\b[^>]*>[\s\S]*?<\/\1>/gi, " ");
-  return visibleText(scoped);
+  return semantic ?? value;
 }
 
-function matchingProductNode(
+function matchingProductNodes(
   products: readonly Record<string, unknown>[],
   candidate: KnowledgeSourceCandidate,
-): Record<string, unknown> | null {
-  return (
-    products.find((product) =>
-      [product.model, product.sku, product.mpn, product.name].some(
-        (value) => value && matchesCandidateText(value, candidate),
-      ),
-    ) || null
-  );
+): Record<string, unknown>[] {
+  return products.filter((product) => {
+    const identifiers = [product.model, product.sku, product.mpn].filter(Boolean);
+    return (identifiers.length ? identifiers : [product.name]).some((value) =>
+      matchesCandidateText(value, candidate),
+    );
+  });
 }
 
 /**
@@ -124,9 +125,13 @@ function officialCategoryIds(text: unknown = ""): ClassifiableCategoryId[] {
 function categoryEvidence(
   value: unknown,
   strength: CategoryEvidenceStrength = "verified",
+  candidate?: KnowledgeSourceCandidate,
+  additionalCategoryIds?: VerifyOfficialProductPageOptions["additionalCategoryIds"],
 ): CategoryEvidenceInput | null {
   const text = clean(value);
   const categoryIds = officialCategoryIds(text);
+  if (candidate && additionalCategoryIds)
+    categoryIds.push(...additionalCategoryIds(text, candidate));
   return categoryIds.length
     ? { categoryIds, source: "manufacturer_official", strength, value: text }
     : null;
@@ -142,6 +147,7 @@ function modelContextEvidence(
   text: unknown,
   candidate: KnowledgeSourceCandidate,
   strength: CategoryEvidenceStrength = "verified",
+  additionalCategoryIds?: VerifyOfficialProductPageOptions["additionalCategoryIds"],
 ): CategoryEvidenceInput | null {
   const normalizedValue = normalizeIdentityText(text);
   if (!normalizedValue) return null;
@@ -152,14 +158,18 @@ function modelContextEvidence(
     if (!match) continue;
     const modelStart = match.index + match[1].length;
     const modelEnd = match.index + match[0].length - match[2].length;
-    const left = normalizedValue.slice(Math.max(0, modelStart - MODEL_CONTEXT_CHARS), modelStart);
+    const left =
+      normalizedValue
+        .slice(Math.max(0, modelStart - MODEL_CONTEXT_CHARS), modelStart)
+        .split(/\s[/|]\s/u)
+        .at(-1) || "";
     const right = normalizedValue.slice(
       modelEnd,
       Math.min(normalizedValue.length, modelEnd + MODEL_CONTEXT_CHARS),
     );
-    const leftEvidence = categoryEvidence(left, strength);
+    const leftEvidence = categoryEvidence(left, strength, candidate, additionalCategoryIds);
     if (leftEvidence) return leftEvidence;
-    const rightEvidence = categoryEvidence(right, strength);
+    const rightEvidence = categoryEvidence(right, strength, candidate, additionalCategoryIds);
     if (rightEvidence) return rightEvidence;
   }
   return null;
@@ -192,8 +202,8 @@ function canonicalNameFromPage(
 /**
  * Verifies one already-fetched official page against one candidate.
  *
- * The `_v2` message suffix is persisted with every verification and read back by operational
- * status, so it is kept verbatim rather than renamed with the module.
+ * The message suffix identifies the evidence policy, allowing old page-wide verification results
+ * to be selected for budgeted review without refetching every verified product at deployment.
  */
 export async function verifyOfficialProductPage({
   candidate,
@@ -201,6 +211,7 @@ export async function verifyOfficialProductPage({
   sourceUrl = "",
   sourceType = "manufacturer_official",
   httpStatus = 200,
+  additionalCategoryIds,
 }: VerifyOfficialProductPageOptions = {}): Promise<KnowledgeSourceVerification> {
   if (!candidate?.manufacturerId || !candidateModelVariants(candidate).length || !html) {
     return {
@@ -215,18 +226,23 @@ export async function verifyOfficialProductPage({
   const productNodes = jsonLdValues(html)
     .flatMap((value) => flattenJsonLd(value))
     .filter(isProductNode);
-  const product = matchingProductNode(productNodes, candidate);
+  const matchingProducts = matchingProductNodes(productNodes, candidate);
+  const product = matchingProducts[0];
   const title = firstElementText(html, "title");
-  const h1 = firstElementText(html, "h1");
-  const pageText = visibleText(html);
+  const contentHtml = productContentHtml(html);
+  const h1 = firstElementText(contentHtml, "h1");
+  const blocks = modelBearingBlocks(contentHtml, candidate);
+  const titleEligible =
+    (!h1 || matchesCandidateText(h1, candidate)) &&
+    (!productNodes.length || matchingProducts.length > 0);
   const modelMatched = [
     product?.model,
     product?.sku,
     product?.mpn,
     product?.name,
     h1,
-    title,
-    pageText,
+    titleEligible ? title : "",
+    ...blocks,
   ].some((value) => value && matchesCandidateText(value, candidate));
   if (!modelMatched) {
     return {
@@ -240,8 +256,9 @@ export async function verifyOfficialProductPage({
 
   // An explicit conflicting brand means the page belongs to a different manufacturer's product,
   // which is a stronger signal than any category evidence the page might also carry.
-  const explicitBrand = brandName(product?.brand);
-  if (explicitBrand) {
+  for (const productNode of matchingProducts) {
+    const explicitBrand = brandName(productNode.brand);
+    if (!explicitBrand) continue;
     const resolved = normalizeManufacturer(explicitBrand);
     if (resolved.id && resolved.id !== candidate.manufacturerId) {
       return {
@@ -254,33 +271,42 @@ export async function verifyOfficialProductPage({
     }
   }
 
-  const structured = [product?.category, product?.name]
-    .map((value) => categoryEvidence(value))
+  const structured = matchingProducts
+    .flatMap((node) => [node.category, node.name])
+    .map((value) => categoryEvidence(value, "verified", candidate, additionalCategoryIds))
     .filter((value): value is CategoryEvidenceInput => value !== null);
   let classification: CategoryClassification | null = structured.length
     ? classifyCategoryEvidence(structured)
     : null;
 
-  if (!classification || classification.classificationStatus !== "classified") {
+  if (!classification || classification.classificationReason === "insufficient_evidence") {
     const localEvidence: CategoryEvidenceInput[] = [];
-    for (const value of [h1, title, ...modelBearingBlocks(html, candidate)]) {
-      const evidence = modelContextEvidence(value, candidate);
+    for (const value of [h1, titleEligible ? title : "", ...blocks]) {
+      const evidence = modelContextEvidence(value, candidate, "verified", additionalCategoryIds);
       if (evidence) localEvidence.push(evidence);
     }
     if (!localEvidence.length) {
-      const evidence = modelContextEvidence(productContentText(html), candidate);
+      const evidence = modelContextEvidence(
+        visibleText(contentHtml),
+        candidate,
+        "verified",
+        additionalCategoryIds,
+      );
       if (evidence) localEvidence.push(evidence);
     }
     if (localEvidence.length) classification = classifyCategoryEvidence(localEvidence);
   }
 
-  if (!classification || classification.classificationStatus !== "classified") {
+  if (!classification || classification.classificationReason === "insufficient_evidence") {
     const fallbackEvidence = [
       product?.description,
-      metaContent(html, "description"),
-      breadcrumbText(html),
+      // Page-level labels describe this product only if the page heading identifies it. On index
+      // pages a matching paragraph for one sibling must not borrow the page's general category.
+      ...([h1, titleEligible ? title : ""].some((value) => matchesCandidateText(value, candidate))
+        ? [metaContent(html, "description"), breadcrumbText(html)]
+        : []),
     ]
-      .map((value) => categoryEvidence(value, "strong"))
+      .map((value) => categoryEvidence(value, "strong", candidate, additionalCategoryIds))
       .filter((value): value is CategoryEvidenceInput => value !== null);
     if (fallbackEvidence.length) classification = classifyCategoryEvidence(fallbackEvidence);
   }
@@ -320,6 +346,6 @@ export async function verifyOfficialProductPage({
     categoryIds: classification.categoryIds,
     primaryCategoryId: classification.primaryCategoryId,
     contentHash: await sha256Hex(html),
-    message: "verified_from_official_product_page_v2",
+    message: "verified_from_official_product_page_v3",
   };
 }

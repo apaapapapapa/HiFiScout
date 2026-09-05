@@ -528,11 +528,16 @@ export function createModelResolver(
   return (input) => resolvePreparedModel(input, prepared);
 }
 
+let bootstrapResolver: ModelResolver | undefined;
+
 export function resolveModel(
   input: ModelResolutionInput,
   operationalAliases: readonly ManufacturerAliasEvidence[] = [],
 ): ModelResolutionResult {
-  return createModelResolver(operationalAliases)(input);
+  const resolver = operationalAliases.length
+    ? createModelResolver(operationalAliases)
+    : (bootstrapResolver ??= createModelResolver());
+  return resolver(input);
 }
 
 export function applyModelResolution(

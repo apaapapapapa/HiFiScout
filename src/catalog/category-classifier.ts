@@ -35,17 +35,18 @@ function normalizedEvidence(
   evidence: readonly CategoryEvidenceInput[] = [],
 ): ResolvedCategoryEvidenceItem[] {
   return evidence
-    .map((item) => {
+    .flatMap((item) => {
       const values = item.categoryIds ?? (item.categoryId ? [item.categoryId] : []);
-      const categoryId =
-        values.map((value) => categoryIdForClassification(value, item.value)).find(Boolean) || null;
-      return {
+      return [
+        ...new Set(values.map((value) => categoryIdForClassification(value, item.value))),
+      ].map((categoryId) => ({
+        ...(item.ruleId ? { ruleId: item.ruleId } : {}),
         categoryId,
         categoryIds: categoryId ? [categoryId] : [],
         source: String(item.source || "unknown"),
         strength: isCategoryEvidenceStrength(item.strength) ? item.strength : "supporting",
         value: String(item.value || "").slice(0, 240),
-      };
+      }));
     })
     .filter((item): item is ResolvedCategoryEvidenceItem => item.categoryId !== null);
 }
@@ -146,6 +147,7 @@ export function summarizeCategoryEvidence(
   return normalizedEvidence(rawEvidence)
     .slice(0, 12)
     .map((item) => ({
+      ...(item.ruleId ? { ruleId: item.ruleId } : {}),
       categoryIds: item.categoryIds,
       source: item.source,
       strength: item.strength,

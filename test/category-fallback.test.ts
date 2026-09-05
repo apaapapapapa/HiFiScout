@@ -127,7 +127,7 @@ test("Hifido recognizes supported seller categories that previously became blank
 test("category metadata version advances so stale rows are replayable", () => {
   // A literal on purpose: bumping the classifier is what makes every stored listing eligible for
   // the remediation replay, so it cannot be done without editing this line and thinking about the
-  // backfill it starts. Raised to 16 by taxonomy v3, which changes both category ids and the
-  // category/facet boundary.
-  assert.equal(CATEGORY_CLASSIFICATION_METADATA_VERSION, 16);
+  // backfill it starts. Version 17 distinguishes sale objects from accessories and built-ins,
+  // and preserves conflicting category evidence.
+  assert.equal(CATEGORY_CLASSIFICATION_METADATA_VERSION, 17);
 });

@@ -52,6 +52,7 @@ export const PRODUCT_SEARCH_ENTITY_COLUMNS = [
   "newest_listed_at",
   "has_price_drop",
   "deal_score",
+  "listing_deal_score",
 ] as const satisfies readonly (keyof ProductSearchEntityRow)[];
 
 /** Listing columns backing {@link ProductOffer}. `id` is aliased to keep the DTO name in SQL. */

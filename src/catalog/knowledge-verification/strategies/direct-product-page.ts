@@ -45,10 +45,12 @@ function directOfficialUrls(candidate: KnowledgeSourceCandidate, alias: string):
 
 export interface DirectProductPageStrategyOptions {
   fetchPage: (url: string) => Promise<FetchTextResult>;
+  verifyPage?: typeof verifyOfficialProductPage;
 }
 
 export function createDirectProductPageStrategy({
   fetchPage,
+  verifyPage = verifyOfficialProductPage,
 }: DirectProductPageStrategyOptions): VerificationStrategy {
   return {
     name: "direct_product_page",
@@ -58,7 +60,7 @@ export function createDirectProductPageStrategy({
         for (const url of directOfficialUrls(candidate, alias)) {
           const page = await fetchPage(url);
           if (!page.ok) continue;
-          const result = await verifyOfficialProductPage({
+          const result = await verifyPage({
             candidate: aliasCandidate(candidate, alias),
             html: page.text,
             sourceUrl: page.url,

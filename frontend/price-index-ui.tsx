@@ -69,7 +69,12 @@ export function productPriceIndex(product: DisplayProduct): DisplayPriceIndexSum
     !isNullableNonNegativeNumber(raw.listing_end_median_yen) ||
     !isNonNegativeInteger(raw.sold_out_signal_count) ||
     !isNonNegativeInteger(raw.deactivated_signal_count) ||
-    typeof raw.last_computed_at !== "string"
+    typeof raw.last_computed_at !== "string" ||
+    (raw.asking_listing_count !== undefined && !isNonNegativeInteger(raw.asking_listing_count)) ||
+    (raw.asking_shop_count !== undefined && !isNonNegativeInteger(raw.asking_shop_count)) ||
+    (raw.latest_asking_observed_at != null &&
+      (typeof raw.latest_asking_observed_at !== "string" ||
+        !Number.isFinite(Date.parse(raw.latest_asking_observed_at))))
   ) {
     return null;
   }
@@ -84,6 +89,15 @@ export function productPriceIndex(product: DisplayProduct): DisplayPriceIndexSum
 
   return {
     asking_sample_count: raw.asking_sample_count,
+    ...(isNonNegativeInteger(raw.asking_listing_count)
+      ? { asking_listing_count: raw.asking_listing_count }
+      : {}),
+    ...(isNonNegativeInteger(raw.asking_shop_count)
+      ? { asking_shop_count: raw.asking_shop_count }
+      : {}),
+    ...(typeof raw.latest_asking_observed_at === "string"
+      ? { latest_asking_observed_at: raw.latest_asking_observed_at }
+      : {}),
     asking_median_yen: raw.asking_median_yen,
     asking_min_yen: raw.asking_min_yen,
     asking_max_yen: raw.asking_max_yen,
@@ -101,14 +115,20 @@ export function productPriceIndex(product: DisplayProduct): DisplayPriceIndexSum
 export function relativePriceBadge(product: DisplayProduct): RelativePriceBadgeModel | null {
   const index = productPriceIndex(product);
   const current = product.lowest_price_yen;
-  if (!index || current == null || index.asking_median_yen <= 0) return null;
+  if (
+    !index ||
+    Number(index.asking_listing_count || 0) < 3 ||
+    current == null ||
+    index.asking_median_yen <= 0
+  )
+    return null;
 
   const rawPercent = ((current - index.asking_median_yen) / index.asking_median_yen) * 100;
   const percent = Math.round(rawPercent);
   if (percent === 0) {
     return {
       label: "出品中央値比 ±0%",
-      title: "現在の最安出品価格は過去の出品価格中央値と同水準です",
+      title: "表示中の最安出品価格は出品ごとの最新価格の中央値と同水準です",
       direction: "same",
     };
   }
@@ -117,7 +137,7 @@ export function relativePriceBadge(product: DisplayProduct): RelativePriceBadgeM
   const absolute = Math.abs(percent);
   return {
     label: `出品中央値比 ${below ? "−" : "+"}${absolute}%`,
-    title: `現在の最安出品価格は過去の出品価格中央値より${absolute}%${below ? "低い" : "高い"}水準です`,
+    title: `表示中の最安出品価格は出品ごとの最新価格の中央値より${absolute}%${below ? "低い" : "高い"}水準です`,
     direction: below ? "below" : "above",
   };
 }
@@ -129,8 +149,10 @@ export function RelativePriceBadge({ product }: { product: DisplayProduct }) {
     <details className={`price-explanation price-index-badge-${badge.direction}`}>
       <summary className="badge price-index-badge">{badge.label}</summary>
       <p>
-        {badge.title}。集計開始から全期間の出品価格{productPriceIndex(product)?.asking_sample_count}
-        件を対象にしています。成約価格ではなく、商品の状態・付属品などの差も含みます。
+        {badge.title}。{productPriceIndex(product)?.asking_listing_count}
+        出品を対象に、各出品の最新価格を1件ずつ集計しています。
+        成約価格ではなく、状態・付属品・単品やペアなどの差も含みます。
+        「全店舗の最安値で割安な順」は全店舗の在庫価格を優先した最安値で並び、この表示は絞り込み後の価格を比較します。
       </p>
     </details>
   );
@@ -172,13 +194,21 @@ export function ProductPriceIndexSummary({ product }: { product: DisplayProduct 
           <p className="price-index-kicker">PRICE INDEX</p>
           <h3 id="price-index-title">出品価格の参考値</h3>
         </div>
-        <span>{index.asking_sample_count}件の出品価格から集計</span>
+        <span>
+          {index.asking_listing_count != null
+            ? `${index.asking_listing_count}出品・${index.asking_shop_count}店舗から集計`
+            : `${index.asking_sample_count}件の価格観測`}
+        </span>
       </div>
       <div className="price-index-grid">
         <section className="price-index-indicator price-index-asking">
           <p className="price-index-label">出品価格の相場</p>
           <strong className="price-index-main-value">{yen.format(index.asking_median_yen)}</strong>
-          <span className="price-index-caption">全期間の中央値</span>
+          <span className="price-index-caption">
+            {index.asking_listing_count != null
+              ? "出品ごとの最新価格の中央値"
+              : "全期間の観測中央値"}
+          </span>
           <dl className="price-index-stats">
             {index.recent_asking_median_yen != null ? (
               <>
@@ -192,6 +222,12 @@ export function ProductPriceIndexSummary({ product }: { product: DisplayProduct 
             </dd>
             <dt>観測数</dt>
             <dd>{index.asking_sample_count}件</dd>
+            {index.latest_asking_observed_at ? (
+              <>
+                <dt>最新の価格観測</dt>
+                <dd>{listingEndDateFmt.format(new Date(index.latest_asking_observed_at))}</dd>
+              </>
+            ) : null}
           </dl>
         </section>
         <section className="price-index-indicator price-index-listing-end">

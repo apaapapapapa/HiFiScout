@@ -308,6 +308,7 @@ export type KnownCategoryEvidenceSource =
  * `source` stays `string`: tests feed "detail"/"structured_data" which are not first-party.
  */
 export interface CategoryEvidenceInput {
+  ruleId?: string;
   categoryIds?: readonly string[];
   categoryId?: string;
   source?: string;
@@ -317,6 +318,7 @@ export interface CategoryEvidenceInput {
 
 /** Item produced by the classifier's internal `normalizedEvidence()`, before filtering. */
 export interface NormalizedCategoryEvidenceItem {
+  ruleId?: string;
   categoryId: CategoryId | null;
   /** Zero or one element, mirroring `categoryId`. */
   categoryIds: CategoryId[];
@@ -333,6 +335,7 @@ export interface ResolvedCategoryEvidenceItem extends NormalizedCategoryEvidence
 
 /** Element of `metadata.categoryClassification.evidence`; value re-truncated to 160 chars. */
 export interface CategoryEvidenceSummaryItem {
+  ruleId?: string;
   categoryIds: CategoryId[];
   source: string;
   strength: CategoryEvidenceStrength;
@@ -1114,6 +1117,8 @@ export type IdentityRejectionRule =
   | "missing_identity_fields"
   | "ambiguous_candidates"
   | "variant_mismatch"
+  | "sale_subject_mismatch"
+  | "bundle_identity"
   /** Model Resolution could not fully classify the model, so it may not attach to a product. */
   | "unresolved_model";
 
@@ -1134,6 +1139,9 @@ export interface IdentityVeto {
  * snake_case D1 row while tests pass a camelCase object.
  */
 export interface IdentityListingInput {
+  title?: string;
+  rawModel?: string;
+  raw_model?: string;
   manufacturerId?: string;
   manufacturer_id?: string;
   primaryCategoryId?: string;
@@ -1149,6 +1157,8 @@ export interface IdentityListingInput {
 
 /** Catalog side of `resolveProductIdentity`. `id` must be numeric (candidates are sorted by it). */
 export interface IdentityCandidateInput {
+  /** Bounded discovery candidates cannot authorize an automatic exact/alias match. */
+  fuzzyOnly?: boolean;
   id: number;
   manufacturerId?: string;
   manufacturer_id?: string;

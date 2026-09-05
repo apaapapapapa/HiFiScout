@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 import { PRODUCT_PRICE_INDEX_MIN_ASKING_SAMPLES } from "../src/api/price-index.js";
+import { PUBLIC_API_SCHEMAS } from "../src/api/public-route-contracts.js";
 import { loadKnowledgeCatalogPriceIndexes } from "../src/db/knowledge-catalog-price-index-read.js";
 import {
   productSearchDetail,
@@ -14,6 +15,9 @@ function priceIndexRow(catalogProductId = 12, askingSampleCount = 4) {
   return {
     catalog_product_id: catalogProductId,
     asking_sample_count: askingSampleCount,
+    asking_listing_count: askingSampleCount,
+    asking_shop_count: 2,
+    latest_asking_observed_at: "2026-09-05T00:00:00.000Z",
     asking_median_yen: 310_000,
     asking_min_yen: 280_000,
     asking_max_yen: 360_000,
@@ -39,6 +43,17 @@ test("price-index public read uses only the persistent projection for requested 
 
   assert.equal(summaries.get(12)?.asking_median_yen, 310_000);
   assert.equal(summaries.get(12)?.recent_asking_median_yen, 320_000);
+  const summary = summaries.get(12)!;
+  const schema = PUBLIC_API_SCHEMAS.ProductPriceIndexSummary;
+  assert.equal(schema.additionalProperties, false);
+  assert.deepEqual(
+    Object.keys(summary).filter((key) => !Object.hasOwn(schema.properties ?? {}, key)),
+    [],
+    "every serialized price-index field must be declared in the public response contract",
+  );
+  for (const key of schema.required ?? []) {
+    assert.ok(Object.hasOwn(summary, key), `missing required price-index field: ${key}`);
+  }
   assert.equal(db.calls.length, 1);
   assert.match(db.calls[0].sql, /FROM knowledge_catalog_price_indexes/);
   assert.match(db.calls[0].sql, /WHERE catalog_product_id IN \(\?\)/);

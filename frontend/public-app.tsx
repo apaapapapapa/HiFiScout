@@ -1096,7 +1096,7 @@ export function PublicApp() {
                 >
                   <option value="newest">新着・更新順</option>
                   <option value="oldest">更新が古い順</option>
-                  <option value="dealScore">出品中央値より割安な順</option>
+                  <option value="dealScore">全店舗の最安値で割安な順</option>
                   <option value="priceAsc">価格が安い順</option>
                   <option value="priceDesc">価格が高い順</option>
                 </select>

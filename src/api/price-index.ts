@@ -1,7 +1,7 @@
 /** Public Knowledge Catalog market-price summary projected onto product-search responses. */
 
 /**
- * Minimum retained asking-price evidence required before the public API exposes a price index.
+ * Minimum independent listings with retained asking-price evidence required before the public API exposes a price index.
  *
  * A named threshold keeps Step 4 badge logic mechanical: `price_index` exists only when the
  * evidence floor is met, so low-sample products never need a second client-side policy.
@@ -18,11 +18,15 @@ export interface ProductPriceIndexListingEndObservation {
 }
 
 export interface ProductPriceIndexSummary {
+  /** Retained observation count; price changes do not increase the independent listing count. */
   asking_sample_count: number;
+  asking_listing_count?: number;
+  asking_shop_count?: number;
+  latest_asking_observed_at?: string | null;
   asking_median_yen: number;
   asking_min_yen: number;
   asking_max_yen: number;
-  /** Median asking price within the trailing 90 days, recalculated at read time. */
+  /** Median of each listing's latest quote within 90 days, maintained by background projections. */
   recent_asking_median_yen: number | null;
   listing_end_sample_count: number;
   listing_end_median_yen: number | null;

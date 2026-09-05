@@ -52,7 +52,7 @@ function candidateReads(db: ReturnType<typeof identityDatabase>) {
   );
 }
 
-test("identity replay can load verified candidates one manufacturer at a time", async () => {
+test("identity replay scopes indexed candidate reads to each manufacturer and its requested model keys", async () => {
   const db = identityDatabase();
 
   await syncProductIdentityResolutions(
@@ -63,13 +63,21 @@ test("identity replay can load verified candidates one manufacturer at a time", 
     { candidateManufacturerChunkSize: 1 },
   );
 
+  for (const statement of candidateReads(db)) {
+    assert.match(statement.sql, /INDEXED BY idx_catalog_products_retrieval_key/);
+  }
+  assert.match(candidateReads(db).at(-1)!.sql, /LIMIT 64/);
   assert.deepEqual(
     candidateReads(db).map((statement) => statement.binds),
-    [["onkyo"], ["kenwood"]],
+    [
+      ["onkyo", "TXL55", "INTEGRAT4500"],
+      ["kenwood", "KT2060"],
+      ["onkyo", "INT", "INT\uffff"],
+    ],
   );
 });
 
-test("normal identity sync keeps manufacturer candidate reads batched by default", async () => {
+test("normal identity sync also bounds fuzzy discovery instead of reading a whole manufacturer", async () => {
   const db = identityDatabase();
 
   await syncProductIdentityResolutions(
@@ -79,8 +87,16 @@ test("normal identity sync keeps manufacturer candidate reads batched by default
     "2026-08-16T00:00:00.000Z",
   );
 
+  for (const statement of candidateReads(db)) {
+    assert.match(statement.sql, /INDEXED BY idx_catalog_products_retrieval_key/);
+  }
+  assert.match(candidateReads(db).at(-1)!.sql, /LIMIT 64/);
   assert.deepEqual(
     candidateReads(db).map((statement) => statement.binds),
-    [["onkyo", "kenwood"]],
+    [
+      ["onkyo", "TXL55", "INTEGRAT4500"],
+      ["kenwood", "KT2060"],
+      ["onkyo", "INT", "INT\uffff"],
+    ],
   );
 });

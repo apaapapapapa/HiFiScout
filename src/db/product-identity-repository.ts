@@ -1,5 +1,11 @@
-import { catalogModelLookupVariants } from "../catalog/knowledge-catalog.js";
-import { resolveProductIdentity } from "../catalog/product-identity.js";
+import {
+  loadCatalogLookupCandidates,
+  loadFuzzyCatalogCandidates,
+  type CatalogLookupRow,
+  type CatalogLookupAliasRow,
+} from "./catalog-lookup-candidates.js";
+import { identitySafeModelLookupVariants } from "../catalog/knowledge-catalog.js";
+import { prepareIdentityCandidates, resolveProductIdentity } from "../catalog/product-identity.js";
 import { IDENTITY_RESOLVER_VERSION } from "../catalog/resolution-versions.js";
 import type { IdentityCandidateInput, ProductIdentityResolution } from "../catalog/types.js";
 import type {
@@ -12,7 +18,7 @@ import type {
 const CHUNK_SIZE = 40;
 
 export interface ProductIdentitySyncOptions {
-  /** Number of manufacturers whose verified catalog candidates may be loaded by one query. */
+  /** Legacy hint. Indexed candidate queries now always scope to one maker's requested model keys. */
   candidateManufacturerChunkSize?: number;
   /** Emit bounded candidate-query telemetry. Intended for operational replay, not normal crawls. */
   traceCandidateScopes?: boolean;
@@ -27,25 +33,14 @@ interface CatalogIdentityCandidate extends IdentityCandidateInput {
   aliases: string[];
 }
 
-interface CatalogIdentityRow {
-  id: number;
-  manufacturer_id: string;
-  canonical_model: string;
-  normalized_model: string;
-  category_id: string | null;
-}
-
-interface CatalogAliasRow {
-  product_id: number;
-  alias: string;
-}
-
 type IdentityListingRow = Pick<
   ProductRow,
   | "id"
   | "source_id"
   | "canonical_manufacturer_id"
   | "model"
+  | "title"
+  | "raw_model"
   | "model_resolution_status"
   | "primary_category_id"
   | "classification_status"
@@ -72,109 +67,67 @@ function unique(values: readonly unknown[] = []): string[] {
   return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
 }
 
-function boundedManufacturerChunkSize(value: number | undefined): number {
-  if (value == null || !Number.isFinite(value)) return CHUNK_SIZE;
-  return Math.max(1, Math.min(CHUNK_SIZE, Math.trunc(value)));
-}
-
-async function loadVerifiedIdentityCandidates(
-  db: QueryableDatabase,
-  manufacturerIds: readonly string[] = [],
-  candidateManufacturerChunkSize = CHUNK_SIZE,
-  traceCandidateScopes = false,
-): Promise<Map<string, CatalogIdentityCandidate[]>> {
-  const ids = unique(manufacturerIds.map((value) => value.toLowerCase()));
-  if (!ids.length) return new Map<string, CatalogIdentityCandidate[]>();
-
-  const manufacturerChunkSize = boundedManufacturerChunkSize(candidateManufacturerChunkSize);
+function candidatesFromRows(
+  rows: readonly CatalogLookupRow[],
+  aliases: readonly CatalogLookupAliasRow[],
+): CatalogIdentityCandidate[] {
   const byId = new Map<number, CatalogIdentityCandidate>();
-  for (let i = 0; i < ids.length; i += manufacturerChunkSize) {
-    const chunk = ids.slice(i, i + manufacturerChunkSize);
-    const placeholders = chunk.map(() => "?").join(",");
-    const startedAt = Date.now();
-    if (traceCandidateScopes) {
-      console.log(
-        JSON.stringify({
-          event: "product_identity_candidate_scope_start",
-          manufacturer_ids: chunk,
-        }),
-      );
+  for (const row of rows) {
+    let candidate = byId.get(Number(row.id));
+    if (!candidate) {
+      candidate = {
+        id: Number(row.id),
+        manufacturerId: row.manufacturer_id,
+        canonicalModel: row.canonical_model,
+        persistedNormalizedModel: row.normalized_model,
+        categoryIds: [],
+        aliases: [],
+      };
+      byId.set(candidate.id, candidate);
     }
-    const result = await db
-      .prepare(`
-        SELECT kp.id, kp.manufacturer_id, kp.canonical_model, kp.normalized_model,
-               kpc.category_id
-        FROM knowledge_catalog_products kp
-        LEFT JOIN knowledge_catalog_product_categories kpc ON kpc.product_id = kp.id
-        WHERE kp.verification_status = 'verified'
-          AND kp.manufacturer_id IN (${placeholders})
-        ORDER BY kp.id, kpc.is_primary DESC, kpc.category_id
-      `)
-      .bind(...chunk)
-      .all<CatalogIdentityRow>();
-
-    if (traceCandidateScopes) {
-      console.log(
-        JSON.stringify({
-          event: "product_identity_candidate_scope_complete",
-          manufacturer_ids: chunk,
-          catalog_row_count: result.results?.length || 0,
-          duration_ms: Date.now() - startedAt,
-        }),
-      );
-    }
-
-    for (const row of result.results || []) {
-      let candidate = byId.get(Number(row.id));
-      if (!candidate) {
-        candidate = {
-          id: Number(row.id),
-          manufacturerId: row.manufacturer_id,
-          canonicalModel: row.canonical_model,
-          persistedNormalizedModel: row.normalized_model,
-          categoryIds: [],
-          aliases: [],
-        };
-        byId.set(candidate.id, candidate);
-      }
-      if (row.category_id && !candidate.categoryIds.includes(row.category_id)) {
-        candidate.categoryIds.push(row.category_id);
-      }
-    }
+    if (row.category_id && !candidate.categoryIds.includes(row.category_id))
+      candidate.categoryIds.push(row.category_id);
   }
-
-  const candidateIds = [...byId.keys()];
-  for (let i = 0; i < candidateIds.length; i += CHUNK_SIZE) {
-    const chunk = candidateIds.slice(i, i + CHUNK_SIZE);
-    if (!chunk.length) continue;
-    const placeholders = chunk.map(() => "?").join(",");
-    const result = await db
-      .prepare(`
-        SELECT product_id, alias
-        FROM knowledge_catalog_aliases
-        WHERE alias_type = 'model' AND product_id IN (${placeholders})
-      `)
-      .bind(...chunk)
-      .all<CatalogAliasRow>();
-    for (const row of result.results || []) {
-      const candidate = byId.get(Number(row.product_id));
-      if (candidate && row.alias && !candidate.aliases.includes(row.alias))
-        candidate.aliases.push(row.alias);
-    }
-  }
-
-  const byManufacturer = new Map<string, CatalogIdentityCandidate[]>();
-  for (const candidate of byId.values()) {
+  for (const alias of aliases) byId.get(alias.product_id)?.aliases.push(alias.alias);
+  for (const candidate of byId.values())
     candidate.aliases = unique([
       ...candidate.aliases,
-      ...catalogModelLookupVariants({
+      ...identitySafeModelLookupVariants({
         manufacturerId: candidate.manufacturerId,
         model: candidate.canonicalModel,
       }),
     ]);
-    const manufacturerCandidates = byManufacturer.get(candidate.manufacturerId) ?? [];
-    manufacturerCandidates.push(candidate);
-    byManufacturer.set(candidate.manufacturerId, manufacturerCandidates);
+  return [...byId.values()];
+}
+
+async function loadVerifiedIdentityCandidates(
+  db: QueryableDatabase,
+  listings: readonly IdentityListingRow[],
+  traceCandidateScopes = false,
+): Promise<Map<string, CatalogIdentityCandidate[]>> {
+  const loaded = await loadCatalogLookupCandidates(
+    db,
+    listings.map((row) => ({
+      manufacturerId: row.canonical_manufacturer_id.toLowerCase(),
+      model: row.model,
+    })),
+    "identity",
+  );
+  const candidates = candidatesFromRows(loaded.rows, loaded.aliases);
+  if (traceCandidateScopes)
+    console.log(
+      JSON.stringify({
+        event: "product_identity_candidate_scope_complete",
+        listing_count: listings.length,
+        catalog_row_count: loaded.rows.length,
+        scope: "model_keys",
+      }),
+    );
+  const byManufacturer = new Map<string, CatalogIdentityCandidate[]>();
+  for (const candidate of candidates) {
+    const group = byManufacturer.get(candidate.manufacturerId) ?? [];
+    group.push(candidate);
+    byManufacturer.set(candidate.manufacturerId, group);
   }
   return byManufacturer;
 }
@@ -192,7 +145,7 @@ async function loadListingRows(
     const placeholders = chunk.map(() => "?").join(",");
     const result = await db
       .prepare(`
-        SELECT id, source_id, canonical_manufacturer_id, model, model_resolution_status,
+        SELECT id, source_id, canonical_manufacturer_id, model, title, raw_model, model_resolution_status,
                primary_category_id, classification_status
         FROM products
         WHERE shop_key = ? AND source_id IN (${placeholders})
@@ -304,9 +257,14 @@ export async function syncProductIdentityResolutions(
 
   const candidatesByManufacturer = await loadVerifiedIdentityCandidates(
     db,
-    listings.map((row) => row.canonical_manufacturer_id),
-    options.candidateManufacturerChunkSize,
+    listings,
     options.traceCandidateScopes,
+  );
+  const preparedByManufacturer = new Map(
+    [...candidatesByManufacturer].map(
+      ([manufacturer, candidates]) =>
+        [manufacturer, prepareIdentityCandidates(candidates)] as const,
+    ),
   );
   const existing = await loadExistingResolutions(
     db,
@@ -314,12 +272,35 @@ export async function syncProductIdentityResolutions(
   );
   const statements: D1PreparedStatement[] = [];
 
+  const fuzzyByKey = new Map<string, ReturnType<typeof prepareIdentityCandidates>>();
   for (const listing of listings) {
     const manufacturerId = String(listing.canonical_manufacturer_id || "").toLowerCase();
-    const resolution = resolveProductIdentity(
+    let resolution = resolveProductIdentity(
       { ...listing, manufacturer_id: manufacturerId },
-      candidatesByManufacturer.get(manufacturerId) || [],
+      preparedByManufacturer.get(manufacturerId) || [],
     );
+    if (resolution.matchMethod === "unresolved" && !resolution.rejectedBy.length) {
+      const key = `${manufacturerId}:${listing.model}`;
+      let fuzzy = fuzzyByKey.get(key);
+      if (!fuzzy) {
+        const loaded = await loadFuzzyCatalogCandidates(db, {
+          manufacturerId,
+          model: listing.model,
+        });
+        fuzzy = prepareIdentityCandidates(
+          candidatesFromRows(loaded.rows, loaded.aliases).map((candidate) => ({
+            ...candidate,
+            fuzzyOnly: true,
+          })),
+        );
+        fuzzyByKey.set(key, fuzzy);
+      }
+      if (fuzzy.length)
+        resolution = resolveProductIdentity({ ...listing, manufacturer_id: manufacturerId }, [
+          ...(preparedByManufacturer.get(manufacturerId) || []),
+          ...fuzzy,
+        ]);
+    }
     countMetrics(metrics, resolution);
     const serialized = serializedResolution(resolution);
     if (sameResolution(existing.get(Number(listing.id)), serialized)) continue;

@@ -36,9 +36,9 @@ function insertProducts(sqlite: DatabaseSync, first: number, last: number): void
       catalog_product_id, asking_sample_count, asking_median_yen, asking_min_yen,
       asking_max_yen, recent_asking_median_yen, listing_end_sample_count,
       listing_end_median_yen, sold_out_signal_count, deactivated_signal_count,
-      last_computed_at
+      last_computed_at, asking_listing_count, asking_shop_count, listing_basis_computed_at
     ) VALUES (?, 3, 200000, 100000, 300000, 200000, 0, NULL, 0, 0,
-              '2026-09-01T00:00:00.000Z')
+              '2026-09-01T00:00:00.000Z', 3, 1, '2026-09-01T00:00:00.000Z')
   `);
   sqlite.exec("BEGIN");
   for (let id = first; id <= last; id += 1) {

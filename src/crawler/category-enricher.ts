@@ -250,7 +250,7 @@ async function applyKnowledgeCatalogEvidence(
   const updated = products.map((product) => {
     const key = knowledgeCatalogKey(product.manufacturerId, product.model);
     const match = matches.get(key) || manualCategoryMatches.get(key);
-    const catalogEvidence = knowledgeCatalogEvidence(match);
+    const catalogEvidence = knowledgeCatalogEvidence(match, product);
     if (!match || !catalogEvidence.length) return product;
     catalogMatches += 1;
     const evidence = [...(product.categoryEvidence || []), ...catalogEvidence];

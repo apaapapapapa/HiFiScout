@@ -165,10 +165,12 @@ function syntheticHtml(alias: string, context: string, categoryId = ""): string 
 
 export interface OfficialIndexStrategyOptions {
   fetchPage: (url: string) => Promise<FetchTextResult>;
+  verifyPage?: typeof verifyOfficialProductPage;
 }
 
 export function createOfficialIndexStrategy({
   fetchPage,
+  verifyPage = verifyOfficialProductPage,
 }: OfficialIndexStrategyOptions): VerificationStrategy {
   async function verifyAliasOnIndex(
     candidate: KnowledgeSourceCandidate,
@@ -178,7 +180,7 @@ export function createOfficialIndexStrategy({
   ): Promise<KnowledgeSourceVerification | null> {
     const context = contextForAlias(page.text, alias, index.categoryId || "");
     if (!context) return null;
-    const result = await verifyOfficialProductPage({
+    const result = await verifyPage({
       candidate: aliasCandidate(candidate, alias),
       html: syntheticHtml(alias, context, index.categoryId || ""),
       sourceUrl: page.url,

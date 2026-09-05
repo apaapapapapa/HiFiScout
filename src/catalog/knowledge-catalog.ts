@@ -6,6 +6,7 @@ import type {
   KnowledgeCatalogMatch,
   ScoredKnowledgeCatalogCandidate,
 } from "./types.js";
+import { inferSaleSubject, isAccessoryCategory } from "./sale-subject.js";
 
 /** Evidence samples are capped so one popular group cannot grow an unbounded D1 row. */
 const RAW_VARIANT_LIMIT = 10;
@@ -113,6 +114,35 @@ export function catalogModelLookupVariants({
   return [...variants].sort(
     (left, right) => left.length - right.length || left.localeCompare(right),
   );
+}
+
+/** Only presentation/color aliases preserve the sale identity; bundles and arbitrary annotations
+ * remain category-only lookup hints. Both listing and catalog use this same vocabulary. */
+export function identitySafeModelLookupVariants({
+  manufacturerId = "",
+  model = "",
+}: { manufacturerId?: string; model?: string } = {}): string[] {
+  const manufacturer = clean(manufacturerId).toLowerCase();
+  const variants = new Set<string>();
+  const original = addLookupVariant(variants, model);
+  if (!original) return [];
+  const presentation = stripPresentationVariant(original);
+  addLookupVariant(variants, presentation);
+  const market = stripManufacturerMarketSuffix(presentation, manufacturer);
+  addLookupVariant(variants, market);
+  addManufacturerFormattingAliases(variants, market, manufacturer);
+  return [...variants];
+}
+
+export function modelLookupAliases(input: { manufacturerId?: string; model?: string }): {
+  value: string;
+  purpose: "identity_safe" | "category_only";
+}[] {
+  const safe = new Set(identitySafeModelLookupVariants(input));
+  return catalogModelLookupVariants(input).map((value) => ({
+    value,
+    purpose: safe.has(value) ? "identity_safe" : "category_only",
+  }));
 }
 
 export function knowledgeCatalogKey(manufacturerId: unknown = "", model: unknown = ""): string {
@@ -298,9 +328,16 @@ export function buildKnowledgeCatalogCandidateAggregates(
 
 export function knowledgeCatalogEvidence(
   match: Partial<KnowledgeCatalogMatch> | null | undefined,
+  listing?: { title?: string; rawModel?: string },
 ): CategoryEvidenceInput[] {
   const categoryIds = Array.isArray(match?.categoryIds) ? match.categoryIds.filter(Boolean) : [];
   if (!categoryIds.length) return [];
+  if (
+    listing &&
+    inferSaleSubject(listing.title, listing.rawModel).kind === "accessory" &&
+    !categoryIds.some(isAccessoryCategory)
+  )
+    return [];
   return [
     {
       categoryIds,

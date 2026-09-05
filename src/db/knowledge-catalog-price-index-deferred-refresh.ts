@@ -1,3 +1,4 @@
+import { priceIndexRollupUpsertSql } from "./price-index-rollup.js";
 /**
  * Collapsing many sample writes in one transaction into one aggregate recompute per product.
  *
@@ -35,144 +36,6 @@ import type { QueryableDatabase } from "./types.js";
  * `catalog_ids` is taken from `scoped`, so a dirty product whose last sample went away produces no
  * row here and is handled by the delete below instead -- the same division the trigger makes.
  */
-const DIRTY_ROLLUP = `
-  WITH
-  scoped AS (
-    SELECT id, catalog_product_id, sample_kind, signal_kind, price_yen, observed_at
-    FROM knowledge_catalog_price_index_samples
-    WHERE catalog_product_id IN (
-      SELECT catalog_product_id FROM knowledge_catalog_price_index_dirty_products
-    )
-  ),
-  catalog_ids AS (
-    SELECT DISTINCT catalog_product_id FROM scoped
-  ),
-  asking_ranked AS (
-    SELECT
-      catalog_product_id,
-      price_yen,
-      ROW_NUMBER() OVER (
-        PARTITION BY catalog_product_id
-        ORDER BY price_yen, id
-      ) AS row_number,
-      COUNT(*) OVER (PARTITION BY catalog_product_id) AS sample_count
-    FROM scoped
-    WHERE sample_kind = 'asking' AND price_yen IS NOT NULL
-  ),
-  asking_stats AS (
-    SELECT
-      catalog_product_id,
-      MAX(sample_count) AS asking_sample_count,
-      CAST(
-        ROUND(
-          AVG(
-            CASE
-              WHEN row_number IN ((sample_count + 1) / 2, (sample_count + 2) / 2)
-                THEN price_yen
-            END
-          )
-        ) AS INTEGER
-      ) AS asking_median_yen,
-      MIN(price_yen) AS asking_min_yen,
-      MAX(price_yen) AS asking_max_yen
-    FROM asking_ranked
-    GROUP BY catalog_product_id
-  ),
-  recent_asking_ranked AS (
-    SELECT
-      catalog_product_id,
-      price_yen,
-      ROW_NUMBER() OVER (
-        PARTITION BY catalog_product_id
-        ORDER BY price_yen, id
-      ) AS row_number,
-      COUNT(*) OVER (PARTITION BY catalog_product_id) AS sample_count
-    FROM scoped
-    WHERE sample_kind = 'asking'
-      AND price_yen IS NOT NULL
-      AND julianday(observed_at) >= julianday('now', '-90 days')
-  ),
-  recent_asking_stats AS (
-    SELECT
-      catalog_product_id,
-      CAST(
-        ROUND(
-          AVG(
-            CASE
-              WHEN row_number IN ((sample_count + 1) / 2, (sample_count + 2) / 2)
-                THEN price_yen
-            END
-          )
-        ) AS INTEGER
-      ) AS recent_asking_median_yen
-    FROM recent_asking_ranked
-    GROUP BY catalog_product_id
-  ),
-  listing_end_ranked AS (
-    SELECT
-      catalog_product_id,
-      price_yen,
-      ROW_NUMBER() OVER (
-        PARTITION BY catalog_product_id
-        ORDER BY price_yen, id
-      ) AS row_number,
-      COUNT(*) OVER (PARTITION BY catalog_product_id) AS sample_count
-    FROM scoped
-    WHERE sample_kind = 'listing_end' AND price_yen IS NOT NULL
-  ),
-  listing_end_stats AS (
-    SELECT
-      catalog_product_id,
-      MAX(sample_count) AS listing_end_sample_count,
-      CAST(
-        ROUND(
-          AVG(
-            CASE
-              WHEN row_number IN ((sample_count + 1) / 2, (sample_count + 2) / 2)
-                THEN price_yen
-            END
-          )
-        ) AS INTEGER
-      ) AS listing_end_median_yen
-    FROM listing_end_ranked
-    GROUP BY catalog_product_id
-  ),
-  signal_stats AS (
-    SELECT
-      catalog_product_id,
-      SUM(
-        CASE
-          WHEN sample_kind = 'listing_end' AND signal_kind = 'sold_out' THEN 1
-          ELSE 0
-        END
-      ) AS sold_out_signal_count,
-      SUM(
-        CASE
-          WHEN sample_kind = 'listing_end' AND signal_kind = 'deactivated' THEN 1
-          ELSE 0
-        END
-      ) AS deactivated_signal_count
-    FROM scoped
-    GROUP BY catalog_product_id
-  )
-  SELECT
-    catalog_ids.catalog_product_id,
-    COALESCE(asking_stats.asking_sample_count, 0),
-    asking_stats.asking_median_yen,
-    asking_stats.asking_min_yen,
-    asking_stats.asking_max_yen,
-    recent_asking_stats.recent_asking_median_yen,
-    COALESCE(listing_end_stats.listing_end_sample_count, 0),
-    listing_end_stats.listing_end_median_yen,
-    COALESCE(signal_stats.sold_out_signal_count, 0),
-    COALESCE(signal_stats.deactivated_signal_count, 0),
-    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-  FROM catalog_ids
-  LEFT JOIN asking_stats USING (catalog_product_id)
-  LEFT JOIN recent_asking_stats USING (catalog_product_id)
-  LEFT JOIN listing_end_stats USING (catalog_product_id)
-  LEFT JOIN signal_stats USING (catalog_product_id)
-`;
 
 /**
  * Wraps a batch so its sample writes recompute each changed product once.
@@ -210,33 +73,11 @@ export function deferredPriceIndexRefresh(
         WHERE catalog_product_id = knowledge_catalog_price_indexes.catalog_product_id
       )
     `),
-    db.prepare(`
-      INSERT INTO knowledge_catalog_price_indexes(
-        catalog_product_id,
-        asking_sample_count,
-        asking_median_yen,
-        asking_min_yen,
-        asking_max_yen,
-        recent_asking_median_yen,
-        listing_end_sample_count,
-        listing_end_median_yen,
-        sold_out_signal_count,
-        deactivated_signal_count,
-        last_computed_at
-      )
-      ${DIRTY_ROLLUP}
-      ON CONFLICT(catalog_product_id) DO UPDATE SET
-        asking_sample_count = excluded.asking_sample_count,
-        asking_median_yen = excluded.asking_median_yen,
-        asking_min_yen = excluded.asking_min_yen,
-        asking_max_yen = excluded.asking_max_yen,
-        recent_asking_median_yen = excluded.recent_asking_median_yen,
-        listing_end_sample_count = excluded.listing_end_sample_count,
-        listing_end_median_yen = excluded.listing_end_median_yen,
-        sold_out_signal_count = excluded.sold_out_signal_count,
-        deactivated_signal_count = excluded.deactivated_signal_count,
-        last_computed_at = excluded.last_computed_at
-    `),
+    db.prepare(
+      priceIndexRollupUpsertSql(
+        "catalog_product_id IN (SELECT catalog_product_id FROM knowledge_catalog_price_index_dirty_products)",
+      ),
+    ),
     db.prepare("DELETE FROM knowledge_catalog_price_index_dirty_products"),
     db
       .prepare("DELETE FROM knowledge_catalog_price_index_refresh_deferrals WHERE token = ?")

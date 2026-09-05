@@ -120,6 +120,14 @@ test("inactive taxonomy-v3 migration rows replay complete facets when reactivate
   assert.match(queued.work_key, /^auto:classify_category:listing:1201:/);
   assert.match(queued.work_key, /:category:15:/);
 
+  // Historical migrations above prove the reactivation edge. Runtime replay then uses the current
+  // schema, including the durable projection obligations and indexed candidate retrieval.
+  for (const file of readdirSync(MIGRATIONS)
+    .filter((name) => name.endsWith(".sql") && name > REACTIVATION_MIGRATION)
+    .sort()) {
+    applyMigration(sqlite, file);
+  }
+
   // Make the trigger-generated work immediately claimable without depending on the host clock.
   sqlite
     .prepare(

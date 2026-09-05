@@ -50,8 +50,8 @@ const ACTIVITY_SORTS: Readonly<Record<ProductQuerySort, ProductSearchSortDefinit
   priceAsc: null,
   priceDesc: null,
   dealScore: {
-    key: "dealScore",
-    column: "deal_score",
+    key: "dealScore:listing-v1",
+    column: "listing_deal_score",
     direction: "ASC",
     idDirection: "ASC",
   },

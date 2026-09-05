@@ -22,6 +22,8 @@ export interface ProductSearchGapRepairOptions {
   evaluatedAt?: string;
   batchSize?: number;
   maxListings?: number;
+  /** Maximum source rows examined by each audit phase, even when no gaps exist. */
+  maxScannedListings?: number;
   /**
    * Continue past a projection failure by retrying the selected batch one listing at a time.
    *
@@ -69,6 +71,7 @@ export interface ProductSearchGapRepairResult {
   repairedCount: number;
   /** Selected listings that still failed after per-listing isolation. Present only when non-zero. */
   failedCount?: number;
+  scannedCount?: number;
   /** Gaps still outstanding, or `null` when the caller did not ask to pay for the count. */
   remainingGapCount: number | null;
 }
@@ -145,24 +148,30 @@ const ACTIVE_PROJECTION_GAP_PREDICATE = `
   OR (${EXACT_IDENTITY_MEMBERSHIP_GAP_PREDICATE})
 `;
 
-async function selectProjectionGapsByPredicate(
+interface ProjectionAuditRow extends ProjectionGapRow {
+  is_gap: number;
+}
+
+async function selectProjectionAuditWindow(
   db: QueryableDatabase,
   afterId: number,
   limit: number,
   predicate: string,
-): Promise<ProjectionGapRow[]> {
+): Promise<ProjectionAuditRow[]> {
+  // Materialize the candidate window BEFORE evaluating the gap predicate. LIMIT on matching gaps
+  // would still scan every healthy listing when there were no repairs to return.
   const result = await db
     .prepare(`
-      SELECT p.id, p.shop_key, p.source_id
-      FROM products p
-      WHERE p.is_active = 1
-        AND p.id > ?
-        AND (${predicate})
-      ORDER BY p.id
-      LIMIT ?
-    `)
+    WITH candidates AS MATERIALIZED (
+      SELECT id, shop_key, source_id, is_active, canonical_manufacturer_id, normalized_model,
+        model_resolution_status, primary_category_id
+      FROM products WHERE is_active = 1 AND id > ? ORDER BY id LIMIT ?
+    )
+    SELECT p.id, p.shop_key, p.source_id, CASE WHEN (${predicate}) THEN 1 ELSE 0 END AS is_gap
+    FROM candidates p ORDER BY p.id
+  `)
     .bind(afterId, limit)
-    .all<ProjectionGapRow>();
+    .all<ProjectionAuditRow>();
   return result.results || [];
 }
 
@@ -329,6 +338,7 @@ export async function repairActiveListingProjectionGaps(
     evaluatedAt = new Date().toISOString(),
     batchSize: requestedBatchSize,
     maxListings: requestedMaxListings,
+    maxScannedListings: requestedMaxScannedListings,
     countRemainingGaps = false,
     continueOnRefreshError = !countRemainingGaps,
     phases = "all",
@@ -337,38 +347,46 @@ export async function repairActiveListingProjectionGaps(
   const batchSize = positiveBoundedInteger(requestedBatchSize, DEFAULT_BATCH_SIZE, 50);
   const maxListings = positiveBoundedInteger(requestedMaxListings, DEFAULT_MAX_LISTINGS, 500);
 
+  const maxScannedListings = positiveBoundedInteger(requestedMaxScannedListings, 25, 500);
+  let scannedCount = 0;
   let selectedCount = 0;
   let repairedCount = 0;
   let failedCount = 0;
   const attemptedListingIds = new Set<number>();
 
   const repairPhase = async (
+    phase: string,
     predicate: string,
     repair: ProjectionGapRepair = refreshFullProjectionPath,
   ): Promise<void> => {
-    // Each priority class owns its cursor. Reusing a higher-priority cursor can indefinitely starve
-    // a lower-id gap whenever fresh higher-id work arrives between cron ticks.
-    let afterId = 0;
-
-    while (selectedCount < maxListings) {
-      const limit = Math.min(batchSize, maxListings - selectedCount);
-      const gaps = await selectProjectionGapsByPredicate(db, afterId, limit, predicate);
-      if (!gaps.length) break;
-
-      // Always advance using the raw selector batch. A row attempted in an earlier phase can still
-      // satisfy this predicate after a failed refresh; skipping it must not trap the phase cursor.
-      afterId = Number(gaps[gaps.length - 1]?.id || afterId);
-      const unattemptedGaps = gaps.filter((gap) => !attemptedListingIds.has(Number(gap.id)));
-      if (!unattemptedGaps.length) continue;
-
-      // The sweep budget is per unique listing, not per predicate match. Carry attempted ids across
-      // phases so one poison listing cannot consume multiple slots or inflate failedCount.
-      for (const gap of unattemptedGaps) attemptedListingIds.add(Number(gap.id));
-      selectedCount += unattemptedGaps.length;
-
+    if (selectedCount >= maxListings) return;
+    const cursor = await db
+      .prepare("SELECT after_id FROM product_projection_audit_cursors WHERE phase = ?")
+      .bind(phase)
+      .first<{ after_id: number }>();
+    const afterId = Number(cursor?.after_id || 0);
+    const window = await selectProjectionAuditWindow(db, afterId, maxScannedListings, predicate);
+    scannedCount += window.length;
+    const gaps = window
+      .filter((row) => row.is_gap && !attemptedListingIds.has(row.id))
+      .slice(0, maxListings - selectedCount);
+    for (let i = 0; i < gaps.length; i += batchSize) {
+      let chunk = gaps.slice(i, i + batchSize);
+      if (i > 0) {
+        const current = await db
+          .prepare(`SELECT p.id,p.shop_key,p.source_id FROM products p
+          WHERE p.is_active = 1 AND p.id IN (${chunk.map(() => "?").join(",")}) AND (${predicate})`)
+          .bind(...chunk.map((row) => row.id))
+          .all<ProjectionGapRow>();
+        for (const row of chunk) attemptedListingIds.add(row.id);
+        chunk = (current.results || []).map((row) => ({ ...row, is_gap: 1 }));
+      }
+      if (!chunk.length) continue;
+      for (const gap of chunk) attemptedListingIds.add(gap.id);
+      selectedCount += chunk.length;
       const refreshed = await refreshSelectedGaps(
         db,
-        unattemptedGaps,
+        chunk,
         evaluatedAt,
         continueOnRefreshError,
         repair,
@@ -376,24 +394,72 @@ export async function repairActiveListingProjectionGaps(
       repairedCount += refreshed.repairedCount;
       failedCount += refreshed.failedCount;
     }
+    // Do not skip unprocessed gaps when the repair budget is smaller than the candidate window.
+    const moreGaps = window.some((row) => row.is_gap && !attemptedListingIds.has(row.id));
+    const nextId = moreGaps
+      ? gaps.at(-1)?.id || afterId
+      : window.length < maxScannedListings
+        ? 0
+        : window.at(-1)?.id || 0;
+    if (nextId !== afterId || !cursor) {
+      await db
+        .prepare(`INSERT INTO product_projection_audit_cursors(phase,after_id) VALUES (?,?)
+        ON CONFLICT(phase) DO UPDATE SET after_id = excluded.after_id
+        WHERE product_projection_audit_cursors.after_id = ? AND after_id IS NOT excluded.after_id`)
+        .bind(phase, nextId, afterId)
+        .run();
+    }
   };
 
-  // Keep the cheap, user-visible invariants ahead of the correlated peer scan. All phases start at
-  // id 0 and share the overall work budget plus the attempted-id set: cursor position cannot starve
-  // a lower-id phase, while overlapping predicates cannot spend the budget twice on one listing.
   if (phases !== "exact-identity") {
-    await repairPhase(CRITICAL_COVERAGE_GAP_PREDICATE);
-    if (selectedCount < maxListings) {
-      await repairPhase(STALE_FALLBACK_GAP_PREDICATE, refreshStaleFallbackMembershipOnly);
+    // Durable obligations are the normal repair path. The order rotates failures so a poison
+    // listing cannot monopolize every tick. No historical table is searched to discover this work.
+    const pending = await db
+      .prepare(`
+      SELECT p.id, p.shop_key, p.source_id, pending.token
+      FROM listing_projection_pending pending
+      JOIN products p ON p.id = pending.listing_product_id
+      ORDER BY pending.last_attempt_at, pending.listing_product_id LIMIT ?
+    `)
+      .bind(maxListings)
+      .all<ProjectionGapRow & { token: string }>();
+    for (let i = 0; i < (pending.results || []).length; i += batchSize) {
+      const chunk = (pending.results || []).slice(i, i + batchSize);
+      for (const row of chunk) attemptedListingIds.add(row.id);
+      selectedCount += chunk.length;
+      const refreshed = await refreshSelectedGaps(
+        db,
+        chunk,
+        evaluatedAt,
+        continueOnRefreshError,
+        refreshFullProjectionPath,
+      );
+      repairedCount += refreshed.repairedCount;
+      failedCount += refreshed.failedCount;
+      await db.batch(
+        chunk.map((row) =>
+          db
+            .prepare(`UPDATE listing_projection_pending SET last_attempt_at = ?
+        WHERE listing_product_id = ? AND token = ? AND last_attempt_at IS NOT ?`)
+            .bind(evaluatedAt, row.id, row.token, evaluatedAt),
+        ),
+      );
     }
+    await repairPhase("coverage", CRITICAL_COVERAGE_GAP_PREDICATE);
+    await repairPhase(
+      "stale-fallback",
+      STALE_FALLBACK_GAP_PREDICATE,
+      refreshStaleFallbackMembershipOnly,
+    );
   }
-  if (phases !== "coverage" && selectedCount < maxListings) {
-    await repairPhase(EXACT_IDENTITY_MEMBERSHIP_GAP_PREDICATE);
+  if (phases !== "coverage") {
+    await repairPhase("exact-identity", EXACT_IDENTITY_MEMBERSHIP_GAP_PREDICATE);
   }
 
   const result: ProductSearchGapRepairResult = {
     selectedCount,
     repairedCount,
+    scannedCount,
     remainingGapCount: countRemainingGaps ? await countActiveProjectionGaps(db) : null,
   };
   if (failedCount > 0) result.failedCount = failedCount;

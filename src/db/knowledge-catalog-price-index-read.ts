@@ -14,6 +14,9 @@ const LISTING_END_OBSERVATION_LIMIT = 5;
 interface PriceIndexProjectionRow {
   catalog_product_id: number;
   asking_sample_count: number;
+  asking_listing_count: number;
+  asking_shop_count: number;
+  latest_asking_observed_at: string | null;
   asking_median_yen: number | null;
   asking_min_yen: number | null;
   asking_max_yen: number | null;
@@ -60,7 +63,7 @@ function toSummary(row: PriceIndexProjectionRow): ProductPriceIndexSummary | nul
   const min = nullableNumber(row.asking_min_yen);
   const max = nullableNumber(row.asking_max_yen);
   if (
-    askingSampleCount < PRODUCT_PRICE_INDEX_MIN_ASKING_SAMPLES ||
+    Number(row.asking_listing_count || 0) < PRODUCT_PRICE_INDEX_MIN_ASKING_SAMPLES ||
     median == null ||
     min == null ||
     max == null
@@ -69,6 +72,9 @@ function toSummary(row: PriceIndexProjectionRow): ProductPriceIndexSummary | nul
   }
   return {
     asking_sample_count: askingSampleCount,
+    asking_listing_count: Number(row.asking_listing_count),
+    asking_shop_count: Number(row.asking_shop_count),
+    latest_asking_observed_at: row.latest_asking_observed_at,
     asking_median_yen: median,
     asking_min_yen: min,
     asking_max_yen: max,
@@ -100,7 +106,7 @@ export async function loadKnowledgeCatalogPriceIndexes(
     const result = await accounting.db
       .prepare(`
         SELECT catalog_product_id,
-               asking_sample_count,
+               asking_sample_count, asking_listing_count, asking_shop_count, latest_asking_observed_at,
                asking_median_yen,
                asking_min_yen,
                asking_max_yen,
@@ -112,7 +118,8 @@ export async function loadKnowledgeCatalogPriceIndexes(
                last_computed_at
         FROM knowledge_catalog_price_indexes
         WHERE catalog_product_id IN (${placeholders})
-          AND asking_sample_count >= ?
+          AND asking_listing_count >= ?
+          AND listing_basis_computed_at = last_computed_at
       `)
       .bind(...chunk, PRODUCT_PRICE_INDEX_MIN_ASKING_SAMPLES)
       .all<PriceIndexProjectionRow>();

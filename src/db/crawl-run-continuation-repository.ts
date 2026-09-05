@@ -95,15 +95,17 @@ export async function recordCrawlRunWorkSet(
   const unique = [...new Set(sourceIds)].filter(Boolean);
   for (let index = 0; index < unique.length; index += WRITE_CHUNK_SIZE) {
     await db.batch(
-      unique
-        .slice(index, index + WRITE_CHUNK_SIZE)
-        .map((sourceId) =>
-          db
-            .prepare(
-              "INSERT OR IGNORE INTO crawl_run_work_items (crawl_run_id, source_id) VALUES (?, ?)",
-            )
-            .bind(crawlRunId, sourceId),
-        ),
+      unique.slice(index, index + WRITE_CHUNK_SIZE).map((sourceId) =>
+        db
+          .prepare(
+            `INSERT OR IGNORE INTO crawl_run_work_items (crawl_run_id, source_id, projection_token)
+               SELECT ?, ?, COALESCE((SELECT pending.token FROM crawl_runs run
+                 JOIN products p ON p.shop_key = run.shop_key AND p.source_id = ?
+                 JOIN listing_projection_pending pending ON pending.listing_product_id = p.id
+                 WHERE run.id = ?), '')`,
+          )
+          .bind(crawlRunId, sourceId, sourceId, crawlRunId),
+      ),
     );
   }
 

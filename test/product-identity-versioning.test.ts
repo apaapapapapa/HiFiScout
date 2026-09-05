@@ -4,6 +4,7 @@ import { test } from "vite-plus/test";
 import { IDENTITY_RESOLVER_VERSION } from "../src/catalog/resolution-versions.js";
 import { syncProductIdentityResolutions } from "../src/db/product-identity-repository.js";
 import { sqliteD1 } from "./helpers/sqlite-d1.js";
+import { readFileSync } from "node:fs";
 
 test("identity resolver version bump rewrites once even when the resolution is unchanged", async () => {
   const sqlite = new DatabaseSync(":memory:");
@@ -14,6 +15,8 @@ test("identity resolver version bump rewrites once even when the resolution is u
       source_id TEXT NOT NULL,
       canonical_manufacturer_id TEXT NOT NULL DEFAULT '',
       model TEXT NOT NULL DEFAULT '',
+      title TEXT NOT NULL DEFAULT '',
+      raw_model TEXT NOT NULL DEFAULT '',
       model_resolution_status TEXT NOT NULL DEFAULT 'resolved',
       primary_category_id TEXT NOT NULL DEFAULT 'other',
       classification_status TEXT NOT NULL DEFAULT 'classified'
@@ -33,6 +36,7 @@ test("identity resolver version bump rewrites once even when the resolution is u
     CREATE TABLE knowledge_catalog_aliases (
       product_id INTEGER NOT NULL,
       alias TEXT NOT NULL,
+      normalized_alias TEXT NOT NULL DEFAULT '',
       alias_type TEXT NOT NULL
     );
     CREATE TABLE product_identity_resolutions (
@@ -51,6 +55,12 @@ test("identity resolver version bump rewrites once even when the resolution is u
       evaluated_at TEXT NOT NULL
     );
   `);
+  sqlite.exec(
+    readFileSync(
+      new URL("../migrations/0091_catalog_candidate_lookup_indexes.sql", import.meta.url),
+      "utf8",
+    ),
+  );
   sqlite
     .prepare(`
       INSERT INTO products(
