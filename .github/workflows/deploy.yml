@@ -157,9 +157,8 @@ jobs:
 
           echo "already_deployed=false" >> "$GITHUB_OUTPUT"
           if [[ -z "$last_deployed_sha" ]]; then
-            echo "No confirmed production deployment identity artifact found; D1 migrations are required."
-            echo "required=true" >> "$GITHUB_OUTPUT"
-            exit 0
+            echo "::error title=Production baseline unavailable::No confirmed deployment identity was found. Artifacts may have expired; this does not imply an empty database. Restore the verified production identity before retrying. No provisioning, migration, or Worker deployment is permitted without the baseline."
+            exit 1
           fi
 
           echo "last_deployed_sha=$last_deployed_sha" >> "$GITHUB_OUTPUT"
@@ -188,7 +187,7 @@ jobs:
       - uses: ./.github/actions/setup-node-deps
         if: steps.d1-migrations.outputs.already_deployed != 'true'
       - name: Verify upgrade from the last successful deployment
-        if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.d1-migrations.outputs.last_deployed_sha != ''
+        if: steps.d1-migrations.outputs.already_deployed != 'true'
         env:
           MIGRATION_BASE_REF: ${{ steps.d1-migrations.outputs.last_deployed_sha }}
         run: vp run test:migrations

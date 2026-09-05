@@ -25,7 +25,10 @@ if that commit is unavailable. The required `migration-safety` CI job uses the P
 the previous main push SHA, including on changes that add no SQL. Deployment repeats the same guard and seeded upgrade against
 the last successfully deployed SHA before touching Cloudflare resources. Its baseline comes from
 the deployment identity artifact, so a quota-deferred deployment cannot become the baseline.
-The first deployment has no production baseline and relies on CI's Git baseline.
+Missing or expired identity stops deployment before provisioning. Restore a verified production
+identity from deployment records before retrying; absence of an artifact never proves that D1 is
+empty. An initial deployment needs an explicit empty-database bootstrap instead of this existing
+production upgrade path.
 
 ```sh
 # Fetch the baseline first; a shallow checkout must contain the referenced commit.
@@ -46,6 +49,10 @@ and `frontend/` from that SHA. It writes a fixture using the previous crawler an
   files remain committed and the failed file can be retried.
 
 These are selected application contracts, not an exhaustive production snapshot or browser E2E.
+The deployed revision before PR #489 already omitted the legacy `sync.queued_at` field. The test
+records that precise omission on its baseline DB and tolerates it only in that previous runtime's
+probes, while validating every other field. New-runtime responses must pass the unmodified browser
+guard. An existing production defect must not block deploying its fix or conceal a new regression.
 Extend the fixture/probes when changing another critical data path. A destructive schema change
 must be staged: add a compatible representation, deploy code that tolerates both states, backfill,
 verify completion, stop old reads/writes, then remove the old representation in a later release

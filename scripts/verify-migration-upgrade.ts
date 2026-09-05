@@ -108,11 +108,56 @@ async function preservedData(db: QueryableDatabase) {
   return Promise.all(queries.map(async (sql) => (await db.prepare(sql).all()).results));
 }
 
-async function probe(server: Runtime, browser: Runtime, db: QueryableDatabase, stage: string) {
+function queueOmissions(code: Runtime, metadata: unknown): string[] {
+  if (!code.isRecord(metadata) || !Array.isArray(metadata.shops)) return [];
+  return metadata.shops.flatMap((shop) =>
+    code.isRecord(shop) &&
+    typeof shop.key === "string" &&
+    code.isRecord(shop.sync) &&
+    !Object.hasOwn(shop.sync, "queued_at")
+      ? [shop.key]
+      : [],
+  );
+}
+
+/** #489 fixes an omission already present in the deployed #488 runtime. Record only that
+ * baseline defect, so it cannot prevent deploying its fix. Every other field still passes
+ * the real browser guard; new runtime responses never receive this legacy allowance.
+ */
+function metadataWithRecordedOmissions(
+  code: Runtime,
+  metadata: unknown,
+  baselineOmissions: readonly string[],
+): unknown {
+  if (!baselineOmissions.length || !code.isRecord(metadata) || !Array.isArray(metadata.shops))
+    return metadata;
+  return {
+    ...metadata,
+    shops: metadata.shops.map((shop) =>
+      code.isRecord(shop) &&
+      baselineOmissions.includes(String(shop.key)) &&
+      code.isRecord(shop.sync) &&
+      !Object.hasOwn(shop.sync, "queued_at")
+        ? { ...shop, sync: { ...shop.sync, queued_at: null } }
+        : shop,
+    ),
+  };
+}
+
+async function probe(
+  server: Runtime,
+  browser: Runtime,
+  db: QueryableDatabase,
+  stage: string,
+  baselineOmissions: readonly string[] = [],
+) {
   const metadata: unknown = JSON.parse(
     JSON.stringify(await server.meta({ DB: db } as unknown as Env)),
   );
-  assert.ok(browser.isMetaResponse(metadata), `${stage}: metadata/browser contract`);
+  assert.ok(
+    browser.isMetaResponse(metadataWithRecordedOmissions(browser, metadata, baselineOmissions)),
+    `${stage}: metadata/browser contract`,
+  );
   const response = await server.searchProducts(
     db,
     server.parseProductQuery(new URL("https://example.test/api/products?q=LUXMAN+C10")),
@@ -158,10 +203,24 @@ try {
     await seed(previous, upgraded.db);
     const preserved = await preservedData(upgraded.db);
     assert.equal(preserved[1]?.length, 2, "fixture must contain real price history");
-    await probe(previous, previous, upgraded.db, "baseline");
+    const baselineMetadata: unknown = JSON.parse(
+      JSON.stringify(await previous.meta({ DB: upgraded.db } as unknown as Env)),
+    );
+    const baselineOmissions = queueOmissions(previous, baselineMetadata);
+    if (baselineOmissions.length)
+      console.log(
+        `Previous runtime already omits queued_at for: ${baselineOmissions.join(", ")}; only this recorded #489 defect is tolerated in previous-runtime probes.`,
+      );
+    await probe(previous, previous, upgraded.db, "baseline", baselineOmissions);
     for (const migration of history.additions) {
       await applyMigration(upgraded.db, migration);
-      await probe(previous, previous, upgraded.db, `previous runtime after ${migration.name}`);
+      await probe(
+        previous,
+        previous,
+        upgraded.db,
+        `previous runtime after ${migration.name}`,
+        baselineOmissions,
+      );
       assert.deepEqual(
         await preservedData(upgraded.db),
         preserved,
@@ -169,7 +228,7 @@ try {
       );
     }
     await probe(current, previous, upgraded.db, "new server / cached old browser, before backfill");
-    await probe(previous, current, upgraded.db, "old server / new browser");
+    await probe(previous, current, upgraded.db, "old server / new browser", baselineOmissions);
     await crawl(current, upgraded.db, 90000, "2026-09-05T02:00:00.000Z", "C99");
     assert.deepEqual(
       await preservedData(upgraded.db),
@@ -185,7 +244,13 @@ try {
     const partial = await backfillRecentPriceIndexes(upgraded.db, { now: new Date(AT), limit: 1 });
     assert.equal(partial.status, "running", "fixture must exercise a partially backfilled DB");
     await probe(current, previous, upgraded.db, "during bounded backfill");
-    await probe(previous, current, upgraded.db, "old runtime during bounded backfill");
+    await probe(
+      previous,
+      current,
+      upgraded.db,
+      "old runtime during bounded backfill",
+      baselineOmissions,
+    );
     assert.equal(
       (await backfillRecentPriceIndexes(upgraded.db, { now: new Date("2026-09-05T01:00:00.000Z") }))
         .status,
@@ -234,7 +299,7 @@ try {
       name: "test_failed.sql",
       sql: "INSERT INTO upgrade_probe VALUES (2);",
     });
-    await probe(previous, current, upgraded.db, "retry after failed migration");
+    await probe(previous, current, upgraded.db, "retry after failed migration", baselineOmissions);
   } finally {
     await upgraded.dispose();
   }
