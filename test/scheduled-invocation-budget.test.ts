@@ -4,6 +4,7 @@ import {
   invocationBudget,
   InvocationBudgetExceeded,
   withinD1Budget,
+  withD1Finalization,
 } from "../src/db/invocation-budget.js";
 import { accountReads } from "../src/db/read-accounting.js";
 import {
@@ -79,6 +80,49 @@ test("wall deadline yields between admitted work units, preserving a complete tr
   await assert.rejects(budget.db.prepare("SELECT 1").all(), InvocationBudgetExceeded);
   assert.equal(budget.metrics().d1Calls, 2);
   assert.equal(budget.metrics().yieldReason, "wall_time");
+});
+
+test("reserved finalization survives a yield and accounting wrappers without exceeding the total cap", async () => {
+  const { db, sqlite } = migratedSqlite();
+  sqlite.exec("CREATE TABLE completed_work(n INTEGER)");
+  const globalAccounting = accountReads(db);
+  const budget = invocationBudget(globalAccounting.db, { maxCalls: 3, finalizationReserve: 2 });
+  const taskAccounting = accountReads(budget.db);
+  await taskAccounting.db.prepare("SELECT 1").all();
+  await assert.rejects(taskAccounting.db.prepare("SELECT 2").all(), InvocationBudgetExceeded);
+  await withD1Finalization(taskAccounting.db, async () => {
+    await taskAccounting.db.prepare("INSERT INTO completed_work VALUES (1)").run();
+    await taskAccounting.db.prepare("INSERT INTO completed_work VALUES (2)").run();
+    await assert.rejects(
+      taskAccounting.db.prepare("INSERT INTO completed_work VALUES (3)").run(),
+      InvocationBudgetExceeded,
+    );
+  });
+  assert.equal(budget.metrics().d1Calls, 3);
+  assert.equal(globalAccounting.statementCount(), 3);
+  assert.equal(
+    taskAccounting.countedStatements(),
+    2,
+    "SQLite supplies meta for the two cleanup writes",
+  );
+  assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM completed_work").get()?.n, 2);
+  await assert.rejects(taskAccounting.db.prepare("SELECT 1").all(), InvocationBudgetExceeded);
+});
+
+test("finalization may cross the work deadline but does not reopen ordinary work", async () => {
+  const { db } = migratedSqlite();
+  let time = 0;
+  const budget = invocationBudget(db, {
+    maxCalls: 5,
+    finalizationReserve: 2,
+    maxWallMs: 10,
+    clock: () => time,
+  });
+  time = 20;
+  await assert.rejects(budget.db.prepare("SELECT 1").all(), InvocationBudgetExceeded);
+  await withD1Finalization(budget.db, () => budget.db.prepare("SELECT 1").all());
+  assert.equal(budget.metrics().d1Calls, 1);
+  await assert.rejects(budget.db.prepare("SELECT 1").all(), InvocationBudgetExceeded);
 });
 
 test("budget-limited daily work resumes on later ticks and lets untouched tasks run first", async () => {

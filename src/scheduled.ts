@@ -30,7 +30,11 @@ import {
   refreshExpiredRecentPriceIndexes,
 } from "./db/knowledge-catalog-price-index-recent-refresh.js";
 import { accountReads } from "./db/read-accounting.js";
-import { invocationBudget, InvocationBudgetExceeded } from "./db/invocation-budget.js";
+import {
+  invocationBudget,
+  InvocationBudgetExceeded,
+  withD1Finalization,
+} from "./db/invocation-budget.js";
 import type { InvocationBudget } from "./db/invocation-budget.js";
 import {
   enqueueMaintenance,
@@ -462,11 +466,14 @@ export async function bootstrapKnowledgeCatalogReview(env: Env, now = new Date()
         runId: recoveryRunId,
       });
     } catch (error) {
-      await finishKnowledgeCatalogReviewRunFailure(
-        env.DB,
-        recoveryRunId,
-        new Date().toISOString(),
-        `knowledge_catalog_recovery_dispatch_failed:${errorMessage(error)}`,
+      // A yield can occur after claiming the recovery run but before dispatch takes ownership.
+      await withD1Finalization(env.DB, () =>
+        finishKnowledgeCatalogReviewRunFailure(
+          env.DB,
+          recoveryRunId,
+          new Date().toISOString(),
+          `knowledge_catalog_recovery_dispatch_failed:${errorMessage(error)}`,
+        ),
       );
       throw error;
     }
@@ -760,8 +767,9 @@ export async function runPendingMaintenance(
     const accounting = accountReads(env.DB);
     try {
       await task.run({ ...env, DB: accounting.db } as Env, scheduledAt);
-      if (budget.exhausted()) break;
-      await completeMaintenance(env.DB, name, token);
+      // Successful work may have used the last normal call or crossed the wall deadline while
+      // sending a wake-up. Persist completion so the next tick does not dispatch another run.
+      await withD1Finalization(env.DB, () => completeMaintenance(env.DB, name, token));
     } catch (error) {
       if (error instanceof InvocationBudgetExceeded) break;
       console.error(
@@ -794,7 +802,8 @@ export async function runPendingMaintenance(
 
 async function runBudgetedGeneralCron(env: Env, scheduledAt: Date): Promise<void> {
   const accounting = accountReads(env.DB);
-  const budget = invocationBudget(accounting.db);
+  // Dispatch failure needs at most three cleanup calls; successful task completion needs one.
+  const budget = invocationBudget(accounting.db, { finalizationReserve: 5 });
   const limitedEnv = { ...env, DB: budget.db } as Env;
   try {
     // Persist the schedule before any watchdog work can consume the invocation budget.
