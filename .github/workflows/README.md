@@ -49,6 +49,14 @@ The active-crawl wait keeps its existing bound. After that, the first projection
 
 These workflows are intentionally separate from deployment and post-deploy verification because they can mutate or exhaustively inspect production data.
 
+Manual category authority requires a confirmed `deployment-identity` before resolving D1 or running
+either mutation script. A source-triggered run verifies that the artifact SHA equals its requested
+commit; a quota-deferred or no-op Deploy without an artifact defers the maintenance without touching
+D1. Once production is confirmed, explicitly dispatch the maintenance workflow if the operation is
+still required. A manual dispatch checks out the latest confirmed production SHA from its artifact,
+so selecting a workflow ref cannot apply undeployed category logic to production. This remains an
+explicit maintenance operation, with no automatic repair or replay loop.
+
 ## Repository operations
 
 - `backup.yml` — production backup.

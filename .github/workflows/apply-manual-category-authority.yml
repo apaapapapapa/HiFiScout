@@ -29,41 +29,85 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: ${{ github.sha }}
-      - uses: ./.github/actions/setup-node-deps
-
-      - name: Wait for the production deployment of this commit
-        if: github.event_name == 'push'
+      - name: Resolve confirmed production deployment
+        id: deployment
         shell: bash
         run: |
           set -euo pipefail
-          for attempt in $(seq 1 120); do
-            runs="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/actions/workflows/deploy.yml/runs" -f branch=main -f head_sha="${GITHUB_SHA}" -f per_page=20)"
-            run="$(jq -c '[.workflow_runs[] | select(.head_sha == env.GITHUB_SHA and (.conclusion // "") != "skipped")] | sort_by(.created_at) | last // empty' <<< "$runs")"
-            if [[ -z "$run" ]]; then
-              echo "Waiting for Deploy Cloudflare run for ${GITHUB_SHA} (${attempt}/120)"
-              sleep 15
-              continue
-            fi
-            status="$(jq -r '.status' <<< "$run")"
-            conclusion="$(jq -r '.conclusion // ""' <<< "$run")"
-            run_id="$(jq -r '.id' <<< "$run")"
-            echo "Deploy Cloudflare run ${run_id}: status=${status} conclusion=${conclusion:-pending}"
-            if [[ "$status" == "completed" ]]; then
-              if [[ "$conclusion" != "success" ]]; then
-                echo "Deploy Cloudflare did not succeed for ${GITHUB_SHA}." >&2
-                exit 1
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            run_id=""
+            for attempt in $(seq 1 120); do
+              runs="$(gh api --method GET "/repos/${GITHUB_REPOSITORY}/actions/workflows/deploy.yml/runs" -f branch=main -f head_sha="${GITHUB_SHA}" -f per_page=20)"
+              run="$(jq -c '[.workflow_runs[] | select(.head_sha == env.GITHUB_SHA and (.conclusion // "") != "skipped")] | sort_by(.created_at) | last // empty' <<< "$runs")"
+              if [[ -z "$run" ]]; then
+                echo "Waiting for Deploy Cloudflare run for ${GITHUB_SHA} (${attempt}/120)"
+                sleep 15
+                continue
               fi
-              exit 0
+              status="$(jq -r '.status' <<< "$run")"
+              conclusion="$(jq -r '.conclusion // ""' <<< "$run")"
+              if [[ "$status" == "completed" ]]; then
+                if [[ "$conclusion" != "success" ]]; then
+                  echo "Deploy Cloudflare did not succeed for ${GITHUB_SHA}." >&2
+                  exit 1
+                fi
+                run_id="$(jq -r '.id' <<< "$run")"
+                break
+              fi
+              sleep 15
+            done
+            if [[ -z "$run_id" ]]; then
+              echo "Timed out waiting for Deploy Cloudflare for ${GITHUB_SHA}." >&2
+              exit 1
             fi
-            sleep 15
-          done
-          echo "Timed out waiting for Deploy Cloudflare for ${GITHUB_SHA}." >&2
-          exit 1
+            artifacts="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/artifacts?per_page=100")"
+          else
+            # An explicit maintenance dispatch operates on confirmed production, not the selected
+            # workflow ref or a candidate whose deployment is still deferred.
+            artifacts="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts?name=deployment-identity&per_page=100")"
+          fi
+          artifact_id="$(jq -r '[.artifacts[] | select(.name == "deployment-identity" and .expired == false)] | sort_by(.created_at) | last | .id // empty' <<< "$artifacts")"
+          if [[ -z "$artifact_id" ]]; then
+            if [[ "$GITHUB_EVENT_NAME" != "push" ]]; then
+              echo "No confirmed production deployment identity is available for maintenance." >&2
+              exit 1
+            fi
+            echo "::notice title=Category authority deferred::Deploy Cloudflare produced no deployment identity. No D1 maintenance will run. After production is confirmed, dispatch this maintenance workflow explicitly if it is still required."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$GITHUB_EVENT_NAME" != "push" ]]; then
+            producer_id="$(jq -r --argjson id "$artifact_id" '.artifacts[] | select(.id == $id) | .workflow_run.id' <<< "$artifacts")"
+            producer="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/${producer_id}")"
+            if ! jq -e '.path == ".github/workflows/deploy.yml" and .head_branch == "main" and .status == "completed" and .conclusion == "success"' <<< "$producer" >/dev/null; then
+              echo "Deployment identity was not produced by a successful main Deploy Cloudflare run." >&2
+              exit 1
+            fi
+          fi
+          zip_file="$(mktemp)"
+          trap 'rm -f "$zip_file"' EXIT
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > "$zip_file"
+          sha="$(unzip -p "$zip_file" deployment-sha.txt | tr -d '\r\n')"
+          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid production deployment identity." >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$sha" != "$GITHUB_SHA" ]]; then
+            echo "Confirmed deployment identity does not match the requested maintenance commit." >&2
+            exit 1
+          fi
+          echo "available=true" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        if: steps.deployment.outputs.available == 'true'
+        with:
+          ref: ${{ steps.deployment.outputs.sha }}
+      - uses: ./.github/actions/setup-node-deps
+        if: steps.deployment.outputs.available == 'true'
 
       - name: Resolve production D1 binding
+        if: steps.deployment.outputs.available == 'true'
         id: d1
         shell: bash
         run: |
@@ -78,11 +122,13 @@ jobs:
           echo "database_id=$id" >> "$GITHUB_OUTPUT"
 
       - name: Reclassify resolved Knowledge Catalog products
+        if: steps.deployment.outputs.available == 'true'
         env:
           D1_DATABASE_ID: ${{ steps.d1.outputs.database_id }}
         run: vp exec tsx scripts/reclassify-knowledge-catalog-products.ts
 
       - name: Apply manual category authority and refresh projections
+        if: steps.deployment.outputs.available == 'true'
         env:
           D1_DATABASE_ID: ${{ steps.d1.outputs.database_id }}
         run: vp exec tsx scripts/apply-manual-category-authority.ts
