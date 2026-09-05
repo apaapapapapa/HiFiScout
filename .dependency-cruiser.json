@@ -11,7 +11,7 @@
       "name": "api-contracts-is-a-leaf",
       "severity": "error",
       "comment": "src/api/contracts.ts is imported by the browser bundle. It may only depend on the catalog type vocabulary; anything else would drag server code toward frontend/ and make the contract depend on the persistence it exists to decouple from.",
-      "from": { "path": "^src/api/contracts\\.ts$" },
+      "from": { "path": "^src/api/(contracts|admin-csv-contracts)\\.ts$" },
       "to": { "path": "^src", "pathNot": "^src/catalog/types\\.ts$" }
     },
     {
@@ -19,7 +19,7 @@
       "severity": "error",
       "comment": "The browser bundle may share the HTTP contracts and nothing else. Importing a repository, the router or crawler code would either break the bundle or ship server logic to users.",
       "from": { "path": "^frontend" },
-      "to": { "path": "^src", "pathNot": "^src/api/contracts\\.ts$" }
+      "to": { "path": "^src", "pathNot": "^src/api/(contracts|admin-csv-contracts)\\.ts$" }
     },
     {
       "name": "server-does-not-import-frontend",

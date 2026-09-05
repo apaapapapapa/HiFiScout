@@ -27,7 +27,7 @@ export class CatalogAdminPage {
       .locator(".result-summary");
     this.duplicateHeading = root.getByRole("heading", { name: "同一製品の重複Catalogを統合" });
     this.candidateHeading = root.getByRole("heading", { name: "未検証候補を確認" });
-    this.csvSummary = root.locator(".export-panel summary");
+    this.csvSummary = root.locator(".export-panel > summary");
     this.editDialog = root.locator("dialog").first();
   }
 

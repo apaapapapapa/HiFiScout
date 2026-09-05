@@ -246,12 +246,17 @@ async function runBatches(db: QueryableDatabase, statements: D1PreparedStatement
   }
 }
 
-async function propagateCatalogCategoryToMatchedListings(
+export async function propagateCatalogCategoryToMatchedListings(
   db: QueryableDatabase,
   catalogProductId: number,
   categoryIds: readonly string[],
   updatedAt: string,
+  listingIds?: readonly number[],
 ): Promise<number> {
+  if (listingIds && (!listingIds.length || listingIds.length > 10)) {
+    if (!listingIds.length) return 0;
+    throw new Error("csv_replay_page_too_large");
+  }
   const primary = getCategory(categoryIds[0] || "");
   if (!primary?.classifiable) throw new Error("catalog_admin_primary_category_invalid");
 
@@ -263,11 +268,13 @@ async function propagateCatalogCategoryToMatchedListings(
         SELECT p.id, p.shop_key, p.source_id
         FROM products p
         JOIN product_identity_resolutions pir ON pir.listing_product_id = p.id
-        WHERE p.is_active = 1 AND pir.status = 'matched' AND pir.catalog_product_id = ? AND p.id > ?
+        WHERE ${listingIds ? "1 = 1" : "p.is_active = 1"}
+          AND pir.status = 'matched' AND pir.catalog_product_id = ? AND p.id > ?
+          ${listingIds ? "AND p.id IN (" + listingIds.map(() => "?").join(",") + ")" : ""}
         ORDER BY p.id
         LIMIT ?
       `)
-      .bind(catalogProductId, afterId, LISTING_PAGE_SIZE)
+      .bind(catalogProductId, afterId, ...(listingIds || []), LISTING_PAGE_SIZE)
       .all<MatchedCatalogListingRow>();
     const listings = result.results || [];
     if (!listings.length) break;

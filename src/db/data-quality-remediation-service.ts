@@ -746,3 +746,26 @@ export async function runDataQualityRemediationSweep(
   console.log(JSON.stringify({ event: "data_quality_remediation_sweep", ...result }));
   return result;
 }
+
+/** Explicit, bounded maintenance after a catalog identity correction; never seeds a global replay. */
+export async function replayAdminCsvListings(
+  db: QueryableDatabase,
+  listingIds: readonly number[],
+  evaluatedAt: string,
+): Promise<void> {
+  if (!listingIds.length) return;
+  if (listingIds.length > 10) throw new Error("csv_replay_page_too_large");
+  const aliases = await listManufacturerAliasEvidence(db);
+  const rows: RemediationListingRow[] = [];
+  const tokens = new Map<number, string>();
+  for (const id of listingIds) {
+    const row = await loadListing(db, id);
+    if (!row) continue;
+    tokens.set(row.id, await replayDerivedListing(db, row, aliases, evaluatedAt));
+    rows.push(row);
+  }
+  await refreshListingProjections(db, rows, evaluatedAt);
+  for (const [id, token] of tokens) {
+    if (token) await clearProjectionPendingForToken(db, id, token);
+  }
+}
