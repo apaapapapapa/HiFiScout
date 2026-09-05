@@ -59,7 +59,8 @@ build rather than new application tests. Report any check that could not run.
   read persisted projections; do not move full-catalog/history aggregation into request paths.
 - Evaluate D1 changes with `rows_read`, `rows_written`, statement count, and query plans. A small
   result or fewer binding calls does not prove fewer billed rows; local SQLite is not a billing or
-  Workers CPU measurement.
+  Workers CPU measurement. Preserve same-value write guards, decision timestamps, and filtered
+  INSERTs that avoid AUTOINCREMENT writes; use the existing Miniflare D1 write-budget tests.
 - Verified catalog matches and guarded exact-identity fallback grouping are distinct paths. Never
   merge fuzzy/candidate models or discard revision/accessory evidence to improve grouping counts.
 - Taxonomy v3 separates product categories, facets, and capabilities. `unclassified` is the internal

@@ -21,6 +21,7 @@ import {
 } from "./product-search-exact-identity.js";
 import { refreshEntityDirectCategoryIdsSql } from "./product-search-entity-direct-categories.js";
 import {
+  completeEntityMembershipProvenanceSql,
   deleteEmptyEntitiesSql,
   deleteInactiveOffersSql,
   deleteStaleEntityCategoriesSql,
@@ -265,6 +266,7 @@ export async function syncProductSearchEntities(
         { sql: upsertCatalogOffersSql(listingScope), binds: chunk },
         { sql: upsertFallbackOffersSql(listingScope), binds: chunk },
         { sql: upsertExactIdentityGroupOffersSql(listingScope), binds: chunk },
+        { sql: completeEntityMembershipProvenanceSql(listingScope), binds: chunk },
         ...emptyEntityPruneStatements(chunkBefore, chunk),
       ]);
     }
@@ -295,6 +297,7 @@ export async function rebuildProductSearchEntities(
   const catalogOffers = await runStatement(db, upsertCatalogOffersSql());
   const fallbackOffers = await runStatement(db, upsertFallbackOffersSql());
   const exactIdentityOffers = await runStatement(db, upsertExactIdentityGroupOffersSql());
+  await runStatement(db, completeEntityMembershipProvenanceSql());
   await runStatement(db, refreshEntityAggregatesSql());
   await runStatement(db, refreshEntityPresentationColorsSql());
   await runStatement(db, upsertEntityCategoriesSql());

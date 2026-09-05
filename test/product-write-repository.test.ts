@@ -351,5 +351,6 @@ test("seller-visible listing changes create user-facing activity", async () => {
   assert.equal(result.activityCount, 1);
   const update = db.batched.find((statement) => /UPDATE products SET/.test(statement.sql));
   assert.ok(update);
-  assert.match(update.sql, /last_activity_at = CASE WHEN \? THEN \? ELSE last_activity_at END/);
+  assert.match(update.sql, /last_activity_at = \?/);
+  assert.ok(update.binds.includes("2026-08-11T01:00:00.000Z"));
 });

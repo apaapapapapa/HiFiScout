@@ -1,6 +1,11 @@
 # Resolver replay status
 
-Production resolver replay is an operator-triggered maintenance workflow. Run **Resolver Replay Drain** manually when stale manufacturer, model, category, identity, or projection signals need to be drained. Each dispatch processes one bounded batch through the Cloudflare D1 REST API and stops so the result can be inspected before any continuation. This manual boundary is intentional: operators decide whether another bounded batch is safe to run.
+**Resolver Replay Drain** is an operator-triggered maintenance workflow that supplements the normal
+bounded scheduled remediation sweep in `src/scheduled.ts`. Run it manually when stale manufacturer,
+model, category, identity, or projection signals need an explicit drain. Each workflow dispatch
+processes one bounded batch through the Cloudflare D1 REST API and stops so the result can be
+inspected before another batch. Operators decide whether another manual batch is appropriate;
+ordinary background convergence continues under its own scheduler budget.
 
 The workflow publishes the commit status context `data-quality/resolver-replay` on the commit used for that manual run:
 

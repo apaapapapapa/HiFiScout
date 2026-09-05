@@ -115,3 +115,28 @@ Do not add E2E coverage merely because a bug was discovered through the UI. Firs
 Frontier tests cover all-empty and late-hit page sets at 100, 1,000 and 10,000 pages and require the nonempty partial index. Metadata tests prove public reads remain two small queries as listings grow, and that fresh or failed snapshot refreshes behave correctly. Search-write tests run the crawler path against real migrated SQLite and compare projection writes and FTS storage through price-only and real text changes. Invocation-budget tests include failed calls, batch accounting, admission before writes, deadline yields, lease fencing and continuation on later ticks. Daily and monthly catalog dispatch tests exhaust the budget after job insertion and at successful Queue dispatch, proving incomplete runs are closed and successful runs are not dispatched again. Reserved finalization remains metered and cannot exceed the invocation's total call cap.
 
 These are structural/behavioral gates. Local SQLite changes, query plans and wall time are not Cloudflare billed rows or Workers CPU measurements. Confirm D1 rows read/written, Queue operations, Durable Object usage and CPU failures in production after rollout.
+
+## D1 write budget regressions
+
+`test/d1-write-budget.test.ts` runs the production repositories against an isolated Miniflare D1
+with every checked-in migration. It asserts on workerd's `meta.rows_written`, which includes
+secondary indexes, triggers and AUTOINCREMENT's internal sequence. A logical `changes = 0` or a
+small `batch()` count alone does not prove a zero-write replay. These tests use local fixtures and
+consume no production Cloudflare quota.
+
+The fixed scenarios cover repeated catalog classification (including 100 clock-only metadata
+changes), catalog and unresolved exact-group search replay, candidate refresh, real price changes
+with history, and completion of pending correction provenance when membership is unchanged.
+Read budgets accompany the write assertions to catch optimizations that trade writes for scans.
+
+Catalog metadata retains its decision time while its classification evidence is unchanged; detail
+negative-cache times remain meaningful changes. Product updates assign only changed columns.
+Search and candidate upserts filter equal rows before INSERT so AUTOINCREMENT is not advanced.
+Candidate `last_reviewed_at` records the last materialized decision; the review-run record captures
+each scan's execution time. Terminal crawl cleanup clears only payloads that are still present.
+
+Page-level D1 checkpoints and daily listing freshness remain part of the recovery/availability
+contract. Moving them to DO/R2 requires a separate design that preserves resumable fetch/parse,
+complete-inventory publication and idempotent finalization, and budgets the destination's operations
+as well as D1 writes. Reducing duplicate/same-value writes is the first step; migration alone is not
+a quota reduction.

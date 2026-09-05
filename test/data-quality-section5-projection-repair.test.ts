@@ -23,7 +23,8 @@ test("section 5 bulk deactivation migration repairs the search read model with c
 
   for (const statement of [
     deleteInactiveOffersSql(),
-    refreshEntityAggregatesSql(),
+    // 0043 predates the same-value guard; the aggregate values being derived remain identical.
+    refreshEntityAggregatesSql().split("AND (e.manufacturer IS NOT")[0],
     refreshEntitySearchTermsSql(),
     deleteEmptyEntitiesSql(),
   ]) {

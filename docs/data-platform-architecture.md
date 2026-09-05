@@ -101,6 +101,15 @@ The crawler refreshes only the listings whose inputs actually moved in the curre
 
 Migration 0084 removes the obsolete listing FTS index and guards projection/entity text updates against equal values. Price-only or observation-only changes must not rewrite search text or FTS. Applied migrations preserve earlier rollout steps, but the current searchable index is `product_search_entities_fts`.
 
+The write path also avoids unchanged indexed-column assignments and filters equal search/candidate
+rows before INSERT, preventing AUTOINCREMENT sequence writes from an otherwise no-op upsert.
+`syncProductMetadata` retains `categoryClassification.catalogMatchedAt` when the materialized
+decision is unchanged; `detailCheckedAt` still represents a meaningful negative-cache update.
+Candidate review timestamps record a changed decision, while review-run rows record executions.
+Migration 0087 guards equal deal-score updates, and terminal crawl cleanup touches only remaining
+payloads. The Miniflare D1 tests in [Testing strategy](./testing-strategy.md#d1-write-budget-regressions)
+measure these write paths, including index/trigger/sequence cost, without production quota.
+
 ### Price-index projections
 
 Public search enters through `src/db/product-search-price-index-repository.ts` and loads summaries
