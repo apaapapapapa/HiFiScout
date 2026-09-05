@@ -575,6 +575,10 @@ export async function maintainRecentPriceIndexes(db: QueryableDatabase, now = ne
     backfillSelectedProducts: backfill.selectedCount,
     backfilledProducts: backfill.refreshedCount,
     backfillHasMore: backfill.hasMore,
+    ...(backfill.deferredReason ? { backfillDeferredReason: backfill.deferredReason } : {}),
+    ...(backfill.blockedCatalogProductId
+      ? { backfillBlockedCatalogProductId: backfill.blockedCatalogProductId }
+      : {}),
     dueProducts: refresh.selectedCount,
     refreshedProducts: refresh.refreshedCount,
     refreshHasMore: refresh.hasMore,

@@ -187,6 +187,11 @@ jobs:
       # package manager, so actions/setup-node's npm cache probe can fail before npm is upgraded.
       - uses: ./.github/actions/setup-node-deps
         if: steps.d1-migrations.outputs.already_deployed != 'true'
+      - name: Verify upgrade from the last successful deployment
+        if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.d1-migrations.outputs.last_deployed_sha != ''
+        env:
+          MIGRATION_BASE_REF: ${{ steps.d1-migrations.outputs.last_deployed_sha }}
+        run: vp run test:migrations
       # Every `vp exec wrangler` below resolves to the Wrangler installed by the shared setup action,
       # pinned by package-lock.json. CI already exercises that exact binary through build:worker.
       - name: Provision required Cloudflare resources

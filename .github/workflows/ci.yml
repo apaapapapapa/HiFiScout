@@ -91,6 +91,19 @@ jobs:
       - name: Verify D1 FTS search migration
         run: vp exec tsx scripts/verify-search-integration.ts
 
+  migration-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      MIGRATION_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-node-deps
+      - name: Verify frozen migrations and seeded upgrade with previous runtime
+        run: vp run test:migrations
+
   component:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -147,6 +160,7 @@ jobs:
       - unit-test
       - parser-cpu
       - integration
+      - migration-safety
       - component
       - build
       - dependency-security
@@ -162,6 +176,7 @@ jobs:
           UNIT_RESULT: ${{ needs.unit-test.result }}
           PARSER_CPU_RESULT: ${{ needs.parser-cpu.result }}
           INTEGRATION_RESULT: ${{ needs.integration.result }}
+          MIGRATION_RESULT: ${{ needs.migration-safety.result }}
           COMPONENT_RESULT: ${{ needs.component.result }}
           BUILD_RESULT: ${{ needs.build.result }}
           DEPENDENCY_RESULT: ${{ needs.dependency-security.result }}
@@ -173,6 +188,7 @@ jobs:
             "${UNIT_RESULT}" \
             "${PARSER_CPU_RESULT}" \
             "${INTEGRATION_RESULT}" \
+            "${MIGRATION_RESULT}" \
             "${COMPONENT_RESULT}" \
             "${BUILD_RESULT}" \
             "${DEPENDENCY_RESULT}"; do

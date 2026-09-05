@@ -22,6 +22,8 @@
     "deploy": "vp run build:frontend && vp exec wrangler d1 migrations apply DB --remote && vp exec wrangler deploy",
     "db:migrate:local": "vp exec wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "vp exec wrangler d1 migrations apply DB --remote",
+    "check:migrations": "vp exec tsx scripts/check-migrations.ts",
+    "test:migrations": "vp run check:migrations && vp exec tsx scripts/run-quiet.ts tsx scripts/verify-migration-upgrade.ts",
     "create-shop": "vp exec tsx scripts/create-shop.ts",
     "price-index:backfill": "vp exec tsx scripts/backfill-knowledge-catalog-price-index.ts",
     "docs:api": "vp dlx -p typedoc-plugin-markdown@4.12.0 -p typedoc-vitepress-theme@1.1.3 -p typescript@6.0.2 typedoc@0.28.20",
