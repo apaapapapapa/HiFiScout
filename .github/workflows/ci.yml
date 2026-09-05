@@ -62,26 +62,41 @@ jobs:
         run: vp run ci:build
 
   unit-test:
+    name: unit-test (${{ matrix.count }}-way, ${{ matrix.shard }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        include:
+          - { count: 2, shard: 1 }
+          - { count: 2, shard: 2 }
+          - { count: 3, shard: 1 }
+          - { count: 3, shard: 2 }
+          - { count: 3, shard: 3 }
+          - { count: 4, shard: 1 }
+          - { count: 4, shard: 2 }
+          - { count: 4, shard: 3 }
+          - { count: 4, shard: 4 }
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/change-scope
         id: scope
       - uses: ./.github/actions/setup-node-deps
         if: steps.scope.outputs.application == 'true'
-      - run: vp run ci:test-shard-${{ matrix.shard }}
+      - name: Measure unit-test shard
         if: steps.scope.outputs.application == 'true'
+        run: |
+          vp exec tsx scripts/ensure-directories.ts .generated
+          vp test run --reporter=dot --reporter=json \
+            --outputFile.json=.generated/unit-timings-${{ matrix.count }}-${{ matrix.shard }}.json \
+            --shard=${{ matrix.shard }}/${{ matrix.count }}
       - name: Preserve unit timing profiles
         if: success() && steps.scope.outputs.application == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: unit-timings-${{ matrix.shard }}
-          path: .generated/unit-timings-${{ matrix.shard }}.json
+          name: unit-timings-${{ matrix.count }}-${{ matrix.shard }}
+          path: .generated/unit-timings-${{ matrix.count }}-${{ matrix.shard }}.json
           retention-days: 7
           if-no-files-found: error
 

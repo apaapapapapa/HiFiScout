@@ -138,8 +138,11 @@ These are structural/behavioral gates. Local SQLite changes, query plans and wal
 
 ## D1 write budget regressions
 
-`test/d1-write-budget.test.ts` runs the production repositories against an isolated Miniflare D1
-with every checked-in migration. It asserts on workerd's `meta.rows_written`, which includes
+`test/d1-write-budget.test.ts`, `test/d1-crawl-checkpoint-budget.test.ts` and
+`test/d1-crawl-collection-budget.test.ts` run the production repositories against isolated
+Miniflare D1 databases with every checked-in migration. Each test creates and disposes its own
+database through `test/helpers/d1-write-budget.ts`, so the independent scenarios can run on
+different CI shards. They assert on workerd's `meta.rows_written`, which includes
 secondary indexes, triggers and AUTOINCREMENT's internal sequence. A logical `changes = 0` or a
 small `batch()` count alone does not prove a zero-write replay. These tests use local fixtures and
 consume no production Cloudflare quota.
