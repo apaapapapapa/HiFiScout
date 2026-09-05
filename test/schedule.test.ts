@@ -1,6 +1,7 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { requiredLifecycleRules, requiredQueues } from "../scripts/lib/production-resources.js";
 import { SHOP_DEFINITIONS, getShopEnabled, getShopRequestDelayMs } from "../src/config.js";
 import { isShopDue, isSuspiciousItemDrop } from "../src/crawler/run.js";
 import {
@@ -22,10 +23,6 @@ const wranglerConfig = JSON.parse(
   fs.readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8"),
 );
 const schedulerSource = fs.readFileSync(new URL("../src/scheduled.ts", import.meta.url), "utf8");
-const provisionProductionResources = fs.readFileSync(
-  new URL("../scripts/provision-production-resources.sh", import.meta.url),
-  "utf8",
-);
 
 const SHARED_HOURLY_CRON = "1,31 * * * *";
 
@@ -266,16 +263,20 @@ test("admin CSV exports share the existing serialized Product Audit queue", () =
   assert.equal(deadLetterConsumer?.max_concurrency, 1);
   assert.match(schedulerSource, /recoverStaleProductAuditExportJobs/);
   assert.match(schedulerSource, /recoverStaleKnowledgeCatalogExportJobs/);
-  assert.match(
-    provisionProductionResources,
-    /hifiscout-product-audit-exports\|product-audit-exports\/\|10/,
-  );
-  assert.match(
-    provisionProductionResources,
-    /hifiscout-knowledge-catalog-exports\|knowledge-catalog-exports\/\|10/,
-  );
-  assert.match(
-    provisionProductionResources,
-    /hifiscout-product-audit-export hifiscout-product-audit-export-dlq/,
-  );
+  for (const [id, prefix] of [
+    ["hifiscout-product-audit-exports", "product-audit-exports/"],
+    ["hifiscout-knowledge-catalog-exports", "knowledge-catalog-exports/"],
+  ]) {
+    assert.deepEqual(
+      requiredLifecycleRules.find((rule) => rule.id === id),
+      {
+        id,
+        enabled: true,
+        conditions: { prefix },
+        deleteObjectsTransition: { condition: { type: "Age", maxAge: 10 * 86400 } },
+      },
+    );
+  }
+  assert.ok(requiredQueues.includes("hifiscout-product-audit-export"));
+  assert.ok(requiredQueues.includes("hifiscout-product-audit-export-dlq"));
 });

@@ -65,9 +65,29 @@ environment.
 The `CI` workflow runs source/toolchain checks, the sharded Vitest suite, parser performance checks,
 local D1 migrations, `scripts/verify-search-integration.ts`,
 `scripts/verify-listing-admin-overrides.ts`, React component browser tests, and build/dry-run checks.
-The `component` job installs Chromium on a cache miss. Unit-test jobs need no browser; a separate
-non-gating job also warms the Chromium cache for post-deploy E2E. See `.github/workflows/ci.yml` and
-`vite.config.ts` for the current required job graph and task-cache inputs.
+The `component` job installs Chromium on a cache miss and saves the browser cache on main for
+post-deploy E2E. Japanese screenshot fonts come from a checksum-pinned Ubuntu Noto CJK package and
+are cached as font files, avoiding apt repository updates on every run. Unit-test jobs need no browser.
+Short source/type/parser/build checks share one runner; expensive suites remain parallel. See
+`.github/workflows/ci.yml` and `vite.config.ts` for the required job graph and task-cache inputs.
+
+Unit shards use measured per-file weights in `.github/config/unit-test-weights.json`, plus a small
+per-file import allowance. The sequencer schedules long files first and deterministically assigns
+every discovered test exactly once; new tests receive a conservative default weight. CI preserves
+the JSON timing reports for seven days and summarizes job duration separately from time before
+the first step. Compare equivalent revisions and cache states; parallel job seconds do not add up
+to elapsed CI time.
+
+To refresh weights, download both `unit-timings-*` artifacts and run
+`vp exec tsx scripts/ci/update-test-weights.ts <shard-1-report> <shard-2-report>` from the repository
+root. The updater requires passing reports covering every current test file. Alternatively collect
+one complete local report with
+`vp test run --reporter=json --outputFile=.generated/unit-timings.json` and pass that file. Review
+the resulting weights as configuration; they affect scheduling, never which tests are selected.
+
+Documentation-only comparisons skip application suites while retaining the source/toolchain checks
+and required `fan-out` result. An uncertain comparison runs everything. Migration safety always
+uses a fresh D1 for application changes, independently of the documentation site's schema cache.
 
 The search integration check exists because two behaviors cannot be proven by asserting on generated SQL: that the FTS5 trigram index actually resolves a query like `TAD 1000`, and that two shops' confirmed listings really collapse into one search entity while an unconfirmed listing stays on its own. Those are properties of the database, so they are verified against a real one.
 

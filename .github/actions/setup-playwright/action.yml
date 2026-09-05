@@ -1,0 +1,68 @@
+name: Setup Playwright Chromium
+description: Share browser installation and optionally restore the pinned Japanese screenshot fonts
+inputs:
+  cache-write:
+    description: Save browser/font caches after a miss (main populates the PR-readable baseline)
+    default: "false"
+  japanese-fonts:
+    description: Load Noto CJK without apt repository updates or package installation
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - name: Resolve installed Playwright version
+      id: version
+      shell: bash
+      run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+    - name: Restore Playwright Chromium cache
+      id: browser
+      uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ runner.arch }}-chromium-${{ steps.version.outputs.version }}
+    - name: Install Chromium on cache miss
+      if: steps.browser.outputs.cache-hit != 'true'
+      shell: bash
+      run: vp exec playwright install chromium
+    - name: Save Chromium cache
+      if: inputs.cache-write == 'true' && steps.browser.outputs.cache-hit != 'true'
+      continue-on-error: true
+      uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ runner.arch }}-chromium-${{ steps.version.outputs.version }}
+    - name: Restore pinned Japanese fonts
+      if: inputs.japanese-fonts == 'true'
+      id: fonts
+      uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      with:
+        path: ~/.local/share/fonts/hifiscout-noto-cjk
+        key: noto-cjk-${{ runner.os }}-20230817-repack1-3-7d64b985
+    - name: Download and verify Japanese fonts on cache miss
+      if: inputs.japanese-fonts == 'true' && steps.fonts.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Ubuntu Noble's existing fonts-noto-cjk package, pinned by its published SHA256.
+        directory="$(mktemp -d)"
+        trap 'rm -rf "$directory"' EXIT
+        curl --fail --location --retry 3 --max-time 120 \
+          https://archive.ubuntu.com/ubuntu/pool/main/f/fonts-noto-cjk/fonts-noto-cjk_20230817+repack1-3_all.deb \
+          --output "$directory/fonts.deb"
+        echo "7d64b985f6fe128c99eae5610d5c047338e572bdcfb2bb09736be01b824a7f6c  $directory/fonts.deb" | sha256sum --check --status
+        dpkg-deb --extract "$directory/fonts.deb" "$directory/extracted"
+        mkdir -p "$HOME/.local/share/fonts/hifiscout-noto-cjk"
+        cp -a "$directory/extracted/usr/share/fonts/opentype/noto/." "$HOME/.local/share/fonts/hifiscout-noto-cjk/"
+    - name: Activate Japanese fonts
+      if: inputs.japanese-fonts == 'true'
+      shell: bash
+      run: |
+        fc-cache "$HOME/.local/share/fonts/hifiscout-noto-cjk"
+        fc-match 'Noto Sans CJK JP' | grep -F 'NotoSansCJK'
+    - name: Save Japanese font cache
+      if: inputs.japanese-fonts == 'true' && inputs.cache-write == 'true' && steps.fonts.outputs.cache-hit != 'true'
+      continue-on-error: true
+      uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      with:
+        path: ~/.local/share/fonts/hifiscout-noto-cjk
+        key: noto-cjk-${{ runner.os }}-20230817-repack1-3-7d64b985

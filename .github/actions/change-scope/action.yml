@@ -1,0 +1,42 @@
+name: Detect application changes
+description: Compare a known base with the checked-out tree; uncertain comparisons run all checks
+inputs:
+  base-ref:
+    description: PR base, push before SHA, or the last confirmed production deployment
+    default: "${{ github.event.pull_request.base.sha || github.event.before }}"
+  head-ref:
+    description: Candidate revision (HEAD includes GitHub's PR test merge)
+    default: HEAD
+outputs:
+  application:
+    description: Whether application validation/deployment is required
+    value: ${{ steps.scope.outputs.application }}
+runs:
+  using: composite
+  steps:
+    - id: scope
+      shell: bash
+      env:
+        BASE_REF: ${{ inputs.base-ref }}
+        HEAD_REF: ${{ inputs.head-ref }}
+      run: |
+        set -euo pipefail
+        application=true
+        if [[ "$BASE_REF" =~ ^[0-9a-f]{40}$ && ! "$BASE_REF" =~ ^0+$ ]]; then
+          if git cat-file -e "${BASE_REF}^{commit}" 2>/dev/null || \
+             git fetch --no-tags --depth=1 origin "$BASE_REF"; then
+            changes="$(mktemp)"
+            trap 'rm -f "$changes"' EXIT
+            # Disabling rename detection makes a move out of application sources visible as a deletion.
+            git diff --no-renames --name-only -z "$BASE_REF" "$HEAD_REF" > "$changes"
+            application=false
+            while IFS= read -r -d '' path; do
+              case "$path" in
+                docs/*|README.md|AGENTS.md|CLAUDE.md|DESIGN.md|LICENSE|LICENSE.md) ;;
+                *) application=true; break ;;
+              esac
+            done < "$changes"
+          fi
+        fi
+        echo "application=$application" >> "$GITHUB_OUTPUT"
+        echo "Application changes: $application (base: ${BASE_REF:-unknown})."

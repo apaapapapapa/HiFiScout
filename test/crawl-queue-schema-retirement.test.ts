@@ -51,7 +51,7 @@ test("Phase 7 production schema keeps dispatch state and physically removes Queu
 
 test("production provisioning retains only the non-crawl Queue data plane", () => {
   const script = readFileSync(
-    new URL("../scripts/provision-production-resources.sh", import.meta.url),
+    new URL("../scripts/lib/production-resources.ts", import.meta.url),
     "utf8",
   );
 

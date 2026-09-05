@@ -23,6 +23,16 @@ jobs:
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup-node-deps
+      - name: Fingerprint schema documentation inputs
+        id: db-docs
+        run: echo "key=$(vp exec tsx scripts/docs/db-docs-cache.ts)" >> "$GITHUB_OUTPUT"
+      - name: Cache generated schema documentation
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            docs/public/db
+            .cache/docs/db-docs-fingerprint
+          key: schemaspy-site-${{ runner.os }}-${{ steps.db-docs.outputs.key }}
       # The SchemaSpy JDBC driver is downloaded from Maven Central on a cache miss only. The key
       # tracks the generator script, which is where the driver version is declared.
       - name: Cache SchemaSpy JDBC driver

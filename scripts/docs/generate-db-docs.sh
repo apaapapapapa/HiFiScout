@@ -14,6 +14,14 @@ SCHEMASPY_TYPE_FILE="$ROOT_DIR/scripts/docs/hifiscout-sqlite.properties"
 
 cd "$ROOT_DIR"
 
+fingerprint="$(vp exec tsx scripts/docs/db-docs-cache.ts)"
+fingerprint_file="$ROOT_DIR/.cache/docs/db-docs-fingerprint"
+if [[ -s "$OUTPUT_DIR/index.html" && -s "$fingerprint_file" ]] && \
+   [[ "$(cat "$fingerprint_file")" == "$fingerprint" ]]; then
+  echo "Schema documentation unchanged; using the verified input cache."
+  exit 0
+fi
+
 command -v docker >/dev/null 2>&1 || {
   echo "Docker is required to generate SchemaSpy documentation." >&2
   exit 1
@@ -50,3 +58,6 @@ docker run --rm \
   -sso \
   -noschema \
   -imageformat svg
+
+test -s "$OUTPUT_DIR/index.html"
+printf '%s\n' "$fingerprint" > "$fingerprint_file"

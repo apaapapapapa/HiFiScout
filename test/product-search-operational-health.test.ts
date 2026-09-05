@@ -6,6 +6,10 @@ const script = readFileSync(
   new URL("../scripts/product-search-identity-health.sh", import.meta.url),
   "utf8",
 );
+const convergenceScript = readFileSync(
+  new URL("../scripts/wait-for-active-crawl-convergence.sh", import.meta.url),
+  "utf8",
+);
 
 test("Product Search identity health avoids correlated peer scans", () => {
   assert.match(script, /LEFT JOIN product_identity_resolutions r/);
@@ -21,8 +25,8 @@ test("Product Search identity health avoids correlated peer scans", () => {
 test("Product Search identity health allows one post-deploy repair tick", () => {
   assert.match(script, /read_split_groups\(\)/);
   assert.equal([...script.matchAll(/split_groups="\$\(read_split_groups\)"/g)].length, 2);
-  assert.match(script, /GENERAL_CRON_INTERVAL_SECONDS=300/);
-  assert.match(script, /PROJECTION_REPAIR_GRACE_SECONDS=45/);
-  assert.match(script, /sleep "\$wait_seconds"/);
+  assert.match(script, /bash scripts\/wait-for-active-crawl-convergence\.sh --projection-grace/);
+  assert.match(convergenceScript, /GENERAL_CRON_INTERVAL_SECONDS:-300/);
+  assert.match(convergenceScript, /PROJECTION_REPAIR_GRACE_SECONDS:-45/);
   assert.match(script, /Persistent drift is still reported by the second observation/);
 });

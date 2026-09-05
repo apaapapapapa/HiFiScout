@@ -192,22 +192,29 @@ jobs:
             echo "required=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - uses: ./.github/actions/change-scope
+        id: changes
+        if: steps.d1-migrations.outputs.already_deployed != 'true'
+        with:
+          base-ref: ${{ steps.d1-migrations.outputs.last_deployed_sha }}
+          head-ref: ${{ env.DEPLOY_SHA }}
+
       # Use the same Vite+/Node/package-manager bootstrap as CI. package.json devEngines pins the
       # package manager, so actions/setup-node's npm cache probe can fail before npm is upgraded.
       - uses: ./.github/actions/setup-node-deps
-        if: steps.d1-migrations.outputs.already_deployed != 'true'
+        if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.changes.outputs.application == 'true'
       - name: Verify upgrade from the last successful deployment
-        if: steps.d1-migrations.outputs.already_deployed != 'true'
+        if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.changes.outputs.application == 'true'
         env:
           MIGRATION_BASE_REF: ${{ steps.d1-migrations.outputs.last_deployed_sha }}
         run: vp run test:migrations
       # Every `vp exec wrangler` below resolves to the Wrangler installed by the shared setup action,
       # pinned by package-lock.json. CI already exercises that exact binary through build:worker.
       - name: Provision required Cloudflare resources
-        if: steps.d1-migrations.outputs.already_deployed != 'true'
+        if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.changes.outputs.application == 'true'
         run: bash scripts/provision-production-resources.sh
       - name: Install deploy-only Worker dependency
-        if: steps.d1-migrations.outputs.already_deployed != 'true'
+        if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.changes.outputs.application == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -217,7 +224,7 @@ jobs:
           rm -f "$tarball"
       - name: Apply backward-compatible D1 migrations
         id: d1-apply
-        if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.d1-migrations.outputs.required == 'true'
+        if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.changes.outputs.application == 'true' && steps.d1-migrations.outputs.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -261,14 +268,14 @@ jobs:
             sleep "$delay_seconds"
           done
       - name: Build browser assets from TypeScript source
-        if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.d1-apply.outputs.deferred != 'd1_daily_quota'
+        if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.changes.outputs.application == 'true' && steps.d1-apply.outputs.deferred != 'd1_daily_quota'
         run: vp run build:frontend
       - name: Deploy Worker and static assets
-        if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.d1-apply.outputs.deferred != 'd1_daily_quota'
+        if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.changes.outputs.application == 'true' && steps.d1-apply.outputs.deferred != 'd1_daily_quota'
         run: vp exec wrangler deploy
       - name: Check saved-search Atom feed and autodiscovery
         id: runtime-smoke
-        if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.d1-apply.outputs.deferred != 'd1_daily_quota'
+        if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.changes.outputs.application == 'true' && steps.d1-apply.outputs.deferred != 'd1_daily_quota'
         shell: bash
         run: |
           set -euo pipefail
@@ -405,7 +412,7 @@ jobs:
           grep -F 'data-saved-search-feed' "$catalog_body" >/dev/null
           grep -F 'href="/api/feed?manufacturer=TAD&amp;inStock=true&amp;newOnly=true"' "$catalog_body" >/dev/null
       - name: Check production runtime health
-        if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.d1-apply.outputs.deferred != 'd1_daily_quota' && steps.runtime-smoke.outputs.deferred != 'd1_daily_quota'
+        if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.changes.outputs.application == 'true' && steps.d1-apply.outputs.deferred != 'd1_daily_quota' && steps.runtime-smoke.outputs.deferred != 'd1_daily_quota'
         shell: bash
         run: |
           set -euo pipefail
@@ -431,11 +438,11 @@ jobs:
       # A quota-deferred or scheduled no-op run deliberately has no identity artifact, so downstream
       # workflows cannot mistake an unconfirmed SHA for the production revision.
       - name: Record deployment identity
-        if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.d1-apply.outputs.deferred != 'd1_daily_quota' && steps.runtime-smoke.outputs.deferred != 'd1_daily_quota'
+        if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.changes.outputs.application == 'true' && steps.d1-apply.outputs.deferred != 'd1_daily_quota' && steps.runtime-smoke.outputs.deferred != 'd1_daily_quota'
         shell: bash
         run: printf '%s\n' "$DEPLOY_SHA" > deployment-sha.txt
       - name: Publish deployment identity artifact
-        if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.d1-apply.outputs.deferred != 'd1_daily_quota' && steps.runtime-smoke.outputs.deferred != 'd1_daily_quota'
+        if: steps.d1-migrations.outputs.already_deployed != 'true' && steps.changes.outputs.application == 'true' && steps.d1-apply.outputs.deferred != 'd1_daily_quota' && steps.runtime-smoke.outputs.deferred != 'd1_daily_quota'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: deployment-identity
@@ -456,4 +463,4 @@ jobs:
           sha: ${{ env.DEPLOY_SHA }}
           job-status: ${{ job.status }}
           context: deployment/cloudflare
-          description-prefix: ${{ (steps.d1-apply.outputs.deferred == 'd1_daily_quota' || steps.runtime-smoke.outputs.deferred == 'd1_daily_quota') && 'Cloudflare deployment deferred by D1 quota' || steps.d1-migrations.outputs.already_deployed == 'true' && 'Cloudflare deployment already current' || 'Cloudflare deployment' }}
+          description-prefix: ${{ (steps.d1-apply.outputs.deferred == 'd1_daily_quota' || steps.runtime-smoke.outputs.deferred == 'd1_daily_quota') && 'Cloudflare deployment deferred by D1 quota' || steps.d1-migrations.outputs.already_deployed == 'true' && 'Cloudflare deployment already current' || steps.changes.outputs.application == 'false' && 'Cloudflare application unchanged' || 'Cloudflare deployment' }}
