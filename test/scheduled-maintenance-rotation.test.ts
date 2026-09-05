@@ -19,8 +19,8 @@ test("a tick starts only the maintenance that is actually due", () => {
   const perTick = ticks(12).map((at) => dueMaintenanceTasks(at).length);
 
   assert.ok(
-    Math.max(...perTick) <= 4,
-    `no tick should start more than four sequential tasks, saw ${JSON.stringify(perTick)}`,
+    Math.max(...perTick) <= 5,
+    `the extra single-query metadata refresh must stay on its own cadence, saw ${JSON.stringify(perTick)}`,
   );
 });
 
@@ -46,6 +46,7 @@ test("every sub-daily maintenance task still runs within an hour", () => {
       "knowledge_catalog_review_bootstrap",
       "price_index_recent_refresh",
       "product_search_projection_repair",
+      "public_meta_snapshot",
       "resume_interrupted_crawl_runs",
       "stale_knowledge_catalog_export_jobs",
       "stale_product_audit_export_jobs",

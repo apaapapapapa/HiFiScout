@@ -1,3 +1,4 @@
+import { InvocationBudgetExceeded } from "./invocation-budget.js";
 import { refreshListingProjections } from "./listing-projection-refresh.js";
 import { syncProductSearchEntities } from "./product-search-entity-repository.js";
 import { exactIdentitySplitMembershipPredicateSql } from "./product-search-exact-identity.js";
@@ -278,6 +279,7 @@ async function refreshSelectedGaps(
     await repairAndVerify(db, gaps, evaluatedAt, repair);
     return { repairedCount: gaps.length, failedCount: 0 };
   } catch (error) {
+    if (error instanceof InvocationBudgetExceeded) throw error;
     if (!continueOnRefreshError) throw error;
     console.warn(
       JSON.stringify({
@@ -295,6 +297,7 @@ async function refreshSelectedGaps(
       await repairAndVerify(db, [gap], evaluatedAt, repair);
       repairedCount += 1;
     } catch (error) {
+      if (error instanceof InvocationBudgetExceeded) throw error;
       failedCount += 1;
       console.warn(
         JSON.stringify({

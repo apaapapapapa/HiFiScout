@@ -4,6 +4,8 @@ import { test } from "vite-plus/test";
 
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { queryPlan, readsThroughIndex, recordingDatabase } from "./helpers/query-plan.js";
+import { invocationBudget } from "../src/db/invocation-budget.js";
+import { asQueryableDatabase } from "./helpers/d1.js";
 import {
   countDirtyExactIdentityBacklog,
   DIRTY_IDENTITY_LEASE_MS,
@@ -11,6 +13,80 @@ import {
 } from "../src/db/product-search-exact-identity-dirty.js";
 
 const AT = "2026-09-02T00:00:00.000Z";
+
+for (const limit of [25, 200]) {
+  test(`${limit} clean dirty identities drain with bounded D1 calls and bind counts`, async () => {
+    const { sqlite, db } = migratedSqlite();
+    const insert = sqlite.prepare(
+      "INSERT INTO product_search_exact_identity_dirty(canonical_manufacturer_id, normalized_model, marked_at) VALUES ('luxman', ?, ?)",
+    );
+    for (let i = 0; i < limit; i += 1) insert.run(`model-${i}`, AT);
+    const expected = limit === 25 ? 4 : 12;
+    const recording = recordingDatabase(db);
+    const budget = invocationBudget(recording.db, { maxCalls: expected });
+    const result = await repairDirtyExactIdentities(budget.db, { limit });
+    assert.equal(result.cleanIdentities, limit);
+    assert.equal(result.failedIdentities, 0);
+    assert.equal(budget.metrics().d1Calls, expected);
+    assert.ok(recording.executed.every((statement) => statement.binds.length <= 100));
+    assert.equal(
+      sqlite.prepare("SELECT COUNT(*) n FROM product_search_exact_identity_dirty").get()?.n,
+      0,
+    );
+  });
+}
+
+test("a re-mark between the bulk member read and bulk clear survives", async () => {
+  const { sqlite, db } = migratedSqlite();
+  insertListing(sqlite, { id: 1 });
+  let remarked = false;
+  const wrap = (statement: D1PreparedStatement, sql: string): D1PreparedStatement =>
+    ({
+      ...statement,
+      bind: (...values: unknown[]) => wrap(statement.bind(...values), sql),
+      async run() {
+        if (!remarked && /DELETE FROM product_search_exact_identity_dirty/.test(sql)) {
+          remarked = true;
+          sqlite.exec("UPDATE products SET normalized_model = 'changed' WHERE id = 1");
+        }
+        return statement.run();
+      },
+    }) as D1PreparedStatement;
+  const interposed = asQueryableDatabase({
+    ...db,
+    prepare: (sql: string) => wrap(db.prepare(sql), sql),
+  });
+  await repairDirtyExactIdentities(interposed);
+  assert.equal(remarked, true);
+  assert.deepEqual(
+    dirtyRows(sqlite).map((row) => ({ ...row })),
+    [
+      { key: "luxman|c10", claimed: null },
+      { key: "luxman|changed", claimed: null },
+    ],
+  );
+});
+
+test("expensive repair limits defer claims without losing their place in the queue", async () => {
+  const { sqlite, db } = migratedSqlite();
+  for (let group = 0; group < 3; group += 1) {
+    insertListing(sqlite, { id: group * 2 + 1, normalizedModel: `model-${group}` });
+    insertListing(sqlite, { id: group * 2 + 2, normalizedModel: `model-${group}` });
+    splitIntoSeparateEntities(sqlite, [group * 2 + 1, group * 2 + 2]);
+  }
+  const first = await repairDirtyExactIdentities(db, { maxRepairs: 1 });
+  assert.equal(first.repairedIdentities, 1);
+  assert.equal(first.deferredIdentities, 2);
+  assert.ok(dirtyRows(sqlite).some((row) => row.key === "luxman|model-2" && row.claimed === null));
+  await repairDirtyExactIdentities(db, { maxRepairs: 1 });
+  await repairDirtyExactIdentities(db, { maxRepairs: 1 });
+  await repairDirtyExactIdentities(db, { maxRepairs: 1 });
+  assert.deepEqual(dirtyRows(sqlite), []);
+  assert.equal(
+    sqlite.prepare("SELECT COUNT(DISTINCT entity_id) n FROM product_search_entity_offers").get()?.n,
+    3,
+  );
+});
 
 interface ListingFixture {
   id: number;
@@ -337,7 +413,7 @@ test("the per-identity member lookup reads through the identity index, not the t
   await repairDirtyExactIdentities(recording.db);
 
   const memberLookup = recording.executed.find((statement) =>
-    /FROM products p\s+LEFT JOIN product_search_entity_offers/u.test(statement.sql),
+    /CROSS JOIN products p/u.test(statement.sql),
   );
   assert.ok(memberLookup, "the pass should have looked up the identity's members");
   assert.equal(
@@ -380,7 +456,7 @@ test("dirty repair work does not grow with unrelated active catalog size", async
 
     const result = await repairDirtyExactIdentities(recording.db);
     const memberLookups = recording.executed.filter((statement) =>
-      /FROM products p\s+LEFT JOIN product_search_entity_offers/u.test(statement.sql),
+      /CROSS JOIN products p/u.test(statement.sql),
     );
 
     assert.equal(result.claimedIdentities, 1);
@@ -400,9 +476,9 @@ test("dirty repair work does not grow with unrelated active catalog size", async
   assert.deepEqual(
     observations,
     [
-      { activeListings: 100, statements: 5, memberLookups: 1 },
-      { activeListings: 1_000, statements: 5, memberLookups: 1 },
-      { activeListings: 10_000, statements: 5, memberLookups: 1 },
+      { activeListings: 100, statements: 4, memberLookups: 1 },
+      { activeListings: 1_000, statements: 4, memberLookups: 1 },
+      { activeListings: 10_000, statements: 4, memberLookups: 1 },
     ],
     "normal repair must remain O(changed identities), not O(active listings)",
   );

@@ -9,6 +9,7 @@
  * in the catalog; `monthly_recheck` marks verified products stale and re-reads their sources.
  */
 
+import { withD1Finalization } from "../db/invocation-budget.js";
 import {
   activeProductClassificationStats,
   finishKnowledgeCatalogReviewRunFailure,
@@ -61,6 +62,7 @@ async function dispatchKnowledgeCatalogVerificationRun(
 
   const startedAt = now.toISOString();
   const runId = existingRunId || (await startKnowledgeCatalogReviewRun(env.DB, startedAt));
+  let wakeupFailed = false;
   try {
     // Recorded up front because the finalizer runs much later and reports the difference.
     const beforeClassification = await activeProductClassificationStats(env.DB);
@@ -118,29 +120,7 @@ async function dispatchKnowledgeCatalogVerificationRun(
     try {
       await env.KNOWLEDGE_CATALOG_QUEUE.send({ kind: "knowledge_catalog_run_wakeup", runId });
     } catch (error) {
-      // No Queue message can discover these rows. Close them and the run together so the existing
-      // failed-run recovery can create a clean successor after Queue quota recovers.
-      const finishedAt = new Date().toISOString();
-      await deadLetterOutstandingKnowledgeCatalogVerificationJobsForRun(
-        env.DB,
-        runId,
-        finishedAt,
-        `run_wakeup_enqueue_failed:${errorMessage(error)}`,
-      );
-      await finishKnowledgeCatalogReviewRunFailure(
-        env.DB,
-        runId,
-        finishedAt,
-        "knowledge_catalog_run_wakeup_enqueue_failed",
-      );
-      if (verifierVersion > 0) {
-        await finishKnowledgeCatalogVerifierVersionFailure(
-          env.DB,
-          verifierVersion,
-          finishedAt,
-          "knowledge_catalog_run_wakeup_enqueue_failed",
-        );
-      }
+      wakeupFailed = true;
       throw error;
     }
 
@@ -160,24 +140,30 @@ async function dispatchKnowledgeCatalogVerificationRun(
     return result;
   } catch (error) {
     const finishedAt = new Date().toISOString();
-    // The finalizer-enqueue branch above may already have failed the run; re-failing it would
-    // overwrite the more specific reason it recorded.
-    const row = await env.DB.prepare(
-      "SELECT status FROM knowledge_catalog_review_runs WHERE id = ?",
-    )
-      .bind(runId)
-      .first();
-    if (row?.status === "running") {
-      await finishKnowledgeCatalogReviewRunFailure(env.DB, runId, finishedAt, errorMessage(error));
-    }
-    if (verifierVersion > 0) {
-      await finishKnowledgeCatalogVerifierVersionFailure(
+    const message = wakeupFailed
+      ? "knowledge_catalog_run_wakeup_enqueue_failed"
+      : errorMessage(error);
+    // This also covers a budget yield after job inserts but before their read-back. No wake can
+    // discover those rows. All three cleanup calls fit the general cron's reserved allowance,
+    // and still pass through its global and per-task accounting wrappers.
+    await withD1Finalization(env.DB, async () => {
+      await deadLetterOutstandingKnowledgeCatalogVerificationJobsForRun(
         env.DB,
-        verifierVersion,
+        runId,
         finishedAt,
-        errorMessage(error),
+        `${wakeupFailed ? "run_wakeup_enqueue_failed" : "run_dispatch_failed"}:${errorMessage(error)}`,
       );
-    }
+      // This update is already guarded by status = 'running'.
+      await finishKnowledgeCatalogReviewRunFailure(env.DB, runId, finishedAt, message);
+      if (verifierVersion > 0) {
+        await finishKnowledgeCatalogVerifierVersionFailure(
+          env.DB,
+          verifierVersion,
+          finishedAt,
+          message,
+        );
+      }
+    });
     throw error;
   }
 }

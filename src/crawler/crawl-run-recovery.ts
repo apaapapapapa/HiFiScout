@@ -1,3 +1,4 @@
+import { withinD1Budget } from "../db/invocation-budget.js";
 import {
   finishCrawlRunInterrupted,
   listStalledCrawlRuns,
@@ -102,22 +103,27 @@ export async function recoverStalledCrawlRuns(
     if (state && readCrawlLifecycle(state).phase === "dispatched") continue;
 
     const message = interruptedRunMessage(run);
-    const closed = await finishCrawlRunInterrupted(db, run.id, {
-      finishedAt: recoveredAt,
-      message,
+    const recordedFailure = shouldRecordStalledRunFailure(state, run);
+    // Closing the run removes it from the recovery selector. Admit its accompanying shop-failure
+    // write before closing it, otherwise a budget yield would lose the backoff update permanently.
+    const closed = await withinD1Budget(db, recordedFailure ? 2 : 1, async () => {
+      const didClose = await finishCrawlRunInterrupted(db, run.id, {
+        finishedAt: recoveredAt,
+        message,
+      });
+      if (didClose && recordedFailure) {
+        await markShopFailure(
+          db,
+          run.shop_key,
+          recoveredAt,
+          message,
+          Number(state?.consecutive_failures || 0),
+        );
+      }
+      return didClose;
     });
     if (!closed) continue;
 
-    const recordedFailure = shouldRecordStalledRunFailure(state, run);
-    if (recordedFailure) {
-      await markShopFailure(
-        db,
-        run.shop_key,
-        recoveredAt,
-        message,
-        Number(state?.consecutive_failures || 0),
-      );
-    }
     recovered.push({
       crawlRunId: run.id,
       shopKey: run.shop_key,

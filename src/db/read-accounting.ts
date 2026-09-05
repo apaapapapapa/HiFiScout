@@ -140,6 +140,8 @@ export function accountReads(db: ReadableDatabase): ReadAccounting<ReadableDatab
 
   const batch = (db as Partial<QueryableDatabase>).batch;
   const measuredDb = {
+    // Preserve work-unit admission and bounded finalization hooks through per-task accounting.
+    ...db,
     prepare: (query: string) => wrap(db.prepare(query)),
     batch: async <T>(statements: D1PreparedStatement[]) => {
       if (typeof batch !== "function") {

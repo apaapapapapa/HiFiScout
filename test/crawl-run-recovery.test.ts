@@ -9,6 +9,7 @@ import type { CrawlDispatchStateRow } from "../src/crawler/crawl-lifecycle.js";
 import { crawlDispatchToken } from "../src/db/shop-state-repository.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { shopSyncStateRow } from "./helpers/fixtures.js";
+import { invocationBudget, InvocationBudgetExceeded } from "../src/db/invocation-budget.js";
 
 type Sqlite = ReturnType<typeof migratedSqlite>["sqlite"];
 
@@ -16,6 +17,20 @@ const NOW = new Date("2026-08-25T12:00:00.000Z");
 /** Older than the conservative stalled-run window plus recovery grace. */
 const ABANDONED_AT = "2026-08-25T11:00:00.000Z";
 const RECENT_AT = "2026-08-25T11:58:00.000Z";
+
+test("a recovery budget yield cannot close a run without recording its shop backoff", async () => {
+  const { sqlite, db } = migratedSqlite();
+  const runId = insertRun(sqlite, "ippinkan", ABANDONED_AT);
+  insertShopState(sqlite, { shop_key: "ippinkan", last_attempt_at: ABANDONED_AT });
+  const small = invocationBudget(db, { maxCalls: 3 });
+  await assert.rejects(recoverStalledCrawlRuns(small.db, { now: NOW }), InvocationBudgetExceeded);
+  assert.equal(readRun(sqlite, runId).status, "running");
+  assert.equal(readShopState(sqlite, "ippinkan").consecutive_failures, 0);
+  await recoverStalledCrawlRuns(invocationBudget(db, { maxCalls: 4 }).db, { now: NOW });
+  assert.equal(readRun(sqlite, runId).status, "failed");
+  assert.equal(readShopState(sqlite, "ippinkan").consecutive_failures, 1);
+  assert.ok(readShopState(sqlite, "ippinkan").backoff_until);
+});
 
 function lifecycleRow(
   overrides: Partial<CrawlDispatchStateRow> & { shop_key: string },

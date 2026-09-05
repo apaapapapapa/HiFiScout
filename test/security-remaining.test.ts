@@ -18,10 +18,21 @@ test("public metadata redacts persisted crawler error text from sync and health 
     queued_at: null,
   };
   const db = {
-    prepare() {
+    prepare(sql: string) {
       return {
         async all() {
-          return { results: [state] };
+          return {
+            results: sql.includes("public_meta_snapshot")
+              ? [
+                  {
+                    generated_at: "2026-08-11T06:00:00.000Z",
+                    payload_json: JSON.stringify(
+                      Array.from({ length: 4 }, () => ({ results: [] })),
+                    ),
+                  },
+                ]
+              : [state],
+          };
         },
       };
     },

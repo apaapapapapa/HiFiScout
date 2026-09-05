@@ -92,6 +92,12 @@ export function upsertCatalogEntitiesSql(listingScope = ""): string {
       primary_category_id = excluded.primary_category_id,
       manufacturer_terms = excluded.manufacturer_terms,
       model_terms = excluded.model_terms
+    WHERE product_search_entities.manufacturer_id IS NOT excluded.manufacturer_id
+       OR product_search_entities.model IS NOT excluded.model
+       OR product_search_entities.normalized_model IS NOT excluded.normalized_model
+       OR product_search_entities.primary_category_id IS NOT excluded.primary_category_id
+       OR product_search_entities.manufacturer_terms IS NOT excluded.manufacturer_terms
+       OR product_search_entities.model_terms IS NOT excluded.model_terms
   `;
 }
 
@@ -135,6 +141,13 @@ export function upsertFallbackEntitiesSql(listingScope = ""): string {
       primary_category_id = excluded.primary_category_id,
       manufacturer_terms = excluded.manufacturer_terms,
       model_terms = excluded.model_terms
+    WHERE product_search_entities.manufacturer_id IS NOT excluded.manufacturer_id
+       OR product_search_entities.manufacturer IS NOT excluded.manufacturer
+       OR product_search_entities.model IS NOT excluded.model
+       OR product_search_entities.normalized_model IS NOT excluded.normalized_model
+       OR product_search_entities.primary_category_id IS NOT excluded.primary_category_id
+       OR product_search_entities.manufacturer_terms IS NOT excluded.manufacturer_terms
+       OR product_search_entities.model_terms IS NOT excluded.model_terms
   `;
 }
 

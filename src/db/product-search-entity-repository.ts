@@ -14,6 +14,7 @@
  * `product-search-exact-identity.ts`. Reads never repair the projection they consume.
  */
 
+import { withinD1Budget } from "./invocation-budget.js";
 import {
   exactIdentityPeerIdsSql,
   upsertExactIdentityGroupOffersSql,
@@ -196,25 +197,22 @@ async function refreshEntities(
   let removedCount = 0;
   for (const chunk of chunks(entityIds)) {
     const offerScope = scopeClause("m.entity_id", chunk.length);
-    await runStatement(db, refreshEntityAggregatesSql(offerScope), chunk);
-    await runStatement(db, refreshEntityPresentationColorsSql(offerScope), chunk);
-    await runStatement(db, upsertEntityCategoriesSql(offerScope), chunk);
-    await runStatement(
-      db,
-      deleteStaleEntityCategoriesSql(scopeClause("entity_id", chunk.length)),
-      chunk,
-    );
-    await runStatement(
-      db,
-      refreshEntityDirectCategoryIdsSql(scopeClause("source.id", chunk.length)),
-      chunk,
-    );
-    await runStatement(db, refreshEntitySearchTermsSql(offerScope), chunk);
-    removedCount += await runStatement(
-      db,
-      deleteEmptyEntitiesSql(scopeClause("id", chunk.length)),
-      chunk,
-    );
+    // Aggregate/search refresh is one transaction and one D1 round trip per affected chunk.
+    // A query budget must not interrupt this sequence after membership has already moved.
+    const results = await db.batch([
+      db.prepare(refreshEntityAggregatesSql(offerScope)).bind(...chunk),
+      db.prepare(refreshEntityPresentationColorsSql(offerScope)).bind(...chunk),
+      db.prepare(upsertEntityCategoriesSql(offerScope)).bind(...chunk),
+      db
+        .prepare(deleteStaleEntityCategoriesSql(scopeClause("entity_id", chunk.length)))
+        .bind(...chunk),
+      db
+        .prepare(refreshEntityDirectCategoryIdsSql(scopeClause("source.id", chunk.length)))
+        .bind(...chunk),
+      db.prepare(refreshEntitySearchTermsSql(offerScope)).bind(...chunk),
+      db.prepare(deleteEmptyEntitiesSql(scopeClause("id", chunk.length))).bind(...chunk),
+    ]);
+    removedCount += Number(results.at(-1)?.meta?.changes || 0);
   }
   return { refreshedCount: entityIds.length, removedCount };
 }
@@ -249,32 +247,37 @@ export async function syncProductSearchEntities(
   // try to point at it.
   const listingIds = [...new Set([...seeds, ...peers])].sort((left, right) => left - right);
 
-  const before = new Set<number>();
-  let removedDuringProjection = 0;
-  for (const chunk of chunks(listingIds)) {
-    const chunkBefore = [...new Set(await entityIdsForListings(db, chunk))];
-    for (const entityId of chunkBefore) before.add(entityId);
+  // Per listing chunk: two before lookups, one projection batch, two after lookups;
+  // at most three affected entity chunks each need one refresh batch. Admission happens before
+  // any membership write, so a normal budget yield cannot strand unrefreshed aggregates.
+  return withinD1Budget(db, 8 * Math.ceil(listingIds.length / CHUNK_SIZE), async () => {
+    const before = new Set<number>();
+    let removedDuringProjection = 0;
+    for (const chunk of chunks(listingIds)) {
+      const chunkBefore = [...new Set(await entityIdsForListings(db, chunk))];
+      for (const entityId of chunkBefore) before.add(entityId);
 
-    const listingScope = scopeClause("p.id", chunk.length);
-    removedDuringProjection += await runProjectionBatch(db, [
-      { sql: upsertCatalogEntitiesSql(listingScope), binds: chunk },
-      { sql: upsertFallbackEntitiesSql(listingScope), binds: chunk },
-      { sql: deleteInactiveOffersSql(listingScope), binds: chunk },
-      { sql: upsertCatalogOffersSql(listingScope), binds: chunk },
-      { sql: upsertFallbackOffersSql(listingScope), binds: chunk },
-      { sql: upsertExactIdentityGroupOffersSql(listingScope), binds: chunk },
-      ...emptyEntityPruneStatements(chunkBefore, chunk),
-    ]);
-  }
-  const after = await entityIdsForListings(db, listingIds);
+      const listingScope = scopeClause("p.id", chunk.length);
+      removedDuringProjection += await runProjectionBatch(db, [
+        { sql: upsertCatalogEntitiesSql(listingScope), binds: chunk },
+        { sql: upsertFallbackEntitiesSql(listingScope), binds: chunk },
+        { sql: deleteInactiveOffersSql(listingScope), binds: chunk },
+        { sql: upsertCatalogOffersSql(listingScope), binds: chunk },
+        { sql: upsertFallbackOffersSql(listingScope), binds: chunk },
+        { sql: upsertExactIdentityGroupOffersSql(listingScope), binds: chunk },
+        ...emptyEntityPruneStatements(chunkBefore, chunk),
+      ]);
+    }
+    const after = await entityIdsForListings(db, listingIds);
 
-  const affected = [...new Set([...before, ...after])];
-  const { removedCount } = await refreshEntities(db, affected);
-  return {
-    listing_count: listingIds.length,
-    entity_count: affected.length,
-    removed_entity_count: removedDuringProjection + removedCount,
-  };
+    const affected = [...new Set([...before, ...after])];
+    const { removedCount } = await refreshEntities(db, affected);
+    return {
+      listing_count: listingIds.length,
+      entity_count: affected.length,
+      removed_entity_count: removedDuringProjection + removedCount,
+    };
+  });
 }
 
 /**

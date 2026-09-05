@@ -93,7 +93,7 @@ function sample(db: QueryableDatabase, catalogProductId: number, priceYen: numbe
       INSERT INTO knowledge_catalog_price_index_samples(
         event_key, catalog_product_id, listing_product_id, shop_key, source_id,
         sample_kind, signal_kind, price_yen, observed_at
-      ) VALUES (?, ?, (SELECT id FROM products LIMIT 1), 'shop', ?, 'asking', 'asking', ?,
+      ) VALUES (?, ?, (SELECT id FROM products WHERE shop_key = 'shop' AND source_id = 'src-1'), 'shop', ?, 'asking', 'asking', ?,
                 strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-10 days'))
     `)
     .bind(`deferred-${eventId}`, catalogProductId, `source-${eventId}`, priceYen);
@@ -322,7 +322,7 @@ test("a page of a thousand samples for one product still recomputes it once", as
         INSERT INTO knowledge_catalog_price_index_samples(
           event_key, catalog_product_id, listing_product_id, shop_key, source_id,
           sample_kind, signal_kind, price_yen, observed_at
-        ) VALUES (?, ?, (SELECT id FROM products LIMIT 1), 'shop', ?, 'asking', 'asking', ?,
+        ) VALUES (?, ?, (SELECT id FROM products WHERE shop_key = 'shop' AND source_id = 'src-1'), 'shop', ?, 'asking', 'asking', ?,
                   strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-10 days'))
       `)
       .run(`pre-${eventId}`, PRODUCTS[0], `pre-${eventId}`, 200_000 + index);
