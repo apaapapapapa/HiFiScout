@@ -25,7 +25,7 @@ import { recordingDatabase } from "./helpers/query-plan.js";
 
 const AT = "2026-09-05T00:00:00.000Z";
 const RUN = "crawl:home-shokai:do-progress";
-const STORAGE_KEY = "phase2_crawl_execution";
+const STORAGE_KEY = "phase2_crawl_execution"; // Public DO record name, not a credential. gitleaks:allow
 const plugin = getShopPlugin("home-shokai")!;
 const HTML =
   '<html><body><a href="/item.php?z=1001">LUXMAN プリメインアンプ L-505 〇委託販売品 ￥250,000 -</a></body></html>';
