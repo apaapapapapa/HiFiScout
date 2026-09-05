@@ -47,6 +47,7 @@ type ReclassificationProductRow = Pick<
 > & {
   identity_status: string | null;
   identity_catalog_product_id: number | null;
+  override_primary_category_id?: string | null;
 };
 
 interface ReclassificationRefreshTarget {
@@ -267,7 +268,7 @@ function buildReclassificationStatements(
       });
     }
 
-    if (!match) continue;
+    if (!match || product.override_primary_category_id != null) continue;
     // Historical reclassification is allowed only when the existing conservative Product Identity
     // resolver has attached this listing to the same verified canonical product. Candidate catalog
     // IDs and unresolved identities never become category authority.
@@ -384,9 +385,11 @@ export async function reclassifyProductsFromKnowledgeCatalog(
              p.category, p.primary_category_id, p.category_ids, p.classification_status,
              p.remediation_projection_required, p.remediation_projection_token,
              pir.status AS identity_status,
-             pir.catalog_product_id AS identity_catalog_product_id
+             pir.catalog_product_id AS identity_catalog_product_id,
+             o.primary_category_id AS override_primary_category_id
       FROM products p
       LEFT JOIN product_identity_resolutions pir ON pir.listing_product_id = p.id
+      LEFT JOIN product_admin_overrides o ON o.listing_product_id = p.id
       WHERE p.is_active = 1 AND p.canonical_manufacturer_id <> '' AND p.model <> '' AND p.id > ?
       ORDER BY p.id
       LIMIT ?
@@ -423,9 +426,11 @@ export async function reclassifyAdminCsvListings(
            p.canonical_manufacturer_id AS manufacturer_id, p.model, p.model_resolution_status,
            p.category, p.primary_category_id, p.category_ids, p.classification_status,
            p.remediation_projection_required, p.remediation_projection_token,
-           pir.status AS identity_status, pir.catalog_product_id AS identity_catalog_product_id
+           pir.status AS identity_status, pir.catalog_product_id AS identity_catalog_product_id,
+           o.primary_category_id AS override_primary_category_id
     FROM products p
     LEFT JOIN product_identity_resolutions pir ON pir.listing_product_id = p.id
+    LEFT JOIN product_admin_overrides o ON o.listing_product_id = p.id
     WHERE p.id IN (${listingIds.map(() => "?").join(",")})
   `)
     .bind(...listingIds)

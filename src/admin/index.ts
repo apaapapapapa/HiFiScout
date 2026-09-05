@@ -13,6 +13,7 @@ import {
 } from "../http/knowledge-catalog-admin.js";
 import { verifyCloudflareAccessRequest } from "./access.js";
 import { parseAdminCsvPreview, parseAdminCsvApply } from "../http/admin-csv-import.js";
+import { ADMIN_CSV_MAX_REQUEST_BYTES } from "../api/admin-csv-contracts.js";
 import type { DataExportFormat } from "../export/contracts.js";
 
 interface CatalogAdminEnv {
@@ -182,7 +183,7 @@ export async function handleAuthenticatedCatalogAdminRequest(
     (url.pathname === "/api/admin/csv-import/preview" ||
       url.pathname === "/api/admin/csv-import/apply")
   ) {
-    const body = await mutationBody(request, url, 256 * 1024);
+    const body = await mutationBody(request, url, ADMIN_CSV_MAX_REQUEST_BYTES);
     if (isResponse(body)) return body;
     try {
       if (url.pathname.endsWith("/preview")) {

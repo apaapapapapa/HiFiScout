@@ -1,4 +1,5 @@
 import type { ReadableDatabase } from "./types.js";
+import { ADMIN_CSV_MAX_VALUE_CHARACTERS } from "../api/admin-csv-contracts.js";
 
 const MAX_PAGE_SIZE = 100;
 const CATEGORY_JSON_LIMIT = 20;
@@ -353,19 +354,19 @@ export async function listKnowledgeCatalogExportPage(
     .prepare(`
       SELECT
         kp.id AS catalog_product_id,
-        ${boundedSqlText("kp.manufacturer_id")} AS manufacturer_id,
+        ${boundedSqlText("kp.manufacturer_id", ADMIN_CSV_MAX_VALUE_CHARACTERS)} AS manufacturer_id,
         ${boundedSqlText("km.canonical_name")} AS manufacturer_canonical_name,
         ${boundedSqlText("km.verification_status", 128)} AS manufacturer_verification_status,
         ${boundedSqlText("km.source")} AS manufacturer_source,
         ${boundedSqlJson("km.provenance_json")} AS manufacturer_provenance_json,
-        ${boundedSqlText("kp.canonical_model")} AS canonical_model,
+        ${boundedSqlText("kp.canonical_model", ADMIN_CSV_MAX_VALUE_CHARACTERS)} AS canonical_model,
         ${boundedSqlText("kp.normalized_model")} AS normalized_model,
-        ${boundedSqlText("kp.canonical_name")} AS canonical_name,
-        ${boundedSqlText("kp.lifecycle_status", 128)} AS lifecycle_status,
+        ${boundedSqlText("kp.canonical_name", ADMIN_CSV_MAX_VALUE_CHARACTERS)} AS canonical_name,
+        ${boundedSqlText("kp.lifecycle_status", ADMIN_CSV_MAX_VALUE_CHARACTERS)} AS lifecycle_status,
         ${boundedSqlText("kp.verification_status", 128)} AS verification_status,
         ${boundedSqlText("kp.review_status", 128)} AS review_status,
         (
-          SELECT ${boundedSqlText("kpc_primary.category_id", 512)}
+          SELECT ${boundedSqlText("kpc_primary.category_id", ADMIN_CSV_MAX_VALUE_CHARACTERS)}
           FROM knowledge_catalog_product_categories kpc_primary
           WHERE kpc_primary.product_id = kp.id AND kpc_primary.is_primary = 1
           LIMIT 1

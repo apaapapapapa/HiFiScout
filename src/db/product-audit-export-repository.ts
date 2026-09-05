@@ -1,4 +1,5 @@
 import type { ReadableDatabase } from "./types.js";
+import { ADMIN_CSV_MAX_VALUE_CHARACTERS } from "../api/admin-csv-contracts.js";
 import type { ProductAuditExportScope } from "../product-audit-export/types.js";
 
 export type { ProductAuditExportScope } from "../product-audit-export/types.js";
@@ -232,19 +233,19 @@ export async function listProductAuditExportPage(
         ${boundedSqlText("p.raw_manufacturer")} AS raw_manufacturer,
         ${boundedSqlText("p.manufacturer")} AS manufacturer,
         ${boundedSqlText("p.manufacturer_id", SQL_IDENTIFIER_CHARACTER_LIMIT)} AS manufacturer_id,
-        ${boundedSqlText("p.canonical_manufacturer_id", SQL_IDENTIFIER_CHARACTER_LIMIT)} AS canonical_manufacturer_id,
+        ${boundedSqlText("p.canonical_manufacturer_id", ADMIN_CSV_MAX_VALUE_CHARACTERS)} AS canonical_manufacturer_id,
         ${boundedSqlText("p.manufacturer_resolution_status", 128)} AS manufacturer_resolution_status,
         ${boundedSqlText("p.manufacturer_resolution_method", 128)} AS manufacturer_resolution_method,
         ${boundedSqlText("p.manufacturer_resolution_confidence", 128)} AS manufacturer_resolution_confidence,
         ${boundedSqlText("p.raw_model", SQL_EVIDENCE_CHARACTER_LIMIT)} AS raw_model,
-        ${boundedSqlText("p.model")} AS model,
+        ${boundedSqlText("p.model", ADMIN_CSV_MAX_VALUE_CHARACTERS)} AS model,
         ${boundedSqlText("p.normalized_model")} AS normalized_model,
         ${boundedSqlText("p.model_resolution_status", 128)} AS model_resolution_status,
         ${boundedSqlText("p.model_resolution_method", 128)} AS model_resolution_method,
         ${boundedSqlText("p.model_resolution_confidence", 128)} AS model_resolution_confidence,
         ${boundedSqlText("p.raw_category", SQL_EVIDENCE_CHARACTER_LIMIT)} AS raw_category,
         ${boundedSqlText("p.category")} AS category,
-        ${boundedSqlText("p.primary_category_id", SQL_IDENTIFIER_CHARACTER_LIMIT)} AS primary_category_id,
+        ${boundedSqlText("p.primary_category_id", ADMIN_CSV_MAX_VALUE_CHARACTERS)} AS primary_category_id,
         ${boundedSqlText("p.category_ids", SQL_EVIDENCE_CHARACTER_LIMIT)} AS category_ids,
         ${boundedSqlText("p.classification_status", 128)} AS classification_status,
         ${boundedSqlText("e.entity_key")} AS search_entity_key,

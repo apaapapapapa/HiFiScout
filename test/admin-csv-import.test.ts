@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 import {
+  ADMIN_CSV_MAX_REQUEST_BYTES,
+  ADMIN_CSV_MAX_VALUE_CHARACTERS,
   adminCsvCell,
+  adminCsvDecodeCell,
+  adminCsvPreviewBatches,
   adminCsvEditHeader,
   adminCsvEditRow,
   adminCsvOriginal,
@@ -19,6 +23,11 @@ import { sqliteD1 } from "./helpers/sqlite-d1.js";
 import { refreshListingProjections } from "../src/db/listing-projection-refresh.js";
 import { updateListingAdminProduct } from "../src/db/listing-admin-repository.js";
 import { reclassifyAdminCsvListings } from "../src/db/knowledge-catalog-repository.js";
+import { listProductAuditExportPage } from "../src/db/product-audit-export-repository.js";
+import { listKnowledgeCatalogExportPage } from "../src/db/knowledge-catalog-export-repository.js";
+import { productAuditCsvHeader, productAuditCsvRow } from "../src/admin/product-audit-csv.js";
+import { knowledgeCatalogCsvHeader, knowledgeCatalogCsvRow } from "../src/admin/knowledge-catalog-csv.js";
+import { recordingDatabase, queryPlan } from "./helpers/query-plan.js";
 
 const original = adminCsvOriginal("listing", 90001, {
   manufacturer_id: "luxman",
@@ -97,6 +106,101 @@ test("server validates rows independently of the browser and bounds each request
     parseAdminCsvApply({ change: change(), revision: "", operationId: "not-a-uuid" }),
     null,
   );
+});
+
+test("CSV codec is reversible and preview batches respect UTF-8 JSON byte limits", () => {
+  for (const value of ["'literal", "'=formula", " =formula", "\t@formula", "\r\nvalue", "quoted,\"value\""]) {
+    const encoded = [...parseCsv(adminCsvCell(value))][0].cells[0];
+    assert.equal(adminCsvDecodeCell(encoded), value);
+    if (value.trimStart().startsWith("=")) assert.ok(encoded.startsWith("'"));
+  }
+  const wide = "日".repeat(ADMIN_CSV_MAX_VALUE_CHARACTERS);
+  const changes = Array.from({ length: 41 }, (_, index) => ({
+    line: index + 2,
+    original: adminCsvOriginal("catalog", index + 1, {
+      manufacturer_id: "luxman", canonical_model: wide, canonical_name: wide,
+      primary_category_id: "AMP.PRE", lifecycle_status: "unknown",
+    }),
+    values: { manufacturer_id: "luxman", canonical_model: "C11", canonical_name: "Correct",
+      primary_category_id: "AMP.PRE", lifecycle_status: "unknown" },
+  }));
+  const batches = [...adminCsvPreviewBatches(changes)];
+  assert.ok(batches.length > 3, "twenty valid rows can exceed the HTTP byte budget");
+  assert.deepEqual(batches.flat(), changes);
+  for (const batch of batches) {
+    assert.ok(batch.length <= 20);
+    assert.ok(new TextEncoder().encode(JSON.stringify({ changes: batch })).length <= ADMIN_CSV_MAX_REQUEST_BYTES);
+    assert.deepEqual(parseAdminCsvPreview({ changes: batch }), batch);
+  }
+  const extra = { ...original, values: { ...original.values, title: "unexpected" } };
+  const text = "listing_id," + adminCsvEditHeader("listing") + "\n90001," + adminCsvEditRow(extra);
+  assert.throws(() => readAdminCsv(text), /元データ/u);
+  assert.equal(parseAdminCsvPreview({ changes: [{ ...change(), original: extra }] }), null);
+});
+
+function editCsvCell(text: string, column: string, value: string): string {
+  const rows = [...parseCsv(text)];
+  rows[1].cells[rows[0].cells.indexOf(column)] = value;
+  // These are already formula-protected CSV cells; an editor only re-quotes CSV syntax.
+  return rows.map(({ cells }) => cells.map((cell) => '"' + cell.replaceAll('"', '""') + '"').join(",")).join("\r\n");
+}
+
+test("actual listing and catalog exports round-trip long and dirty originals before correction", async () => {
+  const { db, sqlite } = database();
+  try {
+    sqlite.exec(`INSERT INTO knowledge_catalog_products(id,manufacturer_id,canonical_model,normalized_model,
+      canonical_name,created_at,updated_at) VALUES (90001,'luxman','C10','C10','LUXMAN C10','2026-09-05','2026-09-05');
+      INSERT INTO knowledge_catalog_product_categories(product_id,category_id,is_primary) VALUES(90001,'AMP.PRE',1);`);
+    for (const model of ["'C10", "'=C10", " =C10", "\tC10", "C10\nold", "M".repeat(3000)]) {
+      sqlite.prepare("UPDATE products SET model=? WHERE id=90001").run(model);
+      sqlite.prepare("UPDATE knowledge_catalog_products SET canonical_model=? WHERE id=90001").run(model);
+      const listing = (await listProductAuditExportPage(db, { scope: "all", afterId: 90000, maxId: 90001, limit: 1 })).items[0];
+      const catalog = (await listKnowledgeCatalogExportPage(db, { afterId: 90000, maxId: 90001, limit: 1 })).items[0];
+      assert.equal(listing.model, model);
+      assert.equal(catalog.canonicalModel, model);
+      const files = [
+        { csv: productAuditCsvHeader() + "\r\n" + productAuditCsvRow(listing), column: "edit_model" },
+        { csv: knowledgeCatalogCsvHeader() + "\r\n" + knowledgeCatalogCsvRow({ ...catalog,
+          manufacturerCanonicalName: "Name".repeat(2000), manufacturerSource: "source".repeat(2000),
+          manufacturerProvenanceJson: JSON.stringify({ evidence: "data".repeat(9000) }),
+        }), column: "edit_canonical_model" },
+      ];
+      for (const { csv, column } of files) {
+        assert.equal(readAdminCsv(csv).unchangedRows, 1);
+        const changes = readAdminCsv(editCsvCell(csv, column, "C11")).changes;
+        assert.equal(changes.length, 1);
+        assert.deepEqual(parseAdminCsvPreview({ changes }), changes);
+        assert.equal((await previewAdminCsvChange(db, changes[0])).status, "ready");
+      }
+    }
+    const truncated = { ...change(), original: { ...original, values: { ...original.values, model: "M [truncated]" } } };
+    const result = await previewAdminCsvChange(db, truncated);
+    assert.equal(result.status, "invalid");
+    assert.match(result.message, /省略/u);
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("model-only CSV correction preserves category membership and distinct manufacturer identifiers", async () => {
+  const { db, sqlite } = database();
+  try {
+    sqlite.exec(`UPDATE products SET manufacturer_id='luxman-legacy',
+      category_ids='["AMP.PRE","AMP","PRC.DAC","PRC"]', direct_category_ids='["AMP.PRE","PRC.DAC"]',
+      search_aliases='preserved category evidence' WHERE id=90001;
+      INSERT OR IGNORE INTO product_categories(product_id,category_id,is_direct)
+      VALUES(90001,'AMP.PRE',1),(90001,'AMP',0),(90001,'PRC.DAC',1),(90001,'PRC',0);`);
+    const snapshot = () => ({ ...sqlite.prepare(`SELECT manufacturer_id,canonical_manufacturer_id,
+      category_ids,direct_category_ids,search_aliases FROM products WHERE id=90001`).get() });
+    const before = snapshot();
+    assert.equal((await apply(db, change())).status, "applied");
+    assert.deepEqual(snapshot(), before);
+    const overrides = sqlite.prepare("SELECT manufacturer_id,primary_category_id,model FROM product_admin_overrides WHERE listing_product_id=90001").get();
+    assert.deepEqual({ ...overrides }, { manufacturer_id: null, primary_category_id: null, model: "C11" });
+    assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM product_categories WHERE product_id=90001").get()?.n, 4);
+  } finally {
+    sqlite.close();
+  }
 });
 
 function database() {
@@ -400,12 +504,22 @@ test("catalog category correction updates active and inactive matches but preser
       3,
     );
     await updateListingAdminProduct(db, 90003, { primaryCategoryId: "AMP.PRE" });
-    const result = await apply(db, {
+    sqlite.exec(`CREATE TEMP TABLE csv_category_writes(listing_id INTEGER);
+      CREATE TEMP TRIGGER csv_category_write AFTER UPDATE OF category_ids ON products
+      BEGIN INSERT INTO csv_category_writes VALUES(NEW.id); END;`);
+    const recorded = recordingDatabase(db);
+    const result = await apply(recorded.db, {
       line: 2,
       original,
       values: { ...original.values, primary_category_id: "PRC.DAC" },
     });
     assert.equal(result.status, "applied", result.message);
+    assert.deepEqual(sqlite.prepare("SELECT listing_id FROM csv_category_writes ORDER BY listing_id").all().map((row) => row.listing_id), [90001, 90002]);
+    const discovery = recorded.executed.filter(({ sql }) => sql.includes("AS matched_catalog_id"));
+    assert.equal(discovery.length, 1);
+    const plan = queryPlan(sqlite, discovery[0]);
+    assert.ok(plan.some(({ detail }) => /SEARCH p USING INDEX/u.test(detail)), JSON.stringify(plan));
+    assert.ok(plan.some(({ detail }) => /SEARCH r USING INTEGER PRIMARY KEY/u.test(detail)), JSON.stringify(plan));
     const categories = sqlite
       .prepare("SELECT primary_category_id FROM products WHERE id>=90001 ORDER BY id")
       .all();
@@ -438,6 +552,26 @@ test("catalog category correction updates active and inactive matches but preser
   }
 });
 
+test("catalog name-only CSV edits skip candidate discovery and category writes", async () => {
+  const { db, sqlite } = database();
+  try {
+    const original = await relatedListings(db, sqlite);
+    sqlite.exec(`CREATE TEMP TABLE csv_category_writes(listing_id INTEGER);
+      CREATE TEMP TRIGGER csv_category_write AFTER UPDATE OF category_ids ON products
+      BEGIN INSERT INTO csv_category_writes VALUES(NEW.id); END;`);
+    const recorded = recordingDatabase(db);
+    assert.equal((await apply(recorded.db, {
+      line: 2, original, values: { ...original.values, canonical_name: "Correct name" },
+    })).status, "applied");
+    assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM csv_category_writes").get()?.n, 0);
+    assert.equal(recorded.executed.filter(({ sql }) => sql.includes("r.listing_product_id > ?")).length, 0);
+    assert.equal(recorded.executed.some(({ sql }) => sql.includes("AS matched_catalog_id")), false);
+    assert.equal(sqlite.prepare("SELECT canonical_name FROM knowledge_catalog_products WHERE id=90001").get()?.canonical_name, "Correct name");
+  } finally {
+    sqlite.close();
+  }
+});
+
 test("catalog identity correction detaches old listings without rewriting their model to the new identity", async () => {
   const { db, sqlite } = database();
   try {
@@ -462,6 +596,34 @@ test("catalog identity correction detaches old listings without rewriting their 
       .all();
     assert.ok(rows.every((row) => row.model === "C10" && row.raw_model === "C10"));
     assert.ok(rows.every((row) => row.pending === 0 && row.token === ""));
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("CSV catalog discovery advances through full pages containing only already-refreshed matches", async () => {
+  const { db, sqlite } = database();
+  try {
+    const original = await relatedListings(db, sqlite);
+    sqlite.exec(`WITH RECURSIVE ids(id) AS (SELECT 90100 UNION ALL SELECT id+1 FROM ids WHERE id<90120)
+      INSERT INTO products(id,shop_key,source_id,title,manufacturer,manufacturer_id,canonical_manufacturer_id,
+        model,normalized_model,raw_model,raw_manufacturer,primary_category_id,category_ids,direct_category_ids,
+        classification_status,manufacturer_resolution_status,model_resolution_status,
+        source_url,first_seen_at,last_seen_at,last_changed_at,is_active)
+      SELECT ids.id,p.shop_key,'csv-page-'||ids.id,p.title,p.manufacturer,p.manufacturer_id,p.canonical_manufacturer_id,
+        p.model,p.normalized_model,p.raw_model,p.raw_manufacturer,p.primary_category_id,p.category_ids,p.direct_category_ids,
+        p.classification_status,'resolved','resolved',p.source_url,p.first_seen_at,p.last_seen_at,p.last_changed_at,1
+      FROM ids JOIN products p ON p.id=90001;`);
+    const rows = await db.prepare("SELECT id,shop_key,source_id FROM products WHERE id>=90100")
+      .all<{ id: number; shop_key: string; source_id: string }>();
+    await refreshListingProjections(db, rows.results, "2026-09-05T00:00:00.000Z");
+    const recorded = recordingDatabase(db);
+    assert.equal((await apply(recorded.db, {
+      line: 2, original, values: { ...original.values, primary_category_id: "PRC.DAC" },
+    })).status, "applied");
+    const pages = recorded.executed.filter(({ sql }) => sql.includes("AS matched_catalog_id"));
+    assert.equal(pages.length, 3, "24 previously refreshed matches still advance the scan cursor");
+    assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM products WHERE id>=90001 AND primary_category_id='PRC.DAC'").get()?.n, 24);
   } finally {
     sqlite.close();
   }

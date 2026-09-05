@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import {
   ADMIN_CSV_FIELDS,
   ADMIN_CSV_MAX_FILE_BYTES,
-  ADMIN_CSV_PREVIEW_LIMIT,
   adminCsvCell,
+  adminCsvPreviewBatches,
   type AdminCsvChange,
   type AdminCsvResult,
 } from "../src/api/admin-csv-contracts.js";
@@ -113,15 +113,15 @@ export function AdminCsvImport({
         return;
       }
       const checked: AdminCsvResult[] = [];
-      for (let offset = 0; offset < parsed.changes.length; offset += ADMIN_CSV_PREVIEW_LIMIT) {
-        setMessage("変更行を検証中: " + offset + " / " + parsed.changes.length + "件");
+      for (const batch of adminCsvPreviewBatches(parsed.changes)) {
+        setMessage("変更行を検証中: " + checked.length + " / " + parsed.changes.length + "件");
         const response = await adminJson<{ items: AdminCsvResult[] }>(
           "/api/admin/csv-import/preview",
           {
             method: "POST",
             signal: controller.signal,
             body: JSON.stringify({
-              changes: parsed.changes.slice(offset, offset + ADMIN_CSV_PREVIEW_LIMIT),
+              changes: batch,
             }),
           },
         );
