@@ -118,7 +118,9 @@ function toMetaShopSyncState(row: ShopSyncStateRow): MetaShopSyncState {
     // timestamp/failure counters and structured health reason.
     last_error: null,
     last_item_count: row.last_item_count,
-    queued_at: row.queued_at,
+    // Crawl Queue retirement removed the SQL column, not this nullable public compatibility field.
+    // Undefined disappears during JSON serialization and makes every populated shop fail validation.
+    queued_at: row.queued_at ?? null,
   };
 }
 
