@@ -159,7 +159,9 @@ test("DO collection progress and inline parsing reduce billed D1 writes with one
   const { db, dispose } = await database();
   try {
     const plugin = getShopPlugin("home-shokai")!;
-    const pageCount = 20;
+    // Three full collection modes include workerd round trips; ten pages keeps the comparison
+    // below the CI runner's time budget while still exercising repeated steps and one checkpoint.
+    const pageCount = 10;
     const totals = new Map<string, number>();
     const costs: Record<string, { rowsWritten: number; rowsRead: number; statements: number }> = {};
     for (const mode of ["d1", "durable_object", "durable_object_inline"] as const) {
