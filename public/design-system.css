@@ -899,3 +899,8 @@ button:disabled { cursor: not-allowed; }
 .price-index-disclaimer { line-height: 1.7; }
 .price-index-stats, .price-index-observations li { font-size: 12px; }
 .price-index-heading h3 { font-family: inherit; }
+
+body.filters-open { overflow: hidden; }
+.offers { max-height: none; overflow: visible; }
+.offer-shop { font-size: 14px; letter-spacing: 0; }
+@media (min-width: 761px) { .view-switch { display: inline-flex; } }

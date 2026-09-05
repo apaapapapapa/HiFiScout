@@ -4,6 +4,7 @@ const galleryUrl = "http://127.0.0.1:4173/";
 
 export default defineConfig({
   testDir: "./components",
+  outputDir: "../test-results/components",
   fullyParallel: false,
   workers: 1,
   retries: process.env.CI ? 1 : 0,
