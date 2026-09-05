@@ -215,13 +215,16 @@ function addProductFilters(query: ProductQuery, where: string[], binds: unknown[
     binds.push(...wanted);
   }
   for (const feature of query.features) {
-    // A model property, so evidence from any of the product's listings establishes it.
-    where.push(`EXISTS (
-      SELECT 1 FROM product_search_entity_offers m
+    const [featureId, state = "present"] = feature.split(":");
+    // Indexed, entity-local evidence only. No evidence and conflicting states are both unknown;
+    // neither may satisfy an explicit absence filter. This matches resolveFeatureState().
+    where.push(`COALESCE((
+      SELECT CASE WHEN MIN(pff.state) = MAX(pff.state) THEN MIN(pff.state) END
+      FROM product_search_entity_offers m
       JOIN product_feature_facts pff ON pff.product_id = m.listing_product_id
-      WHERE m.entity_id = e.id AND pff.feature_id = ? AND pff.state = 'present'
-    )`);
-    binds.push(feature);
+      WHERE m.entity_id = e.id AND pff.feature_id = ?
+    ), 'unknown') = ?`);
+    binds.push(featureId, state);
   }
   const facetsById = new Map<string, string[]>();
   for (const facet of query.facets) {

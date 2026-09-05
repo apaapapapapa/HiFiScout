@@ -40,7 +40,7 @@ function leaf(
 
 /** Product types only; orthogonal properties live in the facet registry. */
 const AUTHORED_CATEGORIES: readonly AuthoredCategory[] = [
-  root("PER", "パーソナルオーディオ", 1),
+  root("PER", "ヘッドホン・イヤホン", 1),
   leaf("PER.HEADPHONE", "ヘッドホン", "PER", 1, ["headphone", "headphones", "ヘッドホン"]),
   leaf("PER.EARPHONE", "イヤホン / IEM", "PER", 2, [
     "earphone",
@@ -78,7 +78,8 @@ const AUTHORED_CATEGORIES: readonly AuthoredCategory[] = [
     "energizer",
     "ヘッドホンアンプ",
   ]),
-  leaf("AMP.RECEIVER", "Stereo / AV Receiver", "AMP", 5, [
+  leaf("AMP.RECEIVER", "AVアンプ / ステレオ・AVレシーバー", "AMP", 5, [
+    "Stereo / AV Receiver",
     "stereo receiver",
     "av receiver",
     "AVレシーバー",
@@ -97,7 +98,8 @@ const AUTHORED_CATEGORIES: readonly AuthoredCategory[] = [
     "ヘッドアンプ",
   ]),
   root("SRC", "ソース機器", 4),
-  leaf("SRC.STREAMER", "ネットワークストリーマー / Network Transport", "SRC", 1, [
+  leaf("SRC.STREAMER", "ネットワークプレーヤー / トランスポート", "SRC", 1, [
+    "ネットワークストリーマー / Network Transport",
     "network player",
     "network audio player",
     "streamer",
@@ -105,8 +107,13 @@ const AUTHORED_CATEGORIES: readonly AuthoredCategory[] = [
     "ネットワークプレーヤー",
     "ネットワークトランスポート",
   ]),
-  leaf("SRC.DAP", "DAP", "SRC", 2, ["dap", "digital audio player", "デジタルオーディオプレーヤー"]),
-  leaf("SRC.DISC", "Disc Player / Disc Transport", "SRC", 3, [
+  leaf("SRC.DAP", "デジタルオーディオプレーヤー（DAP）", "SRC", 2, [
+    "dap",
+    "digital audio player",
+    "デジタルオーディオプレーヤー",
+  ]),
+  leaf("SRC.DISC", "ディスク再生・録音機器", "SRC", 3, [
+    "Disc Player / Disc Transport",
     "disc player",
     "disc transport",
     "cd player",
@@ -116,14 +123,31 @@ const AUTHORED_CATEGORIES: readonly AuthoredCategory[] = [
     "CDプレーヤー",
     "SACDプレーヤー",
     "CDトランスポート",
+    "MDデッキ",
+    "LDプレーヤー",
   ]),
-  leaf("SRC.SERVER", "Music Server / Ripper", "SRC", 4, [
+  leaf("SRC.SERVER", "ミュージックサーバー / リッパー", "SRC", 4, [
+    "Music Server / Ripper",
     "music server",
     "music ripper",
     "ミュージックサーバー",
   ]),
-  leaf("SRC.TUNER", "チューナー / Radio", "SRC", 5, ["tuner", "radio tuner", "チューナー"]),
-  root("ANA", "アナログ", 5),
+  leaf("SRC.TUNER", "チューナー / ラジオ", "SRC", 5, [
+    "チューナー / Radio",
+    "tuner",
+    "radio tuner",
+    "チューナー",
+  ]),
+  // IDs are durable references in overrides, catalog entries and saved URLs. Keep this existing
+  // ID when reparenting; parentId, not the historical prefix, defines the current hierarchy.
+  leaf("ANA.TAPE", "テープデッキ", "SRC", 6, [
+    "tape deck",
+    "cassette deck",
+    "テープデッキ",
+    "DATデッキ",
+    "DCCデッキ",
+  ]),
+  root("ANA", "レコード・アナログ機器", 5),
   leaf("ANA.TURNTABLE", "ターンテーブル", "ANA", 1, [
     "turntable",
     "record player",
@@ -134,23 +158,23 @@ const AUTHORED_CATEGORIES: readonly AuthoredCategory[] = [
   leaf("ANA.CARTRIDGE", "カートリッジ", "ANA", 3, ["cartridge", "カートリッジ"]),
   leaf("ANA.STYLUS", "交換針", "ANA", 4, ["replacement stylus", "stylus", "交換針", "レコード針"]),
   leaf("ANA.HEADSHELL", "ヘッドシェル", "ANA", 5, ["headshell", "head shell", "ヘッドシェル"]),
-  leaf("ANA.TAPE", "テープデッキ", "ANA", 6, ["tape deck", "cassette deck", "テープデッキ"]),
-  root("PRC", "プロセッシング / 変換", 6),
-  leaf("PRC.DAC", "D/A Converter", "PRC", 1, [
+  root("PRC", "変換・音声処理", 6),
+  leaf("PRC.DAC", "D/Aコンバーター（DAC）", "PRC", 1, [
     "dac",
     "d/a converter",
     "da converter",
     "D/Aコンバーター",
   ]),
-  leaf("PRC.ADC", "A/D Converter", "PRC", 2, ["adc", "a/d converter", "ADコンバーター"]),
-  leaf("PRC.DDC", "DDC / Digital Bridge", "PRC", 3, [
+  leaf("PRC.ADC", "A/Dコンバーター（ADC）", "PRC", 2, ["adc", "a/d converter", "ADコンバーター"]),
+  leaf("PRC.DDC", "デジタル変換 / リクロッカー（DDC）", "PRC", 3, [
+    "DDC / Digital Bridge",
     "ddc",
     "digital bridge",
     "usb bridge",
     "reclocker",
     "リクロッカー",
   ]),
-  leaf("PRC.PROCESSOR", "Audio Processor", "PRC", 4, [
+  leaf("PRC.PROCESSOR", "音声プロセッサー", "PRC", 4, [
     "audio processor",
     "equalizer",
     "room correction",
@@ -158,68 +182,78 @@ const AUTHORED_CATEGORIES: readonly AuthoredCategory[] = [
     "オーディオプロセッサー",
     "イコライザー",
   ]),
-  leaf("PRC.CLOCK", "Master Clock", "PRC", 5, [
+  leaf("PRC.CLOCK", "マスタークロック", "PRC", 5, [
     "master clock",
     "clock generator",
     "マスタークロック",
   ]),
-  root("SIG", "信号 / ネットワーク機器", 7),
-  leaf("SIG.NETWORK", "Audio Network Equipment", "SIG", 1, [
+  root("SIG", "信号・ネットワーク機器", 7),
+  leaf("SIG.NETWORK", "オーディオ用ネットワーク機器", "SIG", 1, [
+    "Audio Network Equipment",
     "network switch",
     "switching hub",
     "audio router",
     "ネットワークスイッチ",
     "スイッチングハブ",
   ]),
-  leaf("SIG.ISOLATOR", "Signal Isolator", "SIG", 2, [
+  leaf("SIG.ISOLATOR", "信号アイソレーター", "SIG", 2, [
     "signal isolator",
     "optical isolator",
     "アイソレーター",
     "光絶縁",
   ]),
-  leaf("SIG.SELECTOR", "Selector / Distributor", "SIG", 3, [
+  leaf("SIG.SELECTOR", "セレクター / 分配器", "SIG", 3, [
+    "Selector / Distributor",
     "selector",
     "distributor",
     "matrix",
     "セレクター",
     "分配器",
   ]),
-  leaf("SIG.WIRELESS", "Wireless Transmitter / Receiver", "SIG", 4, [
+  leaf("SIG.WIRELESS", "ワイヤレス送信機 / 受信機", "SIG", 4, [
+    "Wireless Transmitter / Receiver",
     "wireless transmitter",
     "wireless receiver",
     "bluetooth adapter",
     "ワイヤレス送信機",
   ]),
   root("CAB", "ケーブル", 8),
-  leaf("CAB.ANALOG", "Analog Interconnect", "CAB", 1, [
+  leaf("CAB.ANALOG", "アナログケーブル", "CAB", 1, [
     "analog interconnect",
     "analog cable",
     "rca cable",
     "phono cable",
     "アナログケーブル",
   ]),
-  leaf("CAB.DIGITAL", "Digital Audio / AV Cable", "CAB", 2, [
+  leaf("CAB.DIGITAL", "デジタル音声 / AVケーブル", "CAB", 2, [
+    "Digital Audio / AV Cable",
     "digital cable",
     "aes/ebu cable",
     "spdif cable",
     "hdmi cable",
     "デジタルケーブル",
   ]),
-  leaf("CAB.SPEAKER", "Speaker Cable", "CAB", 3, ["speaker cable", "スピーカーケーブル"]),
-  leaf("CAB.PERSONAL", "Headphone / IEM Cable", "CAB", 4, [
+  leaf("CAB.SPEAKER", "スピーカーケーブル", "CAB", 3, ["speaker cable", "スピーカーケーブル"]),
+  leaf("CAB.PERSONAL", "ヘッドホン / イヤホンケーブル", "CAB", 4, [
+    "Headphone / IEM Cable",
     "headphone cable",
     "earphone cable",
     "iem cable",
     "リケーブル",
   ]),
-  leaf("CAB.DATA", "USB / LAN Data Cable", "CAB", 5, [
+  leaf("CAB.DATA", "USB / LANケーブル", "CAB", 5, [
+    "USB / LAN Data Cable",
     "usb cable",
     "lan cable",
     "ethernet cable",
     "USBケーブル",
     "LANケーブル",
   ]),
-  leaf("CAB.ADAPTER", "Passive Adapter", "CAB", 6, ["passive adapter", "splitter", "変換プラグ"]),
+  leaf("CAB.ADAPTER", "パッシブ変換アダプター", "CAB", 6, [
+    "passive adapter",
+    "splitter",
+    "変換プラグ",
+  ]),
   root("PWR", "電源", 9),
   leaf("PWR.CORD", "電源ケーブル", "PWR", 1, [
     "power cable",
@@ -233,24 +267,31 @@ const AUTHORED_CATEGORIES: readonly AuthoredCategory[] = [
     "電源タップ",
     "電源ボックス",
   ]),
-  leaf("PWR.CONDITIONER", "電源コンディショナー / Isolation", "PWR", 3, [
+  leaf("PWR.CONDITIONER", "電源コンディショナー / 絶縁トランス", "PWR", 3, [
+    "電源コンディショナー / Isolation",
     "power conditioner",
     "clean power",
     "isolation transformer",
     "クリーン電源",
   ]),
-  leaf("PWR.REGEN", "AC Regenerator", "PWR", 4, [
+  leaf("PWR.REGEN", "交流電源再生成器", "PWR", 4, [
     "ac regenerator",
     "power regenerator",
     "電源リジェネレーター",
   ]),
-  leaf("PWR.SUPPLY", "外部電源 / Linear PSU", "PWR", 5, [
+  leaf("PWR.SUPPLY", "外部電源 / リニア電源", "PWR", 5, [
+    "外部電源 / Linear PSU",
     "external power supply",
     "linear power supply",
     "外部電源",
     "リニア電源",
   ]),
-  leaf("PWR.BATTERY", "Battery / UPS", "PWR", 6, ["battery supply", "ups", "バッテリー電源"]),
+  leaf("PWR.BATTERY", "バッテリー / 無停電電源（UPS）", "PWR", 6, [
+    "Battery / UPS",
+    "battery supply",
+    "ups",
+    "バッテリー電源",
+  ]),
   root("ACC", "アクセサリー", 10),
   leaf("ACC.FURNITURE", "ラック / オーディオ家具", "ACC", 1, ["audio rack", "オーディオラック"]),
   leaf("ACC.STAND", "スタンド / マウント", "ACC", 2, [
@@ -293,40 +334,53 @@ const AUTHORED_CATEGORIES: readonly AuthoredCategory[] = [
     "メンテナンス",
   ]),
   leaf("ACC.TUBE", "真空管", "ACC", 8, ["vacuum tube", "replacement tube", "真空管"]),
-  leaf("ACC.PART", "交換部品 / DIY Part", "ACC", 9, [
+  leaf("ACC.PART", "交換部品 / 自作用部品", "ACC", 9, [
+    "交換部品 / DIY Part",
     "replacement part",
     "diy part",
     "交換部品",
     "補修部品",
   ]),
-  root("SYS", "システム", 11),
+  root("SYS", "オーディオシステム", 11),
   leaf("SYS.MULTIFUNCTION", "複合オーディオ機器", "SYS", 1, [
     "co-equal multifunction",
     "複合オーディオ機器",
   ]),
-  leaf("SYS.COMPLETE", "Complete Audio System", "SYS", 2, [
+  leaf("SYS.COMPLETE", "一式オーディオシステム", "SYS", 2, [
     "complete audio system",
     "packaged audio system",
     "一体型オーディオシステム",
   ]),
-  root("REC", "Pro Audio Extension", 12),
-  leaf("REC.INTERFACE", "Audio Interface", "REC", 1, [
+  root("REC", "録音・制作・DJ機器", 12),
+  leaf("REC.INTERFACE", "オーディオインターフェース", "REC", 1, [
     "audio interface",
     "オーディオインターフェース",
   ]),
-  leaf("REC.MIC", "Microphone", "REC", 2, ["microphone", "マイクロフォン"]),
-  leaf("REC.MIXER", "Mixer / Console", "REC", 3, ["audio mixer", "mixing console", "ミキサー"]),
-  leaf("REC.RECORDER", "Recorder", "REC", 4, ["field recorder", "digital recorder", "レコーダー"]),
-  leaf("REC.MICPRE", "Mic Pre / Channel Strip", "REC", 5, [
+  leaf("REC.MIC", "マイク", "REC", 2, ["microphone", "マイクロフォン"]),
+  leaf("REC.MIXER", "ミキサー / コンソール", "REC", 3, [
+    "Mixer / Console",
+    "audio mixer",
+    "mixing console",
+    "ミキサー",
+  ]),
+  leaf("REC.RECORDER", "録音専用機", "REC", 4, [
+    "recorder",
+    "field recorder",
+    "digital recorder",
+    "レコーダー",
+  ]),
+  leaf("REC.MICPRE", "マイクプリ / チャンネルストリップ", "REC", 5, [
+    "Mic Pre / Channel Strip",
     "mic pre",
     "channel strip",
     "マイクプリ",
   ]),
-  leaf("REC.MONITOR", "Monitor Controller", "REC", 6, [
+  leaf("REC.MONITOR", "モニターコントローラー", "REC", 6, [
     "monitor controller",
     "モニターコントローラー",
   ]),
-  leaf("REC.DJ", "DJ Controller / Digital DJ Gear", "REC", 7, [
+  leaf("REC.DJ", "DJコントローラー / デジタルDJ機器", "REC", 7, [
+    "DJ Controller / Digital DJ Gear",
     "dj controller",
     "digital dj",
     "DJコントローラー",

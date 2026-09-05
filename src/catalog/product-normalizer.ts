@@ -27,7 +27,7 @@ import { resolveModel, MODEL_RESOLVER_VERSION } from "./model-resolver.js";
 import { inferFeatureFacts, normalizeFeatureFacts } from "./product-features.js";
 import { inferFacetFacts, normalizeFacetFacts } from "./product-facets.js";
 
-const CLASSIFICATION_METADATA_VERSION = 17;
+const CLASSIFICATION_METADATA_VERSION = 18;
 
 export interface CatalogNormalizationContext {
   /** Source seller used by narrowly scoped model-annotation rules. */
@@ -149,12 +149,18 @@ export function normalizeCatalogProduct(
     { manufacturerId: manufacturer.canonicalManufacturerId, shopKey: context.shopKey },
   );
   const featureFacts = normalizeFeatureFacts([
-    ...(Array.isArray(product.featureFacts) ? product.featureFacts : []),
+    ...(Array.isArray(product.featureFacts)
+      ? product.featureFacts.filter((fact) => fact.source !== "title")
+      : []),
     ...inferFeatureFacts(product.title || "", { source: "title", confidence: 0.8 }),
   ]);
   const mappedLegacyCategory = categoryMappingValue(config.categoryMapping, rawCategory);
   const facetFacts = normalizeFacetFacts([
-    ...(Array.isArray(product.facetFacts) ? product.facetFacts : []),
+    ...(Array.isArray(product.facetFacts)
+      ? product.facetFacts.filter(
+          (fact) => fact.source !== "title" && fact.source !== "seller_category",
+        )
+      : []),
     ...inferFacetFacts(product.title || "", {
       source: "title",
       confidence: 0.8,

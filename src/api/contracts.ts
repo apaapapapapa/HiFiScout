@@ -14,13 +14,19 @@
  * localStorage, query strings) still belongs to the guards at each boundary.
  */
 
-import { FACET_DEFINITIONS, FEATURE_DEFINITIONS } from "../catalog/types.js";
+import {
+  FACET_DEFINITIONS,
+  FEATURE_DEFINITIONS,
+  FEATURE_FILTER_DEFINITIONS,
+  isFeatureFilter,
+} from "../catalog/types.js";
 import type {
   FacetDefinition,
   FacetId,
   FacetSelection,
   FeatureDefinition,
   FeatureId,
+  FeatureFilter,
   StockStatus,
   TaxonomyVersion,
 } from "../catalog/types.js";
@@ -32,8 +38,15 @@ import type {
  * that listed the ids itself would let a new feature ship server-side while staying unreachable —
  * which is exactly how the four existing filters ended up with no way to select them.
  */
-export { FACET_DEFINITIONS, FEATURE_DEFINITIONS };
-export type { FacetDefinition, FacetId, FacetSelection, FeatureDefinition, FeatureId };
+export { FACET_DEFINITIONS, FEATURE_DEFINITIONS, FEATURE_FILTER_DEFINITIONS, isFeatureFilter };
+export type {
+  FacetDefinition,
+  FacetId,
+  FacetSelection,
+  FeatureDefinition,
+  FeatureId,
+  FeatureFilter,
+};
 
 // ---------------------------------------------------------------------------
 // seller listings (/api/products/:id/history)

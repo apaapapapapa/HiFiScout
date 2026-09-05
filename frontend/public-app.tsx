@@ -56,8 +56,14 @@ import { useFilterSheet } from "./use-filter-sheet.js";
 import { FeedSubscription } from "./feed-subscription.js";
 import { SearchSuggestionInput } from "./search-suggestion-input.js";
 import { sortShopsByJapaneseReading } from "./shop-options.js";
-import { FACET_DEFINITIONS, FEATURE_DEFINITIONS } from "../src/api/contracts.js";
-import type { FacetSelection, FeatureId, MetaResponse, MetaShop } from "../src/api/contracts.js";
+import { FACET_DEFINITIONS, FEATURE_DEFINITIONS, isFeatureFilter } from "../src/api/contracts.js";
+import { getCategory } from "../src/catalog/categories.js";
+import type {
+  FacetSelection,
+  FeatureFilter,
+  MetaResponse,
+  MetaShop,
+} from "../src/api/contracts.js";
 import type {
   DisplayProduct,
   PageState,
@@ -152,7 +158,7 @@ interface FilterPanelProps {
   onApply: () => void;
   onValueChange: (id: UrlValueId, value: string, debounced?: boolean) => void;
   onToggleChange: (id: ToggleId, checked: boolean) => void;
-  onFeatureChange: (feature: FeatureId, checked: boolean) => void;
+  onFeatureChange: (feature: FeatureFilter, checked: boolean) => void;
   onFacetChange: (facet: FacetSelection, checked: boolean) => void;
   onClose: () => void;
   onClear: () => void;
@@ -177,7 +183,9 @@ function FilterPanel({
   const selectedCategoryRoots = useMemo(() => {
     if (!filters.category) return new Set<string>();
     const canonicalIds = meta?.legacyCategoryAliases?.[filters.category] ?? [filters.category];
-    return new Set(canonicalIds.map((categoryId) => categoryId.split(".")[0] || categoryId));
+    return new Set(
+      canonicalIds.map((categoryId) => getCategory(categoryId)?.parentId ?? categoryId),
+    );
   }, [filters.category, meta]);
   const selectedFacetIds = new Set(filters.facets.map((facet) => facet.facetId));
   const visibleFacets = FACET_DEFINITIONS.filter(
@@ -320,17 +328,30 @@ function FilterPanel({
         */}
           <fieldset className="filter-features" disabled={filters.favoritesOnly}>
             <legend>機能</legend>
-            {FEATURE_DEFINITIONS.map((feature) => (
-              <label className="check" key={feature.id}>
-                <input
-                  id={`feature-${feature.id}`}
-                  type="checkbox"
-                  checked={filters.features.includes(feature.id)}
-                  onChange={(event) => onFeatureChange(feature.id, event.currentTarget.checked)}
-                />
-                <span>{feature.name}</span>
-              </label>
-            ))}
+            {FEATURE_DEFINITIONS.map((feature) => {
+              const selected =
+                filters.features.find((value) => value.split(":")[0] === feature.id) ?? "";
+              return (
+                <label key={feature.id}>
+                  <span>{feature.name}</span>
+                  <select
+                    id={`feature-${feature.id}`}
+                    value={selected}
+                    onChange={(event) => {
+                      const value = event.currentTarget.value;
+                      if (isFeatureFilter(value)) onFeatureChange(value, true);
+                      else onFeatureChange(selected || feature.id, false);
+                    }}
+                  >
+                    <option value="">指定なし</option>
+                    <option value={feature.id}>搭載・対応</option>
+                    <option value={`${feature.id}:absent`}>非搭載・非対応</option>
+                    <option value={`${feature.id}:unknown`}>不明</option>
+                  </select>
+                </label>
+              );
+            })}
+            <p className="filter-note">不明は情報不足・情報の不一致です。非搭載とは区別します。</p>
             {filters.favoritesOnly ? (
               <p className="filter-note">お気に入り表示中は機能で絞り込めません</p>
             ) : null}
@@ -1002,7 +1023,12 @@ export function PublicApp() {
             changePanelFilters({
               ...panelFilters,
               features: checked
-                ? [...new Set([...panelFilters.features, feature])]
+                ? [
+                    ...panelFilters.features.filter(
+                      (item) => item.split(":")[0] !== feature.split(":")[0],
+                    ),
+                    feature,
+                  ]
                 : panelFilters.features.filter((item) => item !== feature),
             })
           }

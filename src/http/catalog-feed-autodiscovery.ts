@@ -1,6 +1,6 @@
 /** Server-side Atom autodiscovery for the public catalog HTML. */
 
-import { isFeatureId } from "../catalog/types.js";
+import { isFeatureFilter } from "../catalog/types.js";
 import { requestedFacetSelections, requestedFeatures } from "../api/product-query.js";
 import { facetSelectionKey } from "../catalog/product-facets.js";
 
@@ -39,7 +39,7 @@ export function catalogFeedPath(url: URL): string {
     if (value) params.set(key, value);
   }
 
-  for (const feature of requestedFeatures(source).filter(isFeatureId).sort()) {
+  for (const feature of requestedFeatures(source).filter(isFeatureFilter).sort()) {
     params.append("feature", feature);
   }
   for (const facet of requestedFacetSelections(source).sort((left, right) =>

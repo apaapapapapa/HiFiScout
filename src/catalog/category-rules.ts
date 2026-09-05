@@ -126,7 +126,7 @@ const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
   ],
   [
     "SRC.DISC",
-    /(?:sacd|cd|dvd|blu[\s-]?ray)\s*(?:\/\s*(?:sacd|cd|dvd))?\s*(?:player|transport|プレーヤー|プレイヤー|トランスポート)|super\s+audio\s+cd\s+transport|disc\s+(?:player|transport)|(?:sacd\s*\/\s*cd|cd\s*\/\s*sacd)/i,
+    /(?:sacd|cd(?:-r)?|dvd|blu[\s-]?ray|md|mini[\s-]?disc|ld|laser[\s-]?disc)\s*(?:\/\s*(?:sacd|cd|dvd|md|ld))?\s*(?:player|transport|recorder|deck|プレーヤー|プレイヤー|トランスポート|レコーダー|デッキ)|super\s+audio\s+cd\s+transport|disc\s+(?:player|transport|recorder)|(?:sacd\s*\/\s*cd|cd\s*\/\s*sacd)|ミニディスク(?:デッキ|プレーヤー|レコーダー)|レーザーディスク(?:プレーヤー|プレイヤー)/i,
   ],
   [
     "SRC.SERVER",
@@ -161,7 +161,7 @@ const RULES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
   ["ANA.CARTRIDGE", /\bcartridge\b|カートリッジ/i],
   [
     "ANA.TAPE",
-    /tape\s+deck|cassette\s+deck|open[\s-]*reel|テープデッキ|カセットデッキ|オープンリール/i,
+    /(?:tape|cassette|dat|dcc)\s+(?:deck|recorder|player)|open[\s-]*reel|reel[\s-]to[\s-]reel|テープデッキ|カセット(?:デッキ|プレーヤー|レコーダー)|オープンリール|(?:dat|dcc)\s*(?:デッキ|レコーダー|プレーヤー)/i,
   ],
   ["ACC.FURNITURE", /audio\s+(?:rack|furniture)|オーディオラック|オーディオ家具/i],
   [
@@ -230,6 +230,20 @@ export function inferExplicitCategoryIds(
   if (subject.categoryId) return [subject.categoryId];
   const value = saleSubjectText(String(text || ""));
   if (!value.trim()) return [];
+  // Bare drivers are parts, but a finished add-on super tweeter is a complete speaker.
+  // Do not mistake a horn-loaded speaker or a speaker's included tweeter for the sale object.
+  if (
+    /speaker\s+(?:driver\s+)?unit|(?:replacement|bare)\s+(?:speaker\s+)?(?:driver|tweeter)|(?:フルレンジ|スピーカー|ツイーター|ウーファー|ドライバー)\s*ユニット|(?:ホーン|ツイーター|エンクロージャー)(?:単体|部品)/i.test(
+      value,
+    )
+  )
+    return ["ACC.PART"];
+  if (/super[\s-]?tweeter|スーパーツ[イィ]ーター/i.test(value)) return ["SPK.LOUDSPEAKER"];
+  if (
+    !/\b(?:loud)?speakers?\b|スピーカー|ホーン型|搭載|内蔵|with\b/i.test(value) &&
+    /\b(?:tweeter|horn|enclosure)\b|ツ[イィ]ーター|エンクロージャー|ホーン/i.test(value)
+  )
+    return ["ACC.PART"];
   if (isCoEqualMultifunction(value)) return ["SYS.MULTIFUNCTION"];
   if (INTEGRATED_AMPLIFIER_PATTERN.test(value)) return ["AMP.INTEGRATED"];
   if (HEADPHONE_AMPLIFIER_PATTERN.test(value)) return ["AMP.HEADPHONE"];

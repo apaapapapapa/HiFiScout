@@ -123,7 +123,7 @@ test("corroborative seller categories do not override explicit title evidence", 
     },
   );
   assert.equal(product.primaryCategoryId, "SRC.DISC");
-  assert.equal(product.category, "Disc Player / Disc Transport");
+  assert.equal(product.category, "ディスク再生・録音機器");
   assert.equal(product.classificationSource, "title");
 });
 
@@ -140,7 +140,7 @@ test("FOR MUSIC disc bucket lets an explicit transport title select transport", 
     },
   );
   assert.equal(transport.primaryCategoryId, "SRC.DISC");
-  assert.equal(transport.category, "Disc Player / Disc Transport");
+  assert.equal(transport.category, "ディスク再生・録音機器");
   assert.equal(transport.classificationSource, "title");
 
   const player = normalizeCatalogProduct(
@@ -155,7 +155,7 @@ test("FOR MUSIC disc bucket lets an explicit transport title select transport", 
     },
   );
   assert.equal(player.primaryCategoryId, "SRC.DISC");
-  assert.equal(player.category, "Disc Player / Disc Transport");
+  assert.equal(player.category, "ディスク再生・録音機器");
   assert.equal(player.classificationSource, "title");
 });
 

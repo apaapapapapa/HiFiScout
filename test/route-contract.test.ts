@@ -48,8 +48,24 @@ test("OpenAPI 3.1 is generated from the runtime route contracts", () => {
     items: {
       type: "string",
       description:
-        "Required product feature. May be repeated or supplied as a comma-separated list.",
-      enum: ["dac", "network_playback", "headphone_output", "phono_input"],
+        "Required product feature state: id means present, id:absent means explicitly absent, id:unknown means missing or conflicting evidence. AND across features; only one state per feature. Repeatable or comma-separated.",
+      enum: [
+        "dac",
+        "dac:absent",
+        "dac:unknown",
+        "network_playback",
+        "network_playback:absent",
+        "network_playback:unknown",
+        "headphone_output",
+        "headphone_output:absent",
+        "headphone_output:unknown",
+        "phono_input",
+        "phono_input:absent",
+        "phono_input:unknown",
+        "recording",
+        "recording:absent",
+        "recording:unknown",
+      ],
       maxLength: 200,
     },
   });

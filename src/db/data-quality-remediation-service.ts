@@ -2,7 +2,10 @@ import {
   classifyCategoryEvidence,
   summarizeCategoryEvidence,
 } from "../catalog/category-classifier.js";
-import { collectListingCategoryEvidence } from "../catalog/category-evidence.js";
+import {
+  categoryEvidenceFromText,
+  collectListingCategoryEvidence,
+} from "../catalog/category-evidence.js";
 import { TAXONOMY_VERSION } from "../catalog/categories.js";
 import {
   componentCategoryIds,
@@ -139,7 +142,13 @@ function storedCategoryEvidence(
         typeof entry.source === "string" &&
         typeof entry.strength === "string",
     );
-    if (evidence.length) return evidence;
+    if (evidence.length)
+      return [
+        // Stored seller, official and admin evidence remains authoritative. Title-derived decisions
+        // must be recomputed from the full retained title, not replayed as the old classifier's ids.
+        ...evidence.filter((entry) => entry.source !== "title"),
+        ...categoryEvidenceFromText(row.title),
+      ];
   }
   return collectListingCategoryEvidence({
     title: row.title,

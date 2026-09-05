@@ -35,16 +35,21 @@ test("feature=dac is a product-level filter over the product's own listings", as
   const db = captureDatabase();
   await searchProducts(db, productQuery("?feature=dac"));
   assert.match(db.calls[0].sql, /product_feature_facts pff/);
-  assert.match(db.calls[0].sql, /pff\.state = 'present'/);
+  assert.match(db.calls[0].sql, /MIN\(pff\.state\) = MAX\(pff\.state\)/);
   assert.match(db.calls[0].sql, /m\.entity_id = e\.id/);
-  assert.equal(db.calls[0].binds[0], "dac");
+  assert.deepEqual(db.calls[0].binds.slice(0, 2), ["dac", "present"]);
 });
 
 test("multiple feature parameters are ANDed and unknown feature ids are rejected", async () => {
   const db = captureDatabase();
   await searchProducts(db, productQuery("?feature=dac&feature=network_playback"));
   assert.equal((db.calls[0].sql.match(/product_feature_facts pff/g) || []).length, 2);
-  assert.deepEqual(db.calls[0].binds.slice(0, 2), ["dac", "network_playback"]);
+  assert.deepEqual(db.calls[0].binds.slice(0, 4), [
+    "dac",
+    "present",
+    "network_playback",
+    "present",
+  ]);
   assert.equal(
     validateProductQuery(new URL("https://example.test/api/product-search?feature=magic")),
     "feature_invalid",
