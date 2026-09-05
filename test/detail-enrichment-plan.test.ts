@@ -10,6 +10,8 @@ import {
   DETAIL_PLAN_TARGETS_KEY_PREFIX,
   DETAIL_PLAN_VERSION,
   LEGACY_DETAIL_PLAN_KEY,
+  LEGACY_CHUNKED_PLAN_PROGRESS_KEY,
+  LEGACY_CHUNKED_PLAN_TARGETS_KEY_PREFIX,
   nextUncommittedDetailTarget,
   storedDetailDecisionAt,
   type DetailEnrichmentPlanContext,
@@ -95,6 +97,41 @@ function harness(
 
 const RUN = "run-a";
 const TARGETS = ["https://shop.test/a", "https://shop.test/b", "https://shop.test/c"];
+
+test("v2 plans keep their original cursor for rollback while v3 adopts without replanning", async () => {
+  const storage = durableStorage();
+  const legacy = {
+    version: 2,
+    runId: RUN,
+    cursor: 1,
+    targetCount: TARGETS.length,
+    chunkCount: 1,
+    decidedAt: "2026-09-05T00:00:00.000Z",
+  };
+  storage.set(LEGACY_CHUNKED_PLAN_PROGRESS_KEY, structuredClone(legacy));
+  storage.set(`${LEGACY_CHUNKED_PLAN_TARGETS_KEY_PREFIX}0`, {
+    runId: RUN,
+    chunkIndex: 0,
+    targets: TARGETS,
+  });
+  const held = harness(storage, { [RUN]: ["https://shop.test/wrong"] });
+  const adopted = await detailEnrichmentProgress(held.context, RUN);
+  assert.deepEqual(held.planCalls, []);
+  assert.equal(adopted.decidedAt, legacy.decidedAt);
+  assert.equal(await nextUncommittedDetailTarget(held.context, adopted), TARGETS[1]);
+  await advanceDetailPlanCursor(held.context, adopted, 2);
+  assert.deepEqual(storage.get(LEGACY_CHUNKED_PLAN_PROGRESS_KEY), legacy);
+  assert.equal((await detailEnrichmentProgress(held.context, RUN)).cursor, 2);
+});
+
+test("new plans never publish an advanced cursor under the old Worker's storage namespace", async () => {
+  const storage = durableStorage();
+  const held = harness(storage, { [RUN]: TARGETS });
+  const plan = await detailEnrichmentProgress(held.context, RUN);
+  await advanceDetailPlanCursor(held.context, plan, TARGETS.length);
+  assert.equal(storage.has(LEGACY_CHUNKED_PLAN_PROGRESS_KEY), false);
+  assert.equal(storage.has(`${LEGACY_CHUNKED_PLAN_TARGETS_KEY_PREFIX}0`), false);
+});
 
 function targetKeysWritten(held: Harness): string[] {
   return held.writes.filter((key) => key.startsWith(DETAIL_PLAN_TARGETS_KEY_PREFIX));

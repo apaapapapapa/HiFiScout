@@ -42,10 +42,14 @@ export interface DetailEnrichmentPlanStorage {
  * older isolate has to find the record the older isolate wrote, or it replans and undoes the point.
  * {@link DETAIL_PLAN_VERSION} is what makes that safe across a *shape* change -- see below.
  */
-export const DETAIL_PLAN_PROGRESS_KEY = "phase5_detail_enrichment_progress";
+export const DETAIL_PLAN_PROGRESS_KEY = "phase5_detail_evidence_progress_v3";
 
 /** Key prefix for the immutable half. One record per chunk of targets. */
-export const DETAIL_PLAN_TARGETS_KEY_PREFIX = "phase5_detail_enrichment_targets:";
+export const DETAIL_PLAN_TARGETS_KEY_PREFIX = "phase5_detail_evidence_targets_v3:";
+
+/** Kept intact for a rollback: its cursor must never skip new, HTML-free detail results. */
+export const LEGACY_CHUNKED_PLAN_PROGRESS_KEY = "phase5_detail_enrichment_progress";
+export const LEGACY_CHUNKED_PLAN_TARGETS_KEY_PREFIX = "phase5_detail_enrichment_targets:";
 
 /**
  * Where the previous release kept the whole plan, targets inline.
@@ -75,7 +79,7 @@ interface LegacyDetailEnrichmentPlan {
  * the run replans once, which the D1 fence makes free of extra seller requests. At most one run per
  * shop pays that, and only across a deployment that changes this shape.
  */
-export const DETAIL_PLAN_VERSION = 2;
+export const DETAIL_PLAN_VERSION = 3;
 
 /**
  * Targets per chunk record.
@@ -190,7 +194,9 @@ export async function detailEnrichmentProgress(
   // trusting the key keeps a previous run's targets out of this run's cursor.
   if (isCurrentProgress(stored, runId)) return stored;
 
-  const adopted = await adoptLegacyPlan(context, runId, supersededChunkCount);
+  const adopted =
+    (await adoptChunkedLegacyPlan(context, runId, supersededChunkCount)) ??
+    (await adoptLegacyPlan(context, runId, supersededChunkCount));
   if (adopted) return adopted;
 
   const decidedAt = context.now?.() ?? new Date();
@@ -264,6 +270,46 @@ async function storePlan(
     source: input.source,
   });
   return progress;
+}
+
+/** Preserve a v2 plan's exact inputs and instant without advancing the old Worker's cursor. */
+async function adoptChunkedLegacyPlan(
+  context: DetailEnrichmentPlanContext,
+  runId: string,
+  supersededChunkCount: number,
+): Promise<DetailEnrichmentProgress | null> {
+  const legacy = await context.storage.get<DetailEnrichmentProgress>(
+    LEGACY_CHUNKED_PLAN_PROGRESS_KEY,
+  );
+  if (!legacy || legacy.runId !== runId) return null;
+  if (legacy.version !== 2 || legacy.chunkCount !== chunkCountFor(legacy.targetCount)) {
+    throw new Error("invalid legacy chunked detail plan");
+  }
+  const targets: string[] = [];
+  for (let i = 0; i < legacy.chunkCount; i += 1) {
+    const chunk = await context.storage.get<DetailEnrichmentTargetChunk>(
+      `${LEGACY_CHUNKED_PLAN_TARGETS_KEY_PREFIX}${i}`,
+    );
+    if (
+      !chunk ||
+      chunk.runId !== runId ||
+      chunk.chunkIndex !== i ||
+      !Array.isArray(chunk.targets) ||
+      chunk.targets.some((target) => typeof target !== "string")
+    ) {
+      throw new Error("invalid legacy detail target chunk");
+    }
+    targets.push(...chunk.targets);
+  }
+  if (targets.length !== legacy.targetCount) throw new Error("incomplete legacy detail plan");
+  return storePlan(context, {
+    runId,
+    targets,
+    cursor: Math.min(Math.max(Math.trunc(legacy.cursor) || 0, 0), targets.length),
+    decidedAt: legacy.decidedAt,
+    supersededChunkCount,
+    source: "adopted",
+  });
 }
 
 /**

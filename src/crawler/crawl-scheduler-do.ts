@@ -5,7 +5,7 @@ import {
   hasCrawlFetchDetailPage,
   recordCrawlFetchDetailPage,
 } from "../db/crawl-fetch-detail-repository.js";
-import { getCrawlFetchSession } from "../db/crawl-fetch-session-repository.js";
+import { getCrawlFetchPage, getCrawlFetchSession } from "../db/crawl-fetch-session-repository.js";
 import type { StoredCollectionProgress } from "../db/crawl-fetch-progress.js";
 import type { CollectionProgressState } from "./collection-progress.js";
 import { syncProductSearchEntities } from "../db/product-search-entity-repository.js";
@@ -63,6 +63,8 @@ interface StoredExecution {
   nextOriginNotBeforeMs: number;
   /** Direct seller permit for either a listing page or a staged detail page. */
   permit?: DirectFetchPermit;
+  /** The permit was durably consumed before seller I/O; a retry must prepare a fresh permit. */
+  directFetchAttempted?: boolean;
   /** Relay PREPARE permit for listing, category-detail or inventory HTTP. */
   relayPermit?: RelayFetchPermit;
   /** Detail URL bound to permit/relayPermit while category enrichment waits on its Alarm. */
@@ -566,6 +568,14 @@ export class CrawlScheduler extends DurableObject<Env> {
       return true;
     }
 
+    if (directPermit) {
+      execution.permit = undefined;
+      execution.nextOriginNotBeforeMs = Date.now() + directPermit.effectiveDelayMs;
+      await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
+        ...execution,
+        detailDbUsage: currentDetailDbUsage(),
+      });
+    }
     let html: string | null = null;
     let evidence: import("../catalog/types.js").CategoryEvidenceInput[] | undefined;
     let htmlBytes = 0;
@@ -667,8 +677,19 @@ export class CrawlScheduler extends DurableObject<Env> {
         return;
       }
 
+      // A page receipt can outlive the following DO command write. Recover it before preparing
+      // another permit; an uncommitted attempt must instead pass through PREPARE and its delay.
+      const attemptedPage =
+        execution.directFetchAttempted &&
+        continuation?.phase === "fetch" &&
+        continuation.pageKey &&
+        message.collectionRunId
+          ? await getCrawlFetchPage(this.env.DB, message.collectionRunId, continuation.pageKey)
+          : null;
+      const committedDirectPage = attemptedPage != null && attemptedPage.state !== "pending";
       let preparationError: unknown = null;
       if (
+        !committedDirectPage &&
         !execution.permit &&
         !execution.relayPermit &&
         continuation?.phase === "fetch" &&
@@ -720,6 +741,7 @@ export class CrawlScheduler extends DurableObject<Env> {
           await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
             ...execution,
             permit,
+            directFetchAttempted: undefined,
           });
           await this.ctx.storage.setAlarm(alarmAt(permit.notBeforeMs));
           console.log(
@@ -770,6 +792,17 @@ export class CrawlScheduler extends DurableObject<Env> {
       const directPermit = activeExecution.permit;
       const relayPermit = activeExecution.relayPermit;
       const preparedRelayConfig = relayPermit ? relayConfiguration(this.env) : null;
+      if (directPermit && continuation?.phase === "fetch") {
+        // Persist before I/O, including before response decoding or inline parser CPU work. A
+        // failure at any later boundary cannot reuse an already eligible seller capability.
+        activeExecution = {
+          ...activeExecution,
+          permit: undefined,
+          directFetchAttempted: true,
+          nextOriginNotBeforeMs: Date.now() + directPermit.effectiveDelayMs,
+        };
+        await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, activeExecution);
+      }
       // Read rather than plan: this only surfaces the instant an existing plan already recorded, so
       // a run that never entered the detail phase is not made to pay for planning here.
       const detailDecisionAt = await this.detailDecisionAt(execution.message.collectionRunId);
@@ -825,6 +858,7 @@ export class CrawlScheduler extends DurableObject<Env> {
           ...(collectionProgress ? { collectionProgress: collectionProgress.value } : {}),
           nextOriginNotBeforeMs,
           permit: undefined,
+          directFetchAttempted: undefined,
           relayPermit: undefined,
           detailTargetUrl: undefined,
         });
@@ -849,6 +883,7 @@ export class CrawlScheduler extends DurableObject<Env> {
           ...activeExecution,
           nextOriginNotBeforeMs,
           permit: undefined,
+          directFetchAttempted: undefined,
           relayPermit: undefined,
           detailTargetUrl: undefined,
         });

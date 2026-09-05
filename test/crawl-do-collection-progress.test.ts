@@ -267,7 +267,10 @@ test("CrawlScheduler persists its next command and progress in the same existing
         return structuredClone(stored.get(key));
       },
       async put(key: string, value: unknown) {
-        if (failPut) throw new Error("DO commit interrupted");
+        const next = value as { message?: { continuation?: { sequence: number } } };
+        if (failPut && (next.message?.continuation?.sequence ?? 0) > 0) {
+          throw new Error("DO commit interrupted");
+        }
         puts += 1;
         stored.set(key, structuredClone(value));
       },
@@ -291,7 +294,7 @@ test("CrawlScheduler persists its next command and progress in the same existing
     // Recreate the object to discard every in-memory mutation, like an Alarm retry after eviction.
     await new CrawlScheduler(ctx, h.env as unknown as Env).alarm();
     assert.equal(fetches, 1);
-    assert.equal(puts, 1, "progress reuses the command write");
+    assert.equal(puts, 2, "one permit consumption and one combined command/progress write");
     assert.equal(alarms, 1, "no progress-specific Alarm");
     const execution = stored.get(STORAGE_KEY) as {
       message: { continuation: { sequence: number; phase: string } };
@@ -307,6 +310,87 @@ test("CrawlScheduler persists its next command and progress in the same existing
     assert.equal(pages[0]?.html_text, null);
     assert.equal((await getCrawlFetchSession(h.db, RUN))?.continuation_sequence, 0);
   } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("a failure after direct HTTP cannot reuse its consumed permit before a new PREPARE delay", async () => {
+  const h = await harness();
+  const env = { ...h.env, HOME_SHOKAI_REQUEST_DELAY_MS: "1000" };
+  h.sqlite
+    .prepare(`INSERT INTO shop_sync_state(shop_key, dispatch_requested_at, dispatch_token, dispatch_last_sent_at)
+    VALUES (?, ?, ?, ?)`)
+    .run(plugin.key, AT, RUN, AT);
+  h.sqlite.exec(`CREATE TRIGGER reject_inline BEFORE UPDATE OF state ON crawl_fetch_pages
+    WHEN NEW.state='parsed' BEGIN SELECT RAISE(ABORT, 'inline commit failed'); END;`);
+  const session = await h.current();
+  const stored = new Map<string, unknown>([
+    [
+      STORAGE_KEY,
+      {
+        message: { ...h.body, continuation: continuationFromSession(session) },
+        acceptedAt: AT,
+        nextOriginNotBeforeMs: 0,
+        collectionProgress: h.state.value,
+        permit: {
+          targetUrl: session.next_page_key,
+          userAgent: getCrawlerSettings(env).userAgent,
+          effectiveDelayMs: 1000,
+          preparedAtMs: 0,
+          notBeforeMs: 0,
+        },
+      },
+    ],
+  ]);
+  const alarms: number[] = [];
+  const ctx = {
+    storage: {
+      async get(key: string) {
+        return structuredClone(stored.get(key));
+      },
+      async put(key: string, value: unknown) {
+        stored.set(key, structuredClone(value));
+      },
+      async setAlarm(at: number) {
+        alarms.push(at);
+      },
+    },
+  } as unknown as DurableObjectState;
+  const originalFetch = globalThis.fetch;
+  const originalNow = Date.now;
+  let now = Date.parse(AT);
+  let sellerFetches = 0;
+  Date.now = () => now;
+  globalThis.fetch = async (input) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (url.endsWith("/robots.txt")) return new Response("User-agent: *\nAllow: /");
+    sellerFetches++;
+    const execution = stored.get(STORAGE_KEY) as { permit?: unknown };
+    assert.equal(execution.permit, undefined, "consume before issuing seller HTTP");
+    return new Response(HTML, { headers: { "content-type": "text/html" } });
+  };
+  try {
+    await assert.rejects(
+      new CrawlScheduler(ctx, env as unknown as Env).alarm(),
+      /inline commit failed/,
+    );
+    const attempted = stored.get(STORAGE_KEY) as {
+      nextOriginNotBeforeMs: number;
+      permit?: unknown;
+    };
+    assert.equal(attempted.permit, undefined);
+    assert.equal(attempted.nextOriginNotBeforeMs, now + 1000);
+    await new CrawlScheduler(ctx, env as unknown as Env).alarm();
+    assert.equal(sellerFetches, 1);
+    assert.equal(alarms.at(-1), now + 1000);
+    now += 1000;
+    await new CrawlScheduler(ctx, env as unknown as Env).alarm();
+    const prepared = stored.get(STORAGE_KEY) as { permit: { notBeforeMs: number } };
+    assert.equal(prepared.permit.notBeforeMs, now + 1000, "retry receives a new delayed permit");
+    await new CrawlScheduler(ctx, env as unknown as Env).alarm();
+    assert.equal(sellerFetches, 1);
+  } finally {
+    Date.now = originalNow;
     globalThis.fetch = originalFetch;
   }
 });

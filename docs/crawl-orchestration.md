@@ -37,6 +37,10 @@ The old public `POST /api/admin/crawl` is blocked by `src/index.ts`, regardless 
 - A crash before that atomic commit may require one normally paced seller retry. A crash after
   the commit resumes from the recorded result without refetching or incrementing counters twice.
   Partial collection never publishes inventory; the existing coverage/deactivation guards apply.
+- Direct permits are consumed in DO storage before seller I/O, so response decoding, discovery,
+  parser CPU exhaustion or a failed D1 commit cannot reuse a spent permit. An uncommitted attempt
+  requires a fresh PREPARE/delay; a committed page receipt resumes before any new seller I/O.
+  This adds one small DO write per direct request, without adding D1 writes or a pacing sleep.
 - Evaluate combined parsing on the DO execution boundary, not against the HTTP Worker's CPU
   allowance. Cloudflare documents a default 30-second CPU limit per DO invocation, including
   Alarms ([limits](https://developers.cloudflare.com/durable-objects/platform/limits/)); this does
@@ -55,13 +59,17 @@ The old public `POST /api/admin/crawl` is blocked by `src/index.ts`, regardless 
   target chunks separately from compact cursor/progress state, including an explicit empty-plan
   state. An Alarm reads its current chunk rather than rewriting/reloading the full plan.
   New chunks also retain only the extractor's source ID, model and title alongside each URL.
-  The original URL list and plan instant remain readable by older releases.
+  Version 3 uses separate plan keys so the older HTML-only Worker never inherits an advanced
+  cursor for results it cannot read. Version 2 plans are adopted without replanning or changing
+  their instant, while their original records remain available for rollback.
 - The detail row in `crawl_fetch_pages` is the durable fetch fence, accessed through
   `src/db/crawl-fetch-detail-repository.ts` (`crawl_fetch_detail_pages` is a compatibility view).
   New detail attempts store versioned category evidence (including an empty successful result),
   errors and the original fetch time, rather than HTML. Finalization consumes that evidence and
   combines it with each listing's own seller facts. Old in-flight plans without extractor inputs
   keep the legacy HTML path until they finish; existing saved HTML is still readable.
+  Structured results use a separate page-key prefix; the new fence reads both formats. On rollback,
+  an older Worker can prepare and fetch missing HTML instead of silently skipping unreadable evidence.
   If a process dies after saving a result and
   before advancing the DO cursor, the next Alarm consumes the saved result without a seller refetch.
   Preserve positive and negative evidence caching and its original decision time.

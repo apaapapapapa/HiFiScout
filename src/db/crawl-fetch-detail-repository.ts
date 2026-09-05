@@ -4,6 +4,7 @@ import type { CategoryEvidenceInput } from "../catalog/types.js";
 import { isRecord } from "../types.js";
 
 const DETAIL_PAGE_KEY_PREFIX = "__hifiscout_category_detail__:";
+const EVIDENCE_PAGE_KEY_PREFIX = "__hifiscout_category_evidence_v1__:";
 
 export interface CrawlFetchDetailPageRow {
   run_id: string;
@@ -25,6 +26,10 @@ interface DetailStagingRow {
 
 function detailPageKey(targetUrl: string): string {
   return `${DETAIL_PAGE_KEY_PREFIX}${targetUrl}`;
+}
+
+function evidencePageKey(targetUrl: string): string {
+  return `${EVIDENCE_PAGE_KEY_PREFIX}${targetUrl}`;
 }
 
 function stagedErrorMessage(value: string | null): string | null {
@@ -84,9 +89,16 @@ export async function getCrawlFetchDetailPage(
       .prepare(`
       SELECT html_text, products_json, html_bytes, fetched_at
       FROM crawl_fetch_pages
-      WHERE run_id = ? AND page_key = ? AND state = 'ignored'
+      WHERE run_id = ? AND page_key IN (?, ?) AND state = 'ignored'
+      ORDER BY (page_key = ?) DESC
+      LIMIT 1
     `)
-      .bind(runId, detailPageKey(targetUrl)),
+      .bind(
+        runId,
+        evidencePageKey(targetUrl),
+        detailPageKey(targetUrl),
+        evidencePageKey(targetUrl),
+      ),
   );
   if (!staged) return null;
   if (!staged.fetched_at) throw new Error(`invalid staged category detail fetch: ${targetUrl}`);
@@ -127,10 +139,10 @@ export async function hasCrawlFetchDetailPage(
       .prepare(`
       SELECT 1 AS committed
       FROM crawl_fetch_pages
-      WHERE run_id = ? AND page_key = ? AND state = 'ignored'
+      WHERE run_id = ? AND page_key IN (?, ?) AND state = 'ignored'
       LIMIT 1
     `)
-      .bind(runId, detailPageKey(targetUrl)),
+      .bind(runId, evidencePageKey(targetUrl), detailPageKey(targetUrl)),
   );
   return staged != null;
 }
@@ -156,7 +168,11 @@ export async function recordCrawlFetchDetailPage(
   const errorMessage = input.errorMessage?.slice(0, 1000) || null;
   const htmlBytes =
     input.htmlBytes ?? (html == null ? 0 : new TextEncoder().encode(html).byteLength);
-  const pageKey = detailPageKey(input.targetUrl);
+  // An older Worker must not mistake a result it cannot decode for a completed HTML fetch.
+  const pageKey =
+    input.evidence === undefined
+      ? detailPageKey(input.targetUrl)
+      : evidencePageKey(input.targetUrl);
   const pageJson = JSON.stringify({ kind: "category_detail", targetUrl: input.targetUrl });
   const metadataJson = errorMessage
     ? JSON.stringify({ errorMessage })
@@ -169,20 +185,27 @@ export async function recordCrawlFetchDetailPage(
       INSERT OR IGNORE INTO crawl_fetch_pages
         (run_id, page_key, page_json, ordinal, state, html_text, products_json,
          html_bytes, item_count, fetched_at, parsed_at)
-      SELECT ?, ?, ?, COALESCE(MAX(ordinal), -1) + 1, 'ignored', ?, ?, ?, 0, ?, ?
-      FROM crawl_fetch_pages
-      WHERE run_id = ?
+      SELECT ?, ?, ?, (
+        SELECT COALESCE(MAX(ordinal), -1) + 1 FROM crawl_fetch_pages WHERE run_id = ?
+      ), 'ignored', ?, ?, ?, 0, ?, ?
+      WHERE NOT EXISTS (
+        SELECT 1 FROM crawl_fetch_pages existing
+        WHERE existing.run_id = ? AND existing.page_key IN (?, ?) AND existing.state = 'ignored'
+      )
     `)
     .bind(
       input.runId,
       pageKey,
       pageJson,
+      input.runId,
       html,
       metadataJson,
       htmlBytes,
       input.fetchedAt,
       input.fetchedAt,
       input.runId,
+      evidencePageKey(input.targetUrl),
+      detailPageKey(input.targetUrl),
     )
     .run();
 }

@@ -251,6 +251,26 @@ test("detail evidence and an HTML replay produce the same per-listing classifica
     fetchedAt: "2026-09-06T00:00:00.000Z",
   });
   assert.deepEqual(await readStagedDetailEvidence(db, "detail", product, extract), evidence);
+  assert.equal(
+    await db
+      .prepare(`SELECT 1 FROM crawl_fetch_pages
+      WHERE run_id = ? AND page_key = ? AND state = 'ignored' LIMIT 1`)
+      .bind("detail", `__hifiscout_category_detail__:${product.sourceUrl}`)
+      .first(),
+    null,
+    "the previous Worker's HTML-only fence must not claim structured evidence",
+  );
+  await recordCrawlFetchDetailPage(db, {
+    runId: "detail",
+    targetUrl: product.sourceUrl,
+    html: "legacy replay",
+    fetchedAt: AT,
+  });
+  assert.equal(
+    sqlite.prepare("SELECT COUNT(*) n FROM crawl_fetch_pages WHERE state='ignored'").get()?.n,
+    1,
+  );
+  assert.deepEqual(await readStagedDetailEvidence(db, "detail", product, extract), evidence);
 });
 
 test("negative, failed and legacy detail outcomes survive restarts without a new seller request", async () => {
