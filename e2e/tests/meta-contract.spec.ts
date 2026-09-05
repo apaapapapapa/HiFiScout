@@ -15,9 +15,7 @@ function metadataDiagnostics(value: unknown): unknown {
     .map(([key, field]) => ({
       field: key,
       rejectedEntries: Array.isArray(field)
-        ? field
-            .filter((entry) => !isMetaResponse({ ...baseline, [key]: [entry] }))
-            .slice(0, 5)
+        ? field.filter((entry) => !isMetaResponse({ ...baseline, [key]: [entry] })).slice(0, 5)
         : field,
     }));
   return { status: value.status, rejectedFields };
