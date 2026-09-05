@@ -248,9 +248,8 @@ test("a projection failure leaves a durable receipt that another upload resumes"
     });
     assert.equal(first.status, "failed");
     assert.equal(
-      sqlite
-        .prepare("SELECT remediation_projection_required n FROM products WHERE id=90001")
-        .get()?.n,
+      sqlite.prepare("SELECT remediation_projection_required n FROM products WHERE id=90001").get()
+        ?.n,
       1,
     );
     const pending = await previewAdminCsvChange(db, change());
@@ -265,15 +264,12 @@ test("a projection failure leaves a durable receipt that another upload resumes"
       assert.equal(resumed.status, "applied");
     }
     assert.equal(
-      sqlite
-        .prepare("SELECT remediation_projection_required n FROM products WHERE id=90001")
-        .get()?.n,
+      sqlite.prepare("SELECT remediation_projection_required n FROM products WHERE id=90001").get()
+        ?.n,
       0,
     );
     assert.equal(
-      sqlite
-        .prepare("SELECT remediation_projection_token t FROM products WHERE id=90001")
-        .get()?.t,
+      sqlite.prepare("SELECT remediation_projection_token t FROM products WHERE id=90001").get()?.t,
       "",
     );
     assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM admin_csv_import_changes").get()?.n, 1);
@@ -493,11 +489,7 @@ test("CSV catalog reclassification clears observed tokens but preserves a concur
         return db.prepare(sql);
       },
     };
-    await reclassifyAdminCsvListings(
-      racing,
-      [90001, 90002, 90003],
-      "2026-09-05T01:00:00.000Z",
-    );
+    await reclassifyAdminCsvListings(racing, [90001, 90002, 90003], "2026-09-05T01:00:00.000Z");
     assert.equal(raced, true);
     const rows = sqlite
       .prepare(`
