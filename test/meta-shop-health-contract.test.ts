@@ -89,7 +89,18 @@ test("metadata validation still rejects unknown, inherited, and non-string healt
   const shop = meta.shops[0];
   assert.ok(shop);
   assert.ok(shop.health);
-  for (const reason of ["future_reason", "constructor", "toString", "__proto__", "", null, undefined, 0, {}, []]) {
+  for (const reason of [
+    "future_reason",
+    "constructor",
+    "toString",
+    "__proto__",
+    "",
+    null,
+    undefined,
+    0,
+    {},
+    [],
+  ]) {
     const malformed = {
       ...meta,
       shops: [{ ...shop, health: { ...shop.health, reason } }],
