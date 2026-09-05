@@ -8,6 +8,10 @@ import { syncProductIdentityResolutions } from "./product-identity-repository.js
 import { syncProductSearchEntities } from "./product-search-entity-repository.js";
 import { syncProductSearchProjections } from "./product-search-projection-repository.js";
 import type { QueryableDatabase } from "./types.js";
+import {
+  acknowledgeListingProjections,
+  readListingProjectionTokens,
+} from "./listing-projection-pending.js";
 
 export interface ReplayedListing {
   /** Optional provenance identifier carried by admin/remediation callers; projection is source-scoped. */
@@ -49,8 +53,8 @@ async function runProjectionStage(
 
 /**
  * Keep search projection and search-entity aggregation batched by shop. Only the expensive
- * identity candidate lookup is bounded to one manufacturer per query, so mixed-brand replay work
- * cannot create one large candidate scan without multiplying every other projection round trip.
+ * identity candidate lookup uses indexed manufacturer/model keys, so unrelated catalog entries
+ * do not expand a small replay into a whole-manufacturer scan.
  */
 export async function refreshListingProjections(
   db: QueryableDatabase,
@@ -66,6 +70,7 @@ export async function refreshListingProjections(
 
   for (const [shopKey, sourceIdSet] of byShop) {
     const sourceIds = [...sourceIdSet];
+    const pending = await readListingProjectionTokens(db, shopKey, sourceIds);
     await runProjectionStage("search_projection", shopKey, sourceIds.length, () =>
       syncProductSearchProjections(db, shopKey, sourceIds),
     );
@@ -80,5 +85,6 @@ export async function refreshListingProjections(
     await runProjectionStage("search_entity", shopKey, sourceIds.length, () =>
       syncProductSearchEntities(db, shopKey, sourceIds),
     );
+    await acknowledgeListingProjections(db, pending);
   }
 }

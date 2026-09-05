@@ -1,3 +1,4 @@
+import { priceIndexRollupUpsertSql } from "./price-index-rollup.js";
 import { firstMeasured } from "./read-accounting.js";
 import { withinD1Budget } from "./invocation-budget.js";
 import type { QueryableDatabase } from "./types.js";
@@ -8,7 +9,9 @@ const MAX_LIMIT = 25;
 const BACKFILL_KEY = "recent-price-index-v1";
 const BACKFILL_INTERVAL_MS = 60 * 60 * 1000;
 const MAX_PRODUCT_SAMPLES = 500;
-const MAX_PAGE_SAMPLES = 1000;
+// Computing both lifetime and recent medians of independent listings costs more per sample.
+// Keep the existing 20k-row local D1 backfill budget by admitting at most 500 samples per hour.
+const MAX_PAGE_SAMPLES = 500;
 
 interface CatalogProductIdRow {
   catalog_product_id: number;
@@ -77,37 +80,8 @@ function medianRefreshStatement(
   token?: string,
 ): D1PreparedStatement {
   return db
-    .prepare(`
-      UPDATE knowledge_catalog_price_indexes
-      SET recent_asking_median_yen = (
-            WITH ranked AS (
-              SELECT
-                price_yen,
-                ROW_NUMBER() OVER (ORDER BY price_yen, id) AS row_number,
-                COUNT(*) OVER () AS sample_count
-              FROM knowledge_catalog_price_index_samples
-              WHERE catalog_product_id = ?
-                AND sample_kind = 'asking'
-                AND price_yen IS NOT NULL
-                AND observed_at >= ?
-            )
-            SELECT CAST(
-              ROUND(
-                AVG(
-                  CASE
-                    WHEN row_number IN ((sample_count + 1) / 2, (sample_count + 2) / 2)
-                      THEN price_yen
-                  END
-                )
-              ) AS INTEGER
-            )
-            FROM ranked
-          ),
-          last_computed_at = ?
-      WHERE catalog_product_id = ?
-      ${pageGuard(token)}
-    `)
-    .bind(catalogProductId, cutoff, at, catalogProductId, ...(token ? [token] : []));
+    .prepare(priceIndexRollupUpsertSql(`catalog_product_id = ? ${pageGuard(token)}`, "?", "?"))
+    .bind(catalogProductId, ...(token ? [token] : []), cutoff, at, at);
 }
 
 function expiryRefreshStatement(
@@ -202,7 +176,6 @@ export async function backfillRecentPriceIndexes(
       SELECT COUNT(*) FROM (
         SELECT 1 FROM knowledge_catalog_price_index_samples s
         WHERE s.catalog_product_id = p.catalog_product_id
-          AND s.sample_kind = 'asking' AND s.observed_at >= ?
         LIMIT ?
       )
     ) AS sample_count
@@ -210,7 +183,7 @@ export async function backfillRecentPriceIndexes(
     WHERE catalog_product_id > ?
     ORDER BY catalog_product_id ASC LIMIT ?
   `)
-    .bind(cutoff, MAX_PRODUCT_SAMPLES + 1, previousCursor, limit + 1)
+    .bind(MAX_PRODUCT_SAMPLES + 1, previousCursor, limit + 1)
     .all<BackfillCandidate>();
   const lookahead = candidateResult.results || [];
   const candidates: BackfillCandidate[] = [];
@@ -242,7 +215,6 @@ export async function backfillRecentPriceIndexes(
       SELECT COUNT(*) FROM (
         SELECT 1 FROM knowledge_catalog_price_index_samples s
         WHERE s.catalog_product_id = selected.id
-          AND s.sample_kind = 'asking' AND s.observed_at >= ?
         LIMIT ${MAX_PRODUCT_SAMPLES + 1}
       )
     ) > selected.sample_count
@@ -264,7 +236,6 @@ export async function backfillRecentPriceIndexes(
       previousCursor,
       run.updated_at,
       at,
-      ...(candidates.length ? [cutoff] : []),
     );
   const products = candidates.flatMap(({ catalog_product_id }) => [
     medianRefreshStatement(db, Number(catalog_product_id), cutoff, at, token),

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
 import { syncProductMetadata } from "../src/db/product-metadata-repository.js";
+import { refreshListingProjections } from "../src/db/listing-projection-refresh.js";
 import { upsertProducts } from "../src/db/product-write-repository.js";
 import type { CatalogProductUpsertInput } from "../src/catalog/types.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
@@ -34,11 +35,26 @@ function emptyDatabase(): ReturnType<typeof migratedSqlite> {
   return database;
 }
 
+async function completeInitialCrawl(
+  db: ReturnType<typeof migratedSqlite>["db"],
+  sourceIds: string[],
+) {
+  await refreshListingProjections(
+    db,
+    sourceIds.map((source_id) => ({ shop_key: SHOP, source_id })),
+    FIRST,
+  );
+}
+
 test("a first crawl owes derived work for every listing it discovered", async () => {
   const { db } = emptyDatabase();
   const products = ["a", "b", "c"].map((id) => listing(id));
 
   const result = await upsertProducts(db, SHOP, products, FIRST);
+  await completeInitialCrawl(
+    db,
+    products.map((product) => product.sourceId),
+  );
 
   assert.equal(result.changedCount, 3);
   assert.deepEqual([...result.derivedSourceIds].sort(), ["a", "b", "c"]);
@@ -48,6 +64,10 @@ test("a routine crawl that changed nothing owes no derived work", async () => {
   const { db } = emptyDatabase();
   const products = ["a", "b", "c"].map((id) => listing(id));
   await upsertProducts(db, SHOP, products, FIRST);
+  await completeInitialCrawl(
+    db,
+    products.map((product) => product.sourceId),
+  );
 
   // The seller reports its whole inventory every time, but a listing nobody touched projects to
   // exactly what is already stored. Re-projecting all of it was the work that could not fit in one
@@ -62,6 +82,10 @@ test("only the listings whose inputs moved are handed to the derived stages", as
   const { db } = emptyDatabase();
   const products = ["a", "b", "c"].map((id) => listing(id));
   await upsertProducts(db, SHOP, products, FIRST);
+  await completeInitialCrawl(
+    db,
+    products.map((product) => product.sourceId),
+  );
 
   const result = await upsertProducts(
     db,
@@ -81,6 +105,7 @@ test("a listing that disappeared is named as derived work so its offer can be re
     ["a", "b", "c"].map((id) => listing(id)),
     FIRST,
   );
+  await completeInitialCrawl(db, ["a", "b", "c"]);
 
   // A crawl reports what it saw, so a sold listing is never in the input. Without naming it here
   // nothing downstream would know to stop counting its offer.
@@ -100,6 +125,10 @@ test("a reactivated listing is derived work even when nothing else about it chan
   const { db } = emptyDatabase();
   const products = ["a", "b"].map((id) => listing(id));
   await upsertProducts(db, SHOP, products, FIRST);
+  await completeInitialCrawl(
+    db,
+    products.map((product) => product.sourceId),
+  );
   await upsertProducts(db, SHOP, [listing("a")], SECOND, { deactivateMissing: true });
 
   const result = await upsertProducts(db, SHOP, products, "2026-08-25T02:00:00.000Z");
@@ -138,6 +167,10 @@ test("title feature facts are rewritten only for the listings whose title moved"
   const products = ["s-1", "s-2"].map((id) => listing(id, { featureFacts: PHONO }));
 
   const first = await upsertProducts(db, SHOP, products, FIRST);
+  await completeInitialCrawl(
+    db,
+    products.map((product) => product.sourceId),
+  );
   assert.equal(first.featureFactCount, 2);
   assert.equal(factRows(sqlite).length, 2);
 
@@ -164,6 +197,10 @@ test("a metadata-only change is invisible to the derived delta but still has to 
   const { sqlite, db } = emptyDatabase();
   const products = [listing("v-1")];
   await upsertProducts(db, SHOP, products, FIRST);
+  await completeInitialCrawl(
+    db,
+    products.map((product) => product.sourceId),
+  );
 
   // The negative cache for detail-page fetches lives only here: it is written exactly when the
   // check did *not* classify, so every column `listingChanged` compares is left alone.

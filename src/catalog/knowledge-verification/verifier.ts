@@ -18,7 +18,10 @@ import { runVerificationPipeline } from "./pipeline.js";
 import { resolveKnowledgeSourceDefinitions } from "./source-registry.js";
 import { createDirectProductPageStrategy } from "./strategies/direct-product-page.js";
 import { createGenericOfficialSiteStrategy } from "./strategies/generic-official-site.js";
-import { applyOfficialFamilyCategory } from "./strategies/manufacturer/family-category.js";
+import {
+  applyOfficialFamilyCategory,
+  officialFamilyCategoryIds,
+} from "./strategies/manufacturer/family-category.js";
 import { createMarantzCdSacdIndexStrategy } from "./strategies/manufacturer/marantz-cd-sacd-index.js";
 import { createOfficialIndexStrategy } from "./strategies/official-index.js";
 import { verifyOfficialProductPage } from "./page-verification.js";
@@ -65,6 +68,11 @@ export function createKnowledgeSourceVerifier(
   { fetchImpl = globalThis.fetch, fallbackEnabled = true }: KnowledgeSourceVerifierOptions = {},
 ): KnowledgeSourceVerifier {
   const definitions = resolveKnowledgeSourceDefinitions(env);
+  const verifyPage: typeof verifyOfficialProductPage = (options) =>
+    verifyOfficialProductPage({
+      ...options,
+      additionalCategoryIds: officialFamilyCategoryIds,
+    });
   const userAgent = clean(env.CRAWLER_USER_AGENT) || DEFAULT_USER_AGENT;
   const timeoutMs = boundedNumber(
     env.KNOWLEDGE_CATALOG_SOURCE_TIMEOUT_MS,
@@ -96,13 +104,14 @@ export function createKnowledgeSourceVerifier(
   ];
 
   const discoveryStrategies: VerificationStrategy[] = [
-    createOfficialIndexStrategy({ fetchPage }),
-    createDirectProductPageStrategy({ fetchPage }),
+    createOfficialIndexStrategy({ fetchPage, verifyPage }),
+    createDirectProductPageStrategy({ fetchPage, verifyPage }),
   ];
   if (fallbackEnabled) {
     discoveryStrategies.push(
       createGenericOfficialSiteStrategy({
         definitions,
+        verifyPage,
         fetchImpl,
         timeoutMs: boundedNumber(
           env.KNOWLEDGE_CATALOG_SOURCE_TIMEOUT_MS,
@@ -187,7 +196,7 @@ export function createKnowledgeSourceVerifier(
       };
     }
 
-    const result = await verifyOfficialProductPage({
+    const result = await verifyPage({
       candidate: {
         manufacturerId: product.manufacturerId,
         observedManufacturer: product.canonicalName,

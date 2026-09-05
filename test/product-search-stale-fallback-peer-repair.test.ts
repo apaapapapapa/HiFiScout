@@ -136,6 +136,8 @@ test("repairs an unresolved peer left on a fallback represented by a now-matched
     .get();
   assert.equal(Number(before?.count || 0), 1);
 
+  // Model a pre-obligation legacy row, so this specifically exercises the cursor audit.
+  sqlite.exec("DELETE FROM listing_projection_pending");
   const result = await repairActiveListingProjectionGaps(db, {
     evaluatedAt: NOW,
     batchSize: 5,
@@ -143,7 +145,12 @@ test("repairs an unresolved peer left on a fallback represented by a now-matched
     countRemainingGaps: true,
   });
 
-  assert.deepEqual(result, { selectedCount: 1, repairedCount: 1, remainingGapCount: 0 });
+  assert.deepEqual(result, {
+    selectedCount: 1,
+    repairedCount: 1,
+    remainingGapCount: 0,
+    scannedCount: 6,
+  });
   assert.equal(
     Number(
       sqlite

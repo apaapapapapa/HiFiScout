@@ -176,7 +176,7 @@ test("verified catalog evidence overrides a conflicting seller category", () => 
   assert.equal(result.classificationSource, "knowledge_catalog");
 });
 
-test("legacy multi-category catalog evidence is reduced to one primary category", () => {
+test("conflicting legacy catalog categories remain ambiguous instead of taking the first", () => {
   const result = classifyCategoryEvidence(
     knowledgeCatalogEvidence({
       canonicalName: "Network DAC",
@@ -184,9 +184,9 @@ test("legacy multi-category catalog evidence is reduced to one primary category"
       categoryIds: ["dac", "network_player"],
     }),
   );
-  assert.equal(result.classificationStatus, "classified");
-  assert.equal(result.primaryCategoryId, "PRC.DAC");
-  assert.deepEqual(result.categoryIds, ["PRC.DAC"]);
+  assert.equal(result.classificationStatus, "unclassified");
+  assert.equal(result.classificationState, "ambiguous");
+  assert.deepEqual(result.categoryIds, []);
 });
 
 test("classification impact reports only reductions", () => {

@@ -8,6 +8,8 @@ import type {
   ProductIdentityResolution,
 } from "./types.js";
 import { categoryIdForClassification, isUnclassifiedCategoryId } from "./categories.js";
+import { inferSaleSubject, isAccessoryCategory } from "./sale-subject.js";
+import { identitySafeModelLookupVariants } from "./knowledge-catalog.js";
 
 const ROMAN_TO_NUMBER: Readonly<Record<string, string>> = Object.freeze({
   I: "1",
@@ -47,7 +49,7 @@ interface IdentityCandidateView extends IdentityCandidateInput {
 
 interface RejectedIdentityCandidate {
   candidateId: number;
-  rule: "variant_mismatch";
+  rule: "variant_mismatch" | "sale_subject_mismatch" | "bundle_identity";
 }
 
 interface FuzzyIdentityCandidate {
@@ -260,10 +262,25 @@ function categoryCompatible(
   );
 }
 
+export function prepareIdentityCandidates(
+  candidates: readonly IdentityCandidateInput[],
+): IdentityCandidateView[] {
+  return candidates.map(candidateView);
+}
+
 function candidateView(candidate: IdentityCandidateInput): IdentityCandidateView {
+  if ("parts" in candidate && "aliasParts" in candidate) return candidate as IdentityCandidateView;
   const canonicalModel =
     candidate.canonicalModel || candidate.canonical_model || candidate.model || "";
-  const aliases = candidate.aliases || [];
+  const aliases = [
+    ...new Set([
+      ...(candidate.aliases || []),
+      ...identitySafeModelLookupVariants({
+        manufacturerId: candidate.manufacturerId || candidate.manufacturer_id,
+        model: canonicalModel,
+      }),
+    ]),
+  ];
   return {
     ...candidate,
     id: candidate.id,
@@ -347,13 +364,37 @@ export function resolveProductIdentity(
     .map(candidateView)
     .filter((candidate) => candidate.manufacturerId === manufacturerId);
 
+  const subject = inferSaleSubject(product.title, product.rawModel ?? product.raw_model ?? model);
+  const listingCategory = categoryIdForClassification(
+    product.primaryCategoryId || product.primary_category_id || "",
+  );
+  function saleVeto(candidate: IdentityCandidateView): RejectedIdentityCandidate["rule"] | null {
+    if (subject.kind === "bundle") return "bundle_identity";
+    const categories = candidate.categoryIds || candidate.category_ids || [];
+    if (
+      subject.categoryId &&
+      categories.length &&
+      !categories.some((id) => categoryIdForClassification(id) === subject.categoryId)
+    ) {
+      return "sale_subject_mismatch";
+    }
+    if (
+      (subject.kind === "accessory" || (listingCategory && isAccessoryCategory(listingCategory))) &&
+      !categories.some((id) => isAccessoryCategory(categoryIdForClassification(id) || ""))
+    ) {
+      return "sale_subject_mismatch";
+    }
+    return null;
+  }
+
   const rejected: RejectedIdentityCandidate[] = [];
   const exactMatches: IdentityCandidateView[] = [];
   for (const candidate of manufacturerCandidates) {
+    if (candidate.fuzzyOnly) continue;
     if (candidate.parts.normalizedModel !== parts.normalizedModel) continue;
-    const veto = identityVeto(model, candidate.canonicalModel);
+    const veto = identityVeto(model, candidate.canonicalModel)?.rule || saleVeto(candidate);
     if (veto) {
-      rejected.push({ candidateId: candidate.id, rule: veto.rule });
+      rejected.push({ candidateId: candidate.id, rule: veto });
       continue;
     }
     exactMatches.push(candidate);
@@ -378,15 +419,18 @@ export function resolveProductIdentity(
   }
 
   const aliasMatches: { candidate: IdentityCandidateView; alias: string }[] = [];
+  const listingAliases = new Set(
+    identitySafeModelLookupVariants({ manufacturerId, model }).map(normalizeIdentityModel),
+  );
   for (const candidate of manufacturerCandidates) {
+    if (candidate.fuzzyOnly) continue;
     const matchedAlias = candidate.aliasParts.find(
-      (alias) =>
-        alias.parts.normalizedModel && alias.parts.normalizedModel === parts.normalizedModel,
+      (alias) => alias.parts.normalizedModel && listingAliases.has(alias.parts.normalizedModel),
     );
     if (!matchedAlias) continue;
-    const veto = identityVeto(model, candidate.canonicalModel);
+    const veto = identityVeto(model, candidate.canonicalModel)?.rule || saleVeto(candidate);
     if (veto) {
-      rejected.push({ candidateId: candidate.id, rule: veto.rule });
+      rejected.push({ candidateId: candidate.id, rule: veto });
       continue;
     }
     aliasMatches.push({ candidate, alias: matchedAlias.alias });
@@ -438,9 +482,28 @@ export function resolveProductIdentity(
     };
   }
 
+  if (subject.kind !== "unspecified") {
+    return {
+      status: "unresolved",
+      catalogProductId: null,
+      candidateCatalogProductId: null,
+      matchMethod: "vetoed",
+      confidence: "none",
+      normalizedModel: parts.normalizedModel,
+      modelStem: parts.modelStem,
+      variants: parts.variants,
+      matchedFields: ["manufacturer_id"],
+      rejectedBy: [subject.kind === "bundle" ? "bundle_identity" : "sale_subject_mismatch"],
+      matchedAlias: "",
+    };
+  }
+
   const fuzzyCandidates = manufacturerCandidates
     .filter(
-      (candidate) => candidate.parts.normalizedModel && categoryCompatible(product, candidate),
+      (candidate) =>
+        candidate.parts.normalizedModel &&
+        !saleVeto(candidate) &&
+        categoryCompatible(product, candidate),
     )
     .map((candidate) => {
       const veto = identityVeto(model, candidate.canonicalModel);

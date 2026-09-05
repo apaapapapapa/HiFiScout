@@ -1,4 +1,5 @@
 import type { ClassifiableCategoryId } from "./types.js";
+import { inferSaleSubject, saleSubjectText } from "./sale-subject.js";
 
 /** Product-type-only inference. Properties are inferred independently in `product-facets.ts`. */
 const DAP_MODEL_FAMILIES: readonly (readonly [RegExp, RegExp])[] = [
@@ -225,11 +226,20 @@ export function inferExplicitCategoryIds(
   text: string = "",
   _options?: { context?: string },
 ): ClassifiableCategoryId[] {
-  const value = String(text || "").normalize("NFKC");
+  const subject = inferSaleSubject(text);
+  if (subject.categoryId) return [subject.categoryId];
+  const value = saleSubjectText(String(text || ""));
   if (!value.trim()) return [];
   if (isCoEqualMultifunction(value)) return ["SYS.MULTIFUNCTION"];
   if (INTEGRATED_AMPLIFIER_PATTERN.test(value)) return ["AMP.INTEGRATED"];
   if (HEADPHONE_AMPLIFIER_PATTERN.test(value)) return ["AMP.HEADPHONE"];
+  if (
+    /phono\s+(?:pre[\s-]?(?:amp|amplifier)|equalizer|eq|stage|amp)|フォノ(?:イコライザー|アンプ)/i.test(
+      value,
+    )
+  )
+    return ["AMP.PHONO"];
+  if (/mic(?:rophone)?\s+pre[\s-]?(?:amp|amplifier)|マイクプリ/i.test(value)) return ["REC.MICPRE"];
   if (EARPHONE_PRODUCT_PATTERN.test(value)) return ["PER.EARPHONE"];
   if (HEADPHONE_PRODUCT_PATTERN.test(value)) return ["PER.HEADPHONE"];
   for (const [id, pattern] of RULES) if (pattern.test(value)) return [id];

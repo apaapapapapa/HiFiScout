@@ -7,6 +7,49 @@ import { recordingDatabase } from "./helpers/query-plan.js";
 
 const NOW = "2026-08-22T09:30:00.000Z";
 
+test("audit cursors advance through healthy windows and eventually repair a tail gap", async () => {
+  const { db, sqlite } = migratedSqlite();
+  sqlite.exec(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<51)
+    INSERT INTO products(id,shop_key,source_id,title,source_url,first_seen_at,last_seen_at,last_changed_at)
+    SELECT i,'cursor',CAST(i AS TEXT),'unknown','https://example.test/cursor','${NOW}','${NOW}','${NOW}' FROM n;
+    INSERT INTO product_identity_resolutions(listing_product_id,status,match_method,confidence,evaluated_at)
+    SELECT id,'unresolved','unresolved','none','${NOW}' FROM products WHERE id<=50;
+    INSERT INTO product_search_entities(entity_key,entity_kind,fallback_listing_id)
+    SELECT 'l-'||id,'unresolved_listing',id FROM products WHERE id<=50;
+    INSERT INTO product_search_entity_offers(listing_product_id,entity_id,shop_key)
+    SELECT p.id,e.id,p.shop_key FROM products p JOIN product_search_entities e ON e.fallback_listing_id=p.id;
+    DELETE FROM listing_projection_pending;`);
+  const selected = [];
+  for (let i = 0; i < 3; i++) {
+    const result = await repairActiveListingProjectionGaps(db, {
+      phases: "coverage",
+      maxScannedListings: 25,
+      maxListings: 5,
+    });
+    selected.push(result.selectedCount);
+    assert.ok(Number(result.scannedCount) <= 50);
+  }
+  assert.deepEqual(selected, [0, 0, 1]);
+  assert.ok(
+    sqlite.prepare("SELECT 1 FROM product_search_entity_offers WHERE listing_product_id=51").get(),
+  );
+});
+
+test("an audit never advances past gaps that exceed its repair budget", async () => {
+  const { db, sqlite } = migratedSqlite();
+  for (let i = 0; i < 9; i++) insertActiveListing(sqlite, `budget-${i}`);
+  sqlite.exec("DELETE FROM listing_projection_pending");
+  for (let i = 0; i < 3; i++) {
+    await repairActiveListingProjectionGaps(db, {
+      phases: "coverage",
+      maxScannedListings: 9,
+      maxListings: 3,
+      batchSize: 3,
+    });
+  }
+  assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM product_identity_resolutions").get()?.n, 9);
+});
+
 function insertActiveListing(
   sqlite: ReturnType<typeof migratedSqlite>["sqlite"],
   sourceId: string,
@@ -64,7 +107,10 @@ test("repairs missing Identity and Product Search membership for an active listi
     countRemainingGaps: true,
   });
 
-  assert.deepEqual(result, { selectedCount: 1, repairedCount: 1, remainingGapCount: 0 });
+  assert.deepEqual(
+    { ...result, scannedCount: undefined },
+    { scannedCount: undefined, selectedCount: 1, repairedCount: 1, remainingGapCount: 0 },
+  );
   assert.equal(
     sqlite
       .prepare(
@@ -88,7 +134,10 @@ test("repairs missing Identity and Product Search membership for an active listi
     maxListings: 10,
     countRemainingGaps: true,
   });
-  assert.deepEqual(second, { selectedCount: 0, repairedCount: 0, remainingGapCount: 0 });
+  assert.deepEqual(
+    { ...second, scannedCount: undefined },
+    { scannedCount: undefined, selectedCount: 0, repairedCount: 0, remainingGapCount: 0 },
+  );
 });
 
 test("repairs a missing search membership even when Identity already exists", async () => {
@@ -112,7 +161,10 @@ test("repairs a missing search membership even when Identity already exists", as
     countRemainingGaps: true,
   });
 
-  assert.deepEqual(result, { selectedCount: 1, repairedCount: 1, remainingGapCount: 0 });
+  assert.deepEqual(
+    { ...result, scannedCount: undefined },
+    { scannedCount: undefined, selectedCount: 1, repairedCount: 1, remainingGapCount: 0 },
+  );
   assert.equal(
     sqlite
       .prepare(
@@ -179,7 +231,10 @@ test("repairs a stale fallback membership after Identity becomes catalog-matched
     countRemainingGaps: true,
   });
 
-  assert.deepEqual(result, { selectedCount: 1, repairedCount: 1, remainingGapCount: 0 });
+  assert.deepEqual(
+    { ...result, scannedCount: undefined },
+    { scannedCount: undefined, selectedCount: 1, repairedCount: 1, remainingGapCount: 0 },
+  );
   const repairedEntity = sqlite
     .prepare(`
       SELECT e.entity_kind, e.catalog_product_id
@@ -212,7 +267,10 @@ test("repairs safe exact identities that drift across multiple search entities",
     maxListings: 10,
     countRemainingGaps: true,
   });
-  assert.deepEqual(initial, { selectedCount: 2, repairedCount: 2, remainingGapCount: 0 });
+  assert.deepEqual(
+    { ...initial, scannedCount: undefined },
+    { scannedCount: undefined, selectedCount: 2, repairedCount: 2, remainingGapCount: 0 },
+  );
   assert.equal(
     sqlite
       .prepare(`
@@ -259,7 +317,10 @@ test("repairs safe exact identities that drift across multiple search entities",
     maxListings: 10,
     countRemainingGaps: true,
   });
-  assert.deepEqual(result, { selectedCount: 1, repairedCount: 1, remainingGapCount: 0 });
+  assert.deepEqual(
+    { ...result, scannedCount: undefined },
+    { scannedCount: undefined, selectedCount: 1, repairedCount: 1, remainingGapCount: 0 },
+  );
   assert.equal(
     sqlite
       .prepare(`
@@ -284,7 +345,10 @@ test("repairs safe exact identities that drift across multiple search entities",
     maxListings: 10,
     countRemainingGaps: true,
   });
-  assert.deepEqual(second, { selectedCount: 0, repairedCount: 0, remainingGapCount: 0 });
+  assert.deepEqual(
+    { ...second, scannedCount: undefined },
+    { scannedCount: undefined, selectedCount: 0, repairedCount: 0, remainingGapCount: 0 },
+  );
 });
 
 /** The unbounded aggregate: the seed-scoped one is the same shape but constrained by `p.id IN (…)`. */

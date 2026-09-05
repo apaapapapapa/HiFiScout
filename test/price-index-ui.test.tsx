@@ -48,6 +48,9 @@ function product(overrides: Partial<DisplayProduct> = {}): DisplayProduct {
     },
     price_index: {
       asking_sample_count: 8,
+      asking_listing_count: 5,
+      asking_shop_count: 2,
+      latest_asking_observed_at: "2026-08-28T00:00:00.000Z",
       asking_median_yen: 300_000,
       asking_min_yen: 240_000,
       asking_max_yen: 390_000,
@@ -79,13 +82,14 @@ test("relative price badge compares the current lowest offer with the asking med
 
   assert.deepEqual(badge, {
     label: "出品中央値比 −18%",
-    title: "現在の最安出品価格は過去の出品価格中央値より18%低い水準です",
+    title: "表示中の最安出品価格は出品ごとの最新価格の中央値より18%低い水準です",
     direction: "below",
   });
   const html = renderToStaticMarkup(<RelativePriceBadge product={product()} />);
   assert.match(html, /出品中央値比 −18%/);
   assert.match(html, /<details/);
-  assert.match(html, /全期間の出品価格/);
+  assert.match(html, /各出品の最新価格を1件ずつ/);
+  assert.match(html, /絞り込み後の価格/);
   assert.match(html, /成約価格ではなく/);
 });
 
@@ -140,4 +144,12 @@ test("older Step 3 payloads without observation arrays remain renderable", () =>
     renderToStaticMarkup(<ProductPriceIndexSummary product={legacy} />),
     /掲載終了時価格/,
   );
+});
+
+test("old favorite payloads keep their summary but cannot infer independent evidence from observation count", () => {
+  const original = product();
+  delete original.price_index!.asking_listing_count;
+  const snapshot = favoriteSnapshot(original);
+  assert.equal(snapshot.price_index?.asking_sample_count, 8);
+  assert.equal(relativePriceBadge(snapshot), null);
 });

@@ -17,6 +17,12 @@ Keep parsing, normalization, category inference, query construction, scheduling 
 
 A regression should be added at this layer whenever the bug can be reproduced without a deployed Worker. This is the preferred layer for almost all parser and catalog-classification defects.
 
+`test/decision-quality.test.ts` is a semantic corpus: compatible accessories versus included accessories, phono/microphone preamps, presentation aliases, bundles and revisions. A confident false merge fails even when unresolved coverage improves. Official-page tests preserve decisions under navigation changes and ensure weaker evidence cannot erase a conflict. Rule IDs and versioned evidence make failures attributable to a policy.
+
+`test/listing-write-atomicity.test.ts` injects a real SQLite history-write error and checks rollback of the listing, dependent facts and projection obligation. It also checks unchanged retry recovery and compare-and-clear under a concurrent edit. `test/independent-price-evidence.test.ts` distinguishes three observations of one listing from three independent listings.
+
+`test/architecture-read-budget.test.ts` measures actual local workerd D1 metadata at 100 and 1,000 healthy listings and unrelated same-maker catalog rows. Zero-gap audit cost and exact/alias lookup cost must remain bounded. Separate cursor tests cover a tail gap and more gaps than the repair allowance. These checks run locally in the normal suite and consume no production Cloudflare quota.
+
 ### 2. Component / contract tests — small middle layer
 
 Use Vitest and in-memory fakes to verify boundaries between modules: Worker route handlers with fake D1 responses, repository SQL behavior through a D1-shaped fake, crawler orchestration with mocked fetch/browser adapters, and the common shop contract.

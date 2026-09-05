@@ -27,7 +27,7 @@ import { resolveModel, MODEL_RESOLVER_VERSION } from "./model-resolver.js";
 import { inferFeatureFacts, normalizeFeatureFacts } from "./product-features.js";
 import { inferFacetFacts, normalizeFacetFacts } from "./product-facets.js";
 
-const CLASSIFICATION_METADATA_VERSION = 16;
+const CLASSIFICATION_METADATA_VERSION = 17;
 
 export interface CatalogNormalizationContext {
   /** Source seller used by narrowly scoped model-annotation rules. */
@@ -55,6 +55,7 @@ function classificationMetadata(
     candidateCategoryIds: classification.candidateCategoryIds,
     evidence: summarizeCategoryEvidence(evidence),
     confidence: classification.confidence,
+    confidenceKind: "evidence_tier",
   };
 }
 

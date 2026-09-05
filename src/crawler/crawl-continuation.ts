@@ -1,3 +1,4 @@
+import { acknowledgeCrawlListingProjections } from "../db/listing-projection-pending.js";
 import {
   CRAWL_STAGE_SCOPE,
   RESUMABLE_CRAWL_STAGES,
@@ -231,6 +232,9 @@ export async function drainCrawlRunStage(
       throw error;
     }
 
+    if (checkpoint.stage === "search_entity") {
+      await acknowledgeCrawlListingProjections(db, run.crawlRunId, sourceIds);
+    }
     // The cursor moves only after the chunk's own writes are durable.
     afterSourceId = sourceIds[sourceIds.length - 1] as string;
     await advanceCrawlRunStage(db, run.crawlRunId, checkpoint.stage, {

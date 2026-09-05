@@ -1,5 +1,6 @@
 import { categoryFilterIds, normalizeCategory } from "./categories.js";
 import { inferExplicitCategoryIds } from "./category-rules.js";
+import { inferSaleSubject } from "./sale-subject.js";
 import type {
   CategoryPolicyInput,
   CategoryEvidenceInput,
@@ -54,8 +55,17 @@ export function categoryEvidenceFromText(
   }: { source?: string; strength?: CategoryEvidenceStrength; context?: string } = {},
 ): CategoryEvidenceInput[] {
   const categoryIds = inferExplicitCategoryIds(text, { context });
+  const subject = inferSaleSubject(text);
   return categoryIds.length
-    ? [{ categoryIds: [categoryIds[0]], source, strength, value: String(text || "") }]
+    ? [
+        {
+          categoryIds,
+          source,
+          strength,
+          value: String(text || ""),
+          ruleId: subject.categoryId ? subject.ruleId : `product_type.${categoryIds[0]}`,
+        },
+      ]
     : [];
 }
 

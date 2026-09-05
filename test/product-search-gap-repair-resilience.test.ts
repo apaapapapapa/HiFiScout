@@ -86,7 +86,7 @@ function rejectCombinedGapSelector(db: QueryableDatabase): QueryableDatabase {
   return {
     prepare(sql: string) {
       if (
-        sql.includes("p.id > ?") &&
+        sql.includes("WITH candidates AS MATERIALIZED") &&
         sql.includes("current_membership") &&
         sql.includes("product_identity_resolutions r")
       ) {
@@ -105,7 +105,7 @@ function rejectCombinedStaleAndExactIdentitySelector(db: QueryableDatabase): Que
   return {
     prepare(sql: string) {
       if (
-        sql.includes("p.id > ?") &&
+        sql.includes("WITH candidates AS MATERIALIZED") &&
         sql.includes("representative_r") &&
         sql.includes("current_membership")
       ) {
@@ -129,7 +129,10 @@ function recordDerivedSelectorCursors(db: QueryableDatabase): {
     db: {
       prepare(sql: string) {
         const statement = db.prepare(sql);
-        if (!sql.includes("p.id > ?") || !sql.includes("current_membership")) {
+        if (
+          !sql.includes("WITH candidates AS MATERIALIZED") ||
+          !sql.includes("current_membership")
+        ) {
           return statement;
         }
         return {
@@ -154,9 +157,9 @@ function forceGapSelectorRows(
   const selector = (ids: readonly number[]) => {
     const idList = ids.length ? ids.map((id) => Number(id)).join(",") : "NULL";
     return db.prepare(`
-      SELECT id, shop_key, source_id
+      SELECT id, shop_key, source_id, CASE WHEN id IN (${idList}) THEN 1 ELSE 0 END AS is_gap
       FROM products
-      WHERE id > ? AND id IN (${idList})
+      WHERE id > ?
       ORDER BY id
       LIMIT ?
     `);
@@ -164,7 +167,7 @@ function forceGapSelectorRows(
 
   return {
     prepare(sql: string) {
-      if (!sql.includes("p.id > ?")) return db.prepare(sql);
+      if (!sql.includes("WITH candidates AS MATERIALIZED")) return db.prepare(sql);
       if (sql.includes("representative_r") && !sql.includes("current_membership")) {
         return selector(staleListingIds);
       }
@@ -193,6 +196,7 @@ test("bounded repair isolates a poison listing instead of starving later gaps", 
   });
 
   assert.deepEqual(result, {
+    scannedCount: 0,
     selectedCount: 3,
     repairedCount: 2,
     failedCount: 1,
@@ -228,6 +232,7 @@ test("critical coverage gaps are selected before expensive exact-identity drift"
   });
 
   assert.deepEqual(result, {
+    scannedCount: 0,
     selectedCount: 1,
     repairedCount: 1,
     remainingGapCount: null,
@@ -268,6 +273,7 @@ test("stale fallback selection does not evaluate exact-identity peer drift", asy
   });
 
   assert.deepEqual(result, {
+    scannedCount: 3,
     selectedCount: 0,
     repairedCount: 0,
     remainingGapCount: null,
@@ -331,6 +337,7 @@ test("a stale-fallback listing bypasses poisoned projection writes and consumes 
   });
 
   assert.deepEqual(result, {
+    scannedCount: 6,
     selectedCount: 2,
     repairedCount: 2,
     remainingGapCount: null,
@@ -391,6 +398,7 @@ test("the two settings are independent: an uncounted resilient caller still isol
   });
 
   assert.deepEqual(result, {
+    scannedCount: 0,
     selectedCount: 1,
     repairedCount: 0,
     failedCount: 1,

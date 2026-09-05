@@ -3,6 +3,47 @@ import assert from "node:assert/strict";
 
 import { verifyOfficialProductPage } from "../src/catalog/knowledge-verification/page-verification.js";
 
+test("navigation-only model mentions cannot verify a different product", async () => {
+  for (const chrome of ["nav", "header", "footer", "aside"]) {
+    const result = await verifyOfficialProductPage({
+      candidate: {
+        manufacturerId: "yamaha",
+        observedModel: "CD-S3000",
+        normalizedModel: "CD-S3000",
+      },
+      html: `<html><head><meta name="description" content="プリメインアンプ"></head><body>
+        <${chrome}><h2>YAMAHA CD-S3000</h2></${chrome}>
+        <main><h1>YAMAHA A-S3200</h1><p>プリメインアンプ</p></main></body></html>`,
+    });
+    assert.equal(result.status, "not_found", chrome);
+  }
+});
+
+test("weaker page evidence cannot erase a structured category conflict", async () => {
+  for (const description of ["", '<meta name="description" content="CDプレーヤー">']) {
+    const result = await verifyOfficialProductPage({
+      candidate: {
+        manufacturerId: "yamaha",
+        observedModel: "CD-S3000",
+        normalizedModel: "CD-S3000",
+      },
+      html: `<html><head>${description}<script type="application/ld+json">
+        {"@type":"Product","model":"CD-S3000","name":"CD-S3000 プリアンプ","category":"CDプレーヤー","brand":"Yamaha"}
+        </script></head><body><h1>CD-S3000 CDプレーヤー</h1></body></html>`,
+    });
+    assert.equal(result.status, "ambiguous");
+    assert.equal(result.message, "conflicting_official_category_evidence");
+  }
+});
+
+test("an index paragraph cannot borrow page-level category evidence", async () => {
+  const result = await verifyOfficialProductPage({
+    candidate: { manufacturerId: "yamaha", observedModel: "CD-S3000", normalizedModel: "CD-S3000" },
+    html: '<html><head><title>Yamaha products</title><meta name="description" content="プリメインアンプ"></head><body><main><p>CD-S3000</p></main></body></html>',
+  });
+  assert.equal(result.status, "ambiguous");
+});
+
 test("official JSON-LD Product verifies exact model and category", async () => {
   const html = `<!doctype html>
     <html><head>

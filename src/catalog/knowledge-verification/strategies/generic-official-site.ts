@@ -62,6 +62,7 @@ export interface GenericOfficialSiteStrategyOptions {
   maxBytes: number;
   userAgent: string;
   budget: DiscoveryBudget;
+  verifyPage?: typeof verifyOfficialProductPage;
 }
 
 /** Keeps `alt`/`title`/`aria-label` text, which is often where an image-only listing states a model. */
@@ -155,6 +156,7 @@ export function createGenericOfficialSiteStrategy({
   maxBytes,
   userAgent,
   budget,
+  verifyPage = verifyOfficialProductPage,
 }: GenericOfficialSiteStrategyOptions): VerificationStrategy {
   // Shared across candidates: one verifier run reviews many models from the same manufacturer, and
   // re-crawling the catalog for each would multiply requests to the same site.
@@ -313,7 +315,7 @@ export function createGenericOfficialSiteStrategy({
             };
             continue;
           }
-          const result = await verifyOfficialProductPage({
+          const result = await verifyPage({
             candidate,
             html: page.text,
             sourceUrl: page.url,

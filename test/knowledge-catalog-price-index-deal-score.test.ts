@@ -87,16 +87,16 @@ test("0063 migration persists and incrementally refreshes catalog deal scores", 
 test("dealScore sort is ascending, NULL-last, and round-trips through a stable cursor", () => {
   assert.ok(PRODUCT_QUERY_SORTS.includes("dealScore"));
   const sort = sortDefinition("dealScore", true);
-  assert.equal(sort.key, "dealScore");
-  assert.equal(sort.column, "deal_score");
+  assert.equal(sort.key, "dealScore:listing-v1");
+  assert.equal(sort.column, "listing_deal_score");
   assert.equal(sort.direction, "ASC");
   assert.equal(sort.idDirection, "ASC");
-  assert.equal(sortOrderBy(sort), "e.deal_score ASC NULLS LAST, e.id ASC");
+  assert.equal(sortOrderBy(sort), "e.listing_deal_score ASC NULLS LAST, e.id ASC");
 
   const encoded = cursorFor(entityRow({ id: 42 }), sort, -1800);
   const cursor = decodeCursor(encoded);
   assert.deepEqual(cursor, {
-    sort: "dealScore",
+    sort: "dealScore:listing-v1",
     id: 42,
     value: -1800,
     isNull: false,
@@ -106,7 +106,7 @@ test("dealScore sort is ascending, NULL-last, and round-trips through a stable c
   const binds: unknown[] = [];
   addCursorPredicate(where, binds, sort, cursor);
   assert.deepEqual(where, [
-    "(e.deal_score IS NULL OR e.deal_score > ? OR (e.deal_score = ? AND e.id > ?))",
+    "(e.listing_deal_score IS NULL OR e.listing_deal_score > ? OR (e.listing_deal_score = ? AND e.id > ?))",
   ]);
   assert.deepEqual(binds, [-1800, -1800, 42]);
 
@@ -114,7 +114,7 @@ test("dealScore sort is ascending, NULL-last, and round-trips through a stable c
   const nullWhere: string[] = [];
   const nullBinds: unknown[] = [];
   addCursorPredicate(nullWhere, nullBinds, sort, nullCursor);
-  assert.deepEqual(nullWhere, ["(e.deal_score IS NULL AND e.id > ?)"]);
+  assert.deepEqual(nullWhere, ["(e.listing_deal_score IS NULL AND e.id > ?)"]);
   assert.deepEqual(nullBinds, [99]);
 });
 
@@ -130,7 +130,7 @@ test("dealScore search keeps the persisted ordering even with offer filters", as
   assert.equal(response.items.length, 1);
   assert.equal(response.hasMore, true);
   assert.deepEqual(decodeCursor(response.nextCursor), {
-    sort: "dealScore",
+    sort: "dealScore:listing-v1",
     id: 10,
     value: -2200,
     isNull: false,
@@ -138,7 +138,7 @@ test("dealScore search keeps the persisted ordering even with offer filters", as
 
   const pageCall = db.calls.find((statement) => /SELECT e\.id, e\.entity_key/.test(statement.sql));
   assert.ok(pageCall);
-  assert.match(pageCall.sql, /e\.deal_score AS request_sort_value/);
-  assert.match(pageCall.sql, /ORDER BY e\.deal_score ASC NULLS LAST, e\.id ASC/);
-  assert.doesNotMatch(pageCall.sql, /matching_sort\.deal_score/);
+  assert.match(pageCall.sql, /e\.listing_deal_score AS request_sort_value/);
+  assert.match(pageCall.sql, /ORDER BY e\.listing_deal_score ASC NULLS LAST, e\.id ASC/);
+  assert.doesNotMatch(pageCall.sql, /matching_sort\.listing_deal_score/);
 });

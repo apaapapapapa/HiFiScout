@@ -233,7 +233,7 @@ test("identity candidate loading uses only the resolved canonical manufacturer i
     /FROM knowledge_catalog_products kp/.test(call.sql),
   );
   assert.ok(catalogLookup);
-  assert.deepEqual(catalogLookup.binds, ["tad"]);
+  assert.deepEqual(catalogLookup.binds, ["tad", "UNKNOWN"]);
   const listingLookup = db.calls.find((call) => /FROM products/.test(call.sql));
   assert.ok(listingLookup);
   assert.match(listingLookup.sql, /canonical_manufacturer_id/);

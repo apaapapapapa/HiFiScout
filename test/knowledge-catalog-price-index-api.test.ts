@@ -14,6 +14,9 @@ function priceIndexRow(catalogProductId = 12, askingSampleCount = 4) {
   return {
     catalog_product_id: catalogProductId,
     asking_sample_count: askingSampleCount,
+    asking_listing_count: askingSampleCount,
+    asking_shop_count: 2,
+    latest_asking_observed_at: "2026-09-05T00:00:00.000Z",
     asking_median_yen: 310_000,
     asking_min_yen: 280_000,
     asking_max_yen: 360_000,

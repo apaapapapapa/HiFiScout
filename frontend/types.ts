@@ -29,6 +29,9 @@ export interface DisplayPriceIndexListingEndObservation {
 
 /** Browser-validated view of the optional Step 3 price-index projection. */
 export interface DisplayPriceIndexSummary {
+  asking_listing_count?: number;
+  asking_shop_count?: number;
+  latest_asking_observed_at?: string | null;
   asking_sample_count: number;
   asking_median_yen: number;
   asking_min_yen: number;

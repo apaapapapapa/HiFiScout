@@ -10,6 +10,16 @@ The crawler records run-level facts and delegates evaluation/persistence to the 
 
 Snapshot quality and crawl-run quality are semantically separate even though they are persisted atomically in one bounded D1 history row. `snapshot_status` covers the current active-listing state; `run_status` covers parser, evidence, and item-count behavior for that crawl. `quality_status` is only the worst status across those groups. It is not a weighted composite score.
 
+## Decision evidence and precision
+
+`src/catalog/sale-subject.ts` separates the sale object from compatible equipment and included or missing accessories. Category inference and catalog evidence consumption share that distinction; identity exact/alias matching additionally rejects bundles and incompatible accessory evidence. A per-model lookup cache must still apply the listing-specific guard when consuming its result, since a body and its remote can share the same seller model field in one batch.
+
+`identitySafeModelLookupVariants` is the common listing/catalog vocabulary for presentation and approved manufacturer-market variants. `modelLookupAliases` identifies category-only hints such as a bundle's base model; those hints cannot authorize a product merge. Revision vetoes remain effective for aliases. Candidate retrieval uses indexed model keys through `catalog-lookup-candidates.ts`; the retrieval key is only a coarse candidate filter, not evidence of identity. Fuzzy discovery is capped and its candidates cannot authorize exact/alias attachment. Bootstrap dictionaries and prepared identity candidates are reused without caching changing operational alias snapshots indefinitely.
+
+Official page policy v3 requires model evidence from product content, matching structured identifiers or an eligible product heading. Navigation does not establish the model. Conflicting structured/local category evidence is terminal; only insufficient evidence permits fallback. A page-wide category label cannot classify a sibling mentioned only in an index paragraph. The persisted `verified_from_official_product_page_v3` message distinguishes this policy from older verification results for targeted, budgeted review through existing verification operations. Deployments do not refetch the full verified catalog.
+
+Category evidence includes rule IDs and the classifier version. `confidenceKind: evidence_tier` makes clear that fixed confidence values express evidence authority, not measured correctness probabilities. The local decision corpus tests false classifications and false merges separately from unresolved coverage. Reducing the unresolved rate is not evidence of better precision. Add reviewed real-world examples alongside the synthetic counterexamples without fetching seller sites from CI.
+
 ## Snapshot metrics
 
 Snapshot metrics are calculated in D1 with `COUNT(*)` and `SUM(CASE ...)` over active listings for one shop. Products are not loaded wholesale into a Worker.

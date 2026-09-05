@@ -77,3 +77,17 @@ export function applyOfficialFamilyCategory(
     message: `${result.message || "verified"}:official_family_v5`,
   };
 }
+
+/** Scoped official wording, consumed before classification so conflicts remain terminal. */
+export function officialFamilyCategoryIds(
+  text: string,
+  candidate: KnowledgeSourceCandidate,
+): ClassifiableCategoryId[] {
+  if (
+    candidate.manufacturerId !== "stax" ||
+    !/driver[\s-]*unit|ドライバ[ー・\s]*ユニット/i.test(text)
+  )
+    return [];
+  const categoryId = familyCategory(candidate);
+  return categoryId ? [categoryId] : [];
+}

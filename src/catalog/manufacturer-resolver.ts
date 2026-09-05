@@ -258,11 +258,16 @@ export function createManufacturerResolver(
 }
 
 /** Pure, deterministic one-off resolution over bootstrap plus D1-provided alias evidence. */
+let bootstrapResolver: ManufacturerResolver | undefined;
+
 export function resolveManufacturer(
   input: ManufacturerResolutionInput,
   operationalAliases: readonly ManufacturerAliasEvidence[] = [],
 ): ManufacturerResolutionResult {
-  return createManufacturerResolver(operationalAliases)(input);
+  const resolver = operationalAliases.length
+    ? createManufacturerResolver(operationalAliases)
+    : (bootstrapResolver ??= createManufacturerResolver());
+  return resolver(input);
 }
 
 /** Re-resolve an already parsed listing without touching its immutable seller evidence. */

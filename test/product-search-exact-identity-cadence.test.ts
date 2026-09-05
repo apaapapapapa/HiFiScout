@@ -18,7 +18,7 @@ function selectorRecorder() {
       const statement = {
         bind: () => statement,
         async all() {
-          if (sql.includes("FROM products p")) selectors.push(sql);
+          if (sql.includes("WITH candidates AS MATERIALIZED")) selectors.push(sql);
           return { results: [] };
         },
         async first() {
@@ -63,7 +63,7 @@ test("the daily safety pass runs the identity self-join and nothing else", async
   assert.ok(EXACT_IDENTITY_SELECTOR.test(db.selectors[0]));
 });
 
-test("the default keeps every phase for explicit full-scan callers", async () => {
+test("the default keeps every phase for explicit all-phase callers", async () => {
   const db = selectorRecorder();
 
   await repairActiveListingProjectionGaps(db);
@@ -85,7 +85,7 @@ test("daily maintenance does not duplicate the named exact-identity safety scan"
   assert.equal(
     db.selectors.some((sql) => EXACT_IDENTITY_SELECTOR.test(sql)),
     false,
-    "the catalog-sized scan is owned only by its separately measured daily task",
+    "the bounded peer audit is owned only by its separately measured daily task",
   );
 });
 
