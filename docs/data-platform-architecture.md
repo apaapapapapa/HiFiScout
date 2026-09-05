@@ -119,8 +119,11 @@ from samples during a search request. Product detail may separately load at most
 observations. Those observations are seller listing signals, not verified transaction prices.
 
 `src/db/knowledge-catalog-price-index-recent-refresh.ts` owns a restartable keyset backfill and
-expiry-driven refresh. The scheduled hourly task selects at most 25 products per pass. Sample
-changes and age boundaries make products due; a cursor advances atomically with its projection
+expiry-driven refresh. `maintainRecentPriceIndexes` runs two sequential batches with independent
+limits: up to 25 backfill products, then up to 25 due products. While initial backfill and expiry work
+coexist, one hourly task can therefore select up to 50 products; this is not a combined 25-product
+cap. Both batches remain subject to the shared general-Cron invocation budget. Sample changes and
+age boundaries make products due; a cursor advances atomically with its projection
 writes. Migrations 0078–0080 add the recent projection, avoid no-op refresh-marker writes, and allow
 bulk backfill to defer/coalesce rollups. The ordinary per-product refresh still reads that product's
 samples, so bounded product count is not a fixed bound on rows read for a large sample history.
