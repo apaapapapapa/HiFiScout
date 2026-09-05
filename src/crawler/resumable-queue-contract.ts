@@ -26,6 +26,8 @@ export interface ResumableCrawlConsumeOptions {
   initializeOnly?: boolean;
   /** Prepared seller fetch supplied by the Durable Object after Alarm-based pacing. */
   fetchHtmlPage?: (url: string, options: FetchHtmlPageOptions) => Promise<string>;
+  /** The owning DO can parse one fetched page before committing, without staging its HTML. */
+  parseFetchedPage?: boolean;
   /** Phase 5 fail-closed guard: finalization may consume staged detail HTTP but never fetch around it. */
   requireStagedDetailFetches?: boolean;
   /**

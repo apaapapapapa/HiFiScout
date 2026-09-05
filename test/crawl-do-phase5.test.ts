@@ -195,10 +195,10 @@ test("Hifido detail enrichment is owned by the same Relay Alarm pacing authority
     "utf8",
   );
 
-  assert.match(scheduler, /planStagedCategoryDetailFetches/);
+  assert.match(scheduler, /planStagedCategoryDetailInputs/);
   assert.match(scheduler, /detailTargetUrl/);
   assert.match(scheduler, /recordCrawlFetchDetailPage/);
-  assert.match(finalizer, /getCrawlFetchDetailPage/);
+  assert.match(finalizer, /readStagedDetailEvidence/);
   assert.match(finalizer, /category detail fetch was not paced by CrawlScheduler/);
 });
 

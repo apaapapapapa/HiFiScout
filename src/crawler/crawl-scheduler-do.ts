@@ -15,11 +15,11 @@ import {
 } from "../db/read-accounting.js";
 import { crawlDispatchToken } from "../db/shop-state-repository.js";
 import type { QueryableDatabase } from "../db/types.js";
-import { planStagedCategoryDetailFetches } from "./category-enrichment-pacing.js";
+import { planStagedCategoryDetailInputs } from "./category-enrichment-pacing.js";
 import {
   advanceDetailPlanCursor,
   detailEnrichmentProgress,
-  nextUncommittedDetailTarget,
+  nextUncommittedDetailTargetWithInput,
   storedDetailDecisionAt,
   type DetailEnrichmentPlanContext,
   type DetailEnrichmentPlanStorage,
@@ -354,7 +354,7 @@ export class CrawlScheduler extends DurableObject<Env> {
     return {
       storage: this.detailPlanStorage(),
       planTargets: (runId, decidedAt) =>
-        planStagedCategoryDetailFetches(this.env, plugin, runId, decidedAt),
+        planStagedCategoryDetailInputs(this.env, plugin, runId, decidedAt),
       isCommitted: (runId, targetUrl) => hasCrawlFetchDetailPage(fenceDb, runId, targetUrl),
       log: (event) => {
         if (event.kind === "plan_created") {
@@ -409,7 +409,8 @@ export class CrawlScheduler extends DurableObject<Env> {
       );
     const planContext = this.detailPlanContext(plugin, fenceAccounting.db);
     const progress = await detailEnrichmentProgress(planContext, runId);
-    const targetUrl = await nextUncommittedDetailTarget(planContext, progress);
+    const target = await nextUncommittedDetailTargetWithInput(planContext, progress);
+    const targetUrl = target?.url;
 
     if (!targetUrl) {
       if (execution.permit || execution.relayPermit || execution.detailTargetUrl) {
@@ -561,6 +562,8 @@ export class CrawlScheduler extends DurableObject<Env> {
     }
 
     let html: string | null = null;
+    let evidence: import("../catalog/types.js").CategoryEvidenceInput[] | undefined;
+    let htmlBytes = 0;
     let errorMessage: string | null = null;
     try {
       if (relayPermit) {
@@ -576,8 +579,18 @@ export class CrawlScheduler extends DurableObject<Env> {
           fetchFn: globalThis.fetch,
         });
       }
+      htmlBytes = html == null ? 0 : new TextEncoder().encode(html).byteLength;
+      if (html !== null && target?.product) {
+        const extracted = await plugin.capabilities.detailCategoryEvidence.extract(
+          html,
+          target.product,
+        );
+        evidence = Array.isArray(extracted) ? extracted : [];
+        html = null;
+      }
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : String(error);
+      html = null;
     }
     await recordCrawlFetchDetailPage(commitAccounting.db, {
       runId,
@@ -585,6 +598,8 @@ export class CrawlScheduler extends DurableObject<Env> {
       html,
       errorMessage,
       fetchedAt: new Date().toISOString(),
+      evidence,
+      htmlBytes,
     });
     // D1 commit first, then the cursor. A kill in between leaves the cursor pointing at a committed
     // target, which the skip in `nextUncommittedDetailTarget` resolves without re-asking the seller.
@@ -609,7 +624,8 @@ export class CrawlScheduler extends DurableObject<Env> {
         targetUrl,
         transport: relay ? "relay" : "direct",
         status: errorMessage ? "failed" : "fetched",
-        htmlBytes: html == null ? 0 : new TextEncoder().encode(html).byteLength,
+        htmlBytes,
+        retainedHtmlBytes: html == null ? 0 : htmlBytes,
         activeMs: Date.now() - startedAtMs,
       }),
     );
@@ -758,6 +774,7 @@ export class CrawlScheduler extends DurableObject<Env> {
         {
           continuationDelivery: "return_only",
           initializeOnly: !message.continuation,
+          parseFetchedPage: true,
           requireStagedDetailFetches: Boolean(plugin.capabilities.detailCategoryEvidence),
           // Finalization re-runs the same time-dependent enrichment policy. Handing it the instant
           // the plan was built keeps the two answers identical, so a cache entry expiring during

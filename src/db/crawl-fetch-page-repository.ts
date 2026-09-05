@@ -138,9 +138,13 @@ export async function recordCrawlFetchPageParsed(
     nextPageKey: string | null;
     coverageIncomplete: boolean;
     reachedEnd: boolean;
+    /** Present only when the DO commits a freshly fetched page directly as parsed. */
+    fetched?: { at: string; htmlBytes: number };
   },
 ): Promise<void> {
   const nextSequence = input.currentSequence + 1;
+  const phase = input.fetched ? "fetch" : "parse";
+  const state = input.fetched ? "pending" : "fetched";
   const statements = input.discoveredPages.map((page) =>
     db
       .prepare(`
@@ -150,7 +154,7 @@ export async function recordCrawlFetchPageParsed(
         WHERE EXISTS (
           SELECT 1 FROM crawl_fetch_sessions s
           WHERE s.run_id = ? AND s.status = 'collecting'
-            AND s.continuation_sequence = ? AND s.next_phase = 'parse'
+            AND s.continuation_sequence = ? AND s.next_phase = '${phase}'
             AND s.next_page_key = ?
         )
       `)
@@ -169,12 +173,13 @@ export async function recordCrawlFetchPageParsed(
     db
       .prepare(`
         UPDATE crawl_fetch_pages
-        SET state = 'parsed', products_json = ?, item_count = ?, html_text = NULL, parsed_at = ?
-        WHERE run_id = ? AND page_key = ? AND state = 'fetched'
+        SET state = 'parsed', products_json = ?, item_count = ?, html_text = NULL, parsed_at = ?,
+            fetched_at = COALESCE(?, fetched_at), html_bytes = COALESCE(?, html_bytes)
+        WHERE run_id = ? AND page_key = ? AND state = '${state}'
           AND EXISTS (
             SELECT 1 FROM crawl_fetch_sessions s
             WHERE s.run_id = ? AND s.status = 'collecting'
-              AND s.continuation_sequence = ? AND s.next_phase = 'parse'
+              AND s.continuation_sequence = ? AND s.next_phase = '${phase}'
               AND s.next_page_key = ?
           )
       `)
@@ -182,6 +187,8 @@ export async function recordCrawlFetchPageParsed(
         JSON.stringify(input.products),
         input.products.length,
         input.parsedAt,
+        input.fetched?.at ?? null,
+        input.fetched?.htmlBytes ?? null,
         input.runId,
         input.pageKey,
         input.runId,
@@ -199,7 +206,7 @@ export async function recordCrawlFetchPageParsed(
             AND EXISTS (
               SELECT 1 FROM crawl_fetch_sessions s
               WHERE s.run_id = ? AND s.status = 'collecting'
-                AND s.continuation_sequence = ? AND s.next_phase = 'parse'
+                AND s.continuation_sequence = ? AND s.next_phase = '${phase}'
                 AND s.next_page_key = ?
             )
         `)
@@ -212,11 +219,12 @@ export async function recordCrawlFetchPageParsed(
       .prepare(`
         UPDATE crawl_fetch_sessions
         SET pages_parsed = pages_parsed + 1,
+            pages_fetched = pages_fetched + ?,
             coverage_incomplete = CASE WHEN ? = 1 THEN 1 ELSE coverage_incomplete END,
             reached_end = CASE WHEN ? = 1 THEN 1 ELSE reached_end END,
             last_completed_page = ?, continuation_sequence = ?, next_phase = ?, next_page_key = ?, updated_at = ?
         WHERE run_id = ? AND status = 'collecting' AND continuation_sequence = ?
-          AND next_phase = 'parse' AND next_page_key = ?
+          AND next_phase = '${phase}' AND next_page_key = ?
           AND EXISTS (
             SELECT 1 FROM crawl_fetch_pages p
             WHERE p.run_id = crawl_fetch_sessions.run_id AND p.page_key = ?
@@ -224,6 +232,7 @@ export async function recordCrawlFetchPageParsed(
           )
       `)
       .bind(
+        input.fetched ? 1 : 0,
         input.coverageIncomplete ? 1 : 0,
         input.reachedEnd ? 1 : 0,
         input.pageKey,

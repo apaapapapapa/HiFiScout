@@ -20,6 +20,14 @@
  * plans, crash recovery, run isolation, bounded writes -- be asserted rather than inspected.
  */
 
+import type { DetailCategoryExtractionInput } from "./types.js";
+
+export interface DetailEnrichmentTarget {
+  url: string;
+  /** Absent on plans made before extraction inputs were retained. */
+  product?: DetailCategoryExtractionInput;
+}
+
 /** The Durable Object storage surface this needs, and nothing else. */
 export interface DetailEnrichmentPlanStorage {
   get<T>(key: string): Promise<T | undefined>;
@@ -119,12 +127,14 @@ export interface DetailEnrichmentTargetChunk {
   runId: string;
   chunkIndex: number;
   targets: string[];
+  /** Optional additive field: old releases can still read the URL list on rollback. */
+  products?: (DetailCategoryExtractionInput | null)[];
 }
 
 export interface DetailEnrichmentPlanContext {
   storage: DetailEnrichmentPlanStorage;
   /** The expensive planning pass. Called at most once per run, at the instant it is given. */
-  planTargets(runId: string, decidedAt: Date): Promise<string[]>;
+  planTargets(runId: string, decidedAt: Date): Promise<(string | DetailEnrichmentTarget)[]>;
   /** `crawl_fetch_detail_pages`: whether this run already committed an attempt for the URL. */
   isCommitted(runId: string, targetUrl: string): Promise<boolean>;
   /** Structured logging, shaped by the caller so the DO keeps its own event vocabulary. */
@@ -206,7 +216,7 @@ async function storePlan(
   context: DetailEnrichmentPlanContext,
   input: {
     runId: string;
-    targets: readonly string[];
+    targets: readonly (string | DetailEnrichmentTarget)[];
     cursor: number;
     decidedAt: string;
     supersededChunkCount: number;
@@ -216,10 +226,18 @@ async function storePlan(
   const chunkCount = chunkCountFor(input.targets.length);
   for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
     const offset = chunkIndex * DETAIL_PLAN_CHUNK_SIZE;
+    const targets = input.targets.slice(offset, offset + DETAIL_PLAN_CHUNK_SIZE);
     await context.storage.put<DetailEnrichmentTargetChunk>(detailPlanTargetsKey(chunkIndex), {
       runId: input.runId,
       chunkIndex,
-      targets: input.targets.slice(offset, offset + DETAIL_PLAN_CHUNK_SIZE),
+      targets: targets.map((target) => (typeof target === "string" ? target : target.url)),
+      ...(targets.some((target) => typeof target !== "string")
+        ? {
+            products: targets.map((target) =>
+              typeof target === "string" ? null : (target.product ?? null),
+            ),
+          }
+        : {}),
     });
   }
   // A previous run's plan may have occupied more chunks than this one does. Those records are never
@@ -340,9 +358,16 @@ export async function nextUncommittedDetailTarget(
   context: DetailEnrichmentPlanContext,
   progress: DetailEnrichmentProgress,
 ): Promise<string | null> {
+  return (await nextUncommittedDetailTargetWithInput(context, progress))?.url ?? null;
+}
+
+export async function nextUncommittedDetailTargetWithInput(
+  context: DetailEnrichmentPlanContext,
+  progress: DetailEnrichmentProgress,
+): Promise<DetailEnrichmentTarget | null> {
   let cursor = progress.cursor;
   let skipped = 0;
-  let found: string | null = null;
+  let found: DetailEnrichmentTarget | null = null;
   let loaded: DetailEnrichmentTargetChunk | null = null;
 
   while (cursor < progress.targetCount) {
@@ -356,7 +381,8 @@ export async function nextUncommittedDetailTarget(
       continue;
     }
     if (!(await context.isCommitted(progress.runId, candidate))) {
-      found = candidate;
+      const product = loaded.products?.[cursor % DETAIL_PLAN_CHUNK_SIZE];
+      found = { url: candidate, ...(product ? { product } : {}) };
       break;
     }
     skipped += 1;

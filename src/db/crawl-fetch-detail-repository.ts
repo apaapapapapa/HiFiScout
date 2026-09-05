@@ -1,5 +1,7 @@
 import type { QueryableDatabase } from "./types.js";
 import { firstMeasured } from "./read-accounting.js";
+import type { CategoryEvidenceInput } from "../catalog/types.js";
+import { isRecord } from "../types.js";
 
 const DETAIL_PAGE_KEY_PREFIX = "__hifiscout_category_detail__:";
 
@@ -10,6 +12,8 @@ export interface CrawlFetchDetailPageRow {
   error_message: string | null;
   html_bytes: number;
   fetched_at: string;
+  /** Undefined means a legacy HTML/error row; [] is a committed negative extraction result. */
+  category_evidence?: CategoryEvidenceInput[];
 }
 
 interface DetailStagingRow {
@@ -41,6 +45,29 @@ function stagedErrorMessage(value: string | null): string | null {
   return null;
 }
 
+function stagedCategoryEvidence(value: string | null): CategoryEvidenceInput[] | undefined {
+  if (!value) return undefined;
+  const payload: unknown = JSON.parse(value);
+  if (!isRecord(payload) || payload.kind !== "category_evidence") return undefined;
+  if (payload.version !== 1 || !Array.isArray(payload.evidence)) {
+    throw new Error("invalid staged category evidence");
+  }
+  return payload.evidence.map((item: unknown) => {
+    if (
+      !isRecord(item) ||
+      ["categoryId", "source", "strength", "value"].some(
+        (key) => item[key] !== undefined && typeof item[key] !== "string",
+      ) ||
+      (item.categoryIds !== undefined &&
+        (!Array.isArray(item.categoryIds) ||
+          item.categoryIds.some((id: unknown) => typeof id !== "string")))
+    ) {
+      throw new Error("invalid staged category evidence item");
+    }
+    return item as CategoryEvidenceInput;
+  });
+}
+
 /**
  * Detail responses reuse the existing crawl_fetch_pages staging table. They are terminal `ignored`
  * rows with ordinals appended after the parsed listing frontier, so they cannot participate in page
@@ -70,6 +97,7 @@ export async function getCrawlFetchDetailPage(
     error_message: stagedErrorMessage(staged.products_json),
     html_bytes: Number(staged.html_bytes || 0),
     fetched_at: staged.fetched_at,
+    category_evidence: stagedCategoryEvidence(staged.products_json),
   };
 }
 
@@ -120,14 +148,21 @@ export async function recordCrawlFetchDetailPage(
     html?: string | null;
     errorMessage?: string | null;
     fetchedAt: string;
+    evidence?: readonly CategoryEvidenceInput[];
+    htmlBytes?: number;
   },
 ): Promise<void> {
-  const html = input.html ?? null;
+  const html = input.evidence === undefined ? (input.html ?? null) : null;
   const errorMessage = input.errorMessage?.slice(0, 1000) || null;
-  const htmlBytes = html == null ? 0 : new TextEncoder().encode(html).byteLength;
+  const htmlBytes =
+    input.htmlBytes ?? (html == null ? 0 : new TextEncoder().encode(html).byteLength);
   const pageKey = detailPageKey(input.targetUrl);
   const pageJson = JSON.stringify({ kind: "category_detail", targetUrl: input.targetUrl });
-  const metadataJson = errorMessage ? JSON.stringify({ errorMessage }) : null;
+  const metadataJson = errorMessage
+    ? JSON.stringify({ errorMessage })
+    : input.evidence === undefined
+      ? null
+      : JSON.stringify({ kind: "category_evidence", version: 1, evidence: input.evidence });
 
   await db
     .prepare(`

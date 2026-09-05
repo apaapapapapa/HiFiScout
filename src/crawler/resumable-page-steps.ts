@@ -3,6 +3,7 @@ import {
   decodeCrawlFetchPage,
   getCrawlFetchPage,
   type CrawlFetchPageInput,
+  type CrawlFetchPageRow,
   type CrawlFetchSessionRow,
 } from "../db/crawl-fetch-session-repository.js";
 import {
@@ -13,6 +14,8 @@ import {
   recordCrawlFetchPageParsed,
 } from "../db/crawl-fetch-page-repository.js";
 import { errorMessage } from "../types.js";
+import { createInvocationDeadline } from "../deadline.js";
+import { archiveEvidence } from "../evidence/evidence-archive.js";
 import {
   type ResumableCrawlConsumeOptions,
   type ResumableCrawlConsumeResult,
@@ -79,6 +82,17 @@ export async function processFetch(
 
     const fetchedAt = new Date().toISOString();
     const htmlBytes = new TextEncoder().encode(html).byteLength;
+    if (options.parseFetchedPage) {
+      return parseAndCommitPage(
+        env,
+        plugin,
+        session,
+        body,
+        options,
+        { ...row, html_text: html, html_bytes: htmlBytes, fetched_at: fetchedAt },
+        { at: fetchedAt, htmlBytes },
+      );
+    }
     await recordCrawlFetchPageFetched(env.DB, {
       runId: session.run_id,
       pageKey,
@@ -129,11 +143,50 @@ export async function processParse(
     return continued(env, plugin, body, session.run_id, options);
   }
 
+  return parseAndCommitPage(env, plugin, session, body, options, row);
+}
+
+/** One page of CPU work, followed by one atomic page/frontier/progress commit. */
+async function parseAndCommitPage(
+  env: ResumableRuntimeEnv,
+  plugin: ShopPlugin,
+  session: CrawlFetchSessionRow,
+  body: ResumableCrawlQueueMessage,
+  options: ResumableCrawlConsumeOptions,
+  row: CrawlFetchPageRow,
+  fetched?: { at: string; htmlBytes: number },
+): Promise<ResumableCrawlConsumeResult> {
+  const pageKey = row.page_key;
+  if (row.html_text == null) throw new Error(`crawl page has no parse input: ${pageKey}`);
+
   const page = decodeCrawlFetchPage(row);
   let parsed;
   try {
     parsed = plugin.parseWithStages(row.html_text, page);
   } catch (error) {
+    // One failed page is a useful sample; successful pages are never archived by this path.
+    // Diagnostics must not prevent the terminal state from being persisted.
+    if (env.EVIDENCE_BUCKET) {
+      await createInvocationDeadline(getCrawlerSettings(env).terminalBudgetMs)
+        .guard("crawl_parser_evidence", () =>
+          archiveEvidence({
+            env,
+            shopKey: plugin.key,
+            reason: "parser_failure",
+            html: row.html_text ?? undefined,
+            capturedAt: row.fetched_at ?? new Date().toISOString(),
+          }),
+        )
+        .catch((archiveError: unknown) =>
+          console.warn(
+            JSON.stringify({
+              event: "crawl_parser_evidence_failed",
+              runId: session.run_id,
+              message: errorMessage(archiveError),
+            }),
+          ),
+        );
+    }
     return failCollection(env, plugin, session.run_id, error);
   }
   const products = parsed.products;
@@ -191,6 +244,7 @@ export async function processParse(
     nextPageKey,
     coverageIncomplete,
     reachedEnd,
+    fetched,
   });
   console.log(
     JSON.stringify({
@@ -200,6 +254,8 @@ export async function processParse(
       page: row.ordinal,
       pageKey,
       htmlBytes: row.html_bytes,
+      fetchedInline: Boolean(fetched),
+      retainedHtmlBytes: 0,
       itemCount: products.length,
       parseMs,
       rawParseMs: parsed.rawParseMs,

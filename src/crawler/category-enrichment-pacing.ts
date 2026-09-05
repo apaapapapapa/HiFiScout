@@ -9,6 +9,7 @@ import {
 } from "../db/read-accounting.js";
 import type { QueryableDatabase } from "../db/types.js";
 import { enrichProductCategories } from "./category-enricher.js";
+import type { DetailEnrichmentTarget } from "./detail-enrichment-plan.js";
 import type { CrawlerEnv, ShopPlugin } from "./types.js";
 
 type RuntimeEnv = CrawlerEnv & { DB: QueryableDatabase };
@@ -31,6 +32,7 @@ export interface DetailPlanningDbMetrics {
 
 export interface StagedCategoryDetailPlan {
   targets: string[];
+  extractionTargets: DetailEnrichmentTarget[];
   stagedCount: number;
   unresolvedCount: number;
   dbUsage: DetailPlanningDbMetrics;
@@ -90,6 +92,7 @@ export async function planStagedCategoryDetailFetchesWithDbUsage(
   const stagedAccounting = accountReads(env.DB);
   const noPlan = (stagedCount: number, unresolvedCount: number): StagedCategoryDetailPlan => ({
     targets: [],
+    extractionTargets: [],
     stagedCount,
     unresolvedCount,
     dbUsage: planningDbMetrics(
@@ -109,19 +112,23 @@ export async function planStagedCategoryDetailFetchesWithDbUsage(
   });
   const settings = getCrawlerSettings(env);
   const requestDelayMs = getShopRequestDelayMs(env, plugin.definition, settings.requestDelayMs);
-  const targets: string[] = [];
+  const extractionTargets = new Map<string, DetailEnrichmentTarget>();
 
   const enrichment = await enrichProductCategories({
     db: env.DB,
     adapter: plugin,
     products,
     transport: {
-      fetchHtmlPage: async (url: string) => {
-        targets.push(url);
-        // Planning must not manufacture evidence. The extractor receives an empty document and the
-        // result is discarded; only the exact target selection performed above is retained.
-        return "";
+      fetchHtmlPage: async () => {
+        throw new Error("detail planning cannot fetch seller HTML");
       },
+    },
+    loadDetailEvidence: async (product) => {
+      extractionTargets.set(product.sourceUrl, {
+        url: product.sourceUrl,
+        product: { sourceId: product.sourceId, model: product.model, title: product.title },
+      });
+      return [];
     },
     fetchOptions: {
       baseUrl: plugin.baseUrl,
@@ -134,7 +141,8 @@ export async function planStagedCategoryDetailFetchesWithDbUsage(
   });
 
   return {
-    targets: [...new Set(targets)],
+    targets: [...extractionTargets.keys()],
+    extractionTargets: [...extractionTargets.values()],
     stagedCount: staged.length,
     unresolvedCount: enrichment.unresolvedCount,
     dbUsage: planningDbMetrics(
@@ -152,6 +160,17 @@ export async function planStagedCategoryDetailFetches(
   runId: string,
   now = new Date(),
 ): Promise<string[]> {
+  return (await planStagedCategoryDetailInputs(env, plugin, runId, now)).map(
+    (target) => target.url,
+  );
+}
+
+export async function planStagedCategoryDetailInputs(
+  env: RuntimeEnv,
+  plugin: ShopPlugin,
+  runId: string,
+  now = new Date(),
+): Promise<DetailEnrichmentTarget[]> {
   const plan = await planStagedCategoryDetailFetchesWithDbUsage(env, plugin, runId, now);
   console.log(
     JSON.stringify({
@@ -165,5 +184,5 @@ export async function planStagedCategoryDetailFetches(
       planningDurationMs: plan.dbUsage.durationMs,
     }),
   );
-  return plan.targets;
+  return plan.extractionTargets;
 }
