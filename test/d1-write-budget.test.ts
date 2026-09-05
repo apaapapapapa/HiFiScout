@@ -13,6 +13,17 @@ import { refreshKnowledgeCatalogCandidates } from "../src/db/knowledge-catalog-r
 import { accountReads } from "../src/db/read-accounting.js";
 import { asQueryableDatabase } from "./helpers/d1.js";
 import { detailFetchOptions } from "./helpers/fixtures.js";
+import {
+  readCollectionSession,
+  type CollectionProgressState,
+} from "../src/crawler/collection-progress.js";
+import { processFetch, processParse } from "../src/crawler/resumable-page-steps.js";
+import { getShopPlugin } from "../src/crawler/shops/index.js";
+import type { ResumableRuntimeEnv } from "../src/crawler/resumable-queue-contract.js";
+import {
+  ensureCrawlFetchSession,
+  getCrawlFetchSession,
+} from "../src/db/crawl-fetch-session-repository.js";
 
 const AT = "2026-09-05T00:00:00.000Z";
 const NEXT = "2026-09-05T01:00:00.000Z";
@@ -57,6 +68,70 @@ const listing = (sourceId: string) =>
     stockStatus: "in_stock",
     sourceUrl: `https://example.test/${sourceId}`,
   });
+
+test("DO collection progress removes four billed D1 writes per nonempty page with one final checkpoint", async () => {
+  const { db, dispose } = await database();
+  try {
+    const plugin = getShopPlugin("home-shokai")!;
+    const pageCount = 10;
+    const totals = new Map<string, number>();
+    for (const mode of ["d1", "durable_object"] as const) {
+      const measured = accountReads(db);
+      const env = {
+        DB: measured.db,
+        HOME_SHOKAI_REQUEST_DELAY_MS: "0",
+      } as unknown as ResumableRuntimeEnv;
+      const body = {
+        shopKey: plugin.key,
+        force: true,
+        requestedAt: mode === "d1" ? AT : NEXT,
+        collectionRunId: `budget:${mode}`,
+      };
+      const state: CollectionProgressState | undefined =
+        mode === "durable_object" ? { value: null } : undefined;
+      await ensureCrawlFetchSession(measured.db, {
+        runId: body.collectionRunId,
+        shopKey: plugin.key,
+        requestedAt: body.requestedAt,
+        createdAt: AT,
+        progressStorage: mode,
+        maxPages: pageCount,
+        pageLimit: pageCount,
+        pages: Array.from({ length: pageCount }, (_, ordinal) => ({
+          key: `https://www.homeshokai.jp/itemlist.php?a=${ordinal + 2}`,
+          page: `https://www.homeshokai.jp/itemlist.php?a=${ordinal + 2}`,
+          ordinal,
+        })),
+      });
+      for (let page = 0; page < pageCount; page += 1) {
+        for (const step of [processFetch, processParse]) {
+          const session = await readCollectionSession(measured.db, body.collectionRunId, state);
+          assert.ok(session);
+          await step(env, plugin, session, body, {
+            collectionProgress: state,
+            fetchHtmlPage: async () =>
+              '<a href="/item.php?z=1001">LUXMAN プリメインアンプ L-505 〇委託販売品 ￥250,000 -</a>',
+          });
+        }
+      }
+      const checkpoint = await getCrawlFetchSession(db, body.collectionRunId);
+      assert.equal(checkpoint?.pages_fetched, pageCount);
+      assert.equal(checkpoint?.pages_parsed, pageCount);
+      assert.equal(checkpoint?.next_phase, "finalize");
+      const count = await db
+        .prepare("SELECT SUM(item_count) n FROM crawl_fetch_pages WHERE run_id=?")
+        .bind(body.collectionRunId)
+        .first("n");
+      assert.equal(count, pageCount, "fixture must exercise the nonempty-page index");
+      assert.ok(measured.rowsRead() < 750, `collection read ${measured.rowsRead()} rows`);
+      totals.set(mode, measured.rowsWritten());
+    }
+    assert.equal(totals.get("d1"), 4 + 13 * pageCount);
+    assert.equal(totals.get("durable_object"), 4 + 9 * pageCount + 2);
+  } finally {
+    await dispose();
+  }
+}, 30_000);
 
 test("D1 bills zero for unchanged catalog decisions, search replay and candidate refresh", async () => {
   const { db, dispose } = await database();
