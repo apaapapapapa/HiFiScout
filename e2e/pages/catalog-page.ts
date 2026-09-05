@@ -78,7 +78,7 @@ export class CatalogPage {
   }
 
   productTitle(name: string): Locator {
-    return this.page.getByRole("link", { name });
+    return this.page.locator(".product-title-link").filter({ hasText: name });
   }
 
   productTitleControl(): Locator {

@@ -1,3 +1,4 @@
+import { SHOP_DEFINITIONS } from "../config.js";
 import { canonicalCategoryDefinitions, getCategory } from "../catalog/categories.js";
 import type { CategoryDefinition } from "../catalog/types.js";
 import type { CatalogAdminProductExportScope, CatalogAdminRpc } from "./contracts.js";
@@ -253,7 +254,10 @@ export async function handleAuthenticatedCatalogAdminRequest(
   const url = new URL(request.url);
 
   if (request.method === "GET" && url.pathname === "/api/meta") {
-    return json({ categoryFacets: categoryFacets() });
+    return json({
+      categoryFacets: categoryFacets(),
+      shops: Object.values(SHOP_DEFINITIONS).map(({ key, name }) => ({ key, name })),
+    });
   }
   if (request.method === "POST" && url.pathname === CATALOG_EXPORT_COLLECTION_PATH) {
     if (!isJsonRequest(request)) {

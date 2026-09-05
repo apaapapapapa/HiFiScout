@@ -41,7 +41,8 @@ test("the public catalog mounts through the native React entrypoint", async () =
   assert.match(viteConfig, /"app\.js"/u);
   assert.ok(packageJson.dependencies?.react);
   assert.ok(packageJson.dependencies?.["react-dom"]);
-  assert.match(entrySource, /import "\.\/public-app\.js";/u);
+  assert.match(entrySource, /import \{ mountPublicApp \} from "\.\/public-app\.js";/u);
+  assert.match(entrySource, /mountPublicApp\(\);/u);
 
   const publicUiSource = `${entrySource}\n${appSource}\n${componentSource}`;
   assert.doesNotMatch(

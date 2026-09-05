@@ -14,7 +14,6 @@ import {
 } from "./api-client.js";
 import { sanitizedCatalogUrl } from "./catalog-url-sanitizer.js";
 import {
-  DEFAULT_SORT,
   activeFilterEntries,
   facetFromFilterId,
   facetSelectionKey,
@@ -45,6 +44,16 @@ import {
   ProductError,
   SyncShopRows,
 } from "./public-components.js";
+import {
+  clearedFilters,
+  normalizedPriceFilters,
+  normalizePrice,
+  priceErrors,
+  readPreference,
+  savePreference,
+} from "./public-ui-state.js";
+import { useFilterSheet } from "./use-filter-sheet.js";
+import { FeedSubscription } from "./feed-subscription.js";
 import { SearchSuggestionInput } from "./search-suggestion-input.js";
 import { sortShopsByJapaneseReading } from "./shop-options.js";
 import { FACET_DEFINITIONS, FEATURE_DEFINITIONS } from "../src/api/contracts.js";
@@ -58,9 +67,8 @@ import type {
 } from "./types.js";
 
 const VIEW_KEY = "hifiscout:view";
-const MOBILE_QUERY = "(max-width: 640px)";
+const MOBILE_QUERY = "(max-width: 1100px)";
 const DEBOUNCE_MS = 400;
-const api = createApiClient();
 
 type OffersState =
   | { kind: "loading" }
@@ -76,7 +84,7 @@ type HistoryState =
 function initialView(): ProductView {
   const parsed = parseUrlFilters(location.search);
   if (parsed.view) return parsed.view;
-  return localStorage.getItem(VIEW_KEY) === "cards" ? "cards" : "list";
+  return readPreference(VIEW_KEY) === "cards" ? "cards" : "list";
 }
 
 function filtersFromLocation(favoritesOnly = false): ProductFilters {
@@ -97,10 +105,42 @@ function sanitizeAddressBar(): void {
   if (nextUrl) history.replaceState(null, "", nextUrl);
 }
 
-sanitizeAddressBar();
-
 function cloneFavorites(store: FavoriteStore): FavoriteStore {
   return { products: new Map(store.products), legacyIds: new Set(store.legacyIds) };
+}
+
+function QuickFilters({
+  filters,
+  favoriteCount,
+  onChange,
+  prefix = "",
+}: {
+  filters: ProductFilters;
+  favoriteCount: number;
+  onChange: (id: ToggleId, checked: boolean) => void;
+  prefix?: string;
+}) {
+  const options: [ToggleId, string][] = [
+    ["inStock", "在庫ありのみ"],
+    ["recentOnly", "48時間以内の新着"],
+    ["priceDropped", "値下げ商品"],
+    ["favoritesOnly", `お気に入りのみ (${favoriteCount})`],
+  ];
+  return (
+    <div className="quick-filters" role="group" aria-label="よく使う絞り込み">
+      {options.map(([id, label]) => (
+        <label className="check" key={id}>
+          <input
+            id={`${prefix}${id}`}
+            type="checkbox"
+            checked={filters[id]}
+            onChange={(event) => onChange(id, event.currentTarget.checked)}
+          />
+          <span>{label}</span>
+        </label>
+      ))}
+    </div>
+  );
 }
 
 interface FilterPanelProps {
@@ -108,6 +148,8 @@ interface FilterPanelProps {
   meta: MetaResponse | null;
   favoriteCount: number;
   open: boolean;
+  isMobile: boolean;
+  onApply: () => void;
   onValueChange: (id: UrlValueId, value: string, debounced?: boolean) => void;
   onToggleChange: (id: ToggleId, checked: boolean) => void;
   onFeatureChange: (feature: FeatureId, checked: boolean) => void;
@@ -121,6 +163,8 @@ function FilterPanel({
   meta,
   favoriteCount,
   open,
+  isMobile,
+  onApply,
   onValueChange,
   onToggleChange,
   onFeatureChange,
@@ -149,12 +193,8 @@ function FilterPanel({
     ]),
   );
 
-  useEffect(() => {
-    if (!panelRef.current) return;
-    const mobile = window.matchMedia(MOBILE_QUERY).matches;
-    panelRef.current.inert = mobile && !open;
-    if (open) panelRef.current.querySelector<HTMLElement>("#filter-close")?.focus();
-  }, [open]);
+  useFilterSheet(panelRef, open, isMobile, onClose);
+  const errors = priceErrors(filters);
 
   return (
     <>
@@ -164,6 +204,8 @@ function FilterPanel({
         id="filter-panel"
         className={`filters${open ? " open" : ""}`}
         aria-label="絞り込み条件"
+        role={isMobile ? "dialog" : undefined}
+        aria-modal={isMobile && open ? true : undefined}
       >
         <div className="filters-head">
           <strong>絞り込み</strong>
@@ -231,115 +273,115 @@ function FilterPanel({
           </select>
         </label>
         <label>
-          <span>最低価格</span>
+          <span>最低価格（円）</span>
           <input
             id="minPrice"
             inputMode="numeric"
             placeholder="0"
+            aria-invalid={!!errors.minPrice}
+            aria-describedby="price-help price-error"
             value={filters.minPrice}
             onChange={(event) => onValueChange("minPrice", event.currentTarget.value, true)}
           />
         </label>
         <label>
-          <span>最高価格</span>
+          <span>最高価格（円）</span>
           <input
             id="maxPrice"
             inputMode="numeric"
-            placeholder="1000000"
+            placeholder="1,000,000"
+            aria-invalid={!!errors.maxPrice}
+            aria-describedby="price-help price-error"
             value={filters.maxPrice}
             onChange={(event) => onValueChange("maxPrice", event.currentTarget.value, true)}
           />
         </label>
-        {/*
+        <p id="price-help" className="filter-note">
+          円単位・上限なしは空欄。
+          {["minPrice", "maxPrice"]
+            .map((id) => {
+              const value = normalizePrice(filters[id as "minPrice" | "maxPrice"]);
+              return value ? Number(value).toLocaleString("ja-JP") + "円" : "指定なし";
+            })
+            .join(" 〜 ")}
+        </p>
+        <p id="price-error" className="field-error" role="status">
+          {Object.values(errors).join(" ")}
+        </p>
+        <details
+          className="advanced-filters"
+          open={filters.features.length > 0 || filters.facets.length > 0 ? true : undefined}
+        >
+          <summary>機能・仕様で詳しく絞り込む</summary>
+          {/*
           Feature matching is a server-side predicate over stored facts. Favorites are matched
           locally against snapshots that carry none, so the control is disabled there rather than
           left to look applied while the results ignore it. The selection itself survives.
         */}
-        <fieldset className="filter-features" disabled={filters.favoritesOnly}>
-          <legend>機能</legend>
-          {FEATURE_DEFINITIONS.map((feature) => (
-            <label className="check" key={feature.id}>
-              <input
-                id={`feature-${feature.id}`}
-                type="checkbox"
-                checked={filters.features.includes(feature.id)}
-                onChange={(event) => onFeatureChange(feature.id, event.currentTarget.checked)}
-              />
-              <span>{feature.name}</span>
-            </label>
-          ))}
-          {filters.favoritesOnly ? (
-            <p className="filter-note">お気に入り表示中は機能で絞り込めません</p>
-          ) : null}
-        </fieldset>
-        {visibleFacets.map((facet) => (
-          <fieldset className="filter-features" disabled={filters.favoritesOnly} key={facet.id}>
-            <legend>{facet.name}</legend>
-            {facet.values.map((value) => {
-              const selection: FacetSelection = { facetId: facet.id, value: value.id };
-              const key = facetSelectionKey(selection);
-              const count = facetCounts.get(key);
-              return (
-                <label className="check" key={key}>
-                  <input
-                    id={`facet-${facet.id}-${value.id}`}
-                    type="checkbox"
-                    checked={filters.facets.some((selected) => facetSelectionKey(selected) === key)}
-                    onChange={(event) => onFacetChange(selection, event.currentTarget.checked)}
-                  />
-                  <span>
-                    {value.name}
-                    {isNonNegativeInteger(count) ? ` (${count})` : ""}
-                  </span>
-                </label>
-              );
-            })}
+          <fieldset className="filter-features" disabled={filters.favoritesOnly}>
+            <legend>機能</legend>
+            {FEATURE_DEFINITIONS.map((feature) => (
+              <label className="check" key={feature.id}>
+                <input
+                  id={`feature-${feature.id}`}
+                  type="checkbox"
+                  checked={filters.features.includes(feature.id)}
+                  onChange={(event) => onFeatureChange(feature.id, event.currentTarget.checked)}
+                />
+                <span>{feature.name}</span>
+              </label>
+            ))}
+            {filters.favoritesOnly ? (
+              <p className="filter-note">お気に入り表示中は機能で絞り込めません</p>
+            ) : null}
           </fieldset>
-        ))}
-        <label className="check">
-          <input
-            id="inStock"
-            type="checkbox"
-            checked={filters.inStock}
-            onChange={(event) => onToggleChange("inStock", event.currentTarget.checked)}
+          {visibleFacets.map((facet) => (
+            <fieldset className="filter-features" disabled={filters.favoritesOnly} key={facet.id}>
+              <legend>{facet.name}</legend>
+              {facet.values.map((value) => {
+                const selection: FacetSelection = { facetId: facet.id, value: value.id };
+                const key = facetSelectionKey(selection);
+                const count = facetCounts.get(key);
+                return (
+                  <label className="check" key={key}>
+                    <input
+                      id={`facet-${facet.id}-${value.id}`}
+                      type="checkbox"
+                      checked={filters.facets.some(
+                        (selected) => facetSelectionKey(selected) === key,
+                      )}
+                      onChange={(event) => onFacetChange(selection, event.currentTarget.checked)}
+                    />
+                    <span>
+                      {value.name}
+                      {isNonNegativeInteger(count) ? ` (${count})` : ""}
+                    </span>
+                  </label>
+                );
+              })}
+            </fieldset>
+          ))}
+        </details>
+        {isMobile ? (
+          <QuickFilters
+            filters={filters}
+            favoriteCount={favoriteCount}
+            onChange={onToggleChange}
+            prefix="sheet-"
           />
-          <span>在庫ありのみ</span>
-        </label>
-        <label className="check">
-          <input
-            id="recentOnly"
-            type="checkbox"
-            checked={filters.recentOnly}
-            onChange={(event) => onToggleChange("recentOnly", event.currentTarget.checked)}
-          />
-          <span>48時間以内の新着</span>
-        </label>
-        <label className="check">
-          <input
-            id="priceDropped"
-            type="checkbox"
-            checked={filters.priceDropped}
-            onChange={(event) => onToggleChange("priceDropped", event.currentTarget.checked)}
-          />
-          <span>値下げ商品</span>
-        </label>
-        <label className="check">
-          <input
-            id="favoritesOnly"
-            type="checkbox"
-            checked={filters.favoritesOnly}
-            onChange={(event) => onToggleChange("favoritesOnly", event.currentTarget.checked)}
-          />
-          <span>
-            お気に入りのみ <small id="favorites-count">({favoriteCount})</small>
-          </span>
-        </label>
+        ) : null}
         <div className="filter-actions">
           <button id="clear-filters" className="button-secondary" type="button" onClick={onClear}>
             すべて解除
           </button>
-          <button id="apply-filters" className="button-primary" type="button" onClick={onClose}>
-            結果を見る
+          <button
+            id="apply-filters"
+            className="button-primary"
+            type="button"
+            disabled={Object.keys(errors).length > 0}
+            onClick={onApply}
+          >
+            条件を適用して結果を見る
           </button>
         </div>
       </section>
@@ -347,7 +389,7 @@ function FilterPanel({
   );
 }
 
-function SyncStatus({ meta }: { meta: MetaResponse | null }) {
+function SyncStatus({ meta, failed }: { meta: MetaResponse | null; failed: boolean }) {
   const detailsRef = useRef<HTMLDetailsElement>(null);
   const sync = meta ? syncStatusSummary(meta) : null;
   return (
@@ -358,16 +400,22 @@ function SyncStatus({ meta }: { meta: MetaResponse | null }) {
     >
       <summary>
         <span className="sync-indicator" aria-hidden="true" />
-        <span id="sync-summary-text">{sync?.summary ?? "同期状況を取得中…"}</span>
+        <span id="sync-summary-text">
+          {sync?.summary ?? (failed ? "同期状況を取得できませんでした" : "同期状況を取得中…")}
+        </span>
         <span
           aria-hidden="true"
-          style={{ fontSize: 10, fontWeight: 600, color: "#8a867e", whiteSpace: "nowrap" }}
+          style={{ fontSize: 12, fontWeight: 600, color: "#555", whiteSpace: "nowrap" }}
         >
           詳細 ▾
         </span>
       </summary>
       <div id="sync-status-details" className="sync-status-details">
-        <SyncShopRows meta={meta} />
+        {failed && !meta ? (
+          <p>一覧の「再読み込み」から再取得できます。</p>
+        ) : (
+          <SyncShopRows meta={meta} />
+        )}
       </div>
       <button
         id="sync-status-close"
@@ -402,16 +450,18 @@ function SyncStatus({ meta }: { meta: MetaResponse | null }) {
   );
 }
 
-function App() {
+export function PublicApp() {
+  const [api] = useState(() => createApiClient());
   const [filters, setFilters] = useState<ProductFilters>(() => filtersFromLocation());
   const filtersRef = useRef(filters);
+  const [appliedFilters, setAppliedFilters] = useState(filters);
   const [view, setView] = useState<ProductView>(initialView);
   const viewRef = useRef(view);
   const [meta, setMeta] = useState<MetaResponse | null>(null);
   const [shops, setShops] = useState<ShopIndex>({});
   const [products, setProducts] = useState<DisplayProduct[]>([]);
   const [favorites, setFavorites] = useState<FavoriteStore>(() =>
-    parseFavoriteStorage(localStorage.getItem(FAVORITES_KEY), isProductSearchItem),
+    parseFavoriteStorage(readPreference(FAVORITES_KEY), isProductSearchItem),
   );
   const favoritesRef = useRef(favorites);
   const pagesRef = useRef(new Map<number, PageState>());
@@ -420,6 +470,15 @@ function App() {
   const [totalPages, setTotalPages] = useState(0);
   const totalPagesRef = useRef(0);
   const [loading, setLoading] = useState(false);
+  const [initialization, setInitialization] = useState<"loading" | "ready" | "error">("loading");
+  const [initAttempt, setInitAttempt] = useState(0);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [draftFilters, setDraftFilters] = useState<ProductFilters | null>(null);
+  const [notice, setNotice] = useState<{ text: string; undo?: () => void; error?: boolean } | null>(
+    null,
+  );
+  const offersTargetRef = useRef<string | null>(null);
+  const historyTargetRef = useRef<number | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(() => window.matchMedia(MOBILE_QUERY).matches);
@@ -435,7 +494,7 @@ function App() {
 
   const shopName = useCallback((key: string) => shops[key]?.name || key || "ショップ不明", [shops]);
   const favoriteCount = favorites.products.size + favorites.legacyIds.size;
-  const feedPath = useMemo(() => savedSearchFeedPath(filters), [filters]);
+  const feedPath = useMemo(() => savedSearchFeedPath(appliedFilters), [appliedFilters]);
 
   const selectedCategoryLabel = useMemo(() => {
     if (!filters.category || !meta) return "";
@@ -447,13 +506,16 @@ function App() {
   }, [filters.category, meta]);
 
   const persistFavorites = useCallback((next: FavoriteStore) => {
+    if (!savePreference(FAVORITES_KEY, JSON.stringify(favoriteStoragePayload(next)))) {
+      setNotice({
+        text: "お気に入りを保存できませんでした。ブラウザーの保存容量・設定を確認して、もう一度お試しください。",
+        error: true,
+      });
+      return false;
+    }
     favoritesRef.current = next;
     setFavorites(next);
-    try {
-      localStorage.setItem(FAVORITES_KEY, JSON.stringify(favoriteStoragePayload(next)));
-    } catch (error) {
-      console.error("Failed to save favorites", error);
-    }
+    return true;
   }, []);
 
   const refreshFavoriteSnapshots = useCallback(
@@ -473,7 +535,9 @@ function App() {
   const syncUrl = useCallback(
     (nextFilters: ProductFilters, nextView: ProductView, replace = false) => {
       if (!bootedRef.current) return;
-      const nextSearch = filterUrlParams(nextFilters, nextView).toString();
+      const normalized = normalizedPriceFilters(nextFilters);
+      if (!normalized) return;
+      const nextSearch = filterUrlParams(normalized, nextView).toString();
       const next = `${location.pathname}${nextSearch ? `?${nextSearch}` : ""}${location.hash}`;
       const current = `${location.pathname}${location.search}${location.hash}`;
       if (next === current) return;
@@ -489,20 +553,33 @@ function App() {
     totalPagesRef.current = 0;
     setCurrentPage(1);
     setTotalPages(0);
-    setProducts([]);
   }, []);
 
   const loadProducts = useCallback(
     async (
       nextFilters: ProductFilters,
-      { page = 1, reset = false }: { page?: number; reset?: boolean } = {},
+      {
+        page = 1,
+        reset = false,
+        refresh = false,
+      }: { page?: number; reset?: boolean; refresh?: boolean } = {},
     ) => {
+      const normalized = normalizedPriceFilters(nextFilters);
+      if (!normalized) {
+        controllerRef.current?.abort();
+        requestSequenceRef.current++;
+        setLoading(false);
+        return;
+      }
+      setAppliedFilters(normalized);
       if (nextFilters.favoritesOnly) {
         controllerRef.current?.abort();
+        requestSequenceRef.current++;
         setLoading(false);
         setErrorMessage("");
         return;
       }
+      if (!bootedRef.current) return;
       if (reset) resetPages();
       if (!reset && totalPagesRef.current > 0 && page > totalPagesRef.current) return;
 
@@ -523,7 +600,7 @@ function App() {
       const controller = new AbortController();
       controllerRef.current = controller;
       const sequence = ++requestSequenceRef.current;
-      const params = productSearchParams(nextFilters, {
+      const params = productSearchParams(normalized, {
         cursor,
         page: cursor ? 1 : page,
         includeTotal: totalPagesRef.current === 0,
@@ -534,6 +611,7 @@ function App() {
       try {
         const result = await api.fetchJson(`/api/product-search?${params}`, {
           signal: controller.signal,
+          refresh,
         });
         if (sequence !== requestSequenceRef.current) return;
         if (!isProductsResponse(result))
@@ -551,18 +629,19 @@ function App() {
         currentPageRef.current = page;
         setCurrentPage(page);
         setProducts(pageState.items);
+        setHasLoaded(true);
         refreshFavoriteSnapshots(pageState.items);
       } catch (error) {
+        if (sequence !== requestSequenceRef.current) return;
         if (!(error instanceof Error) || error.name !== "AbortError") {
           console.error(error);
-          if (page === 1) resetPages();
           setErrorMessage("商品の取得に失敗しました。");
         }
       } finally {
         if (sequence === requestSequenceRef.current) setLoading(false);
       }
     },
-    [refreshFavoriteSnapshots, resetPages],
+    [api, refreshFavoriteSnapshots, resetPages],
   );
 
   const commitFilters = useCallback(
@@ -607,29 +686,6 @@ function App() {
     [commitFilters],
   );
 
-  const changeFeature = useCallback(
-    (feature: FeatureId, checked: boolean) => {
-      const current = filtersRef.current.features;
-      const features = checked
-        ? [...new Set([...current, feature])]
-        : current.filter((selected) => selected !== feature);
-      commitFilters({ ...filtersRef.current, features });
-    },
-    [commitFilters],
-  );
-
-  const changeFacet = useCallback(
-    (facet: FacetSelection, checked: boolean) => {
-      const key = facetSelectionKey(facet);
-      const current = filtersRef.current.facets;
-      const facets = checked
-        ? [...new Map([...current, facet].map((item) => [facetSelectionKey(item), item])).values()]
-        : current.filter((selected) => facetSelectionKey(selected) !== key);
-      commitFilters({ ...filtersRef.current, facets });
-    },
-    [commitFilters],
-  );
-
   const clearFilter = useCallback(
     (id: string) => {
       const next = { ...filtersRef.current };
@@ -660,65 +716,82 @@ function App() {
     [commitFilters],
   );
 
-  const clearAllFilters = useCallback(() => {
-    const next: ProductFilters = {
-      q: "",
-      shop: "",
-      manufacturer: "",
-      category: "",
-      minPrice: "",
-      maxPrice: "",
-      sort: filtersRef.current.sort || DEFAULT_SORT,
-      features: [],
-      facets: [],
-      inStock: false,
-      favoritesOnly: false,
-      recentOnly: false,
-      priceDropped: false,
-    };
+  const closeFilters = useCallback(() => {
     setFilterOpen(false);
-    commitFilters(next);
-  }, [commitFilters]);
+    setDraftFilters(null);
+  }, []);
+  const clearAllFilters = useCallback(() => {
+    closeFilters();
+    commitFilters(clearedFilters(filtersRef.current));
+  }, [closeFilters, commitFilters]);
+  const changePanelFilters = (next: ProductFilters) => {
+    if (isMobile && filterOpen) setDraftFilters(next);
+    else commitFilters(next);
+  };
+  const panelFilters = draftFilters ?? filters;
 
   const toggleFavorite = useCallback(
     (key: string) => {
       const next = cloneFavorites(favoritesRef.current);
-      if (next.products.has(key)) next.products.delete(key);
+      const removed = next.products.get(key);
+      if (removed) next.products.delete(key);
       else {
-        const product =
-          products.find((candidate) => candidate.key === key) ??
-          favoritesRef.current.products.get(key);
-        if (product) next.products.set(product.key, favoriteSnapshot(product));
+        const product = products.find((candidate) => candidate.key === key);
+        if (!product) return;
+        next.products.set(product.key, favoriteSnapshot(product));
       }
-      persistFavorites(next);
+      if (!persistFavorites(next)) return;
+      setNotice(
+        removed
+          ? {
+              text: "お気に入りから削除しました。",
+              undo: () => {
+                const restored = cloneFavorites(favoritesRef.current);
+                restored.products.set(key, removed);
+                if (persistFavorites(restored)) setNotice({ text: "お気に入りに戻しました。" });
+              },
+            }
+          : { text: "お気に入りに追加しました。この端末のブラウザーに保存されます。" },
+      );
     },
     [persistFavorites, products],
   );
 
-  const showOffers = useCallback(async (key: string) => {
-    setOffersState({ kind: "loading" });
-    try {
-      const data = await api.fetchJson(`/api/product-search/${encodeURIComponent(key)}`);
-      if (!isProductDetailResponse(data)) throw new TypeError("Unexpected product detail payload");
-      setOffersState({ kind: "ready", data });
-    } catch (error) {
-      console.error(error);
-      setOffersState({ kind: "error" });
-    }
-  }, []);
+  const showOffers = useCallback(
+    async (key: string, refresh = false) => {
+      offersTargetRef.current = key;
+      setOffersState({ kind: "loading" });
+      try {
+        const data = await api.fetchJson(`/api/product-search/${encodeURIComponent(key)}`, {
+          refresh,
+        });
+        if (!isProductDetailResponse(data))
+          throw new TypeError("Unexpected product detail payload");
+        if (offersTargetRef.current === key) setOffersState({ kind: "ready", data });
+      } catch (error) {
+        console.error(error);
+        if (offersTargetRef.current === key) setOffersState({ kind: "error" });
+      }
+    },
+    [api],
+  );
 
-  const showHistory = useCallback(async (listingId: number) => {
-    setHistoryState({ kind: "loading" });
-    try {
-      const data = await api.fetchJson(`/api/products/${listingId}/history`);
-      if (!isProductHistoryResponse(data))
-        throw new TypeError("Unexpected product history payload");
-      setHistoryState({ kind: "ready", data });
-    } catch (error) {
-      console.error(error);
-      setHistoryState({ kind: "error" });
-    }
-  }, []);
+  const showHistory = useCallback(
+    async (listingId: number, refresh = false) => {
+      historyTargetRef.current = listingId;
+      setHistoryState({ kind: "loading" });
+      try {
+        const data = await api.fetchJson(`/api/products/${listingId}/history`, { refresh });
+        if (!isProductHistoryResponse(data))
+          throw new TypeError("Unexpected product history payload");
+        if (historyTargetRef.current === listingId) setHistoryState({ kind: "ready", data });
+      } catch (error) {
+        console.error(error);
+        if (historyTargetRef.current === listingId) setHistoryState({ kind: "error" });
+      }
+    },
+    [api],
+  );
 
   useEffect(() => {
     if (offersState !== null && offersDialogRef.current && !offersDialogRef.current.open)
@@ -738,11 +811,11 @@ function App() {
     const query = window.matchMedia(MOBILE_QUERY);
     const update = () => {
       setIsMobile(query.matches);
-      if (!query.matches) setFilterOpen(false);
+      if (!query.matches) closeFilters();
     };
     query.addEventListener("change", update);
     return () => query.removeEventListener("change", update);
-  }, []);
+  }, [closeFilters]);
 
   useEffect(() => {
     document.body.classList.toggle("filters-open", isMobile && filterOpen);
@@ -750,15 +823,8 @@ function App() {
   }, [filterOpen, isMobile]);
 
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && filterOpen) setFilterOpen(false);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [filterOpen]);
-
-  useEffect(() => {
     const onPopState = () => {
+      closeFilters();
       const next = filtersFromLocation(filtersRef.current.favoritesOnly);
       const parsed = parseUrlFilters(location.search);
       const nextView = parsed.view ?? viewRef.current;
@@ -766,18 +832,25 @@ function App() {
       setFilters(next);
       viewRef.current = nextView;
       setView(nextView);
-      localStorage.setItem(VIEW_KEY, nextView);
+      savePreference(VIEW_KEY, nextView);
       void loadProducts(next, { reset: true });
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, [loadProducts]);
+  }, [loadProducts, closeFilters]);
 
   useEffect(() => {
     let cancelled = false;
+    const initController = new AbortController();
+    bootedRef.current = false;
+    setInitialization("loading");
+    setErrorMessage("");
     void (async () => {
       try {
-        const result = await api.fetchJson("/api/meta");
+        const result = await api.fetchJson("/api/meta", {
+          signal: initController.signal,
+          refresh: initAttempt > 0,
+        });
         if (!isMetaResponse(result)) throw new TypeError("Unexpected /api/meta payload");
         if (cancelled) return;
         setMeta(result);
@@ -785,7 +858,7 @@ function App() {
           Object.fromEntries(result.shops.map((shop): [string, MetaShop] => [shop.key, shop])),
         );
 
-        const current = filtersFromLocation(false);
+        const current = { ...filtersRef.current };
         const validShops = new Set(result.shops.map((shop) => shop.key));
         const validCategories = new Set([
           ...(result.categoryFacets ?? []).map((facet) => facet.id),
@@ -806,27 +879,35 @@ function App() {
         const nextView = initialView();
         viewRef.current = nextView;
         setView(nextView);
-        localStorage.setItem(VIEW_KEY, nextView);
+        savePreference(VIEW_KEY, nextView);
         bootedRef.current = true;
+        setInitialization("ready");
         syncUrl(current, nextView, true);
         await loadProducts(current, { reset: true });
       } catch (error) {
         console.error("Failed to initialize application", error);
-        if (!cancelled) setErrorMessage("商品の取得に失敗しました。");
+        if (!cancelled) {
+          setInitialization("error");
+          setErrorMessage("検索に必要な情報を取得できませんでした。再読み込みでやり直せます。");
+        }
       }
     })();
     return () => {
       cancelled = true;
+      initController.abort();
       controllerRef.current?.abort();
       if (inputTimerRef.current) clearTimeout(inputTimerRef.current);
     };
-  }, [loadProducts, syncUrl]);
+  }, [api, loadProducts, syncUrl, initAttempt]);
 
   const favoriteMode = filters.favoritesOnly;
   const visibleProducts = useMemo(
-    () => (favoriteMode ? favoriteResults(favorites, filters, selectedCategoryLabel) : products),
-    [favoriteMode, favorites, filters, products, selectedCategoryLabel],
+    () =>
+      favoriteMode ? favoriteResults(favorites, appliedFilters, selectedCategoryLabel) : products,
+    [favoriteMode, favorites, appliedFilters, products, selectedCategoryLabel],
   );
+  const initialLoading = !favoriteMode && (initialization === "loading" || (!hasLoaded && loading));
+  const invalidPrice = Object.keys(priceErrors(filters)).length > 0;
   const summary = resultSummary({
     shown: visibleProducts.length,
     favoriteMode,
@@ -844,7 +925,7 @@ function App() {
     (nextView: ProductView) => {
       viewRef.current = nextView;
       setView(nextView);
-      localStorage.setItem(VIEW_KEY, nextView);
+      savePreference(VIEW_KEY, nextView);
       syncUrl(filtersRef.current, nextView);
     },
     [syncUrl],
@@ -871,7 +952,7 @@ function App() {
           </a>
           <p className="lead">中古オーディオを、ショップをまたいで探す。</p>
         </div>
-        <SyncStatus meta={meta} />
+        <SyncStatus meta={meta} failed={initialization === "error"} />
       </header>
 
       <main>
@@ -891,7 +972,10 @@ function App() {
                 aria-controls="filter-panel"
                 aria-expanded={filterOpen}
                 onClick={() => {
-                  if (isMobile) setFilterOpen(true);
+                  if (isMobile) {
+                    setDraftFilters({ ...filtersRef.current });
+                    setFilterOpen(true);
+                  }
                 }}
               >
                 絞り込み{" "}
@@ -904,180 +988,245 @@ function App() {
         </section>
 
         <FilterPanel
-          filters={filters}
+          filters={panelFilters}
           meta={meta}
           favoriteCount={favoriteCount}
           open={filterOpen}
-          onValueChange={changeValue}
-          onToggleChange={changeToggle}
-          onFeatureChange={changeFeature}
-          onFacetChange={changeFacet}
-          onClose={() => setFilterOpen(false)}
-          onClear={clearAllFilters}
+          isMobile={isMobile}
+          onValueChange={(id, value, debounced) => {
+            if (isMobile && filterOpen) setDraftFilters({ ...panelFilters, [id]: value });
+            else changeValue(id, value, debounced);
+          }}
+          onToggleChange={(id, checked) => changePanelFilters({ ...panelFilters, [id]: checked })}
+          onFeatureChange={(feature, checked) =>
+            changePanelFilters({
+              ...panelFilters,
+              features: checked
+                ? [...new Set([...panelFilters.features, feature])]
+                : panelFilters.features.filter((item) => item !== feature),
+            })
+          }
+          onFacetChange={(facet, checked) =>
+            changePanelFilters({
+              ...panelFilters,
+              facets: checked
+                ? [
+                    ...panelFilters.facets.filter(
+                      (item) => facetSelectionKey(item) !== facetSelectionKey(facet),
+                    ),
+                    facet,
+                  ]
+                : panelFilters.facets.filter(
+                    (item) => facetSelectionKey(item) !== facetSelectionKey(facet),
+                  ),
+            })
+          }
+          onClose={closeFilters}
+          onClear={() => {
+            if (isMobile && filterOpen) setDraftFilters(clearedFilters(panelFilters));
+            else clearAllFilters();
+          }}
+          onApply={() => {
+            const next = normalizedPriceFilters(panelFilters);
+            if (next) {
+              closeFilters();
+              commitFilters(next);
+            }
+          }}
         />
 
-        <div id="active-filters" className="active-filters" aria-live="polite">
-          {activeFilters.length ? (
-            <>
-              {activeFilters.map((entry) => (
-                <button
-                  key={entry.id}
-                  type="button"
-                  className="filter-chip"
-                  data-clear-filter={entry.id}
-                  aria-label={`${entry.label}を解除`}
-                  onClick={() => clearFilter(entry.id)}
-                >
-                  {entry.label} <span aria-hidden="true">×</span>
-                </button>
-              ))}
-              <button type="button" className="clear-all" data-clear-all onClick={clearAllFilters}>
-                すべて解除
-              </button>
-            </>
-          ) : (
-            <span className="no-filters">絞り込み条件なし</span>
-          )}
-        </div>
+        <div className="catalog-results">
+          <QuickFilters filters={filters} favoriteCount={favoriteCount} onChange={changeToggle} />
 
-        <div className="result-header">
-          <div className="result-count">
-            <strong id="count">{summary.count}</strong>
-            <span id="count-label">{summary.label}</span>
-            <span id="more-available" className="more-available" hidden={summary.moreHidden}>
-              さらに商品があります
-            </span>
+          <div id="active-filters" className="active-filters" aria-live="polite">
+            {activeFilters.length ? (
+              <>
+                {activeFilters.map((entry) => (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    className="filter-chip"
+                    data-clear-filter={entry.id}
+                    aria-label={`${entry.label}を解除`}
+                    onClick={() => clearFilter(entry.id)}
+                  >
+                    {entry.label} <span aria-hidden="true">×</span>
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="clear-all"
+                  data-clear-all
+                  onClick={clearAllFilters}
+                >
+                  すべて解除
+                </button>
+              </>
+            ) : (
+              <span className="no-filters">絞り込み条件なし</span>
+            )}
           </div>
-          <span
-            id="loading"
-            className={`loading${loading ? " show" : ""}`}
-            role="status"
-            aria-live="polite"
-          >
-            更新中
-          </span>
-          <div className="result-tools">
-            {!favoriteMode ? (
-              <a
-                className="clear-all"
-                href={feedPath}
-                rel="alternate"
-                type="application/atom+xml"
-                title="現在の検索条件をAtomフィードで購読"
-              >
-                検索を購読
-              </a>
-            ) : null}
-            <label className="sort-control">
-              <span>並び順</span>
-              <select
-                id="sort"
-                value={filters.sort}
-                onChange={(event) => changeValue("sort", event.currentTarget.value)}
-              >
-                <option value="newest">新着・更新順</option>
-                <option value="oldest">更新が古い順</option>
-                <option value="dealScore">相場より割安な順</option>
-                <option value="priceAsc">価格が安い順</option>
-                <option value="priceDesc">価格が高い順</option>
-              </select>
-            </label>
-            <div className="view-switch" role="group" aria-label="表示形式">
-              <button
-                type="button"
-                data-view="list"
-                aria-label="リスト表示"
-                className={view === "list" ? "active" : ""}
-                aria-pressed={view === "list"}
-                onClick={() => changeView("list")}
-              >
-                リスト
-              </button>
-              <button
-                type="button"
-                data-view="cards"
-                aria-label="カード表示"
-                className={view === "cards" ? "active" : ""}
-                aria-pressed={view === "cards"}
-                onClick={() => changeView("cards")}
-              >
-                カード
-              </button>
+
+          <div className="result-header">
+            <div className="result-count">
+              <strong id="count">{initialLoading ? "—" : summary.count}</strong>
+              <span id="count-label">
+                {initialLoading ? "商品を読み込んでいます" : summary.label}
+              </span>
+              <span id="more-available" className="more-available" hidden={summary.moreHidden}>
+                さらに商品があります
+              </span>
+            </div>
+            <span
+              id="loading"
+              className={`loading${loading ? " show" : ""}`}
+              role="status"
+              aria-live="polite"
+            >
+              {loading ? "更新中" : ""}
+            </span>
+            <div className="result-tools">
+              {!favoriteMode ? <FeedSubscription path={feedPath} /> : null}
+              <label className="sort-control">
+                <span>並び順</span>
+                <select
+                  id="sort"
+                  value={filters.sort}
+                  onChange={(event) => changeValue("sort", event.currentTarget.value)}
+                >
+                  <option value="newest">新着・更新順</option>
+                  <option value="oldest">更新が古い順</option>
+                  <option value="dealScore">出品中央値より割安な順</option>
+                  <option value="priceAsc">価格が安い順</option>
+                  <option value="priceDesc">価格が高い順</option>
+                </select>
+              </label>
+              <div className="view-switch" role="group" aria-label="表示形式">
+                <button
+                  type="button"
+                  data-view="list"
+                  aria-label="リスト表示"
+                  className={view === "list" ? "active" : ""}
+                  aria-pressed={view === "list"}
+                  onClick={() => changeView("list")}
+                >
+                  リスト
+                </button>
+                <button
+                  type="button"
+                  data-view="cards"
+                  aria-label="カード表示"
+                  className={view === "cards" ? "active" : ""}
+                  aria-pressed={view === "cards"}
+                  onClick={() => changeView("cards")}
+                >
+                  カード
+                </button>
+              </div>
             </div>
           </div>
-        </div>
 
-        <p id="favorites-note" className="favorites-note" hidden={!favoriteMode}>
-          お気に入りはこの端末にのみ保存されます。価格や在庫は最後に表示した時点の情報です。
-        </p>
-        <section
-          ref={productsRef}
-          id="products"
-          className={`products view-${view}`}
-          aria-live="polite"
-        >
-          {errorMessage ? (
-            <ProductError
-              message={errorMessage}
-              onRetry={() => void loadProducts(filtersRef.current, { reset: true })}
-            />
-          ) : (
-            <>
-              {favoriteMode ? <LegacyFavoritesNotice count={favorites.legacyIds.size} /> : null}
-              {visibleProducts.length ? (
-                visibleProducts.map((product) => (
-                  <ProductCard
-                    key={product.key}
-                    product={product}
-                    favorite={favorites.products.has(product.key)}
-                    shopName={shopName}
-                    onManufacturer={(manufacturer) => changeValue("manufacturer", manufacturer)}
-                    onFavorite={toggleFavorite}
-                    onOffers={(key) => void showOffers(key)}
+          <p id="favorites-note" className="favorites-note" hidden={!favoriteMode}>
+            お気に入りはこの端末にのみ保存されます。価格や在庫は最後に表示した時点の情報です。
+          </p>
+          {invalidPrice ? (
+            <p className="field-error" role="status">
+              価格条件を修正してください。表示中の結果は更新していません。
+            </p>
+          ) : null}
+          {notice ? (
+            <div className="favorite-notice" role={notice.error ? "alert" : "status"}>
+              <span>{notice.text}</span>
+              {notice.undo ? (
+                <button type="button" onClick={notice.undo}>
+                  元に戻す
+                </button>
+              ) : null}
+              <button type="button" aria-label="通知を閉じる" onClick={() => setNotice(null)}>
+                ×
+              </button>
+            </div>
+          ) : null}
+          <section
+            ref={productsRef}
+            id="products"
+            className={`products view-${view}`}
+            aria-live="polite"
+            aria-busy={initialLoading || loading}
+          >
+            {errorMessage && !favoriteMode ? (
+              <ProductError
+                message={errorMessage}
+                onRetry={() => {
+                  if (initialization === "error") setInitAttempt((attempt) => attempt + 1);
+                  else void loadProducts(filtersRef.current, { reset: true, refresh: true });
+                }}
+              />
+            ) : (
+              <>
+                {favoriteMode ? <LegacyFavoritesNotice count={favorites.legacyIds.size} /> : null}
+                {visibleProducts.length ? (
+                  visibleProducts.map((product) => (
+                    <ProductCard
+                      key={product.key}
+                      product={product}
+                      favorite={favorites.products.has(product.key)}
+                      shopName={shopName}
+                      onManufacturer={(manufacturer) => changeValue("manufacturer", manufacturer)}
+                      onFavorite={toggleFavorite}
+                      onOffers={(key) => void showOffers(key)}
+                    />
+                  ))
+                ) : initialLoading ? (
+                  <div className="empty" role="status">
+                    商品を読み込んでいます…
+                  </div>
+                ) : invalidPrice ? null : (
+                  <EmptyProducts
+                    favoriteMode={favoriteMode}
+                    hasFavorites={favoriteCount > 0}
+                    onClear={clearAllFilters}
                   />
-                ))
-              ) : (
-                <EmptyProducts
-                  favoriteMode={favoriteMode}
-                  hasFavorites={favoriteCount > 0}
-                  onClear={clearAllFilters}
-                />
-              )}
-            </>
-          )}
-        </section>
+                )}
+              </>
+            )}
+          </section>
 
-        <nav id="pagination" className="pagination" aria-label="商品一覧のページ">
-          {!favoriteMode && pagesRef.current.size > 0 && totalPages > 1
-            ? pageNumbers(currentPage, totalPages).map((page, index, numbers) => (
-                <span key={page}>
-                  {index > 0 && page - numbers[index - 1] > 1 ? (
-                    <span className="page-ellipsis" aria-hidden="true">
-                      …
-                    </span>
-                  ) : null}
-                  <button
-                    type="button"
-                    className={`page-button${page === currentPage ? " active" : ""}`}
-                    data-page={page}
-                    aria-label={`${page}ページ目`}
-                    aria-current={page === currentPage ? "page" : undefined}
-                    disabled={loading}
-                    onClick={() => gotoPage(page)}
-                  >
-                    {page}
-                  </button>
-                </span>
-              ))
-            : null}
-        </nav>
+          <nav id="pagination" className="pagination" aria-label="商品一覧のページ">
+            {!favoriteMode && pagesRef.current.size > 0 && totalPages > 1
+              ? pageNumbers(currentPage, totalPages).map((page, index, numbers) => (
+                  <span key={page}>
+                    {index > 0 && page - numbers[index - 1] > 1 ? (
+                      <span className="page-ellipsis" aria-hidden="true">
+                        …
+                      </span>
+                    ) : null}
+                    <button
+                      type="button"
+                      className={`page-button${page === currentPage ? " active" : ""}`}
+                      data-page={page}
+                      aria-label={`${page}ページ目`}
+                      aria-current={page === currentPage ? "page" : undefined}
+                      disabled={loading}
+                      onClick={() => gotoPage(page)}
+                    >
+                      {page}
+                    </button>
+                  </span>
+                ))
+              : null}
+          </nav>
+        </div>
       </main>
 
       <dialog
         ref={offersDialogRef}
         id="offers-dialog"
         aria-labelledby="offers-title"
-        onClose={() => setOffersState(null)}
+        onClose={() => {
+          offersTargetRef.current = null;
+          setOffersState(null);
+        }}
       >
         <button
           className="dialog-close"
@@ -1089,6 +1238,9 @@ function App() {
         <div id="offers-content">
           <OffersContent
             state={offersState}
+            onRetry={() => {
+              if (offersTargetRef.current) void showOffers(offersTargetRef.current, true);
+            }}
             shopName={shopName}
             onHistory={(listingId) => void showHistory(listingId)}
           />
@@ -1099,7 +1251,10 @@ function App() {
         ref={historyDialogRef}
         id="history-dialog"
         aria-labelledby="history-title"
-        onClose={() => setHistoryState(null)}
+        onClose={() => {
+          historyTargetRef.current = null;
+          setHistoryState(null);
+        }}
       >
         <button
           className="dialog-close"
@@ -1109,7 +1264,13 @@ function App() {
           ×
         </button>
         <div id="history-content">
-          <HistoryContent state={historyState} />
+          <HistoryContent
+            state={historyState}
+            onRetry={() => {
+              if (historyTargetRef.current !== null)
+                void showHistory(historyTargetRef.current, true);
+            }}
+          />
         </div>
       </dialog>
 
@@ -1124,6 +1285,9 @@ function App() {
   );
 }
 
-const root = document.getElementById("root");
-if (!root) throw new Error("React root is missing");
-createRoot(root).render(<App />);
+export function mountPublicApp() {
+  sanitizeAddressBar();
+  const root = document.getElementById("root");
+  if (!root) throw new Error("React root is missing");
+  createRoot(root).render(<PublicApp />);
+}

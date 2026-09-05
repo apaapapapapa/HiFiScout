@@ -164,11 +164,11 @@ export function ProductCard({
           <ShopChip product={product} shopName={shopName} />
           <div className="badges">
             {activity.isNew ? (
-              <span className="badge">NEW</span>
+              <span className="badge">新着</span>
             ) : activity.isRecentlyUpdated ? (
-              <span className="badge">UPDATED</span>
+              <span className="badge">更新</span>
             ) : null}
-            {priceDropped(product) ? <span className="badge">PRICE DOWN</span> : null}
+            {priceDropped(product) ? <span className="badge">値下げ</span> : null}
             <RelativePriceBadge product={product} />
             {product.identity_kind === "catalog" && product.shop_count > 1 ? (
               <span className="badge badge-compare">比較</span>
@@ -192,7 +192,7 @@ export function ProductCard({
           )}
         </p>
         <h2>
-          {multiOffer ? (
+          {hasServerDetail ? (
             <button
               type="button"
               className="product-title-link"
@@ -260,6 +260,11 @@ export function ProductCard({
           >
             {multiOffer ? `${product.offer_count}件の在庫を比較` : "商品詳細"}
           </button>
+        ) : null}
+        {!multiOffer ? (
+          <a className="shop-link" href={sourceUrl} target="_blank" rel="noopener noreferrer">
+            販売店で確認 ↗
+          </a>
         ) : null}
       </div>
     </article>
@@ -339,6 +344,16 @@ function OfferRow({
         <span className={`stock ${offer.stock_status}`}>{stockLabel(offer.stock_status)}</span>
       </div>
       <p className="offer-title">{offer.title}</p>
+      <p className="offer-updated">
+        最終確認:{" "}
+        {offer.last_seen_at && Number.isFinite(Date.parse(offer.last_seen_at)) ? (
+          <time dateTime={offer.last_seen_at}>
+            {new Date(offer.last_seen_at).toLocaleString("ja-JP")}
+          </time>
+        ) : (
+          "日時不明"
+        )}
+      </p>
       <div className="offer-commerce">
         <strong>{price}</strong>
         {dropped && offer.previous_price_yen != null ? (
@@ -368,6 +383,7 @@ function OfferRow({
 
 export function OffersContent({
   state,
+  onRetry,
   shopName,
   onHistory,
 }: {
@@ -378,14 +394,28 @@ export function OffersContent({
     | null;
   shopName: (shopKey: string) => string;
   onHistory: (listingId: number) => void;
+  onRetry?: () => void;
 }) {
   if (!state) return null;
-  if (state.kind === "loading") return <p className="loading-dialog">在庫情報を取得中…</p>;
+  if (state.kind === "loading")
+    return (
+      <>
+        <h2 id="offers-title">商品詳細</h2>
+        <p className="loading-dialog" role="status">
+          在庫情報を取得中…
+        </p>
+      </>
+    );
   if (state.kind === "error")
     return (
       <>
         <h2 id="offers-title">在庫一覧</h2>
-        <p>在庫情報を取得できませんでした。</p>
+        <p role="alert">在庫情報を取得できませんでした。</p>
+        {onRetry ? (
+          <button type="button" onClick={onRetry}>
+            在庫情報を再読み込み
+          </button>
+        ) : null}
       </>
     );
   const { product, offers } = state.data;
@@ -413,7 +443,6 @@ export function OffersContent({
       ) : (
         <p className="offers-note">この商品はまだ他店の在庫と照合できていません。</p>
       )}
-      <ProductPriceIndexSummary product={product} />
       <ol className="offers">
         {offers.length ? (
           offers.map((offer) => (
@@ -428,6 +457,7 @@ export function OffersContent({
           <li>表示できる在庫がありません。</li>
         )}
       </ol>
+      <ProductPriceIndexSummary product={product} />
     </>
   );
 }
@@ -531,20 +561,35 @@ function PriceHistorySparkline({ history }: { history: readonly PriceHistoryEntr
 
 export function HistoryContent({
   state,
+  onRetry,
 }: {
   state:
     | { kind: "loading" }
     | { kind: "error" }
     | { kind: "ready"; data: ProductHistoryResponse }
     | null;
+  onRetry?: () => void;
 }) {
   if (!state) return null;
-  if (state.kind === "loading") return <p className="loading-dialog">価格履歴を取得中…</p>;
+  if (state.kind === "loading")
+    return (
+      <>
+        <h2 id="history-title">価格履歴</h2>
+        <p className="loading-dialog" role="status">
+          価格履歴を取得中…
+        </p>
+      </>
+    );
   if (state.kind === "error")
     return (
       <>
         <h2 id="history-title">価格履歴</h2>
-        <p>価格履歴を取得できませんでした。</p>
+        <p role="alert">価格履歴を取得できませんでした。</p>
+        {onRetry ? (
+          <button type="button" onClick={onRetry}>
+            価格履歴を再読み込み
+          </button>
+        ) : null}
       </>
     );
   const { product, history } = state.data;

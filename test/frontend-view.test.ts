@@ -207,13 +207,14 @@ test("React escapes retailer text and rejects unsafe external URLs", () => {
   assert.equal(escapeHtml(`<>&"'`), "&lt;&gt;&amp;&quot;&#39;");
 });
 
-test("a single-offer card keeps its direct product link and linked shop chip", () => {
+test("a single-offer title opens detail and the seller action stays explicit", () => {
   const markup = renderCard(product(), true);
 
   assert.match(markup, /aria-pressed="true"/u);
   assert.match(markup, /お気に入りから削除/u);
   assert.match(markup, /class="shop shop-hifido shop-new-arrivals-link"/u);
-  assert.match(markup, /class="product-title-link" href="https:\/\/example\.test\/p1"/u);
+  assert.match(markup, /class="product-title-link" data-offers="c-1"/u);
+  assert.match(markup, /class="shop-link" href="https:\/\/example\.test\/p1"/u);
   assert.match(markup, /data-fav="c-1"/u);
 });
 
@@ -269,9 +270,9 @@ test("a card badges the newest applicable state and a price drop independently",
     product({ newest_listed_at: "2026-08-11T12:00:00.000Z", has_price_drop: true }),
   );
 
-  assert.match(markup, /badge">NEW/u);
-  assert.match(markup, /badge">PRICE DOWN/u);
-  assert.doesNotMatch(markup, /UPDATED/u);
+  assert.match(markup, /badge">新着/u);
+  assert.match(markup, /badge">値下げ/u);
+  assert.doesNotMatch(markup, /badge">更新/u);
 });
 
 test("the offer list keeps what actually distinguishes two offers of the same model", () => {
@@ -374,4 +375,23 @@ test("an unparseable timestamp is reported as unknown, but a null one is still t
   assert.equal(relativeTime("not a date", NOW), "未取得");
   assert.notEqual(safeDate(null), null);
   assert.match(relativeTime(null, NOW), /日前$/u);
+});
+
+test("failed detail and history dialogs expose retries and offers carry observation dates", () => {
+  const detail = renderToStaticMarkup(
+    createElement(OffersContent, {
+      state: { kind: "error" },
+      shopName,
+      onHistory: noop,
+      onRetry: noop,
+    }),
+  );
+  const history = renderToStaticMarkup(
+    createElement(HistoryContent, { state: { kind: "error" }, onRetry: noop }),
+  );
+  assert.match(detail, /<button[^>]*>在庫情報を再読み込み/);
+  assert.match(history, /<button[^>]*>価格履歴を再読み込み/);
+  const ready = renderOffers(product(), [offer()]);
+  assert.match(ready, /最終確認:/);
+  assert.match(ready, /dateTime="2026-08-11T00:00:00.000Z"/i);
 });

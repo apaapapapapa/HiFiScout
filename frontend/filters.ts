@@ -3,8 +3,8 @@
  * the active-filter chips.
  *
  * {@link ProductFilters} holds the raw trimmed control values rather than parsed numbers. That is
- * deliberate: `minPrice=abc` must still reach the API so the server answers `400 minPrice_invalid`
- * instead of the browser silently dropping it.
+ * deliberate: invalid input remains visible for inline correction. The public app validates before
+ * submitting; server-side validation still protects direct API callers.
  *
  * The query vocabulary is unchanged by Phase 4, so a shared URL still works — but the server now
  * splits it into product-level and offer-level predicates, and `limit`/`offset` count products.
