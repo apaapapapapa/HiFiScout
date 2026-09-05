@@ -30,6 +30,15 @@ import {
   refreshExpiredRecentPriceIndexes,
 } from "./db/knowledge-catalog-price-index-recent-refresh.js";
 import { accountReads } from "./db/read-accounting.js";
+import { invocationBudget, InvocationBudgetExceeded } from "./db/invocation-budget.js";
+import type { InvocationBudget } from "./db/invocation-budget.js";
+import {
+  enqueueMaintenance,
+  pendingMaintenance,
+  claimMaintenance,
+  completeMaintenance,
+} from "./db/scheduled-maintenance-repository.js";
+import { refreshPublicMetaSnapshot } from "./db/public-meta-repository.js";
 import {
   countDirtyExactIdentityBacklog,
   repairDirtyExactIdentities,
@@ -215,6 +224,7 @@ export async function repairGeneralCronProjectionGaps(db: QueryableDatabase) {
   // per-tick task count -- and the D1 concurrency that count exists to bound -- unchanged.
   const dirty = await repairDirtyExactIdentities(db, {
     limit: GENERAL_EXACT_IDENTITY_DIRTY_LIMIT,
+    maxRepairs: 2,
   });
   if (dirty.claimedIdentities > 0) {
     console.log(JSON.stringify({ event: "general_exact_identity_dirty_repair", ...dirty }));
@@ -240,6 +250,8 @@ async function settled<T>(operation: () => Promise<T>): Promise<PromiseSettledRe
  */
 export async function repairDailyProjectionGaps(db: QueryableDatabase) {
   return repairActiveListingProjectionGaps(db, {
+    batchSize: GENERAL_PROJECTION_REPAIR_BATCH_SIZE,
+    maxListings: GENERAL_PROJECTION_REPAIR_MAX_LISTINGS,
     // No outstanding-gap count. It is the one unbounded statement in the repair -- an aggregate
     // over every active listing through correlated subqueries, and nothing consumes the number.
     countRemainingGaps: false,
@@ -249,53 +261,6 @@ export async function repairDailyProjectionGaps(db: QueryableDatabase) {
     // The exact-identity phase is owned by the separately measured daily safety-net task.
     phases: "coverage",
   });
-}
-
-/**
- * Retention, projection self-healing and daily verification are independent, so all are attempted
- * even when one fails — but the first failure is still rethrown so the cron is reported as failed.
- */
-async function runDailyMaintenance(env: Env) {
-  // Awaited one at a time rather than through `Promise.allSettled` on three already-running
-  // promises. These are the heaviest statements the system issues — a retention drain, the
-  // a verification dispatch — and starting them together made the daily slot the single largest
-  // concurrent load on the one D1 instance. The semantics are unchanged: all three are still
-  // attempted, and the first failure is still the one rethrown.
-  const retention = await settled(() => runRetentionCleanup(env));
-  const projectionRepair = await settled(() => repairDailyProjectionGaps(env.DB));
-  const catalog = await settled(() => dispatchKnowledgeCatalogDailyVerification(env));
-  if (retention.status === "rejected") {
-    console.error(
-      JSON.stringify({
-        event: "daily_retention_failed",
-        message: errorMessage(retention.reason),
-      }),
-    );
-  }
-  if (projectionRepair.status === "rejected") {
-    console.error(
-      JSON.stringify({
-        event: "product_search_projection_repair_failed",
-        message: errorMessage(projectionRepair.reason),
-      }),
-    );
-  }
-  if (catalog.status === "rejected") {
-    console.error(
-      JSON.stringify({
-        event: "knowledge_catalog_daily_dispatch_failed",
-        message: errorMessage(catalog.reason),
-      }),
-    );
-  }
-  if (retention.status === "rejected") throw retention.reason;
-  if (projectionRepair.status === "rejected") throw projectionRepair.reason;
-  if (catalog.status === "rejected") throw catalog.reason;
-  return {
-    retention: retention.value,
-    projectionRepair: projectionRepair.value,
-    catalog: catalog.value,
-  };
 }
 
 export async function runScheduled(cron: string, env: Env, scheduledAt = new Date()) {
@@ -611,9 +576,9 @@ export async function maintainRecentPriceIndexes(db: QueryableDatabase, now = ne
   return result;
 }
 
-interface ScheduledWork {
+export interface ScheduledWork {
   name: string;
-  run(env: Env): Promise<unknown>;
+  run(env: Env, scheduledAt?: Date): Promise<unknown>;
 }
 
 interface MaintenanceTask extends ScheduledWork {
@@ -726,6 +691,12 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
     offset: 10,
     run: (env) => maintainRecentPriceIndexes(env.DB),
   },
+  {
+    name: "public_meta_snapshot",
+    everyTicks: 3,
+    offset: 1,
+    run: (env, at) => refreshPublicMetaSnapshot(env.DB, at),
+  },
 ];
 
 /**
@@ -740,58 +711,115 @@ export function dueMaintenanceTasks(scheduledAt: Date): MaintenanceTask[] {
   return MAINTENANCE_TASKS.filter((task) => (tick + task.offset) % task.everyTicks === 0);
 }
 
-/**
- * Runs the due maintenance one task at a time.
- *
- * Sequential is the point: these are independent, and a few seconds of ordering costs none of them
- * anything it cares about, while starting them together is what made a tick a burst.
- *
- * One task failing must not skip the rest, so each is caught on its own. That does mean a failure
- * here no longer surfaces as the cron's own outcome — a named `scheduled_maintenance_failed` line
- * is a better signal than an anonymous cron exception that could have come from any of seven
- * places, which is what the fan-out produced.
+const DAILY_TASKS: readonly ScheduledWork[] = [
+  { name: "daily_retention", run: (env, now) => runRetentionCleanup(env, { now }) },
+  { name: "daily_projection_repair", run: (env) => repairDailyProjectionGaps(env.DB) },
+  {
+    name: "daily_catalog_verification",
+    run: (env, now) => dispatchKnowledgeCatalogDailyVerification(env, { now }),
+  },
+];
+const MONTHLY_TASK: ScheduledWork = {
+  name: "knowledge_catalog_monthly_recheck",
+  run: (env, now) => dispatchKnowledgeCatalogMonthlyRecheck(env, { now }),
+};
+const ALL_MAINTENANCE = [...MAINTENANCE_TASKS, ...DAILY_TASKS, MONTHLY_TASK];
+
+function dueScheduledWork(at: Date): ScheduledWork[] {
+  return [
+    ...dueMaintenanceTasks(at),
+    ...(isDailyMaintenanceSlot(at) ? DAILY_TASKS : []),
+    ...(isKnowledgeCatalogMonthlySlot(at) ? [MONTHLY_TASK] : []),
+  ];
+}
+
+/** Resume persisted due work in attempt order. A yield keeps the row and its lease; the next
+ * tick retries it even when its original daily/hourly slot has passed. There is one budget for
+ * the watchdog, this runner, per-task queries and task bookkeeping, including error paths.
  */
-async function runGeneralCronMaintenance(env: Env, scheduledAt: Date): Promise<void> {
-  const tasks: ScheduledWork[] = [...dueMaintenanceTasks(scheduledAt)];
-  if (isDailyMaintenanceSlot(scheduledAt)) {
-    tasks.push({ name: "daily_maintenance", run: runDailyMaintenance });
-  }
-  if (isKnowledgeCatalogMonthlySlot(scheduledAt)) {
-    tasks.push({
-      name: "knowledge_catalog_monthly_recheck",
-      run: dispatchKnowledgeCatalogMonthlyRecheck,
-    });
-  }
-  for (const task of tasks) {
-    // Measured per task rather than per tick: the point of the number is to say which task is
-    // spending the day's read budget, which a tick-level total cannot answer.
+export async function runPendingMaintenance(
+  env: Env,
+  scheduledAt: Date,
+  budget: InvocationBudget,
+  registry: readonly ScheduledWork[] = ALL_MAINTENANCE,
+): Promise<void> {
+  if (budget.exhausted()) return;
+  const pending = await pendingMaintenance(env.DB, scheduledAt);
+  for (const name of pending) {
+    // Leave enough room to claim and complete a useful unit instead of repeatedly acquiring a
+    // lease with only one query left. The binding wrapper remains the hard stop inside each task.
+    if (budget.exhausted()) break;
+    if (budget.remainingCalls() < 8) {
+      budget.defer();
+      break;
+    }
+    const task = registry.find((candidate) => candidate.name === name);
+    if (!task) continue;
+    const token = await claimMaintenance(env.DB, name, scheduledAt);
+    if (!token) continue;
     const accounting = accountReads(env.DB);
-    const measuredEnv = { ...env, DB: accounting.db } as Env;
     try {
-      await task.run(measuredEnv);
+      await task.run({ ...env, DB: accounting.db } as Env, scheduledAt);
+      if (budget.exhausted()) break;
+      await completeMaintenance(env.DB, name, token);
     } catch (error) {
+      if (error instanceof InvocationBudgetExceeded) break;
       console.error(
         JSON.stringify({
           event: "scheduled_maintenance_failed",
-          task: task.name,
+          task: name,
           message: errorMessage(error),
-          rowsRead: accounting.rowsRead(),
-        }),
-      );
-      continue;
-    }
-    if (accounting.statementCount() > 0) {
-      console.log(
-        JSON.stringify({
-          event: "scheduled_maintenance_d1_usage",
-          task: task.name,
           rowsRead: accounting.rowsRead(),
           rowsWritten: accounting.rowsWritten(),
           countedStatements: accounting.countedStatements(),
           statementCount: accounting.statementCount(),
         }),
       );
+    } finally {
+      if (accounting.statementCount() > 0) {
+        console.log(
+          JSON.stringify({
+            event: "scheduled_maintenance_d1_usage",
+            task: name,
+            rowsRead: accounting.rowsRead(),
+            rowsWritten: accounting.rowsWritten(),
+            countedStatements: accounting.countedStatements(),
+            statementCount: accounting.statementCount(),
+          }),
+        );
+      }
     }
+  }
+}
+
+async function runBudgetedGeneralCron(env: Env, scheduledAt: Date): Promise<void> {
+  const accounting = accountReads(env.DB);
+  const budget = invocationBudget(accounting.db);
+  const limitedEnv = { ...env, DB: budget.db } as Env;
+  try {
+    // Persist the schedule before any watchdog work can consume the invocation budget.
+    await enqueueMaintenance(
+      budget.db,
+      dueScheduledWork(scheduledAt).map((task) => task.name),
+      scheduledAt,
+    );
+    await runGeneralCronTick(
+      () => runScheduled(GENERAL_CRON, limitedEnv, scheduledAt),
+      () => runPendingMaintenance(limitedEnv, scheduledAt, budget),
+    );
+  } catch (error) {
+    if (!(error instanceof InvocationBudgetExceeded)) throw error;
+  } finally {
+    console.log(
+      JSON.stringify({
+        event: "general_cron_d1_usage",
+        ...budget.metrics(),
+        budgetDeferred: budget.exhausted(),
+        rowsRead: accounting.rowsRead(),
+        rowsWritten: accounting.rowsWritten(),
+        countedStatements: accounting.countedStatements(),
+      }),
+    );
   }
 }
 
@@ -825,12 +853,7 @@ export function handleScheduled(
 ): void {
   const scheduledAt = new Date(controller.scheduledTime);
   if (controller.cron === GENERAL_CRON) {
-    ctx.waitUntil(
-      runGeneralCronTick(
-        () => runScheduled(controller.cron, env, scheduledAt),
-        () => runGeneralCronMaintenance(env, scheduledAt),
-      ),
-    );
+    ctx.waitUntil(runBudgetedGeneralCron(env, scheduledAt));
     return;
   }
   ctx.waitUntil(runScheduled(controller.cron, env, scheduledAt));

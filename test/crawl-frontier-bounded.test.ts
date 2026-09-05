@@ -353,3 +353,33 @@ for (const cardinality of [100, 1_000, 10_000] as const) {
 function describe(plan: readonly { detail: string }[]): string {
   return plan.map((step) => step.detail).join("\n");
 }
+
+for (const cardinality of [100, 1_000, 10_000]) {
+  test(`empty and late-hit frontiers seek only nonempty pages at ${cardinality} pages`, async () => {
+    const { sqlite, db } = await createSession(cardinality);
+    sqlite.exec("UPDATE crawl_fetch_pages SET state = 'parsed', item_count = 0");
+    for (const hasItems of [false, true]) {
+      if (hasItems) {
+        sqlite
+          .prepare("UPDATE crawl_fetch_pages SET item_count = 1 WHERE ordinal = ?")
+          .run(cardinality - 1);
+      }
+      const recording = recordingDatabase(db);
+      const frontier = await crawlFetchFrontierProbe(recording.db, "run-1");
+      assert.equal(frontier.hasStagedItems, hasItems);
+      assert.equal(frontier.nextOrdinal, cardinality);
+      assert.equal(frontier.nextPendingPageKey, null);
+      const plan = queryPlan(sqlite, recording.executed[0]!);
+      assert.ok(
+        plan.some((step) =>
+          /SEARCH crawl_fetch_pages USING COVERING INDEX idx_crawl_fetch_pages_nonempty/.test(
+            step.detail,
+          ),
+        ),
+        `the staged-items lookup must exclude all empty pages:\n${describe(plan)}`,
+      );
+      assertNoGrowingTableScans(sqlite, recording.executed);
+      assertNoSortBeforeLimit(sqlite, recording.executed);
+    }
+  });
+}

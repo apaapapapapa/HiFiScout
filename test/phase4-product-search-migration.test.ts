@@ -101,10 +101,17 @@ test("every ordering aggregate the search reads has an index behind it", () => {
  * 0021 froze these statements as they read when the Phase 4 backfill ran, and one literal has
  * moved since: an uncategorized verified catalog product now projects the `unclassified` sentinel
  * instead of borrowing the real `other` leaf. Migration 0041 repairs the rows 0021 wrote, so the
- * derivation is still single-sourced — the frozen text simply predates the rename.
+ * derivation is still single-sourced — the frozen text simply predates the rename. The later
+ * no-op update guards only avoid identical writes; they do not change the values being derived.
  */
 function asBackfilled(sql: string): string {
-  return sql.split("'unclassified'").join("'other'");
+  return sql
+    .split("'unclassified'")
+    .join("'other'")
+    .replace(
+      /\s+WHERE product_search_entities\.manufacturer_id IS NOT excluded\.manufacturer_id[\s\S]*$/,
+      "",
+    );
 }
 
 test("the backfill is the same derivation the running sync uses, not a second definition", () => {

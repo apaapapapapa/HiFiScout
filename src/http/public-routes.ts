@@ -3,7 +3,11 @@ import {
   parseSuggestQuery,
   validateSuggestQuery,
 } from "../api/suggest-query.js";
-import { parseProductQuery, validateProductQuery } from "../api/product-query.js";
+import {
+  canonicalProductQueryUrl,
+  parseProductQuery,
+  validateProductQuery,
+} from "../api/product-query.js";
 import { LEGACY_CATEGORY_MIGRATION_RULES, TAXONOMY_VERSION } from "../catalog/categories.js";
 import { PRODUCT_SEARCH_ROUTE, SUGGEST_ROUTE } from "../api/public-route-contracts.js";
 import { routeMatches } from "../api/route-contract.js";
@@ -39,7 +43,10 @@ const runtimeRoutes: readonly RuntimeRoute[] = [
           }),
         );
       }
-      return cachedJson(request, ctx, READ_CACHE_TTL_SECONDS, () => searchProducts(env.DB, query));
+      const cacheRequest = new Request(canonicalProductQueryUrl(url, query).toString(), request);
+      return cachedJson(cacheRequest, ctx, READ_CACHE_TTL_SECONDS, () =>
+        searchProducts(env.DB, query),
+      );
     },
   },
   {

@@ -118,6 +118,19 @@ export function unindexedScans(
   return [...new Set(scans)];
 }
 
+/** Full table AND full index walks, unless a statement-scoped allowance explains their bound. */
+export function fullScans(plan: readonly PlanStep[], allowed: readonly string[] = []): string[] {
+  const scans: string[] = [];
+  for (const step of plan) {
+    if (/^SCAN CONSTANT ROW$/.test(step.detail)) continue;
+    // FTS MATCH walks postings; unconstrained virtual-table scans require an allowance.
+    if (/VIRTUAL TABLE INDEX .*:.*M\d/.test(step.detail)) continue;
+    const name = /^SCAN (\w+)\b/.exec(step.detail)?.[1];
+    if (name && !allowed.includes(name)) scans.push(name);
+  }
+  return [...new Set(scans)];
+}
+
 /**
  * Whether the plan answers from the index alone, never visiting the table's rows.
  *
@@ -173,17 +186,8 @@ export function selects(executed: readonly ExecutedStatement[]): ExecutedStateme
   );
 }
 
-/** Constant-size reference tables; reading one end to end costs nothing that grows. */
-export const SMALL_REFERENCE_TABLES = [
-  "knowledge_catalog_products",
-  "knowledge_catalog_product_categories",
-  "knowledge_catalog_aliases",
-  "knowledge_catalog_manufacturers",
-  "knowledge_catalog_manufacturer_aliases",
-];
-
 /**
- * Asserts every statement a repository issued reads the growing tables through an index.
+ * Asserts no growing table or index is walked without an explicit statement-scoped allowance.
  *
  * Allowances are matched against each statement individually, so an exception granted for one query
  * cannot silently cover a different one that starts scanning the same table.
@@ -199,10 +203,10 @@ export function assertNoGrowingTableScans(
   for (const statement of inspected) {
     const matching = allowances.filter((allowance) => allowance.when.test(statement.sql));
     for (const allowance of matching) applied.add(allowance);
-    const scans = unindexedScans(queryPlan(sqlite, statement), [
-      ...SMALL_REFERENCE_TABLES,
-      ...matching.flatMap((allowance) => allowance.tables),
-    ]);
+    const scans = fullScans(
+      queryPlan(sqlite, statement),
+      matching.flatMap((allowance) => allowance.tables),
+    );
     assert.deepEqual(
       scans,
       [],

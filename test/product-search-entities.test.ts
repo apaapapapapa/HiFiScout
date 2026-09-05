@@ -68,9 +68,9 @@ test("entity and membership transitions are committed atomically before aggregat
     "refresh",
     "prune",
   ]);
-  assert.equal(db.batched.length, 8);
+  assert.equal(db.batched.length, 15);
   assert.deepEqual(
-    writes({ calls: db.batched }).map((statement) =>
+    writes({ calls: db.batched.slice(0, 8) }).map((statement) =>
       /DELETE FROM product_search_entities/.test(statement.sql) ? "prune" : "projection-write",
     ),
     [

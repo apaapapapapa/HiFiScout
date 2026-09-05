@@ -70,13 +70,10 @@ try {
     ${listing(matchedShopB, "D1000MK2", "Technical Audio Devices D1000MK2", 520000)}
     ${listing(unresolvedShop, "D1000TX", "TAD D1000TX", 540000)}
 
-    -- Phase 1: the listing search projection still resolves multi-term FTS queries.
-    SELECT 'listing_fts' AS check_name, p.shop_key
-    FROM products p
-    JOIN product_search_projection sp ON sp.product_id = p.id
-    JOIN product_search_fts ON product_search_fts.rowid = sp.product_id
-    WHERE product_search_fts MATCH '"TAD" AND "1000"'
-      AND p.shop_key = '${matchedShopA}';
+    -- Listing evidence is retained, while only the entity FTS is maintained.
+    SELECT 'listing_projection' AS check_name, sp.product_id
+    FROM product_search_projection sp
+    WHERE sp.product_id = ${idA} AND sp.normalized_model = 'D1000MK2';
 
     -- Phase 4: two shops' confirmed listings must become one product, and an unconfirmed listing
     -- must remain its own searchable product.
@@ -124,9 +121,9 @@ try {
   `);
 
   assert.equal(
-    rowsFor(rows, "listing_fts").length,
+    rowsFor(rows, "listing_projection").length,
     1,
-    "TAD 1000 must resolve through product_search_fts after migrations",
+    "listing evidence must remain available to the entity projection",
   );
 
   const grouped = rowsFor(rows, "grouped");

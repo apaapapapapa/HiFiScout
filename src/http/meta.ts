@@ -25,22 +25,9 @@ import type {
 } from "../api/contracts.js";
 import { FACET_DEFINITIONS } from "../catalog/types.js";
 import type { CategoryDefinition } from "../catalog/types.js";
+import { readPublicMetaSnapshot } from "../db/public-meta-repository.js";
+import type { MetaBatchRow } from "../db/public-meta-repository.js";
 import type { ShopSyncStateRow } from "../db/types.js";
-
-interface MetaBatchRow {
-  facet_kind?: "manufacturer" | "shop";
-  manufacturer_id?: string;
-  value?: string;
-  facet_id?: string;
-  facet_value?: string;
-  active_product_count?: number | null;
-  active_count?: number | null;
-  unclassified_count?: number | null;
-  low_confidence_count?: number | null;
-  legacy_residue_count?: number | null;
-  legacy_other_count?: number | null;
-  migrated_shift_count?: number | null;
-}
 
 /** Full root-to-leaf path. Cycles are cut defensively even though the authored taxonomy forbids them. */
 function categoryHierarchy(category: CategoryDefinition): CategoryDefinition[] {
@@ -130,69 +117,8 @@ export async function meta(env: Env): Promise<MetaResponse> {
   const byKey = new Map(stateRows.map((row) => [row.shop_key, toMetaShopSyncState(row)]));
   const health = buildSyncHealth(env, stateRows);
   const healthByKey = new Map(health.shops.map((shop) => [shop.shopKey, shop]));
-  const legacyIds = LEGACY_CATEGORY_MIGRATION_RULES.map((rule) => rule.legacyId);
-  const legacyIdSql = legacyIds.map((id) => `'${id.replaceAll("'", "''")}'`).join(",");
-  const batches = await env.DB.batch<MetaBatchRow>([
-    // Keep shop/manufacturer counts in the existing facet statement so `/api/meta` still uses two
-    // batched facet statements overall. Both branches count the same `products.is_active` rows.
-    env.DB.prepare(`
-      SELECT
-        'manufacturer' AS facet_kind,
-        manufacturer_id,
-        MIN(manufacturer) AS value,
-        COUNT(*) AS active_product_count
-      FROM products
-      WHERE is_active = 1 AND manufacturer <> ''
-      GROUP BY manufacturer_id
-      UNION ALL
-      SELECT
-        'shop' AS facet_kind,
-        NULL AS manufacturer_id,
-        shop_key AS value,
-        COUNT(*) AS active_product_count
-      FROM products
-      WHERE is_active = 1
-      GROUP BY shop_key
-    `),
-    // Counted over the same rows the category filter selects on, and in the same unit search
-    // returns: cards, not listings. Counting listings here while the filter returned entities made
-    // the number disagree with the results for every product two shops both stock, and a set
-    // listing would have been counted once per category it is in while the filter only found it
-    // under one of them.
-    env.DB.prepare(`
-      SELECT ec.category_id AS value, COUNT(DISTINCT ec.entity_id) AS active_product_count
-      FROM product_search_entity_categories ec
-      GROUP BY ec.category_id
-    `),
-    env.DB.prepare(`
-      SELECT f.facet_id, f.facet_value,
-             COUNT(DISTINCT membership.entity_id) AS active_product_count
-      FROM product_facet_facts f
-      JOIN products p ON p.id = f.product_id AND p.is_active = 1
-      JOIN product_search_entity_offers membership ON membership.listing_product_id = p.id
-      GROUP BY f.facet_id, f.facet_value
-    `),
-    env.DB.prepare(`
-      SELECT
-        COUNT(*) AS active_count,
-        SUM(CASE WHEN p.primary_category_id = 'unclassified' THEN 1 ELSE 0 END) AS unclassified_count,
-        SUM(CASE
-          WHEN json_valid(COALESCE(p.metadata_json, ''))
-           AND CAST(json_extract(p.metadata_json, '$.categoryClassification.confidence') AS REAL)
-               BETWEEN 0.000001 AND 0.649999
-          THEN 1 ELSE 0 END
-        ) AS low_confidence_count,
-        SUM(CASE WHEN p.primary_category_id IN (${legacyIdSql}) THEN 1 ELSE 0 END)
-          AS legacy_residue_count,
-        SUM(CASE WHEN p.primary_category_id = 'other' THEN 1 ELSE 0 END) AS legacy_other_count,
-        (SELECT COUNT(DISTINCT a.entity_id)
-         FROM taxonomy_v3_migration_audit a
-         WHERE a.entity_type = 'product_primary'
-           AND a.legacy_category_id <> a.canonical_category_id) AS migrated_shift_count
-      FROM products p
-      WHERE p.is_active = 1
-    `),
-  ]);
+  const snapshot = await readPublicMetaSnapshot(env.DB);
+  const batches = snapshot.batches;
 
   const vocabularyRows = batches[0]?.results || [];
   const manufacturerFacets = normalizeManufacturerFacets(
@@ -261,6 +187,7 @@ export async function meta(env: Env): Promise<MetaResponse> {
   const taxonomyRow = batches[3]?.results?.[0] || {};
   return {
     status: health.status,
+    countsUpdatedAt: snapshot.generatedAt,
     shops,
     manufacturers,
     manufacturerFacets,

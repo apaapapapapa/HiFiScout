@@ -1,3 +1,4 @@
+import { InvocationBudgetExceeded } from "./invocation-budget.js";
 /**
  * Change-driven repair for exact-identity search splits.
  *
@@ -43,7 +44,7 @@ interface DirtyIdentityRow {
   normalized_model: string;
 }
 
-interface IdentityMemberRow {
+interface IdentityMemberRow extends DirtyIdentityRow {
   id: number;
   shop_key: string;
   source_id: string;
@@ -59,6 +60,8 @@ export interface ExactIdentityDirtyRepairOptions {
   leaseMs?: number;
   /** Also report how many identities remain queued. Off by default: it is a table count. */
   countBacklog?: boolean;
+  /** Expensive resyncs per pass; clean identities still drain in bulk. */
+  maxRepairs?: number;
 }
 
 export interface ExactIdentityDirtyRepairResult {
@@ -69,6 +72,8 @@ export interface ExactIdentityDirtyRepairResult {
   cleanIdentities: number;
   /** Claimed identities whose repair threw. Left claimed; the lease releases them. */
   failedIdentities: number;
+  /** Resyncs deferred by the caller budget, returned to the queue immediately. */
+  deferredIdentities?: number;
   /** Claims released because they outlived the lease. */
   releasedStaleClaims: number;
   /** Identities still queued, or `null` when the caller did not ask to pay for the count. */
@@ -89,14 +94,22 @@ function boundedLimit(value: number | undefined): number {
  * A claim is only ever cleared by a successful repair, so a Worker killed between claiming and
  * repairing would otherwise take its identities out of circulation permanently.
  */
-async function releaseStaleClaims(db: QueryableDatabase, staleBefore: string): Promise<number> {
+async function releaseStaleClaims(
+  db: QueryableDatabase,
+  staleBefore: string,
+  limit: number,
+): Promise<number> {
   const result = await db
     .prepare(`
       UPDATE product_search_exact_identity_dirty
       SET claimed_at = NULL
-      WHERE claimed_at IS NOT NULL AND claimed_at < ?
+      WHERE rowid IN (
+        SELECT rowid FROM product_search_exact_identity_dirty
+        WHERE claimed_at IS NOT NULL AND claimed_at < ?
+        ORDER BY claimed_at LIMIT ?
+      )
     `)
-    .bind(staleBefore)
+    .bind(staleBefore, limit)
     .run();
   return Number(result.meta?.changes || 0);
 }
@@ -106,33 +119,25 @@ async function claimDirtyIdentities(
   limit: number,
   claimedAt: string,
 ): Promise<DirtyIdentityRow[]> {
-  const selected = await db
+  // UPDATE RETURNING claims and returns only rows this invocation actually acquired. A separate
+  // SELECT/UPDATE pair could return another invocation's claims after a race.
+  const result = await db
     .prepare(`
-      SELECT canonical_manufacturer_id, normalized_model
-      FROM product_search_exact_identity_dirty
-      WHERE claimed_at IS NULL
-      ORDER BY marked_at, canonical_manufacturer_id, normalized_model
-      LIMIT ?
-    `)
-    .bind(limit)
-    .all<DirtyIdentityRow>();
-  const rows = selected.results || [];
-  if (!rows.length) return [];
-
-  // Claim in one statement rather than per row: the point of the pass is to stop paying per-row
-  // costs, and a partial claim would leave the rest of the batch visible to a concurrent pass.
-  const placeholders = rows.map(() => "(?, ?)").join(", ");
-  const binds = rows.flatMap((row) => [row.canonical_manufacturer_id, row.normalized_model]);
-  await db
-    .prepare(`
-      UPDATE product_search_exact_identity_dirty
-      SET claimed_at = ?
-      WHERE claimed_at IS NULL
-        AND (canonical_manufacturer_id, normalized_model) IN (VALUES ${placeholders})
-    `)
-    .bind(claimedAt, ...binds)
-    .run();
-  return rows;
+    UPDATE product_search_exact_identity_dirty SET claimed_at = ?
+    WHERE rowid IN (
+      SELECT rowid FROM product_search_exact_identity_dirty WHERE claimed_at IS NULL
+      ORDER BY marked_at, rowid LIMIT ?
+    )
+    RETURNING canonical_manufacturer_id, normalized_model, marked_at
+  `)
+    .bind(claimedAt, limit)
+    .all<DirtyIdentityRow & { marked_at: string }>();
+  // RETURNING has no order guarantee, even when the claim selector is ordered.
+  return (result.results || []).sort(
+    (left, right) =>
+      left.marked_at.localeCompare(right.marked_at) ||
+      identityKey(left).localeCompare(identityKey(right)),
+  );
 }
 
 /**
@@ -144,33 +149,48 @@ async function claimDirtyIdentities(
  * same one `product-search-exact-identity.ts` expresses for the scan, minus the identity self-join
  * that only exists there to find the group in the first place.
  */
+function identityKey(identity: DirtyIdentityRow): string {
+  return JSON.stringify([identity.canonical_manufacturer_id, identity.normalized_model]);
+}
+
 async function identityMembers(
   db: QueryableDatabase,
-  manufacturerId: string,
-  normalizedModel: string,
-): Promise<IdentityMemberRow[]> {
-  const result = await db
-    .prepare(`
-      SELECT p.id, p.shop_key, p.source_id, p.primary_category_id, e.entity_key
-      FROM products p
+  identities: readonly DirtyIdentityRow[],
+): Promise<Map<string, IdentityMemberRow[]>> {
+  const grouped = new Map<string, IdentityMemberRow[]>();
+  // 40 pairs keep every lookup below D1's 100-variable ceiling, including the maximum limit.
+  for (let offset = 0; offset < identities.length; offset += 40) {
+    const chunk = identities.slice(offset, offset + 40);
+    const result = await db
+      .prepare(`
+      WITH identities(manufacturer_id, model) AS (VALUES ${chunk.map(() => "(?, ?)").join(",")})
+      SELECT p.canonical_manufacturer_id, p.normalized_model,
+             p.id, p.shop_key, p.source_id, p.primary_category_id, e.entity_key
+      FROM identities i
+      CROSS JOIN products p ON p.canonical_manufacturer_id = i.manufacturer_id
+        AND p.normalized_model = i.model
       LEFT JOIN product_search_entity_offers o ON o.listing_product_id = p.id
       LEFT JOIN product_search_entities e ON e.id = o.entity_id
-      WHERE p.canonical_manufacturer_id = ?
-        AND p.normalized_model = ?
-        AND p.is_active = 1
+      WHERE p.is_active = 1
         AND p.model_resolution_status = 'resolved'
         AND NOT EXISTS (
-          SELECT 1
-          FROM product_identity_resolutions r
+          SELECT 1 FROM product_identity_resolutions r
           JOIN knowledge_catalog_products kp
             ON kp.id = r.catalog_product_id AND kp.verification_status = 'verified'
           WHERE r.listing_product_id = p.id AND r.status = 'matched'
         )
       ORDER BY p.id
     `)
-    .bind(manufacturerId, normalizedModel)
-    .all<IdentityMemberRow>();
-  return result.results || [];
+      .bind(...chunk.flatMap((row) => [row.canonical_manufacturer_id, row.normalized_model]))
+      .all<IdentityMemberRow>();
+    for (const row of result.results || []) {
+      const key = identityKey(row);
+      const members = grouped.get(key) || [];
+      members.push(row);
+      grouped.set(key, members);
+    }
+  }
+  return grouped;
 }
 
 /**
@@ -235,20 +255,26 @@ function resyncSeeds(members: readonly IdentityMemberRow[]): IdentityMemberRow[]
  * the repair was running set it back to NULL, so this deletes nothing and the identity is repaired
  * again with the newer state.
  */
-async function clearClaim(
+async function settleClaims(
   db: QueryableDatabase,
-  identity: DirtyIdentityRow,
+  identities: readonly DirtyIdentityRow[],
   claimedAt: string,
+  release = false,
 ): Promise<void> {
-  await db
-    .prepare(`
-      DELETE FROM product_search_exact_identity_dirty
-      WHERE canonical_manufacturer_id = ?
-        AND normalized_model = ?
-        AND claimed_at = ?
+  for (let offset = 0; offset < identities.length; offset += 49) {
+    const chunk = identities.slice(offset, offset + 49);
+    await db
+      .prepare(`
+      ${release ? "UPDATE product_search_exact_identity_dirty SET claimed_at = NULL" : "DELETE FROM product_search_exact_identity_dirty"}
+      WHERE claimed_at = ?
+        AND (canonical_manufacturer_id, normalized_model) IN (VALUES ${chunk.map(() => "(?, ?)").join(",")})
     `)
-    .bind(identity.canonical_manufacturer_id, identity.normalized_model, claimedAt)
-    .run();
+      .bind(
+        claimedAt,
+        ...chunk.flatMap((row) => [row.canonical_manufacturer_id, row.normalized_model]),
+      )
+      .run();
+  }
 }
 
 /**
@@ -278,27 +304,35 @@ export async function repairDirtyExactIdentities(
     now = new Date(),
     leaseMs = DIRTY_IDENTITY_LEASE_MS,
     countBacklog = false,
+    maxRepairs = MAX_IDENTITY_LIMIT,
   }: ExactIdentityDirtyRepairOptions = {},
 ): Promise<ExactIdentityDirtyRepairResult> {
   const limit = boundedLimit(requestedLimit);
-  const claimedAt = now.toISOString();
+  boundedLimit(maxRepairs);
+  const claimedAt = `${now.toISOString()}:${crypto.randomUUID()}`;
   const staleBefore = new Date(now.getTime() - leaseMs).toISOString();
 
-  const releasedStaleClaims = await releaseStaleClaims(db, staleBefore);
+  const releasedStaleClaims = await releaseStaleClaims(db, staleBefore, limit);
   const identities = await claimDirtyIdentities(db, limit, claimedAt);
 
   let repairedIdentities = 0;
   let cleanIdentities = 0;
   let failedIdentities = 0;
 
-  for (const identity of identities) {
+  const membersByIdentity = await identityMembers(db, identities);
+  const work = identities.map((identity) => ({
+    identity,
+    seeds: resyncSeeds(membersByIdentity.get(identityKey(identity)) || []),
+  }));
+  const clean = work.filter((item) => !item.seeds.length).map((item) => item.identity);
+  await settleClaims(db, clean, claimedAt);
+  cleanIdentities = clean.length;
+  const repairs = work.filter((item) => item.seeds.length);
+  const deferred = repairs.slice(maxRepairs).map((item) => item.identity);
+  await settleClaims(db, deferred, claimedAt, true);
+
+  for (const { identity, seeds } of repairs.slice(0, maxRepairs)) {
     try {
-      const members = await identityMembers(
-        db,
-        identity.canonical_manufacturer_id,
-        identity.normalized_model,
-      );
-      const seeds = resyncSeeds(members);
       if (seeds.length) {
         // Grouped by shop only because the incremental API is shop/source scoped, and run
         // sequentially so a repair never becomes a D1 burst. `resyncSeeds` has already reduced the
@@ -314,11 +348,10 @@ export async function repairDirtyExactIdentities(
           await syncProductSearchEntities(db, shopKey, sourceIds);
         }
         repairedIdentities += 1;
-      } else {
-        cleanIdentities += 1;
       }
-      await clearClaim(db, identity, claimedAt);
+      await settleClaims(db, [identity], claimedAt);
     } catch (error) {
+      if (error instanceof InvocationBudgetExceeded) throw error;
       // Leave the claim in place. The lease returns it to the queue, which is the same recovery path
       // an isolate death takes, so there is one behaviour to reason about rather than two.
       failedIdentities += 1;
@@ -338,6 +371,7 @@ export async function repairDirtyExactIdentities(
     repairedIdentities,
     cleanIdentities,
     failedIdentities,
+    ...(deferred.length ? { deferredIdentities: deferred.length } : {}),
     releasedStaleClaims,
     backlog: countBacklog ? await countDirtyExactIdentityBacklog(db) : null,
   };

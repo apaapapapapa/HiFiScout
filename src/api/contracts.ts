@@ -353,6 +353,8 @@ export interface TaxonomyHealthSummary {
 }
 
 export interface MetaResponse {
+  /** Counts snapshot timestamp; shop sync and health retain their live read cadence. */
+  countsUpdatedAt?: string;
   status: ShopHealthStatus;
   shops: MetaShop[];
   /** Legacy manufacturer vocabulary retained for clients that do not consume facet metadata. */
