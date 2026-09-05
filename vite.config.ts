@@ -72,21 +72,27 @@ export default defineConfig(({ mode }) => ({
       },
       "ci:test-shard-1": {
         command: ciShell(
-          "vp exec tsx scripts/ensure-directories.ts .generated && vp test run --reporter=dot --reporter=json --outputFile.json=.generated/unit-timings-1.json --shard=1/3",
+          "vp exec tsx scripts/ensure-directories.ts .generated && vp test run --reporter=dot --reporter=json --outputFile.json=.generated/unit-timings-1.json --shard=1/4",
         ),
         output: [".generated/unit-timings-1.json"],
       },
       "ci:test-shard-2": {
         command: ciShell(
-          "vp exec tsx scripts/ensure-directories.ts .generated && vp test run --reporter=dot --reporter=json --outputFile.json=.generated/unit-timings-2.json --shard=2/3",
+          "vp exec tsx scripts/ensure-directories.ts .generated && vp test run --reporter=dot --reporter=json --outputFile.json=.generated/unit-timings-2.json --shard=2/4",
         ),
         output: [".generated/unit-timings-2.json"],
       },
       "ci:test-shard-3": {
         command: ciShell(
-          "vp exec tsx scripts/ensure-directories.ts .generated && vp test run --reporter=dot --reporter=json --outputFile.json=.generated/unit-timings-3.json --shard=3/3",
+          "vp exec tsx scripts/ensure-directories.ts .generated && vp test run --reporter=dot --reporter=json --outputFile.json=.generated/unit-timings-3.json --shard=3/4",
         ),
         output: [".generated/unit-timings-3.json"],
+      },
+      "ci:test-shard-4": {
+        command: ciShell(
+          "vp exec tsx scripts/ensure-directories.ts .generated && vp test run --reporter=dot --reporter=json --outputFile.json=.generated/unit-timings-4.json --shard=4/4",
+        ),
+        output: [".generated/unit-timings-4.json"],
       },
       "ci:parser-benchmark": {
         command: ciShell("vp exec tsx scripts/parser-cpu-benchmark.ts --check"),
