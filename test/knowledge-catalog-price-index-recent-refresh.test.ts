@@ -233,8 +233,18 @@ test("expiry refresh is strict at the boundary and idempotent after repair", asy
   insertAskingSample(sqlite, 1, 300000, "2026-06-07T00:00:00.000Z");
   sqlite.exec(`
     UPDATE knowledge_catalog_price_indexes SET recent_asking_median_yen = -1;
-    UPDATE knowledge_catalog_price_index_recent_refreshes
-    SET next_expiry_at = '2026-09-04T00:00:00.000Z';
+    INSERT INTO knowledge_catalog_price_index_recent_refreshes(
+      catalog_product_id,
+      next_expiry_at,
+      updated_at
+    ) VALUES (
+      1,
+      '2026-09-04T00:00:00.000Z',
+      '2026-09-04T00:00:00.000Z'
+    )
+    ON CONFLICT(catalog_product_id) DO UPDATE SET
+      next_expiry_at = excluded.next_expiry_at,
+      updated_at = excluded.updated_at;
   `);
 
   const atBoundary = await refreshExpiredRecentPriceIndexes(db, {
