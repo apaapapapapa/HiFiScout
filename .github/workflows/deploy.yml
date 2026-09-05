@@ -303,9 +303,10 @@ jobs:
 
             if [[ -n "$diagnostic_ray" ]]; then
               set +e
-              matching_tail_event_count="$(jq -se \
+              matching_tail_event_count="$(jq -L scripts/lib -se \
                 --arg ray "$diagnostic_ray" \
-                '[.[] | select((.event.request.headers["cf-ray"] // "") == $ray)] | length' \
+                'include "cloudflare-ray";
+                 [.[] | select((.event.request.headers["cf-ray"] // "") | same_cf_ray($ray))] | length' \
                 "$tail_log")"
               tail_match_status=$?
               set -e
@@ -316,11 +317,12 @@ jobs:
               fi
             fi
 
-            if (( matching_tail_event_count > 0 )) && jq -se \
+            if (( matching_tail_event_count > 0 )) && jq -L scripts/lib -se \
               --arg ray "$diagnostic_ray" \
               --arg quota "$quota_message" \
-              '[.[]
-                | select((.event.request.headers["cf-ray"] // "") == $ray)
+              'include "cloudflare-ray";
+               [.[]
+                | select((.event.request.headers["cf-ray"] // "") | same_cf_ray($ray))
                 | .exceptions[]?
                 | select((.message // "") | contains($quota))]
                | length > 0' "$tail_log" >/dev/null; then
