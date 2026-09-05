@@ -219,6 +219,20 @@ for (const manufacturer of MANUFACTURERS) {
 }
 PREFIX_ALIASES.sort((a, b) => b.key.length - a.key.length || b.alias.length - a.alias.length);
 
+// Most seller titles begin with an ASCII brand. Match only aliases with that initial rather than
+// running every bootstrap regular expression for every listing. Keep the full path for other
+// scripts so Unicode case-folding semantics stay owned by the existing /iu patterns.
+const PREFIX_ALIASES_BY_INITIAL = new Map<string, PrefixAliasEntry[]>();
+for (const candidate of PREFIX_ALIASES) {
+  const initial = cleanSourceText(candidate.alias)
+    .replace(/^[\s・･_\-/&+.,'"()（）]+/u, "")[0]
+    ?.toLowerCase();
+  if (!initial || !/^[a-z]$/u.test(initial)) continue;
+  const entries = PREFIX_ALIASES_BY_INITIAL.get(initial) || [];
+  entries.push(candidate);
+  PREFIX_ALIASES_BY_INITIAL.set(initial, entries);
+}
+
 function hashKey(value: string): string {
   let hash = 0x811c9dc5;
   for (const char of value) {
@@ -333,7 +347,11 @@ export function splitKnownManufacturerModel(value: unknown = ""): ManufacturerMo
   const raw = cleanSourceText(stripManufacturerListingLabels(value));
   if (!raw) return null;
 
-  for (const candidate of PREFIX_ALIASES) {
+  const initial = raw[0].toLowerCase();
+  const candidates = /^[a-z]$/u.test(initial)
+    ? PREFIX_ALIASES_BY_INITIAL.get(initial) || []
+    : PREFIX_ALIASES;
+  for (const candidate of candidates) {
     const match = raw.match(candidate.pattern);
     if (!match) continue;
     const model = stripBracketedManufacturerAlias(raw.slice(match[0].length), [
