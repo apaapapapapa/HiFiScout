@@ -115,6 +115,14 @@ Changing a catalog primary category replaces its category membership with that l
 Name or identity edits alone preserve secondary categories. Seller titles, raw evidence, prices, stock,
 and deletion are outside this import contract.
 
+The two editable exports and the result CSV share the same reversible formula/apostrophe encoding.
+Canonical source columns are reserved before diagnostic text/JSON consumes the catalog row budget.
+Editable before-images retain up to 4,096 characters per field, matching the import envelope; new
+names/models still obey their shorter domain limits. Existing tabs/newlines can be corrected or left
+unchanged, but new control characters cannot be introduced. If a canonical before-image contains
+`[truncated]` (including NUL-bearing or over-limit stored values), that row cannot be safely updated
+from this CSV: use individual editing and regenerate it. Other unchanged rows remain no-op rows.
+
 1. Choose the edited CSV (at most 100 MiB) and select **差分を確認**.
 2. Review the before/after values and row-level validation results. Unchanged rows are not submitted
    for updating. Invalid IDs, duplicate rows, duplicate catalog identities, or stale originals block
@@ -130,13 +138,21 @@ A concurrent change stops processing without overwriting the newer values; earli
 remain applied. There is no automatic whole-file rollback. If catalog edits alter the originals of a
 separately exported listing file, regenerate that listing export before making further corrections.
 
-`POST /api/admin/csv-import/preview` accepts at most 20 changed rows; `apply` accepts one row with a
+`POST /api/admin/csv-import/preview` accepts at most 20 changed rows and 256 KiB of UTF-8 JSON;
+the browser splits batches by both limits. `apply` accepts one row with a
 revision and operation UUID. Both use the existing Access, same-origin, JSON size, and Service Binding
 boundaries. `admin_csv_import_changes` retains before/after values and a durable related-listing cursor.
 Catalog identity corrections retain removed alias/source evidence in that receipt, retire the old
 identity evidence, and replay affected matched/candidate listings in pages of at most 10, including
 inactive retained listings. Explicit listing overrides continue to win. Re-uploading an unchanged CSV
 does not create receipts or rewrite products.
+
+Listing edits preserve untouched compatibility/canonical manufacturer IDs, category closure, direct
+membership and search aliases. Name/lifecycle-only catalog edits need no listing projections,
+candidate discovery or reclassification; model spelling changes still refresh existing references.
+Category propagation skips already-equal values and explicit
+listing category overrides; identity discovery advances its bounded scanned-ID cursor even when every
+row in a page was already refreshed. Failed projection work still resumes from its durable receipt/token.
 
 ## Verification
 

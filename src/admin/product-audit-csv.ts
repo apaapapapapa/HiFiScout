@@ -1,5 +1,6 @@
 import type { CatalogAdminProductExportRow } from "./contracts.js";
 import {
+  adminCsvCell,
   adminCsvEditHeader,
   adminCsvEditRow,
   adminCsvOriginal,
@@ -88,21 +89,6 @@ const COLUMNS: readonly CsvColumn[] = [
   { header: "source_published_at", value: (row) => row.sourcePublishedAt },
 ];
 
-/**
- * Neutralise spreadsheet formula prefixes while preserving the seller text for human/AI review.
- * CSV quoting alone does not stop Excel-compatible applications from evaluating formula cells.
- */
-function spreadsheetSafe(value: string): string {
-  return /^[=+\-@]/u.test(value) ? `'${value}` : value;
-}
-
-function csvCell(value: string | number | null): string {
-  if (value === null) return "";
-  if (typeof value === "number") return String(value);
-  const safe = spreadsheetSafe(value);
-  return `"${safe.replaceAll('"', '""')}"`;
-}
-
 export function productAuditCsvHeader(): string {
   return COLUMNS.map((column) => column.header).join(",") + "," + adminCsvEditHeader("listing");
 }
@@ -114,7 +100,9 @@ export function productAuditCsvRow(row: CatalogAdminProductExportRow): string {
     primary_category_id: row.primaryCategoryId,
   });
   return (
-    COLUMNS.map((column) => csvCell(column.value(row))).join(",") + "," + adminCsvEditRow(original)
+    COLUMNS.map((column) => adminCsvCell(column.value(row))).join(",") +
+    "," +
+    adminCsvEditRow(original)
   );
 }
 

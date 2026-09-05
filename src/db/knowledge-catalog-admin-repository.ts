@@ -67,6 +67,14 @@ interface MatchedCatalogListingRow {
   id: number;
   shop_key: string;
   source_id: string;
+  category: string;
+  primary_category_id: string;
+  category_ids: string;
+  direct_category_ids: string;
+  classification_status: string;
+  search_aliases: string;
+  override_primary_category_id: string | null;
+  remediation_projection_token: string;
 }
 
 export interface KnowledgeCatalogAdminProduct {
@@ -265,9 +273,12 @@ export async function propagateCatalogCategoryToMatchedListings(
   for (;;) {
     const result = await db
       .prepare(`
-        SELECT p.id, p.shop_key, p.source_id
+        SELECT p.id, p.shop_key, p.source_id, p.category, p.primary_category_id,
+          p.category_ids, p.direct_category_ids, p.classification_status, p.search_aliases,
+          p.remediation_projection_token, o.primary_category_id AS override_primary_category_id
         FROM products p
         JOIN product_identity_resolutions pir ON pir.listing_product_id = p.id
+        LEFT JOIN product_admin_overrides o ON o.listing_product_id = p.id
         WHERE ${listingIds ? "1 = 1" : "p.is_active = 1"}
           AND pir.status = 'matched' AND pir.catalog_product_id = ? AND p.id > ?
           ${listingIds ? "AND p.id IN (" + listingIds.map(() => "?").join(",") + ")" : ""}
@@ -282,6 +293,21 @@ export async function propagateCatalogCategoryToMatchedListings(
     const tokens = new Map<number, string>();
     const statements: D1PreparedStatement[] = [];
     for (const listing of listings) {
+      if (listing.remediation_projection_token?.startsWith(CATEGORY_PROJECTION_TOKEN_PREFIX)) {
+        tokens.set(Number(listing.id), listing.remediation_projection_token);
+      }
+      // A retry may see the category already committed. Explicit listing authority must not be
+      // rewritten just for its override trigger to restore it again.
+      if (
+        listing.override_primary_category_id != null ||
+        (listing.category === primary.name &&
+          listing.primary_category_id === primary.id &&
+          listing.category_ids === JSON.stringify(categoryIds) &&
+          listing.direct_category_ids === JSON.stringify([primary.id]) &&
+          listing.classification_status === "classified" &&
+          listing.search_aliases === categorySearchAliases(categoryIds))
+      )
+        continue;
       const token = `${CATEGORY_PROJECTION_TOKEN_PREFIX}${crypto.randomUUID()}`;
       tokens.set(Number(listing.id), token);
       statements.push(
@@ -326,15 +352,17 @@ export async function propagateCatalogCategoryToMatchedListings(
 
     await runBatches(
       db,
-      listings.map((listing) =>
-        db
-          .prepare(`
+      listings
+        .filter((listing) => tokens.has(Number(listing.id)))
+        .map((listing) =>
+          db
+            .prepare(`
             UPDATE products
             SET remediation_projection_required = 0, remediation_projection_token = ''
             WHERE id = ? AND remediation_projection_token = ?
           `)
-          .bind(listing.id, tokens.get(Number(listing.id)) || ""),
-      ),
+            .bind(listing.id, tokens.get(Number(listing.id)) || ""),
+        ),
     );
 
     refreshedListings += listings.length;

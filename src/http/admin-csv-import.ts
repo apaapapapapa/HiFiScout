@@ -1,7 +1,9 @@
 import { isRecord } from "../types.js";
 import {
   ADMIN_CSV_FIELDS,
+  ADMIN_CSV_MAX_VALUE_CHARACTERS,
   ADMIN_CSV_PREVIEW_LIMIT,
+  isAdminCsvOriginal,
   type AdminCsvApplyInput,
   type AdminCsvChange,
 } from "../api/admin-csv-contracts.js";
@@ -17,29 +19,21 @@ function containsControlCharacter(value: string): boolean {
 export function parseAdminCsvChange(value: unknown): AdminCsvChange | null {
   if (!isRecord(value) || !isRecord(value.original) || !isRecord(value.values)) return null;
   const original = value.original;
-  if (
-    original.version !== 1 ||
-    (original.kind !== "listing" && original.kind !== "catalog") ||
-    !Number.isSafeInteger(original.id) ||
-    Number(original.id) <= 0 ||
-    !Number.isSafeInteger(value.line) ||
-    Number(value.line) <= 0 ||
-    !isRecord(original.values)
-  )
+  if (!isAdminCsvOriginal(original) || !Number.isSafeInteger(value.line) || Number(value.line) <= 0)
     return null;
   const fields: readonly string[] = ADMIN_CSV_FIELDS[original.kind];
-  for (const values of [original.values, value.values]) {
-    if (Object.keys(values).length !== fields.length) return null;
-    if (
-      !fields.every(
-        (field) =>
-          typeof values[field] === "string" &&
-          values[field].length <= 4096 &&
-          !containsControlCharacter(values[field]),
-      )
+  const values = value.values;
+  if (Object.keys(values).length !== fields.length) return null;
+  // Existing dirty data must be correctable; reject newly introduced controls, not the before-image.
+  if (
+    !fields.every(
+      (field) =>
+        typeof values[field] === "string" &&
+        values[field].length <= ADMIN_CSV_MAX_VALUE_CHARACTERS &&
+        (values[field] === original.values[field] || !containsControlCharacter(values[field])),
     )
-      return null;
-  }
+  )
+    return null;
   return value as unknown as AdminCsvChange;
 }
 

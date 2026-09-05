@@ -15,6 +15,8 @@ export const ADMIN_CSV_FIELDS = {
 export const ADMIN_CSV_PREVIEW_LIMIT = 20;
 export const ADMIN_CSV_MAX_FILE_BYTES = 100 * 1024 * 1024;
 export const ADMIN_CSV_MAX_ROWS = 225_000;
+export const ADMIN_CSV_MAX_VALUE_CHARACTERS = 4_096;
+export const ADMIN_CSV_MAX_REQUEST_BYTES = 256 * 1024;
 
 export interface AdminCsvOriginal {
   version: 1;
@@ -53,10 +55,61 @@ export function adminCsvOriginal(
   return { version: 1, kind, id, values };
 }
 
+const FORMULA_PREFIX = /^(?:\s*[=+\-@]|['\t\r\n])/u;
+
 /** Escape a literal leading apostrophe too, making formula protection reversible on import. */
-export function adminCsvCell(value: string): string {
-  const safe = /^(?:\s*[=+\-@]|['\t\r\n])/u.test(value) ? "'" + value : value;
+export function adminCsvCell(value: string | number | null): string {
+  if (value === null) return "";
+  if (typeof value === "number") return String(value);
+  const safe = FORMULA_PREFIX.test(value) ? "'" + value : value;
   return '"' + safe.replaceAll('"', '""') + '"';
+}
+
+export function adminCsvDecodeCell(value: string): string {
+  return value.startsWith("'") && FORMULA_PREFIX.test(value.slice(1)) ? value.slice(1) : value;
+}
+
+export function isAdminCsvOriginal(value: unknown): value is AdminCsvOriginal {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const row = value as Partial<AdminCsvOriginal>;
+  if (row.version !== 1 || (row.kind !== "listing" && row.kind !== "catalog")) return false;
+  if (!Number.isSafeInteger(row.id) || Number(row.id) <= 0) return false;
+  if (!row.values || typeof row.values !== "object" || Array.isArray(row.values)) return false;
+  return (
+    Object.keys(row.values).length === ADMIN_CSV_FIELDS[row.kind].length &&
+    ADMIN_CSV_FIELDS[row.kind].every(
+      (field) =>
+        typeof row.values?.[field] === "string" &&
+        row.values[field].length <= ADMIN_CSV_MAX_VALUE_CHARACTERS,
+    )
+  );
+}
+
+/** Bound the encoded JSON body as well as the row count (UTF-8 and JSON escapes both matter). */
+export function* adminCsvPreviewBatches(
+  changes: readonly AdminCsvChange[],
+): Generator<AdminCsvChange[]> {
+  const encoder = new TextEncoder();
+  const envelopeBytes = encoder.encode('{"changes":[]}').length;
+  let batch: AdminCsvChange[] = [];
+  let bytes = envelopeBytes;
+  for (const change of changes) {
+    const size = encoder.encode(JSON.stringify(change)).length;
+    if (size + envelopeBytes > ADMIN_CSV_MAX_REQUEST_BYTES - 1024) {
+      throw new Error(change.line + "行目: 修正データがリクエスト上限を超えています。");
+    }
+    if (
+      batch.length &&
+      (batch.length >= ADMIN_CSV_PREVIEW_LIMIT || bytes + size + 1 > ADMIN_CSV_MAX_REQUEST_BYTES)
+    ) {
+      yield batch;
+      batch = [];
+      bytes = envelopeBytes;
+    }
+    bytes += size + (batch.length ? 1 : 0);
+    batch.push(change);
+  }
+  if (batch.length) yield batch;
 }
 
 export function adminCsvEditHeader(kind: AdminCsvKind): string {

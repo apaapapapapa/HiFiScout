@@ -220,6 +220,13 @@ export async function previewAdminCsvChange(
   db: ReadableDatabase,
   change: AdminCsvChange,
 ): Promise<AdminCsvResult> {
+  if (Object.values(change.original.values).some((value) => value.includes("[truncated]"))) {
+    return result(
+      change,
+      "invalid",
+      "元データが省略されているためCSVでは更新できません。個別編集で修正してください。",
+    );
+  }
   const state = await loadState(db, change.original.kind, change.original.id);
   if (!state) return result(change, "invalid", "対象IDが存在しません。");
   const values = valuesFor(change);
@@ -296,12 +303,14 @@ async function updateCatalog(
     receiptStatement(db, input, values, now),
     db
       .prepare(`UPDATE knowledge_catalog_products
-      SET manufacturer_id = ?, canonical_model = ?, normalized_model = ?, canonical_name = ?,
+      SET manufacturer_id = ?, canonical_model = ?,
+          normalized_model = CASE WHEN ? THEN ? ELSE normalized_model END, canonical_name = ?,
           lifecycle_status = ?, review_status = 'current', last_reviewed_at = ?, updated_at = ?
       WHERE id = ?`)
       .bind(
         values.manufacturer_id,
         values.canonical_model,
+        values.canonical_model !== before.canonical_model ? 1 : 0,
         normalizeCatalogModel(values.canonical_model),
         values.canonical_name,
         values.lifecycle_status,
@@ -367,6 +376,16 @@ async function resumeReceipt(
     );
   }
   if (receipt.status === "applied") return result(change, "applied", "適用済みです。");
+  const before = (JSON.parse(receipt.before_json) as { values: AdminCsvValues }).values;
+  const identityChanged =
+    receipt.target_kind === "catalog" &&
+    (before.manufacturer_id !== desired.manufacturer_id ||
+      normalizeCatalogModel(before.canonical_model) !==
+        normalizeCatalogModel(desired.canonical_model));
+  const categoryChanged = before.primary_category_id !== desired.primary_category_id;
+  const needsReclassification = identityChanged || categoryChanged;
+  const needsProjection =
+    needsReclassification || before.canonical_model !== desired.canonical_model;
   if (receipt.target_kind === "listing") {
     await refreshListingProjections(
       db,
@@ -382,8 +401,13 @@ async function resumeReceipt(
     if (state.pending === 1) {
       await clearProjectionPendingForToken(db, receipt.target_id, state.projection_token);
     }
-  } else if (receipt.phase < 3) {
-    let selected: { id: number; shop_key: string; source_id: string }[] = [];
+  } else if (receipt.phase < (needsReclassification ? 3 : needsProjection ? 1 : 0)) {
+    let scanned: {
+      id: number;
+      shop_key: string;
+      source_id: string;
+      matched_catalog_id?: number | null;
+    }[] = [];
     if (receipt.phase < 2) {
       const column = receipt.phase === 0 ? "catalog_product_id" : "candidate_catalog_product_id";
       const rows = await db
@@ -394,34 +418,39 @@ async function resumeReceipt(
         ORDER BY r.listing_product_id LIMIT ?`)
         .bind(receipt.target_id, receipt.after_listing_id, REPLAY_PAGE_SIZE)
         .all<{ id: number; shop_key: string; source_id: string }>();
-      selected = rows.results || [];
+      scanned = rows.results || [];
     } else {
       const target = await loadCatalogRemediationTarget(db, receipt.target_id);
       if (target?.identityModels.length) {
         const rows = await db
-          .prepare(`SELECT id, shop_key, source_id FROM products
-          WHERE canonical_manufacturer_id = ? AND normalized_model IN (${target.identityModels.map(() => "?").join(",")})
-            AND id > ? ORDER BY id LIMIT ?`)
+          .prepare(`SELECT p.id, p.shop_key, p.source_id, r.catalog_product_id AS matched_catalog_id
+          FROM products p LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
+          WHERE p.canonical_manufacturer_id = ? AND p.normalized_model IN (${target.identityModels.map(() => "?").join(",")})
+            AND p.id > ?
+          ORDER BY p.id LIMIT ?`)
           .bind(
             target.manufacturerId,
             ...target.identityModels,
             receipt.after_listing_id,
             REPLAY_PAGE_SIZE,
           )
-          .all<{ id: number; shop_key: string; source_id: string }>();
-        selected = rows.results || [];
+          .all<{
+            id: number;
+            shop_key: string;
+            source_id: string;
+            matched_catalog_id: number | null;
+          }>();
+        scanned = rows.results || [];
       }
     }
-    const before = (JSON.parse(receipt.before_json) as { values: AdminCsvValues }).values;
-    const identityChanged =
-      before.manufacturer_id !== desired.manufacturer_id ||
-      normalizeCatalogModel(before.canonical_model) !==
-        normalizeCatalogModel(desired.canonical_model);
-    if (
-      !identityChanged &&
-      receipt.phase === 0 &&
-      before.primary_category_id !== desired.primary_category_id
-    ) {
+    // Filter AFTER a bounded indexed page, and advance by scanned IDs even when all are skipped.
+    // Matches to this catalog were already refreshed in the reference phases (or by another writer).
+    const selected =
+      receipt.phase === 2
+        ? scanned.filter((row) => row.matched_catalog_id !== receipt.target_id)
+        : scanned;
+    const propagatedCategory = !identityChanged && receipt.phase === 0 && categoryChanged;
+    if (propagatedCategory) {
       await propagateCatalogCategoryToMatchedListings(
         db,
         receipt.target_id,
@@ -438,13 +467,17 @@ async function resumeReceipt(
     } else {
       await refreshListingProjections(db, selected, now);
     }
-    await reclassifyAdminCsvListings(
-      db,
-      selected.map((row) => row.id),
-      now,
-    );
-    const phase = selected.length < REPLAY_PAGE_SIZE ? receipt.phase + 1 : receipt.phase;
-    const cursor = phase === receipt.phase ? selected.at(-1)?.id || 0 : 0;
+    // Propagation already refreshed these listings. Name/lifecycle edits cannot change category
+    // authority; only identity/category changes need candidate discovery and reclassification.
+    if (needsReclassification && !propagatedCategory) {
+      await reclassifyAdminCsvListings(
+        db,
+        selected.map((row) => row.id),
+        now,
+      );
+    }
+    const phase = scanned.length < REPLAY_PAGE_SIZE ? receipt.phase + 1 : receipt.phase;
+    const cursor = phase === receipt.phase ? scanned.at(-1)?.id || 0 : 0;
     // A retry/concurrent tab can only advance the cursor it actually observed.
     await db
       .prepare(`UPDATE admin_csv_import_changes SET phase = ?, after_listing_id = ?, updated_at = ?

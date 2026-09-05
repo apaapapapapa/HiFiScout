@@ -1,8 +1,9 @@
 import {
   ADMIN_CSV_FIELDS,
   ADMIN_CSV_MAX_ROWS,
+  adminCsvDecodeCell,
+  isAdminCsvOriginal,
   type AdminCsvChange,
-  type AdminCsvOriginal,
 } from "../src/api/admin-csv-contracts.js";
 
 /** RFC 4180, including embedded newlines, escaped quotes, CRLF and a UTF-8 BOM. */
@@ -46,21 +47,13 @@ export function* parseCsv(text: string): Generator<{ line: number; cells: string
       if (closed || character === '"') throw new Error(line + "行目: CSVの引用符が不正です。");
       cell += character;
     }
-    if (cell.length > 65_536 || cells.length > 200) {
+    // Five 4,096-character original fields can expand sixfold inside JSON escape sequences.
+    if (cell.length > 128 * 1024 || cells.length > 200) {
       throw new Error(rowLine + "行目: セルまたは列数が上限を超えています。");
     }
   }
   if (quoted) throw new Error(rowLine + "行目: CSVの引用符が閉じられていません。");
   if (cell || closed || cells.length) yield { line: rowLine, cells: [...cells, cell] };
-}
-
-function originalValue(value: unknown): value is AdminCsvOriginal {
-  if (!value || typeof value !== "object") return false;
-  const row = value as Partial<AdminCsvOriginal>;
-  if (row.version !== 1 || (row.kind !== "listing" && row.kind !== "catalog")) return false;
-  if (!Number.isSafeInteger(row.id) || Number(row.id) <= 0) return false;
-  if (!row.values || typeof row.values !== "object" || Array.isArray(row.values)) return false;
-  return ADMIN_CSV_FIELDS[row.kind].every((field) => typeof row.values?.[field] === "string");
 }
 
 export function readAdminCsv(text: string): {
@@ -90,7 +83,7 @@ export function readAdminCsv(text: string): {
     } catch {
       throw new Error(line + "行目: csv_originalを変更せず、CSVを再生成してください。");
     }
-    if (!originalValue(original)) throw new Error(line + "行目: 元データの形式が不正です。");
+    if (!isAdminCsvOriginal(original)) throw new Error(line + "行目: 元データの形式が不正です。");
     const key = original.kind + ":" + original.id;
     if (seen.has(key)) throw new Error(line + "行目: 対象IDが重複しています。");
     seen.add(key);
@@ -103,7 +96,7 @@ export function readAdminCsv(text: string): {
       const index = indexes.get("edit_" + field);
       if (index === undefined) throw new Error("edit_" + field + "列がありません。");
       const value = cells[index];
-      values[field] = /^'(?:\s*[=+\-@]|['\t\r\n])/u.test(value) ? value.slice(1) : value;
+      values[field] = adminCsvDecodeCell(value);
       // Detect accidentally editing the original canonical columns instead of edit_*.
       const sourceField =
         original.kind === "listing" && field === "manufacturer_id"
@@ -113,7 +106,7 @@ export function readAdminCsv(text: string): {
       if (sourceIndex !== undefined) {
         const source = cells[sourceIndex];
         const expected = original.values[field];
-        if (source !== expected && source !== "'" + expected) {
+        if (source !== expected && adminCsvDecodeCell(source) !== expected) {
           throw new Error(
             line + "行目: " + sourceField + "は元データ列です。edit_列を編集してください。",
           );
