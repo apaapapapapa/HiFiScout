@@ -79,7 +79,14 @@ test("a shop with delayed projections does not invalidate otherwise healthy cata
   const meta = metadata("ok");
   const delayedShop = metadata("projection_delayed").shops[0];
   assert.ok(delayedShop);
-  meta.shops.push({ ...delayedShop, key: "shop-b", name: "Shop B" });
+  assert.ok(delayedShop.health);
+  meta.shops.push({
+    ...delayedShop,
+    key: "shop-b",
+    name: "Shop B",
+    sync: delayedShop.sync ? { ...delayedShop.sync, shop_key: "shop-b" } : null,
+    health: { ...delayedShop.health, shopKey: "shop-b", name: "Shop B" },
+  });
   meta.status = "warning";
   assert.equal(isMetaResponse(meta), true);
 });
@@ -101,11 +108,26 @@ test("metadata validation still rejects unknown, inherited, and non-string healt
     {},
     [],
   ]) {
-    const malformed = {
+    const malformed: unknown = {
       ...meta,
       shops: [{ ...shop, health: { ...shop.health, reason } }],
     };
     assert.equal(isMetaResponse(malformed), false, `must reject ${String(reason)}`);
+  }
+});
+
+test("metadata validation rejects invalid statuses at both the response and shop levels", () => {
+  const meta = metadata("ok");
+  const shop = meta.shops[0];
+  assert.ok(shop);
+  assert.ok(shop.health);
+  for (const status of ["unknown", "constructor", "toString", "__proto__", null, 0]) {
+    assert.equal(isMetaResponse({ ...meta, status }), false);
+    const malformed: unknown = {
+      ...meta,
+      shops: [{ ...shop, health: { ...shop.health, status } }],
+    };
+    assert.equal(isMetaResponse(malformed), false);
   }
 });
 
