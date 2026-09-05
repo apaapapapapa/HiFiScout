@@ -186,7 +186,7 @@ test("admin exports expose every ZIP volume and retain the legacy CSV download",
   );
   const card = component
     .locator(".export-job")
-    .filter({ has: component.getByRole("heading", { name: "Knowledge Catalog", exact: true }) });
+    .filter({ has: page.getByRole("heading", { name: "Knowledge Catalog", exact: true }) });
   await card.getByRole("button", { name: "編集用CSVを生成" }).click();
   await expect.poll(() => formats).toEqual(["csv"]);
   await card.getByRole("button", { name: "全情報ZIPを生成" }).click();
