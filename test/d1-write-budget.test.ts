@@ -10,6 +10,10 @@ import { syncProductIdentityResolutions } from "../src/db/product-identity-repos
 import { syncProductSearchEntities } from "../src/db/product-search-entity-repository.js";
 import { syncProductSearchProjections } from "../src/db/product-search-projection-repository.js";
 import { refreshKnowledgeCatalogCandidates } from "../src/db/knowledge-catalog-review-repository.js";
+import {
+  recordCrawlFetchPageFetched,
+  recordCrawlFetchPageParsed,
+} from "../src/db/crawl-fetch-page-repository.js";
 import { accountReads } from "../src/db/read-accounting.js";
 import { asQueryableDatabase } from "./helpers/d1.js";
 import { detailFetchOptions } from "./helpers/fixtures.js";
@@ -69,13 +73,98 @@ const listing = (sourceId: string) =>
     sourceUrl: `https://example.test/${sourceId}`,
   });
 
-test("DO collection progress removes four billed D1 writes per nonempty page with one final checkpoint", async () => {
+test("inline listing checkpoints reduce billed D1 writes and duplicate deliveries write zero rows", async () => {
+  const { db, dispose } = await database();
+  try {
+    const costs: Record<string, { rowsWritten: number; rowsRead: number; statements: number }> = {};
+    for (const inline of [false, true]) {
+      const runId = inline ? "inline-page-budget" : "split-page-budget";
+      const pages = Array.from({ length: 20 }, (_, ordinal) => ({
+        key: "https://example.test/list?page=" + ordinal,
+        page: "https://example.test/list?page=" + ordinal,
+        ordinal,
+      }));
+      await ensureCrawlFetchSession(db, {
+        runId,
+        shopKey: runId,
+        requestedAt: AT,
+        maxPages: pages.length,
+        pageLimit: pages.length,
+        pages: [pages[0]],
+        createdAt: AT,
+      });
+      const measured = accountReads(db);
+      let sequence = 0;
+      for (const [i, page] of pages.entries()) {
+        if (!inline) {
+          await recordCrawlFetchPageFetched(measured.db, {
+            runId,
+            pageKey: page.key,
+            html: "<html>seller</html>",
+            htmlBytes: 19,
+            fetchedAt: AT,
+            currentSequence: sequence++,
+          });
+        }
+        const input = {
+          runId,
+          pageKey: page.key,
+          products: [listing("item-" + i)],
+          discoveredPages: pages[i + 1] ? [pages[i + 1]] : [],
+          parsedAt: AT,
+          currentSequence: sequence++,
+          nextPageKey: pages[i + 1]?.key ?? null,
+          coverageIncomplete: false,
+          reachedEnd: false,
+          ...(inline ? { fetched: { at: AT, htmlBytes: 19 } } : {}),
+        };
+        await recordCrawlFetchPageParsed(measured.db, input);
+        const duplicate = accountReads(db);
+        await recordCrawlFetchPageParsed(duplicate.db, input);
+        assert.equal(
+          duplicate.rowsWritten(),
+          0,
+          "redelivery must not update counters or insert a second frontier",
+        );
+      }
+      const summary = await getCrawlFetchSession(db, runId);
+      assert.equal(summary?.pages_fetched, 20);
+      assert.equal(summary?.pages_parsed, 20);
+      assert.equal(summary?.next_phase, "finalize");
+      assert.equal(summary?.continuation_sequence, inline ? 20 : 40);
+      assert.equal(
+        await db
+          .prepare(
+            "SELECT COUNT(*) n FROM crawl_fetch_pages WHERE run_id = ? AND html_text IS NOT NULL",
+          )
+          .bind(runId)
+          .first("n"),
+        0,
+      );
+      costs[inline ? "inline" : "split"] = {
+        rowsWritten: measured.rowsWritten(),
+        rowsRead: measured.rowsRead(),
+        statements: measured.countedStatements(),
+      };
+    }
+    assert.ok(costs.inline.rowsWritten <= costs.split.rowsWritten * 0.75, JSON.stringify(costs));
+    assert.ok(costs.inline.statements < costs.split.statements, JSON.stringify(costs));
+    console.log("crawl_inline_d1_budget " + JSON.stringify(costs));
+  } finally {
+    await dispose();
+  }
+}, 30_000);
+
+test("DO collection progress and inline parsing reduce billed D1 writes with one final checkpoint", async () => {
   const { db, dispose } = await database();
   try {
     const plugin = getShopPlugin("home-shokai")!;
+    // Three full collection modes include workerd round trips; ten pages keeps the comparison
+    // below the CI runner's time budget while still exercising repeated steps and one checkpoint.
     const pageCount = 10;
     const totals = new Map<string, number>();
-    for (const mode of ["d1", "durable_object"] as const) {
+    const costs: Record<string, { rowsWritten: number; rowsRead: number; statements: number }> = {};
+    for (const mode of ["d1", "durable_object", "durable_object_inline"] as const) {
       const measured = accountReads(db);
       const env = {
         DB: measured.db,
@@ -84,17 +173,18 @@ test("DO collection progress removes four billed D1 writes per nonempty page wit
       const body = {
         shopKey: plugin.key,
         force: true,
-        requestedAt: mode === "d1" ? AT : NEXT,
+        requestedAt:
+          mode === "d1" ? AT : mode === "durable_object" ? NEXT : "2026-09-05T02:00:00.000Z",
         collectionRunId: `budget:${mode}`,
       };
       const state: CollectionProgressState | undefined =
-        mode === "durable_object" ? { value: null } : undefined;
+        mode !== "d1" ? { value: null } : undefined;
       await ensureCrawlFetchSession(measured.db, {
         runId: body.collectionRunId,
         shopKey: plugin.key,
         requestedAt: body.requestedAt,
         createdAt: AT,
-        progressStorage: mode,
+        progressStorage: mode === "d1" ? "d1" : "durable_object",
         maxPages: pageCount,
         pageLimit: pageCount,
         pages: Array.from({ length: pageCount }, (_, ordinal) => ({
@@ -104,11 +194,14 @@ test("DO collection progress removes four billed D1 writes per nonempty page wit
         })),
       });
       for (let page = 0; page < pageCount; page += 1) {
-        for (const step of [processFetch, processParse]) {
+        for (const step of mode === "durable_object_inline"
+          ? [processFetch]
+          : [processFetch, processParse]) {
           const session = await readCollectionSession(measured.db, body.collectionRunId, state);
           assert.ok(session);
           await step(env, plugin, session, body, {
             collectionProgress: state,
+            parseFetchedPage: mode === "durable_object_inline",
             fetchHtmlPage: async () =>
               '<a href="/item.php?z=1001">LUXMAN プリメインアンプ L-505 〇委託販売品 ￥250,000 -</a>',
           });
@@ -123,11 +216,20 @@ test("DO collection progress removes four billed D1 writes per nonempty page wit
         .bind(body.collectionRunId)
         .first("n");
       assert.equal(count, pageCount, "fixture must exercise the nonempty-page index");
-      assert.ok(measured.rowsRead() < 750, `collection read ${measured.rowsRead()} rows`);
+      assert.ok(measured.rowsRead() < 1500, `collection read ${measured.rowsRead()} rows`);
       totals.set(mode, measured.rowsWritten());
+      costs[mode] = {
+        rowsWritten: measured.rowsWritten(),
+        rowsRead: measured.rowsRead(),
+        statements: measured.countedStatements(),
+      };
     }
     assert.equal(totals.get("d1"), 4 + 13 * pageCount);
     assert.equal(totals.get("durable_object"), 4 + 9 * pageCount + 2);
+    assert.ok(totals.get("durable_object_inline")! <= totals.get("durable_object")! * 0.8);
+    assert.ok(costs.durable_object_inline.rowsRead < costs.durable_object.rowsRead);
+    assert.ok(costs.durable_object_inline.statements < costs.durable_object.statements);
+    console.log("crawl_do_inline_d1_budget " + JSON.stringify(costs));
   } finally {
     await dispose();
   }

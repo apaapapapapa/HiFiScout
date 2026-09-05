@@ -4,6 +4,19 @@ This policy covers selected diagnostic/verification HTML evidence in R2. Normal 
 
 The application applies safety controls before every R2 write. These controls are intentionally configurable and do not hard-code Cloudflare's current free-tier limits, which may change independently of the application.
 
+Successful DO listing collection stores parsed products, and new detail plans store extracted
+category evidence, without retaining full HTML. A failed listing parser can archive its actual
+input as one bounded `parser_failure` sample before the run is marked failed. Staged publication
+has no original seller HTML and never archives its synthetic transport wrapper. Unresolved
+classification and inventory-count diagnostics at that boundary use structured products and logs;
+they do not manufacture an HTML snapshot. Direct crawls with real seller HTML and Knowledge
+Catalog verification retain their existing reason-specific evidence policies.
+
+Keeping a smaller JSON payload reduces storage/serialization, but D1's row allowance depends on
+written rows, not bytes. The combined listing checkpoint also removes the intermediate page and
+session updates. `test/d1-write-budget.test.ts` compares both paths with real workerd D1 accounting,
+including index writes; this is a regression gate, not a substitute for production usage metrics.
+
 ## Default controls
 
 | Setting | Default | Behavior |

@@ -72,15 +72,21 @@ export default defineConfig(({ mode }) => ({
       },
       "ci:test-shard-1": {
         command: ciShell(
-          "vp exec tsx scripts/ensure-directories.ts .generated && vp test run --reporter=dot --reporter=json --outputFile.json=.generated/unit-timings-1.json --shard=1/2",
+          "vp exec tsx scripts/ensure-directories.ts .generated && vp test run --reporter=dot --reporter=json --outputFile.json=.generated/unit-timings-1.json --shard=1/3",
         ),
         output: [".generated/unit-timings-1.json"],
       },
       "ci:test-shard-2": {
         command: ciShell(
-          "vp exec tsx scripts/ensure-directories.ts .generated && vp test run --reporter=dot --reporter=json --outputFile.json=.generated/unit-timings-2.json --shard=2/2",
+          "vp exec tsx scripts/ensure-directories.ts .generated && vp test run --reporter=dot --reporter=json --outputFile.json=.generated/unit-timings-2.json --shard=2/3",
         ),
         output: [".generated/unit-timings-2.json"],
+      },
+      "ci:test-shard-3": {
+        command: ciShell(
+          "vp exec tsx scripts/ensure-directories.ts .generated && vp test run --reporter=dot --reporter=json --outputFile.json=.generated/unit-timings-3.json --shard=3/3",
+        ),
+        output: [".generated/unit-timings-3.json"],
       },
       "ci:parser-benchmark": {
         command: ciShell("vp exec tsx scripts/parser-cpu-benchmark.ts --check"),

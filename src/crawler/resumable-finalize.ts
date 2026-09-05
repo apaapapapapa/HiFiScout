@@ -1,5 +1,4 @@
 import { getCrawlerSettings, getShopRequestDelayMs } from "../config.js";
-import { getCrawlFetchDetailPage } from "../db/crawl-fetch-detail-repository.js";
 import {
   claimCrawlFetchFinalization,
   completeCrawlFetchSession,
@@ -14,7 +13,6 @@ import {
 } from "../db/crawl-fetch-page-repository.js";
 import { syncProductSearchEntities } from "../db/product-search-entity-repository.js";
 import { accountReads, dbUsageMetrics, sumDbUsageMetrics } from "../db/read-accounting.js";
-import type { QueryableDatabase } from "../db/types.js";
 import { errorMessage } from "../types.js";
 import { recheckShopInventory } from "./inventory-recheck.js";
 import {
@@ -24,6 +22,7 @@ import {
   workerVersion,
 } from "./resumable-queue-contract.js";
 import { crawlShop } from "./run.js";
+import { readStagedDetailEvidence } from "./staged-detail-evidence.js";
 import { createTransport } from "./transport.js";
 import type { CrawlResult, FetchHtmlPageOptions, HtmlTransport, ShopPlugin } from "./types.js";
 
@@ -45,12 +44,9 @@ function pinnedEnrichmentInstant(value: string | undefined): Date | undefined {
 
 function stagedFetchFunction(
   env: ResumableRuntimeEnv,
-  detailDb: QueryableDatabase,
   plugin: ShopPlugin,
-  runId: string,
   syntheticUrl: string,
   originalTransport: HtmlTransport,
-  requireStagedDetailFetches: boolean,
 ): typeof fetch {
   const settings = getCrawlerSettings(env);
   const originalOptions: FetchHtmlPageOptions = {
@@ -70,20 +66,6 @@ function stagedFetchFunction(
       });
     }
     if (new URL(url).pathname === "/robots.txt") return globalThis.fetch(input, init);
-
-    if (plugin.capabilities.detailCategoryEvidence) {
-      const staged = await getCrawlFetchDetailPage(detailDb, runId, url);
-      if (staged?.error_message) throw new Error(staged.error_message);
-      if (staged?.html_text != null) {
-        return new Response(staged.html_text, {
-          status: 200,
-          headers: { "content-type": "text/html; charset=utf-8" },
-        });
-      }
-      if (requireStagedDetailFetches) {
-        throw new Error(`category detail fetch was not paced by CrawlScheduler: ${url}`);
-      }
-    }
 
     const html = await originalTransport.fetchHtmlPage(url, originalOptions);
     return new Response(html, {
@@ -173,19 +155,33 @@ export async function processFinalize(
   // planning and finalization while the paced fetches run.
   const enrichmentDecidedAt = pinnedEnrichmentInstant(options.detailDecisionAt);
   const detailReplayAccounting = accountReads(env.DB);
+  const stagedFetch = stagedFetchFunction(env, plugin, syntheticUrl, originalTransport);
+  const extract = plugin.capabilities.detailCategoryEvidence?.extract;
   try {
     const result = await crawlShop(env, publishAdapter, {
       force: true,
+      archiveSellerHtml: false,
       ...(enrichmentDecidedAt ? { enrichmentDecidedAt } : {}),
-      fetchFn: stagedFetchFunction(
-        env,
-        detailReplayAccounting.db,
-        plugin,
-        session.run_id,
-        syntheticUrl,
-        originalTransport,
-        options.requireStagedDetailFetches === true,
-      ),
+      fetchFn: stagedFetch,
+      ...(extract
+        ? {
+            loadDetailEvidence: async (product) => {
+              const evidence = await readStagedDetailEvidence(
+                detailReplayAccounting.db,
+                session.run_id,
+                product,
+                extract,
+              );
+              if (evidence !== null) return evidence;
+              if (options.requireStagedDetailFetches) {
+                throw new Error(
+                  `category detail fetch was not paced by CrawlScheduler: ${product.sourceUrl}`,
+                );
+              }
+              return extract(await (await stagedFetch(product.sourceUrl)).text(), product);
+            },
+          }
+        : {}),
     });
     const finishedAt = new Date().toISOString();
     if (result.status === "success") {

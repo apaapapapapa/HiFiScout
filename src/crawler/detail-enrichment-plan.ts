@@ -20,6 +20,14 @@
  * plans, crash recovery, run isolation, bounded writes -- be asserted rather than inspected.
  */
 
+import type { DetailCategoryExtractionInput } from "./types.js";
+
+export interface DetailEnrichmentTarget {
+  url: string;
+  /** Absent on plans made before extraction inputs were retained. */
+  product?: DetailCategoryExtractionInput;
+}
+
 /** The Durable Object storage surface this needs, and nothing else. */
 export interface DetailEnrichmentPlanStorage {
   get<T>(key: string): Promise<T | undefined>;
@@ -34,10 +42,14 @@ export interface DetailEnrichmentPlanStorage {
  * older isolate has to find the record the older isolate wrote, or it replans and undoes the point.
  * {@link DETAIL_PLAN_VERSION} is what makes that safe across a *shape* change -- see below.
  */
-export const DETAIL_PLAN_PROGRESS_KEY = "phase5_detail_enrichment_progress";
+export const DETAIL_PLAN_PROGRESS_KEY = "phase5_detail_evidence_progress_v3";
 
 /** Key prefix for the immutable half. One record per chunk of targets. */
-export const DETAIL_PLAN_TARGETS_KEY_PREFIX = "phase5_detail_enrichment_targets:";
+export const DETAIL_PLAN_TARGETS_KEY_PREFIX = "phase5_detail_evidence_targets_v3:";
+
+/** Kept intact for a rollback: its cursor must never skip new, HTML-free detail results. */
+export const LEGACY_CHUNKED_PLAN_PROGRESS_KEY = "phase5_detail_enrichment_progress";
+export const LEGACY_CHUNKED_PLAN_TARGETS_KEY_PREFIX = "phase5_detail_enrichment_targets:";
 
 /**
  * Where the previous release kept the whole plan, targets inline.
@@ -67,7 +79,7 @@ interface LegacyDetailEnrichmentPlan {
  * the run replans once, which the D1 fence makes free of extra seller requests. At most one run per
  * shop pays that, and only across a deployment that changes this shape.
  */
-export const DETAIL_PLAN_VERSION = 2;
+export const DETAIL_PLAN_VERSION = 3;
 
 /**
  * Targets per chunk record.
@@ -119,12 +131,14 @@ export interface DetailEnrichmentTargetChunk {
   runId: string;
   chunkIndex: number;
   targets: string[];
+  /** Optional additive field: old releases can still read the URL list on rollback. */
+  products?: (DetailCategoryExtractionInput | null)[];
 }
 
 export interface DetailEnrichmentPlanContext {
   storage: DetailEnrichmentPlanStorage;
   /** The expensive planning pass. Called at most once per run, at the instant it is given. */
-  planTargets(runId: string, decidedAt: Date): Promise<string[]>;
+  planTargets(runId: string, decidedAt: Date): Promise<(string | DetailEnrichmentTarget)[]>;
   /** `crawl_fetch_detail_pages`: whether this run already committed an attempt for the URL. */
   isCommitted(runId: string, targetUrl: string): Promise<boolean>;
   /** Structured logging, shaped by the caller so the DO keeps its own event vocabulary. */
@@ -180,7 +194,9 @@ export async function detailEnrichmentProgress(
   // trusting the key keeps a previous run's targets out of this run's cursor.
   if (isCurrentProgress(stored, runId)) return stored;
 
-  const adopted = await adoptLegacyPlan(context, runId, supersededChunkCount);
+  const adopted =
+    (await adoptChunkedLegacyPlan(context, runId, supersededChunkCount)) ??
+    (await adoptLegacyPlan(context, runId, supersededChunkCount));
   if (adopted) return adopted;
 
   const decidedAt = context.now?.() ?? new Date();
@@ -206,7 +222,7 @@ async function storePlan(
   context: DetailEnrichmentPlanContext,
   input: {
     runId: string;
-    targets: readonly string[];
+    targets: readonly (string | DetailEnrichmentTarget)[];
     cursor: number;
     decidedAt: string;
     supersededChunkCount: number;
@@ -216,10 +232,18 @@ async function storePlan(
   const chunkCount = chunkCountFor(input.targets.length);
   for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
     const offset = chunkIndex * DETAIL_PLAN_CHUNK_SIZE;
+    const targets = input.targets.slice(offset, offset + DETAIL_PLAN_CHUNK_SIZE);
     await context.storage.put<DetailEnrichmentTargetChunk>(detailPlanTargetsKey(chunkIndex), {
       runId: input.runId,
       chunkIndex,
-      targets: input.targets.slice(offset, offset + DETAIL_PLAN_CHUNK_SIZE),
+      targets: targets.map((target) => (typeof target === "string" ? target : target.url)),
+      ...(targets.some((target) => typeof target !== "string")
+        ? {
+            products: targets.map((target) =>
+              typeof target === "string" ? null : (target.product ?? null),
+            ),
+          }
+        : {}),
     });
   }
   // A previous run's plan may have occupied more chunks than this one does. Those records are never
@@ -246,6 +270,46 @@ async function storePlan(
     source: input.source,
   });
   return progress;
+}
+
+/** Preserve a v2 plan's exact inputs and instant without advancing the old Worker's cursor. */
+async function adoptChunkedLegacyPlan(
+  context: DetailEnrichmentPlanContext,
+  runId: string,
+  supersededChunkCount: number,
+): Promise<DetailEnrichmentProgress | null> {
+  const legacy = await context.storage.get<DetailEnrichmentProgress>(
+    LEGACY_CHUNKED_PLAN_PROGRESS_KEY,
+  );
+  if (!legacy || legacy.runId !== runId) return null;
+  if (legacy.version !== 2 || legacy.chunkCount !== chunkCountFor(legacy.targetCount)) {
+    throw new Error("invalid legacy chunked detail plan");
+  }
+  const targets: string[] = [];
+  for (let i = 0; i < legacy.chunkCount; i += 1) {
+    const chunk = await context.storage.get<DetailEnrichmentTargetChunk>(
+      `${LEGACY_CHUNKED_PLAN_TARGETS_KEY_PREFIX}${i}`,
+    );
+    if (
+      !chunk ||
+      chunk.runId !== runId ||
+      chunk.chunkIndex !== i ||
+      !Array.isArray(chunk.targets) ||
+      chunk.targets.some((target) => typeof target !== "string")
+    ) {
+      throw new Error("invalid legacy detail target chunk");
+    }
+    targets.push(...chunk.targets);
+  }
+  if (targets.length !== legacy.targetCount) throw new Error("incomplete legacy detail plan");
+  return storePlan(context, {
+    runId,
+    targets,
+    cursor: Math.min(Math.max(Math.trunc(legacy.cursor) || 0, 0), targets.length),
+    decidedAt: legacy.decidedAt,
+    supersededChunkCount,
+    source: "adopted",
+  });
 }
 
 /**
@@ -340,9 +404,16 @@ export async function nextUncommittedDetailTarget(
   context: DetailEnrichmentPlanContext,
   progress: DetailEnrichmentProgress,
 ): Promise<string | null> {
+  return (await nextUncommittedDetailTargetWithInput(context, progress))?.url ?? null;
+}
+
+export async function nextUncommittedDetailTargetWithInput(
+  context: DetailEnrichmentPlanContext,
+  progress: DetailEnrichmentProgress,
+): Promise<DetailEnrichmentTarget | null> {
   let cursor = progress.cursor;
   let skipped = 0;
-  let found: string | null = null;
+  let found: DetailEnrichmentTarget | null = null;
   let loaded: DetailEnrichmentTargetChunk | null = null;
 
   while (cursor < progress.targetCount) {
@@ -356,7 +427,8 @@ export async function nextUncommittedDetailTarget(
       continue;
     }
     if (!(await context.isCommitted(progress.runId, candidate))) {
-      found = candidate;
+      const product = loaded.products?.[cursor % DETAIL_PLAN_CHUNK_SIZE];
+      found = { url: candidate, ...(product ? { product } : {}) };
       break;
     }
     skipped += 1;

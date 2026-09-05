@@ -77,6 +77,9 @@ interface CrawlShopOptions {
   force?: boolean;
   now?: Date;
   fetchFn?: typeof fetch;
+  loadDetailEvidence?: import("./types.js").DetailEvidenceLoader;
+  /** Staged publication has no seller HTML; its synthetic wrapper is never diagnostic evidence. */
+  archiveSellerHtml?: boolean;
   /**
    * The instant category enrichment should evaluate its cache-age policy at, when some earlier
    * phase already evaluated it and this run has to reach the same answer.
@@ -420,7 +423,14 @@ export function isSuspiciousItemDrop(
 export async function crawlShop(
   env: RuntimeEnv,
   adapter: ShopPlugin,
-  { force = false, now = new Date(), fetchFn = fetch, enrichmentDecidedAt }: CrawlShopOptions = {},
+  {
+    force = false,
+    now = new Date(),
+    fetchFn = fetch,
+    enrichmentDecidedAt,
+    loadDetailEvidence,
+    archiveSellerHtml = true,
+  }: CrawlShopOptions = {},
 ): Promise<CrawlResult> {
   const definition = adapter.definition;
   if (!getShopEnabled(env, definition))
@@ -627,6 +637,7 @@ export async function crawlShop(
           db: env.DB,
           adapter,
           products: manufacturerResolvedProducts,
+          loadDetailEvidence,
           transport: activeTransport,
           fetchOptions: {
             baseUrl: adapter.baseUrl,
@@ -664,7 +675,7 @@ export async function crawlShop(
     const products = enrichment.products;
     logUnclassifiedProducts(adapter, products);
 
-    if (enrichment.unresolvedCount > 0) {
+    if (archiveSellerHtml && enrichment.unresolvedCount > 0) {
       evidenceMetrics.expected += 1;
       if (classificationEvidenceHtml) {
         await archiveCrawlEvidence(settings.terminalBudgetMs, evidenceMetrics, {
@@ -682,6 +693,7 @@ export async function crawlShop(
 
     const previousItemCount = Number(state?.last_item_count);
     if (
+      archiveSellerHtml &&
       Number.isFinite(previousItemCount) &&
       previousItemCount > 0 &&
       (items.size - previousItemCount) / previousItemCount <= -0.2
@@ -884,18 +896,20 @@ export async function crawlShop(
     // catch block with it — which is the shape that leaves a run with no outcome at all. Each is
     // bounded on its own, so neither can consume the time the record below needs.
     const qualityWrite = createInvocationDeadline(settings.terminalBudgetMs);
-    evidenceMetrics.expected += 1;
-    if (lastEvidenceHtml) {
-      await archiveCrawlEvidence(settings.terminalBudgetMs, evidenceMetrics, {
-        env,
-        shopKey: adapter.key,
-        crawlRunId: runId,
-        reason: crawlError.evidenceReason || "crawl_validation_failure",
-        html: lastEvidenceHtml,
-        capturedAt: failedAt,
-      });
-    } else {
-      evidenceMetrics.failed += 1;
+    if (archiveSellerHtml) {
+      evidenceMetrics.expected += 1;
+      if (lastEvidenceHtml) {
+        await archiveCrawlEvidence(settings.terminalBudgetMs, evidenceMetrics, {
+          env,
+          shopKey: adapter.key,
+          crawlRunId: runId,
+          reason: crawlError.evidenceReason || "crawl_validation_failure",
+          html: lastEvidenceHtml,
+          capturedAt: failedAt,
+        });
+      } else {
+        evidenceMetrics.failed += 1;
+      }
     }
     const previousItemCount = Number(state?.last_item_count);
     const quality = await qualityWrite
