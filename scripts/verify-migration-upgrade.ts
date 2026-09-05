@@ -45,12 +45,18 @@ async function runtime(directory: string) {
 type Runtime = Awaited<ReturnType<typeof runtime>>;
 const AT = "2026-09-05T00:00:00.000Z";
 
-async function crawl(code: Runtime, db: QueryableDatabase, price: number, at: string) {
+async function crawl(
+  code: Runtime,
+  db: QueryableDatabase,
+  price: number,
+  at: string,
+  sellerModel = "C10",
+) {
   const products = [
     code.normalizeCatalogProduct({
       sourceId: "upgrade-fixture",
       manufacturer: "LUXMAN",
-      model: "C10",
+      model: sellerModel,
       title: "LUXMAN C10",
       conditionText: "中古",
       priceYen: price,
@@ -84,8 +90,8 @@ async function seed(code: Runtime, db: QueryableDatabase) {
   await crawl(code, db, 90000, "2026-09-05T00:01:00.000Z");
   await db
     .prepare(`
-    INSERT INTO product_admin_overrides(listing_product_id,model,created_at,updated_at)
-      SELECT id,'C10','${AT}','${AT}' FROM products WHERE source_id='upgrade-fixture';
+    INSERT INTO product_admin_overrides(listing_product_id,model,normalized_model,created_at,updated_at)
+      SELECT id,'C10','C10','${AT}','${AT}' FROM products WHERE source_id='upgrade-fixture';
     UPDATE knowledge_catalog_price_index_recent_backfill_runs SET after_catalog_product_id=0,status='running',completed_at=NULL;
     UPDATE knowledge_catalog_price_indexes SET recent_asking_median_yen=NULL;
   `)
@@ -94,7 +100,7 @@ async function seed(code: Runtime, db: QueryableDatabase) {
 
 async function preservedData(db: QueryableDatabase) {
   const queries = [
-    "SELECT id,shop_key,source_id,first_seen_at,price_yen FROM products WHERE source_id='upgrade-fixture' ORDER BY id",
+    "SELECT id,shop_key,source_id,first_seen_at,price_yen,model,normalized_model FROM products WHERE source_id='upgrade-fixture' ORDER BY id",
     "SELECT h.id,h.product_id,h.price_yen,h.observed_at FROM price_history h JOIN products p ON p.id=h.product_id WHERE p.source_id='upgrade-fixture' ORDER BY h.id",
     "SELECT listing_product_id,model,created_at FROM product_admin_overrides ORDER BY listing_product_id",
     "SELECT listing_product_id,catalog_product_id,status FROM product_identity_resolutions ORDER BY listing_product_id",
@@ -164,8 +170,13 @@ try {
     }
     await probe(current, previous, upgraded.db, "new server / cached old browser, before backfill");
     await probe(previous, current, upgraded.db, "old server / new browser");
-    await crawl(current, upgraded.db, 90000, "2026-09-05T02:00:00.000Z");
-    await crawl(previous, upgraded.db, 90000, "2026-09-05T03:00:00.000Z");
+    await crawl(current, upgraded.db, 90000, "2026-09-05T02:00:00.000Z", "C99");
+    assert.deepEqual(
+      await preservedData(upgraded.db),
+      preserved,
+      "admin correction overrides new crawler's conflicting model",
+    );
+    await crawl(previous, upgraded.db, 90000, "2026-09-05T03:00:00.000Z", "C98");
     assert.deepEqual(
       await preservedData(upgraded.db),
       preserved,
