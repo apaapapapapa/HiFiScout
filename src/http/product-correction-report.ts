@@ -1,3 +1,4 @@
+import { isJsonRequest, readJsonBody, REQUEST_BODY_TOO_LARGE } from "./request.js";
 import {
   PRODUCT_CORRECTION_REPORT_MAX_BODY_BYTES,
   parseProductCorrectionReportRequest,
@@ -7,17 +8,8 @@ import { productSearchDetail } from "../db/product-search-repository.js";
 import type { QueryableDatabase } from "../db/types.js";
 import { json } from "./response.js";
 
-const REQUEST_BODY_TOO_LARGE = Symbol("request_body_too_large");
-
 interface ProductCorrectionReportEnv {
   readonly DB: QueryableDatabase;
-}
-
-function isJsonRequest(request: Request): boolean {
-  return (
-    request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() ===
-    "application/json"
-  );
 }
 
 function isSameOriginMutation(request: Request, url: URL): boolean {
@@ -34,32 +26,7 @@ async function readBoundedJson(
   if (Number.isFinite(contentLength) && contentLength > PRODUCT_CORRECTION_REPORT_MAX_BODY_BYTES) {
     return REQUEST_BODY_TOO_LARGE;
   }
-  if (!request.body) return null;
-
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let byteLength = 0;
-  for (;;) {
-    const result = await reader.read();
-    if (result.done) break;
-    byteLength += result.value.byteLength;
-    if (byteLength > PRODUCT_CORRECTION_REPORT_MAX_BODY_BYTES) {
-      await reader.cancel("request_body_too_large");
-      return REQUEST_BODY_TOO_LARGE;
-    }
-    chunks.push(result.value);
-  }
-  const bytes = new Uint8Array(byteLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  try {
-    return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
-  } catch {
-    return null;
-  }
+  return (await readJsonBody(request, PRODUCT_CORRECTION_REPORT_MAX_BODY_BYTES)) ?? null;
 }
 
 export async function handleProductCorrectionReport(

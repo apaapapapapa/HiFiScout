@@ -1,3 +1,4 @@
+import { collectProductAnchors, type ProductAnchorRecord } from "../html-listing.js";
 import { availabilityFromSignals } from "../availability.js";
 import { cleanText, inferCategory, parseYen, splitManufacturerModel } from "../normalize.js";
 import type { CrawlPageObject, SellerProduct, ShopAdapter } from "../types.js";
@@ -13,13 +14,6 @@ interface TereonEntryPage {
 
 interface TereonPage extends CrawlPageObject, TereonEntryPage {
   page: number;
-}
-
-interface ProductAnchorRecord {
-  sourceId: string;
-  sourceUrl: string;
-  index: number;
-  titles: string[];
 }
 
 const ENTRY_PAGES: readonly TereonEntryPage[] = Object.freeze([
@@ -53,29 +47,6 @@ function canonicalProductLink(
   } catch {
     return null;
   }
-}
-
-function productAnchorRecords(html: string): ProductAnchorRecord[] {
-  const records = new Map<string, ProductAnchorRecord>();
-  const anchorRe = /<a\b([^>]*?)href\s*=\s*(["'])([^"']+)\2([^>]*)>([\s\S]*?)<\/a>/gi;
-
-  for (const match of String(html || "").matchAll(anchorRe)) {
-    const product = canonicalProductLink(match[3]);
-    if (!product) continue;
-    const title = cleanText(match[5]);
-    const existing = records.get(product.sourceId);
-    if (existing) {
-      if (title) existing.titles.push(title);
-      continue;
-    }
-    records.set(product.sourceId, {
-      ...product,
-      index: match.index || 0,
-      titles: title ? [title] : [],
-    });
-  }
-
-  return [...records.values()].sort((a, b) => a.index - b.index);
 }
 
 function sellerTitle(record: ProductAnchorRecord): string {
@@ -131,7 +102,7 @@ function paginationTarget(href: string, page: Partial<TereonPage>): TereonPage |
 }
 
 export function parseTereonListing(html: string, page: Partial<TereonPage> = {}): SellerProduct[] {
-  const records = productAnchorRecords(html);
+  const records = collectProductAnchors(html, canonicalProductLink, cleanText);
   const products: SellerProduct[] = [];
 
   for (const [index, record] of records.entries()) {
@@ -175,7 +146,7 @@ export function discoverTereonPageUrls(
     conditionCode: page.conditionCode,
     conditionText: page.conditionText,
   };
-  const records = productAnchorRecords(html);
+  const records = collectProductAnchors(html, canonicalProductLink, cleanText);
   const total = resultCount(html);
   if (total !== null) {
     if (total <= records.length) return [];

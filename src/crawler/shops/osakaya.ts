@@ -1,3 +1,8 @@
+import {
+  collectProductAnchors,
+  type CanonicalProductLink,
+  type ProductAnchorRecord,
+} from "../html-listing.js";
 import { availabilityFromSignals } from "../availability.js";
 import { cleanText, inferCategory, splitManufacturerModel } from "../normalize.js";
 import type { CrawlPageObject, SellerProduct, ShopAdapter } from "../types.js";
@@ -12,14 +17,6 @@ interface OsakayaEntryPage {
 
 interface OsakayaPage extends CrawlPageObject, OsakayaEntryPage {
   page: number;
-}
-
-interface ProductAnchorRecord {
-  sourceId: string;
-  sourceUrl: string;
-  categorySlug: string;
-  index: number;
-  titles: string[];
 }
 
 const ENTRY_PAGES: readonly OsakayaEntryPage[] = Object.freeze([
@@ -40,7 +37,7 @@ function listingPage(entry: OsakayaEntryPage, page = 1): OsakayaPage {
 
 function canonicalProductLink(
   href: string,
-): Pick<ProductAnchorRecord, "sourceId" | "sourceUrl" | "categorySlug"> | null {
+): (CanonicalProductLink & { categorySlug: string }) | null {
   try {
     const url = new URL(href, BASE_URL);
     if (url.origin !== BASE_URL) return null;
@@ -56,29 +53,6 @@ function canonicalProductLink(
   } catch {
     return null;
   }
-}
-
-function productAnchorRecords(html: string): ProductAnchorRecord[] {
-  const records = new Map<string, ProductAnchorRecord>();
-  const anchorRe = /<a\b([^>]*?)href\s*=\s*(["'])([^"']+)\2([^>]*)>([\s\S]*?)<\/a>/gi;
-
-  for (const match of String(html || "").matchAll(anchorRe)) {
-    const product = canonicalProductLink(match[3]);
-    if (!product) continue;
-    const title = cleanText(match[5]);
-    const existing = records.get(product.sourceId);
-    if (existing) {
-      if (title) existing.titles.push(title);
-      continue;
-    }
-    records.set(product.sourceId, {
-      ...product,
-      index: match.index || 0,
-      titles: title ? [title] : [],
-    });
-  }
-
-  return [...records.values()].sort((a, b) => a.index - b.index);
 }
 
 function sellerText(record: ProductAnchorRecord): string {
@@ -189,7 +163,7 @@ export function parseOsakayaListing(
 ): SellerProduct[] {
   const products: SellerProduct[] = [];
 
-  for (const record of productAnchorRecords(html)) {
+  for (const record of collectProductAnchors(html, canonicalProductLink, cleanText)) {
     const seller = sellerText(record);
     const title = listingTitle(seller);
     if (!title) continue;
@@ -241,7 +215,7 @@ export function discoverOsakayaPageUrls(
   if (targets.size > 0) return [...targets.values()].sort((a, b) => a.page - b.page);
 
   const total = resultCount(html);
-  const itemsOnPage = productAnchorRecords(html).length;
+  const itemsOnPage = collectProductAnchors(html, canonicalProductLink, cleanText).length;
   if (total === null || total <= itemsOnPage) return [];
   if (itemsOnPage <= 0) return null;
 

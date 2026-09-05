@@ -1,6 +1,6 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { migrationSources } from "./helpers/migrations.js";
 import { localD1 } from "./helpers/local-d1.js";
 import { accountReads } from "../src/db/read-accounting.js";
 import { repairActiveListingProjectionGaps } from "../src/db/product-search-gap-repair.js";
@@ -10,13 +10,8 @@ import { syncProductIdentityResolutions } from "../src/db/product-identity-repos
 test("healthy audit and exact model lookup stay bounded as unrelated same-brand data grows", async () => {
   const { db, dispose } = await localD1();
   try {
-    const directory = new URL("../migrations/", import.meta.url);
-    for (const name of readdirSync(directory)
-      .filter((name) => name.endsWith(".sql"))
-      .sort()) {
-      await db
-        .prepare(readFileSync(new URL(name, directory), "utf8").replace(/^\s*--[^\n]*$/gm, ""))
-        .run();
+    for (const { sql } of migrationSources) {
+      await db.prepare(sql.replace(/^\s*--[^\n]*$/gm, "")).run();
     }
     await db
       .prepare(`INSERT INTO knowledge_catalog_products(id,manufacturer_id,canonical_model,normalized_model,canonical_name,created_at,updated_at)

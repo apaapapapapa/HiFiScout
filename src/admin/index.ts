@@ -1,3 +1,5 @@
+import { json, isSameOriginBrowserMutation, withCatalogAdminSecurityHeaders } from "./http.js";
+import { isJsonRequest, readJsonBody, REQUEST_BODY_TOO_LARGE } from "../http/request.js";
 import { SHOP_DEFINITIONS } from "../config.js";
 import { canonicalCategoryDefinitions, getCategory } from "../catalog/categories.js";
 import type { CategoryDefinition } from "../catalog/types.js";
@@ -35,94 +37,6 @@ const ADMIN_ASSET_PATHS = new Set([
   "/catalog-admin.css",
   "/catalog-admin.js",
 ]);
-const ADMIN_CONTENT_SECURITY_POLICY = [
-  "default-src 'self'",
-  "script-src 'self'",
-  "style-src 'self'",
-  "img-src 'self' data:",
-  "font-src 'self'",
-  "connect-src 'self'",
-  "object-src 'none'",
-  "base-uri 'none'",
-  "frame-ancestors 'none'",
-  "form-action 'self'",
-].join("; ");
-const REQUEST_BODY_TOO_LARGE = Symbol("request_body_too_large");
-
-/** Browser hardening is enforced by the Worker so Access policy changes cannot remove it. */
-export function withCatalogAdminSecurityHeaders(response: Response): Response {
-  const headers = new Headers(response.headers);
-  headers.set("content-security-policy", ADMIN_CONTENT_SECURITY_POLICY);
-  headers.set("x-frame-options", "DENY");
-  headers.set("x-content-type-options", "nosniff");
-  headers.set("referrer-policy", "no-referrer");
-  headers.set(
-    "permissions-policy",
-    "camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()",
-  );
-  headers.set("cross-origin-opener-policy", "same-origin");
-  headers.set("cross-origin-resource-policy", "same-origin");
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
-}
-
-function json(value: unknown, init: ResponseInit = {}): Response {
-  const headers = new Headers(init.headers);
-  headers.set("content-type", "application/json; charset=utf-8");
-  headers.set("cache-control", "no-store");
-  return withCatalogAdminSecurityHeaders(new Response(JSON.stringify(value), { ...init, headers }));
-}
-
-async function readJsonBody(
-  request: Request,
-  maxBytes = 64 * 1024,
-): Promise<unknown | typeof REQUEST_BODY_TOO_LARGE> {
-  if (!request.body) return undefined;
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let byteLength = 0;
-  for (;;) {
-    const result = await reader.read();
-    if (result.done) break;
-    byteLength += result.value.byteLength;
-    if (byteLength > maxBytes) {
-      await reader.cancel("request_body_too_large");
-      return REQUEST_BODY_TOO_LARGE;
-    }
-    chunks.push(result.value);
-  }
-  const bytes = new Uint8Array(byteLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  const raw = new TextDecoder().decode(bytes);
-  if (!raw.trim()) return undefined;
-  try {
-    return JSON.parse(raw) as unknown;
-  } catch {
-    return null;
-  }
-}
-
-function isJsonRequest(request: Request): boolean {
-  return (
-    request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() ===
-    "application/json"
-  );
-}
-
-function isSameOriginBrowserMutation(request: Request, url: URL): boolean {
-  const origin = request.headers.get("origin");
-  if (origin && origin !== url.origin) return false;
-  const fetchSite = request.headers.get("sec-fetch-site");
-  return !fetchSite || fetchSite === "same-origin";
-}
-
 function categoryHierarchy(category: CategoryDefinition): CategoryDefinition[] {
   const path: CategoryDefinition[] = [];
   const seen = new Set<string>();
@@ -228,14 +142,18 @@ function manualOperationError(error: unknown): Response {
   return json({ error: "catalog_admin_manual_operation_failed" }, { status: 500 });
 }
 
-async function mutationBody(request: Request, url: URL): Promise<unknown | Response> {
+async function mutationBody(
+  request: Request,
+  url: URL,
+  maxBytes?: number,
+): Promise<unknown | Response> {
   if (!isJsonRequest(request)) {
     return json({ error: "application_json_required" }, { status: 415 });
   }
   if (!isSameOriginBrowserMutation(request, url)) {
     return json({ error: "same_origin_required" }, { status: 403 });
   }
-  const body = await readJsonBody(request);
+  const body = await readJsonBody(request, maxBytes);
   if (body === REQUEST_BODY_TOO_LARGE) {
     return json({ error: "request_body_too_large" }, { status: 413 });
   }
@@ -260,17 +178,8 @@ export async function handleAuthenticatedCatalogAdminRequest(
     });
   }
   if (request.method === "POST" && url.pathname === CATALOG_EXPORT_COLLECTION_PATH) {
-    if (!isJsonRequest(request)) {
-      return json({ error: "application_json_required" }, { status: 415 });
-    }
-    if (!isSameOriginBrowserMutation(request, url)) {
-      return json({ error: "same_origin_required" }, { status: 403 });
-    }
-    const body = await readJsonBody(request, 1024);
-    if (body === REQUEST_BODY_TOO_LARGE) {
-      return json({ error: "request_body_too_large" }, { status: 413 });
-    }
-    if (body === null) return json({ error: "invalid_json" }, { status: 400 });
+    const body = await mutationBody(request, url, 1024);
+    if (isResponse(body)) return body;
     if (!isEmptyJsonObject(body)) {
       return json({ error: "invalid_knowledge_catalog_export_request" }, { status: 400 });
     }
@@ -314,17 +223,8 @@ export async function handleAuthenticatedCatalogAdminRequest(
     }
   }
   if (request.method === "POST" && url.pathname === PRODUCT_EXPORT_COLLECTION_PATH) {
-    if (!isJsonRequest(request)) {
-      return json({ error: "application_json_required" }, { status: 415 });
-    }
-    if (!isSameOriginBrowserMutation(request, url)) {
-      return json({ error: "same_origin_required" }, { status: 403 });
-    }
-    const body = await readJsonBody(request, 1024);
-    if (body === REQUEST_BODY_TOO_LARGE) {
-      return json({ error: "request_body_too_large" }, { status: 413 });
-    }
-    if (body === null) return json({ error: "invalid_json" }, { status: 400 });
+    const body = await mutationBody(request, url, 1024);
+    if (isResponse(body)) return body;
     const scope = productExportScopeFromBody(body);
     if (!scope) return json({ error: "invalid_product_export_scope" }, { status: 400 });
     try {

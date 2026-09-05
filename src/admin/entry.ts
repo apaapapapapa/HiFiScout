@@ -1,4 +1,6 @@
-import catalogAdmin, { withCatalogAdminSecurityHeaders } from "./index.js";
+import { json, isSameOriginBrowserMutation, withCatalogAdminSecurityHeaders } from "./http.js";
+import { isJsonRequest, readJsonBody, REQUEST_BODY_TOO_LARGE } from "../http/request.js";
+import catalogAdmin from "./index.js";
 import { verifyCloudflareAccessRequest } from "./access.js";
 import type { CatalogAdminRpc } from "./contracts.js";
 import {
@@ -54,15 +56,6 @@ const RETIRED_LEGACY_PATHS = new Set([
   "/catalog-admin-operations.js",
   "/listing-admin.js",
 ]);
-const REQUEST_BODY_TOO_LARGE = Symbol("request_body_too_large");
-
-function json(value: unknown, init: ResponseInit = {}): Response {
-  const headers = new Headers(init.headers);
-  headers.set("content-type", "application/json; charset=utf-8");
-  headers.set("cache-control", "no-store");
-  return withCatalogAdminSecurityHeaders(new Response(JSON.stringify(value), { ...init, headers }));
-}
-
 function assetRequest(request: Request, pathname: string): Request {
   const url = new URL(request.url);
   url.pathname = pathname;
@@ -72,53 +65,6 @@ function assetRequest(request: Request, pathname: string): Request {
 
 async function adminAsset(env: AdminEnv, request: Request): Promise<Response> {
   return withCatalogAdminSecurityHeaders(await env.ADMIN_ASSETS.fetch(request));
-}
-
-async function readJsonBody(
-  request: Request,
-  maxBytes = 64 * 1024,
-): Promise<unknown | typeof REQUEST_BODY_TOO_LARGE> {
-  if (!request.body) return undefined;
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let byteLength = 0;
-  for (;;) {
-    const result = await reader.read();
-    if (result.done) break;
-    byteLength += result.value.byteLength;
-    if (byteLength > maxBytes) {
-      await reader.cancel("request_body_too_large");
-      return REQUEST_BODY_TOO_LARGE;
-    }
-    chunks.push(result.value);
-  }
-  const bytes = new Uint8Array(byteLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  const raw = new TextDecoder().decode(bytes);
-  if (!raw.trim()) return undefined;
-  try {
-    return JSON.parse(raw) as unknown;
-  } catch {
-    return null;
-  }
-}
-
-function isJsonRequest(request: Request): boolean {
-  return (
-    request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() ===
-    "application/json"
-  );
-}
-
-function isSameOriginBrowserMutation(request: Request, url: URL): boolean {
-  const origin = request.headers.get("origin");
-  if (origin && origin !== url.origin) return false;
-  const fetchSite = request.headers.get("sec-fetch-site");
-  return !fetchSite || fetchSite === "same-origin";
 }
 
 function isAdminEntryRoute(pathname: string): boolean {
