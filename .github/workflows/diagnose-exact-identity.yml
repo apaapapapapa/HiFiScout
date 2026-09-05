@@ -1,0 +1,24 @@
+name: Diagnose Exact Identity
+on:
+  push:
+    branches: [fix/exact-identity-repair-convergence]
+    paths: [.github/workflows/diagnose-exact-identity.yml]
+permissions:
+  contents: read
+jobs:
+  identity-state:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUDFLARE_ACCOUNT_ID: 9af87af4dbc00be3bfd4c8af3f52f684
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: ./.github/actions/setup-node-deps
+      - name: Read the bounded failing groups and their durable repair state
+        shell: bash
+        run: |
+          set -euo pipefail
+          vp exec wrangler d1 execute DB --remote --json --command "SELECT * FROM product_search_exact_identity_dirty WHERE (canonical_manufacturer_id, normalized_model) IN (VALUES ('yamaha','C2'),('luxman','CL352'),('luxman','AS53'));"
+          vp exec wrangler d1 execute DB --remote --json --command "SELECT p.id,p.shop_key,p.source_id,p.canonical_manufacturer_id,p.normalized_model,p.model_resolution_status,p.primary_category_id,p.is_active,e.entity_key,r.status AS identity_status,r.catalog_product_id,kp.verification_status FROM products p LEFT JOIN product_search_entity_offers o ON o.listing_product_id=p.id LEFT JOIN product_search_entities e ON e.id=o.entity_id LEFT JOIN product_identity_resolutions r ON r.listing_product_id=p.id LEFT JOIN knowledge_catalog_products kp ON kp.id=r.catalog_product_id WHERE (p.canonical_manufacturer_id,p.normalized_model) IN (VALUES ('yamaha','C2'),('luxman','CL352'),('luxman','AS53')) AND p.is_active=1 ORDER BY p.canonical_manufacturer_id,p.normalized_model,p.id LIMIT 50;"
+          vp exec wrangler d1 execute DB --remote --json --command "SELECT canonical_manufacturer_id,normalized_model,marked_at,claimed_at FROM product_search_exact_identity_dirty WHERE claimed_at IS NULL ORDER BY marked_at,canonical_manufacturer_id,normalized_model LIMIT 8;"
