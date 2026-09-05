@@ -25,7 +25,8 @@ const ENTRY_PAGES: readonly TereonEntryPage[] = Object.freeze([
 ]);
 
 const SOLD_PATTERN = /SOLD\s*OUT|売り切れ|売切れ|売約済(?:み)?|在庫なし|完売|品切れ|販売終了/iu;
-const CONDITION_PREFIX_PATTERN = /^(中古品|展示品|新品特価)\s*[：:；;]?\s*/u;
+const CONDITION_PREFIX_PATTERN =
+  /^(中古品|展示(?:処分)?品|(?:未使用)?開封品|新品特価)\s*[：:；;]?\s*/u;
 
 function listingPage(entry: TereonEntryPage, page = 1): TereonPage {
   const pathname =

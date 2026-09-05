@@ -201,11 +201,12 @@ test("REWIRE preserves slash-separated bundles, cable lengths, and set quantitie
     "AudioQuest Rocket 88.2 スピーカーケーブル 2m ペア",
     "TAD Reference One / TAD-R1 3本(LCR Set) / Pioneer TAD スピーカーシステム",
     "SOULNOTE P-3 2026年製 ソウルノート プリアンプ",
+    "JBL 4329P 高さ51.6cm 幅30cm スピーカー",
   ];
   const html = titles
     .map(
       (title, index) =>
-        `<a href="/webshop/2026/08/01/product-${index}/">${title} ¥198,000(税込) スピーカー</a>`,
+        `<a href="/webshop/2026/08/01/product-${index}/">${title} ¥198,000(税込) ${index === 1 ? "ケーブル" : "スピーカー"}</a>`,
     )
     .join("");
   const items = parseRewireListing(html);
@@ -213,6 +214,46 @@ test("REWIRE preserves slash-separated bundles, cable lengths, and set quantitie
   assert.equal(items[1].model, "Rocket 88.2 2m");
   assert.equal(items[2].model, "Reference One / TAD-R1 3本(LCR Set)");
   assert.equal(items[3].model, "P-3");
+  assert.equal(items[4].model, "4329P");
+});
+
+test("Tereon includes open-box products in both extraction and page counts", () => {
+  const html = `<p>全4件</p><a href="/shopdetail/005000000001/">カートリッジキーパー</a><table>
+    <tr><td><a href="/shopdetail/000000001001/">開封品：LUXMAN L-505uXII</a></td><td>LUXMAN</td><td>198,000円</td></tr>
+    <tr><td><a href="/shopdetail/000000001002/">未使用開封品：JBL 4329P</a></td><td>JBL</td><td>298,000円</td></tr></table>`;
+  const page = {
+    url: "https://www.tereon-tsuhan.com/shopbrand/003/X/",
+    page: 1,
+    conditionCode: "003" as const,
+    conditionText: "展示品・開封品" as const,
+  };
+  assert.deepEqual(
+    parseTereonListing(html, page).map((p) => [p.manufacturer, p.model, p.conditionText]),
+    [
+      ["LUXMAN", "L-505uXII", "開封品"],
+      ["JBL", "4329P", "未使用開封品"],
+    ],
+  );
+  assert.equal(discoverTereonPageUrls(html, page)?.length, 1);
+});
+
+test("blank JSON-LD fields fall back while explicit models survive candidate merging", () => {
+  for (const [name, model, expectedModel] of [
+    ["LUXMAN L-505uXII", " \n ", "L-505uXII"],
+    ["LUXMAN", "L-505uXII", "L-505uXII"],
+  ]) {
+    const html = `<script type="application/ld+json">${JSON.stringify({ "@type": "Product", url: "/product/2001", name, brand: " ", manufacturer: { name: "LUXMAN" }, model, category: "\t " })}</script><a href="/product/2001">LUXMAN L-505uXII</a>198,000円`;
+    const [product] = parseProductPage(html, {
+      shopKey: "generic",
+      baseUrl: "https://example.com",
+      hintedCategory: "プリメインアンプ",
+      identityStrategy: "manufacturer-model-candidates",
+    });
+    assert.equal(product.manufacturer, "LUXMAN");
+    assert.equal(product.model, expectedModel);
+    assert.equal(product.rawCategory, "プリメインアンプ");
+    assert.equal(product.priceYen, 198000);
+  }
 });
 
 test("JSON-LD brand/model fields take precedence over title guesses and commented offers", () => {

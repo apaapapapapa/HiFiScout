@@ -123,7 +123,7 @@ function normalizedSellerCategory(title: string, rawSellerCategory: string): str
  * copy to the actual model. Product cards already render the manufacturer separately, so retain the
  * seller's complete title in `title` while extracting only the model-shaped prefix into `model`.
  */
-function conciseRewireModel(rawModel: string): string {
+function conciseRewireModel(rawModel: string, isCable: boolean): string {
   const original = cleanText(rawModel);
   if (!original) return "";
 
@@ -133,13 +133,15 @@ function conciseRewireModel(rawModel: string): string {
     .trim();
   // Specifications that occur after a Japanese category/brand still distinguish cable lengths,
   // bundled units and vintage revisions. Keep them when reducing the descriptive suffix.
+  const japaneseIndex = value.search(JAPANESE_TEXT_PATTERN);
   const identityDetails = [
-    ...value.matchAll(/\b\d+(?:\.\d+)?\s*(?:mm|cm|m)\b/giu),
-    ...value.matchAll(/\d+(?:\.\d+)?インチ/gu),
+    ...(isCable ? [...value.matchAll(/\b\d+(?:\.\d+)?\s*(?:mm|cm|m)\b/giu)] : []),
+    // A driver size already in the model prefix belongs to that prefix. Dimensions later in
+    // the description (height, width, etc.) never become extra model tokens.
+    ...[...value.matchAll(/\d+(?:\.\d+)?インチ/gu)].filter((match) => match.index < japaneseIndex),
     ...value.matchAll(/\d+本(?:\([^)]*\))?/gu),
     ...value.matchAll(/オリジナル(?:\s*\([^)]*\))?|復刻|初代|初期世代モデル/gu),
   ].map((match) => match[0]);
-  const japaneseIndex = value.search(JAPANESE_TEXT_PATTERN);
   if (japaneseIndex > 0) {
     const before = value.slice(0, japaneseIndex);
     const prefix = (
@@ -212,7 +214,7 @@ export function parseRewireListing(html: string): SellerProduct[] {
       title,
       rawManufacturer: manufacturer,
       manufacturer,
-      model: conciseRewireModel(model || title),
+      model: conciseRewireModel(model || title, rawSellerCategory === "ケーブル"),
       rawCategory,
       category: inferCategory(title),
       conditionText,

@@ -114,6 +114,14 @@ function stockStatusForListing(
   });
 }
 
+function structuredManufacturer(value: unknown): string {
+  return typeof value === "string"
+    ? cleanText(value)
+    : isRecord(value) && typeof value.name === "string"
+      ? cleanText(value.name)
+      : "";
+}
+
 function fromJsonLd(html: string, options: ParseProductPageOptions): SellerProduct[] {
   const { baseUrl, hintedCategory, productUrlPattern } = options;
   const products: SellerProduct[] = [];
@@ -136,18 +144,13 @@ function fromJsonLd(html: string, options: ParseProductPageOptions): SellerProdu
           ? "in_stock"
           : "unknown";
       const stockStatus = stockStatusForListing(options, priceYen, inferredStock);
-      const brand = node.brand || node.manufacturer;
       const explicitManufacturer =
-        typeof brand === "string"
-          ? cleanText(brand)
-          : isRecord(brand) && typeof brand.name === "string"
-            ? cleanText(brand.name)
-            : "";
+        structuredManufacturer(node.brand) || structuredManufacturer(node.manufacturer);
       const split = splitManufacturerModel(title, options.shopKey, explicitManufacturer);
       const manufacturer = split.manufacturer;
-      const model = typeof node.model === "string" ? cleanText(node.model) : split.model;
+      const model = (typeof node.model === "string" ? cleanText(node.model) : "") || split.model;
       const rawCategory =
-        typeof node.category === "string" ? cleanText(node.category) : hintedCategory || "";
+        (typeof node.category === "string" ? cleanText(node.category) : "") || hintedCategory || "";
       products.push({
         sourceId: stableSourceId(url, title),
         rawManufacturer: manufacturer,
@@ -442,22 +445,21 @@ export function parseProductPage(html: string, options: ParseProductPageOptions)
   const fallbackById = new Map(
     deduplicateByQuality(anchors).map((product) => [product.sourceId, product]),
   );
-  const candidates = [
-    ...structured.map((product) => {
-      const fallback = fallbackById.get(product.sourceId);
-      return {
-        ...product,
-        priceYen: product.priceYen ?? fallback?.priceYen ?? null,
-        stockStatus:
-          product.stockStatus === "unknown"
-            ? fallback?.stockStatus || "unknown"
-            : product.stockStatus,
-      };
-    }),
-    ...anchors.filter((product) => !structuredIds.has(product.sourceId)),
-  ];
-  if (options.identityStrategy === "manufacturer-model-candidates") {
-    return mergeManufacturerModelCandidates(candidates, options);
-  }
-  return deduplicateByQuality(candidates);
+  const structuredProducts = structured.map((product) => {
+    const fallback = fallbackById.get(product.sourceId);
+    return {
+      ...product,
+      priceYen: product.priceYen ?? fallback?.priceYen ?? null,
+      stockStatus:
+        product.stockStatus === "unknown"
+          ? fallback?.stockStatus || "unknown"
+          : product.stockStatus,
+    };
+  });
+  const fallbackCandidates = anchors.filter((product) => !structuredIds.has(product.sourceId));
+  const fallbackProducts =
+    options.identityStrategy === "manufacturer-model-candidates"
+      ? mergeManufacturerModelCandidates(fallbackCandidates, options)
+      : fallbackCandidates;
+  return deduplicateByQuality([...structuredProducts, ...fallbackProducts]);
 }
