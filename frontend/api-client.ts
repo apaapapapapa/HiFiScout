@@ -33,23 +33,27 @@ interface CachedResponse {
   expiresAt: number;
 }
 
-const SHOP_HEALTH_STATUSES: readonly ShopHealthStatus[] = [
-  "disabled",
-  "healthy",
-  "warning",
-  "critical",
-];
-const SHOP_HEALTH_REASONS: readonly ShopHealthReason[] = [
-  "disabled",
-  "configuration_missing",
-  "never_succeeded_repeated_failures",
-  "never_succeeded",
-  "repeated_failures",
-  "sync_stale",
-  "recent_failure",
-  "sync_delayed",
-  "ok",
-];
+// Arrays only reject extra values; exhaustive records also catch missing server enum members.
+// A legitimate projection delay must not invalidate /api/meta and abort catalog initialization.
+const SHOP_HEALTH_STATUSES: Readonly<Record<ShopHealthStatus, true>> = {
+  disabled: true,
+  healthy: true,
+  warning: true,
+  critical: true,
+};
+const SHOP_HEALTH_REASONS: Readonly<Record<ShopHealthReason, true>> = {
+  disabled: true,
+  configuration_missing: true,
+  never_succeeded_repeated_failures: true,
+  never_succeeded: true,
+  repeated_failures: true,
+  sync_stale: true,
+  recent_failure: true,
+  sync_delayed: true,
+  projection_stale: true,
+  projection_delayed: true,
+  ok: true,
+};
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -76,11 +80,11 @@ function isStringArray(value: unknown): value is string[] {
 }
 
 function isShopHealthStatus(value: unknown): value is ShopHealthStatus {
-  return SHOP_HEALTH_STATUSES.includes(value as ShopHealthStatus);
+  return typeof value === "string" && Object.hasOwn(SHOP_HEALTH_STATUSES, value);
 }
 
 function isShopHealthReason(value: unknown): value is ShopHealthReason {
-  return SHOP_HEALTH_REASONS.includes(value as ShopHealthReason);
+  return typeof value === "string" && Object.hasOwn(SHOP_HEALTH_REASONS, value);
 }
 
 function isShopHealthEntry(value: unknown): value is ShopHealthEntry {
