@@ -12,10 +12,19 @@ test("production smoke prefers CF-Ray correlation and permits only an exact D1 q
   assert.match(workflow, /event\.request\.headers\["cf-ray"\]/);
   assert.doesNotMatch(workflow, /diagnostic_ray="\$\{diagnostic_ray%%-\*\}"/);
   assert.match(workflow, /CF-Ray=\$\{diagnostic_ray:-missing\}/);
-  assert.match(workflow, /matching_tail_event_count="\$\(jq -se/);
+  assert.match(workflow, /matching_tail_event_count="\$\(jq -L scripts\/lib -se/);
   assert.match(workflow, /matching_tail_event_count=-1/);
   assert.match(workflow, /matching_tail_event_count > 0/);
-  assert.match(workflow, /select\(\(\.event\.request\.headers\["cf-ray"\] \/\/ ""\) == \$ray\)/);
+  assert.equal((workflow.match(/include "cloudflare-ray";/g) || []).length, 2);
+  assert.equal(
+    (
+      workflow.match(
+        /select\(\(\.event\.request\.headers\["cf-ray"\] \/\/ ""\) \| same_cf_ray\(\$ray\)\)/g,
+      ) || []
+    ).length,
+    2,
+    "event counting and quota attribution must use the same complete-ID normalization",
+  );
   assert.match(workflow, /D1_ERROR: Your account has exceeded D1's free tier daily row read limit/);
   assert.match(workflow, /correlated by CF-Ray/);
 
