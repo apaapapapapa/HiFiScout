@@ -80,7 +80,7 @@ test("D1 repeated CSV category propagation bills zero writes after its first suc
     const rows = await db
       .prepare("SELECT id,shop_key,source_id FROM products WHERE source_id='csv-category'")
       .all<{ id: number; shop_key: string; source_id: string }>();
-    const ids = rows.results.map((row) => row.id);
+    const ids = rows.results.map((row: { id: number }) => row.id);
     await refreshListingProjections(db, rows.results, AT);
     assert.equal(
       await db
