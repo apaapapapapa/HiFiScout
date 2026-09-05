@@ -1,5 +1,3 @@
-import "../admin-public/catalog-admin.css";
-import "../admin-public/listing-admin.css";
 import "../admin-public/admin-console.css";
 import { AdminConsole } from "./admin-console.js";
 

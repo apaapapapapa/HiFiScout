@@ -1,4 +1,4 @@
-@import url("/listing-admin.css");
+@import url("./listing-admin.css");
 
 :root {
   --admin-sticky-nav-offset: 146px;
