@@ -1,6 +1,8 @@
+import { migrationSources } from "./helpers/migrations.js";
+import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
+import { readFileSync } from "node:fs";
+import type { DatabaseSync } from "node:sqlite";
 import { test } from "vite-plus/test";
 
 import { RESOLUTION_VERSIONS } from "../src/catalog/resolution-versions.js";
@@ -11,17 +13,6 @@ const MIGRATIONS = new URL("../migrations/", import.meta.url);
 const V3_MIGRATION = "0068_category_taxonomy_v3.sql";
 const REACTIVATION_MIGRATION = "0069_taxonomy_v3_reactivation_replay.sql";
 const AT = "2026-08-30T00:00:00.000Z";
-
-function databaseBeforeV3(): DatabaseSync {
-  const sqlite = new DatabaseSync(":memory:");
-  for (const file of readdirSync(MIGRATIONS)
-    .filter((name) => name.endsWith(".sql"))
-    .sort()) {
-    if (file === V3_MIGRATION) break;
-    sqlite.exec(readFileSync(new URL(file, MIGRATIONS), "utf8"));
-  }
-  return sqlite;
-}
 
 function applyMigration(sqlite: DatabaseSync, file: string): void {
   sqlite.exec(readFileSync(new URL(file, MIGRATIONS), "utf8"));
@@ -68,7 +59,7 @@ function targetFacets(sqlite: DatabaseSync): Record<string, unknown>[] {
 }
 
 test("inactive taxonomy-v3 migration rows replay complete facets when reactivated unchanged", async () => {
-  const sqlite = databaseBeforeV3();
+  const sqlite = migratedSqlite({ before: V3_MIGRATION }).sqlite;
   insertInactiveLegacyListing(sqlite);
 
   applyMigration(sqlite, V3_MIGRATION);
@@ -122,10 +113,8 @@ test("inactive taxonomy-v3 migration rows replay complete facets when reactivate
 
   // Historical migrations above prove the reactivation edge. Runtime replay then uses the current
   // schema, including the durable projection obligations and indexed candidate retrieval.
-  for (const file of readdirSync(MIGRATIONS)
-    .filter((name) => name.endsWith(".sql") && name > REACTIVATION_MIGRATION)
-    .sort()) {
-    applyMigration(sqlite, file);
+  for (const { name, sql } of migrationSources) {
+    if (name > REACTIVATION_MIGRATION) sqlite.exec(sql);
   }
 
   // Make the trigger-generated work immediately claimable without depending on the host clock.

@@ -6,10 +6,10 @@ export interface CanonicalProductLink {
   readonly sourceUrl: string;
 }
 
-export interface ProductAnchorRecord extends CanonicalProductLink {
+export type ProductAnchorRecord<Link extends CanonicalProductLink = CanonicalProductLink> = Link & {
   readonly index: number;
   readonly titles: string[];
-}
+};
 
 export interface ProductListingBlock {
   readonly record: ProductAnchorRecord;
@@ -20,17 +20,18 @@ export function visibleListingText(html: unknown = ""): string {
   return cleanText(stripRawTextElements(html).replace(/<br\s*\/?>/gi, " "));
 }
 
-export function collectProductAnchors(
+export function collectProductAnchors<Link extends CanonicalProductLink>(
   html: string,
-  canonicalProductLink: (href: string) => CanonicalProductLink | null,
-): ProductAnchorRecord[] {
-  const records = new Map<string, ProductAnchorRecord>();
+  canonicalProductLink: (href: string) => Link | null,
+  listingText: (html: string) => string = visibleListingText,
+): ProductAnchorRecord<Link>[] {
+  const records = new Map<string, ProductAnchorRecord<Link>>();
   const anchorRe = /<a\b([^>]*?)href\s*=\s*(["'])([^"']+)\2([^>]*)>([\s\S]*?)<\/a>/gi;
 
   for (const match of String(html || "").matchAll(anchorRe)) {
     const product = canonicalProductLink(match[3]);
     if (!product) continue;
-    const title = visibleListingText(match[5]);
+    const title = listingText(match[5]);
     const existing = records.get(product.sourceId);
     if (existing) {
       if (title) existing.titles.push(title);
@@ -43,7 +44,8 @@ export function collectProductAnchors(
     });
   }
 
-  return [...records.values()].sort((a, b) => a.index - b.index);
+  // Anchors arrive in document order; updating titles does not change Map insertion order.
+  return [...records.values()];
 }
 
 export function productListingBlocks(

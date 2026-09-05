@@ -1,11 +1,10 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { migrationSources } from "./migrations.js";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { normalizeCatalogProduct } from "../../src/catalog/product-normalizer.js";
 import { asQueryableDatabase } from "./d1.js";
 
 const AT = "2026-09-05T00:00:00.000Z";
 const NEXT = "2026-09-05T01:00:00.000Z";
-const migrations = new URL("../../migrations/", import.meta.url);
 
 /** Real workerd rows_written includes indexes, triggers and AUTOINCREMENT's sqlite_sequence. */
 async function database() {
@@ -19,12 +18,8 @@ async function database() {
   );
   try {
     const db = asQueryableDatabase(await mf.getD1Database("DB"));
-    for (const name of readdirSync(migrations)
-      .filter((file) => file.endsWith(".sql"))
-      .sort()) {
-      const sql = readFileSync(new URL(name, migrations), "utf8")
-        .replace(/^\s*--[^\n]*$/gm, "")
-        .trim();
+    for (const migration of migrationSources) {
+      const sql = migration.sql.replace(/^\s*--[^\n]*$/gm, "").trim();
       if (sql) await db.prepare(sql).run();
     }
     await db.prepare("DELETE FROM knowledge_catalog_products").run();

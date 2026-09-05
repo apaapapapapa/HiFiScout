@@ -1,7 +1,7 @@
-import { readdirSync, readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import type { QueryableDatabase } from "../../src/db/types.js";
 import { sqliteD1 } from "./sqlite-d1.js";
+import { migrationSources } from "./migrations.js";
 
 /**
  * An in-memory database carrying the *production* schema, built by replaying `migrations/`.
@@ -18,12 +18,6 @@ import { sqliteD1 } from "./sqlite-d1.js";
  * migrated D1 in CI; that check owns the Wrangler/D1 boundary, this one owns the behaviour.
  */
 
-const MIGRATION_DIRECTORY = new URL("../../migrations/", import.meta.url);
-
-const MIGRATIONS: readonly string[] = readdirSync(MIGRATION_DIRECTORY)
-  .filter((file) => file.endsWith(".sql"))
-  .sort();
-
 export interface MigratedDatabase {
   /** Direct handle, for arranging fixtures and asserting on stored rows. */
   readonly sqlite: DatabaseSync;
@@ -32,15 +26,23 @@ export interface MigratedDatabase {
 }
 
 /**
- * Applies every migration, in order, to a fresh in-memory database.
+ * Applies migrations in order to a fresh in-memory database, optionally stopping before a name.
  *
- * Migrations are read once per process and applied per call, so each test gets an isolated database
- * without re-reading the directory.
+ * SQL is read once per test module and applied per call, so each test gets an isolated database
+ * without re-reading the files. Historical migration tests can arrange data before an upgrade.
  */
-export function migratedSqlite(): MigratedDatabase {
+export function migratedSqlite({ before }: { before?: string } = {}): MigratedDatabase {
+  const end =
+    before === undefined
+      ? migrationSources.length
+      : migrationSources.findIndex((file) => file.name === before);
+  if (end < 0) throw new Error(`Unknown migration: ${before}`);
   const sqlite = new DatabaseSync(":memory:");
-  for (const file of MIGRATIONS) {
-    sqlite.exec(readFileSync(new URL(file, MIGRATION_DIRECTORY), "utf8"));
+  try {
+    for (const { sql } of migrationSources.slice(0, end)) sqlite.exec(sql);
+    return { sqlite, db: sqliteD1(sqlite) };
+  } catch (error) {
+    sqlite.close();
+    throw error;
   }
-  return { sqlite, db: sqliteD1(sqlite) };
 }

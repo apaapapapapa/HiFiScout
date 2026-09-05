@@ -1,6 +1,7 @@
+import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
+import { readFileSync } from "node:fs";
+import type { DatabaseSync } from "node:sqlite";
 import { test } from "vite-plus/test";
 import { RESOLUTION_VERSIONS } from "../src/catalog/resolution-versions.js";
 import { seedDataQualityRemediationQueue } from "../src/db/data-quality-remediation-queue-repository.js";
@@ -16,17 +17,6 @@ interface LegacyProduct {
   title: string;
   categoryId: string;
   directCategoryIds?: readonly string[];
-}
-
-function databaseBeforeV3(): DatabaseSync {
-  const sqlite = new DatabaseSync(":memory:");
-  for (const file of readdirSync(MIGRATIONS)
-    .filter((name) => name.endsWith(".sql"))
-    .sort()) {
-    if (file === V3_MIGRATION) break;
-    sqlite.exec(readFileSync(new URL(file, MIGRATIONS), "utf8"));
-  }
-  return sqlite;
 }
 
 function migrateToV3(sqlite: DatabaseSync): void {
@@ -87,7 +77,7 @@ function rows(sqlite: DatabaseSync, sql: string): Record<string, unknown>[] {
 }
 
 test("taxonomy v3 migrates evidence and facets without splitting durable product identity", async () => {
-  const sqlite = databaseBeforeV3();
+  const sqlite = migratedSqlite({ before: V3_MIGRATION }).sqlite;
   const legacyProducts: readonly LegacyProduct[] = [
     {
       id: 101,

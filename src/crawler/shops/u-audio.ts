@@ -1,5 +1,9 @@
+import {
+  collectProductAnchors,
+  visibleListingText,
+  type ProductAnchorRecord,
+} from "../html-listing.js";
 import { availabilityFromSignals } from "../availability.js";
-import { stripRawTextElements } from "../../html/raw-text.js";
 import { cleanText, inferCategory, parseYen } from "../normalize.js";
 import type { CrawlPageObject, SellerProduct, ShopAdapter } from "../types.js";
 
@@ -18,13 +22,6 @@ interface UAudioPage extends CrawlPageObject {
   rawCategory: string;
   outlet: boolean;
   bootstrap?: boolean;
-}
-
-interface ProductAnchorRecord {
-  sourceId: string;
-  sourceUrl: string;
-  index: number;
-  titles: string[];
 }
 
 const CATEGORY_PAGES: readonly UAudioCategory[] = Object.freeze([
@@ -88,33 +85,6 @@ function canonicalProductLink(
   }
 }
 
-function visibleText(html: unknown = ""): string {
-  return cleanText(stripRawTextElements(html).replace(/<br\s*\/?>/gi, " "));
-}
-
-function productAnchorRecords(html: string = ""): ProductAnchorRecord[] {
-  const anchorRe = /<a\b([^>]*?)href\s*=\s*(["'])([^"']+)\2([^>]*)>([\s\S]*?)<\/a>/gi;
-  const records = new Map<string, ProductAnchorRecord>();
-
-  for (const match of String(html).matchAll(anchorRe)) {
-    const product = canonicalProductLink(match[3]);
-    if (!product) continue;
-    const title = visibleText(match[5]);
-    const existing = records.get(product.sourceId);
-    if (existing) {
-      if (title) existing.titles.push(title);
-      continue;
-    }
-    records.set(product.sourceId, {
-      ...product,
-      index: match.index || 0,
-      titles: title ? [title] : [],
-    });
-  }
-
-  return [...records.values()].sort((a, b) => a.index - b.index);
-}
-
 function titleScore(value: string = ""): number {
   return (/\s\/\s/.test(value) ? 1000 : 0) + Math.min(value.length, 300);
 }
@@ -158,7 +128,7 @@ function salePrice(text: string = ""): number | null {
 }
 
 function boundedProductText(html: string = ""): string {
-  const text = visibleText(html);
+  const text = visibleListingText(html);
   const action = text.match(/カートに入れる|お問い合わせ|売り切れ|売切れ/i);
   return action ? text.slice(0, (action.index || 0) + action[0].length) : text;
 }
@@ -194,12 +164,12 @@ function stockStatus(title: string, text: string) {
 }
 
 export function parseUAudioResultCount(html: string): number | null {
-  const match = visibleText(html).match(/全\s*([0-9][0-9,，]*)\s*件/);
+  const match = visibleListingText(html).match(/全\s*([0-9][0-9,，]*)\s*件/);
   return match ? Number.parseInt(match[1].replace(/[，,]/g, ""), 10) : null;
 }
 
 export function parseUAudioListing(html: string, page: Partial<UAudioPage> = {}): SellerProduct[] {
-  const records = productAnchorRecords(html);
+  const records = collectProductAnchors(html, canonicalProductLink);
   const products: SellerProduct[] = [];
 
   for (let index = 0; index < records.length; index += 1) {

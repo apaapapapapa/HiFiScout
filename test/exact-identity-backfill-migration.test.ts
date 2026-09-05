@@ -1,22 +1,10 @@
+import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
+import { readFileSync } from "node:fs";
+import type { DatabaseSync } from "node:sqlite";
 import { test } from "vite-plus/test";
 
 const MIGRATION_DIRECTORY = new URL("../migrations/", import.meta.url);
-
-function databaseBeforeExactIdentityBackfill(): DatabaseSync {
-  const sqlite = new DatabaseSync(":memory:");
-  const migrations = readdirSync(MIGRATION_DIRECTORY)
-    .filter(
-      (file) => file.endsWith(".sql") && file < "0036_group_exact_unresolved_product_offers.sql",
-    )
-    .sort();
-  for (const file of migrations) {
-    sqlite.exec(readFileSync(new URL(file, MIGRATION_DIRECTORY), "utf8"));
-  }
-  return sqlite;
-}
 
 interface ListingFixture {
   shop: string;
@@ -115,7 +103,9 @@ function entityKeyForListing(sqlite: DatabaseSync, listingId: number): string {
 }
 
 test("0036 groups only safe exact identities and prunes only affected fallback entities", () => {
-  const sqlite = databaseBeforeExactIdentityBackfill();
+  const sqlite = migratedSqlite({
+    before: "0036_group_exact_unresolved_product_offers.sql",
+  }).sqlite;
   const fiberA: ListingFixture = {
     shop: "afroaudio",
     source: "fiber-a",
