@@ -2,7 +2,7 @@ import type { StockStatus } from "../catalog/types.js";
 import { isRecord } from "../types.js";
 import { normalizeManufacturer } from "../catalog/manufacturers.js";
 import type { ManufacturerNormalizationResult } from "../catalog/types.js";
-import { jsonLdScriptBodies } from "../html/raw-text.js";
+import { jsonLdScriptBodies, stripRawTextElements } from "../html/raw-text.js";
 import { availabilityFromSignals } from "./availability.js";
 import {
   cleanText,
@@ -136,15 +136,26 @@ function fromJsonLd(html: string, options: ParseProductPageOptions): SellerProdu
           ? "in_stock"
           : "unknown";
       const stockStatus = stockStatusForListing(options, priceYen, inferredStock);
-      const { manufacturer, model } = splitManufacturerModel(title, options.shopKey);
+      const brand = node.brand || node.manufacturer;
+      const explicitManufacturer =
+        typeof brand === "string"
+          ? cleanText(brand)
+          : isRecord(brand) && typeof brand.name === "string"
+            ? cleanText(brand.name)
+            : "";
+      const split = splitManufacturerModel(title, options.shopKey, explicitManufacturer);
+      const manufacturer = split.manufacturer;
+      const model = typeof node.model === "string" ? cleanText(node.model) : split.model;
+      const rawCategory =
+        typeof node.category === "string" ? cleanText(node.category) : hintedCategory || "";
       products.push({
         sourceId: stableSourceId(url, title),
         rawManufacturer: manufacturer,
         manufacturer,
         model,
         title,
-        rawCategory: hintedCategory || "",
-        category: inferCategory(title, hintedCategory),
+        rawCategory,
+        category: inferCategory(title, rawCategory),
         conditionText: conditionForListing(options, title),
         priceYen,
         stockStatus,
@@ -425,7 +436,26 @@ function deduplicateByQuality(items: readonly SellerProduct[]): SellerProduct[] 
 }
 
 export function parseProductPage(html: string, options: ParseProductPageOptions): SellerProduct[] {
-  const candidates = [...fromJsonLd(html, options), ...fromAnchors(html, options)];
+  const structured = fromJsonLd(html, options);
+  const structuredIds = new Set(structured.map((product) => product.sourceId));
+  const anchors = fromAnchors(stripRawTextElements(html), options);
+  const fallbackById = new Map(
+    deduplicateByQuality(anchors).map((product) => [product.sourceId, product]),
+  );
+  const candidates = [
+    ...structured.map((product) => {
+      const fallback = fallbackById.get(product.sourceId);
+      return {
+        ...product,
+        priceYen: product.priceYen ?? fallback?.priceYen ?? null,
+        stockStatus:
+          product.stockStatus === "unknown"
+            ? fallback?.stockStatus || "unknown"
+            : product.stockStatus,
+      };
+    }),
+    ...anchors.filter((product) => !structuredIds.has(product.sourceId)),
+  ];
   if (options.identityStrategy === "manufacturer-model-candidates") {
     return mergeManufacturerModelCandidates(candidates, options);
   }

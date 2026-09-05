@@ -5,6 +5,7 @@ import {
 } from "../html-listing.js";
 import { availabilityFromSignals } from "../availability.js";
 import { cleanText, inferCategory, splitManufacturerModel } from "../normalize.js";
+import { listingFieldHtml } from "../listing-fields.js";
 import type { CrawlPageObject, SellerProduct, ShopAdapter } from "../types.js";
 
 const BASE_URL = "https://osakaya.com";
@@ -123,6 +124,33 @@ function manufacturerModel(title: string) {
   };
 }
 
+function structuredIdentities(
+  html: string,
+): Map<string, { rawManufacturer: string; manufacturer: string; model: string }> {
+  const result = new Map<
+    string,
+    { rawManufacturer: string; manufacturer: string; model: string }
+  >();
+  for (const match of html.matchAll(/<a\b[^>]*href\s*=\s*(["'])(.*?)\1[^>]*>([\s\S]*?)<\/a>/gi)) {
+    const link = canonicalProductLink(match[2]);
+    if (!link) continue;
+    const heading = listingFieldHtml(match[3], "list-title");
+    const lines = heading
+      .split(/<br\s*\/?>/i)
+      .map(cleanText)
+      .filter(Boolean);
+    if (lines.length < 2) continue;
+    const rawManufacturer = lines[0];
+    const japanese = rawManufacturer.search(/[ぁ-んァ-ヶ一-龯]/u);
+    const manufacturer = japanese > 0 ? rawManufacturer.slice(0, japanese).trim() : rawManufacturer;
+    const productType = cleanText(heading.match(/<strong\b[^>]*>([\s\S]*?)<\/strong>/i)?.[1] || "");
+    const size = productType.match(/[（(]\s*\d+(?:\.\d+)?\s*(?:mm|cm|m|Ω)\s*[）)]/iu)?.[0] || "";
+    const model = cleanText(`${lines[1]}${size}`);
+    result.set(link.sourceId, { rawManufacturer, manufacturer, model });
+  }
+  return result;
+}
+
 function resultCount(html: string): number | null {
   const raw = cleanText(html).match(/対象商品数\s*[:：]\s*([0-9][0-9,]*)/u)?.[1];
   return raw ? Number.parseInt(raw.replaceAll(",", ""), 10) : null;
@@ -162,13 +190,15 @@ export function parseOsakayaListing(
   page: Partial<OsakayaPage> = {},
 ): SellerProduct[] {
   const products: SellerProduct[] = [];
+  const identities = structuredIdentities(html);
 
   for (const record of collectProductAnchors(html, canonicalProductLink, cleanText)) {
     const seller = sellerText(record);
     const title = listingTitle(seller);
     if (!title) continue;
 
-    const { rawManufacturer, manufacturer, model } = manufacturerModel(title);
+    const { rawManufacturer, manufacturer, model } =
+      identities.get(record.sourceId) || manufacturerModel(title);
     const soldOut = SOLD_PATTERN.test(seller);
     products.push({
       sourceId: record.sourceId,

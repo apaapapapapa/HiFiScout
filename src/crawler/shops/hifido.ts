@@ -3,6 +3,7 @@ import type { CategoryEvidenceInput, NormalizedCatalogProduct } from "../../cata
 import { stripRawTextElements } from "../../html/raw-text.js";
 import { availabilityFromSignals } from "../availability.js";
 import { cleanText, inferCategory, inferStockStatus, parseYen } from "../normalize.js";
+import { listingAttribute, listingBlocks, listingFieldText } from "../listing-fields.js";
 import type { CrawlerEnv, SellerProduct, ShopAdapter } from "../types.js";
 
 interface HifidoProductLink {
@@ -20,7 +21,6 @@ const PRODUCT_ID_RE = /\/(\d{2}-\d{5}-\d{5}-\d{2})\.html/i;
 const PRODUCT_LINK_RE =
   /<a\b[^>]*href\s*=\s*["']([^"']*\/(\d{2}-\d{5}-\d{5}-\d{2})\.html[^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi;
 const ANCHOR_RE = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
-const DIV_CLASS_RE = /<div\b[^>]*class\s*=\s*["']([^"']*)["'][^>]*>/gi;
 const CATEGORY_NAMES =
   "スピーカーアクセサリー|スピーカー|コントロールアンプ|プリアンプ|プリメインアンプ|パワーアンプ|AVアンプ|ヘッドホンアンプ|レコードプレーヤー|CDトランスポート|SACDトランスポート|CDプレーヤー|SACD(?:\\/CD)?プレーヤー|D\\/Aコンバータ(?:ー)?|DAコンバータ(?:ー)?|ネットワークプレーヤー|ネットワークプレイヤー|ネットワークトランスポート|トーンアーム|カートリッジ|昇圧トランス|フォノイコライザー|ヘッドホン|イヤホン|ケーブル|アクセサリー|インシュレータ(?:ー)?|真空管|ラック|その他オーディオ機器";
 const CATEGORY_VALUE_RE = new RegExp(`^(${CATEGORY_NAMES})(?:（[^）]+）)?$`, "i");
@@ -70,6 +70,7 @@ export const HIFIDO_CATEGORY_MAPPING = Object.freeze({
   ネットワークプレイヤー: "network_player",
   ネットワークトランスポート: "transport",
   トーンアーム: "tonearm",
+  シェル: "headshell",
   カートリッジ: "cartridge",
   昇圧トランス: "phono_step_up_transformer",
   フォノイコライザー: "phono_eq",
@@ -95,6 +96,8 @@ export const HIFIDO_CATEGORY_POLICY = Object.freeze({
 
 function canonicalManufacturer(value = ""): string {
   const text = cleanText(value);
+  const words = text.split(/\s+/u);
+  if (words.length === 2 && words[0] === words[1]) return words[0];
   const japaneseIndex = text.search(/[ぁ-んァ-ヶ一-龯]/);
   const latin = japaneseIndex > 0 ? text.slice(0, japaneseIndex).trim() : "";
   return latin || text;
@@ -109,22 +112,20 @@ function absoluteUrl(href: string): string | null {
 }
 
 function htmlToText(html: string): string {
+  // Listing blocks and the detail header are sanitized once at their entry boundary.
   return cleanText(
-    stripRawTextElements(html)
+    html
       .replace(/<br\s*\/?\s*>/gi, " ")
       .replace(/<\/(?:p|li|div|article|section|tr|td|h\d)>/gi, " "),
   );
 }
 
 function attr(attrs: string, name: string): string {
-  return attrs.match(new RegExp(`\\b${name}\\s*=\\s*(["'])(.*?)\\1`, "i"))?.[2] || "";
+  return listingAttribute(attrs, name);
 }
 
 function listItemBlocks(html: string): string[] {
-  const starts = [...html.matchAll(DIV_CLASS_RE)]
-    .filter((match) => match[1].split(/\s+/).includes("list-item"))
-    .map((match) => match.index ?? 0);
-  return starts.map((start, index) => html.slice(start, starts[index + 1] ?? html.length));
+  return listingBlocks(html, "div", "list-item");
 }
 
 function productLinkFromBlock(block: string): HifidoProductLink | null {
@@ -141,12 +142,13 @@ function productLinkFromBlock(block: string): HifidoProductLink | null {
 }
 
 function sourcePublishedAt(text: string): string | null {
-  const match = text.match(/(20\d{2})-(\d{1,2})-(\d{1,2})\s*入荷/);
+  const match = text.match(/(20\d{2})-(\d{1,2})-(\d{1,2})(?:\s+(\d{1,2}:\d{2}:\d{2}))?\s*入荷/);
   if (!match) return null;
   const year = match[1];
   const month = match[2].padStart(2, "0");
   const day = match[3].padStart(2, "0");
-  const parsed = new Date(`${year}-${month}-${day}T00:00:00+09:00`);
+  const time = match[4]?.padStart(8, "0") || "00:00:00";
+  const parsed = new Date(`${year}-${month}-${day}T${time}+09:00`);
   return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
 }
 
@@ -210,16 +212,8 @@ export function extractHifidoDetailCategoryEvidence(
  * or occupies an exact standalone field; arbitrary prose never becomes seller metadata.
  */
 function categoryFromBlock(block: string, sourceId: string): string {
-  const escapedSourceId = escapeRegExp(sourceId);
-  const genreHtml =
-    block.match(
-      new RegExp(
-        `<div\\b[^>]*\\bid\\s*=\\s*["']genre-${escapedSourceId}["'][^>]*>([\\s\\S]*?)<\\/div>`,
-        "i",
-      ),
-    )?.[1] || "";
-  const genreCategory = normalizeHifidoCategory(genreHtml);
-  if (genreCategory) return genreCategory;
+  const genre = listingFieldText(block, `genre-${sourceId}`, "id");
+  if (genre) return normalizeHifidoCategory(genre) || genre;
 
   const text = htmlToText(block);
   const labeledCategory = text.match(CATEGORY_LABEL_RE)?.[1]?.trim() || "";
@@ -249,7 +243,9 @@ function parseProductBlock(block: string, link: HifidoProductLink): SellerProduc
   if (priceYen == null) return null;
 
   const manufacturerRaw =
-    text.match(/メーカー\s*[:：]\s*(.+?)(?=\s+(?:定価|売価)\s*[:：])/i)?.[1] || "";
+    listingFieldText(block, `maker-${link.sourceId}`, "id").replace(/^メーカー\s*[:：]\s*/u, "") ||
+    text.match(/メーカー\s*[:：]\s*(.+?)(?=\s+(?:定価|売価)(?:\([^)]*\))?\s*[:：])/i)?.[1] ||
+    "";
   const manufacturer = canonicalManufacturer(manufacturerRaw);
   const rawCategory = categoryFromBlock(block, link.sourceId);
   const category = rawCategory || inferCategory(title);
@@ -311,6 +307,7 @@ export function parseHifidoListing(html: string): SellerProduct[] {
       if (product) products.push(product);
     }
   } else {
+    html = stripRawTextElements(html);
     const matches = [...html.matchAll(PRODUCT_LINK_RE)];
     for (let index = 0; index < matches.length; index += 1) {
       const match = matches[index];

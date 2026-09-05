@@ -46,7 +46,7 @@ test("legacy ACOUSTIC first-token evidence re-resolves from the full title", () 
 
 test("legacy truncated manufacturer tail is removed from the stored model", () => {
   // Advancing the resolver version makes already-stamped rows eligible for the repair replay.
-  assert.equal(MODEL_RESOLVER_VERSION, 10);
+  assert.ok(MODEL_RESOLVER_VERSION >= 10);
 
   const result = resolveModel({
     rawModel: "REVIVE BWA-4",

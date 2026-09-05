@@ -2,6 +2,8 @@ import type { StockStatus } from "../catalog/types.js";
 import {
   splitKnownManufacturerModel,
   stripManufacturerListingLabels,
+  manufacturerPrefixPattern,
+  normalizeManufacturer,
 } from "../catalog/manufacturers.js";
 import { availabilityFromText } from "./availability.js";
 
@@ -125,7 +127,11 @@ function splitFujiyaManufacturerModel(value: string): ManufacturerModelPair | nu
   };
 }
 
-export function splitManufacturerModel(title: string, shopKey: string): ManufacturerModelPair {
+export function splitManufacturerModel(
+  title: string,
+  shopKey: string,
+  explicitManufacturer = "",
+): ManufacturerModelPair {
   const value = cleanText(stripManufacturerListingLabels(title))
     .replace(/^〖[^〗]+〗\s*/g, "")
     .replace(/^中古[：:]?\s*[A-Z+-]*\s*/i, "")
@@ -133,6 +139,19 @@ export function splitManufacturerModel(title: string, shopKey: string): Manufact
     .replace(/《[^》]+》\s*$/g, "")
     .replace(/\s+/g, " ")
     .trim();
+
+  if (explicitManufacturer) {
+    const manufacturer = cleanText(explicitManufacturer);
+    const known = splitKnownManufacturerModel(value);
+    if (known && normalizeManufacturer(manufacturer).id === known.id) {
+      return { manufacturer, model: known.model };
+    }
+    const pattern = manufacturerPrefixPattern(manufacturer);
+    return {
+      manufacturer,
+      model: (pattern ? value.replace(pattern, "") : value).replace(/^\s*[-:：]\s*/, "").trim(),
+    };
+  }
 
   if (shopKey === "ippinkan" && value.includes(" - ")) {
     const [manufacturer, ...rest] = value.split(" - ");
