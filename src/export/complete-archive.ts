@@ -47,10 +47,14 @@ function storedPage(object: R2Object, index: number): StoredPage {
     !/^(?:[a-zA-Z0-9_]+\/part-\d+\.csv|evidence--?\d+\/(?:part-\d+\.bin|unavailable\.json)|evidence-complete\.json)$/u.test(
       value.name,
     ) ||
-    !(
-      value.next.offset === undefined ||
-      (Number.isSafeInteger(value.next.offset) && value.next.offset >= 0)
-    ) ||
+    (value.next.evidence !== undefined &&
+      (!/^-?\d+$/u.test(value.next.evidence.rowid) ||
+        typeof value.next.evidence.sourceKey !== "string" ||
+        typeof value.next.evidence.etag !== "string" ||
+        !Number.isSafeInteger(value.next.evidence.offset) ||
+        value.next.evidence.offset <= 0 ||
+        !Number.isSafeInteger(value.next.evidence.totalBytes) ||
+        value.next.evidence.offset >= value.next.evidence.totalBytes)) ||
     !Number.isSafeInteger(value.rows) ||
     value.rows < 0 ||
     !Number.isInteger(value.crc) ||
@@ -90,12 +94,18 @@ async function evidencePage(
   cursor: CompleteExportCursor,
 ) {
   const horizon = plan.tables.find((table) => table.name === "evidence_archive")?.maxRowid ?? null;
-  const row = await db
-    .prepare(`SELECT CAST(_rowid_ AS TEXT) AS rowid, r2_object_key AS sourceKey
+  // Once copying starts, resume that exact row/object even if its D1 row is updated or deleted.
+  // Re-selecting the next row would apply the previous object's byte offset to a different file.
+  const row =
+    cursor.evidence ??
+    (horizon === null
+      ? null
+      : await db
+          .prepare(`SELECT CAST(_rowid_ AS TEXT) AS rowid, r2_object_key AS sourceKey
     FROM evidence_archive WHERE _rowid_ <= ? ${cursor.after === null ? "" : "AND _rowid_ > ?"}
     ORDER BY _rowid_ LIMIT 1`)
-    .bind(...(cursor.after === null ? [horizon] : [horizon, cursor.after]))
-    .first<{ rowid: string; sourceKey: string }>();
+          .bind(...(cursor.after === null ? [horizon] : [horizon, cursor.after]))
+          .first<{ rowid: string; sourceKey: string }>());
   if (!row)
     return {
       bytes: encoder.encode("{}"),
@@ -103,12 +113,13 @@ async function evidencePage(
       rows: 0,
       next: { table: cursor.table + 1, after: null },
     };
-  const offset = cursor.offset ?? 0;
+  const offset = cursor.evidence?.offset ?? 0;
   const metadata = await bucket.head(row.sourceKey);
   if (!metadata) {
     if (offset) throw new Error("complete_export_evidence_disappeared");
     const evidence: NonNullable<StoredPage["evidence"]> = {
-      ...row,
+      rowid: row.rowid,
+      sourceKey: row.sourceKey,
       offset: 0,
       totalBytes: null,
       etag: null,
@@ -122,7 +133,10 @@ async function evidencePage(
       evidence,
     };
   }
-  if (cursor.etag && cursor.etag !== metadata.etag)
+  if (
+    cursor.evidence &&
+    (cursor.evidence.etag !== metadata.etag || cursor.evidence.totalBytes !== metadata.size)
+  )
     throw new Error("complete_export_evidence_changed");
   const length = Math.min(2 * 1024 * 1024, metadata.size - offset);
   if (length < 0) throw new Error("complete_export_evidence_invalid_offset");
@@ -135,7 +149,8 @@ async function evidencePage(
   if (bytes.byteLength !== length) throw new Error("complete_export_evidence_invalid_size");
   const nextOffset = offset + length;
   const evidence: NonNullable<StoredPage["evidence"]> = {
-    ...row,
+    rowid: row.rowid,
+    sourceKey: row.sourceKey,
     offset,
     totalBytes: metadata.size,
     etag: metadata.etag,
@@ -148,7 +163,16 @@ async function evidencePage(
     evidence,
     next:
       nextOffset < metadata.size
-        ? { ...cursor, offset: nextOffset, etag: metadata.etag }
+        ? {
+            ...cursor,
+            evidence: {
+              rowid: row.rowid,
+              sourceKey: row.sourceKey,
+              offset: nextOffset,
+              etag: metadata.etag,
+              totalBytes: metadata.size,
+            },
+          }
         : { table: cursor.table, after: row.rowid },
   };
 }

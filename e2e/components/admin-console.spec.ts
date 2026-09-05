@@ -2,6 +2,11 @@ import { expect, test } from "@playwright/test";
 import type { Page, Route } from "@playwright/test";
 
 import { AdminConsolePage } from "../pages/admin-console-page.js";
+import {
+  adminCsvOriginal,
+  adminCsvEditHeader,
+  adminCsvEditRow,
+} from "../../src/api/admin-csv-contracts.js";
 
 const categories = [
   { id: "digital", name: "デジタル", classifiable: true, filterable: true },
@@ -59,6 +64,8 @@ async function mockAdminApi(page: Page): Promise<void> {
   await page.route("**/api/**", async (route: Route) => {
     const request = route.request();
     const url = new URL(request.url());
+    // Vite serves browser-safe source modules under /src/api/ in the fixture gallery.
+    if (!url.pathname.startsWith("/api/")) return route.continue();
     const json = (body: unknown, status = 200) =>
       route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 
@@ -132,6 +139,113 @@ async function mockAdminApi(page: Page): Promise<void> {
 
 test.beforeEach(async ({ page }) => {
   await mockAdminApi(page);
+});
+
+test("admin exports expose every ZIP volume and retain the legacy CSV download", async ({
+  page,
+  mount,
+}) => {
+  const job = {
+    id: "complete-archive",
+    status: "ready",
+    format: "complete",
+    archivePartCount: 3,
+    rowCount: 2500,
+    byteCount: 123456,
+    chunkCount: 401,
+    error: "",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    completedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 86400000).toISOString(),
+  };
+  const formats: string[] = [];
+  await page.route("**/api/admin/knowledge-catalog-exports", (route) => {
+    if (route.request().method() === "POST") formats.push(route.request().postDataJSON().format);
+    return route.fulfill({ json: route.request().method() === "POST" ? job : { job } });
+  });
+  await page.route("**/api/admin/product-audit-exports?scope=active", (route) =>
+    route.fulfill({
+      json: { job: { ...job, id: "legacy-csv", format: "csv", archivePartCount: undefined } },
+    }),
+  );
+  const component = await mount("frontend/admin-console/Default");
+  const admin = new AdminConsolePage(component, page);
+  await admin.catalog.csvSummary.click();
+  for (let part = 1; part <= 3; part += 1) {
+    const link = component.getByRole("link", { name: `ZIP ${part} / 3`, exact: true });
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute(
+      "href",
+      `/api/admin/knowledge-catalog-exports/complete-archive/download?part=${part}`,
+    );
+  }
+  await expect(component.getByRole("link", { name: "CSVをダウンロード" })).toHaveAttribute(
+    "href",
+    "/api/admin/product-audit-exports/legacy-csv/download",
+  );
+  const card = component
+    .locator(".export-job")
+    .filter({ has: component.getByRole("heading", { name: "Knowledge Catalog", exact: true }) });
+  await card.getByRole("button", { name: "編集用CSVを生成" }).click();
+  await expect.poll(() => formats).toEqual(["csv"]);
+  await card.getByRole("button", { name: "全情報ZIPを生成" }).click();
+  await expect.poll(() => formats).toEqual(["csv", "complete"]);
+});
+
+test("CSV import previews the edit before applying and follows a durable pending operation", async ({
+  page,
+  mount,
+}) => {
+  const original = adminCsvOriginal("listing", 21, {
+    manufacturer_id: "luxman",
+    model: "C10",
+    primary_category_id: "AMP.PRE",
+  });
+  const csv =
+    "listing_id," +
+    adminCsvEditHeader("listing") +
+    "\n21," +
+    adminCsvEditRow(original).replace(/,"C10",/u, ',"C11",');
+  const operationId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const received: { operationId: string }[] = [];
+  await page.route("**/api/admin/csv-import/*", async (route) => {
+    const input = route.request().postDataJSON();
+    const result = { line: 2, id: 21, kind: "listing", message: "確認結果" };
+    if (route.request().url().endsWith("/preview")) {
+      expect(input.changes).toHaveLength(1);
+      return route.fulfill({
+        json: { items: [{ ...result, status: "ready", revision: "revision" }] },
+      });
+    }
+    received.push(input);
+    return route.fulfill({
+      json: {
+        ...result,
+        status: received.length === 1 ? "pending" : "applied",
+        operationId,
+      },
+    });
+  });
+  const component = await mount("frontend/admin-console/Default");
+  const admin = new AdminConsolePage(component, page);
+  await admin.catalog.csvSummary.click();
+  const panel = component.getByRole("region", { name: "編集したCSVで一括更新" });
+  await panel.getByLabel("編集済みCSV（100MiB以内）").setInputFiles({
+    name: "corrections.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(csv),
+  });
+  await expect(panel.getByRole("button", { name: "0件の更新を実行" })).toBeDisabled();
+  await panel.getByRole("button", { name: "差分を確認" }).click();
+  await expect(panel.getByRole("table")).toContainText("C10 → C11");
+  await expect(panel.getByRole("table")).toContainText("更新可能");
+  expect(received).toHaveLength(0);
+  await panel.getByRole("button", { name: "1件の更新を実行" }).click();
+  await expect(panel.getByRole("status")).toContainText("更新が完了しました");
+  expect(received).toHaveLength(2);
+  expect(received[1].operationId).toBe(operationId);
+  await expect(panel.getByRole("button", { name: "結果CSVをダウンロード" })).toBeEnabled();
 });
 
 test("admin catalog screen uses the shared POM for search and edit flows", async ({

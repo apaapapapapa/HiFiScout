@@ -292,6 +292,7 @@ export async function updateListingAdminProduct(
   listingId: number,
   input: ListingAdminUpdateInput,
   updatedAt = new Date().toISOString(),
+  transactionPrefix: D1PreparedStatement[] = [],
 ): Promise<ListingAdminUpdateResult | null> {
   const existing = await loadListing(db, listingId);
   if (!existing) return null;
@@ -508,7 +509,7 @@ export async function updateListingAdminProduct(
     );
   }
 
-  await db.batch(statements);
+  await db.batch([...transactionPrefix, ...statements]);
   await refreshListingProjections(
     db,
     [{ id: listingId, shop_key: existing.shop_key, source_id: existing.source_id }],

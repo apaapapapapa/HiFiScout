@@ -245,6 +245,67 @@ test("Knowledge Catalog download preserves attachment and admin security headers
   assertAdminSecurityHeaders(response);
 });
 
+test("export routes select editable CSV or complete archives and preserve old client requests", async () => {
+  const formats: (string | undefined)[] = [];
+  const env = exportEnv({
+    async startKnowledgeCatalogExport(format) {
+      formats.push(format);
+      return exportJob();
+    },
+    async startProductAuditExport(scope, format) {
+      formats.push(format);
+      return { ...exportJob(), scope, maxListingId: 0 };
+    },
+  });
+  for (const collection of ["knowledge-catalog-exports", "product-audit-exports"]) {
+    const body = collection === "product-audit-exports" ? { scope: "all" } : {};
+    for (const format of [undefined, "csv", "complete", "zip", null, 1]) {
+      const response = await handleAuthenticatedCatalogAdminRequest(
+        new Request(`https://admin.example.test/api/admin/${collection}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ...body, format }),
+        }),
+        env,
+      );
+      assert.equal(
+        response.status,
+        format === undefined || format === "csv" || format === "complete" ? 202 : 400,
+      );
+    }
+  }
+  assert.deepEqual(formats, ["csv", "csv", "complete", "csv", "csv", "complete"]);
+});
+
+test("archive download routes forward the selected volume and reject invalid parts before RPC", async () => {
+  const calls: number[] = [];
+  const download = async (_id: string, part = 1) => {
+    calls.push(part);
+    return new Response("archive", { headers: { "content-type": "application/zip" } });
+  };
+  const env = exportEnv({
+    downloadKnowledgeCatalogExport: download,
+    downloadProductAuditExport: download,
+  });
+  for (const collection of ["knowledge-catalog-exports", "product-audit-exports"]) {
+    const url = `https://admin.example.test/api/admin/${collection}/${EXPORT_JOB_ID}/download`;
+    const response = await handleAuthenticatedCatalogAdminRequest(
+      new Request(`${url}?part=2`),
+      env,
+    );
+    assert.equal(response.status, 200);
+    assertAdminSecurityHeaders(response);
+    for (const part of ["", "0", "-1", "1.5", "NaN", "9007199254740992"]) {
+      assert.equal(
+        (await handleAuthenticatedCatalogAdminRequest(new Request(`${url}?part=${part}`), env))
+          .status,
+        400,
+      );
+    }
+  }
+  assert.deepEqual(calls, [2, 2]);
+});
+
 test("Knowledge Catalog reads degrade to a retryable response during RPC version skew", async () => {
   const unavailable = async (): Promise<never> => {
     throw new Error("RPC method unavailable");

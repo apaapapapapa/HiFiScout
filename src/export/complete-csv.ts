@@ -16,8 +16,13 @@ export interface CompleteExportPlan {
 export interface CompleteExportCursor {
   table: number;
   after: string | null;
-  offset?: number;
-  etag?: string;
+  evidence?: {
+    rowid: string;
+    sourceKey: string;
+    offset: number;
+    etag: string;
+    totalBytes: number;
+  };
 }
 interface Column {
   name: string;
@@ -46,6 +51,7 @@ export function isCompleteExportTable(name: string): boolean {
         "evidence_archive",
         "listing_projection_pending",
         "taxonomy_v3_migration_audit",
+        "admin_csv_import_changes",
       ].includes(name))
   );
 }
@@ -115,7 +121,7 @@ export function completeCsvCell(value: string | null, type = "text"): string {
   return `"${encoded.replaceAll('"', '""')}"`;
 }
 
-function sqlValue(value: unknown): string | null {
+function sqlValue(value: unknown, type: string): string | null {
   if (value === null || typeof value === "string") return value;
   const bytes =
     value instanceof Uint8Array
@@ -127,6 +133,7 @@ function sqlValue(value: unknown): string | null {
           ? Uint8Array.from(value)
           : null;
   if (!bytes) throw new Error("complete_export_unexpected_sql_value");
+  if (type === "t") return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   const digits = "0123456789ABCDEF";
   const hex = new Uint8Array(bytes.length * 2);
   for (let index = 0; index < bytes.length; index += 1) {
@@ -187,6 +194,7 @@ export async function readCompleteExportPage(
   const projection = columns.map((column, index) => {
     const field = identifier(column.name);
     return `CASE typeof(${field}) WHEN 'integer' THEN CAST(${field} AS TEXT)
+      WHEN 'text' THEN CAST(${field} AS BLOB)
       WHEN 'real' THEN printf('%!.17g', ${field}) ELSE ${field} END AS v${index}`;
   });
   projection.push(
@@ -196,6 +204,7 @@ export async function readCompleteExportPage(
   // The key/byte budget and row read share one SQL snapshot. Even a concurrent large update cannot
   // turn a previously sized page into an unbounded response. BLOBs stay binary at the D1 boundary:
   // hex() in SQL could exceed D1's per-value limit before JavaScript receives the original blob.
+  // Text also crosses as UTF-8 bytes: SQLite adapters can otherwise truncate strings at NUL.
   const rows = (
     await db
       .prepare(`WITH candidates AS MATERIALIZED (
@@ -224,7 +233,10 @@ export async function readCompleteExportPage(
     const types = String(row.types || "");
     return [
       ...columns.map((_, index) =>
-        completeCsvCell(sqlValue(row[`v${index}`]), types[index] === "t" ? "text" : "value"),
+        completeCsvCell(
+          sqlValue(row[`v${index}`], types[index]),
+          types[index] === "t" ? "text" : "value",
+        ),
       ),
       completeCsvCell(types),
     ].join(",");

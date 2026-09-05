@@ -12,6 +12,8 @@ import {
   parseKnowledgeCatalogDuplicateListQuery,
 } from "../http/knowledge-catalog-admin.js";
 import { verifyCloudflareAccessRequest } from "./access.js";
+import { parseAdminCsvPreview, parseAdminCsvApply } from "../http/admin-csv-import.js";
+import type { DataExportFormat } from "../export/contracts.js";
 
 interface CatalogAdminEnv {
   ADMIN_ASSETS: Fetcher;
@@ -93,13 +95,17 @@ function productExportScopeFromBody(value: unknown): CatalogAdminProductExportSc
   return productExportScope((value as Record<string, unknown>).scope);
 }
 
-function isEmptyJsonObject(value: unknown): boolean {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    Object.keys(value).length === 0
-  );
+function exportFormatFromBody(value: unknown, keys: string[]): DataExportFormat | null {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    Object.keys(value).some((key) => !keys.includes(key))
+  )
+    return null;
+  const format = (value as Record<string, unknown>).format;
+  // Requests from the previous admin Worker retain their editable CSV behavior during rollout.
+  return format === undefined ? "csv" : format === "csv" || format === "complete" ? format : null;
 }
 
 function knowledgeCatalogExportUnavailable(error: unknown, operation: string): Response {
@@ -171,6 +177,33 @@ export async function handleAuthenticatedCatalogAdminRequest(
 ): Promise<Response> {
   const url = new URL(request.url);
 
+  if (
+    request.method === "POST" &&
+    (url.pathname === "/api/admin/csv-import/preview" ||
+      url.pathname === "/api/admin/csv-import/apply")
+  ) {
+    const body = await mutationBody(request, url, 256 * 1024);
+    if (isResponse(body)) return body;
+    try {
+      if (url.pathname.endsWith("/preview")) {
+        const changes = parseAdminCsvPreview(body);
+        if (!changes) return json({ error: "invalid_csv_import" }, { status: 400 });
+        return json({ items: await env.CATALOG_ADMIN.previewCsvImport(changes) });
+      }
+      const input = parseAdminCsvApply(body);
+      if (!input) return json({ error: "invalid_csv_import" }, { status: 400 });
+      return json(await env.CATALOG_ADMIN.applyCsvImport(input));
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          event: "admin_csv_import_unavailable",
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      );
+      return json({ error: "csv_import_unavailable" }, { status: 503 });
+    }
+  }
+
   if (request.method === "GET" && url.pathname === "/api/meta") {
     return json({
       categoryFacets: categoryFacets(),
@@ -180,11 +213,12 @@ export async function handleAuthenticatedCatalogAdminRequest(
   if (request.method === "POST" && url.pathname === CATALOG_EXPORT_COLLECTION_PATH) {
     const body = await mutationBody(request, url, 1024);
     if (isResponse(body)) return body;
-    if (!isEmptyJsonObject(body)) {
+    const format = exportFormatFromBody(body, ["format"]);
+    if (!format) {
       return json({ error: "invalid_knowledge_catalog_export_request" }, { status: 400 });
     }
     try {
-      const job = await env.CATALOG_ADMIN.startKnowledgeCatalogExport();
+      const job = await env.CATALOG_ADMIN.startKnowledgeCatalogExport(format);
       return json(job, { status: job.status === "failed" ? 503 : 202 });
     } catch (error) {
       console.error(
@@ -230,8 +264,10 @@ export async function handleAuthenticatedCatalogAdminRequest(
     if (isResponse(body)) return body;
     const scope = productExportScopeFromBody(body);
     if (!scope) return json({ error: "invalid_product_export_scope" }, { status: 400 });
+    const format = exportFormatFromBody(body, ["scope", "format"]);
+    if (!format) return json({ error: "invalid_product_export_format" }, { status: 400 });
     try {
-      const job = await env.CATALOG_ADMIN.startProductAuditExport(scope);
+      const job = await env.CATALOG_ADMIN.startProductAuditExport(scope, format);
       return json(job, { status: job.status === "failed" ? 503 : 202 });
     } catch (error) {
       console.error(

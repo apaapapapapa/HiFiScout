@@ -3,6 +3,11 @@ import type {
   ProductAuditExportScope,
 } from "../product-audit-export/types.js";
 import type { KnowledgeCatalogExportJob } from "../knowledge-catalog-export/types.js";
+import type {
+  AdminCsvApplyInput,
+  AdminCsvChange,
+  AdminCsvResult,
+} from "../api/admin-csv-contracts.js";
 
 export interface CatalogAdminListOptions {
   query: string;
@@ -85,6 +90,8 @@ export interface CatalogAdminProductExportRow {
 }
 
 export interface CatalogAdminRpc {
+  previewCsvImport(changes: AdminCsvChange[]): Promise<AdminCsvResult[]>;
+  applyCsvImport(input: AdminCsvApplyInput): Promise<AdminCsvResult>;
   listProducts(options: CatalogAdminListOptions): Promise<unknown>;
   listCandidates(options: CatalogAdminListOptions): Promise<unknown>;
   listDuplicates(options: CatalogAdminDuplicateListOptions): Promise<unknown>;
@@ -92,14 +99,18 @@ export interface CatalogAdminRpc {
   verifyCandidate(candidateId: number, input: CatalogAdminCreateInput): Promise<unknown>;
   updateProduct(productId: number, input: CatalogAdminUpdateInput): Promise<unknown>;
   mergeProducts(targetProductId: number, sourceProductId: number): Promise<unknown>;
-  startKnowledgeCatalogExport(): Promise<KnowledgeCatalogExportJob>;
+  startKnowledgeCatalogExport(format?: DataExportFormat): Promise<KnowledgeCatalogExportJob>;
   latestKnowledgeCatalogExportJob(): Promise<KnowledgeCatalogExportJob | null>;
   getKnowledgeCatalogExportJob(jobId: string): Promise<KnowledgeCatalogExportJob | null>;
   downloadKnowledgeCatalogExport(jobId: string, part?: number): Promise<Response>;
-  startProductAuditExport(scope: ProductAuditExportScope): Promise<ProductAuditExportJob>;
+  startProductAuditExport(
+    scope: ProductAuditExportScope,
+    format?: DataExportFormat,
+  ): Promise<ProductAuditExportJob>;
   latestProductAuditExportJob(
     scope: ProductAuditExportScope,
   ): Promise<ProductAuditExportJob | null>;
   getProductAuditExportJob(jobId: string): Promise<ProductAuditExportJob | null>;
   downloadProductAuditExport(jobId: string, part?: number): Promise<Response>;
 }
+import type { DataExportFormat } from "../export/contracts.js";

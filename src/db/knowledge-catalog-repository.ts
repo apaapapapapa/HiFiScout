@@ -344,6 +344,29 @@ function buildReclassificationStatements(
   return { statements, reclassifiedProducts, refreshTargets };
 }
 
+async function refreshReclassificationPage(
+  db: QueryableDatabase,
+  page: ReclassificationPage,
+  evaluatedAt: string,
+  refreshListings = refreshListingProjections,
+): Promise<void> {
+  if (!page.refreshTargets.length) return;
+  // A thrown refresh leaves durable work; a newer concurrent token must also survive.
+  await refreshListings(db, page.refreshTargets, evaluatedAt);
+  await runBatches(
+    db,
+    page.refreshTargets.map((target) =>
+      db
+        .prepare(`
+          UPDATE products
+          SET remediation_projection_required = 0, remediation_projection_token = ''
+          WHERE id = ? AND remediation_projection_token = ?
+        `)
+        .bind(target.id, target.projectionToken),
+    ),
+  );
+}
+
 export async function reclassifyProductsFromKnowledgeCatalog(
   db: QueryableDatabase,
   evaluatedAt = new Date().toISOString(),
@@ -376,22 +399,7 @@ export async function reclassifyProductsFromKnowledgeCatalog(
     const matches = await findVerifiedCatalogMatches(db, products);
     const page = buildReclassificationStatements(db, products, matches);
     await runBatches(db, page.statements);
-    if (page.refreshTargets.length) {
-      // Category/search aliases are part of the product-level read model. The pending bit/token are
-      // committed with the category write, and cleared only after the dependency-ordered refresh
-      // succeeds. A thrown refresh therefore leaves durable work for the next invocation.
-      await refreshListings(db, page.refreshTargets, evaluatedAt);
-      const completed = page.refreshTargets.map((target) =>
-        db
-          .prepare(`
-            UPDATE products
-            SET remediation_projection_required = 0, remediation_projection_token = ''
-            WHERE id = ? AND remediation_projection_token = ?
-          `)
-          .bind(target.id, target.projectionToken),
-      );
-      await runBatches(db, completed);
-    }
+    await refreshReclassificationPage(db, page, evaluatedAt, refreshListings);
     reclassifiedProducts += page.reclassifiedProducts;
 
     lastId = Number(products[products.length - 1].id);
@@ -399,4 +407,32 @@ export async function reclassifyProductsFromKnowledgeCatalog(
   }
 
   return reclassifiedProducts;
+}
+
+/** Reclassify only explicit import dependencies, including non-active historical listings. */
+export async function reclassifyAdminCsvListings(
+  db: QueryableDatabase,
+  listingIds: readonly number[],
+  evaluatedAt: string,
+): Promise<void> {
+  if (!listingIds.length) return;
+  if (listingIds.length > 10) throw new Error("csv_replay_page_too_large");
+  const observed = await db
+    .prepare(`
+    SELECT p.id, p.shop_key, p.source_id,
+           p.canonical_manufacturer_id AS manufacturer_id, p.model, p.model_resolution_status,
+           p.category, p.primary_category_id, p.category_ids, p.classification_status,
+           p.remediation_projection_required, p.remediation_projection_token,
+           pir.status AS identity_status, pir.catalog_product_id AS identity_catalog_product_id
+    FROM products p
+    LEFT JOIN product_identity_resolutions pir ON pir.listing_product_id = p.id
+    WHERE p.id IN (${listingIds.map(() => "?").join(",")})
+  `)
+    .bind(...listingIds)
+    .all<ReclassificationProductRow>();
+  const products = observed.results || [];
+  const matches = await findVerifiedCatalogMatches(db, products);
+  const page = buildReclassificationStatements(db, products, matches);
+  await runBatches(db, page.statements);
+  await refreshReclassificationPage(db, page, evaluatedAt);
 }

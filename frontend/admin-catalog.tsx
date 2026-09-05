@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
+import { AdminCsvImport } from "./admin-csv-import.js";
 
 import {
   AdminOperationError,
@@ -293,7 +294,7 @@ function CsvExportCard({
 }: {
   config: CsvExportConfig;
   state: CsvExportState;
-  onGenerate: () => void;
+  onGenerate: (format: "csv" | "complete") => void;
 }) {
   const job = state.job;
   const active = csvExportActive(job);
@@ -321,7 +322,7 @@ function CsvExportCard({
     statusText = `${job.rowCount.toLocaleString("ja-JP")}件（${csvExportBytes(job.byteCount)}）の生成が完了しました。有効期限: ${csvExportDate(job.expiresAt)}`;
     statusKind = "success";
   }
-  const buttonText = state.busy ? "受付中…" : active ? "生成中…" : job ? "再生成" : "CSVを生成";
+  const buttonText = state.busy ? "受付中…" : active ? "生成中…" : "全情報ZIPを生成";
   return (
     <section className="export-job">
       <div>
@@ -339,9 +340,17 @@ function CsvExportCard({
           className={config.secondary ? "secondary-button" : undefined}
           type="button"
           disabled={state.busy || active}
-          onClick={onGenerate}
+          onClick={() => onGenerate("complete")}
         >
           {buttonText}
+        </button>
+        <button
+          className="secondary-button"
+          type="button"
+          disabled={state.busy || active}
+          onClick={() => onGenerate("csv")}
+        >
+          編集用CSVを生成
         </button>
         {job?.status === "ready" && !expired
           ? Array.from({ length: job.archivePartCount || 1 }, (_, index) => (
@@ -354,7 +363,7 @@ function CsvExportCard({
                   ? (job.archivePartCount || 1) > 1
                     ? `ZIP ${index + 1} / ${job.archivePartCount}`
                     : "CSV一式をダウンロード（ZIP）"
-                  : "旧形式CSVをダウンロード"}
+                  : "CSVをダウンロード"}
               </a>
             ))
           : null}
@@ -911,7 +920,7 @@ export function CatalogAdmin() {
     }
   };
 
-  const generateCsvExport = async (key: CsvExportKey) => {
+  const generateCsvExport = async (key: CsvExportKey, format: "csv" | "complete") => {
     const current = csvStates[key];
     if (current.busy || csvExportActive(current.job)) return;
     setCsvStates((states) => ({
@@ -922,7 +931,7 @@ export function CatalogAdmin() {
       const config = CSV_EXPORT_CONFIG[key];
       const job = await adminJson<CsvExportJob>(config.collectionUrl, {
         method: "POST",
-        body: JSON.stringify(config.startBody),
+        body: JSON.stringify({ ...config.startBody, format }),
       });
       setCsvStates((states) => ({
         ...states,
@@ -1607,13 +1616,19 @@ export function CatalogAdmin() {
                     key={key}
                     config={CSV_EXPORT_CONFIG[key]}
                     state={csvStates[key]}
-                    onGenerate={() => void generateCsvExport(key)}
+                    onGenerate={(format) => void generateCsvExport(key, format)}
                   />
                 ))}
               </div>
               <p className="export-note">
-                バックグラウンドで分割生成するため、画面を閉じても継続します。ZIPが複数ある場合は全パートを取得してください。各パートのmanifest.jsonにファイル一覧と値の読み方が入ります。生成期限は24時間、ダウンロード期限は完成から7日間です。以前のCSVは旧形式として表示されます。
+                バックグラウンドで分割生成するため、画面を閉じても継続します。ZIPが複数ある場合は全パートを取得してください。生成期限は24時間、ダウンロード期限は完成から7日間です。一括修正には「編集用CSV」を生成し、edit_列を編集して下のフォームで取り込んでください。全情報ZIP内のCSVは取り込み対象外です。
               </p>
+              <AdminCsvImport
+                categories={categories}
+                onApplied={() => {
+                  void loadCatalog(catalogApplied, 0, []);
+                }}
+              />
             </div>
           </details>
         </>

@@ -13,14 +13,14 @@ CSV exports are separate capabilities in the same admin surface and its RPC cont
 
 ## Complete data exports
 
-New export requests produce ZIP volumes containing **all columns and all retained rows** of the
+The **全情報ZIPを生成** action produces ZIP volumes containing **all columns and all retained rows** of the
 product/catalog table families. Both entry points include the other domain as cross-reference
 context. The listing `active` scope filters only the `products` table; related tables and catalog
 context remain complete. Use `all` for all listings, including inactive/sold-out listings.
 
 The inventory is defined in `src/export/complete-csv.ts`: `products`, `product_*`,
 `knowledge_catalog_*`, `data_quality_remediation_*`, price history, evidence archive, listing
-projection obligations and taxonomy migration audit. Export job state and physical FTS indexes
+projection obligations, taxonomy migration audit and CSV import change receipts. Export job state and physical FTS indexes
 are excluded; their source projections are included. General crawl/session and site-operational
 tables are outside this product/catalog export. New columns, including generated columns, are
 discovered using D1 `PRAGMA table_xinfo`; new tables in these families are discovered automatically.
@@ -43,6 +43,8 @@ file's parts in byte-offset order restores the original object; the manifest ide
 key, ETag, byte offset and total size. An already missing/expired object produces an explicit
 `unavailable.json` entry. An object that changes/disappears during a multi-part copy fails the
 generation rather than mixing versions. External seller pages are not fetched during export.
+The continuation stores the original evidence row ID, object key, ETag, size and byte offset.
+Deleting the metadata row or changing its object key cannot redirect a copy already in progress.
 
 Large exports have multiple ZIP downloads. **Download every displayed volume** for the full dataset.
 Each volume reads at most 200 R2 chunks, independently of total export size, and includes a manifest
@@ -58,11 +60,17 @@ Run after writes settle when comparing data across tables. Schema changes during
 explicitly; regenerate using the new schema. Existing pre-upgrade CSV jobs keep their original
 codec and downloads; the UI labels those attachments as the old format.
 
+These table CSVs use their stored database schema and the manifest's reversible encoding. They are
+audit archives, not the versioned `edit_*` CSV contract for bulk corrections. Use **編集用CSVを生成** for the separate versioned edit contract; never upload a raw table
+CSV as an edit file. The POST body selects `format: "complete"` or `format: "csv"`. Omitting
+`format` retains CSV behavior for older admin Workers during rollout. An active job is reused
+within each scope regardless of format; wait for it to complete before generating another format.
+
 The shared archive implementation is in `src/export/complete-archive.ts`. It reuses the existing
 Queue lease/CAS/retry flow; immutable R2 chunks also preserve cursor state after a crash. For the
 complete format, the public `afterId` field is a chunk sequence, not a listing/catalog identifier.
 `archivePartCount` lists the required ZIP volumes, selected by the optional `?part=1` download
-parameter. Migration `0093_complete_csv_exports.sql` keeps old jobs compatible via their format.
+parameter. Migration `0094_complete_csv_exports.sql` keeps old jobs compatible via their format.
 
 ## Editable fields
 
@@ -87,6 +95,48 @@ After a save, the admin path refreshes dependencies in this order:
 3. product-search entity membership and aggregates
 
 Manual canonical changes are also recorded in `data_quality_remediation_events` so the before/after identity and search-entity state remains auditable.
+
+## CSV export, edit, and import
+
+In the catalog tab, open the CSV export section. Generate and download either the registered-product
+audit CSV or the knowledge-catalog CSV, edit the `edit_*` columns, and save as UTF-8 CSV. Keep the
+original columns, target ID, and `csv_original` unchanged. Exports generated before the import feature
+was deployed must be regenerated; diagnostic columns alone are not an import format.
+
+| Target | Editable CSV columns |
+| --- | --- |
+| Registered product | `edit_manufacturer_id`, `edit_model`, `edit_primary_category_id` |
+| Catalog | `edit_manufacturer_id`, `edit_canonical_model`, `edit_canonical_name`, `edit_primary_category_id`, `edit_lifecycle_status` |
+
+Use verified manufacturer IDs, classifiable canonical category IDs (shown in the console), and
+`unknown`, `active`, or `discontinued` for lifecycle status. Empty listing manufacturer/model values
+explicitly make those fields unresolved; catalog required fields and categories cannot be cleared.
+Changing a catalog primary category replaces its category membership with that leaf and its ancestors.
+Name or identity edits alone preserve secondary categories. Seller titles, raw evidence, prices, stock,
+and deletion are outside this import contract.
+
+1. Choose the edited CSV (at most 100 MiB) and select **差分を確認**.
+2. Review the before/after values and row-level validation results. Unchanged rows are not submitted
+   for updating. Invalid IDs, duplicate rows, duplicate catalog identities, or stale originals block
+   the update button; correct the file or generate a fresh export.
+3. Select **更新を実行** only after reviewing the complete validation results. Keep the screen open
+   while updates and related listing/search projection changes run.
+4. Download the result CSV if needed. If interrupted, choose the same edited CSV (or the result CSV)
+   and run **差分を確認** again. Already-applied edits are skipped and pending projection work resumes.
+
+Updates are atomic **per changed row**, not across the whole file. The server revalidates at apply
+time and transactionally guards the current revision together with the mutation and durable receipt.
+A concurrent change stops processing without overwriting the newer values; earlier successful rows
+remain applied. There is no automatic whole-file rollback. If catalog edits alter the originals of a
+separately exported listing file, regenerate that listing export before making further corrections.
+
+`POST /api/admin/csv-import/preview` accepts at most 20 changed rows; `apply` accepts one row with a
+revision and operation UUID. Both use the existing Access, same-origin, JSON size, and Service Binding
+boundaries. `admin_csv_import_changes` retains before/after values and a durable related-listing cursor.
+Catalog identity corrections retain removed alias/source evidence in that receipt, retire the old
+identity evidence, and replay affected matched/candidate listings in pages of at most 10, including
+inactive retained listings. Explicit listing overrides continue to win. Re-uploading an unchanged CSV
+does not create receipts or rewrite products.
 
 ## Verification
 

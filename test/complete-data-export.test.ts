@@ -7,7 +7,10 @@ import {
   readCompleteExportPage,
   completeCsvCell,
 } from "../src/export/complete-csv.js";
-import { createCompleteArchiveDownloadResponse } from "../src/export/complete-archive.js";
+import {
+  createCompleteArchiveDownloadResponse,
+  ensureCompleteArchiveChunk,
+} from "../src/export/complete-archive.js";
 import { COMPLETE_ARCHIVE_PART_CHUNKS } from "../src/export/contracts.js";
 import { crc32 } from "../src/export/zip.js";
 import { consumeProductAuditExportMessage } from "../src/product-audit-export/consumer.js";
@@ -15,7 +18,13 @@ import {
   startProductAuditExport,
   createProductAuditExportDownloadResponse,
 } from "../src/product-audit-export/service.js";
-import { startKnowledgeCatalogExport } from "../src/knowledge-catalog-export/service.js";
+import {
+  startKnowledgeCatalogExport,
+  createKnowledgeCatalogExportDownloadResponse,
+} from "../src/knowledge-catalog-export/service.js";
+import { consumeKnowledgeCatalogExportMessage } from "../src/knowledge-catalog-export/consumer.js";
+import type { KnowledgeCatalogExportQueueMessage } from "../src/knowledge-catalog-export/types.js";
+import { getKnowledgeCatalogExportJob } from "../src/db/knowledge-catalog-export-job-repository.js";
 import { getProductAuditExportJob } from "../src/db/product-audit-export-job-repository.js";
 import { productAuditExportChunkKey } from "../src/product-audit-export/csv.js";
 import type { ProductAuditExportQueueMessage } from "../src/product-audit-export/types.js";
@@ -95,7 +104,18 @@ function memoryBucket() {
     },
     async get(key: string, options?: R2GetOptions) {
       readKeys.push(key);
-      return object(key, options?.range as { offset?: number; length?: number } | undefined);
+      const value = object(key, options?.range as { offset?: number; length?: number } | undefined);
+      const condition = options?.onlyIf;
+      if (
+        value &&
+        condition &&
+        !(condition instanceof Headers) &&
+        condition.etagMatches &&
+        condition.etagMatches !== value.etag
+      ) {
+        return { key, size: value.size, etag: value.etag, customMetadata: value.customMetadata };
+      }
+      return value;
     },
     async put(key: string, bytes: Uint8Array, options?: R2PutOptions) {
       if (objects.has(key) && options?.onlyIf) return null;
@@ -113,7 +133,7 @@ test("full table CSV preserves future/generated columns, exact SQL types, NULs a
       id INTEGER PRIMARY KEY, value TEXT, integer_value INTEGER, blob_value BLOB,
       real_value REAL, null_value TEXT, empty_value TEXT, generated_value TEXT GENERATED ALWAYS AS (id || '-generated') VIRTUAL
     )`);
-    const text = '  =Formula\r\nquote" slash\\0 nul\0終' + "終".repeat(400_000);
+    const text = '\uFEFF  =Formula\r\nquote" slash\\0 nul\0終' + "終".repeat(400_000);
     sqlite
       .prepare(
         "INSERT INTO product_future_data(id,value,integer_value,blob_value,real_value,empty_value) VALUES (1,?,9223372036854775806,?,1.2345678901234567,'')",
@@ -130,7 +150,7 @@ test("full table CSV preserves future/generated columns, exact SQL types, NULs a
       .all()
       .map((column) => column.name);
     assert.deepEqual(headers.slice(0, -1), columns);
-    assert.equal(restoreText(row[1]), text);
+    assert.ok(restoreText(row[1]) === text, "the complete long text, including NUL, is preserved");
     assert.equal(row[2], "9223372036854775806");
     assert.equal(row[3], "0001FF");
     assert.equal(Number(row[4]), 1.2345678901234567);
@@ -164,6 +184,134 @@ test("full table CSV preserves future/generated columns, exact SQL types, NULs a
   }
 });
 
+for (const mutation of [
+  "delete-row",
+  "change-key",
+  "delete-object",
+  "change-object",
+  "change-after-head",
+] as const) {
+  test(`evidence continuation pins the original object during ${mutation}`, async () => {
+    const { db, sqlite } = migratedSqlite();
+    const { bucket, objects } = memoryBucket();
+    const key = productAuditExportChunkKey;
+    const job = { id: "evidence-race", scope: "all" as const, maxPrimaryId: 0 };
+    try {
+      const original = new Uint8Array(2 * 1024 * 1024 + 37).fill(0x41);
+      await bucket.put("original", original);
+      // Identical bytes/ETags deliberately cannot detect a different evidence row by themselves.
+      await bucket.put("next", original);
+      await bucket.put("replacement", original);
+      sqlite.exec(`INSERT INTO evidence_archive
+        (id,shop_key,reason,content_hash,r2_object_key,content_type,captured_at,content_bytes)
+        VALUES (1,'test','temporary_debug_snapshot','1','original','text/html','now',2097189),
+               (2,'test','temporary_debug_snapshot','2','next','text/html','now',2097189)`);
+      let index = 0;
+      for (;;) {
+        assert.ok(index < 150);
+        await ensureCompleteArchiveChunk(db, bucket, job, index, key);
+        const page = JSON.parse(objects.get(key(job.id, index))!.metadata.complete);
+        index += 1;
+        if (page.evidence?.status === "copied") break;
+      }
+      if (mutation === "delete-row") sqlite.exec("DELETE FROM evidence_archive WHERE id = 1");
+      if (mutation === "change-key")
+        sqlite.exec("UPDATE evidence_archive SET r2_object_key = 'replacement' WHERE id = 1");
+      if (mutation === "delete-object") objects.delete("original");
+      if (mutation === "change-object")
+        await bucket.put("original", new Uint8Array(original.length).fill(0x42));
+      if (mutation === "change-after-head") {
+        const head = bucket.head.bind(bucket);
+        bucket.head = async (sourceKey) => {
+          const metadata = await head(sourceKey);
+          if (sourceKey === "original")
+            await bucket.put(sourceKey, new Uint8Array(original.length).fill(0x42));
+          return metadata;
+        };
+      }
+      if (
+        mutation.startsWith("delete-object") ||
+        mutation.startsWith("change-object") ||
+        mutation === "change-after-head"
+      ) {
+        await assert.rejects(
+          ensureCompleteArchiveChunk(db, bucket, job, index, key),
+          /evidence_(disappeared|changed)/u,
+        );
+        assert.ok(
+          !objects.has(key(job.id, index)),
+          "a failed copy must not commit a partial archive page",
+        );
+      } else {
+        await ensureCompleteArchiveChunk(db, bucket, job, index, key);
+        const stored = objects.get(key(job.id, index))!;
+        const page = JSON.parse(stored.metadata.complete);
+        assert.equal(page.evidence.rowid, "1");
+        assert.equal(page.evidence.sourceKey, "original");
+        assert.deepEqual(stored.bytes, original.slice(2 * 1024 * 1024));
+        await ensureCompleteArchiveChunk(db, bucket, job, index + 1, key);
+        const next = JSON.parse(objects.get(key(job.id, index + 1))!.metadata.complete);
+        assert.equal(
+          next.evidence.rowid,
+          "2",
+          "the following evidence row is still copied from offset zero",
+        );
+        assert.equal(next.evidence.offset, 0);
+      }
+    } finally {
+      sqlite.close();
+    }
+  });
+}
+
+test("catalog archive completes with an empty evidence object and rejects invalid volume requests", async () => {
+  const { db, sqlite } = migratedSqlite();
+  const { bucket } = memoryBucket();
+  try {
+    await bucket.put("empty", new Uint8Array());
+    sqlite.exec(`INSERT INTO evidence_archive
+      (shop_key,reason,content_hash,r2_object_key,content_type,captured_at,content_bytes)
+      VALUES ('test','temporary_debug_snapshot','empty','empty','text/html','now',0)`);
+    const sent: KnowledgeCatalogExportQueueMessage[] = [];
+    const queue = {
+      async send(body: KnowledgeCatalogExportQueueMessage) {
+        sent.push(body);
+        return { metadata: { metrics: { backlogCount: 0, backlogBytes: 0 } } };
+      },
+    };
+    const job = await startKnowledgeCatalogExport(db, queue, NOW);
+    let steps = 0;
+    while (sent.length) {
+      assert.ok(steps++ < 150);
+      const result = await consumeKnowledgeCatalogExportMessage(
+        { DB: db, EVIDENCE_BUCKET: bucket, PRODUCT_AUDIT_EXPORT_QUEUE: queue },
+        { body: sent.shift()!, id: "catalog", attempts: 1, timestamp: NOW, ack() {}, retry() {} },
+      );
+      assert.ok(["continued", "completed"].includes(result.status), result.status);
+    }
+    const ready = await getKnowledgeCatalogExportJob(db, job.id);
+    assert.equal(ready?.status, "ready");
+    const response = await createKnowledgeCatalogExportDownloadResponse(db, bucket, job.id, NOW);
+    const files = unzip(new Uint8Array(await response.arrayBuffer()));
+    const manifest = JSON.parse(Buffer.from(files["manifest.json"], "base64").toString());
+    const copied = manifest.files.find(
+      (file: { evidence?: { status: string } }) => file.evidence?.status === "copied",
+    );
+    assert.equal(copied.bytes, 0);
+    assert.equal(files[copied.name], "");
+    assert.equal(manifest.scope, "catalog");
+    assert.equal(manifest.tables[0].name, "knowledge_catalog_products");
+    for (const part of [0, -1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1, 2]) {
+      assert.equal(
+        (await createKnowledgeCatalogExportDownloadResponse(db, bucket, job.id, NOW, part)).status,
+        400,
+      );
+    }
+  } finally {
+    sqlite.close();
+  }
+});
+
 test("complete jobs preserve all child rows, retry deterministically, copy evidence and download valid ZIPs", async () => {
   const { db, sqlite } = migratedSqlite();
   const { bucket, objects, readKeys } = memoryBucket();
@@ -172,6 +320,8 @@ test("complete jobs preserve all child rows, retry deterministically, copy evide
       VALUES (1,'test','1','original title','https://test.invalid/1','now','now','now');
       INSERT INTO knowledge_catalog_products(id,manufacturer_id,canonical_model,normalized_model,canonical_name,created_at,updated_at)
       VALUES (9999,'test','Model','model','Name','now','now');`);
+    sqlite.exec(`INSERT INTO admin_csv_import_changes(operation_id,target_kind,target_id,before_json,after_json,revision,status,created_at,updated_at)
+      VALUES ('audit-receipt','listing',1,'{"model":"old"}','{"model":"new"}','revision','applied','now','now')`);
     for (let i = 0; i < 61; i += 1) {
       sqlite
         .prepare(
@@ -262,6 +412,12 @@ test("complete jobs preserve all child rows, retry deterministically, copy evide
         .reduce((sum: number, file: { rows: number }) => sum + file.rows, 0);
       assert.equal(actual, expected, `no missing rows in ${table.name}`);
     }
+    assert.equal(
+      manifest.files.find((file: { name: string }) =>
+        file.name.startsWith("admin_csv_import_changes/"),
+      ).rows,
+      1,
+    );
     const evidenceFiles = manifest.files.filter(
       (file: { evidence?: { status: string } }) => file.evidence?.status === "copied",
     );
