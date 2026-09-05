@@ -67,6 +67,9 @@ export const PUBLIC_API_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
     additionalProperties: false,
     properties: {
       asking_sample_count: { type: "integer", minimum: 0 },
+      asking_listing_count: { type: "integer", minimum: 0 },
+      asking_shop_count: { type: "integer", minimum: 0 },
+      latest_asking_observed_at: nullableString,
       asking_median_yen: { type: "integer", minimum: 0 },
       asking_min_yen: { type: "integer", minimum: 0 },
       asking_max_yen: { type: "integer", minimum: 0 },

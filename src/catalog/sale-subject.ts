@@ -16,22 +16,31 @@ const ACCESSORIES: readonly (readonly [ClassifiableCategoryId, RegExp])[] = [
   ["ACC.CASE", /ダストカバー|ケース|カバー|cases?|covers?/i],
 ];
 
-/** Strip statements about included, missing or built-in items before deciding what is for sale. */
+/** Strip capabilities, power-source descriptions and included/missing items before sale inference. */
 export function saleSubjectText(value: string): string {
-  return value
-    .normalize("NFKC")
-    .replace(
-      /リモコン操作(?:対応|可能)?|リモコン対応|(?:AC|DC)\s*アダプタ(?:ー)?駆動|\bremote[ -]+control(?:led|lable)\b/gi,
-      " ",
-    )
-    .replace(
-      /(?:リモコン|ケーブル|ケース|カバー|ACアダプタ(?:ー)?|DAC|フォノ(?:イコライザー|アンプ)?|ヘッドホンアンプ)\s*(?:は\s*)?(?:非搭載|搭載|内蔵|非付属|付属(?:なし|無し)?|付き?|欠品|なし|無し)/gi,
-      " ",
-    )
-    .replace(
-      /\b(?:with(?:out)?|includes?)\s+(?:an?\s+)?(?:remote(?:\s+control)?|cable|case|cover|ac\s+adapt(?:er|or))\b/gi,
-      " ",
-    );
+  return (
+    value
+      .normalize("NFKC")
+      .replace(
+        /リモコン操作(?:対応|可能)?|リモコン対応|(?:AC|DC)\s*アダプタ(?:ー)?駆動|\bremote[ -]+control(?:led|lable)\b/gi,
+        " ",
+      )
+      // "Remote control compatible CD player" describes equipment; "remote control compatible
+      // with CD player" still sells a remote. Retain the latter's explicit compatibility context.
+      .replace(/\bremote(?:[ -]+control)?[ -]+compatible\b(?![ -]+with\b)/gi, " ")
+      .replace(
+        /\b(?:ac|dc)[ -]+adapt(?:er|or)[ -]+powered\b|\bpowered[ -]+by[ -]+(?:an?[ -]+)?(?:ac|dc)[ -]+adapt(?:er|or)\b/gi,
+        " ",
+      )
+      .replace(
+        /(?:リモコン|ケーブル|ケース|カバー|ACアダプタ(?:ー)?|DAC|フォノ(?:イコライザー|アンプ)?|ヘッドホンアンプ)\s*(?:は\s*)?(?:非搭載|搭載|内蔵|非付属|付属(?:なし|無し)?|付き?|欠品|なし|無し)/gi,
+        " ",
+      )
+      .replace(
+        /\b(?:with(?:out)?|includes?)\s+(?:an?\s+)?(?:remote(?:\s+control)?|cable|case|cover|ac\s+adapt(?:er|or))\b/gi,
+        " ",
+      )
+  );
 }
 
 /** The title's sale object is separate from the model it fits and from bundled accessories. */

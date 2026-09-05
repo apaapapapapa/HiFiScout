@@ -12,6 +12,8 @@ const categoryCases = [
   ["CDプレーヤー用リモコン", "ACC.PART"],
   ["ヘッドホンアンプ用ACアダプター", "PWR.SUPPLY"],
   ["remote control for CD-S3000", "ACC.PART"],
+  ["remote control compatible with CD-S3000", "ACC.PART"],
+  ["AC adapter for headphone amplifier", "PWR.SUPPLY"],
   ["phono preamplifier", "AMP.PHONO"],
   ["microphone preamplifier", "REC.MICPRE"],
   ["speaker stand", "ACC.STAND"],
@@ -21,6 +23,11 @@ const categoryCases = [
   ["CD player with remote control", "SRC.DISC"],
   ["CDプレーヤー リモコン操作対応", "SRC.DISC"],
   ["remote controlled CD player", "SRC.DISC"],
+  ["Remote control compatible CD player", "SRC.DISC"],
+  ["Remote-control-compatible CD player", "SRC.DISC"],
+  ["AC adapter powered headphone amplifier", "AMP.HEADPHONE"],
+  ["AC-adapter-powered headphone amplifier", "AMP.HEADPHONE"],
+  ["Headphone amplifier powered by an AC adapter", "AMP.HEADPHONE"],
 ] as const;
 
 test("sale-object category corpus preserves meaning and reports false classifications", () => {
@@ -54,6 +61,8 @@ test("identity corpus distinguishes a compatible accessory from an included one"
     ["YAMAHA CD-S3000 専用リモコン", "unresolved"],
     ["YAMAHA CD-S3000 リモコン付", "matched"],
     ["YAMAHA CD-S3000 リモコン欠品", "matched"],
+    ["YAMAHA CD-S3000 Remote control compatible CD player", "matched"],
+    ["YAMAHA CD-S3000 remote control compatible with CD-S3000", "unresolved"],
     ["YAMAHA ＣＤ－Ｓ３０００", "matched"],
   ] as const) {
     const listing = normalizeCatalogProduct({
@@ -82,6 +91,31 @@ test("identity corpus distinguishes a compatible accessory from an included one"
     ).matchMethod,
     "vetoed",
   );
+});
+
+test("power-source descriptions preserve equipment identities and adapter sales stay separate", () => {
+  const candidates = [
+    { id: 1, manufacturerId: "maker", canonicalModel: "HA-100", categoryIds: ["AMP.HEADPHONE"] },
+  ];
+  for (const [title, expected] of [
+    ["HA-100 AC adapter powered headphone amplifier", "matched"],
+    ["HA-100 headphone amplifier powered by an AC adapter", "matched"],
+    ["AC adapter for HA-100 headphone amplifier", "unresolved"],
+  ] as const) {
+    assert.equal(
+      resolveProductIdentity(
+        {
+          manufacturerId: "maker",
+          model: "HA-100",
+          title,
+          primaryCategoryId: inferExplicitCategoryIds(title)[0],
+        },
+        candidates,
+      ).status,
+      expected,
+      title,
+    );
+  }
 });
 
 test("safe aliases are symmetric while bundle and revision evidence survives", () => {
