@@ -497,13 +497,13 @@ export function PublicApp() {
   const feedPath = useMemo(() => savedSearchFeedPath(appliedFilters), [appliedFilters]);
 
   const selectedCategoryLabel = useMemo(() => {
-    if (!filters.category || !meta) return "";
+    if (!appliedFilters.category || !meta) return "";
     return (
-      meta.categoryFacets?.find((facet) => facet.id === filters.category)?.name ??
-      meta.categories?.find((category) => category === filters.category) ??
-      filters.category
+      meta.categoryFacets?.find((facet) => facet.id === appliedFilters.category)?.name ??
+      meta.categories?.find((category) => category === appliedFilters.category) ??
+      appliedFilters.category
     );
-  }, [filters.category, meta]);
+  }, [appliedFilters.category, meta]);
 
   const persistFavorites = useCallback((next: FavoriteStore) => {
     if (!savePreference(FAVORITES_KEY, JSON.stringify(favoriteStoragePayload(next)))) {
@@ -915,8 +915,8 @@ export function PublicApp() {
     totalPages,
     errorMessage,
   });
-  const activeFilters = activeFilterEntries(filters, {
-    shop: shopName(filters.shop),
+  const activeFilters = activeFilterEntries(appliedFilters, {
+    shop: shopName(appliedFilters.shop),
     category: selectedCategoryLabel,
   });
   const detailFilterCount = activeFilters.filter((entry) => entry.detail).length;

@@ -32,38 +32,43 @@ async function mockCatalog(
   options: { failMeta?: boolean; pauseSearch?: Promise<void> } = {},
 ) {
   const seen = { meta: 0, searches: [] as URL[], detail: 0, history: 0 };
-  await page.route("**/api/**", async (route) => {
-    const url = new URL(route.request().url());
-    const json = (body: unknown, status = 200) =>
-      route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
-    if (url.pathname === "/api/meta") {
-      seen.meta++;
-      return seen.meta === 1 && options.failMeta ? json({ error: "unavailable" }, 500) : json(meta);
-    }
-    if (url.pathname === "/api/product-search") {
-      seen.searches.push(url);
-      await options.pauseSearch;
-      return json(
-        url.searchParams.get("q") === "zero"
-          ? { ...results, items: [], totalCount: 0, totalPages: 0 }
-          : results,
-      );
-    }
-    if (url.pathname.startsWith("/api/product-search/")) {
-      seen.detail++;
-      return seen.detail === 1 ? json({}, 503) : json({ product: item, offers: [offer()] });
-    }
-    if (url.pathname.endsWith("/history")) {
-      seen.history++;
-      return seen.history === 1
-        ? json({}, 503)
-        : json({
-            product: { manufacturer: "LUXMAN", model: "D-1000", title: "LUXMAN D-1000" },
-            history: [],
-          });
-    }
-    return json({ suggestions: [] });
-  });
+  await page.route(
+    (url) => url.pathname.startsWith("/api/"),
+    async (route) => {
+      const url = new URL(route.request().url());
+      const json = (body: unknown, status = 200) =>
+        route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+      if (url.pathname === "/api/meta") {
+        seen.meta++;
+        return seen.meta === 1 && options.failMeta
+          ? json({ error: "unavailable" }, 500)
+          : json(meta);
+      }
+      if (url.pathname === "/api/product-search") {
+        seen.searches.push(url);
+        await options.pauseSearch;
+        return json(
+          url.searchParams.get("q") === "zero"
+            ? { ...results, items: [], totalCount: 0, totalPages: 0 }
+            : results,
+        );
+      }
+      if (url.pathname.startsWith("/api/product-search/")) {
+        seen.detail++;
+        return seen.detail === 1 ? json({}, 503) : json({ product: item, offers: [offer()] });
+      }
+      if (url.pathname.endsWith("/history")) {
+        seen.history++;
+        return seen.history === 1
+          ? json({}, 503)
+          : json({
+              product: { manufacturer: "LUXMAN", model: "D-1000", title: "LUXMAN D-1000" },
+              history: [],
+            });
+      }
+      return json({ suggestions: [] });
+    },
+  );
   return seen;
 }
 
@@ -203,4 +208,20 @@ test("long names and seven-digit prices fit across filter breakpoints", async ({
     if (width <= 760) await expect(page.locator(".view-switch")).toBeHidden();
     await page.screenshot({ path: testInfo.outputPath(`catalog-${width}.png`), fullPage: true });
   }
+});
+
+test("desktop price chips match normalized requests for grouped and full-width yen", async ({
+  page,
+  mount,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const seen = await mockCatalog(page);
+  await mount("frontend/public-app/Default");
+  await expect(page.locator(".card")).toHaveCount(1);
+  await page.locator("#minPrice").fill("100,000");
+  await expect(page.locator('[data-clear-filter="minPrice"]')).toContainText("100,000");
+  expect(seen.searches.at(-1)?.searchParams.get("minPrice")).toBe("100000");
+  await page.locator("#minPrice").fill("１，０００");
+  await expect(page.locator('[data-clear-filter="minPrice"]')).toHaveText(/1,000以上/);
+  expect(seen.searches.at(-1)?.searchParams.get("minPrice")).toBe("1000");
 });
