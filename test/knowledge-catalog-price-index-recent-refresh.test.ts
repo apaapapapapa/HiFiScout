@@ -8,8 +8,157 @@ import {
 } from "../src/db/knowledge-catalog-price-index-recent-refresh.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { queryPlan, readsThroughIndex, recordingDatabase } from "./helpers/query-plan.js";
+import { invocationBudget } from "../src/db/invocation-budget.js";
 
 const BACKFILL_KEY = "recent-price-index-v1";
+
+test("backfill pacing survives invocations and admits the next page at the hourly boundary", async () => {
+  const { sqlite, db } = emptyPriceIndex();
+  try {
+    seedProducts(sqlite, 2);
+    const first = await backfillRecentPriceIndexes(db, {
+      now: new Date("2026-09-04T01:00:00Z"),
+      limit: 1,
+    });
+    assert.equal(first.afterCatalogProductId, 1);
+    const recorded = recordingDatabase(db);
+    const early = await backfillRecentPriceIndexes(recorded.db, {
+      now: new Date("2026-09-04T01:59:59Z"),
+    });
+    assert.equal(early.deferredReason, "cooldown");
+    assert.equal(recorded.executed.length, 1, "cooldown must not read history or write progress");
+    assert.equal(
+      (await backfillRecentPriceIndexes(db, { now: new Date("2026-09-04T02:00:00Z") })).status,
+      "completed",
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("a losing concurrent page cannot replay projection writes or report false progress", async () => {
+  const { sqlite, db } = emptyPriceIndex();
+  try {
+    seedProducts(sqlite, 3);
+    const now = new Date("2026-09-04T01:00:00Z");
+    const stale = {
+      ...db,
+      async batch<T>(statements: D1PreparedStatement[]) {
+        await backfillRecentPriceIndexes(db, { now, limit: 2 });
+        // Mark the already refreshed projection; the stale page must leave it untouched.
+        sqlite.exec(
+          "UPDATE knowledge_catalog_price_indexes SET recent_asking_median_yen = -2 WHERE catalog_product_id=1",
+        );
+        return db.batch<T>(statements);
+      },
+    };
+    const loser = await backfillRecentPriceIndexes(stale, { now, limit: 1 });
+    assert.equal(loser.deferredReason, "conflict");
+    assert.equal(loser.afterCatalogProductId, 2);
+    assert.equal(loser.refreshedCount, 0);
+    assert.equal(
+      sqlite
+        .prepare(
+          "SELECT recent_asking_median_yen AS median FROM knowledge_catalog_price_indexes WHERE catalog_product_id=1",
+        )
+        .get()?.median,
+      -2,
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("sample limits stop before a large product without advancing past it", async () => {
+  const { sqlite, db } = emptyPriceIndex();
+  try {
+    seedProducts(sqlite, 1);
+    for (let n = 3; n < 501; n += 1) insertAskingSample(sqlite, 1, 10000 + n);
+    sqlite.exec("UPDATE knowledge_catalog_price_indexes SET recent_asking_median_yen=-1");
+    const result = await backfillRecentPriceIndexes(db, { now: new Date("2026-09-04T01:00:00Z") });
+    assert.equal(result.deferredReason, "sample_budget");
+    assert.equal(result.blockedCatalogProductId, 1);
+    assert.equal(result.afterCatalogProductId, 0);
+    assert.equal(
+      sqlite
+        .prepare(
+          "SELECT recent_asking_median_yen AS median FROM knowledge_catalog_price_indexes WHERE catalog_product_id=1",
+        )
+        .get()?.median,
+      -1,
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("samples arriving after selection invalidate admission without partial writes", async () => {
+  const { sqlite, db } = emptyPriceIndex();
+  try {
+    seedProducts(sqlite, 1);
+    const racing = {
+      ...db,
+      async batch<T>(statements: D1PreparedStatement[]) {
+        insertAskingSample(sqlite, 1, 900000);
+        return db.batch<T>(statements);
+      },
+    };
+    const result = await backfillRecentPriceIndexes(racing, {
+      now: new Date("2026-09-04T01:00:00Z"),
+    });
+    assert.equal(result.deferredReason, "conflict");
+    assert.equal(result.afterCatalogProductId, 0);
+    assert.equal(result.refreshedCount, 0);
+    assert.equal(
+      sqlite
+        .prepare("SELECT page_token FROM knowledge_catalog_price_index_recent_backfill_runs")
+        .get()?.page_token,
+      null,
+    );
+    const retry = await backfillRecentPriceIndexes(db, { now: new Date("2026-09-04T01:00:00Z") });
+    assert.equal(retry.status, "completed");
+    assert.equal(
+      sqlite
+        .prepare(
+          "SELECT recent_asking_median_yen AS median FROM knowledge_catalog_price_indexes WHERE catalog_product_id=1",
+        )
+        .get()?.median,
+      1250,
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("invocation exhaustion yields before the atomic page starts", async () => {
+  const { sqlite, db } = emptyPriceIndex();
+  try {
+    seedProducts(sqlite, 1);
+    const budget = invocationBudget(db, { maxCalls: 2 });
+    await assert.rejects(
+      backfillRecentPriceIndexes(budget.db, { now: new Date("2026-09-04T01:00:00Z") }),
+      /budget exhausted/u,
+    );
+    assert.equal(
+      sqlite
+        .prepare(
+          "SELECT after_catalog_product_id AS cursor, page_token FROM knowledge_catalog_price_index_recent_backfill_runs",
+        )
+        .get()?.cursor,
+      0,
+    );
+    assert.equal(
+      sqlite
+        .prepare(
+          "SELECT recent_asking_median_yen AS median FROM knowledge_catalog_price_indexes WHERE catalog_product_id=1",
+        )
+        .get()?.median,
+      -1,
+    );
+  } finally {
+    sqlite.close();
+  }
+});
 
 function emptyPriceIndex() {
   const database = migratedSqlite();
@@ -85,7 +234,7 @@ test("recent median backfill is bounded, resumable, and retry-idempotent", async
   const now = new Date("2026-09-04T00:00:00.000Z");
   const recording = recordingDatabase(db);
 
-  const first = await backfillRecentPriceIndexes(recording.db, { now });
+  const first = await backfillRecentPriceIndexes(recording.db, { now, minimumIntervalMs: 0 });
   assert.deepEqual(first, {
     status: "running",
     selectedCount: 25,
@@ -95,16 +244,16 @@ test("recent median backfill is bounded, resumable, and retry-idempotent", async
   });
   assert.equal(
     recording.executed.length,
-    53,
-    "one full page is two selectors, 50 product-scoped writes, and one cursor write",
+    54,
+    "one full page is two selectors, 50 product-scoped writes, an admission, and one cursor write",
   );
   const candidateSelector = recording.executed.find((statement) =>
-    /FROM knowledge_catalog_price_indexes\s+WHERE catalog_product_id > \?/u.test(statement.sql),
+    /FROM knowledge_catalog_price_indexes p\s+WHERE catalog_product_id > \?/u.test(statement.sql),
   );
   assert.ok(candidateSelector);
   assert.ok(
     queryPlan(sqlite, candidateSelector).some((step) =>
-      step.detail.startsWith("SEARCH knowledge_catalog_price_indexes USING INTEGER PRIMARY KEY"),
+      step.detail.startsWith("SEARCH p USING INTEGER PRIMARY KEY"),
     ),
   );
   for (const statement of recording.executed.filter((candidate) =>
@@ -113,7 +262,9 @@ test("recent median backfill is bounded, resumable, and retry-idempotent", async
     assert.equal(
       readsThroughIndex(
         queryPlan(sqlite, statement),
-        "knowledge_catalog_price_index_samples",
+        /FROM knowledge_catalog_price_index_samples s\b/u.test(statement.sql)
+          ? "s"
+          : "knowledge_catalog_price_index_samples",
         "idx_knowledge_catalog_price_index_samples_catalog",
       ),
       true,
@@ -134,12 +285,12 @@ test("recent median backfill is bounded, resumable, and retry-idempotent", async
     25,
   );
 
-  const second = await backfillRecentPriceIndexes(db, { now });
+  const second = await backfillRecentPriceIndexes(db, { now, minimumIntervalMs: 0 });
   assert.equal(second.selectedCount, 25);
   assert.equal(second.afterCatalogProductId, 50);
   assert.equal(second.status, "running");
 
-  const third = await backfillRecentPriceIndexes(db, { now });
+  const third = await backfillRecentPriceIndexes(db, { now, minimumIntervalMs: 0 });
   assert.deepEqual(third, {
     status: "completed",
     selectedCount: 2,
@@ -174,7 +325,7 @@ test("recent median backfill is bounded, resumable, and retry-idempotent", async
     52,
   );
 
-  const retry = await backfillRecentPriceIndexes(db, { now });
+  const retry = await backfillRecentPriceIndexes(db, { now, minimumIntervalMs: 0 });
   assert.deepEqual(retry, {
     status: "completed",
     selectedCount: 0,
