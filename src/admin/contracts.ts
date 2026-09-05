@@ -95,11 +95,11 @@ export interface CatalogAdminRpc {
   startKnowledgeCatalogExport(): Promise<KnowledgeCatalogExportJob>;
   latestKnowledgeCatalogExportJob(): Promise<KnowledgeCatalogExportJob | null>;
   getKnowledgeCatalogExportJob(jobId: string): Promise<KnowledgeCatalogExportJob | null>;
-  downloadKnowledgeCatalogExport(jobId: string): Promise<Response>;
+  downloadKnowledgeCatalogExport(jobId: string, part?: number): Promise<Response>;
   startProductAuditExport(scope: ProductAuditExportScope): Promise<ProductAuditExportJob>;
   latestProductAuditExportJob(
     scope: ProductAuditExportScope,
   ): Promise<ProductAuditExportJob | null>;
   getProductAuditExportJob(jobId: string): Promise<ProductAuditExportJob | null>;
-  downloadProductAuditExport(jobId: string): Promise<Response>;
+  downloadProductAuditExport(jobId: string, part?: number): Promise<Response>;
 }

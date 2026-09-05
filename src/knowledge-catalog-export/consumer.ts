@@ -1,3 +1,4 @@
+import { ensureCompleteArchiveChunk } from "../export/complete-archive.js";
 import {
   advanceKnowledgeCatalogExportJob,
   claimKnowledgeCatalogExportJob,
@@ -82,6 +83,15 @@ async function ensureChunk(
   job: KnowledgeCatalogExportJob,
   message: KnowledgeCatalogExportQueueMessage,
 ): Promise<StoredChunk> {
+  if (job.format === "complete") {
+    return ensureCompleteArchiveChunk(
+      env.DB,
+      env.EVIDENCE_BUCKET,
+      { id: job.id, scope: "catalog", maxPrimaryId: job.maxCatalogProductId },
+      message.expectedChunkCount,
+      knowledgeCatalogExportChunkKey,
+    );
+  }
   const key = knowledgeCatalogExportChunkKey(job.id, message.expectedChunkCount);
   const existing = await env.EVIDENCE_BUCKET.head(key);
   if (existing) return storedChunkFromObject(existing, job, message);
@@ -191,7 +201,11 @@ export async function consumeKnowledgeCatalogExportMessage(
     }
 
     const chunk = await ensureChunk(env, claim.job, body);
-    if (chunk.hasMore && body.expectedChunkCount + 1 >= KNOWLEDGE_CATALOG_EXPORT_MAX_CHUNKS) {
+    if (
+      claim.job.format !== "complete" &&
+      chunk.hasMore &&
+      body.expectedChunkCount + 1 >= KNOWLEDGE_CATALOG_EXPORT_MAX_CHUNKS
+    ) {
       const failed = await failClaimedKnowledgeCatalogExportJob(
         env.DB,
         claim.job.id,

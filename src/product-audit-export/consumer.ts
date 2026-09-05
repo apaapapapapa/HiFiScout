@@ -1,3 +1,4 @@
+import { ensureCompleteArchiveChunk } from "../export/complete-archive.js";
 import {
   advanceProductAuditExportJob,
   claimProductAuditExportJob,
@@ -90,6 +91,15 @@ async function ensureProductAuditExportChunk(
   job: ProductAuditExportJob,
   message: ProductAuditExportQueueMessage,
 ): Promise<StoredChunk> {
+  if (job.format === "complete") {
+    return ensureCompleteArchiveChunk(
+      env.DB,
+      env.EVIDENCE_BUCKET,
+      { id: job.id, scope: job.scope, maxPrimaryId: job.maxListingId },
+      message.expectedChunkCount,
+      productAuditExportChunkKey,
+    );
+  }
   const key = productAuditExportChunkKey(job.id, message.expectedChunkCount);
   const existing = await env.EVIDENCE_BUCKET.head(key);
   if (existing) return storedChunkFromObject(existing, job, message);
@@ -214,7 +224,11 @@ export async function consumeProductAuditExportMessage(
     }
 
     const chunk = await ensureProductAuditExportChunk(env, claim.job, body);
-    if (chunk.hasMore && body.expectedChunkCount + 1 >= PRODUCT_AUDIT_EXPORT_MAX_CHUNKS) {
+    if (
+      claim.job.format !== "complete" &&
+      chunk.hasMore &&
+      body.expectedChunkCount + 1 >= PRODUCT_AUDIT_EXPORT_MAX_CHUNKS
+    ) {
       const failed = await failClaimedProductAuditExportJob(
         env.DB,
         claim.job.id,
