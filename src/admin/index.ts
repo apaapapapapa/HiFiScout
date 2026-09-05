@@ -207,10 +207,13 @@ export async function handleAuthenticatedCatalogAdminRequest(
   const catalogExportJobMatch = url.pathname.match(CATALOG_EXPORT_JOB_PATH);
   if (request.method === "GET" && catalogExportJobMatch) {
     const jobId = catalogExportJobMatch[1];
+    const part = Number(url.searchParams.get("part") ?? "1");
+    if (!Number.isSafeInteger(part) || part < 1)
+      return json({ error: "invalid_export_part" }, { status: 400 });
     try {
       if (catalogExportJobMatch[2]) {
         return withCatalogAdminSecurityHeaders(
-          await env.CATALOG_ADMIN.downloadKnowledgeCatalogExport(jobId),
+          await env.CATALOG_ADMIN.downloadKnowledgeCatalogExport(jobId, part),
         );
       }
       const job = await env.CATALOG_ADMIN.getKnowledgeCatalogExportJob(jobId);
@@ -250,9 +253,12 @@ export async function handleAuthenticatedCatalogAdminRequest(
   const exportJobMatch = url.pathname.match(PRODUCT_EXPORT_JOB_PATH);
   if (request.method === "GET" && exportJobMatch) {
     const jobId = exportJobMatch[1];
+    const part = Number(url.searchParams.get("part") ?? "1");
+    if (!Number.isSafeInteger(part) || part < 1)
+      return json({ error: "invalid_export_part" }, { status: 400 });
     if (exportJobMatch[2]) {
       return withCatalogAdminSecurityHeaders(
-        await env.CATALOG_ADMIN.downloadProductAuditExport(jobId),
+        await env.CATALOG_ADMIN.downloadProductAuditExport(jobId, part),
       );
     }
     const job = await env.CATALOG_ADMIN.getProductAuditExportJob(jobId);

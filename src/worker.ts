@@ -114,11 +114,13 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
     return getKnowledgeCatalogExportJob(this.env.DB, jobId);
   }
 
-  async downloadKnowledgeCatalogExport(jobId: string): Promise<Response> {
+  async downloadKnowledgeCatalogExport(jobId: string, part = 1): Promise<Response> {
     return createKnowledgeCatalogExportDownloadResponse(
       this.env.DB,
       this.env.EVIDENCE_BUCKET,
       jobId,
+      new Date(),
+      part,
     );
   }
 
@@ -150,8 +152,14 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
     return getProductAuditExportJob(this.env.DB, jobId);
   }
 
-  async downloadProductAuditExport(jobId: string): Promise<Response> {
-    return createProductAuditExportDownloadResponse(this.env.DB, this.env.EVIDENCE_BUCKET, jobId);
+  async downloadProductAuditExport(jobId: string, part = 1): Promise<Response> {
+    return createProductAuditExportDownloadResponse(
+      this.env.DB,
+      this.env.EVIDENCE_BUCKET,
+      jobId,
+      new Date(),
+      part,
+    );
   }
 }
 
