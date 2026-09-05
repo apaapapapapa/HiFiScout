@@ -29,6 +29,30 @@ export function normalizeMetadataJson(metadata: unknown): string {
   return json;
 }
 
+/** A repeated catalog decision is not a product change; retain its original decision time. */
+function preserveCatalogDecisionTime(metadata: unknown, previousJson: string): unknown {
+  if (!isRecord(metadata) || !isRecord(metadata.categoryClassification)) return metadata;
+  let previous: unknown;
+  try {
+    previous = JSON.parse(previousJson);
+  } catch {
+    return metadata;
+  }
+  if (!isRecord(previous) || !isRecord(previous.categoryClassification)) return metadata;
+  const { catalogMatchedAt: previousAt, ...previousDecision } = previous.categoryClassification;
+  const { catalogMatchedAt: nextAt, ...nextDecision } = metadata.categoryClassification;
+  if (typeof previousAt !== "string" || typeof nextAt !== "string") return metadata;
+  if (
+    JSON.stringify(stableObject(previousDecision)) !== JSON.stringify(stableObject(nextDecision))
+  ) {
+    return metadata;
+  }
+  return {
+    ...metadata,
+    categoryClassification: { ...metadata.categoryClassification, catalogMatchedAt: previousAt },
+  };
+}
+
 async function existingMetadata(
   db: QueryableDatabase,
   shopKey: string,
@@ -69,7 +93,9 @@ export async function syncProductMetadata(
   for (const product of products) {
     const existing = bySourceId.get(product.sourceId);
     if (!existing) continue;
-    const metadataJson = normalizeMetadataJson(product.metadata);
+    const metadataJson = normalizeMetadataJson(
+      preserveCatalogDecisionTime(product.metadata, existing.metadata_json || "{}"),
+    );
     if ((existing.metadata_json || "{}") === metadataJson) continue;
     writes.push(
       db

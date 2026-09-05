@@ -160,20 +160,23 @@ export async function refreshKnowledgeCatalogCandidates(
     })),
   );
 
-  await db
+  const activeKeys = new Set(
+    candidates.map((candidate) =>
+      knowledgeCatalogKey(candidate.manufacturerId, candidate.normalizedModel),
+    ),
+  );
+  const previous = await db
     .prepare(`
-    UPDATE knowledge_catalog_candidates
-    SET active_listing_count = 0,
-        shop_count = 0,
-        unclassified_count = 0,
-        other_count = 0,
-        unresolved_identity_count = 0,
-        priority_score = 0,
-        last_reviewed_at = ?,
-        updated_at = ?
+    SELECT id, manufacturer_id, normalized_model FROM knowledge_catalog_candidates
+    WHERE active_listing_count > 0
   `)
-    .bind(reviewedAt, reviewedAt)
-    .run();
+    .all<{ id: number; manufacturer_id: string; normalized_model: string }>();
+  const retiredIds = (previous.results || [])
+    .filter(
+      (candidate) =>
+        !activeKeys.has(knowledgeCatalogKey(candidate.manufacturer_id, candidate.normalized_model)),
+    )
+    .map((candidate) => candidate.id);
 
   const writes = candidates.map((candidate) => {
     const match = matches.get(
@@ -187,7 +190,51 @@ export async function refreshKnowledgeCatalogCandidates(
         active_listing_count, shop_count, unclassified_count, other_count,
         unresolved_identity_count, priority_score,
         review_status, catalog_product_id, first_seen_at, last_seen_at, last_reviewed_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      )
+      SELECT desired.* FROM (SELECT
+        ? AS manufacturer_id,
+        ? AS normalized_model,
+        ? AS observed_manufacturer,
+        ? AS observed_model,
+        ? AS sample_title,
+        ? AS candidate_category_ids,
+        ? AS raw_model_variants,
+        ? AS evidence_source_urls,
+        ? AS identity_rejection_reason,
+        ? AS active_listing_count,
+        ? AS shop_count,
+        ? AS unclassified_count,
+        ? AS other_count,
+        ? AS unresolved_identity_count,
+        ? AS priority_score,
+        ? AS review_status,
+        ? AS catalog_product_id,
+        ? AS first_seen_at,
+        ? AS last_seen_at,
+        ? AS last_reviewed_at,
+        ? AS created_at,
+        ? AS updated_at
+      ) AS desired
+      LEFT JOIN knowledge_catalog_candidates existing
+        ON existing.manufacturer_id = desired.manufacturer_id AND existing.normalized_model = desired.normalized_model
+      WHERE existing.id IS NULL OR
+        existing.observed_manufacturer IS NOT desired.observed_manufacturer
+        OR existing.observed_model IS NOT desired.observed_model
+        OR existing.sample_title IS NOT desired.sample_title
+        OR existing.candidate_category_ids IS NOT desired.candidate_category_ids
+        OR existing.raw_model_variants IS NOT desired.raw_model_variants
+        OR existing.evidence_source_urls IS NOT desired.evidence_source_urls
+        OR existing.identity_rejection_reason IS NOT desired.identity_rejection_reason
+        OR existing.active_listing_count IS NOT desired.active_listing_count
+        OR existing.shop_count IS NOT desired.shop_count
+        OR existing.unclassified_count IS NOT desired.unclassified_count
+        OR existing.other_count IS NOT desired.other_count
+        OR existing.unresolved_identity_count IS NOT desired.unresolved_identity_count
+        OR existing.priority_score IS NOT desired.priority_score
+        OR existing.review_status IS NOT CASE WHEN desired.catalog_product_id IS NOT NULL THEN 'matched' WHEN existing.review_status = 'ignored' THEN 'ignored' ELSE 'pending' END
+        OR existing.catalog_product_id IS NOT desired.catalog_product_id
+        OR existing.first_seen_at IS NOT COALESCE(existing.first_seen_at, desired.first_seen_at)
+        OR existing.last_seen_at IS NOT desired.last_seen_at
       ON CONFLICT(manufacturer_id, normalized_model) DO UPDATE SET
         observed_manufacturer = excluded.observed_manufacturer,
         observed_model = excluded.observed_model,
@@ -238,6 +285,19 @@ export async function refreshKnowledgeCatalogCandidates(
         reviewedAt,
       );
   });
+  for (let offset = 0; offset < retiredIds.length; offset += 50) {
+    const ids = retiredIds.slice(offset, offset + 50);
+    writes.push(
+      db
+        .prepare(`
+      UPDATE knowledge_catalog_candidates
+      SET active_listing_count = 0, shop_count = 0, unclassified_count = 0, other_count = 0,
+          unresolved_identity_count = 0, priority_score = 0, last_reviewed_at = ?, updated_at = ?
+      WHERE id IN (${ids.map(() => "?").join(",")}) AND active_listing_count > 0
+    `)
+        .bind(reviewedAt, reviewedAt, ...ids),
+    );
+  }
   await runBatches(db, writes);
   return knowledgeCatalogCandidateStats(db);
 }

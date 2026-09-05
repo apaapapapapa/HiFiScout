@@ -69,6 +69,12 @@ function representativeListingId(alias: string): string {
   )`;
 }
 
+/** Final fallback owner, shared by entity creation and offer assignment. */
+export function fallbackRepresentativeListingIdSql(alias: string): string {
+  return `CASE WHEN ${eligible(alias)} AND ${categoryCompatible(alias)}
+    THEN ${representativeListingId(alias)} ELSE ${alias}.id END`;
+}
+
 /**
  * True for an active unresolved listing whose safe exact-identity peers are split across multiple
  * Product Search entities.
@@ -136,6 +142,8 @@ export function upsertExactIdentityGroupOffersSql(listingScope = ""): string {
     ON CONFLICT(listing_product_id) DO UPDATE SET
       entity_id = excluded.entity_id,
       shop_key = excluded.shop_key
+    WHERE product_search_entity_offers.entity_id IS NOT excluded.entity_id
+       OR product_search_entity_offers.shop_key IS NOT excluded.shop_key
   `;
 }
 
