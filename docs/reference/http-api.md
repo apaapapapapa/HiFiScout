@@ -24,8 +24,12 @@ The Worker dispatches those routes through `src/http/public-routes.ts`. The docu
 imports the same contracts through `scripts/docs/generate-openapi.ts`, so path or query changes do
 not require a separate OpenAPI edit.
 
-The migration is intentionally incremental. Existing endpoints stay on the legacy router until they
-are moved to a route contract; new public JSON endpoints should use a route contract by default.
+Contract coverage is intentionally incremental: the generated OpenAPI is not a complete route
+inventory. Other public behavior is composed in `src/index.ts` and `src/http/router.ts`; new public
+JSON endpoints should use a route contract by default. Read the outer entrypoint before assuming
+a router handler is reachable: public `/api/admin/*` returns 404. The separate Access-protected
+admin Worker exposes only the capabilities wired through `src/admin/entry.ts`, `src/admin/index.ts`,
+and `src/admin/contracts.ts`.
 
 ## Validation
 

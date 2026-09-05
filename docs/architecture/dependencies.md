@@ -22,10 +22,10 @@ Every rule in `.dependency-cruiser.json` has `error` severity, so `vp run docs:a
 
 - **Acyclic** — first-party dependencies under `src/` and `frontend/` must stay acyclic.
 - **Contract boundary** — `src/api/contracts.ts` may depend only on the catalog type vocabulary, `frontend/` may reach `src/` only through that one file, and `src/` never imports `frontend/`. The browser bundle therefore shares the HTTP contracts and nothing else.
-- **Domain above storage** — `src/catalog/` must not import `src/db/`, and repositories must not import the crawler or the HTTP layer.
+- **Domain above storage** — `src/catalog/` must not import `src/db/`. Repositories must not take runtime dependencies on the crawler or HTTP layer; erased type-only contracts are allowed.
 - **Shops stay plugins** — generic code composes shops through `src/crawler/shops/index.ts`; an adapter cannot reach persistence, search, evidence, HTTP, or the API except the activity-policy vocabulary; and catalog/repository code never imports shops.
 - **Knowledge Catalog separation** — the crawler and the verification pipeline meet through the database rather than each other's types, and `src/knowledge-catalog/policy.ts` keeps I/O out of its retry, lease, and promotion decisions.
-- **Product search grouping has one definition** — `src/db/product-search-entity-sql.ts` may import nothing from `src/`. It is the single SQL definition of what a search entity is, executed by the crawler's incremental sync, the admin rebuild, and the migration backfill; a dependency on a repository or the catalog is exactly what would let those three start disagreeing about grouping.
+- **Product search SQL stays a vocabulary** — `src/db/product-search-entity-sql.ts` may import nothing from `src/`. Current sync/rebuild paths share the SQL vocabulary and the guarded exact-identity helpers; historical migration backfills retain their original rollout SQL. See [Data platform architecture](../data-platform-architecture.md) for both catalog and fallback grouping rules.
 
 Each rule carries a `comment` describing the failure it prevents, and that text is what the check prints on a violation. Add new rules the same way: state the regression, not merely the restriction.
 

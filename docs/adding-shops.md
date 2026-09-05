@@ -168,9 +168,15 @@ registered under `capabilities.catalog`; optional detail enrichment is registere
 `capabilities.detailCategoryEvidence`. It returns product-specific evidence, never the final category
 decision. Detail requests are bounded by the platform and only unresolved products need them.
 
-`other` and `unclassified` are different. `other` is a confirmed canonical category; `unclassified`
-means evidence is insufficient. Candidate categories from unresolved products must not leak into
-canonical category filters.
+Taxonomy v3 uses canonical product-type leaves, separate facets, and capabilities. `unclassified`
+means evidence is insufficient; it is internal and non-filterable. There is no canonical `other`
+product type. Legacy IDs are compatibility inputs, not new adapter output. Candidate categories
+from unresolved products must not leak into canonical category filters.
+
+The per-shop Durable Object builds the detail-enrichment plan once per run and advances a cursor
+over immutable target chunks. Preserve product-specific evidence, the durable detail-page fence,
+and positive/negative caching when adding a capability. Do not reload the full staged inventory or
+re-resolve every product on each Alarm; see [Crawl orchestration](./crawl-orchestration.md).
 
 ## Shop-specific metadata
 

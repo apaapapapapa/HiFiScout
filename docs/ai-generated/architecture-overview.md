@@ -9,6 +9,11 @@ No Codex-generated architecture snapshot has been committed yet. This page is in
 
 The deterministic architecture graph remains available under [Architecture Graph](/architecture/dependencies).
 
+For the current runtime, use [Crawl orchestration](../crawl-orchestration.md) and
+[Data platform architecture](../data-platform-architecture.md). This fallback is not a generated
+description of the current source or evidence of production health. A reviewed generated snapshot
+will name its `source_commit`; compare that revision with current implementation before relying on it.
+
 ## Diagram
 
 <iframe

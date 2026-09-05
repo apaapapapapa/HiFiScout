@@ -1,63 +1,108 @@
 # Repository instructions for AI coding agents
 
-## Required pre-commit checks
+HiFiScout is a TypeScript/React application on Cloudflare Workers + D1. Per-shop `CrawlScheduler`
+Durable Objects own crawling; Queues serve Knowledge Catalog verification and asynchronous exports.
 
-For JavaScript/TypeScript changes, always run this before creating a commit:
+## Sources of truth and task map
 
-```sh
-vp run verify
-```
+Read current code and configuration before changing behavior. Historical issues, migration comments,
+and AI-generated snapshots describe the revision at which they were written, not necessarily `main`.
+Start with the relevant row rather than loading every document.
 
-It applies the formatter and lint fixes, then runs the read-only gate: `lint`, `format:check`,
-`check:no-js-source`, `typecheck`, and the unit tests. Run it once rather than invoking the
-underlying commands separately; a green run prints under a kilobyte, and every failure is reported
-in full.
+| Task | Entry points |
+| --- | --- |
+| Runtime and bindings | `src/worker.ts`, `src/index.ts`, `wrangler.jsonc`, `wrangler.admin.jsonc` |
+| Crawl scheduling, recovery, pacing | `docs/crawl-orchestration.md`, `src/scheduled.ts`, `src/crawler/crawl-scheduler-do.ts` |
+| Shop adapter | `docs/adding-shops.md`, `src/crawler/shops/index.ts`, nearby adapter and tests |
+| Search, grouping, price index, D1 cost | `docs/data-platform-architecture.md`, `src/db/product-search-price-index-repository.ts`, `src/db/product-search-exact-identity.ts` |
+| Classification, identity, remediation | `docs/data-quality.md`, `docs/data-quality-remediation.md`, `src/catalog/resolution-versions.ts` |
+| Public UI | `DESIGN.md`, `frontend/app.tsx`, `frontend/public-app.tsx`, `frontend/public-components.tsx` |
+| Admin UI, authentication, RPC | `docs/listing-admin.md`, `src/admin/entry.ts`, `src/admin/access.ts`, `src/admin/contracts.ts`, `frontend/admin-console.tsx` |
+| Schema | Ordered `migrations/*.sql`; add a migration, never edit one already applied |
+| Test placement and performance coverage | `docs/testing-strategy.md`, `test/`, `e2e/` |
+| CI, deployment, operational checks | `.github/workflows/README.md` and the responsible workflow/scripts |
+| Documentation | `docs/index.md`, `docs/tooling.md`, `docs/.vitepress/config.mts` |
 
-Use `vp run check` when the working tree must not be modified, and `vp run fix` to apply
-formatting and lint fixes alone.
+## Validation
 
-Do not leave formatter-only failures for CI or a human to fix. Apply `vp run format`, review the resulting diff, and include the formatting changes in the same commit whenever possible.
+Use the project-pinned Vite+ toolchain. Versions and commands are defined in `package.json`,
+`package-lock.json`, and `vite.config.ts`; do not introduce a second package manager or lockfile.
 
-GitHub Actions also auto-formats pull requests as a defense-in-depth measure. Do not rely on CI autoformatting instead of running the formatter before committing.
+| Task | Command |
+| --- | --- |
+| Install locked dependencies | `vp install --frozen-lockfile` |
+| Required before committing TypeScript/source/config changes | `vp run verify` |
+| Read-only gate | `vp run check` |
+| Format/lint fixes only | `vp run fix` |
+| One unit-test file | `vp test run test/<name>.test.ts` |
+| Verbose unit tests when diagnosing | `vp run test:unit:verbose` |
+| Local development | `vp run db:migrate:local`, then `vp run dev` |
+| Documentation changes | `vp run docs:build` |
 
-## TypeScript-only source policy
+`verify` applies format/lint fixes, then runs lint, format checking, the TypeScript-only source guard,
+type checking, the parser performance benchmark, and unit tests. Run this aggregate once after the
+change instead of repeating its component checks. Inspect and include formatter changes before
+committing; CI autofix is a fallback, not a substitute. Run additional build/integration/browser
+checks when the changed boundary needs them; documentation-only changes need the documentation
+build rather than new application tests. Report any check that could not run.
 
-- New first-party application, test, script, E2E, infrastructure, frontend, and tooling source must be TypeScript (or a non-JavaScript declarative format).
-- Do not add tracked `.js`, `.mjs`, `.cjs`, or `.jsx` first-party source/config files. Generated JavaScript belongs in ignored build output only.
-- Vendored third-party agent skills are not first-party source. Archify is pinned by `skills-lock.json` and lives under `.agents/skills/archify/`; do not edit its vendored JavaScript as application source.
-- `vp run verify` covers `typecheck`, `format:check`, `lint`, and `check:no-js-source`; run it before publishing changes.
+## Architectural invariants
 
-## Public UI design context
+- Keep first-party application, test, script, infrastructure, and tooling source TypeScript-only.
+  Do not commit `.js`, `.mjs`, `.cjs`, or `.jsx` source/config. Keep strict typing and runtime
+  validation at external boundaries; see `docs/typescript.md`.
+- Crawl dispatch tokens fence one logical generation. Recovery re-delivers the same token to the
+  per-shop DO. Seller pacing uses PREPARE / Alarm / FETCH; do not restore crawl Queue lanes, a
+  second D1 execution lease, or sleep-based pacing.
+- Keep work proportional to changed listings, dirty identities, or bounded current work. Preserve
+  durable cursors, idempotency, and budget-aware finalization. Public metadata and price summaries
+  read persisted projections; do not move full-catalog/history aggregation into request paths.
+- Evaluate D1 changes with `rows_read`, `rows_written`, statement count, and query plans. A small
+  result or fewer binding calls does not prove fewer billed rows; local SQLite is not a billing or
+  Workers CPU measurement.
+- Verified catalog matches and guarded exact-identity fallback grouping are distinct paths. Never
+  merge fuzzy/candidate models or discard revision/accessory evidence to improve grouping counts.
+- Taxonomy v3 separates product categories, facets, and capabilities. `unclassified` is the internal
+  sentinel; old `other` and legacy category IDs are compatibility inputs, not new canonical output.
+- Preserve raw seller evidence and explicit admin overrides. Do not republish seller images,
+  descriptions, comments, or logos.
+- Public `/api/admin/*` routes return 404. The separate Access-protected admin Worker uses the
+  `CatalogAdminService` Service Binding; internal legacy router handlers do not imply public access.
+- Read `DESIGN.md` before implementing or substantially restyling public UI. Preserve usability and
+  accessibility when a visual reference conflicts with them, and explain non-obvious deviations.
 
-- Read root-level `DESIGN.md` before implementing or substantially restyling public-facing UI.
-- Treat `DESIGN.md` as the canonical visual direction for the catalog, search, filters, product results, offer comparison, favorites, and related public experiences.
-- When implementation constraints or accessibility requirements conflict with a visual reference, preserve usability and accessibility and document the deviation when it is non-obvious.
+## Context and documentation discipline
 
-## Vendored Archify skill
+- Use `rg` to locate symbols and read relevant sections of large files. Start review with
+  `git diff --stat`, then inspect affected paths. Read failed CI jobs instead of full successful logs.
+- Generated `dist/`, `.generated/`, browser bundles, `docs/public/`, and `docs/reference/api/` are not
+  implementation sources. Read the lockfile only for dependency/version work; it is authoritative
+  for the resolved dependency graph, not application behavior.
+- Do not run documentation generators merely to understand code. Run them to validate a docs
+  change. Distinguish deterministic generated references from committed AI snapshots and their
+  source-commit metadata.
+- Update canonical docs with a behavior change. Link to current sources for shop inventories,
+  schedules, configuration, schema, and tool versions instead of copying evolving lists or values.
+- Replace completed migration plans and dated operational snapshots with durable invariants and
+  maintained runbooks. Git history is the archive. Verify recurring responsibilities before removing
+  operational automation; a documentation cleanup alone does not authorize removing runtime paths.
+- Successful tooling should be concise and failures diagnostic. For noisy new tooling, use
+  `vp exec tsx scripts/run-quiet.ts <command> [args...]` when appropriate.
 
-- Treat `.agents/skills/archify` as the working directory for every relative path and CLI example in its upstream `SKILL.md`. For example, run `(cd .agents/skills/archify && node bin/archify.mjs doctor)` rather than resolving `bin/` from the HiFiScout repository root.
-- Keep the skill byte-identical to the version recorded in `skills-lock.json`. Do not patch files under `.agents/skills/archify`; update the pinned upstream skill instead.
-- The vendored `package.json` is upstream repository metadata, and its `npm test` entry expects repository-root harness files that are intentionally outside the installed skill artifact. HiFiScout validates the installed artifact with `vp exec tsx scripts/check-vendored-agent-skills.ts`, which checks the lockfile content hash and runs Archify's `doctor` command.
-- `check:no-js-source` performs the same integrity/runtime verification before exempting Archify's upstream JavaScript from the first-party TypeScript-only rule.
+## Vendored Archify
 
-## Keeping agent output small
+Keep `.agents/skills/archify/` byte-identical to `skills-lock.json`; update the upstream pin rather
+than patching vendored files. Resolve its `SKILL.md` paths from `.agents/skills/archify`, for example
+`(cd .agents/skills/archify && node bin/archify.mjs doctor)`. The installed artifact excludes the
+upstream repository test harness, so use `vp exec tsx scripts/check-vendored-agent-skills.ts` rather
+than its `npm test`. The TypeScript-only source guard verifies integrity and runtime before granting
+the vendored JavaScript exemption.
 
-An agent's context window is a real budget, and command output is charged against it on every
-subsequent turn. Repository tooling is configured to stay quiet when it succeeds and verbose when
-it fails.
+## Delivery
 
-- Prefer `vp run verify` over separate check commands.
-- Unit tests use the dot reporter. Use `vp run test:unit:verbose` only when you need test names.
-- Wrap new noisy-but-successful tooling in `tsx scripts/run-quiet.ts <command> [args...]`, which suppresses output on success and replays it in full on failure.
-- Generated output (`dist/`, `.generated/`, `public/*.js`, `admin-public/*.js`, `docs/public/`, `package-lock.json`) is never a source of truth. Read the source instead.
-- Claude Code users: `CLAUDE.md` provides the repository map and per-task entry points.
-
-## Documentation and workflow lifecycle
-
-Keep `main` focused on current sources of truth rather than implementation history.
-
-- Update a canonical document instead of adding another dated status/progress file when possible.
-- Delete completed migration plans and production snapshots once their durable invariants are encoded in current code, tests, or maintained docs. Git history is the archive.
-- Remove one-off GitHub Actions workflows and helper scripts after the permanent runtime/operational path replaces them.
-- Do not duplicate dynamic shop inventories, schedules, schema details, or environment values in prose when a canonical source file already exists.
-- Before deleting operational automation, verify that no recurring production responsibility still depends on it.
+For ordinary implementation requests, create a PR to `main`, address review comments, merge after
+required checks pass, and verify the resulting pipelines. Follow an explicit task-specific scope
+when it limits publication (for example, the CI documentation generator only authors candidates).
+Do not equate a green deploy job with a new deployment: confirm its `deployment-identity` artifact,
+then inspect downstream checks for that deployed SHA. A quota-deferred/no-op deployment leaves
+the previous production version in place; report that state accurately.

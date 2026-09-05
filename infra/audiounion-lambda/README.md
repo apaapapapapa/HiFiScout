@@ -8,30 +8,34 @@ The function URL uses `AuthType: NONE` so Cloudflare can call it without AWS cre
 - exact numeric Audio Union used-detail URLs under `/ct/detail/used/<id>/`;
 - the validated Hifido listing URL shape used by the collector, with only the expected query parameters.
 
-Every seller request is evaluated against the seller's current `robots.txt`, and the relay enforces a minimum request delay. `/ct/search` and unrelated Audio Union/Hifido paths remain outside the allowlist. Normal HiFiScout crawl execution is serialized by the Cloudflare crawl queue (`max_concurrency: 1`). Lambda reserved concurrency is intentionally not configured because AWS accounts with a small Lambda concurrency quota can reject a reservation when it would reduce the account's unreserved concurrency below AWS's required minimum.
+The normal DO path uses signed PREPARE/FETCH permits. PREPARE validates the allowlisted target
+against `robots.txt` and returns an eligible time, expiry, and signed permit. The per-shop
+`CrawlScheduler` waits through an Alarm; FETCH verifies the permit and proxies the target without
+holding Lambda open for the pacing delay. `/ct/search` and unrelated seller paths stay outside the
+allowlist. Single-flight ownership is per shop, not a global crawl Queue or global Lambda lock.
+The SAM template intentionally leaves Lambda reserved concurrency unset.
 
 > Historical naming note: the infrastructure directory, Lambda function, and some workflow names still contain `audiounion`. They are retained for compatibility even though the relay now also serves Hifido listing requests.
 
 ## Deploy to Tokyo
 
-Requirements: AWS credentials and AWS SAM CLI.
+Initial setup needs AWS credentials and AWS SAM/CloudFormation. Use `template.yaml` to provision
+the named function, Function URL, runtime, and environment, including a high-entropy `RelayToken`.
+The function runtime and resource configuration are authoritative in that template.
 
-```bash
-cd infra/audiounion-lambda
-export RELAY_TOKEN="$(openssl rand -hex 32)"
-sam build
-sam deploy \
-  --guided \
-  --region ap-northeast-1 \
-  --stack-name hifiscout-audiounion-relay \
-  --parameter-overrides "RelayToken=${RELAY_TOKEN}"
-```
+Provisioning is only the infrastructure step. The source directory contains TypeScript; a plain
+copy/SAM package of that directory is not the deployable signed runtime. After provisioning,
+configure the OIDC role below and run **Deploy AudioUnion Lambda**. That workflow builds
+`dist/audiounion-lambda/index.mjs` with `vp run build:lambda`, injects a private per-deployment
+`RELAY_PERMIT_SECRET`, packages the bundle, and updates the function. Keep the relay disabled in
+Worker configuration until that deployment and its PREPARE/FETCH probes succeed.
 
-Use the `FunctionUrl` stack output as the Worker relay URL. The Node.js 22 Lambda runtime is supported by AWS Lambda and runs on Amazon Linux 2023.
+Use the `FunctionUrl` stack output for `CRAWL_RELAY_URL`. The Bearer token is shared with the Worker;
+the permit-signing secret stays inside Lambda's private deployment and is not shared with the Worker.
 
 ## Automatic code deployment from GitHub Actions
 
-After the initial SAM deployment, changes to `infra/audiounion-lambda/index.ts` on `main` are automatically packaged and deployed to the existing `hifiscout-audiounion-fetcher` function in `ap-northeast-1` by `.github/workflows/deploy-audiounion-lambda.yml`. The workflow can also be run manually with `workflow_dispatch`.
+After the initial SAM deployment, changes matching the path filter in `.github/workflows/deploy-audiounion-lambda.yml` on `main` are automatically packaged and deployed to the existing `hifiscout-audiounion-fetcher` function in `ap-northeast-1` by `.github/workflows/deploy-audiounion-lambda.yml`. The workflow can also be run manually with `workflow_dispatch`.
 
 Authentication uses GitHub Actions OIDC. Do not create long-lived AWS access keys for this workflow.
 
@@ -98,7 +102,7 @@ In the repository, open **Settings > Secrets and variables > Actions > Variables
 
 The role ARN is not a secret, so it is stored as a GitHub Actions variable rather than a secret.
 
-Once these AWS and GitHub settings are complete, pushing a Lambda code change to `main` will deploy it automatically. Changes to `template.yaml` are intentionally excluded because infrastructure/configuration changes should continue to be applied through SAM/CloudFormation rather than a code-only Lambda update.
+The workflow path filter includes `index.ts`, `template.yaml`, and the workflow itself. It performs a code update, not a SAM/CloudFormation deployment: triggering it with a template change does not apply infrastructure/environment changes. Apply those through SAM/CloudFormation, and then run the code deployment to install the built signed bundle.
 
 ## Configure HiFiScout
 
@@ -110,32 +114,31 @@ The deployment workflow synchronizes the Lambda Function URL and relay token int
 For a manual setup, use:
 
 ```bash
-printf '%s' 'https://<function-url-id>.lambda-url.ap-northeast-1.on.aws/' | npx wrangler secret put CRAWL_RELAY_URL
-printf '%s' "$RELAY_TOKEN" | npx wrangler secret put CRAWL_RELAY_TOKEN
+printf '%s' 'https://<function-url-id>.lambda-url.ap-northeast-1.on.aws/' | vp exec wrangler secret put CRAWL_RELAY_URL
+printf '%s' "$RELAY_TOKEN" | vp exec wrangler secret put CRAWL_RELAY_TOKEN
 ```
 
 Relay-backed shop collectors are considered configured only when both secrets exist. At present, both `audiounion` and `hifido` use the shared relay transport.
 
 ## Smoke tests and verification
 
-### Audio Union
+The automatic Lambda deployment workflow probes an active Audio Union used-detail URL selected
+from D1 and the validated Hifido listing URL. It uses the same protocol as the crawler:
 
-This invokes the seller once, so use it only when needed.
+| Step | Request / result |
+| --- | --- |
+| PREPARE | Authenticated POST with `operation: "prepare"`, the allowlisted `url`, and request profile; returns `permit`, `targetUrl`, `requestedUserAgent`, `notBeforeMs`, and `expiresAtMs` |
+| Wait | GitHub runner waits outside Lambda; production crawl waits through a DO Alarm |
+| FETCH | Authenticated POST with `operation: "fetch"`, the permit, and the returned URL/User-Agent binding |
+| Validate | Successful HTML response, expected region/upstream headers, and seller-specific content checks |
 
-```bash
-curl -i -X POST "$CRAWL_RELAY_URL" \
-  -H "Authorization: Bearer $RELAY_TOKEN" \
-  -H 'Content-Type: application/json' \
-  --data '{"url":"https://www.audiounion.jp/st/new_arrival_used.html","userAgent":"HiFiScoutBot/0.1 (+https://github.com/apaapapapa/HiFiScout)","requestDelayMs":10000}'
-```
+PREPARE may access `robots.txt`; FETCH accesses the seller page. These are live integration probes,
+not offline unit tests. Keep the workflow targets aligned with the registered adapters. An expired
+permit must be prepared again; a redeploy rotates the signing key, so an in-flight old permit may
+also need re-preparation. Do not log tokens or permits.
 
-A successful response should be `200`, have an HTML content type, and include `x-hifiscout-aws-region: ap-northeast-1` and `x-hifiscout-upstream-status: 200`.
-
-The automatic Lambda deployment workflow also selects one currently active Audio Union used-detail URL from D1 and probes it through the Tokyo relay. The deployment fails if live `robots.txt` rejects that path or if the detail page is not reachable through the relay.
-
-### Hifido
-
-Hifido uses the same Function URL/token pair but a browser-like User-Agent and a separately restricted URL shape. The automatic Lambda deployment workflow probes both Audio Union and Hifido in the same runner after deployment, so relay verification stays aligned without a separate follow-up workflow. Keep that verification aligned with `src/crawler/shops/hifido.ts` whenever the Hifido listing URL format changes.
+The relay retains a legacy one-call compatibility handler, but it is not the normal crawl protocol
+or the recommended smoke test. Do not use that handler to bypass Alarm-based pacing.
 
 ## Low-frequency Audio Union inventory recheck
 
@@ -154,8 +157,8 @@ The settings are controlled by `AUDIOUNION_INVENTORY_RECHECK_*` variables in `wr
 ## Security and cost controls
 
 - The relay is not a general-purpose proxy: it permits the configured Audio Union entry URL, exact numeric Audio Union used-detail URLs, and the separately validated Hifido listing shape only.
-- Every seller target is still subject to the live `robots.txt` policy before seller access.
+- PREPARE checks the live `robots.txt` policy; FETCH verifies the signed target/profile and permit timing before accessing the seller page.
 - Requests without the Bearer token are rejected before any seller request is made.
-- The normal scheduler path is serialized by the Cloudflare crawl queue; Lambda reserved concurrency is intentionally omitted for compatibility with low-quota AWS accounts.
+- The normal scheduler path is single-flight per shop through `CrawlScheduler`; there is no crawl Queue. Lambda reserved concurrency is not configured by the template.
 - The minimum request delay defaults to 10 seconds; a larger Worker-side delay or `robots.txt` crawl delay wins.
 - The function URL is still public at the network layer, so keep both its URL and Bearer token out of source control. If the service is later exposed broadly, move to IAM/SigV4 authentication.

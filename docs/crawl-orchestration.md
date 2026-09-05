@@ -1,10 +1,10 @@
 # Crawl orchestration
 
-Issue #417 Phase 7 makes the per-shop `CrawlScheduler` Durable Object the authoritative crawl control plane. Cloudflare Queues remain available only for independent post-commit data-plane work such as Knowledge Catalog and Product Audit processing; Queue capacity, quota, backlog, or lane selection must not control whether a crawl runs.
+The per-shop `CrawlScheduler` Durable Object is the authoritative crawl control plane. Cloudflare Queues serve independent post-commit work such as Knowledge Catalog verification and CSV exports; Queue capacity, quota, backlog, or lane selection must not control whether a crawl runs. Current entry points are `src/worker.ts`, `src/scheduled.ts`, `src/crawler/dispatch.ts`, and `src/crawler/crawl-scheduler-do.ts`.
 
 ## Runtime model
 
-1. Cron or an authenticated manual request selects a due shop.
+1. A crawl Cron selects an eligible shop. General Cron owns watchdog/maintenance work and does not start new shop crawls; rotation and dedicated shop crons are defined in `src/scheduled.ts` and the plugin registry.
 2. D1 atomically reserves one immutable dispatch generation in `shop_sync_state`:
    - `dispatch_requested_at`
    - `dispatch_token`
@@ -21,6 +21,40 @@ Issue #417 Phase 7 makes the per-shop `CrawlScheduler` Durable Object the author
 9. A terminal crawl releases only its exact D1 dispatch token. A continuation or retry keeps the reservation.
 
 The Durable Object is the single-flight authority. D1 does not maintain a second execution lease. The D1 dispatch row is a generation fence and scheduler recovery marker, not a Queue-consumer lease.
+
+`src/crawler/crawl-lifecycle.ts` exposes `idle`, `dispatched`, and `invalid` D1 reservation states.
+`dispatched` covers both an accepted command and active execution; DO state describes the step.
+The old public `POST /api/admin/crawl` is blocked by `src/index.ts`, regardless of bearer token.
+
+## Bounded work and persistence
+
+- Listing pages persist a fetched payload before a separate parse step. Parsing clears listing HTML
+  and stores products; terminal cleanup clears staged payloads. D1 staging supports recovery, while
+  R2 is the retained diagnostic evidence store.
+- Detail enrichment plans the run once. `src/crawler/detail-enrichment-plan.ts` stores immutable
+  target chunks separately from compact cursor/progress state, including an explicit empty-plan
+  state. An Alarm reads its current chunk rather than rewriting/reloading the full plan.
+- The detail row in `crawl_fetch_pages` is the durable fetch fence, accessed through
+  `src/db/crawl-fetch-detail-repository.ts` (`crawl_fetch_detail_pages` is a compatibility view).
+  If a process dies after saving a page and
+  before advancing the DO cursor, the next Alarm consumes the saved result without a seller refetch.
+  Preserve positive and negative evidence caching and its original decision time.
+- Frontier reads use resumable state counters and the nonempty-page partial index from migration
+  0083, avoiding repeated walks over an accumulated prefix of empty pages.
+- Listing changes enqueue durable projection work in `crawl_run_work_items` / `crawl_run_stages`.
+  The bounded stage runner and scheduled continuation use persisted listings without seller I/O.
+  Cursor advancement follows successful writes; retries replay an idempotent chunk. A newer crawl
+  adopts unfinished projection work before an older run is retired.
+- `last_success_at` is collection freshness; `last_projection_at` advances only when derived work
+  finishes. Health evaluates projection lag independently of collection freshness. Listing
+  `last_seen_at` heartbeats may be throttled by `PRODUCT_TOUCH_INTERVAL_MINUTES`; they are not a
+  replacement for either shop watermark.
+
+General Cron serializes watchdogs and maintenance under the budget in `src/db/invocation-budget.ts`.
+`scheduled_maintenance_pending` retains due tasks across yields, with finalization calls reserved
+and still metered. Current-work recovery and cleanup selectors are indexed rather than scanning
+all historical runs. See [Data platform architecture](./data-platform-architecture.md) for dirty-set
+repair, count/price projections, and D1 accounting limits.
 
 ## Recovery
 
@@ -46,7 +80,7 @@ Relay transport follows the same lifecycle: PREPARE obtains a bounded permit, th
 
 ## Queue boundary
 
-Crawl control state must not be written by a Queue consumer. Crawl Queue bindings, fast/heavy/relay crawl lanes, and Queue-quota-based routing are not part of the control plane after Phase 7.
+Crawl control state must not be written by a Queue consumer. Crawl Queue bindings, fast/heavy/relay crawl lanes, and Queue-quota-based routing are retired.
 
 Queues may still be used for post-commit asynchronous domains that have their own correctness model. Their quotas are operational alerts only. A Queue quota alert must not silently switch crawl execution paths or change crawl concurrency.
 
@@ -100,9 +134,10 @@ Determine which post-commit domain owns the Queue. A Queue quota failure is not 
 
 D1 migrations run before Worker deployment, so a migration that removes columns still used by the currently deployed Worker is unsafe.
 
-Phase 7 therefore uses a two-release retirement:
+Migration 0072 introduced `dispatch_*` and a temporary compatibility bridge. Migration 0073 removes
+that bridge and the old `queued_*` / `crawl_lease_*` columns. The current schema has completed this
+retirement; shadow flags and Phase 0/1 Queue rollout instructions are no longer operating procedures.
 
-1. add/backfill `dispatch_*`, install a temporary bidirectional bridge, and deploy the new Worker;
-2. after the new Worker is verified in production, remove the bridge and old Queue-era columns in a later migration.
-
-The bridge exists only for mixed-version deployment safety; it is not an architectural fallback. Rollback during the first release may use the old Worker because the additive schema remains compatible. After legacy columns are physically removed, rollback must stay on the Durable Object control-plane architecture rather than restoring a crawl Queue consumer.
+A rollback must remain compatible with the migrated schema and the DO control plane. Do not roll
+back to a Queue consumer that expects removed columns. Follow the same add/deploy/retire sequence
+for future control-state changes and verify the deployed SHA before removing compatibility state.

@@ -1,6 +1,6 @@
 # Testing strategy
 
-HiFiScout follows a test pyramid: most behavior is verified in-process with Vitest, while browser E2E coverage is intentionally small and runs only against a deployed development environment.
+HiFiScout follows a test pyramid: most behavior is verified in-process with Vitest. Browser component tests run against a local fixture gallery; deployed-environment E2E remains small and checks public user flows after deployment.
 
 ## Pyramid
 
@@ -25,7 +25,15 @@ Do not call retailer sites from CI. Remote shop availability, anti-bot behavior,
 
 If a component test grows into a full browser or remote-service test, split the domain logic out and move the assertions down to unit tests.
 
-### 3. E2E — minimal smoke layer
+### 3. Browser components — local fixture gallery
+
+The separate browser component suite uses `e2e/playwright.components.config.ts`, `e2e/components/`,
+and `playwright/gallery/`. Its mocked API fixtures exercise React UI behavior without a deployed
+Worker or seller network calls. Run it with
+`vp exec playwright test --config e2e/playwright.components.config.ts`; Playwright starts the gallery
+server. This is the `component` job in CI, distinct from deployed E2E.
+
+### 4. E2E — minimal deployed smoke layer
 
 Playwright lives in `e2e/` so Chromium and the Playwright runner are not dependencies of the fast unit-test job.
 
@@ -36,7 +44,7 @@ The E2E suite validates only critical wiring that smaller tests cannot prove:
 - changing a shop filter propagates the selected value to `/api/product-search` and refreshes the UI;
 - a product listed by several shops renders as one card, and opening it fetches `/api/product-search/:key` and shows each shop's offer with its own link.
 
-Tests against live data deliberately avoid assertions such as a specific product, price, manufacturer, or result count being present. Development data changes continuously, so those assertions would create flaky tests without increasing confidence in application wiring. The cross-shop grouping flow is the exception and uses routed fixtures, because the point of that test is what the browser does with a multi-offer product — the grouping SQL itself is proven by the repository unit tests.
+Tests against live data deliberately avoid assertions such as a specific product, price, manufacturer, or result count being present. Catalog data changes continuously. Routed fixtures cover deterministic grouping, taxonomy, URL-state, and permalink cases; the grouping SQL itself is verified below the browser layer.
 
 ## Running E2E locally
 
@@ -45,20 +53,30 @@ From the repository root:
 ```sh
 vp install --frozen-lockfile
 vp exec playwright install chromium
-E2E_BASE_URL=https://hifiscout.raha3415kohei.workers.dev vp run test:e2e
+E2E_BASE_URL='https://your-deployed-worker.example' vp run test:e2e
 ```
 
-`E2E_BASE_URL` can point at another deployed development environment. The checked-in default is the existing workers.dev environment.
+Set `E2E_BASE_URL` to the environment you intend to verify. The checked-in fallback is in
+`e2e/playwright.config.ts`; a workers.dev hostname alone does not establish that it is a development
+environment.
 
 ## CI policy
 
-The normal `CI` workflow runs migrations, `scripts/verify-search-integration.ts` against that locally migrated D1, the fast Vitest suite, and Wrangler dry-run validation. It does not install a browser.
+The `CI` workflow runs source/toolchain checks, the sharded Vitest suite, parser performance checks,
+local D1 migrations, `scripts/verify-search-integration.ts`,
+`scripts/verify-listing-admin-overrides.ts`, React component browser tests, and build/dry-run checks.
+The `component` job installs Chromium on a cache miss. Unit-test jobs need no browser; a separate
+non-gating job also warms the Chromium cache for post-deploy E2E. See `.github/workflows/ci.yml` and
+`vite.config.ts` for the current required job graph and task-cache inputs.
 
 The search integration check exists because two behaviors cannot be proven by asserting on generated SQL: that the FTS5 trigram index actually resolves a query like `TAD 1000`, and that two shops' confirmed listings really collapse into one search entity while an unconfirmed listing stays on its own. Those are properties of the database, so they are verified against a real one.
 
-The `E2E` workflow runs after a successful `Deploy Cloudflare` workflow, so it checks the version that was actually deployed instead of racing the deployment. It can also be started manually with an alternate base URL. A single Chromium worker is used to keep cost, duration, and nondeterminism low.
+The `E2E` workflow runs after `Deploy Cloudflare`, consuming its `deployment-identity` artifact and
+checking out that deployed SHA. A deferred/no-op deployment without the artifact skips E2E. Manual
+runs can select an alternate base URL. A single Chromium worker keeps resource use and nondeterminism
+low. Production asynchronous data/Queue checks belong to `Production Operational Health`.
 
-## Post-Phase-4 remediation regression coverage
+## Remediation regression coverage
 
 The remediation work has a fixed regression checklist. Each group has a home, so a new rule is added
 next to the ones it belongs with instead of starting a parallel suite:
@@ -74,10 +92,11 @@ next to the ones it belongs with instead of starting a parallel suite:
 | Search behaviour after a remediation changes identity | `remediation-search-integration` |
 | Schema and backfill | `*-migration` tests, one per migration |
 
-`remediation-search-integration` is the only suite that runs against the real migrated schema
+`remediation-search-integration` and other schema/FTS/performance suites use the real migrated schema
 in-process, through `test/helpers/migrated-sqlite.ts`. Reach for that helper when the behaviour under
 test lives in the schema — an FTS index, a trigger, a CHECK, a uniqueness constraint — rather than in
-the SQL a repository emits. Everything else is cheaper to prove with `captureDatabase`.
+the SQL a repository emits. Use `captureDatabase` when the contract can be proven with a D1-shaped
+fake, and avoid asserting only on SQL strings when database behavior is the requirement.
 
 ## Placement rules for new tests
 

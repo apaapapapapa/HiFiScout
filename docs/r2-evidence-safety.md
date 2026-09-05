@@ -1,6 +1,6 @@
 # R2 Evidence Archive safety limits
 
-HiFiScout uses R2 only for selected diagnostic/verification HTML evidence. Normal successful crawl HTML is not archived.
+This policy covers selected diagnostic/verification HTML evidence in R2. Normal successful crawl HTML is not archived. CSV exports also use the bucket, with separate job limits, prefixes, and lifecycle rules described in [Data platform architecture](./data-platform-architecture.md#asynchronous-admin-csv-generation).
 
 The application applies safety controls before every R2 write. These controls are intentionally configurable and do not hard-code Cloudflare's current free-tier limits, which may change independently of the application.
 
@@ -41,7 +41,7 @@ Structured logs use:
 - `evidence_storage_warning` when the configured estimated storage threshold is reached;
 - existing `evidence_archived` and `evidence_archive_failure` events for successful and failed writes.
 
-`GET /api/admin/data-platform/status` also exposes `evidenceEstimatedBytes`, derived from non-expired Evidence Archive metadata. Cloudflare-native R2 storage and operation metrics remain the source of truth for billing/actual platform usage; the D1 value is an application-side estimate used for operational safety.
+The data-platform status repository calculates `evidenceEstimatedBytes` from non-expired Evidence Archive metadata. The old public `/api/admin/data-platform/status` route is retired; use maintained operational scripts and Cloudflare observability. Cloudflare-native R2 storage and operation metrics remain the source of truth for billing/actual platform usage; the D1 value is an application-side estimate used for operational safety.
 
 ## Operational policy
 

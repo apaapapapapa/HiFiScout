@@ -2,13 +2,26 @@
 
 The Access-protected admin Worker exposes `/listing-admin` for correcting canonical fields on seller listings.
 
+`wrangler.admin.jsonc` deploys `src/admin/entry.ts`. The Worker verifies the Cloudflare Access JWT
+and calls `CatalogAdminService` through the `CATALOG_ADMIN` Service Binding; it has no direct D1
+binding. The public Worker's `/api/admin/*` paths return 404 even with an `ADMIN_TOKEN`. Configure
+Access through the admin deployment workflow rather than trying a static token in the browser.
+
+The React console starts in `frontend/admin-console.tsx`; listing behavior lives in
+`frontend/admin-listings.tsx`. Catalog editing, duplicate review, correction reports, and asynchronous
+CSV exports are separate capabilities in the same admin surface and its RPC contract.
+
 ## Editable fields
 
 - Canonical manufacturer ID
 - Effective model used by search and Product Identity
 - Primary category
+- Presentation color / finish, kept separate from model identity
 
 Seller-owned evidence remains read-only in this console: title, price, stock status, source URL, and all `raw_*` values.
+
+Categories must be classifiable taxonomy v3 leaves. An unresolved listing starts with no valid
+category selection; the internal `unclassified` sentinel and legacy `other` are not manual targets.
 
 ## Persistence contract
 
