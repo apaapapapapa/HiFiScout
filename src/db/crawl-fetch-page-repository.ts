@@ -1,9 +1,40 @@
 import type { NormalizedCatalogProduct } from "../catalog/types.js";
+import type { CrawlFetchProgressReceipt } from "./crawl-fetch-progress.js";
 import { firstMeasured } from "./read-accounting.js";
 import type { QueryableDatabase } from "./types.js";
 import type { CrawlFetchPageInput, CrawlFetchPageRow } from "./crawl-fetch-session-repository.js";
 
 const PAGE_KEY_LOOKUP_CHUNK_SIZE = 50;
+
+interface PageProgressInput {
+  runId: string;
+  pageKey: string;
+  currentSequence: number;
+  progress?: CrawlFetchProgressReceipt;
+}
+
+const COLLECTION_OWNER = `s.run_id = ? AND s.status = 'collecting'
+  AND s.progress_storage = ?
+  AND (? = 1 OR (s.continuation_sequence = ? AND s.next_phase = ? AND s.next_page_key = ?))`;
+
+function ownerBindings(input: PageProgressInput, phase: "fetch" | "parse") {
+  if (
+    input.progress &&
+    (input.progress.runId !== input.runId ||
+      input.progress.pageKey !== input.pageKey ||
+      input.progress.previousSequence !== input.currentSequence ||
+      input.progress.progress.continuation_sequence !== input.currentSequence + 1)
+  )
+    throw new Error("crawl progress receipt does not match page transition");
+  return [
+    input.runId,
+    input.progress ? "durable_object" : "d1",
+    input.progress ? 1 : 0,
+    input.currentSequence,
+    phase,
+    input.pageKey,
+  ];
+}
 
 export async function recordCrawlFetchPageFetched(
   db: QueryableDatabase,
@@ -14,38 +45,39 @@ export async function recordCrawlFetchPageFetched(
     htmlBytes: number;
     fetchedAt: string;
     currentSequence: number;
+    progress?: CrawlFetchProgressReceipt;
   },
 ): Promise<void> {
   const nextSequence = input.currentSequence + 1;
-  await db.batch([
+  const statements = [
     db
       .prepare(`
         UPDATE crawl_fetch_pages
-        SET state = 'fetched', html_text = ?, html_bytes = ?, fetched_at = ?
+        SET state = 'fetched', html_text = ?, html_bytes = ?, fetched_at = ?, progress_json = ?
         WHERE run_id = ? AND page_key = ? AND state = 'pending'
           AND EXISTS (
             SELECT 1 FROM crawl_fetch_sessions s
-            WHERE s.run_id = ? AND s.status = 'collecting'
-              AND s.continuation_sequence = ? AND s.next_phase = 'fetch'
-              AND s.next_page_key = ?
+            WHERE ${COLLECTION_OWNER}
           )
       `)
       .bind(
         input.html,
         input.htmlBytes,
         input.fetchedAt,
+        input.progress ? JSON.stringify(input.progress) : null,
         input.runId,
         input.pageKey,
-        input.runId,
-        input.currentSequence,
-        input.pageKey,
+        ...ownerBindings(input, "fetch"),
       ),
-    db
-      .prepare(`
+  ];
+  if (!input.progress)
+    statements.push(
+      db
+        .prepare(`
         UPDATE crawl_fetch_sessions
         SET pages_fetched = pages_fetched + 1,
             continuation_sequence = ?, next_phase = 'parse', next_page_key = ?, updated_at = ?
-        WHERE run_id = ? AND status = 'collecting' AND continuation_sequence = ?
+        WHERE run_id = ? AND progress_storage = 'd1' AND status = 'collecting' AND continuation_sequence = ?
           AND next_phase = 'fetch' AND next_page_key = ?
           AND EXISTS (
             SELECT 1 FROM crawl_fetch_pages p
@@ -53,17 +85,21 @@ export async function recordCrawlFetchPageFetched(
               AND p.state = 'fetched' AND p.fetched_at = ?
           )
       `)
-      .bind(
-        nextSequence,
-        input.pageKey,
-        input.fetchedAt,
-        input.runId,
-        input.currentSequence,
-        input.pageKey,
-        input.pageKey,
-        input.fetchedAt,
-      ),
-  ]);
+        .bind(
+          nextSequence,
+          input.pageKey,
+          input.fetchedAt,
+          input.runId,
+          input.currentSequence,
+          input.pageKey,
+          input.pageKey,
+          input.fetchedAt,
+        ),
+    );
+  const results = await db.batch(statements);
+  if (input.progress && Number(results[0]?.meta?.changes || 0) !== 1) {
+    throw new Error("crawl fetched page commit was fenced");
+  }
 }
 
 export async function recordCrawlFetchPageIgnored(
@@ -74,36 +110,37 @@ export async function recordCrawlFetchPageIgnored(
     ignoredAt: string;
     currentSequence: number;
     nextPageKey: string | null;
+    progress?: CrawlFetchProgressReceipt;
   },
 ): Promise<void> {
   const nextSequence = input.currentSequence + 1;
-  await db.batch([
+  const statements = [
     db
       .prepare(`
         UPDATE crawl_fetch_pages
-        SET state = 'ignored', html_text = NULL, products_json = NULL, parsed_at = ?
+        SET state = 'ignored', html_text = NULL, products_json = NULL, parsed_at = ?, progress_json = ?
         WHERE run_id = ? AND page_key = ? AND state = 'pending'
           AND EXISTS (
             SELECT 1 FROM crawl_fetch_sessions s
-            WHERE s.run_id = ? AND s.status = 'collecting'
-              AND s.continuation_sequence = ? AND s.next_phase = 'fetch'
-              AND s.next_page_key = ?
+            WHERE ${COLLECTION_OWNER}
           )
       `)
       .bind(
         input.ignoredAt,
+        input.progress ? JSON.stringify(input.progress) : null,
         input.runId,
         input.pageKey,
-        input.runId,
-        input.currentSequence,
-        input.pageKey,
+        ...ownerBindings(input, "fetch"),
       ),
-    db
-      .prepare(`
+  ];
+  if (!input.progress)
+    statements.push(
+      db
+        .prepare(`
         UPDATE crawl_fetch_sessions
         SET coverage_incomplete = 1, last_completed_page = ?, continuation_sequence = ?,
             next_phase = ?, next_page_key = ?, updated_at = ?
-        WHERE run_id = ? AND status = 'collecting' AND continuation_sequence = ?
+        WHERE run_id = ? AND progress_storage = 'd1' AND status = 'collecting' AND continuation_sequence = ?
           AND next_phase = 'fetch' AND next_page_key = ?
           AND EXISTS (
             SELECT 1 FROM crawl_fetch_pages p
@@ -111,19 +148,23 @@ export async function recordCrawlFetchPageIgnored(
               AND p.state = 'ignored' AND p.parsed_at = ?
           )
       `)
-      .bind(
-        input.pageKey,
-        nextSequence,
-        input.nextPageKey ? "fetch" : "finalize",
-        input.nextPageKey,
-        input.ignoredAt,
-        input.runId,
-        input.currentSequence,
-        input.pageKey,
-        input.pageKey,
-        input.ignoredAt,
-      ),
-  ]);
+        .bind(
+          input.pageKey,
+          nextSequence,
+          input.nextPageKey ? "fetch" : "finalize",
+          input.nextPageKey,
+          input.ignoredAt,
+          input.runId,
+          input.currentSequence,
+          input.pageKey,
+          input.pageKey,
+          input.ignoredAt,
+        ),
+    );
+  const results = await db.batch(statements);
+  if (input.progress && Number(results[0]?.meta?.changes || 0) !== 1) {
+    throw new Error("crawl ignored page commit was fenced");
+  }
 }
 
 export async function recordCrawlFetchPageParsed(
@@ -138,6 +179,7 @@ export async function recordCrawlFetchPageParsed(
     nextPageKey: string | null;
     coverageIncomplete: boolean;
     reachedEnd: boolean;
+    progress?: CrawlFetchProgressReceipt;
   },
 ): Promise<void> {
   const nextSequence = input.currentSequence + 1;
@@ -149,9 +191,12 @@ export async function recordCrawlFetchPageParsed(
         SELECT ?, ?, ?, ?, 'pending'
         WHERE EXISTS (
           SELECT 1 FROM crawl_fetch_sessions s
-          WHERE s.run_id = ? AND s.status = 'collecting'
-            AND s.continuation_sequence = ? AND s.next_phase = 'parse'
-            AND s.next_page_key = ?
+          WHERE ${COLLECTION_OWNER}
+            AND EXISTS (
+              SELECT 1 FROM crawl_fetch_pages current_page
+              WHERE current_page.run_id = s.run_id AND current_page.page_key = ?
+                AND current_page.state = 'fetched'
+            )
         )
       `)
       .bind(
@@ -159,8 +204,7 @@ export async function recordCrawlFetchPageParsed(
         page.key,
         JSON.stringify(page.page),
         page.ordinal,
-        input.runId,
-        input.currentSequence,
+        ...ownerBindings(input, "parse"),
         input.pageKey,
       ),
   );
@@ -169,24 +213,21 @@ export async function recordCrawlFetchPageParsed(
     db
       .prepare(`
         UPDATE crawl_fetch_pages
-        SET state = 'parsed', products_json = ?, item_count = ?, html_text = NULL, parsed_at = ?
+        SET state = 'parsed', products_json = ?, item_count = ?, html_text = NULL, parsed_at = ?, progress_json = ?
         WHERE run_id = ? AND page_key = ? AND state = 'fetched'
           AND EXISTS (
             SELECT 1 FROM crawl_fetch_sessions s
-            WHERE s.run_id = ? AND s.status = 'collecting'
-              AND s.continuation_sequence = ? AND s.next_phase = 'parse'
-              AND s.next_page_key = ?
+            WHERE ${COLLECTION_OWNER}
           )
       `)
       .bind(
         JSON.stringify(input.products),
         input.products.length,
         input.parsedAt,
+        input.progress ? JSON.stringify(input.progress) : null,
         input.runId,
         input.pageKey,
-        input.runId,
-        input.currentSequence,
-        input.pageKey,
+        ...ownerBindings(input, "parse"),
       ),
   );
 
@@ -198,24 +239,23 @@ export async function recordCrawlFetchPageParsed(
           WHERE run_id = ? AND state = 'pending'
             AND EXISTS (
               SELECT 1 FROM crawl_fetch_sessions s
-              WHERE s.run_id = ? AND s.status = 'collecting'
-                AND s.continuation_sequence = ? AND s.next_phase = 'parse'
-                AND s.next_page_key = ?
+              WHERE ${COLLECTION_OWNER}
             )
         `)
-        .bind(input.runId, input.runId, input.currentSequence, input.pageKey),
+        .bind(input.runId, ...ownerBindings(input, "parse")),
     );
   }
 
-  statements.push(
-    db
-      .prepare(`
+  if (!input.progress)
+    statements.push(
+      db
+        .prepare(`
         UPDATE crawl_fetch_sessions
         SET pages_parsed = pages_parsed + 1,
             coverage_incomplete = CASE WHEN ? = 1 THEN 1 ELSE coverage_incomplete END,
             reached_end = CASE WHEN ? = 1 THEN 1 ELSE reached_end END,
             last_completed_page = ?, continuation_sequence = ?, next_phase = ?, next_page_key = ?, updated_at = ?
-        WHERE run_id = ? AND status = 'collecting' AND continuation_sequence = ?
+        WHERE run_id = ? AND progress_storage = 'd1' AND status = 'collecting' AND continuation_sequence = ?
           AND next_phase = 'parse' AND next_page_key = ?
           AND EXISTS (
             SELECT 1 FROM crawl_fetch_pages p
@@ -223,22 +263,25 @@ export async function recordCrawlFetchPageParsed(
               AND p.state = 'parsed' AND p.parsed_at = ?
           )
       `)
-      .bind(
-        input.coverageIncomplete ? 1 : 0,
-        input.reachedEnd ? 1 : 0,
-        input.pageKey,
-        nextSequence,
-        input.nextPageKey && !input.reachedEnd ? "fetch" : "finalize",
-        input.reachedEnd ? null : input.nextPageKey,
-        input.parsedAt,
-        input.runId,
-        input.currentSequence,
-        input.pageKey,
-        input.pageKey,
-        input.parsedAt,
-      ),
-  );
-  await db.batch(statements);
+        .bind(
+          input.coverageIncomplete ? 1 : 0,
+          input.reachedEnd ? 1 : 0,
+          input.pageKey,
+          nextSequence,
+          input.nextPageKey && !input.reachedEnd ? "fetch" : "finalize",
+          input.reachedEnd ? null : input.nextPageKey,
+          input.parsedAt,
+          input.runId,
+          input.currentSequence,
+          input.pageKey,
+          input.pageKey,
+          input.parsedAt,
+        ),
+    );
+  const results = await db.batch(statements);
+  if (input.progress && Number(results[input.discoveredPages.length]?.meta?.changes || 0) !== 1) {
+    throw new Error("crawl parsed page commit was fenced");
+  }
 }
 
 /**

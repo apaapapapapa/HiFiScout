@@ -77,6 +77,24 @@ General cron shares a 45-call D1 budget across watchdogs, maintenance and bookke
 
 The catalog-wide scan is a **daily** safety net, isolated as `product_search_exact_identity_repair` in `src/scheduled.ts`. Normal five-minute repair consumes the dirty set. If the scan repairs a split while dirty work remains, that is reported as `exact_identity_full_scan_drained_backlog`; a repair with an empty dirty set is `exact_identity_dirty_set_missed`. Migration 0074 seeded existing identities, 0076 guards triggers against unchanged values, and 0082 prioritizes pre-existing splits. A small repair limit does not bound the full selector's catalog-wide reads; monitor its own `scheduled_maintenance_d1_usage` before changing the cadence.
 
+### Public search response cache
+
+The default Worker remains uncached so every public API request passes its rate limiter and URL
+validation. Search and suggestion URLs are canonicalized before calling the internal
+`PublicSearchCache.fetch` entrypoint through `ctx.exports`. Its request carries no client cookies,
+authorization or cache-control headers. Only validated GET search/suggestion responses opt into a
+30-second freshness window; private/admin routes, other endpoints and error responses cannot use
+this entrypoint. The loader does not wrap the Cache API, so two cache layers cannot extend freshness.
+
+The per-entrypoint [Workers Cache configuration](https://developers.cloudflare.com/workers/cache/configuration/)
+is in `wrangler.jsonc`; the runtime boundary is `src/http/public-search-cache.ts`. Workers Cache
+shares cached work across locations and collapses concurrent misses according to the
+[platform contract](https://developers.cloudflare.com/workers/cache/). This reduces D1 reads on hits
+without adding R2 objects or operations. The gateway still executes and requests remain subject to
+Workers usage limits. Deployments use the platform's default version-specific cache keys.
+Non-Workers callers use the existing Cache API fallback. Unit tests prove routing, freshness headers
+and guard order; regional hit rates and platform request coalescing require production observation.
+
 ### Public metadata counts
 
 `/api/meta` reads current `shop_sync_state` and the singleton `public_meta_snapshot`. The aggregate view is never queried by a public request. Scheduled refresh normally replaces all count groups atomically every 15 minutes, independently of traffic and edge cache misses. `countsUpdatedAt` identifies the count snapshot; shop sync/health retain the endpoint's short edge-cache cadence. Refresh failure or a delayed cron leaves the previous complete snapshot available, with its original timestamp. Migration seeds one snapshot before code deployment; refresh also repairs a missing singleton. Taxonomy changes must update the aggregate view along with category definitions.

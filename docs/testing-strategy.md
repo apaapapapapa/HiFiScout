@@ -135,8 +135,20 @@ Search and candidate upserts filter equal rows before INSERT so AUTOINCREMENT is
 Candidate `last_reviewed_at` records the last materialized decision; the review-run record captures
 each scan's execution time. Terminal crawl cleanup clears only payloads that are still present.
 
-Page-level D1 checkpoints and daily listing freshness remain part of the recovery/availability
-contract. Moving them to DO/R2 requires a separate design that preserves resumable fetch/parse,
-complete-inventory publication and idempotent finalization, and budgets the destination's operations
-as well as D1 writes. Reducing duplicate/same-value writes is the first step; migration alone is not
-a quota reduction.
+Collection progress tests interrupt the DO execution write after the D1 page commit, recreate the
+scheduler, and require recovery without another seller fetch. Fetch/parse/404 receipts, early-end
+coverage, failed transactions, legacy sessions and generation mismatch use the real migrated schema.
+Progress shares the existing DO command write and Alarm; the test counts both operations.
+
+The Miniflare collection fixture includes session/page creation, ten nonempty fetch/parse steps and
+the final D1 summary checkpoint: legacy progress bills 134 rows, DO progress 96 rows. In that fixture
+the formula is `4 + 13P` versus `6 + 9P`, saving `4P - 2` billed D1 rows for P nonempty pages. This is
+collection staging only, not total crawl writes; listing publication, retention, retries and DO
+duration retain their own costs. Daily listing freshness and page payloads remain in D1.
+
+Public-cache tests require canonical URLs and clean headers at the internal entrypoint, a rate-limit
+check even for a cached URL, no caching of validation/rate-limit/admin errors, and the existing
+30-second freshness. Regional cache sharing and concurrent miss collapse are platform behavior,
+not simulated production measurements. Follow [Crawl orchestration](./crawl-orchestration.md) for
+progress rollout/rollback and [Data platform architecture](./data-platform-architecture.md) for the
+Workers Cache boundary.

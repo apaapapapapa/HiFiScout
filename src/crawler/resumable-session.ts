@@ -1,13 +1,14 @@
 import { getCrawlerSettings, getShopIntervalMinutes, getShopMaxPages } from "../config.js";
 import {
   ensureCrawlFetchSession,
+  checkpointCrawlFetchProgress,
   failCrawlFetchSession,
-  getCrawlFetchSession,
   type CrawlFetchPageInput,
   type CrawlFetchSessionRow,
 } from "../db/crawl-fetch-session-repository.js";
 import { getShopState, markShopFailure } from "../db/shop-state-repository.js";
 import { errorMessage } from "../types.js";
+import { readCollectionSession, withCollectionProgress } from "./collection-progress.js";
 import {
   canonicalRunId,
   continuationFromSession,
@@ -47,8 +48,9 @@ export async function ensureSession(
   plugin: ShopPlugin,
   body: ResumableCrawlQueueMessage,
   runId: string,
+  options: ResumableCrawlConsumeOptions = {},
 ): Promise<CrawlFetchSessionRow> {
-  const existing = await getCrawlFetchSession(env.DB, runId);
+  const existing = await readCollectionSession(env.DB, runId, options.collectionProgress);
   if (existing) return existing;
   const settings = getCrawlerSettings(env);
   const state = await getShopState(env.DB, plugin.key);
@@ -66,6 +68,7 @@ export async function ensureSession(
     pageLimit,
     pages: pageInputs(plugin, initial),
     createdAt,
+    progressStorage: options.collectionProgress ? "durable_object" : "d1",
   });
   if (result.created) {
     console.log(
@@ -80,7 +83,7 @@ export async function ensureSession(
       }),
     );
   }
-  return result.session;
+  return withCollectionProgress(result.session, options.collectionProgress);
 }
 
 export async function failCollection(
@@ -88,9 +91,13 @@ export async function failCollection(
   plugin: ShopPlugin,
   runId: string,
   error: unknown,
+  options: ResumableCrawlConsumeOptions = {},
 ): Promise<ResumableCrawlConsumeResult> {
   const failedAt = new Date().toISOString();
   const message = errorMessage(error);
+  if (options.collectionProgress?.value?.runId === runId) {
+    await checkpointCrawlFetchProgress(env.DB, runId, options.collectionProgress.value.progress);
+  }
   const state = await getShopState(env.DB, plugin.key);
   await markShopFailure(env.DB, plugin.key, failedAt, message, state?.consecutive_failures || 0);
   await failCrawlFetchSession(env.DB, { runId, failedAt, message });
@@ -123,9 +130,11 @@ export async function continued(
   runId: string,
   options: ResumableCrawlConsumeOptions,
 ): Promise<ResumableCrawlConsumeResult> {
-  void options;
-  const session = await getCrawlFetchSession(env.DB, runId);
+  const session = await readCollectionSession(env.DB, runId, options.collectionProgress);
   if (!session) throw new Error(`crawl fetch session disappeared: ${runId}`);
+  if (session.progress_storage === "durable_object" && session.next_phase === "finalize") {
+    await checkpointCrawlFetchProgress(env.DB, runId, session);
+  }
   const continuationMessage = buildContinuationMessage(plugin, body, session);
   return {
     kind: "continued",

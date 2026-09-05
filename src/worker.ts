@@ -2,6 +2,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 
 import worker from "./index.js";
 export { CrawlScheduler } from "./crawler/crawl-scheduler-do.js";
+export { PublicSearchCache } from "./http/public-search-cache.js";
 import type {
   CatalogAdminCreateInput,
   CatalogAdminDuplicateListOptions,

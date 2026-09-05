@@ -34,7 +34,7 @@ async function executeContinuation(
   runId: string,
   options: ResumableCrawlConsumeOptions,
 ): Promise<ResumableCrawlConsumeResult> {
-  let session = await ensureSession(env, plugin, body, runId);
+  let session = await ensureSession(env, plugin, body, runId, options);
   if (session.status === "completed") {
     return {
       kind: "terminal",
