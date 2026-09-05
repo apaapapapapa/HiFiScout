@@ -114,7 +114,9 @@ export function readAdminCsv(text: string): {
         const source = cells[sourceIndex];
         const expected = original.values[field];
         if (source !== expected && source !== "'" + expected) {
-          throw new Error(line + "行目: " + sourceField + "は元データ列です。edit_列を編集してください。");
+          throw new Error(
+            line + "行目: " + sourceField + "は元データ列です。edit_列を編集してください。",
+          );
         }
       }
     }

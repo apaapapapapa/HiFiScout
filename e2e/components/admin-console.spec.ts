@@ -2,7 +2,11 @@ import { expect, test } from "@playwright/test";
 import type { Page, Route } from "@playwright/test";
 
 import { AdminConsolePage } from "../pages/admin-console-page.js";
-import { adminCsvOriginal, adminCsvEditHeader, adminCsvEditRow } from "../../src/api/admin-csv-contracts.js";
+import {
+  adminCsvOriginal,
+  adminCsvEditHeader,
+  adminCsvEditRow,
+} from "../../src/api/admin-csv-contracts.js";
 
 const categories = [
   { id: "digital", name: "デジタル", classifiable: true, filterable: true },
@@ -135,11 +139,19 @@ test.beforeEach(async ({ page }) => {
   await mockAdminApi(page);
 });
 
-test("CSV import previews the edit before applying and follows a durable pending operation", async ({ page, mount }) => {
+test("CSV import previews the edit before applying and follows a durable pending operation", async ({
+  page,
+  mount,
+}) => {
   const original = adminCsvOriginal("listing", 21, {
-    manufacturer_id: "luxman", model: "C10", primary_category_id: "AMP.PRE",
+    manufacturer_id: "luxman",
+    model: "C10",
+    primary_category_id: "AMP.PRE",
   });
-  const csv = "listing_id," + adminCsvEditHeader("listing") + "\n21," +
+  const csv =
+    "listing_id," +
+    adminCsvEditHeader("listing") +
+    "\n21," +
     adminCsvEditRow(original).replace(/,"C10",/u, ',"C11",');
   const operationId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
   const received: { operationId: string }[] = [];
@@ -148,19 +160,27 @@ test("CSV import previews the edit before applying and follows a durable pending
     const result = { line: 2, id: 21, kind: "listing", message: "確認結果" };
     if (route.request().url().endsWith("/preview")) {
       expect(input.changes).toHaveLength(1);
-      return route.fulfill({ json: { items: [{ ...result, status: "ready", revision: "revision" }] } });
+      return route.fulfill({
+        json: { items: [{ ...result, status: "ready", revision: "revision" }] },
+      });
     }
     received.push(input);
-    return route.fulfill({ json: {
-      ...result, status: received.length === 1 ? "pending" : "applied", operationId,
-    } });
+    return route.fulfill({
+      json: {
+        ...result,
+        status: received.length === 1 ? "pending" : "applied",
+        operationId,
+      },
+    });
   });
   const component = await mount("frontend/admin-console/Default");
   const admin = new AdminConsolePage(component, page);
   await admin.catalog.csvSummary.click();
   const panel = component.getByRole("region", { name: "編集したCSVで一括更新" });
   await panel.getByLabel("編集済みCSV（100MiB以内）").setInputFiles({
-    name: "corrections.csv", mimeType: "text/csv", buffer: Buffer.from(csv),
+    name: "corrections.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(csv),
   });
   await expect(panel.getByRole("button", { name: "0件の更新を実行" })).toBeDisabled();
   await panel.getByRole("button", { name: "差分を確認" }).click();

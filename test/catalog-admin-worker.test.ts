@@ -101,20 +101,31 @@ test("Catalog Admin JSON responses carry the same browser security policy", asyn
 });
 
 test("CSV mutations validate origin, content type, size and rows before reaching the Service Binding", async () => {
-  const original = adminCsvOriginal("listing", 1, { manufacturer_id: "luxman", model: "C10", primary_category_id: "AMP.PRE" });
+  const original = adminCsvOriginal("listing", 1, {
+    manufacturer_id: "luxman",
+    model: "C10",
+    primary_category_id: "AMP.PRE",
+  });
   const changes = [{ line: 2, original, values: { ...original.values, model: "C11" } }];
   let calls = 0;
   const env = {
     ...adminEnv([]),
-    CATALOG_ADMIN: { async previewCsvImport() { calls += 1; return []; } },
+    CATALOG_ADMIN: {
+      async previewCsvImport() {
+        calls += 1;
+        return [];
+      },
+    },
   } as unknown as Parameters<typeof handleAuthenticatedCatalogAdminRequest>[1];
   for (const path of ["preview", "apply"]) {
-    const crossOrigin = await handleAuthenticatedCatalogAdminRequest(new Request(
-      "https://admin.example.test/api/admin/csv-import/" + path, {
-        method: "POST", headers: { origin: "https://attacker.example", "content-type": "application/json" },
+    const crossOrigin = await handleAuthenticatedCatalogAdminRequest(
+      new Request("https://admin.example.test/api/admin/csv-import/" + path, {
+        method: "POST",
+        headers: { origin: "https://attacker.example", "content-type": "application/json" },
         body: JSON.stringify({ changes }),
-      },
-    ), env);
+      }),
+      env,
+    );
     assert.equal(crossOrigin.status, 403);
   }
   for (const [contentType, body, expected] of [
@@ -123,11 +134,14 @@ test("CSV mutations validate origin, content type, size and rows before reaching
     ["application/json", "x".repeat(256 * 1024 + 1), 413],
     ["application/json", JSON.stringify({ changes }), 200],
   ] as const) {
-    const response = await handleAuthenticatedCatalogAdminRequest(new Request(
-      "https://admin.example.test/api/admin/csv-import/preview", {
-        method: "POST", headers: { origin: "https://admin.example.test", "content-type": contentType }, body,
-      },
-    ), env);
+    const response = await handleAuthenticatedCatalogAdminRequest(
+      new Request("https://admin.example.test/api/admin/csv-import/preview", {
+        method: "POST",
+        headers: { origin: "https://admin.example.test", "content-type": contentType },
+        body,
+      }),
+      env,
+    );
     assert.equal(response.status, expected);
     assertAdminSecurityHeaders(response);
   }

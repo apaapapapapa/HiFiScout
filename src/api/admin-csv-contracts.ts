@@ -67,5 +67,7 @@ export function adminCsvEditRow(original: AdminCsvOriginal): string {
   return [
     JSON.stringify(original),
     ...ADMIN_CSV_FIELDS[original.kind].map((field) => original.values[field] ?? ""),
-  ].map(adminCsvCell).join(",");
+  ]
+    .map(adminCsvCell)
+    .join(",");
 }

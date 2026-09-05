@@ -172,8 +172,11 @@ export async function handleAuthenticatedCatalogAdminRequest(
 ): Promise<Response> {
   const url = new URL(request.url);
 
-  if (request.method === "POST" &&
-      (url.pathname === "/api/admin/csv-import/preview" || url.pathname === "/api/admin/csv-import/apply")) {
+  if (
+    request.method === "POST" &&
+    (url.pathname === "/api/admin/csv-import/preview" ||
+      url.pathname === "/api/admin/csv-import/apply")
+  ) {
     const body = await mutationBody(request, url, 256 * 1024);
     if (isResponse(body)) return body;
     try {
@@ -186,8 +189,12 @@ export async function handleAuthenticatedCatalogAdminRequest(
       if (!input) return json({ error: "invalid_csv_import" }, { status: 400 });
       return json(await env.CATALOG_ADMIN.applyCsvImport(input));
     } catch (error) {
-      console.error(JSON.stringify({ event: "admin_csv_import_unavailable",
-        message: error instanceof Error ? error.message : String(error) }));
+      console.error(
+        JSON.stringify({
+          event: "admin_csv_import_unavailable",
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      );
       return json({ error: "csv_import_unavailable" }, { status: 503 });
     }
   }

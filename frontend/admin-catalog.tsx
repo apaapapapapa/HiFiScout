@@ -1603,9 +1603,12 @@ export function CatalogAdmin() {
                 Knowledge
                 Catalogは100件ずつ、登録商品は250件ずつバックグラウンドで処理し、画面を閉じても継続します。通常の商品監査には「掲載中商品」を推奨し、「全履歴」には販売終了・非掲載の商品も含まれます。完成したCSVは7日間ダウンロードできます。
               </p>
-              <AdminCsvImport categories={categories} onApplied={() => {
-                void loadCatalog(catalogApplied, 0, []);
-              }} />
+              <AdminCsvImport
+                categories={categories}
+                onApplied={() => {
+                  void loadCatalog(catalogApplied, 0, []);
+                }}
+              />
             </div>
           </details>
         </>
