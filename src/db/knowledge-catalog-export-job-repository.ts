@@ -1,3 +1,5 @@
+import { COMPLETE_ARCHIVE_PART_CHUNKS } from "../export/contracts.js";
+import type { DataExportFormat } from "../export/contracts.js";
 import type {
   KnowledgeCatalogExportJob,
   KnowledgeCatalogExportJobStatus,
@@ -9,6 +11,7 @@ export const KNOWLEDGE_CATALOG_EXPORT_FAILED_RETENTION_DAYS = 1;
 export const KNOWLEDGE_CATALOG_EXPORT_GENERATION_DEADLINE_HOURS = 24;
 
 interface KnowledgeCatalogExportJobRow {
+  format: DataExportFormat;
   id: string;
   status: KnowledgeCatalogExportJobStatus;
   max_catalog_product_id: number;
@@ -75,6 +78,12 @@ function jobFromRow(row: KnowledgeCatalogExportJobRow | null): KnowledgeCatalogE
   if (!row) return null;
   return {
     id: row.id,
+    ...(row.format === "complete"
+      ? {
+          format: "complete" as const,
+          archivePartCount: Math.ceil(number(row.chunk_count) / COMPLETE_ARCHIVE_PART_CHUNKS),
+        }
+      : {}),
     status: row.status,
     maxCatalogProductId: number(row.max_catalog_product_id),
     afterId: number(row.after_id),
@@ -151,6 +160,7 @@ export async function createOrReuseKnowledgeCatalogExportJob(
   db: QueryableDatabase,
   jobId: string,
   createdAt: Date,
+  format: DataExportFormat = "csv",
 ): Promise<KnowledgeCatalogExportJobCreation> {
   const timestamp = createdAt.toISOString();
   const existing = await activeKnowledgeCatalogExportJob(db);
@@ -171,10 +181,10 @@ export async function createOrReuseKnowledgeCatalogExportJob(
       .prepare(`
         INSERT OR IGNORE INTO knowledge_catalog_export_jobs (
           id, singleton_key, status, max_catalog_product_id, after_id, chunk_count, row_count,
-          byte_count, delivery_attempts, error, created_at, updated_at, expires_at
-        ) VALUES (?, 1, 'queued', ?, 0, 0, 0, 0, 0, '', ?, ?, ?)
+          byte_count, delivery_attempts, error, created_at, updated_at, expires_at, format
+        ) VALUES (?, 1, 'queued', ?, 0, 0, 0, 0, 0, '', ?, ?, ?, ?)
       `)
-      .bind(jobId, maxCatalogProductId, timestamp, timestamp, generationDeadline(createdAt))
+      .bind(jobId, maxCatalogProductId, timestamp, timestamp, generationDeadline(createdAt), format)
       .run();
     const created = number(result?.meta?.changes) > 0;
     const job = created

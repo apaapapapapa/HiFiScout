@@ -141,6 +141,58 @@ test.beforeEach(async ({ page }) => {
   await mockAdminApi(page);
 });
 
+test("admin exports expose every ZIP volume and retain the legacy CSV download", async ({
+  page,
+  mount,
+}) => {
+  const job = {
+    id: "complete-archive",
+    status: "ready",
+    format: "complete",
+    archivePartCount: 3,
+    rowCount: 2500,
+    byteCount: 123456,
+    chunkCount: 401,
+    error: "",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    completedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 86400000).toISOString(),
+  };
+  const formats: string[] = [];
+  await page.route("**/api/admin/knowledge-catalog-exports", (route) => {
+    if (route.request().method() === "POST") formats.push(route.request().postDataJSON().format);
+    return route.fulfill({ json: route.request().method() === "POST" ? job : { job } });
+  });
+  await page.route("**/api/admin/product-audit-exports?scope=active", (route) =>
+    route.fulfill({
+      json: { job: { ...job, id: "legacy-csv", format: "csv", archivePartCount: undefined } },
+    }),
+  );
+  const component = await mount("frontend/admin-console/Default");
+  const admin = new AdminConsolePage(component, page);
+  await admin.catalog.csvSummary.click();
+  for (let part = 1; part <= 3; part += 1) {
+    const link = component.getByRole("link", { name: `ZIP ${part} / 3`, exact: true });
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute(
+      "href",
+      `/api/admin/knowledge-catalog-exports/complete-archive/download?part=${part}`,
+    );
+  }
+  await expect(component.getByRole("link", { name: "CSVをダウンロード" })).toHaveAttribute(
+    "href",
+    "/api/admin/product-audit-exports/legacy-csv/download",
+  );
+  const card = component
+    .locator(".export-job")
+    .filter({ has: page.getByRole("heading", { name: "Knowledge Catalog", exact: true }) });
+  await card.getByRole("button", { name: "編集用CSVを生成" }).click();
+  await expect.poll(() => formats).toEqual(["csv"]);
+  await card.getByRole("button", { name: "全情報ZIPを生成" }).click();
+  await expect.poll(() => formats).toEqual(["csv", "complete"]);
+});
+
 test("CSV import previews the edit before applying and follows a durable pending operation", async ({
   page,
   mount,

@@ -34,6 +34,13 @@ import {
   unindexedScans,
 } from "./helpers/query-plan.js";
 
+/** Exercise pre-upgrade jobs separately from complete archive coverage. */
+const startLegacyExport = (
+  db: Parameters<typeof startKnowledgeCatalogExport>[0],
+  queue: Parameters<typeof startKnowledgeCatalogExport>[1],
+  now: Parameters<typeof startKnowledgeCatalogExport>[2] = new Date(),
+) => startKnowledgeCatalogExport(db, queue, now, "csv");
+
 const NOW = new Date(Date.now() - 60_000).toISOString();
 
 function parseCsvLine(line: string): string[] {
@@ -533,8 +540,8 @@ test("singleton job emits one 100-row chunk per delivery and streams a stable CS
   const { queue, sent } = fakeQueue();
   const { bucket, objects } = fakeBucket();
   const createdAt = new Date(NOW);
-  const job = await startKnowledgeCatalogExport(db, queue, createdAt);
-  const reused = await startKnowledgeCatalogExport(db, queue, createdAt);
+  const job = await startLegacyExport(db, queue, createdAt);
+  const reused = await startLegacyExport(db, queue, createdAt);
   assert.equal(reused.id, job.id);
   assert.equal(sent.length, 1);
   assert.equal(job.maxCatalogProductId, ids.at(-1));
@@ -632,7 +639,7 @@ test("a retry reuses the persisted R2 chunk after its continuation send fails", 
   insertCatalogProducts(sqlite, 101);
   const { queue, sent } = fakeQueue();
   const { bucket, objects, putKeys } = fakeBucket();
-  const job = await startKnowledgeCatalogExport(db, queue, new Date(NOW));
+  const job = await startLegacyExport(db, queue, new Date(NOW));
   const body = sent.shift()?.body;
   assert.ok(body);
 
@@ -688,7 +695,7 @@ test("a future continuation arriving before predecessor recovery still aggregate
   insertCatalogProducts(sqlite, 101);
   const { queue, sent } = fakeQueue();
   const { bucket, objects, putKeys } = fakeBucket();
-  const job = await startKnowledgeCatalogExport(db, queue, new Date(NOW));
+  const job = await startLegacyExport(db, queue, new Date(NOW));
   const predecessorBody = sent.shift()?.body;
   assert.ok(predecessorBody);
 
@@ -777,7 +784,7 @@ test("stale enqueue recovery is throttled and a 24-hour-old job is replaced", as
   insertCatalogProducts(sqlite, 1);
   const { queue, sent } = fakeQueue();
   const createdAt = new Date(NOW);
-  const first = await startKnowledgeCatalogExport(db, queue, createdAt);
+  const first = await startLegacyExport(db, queue, createdAt);
   sent.length = 0;
 
   const recoveredAt = new Date(createdAt.getTime() + 3 * 60 * 1000);
@@ -786,7 +793,7 @@ test("stale enqueue recovery is throttled and a 24-hour-old job is replaced", as
   assert.equal(sent.length, 1);
 
   const replacementAt = new Date(createdAt.getTime() + 24 * 60 * 60 * 1000 + 1);
-  const replacement = await startKnowledgeCatalogExport(db, queue, replacementAt);
+  const replacement = await startLegacyExport(db, queue, replacementAt);
   assert.notEqual(replacement.id, first.id);
   assert.equal((await getKnowledgeCatalogExportJob(db, first.id))?.status, "failed");
   assert.equal((await getKnowledgeCatalogExportJob(db, replacement.id))?.status, "queued");
@@ -798,7 +805,7 @@ test("a failed stale-recovery send is retried after its enqueue reservation beco
   insertCatalogProducts(sqlite, 1);
   const { queue, sent } = fakeQueue();
   const createdAt = new Date(NOW);
-  const job = await startKnowledgeCatalogExport(db, queue, createdAt);
+  const job = await startLegacyExport(db, queue, createdAt);
   sent.length = 0;
 
   let failedSendCount = 0;
@@ -835,7 +842,7 @@ test("an expired claimant cannot advance after a newer lease owns the same curso
   const [catalogProductId] = insertCatalogProducts(sqlite, 1);
   const { queue } = fakeQueue();
   const createdAt = new Date(NOW);
-  const job = await startKnowledgeCatalogExport(db, queue, createdAt);
+  const job = await startLegacyExport(db, queue, createdAt);
   const firstClaim = await claimKnowledgeCatalogExportJob(db, job.id, 0, 0, createdAt, 5);
   assert.ok(firstClaim);
 
@@ -885,7 +892,7 @@ test("a live-lease DLQ delivery is requeued and its queued-only failure CAS lose
   insertCatalogProducts(sqlite, 1);
   const { queue, sent } = fakeQueue();
   const { bucket } = fakeBucket();
-  const job = await startKnowledgeCatalogExport(db, queue, new Date());
+  const job = await startLegacyExport(db, queue, new Date());
   const body = sent[0]?.body;
   assert.ok(body);
   assert.ok(await claimKnowledgeCatalogExportJob(db, job.id, 0, 0, new Date(), 60));
@@ -924,7 +931,7 @@ test("generation fails before a 901st chunk and download rejects an oversized ma
   insertCatalogProducts(sqlite, 101);
   const { queue, sent } = fakeQueue();
   const { bucket } = fakeBucket();
-  const job = await startKnowledgeCatalogExport(db, queue, new Date());
+  const job = await startLegacyExport(db, queue, new Date());
   sqlite
     .prepare("UPDATE knowledge_catalog_export_jobs SET chunk_count = ? WHERE id = ?")
     .run(KNOWLEDGE_CATALOG_EXPORT_MAX_CHUNKS - 1, job.id);

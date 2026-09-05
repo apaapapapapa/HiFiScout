@@ -119,8 +119,13 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
     return updateProductCorrectionReport(this.env.DB, reportId, action, note);
   }
 
-  async startKnowledgeCatalogExport() {
-    return startKnowledgeCatalogExport(this.env.DB, this.env.PRODUCT_AUDIT_EXPORT_QUEUE);
+  async startKnowledgeCatalogExport(format: DataExportFormat = "csv") {
+    return startKnowledgeCatalogExport(
+      this.env.DB,
+      this.env.PRODUCT_AUDIT_EXPORT_QUEUE,
+      new Date(),
+      format,
+    );
   }
 
   async latestKnowledgeCatalogExportJob() {
@@ -131,11 +136,13 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
     return getKnowledgeCatalogExportJob(this.env.DB, jobId);
   }
 
-  async downloadKnowledgeCatalogExport(jobId: string): Promise<Response> {
+  async downloadKnowledgeCatalogExport(jobId: string, part = 1): Promise<Response> {
     return createKnowledgeCatalogExportDownloadResponse(
       this.env.DB,
       this.env.EVIDENCE_BUCKET,
       jobId,
+      new Date(),
+      part,
     );
   }
 
@@ -155,8 +162,14 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
     });
   }
 
-  async startProductAuditExport(scope: ProductAuditExportScope) {
-    return startProductAuditExport(this.env.DB, this.env.PRODUCT_AUDIT_EXPORT_QUEUE, scope);
+  async startProductAuditExport(scope: ProductAuditExportScope, format: DataExportFormat = "csv") {
+    return startProductAuditExport(
+      this.env.DB,
+      this.env.PRODUCT_AUDIT_EXPORT_QUEUE,
+      scope,
+      new Date(),
+      format,
+    );
   }
 
   async latestProductAuditExportJob(scope: ProductAuditExportScope) {
@@ -167,9 +180,16 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
     return getProductAuditExportJob(this.env.DB, jobId);
   }
 
-  async downloadProductAuditExport(jobId: string): Promise<Response> {
-    return createProductAuditExportDownloadResponse(this.env.DB, this.env.EVIDENCE_BUCKET, jobId);
+  async downloadProductAuditExport(jobId: string, part = 1): Promise<Response> {
+    return createProductAuditExportDownloadResponse(
+      this.env.DB,
+      this.env.EVIDENCE_BUCKET,
+      jobId,
+      new Date(),
+      part,
+    );
   }
 }
 
 export default worker;
+import type { DataExportFormat } from "./export/contracts.js";

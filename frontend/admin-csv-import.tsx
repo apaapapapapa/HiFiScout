@@ -219,8 +219,9 @@ export function AdminCsvImport({
     <section className="csv-import-panel" aria-labelledby="csv-import-heading">
       <h3 id="csv-import-heading">編集したCSVで一括更新</h3>
       <p>
-        上のCSVを生成し、<code>edit_</code>で始まる列を編集して、UTF-8のCSVとして保存してください。
-        元データ列・ID・<code>csv_original</code>はそのまま残します。
+        上の「編集用CSV」を生成し、<code>edit_</code>
+        で始まる列を編集して、UTF-8のCSVとして保存してください。 元データ列・ID・
+        <code>csv_original</code>はそのまま残します。
       </p>
       <p>
         メーカー・型番・カテゴリを修正できます。カタログは正式名称・製品状態も編集できます。

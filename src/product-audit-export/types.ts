@@ -12,6 +12,9 @@ export type ProductAuditExportJobStatus = "queued" | "processing" | "ready" | "f
  * generation deadline, then becomes the terminal artifact/diagnostic expiry.
  */
 export interface ProductAuditExportJob {
+  /** Legacy CSVs remain readable; complete jobs use chunk sequence as afterId. */
+  format?: "csv" | "complete";
+  archivePartCount?: number;
   id: string;
   scope: ProductAuditExportScope;
   status: ProductAuditExportJobStatus;

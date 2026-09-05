@@ -8,6 +8,9 @@ export type KnowledgeCatalogExportJobStatus = "queued" | "processing" | "ready" 
  * generation deadline while active and the artifact/diagnostic expiry after completion.
  */
 export interface KnowledgeCatalogExportJob {
+  /** Legacy CSVs remain readable; complete jobs use chunk sequence as afterId. */
+  format?: "csv" | "complete";
+  archivePartCount?: number;
   id: string;
   status: KnowledgeCatalogExportJobStatus;
   maxCatalogProductId: number;

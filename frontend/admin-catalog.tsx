@@ -108,6 +108,8 @@ const CSV_EXPORT_KEYS = ["catalog", "product-audit-active", "product-audit-all"]
 type CsvExportKey = (typeof CSV_EXPORT_KEYS)[number];
 
 interface CsvExportJob {
+  format?: "csv" | "complete";
+  archivePartCount?: number;
   id: string;
   status: "queued" | "processing" | "ready" | "failed";
   rowCount: number;
@@ -138,7 +140,7 @@ const CSV_EXPORT_CONFIG: Record<CsvExportKey, CsvExportConfig> = {
     title: "Knowledge Catalog",
     kicker: "CATALOG",
     description:
-      "検証状態を含むカタログ全件を100件ずつ低負荷で処理します。上限90,000件・生成期限24時間です。",
+      "カタログ全件・全列と、登録商品・別名・出典・検証履歴などの全関連情報をCSV（ZIP）に出力します。",
     collectionUrl: "/api/admin/knowledge-catalog-exports",
     latestUrl: "/api/admin/knowledge-catalog-exports",
     startBody: {},
@@ -148,7 +150,7 @@ const CSV_EXPORT_CONFIG: Record<CsvExportKey, CsvExportConfig> = {
   "product-audit-active": {
     title: "掲載中商品",
     kicker: "RECOMMENDED",
-    description: "現在掲載中のlistingを品質監査用CSVとして生成します。",
+    description: "掲載中商品の全列を出力します。照合用のカタログ・関連テーブルは全件を含みます。",
     collectionUrl: "/api/admin/product-audit-exports",
     latestUrl: "/api/admin/product-audit-exports?scope=active",
     startBody: { scope: "active" },
@@ -158,7 +160,8 @@ const CSV_EXPORT_CONFIG: Record<CsvExportKey, CsvExportConfig> = {
   "product-audit-all": {
     title: "全履歴",
     kicker: "ARCHIVE",
-    description: "販売終了・非掲載を含む全listing履歴を監査用CSVとして生成します。",
+    description:
+      "販売終了・非掲載を含む登録商品とカタログ・関連履歴の全件・全列をCSV（ZIP）に出力します。",
     collectionUrl: "/api/admin/product-audit-exports",
     latestUrl: "/api/admin/product-audit-exports?scope=all",
     startBody: { scope: "all" },
@@ -291,7 +294,7 @@ function CsvExportCard({
 }: {
   config: CsvExportConfig;
   state: CsvExportState;
-  onGenerate: () => void;
+  onGenerate: (format: "csv" | "complete") => void;
 }) {
   const job = state.job;
   const active = csvExportActive(job);
@@ -319,7 +322,7 @@ function CsvExportCard({
     statusText = `${job.rowCount.toLocaleString("ja-JP")}件（${csvExportBytes(job.byteCount)}）の生成が完了しました。有効期限: ${csvExportDate(job.expiresAt)}`;
     statusKind = "success";
   }
-  const buttonText = state.busy ? "受付中…" : active ? "生成中…" : job ? "再生成" : "CSVを生成";
+  const buttonText = state.busy ? "受付中…" : active ? "生成中…" : "全情報ZIPを生成";
   return (
     <section className="export-job">
       <div>
@@ -337,15 +340,33 @@ function CsvExportCard({
           className={config.secondary ? "secondary-button" : undefined}
           type="button"
           disabled={state.busy || active}
-          onClick={onGenerate}
+          onClick={() => onGenerate("complete")}
         >
           {buttonText}
         </button>
-        {job?.status === "ready" && !expired ? (
-          <a className="button-link secondary-button" href={config.downloadUrl(job.id)}>
-            ダウンロード
-          </a>
-        ) : null}
+        <button
+          className="secondary-button"
+          type="button"
+          disabled={state.busy || active}
+          onClick={() => onGenerate("csv")}
+        >
+          編集用CSVを生成
+        </button>
+        {job?.status === "ready" && !expired
+          ? Array.from({ length: job.archivePartCount || 1 }, (_, index) => (
+              <a
+                key={index}
+                className="button-link secondary-button"
+                href={`${config.downloadUrl(job.id)}${job.format === "complete" ? `?part=${index + 1}` : ""}`}
+              >
+                {job.format === "complete"
+                  ? (job.archivePartCount || 1) > 1
+                    ? `ZIP ${index + 1} / ${job.archivePartCount}`
+                    : "CSV一式をダウンロード（ZIP）"
+                  : "CSVをダウンロード"}
+              </a>
+            ))
+          : null}
       </div>
     </section>
   );
@@ -899,7 +920,7 @@ export function CatalogAdmin() {
     }
   };
 
-  const generateCsvExport = async (key: CsvExportKey) => {
+  const generateCsvExport = async (key: CsvExportKey, format: "csv" | "complete") => {
     const current = csvStates[key];
     if (current.busy || csvExportActive(current.job)) return;
     setCsvStates((states) => ({
@@ -910,7 +931,7 @@ export function CatalogAdmin() {
       const config = CSV_EXPORT_CONFIG[key];
       const job = await adminJson<CsvExportJob>(config.collectionUrl, {
         method: "POST",
-        body: JSON.stringify(config.startBody),
+        body: JSON.stringify({ ...config.startBody, format }),
       });
       setCsvStates((states) => ({
         ...states,
@@ -1587,7 +1608,7 @@ export function CatalogAdmin() {
             <div className="export-content">
               <p className="export-description">
                 Knowledge Catalogは検証状態やカテゴリ・alias・source・Product
-                Identityを1行1製品で、登録商品は店舗ごとの生データや検索上の同一製品グループを1行1listingで出力します。CSVをAIに渡して、重複表示・カテゴリ誤り・メーカー/型番の正規化漏れを確認できます。
+                Identityを含む全情報を、テーブルごとのCSVに分けてZIPで出力します。色・セット商品のカテゴリ・内部メタデータ・手動修正・価格履歴も含み、長文や関連情報を省略しません。
               </p>
               <div className="export-jobs">
                 {CSV_EXPORT_KEYS.map((key) => (
@@ -1595,13 +1616,12 @@ export function CatalogAdmin() {
                     key={key}
                     config={CSV_EXPORT_CONFIG[key]}
                     state={csvStates[key]}
-                    onGenerate={() => void generateCsvExport(key)}
+                    onGenerate={(format) => void generateCsvExport(key, format)}
                   />
                 ))}
               </div>
               <p className="export-note">
-                Knowledge
-                Catalogは100件ずつ、登録商品は250件ずつバックグラウンドで処理し、画面を閉じても継続します。通常の商品監査には「掲載中商品」を推奨し、「全履歴」には販売終了・非掲載の商品も含まれます。完成したCSVは7日間ダウンロードできます。
+                バックグラウンドで分割生成するため、画面を閉じても継続します。ZIPが複数ある場合は全パートを取得してください。生成期限は24時間、ダウンロード期限は完成から7日間です。一括修正には「編集用CSV」を生成し、edit_列を編集して下のフォームで取り込んでください。全情報ZIP内のCSVは取り込み対象外です。
               </p>
               <AdminCsvImport
                 categories={categories}

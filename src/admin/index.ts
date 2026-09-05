@@ -13,6 +13,7 @@ import {
 } from "../http/knowledge-catalog-admin.js";
 import { verifyCloudflareAccessRequest } from "./access.js";
 import { parseAdminCsvPreview, parseAdminCsvApply } from "../http/admin-csv-import.js";
+import type { DataExportFormat } from "../export/contracts.js";
 
 interface CatalogAdminEnv {
   ADMIN_ASSETS: Fetcher;
@@ -94,13 +95,17 @@ function productExportScopeFromBody(value: unknown): CatalogAdminProductExportSc
   return productExportScope((value as Record<string, unknown>).scope);
 }
 
-function isEmptyJsonObject(value: unknown): boolean {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    Object.keys(value).length === 0
-  );
+function exportFormatFromBody(value: unknown, keys: string[]): DataExportFormat | null {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    Object.keys(value).some((key) => !keys.includes(key))
+  )
+    return null;
+  const format = (value as Record<string, unknown>).format;
+  // Requests from the previous admin Worker retain their editable CSV behavior during rollout.
+  return format === undefined ? "csv" : format === "csv" || format === "complete" ? format : null;
 }
 
 function knowledgeCatalogExportUnavailable(error: unknown, operation: string): Response {
@@ -208,11 +213,12 @@ export async function handleAuthenticatedCatalogAdminRequest(
   if (request.method === "POST" && url.pathname === CATALOG_EXPORT_COLLECTION_PATH) {
     const body = await mutationBody(request, url, 1024);
     if (isResponse(body)) return body;
-    if (!isEmptyJsonObject(body)) {
+    const format = exportFormatFromBody(body, ["format"]);
+    if (!format) {
       return json({ error: "invalid_knowledge_catalog_export_request" }, { status: 400 });
     }
     try {
-      const job = await env.CATALOG_ADMIN.startKnowledgeCatalogExport();
+      const job = await env.CATALOG_ADMIN.startKnowledgeCatalogExport(format);
       return json(job, { status: job.status === "failed" ? 503 : 202 });
     } catch (error) {
       console.error(
@@ -235,10 +241,13 @@ export async function handleAuthenticatedCatalogAdminRequest(
   const catalogExportJobMatch = url.pathname.match(CATALOG_EXPORT_JOB_PATH);
   if (request.method === "GET" && catalogExportJobMatch) {
     const jobId = catalogExportJobMatch[1];
+    const part = Number(url.searchParams.get("part") ?? "1");
+    if (!Number.isSafeInteger(part) || part < 1)
+      return json({ error: "invalid_export_part" }, { status: 400 });
     try {
       if (catalogExportJobMatch[2]) {
         return withCatalogAdminSecurityHeaders(
-          await env.CATALOG_ADMIN.downloadKnowledgeCatalogExport(jobId),
+          await env.CATALOG_ADMIN.downloadKnowledgeCatalogExport(jobId, part),
         );
       }
       const job = await env.CATALOG_ADMIN.getKnowledgeCatalogExportJob(jobId);
@@ -255,8 +264,10 @@ export async function handleAuthenticatedCatalogAdminRequest(
     if (isResponse(body)) return body;
     const scope = productExportScopeFromBody(body);
     if (!scope) return json({ error: "invalid_product_export_scope" }, { status: 400 });
+    const format = exportFormatFromBody(body, ["scope", "format"]);
+    if (!format) return json({ error: "invalid_product_export_format" }, { status: 400 });
     try {
-      const job = await env.CATALOG_ADMIN.startProductAuditExport(scope);
+      const job = await env.CATALOG_ADMIN.startProductAuditExport(scope, format);
       return json(job, { status: job.status === "failed" ? 503 : 202 });
     } catch (error) {
       console.error(
@@ -278,9 +289,12 @@ export async function handleAuthenticatedCatalogAdminRequest(
   const exportJobMatch = url.pathname.match(PRODUCT_EXPORT_JOB_PATH);
   if (request.method === "GET" && exportJobMatch) {
     const jobId = exportJobMatch[1];
+    const part = Number(url.searchParams.get("part") ?? "1");
+    if (!Number.isSafeInteger(part) || part < 1)
+      return json({ error: "invalid_export_part" }, { status: 400 });
     if (exportJobMatch[2]) {
       return withCatalogAdminSecurityHeaders(
-        await env.CATALOG_ADMIN.downloadProductAuditExport(jobId),
+        await env.CATALOG_ADMIN.downloadProductAuditExport(jobId, part),
       );
     }
     const job = await env.CATALOG_ADMIN.getProductAuditExportJob(jobId);

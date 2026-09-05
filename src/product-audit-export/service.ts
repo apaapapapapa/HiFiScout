@@ -1,3 +1,5 @@
+import { createCompleteArchiveDownloadResponse } from "../export/complete-archive.js";
+import type { DataExportFormat } from "../export/contracts.js";
 import {
   createOrReuseProductAuditExportJob,
   failProductAuditExportJob,
@@ -30,11 +32,18 @@ export async function startProductAuditExport(
   queue: ProductAuditExportQueueProducer,
   scope: ProductAuditExportScope,
   now: Date = new Date(),
+  format: DataExportFormat = "complete",
 ): Promise<ProductAuditExportJob> {
   if (scope !== "active" && scope !== "all") {
     throw new Error("invalid_product_audit_export_scope");
   }
-  const created = await createOrReuseProductAuditExportJob(db, scope, crypto.randomUUID(), now);
+  const created = await createOrReuseProductAuditExportJob(
+    db,
+    scope,
+    crypto.randomUUID(),
+    now,
+    format,
+  );
   const message: ProductAuditExportQueueMessage = {
     kind: "product_audit_export",
     jobId: created.job.id,
@@ -152,9 +161,21 @@ export async function createProductAuditExportDownloadResponse(
   bucket: R2Bucket,
   jobId: string,
   now: Date = new Date(),
+  part = 1,
 ): Promise<Response> {
+  const job = await getProductAuditExportJob(db, jobId);
+  if (job?.format === "complete") {
+    return createCompleteArchiveDownloadResponse(
+      job,
+      bucket,
+      productAuditExportChunkKey,
+      productAuditExportFilename(job),
+      part,
+      now,
+    );
+  }
   return createCsvExportDownloadResponse(
-    await getProductAuditExportJob(db, jobId),
+    job,
     bucket,
     {
       errorPrefix: "product_audit_export",

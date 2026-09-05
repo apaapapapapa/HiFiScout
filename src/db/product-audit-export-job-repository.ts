@@ -1,3 +1,5 @@
+import { COMPLETE_ARCHIVE_PART_CHUNKS } from "../export/contracts.js";
+import type { DataExportFormat } from "../export/contracts.js";
 import type {
   ProductAuditExportJob,
   ProductAuditExportJobStatus,
@@ -10,6 +12,7 @@ export const PRODUCT_AUDIT_EXPORT_FAILED_RETENTION_DAYS = 1;
 export const PRODUCT_AUDIT_EXPORT_GENERATION_DEADLINE_HOURS = 24;
 
 interface ProductAuditExportJobRow {
+  format: DataExportFormat;
   id: string;
   scope: ProductAuditExportScope;
   status: ProductAuditExportJobStatus;
@@ -77,6 +80,12 @@ function jobFromRow(row: ProductAuditExportJobRow | null): ProductAuditExportJob
   if (!row) return null;
   return {
     id: row.id,
+    ...(row.format === "complete"
+      ? {
+          format: "complete" as const,
+          archivePartCount: Math.ceil(number(row.chunk_count) / COMPLETE_ARCHIVE_PART_CHUNKS),
+        }
+      : {}),
     scope: row.scope,
     status: row.status,
     maxListingId: number(row.max_listing_id),
@@ -165,6 +174,7 @@ export async function createOrReuseProductAuditExportJob(
   scope: ProductAuditExportScope,
   jobId: string,
   createdAt: Date,
+  format: DataExportFormat = "csv",
 ): Promise<ProductAuditExportJobCreation> {
   const timestamp = createdAt.toISOString();
   const existing = await activeProductAuditExportJob(db, scope);
@@ -189,10 +199,10 @@ export async function createOrReuseProductAuditExportJob(
       .prepare(`
         INSERT OR IGNORE INTO product_audit_export_jobs (
           id, scope, status, max_listing_id, after_id, chunk_count, row_count, byte_count,
-          delivery_attempts, error, created_at, updated_at, expires_at
-        ) VALUES (?, ?, 'queued', ?, 0, 0, 0, 0, 0, '', ?, ?, ?)
+          delivery_attempts, error, created_at, updated_at, expires_at, format
+        ) VALUES (?, ?, 'queued', ?, 0, 0, 0, 0, 0, '', ?, ?, ?, ?)
       `)
-      .bind(jobId, scope, maxListingId, timestamp, timestamp, generationDeadline(createdAt))
+      .bind(jobId, scope, maxListingId, timestamp, timestamp, generationDeadline(createdAt), format)
       .run();
     const created = number(result?.meta?.changes) > 0;
     const job = created

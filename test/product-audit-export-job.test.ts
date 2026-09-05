@@ -19,6 +19,14 @@ import { PRODUCT_AUDIT_EXPORT_MAX_CHUNKS } from "../src/product-audit-export/csv
 import type { ProductAuditExportQueueMessage } from "../src/product-audit-export/types.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 
+/** Exercise pre-upgrade jobs separately from complete archive coverage. */
+const startLegacyExport = (
+  db: Parameters<typeof startProductAuditExport>[0],
+  queue: Parameters<typeof startProductAuditExport>[1],
+  scope: Parameters<typeof startProductAuditExport>[2],
+  now: Parameters<typeof startProductAuditExport>[3] = new Date(),
+) => startProductAuditExport(db, queue, scope, now, "csv");
+
 const RECENT_NOW = new Date(Date.now() - 60_000);
 
 interface StoredObject {
@@ -192,8 +200,8 @@ test("starting an export reuses the in-flight scope and never creates parallel j
   const { queue, sent } = fakeQueue();
   const now = new Date("2026-08-22T00:00:00.000Z");
 
-  const first = await startProductAuditExport(db, queue, "active", now);
-  const second = await startProductAuditExport(db, queue, "active", now);
+  const first = await startLegacyExport(db, queue, "active", now);
+  const second = await startLegacyExport(db, queue, "active", now);
 
   assert.equal(first.id, second.id);
   assert.equal(first.maxListingId, 1);
@@ -219,7 +227,7 @@ test("a stale cursor is re-enqueued once and an overdue scope can start a replac
   insertProducts(sqlite, 1);
   const { queue, sent } = fakeQueue();
   const createdAt = new Date("2026-08-22T00:00:00.000Z");
-  const first = await startProductAuditExport(db, queue, "active", createdAt);
+  const first = await startLegacyExport(db, queue, "active", createdAt);
   sent.length = 0;
 
   const recoveredAt = new Date(createdAt.getTime() + 3 * 60 * 1000);
@@ -229,7 +237,7 @@ test("a stale cursor is re-enqueued once and an overdue scope can start a replac
   assert.equal(sent.length, 1, "the enqueue reservation throttles repeated recovery passes");
 
   const replacementAt = new Date(createdAt.getTime() + 24 * 60 * 60 * 1000 + 1);
-  const replacement = await startProductAuditExport(db, queue, "active", replacementAt);
+  const replacement = await startLegacyExport(db, queue, "active", replacementAt);
   assert.notEqual(replacement.id, first.id);
   assert.equal((await getProductAuditExportJob(db, first.id))?.status, "failed");
   assert.equal((await getProductAuditExportJob(db, replacement.id))?.status, "queued");
@@ -241,7 +249,7 @@ test("one delivery writes only 250 rows, retries are idempotent, and ready CSV s
   const { queue, sent } = fakeQueue();
   const { bucket, objects } = fakeBucket();
   const now = new Date(RECENT_NOW);
-  const job = await startProductAuditExport(db, queue, "active", now);
+  const job = await startLegacyExport(db, queue, "active", now);
   assert.equal(job.maxListingId, ids.at(-1));
 
   // The job has a finite ID horizon even when listings arrive while its batches are running.
@@ -332,12 +340,7 @@ test("a future DLQ delivery cannot fail a job whose predecessor owns the current
   const { db } = migratedSqlite();
   const { queue } = fakeQueue();
   const { bucket } = fakeBucket();
-  const job = await startProductAuditExport(
-    db,
-    queue,
-    "active",
-    new Date("2026-08-22T00:00:00.000Z"),
-  );
+  const job = await startLegacyExport(db, queue, "active", new Date("2026-08-22T00:00:00.000Z"));
   const future = fakeMessage({
     kind: "product_audit_export",
     jobId: job.id,
@@ -365,7 +368,7 @@ test("a delivery in the DLQ cannot fail a cursor that still has a live lease", a
   const { db } = migratedSqlite();
   const { queue, sent } = fakeQueue();
   const { bucket } = fakeBucket();
-  const job = await startProductAuditExport(db, queue, "active", new Date(RECENT_NOW));
+  const job = await startLegacyExport(db, queue, "active", new Date(RECENT_NOW));
   const original = sent[0]?.body;
   assert.ok(original);
   const claimedAt = new Date();
@@ -403,7 +406,7 @@ test("a delivery in the DLQ cannot fail a cursor that still has a live lease", a
 test("the DLQ queued-only failure CAS loses safely to a concurrent claim", async () => {
   const { db } = migratedSqlite();
   const { queue } = fakeQueue();
-  const job = await startProductAuditExport(db, queue, "active", new Date());
+  const job = await startLegacyExport(db, queue, "active", new Date());
   const claimedAt = new Date();
   assert.ok(await claimProductAuditExportJob(db, job.id, 0, 0, claimedAt, 60));
 
@@ -423,7 +426,7 @@ test("generation fails clearly before exceeding the bounded download chunk count
   insertProducts(sqlite, 251);
   const { queue, sent } = fakeQueue();
   const { bucket } = fakeBucket();
-  const job = await startProductAuditExport(db, queue, "all", new Date());
+  const job = await startLegacyExport(db, queue, "all", new Date());
   sqlite
     .prepare("UPDATE product_audit_export_jobs SET chunk_count = ? WHERE id = ?")
     .run(PRODUCT_AUDIT_EXPORT_MAX_CHUNKS - 1, job.id);

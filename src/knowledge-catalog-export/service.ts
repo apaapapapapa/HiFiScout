@@ -1,3 +1,5 @@
+import { createCompleteArchiveDownloadResponse } from "../export/complete-archive.js";
+import type { DataExportFormat } from "../export/contracts.js";
 import {
   createOrReuseKnowledgeCatalogExportJob,
   failKnowledgeCatalogExportJob,
@@ -28,8 +30,14 @@ export async function startKnowledgeCatalogExport(
   db: QueryableDatabase,
   queue: KnowledgeCatalogExportQueueProducer,
   now: Date = new Date(),
+  format: DataExportFormat = "complete",
 ): Promise<KnowledgeCatalogExportJob> {
-  const created = await createOrReuseKnowledgeCatalogExportJob(db, crypto.randomUUID(), now);
+  const created = await createOrReuseKnowledgeCatalogExportJob(
+    db,
+    crypto.randomUUID(),
+    now,
+    format,
+  );
   const message: KnowledgeCatalogExportQueueMessage = {
     kind: "knowledge_catalog_export",
     jobId: created.job.id,
@@ -150,9 +158,21 @@ export async function createKnowledgeCatalogExportDownloadResponse(
   bucket: R2Bucket,
   jobId: string,
   now: Date = new Date(),
+  part = 1,
 ): Promise<Response> {
+  const job = await getKnowledgeCatalogExportJob(db, jobId);
+  if (job?.format === "complete") {
+    return createCompleteArchiveDownloadResponse(
+      job,
+      bucket,
+      knowledgeCatalogExportChunkKey,
+      filename(job),
+      part,
+      now,
+    );
+  }
   return createCsvExportDownloadResponse(
-    await getKnowledgeCatalogExportJob(db, jobId),
+    job,
     bucket,
     {
       errorPrefix: "knowledge_catalog_export",
