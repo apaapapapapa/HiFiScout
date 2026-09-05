@@ -10,14 +10,75 @@
  *
  * - a listing joins a canonical entity only through a `matched` identity resolution that points at
  *   a verified Knowledge Catalog product; nothing else may merge two shops' listings;
- * - every other active listing gets its own `unresolved_listing` fallback entity, so identity
- *   coverage gaps never become missing search results;
+ * - other active listings use `unresolved_listing` fallback entities; safe resolved exact
+ *   manufacturer/model peers share the lowest eligible representative, without guessing matches;
  * - membership exists only for active listings, and `listing_product_id` is the membership primary
  *   key, so a listing can belong to exactly one entity;
  * - an entity with no active offers is deleted rather than shown with nothing to buy.
  */
 
-import { fallbackRepresentativeListingIdSql } from "./product-search-exact-identity.js";
+/** A confirmed Knowledge Catalog membership always wins over fallback exact-identity grouping. */
+function hasVerifiedCatalogMatch(alias: string): string {
+  return `EXISTS (
+    SELECT 1
+    FROM product_identity_resolutions r
+    JOIN knowledge_catalog_products kp
+      ON kp.id = r.catalog_product_id AND kp.verification_status = 'verified'
+    WHERE r.listing_product_id = ${alias}.id AND r.status = 'matched'
+  )`;
+}
+
+/** Base predicate for a listing that may participate in an unresolved exact-identity group. */
+export function eligibleExactIdentitySql(alias: string): string {
+  return `${alias}.is_active = 1
+    AND ${alias}.model_resolution_status = 'resolved'
+    AND COALESCE(${alias}.canonical_manufacturer_id, '') <> ''
+    AND COALESCE(${alias}.normalized_model, '') <> ''
+    AND NOT ${hasVerifiedCatalogMatch(alias)}`;
+}
+
+export function sameExactIdentitySql(left: string, right: string): string {
+  return `${right}.canonical_manufacturer_id = ${left}.canonical_manufacturer_id
+    AND ${right}.normalized_model = ${left}.normalized_model`;
+}
+
+/**
+ * Exact text identity is not enough when the taxonomy says the rows are different product types.
+ * `unclassified` and `other` are both ignored because they represent missing specificity, not
+ * contradictory evidence: `unclassified` is the classifier's "no answer", and `other` was that
+ * sentinel's id until the two were split, so listings still carry it for the same reason.
+ */
+export function compatibleExactIdentityCategoriesSql(alias: string): string {
+  return `(
+    SELECT COUNT(DISTINCT CASE
+      WHEN peer.primary_category_id NOT IN ('other', 'unclassified') THEN peer.primary_category_id
+      ELSE NULL
+    END
+    )
+    FROM products peer
+    WHERE ${eligibleExactIdentitySql("peer")}
+      AND ${sameExactIdentitySql(alias, "peer")}
+  ) <= 1`;
+}
+
+export function exactIdentityRepresentativeListingIdSql(alias: string): string {
+  return `(
+    SELECT MIN(anchor.id)
+    FROM products anchor
+    WHERE ${eligibleExactIdentitySql("anchor")}
+      AND ${sameExactIdentitySql(alias, "anchor")}
+  )`;
+}
+
+/**
+ * Final fallback owner, shared by entity creation and offer assignment.
+ * Keep whitespace after END for Wrangler's SQL-file statement splitter as well as SQLite.
+ */
+export function fallbackRepresentativeListingIdSql(alias: string): string {
+  return `CASE WHEN ${eligibleExactIdentitySql(alias)} AND ${compatibleExactIdentityCategoriesSql(alias)}
+    THEN ${exactIdentityRepresentativeListingIdSql(alias)} ELSE ${alias}.id END
+  `;
+}
 
 /**
  * How long a listing counts as "new".
