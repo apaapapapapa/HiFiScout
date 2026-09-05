@@ -1,31 +1,24 @@
 import type { CrawlPage } from "../crawler/types.js";
+import type { CrawlFetchProgress } from "./crawl-fetch-progress.js";
 import { firstMeasured } from "./read-accounting.js";
-import type { QueryableDatabase, SqliteBool } from "./types.js";
+import type { QueryableDatabase } from "./types.js";
 
 export type CrawlFetchSessionStatus = "collecting" | "finalizing" | "completed" | "failed";
 export type CrawlFetchPageState = "pending" | "fetched" | "parsed" | "ignored";
 export type CrawlFetchContinuationPhase = "fetch" | "parse" | "finalize";
 
-export interface CrawlFetchSessionRow {
+export interface CrawlFetchSessionRow extends CrawlFetchProgress {
   run_id: string;
   shop_key: string;
   requested_at: string;
   status: CrawlFetchSessionStatus;
+  progress_storage: "d1" | "durable_object";
   max_pages: number;
   page_limit: number;
-  coverage_incomplete: SqliteBool;
-  reached_end: SqliteBool;
-  pages_fetched: number;
-  pages_parsed: number;
-  last_completed_page: string | null;
-  continuation_sequence: number;
-  next_phase: CrawlFetchContinuationPhase | null;
-  next_page_key: string | null;
   finalization_claimed_at: string | null;
   final_crawl_run_id: number | null;
   error_message: string | null;
   created_at: string;
-  updated_at: string;
   finalized_at: string | null;
 }
 
@@ -41,6 +34,7 @@ export interface CrawlFetchPageRow {
   item_count: number;
   fetched_at: string | null;
   parsed_at: string | null;
+  progress_json: string | null;
 }
 
 export interface CrawlFetchPageInput {
@@ -104,6 +98,7 @@ export async function ensureCrawlFetchSession(
     pageLimit: number;
     pages: readonly CrawlFetchPageInput[];
     createdAt: string;
+    progressStorage?: "d1" | "durable_object";
   },
 ): Promise<{ session: CrawlFetchSessionRow; created: boolean }> {
   const pages = uniqueFrontierPages(input.pages);
@@ -112,8 +107,8 @@ export async function ensureCrawlFetchSession(
     .prepare(`
       INSERT INTO crawl_fetch_sessions (
         run_id, shop_key, requested_at, max_pages, page_limit,
-        continuation_sequence, next_phase, next_page_key, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
+        continuation_sequence, next_phase, next_page_key, created_at, updated_at, progress_storage
+      ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
       ON CONFLICT(run_id) DO NOTHING
     `)
     .bind(
@@ -126,6 +121,7 @@ export async function ensureCrawlFetchSession(
       first?.key || null,
       input.createdAt,
       input.createdAt,
+      input.progressStorage || "d1",
     )
     .run();
   const created = changes(insert) > 0;
@@ -156,6 +152,37 @@ export async function ensureCrawlFetchSession(
     throw new Error(`crawl fetch session identity mismatch: ${input.runId}`);
   }
   return { session, created };
+}
+
+/** Publish the completed collection summary once before detail planning / finalization. */
+export async function checkpointCrawlFetchProgress(
+  db: QueryableDatabase,
+  runId: string,
+  progress: CrawlFetchProgress,
+): Promise<void> {
+  await db
+    .prepare(`
+    UPDATE crawl_fetch_sessions SET
+      pages_fetched = ?, pages_parsed = ?, coverage_incomplete = ?, reached_end = ?,
+      last_completed_page = ?, continuation_sequence = ?, next_phase = ?, next_page_key = ?,
+      updated_at = ?
+    WHERE run_id = ? AND progress_storage = 'durable_object' AND status = 'collecting'
+      AND continuation_sequence < ?
+  `)
+    .bind(
+      progress.pages_fetched,
+      progress.pages_parsed,
+      progress.coverage_incomplete,
+      progress.reached_end,
+      progress.last_completed_page,
+      progress.continuation_sequence,
+      progress.next_phase,
+      progress.next_page_key,
+      progress.updated_at,
+      runId,
+      progress.continuation_sequence,
+    )
+    .run();
 }
 
 export async function getCrawlFetchPage(

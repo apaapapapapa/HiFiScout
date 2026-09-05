@@ -17,6 +17,11 @@ import { errorMessage } from "../types.js";
 import { createInvocationDeadline } from "../deadline.js";
 import { archiveEvidence } from "../evidence/evidence-archive.js";
 import {
+  acceptCollectionProgress,
+  nextCollectionProgress,
+  recoverCollectionProgress,
+} from "./collection-progress.js";
+import {
   type ResumableCrawlConsumeOptions,
   type ResumableCrawlConsumeResult,
   type ResumableCrawlQueueMessage,
@@ -39,6 +44,9 @@ export async function processFetch(
   if (!pageKey) throw new Error(`fetch continuation has no page: ${session.run_id}`);
   const row = await getCrawlFetchPage(env.DB, session.run_id, pageKey);
   if (!row) throw new Error(`crawl frontier page not found: ${pageKey}`);
+  if (recoverCollectionProgress(session, row, options.collectionProgress)) {
+    return continued(env, plugin, body, session.run_id, options);
+  }
   if (row.state !== "pending") return continued(env, plugin, body, session.run_id, options);
 
   const settings = getCrawlerSettings(env);
@@ -67,17 +75,27 @@ export async function processFetch(
         // anything, and which page comes next -- where it used to reread the run's frontier.
         const frontier = await crawlFetchFrontierProbe(env.DB, session.run_id, pageKey);
         if (shouldContinueAfterEmpty(plugin) || !frontier.hasStagedItems) {
+          const ignoredAt = new Date().toISOString();
+          const progress = nextCollectionProgress(session, {
+            coverage_incomplete: 1,
+            last_completed_page: pageKey,
+            next_phase: frontier.nextPendingPageKey ? "fetch" : "finalize",
+            next_page_key: frontier.nextPendingPageKey,
+            updated_at: ignoredAt,
+          });
           await recordCrawlFetchPageIgnored(env.DB, {
             runId: session.run_id,
             pageKey,
-            ignoredAt: new Date().toISOString(),
+            ignoredAt,
             currentSequence: session.continuation_sequence,
             nextPageKey: frontier.nextPendingPageKey,
+            progress,
           });
+          acceptCollectionProgress(progress, options.collectionProgress);
           return continued(env, plugin, body, session.run_id, options);
         }
       }
-      return failCollection(env, plugin, session.run_id, error);
+      return failCollection(env, plugin, session.run_id, error, options);
     }
 
     const fetchedAt = new Date().toISOString();
@@ -93,6 +111,12 @@ export async function processFetch(
         { at: fetchedAt, htmlBytes },
       );
     }
+    const progress = nextCollectionProgress(session, {
+      pages_fetched: session.pages_fetched + 1,
+      next_phase: "parse",
+      next_page_key: pageKey,
+      updated_at: fetchedAt,
+    });
     await recordCrawlFetchPageFetched(env.DB, {
       runId: session.run_id,
       pageKey,
@@ -100,7 +124,9 @@ export async function processFetch(
       htmlBytes,
       fetchedAt,
       currentSequence: session.continuation_sequence,
+      progress,
     });
+    acceptCollectionProgress(progress, options.collectionProgress);
     console.log(
       JSON.stringify({
         event: "crawl_fetch_page_fetched",
@@ -139,6 +165,9 @@ export async function processParse(
   if (!pageKey) throw new Error(`parse continuation has no page: ${session.run_id}`);
   const row = await getCrawlFetchPage(env.DB, session.run_id, pageKey);
   if (!row) throw new Error(`crawl frontier page not found: ${pageKey}`);
+  if (recoverCollectionProgress(session, row, options.collectionProgress)) {
+    return continued(env, plugin, body, session.run_id, options);
+  }
   if (row.state !== "fetched" || row.html_text == null) {
     return continued(env, plugin, body, session.run_id, options);
   }
@@ -187,7 +216,7 @@ async function parseAndCommitPage(
           ),
         );
     }
-    return failCollection(env, plugin, session.run_id, error);
+    return failCollection(env, plugin, session.run_id, error, options);
   }
   const products = parsed.products;
   const discoveryStartedAt = performance.now();
@@ -234,18 +263,31 @@ async function parseAndCommitPage(
   if (reachedEnd && nextPageKey) coverageIncomplete = true;
   if (reachedEnd) nextPageKey = null;
 
+  const parsedAt = new Date().toISOString();
+  const progress = nextCollectionProgress(session, {
+    pages_fetched: session.pages_fetched + (fetched ? 1 : 0),
+    pages_parsed: session.pages_parsed + 1,
+    coverage_incomplete: coverageIncomplete ? 1 : session.coverage_incomplete,
+    reached_end: reachedEnd ? 1 : session.reached_end,
+    last_completed_page: pageKey,
+    next_phase: nextPageKey ? "fetch" : "finalize",
+    next_page_key: nextPageKey,
+    updated_at: parsedAt,
+  });
   await recordCrawlFetchPageParsed(env.DB, {
     runId: session.run_id,
     pageKey,
     products,
     discoveredPages: accepted,
-    parsedAt: new Date().toISOString(),
+    parsedAt,
     currentSequence: session.continuation_sequence,
     nextPageKey,
     coverageIncomplete,
     reachedEnd,
     fetched,
+    progress,
   });
+  acceptCollectionProgress(progress, options.collectionProgress);
   console.log(
     JSON.stringify({
       event: "crawl_fetch_page_parsed",

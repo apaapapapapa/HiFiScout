@@ -17,7 +17,7 @@ The per-shop `CrawlScheduler` Durable Object is the authoritative crawl control 
    - Relay inventory recheck.
 6. Any seller pacing delay is represented by an Alarm timestamp. The control plane does not `sleep()` or hold an invocation open while waiting.
 7. Direct and Relay HTTP both use PREPARE -> Alarm -> FETCH semantics. Relay permits can expire; an expired permit is discarded and prepared again rather than bypassing pacing.
-8. D1 crawl-session rows preserve resumable collection state. The dispatch token fences delayed or replayed `/start-crawl` deliveries so an older generation cannot execute a newer reservation.
+8. The Durable Object stores the collection cursor and counters with its next command. D1 page rows retain committed payloads and recovery receipts; the session receives a summary before finalization. The dispatch token fences delayed or replayed `/start-crawl` deliveries so an older generation cannot execute a newer reservation.
 9. A terminal crawl releases only its exact D1 dispatch token. A continuation or retry keeps the reservation.
 
 The Durable Object is the single-flight authority. D1 does not maintain a second execution lease. The D1 dispatch row is a generation fence and scheduler recovery marker, not a Queue-consumer lease.
@@ -29,8 +29,8 @@ The old public `POST /api/admin/crawl` is blocked by `src/index.ts`, regardless 
 ## Bounded work and persistence
 
 - The owning DO fetches and parses one listing page in the same Alarm, then atomically commits its
-  products, discovered frontier and session progress. No successful listing HTML is retained.
-  This removes the intermediate fetched-page/session UPDATEs and the extra parse Alarm; it does
+  products, discovered frontier and a progress receipt. No successful listing HTML is retained.
+  This removes the intermediate fetched-page UPDATE and the extra parse Alarm; it does
   not combine multiple pages into one invocation. The standalone executor retains the split path,
   and a pre-deployment `fetched` row still resumes through parse without another seller request.
   Terminal cleanup clears staged products.
@@ -42,6 +42,15 @@ The old public `POST /api/admin/crawl` is blocked by `src/index.ts`, regardless 
   Alarms ([limits](https://developers.cloudflare.com/durable-objects/platform/limits/)); this does
   not justify moving collection back into Cron or HTTP requests. Keep the offline parser regression
   gate and inspect actual `exceededCpu`/CPU metrics after deployment.
+- New executions use `progress_storage = 'durable_object'`. Combined fetch/parse, legacy split and ignored-page transitions
+  put a compact, versioned receipt in `crawl_fetch_pages.progress_json` in the same D1 page update.
+  After that transaction succeeds, the existing DO execution write atomically stores the next
+  command, sequence, counters and coverage flags. There is no additional DO key write or Alarm for
+  collection progress. Page HTML/products and the growing frontier never enter the DO execution value.
+- The D1 session counters are a checkpoint, not live per-page progress for DO-owned collections.
+  Before entering detail/finalize, and on a handled collection failure, the owner checkpoints the
+  counters/coverage into D1. Finalization and complete-inventory decisions retain their existing
+  D1 contract. Observe live progress through `crawl_do_step` logs rather than the D1 checkpoint.
 - Detail enrichment plans the run once. `src/crawler/detail-enrichment-plan.ts` stores immutable
   target chunks separately from compact cursor/progress state, including an explicit empty-plan
   state. An Alarm reads its current chunk rather than rewriting/reloading the full plan.
@@ -88,6 +97,19 @@ A repeated delivery is safe:
 - if the Durable Object still owns that token, `/start-crawl` is idempotent and re-arms its Alarm;
 - if another token is active, the Durable Object returns `409 scheduler busy`;
 - if D1 no longer owns the delivered token, the executor returns `stale_dispatch` without crawling.
+
+If D1 commits a listing page but the DO execution write is interrupted, the retried step reads that
+exact page's receipt before fetch/parse. It restores the next command and counters without another
+seller fetch, parse, discovery insertion or counter increment. A failed page transaction leaves the
+old DO progress in place. Receipt identity and sequence must match the run/page generation; corrupt
+or cross-generation progress fails closed. Recovery never searches the whole frontier.
+
+Migration 0089 defaults existing sessions to `d1`. Already accepted executions without the DO
+progress field finish through the legacy atomic page/session update path; only newly accepted
+executions opt in. Keep the `phase2_crawl_execution` key stable. Deploy the additive migration before
+the Worker. After DO-owned runs start, prefer a forward fix: rolling back to a Worker that predates
+this progress format requires stopping new dispatch and draining the active DO-owned runs first.
+Deleting DO state is not a rollback procedure.
 
 ## Seller pacing
 

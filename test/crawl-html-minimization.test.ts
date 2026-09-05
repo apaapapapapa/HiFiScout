@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
 import { enrichProductCategories } from "../src/crawler/category-enricher.js";
+import type { CollectionProgressState } from "../src/crawler/collection-progress.js";
 import { processFetch, processParse } from "../src/crawler/resumable-page-steps.js";
 import { processFinalize } from "../src/crawler/resumable-finalize.js";
 import { readStagedDetailEvidence } from "../src/crawler/staged-detail-evidence.js";
@@ -36,10 +37,15 @@ const HTML =
 const home = getShopPlugin("home-shokai")!;
 const fujiya = getShopPlugin("fujiya-avic")!;
 
-async function session(db: ReturnType<typeof migratedSqlite>["db"], runId: string) {
+async function session(
+  db: ReturnType<typeof migratedSqlite>["db"],
+  runId: string,
+  progressStorage: "d1" | "durable_object" = "d1",
+) {
   return (
     await ensureCrawlFetchSession(db, {
       runId,
+      progressStorage,
       shopKey: home.key,
       requestedAt: AT,
       maxPages: 1,
@@ -50,54 +56,64 @@ async function session(db: ReturnType<typeof migratedSqlite>["db"], runId: strin
   ).session;
 }
 
-test("a DO restart after the atomic inline commit resumes without HTML or another seller fetch", async () => {
-  const { db, sqlite } = migratedSqlite();
-  const initial = await session(db, "inline");
-  let fetches = 0;
-  const interrupted = asQueryableDatabase({
-    prepare: db.prepare.bind(db),
-    async batch(statements: D1PreparedStatement[]) {
-      await db.batch(statements);
-      throw new Error("isolate stopped after commit");
-    },
+for (const mode of ["d1", "durable_object"] as const) {
+  test(`a ${mode} restart after the atomic inline commit resumes without HTML or another seller fetch`, async () => {
+    const { db, sqlite } = migratedSqlite();
+    const initial = await session(db, "inline", mode);
+    const collectionProgress: CollectionProgressState | undefined =
+      mode === "durable_object" ? { value: null } : undefined;
+    let fetches = 0;
+    const interrupted = asQueryableDatabase({
+      prepare: db.prepare.bind(db),
+      async batch(statements: D1PreparedStatement[]) {
+        await db.batch(statements);
+        throw new Error("isolate stopped after commit");
+      },
+    });
+    const options = {
+      collectionProgress,
+      parseFetchedPage: true,
+      fetchHtmlPage: async () => {
+        fetches++;
+        return HTML;
+      },
+    };
+    const body = {
+      shopKey: home.key,
+      force: true,
+      requestedAt: AT,
+      collectionRunId: initial.run_id,
+    };
+    await assert.rejects(
+      processFetch({ DB: interrupted } as ResumableRuntimeEnv, home, initial, body, options),
+      /after commit/,
+    );
+    const resumed = await processFetch(
+      { DB: db } as ResumableRuntimeEnv,
+      home,
+      initial,
+      body,
+      options,
+    );
+    assert.equal(resumed.kind, "continued");
+    assert.equal(fetches, 1);
+    const saved = await getCrawlFetchPage(db, initial.run_id, PAGE);
+    assert.equal(saved?.html_text, null);
+    assert.equal(saved?.state, "parsed");
+    assert.ok((saved?.item_count ?? 0) > 0);
+    assert.equal(saved?.html_bytes, new TextEncoder().encode(HTML).byteLength);
+    const progress = await getCrawlFetchSession(db, initial.run_id);
+    assert.equal(progress?.pages_fetched, 1);
+    assert.equal(progress?.pages_parsed, 1);
+    assert.equal(progress?.continuation_sequence, 1);
+    assert.equal(progress?.next_phase, "finalize");
+    assert.equal(
+      sqlite.prepare("SELECT COUNT(*) n FROM products").get()?.n,
+      0,
+      "collection must not publish partial inventory",
+    );
   });
-  const options = {
-    parseFetchedPage: true,
-    fetchHtmlPage: async () => {
-      fetches++;
-      return HTML;
-    },
-  };
-  const body = { shopKey: home.key, force: true, requestedAt: AT, collectionRunId: initial.run_id };
-  await assert.rejects(
-    processFetch({ DB: interrupted } as ResumableRuntimeEnv, home, initial, body, options),
-    /after commit/,
-  );
-  const resumed = await processFetch(
-    { DB: db } as ResumableRuntimeEnv,
-    home,
-    initial,
-    body,
-    options,
-  );
-  assert.equal(resumed.kind, "continued");
-  assert.equal(fetches, 1);
-  const saved = await getCrawlFetchPage(db, initial.run_id, PAGE);
-  assert.equal(saved?.html_text, null);
-  assert.equal(saved?.state, "parsed");
-  assert.ok((saved?.item_count ?? 0) > 0);
-  assert.equal(saved?.html_bytes, new TextEncoder().encode(HTML).byteLength);
-  const progress = await getCrawlFetchSession(db, initial.run_id);
-  assert.equal(progress?.pages_fetched, 1);
-  assert.equal(progress?.pages_parsed, 1);
-  assert.equal(progress?.continuation_sequence, 1);
-  assert.equal(progress?.next_phase, "finalize");
-  assert.equal(
-    sqlite.prepare("SELECT COUNT(*) n FROM products").get()?.n,
-    0,
-    "collection must not publish partial inventory",
-  );
-});
+}
 
 test("an HTML checkpoint written before deployment is parsed without refetching", async () => {
   const { db } = migratedSqlite();

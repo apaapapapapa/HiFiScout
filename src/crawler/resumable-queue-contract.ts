@@ -5,6 +5,7 @@ import type {
 import { crawlDispatchToken } from "../db/shop-state-repository.js";
 import type { QueryableDatabase } from "../db/types.js";
 import type { CrawlQueueMessage, CrawlResult, CrawlerEnv, FetchHtmlPageOptions } from "./types.js";
+import type { CollectionProgressState } from "./collection-progress.js";
 
 export type ResumableRuntimeEnv = CrawlerEnv & { DB: QueryableDatabase };
 
@@ -20,6 +21,8 @@ export interface ResumableCrawlQueueMessage extends CrawlQueueMessage {
 }
 
 export interface ResumableCrawlConsumeOptions {
+  /** New DO executions keep collection cursors here; legacy executions finish with D1 progress. */
+  collectionProgress?: CollectionProgressState;
   /** Queue is the legacy transport; return_only lets a Durable Object persist the next command. */
   continuationDelivery?: "queue" | "return_only";
   /** Create/read the D1 session and return its canonical continuation without executing it. */

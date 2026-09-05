@@ -6,6 +6,8 @@ import {
   recordCrawlFetchDetailPage,
 } from "../db/crawl-fetch-detail-repository.js";
 import { getCrawlFetchSession } from "../db/crawl-fetch-session-repository.js";
+import type { StoredCollectionProgress } from "../db/crawl-fetch-progress.js";
+import type { CollectionProgressState } from "./collection-progress.js";
 import { syncProductSearchEntities } from "../db/product-search-entity-repository.js";
 import {
   accountReads,
@@ -71,6 +73,8 @@ interface StoredExecution {
   detailDbUsage?: StoredDetailDbUsage;
   /** Durable marker preventing terminal-check reads from producing duplicate completion metrics. */
   detailDbUsageLogged?: boolean;
+  /** Missing on pre-deployment executions, which keep their D1 progress until completion. */
+  collectionProgress?: StoredCollectionProgress | null;
 }
 
 interface StoredDetailDbUsage {
@@ -196,6 +200,7 @@ export class CrawlScheduler extends DurableObject<Env> {
       message,
       acceptedAt,
       nextOriginNotBeforeMs: 0,
+      collectionProgress: null,
     });
     await this.ctx.storage.setAlarm(alarmAt(Date.now()));
     console.log(
@@ -768,11 +773,16 @@ export class CrawlScheduler extends DurableObject<Env> {
       // Read rather than plan: this only surfaces the instant an existing plan already recorded, so
       // a run that never entered the detail phase is not made to pay for planning here.
       const detailDecisionAt = await this.detailDecisionAt(execution.message.collectionRunId);
+      const collectionProgress: CollectionProgressState | undefined =
+        "collectionProgress" in activeExecution
+          ? { value: activeExecution.collectionProgress ?? null }
+          : undefined;
       const result = await executeResumableCrawlStep(
         withoutInlineInventoryRecheck(this.env, plugin),
         message,
         {
           continuationDelivery: "return_only",
+          collectionProgress,
           initializeOnly: !message.continuation,
           parseFetchedPage: true,
           requireStagedDetailFetches: Boolean(plugin.capabilities.detailCategoryEvidence),
@@ -812,6 +822,7 @@ export class CrawlScheduler extends DurableObject<Env> {
         await this.ctx.storage.put<StoredExecution>(EXECUTION_STORAGE_KEY, {
           ...activeExecution,
           message: result.continuationMessage,
+          ...(collectionProgress ? { collectionProgress: collectionProgress.value } : {}),
           nextOriginNotBeforeMs,
           permit: undefined,
           relayPermit: undefined,

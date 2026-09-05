@@ -7,6 +7,8 @@
   "workers_dev": true,
   "observability": { "enabled": true, "traces": { "enabled": true } },
   "exports": {
+    "default": { "type": "worker", "cache": { "enabled": false } },
+    "PublicSearchCache": { "type": "worker", "cache": { "enabled": true } },
     "CrawlScheduler": { "type": "durable-object", "storage": "sqlite" }
   },
   "durable_objects": {

@@ -11,12 +11,17 @@ import {
 import { LEGACY_CATEGORY_MIGRATION_RULES, TAXONOMY_VERSION } from "../catalog/categories.js";
 import { PRODUCT_SEARCH_ROUTE, SUGGEST_ROUTE } from "../api/public-route-contracts.js";
 import { routeMatches } from "../api/route-contract.js";
-import { searchProducts } from "../db/product-search-price-index-repository.js";
-import { suggestProducts } from "../db/product-suggest-repository.js";
-import { cachedJson, json } from "./response.js";
+import { publicSearchResponse } from "./public-search-response.js";
+import { cachedResponse, json } from "./response.js";
 
-/** Seconds the edge may serve a cached contract-backed read response. */
-const READ_CACHE_TTL_SECONDS = 30;
+function cachedSearch(url: URL, env: Env, ctx: ExecutionContext): Promise<Response> {
+  // The response is public. Client cookies, authorization and cache-busting headers must not
+  // fragment/bypass the internal cache. The outer router already checked the rate limit.
+  const request = new Request(url);
+  if (ctx.exports?.PublicSearchCache) return ctx.exports.PublicSearchCache.fetch(request);
+  // Non-Workers callers keep the local Cache API path, without stacking two freshness windows.
+  return cachedResponse(request, ctx, () => publicSearchResponse(request, env));
+}
 
 interface RuntimeRoute {
   contract: typeof PRODUCT_SEARCH_ROUTE | typeof SUGGEST_ROUTE;
@@ -26,7 +31,7 @@ interface RuntimeRoute {
 const runtimeRoutes: readonly RuntimeRoute[] = [
   {
     contract: PRODUCT_SEARCH_ROUTE,
-    async handle(request, env, ctx, url) {
+    async handle(_request, env, ctx, url) {
       const validationError = validateProductQuery(url);
       if (validationError) return json({ error: validationError }, { status: 400 });
       const query = parseProductQuery(url);
@@ -43,22 +48,16 @@ const runtimeRoutes: readonly RuntimeRoute[] = [
           }),
         );
       }
-      const cacheRequest = new Request(canonicalProductQueryUrl(url, query).toString(), request);
-      return cachedJson(cacheRequest, ctx, READ_CACHE_TTL_SECONDS, () =>
-        searchProducts(env.DB, query),
-      );
+      return cachedSearch(canonicalProductQueryUrl(url, query), env, ctx);
     },
   },
   {
     contract: SUGGEST_ROUTE,
-    async handle(request, env, ctx, url) {
+    async handle(_request, env, ctx, url) {
       const validationError = validateSuggestQuery(url);
       if (validationError) return json({ error: validationError }, { status: 400 });
       const query = parseSuggestQuery(url);
-      const cacheRequest = new Request(canonicalSuggestQueryUrl(url, query).toString(), request);
-      return cachedJson(cacheRequest, ctx, READ_CACHE_TTL_SECONDS, async () => ({
-        suggestions: await suggestProducts(env.DB, query.q),
-      }));
+      return cachedSearch(canonicalSuggestQueryUrl(url, query), env, ctx);
     },
   },
 ];
