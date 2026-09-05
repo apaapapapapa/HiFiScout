@@ -57,7 +57,10 @@ const cases = [
 ] as const;
 
 for (const { reason, status } of cases) {
-  test(`catalog renders rather than rejecting ${reason} metadata`, async ({ page, catalogPage }) => {
+  test(`catalog renders rather than rejecting ${reason} metadata`, async ({
+    page,
+    catalogPage,
+  }) => {
     await page.route("**/api/meta", (route) =>
       route.fulfill({ json: projectionMetadata(reason, status) }),
     );
