@@ -1,0 +1,25 @@
+name: Diagnose Live Metadata
+
+on:
+  push:
+    branches: [fix/e2e-live-metadata-validation]
+    paths:
+      - .github/workflows/diagnose-live-meta.yml
+
+permissions:
+  contents: read
+
+jobs:
+  metadata-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: ./.github/actions/setup-node-deps
+      - name: Check the public metadata contract without database credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          source .github/config/production.env
+          export E2E_BASE_URL="$PRODUCTION_BASE_URL"
+          vp exec playwright test --config e2e/playwright.config.ts e2e/tests/meta-contract.spec.ts
