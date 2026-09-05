@@ -71,15 +71,16 @@ are cached as font files, avoiding apt repository updates on every run. Unit-tes
 Short source/type/parser/build checks share one runner; expensive suites remain parallel. See
 `.github/workflows/ci.yml` and `vite.config.ts` for the required job graph and task-cache inputs.
 
-Unit shards use measured per-file weights in `.github/config/unit-test-weights.json`, plus a small
-per-file import allowance. The sequencer schedules long files first and deterministically assigns
+CI runs four unit-test shards using measured per-file weights in
+`.github/config/unit-test-weights.json`, plus a small per-file import allowance.
+The sequencer schedules long files first and deterministically assigns
 every discovered test exactly once; new tests receive a conservative default weight. CI preserves
 the JSON timing reports for seven days and summarizes job duration separately from time before
 the first step. Compare equivalent revisions and cache states; parallel job seconds do not add up
 to elapsed CI time.
 
-To refresh weights, download both `unit-timings-*` artifacts and run
-`vp exec tsx scripts/ci/update-test-weights.ts <shard-1-report> <shard-2-report>` from the repository
+To refresh weights, download all four `unit-timings-*` artifacts and run
+`vp exec tsx scripts/ci/update-test-weights.ts <shard-1-report> <shard-2-report> <shard-3-report> <shard-4-report>` from the repository
 root. The updater requires passing reports covering every current test file. Alternatively collect
 one complete local report with
 `vp test run --reporter=json --outputFile=.generated/unit-timings.json` and pass that file. Review
@@ -138,8 +139,11 @@ These are structural/behavioral gates. Local SQLite changes, query plans and wal
 
 ## D1 write budget regressions
 
-`test/d1-write-budget.test.ts` runs the production repositories against an isolated Miniflare D1
-with every checked-in migration. It asserts on workerd's `meta.rows_written`, which includes
+`test/d1-write-budget.test.ts`, `test/d1-crawl-checkpoint-budget.test.ts` and
+`test/d1-crawl-collection-budget.test.ts` run the production repositories against isolated
+Miniflare D1 databases with every checked-in migration. Each test creates and disposes its own
+database through `test/helpers/d1-write-budget.ts`, so the independent scenarios can run on
+different CI shards. They assert on workerd's `meta.rows_written`, which includes
 secondary indexes, triggers and AUTOINCREMENT's internal sequence. A logical `changes = 0` or a
 small `batch()` count alone does not prove a zero-write replay. These tests use local fixtures and
 consume no production Cloudflare quota.
