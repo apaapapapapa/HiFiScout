@@ -1,7 +1,10 @@
 import type { QueryableDatabase } from "./types.js";
 import { firstMeasured } from "./read-accounting.js";
+import type { CategoryEvidenceInput } from "../catalog/types.js";
+import { isRecord } from "../types.js";
 
 const DETAIL_PAGE_KEY_PREFIX = "__hifiscout_category_detail__:";
+const EVIDENCE_PAGE_KEY_PREFIX = "__hifiscout_category_evidence_v1__:";
 
 export interface CrawlFetchDetailPageRow {
   run_id: string;
@@ -10,6 +13,8 @@ export interface CrawlFetchDetailPageRow {
   error_message: string | null;
   html_bytes: number;
   fetched_at: string;
+  /** Undefined means a legacy HTML/error row; [] is a committed negative extraction result. */
+  category_evidence?: CategoryEvidenceInput[];
 }
 
 interface DetailStagingRow {
@@ -21,6 +26,10 @@ interface DetailStagingRow {
 
 function detailPageKey(targetUrl: string): string {
   return `${DETAIL_PAGE_KEY_PREFIX}${targetUrl}`;
+}
+
+function evidencePageKey(targetUrl: string): string {
+  return `${EVIDENCE_PAGE_KEY_PREFIX}${targetUrl}`;
 }
 
 function stagedErrorMessage(value: string | null): string | null {
@@ -41,6 +50,29 @@ function stagedErrorMessage(value: string | null): string | null {
   return null;
 }
 
+function stagedCategoryEvidence(value: string | null): CategoryEvidenceInput[] | undefined {
+  if (!value) return undefined;
+  const payload: unknown = JSON.parse(value);
+  if (!isRecord(payload) || payload.kind !== "category_evidence") return undefined;
+  if (payload.version !== 1 || !Array.isArray(payload.evidence)) {
+    throw new Error("invalid staged category evidence");
+  }
+  return payload.evidence.map((item: unknown) => {
+    if (
+      !isRecord(item) ||
+      ["categoryId", "source", "strength", "value"].some(
+        (key) => item[key] !== undefined && typeof item[key] !== "string",
+      ) ||
+      (item.categoryIds !== undefined &&
+        (!Array.isArray(item.categoryIds) ||
+          item.categoryIds.some((id: unknown) => typeof id !== "string")))
+    ) {
+      throw new Error("invalid staged category evidence item");
+    }
+    return item as CategoryEvidenceInput;
+  });
+}
+
 /**
  * Detail responses reuse the existing crawl_fetch_pages staging table. They are terminal `ignored`
  * rows with ordinals appended after the parsed listing frontier, so they cannot participate in page
@@ -57,9 +89,16 @@ export async function getCrawlFetchDetailPage(
       .prepare(`
       SELECT html_text, products_json, html_bytes, fetched_at
       FROM crawl_fetch_pages
-      WHERE run_id = ? AND page_key = ? AND state = 'ignored'
+      WHERE run_id = ? AND page_key IN (?, ?) AND state = 'ignored'
+      ORDER BY (page_key = ?) DESC
+      LIMIT 1
     `)
-      .bind(runId, detailPageKey(targetUrl)),
+      .bind(
+        runId,
+        evidencePageKey(targetUrl),
+        detailPageKey(targetUrl),
+        evidencePageKey(targetUrl),
+      ),
   );
   if (!staged) return null;
   if (!staged.fetched_at) throw new Error(`invalid staged category detail fetch: ${targetUrl}`);
@@ -70,6 +109,7 @@ export async function getCrawlFetchDetailPage(
     error_message: stagedErrorMessage(staged.products_json),
     html_bytes: Number(staged.html_bytes || 0),
     fetched_at: staged.fetched_at,
+    category_evidence: stagedCategoryEvidence(staged.products_json),
   };
 }
 
@@ -99,10 +139,10 @@ export async function hasCrawlFetchDetailPage(
       .prepare(`
       SELECT 1 AS committed
       FROM crawl_fetch_pages
-      WHERE run_id = ? AND page_key = ? AND state = 'ignored'
+      WHERE run_id = ? AND page_key IN (?, ?) AND state = 'ignored'
       LIMIT 1
     `)
-      .bind(runId, detailPageKey(targetUrl)),
+      .bind(runId, evidencePageKey(targetUrl), detailPageKey(targetUrl)),
   );
   return staged != null;
 }
@@ -120,34 +160,52 @@ export async function recordCrawlFetchDetailPage(
     html?: string | null;
     errorMessage?: string | null;
     fetchedAt: string;
+    evidence?: readonly CategoryEvidenceInput[];
+    htmlBytes?: number;
   },
 ): Promise<void> {
-  const html = input.html ?? null;
+  const html = input.evidence === undefined ? (input.html ?? null) : null;
   const errorMessage = input.errorMessage?.slice(0, 1000) || null;
-  const htmlBytes = html == null ? 0 : new TextEncoder().encode(html).byteLength;
-  const pageKey = detailPageKey(input.targetUrl);
+  const htmlBytes =
+    input.htmlBytes ?? (html == null ? 0 : new TextEncoder().encode(html).byteLength);
+  // An older Worker must not mistake a result it cannot decode for a completed HTML fetch.
+  const pageKey =
+    input.evidence === undefined
+      ? detailPageKey(input.targetUrl)
+      : evidencePageKey(input.targetUrl);
   const pageJson = JSON.stringify({ kind: "category_detail", targetUrl: input.targetUrl });
-  const metadataJson = errorMessage ? JSON.stringify({ errorMessage }) : null;
+  const metadataJson = errorMessage
+    ? JSON.stringify({ errorMessage })
+    : input.evidence === undefined
+      ? null
+      : JSON.stringify({ kind: "category_evidence", version: 1, evidence: input.evidence });
 
   await db
     .prepare(`
       INSERT OR IGNORE INTO crawl_fetch_pages
         (run_id, page_key, page_json, ordinal, state, html_text, products_json,
          html_bytes, item_count, fetched_at, parsed_at)
-      SELECT ?, ?, ?, COALESCE(MAX(ordinal), -1) + 1, 'ignored', ?, ?, ?, 0, ?, ?
-      FROM crawl_fetch_pages
-      WHERE run_id = ?
+      SELECT ?, ?, ?, (
+        SELECT COALESCE(MAX(ordinal), -1) + 1 FROM crawl_fetch_pages WHERE run_id = ?
+      ), 'ignored', ?, ?, ?, 0, ?, ?
+      WHERE NOT EXISTS (
+        SELECT 1 FROM crawl_fetch_pages existing
+        WHERE existing.run_id = ? AND existing.page_key IN (?, ?) AND existing.state = 'ignored'
+      )
     `)
     .bind(
       input.runId,
       pageKey,
       pageJson,
+      input.runId,
       html,
       metadataJson,
       htmlBytes,
       input.fetchedAt,
       input.fetchedAt,
       input.runId,
+      evidencePageKey(input.targetUrl),
+      detailPageKey(input.targetUrl),
     )
     .run();
 }

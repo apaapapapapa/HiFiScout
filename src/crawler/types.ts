@@ -300,11 +300,21 @@ export interface CatalogCapability {
   readonly categoryPolicy?: CategoryPolicyInput;
 }
 
+/** Only the listing fields the registered detail extractors use. No full product or HTML needed. */
+export type DetailCategoryExtractionInput = Pick<
+  NormalizedCatalogProduct,
+  "sourceId" | "model" | "title"
+>;
+
+export type DetailEvidenceLoader = (
+  product: NormalizedCatalogProduct,
+) => Promise<CategoryEvidenceInput[]>;
+
 /** Optional seller-specific detail-page evidence extraction. */
 export interface DetailCategoryEvidenceCapability {
   extract(
     html: string,
-    product: NormalizedCatalogProduct,
+    product: DetailCategoryExtractionInput,
   ): CategoryEvidenceInput[] | Promise<CategoryEvidenceInput[]>;
 }
 

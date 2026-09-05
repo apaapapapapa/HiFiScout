@@ -27,6 +27,7 @@ import type {
   CategoryEnrichmentDbMetrics,
   CategoryEnrichmentResult,
   DetailHtmlFetcher,
+  DetailEvidenceLoader,
   FetchHtmlPageOptions,
   ShopPlugin,
 } from "./types.js";
@@ -41,6 +42,8 @@ interface EnrichProductCategoriesOptions {
   fetchOptions: FetchHtmlPageOptions;
   now?: Date;
   existingRows?: ExistingCategoryEnrichmentState[] | null;
+  /** Planning or durable replay supplies the same evidence without replaying an HTML response. */
+  loadDetailEvidence?: DetailEvidenceLoader;
 }
 
 function parseJson(value: string | undefined): Record<string, unknown> {
@@ -294,6 +297,7 @@ export async function enrichProductCategories({
   fetchOptions,
   now = new Date(),
   existingRows = null,
+  loadDetailEvidence,
 }: EnrichProductCategoriesOptions): Promise<CategoryEnrichmentResult> {
   const catalog = await applyKnowledgeCatalogEvidence(db, products, now);
   let existingListingUsage = sumDbUsageMetrics();
@@ -387,8 +391,9 @@ export async function enrichProductCategories({
 
     detailRequests += 1;
     try {
-      const html = await transport.fetchHtmlPage(target.sourceUrl, fetchOptions);
-      const detailEvidence = await extractor(html, target);
+      const detailEvidence = loadDetailEvidence
+        ? await loadDetailEvidence(target)
+        : await extractor(await transport.fetchHtmlPage(target.sourceUrl, fetchOptions), target);
       decision.detailEvidence = Array.isArray(detailEvidence) ? detailEvidence : [];
     } catch (error) {
       console.warn(
