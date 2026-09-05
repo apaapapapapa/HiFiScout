@@ -86,11 +86,11 @@ test("D1 batch revision guard atomically preserves the winning catalog edit and 
     assert.equal(preview.status, "ready");
     const racing = {
       prepare: db.prepare.bind(db),
-      async batch(statements: D1PreparedStatement[]) {
+      async batch<T = unknown>(statements: D1PreparedStatement[]) {
         await db
           .prepare("UPDATE knowledge_catalog_products SET canonical_name='Race winner' WHERE id=1")
           .run();
-        return db.batch(statements);
+        return db.batch<T>(statements);
       },
     };
     const result = await applyAdminCsvChange(racing, {

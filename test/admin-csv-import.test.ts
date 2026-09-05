@@ -195,9 +195,9 @@ test("race inside the write transaction rolls back overrides and the import rece
     const preview = await previewAdminCsvChange(db, change());
     const racing = {
       prepare: db.prepare.bind(db),
-      async batch(statements: D1PreparedStatement[]) {
+      async batch<T = unknown>(statements: D1PreparedStatement[]) {
         sqlite.exec("UPDATE products SET model='Race winner' WHERE id=90001");
-        return db.batch(statements);
+        return db.batch<T>(statements);
       },
     };
     const result = await applyAdminCsvChange(racing, {
@@ -234,8 +234,8 @@ test("a projection failure leaves a durable receipt that another upload resumes"
           throw new Error("injected outage");
         return db.prepare(sql);
       },
-      async batch(statements: D1PreparedStatement[]) {
-        const result = await db.batch(statements);
+      async batch<T = unknown>(statements: D1PreparedStatement[]) {
+        const result = await db.batch<T>(statements);
         committed = true;
         return result;
       },
