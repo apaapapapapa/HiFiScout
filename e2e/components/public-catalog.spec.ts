@@ -90,6 +90,9 @@ test("initial metadata failure stays visible and retries the complete initializa
   await expect(page.locator("#products")).toContainText("検索に必要な情報を取得できませんでした");
   expect((await page.locator("#products").boundingBox())!.y).toBeLessThan(650);
   expect(seen.searches).toHaveLength(0);
+  await page.locator("#favoritesOnly").check();
+  await expect(page.locator("#products")).toContainText("お気に入りはまだありません");
+  await page.locator("#favoritesOnly").uncheck();
   await page.getByRole("button", { name: "再読み込み", exact: true }).click();
   await expect(page.locator(".card")).toHaveCount(1);
   expect(seen.meta).toBe(2);

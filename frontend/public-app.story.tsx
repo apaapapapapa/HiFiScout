@@ -1,9 +1,13 @@
 import { PublicApp } from "./public-app.js";
-import "../public/styles.css";
-import "../public/price-index.css";
-import "../public/brand.css";
-import "../public/design-system.css";
 
 export function Default() {
-  return <PublicApp />;
+  return (
+    <>
+      <link rel="stylesheet" href="/styles.css" />
+      <link rel="stylesheet" href="/price-index.css" />
+      <link rel="stylesheet" href="/brand.css" />
+      <link rel="stylesheet" href="/design-system.css" />
+      <PublicApp />
+    </>
+  );
 }

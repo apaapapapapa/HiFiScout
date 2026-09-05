@@ -413,8 +413,14 @@ main {
 }
 
 .product-title-link {
+  border: 0;
+  padding: 0;
+  background: transparent;
   color: var(--hs-ink);
+  font: inherit;
+  letter-spacing: inherit;
   text-decoration: none;
+  cursor: pointer;
 }
 
 .product-title-link:hover {
@@ -680,6 +686,7 @@ dialog::backdrop {
   .products.view-list .card,
   .products.view-cards .card {
     display: flex;
+    flex-direction: column;
     min-height: 0;
     padding: 18px;
     border-bottom: 1px solid var(--hs-divider);

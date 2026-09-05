@@ -576,7 +576,7 @@ export function PublicApp() {
         controllerRef.current?.abort();
         requestSequenceRef.current++;
         setLoading(false);
-        setErrorMessage("");
+        if (bootedRef.current) setErrorMessage("");
         return;
       }
       if (!bootedRef.current) return;
