@@ -56,6 +56,7 @@ test("entity and membership transitions are committed atomically before aggregat
     "membership",
     "membership",
     "membership",
+    "refresh", // Pending correction provenance, even if membership was unchanged.
     "prune",
     "prune",
     // Aggregates, finishes, category membership (upsert + stale-row sweep), direct-category
@@ -68,12 +69,13 @@ test("entity and membership transitions are committed atomically before aggregat
     "refresh",
     "prune",
   ]);
-  assert.equal(db.batched.length, 15);
+  assert.equal(db.batched.length, 16);
   assert.deepEqual(
-    writes({ calls: db.batched.slice(0, 8) }).map((statement) =>
+    writes({ calls: db.batched.slice(0, 9) }).map((statement) =>
       /DELETE FROM product_search_entities/.test(statement.sql) ? "prune" : "projection-write",
     ),
     [
+      "projection-write",
       "projection-write",
       "projection-write",
       "projection-write",
@@ -128,7 +130,7 @@ test("a newly confirmed listing is not pulled back by the fallback entity it is 
   const fallbackMembership = writes(db).find(
     (statement) =>
       /INSERT INTO product_search_entity_offers/.test(statement.sql) &&
-      /'l-' \|\| p\.id/.test(statement.sql),
+      /'l-' \|\| \(CASE WHEN/.test(statement.sql),
   );
   assert.ok(fallbackMembership);
   assert.match(fallbackMembership.sql, /NOT EXISTS/);

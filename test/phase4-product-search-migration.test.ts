@@ -54,7 +54,9 @@ test("sold-out availability is added and backfilled in a forward-only migration"
   );
   assert.doesNotMatch(soldOutAggregateMigration, /DROP TABLE|DROP COLUMN/);
   assert.ok(
-    normalized(soldOutAggregateMigration).includes(normalized(refreshEntityAggregatesSql())),
+    normalized(soldOutAggregateMigration).includes(
+      normalized(refreshEntityAggregatesSql().split("AND (e.manufacturer IS NOT")[0]),
+    ),
   );
 });
 
@@ -97,35 +99,20 @@ test("every ordering aggregate the search reads has an index behind it", () => {
   assert.match(migration, /ON product_search_entity_offers\(entity_id, shop_key\)/);
 });
 
-/**
- * 0021 froze these statements as they read when the Phase 4 backfill ran, and one literal has
- * moved since: an uncategorized verified catalog product now projects the `unclassified` sentinel
- * instead of borrowing the real `other` leaf. Migration 0041 repairs the rows 0021 wrote, so the
- * derivation is still single-sourced — the frozen text simply predates the rename. The later
- * no-op update guards only avoid identical writes; they do not change the values being derived.
- */
-function asBackfilled(sql: string): string {
-  return sql
-    .split("'unclassified'")
-    .join("'other'")
-    .replace(
-      /\s+WHERE product_search_entities\.manufacturer_id IS NOT excluded\.manufacturer_id[\s\S]*$/,
-      "",
-    );
-}
-
-test("the backfill is the same derivation the running sync uses, not a second definition", () => {
-  const backfill = normalized(migration);
-  for (const sql of [
-    upsertCatalogEntitiesSql(),
-    upsertFallbackEntitiesSql(),
-    upsertCatalogOffersSql(),
-    upsertFallbackOffersSql(),
-    deleteEmptyEntitiesSql(),
-  ]) {
-    const expected = normalized(asBackfilled(sql));
-    assert.ok(backfill.includes(expected), expected.slice(0, 80));
+test("optimized runtime preserves the backfill's verified identity and unique membership gates", () => {
+  // Backfill SQL is an immutable historical snapshot. Read-model transition tests and real D1
+  // write-budget tests verify the optimized runtime, including exact-peer grouping added in 0036.
+  for (const sql of [upsertCatalogEntitiesSql(), upsertCatalogOffersSql()]) {
+    assert.match(sql, /verification_status = 'verified'/);
+    assert.match(sql, /r\.status = 'matched'/);
+    assert.match(sql, /ON CONFLICT/);
   }
+  for (const sql of [upsertFallbackEntitiesSql(), upsertFallbackOffersSql()]) {
+    assert.match(sql, /NOT EXISTS/);
+    assert.match(sql, /p\.is_active = 1/);
+    assert.match(sql, /ON CONFLICT/);
+  }
+  assert.ok(normalized(migration).includes(normalized(deleteEmptyEntitiesSql())));
 });
 
 test("the backfill groups only confirmed identities and keeps unresolved listings searchable", () => {

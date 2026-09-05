@@ -10,12 +10,75 @@
  *
  * - a listing joins a canonical entity only through a `matched` identity resolution that points at
  *   a verified Knowledge Catalog product; nothing else may merge two shops' listings;
- * - every other active listing gets its own `unresolved_listing` fallback entity, so identity
- *   coverage gaps never become missing search results;
+ * - other active listings use `unresolved_listing` fallback entities; safe resolved exact
+ *   manufacturer/model peers share the lowest eligible representative, without guessing matches;
  * - membership exists only for active listings, and `listing_product_id` is the membership primary
  *   key, so a listing can belong to exactly one entity;
  * - an entity with no active offers is deleted rather than shown with nothing to buy.
  */
+
+/** A confirmed Knowledge Catalog membership always wins over fallback exact-identity grouping. */
+function hasVerifiedCatalogMatch(alias: string): string {
+  return `EXISTS (
+    SELECT 1
+    FROM product_identity_resolutions r
+    JOIN knowledge_catalog_products kp
+      ON kp.id = r.catalog_product_id AND kp.verification_status = 'verified'
+    WHERE r.listing_product_id = ${alias}.id AND r.status = 'matched'
+  )`;
+}
+
+/** Base predicate for a listing that may participate in an unresolved exact-identity group. */
+export function eligibleExactIdentitySql(alias: string): string {
+  return `${alias}.is_active = 1
+    AND ${alias}.model_resolution_status = 'resolved'
+    AND COALESCE(${alias}.canonical_manufacturer_id, '') <> ''
+    AND COALESCE(${alias}.normalized_model, '') <> ''
+    AND NOT ${hasVerifiedCatalogMatch(alias)}`;
+}
+
+export function sameExactIdentitySql(left: string, right: string): string {
+  return `${right}.canonical_manufacturer_id = ${left}.canonical_manufacturer_id
+    AND ${right}.normalized_model = ${left}.normalized_model`;
+}
+
+/**
+ * Exact text identity is not enough when the taxonomy says the rows are different product types.
+ * `unclassified` and `other` are both ignored because they represent missing specificity, not
+ * contradictory evidence: `unclassified` is the classifier's "no answer", and `other` was that
+ * sentinel's id until the two were split, so listings still carry it for the same reason.
+ */
+export function compatibleExactIdentityCategoriesSql(alias: string): string {
+  return `(
+    SELECT COUNT(DISTINCT CASE
+      WHEN peer.primary_category_id NOT IN ('other', 'unclassified') THEN peer.primary_category_id
+      ELSE NULL
+    END
+    )
+    FROM products peer
+    WHERE ${eligibleExactIdentitySql("peer")}
+      AND ${sameExactIdentitySql(alias, "peer")}
+  ) <= 1`;
+}
+
+export function exactIdentityRepresentativeListingIdSql(alias: string): string {
+  return `(
+    SELECT MIN(anchor.id)
+    FROM products anchor
+    WHERE ${eligibleExactIdentitySql("anchor")}
+      AND ${sameExactIdentitySql(alias, "anchor")}
+  )`;
+}
+
+/**
+ * Final fallback owner, shared by entity creation and offer assignment.
+ * Keep whitespace after END for Wrangler's SQL-file statement splitter as well as SQLite.
+ */
+export function fallbackRepresentativeListingIdSql(alias: string): string {
+  return `CASE WHEN ${eligibleExactIdentitySql(alias)} AND ${compatibleExactIdentityCategoriesSql(alias)}
+    THEN ${exactIdentityRepresentativeListingIdSql(alias)} ELSE ${alias}.id END
+  `;
+}
 
 /**
  * How long a listing counts as "new".
@@ -39,6 +102,37 @@ export function scopeClause(column: string, count: number): string {
   return ` AND ${column} IN (${Array.from({ length: count }, () => "?").join(",")})`;
 }
 
+const ENTITY_COLUMNS = [
+  "entity_key",
+  "entity_kind",
+  "catalog_product_id",
+  "fallback_listing_id",
+  "manufacturer_id",
+  "manufacturer",
+  "model",
+  "normalized_model",
+  "primary_category_id",
+  "manufacturer_terms",
+  "model_terms",
+  "title_terms",
+  "category_terms",
+] as const;
+
+/** Filter before INSERT: an ON CONFLICT no-op still writes sqlite_sequence for AUTOINCREMENT. */
+function entityUpsertSql(projection: string, changedColumns: readonly string[]): string {
+  const differs = changedColumns
+    .map((column) => `existing.${column} IS NOT desired.${column}`)
+    .join(" OR ");
+  return `
+    INSERT INTO product_search_entities(${ENTITY_COLUMNS.join(", ")})
+    SELECT desired.* FROM (${projection}) AS desired
+    LEFT JOIN product_search_entities existing ON existing.entity_key = desired.entity_key
+    WHERE existing.id IS NULL OR ${differs}
+    ON CONFLICT(entity_key) DO UPDATE SET
+      ${changedColumns.map((column) => `${column} = excluded.${column}`).join(", ")}
+  `;
+}
+
 /**
  * Canonical entities for listings whose identity is confirmed.
  *
@@ -51,33 +145,29 @@ export function scopeClause(column: string, count: number): string {
  * channel divider), so borrowing it here made "no category recorded" indistinguishable from it.
  */
 export function upsertCatalogEntitiesSql(listingScope = ""): string {
-  return `
-    INSERT INTO product_search_entities(
-      entity_key, entity_kind, catalog_product_id, fallback_listing_id,
-      manufacturer_id, manufacturer, model, normalized_model, primary_category_id,
-      manufacturer_terms, model_terms, title_terms, category_terms
-    )
-    SELECT 'c-' || kp.id, 'catalog', kp.id, NULL,
-           kp.manufacturer_id,
-           '',
-           kp.canonical_model,
-           kp.normalized_model,
+  return entityUpsertSql(
+    `
+    SELECT 'c-' || kp.id AS entity_key, 'catalog' AS entity_kind, kp.id AS catalog_product_id, NULL AS fallback_listing_id,
+           kp.manufacturer_id AS manufacturer_id,
+           '' AS manufacturer,
+           kp.canonical_model AS model,
+           kp.normalized_model AS normalized_model,
            COALESCE((
              SELECT kpc.category_id FROM knowledge_catalog_product_categories kpc
              WHERE kpc.product_id = kp.id
              ORDER BY kpc.is_primary DESC, kpc.category_id
              LIMIT 1
-           ), 'unclassified'),
-           TRIM(kp.manufacturer_id),
+           ), 'unclassified') AS primary_category_id,
+           TRIM(kp.manufacturer_id) AS manufacturer_terms,
            TRIM(
              kp.canonical_model || ' ' || kp.normalized_model || ' ' ||
              COALESCE((
                SELECT group_concat(a.alias, ' ') FROM knowledge_catalog_aliases a
                WHERE a.product_id = kp.id AND a.alias_type = 'model'
              ), '')
-           ),
-           '',
-           ''
+           ) AS model_terms,
+           '' AS title_terms,
+           '' AS category_terms
     FROM knowledge_catalog_products kp
     WHERE kp.verification_status = 'verified'
       AND EXISTS (
@@ -85,20 +175,16 @@ export function upsertCatalogEntitiesSql(listingScope = ""): string {
         JOIN products p ON p.id = r.listing_product_id
         WHERE r.catalog_product_id = kp.id AND r.status = 'matched' AND p.is_active = 1${listingScope}
       )
-    ON CONFLICT(entity_key) DO UPDATE SET
-      manufacturer_id = excluded.manufacturer_id,
-      model = excluded.model,
-      normalized_model = excluded.normalized_model,
-      primary_category_id = excluded.primary_category_id,
-      manufacturer_terms = excluded.manufacturer_terms,
-      model_terms = excluded.model_terms
-    WHERE product_search_entities.manufacturer_id IS NOT excluded.manufacturer_id
-       OR product_search_entities.model IS NOT excluded.model
-       OR product_search_entities.normalized_model IS NOT excluded.normalized_model
-       OR product_search_entities.primary_category_id IS NOT excluded.primary_category_id
-       OR product_search_entities.manufacturer_terms IS NOT excluded.manufacturer_terms
-       OR product_search_entities.model_terms IS NOT excluded.model_terms
-  `;
+  `,
+    [
+      "manufacturer_id",
+      "model",
+      "normalized_model",
+      "primary_category_id",
+      "manufacturer_terms",
+      "model_terms",
+    ],
+  );
 }
 
 /**
@@ -108,22 +194,18 @@ export function upsertCatalogEntitiesSql(listingScope = ""): string {
  * against a verified catalog product stays a shop-local product rather than being merged.
  */
 export function upsertFallbackEntitiesSql(listingScope = ""): string {
-  return `
-    INSERT INTO product_search_entities(
-      entity_key, entity_kind, catalog_product_id, fallback_listing_id,
-      manufacturer_id, manufacturer, model, normalized_model, primary_category_id,
-      manufacturer_terms, model_terms, title_terms, category_terms
-    )
-    SELECT 'l-' || p.id, 'unresolved_listing', NULL, p.id,
-           COALESCE(NULLIF(sp.manufacturer_id, ''), p.manufacturer_id),
-           p.manufacturer,
-           p.model,
-           COALESCE(sp.normalized_model, ''),
-           p.primary_category_id,
-           COALESCE(NULLIF(sp.manufacturer_terms, ''), p.manufacturer),
-           COALESCE(NULLIF(sp.model_terms, ''), p.model),
-           '',
-           ''
+  return entityUpsertSql(
+    `
+    SELECT 'l-' || p.id AS entity_key, 'unresolved_listing' AS entity_kind, NULL AS catalog_product_id, p.id AS fallback_listing_id,
+           COALESCE(NULLIF(sp.manufacturer_id, ''), p.manufacturer_id) AS manufacturer_id,
+           p.manufacturer AS manufacturer,
+           p.model AS model,
+           COALESCE(sp.normalized_model, '') AS normalized_model,
+           p.primary_category_id AS primary_category_id,
+           COALESCE(NULLIF(sp.manufacturer_terms, ''), p.manufacturer) AS manufacturer_terms,
+           COALESCE(NULLIF(sp.model_terms, ''), p.model) AS model_terms,
+           '' AS title_terms,
+           '' AS category_terms
     FROM products p
     LEFT JOIN product_search_projection sp ON sp.product_id = p.id
     WHERE p.is_active = 1
@@ -133,22 +215,18 @@ export function upsertFallbackEntitiesSql(listingScope = ""): string {
           ON kp.id = r.catalog_product_id AND kp.verification_status = 'verified'
         WHERE r.listing_product_id = p.id AND r.status = 'matched'
       )${listingScope}
-    ON CONFLICT(entity_key) DO UPDATE SET
-      manufacturer_id = excluded.manufacturer_id,
-      manufacturer = excluded.manufacturer,
-      model = excluded.model,
-      normalized_model = excluded.normalized_model,
-      primary_category_id = excluded.primary_category_id,
-      manufacturer_terms = excluded.manufacturer_terms,
-      model_terms = excluded.model_terms
-    WHERE product_search_entities.manufacturer_id IS NOT excluded.manufacturer_id
-       OR product_search_entities.manufacturer IS NOT excluded.manufacturer
-       OR product_search_entities.model IS NOT excluded.model
-       OR product_search_entities.normalized_model IS NOT excluded.normalized_model
-       OR product_search_entities.primary_category_id IS NOT excluded.primary_category_id
-       OR product_search_entities.manufacturer_terms IS NOT excluded.manufacturer_terms
-       OR product_search_entities.model_terms IS NOT excluded.model_terms
-  `;
+      AND p.id = ${fallbackRepresentativeListingIdSql("p")}
+  `,
+    [
+      "manufacturer_id",
+      "manufacturer",
+      "model",
+      "normalized_model",
+      "primary_category_id",
+      "manufacturer_terms",
+      "model_terms",
+    ],
+  );
 }
 
 /** A deactivated listing stops being an offer immediately; its entity is re-aggregated after. */
@@ -177,6 +255,8 @@ export function upsertCatalogOffersSql(listingScope = ""): string {
     ON CONFLICT(listing_product_id) DO UPDATE SET
       entity_id = excluded.entity_id,
       shop_key = excluded.shop_key
+    WHERE product_search_entity_offers.entity_id IS NOT excluded.entity_id
+       OR product_search_entity_offers.shop_key IS NOT excluded.shop_key
   `;
 }
 
@@ -194,7 +274,7 @@ export function upsertFallbackOffersSql(listingScope = ""): string {
     INSERT INTO product_search_entity_offers(listing_product_id, entity_id, shop_key)
     SELECT p.id, e.id, p.shop_key
     FROM products p
-    JOIN product_search_entities e ON e.entity_key = 'l-' || p.id
+    JOIN product_search_entities e ON e.entity_key = 'l-' || (${fallbackRepresentativeListingIdSql("p")})
     WHERE p.is_active = 1
       AND NOT EXISTS (
         SELECT 1 FROM product_identity_resolutions r
@@ -205,6 +285,8 @@ export function upsertFallbackOffersSql(listingScope = ""): string {
     ON CONFLICT(listing_product_id) DO UPDATE SET
       entity_id = excluded.entity_id,
       shop_key = excluded.shop_key
+    WHERE product_search_entity_offers.entity_id IS NOT excluded.entity_id
+       OR product_search_entity_offers.shop_key IS NOT excluded.shop_key
   `;
 }
 
@@ -251,6 +333,17 @@ export function refreshEntityAggregatesSql(entityScope = ""): string {
       GROUP BY m.entity_id
     ) AS agg
     WHERE e.id = agg.entity_id
+      AND (e.manufacturer IS NOT COALESCE(agg.display_manufacturer, e.manufacturer)
+        OR e.offer_count IS NOT agg.offer_count
+        OR e.in_stock_offer_count IS NOT agg.in_stock_offer_count
+        OR e.sold_out_offer_count IS NOT agg.sold_out_offer_count
+        OR e.shop_count IS NOT agg.shop_count
+        OR e.lowest_price_yen IS NOT agg.lowest_price_yen
+        OR e.lowest_in_stock_price_yen IS NOT agg.lowest_in_stock_price_yen
+        OR e.highest_price_yen IS NOT agg.highest_price_yen
+        OR e.latest_activity_at IS NOT agg.latest_activity_at
+        OR e.newest_listed_at IS NOT agg.newest_listed_at
+        OR e.has_price_drop IS NOT agg.has_price_drop)
   `;
 }
 
@@ -343,6 +436,7 @@ export function upsertEntityCategoriesSql(offerScope = ""): string {
     WHERE p.is_active = 1${offerScope}
     GROUP BY m.entity_id, pc.category_id
     ON CONFLICT(entity_id, category_id) DO UPDATE SET is_direct = excluded.is_direct
+    WHERE product_search_entity_categories.is_direct IS NOT excluded.is_direct
   `;
 }
 
@@ -379,5 +473,28 @@ export function deleteEmptyEntitiesSql(entityScope = ""): string {
     WHERE NOT EXISTS (
       SELECT 1 FROM product_search_entity_offers m WHERE m.entity_id = product_search_entities.id
     )${entityScope}
+  `;
+}
+
+/** Finish pending correction evidence even when the final offer membership did not change. */
+export function completeEntityMembershipProvenanceSql(listingScope = ""): string {
+  return `
+    UPDATE data_quality_remediation_events AS event
+    SET new_identity_resolution = COALESCE((
+          SELECT r.status || ':' || r.match_method || ':' ||
+                 COALESCE(CAST(r.catalog_product_id AS TEXT), '-')
+          FROM product_identity_resolutions r WHERE r.listing_product_id = event.listing_product_id
+        ), 'none'),
+        new_search_entity_key = (
+          SELECT e.entity_key FROM product_search_entity_offers m
+          JOIN product_search_entities e ON e.id = m.entity_id
+          WHERE m.listing_product_id = event.listing_product_id
+        ),
+        provenance_complete = 1
+    WHERE event.provenance_complete = 0 AND event.listing_product_id IN (
+      SELECT p.id FROM products p
+      JOIN product_search_entity_offers m ON m.listing_product_id = p.id
+      WHERE p.is_active = 1${listingScope}
+    )
   `;
 }

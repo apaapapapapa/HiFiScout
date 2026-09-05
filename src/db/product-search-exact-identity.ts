@@ -17,57 +17,12 @@
  *   for the lifetime of that unresolved group without adding a third public entity kind.
  */
 
-/** A confirmed Knowledge Catalog membership always wins over fallback exact-identity grouping. */
-function hasVerifiedCatalogMatch(alias: string): string {
-  return `EXISTS (
-    SELECT 1
-    FROM product_identity_resolutions r
-    JOIN knowledge_catalog_products kp
-      ON kp.id = r.catalog_product_id AND kp.verification_status = 'verified'
-    WHERE r.listing_product_id = ${alias}.id AND r.status = 'matched'
-  )`;
-}
-
-/** Base predicate for a listing that may participate in an unresolved exact-identity group. */
-function eligible(alias: string): string {
-  return `${alias}.is_active = 1
-    AND ${alias}.model_resolution_status = 'resolved'
-    AND COALESCE(${alias}.canonical_manufacturer_id, '') <> ''
-    AND COALESCE(${alias}.normalized_model, '') <> ''
-    AND NOT ${hasVerifiedCatalogMatch(alias)}`;
-}
-
-function sameIdentity(left: string, right: string): string {
-  return `${right}.canonical_manufacturer_id = ${left}.canonical_manufacturer_id
-    AND ${right}.normalized_model = ${left}.normalized_model`;
-}
-
-/**
- * Exact text identity is not enough when the taxonomy says the rows are different product types.
- * `unclassified` and `other` are both ignored because they represent missing specificity, not
- * contradictory evidence: `unclassified` is the classifier's "no answer", and `other` was that
- * sentinel's id until the two were split, so listings still carry it for the same reason.
- */
-function categoryCompatible(alias: string): string {
-  return `(
-    SELECT COUNT(DISTINCT CASE
-      WHEN peer.primary_category_id NOT IN ('other', 'unclassified') THEN peer.primary_category_id
-      ELSE NULL
-    END)
-    FROM products peer
-    WHERE ${eligible("peer")}
-      AND ${sameIdentity(alias, "peer")}
-  ) <= 1`;
-}
-
-function representativeListingId(alias: string): string {
-  return `(
-    SELECT MIN(anchor.id)
-    FROM products anchor
-    WHERE ${eligible("anchor")}
-      AND ${sameIdentity(alias, "anchor")}
-  )`;
-}
+import {
+  eligibleExactIdentitySql as eligible,
+  sameExactIdentitySql as sameIdentity,
+  compatibleExactIdentityCategoriesSql as categoryCompatible,
+  exactIdentityRepresentativeListingIdSql as representativeListingId,
+} from "./product-search-entity-sql.js";
 
 /**
  * True for an active unresolved listing whose safe exact-identity peers are split across multiple
@@ -136,6 +91,8 @@ export function upsertExactIdentityGroupOffersSql(listingScope = ""): string {
     ON CONFLICT(listing_product_id) DO UPDATE SET
       entity_id = excluded.entity_id,
       shop_key = excluded.shop_key
+    WHERE product_search_entity_offers.entity_id IS NOT excluded.entity_id
+       OR product_search_entity_offers.shop_key IS NOT excluded.shop_key
   `;
 }
 

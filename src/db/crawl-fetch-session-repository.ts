@@ -330,7 +330,7 @@ export async function completeCrawlFetchSession(
       .prepare(`
         UPDATE crawl_fetch_pages
         SET html_text = NULL, products_json = NULL
-        WHERE run_id = ?
+        WHERE run_id = ? AND (html_text IS NOT NULL OR products_json IS NOT NULL)
       `)
       .bind(input.runId),
   ]);
@@ -359,7 +359,7 @@ export async function failCrawlFetchSession(
       .prepare(`
         UPDATE crawl_fetch_pages
         SET html_text = NULL, products_json = NULL
-        WHERE run_id = ?
+        WHERE run_id = ? AND (html_text IS NOT NULL OR products_json IS NOT NULL)
       `)
       .bind(input.runId),
   ]);

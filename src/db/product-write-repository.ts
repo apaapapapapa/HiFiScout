@@ -780,63 +780,55 @@ export async function upsertProducts(
     }
 
     if (changed) {
+      // SQLite writes every index named by SET, including same-value assignments. Keep the
+      // existing change/activity policy, but update only columns whose stored value must move.
+      const values = {
+        manufacturer: product.manufacturer,
+        raw_manufacturer: fields.rawManufacturer,
+        normalized_raw_manufacturer: fields.normalizedRawManufacturer,
+        manufacturer_id: fields.manufacturerId,
+        canonical_manufacturer_id: fields.canonicalManufacturerId,
+        manufacturer_resolution_status: fields.manufacturerResolutionStatus,
+        manufacturer_resolution_method: fields.manufacturerResolutionMethod,
+        manufacturer_resolution_confidence: fields.manufacturerResolutionConfidence,
+        manufacturer_resolver_version: fields.manufacturerResolverVersion,
+        model: product.model,
+        raw_model: fields.rawModel,
+        normalized_model: fields.normalizedModel,
+        presentation_color:
+          (existing as ExistingProductWithOverrides).override_presentation_color ??
+          fields.presentationColor,
+        model_resolution_status: fields.modelResolutionStatus,
+        model_resolution_method: fields.modelResolutionMethod,
+        model_resolution_confidence: fields.modelResolutionConfidence,
+        model_resolver_version: fields.modelResolverVersion,
+        title: product.title,
+        category: product.category,
+        raw_category: fields.rawCategory,
+        primary_category_id: fields.primaryCategoryId,
+        category_ids: fields.categoryIdsJson,
+        direct_category_ids: fields.directCategoryIdsJson,
+        classification_status: fields.classificationStatus,
+        search_aliases: fields.searchAliases,
+        condition_text: product.conditionText,
+        price_yen: product.priceYen,
+        stock_status: product.stockStatus,
+        source_url: product.sourceUrl,
+        source_published_at: productSourcePublishedAt(product),
+        last_seen_at: observedAt,
+        last_activity_at: hasActivity ? observedAt : existing.last_activity_at,
+        is_active: 1,
+      } satisfies Partial<ExistingProductRow>;
+      const columns = (Object.keys(values) as (keyof typeof values)[]).filter(
+        (column) => existing[column] !== values[column],
+      );
+      const assignments = columns.map((column) => `${column} = ?`);
+      if (priceChanged) assignments.push("previous_price_yen = price_yen");
+      assignments.push("last_changed_at = ?");
       writes.push(
         db
-          .prepare(`
-        UPDATE products SET
-          manufacturer = ?, raw_manufacturer = ?, normalized_raw_manufacturer = ?,
-          manufacturer_id = ?, canonical_manufacturer_id = ?, manufacturer_resolution_status = ?,
-          manufacturer_resolution_method = ?, manufacturer_resolution_confidence = ?,
-          manufacturer_resolver_version = ?, model = ?, raw_model = ?, normalized_model = ?,
-          presentation_color = ?,
-          model_resolution_status = ?, model_resolution_method = ?, model_resolution_confidence = ?,
-          model_resolver_version = ?, title = ?,
-          category = ?, raw_category = ?, primary_category_id = ?, category_ids = ?,
-          direct_category_ids = ?,
-          classification_status = ?, search_aliases = ?, condition_text = ?,
-          previous_price_yen = CASE WHEN ? THEN price_yen ELSE previous_price_yen END,
-          price_yen = ?, stock_status = ?, source_url = ?, source_published_at = ?, last_seen_at = ?, last_changed_at = ?,
-          last_activity_at = CASE WHEN ? THEN ? ELSE last_activity_at END, is_active = 1
-        WHERE id = ?
-      `)
-          .bind(
-            product.manufacturer,
-            fields.rawManufacturer,
-            fields.normalizedRawManufacturer,
-            fields.manufacturerId,
-            fields.canonicalManufacturerId,
-            fields.manufacturerResolutionStatus,
-            fields.manufacturerResolutionMethod,
-            fields.manufacturerResolutionConfidence,
-            fields.manufacturerResolverVersion,
-            product.model,
-            fields.rawModel,
-            fields.normalizedModel,
-            fields.presentationColor,
-            fields.modelResolutionStatus,
-            fields.modelResolutionMethod,
-            fields.modelResolutionConfidence,
-            fields.modelResolverVersion,
-            product.title,
-            product.category,
-            fields.rawCategory,
-            fields.primaryCategoryId,
-            fields.categoryIdsJson,
-            fields.directCategoryIdsJson,
-            fields.classificationStatus,
-            fields.searchAliases,
-            product.conditionText,
-            priceChanged ? 1 : 0,
-            product.priceYen,
-            product.stockStatus,
-            product.sourceUrl,
-            productSourcePublishedAt(product),
-            observedAt,
-            observedAt,
-            hasActivity ? 1 : 0,
-            observedAt,
-            existing.id,
-          ),
+          .prepare(`UPDATE products SET ${assignments.join(", ")} WHERE id = ?`)
+          .bind(...columns.map((column) => values[column]), observedAt, existing.id),
       );
       changedCount += 1;
       changedSourceIds.push(product.sourceId);

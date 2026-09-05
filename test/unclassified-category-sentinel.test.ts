@@ -84,7 +84,7 @@ test("search results say 未分類 instead of re-deriving その他 from the id"
 });
 
 test("a verified catalog product without a category projects the sentinel", () => {
-  assert.match(upsertCatalogEntitiesSql(), /\), 'unclassified'\),/);
+  assert.match(upsertCatalogEntitiesSql(), /\), 'unclassified'\) AS primary_category_id,/);
 });
 
 test("the backfill selects unclassified listings by status, not by their category_ids shape", () => {
