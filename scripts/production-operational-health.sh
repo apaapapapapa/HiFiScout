@@ -249,20 +249,15 @@ stale_resolver_versions="$(query "
 # special case: the bounded projection repair is deliberately scheduled on GENERAL_CRON every five
 # minutes, so post-deploy health must allow exactly one scheduler convergence window before calling
 # that state unhealthy. Other kinds of drift do not get this extended grace period.
-GENERAL_CRON_INTERVAL_SECONDS=300
-PROJECTION_REPAIR_GRACE_SECONDS=45
 search_entities="$(read_search_entities)"
 search_drift="$(search_drift_count "$search_entities")"
 if [ "$search_drift" -ne 0 ]; then
   non_stale_drift="$(search_non_stale_drift_count "$search_entities")"
   stale_fallback="$(jq '.[0].stale_fallback_entities // 0' <<< "$search_entities")"
   if [ "$non_stale_drift" -eq 0 ] && [ "$stale_fallback" -gt 0 ]; then
-    now_epoch="$(date +%s)"
-    next_general_tick="$(( ((now_epoch / GENERAL_CRON_INTERVAL_SECONDS) + 1) * GENERAL_CRON_INTERVAL_SECONDS ))"
-    wait_seconds="$(( next_general_tick - now_epoch + PROJECTION_REPAIR_GRACE_SECONDS ))"
-    echo "Only stale fallback entities remain; waiting ${wait_seconds}s for the next five-minute projection-repair tick." >&2
+    echo "Only stale fallback entities remain; allowing the shared projection-repair window." >&2
     jq . <<< "$search_entities" >&2
-    sleep "$wait_seconds"
+    bash scripts/wait-for-active-crawl-convergence.sh --projection-grace
   else
     echo "Product search read model is still inconsistent (observation 1/5); retrying in 10s." >&2
     jq . <<< "$search_entities" >&2

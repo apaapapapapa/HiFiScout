@@ -1,7 +1,9 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 const convergenceScriptPath = "scripts/wait-for-active-crawl-convergence.sh";
 const workflowPath = ".github/workflows/production-operational-health.yml";
@@ -34,4 +36,44 @@ test("production operational health runs convergence gate before strict checks",
   assert.ok(waitIndex >= 0, "workflow must invoke the active-crawl convergence gate");
   assert.ok(strictIndex > waitIndex, "strict production health must run after convergence wait");
   assert.match(workflow, /data-platform:[\s\S]*?timeout-minutes: 35/);
+});
+
+test("consecutive operational checks share one cron wait and then recheck without sleeping again", () => {
+  const directory = mkdtempSync(join(tmpdir(), "projection-window-"));
+  const clock = join(directory, "clock");
+  const sleeps = join(directory, "sleeps");
+  const deadline = join(directory, "deadline");
+  try {
+    writeFileSync(clock, "100\n");
+    writeFileSync(sleeps, "");
+    writeFileSync(join(directory, "date"), '#!/bin/sh\ncat "$TEST_CLOCK"\n', { mode: 0o755 });
+    writeFileSync(
+      join(directory, "sleep"),
+      '#!/bin/sh\necho "$1" >> "$TEST_SLEEPS"\nnow=$(cat "$TEST_CLOCK")\necho "$((now + $1))" > "$TEST_CLOCK"\n',
+      { mode: 0o755 },
+    );
+    const run = () =>
+      execFileSync("bash", [resolve(convergenceScriptPath), "--projection-grace"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+        env: {
+          ...process.env,
+          PATH: `${directory}:${process.env.PATH}`,
+          TEST_CLOCK: clock,
+          TEST_SLEEPS: sleeps,
+          PROJECTION_CONVERGENCE_STATE_FILE: deadline,
+          GENERAL_CRON_INTERVAL_SECONDS: "300",
+          PROJECTION_REPAIR_GRACE_SECONDS: "45",
+        },
+      });
+    run();
+    run();
+    run();
+    assert.equal(readFileSync(deadline, "utf8"), "345\n");
+    assert.equal(readFileSync(sleeps, "utf8"), "245\n");
+    writeFileSync(deadline, "invalid\n");
+    assert.throws(run, /Invalid shared projection convergence deadline/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

@@ -4,11 +4,15 @@ HiFiScout keeps workflow orchestration thin. Domain behavior, repair logic, and 
 
 ## Validation
 
-- `ci.yml` — source/toolchain checks, sharded Vitest, parser performance, local D1 integration, React browser component tests, builds, dependency security, and non-gating Playwright browser cache warming. The component job requires Chromium; unit jobs do not.
+- `ci.yml` — source/toolchain checks, sharded Vitest, parser performance, local D1 integration, React browser component tests, builds, and dependency security. Short checks share the `static-checks` runner. The component job also populates the shared Chromium and pinned Noto CJK caches; unit jobs need no browser.
 - `docs.yml` — architecture boundary check plus deterministic documentation build/publish. Its separate best-effort AI refresh job may update only `docs/ai-generated/**`, validates candidates with Archify and a full VitePress build, and opens/updates a documentation PR. Missing credentials, Codex usage limits, timeouts, invalid output, or publication restrictions retain the last committed snapshot and do not block deterministic docs publication.
 - `codeql.yml` — CodeQL security analysis.
 - `secret-scan.yml` — secret scanning.
 - `autofix.yml` — PR formatting/lint autofix only.
+
+`.github/actions/change-scope` compares the candidate tree with the event's comparison base. Documentation-only changes retain source/toolchain checks and the always-present `fan-out` result but skip application test/build/security steps. Unknown bases run the full suite. All application jobs still report a result, so a workflow-level path filter cannot strand the required check in Pending. The dependency audit still runs for every application change; CodeQL and the weekly secret scan retain their own schedules.
+
+The Docs workflow caches generated SchemaSpy output by the migration contents, Wrangler/dependency configuration and generator sources. The generator verifies the fingerprint and its output before reuse; cache misses run the original fresh local migration and SchemaSpy generation. This cache never supplies databases to migration safety tests.
 
 ## Production deployment
 
@@ -23,12 +27,18 @@ Cloudflare D1 free-tier daily row-read or row-write exhaustion (`7500`) is an ex
 
 For migration comparison, `Deploy Cloudflare` reads the newest valid, unexpired `deployment-identity` artifact and extracts `deployment-sha.txt` directly rather than inferring production from workflow metadata. Keeping confirmed identities for 90 days makes that baseline available across long periods without deployment, while the CI/status gate prevents nightly no-op runs from redeploying an unapproved or already-settled SHA. Downstream E2E, operational-health, and Catalog Admin workflows treat a missing `deployment-identity` from an otherwise successful `Deploy Cloudflare` run as “no new public deployment” and exit successfully without operating on `workflow_run.head_sha`.
 
+Application change detection uses that same confirmed production baseline, not the preceding main commit. Documentation-only differences produce an `application unchanged` status and no new identity artifact; pending code or migrations from an earlier deferred deployment still deploy. CI migration safety compares the PR/push base, while CD verifies upgrade from the actual deployed runtime, so both checks remain necessary.
+
+Production resources are reconciled by `scripts/lib/production-resources.ts`: an unchanged bucket, lifecycle policy and required Queue set use three reads and no writes. Only a genuine missing resource is created. Owned lifecycle rules update together while unrelated operator policies remain intact; authentication errors and malformed responses fail instead of being interpreted as missing configuration.
+
 ## Post-deploy verification
 
 - `e2e.yml` — browser/user-flow regression only. It does not monitor asynchronous queues or protected admin APIs.
 - `production-operational-health.yml` — production data-platform, Product Search identity, and Knowledge Catalog operational checks. Failures report degraded operations but do not rewrite a successful deployment.
 
 Operational-health workflows are detection/reporting paths. They must not automatically mutate production data or re-run themselves through repair loops. Repair commands may exist as explicit maintenance scripts and can be invoked deliberately when an operator has identified the incident.
+
+The active-crawl wait keeps its existing bound. After that, the first projection drift observation creates one cron-plus-grace deadline in `PROJECTION_CONVERGENCE_STATE_FILE`; identity coverage, stale fallback and split-group checks share it. Each check still re-reads and fails on persistent drift, but cannot grant another full cron window after an earlier check already waited.
 
 ## Manual data operations and audits
 

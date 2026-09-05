@@ -6,6 +6,43 @@ D1_QUERY_RETRY_SECONDS=5
 ACTIVE_CRAWL_CONVERGENCE_MAX_WAIT_SECONDS="${ACTIVE_CRAWL_CONVERGENCE_MAX_WAIT_SECONDS:-480}"
 ACTIVE_CRAWL_CONVERGENCE_POLL_SECONDS="${ACTIVE_CRAWL_CONVERGENCE_POLL_SECONDS:-15}"
 GENERAL_CRON_INTERVAL_SECONDS="${GENERAL_CRON_INTERVAL_SECONDS:-300}"
+
+# All three operational checks share one projection-repair deadline. Initialize it only when
+# drift is observed, after any active-crawl wait, and never grant a second cron window.
+wait_for_projection_convergence() {
+  local now_epoch deadline wait_seconds state_file
+  now_epoch="$(date +%s)"
+  state_file="${PROJECTION_CONVERGENCE_STATE_FILE:-}"
+  if [[ -n "$state_file" && -s "$state_file" ]]; then
+    deadline="$(cat "$state_file")"
+    if ! [[ "$deadline" =~ ^[0-9]+$ ]]; then
+      echo "Invalid shared projection convergence deadline." >&2
+      return 2
+    fi
+  else
+    if ! [[ "$GENERAL_CRON_INTERVAL_SECONDS" =~ ^[1-9][0-9]*$ ]] || \
+       ! [[ "${PROJECTION_REPAIR_GRACE_SECONDS:-45}" =~ ^[0-9]+$ ]]; then
+      echo "Invalid projection convergence timing configuration." >&2
+      return 2
+    fi
+    deadline="$(( ((now_epoch / GENERAL_CRON_INTERVAL_SECONDS) + 1) * GENERAL_CRON_INTERVAL_SECONDS + ${PROJECTION_REPAIR_GRACE_SECONDS:-45} ))"
+    if [[ -n "$state_file" ]]; then
+      printf '%s\n' "$deadline" > "$state_file"
+    fi
+  fi
+  wait_seconds="$((deadline - now_epoch))"
+  if (( wait_seconds > 0 )); then
+    echo "Waiting ${wait_seconds}s for the shared projection-repair deadline ${deadline}." >&2
+    sleep "$wait_seconds"
+  else
+    echo "Shared projection-repair window already elapsed; checking the current state now." >&2
+  fi
+}
+
+if [[ "${1:-}" == '--projection-grace' ]]; then
+  wait_for_projection_convergence
+  exit 0
+fi
 PROJECTION_REPAIR_GRACE_SECONDS="${PROJECTION_REPAIR_GRACE_SECONDS:-45}"
 
 query() {
@@ -137,13 +174,9 @@ fi
 # give the repair one scheduler tick before the strict health gate decides the state is persistent.
 # This is intentionally one-shot: a poison listing remains visible to the strict check after the
 # grace window instead of turning a permanent production defect into an indefinitely green deploy.
-now_epoch="$(date +%s)"
-next_general_tick="$(( ((now_epoch / GENERAL_CRON_INTERVAL_SECONDS) + 1) * GENERAL_CRON_INTERVAL_SECONDS ))"
-wait_seconds="$((next_general_tick - now_epoch + PROJECTION_REPAIR_GRACE_SECONDS))"
-
-echo "${identity_gap_count} active listing(s) still lack Product Identity after crawl completion; waiting ${wait_seconds}s for one bounded GENERAL_CRON projection-repair tick." >&2
+echo "${identity_gap_count} active listing(s) still lack Product Identity after crawl completion; allowing one shared GENERAL_CRON projection-repair window." >&2
 jq . <<< "$identity_gaps" >&2
-sleep "$wait_seconds"
+wait_for_projection_convergence
 
 remaining_identity_gaps="$(read_identity_gap_rows)"
 remaining_identity_gap_count="$(jq 'length' <<< "$remaining_identity_gaps")"

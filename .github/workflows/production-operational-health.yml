@@ -20,7 +20,7 @@ jobs:
   data-platform:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    # The bounded crawl/search convergence windows can stack; leave headroom for setup and D1 queries.
+    # Active crawling keeps its own bound; all subsequent projection checks share one cron window.
     timeout-minutes: 35
     env:
       CLOUDFLARE_ACCOUNT_ID: 9af87af4dbc00be3bfd4c8af3f52f684
@@ -67,7 +67,10 @@ jobs:
         if: steps.deployment.outputs.available == 'true'
       - name: Wait for active crawl convergence
         if: steps.deployment.outputs.available == 'true'
-        run: bash scripts/wait-for-active-crawl-convergence.sh
+        run: |
+          echo "PROJECTION_CONVERGENCE_STATE_FILE=${RUNNER_TEMP}/projection-convergence-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
+          export PROJECTION_CONVERGENCE_STATE_FILE="${RUNNER_TEMP}/projection-convergence-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          bash scripts/wait-for-active-crawl-convergence.sh
       - name: Verify production data platform and data quality
         if: steps.deployment.outputs.available == 'true'
         run: bash scripts/production-operational-health.sh

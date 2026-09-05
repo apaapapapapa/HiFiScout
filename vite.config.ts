@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 
 import { defineConfig } from "vite-plus";
+import BalancedSequencer from "./scripts/ci/test-sequencer.js";
 
 function fromRoot(relativePath: string): string {
   return fileURLToPath(new URL(relativePath, import.meta.url));
@@ -48,6 +49,7 @@ export default defineConfig(({ mode }) => ({
   test: {
     environment: "node",
     include: ["test/**/*.test.ts", "test/**/*.test.tsx"],
+    sequence: { sequencer: BalancedSequencer },
   },
   run: {
     tasks: {
@@ -69,12 +71,16 @@ export default defineConfig(({ mode }) => ({
         output: [],
       },
       "ci:test-shard-1": {
-        command: ciShell("vp test run --reporter=dot --shard=1/2"),
-        output: [],
+        command: ciShell(
+          "vp exec tsx scripts/ensure-directories.ts .generated && vp test run --reporter=dot --reporter=json --outputFile.json=.generated/unit-timings-1.json --shard=1/2",
+        ),
+        output: [".generated/unit-timings-1.json"],
       },
       "ci:test-shard-2": {
-        command: ciShell("vp test run --reporter=dot --shard=2/2"),
-        output: [],
+        command: ciShell(
+          "vp exec tsx scripts/ensure-directories.ts .generated && vp test run --reporter=dot --reporter=json --outputFile.json=.generated/unit-timings-2.json --shard=2/2",
+        ),
+        output: [".generated/unit-timings-2.json"],
       },
       "ci:parser-benchmark": {
         command: ciShell("vp exec tsx scripts/parser-cpu-benchmark.ts --check"),

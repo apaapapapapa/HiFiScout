@@ -77,23 +77,8 @@ jobs:
           echo "E2E_BASE_URL=${base_url%/}" >> "$GITHUB_ENV"
       - uses: ./.github/actions/setup-node-deps
         if: steps.deployment.outputs.available == 'true'
-      - name: Resolve installed Playwright version
+      - uses: ./.github/actions/setup-playwright
         if: steps.deployment.outputs.available == 'true'
-        id: playwright-version
-        shell: bash
-        run: |
-          version="$(node -p "require('@playwright/test/package.json').version")"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-      - name: Restore Playwright Chromium cache
-        if: steps.deployment.outputs.available == 'true'
-        id: playwright-cache
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-chromium-${{ steps.playwright-version.outputs.version }}
-      - name: Install Chromium on cache miss
-        if: steps.deployment.outputs.available == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
-        run: vp exec playwright install chromium
       - name: Run Playwright user-flow regression suite
         if: steps.deployment.outputs.available == 'true'
         run: vp run test:e2e

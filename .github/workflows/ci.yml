@@ -7,6 +7,7 @@ on:
     branches: [main]
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -21,9 +22,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: ./.github/actions/change-scope
+        id: scope
       - uses: ./.github/actions/setup-node-deps
         with:
           cache-write: "true"
+          task-cache: "true"
+          task-cache-scope: static-checks
       - name: Verify canonical Vite+ migration state
         shell: bash
         run: |
@@ -46,17 +51,15 @@ jobs:
       - run: vp run ci:lint
       - run: vp run ci:format-check
       - run: vp run ci:no-js-source
-
-  typecheck:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: ./.github/actions/setup-node-deps
-        with:
-          task-cache: "true"
-          task-cache-scope: typecheck
-      - run: vp run ci:typecheck
+      - name: Typecheck source
+        if: steps.scope.outputs.application == 'true'
+        run: vp run ci:typecheck
+      - name: Compare parser stages with relative CPU baselines
+        if: steps.scope.outputs.application == 'true'
+        run: vp run ci:parser-benchmark
+      - name: Build application bundles
+        if: steps.scope.outputs.application == 'true'
+        run: vp run ci:build
 
   unit-test:
     runs-on: ubuntu-latest
@@ -67,28 +70,37 @@ jobs:
         shard: [1, 2]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: ./.github/actions/change-scope
+        id: scope
       - uses: ./.github/actions/setup-node-deps
+        if: steps.scope.outputs.application == 'true'
       - run: vp run ci:test-shard-${{ matrix.shard }}
-
-  parser-cpu:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: ./.github/actions/setup-node-deps
-      - name: Compare parser stages with relative CPU baselines
-        run: vp run ci:parser-benchmark
+        if: steps.scope.outputs.application == 'true'
+      - name: Preserve unit timing profiles
+        if: success() && steps.scope.outputs.application == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: unit-timings-${{ matrix.shard }}
+          path: .generated/unit-timings-${{ matrix.shard }}.json
+          retention-days: 7
+          if-no-files-found: error
 
   integration:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: ./.github/actions/change-scope
+        id: scope
       - uses: ./.github/actions/setup-node-deps
+        if: steps.scope.outputs.application == 'true'
       - run: vp run db:migrate:local
+        if: steps.scope.outputs.application == 'true'
       - name: Verify listing admin overrides survive crawler writes
+        if: steps.scope.outputs.application == 'true'
         run: vp exec tsx scripts/verify-listing-admin-overrides.ts
       - name: Verify D1 FTS search migration
+        if: steps.scope.outputs.application == 'true'
         run: vp exec tsx scripts/verify-search-integration.ts
 
   migration-safety:
@@ -100,8 +112,12 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+      - uses: ./.github/actions/change-scope
+        id: scope
       - uses: ./.github/actions/setup-node-deps
+        if: steps.scope.outputs.application == 'true'
       - name: Verify frozen migrations and seeded upgrade with previous runtime
+        if: steps.scope.outputs.application == 'true'
         run: vp run test:migrations
 
   component:
@@ -109,28 +125,20 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: ./.github/actions/change-scope
+        id: scope
       - uses: ./.github/actions/setup-node-deps
-      - name: Resolve installed Playwright version
-        id: playwright-version
-        shell: bash
-        run: |
-          version="$(node -p "require('@playwright/test/package.json').version")"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-      - name: Restore Playwright Chromium cache
-        id: playwright-cache
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        if: steps.scope.outputs.application == 'true'
+      - uses: ./.github/actions/setup-playwright
+        if: steps.scope.outputs.application == 'true'
         with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-chromium-${{ steps.playwright-version.outputs.version }}
-      - name: Install Chromium on cache miss
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: vp exec playwright install chromium
-      - name: Install Japanese fonts for UI screenshots
-        run: sudo apt-get update -qq && sudo apt-get install -y fonts-noto-cjk
+          cache-write: "${{ github.event_name == 'push' }}"
+          japanese-fonts: "true"
       - name: Run Playwright component suite
+        if: steps.scope.outputs.application == 'true'
         run: vp exec playwright test --config e2e/playwright.components.config.ts
       - name: Preserve component screenshots and failure traces
-        if: always()
+        if: always() && steps.scope.outputs.application == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: component-ui-review
@@ -138,41 +146,32 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: ./.github/actions/setup-node-deps
-        with:
-          task-cache: "true"
-          task-cache-scope: build
-      - run: vp run ci:build
-
   dependency-security:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: ./.github/actions/change-scope
+        id: scope
       - uses: ./.github/actions/setup-node-deps
+        if: steps.scope.outputs.application == 'true'
       # Vite+ 0.2.9's `vp pm audit` does not accept npm's positional `signatures`
       # subcommand. Run the project-pinned npm inside the Vite+ environment instead.
       - name: Verify npm registry signatures and provenance
+        if: steps.scope.outputs.application == 'true'
         run: vp env exec npm audit signatures
       - name: Fail on high or critical dependency vulnerabilities
+        if: steps.scope.outputs.application == 'true'
         run: vp env exec npm audit --audit-level=high
 
   fan-out:
     name: fan-out
     needs:
       - static-checks
-      - typecheck
       - unit-test
-      - parser-cpu
       - integration
       - migration-safety
       - component
-      - build
       - dependency-security
     if: always()
     runs-on: ubuntu-latest
@@ -182,54 +181,40 @@ jobs:
         shell: bash
         env:
           STATIC_RESULT: ${{ needs.static-checks.result }}
-          TYPECHECK_RESULT: ${{ needs.typecheck.result }}
           UNIT_RESULT: ${{ needs.unit-test.result }}
-          PARSER_CPU_RESULT: ${{ needs.parser-cpu.result }}
           INTEGRATION_RESULT: ${{ needs.integration.result }}
           MIGRATION_RESULT: ${{ needs.migration-safety.result }}
           COMPONENT_RESULT: ${{ needs.component.result }}
-          BUILD_RESULT: ${{ needs.build.result }}
           DEPENDENCY_RESULT: ${{ needs.dependency-security.result }}
         run: |
           set -euo pipefail
           for result in \
             "${STATIC_RESULT}" \
-            "${TYPECHECK_RESULT}" \
             "${UNIT_RESULT}" \
-            "${PARSER_CPU_RESULT}" \
             "${INTEGRATION_RESULT}" \
             "${MIGRATION_RESULT}" \
             "${COMPONENT_RESULT}" \
-            "${BUILD_RESULT}" \
             "${DEPENDENCY_RESULT}"; do
             if [[ "${result}" != "success" ]]; then
               echo "Required CI job finished with result: ${result}" >&2
               exit 1
             fi
           done
-
-  playwright-browser-cache:
-    if: github.event_name == 'push'
-    # Cache warming is an optimization, not a release-quality gate. A transient browser
-    # download/cache failure must not suppress the production deployment after test/build pass.
-    continue-on-error: true
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: ./.github/actions/setup-node-deps
-      - name: Resolve installed Playwright version
-        id: playwright-version
-        shell: bash
+      - name: Summarize CI job durations
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          version="$(node -p "require('@playwright/test/package.json').version")"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-      - name: Cache Playwright Chromium
-        id: playwright-cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-chromium-${{ steps.playwright-version.outputs.version }}
-      - name: Install Chromium on cache miss
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: vp exec playwright install chromium
+          {
+            echo '### CI job durations'
+            echo '| Job | Result | Job seconds | Before first step |'
+            echo '| --- | --- | ---: | ---: |'
+            gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}/jobs?per_page=100" \
+              --jq '.jobs[] | select(.name != "fan-out" and .completed_at != null) |
+                [.name, .conclusion,
+                 ((.completed_at | fromdateiso8601) - (.started_at | fromdateiso8601)),
+                 (if (.steps | length) > 0 then ((.steps[0].started_at | fromdateiso8601) - (.started_at | fromdateiso8601)) else 0 end)] |
+                "| " + (map(tostring) | join(" | ")) + " |"'
+            echo 'Parallel job durations are not additive wall time; compare cold and warm caches separately.'
+          } >> "$GITHUB_STEP_SUMMARY"

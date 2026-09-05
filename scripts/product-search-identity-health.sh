@@ -52,14 +52,9 @@ if [ "$(jq 'length' <<< "$split_groups")" -ne 0 ]; then
   # The deploy can finish just after a five-minute GENERAL_CRON boundary. The newly deployed repair
   # path has not had an opportunity to run in that case, so allow exactly one subsequent tick plus a
   # small execution grace period. Persistent drift is still reported by the second observation.
-  GENERAL_CRON_INTERVAL_SECONDS=300
-  PROJECTION_REPAIR_GRACE_SECONDS=45
-  now_epoch="$(date +%s)"
-  next_general_tick="$(( ((now_epoch / GENERAL_CRON_INTERVAL_SECONDS) + 1) * GENERAL_CRON_INTERVAL_SECONDS ))"
-  wait_seconds="$(( next_general_tick - now_epoch + PROJECTION_REPAIR_GRACE_SECONDS ))"
-  echo "Safe exact identities are split before the first post-deploy repair tick; waiting ${wait_seconds}s for bounded convergence." >&2
+  echo "Safe exact identities are split; allowing the shared post-deploy repair window." >&2
   jq . <<< "$split_groups" >&2
-  sleep "$wait_seconds"
+  bash scripts/wait-for-active-crawl-convergence.sh --projection-grace
   split_groups="$(read_split_groups)"
 fi
 
