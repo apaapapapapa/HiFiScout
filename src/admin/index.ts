@@ -12,6 +12,7 @@ import {
   parseKnowledgeCatalogDuplicateListQuery,
 } from "../http/knowledge-catalog-admin.js";
 import { verifyCloudflareAccessRequest } from "./access.js";
+import { parseAdminCsvPreview, parseAdminCsvApply } from "../http/admin-csv-import.js";
 
 interface CatalogAdminEnv {
   ADMIN_ASSETS: Fetcher;
@@ -170,6 +171,26 @@ export async function handleAuthenticatedCatalogAdminRequest(
   env: CatalogAdminEnv,
 ): Promise<Response> {
   const url = new URL(request.url);
+
+  if (request.method === "POST" &&
+      (url.pathname === "/api/admin/csv-import/preview" || url.pathname === "/api/admin/csv-import/apply")) {
+    const body = await mutationBody(request, url, 256 * 1024);
+    if (isResponse(body)) return body;
+    try {
+      if (url.pathname.endsWith("/preview")) {
+        const changes = parseAdminCsvPreview(body);
+        if (!changes) return json({ error: "invalid_csv_import" }, { status: 400 });
+        return json({ items: await env.CATALOG_ADMIN.previewCsvImport(changes) });
+      }
+      const input = parseAdminCsvApply(body);
+      if (!input) return json({ error: "invalid_csv_import" }, { status: 400 });
+      return json(await env.CATALOG_ADMIN.applyCsvImport(input));
+    } catch (error) {
+      console.error(JSON.stringify({ event: "admin_csv_import_unavailable",
+        message: error instanceof Error ? error.message : String(error) }));
+      return json({ error: "csv_import_unavailable" }, { status: 503 });
+    }
+  }
 
   if (request.method === "GET" && url.pathname === "/api/meta") {
     return json({

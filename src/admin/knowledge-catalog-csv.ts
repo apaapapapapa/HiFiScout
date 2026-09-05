@@ -1,4 +1,5 @@
 import type { KnowledgeCatalogExportRow } from "../db/knowledge-catalog-export-repository.js";
+import { adminCsvEditHeader, adminCsvEditRow, adminCsvOriginal } from "../api/admin-csv-contracts.js";
 
 interface CsvColumn {
   header: string;
@@ -214,11 +215,18 @@ function truncatedJsonValue(original: string, allowedCharacters: number): string
 }
 
 export function knowledgeCatalogCsvHeader(): string {
-  return [...COLUMNS.map((column) => column.header), TRUNCATED_FIELDS_HEADER].join(",");
+  return [...COLUMNS.map((column) => column.header), adminCsvEditHeader("catalog"), TRUNCATED_FIELDS_HEADER].join(",");
 }
 
 export function knowledgeCatalogCsvRow(row: KnowledgeCatalogExportRow): string {
-  let remainingCharacters = MAX_CSV_ROW_SOURCE_CHARACTERS;
+  const editing = adminCsvEditRow(adminCsvOriginal("catalog", row.catalogProductId, {
+    manufacturer_id: row.manufacturerId,
+    canonical_model: row.canonicalModel,
+    canonical_name: row.canonicalName,
+    primary_category_id: row.primaryCategoryId,
+    lifecycle_status: row.lifecycleStatus,
+  }));
+  let remainingCharacters = MAX_CSV_ROW_SOURCE_CHARACTERS - editing.length;
   const truncatedFields: string[] = [];
   const cells = COLUMNS.map((column) => {
     const original = column.value(row);
@@ -241,8 +249,7 @@ export function knowledgeCatalogCsvRow(row: KnowledgeCatalogExportRow): string {
     remainingCharacters = Math.max(0, remainingCharacters - bounded.length);
     return csvCell(bounded);
   });
-  cells.push(csvCell(truncatedFields.join("|")));
-  return cells.join(",");
+  return cells.join(",") + "," + editing + "," + csvCell(truncatedFields.join("|"));
 }
 
 /** UTF-8 BOM keeps Japanese catalog evidence readable in spreadsheet applications. */

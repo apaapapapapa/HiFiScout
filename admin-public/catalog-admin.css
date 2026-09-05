@@ -1331,5 +1331,19 @@ dialog::backdrop {
 .merge-preview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 16px 0; }
 .merge-preview section { padding: 16px; border: 1px solid #c9c9c9; border-radius: 8px; }
 .merge-preview h3 { font-size: 15px; }
+.csv-import-panel { margin-top: 28px; padding-top: 24px; border-top: 1px solid #c9c9c9; }
+.csv-import-panel p { line-height: 1.75; overflow-wrap: anywhere; }
+.csv-import-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 16px 0; }
+.csv-import-actions input { max-width: 100%; }
+.csv-import-error { color: #9b1c1c; }
+.csv-import-table-wrap { overflow-x: auto; max-width: 100%; }
+.csv-import-table { min-width: 640px; width: 100%; border-collapse: collapse; }
+.csv-import-table th, .csv-import-table td { padding: 12px; text-align: left; vertical-align: top; border-bottom: 1px solid #ddd; overflow-wrap: anywhere; }
+.csv-import-table td div { margin-bottom: 8px; }
+.csv-category-reference { columns: 2; padding-left: 24px; line-height: 1.8; }
+@media (max-width: 640px) {
+  .csv-category-reference { columns: 1; }
+  .csv-import-actions { align-items: stretch; flex-direction: column; }
+}
 .merge-preview p { white-space: pre-line; overflow-wrap: anywhere; line-height: 1.7; }
 @media (max-width: 640px) { .merge-preview { grid-template-columns: 1fr; } }

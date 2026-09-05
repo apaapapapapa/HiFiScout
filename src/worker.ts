@@ -1,6 +1,9 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 
 import worker from "./index.js";
+import { previewAdminCsvChange, applyAdminCsvChange } from "./db/admin-csv-import-repository.js";
+import { parseAdminCsvPreview, parseAdminCsvApply } from "./http/admin-csv-import.js";
+import type { AdminCsvApplyInput, AdminCsvChange } from "./api/admin-csv-contracts.js";
 export { CrawlScheduler } from "./crawler/crawl-scheduler-do.js";
 export { PublicSearchCache } from "./http/public-search-cache.js";
 import type {
@@ -54,6 +57,20 @@ import type { ListingAdminListOptions, ListingAdminUpdateInput } from "./http/li
  * Binding configured on the dedicated Access-protected admin Worker; it has no public HTTP route.
  */
 export class CatalogAdminService extends WorkerEntrypoint<Env> implements CatalogAdminRpc {
+  async previewCsvImport(changes: AdminCsvChange[]) {
+    const parsed = parseAdminCsvPreview({ changes });
+    if (!parsed) throw new Error("invalid_csv_import");
+    const results = [];
+    for (const change of parsed) results.push(await previewAdminCsvChange(this.env.DB, change));
+    return results;
+  }
+
+  async applyCsvImport(input: AdminCsvApplyInput) {
+    const parsed = parseAdminCsvApply(input);
+    if (!parsed) throw new Error("invalid_csv_import");
+    return applyAdminCsvChange(this.env.DB, parsed);
+  }
+
   async listProducts(options: CatalogAdminListOptions) {
     return listKnowledgeCatalogAdminProducts(this.env.DB, options);
   }

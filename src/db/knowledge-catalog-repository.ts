@@ -400,3 +400,28 @@ export async function reclassifyProductsFromKnowledgeCatalog(
 
   return reclassifiedProducts;
 }
+
+/** Reclassify only explicit import dependencies, including non-active historical listings. */
+export async function reclassifyAdminCsvListings(
+  db: QueryableDatabase,
+  listingIds: readonly number[],
+  evaluatedAt: string,
+): Promise<void> {
+  if (!listingIds.length) return;
+  if (listingIds.length > 10) throw new Error("csv_replay_page_too_large");
+  const observed = await db.prepare(`
+    SELECT p.id, p.shop_key, p.source_id,
+           p.canonical_manufacturer_id AS manufacturer_id, p.model, p.model_resolution_status,
+           p.category, p.primary_category_id, p.category_ids, p.classification_status,
+           p.remediation_projection_required, p.remediation_projection_token,
+           pir.status AS identity_status, pir.catalog_product_id AS identity_catalog_product_id
+    FROM products p
+    LEFT JOIN product_identity_resolutions pir ON pir.listing_product_id = p.id
+    WHERE p.id IN (${listingIds.map(() => "?").join(",")})
+  `).bind(...listingIds).all<ReclassificationProductRow>();
+  const products = observed.results || [];
+  const matches = await findVerifiedCatalogMatches(db, products);
+  const page = buildReclassificationStatements(db, products, matches);
+  await runBatches(db, page.statements);
+  await refreshListingProjections(db, page.refreshTargets, evaluatedAt);
+}

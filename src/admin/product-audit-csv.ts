@@ -1,4 +1,5 @@
 import type { CatalogAdminProductExportRow } from "./contracts.js";
+import { adminCsvEditHeader, adminCsvEditRow, adminCsvOriginal } from "../api/admin-csv-contracts.js";
 
 interface CsvColumn {
   header: string;
@@ -99,11 +100,16 @@ function csvCell(value: string | number | null): string {
 }
 
 export function productAuditCsvHeader(): string {
-  return COLUMNS.map((column) => column.header).join(",");
+  return COLUMNS.map((column) => column.header).join(",") + "," + adminCsvEditHeader("listing");
 }
 
 export function productAuditCsvRow(row: CatalogAdminProductExportRow): string {
-  return COLUMNS.map((column) => csvCell(column.value(row))).join(",");
+  const original = adminCsvOriginal("listing", row.listingId, {
+    manufacturer_id: row.canonicalManufacturerId,
+    model: row.model,
+    primary_category_id: row.primaryCategoryId,
+  });
+  return COLUMNS.map((column) => csvCell(column.value(row))).join(",") + "," + adminCsvEditRow(original);
 }
 
 /** UTF-8 BOM keeps Japanese seller titles readable when the CSV is opened directly in Excel. */
