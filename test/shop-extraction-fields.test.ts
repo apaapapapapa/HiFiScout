@@ -206,7 +206,7 @@ test("REWIRE preserves slash-separated bundles, cable lengths, and set quantitie
   const html = titles
     .map(
       (title, index) =>
-        `<a href="/webshop/2026/08/01/product-${index}/">${title} ¥198,000(税込) ${index === 1 ? "ケーブル" : "スピーカー"}</a>`,
+        `<a href="/webshop/2026/08/01/product-${index}/">${title} ¥198,000(税込) ${index === 1 ? "アクセサリー" : "スピーカー"}</a>`,
     )
     .join("");
   const items = parseRewireListing(html);

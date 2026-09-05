@@ -134,8 +134,13 @@ function conciseRewireModel(rawModel: string, isCable: boolean): string {
   // Specifications that occur after a Japanese category/brand still distinguish cable lengths,
   // bundled units and vintage revisions. Keep them when reducing the descriptive suffix.
   const japaneseIndex = value.search(JAPANESE_TEXT_PATTERN);
+  // REWIRE also files speaker cables under アクセサリー. An explicit cable type immediately
+  // after the model is sufficient evidence; a later mention of an included cable is not.
+  const cableType = /^(?:スピーカー|電源|デジタル|同軸|インターコネクト)?ケーブル(?=\s|\d|$)/u.test(
+    japaneseIndex >= 0 ? value.slice(japaneseIndex) : "",
+  );
   const identityDetails = [
-    ...(isCable ? [...value.matchAll(/\b\d+(?:\.\d+)?\s*(?:mm|cm|m)\b/giu)] : []),
+    ...(isCable || cableType ? [...value.matchAll(/\b\d+(?:\.\d+)?\s*(?:mm|cm|m)\b/giu)] : []),
     // A driver size already in the model prefix belongs to that prefix. Dimensions later in
     // the description (height, width, etc.) never become extra model tokens.
     ...[...value.matchAll(/\d+(?:\.\d+)?インチ/gu)].filter((match) => match.index < japaneseIndex),
