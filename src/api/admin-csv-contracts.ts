@@ -75,13 +75,20 @@ export function isAdminCsvOriginal(value: unknown): value is AdminCsvOriginal {
   if (row.version !== 1 || (row.kind !== "listing" && row.kind !== "catalog")) return false;
   if (!Number.isSafeInteger(row.id) || Number(row.id) <= 0) return false;
   if (!row.values || typeof row.values !== "object" || Array.isArray(row.values)) return false;
-  return Object.keys(row.values).length === ADMIN_CSV_FIELDS[row.kind].length &&
-    ADMIN_CSV_FIELDS[row.kind].every((field) =>
-      typeof row.values?.[field] === "string" && row.values[field].length <= ADMIN_CSV_MAX_VALUE_CHARACTERS);
+  return (
+    Object.keys(row.values).length === ADMIN_CSV_FIELDS[row.kind].length &&
+    ADMIN_CSV_FIELDS[row.kind].every(
+      (field) =>
+        typeof row.values?.[field] === "string" &&
+        row.values[field].length <= ADMIN_CSV_MAX_VALUE_CHARACTERS,
+    )
+  );
 }
 
 /** Bound the encoded JSON body as well as the row count (UTF-8 and JSON escapes both matter). */
-export function* adminCsvPreviewBatches(changes: readonly AdminCsvChange[]): Generator<AdminCsvChange[]> {
+export function* adminCsvPreviewBatches(
+  changes: readonly AdminCsvChange[],
+): Generator<AdminCsvChange[]> {
   const encoder = new TextEncoder();
   const envelopeBytes = encoder.encode('{"changes":[]}').length;
   let batch: AdminCsvChange[] = [];
@@ -91,7 +98,10 @@ export function* adminCsvPreviewBatches(changes: readonly AdminCsvChange[]): Gen
     if (size + envelopeBytes > ADMIN_CSV_MAX_REQUEST_BYTES - 1024) {
       throw new Error(change.line + "行目: 修正データがリクエスト上限を超えています。");
     }
-    if (batch.length && (batch.length >= ADMIN_CSV_PREVIEW_LIMIT || bytes + size + 1 > ADMIN_CSV_MAX_REQUEST_BYTES)) {
+    if (
+      batch.length &&
+      (batch.length >= ADMIN_CSV_PREVIEW_LIMIT || bytes + size + 1 > ADMIN_CSV_MAX_REQUEST_BYTES)
+    ) {
       yield batch;
       batch = [];
       bytes = envelopeBytes;

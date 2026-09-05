@@ -298,13 +298,16 @@ export async function propagateCatalogCategoryToMatchedListings(
       }
       // A retry may see the category already committed. Explicit listing authority must not be
       // rewritten just for its override trigger to restore it again.
-      if (listing.override_primary_category_id != null || (
-        listing.category === primary.name && listing.primary_category_id === primary.id &&
-        listing.category_ids === JSON.stringify(categoryIds) &&
-        listing.direct_category_ids === JSON.stringify([primary.id]) &&
-        listing.classification_status === "classified" &&
-        listing.search_aliases === categorySearchAliases(categoryIds)
-      )) continue;
+      if (
+        listing.override_primary_category_id != null ||
+        (listing.category === primary.name &&
+          listing.primary_category_id === primary.id &&
+          listing.category_ids === JSON.stringify(categoryIds) &&
+          listing.direct_category_ids === JSON.stringify([primary.id]) &&
+          listing.classification_status === "classified" &&
+          listing.search_aliases === categorySearchAliases(categoryIds))
+      )
+        continue;
       const token = `${CATEGORY_PROJECTION_TOKEN_PREFIX}${crypto.randomUUID()}`;
       tokens.set(Number(listing.id), token);
       statements.push(
@@ -349,15 +352,17 @@ export async function propagateCatalogCategoryToMatchedListings(
 
     await runBatches(
       db,
-      listings.filter((listing) => tokens.has(Number(listing.id))).map((listing) =>
-        db
-          .prepare(`
+      listings
+        .filter((listing) => tokens.has(Number(listing.id)))
+        .map((listing) =>
+          db
+            .prepare(`
             UPDATE products
             SET remediation_projection_required = 0, remediation_projection_token = ''
             WHERE id = ? AND remediation_projection_token = ?
           `)
-          .bind(listing.id, tokens.get(Number(listing.id)) || ""),
-      ),
+            .bind(listing.id, tokens.get(Number(listing.id)) || ""),
+        ),
     );
 
     refreshedListings += listings.length;

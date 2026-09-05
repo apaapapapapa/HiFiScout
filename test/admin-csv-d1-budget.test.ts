@@ -68,25 +68,43 @@ test("D1 CSV import bills zero writes for unchanged and repeated edits and bound
 test("D1 repeated CSV category propagation bills zero writes after its first successful refresh", async () => {
   const { db, dispose } = await database();
   try {
-    await db.prepare(`INSERT OR IGNORE INTO knowledge_catalog_manufacturers(id,canonical_name,created_at,updated_at)
+    await db
+      .prepare(`INSERT OR IGNORE INTO knowledge_catalog_manufacturers(id,canonical_name,created_at,updated_at)
       VALUES('luxman','LUXMAN','${AT}','${AT}');
       INSERT INTO knowledge_catalog_products(id,manufacturer_id,canonical_model,normalized_model,canonical_name,created_at,updated_at)
       VALUES(1,'luxman','C10','C10','LUXMAN C10','${AT}','${AT}');
       INSERT INTO knowledge_catalog_product_categories(product_id,category_id,is_primary)
-      VALUES(1,'AMP.PRE',1),(1,'AMP',0);`).run();
+      VALUES(1,'AMP.PRE',1),(1,'AMP',0);`)
+      .run();
     await upsertProducts(db, "hifido", [listing("csv-category")], AT);
-    const rows = await db.prepare("SELECT id,shop_key,source_id FROM products WHERE source_id='csv-category'")
+    const rows = await db
+      .prepare("SELECT id,shop_key,source_id FROM products WHERE source_id='csv-category'")
       .all<{ id: number; shop_key: string; source_id: string }>();
     const ids = rows.results.map((row) => row.id);
     await refreshListingProjections(db, rows.results, AT);
-    assert.equal(await db.prepare("SELECT catalog_product_id FROM product_identity_resolutions WHERE listing_product_id=?").bind(ids[0]).first("catalog_product_id"), 1);
+    assert.equal(
+      await db
+        .prepare(
+          "SELECT catalog_product_id FROM product_identity_resolutions WHERE listing_product_id=?",
+        )
+        .bind(ids[0])
+        .first("catalog_product_id"),
+      1,
+    );
     await propagateCatalogCategoryToMatchedListings(db, 1, ["AMP.PRE", "AMP"], AT, ids);
     const repeated = accountReads(db);
     await propagateCatalogCategoryToMatchedListings(repeated.db, 1, ["AMP.PRE", "AMP"], AT, ids);
     await reclassifyAdminCsvListings(repeated.db, ids, AT);
-    assert.equal(repeated.rowsWritten(), 0, "a retry must not rewrite category membership or projection tokens");
+    assert.equal(
+      repeated.rowsWritten(),
+      0,
+      "a retry must not rewrite category membership or projection tokens",
+    );
     assert.ok(repeated.rowsRead() < 300, `retry read ${repeated.rowsRead()} rows`);
-    assert.ok(repeated.statementCount() < 60, `retry issued ${repeated.statementCount()} statements`);
+    assert.ok(
+      repeated.statementCount() < 60,
+      `retry issued ${repeated.statementCount()} statements`,
+    );
   } finally {
     await dispose();
   }

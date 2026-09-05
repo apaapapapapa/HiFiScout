@@ -221,7 +221,11 @@ export async function previewAdminCsvChange(
   change: AdminCsvChange,
 ): Promise<AdminCsvResult> {
   if (Object.values(change.original.values).some((value) => value.includes("[truncated]"))) {
-    return result(change, "invalid", "元データが省略されているためCSVでは更新できません。個別編集で修正してください。");
+    return result(
+      change,
+      "invalid",
+      "元データが省略されているためCSVでは更新できません。個別編集で修正してください。",
+    );
   }
   const state = await loadState(db, change.original.kind, change.original.id);
   if (!state) return result(change, "invalid", "対象IDが存在しません。");
@@ -373,12 +377,15 @@ async function resumeReceipt(
   }
   if (receipt.status === "applied") return result(change, "applied", "適用済みです。");
   const before = (JSON.parse(receipt.before_json) as { values: AdminCsvValues }).values;
-  const identityChanged = receipt.target_kind === "catalog" && (
-    before.manufacturer_id !== desired.manufacturer_id ||
-    normalizeCatalogModel(before.canonical_model) !== normalizeCatalogModel(desired.canonical_model));
+  const identityChanged =
+    receipt.target_kind === "catalog" &&
+    (before.manufacturer_id !== desired.manufacturer_id ||
+      normalizeCatalogModel(before.canonical_model) !==
+        normalizeCatalogModel(desired.canonical_model));
   const categoryChanged = before.primary_category_id !== desired.primary_category_id;
   const needsReclassification = identityChanged || categoryChanged;
-  const needsProjection = needsReclassification || before.canonical_model !== desired.canonical_model;
+  const needsProjection =
+    needsReclassification || before.canonical_model !== desired.canonical_model;
   if (receipt.target_kind === "listing") {
     await refreshListingProjections(
       db,
@@ -395,7 +402,12 @@ async function resumeReceipt(
       await clearProjectionPendingForToken(db, receipt.target_id, state.projection_token);
     }
   } else if (receipt.phase < (needsReclassification ? 3 : needsProjection ? 1 : 0)) {
-    let scanned: { id: number; shop_key: string; source_id: string; matched_catalog_id?: number | null }[] = [];
+    let scanned: {
+      id: number;
+      shop_key: string;
+      source_id: string;
+      matched_catalog_id?: number | null;
+    }[] = [];
     if (receipt.phase < 2) {
       const column = receipt.phase === 0 ? "catalog_product_id" : "candidate_catalog_product_id";
       const rows = await db
@@ -422,15 +434,21 @@ async function resumeReceipt(
             receipt.after_listing_id,
             REPLAY_PAGE_SIZE,
           )
-          .all<{ id: number; shop_key: string; source_id: string; matched_catalog_id: number | null }>();
+          .all<{
+            id: number;
+            shop_key: string;
+            source_id: string;
+            matched_catalog_id: number | null;
+          }>();
         scanned = rows.results || [];
       }
     }
     // Filter AFTER a bounded indexed page, and advance by scanned IDs even when all are skipped.
     // Matches to this catalog were already refreshed in the reference phases (or by another writer).
-    const selected = receipt.phase === 2
-      ? scanned.filter((row) => row.matched_catalog_id !== receipt.target_id)
-      : scanned;
+    const selected =
+      receipt.phase === 2
+        ? scanned.filter((row) => row.matched_catalog_id !== receipt.target_id)
+        : scanned;
     const propagatedCategory = !identityChanged && receipt.phase === 0 && categoryChanged;
     if (propagatedCategory) {
       await propagateCatalogCategoryToMatchedListings(
@@ -452,7 +470,11 @@ async function resumeReceipt(
     // Propagation already refreshed these listings. Name/lifecycle edits cannot change category
     // authority; only identity/category changes need candidate discovery and reclassification.
     if (needsReclassification && !propagatedCategory) {
-      await reclassifyAdminCsvListings(db, selected.map((row) => row.id), now);
+      await reclassifyAdminCsvListings(
+        db,
+        selected.map((row) => row.id),
+        now,
+      );
     }
     const phase = scanned.length < REPLAY_PAGE_SIZE ? receipt.phase + 1 : receipt.phase;
     const cursor = phase === receipt.phase ? scanned.at(-1)?.id || 0 : 0;

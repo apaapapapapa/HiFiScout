@@ -493,8 +493,13 @@ test("product audit repository exports active rows by default and all history on
   assert.ok(boundedRow);
   for (const [field, value] of Object.entries(boundedRow)) {
     if (typeof value !== "string") continue;
-    const limit = ["canonicalManufacturerId", "model", "primaryCategoryId"].includes(field) ? 4_096 : 2_048;
-    assert.ok(value.length <= limit, "editable values share the import limit; diagnostics remain capped");
+    const limit = ["canonicalManufacturerId", "model", "primaryCategoryId"].includes(field)
+      ? 4_096
+      : 2_048;
+    assert.ok(
+      value.length <= limit,
+      "editable values share the import limit; diagnostics remain capped",
+    );
     assert.equal(value.includes("\0"), false, "an embedded NUL cannot bypass SQLite length() caps");
   }
   assert.match(boundedRow.title, / \[truncated\]$/u);

@@ -230,13 +230,20 @@ export function knowledgeCatalogCsvRow(row: KnowledgeCatalogExportRow): string {
   // Reserve canonical source columns too: diagnostic JSON must not make an untouched edit CSV
   // disagree with its own snapshot. These values are already bounded in the SQL projection.
   const editableFields = new Set<string>(ADMIN_CSV_FIELDS.catalog);
-  const canonicalCharacters = COLUMNS.reduce((total, column) =>
-    total + (editableFields.has(column.header) ? String(column.value(row) ?? "").length : 0), 0);
-  let remainingCharacters = Math.max(0, MAX_CSV_ROW_SOURCE_CHARACTERS - editing.length - canonicalCharacters);
+  const canonicalCharacters = COLUMNS.reduce(
+    (total, column) =>
+      total + (editableFields.has(column.header) ? String(column.value(row) ?? "").length : 0),
+    0,
+  );
+  let remainingCharacters = Math.max(
+    0,
+    MAX_CSV_ROW_SOURCE_CHARACTERS - editing.length - canonicalCharacters,
+  );
   const truncatedFields: string[] = [];
   const cells = COLUMNS.map((column) => {
     const original = column.value(row);
-    if (typeof original !== "string" || editableFields.has(column.header)) return adminCsvCell(original);
+    if (typeof original !== "string" || editableFields.has(column.header))
+      return adminCsvCell(original);
 
     const cellCharacterLimit = column.header.endsWith("_json")
       ? MAX_CSV_JSON_CELL_SOURCE_CHARACTERS

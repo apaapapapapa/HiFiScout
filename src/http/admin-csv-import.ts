@@ -19,11 +19,7 @@ function containsControlCharacter(value: string): boolean {
 export function parseAdminCsvChange(value: unknown): AdminCsvChange | null {
   if (!isRecord(value) || !isRecord(value.original) || !isRecord(value.values)) return null;
   const original = value.original;
-  if (
-    !isAdminCsvOriginal(original) ||
-    !Number.isSafeInteger(value.line) ||
-    Number(value.line) <= 0
-  )
+  if (!isAdminCsvOriginal(original) || !Number.isSafeInteger(value.line) || Number(value.line) <= 0)
     return null;
   const fields: readonly string[] = ADMIN_CSV_FIELDS[original.kind];
   const values = value.values;

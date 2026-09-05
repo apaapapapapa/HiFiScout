@@ -100,7 +100,9 @@ export function productAuditCsvRow(row: CatalogAdminProductExportRow): string {
     primary_category_id: row.primaryCategoryId,
   });
   return (
-    COLUMNS.map((column) => adminCsvCell(column.value(row))).join(",") + "," + adminCsvEditRow(original)
+    COLUMNS.map((column) => adminCsvCell(column.value(row))).join(",") +
+    "," +
+    adminCsvEditRow(original)
   );
 }
 
