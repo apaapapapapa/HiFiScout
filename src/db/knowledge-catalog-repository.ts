@@ -344,6 +344,29 @@ function buildReclassificationStatements(
   return { statements, reclassifiedProducts, refreshTargets };
 }
 
+async function refreshReclassificationPage(
+  db: QueryableDatabase,
+  page: ReclassificationPage,
+  evaluatedAt: string,
+  refreshListings = refreshListingProjections,
+): Promise<void> {
+  if (!page.refreshTargets.length) return;
+  // A thrown refresh leaves durable work; a newer concurrent token must also survive.
+  await refreshListings(db, page.refreshTargets, evaluatedAt);
+  await runBatches(
+    db,
+    page.refreshTargets.map((target) =>
+      db
+        .prepare(`
+          UPDATE products
+          SET remediation_projection_required = 0, remediation_projection_token = ''
+          WHERE id = ? AND remediation_projection_token = ?
+        `)
+        .bind(target.id, target.projectionToken),
+    ),
+  );
+}
+
 export async function reclassifyProductsFromKnowledgeCatalog(
   db: QueryableDatabase,
   evaluatedAt = new Date().toISOString(),
@@ -376,22 +399,7 @@ export async function reclassifyProductsFromKnowledgeCatalog(
     const matches = await findVerifiedCatalogMatches(db, products);
     const page = buildReclassificationStatements(db, products, matches);
     await runBatches(db, page.statements);
-    if (page.refreshTargets.length) {
-      // Category/search aliases are part of the product-level read model. The pending bit/token are
-      // committed with the category write, and cleared only after the dependency-ordered refresh
-      // succeeds. A thrown refresh therefore leaves durable work for the next invocation.
-      await refreshListings(db, page.refreshTargets, evaluatedAt);
-      const completed = page.refreshTargets.map((target) =>
-        db
-          .prepare(`
-            UPDATE products
-            SET remediation_projection_required = 0, remediation_projection_token = ''
-            WHERE id = ? AND remediation_projection_token = ?
-          `)
-          .bind(target.id, target.projectionToken),
-      );
-      await runBatches(db, completed);
-    }
+    await refreshReclassificationPage(db, page, evaluatedAt, refreshListings);
     reclassifiedProducts += page.reclassifiedProducts;
 
     lastId = Number(products[products.length - 1].id);
@@ -426,5 +434,5 @@ export async function reclassifyAdminCsvListings(
   const matches = await findVerifiedCatalogMatches(db, products);
   const page = buildReclassificationStatements(db, products, matches);
   await runBatches(db, page.statements);
-  await refreshListingProjections(db, page.refreshTargets, evaluatedAt);
+  await refreshReclassificationPage(db, page, evaluatedAt);
 }

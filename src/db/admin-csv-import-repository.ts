@@ -12,7 +12,10 @@ import { normalizeIdentityModel } from "../catalog/product-identity.js";
 import { updateListingAdminProduct } from "./listing-admin-repository.js";
 import { refreshListingProjections } from "./listing-projection-refresh.js";
 import { reclassifyAdminCsvListings } from "./knowledge-catalog-repository.js";
-import { replayAdminCsvListings } from "./data-quality-remediation-service.js";
+import {
+  clearProjectionPendingForToken,
+  replayAdminCsvListings,
+} from "./data-quality-remediation-service.js";
 import { loadCatalogRemediationTarget } from "./knowledge-catalog-remediation-repository.js";
 import {
   catalogAdminCategoryIds,
@@ -33,6 +36,7 @@ const STATE_SQL: Record<AdminCsvKind, string> = {
              p.classification_status, p.presentation_color, p.raw_manufacturer, p.raw_model,
              p.raw_category, p.title, COALESCE(o.updated_at, '')) AS revision,
            p.shop_key, p.source_id, p.remediation_projection_required AS pending,
+           p.remediation_projection_token AS projection_token,
            '' AS verification_status
     FROM products p LEFT JOIN product_admin_overrides o ON o.listing_product_id = p.id
     WHERE p.id = ?
@@ -46,7 +50,8 @@ const STATE_SQL: Record<AdminCsvKind, string> = {
              (SELECT json_group_array(json_array(category_id, is_primary))
               FROM (SELECT category_id, is_primary FROM knowledge_catalog_product_categories
                     WHERE product_id = p.id ORDER BY category_id))) AS revision,
-           '' AS shop_key, '' AS source_id, 0 AS pending, p.verification_status
+           '' AS shop_key, '' AS source_id, 0 AS pending, '' AS projection_token,
+           p.verification_status
     FROM knowledge_catalog_products p WHERE p.id = ?
   `,
 };
@@ -57,6 +62,7 @@ interface State {
   shop_key: string;
   source_id: string;
   pending: number;
+  projection_token: string;
   verification_status: string;
 }
 
@@ -373,6 +379,9 @@ async function resumeReceipt(
       ],
       now,
     );
+    if (state.pending === 1) {
+      await clearProjectionPendingForToken(db, receipt.target_id, state.projection_token);
+    }
   } else if (receipt.phase < 3) {
     let selected: { id: number; shop_key: string; source_id: string }[] = [];
     if (receipt.phase < 2) {

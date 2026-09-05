@@ -18,6 +18,7 @@ import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { sqliteD1 } from "./helpers/sqlite-d1.js";
 import { refreshListingProjections } from "../src/db/listing-projection-refresh.js";
 import { updateListingAdminProduct } from "../src/db/listing-admin-repository.js";
+import { reclassifyAdminCsvListings } from "../src/db/knowledge-catalog-repository.js";
 
 const original = adminCsvOriginal("listing", 90001, {
   manufacturer_id: "luxman",
@@ -80,6 +81,10 @@ test("server validates rows independently of the browser and bounds each request
   assert.deepEqual(parseAdminCsvPreview({ changes: [change()] }), [change()]);
   assert.equal(parseAdminCsvPreview({ changes: [change(), change()] }), null);
   assert.equal(parseAdminCsvPreview({ changes: Array(21).fill(change()) }), null);
+  for (const code of [0, 9, 10, 13, 31, 127]) {
+    const model = "C11" + String.fromCharCode(code);
+    assert.equal(parseAdminCsvPreview({ changes: [change(model)] }), null);
+  }
   assert.equal(
     parseAdminCsvPreview({ changes: [{ ...change(), values: { title: "untrusted" } }] }),
     null,
@@ -220,6 +225,7 @@ test("race inside the write transaction rolls back overrides and the import rece
 test("a projection failure leaves a durable receipt that another upload resumes", async () => {
   const { db, sqlite } = database();
   try {
+    sqlite.exec("UPDATE products SET is_active=0 WHERE id=90001");
     const preview = await previewAdminCsvChange(db, change());
     let committed = false;
     const failing = {
@@ -241,6 +247,12 @@ test("a projection failure leaves a durable receipt that another upload resumes"
       operationId,
     });
     assert.equal(first.status, "failed");
+    assert.equal(
+      sqlite
+        .prepare("SELECT remediation_projection_required n FROM products WHERE id=90001")
+        .get()?.n,
+      1,
+    );
     const pending = await previewAdminCsvChange(db, change());
     if (first.status === "failed") {
       assert.equal(pending.status, "pending");
@@ -252,6 +264,18 @@ test("a projection failure leaves a durable receipt that another upload resumes"
       });
       assert.equal(resumed.status, "applied");
     }
+    assert.equal(
+      sqlite
+        .prepare("SELECT remediation_projection_required n FROM products WHERE id=90001")
+        .get()?.n,
+      0,
+    );
+    assert.equal(
+      sqlite
+        .prepare("SELECT remediation_projection_token t FROM products WHERE id=90001")
+        .get()?.t,
+      "",
+    );
     assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM admin_csv_import_changes").get()?.n, 1);
   } finally {
     sqlite.close();
@@ -436,8 +460,63 @@ test("catalog identity correction detaches old listings without rewriting their 
         .get()?.n,
       0,
     );
-    const rows = sqlite.prepare("SELECT model,raw_model FROM products WHERE id>=90001").all();
+    const rows = sqlite
+      .prepare(`SELECT model, raw_model, remediation_projection_required AS pending,
+        remediation_projection_token AS token FROM products WHERE id>=90001`)
+      .all();
     assert.ok(rows.every((row) => row.model === "C10" && row.raw_model === "C10"));
+    assert.ok(rows.every((row) => row.pending === 0 && row.token === ""));
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("CSV catalog reclassification clears observed tokens but preserves a concurrent token", async () => {
+  const { db, sqlite } = database();
+  try {
+    await relatedListings(db, sqlite);
+    sqlite.exec(`
+      UPDATE products SET primary_category_id='PRC.DAC', category='DAC',
+        category_ids='["PRC.DAC","PRC"]' WHERE id>=90001;
+    `);
+    let raced = false;
+    const racing = {
+      batch: db.batch.bind(db),
+      prepare(sql: string) {
+        if (!raced && sql.includes("SET remediation_projection_required = 0")) {
+          sqlite.exec(`
+            UPDATE products SET remediation_projection_required=1,
+              remediation_projection_token='category:concurrent' WHERE id=90003;
+          `);
+          raced = true;
+        }
+        return db.prepare(sql);
+      },
+    };
+    await reclassifyAdminCsvListings(
+      racing,
+      [90001, 90002, 90003],
+      "2026-09-05T01:00:00.000Z",
+    );
+    assert.equal(raced, true);
+    const rows = sqlite
+      .prepare(`
+      SELECT primary_category_id, remediation_projection_required AS pending,
+        remediation_projection_token AS token FROM products WHERE id>=90001 ORDER BY id
+    `)
+      .all();
+    assert.deepEqual(
+      rows.map((row) => row.primary_category_id),
+      ["AMP.PRE", "AMP.PRE", "AMP.PRE"],
+    );
+    assert.deepEqual(
+      rows.map((row) => row.pending),
+      [0, 0, 1],
+    );
+    assert.deepEqual(
+      rows.map((row) => row.token),
+      ["", "", "category:concurrent"],
+    );
   } finally {
     sqlite.close();
   }

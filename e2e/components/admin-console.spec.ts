@@ -64,6 +64,8 @@ async function mockAdminApi(page: Page): Promise<void> {
   await page.route("**/api/**", async (route: Route) => {
     const request = route.request();
     const url = new URL(request.url());
+    // Vite serves browser-safe source modules under /src/api/ in the fixture gallery.
+    if (!url.pathname.startsWith("/api/")) return route.continue();
     const json = (body: unknown, status = 200) =>
       route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 

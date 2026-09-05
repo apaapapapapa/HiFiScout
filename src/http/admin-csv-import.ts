@@ -6,6 +6,14 @@ import {
   type AdminCsvChange,
 } from "../api/admin-csv-contracts.js";
 
+function containsControlCharacter(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 32 || code === 127) return true;
+  }
+  return false;
+}
+
 export function parseAdminCsvChange(value: unknown): AdminCsvChange | null {
   if (!isRecord(value) || !isRecord(value.original) || !isRecord(value.values)) return null;
   const original = value.original;
@@ -27,7 +35,7 @@ export function parseAdminCsvChange(value: unknown): AdminCsvChange | null {
         (field) =>
           typeof values[field] === "string" &&
           values[field].length <= 4096 &&
-          !/[\u0000-\u001f\u007f]/u.test(values[field]),
+          !containsControlCharacter(values[field]),
       )
     )
       return null;
