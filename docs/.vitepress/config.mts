@@ -29,6 +29,7 @@ export default {
         text: "Architecture",
         items: [
           { text: "Data Platform", link: "/data-platform-architecture" },
+          { text: "Crawl Orchestration", link: "/crawl-orchestration" },
           { text: "Architecture Graph", link: "/architecture/dependencies" },
           { text: "AI-assisted Snapshot", link: "/ai-generated/architecture-overview" },
         ],
@@ -42,9 +43,20 @@ export default {
         ],
       },
       {
+        text: "Data and Operations",
+        items: [
+          { text: "Data Quality", link: "/data-quality" },
+          { text: "Remediation Runbook", link: "/data-quality-remediation" },
+          { text: "Resolver Replay", link: "/resolver-replay-status" },
+          { text: "Registered Product Admin", link: "/listing-admin" },
+          { text: "R2 Evidence Limits", link: "/r2-evidence-safety" },
+        ],
+      },
+      {
         text: "Development",
         items: [
           { text: "Adding Shops", link: "/adding-shops" },
+          { text: "TypeScript", link: "/typescript" },
           { text: "Testing Strategy", link: "/testing-strategy" },
           { text: "Documentation Tooling", link: "/tooling" },
         ],

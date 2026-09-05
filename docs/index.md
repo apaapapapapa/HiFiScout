@@ -12,14 +12,37 @@ This site combines curated architecture documentation with references generated 
 ## Architecture
 
 - [Data platform architecture](./data-platform-architecture.md) documents D1/FTS5 search, Product Identity Resolution, the R2 Evidence Archive, observability, and the PostgreSQL exit boundary.
+- [Crawl orchestration](./crawl-orchestration.md) documents per-shop Durable Object execution, dispatch recovery, Alarm pacing, and bounded staged work.
 - [Architecture graph](./architecture/dependencies.md) shows the current source-level dependency structure and explains the architecture boundaries enforced in CI.
+
+## Data and operations
+
+- [Data quality](./data-quality.md) — metric semantics, identity coverage, taxonomy, and replay order.
+- [Remediation runbook](./data-quality-remediation.md) — evidence-driven investigation and correction.
+- [Resolver replay status](./resolver-replay-status.md) — bounded manual maintenance and convergence.
+- [Registered Product Admin](./listing-admin.md) — Access-protected listing corrections and overrides.
+- [R2 evidence limits](./r2-evidence-safety.md) — archive budgets, deduplication, and retention.
+
+CI/deployment ownership is maintained in `.github/workflows/README.md` in the repository. Public
+`/api/admin/*` routes are retired; use the separate Access-protected admin Worker and maintained
+operational scripts. A successful deploy workflow may be quota-deferred or a no-op: downstream
+checks use its `deployment-identity` artifact to distinguish an actual new deployment.
 
 ## Development
 
 - [Adding shops](./adding-shops.md)
+- [TypeScript development](./typescript.md)
 - [Testing strategy](./testing-strategy.md)
 - [Documentation tooling](./tooling.md)
 
 ## Source of truth
 
-Generated documentation is intentionally not committed. Route contracts, source code, JSDoc comments, module imports, architecture rules, and `migrations/*.sql` remain the source of truth. CI regenerates the developer site and publishes it as a workflow artifact on every pull request and every push to `main`.
+Route contracts, source code, JSDoc comments, module imports, architecture rules, and ordered
+`migrations/*.sql` are authoritative. Deterministic generated references are ignored and rebuilt in
+CI. The [AI-assisted snapshot](./ai-generated/architecture-overview.md) is an explicit exception:
+`docs/ai-generated/` contains committed reviewed artifacts or a clearly marked fallback. Check its
+source-commit metadata before using it to describe current behavior.
+
+CI uploads the developer site on pull requests and pushes to `main`; successful main builds also
+publish GitHub Pages. `AGENTS.md` owns contributor rules and a task-specific source map;
+`CLAUDE.md` imports it rather than maintaining a second guide.

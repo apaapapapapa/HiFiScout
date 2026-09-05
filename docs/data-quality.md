@@ -1,10 +1,10 @@
 # Data Quality
 
-HiFiScout Phase 2 treats data quality as a domain concern after crawl, normalization, persistence, search projection, and Product Identity Resolution. A crawl can succeed while the resulting data quality is `warning` or `critical`; quality evaluation failures are logged and do not convert a successful crawl into a crawler failure.
+HiFiScout treats data quality as a domain concern after crawl, normalization, persistence, search projection, and Product Identity Resolution. A crawl can succeed while the resulting data quality is `warning` or `critical`; quality evaluation failures are logged and do not convert a successful crawl into a crawler failure.
 
 ## Architecture
 
-The crawler records run-level facts and delegates evaluation/persistence to the common Data Quality layer. Shop-specific quality logic is not embedded in crawler branches. Global thresholds live in `src/data-quality/quality-thresholds.ts`; a shop adapter may declare a narrowly scoped `qualityThresholds` override when domain evidence justifies it.
+The crawler records run-level facts and delegates evaluation/persistence to the common Data Quality layer. Shop-specific quality logic is not embedded in crawler branches. Global thresholds live in `src/data-quality/quality-thresholds.ts`; a shop plugin may declare a narrowly scoped `capabilities.dataQuality.thresholds` override when domain evidence justifies it.
 
 `src/data-quality/quality-evaluator.ts` is a pure-function-oriented evaluator. `src/db/data-quality-repository.ts` owns D1 aggregation, persistence, latest/history queries, and API serialization. `migrations/0019_data_quality.sql` creates `data_quality_runs`, whose rows are linked to `crawl_runs` when available.
 
@@ -37,7 +37,7 @@ Three write paths produce it, and all three must agree:
 `unresolved()` in `src/catalog/category-classifier.ts`, the fallback in `normalizeCategory()`, and
 the fallback in `catalogFields()` (`src/db/product-write-repository.ts`). The classifier's in-memory
 `categoryIds: []` is a separate contract — `category-enricher.ts` and `page-verification.ts` read an
-empty list as "not classified" — but every persisted row carries `[primary_category_id]`.
+empty list as "not classified" — while persistence derives canonical direct leaves and their ancestor membership. An unresolved row persists the `unclassified` sentinel; a classified multi-product listing may have several direct leaves. See `catalogFields()` and `rebuildListingCategories()` for the shared crawl/replay representation.
 
 For Product Identity specifically, the invariant is:
 
@@ -70,27 +70,42 @@ Statuses are `healthy`, `warning`, `critical`, and `unknown`. High-error thresho
 | Item Count Drop | <= -20% | <= -50% |
 | Evidence Coverage | < 95% | < 80% |
 
-The thresholds intentionally start with the Phase 2 proposal because production quality baselines are not available to repository code or unauthenticated CI. They should be tuned only with observed production distributions, and shop overrides should remain exceptional.
+The table describes defaults in `src/data-quality/quality-thresholds.ts`; that module and registered plugin overrides are authoritative. Tune thresholds with observed production distributions, and keep shop overrides exceptional.
 
-## API
+## Access and operational entry points
 
-`GET /api/admin/data-quality/status` returns the overall status and latest quality record for each shop. Each shop exposes `snapshot` and `latestRun` separately, while the flattened `metrics` object supports lightweight operational UI consumers. The `details` object includes `identityResolutionMissingCount` so operators can distinguish ordinary unresolved identities from listings that have no resolution row at all. Each shop also carries `remediationSlo` (the post-Phase-4 milestone evaluation) and a `dashboard`: per-metric current/threshold/status, delta against the run immediately before it, a bounded recent-snapshot trend with direction (`improving`/`degrading`/`flat`/`unknown`), and delta against the source-controlled rollout baseline captured before this remediation program began (`docs/post-phase4-data-quality-baseline.md`). A top-level `remediation` object carries the same rollout baseline, the bounded query limits used to build it, remediation-queue backlog/failure health, the identity-resolution match-method distribution, and the highest-impact remediation contributors (unknown manufacturers, unresolved manufacturer/model pairs, category issues, model extraction patterns, and catalog candidate groups).
+Public `/api/admin/*` requests return 404 in `src/index.ts`, before the legacy router runs.
+`ADMIN_TOKEN` cannot enable those routes. The separate Cloudflare Access-protected admin Worker
+supports catalog/listing editing, correction reports, and CSV exports through `CatalogAdminService`;
+its contract is defined in `src/admin/contracts.ts`. It does not expose every old operational handler.
 
-`GET /api/admin/data-quality/history?shop=<shop-key>&limit=<n>` returns crawl-linked history for one shop, i.e. the trend over recent snapshots in full. The query is bounded to at most 200 rows. Both endpoints require the existing `ADMIN_TOKEN` bearer authorization.
+| Responsibility | Current entry point |
+| --- | --- |
+| Post-deploy data quality and identity checks | `.github/workflows/production-operational-health.yml`, `scripts/production-operational-health.sh`, `scripts/product-search-identity-health.sh` |
+| Bounded manual resolver replay | `.github/workflows/resolver-replay-drain.yml`, `scripts/resolver-replay-drain.ts` |
+| Explicit full representation audit | `.github/workflows/product-data-audit.yml` or the admin export surface |
+| Listing/catalog corrections | Access-protected admin Worker; [Registered Product Admin](./listing-admin.md) |
+| Latest/history evaluation and serialization | `src/db/data-quality-repository.ts` |
+| Remediation impact, governance, and contributor aggregation | `src/db/data-quality-remediation-impact-repository.ts`, `src/db/data-quality-remediation-governance-repository.ts` |
 
-`GET /api/admin/data-quality/unresolved-manufacturers?limit=<n>` returns a bounded impact-ordered aggregation of unresolved normalized raw spellings. `POST /api/admin/manufacturer-aliases` writes an audited pending/verified/rejected alias. A verified write reprocesses one bounded page of matching stored listings without crawling a seller and returns `nextAfterId` when the caller must resume. The replay refreshes Product Identity and the Phase 4 product-search projection in dependency order. These endpoints also require `ADMIN_TOKEN`.
-
-`GET /api/admin/data-quality/unresolved-models?limit=<n>` aggregates model extraction failures by canonical manufacturer, normalized model, status, and resolver method. `GET /api/admin/data-quality/unresolved-identity?limit=<n>` aggregates listings Product Identity still refuses to match, keyed by canonical manufacturer plus normalized model and carrying the current rejection reason, shop spread, and sample evidence — these are also the catalog candidate groups the status dashboard's top contributors surface. `GET /api/admin/data-quality/remediation-events?limit=<n>` returns recent before/after provenance for canonical changes that remediation caused.
-
-`POST /api/admin/data-quality/replay-manufacturers` and `POST /api/admin/data-quality/replay-models` reprocess one bounded page of listings whose stored result predates the current resolver version or whose downstream projection refresh is still pending. `POST /api/admin/knowledge-catalog/replay` applies one verified catalog product to the listings it explains. `POST /api/admin/data-quality/rebuild` enqueues one bounded, restartable page of the full-recovery rebuild (see below) and returns the rebuild order alongside `nextAfterId`. All accept optional `afterId`/`limit` and return `nextAfterId` when the caller must resume; none contacts a seller site. All of these require `ADMIN_TOKEN`.
+The repository serializers keep snapshot metrics and latest crawl-run metrics distinct. Bounded
+history/trend queries and remediation contributor counts describe D1 state; they are not live
+Cloudflare billing metrics. Follow [the remediation runbook](./data-quality-remediation.md) and
+[resolver replay status](./resolver-replay-status.md) for investigations and explicit maintenance.
 
 ## Observability
 
 After evaluation, the crawler emits a structured `data_quality_evaluated` log with shop, crawl-run ID, status, item total, and quality rates. HTML and other evidence content are never included in the structured log. Evaluation failures emit `data_quality_evaluation_failure` without failing the crawl.
 
-The production deployment baseline independently recomputes Identity coverage over active listings. It reports `identity_resolution_missing_count` and `identity_resolution_coverage_rate`, uses all active listings as the Identity Unresolved denominator, and fails the deployment validation step if even one active listing has no Identity resolution row. This turns the active-listing Identity invariant into an operational regression gate rather than a one-time migration assertion.
+`Production Operational Health` recomputes active-listing Identity coverage and checks Product
+Search membership/grouping after deployment. Missing identity rows, missing memberships, stale
+fallbacks, and invalid entity/offer state fail the operational check. They do not retroactively fail
+a successful Worker deployment. Automatic checks consume the deployed SHA from `deployment-identity`;
+quota-deferred/no-op deployments supply no new identity and downstream checks skip accordingly.
 
-The same step also counts product search read-model drift — active listings with no entity membership, memberships pointing at inactive listings, entities left without offers, and fallback entities whose listing has since been confirmed — and fails the deploy when any counter is non-zero. A product that stops being searchable is invisible to users but silent in the logs, which is why it is a gate rather than a dashboard; `POST /api/admin/product-search/rebuild` is the documented repair. See [Data platform architecture](./data-platform-architecture.md) for the read model itself.
+Repair remains an explicit maintenance action, separate from health detection. See
+[Data platform architecture](./data-platform-architecture.md) and the workflow responsibility map
+in `.github/workflows/README.md`.
 
 ## Retention
 
@@ -102,7 +117,7 @@ The primary snapshot query filters `products` by `shop_key` and `is_active`, agg
 
 Infrastructure-level D1/R2 latency, storage, and error metrics remain in Cloudflare Observability as established in Phase 1; D1 stores only domain-significant quality results.
 
-## Baseline and rollout
+## Persistence and replay compatibility
 
 Migration 0017 introduced search/identity/evidence foundations and migration 0018 added Evidence Archive usage metadata. Deployment applies migrations before the Worker release, so Phase 2 migration 0019 is applied after those foundations. Migration 0020 closes the rollout-era Identity coverage gap by inserting an explicit unresolved/backfill-pending resolution for every existing listing that lacks one.
 
@@ -130,15 +145,15 @@ Title evidence is only used when the manufacturer resolved, and only when the re
 
 ## Remediation loop
 
-Listings that cannot resolve are aggregated by canonical manufacturer plus normalized model and prioritized by impact — unclassified listings first, then canonical `other`, then unresolved identity, then shop spread, then listing count. Cross-shop repetition contributes to priority but is never treated as proof of product identity; candidate creation is not verification.
+Listings that cannot resolve are aggregated by canonical manufacturer plus normalized model and prioritized by impact: unclassified listings, legacy `other` residue, unresolved identity, shop spread, and listing count. Taxonomy v3 has no canonical `other`. Cross-shop repetition contributes to priority but is never treated as proof of product identity; candidate creation is not verification.
 
-When a catalog entry becomes verified, the review run's finalizer replays the listings it explains: Product Identity is re-run and the Phase 4 search projection, entity, and offer membership are refreshed in that dependency order, with no seller fetch. Only listings whose identity actually moved produce a provenance row, so the event table stays proportional to how much data improved rather than to how often replay ran. Alias-driven manufacturer and model corrections record provenance the same way.
+When a catalog entry becomes verified, bounded catalog remediation replays the listings it explains: Product Identity is re-run and the search projection, entity, and offer membership are refreshed in that dependency order, with no seller fetch. Only listings whose identity actually moved produce a provenance row, so the event table stays proportional to how much data improved rather than to how often replay ran. Alias-driven manufacturer and model corrections record provenance the same way.
 
 The backlog is selected by a durable watermark, not a time window: a verified entry is remediation work while `last_remediated_at` is null or older than `last_verified_at`. A run that verifies more entries than one invocation can replay therefore leaves the rest selectable for the next run instead of stranding them behind a newer timestamp, and a re-verified product becomes work again. Entries are processed oldest-verification-first so the backlog drains in order. `remediation_after_listing_id` persists the listing-axis cursor after each successful page and resets on re-verification; the watermark advances only when all listing pages finish. The product selector reads `productLimit + 1`, and the returned `hasMoreProducts`, `remainingProductCount`, and `incompleteProductCount` make product-axis overflow explicit. The sweep remains bounded on both axes (`KNOWLEDGE_CATALOG_REMEDIATION_MAX_PRODUCTS`, `KNOWLEDGE_CATALOG_REMEDIATION_MAX_LISTINGS`) without silently reporting a partial run as complete.
 
-The first successful crawl per shop after deployment persists a Phase 2 baseline. Manufacturer resolution metadata is refreshed during normal product metadata synchronization; until a listing has been observed by the new code, missing manufacturer-normalization evidence is conservatively treated as unresolved rather than falsely claiming a canonical match. Identity coverage is likewise conservative: a missing resolution row is counted as unresolved until the backfill or normal resolver supplies an explicit resolution.
+A completed crawl persists its data-quality evaluation. Manufacturer resolution metadata is refreshed during normal product metadata synchronization; until a listing has been observed by the new code, missing manufacturer-normalization evidence is conservatively treated as unresolved rather than falsely claiming a canonical match. Identity coverage is likewise conservative: a missing resolution row is counted as unresolved until the backfill or normal resolver supplies an explicit resolution.
 
-Every five-minute sweep that resolves at least one job also recomputes and persists a snapshot for each shop it touched, via the same `saveDataQualityRun` a crawl uses, with `crawl_run_id` left `null`. This closes the loop without inventing a synthetic crawl: crawl-only run metrics (parser failure, evidence coverage, item-count drop) correctly report `unknown` on that row since no crawl happened, while the snapshot metrics (manufacturer/category/identity/inventory/model) reflect current D1 state immediately rather than waiting for the shop's next crawl. A sweep with no resolved work writes no row, so history growth stays proportional to actual remediation activity and is bounded by the existing 180-day retention.
+Each scheduled remediation sweep that resolves at least one job also recomputes and persists a snapshot for each shop it touched, via the same `saveDataQualityRun` a crawl uses, with `crawl_run_id` left `null`. This closes the loop without inventing a synthetic crawl: crawl-only run metrics (parser failure, evidence coverage, item-count drop) correctly report `unknown` on that row since no crawl happened, while the snapshot metrics (manufacturer/category/identity/inventory/model) reflect current D1 state immediately rather than waiting for the shop's next crawl. A sweep with no resolved work writes no row, so history growth stays proportional to actual remediation activity and is bounded by the existing 180-day retention.
 
 Because that row's own run status is `unknown`, `latestDataQualityByShop` never lets it stand in for crawl-run health: the newest row overall supplies the snapshot metrics, but `latestRun` (parser failure, evidence coverage, item-count drop) and the metric statuses that feed the top-level `status` are always sourced from the newest row that has a `crawl_run_id`, independent of which row is newest. A shop stuck `critical` on parser failures stays `critical` through any number of intervening remediation sweeps instead of reading as healthy the moment one runs.
 
@@ -150,9 +165,16 @@ Migrating existing production data, or a full recovery rebuild, follows this dep
 2. resolve canonical manufacturer;
 3. resolve/normalize model;
 4. reclassify category/features;
-5. enrich/create Knowledge Catalog candidates (the aggregation views above; verification stays a human/reviewer action, never automatic);
+5. enrich/create Knowledge Catalog candidates; verification follows the dedicated evidence-verification pipeline or explicit admin review, never candidate aggregation alone;
 6. re-run Product Identity;
-7. rebuild/refresh the Phase 4 product-search entities and offer membership;
+7. rebuild/refresh the product-search entities and offer membership;
 8. recompute DQ aggregates/snapshots.
 
-Steps 2–4 run together inside one listing update (`replayDerivedListing`); steps 6–7 run together inside `refreshListingProjections`, which syncs the search projection, then Product Identity, then the search entity and its offer membership — rebuilding the entity before identity is re-resolved would make it stale on arrival. Step 8 is the sweep-triggered snapshot persistence described above. `POST /api/admin/data-quality/replay-manufacturers`, `replay-models`, and `knowledge-catalog/replay`, the scheduled remediation sweep, and `POST /api/admin/data-quality/rebuild` (which enqueues bounded, restartable pages via `enqueueFullDataQualityRebuild` — the explicit full-recovery path; normal operation never calls it) all resolve through this same order; nothing outside this document reorders it. The rebuild endpoint echoes the order back as `DATA_QUALITY_REBUILD_ORDER` so a caller driving the pages does not have to duplicate it.
+Steps 2–4 run together inside `replayDerivedListing`; steps 6–7 run inside
+`refreshListingProjections`, which syncs listing search vocabulary, Product Identity, and then the
+entity/offer memberships. Rebuilding an entity before its identity refresh would immediately stale
+it. Step 8 persists the post-remediation snapshot before durable job completion. The normal
+scheduled sweep and the explicit `scripts/resolver-replay-drain.ts` maintenance path use these
+repositories. `enqueueFullDataQualityRebuild` is a separate bounded full-recovery capability, not a
+normal crawl step; its old public HTTP handler is retired. `DATA_QUALITY_REBUILD_ORDER` in
+`src/http/remediation-admin.ts` names the dependency order.

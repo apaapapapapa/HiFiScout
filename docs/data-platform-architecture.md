@@ -4,7 +4,7 @@ Status: Accepted
 
 ## Decision
 
-HiFiScout keeps Cloudflare D1 as the system of record for structured product data. R2 is used only for large, unstructured diagnostic/verification evidence. Product search stays on D1 FTS5. Product identity is deterministic and explainable and uses the verified Knowledge Catalog as its canonical-product basis.
+HiFiScout keeps Cloudflare D1 as the system of record for structured product data. R2 holds bounded diagnostic/verification evidence and generated CSV exports. Product search stays on D1 FTS5. Product identity is deterministic and explainable and uses the verified Knowledge Catalog as its canonical-product basis.
 
 The architecture intentionally does **not** introduce Vectorize/vector databases, graph databases, KV/Redis, document databases, external search engines, or PostgreSQL at this stage.
 
@@ -28,34 +28,40 @@ D1 remains authoritative for:
 
 The existing Repository boundary remains the storage boundary. Domain logic must not depend directly on a D1-specific API where a repository already owns persistence. This keeps a future D1 -> PostgreSQL repository replacement possible without introducing a large ORM/DAO framework now.
 
-### R2: unstructured evidence only
+### R2: evidence and export objects
 
-R2 stores HTML evidence that is useful for parser/crawl/classification/Knowledge Catalog investigation. D1 stores only metadata and the R2 object key; HTML is never stored in D1.
+R2 stores retained HTML evidence for parser/crawl/classification/Knowledge Catalog investigation.
+D1 stores archive metadata and the R2 object key. Separately, resumable crawling temporarily stages
+fetched HTML in `crawl_fetch_pages.html_text` between fetch and parse steps; parsed listing pages
+clear that HTML and retain normalized products for finalization. Terminal cleanup clears staged
+payloads. This temporary recovery state is not the long-term Evidence Archive.
 
-Normal successful crawl HTML is not archived.
+Normal successful crawl HTML is not archived. Asynchronous Product Audit and Knowledge Catalog exports also store their bounded parts and final CSV objects in R2; D1 owns job state and object references. See [Asynchronous admin CSV generation](#asynchronous-admin-csv-generation).
 
 ## Product search
 
-Since Phase 4 the user-facing unit of search is a **product**, not a seller listing. Three shops listing the same amplifier produce one result with three offers, and every count, filter, sort and page boundary is defined over products.
+The user-facing unit of search is a **product**. Safely identified offers for the same amplifier produce one result with multiple offers; search counts, filters, sorting, and page boundaries operate on entities. Public metadata retains some listing-unit counts, as described below.
 
 ### Search entities
 
 `product_search_entities` is the product-level read model. Each row is one **search entity**, which is either:
 
 - a confirmed Knowledge Catalog product (`entity_kind = 'catalog'`, public key `c-<catalog id>`); or
-- a single unresolved listing standing in for itself (`entity_kind = 'unresolved_listing'`, public key `l-<listing id>`).
+- an unresolved fallback (`entity_kind = 'unresolved_listing'`, public key `l-<representative listing id>`), containing either one listing or a guarded exact-identity group.
 
 The fallback kind is mandatory rather than a nicety: identity coverage is incomplete, and without it a listing the catalog has not confirmed would silently stop being findable. Public keys are namespaced because catalog ids and listing ids overlap numerically and must never be mistaken for each other.
 
 `product_search_entity_offers` maps each active listing to exactly one entity. `listing_product_id` is the table's primary key, so duplicate membership is impossible by schema rather than by convention.
 
-Grouping is decided only by Product Identity Resolution: a listing joins a canonical entity when its resolution is `matched` against a verified `knowledge_catalog_products` row. Candidates, fuzzy suggestions, equal titles and equal model stems never merge two shops — variants such as `MK2`, `SE` and `Meta` therefore stay separate for exactly as long as the identity layer says they are different products. Search never runs a second grouping engine of its own.
+Canonical membership requires a `matched` Product Identity resolution against a verified `knowledge_catalog_products` row. Before catalog verification, `src/db/product-search-exact-identity.ts` may consolidate unresolved offers whose canonical manufacturer and resolved normalized model are both nonempty and exactly equal. Conflicting specific categories veto that group; its representative is the lowest eligible active listing ID. This preserves the existing fallback kind without pretending that the catalog has verified the product.
+
+Candidate/unresolved model results, fuzzy suggestions, equal titles, and equal model stems never authorize grouping. Revision, edition, and accessory evidence remains protected by the model/identity guards. Confirmed catalog membership always takes precedence over fallback grouping.
 
 An entity exists only while it holds at least one active offer, which is what retires a fallback entity when its listing becomes confirmed and what retires a canonical entity when every shop has sold out.
 
-`src/db/product-search-entity-sql.ts` holds the single definition of that derivation. The crawler's incremental sync, the deterministic rebuild (`POST /api/admin/product-search/rebuild`) and the migration backfill all execute the same statements — scoped or unscoped — so the repair path cannot disagree with the live path.
+`src/db/product-search-entity-sql.ts` and the exact-identity helpers own the derivation used by `syncProductSearchEntities` and `rebuildProductSearchEntities` in `src/db/product-search-entity-repository.ts`. Incremental sync and explicit rebuild share the current rules. Applied migrations retain the SQL needed for their original rollout; they are not edited to follow later runtime changes.
 
-`GET /api/admin/product-search/consistency` reports drift per invariant: active listings with no membership, memberships pointing at inactive listings, entities with no offers, fallback entities whose listing is now matched, catalog entities whose product is no longer eligible, stale offer-count aggregates, and FTS index integrity. The deploy pipeline fails on any of them rather than leaving a product quietly unsearchable.
+`productSearchEntityConsistency` reports drift per invariant: active listings with no membership, memberships pointing at inactive listings, entities with no offers, fallback entities whose listing is now matched, catalog entities whose product is no longer eligible, stale offer-count aggregates, and FTS index integrity. Production checks live in `.github/workflows/production-operational-health.yml` and its scripts, separately from deployment smoke checks. Public `/api/admin/*` routes are retired at `src/index.ts`; the legacy router's consistency/rebuild handlers are not supported public endpoints. An explicit bounded repair is available through `scripts/repair-product-search-gaps.ts` using the D1 REST API; it also pays for a full remaining-gap count.
 
 ### Repairing exact-identity splits
 
@@ -69,7 +75,7 @@ Dirty identities are claimed atomically with `UPDATE ... RETURNING`. Member look
 
 General cron shares a 45-call D1 budget across watchdogs, maintenance and bookkeeping. Five calls are reserved for finalization: ordinary work stops at 40, while bounded dispatch cleanup and successful task completion may use the reserve without exceeding 45. A failed catalog dispatch closes its incomplete run and jobs; a successful Queue wake always records maintenance completion, including when it used the final work call. SQL statements inside each batch are logged separately from binding calls. A 20-second wall-time deadline controls admission between work units; finalization may cross that deadline, which is not a CPU-time measurement or proof of Workers Free CPU compliance. `scheduled_maintenance_pending` retains due work across ticks, including separate daily retention, projection and verification tasks. Lease tokens fence late completion, and attempt ordering gives untouched work a turn after a budget yield. `general_cron_d1_usage` reports calls, statement count, elapsed time, rows read/written and deferrals; per-task failure logs include partial write usage too. Watchdog and task errors still use their existing durable recovery paths.
 
-The full scan remains as a correctness safety net, on the less frequent of the two cadences; both are owned by `src/scheduled.ts`. Interpreting what it finds requires the queue as well as the count: because the change-driven pass claims a bounded batch, an identity it has not yet reached can be repaired by the scan first, which is backlog rather than a trigger that failed to fire. Only with the queue empty is a repair there unambiguously a coverage hole, and only then is it logged as `exact_identity_dirty_set_missed`; otherwise it is `exact_identity_full_scan_drained_backlog`. Migration 0074 seeds the queue with every identity present at migration time, so the drift already in production reaches the change-driven path instead of being reported as hundreds of trigger misses. Sustained zeroes on an empty queue are what would justify relaxing the safety net; the scan is not removed on the strength of the design alone.
+The catalog-wide scan is a **daily** safety net, isolated as `product_search_exact_identity_repair` in `src/scheduled.ts`. Normal five-minute repair consumes the dirty set. If the scan repairs a split while dirty work remains, that is reported as `exact_identity_full_scan_drained_backlog`; a repair with an empty dirty set is `exact_identity_dirty_set_missed`. Migration 0074 seeded existing identities, 0076 guards triggers against unchanged values, and 0082 prioritizes pre-existing splits. A small repair limit does not bound the full selector's catalog-wide reads; monitor its own `scheduled_maintenance_d1_usage` before changing the cadence.
 
 ### Public metadata counts
 
@@ -93,7 +99,38 @@ The projection contains:
 
 The crawler refreshes only the listings whose inputs actually moved in the current crawl: the ones it inserted, changed, reactivated, or deactivated. Title-derived feature facts follow the same delta: they are written by the listing write itself, for those listings only, because a title that did not move cannot have produced different facts, and the drift a rule change leaves on untouched listings belongs to the resumable remediation worker rather than to a whole-inventory pass on every crawl. `metadata_json` deliberately does not follow that delta — the change-detection behind it never compares metadata, and some metadata exists only in the freshly parsed listing (`categoryClassification.detailCheckedAt`, the negative cache for detail-page fetches, is written precisely when the check left every column alone). `syncProductMetadata` is handed the whole observed set and computes its own delta against the stored JSON. A listing the seller re-reported unchanged projects to exactly what is already stored, so re-deriving the whole inventory every time bought nothing and made the cost of a routine crawl track the size of the shop. Stale resolver versions and Knowledge Catalog edits are replayed by the remediation queue, which is a resumable worker of its own rather than something hidden inside a normal crawl. The repository compares the calculated projection with the persisted one and skips unchanged writes. SQL triggers provide a safe baseline for product writes performed outside that path and keep FTS rows synchronized.
 
-Migration 0017 deliberately retained the old `products_fts` table because production migrations run before the replacement Worker is deployed. After all application search callers had moved to `product_search_fts`, migration 0020 removed the retired `products_fts` virtual table and its three `products_fts_*` triggers. D1 therefore maintains only the active search index and no longer pays duplicate FTS write/storage cost.
+Migration 0084 removes the obsolete listing FTS index and guards projection/entity text updates against equal values. Price-only or observation-only changes must not rewrite search text or FTS. Applied migrations preserve earlier rollout steps, but the current searchable index is `product_search_entities_fts`.
+
+The write path also avoids unchanged indexed-column assignments and filters equal search/candidate
+rows before INSERT, preventing AUTOINCREMENT sequence writes from an otherwise no-op upsert.
+`syncProductMetadata` retains `categoryClassification.catalogMatchedAt` when the materialized
+decision is unchanged; `detailCheckedAt` still represents a meaningful negative-cache update.
+Candidate review timestamps record a changed decision, while review-run rows record executions.
+Migration 0087 guards equal deal-score updates, and terminal crawl cleanup touches only remaining
+payloads. The Miniflare D1 tests in [Testing strategy](./testing-strategy.md#d1-write-budget-regressions)
+measure these write paths, including index/trigger/sequence cost, without production quota.
+
+### Price-index projections
+
+Public search enters through `src/db/product-search-price-index-repository.ts` and loads summaries
+with `src/db/knowledge-catalog-price-index-read.ts`. It reads `knowledge_catalog_price_indexes`,
+including the persisted `recent_asking_median_yen`; it never calculates the trailing-90-day median
+from samples during a search request. Product detail may separately load at most five listing-end
+observations. Those observations are seller listing signals, not verified transaction prices.
+
+`src/db/knowledge-catalog-price-index-recent-refresh.ts` owns a restartable keyset backfill and
+expiry-driven refresh. `maintainRecentPriceIndexes` runs two sequential batches with independent
+limits: up to 25 backfill products, then up to 25 due products. While initial backfill and expiry work
+coexist, one hourly task can therefore select up to 50 products; this is not a combined 25-product
+cap. Both batches remain subject to the shared general-Cron invocation budget. Sample changes and
+age boundaries make products due; a cursor advances atomically with its projection
+writes. Migrations 0078–0080 add the recent projection, avoid no-op refresh-marker writes, and allow
+bulk backfill to defer/coalesce rollups. The ordinary per-product refresh still reads that product's
+samples, so bounded product count is not a fixed bound on rows read for a large sample history.
+
+Use `price_index_public_read_d1_usage`, `price_index_recent_refresh`, and per-task D1 accounting to
+distinguish public projection reads from background aggregation. A delayed refresh keeps the stored
+summary and its `last_computed_at`; it does not cause public traffic to rebuild the history.
 
 ### Multi-term FTS queries
 
@@ -151,7 +188,7 @@ Explicit sorting follows the same offer subset as the card whenever an offer fil
 
 The cursor records both the aggregate variant and, for request-scoped sorts, the offer-filter scope that defined it. A cursor therefore cannot resume under an ordering whose visible card values were calculated from a different offer subset. `items`, `hasMore`, `totalCount`, `totalPages` and cursor movement all operate on entities before any offer is loaded.
 
-Offer summaries and representative offers are loaded in chunks of 40 entity ids to stay under D1's bind-parameter ceiling. At the maximum `limit=100`, a filtered list response therefore costs at most eight statements: an optional count, the entity page, up to three offer-aggregate chunks and up to three representative-offer chunks. Unfiltered responses skip the aggregate loader. The query count is bounded by page size, not result cardinality, and there is no per-result offer lookup.
+Offer summaries and representative offers are loaded in chunks of entity IDs to stay under D1's bind-parameter ceiling. Unfiltered responses skip the offer-aggregate loader; price summaries have their own bounded projection loader. There is no per-result offer lookup. This bounds statement fan-out by page size, but filtered sorting may still aggregate matching active listings and an exact total may inspect the matching set. See `test/remediation-query-plans.test.ts`; a bounded response is not proof of constant-cost SQL.
 
 ## Taxonomy v3: product types, facets, and capabilities
 
@@ -268,7 +305,7 @@ The governing rule is that a false positive merge is more damaging than a false 
 
 `src/catalog/knowledge-catalog-identity.ts` holds the one rule that decides whether two catalog rows name the same product: the canonical manufacturer id from the resolver, plus `normalizeIdentityModel`. Promotion, manual admin writes, duplicate detection, and automatic convergence all ask that module, so none of them can decide "same product" differently from the others.
 
-`GET /api/admin/knowledge-catalog/duplicates` reports those sets. Detection runs in two stages, because neither half can be done alone:
+`GET /api/admin/knowledge-catalog/duplicates` on the **Access-protected admin Worker** reports those sets through internal RPC. Detection runs in two stages, because neither half can be done alone:
 
 1. SQL buckets verified rows by a key that drops the separators and folds the `MARK`/`MK` revision spellings. The key is a deliberate over-approximation of the identity rule, and paging walks bucket keys rather than row ids so a set is never split across pages.
 2. TypeScript re-keys each bucket with the identity rule and keeps only the sub-groups with more than one member.
@@ -283,7 +320,7 @@ Before inserting a catalog row, every writer looks the product up by logical ide
 
 Rows written before that rule reached every writer are collapsed by the review run's finalizer, which converges a bounded number of duplicate sets per run using the same detection query the admin screen uses and the same reference move as the operator-confirmed merge. The survivor is a deterministic function of the set — most matched listings, then earliest verification, then lowest id — never row order, so repeating a pass never picks a different survivor. Each merge is one `db.batch`: aliases and sources are copied, candidates, verification attempts and identity resolutions are re-pointed, retention-safe price-index samples are re-pointed explicitly so `ON DELETE CASCADE` cannot take market evidence with the duplicate, and only then is the duplicate deleted. The survivor is left owed a remediation replay, which the same finalizer drains, so its newly inherited listings are re-resolved and their projections refreshed in the same pass. A converged catalog yields no duplicate sets, so re-running the pass — including after a partial failure — changes nothing.
 
-`POST /api/admin/knowledge-catalog/products/{id}/merge` remains available for the sets an operator wants to resolve directly, including a survivor that carries no primary category, which automatic convergence deliberately leaves alone.
+`POST /api/admin/knowledge-catalog/products/{id}/merge` on the admin Worker supports operator-directed merges, including a survivor that carries no primary category, which automatic convergence deliberately leaves alone.
 
 ## Evidence Archive
 
@@ -406,7 +443,7 @@ Each crawl summary additionally carries `searchEntities` with the listings resyn
 
 `syncProductSearchEntities` is scoped strictly to the listings it is given and the identity peers they regroup. Retiring the memberships of listings that disappeared is a shop-wide question, and answering it inside every call made the cost of a chunk depend on the size of the shop; it is the crawl's own `membership_cleanup` stage, which walks the same set in bounded chunks after the entity refresh and reports as `membership_cleanup` in the crawl summary.
 
-`GET /api/admin/data-platform/status` (ADMIN_TOKEN protected) reports bounded D1 counts useful for migration/capacity decisions:
+Operational scripts and `src/db/data-platform-status-repository.ts` expose counts useful for migration/capacity decisions. The legacy `/api/admin/data-platform/status` public route is blocked by the outer Worker and must not be used as an operational access path. Counts include:
 
 - total and active products
 - price-history rows
@@ -416,6 +453,12 @@ Each crawl summary additionally carries `searchEntities` with the listings resyn
 - crawl runs in the last 24 hours
 
 Cloudflare already provides D1 platform analytics for database storage size, read/write query volume, rows read/written, and query latency. HiFiScout does not copy these time-series metrics into D1. Operators should use the Cloudflare D1 Metrics view / GraphQL Analytics API and Worker observability for platform error/timeout signals.
+
+`src/db/read-accounting.ts` records rows read/written, attempted/measured statement counts, returned
+rows, and D1 wall time. `batch()` is counted per result without double-counting wrapped statements.
+Plain `first()`/`raw()` do not expose billing metadata to this wrapper; use `firstMeasured` for an
+already bounded single-row query that must be metered. Missing metadata or a failed statement may
+leave a lower-bound total. Neither returned rows nor D1 binding-call count substitutes for billed rows.
 
 Parser performance has two complementary signals. CI runs sanitized, production-shaped HTML
 fixtures without live seller requests and compares raw parse, catalog normalization, and page
@@ -475,7 +518,7 @@ Unit/regression tests cover:
 - fuzzy candidates remaining unresolved
 - active-listing Identity denominator and missing-resolution coverage
 - evidence archive allow-list, redaction, hash deduplication, and best-effort R2 failure behavior
-- only a matched resolution against a verified catalog product merging two shops, with unresolved listings staying searchable as fallback entities
+- verified catalog grouping and guarded exact-identity fallback grouping, while unsafe unresolved/candidate models stay separate and searchable
 - offer-level filters holding for one and the same offer, the card summary being recomputed from the offers that matched, and explicit sorting using that same offer subset
 - product-unit totals, offsets, and keyset cursors, including cursors being scoped to the aggregate/filter semantics that minted them
 - favorite product snapshots preserving category ancestors so group-category filters match the same products as server search
@@ -487,4 +530,6 @@ Unit/regression tests cover:
 
 `scripts/verify-search-integration.ts` covers what SQL-shape assertions cannot: it runs against a locally migrated D1 in CI to prove that the trigram index really resolves `TAD 1000` and that two shops' confirmed listings collapse into one entity while an unconfirmed listing stays separate.
 
-The migrations are forward-only. Migration 0017 preserved the old FTS stack only for its rollout window; migration 0020 removes it after all callers have migrated and backfills any listing missing an Identity resolution row without merging products. Migration 0021 is purely additive for the same reason — migrations run before the replacement Worker is deployed, so the listing search structures stay untouched and keep serving traffic while the product entity tables fill in.
+Migrations are forward-only and run before replacement Worker code. Use additive schema changes
+for mixed-version deployment, then retire obsolete structures only after callers have moved. Review
+the currently deployed SHA and schema compatibility before a rollback.

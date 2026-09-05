@@ -1,10 +1,10 @@
 # GitHub Actions responsibility map
 
-HiFiScout keeps workflow orchestration thin. Domain behavior, repair logic, and data-quality rules belong in application or maintenance scripts; workflows select when to run them and report the result. The organized baseline is 17 workflow YAML files; adding another workflow should require a responsibility that cannot fit an existing owner.
+HiFiScout keeps workflow orchestration thin. Domain behavior, repair logic, and data-quality rules belong in application or maintenance scripts; workflows select when to run them and report the result. Current workflow files define the active inventory; add another workflow only for a responsibility that cannot fit an existing owner.
 
 ## Validation
 
-- `ci.yml` — release-quality source checks, D1 integration checks, build, and non-gating Playwright browser cache warming.
+- `ci.yml` — source/toolchain checks, sharded Vitest, parser performance, local D1 integration, React browser component tests, builds, dependency security, and non-gating Playwright browser cache warming. The component job requires Chromium; unit jobs do not.
 - `docs.yml` — architecture boundary check plus deterministic documentation build/publish. Its separate best-effort AI refresh job may update only `docs/ai-generated/**`, validates candidates with Archify and a full VitePress build, and opens/updates a documentation PR. Missing credentials, Codex usage limits, timeouts, invalid output, or publication restrictions retain the last committed snapshot and do not block deterministic docs publication.
 - `codeql.yml` — CodeQL security analysis.
 - `secret-scan.yml` — secret scanning.

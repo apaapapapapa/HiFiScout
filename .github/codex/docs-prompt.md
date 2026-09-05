@@ -15,6 +15,29 @@ Produce exactly these candidate artifacts:
 
 Do not create or edit `docs/ai-generated/architecture.html`; the surrounding workflow owns deterministic Archify validation and delivery. Do not edit application source, tests, workflows, configuration, vendored skills, or any other documentation.
 
+## Evidence and context budget
+
+Start with `AGENTS.md`'s task map, then inspect these implementation boundaries at the source commit:
+
+- `src/worker.ts` and `src/index.ts`: deployed exports, HTTP reachability, Cron and Queue handlers;
+- `src/scheduled.ts`, `src/crawler/dispatch.ts`, `src/crawler/crawl-scheduler-do.ts`: actual crawl
+  authority, generation fencing, Alarm pacing, maintenance ownership, and bounded work;
+- `src/queue.ts`, `wrangler.jsonc`: remaining Queue consumers and deployed resource bindings;
+- `src/admin/entry.ts`, `src/admin/contracts.ts`, `wrangler.admin.jsonc`: Access and Service Binding;
+- `src/db/product-search-price-index-repository.ts`, `src/db/product-search-exact-identity.ts`,
+  `src/db/knowledge-catalog-price-index-read.ts`: public projections and both grouping paths;
+- `vite.config.ts`, `package.json`, and the owning workflows: React builds and deployment boundaries.
+
+Use `rg` and targeted reads. Do not load the whole lockfile, vendored skill tree, generated HTML,
+all migrations, or every source file. Read relevant migrations and their current callers only when
+needed to establish a schema invariant. Use current source/configuration over historical migration
+comments, old architecture snapshots, or dated operational findings when they disagree.
+
+Verify rather than infer these frequently stale claims: whether crawl Queues still exist, whether
+an internal router handler is publicly reachable, whether a fallback entity can contain several
+offers, whether an aggregate runs at request time, and whether HTML is transient D1 crawl staging
+or retained R2 evidence. Do not label repository/configuration evidence as proof of production health.
+
 ## Required content
 
 `architecture-overview.md` must be concise, evidence-based developer documentation in English. Include YAML frontmatter with:
@@ -24,6 +47,10 @@ Do not create or edit `docs/ai-generated/architecture.html`; the surrounding wor
 - `source_commit: {{SOURCE_COMMIT}}`
 
 Describe the current major runtime components, crawl/data pipeline, persistence/search path, admin surface, deployment/operations boundary, and the most important enforced architectural constraints. Refer to concrete repository paths for evidence. Do not invent runtime services, schedules, APIs, databases, queues, or ownership that cannot be established from the repository.
+
+Link to canonical curated docs for detailed runbooks. Avoid duplicating mutable shop lists, exact
+environment values, historical incident counts, or tool versions. Make the source commit and the
+difference between deterministic references and this AI-authored snapshot clear.
 
 Include an iframe and direct link to `../generated/ai-architecture.html`, following the same relative-link style used by the existing VitePress architecture pages.
 

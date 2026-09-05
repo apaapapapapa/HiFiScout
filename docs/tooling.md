@@ -2,18 +2,20 @@
 
 HiFiScout's developer documentation is built from complementary generated and curated sources. Generated artifacts are derived from executable contracts, imports, source symbols, and migrations so documentation does not become a second system of record.
 
-| Tool | Responsibility | Pinned version |
+| Tool | Responsibility | Version source |
 | --- | --- | --- |
-| TypeDoc + typedoc-plugin-markdown + typedoc-vitepress-theme | TypeScript/JSDoc source API reference for VitePress | 0.28.20 / 4.12.0 / 1.1.3 |
-| Redocly CLI | OpenAPI 3.1 linting and static HTTP API reference | 2.47.0 |
-| dependency-cruiser | Architecture boundary validation, detailed dependency report, and Mermaid graph generation | 18.1.0 |
-| Mermaid.js | Browser rendering of the dependency-cruiser architecture overview | 11.17.2 |
-| SchemaSpy | D1/SQLite schema documentation and ER diagrams | 7.0.2 |
-| VitePress | Unified static developer documentation site | 1.6.4 |
+| TypeDoc + Markdown/VitePress plugins | TypeScript/JSDoc API reference | `package.json` documentation commands |
+| Redocly CLI | OpenAPI linting and static HTTP reference | `package.json` documentation commands |
+| dependency-cruiser | Import boundaries and dependency reports | `package.json` documentation commands |
+| Mermaid.js | Generated architecture viewer | `scripts/docs/render-mermaid-architecture.ts` |
+| SchemaSpy + SQLite JDBC | D1/SQLite schema and ER diagrams | `scripts/docs/generate-db-docs.sh` |
+| VitePress | Developer documentation site | `package.json` and `package-lock.json` |
+| Codex + vendored Archify | Optional reviewed architecture snapshot | `.github/workflows/docs.yml` and `skills-lock.json` |
 
-The command-line tools are version-pinned and invoked only by documentation scripts, so they do not become part of the Cloudflare Worker runtime bundle. Mermaid.js is pinned in the generated architecture viewer and is loaded only by that documentation page.
-
-TypeDoc, typedoc-plugin-markdown, typedoc-vitepress-theme, Redocly CLI, and dependency-cruiser are pinned at their invocation site. SchemaSpy and its JDBC driver are pinned in the database documentation generator. VitePress is pinned by `package-lock.json` and run from `node_modules` instead of being re-downloaded on every `docs:build`, `docs:dev`, and `docs:preview`.
+Version pins belong to these executable sources; this guide does not maintain a parallel version
+inventory. Documentation tools do not enter the Worker runtime bundle. VitePress is installed from
+the root lockfile; command-specific documentation generators use pinned `vp dlx` invocations.
+A full build also needs Docker for SchemaSpy and access to the pinned package/image/JDBC sources.
 
 TypeDoc 0.28 and dependency-cruiser 18 support TypeScript through version 6, while the application uses TypeScript 7. Their documentation commands therefore run with a pinned TypeScript 6.0.2 parser. Type checking remains the responsibility of `vp run typecheck`; these tools only convert or inspect the source model.
 
@@ -91,10 +93,10 @@ AI coding agents re-read command output as context tokens on every subsequent tu
 `vp run types:worker` is wrapped in `run-quiet.ts` because `wrangler types` re-prints the whole generated `Env` interface on every invocation. Wrap further tooling the same way when it is noisy on success:
 
 ```sh
-tsx scripts/run-quiet.ts <command> [args...]
+vp exec tsx scripts/run-quiet.ts <command> [args...]
 ```
 
-Together with the `verify` / `check` / `fix` aggregate scripts, a full green pre-commit run prints well under a kilobyte.
+Use `verify` / `check` / `fix` rather than repeating their components. Output grows with the test suite and benchmark report; the goal is to retain useful diagnostics without printing each passing test name.
 
 ## Generated files
 
@@ -112,3 +114,21 @@ Do not edit these outputs manually. Update source code/JSDoc, route contracts, m
 ## CI
 
 `.github/workflows/docs.yml` rebuilds all generated documentation for pull requests and pushes to `main`. The workflow validates architecture boundaries, the generated Mermaid and detailed dependency views, OpenAPI/Redoc output, TypeDoc/VitePress source reference, database documentation, and static report links. A successful run uploads the complete VitePress output as the `developer-docs` workflow artifact; pushes to `main` also deploy it to GitHub Pages.
+
+## AI-assisted documentation and contributor instructions
+
+`AGENTS.md` is the canonical contributor guide and task map. `CLAUDE.md` imports it. Keep shared
+rules there instead of copying command tables and architecture summaries into each agent's entry
+file. These contributor files are separate from the generated architecture snapshot.
+
+The optional `refresh-ai` job checks architecture-relevant source changes on pushes to `main`.
+It passes the source SHA to `.github/codex/docs-prompt.md`, which limits Codex to Markdown and Archify
+JSON candidates under `docs/ai-generated/`. CI validates the JSON, generates the HTML from those exact
+bytes, and builds the site before opening/updating the automation PR. Do not hand-edit delivered
+Archify HTML or the vendored skill. Generation failure, missing credentials/quota, timeout, invalid
+output, or publication failure retains the previous committed artifact/fallback.
+
+`docs/ai-generated/` is intentionally committed. Its Markdown identifies the source commit when a
+snapshot exists; a fallback makes no claim of current architecture coverage. `docs:ai:stage` copies
+these artifacts into ignored `docs/public/generated/`. Deterministic import/API/schema references
+remain the implementation-derived views and are rebuilt independently of optional AI generation.
