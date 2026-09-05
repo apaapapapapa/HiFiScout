@@ -28,7 +28,10 @@ test("exact-identity rollout prioritization uses the production health safety pr
   }
 
   assert.match(migration, /r\.listing_product_id = p\.id\s+AND r\.status = 'matched'/);
-  assert.match(migration, /kp\.id = r\.catalog_product_id\s+AND kp\.verification_status = 'verified'/);
+  assert.match(
+    migration,
+    /kp\.id = r\.catalog_product_id\s+AND kp\.verification_status = 'verified'/,
+  );
 });
 
 test("existing splits jump ahead of the broad rollout seed without widening recurring work", async () => {
