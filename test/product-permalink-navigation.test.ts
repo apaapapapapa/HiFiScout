@@ -80,7 +80,7 @@ function navigationHarness() {
   const dialog = new FakeDialog();
   const triggers = ["c-1", "c-2"].map((key) =>
     Object.assign(new FakeElement({ offers: key }), {
-      click() {
+      click(this: FakeElement) {
         if (!emit("click", this)) return;
         offersContent = key;
         offerOpens += 1;
