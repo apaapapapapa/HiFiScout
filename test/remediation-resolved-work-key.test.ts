@@ -72,6 +72,8 @@ test("resolved automatic work releases its canonical dedupe key for a later stal
     .run(RESOLUTION_VERSIONS.manufacturer - 1);
 
   const secondAt = "2026-08-16T00:02:00.000Z";
+  const tail = await seedDataQualityRemediationQueue(db, { now: secondAt, limit: 1 });
+  assert.deepEqual(tail.workKeys, [], "the bounded cursor wraps after observing the empty tail");
   const secondSeed = await seedDataQualityRemediationQueue(db, { now: secondAt, limit: 1 });
   assert.deepEqual(secondSeed.workKeys, [canonicalKey]);
 

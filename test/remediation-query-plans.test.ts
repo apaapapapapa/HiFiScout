@@ -136,11 +136,23 @@ test("replay seeding reaches every stage through that stage's own index", async 
 
   // Seeding is what runs the manufacturer/model/category/identity staleness selectors, which are
   // the queries that would otherwise read every listing on every five-minute cron tick.
-  await seedDataQualityRemediationQueue(db, { now: "2026-08-15T00:00:00.000Z", limit: 10 });
+  // Rotation may spend one tick's budget on an early stage; all selectors must be reached over
+  // successive ticks without changing their own indexed, bounded candidate windows.
+  for (let tick = 0; tick < REQUIRED_SEED_INDEXES.length; tick += 1) {
+    await seedDataQualityRemediationQueue(db, { now: "2026-08-15T00:00:00.000Z", limit: 10 });
+  }
 
   assertNoGrowingTableScans(sqlite, executed, {
     label: "seed",
-    allowances: [...KNOWN_UNINDEXED_READS],
+    allowances: [
+      ...KNOWN_UNINDEXED_READS,
+      {
+        tables: ["c"],
+        when: /WITH candidates AS MATERIALIZED/,
+        reason:
+          "c contains only the candidate LIMIT; real D1 growth is checked in maintenance-read-budget",
+      },
+    ],
   });
   const plans = selects(executed).map((statement) => queryPlan(sqlite, statement));
   for (const { table, index } of REQUIRED_SEED_INDEXES) {
@@ -152,11 +164,16 @@ test("replay seeding reaches every stage through that stage's own index", async 
     );
   }
 
-  // Reading through an index is not yet a bounded read. A sort between the index and the LIMIT means
-  // every stale row is visited before any of them can be discarded, which is how a selector stays
-  // proportional to the backlog while looking perfectly indexed — the exact shape the seeding
-  // selectors were in before their `ORDER BY` was made to match the order their index delivers.
-  for (const plan of plans) {
+  // Only a sort INSIDE candidate materialization can defeat its LIMIT. Sorting the bounded
+  // materialized output restores cursor order after the queue probes and is safe.
+  for (const statement of selects(executed).filter((row) =>
+    row.sql.includes("WITH candidates AS MATERIALIZED"),
+  )) {
+    const candidate = /WITH candidates AS MATERIALIZED \(([\s\S]*?)\n      \), keyed/.exec(
+      statement.sql,
+    )?.[1];
+    assert.ok(candidate);
+    const plan = queryPlan(sqlite, { sql: candidate, binds: statement.binds });
     const sorted = plan.filter((step) => /USE TEMP B-TREE FOR ORDER BY/.test(step.detail));
     assert.deepEqual(
       sorted.map((step) => step.detail),

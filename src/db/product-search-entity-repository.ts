@@ -24,6 +24,7 @@ import {
   completeEntityMembershipProvenanceSql,
   deleteEmptyEntitiesSql,
   deleteInactiveOffersSql,
+  deleteInactiveOfferSql,
   deleteStaleEntityCategoriesSql,
   refreshEntityAggregatesSql,
   refreshEntityPresentationColorsSql,
@@ -262,7 +263,7 @@ export async function syncProductSearchEntities(
       removedDuringProjection += await runProjectionBatch(db, [
         { sql: upsertCatalogEntitiesSql(listingScope), binds: chunk },
         { sql: upsertFallbackEntitiesSql(listingScope), binds: chunk },
-        { sql: deleteInactiveOffersSql(listingScope), binds: chunk },
+        ...chunk.map((id) => ({ sql: deleteInactiveOfferSql(), binds: [id] })),
         { sql: upsertCatalogOffersSql(listingScope), binds: chunk },
         { sql: upsertFallbackOffersSql(listingScope), binds: chunk },
         { sql: upsertExactIdentityGroupOffersSql(listingScope), binds: chunk },

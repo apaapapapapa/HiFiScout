@@ -53,6 +53,7 @@ import {
   repairDirtyExactIdentities,
 } from "./db/product-search-exact-identity-dirty.js";
 import { repairActiveListingProjectionGaps } from "./db/product-search-gap-repair.js";
+import { auditInactiveSearchMemberships } from "./db/product-search-membership-audit.js";
 import { getSyncHealth, logSyncHealth } from "./health.js";
 import type { SyncHealthEnv, SyncHealthReport } from "./health.js";
 import {
@@ -258,7 +259,7 @@ async function settled<T>(operation: () => Promise<T>): Promise<PromiseSettledRe
  * inside `daily_maintenance`, silently turning a daily safety net into a twice-daily one.
  */
 export async function repairDailyProjectionGaps(db: QueryableDatabase) {
-  return repairActiveListingProjectionGaps(db, {
+  const projection = await repairActiveListingProjectionGaps(db, {
     batchSize: GENERAL_PROJECTION_REPAIR_BATCH_SIZE,
     maxListings: GENERAL_PROJECTION_REPAIR_MAX_LISTINGS,
     // No outstanding-gap count. It is the one unbounded statement in the repair -- an aggregate
@@ -270,6 +271,8 @@ export async function repairDailyProjectionGaps(db: QueryableDatabase) {
     // The exact-identity phase is owned by the separately measured daily safety-net task.
     phases: "coverage",
   });
+  const inactiveMemberships = await auditInactiveSearchMemberships(db);
+  return { ...projection, inactiveMemberships };
 }
 
 export async function runScheduled(cron: string, env: Env, scheduledAt = new Date()) {

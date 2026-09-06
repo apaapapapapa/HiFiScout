@@ -81,7 +81,11 @@ test("daily maintenance does not duplicate the named exact-identity safety scan"
 
   await repairDailyProjectionGaps(db);
 
-  assert.equal(db.selectors.length, 2, "daily maintenance keeps both bounded coverage phases");
+  assert.equal(
+    db.selectors.length,
+    3,
+    "daily maintenance keeps coverage and the legacy membership audit",
+  );
   assert.equal(
     db.selectors.some((sql) => EXACT_IDENTITY_SELECTOR.test(sql)),
     false,

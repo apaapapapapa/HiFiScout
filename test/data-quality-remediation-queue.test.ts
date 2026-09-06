@@ -161,6 +161,54 @@ test("deduplicated low ids cannot starve later stale listings", async () => {
   assert.equal(third.workKeys.length, 0);
 });
 
+test("queued-only windows advance until later stale work is reached", async () => {
+  const { sqlite, db } = database();
+  for (let id = 1; id <= 5; id += 1) insertHealthyListing(sqlite, id);
+  sqlite.exec("UPDATE products SET manufacturer_resolver_version=1 WHERE id<=4");
+  await seedDataQualityRemediationQueue(db, { limit: 10 });
+  sqlite.exec(
+    "UPDATE products SET manufacturer_resolver_version=1 WHERE id=5; DELETE FROM data_quality_remediation_seed_cursors",
+  );
+  const first = await seedDataQualityRemediationQueue(db, { limit: 2 });
+  const second = await seedDataQualityRemediationQueue(db, { limit: 2 });
+  const third = await seedDataQualityRemediationQueue(db, { limit: 2 });
+  assert.equal(first.selectedCount, 0);
+  assert.equal(second.selectedCount, 0);
+  assert.equal(third.workKeys.length, 1);
+  assert.match(third.workKeys[0], /listing:5:/);
+  assert.equal(
+    sqlite.prepare("SELECT COUNT(*) AS n FROM data_quality_remediation_queue").get()?.n,
+    5,
+  );
+});
+
+test("a changed resolver version key resets old cursor positions", async () => {
+  const { sqlite, db } = database();
+  insertHealthyListing(sqlite, 1);
+  sqlite.exec(`UPDATE products SET manufacturer_resolver_version=1;
+    INSERT INTO data_quality_remediation_seed_cursors VALUES ('manufacturer_version','old-version',99,999),('rotation','old-version',-1,4)`);
+  const result = await seedDataQualityRemediationQueue(db, { limit: 1 });
+  assert.match(result.workKeys[0] || "", /resolve_manufacturer:listing:1:/);
+});
+
+test("failed enqueue leaves its candidate before the checkpoint", async () => {
+  const { sqlite, db } = database();
+  insertHealthyListing(sqlite, 1);
+  insertHealthyListing(sqlite, 2);
+  sqlite.exec(`UPDATE products SET manufacturer_resolver_version=1;
+    CREATE TRIGGER fail_seed BEFORE INSERT ON data_quality_remediation_queue
+    WHEN NEW.listing_product_id=2 BEGIN SELECT RAISE(ABORT,'forced seed failure'); END`);
+  await assert.rejects(seedDataQualityRemediationQueue(db, { limit: 2 }), /forced seed failure/);
+  assert.equal(
+    sqlite.prepare("SELECT COUNT(*) AS n FROM data_quality_remediation_queue").get()?.n,
+    1,
+  );
+  sqlite.exec("DROP TRIGGER fail_seed");
+  const retry = await seedDataQualityRemediationQueue(db, { limit: 2 });
+  assert.equal(retry.workKeys.length, 1);
+  assert.match(retry.workKeys[0], /listing:2:/);
+});
+
 test("abandoned processing is reclaimable and retry exhaustion becomes failed", async () => {
   const { sqlite, db } = database();
   // The queue carries a foreign key to `products`, so the listing this job points at has to exist.

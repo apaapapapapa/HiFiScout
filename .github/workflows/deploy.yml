@@ -302,6 +302,18 @@ jobs:
             exit 0
           }
 
+          # EXPLAIN never executes the scoped DELETE; only the indexed LIMIT 5 SELECT reads rows.
+          # Exit 75 is reserved for the exact D1 7500 daily-quota signature. Other errors fail closed.
+          set +e
+          vp exec tsx scripts/verify-maintenance-access-paths.ts
+          maintenance_status=$?
+          set -e
+          if (( maintenance_status == 75 )); then
+            defer_for_d1_quota "The bounded maintenance probe confirmed D1 daily row quota exhaustion (7500)."
+          elif (( maintenance_status != 0 )); then
+            exit "$maintenance_status"
+          fi
+
           feed_status="$(curl -sS --retry 3 --retry-delay 2 -D "$feed_headers" -o "$feed_body" -w '%{http_code}' \
             "${PRODUCTION_BASE_URL}/api/feed?manufacturer=TAD&inStock=true&limit=2")"
           if [[ "$feed_status" != "200" ]]; then

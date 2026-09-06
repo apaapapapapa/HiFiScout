@@ -14,6 +14,7 @@ import {
   recordCrawlRunStageFailure,
   supersedeCrawlRunStages,
   type CrawlRunStageCheckpoint,
+  type CrawlWorkWindow,
   type ResumableCrawlRun,
   type ResumableCrawlStage,
 } from "../db/crawl-run-continuation-repository.js";
@@ -112,7 +113,7 @@ type StageRunner = (
  * chunk's writes and its checkpoint.
  *
  * `search_entity` and `membership_cleanup` drive the same sync over different sets: this run's
- * changed listings, and the shop's listings that are gone but still hold an offer. Splitting them
+ * changed listings, and pending shop listings that are gone but still hold an offer. Splitting them
  * is what keeps the cost of a chunk proportional to the chunk instead of to the shop.
  */
 const STAGE_RUNNERS: Readonly<Record<ResumableCrawlStage, StageRunner>> = Object.freeze({
@@ -148,10 +149,22 @@ async function claimStageChunk(
   run: ResumableCrawlRun,
   checkpoint: CrawlRunStageCheckpoint,
   limit: number,
-): Promise<string[]> {
-  return CRAWL_STAGE_SCOPE[checkpoint.stage] === "shop"
-    ? claimShopMembershipCleanupChunk(db, run.shopKey, checkpoint.afterSourceId, limit)
-    : claimCrawlRunWorkChunk(db, run.crawlRunId, checkpoint.afterSourceId, limit);
+): Promise<CrawlWorkWindow> {
+  if (CRAWL_STAGE_SCOPE[checkpoint.stage] === "shop") {
+    return claimShopMembershipCleanupChunk(db, run.shopKey, checkpoint.afterSourceId, limit);
+  }
+  const sourceIds = await claimCrawlRunWorkChunk(
+    db,
+    run.crawlRunId,
+    checkpoint.afterSourceId,
+    limit,
+  );
+  return {
+    sourceIds,
+    afterSourceId: sourceIds.at(-1) || checkpoint.afterSourceId,
+    scannedCount: sourceIds.length,
+    exhausted: sourceIds.length < limit,
+  };
 }
 
 export interface DrainCrawlRunStageOptions {
@@ -207,22 +220,24 @@ export async function drainCrawlRunStage(
   let afterSourceId = checkpoint.afterSourceId;
 
   while (result.chunkCount < maxChunks && !budgetSpent(startedAtMs, budgetMs)) {
-    const sourceIds = await claimStageChunk(db, run, { ...checkpoint, afterSourceId }, chunkSize);
+    const window = await claimStageChunk(db, run, { ...checkpoint, afterSourceId }, chunkSize);
+    const { sourceIds } = window;
     const at = new Date().toISOString();
-    if (!sourceIds.length) {
+    if (!window.scannedCount) {
       await completeCrawlRunStage(db, run.crawlRunId, checkpoint.stage, at);
       result.completed = true;
       return result;
     }
 
     try {
-      result.changedCount += await STAGE_RUNNERS[checkpoint.stage](
-        db,
-        run.shopKey,
-        sourceIds,
-        run.generation,
-        metrics,
-      );
+      if (sourceIds.length)
+        result.changedCount += await STAGE_RUNNERS[checkpoint.stage](
+          db,
+          run.shopKey,
+          sourceIds,
+          run.generation,
+          metrics,
+        );
     } catch (error) {
       // The stage stays pending with its cursor unmoved, so the next sweep replays this chunk.
       await recordCrawlRunStageFailure(db, run.crawlRunId, checkpoint.stage, {
@@ -236,7 +251,7 @@ export async function drainCrawlRunStage(
       await acknowledgeCrawlListingProjections(db, run.crawlRunId, sourceIds);
     }
     // The cursor moves only after the chunk's own writes are durable.
-    afterSourceId = sourceIds[sourceIds.length - 1] as string;
+    afterSourceId = window.afterSourceId;
     await advanceCrawlRunStage(db, run.crawlRunId, checkpoint.stage, {
       afterSourceId,
       processedCount: sourceIds.length,
@@ -247,7 +262,7 @@ export async function drainCrawlRunStage(
 
     // A short chunk is the end of the work set, so the stage finishes here rather than spending a
     // whole extra pass to observe an empty tail.
-    if (sourceIds.length < chunkSize) {
+    if (window.exhausted) {
       await completeCrawlRunStage(db, run.crawlRunId, checkpoint.stage, at);
       result.completed = true;
       return result;

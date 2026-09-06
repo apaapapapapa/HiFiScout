@@ -367,7 +367,12 @@ test("cleanup drains a backlog of departed listings in bounded chunks", async ()
   assert.equal(partial.processedCount, 1);
   const checkpoint = stageRows(sqlite, run.crawlRunId).at(-1);
   assert.equal(checkpoint?.stage, "membership_cleanup");
-  assert.equal(checkpoint?.after_source_id, "k-1", "the cursor stops where the chunk stopped");
+  const firstId = sqlite.prepare("SELECT id FROM products WHERE source_id='k-1'").get()?.id;
+  assert.equal(
+    checkpoint?.after_source_id,
+    `pending:${firstId}`,
+    "the cursor stops where the candidate window stopped",
+  );
   assert.equal(offerCount(sqlite, "k-2"), 1, "later chunks are still owed");
 
   let guard = 0;
@@ -378,6 +383,39 @@ test("cleanup drains a backlog of departed listings in bounded chunks", async ()
   }
   assert.ok(guard < 10, "cleanup converges");
   assert.equal(countRows(sqlite, "product_search_entity_offers"), 0);
+});
+
+test("cleanup advances through healthy and other-shop pending windows without losing a tail deletion", async () => {
+  const database = emptyDatabase();
+  const { sqlite, db } = database;
+  const first = await arrangeInterruptedRun(database, ["window-1", "window-2", "window-3"]);
+  await resumeCrawlRun(db, first, { now: NOW });
+  sqlite.exec(
+    "UPDATE products SET price_yen=123 WHERE source_id='window-1'; UPDATE products SET shop_key='other',is_active=0 WHERE source_id='window-2'",
+  );
+  deactivate(sqlite, "window-3");
+  const run = await startFollowUpRun(database);
+  for (const stage of ["search_projection", "identity_resolution", "search_entity"] as const) {
+    await completeCrawlRunStage(db, run.crawlRunId, stage, GENERATION);
+  }
+  sqlite
+    .prepare(
+      "UPDATE crawl_run_stages SET after_source_id='legacy-source-id' WHERE crawl_run_id=? AND stage='membership_cleanup'",
+    )
+    .run(run.crawlRunId);
+  for (let i = 0; i < 2; i += 1) {
+    const partial = await resumeCrawlRun(db, run, { now: NOW, chunkSize: 1, maxChunks: 1 });
+    assert.equal(partial.hasMore, true);
+    assert.equal(partial.processedCount, 0);
+    assert.equal(offerCount(sqlite, "window-3"), 1);
+  }
+  await resumeCrawlRun(db, run, { now: NOW, chunkSize: 1, maxChunks: 1 });
+  assert.equal(offerCount(sqlite, "window-3"), 0);
+  assert.equal(
+    sqlite.prepare("SELECT COUNT(*) AS n FROM listing_projection_pending").get()?.n,
+    3,
+    "membership cleanup must not acknowledge full-projection obligations",
+  );
 });
 
 test("an exhausted time budget defers the remaining work instead of finishing it", async () => {
