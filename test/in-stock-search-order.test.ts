@@ -7,7 +7,7 @@ import { migrationSources } from "./helpers/migrations.js";
 import { productQuery } from "./helpers/product-query.js";
 
 test("in-stock date migration, cursors and refresh ignore newer unavailable offers", async () => {
-  const migration = migrationSources.find((row) => row.name === "0097_in_stock_search_order.sql");
+  const migration = migrationSources.find((row) => row.name === "0098_in_stock_search_order.sql");
   assert.ok(migration);
   const { db, sqlite } = migratedSqlite({ before: migration.name });
   try {
