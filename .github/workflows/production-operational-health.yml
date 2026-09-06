@@ -18,7 +18,8 @@ permissions:
 concurrency:
   # Long convergence checks must not delay the independent passive archive schedule.
   group: production-operational-health-${{ github.event_name == 'schedule' && 'sql-archive' || 'checks' }}
-  cancel-in-progress: false
+  # Cancel older checks that started before the pause when the next post-deploy/manual run arrives.
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 jobs:
   d1-sql-archive:
