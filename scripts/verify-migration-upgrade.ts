@@ -211,6 +211,68 @@ async function schema(db: QueryableDatabase) {
   ).results;
 }
 
+async function verifyInStockRollout(previous: Runtime, current: Runtime, db: QueryableDatabase) {
+  // Exercise the actual old writer after migration and again after a new writer (rollback).
+  for (const [index, writer] of [previous, current, previous].entries()) {
+    const at = `2026-09-05T0${index + 4}:00:00.000Z`;
+    await crawl(writer, db, 91000 + index * 1000, at);
+    assert.equal(
+      await db
+        .prepare(`SELECT e.latest_in_stock_activity_at AS activity FROM products p
+        JOIN product_search_entity_offers m ON m.listing_product_id=p.id
+        JOIN product_search_entities e ON e.id=m.entity_id
+        WHERE p.shop_key='hifido' AND p.source_id='upgrade-fixture'`)
+        .first("activity"),
+      at,
+      "old/current/rolled-back writes keep the indexed in-stock activity current",
+    );
+  }
+  const sourceId = "upgrade-old-writer-insert";
+  const at = "2026-09-05T07:00:00.000Z";
+  await previous.upsertProducts(
+    db,
+    "hifido",
+    [
+      previous.normalizeCatalogProduct({
+        sourceId,
+        manufacturer: "LUXMAN",
+        model: "NEW-X999",
+        title: "LUXMAN NEW-X999",
+        conditionText: "中古",
+        priceYen: 50000,
+        stockStatus: "in_stock",
+        sourceUrl: `https://example.test/${sourceId}`,
+      }),
+    ],
+    at,
+  );
+  await previous.syncProductSearchProjections(db, "hifido", [sourceId]);
+  await previous.syncProductIdentityResolutions(db, "hifido", [sourceId]);
+  await previous.syncProductSearchEntities(db, "hifido", [sourceId]);
+  const added = await db
+    .prepare(`SELECT e.entity_key AS key,e.newest_in_stock_listed_at AS newest,
+      e.latest_in_stock_activity_at AS activity FROM products p
+      JOIN product_search_entity_offers m ON m.listing_product_id=p.id
+      JOIN product_search_entities e ON e.id=m.entity_id WHERE p.source_id=?`)
+    .bind(sourceId)
+    .first<{ key: string; newest: string; activity: string }>();
+  assert.equal(added?.newest, at, "an old writer's new entity receives its in-stock listing date");
+  assert.equal(added?.activity, at);
+  for (const sort of ["newest", "updated"]) {
+    const page = await current.searchProducts(
+      db,
+      current.parseProductQuery(
+        new URL(`https://example.test/api/products?inStock=true&sort=${sort}&limit=1`),
+      ),
+    );
+    assert.equal(
+      page.items[0]?.key,
+      added?.key,
+      `${sort}: new runtime orders an old writer's entity correctly`,
+    );
+  }
+}
+
 try {
   const archive = execFileSync("git", ["archive", history.baseSha, "src", "frontend"], {
     cwd: root,
@@ -324,6 +386,7 @@ try {
       sql: "INSERT INTO upgrade_probe VALUES (2);",
     });
     await probe(previous, current, upgraded.db, "retry after failed migration", baselineOmissions);
+    await verifyInStockRollout(previous, current, upgraded.db);
   } finally {
     await upgraded.dispose();
   }

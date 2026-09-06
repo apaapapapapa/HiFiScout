@@ -15,13 +15,13 @@ test("unchanged projection and empty pending work stay bounded as unrelated rows
       normalized_model, canonical_name, verification_status, created_at, updated_at)
       VALUES(1,'luxman','C10','C10','LUXMAN C10','verified','${AT}','${AT}')`)
       .run();
-    const costs: { size: number; replay: number; emptyRepair: number }[] = [];
+    const costs: { size: number; replay: number; dateChange: number; emptyRepair: number }[] = [];
     let previous = 0;
     for (const size of [100, 1_000, 10_000]) {
       await db
         .prepare(`WITH RECURSIVE n(i) AS (SELECT CAST(? AS INTEGER) UNION ALL SELECT i+1 FROM n WHERE i<?)
-        INSERT INTO products(id,shop_key,source_id,title,source_url,first_seen_at,last_seen_at,last_changed_at,is_active)
-        SELECT i,'budget',CAST(i AS TEXT),'unknown','https://example.test/'||i,'${AT}','${AT}','${AT}',
+        INSERT INTO products(id,shop_key,source_id,title,source_url,first_seen_at,last_seen_at,last_changed_at,last_activity_at,stock_status,is_active)
+        SELECT i,'budget',CAST(i AS TEXT),'unknown','https://example.test/'||i,'${AT}','${AT}','${AT}','${AT}','in_stock',
           CASE WHEN i<=2 THEN 1 ELSE 0 END FROM n`)
         .bind(previous + 1, size)
         .run();
@@ -61,6 +61,25 @@ test("unchanged projection and empty pending work stay bounded as unrelated rows
       assert.equal(synchronized.listing_count, 2);
       assert.equal(replay.rowsWritten(), 0, "unchanged projection must not add writes");
       assert.ok(replay.rowsRead() < 800, `${size} rows: replay read ${replay.rowsRead()}`);
+      const dateChange = accountReads(db);
+      const at = `2026-09-05T0${costs.length + 1}:00:00.000Z`;
+      await dateChange.db
+        .prepare("UPDATE products SET last_activity_at=? WHERE id=2")
+        .bind(at)
+        .run();
+      assert.ok(
+        dateChange.rowsRead() < 80,
+        `${size} rows: date trigger read ${dateChange.rowsRead()}`,
+      );
+      assert.equal(
+        await db
+          .prepare(
+            "SELECT latest_in_stock_activity_at AS value FROM product_search_entities WHERE entity_key='l-2'",
+          )
+          .first("value"),
+        at,
+      );
+      await syncProductSearchEntities(db, "budget", ["2"]);
       await db
         .prepare(
           "DELETE FROM listing_projection_pending; DELETE FROM product_projection_audit_cursors",
@@ -75,11 +94,17 @@ test("unchanged projection and empty pending work stay bounded as unrelated rows
       });
       assert.equal(result.selectedCount, 0, JSON.stringify({ size, result }));
       assert.ok(empty.rowsRead() < 150, `${size} rows: empty repair read ${empty.rowsRead()}`);
-      costs.push({ size, replay: replay.rowsRead(), emptyRepair: empty.rowsRead() });
+      costs.push({
+        size,
+        replay: replay.rowsRead(),
+        dateChange: dateChange.rowsRead(),
+        emptyRepair: empty.rowsRead(),
+      });
       previous = size;
     }
     assert.ok(costs[2].replay <= costs[0].replay + 20, JSON.stringify(costs));
     assert.ok(costs[2].emptyRepair <= costs[0].emptyRepair + 20, JSON.stringify(costs));
+    assert.ok(costs[2].dateChange <= costs[0].dateChange + 5, JSON.stringify(costs));
     console.log(JSON.stringify({ event: "observed_projection_read_budget", costs }));
   } finally {
     await dispose();
