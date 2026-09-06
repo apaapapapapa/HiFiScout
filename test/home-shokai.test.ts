@@ -106,7 +106,7 @@ test("Home Shokai adapter covers the two requested inventory snapshots and follo
 
   const plugin = getShopPlugin("home-shokai");
   assert.ok(plugin);
-  assert.equal(plugin.definition.defaultIntervalMinutes, 140);
+  assert.equal(plugin.definition.defaultIntervalMinutes, 1440);
   assert.equal(plugin.definition.defaultMaxPages, 2);
   assert.equal(plugin.definition.envPrefix, "HOME_SHOKAI");
 

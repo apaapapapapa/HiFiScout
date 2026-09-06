@@ -26,11 +26,28 @@ The Durable Object is the single-flight authority. D1 does not maintain a second
 `dispatched` covers both an accepted command and active execution; DO state describes the step.
 The old public `POST /api/admin/crawl` is blocked by `src/index.ts`, regardless of bearer token.
 
+## Daily shop schedules
+
+Shops without a dedicated `scheduleCron` receive **one automatic crawl slot per day**. The shared
+ten-minute trigger walks the stable plugin registry once, starting at **09:06 JST**, then skips
+all remaining ticks until the next day without touching D1. Disabled shops keep their slot and
+remain disabled; they do not shift the other shops' start times. The selection uses the scheduled
+event timestamp, so delivery delays do not change the assigned shop or restart the daily pass.
+
+AudioUnion, HiFiDo and Fujiya Avic retain their dedicated schedules. The current expressions and
+shop inventory live in `src/crawler/shops/index.ts` and `wrangler.jsonc`; selection policy lives in
+`src/crawler/schedule.ts`. Daily shops use a 1,440-minute interval for health and interval-based
+eligibility. Scheduled dispatch is driven by the daily slot, so a late crawl yesterday does not
+make today's slot fail a rolling 24-hour check. Recovery and continuation resume the same dispatch
+generation; they do not start another daily crawl. Explicit manual dispatch remains available
+during allowed hours.
+
 ## Overnight pause
 
 All shops pause collection every day from **23:00 JST (inclusive) to 08:00 JST (exclusive)**.
 The policy lives in `src/crawler/crawl-window.ts`; crawl Cron hours in `wrangler.jsonc` use UTC.
-Daytime shop selection and pacing stay unchanged, and missed nighttime slots are not replayed.
+The daily and dedicated schedules above apply during allowed hours. Missed nighttime slots are
+not replayed, and seller pacing is unchanged.
 
 - Scheduled, forced/manual and recovery dispatches skip the pause before reading or writing D1.
   Cron checks both the scheduled timestamp and delivery time to handle delayed events.

@@ -117,7 +117,7 @@ export function renderPluginRegistration({
   name,
   baseUrl,
   transport = "direct",
-  intervalMinutes = 60,
+  intervalMinutes = 24 * 60,
 }: PluginRegistrationOptions): string {
   const identifier = adapterIdentifier(key);
   const prefix = envPrefix(key);
@@ -151,7 +151,7 @@ export async function createShop({
   name,
   baseUrl,
   transport = "direct",
-  intervalMinutes = 60,
+  intervalMinutes = 24 * 60,
 }: CreateShopOptions) {
   const shopKey = validateShopKey(key);
   if (!name?.trim()) throw new Error("shop name is required");
@@ -230,7 +230,7 @@ function parseArgs(argv: string[]): Record<string, string | undefined> {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const intervalMinutes = Number.parseInt(args.interval || "60", 10);
+  const intervalMinutes = Number.parseInt(args.interval || "1440", 10);
   const result = await createShop({
     key: args.key,
     name: args.name,

@@ -9,7 +9,10 @@ import { resumeInterruptedCrawlRuns } from "./crawler/crawl-continuation.js";
 import { recoverStalledCrawlRuns } from "./crawler/crawl-run-recovery.js";
 import { dispatchScheduledCrawl, recoverStalledCrawlDispatches } from "./crawler/dispatch.js";
 import { isCrawlQuietHours } from "./crawler/crawl-window.js";
-import { roundRobinShopForScheduledTime, shopForCronAtScheduledTime } from "./crawler/schedule.js";
+import {
+  dailyRotationShopForScheduledTime,
+  shopForCronAtScheduledTime,
+} from "./crawler/schedule.js";
 import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from "./catalog/knowledge-verification/verifier.js";
 import { runDataQualityRemediationSweep } from "./db/data-quality-remediation-service.js";
 import {
@@ -68,7 +71,7 @@ import type { QueryableDatabase } from "./db/types.js";
 
 /** Five-minute maintenance/watchdog sweep. It no longer starts new shop crawls. */
 export const GENERAL_CRON = "*/5 * * * *";
-/** One non-dedicated shop is selected on each tick, giving a ten-minute round-robin start cadence. */
+/** Daily shops start ten minutes apart in one pass; remaining ticks do not dispatch a shop. */
 export const CRAWL_ROTATION_CRON = "6-56/10 0-13,23 * * *";
 
 /**
@@ -291,7 +294,7 @@ export async function runScheduled(cron: string, env: Env, scheduledAt = new Dat
 
   const dedicated = shopForCronAtScheduledTime(cron, scheduledAt);
   const rotating =
-    cron === CRAWL_ROTATION_CRON ? roundRobinShopForScheduledTime(scheduledAt) : null;
+    cron === CRAWL_ROTATION_CRON ? dailyRotationShopForScheduledTime(scheduledAt) : null;
   const selected = dedicated || rotating;
   const dispatch: DispatchResult = selected
     ? await dispatchScheduledCrawl(env, selected.key, { now: scheduledAt })

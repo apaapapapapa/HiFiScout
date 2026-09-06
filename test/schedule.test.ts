@@ -5,11 +5,11 @@ import { requiredLifecycleRules, requiredQueues } from "../scripts/lib/productio
 import { SHOP_DEFINITIONS, getShopEnabled, getShopRequestDelayMs } from "../src/config.js";
 import { isShopDue, isSuspiciousItemDrop } from "../src/crawler/run.js";
 import {
-  roundRobinShopForScheduledTime,
+  dailyRotationShopForScheduledTime,
   sharedSweepExclusions,
   shopForCronAtScheduledTime,
   shopsForCron,
-  shopsInRoundRobin,
+  shopsInDailyRotation,
   shopsWithDedicatedCron,
 } from "../src/crawler/schedule.js";
 import {
@@ -106,14 +106,14 @@ test("dedicated shop crons are declared in wrangler and may be shared", () => {
   );
 });
 
-test("all non-dedicated shops share one ten-minute round robin", () => {
-  const roundRobin = shopsInRoundRobin();
-  const expectedIntervalMinutes = roundRobin.length * 10;
-  assert.equal(roundRobin.length, 14);
+test("all non-dedicated shops have daily intervals and share a staggered trigger", () => {
+  const dailyShops = shopsInDailyRotation();
+  const expectedIntervalMinutes = 24 * 60;
+  assert.equal(dailyShops.length, 14);
   assert.equal(CRAWL_ROTATION_CRON, "6-56/10 0-13,23 * * *");
   assert.ok(wranglerConfig.triggers.crons.includes(CRAWL_ROTATION_CRON));
 
-  for (const plugin of roundRobin) {
+  for (const plugin of dailyShops) {
     assert.equal(plugin.definition.scheduleCron, undefined);
     assert.equal(plugin.definition.defaultIntervalMinutes, expectedIntervalMinutes);
     assert.equal(
@@ -123,23 +123,28 @@ test("all non-dedicated shops share one ten-minute round robin", () => {
   }
 });
 
-test("round robin advances exactly one shop every ten minutes and wraps", () => {
-  const roundRobin = shopsInRoundRobin();
-  const firstTime = new Date("2026-08-23T00:06:00.000Z");
-  const first = roundRobinShopForScheduledTime(firstTime);
-  assert.ok(first);
-
-  const firstIndex = roundRobin.indexOf(first);
-  assert.notEqual(firstIndex, -1);
-
-  const next = roundRobinShopForScheduledTime(new Date(firstTime.getTime() + 10 * 60_000));
-  assert.equal(next, roundRobin[(firstIndex + 1) % roundRobin.length]);
-
-  const wrapped = roundRobinShopForScheduledTime(
-    new Date(firstTime.getTime() + roundRobin.length * 10 * 60_000),
+test("daily rotation starts at 09:06 JST and never wraps within the same day", () => {
+  const dailyShops = shopsInDailyRotation();
+  const firstTime = new Date("2026-12-31T09:06:00+09:00");
+  for (const [index, plugin] of dailyShops.entries()) {
+    const slot = new Date(firstTime.getTime() + index * 10 * 60_000);
+    assert.equal(dailyRotationShopForScheduledTime(slot), plugin);
+  }
+  for (const at of [
+    "2026-12-31T08:56:00+09:00",
+    "2026-12-31T11:26:00+09:00",
+    "2026-12-31T22:56:00+09:00",
+    "2026-12-31T23:06:00+09:00",
+    "2027-01-01T00:06:00+09:00",
+    "2027-01-01T08:06:00+09:00",
+  ]) {
+    assert.equal(dailyRotationShopForScheduledTime(new Date(at)), null, at);
+  }
+  assert.equal(
+    dailyRotationShopForScheduledTime(new Date("2027-01-01T09:06:00+09:00")),
+    dailyShops[0],
   );
-  assert.equal(wrapped, first);
-  assert.equal(roundRobinShopForScheduledTime(new Date("invalid")), null);
+  assert.equal(dailyRotationShopForScheduledTime(new Date("invalid")), null);
 });
 
 test("dedicated shops are excluded from the shared rotation", () => {
@@ -156,7 +161,7 @@ test("dedicated shops are excluded from the shared rotation", () => {
 
 test("scheduled crawl dispatch uses policy and the scheduled event timestamp", () => {
   assert.match(schedulerSource, /shopForCronAtScheduledTime\(cron, scheduledAt\)/);
-  assert.match(schedulerSource, /roundRobinShopForScheduledTime\(scheduledAt\)/);
+  assert.match(schedulerSource, /dailyRotationShopForScheduledTime\(scheduledAt\)/);
   assert.match(schedulerSource, /new Date\(controller\.scheduledTime\)/);
   assert.doesNotMatch(schedulerSource, /dispatchDueCrawls/);
 });
