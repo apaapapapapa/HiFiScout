@@ -153,6 +153,9 @@ or rejected entry with the same identity is reported with its existing ID and is
 overwritten/revived. Resubmitting an applied creation writes nothing. Discovery of matching
 seller listings uses the existing durable cursor, at most 10 listings per request, including
 retained inactive listings and preserving explicit listing overrides.
+Completing a creation records the catalog remediation watermark for that creation's verification
+generation together with the applied receipt, so catalog finalization does not repeat the work.
+A later verification retains its own pending remediation work.
 
 If the current page is still open, an interrupted update retains its operation IDs and can use
 **更新を再開** directly. An Access login failure offers **別タブでログインを確認**; authenticate there,

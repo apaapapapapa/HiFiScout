@@ -6,7 +6,10 @@ import { manufacturerIdForFilter } from "../src/catalog/manufacturers.js";
 import { normalizeIdentityModel } from "../src/catalog/product-identity.js";
 import { mergeKnowledgeCatalogAdminProducts } from "../src/db/knowledge-catalog-admin-operations.js";
 import { listKnowledgeCatalogDuplicates } from "../src/db/knowledge-catalog-duplicate-repository.js";
-import { catalogIdentityBucketKeySql } from "../src/db/knowledge-catalog-identity.js";
+import {
+  catalogIdentityBucketKey,
+  catalogIdentityBucketKeySql,
+} from "../src/db/knowledge-catalog-identity.js";
 import { parseKnowledgeCatalogDuplicateListQuery } from "../src/http/knowledge-catalog-admin.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 
@@ -128,15 +131,34 @@ function insertCatalog(sqlite: Sqlite, seed: CatalogSeed): number {
 const ALL = { manufacturerId: "", afterKey: "", limit: 20 };
 
 test("identity bucket key folds the separators and revisions the identity model drops", () => {
-  const sql = catalogIdentityBucketKeySql("kp.normalized_model");
-  assert.match(sql, /REPLACE\(.*, '-', ''\)/u);
-  assert.match(sql, /REPLACE\(.*, ' ', ''\)/u);
-  // Longest first, so MKIII never decays into MK2 plus a stray I.
-  assert.ok(
-    sql.indexOf("'MKIII'") < sql.indexOf("'MKII'"),
-    "MKIII must be folded before the MKII prefix consumes it",
-  );
-  assert.ok(sql.indexOf("'MARKII'") < sql.indexOf("'MARKI'"));
+  const { sqlite } = emptyCatalog();
+  try {
+    const sql = sqlite.prepare(`SELECT ${catalogIdentityBucketKeySql("?")} AS key`);
+    for (const [left, right] of [
+      ["PMA-2500NE", "PMA2500NE"],
+      ["MODEL II", "MODEL REV2"],
+      ["MODEL III", "MODELREV3"],
+      ["MODEL IV", "MODELREV4"],
+      ["MODEL MARK2", "MODEL MK2"],
+      ["MODEL MARK III", "MODEL MK3"],
+      ["MODEL MK II II", "MODEL MK2REV2"],
+      ["MODEL II SE", "MODELREV2SE"],
+      ["MODEL LIMITED EDITION", "MODEL LIMITED"],
+      ["MODEL LIMITED EDITION EDITION", "MODEL LIMITEDEDITION"],
+      ["C+10", "C10"],
+      ["C'10", "C10"],
+    ]) {
+      assert.equal(
+        catalogIdentityBucketKey(left),
+        catalogIdentityBucketKey(right),
+        `${left} / ${right}`,
+      );
+      assert.equal(sql.get(left)?.key, catalogIdentityBucketKey(left));
+      assert.equal(sql.get(right)?.key, catalogIdentityBucketKey(right));
+    }
+  } finally {
+    sqlite.close();
+  }
 });
 
 test("catalog duplicates group separator and revision spellings of one model", async () => {

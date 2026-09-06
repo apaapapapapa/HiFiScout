@@ -82,6 +82,7 @@ interface Receipt {
   status: "pending" | "applied";
   phase: number;
   after_listing_id: number;
+  created_at: string;
 }
 
 function valuesFor(change: AdminCsvChange): AdminCsvValues {
@@ -556,11 +557,21 @@ async function resumeReceipt(
       });
     }
   }
-  await db
+  const completed = db
     .prepare(`UPDATE admin_csv_import_changes SET status = 'applied', updated_at = ?
     WHERE operation_id = ? AND status = 'pending'`)
-    .bind(now, receipt.operation_id)
-    .run();
+    .bind(now, receipt.operation_id);
+  if (created) {
+    await db.batch([
+      db
+        .prepare(`UPDATE knowledge_catalog_products
+        SET last_remediated_at = ?, remediation_after_listing_id = 0, updated_at = ?
+        WHERE id = ? AND last_verified_at = ?
+          AND (last_remediated_at IS NULL OR last_remediated_at < ?)`)
+        .bind(receipt.created_at, now, receipt.target_id, receipt.created_at, receipt.created_at),
+      completed,
+    ]);
+  } else await completed.run();
   return result(change, "applied", "更新と検索表示への反映が完了しました。", {
     operationId: receipt.operation_id,
   });

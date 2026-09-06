@@ -20,6 +20,7 @@ import {
 } from "../src/db/admin-csv-import-repository.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { recordingDatabase, queryPlan } from "./helpers/query-plan.js";
+import { normalizeCatalogModel } from "../src/catalog/knowledge-catalog.js";
 
 const values = {
   manufacturer_id: "luxman",
@@ -187,6 +188,13 @@ test("catalog insertion is atomic, verified, auditable, round-trippable and idem
         .get(input.operationId)?.target_id,
       id,
     );
+    const remediation = sqlite
+      .prepare(
+        "SELECT last_verified_at,last_remediated_at,remediation_after_listing_id FROM knowledge_catalog_products WHERE id=?",
+      )
+      .get(id);
+    assert.equal(remediation?.last_remediated_at, remediation?.last_verified_at);
+    assert.equal(remediation?.remediation_after_listing_id, 0);
     const output = resultCsv([input.change], [result]);
     const rows = [...parseCsv(output)];
     assert.equal(rows[1].cells[rows[0].cells.indexOf("result_target_id")], String(id));
@@ -284,6 +292,75 @@ test("a concurrent spelling variant or source failure rolls back the new product
   }
 });
 
+test("catalog creation rejects standalone Roman, numeric MARK, edition and punctuation duplicates in either direction", async () => {
+  const { db, sqlite } = database();
+  try {
+    for (const pair of [
+      ["MODEL II", "MODEL REV2"],
+      ["MODEL III", "MODELREV3"],
+      ["MODEL IV", "MODELREV4"],
+      ["MODEL II SE", "MODELREV2SE"],
+      ["MODEL MK II II", "MODEL MK2REV2"],
+      ["MODEL MARK2", "MODEL MK2"],
+      ["MODEL LIMITED EDITION", "MODEL LIMITED"],
+      ["MODEL LIMITED EDITION EDITION", "MODEL LIMITEDEDITION"],
+      ["C+10", "C10"],
+    ]) {
+      for (const [existing, incoming] of [pair, [...pair].reverse()]) {
+        sqlite.exec("DELETE FROM knowledge_catalog_products");
+        sqlite
+          .prepare(`INSERT INTO knowledge_catalog_products(manufacturer_id,canonical_model,normalized_model,created_at,updated_at)
+          VALUES('luxman',?,?,'${at}','${at}')`)
+          .run(existing, normalizeCatalogModel(existing));
+        assert.equal(
+          (await previewAdminCsvChange(db, create({ canonical_model: incoming }))).status,
+          "invalid",
+          `${existing} / ${incoming}`,
+        );
+      }
+    }
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("a CSV completion cannot mark a later verification generation remediated", async () => {
+  const { db, sqlite } = database();
+  try {
+    const input = await inputFor(db);
+    const failing = {
+      prepare(sql: string) {
+        if (sql.includes("AS matched_catalog_id")) throw new Error("interrupted discovery");
+        return db.prepare(sql);
+      },
+      batch: db.batch.bind(db),
+    };
+    const first = await applyAdminCsvChange(failing, input);
+    assert.equal(first.status, "failed");
+    assert.ok(first.id);
+    assert.equal(
+      sqlite
+        .prepare("SELECT last_remediated_at FROM knowledge_catalog_products WHERE id=?")
+        .get(first.id)?.last_remediated_at,
+      null,
+    );
+    sqlite
+      .prepare(
+        "UPDATE knowledge_catalog_products SET last_verified_at='2026-09-07T00:00:00.000Z' WHERE id=?",
+      )
+      .run(first.id);
+    assert.equal((await applyAdminCsvChange(db, input)).status, "applied");
+    assert.equal(
+      sqlite
+        .prepare("SELECT last_remediated_at FROM knowledge_catalog_products WHERE id=?")
+        .get(first.id)?.last_remediated_at,
+      null,
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
 test("creation resumes ten-listing discovery pages after a lost response and preserves explicit overrides", async () => {
   const { db, sqlite } = database();
   try {
@@ -302,6 +379,12 @@ test("creation resumes ten-listing discovery pages after a lost response and pre
     const first = await applyAdminCsvChange(db, input);
     assert.equal(first.status, "pending", first.message);
     assert.equal(
+      sqlite
+        .prepare("SELECT last_remediated_at FROM knowledge_catalog_products WHERE id=?")
+        .get(first.id)?.last_remediated_at,
+      null,
+    );
+    assert.equal(
       sqlite.prepare("SELECT after_listing_id FROM admin_csv_import_changes").get()
         ?.after_listing_id,
       90010,
@@ -316,6 +399,12 @@ test("creation resumes ten-listing discovery pages after a lost response and pre
       operationId: pending.operationId!,
     });
     assert.equal(resumed.status, "applied", resumed.message);
+    const remediation = sqlite
+      .prepare(
+        "SELECT last_verified_at,last_remediated_at FROM knowledge_catalog_products WHERE id=?",
+      )
+      .get(first.id);
+    assert.equal(remediation?.last_remediated_at, remediation?.last_verified_at);
     assert.equal(
       sqlite
         .prepare("SELECT COUNT(*) n FROM product_identity_resolutions WHERE catalog_product_id=?")
