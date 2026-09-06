@@ -114,6 +114,16 @@ cannot accidentally become a second persistence model.
 and `category` are parser candidates/hints; the catalog layer owns canonical manufacturer/category
 resolution, product identity and persistence.
 
+Scope extraction to each seller card or table row before reading price, availability or identity.
+Prefer separately labeled manufacturer/model fields and structured Product data to title heuristics;
+ignore navigation, comments and script text. `src/crawler/listing-fields.ts` provides bounded card
+and nested field readers, including repeated cards with missing closing tags.
+
+Retain model revisions, cable lengths, impedance, quantities and bundled accessories. Parentheses
+are not inherently sales annotations: the central model resolver removes only recognized notes and
+records their provenance. Cover adjacent products with different makers/prices/stock states, unknown
+multi-word brands, and Japanese model names using minimal fixtures based on the seller's markup.
+
 ## Availability
 
 Listing parsers and detail-page inventory rechecks use one canonical vocabulary:

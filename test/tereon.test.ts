@@ -44,13 +44,13 @@ test("Tereon parser canonicalizes contextual product URLs and extracts stable se
   assert.equal(items[0].sourceUrl, "https://www.tereon-tsuhan.com/shopdetail/000000008111/");
   assert.equal(items[0].title, "TRIODE TRX-1(真空管プリアンプ)");
   assert.equal(items[0].manufacturer, "TRIODE");
-  assert.equal(items[0].model, "TRX-1");
+  assert.equal(items[0].model, "TRX-1(真空管プリアンプ)");
   assert.equal(items[0].category, "プリアンプ");
   assert.equal(items[0].conditionText, "中古品");
   assert.equal(items[0].priceYen, 138000);
   assert.equal(items[0].stockStatus, "in_stock");
   assert.deepEqual(items[0].metadata, { conditionCategoryCode: "004" });
-  assert.equal(items[1].model, "702S3");
+  assert.equal(items[1].model, "702S3(BK)(元箱あり)");
 });
 
 test("Tereon parser preserves item-level display and new-special conditions from category 003", () => {
@@ -69,7 +69,7 @@ test("Tereon parser preserves item-level display and new-special conditions from
     items.map(({ conditionText }) => conditionText),
     ["展示品", "新品特価"],
   );
-  assert.equal(items[0].model, "U-05");
+  assert.equal(items[0].model, "U-05(USB-DAC内蔵ヘッドホンアンプ)");
   assert.equal(items[0].category, "DAC");
   assert.equal(items[1].model, "TAD-E1TX");
 });
@@ -84,7 +84,7 @@ test("Tereon parser marks explicit sold-out listings", () => {
   const [item] = parseTereonListing(html, usedPage);
   assert.ok(item);
   assert.equal(item.stockStatus, "sold_out");
-  assert.equal(item.model, "SR-L500MK2+SRM-500T");
+  assert.equal(item.model, "SR-L500MK2+SRM-500T(セット販売)");
 });
 
 test("Tereon pagination expands the result count while staying inside the selected category", () => {

@@ -2,6 +2,7 @@ import { stripManufacturerListingLabels } from "../../catalog/manufacturers.js";
 import { availabilityFromSignals } from "../availability.js";
 import { stripRawTextElements } from "../../html/raw-text.js";
 import { cleanText, parseYen, splitManufacturerModel } from "../normalize.js";
+import { listingBlocks } from "../listing-fields.js";
 import type { SellerProduct, ShopAdapter } from "../types.js";
 
 interface ShimamusenPage {
@@ -94,6 +95,15 @@ function productAnchors(html: string): ProductAnchor[] {
 }
 
 function distinctProductBlocks(html: string): ProductBlock[] {
+  const cards = listingBlocks(html, "div", "innerBox");
+  const blocks = cards.length ? cards : listingBlocks(html, "li");
+  if (blocks.length) {
+    return blocks.flatMap((block) => {
+      const anchors = productAnchors(block);
+      const anchor = anchors.find((item) => item.title);
+      return anchor ? [{ ...anchor, html: block }] : [];
+    });
+  }
   const anchors = productAnchors(html);
   const orderedIds: string[] = [];
   const grouped = new Map<string, ProductAnchor[]>();
@@ -112,7 +122,7 @@ function distinctProductBlocks(html: string): ProductBlock[] {
     const titleAnchor = current.find((anchor) => anchor.title) || current[0];
     const nextId = orderedIds[index + 1];
     const nextAnchors = nextId ? grouped.get(nextId) : null;
-    const blockStart = Math.max(0, current[0].index - 500);
+    const blockStart = current[0].index;
     const blockEnd = nextAnchors
       ? nextAnchors[0].index
       : Math.min(String(html).length, current[current.length - 1].end + 1600);
@@ -134,9 +144,9 @@ function manufacturerFromBlock(blockHtml: string, title: string): string {
   return splitManufacturerModel(productIdentityText(title), "shimamusen").manufacturer || "";
 }
 
-function modelFromTitle(title: string): string {
+function modelFromTitle(title: string, manufacturer: string): string {
   const identityText = productIdentityText(title);
-  return splitManufacturerModel(identityText, "shimamusen").model || identityText;
+  return splitManufacturerModel(identityText, "shimamusen", manufacturer).model || identityText;
 }
 
 function extractPrice(blockHtml: string): number | null {
@@ -182,7 +192,7 @@ export function parseShimamusenListing(
       sourceId: block.sourceId,
       rawManufacturer: manufacturer,
       manufacturer,
-      model: modelFromTitle(title),
+      model: modelFromTitle(title, manufacturer),
       title,
       rawCategory: kind,
       category: "",

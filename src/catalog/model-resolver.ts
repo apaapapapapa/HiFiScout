@@ -27,7 +27,7 @@ import type {
   ResolutionStatus,
 } from "./types.js";
 
-export const MODEL_RESOLVER_VERSION = 10;
+export const MODEL_RESOLVER_VERSION = 11;
 
 export type ModelResolver = (input: ModelResolutionInput) => ModelResolutionResult;
 
@@ -115,6 +115,24 @@ const ANNOTATION_RULES: readonly AnnotationRule[] = [
     // `(ペア)`, manufacturer aliases and ordinary bracketed presentation untouched; the identity
     // guard below still vetoes removal if a recognized revision token would be lost.
     pattern: /\s*\((?=[A-Z0-9]{6,20}\))(?=(?:[A-Z]*\d){3})[A-Z0-9]+\)\s*/giu,
+  },
+  {
+    name: "seller_serial",
+    shopKey: "tereon",
+    // Accuphase unit codes in this shop: D4W889, G3W502, F5Y555. Other alphanumeric
+    // parentheses can be tube models such as WE300B and must remain identity evidence.
+    pattern: /\s*\([A-Z]\d[A-Z]\d{3}\)\s*/giu,
+  },
+  {
+    name: "seller_condition",
+    shopKey: "tereon",
+    pattern: /\s*\((?:元箱(?:あり|なし)|(?:小)?キズあり|保証なし|セット販売)\)\s*/gu,
+  },
+  {
+    name: "seller_product_type",
+    shopKey: "tereon",
+    pattern:
+      /\s*\((?:(?:真空管)?(?:プリメインアンプ|プリアンプ|パワーアンプ)|インテグレーテッドアンプ|(?:USB-DAC内蔵)?ヘッドホンアンプ|(?:パワード)?スピーカー|スピーカースタンド|フォノイコライザー|サブウーファー|バイワイヤーアダプター)\)\s*/gu,
   },
   {
     name: "seller_sku",

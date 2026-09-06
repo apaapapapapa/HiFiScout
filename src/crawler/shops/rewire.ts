@@ -123,14 +123,37 @@ function normalizedSellerCategory(title: string, rawSellerCategory: string): str
  * copy to the actual model. Product cards already render the manufacturer separately, so retain the
  * seller's complete title in `title` while extracting only the model-shaped prefix into `model`.
  */
-function conciseRewireModel(rawModel: string): string {
+function conciseRewireModel(rawModel: string, isCable: boolean): string {
   const original = cleanText(rawModel);
   if (!original) return "";
 
-  let value = original.replace(/^of\s+Oregon\s+/iu, "").trim();
+  let value = original
+    .replace(/^of\s+Oregon\s+/iu, "")
+    .replace(/\s+20\d{2}年製\s*/gu, " ")
+    .trim();
+  // Specifications that occur after a Japanese category/brand still distinguish cable lengths,
+  // bundled units and vintage revisions. Keep them when reducing the descriptive suffix.
   const japaneseIndex = value.search(JAPANESE_TEXT_PATTERN);
+  // REWIRE also files speaker cables under アクセサリー. An explicit cable type immediately
+  // after the model is sufficient evidence; a later mention of an included cable is not.
+  const cableType = /^(?:スピーカー|電源|デジタル|同軸|インターコネクト)?ケーブル(?=\s|\d|$)/u.test(
+    japaneseIndex >= 0 ? value.slice(japaneseIndex) : "",
+  );
+  const identityDetails = [
+    ...(isCable || cableType ? [...value.matchAll(/\b\d+(?:\.\d+)?\s*(?:mm|cm|m)\b/giu)] : []),
+    // A driver size already in the model prefix belongs to that prefix. Dimensions later in
+    // the description (height, width, etc.) never become extra model tokens.
+    ...[...value.matchAll(/\d+(?:\.\d+)?インチ/gu)].filter((match) => match.index < japaneseIndex),
+    ...value.matchAll(/\d+本(?:\([^)]*\))?/gu),
+    ...value.matchAll(/オリジナル(?:\s*\([^)]*\))?|復刻|初代|初期世代モデル/gu),
+  ].map((match) => match[0]);
   if (japaneseIndex > 0) {
-    const prefix = value.slice(0, japaneseIndex).trim();
+    const before = value.slice(0, japaneseIndex);
+    const prefix = (
+      /^(?:本|個|台|枚|インチ)/u.test(value.slice(japaneseIndex))
+        ? before.replace(/\s+\d+$/u, "")
+        : before
+    ).trim();
     // A Latin/digit prefix followed by Japanese copy is the seller's model presentation followed
     // by its translated brand/category/description. Japanese-only model names start at index 0 and
     // are therefore left untouched.
@@ -139,20 +162,14 @@ function conciseRewireModel(rawModel: string): string {
 
   value = cleanText(value.replace(ENGLISH_PRODUCT_TYPE_SUFFIX, " "));
 
-  // REWIRE sometimes repeats the same model/brand presentation after a slash. Once the left side
-  // already contains a model token, the right side is listing presentation rather than identity.
-  const slash = value.indexOf(" / ");
-  if (slash > 0) {
-    const left = value.slice(0, slash).trim();
-    if (/\d/u.test(left)) value = left;
-  }
-
   value = value
     .replace(/[\s/／|]+$/u, "")
-    .replace(/\s+(?:original\s+pair|mono\s+pair|pair)\s*$/iu, "")
     .replace(/\s+\(\d{4}\)\s*$/u, "")
     .trim();
 
+  for (const detail of identityDetails) {
+    if (!value.includes(detail)) value = `${value} ${detail}`.trim();
+  }
   return value || original;
 }
 
@@ -202,7 +219,7 @@ export function parseRewireListing(html: string): SellerProduct[] {
       title,
       rawManufacturer: manufacturer,
       manufacturer,
-      model: conciseRewireModel(model || title),
+      model: conciseRewireModel(model || title, rawSellerCategory === "ケーブル"),
       rawCategory,
       category: inferCategory(title),
       conditionText,

@@ -57,7 +57,11 @@ const ANY_CONDITION_MARKER_PATTERN = /[〖【][^〗】]+[〗】]/u;
  */
 const SELLER_PRODUCT_TYPE_MARKERS: readonly RegExp[] = [
   /\s+(?:SACD\/CD|SACD|CD)(?:デッキ|プレーヤー|トランスポート)/iu,
-  /\s+(?:プリメイン|パワー|プリアンプ|真空管)アンプ/u,
+  /\s+(?:(?:プリメイン|パワー|真空管|AV|ヘッドホン)アンプ|プリアンプ)/iu,
+  /\s+(?:D\/A|D\/D|DA)コンバーター?/iu,
+  /\s+(?:トーンアーム|チューナー|サブウーファー|クロック(?:ジェネレーター)?)(?:\s|$)/u,
+  /\s+(?:オープンリールデッキ|コンポ|ユニバーサルプレーヤー|チャンネルデバイダー|音響レンズ|スロート|ウーファーユニット|ネットワークスイッチ|ネットワーク|ルーター|イコライザー|エンハンサー|ビニールクリーナー|ロータリースイッチ|アッテネーター|インシュレーター|ミキサー|イーサネットノイズフィルター|信号補正フィルター|デジタルライントランスフォーマー|真空管)(?:\s|$)/u,
+  /\s+トランス(?=\s|\d+個|$)/u,
   /\s+パッシブコントローラー/u,
   /\s+フォノイコライザー/u,
   /\s+(?:MC|MM)カートリッジ/iu,
@@ -71,7 +75,7 @@ const SELLER_PRODUCT_TYPE_MARKERS: readonly RegExp[] = [
   /\s+アームベース/u,
   /\s+セレクター/u,
   /\s+電源(?:ユニット)?/u,
-  /\s+(?:RCA|XLR|USB|LAN|同軸|デジタル|電源)?ケーブル/iu,
+  /\s+(?:RCA|XLR|USB|LAN|HDMI|同軸|デジタル|電源)?ケーブル/iu,
   /\s+(?:RCA|XLR)?アダプター(?:ペア)?/iu,
 ];
 
@@ -170,7 +174,9 @@ function conciseAfroAudioModel(rawModel: string, manufacturer: string): string {
     (index) => index >= 0,
   );
   if (markerIndexes.length > 0) {
-    value = value.slice(0, Math.min(...markerIndexes)).trim();
+    const index = Math.min(...markerIndexes);
+    const count = value.slice(index).match(/^\s*トランス(\d+個)/u)?.[1];
+    value = cleanText(`${value.slice(0, index)} ${count || ""}`);
   }
 
   return value || original;

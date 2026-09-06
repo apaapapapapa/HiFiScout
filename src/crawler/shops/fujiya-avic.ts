@@ -1,9 +1,16 @@
 import { categoryEvidenceFromText } from "../../catalog/category-evidence.js";
 import { stripRawTextElements } from "../../html/raw-text.js";
-import { cleanText } from "../normalize.js";
+import {
+  cleanText,
+  inferCategory,
+  inferStockStatus,
+  parseYen,
+  stableSourceId,
+} from "../normalize.js";
+import { listingBlocks, listingFieldText } from "../listing-fields.js";
 import { parseProductPage } from "../parser.js";
 import type { CategoryEvidenceInput, NormalizedCatalogProduct } from "../../catalog/types.js";
-import type { CrawlPageObject, ShopAdapter } from "../types.js";
+import type { CrawlPageObject, SellerProduct, ShopAdapter } from "../types.js";
 
 const PAGE_SIZE = 50;
 const NEW_ARRIVALS_PATH = "ea-usednw_ssd";
@@ -169,6 +176,48 @@ export const FUJIYA_CATEGORY_POLICY = Object.freeze({
   }),
 });
 
+function parseFujiyaCards(cards: readonly string[], page: FujiyaPage): SellerProduct[] {
+  const products: SellerProduct[] = [];
+  for (const card of cards) {
+    const href = card.match(/\bhref\s*=\s*(["'])([^"']*\/shop\/g\/g[^"']+)\1/i)?.[2];
+    const model = listingFieldText(card, "block-thumbnail-t--goods-name");
+    const manufacturer = listingFieldText(card, "txt-en") || listingFieldText(card, "txt-ja");
+    if (!href || !model) continue;
+    let sourceUrl: string;
+    try {
+      const url = new URL(href, page.url);
+      if (url.origin !== "https://www.fujiya-avic.co.jp") continue;
+      sourceUrl = url.toString();
+    } catch {
+      continue;
+    }
+    const title = cleanText(`${listingFieldText(card, "block-thumbnail-t--goods-brand")} ${model}`);
+    const statusText = cleanText(
+      card.replace(
+        /<img\b([^>]*)>/gi,
+        (_match, attrs: string) => attrs.match(/\balt\s*=\s*(["'])(.*?)\1/i)?.[2] || "",
+      ),
+    );
+    products.push({
+      sourceId: stableSourceId(sourceUrl),
+      sourceUrl,
+      title,
+      manufacturer,
+      rawManufacturer: manufacturer,
+      model,
+      rawCategory: "",
+      category: inferCategory(title),
+      priceYen: parseYen(listingFieldText(card, "js-enhanced-ecommerce-goods-price")),
+      stockStatus: inferStockStatus(statusText),
+      conditionText:
+        page.feed === FEED_OUTLET
+          ? "アウトレット"
+          : listingFieldText(card, "block-thumbnail-t--goods-condition"),
+    });
+  }
+  return products;
+}
+
 export const fujiyaAvicAdapter = {
   key: "fujiya-avic",
   name: "フジヤエービック",
@@ -191,6 +240,8 @@ export const fujiyaAvicAdapter = {
     },
   },
   parse(html, page = pageFor(FEED_NEW_ARRIVALS)) {
+    const cards = listingBlocks(html, "dl", "block-thumbnail-t--goods");
+    if (cards.length) return parseFujiyaCards(cards, page);
     return parseProductPage(html, {
       shopKey: this.key,
       baseUrl: page.url,

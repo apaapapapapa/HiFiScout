@@ -1,5 +1,6 @@
 import { availabilityFromSignals } from "../availability.js";
 import { parseProductPage } from "../parser.js";
+import { listingBlocks } from "../listing-fields.js";
 import type { SellerProduct, ShopAdapter } from "../types.js";
 
 const LIST_URL = "https://ippinkan.jp/shopbrand/U100000/";
@@ -44,10 +45,15 @@ export const ippinkanAdapter = {
     },
   },
   parse(html, pageUrl = LIST_URL) {
-    return parseProductPage(html, {
-      shopKey: this.key,
-      baseUrl: pageUrl,
-      productUrlPattern: /ippinkan\.jp\/(?:shopdetail|view\/item|shop\/products?)/i,
-    }).map(applyIppinkanStockPolicy);
+    const cards = listingBlocks(html, "div", "innerBox");
+    return (cards.length ? cards : [html])
+      .flatMap((card) =>
+        parseProductPage(card, {
+          shopKey: this.key,
+          baseUrl: pageUrl,
+          productUrlPattern: /ippinkan\.jp\/(?:shopdetail|view\/item|shop\/products?)/i,
+        }),
+      )
+      .map(applyIppinkanStockPolicy);
   },
 } satisfies ShopAdapter<string>;

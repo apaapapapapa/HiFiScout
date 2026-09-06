@@ -37,6 +37,43 @@ const MANUFACTURER_SOURCE: readonly ManufacturerSourceEntry[] = [
   ],
   ["thorens", "Thorens", ["thorens", "トーレンス"]],
   ["linear-technology", "Linear Technology", ["linear technology"]],
+  ["jeff-rowland", "Jeff Rowland", ["jeff rowland"]],
+  ["first-watt", "First Watt", ["first watt"]],
+  ["musical-fidelity", "MUSICAL FIDELITY", ["musical fidelity"]],
+  ["flying-mole", "FLYING MOLE", ["flying mole"]],
+  ["boenicke-audio", "Boenicke audio", ["boenicke audio"]],
+  ["lite-audio", "Lite Audio", ["lite audio"]],
+  ["aune-audio", "aune audio", ["aune audio"]],
+  [
+    "audiodesksysteme-glaess",
+    "Audiodesksysteme Gläss",
+    ["glass-audio desk systeme", "audio desk systeme"],
+  ],
+  ["my-sonic-lab", "My Sonic Lab", ["my sonic lab"]],
+  ["rosen-kranz", "ROSEN KRANZ", ["rosen kranz"]],
+  ["eau-rouge", "Eau Rouge", ["eau rouge"]],
+  ["double-helix-cables", "Double Helix Cables", ["double helix cables"]],
+  ["solid-tech", "SOLID TECH", ["solid tech"]],
+  ["top-wing", "TOP WING", ["top wing"]],
+  ["united-electronics", "UNITED ELECTRONICS", ["united electronics"]],
+  ["yg-acoustics", "YG Acoustics", ["yg acoustics"]],
+  ["luna-cables", "Luna Cables", ["luna cables"]],
+  ["trinnov-audio", "TRINNOV AUDIO", ["trinnov audio"]],
+  ["speaker-craft", "Speaker Craft", ["speaker craft"]],
+  ["audio-replas", "Audio Replas", ["audio replas"]],
+  ["gallo-acoustic", "GALLO ACOUSTIC", ["gallo acoustic", "gallo acoustic(旧 anthony gallo)"]],
+  ["polk-audio", "Polk Audio", ["polk audio"]],
+  ["storm-audio", "STORM AUDIO", ["storm audio"]],
+  ["wilson-audio", "Wilson Audio", ["wilson audio"]],
+  ["westlake-audio", "Westlake Audio", ["westlake audio"]],
+  ["kiso-acoustic", "Kiso Acoustic", ["kiso acoustic"]],
+  ["constellation-audio", "Constellation Audio", ["constellation audio"]],
+  ["avalon-acoustics", "Avalon Acoustics", ["avalon acoustics"]],
+  ["ferrum-audio", "Ferrum Audio", ["ferrum audio"]],
+  ["austrian-audio", "Austrian Audio", ["austrian audio"]],
+  ["brise-audio", "Brise Audio", ["brise audio"]],
+  ["audia-flight", "Audia Flight", ["audia flight", "audia"]],
+  ["electron-tube", "Electron tube", ["electron tube"]],
   ["kef", "KEF", ["kef"]],
   ["jbl", "JBL", ["jbl"]],
   [
@@ -182,6 +219,20 @@ for (const manufacturer of MANUFACTURERS) {
 }
 PREFIX_ALIASES.sort((a, b) => b.key.length - a.key.length || b.alias.length - a.alias.length);
 
+// Most seller titles begin with an ASCII brand. Match only aliases with that initial rather than
+// running every bootstrap regular expression for every listing. Keep the full path for other
+// scripts so Unicode case-folding semantics stay owned by the existing /iu patterns.
+const PREFIX_ALIASES_BY_INITIAL = new Map<string, PrefixAliasEntry[]>();
+for (const candidate of PREFIX_ALIASES) {
+  const initial = cleanSourceText(candidate.alias)
+    .replace(/^[\s・･_\-/&+.,'"()（）]+/u, "")[0]
+    ?.toLowerCase();
+  if (!initial || !/^[a-z]$/u.test(initial)) continue;
+  const entries = PREFIX_ALIASES_BY_INITIAL.get(initial) || [];
+  entries.push(candidate);
+  PREFIX_ALIASES_BY_INITIAL.set(initial, entries);
+}
+
 function hashKey(value: string): string {
   let hash = 0x811c9dc5;
   for (const char of value) {
@@ -296,7 +347,11 @@ export function splitKnownManufacturerModel(value: unknown = ""): ManufacturerMo
   const raw = cleanSourceText(stripManufacturerListingLabels(value));
   if (!raw) return null;
 
-  for (const candidate of PREFIX_ALIASES) {
+  const initial = raw[0].toLowerCase();
+  const candidates = /^[a-z]$/u.test(initial)
+    ? PREFIX_ALIASES_BY_INITIAL.get(initial) || []
+    : PREFIX_ALIASES;
+  for (const candidate of candidates) {
     const match = raw.match(candidate.pattern);
     if (!match) continue;
     const model = stripBracketedManufacturerAlias(raw.slice(match[0].length), [

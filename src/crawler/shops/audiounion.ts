@@ -1,5 +1,14 @@
 import { normalizeManufacturer } from "../../catalog/manufacturers.js";
-import { cleanText, inferCategory, splitManufacturerModel, stableSourceId } from "../normalize.js";
+import {
+  cleanText,
+  inferCategory,
+  inferStockStatus,
+  parseYen,
+  splitManufacturerModel,
+  stableSourceId,
+} from "../normalize.js";
+import { listingBlocks, listingFieldHtml, listingFieldText } from "../listing-fields.js";
+import { availabilityFromSignals } from "../availability.js";
 import { parseProductPage } from "../parser.js";
 import type { ManufacturerNormalizationResult } from "../../catalog/types.js";
 import type { SellerProduct, ShopAdapter } from "../types.js";
@@ -23,7 +32,7 @@ const BRAND_SUFFIXES = new Set([
   "engineering",
 ]);
 const PRODUCT_TYPE_PREFIX =
-  /^(?:スピーカー(?:システム)?|プリメインアンプ|プリアンプ|パワーアンプ|アンプ|cd\/?sacd(?:プレーヤー)?|sacd(?:プレーヤー)?|cd(?:プレーヤー)?|dac|d\/aコンバーター?|ネットワーク(?:プレーヤー)?|ターンテーブル|レコードプレーヤー|カートリッジ|ヘッドホン|イヤホン)\s*/i;
+  /^(?:スピーカー(?:システム)?|プリメインアンプ|プリアンプ|パワーアンプ|アンプ|cd\/?sacd(?:プレーヤー)?|sacd(?:プレーヤー)?|cd(?:プレーヤー)?|dac|d\/aコンバーター?|ネットワーク(?:プレーヤー)?|ターンテーブル|レコードプレーヤー|カートリッジ|ヘッドホン|イヤホン)\s+/i;
 const SALES_NOISE = /(?:販売店|販売価格|税込価格|価格|商品コード|在庫)[：:]?/i;
 
 interface KnownManufacturerParts {
@@ -229,6 +238,40 @@ function repairIdentity(
 }
 
 function parseAudioUnion(html: string, pageUrl: string): SellerProduct[] {
+  const cards = listingBlocks(html, "li", "item");
+  if (cards.length) {
+    const products: SellerProduct[] = [];
+    for (const card of cards) {
+      const manufacturer = listingFieldText(card, "maker_name");
+      const modelHtml = listingFieldHtml(card, "item_name");
+      const model = cleanText(modelHtml);
+      const href = modelHtml.match(/\bhref\s*=\s*(["'])(.*?)\1/i)?.[2];
+      if (!href || !model) continue;
+      const sourceUrl = new URL(href, pageUrl).toString();
+      if (!DETAIL_URL_PATTERN.test(sourceUrl)) continue;
+      const rawCategory = listingFieldText(card, "category");
+      const priceYen = parseYen(listingFieldText(card, "selling_price"));
+      const stock = inferStockStatus(stripTagsKeepingSpacing(card));
+      const title = cleanText(`${manufacturer} ${model}`);
+      products.push({
+        sourceId: stableSourceId(sourceUrl),
+        sourceUrl,
+        title,
+        rawManufacturer: manufacturer,
+        manufacturer,
+        model,
+        rawCategory,
+        category: inferCategory(title, rawCategory),
+        conditionText: "中古",
+        priceYen,
+        stockStatus: availabilityFromSignals({
+          soldOut: stock === "sold_out",
+          inStock: stock === "in_stock" || (stock !== "sold_out" && priceYen !== null),
+        }),
+      });
+    }
+    return products;
+  }
   const fallback = parseProductPage(html, {
     shopKey: "audiounion",
     baseUrl: pageUrl,

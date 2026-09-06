@@ -1,6 +1,9 @@
 import { collectProductAnchors, type ProductAnchorRecord } from "../html-listing.js";
 import { availabilityFromSignals } from "../availability.js";
 import { cleanText, inferCategory, parseYen, splitManufacturerModel } from "../normalize.js";
+import { listingBlocks } from "../listing-fields.js";
+import { stripRawTextElements } from "../../html/raw-text.js";
+import { splitKnownManufacturerModel } from "../../catalog/manufacturers.js";
 import type { CrawlPageObject, SellerProduct, ShopAdapter } from "../types.js";
 
 const BASE_URL = "https://www.tereon-tsuhan.com";
@@ -22,7 +25,8 @@ const ENTRY_PAGES: readonly TereonEntryPage[] = Object.freeze([
 ]);
 
 const SOLD_PATTERN = /SOLD\s*OUT|売り切れ|売切れ|売約済(?:み)?|在庫なし|完売|品切れ|販売終了/iu;
-const CONDITION_PREFIX_PATTERN = /^(中古品|展示品|新品特価)\s*[：:；;]?\s*/u;
+const CONDITION_PREFIX_PATTERN =
+  /^(中古品|展示(?:処分)?品|(?:未使用)?開封品|新品特価)\s*[：:；;]?\s*/u;
 
 function listingPage(entry: TereonEntryPage, page = 1): TereonPage {
   const pathname =
@@ -64,17 +68,15 @@ function sellerCondition(rawTitle: string, page: Partial<TereonPage>): string {
   return cleanText(rawTitle).match(CONDITION_PREFIX_PATTERN)?.[1] || page.conditionText || "";
 }
 
-function manufacturerModel(title: string) {
-  const { manufacturer, model } = splitManufacturerModel(title, "tereon");
+function manufacturerModel(title: string, explicitManufacturer = "") {
+  const { manufacturer, model } = splitManufacturerModel(title, "tereon", explicitManufacturer);
+  const knownTitle = splitKnownManufacturerModel(title);
   return {
     rawManufacturer: manufacturer,
-    manufacturer,
-    // Tereon appends colour, carton and cosmetic notes in parentheses. Keep the stable model stem
-    // so black/silver and other finish variants can resolve to the same catalog product.
-    model:
-      cleanText(model)
-        .replace(/\s*[（(].*$/u, "")
-        .trim() || cleanText(model),
+    manufacturer: knownTitle?.rawManufacturer || manufacturer,
+    // Parentheses also contain tube specifications and bundled stands. Preserve seller evidence;
+    // the model resolver owns removal of recognized presentation notes.
+    model: cleanText(knownTitle?.model || model),
   };
 }
 
@@ -102,7 +104,20 @@ function paginationTarget(href: string, page: Partial<TereonPage>): TereonPage |
 }
 
 export function parseTereonListing(html: string, page: Partial<TereonPage> = {}): SellerProduct[] {
-  const records = collectProductAnchors(html, canonicalProductLink, cleanText);
+  html = stripRawTextElements(html);
+  const records = listingRecords(html);
+  const rows = new Map<string, { html: string; manufacturer: string }>();
+  for (const row of listingBlocks(html, "tr")) {
+    const cells = [...row.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/giu)];
+    for (const [index, cell] of cells.entries()) {
+      const record = listingRecords(cell[1])[0];
+      if (record)
+        rows.set(record.sourceId, {
+          html: row,
+          manufacturer: cleanText(cells[index + 1]?.[1] || ""),
+        });
+    }
+  }
   const products: SellerProduct[] = [];
 
   for (const [index, record] of records.entries()) {
@@ -111,8 +126,9 @@ export function parseTereonListing(html: string, page: Partial<TereonPage> = {})
     if (!title) continue;
 
     const nextIndex = records[index + 1]?.index ?? String(html || "").length;
-    const seller = cleanText(String(html || "").slice(record.index, nextIndex));
-    const { rawManufacturer, manufacturer, model } = manufacturerModel(title);
+    const row = rows.get(record.sourceId);
+    const seller = cleanText(row?.html || html.slice(record.index, nextIndex));
+    const { rawManufacturer, manufacturer, model } = manufacturerModel(title, row?.manufacturer);
     const soldOut = SOLD_PATTERN.test(seller);
 
     products.push({
@@ -135,6 +151,12 @@ export function parseTereonListing(html: string, page: Partial<TereonPage> = {})
   return products;
 }
 
+function listingRecords(html: string): ProductAnchorRecord[] {
+  return collectProductAnchors(html, canonicalProductLink, cleanText).filter((record) =>
+    CONDITION_PREFIX_PATTERN.test(sellerTitle(record)),
+  );
+}
+
 export function discoverTereonPageUrls(
   html: string,
   page: Partial<TereonPage>,
@@ -146,7 +168,7 @@ export function discoverTereonPageUrls(
     conditionCode: page.conditionCode,
     conditionText: page.conditionText,
   };
-  const records = collectProductAnchors(html, canonicalProductLink, cleanText);
+  const records = listingRecords(stripRawTextElements(html));
   const total = resultCount(html);
   if (total !== null) {
     if (total <= records.length) return [];

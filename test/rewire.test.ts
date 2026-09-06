@@ -64,7 +64,7 @@ test("REWIRE parser extracts listing facts and availability", () => {
 
   const withoutSellerCode = items[2];
   assert.equal(withoutSellerCode.sourceId, "2026-08-01-storm-audio-isp-16-analog-mk3");
-  assert.equal(withoutSellerCode.model, "AUDIO ISP 16 ANALOG MK3");
+  assert.equal(withoutSellerCode.model, "ISP 16 ANALOG MK3");
   assert.equal(withoutSellerCode.priceYen, 1800000);
   assert.equal(withoutSellerCode.stockStatus, "in_stock");
   assert.equal(withoutSellerCode.rawCategory, "アンプ");
@@ -96,9 +96,9 @@ test("REWIRE extracts concise card models while preserving complete seller title
   assert.match(items[1].title, /150W×2/u);
   assert.equal(normalizeCatalogProduct(items[1]).model, "BA-150");
 
-  assert.equal(items[2].model, "Model 9");
+  assert.equal(items[2].model, "Model 9 original Pair / Marantz USA #9");
   assert.match(items[2].title, /original Pair/u);
-  assert.equal(normalizeCatalogProduct(items[2]).model, "Model 9");
+  assert.equal(normalizeCatalogProduct(items[2]).model, "Model 9 original Pair / Marantz USA #9");
 });
 
 test("REWIRE parser decodes numeric entities and classifies known floorstanding speakers", () => {
@@ -122,13 +122,13 @@ test("REWIRE parser decodes numeric entities and classifies known floorstanding 
   assert.match(tannoy.title, /15″Monitor Red/u);
   assert.doesNotMatch(tannoy.title, /&#8243;/u);
   // splitKnownManufacturerModel normalizes the extracted model with NFKC.
-  assert.equal(tannoy.model, "Rectangular GRF 15′′Monitor Red");
+  assert.equal(tannoy.model, "Rectangular GRF 15′′Monitor Red / Monitor Red 15インチ");
   assert.equal(tannoy.rawCategory, "フロア型");
   assert.equal(tannoy.metadata?.rewireSellerCategory, "スピーカー");
   const normalizedTannoy = normalizeCatalogProduct(tannoy);
   assert.equal(normalizedTannoy.primaryCategoryId, "SPK.LOUDSPEAKER");
   // Monitor Red is the identity-bearing driver generation, not a cabinet finish.
-  assert.equal(normalizedTannoy.model, "Rectangular GRF 15′′Monitor Red");
+  assert.equal(normalizedTannoy.model, "Rectangular GRF 15′′Monitor Red / Monitor Red 15インチ");
   assert.equal(normalizedTannoy.presentationColor, "");
 
   const mcintosh = items[1];
