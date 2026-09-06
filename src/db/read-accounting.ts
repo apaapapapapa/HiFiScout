@@ -162,9 +162,11 @@ export function accountReads(db: ReadableDatabase): ReadAccounting<ReadableDatab
     },
   } as QueryableDatabase;
 
+  // Capability checks must see the same surface as the input, including prepare-only readers.
+  if (typeof batch !== "function") delete (measuredDb as Partial<QueryableDatabase>).batch;
+
   return {
-    // Overloads expose only the surface the input had. The runtime wrapper has `batch` as well so
-    // a QueryableDatabase keeps its exact behaviour, while a read-only caller cannot access it.
+    // Both overloads and runtime capabilities preserve the input's available operations.
     db: measuredDb,
     rowsRead: () => rowsRead,
     rowsWritten: () => rowsWritten,

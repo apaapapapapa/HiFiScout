@@ -11,6 +11,45 @@ import { accountReads } from "../src/db/read-accounting.js";
 import { detailFetchOptions } from "./helpers/fixtures.js";
 import { AT, NEXT, database, listing } from "./helpers/d1-write-budget.js";
 
+test("D1 candidate row-set batches preserve zero-write replay across batch boundaries", async () => {
+  const { db, dispose } = await database();
+  try {
+    await db
+      .prepare(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<250)
+      INSERT INTO products(shop_key,source_id,title,source_url,first_seen_at,last_seen_at,last_changed_at,
+        canonical_manufacturer_id,manufacturer,model)
+      SELECT 'budget',CAST(i AS TEXT),'LUXMAN MODEL-'||i,'https://example.test/'||i,'${AT}','${AT}','${AT}',
+        'luxman','LUXMAN','MODEL-'||i FROM n`)
+      .run();
+    await refreshKnowledgeCatalogCandidates(db, AT);
+    assert.equal(
+      await db.prepare("SELECT COUNT(*) n FROM knowledge_catalog_candidates").first("n"),
+      250,
+    );
+    const replay = accountReads(db);
+    await refreshKnowledgeCatalogCandidates(replay.db, NEXT);
+    assert.equal(replay.rowsWritten(), 0);
+    assert.ok(replay.rowsRead() < 5000, `candidate replay read ${replay.rowsRead()} rows`);
+    assert.equal(
+      await db
+        .prepare("SELECT COUNT(*) n FROM knowledge_catalog_candidates WHERE updated_at <> ?")
+        .bind(AT)
+        .first("n"),
+      0,
+    );
+    console.log(
+      JSON.stringify({
+        event: "candidate_row_set_d1_budget",
+        rowsRead: replay.rowsRead(),
+        rowsWritten: replay.rowsWritten(),
+        statements: replay.countedStatements(),
+      }),
+    );
+  } finally {
+    await dispose();
+  }
+}, 30_000);
+
 test("D1 bills zero for unchanged catalog decisions, search replay and candidate refresh", async () => {
   const { db, dispose } = await database();
   try {

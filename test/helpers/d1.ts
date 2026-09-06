@@ -71,7 +71,11 @@ export function captureDatabase(results: unknown[] | StatementResults = []): Cap
     },
     async batch(statements: CapturedStatement[]) {
       batched.push(...statements);
-      return statements.map(() => ({ success: true, meta: { changes: 1 } }));
+      return statements.map((statement) => ({
+        success: true,
+        results: select(statement),
+        meta: { changes: 1 },
+      }));
     },
   });
 }

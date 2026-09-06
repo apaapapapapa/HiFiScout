@@ -22,8 +22,8 @@ function catalogDb(rows: unknown[], aliases: unknown[] = [], manualRows: unknown
           return {
             async all() {
               if (sql.includes("source_type = 'manual_verified'")) return { results: manualRows };
-              if (sql.includes("FROM knowledge_catalog_products")) return { results: rows };
-              if (sql.includes("FROM knowledge_catalog_aliases")) return { results: aliases };
+              if (sql.includes("knowledge_catalog_products kp")) return { results: rows };
+              if (sql.includes("knowledge_catalog_aliases")) return { results: aliases };
               throw new Error(`unexpected query: ${sql}`);
             },
           };
