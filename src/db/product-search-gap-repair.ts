@@ -242,12 +242,13 @@ const refreshFullProjectionPath: ProjectionGapRepair = async (db, gaps, evaluate
  * rows, but the offer still points at an unresolved entity whose representative has since become a
  * verified Catalog match. Re-running projection + Identity work before fixing that membership is
  * unnecessary and, in production, could consume the D1 CPU budget before entity sync was reached.
+ * The same narrow path also moves an offer from one verified Catalog product to another.
  *
  * Entity sync is already transactional and expands exact-identity peers itself. Group seeds by shop
  * only because its incremental API is shop/source scoped, and execute the groups sequentially so a
  * repair batch never turns into another D1 burst.
  */
-const refreshStaleFallbackMembershipOnly: ProjectionGapRepair = async (db, gaps) => {
+const refreshCatalogMembershipOnly: ProjectionGapRepair = async (db, gaps) => {
   const sourceIdsByShop = new Map<string, string[]>();
   for (const gap of gaps) {
     const sourceIds = sourceIdsByShop.get(gap.shop_key) || [];
@@ -256,6 +257,27 @@ const refreshStaleFallbackMembershipOnly: ProjectionGapRepair = async (db, gaps)
   }
   for (const [shopKey, sourceIds] of sourceIdsByShop) {
     await syncProductSearchEntities(db, shopKey, sourceIds);
+  }
+  // Verified A -> verified B is also drift, even though neither entity is an unresolved fallback.
+  // Verify against the current authoritative resolution before acknowledging its obligation.
+  const remaining = await firstMeasured<{ gap_count: number }>(
+    db
+      .prepare(`SELECT COUNT(*) AS gap_count
+      FROM product_identity_resolutions r
+      JOIN products p ON p.id = r.listing_product_id AND p.is_active = 1
+      JOIN knowledge_catalog_products kp ON kp.id = r.catalog_product_id
+      WHERE r.listing_product_id IN (${gaps.map(() => "?").join(",")})
+        AND r.status = 'matched' AND kp.verification_status = 'verified'
+        AND NOT EXISTS (
+          SELECT 1 FROM product_search_entity_offers o
+          JOIN product_search_entities e ON e.id = o.entity_id
+          WHERE o.listing_product_id = r.listing_product_id AND e.entity_kind = 'catalog'
+            AND e.catalog_product_id = r.catalog_product_id
+        )`)
+      .bind(...gaps.map((gap) => gap.id)),
+  );
+  if (Number(remaining?.gap_count || 0) > 0) {
+    throw new Error("Product Search catalog membership repair did not converge");
   }
 };
 
@@ -438,7 +460,7 @@ export async function repairActiveListingProjectionGaps(
         [row],
         evaluatedAt,
         continueOnRefreshError,
-        refreshStaleFallbackMembershipOnly,
+        refreshCatalogMembershipOnly,
       );
       repairedCount += refreshed.repairedCount;
       failedCount += refreshed.failedCount;
@@ -489,11 +511,7 @@ export async function repairActiveListingProjectionGaps(
       );
     }
     await repairPhase("coverage", CRITICAL_COVERAGE_GAP_PREDICATE);
-    await repairPhase(
-      "stale-fallback",
-      STALE_FALLBACK_GAP_PREDICATE,
-      refreshStaleFallbackMembershipOnly,
-    );
+    await repairPhase("stale-fallback", STALE_FALLBACK_GAP_PREDICATE, refreshCatalogMembershipOnly);
   }
   if (phases !== "coverage") {
     await repairPhase("exact-identity", EXACT_IDENTITY_MEMBERSHIP_GAP_PREDICATE);

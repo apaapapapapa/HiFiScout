@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 import { invocationBudget, InvocationBudgetExceeded } from "../src/db/invocation-budget.js";
 import { repairActiveListingProjectionGaps } from "../src/db/product-search-gap-repair.js";
+import { syncProductSearchEntities } from "../src/db/product-search-entity-repository.js";
 import { asQueryableDatabase } from "./helpers/d1.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { migrationSources } from "./helpers/migrations.js";
@@ -35,6 +36,48 @@ function fixture(beforeMigration = false) {
 function match(sqlite: ReturnType<typeof migratedSqlite>["sqlite"]) {
   sqlite.exec(`UPDATE product_identity_resolutions SET status='matched',catalog_product_id=900001,
     match_method='test_catalog_match',confidence='high' WHERE listing_product_id=51;`);
+}
+
+for (const beforeMigration of [false, true]) {
+  test(`verified catalog A -> B survives an interrupted membership update (${beforeMigration ? "upgrade" : "trigger"})`, async () => {
+    const { db, sqlite } = fixture(beforeMigration);
+    match(sqlite);
+    await syncProductSearchEntities(db, "pending", ["51"]);
+    if (!beforeMigration) sqlite.exec("DELETE FROM product_search_catalog_pending");
+    sqlite.exec(`INSERT INTO knowledge_catalog_products(id,manufacturer_id,canonical_model,normalized_model,canonical_name,
+      verification_status,created_at,updated_at)
+      VALUES (900002,'luxman','M-51 revision','M51REVISION','LUXMAN M-51 revision','verified','${AT}','${AT}');
+      UPDATE product_identity_resolutions SET catalog_product_id=900002 WHERE listing_product_id=51;`);
+    if (beforeMigration)
+      sqlite.exec(migrationSources.find((migration) => migration.name === MIGRATION)!.sql);
+    assert.equal(
+      sqlite.prepare("SELECT COUNT(*) n FROM product_search_catalog_pending").get()?.n,
+      1,
+    );
+    const result = await repairActiveListingProjectionGaps(db, {
+      evaluatedAt: AT,
+      phases: "coverage",
+      maxListings: 1,
+    });
+    assert.equal(result.repairedCount, 1);
+    assert.equal(
+      sqlite
+        .prepare(`SELECT e.catalog_product_id FROM product_search_entity_offers o
+      JOIN product_search_entities e ON e.id=o.entity_id WHERE o.listing_product_id=51`)
+        .get()?.catalog_product_id,
+      900002,
+    );
+    assert.equal(
+      sqlite
+        .prepare("SELECT COUNT(*) n FROM product_search_entities WHERE catalog_product_id=900001")
+        .get()?.n,
+      0,
+    );
+    assert.equal(
+      sqlite.prepare("SELECT COUNT(*) n FROM product_search_catalog_pending").get()?.n,
+      0,
+    );
+  });
 }
 
 test("migration queues legacy drift beyond the audit window and repairs it within one cron budget", async () => {

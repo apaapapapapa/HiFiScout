@@ -18,7 +18,8 @@ WHEN NEW.status = 'matched' AND NEW.catalog_product_id IS NOT NULL
   AND EXISTS (
     SELECT 1 FROM product_search_entity_offers o
     JOIN product_search_entities e ON e.id = o.entity_id
-    WHERE o.listing_product_id = NEW.listing_product_id AND e.entity_kind = 'unresolved_listing'
+    WHERE o.listing_product_id = NEW.listing_product_id
+      AND (e.entity_kind <> 'catalog' OR e.catalog_product_id IS NOT NEW.catalog_product_id)
   )
 BEGIN
   INSERT INTO product_search_catalog_pending(listing_product_id, token)
@@ -37,7 +38,8 @@ WHEN (OLD.status IS NOT NEW.status OR OLD.catalog_product_id IS NOT NEW.catalog_
   AND EXISTS (
     SELECT 1 FROM product_search_entity_offers o
     JOIN product_search_entities e ON e.id = o.entity_id
-    WHERE o.listing_product_id = NEW.listing_product_id AND e.entity_kind = 'unresolved_listing'
+    WHERE o.listing_product_id = NEW.listing_product_id
+      AND (e.entity_kind <> 'catalog' OR e.catalog_product_id IS NOT NEW.catalog_product_id)
   )
 BEGIN
   INSERT INTO product_search_catalog_pending(listing_product_id, token)
@@ -55,15 +57,16 @@ BEGIN
   JOIN product_search_entity_offers o ON o.listing_product_id = r.listing_product_id
   JOIN product_search_entities e ON e.id = o.entity_id
   WHERE r.catalog_product_id = NEW.id AND r.status = 'matched'
-    AND e.entity_kind = 'unresolved_listing'
+    AND (e.entity_kind <> 'catalog' OR e.catalog_product_id IS NOT NEW.id)
   ON CONFLICT(listing_product_id) DO UPDATE SET token = excluded.token, last_attempt_at = '';
 END;
 
--- Capture only existing stale fallback representatives, without rewriting listings or history.
+-- Capture only mismatched verified memberships, without rewriting listings or history.
 INSERT INTO product_search_catalog_pending(listing_product_id, token)
-SELECT e.fallback_listing_id, lower(hex(randomblob(16)))
-FROM product_search_entities e
-JOIN product_identity_resolutions r ON r.listing_product_id = e.fallback_listing_id
+SELECT r.listing_product_id, lower(hex(randomblob(16)))
+FROM product_identity_resolutions r
 JOIN knowledge_catalog_products kp ON kp.id = r.catalog_product_id
-WHERE e.entity_kind = 'unresolved_listing' AND r.status = 'matched'
-  AND kp.verification_status = 'verified';
+JOIN product_search_entity_offers o ON o.listing_product_id = r.listing_product_id
+JOIN product_search_entities e ON e.id = o.entity_id
+WHERE r.status = 'matched' AND kp.verification_status = 'verified'
+  AND (e.entity_kind <> 'catalog' OR e.catalog_product_id IS NOT r.catalog_product_id);
