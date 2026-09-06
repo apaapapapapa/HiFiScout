@@ -9,6 +9,7 @@ import {
   catalogIdentityBucketKeySql,
 } from "./knowledge-catalog-identity.js";
 import { catalogAdminCategoryIds } from "./knowledge-catalog-admin-repository.js";
+import { catalogCsvManufacturerStatements } from "./admin-csv-catalog-manufacturer.js";
 import { firstMeasured } from "./read-accounting.js";
 import type { QueryableDatabase, ReadableDatabase } from "./types.js";
 
@@ -63,6 +64,7 @@ export async function createCatalogCsvProduct(
   const normalized = normalizeCatalogModel(values.canonical_model);
   const productId = "(SELECT target_id FROM admin_csv_import_changes WHERE operation_id = ?)";
   const statements = [
+    ...catalogCsvManufacturerStatements(db, values.manufacturer_id, input.operationId, now),
     db
       .prepare(`SELECT json(CASE WHEN (${BUCKET_SQL}) = ? AND EXISTS (
       SELECT 1 FROM knowledge_catalog_manufacturers WHERE id = ? AND verification_status = 'verified'

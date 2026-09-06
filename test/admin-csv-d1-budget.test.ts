@@ -15,6 +15,7 @@ import { AT, database, listing } from "./helpers/d1-write-budget.js";
 import { propagateCatalogCategoryToMatchedListings } from "../src/db/knowledge-catalog-admin-repository.js";
 import { reclassifyAdminCsvListings } from "../src/db/knowledge-catalog-repository.js";
 import { refreshListingProjections } from "../src/db/listing-projection-refresh.js";
+import { catalogCsvManufacturerStatements } from "../src/db/admin-csv-catalog-manufacturer.js";
 
 test("D1 CSV additions keep duplicate reads bounded as the catalog grows and retries bill zero writes", async () => {
   const { db, dispose } = await database();
@@ -64,6 +65,54 @@ test("D1 CSV additions keep duplicate reads bounded as the catalog grows and ret
       assert.equal(repeated.rowsWritten(), 0);
       assert.ok(repeated.rowsRead() < 100, `replay reads=${repeated.rowsRead()}`);
     }
+  } finally {
+    await dispose();
+  }
+}, 30_000);
+
+test("D1 CSV bootstrap preview and reuse bill zero manufacturer writes", async () => {
+  const { db, dispose } = await database();
+  try {
+    const manufacturer = () =>
+      db.prepare("SELECT * FROM knowledge_catalog_manufacturers WHERE id='accuphase'").first();
+    assert.equal(await manufacturer(), null);
+    const change = {
+      line: 401,
+      original: adminCsvNewCatalog(),
+      values: {
+        manufacturer_id: "accuphase",
+        canonical_model: "CSV-BOOTSTRAP-D1",
+        canonical_name: "CSV-BOOTSTRAP-D1",
+        primary_category_id: "AMP.POWER",
+        lifecycle_status: "unknown",
+      },
+    };
+    const measured = accountReads(db);
+    const preview = await previewAdminCsvChange(measured.db, change);
+    assert.equal(preview.status, "ready", preview.message);
+    assert.equal(measured.rowsWritten(), 0);
+    const input = { change, revision: preview.revision || "", operationId: crypto.randomUUID() };
+    const result = await applyAdminCsvChange(measured.db, input);
+    assert.equal(result.status, "applied", result.message);
+    assert.ok(measured.rowsRead() < 200, `reads=${measured.rowsRead()}`);
+    assert.ok(measured.rowsWritten() < 100, `writes=${measured.rowsWritten()}`);
+    const created = await manufacturer();
+    assert.equal(created?.source, "code_bootstrap");
+    const repeated = accountReads(db);
+    assert.equal((await applyAdminCsvChange(repeated.db, input)).status, "applied");
+    assert.equal((await previewAdminCsvChange(repeated.db, change)).status, "unchanged");
+    assert.equal(repeated.rowsWritten(), 0);
+    // Another product executes this statement again: even that path must bill zero maker writes.
+    await repeated.db.batch(
+      catalogCsvManufacturerStatements(
+        repeated.db,
+        "accuphase",
+        crypto.randomUUID(),
+        "2026-09-07T00:00:00.000Z",
+      ),
+    );
+    assert.equal(repeated.rowsWritten(), 0);
+    assert.deepEqual(await manufacturer(), created);
   } finally {
     await dispose();
   }

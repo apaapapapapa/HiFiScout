@@ -106,8 +106,15 @@ was deployed must be regenerated; diagnostic columns alone are not an import for
 The same catalog CSV also accepts **new catalog rows**. Append a row, leave `catalog_product_id`
 and `csv_original` empty, and fill all five catalog `edit_*` columns below. Other columns on the
 new row can be empty. Set `edit_lifecycle_status` to `unknown` when the lifecycle is not known.
-Use an already registered, verified manufacturer ID; this operation does not create manufacturers
-or seller listings. Existing rows still require their unchanged ID and original snapshot.
+Use a registered, verified manufacturer ID or a canonical ID from the trusted code manufacturer
+registry. For a new catalog row, a missing manufacturer from that registry is created with
+`code_bootstrap` provenance in the same transaction as the product. Preview remains read-only.
+Existing manufacturer names, provenance, timestamps, and verification decisions are preserved;
+pending/rejected manufacturers and unknown IDs still block import. Seller spellings and the mere
+presence of existing catalog products do not qualify an unknown manufacturer for this fallback.
+Existing-row corrections still require a registered, verified manufacturer when changing its ID.
+The import does not create seller listings. Existing rows still require their unchanged ID and
+original snapshot.
 
 | Target | Editable CSV columns |
 | --- | --- |
