@@ -64,6 +64,7 @@ test("a generated shop is registered but not yet crawling", () => {
     baseUrl: "https://example.com",
   });
   assert.match(registration, /defaultEnabled: false/);
+  assert.match(registration, /defaultIntervalMinutes: 1440/);
 });
 
 test("the generated scaffold is syntactically valid TypeScript", async () => {

@@ -96,7 +96,7 @@ test("Sound Support adapter crawls all inventory categories directly and follows
 
   const plugin = getShopPlugin("sound-support");
   assert.ok(plugin);
-  assert.equal(plugin.definition.defaultIntervalMinutes, 140);
+  assert.equal(plugin.definition.defaultIntervalMinutes, 1440);
   assert.equal(plugin.definition.defaultMaxPages, 20);
   assert.equal(plugin.definition.envPrefix, "SOUND_SUPPORT");
 

@@ -131,7 +131,7 @@ test("Sound Pit adapter is a partial latest-arrivals feed following the crawl ro
 
   const plugin = getShopPlugin("soundpit");
   assert.ok(plugin);
-  assert.equal(plugin.definition.defaultIntervalMinutes, 140);
+  assert.equal(plugin.definition.defaultIntervalMinutes, 1440);
   assert.equal(plugin.definition.defaultMaxPages, 50);
   assert.equal(plugin.definition.envPrefix, "SOUNDPIT");
 });

@@ -153,7 +153,7 @@ environment prefix and the platform reads:
 | Variable | Meaning | Default |
 | --- | --- | --- |
 | `<PREFIX>_ENABLED` | kill switch | `defaultEnabled`, else on |
-| `<PREFIX>_INTERVAL_MINUTES` | crawl interval | `defaultIntervalMinutes` |
+| `<PREFIX>_INTERVAL_MINUTES` | health and interval-based eligibility | `defaultIntervalMinutes` |
 | `<PREFIX>_REQUEST_DELAY_MS` | per-request pacing | `defaultRequestDelayMs`, else global |
 | `<PREFIX>_MAX_PAGES` | discovery ceiling | `defaultMaxPages`, else global |
 | `<PREFIX>_INVENTORY_RECHECK_*` | recheck settings | off unless capability enabled |
@@ -161,6 +161,10 @@ environment prefix and the platform reads:
 Declare deployed values in `wrangler.jsonc`. The prefix is always derived from the shop key; aliases and
 custom prefix overrides are not supported. For example, `u-audio` always uses `U_AUDIO_*`. Shop-owned
 discovery inputs such as an entry URL are ordinary env variables read inside that shop module.
+
+Shops without `scheduleCron` join the shared daily pass. The generator defaults their interval to
+1,440 minutes; changing the interval alone does not change Cron frequency. See
+[Crawl orchestration](./crawl-orchestration.md#daily-shop-schedules) for selection and overnight rules.
 
 `defineShopPlugin` validates the definition, discovery policy, and declared capabilities at module load.
 Invalid keys, non-HTTPS origins, invalid coverage/policies, negative budgets, unsupported transports,

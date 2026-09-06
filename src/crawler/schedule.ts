@@ -3,17 +3,17 @@
  *
  * Shops with exceptional cadences declare `scheduleCron` on their definition. Multiple shops may
  * share one dedicated trigger; in that case the scheduled event timestamp selects exactly one shop
- * from the stable registry order. Every other shop belongs to one deterministic round-robin
- * sequence: one shop is selected for each ten-minute rotation tick. All slot decisions are derived
- * from the scheduled event timestamp rather than wall-clock execution time, so delayed Cron
- * delivery cannot reorder either sequence.
+ * from the stable registry order. Every other shop gets one daily slot, ten minutes apart from
+ * 09:06 JST, without wrapping after the last shop. All slot decisions use the scheduled event
+ * timestamp rather than wall-clock execution time, so delayed Cron delivery cannot reorder them.
  */
 
 import { SHOP_PLUGINS } from "./shops/index.js";
+import { isCrawlQuietHours } from "./crawl-window.js";
 import type { ShopPlugin } from "./types.js";
 
 /** Must stay aligned with the ten-minute cadence declared by CRAWL_ROTATION_CRON. */
-const ROUND_ROBIN_SLOT_MS = 10 * 60_000;
+const DAILY_ROTATION_SLOT_MINUTES = 10;
 /** Shared dedicated trigger starts at :01 and advances to the next shop every 30 minutes. */
 const SHARED_DEDICATED_SLOT_MS = 30 * 60_000;
 /** :01 is the phase anchor, so every hour starts with the first registered shared shop. */
@@ -24,8 +24,8 @@ export function shopsWithDedicatedCron(): ShopPlugin[] {
   return SHOP_PLUGINS.filter((plugin) => Boolean(plugin.definition.scheduleCron));
 }
 
-/** Shops sharing the ten-minute round-robin trigger, in stable registry order. */
-export function shopsInRoundRobin(): ShopPlugin[] {
+/** Shops with one daily slot on the shared trigger, in stable registry order. */
+export function shopsInDailyRotation(): ShopPlugin[] {
   return SHOP_PLUGINS.filter((plugin) => !plugin.definition.scheduleCron);
 }
 
@@ -63,17 +63,18 @@ export function sharedSweepExclusions(): string[] {
 }
 
 /**
- * Select exactly one non-dedicated shop for a ten-minute scheduled slot.
+ * Select a non-dedicated shop only during its daily ten-minute slot.
  *
- * Epoch-derived slots make the sequence deterministic across Worker instances and deployments;
- * advancing by ten minutes advances by exactly one shop and wraps after the full registry subset.
+ * UTC midnight is 09:00 JST; the trigger's first firing is 09:06 JST. Each subsequent tick
+ * advances once through the registry, then all remaining ticks are idle until the next day.
+ * Disabled shops keep their slot so enabling/disabling one cannot move another shop's start.
  */
-export function roundRobinShopForScheduledTime(scheduledAt: Date): ShopPlugin | null {
-  const shops = shopsInRoundRobin();
+export function dailyRotationShopForScheduledTime(scheduledAt: Date): ShopPlugin | null {
+  const shops = shopsInDailyRotation();
   const scheduledMs = scheduledAt.getTime();
-  if (!shops.length || !Number.isFinite(scheduledMs)) return null;
+  if (!Number.isFinite(scheduledMs) || isCrawlQuietHours(scheduledMs)) return null;
 
-  const slot = Math.floor(scheduledMs / ROUND_ROBIN_SLOT_MS);
-  const index = ((slot % shops.length) + shops.length) % shops.length;
-  return shops[index] || null;
+  const minutesSinceDayStart = scheduledAt.getUTCHours() * 60 + scheduledAt.getUTCMinutes();
+  const slot = Math.floor(minutesSinceDayStart / DAILY_ROTATION_SLOT_MINUTES);
+  return shops[slot] || null;
 }
