@@ -1,21 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-query() {
-  local sql="$1"
-  local attempt output
-  for attempt in 1 2 3; do
-    if output="$(npx wrangler d1 execute DB --remote --json --command "$sql")"; then
-      jq '.[0].results // []' <<< "$output"
-      return 0
-    fi
-    echo "Product Search operational query failed (attempt ${attempt}/3)." >&2
-    if [ "$attempt" -lt 3 ]; then
-      sleep 3
-    fi
-  done
-  return 1
-}
+source "$(dirname "${BASH_SOURCE[0]}")/lib/d1-health-query.sh"
+D1_QUERY_RETRY_SECONDS=3
 
 read_split_groups() {
   query "
@@ -44,7 +31,7 @@ read_split_groups() {
       ELSE NULL
     END) <= 1
   ORDER BY listing_count DESC, shop_count DESC
-  LIMIT 50;"
+  LIMIT 50;" "product_search.split_groups"
 }
 
 split_groups="$(read_split_groups)"
@@ -76,7 +63,7 @@ grouped="$(query "
   FROM product_search_entities e
   WHERE e.offer_count > 1
   ORDER BY e.shop_count DESC, e.offer_count DESC, e.latest_activity_at DESC
-  LIMIT 30;")"
+  LIMIT 30;" "product_search.grouped_products")"
 echo 'Representative grouped products:'
 jq . <<< "$grouped"
 
@@ -95,6 +82,6 @@ candidates="$(query "
   GROUP BY p.canonical_manufacturer_id, UPPER(TRIM(p.model))
   HAVING COUNT(*) > 1
   ORDER BY shop_count DESC, listing_count DESC
-  LIMIT 30;")"
+  LIMIT 30;" "product_search.candidate_presentations")"
 echo 'Repeated unresolved model presentations (diagnostic only):'
 jq . <<< "$candidates"

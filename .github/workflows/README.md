@@ -45,6 +45,28 @@ Operational-health workflows are detection/reporting paths. They must not automa
 
 The active-crawl wait keeps its existing bound. After that, the first projection drift observation creates one cron-plus-grace deadline in `PROJECTION_CONVERGENCE_STATE_FILE`; identity coverage, stale fallback and split-group checks share it. Each check still re-reads and fails on persistent drift, but cannot grant another full cron window after an earlier check already waited.
 
+### D1 query accounting
+
+The data-platform, Product Search identity and active-crawl convergence scripts share
+`scripts/lib/d1-health-query.sh`. Every existing query, including FTS integrity checking, has a
+stable diagnostic label. The helper emits `operational_health_d1_query` JSON to stderr with the
+label, retry attempt, statement index, outcome, `rowsRead`, `rowsWritten` and `durationMs` from
+D1's response. Result rows remain alone on stdout for the existing shell callers. The metrics
+add no database calls or D1 counter writes and remain in GitHub Actions logs when D1 is unavailable.
+
+Count each emitted statement/attempt once. Missing or malformed metadata is `null` with
+`metadataPresent: false`, not an invented zero; incomplete telemetry cannot establish the total
+account usage. Retries retain any metadata returned before an invalid result shape, while failed
+queries continue to fail after their bounded attempts. These events do not include SQL, bind
+values or result rows. They cover these operational scripts, not all application traffic.
+
+`test/d1-health-query.test.ts` uses a local CLI stub to check stdout isolation, call count,
+per-statement metadata, zero/unknown values, retries and terminal failures without production access.
+`test/exact-identity-peer-budget.test.ts` separately runs local Miniflare D1 at 100/1,000/10,000
+listings, holding one identity fixed while unrelated makers/models/categories grow. It checks
+correlated lookup cost, cross-shop repair, unchanged replay writes and conservative eligibility.
+Local fixture measurements are regression gates, not production account-wide savings estimates.
+
 ## Manual data operations and audits
 
 - `product-data-audit.yml` — full production representation export for manual audit.

@@ -53,15 +53,19 @@ export function sameExactIdentitySql(left: string, right: string): string {
  * sentinel's id until the two were split, so listings still carry it for the same reason.
  */
 export function compatibleExactIdentityCategoriesSql(alias: string): string {
+  // Derive a distinct local alias from the caller's trusted SQL identifier. Reusing `peer` here
+  // shadows exactIdentityPeerIdsSql's outer peer, turning both identity comparisons into self-
+  // comparisons and counting categories across the entire catalog instead of this identity.
+  const categoryPeer = `${alias}_category_peer`;
   return `(
     SELECT COUNT(DISTINCT CASE
-      WHEN peer.primary_category_id NOT IN ('other', 'unclassified') THEN peer.primary_category_id
+      WHEN ${categoryPeer}.primary_category_id NOT IN ('other', 'unclassified') THEN ${categoryPeer}.primary_category_id
       ELSE NULL
     END
     )
-    FROM products peer
-    WHERE ${eligibleExactIdentitySql("peer")}
-      AND ${sameExactIdentitySql(alias, "peer")}
+    FROM products ${categoryPeer}
+    WHERE ${eligibleExactIdentitySql(categoryPeer)}
+      AND ${sameExactIdentitySql(alias, categoryPeer)}
   ) <= 1`;
 }
 
@@ -480,7 +484,7 @@ export function deleteEmptyEntitiesSql(entityScope = ""): string {
   `;
 }
 
-/** Finish pending correction evidence even when the final offer membership did not change. */
+/** Finish pending correction evidence even when the final offer membership did not not change. */
 export function completeEntityMembershipProvenanceSql(listingScope = ""): string {
   return `
     UPDATE data_quality_remediation_events AS event
