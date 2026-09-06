@@ -47,6 +47,8 @@ Production resources are reconciled by `scripts/lib/production-resources.ts`: an
 Production operational health checks are temporarily paused at the operator's request.
 The `data-platform` and `knowledge-catalog` jobs have unconditional false job guards, so neither
 post-deploy nor manual workflow runs execute their queries or publish health statuses.
+New post-deploy/manual runs cancel older runs in the checks concurrency group, including any
+health checks that started before the pause. Scheduled passive archives retain their separate group.
 The passive `d1-sql-archive` job continues collecting native Insights into R2 without querying D1.
 To resume health checks after explicit approval, restore both job conditions to
 `github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'`.
