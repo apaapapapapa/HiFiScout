@@ -233,7 +233,7 @@ jobs:
           for attempt in $(seq 1 "$max_attempts"); do
             log_file="$(mktemp)"
             set +e
-            vp exec wrangler d1 migrations apply DB --remote 2>&1 | tee "$log_file"
+            vp run db:migrate:remote 2>&1 | tee "$log_file"
             status=${PIPESTATUS[0]}
             set -e
 

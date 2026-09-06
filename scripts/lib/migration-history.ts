@@ -7,6 +7,11 @@ export interface MigrationSource {
   sql: string;
 }
 
+/** Keep the unchanged migration and Wrangler-compatible history entry in one transaction. */
+export function migrationQuery(migration: MigrationSource): string {
+  return `${migration.sql}\nINSERT INTO d1_migrations(name) VALUES ('${migration.name.replace(/'/g, "''")}');\n`;
+}
+
 export function gitText(root: string, args: string[]): string {
   return execFileSync("git", args, {
     cwd: root,

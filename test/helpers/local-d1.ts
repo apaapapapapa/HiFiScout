@@ -1,6 +1,7 @@
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import type { QueryableDatabase } from "../../src/db/types.js";
 import type { MigrationSource } from "../../scripts/lib/migration-history.js";
+import { migrationQuery } from "../../scripts/lib/migration-history.js";
 import { asQueryableDatabase } from "./d1.js";
 
 /** Disposable workerd D1; never connects to a Cloudflare account or production data. */
@@ -32,10 +33,5 @@ export async function applyMigration(
   db: QueryableDatabase,
   migration: MigrationSource,
 ): Promise<void> {
-  const sql = migration.sql.replace(/^\s*--[^\n]*$/gm, "").trim();
-  const statements = sql ? [db.prepare(sql)] : [];
-  await db.batch([
-    ...statements,
-    db.prepare("INSERT INTO d1_migrations(name) VALUES (?)").bind(migration.name),
-  ]);
+  await db.batch([db.prepare(migrationQuery(migration))]);
 }
