@@ -242,12 +242,13 @@ const refreshFullProjectionPath: ProjectionGapRepair = async (db, gaps, evaluate
  * rows, but the offer still points at an unresolved entity whose representative has since become a
  * verified Catalog match. Re-running projection + Identity work before fixing that membership is
  * unnecessary and, in production, could consume the D1 CPU budget before entity sync was reached.
+ * The same narrow path also moves an offer from one verified Catalog product to another.
  *
  * Entity sync is already transactional and expands exact-identity peers itself. Group seeds by shop
  * only because its incremental API is shop/source scoped, and execute the groups sequentially so a
  * repair batch never turns into another D1 burst.
  */
-const refreshStaleFallbackMembershipOnly: ProjectionGapRepair = async (db, gaps) => {
+const refreshCatalogMembershipOnly: ProjectionGapRepair = async (db, gaps) => {
   const sourceIdsByShop = new Map<string, string[]>();
   for (const gap of gaps) {
     const sourceIds = sourceIdsByShop.get(gap.shop_key) || [];
@@ -256,6 +257,27 @@ const refreshStaleFallbackMembershipOnly: ProjectionGapRepair = async (db, gaps)
   }
   for (const [shopKey, sourceIds] of sourceIdsByShop) {
     await syncProductSearchEntities(db, shopKey, sourceIds);
+  }
+  // Verified A -> verified B is also drift, even though neither entity is an unresolved fallback.
+  // Verify against the current authoritative resolution before acknowledging its obligation.
+  const remaining = await firstMeasured<{ gap_count: number }>(
+    db
+      .prepare(`SELECT COUNT(*) AS gap_count
+      FROM product_identity_resolutions r
+      JOIN products p ON p.id = r.listing_product_id AND p.is_active = 1
+      JOIN knowledge_catalog_products kp ON kp.id = r.catalog_product_id
+      WHERE r.listing_product_id IN (${gaps.map(() => "?").join(",")})
+        AND r.status = 'matched' AND kp.verification_status = 'verified'
+        AND NOT EXISTS (
+          SELECT 1 FROM product_search_entity_offers o
+          JOIN product_search_entities e ON e.id = o.entity_id
+          WHERE o.listing_product_id = r.listing_product_id AND e.entity_kind = 'catalog'
+            AND e.catalog_product_id = r.catalog_product_id
+        )`)
+      .bind(...gaps.map((gap) => gap.id)),
+  );
+  if (Number(remaining?.gap_count || 0) > 0) {
+    throw new Error("Product Search catalog membership repair did not converge");
   }
 };
 
@@ -412,6 +434,49 @@ export async function repairActiveListingProjectionGaps(
   };
 
   if (phases !== "exact-identity") {
+    // Identity/catalog changes can leave existing offers in a fallback without changing products.
+    // Consume those narrow obligations before the full projection backlog or audit cursor. Commit
+    // each acknowledgement separately so a later budget yield cannot replay the first repairs.
+    const catalogPending = await db
+      .prepare(`
+      WITH pending AS MATERIALIZED (
+        SELECT listing_product_id, token, last_attempt_at
+        FROM product_search_catalog_pending INDEXED BY idx_product_search_catalog_pending_attempt
+        ORDER BY last_attempt_at, listing_product_id LIMIT ?
+      )
+      SELECT p.id, p.shop_key, p.source_id, pending.token
+      FROM pending CROSS JOIN products p ON p.id = pending.listing_product_id
+      ORDER BY pending.last_attempt_at, pending.listing_product_id
+    `)
+      .bind(maxListings)
+      .all<ProjectionGapRow & { token: string }>();
+    for (const row of catalogPending.results || []) {
+      attemptedListingIds.add(row.id);
+      selectedCount += 1;
+      // Rotate before work so a poison row or a budget yield cannot monopolize the next tick.
+      await db
+        .prepare(`UPDATE product_search_catalog_pending SET last_attempt_at = ?
+          WHERE listing_product_id = ? AND token = ? AND last_attempt_at IS NOT ?`)
+        .bind(evaluatedAt, row.id, row.token, evaluatedAt)
+        .run();
+      const refreshed = await refreshSelectedGaps(
+        db,
+        [row],
+        evaluatedAt,
+        continueOnRefreshError,
+        refreshCatalogMembershipOnly,
+      );
+      repairedCount += refreshed.repairedCount;
+      failedCount += refreshed.failedCount;
+      if (refreshed.repairedCount) {
+        await db
+          .prepare(
+            "DELETE FROM product_search_catalog_pending WHERE listing_product_id = ? AND token = ?",
+          )
+          .bind(row.id, row.token)
+          .run();
+      }
+    }
     // Durable obligations are the normal repair path. The order rotates failures so a poison
     // listing cannot monopolize every tick. No historical table is searched to discover this work.
     const pending = await db
@@ -427,8 +492,12 @@ export async function repairActiveListingProjectionGaps(
     `)
       .bind(maxListings)
       .all<ProjectionGapRow & { token: string }>();
-    for (let i = 0; i < (pending.results || []).length; i += batchSize) {
-      const chunk = (pending.results || []).slice(i, i + batchSize);
+    // Membership-only completion does not acknowledge a concurrent full projection obligation.
+    const fullPending = (pending.results || [])
+      .filter((row) => !attemptedListingIds.has(row.id))
+      .slice(0, maxListings - selectedCount);
+    for (let i = 0; i < fullPending.length; i += batchSize) {
+      const chunk = fullPending.slice(i, i + batchSize);
       for (const row of chunk) attemptedListingIds.add(row.id);
       selectedCount += chunk.length;
       const refreshed = await refreshSelectedGaps(
@@ -450,11 +519,7 @@ export async function repairActiveListingProjectionGaps(
       );
     }
     await repairPhase("coverage", CRITICAL_COVERAGE_GAP_PREDICATE);
-    await repairPhase(
-      "stale-fallback",
-      STALE_FALLBACK_GAP_PREDICATE,
-      refreshStaleFallbackMembershipOnly,
-    );
+    await repairPhase("stale-fallback", STALE_FALLBACK_GAP_PREDICATE, refreshCatalogMembershipOnly);
   }
   if (phases !== "coverage") {
     await repairPhase("exact-identity", EXACT_IDENTITY_MEMBERSHIP_GAP_PREDICATE);

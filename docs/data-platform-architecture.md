@@ -77,7 +77,9 @@ General cron shares a 45-call D1 budget across watchdogs, maintenance and bookke
 
 The daily safety net remains isolated as `product_search_exact_identity_repair` in `src/scheduled.ts`. Its audit now traverses bounded candidate windows with a persistent cursor; the five-minute coverage/stale-fallback audit does the same. The candidate window is materialized before the gap predicate, so a repair-result LIMIT is never mistaken for a scan limit. Each phase advances through healthy windows and wraps at the end. If its repair allowance fills, it stops before any unprocessed gap. The explicit operator-only remaining-gap count is still an unbounded audit.
 
-Normal five-minute repair first consumes `listing_projection_pending`, then audits for omissions. The pending selector materializes its indexed, limited work set before looking up listings, including when the queue is empty. Exact-identity change repair continues to consume its existing dirty set. Failure attempts rotate within the pending index, so a poison listing does not monopolize every pass. Use `scannedCount` and actual D1 accounting alongside repaired counts; finding zero defects is a performance case in its own right.
+Normal five-minute repair first consumes `product_search_catalog_pending` for verified Catalog membership transitions, then `listing_projection_pending` for full projections, then audits for omissions. Migration 0096 captures existing mismatched verified memberships and records new eligible Identity/Catalog transitions atomically, including one verified Catalog product changing to another. Membership repair verifies the current authoritative catalog ID without rerunning Identity decisions or acknowledging full projection obligations. Each successful repair clears only its captured token, so a later budget yield or concurrent edit cannot lose work. Exact-identity change repair continues to consume its existing dirty set. Failure attempts rotate within the pending index, so a poison listing does not monopolize every pass. Use `scannedCount` and actual D1 accounting alongside repaired counts; finding zero defects is a performance case in its own right.
+
+Both pending selectors materialize their indexed, limited work sets before looking up listings, including when the queue is empty.
 
 ### Atomic listing facts and durable projection work
 
@@ -132,6 +134,10 @@ rows before INSERT, preventing AUTOINCREMENT sequence writes from an otherwise n
 `syncProductMetadata` retains `categoryClassification.catalogMatchedAt` when the materialized
 decision is unchanged; `detailCheckedAt` still represents a meaningful negative-cache update.
 Candidate review timestamps record a changed decision, while review-run rows record executions.
+Candidate refresh reads bounded listing pages, batches manufacturer/model-key probes through the
+existing expression indexes, and inserts bounded JSON row sets through the same difference guards.
+This reduces D1 binding calls without loosening matching or rewriting unchanged candidates; batch
+statement counts and billed reads/writes remain separate costs in the invocation accounting.
 Migration 0087 guards equal deal-score updates, and terminal crawl cleanup touches only remaining
 payloads. The Miniflare D1 tests in [Testing strategy](./testing-strategy.md#d1-write-budget-regressions)
 measure these write paths, including index/trigger/sequence cost, without production quota.
@@ -209,7 +215,7 @@ Filters split by what they describe, and the split is load-bearing:
 
 When offer filters are active, the card summary — offer count, shop count, lowest price, activity — is recomputed over the matching offers, so a card can never contradict the filter that produced it.
 
-Explicit sorting follows the same offer subset as the card whenever an offer filter changes the meaning of the sort key. Unfiltered sorts use indexed stored entity aggregates. With only `inStock=true`, price sorts use `lowest_in_stock_price_yen`, and date sorts use `newest_in_stock_listed_at` or `latest_in_stock_activity_at`. Migration 0096 backfills the two date fields once and adds partial ordering indexes for entities with in-stock offers. Normal scoped aggregate refreshes maintain them with same-value write guards. These paths filter on the stored in-stock count before pagination; sold-out, unknown-stock and inactive offers cannot determine their date order. Additional offer filters such as shop or price range still require a request-scoped matching-offer aggregate to preserve the visible subset's ordering.
+Explicit sorting follows the same offer subset as the card whenever an offer filter changes the meaning of the sort key. Unfiltered sorts use indexed stored entity aggregates. With only `inStock=true`, price sorts use `lowest_in_stock_price_yen`, and date sorts use `newest_in_stock_listed_at` or `latest_in_stock_activity_at`. Migration 0097 backfills the two date fields once and adds partial ordering indexes for entities with in-stock offers. Normal scoped aggregate refreshes maintain them with same-value write guards. These paths filter on the stored in-stock count before pagination; sold-out, unknown-stock and inactive offers cannot determine their date order. Additional offer filters such as shop or price range still require a request-scoped matching-offer aggregate to preserve the visible subset's ordering.
 
 | `?sort=` | ordering |
 | --- | --- |
