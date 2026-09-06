@@ -21,6 +21,11 @@ test("exact peer lookup stays identity-scoped as unrelated categories and listin
       `)
       .run();
     const sql = exactIdentityPeerIdsSql(1);
+    assert.match(
+      sql,
+      /FROM products seed\s+CROSS JOIN products peer INDEXED BY idx_products_exact_identity/,
+      "seed point lookups must drive indexed peer probes even when production statistics are stale",
+    );
     const expected = [1, 2, 3, 4, 5];
     const peers = async (): Promise<number[]> => {
       const result = await db.prepare(sql).bind(1).all<{ id: number }>();
@@ -67,6 +72,14 @@ test("exact peer lookup stays identity-scoped as unrelated categories and listin
     assert.equal(new Set(costs.map((cost) => cost.rowsRead)).size, 1);
     const plan = await db.prepare(`EXPLAIN QUERY PLAN ${sql}`).bind(1).all<{ detail: string }>();
     const planRows: { detail: string }[] = plan.results || [];
+    assert.ok(
+      planRows.some((row) =>
+        /SEARCH peer .*idx_products_exact_identity .*canonical_manufacturer_id=\? AND normalized_model=\?/.test(
+          row.detail,
+        ),
+      ),
+      JSON.stringify(planRows),
+    );
     assert.ok(
       planRows.some((row) =>
         /SEARCH peer_category_peer .*canonical_manufacturer_id=\? AND normalized_model=\?/.test(

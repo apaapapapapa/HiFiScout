@@ -63,7 +63,7 @@ export function exactIdentityPeerIdsSql(seedCount: number): string {
   return `
     SELECT DISTINCT peer.id AS id
     FROM products seed
-    JOIN products peer
+    CROSS JOIN products peer INDEXED BY idx_products_exact_identity
       ON ${sameIdentity("seed", "peer")}
     WHERE seed.id IN (${placeholders})
       AND seed.model_resolution_status = 'resolved'
