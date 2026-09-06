@@ -64,7 +64,7 @@ export { getShopActivityPolicy } from "./registry.js";
 const ROUND_ROBIN_INTERVAL_MINUTES = 140;
 const HOURLY_INTERVAL_MINUTES = 60;
 const DAILY_INTERVAL_MINUTES = 24 * 60;
-const SHARED_HOURLY_CRON = "1,31 * * * *";
+const SHARED_HOURLY_CRON = "1,31 0-13,23 * * *";
 
 /** Hifido re-lists the same stock with edited titles, so only price and stock are user activity. */
 const HIFIDO_ACTIVITY_POLICY: Readonly<ProductActivityPolicy> = Object.freeze({

@@ -24,7 +24,7 @@ const wranglerConfig = JSON.parse(
 );
 const schedulerSource = fs.readFileSync(new URL("../src/scheduled.ts", import.meta.url), "utf8");
 
-const SHARED_HOURLY_CRON = "1,31 * * * *";
+const SHARED_HOURLY_CRON = "1,31 0-13,23 * * *";
 
 test("shop interval is evaluated independently", () => {
   const now = new Date("2026-08-11T00:30:00.000Z");
@@ -110,7 +110,7 @@ test("all non-dedicated shops share one ten-minute round robin", () => {
   const roundRobin = shopsInRoundRobin();
   const expectedIntervalMinutes = roundRobin.length * 10;
   assert.equal(roundRobin.length, 14);
-  assert.equal(CRAWL_ROTATION_CRON, "6-56/10 * * * *");
+  assert.equal(CRAWL_ROTATION_CRON, "6-56/10 0-13,23 * * *");
   assert.ok(wranglerConfig.triggers.crons.includes(CRAWL_ROTATION_CRON));
 
   for (const plugin of roundRobin) {

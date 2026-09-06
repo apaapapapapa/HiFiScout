@@ -1,6 +1,7 @@
 import { getCrawlerSettings, getShopEnabled, getShopIntervalMinutes } from "./config.js";
 import { listShopStates } from "./db/shop-state-repository.js";
 import { SHOP_PLUGINS } from "./crawler/shops/index.js";
+import { elapsedCrawlActiveMs } from "./crawler/crawl-window.js";
 import { isTransportConfigured } from "./crawler/transport.js";
 import type {
   ShopHealthEntry,
@@ -107,6 +108,11 @@ export function evaluateShopSyncHealth({
   }
 
   const ageMinutes = minutesSince(state.last_success_at, now);
+  // Keep the public age as actual elapsed time, but planned pauses do not make collection late.
+  // Projection maintenance still runs overnight and retains its wall-clock lag checks below.
+  const activeAgeMinutes = Number.isFinite(ageMinutes)
+    ? elapsedCrawlActiveMs(Date.parse(state.last_success_at), now.getTime()) / 60_000
+    : ageMinutes;
   const roundedAge = Number.isFinite(ageMinutes) ? Math.round(ageMinutes) : null;
 
   const lag = projectionLagMinutes(state, now);
@@ -133,14 +139,14 @@ export function evaluateShopSyncHealth({
           : null;
 
   const sync: ShopSyncHealth =
-    failures >= 3 || ageMinutes > intervalMinutes * criticalFactor
+    failures >= 3 || activeAgeMinutes > intervalMinutes * criticalFactor
       ? {
           status: "critical",
           ageMinutes: roundedAge,
           reason: failures >= 3 ? "repeated_failures" : "sync_stale",
           projectionAgeMinutes,
         }
-      : failures >= 1 || ageMinutes > intervalMinutes * warningFactor
+      : failures >= 1 || activeAgeMinutes > intervalMinutes * warningFactor
         ? {
             status: "warning",
             ageMinutes: roundedAge,

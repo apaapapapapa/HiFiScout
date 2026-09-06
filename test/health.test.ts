@@ -2,6 +2,53 @@ import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { buildSyncHealth, evaluateShopSyncHealth } from "../src/health.js";
 
+test("planned crawl pauses do not trigger stale collection alerts or hide real failures", () => {
+  const lastSuccess = "2026-09-06T22:30:00+09:00";
+  const state = { last_success_at: lastSuccess, last_projection_at: lastSuccess };
+  for (const at of ["2026-09-07T07:59:59+09:00", "2026-09-07T08:00:00+09:00"]) {
+    const health = evaluateShopSyncHealth({ state, intervalMinutes: 30, now: new Date(at) });
+    assert.equal(health.status, "healthy");
+    assert.equal(health.ageMinutes, 570, "public freshness still reports actual elapsed minutes");
+    assert.equal(
+      evaluateShopSyncHealth({
+        state: { ...state, consecutive_failures: 3 },
+        intervalMinutes: 30,
+        now: new Date(at),
+      }).reason,
+      "repeated_failures",
+    );
+  }
+  assert.equal(
+    evaluateShopSyncHealth({
+      state,
+      intervalMinutes: 30,
+      now: new Date("2026-09-07T08:31:00+09:00"),
+    }).reason,
+    "sync_delayed",
+  );
+  assert.equal(
+    evaluateShopSyncHealth({
+      state,
+      intervalMinutes: 30,
+      now: new Date("2026-09-08T08:00:00+09:00"),
+    }).reason,
+    "sync_stale",
+  );
+});
+
+test("projection maintenance remains accountable during the crawl pause", () => {
+  const health = evaluateShopSyncHealth({
+    state: {
+      last_success_at: "2026-09-06T22:30:00+09:00",
+      last_projection_at: "2026-09-06T22:00:00+09:00",
+    },
+    intervalMinutes: 30,
+    now: new Date("2026-09-07T08:00:00+09:00"),
+  });
+  assert.equal(health.reason, "projection_stale");
+  assert.equal(health.projectionAgeMinutes, 600);
+});
+
 test("sync health becomes warning and critical as success gets stale", () => {
   const now = new Date("2026-08-11T06:00:00.000Z");
   const base = { intervalMinutes: 30, enabled: true, now, warningFactor: 2, criticalFactor: 6 };

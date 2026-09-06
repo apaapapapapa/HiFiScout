@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { isCrawlQuietHours, nextCrawlAllowedAt } from "./crawl-window.js";
 
 import { getCrawlerSettings, getShopRequestDelayMs, shopEnvVarName } from "../config.js";
 import {
@@ -133,7 +134,7 @@ function executionIdentity(message: ResumableCrawlQueueMessage): string {
 }
 
 function alarmAt(timestampMs: number): number {
-  return Math.max(Date.now() + MIN_ALARM_DELAY_MS, timestampMs);
+  return nextCrawlAllowedAt(Math.max(Date.now() + MIN_ALARM_DELAY_MS, timestampMs));
 }
 
 function isRelayPlugin(plugin: ShopPlugin): boolean {
@@ -221,6 +222,22 @@ export class CrawlScheduler extends DurableObject<Env> {
   async alarm(): Promise<void> {
     const execution = await this.ctx.storage.get<StoredExecution>(EXECUTION_STORAGE_KEY);
     if (!execution) return;
+    // Also covers Alarms armed before deployment and delayed/retried daytime Alarms. Keep the
+    // exact execution, cursor and dispatch token; pausing performs no D1 or seller work.
+    const now = Date.now();
+    if (isCrawlQuietHours(now)) {
+      const resumeAt = alarmAt(now);
+      await this.ctx.storage.setAlarm(resumeAt);
+      console.log(
+        JSON.stringify({
+          event: "crawl_do_quiet_hours",
+          shopKey: execution.message.shopKey,
+          jobId: executionIdentity(execution.message),
+          resumeAt: new Date(resumeAt).toISOString(),
+        }),
+      );
+      return;
+    }
     await this.runExecutionStep(execution);
   }
 

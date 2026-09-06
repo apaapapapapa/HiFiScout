@@ -26,6 +26,24 @@ The Durable Object is the single-flight authority. D1 does not maintain a second
 `dispatched` covers both an accepted command and active execution; DO state describes the step.
 The old public `POST /api/admin/crawl` is blocked by `src/index.ts`, regardless of bearer token.
 
+## Overnight pause
+
+All shops pause collection every day from **23:00 JST (inclusive) to 08:00 JST (exclusive)**.
+The policy lives in `src/crawler/crawl-window.ts`; crawl Cron hours in `wrangler.jsonc` use UTC.
+Daytime shop selection and pacing stay unchanged, and missed nighttime slots are not replayed.
+
+- Scheduled, forced/manual and recovery dispatches skip the pause before reading or writing D1.
+  Cron checks both the scheduled timestamp and delivery time to handle delayed events.
+- A running `CrawlScheduler` keeps its dispatch token, cursor, prepared permit and collected data.
+  Its next Alarm is deferred until 08:00 JST. Older or retried Alarms delivered during the pause
+  only re-arm that Alarm; they perform no seller or D1 work. An already-started bounded step may
+  finish, but no new step starts overnight. Expired Relay permits are re-prepared after resumption.
+- The five-minute general Cron still runs health and independent maintenance, including post-commit
+  projections and exports. Its crawl watchdog does not redeliver paused executions overnight.
+- Collection freshness thresholds exclude planned pause time while public `ageMinutes` still
+  reports actual elapsed time. Real failures, missing configuration and stalled post-commit
+  projections remain visible; projection lag uses wall-clock time because maintenance continues.
+
 ## Bounded work and persistence
 
 - The owning DO fetches and parses one listing page in the same Alarm, then atomically commits its

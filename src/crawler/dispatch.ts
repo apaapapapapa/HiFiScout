@@ -13,6 +13,7 @@ import {
   type CrawlDispatchStateRow,
 } from "./crawl-lifecycle.js";
 import { deliverCrawlDispatch, type CrawlDispatchMessage } from "./orchestration.js";
+import { isCrawlQuietHours } from "./crawl-window.js";
 import { isShopDue } from "./run.js";
 import { getShopPlugin, SHOP_PLUGINS } from "./shops/index.js";
 import { isTransportConfigured } from "./transport.js";
@@ -50,6 +51,7 @@ export function dueDispatchCandidates(
   now = new Date(),
   { excludeShopKeys = [] }: Pick<DispatchOptions, "excludeShopKeys"> = {},
 ): DueDispatchCandidate[] {
+  if (isCrawlQuietHours(now.getTime())) return [];
   const states = new Map(stateRows.map((row) => [row.shop_key, row]));
   const excluded = new Set(excludeShopKeys);
   return SHOP_PLUGINS.map((plugin) => {
@@ -129,6 +131,7 @@ export async function recoverStalledCrawlDispatches(
     recoveryMinutes = getCrawlerSettings(env).dispatchLeaseMinutes,
   }: RecoveryOptions = {},
 ): Promise<string[]> {
+  if (isCrawlQuietHours(now.getTime())) return [];
   const recovered: string[] = [];
   const states = (await listShopStates(env.DB)) as CrawlDispatchStateRow[];
   const recoveredAt = now.toISOString();
@@ -184,6 +187,9 @@ export async function dispatchDueCrawls(
   env: RuntimeEnv,
   { now = new Date(), excludeShopKeys = [] }: DispatchOptions = {},
 ): Promise<DispatchResult> {
+  if (isCrawlQuietHours(now.getTime())) {
+    return { status: "skipped", reason: "crawl_quiet_hours", queued: [] };
+  }
   const settings = getCrawlerSettings(env);
   await recoverStalledCrawlDispatches(env, {
     now,
@@ -220,6 +226,9 @@ async function dispatchOneCrawl(
   force: boolean,
   now: Date,
 ): Promise<DispatchResult> {
+  if (isCrawlQuietHours(now.getTime())) {
+    return { status: "skipped", reason: "crawl_quiet_hours", shopKey: plugin.key };
+  }
   const state = await getShopState(env.DB, plugin.key);
   const settings = getCrawlerSettings(env);
   if (isDispatchReservationActive(state)) {

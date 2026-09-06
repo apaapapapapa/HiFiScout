@@ -487,10 +487,10 @@ export type DispatchRejectionReason = "unknown_shop" | "disabled" | "configurati
 
 export type DispatchResult =
   | { status: "queued"; queued: string[] }
-  | { status: "skipped"; queued: string[] }
+  | { status: "skipped"; queued: string[]; reason?: "crawl_quiet_hours" }
   | { status: "queued"; shopKey: string }
   | { status: "rejected"; reason: DispatchRejectionReason }
-  | { status: "skipped"; reason: "dispatch_lease_active"; shopKey: string };
+  | { status: "skipped"; reason: "dispatch_lease_active" | "crawl_quiet_hours"; shopKey: string };
 
 // ---------------------------------------------------------------------------
 // Crawl results
