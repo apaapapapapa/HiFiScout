@@ -21,21 +21,23 @@ import type { KnowledgeCatalogLifecycleStatus, ReadableDatabase } from "./types.
  * reason `PMA-2500NE` and `PMA2500NE` can both hold a row under
  * `UNIQUE(manufacturer_id, normalized_model)` while naming one product.
  */
-const KEY_SEPARATORS: readonly string[] = [" ", "-", "_", ".", "/"];
+const KEY_SEPARATORS: readonly string[] = Array.from(" !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~");
 
 /**
- * Revision spellings folded by literal replacement, longest first so `MKIII` is not consumed as
- * `MKII` followed by a stray `I`.
+ * Fold canonical revision tokens BACK to Roman spellings. This covers standalone II/REV2 as
+ * well as MK II/MK2, including adjacent revision tokens whose boundaries disappear in a key.
+ * Removing EDITION everywhere is intentionally coarse: TypeScript rechecks the true identity.
  */
 const KEY_REVISION_MARKERS: readonly (readonly [string, string])[] = [
-  ["MARKIII", "MK3"],
-  ["MARKIV", "MK4"],
-  ["MARKII", "MK2"],
-  ["MARKI", "MK1"],
-  ["MKIII", "MK3"],
-  ["MKIV", "MK4"],
-  ["MKII", "MK2"],
-  ["MKI", "MK1"],
+  ["EDITION", ""],
+  ["MARK", "MK"],
+  ["MK4", "MKIV"],
+  ["MK3", "MKIII"],
+  ["MK2", "MKII"],
+  ["MK1", "MKI"],
+  ["REV4", "IV"],
+  ["REV3", "III"],
+  ["REV2", "II"],
 ];
 
 /** How many Catalog rows one identity lookup compares before it gives up on a bucket. */
@@ -51,7 +53,8 @@ const IDENTITY_LOOKUP_SCAN_LIMIT = 50;
  */
 export function catalogIdentityBucketKeySql(column: string): string {
   let expression = `UPPER(${column})`;
-  for (const separator of KEY_SEPARATORS) expression = `REPLACE(${expression}, '${separator}', '')`;
+  for (const separator of KEY_SEPARATORS)
+    expression = `REPLACE(${expression}, '${separator.replaceAll("'", "''")}', '')`;
   for (const [spelling, canonical] of KEY_REVISION_MARKERS) {
     expression = `REPLACE(${expression}, '${spelling}', '${canonical}')`;
   }

@@ -4,6 +4,7 @@ import {
   ADMIN_CSV_MAX_FILE_BYTES,
   adminCsvCell,
   adminCsvPreviewBatches,
+  adminCsvPreviewResults,
   type AdminCsvChange,
   type AdminCsvResult,
 } from "../src/api/admin-csv-contracts.js";
@@ -30,7 +31,10 @@ const STATUS_LABELS: Record<AdminCsvResult["status"], string> = {
 };
 const PAGE_SIZE = 20;
 
-function resultCsv(changes: readonly AdminCsvChange[], results: readonly AdminCsvResult[]): string {
+export function resultCsv(
+  changes: readonly AdminCsvChange[],
+  results: readonly AdminCsvResult[],
+): string {
   const fields = [...new Set([...ADMIN_CSV_FIELDS.listing, ...ADMIN_CSV_FIELDS.catalog])];
   const rows = [
     [
@@ -40,16 +44,20 @@ function resultCsv(changes: readonly AdminCsvChange[], results: readonly AdminCs
       ...fields.map((field) => "edit_" + field),
       "result",
       "message",
+      "result_target_id",
     ],
   ];
   changes.forEach((change, index) =>
     rows.push([
       change.original.kind === "listing" ? String(change.original.id) : "",
-      change.original.kind === "catalog" ? String(change.original.id) : "",
+      change.original.kind === "catalog" && change.original.id !== null
+        ? String(change.original.id)
+        : "",
       JSON.stringify(change.original),
       ...fields.map((field) => change.values[field] ?? ""),
       results[index]?.status || "unprocessed",
       results[index]?.message || "未処理",
+      String(results[index]?.id ?? ""),
     ]),
   );
   return "\uFEFF" + rows.map((row) => row.map(adminCsvCell).join(",")).join("\r\n") + "\r\n";
@@ -139,12 +147,13 @@ export function AdminCsvImport({
       }
       setMessage(
         parsed.totalRows +
-          "行中、編集された" +
+          "行中、追加・修正された" +
           parsed.changes.length +
           "行を検証しました。変更のない" +
           parsed.unchangedRows +
           "行は更新しません。",
       );
+      setResults(adminCsvPreviewResults(parsed.changes, checked));
       setValidated(true);
     } catch (failure) {
       if (mounted.current && !controller.signal.aborted) {
@@ -201,7 +210,8 @@ export function AdminCsvImport({
         }
       }
       setMessage(
-        "更新が完了しました。適用済み " +
+        action +
+          "が完了しました。適用済み " +
           progress.filter((row) => row.status === "applied").length +
           "件、変更なし " +
           progress.filter((row) => row.status === "unchanged").length +
@@ -233,14 +243,22 @@ export function AdminCsvImport({
 
   const blocked = results.some((row) => ["invalid", "conflict", "failed"].includes(row.status));
   const ready = results.filter((row) => row.status === "ready" || row.status === "pending").length;
+  const additions = changes.filter((change) => change.original.id === null).length;
+  const action = additions ? "登録・更新" : "更新";
   const pageCount = Math.max(1, Math.ceil(changes.length / PAGE_SIZE));
   return (
     <section className="csv-import-panel" aria-labelledby="csv-import-heading">
-      <h3 id="csv-import-heading">編集したCSVで一括更新</h3>
+      <h3 id="csv-import-heading">編集したCSVで一括登録・更新</h3>
       <p>
         上の「編集用CSV」を生成し、<code>edit_</code>
-        で始まる列を編集して、UTF-8のCSVとして保存してください。 元データ列・ID・
+        で始まる列を編集して、UTF-8のCSVとして保存してください。既存行の元データ列・ID・
         <code>csv_original</code>はそのまま残します。
+      </p>
+      <p>
+        カタログを追加する場合は行を追加し、<code>catalog_product_id</code>と
+        <code>csv_original</code>を空欄にして、5つの<code>edit_</code>列を入力してください。
+        追加行の他の列は空欄で構いません。同じCSVに既存行の修正と新規追加を含められます。
+        登録済みのメーカーIDを使い、製品状態が不明な場合は<code>unknown</code>を指定します。
       </p>
       <p>
         メーカー・型番・カテゴリを修正できます。カタログは正式名称・製品状態も編集できます。
@@ -288,7 +306,7 @@ export function AdminCsvImport({
           onClick={() => void apply()}
           disabled={busy || !validated || blocked || ready === 0}
         >
-          {paused ? `残り${ready}件の更新を再開` : `${ready}件の更新を実行`}
+          {paused ? `残り${ready}件の${action}を再開` : `${ready}件の${action}を実行`}
         </button>
         {changes.length > 0 && (
           <button type="button" onClick={downloadResults}>
@@ -299,6 +317,11 @@ export function AdminCsvImport({
       <p role="status" aria-live="polite">
         {message}
       </p>
+      {changes.length > 0 && (
+        <p>
+          新規追加 {additions}件 / 既存行の修正 {changes.length - additions}件
+        </p>
+      )}
       {error && (
         <p role="alert" className="csv-import-error">
           {error}
@@ -340,8 +363,11 @@ export function AdminCsvImport({
                     <tr key={change.line}>
                       <td>
                         {change.line}行 /{" "}
-                        {change.original.kind === "catalog" ? "カタログ" : "登録商品"} #
-                        {change.original.id}
+                        {change.original.kind === "catalog" ? "カタログ" : "登録商品"}{" "}
+                        {change.original.id === null ? "新規追加" : "修正"}
+                        {(row?.id ?? change.original.id) !== null && (
+                          <> #{row?.id ?? change.original.id}</>
+                        )}
                       </td>
                       <td>
                         {fields.map((field) => (
@@ -358,7 +384,11 @@ export function AdminCsvImport({
                         ))}
                       </td>
                       <td>
-                        {row ? STATUS_LABELS[row.status] : "未検証"}
+                        {row
+                          ? row.status === "ready" && change.original.id === null
+                            ? "追加可能"
+                            : STATUS_LABELS[row.status]
+                          : "未検証"}
                         <br />
                         {row?.message}
                       </td>

@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
-import { adminCsvOriginal, type AdminCsvChange } from "../src/api/admin-csv-contracts.js";
+import {
+  adminCsvOriginal,
+  adminCsvNewCatalog,
+  type AdminCsvChange,
+} from "../src/api/admin-csv-contracts.js";
 import {
   applyAdminCsvChange,
   previewAdminCsvChange,
@@ -11,6 +15,59 @@ import { AT, database, listing } from "./helpers/d1-write-budget.js";
 import { propagateCatalogCategoryToMatchedListings } from "../src/db/knowledge-catalog-admin-repository.js";
 import { reclassifyAdminCsvListings } from "../src/db/knowledge-catalog-repository.js";
 import { refreshListingProjections } from "../src/db/listing-projection-refresh.js";
+
+test("D1 CSV additions keep duplicate reads bounded as the catalog grows and retries bill zero writes", async () => {
+  const { db, dispose } = await database();
+  try {
+    await db
+      .prepare(`INSERT OR IGNORE INTO knowledge_catalog_manufacturers(id,canonical_name,created_at,updated_at)
+      VALUES('luxman','LUXMAN','${AT}','${AT}')`)
+      .run();
+    let previousSize = 0;
+    for (const size of [100, 1000, 10000]) {
+      await db
+        .prepare(`WITH RECURSIVE n(id) AS (VALUES(?) UNION ALL SELECT id+1 FROM n WHERE id<?)
+        INSERT INTO knowledge_catalog_products(manufacturer_id,canonical_model,normalized_model,created_at,updated_at)
+        SELECT 'luxman','UNRELATED'||id,'UNRELATED'||id,'${AT}','${AT}' FROM n`)
+        .bind(previousSize + 1, size)
+        .run();
+      previousSize = size;
+      const change = {
+        line: 2,
+        original: adminCsvNewCatalog(),
+        values: {
+          manufacturer_id: "luxman",
+          canonical_model: "CSVNEW" + size,
+          canonical_name: "LUXMAN CSVNEW" + size,
+          primary_category_id: "AMP.PRE",
+          lifecycle_status: "unknown",
+        },
+      };
+      const measured = accountReads(db);
+      const preview = await previewAdminCsvChange(measured.db, change);
+      assert.equal(preview.status, "ready", preview.message);
+      const input = { change, revision: preview.revision || "", operationId: crypto.randomUUID() };
+      const result = await applyAdminCsvChange(measured.db, input);
+      assert.equal(result.status, "applied", result.message);
+      assert.ok(result.id);
+      assert.ok(measured.rowsRead() < 200, `${size} catalog rows: reads=${measured.rowsRead()}`);
+      assert.ok(measured.rowsWritten() < 100, `writes=${measured.rowsWritten()}`);
+      assert.ok(measured.statementCount() < 35, `statements=${measured.statementCount()}`);
+      const repeated = accountReads(db);
+      assert.equal((await applyAdminCsvChange(repeated.db, input)).id, result.id);
+      assert.equal((await previewAdminCsvChange(repeated.db, change)).status, "unchanged");
+      assert.equal(
+        (await applyAdminCsvChange(repeated.db, { ...input, operationId: crypto.randomUUID() }))
+          .status,
+        "unchanged",
+      );
+      assert.equal(repeated.rowsWritten(), 0);
+      assert.ok(repeated.rowsRead() < 100, `replay reads=${repeated.rowsRead()}`);
+    }
+  } finally {
+    await dispose();
+  }
+}, 30_000);
 
 test("D1 CSV catalog corrections with no related listings complete in one request without cursor writes", async () => {
   const { db, dispose } = await database();

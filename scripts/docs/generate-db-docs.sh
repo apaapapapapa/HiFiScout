@@ -3,7 +3,9 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCHEMASPY_VERSION="7.0.2"
-SQLITE_JDBC_VERSION="3.42.0.0"
+# SQLite >=3.46 grows the parser stack for the expression indexes accepted by D1.
+# https://sqlite.org/releaselog/3_46_0.html
+SQLITE_JDBC_VERSION="3.50.3.0"
 DRIVER_DIR="$ROOT_DIR/.cache/docs/drivers"
 WRANGLER_STATE_DIR="$ROOT_DIR/.cache/docs/wrangler-state"
 DB_WORK_DIR="$ROOT_DIR/.cache/docs/schema"
@@ -51,6 +53,7 @@ docker run --rm \
   -v "$OUTPUT_DIR:/output" \
   -v "$SCHEMASPY_TYPE_FILE:/hifiscout-sqlite.properties:ro" \
   "schemaspy/schemaspy:${SCHEMASPY_VERSION}" \
+  -dp "/drivers/sqlite-jdbc-${SQLITE_JDBC_VERSION}.jar" \
   -t hifiscout-sqlite \
   -db /db/hifiscout.sqlite \
   -cat main \

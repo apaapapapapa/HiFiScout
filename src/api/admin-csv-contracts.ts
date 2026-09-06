@@ -25,20 +25,65 @@ export interface AdminCsvOriginal {
   values: AdminCsvValues;
 }
 
+/** A catalog insertion has no database ID or before-image. Listing insertion is unsupported. */
+export interface AdminCsvNewCatalog {
+  version: 1;
+  kind: "catalog";
+  id: null;
+  values: AdminCsvValues;
+}
+
+export function adminCsvNewCatalog(): AdminCsvNewCatalog {
+  return {
+    version: 1,
+    kind: "catalog",
+    id: null,
+    values: Object.fromEntries(ADMIN_CSV_FIELDS.catalog.map((field) => [field, ""])),
+  };
+}
+
 export interface AdminCsvChange {
   line: number;
-  original: AdminCsvOriginal;
+  original: AdminCsvOriginal | AdminCsvNewCatalog;
   values: AdminCsvValues;
 }
 
 export interface AdminCsvResult {
   line: number;
-  id: number;
+  id: number | null;
   kind: AdminCsvKind;
   status: "ready" | "unchanged" | "conflict" | "invalid" | "pending" | "applied" | "failed";
   message: string;
   revision?: string;
   operationId?: string;
+  /** Opaque server identity for cross-batch duplicate checks; the browser does not infer identity. */
+  catalogIdentityKey?: string;
+}
+
+export function adminCsvPreviewResults(
+  changes: readonly AdminCsvChange[],
+  results: readonly AdminCsvResult[],
+): AdminCsvResult[] {
+  const checked = [...results];
+  const identities = new Map<string, number>();
+  results.forEach((row, index) => {
+    const key = row.catalogIdentityKey;
+    if (!key) return;
+    const previous = identities.get(key);
+    if (
+      previous !== undefined &&
+      (changes[previous].original.id === null || changes[index].original.id === null)
+    ) {
+      for (const duplicate of [previous, index])
+        checked[duplicate] = {
+          ...checked[duplicate],
+          status: "invalid",
+          message:
+            results[previous].line + "行目と" + row.line + "行目のメーカー・型番が重複しています。",
+        };
+    } else identities.set(key, index);
+  });
+  return checked;
 }
 
 export interface AdminCsvApplyInput {
@@ -82,6 +127,21 @@ export function isAdminCsvOriginal(value: unknown): value is AdminCsvOriginal {
         typeof row.values?.[field] === "string" &&
         row.values[field].length <= ADMIN_CSV_MAX_VALUE_CHARACTERS,
     )
+  );
+}
+
+export function isAdminCsvNewCatalog(value: unknown): value is AdminCsvNewCatalog {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const row = value as Partial<AdminCsvNewCatalog>;
+  return (
+    row.version === 1 &&
+    row.kind === "catalog" &&
+    row.id === null &&
+    !!row.values &&
+    typeof row.values === "object" &&
+    !Array.isArray(row.values) &&
+    Object.keys(row.values).length === ADMIN_CSV_FIELDS.catalog.length &&
+    ADMIN_CSV_FIELDS.catalog.every((field) => row.values?.[field] === "")
   );
 }
 
