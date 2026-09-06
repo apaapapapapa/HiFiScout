@@ -125,7 +125,8 @@ test("D1 bills zero for unchanged catalog decisions, search replay and candidate
     assert.equal(await db.prepare("SELECT COUNT(*) n FROM price_history").first("n"), 2);
     const projection = accountReads(db);
     await syncProductSearchEntities(projection.db, "hifido", ["one"]);
-    assert.ok(projection.rowsWritten() <= 5);
+    // The two in-stock date indexes add two bounded writes to a changed card.
+    assert.ok(projection.rowsWritten() <= 7, `changed card wrote ${projection.rowsWritten()} rows`);
     assert.equal(
       await db
         .prepare("SELECT lowest_price_yen FROM product_search_entities")
