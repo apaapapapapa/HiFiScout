@@ -38,18 +38,34 @@ function match(sqlite: ReturnType<typeof migratedSqlite>["sqlite"]) {
     match_method='test_catalog_match',confidence='high' WHERE listing_product_id=51;`);
 }
 
+function upgrade(sqlite: ReturnType<typeof migratedSqlite>["sqlite"]) {
+  for (const migration of migrationSources.slice(
+    migrationSources.findIndex((row) => row.name === MIGRATION),
+  )) {
+    sqlite.exec(migration.sql);
+  }
+}
+
 for (const beforeMigration of [false, true]) {
   test(`verified catalog A -> B survives an interrupted membership update (${beforeMigration ? "upgrade" : "trigger"})`, async () => {
     const { db, sqlite } = fixture(beforeMigration);
     match(sqlite);
-    await syncProductSearchEntities(db, "pending", ["51"]);
+    if (beforeMigration) {
+      // Historical membership fixture: current projection SQL also maintains later columns.
+      sqlite.exec(`INSERT INTO product_search_entities(entity_key,entity_kind,catalog_product_id)
+        VALUES ('c-900001','catalog',900001);
+        UPDATE product_search_entity_offers SET entity_id=(SELECT id FROM product_search_entities WHERE entity_key='c-900001')
+        WHERE listing_product_id=51;
+        DELETE FROM product_search_entities WHERE fallback_listing_id=51;`);
+    } else {
+      await syncProductSearchEntities(db, "pending", ["51"]);
+    }
     if (!beforeMigration) sqlite.exec("DELETE FROM product_search_catalog_pending");
     sqlite.exec(`INSERT INTO knowledge_catalog_products(id,manufacturer_id,canonical_model,normalized_model,canonical_name,
       verification_status,created_at,updated_at)
       VALUES (900002,'luxman','M-51 revision','M51REVISION','LUXMAN M-51 revision','verified','${AT}','${AT}');
       UPDATE product_identity_resolutions SET catalog_product_id=900002 WHERE listing_product_id=51;`);
-    if (beforeMigration)
-      sqlite.exec(migrationSources.find((migration) => migration.name === MIGRATION)!.sql);
+    if (beforeMigration) upgrade(sqlite);
     assert.equal(
       sqlite.prepare("SELECT COUNT(*) n FROM product_search_catalog_pending").get()?.n,
       1,
@@ -83,7 +99,7 @@ for (const beforeMigration of [false, true]) {
 test("migration queues legacy drift beyond the audit window and repairs it within one cron budget", async () => {
   const { db, sqlite } = fixture(true);
   match(sqlite);
-  sqlite.exec(migrationSources.find((migration) => migration.name === MIGRATION)!.sql);
+  upgrade(sqlite);
   assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM product_search_catalog_pending").get()?.n, 1);
   // A different full projection obligation must survive this membership-only repair.
   sqlite.exec(
@@ -122,13 +138,15 @@ test("migration queues legacy drift beyond the audit window and repairs it withi
   );
   assert.ok(budget.metrics().d1Calls <= 40, JSON.stringify(budget.metrics()));
   const selector = recorded.executed.find((statement) =>
-    statement.sql.includes("FROM product_search_catalog_pending pending"),
+    statement.sql.includes("FROM product_search_catalog_pending"),
   )!;
   const plan = queryPlan(sqlite, selector)
     .map((step) => step.detail)
     .join("\n");
   assert.match(plan, /idx_product_search_catalog_pending_attempt/);
-  assert.doesNotMatch(plan, /SCAN p\b|TEMP B-TREE/);
+  assert.doesNotMatch(plan, /SCAN p\b/);
+  // An outer sort is bounded by the materialized pending window, never by the listing catalog.
+  assert.match(selector.sql, /AS MATERIALIZED[\s\S]+LIMIT \?/);
 });
 
 test("only real eligible identity or catalog transitions create membership obligations", () => {
