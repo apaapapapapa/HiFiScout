@@ -8,6 +8,7 @@ import {
   encodeObservation,
   observationHours,
   observationKey,
+  observationQuery,
   parseObservation,
   redactSql,
   SQL_OBSERVATION_BUCKET,
@@ -147,6 +148,20 @@ test("UTC windows cross days and each hour has a stable non-overlapping R2 key",
   assert.throws(() => observationKey(DATABASE, "2026-09-06T01:01:00.000Z"));
 });
 
+test("native D1 query filters do not reuse another dataset's nominal GraphQL input type", () => {
+  const query = observationQuery(DATABASE, HOUR);
+  assert.match(query, /\$accountTag: string!/);
+  assert.doesNotMatch(query, /\$filter|ZoneWorkersRequestsFilter_InputObject/);
+  assert.equal(
+    query.split(
+      `filter: {databaseId: "${DATABASE}", datetimeHour_geq: "${HOUR}", datetimeHour_leq: "${HOUR}"}`,
+    ).length - 1,
+    SQL_SORTS.length,
+  );
+  assert.throws(() => observationQuery('"} injection', HOUR));
+  assert.throws(() => observationQuery(DATABASE, '"} injection'));
+});
+
 test("large archives are bounded, omitted groups are counted and totals are retained", () => {
   const queries = Array.from({ length: SQL_OBSERVATION_GROUP_LIMIT }, (_, i) =>
     row(`SELECT column_${i}_${randomBytes(12_000).toString("hex")} FROM t`),
@@ -267,18 +282,11 @@ test("complete collection provisions private retention, archives three hours and
   assert.equal(result.saved.length, 3);
   assert.doesNotMatch(JSON.stringify(result), /SELECT|DO-NOT-STORE/);
   assert.equal(fake.calls.filter((call) => call.path.endsWith("/graphql")).length, 3);
-  for (const call of fake.calls.filter((call) => call.path.endsWith("/graphql"))) {
-    const filter = (
-      call.body as {
-        variables: {
-          filter: {
-            AND: { databaseId: string; datetimeHour_geq: string; datetimeHour_leq: string }[];
-          };
-        };
-      }
-    ).variables.filter.AND[0]!;
-    assert.equal(filter.datetimeHour_geq, filter.datetimeHour_leq);
-    assert.equal(filter.databaseId, DATABASE);
+  const graphqlCalls = fake.calls.filter((call) => call.path.endsWith("/graphql"));
+  for (const [i, hour] of observationHours(AT).entries()) {
+    const body = graphqlCalls[i]?.body as { query: string; variables: unknown };
+    assert.equal(body.query, observationQuery(DATABASE, hour));
+    assert.deepEqual(body.variables, { accountTag: ACCOUNT });
   }
   assert.equal(fake.rules().length, 2);
   assert.equal((fake.rules()[0] as { id: string }).id, "operator");

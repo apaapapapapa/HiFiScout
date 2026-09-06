@@ -154,14 +154,9 @@ export class SqlObservationClient {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          query: observationQuery(),
+          query: observationQuery(databaseId, hour),
           operationName: "HiFiScoutD1SqlObservation",
-          variables: {
-            accountTag: this.accountId,
-            // datetimeHour is D1 Insights' documented bucket. Equality avoids overlapping adjacent
-            // hours, unlike datetimeHour_leq at the next hour boundary. The current hour is provisional.
-            filter: { AND: [{ databaseId, datetimeHour_geq: hour, datetimeHour_leq: hour }] },
-          },
+          variables: { accountTag: this.accountId },
         }),
       }),
     );

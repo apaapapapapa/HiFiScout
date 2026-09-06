@@ -147,19 +147,23 @@ export function sumStats(rows: SqlStats[]): SqlStats {
   ) as SqlStats;
 }
 
-export function observationQuery(): string {
+export function observationQuery(databaseId: string, hour: string): string {
+  observationKey(databaseId, hour);
+  // Use an inline filter, as in Cloudflare's D1 GraphQL examples, to avoid declaring a variable
+  // with another dataset's nominal input type. Only validated identifiers/timestamps are embedded.
+  const filter = `{databaseId: ${JSON.stringify(databaseId)}, datetimeHour_geq: ${JSON.stringify(hour)}, datetimeHour_leq: ${JSON.stringify(hour)}}`;
   const order = {
     reads: "sum_rowsRead_DESC",
     writes: "sum_rowsWritten_DESC",
     time: "sum_queryDurationMs_DESC",
     count: "count_DESC",
   };
-  return `query HiFiScoutD1SqlObservation($accountTag: string, $filter: ZoneWorkersRequestsFilter_InputObject) {
+  return `query HiFiScoutD1SqlObservation($accountTag: string!) {
     viewer { accounts(filter: { accountTag: $accountTag }) {
       ${SQL_SORTS.map(
         (
           sort,
-        ) => `${sort}: d1QueriesAdaptiveGroups(limit: ${SQL_OBSERVATION_GROUP_LIMIT}, filter: $filter, orderBy: [${order[sort]}]) {
+        ) => `${sort}: d1QueriesAdaptiveGroups(limit: ${SQL_OBSERVATION_GROUP_LIMIT}, filter: ${filter}, orderBy: [${order[sort]}]) {
         count sum { rowsRead rowsWritten rowsReturned queryDurationMs } dimensions { query }
       }`,
       ).join("\n")}
