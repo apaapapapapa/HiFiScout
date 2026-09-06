@@ -1,10 +1,9 @@
 /**
  * The set-wise SQL that maintains the product-level search read model.
  *
- * Every statement is written once and reused by three callers with different scopes: the crawler's
- * incremental sync (scoped to the listings a shop just reported), the deterministic rebuild (no
- * scope at all) and the migration backfill, which copies the unscoped text. Keeping one definition
- * is what stops the incremental path and the repair path from disagreeing about what an entity is.
+ * Incremental sync and deterministic rebuild share these statements with different scopes.
+ * Migration backfills are immutable snapshots of the runtime at the time they were introduced.
+ * Transition and D1 budget tests keep the current incremental and repair paths aligned.
  *
  * The invariants these statements encode:
  *
@@ -155,6 +154,11 @@ function entityUpsertSql(projection: string, changedColumns: readonly string[]):
 export function upsertCatalogEntitiesSql(listingScope = ""): string {
   return entityUpsertSql(
     `
+    WITH catalog_ids AS MATERIALIZED (
+      SELECT DISTINCT r.catalog_product_id FROM products p
+      CROSS JOIN product_identity_resolutions r ON r.listing_product_id = p.id
+      WHERE r.status = 'matched' AND p.is_active = 1${listingScope}
+    )
     SELECT 'c-' || kp.id AS entity_key, 'catalog' AS entity_kind, kp.id AS catalog_product_id, NULL AS fallback_listing_id,
            kp.manufacturer_id AS manufacturer_id,
            '' AS manufacturer,
@@ -176,13 +180,9 @@ export function upsertCatalogEntitiesSql(listingScope = ""): string {
            ) AS model_terms,
            '' AS title_terms,
            '' AS category_terms
-    FROM knowledge_catalog_products kp
+    FROM catalog_ids
+    CROSS JOIN knowledge_catalog_products kp ON kp.id = catalog_ids.catalog_product_id
     WHERE kp.verification_status = 'verified'
-      AND EXISTS (
-        SELECT 1 FROM product_identity_resolutions r
-        JOIN products p ON p.id = r.listing_product_id
-        WHERE r.catalog_product_id = kp.id AND r.status = 'matched' AND p.is_active = 1${listingScope}
-      )
   `,
     [
       "manufacturer_id",
@@ -242,9 +242,7 @@ export function deleteInactiveOffersSql(listingScope = ""): string {
   return `
     DELETE FROM product_search_entity_offers
     WHERE listing_product_id IN (
-      SELECT m.listing_product_id
-      FROM product_search_entity_offers m
-      JOIN products p ON p.id = m.listing_product_id
+      SELECT p.id FROM products p
       WHERE p.is_active = 0${listingScope}
     )
   `;
@@ -358,10 +356,8 @@ export function refreshEntityAggregatesSql(entityScope = ""): string {
 /**
  * Recomputes the finishes an entity's offers are in.
  *
- * Its own statement for the same reason the search terms are: {@link refreshEntityAggregatesSql} is
- * copied verbatim into the repair migrations that replay it, so growing it would leave those
- * migrations describing SQL that no longer exists. A finish also changes on a different cadence
- * from a price — only when a listing joins, leaves, or is re-resolved.
+ * A finish changes on a different cadence from a price: only when a listing joins, leaves, or is
+ * re-resolved. Its own statement keeps unchanged presentation values out of aggregate updates.
  *
  * `group_concat` gives no ordering guarantee, which is deliberate here: the read mapper orders the
  * labels by the finish catalog, so the card is stable however SQLite happened to concatenate them.

@@ -152,8 +152,8 @@ test("D1 bills zero for unchanged catalog decisions and search replay, with boun
       NEXT,
     );
     assert.equal(priceResult.activityCount, 1);
-    // Two added writes retain the atomic projection obligation and its fairness index.
-    assert.ok(changed.rowsWritten() <= 18, `price/history wrote ${changed.rowsWritten()} rows`);
+    // Includes the atomic projection obligation and a guarded in-stock date row/index update.
+    assert.ok(changed.rowsWritten() <= 21, `price/history wrote ${changed.rowsWritten()} rows`);
     const row = await db
       .prepare(
         "SELECT price_yen, previous_price_yen, last_changed_at, last_activity_at FROM products WHERE source_id='one'",
@@ -168,7 +168,8 @@ test("D1 bills zero for unchanged catalog decisions and search replay, with boun
     assert.equal(await db.prepare("SELECT COUNT(*) n FROM price_history").first("n"), 2);
     const projection = accountReads(db);
     await syncProductSearchEntities(projection.db, "hifido", ["one"]);
-    assert.ok(projection.rowsWritten() <= 5);
+    // The two in-stock date indexes add two bounded writes to a changed card.
+    assert.ok(projection.rowsWritten() <= 7, `changed card wrote ${projection.rowsWritten()} rows`);
     assert.equal(
       await db
         .prepare("SELECT lowest_price_yen FROM product_search_entities")
