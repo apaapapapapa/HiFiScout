@@ -17,7 +17,7 @@ import {
 import type { QueryableDatabase } from "./types.js";
 
 const LISTING_PAGE = 100;
-const PUBLISH_PAGE = 20;
+const PUBLISH_PAGE = 100;
 const RETIRE_PAGE = 100;
 
 interface RefreshState {
@@ -127,13 +127,20 @@ async function collectPage(db: QueryableDatabase, state: RefreshState): Promise<
     : [];
   const grouped = new Map(previous.map((row) => [row.candidate_key, deserialize(row)]));
   accumulateKnowledgeCatalogCandidateRows(grouped, eligible);
-  const writes = [...grouped].map(([key, value]) =>
-    db
-      .prepare(`INSERT INTO knowledge_catalog_candidate_refresh_groups(candidate_key, accumulator_json)
-      SELECT ?, ? WHERE ${guardSql}
+  const writes = grouped.size
+    ? [
+        db
+          .prepare(`INSERT INTO knowledge_catalog_candidate_refresh_groups(candidate_key, accumulator_json)
+      SELECT json_extract(payload.value, '$[0]'), json_extract(payload.value, '$[1]')
+      FROM json_each(?) payload WHERE ${guardSql}
       ON CONFLICT(candidate_key) DO UPDATE SET accumulator_json = excluded.accumulator_json`)
-      .bind(key, serialize(value), state.generation, state.revision),
-  );
+          .bind(
+            JSON.stringify([...grouped].map(([key, value]) => [key, serialize(value)])),
+            state.generation,
+            state.revision,
+          ),
+      ]
+    : [];
   const cursor = rows.at(-1)?.id ?? state.listing_horizon;
   await checkpoint(
     db,
@@ -157,15 +164,9 @@ async function publishPage(db: QueryableDatabase, state: RefreshState): Promise<
     await checkpoint(db, state, { phase: "retire" });
     return;
   }
-  // Keep lookups within one manufacturer. A page crossing many makers would spend two indexed
-  // queries per maker before it could persist any progress.
-  const manufacturer = deserialize(rows[0]).manufacturerId;
-  const grouped = new Map<string, KnowledgeCatalogCandidateAccumulator>();
-  for (const row of rows) {
-    const value = deserialize(row);
-    if (value.manufacturerId !== manufacturer) break;
-    grouped.set(row.candidate_key, value);
-  }
+  // The indexed lookup batches manufacturer/model pairs together; publication stays bounded
+  // independently of the number of manufacturers represented in this page.
+  const grouped = new Map(rows.map((row) => [row.candidate_key, deserialize(row)]));
   const candidates = finalizeKnowledgeCatalogCandidateAggregates(grouped);
   const matches = await findVerifiedCatalogMatches(
     db,

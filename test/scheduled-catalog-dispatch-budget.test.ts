@@ -24,6 +24,111 @@ const MODES = [
   ["knowledge_catalog_monthly_recheck", dispatchKnowledgeCatalogMonthlyRecheck],
 ] as const;
 
+test("a production-sized candidate refresh resumes within each invocation budget across many manufacturers", async () => {
+  const { db, sqlite } = migratedSqlite();
+  try {
+    sqlite.exec(`
+      DELETE FROM knowledge_catalog_products;
+      WITH RECURSIVE listings(id) AS (SELECT 1 UNION ALL SELECT id + 1 FROM listings WHERE id < 9000)
+      INSERT INTO products(shop_key, source_id, title, manufacturer, canonical_manufacturer_id, model,
+                           source_url, first_seen_at, last_seen_at, last_changed_at, is_active)
+      SELECT 'shop-' || (id % 3), 'scale-' || id, 'Amplifier ' || ((id - 1) / 3),
+             'Maker ' || (((id - 1) / 3) % 100),
+             CASE WHEN ((id - 1) / 3) % 100 < 10 THEN 'luxman' ELSE 'maker-' || (((id - 1) / 3) % 100) END,
+             'M-' || ((id - 1) / 3), 'https://example.test/' || id, '2020-01-01', '2020-01-01', '2020-01-01', 1
+      FROM listings;
+      INSERT OR IGNORE INTO knowledge_catalog_manufacturers(id, canonical_name, created_at, updated_at)
+      SELECT DISTINCT canonical_manufacturer_id, manufacturer, '2020-01-01', '2020-01-01' FROM products;
+      INSERT INTO knowledge_catalog_products(manufacturer_id, canonical_model, normalized_model,
+        canonical_name, verification_status, created_at, updated_at)
+      SELECT canonical_manufacturer_id, model, REPLACE(model, '-', ''), title,
+        'verified', '2020-01-01', '2020-01-01' FROM products
+      WHERE canonical_manufacturer_id <> 'luxman' GROUP BY canonical_manufacturer_id, model LIMIT 400;
+      INSERT INTO knowledge_catalog_product_categories(product_id,category_id,is_primary)
+      SELECT id,'AMP.PRE',1 FROM knowledge_catalog_products;
+    `);
+    await enqueueMaintenance(db, [MODES[0][0]], AT);
+    const queue = queueBinding();
+    const dailyMetrics = [];
+    let lastTick = AT;
+    for (let tick = 0; tick < 80 && queue.sent.length === 0; tick++) {
+      lastTick = new Date(AT.getTime() + tick * 5 * 60_000);
+      const budget = invocationBudget(db, { finalizationReserve: RESERVE });
+      // The cron's watchdog and task bookkeeping share this same limit on EVERY continuation.
+      for (let call = 0; call < 8; call += 1) await budget.db.prepare("SELECT 1").first();
+      await runPendingMaintenance(queueEnv(budget.db, queue.binding) as Env, lastTick, budget, [
+        {
+          name: MODES[0][0],
+          run: (env, now) => dispatchKnowledgeCatalogDailyVerification(env, { now }),
+        },
+      ]);
+      dailyMetrics.push(budget.metrics());
+      assert.ok(budget.metrics().d1Calls <= 45, JSON.stringify(budget.metrics()));
+    }
+    assert.ok(dailyMetrics.length > 1, "a large refresh must exercise durable continuation");
+    const retryAt = new Date(lastTick.getTime() + 5 * 60_000);
+    assert.equal(
+      queue.sent.length,
+      1,
+      JSON.stringify({
+        message: "large catalogs must reach the Queue instead of restarting each tick",
+        metrics: dailyMetrics,
+        candidates: sqlite.prepare("SELECT COUNT(*) n FROM knowledge_catalog_candidates").get()?.n,
+        jobs: sqlite.prepare("SELECT COUNT(*) n FROM knowledge_catalog_verification_jobs").get()?.n,
+      }),
+    );
+    assert.deepEqual(await pendingMaintenance(db, retryAt), []);
+    assert.equal(
+      sqlite.prepare("SELECT COUNT(*) n FROM knowledge_catalog_candidates").get()?.n,
+      3000,
+    );
+    assert.equal(
+      sqlite
+        .prepare(
+          "SELECT COUNT(*) n FROM knowledge_catalog_candidates WHERE review_status='matched'",
+        )
+        .get()?.n,
+      400,
+    );
+    assert.equal(
+      sqlite.prepare("SELECT COUNT(*) n FROM knowledge_catalog_verification_jobs").get()?.n,
+      201,
+    );
+
+    // Production recovery has its own version/status reads before it can retry the failed run.
+    sqlite.exec("UPDATE knowledge_catalog_review_runs SET status='failed'");
+    sqlite
+      .prepare(`INSERT INTO knowledge_catalog_verifier_state(version,status,started_at)
+      VALUES (?,'success',?)`)
+      .run(KNOWLEDGE_CATALOG_VERIFIER_VERSION, AT.toISOString());
+    const recoveryName = "knowledge_catalog_review_bootstrap";
+    await enqueueMaintenance(db, [recoveryName], retryAt);
+    const recovery = invocationBudget(db, { finalizationReserve: RESERVE });
+    for (let call = 0; call < 8; call += 1) await recovery.db.prepare("SELECT 1").first();
+    await runPendingMaintenance(queueEnv(recovery.db, queue.binding) as Env, retryAt, recovery, [
+      { name: recoveryName, run: (env) => bootstrapKnowledgeCatalogReview(env, retryAt) },
+    ]);
+    assert.equal(queue.sent.length, 2, JSON.stringify(recovery.metrics()));
+    assert.deepEqual(await pendingMaintenance(db, new Date(retryAt.getTime() + 5 * 60_000)), []);
+    assert.equal(
+      sqlite
+        .prepare("SELECT status FROM knowledge_catalog_review_runs ORDER BY id DESC LIMIT 1")
+        .get()?.status,
+      "running",
+    );
+    console.log(
+      JSON.stringify({
+        event: "catalog_dispatch_scale_budget",
+        dailyInvocations: dailyMetrics.length,
+        dailyMaxCalls: Math.max(...dailyMetrics.map((usage) => usage.d1Calls)),
+        recovery: recovery.metrics(),
+      }),
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
 function fixture() {
   const database = migratedSqlite();
   database.sqlite.exec(`

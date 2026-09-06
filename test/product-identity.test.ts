@@ -230,10 +230,10 @@ test("identity candidate loading uses only the resolved canonical manufacturer i
   await syncProductIdentityResolutions(db, "shop", ["listing-9"]);
 
   const catalogLookup = db.calls.find((call) =>
-    /FROM knowledge_catalog_products kp/.test(call.sql),
+    /knowledge_catalog_products kp INDEXED BY/.test(call.sql),
   );
   assert.ok(catalogLookup);
-  assert.deepEqual(catalogLookup.binds, ["tad", "UNKNOWN"]);
+  assert.deepEqual(JSON.parse(String(catalogLookup.binds[0])), [["tad", "UNKNOWN"]]);
   const listingLookup = db.calls.find((call) => /FROM products/.test(call.sql));
   assert.ok(listingLookup);
   assert.match(listingLookup.sql, /canonical_manufacturer_id/);

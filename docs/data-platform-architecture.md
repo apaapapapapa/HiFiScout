@@ -78,11 +78,12 @@ General cron shares a 45-call D1 budget across watchdogs, maintenance and bookke
 Catalog candidate preparation also persists its progress in `knowledge_catalog_candidate_refresh`.
 It walks primary-key listing windows up to a captured ID horizon and stores per-identity accumulators
 in `knowledge_catalog_candidate_refresh_groups`, preserving normalization, cross-page counts and
-bounded evidence samples. Publication walks candidate keys in small, single-manufacturer pages;
+bounded evidence samples. Publication walks candidate keys in bounded pages and batches indexed
+manufacturer/model lookups and guarded JSON row-set writes;
 retirement starts only after all collection and publication pages finish. Each page's effects and
 cursor advance share one transaction, fenced by generation and revision, so a lost acknowledgement
 or concurrent continuation cannot double-count a page. Temporary groups are deleted in bounded
-pages after retirement. These checkpoints add bounded writes; unchanged published candidate rows
+pages after retirement. These checkpoints add bounded reads and writes; unchanged published candidate rows
 and their AUTOINCREMENT sequence remain untouched.
 
 Scheduled daily, monthly and bootstrap callers share one preparation per UTC date. A yield retains
@@ -97,7 +98,7 @@ new generation independently of that scheduled daily cache.
 
 The daily safety net remains isolated as `product_search_exact_identity_repair` in `src/scheduled.ts`. Its audit now traverses bounded candidate windows with a persistent cursor; the five-minute coverage/stale-fallback audit does the same. The candidate window is materialized before the gap predicate, so a repair-result LIMIT is never mistaken for a scan limit. Each phase advances through healthy windows and wraps at the end. If its repair allowance fills, it stops before any unprocessed gap. The explicit operator-only remaining-gap count is still an unbounded audit.
 
-Normal five-minute repair first consumes `listing_projection_pending`, then audits for omissions. Exact-identity change repair continues to consume its existing dirty set. Failure attempts rotate within the pending index, so a poison listing does not monopolize every pass. Use `scannedCount` and actual D1 accounting alongside repaired counts; finding zero defects is a performance case in its own right.
+Normal five-minute repair first consumes `product_search_catalog_pending` for verified Catalog membership transitions, then `listing_projection_pending` for full projections, then audits for omissions. Migration 0096 captures existing mismatched verified memberships and records new eligible Identity/Catalog transitions atomically, including one verified Catalog product changing to another. Membership repair verifies the current authoritative catalog ID without rerunning Identity decisions or acknowledging full projection obligations. Each successful repair clears only its captured token, so a later budget yield or concurrent edit cannot lose work. Exact-identity change repair continues to consume its existing dirty set. Failure attempts rotate within the pending index, so a poison listing does not monopolize every pass. Use `scannedCount` and actual D1 accounting alongside repaired counts; finding zero defects is a performance case in its own right.
 
 ### Atomic listing facts and durable projection work
 
@@ -152,6 +153,10 @@ rows before INSERT, preventing AUTOINCREMENT sequence writes from an otherwise n
 `syncProductMetadata` retains `categoryClassification.catalogMatchedAt` when the materialized
 decision is unchanged; `detailCheckedAt` still represents a meaningful negative-cache update.
 Candidate review timestamps record a changed decision, while review-run rows record executions.
+Candidate refresh reads bounded listing pages, batches manufacturer/model-key probes through the
+existing expression indexes, and inserts bounded JSON row sets through the same difference guards.
+This reduces D1 binding calls without loosening matching or rewriting unchanged candidates; batch
+statement counts and billed reads/writes remain separate costs in the invocation accounting.
 Migration 0087 guards equal deal-score updates, and terminal crawl cleanup touches only remaining
 payloads. The Miniflare D1 tests in [Testing strategy](./testing-strategy.md#d1-write-budget-regressions)
 measure these write paths, including index/trigger/sequence cost, without production quota.

@@ -110,6 +110,7 @@ test("failed statements still contribute to statement count and duration", async
   const accounting = accountReads(source);
 
   await assert.rejects(accounting.db.prepare("SELECT scan").all(), /D1 unavailable/u);
+  assert.equal("batch" in accounting.db, false, "prepare-only readers must remain detectable");
 
   assert.equal(accounting.statementCount(), 1);
   assert.equal(accounting.countedStatements(), 0);

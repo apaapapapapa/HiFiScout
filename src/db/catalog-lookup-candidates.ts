@@ -3,7 +3,19 @@ import {
   catalogModelLookupVariants,
   identitySafeModelLookupVariants,
 } from "../catalog/knowledge-catalog.js";
-import type { ReadableDatabase } from "./types.js";
+import type { QueryableDatabase, ReadableDatabase } from "./types.js";
+
+async function readBatch<T>(
+  db: ReadableDatabase,
+  statements: D1PreparedStatement[],
+): Promise<D1Result<T>[]> {
+  const batch = (db as Partial<QueryableDatabase>).batch;
+  if (typeof batch === "function") return batch.call(db, statements) as Promise<D1Result<T>[]>;
+  // Some read-only consumers expose prepare only. Keep those consumers sequential and measured.
+  const results: D1Result<T>[] = [];
+  for (const statement of statements) results.push(await statement.all<T>());
+  return results;
+}
 
 export interface CatalogLookupInput {
   manufacturerId: string;
@@ -73,26 +85,36 @@ export async function loadCatalogLookupCandidates(
     byManufacturer.set(input.manufacturerId, keys);
   }
   const ids = new Set<number>();
-  for (const [manufacturer, keySet] of byManufacturer) {
-    const keys = [...keySet];
-    for (let i = 0; i < keys.length; i += 40) {
-      const chunk = keys.slice(i, i + 40);
-      const parameters = chunk.map(() => "?").join(",");
-      const direct = await db
-        .prepare(`SELECT kp.id FROM knowledge_catalog_products kp INDEXED BY idx_catalog_products_retrieval_key
-        WHERE kp.verification_status = 'verified' AND kp.manufacturer_id = ?
-          AND ${catalogRetrievalKeySql("kp.normalized_model")} IN (${parameters})`)
-        .bind(manufacturer, ...chunk)
-        .all<{ id: number }>();
-      const alias = await db
-        .prepare(`SELECT kp.id FROM knowledge_catalog_aliases ka INDEXED BY idx_catalog_aliases_retrieval_key
+  const keys = [...byManufacturer].flatMap(([manufacturer, values]) =>
+    [...values].map((key) => [manufacturer, key]),
+  );
+  const lookups: D1PreparedStatement[] = [];
+  // Bind manufacturer/model pairs together. Two calls per manufacturer made an ordinary catalog
+  // refresh exceed the cron's entire D1 allowance before any candidates could be updated.
+  for (let i = 0; i < keys.length; i += 100) {
+    const chunk = JSON.stringify(keys.slice(i, i + 100));
+    lookups.push(
+      db
+        .prepare(`SELECT kp.id FROM json_each(?) wanted
+        CROSS JOIN knowledge_catalog_products kp INDEXED BY idx_catalog_products_retrieval_key
+        WHERE kp.verification_status = 'verified'
+          AND kp.manufacturer_id = json_extract(wanted.value, '$[0]')
+          AND ${catalogRetrievalKeySql("kp.normalized_model")} = json_extract(wanted.value, '$[1]')`)
+        .bind(chunk),
+      db
+        .prepare(`SELECT kp.id FROM json_each(?) wanted
+        CROSS JOIN knowledge_catalog_aliases ka INDEXED BY idx_catalog_aliases_retrieval_key
         CROSS JOIN knowledge_catalog_products kp ON kp.id = ka.product_id
-        WHERE ka.alias_type = 'model' AND ${catalogRetrievalKeySql("ka.normalized_alias")} IN (${parameters})
-          AND kp.verification_status = 'verified' AND kp.manufacturer_id = ?`)
-        .bind(...chunk, manufacturer)
-        .all<{ id: number }>();
-      for (const row of [...(direct.results || []), ...(alias.results || [])])
-        ids.add(Number(row.id));
+        WHERE ka.alias_type = 'model'
+          AND ${catalogRetrievalKeySql("ka.normalized_alias")} = json_extract(wanted.value, '$[1]')
+          AND kp.verification_status = 'verified'
+          AND kp.manufacturer_id = json_extract(wanted.value, '$[0]')`)
+        .bind(chunk),
+    );
+  }
+  for (let i = 0; i < lookups.length; i += 40) {
+    for (const result of await readBatch<{ id: number }>(db, lookups.slice(i, i + 40))) {
+      for (const row of result.results || []) ids.add(Number(row.id));
     }
   }
   return loadCatalogRowsById(db, [...ids]);
@@ -107,24 +129,32 @@ export async function loadCatalogRowsById(
 }> {
   const rows: CatalogLookupRow[] = [];
   const aliases: CatalogLookupAliasRow[] = [];
+  const rowQueries: D1PreparedStatement[] = [];
+  const aliasQueries: D1PreparedStatement[] = [];
   for (let i = 0; i < ids.length; i += 40) {
     const chunk = ids.slice(i, i + 40);
     const parameters = chunk.map(() => "?").join(",");
-    const found = await db
-      .prepare(`SELECT kp.id,kp.manufacturer_id,kp.canonical_model,kp.normalized_model,kp.canonical_name,
+    rowQueries.push(
+      db
+        .prepare(`SELECT kp.id,kp.manufacturer_id,kp.canonical_model,kp.normalized_model,kp.canonical_name,
       kpc.category_id,kpc.is_primary FROM knowledge_catalog_products kp
       LEFT JOIN knowledge_catalog_product_categories kpc ON kpc.product_id = kp.id
       WHERE kp.verification_status = 'verified' AND kp.id IN (${parameters})
       ORDER BY kp.id,kpc.is_primary DESC,kpc.category_id`)
-      .bind(...chunk)
-      .all<CatalogLookupRow>();
-    rows.push(...(found.results || []));
-    const names = await db
-      .prepare(`SELECT product_id,alias,normalized_alias FROM knowledge_catalog_aliases
+        .bind(...chunk),
+    );
+    aliasQueries.push(
+      db
+        .prepare(`SELECT product_id,alias,normalized_alias FROM knowledge_catalog_aliases
       WHERE alias_type = 'model' AND product_id IN (${parameters})`)
-      .bind(...chunk)
-      .all<CatalogLookupAliasRow>();
-    aliases.push(...(names.results || []));
+        .bind(...chunk),
+    );
+  }
+  for (let i = 0; i < rowQueries.length; i += 40) {
+    for (const result of await readBatch<CatalogLookupRow>(db, rowQueries.slice(i, i + 40)))
+      rows.push(...(result.results || []));
+    for (const result of await readBatch<CatalogLookupAliasRow>(db, aliasQueries.slice(i, i + 40)))
+      aliases.push(...(result.results || []));
   }
   return { rows, aliases };
 }

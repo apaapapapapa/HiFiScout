@@ -48,7 +48,18 @@ export function sqliteD1(database: DatabaseSync): QueryableDatabase {
       try {
         const results = [];
         for (const statement of statements as unknown as SqlitePreparedStatement[]) {
-          results.push(await statement.run());
+          // D1 batch returns SELECT rows as well as write metadata. Discarding rows here silently
+          // turns valid batched catalog lookups into an empty catalog in every integration test.
+          const prepared = database.prepare(statement.sql);
+          if (prepared.columns().length) {
+            results.push({
+              success: true,
+              results: prepared.all(...statement.binds),
+              meta: { changes: 0 },
+            });
+          } else {
+            results.push(await statement.run());
+          }
         }
         database.exec("COMMIT");
         return results;

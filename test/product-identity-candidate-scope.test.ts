@@ -48,7 +48,7 @@ function identityDatabase() {
 
 function candidateReads(db: ReturnType<typeof identityDatabase>) {
   return db.calls.filter((statement) =>
-    statement.sql.includes("FROM knowledge_catalog_products kp"),
+    statement.sql.includes("knowledge_catalog_products kp INDEXED BY"),
   );
 }
 
@@ -70,8 +70,13 @@ test("identity replay scopes indexed candidate reads to each manufacturer and it
   assert.deepEqual(
     candidateReads(db).map((statement) => statement.binds),
     [
-      ["onkyo", "TXL55", "INTEGRAT4500"],
-      ["kenwood", "KT2060"],
+      [
+        JSON.stringify([
+          ["onkyo", "TXL55"],
+          ["onkyo", "INTEGRAT4500"],
+          ["kenwood", "KT2060"],
+        ]),
+      ],
       ["onkyo", "INT", "INT\uffff"],
     ],
   );
@@ -94,8 +99,13 @@ test("normal identity sync also bounds fuzzy discovery instead of reading a whol
   assert.deepEqual(
     candidateReads(db).map((statement) => statement.binds),
     [
-      ["onkyo", "TXL55", "INTEGRAT4500"],
-      ["kenwood", "KT2060"],
+      [
+        JSON.stringify([
+          ["onkyo", "TXL55"],
+          ["onkyo", "INTEGRAT4500"],
+          ["kenwood", "KT2060"],
+        ]),
+      ],
       ["onkyo", "INT", "INT\uffff"],
     ],
   );

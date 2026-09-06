@@ -102,12 +102,42 @@ export function knowledgeCatalogCandidateWrites(
   reviewedAt: string,
   guard: { sql: string; binds: unknown[] } = { sql: "1", binds: [] },
 ): D1PreparedStatement[] {
-  return candidates.map((candidate) => {
+  const desiredRows = candidates.map((candidate) => {
     const match = matches.get(
       knowledgeCatalogKey(candidate.manufacturerId, candidate.normalizedModel),
     );
-    return db
-      .prepare(`
+    return [
+      candidate.manufacturerId,
+      candidate.normalizedModel,
+      candidate.observedManufacturer,
+      candidate.observedModel,
+      candidate.sampleTitle,
+      JSON.stringify(candidate.categoryIds),
+      JSON.stringify(candidate.rawModelVariants),
+      JSON.stringify(candidate.sourceUrls),
+      candidate.identityRejectionReason,
+      candidate.listingCount,
+      candidate.shopCount,
+      candidate.unclassifiedCount,
+      candidate.otherCount,
+      candidate.unresolvedIdentityCount,
+      candidate.priorityScore,
+      match ? "matched" : "pending",
+      match?.id || null,
+      candidate.firstSeenAt || null,
+      candidate.lastSeenAt || null,
+      reviewedAt,
+      reviewedAt,
+      reviewedAt,
+    ];
+  });
+  const writes: D1PreparedStatement[] = [];
+  // Keep the same per-row difference guards, but bind a bounded set of desired rows once. A SQL
+  // statement per unchanged candidate consumed the invocation budget even when rows_written = 0.
+  for (let offset = 0; offset < desiredRows.length; offset += 100) {
+    writes.push(
+      db
+        .prepare(`
       INSERT INTO knowledge_catalog_candidates (
         manufacturer_id, normalized_model, observed_manufacturer, observed_model, sample_title,
         candidate_category_ids, raw_model_variants, evidence_source_urls, identity_rejection_reason,
@@ -116,28 +146,29 @@ export function knowledgeCatalogCandidateWrites(
         review_status, catalog_product_id, first_seen_at, last_seen_at, last_reviewed_at, created_at, updated_at
       )
       SELECT desired.* FROM (SELECT
-        ? AS manufacturer_id,
-        ? AS normalized_model,
-        ? AS observed_manufacturer,
-        ? AS observed_model,
-        ? AS sample_title,
-        ? AS candidate_category_ids,
-        ? AS raw_model_variants,
-        ? AS evidence_source_urls,
-        ? AS identity_rejection_reason,
-        ? AS active_listing_count,
-        ? AS shop_count,
-        ? AS unclassified_count,
-        ? AS other_count,
-        ? AS unresolved_identity_count,
-        ? AS priority_score,
-        ? AS review_status,
-        ? AS catalog_product_id,
-        ? AS first_seen_at,
-        ? AS last_seen_at,
-        ? AS last_reviewed_at,
-        ? AS created_at,
-        ? AS updated_at
+        json_extract(payload.value, '$[0]') AS manufacturer_id,
+        json_extract(payload.value, '$[1]') AS normalized_model,
+        json_extract(payload.value, '$[2]') AS observed_manufacturer,
+        json_extract(payload.value, '$[3]') AS observed_model,
+        json_extract(payload.value, '$[4]') AS sample_title,
+        json_extract(payload.value, '$[5]') AS candidate_category_ids,
+        json_extract(payload.value, '$[6]') AS raw_model_variants,
+        json_extract(payload.value, '$[7]') AS evidence_source_urls,
+        json_extract(payload.value, '$[8]') AS identity_rejection_reason,
+        json_extract(payload.value, '$[9]') AS active_listing_count,
+        json_extract(payload.value, '$[10]') AS shop_count,
+        json_extract(payload.value, '$[11]') AS unclassified_count,
+        json_extract(payload.value, '$[12]') AS other_count,
+        json_extract(payload.value, '$[13]') AS unresolved_identity_count,
+        json_extract(payload.value, '$[14]') AS priority_score,
+        json_extract(payload.value, '$[15]') AS review_status,
+        json_extract(payload.value, '$[16]') AS catalog_product_id,
+        json_extract(payload.value, '$[17]') AS first_seen_at,
+        json_extract(payload.value, '$[18]') AS last_seen_at,
+        json_extract(payload.value, '$[19]') AS last_reviewed_at,
+        json_extract(payload.value, '$[20]') AS created_at,
+        json_extract(payload.value, '$[21]') AS updated_at
+        FROM json_each(?) payload
       ) AS desired
       LEFT JOIN knowledge_catalog_candidates existing
         ON existing.manufacturer_id = desired.manufacturer_id AND existing.normalized_model = desired.normalized_model
@@ -184,32 +215,10 @@ export function knowledgeCatalogCandidateWrites(
         last_reviewed_at = excluded.last_reviewed_at,
         updated_at = excluded.updated_at
     `)
-      .bind(
-        candidate.manufacturerId,
-        candidate.normalizedModel,
-        candidate.observedManufacturer,
-        candidate.observedModel,
-        candidate.sampleTitle,
-        JSON.stringify(candidate.categoryIds),
-        JSON.stringify(candidate.rawModelVariants),
-        JSON.stringify(candidate.sourceUrls),
-        candidate.identityRejectionReason,
-        candidate.listingCount,
-        candidate.shopCount,
-        candidate.unclassifiedCount,
-        candidate.otherCount,
-        candidate.unresolvedIdentityCount,
-        candidate.priorityScore,
-        match ? "matched" : "pending",
-        match?.id || null,
-        candidate.firstSeenAt || null,
-        candidate.lastSeenAt || null,
-        reviewedAt,
-        reviewedAt,
-        reviewedAt,
-        ...guard.binds,
-      );
-  });
+        .bind(JSON.stringify(desiredRows.slice(offset, offset + 100)), ...guard.binds),
+    );
+  }
+  return writes;
 }
 
 export async function markKnowledgeCatalogProductsDue(

@@ -11,6 +11,67 @@ import { accountReads } from "../src/db/read-accounting.js";
 import { detailFetchOptions } from "./helpers/fixtures.js";
 import { AT, NEXT, database, listing } from "./helpers/d1-write-budget.js";
 
+test("D1 candidate row-set publication stays unchanged across durable refresh pages", async () => {
+  const { db, dispose } = await database();
+  try {
+    await db
+      .prepare(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<250)
+      INSERT INTO products(shop_key,source_id,title,source_url,first_seen_at,last_seen_at,last_changed_at,
+        canonical_manufacturer_id,manufacturer,model)
+      SELECT 'budget',CAST(i AS TEXT),'LUXMAN MODEL-'||i,'https://example.test/'||i,'${AT}','${AT}','${AT}',
+        'luxman','LUXMAN','MODEL-'||i FROM n`)
+      .run();
+    await refreshKnowledgeCatalogCandidates(db, AT);
+    assert.equal(
+      await db.prepare("SELECT COUNT(*) n FROM knowledge_catalog_candidates").first("n"),
+      250,
+    );
+    const sequence = await db
+      .prepare("SELECT seq FROM sqlite_sequence WHERE name='knowledge_catalog_candidates'")
+      .first("seq");
+    const before = (
+      await db.prepare("SELECT * FROM knowledge_catalog_candidates ORDER BY id").all()
+    ).results;
+    const replay = accountReads(db);
+    await refreshKnowledgeCatalogCandidates(replay.db, NEXT);
+    assert.deepEqual(
+      (await db.prepare("SELECT * FROM knowledge_catalog_candidates ORDER BY id").all()).results,
+      before,
+    );
+    assert.equal(
+      await db
+        .prepare("SELECT seq FROM sqlite_sequence WHERE name='knowledge_catalog_candidates'")
+        .first("seq"),
+      sequence,
+    );
+    // Repeated publication is still a no-op. Temporary group insert/delete and cursor writes
+    // are bounded by this generation's groups/pages, independent of catalog history.
+    assert.ok(
+      replay.rowsWritten() <= 600,
+      `250-group checkpoints wrote ${replay.rowsWritten()} rows`,
+    );
+    // Includes temporary accumulator reads and all four durable phases, not only publication.
+    assert.ok(replay.rowsRead() < 24 * 250, `candidate replay read ${replay.rowsRead()} rows`);
+    assert.equal(
+      await db
+        .prepare("SELECT COUNT(*) n FROM knowledge_catalog_candidates WHERE updated_at <> ?")
+        .bind(AT)
+        .first("n"),
+      0,
+    );
+    console.log(
+      JSON.stringify({
+        event: "candidate_row_set_d1_budget",
+        rowsRead: replay.rowsRead(),
+        rowsWritten: replay.rowsWritten(),
+        statements: replay.countedStatements(),
+      }),
+    );
+  } finally {
+    await dispose();
+  }
+}, 30_000);
+
 test("D1 bills zero for unchanged catalog decisions and search replay, with bounded refresh checkpoints", async () => {
   const { db, dispose } = await database();
   try {
