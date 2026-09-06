@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { test } from "vite-plus/test";
-import { applyRemoteMigrations } from "../scripts/apply-remote-migrations.js";
+import {
+  applyRemoteMigrations,
+  parseWranglerOutput,
+} from "../scripts/apply-remote-migrations.js";
 import { workingMigrations } from "../scripts/lib/migration-history.js";
 import { applyMigration, localD1 } from "./helpers/local-d1.js";
 
@@ -119,4 +122,13 @@ test("malformed, failed, or newer remote history cannot be treated as an empty d
     );
     assert.equal(calls, 1);
   }
+});
+
+test("Wrangler import progress before JSON does not turn a committed migration into a failure", () => {
+  const expected = [{ success: true, results: [{ "Total queries executed": 11 }] }];
+  for (const prefix of ["", "├ Checking if file needs uploading\n├ Uploading complete.\n"]) {
+    assert.deepEqual(parseWranglerOutput(prefix + JSON.stringify(expected, null, 2)), expected);
+  }
+  assert.throws(() => parseWranglerOutput("├ Checking if file needs uploading\n"));
+  assert.throws(() => parseWranglerOutput("├ Checking if file needs uploading\n[invalid"));
 });

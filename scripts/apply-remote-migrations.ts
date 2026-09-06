@@ -8,6 +8,13 @@ import type { MigrationSource } from "./lib/migration-history.js";
 
 type Execute = (input: { command: string } | { file: string }) => Promise<unknown>;
 
+/** Wrangler import spinners can precede JSON even when --json is set. */
+export function parseWranglerOutput(output: string): unknown {
+  const start = output.search(/^\s*\[/m);
+  if (start < 0) throw new Error("Wrangler output did not contain a JSON result");
+  return JSON.parse(output.slice(start)) as unknown;
+}
+
 function results(response: unknown): Record<string, unknown>[] {
   if (!Array.isArray(response) || response.length === 0) {
     throw new Error("Wrangler returned no D1 result envelopes");
@@ -91,7 +98,7 @@ if (process.argv[1]?.endsWith("apply-remote-migrations.ts")) {
         // Preserve Wrangler's diagnostic codes for the deployment's quota/CPU retry handling.
         throw new Error(`${result.stdout}\n${result.stderr}`.trim());
       }
-      return JSON.parse(result.stdout) as unknown;
+      return parseWranglerOutput(result.stdout);
     });
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
