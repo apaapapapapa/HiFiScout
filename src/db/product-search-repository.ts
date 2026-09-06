@@ -289,7 +289,16 @@ function offerFilter(query: ProductQuery): OfferFilter {
  * Entities always hold at least one active offer, so with no offer filters there is nothing to
  * add and the entity indexes can serve the query on their own.
  */
-function addOfferFilter(filter: OfferFilter, where: string[], binds: unknown[]): void {
+function addOfferFilter(
+  filter: OfferFilter,
+  where: string[],
+  binds: unknown[],
+  inStockOnly: boolean,
+): void {
+  if (inStockOnly) {
+    where.push("e.in_stock_offer_count > 0");
+    return;
+  }
   if (!filter.active) return;
   where.push(`EXISTS (
     SELECT 1 FROM product_search_entity_offers m
@@ -302,25 +311,19 @@ function addOfferFilter(filter: OfferFilter, where: string[], binds: unknown[]):
 /**
  * Stored entity aggregates are valid only while the request has not narrowed the relevant offers.
  *
- * The in-stock-only price case is the one exception: `lowest_in_stock_price_yen` is already stored
- * specifically for that predicate. Every other offer filter changes the value the user sees, so an
- * explicit sort must use the same matching subset. `dealScore` is deliberately another exception:
+ * In-stock-only requests have persisted prices and dates. Every additional offer filter changes
+ * the value the user sees, so an explicit sort must use the same matching subset.
+ * `dealScore` is deliberately another exception:
  * it is the persisted product-level ranking required for stable indexed keyset pagination.
  */
 function needsRequestScopedSort(
   query: ProductQuery,
   filter: OfferFilter,
   relevance: boolean,
+  inStockOnly: boolean,
 ): boolean {
-  if (relevance || !filter.active || query.sort === "dealScore") return false;
-  if (query.sort !== "priceAsc" && query.sort !== "priceDesc") return true;
-  return Boolean(
-    query.shop ||
-    query.newOnly ||
-    query.priceDropped ||
-    query.minPrice != null ||
-    query.maxPrice != null,
-  );
+  if (relevance || !filter.active || inStockOnly || query.sort === "dealScore") return false;
+  return true;
 }
 
 /** A stable cursor namespace for an ordering derived from request-level offer predicates. */
@@ -436,19 +439,38 @@ export async function searchProducts(
   const search = addSearchPlan(query.q, where, binds);
   addProductFilters(query, where, binds);
   const filter = offerFilter(query);
-  addOfferFilter(filter, where, binds);
+  const inStockOnly = Boolean(
+    query.inStock &&
+    !query.shop &&
+    !query.newOnly &&
+    !query.priceDropped &&
+    query.minPrice == null &&
+    query.maxPrice == null,
+  );
+  addOfferFilter(filter, where, binds, inStockOnly);
 
   // Snapshot before the cursor predicate: the total must count the whole result set.
   const countWhere = [...where];
   const countBinds = [...binds];
   const relevance = usesRelevanceOrder(query);
   const baseSort = sortDefinition(query.sort, query.inStock);
-  const requestScopedSort = needsRequestScopedSort(query, filter, relevance);
-  const sort: ProductSearchSortDefinition = requestScopedSort
-    ? { ...baseSort, key: `${baseSort.key}|offers:${offerSortScopeKey(query)}` }
-    : baseSort;
-  const sortColumn = requestScopedSort ? `matching_sort.${sort.column}` : `e.${sort.column}`;
-  const explicitSortValue = requestScopedSort || query.sort === "dealScore";
+  const requestScopedSort = needsRequestScopedSort(query, filter, relevance, inStockOnly);
+  const inStockDateColumn = inStockOnly
+    ? query.sort === "updated"
+      ? "latest_in_stock_activity_at"
+      : query.sort === "newest" || query.sort === "oldest"
+        ? "newest_in_stock_listed_at"
+        : null
+    : null;
+  const sort: ProductSearchSortDefinition =
+    requestScopedSort || inStockDateColumn
+      ? { ...baseSort, key: `${baseSort.key}|offers:${offerSortScopeKey(query)}` }
+      : baseSort;
+  const sortColumn = requestScopedSort
+    ? `matching_sort.${sort.column}`
+    : `e.${inStockDateColumn ?? sort.column}`;
+  const explicitSortValue =
+    requestScopedSort || inStockDateColumn !== null || query.sort === "dealScore";
   if (!relevance) addCursorPredicate(where, binds, sort, decodeCursor(query.cursor), sortColumn);
 
   const rankBinds: unknown[] = [];
