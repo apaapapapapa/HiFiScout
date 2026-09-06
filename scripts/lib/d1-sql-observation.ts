@@ -113,9 +113,11 @@ export function redactSql(sql: string): string {
       while (index < sql.length && /\d/.test(sql[index]!)) index++;
       output += "?";
     } else if (/\d/.test(current) || (current === "." && next && /\d/.test(next))) {
-      const literal = /^(?:0x[\da-f]+|(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)/i.exec(
-        sql.slice(index),
-      );
+      // SQLite permits digit separators in numeric literals, including hex/exponents.
+      const literal =
+        /^(?:0x[\da-f](?:_?[\da-f])*|(?:\d(?:_?\d)*(?:\.(?:\d(?:_?\d)*)?)?|\.\d(?:_?\d)*)(?:e[+-]?\d(?:_?\d)*)?)/i.exec(
+          sql.slice(index),
+        );
       index += literal?.[0].length ?? 1;
       output += "?";
     } else {

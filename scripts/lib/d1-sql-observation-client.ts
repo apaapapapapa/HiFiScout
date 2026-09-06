@@ -303,6 +303,7 @@ export async function archiveSqlObservations(
   }
   return {
     bucket: SQL_OBSERVATION_BUCKET,
+    retentionDays: SQL_OBSERVATION_RETENTION_DAYS,
     databaseId: target.databaseId,
     collectedAt: collectedAt.toISOString(),
     saved,

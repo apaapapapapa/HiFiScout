@@ -55,6 +55,10 @@ test("SQL redaction removes literals, blobs, comments, quoted identifiers and bo
     redactSql(sql),
     "SELECT secret_v2, ?, ?, ?, ?, ?, ?, ?, ? FROM t WHERE id=? AND n = -?",
   );
+  assert.equal(
+    redactSql("SELECT 1_234, 0xDE_AD, 1_2.3_4e+5_6, .1_2, 1.e2, column_123 FROM t"),
+    "SELECT ?, ?, ?, ?, ?, column_123 FROM t",
+  );
 });
 
 test("unterminated and multi-line tokens cannot leak their remainder", () => {
@@ -258,6 +262,7 @@ function fakeCloudflare(
 test("complete collection provisions private retention, archives three hours and verifies R2 without D1 queries", async () => {
   const fake = fakeCloudflare();
   const result = await archiveSqlObservations(fake.client, { at: AT });
+  assert.equal(result.retentionDays, 5);
   assert.equal(fake.objects.size, 3);
   assert.equal(result.saved.length, 3);
   assert.doesNotMatch(JSON.stringify(result), /SELECT|DO-NOT-STORE/);
