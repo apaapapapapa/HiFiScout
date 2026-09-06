@@ -160,8 +160,8 @@ async function entityIdsForListings(
       ...(await selectNumbers(
         db,
         `SELECT id AS entity_id FROM product_search_entities
-         WHERE fallback_listing_id IN (${placeholders})`,
-        chunk,
+         WHERE entity_key IN (${placeholders})`,
+        chunk.map((id) => `l-${id}`),
         "entity_id",
       )),
     );
@@ -183,8 +183,8 @@ function emptyEntityPruneStatements(
   }
   for (const listingChunk of chunks([...new Set(listingIds)])) {
     statements.push({
-      sql: deleteEmptyEntitiesSql(scopeClause("fallback_listing_id", listingChunk.length)),
-      binds: listingChunk,
+      sql: deleteEmptyEntitiesSql(scopeClause("entity_key", listingChunk.length)),
+      binds: listingChunk.map((id) => `l-${id}`),
       countsAsRemoval: true,
     });
   }
