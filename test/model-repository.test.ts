@@ -201,6 +201,34 @@ test("a finish-only replay records distinct before and after audit values", asyn
   assert.ok(event.binds.includes("D-1000 (D1000/ブラック/resolved)"));
 });
 
+test("model replay persists manufacturers and finishes for every bundle component", async () => {
+  const db = replayDatabase(
+    staleListing({
+      canonical_manufacturer_id: "luxman",
+      raw_model: "PD-171A + SME 3010R ブラック",
+      title: "LUXMAN PD-171A + SME 3010R ブラック",
+    }),
+  );
+  await reprocessStaleModelListings(db, { evaluatedAt: "2026-09-06T00:00:00.000Z" });
+  const update = db.batched.find((statement) => /UPDATE products SET/.test(statement.sql));
+  assert.ok(update);
+  const metadata = update.binds.map(String).find((value) => value.startsWith('{"version":'));
+  assert.ok(metadata);
+  assert.deepEqual(
+    JSON.parse(metadata).bundleComponents.map(
+      (part: { manufacturerId: string; model: string; presentationColors: string[] }) => [
+        part.manufacturerId,
+        part.model,
+        part.presentationColors,
+      ],
+    ),
+    [
+      ["luxman", "PD-171A", []],
+      ["sme", "3010R", ["ブラック"]],
+    ],
+  );
+});
+
 test("model replay keeps empty raw evidence and recovers after downstream failure", async () => {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec(`

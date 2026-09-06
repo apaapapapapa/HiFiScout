@@ -124,6 +124,14 @@ are not inherently sales annotations: the central model resolver removes only re
 records their provenance. Cover adjacent products with different makers/prices/stock states, unknown
 multi-word brands, and Japanese model names using minimal fixtures based on the seller's markup.
 
+Explicit `+` bundles retain one seller listing and one price. The model resolver stores each
+component's manufacturer/model/finish in `metadata.modelNormalization.bundleComponents`, removes
+manufacturer prefixes within each component, and leaves the bundle in candidate status so it cannot
+attach to a single-product catalog entry. Manufacturer-first titles such as
+`THORENS+JELCO TD-321+SA-750` are paired only when the known manufacturer and model counts agree.
+Unspecified component manufacturers stay unspecified; model suffixes such as `MC-3+USB` and
+`NEO+α`, revisions, raw evidence and ambiguous combinations are retained.
+
 ## Availability
 
 Listing parsers and detail-page inventory rechecks use one canonical vocabulary:

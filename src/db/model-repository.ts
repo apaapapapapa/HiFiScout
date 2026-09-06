@@ -203,6 +203,7 @@ export async function reprocessStaleModelListings(
       removedAnnotations: resolution.removedAnnotations,
       unclassifiedTokens: resolution.unclassifiedTokens,
       presentationColors: resolution.presentationColors,
+      ...(resolution.bundleComponents ? { bundleComponents: resolution.bundleComponents } : {}),
     };
     // The resolver version means the algorithm ran. The separate pending bit remains set until all
     // downstream read models have refreshed, so a failure cannot make this row disappear from the

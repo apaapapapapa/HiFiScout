@@ -1095,6 +1095,14 @@ export interface ModelResolutionResult {
    * rolled back by the identity guard — a finish is only reported when it was actually taken out.
    */
   presentationColors: string[];
+  /** Individually scoped identity evidence; never interpreted as a single catalog product. */
+  bundleComponents?: {
+    segment: string;
+    manufacturerId: string;
+    manufacturer: string;
+    model: string;
+    presentationColors: string[];
+  }[];
 }
 
 export interface ModelNormalizationMetadata {
@@ -1107,6 +1115,7 @@ export interface ModelNormalizationMetadata {
   unclassifiedTokens: string[];
   /** Canonical finish labels taken out of the model, kept as the evidence behind the stored one. */
   presentationColors?: string[];
+  bundleComponents?: ModelResolutionResult["bundleComponents"];
 }
 
 // ---------------------------------------------------------------------------

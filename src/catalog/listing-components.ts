@@ -21,6 +21,8 @@ import {
 import { UNCLASSIFIED_CATEGORY_ID } from "./categories.js";
 import { inferExplicitCategoryIds } from "./category-rules.js";
 import { resolveModel } from "./model-resolver.js";
+import { normalizeIdentityModel } from "./product-identity.js";
+import { splitKnownManufacturerModel } from "./manufacturers.js";
 import type {
   CategoryClassification,
   CategoryId,
@@ -42,6 +44,8 @@ const BOUNDARY_PATTERN = /[+＋/／&＆・]|セット/gu;
 
 /** One product detected inside a listing. */
 export interface ListingComponent {
+  /** Explicit component manufacturer when present; never assigned from a neighbouring model. */
+  manufacturerId?: string;
   /** The seller text this component was read from, unmodified. */
   segment: string;
   /**
@@ -123,14 +127,17 @@ function componentIdentity(
   if (!trimmed) return null;
   if (categoryIdForFilter(trimmed)) return null;
 
+  const known = splitKnownManufacturerModel(trimmed);
+
   const resolved = resolveModel({
     rawModel: trimmed,
     title: trimmed,
-    manufacturerId: manufacturerId || "",
+    manufacturerId: known?.model ? known.id : manufacturerId || "",
     shopKey,
   });
   if (resolved.status !== "resolved" || !resolved.normalizedModel) return null;
   return {
+    ...(known?.model ? { manufacturerId: known.id } : {}),
     segment: trimmed,
     categorySegment: trimmed,
     model: resolved.model,
@@ -161,12 +168,36 @@ export function detectListingComponents(
   const title = String(input.title || "").trim();
   // Consumed as components claim them, so the same words cannot classify two products.
   const titleSegments = title && title !== source ? title.split(BOUNDARY_PATTERN) : [];
+  const bundle = /[+＋]/u.test(source)
+    ? resolveModel({ rawModel: source, title, ...context }).bundleComponents
+    : undefined;
+  if (bundle) {
+    const distinct = new Map<string, ListingComponent>();
+    for (const component of bundle) {
+      const normalizedModel = normalizeIdentityModel(component.model);
+      const key = `${component.manufacturerId || context.manufacturerId || ""}:${normalizedModel}`;
+      if (distinct.has(key)) continue;
+      distinct.set(key, {
+        manufacturerId: component.manufacturerId,
+        segment: component.segment,
+        categorySegment: titleSegmentFor(component.segment, titleSegments) || component.segment,
+        model: component.model,
+        normalizedModel,
+      });
+    }
+    const components = [...distinct.values()];
+    return components.length >= 2
+      ? { isBundle: true, components }
+      : { isBundle: false, components: [] };
+  }
   const components: ListingComponent[] = [];
   const seen = new Set<string>();
   for (const segment of segments) {
     const component = componentIdentity(segment, context);
-    if (!component || seen.has(component.normalizedModel)) continue;
-    seen.add(component.normalizedModel);
+    if (!component) continue;
+    const key = `${component.manufacturerId || context.manufacturerId || ""}:${component.normalizedModel}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
     components.push({
       ...component,
       categorySegment: titleSegmentFor(component.segment, titleSegments) || component.segment,

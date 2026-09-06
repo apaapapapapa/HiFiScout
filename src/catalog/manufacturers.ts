@@ -36,6 +36,13 @@ const MANUFACTURER_SOURCE: readonly ManufacturerSourceEntry[] = [
     ["mark levinson", "marklevinson", "マークレビンソン", "マーク・レビンソン"],
   ],
   ["thorens", "Thorens", ["thorens", "トーレンス"]],
+  ["jelco", "JELCO", ["jelco", "ジェルコ"]],
+  ["sme", "SME", ["sme"]],
+  ["micro", "MICRO", ["micro", "micro seiki", "マイクロ", "マイクロ精機"]],
+  ["audiocraft", "Audio Craft", ["audio craft", "audiocraft", "オーディオクラフト"]],
+  ["acousticsolid", "Acoustic Solid", ["acoustic solid", "アコースティックソリッド"]],
+  ["goldmund", "GOLDMUND", ["goldmund", "gold mund", "ゴールドムンド"]],
+  ["chario", "Chario", ["chario", "チャリオ"]],
   ["linear-technology", "Linear Technology", ["linear technology"]],
   ["jeff-rowland", "Jeff Rowland", ["jeff rowland"]],
   ["first-watt", "First Watt", ["first watt"]],
@@ -154,7 +161,7 @@ const MANUFACTURERS: readonly ManufacturerDefinition[] = MANUFACTURER_SOURCE.map
 );
 
 const MANUFACTURER_LISTING_LABEL =
-  /^(?:(?:【|〖|\[)\s*(?:中古(?:品)?|新品|展示(?:処分)?品?|特価(?:商品|品)?|未使用(?:開封)?品?|B級品|アウトレット(?:品)?|現品処分品)\s*(?:】|〗|\])\s*)+/iu;
+  /^(?:(?:【|〖|\[)\s*(?:中古(?:品)?|新品|展示(?:処分)?品?|特価(?:商品|品)?|未使用(?:開封)?品?|B級品|アウトレット(?:品)?|現品処分品|セール中|送料無料)\s*(?:】|〗|\])\s*)+/iu;
 
 /** Remove seller condition badges accidentally captured as part of manufacturer/title evidence. */
 export function stripManufacturerListingLabels(value: unknown = ""): string {

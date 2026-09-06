@@ -209,6 +209,7 @@ export function normalizeCatalogProduct(
           removedAnnotations: model.removedAnnotations,
           unclassifiedTokens: model.unclassifiedTokens,
           presentationColors: model.presentationColors,
+          ...(model.bundleComponents ? { bundleComponents: model.bundleComponents } : {}),
         },
       } satisfies ProductMetadata,
     },
