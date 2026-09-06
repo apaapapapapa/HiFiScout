@@ -501,6 +501,14 @@ function resolvePreparedModel(
       ? groupedTitle
       : splitModelBundle(withoutManufacturer);
   if (bundle) {
+    const removedAnnotations = new Set<string>();
+    if (
+      recoveredSource !== withoutManufacturer ||
+      (bundle.groupedManufacturers &&
+        normalizeIdentityModel(withoutManufacturer) !== normalizeIdentityModel(groupedModels))
+    ) {
+      removedAnnotations.add("bundle_manufacturer_presentation");
+    }
     const bundleComponents = bundle.components.map((component, index) => {
       const id = component.manufacturerId || (index === 0 ? manufacturerId : "");
       const partPresentation = prepared.get(id);
@@ -509,6 +517,12 @@ function resolvePreparedModel(
         : component.model;
       const stripped = stripSellerAnnotations(part, id, shopKey);
       const safe = preservesModelIdentity(part, stripped.text);
+      if (part !== component.model || (!bundle.groupedManufacturers && component.manufacturer)) {
+        removedAnnotations.add("bundle_manufacturer_presentation");
+      }
+      if (safe) {
+        for (const annotation of stripped.removed) removedAnnotations.add(annotation);
+      }
       return {
         ...component,
         manufacturerId: id,
@@ -524,7 +538,7 @@ function resolvePreparedModel(
       status: "candidate",
       method: "unsafe_annotation",
       confidence: "low",
-      removedAnnotations: ["bundle_manufacturer_presentation"],
+      removedAnnotations: [...removedAnnotations],
       unclassifiedTokens: ["bundle_components"],
       // A finish belongs to its component, never to the whole set.
       presentationColors: [],

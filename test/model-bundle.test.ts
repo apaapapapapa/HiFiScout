@@ -72,6 +72,24 @@ test("bundle metadata survives normalization and cannot match a single catalog p
   assert.equal(identity.status, "unresolved");
 });
 
+test("bundle annotation provenance only reports actual removals", () => {
+  const plain = resolveModel({ rawModel: "PD-171A + 3010R", manufacturerId: "luxman" });
+  assert.deepEqual(plain.removedAnnotations, []);
+  const rawPart = "3010R ブラック ※送料無料";
+  const part = resolveModel({ rawModel: rawPart, manufacturerId: "sme", shopKey: "shimamusen" });
+  const bundle = resolveModel({
+    rawModel: `PD-171A + SME ${rawPart}`,
+    manufacturerId: "luxman",
+    shopKey: "shimamusen",
+  });
+  assert.deepEqual(bundle.bundleComponents?.[1].presentationColors, ["ブラック"]);
+  assert.deepEqual(bundle.removedAnnotations, [
+    "bundle_manufacturer_presentation",
+    ...part.removedAnnotations,
+  ]);
+  assert.ok(part.removedAnnotations.length > 0);
+});
+
 test("plus-bearing model suffixes, unknown manufacturers and mismatched groups stay intact", () => {
   for (const value of [
     "MC-3+USB",
