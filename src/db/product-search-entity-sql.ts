@@ -238,12 +238,21 @@ export function upsertFallbackEntitiesSql(listingScope = ""): string {
 }
 
 /** A deactivated listing stops being an offer immediately; its entity is re-aggregated after. */
-export function deleteInactiveOffersSql(listingScope = ""): string {
+export function deleteInactiveOfferSql(): string {
+  // Even a fixed IN list can become a table scan when stale statistics underestimate the table.
+  // Equality on both integer primary keys stays a point lookup. The caller batches these deletes
+  // in the existing projection transaction, so there are no extra D1 binding round trips.
+  return `DELETE FROM product_search_entity_offers WHERE listing_product_id = ?
+    AND EXISTS (SELECT 1 FROM products p
+      WHERE p.id = product_search_entity_offers.listing_product_id AND p.is_active = 0)`;
+}
+
+export function deleteInactiveOffersSql(): string {
   return `
     DELETE FROM product_search_entity_offers
     WHERE listing_product_id IN (
       SELECT p.id FROM products p
-      WHERE p.is_active = 0${listingScope}
+      WHERE p.is_active = 0
     )
   `;
 }

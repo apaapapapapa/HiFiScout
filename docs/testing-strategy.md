@@ -147,6 +147,13 @@ These are structural/behavioral gates. Local SQLite changes, query plans and wal
 
 ## D1 write budget regressions
 
+`maintenance-read-budget` exercises stale planner statistics, 1/2/9/40-listing deletion batches,
+empty stalled recovery, other-shop pending windows and already-queued resolver prefixes at
+100/1,000/10,000 rows using real local D1 metadata. The identity selector also sees a large inactive
+prefix. Cursor tests cover queued-only windows, version resets, enqueue failure, old crawl cursor
+formats, and legacy membership audit failure/repair limits. Materialized candidate scans are allowed
+only after their source LIMIT; an index name or a small returned result alone is not a read budget.
+
 `test/d1-write-budget.test.ts`, `test/d1-crawl-checkpoint-budget.test.ts` and
 `test/d1-crawl-collection-budget.test.ts` run the production repositories against isolated
 Miniflare D1 databases with every checked-in migration. Each test creates and disposes its own

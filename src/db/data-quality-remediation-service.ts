@@ -108,6 +108,7 @@ export interface RunDataQualityRemediationSweepOptions {
 
 export interface RunDataQualityRemediationSweepResult {
   seeded: number;
+  seedScannedCount: number;
   claimed: number;
   resolved: number;
   failed: number;
@@ -745,6 +746,7 @@ export async function runDataQualityRemediationSweep(
   const queue = await dataQualityRemediationActiveQueueMetrics(db);
   const result: RunDataQualityRemediationSweepResult = {
     seeded: seeded.workKeys.length,
+    seedScannedCount: seeded.scannedCount ?? 0,
     claimed: jobs.length,
     resolved,
     failed,

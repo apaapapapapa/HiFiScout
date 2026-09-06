@@ -128,7 +128,10 @@ not replayed, and seller pacing is unchanged.
 
 General Cron serializes watchdogs and maintenance under the budget in `src/db/invocation-budget.ts`.
 `scheduled_maintenance_pending` retains due tasks across yields, with finalization calls reserved
-and still metered. Current-work recovery and cleanup selectors are indexed rather than scanning
+and still metered. Stalled recovery explicitly uses `idx_crawl_runs_running_started_at`, excluding
+terminal history even when statistics would select the older general date index. Deployment checks
+explain the original and enforced access paths and execute only a five-row running-work probe.
+Current-work recovery and cleanup selectors are indexed rather than scanning
 all historical runs. See [Data platform architecture](./data-platform-architecture.md) for dirty-set
 repair, count/price projections, and D1 accounting limits.
 

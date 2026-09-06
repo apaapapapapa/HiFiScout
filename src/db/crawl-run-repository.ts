@@ -129,18 +129,19 @@ export interface StalledCrawlRunRow {
  * it opened is never closed by the crawl itself. `startedBefore` must already account for the
  * execution lease: anything newer may still legitimately be executing.
  */
+export const STALLED_CRAWL_RUNS_SQL = `
+  SELECT id, shop_key, started_at, current_stage, pages_done, last_progress_at
+  FROM crawl_runs INDEXED BY idx_crawl_runs_running_started_at
+  WHERE status = 'running' AND started_at < ?
+  ORDER BY started_at LIMIT ?
+`;
+
 export async function listStalledCrawlRuns(
   db: QueryableDatabase,
   { startedBefore, limit }: { startedBefore: string; limit: number },
 ): Promise<StalledCrawlRunRow[]> {
   const result = await db
-    .prepare(`
-      SELECT id, shop_key, started_at, current_stage, pages_done, last_progress_at
-      FROM crawl_runs
-      WHERE status = 'running' AND started_at < ?
-      ORDER BY started_at
-      LIMIT ?
-    `)
+    .prepare(STALLED_CRAWL_RUNS_SQL)
     .bind(startedBefore, limit)
     .all<StalledCrawlRunRow>();
   return result.results || [];

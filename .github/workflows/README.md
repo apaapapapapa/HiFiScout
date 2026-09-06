@@ -23,6 +23,12 @@ The Docs workflow caches generated SchemaSpy output by the migration contents, W
 ## Production deployment
 
 - `deploy.yml` — provision required Cloudflare resources, apply backward-compatible migrations, deploy the public Worker, and perform a small runtime smoke check.
+
+`verify-maintenance-access-paths.ts` resolves the active Worker's D1 binding and checks the stalled-run
+and scoped-deletion plans in the deployment-owned runtime smoke check. It logs plans and read/write counts, not row data.
+Only an unambiguous D1 `7500` daily row quota error defers confirmation through the existing quota-reset retry; unknown failures remain fatal.
+The DELETE is only explained, never executed; the only application-row probe is the indexed
+running-work selector with LIMIT 5. This does not resume the paused operational health audits.
 - `deploy-catalog-admin.yml` — deploy the Cloudflare Access-protected admin Worker from the exact public-Worker deployment SHA.
 - `deploy-audiounion-lambda.yml` — deploy the AudioUnion relay Lambda.
 - `sync-audiounion-relay-secret.yml` — synchronize the relay credential required by the public Worker.

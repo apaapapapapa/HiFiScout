@@ -21,7 +21,7 @@ export const RESUMABLE_CRAWL_STAGES = [
 export type ResumableCrawlStage = (typeof RESUMABLE_CRAWL_STAGES)[number];
 
 /**
- * Whether a stage walks this run's own work set or the shop's leftover memberships.
+ * Whether a stage walks this run's own work set or the shop's pending membership changes.
  *
  * The single definition: the chunk a stage claims, the input count it reports, and which runs still
  * hold work worth inheriting are all the same question.
@@ -231,32 +231,47 @@ export async function claimCrawlRunWorkChunk(
   return (result.results || []).map((row) => row.source_id);
 }
 
+export interface CrawlWorkWindow {
+  sourceIds: string[];
+  afterSourceId: string;
+  scannedCount: number;
+  exhausted: boolean;
+}
+
 /**
- * One bounded slice of the shop's listings that are gone but still hold a search-entity offer.
- *
- * Cleanup is shop-scoped rather than run-scoped: a listing that disappeared is by definition not in
- * anything this run observed, so without this its offer would keep inflating its product's offer
- * count forever. Processing a chunk removes it from this set, and the cursor still advances by
- * source id so the stage terminates even if a row somehow survives its own cleanup.
+ * Deactivations already leave durable projection obligations. Walk a bounded window of that
+ * current work before filtering by shop; old inactive product history is never searched here.
+ * Keep the full-projection token intact: entity cleanup alone cannot acknowledge all its work.
+ * Pre-change source-id cursors restart safely; daily membership auditing catches legacy drift.
  */
 export async function claimShopMembershipCleanupChunk(
   db: ReadableDatabase,
   shopKey: string,
   afterSourceId: string,
   limit: number,
-): Promise<string[]> {
+): Promise<CrawlWorkWindow> {
+  const afterId = Number(/^pending:(\d+)$/.exec(afterSourceId)?.[1] || 0);
   const result = await db
     .prepare(`
-      SELECT DISTINCT p.source_id AS source_id
-      FROM product_search_entity_offers m
-      JOIN products p ON p.id = m.listing_product_id
-      WHERE p.shop_key = ? AND p.is_active = 0 AND p.source_id > ?
-      ORDER BY p.source_id
-      LIMIT ?
+      WITH pending AS MATERIALIZED (
+        SELECT listing_product_id FROM listing_projection_pending
+        WHERE listing_product_id > ? ORDER BY listing_product_id LIMIT ?
+      )
+      SELECT pending.listing_product_id, CASE WHEN p.shop_key = ? AND p.is_active = 0
+        AND EXISTS (SELECT 1 FROM product_search_entity_offers m WHERE m.listing_product_id = p.id)
+        THEN p.source_id ELSE NULL END AS source_id
+      FROM pending CROSS JOIN products p ON p.id = pending.listing_product_id
+      ORDER BY pending.listing_product_id
     `)
-    .bind(shopKey, afterSourceId, limit)
-    .all<{ source_id: string }>();
-  return (result.results || []).map((row) => row.source_id);
+    .bind(afterId, limit, shopKey)
+    .all<{ listing_product_id: number; source_id: string | null }>();
+  const rows = result.results || [];
+  return {
+    sourceIds: rows.flatMap((row) => (row.source_id == null ? [] : [row.source_id])),
+    afterSourceId: `pending:${rows.at(-1)?.listing_product_id ?? afterId}`,
+    scannedCount: rows.length,
+    exhausted: rows.length < limit,
+  };
 }
 
 /**

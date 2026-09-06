@@ -1,8 +1,31 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "vite-plus/test";
+import { isMaintenanceD1QuotaError } from "../scripts/verify-maintenance-access-paths.js";
 
 const readWorkflow = (name: string) => readFile(`.github/workflows/${name}`, "utf8");
+
+test("the maintenance probe defers only an unambiguous D1 daily quota error", () => {
+  for (const kind of ["read", "write"]) {
+    const message = `7500: Your account has exceeded D1's free tier daily row ${kind} limit.`;
+    assert.equal(isMaintenanceD1QuotaError(new Error(message)), true);
+    assert.equal(
+      isMaintenanceD1QuotaError(
+        new Error(`Cloudflare D1 API request failed with HTTP 400: ${message}`),
+      ),
+      true,
+    );
+    assert.equal(isMaintenanceD1QuotaError(new Error(`${message}; 7501: SQL error`)), false);
+  }
+  for (const error of [
+    new Error("7500: unexpected SQL failure"),
+    new Error("exceeded D1's free tier daily row read limit"),
+    new Error("no such index"),
+    "7500: Your account has exceeded D1's free tier daily row read limit.",
+  ]) {
+    assert.equal(isMaintenanceD1QuotaError(error), false);
+  }
+});
 
 test("Cloudflare migration deploy defers recognized D1 daily row quotas", async () => {
   const workflow = await readWorkflow("deploy.yml");

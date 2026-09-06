@@ -112,6 +112,7 @@ export interface EnqueueRemediationInput {
 export interface SeedRemediationResult {
   selectedCount: number;
   workKeys: string[];
+  scannedCount?: number;
 }
 
 export interface FullRebuildOptions {
@@ -253,6 +254,8 @@ interface StaleSelector {
   readonly id: string;
   /** Same reasoning: a `COALESCE` over an indexed column is an expression, and cannot be ordered on. */
   readonly identityVersion: string;
+  /** Indexed version used with the driving id as the continuation key. */
+  readonly cursorVersion: string;
 }
 
 /** Reached through `products`, so the identity row may be absent and its version defaults. */
@@ -270,7 +273,7 @@ function listingSource(index: string): string {
 /** Identity drives the selector, which also means the listing is reached by primary key. */
 function identitySource(index: string): string {
   return `product_identity_resolutions r INDEXED BY ${index}
-        JOIN products p ON p.id = r.listing_product_id`;
+        CROSS JOIN products p ON p.id = r.listing_product_id`;
 }
 
 /**
@@ -293,7 +296,8 @@ function identitySource(index: string): string {
  * Re-running everything regardless stays available as the explicit, paged
  * `enqueueFullDataQualityRebuild`.
  *
- * Order is priority: a listing behind on two stages is seeded for the first one that claims it.
+ * Order is initial priority; each call rotates its starting selector to avoid starvation. A listing
+ * behind on two stages is seeded for the first one that claims it in that call.
  */
 const STALE_SELECTORS: readonly StaleSelector[] = [
   {
@@ -303,6 +307,7 @@ const STALE_SELECTORS: readonly StaleSelector[] = [
     where: "p.is_active = 1 AND p.manufacturer_resolver_version < ?",
     binds: [RESOLUTION_VERSIONS.manufacturer],
     orderBy: "k.manufacturer_resolver_version, k.id",
+    cursorVersion: "p.manufacturer_resolver_version",
     workType: "resolve_manufacturer",
   },
   {
@@ -312,6 +317,7 @@ const STALE_SELECTORS: readonly StaleSelector[] = [
     where: "p.is_active = 1 AND p.model_resolver_version < ?",
     binds: [RESOLUTION_VERSIONS.model],
     orderBy: "k.model_resolver_version, k.id",
+    cursorVersion: "p.model_resolver_version",
     workType: "resolve_model",
   },
   {
@@ -321,6 +327,7 @@ const STALE_SELECTORS: readonly StaleSelector[] = [
     where: `p.is_active = 1 AND ${CATEGORY_VERSION_EXPRESSION} < ?`,
     binds: [RESOLUTION_VERSIONS.category],
     orderBy: "k.category_classifier_version, k.id",
+    cursorVersion: CATEGORY_VERSION_EXPRESSION,
     workType: "classify_category",
   },
   {
@@ -330,9 +337,11 @@ const STALE_SELECTORS: readonly StaleSelector[] = [
     id: "r.listing_product_id",
     identityVersion: "r.identity_resolver_version",
     source: identitySource("idx_product_identity_resolver_version"),
-    where: "p.is_active = 1 AND r.identity_resolver_version < ?",
+    // Bound identity rows before excluding inactive listings, or an inactive prefix defeats LIMIT.
+    where: "r.identity_resolver_version < ?",
     binds: [RESOLUTION_VERSIONS.identity],
     orderBy: "k.identity_resolver_version, k.id",
+    cursorVersion: "r.identity_resolver_version",
     workType: "resolve_identity",
   },
   {
@@ -342,6 +351,7 @@ const STALE_SELECTORS: readonly StaleSelector[] = [
     where: "p.is_active = 1 AND p.remediation_projection_required = 1",
     binds: [],
     orderBy: "k.id",
+    cursorVersion: "0",
     workType: "rebuild_search_entity",
   },
 ];
@@ -355,15 +365,20 @@ const STALE_SELECTORS: readonly StaleSelector[] = [
  */
 function staleCandidateSql(selector: StaleSelector): string {
   return `
-      WITH candidates AS (
+      WITH candidates AS MATERIALIZED (
         SELECT
           ${selector.id} AS id,
+          p.is_active,
           p.manufacturer_resolver_version,
           p.model_resolver_version,
           ${CATEGORY_VERSION_EXPRESSION} AS category_classifier_version,
-          ${selector.identityVersion} AS identity_resolver_version
+          ${selector.identityVersion} AS identity_resolver_version,
+          ${selector.cursorVersion} AS cursor_version
         FROM ${selector.source}
         WHERE ${selector.where}
+          AND ${selector.cursorVersion === "0" ? `${selector.id} > ?` : `(${selector.cursorVersion}, ${selector.id}) > (?, ?)`}
+        ORDER BY ${selector.cursorVersion === "0" ? selector.id : `${selector.cursorVersion}, ${selector.id}`}
+        LIMIT ?
       ), keyed AS (
         SELECT
           c.*,
@@ -377,25 +392,40 @@ function staleCandidateSql(selector: StaleSelector): string {
       )
       SELECT
         k.id,
+        k.is_active,
         k.manufacturer_resolver_version,
         k.model_resolver_version,
         k.category_classifier_version,
-        k.identity_resolver_version
-      FROM keyed k
-      WHERE NOT EXISTS (
+        k.identity_resolver_version,
+        k.cursor_version,
+        EXISTS (
         SELECT 1
         FROM data_quality_remediation_queue q
         WHERE q.work_key = k.work_key
-      )
+      ) AS queued
+      FROM keyed k
       ORDER BY ${selector.orderBy}
-      LIMIT ?
     `;
 }
 
+interface SeedCursor {
+  selector: string;
+  version_key: string;
+  after_version: number;
+  after_id: number;
+}
+
+interface SeedWindowRow extends CandidateRow {
+  is_active: number;
+  cursor_version: number;
+  queued: number;
+}
+
 /**
- * Convert only actionable/stale listings into durable work. Candidates whose exact deterministic
- * work key already exists are excluded before LIMIT is applied, so resolved/unresolved low ids can
- * never starve later stale listings. A resolver/dependency change naturally produces a new key.
+ * Bound candidates before probing the queue. Each selector resumes after the last candidate
+ * accounted for, including queued rows, and wraps after reaching its tail. A version change resets
+ * all positions. Rotation prevents a permanently full early selector from starving other stages.
+ * A checkpoint never advances past work that could not be inserted within the seed budget.
  */
 export async function seedDataQualityRemediationQueue(
   db: QueryableDatabase,
@@ -405,45 +435,103 @@ export async function seedDataQualityRemediationQueue(
   }: { limit?: number; now?: string } = {},
 ): Promise<SeedRemediationResult> {
   const selectedLimit = bounded(limit, DEFAULT_SEED_LIMIT, MAX_SEED_LIMIT);
+  const versionKey = JSON.stringify(RESOLUTION_VERSIONS);
+  const keys = [...STALE_SELECTORS.map((selector) => selector.key), "rotation"];
+  const saved = await db
+    .prepare(`SELECT selector, version_key, after_version, after_id
+      FROM data_quality_remediation_seed_cursors WHERE selector IN (${keys.map(() => "?").join(",")})`)
+    .bind(...keys)
+    .all<SeedCursor>();
+  const cursors = new Map((saved.results || []).map((cursor) => [cursor.selector, cursor]));
+  const save = async (key: string, afterVersion: number, afterId: number) => {
+    const old = cursors.get(key);
+    if (!old && afterVersion === -1 && afterId === 0) return;
+    if (
+      old?.version_key === versionKey &&
+      old.after_version === afterVersion &&
+      old.after_id === afterId
+    )
+      return;
+    await db
+      .prepare(`INSERT INTO data_quality_remediation_seed_cursors
+      (selector,version_key,after_version,after_id) VALUES (?,?,?,?)
+      ON CONFLICT(selector) DO UPDATE SET version_key=excluded.version_key,
+        after_version=excluded.after_version,after_id=excluded.after_id
+      WHERE data_quality_remediation_seed_cursors.version_key IS ?
+        AND data_quality_remediation_seed_cursors.after_version IS ?
+        AND data_quality_remediation_seed_cursors.after_id IS ?`)
+      .bind(
+        key,
+        versionKey,
+        afterVersion,
+        afterId,
+        old?.version_key ?? null,
+        old?.after_version ?? null,
+        old?.after_id ?? null,
+      )
+      .run();
+  };
+  const rotation = cursors.get("rotation");
+  const start =
+    rotation?.version_key === versionKey ? rotation.after_id % STALE_SELECTORS.length : 0;
   const seen = new Set<number>();
-  const candidates: Candidate[] = [];
-  // Every selector runs, and each is asked for at most one page, so a tick reads a fixed number of
-  // bounded index seeks however far behind the catalog is. Stopping early once the budget is full
-  // would save four seeks and cost the harness its view of the other four plans — and would let a
-  // long backfill guarantee that the later stages are never even looked at.
-  //
-  // Pages are kept in selector order, which is the work-type priority the single CASE expression
-  // used to encode: a listing behind on two stages is seeded for the first stage that claims it.
-  for (const selector of STALE_SELECTORS) {
+  const workKeys: string[] = [];
+  let selectedCount = 0;
+  let scannedCount = 0;
+  let next = start;
+  for (
+    let offset = 0;
+    offset < STALE_SELECTORS.length && selectedCount < selectedLimit;
+    offset += 1
+  ) {
+    const index = (start + offset) % STALE_SELECTORS.length;
+    const selector = STALE_SELECTORS[index]!;
+    const old = cursors.get(selector.key);
+    const valid = old?.version_key === versionKey;
+    let afterVersion = valid ? old.after_version : -1;
+    let afterId = valid ? old.after_id : 0;
     const rows = await db
       .prepare(staleCandidateSql(selector))
-      .bind(...selector.binds, selectedLimit)
-      .all<CandidateRow>();
-    for (const row of rows.results || []) {
+      .bind(
+        ...selector.binds,
+        ...(selector.cursorVersion === "0" ? [afterId] : [afterVersion, afterId]),
+        selectedLimit,
+      )
+      .all<SeedWindowRow>();
+    const window = rows.results || [];
+    scannedCount += window.length;
+    let visited = 0;
+    for (const row of window) {
+      if (selectedCount >= selectedLimit) break;
       const id = number(row.id);
-      if (seen.has(id)) continue;
-      seen.add(id);
-      candidates.push({ row, workType: selector.workType });
+      if (row.is_active && !row.queued && !seen.has(id)) {
+        const workKey = automaticWorkKey({ row, workType: selector.workType });
+        const inserted = await enqueueDataQualityRemediation(db, {
+          workKey,
+          workType: selector.workType,
+          listingProductId: id,
+          entityId: String(id),
+          reason: "automatic_data_quality_remediation",
+          source: "scheduled_sweep",
+          now,
+        });
+        seen.add(id);
+        selectedCount += 1;
+        if (inserted) workKeys.push(workKey);
+      }
+      afterVersion = number(row.cursor_version);
+      afterId = id;
+      visited += 1;
     }
+    if (visited === window.length && window.length < selectedLimit) {
+      afterVersion = -1;
+      afterId = 0;
+    }
+    await save(selector.key, afterVersion, afterId);
+    next = (index + 1) % STALE_SELECTORS.length;
   }
-
-  const selected = candidates.slice(0, selectedLimit);
-  const workKeys: string[] = [];
-  for (const candidate of selected) {
-    const { row } = candidate;
-    const workKey = automaticWorkKey(candidate);
-    const inserted = await enqueueDataQualityRemediation(db, {
-      workKey,
-      workType: candidate.workType,
-      listingProductId: number(row.id),
-      entityId: String(row.id),
-      reason: "automatic_data_quality_remediation",
-      source: "scheduled_sweep",
-      now,
-    });
-    if (inserted) workKeys.push(workKey);
-  }
-  return { selectedCount: selected.length, workKeys };
+  await save("rotation", -1, next);
+  return { selectedCount, workKeys, scannedCount };
 }
 
 /** Explicit recovery/testing path. Normal scheduled operation never calls this. */

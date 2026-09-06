@@ -364,6 +364,8 @@ test("taxonomy v3 migrates evidence and facets without splitting durable product
       "UPDATE product_identity_resolutions SET identity_resolver_version = ? WHERE listing_product_id BETWEEN 101 AND 109",
     )
     .run(RESOLUTION_VERSIONS.identity);
+  // The current runtime selector owns a durable cursor added after the historical migration.
+  sqlite.exec(readFileSync(new URL("0100_remediation_seed_cursors.sql", MIGRATIONS), "utf8"));
   const replay = await seedDataQualityRemediationQueue(sqliteD1(sqlite), {
     limit: 20,
     now: "2026-08-30T00:00:00.000Z",
