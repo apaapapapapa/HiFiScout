@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
+import { prepareScheduledKnowledgeCatalogCandidates } from "../src/db/knowledge-catalog-candidate-refresh.js";
 import { invocationBudget, InvocationBudgetExceeded } from "../src/db/invocation-budget.js";
 import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from "../src/catalog/knowledge-verification/verifier.js";
 import { accountReads } from "../src/db/read-accounting.js";
@@ -65,8 +66,9 @@ test("a recovery run claimed just before a yield is closed before dispatch takes
       "INSERT INTO knowledge_catalog_review_runs(started_at, status, message) VALUES (?, 'failed', 'previous_dispatch_failed')",
     )
     .run(AT.toISOString());
-  // Version claim, three status lookups, then the atomic recovery-run insert.
-  const budget = invocationBudget(db, { maxCalls: 5 + RESERVE, finalizationReserve: RESERVE });
+  await prepareScheduledKnowledgeCatalogCandidates(db, AT);
+  // Cached preparation, version claim, three status lookups, then the atomic recovery-run insert.
+  const budget = invocationBudget(db, { maxCalls: 6 + RESERVE, finalizationReserve: RESERVE });
   const queue = queueBinding();
   await assert.rejects(
     bootstrapKnowledgeCatalogReview(queueEnv(budget.db, queue.binding) as Env, AT),
@@ -80,7 +82,7 @@ test("a recovery run claimed just before a yield is closed before dispatch takes
       .map((row) => row.status),
     ["failed", "failed"],
   );
-  assert.equal(budget.metrics().d1Calls, 6);
+  assert.equal(budget.metrics().d1Calls, 7);
 });
 
 for (const [name, dispatch] of MODES) {

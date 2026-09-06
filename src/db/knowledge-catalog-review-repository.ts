@@ -1,22 +1,11 @@
-import {
-  accumulateKnowledgeCatalogCandidateRows,
-  finalizeKnowledgeCatalogCandidateAggregates,
-  knowledgeCatalogKey,
-} from "../catalog/knowledge-catalog.js";
-import type {
-  KnowledgeCatalogCandidateAccumulator,
-  KnowledgeCatalogListingRow,
-  ScoredKnowledgeCatalogCandidate,
-} from "../catalog/types.js";
-import { findVerifiedCatalogMatches } from "./knowledge-catalog-repository.js";
+import { knowledgeCatalogKey } from "../catalog/knowledge-catalog.js";
+import type { ScoredKnowledgeCatalogCandidate } from "../catalog/types.js";
 import type {
   KnowledgeCatalogReviewRunRow,
   KnowledgeCatalogVerificationOutcomes,
   ProductClassificationStats,
   QueryableDatabase,
 } from "./types.js";
-
-const PRODUCT_PAGE_SIZE = 500;
 
 interface CandidateStats {
   candidates: number;
@@ -65,47 +54,6 @@ interface OperationalStatusRow extends Partial<KnowledgeCatalogReviewRunRow> {
   other_products?: number | null;
 }
 
-async function runBatches(
-  db: QueryableDatabase,
-  statements: D1PreparedStatement[],
-  chunkSize = 50,
-): Promise<void> {
-  for (let i = 0; i < statements.length; i += chunkSize) {
-    await db.batch(statements.slice(i, i + chunkSize));
-  }
-}
-
-async function collectActiveCandidateRows(
-  db: QueryableDatabase,
-): Promise<ScoredKnowledgeCatalogCandidate[]> {
-  const grouped = new Map<string, KnowledgeCatalogCandidateAccumulator>();
-  let lastId = 0;
-
-  for (;;) {
-    const observed = await db
-      .prepare(`
-      SELECT p.id, p.shop_key, p.canonical_manufacturer_id AS manufacturer_id,
-             p.manufacturer, p.model, p.raw_model, p.title, p.source_url, p.category_ids,
-             p.classification_status, p.first_seen_at, p.last_seen_at,
-             r.status AS identity_status, r.match_method AS identity_match_method
-      FROM products p
-      LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
-      WHERE p.is_active = 1 AND p.canonical_manufacturer_id <> '' AND p.model <> '' AND p.id > ?
-      ORDER BY p.id
-      LIMIT ?
-    `)
-      .bind(lastId, PRODUCT_PAGE_SIZE)
-      .all<KnowledgeCatalogListingRow & { id: number }>();
-    const rows = observed.results || [];
-    if (!rows.length) break;
-    accumulateKnowledgeCatalogCandidateRows(grouped, rows);
-    lastId = Number(rows[rows.length - 1].id);
-    if (rows.length < PRODUCT_PAGE_SIZE) break;
-  }
-
-  return finalizeKnowledgeCatalogCandidateAggregates(grouped);
-}
-
 export async function activeProductClassificationStats(
   db: QueryableDatabase,
 ): Promise<ProductClassificationStats> {
@@ -147,38 +95,14 @@ export async function knowledgeCatalogCandidateStats(
   };
 }
 
-export async function refreshKnowledgeCatalogCandidates(
+export function knowledgeCatalogCandidateWrites(
   db: QueryableDatabase,
+  candidates: readonly ScoredKnowledgeCatalogCandidate[],
+  matches: ReadonlyMap<string, { id: number }>,
   reviewedAt: string,
-): Promise<CandidateStats> {
-  const candidates = await collectActiveCandidateRows(db);
-  const matches = await findVerifiedCatalogMatches(
-    db,
-    candidates.map((candidate) => ({
-      manufacturerId: candidate.manufacturerId,
-      model: candidate.normalizedModel,
-    })),
-  );
-
-  const activeKeys = new Set(
-    candidates.map((candidate) =>
-      knowledgeCatalogKey(candidate.manufacturerId, candidate.normalizedModel),
-    ),
-  );
-  const previous = await db
-    .prepare(`
-    SELECT id, manufacturer_id, normalized_model FROM knowledge_catalog_candidates
-    WHERE active_listing_count > 0
-  `)
-    .all<{ id: number; manufacturer_id: string; normalized_model: string }>();
-  const retiredIds = (previous.results || [])
-    .filter(
-      (candidate) =>
-        !activeKeys.has(knowledgeCatalogKey(candidate.manufacturer_id, candidate.normalized_model)),
-    )
-    .map((candidate) => candidate.id);
-
-  const writes = candidates.map((candidate) => {
+  guard: { sql: string; binds: unknown[] } = { sql: "1", binds: [] },
+): D1PreparedStatement[] {
+  return candidates.map((candidate) => {
     const match = matches.get(
       knowledgeCatalogKey(candidate.manufacturerId, candidate.normalizedModel),
     );
@@ -217,7 +141,7 @@ export async function refreshKnowledgeCatalogCandidates(
       ) AS desired
       LEFT JOIN knowledge_catalog_candidates existing
         ON existing.manufacturer_id = desired.manufacturer_id AND existing.normalized_model = desired.normalized_model
-      WHERE existing.id IS NULL OR
+      WHERE (${guard.sql}) AND (existing.id IS NULL OR
         existing.observed_manufacturer IS NOT desired.observed_manufacturer
         OR existing.observed_model IS NOT desired.observed_model
         OR existing.sample_title IS NOT desired.sample_title
@@ -234,7 +158,7 @@ export async function refreshKnowledgeCatalogCandidates(
         OR existing.review_status IS NOT CASE WHEN desired.catalog_product_id IS NOT NULL THEN 'matched' WHEN existing.review_status = 'ignored' THEN 'ignored' ELSE 'pending' END
         OR existing.catalog_product_id IS NOT desired.catalog_product_id
         OR existing.first_seen_at IS NOT COALESCE(existing.first_seen_at, desired.first_seen_at)
-        OR existing.last_seen_at IS NOT desired.last_seen_at
+        OR existing.last_seen_at IS NOT desired.last_seen_at)
       ON CONFLICT(manufacturer_id, normalized_model) DO UPDATE SET
         observed_manufacturer = excluded.observed_manufacturer,
         observed_model = excluded.observed_model,
@@ -283,23 +207,9 @@ export async function refreshKnowledgeCatalogCandidates(
         reviewedAt,
         reviewedAt,
         reviewedAt,
+        ...guard.binds,
       );
   });
-  for (let offset = 0; offset < retiredIds.length; offset += 50) {
-    const ids = retiredIds.slice(offset, offset + 50);
-    writes.push(
-      db
-        .prepare(`
-      UPDATE knowledge_catalog_candidates
-      SET active_listing_count = 0, shop_count = 0, unclassified_count = 0, other_count = 0,
-          unresolved_identity_count = 0, priority_score = 0, last_reviewed_at = ?, updated_at = ?
-      WHERE id IN (${ids.map(() => "?").join(",")}) AND active_listing_count > 0
-    `)
-        .bind(reviewedAt, reviewedAt, ...ids),
-    );
-  }
-  await runBatches(db, writes);
-  return knowledgeCatalogCandidateStats(db);
 }
 
 export async function markKnowledgeCatalogProductsDue(

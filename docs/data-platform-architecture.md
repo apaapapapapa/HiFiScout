@@ -75,6 +75,23 @@ Dirty identities are claimed atomically with `UPDATE ... RETURNING`. Member look
 
 General cron shares a 45-call D1 budget across watchdogs, maintenance and bookkeeping. Five calls are reserved for finalization: ordinary work stops at 40, while bounded dispatch cleanup and successful task completion may use the reserve without exceeding 45. A failed catalog dispatch closes its incomplete run and jobs; a successful Queue wake always records maintenance completion, including when it used the final work call. SQL statements inside each batch are logged separately from binding calls. A 20-second wall-time deadline controls admission between work units; finalization may cross that deadline, which is not a CPU-time measurement or proof of Workers Free CPU compliance. `scheduled_maintenance_pending` retains due work across ticks, including separate daily retention, projection and verification tasks. Lease tokens fence late completion, and attempt ordering gives untouched work a turn after a budget yield. `general_cron_d1_usage` reports calls, statement count, elapsed time, rows read/written and deferrals; per-task failure logs include partial write usage too. Watchdog and task errors still use their existing durable recovery paths.
 
+Catalog candidate preparation also persists its progress in `knowledge_catalog_candidate_refresh`.
+It walks primary-key listing windows up to a captured ID horizon and stores per-identity accumulators
+in `knowledge_catalog_candidate_refresh_groups`, preserving normalization, cross-page counts and
+bounded evidence samples. Publication walks candidate keys in small, single-manufacturer pages;
+retirement starts only after all collection and publication pages finish. Each page's effects and
+cursor advance share one transaction, fenced by generation and revision, so a lost acknowledgement
+or concurrent continuation cannot double-count a page. Temporary groups are deleted in bounded
+pages after retirement. These checkpoints add bounded writes; unchanged published candidate rows
+and their AUTOINCREMENT sequence remain untouched.
+
+Scheduled daily, monthly and bootstrap callers share one preparation per UTC date. A yield retains
+the pending maintenance task and resumes preparation before claiming a verifier rollout or recovery
+run; review runs and Queue wake-ups are created only after preparation completes. The pages are
+eventually consistent observations, not a transaction-wide snapshot: edits behind the cursor and
+new listings beyond the horizon enter the next refresh. Explicit repository refreshes can request a
+new generation independently of that scheduled daily cache.
+
 The daily safety net remains isolated as `product_search_exact_identity_repair` in `src/scheduled.ts`. Its audit now traverses bounded candidate windows with a persistent cursor; the five-minute coverage/stale-fallback audit does the same. The candidate window is materialized before the gap predicate, so a repair-result LIMIT is never mistaken for a scan limit. Each phase advances through healthy windows and wraps at the end. If its repair allowance fills, it stops before any unprocessed gap. The explicit operator-only remaining-gap count is still an unbounded audit.
 
 Normal five-minute repair first consumes `listing_projection_pending`, then audits for omissions. Exact-identity change repair continues to consume its existing dirty set. Failure attempts rotate within the pending index, so a poison listing does not monopolize every pass. Use `scannedCount` and actual D1 accounting alongside repaired counts; finding zero defects is a performance case in its own right.

@@ -125,10 +125,22 @@ test("the backfill groups only confirmed identities and keeps unresolved listing
 test("production read-model drift fails operational health without rewriting deployment success", () => {
   assert.match(operationalHealthWorkflow, /workflows: \["Deploy Cloudflare"\]/);
   assert.match(operationalHealthWorkflow, /scripts\/production-operational-health\.sh/);
-  assert.match(operationalHealthScript, /AS unmembered_active_listings/);
-  assert.match(operationalHealthScript, /AS inactive_offer_memberships/);
-  assert.match(operationalHealthScript, /AS entities_without_offers/);
-  assert.match(operationalHealthScript, /AS stale_fallback_entities/);
+  assert.match(
+    readFileSync("scripts/sql/search-entity-health.sql", "utf8"),
+    /AS unmembered_active_listings/,
+  );
+  assert.match(
+    readFileSync("scripts/sql/search-entity-health.sql", "utf8"),
+    /AS inactive_offer_memberships/,
+  );
+  assert.match(
+    readFileSync("scripts/sql/search-entity-health.sql", "utf8"),
+    /AS entities_without_offers/,
+  );
+  assert.match(
+    readFileSync("scripts/sql/search-entity-health.sql", "utf8"),
+    /AS stale_fallback_entities/,
+  );
   assert.match(operationalHealthScript, /if \[ "\$search_drift" -ne 0 \]; then/);
   assert.match(operationalHealthScript, /api\/admin\/product-search\/rebuild/);
   assert.doesNotMatch(deployWorkflow, /AS unmembered_active_listings/);

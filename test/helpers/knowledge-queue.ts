@@ -45,6 +45,9 @@ export interface QueueDatabaseRecorder {
 
 export function queueDatabase(respond: (sql: string) => QueueStatementResponse = () => ({})) {
   const statements: QueueStatement[] = [];
+  // Dispatch-only doubles model an already-completed preparation. Real cursor/transaction
+  // behavior is exercised against migrated SQLite in knowledge-catalog-candidate-refresh.test.ts.
+  let completedRefresh: { phase: string; request_key: unknown } | null = null;
   const recorder: QueueDatabaseRecorder = {
     statements,
     ran(fragment: string) {
@@ -57,7 +60,13 @@ export function queueDatabase(respond: (sql: string) => QueueStatementResponse =
       // Recorded on the terminal call, so a statement counts once whether or not it binds first.
       const execute = (binds: unknown[]) => {
         statements.push({ sql, binds });
-        const response = respond(sql);
+        let response = respond(sql);
+        if (sql === "SELECT * FROM knowledge_catalog_candidate_refresh WHERE id = 1") {
+          response = { row: completedRefresh };
+        } else if (sql.includes("INSERT INTO knowledge_catalog_candidate_refresh\n")) {
+          completedRefresh = { phase: "complete", request_key: binds[1] };
+          response = {};
+        }
         return {
           async all() {
             return { results: response.rows || (response.row ? [response.row] : []) };

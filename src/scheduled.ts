@@ -5,6 +5,7 @@
  * `crawler/schedule.ts` from adapter metadata, so adding a shop never touches this file.
  */
 
+import { prepareScheduledKnowledgeCatalogCandidates } from "./db/knowledge-catalog-candidate-refresh.js";
 import { resumeInterruptedCrawlRuns } from "./crawler/crawl-continuation.js";
 import { recoverStalledCrawlRuns } from "./crawler/crawl-run-recovery.js";
 import { dispatchScheduledCrawl, recoverStalledCrawlDispatches } from "./crawler/dispatch.js";
@@ -375,6 +376,8 @@ async function strandedKnowledgeCatalogReviewRun(
  * queue has never been bootstrapped at all.
  */
 export async function bootstrapKnowledgeCatalogReview(env: Env, now = new Date()) {
+  // A cooperative refresh yield must precede verifier/recovery claims as well as run creation.
+  await prepareScheduledKnowledgeCatalogCandidates(env.DB, now);
   const startedAt = now.toISOString();
   const claimed = await claimKnowledgeCatalogVerifierVersion(
     env.DB,
