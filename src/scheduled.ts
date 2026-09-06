@@ -726,8 +726,11 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
     run: (env) => maintainRecentPriceIndexes(env.DB),
   },
   {
+    // One aggregate currently reads about 62k rows in production. Running it every fifteen
+    // minutes can consume the entire D1 free-tier read allowance by itself; public responses expose
+    // countsUpdatedAt, so hourly freshness keeps the cost bounded without hiding snapshot age.
     name: "public_meta_snapshot",
-    everyTicks: 3,
+    everyTicks: 12,
     offset: 1,
     run: (env, at) => refreshPublicMetaSnapshot(env.DB, at),
   },

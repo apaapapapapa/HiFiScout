@@ -2,7 +2,7 @@ import { firstMeasured } from "./read-accounting.js";
 import type { QueryableDatabase, ReadableDatabase } from "./types.js";
 
 /** Counts are refreshed globally, independently of HTTP traffic and edge-cache misses. */
-export const PUBLIC_META_REFRESH_MS = 15 * 60 * 1000;
+export const PUBLIC_META_REFRESH_MS = 60 * 60 * 1000;
 
 export interface MetaBatchRow {
   facet_kind?: "manufacturer" | "shop";

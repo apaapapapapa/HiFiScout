@@ -63,6 +63,18 @@ test("recent price-index maintenance runs once per hour", () => {
   assert.equal(firesIn.length, 1, "the ninety-day expiry projection only needs hourly precision");
 });
 
+test("public metadata aggregation runs once per hour", () => {
+  const firesIn = ticks(12).filter((at) =>
+    dueMaintenanceTasks(at).some((task) => task.name === "public_meta_snapshot"),
+  );
+
+  assert.equal(
+    firesIn.length,
+    1,
+    "the catalog-wide metadata aggregation must stay within the D1 free-tier read budget",
+  );
+});
+
 test("the scheduled price-index task invokes bounded backfill and expiry maintenance", async () => {
   const at = ticks(12).find((tick) =>
     dueMaintenanceTasks(tick).some((task) => task.name === "price_index_recent_refresh"),
