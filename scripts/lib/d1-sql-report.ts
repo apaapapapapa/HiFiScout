@@ -64,7 +64,7 @@ export function buildSqlLoadReport(
     observedTotals: publicStats(summary.hours.length ? summary.totals : undefined),
     hours: summary.hours.map((hour) => ({
       windowStart: hour.windowStart,
-      windowEnd: hour.windowEnd,
+      windowEnd: new Date(hour.windowEnd).toISOString(),
       collectedAt: new Date(hour.collectedAt).toISOString(),
       // A closed hour can still have only a provisional snapshot in R2.
       provisional: Date.parse(hour.collectedAt) < Date.parse(hour.windowEnd),

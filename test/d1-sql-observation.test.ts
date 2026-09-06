@@ -393,6 +393,8 @@ test("R2 report downloads gzip with bounded GETs and never publishes SQL or unkn
     "SELECT PRIVATE_SQL_BODY FROM PRIVATE_TABLE WHERE token='PRIVATE_VALUE'";
   archive.queries[0]!.rowsWritten = null;
   archive.totals.rowsWritten = null;
+  archive.windowEnd = "Sun, 06 Sep 2026 02:00:00 GMT (PRIVATE_END)";
+  archive.collectedAt = "Sun, 06 Sep 2026 01:23:00 GMT (PRIVATE_COLLECTED)";
   Object.assign(archive, { worker: "PRIVATE_WORKER", extra: "PRIVATE_TOP_LEVEL" });
   Object.assign(archive.totals, { extra: "PRIVATE_TOTALS" });
   Object.assign(archive.coverage, { extra: "PRIVATE_COVERAGE" });
@@ -417,6 +419,8 @@ test("R2 report downloads gzip with bounded GETs and never publishes SQL or unkn
   assert.equal(report.missingHours.length, 2);
   assert.equal(report.observedTotals.rowsRead, 100);
   assert.equal(report.observedTotals.rowsWritten, null);
+  assert.equal(report.hours[0]?.windowEnd, "2026-09-06T02:00:00.000Z");
+  assert.equal(report.hours[0]?.collectedAt, "2026-09-06T01:23:00.000Z");
   assert.equal(report.topReads[0]?.fingerprint, archive.queries[0]!.fingerprint);
   assert.equal(report.topReads[0]?.operation, "SELECT");
   assert.equal(report.topReads[0]?.rowsWritten, null);
