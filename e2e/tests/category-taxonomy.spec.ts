@@ -76,7 +76,7 @@ const categoryFacets: CategoryFacet[] = [
   },
   {
     id: "CAB.ANALOG",
-    name: "　Analog Interconnect",
+    name: "　アナログケーブル",
     parentId: "CAB",
     order: 1,
     classifiable: true,
@@ -158,7 +158,7 @@ test("live metadata exposes the complete canonical taxonomy including zero-count
     parentId: "ANA",
   });
   expect(facets.find((category) => category.id === "CAB.ANALOG")).toMatchObject({
-    name: "　Analog Interconnect",
+    name: "　アナログケーブル",
     parentId: "CAB",
   });
   expect(

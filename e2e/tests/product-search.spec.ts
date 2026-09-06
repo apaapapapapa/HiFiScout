@@ -202,16 +202,17 @@ test("an unresolved listing stays searchable as a product of its own", async ({
   page,
   catalogPage,
 }) => {
+  const unresolvedOffer = offer({
+    listing_product_id: 77,
+    title: "LUXMAN SQ-N150",
+    source_url: "https://example.com/shop-a/sq-n150",
+  });
   const unresolved = product({
     key: "l-77",
     identity_kind: "unresolved_listing",
     catalog_product_id: null,
     model: "SQ-N150",
-    representative_offer: offer({
-      listing_product_id: 77,
-      title: "LUXMAN SQ-N150",
-      source_url: "https://example.com/shop-a/sq-n150",
-    }),
+    representative_offer: unresolvedOffer,
   });
   await routeMeta(page);
   await routeProductSearch(page, () => ({
@@ -222,21 +223,26 @@ test("an unresolved listing stays searchable as a product of its own", async ({
     totalPages: 1,
   }));
   await routeProductDetail(page, (key) =>
-    key === "l-77" ? { product: unresolved, offers: [OFFERS[0]] } : null,
+    key === "l-77" ? { product: unresolved, offers: [unresolvedOffer] } : null,
   );
 
   await catalogPage.goto();
 
   await expect(catalogPage.cards).toHaveCount(2);
   await expect(catalogPage.count).toHaveText("2");
-  // A single-offer product links straight to the shop rather than to a comparison of one.
-  await expect(catalogPage.productTitle("SQ-N150")).toHaveAttribute(
+  // The seller link and the product detail control remain separate for a single offer.
+  await expect(catalogPage.card("l-77").locator(".shop-link")).toHaveAttribute(
     "href",
-    "https://example.com/shop-a/sq-n150",
+    unresolvedOffer.source_url,
   );
 
-  await catalogPage.openOffers("l-77");
+  await catalogPage.productTitle("SQ-N150").click();
+  await expect(page).toHaveURL(/\/p\/l-77(?:\?|$)/);
+  await expect(catalogPage.offersDialog).toBeVisible();
   await expect(catalogPage.offersDialog).toContainText("他店の在庫と照合できていません");
+  await expect(catalogPage.offersDialog).toContainText(unresolvedOffer.title);
+  await expect(catalogPage.offerLinks()).toHaveCount(1);
+  await expect(catalogPage.offerLinks()).toHaveAttribute("href", unresolvedOffer.source_url);
 });
 
 test("pagination totals count products, and page state survives back navigation", async ({
