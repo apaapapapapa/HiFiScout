@@ -8,6 +8,7 @@ import {
 } from "../api/admin-csv-contracts.js";
 import { categoryIdForClassification, getCategory } from "../catalog/categories.js";
 import { normalizeCatalogModel } from "../catalog/knowledge-catalog.js";
+import { catalogIdentityKey } from "../catalog/knowledge-catalog-identity.js";
 import { normalizeIdentityModel } from "../catalog/product-identity.js";
 import { updateListingAdminProduct } from "./listing-admin-repository.js";
 import { refreshListingProjections } from "./listing-projection-refresh.js";
@@ -110,6 +111,14 @@ function result(
     kind: change.original.kind,
     status,
     message,
+    ...(change.original.kind === "catalog"
+      ? {
+          catalogIdentityKey: catalogIdentityKey(
+            change.values.manufacturer_id,
+            change.values.canonical_model,
+          ),
+        }
+      : {}),
     ...extra,
   };
 }

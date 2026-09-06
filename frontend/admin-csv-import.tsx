@@ -4,6 +4,7 @@ import {
   ADMIN_CSV_MAX_FILE_BYTES,
   adminCsvCell,
   adminCsvPreviewBatches,
+  adminCsvPreviewResults,
   type AdminCsvChange,
   type AdminCsvResult,
 } from "../src/api/admin-csv-contracts.js";
@@ -152,6 +153,7 @@ export function AdminCsvImport({
           parsed.unchangedRows +
           "行は更新しません。",
       );
+      setResults(adminCsvPreviewResults(parsed.changes, checked));
       setValidated(true);
     } catch (failure) {
       if (mounted.current && !controller.signal.aborted) {

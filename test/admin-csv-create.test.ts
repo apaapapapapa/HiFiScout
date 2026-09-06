@@ -8,6 +8,7 @@ import {
   adminCsvNewCatalog,
   adminCsvOriginal,
   adminCsvPreviewBatches,
+  adminCsvPreviewResults,
   type AdminCsvChange,
 } from "../src/api/admin-csv-contracts.js";
 import { parseCsv, readAdminCsv } from "../frontend/admin-csv-parser.js";
@@ -81,7 +82,7 @@ test("CSV rejects duplicate new identities across preview batches and against un
   const parsed = readAdminCsv([header, ...rows].join("\n"));
   assert.equal([...adminCsvPreviewBatches(parsed.changes)].length, 2);
   assert.throws(
-    () => readAdminCsv([header, ...rows, newRow({ canonical_model: "NEW-0" })].join("\n")),
+    () => readAdminCsv([header, ...rows, newRow({ canonical_model: "NEW0" })].join("\n")),
     /重複/u,
   );
   const original = adminCsvOriginal("catalog", 1, values);
@@ -111,6 +112,29 @@ test("API accepts only an empty catalog before-image for creation and rejects du
   assert.ok(
     parseAdminCsvApply({ change: create(), revision: "token", operationId: crypto.randomUUID() }),
   );
+});
+
+test("server identity keys reject logical duplicates across all browser preview batches", async () => {
+  const { db, sqlite } = database();
+  try {
+    const rows = Array.from({ length: 22 }, (_, index) =>
+      newRow({ canonical_model: "NEW" + index }),
+    );
+    const parsed = readAdminCsv([header, ...rows, newRow({ canonical_model: "NEW-0" })].join("\n"));
+    const results = [];
+    for (const batch of adminCsvPreviewBatches(parsed.changes)) {
+      assert.ok(parseAdminCsvPreview({ changes: batch }));
+      for (const change of batch) results.push(await previewAdminCsvChange(db, change));
+    }
+    assert.ok(results.every((row) => row.status === "ready"));
+    const checked = adminCsvPreviewResults(parsed.changes, results);
+    assert.equal(checked[0].status, "invalid");
+    assert.equal(checked[22].status, "invalid");
+    assert.equal(checked.filter((row) => row.status === "ready").length, 21);
+    assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM admin_csv_import_changes").get()?.n, 0);
+  } finally {
+    sqlite.close();
+  }
 });
 
 test("catalog insertion is atomic, verified, auditable, round-trippable and idempotent", async () => {

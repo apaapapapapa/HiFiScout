@@ -56,6 +56,34 @@ export interface AdminCsvResult {
   message: string;
   revision?: string;
   operationId?: string;
+  /** Opaque server identity for cross-batch duplicate checks; the browser does not infer identity. */
+  catalogIdentityKey?: string;
+}
+
+export function adminCsvPreviewResults(
+  changes: readonly AdminCsvChange[],
+  results: readonly AdminCsvResult[],
+): AdminCsvResult[] {
+  const checked = [...results];
+  const identities = new Map<string, number>();
+  results.forEach((row, index) => {
+    const key = row.catalogIdentityKey;
+    if (!key) return;
+    const previous = identities.get(key);
+    if (
+      previous !== undefined &&
+      (changes[previous].original.id === null || changes[index].original.id === null)
+    ) {
+      for (const duplicate of [previous, index])
+        checked[duplicate] = {
+          ...checked[duplicate],
+          status: "invalid",
+          message:
+            results[previous].line + "行目と" + row.line + "行目のメーカー・型番が重複しています。",
+        };
+    } else identities.set(key, index);
+  });
+  return checked;
 }
 
 export interface AdminCsvApplyInput {

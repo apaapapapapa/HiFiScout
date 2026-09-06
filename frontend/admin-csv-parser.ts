@@ -7,7 +7,6 @@ import {
   isAdminCsvOriginal,
   type AdminCsvChange,
 } from "../src/api/admin-csv-contracts.js";
-import { catalogIdentityKey } from "../src/catalog/knowledge-catalog-identity.js";
 
 /** RFC 4180, including embedded newlines, escaped quotes, CRLF and a UTF-8 BOM. */
 export function* parseCsv(text: string): Generator<{ line: number; cells: string[] }> {
@@ -133,7 +132,14 @@ export function readAdminCsv(text: string): {
       }
     }
     if (original.kind === "catalog") {
-      const key = catalogIdentityKey(values.manufacturer_id, values.canonical_model);
+      // Catch literal duplicates locally. Logical spelling/manufacturer equivalence is returned
+      // by the server and checked across every preview batch before enabling apply.
+      const key = values.canonical_model.trim()
+        ? JSON.stringify([
+            values.manufacturer_id.trim(),
+            values.canonical_model.normalize("NFKC").trim().toUpperCase(),
+          ])
+        : "";
       const previous = identities.get(key);
       if (key && previous && (previous.creating || original.id === null))
         throw new Error(line + "行目: " + previous.line + "行目とメーカー・型番が重複しています。");
