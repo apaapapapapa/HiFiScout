@@ -358,7 +358,7 @@ test("an explicit archived database can be read while all live settings and D1 A
   assert.equal(await fake.client.load(DATABASE, "2026-09-05T01:00:00.000Z"), null);
 });
 
-test("passive scheduled collection does not enable active data-platform health jobs", () => {
+test("passive collection continues while all active operational health jobs are paused", () => {
   const workflow = readFileSync(
     new URL("../.github/workflows/production-operational-health.yml", import.meta.url),
     "utf8",
@@ -376,9 +376,7 @@ test("passive scheduled collection does not enable active data-platform health j
   for (const name of ["data-platform", "knowledge-catalog"]) {
     assert.match(
       workflow,
-      new RegExp(
-        `${name}:\\n    if: github.event_name == 'workflow_dispatch' \\|\\| github.event.workflow_run.conclusion == 'success'`,
-      ),
+      new RegExp(`${name}:\\n(?:    #[^\\n]*\\n)*    if: \\$\\{\\{ false \\}\\}`),
     );
   }
 });

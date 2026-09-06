@@ -44,8 +44,15 @@ Production resources are reconciled by `scripts/lib/production-resources.ts`: an
 
 ## Post-deploy verification
 
+Production operational health checks are temporarily paused at the operator's request.
+The `data-platform` and `knowledge-catalog` jobs have unconditional false job guards, so neither
+post-deploy nor manual workflow runs execute their queries or publish health statuses.
+The passive `d1-sql-archive` job continues collecting native Insights into R2 without querying D1.
+To resume health checks after explicit approval, restore both job conditions to
+`github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'`.
+
 - `e2e.yml` — browser/user-flow regression only. It does not monitor asynchronous queues or protected admin APIs.
-- `production-operational-health.yml` — production data-platform, Product Search identity, and Knowledge Catalog operational checks. Failures report degraded operations but do not rewrite a successful deployment.
+- `production-operational-health.yml` — passive D1 SQL archive remains active; production data-platform, Product Search identity, and Knowledge Catalog operational checks are paused. When enabled, failures report degraded operations but do not rewrite a successful deployment.
 
 Operational-health workflows are detection/reporting paths. They must not automatically mutate production data or re-run themselves through repair loops. Repair commands may exist as explicit maintenance scripts and can be invoked deliberately when an operator has identified the incident.
 

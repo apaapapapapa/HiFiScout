@@ -41,7 +41,9 @@ jobs:
         run: vp exec tsx scripts/archive-d1-sql.ts
 
   data-platform:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # Temporarily paused at the operator's request to stop production health-check queries.
+    # Restore the previous event condition when operational checks are explicitly resumed.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     # Active crawling keeps its own bound; all subsequent projection checks share one cron window.
     timeout-minutes: 35
@@ -112,7 +114,9 @@ jobs:
           description-prefix: Data platform health
 
   knowledge-catalog:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # Pause manual and post-deploy health checks together; passive SQL archiving stays active.
+    # Restore the previous event condition when operational checks are explicitly resumed.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
