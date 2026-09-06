@@ -151,10 +151,10 @@ test("an older repair does not acknowledge a newer membership token", async () =
       const statement = db.prepare(sql);
       if (!sql.startsWith("DELETE FROM product_search_catalog_pending")) return statement;
       return {
-        bind(...values: unknown[]) {
+        bind(...values: unknown[]): { run(): Promise<D1Result<unknown>> } {
           const bound = statement.bind(...values);
           return {
-            async run() {
+            async run(): Promise<D1Result<unknown>> {
               sqlite.exec(
                 "UPDATE product_search_catalog_pending SET token='newer' WHERE listing_product_id=51",
               );
