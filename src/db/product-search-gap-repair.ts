@@ -412,6 +412,45 @@ export async function repairActiveListingProjectionGaps(
   };
 
   if (phases !== "exact-identity") {
+    // Identity/catalog changes can leave existing offers in a fallback without changing products.
+    // Consume those narrow obligations before the full projection backlog or audit cursor. Commit
+    // each acknowledgement separately so a later budget yield cannot replay the first repairs.
+    const catalogPending = await db
+      .prepare(`
+      SELECT p.id, p.shop_key, p.source_id, pending.token
+      FROM product_search_catalog_pending pending
+      JOIN products p ON p.id = pending.listing_product_id
+      ORDER BY pending.last_attempt_at, pending.listing_product_id LIMIT ?
+    `)
+      .bind(maxListings)
+      .all<ProjectionGapRow & { token: string }>();
+    for (const row of catalogPending.results || []) {
+      attemptedListingIds.add(row.id);
+      selectedCount += 1;
+      // Rotate before work so a poison row or a budget yield cannot monopolize the next tick.
+      await db
+        .prepare(`UPDATE product_search_catalog_pending SET last_attempt_at = ?
+          WHERE listing_product_id = ? AND token = ? AND last_attempt_at IS NOT ?`)
+        .bind(evaluatedAt, row.id, row.token, evaluatedAt)
+        .run();
+      const refreshed = await refreshSelectedGaps(
+        db,
+        [row],
+        evaluatedAt,
+        continueOnRefreshError,
+        refreshStaleFallbackMembershipOnly,
+      );
+      repairedCount += refreshed.repairedCount;
+      failedCount += refreshed.failedCount;
+      if (refreshed.repairedCount) {
+        await db
+          .prepare(
+            "DELETE FROM product_search_catalog_pending WHERE listing_product_id = ? AND token = ?",
+          )
+          .bind(row.id, row.token)
+          .run();
+      }
+    }
     // Durable obligations are the normal repair path. The order rotates failures so a poison
     // listing cannot monopolize every tick. No historical table is searched to discover this work.
     const pending = await db
@@ -423,8 +462,12 @@ export async function repairActiveListingProjectionGaps(
     `)
       .bind(maxListings)
       .all<ProjectionGapRow & { token: string }>();
-    for (let i = 0; i < (pending.results || []).length; i += batchSize) {
-      const chunk = (pending.results || []).slice(i, i + batchSize);
+    // Membership-only completion does not acknowledge a concurrent full projection obligation.
+    const fullPending = (pending.results || [])
+      .filter((row) => !attemptedListingIds.has(row.id))
+      .slice(0, maxListings - selectedCount);
+    for (let i = 0; i < fullPending.length; i += batchSize) {
+      const chunk = fullPending.slice(i, i + batchSize);
       for (const row of chunk) attemptedListingIds.add(row.id);
       selectedCount += chunk.length;
       const refreshed = await refreshSelectedGaps(

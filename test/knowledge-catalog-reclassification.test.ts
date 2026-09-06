@@ -34,7 +34,7 @@ test("category reclassification retries a failed downstream projection refresh",
         },
       ];
     }
-    if (/FROM knowledge_catalog_products kp/.test(statement.sql)) {
+    if (/knowledge_catalog_products kp/.test(statement.sql)) {
       return [
         {
           id: 10,
