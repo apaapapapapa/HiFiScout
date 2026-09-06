@@ -21,6 +21,11 @@ The Docs workflow caches generated SchemaSpy output by the migration contents, W
 - `deploy-audiounion-lambda.yml` — deploy the AudioUnion relay Lambda.
 - `sync-audiounion-relay-secret.yml` — synchronize the relay credential required by the public Worker.
 
+Remote migrations use `db:migrate:remote`: each pending SQL file and its `d1_migrations` record
+are applied together through Wrangler's atomic SQL import path. This avoids the remote query
+endpoint's compound-trigger parsing failure without changing frozen SQL. Retries consult actual
+D1 history and resume at the first unapplied file; quota/CPU diagnostics retain their existing handling.
+
 `Deploy Cloudflare` publishes a 90-day `deployment-identity` artifact only after the public Worker and deployment-owned smoke checks succeed. The SHA inside that artifact (`deployment-sha.txt`) is the authoritative production baseline; the Deploy workflow run's `head_sha` and a downstream `workflow_run.head_sha` are not deployment identities. Every automatic downstream workflow must consume that artifact and operate on the exact deployed SHA.
 
 Cloudflare D1 free-tier daily row-read or row-write exhaustion (`7500`) is an external capacity gate, not evidence that the candidate Worker is invalid. If either quota blocks required migrations, `Deploy Cloudflare` succeeds as **deferred**, does not publish `deployment-identity`, leaves production on the last confirmed deployed SHA, and retries after the midnight-UTC quota reset. The scheduled retry never uses the schedule event's default-branch SHA: it resolves the newest successful `CI` run on `main` and proceeds only when that SHA's latest `deployment/cloudflare` status is the D1-quota-deferred status. A scheduled run with no such target is an intentional no-op.

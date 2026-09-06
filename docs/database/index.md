@@ -15,7 +15,15 @@ This keeps `migrations/*.sql` as the schema source of truth. No production D1 cr
 
 ## Migration changes and deployment
 
-Wrangler remains the migration runner. Files already on `main` are immutable: do not edit,
+Local migrations use Wrangler's migration command. Remote migrations use `vp run db:migrate:remote`,
+which reads `d1_migrations` and applies only pending files in filename order through Wrangler's
+`d1 execute --remote --file` SQL import path. Unlike remote `/query`, that path handles complete
+trigger bodies containing `CASE ... END`. Each unchanged file and its history insert share one
+atomic import: failure rolls both back, and retry skips previously committed files. D1 can briefly
+pause queries during each import, so keep deploy-time migrations small. Existing Wrangler history
+remains compatible; no applied migration is rewritten or marked successful separately from its SQL.
+
+Files already on `main` are immutable: do not edit,
 delete, rename, or renumber them, even to fix a comment. Correct mistakes with the next numbered
 forward migration. New files must have unique, consecutive four-digit prefixes after the highest
 baseline prefix; the two historical duplicate prefixes remain frozen as-is.
