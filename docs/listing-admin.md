@@ -132,6 +132,13 @@ from this CSV: use individual editing and regenerate it. Other unchanged rows re
 4. Download the result CSV if needed. If interrupted, choose the same edited CSV (or the result CSV)
    and run **差分を確認** again. Already-applied edits are skipped and pending projection work resumes.
 
+If the current page is still open, an interrupted update retains its operation IDs and can use
+**更新を再開** directly. An Access login failure offers **別タブでログインを確認**; authenticate there,
+then return to the original page to resume without parsing and previewing the file again. A lost
+response reuses the same durable operation ID. Only CSV preview/apply retry temporary network or
+502/503/504 failures, at most twice with backoff; authentication failures and conflicts stop promptly.
+Refreshing/closing the original page still requires selecting the CSV again.
+
 Updates are atomic **per changed row**, not across the whole file. The server revalidates at apply
 time and transactionally guards the current revision together with the mutation and durable receipt.
 A concurrent change stops processing without overwriting the newer values; earlier successful rows
@@ -146,6 +153,20 @@ Catalog identity corrections retain removed alias/source evidence in that receip
 identity evidence, and replay affected matched/candidate listings in pages of at most 10, including
 inactive retained listings. Explicit listing overrides continue to win. Re-uploading an unchanged CSV
 does not create receipts or rewrite products.
+
+Empty reference/discovery phases are skipped within the same request, without writing intermediate
+cursors. A catalog correction with no related listings therefore completes in one apply request
+instead of four. Nonempty work remains limited to one page of 10 listings per request; full pages
+still yield and persist their cursor. This reduces HTTP round trips and D1 receipt reads/writes;
+it does not increase the page size or run a whole import in one Worker invocation.
+
+Access validation caches only public signing keys and imported cryptographic keys. It checks the
+signature, issuer, audience and expiry on every request. Concurrent key loads are coalesced, and an
+unknown key can refresh the cache with a 30-second cooldown for rotation. A key-service outage or
+timeout fails closed with `cloudflare_access_unavailable` (503), separately from an invalid/missing
+login's `cloudflare_access_required` (403). The `admin_access_key_service_unavailable` event contains
+no tokens or identity data. The screenshot's old 403 alone cannot distinguish these causes.
+See [Cloudflare's JWT validation guidance](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/).
 
 Listing edits preserve untouched compatibility/canonical manufacturer IDs, category closure, direct
 membership and search aliases. Name/lifecycle-only catalog edits need no listing projections,

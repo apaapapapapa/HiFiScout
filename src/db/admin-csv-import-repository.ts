@@ -401,92 +401,99 @@ async function resumeReceipt(
     if (state.pending === 1) {
       await clearProjectionPendingForToken(db, receipt.target_id, state.projection_token);
     }
-  } else if (receipt.phase < (needsReclassification ? 3 : needsProjection ? 1 : 0)) {
-    let scanned: {
-      id: number;
-      shop_key: string;
-      source_id: string;
-      matched_catalog_id?: number | null;
-    }[] = [];
-    if (receipt.phase < 2) {
-      const column = receipt.phase === 0 ? "catalog_product_id" : "candidate_catalog_product_id";
-      const rows = await db
-        .prepare(`
+  } else {
+    const phaseCount = needsReclassification ? 3 : needsProjection ? 1 : 0;
+    let phase = receipt.phase;
+    let afterId = receipt.after_listing_id;
+    // Skip at most three empty phases here. One request still processes at most one nonempty page.
+    while (phase < phaseCount) {
+      let scanned: {
+        id: number;
+        shop_key: string;
+        source_id: string;
+        matched_catalog_id?: number | null;
+      }[] = [];
+      if (phase < 2) {
+        const column = phase === 0 ? "catalog_product_id" : "candidate_catalog_product_id";
+        const rows = await db
+          .prepare(`
         SELECT p.id, p.shop_key, p.source_id FROM product_identity_resolutions r
         JOIN products p ON p.id = r.listing_product_id
         WHERE r.${column} = ? AND r.listing_product_id > ?
         ORDER BY r.listing_product_id LIMIT ?`)
-        .bind(receipt.target_id, receipt.after_listing_id, REPLAY_PAGE_SIZE)
-        .all<{ id: number; shop_key: string; source_id: string }>();
-      scanned = rows.results || [];
-    } else {
-      const target = await loadCatalogRemediationTarget(db, receipt.target_id);
-      if (target?.identityModels.length) {
-        const rows = await db
-          .prepare(`SELECT p.id, p.shop_key, p.source_id, r.catalog_product_id AS matched_catalog_id
+          .bind(receipt.target_id, afterId, REPLAY_PAGE_SIZE)
+          .all<{ id: number; shop_key: string; source_id: string }>();
+        scanned = rows.results || [];
+      } else {
+        const target = await loadCatalogRemediationTarget(db, receipt.target_id);
+        if (target?.identityModels.length) {
+          const rows = await db
+            .prepare(`SELECT p.id, p.shop_key, p.source_id, r.catalog_product_id AS matched_catalog_id
           FROM products p LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
           WHERE p.canonical_manufacturer_id = ? AND p.normalized_model IN (${target.identityModels.map(() => "?").join(",")})
             AND p.id > ?
           ORDER BY p.id LIMIT ?`)
-          .bind(
-            target.manufacturerId,
-            ...target.identityModels,
-            receipt.after_listing_id,
-            REPLAY_PAGE_SIZE,
-          )
-          .all<{
-            id: number;
-            shop_key: string;
-            source_id: string;
-            matched_catalog_id: number | null;
-          }>();
-        scanned = rows.results || [];
+            .bind(target.manufacturerId, ...target.identityModels, afterId, REPLAY_PAGE_SIZE)
+            .all<{
+              id: number;
+              shop_key: string;
+              source_id: string;
+              matched_catalog_id: number | null;
+            }>();
+          scanned = rows.results || [];
+        }
       }
-    }
-    // Filter AFTER a bounded indexed page, and advance by scanned IDs even when all are skipped.
-    // Matches to this catalog were already refreshed in the reference phases (or by another writer).
-    const selected =
-      receipt.phase === 2
-        ? scanned.filter((row) => row.matched_catalog_id !== receipt.target_id)
-        : scanned;
-    const propagatedCategory = !identityChanged && receipt.phase === 0 && categoryChanged;
-    if (propagatedCategory) {
-      await propagateCatalogCategoryToMatchedListings(
-        db,
-        receipt.target_id,
-        catalogAdminCategoryIds(desired.primary_category_id),
-        now,
-        selected.map((row) => row.id),
-      );
-    } else if (identityChanged) {
-      await replayAdminCsvListings(
-        db,
-        selected.map((row) => row.id),
-        now,
-      );
-    } else {
-      await refreshListingProjections(db, selected, now);
-    }
-    // Propagation already refreshed these listings. Name/lifecycle edits cannot change category
-    // authority; only identity/category changes need candidate discovery and reclassification.
-    if (needsReclassification && !propagatedCategory) {
-      await reclassifyAdminCsvListings(
-        db,
-        selected.map((row) => row.id),
-        now,
-      );
-    }
-    const phase = scanned.length < REPLAY_PAGE_SIZE ? receipt.phase + 1 : receipt.phase;
-    const cursor = phase === receipt.phase ? scanned.at(-1)?.id || 0 : 0;
-    // A retry/concurrent tab can only advance the cursor it actually observed.
-    await db
-      .prepare(`UPDATE admin_csv_import_changes SET phase = ?, after_listing_id = ?, updated_at = ?
+      if (!scanned.length) {
+        phase += 1;
+        afterId = 0;
+        continue;
+      }
+      // Filter AFTER a bounded indexed page, and advance by scanned IDs even when all are skipped.
+      // Matches to this catalog were already refreshed in the reference phases (or by another writer).
+      const selected =
+        phase === 2
+          ? scanned.filter((row) => row.matched_catalog_id !== receipt.target_id)
+          : scanned;
+      const propagatedCategory = !identityChanged && phase === 0 && categoryChanged;
+      if (propagatedCategory) {
+        await propagateCatalogCategoryToMatchedListings(
+          db,
+          receipt.target_id,
+          catalogAdminCategoryIds(desired.primary_category_id),
+          now,
+          selected.map((row) => row.id),
+        );
+      } else if (identityChanged) {
+        await replayAdminCsvListings(
+          db,
+          selected.map((row) => row.id),
+          now,
+        );
+      } else {
+        await refreshListingProjections(db, selected, now);
+      }
+      // Propagation already refreshed these listings. Name/lifecycle edits cannot change category
+      // authority; only identity/category changes need candidate discovery and reclassification.
+      if (needsReclassification && !propagatedCategory) {
+        await reclassifyAdminCsvListings(
+          db,
+          selected.map((row) => row.id),
+          now,
+        );
+      }
+      const nextPhase = scanned.length < REPLAY_PAGE_SIZE ? phase + 1 : phase;
+      const cursor = nextPhase === phase ? scanned.at(-1)?.id || 0 : 0;
+      if (nextPhase >= phaseCount) break;
+      // A retry/concurrent tab can only advance the cursor it actually observed.
+      await db
+        .prepare(`UPDATE admin_csv_import_changes SET phase = ?, after_listing_id = ?, updated_at = ?
       WHERE operation_id = ? AND status = 'pending' AND phase = ? AND after_listing_id = ?`)
-      .bind(phase, cursor, now, receipt.operation_id, receipt.phase, receipt.after_listing_id)
-      .run();
-    return result(change, "pending", "関連商品と検索表示を反映しています。", {
-      operationId: receipt.operation_id,
-    });
+        .bind(nextPhase, cursor, now, receipt.operation_id, receipt.phase, receipt.after_listing_id)
+        .run();
+      return result(change, "pending", "関連商品と検索表示を反映しています。", {
+        operationId: receipt.operation_id,
+      });
+    }
   }
   await db
     .prepare(`UPDATE admin_csv_import_changes SET status = 'applied', updated_at = ?

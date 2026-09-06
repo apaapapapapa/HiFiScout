@@ -12,6 +12,50 @@ import { propagateCatalogCategoryToMatchedListings } from "../src/db/knowledge-c
 import { reclassifyAdminCsvListings } from "../src/db/knowledge-catalog-repository.js";
 import { refreshListingProjections } from "../src/db/listing-projection-refresh.js";
 
+test("D1 CSV catalog corrections with no related listings complete in one request without cursor writes", async () => {
+  const { db, dispose } = await database();
+  try {
+    await db
+      .prepare(`INSERT OR IGNORE INTO knowledge_catalog_manufacturers(id,canonical_name,created_at,updated_at)
+      VALUES('luxman','LUXMAN','${AT}','${AT}');
+      INSERT INTO knowledge_catalog_products(id,manufacturer_id,canonical_model,normalized_model,canonical_name,created_at,updated_at)
+      VALUES(1,'luxman','CSV-TUNER','CSVTUNER','LUXMAN CSV-TUNER','${AT}','${AT}');`)
+      .run();
+    const original = adminCsvOriginal("catalog", 1, {
+      manufacturer_id: "luxman",
+      canonical_model: "CSV-TUNER",
+      canonical_name: "LUXMAN CSV-TUNER",
+      primary_category_id: "",
+      lifecycle_status: "unknown",
+    });
+    const change = {
+      line: 2,
+      original,
+      values: { ...original.values, primary_category_id: "SRC.TUNER" },
+    };
+    const preview = await previewAdminCsvChange(db, change);
+    assert.equal(preview.status, "ready", preview.message);
+    const input = { change, revision: preview.revision || "", operationId: crypto.randomUUID() };
+    const measured = accountReads(db);
+    const result = await applyAdminCsvChange(measured.db, input);
+    assert.equal(result.status, "applied", "empty phases must not require another browser request");
+    assert.ok(measured.statementCount() < 35, `statements=${measured.statementCount()}`);
+    assert.ok(measured.rowsRead() < 150, `rows_read=${measured.rowsRead()}`);
+    const receipt = await db
+      .prepare(
+        "SELECT phase,after_listing_id,status FROM admin_csv_import_changes WHERE operation_id=?",
+      )
+      .bind(input.operationId)
+      .first();
+    assert.deepEqual(receipt, { phase: 0, after_listing_id: 0, status: "applied" });
+    const repeated = accountReads(db);
+    assert.equal((await applyAdminCsvChange(repeated.db, input)).status, "applied");
+    assert.equal(repeated.rowsWritten(), 0);
+  } finally {
+    await dispose();
+  }
+}, 30_000);
+
 test("D1 CSV import bills zero writes for unchanged and repeated edits and bounds measured no-op reads", async () => {
   const { db, dispose } = await database();
   try {
