@@ -24,6 +24,7 @@ import {
 } from "./knowledge-catalog-admin-repository.js";
 import type { QueryableDatabase, ReadableDatabase } from "./types.js";
 import { firstMeasured } from "./read-accounting.js";
+import { catalogCsvBootstrapManufacturer } from "./admin-csv-catalog-manufacturer.js";
 import {
   catalogCsvCreationRevision,
   createCatalogCsvProduct,
@@ -185,13 +186,19 @@ async function invalidReason(
       if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(value) || value.length > 100) {
         return "メーカーは検証済みのメーカーIDを指定してください。";
       }
-      const manufacturer = await firstMeasured(
+      const manufacturer = await firstMeasured<{ verification_status: string }>(
         db
-          .prepare(`SELECT id FROM knowledge_catalog_manufacturers
-        WHERE id = ? AND verification_status = 'verified'`)
+          .prepare(`SELECT verification_status FROM knowledge_catalog_manufacturers WHERE id = ?`)
           .bind(value),
       );
-      if (!manufacturer) return "指定したメーカーIDは未登録、または未検証です。";
+      // Crawls already trust the code registry without requiring an operational DB row. New
+      // catalog rows may materialize that evidence on apply; explicit DB decisions always win.
+      const verified = manufacturer
+        ? manufacturer.verification_status === "verified"
+        : kind === "catalog" &&
+          change.original.id === null &&
+          Boolean(catalogCsvBootstrapManufacturer(value));
+      if (!verified) return "指定したメーカーIDは未登録、または未検証です。";
     } else if (field === "primary_category_id") {
       if (!getCategory(value)?.classifiable || categoryIdForClassification(value) !== value) {
         return "カテゴリは分類可能な現在のカテゴリIDを指定してください。";
