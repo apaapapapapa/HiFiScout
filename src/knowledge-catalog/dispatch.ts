@@ -9,12 +9,12 @@
  * in the catalog; `monthly_recheck` marks verified products stale and re-reads their sources.
  */
 
+import { prepareScheduledKnowledgeCatalogCandidates } from "../db/knowledge-catalog-candidate-refresh.js";
 import { withD1Finalization } from "../db/invocation-budget.js";
 import {
   activeProductClassificationStats,
   finishKnowledgeCatalogReviewRunFailure,
   markKnowledgeCatalogProductsDue,
-  refreshKnowledgeCatalogCandidates,
   startKnowledgeCatalogReviewRun,
 } from "../db/knowledge-catalog-review-repository.js";
 import {
@@ -60,6 +60,8 @@ async function dispatchKnowledgeCatalogVerificationRun(
     throw new Error("knowledge_catalog_queue_binding_missing");
   }
 
+  // Preparation may span Cron invocations. Do not open a review run until it has finished.
+  await prepareScheduledKnowledgeCatalogCandidates(env.DB, now);
   const startedAt = now.toISOString();
   const runId = existingRunId || (await startKnowledgeCatalogReviewRun(env.DB, startedAt));
   let wakeupFailed = false;
@@ -75,7 +77,6 @@ async function dispatchKnowledgeCatalogVerificationRun(
     if (mode === "monthly_recheck") {
       await markKnowledgeCatalogProductsDue(env.DB, startedAt, reviewIntervalDays(env));
     }
-    await refreshKnowledgeCatalogCandidates(env.DB, startedAt);
 
     const verifier = createVerifier(env);
     const supportedManufacturerIds = [...verifier.definitions.keys()];

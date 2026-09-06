@@ -60,6 +60,16 @@ Operational-health workflows are detection/reporting paths. They must not automa
 
 The active-crawl wait keeps its existing bound. After that, the first projection drift observation creates one cron-plus-grace deadline in `PROJECTION_CONVERGENCE_STATE_FILE`; identity coverage, stale fallback and split-group checks share it. Each check still re-reads and fails on persistent drift, but cannot grant another full cron window after an earlier check already waited.
 
+When explicitly run, the data-platform script makes one full search-entity observation and captures
+the affected entity/listing IDs. Its remaining observations query only that scope and the listings'
+current memberships, retaining the initial catalog-wide counts as snapshot metadata. A deleted
+fallback is still checked for a missing listing membership. More than 1,000 IDs in either scope fails
+immediately instead of retrying a truncated sample or repeating the full audit. These rechecks prove
+convergence of the captured scope; unrelated changes after the first observation await a later audit.
+Latest quality history starts from indexed distinct-shop seeks and then fetches one indexed row per
+shop, including retired shops; equal timestamps select the highest ID. It does not scan every
+historical quality row. These SQL changes do not enable the suspended operational-health jobs.
+
 ### D1 query accounting
 
 The data-platform, Product Search identity and active-crawl convergence scripts share
