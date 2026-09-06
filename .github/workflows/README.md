@@ -1,5 +1,11 @@
 # GitHub Actions responsibility map
 
+`production-operational-health.yml` also owns a passive `d1-sql-archive` job. Its 15-minute schedule
+only archives native D1 Insights to private R2; it never runs the D1-backed convergence/repair jobs.
+The archive runs even after failed deployments and resolves the active Worker binding independently
+of `deployment-identity`. See [D1 SQL observation](../../docs/d1-sql-observation.md) for retention,
+coverage limits, permissions and incident analysis.
+
 HiFiScout keeps workflow orchestration thin. Domain behavior, repair logic, and data-quality rules belong in application or maintenance scripts; workflows select when to run them and report the result. Current workflow files define the active inventory; add another workflow only for a responsibility that cannot fit an existing owner.
 
 ## Validation

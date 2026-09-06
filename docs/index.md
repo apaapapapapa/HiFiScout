@@ -22,6 +22,7 @@ This site combines curated architecture documentation with references generated 
 - [Resolver replay status](./resolver-replay-status.md) — bounded manual maintenance and convergence.
 - [Registered Product Admin](./listing-admin.md) — Access-protected listing corrections and overrides.
 - [R2 evidence limits](./r2-evidence-safety.md) — archive budgets, deduplication, and retention.
+- [D1 SQL observation](./d1-sql-observation.md) — private R2 query-statistics archive and incident analysis without querying D1.
 
 CI/deployment ownership is maintained in `.github/workflows/README.md` in the repository. Public
 `/api/admin/*` routes are retired; use the separate Access-protected admin Worker and maintained
