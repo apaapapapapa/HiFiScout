@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-D1_QUERY_MAX_ATTEMPTS=3
-D1_QUERY_RETRY_SECONDS=5
+source "$(dirname "${BASH_SOURCE[0]}")/lib/d1-health-query.sh"
 ACTIVE_CRAWL_CONVERGENCE_MAX_WAIT_SECONDS="${ACTIVE_CRAWL_CONVERGENCE_MAX_WAIT_SECONDS:-480}"
 ACTIVE_CRAWL_CONVERGENCE_POLL_SECONDS="${ACTIVE_CRAWL_CONVERGENCE_POLL_SECONDS:-15}"
 GENERAL_CRON_INTERVAL_SECONDS="${GENERAL_CRON_INTERVAL_SECONDS:-300}"
@@ -45,38 +44,6 @@ if [[ "${1:-}" == '--projection-grace' ]]; then
 fi
 PROJECTION_REPAIR_GRACE_SECONDS="${PROJECTION_REPAIR_GRACE_SECONDS:-45}"
 
-query() {
-  local sql="$1"
-  local attempt output stderr_file
-
-  stderr_file="$(mktemp)"
-  for attempt in $(seq 1 "$D1_QUERY_MAX_ATTEMPTS"); do
-    if output="$(npx wrangler d1 execute DB --remote --json --command "$sql" 2>"$stderr_file")"; then
-      if jq -e 'type == "array" and (.[0]? | type == "object") and ((.[0].results? // null) | type == "array")' >/dev/null 2>&1 <<< "$output"; then
-        rm -f "$stderr_file"
-        jq '.[0].results' <<< "$output"
-        return 0
-      fi
-      echo "Remote D1 query returned an unexpected JSON shape (attempt ${attempt}/${D1_QUERY_MAX_ATTEMPTS})." >&2
-      if ! jq -c '.' <<< "$output" >&2 2>/dev/null; then
-        printf '%s\n' "$output" >&2
-      fi
-    else
-      echo "Remote D1 query failed (attempt ${attempt}/${D1_QUERY_MAX_ATTEMPTS})." >&2
-      cat "$stderr_file" >&2
-    fi
-
-    if [ "$attempt" -lt "$D1_QUERY_MAX_ATTEMPTS" ]; then
-      sleep "$D1_QUERY_RETRY_SECONDS"
-      : > "$stderr_file"
-    fi
-  done
-
-  rm -f "$stderr_file"
-  echo "Remote D1 query failed after ${D1_QUERY_MAX_ATTEMPTS} attempts." >&2
-  return 1
-}
-
 read_blocking_sessions() {
   query "
     SELECT
@@ -95,7 +62,7 @@ read_blocking_sessions() {
           AND r.listing_product_id IS NULL
       )
     GROUP BY s.shop_key
-    ORDER BY s.shop_key;"
+    ORDER BY s.shop_key;" "convergence.blocking_sessions"
 }
 
 read_identity_gap_rows() {
@@ -116,7 +83,7 @@ read_identity_gap_rows() {
     WHERE p.is_active = 1
       AND r.listing_product_id IS NULL
     ORDER BY p.id
-    LIMIT 25;"
+    LIMIT 25;" "convergence.identity_gaps"
 }
 
 if ! [[ "$ACTIVE_CRAWL_CONVERGENCE_MAX_WAIT_SECONDS" =~ ^[0-9]+$ ]] || \

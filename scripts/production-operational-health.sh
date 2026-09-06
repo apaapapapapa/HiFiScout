@@ -1,40 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-D1_QUERY_MAX_ATTEMPTS=3
-D1_QUERY_RETRY_SECONDS=5
-
-query() {
-  local sql="$1"
-  local attempt output stderr_file
-
-  stderr_file="$(mktemp)"
-  for attempt in $(seq 1 "$D1_QUERY_MAX_ATTEMPTS"); do
-    if output="$(npx wrangler d1 execute DB --remote --json --command "$sql" 2>"$stderr_file")"; then
-      if jq -e 'type == "array" and (.[0]? | type == "object") and ((.[0].results? // null) | type == "array")' >/dev/null 2>&1 <<< "$output"; then
-        rm -f "$stderr_file"
-        jq '.[0].results' <<< "$output"
-        return 0
-      fi
-      echo "Remote D1 query returned an unexpected JSON shape (attempt ${attempt}/${D1_QUERY_MAX_ATTEMPTS})." >&2
-      if ! jq -c '.' <<< "$output" >&2 2>/dev/null; then
-        printf '%s\n' "$output" >&2
-      fi
-    else
-      echo "Remote D1 query failed (attempt ${attempt}/${D1_QUERY_MAX_ATTEMPTS})." >&2
-      cat "$stderr_file" >&2
-    fi
-
-    if [ "$attempt" -lt "$D1_QUERY_MAX_ATTEMPTS" ]; then
-      sleep "$D1_QUERY_RETRY_SECONDS"
-      : > "$stderr_file"
-    fi
-  done
-
-  rm -f "$stderr_file"
-  echo "Remote D1 query failed after ${D1_QUERY_MAX_ATTEMPTS} attempts." >&2
-  return 1
-}
+source "$(dirname "${BASH_SOURCE[0]}")/lib/d1-health-query.sh"
 
 verify_audiounion_inventory() {
   local result row in_stock
@@ -45,7 +12,7 @@ verify_audiounion_inventory() {
       SUM(CASE WHEN stock_status = 'unknown' THEN 1 ELSE 0 END) AS unknown_count,
       MAX(last_seen_at) AS latest_seen_at
     FROM products
-    WHERE shop_key = 'audiounion' AND is_active = 1;")"
+    WHERE shop_key = 'audiounion' AND is_active = 1;" "data_platform.audiounion_inventory")"
   row="$(jq -c '.[0] // {}' <<< "$result")"
   echo 'AudioUnion inventory state:'
   jq . <<< "$row"
@@ -97,7 +64,7 @@ read_search_entities() {
           JOIN products p ON p.id = m.listing_product_id
           WHERE m.entity_id = e.id AND p.is_active = 1
         )
-      ) AS offer_count_mismatches;"
+      ) AS offer_count_mismatches;" "data_platform.search_entities"
 }
 
 search_drift_count() {
@@ -118,7 +85,7 @@ identity="$(query "
     SUM(CASE WHEN match_method = 'vetoed' THEN 1 ELSE 0 END) AS veto_count,
     SUM(CASE WHEN status = 'unresolved' AND candidate_catalog_product_id IS NOT NULL THEN 1 ELSE 0 END) AS candidate_count,
     MAX(evaluated_at) AS latest_evaluated_at
-  FROM product_identity_resolutions;")"
+  FROM product_identity_resolutions;" "data_platform.identity")"
 
 evidence="$(query "
   SELECT
@@ -126,7 +93,7 @@ evidence="$(query "
     COALESCE(SUM(content_bytes), 0) AS content_bytes,
     SUM(CASE WHEN COALESCE(r2_object_key, '') <> '' THEN 1 ELSE 0 END) AS object_key_count,
     MAX(captured_at) AS latest_captured_at
-  FROM evidence_archive;")"
+  FROM evidence_archive;" "data_platform.evidence")"
 
 shops="$(query "
   SELECT
@@ -137,7 +104,7 @@ shops="$(query "
   FROM products
   WHERE is_active = 1
   GROUP BY shop_key
-  ORDER BY shop_key;")"
+  ORDER BY shop_key;" "data_platform.shops")"
 
 baseline="$(query "
   SELECT
@@ -167,7 +134,7 @@ baseline="$(query "
   LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
   WHERE p.is_active = 1
   GROUP BY p.shop_key
-  ORDER BY p.shop_key;")"
+  ORDER BY p.shop_key;" "data_platform.baseline")"
 
 unresolved_manufacturers="$(query "
   SELECT
@@ -179,7 +146,7 @@ unresolved_manufacturers="$(query "
   WHERE p.is_active = 1 AND p.manufacturer_resolution_status <> 'resolved'
   GROUP BY p.normalized_raw_manufacturer
   ORDER BY active_listing_count DESC, shop_count DESC, p.normalized_raw_manufacturer
-  LIMIT 25;")"
+  LIMIT 25;" "data_platform.unresolved_manufacturers")"
 
 unresolved_manufacturer_models="$(query "
   SELECT
@@ -193,7 +160,7 @@ unresolved_manufacturer_models="$(query "
   GROUP BY p.canonical_manufacturer_id, p.normalized_model, p.shop_key
   ORDER BY active_listing_count DESC, p.canonical_manufacturer_id,
            p.normalized_model, p.shop_key
-  LIMIT 50;")"
+  LIMIT 50;" "data_platform.unresolved_manufacturer_models")"
 
 unresolved_models="$(query "
   SELECT
@@ -208,7 +175,7 @@ unresolved_models="$(query "
   GROUP BY p.canonical_manufacturer_id, p.model_resolution_status,
            p.model_resolution_method
   ORDER BY active_listing_count DESC, shop_count DESC, p.canonical_manufacturer_id
-  LIMIT 25;")"
+  LIMIT 25;" "data_platform.unresolved_models")"
 
 remediation_events="$(query "
   SELECT
@@ -219,7 +186,7 @@ remediation_events="$(query "
   FROM data_quality_remediation_events
   GROUP BY field, reason
   ORDER BY change_count DESC, field, reason
-  LIMIT 25;")"
+  LIMIT 25;" "data_platform.remediation_events")"
 
 remediation_queue="$(query "
   SELECT
@@ -229,7 +196,7 @@ remediation_queue="$(query "
     SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
     SUM(CASE WHEN status IN ('pending', 'processing') THEN 1 ELSE 0 END) AS backlog,
     MIN(CASE WHEN status IN ('pending', 'processing') THEN created_at END) AS oldest_pending_at
-  FROM data_quality_remediation_queue;")"
+  FROM data_quality_remediation_queue;" "data_platform.remediation_queue")"
 remediation_queue_with_rates="$(jq 'map(. + {
   completed: ((.resolved // 0) + (.failed // 0)),
   failure_rate: (if (((.resolved // 0) + (.failed // 0)) > 0) then ((.failed // 0) / ((.resolved // 0) + (.failed // 0))) else null end)
@@ -242,7 +209,7 @@ stale_resolver_versions="$(query "
     SUM(CASE WHEN model_resolver_version < 2 THEN 1 ELSE 0 END)
       AS stale_model_listings
   FROM products
-  WHERE is_active = 1;")"
+  WHERE is_active = 1;" "data_platform.stale_resolver_versions")"
 
 # Listing writes and search projection refreshes are separate bounded D1 writes. Most intermediate
 # states should disappear within seconds, so keep the short retry window. A stale fallback is the
@@ -291,7 +258,7 @@ quality_runs="$(query "
     ORDER BY q2.evaluated_at DESC, q2.id DESC
     LIMIT 1
   )
-  ORDER BY q.shop_key;")"
+  ORDER BY q.shop_key;" "data_platform.quality_runs")"
 
 baseline_with_rates="$(jq 'map(. + {
   manufacturer_unknown_rate: (if .total_items > 0 then ((.manufacturer_missing_count + .manufacturer_unresolved_count) / .total_items) else null end),
@@ -324,8 +291,10 @@ if [ "$search_drift" -ne 0 ]; then
   jq . <<< "$search_entities" >&2
   exit 1
 fi
-if ! npx wrangler d1 execute DB --remote --command \
-  "INSERT INTO product_search_entities_fts(product_search_entities_fts) VALUES('integrity-check');" >/dev/null; then
+# Preserve the integrity check's original single attempt, but retain its D1 metadata too.
+if ! (D1_QUERY_MAX_ATTEMPTS=1; query \
+  "INSERT INTO product_search_entities_fts(product_search_entities_fts) VALUES('integrity-check');" \
+  "data_platform.fts_integrity" >/dev/null); then
   echo "Product search FTS integrity check failed; POST /api/admin/product-search/rebuild repairs the read model." >&2
   exit 1
 fi
