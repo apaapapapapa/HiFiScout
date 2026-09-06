@@ -75,7 +75,9 @@ test("exact peer lookup stays identity-scoped as unrelated categories and listin
       ),
       JSON.stringify(planRows),
     );
-    console.log(JSON.stringify({ event: "exact_identity_peer_read_budget", costs, plan: planRows }));
+    console.log(
+      JSON.stringify({ event: "exact_identity_peer_read_budget", costs, plan: planRows }),
+    );
 
     // Exercise the helper with the caller alias that caused the bug, and with its old/local names.
     for (const alias of ["p", "peer", "category_peer", "peer_category_peer"]) {
