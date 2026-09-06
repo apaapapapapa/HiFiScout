@@ -72,8 +72,8 @@ import type { QueryableDatabase } from "./db/types.js";
 
 /** Five-minute maintenance/watchdog sweep. It no longer starts new shop crawls. */
 export const GENERAL_CRON = "*/5 * * * *";
-/** Daily shops start ten minutes apart in one pass; remaining ticks do not dispatch a shop. */
-export const CRAWL_ROTATION_CRON = "6-56/10 0-13,23 * * *";
+/** Two daily passes start at 11:00/17:00 JST, ten minutes apart; remaining ticks are idle. */
+export const CRAWL_ROTATION_CRON = "*/10 2-13 * * *";
 
 /**
  * Cloudflare Free permits five cron triggers per account. Shops with a dedicated cadence may share
