@@ -60,8 +60,14 @@ jobs:
       - name: Build catalog admin browser assets
         if: steps.deployment.outputs.available == 'true'
         run: vp run build:frontend:admin
-      - name: Deploy fail-closed admin Worker
+      - name: Check whether the admin Worker already exists
         if: steps.deployment.outputs.available == 'true'
+        id: worker
+        run: vp exec tsx scripts/provision-catalog-admin-access.ts --check-worker
+      # Only the first deployment needs a Worker ID before Access can be provisioned.
+      # Never replace a live, authenticated Worker with the unconfigured bootstrap version.
+      - name: Bootstrap new admin Worker with access denied
+        if: steps.deployment.outputs.available == 'true' && steps.worker.outputs.exists == 'false'
         run: >-
           vp exec wrangler deploy --config wrangler.admin.jsonc
           --var ACCESS_TEAM_DOMAIN:https://invalid.cloudflareaccess.com

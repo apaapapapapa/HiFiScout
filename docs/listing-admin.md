@@ -165,8 +165,14 @@ signature, issuer, audience and expiry on every request. Concurrent key loads ar
 unknown key can refresh the cache with a 30-second cooldown for rotation. A key-service outage or
 timeout fails closed with `cloudflare_access_unavailable` (503), separately from an invalid/missing
 login's `cloudflare_access_required` (403). The `admin_access_key_service_unavailable` event contains
-no tokens or identity data. The screenshot's old 403 alone cannot distinguish these causes.
+no tokens or identity data. Older deployments returned the same 403 for these different causes.
 See [Cloudflare's JWT validation guidance](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/).
+
+Admin redeploys preserve the running Worker's Access configuration while provisioning Access, then
+publish the configured replacement once. The unconfigured, access-denied bootstrap is used only
+when paginated Worker discovery confirms that no admin Worker exists. Discovery/provisioning errors
+stop deployment and leave an existing Worker in place; they must not be interpreted as absence.
+Publishing a bootstrap on every redeploy would temporarily reject otherwise valid CSV sessions.
 
 Listing edits preserve untouched compatibility/canonical manufacturer IDs, category closure, direct
 membership and search aliases. Name/lifecycle-only catalog edits need no listing projections,
