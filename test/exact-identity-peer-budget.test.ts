@@ -120,11 +120,15 @@ test("exact peer lookup stays identity-scoped as unrelated categories and listin
       assert.deepEqual(await peers(), expected);
     }
     await db
-      .prepare("UPDATE products SET primary_category_id = 'AMP.INTEGRATED', is_active = 0 WHERE id = 5")
+      .prepare(
+        "UPDATE products SET primary_category_id = 'AMP.INTEGRATED', is_active = 0 WHERE id = 5",
+      )
       .run();
     assert.deepEqual(await peers(), [1, 2, 3, 4]);
     await db
-      .prepare("UPDATE products SET is_active = 1, model_resolution_status = 'candidate' WHERE id = 5")
+      .prepare(
+        "UPDATE products SET is_active = 1, model_resolution_status = 'candidate' WHERE id = 5",
+      )
       .run();
     assert.deepEqual(await peers(), [1, 2, 3, 4]);
     await db.prepare("UPDATE products SET model_resolution_status = 'resolved' WHERE id = 5").run();
