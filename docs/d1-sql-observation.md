@@ -108,6 +108,48 @@ Use the archived template to locate repository code. Do not replay the stored SQ
 literals and quoted identifiers have been removed and writes could change production data. Read
 query plans against a safe local fixture, then compare observed read/write costs after a change.
 
+### Reports for scheduled analysis
+
+`Production Operational Health` also runs R2-only analysis at **07:50, 11:50, 17:50 and 22:50 JST**
+(`50 2,8,13,22 * * *` UTC), ahead of the assistant's 08:00, 12:00, 18:00 and 23:00 checks.
+These report-only runs skip Insights collection. Manual and post-deployment runs generate a report
+after their normal archive step. The 15-minute archive schedule is unchanged. Separate concurrency
+groups keep an archive run from replacing a pending scheduled report. Active health audits remain
+paused.
+
+The dedicated, public-safe entrypoint downloads the original gzip bytes, decompresses and validates
+them, and reuses the same bounded R2 loader and aggregation as the private analysis command:
+
+```sh
+vp exec tsx scripts/report-d1-sql.ts --hours 24 --output /tmp/d1-sql-load-report.json
+```
+
+The workflow keeps only this JSON in the `d1-sql-load-report` Actions artifact for five days. It also
+prints exactly one machine-readable `D1_SQL_LOAD_REPORT {json}` line in the `d1-sql-archive` job log,
+so a GitHub connector can read it without downloading a binary artifact. The report includes UTC
+hour windows, collection/report timestamps, reporter commit, observed metrics, missing hours,
+provisional snapshots, coverage limits, and the top 20 query fingerprints for each cost ranking.
+Operation names come from a fixed allowlist. SQL text, table/column names, literals, returned rows,
+credentials, raw errors and unknown archive fields are excluded from this output. Never substitute
+`analyze-d1-sql.ts` in the public workflow: that private command intentionally includes SQL templates.
+
+`archiveAvailability: complete` means every requested hourly object was present, **not** that every
+SQL execution or billed row was captured. A snapshot collected before its hour ended remains marked
+`provisional`, even when the report is generated later. Missing metrics remain `null`; when no objects
+are available all observed totals are `null` and the reporting command fails. Authentication errors,
+malformed objects and decompression failures also fail rather than publishing misleading results.
+
+Consumers must check the workflow/job conclusion, `generatedAt`, requested hours, missing hours and
+snapshot collection times. GitHub schedules can be delayed or skipped: do not present an older report
+as the current run. Compare disjoint hourly windows and never add overlapping 24-hour reports. Use
+fingerprints to correlate the report with private Insights/archive analysis when SQL inspection is
+needed, keeping that SQL out of PRs and public logs.
+
+Each report reads at most 24 known R2 object keys, with no listing scan, R2 writes, Insights requests
+or application D1 queries. The four scheduled reports add at most 96 R2 object reads per day, plus
+manual/post-deployment reports and control-plane binding/deployment lookups. No raw gzip or private
+analysis result is uploaded to GitHub, and no R2 public access or retention policy is changed.
+
 ## Verification
 
 Every successful archive job reads back each R2 object and verifies its database, hour and collection

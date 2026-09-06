@@ -9,6 +9,8 @@ on:
   schedule:
     # Passive SQL telemetry only; never run convergence/repair scans on this schedule.
     - cron: "8,23,38,53 * * * *"
+    # R2-only analysis before the 08:00/12:00/18:00/23:00 JST assistant checks.
+    - cron: "50 2,8,13,22 * * *"
 
 permissions:
   actions: read
@@ -17,7 +19,7 @@ permissions:
 
 concurrency:
   # Long convergence checks must not delay the independent passive archive schedule.
-  group: production-operational-health-${{ github.event_name == 'schedule' && 'sql-archive' || 'checks' }}
+  group: production-operational-health-${{ github.event_name == 'schedule' && (github.event.schedule == '50 2,8,13,22 * * *' && 'sql-report' || 'sql-archive') || 'checks' }}
   # Cancel older checks that started before the pause when the next post-deploy/manual run arrives.
   cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
@@ -28,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     concurrency:
-      group: production-d1-sql-archive
+      group: production-d1-sql-${{ github.event_name == 'schedule' && github.event.schedule == '50 2,8,13,22 * * *' && 'report' || 'archive' }}
       cancel-in-progress: false
     permissions:
       contents: read
@@ -39,7 +41,20 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/setup-node-deps
       - name: Archive native D1 SQL insights to private R2 and verify read-back
+        if: github.event_name != 'schedule' || github.event.schedule != '50 2,8,13,22 * * *'
         run: vp exec tsx scripts/archive-d1-sql.ts
+      - name: Analyze archived SQL without publishing SQL text
+        id: sql-report
+        if: github.event_name != 'schedule' || github.event.schedule == '50 2,8,13,22 * * *'
+        run: vp exec tsx scripts/report-d1-sql.ts --hours 24 --output "${RUNNER_TEMP}/d1-sql-load-report.json"
+      - name: Preserve public-safe SQL load report
+        if: steps.sql-report.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: d1-sql-load-report
+          path: ${{ runner.temp }}/d1-sql-load-report.json
+          retention-days: 5
+          if-no-files-found: error
 
   data-platform:
     # Temporarily paused at the operator's request to stop production health-check queries.
