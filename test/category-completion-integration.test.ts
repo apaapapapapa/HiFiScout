@@ -146,8 +146,9 @@ test("feature-state SQL matches missing, explicit absent and conflicting evidenc
       )
       .map((row) => String(row.detail))
       .join("\n");
-    assert.match(plan, /SEARCH m USING/);
-    assert.match(plan, /SEARCH pff USING/);
+    assert.match(plan, /SEARCH m USING[^\n]+\(entity_id=\?\)/);
+    assert.match(plan, /SEARCH pff USING[^\n]+\([^\n)]*product_id=\?[^\n)]*\)/);
+    assert.ok(plan.indexOf("SEARCH m USING") < plan.indexOf("SEARCH pff USING"), plan);
     assert.doesNotMatch(plan, /SCAN (?:m|pff)\b/);
   } finally {
     sqlite.close();

@@ -58,6 +58,9 @@ test("disc and tape formats do not add product categories or imply recording", (
 test("bare speaker parts and finished add-on tweeters remain distinct", () => {
   for (const [title, part] of [
     ["フルレンジユニット F1", "driver"],
+    ["スピーカーユニット S1", "driver"],
+    ["ドライバーユニット D1", "driver"],
+    ["speaker driver unit D2", "driver"],
     ["ツイーター T1", "tweeter"],
     ["ホーン H1", "horn"],
     ["エンクロージャー E1", "enclosure"],
@@ -71,10 +74,19 @@ test("bare speaker parts and finished add-on tweeters remain distinct", () => {
     "後付けスーパーツイーター ST1",
     "ホーン型スピーカー S1",
     "speaker with tweeter S1",
+    "ツイーターユニット搭載 スピーカー S1",
+    "ドライバーユニット内蔵 スピーカー S2",
+    "スピーカー S3 フルレンジユニットを採用",
+    "speaker with a speaker driver unit S4",
   ]) {
     assert.deepEqual(inferExplicitCategoryIds(title), ["SPK.LOUDSPEAKER"], title);
     assert.ok(!facets(title).some((facet) => facet.startsWith("part_type:")), title);
   }
+  assert.deepEqual(inferExplicitCategoryIds("スピーカーユニット搭載 プリメインアンプ A1"), [
+    "AMP.INTEGRATED",
+  ]);
+  // A generic amplifier still has insufficient evidence for a specific amplifier type.
+  assert.deepEqual(inferExplicitCategoryIds("スピーカーユニット搭載アンプ"), []);
 });
 
 test("headphone structure, cartridge method and phono support are separate dimensions", () => {

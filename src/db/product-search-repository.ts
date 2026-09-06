@@ -218,11 +218,15 @@ function addProductFilters(query: ProductQuery, where: string[], binds: unknown[
     const [featureId, state = "present"] = feature.split(":");
     // Indexed, entity-local evidence only. No evidence and conflicting states are both unknown;
     // neither may satisfy an explicit absence filter. This matches resolveFeatureState().
+    // CROSS JOIN fixes the loop order: first this entity's offers, then their product/feature facts.
+    // A reorderable join can instead scan every fact for the feature for each candidate entity.
+    // Enumerate both stored states to bind every key of the existing feature/state/product index.
     where.push(`COALESCE((
       SELECT CASE WHEN MIN(pff.state) = MAX(pff.state) THEN MIN(pff.state) END
       FROM product_search_entity_offers m
-      JOIN product_feature_facts pff ON pff.product_id = m.listing_product_id
+      CROSS JOIN product_feature_facts pff ON pff.product_id = m.listing_product_id
       WHERE m.entity_id = e.id AND pff.feature_id = ?
+        AND pff.state IN ('present', 'absent')
     ), 'unknown') = ?`);
     binds.push(featureId, state);
   }
