@@ -75,6 +75,27 @@ Dirty identities are claimed atomically with `UPDATE ... RETURNING`. Member look
 
 General cron shares a 45-call D1 budget across watchdogs, maintenance and bookkeeping. Five calls are reserved for finalization: ordinary work stops at 40, while bounded dispatch cleanup and successful task completion may use the reserve without exceeding 45. A failed catalog dispatch closes its incomplete run and jobs; a successful Queue wake always records maintenance completion, including when it used the final work call. SQL statements inside each batch are logged separately from binding calls. A 20-second wall-time deadline controls admission between work units; finalization may cross that deadline, which is not a CPU-time measurement or proof of Workers Free CPU compliance. `scheduled_maintenance_pending` retains due work across ticks, including separate daily retention, projection and verification tasks. Lease tokens fence late completion, and attempt ordering gives untouched work a turn after a budget yield. `general_cron_d1_usage` reports calls, statement count, elapsed time, rows read/written and deferrals; per-task failure logs include partial write usage too. Watchdog and task errors still use their existing durable recovery paths.
 
+Catalog candidate preparation also persists its progress in `knowledge_catalog_candidate_refresh`.
+It walks primary-key listing windows up to a captured ID horizon and stores per-identity accumulators
+in `knowledge_catalog_candidate_refresh_groups`, preserving normalization, cross-page counts and
+bounded evidence samples. Publication walks candidate keys in bounded pages and batches indexed
+manufacturer/model lookups and guarded JSON row-set writes;
+retirement starts only after all collection and publication pages finish. Each page's effects and
+cursor advance share one transaction, fenced by generation and revision, so a lost acknowledgement
+or concurrent continuation cannot double-count a page. Temporary groups are deleted in bounded
+pages after retirement. These checkpoints add bounded reads and writes; unchanged published candidate rows
+and their AUTOINCREMENT sequence remain untouched.
+
+Scheduled daily, monthly and bootstrap callers share one preparation per UTC date. A yield retains
+the pending maintenance task and resumes preparation before claiming a verifier rollout or recovery
+run; the ordinary hourly bootstrap no-op does not start a refresh or consume the daily date key.
+When an older generation crosses midnight, it is completed and cleaned before the requested day's
+new horizon is processed. Review runs and Queue wake-ups are created only after that requested
+preparation completes. The pages are
+eventually consistent observations, not a transaction-wide snapshot: edits behind the cursor and
+new listings beyond the horizon enter the next refresh. Explicit repository refreshes can request a
+new generation independently of that scheduled daily cache.
+
 The daily safety net remains isolated as `product_search_exact_identity_repair` in `src/scheduled.ts`. Its audit now traverses bounded candidate windows with a persistent cursor; the five-minute coverage/stale-fallback audit does the same. The candidate window is materialized before the gap predicate, so a repair-result LIMIT is never mistaken for a scan limit. Each phase advances through healthy windows and wraps at the end. If its repair allowance fills, it stops before any unprocessed gap. The explicit operator-only remaining-gap count is still an unbounded audit.
 
 Normal five-minute repair first consumes `product_search_catalog_pending` for verified Catalog membership transitions, then `listing_projection_pending` for full projections, then audits for omissions. Migration 0096 captures existing mismatched verified memberships and records new eligible Identity/Catalog transitions atomically, including one verified Catalog product changing to another. Membership repair verifies the current authoritative catalog ID without rerunning Identity decisions or acknowledging full projection obligations. Each successful repair clears only its captured token, so a later budget yield or concurrent edit cannot lose work. Exact-identity change repair continues to consume its existing dirty set. Failure attempts rotate within the pending index, so a poison listing does not monopolize every pass. Use `scannedCount` and actual D1 accounting alongside repaired counts; finding zero defects is a performance case in its own right.
@@ -215,7 +236,7 @@ Filters split by what they describe, and the split is load-bearing:
 
 When offer filters are active, the card summary — offer count, shop count, lowest price, activity — is recomputed over the matching offers, so a card can never contradict the filter that produced it.
 
-Explicit sorting follows the same offer subset as the card whenever an offer filter changes the meaning of the sort key. Unfiltered sorts use indexed stored entity aggregates. With only `inStock=true`, price sorts use `lowest_in_stock_price_yen`, and date sorts use `newest_in_stock_listed_at` or `latest_in_stock_activity_at`. Migration 0097 backfills the two date fields once and adds partial ordering indexes for entities with in-stock offers. Guarded triggers on changed listing facts and offer memberships maintain these dates within the affected entities, including writes from an older Worker during rollout or rollback. Unchanged dates add no writes. These paths filter on the stored in-stock count before pagination; sold-out, unknown-stock and inactive offers cannot determine their date order. Additional offer filters such as shop or price range still require a request-scoped matching-offer aggregate to preserve the visible subset's ordering.
+Explicit sorting follows the same offer subset as the card whenever an offer filter changes the meaning of the sort key. Unfiltered sorts use indexed stored entity aggregates. With only `inStock=true`, price sorts use `lowest_in_stock_price_yen`, and date sorts use `newest_in_stock_listed_at` or `latest_in_stock_activity_at`. Migration 0098 backfills the two date fields once and adds partial ordering indexes for entities with in-stock offers. Guarded triggers on changed listing facts and offer memberships maintain these dates within the affected entities, including writes from an older Worker during rollout or rollback. Unchanged dates add no writes. These paths filter on the stored in-stock count before pagination; sold-out, unknown-stock and inactive offers cannot determine their date order. Additional offer filters such as shop or price range still require a request-scoped matching-offer aggregate to preserve the visible subset's ordering.
 
 | `?sort=` | ordering |
 | --- | --- |
