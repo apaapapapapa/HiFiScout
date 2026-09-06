@@ -40,11 +40,21 @@ function closeReactOffersDialog(): void {
   const dialog = document.querySelector<HTMLDialogElement>("#offers-dialog");
   if (!dialog?.open) return;
   suppressDialogClose = true;
+  // Native close events are queued. Let React finish clearing the old offers before restoring
+  // the latest route, which may already have changed again through Forward or another click.
+  dialog.addEventListener(
+    "close",
+    () => {
+      suppressDialogClose = false;
+      queueMicrotask(restoreProductFromHistory);
+    },
+    { once: true },
+  );
   dialog.close();
-  suppressDialogClose = false;
 }
 
 function restoreProductFromHistory(): void {
+  if (suppressDialogClose) return;
   const key = productKeyFromPermalinkPath(location.pathname);
   if (!key) {
     hideServerPermalink();
@@ -92,6 +102,12 @@ function install(): void {
           history.pushState({ ...current, [HISTORY_STATE_KEY]: key }, "", nextUrl);
           hideServerPermalink();
         }
+      }
+
+      if (key && suppressDialogClose) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
       }
 
       const close =
