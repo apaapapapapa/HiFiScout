@@ -11,7 +11,7 @@ import {
   parseKnowledgeCatalogAdminUpdate,
   parseKnowledgeCatalogDuplicateListQuery,
 } from "../http/knowledge-catalog-admin.js";
-import { verifyCloudflareAccessRequest } from "./access.js";
+import { requireCloudflareAccess } from "./access.js";
 import { parseAdminCsvPreview, parseAdminCsvApply } from "../http/admin-csv-import.js";
 import { ADMIN_CSV_MAX_REQUEST_BYTES } from "../api/admin-csv-contracts.js";
 import type { DataExportFormat } from "../export/contracts.js";
@@ -397,11 +397,11 @@ export async function handleAuthenticatedCatalogAdminRequest(
 
 export default {
   async fetch(request: Request, env: CatalogAdminEnv): Promise<Response> {
-    const claims = await verifyCloudflareAccessRequest(request, {
+    const denied = await requireCloudflareAccess(request, {
       teamDomain: env.ACCESS_TEAM_DOMAIN || "",
       audience: env.ACCESS_AUD || "",
     });
-    if (!claims) return json({ error: "cloudflare_access_required" }, { status: 403 });
+    if (denied) return denied;
     return handleAuthenticatedCatalogAdminRequest(request, env);
   },
 } satisfies ExportedHandler<CatalogAdminEnv>;

@@ -8,7 +8,8 @@ import {
   type AdminCsvResult,
 } from "../src/api/admin-csv-contracts.js";
 import { readAdminCsv } from "./admin-csv-parser.js";
-import { adminJson, type CategoryFacet } from "./admin-shared.js";
+import { AdminOperationError, genericErrorText, type CategoryFacet } from "./admin-shared.js";
+import { adminCsvRequest } from "./admin-csv-request.js";
 
 const FIELD_LABELS: Record<string, string> = {
   manufacturer_id: "メーカーID",
@@ -68,6 +69,9 @@ export function AdminCsvImport({
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [page, setPage] = useState(0);
+  const [validated, setValidated] = useState(false);
+  const [needsLogin, setNeedsLogin] = useState(false);
+  const [paused, setPaused] = useState(false);
   const active = useRef<AbortController | null>(null);
   const mounted = useRef(true);
 
@@ -93,6 +97,9 @@ export function AdminCsvImport({
     active.current = controller;
     setBusy(true);
     setError("");
+    setNeedsLogin(false);
+    setPaused(false);
+    setValidated(false);
     setResults([]);
     setChanges([]);
     setPage(0);
@@ -115,8 +122,8 @@ export function AdminCsvImport({
       const checked: AdminCsvResult[] = [];
       for (const batch of adminCsvPreviewBatches(parsed.changes)) {
         setMessage("変更行を検証中: " + checked.length + " / " + parsed.changes.length + "件");
-        const response = await adminJson<{ items: AdminCsvResult[] }>(
-          "/api/admin/csv-import/preview",
+        const response = await adminCsvRequest<{ items: AdminCsvResult[] }>(
+          "preview",
           {
             method: "POST",
             signal: controller.signal,
@@ -124,6 +131,7 @@ export function AdminCsvImport({
               changes: batch,
             }),
           },
+          () => setMessage("接続を再試行しています。検証の進捗は保持されています。"),
         );
         if (!mounted.current || controller.signal.aborted) return;
         checked.push(...response.items);
@@ -137,9 +145,11 @@ export function AdminCsvImport({
           parsed.unchangedRows +
           "行は更新しません。",
       );
+      setValidated(true);
     } catch (failure) {
       if (mounted.current && !controller.signal.aborted) {
-        setError(failure instanceof Error ? failure.message : "CSVを検証できませんでした。");
+        setNeedsLogin(failure instanceof AdminOperationError && failure.requiresAuthentication);
+        setError(genericErrorText(failure));
       }
     } finally {
       if (mounted.current) setBusy(false);
@@ -152,6 +162,8 @@ export function AdminCsvImport({
     active.current = controller;
     setBusy(true);
     setError("");
+    setNeedsLogin(false);
+    setPaused(false);
     const progress = [...results];
     try {
       for (let index = 0; index < changes.length; index += 1) {
@@ -159,14 +171,21 @@ export function AdminCsvImport({
         if (!row || (row.status !== "ready" && row.status !== "pending")) continue;
         let operationId = row.operationId || crypto.randomUUID();
         let revision = row.revision || "";
+        // Save the ID before sending: a lost response may already have committed this operation.
+        progress[index] = { ...row, operationId, revision };
+        setResults([...progress]);
         setPage(Math.floor(index / PAGE_SIZE));
         do {
           setMessage(index + 1 + " / " + changes.length + "件目を更新・反映しています。");
-          row = await adminJson<AdminCsvResult>("/api/admin/csv-import/apply", {
-            method: "POST",
-            signal: controller.signal,
-            body: JSON.stringify({ change: changes[index], revision, operationId }),
-          });
+          row = await adminCsvRequest<AdminCsvResult>(
+            "apply",
+            {
+              method: "POST",
+              signal: controller.signal,
+              body: JSON.stringify({ change: changes[index], revision, operationId }),
+            },
+            () => setMessage("接続を再試行しています。適用済みの更新は重複実行しません。"),
+          );
           if (!mounted.current || controller.signal.aborted) return;
           // A concurrent upload may already have committed this exact edit.
           operationId = row.operationId || operationId;
@@ -175,6 +194,7 @@ export function AdminCsvImport({
           setResults([...progress]);
         } while (row.status === "pending");
         if (row.status !== "applied" && row.status !== "unchanged") {
+          setValidated(false);
           throw new Error(
             "更新を中断しました。結果を確認し、差分を再確認してから再試行してください。",
           );
@@ -190,10 +210,10 @@ export function AdminCsvImport({
       onApplied?.();
     } catch (failure) {
       if (mounted.current && !controller.signal.aborted) {
-        setError(
-          (failure instanceof Error ? failure.message : "更新できませんでした。") +
-            " 同じCSVを再確認すると、適用済みの行を除き、未完了の反映を再開できます。",
-        );
+        setPaused(true);
+        setNeedsLogin(failure instanceof AdminOperationError && failure.requiresAuthentication);
+        setMessage("更新を一時停止しました。適用済みの行と再開位置は保持されています。");
+        setError(genericErrorText(failure));
       }
     } finally {
       if (mounted.current) setBusy(false);
@@ -213,7 +233,6 @@ export function AdminCsvImport({
 
   const blocked = results.some((row) => ["invalid", "conflict", "failed"].includes(row.status));
   const ready = results.filter((row) => row.status === "ready" || row.status === "pending").length;
-  const validated = changes.length > 0 && results.length === changes.length && !error;
   const pageCount = Math.max(1, Math.ceil(changes.length / PAGE_SIZE));
   return (
     <section className="csv-import-panel" aria-labelledby="csv-import-heading">
@@ -255,6 +274,9 @@ export function AdminCsvImport({
             setMessage("");
             setError("");
             setPage(0);
+            setValidated(false);
+            setNeedsLogin(false);
+            setPaused(false);
           }}
         />
         <button type="button" onClick={() => void preview()} disabled={!file || busy}>
@@ -266,7 +288,7 @@ export function AdminCsvImport({
           onClick={() => void apply()}
           disabled={busy || !validated || blocked || ready === 0}
         >
-          {ready}件の更新を実行
+          {paused ? `残り${ready}件の更新を再開` : `${ready}件の更新を実行`}
         </button>
         {changes.length > 0 && (
           <button type="button" onClick={downloadResults}>
@@ -280,6 +302,15 @@ export function AdminCsvImport({
       {error && (
         <p role="alert" className="csv-import-error">
           {error}
+        </p>
+      )}
+      {needsLogin && (
+        <p>
+          <a href="/" target="_blank" rel="noopener noreferrer">
+            別タブでログインを確認
+          </a>{" "}
+          ログイン後にこの画面へ戻り、{validated ? "更新を再開" : "差分を確認"}してください。
+          この画面を再読み込みする必要はありません。
         </p>
       )}
       {blocked && (

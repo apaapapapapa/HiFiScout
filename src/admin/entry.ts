@@ -1,7 +1,7 @@
 import { json, isSameOriginBrowserMutation, withCatalogAdminSecurityHeaders } from "./http.js";
 import { isJsonRequest, readJsonBody, REQUEST_BODY_TOO_LARGE } from "../http/request.js";
 import catalogAdmin from "./index.js";
-import { verifyCloudflareAccessRequest } from "./access.js";
+import { requireCloudflareAccess } from "./access.js";
 import type { CatalogAdminRpc } from "./contracts.js";
 import {
   parseListingAdminListQuery,
@@ -193,11 +193,11 @@ export default {
     const pathname = new URL(request.url).pathname;
     if (!isAdminEntryRoute(pathname)) return catalogAdmin.fetch(request, env);
 
-    const claims = await verifyCloudflareAccessRequest(request, {
+    const denied = await requireCloudflareAccess(request, {
       teamDomain: env.ACCESS_TEAM_DOMAIN || "",
       audience: env.ACCESS_AUD || "",
     });
-    if (!claims) return json({ error: "cloudflare_access_required" }, { status: 403 });
+    if (denied) return denied;
     return handleAuthenticatedAdminEntryRequest(request, env);
   },
 } satisfies ExportedHandler<AdminEnv>;

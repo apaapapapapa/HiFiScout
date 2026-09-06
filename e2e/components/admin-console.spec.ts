@@ -193,7 +193,7 @@ test("admin exports expose every ZIP volume and retain the legacy CSV download",
   await expect.poll(() => formats).toEqual(["csv", "complete"]);
 });
 
-test("CSV import previews the edit before applying and follows a durable pending operation", async ({
+test("CSV import retries an outage with the same operation and follows durable pending work", async ({
   page,
   mount,
 }) => {
@@ -219,10 +219,13 @@ test("CSV import previews the edit before applying and follows a durable pending
       });
     }
     received.push(input);
+    if (received.length === 1) {
+      return route.fulfill({ status: 503, json: { error: "cloudflare_access_unavailable" } });
+    }
     return route.fulfill({
       json: {
         ...result,
-        status: received.length === 1 ? "pending" : "applied",
+        status: received.length === 2 ? "pending" : "applied",
         operationId,
       },
     });
@@ -243,10 +246,92 @@ test("CSV import previews the edit before applying and follows a durable pending
   expect(received).toHaveLength(0);
   await panel.getByRole("button", { name: "1件の更新を実行" }).click();
   await expect(panel.getByRole("status")).toContainText("更新が完了しました");
-  expect(received).toHaveLength(2);
-  expect(received[1].operationId).toBe(operationId);
+  expect(received).toHaveLength(3);
+  expect(received[1].operationId).toBe(received[0].operationId);
+  expect(received[2].operationId).toBe(operationId);
   await expect(panel.getByRole("button", { name: "結果CSVをダウンロード" })).toBeEnabled();
 });
+
+for (const failure of ["expired", "redirect"] as const) {
+  test(`CSV import retains progress and resumes after an Access ${failure}`, async ({
+    page,
+    mount,
+  }) => {
+    const originals = [21, 22].map((id) =>
+      adminCsvOriginal("listing", id, {
+        manufacturer_id: "luxman",
+        model: "C10",
+        primary_category_id: "AMP.PRE",
+      }),
+    );
+    const csv =
+      "listing_id," +
+      adminCsvEditHeader("listing") +
+      "\n" +
+      originals
+        .map(
+          (original) =>
+            original.id + "," + adminCsvEditRow(original).replace(/,"C10",/u, ',"C11",'),
+        )
+        .join("\n");
+    let previews = 0;
+    const received: { operationId: string; change: { original: { id: number } } }[] = [];
+    await page.route("**/api/admin/csv-import/*", async (route) => {
+      const input = route.request().postDataJSON();
+      if (route.request().url().endsWith("/preview")) {
+        previews += 1;
+        return route.fulfill({
+          json: {
+            items: originals.map((original, index) => ({
+              line: index + 2,
+              id: original.id,
+              kind: "listing",
+              status: "ready",
+              revision: "revision",
+              message: "更新可能",
+            })),
+          },
+        });
+      }
+      received.push(input);
+      if (received.length === 2) {
+        return failure === "expired"
+          ? route.fulfill({ status: 403, json: { error: "cloudflare_access_required" } })
+          : route.fulfill({ status: 302, headers: { location: "/cdn-cgi/access/login" } });
+      }
+      return route.fulfill({
+        json: {
+          line: input.change.line,
+          id: input.change.original.id,
+          kind: "listing",
+          status: "applied",
+          operationId: input.operationId,
+          message: "適用済み",
+        },
+      });
+    });
+    const component = await mount("frontend/admin-console/Default");
+    const admin = new AdminConsolePage(component, page);
+    await admin.catalog.csvSummary.click();
+    const panel = component.getByRole("region", { name: "編集したCSVで一括更新" });
+    await panel
+      .getByLabel("編集済みCSV（100MiB以内）")
+      .setInputFiles({ name: "resume.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
+    await panel.getByRole("button", { name: "差分を確認" }).click();
+    await panel.getByRole("button", { name: "2件の更新を実行" }).click();
+    await expect(panel.getByRole("alert")).toContainText("別タブでログイン");
+    await expect(panel.getByRole("link", { name: "別タブでログインを確認" })).toHaveAttribute(
+      "target",
+      "_blank",
+    );
+    await panel.getByRole("button", { name: "残り1件の更新を再開" }).click();
+    await expect(panel.getByRole("status")).toContainText("更新が完了しました");
+    expect(previews).toBe(1);
+    expect(received.map((input) => input.change.original.id)).toEqual([21, 22, 22]);
+    expect(received[2].operationId).toBe(received[1].operationId);
+    await expect(panel.getByRole("alert")).toHaveCount(0);
+  });
+}
 
 test("admin catalog screen uses the shared POM for search and edit flows", async ({
   page,
