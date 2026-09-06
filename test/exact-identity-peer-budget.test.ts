@@ -22,9 +22,10 @@ test("exact peer lookup stays identity-scoped as unrelated categories and listin
       .run();
     const sql = exactIdentityPeerIdsSql(1);
     const expected = [1, 2, 3, 4, 5];
-    const peers = async () => {
+    const peers = async (): Promise<number[]> => {
       const result = await db.prepare(sql).bind(1).all<{ id: number }>();
-      return (result.results || []).map((row) => row.id).sort((a, b) => a - b);
+      const rows: { id: number }[] = result.results || [];
+      return rows.map((row) => row.id).sort((a, b) => a - b);
     };
     const costs: { size: number; rowsRead: number; rowsWritten: number; statements: number }[] = [];
     let previous = 5;
@@ -65,17 +66,16 @@ test("exact peer lookup stays identity-scoped as unrelated categories and listin
     }
     assert.equal(new Set(costs.map((cost) => cost.rowsRead)).size, 1);
     const plan = await db.prepare(`EXPLAIN QUERY PLAN ${sql}`).bind(1).all<{ detail: string }>();
+    const planRows: { detail: string }[] = plan.results || [];
     assert.ok(
-      (plan.results || []).some((row) =>
+      planRows.some((row) =>
         /SEARCH peer_category_peer .*canonical_manufacturer_id=\? AND normalized_model=\?/.test(
           row.detail,
         ),
       ),
-      JSON.stringify(plan.results),
+      JSON.stringify(planRows),
     );
-    console.log(
-      JSON.stringify({ event: "exact_identity_peer_read_budget", costs, plan: plan.results }),
-    );
+    console.log(JSON.stringify({ event: "exact_identity_peer_read_budget", costs, plan: planRows }));
 
     // Exercise the helper with the caller alias that caused the bug, and with its old/local names.
     for (const alias of ["p", "peer", "category_peer", "peer_category_peer"]) {
