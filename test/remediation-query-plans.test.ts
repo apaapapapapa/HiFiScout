@@ -220,6 +220,7 @@ const SEARCH_SHAPES = [
   { label: "full text", search: "?q=TAD&includeTotal=true&limit=20" },
   { label: "price sort", search: "?sort=priceAsc&limit=20" },
   { label: "filters", search: "?manufacturer=tad&category=dac&inStock=true&limit=20" },
+  { label: "shop filters", search: "?shop=shop-0&inStock=true&sort=newest&limit=20" },
 ] as const;
 
 for (const shape of SEARCH_SHAPES) {
@@ -254,13 +255,22 @@ for (const shape of SEARCH_SHAPES) {
         : shape.label === "filters"
           ? [
               {
-                tables: ["p", "json_each", "presentation"],
-                when: /matching_sort ON matching_sort.entity_id = e.id/,
+                tables: ["json_each", "presentation"],
+                when: /FROM product_search_entities e WHERE/,
                 reason:
-                  "Known catalog-sized matching-offer sort aggregate (follow-up #484); JSON walks are request-sized manufacturer aliases. LIMIT does not bound this aggregate",
+                  "Manufacturer JSON walks contain only request-sized aliases; in-stock date ordering uses persisted aggregates",
               },
             ]
-          : [];
+          : shape.label === "shop filters"
+            ? [
+                {
+                  tables: ["p", "matching_sort"],
+                  when: /matching_sort ON matching_sort.entity_id = e.id/,
+                  reason:
+                    "The matching shop/stock offer aggregate is computed before LIMIT; in-stock-only read budgets do not cover additional offer filters",
+                },
+              ]
+            : [];
     assertNoGrowingTableScans(sqlite, executed, { label: shape.label, allowances });
     if (shape.label === "price sort") {
       assertNoSortBeforeLimit(sqlite, executed, shape.label);
