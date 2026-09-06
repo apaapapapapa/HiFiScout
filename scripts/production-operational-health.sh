@@ -24,47 +24,15 @@ verify_audiounion_inventory() {
 }
 
 read_search_entities() {
-  query "
-    SELECT
-      (SELECT COUNT(*) FROM product_search_entities) AS entity_count,
-      (SELECT COUNT(*) FROM product_search_entities WHERE entity_kind = 'catalog') AS catalog_entity_count,
-      (SELECT COUNT(*) FROM product_search_entities WHERE entity_kind = 'unresolved_listing') AS fallback_entity_count,
-      (SELECT COUNT(*) FROM product_search_entities WHERE shop_count > 1) AS multi_shop_entity_count,
-      (SELECT COUNT(*) FROM product_search_entity_offers) AS offer_count,
-      (SELECT COUNT(*) FROM products p
-        WHERE p.is_active = 1
-          AND NOT EXISTS (SELECT 1 FROM product_search_entity_offers m WHERE m.listing_product_id = p.id)
-      ) AS unmembered_active_listings,
-      (SELECT COUNT(*) FROM product_search_entity_offers m
-        JOIN products p ON p.id = m.listing_product_id
-        WHERE p.is_active = 0
-      ) AS inactive_offer_memberships,
-      (SELECT COUNT(*) FROM product_search_entities e
-        WHERE NOT EXISTS (SELECT 1 FROM product_search_entity_offers m WHERE m.entity_id = e.id)
-      ) AS entities_without_offers,
-      (SELECT COUNT(*) FROM product_search_entities e
-        WHERE e.entity_kind = 'unresolved_listing'
-          AND EXISTS (
-            SELECT 1 FROM product_identity_resolutions r
-            JOIN knowledge_catalog_products kp
-              ON kp.id = r.catalog_product_id AND kp.verification_status = 'verified'
-            WHERE r.listing_product_id = e.fallback_listing_id AND r.status = 'matched'
-          )
-      ) AS stale_fallback_entities,
-      (SELECT COUNT(*) FROM product_search_entities e
-        WHERE e.entity_kind = 'catalog'
-          AND NOT EXISTS (
-            SELECT 1 FROM knowledge_catalog_products kp
-            WHERE kp.id = e.catalog_product_id AND kp.verification_status = 'verified'
-          )
-      ) AS ineligible_catalog_entities,
-      (SELECT COUNT(*) FROM product_search_entities e
-        WHERE e.offer_count <> (
-          SELECT COUNT(*) FROM product_search_entity_offers m
-          JOIN products p ON p.id = m.listing_product_id
-          WHERE m.entity_id = e.id AND p.is_active = 1
-        )
-      ) AS offer_count_mismatches;" "data_platform.search_entities"
+  query "$(cat scripts/sql/search-entity-health.sql)" "data_platform.search_entities"
+}
+
+recheck_search_entities() {
+  local sql
+  sql="$(cat scripts/sql/search-entity-health-recheck.sql)"
+  sql="${sql//__ENTITY_IDS__/$search_entity_ids}"
+  sql="${sql//__LISTING_IDS__/$search_listing_ids}"
+  query "$sql" "data_platform.search_entities_recheck"
 }
 
 search_drift_count() {
@@ -218,6 +186,14 @@ stale_resolver_versions="$(query "
 # that state unhealthy. Other kinds of drift do not get this extended grace period.
 search_entities="$(read_search_entities)"
 search_drift="$(search_drift_count "$search_entities")"
+# Refuse a truncated retry scope. A large incident fails after the single full observation.
+search_entity_ids="$(jq -cer '.[0].entity_ids | fromjson | if all(.[]; type == "number" and . > 0 and floor == .) then . else error("invalid entity IDs") end' <<< "$search_entities")"
+search_listing_ids="$(jq -cer '.[0].listing_ids | fromjson | if all(.[]; type == "number" and . > 0 and floor == .) then . else error("invalid listing IDs") end' <<< "$search_entities")"
+if [ "$(jq length <<< "$search_entity_ids")" -gt 1000 ] || [ "$(jq length <<< "$search_listing_ids")" -gt 1000 ]; then
+  echo "Search drift exceeds the bounded retry scope; refusing to report partial convergence." >&2
+  jq . <<< "$search_entities" >&2
+  exit 1
+fi
 if [ "$search_drift" -ne 0 ]; then
   non_stale_drift="$(search_non_stale_drift_count "$search_entities")"
   stale_fallback="$(jq '.[0].stale_fallback_entities // 0' <<< "$search_entities")"
@@ -236,7 +212,8 @@ for attempt in 2 3 4 5; do
   if [ "$search_drift" -eq 0 ]; then
     break
   fi
-  search_entities="$(read_search_entities)"
+  recheck="$(recheck_search_entities)"
+  search_entities="$(jq -cn --argjson initial "$search_entities" --argjson current "$recheck" '[$initial[0] + $current[0]]')"
   search_drift="$(search_drift_count "$search_entities")"
   if [ "$search_drift" -eq 0 ]; then
     break
@@ -248,17 +225,7 @@ for attempt in 2 3 4 5; do
   fi
 done
 
-quality_runs="$(query "
-  SELECT q.*
-  FROM data_quality_runs q
-  WHERE q.id = (
-    SELECT q2.id
-    FROM data_quality_runs q2
-    WHERE q2.shop_key = q.shop_key
-    ORDER BY q2.evaluated_at DESC, q2.id DESC
-    LIMIT 1
-  )
-  ORDER BY q.shop_key;" "data_platform.quality_runs")"
+quality_runs="$(query "$(cat scripts/sql/latest-quality-runs.sql)" "data_platform.quality_runs")"
 
 baseline_with_rates="$(jq 'map(. + {
   manufacturer_unknown_rate: (if .total_items > 0 then ((.manufacturer_missing_count + .manufacturer_unresolved_count) / .total_items) else null end),

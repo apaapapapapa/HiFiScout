@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
+import { prepareScheduledKnowledgeCatalogCandidates } from "../src/db/knowledge-catalog-candidate-refresh.js";
 import { invocationBudget, InvocationBudgetExceeded } from "../src/db/invocation-budget.js";
 import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from "../src/catalog/knowledge-verification/verifier.js";
 import { accountReads } from "../src/db/read-accounting.js";
@@ -23,7 +24,7 @@ const MODES = [
   ["knowledge_catalog_monthly_recheck", dispatchKnowledgeCatalogMonthlyRecheck],
 ] as const;
 
-test("a production-sized candidate refresh fits the scheduled invocation budget across many manufacturers", async () => {
+test("a production-sized candidate refresh resumes within each invocation budget across many manufacturers", async () => {
   const { db, sqlite } = migratedSqlite();
   try {
     sqlite.exec(`
@@ -48,26 +49,35 @@ test("a production-sized candidate refresh fits the scheduled invocation budget 
     `);
     await enqueueMaintenance(db, [MODES[0][0]], AT);
     const queue = queueBinding();
-    const budget = invocationBudget(db, { finalizationReserve: RESERVE });
-    // The cron's watchdog and task bookkeeping share this same limit.
-    for (let call = 0; call < 8; call += 1) await budget.db.prepare("SELECT 1").first();
-    await runPendingMaintenance(queueEnv(budget.db, queue.binding) as Env, AT, budget, [
-      {
-        name: MODES[0][0],
-        run: (env) => dispatchKnowledgeCatalogDailyVerification(env, { now: AT }),
-      },
-    ]);
+    const dailyMetrics = [];
+    let lastTick = AT;
+    for (let tick = 0; tick < 80 && queue.sent.length === 0; tick++) {
+      lastTick = new Date(AT.getTime() + tick * 5 * 60_000);
+      const budget = invocationBudget(db, { finalizationReserve: RESERVE });
+      // The cron's watchdog and task bookkeeping share this same limit on EVERY continuation.
+      for (let call = 0; call < 8; call += 1) await budget.db.prepare("SELECT 1").first();
+      await runPendingMaintenance(queueEnv(budget.db, queue.binding) as Env, lastTick, budget, [
+        {
+          name: MODES[0][0],
+          run: (env, now) => dispatchKnowledgeCatalogDailyVerification(env, { now }),
+        },
+      ]);
+      dailyMetrics.push(budget.metrics());
+      assert.ok(budget.metrics().d1Calls <= 45, JSON.stringify(budget.metrics()));
+    }
+    assert.ok(dailyMetrics.length > 1, "a large refresh must exercise durable continuation");
+    const retryAt = new Date(lastTick.getTime() + 5 * 60_000);
     assert.equal(
       queue.sent.length,
       1,
       JSON.stringify({
         message: "large catalogs must reach the Queue instead of restarting each tick",
-        metrics: budget.metrics(),
+        metrics: dailyMetrics,
         candidates: sqlite.prepare("SELECT COUNT(*) n FROM knowledge_catalog_candidates").get()?.n,
         jobs: sqlite.prepare("SELECT COUNT(*) n FROM knowledge_catalog_verification_jobs").get()?.n,
       }),
     );
-    assert.deepEqual(await pendingMaintenance(db, LATER), []);
+    assert.deepEqual(await pendingMaintenance(db, retryAt), []);
     assert.equal(
       sqlite.prepare("SELECT COUNT(*) n FROM knowledge_catalog_candidates").get()?.n,
       3000,
@@ -84,7 +94,6 @@ test("a production-sized candidate refresh fits the scheduled invocation budget 
       sqlite.prepare("SELECT COUNT(*) n FROM knowledge_catalog_verification_jobs").get()?.n,
       201,
     );
-    assert.ok(budget.metrics().d1Calls <= 45, JSON.stringify(budget.metrics()));
 
     // Production recovery has its own version/status reads before it can retry the failed run.
     sqlite.exec("UPDATE knowledge_catalog_review_runs SET status='failed'");
@@ -93,14 +102,14 @@ test("a production-sized candidate refresh fits the scheduled invocation budget 
       VALUES (?,'success',?)`)
       .run(KNOWLEDGE_CATALOG_VERIFIER_VERSION, AT.toISOString());
     const recoveryName = "knowledge_catalog_review_bootstrap";
-    await enqueueMaintenance(db, [recoveryName], LATER);
+    await enqueueMaintenance(db, [recoveryName], retryAt);
     const recovery = invocationBudget(db, { finalizationReserve: RESERVE });
     for (let call = 0; call < 8; call += 1) await recovery.db.prepare("SELECT 1").first();
-    await runPendingMaintenance(queueEnv(recovery.db, queue.binding) as Env, LATER, recovery, [
-      { name: recoveryName, run: (env) => bootstrapKnowledgeCatalogReview(env, LATER) },
+    await runPendingMaintenance(queueEnv(recovery.db, queue.binding) as Env, retryAt, recovery, [
+      { name: recoveryName, run: (env) => bootstrapKnowledgeCatalogReview(env, retryAt) },
     ]);
     assert.equal(queue.sent.length, 2, JSON.stringify(recovery.metrics()));
-    assert.deepEqual(await pendingMaintenance(db, new Date(LATER.getTime() + 5 * 60_000)), []);
+    assert.deepEqual(await pendingMaintenance(db, new Date(retryAt.getTime() + 5 * 60_000)), []);
     assert.equal(
       sqlite
         .prepare("SELECT status FROM knowledge_catalog_review_runs ORDER BY id DESC LIMIT 1")
@@ -110,7 +119,8 @@ test("a production-sized candidate refresh fits the scheduled invocation budget 
     console.log(
       JSON.stringify({
         event: "catalog_dispatch_scale_budget",
-        daily: budget.metrics(),
+        dailyInvocations: dailyMetrics.length,
+        dailyMaxCalls: Math.max(...dailyMetrics.map((usage) => usage.d1Calls)),
         recovery: recovery.metrics(),
       }),
     );
@@ -161,8 +171,9 @@ test("a recovery run claimed just before a yield is closed before dispatch takes
       "INSERT INTO knowledge_catalog_review_runs(started_at, status, message) VALUES (?, 'failed', 'previous_dispatch_failed')",
     )
     .run(AT.toISOString());
-  // Version claim, three status lookups, then the atomic recovery-run insert.
-  const budget = invocationBudget(db, { maxCalls: 5 + RESERVE, finalizationReserve: RESERVE });
+  await prepareScheduledKnowledgeCatalogCandidates(db, AT);
+  // Three status lookups, cached preparation, recovery insert and abandoned-job cleanup.
+  const budget = invocationBudget(db, { maxCalls: 6 + RESERVE, finalizationReserve: RESERVE });
   const queue = queueBinding();
   await assert.rejects(
     bootstrapKnowledgeCatalogReview(queueEnv(budget.db, queue.binding) as Env, AT),
@@ -176,7 +187,7 @@ test("a recovery run claimed just before a yield is closed before dispatch takes
       .map((row) => row.status),
     ["failed", "failed"],
   );
-  assert.equal(budget.metrics().d1Calls, 6);
+  assert.equal(budget.metrics().d1Calls, 7);
 });
 
 for (const [name, dispatch] of MODES) {

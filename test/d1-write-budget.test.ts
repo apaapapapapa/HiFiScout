@@ -6,12 +6,12 @@ import { upsertProducts } from "../src/db/product-write-repository.js";
 import { syncProductIdentityResolutions } from "../src/db/product-identity-repository.js";
 import { syncProductSearchEntities } from "../src/db/product-search-entity-repository.js";
 import { syncProductSearchProjections } from "../src/db/product-search-projection-repository.js";
-import { refreshKnowledgeCatalogCandidates } from "../src/db/knowledge-catalog-review-repository.js";
+import { refreshKnowledgeCatalogCandidates } from "../src/db/knowledge-catalog-candidate-refresh.js";
 import { accountReads } from "../src/db/read-accounting.js";
 import { detailFetchOptions } from "./helpers/fixtures.js";
 import { AT, NEXT, database, listing } from "./helpers/d1-write-budget.js";
 
-test("D1 candidate row-set batches preserve zero-write replay across batch boundaries", async () => {
+test("D1 candidate row-set publication stays unchanged across durable refresh pages", async () => {
   const { db, dispose } = await database();
   try {
     await db
@@ -26,10 +26,32 @@ test("D1 candidate row-set batches preserve zero-write replay across batch bound
       await db.prepare("SELECT COUNT(*) n FROM knowledge_catalog_candidates").first("n"),
       250,
     );
+    const sequence = await db
+      .prepare("SELECT seq FROM sqlite_sequence WHERE name='knowledge_catalog_candidates'")
+      .first("seq");
+    const before = (
+      await db.prepare("SELECT * FROM knowledge_catalog_candidates ORDER BY id").all()
+    ).results;
     const replay = accountReads(db);
     await refreshKnowledgeCatalogCandidates(replay.db, NEXT);
-    assert.equal(replay.rowsWritten(), 0);
-    assert.ok(replay.rowsRead() < 5000, `candidate replay read ${replay.rowsRead()} rows`);
+    assert.deepEqual(
+      (await db.prepare("SELECT * FROM knowledge_catalog_candidates ORDER BY id").all()).results,
+      before,
+    );
+    assert.equal(
+      await db
+        .prepare("SELECT seq FROM sqlite_sequence WHERE name='knowledge_catalog_candidates'")
+        .first("seq"),
+      sequence,
+    );
+    // Repeated publication is still a no-op. Temporary group insert/delete and cursor writes
+    // are bounded by this generation's groups/pages, independent of catalog history.
+    assert.ok(
+      replay.rowsWritten() <= 600,
+      `250-group checkpoints wrote ${replay.rowsWritten()} rows`,
+    );
+    // Includes temporary accumulator reads and all four durable phases, not only publication.
+    assert.ok(replay.rowsRead() < 24 * 250, `candidate replay read ${replay.rowsRead()} rows`);
     assert.equal(
       await db
         .prepare("SELECT COUNT(*) n FROM knowledge_catalog_candidates WHERE updated_at <> ?")
@@ -50,7 +72,7 @@ test("D1 candidate row-set batches preserve zero-write replay across batch bound
   }
 }, 30_000);
 
-test("D1 bills zero for unchanged catalog decisions, search replay and candidate refresh", async () => {
+test("D1 bills zero for unchanged catalog decisions and search replay, with bounded refresh checkpoints", async () => {
   const { db, dispose } = await database();
   try {
     await db
@@ -88,7 +110,28 @@ test("D1 bills zero for unchanged catalog decisions, search replay and candidate
     await upsertProducts(replay.db, "hifido", second, NEXT);
     await syncProductMetadata(replay.db, "hifido", second, NEXT);
     await syncProductSearchEntities(replay.db, "hifido", ["one"]);
-    await refreshKnowledgeCatalogCandidates(replay.db, NEXT);
+    const candidatesBefore = await db.prepare("SELECT * FROM knowledge_catalog_candidates").all();
+    const sequenceBefore = await db
+      .prepare("SELECT seq FROM sqlite_sequence WHERE name='knowledge_catalog_candidates'")
+      .first("seq");
+    const refresh = accountReads(db);
+    await refreshKnowledgeCatalogCandidates(refresh.db, NEXT);
+    assert.deepEqual(
+      (await db.prepare("SELECT * FROM knowledge_catalog_candidates").all()).results,
+      candidatesBefore.results,
+    );
+    assert.equal(
+      await db
+        .prepare("SELECT seq FROM sqlite_sequence WHERE name='knowledge_catalog_candidates'")
+        .first("seq"),
+      sequenceBefore,
+    );
+    // Only the singleton cursor and the temporary accumulator may change. Catalog publication
+    // retains its filtered INSERT and same-value guards (including sqlite_sequence).
+    assert.ok(
+      refresh.rowsWritten() <= 12,
+      `one-group checkpoints wrote ${refresh.rowsWritten()} rows`,
+    );
     assert.ok(replay.countedStatements() > 20);
     assert.equal(replay.rowsWritten(), 0);
     assert.ok(replay.rowsRead() < 200, `unchanged replay read ${replay.rowsRead()} rows`);

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
 import { upsertProducts } from "../src/db/product-write-repository.js";
-import { refreshKnowledgeCatalogCandidates } from "../src/db/knowledge-catalog-review-repository.js";
+import { refreshKnowledgeCatalogCandidates } from "../src/db/knowledge-catalog-candidate-refresh.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 
 const AT = "2026-09-05T00:00:00.000Z";
@@ -49,9 +49,12 @@ test("candidate differences preserve manual ignores and retire only vanished gro
       { ...retired },
       { active_listing_count: 0, shop_count: 0, priority_score: 0, review_status: "ignored" },
     );
-    const afterRetirement = sqlite.prepare("SELECT total_changes() n").get()?.n;
+    const afterRetirement = sqlite.prepare("SELECT * FROM knowledge_catalog_candidates").all();
     await refreshKnowledgeCatalogCandidates(db, "2026-09-05T02:00:00.000Z");
-    assert.equal(sqlite.prepare("SELECT total_changes() n").get()?.n, afterRetirement);
+    assert.deepEqual(
+      sqlite.prepare("SELECT * FROM knowledge_catalog_candidates").all(),
+      afterRetirement,
+    );
 
     await upsertProducts(db, "hifido", [product], NEXT);
     await refreshKnowledgeCatalogCandidates(db, NEXT);
