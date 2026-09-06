@@ -7,12 +7,109 @@ import {
   pendingMaintenance,
 } from "../src/db/scheduled-maintenance-repository.js";
 import { dispatchKnowledgeCatalogDailyVerification } from "../src/knowledge-catalog/dispatch.js";
-import { runPendingMaintenance } from "../src/scheduled.js";
+import { bootstrapKnowledgeCatalogReview, runPendingMaintenance } from "../src/scheduled.js";
+import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from "../src/catalog/knowledge-verification/verifier.js";
 import type { QueryableDatabase } from "../src/db/types.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { queueBinding, queueEnv } from "./helpers/knowledge-queue.js";
 
 const AT = new Date("2030-01-01T00:00:00.000Z");
+
+function insertListing(sqlite: ReturnType<typeof migratedSqlite>["sqlite"], id: string) {
+  sqlite
+    .prepare(`INSERT INTO products(shop_key, source_id, title, manufacturer, canonical_manufacturer_id, model,
+    source_url, first_seen_at, last_seen_at, last_changed_at, is_active)
+    VALUES ('shop', ?, 'LUXMAN', 'LUXMAN', 'luxman', ?, 'https://example.test/item', '2029-01-01', '2029-01-01', '2029-01-01', 1)`)
+    .run(id, `L-${id}`);
+}
+
+test("an hourly bootstrap no-op leaves the later daily refresh horizon untouched", async () => {
+  const { db, sqlite } = migratedSqlite();
+  try {
+    sqlite.exec("DELETE FROM knowledge_catalog_products");
+    insertListing(sqlite, "100");
+    const queue = queueBinding();
+    const env = queueEnv(db, queue.binding);
+    await dispatchKnowledgeCatalogDailyVerification(env, { now: AT });
+    sqlite.exec("UPDATE knowledge_catalog_review_runs SET status='success'");
+    sqlite
+      .prepare(
+        "INSERT INTO knowledge_catalog_verifier_state(version, status, started_at) VALUES (?, 'success', ?)",
+      )
+      .run(KNOWLEDGE_CATALOG_VERIFIER_VERSION, AT.toISOString());
+    const before = sqlite.prepare("SELECT * FROM knowledge_catalog_candidate_refresh").get();
+    const budget = invocationBudget(db, { maxCalls: 3 });
+    const skipped = await bootstrapKnowledgeCatalogReview(
+      queueEnv(budget.db, queue.binding) as Env,
+      new Date("2030-01-02T00:30:00Z"),
+    );
+    assert.deepEqual(skipped, {
+      status: "skipped",
+      reason: "knowledge_catalog_queue_already_bootstrapped",
+    });
+    assert.deepEqual(
+      sqlite.prepare("SELECT * FROM knowledge_catalog_candidate_refresh").get(),
+      before,
+    );
+    insertListing(sqlite, "200");
+    await dispatchKnowledgeCatalogDailyVerification(env, { now: new Date("2030-01-02T18:20:00Z") });
+    assert.equal(
+      sqlite
+        .prepare(
+          "SELECT active_listing_count FROM knowledge_catalog_candidates WHERE normalized_model='L-200'",
+        )
+        .get()?.active_listing_count,
+      1,
+    );
+    assert.equal(queue.sent.length, 2);
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("a refresh crossing midnight completes the requested new horizon before dispatch", async () => {
+  const { db, sqlite } = migratedSqlite();
+  try {
+    sqlite.exec("DELETE FROM knowledge_catalog_products");
+    insertListing(sqlite, "100");
+    const partial = invocationBudget(db, { maxCalls: 4 });
+    await assert.rejects(
+      prepareScheduledKnowledgeCatalogCandidates(partial.db, AT),
+      InvocationBudgetExceeded,
+    );
+    assert.equal(
+      sqlite.prepare("SELECT request_key FROM knowledge_catalog_candidate_refresh").get()
+        ?.request_key,
+      "2030-01-01",
+    );
+    insertListing(sqlite, "200");
+    const queue = queueBinding();
+    await dispatchKnowledgeCatalogDailyVerification(queueEnv(db, queue.binding), {
+      now: new Date("2030-01-02T00:05:00Z"),
+    });
+    const completed = sqlite
+      .prepare(
+        "SELECT request_key, phase, listing_horizon FROM knowledge_catalog_candidate_refresh",
+      )
+      .get();
+    assert.deepEqual(
+      { ...completed },
+      { request_key: "2030-01-02", phase: "complete", listing_horizon: 2 },
+    );
+    assert.equal(
+      sqlite.prepare("SELECT SUM(active_listing_count) n FROM knowledge_catalog_candidates").get()
+        ?.n,
+      2,
+    );
+    assert.equal(queue.sent.length, 1);
+    assert.equal(
+      sqlite.prepare("SELECT COUNT(*) n FROM knowledge_catalog_review_runs").get()?.n,
+      1,
+    );
+  } finally {
+    sqlite.close();
+  }
+});
 
 test("2,845 candidates resume across Cron budgets before one review run is dispatched", async () => {
   const { db, sqlite } = migratedSqlite();

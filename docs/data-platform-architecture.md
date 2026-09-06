@@ -87,7 +87,10 @@ and their AUTOINCREMENT sequence remain untouched.
 
 Scheduled daily, monthly and bootstrap callers share one preparation per UTC date. A yield retains
 the pending maintenance task and resumes preparation before claiming a verifier rollout or recovery
-run; review runs and Queue wake-ups are created only after preparation completes. The pages are
+run; the ordinary hourly bootstrap no-op does not start a refresh or consume the daily date key.
+When an older generation crosses midnight, it is completed and cleaned before the requested day's
+new horizon is processed. Review runs and Queue wake-ups are created only after that requested
+preparation completes. The pages are
 eventually consistent observations, not a transaction-wide snapshot: edits behind the cursor and
 new listings beyond the horizon enter the next refresh. Explicit repository refreshes can request a
 new generation independently of that scheduled daily cache.

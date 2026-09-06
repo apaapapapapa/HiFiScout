@@ -67,7 +67,7 @@ test("a recovery run claimed just before a yield is closed before dispatch takes
     )
     .run(AT.toISOString());
   await prepareScheduledKnowledgeCatalogCandidates(db, AT);
-  // Cached preparation, version claim, three status lookups, then the atomic recovery-run insert.
+  // Three status lookups, cached preparation, recovery insert and abandoned-job cleanup.
   const budget = invocationBudget(db, { maxCalls: 6 + RESERVE, finalizationReserve: RESERVE });
   const queue = queueBinding();
   await assert.rejects(

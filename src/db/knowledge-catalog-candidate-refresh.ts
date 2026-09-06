@@ -263,45 +263,51 @@ async function cleanPage(db: QueryableDatabase, state: RefreshState): Promise<vo
 async function completeCandidateRefresh(
   db: QueryableDatabase,
   reviewedAt: string,
-  { requestKey = crypto.randomUUID() }: { requestKey?: string } = {},
+  { requestKey }: { requestKey?: string } = {},
 ) {
   let state = await firstMeasured<RefreshState>(
     db.prepare("SELECT * FROM knowledge_catalog_candidate_refresh WHERE id = 1"),
   );
-  if (state?.phase === "complete" && state.request_key === requestKey) return;
-  if (!state || state.phase === "complete") {
-    await db
-      .prepare(`INSERT INTO knowledge_catalog_candidate_refresh
-      (id, generation, request_key, started_at, phase, listing_horizon)
-      VALUES (1, ?, ?, ?, 'collect', (SELECT COALESCE(MAX(id), 0) FROM products))
-      ON CONFLICT(id) DO UPDATE SET generation = excluded.generation, request_key = excluded.request_key,
-        started_at = excluded.started_at, phase = 'collect', listing_horizon = excluded.listing_horizon,
-        listing_cursor = 0, publish_cursor = '', retire_cursor = 0, revision = 0
-      WHERE knowledge_catalog_candidate_refresh.phase = 'complete'
-        AND knowledge_catalog_candidate_refresh.request_key <> excluded.request_key`)
-      .bind(crypto.randomUUID(), requestKey, reviewedAt)
-      .run();
-  }
+  // Explicit callers without a key resume an active generation, or start a fresh one after
+  // completion. Scheduled callers keep their requested date even while finishing older work.
+  const requestedKey =
+    requestKey ??
+    (state?.phase !== "complete" ? state?.request_key : undefined) ??
+    crypto.randomUUID();
   for (;;) {
+    if (state?.phase === "complete" && state.request_key === requestedKey) return;
+    if (!state || state.phase === "complete") {
+      await db
+        .prepare(`INSERT INTO knowledge_catalog_candidate_refresh
+        (id, generation, request_key, started_at, phase, listing_horizon)
+        VALUES (1, ?, ?, ?, 'collect', (SELECT COALESCE(MAX(id), 0) FROM products))
+        ON CONFLICT(id) DO UPDATE SET generation = excluded.generation, request_key = excluded.request_key,
+          started_at = excluded.started_at, phase = 'collect', listing_horizon = excluded.listing_horizon,
+          listing_cursor = 0, publish_cursor = '', retire_cursor = 0, revision = 0
+        WHERE knowledge_catalog_candidate_refresh.phase = 'complete'
+          AND knowledge_catalog_candidate_refresh.request_key <> excluded.request_key`)
+        .bind(crypto.randomUUID(), requestedKey, reviewedAt)
+        .run();
+    } else {
+      switch (state.phase) {
+        case "collect":
+          await collectPage(db, state);
+          break;
+        case "publish":
+          await publishPage(db, state);
+          break;
+        case "retire":
+          await retirePage(db, state);
+          break;
+        case "clean":
+          await cleanPage(db, state);
+          break;
+      }
+    }
     state = await firstMeasured<RefreshState>(
       db.prepare("SELECT * FROM knowledge_catalog_candidate_refresh WHERE id = 1"),
     );
     if (!state) throw new Error("knowledge_catalog_candidate_refresh_missing");
-    if (state.phase === "complete") return;
-    switch (state.phase) {
-      case "collect":
-        await collectPage(db, state);
-        break;
-      case "publish":
-        await publishPage(db, state);
-        break;
-      case "retire":
-        await retirePage(db, state);
-        break;
-      case "clean":
-        await cleanPage(db, state);
-        break;
-    }
   }
 }
 

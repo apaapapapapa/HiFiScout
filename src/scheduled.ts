@@ -376,34 +376,38 @@ async function strandedKnowledgeCatalogReviewRun(
  * queue has never been bootstrapped at all.
  */
 export async function bootstrapKnowledgeCatalogReview(env: Env, now = new Date()) {
-  // A cooperative refresh yield must precede verifier/recovery claims as well as run creation.
-  await prepareScheduledKnowledgeCatalogCandidates(env.DB, now);
   const startedAt = now.toISOString();
-  const claimed = await claimKnowledgeCatalogVerifierVersion(
-    env.DB,
-    KNOWLEDGE_CATALOG_VERIFIER_VERSION,
-    startedAt,
-  );
-  if (claimed) {
-    console.log(
-      JSON.stringify({
-        event: "knowledge_catalog_verifier_rollout_started",
-        verifierVersion: KNOWLEDGE_CATALOG_VERIFIER_VERSION,
-        mode: "daily_candidates_queue",
-      }),
+  let state = await knowledgeCatalogVerifierState(env.DB);
+  // Check whether a rollout is needed before preparing candidates. The ordinary hourly no-op
+  // must not consume the date key that belongs to the later daily verification task.
+  if (!state || state.version < KNOWLEDGE_CATALOG_VERIFIER_VERSION) {
+    await prepareScheduledKnowledgeCatalogCandidates(env.DB, now);
+    const claimed = await claimKnowledgeCatalogVerifierVersion(
+      env.DB,
+      KNOWLEDGE_CATALOG_VERIFIER_VERSION,
+      startedAt,
     );
-    return dispatchKnowledgeCatalogDailyVerification(env, {
-      now,
-      preferRetries: false,
-      verifierVersion: KNOWLEDGE_CATALOG_VERIFIER_VERSION,
-    });
+    if (claimed) {
+      console.log(
+        JSON.stringify({
+          event: "knowledge_catalog_verifier_rollout_started",
+          verifierVersion: KNOWLEDGE_CATALOG_VERIFIER_VERSION,
+          mode: "daily_candidates_queue",
+        }),
+      );
+      return dispatchKnowledgeCatalogDailyVerification(env, {
+        now,
+        preferRetries: false,
+        verifierVersion: KNOWLEDGE_CATALOG_VERIFIER_VERSION,
+      });
+    }
+    state = await knowledgeCatalogVerifierState(env.DB);
   }
 
   // Whether the queue has ever been bootstrapped is the only thing this path asks of it. It used to
   // ask through the full queue status, which aggregated every verification job ever recorded and
   // then had every count discarded here.
-  const [state, latestVerificationRunId, latestReview] = await Promise.all([
-    knowledgeCatalogVerifierState(env.DB),
+  const [latestVerificationRunId, latestReview] = await Promise.all([
     latestKnowledgeCatalogVerificationRunId(env.DB),
     latestKnowledgeCatalogReviewRunState(env.DB),
   ]);
@@ -451,6 +455,8 @@ export async function bootstrapKnowledgeCatalogReview(env: Env, now = new Date()
     ) {
       return { status: "skipped", reason: "knowledge_catalog_queue_daily_write_limit" };
     }
+    // Complete/resume preparation before claiming a successor run. Budget yields own no run.
+    await prepareScheduledKnowledgeCatalogCandidates(env.DB, now);
     const recoveryRunId = failedRunId
       ? await startKnowledgeCatalogRecoveryReviewRun(env.DB, failedRunId, startedAt)
       : null;
@@ -699,8 +705,8 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
     run: (env) => recoverKnowledgeCatalogQueueQuota(env),
   },
   {
-    // A one-shot rollout that has already happened costs a conditional write and three reads every
-    // time it is asked. Hourly is plenty for the ordinary bootstrap; quota recovery is handled by
+    // An already-completed rollout costs three status reads per check and does no preparation.
+    // Hourly is plenty for the ordinary bootstrap; quota recovery is handled by
     // the narrow ten-minute task above.
     name: "knowledge_catalog_review_bootstrap",
     everyTicks: 12,
