@@ -6,6 +6,7 @@ import {
   normalizeManufacturer,
 } from "../catalog/manufacturers.js";
 import { availabilityFromText } from "./availability.js";
+import { splitModelBundle } from "../catalog/model-bundle.js";
 
 /** Display labels (not category ids); `inferCategory` returns the first matching label. */
 const CATEGORY_RULES: readonly (readonly [label: string, pattern: RegExp])[] = [
@@ -150,6 +151,14 @@ export function splitManufacturerModel(
     return {
       manufacturer,
       model: (pattern ? value.replace(pattern, "") : value).replace(/^\s*[-:：]\s*/, "").trim(),
+    };
+  }
+
+  const bundle = value.includes("+") || value.includes("＋") ? splitModelBundle(value) : null;
+  if (bundle?.groupedManufacturers) {
+    return {
+      manufacturer: bundle.components[0].manufacturer,
+      model: bundle.components.map((component) => component.model).join(" + "),
     };
   }
 

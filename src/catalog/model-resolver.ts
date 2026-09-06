@@ -19,6 +19,7 @@ import {
   presentationColorLabels,
 } from "./model-presentation-color.js";
 import { identityModelParts, normalizeIdentityModel } from "./product-identity.js";
+import { splitModelBundle } from "./model-bundle.js";
 import type {
   ManufacturerAliasEvidence,
   ModelResolutionInput,
@@ -27,7 +28,7 @@ import type {
   ResolutionStatus,
 } from "./types.js";
 
-export const MODEL_RESOLVER_VERSION = 11;
+export const MODEL_RESOLVER_VERSION = 12;
 
 export type ModelResolver = (input: ModelResolutionInput) => ModelResolutionResult;
 
@@ -483,6 +484,53 @@ function resolvePreparedModel(
   const withoutManufacturer = presentation?.patterns.length
     ? stripManufacturerPresentation(recoveredSource, presentation)
     : recoveredSource;
+  const groupedTitle = splitModelBundle(clean(input.title));
+  const groupedModels = groupedTitle?.components.map((component) => component.model).join(" + ");
+  const groupedLegacy = groupedTitle
+    ? `${groupedTitle.components
+        .slice(1)
+        .map((component) => component.manufacturer)
+        .join("+")} ${groupedModels}`
+    : "";
+  const bundle =
+    groupedTitle?.groupedManufacturers &&
+    groupedTitle.components[0].manufacturerId === manufacturerId &&
+    [groupedModels, groupedLegacy].some(
+      (value) => normalizeIdentityModel(value) === normalizeIdentityModel(withoutManufacturer),
+    )
+      ? groupedTitle
+      : splitModelBundle(withoutManufacturer);
+  if (bundle) {
+    const bundleComponents = bundle.components.map((component, index) => {
+      const id = component.manufacturerId || (index === 0 ? manufacturerId : "");
+      const partPresentation = prepared.get(id);
+      const part = partPresentation
+        ? stripManufacturerPresentation(component.model, partPresentation)
+        : component.model;
+      const stripped = stripSellerAnnotations(part, id, shopKey);
+      const safe = preservesModelIdentity(part, stripped.text);
+      return {
+        ...component,
+        manufacturerId: id,
+        model: safe ? stripped.text : part,
+        presentationColors: safe ? presentationColorLabels(stripped.colors) : [],
+      };
+    });
+    const model = bundleComponents.map((component) => component.model).join(" + ");
+    return {
+      rawModel,
+      model,
+      normalizedModel: normalizeIdentityModel(model),
+      status: "candidate",
+      method: "unsafe_annotation",
+      confidence: "low",
+      removedAnnotations: ["bundle_manufacturer_presentation"],
+      unclassifiedTokens: ["bundle_components"],
+      // A finish belongs to its component, never to the whole set.
+      presentationColors: [],
+      bundleComponents,
+    };
+  }
   const stripped = stripSellerAnnotations(withoutManufacturer, manufacturerId, shopKey);
   const safe = preservesModelIdentity(withoutManufacturer, stripped.text);
   const model = safe ? stripped.text : withoutManufacturer;
@@ -593,6 +641,7 @@ export function applyModelResolution(
         removedAnnotations: resolution.removedAnnotations,
         unclassifiedTokens: resolution.unclassifiedTokens,
         presentationColors: resolution.presentationColors,
+        ...(resolution.bundleComponents ? { bundleComponents: resolution.bundleComponents } : {}),
       },
     },
   };
