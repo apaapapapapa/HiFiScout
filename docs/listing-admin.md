@@ -103,6 +103,12 @@ audit CSV or the knowledge-catalog CSV, edit the `edit_*` columns, and save as U
 original columns, target ID, and `csv_original` unchanged. Exports generated before the import feature
 was deployed must be regenerated; diagnostic columns alone are not an import format.
 
+The same catalog CSV also accepts **new catalog rows**. Append a row, leave `catalog_product_id`
+and `csv_original` empty, and fill all five catalog `edit_*` columns below. Other columns on the
+new row can be empty. Set `edit_lifecycle_status` to `unknown` when the lifecycle is not known.
+Use an already registered, verified manufacturer ID; this operation does not create manufacturers
+or seller listings. Existing rows still require their unchanged ID and original snapshot.
+
 | Target | Editable CSV columns |
 | --- | --- |
 | Registered product | `edit_manufacturer_id`, `edit_model`, `edit_primary_category_id` |
@@ -124,13 +130,29 @@ unchanged, but new control characters cannot be introduced. If a canonical befor
 from this CSV: use individual editing and regenerate it. Other unchanged rows remain no-op rows.
 
 1. Choose the edited CSV (at most 100 MiB) and select **差分を確認**.
-2. Review the before/after values and row-level validation results. Unchanged rows are not submitted
+2. Review the new-row/correction counts, before/after values, and row-level validation results. Unchanged rows are not submitted
    for updating. Invalid IDs, duplicate rows, duplicate catalog identities, or stale originals block
    the update button; correct the file or generate a fresh export.
-3. Select **更新を実行** only after reviewing the complete validation results. Keep the screen open
+3. Select **更新を実行** (or **登録・更新を実行** when adding catalog rows) only after reviewing the complete validation results. Keep the screen open
    while updates and related listing/search projection changes run.
 4. Download the result CSV if needed. If interrupted, choose the same edited CSV (or the result CSV)
    and run **差分を確認** again. Already-applied edits are skipped and pending projection work resumes.
+
+New entries become manually verified catalog products, with a generated ID, category closure,
+canonical model alias, and a `manual_verified` source naming the import operation. These records
+and the durable receipt commit in one transaction. The result table shows the assigned ID; the
+result CSV preserves the original input and includes it separately as `result_target_id`, so the
+file can resume pending additions. Generate a fresh edit export to correct an added entry later.
+
+Duplicate additions are checked across the entire file, including unchanged existing rows and
+manufacturer/model spelling variants under the shared catalog identity rules. Database checks
+use a bounded indexed identity bucket, revalidate at apply time, and guard that bucket inside the
+write transaction. More than 50 candidates blocks insertion for review. A registered product with
+exactly the same editable values is skipped (or resumes its pending CSV creation); a different
+or rejected entry with the same identity is reported with its existing ID and is never silently
+overwritten/revived. Resubmitting an applied creation writes nothing. Discovery of matching
+seller listings uses the existing durable cursor, at most 10 listings per request, including
+retained inactive listings and preserving explicit listing overrides.
 
 If the current page is still open, an interrupted update retains its operation IDs and can use
 **更新を再開** directly. An Access login failure offers **別タブでログインを確認**; authenticate there,

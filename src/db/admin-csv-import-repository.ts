@@ -23,6 +23,11 @@ import {
 } from "./knowledge-catalog-admin-repository.js";
 import type { QueryableDatabase, ReadableDatabase } from "./types.js";
 import { firstMeasured } from "./read-accounting.js";
+import {
+  catalogCsvCreationRevision,
+  createCatalogCsvProduct,
+  loadCatalogCsvCreation,
+} from "./admin-csv-catalog-create.js";
 
 const REPLAY_PAGE_SIZE = 10;
 const CATALOG_PRIMARY =
@@ -141,13 +146,15 @@ async function pendingReceipt(
   db: ReadableDatabase,
   change: AdminCsvChange,
   values: AdminCsvValues,
+  targetId = change.original.id,
 ): Promise<Receipt | null> {
   return firstMeasured<Receipt>(
     db
       .prepare(`SELECT * FROM admin_csv_import_changes
     WHERE target_kind = ? AND target_id = ? AND status = 'pending' AND after_json = ?
+      ${change.original.id === null ? "AND json_extract(before_json, '$.created') = 1" : ""}
     LIMIT 1`)
-      .bind(change.original.kind, change.original.id, JSON.stringify(values)),
+      .bind(change.original.kind, targetId, JSON.stringify(values)),
   );
 }
 
@@ -159,7 +166,7 @@ async function invalidReason(
   const before = change.original.values;
   const kind = change.original.kind;
   for (const field of ADMIN_CSV_FIELDS[kind]) {
-    if (values[field] === before[field]) continue;
+    if (change.original.id !== null && values[field] === before[field]) continue;
     const value = values[field];
     if (value.includes("[truncated]"))
       return "省略された値は更新できません。元情報を確認してください。";
@@ -193,6 +200,7 @@ async function invalidReason(
   }
   if (
     kind === "catalog" &&
+    change.original.id !== null &&
     (values.manufacturer_id !== before.manufacturer_id ||
       values.canonical_model !== before.canonical_model)
   ) {
@@ -220,6 +228,46 @@ export async function previewAdminCsvChange(
   db: ReadableDatabase,
   change: AdminCsvChange,
 ): Promise<AdminCsvResult> {
+  if (change.original.id === null) {
+    const values = valuesFor(change);
+    const invalid = await invalidReason(db, change, values);
+    if (invalid) return result(change, "invalid", invalid);
+    const creation = await loadCatalogCsvCreation(db, values);
+    if (creation.overflow || creation.ids.length > 1)
+      return result(
+        change,
+        "invalid",
+        "同じ型番の候補が複数あります。カタログの統合画面で確認してください。",
+      );
+    const id = creation.ids[0];
+    if (id !== undefined) {
+      const state = await loadState(db, "catalog", id);
+      if (
+        state?.verification_status === "verified" &&
+        same("catalog", JSON.parse(state.values_json) as AdminCsvValues, values)
+      ) {
+        const pending = await pendingReceipt(db, change, values, id);
+        if (pending)
+          return result(change, "pending", "追加済みです。関連商品の反映を再開できます。", {
+            id,
+            operationId: pending.operation_id,
+            revision: pending.revision,
+          });
+        return result(change, "unchanged", "同じ内容のカタログが登録済みです。", { id });
+      }
+      return result(
+        change,
+        "invalid",
+        "同じメーカー・型番のカタログ #" +
+          id +
+          " が存在します。既存行のedit_列で修正してください。",
+        { id },
+      );
+    }
+    return result(change, "ready", "新規追加できます。", {
+      revision: await revisionToken(catalogCsvCreationRevision(values, creation.snapshot)),
+    });
+  }
   if (Object.values(change.original.values).some((value) => value.includes("[truncated]"))) {
     return result(
       change,
@@ -261,6 +309,7 @@ function receiptStatement(
   now: string,
 ): D1PreparedStatement {
   const { original } = input.change;
+  if (original.id === null) throw new Error("csv_import_update_requires_id");
   // Preserve removed alias/source evidence with the before-image, inside the atomic write.
   const before =
     original.kind === "catalog"
@@ -294,6 +343,7 @@ async function updateCatalog(
 ): Promise<void> {
   const { original } = input.change;
   const id = original.id;
+  if (id === null) throw new Error("csv_import_update_requires_id");
   const before = original.values;
   const identityChanged =
     before.manufacturer_id !== values.manufacturer_id ||
@@ -365,8 +415,10 @@ async function resumeReceipt(
   const { change } = input;
   const state = await loadState(db, receipt.target_kind, receipt.target_id);
   const desired = JSON.parse(receipt.after_json) as AdminCsvValues;
+  const created = (JSON.parse(receipt.before_json) as { created?: boolean }).created === true;
   if (
     !state ||
+    (created && state.verification_status !== "verified") ||
     !same(receipt.target_kind, JSON.parse(state.values_json) as AdminCsvValues, desired)
   ) {
     return result(
@@ -521,7 +573,9 @@ export async function applyAdminCsvChange(
     if (receipt) {
       if (
         receipt.target_kind !== change.original.kind ||
-        receipt.target_id !== change.original.id ||
+        (change.original.id === null
+          ? (JSON.parse(receipt.before_json) as { created?: boolean }).created !== true
+          : receipt.target_id !== change.original.id) ||
         receipt.after_json !== JSON.stringify(values)
       ) {
         return result(change, "invalid", "操作IDと修正内容が一致しません。");
@@ -536,46 +590,60 @@ export async function applyAdminCsvChange(
           "差分確認後にデータが変更されました。再確認してください。",
         );
       }
-      const state = await loadState(db, change.original.kind, change.original.id);
-      if (!state || (await revisionToken(state.revision)) !== input.revision) {
-        return result(
-          change,
-          "conflict",
-          "差分確認後にデータが変更されました。再確認してください。",
-        );
-      }
-      if (change.original.kind === "listing") {
-        const before = change.original.values;
-        await updateListingAdminProduct(
-          db,
-          change.original.id,
-          {
-            ...(values.manufacturer_id !== before.manufacturer_id
-              ? { manufacturerId: values.manufacturer_id }
-              : {}),
-            ...(values.model !== before.model ? { model: values.model } : {}),
-            ...(values.primary_category_id !== before.primary_category_id
-              ? { primaryCategoryId: values.primary_category_id }
-              : {}),
-          },
-          now,
-          [
-            transactionGuard(db, "listing", change.original.id, state.revision),
-            receiptStatement(db, input, values, now),
-          ],
-        );
-        // The existing listing path has already completed all projections. Only recovery
-        // after a partial failure needs to replay them via resumeReceipt.
-        await db
-          .prepare(`UPDATE admin_csv_import_changes SET status = 'applied', updated_at = ?
-          WHERE operation_id = ? AND status = 'pending'`)
-          .bind(now, input.operationId)
-          .run();
-        return result(change, "applied", "更新と検索表示への反映が完了しました。", {
-          operationId: input.operationId,
-        });
+      if (change.original.id === null) {
+        const creation = await loadCatalogCsvCreation(db, values);
+        if (
+          (await revisionToken(catalogCsvCreationRevision(values, creation.snapshot))) !==
+          input.revision
+        )
+          return result(
+            change,
+            "conflict",
+            "差分確認後にカタログが変更されました。再確認してください。",
+          );
+        await createCatalogCsvProduct(db, input, values, now, creation.snapshot);
       } else {
-        await updateCatalog(db, input, values, now, state.revision);
+        const state = await loadState(db, change.original.kind, change.original.id);
+        if (!state || (await revisionToken(state.revision)) !== input.revision) {
+          return result(
+            change,
+            "conflict",
+            "差分確認後にデータが変更されました。再確認してください。",
+          );
+        }
+        if (change.original.kind === "listing") {
+          const before = change.original.values;
+          await updateListingAdminProduct(
+            db,
+            change.original.id,
+            {
+              ...(values.manufacturer_id !== before.manufacturer_id
+                ? { manufacturerId: values.manufacturer_id }
+                : {}),
+              ...(values.model !== before.model ? { model: values.model } : {}),
+              ...(values.primary_category_id !== before.primary_category_id
+                ? { primaryCategoryId: values.primary_category_id }
+                : {}),
+            },
+            now,
+            [
+              transactionGuard(db, "listing", change.original.id, state.revision),
+              receiptStatement(db, input, values, now),
+            ],
+          );
+          // The existing listing path has already completed all projections. Only recovery
+          // after a partial failure needs to replay them via resumeReceipt.
+          await db
+            .prepare(`UPDATE admin_csv_import_changes SET status = 'applied', updated_at = ?
+          WHERE operation_id = ? AND status = 'pending'`)
+            .bind(now, input.operationId)
+            .run();
+          return result(change, "applied", "更新と検索表示への反映が完了しました。", {
+            operationId: input.operationId,
+          });
+        } else {
+          await updateCatalog(db, input, values, now, state.revision);
+        }
       }
       receipt = await firstMeasured<Receipt>(
         db
@@ -584,7 +652,7 @@ export async function applyAdminCsvChange(
       );
     }
     if (!receipt) return result(change, "failed", "更新結果を確認できません。再試行してください。");
-    return await resumeReceipt(db, input, receipt, now);
+    return { ...(await resumeReceipt(db, input, receipt, now)), id: receipt.target_id };
   } catch (error) {
     console.error(
       JSON.stringify({
@@ -593,9 +661,9 @@ export async function applyAdminCsvChange(
         message: error instanceof Error ? error.message : String(error),
       }),
     );
-    const receipt = await firstMeasured(
+    const receipt = await firstMeasured<{ target_id: number }>(
       db
-        .prepare("SELECT operation_id FROM admin_csv_import_changes WHERE operation_id = ?")
+        .prepare("SELECT target_id FROM admin_csv_import_changes WHERE operation_id = ?")
         .bind(input.operationId),
     );
     if (receipt)
@@ -605,6 +673,7 @@ export async function applyAdminCsvChange(
         "一部反映済みです。同じCSVで再試行すると続きから再開します。",
         {
           operationId: input.operationId,
+          id: receipt.target_id,
         },
       );
     return result(

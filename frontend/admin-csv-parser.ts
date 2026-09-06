@@ -2,9 +2,12 @@ import {
   ADMIN_CSV_FIELDS,
   ADMIN_CSV_MAX_ROWS,
   adminCsvDecodeCell,
+  adminCsvNewCatalog,
+  isAdminCsvNewCatalog,
   isAdminCsvOriginal,
   type AdminCsvChange,
 } from "../src/api/admin-csv-contracts.js";
+import { catalogIdentityKey } from "../src/catalog/knowledge-catalog-identity.js";
 
 /** RFC 4180, including embedded newlines, escaped quotes, CRLF and a UTF-8 BOM. */
 export function* parseCsv(text: string): Generator<{ line: number; cells: string[] }> {
@@ -70,6 +73,7 @@ export function readAdminCsv(text: string): {
   if (originalIndex < 0) throw new Error("編集対応のCSVを管理画面から再生成してください。");
   const indexes = new Map(header.map((name, index) => [name, index]));
   const seen = new Set<string>();
+  const identities = new Map<string, { line: number; creating: boolean }>();
   const changes: AdminCsvChange[] = [];
   let totalRows = 0;
   for (const { line, cells } of iterator) {
@@ -79,18 +83,33 @@ export function readAdminCsv(text: string): {
     if (cells.length !== header.length) throw new Error(line + "行目: 列数が一致しません。");
     let original: unknown;
     try {
-      original = JSON.parse(cells[originalIndex]);
+      original =
+        cells[originalIndex] === "" &&
+        indexes.has("catalog_product_id") &&
+        cells[indexes.get("catalog_product_id")!] === "" &&
+        (!indexes.has("listing_id") || cells[indexes.get("listing_id")!] === "")
+          ? adminCsvNewCatalog()
+          : JSON.parse(cells[originalIndex]);
     } catch {
       throw new Error(line + "行目: csv_originalを変更せず、CSVを再生成してください。");
     }
-    if (!isAdminCsvOriginal(original)) throw new Error(line + "行目: 元データの形式が不正です。");
-    const key = original.kind + ":" + original.id;
-    if (seen.has(key)) throw new Error(line + "行目: 対象IDが重複しています。");
-    seen.add(key);
+    if (!isAdminCsvOriginal(original) && !isAdminCsvNewCatalog(original))
+      throw new Error(line + "行目: 元データの形式が不正です。");
+    if (original.id !== null) {
+      const key = original.kind + ":" + original.id;
+      if (seen.has(key)) throw new Error(line + "行目: 対象IDが重複しています。");
+      seen.add(key);
+    }
     const idColumn = original.kind === "listing" ? "listing_id" : "catalog_product_id";
-    if (cells[indexes.get(idColumn) ?? -1] !== String(original.id)) {
+    if (cells[indexes.get(idColumn) ?? -1] !== (original.id === null ? "" : String(original.id))) {
       throw new Error(line + "行目: 対象IDは変更できません。");
     }
+    if (
+      original.id === null &&
+      indexes.has("listing_id") &&
+      cells[indexes.get("listing_id")!] !== ""
+    )
+      throw new Error(line + "行目: 登録商品の新規追加はできません。");
     const values: Record<string, string> = {};
     for (const field of ADMIN_CSV_FIELDS[original.kind]) {
       const index = indexes.get("edit_" + field);
@@ -103,7 +122,7 @@ export function readAdminCsv(text: string): {
           ? "canonical_manufacturer_id"
           : field;
       const sourceIndex = indexes.get(sourceField);
-      if (sourceIndex !== undefined) {
+      if (sourceIndex !== undefined && original.id !== null) {
         const source = cells[sourceIndex];
         const expected = original.values[field];
         if (source !== expected && adminCsvDecodeCell(source) !== expected) {
@@ -113,7 +132,17 @@ export function readAdminCsv(text: string): {
         }
       }
     }
-    if (Object.keys(values).some((field) => values[field] !== original.values[field])) {
+    if (original.kind === "catalog") {
+      const key = catalogIdentityKey(values.manufacturer_id, values.canonical_model);
+      const previous = identities.get(key);
+      if (key && previous && (previous.creating || original.id === null))
+        throw new Error(line + "行目: " + previous.line + "行目とメーカー・型番が重複しています。");
+      if (key) identities.set(key, { line, creating: original.id === null });
+    }
+    if (
+      original.id === null ||
+      Object.keys(values).some((field) => values[field] !== original.values[field])
+    ) {
       changes.push({ line, original, values });
     }
   }

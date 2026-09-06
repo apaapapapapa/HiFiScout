@@ -233,7 +233,7 @@ test("CSV import retries an outage with the same operation and follows durable p
   const component = await mount("frontend/admin-console/Default");
   const admin = new AdminConsolePage(component, page);
   await admin.catalog.csvSummary.click();
-  const panel = component.getByRole("region", { name: "編集したCSVで一括更新" });
+  const panel = component.getByRole("region", { name: "編集したCSVで一括登録・更新" });
   await panel.getByLabel("編集済みCSV（100MiB以内）").setInputFiles({
     name: "corrections.csv",
     mimeType: "text/csv",
@@ -250,6 +250,68 @@ test("CSV import retries an outage with the same operation and follows durable p
   expect(received[1].operationId).toBe(received[0].operationId);
   expect(received[2].operationId).toBe(operationId);
   await expect(panel.getByRole("button", { name: "結果CSVをダウンロード" })).toBeEnabled();
+});
+
+test("CSV imports show new catalog rows alongside corrections and display assigned IDs", async ({
+  page,
+  mount,
+}) => {
+  const original = adminCsvOriginal("catalog", 21, {
+    manufacturer_id: "luxman",
+    canonical_model: "C10",
+    canonical_name: "LUXMAN C10",
+    primary_category_id: "AMP.PRE",
+    lifecycle_status: "unknown",
+  });
+  const csv =
+    "catalog_product_id," +
+    adminCsvEditHeader("catalog") +
+    "\n21," +
+    adminCsvEditRow(original).replace(/,"LUXMAN C10",/u, ',"Corrected C10",') +
+    "\n,,luxman,C11,LUXMAN C11,AMP.PRE,unknown";
+  const received: (number | null)[] = [];
+  await page.route("**/api/admin/csv-import/*", async (route) => {
+    const input = route.request().postDataJSON();
+    if (route.request().url().endsWith("/preview"))
+      return route.fulfill({
+        json: {
+          items: input.changes.map((change: { line: number; original: { id: number | null } }) => ({
+            line: change.line,
+            id: change.original.id,
+            kind: "catalog",
+            status: "ready",
+            revision: "revision",
+            message: "確認結果",
+          })),
+        },
+      });
+    received.push(input.change.original.id);
+    return route.fulfill({
+      json: {
+        line: input.change.line,
+        id: input.change.original.id ?? 99,
+        kind: "catalog",
+        status: "applied",
+        operationId: input.operationId,
+        message: "反映完了",
+      },
+    });
+  });
+  const component = await mount("frontend/admin-console/Default");
+  const admin = new AdminConsolePage(component, page);
+  await admin.catalog.csvSummary.click();
+  const panel = component.getByRole("region", { name: "編集したCSVで一括登録・更新" });
+  await panel
+    .getByLabel("編集済みCSV（100MiB以内）")
+    .setInputFiles({ name: "catalog.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
+  await panel.getByRole("button", { name: "差分を確認" }).click();
+  await expect(panel).toContainText("新規追加 1件 / 既存行の修正 1件");
+  await expect(panel.getByRole("table")).toContainText("追加可能");
+  expect(received).toHaveLength(0);
+  await panel.getByRole("button", { name: "2件の登録・更新を実行" }).click();
+  await expect(panel.getByRole("status")).toContainText("登録・更新が完了しました");
+  await expect(panel.getByRole("table")).toContainText("新規追加 #99");
+  expect(received).toEqual([21, null]);
 });
 
 for (const failure of ["expired", "redirect"] as const) {
@@ -313,7 +375,7 @@ for (const failure of ["expired", "redirect"] as const) {
     const component = await mount("frontend/admin-console/Default");
     const admin = new AdminConsolePage(component, page);
     await admin.catalog.csvSummary.click();
-    const panel = component.getByRole("region", { name: "編集したCSVで一括更新" });
+    const panel = component.getByRole("region", { name: "編集したCSVで一括登録・更新" });
     await panel
       .getByLabel("編集済みCSV（100MiB以内）")
       .setInputFiles({ name: "resume.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
