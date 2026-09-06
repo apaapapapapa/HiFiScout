@@ -57,11 +57,14 @@ test("opening product detail writes a permalink and Back/Forward close and reope
   await expect(catalogPage.offersDialog).toBeVisible();
   await expect(page).toHaveURL(/\/p\/c-1\?q=LUXMAN$/);
 
-  await page.goBack();
-  await expect(page).toHaveURL(/\/\?q=LUXMAN$/);
-  await expect(catalogPage.offersDialog).not.toBeVisible();
+  for (let cycle = 0; cycle < 3; cycle += 1) {
+    await page.goBack();
+    await expect(page).toHaveURL(/\/\?q=LUXMAN$/);
+    await expect(catalogPage.offersDialog).not.toBeVisible();
 
-  await page.goForward();
-  await expect(page).toHaveURL(/\/p\/c-1\?q=LUXMAN$/);
-  await expect(catalogPage.offersDialog).toBeVisible();
+    await page.goForward();
+    await expect(page).toHaveURL(/\/p\/c-1\?q=LUXMAN$/);
+    await expect(catalogPage.offersDialog).toBeVisible();
+    await expect(catalogPage.offersDialog).toContainText(listing.title);
+  }
 });
