@@ -138,7 +138,12 @@ test("feature-state SQL matches missing, explicit absent and conflicting evidenc
     const { sql, binds } = capture.calls[0];
     const plan = sqlite
       .prepare(`EXPLAIN QUERY PLAN ${sql}`)
-      .all(...binds)
+      .all(
+        ...binds.map((value) => {
+          assert.ok(value === null || typeof value === "string" || typeof value === "number");
+          return value;
+        }),
+      )
       .map((row) => String(row.detail))
       .join("\n");
     assert.match(plan, /SEARCH m USING/);

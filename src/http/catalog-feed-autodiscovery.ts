@@ -39,7 +39,12 @@ export function catalogFeedPath(url: URL): string {
     if (value) params.set(key, value);
   }
 
-  for (const feature of requestedFeatures(source).filter(isFeatureFilter).sort()) {
+  const features = new Map(
+    requestedFeatures(source)
+      .filter(isFeatureFilter)
+      .map((feature) => [feature.split(":")[0], feature]),
+  );
+  for (const feature of [...features.values()].sort()) {
     params.append("feature", feature);
   }
   for (const facet of requestedFacetSelections(source).sort((left, right) =>

@@ -57,7 +57,6 @@ import { FeedSubscription } from "./feed-subscription.js";
 import { SearchSuggestionInput } from "./search-suggestion-input.js";
 import { sortShopsByJapaneseReading } from "./shop-options.js";
 import { FACET_DEFINITIONS, FEATURE_DEFINITIONS, isFeatureFilter } from "../src/api/contracts.js";
-import { getCategory } from "../src/catalog/categories.js";
 import type {
   FacetSelection,
   FeatureFilter,
@@ -184,7 +183,11 @@ function FilterPanel({
     if (!filters.category) return new Set<string>();
     const canonicalIds = meta?.legacyCategoryAliases?.[filters.category] ?? [filters.category];
     return new Set(
-      canonicalIds.map((categoryId) => getCategory(categoryId)?.parentId ?? categoryId),
+      canonicalIds.map(
+        (categoryId) =>
+          meta?.categoryFacets?.find((category) => category.id === categoryId)?.parentId ??
+          categoryId,
+      ),
     );
   }, [filters.category, meta]);
   const selectedFacetIds = new Set(filters.facets.map((facet) => facet.facetId));
@@ -333,9 +336,10 @@ function FilterPanel({
                 filters.features.find((value) => value.split(":")[0] === feature.id) ?? "";
               return (
                 <label key={feature.id}>
-                  <span>{feature.name}</span>
+                  <span id={`feature-${feature.id}-label`}>{feature.name}</span>
                   <select
                     id={`feature-${feature.id}`}
+                    aria-labelledby={`feature-${feature.id}-label`}
                     value={selected}
                     onChange={(event) => {
                       const value = event.currentTarget.value;

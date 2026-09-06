@@ -23,7 +23,28 @@ const meta = {
   ],
   manufacturers: ["LUXMAN"],
   categories: [],
-  categoryFacets: [],
+  categoryFacets: [
+    {
+      id: "SRC",
+      name: "ソース機器",
+      parentId: null,
+      order: 4,
+      classifiable: false,
+      filterable: true,
+      group: null,
+      activeProductCount: 1,
+    },
+    {
+      id: "ANA.TAPE",
+      name: "テープデッキ",
+      parentId: "SRC",
+      order: 6,
+      classifiable: true,
+      filterable: true,
+      group: "ソース機器",
+      activeProductCount: 1,
+    },
+  ],
 };
 const results = { items: [item], hasMore: false, nextCursor: null, totalCount: 1, totalPages: 1 };
 
@@ -128,6 +149,8 @@ test("capability controls preserve absent and unknown states through requests an
   await mount("frontend/public-app/Default");
   await expect(page.locator(".card")).toHaveCount(1);
   await page.getByText("機能・仕様で詳しく絞り込む", { exact: true }).click();
+  await page.locator("#category").selectOption("ANA.TAPE");
+  await expect(page.getByRole("group", { name: "対応メディア", exact: true })).toBeVisible();
   await page.getByLabel("DAC搭載", { exact: true }).selectOption("dac:absent");
   await expect
     .poll(() => seen.searches.at(-1)?.searchParams.getAll("feature"))
