@@ -98,8 +98,16 @@ test("health query reports each statement once, including zero-valued metadata",
   assert.equal(result.calls, 1);
   assert.deepEqual(JSON.parse(result.stdout), resultRows);
   assert.deepEqual(
-    result.usage.map((item) => [item.statementIndex, item.rowsRead, item.rowsWritten, item.durationMs]),
-    [[0, 42, 0, 1.5], [1, 0, 0, 0]],
+    result.usage.map((item) => [
+      item.statementIndex,
+      item.rowsRead,
+      item.rowsWritten,
+      item.durationMs,
+    ]),
+    [
+      [0, 42, 0, 1.5],
+      [1, 0, 0, 0],
+    ],
   );
 });
 
@@ -123,7 +131,10 @@ test("health query retains metadata for invalid results before a successful retr
   assert.deepEqual(JSON.parse(result.stdout), resultRows);
   assert.deepEqual(
     result.usage.map((item) => [item.attempt, item.outcome, item.rowsRead]),
-    [[1, "invalid_response", 42], [2, "success", 42]],
+    [
+      [1, "invalid_response", 42],
+      [2, "success", 42],
+    ],
   );
 });
 
@@ -134,7 +145,11 @@ test("health query logs failed attempts and does not treat malformed JSON as emp
   assert.deepEqual(JSON.parse(result.stdout), resultRows);
   assert.deepEqual(
     result.usage.map((item) => [item.attempt, item.outcome, item.rowsRead]),
-    [[1, "request_failed", null], [2, "invalid_response", null], [3, "success", 42]],
+    [
+      [1, "request_failed", null],
+      [2, "invalid_response", null],
+      [3, "success", 42],
+    ],
   );
 });
 
@@ -148,5 +163,8 @@ test("health query fails closed after its bounded retries", () => {
   assert.equal(result.calls, 3);
   assert.equal(result.stdout, "");
   assert.equal(result.usage.length, 3);
-  assert.deepEqual(result.usage.map((item) => item.rowsRead), [null, 42, null]);
+  assert.deepEqual(
+    result.usage.map((item) => item.rowsRead),
+    [null, 42, null],
+  );
 });
