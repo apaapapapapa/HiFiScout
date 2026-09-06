@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { test } from "vite-plus/test";
 import { database, AT } from "./helpers/d1-write-budget.js";
 
+// Workerd startup, schema migration and 10k-row fixture setup share the D1 integration allowance.
+// SQL regression gates below use billed rows, not wall-clock timing.
 const fullSql = readFileSync("scripts/sql/search-entity-health.sql", "utf8");
 const recheckSql = readFileSync("scripts/sql/search-entity-health-recheck.sql", "utf8");
 const qualitySql = readFileSync("scripts/sql/latest-quality-runs.sql", "utf8");
@@ -79,7 +81,7 @@ test("health retries use captured IDs and detect a deleted fallback that left a 
   } finally {
     await dispose();
   }
-});
+}, 30_000);
 
 test("latest quality rows seek shops and break timestamp ties without scanning history", async () => {
   const { db, dispose } = await database();
@@ -126,4 +128,4 @@ test("latest quality rows seek shops and break timestamp ties without scanning h
   } finally {
     await dispose();
   }
-});
+}, 30_000);
