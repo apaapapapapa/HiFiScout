@@ -41,7 +41,35 @@ async function seed(db: QueryableDatabase, titles: readonly string[]) {
 test("tape migration repairs ancestors without changing durable identities or explicit overrides", async () => {
   const { sqlite, db } = migratedSqlite({ before: MIGRATION });
   try {
-    await seed(db, ["テープデッキ T1", "テープデッキ T2", "レコードプレーヤー R1"]);
+    // Seed the historical schema directly: today's projection writer needs columns added later.
+    await upsertProducts(
+      db,
+      "hifido",
+      ["テープデッキ T1", "テープデッキ T2", "レコードプレーヤー R1"].map((title, index) =>
+        normalizeCatalogProduct({
+          sourceId: `completion-${index}`,
+          title,
+          manufacturer: "",
+          model: "",
+          conditionText: "中古",
+          priceYen: 10000 + index,
+          stockStatus: "in_stock",
+          sourceUrl: `https://example.test/completion-${index}`,
+        }),
+      ),
+      AT,
+    );
+    sqlite.exec(`
+      INSERT INTO product_identity_resolutions(listing_product_id,status,match_method,confidence,evaluated_at)
+        SELECT id,'unresolved','unresolved','none','${AT}' FROM products;
+      INSERT INTO product_search_entities(entity_key,entity_kind,fallback_listing_id,primary_category_id)
+        SELECT 'l-'||id,'unresolved_listing',id,primary_category_id FROM products;
+      INSERT INTO product_search_entity_offers(listing_product_id,entity_id,shop_key)
+        SELECT p.id,e.id,p.shop_key FROM products p JOIN product_search_entities e ON e.entity_key='l-'||p.id;
+      INSERT INTO product_search_entity_categories(entity_id,category_id,is_direct)
+        SELECT m.entity_id,pc.category_id,pc.is_direct FROM product_categories pc
+        JOIN product_search_entity_offers m ON m.listing_product_id=pc.product_id;
+    `);
     sqlite.exec(`
       DELETE FROM product_categories WHERE category_id = 'SRC';
       INSERT OR IGNORE INTO product_categories(product_id, category_id, is_direct)
