@@ -20,8 +20,10 @@ import {
 } from "../scripts/lib/d1-sql-observation.js";
 import {
   archiveSqlObservations,
+  loadSqlObservations,
   SqlObservationClient,
 } from "../scripts/lib/d1-sql-observation-client.js";
+import { buildSqlLoadReport } from "../scripts/lib/d1-sql-report.js";
 
 const ACCOUNT = "a".repeat(32);
 const DATABASE = "11111111-1111-1111-1111-111111111111";
@@ -369,6 +371,9 @@ test("passive collection continues while all active operational health jobs are 
     workflow.indexOf("  data-platform:"),
   );
   assert.match(archive, /scripts\/archive-d1-sql.ts/);
+  assert.match(workflow, /cron: "50 2,8,13,22 \* \* \*"/);
+  assert.match(archive, /scripts\/report-d1-sql.ts --hours 24/);
+  assert.doesNotMatch(archive, /scripts\/analyze-d1-sql.ts/);
   assert.doesNotMatch(
     archive,
     /name: deployment-identity|d1 execute|wait-for-active-crawl-convergence/,
@@ -379,4 +384,88 @@ test("passive collection continues while all active operational health jobs are 
       new RegExp(`${name}:\\n(?:    #[^\\n]*\\n)*    if: \\$\\{\\{ false \\}\\}`),
     );
   }
+});
+
+test("R2 report downloads gzip with bounded GETs and never publishes SQL or unknown archive fields", async () => {
+  const fake = fakeCloudflare();
+  const archive = parseObservation(payload(), context);
+  archive.queries[0]!.sql =
+    "SELECT PRIVATE_SQL_BODY FROM PRIVATE_TABLE WHERE token='PRIVATE_VALUE'";
+  archive.queries[0]!.rowsWritten = null;
+  archive.totals.rowsWritten = null;
+  Object.assign(archive, { worker: "PRIVATE_WORKER", extra: "PRIVATE_TOP_LEVEL" });
+  Object.assign(archive.totals, { extra: "PRIVATE_TOTALS" });
+  Object.assign(archive.coverage, { extra: "PRIVATE_COVERAGE" });
+  Object.assign(archive.queries[0]!, { extra: "PRIVATE_QUERY_FIELD" });
+  fake.objects.set(
+    `/client/v4/accounts/${ACCOUNT}/r2/buckets/${SQL_OBSERVATION_BUCKET}/objects/${observationKey(DATABASE, HOUR)}`,
+    new Uint8Array(gzipSync(JSON.stringify(archive))),
+  );
+  const input = await loadSqlObservations(fake.client, { databaseId: DATABASE, at: AT, hours: 3 });
+  const report = buildSqlLoadReport(input, {
+    generatedAt: new Date("2026-09-06T03:00:00Z"),
+    sourceCommit: "PRIVATE_INVALID_COMMIT",
+  });
+  assert.equal(fake.calls.length, 3);
+  assert.ok(fake.calls.every((call) => call.method === "GET" && call.path.includes("/objects/")));
+  assert.equal(
+    input.archives[0]?.queries[0]?.sql,
+    archive.queries[0]!.sql,
+    "gzip was actually decompressed",
+  );
+  assert.equal(report.archiveAvailability, "partial");
+  assert.equal(report.missingHours.length, 2);
+  assert.equal(report.observedTotals.rowsRead, 100);
+  assert.equal(report.observedTotals.rowsWritten, null);
+  assert.equal(report.topReads[0]?.fingerprint, archive.queries[0]!.fingerprint);
+  assert.equal(report.topReads[0]?.operation, "SELECT");
+  assert.equal(report.topReads[0]?.rowsWritten, null);
+  assert.equal(
+    report.hours[0]?.provisional,
+    true,
+    "an older snapshot remains provisional after its hour closes",
+  );
+  assert.equal(report.sourceCommit, null);
+  assert.equal(report.includesSqlText, false);
+  assert.doesNotMatch(JSON.stringify(report), /PRIVATE_|configured-token|"sql":|"extra":/);
+});
+
+test("missing archives are unknown while an observed empty hour is a real zero", async () => {
+  const fake = fakeCloudflare();
+  const options = { databaseId: DATABASE, at: AT, hours: 1 };
+  const missing = buildSqlLoadReport(await loadSqlObservations(fake.client, options));
+  assert.equal(missing.archiveAvailability, "none");
+  assert.ok(Object.values(missing.observedTotals).every((value) => value === null));
+  assert.deepEqual(missing.missingHours, [HOUR]);
+  assert.deepEqual(missing.topReads, []);
+  const empty = parseObservation(payload([]), context);
+  fake.objects.set(
+    `/client/v4/accounts/${ACCOUNT}/r2/buckets/${SQL_OBSERVATION_BUCKET}/objects/${observationKey(DATABASE, HOUR)}`,
+    encodeObservation(empty).bytes,
+  );
+  const available = buildSqlLoadReport(await loadSqlObservations(fake.client, options));
+  assert.equal(available.archiveAvailability, "complete");
+  assert.equal(available.observedTotals.rowsRead, 0);
+  assert.equal(available.fullExecutionLog, false);
+});
+
+test("report reads reject invalid bounds before I/O and fail closed on denied or corrupt objects", async () => {
+  const fake = fakeCloudflare();
+  await assert.rejects(loadSqlObservations(fake.client, { at: AT, hours: 25 }), /between 1 and 24/);
+  await assert.rejects(
+    loadSqlObservations(fake.client, { at: AT, databaseId: "invalid" }),
+    /Invalid database/,
+  );
+  assert.equal(fake.calls.length, 0);
+  await assert.rejects(
+    loadSqlObservations(fakeCloudflare({ denied: true }).client, { at: AT, databaseId: DATABASE }),
+    /HTTP 403/,
+  );
+  await assert.rejects(
+    loadSqlObservations(fakeCloudflare({ corruptReadBack: true }).client, {
+      at: AT,
+      databaseId: DATABASE,
+    }),
+    /Invalid SQL observation archive/,
+  );
 });

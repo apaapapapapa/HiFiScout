@@ -1,11 +1,6 @@
 import { parseArgs } from "node:util";
-import { SqlObservationClient } from "./lib/d1-sql-observation-client.js";
-import {
-  observationHours,
-  summarizeObservations,
-  SqlObservationError,
-  type SqlObservation,
-} from "./lib/d1-sql-observation.js";
+import { loadSqlObservations, SqlObservationClient } from "./lib/d1-sql-observation-client.js";
+import { summarizeObservations, SqlObservationError } from "./lib/d1-sql-observation.js";
 
 try {
   const { values } = parseArgs({
@@ -20,18 +15,11 @@ try {
     apiToken: process.env.CLOUDFLARE_API_TOKEN ?? "",
   });
   // An explicit archived database ID keeps analysis usable after the Worker/binding is removed.
-  const databaseId = values["database-id"] ?? (await client.activeTarget()).databaseId;
-  const hours = observationHours(
-    values.at ? new Date(values.at) : new Date(),
-    Number(values.hours),
-  );
-  const archives: SqlObservation[] = [];
-  const missingHours: string[] = [];
-  for (const hour of hours) {
-    const archive = await client.load(databaseId, hour);
-    if (archive) archives.push(archive);
-    else missingHours.push(hour);
-  }
+  const { archives, missingHours } = await loadSqlObservations(client, {
+    databaseId: values["database-id"],
+    at: values.at ? new Date(values.at) : new Date(),
+    hours: Number(values.hours),
+  });
   console.log(JSON.stringify({ ...summarizeObservations(archives), missingHours }, null, 2));
   if (archives.length === 0) process.exitCode = 1;
 } catch (error) {

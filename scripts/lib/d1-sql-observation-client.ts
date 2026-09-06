@@ -304,3 +304,27 @@ export async function archiveSqlObservations(
     saved,
   };
 }
+
+/** Download/decompress bounded R2 objects; never execute SQL or recollect Insights. */
+export async function loadSqlObservations(
+  client: SqlObservationClient,
+  {
+    at = new Date(),
+    hours = 6,
+    databaseId,
+  }: { at?: Date; hours?: number; databaseId?: string } = {},
+) {
+  const requestedHours = observationHours(at, hours);
+  const target = checkedIdentifier(
+    databaseId ?? (await client.activeTarget()).databaseId,
+    "database",
+  );
+  const archives: SqlObservation[] = [];
+  const missingHours: string[] = [];
+  for (const hour of requestedHours) {
+    const archive = await client.load(target, hour);
+    if (archive) archives.push(archive);
+    else missingHours.push(hour);
+  }
+  return { databaseId: target, requestedHours, archives, missingHours };
+}

@@ -371,11 +371,12 @@ export function summarizeObservations(observations: SqlObservation[]) {
     databaseId: [...databaseIds][0] ?? null,
     source: "cloudflare-d1-insights",
     fullExecutionLog: false,
-    hours: [...hours.values()].map(({ windowStart, windowEnd, collectedAt, coverage }) => ({
+    hours: [...hours.values()].map(({ windowStart, windowEnd, collectedAt, coverage, totals }) => ({
       windowStart,
       windowEnd,
       collectedAt,
       coverage,
+      totals,
     })),
     totals: sumStats([...hours.values()].map((item) => item.totals)),
     topReads: ranked("rowsRead"),
