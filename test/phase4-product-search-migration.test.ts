@@ -4,7 +4,6 @@ import { test } from "vite-plus/test";
 
 import {
   deleteEmptyEntitiesSql,
-  refreshEntityAggregatesSql,
   upsertCatalogEntitiesSql,
   upsertCatalogOffersSql,
   upsertFallbackEntitiesSql,
@@ -53,10 +52,11 @@ test("sold-out availability is added and backfilled in a forward-only migration"
     /ALTER TABLE product_search_entities\s+ADD COLUMN sold_out_offer_count/,
   );
   assert.doesNotMatch(soldOutAggregateMigration, /DROP TABLE|DROP COLUMN/);
-  assert.ok(
-    normalized(soldOutAggregateMigration).includes(
-      normalized(refreshEntityAggregatesSql().split("AND (e.manufacturer IS NOT")[0]),
-    ),
+  // Historical migrations are frozen; later runtime aggregates also maintain newer columns.
+  assert.match(soldOutAggregateMigration, /sold_out_offer_count = agg.sold_out_offer_count/);
+  assert.match(
+    soldOutAggregateMigration,
+    /SUM\(CASE WHEN p.stock_status = 'sold_out' THEN 1 ELSE 0 END\)/,
   );
 });
 
