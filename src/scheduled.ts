@@ -8,6 +8,7 @@
 import { resumeInterruptedCrawlRuns } from "./crawler/crawl-continuation.js";
 import { recoverStalledCrawlRuns } from "./crawler/crawl-run-recovery.js";
 import { dispatchScheduledCrawl, recoverStalledCrawlDispatches } from "./crawler/dispatch.js";
+import { isCrawlQuietHours } from "./crawler/crawl-window.js";
 import { roundRobinShopForScheduledTime, shopForCronAtScheduledTime } from "./crawler/schedule.js";
 import { KNOWLEDGE_CATALOG_VERIFIER_VERSION } from "./catalog/knowledge-verification/verifier.js";
 import { runDataQualityRemediationSweep } from "./db/data-quality-remediation-service.js";
@@ -68,7 +69,7 @@ import type { QueryableDatabase } from "./db/types.js";
 /** Five-minute maintenance/watchdog sweep. It no longer starts new shop crawls. */
 export const GENERAL_CRON = "*/5 * * * *";
 /** One non-dedicated shop is selected on each tick, giving a ten-minute round-robin start cadence. */
-export const CRAWL_ROTATION_CRON = "6-56/10 * * * *";
+export const CRAWL_ROTATION_CRON = "6-56/10 0-13,23 * * *";
 
 /**
  * Cloudflare Free permits five cron triggers per account. Shops with a dedicated cadence may share
@@ -268,18 +269,25 @@ export async function repairDailyProjectionGaps(db: QueryableDatabase) {
 }
 
 export async function runScheduled(cron: string, env: Env, scheduledAt = new Date()) {
+  // Check both timestamps: delayed daytime triggers must not crawl at night, and old nighttime
+  // triggers delivered after 08:00 must not create a catch-up burst.
+  const crawlPaused = isCrawlQuietHours(scheduledAt.getTime()) || isCrawlQuietHours();
   if (cron === GENERAL_CRON) {
     // Runs are reconciled before dispatches: an abandoned run records the shop failure, and the
     // backoff that failure applies is what stops a shop that keeps timing out from being redialled
     // on the very next tick.
-    await recoverStalledCrawlRuns(env.DB, { now: scheduledAt });
-    const recovered = await recoverStalledCrawlDispatches(env, { now: scheduledAt });
+    if (!crawlPaused) await recoverStalledCrawlRuns(env.DB, { now: scheduledAt });
+    const recovered = crawlPaused
+      ? []
+      : await recoverStalledCrawlDispatches(env, { now: scheduledAt });
     const dispatch: DispatchResult = recovered.length
       ? ({ status: "queued", queued: recovered } satisfies DispatchResult)
       : ({ status: "skipped", queued: [] } satisfies DispatchResult);
     await logScheduledSyncHealthIfNeeded(env, cron, dispatch, scheduledAt);
     return dispatch;
   }
+
+  if (crawlPaused) return { status: "skipped", reason: "crawl_quiet_hours", queued: [] };
 
   const dedicated = shopForCronAtScheduledTime(cron, scheduledAt);
   const rotating =

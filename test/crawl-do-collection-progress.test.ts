@@ -280,12 +280,24 @@ test("CrawlScheduler persists its next command and progress in the same existing
     },
   } as unknown as DurableObjectState;
   const originalFetch = globalThis.fetch;
+  const originalNow = Date.now;
+  let now = Date.parse("2026-09-05T14:00:00.000Z");
+  Date.now = () => now;
   let fetches = 0;
   globalThis.fetch = async () => {
     fetches += 1;
     return new Response(HTML, { headers: { "content-type": "text/html" } });
   };
   try {
+    const pausedExecution = structuredClone(stored.get(STORAGE_KEY));
+    h.executed.length = 0;
+    await new CrawlScheduler(ctx, h.env as unknown as Env).alarm();
+    assert.equal(fetches, 0);
+    assert.equal(puts, 0);
+    assert.equal(h.executed.length, 0, "nighttime pause performs no D1 work");
+    assert.deepEqual(stored.get(STORAGE_KEY), pausedExecution);
+    now = Date.parse("2026-09-05T23:00:00.000Z");
+    alarms = 0;
     await assert.rejects(
       new CrawlScheduler(ctx, h.env as unknown as Env).alarm(),
       /DO commit interrupted/u,
@@ -310,6 +322,7 @@ test("CrawlScheduler persists its next command and progress in the same existing
     assert.equal(pages[0]?.html_text, null);
     assert.equal((await getCrawlFetchSession(h.db, RUN))?.continuation_sequence, 0);
   } finally {
+    Date.now = originalNow;
     globalThis.fetch = originalFetch;
   }
 });

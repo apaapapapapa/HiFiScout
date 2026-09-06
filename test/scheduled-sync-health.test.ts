@@ -29,7 +29,7 @@ test("ordinary crawl dispatches do not repeat the full health read", () => {
     null,
   );
   assert.equal(
-    scheduledSyncHealthReadReason("1,31 * * * *", { status: "skipped", queued: [] }),
+    scheduledSyncHealthReadReason("1,31 0-13,23 * * *", { status: "skipped", queued: [] }),
     null,
   );
 });
@@ -44,7 +44,7 @@ test("abnormal crawl outcomes retain an immediate diagnostic health read", () =>
     "abnormal_dispatch",
   );
   assert.equal(
-    scheduledSyncHealthReadReason("1,31 * * * *", {
+    scheduledSyncHealthReadReason("1,31 0-13,23 * * *", {
       status: "rejected",
       reason: "configuration_missing",
     }),

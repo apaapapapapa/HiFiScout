@@ -29,6 +29,29 @@ function recoveryEnv(
   } as unknown as Parameters<typeof recoverStalledCrawlDispatches>[0];
 }
 
+test("overnight reservations survive the pause and recover with the same token at 08:00 JST", async () => {
+  const { db } = migratedSqlite();
+  const requestedAt = "2026-09-06T13:00:00.000Z";
+  const token = await reserveShopDispatch(db, "home-shokai", requestedAt, 120);
+  const sent: CrawlDispatchMessage[] = [];
+  const env = recoveryEnv(db, (message) => sent.push(message));
+  assert.deepEqual(
+    await recoverStalledCrawlDispatches(env, {
+      now: new Date("2026-09-06T14:00:00.000Z"),
+    }),
+    [],
+  );
+  assert.equal(sent.length, 0);
+  assert.deepEqual(
+    await recoverStalledCrawlDispatches(env, {
+      now: new Date("2026-09-06T23:00:00.000Z"),
+    }),
+    ["home-shokai"],
+  );
+  assert.equal(sent[0]?.jobId, token);
+  assert.equal(sent[0]?.requestedAt, requestedAt);
+});
+
 test("the scheduler watchdog re-delivers the same quiet dispatch to its Durable Object", async () => {
   const { db } = migratedSqlite();
   const requestedAt = "2026-08-23T00:00:00.000Z";
