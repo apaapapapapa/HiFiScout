@@ -56,7 +56,7 @@ test("price-dropped filter compares current and previous price of one offer", as
   assert.match(db.calls[0].sql, /p\.price_yen < p\.previous_price_yen/);
 });
 
-test("offer filters are conjoined inside one EXISTS so they must hold for the same offer", async () => {
+test("shop offer filters are conjoined in one membership set so they hold for the same offer", async () => {
   const db = captureDatabase();
   await searchProducts(
     db,
@@ -66,8 +66,9 @@ test("offer filters are conjoined inside one EXISTS so they must hold for the sa
   );
 
   const { sql, binds } = db.calls[0];
-  const existsClauses = sql.match(/EXISTS \(\s*SELECT 1 FROM product_search_entity_offers/g) || [];
-  assert.equal(existsClauses.length, 1);
+  const membershipSets =
+    sql.match(/e\.id IN \(\s*SELECT m\.entity_id FROM products p INDEXED BY/g) || [];
+  assert.equal(membershipSets.length, 1);
   assert.match(sql, /p\.shop_key = \?/);
   assert.match(sql, /e\.manufacturer_id IN \(SELECT value FROM json_each\(\?\)\)/);
   assert.match(sql, /p\.stock_status = 'in_stock'/);

@@ -53,6 +53,26 @@ The fallback kind is mandatory rather than a nicety: identity coverage is incomp
 
 `product_search_entity_offers` maps each active listing to exactly one entity. `listing_product_id` is the table's primary key, so duplicate membership is impossible by schema rather than by convention.
 
+Shop-filtered search starts with that shop's active listings through the existing
+`idx_products_shop_active_quality` index and then looks up offer membership by listing ID. The
+result is an entity-ID set: multiple matching listings still count as one product. Exact totals
+and pages share this predicate, and request-scoped sort aggregates use the same shop-first access
+path. Stock, price, newness and price-drop conditions must all hold on the same listing; another
+shop's offer cannot satisfy one of them. Totals remain exact and independent of page cursors.
+Offer selection scales with the selected shop's active inventory, not other shops or retained
+inactive rows; it is not constant-time as the selected shop itself grows. Additional FTS/product
+filters have their own access costs. No extra index, counter write or cache
+freshness tradeoff is introduced.
+
+Manufacturer presentation aliases are an uncorrelated SQL set, rather than JSON expanded once per
+entity. Only badge-prefixed stale presentations use the legacy suffix comparison. This retains
+canonical IDs, historical aliases and Japanese labels while reducing repeated work. Without a shop
+scope the presentation fallback can still scan entities; it is not an indexed constant-cost path.
+`test/filtered-search-read-budget.test.ts` measures real local D1 reads at increasing unrelated-data
+sizes, and `test/filtered-search-semantics.test.ts` covers distinct totals, same-offer filters,
+manufacturer compatibility and cursor pagination. These are regression gates, not production
+billing or Worker CPU measurements.
+
 Canonical membership requires a `matched` Product Identity resolution against a verified `knowledge_catalog_products` row. Before catalog verification, `src/db/product-search-exact-identity.ts` may consolidate unresolved offers whose canonical manufacturer and resolved normalized model are both nonempty and exactly equal. Conflicting specific categories and persisted identity vetoes exclude unsafe grouping; its representative is the lowest eligible active listing ID. Accessory compatibility mentions and multi-model bundles cannot bypass the decision by falling back to an exact group.
 
 Candidate/unresolved model results, fuzzy suggestions, equal titles, and equal model stems never authorize grouping. Revision, edition, and accessory evidence remains protected by the model/identity guards. Confirmed catalog membership always takes precedence over fallback grouping.

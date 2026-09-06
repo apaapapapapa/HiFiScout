@@ -12,7 +12,7 @@
  *
  * - product-level (`manufacturer`, `category`, `feature`) restrict the entity itself;
  * - offer-level (`shop`, `inStock`, `minPrice`, `maxPrice`, `newOnly`, `priceDropped`) are
- *   evaluated inside a single `EXISTS` so they must all hold for the *same* offer. Satisfying
+ *   evaluated together so they must all hold for the *same* offer. Satisfying
  *   `shop=A` with one listing and `maxPrice` with another shop's listing would be a wrong answer,
  *   not a lenient one.
  *
@@ -108,6 +108,7 @@ interface OfferFilter {
   sql: string;
   binds: unknown[];
   active: boolean;
+  shopScoped: boolean;
 }
 
 interface ProductSearchPageRow extends ProductSearchEntityRow {
@@ -182,23 +183,24 @@ function addProductFilters(query: ProductQuery, where: string[], binds: unknown[
     );
     where.push(`(
       e.manufacturer_id IN (SELECT value FROM json_each(?))
-      OR EXISTS (
-        SELECT 1 FROM json_each(?) presentation
-        WHERE ${NORMALIZED_MANUFACTURER_PRESENTATION_SQL} = presentation.value
-           OR (
-             (
-               ${NORMALIZED_MANUFACTURER_PRESENTATION_SQL} LIKE '【%】%'
-               OR ${NORMALIZED_MANUFACTURER_PRESENTATION_SQL} LIKE '〖%〗%'
-               OR ${NORMALIZED_MANUFACTURER_PRESENTATION_SQL} LIKE '[%]%'
-             )
-             AND substr(
-               ${NORMALIZED_MANUFACTURER_PRESENTATION_SQL},
-               -length(presentation.value)
-             ) = presentation.value
-           )
+      OR ${NORMALIZED_MANUFACTURER_PRESENTATION_SQL} IN (SELECT value FROM json_each(?))
+      OR (
+        (
+          ${NORMALIZED_MANUFACTURER_PRESENTATION_SQL} LIKE '【%】%'
+          OR ${NORMALIZED_MANUFACTURER_PRESENTATION_SQL} LIKE '〖%〗%'
+          OR ${NORMALIZED_MANUFACTURER_PRESENTATION_SQL} LIKE '[%]%'
+        )
+        AND EXISTS (
+          SELECT 1 FROM json_each(?) presentation
+          WHERE substr(${NORMALIZED_MANUFACTURER_PRESENTATION_SQL}, -length(presentation.value))
+            = presentation.value
+        )
       )
     )`);
-    binds.push(JSON.stringify(manufacturerIds), JSON.stringify(manufacturerPresentations));
+    // The ordinary presentation set is uncorrelated and built once, not expanded per entity.
+    // Keep the old suffix rule only for badge-prefixed rows; stale Japanese labels remain visible.
+    const presentationsJson = JSON.stringify(manufacturerPresentations);
+    binds.push(JSON.stringify(manufacturerIds), presentationsJson, presentationsJson);
   }
   if (query.category) {
     // Membership, not the one representative category. A listing that sells a transport and a DAC
@@ -280,7 +282,17 @@ function offerFilter(query: ProductQuery): OfferFilter {
     sql: predicates.length ? ` AND ${predicates.join(" AND ")}` : "",
     binds,
     active: predicates.length > 0,
+    shopScoped: Boolean(query.shop),
   };
+}
+
+/** Start shop-filtered work at the existing shop/active index, never at all search entities. */
+function matchingOfferFrom(filter: OfferFilter): string {
+  return filter.shopScoped
+    ? `products p INDEXED BY idx_products_shop_active_quality
+       CROSS JOIN product_search_entity_offers m ON m.listing_product_id = p.id`
+    : `product_search_entity_offers m
+       JOIN products p ON p.id = m.listing_product_id`;
 }
 
 /**
@@ -300,6 +312,16 @@ function addOfferFilter(
     return;
   }
   if (!filter.active) return;
+  if (filter.shopScoped) {
+    // IN is a set of entity IDs: two matching listings still count as one product. Resolving the
+    // small shop set first also avoids probing every entity when there are no matching offers.
+    where.push(`e.id IN (
+      SELECT m.entity_id FROM ${matchingOfferFrom(filter)}
+      WHERE p.is_active = 1${filter.sql}
+    )`);
+    binds.push(...filter.binds);
+    return;
+  }
   where.push(`EXISTS (
     SELECT 1 FROM product_search_entity_offers m
     JOIN products p ON p.id = m.listing_product_id
@@ -343,7 +365,7 @@ function offerSortScopeKey(query: ProductQuery): string {
 /**
  * Aggregate sort values over exactly the offers accepted by {@link offerFilter}.
  *
- * This is an inner join, so it also proves a matching offer exists. The existing `EXISTS` remains
+ * This is an inner join, so it also proves a matching offer exists. The membership predicate remains
  * in the WHERE clause because the count query shares that predicate and must not depend on ORDER BY.
  */
 function requestScopedSortJoin(filter: OfferFilter): string {
@@ -353,8 +375,7 @@ function requestScopedSortJoin(filter: OfferFilter): string {
            MIN(CASE WHEN p.stock_status = 'in_stock' THEN p.price_yen END) AS lowest_in_stock_price_yen,
            MAX(p.last_activity_at) AS latest_activity_at,
            MAX(COALESCE(p.source_published_at, p.first_seen_at)) AS newest_listed_at
-    FROM product_search_entity_offers m
-    JOIN products p ON p.id = m.listing_product_id
+    FROM ${matchingOfferFrom(filter)}
     WHERE p.is_active = 1${filter.sql}
     GROUP BY m.entity_id
   ) matching_sort ON matching_sort.entity_id = e.id`;
