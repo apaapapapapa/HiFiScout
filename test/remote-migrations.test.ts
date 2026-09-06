@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { test } from "vite-plus/test";
-import {
-  applyRemoteMigrations,
-  parseWranglerOutput,
-} from "../scripts/apply-remote-migrations.js";
+import { applyRemoteMigrations, parseWranglerOutput } from "../scripts/apply-remote-migrations.js";
 import { workingMigrations } from "../scripts/lib/migration-history.js";
 import { applyMigration, localD1 } from "./helpers/local-d1.js";
 
