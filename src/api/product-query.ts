@@ -6,7 +6,7 @@
  * pure functions and are unit-tested without a database.
  */
 
-import { FEATURE_DEFINITIONS } from "../catalog/types.js";
+import { FEATURE_FILTER_DEFINITIONS, parseFeatureFilter } from "../catalog/types.js";
 import { facetSelectionKey, parseFacetSelection } from "../catalog/product-facets.js";
 import { PRODUCT_QUERY_SORTS } from "./contracts.js";
 import { validateQueryContract } from "./route-contract.js";
@@ -23,7 +23,7 @@ export const MAX_OFFSET = 10_000;
 const LENGTH_LIMITS = { q: 100, shop: 80, manufacturer: 100, category: 100, cursor: 1024 };
 const MAX_FEATURE_PARAM_LENGTH = 200;
 const MAX_FACET_PARAM_LENGTH = 200;
-const FEATURE_IDS = FEATURE_DEFINITIONS.map((feature) => feature.id);
+const FEATURE_IDS = FEATURE_FILTER_DEFINITIONS.map((feature) => feature.id);
 
 /**
  * Machine-readable query contract shared by runtime validation and OpenAPI generation.
@@ -69,7 +69,8 @@ export const PRODUCT_QUERY_PARAMETERS = [
     commaSeparated: true,
     maxLength: MAX_FEATURE_PARAM_LENGTH,
     enum: FEATURE_IDS,
-    description: "Required product feature. May be repeated or supplied as a comma-separated list.",
+    description:
+      "Required product feature state: id means present, id:absent means explicitly absent, id:unknown means missing or conflicting evidence. AND across features; only one state per feature. Repeatable or comma-separated.",
   },
   {
     name: "facet",
@@ -208,6 +209,9 @@ function integerParam(params: URLSearchParams, key: string): number | null {
 export function validateProductQuery(url: URL): string | null {
   const contractError = validateQueryContract(url, PRODUCT_QUERY_PARAMETERS);
   if (contractError) return contractError;
+  const features = requestedFeatures(url.searchParams).map((value) => parseFeatureFilter(value));
+  if (new Set(features.map((value) => value?.featureId)).size !== features.length)
+    return "feature_conflicting_states";
   const requested = url.searchParams
     .getAll("facet")
     .flatMap((value) => value.split(","))

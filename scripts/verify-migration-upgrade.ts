@@ -88,6 +88,20 @@ async function seed(code: Runtime, db: QueryableDatabase) {
     .run();
   await crawl(code, db, 100000, AT);
   await crawl(code, db, 90000, "2026-09-05T00:01:00.000Z");
+  const tape = code.normalizeCatalogProduct({
+    sourceId: "upgrade-tape",
+    manufacturer: "",
+    model: "T100",
+    title: "テープデッキ T100",
+    conditionText: "中古",
+    priceYen: 10000,
+    stockStatus: "in_stock",
+    sourceUrl: "https://example.test/upgrade-tape",
+  });
+  await code.upsertProducts(db, "hifido", [tape], AT);
+  await code.syncProductSearchProjections(db, "hifido", ["upgrade-tape"]);
+  await code.syncProductIdentityResolutions(db, "hifido", ["upgrade-tape"]);
+  await code.syncProductSearchEntities(db, "hifido", ["upgrade-tape"]);
   await db
     .prepare(`
     INSERT INTO product_admin_overrides(listing_product_id,model,normalized_model,created_at,updated_at)
@@ -165,6 +179,16 @@ async function probe(
   const serialized: unknown = JSON.parse(JSON.stringify(response));
   assert.ok(browser.isProductsResponse(serialized), `${stage}: search/browser contract`);
   assert.equal(response.items.length, 1, `${stage}: seeded product remains searchable`);
+  const tape = await server.searchProducts(
+    db,
+    server.parseProductQuery(new URL("https://example.test/api/product-search?category=ANA.TAPE")),
+  );
+  assert.equal(tape.items.length, 1, `${stage}: existing tape URL remains searchable`);
+  assert.equal(
+    tape.items[0]?.category,
+    "テープデッキ",
+    `${stage}: previous and current runtime recognize the durable tape ID`,
+  );
   assert.equal(
     response.items[0]?.representative_offer?.price_yen,
     90000,

@@ -23,7 +23,28 @@ const meta = {
   ],
   manufacturers: ["LUXMAN"],
   categories: [],
-  categoryFacets: [],
+  categoryFacets: [
+    {
+      id: "SRC",
+      name: "ソース機器",
+      parentId: null,
+      order: 4,
+      classifiable: false,
+      filterable: true,
+      group: null,
+      activeProductCount: 1,
+    },
+    {
+      id: "ANA.TAPE",
+      name: "テープデッキ",
+      parentId: "SRC",
+      order: 6,
+      classifiable: true,
+      filterable: true,
+      group: "ソース機器",
+      activeProductCount: 1,
+    },
+  ],
 };
 const results = { items: [item], hasMore: false, nextCursor: null, totalCount: 1, totalPages: 1 };
 
@@ -118,6 +139,33 @@ test("initial loading does not report zero matches and a completed empty search 
   await page.locator("#q").fill("zero");
   await expect(page.locator("#count")).toHaveText("0");
   await expect(page.locator("#products")).toContainText("一致する商品はありません");
+});
+
+test("capability controls preserve absent and unknown states through requests and active chips", async ({
+  page,
+  mount,
+}) => {
+  const seen = await mockCatalog(page);
+  await mount("frontend/public-app/Default");
+  await expect(page.locator(".card")).toHaveCount(1);
+  await page.getByText("機能・仕様で詳しく絞り込む", { exact: true }).click();
+  await page.locator("#category").selectOption("ANA.TAPE");
+  await expect(page.getByRole("group", { name: "対応メディア", exact: true })).toBeVisible();
+  await page.getByLabel("DAC搭載", { exact: true }).selectOption("dac:absent");
+  await expect
+    .poll(() => seen.searches.at(-1)?.searchParams.getAll("feature"))
+    .toEqual(["dac:absent"]);
+  await expect(page.getByRole("button", { name: /DAC搭載: 非搭載/ })).toBeVisible();
+  await page.getByLabel("録音機能", { exact: true }).selectOption("recording:unknown");
+  await expect
+    .poll(() => seen.searches.at(-1)?.searchParams.getAll("feature"))
+    .toEqual(["dac:absent", "recording:unknown"]);
+  await page.getByLabel("DAC搭載", { exact: true }).selectOption("dac");
+  await expect
+    .poll(() => seen.searches.at(-1)?.searchParams.getAll("feature"))
+    .toEqual(["dac", "recording:unknown"]);
+  await page.locator("#favoritesOnly").check();
+  await expect(page.getByLabel("DAC搭載", { exact: true })).toBeDisabled();
 });
 
 test("mobile drafts apply once, cancel safely, validate prices and trap keyboard focus", async ({

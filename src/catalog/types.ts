@@ -96,9 +96,8 @@ export type ClassifiableCategoryId =
 /**
  * The answer "the classifier could not decide", which is not a category a product belongs to.
  *
- * It exists as its own id because `other` is a real, intentional leaf — tuners, equalizers,
- * channel dividers — and sharing one id made "we don't know" indistinguishable from "genuinely
- * miscellaneous" everywhere downstream, including the public category filter.
+ * It is an internal sentinel, never a public catch-all category. Legacy `other` is accepted only
+ * as an evidence-dependent compatibility input; tuners and processors have their own leaves.
  */
 export type UnclassifiedCategoryId = "unclassified";
 
@@ -540,7 +539,14 @@ export type FacetId =
   | "technology"
   | "application"
   | "processor_type"
-  | "portability";
+  | "portability"
+  | "acoustic_design"
+  | "cartridge_type"
+  | "phono_support"
+  | "supported_media"
+  | "cable_length"
+  | "part_type"
+  | "target_equipment";
 
 export interface FacetValueDefinition {
   readonly id: string;
@@ -569,6 +575,28 @@ function facetGroups(...groups: readonly CategoryGroupId[]): readonly CategoryGr
   return Object.freeze(groups);
 }
 
+const CONNECTOR_VALUES = facetValues(
+  ["xlr", "XLR"],
+  ["rca", "RCA"],
+  ["2_5mm", "2.5mm"],
+  ["3_5mm", "3.5mm"],
+  ["4_4mm", "4.4mm"],
+  ["6_3mm", "6.3mm"],
+  ["usb", "USB（形状不明）"],
+  ["usb_a", "USB Type-A"],
+  ["usb_b", "USB Type-B"],
+  ["usb_c", "USB Type-C"],
+  ["ethernet", "Ethernet / RJ45"],
+  ["hdmi", "HDMI"],
+  ["optical", "光"],
+  ["coaxial", "同軸（形状不明）"],
+  ["bnc", "BNC"],
+  ["mmcx", "MMCX"],
+  ["two_pin", "2ピン"],
+  ["banana", "バナナ"],
+  ["spade", "Yラグ"],
+);
+
 export const FACET_DEFINITIONS: readonly FacetDefinition[] = Object.freeze([
   Object.freeze({
     id: "connectivity",
@@ -588,12 +616,17 @@ export const FACET_DEFINITIONS: readonly FacetDefinition[] = Object.freeze([
     id: "form_factor",
     name: "形状",
     order: 3,
-    categoryRootIds: facetGroups("SPK", "SYS"),
+    categoryRootIds: facetGroups("PER", "SPK", "SYS"),
     values: facetValues(
       ["bookshelf", "ブックシェルフ"],
       ["floorstanding", "フロア型"],
       ["desktop", "デスクトップ"],
       ["one_box", "一体型"],
+      ["true_wireless", "完全ワイヤレス"],
+      ["over_ear", "オーバーイヤー"],
+      ["on_ear", "オンイヤー"],
+      ["in_ear", "カナル型"],
+      ["open_ear", "オープンイヤー"],
     ),
   }),
   Object.freeze({
@@ -627,30 +660,14 @@ export const FACET_DEFINITIONS: readonly FacetDefinition[] = Object.freeze([
     name: "端子A",
     order: 7,
     categoryRootIds: facetGroups("CAB"),
-    values: facetValues(
-      ["xlr", "XLR"],
-      ["rca", "RCA"],
-      ["usb", "USB"],
-      ["ethernet", "Ethernet"],
-      ["hdmi", "HDMI"],
-      ["optical", "光"],
-      ["coaxial", "同軸"],
-    ),
+    values: CONNECTOR_VALUES,
   }),
   Object.freeze({
     id: "connector_b",
     name: "端子B",
     order: 8,
     categoryRootIds: facetGroups("CAB"),
-    values: facetValues(
-      ["xlr", "XLR"],
-      ["rca", "RCA"],
-      ["usb", "USB"],
-      ["ethernet", "Ethernet"],
-      ["hdmi", "HDMI"],
-      ["optical", "光"],
-      ["coaxial", "同軸"],
-    ),
+    values: CONNECTOR_VALUES,
   }),
   Object.freeze({
     id: "signal_type",
@@ -708,7 +725,98 @@ export const FACET_DEFINITIONS: readonly FacetDefinition[] = Object.freeze([
     name: "可搬性",
     order: 14,
     categoryRootIds: facetGroups("PER", "SRC", "SPK"),
-    values: facetValues(["portable", "ポータブル"], ["battery_powered", "バッテリー駆動"]),
+    values: facetValues(
+      ["portable", "ポータブル"],
+      ["stationary", "据置型"],
+      ["battery_powered", "バッテリー駆動"],
+    ),
+  }),
+  Object.freeze({
+    id: "acoustic_design",
+    name: "音響構造",
+    order: 15,
+    categoryRootIds: facetGroups("PER"),
+    values: facetValues(
+      ["open_back", "開放型"],
+      ["closed_back", "密閉型"],
+      ["semi_open", "半開放型"],
+    ),
+  }),
+  Object.freeze({
+    id: "cartridge_type",
+    name: "カートリッジ方式",
+    order: 16,
+    categoryRootIds: facetGroups("ANA"),
+    values: facetValues(["mm", "MM"], ["mc", "MC"], ["mi", "MI"]),
+  }),
+  Object.freeze({
+    id: "phono_support",
+    name: "フォノ入力対応",
+    order: 17,
+    categoryRootIds: facetGroups("AMP"),
+    values: facetValues(["mm", "MM対応"], ["mc", "MC対応"]),
+  }),
+  Object.freeze({
+    id: "supported_media",
+    name: "対応メディア",
+    order: 18,
+    categoryRootIds: facetGroups("SRC", "REC"),
+    values: facetValues(
+      ["cd", "CD"],
+      ["sacd", "SACD"],
+      ["dvd", "DVD"],
+      ["blu_ray", "Blu-ray"],
+      ["md", "MD"],
+      ["ld", "LD"],
+      ["cassette", "カセット"],
+      ["open_reel", "オープンリール"],
+      ["dat", "DAT"],
+      ["dcc", "DCC"],
+    ),
+  }),
+  Object.freeze({
+    id: "cable_length",
+    name: "ケーブル長",
+    order: 19,
+    categoryRootIds: facetGroups("CAB", "PWR"),
+    values: facetValues(
+      ["under_1m", "1m未満"],
+      ["1_to_2m", "1m以上・2m未満"],
+      ["2_to_3m", "2m以上・3m未満"],
+      ["3_to_5m", "3m以上・5m未満"],
+      ["5m_plus", "5m以上"],
+    ),
+  }),
+  Object.freeze({
+    id: "part_type",
+    name: "部品種別",
+    order: 20,
+    categoryRootIds: facetGroups("ACC"),
+    values: facetValues(
+      ["driver", "スピーカーユニット"],
+      ["tweeter", "ツイーター"],
+      ["horn", "ホーン"],
+      ["enclosure", "エンクロージャー"],
+      ["terminal", "端子"],
+      ["knob", "ノブ"],
+      ["board", "基板"],
+      ["remote", "リモコン"],
+    ),
+  }),
+  Object.freeze({
+    id: "target_equipment",
+    name: "対象機器",
+    order: 21,
+    categoryRootIds: facetGroups("ACC"),
+    values: facetValues(
+      ["speaker", "スピーカー"],
+      ["headphone", "ヘッドホン"],
+      ["earphone", "イヤホン"],
+      ["amplifier", "アンプ"],
+      ["disc_player", "ディスク機器"],
+      ["turntable", "レコードプレーヤー"],
+      ["tape_deck", "テープデッキ"],
+    ),
   }),
 ]);
 
@@ -750,9 +858,17 @@ export interface FacetFact {
 // Feature facts (src/catalog/product-features.ts)
 // ---------------------------------------------------------------------------
 
-export type FeatureId = "dac" | "network_playback" | "headphone_output" | "phono_input";
+export type FeatureId =
+  | "dac"
+  | "network_playback"
+  | "headphone_output"
+  | "phono_input"
+  | "recording";
 
 export type FeatureState = "present" | "absent";
+/** Unknown means no evidence or contradictory evidence; it is never inferred as absent. */
+export type ResolvedFeatureState = FeatureState | "unknown";
+export type FeatureFilter = FeatureId | `${FeatureId}:absent` | `${FeatureId}:unknown`;
 
 export interface FeatureDefinition {
   readonly id: FeatureId;
@@ -773,6 +889,7 @@ export const FEATURE_DEFINITIONS: readonly FeatureDefinition[] = Object.freeze([
   Object.freeze({ id: "network_playback", name: "ネットワーク対応", order: 2 }),
   Object.freeze({ id: "headphone_output", name: "ヘッドホン出力", order: 3 }),
   Object.freeze({ id: "phono_input", name: "フォノ入力", order: 4 }),
+  Object.freeze({ id: "recording", name: "録音機能", order: 5 }),
 ]);
 
 /** Product capabilities retain the existing feature-fact storage and query contract. */
@@ -785,6 +902,30 @@ const FEATURE_IDS = new Set<string>(FEATURE_DEFINITIONS.map((feature) => feature
 export function isFeatureId(value: unknown): value is FeatureId {
   return typeof value === "string" && FEATURE_IDS.has(value);
 }
+
+export function parseFeatureFilter(
+  value: string,
+): { featureId: FeatureId; state: ResolvedFeatureState } | null {
+  const [featureId, state = "present", extra] = value.split(":");
+  return isFeatureId(featureId) &&
+    extra === undefined &&
+    ((state === "present" && !value.includes(":")) || state === "absent" || state === "unknown")
+    ? { featureId, state }
+    : null;
+}
+
+export function isFeatureFilter(value: unknown): value is FeatureFilter {
+  return typeof value === "string" && parseFeatureFilter(value) !== null;
+}
+
+export const FEATURE_FILTER_DEFINITIONS: readonly { id: FeatureFilter; name: string }[] =
+  Object.freeze(
+    FEATURE_DEFINITIONS.flatMap((feature) => [
+      { id: feature.id, name: feature.name },
+      { id: `${feature.id}:absent` as const, name: `${feature.name}: 非搭載` },
+      { id: `${feature.id}:unknown` as const, name: `${feature.name}: 不明` },
+    ]),
+  );
 
 /** Loose input to `normalizeFeatureFacts()`; every field is re-validated/coerced. */
 export interface FeatureFactInput {

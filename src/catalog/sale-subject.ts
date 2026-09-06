@@ -40,6 +40,15 @@ export function saleSubjectText(value: string): string {
         /\b(?:with(?:out)?|includes?)\s+(?:an?\s+)?(?:remote(?:\s+control)?|cable|case|cover|ac\s+adapt(?:er|or))\b/gi,
         " ",
       )
+      // Installed drivers describe a complete product; only standalone units are sale objects.
+      .replace(
+        /(?:フルレンジ|スピーカー|ツ[イィ]ーター|ウーファー|ドライバー)\s*ユニット\s*(?:を\s*)?(?:搭載|内蔵|採用)/gi,
+        " ",
+      )
+      .replace(
+        /\b(?:with|includes?|featuring)\s+(?:an?\s+)?(?:speaker\s+(?:driver\s+)?|(?:full[\s-]?range|tweeter|woofer|driver)\s+)units?\b/gi,
+        " ",
+      )
   );
 }
 

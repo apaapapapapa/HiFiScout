@@ -131,6 +131,41 @@ Infrastructure-level D1/R2 latency, storage, and error metrics remain in Cloudfl
 
 ## Persistence and replay compatibility
 
+### Category completion: product types, specifications and capabilities
+
+Taxonomy v3 retains 12 filterable roots and 62 product-type leaves. Display names are Japanese.
+Tape decks now belong to the source-equipment root (`SRC`). Their durable leaf ID remains
+`ANA.TAPE` so saved URLs, verified catalog entries and explicit admin corrections remain valid;
+always use the registry's `parentId`/closure, not an ID prefix, to determine ancestry.
+Migration 0095 repairs only affected ancestor memberships and preserves mixed-product sets.
+The previous runtime still recognizes all stored leaf IDs during migration-before-deploy rollout.
+
+Disc equipment includes CD, SACD, DVD, Blu-ray, MD and LD; tape equipment includes cassette,
+open-reel, DAT and DCC. Formats are `supported_media` facets, not separate categories. Bare speaker
+drivers, tweeters, horns and enclosures are `ACC.PART` with `part_type` and `target_equipment` facts;
+a finished add-on super tweeter remains `SPK.LOUDSPEAKER`. Channel dividers, equalizers and AV
+processors use `PRC.PROCESSOR` plus `processor_type`.
+
+Headphone acoustic design and form factor, cartridge MM/MC/MI construction, phono MM/MC support,
+and portable/stationary use are independent facets. Cable endpoints follow the order explicitly
+written in the seller's text; an unspecified second endpoint is not copied from the first.
+Ambiguous multi-ended cables are left unspecified. Endpoint shapes include standard phone-plug
+sizes and USB Type-A/B/C. Cable length is filtered in half-open ranges: under 1m, 1–2m, 2–3m,
+3–5m and 5m or longer. Ambiguous lengths are not inferred; exact seller text remains retained.
+
+`recording` joins the existing four capabilities. `?feature=dac` still means positive evidence;
+`?feature=dac:absent` requires explicit absence, and `?feature=dac:unknown` matches missing or
+contradictory evidence across the entity's listings. Only one state per feature is accepted;
+different features are ANDed. Missing mentions never produce absent facts. These predicates use
+entity-local indexed offer/fact lookups, not a full-catalog aggregate. Favorites lack capability
+facts, so their existing filter-disable behavior is retained.
+
+Classifier version 18 selects existing active listings through the bounded remediation queue;
+inactive listings are selected when reactivated. Replay regenerates title-derived category,
+capability and facet evidence from the retained full title while preserving seller/official/admin
+evidence and existing write guards. No deployment-triggered seller refetch or full-inventory rewrite
+is required. Search projections and metadata converge through the existing refresh paths.
+
 Migration 0017 introduced search/identity/evidence foundations and migration 0018 added Evidence Archive usage metadata. Deployment applies migrations before the Worker release, so Phase 2 migration 0019 is applied after those foundations. Migration 0020 closes the rollout-era Identity coverage gap by inserting an explicit unresolved/backfill-pending resolution for every existing listing that lacks one.
 
 Migration 0023 separates raw and derived manufacturer/model fields on seller listings and adds canonical manufacturer plus manufacturer-alias persistence. The public `manufacturer_id` remains a filter/display compatibility field; only `canonical_manufacturer_id` may load Product Identity candidates. Pending aliases and verified alias collisions therefore cannot silently merge products.

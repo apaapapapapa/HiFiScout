@@ -23,6 +23,14 @@ test("catalog feed discovery preserves the UI default of in-stock only", () => {
   assert.equal(catalogFeedPath(new URL("https://example.test/")), "/api/feed?inStock=true");
 });
 
+test("catalog feed discovery retains the last capability state just like the browser", () => {
+  const url = new URL(
+    "https://example.test/?feature=dac&feature=dac:absent&feature=recording:unknown",
+  );
+  const feed = new URL(catalogFeedPath(url), url);
+  assert.deepEqual(feed.searchParams.getAll("feature"), ["dac:absent", "recording:unknown"]);
+});
+
 test("catalog feed discovery drops values the catalog bootstrap would sanitize", () => {
   const oversized = "x".repeat(101);
   const url = new URL(

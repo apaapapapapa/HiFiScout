@@ -10,8 +10,8 @@
  * splits it into product-level and offer-level predicates, and `limit`/`offset` count products.
  */
 
-import { FACET_DEFINITIONS, FEATURE_DEFINITIONS } from "../src/api/contracts.js";
-import type { FacetSelection, FeatureId } from "../src/api/contracts.js";
+import { FACET_DEFINITIONS, FEATURE_FILTER_DEFINITIONS } from "../src/api/contracts.js";
+import type { FacetSelection, FeatureFilter } from "../src/api/contracts.js";
 import { yen } from "./format.js";
 import { PAGE_SIZE, pageOffset } from "./pagination.js";
 
@@ -39,7 +39,7 @@ export type ProductView = "cards" | "list";
 
 /** Keyed by plain string so untrusted input can be tested for membership without a cast. */
 const FEATURE_NAMES = new Map<string, string>(
-  FEATURE_DEFINITIONS.map((feature) => [feature.id, feature.name]),
+  FEATURE_FILTER_DEFINITIONS.map((feature) => [feature.id, feature.name]),
 );
 const FACET_NAMES = new Map<string, string>(
   FACET_DEFINITIONS.flatMap((facet) =>
@@ -50,14 +50,14 @@ const FACET_NAMES = new Map<string, string>(
 );
 
 /** Chip id for one selected feature, so a single chip can clear a single feature. */
-export function featureFilterId(feature: FeatureId): string {
+export function featureFilterId(feature: FeatureFilter): string {
   return `feature:${feature}`;
 }
 
 /** The feature a chip id names, or null when the id belongs to another control. */
-export function featureFromFilterId(id: string): FeatureId | null {
+export function featureFromFilterId(id: string): FeatureFilter | null {
   const feature = id.startsWith("feature:") ? id.slice("feature:".length) : "";
-  return FEATURE_NAMES.has(feature) ? (feature as FeatureId) : null;
+  return FEATURE_NAMES.has(feature) ? (feature as FeatureFilter) : null;
 }
 
 export function facetSelectionKey(selection: FacetSelection): string {
@@ -87,11 +87,11 @@ export function facetFromFilterId(id: string): FacetSelection | null {
  */
 export type ProductFilters = Record<UrlValueId, string> &
   Record<ToggleId, boolean> & {
-    features: readonly FeatureId[];
+    features: readonly FeatureFilter[];
     facets: readonly FacetSelection[];
   };
 
-function featureParams(features: readonly FeatureId[]): FeatureId[] {
+function featureParams(features: readonly FeatureFilter[]): FeatureFilter[] {
   return [...new Set(features)].sort();
 }
 
@@ -102,13 +102,16 @@ function facetParams(facets: readonly FacetSelection[]): FacetSelection[] {
 }
 
 /** Reads the repeated/comma-separated `feature` form, dropping anything outside the vocabulary. */
-export function parseFeatureParams(params: URLSearchParams): FeatureId[] {
+export function parseFeatureParams(params: URLSearchParams): FeatureFilter[] {
   const requested = params
     .getAll("feature")
     .flatMap((value) => value.split(","))
     .map((value) => value.trim())
-    .filter((value): value is FeatureId => FEATURE_NAMES.has(value));
-  return featureParams(requested);
+    .filter((value): value is FeatureFilter => FEATURE_NAMES.has(value));
+  // One state per control; retain the last valid state from an externally edited URL.
+  return featureParams([
+    ...new Map(requested.map((value) => [value.split(":")[0], value])).values(),
+  ]);
 }
 
 export function parseFacetParams(params: URLSearchParams): FacetSelection[] {
@@ -134,7 +137,7 @@ export interface FilterEntry {
 
 export interface UrlFilterState {
   values: Record<UrlValueId, string>;
-  features: FeatureId[];
+  features: FeatureFilter[];
   facets: FacetSelection[];
   inStock: boolean;
   recentOnly: boolean;

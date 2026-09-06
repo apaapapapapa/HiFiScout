@@ -150,7 +150,7 @@ test("live metadata exposes the complete canonical taxonomy including zero-count
     parentId: "AMP",
   });
   expect(facets.find((category) => category.id === "SRC.DISC")).toMatchObject({
-    name: "　Disc Player / Disc Transport",
+    name: "　ディスク再生・録音機器",
     parentId: "SRC",
   });
   expect(facets.find((category) => category.id === "ANA.HEADSHELL")).toMatchObject({
