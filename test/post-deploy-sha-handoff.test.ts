@@ -19,6 +19,18 @@ const statusAction = readFileSync(
 
 const downstreamWorkflows = [e2e, operationalHealth, catalogAdmin];
 
+test("admin redeploys only bootstrap a confirmed missing Worker and configure Access before replacement", () => {
+  const check = catalogAdmin.indexOf("scripts/provision-catalog-admin-access.ts --check-worker");
+  const bootstrap = catalogAdmin.indexOf("name: Bootstrap new admin Worker with access denied");
+  const provision = catalogAdmin.indexOf("name: Provision Cloudflare Access");
+  const configured = catalogAdmin.indexOf("name: Deploy admin Worker with Access verification");
+  assert.ok(check > 0 && bootstrap > check && provision > bootstrap && configured > provision);
+  const bootstrapStep = catalogAdmin.slice(bootstrap, provision);
+  assert.match(bootstrapStep, /steps\.worker\.outputs\.exists == 'false'/u);
+  assert.match(bootstrapStep, /ACCESS_AUD:unconfigured/u);
+  assert.doesNotMatch(catalogAdmin.slice(check, configured), /continue-on-error/u);
+});
+
 test("Deploy publishes the exact CI-authorized SHA only after production is confirmed", () => {
   assert.match(deploy, /echo "DEPLOY_SHA=\$target_sha" >> "\$GITHUB_ENV"/u);
   assert.match(deploy, /ref: \$\{\{ steps\.target\.outputs\.sha \}\}/u);

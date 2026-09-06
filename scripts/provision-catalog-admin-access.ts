@@ -1,6 +1,7 @@
 import { appendFile } from "node:fs/promises";
 
 import { normalizeCloudflareAccessTeamDomain } from "../src/admin/access.js";
+import { findCatalogAdminWorkerId, type CloudflareWorker } from "./lib/catalog-admin-worker.js";
 
 interface ApiEnvelope<T> {
   success: boolean;
@@ -17,11 +18,6 @@ interface IdentityProvider {
   id?: string;
   name?: string;
   type?: string;
-}
-
-interface CloudflareWorker {
-  id?: string;
-  name?: string;
 }
 
 interface AccessDestination {
@@ -135,13 +131,10 @@ async function ensureCloudflareIdentityProvider(): Promise<IdentityProvider> {
   });
 }
 
-async function resolveWorkerId(): Promise<string> {
-  const workers = await api<CloudflareWorker[]>(
-    "/workers/workers?per_page=100&order_by=name&order=asc",
+async function resolveWorkerId(): Promise<string | null> {
+  return findCatalogAdminWorkerId(workerName, (page) =>
+    api<CloudflareWorker[]>(`/workers/workers?per_page=100&page=${page}&order_by=name&order=asc`),
   );
-  const worker = workers.find((candidate) => candidate.name === workerName);
-  if (!worker?.id) throw new Error(`Cloudflare Worker not found: ${workerName}`);
-  return worker.id;
 }
 
 function protectsAdminWorker(application: AccessApplication, workerId: string): boolean {
@@ -242,28 +235,39 @@ function isValidAccessAud(value: string): boolean {
   return /^[0-9a-f]{32,128}$/u.test(value);
 }
 
-const organization = await ensureOrganization();
-const identityProvider = await ensureCloudflareIdentityProvider();
-if (!identityProvider.id) throw new Error("Cloudflare identity provider has no id");
-const workerId = await resolveWorkerId();
-const application = await ensureApplication(identityProvider.id, workerId);
-await ensurePolicy(application.id as string, identityProvider.id);
-
-const accessTeamDomain = teamDomain(organization);
-const accessAud = String(application.aud || "");
-if (!isValidTeamDomain(accessTeamDomain)) {
-  throw new Error(`Unexpected Access team domain: ${accessTeamDomain}`);
-}
-if (!isValidAccessAud(accessAud)) throw new Error("Unexpected Access AUD format");
-console.log(`Cloudflare Access application ready: ${appName}`);
-console.log(`Admin domain: https://${adminDomain}`);
-console.log(`Admin Worker ID: ${workerId}`);
-console.log(`Team domain: ${accessTeamDomain}`);
-console.log(`AUD: ${accessAud}`);
-
-if (process.env.GITHUB_OUTPUT) {
-  await appendFile(
-    process.env.GITHUB_OUTPUT,
-    `access_team_domain=${accessTeamDomain}\naccess_aud=${accessAud}\nadmin_url=https://${adminDomain}\n`,
+if (process.argv.includes("--check-worker")) {
+  const exists = (await resolveWorkerId()) !== null;
+  console.log(
+    exists
+      ? "Existing admin Worker will remain live during Access provisioning."
+      : "Admin Worker bootstrap required.",
   );
+  if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `exists=${exists}\n`);
+} else {
+  const organization = await ensureOrganization();
+  const identityProvider = await ensureCloudflareIdentityProvider();
+  if (!identityProvider.id) throw new Error("Cloudflare identity provider has no id");
+  const workerId = await resolveWorkerId();
+  if (!workerId) throw new Error(`Cloudflare Worker not found: ${workerName}`);
+  const application = await ensureApplication(identityProvider.id, workerId);
+  await ensurePolicy(application.id as string, identityProvider.id);
+
+  const accessTeamDomain = teamDomain(organization);
+  const accessAud = String(application.aud || "");
+  if (!isValidTeamDomain(accessTeamDomain)) {
+    throw new Error(`Unexpected Access team domain: ${accessTeamDomain}`);
+  }
+  if (!isValidAccessAud(accessAud)) throw new Error("Unexpected Access AUD format");
+  console.log(`Cloudflare Access application ready: ${appName}`);
+  console.log(`Admin domain: https://${adminDomain}`);
+  console.log(`Admin Worker ID: ${workerId}`);
+  console.log(`Team domain: ${accessTeamDomain}`);
+  console.log(`AUD: ${accessAud}`);
+
+  if (process.env.GITHUB_OUTPUT) {
+    await appendFile(
+      process.env.GITHUB_OUTPUT,
+      `access_team_domain=${accessTeamDomain}\naccess_aud=${accessAud}\nadmin_url=https://${adminDomain}\n`,
+    );
+  }
 }
