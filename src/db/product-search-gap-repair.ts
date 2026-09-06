@@ -416,10 +416,14 @@ export async function repairActiveListingProjectionGaps(
     // listing cannot monopolize every tick. No historical table is searched to discover this work.
     const pending = await db
       .prepare(`
+      WITH pending AS MATERIALIZED (
+        SELECT listing_product_id, token, last_attempt_at
+        FROM listing_projection_pending INDEXED BY idx_listing_projection_pending_attempt
+        ORDER BY last_attempt_at, listing_product_id LIMIT ?
+      )
       SELECT p.id, p.shop_key, p.source_id, pending.token
-      FROM listing_projection_pending pending
-      JOIN products p ON p.id = pending.listing_product_id
-      ORDER BY pending.last_attempt_at, pending.listing_product_id LIMIT ?
+      FROM pending CROSS JOIN products p ON p.id = pending.listing_product_id
+      ORDER BY pending.last_attempt_at, pending.listing_product_id
     `)
       .bind(maxListings)
       .all<ProjectionGapRow & { token: string }>();
