@@ -106,11 +106,11 @@ test("dedicated shop crons are declared in wrangler and may be shared", () => {
   );
 });
 
-test("all non-dedicated shops have daily intervals and share a staggered trigger", () => {
+test("all non-dedicated shops have twice-daily intervals and share a staggered trigger", () => {
   const dailyShops = shopsInDailyRotation();
-  const expectedIntervalMinutes = 24 * 60;
+  const expectedIntervalMinutes = 12 * 60;
   assert.equal(dailyShops.length, 14);
-  assert.equal(CRAWL_ROTATION_CRON, "6-56/10 0-13,23 * * *");
+  assert.equal(CRAWL_ROTATION_CRON, "*/10 2-13 * * *");
   assert.ok(wranglerConfig.triggers.crons.includes(CRAWL_ROTATION_CRON));
 
   for (const plugin of dailyShops) {
@@ -123,27 +123,33 @@ test("all non-dedicated shops have daily intervals and share a staggered trigger
   }
 });
 
-test("daily rotation starts at 09:06 JST and never wraps within the same day", () => {
+test("daily rotation makes one pass from 11:00 and 17:00 JST, including across New Year", () => {
   const dailyShops = shopsInDailyRotation();
-  const firstTime = new Date("2026-12-31T09:06:00+09:00");
-  for (const [index, plugin] of dailyShops.entries()) {
-    const slot = new Date(firstTime.getTime() + index * 10 * 60_000);
-    assert.equal(dailyRotationShopForScheduledTime(slot), plugin);
+  for (const start of [
+    "2026-12-31T11:00:00+09:00",
+    "2026-12-31T17:00:00+09:00",
+    "2027-01-01T11:00:00+09:00",
+    "2027-01-01T17:00:00+09:00",
+  ]) {
+    for (const [index, plugin] of dailyShops.entries()) {
+      const slot = new Date(Date.parse(start) + index * 10 * 60_000);
+      assert.equal(dailyRotationShopForScheduledTime(slot), plugin, slot.toISOString());
+    }
   }
   for (const at of [
-    "2026-12-31T08:56:00+09:00",
-    "2026-12-31T11:26:00+09:00",
-    "2026-12-31T22:56:00+09:00",
-    "2026-12-31T23:06:00+09:00",
-    "2027-01-01T00:06:00+09:00",
-    "2027-01-01T08:06:00+09:00",
+    "2026-12-31T08:00:00+09:00",
+    "2026-12-31T10:59:59.999+09:00",
+    "2026-12-31T13:20:00+09:00",
+    "2026-12-31T16:59:59.999+09:00",
+    "2026-12-31T19:20:00+09:00",
+    "2026-12-31T22:50:00+09:00",
+    "2026-12-31T23:00:00+09:00",
+    "2027-01-01T00:00:00+09:00",
+    "2027-01-01T08:00:00+09:00",
+    "2027-01-01T10:50:00+09:00",
   ]) {
     assert.equal(dailyRotationShopForScheduledTime(new Date(at)), null, at);
   }
-  assert.equal(
-    dailyRotationShopForScheduledTime(new Date("2027-01-01T09:06:00+09:00")),
-    dailyShops[0],
-  );
   assert.equal(dailyRotationShopForScheduledTime(new Date("invalid")), null);
 });
 

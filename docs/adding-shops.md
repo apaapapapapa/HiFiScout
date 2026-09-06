@@ -162,8 +162,8 @@ Declare deployed values in `wrangler.jsonc`. The prefix is always derived from t
 custom prefix overrides are not supported. For example, `u-audio` always uses `U_AUDIO_*`. Shop-owned
 discovery inputs such as an entry URL are ordinary env variables read inside that shop module.
 
-Shops without `scheduleCron` join the shared daily pass. The generator defaults their interval to
-1,440 minutes; changing the interval alone does not change Cron frequency. See
+Shops without `scheduleCron` join the shared 11:00/17:00 JST passes. The generator defaults their
+nominal interval to 720 minutes; changing the interval alone does not change Cron frequency. See
 [Crawl orchestration](./crawl-orchestration.md#daily-shop-schedules) for selection and overnight rules.
 
 `defineShopPlugin` validates the definition, discovery policy, and declared capabilities at module load.
