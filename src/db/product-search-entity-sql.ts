@@ -315,8 +315,6 @@ export function refreshEntityAggregatesSql(entityScope = ""): string {
         highest_price_yen = agg.highest_price_yen,
         latest_activity_at = agg.latest_activity_at,
         newest_listed_at = agg.newest_listed_at,
-        latest_in_stock_activity_at = agg.latest_in_stock_activity_at,
-        newest_in_stock_listed_at = agg.newest_in_stock_listed_at,
         has_price_drop = agg.has_price_drop
     FROM (
       SELECT m.entity_id AS entity_id,
@@ -330,8 +328,6 @@ export function refreshEntityAggregatesSql(entityScope = ""): string {
              MAX(p.price_yen) AS highest_price_yen,
              MAX(p.last_activity_at) AS latest_activity_at,
              MAX(COALESCE(p.source_published_at, p.first_seen_at)) AS newest_listed_at,
-             MAX(CASE WHEN p.stock_status = 'in_stock' THEN p.last_activity_at END) AS latest_in_stock_activity_at,
-             MAX(CASE WHEN p.stock_status = 'in_stock' THEN COALESCE(p.source_published_at, p.first_seen_at) END) AS newest_in_stock_listed_at,
              MAX(CASE
                    WHEN p.previous_price_yen IS NOT NULL AND p.price_yen IS NOT NULL
                         AND p.price_yen < p.previous_price_yen THEN 1
@@ -353,8 +349,6 @@ export function refreshEntityAggregatesSql(entityScope = ""): string {
         OR e.highest_price_yen IS NOT agg.highest_price_yen
         OR e.latest_activity_at IS NOT agg.latest_activity_at
         OR e.newest_listed_at IS NOT agg.newest_listed_at
-        OR e.latest_in_stock_activity_at IS NOT agg.latest_in_stock_activity_at
-        OR e.newest_in_stock_listed_at IS NOT agg.newest_in_stock_listed_at
         OR e.has_price_drop IS NOT agg.has_price_drop)
   `;
 }
