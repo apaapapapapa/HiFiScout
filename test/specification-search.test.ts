@@ -18,8 +18,8 @@ const specs = {
   heightMm: 150,
   depthMm: 400,
   weightKg: 12.5,
-  inputs: [{ connector: "RCA", count: 2 }],
-  outputs: [{ connector: "XLR", count: 3 }],
+  inputs: [{ connector: "RCA ライン", count: 2 }],
+  outputs: [{ connector: "XLR バランス", count: 3 }],
   main: [],
   sourceUrl: "https://example.test/official",
 };
@@ -78,7 +78,7 @@ test("dimensions and connector counts intersect on one verified model and exclud
       ...specs,
       outputs: [
         { connector: "XLR", count: 2 },
-        { connector: "xlr", count: 2 },
+        { connector: "XLR バランス", count: 2 },
       ],
     });
     const result = await searchProducts(
@@ -100,6 +100,12 @@ test("dimensions and connector counts intersect on one verified model and exclud
         .get()?.port_count,
       null,
     );
+    await updateCatalogSpecifications(db, 700002, {
+      ...specs,
+      inputs: [{ connector: "RCA フォノ", count: 10 }],
+    });
+    const line = await searchProducts(db, productQuery("?minRcaInputs=2"));
+    assert.ok(!line.items.some((item) => item.key === "c-700002"));
     const plans = sqlite
       .prepare(
         "EXPLAIN QUERY PLAN SELECT catalog_product_id FROM catalog_product_specifications WHERE json_type(specification_json,'$.widthMm') IN ('integer','real') AND json_extract(specification_json,'$.widthMm')>0 AND json_extract(specification_json,'$.widthMm')<=450",

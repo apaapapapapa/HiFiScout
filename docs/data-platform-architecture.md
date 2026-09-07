@@ -726,8 +726,9 @@ Public search and Atom accept positive `maxWidthMm`, `maxHeightMm`, `maxDepthMm`
 limits and integer `minXlrInputs`, `minXlrOutputs`, `minRcaInputs`, `minRcaOutputs` counts. Conditions
 are ANDed on one currently verified catalog product. Unrecorded dimensions/counts do not match.
 Dimensions are millimetres and weight is kilograms; connector counts use the source's system count,
-not a guessed count of individual physical sockets. Only exact XLR/RCA names (ASCII case and outer
-space ignored) are used for these filters; ambiguous duplicate labels retain an unknown count.
+not a guessed count of individual physical sockets. Exact XLR/RCA names and the existing admin labels `XLR バランス` / `RCA ライン` are accepted
+(ASCII case and outer spaces ignored). Phono and digital RCA labels are excluded; ambiguous
+duplicate labels retain an unknown count.
 
 Dimension expression indexes and a bounded port projection avoid expanding every catalog record
 on each search. Triggers maintain at most four connector rows per specification atomically, retain
