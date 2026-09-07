@@ -16,7 +16,11 @@ import {
 import { audioUnionAdapter } from "./audiounion.js";
 import { diagnoseAudioUnionHtml } from "./audiounion-diagnostics.js";
 import { audioUnionInventoryRecheck } from "./audiounion-inventory.js";
-import { ippinkanAdapter } from "./ippinkan.js";
+import {
+  IPPINKAN_CATEGORY_POLICY,
+  extractIppinkanDetailCategoryEvidence,
+  ippinkanAdapter,
+} from "./ippinkan.js";
 import {
   FUJIYA_CATEGORY_POLICY,
   extractFujiyaDetailCategoryEvidence,
@@ -103,12 +107,19 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
       diagnostics: { diagnosePage: diagnoseAudioUnionHtml },
     },
   ),
-  defineShopPlugin(ippinkanAdapter, {
-    key: "ippinkan",
-    name: "逸品館",
-    baseUrl: "https://ippinkan.jp",
-    defaultIntervalMinutes: TWICE_DAILY_INTERVAL_MINUTES,
-  }),
+  defineShopPlugin(
+    ippinkanAdapter,
+    {
+      key: "ippinkan",
+      name: "逸品館",
+      baseUrl: "https://ippinkan.jp",
+      defaultIntervalMinutes: TWICE_DAILY_INTERVAL_MINUTES,
+    },
+    {
+      catalog: { categoryPolicy: IPPINKAN_CATEGORY_POLICY },
+      detailCategoryEvidence: { extract: extractIppinkanDetailCategoryEvidence },
+    },
+  ),
   defineShopPlugin(
     fujiyaAvicAdapter,
     {
@@ -122,7 +133,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
     },
     {
       catalog: { categoryPolicy: FUJIYA_CATEGORY_POLICY },
-      detailCategoryEvidence: { extract: extractFujiyaDetailCategoryEvidence },
+      detailCategoryEvidence: { version: 2, extract: extractFujiyaDetailCategoryEvidence },
     },
   ),
   defineShopPlugin(

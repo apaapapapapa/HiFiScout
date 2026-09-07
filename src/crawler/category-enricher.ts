@@ -139,11 +139,13 @@ function classificationMetadata(
 function cachedClassification(
   existing: ExistingCategoryEnrichmentState | undefined,
   product: NormalizedCatalogProduct,
+  extractorVersion: number,
 ): CategoryClassification | null {
   if (!existing) return null;
   if (!sameIdentity(existing, product)) return null;
   const metadata = classificationMetadata(existing);
   if (metadata?.version !== CATEGORY_CLASSIFICATION_METADATA_VERSION) return null;
+  if ((metadata.detailExtractorVersion ?? 1) !== extractorVersion) return null;
   if (typeof metadata.detailCheckedAt !== "string" || !metadata.detailCheckedAt) return null;
   if (metadata.state !== "classified" || existing.classification_status !== "classified")
     return null;
@@ -175,8 +177,9 @@ function cachedClassification(
 function cachedDetailEvidence(
   existing: ExistingCategoryEnrichmentState | undefined,
   product: NormalizedCatalogProduct,
+  extractorVersion: number,
 ): CategoryEvidenceInput[] | null {
-  if (!cachedClassification(existing, product)) return null;
+  if (!cachedClassification(existing, product, extractorVersion)) return null;
   const metadata = classificationMetadata(existing);
   if (!Array.isArray(metadata?.evidence)) return null;
 
@@ -200,11 +203,13 @@ function recentUnresolvedCheck(
   product: NormalizedCatalogProduct,
   cacheHours: number,
   now: Date,
+  extractorVersion: number,
 ): boolean {
   if (!existing) return false;
   if (!sameIdentity(existing, product)) return false;
   const metadata = classificationMetadata(existing);
   if (metadata?.version !== CATEGORY_CLASSIFICATION_METADATA_VERSION) return false;
+  if ((metadata.detailExtractorVersion ?? 1) !== extractorVersion) return false;
   if (
     metadata.state === "classified" ||
     typeof metadata.detailCheckedAt !== "string" ||
@@ -219,12 +224,17 @@ function recentUnresolvedCheck(
 function withDetailCheckMetadata(
   product: NormalizedCatalogProduct,
   detailCheckedAt: string,
+  detailExtractorVersion: number,
 ): NormalizedCatalogProduct {
   return {
     ...product,
     metadata: {
       ...product.metadata,
-      categoryClassification: { ...product.metadata.categoryClassification, detailCheckedAt },
+      categoryClassification: {
+        ...product.metadata.categoryClassification,
+        detailCheckedAt,
+        detailExtractorVersion,
+      },
     },
   };
 }
@@ -307,6 +317,7 @@ export async function enrichProductCategories({
   });
   const baseProducts = catalog.products;
   const extractor = adapter.capabilities.detailCategoryEvidence?.extract;
+  const extractorVersion = adapter.capabilities.detailCategoryEvidence?.version ?? 1;
   if (typeof extractor !== "function") {
     return finish({
       products: baseProducts,
@@ -364,10 +375,10 @@ export async function enrichProductCategories({
 
     for (const product of group) {
       const existing = existingBySourceId.get(product.sourceId);
-      const cached = cachedClassification(existing, product);
+      const cached = cachedClassification(existing, product, extractorVersion);
       if (!cached) continue;
       decision.cachedClassification = cached;
-      decision.cachedEvidence = cachedDetailEvidence(existing, product);
+      decision.cachedEvidence = cachedDetailEvidence(existing, product, extractorVersion);
       const detailCheckedAt = classificationMetadata(existing)?.detailCheckedAt;
       decision.cachedCheckedAt = typeof detailCheckedAt === "string" ? detailCheckedAt : null;
       break;
@@ -376,7 +387,16 @@ export async function enrichProductCategories({
 
     for (const product of group) {
       const existing = existingBySourceId.get(product.sourceId);
-      if (!recentUnresolvedCheck(existing, product, policy.enrichment.cacheHours, now)) continue;
+      if (
+        !recentUnresolvedCheck(
+          existing,
+          product,
+          policy.enrichment.cacheHours,
+          now,
+          extractorVersion,
+        )
+      )
+        continue;
       const detailCheckedAt = classificationMetadata(existing)?.detailCheckedAt;
       decision.recentlyChecked = true;
       decision.recentCheckedAt = typeof detailCheckedAt === "string" ? detailCheckedAt : null;
@@ -423,12 +443,10 @@ export async function enrichProductCategories({
           ...classifyCategoryEvidence(evidence),
           classificationSource: "cached_detail",
         };
-        const updated = applyCategoryClassification(
-          product,
-          classification,
-          evidence,
-          decision.cachedCheckedAt ? { detailCheckedAt: decision.cachedCheckedAt } : {},
-        );
+        const updated = applyCategoryClassification(product, classification, evidence, {
+          detailExtractorVersion: extractorVersion,
+          ...(decision.cachedCheckedAt ? { detailCheckedAt: decision.cachedCheckedAt } : {}),
+        });
         if (updated.classificationStatus === "classified") enrichedCount += 1;
         enriched.push(updated);
       } else {
@@ -441,7 +459,10 @@ export async function enrichProductCategories({
             product,
             decision.cachedClassification,
             product.categoryEvidence,
-            decision.cachedCheckedAt ? { detailCheckedAt: decision.cachedCheckedAt } : {},
+            {
+              detailExtractorVersion: extractorVersion,
+              ...(decision.cachedCheckedAt ? { detailCheckedAt: decision.cachedCheckedAt } : {}),
+            },
           ),
         );
       }
@@ -452,7 +473,7 @@ export async function enrichProductCategories({
       cacheHits += 1;
       enriched.push(
         decision.recentCheckedAt
-          ? withDetailCheckMetadata(product, decision.recentCheckedAt)
+          ? withDetailCheckMetadata(product, decision.recentCheckedAt, extractorVersion)
           : product,
       );
       continue;
@@ -466,6 +487,7 @@ export async function enrichProductCategories({
       const classification = classifyCategoryEvidence(evidence);
       const updated = applyCategoryClassification(product, classification, evidence, {
         detailCheckedAt: checkedAt,
+        detailExtractorVersion: extractorVersion,
       });
       if (updated.classificationStatus === "classified") enrichedCount += 1;
       enriched.push(updated);

@@ -631,6 +631,7 @@ export class CrawlScheduler extends DurableObject<Env> {
       errorMessage,
       fetchedAt: new Date().toISOString(),
       evidence,
+      extractorVersion: plugin.capabilities.detailCategoryEvidence.version,
       htmlBytes,
     });
     // D1 commit first, then the cursor. A kill in between leaves the cursor pointing at a committed

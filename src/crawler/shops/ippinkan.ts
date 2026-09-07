@@ -1,10 +1,38 @@
+import { collectListingCategoryEvidence } from "../../catalog/category-evidence.js";
+import type { CategoryEvidenceInput, NormalizedCatalogProduct } from "../../catalog/types.js";
 import { availabilityFromSignals } from "../availability.js";
+import { productDetailScope } from "../detail-product-scope.js";
+import { cleanText } from "../normalize.js";
 import { parseProductPage } from "../parser.js";
 import { listingBlocks } from "../listing-fields.js";
 import type { SellerProduct, ShopAdapter } from "../types.js";
 
 const LIST_URL = "https://ippinkan.jp/shopbrand/U100000/";
 const PAGE_PATH_PATTERN = /^\/shopbrand\/U100000\/page\d+\/order\/?$/iu;
+
+export const IPPINKAN_CATEGORY_POLICY = Object.freeze({
+  enrichment: Object.freeze({ maxRequestsPerCrawl: 10, cacheHours: 168 }),
+});
+
+/** Only the seller's labeled category row is authoritative, not its accessory list or menus. */
+export function extractIppinkanDetailCategoryEvidence(
+  html: string,
+  product: Partial<Pick<NormalizedCatalogProduct, "model" | "title">> = {},
+): CategoryEvidenceInput[] {
+  const scope = productDetailScope(html, product, 2);
+  if (!scope) return [];
+  const fields = scope.matchAll(
+    /<(th|td|dt)\b[^>]*>([\s\S]*?)<\/\1>\s*<(?:td|dd)\b[^>]*>([\s\S]*?)<\/(?:td|dd)>/gi,
+  );
+  for (const field of fields) {
+    if (!/^カテゴリ(?:ー)?\s*[:：]?$/u.test(cleanText(field[2]))) continue;
+    const rawCategory = cleanText(field[3]);
+    return collectListingCategoryEvidence({ rawCategory })
+      .evidence.filter((item) => item.source === "seller_category")
+      .map((item) => ({ ...item, source: "detail_metadata", value: rawCategory }));
+  }
+  return [];
+}
 
 function applyIppinkanStockPolicy(product: SellerProduct): SellerProduct {
   if (product.stockStatus !== "unknown") return product;

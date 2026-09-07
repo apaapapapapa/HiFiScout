@@ -29,6 +29,9 @@ const MANUFACTURER_SOURCE: readonly ManufacturerSourceEntry[] = [
   ["technics", "Technics", ["technics", "テクニクス"]],
   ["sony", "SONY", ["sony", "ソニー"]],
   ["pioneer", "Pioneer", ["pioneer", "パイオニア"]],
+  // Fujiya's brand field uses these bilingual spellings. Keep the pre-existing fallback ID
+  // `pioneerdj`, and prefer this full brand to the shorter Pioneer prefix.
+  ["pioneerdj", "Pioneer DJ", ["pioneer dj", "pioneerdj", "パイオニアディージェー"]],
   ["mcintosh", "McIntosh", ["mcintosh", "マッキントッシュ"]],
   [
     "mark-levinson",

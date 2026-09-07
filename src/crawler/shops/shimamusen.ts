@@ -180,6 +180,7 @@ export function parseShimamusenListing(
   html: string,
   page?: Partial<ShimamusenPage> | string,
 ): SellerProduct[] {
+  html = stripRawTextElements(html);
   const kind = pageKind(page);
   const products: SellerProduct[] = [];
 

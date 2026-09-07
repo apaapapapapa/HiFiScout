@@ -129,6 +129,11 @@ function validateCapabilities<TPage extends CrawlPage>(
   definition: ShopDefinitionInput,
   capabilities: ShopRuntimeCapabilities<TPage>,
 ): void {
+  assertPositiveInt(
+    key,
+    "detailCategoryEvidence.version",
+    capabilities.detailCategoryEvidence?.version,
+  );
   const transport = capabilities.transport?.kind;
   if (transport !== undefined && !SUPPORTED_TRANSPORTS[transport]) {
     invalid(key, `transport ${transport} is not a supported transport`);

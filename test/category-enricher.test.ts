@@ -97,6 +97,7 @@ test("cached detail classification is reused for the same product identity witho
       metadata_json: JSON.stringify({
         categoryClassification: {
           version: CATEGORY_CLASSIFICATION_METADATA_VERSION,
+          detailExtractorVersion: fujiyaAvicPlugin.capabilities.detailCategoryEvidence?.version,
           state: "classified",
           detailCheckedAt: "2026-08-10T10:00:00.000Z",
         },
@@ -215,6 +216,7 @@ test("lightweight existing rows preserve cache, identity, budget, and target seq
       JSON.stringify({
         categoryClassification: {
           version: CATEGORY_CLASSIFICATION_METADATA_VERSION,
+          detailExtractorVersion: fujiyaAvicPlugin.capabilities.detailCategoryEvidence?.version,
           state: "classified",
           detailCheckedAt: "2026-08-10T10:00:00.000Z",
         },

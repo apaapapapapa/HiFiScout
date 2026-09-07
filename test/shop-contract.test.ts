@@ -212,6 +212,12 @@ test("registration rejects a definition the platform could not run safely", () =
   assert.throws(() => registerStub({ defaultMaxPages: -1 }), /defaultMaxPages/);
   assert.throws(() => registerStub({ defaultRequestDelayMs: -1 }), /defaultRequestDelayMs/);
   assert.throws(() => registerStub({ scheduleCron: " " }), /scheduleCron/);
+  for (const version of [0, -1, 1.5, Number.NaN]) {
+    assert.throws(
+      () => registerStub({}, {}, { detailCategoryEvidence: { version, extract: () => [] } }),
+      /detailCategoryEvidence.version/,
+    );
+  }
   assert.throws(
     () => registerStub({}, {}, { transport: { kind: "carrier-pigeon" as unknown as "direct" } }),
     /not a supported transport/,

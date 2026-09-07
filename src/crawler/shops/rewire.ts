@@ -196,6 +196,7 @@ function sourceId(cardText: string, fallbackSourceId: string): string {
 }
 
 export function parseRewireListing(html: string): SellerProduct[] {
+  html = stripRawTextElements(html);
   const products: SellerProduct[] = [];
 
   for (const record of productAnchors(html)) {

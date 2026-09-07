@@ -52,6 +52,22 @@ Snapshot metrics are calculated in D1 with `COUNT(*)` and `SUM(CASE ...)` over a
 
 Every ratio retains count and denominator. A zero denominator produces `rate: null` and `status: unknown` rather than an artificial 0% or 100%.
 
+### Preventing recurrence after a data audit
+
+Treat a corrected listing as a parser regression only when the seller markup reproduces the defect.
+Keep raw seller facts, extraction hints and verified/manual authority distinct. Missing seller data,
+unsupported product types and ambiguous bundles must not be forced into a category to improve a
+quality ratio. The cross-shop controls in `test/crawl-audit-prevention.test.ts` cover hidden-markup
+listings, Japanese model-name retention, product-scoped category extraction, and bounded detail
+refresh. See [the adapter contract](./adding-shops.md#seller-product-fields) for implementation rules.
+
+Parser deployment does not mean every existing listing has already been corrected. New facts enter
+through the normal bounded crawl and existing write/search-projection pipeline; shops with partial
+coverage do not revisit their entire historical inventory. Manual audit follow-up and unresolved
+catalog decisions remain separate, explicitly scoped work. A shop-local detail extractor version
+invalidates only that shop's stale extraction decisions, without increasing its request cap or
+automatically resuming a paused full-data audit.
+
 ### The unclassified sentinel
 
 "The classifier could not decide" has its own category id, `unclassified` (display name `未分類`).

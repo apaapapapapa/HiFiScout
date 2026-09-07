@@ -1,3 +1,4 @@
+import { stripRawTextElements } from "../../html/raw-text.js";
 import { availabilityFromSignals } from "../availability.js";
 import { cleanText, inferCategory, splitManufacturerModel } from "../normalize.js";
 import type { CrawlPageObject, SellerProduct, ShopAdapter } from "../types.js";
@@ -161,6 +162,7 @@ export function parseSoundSupportListing(
   html: string,
   page: Partial<SoundSupportPage> = {},
 ): SellerProduct[] {
+  html = stripRawTextElements(html);
   const rawCategory = cleanText(page.rawCategory || "");
   const records = productAnchorRecords(html);
   const products: SellerProduct[] = [];
