@@ -1004,6 +1004,12 @@ body.filters-open { overflow: hidden; }
 
 .offer > .offer-terms { grid-area: terms; min-width: 0; }
 .offer > .offer-facts { grid-area: facts; min-width: 0; }
+.favorite-watch { padding-block: 16px; border-block: 1px solid #e5e5e5; font-size: 14px; line-height: 1.7; }
+.favorite-watch h2 { font-size: 20px; }
+.watch-refresh-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.watch-refresh-actions button { min-height: 44px; }
+.favorite-watch > ul { padding: 0; list-style: none; }
+.favorite-watch > ul > li { padding-block: 12px; border-top: 1px solid #e5e5e5; }
 .watch-summary { color: #555; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .watch-note { white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .watch-editor form { display: grid; gap: 12px; }

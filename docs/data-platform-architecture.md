@@ -720,6 +720,23 @@ The Cloudflare API token used by deployment therefore needs the permission requi
 
 ## Regression coverage
 
+### Favorite revisit observations
+
+Opening a favorites view refreshes its first ten visible products, using at most two concurrent
+existing product-detail requests. Further batches and retries are explicit; no timer, scheduler,
+notification service or background monitoring is added. The scope is fixed for that view so a price
+or stock update that changes local sorting/filtering cannot trigger an automatic refresh loop.
+Changing filters starts a new view and cancels its old requests. Failed or revoked identities remain
+unavailable and retain their last observation; they are never interpreted as completed sales.
+
+Up to 50 recent device-local observations retain at most 200 listing IDs, shop keys, asking prices
+and stock states per product. They contain no seller descriptions or images. First checks establish
+a baseline. Later checks distinguish new IDs, price changes and explicit in-stock to sold-out
+changes. Missing IDs are only reported as unconfirmed listings when the current detail is complete;
+a capped or inconsistent detail cannot prove disappearance. A partial baseline cannot prove a new
+listing either. The UI explains that disappearance can follow listing removal or catalog regrouping
+and does not establish a transaction. Storage failures preserve the previous comparison baseline.
+
 ### Device-local watch planning
 
 Favorites can carry a target asking price and a private consideration note in a separate versioned

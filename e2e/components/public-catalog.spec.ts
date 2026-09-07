@@ -692,6 +692,36 @@ test("favorite save failures are visible and removal can be undone", async ({ pa
   await expect(page.locator(".fav")).toHaveAttribute("aria-pressed", "true");
 });
 
+test("favorite revisit compares observations once and preserves the baseline on a failed retry", async ({ page, mount }) => {
+  await mockCatalog(page);
+  let calls = 0;
+  await page.route("**/api/product-search/c-1", (route) => {
+    calls++;
+    if (calls > 1) return route.fulfill({ status: 503, json: {} });
+    return route.fulfill({ json: { product: product({ lowest_price_yen: 90000 }), offers: [offer({ price_yen: 90000 })] } });
+  });
+  await page.evaluate(() => localStorage.setItem("hifiscout:watch-observations:v1", JSON.stringify([
+    { key: "c-1", checkedAt: "2026-09-01T00:00:00Z", complete: true, offers: [
+      { id: 1, shopKey: "shop-a", priceYen: 100000, stock: "in_stock" },
+      { id: 2, shopKey: "shop-b", priceYen: 110000, stock: "in_stock" },
+    ] },
+  ])));
+  await mount("frontend/public-app/Default");
+  await page.locator(".fav").click();
+  await page.locator("#favoritesOnly").check();
+  const watch = page.getByRole("region", { name: "お気に入りの変化", exact: true });
+  await expect(watch).toContainText("100,000");
+  await expect(watch).toContainText("90,000");
+  await expect(watch).toContainText("掲載を確認できず");
+  await expect(watch.getByRole("button", { name: "この10件を再確認", exact: true })).toBeEnabled();
+  expect(calls).toBe(1);
+  const saved = await page.evaluate(() => localStorage.getItem("hifiscout:watch-observations:v1"));
+  await watch.getByRole("button", { name: "この10件を再確認", exact: true }).click();
+  await expect(watch).toContainText("前回の記録を保持しています");
+  expect(await page.evaluate(() => localStorage.getItem("hifiscout:watch-observations:v1"))).toBe(saved);
+  expect(calls).toBe(2);
+});
+
 test("long names and seven-digit prices fit across filter breakpoints", async ({
   page,
   mount,
