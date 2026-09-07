@@ -197,11 +197,7 @@ test("repeated appends cost one marker write, not one per sample", async () => {
   const changed = totalChanges(sqlite) - before;
   // 10 samples + 10 aggregate rewrites + one expiry and one condition-market marker.
   // Each marker is coalesced across the ten appends, rather than rewritten per sample.
-  assert.equal(
-    changed,
-    22,
-    `expected coalesced expiry and market markers: ${changed} rows`,
-  );
+  assert.equal(changed, 22, `expected coalesced expiry and market markers: ${changed} rows`);
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM catalog_market_dirty").get()?.n, 1);
   const earliest = (
     sqlite
