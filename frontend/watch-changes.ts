@@ -72,7 +72,12 @@ export function parseWatchObservations(raw: string | null): WatchObservation[] {
         key: value.key,
         checkedAt: value.checkedAt,
         complete: value.complete,
-        offers: value.offers,
+        offers: value.offers.map((offer) => ({
+          id: offer.id,
+          shopKey: offer.shopKey,
+          priceYen: offer.priceYen,
+          stock: offer.stock,
+        })),
       });
     }
     return [...entries.values()];

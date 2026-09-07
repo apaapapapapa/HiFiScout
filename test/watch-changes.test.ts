@@ -67,6 +67,11 @@ test("capped details stay partial and failed or old updates preserve prior obser
   const captured = captureWatchObservation(detail, AT);
   assert.equal(captured.complete, false);
   assert.deepEqual(parseWatchObservations(JSON.stringify([before])), [before]);
+  const extra = {
+    ...before,
+    offers: before.offers.map((offer) => ({ ...offer, description: "unwanted seller text" })),
+  };
+  assert.deepEqual(parseWatchObservations(JSON.stringify([extra])), [before]);
   assert.deepEqual(
     parseWatchObservations(
       JSON.stringify([{ ...before, offers: [before.offers[0], before.offers[0]] }]),
