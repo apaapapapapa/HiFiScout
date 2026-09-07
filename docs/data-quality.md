@@ -272,3 +272,28 @@ scheduled sweep and the explicit `scripts/resolver-replay-drain.ts` maintenance 
 repositories. `enqueueFullDataQualityRebuild` is a separate bounded full-recovery capability, not a
 normal crawl step; its old public HTTP handler is retired. `DATA_QUALITY_REBUILD_ORDER` in
 `src/http/remediation-admin.ts` names the dependency order.
+
+## Verified model relationships
+
+Model-family memberships, predecessor/successor chains and symmetric variants belong to the
+Knowledge Catalog, keyed to stable catalog product IDs. They never modify Product Identity or
+reference transient search entities. Finishes do not become new catalog products or relation nodes.
+
+`knowledge_catalog_model_facts` stores candidates separately from verified, rejected and removed
+decisions. Verification requires an active official manufacturer/distributor/archive source (or an
+existing manual-verification source), or an explicit manual verification note. The stored URL,
+content hash, reviewer, decision time and before/after audit preserve the evidence used. A missing,
+changed, unsupported or older-than-180-day source makes the relationship due for review at read
+time. Manual decisions are also due after 180 days. Re-verification is explicit; unchanged saves
+retain their decision time and perform no writes.
+
+Database constraints enforce exact endpoints, unique relations, explicit family order, justified
+cross-manufacturer links and acyclic successor chains. Succession has one predecessor and one
+successor per verified node; other verified revisions use the separate symmetric variant relation.
+Validation follows at most 100 successor links and fails closed at that boundary. Current facts
+are limited to 40 per endpoint and 40 per family. Partial indexes exclude removed decisions.
+Optimistic versions reject stale edits; facts and their audit records commit atomically.
+
+This storage layer precedes the Access-protected editor and public relation summaries. No model
+relationships are inferred, seeded, or published by this migration. Catalog deletion requires an
+explicit review of existing model facts; transient search-entity cleanup leaves them intact.
