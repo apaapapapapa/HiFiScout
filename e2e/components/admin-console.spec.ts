@@ -647,7 +647,10 @@ test("offer editor saves only changed decisions and can restore seller authority
   await expect(editor.getByLabel("リモコン", { exact: true })).toHaveValue("inherit");
 });
 
-test("offer replay resumes server progress after an interrupted response", async ({ page, mount }) => {
+test("offer replay resumes server progress after an interrupted response", async ({
+  page,
+  mount,
+}) => {
   let scanned = 0;
   let writes = 0;
   await page.route("**/api/admin/offer-facts/replay", async (route) => {
@@ -657,11 +660,15 @@ test("offer replay resumes server progress after an interrupted response", async
       scanned += 25;
       if (writes === 1) return route.fulfill({ status: 503, json: { error: "interrupted" } });
     }
-    return route.fulfill({ json: {
-      ruleVersion: 1, scannedCount: scanned, activeCount: scanned,
-      completedAt: scanned >= 50 ? "2026-09-07T00:00:00Z" : null,
-      coverage: { byShop: [], byCategory: [] },
-    } });
+    return route.fulfill({
+      json: {
+        ruleVersion: 1,
+        scannedCount: scanned,
+        activeCount: scanned,
+        completedAt: scanned >= 50 ? "2026-09-07T00:00:00Z" : null,
+        coverage: { byShop: [], byCategory: [] },
+      },
+    });
   });
   const component = await mount("frontend/admin-console/Default");
   const admin = new AdminConsolePage(component, page);
@@ -673,7 +680,9 @@ test("offer replay resumes server progress after an interrupted response", async
   await expect(replay.getByRole("status")).toContainText("完了しました");
   await expect(replay).toContainText("処理済み 50件");
   expect(writes).toBe(2);
-  await expect(replay.getByRole("button", { name: "最大500件を再処理", exact: true })).toBeDisabled();
+  await expect(
+    replay.getByRole("button", { name: "最大500件を再処理", exact: true }),
+  ).toBeDisabled();
 });
 
 test("every catalog close control confirms before discarding dirty fields", async ({

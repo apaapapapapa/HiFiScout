@@ -1,7 +1,10 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
-import { readOfferFactReplay, stepOfferFactReplay } from "../src/db/offer-fact-replay-repository.js";
+import {
+  readOfferFactReplay,
+  stepOfferFactReplay,
+} from "../src/db/offer-fact-replay-repository.js";
 import type { QueryableDatabase } from "../src/db/types.js";
 import { handleAuthenticatedAdminEntryRequest } from "../src/admin/entry.js";
 
@@ -10,13 +13,23 @@ const AT = "2026-09-01T00:00:00Z";
 test("replay requests cannot override the durable cursor or server batch size", async () => {
   let calls = 0;
   const env = {
-    CATALOG_ADMIN: { stepOfferFactReplay: async () => { calls++; return {}; } },
+    CATALOG_ADMIN: {
+      stepOfferFactReplay: async () => {
+        calls++;
+        return {};
+      },
+    },
   } as unknown as Parameters<typeof handleAuthenticatedAdminEntryRequest>[1];
   const url = "https://admin.example.test/api/admin/offer-facts/replay";
   const send = (body: unknown, origin = "https://admin.example.test") =>
-    handleAuthenticatedAdminEntryRequest(new Request(url, {
-      method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify(body),
-    }), env);
+    handleAuthenticatedAdminEntryRequest(
+      new Request(url, {
+        method: "POST",
+        headers: { origin, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+      env,
+    );
   for (const body of [null, [], { afterId: 100 }, { limit: 10000 }]) {
     assert.equal((await send(body)).status, 400);
   }
@@ -40,7 +53,9 @@ test("replay resumes a fixed horizon, records active coverage and retains origin
   try {
     assert.equal(await readOfferFactReplay(db), null);
     const original = sqlite.prepare("SELECT * FROM products").all();
-    sqlite.exec(`INSERT INTO product_offer_facts VALUES (1,'original_box','manual','unknown','manual','fixture',1,'${AT}')`);
+    sqlite.exec(
+      `INSERT INTO product_offer_facts VALUES (1,'original_box','manual','unknown','manual','fixture',1,'${AT}')`,
+    );
     const first = await stepOfferFactReplay(db);
     assert.equal(first?.scannedCount, 25);
     assert.equal(first?.activeCount, 24);
@@ -56,26 +71,45 @@ test("replay resumes a fixed horizon, records active coverage and retains origin
       { key: "shop", listings: 29, condition: 0, included: 29, warranty: 1, sale_unit: 0 },
     ]);
     assert.equal(final?.coverage.byCategory[0].included, 29);
-    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM product_offer_facts WHERE product_id=100").get()?.n, 0);
-    assert.equal(sqlite.prepare("SELECT observed_at FROM product_offer_facts WHERE product_id=1 AND source='seller' LIMIT 1").get()?.observed_at, AT);
-    assert.equal(sqlite.prepare("SELECT state FROM product_offer_facts WHERE source='manual'").get()?.state, "unknown");
+    assert.equal(
+      sqlite.prepare("SELECT COUNT(*) AS n FROM product_offer_facts WHERE product_id=100").get()?.n,
+      0,
+    );
+    assert.equal(
+      sqlite
+        .prepare(
+          "SELECT observed_at FROM product_offer_facts WHERE product_id=1 AND source='seller' LIMIT 1",
+        )
+        .get()?.observed_at,
+      AT,
+    );
+    assert.equal(
+      sqlite.prepare("SELECT state FROM product_offer_facts WHERE source='manual'").get()?.state,
+      "unknown",
+    );
     assert.deepEqual(sqlite.prepare("SELECT * FROM products WHERE id<=30").all(), original);
     const before = sqlite.prepare("SELECT total_changes() AS n").get()?.n;
     await stepOfferFactReplay(db);
     assert.equal(sqlite.prepare("SELECT total_changes() AS n").get()?.n, before);
-  } finally { sqlite.close(); }
+  } finally {
+    sqlite.close();
+  }
 });
 
 test("a failed replay batch leaves both facts and its durable cursor unchanged", async () => {
   const { db, sqlite } = fixture();
   try {
-    sqlite.exec("CREATE TRIGGER fail_replay BEFORE INSERT ON product_offer_facts WHEN NEW.product_id=2 BEGIN SELECT RAISE(ABORT,'injected'); END");
+    sqlite.exec(
+      "CREATE TRIGGER fail_replay BEFORE INSERT ON product_offer_facts WHEN NEW.product_id=2 BEGIN SELECT RAISE(ABORT,'injected'); END",
+    );
     await assert.rejects(stepOfferFactReplay(db), /injected/u);
     assert.equal((await readOfferFactReplay(db))?.afterId, 0);
     assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM product_offer_facts").get()?.n, 0);
     sqlite.exec("DROP TRIGGER fail_replay");
     assert.equal((await stepOfferFactReplay(db))?.scannedCount, 25);
-  } finally { sqlite.close(); }
+  } finally {
+    sqlite.close();
+  }
 });
 
 test("changed source evidence fences the entire stale batch before it can advance", async () => {
@@ -95,8 +129,17 @@ test("changed source evidence fences the entire stale batch before it can advanc
     assert.equal((await stepOfferFactReplay(concurrent))?.afterId, 0);
     assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM product_offer_facts").get()?.n, 0);
     assert.equal((await stepOfferFactReplay(db))?.scannedCount, 25);
-    assert.equal(sqlite.prepare("SELECT state FROM product_offer_facts WHERE product_id=1 AND fact_id='original_box'").get()?.state, "absent");
-  } finally { sqlite.close(); }
+    assert.equal(
+      sqlite
+        .prepare(
+          "SELECT state FROM product_offer_facts WHERE product_id=1 AND fact_id='original_box'",
+        )
+        .get()?.state,
+      "absent",
+    );
+  } finally {
+    sqlite.close();
+  }
 });
 
 test("concurrent replay callers cannot double-count coverage or overwrite the winning token", async () => {
@@ -105,7 +148,10 @@ test("concurrent replay callers cannot double-count coverage or overwrite the wi
   const concurrent: QueryableDatabase = {
     ...db,
     async batch<T = unknown>(statements: D1PreparedStatement[]) {
-      if (!intercepted) { intercepted = true; await stepOfferFactReplay(db); }
+      if (!intercepted) {
+        intercepted = true;
+        await stepOfferFactReplay(db);
+      }
       return db.batch<T>(statements);
     },
   };
@@ -114,5 +160,7 @@ test("concurrent replay callers cannot double-count coverage or overwrite the wi
     assert.equal(result?.scannedCount, 25);
     assert.equal(result?.coverage.byShop[0].listings, 24);
     assert.equal((await stepOfferFactReplay(db))?.scannedCount, 30);
-  } finally { sqlite.close(); }
+  } finally {
+    sqlite.close();
+  }
 });

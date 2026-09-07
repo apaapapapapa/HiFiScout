@@ -131,7 +131,12 @@ export async function handleAuthenticatedAdminEntryRequest(
     const body = await readJsonBody(request, 1024);
     if (body === REQUEST_BODY_TOO_LARGE)
       return json({ error: "request_body_too_large" }, { status: 413 });
-    if (body === null || typeof body !== "object" || Array.isArray(body) || Object.keys(body).length)
+    if (
+      body === null ||
+      typeof body !== "object" ||
+      Array.isArray(body) ||
+      Object.keys(body).length
+    )
       return json({ error: "invalid_replay_request" }, { status: 400 });
     return json(await env.CATALOG_ADMIN.stepOfferFactReplay());
   }
