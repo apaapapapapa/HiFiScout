@@ -70,7 +70,7 @@ async function readPlan(object: R2ObjectBody | null): Promise<CompleteExportPlan
   if (!object) throw new Error("complete_export_plan_missing");
   const plan = JSON.parse(await object.text()) as CompleteExportPlan;
   if (
-    plan?.version !== 1 ||
+    ![1, 2].includes(plan?.version) ||
     !["active", "all", "catalog"].includes(plan.scope) ||
     !Array.isArray(plan.tables) ||
     !plan.tables.length ||
@@ -78,7 +78,13 @@ async function readPlan(object: R2ObjectBody | null): Promise<CompleteExportPlan
       (table) =>
         !/^[a-zA-Z0-9_]+$/u.test(table.name) ||
         typeof table.sql !== "string" ||
-        typeof table.key !== "string" ||
+        !(
+          typeof table.key === "string" ||
+          (plan.version === 2 &&
+            Array.isArray(table.key) &&
+            table.key.length > 1 &&
+            table.key.every((key) => typeof key === "string" && key.length > 0))
+        ) ||
         !(table.maxRowid === null || typeof table.maxRowid === "string"),
     )
   ) {

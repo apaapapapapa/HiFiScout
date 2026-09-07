@@ -148,9 +148,83 @@ and guard order; regional hit rates and platform request coalescing require prod
 
 ### Public metadata counts
 
-`/api/meta` reads current `shop_sync_state` and the singleton `public_meta_snapshot`. The aggregate view is never queried by a public request. Scheduled refresh normally replaces all count groups atomically every hour, independently of traffic and edge cache misses. `countsUpdatedAt` identifies the count snapshot; shop sync/health retain the endpoint's short edge-cache cadence. Refresh failure or a delayed cron leaves the previous complete snapshot available, with its original timestamp. Migration seeds one snapshot before code deployment; refresh also repairs a missing singleton. Taxonomy changes must update the aggregate view along with category definitions. The hourly cadence keeps the catalog-wide aggregation below the D1 free-tier read budget; the timestamp makes its bounded staleness explicit to clients.
+`/api/meta` reads current `shop_sync_state` and the singleton `public_meta_snapshot`. Public requests
+never aggregate the catalog. Scheduled work normally publishes counts hourly; `countsUpdatedAt`
+identifies that complete snapshot while shop sync/health keep their short edge-cache cadence.
 
-Shop/manufacturer counts retain listing units; category/facet counts retain distinct-entity units. This removes repeated full aggregation on public cache misses, but the periodic refresh still costs a catalog-wide read. Use actual D1 read/write usage and snapshot age to assess the cadence as the catalog grows.
+Migration 0103 introduces `public_meta_counts` and the `public_meta_incremental_aggregate` reader.
+Shop/manufacturer counts use active listings, including the existing minimum manufacturer label per
+manufacturer ID. Category counts use entity memberships. Guarded source triggers apply only actual
+changes; a price, heartbeat, unchanged classification or cache timestamp does not change counters.
+Empty vocabulary entries are removed, so retired values do not accumulate in every later scan.
+Listing UPDATE deltas run before AFTER triggers can restore manual authority; a restoring UPDATE
+reverses that delta. Correct counts must not depend on the creation order of AFTER triggers.
+
+Facets count distinct entities even when several shops or evidence sources assert the same value.
+Offer/fact/activity changes coalesce into `public_meta_dirty_entities`; the reader re-evaluates only
+those entities into `public_meta_entity_facets`. Each page's effects and acknowledgement commit
+together. A write before the page batch is included; a later write creates another obligation.
+Replacement fact rows, entity moves, cascaded deletions and replay cannot double-count membership.
+The legacy migration-audit statistic is recalculated only after that audit changes, not every hour.
+
+A refresh admits at most five 100-entity pages plus publication within the invocation's D1 budget.
+If work remains, `MAINTENANCE_PENDING` retains its existing scheduled obligation for the next
+five-minute tick and allows other maintenance to proceed. Publication and its timestamp change
+atomically only when the backlog is empty. Failures or prolonged backlogs retain the previous
+complete snapshot and its age; do not interpret an old timestamp as current counts. Public HTTP
+traffic never drains this work. Observe snapshot age and backlog alongside the scheduled D1 usage.
+
+The migration backfills counters and facet membership atomically before installing source triggers.
+The old `public_meta_aggregate` view stays available for the previous Worker's hourly refresh during
+rollout/rollback and as a differential verification oracle. Both versions read the same public
+singleton. Taxonomy changes must update the counter conditions and both aggregate definitions.
+Rollback deploys the previous Worker; it does not drop the source-maintained tables.
+
+### Category storage and D1 measurement
+
+Migration 0102 makes `product_categories`, `product_search_entity_categories` and
+`knowledge_catalog_product_categories` `WITHOUT ROWID`: the existing composite membership key is
+the physical key, removing the separate rowid-table/primary-index write. Secondary indexes, primary
+category uniqueness, foreign-key cascades and admin override guards remain intact. The replacement
+and restoration of the old metadata view share one migration transaction.
+
+Complete CSV exports use ordered composite-key cursors for these tables, preserving all categories
+of a product across page boundaries and exact integer keys beyond JavaScript's safe range. New
+plans use version 2 so an older Worker cannot misread the cursor during rollback; unchanged version
+1 plans remain readable. An export captured against the old table DDL stops at the existing schema
+guard after migration and must be regenerated. Endpoint queries also respect D1's compound-SELECT
+limit. Public snapshots and source writes remain compatible with the previous Worker.
+
+`test/d1-table-design-budget.test.ts` uses local Miniflare/workerd D1, including indexes and triggers.
+Its three isolated category inserts fall from 4/3/5 to 3/2/4 writes before adding the metadata
+triggers. Do not present those as the combined category-counter path: that path also maintains a
+counter, and disappearing vocabulary may require cleanup.
+
+The metadata workload changes 100 listing cache timestamps and ten entity facet values, then
+publishes one snapshot. At 1,000 listings it reads 7,134 rows before and 804 after; at 10,000 it reads
+70,134 before and the same 804 after. Both workloads write 331 before and 391 after (3 versus 10 SQL
+statements). An unchanged refresh reads 23 and writes one row in five statements. This demonstrates
+bounded reads with explicit write amplification, not an account-wide reduction in both dimensions.
+The existing unchanged-crawl/search write-budget tests must continue to pass.
+
+One-time table copies, index builds and backfill are separate from steady-state savings. A populated
+local upgrade with 250 listing categories, 250 entity categories, one catalog category and 250
+entity facets measured 7,599 reads/1,658 writes for 0102 and 4,569 reads/289 writes for 0103. These
+sum individual statements in atomic D1 batches; the metadata for only the final statement of a
+multi-statement `prepare().run()` is not a migration total. Production migration cost depends on its
+actual data; the existing quota-aware deployment and migration-history checks remain the gate.
+
+Other table proposals remain unapplied because a reduction in both reads and writes is not proven:
+
+| Proposal | Local comparison including maintenance | Decision |
+| --- | --- | --- |
+| Separate detail-check/cache state | Reading 250 listings and changing one check: 501 reads/3 writes becomes 751 reads/1 write with the extra indexed join | Saves writes but increases reads on every cache lookup |
+| Persist candidate memberships and dirty keys | Reassigning 250 distinct keys: temporary-group insert/delete costs 250 reads/500 writes; indexed membership moves plus old/new dirty insert/ack alone cost 750 reads/1,500 writes | This lower bound excludes publication common to both paths; a quiet-day win does not prove a correction-day win. Candidate `last_seen_at` is also part of the output |
+| Persist latest asking sample per listing | For 1,000 observations/100 listings the equivalent rollup reads 12,923 versus 8,922; an evidence event still needs its ledger write and adds one latest-state read/write (six ledger writes become at least seven) | Reduces some history reads but adds writes; observation totals and listing-end signals still need retained evidence |
+
+These counterexamples are adoption limits, not production savings estimates. A later proposal must
+measure source changes, unchanged replay, retirement/correction, refresh, retention and migration
+together while preserving the existing evidence and public-result semantics.
 
 ### Search projection
 

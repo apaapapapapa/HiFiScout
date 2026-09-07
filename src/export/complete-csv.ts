@@ -5,10 +5,10 @@ export interface ExportTable {
   name: string;
   sql: string;
   maxRowid: string | null;
-  key: string;
+  key: string | string[];
 }
 export interface CompleteExportPlan {
-  version: 1;
+  version: 1 | 2;
   scope: CompleteExportScope;
   capturedAt: string;
   tables: ExportTable[];
@@ -39,6 +39,29 @@ function identifier(name: string): string {
   return `"${name.replaceAll('"', '""')}"`;
 }
 
+function keyNames(table: Pick<ExportTable, "key">): string[] {
+  return typeof table.key === "string" ? [table.key] : table.key;
+}
+
+/** Keep integer keys as decimal strings, including values beyond JavaScript's safe range. */
+function cursorExpression(keys: string[]): string {
+  const values = keys.map((key) => `CAST(${identifier(key)} AS TEXT)`);
+  return values.length === 1 ? values[0] : `json_array(${values.join(",")})`;
+}
+
+function cursorBindings(value: string | null, size: number): (string | null)[] {
+  if (size === 1) return [value];
+  if (value === null) return Array.from({ length: size }, () => null);
+  const parsed: unknown = JSON.parse(value);
+  if (
+    !Array.isArray(parsed) ||
+    parsed.length !== size ||
+    !parsed.every((key) => typeof key === "string")
+  )
+    throw new Error("complete_export_invalid_composite_cursor");
+  return parsed;
+}
+
 /** All persisted product/catalog families, including histories and manual authority. FTS shadow
  * tables are physical indexes of exported projections, not additional product information. */
 export function isCompleteExportTable(name: string): boolean {
@@ -66,7 +89,7 @@ export async function createCompleteExportPlan(
     .all<{ name: string; sql: string }>();
   const tables = result.results
     .filter((row) => isCompleteExportTable(row.name))
-    .map((row) => ({ ...row, key: ROWID }));
+    .map((row): Omit<ExportTable, "maxRowid"> => ({ ...row, key: ROWID }));
   const primary = scope === "catalog" ? "knowledge_catalog_products" : "products";
   tables.sort(
     (a, b) =>
@@ -82,30 +105,40 @@ export async function createCompleteExportPlan(
       const columns = await db
         .prepare(`PRAGMA table_xinfo(${identifier(table.name)})`)
         .all<Column>();
-      const keys = columns.results.filter((column) => column.pk > 0);
-      if (keys.length !== 1)
-        throw new Error(`complete_export_unsupported_composite_cursor:${table.name}`);
-      table.key = keys[0].name;
+      const keys = columns.results.filter((column) => column.pk > 0).sort((a, b) => a.pk - b.pk);
+      if (
+        !keys.length ||
+        (keys.length > 1 && keys.some((column) => !/^(?:INTEGER|TEXT)$/iu.test(column.type)))
+      )
+        throw new Error(`complete_export_unsupported_cursor_type:${table.name}`);
+      table.key = keys.length === 1 ? keys[0].name : keys.map((column) => column.name);
     }
   }
-  // Each MAX is an indexed rowid endpoint, not an aggregate scan. One query fixes all horizons.
-  const horizons = await db
-    .prepare(
-      tables
-        .map(
-          (table, index) =>
-            `SELECT ${index} AS position, (SELECT CAST(${identifier(table.key)} AS TEXT) FROM ${identifier(table.name)} ORDER BY ${identifier(table.key)} DESC LIMIT 1) AS maximum`,
-        )
-        .join(" UNION ALL "),
-    )
-    .all<{ position: number; maximum: string | null }>();
+  // Each endpoint is a reverse primary-key seek, including a composite key. D1 allows at most
+  // five compound SELECT terms. Horizons remain fixed per table, not a database-wide snapshot.
+  const horizons: (string | null)[] = [];
+  for (let start = 0; start < tables.length; start += 5) {
+    const result = await db
+      .prepare(
+        tables
+          .slice(start, start + 5)
+          .map((table) => {
+            const keys = keyNames(table);
+            return `SELECT (SELECT ${cursorExpression(keys)} FROM ${identifier(table.name)}
+        ORDER BY ${keys.map((key) => `${identifier(key)} DESC`).join(",")} LIMIT 1) AS maximum`;
+          })
+          .join(" UNION ALL "),
+      )
+      .all<{ maximum: string | null }>();
+    horizons.push(...result.results.map((row) => row.maximum));
+  }
   return {
-    version: 1,
+    version: tables.some((table) => Array.isArray(table.key)) ? 2 : 1,
     scope,
     capturedAt: new Date().toISOString(),
     tables: tables.map((table, index) => ({
       ...table,
-      maxRowid: table.name === primary ? String(maxPrimaryId) : horizons.results[index].maximum,
+      maxRowid: table.name === primary ? String(maxPrimaryId) : horizons[index],
     })),
   };
 }
@@ -157,7 +190,7 @@ export const COMPLETE_CSV_ENCODING = {
   externalEvidence:
     "Retained R2 evidence is copied to evidence-<rowid>/part-<byte-offset>.bin without truncation. Concatenate parts by byte offset to restore an object. Per-file evidence metadata is in this manifest. Missing/expired objects have explicit unavailable.json records; external seller pages are not fetched.",
   consistency:
-    "This is a live paginated export, not a point-in-time database backup. Rowid horizons are fixed at plan creation; updates/deletes during generation can be reflected. Regenerate after writes settle for a stable audit.",
+    "This is a live paginated export, not a point-in-time database backup. Primary-key/rowid horizons are fixed at plan creation; updates/deletes during generation can be reflected. Schema changes require regeneration. Regenerate after writes settle for a stable audit.",
 };
 
 export async function readCompleteExportPage(
@@ -169,7 +202,12 @@ export async function readCompleteExportPage(
   if (!table || !isCompleteExportTable(table.name))
     throw new Error("complete_export_invalid_cursor");
   const tableName = identifier(table.name);
-  const key = identifier(table.key);
+  const keys = keyNames(table);
+  const fields = keys.map(identifier);
+  const key = fields.length === 1 ? fields[0] : `(${fields.join(",")})`;
+  const parameter = fields.length === 1 ? "?" : `(${fields.map(() => "?").join(",")})`;
+  const order = fields.join(",");
+  const aliases = fields.map((_, index) => `k${index}`);
   const current = await db
     .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?")
     .bind(table.name)
@@ -183,11 +221,14 @@ export async function readCompleteExportPage(
   ) {
     throw new Error(`complete_export_unsupported_columns:${table.name}`);
   }
-  const afterClause = cursor.after === null ? "" : ` AND ${key} > ?`;
+  const afterClause = cursor.after === null ? "" : ` AND ${key} > ${parameter}`;
   const activeClause =
     plan.scope === "active" && table.name === "products" ? " AND is_active = 1" : "";
-  const where = `${key} <= ?${afterClause}${activeClause}`;
-  const bindings = cursor.after === null ? [table.maxRowid] : [table.maxRowid, cursor.after];
+  const where = `${key} <= ${parameter}${afterClause}${activeClause}`;
+  const bindings = [
+    ...cursorBindings(table.maxRowid, fields.length),
+    ...(cursor.after === null ? [] : cursorBindings(cursor.after, fields.length)),
+  ];
   const sizeExpression = columns
     .map((column) => `COALESCE(length(CAST(${identifier(column.name)} AS BLOB)), 0)`)
     .join(" + ");
@@ -208,17 +249,17 @@ export async function readCompleteExportPage(
   const rows = (
     await db
       .prepare(`WITH candidates AS MATERIALIZED (
-      SELECT ${key} AS cursor, ${sizeExpression} + ${columns.length * 16} AS bytes
-      FROM ${tableName} WHERE ${where} ORDER BY ${key} LIMIT ${PAGE_ROWS + 1}
+      SELECT ${fields.map((field, index) => `${field} AS ${aliases[index]}`).join(",")}, ${sizeExpression} + ${columns.length * 16} AS bytes
+      FROM ${tableName} WHERE ${where} ORDER BY ${order} LIMIT ${PAGE_ROWS + 1}
     ), sized AS (
-      SELECT cursor, SUM(bytes) OVER (ORDER BY cursor) AS total,
-        ROW_NUMBER() OVER (ORDER BY cursor) AS position FROM candidates
+      SELECT ${aliases.join(",")}, SUM(bytes) OVER (ORDER BY ${aliases.join(",")}) AS total,
+        ROW_NUMBER() OVER (ORDER BY ${aliases.join(",")}) AS position FROM candidates
     ), selected AS MATERIALIZED (
-      SELECT cursor FROM sized WHERE position = 1 OR (position <= ${PAGE_ROWS} AND total <= ${PAGE_SOURCE_BYTES})
+      SELECT ${aliases.join(",")} FROM sized WHERE position = 1 OR (position <= ${PAGE_ROWS} AND total <= ${PAGE_SOURCE_BYTES})
     )
-    SELECT ${projection.join(",")}, CAST(${key} AS TEXT) AS row_cursor,
+    SELECT ${projection.join(",")}, ${cursorExpression(keys)} AS row_cursor,
       ((SELECT COUNT(*) FROM candidates) > (SELECT COUNT(*) FROM selected)) AS more
-    FROM ${tableName} WHERE ${key} IN (SELECT cursor FROM selected) ORDER BY ${key}`)
+    FROM ${tableName} WHERE ${key} IN (SELECT ${aliases.join(",")} FROM selected) ORDER BY ${order}`)
       .bind(...bindings)
       .all<Record<string, unknown>>()
   ).results;

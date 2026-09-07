@@ -426,6 +426,8 @@ test("dirty repair work does not grow with unrelated active catalog size", async
   // D1's rows_read metadata is not available from the local SQLite adapter, so lock the structural
   // proxies that determine it: one claimed identity, one indexed member lookup, and a constant
   // statement count while the active catalog grows by two orders of magnitude.
+  // Preparing 10,000 listings now also maintains metadata counters. Allow that fixture setup
+  // time without relaxing the indexed lookup and constant-work assertions below.
   const { sqlite, db } = migratedSqlite();
   insertListing(sqlite, { id: 1 });
   insertListing(sqlite, { id: 2 });
@@ -482,7 +484,7 @@ test("dirty repair work does not grow with unrelated active catalog size", async
     ],
     "normal repair must remain O(changed identities), not O(active listings)",
   );
-});
+}, 30_000);
 
 test("a group that stops being groupable is taken apart, not left consolidated", async () => {
   // The scan predicate only finds groups that need merging. A change recorded by the triggers just

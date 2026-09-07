@@ -46,6 +46,7 @@ import {
   pendingMaintenance,
   claimMaintenance,
   completeMaintenance,
+  MAINTENANCE_PENDING,
 } from "./db/scheduled-maintenance-repository.js";
 import { refreshPublicMetaSnapshot } from "./db/public-meta-repository.js";
 import {
@@ -726,13 +727,15 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
     run: (env) => maintainRecentPriceIndexes(env.DB),
   },
   {
-    // One aggregate currently reads about 62k rows in production. Running it every fifteen
-    // minutes can consume the entire D1 free-tier read allowance by itself; public responses expose
-    // countsUpdatedAt, so hourly freshness keeps the cost bounded without hiding snapshot age.
+    // Small persisted counters replace the catalog-wide aggregation. A bounded facet page that
+    // leaves work pending resumes on the next tick without advancing the published snapshot age.
     name: "public_meta_snapshot",
     everyTicks: 12,
     offset: 1,
-    run: (env, at) => refreshPublicMetaSnapshot(env.DB, at),
+    run: async (env, at) => {
+      const result = await refreshPublicMetaSnapshot(env.DB, at);
+      return result.pending ? MAINTENANCE_PENDING : result;
+    },
   },
 ];
 
@@ -796,7 +799,8 @@ export async function runPendingMaintenance(
     if (!token) continue;
     const accounting = accountReads(env.DB);
     try {
-      await task.run({ ...env, DB: accounting.db } as Env, scheduledAt);
+      const result = await task.run({ ...env, DB: accounting.db } as Env, scheduledAt);
+      if (result === MAINTENANCE_PENDING) continue;
       // Successful work may have used the last normal call or crossed the wall deadline while
       // sending a wake-up. Persist completion so the next tick does not dispatch another run.
       await withD1Finalization(env.DB, () => completeMaintenance(env.DB, name, token));

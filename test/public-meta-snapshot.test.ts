@@ -75,7 +75,7 @@ test("snapshot refresh skips fresh aggregates, atomically retains old counts on 
     return empty;
   });
   sqlite.exec(
-    "DROP VIEW public_meta_aggregate; CREATE VIEW public_meta_aggregate AS SELECT observe_aggregate() AS payload_json",
+    "DROP VIEW public_meta_incremental_aggregate; CREATE VIEW public_meta_incremental_aggregate AS SELECT observe_aggregate() AS payload_json",
   );
   await refreshPublicMetaSnapshot(db, AT);
   assert.equal(aggregations, 1);
