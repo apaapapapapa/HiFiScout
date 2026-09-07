@@ -285,6 +285,7 @@ export function AdminModelRelations({
                 <label>
                   関係の種類
                   <select
+                    aria-label="関係の種類"
                     value={draft.kind}
                     onChange={(event) => {
                       const kind = event.currentTarget.value as ModelFactInput["kind"];
@@ -375,6 +376,7 @@ export function AdminModelRelations({
                 <label>
                   確認に使う出典
                   <select
+                    aria-label="確認に使う出典"
                     value={draft.sourceId ?? ""}
                     onChange={(event) =>
                       setDraft({
@@ -423,6 +425,7 @@ export function AdminModelRelations({
                 <label>
                   確認状態
                   <select
+                    aria-label="確認状態"
                     value={draft.state}
                     onChange={(event) =>
                       setDraft({
