@@ -1,7 +1,7 @@
 import { OFFER_FACT_DEFINITIONS } from "./types.js";
 import type { OfferFact, OfferFactId } from "./types.js";
 
-export const OFFER_FACT_RULE_VERSION = 2;
+export const OFFER_FACT_RULE_VERSION = 3;
 
 type Rule = readonly [OfferFactId, RegExp, RegExp?];
 const RULES: Rule[] = [
@@ -41,13 +41,41 @@ const RULES: Rule[] = [
     /メーカー保証(?:付き|付|あり|有り|有|残あり)/u,
     /メーカー保証(?:なし|無し|無|対象外|切れ)/u,
   ],
-  ["sale_pair", /(?:ペア販売|左右ペア|2本(?:1組|セット)|[（(【\s]ペア[）)】\s]|^ペア$)/u],
+  ["sale_pair", /(?:ペア販売|左右ペア|2本1組|[（(【\s]ペア[）)】\s]|^ペア$)/u],
   [
     "sale_single",
     /(?:1本(?:のみ|販売)|1台(?:のみ|販売)|単体販売|単品販売|[（(【](?:1本|1台)[）)】])/u,
   ],
-  ["sale_set", /(?:セット販売|2台セット)/u],
+  ["sale_set", /(?:セット販売|[2-9](?:台|本|点)セット)/u],
+  ["voltage_switchable", /(?:電源電圧|入力電圧)(?:は)?(?:切替式|切り替え式|切替可能)/u],
 ];
+
+for (const voltage of [100, 115, 120, 220, 230, 240] as const) {
+  RULES.push([
+    `voltage_${voltage}v`,
+    new RegExp(
+      `(?:電源(?:電圧)?|入力電圧)\\s*[:：]?\\s*AC\\s*${voltage}\\s*V(?=$|[\\s、。）)])|(?:^|[\\s（(【])AC\\s*${voltage}\\s*V(?:仕様)?(?=$|[\\s、。）)】])`,
+      "iu",
+    ),
+  ]);
+}
+for (const [id, name] of [
+  ["option_dac", "DAC"],
+  ["option_phono", "フォノ"],
+  ["option_network", "ネットワーク"],
+] as const) {
+  RULES.push([
+    id,
+    new RegExp(
+      `${name}(?:ボード|モジュール)(?:を)?(?:搭載済み?|装着済み?|搭載)(?!可能|可|予定|なし|無し|していません)`,
+      "iu",
+    ),
+    new RegExp(
+      `${name}(?:ボード|モジュール)(?:は|を)?(?:非搭載|未搭載|なし|無し|搭載していません)`,
+      "iu",
+    ),
+  ]);
+}
 
 const INCLUDED: readonly (readonly [OfferFactId, string])[] = [
   ["original_box", "(?:元箱|オリジナル箱)"],
@@ -102,6 +130,11 @@ export function inferOfferFacts(
       for (const clause of clauses) {
         // Service plans qualify the history claim, not unrelated included items in the same text.
         if (factId.startsWith("maintenance_") && /(?:予定|必要|推奨|可能)/u.test(clause)) continue;
+        if (
+          factId.startsWith("option_") &&
+          /(?:予定|推奨|取付可能|搭載可能|対応可能)/u.test(clause)
+        )
+          continue;
         const absent = negative?.test(clause) ?? false;
         const present = positive.test(clause);
         if (absent) observations.push({ state: "absent", field });
@@ -124,9 +157,20 @@ export function inferOfferFacts(
   // Mutually inconsistent operation/unit claims are not resolved by arbitrary rule order.
   for (const group of [
     ["operation_confirmed", "operation_unchecked"],
-    ["sale_pair", "sale_single"],
+    ["sale_pair", "sale_single", "sale_set"],
+    [
+      "voltage_100v",
+      "voltage_115v",
+      "voltage_120v",
+      "voltage_220v",
+      "voltage_230v",
+      "voltage_240v",
+    ],
   ]) {
-    if (group.every((id) => facts.some((fact) => fact.factId === id))) {
+    if (
+      group.filter((id) => facts.some((fact) => fact.factId === id && fact.state === "present"))
+        .length > 1
+    ) {
       for (let index = facts.length - 1; index >= 0; index--) {
         if (group.includes(facts[index].factId)) facts.splice(index, 1);
       }

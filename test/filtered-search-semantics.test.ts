@@ -45,6 +45,35 @@ function fixture() {
   return { sqlite, db };
 }
 
+test("price-adjacent terms belong only to the filtered representative offer", async () => {
+  const { sqlite, db } = fixture();
+  try {
+    sqlite.exec(`INSERT INTO product_offer_facts VALUES
+      (1,'sale_pair','seller','present','title','fixture',1,'2026-09-07'),
+      (1,'voltage_100v','seller','present','title','fixture',1,'2026-09-07'),
+      (2,'sale_single','seller','present','title','fixture',1,'2026-09-07'),
+      (2,'voltage_230v','seller','present','title','fixture',1,'2026-09-07'),
+      (2,'voltage_230v','manual','unknown','manual','fixture',1,'2026-09-07')`);
+    const result = await searchProducts(
+      db,
+      productQuery("?shop=audiounion&maxPrice=20&inStock=true"),
+    );
+    assert.equal(result.items.length, 1);
+    const representative = result.items[0].representative_offer!;
+    assert.equal(representative.listing_product_id, 2);
+    assert.equal(representative.price_yen, 10);
+    assert.deepEqual(
+      representative.offer_facts?.map((fact) => [fact.factId, fact.state]),
+      [
+        ["sale_single", "present"],
+        ["voltage_230v", "unknown"],
+      ],
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
 test("appearance and service filters cannot borrow a different offer's evidence", async () => {
   const { sqlite, db } = fixture();
   try {

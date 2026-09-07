@@ -172,6 +172,71 @@ test("condition groups stage appearance and service criteria and preserve unknow
   await page.screenshot({ path: testInfo.outputPath("used-condition-mobile.png"), fullPage: true });
 });
 
+test("sale unit, voltage and installed options stay beside their own offer price", async ({
+  page,
+  mount,
+}, testInfo) => {
+  await mockCatalog(page);
+  const pair = offer({
+    price_yen: 100000,
+    offer_facts: (["sale_pair", "voltage_100v", "option_dac"] as const).map((factId) => ({
+      factId,
+      state: "present",
+      source: "seller",
+      sourceField: "condition_text",
+      ruleId: "fixture",
+      confidence: 1,
+      observedAt: "2026-09-07T00:00:00Z",
+    })),
+  });
+  const single = offer({
+    listing_product_id: 2,
+    price_yen: 50000,
+    offer_facts: (["sale_single", "voltage_230v"] as const).map((factId) => ({
+      factId,
+      state: "present",
+      source: "seller",
+      sourceField: "condition_text",
+      ruleId: "fixture",
+      confidence: 1,
+      observedAt: "2026-09-07T00:00:00Z",
+    })),
+  });
+  const configured = product({ representative_offer: pair, offer_count: 2 });
+  await page.route(
+    (url) => url.pathname.startsWith("/api/product-search"),
+    (route) =>
+      route.fulfill({
+        json:
+          new URL(route.request().url()).pathname === "/api/product-search"
+            ? { ...results, items: [configured] }
+            : { product: configured, offers: [pair, single] },
+      }),
+  );
+  await mount("frontend/public-app/Default");
+  const cardTerms = page.locator(".product-commerce .offer-terms");
+  await expect(cardTerms).toContainText("ペア販売");
+  await expect(cardTerms).toContainText("AC 100V");
+  await expect(cardTerms).not.toContainText("230V");
+  await page.locator(".offers-button[data-offers]").click();
+  const offers = page.locator("li.offer");
+  await expect(offers.nth(0).locator(".offer-commerce")).toContainText("100,000");
+  await expect(offers.nth(0).locator(".offer-terms")).toContainText("DACボード搭載");
+  await expect(offers.nth(1).locator(".offer-commerce")).toContainText("50,000");
+  await expect(offers.nth(1).locator(".offer-terms")).toContainText("単体（1台・1本）");
+  await expect(offers.nth(1).locator(".offer-terms")).toContainText("AC 230V");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true);
+  const priceBox = await offers.nth(0).locator(".offer-commerce").boundingBox();
+  const termBox = await offers.nth(0).locator(".offer-terms").boundingBox();
+  const updatedBox = await offers.nth(0).locator(".offer-updated").boundingBox();
+  expect(termBox!.y).toBeGreaterThanOrEqual(priceBox!.y + priceBox!.height);
+  expect(termBox!.y + termBox!.height).toBeLessThanOrEqual(updatedBox!.y);
+  await page.screenshot({ path: testInfo.outputPath("offer-terms-mobile.png"), fullPage: true });
+});
+
 test("shared comparison loads canonical products, retains failed columns, and retries", async ({
   page,
   mount,
