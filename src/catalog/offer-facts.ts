@@ -1,7 +1,7 @@
 import { OFFER_FACT_DEFINITIONS } from "./types.js";
 import type { OfferFact, OfferFactId } from "./types.js";
 
-export const OFFER_FACT_RULE_VERSION = 1;
+export const OFFER_FACT_RULE_VERSION = 2;
 
 type Rule = readonly [OfferFactId, RegExp, RegExp?];
 const RULES: Rule[] = [
@@ -10,8 +10,27 @@ const RULES: Rule[] = [
   ["outlet", /アウトレット/u],
   ["used", /中古(?:品)?/u],
   ["junk", /ジャンク(?:品)?/u],
+  [
+    "appearance_clean",
+    /目立(?:つ|った)(?:傷|キズ|汚れ)(?:や汚れ)?(?:は)?(?:なし|無し|ありません)/u,
+  ],
+  [
+    "appearance_wear",
+    /(?:傷|キズ|汚れ|擦り傷|スレ)(?:・(?:傷|キズ|汚れ|スレ))?\s*(?:[:：]\s*)?(?:あり|有り|有ります|があります)/u,
+  ],
   ["operation_confirmed", /動作(?:確認済み?|確認済|チェック済み?|確認OK)/iu],
   ["operation_unchecked", /(?:動作未確認|動作未チェック|動作確認(?:は)?(?:していません|未実施))/u],
+  [
+    "operation_fault",
+    /(?:動作不良|動作不具合|動作に不具合)(?:あり|有り|があります|品|$|[、。\s])/u,
+  ],
+  ["maintenance_serviced", /(?:整備|メンテナンス|オーバーホール)(?:済み?|実施済み?)/u],
+  [
+    "maintenance_repaired",
+    /(?:修理歴(?:あり|有り)|修理済み?|修理実施済み?)/u,
+    /修理歴(?:なし|無し)/u,
+  ],
+  ["maintenance_modified", /(?:改造歴(?:あり|有り)|改造済み?)/u, /(?:改造歴(?:なし|無し)|未改造)/u],
   [
     "shop_warranty",
     /(?:当店|店舗|販売店|ショップ)保証(?:付き|付|あり|有り|有|\s*[:：]\s*\d+\s*(?:年|ヶ月|か月|日))/u,
@@ -76,7 +95,7 @@ export function inferOfferFacts(
         .split(/[。\n;；]/u)
         .filter(
           (clause) =>
-            !/(?:同様|相当|ではありません|ではない|ではございません|不明|要確認|かもしれ|希望|別売)/u.test(
+            !/(?:同様|相当|ではありません|ではない|ではございません|不明|要確認|かもしれ|希望|別売|予定|必要|推奨|可能|対応可能)/u.test(
               clause,
             ),
         );
