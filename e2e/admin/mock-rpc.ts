@@ -54,6 +54,8 @@ export function createMockAdminRpc() {
     throw new Error(`Unmocked admin RPC: ${method}`);
   };
   const rpc: AdminRpc = {
+    getOfferFacts: unsupported("getOfferFacts"),
+    updateOfferFacts: unsupported("updateOfferFacts"),
     async listProducts() {
       return { items: [state.catalog], nextAfterId: null };
     },
