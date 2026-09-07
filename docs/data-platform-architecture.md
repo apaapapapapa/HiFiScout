@@ -720,6 +720,38 @@ The Cloudflare API token used by deployment therefore needs the permission requi
 
 ## Regression coverage
 
+### Condition bands and monthly market observations
+
+Product detail can read one persisted `catalog_market_analysis` record. Search pages do not load
+this payload and no request aggregates history. The existing hourly price-index maintenance drains
+at most five queued products, each with at most 200 current offers and 500 retained samples. An
+oversized scope produces an explicit limited result rather than biased partial statistics. Indexes
+bound the queue, expired-projection and abandoned-claim selectors; unchanged idle work writes nothing.
+Migrations queue existing projections without reading historical samples. Initial coverage grows as
+the bounded queue drains; new changes join that queue. Projections also expire after a day.
+
+Current condition bands use active, in-stock asking prices observed within 90 days of the snapshot.
+Effective manual decisions override seller facts, including unknown. Single, pair, set and unknown
+selling units are separate. Specific conditions take precedence over the generic used label;
+conflicting specific states remain mixed, and no shop grade is converted to a common quality score.
+Each band shows independent listing and shop counts plus its observation interval. Fewer than three
+listings or two shops suppresses its price statistics. Unknown conditions remain explicitly unknown.
+
+Six UTC calendar months show the latest asking observation per listing per month, with independent
+listing/shop counts and observation intervals. They combine historical selling units and do not
+reuse today's condition for historical prices. First observed listings mean the earliest retained
+asking observation, not the true shop publication date. Sold-out and deactivated observations count
+distinct listing IDs separately; one ID can occur in both columns, which must not be summed. Ended
+listing prices are never represented as completed sale prices. A partial current month is dated by
+the snapshot. A calendar month without observations does not prove absence of market activity.
+
+Dirty markers coalesce while idle. Once a refresh claims work, a concurrent fact/price/entity change
+invalidates its token. Publication and marker deletion are one guarded transaction. Failed workers
+leave durable work; hourly maintenance recovers abandoned claims after an hour. Pending work hides
+the old public projection. Catalog verification is checked again on public reads. These tables are
+rebuildable projections; retained price samples and structured seller/manual facts remain the export
+authority. No seller descriptions, images, source pages, notifications or extra crawl activity are added.
+
 ### Detailed specification search
 
 The detailed filter panel keeps dimensions, weight and connector counts as unapplied drafts until

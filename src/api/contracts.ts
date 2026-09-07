@@ -176,6 +176,8 @@ export interface ProductOffer {
  * produced it; `offer_count` is therefore a count of *matching* offers, not of all of them.
  */
 export interface ProductSearchItem {
+  /** Persisted condition bands and monthly asking/activity observations, detail only. */
+  market_analysis?: import("../catalog/types.js").ProductMarketAnalysis;
   /** Source-backed model specifications, loaded on detail requests only. */
   specifications?: import("../catalog/types.js").CatalogSpecificationRecord | null;
   /** Verified model relations, loaded only for a product detail; absent means unknown. */

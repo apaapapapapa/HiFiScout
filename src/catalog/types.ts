@@ -1034,6 +1034,42 @@ export const OFFER_FACT_DEFINITIONS = [
 
 export type OfferFactId = (typeof OFFER_FACT_DEFINITIONS)[number]["id"];
 export type OfferFactState = "present" | "absent" | "unknown";
+
+export type MarketCondition =
+  | "unused"
+  | "display"
+  | "outlet"
+  | "used"
+  | "junk"
+  | "operation_unchecked"
+  | "operation_fault"
+  | "mixed"
+  | "unknown";
+export type MarketSaleUnit = "single" | "pair" | "set" | "unknown";
+export interface MarketPriceBand {
+  listing_count: number;
+  shop_count: number;
+  median_yen: number | null;
+  min_yen: number | null;
+  max_yen: number | null;
+  first_observed_at: string | null;
+  last_observed_at: string | null;
+}
+export interface ProductMarketAnalysis {
+  version: 1;
+  status: "ready" | "limited";
+  as_of: string;
+  current_conditions: (MarketPriceBand & {
+    condition: MarketCondition;
+    sale_unit: MarketSaleUnit;
+  })[];
+  months: (MarketPriceBand & {
+    month: string;
+    first_observed_listings: number;
+    sold_out_listings: number;
+    deactivated_listings: number;
+  })[];
+}
 export type OfferFactSource = "seller" | "manual";
 
 export interface OfferFact {
