@@ -77,6 +77,14 @@
 ### 永続化・負荷
 
 - 手動修正は[出品管理](./listing-admin.md)のoverride経路で保持し、後続クロールから保護します。
+  主カテゴリとmembershipだけでなく`direct_category_ids`も変更時のDBガードで保護します。
+- 本体単品と一致しないセット出品の確定カテゴリは、出品単位で補正します。明示的な
+  `apply-manual-category-authority`保守処理の限定補正も、既存のCSV編集エンジンの
+  before-image・revision検査、override、変更履歴、検索投影の順序を再利用します。
+  途中失敗は同じ操作IDから再開し、この限定補正は適用済みの再実行で書き込みません。別の手動判断や
+  追加構成品カテゴリがある場合は再確認とし、古いカタログ根拠の復活や本体との強制同定はしません。
+  限定補正はデプロイSHA確認済みの専用stepからのみ実行し、共通の監査関数には組み込みません。
+  quota延期でdeployment-identityがない場合は、DB更新と補正の順序を守るため実行を見送ります。
 - 変更された出品からprojectionを更新し、exact identityはdirty setで修復します。
   正常クロールごとの全件再生、Alarmごとのstaged inventory再読込、公開リクエストでの履歴集計を
   再導入しません。
