@@ -67,6 +67,8 @@ import { CatalogShortcuts } from "./catalog-shortcut-controls.js";
 import { applyCatalogShortcut } from "./catalog-shortcuts.js";
 import { visibleFacetOptions } from "./facet-options.js";
 import { OfferFactFilters } from "./offer-facts.js";
+import { canonicalComparisonKeys, comparisonKeysFromSearch } from "./product-comparison.js";
+import { ProductComparison } from "./product-comparison-ui.js";
 import { isOfferFactId } from "../src/api/contracts.js";
 import type { OfferFactId } from "../src/api/contracts.js";
 import { FEATURE_DEFINITIONS, isFeatureFilter } from "../src/api/contracts.js";
@@ -521,6 +523,7 @@ export function PublicApp() {
   const [meta, setMeta] = useState<MetaResponse | null>(null);
   const [shops, setShops] = useState<ShopIndex>({});
   const [products, setProducts] = useState<DisplayProduct[]>([]);
+  const [comparisonKeys, setComparisonKeys] = useState(() => comparisonKeysFromSearch(location.search));
   const [favorites, setFavorites] = useState<FavoriteStore>(() =>
     parseFavoriteStorage(readPreference(FAVORITES_KEY), isProductSearchItem),
   );
@@ -598,7 +601,10 @@ export function PublicApp() {
       if (!bootedRef.current) return;
       const normalized = normalizedPriceFilters(nextFilters);
       if (!normalized) return;
-      const nextSearch = filterUrlParams(normalized, nextView).toString();
+      const params = filterUrlParams(normalized, nextView);
+      const compare = comparisonKeysFromSearch(location.search);
+      if (compare.length) params.set("compare", compare.join(","));
+      const nextSearch = params.toString();
       const next = `${location.pathname}${nextSearch ? `?${nextSearch}` : ""}${location.hash}`;
       const current = `${location.pathname}${location.search}${location.hash}`;
       if (next === current) return;
@@ -827,6 +833,16 @@ export function PublicApp() {
     [persistFavorites, products],
   );
 
+  const updateComparison = (keys: string[]) => {
+    const next = canonicalComparisonKeys(keys);
+    const params = new URLSearchParams(location.search);
+    if (next.length) params.set("compare", next.join(","));
+    else params.delete("compare");
+    const search = params.toString();
+    history.pushState(history.state, "", `${location.pathname}${search ? `?${search}` : ""}${location.hash}`);
+    setComparisonKeys(next);
+  };
+
   const showOffers = useCallback(
     async (key: string, refresh = false) => {
       offersTargetRef.current = key;
@@ -895,6 +911,7 @@ export function PublicApp() {
 
   useEffect(() => {
     const onPopState = () => {
+      setComparisonKeys(comparisonKeysFromSearch(location.search));
       closeFilters();
       const next = filtersFromLocation(filtersRef.current.favoritesOnly);
       const parsed = parseUrlFilters(location.search);
@@ -1216,6 +1233,12 @@ export function PublicApp() {
             </div>
           </div>
 
+          <ProductComparison
+            keys={comparisonKeys}
+            api={api}
+            onRemove={(key) => updateComparison(comparisonKeys.filter((selected) => selected !== key))}
+            onClear={() => updateComparison([])}
+          />
           <p id="favorites-note" className="favorites-note" hidden={!favoriteMode}>
             お気に入りはこの端末にのみ保存されます。価格や在庫は最後に表示した時点の情報です。
           </p>
@@ -1261,6 +1284,9 @@ export function PublicApp() {
                       key={product.key}
                       product={product}
                       favorite={favorites.products.has(product.key)}
+                      compared={comparisonKeys.includes(product.key)}
+                      comparisonFull={comparisonKeys.length >= 4}
+                      onCompare={(key) => updateComparison(comparisonKeys.includes(key) ? comparisonKeys.filter((selected) => selected !== key) : [...comparisonKeys, key])}
                       shopName={shopName}
                       onManufacturer={(manufacturer) => {
                         setDraftFilters((draft) =>
