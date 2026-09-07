@@ -31,6 +31,7 @@ checks use its `deployment-identity` artifact to distinguish an actual new deplo
 
 ## Development
 
+- [Feature expansion decisions](./feature-expansion-decisions.md)
 - [Adding shops](./adding-shops.md)
 - [TypeScript development](./typescript.md)
 - [Testing strategy](./testing-strategy.md)
