@@ -66,34 +66,58 @@ export const PUBLIC_API_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
   },
   ProductOffer: PRODUCT_OFFER_SCHEMA,
   CatalogRelationProof: {
-    type: "object", additionalProperties: false,
+    type: "object",
+    additionalProperties: false,
     properties: {
       kind: { type: "string", enum: ["source", "manual"] },
       sourceUrl: { type: ["string", "null"], format: "uri" },
       verifiedAt: { type: "string", format: "date-time" },
-    }, required: ["kind", "sourceUrl", "verifiedAt"],
+    },
+    required: ["kind", "sourceUrl", "verifiedAt"],
   },
   ProductModelRelations: {
-    type: "object", additionalProperties: false,
+    type: "object",
+    additionalProperties: false,
     properties: {
-      links: { type: "array", maxItems: 40, items: {
-        type: "object", additionalProperties: false,
-        properties: { ...relatedModelProperties, kind: { type: "string", enum: ["predecessor", "successor", "variant"] } },
-        required: ["key", "manufacturer", "model", "proof", "kind"],
-      } },
-      families: { type: "array", maxItems: 40, items: {
-        type: "object", additionalProperties: false,
-        properties: {
-          name: { type: "string" }, position: familyPosition,
-          proof: { $ref: "#/components/schemas/CatalogRelationProof" },
-          members: { type: "array", maxItems: 40, items: {
-            type: "object", additionalProperties: false,
-            properties: { ...relatedModelProperties, position: familyPosition },
-            required: ["key", "manufacturer", "model", "proof", "position"],
-          } },
-        }, required: ["name", "position", "proof", "members"],
-      } },
-    }, required: ["links", "families"],
+      links: {
+        type: "array",
+        maxItems: 40,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            ...relatedModelProperties,
+            kind: { type: "string", enum: ["predecessor", "successor", "variant"] },
+          },
+          required: ["key", "manufacturer", "model", "proof", "kind"],
+        },
+      },
+      families: {
+        type: "array",
+        maxItems: 40,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            name: { type: "string" },
+            position: familyPosition,
+            proof: { $ref: "#/components/schemas/CatalogRelationProof" },
+            members: {
+              type: "array",
+              maxItems: 40,
+              items: {
+                type: "object",
+                additionalProperties: false,
+                properties: { ...relatedModelProperties, position: familyPosition },
+                required: ["key", "manufacturer", "model", "proof", "position"],
+              },
+            },
+          },
+          required: ["name", "position", "proof", "members"],
+        },
+      },
+    },
+    required: ["links", "families"],
   },
   OfferFact: {
     type: "object",

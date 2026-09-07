@@ -26,7 +26,12 @@ test("model fact reads and guarded writes do not scan unrelated relationships", 
       manufacturerJustification: "",
     };
     const first = (await saveModelFact(db, 700001, input, { actor: "budget-test" }, AT))!;
-    const family = { ...input, kind: "family" as const, relatedProductId: null, familyName: "Budget series" };
+    const family = {
+      ...input,
+      kind: "family" as const,
+      relatedProductId: null,
+      familyName: "Budget series",
+    };
     await saveModelFact(db, 700001, { ...family, position: 1 }, { actor: "budget-test" }, AT);
     await saveModelFact(db, 700002, { ...family, position: 2 }, { actor: "budget-test" }, AT);
     let previous = 0;

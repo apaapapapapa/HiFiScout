@@ -159,8 +159,13 @@ export interface ReviewedModelFact extends ModelFactRow {
 }
 
 /** Missing/changed/stale sources never remain publishable; no scheduled full-graph scan is needed. */
-export async function listModelFacts(db: ReadableDatabase, productId: number, now = new Date().toISOString()) {
-  const result = await db.prepare(`${MODEL_FACT_SELECT} WHERE f.id IN (
+export async function listModelFacts(
+  db: ReadableDatabase,
+  productId: number,
+  now = new Date().toISOString(),
+) {
+  const result = await db
+    .prepare(`${MODEL_FACT_SELECT} WHERE f.id IN (
       SELECT id FROM knowledge_catalog_model_facts WHERE product_id = ? AND state <> 'removed'
       UNION
       SELECT id FROM knowledge_catalog_model_facts WHERE related_product_id = ? AND state <> 'removed'
@@ -171,13 +176,19 @@ export async function listModelFacts(db: ReadableDatabase, productId: number, no
 }
 
 /** Each requested family has at most 40 current members; fetch all selected families together. */
-export async function listFamilyModelFacts(db: ReadableDatabase, familyIds: readonly string[], now: string) {
+export async function listFamilyModelFacts(
+  db: ReadableDatabase,
+  familyIds: readonly string[],
+  now: string,
+) {
   if (!familyIds.length) return [];
   if (familyIds.length > 40) throw new Error("model_family_scope_too_large");
-  const result = await db.prepare(`${MODEL_FACT_SELECT} WHERE f.id IN (
+  const result = await db
+    .prepare(`${MODEL_FACT_SELECT} WHERE f.id IN (
     SELECT id FROM knowledge_catalog_model_facts INDEXED BY idx_model_facts_family
     WHERE family_id IN (SELECT value FROM json_each(?)) AND state <> 'removed'
   ) ORDER BY f.family_id, f.position IS NULL, f.position, f.product_id LIMIT 1600`)
-    .bind(now, now, JSON.stringify(familyIds)).all<ReviewedModelFact>();
+    .bind(now, now, JSON.stringify(familyIds))
+    .all<ReviewedModelFact>();
   return result.results;
 }

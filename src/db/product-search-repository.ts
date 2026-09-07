@@ -617,7 +617,10 @@ export async function productSearchDetail(
     const product = await catalogProductWithoutOffers(db, identity.id);
     if (!product) return null;
     const relations = await publicModelRelations(db, identity.id);
-    return { product: { ...product, ...(relations ? { model_relations: relations } : {}) }, offers: [] };
+    return {
+      product: { ...product, ...(relations ? { model_relations: relations } : {}) },
+      offers: [],
+    };
   }
 
   const offers = await db

@@ -1564,5 +1564,10 @@ export interface RelatedCatalogModel {
 
 export interface ProductModelRelations {
   links: (RelatedCatalogModel & { kind: "predecessor" | "successor" | "variant" })[];
-  families: { name: string; position: number | null; proof: CatalogRelationProof; members: (RelatedCatalogModel & { position: number | null })[] }[];
+  families: {
+    name: string;
+    position: number | null;
+    proof: CatalogRelationProof;
+    members: (RelatedCatalogModel & { position: number | null })[];
+  }[];
 }

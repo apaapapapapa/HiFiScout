@@ -1,4 +1,10 @@
-import type { CatalogRelationProof, ProductModelRelations, RelatedCatalogModel, ProductOffer, ProductSearchDetailResponse } from "../api/contracts.js";
+import type {
+  CatalogRelationProof,
+  ProductModelRelations,
+  RelatedCatalogModel,
+  ProductOffer,
+  ProductSearchDetailResponse,
+} from "../api/contracts.js";
 import {
   isProductPermalinkRoute,
   productKeyFromPermalinkPath,

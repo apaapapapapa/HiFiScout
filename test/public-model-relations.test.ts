@@ -12,8 +12,14 @@ import type { ModelFactInput } from "../src/catalog/types.js";
 const AT = new Date().toISOString();
 const actor = { actor: "private-reviewer-subject" };
 const fact: ModelFactInput = {
-  kind: "successor", relatedProductId: 700002, familyName: "", position: null,
-  state: "verified", sourceId: null, manualNote: "private evidence: manufacturer verified succession", manufacturerJustification: "",
+  kind: "successor",
+  relatedProductId: 700002,
+  familyName: "",
+  position: null,
+  state: "verified",
+  sourceId: null,
+  manualNote: "private evidence: manufacturer verified succession",
+  manufacturerJustification: "",
 };
 function fixture() {
   const value = migratedSqlite();
@@ -29,31 +35,67 @@ test("public relations expose verified directions and ordered families without p
   const { db, sqlite } = fixture();
   try {
     await saveModelFact(db, 700001, { ...fact, sourceId: 880001, manualNote: "" }, actor, AT);
-    await saveModelFact(db, 700001, { ...fact, kind: "variant", relatedProductId: 700003 }, actor, AT);
-    await saveModelFact(db, 700001, { ...fact, relatedProductId: 700004, state: "candidate" }, actor, AT);
-    const family = { ...fact, kind: "family" as const, relatedProductId: null, familyName: "Series <A>" };
+    await saveModelFact(
+      db,
+      700001,
+      { ...fact, kind: "variant", relatedProductId: 700003 },
+      actor,
+      AT,
+    );
+    await saveModelFact(
+      db,
+      700001,
+      { ...fact, relatedProductId: 700004, state: "candidate" },
+      actor,
+      AT,
+    );
+    const family = {
+      ...fact,
+      kind: "family" as const,
+      relatedProductId: null,
+      familyName: "Series <A>",
+    };
     await saveModelFact(db, 700002, { ...family, position: 2 }, actor, AT);
     await saveModelFact(db, 700001, { ...family, position: 1 }, actor, AT);
     await saveModelFact(db, 700003, { ...family, position: 3, state: "candidate" }, actor, AT);
     const result = (await publicModelRelations(db, 700001, AT))!;
     assert.ok(isProductModelRelations(result));
-    assert.deepEqual(result.links.map((link) => `${link.kind}:${link.key}`).sort(), ["successor:c-700002", "variant:c-700003"]);
-    assert.deepEqual(result.families[0].members.map((member) => member.key), ["c-700001", "c-700002"]);
+    assert.deepEqual(result.links.map((link) => `${link.kind}:${link.key}`).sort(), [
+      "successor:c-700002",
+      "variant:c-700003",
+    ]);
+    assert.deepEqual(
+      result.families[0].members.map((member) => member.key),
+      ["c-700001", "c-700002"],
+    );
     assert.equal((await publicModelRelations(db, 700002, AT))?.links[0].kind, "predecessor");
     assert.equal((await publicModelRelations(db, 700003, AT))?.links[0].key, "c-700001");
     assert.doesNotMatch(JSON.stringify(result), /private|audit|source_id|content_hash|manualNote/);
     sqlite.exec("UPDATE knowledge_catalog_sources SET content_hash='changed' WHERE id=880001");
     assert.equal((await publicModelRelations(db, 700001, AT))?.links.length, 1);
-    sqlite.exec("UPDATE knowledge_catalog_products SET verification_status='rejected' WHERE id=700003");
+    sqlite.exec(
+      "UPDATE knowledge_catalog_products SET verification_status='rejected' WHERE id=700003",
+    );
     assert.equal((await publicModelRelations(db, 700001, AT))?.links.length, 0);
-    assert.equal(await publicModelRelations(db, 700001, new Date(Date.parse(AT) + 181 * 86400_000).toISOString()), undefined);
-  } finally { sqlite.close(); }
+    assert.equal(
+      await publicModelRelations(
+        db,
+        700001,
+        new Date(Date.parse(AT) + 181 * 86400_000).toISOString(),
+      ),
+      undefined,
+    );
+  } finally {
+    sqlite.close();
+  }
 });
 
 test("verified products remain linkable without offers and SSR escapes relation content", async () => {
   const { db, sqlite } = fixture();
   try {
-    sqlite.exec("UPDATE knowledge_catalog_products SET canonical_name='<script>Model B</script>' WHERE id=700002");
+    sqlite.exec(
+      "UPDATE knowledge_catalog_products SET canonical_name='<script>Model B</script>' WHERE id=700002",
+    );
     await saveModelFact(db, 700001, { ...fact, sourceId: 880001, manualNote: "" }, actor, AT);
     const detail = (await productSearchDetail(db, "c-700001"))!;
     assert.equal(detail.product.offer_count, 0);
@@ -68,10 +110,14 @@ test("verified products remain linkable without offers and SSR escapes relation 
     assert.doesNotMatch(html, /private|<script>Model/);
     sqlite.exec("DELETE FROM product_search_entities");
     assert.ok((await productSearchDetail(db, "c-700001"))?.product.model_relations);
-    sqlite.exec("UPDATE knowledge_catalog_products SET verification_status='rejected' WHERE id=700001");
+    sqlite.exec(
+      "UPDATE knowledge_catalog_products SET verification_status='rejected' WHERE id=700001",
+    );
     assert.equal(await productSearchDetail(db, "c-700001"), null);
     assert.equal(await productSearchDetail(db, "l-700001"), null);
-  } finally { sqlite.close(); }
+  } finally {
+    sqlite.close();
+  }
 });
 
 test("browser rejects malformed relation collections and unsafe provenance links", () => {
@@ -84,5 +130,6 @@ test("browser rejects malformed relation collections and unsafe provenance links
     { links: [{ ...link, proof: { ...proof, sourceUrl: "javascript:alert(1)" } }], families: [] },
     { links: [{ ...link, proof: { ...proof, verifiedAt: "invalid" } }], families: [] },
     { links: Array(41).fill(link), families: [] },
-  ]) assert.equal(isProductModelRelations(invalid), false);
+  ])
+    assert.equal(isProductModelRelations(invalid), false);
 });

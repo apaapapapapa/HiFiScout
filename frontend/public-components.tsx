@@ -508,10 +508,12 @@ export function OffersContent({
         )}
       </ol>
       <ProductPriceIndexSummary product={product} />
-      {product.model_relations ? <section aria-label="確認済みの機種の関係">
-        <h3>機種の関係・シリーズ</h3>
-        <ModelRelations relations={product.model_relations} currentKey={product.key} />
-      </section> : null}
+      {product.model_relations ? (
+        <section aria-label="確認済みの機種の関係">
+          <h3>機種の関係・シリーズ</h3>
+          <ModelRelations relations={product.model_relations} currentKey={product.key} />
+        </section>
+      ) : null}
     </>
   );
 }
