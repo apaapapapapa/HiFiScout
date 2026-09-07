@@ -952,6 +952,10 @@ body.filters-open { overflow: hidden; }
 .budget-presets button[aria-pressed="true"] { background: #191817; color: #fff; }
 .filters #filter-draft-status { font-size: 12px; }
 .filters .filter-actions { display: grid; gap: 8px; }
+.filters .filter-actions button { border: 1px solid var(--hs-divider); border-radius: 8px; padding: 10px 14px; background: var(--hs-paper); color: var(--hs-ink); font: inherit; font-size: 13px; cursor: pointer; }
+.filters #apply-filters { border-color: var(--hs-ink); background: var(--hs-ink); color: var(--hs-paper); font-weight: 600; }
+.filters .filter-actions button:focus-visible { outline: 2px solid var(--hs-ink); outline-offset: 2px; }
+.filters .filter-actions button:disabled { opacity: .55; cursor: not-allowed; }
 @media (min-width: 1101px) {
   .filters .filter-actions { position: sticky; bottom: -24px; padding: 12px 0; background: var(--hs-paper); z-index: 1; }
   .filters .filter-actions button { min-height: 44px; }
