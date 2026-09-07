@@ -60,10 +60,17 @@ directly, without triggering catalog-wide projection work.
 
 **出品条件の再処理・充足率** processes retained listing fields without contacting sellers. One request
 handles at most 25 listings; the optional 500-listing action sends at most 20 sequential requests.
-Stopping or closing the page finishes only the current small transaction. Reopening the console
+**全商品を再処理** asks for confirmation, then sends these same bounded requests sequentially until
+the server reports completion, including inactive listings. It resumes the saved cursor rather than
+resetting already processed work. Keep the admin tab open: this is browser-driven continuation, not
+a background job. A stop request waits for the current small transaction and prevents the next one;
+closing the tab also stops continuation. Reopening the console
 reads the durable cursor, so an interrupted response does not cause the browser to resend an old
 position. Progress is keyed by extraction-rule version and pins the maximum listing id at start.
-New listings already receive facts through the ordinary listing writer.
+New listings already receive facts through the ordinary listing writer. Errors, including expired
+Access sessions, stop continuation until the operator restarts it. Three consecutive responses
+without progress also stop all-product continuation to avoid an unbounded loop under contention.
+All run buttons are disabled while running or after this rule version has completed.
 
 Each step atomically claims its expected cursor, verifies the source-field snapshot, writes facts
 under a unique step token, and records coverage. A concurrent caller or changed source snapshot

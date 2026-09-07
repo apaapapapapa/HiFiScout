@@ -39,6 +39,15 @@ test("unauthenticated requests cannot read the console, assets, metadata or admi
   expect(app.state.writes).toEqual({ catalog: 0, listing: 0 });
   expect(
     (
+      await request.post("/api/admin/offer-facts/replay", {
+        headers: { origin: app.url },
+        data: {},
+      })
+    ).status(),
+  ).toBe(403);
+  expect(app.state.replay.stepCalls).toBe(0);
+  expect(
+    (
       await request.post(`${catalogPath}/11/model-facts`, {
         headers: { origin: app.url },
         data: {},

@@ -67,6 +67,15 @@ test("replay resumes a fixed horizon, records active coverage and retains origin
     assert.equal(final?.maxProductId, 30);
     assert.equal(final?.activeCount, 29);
     assert.ok(final?.completedAt);
+    assert.equal(
+      sqlite
+        .prepare(
+          "SELECT state FROM product_offer_facts WHERE product_id=2 AND fact_id='original_box' AND source='seller'",
+        )
+        .get()?.state,
+      "absent",
+      "inactive listings are also reprocessed",
+    );
     assert.equal(final?.coverage.byShop.length, 1);
     const coverage = final!.coverage.byShop[0];
     assert.equal(coverage.key, "shop");
