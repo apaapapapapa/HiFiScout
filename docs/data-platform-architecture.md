@@ -42,6 +42,17 @@ Normal successful crawl HTML is not archived. Asynchronous Product Audit and Kno
 
 The user-facing unit of search is a **product**. Safely identified offers for the same amplifier produce one result with multiple offers; search counts, filters, sorting, and page boundaries operate on entities. Public metadata retains some listing-unit counts, as described below.
 
+The public filter panel stages detailed edits on both desktop and mobile until **Apply**. Query,
+sort and quick toggles outside the sheet remain immediate; desktop drafts retain those latest
+values when applied. The mobile sheet stages its own quick toggles together with detailed fields,
+and discards all unapplied sheet edits when dismissed. Price inputs accept whole yen (including
+grouped/full-width digits) or decimal 万/万円, converting exactly to integer yen before the request;
+invalid, inverted or out-of-range prices cannot be applied. Budget buttons stage an upper bound
+and clear the lower bound. Empty results offer up to three individual condition relaxations that
+preserve other filters. Resetting to initial conditions restores in-stock search; clearing every
+condition also removes the stock restriction. These alternatives issue ordinary bounded searches,
+without speculative count queries or a promise that a relaxed condition will return results.
+
 ### Search entities
 
 `product_search_entities` is the product-level read model. Each row is one **search entity**, which is either:

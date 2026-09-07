@@ -130,8 +130,10 @@ test("catalog page boots with live metadata and rendered results", async ({
   await expect(catalogPage.syncSummaryText).not.toContainText("取得中");
   await expect(catalogPage.count).toHaveText(/^\d+$/);
   await expect(catalogPage.countLabel).toHaveText("件を表示中");
-  await expect(catalogPage.manufacturer).toHaveAttribute("type", "search");
-  await expect(catalogPage.manufacturer).toHaveAttribute("list", "manufacturer-options");
+  await expect(catalogPage.manufacturer.locator('input[type="search"]')).toHaveAttribute(
+    "aria-label",
+    "メーカーの候補を検索",
+  );
   await expect(catalogPage.manufacturerOptions.first()).toBeAttached();
   await expect(catalogPage.products).toHaveClass(/view-list/);
   await expect(catalogPage.pageIndicator(1)).toHaveAttribute("aria-current", "page");
@@ -178,6 +180,7 @@ test("changing a shop filter refreshes search and exposes a removable filter chi
   });
 
   await catalogPage.selectShop(firstShopValue);
+  await catalogPage.applyFilters();
   const filteredRequest = await filteredRequestPromise;
 
   expect(new URL(filteredRequest.url()).searchParams.get("shop")).toBe(firstShopValue);
