@@ -254,30 +254,38 @@ export function AdminCsvImport({
         で始まる列を編集して、UTF-8のCSVとして保存してください。既存行の元データ列・ID・
         <code>csv_original</code>はそのまま残します。
       </p>
-      <p>
-        カタログを追加する場合は行を追加し、<code>catalog_product_id</code>と
-        <code>csv_original</code>を空欄にして、5つの<code>edit_</code>列を入力してください。
-        追加行の他の列は空欄で構いません。同じCSVに既存行の修正と新規追加を含められます。
-        登録済みのメーカーIDを使い、製品状態が不明な場合は<code>unknown</code>を指定します。
-      </p>
-      <p>
-        メーカー・型番・カテゴリを修正できます。カタログは正式名称・製品状態も編集できます。
-        カテゴリは下のID一覧、製品状態は <code>unknown</code> / <code>active</code> /{" "}
-        <code>discontinued</code> を使います。
-        登録商品のメーカー・型番を空欄にすると未確定へ戻します。カテゴリとカタログの必須項目は空欄にできません。
-      </p>
-      <details>
-        <summary>カテゴリID一覧</summary>
-        <ul className="csv-category-reference">
-          {categories
-            .filter((category) => category.classifiable)
-            .map((category) => (
-              <li key={category.id}>
-                <code>{category.id}</code> {category.name.trim()}
-              </li>
-            ))}
-        </ul>
+      <details className="csv-edit-guide">
+        <summary>CSVの入力ルール・新規追加の方法</summary>
+        <p>
+          カタログを追加する場合は行を追加し、<code>catalog_product_id</code>と
+          <code>csv_original</code>を空欄にして、5つの<code>edit_</code>列を入力してください。
+          追加行の他の列は空欄で構いません。同じCSVに既存行の修正と新規追加を含められます。
+          登録済みのメーカーIDを使い、製品状態が不明な場合は<code>unknown</code>を指定します。
+        </p>
+        <p>
+          メーカー・型番・カテゴリを修正できます。カタログは正式名称・製品状態も編集できます。
+          カテゴリは下のID一覧、製品状態は <code>unknown</code> / <code>active</code> /{" "}
+          <code>discontinued</code> を使います。
+          登録商品のメーカー・型番を空欄にすると未確定へ戻します。カテゴリとカタログの必須項目は空欄にできません。
+        </p>
+        <details>
+          <summary>カテゴリID一覧</summary>
+          <ul className="csv-category-reference">
+            {categories
+              .filter((category) => category.classifiable)
+              .map((category) => (
+                <li key={category.id}>
+                  <code>{category.id}</code> {category.name.trim()}
+                </li>
+              ))}
+          </ul>
+        </details>
       </details>
+      <ol className="csv-steps" aria-label="CSV更新の手順">
+        <li aria-current={!file ? "step" : undefined}>1. ファイルを選択</li>
+        <li aria-current={file && !validated ? "step" : undefined}>2. 差分を確認</li>
+        <li aria-current={validated ? "step" : undefined}>3. 登録・更新</li>
+      </ol>
       <div className="csv-import-actions">
         <label htmlFor="admin-csv-file">編集済みCSV（100MiB以内）</label>
         <input

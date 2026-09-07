@@ -1,6 +1,6 @@
 # Registered Product Admin
 
-The Access-protected admin Worker exposes the console at `/`; the registered-product tab uses
+The Access-protected admin Worker exposes the console at `/`; registered products use
 `/#listings`. Retired `/listing-admin` and `/catalog-admin` entry points return 404.
 
 `wrangler.admin.jsonc` deploys `src/admin/entry.ts`. The Worker verifies the Cloudflare Access JWT
@@ -17,6 +17,30 @@ For local authenticated browser testing, run `vp run test:e2e:admin` after insta
 with a test-only Access issuer and in-memory RPC state; it does not require a real login or change
 production Access settings. See [Testing strategy](./testing-strategy.md#local-authenticated-admin-coverage)
 for fixtures, rejection/recovery cases and the boundary this suite covers.
+
+## Task workspaces
+
+The console uses a persistent sidebar on desktop and a labelled native task selector on mobile.
+The seven workspaces are product catalog (`/` or `/#catalog`), registered products (`/#listings`),
+correction reports (`/#reports`), duplicate review (`/#duplicates`), unverified candidates
+(`/#candidates`), CSV import/export (`/#csv`), and offer-fact replay (`/#maintenance`). Browser
+Back/Forward and direct links select the corresponding workspace. Navigation preserves already
+loaded searches and in-progress CSV input within the open console; it does not persist private
+admin data in browser storage. Each workspace has a distinct page title and an active menu label.
+
+Catalog, candidate, duplicate and export queries start when their workspace is first opened.
+Listing search and replay are also loaded independently. A failed metadata request has an inline
+retry. Deep-link filters are passed directly to React state before the first search; a listing link
+can supply `shopKey` and `scope` without `q`. Returning to a loaded workspace does not refetch its
+unchanged search. Export status polling runs only while the CSV workspace is visible. Started
+server export jobs and browser CSV updates retain their existing continuation behavior.
+
+Search results emphasize product identity and the primary editing actions. Raw seller evidence
+remains in the listing editor. Editors use a side panel with a sticky heading and save
+controls, before/after values, inline save errors, and protection against closing during a save.
+Explicit merge-by-ID is a secondary disclosure requiring the existing identity preview and
+confirmation. CSV input presents file selection, diff review, and apply as three labelled steps;
+the complete ZIP and versioned editable CSV remain distinct formats.
 
 ## Seller offer decisions
 
@@ -159,7 +183,7 @@ Manual canonical changes are also recorded in `data_quality_remediation_events` 
 
 ## CSV export, edit, and import
 
-In the catalog tab, open the CSV export section. Generate and download either the registered-product
+Open **CSV入出力** from the task menu. Generate and download either the registered-product
 audit CSV or the knowledge-catalog CSV, edit the `edit_*` columns, and save as UTF-8 CSV. Keep the
 original columns, target ID, and `csv_original` unchanged. Exports generated before the import feature
 was deployed must be regenerated; diagnostic columns alone are not an import format.

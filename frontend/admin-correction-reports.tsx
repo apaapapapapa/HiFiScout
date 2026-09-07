@@ -80,6 +80,12 @@ export function CorrectionReportsAdmin() {
   const [reason, setReason] = useState<ProductCorrectionReportReason | "">("");
   const [shopKey, setShopKey] = useState("");
   const [maxAgeDays, setMaxAgeDays] = useState("90");
+  const [appliedFilters, setAppliedFilters] = useState({
+    status: "open" as ProductCorrectionReportStatus | "",
+    reason: "" as ProductCorrectionReportReason | "",
+    shopKey: "",
+    maxAgeDays: "90",
+  });
   const [items, setItems] = useState<CorrectionReport[]>([]);
   const [nextBeforeId, setNextBeforeId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -88,13 +94,14 @@ export function CorrectionReportsAdmin() {
   const requestSequence = useRef(0);
 
   const params = useMemo(() => {
+    const { status, reason, shopKey, maxAgeDays } = appliedFilters;
     const value = new URLSearchParams({ limit: "50" });
     if (status) value.set("status", status);
     if (reason) value.set("reason", reason);
     if (shopKey.trim()) value.set("shopKey", shopKey.trim().toLowerCase());
     if (maxAgeDays) value.set("maxAgeDays", maxAgeDays);
     return value;
-  }, [maxAgeDays, reason, shopKey, status]);
+  }, [appliedFilters]);
 
   const load = useCallback(
     async (beforeId: number | null = null, append = false) => {
@@ -136,7 +143,7 @@ export function CorrectionReportsAdmin() {
 
   const submitFilters = (event: FormEvent) => {
     event.preventDefault();
-    void load();
+    setAppliedFilters({ status, reason, shopKey, maxAgeDays });
   };
 
   const act = async (report: CorrectionReport, action: "review_started" | ResolutionAction) => {
@@ -165,7 +172,7 @@ export function CorrectionReportsAdmin() {
   return (
     <section
       id="correction-reports-pane"
-      className="admin-pane"
+      className="admin-pane admin-reports"
       aria-labelledby="correction-reports-heading"
     >
       <div className="section-heading">
@@ -176,7 +183,7 @@ export function CorrectionReportsAdmin() {
         </p>
       </div>
 
-      <form className="admin-filter-grid" onSubmit={submitFilters}>
+      <form className="panel workspace-panel admin-filter-grid" onSubmit={submitFilters}>
         <label>
           状態
           <select
@@ -210,11 +217,11 @@ export function CorrectionReportsAdmin() {
           </select>
         </label>
         <label>
-          ショップ
+          店舗ID
           <input
             value={shopKey}
             onChange={(event) => setShopKey(event.currentTarget.value)}
-            placeholder="shop key"
+            placeholder="例：audiounion"
           />
         </label>
         <label>
@@ -235,7 +242,7 @@ export function CorrectionReportsAdmin() {
       <p className="status-line" role="status" aria-live="polite">
         {message}
       </p>
-      <div className="table-scroll">
+      <div className="panel table-scroll">
         <table className="listing-table">
           <thead>
             <tr>
@@ -248,22 +255,22 @@ export function CorrectionReportsAdmin() {
           <tbody>
             {items.map((report) => (
               <tr key={report.id}>
-                <td>
+                <td data-label="報告">
                   <strong>#{report.id}</strong>
                   <br />
                   <span>{REASON_LABELS[report.reason]}</span>
                   <br />
                   <small>{dateText(report.createdAt)}</small>
                 </td>
-                <td>
+                <td data-label="対象">
                   <a href={targetUrl(report)}>{targetLabel(report)}</a>
                   <br />
                   <small>{report.snapshot.category || "カテゴリ不明"}</small>
                   <br />
                   {report.snapshot.shopKey ? <small>{report.snapshot.shopKey}</small> : null}
                 </td>
-                <td>{report.explanation || <span>説明なし</span>}</td>
-                <td>
+                <td data-label="内容">{report.explanation || <span>説明なし</span>}</td>
+                <td data-label="状態 / 対応">
                   <strong>{STATUS_LABELS[report.status]}</strong>
                   {report.status === "open" ? (
                     <div>
@@ -284,10 +291,10 @@ export function CorrectionReportsAdmin() {
                           value={notes[report.id] || ""}
                           maxLength={500}
                           placeholder="補正内容、却下理由、重複先など"
-                          onChange={(event) =>
+                          onChange={({ currentTarget: { value } }) =>
                             setNotes((current) => ({
                               ...current,
-                              [report.id]: event.currentTarget.value,
+                              [report.id]: value,
                             }))
                           }
                         />

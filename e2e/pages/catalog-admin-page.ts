@@ -13,8 +13,11 @@ export class CatalogAdminPage {
   readonly csvSummary: Locator;
   readonly editDialog: Locator;
 
-  constructor(readonly root: Locator) {
-    this.heading = root.getByRole("heading", { name: "Knowledge Catalog 管理" });
+  constructor(
+    readonly root: Locator,
+    consoleRoot: Locator = root,
+  ) {
+    this.heading = root.getByRole("heading", { name: "製品カタログを検索" });
     this.status = root.getByRole("status").first();
     this.query = root.locator("#catalog-catalog-query");
     this.manufacturerId = root.locator("#catalog-manufacturer-id");
@@ -27,7 +30,7 @@ export class CatalogAdminPage {
       .locator(".result-summary");
     this.duplicateHeading = root.getByRole("heading", { name: "同一製品の重複Catalogを統合" });
     this.candidateHeading = root.getByRole("heading", { name: "未検証候補を確認" });
-    this.csvSummary = root.locator(".export-panel > summary");
+    this.csvSummary = consoleRoot.getByRole("link", { name: "CSV入出力", exact: true });
     this.editDialog = root.locator("dialog").first();
   }
 
