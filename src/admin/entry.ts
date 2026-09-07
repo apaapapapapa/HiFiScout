@@ -3,8 +3,8 @@ import { isJsonRequest, readJsonBody, REQUEST_BODY_TOO_LARGE } from "../http/req
 import catalogAdmin from "./index.js";
 import { requireCloudflareAccess } from "./access.js";
 import type { CatalogAdminRpc } from "./contracts.js";
-import { parseOfferFactChanges } from "../http/offer-fact-admin.js";
-import type { OfferFactChanges } from "../http/offer-fact-admin.js";
+import { parseOfferFactChanges } from "../catalog/offer-fact-decisions.js";
+import type { OfferFactChanges } from "../catalog/offer-fact-decisions.js";
 import {
   parseListingAdminListQuery,
   parseListingAdminUpdate,

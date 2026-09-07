@@ -1,5 +1,5 @@
-import { isOfferFactId, OFFER_FACT_DEFINITIONS } from "../catalog/types.js";
-import type { OfferFactId, OfferFactState } from "../catalog/types.js";
+import { isOfferFactId, OFFER_FACT_DEFINITIONS } from "./types.js";
+import type { OfferFactId, OfferFactState } from "./types.js";
 import { isRecord } from "../types.js";
 
 export type OfferFactChanges = Partial<Record<OfferFactId, OfferFactState | "inherit">>;

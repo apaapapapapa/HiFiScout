@@ -1,7 +1,7 @@
 import { isOfferFactId } from "../catalog/types.js";
 import type { OfferFact } from "../catalog/types.js";
-import { parseOfferFactChanges } from "../http/offer-fact-admin.js";
-import type { OfferFactChanges } from "../http/offer-fact-admin.js";
+import { parseOfferFactChanges } from "../catalog/offer-fact-decisions.js";
+import type { OfferFactChanges } from "../catalog/offer-fact-decisions.js";
 import type { QueryableDatabase, ReadableDatabase } from "./types.js";
 
 export async function readOfferFactAdmin(db: ReadableDatabase, listingId: number) {

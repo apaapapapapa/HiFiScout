@@ -29,7 +29,7 @@ import {
   updateListingAdminProduct,
 } from "./db/listing-admin-repository.js";
 import { readOfferFactAdmin, updateOfferFactAdmin } from "./db/offer-fact-admin-repository.js";
-import type { OfferFactChanges } from "./http/offer-fact-admin.js";
+import type { OfferFactChanges } from "./catalog/offer-fact-decisions.js";
 import {
   listProductCorrectionReports,
   updateProductCorrectionReport,

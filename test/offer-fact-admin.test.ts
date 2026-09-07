@@ -1,6 +1,6 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
-import { parseOfferFactChanges } from "../src/http/offer-fact-admin.js";
+import { parseOfferFactChanges } from "../src/catalog/offer-fact-decisions.js";
 import { readOfferFactAdmin, updateOfferFactAdmin } from "../src/db/offer-fact-admin-repository.js";
 import { effectiveOfferFacts, sellerOfferFactWrites } from "../src/db/offer-fact-repository.js";
 import adminWorker, { handleAuthenticatedAdminEntryRequest } from "../src/admin/entry.js";
