@@ -145,7 +145,10 @@ function manualOperationError(error: unknown): Response {
   ) {
     return json({ error: message }, { status: 400 });
   }
-  if (message === "catalog_admin_merge_manufacturer_mismatch") {
+  if (
+    message === "catalog_admin_merge_manufacturer_mismatch" ||
+    message === "catalog_admin_merge_specifications_conflict"
+  ) {
     return json({ error: message }, { status: 409 });
   }
   if (message.includes("catalog_admin_model_facts_review_required"))

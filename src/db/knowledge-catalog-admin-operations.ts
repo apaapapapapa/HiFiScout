@@ -610,7 +610,19 @@ export async function mergeKnowledgeCatalogProductReferences(
 ): Promise<void> {
   const sourceProductId = source.id;
   if (targetProductId === sourceProductId) throw new Error("catalog_admin_merge_same_product");
-  const statements: D1PreparedStatement[] = [];
+  // Copy source specifications before the source's cascading delete. A differing target record
+  // deliberately violates NOT NULL inside the same batch: the entire merge must roll back rather
+  // than overwrite either administrator's source-backed record, including concurrent changes.
+  const statements: D1PreparedStatement[] = [
+    db
+      .prepare(`
+    INSERT INTO catalog_product_specifications (catalog_product_id, specification_json, updated_at)
+    SELECT ?, specification_json, updated_at FROM catalog_product_specifications WHERE catalog_product_id = ?
+    ON CONFLICT(catalog_product_id) DO UPDATE SET specification_json = NULL
+    WHERE catalog_product_specifications.specification_json != excluded.specification_json
+  `)
+      .bind(targetProductId, sourceProductId),
+  ];
   const canonicalModelAlias = modelAliasStatement(
     db,
     targetProductId,
@@ -685,7 +697,13 @@ export async function mergeKnowledgeCatalogProductReferences(
       .bind(targetProductId, sourceProductId),
     db.prepare("DELETE FROM knowledge_catalog_products WHERE id = ?").bind(sourceProductId),
   );
-  await db.batch(statements);
+  try {
+    await db.batch(statements);
+  } catch (error) {
+    if (String(error).includes("catalog_product_specifications.specification_json"))
+      throw new Error("catalog_admin_merge_specifications_conflict");
+    throw error;
+  }
 }
 
 export async function mergeKnowledgeCatalogAdminProducts(

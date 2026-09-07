@@ -56,6 +56,8 @@ import {
 } from "./product-search-entity-mapper.js";
 import { newOfferPredicate } from "./product-search-entity-sql.js";
 import { effectiveOfferFacts } from "./offer-fact-repository.js";
+import { publicModelRelations } from "./public-model-relations-repository.js";
+import { catalogProductWithoutOffers } from "./catalog-product-detail-repository.js";
 import type {
   ProductSearchEntityRow,
   ProductSearchOfferAggregateRow,
@@ -609,7 +611,8 @@ export async function productSearchDetail(
   db: QueryableDatabase,
   key: string,
 ): Promise<ProductSearchDetailResponse | null> {
-  if (!parseProductSearchKey(key)) return null;
+  const identity = parseProductSearchKey(key);
+  if (!identity) return null;
   const entity = await db
     .prepare(`SELECT ${entityColumns("e")}, s.specification_json, s.updated_at AS specifications_updated_at
       FROM product_search_entities e LEFT JOIN catalog_product_specifications s
@@ -624,7 +627,16 @@ export async function productSearchDetail(
         specifications_updated_at: string | null;
       }
     >();
-  if (!entity) return null;
+  if (!entity) {
+    if (identity.kind !== "catalog") return null;
+    const product = await catalogProductWithoutOffers(db, identity.id);
+    if (!product) return null;
+    const relations = await publicModelRelations(db, identity.id);
+    return {
+      product: { ...product, ...(relations ? { model_relations: relations } : {}) },
+      offers: [],
+    };
+  }
 
   const offers = await db
     .prepare(`
@@ -650,6 +662,10 @@ export async function productSearchDetail(
     entity.specification_json,
     entity.specifications_updated_at,
   );
+  if (product.identity_kind === "catalog" && product.catalog_product_id !== null) {
+    const relations = await publicModelRelations(db, product.catalog_product_id);
+    if (relations) product.model_relations = relations;
+  }
   return {
     product,
     offers: offerRows.map((row) => ({

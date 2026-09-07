@@ -1,3 +1,4 @@
+import { mergeKnowledgeCatalogProductReferences } from "../src/db/knowledge-catalog-admin-operations.js";
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 import { parseCatalogSpecifications } from "../src/api/catalog-specification-contracts.js";
@@ -59,6 +60,9 @@ test("specification storage is bounded, idempotent, exported and linked only to 
     });
     const saved = await updateCatalogSpecifications(db, 9000001, specification);
     assert.equal(saved?.specifications?.widthMm, 440);
+    const withoutOffers = await productSearchDetail(db, "c-9000001");
+    assert.equal(withoutOffers?.product.specifications?.widthMm, 440);
+    assert.equal(withoutOffers?.product.offer_count, 0);
     const before = sqlite.prepare("SELECT total_changes() AS n").get()!.n;
     assert.deepEqual(await updateCatalogSpecifications(db, 9000001, specification), saved);
     assert.equal(sqlite.prepare("SELECT total_changes() AS n").get()!.n, before);
@@ -98,4 +102,36 @@ test("detail maps source-backed specifications without a separate catalog-wide q
     }),
     false,
   );
+});
+
+test("catalog merges preserve source specifications and atomically reject conflicting authority", async () => {
+  for (const conflict of [false, true]) {
+    const { db, sqlite } = migratedSqlite();
+    try {
+      sqlite.exec(
+        `INSERT INTO knowledge_catalog_products (id, manufacturer_id, canonical_model, normalized_model, created_at, updated_at) VALUES (9000001, 'luxman', 'test', 'TEST', '2026-09-07', '2026-09-07'), (9000002, 'luxman', 'test2', 'TEST2', '2026-09-07', '2026-09-07')`,
+      );
+      await updateCatalogSpecifications(db, 9000002, specification);
+      if (conflict)
+        await updateCatalogSpecifications(db, 9000001, { ...specification, widthMm: 450 });
+      const merge = () =>
+        mergeKnowledgeCatalogProductReferences(
+          db,
+          9000001,
+          { id: 9000002, canonicalModel: "test2", canonicalName: "test2" },
+          "2026-09-07T00:00:00Z",
+        );
+      if (conflict) {
+        await assert.rejects(merge(), /catalog_admin_merge_specifications_conflict/);
+        assert.equal((await readCatalogSpecifications(db, 9000002))?.specifications?.widthMm, 440);
+        assert.equal((await readCatalogSpecifications(db, 9000001))?.specifications?.widthMm, 450);
+      } else {
+        await merge();
+        assert.equal(await readCatalogSpecifications(db, 9000002), null);
+        assert.equal((await readCatalogSpecifications(db, 9000001))?.specifications?.widthMm, 440);
+      }
+    } finally {
+      sqlite.close();
+    }
+  }
 });

@@ -1,5 +1,11 @@
 import { offerTermGroups } from "../api/offer-terms-contracts.js";
-import type { ProductOffer, ProductSearchDetailResponse } from "../api/contracts.js";
+import type {
+  CatalogRelationProof,
+  ProductModelRelations,
+  RelatedCatalogModel,
+  ProductOffer,
+  ProductSearchDetailResponse,
+} from "../api/contracts.js";
 import {
   isProductPermalinkRoute,
   productKeyFromPermalinkPath,
@@ -81,6 +87,26 @@ function offerHtml(offer: ProductOffer): string {
   </li>`;
 }
 
+function relationProofHtml(proof: CatalogRelationProof): string {
+  const url = proof.sourceUrl ? safeHttpUrl(proof.sourceUrl) : null;
+  return `<small>${proof.kind === "source" && url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">出典</a>` : "手動確認"} · ${escapeHtml(proof.verifiedAt.slice(0, 10))}</small>`;
+}
+
+function relatedModelHtml(model: RelatedCatalogModel): string {
+  const name = escapeHtml(`${model.manufacturer} ${model.model}`);
+  const path = productPermalinkPath(model.key);
+  return `${path ? `<a href="${escapeHtml(path)}">${name}</a>` : name} ${relationProofHtml(model.proof)}`;
+}
+
+function modelRelationsHtml(relations: ProductModelRelations | undefined): string {
+  if (!relations) return "";
+  const labels = { predecessor: "前モデル", successor: "後継モデル", variant: "別仕様モデル" };
+  return `<section aria-label="確認済みの機種の関係"><h2>機種の関係・シリーズ</h2>
+    <ul>${relations.links.map((link) => `<li>${labels[link.kind]}：${relatedModelHtml(link)}</li>`).join("")}</ul>
+    ${relations.families.map((family) => `<p>シリーズ：${escapeHtml(family.name)} ${relationProofHtml(family.proof)}</p><ul>${family.members.map((member) => `<li>${relatedModelHtml(member)}</li>`).join("")}</ul>`).join("")}
+  </section>`;
+}
+
 export function renderProductPermalinkHtml(
   detail: ProductSearchDetailResponse,
   origin: string,
@@ -146,7 +172,9 @@ export function renderProductPermalinkHtml(
       </div>
       <p><strong>${escapeHtml(priceSummary(detail))}</strong></p>
       <p>${detail.product.offer_count}件の出品 / ${detail.product.in_stock_offer_count}件が在庫あり</p>
+      ${modelRelationsHtml(detail.product.model_relations)}
       <h2>ショップ別の出品</h2>
+      ${detail.offers.length ? "" : "<p>現在表示できる出品はありません。</p>"}
       <ul class="permalink-offers">${offers}</ul>
     </main>
   </section>

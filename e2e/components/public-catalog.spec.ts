@@ -268,6 +268,25 @@ test("shared comparison loads canonical products, retains failed columns, and re
               : null,
           lowest_price_yen: null,
           highest_price_yen: null,
+          model_relations:
+            key === "c-1"
+              ? {
+                  links: [
+                    {
+                      key: "c-2",
+                      kind: "successor",
+                      manufacturer: "Test",
+                      model: "Next model",
+                      proof: {
+                        kind: "source",
+                        sourceUrl: "https://example.test/official",
+                        verifiedAt: "2026-09-07T00:00:00Z",
+                      },
+                    },
+                  ],
+                  families: [],
+                }
+              : undefined,
         }),
         offers: [],
       },
@@ -281,6 +300,14 @@ test("shared comparison loads canonical products, retains failed columns, and re
   const comparison = page.getByRole("region", { name: "製品比較 (2/4)", exact: true });
   await expect(comparison.getByRole("status")).toContainText("取得できない製品");
   await expect(comparison.getByRole("columnheader")).toHaveCount(3);
+  await expect(comparison.getByRole("link", { name: "Test Next model" })).toHaveAttribute(
+    "href",
+    "/p/c-2",
+  );
+  await expect(comparison.getByRole("link", { name: "出典", exact: true })).toHaveAttribute(
+    "href",
+    "https://example.test/official",
+  );
   await comparison.getByRole("button", { name: "比較情報を再読み込み" }).click();
   await expect(
     comparison.getByRole("columnheader", { name: "Model c-3", exact: true }),

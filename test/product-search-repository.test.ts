@@ -301,7 +301,7 @@ test("the page selects explicit entity columns instead of SELECT *", async () =>
   assert.match(sql, /SELECT e\.id, e\.entity_key, e\.entity_kind/);
 });
 
-test("product detail loads offers and their evidence in two bounded queries", async () => {
+test("product detail loads offers, evidence and model facts in bounded queries", async () => {
   const db = captureDatabase((statement) =>
     /FROM product_search_entities e/.test(statement.sql)
       ? [entityRow({ id: 12, entity_key: "c-12", offer_count: 2, shop_count: 2 })]
@@ -321,9 +321,10 @@ test("product detail loads offers and their evidence in two bounded queries", as
     ["hifido", "ippinkan"],
   );
   assert.equal(detail.product.representative_offer?.listing_product_id, 100);
-  assert.equal(db.calls.length, 3);
+  assert.equal(db.calls.length, 4);
   assert.match(db.calls[1].sql, /LIMIT \?/);
   assert.match(db.calls[2].sql, /f.product_id IN \(SELECT value FROM json_each/u);
+  assert.match(db.calls[3].sql, /WHERE f.id IN/u);
 });
 
 test("a malformed product key is rejected before any query runs", async () => {

@@ -7,6 +7,10 @@ interface ModelFactRow {
   id: string;
   product_id: number;
   related_product_id: number | null;
+  family_id: string | null;
+  position: number | null;
+  relation_type: "successor" | "variant" | null;
+  evidence_kind: "source" | "manual";
   data_json: string;
   source_id: number | null;
   source_url: string;
@@ -126,14 +130,10 @@ export async function saveModelFact(
   return readModelFact(db, id);
 }
 
-/** Missing/changed/stale sources never remain publishable; no scheduled full-graph scan is needed. */
-export async function listModelFacts(
-  db: ReadableDatabase,
-  productId: number,
-  now = new Date().toISOString(),
-) {
-  const result = await db
-    .prepare(`SELECT f.*, p.canonical_name AS product_name, target.canonical_name AS related_product_name, family.name AS family_name,
+const MODEL_FACT_SELECT = `SELECT f.*, COALESCE(NULLIF(p.canonical_name,''),p.canonical_model) AS product_name,
+    COALESCE(NULLIF(target.canonical_name,''),target.canonical_model) AS related_product_name, family.name AS family_name,
+    COALESCE(pm.canonical_name,p.manufacturer_id) AS manufacturer,
+    COALESCE(tm.canonical_name,target.manufacturer_id) AS related_manufacturer,
     CASE WHEN f.state <> 'verified' THEN f.state
       WHEN f.review_due_at <= ? OR p.verification_status <> 'verified' OR (target.id IS NOT NULL AND target.verification_status <> 'verified') THEN 'due'
       WHEN f.evidence_kind = 'source' AND (s.id IS NULL OR s.status <> 'active' OR s.content_hash <> f.source_hash OR s.source_url <> f.source_url
@@ -146,19 +146,49 @@ export async function listModelFacts(
     LEFT JOIN knowledge_catalog_products target ON target.id = f.related_product_id
     LEFT JOIN knowledge_catalog_model_families family ON family.id = f.family_id
     LEFT JOIN knowledge_catalog_sources s ON s.id = f.source_id
-    WHERE f.id IN (
+    LEFT JOIN knowledge_catalog_manufacturers pm ON pm.id = p.manufacturer_id
+    LEFT JOIN knowledge_catalog_manufacturers tm ON tm.id = target.manufacturer_id`;
+
+export interface ReviewedModelFact extends ModelFactRow {
+  product_name: string;
+  related_product_name: string | null;
+  manufacturer: string;
+  related_manufacturer: string | null;
+  family_name: string | null;
+  review_state: ModelFactInput["state"] | "due";
+}
+
+/** Missing/changed/stale sources never remain publishable; no scheduled full-graph scan is needed. */
+export async function listModelFacts(
+  db: ReadableDatabase,
+  productId: number,
+  now = new Date().toISOString(),
+) {
+  const result = await db
+    .prepare(`${MODEL_FACT_SELECT} WHERE f.id IN (
       SELECT id FROM knowledge_catalog_model_facts WHERE product_id = ? AND state <> 'removed'
       UNION
       SELECT id FROM knowledge_catalog_model_facts WHERE related_product_id = ? AND state <> 'removed'
     ) ORDER BY f.id LIMIT 41`)
     .bind(now, now, productId, productId)
-    .all<
-      ModelFactRow & {
-        product_name: string;
-        related_product_name: string | null;
-        family_name: string | null;
-        review_state: ModelFactInput["state"] | "due";
-      }
-    >();
+    .all<ReviewedModelFact>();
+  return result.results;
+}
+
+/** Each requested family has at most 40 current members; fetch all selected families together. */
+export async function listFamilyModelFacts(
+  db: ReadableDatabase,
+  familyIds: readonly string[],
+  now: string,
+) {
+  if (!familyIds.length) return [];
+  if (familyIds.length > 40) throw new Error("model_family_scope_too_large");
+  const result = await db
+    .prepare(`${MODEL_FACT_SELECT} WHERE f.id IN (
+    SELECT id FROM knowledge_catalog_model_facts INDEXED BY idx_model_facts_family
+    WHERE family_id IN (SELECT value FROM json_each(?)) AND state <> 'removed'
+  ) ORDER BY f.family_id, f.position IS NULL, f.position, f.product_id LIMIT 1600`)
+    .bind(now, now, JSON.stringify(familyIds))
+    .all<ReviewedModelFact>();
   return result.results;
 }
