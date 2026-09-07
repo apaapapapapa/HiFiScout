@@ -39,6 +39,13 @@ test("shop totals and pages stay scoped when other shops grow", async () => {
         .bind(previous)
         .run();
       const legacy = accountReads(db);
+      await db
+        .prepare(`INSERT INTO product_offer_facts
+          SELECT id, value, 'seller', 'present', 'condition_text', 'fixture', 1, '${AT}'
+          FROM products CROSS JOIN json_each('["remote_control","shop_warranty"]')
+          WHERE id > ? AND id <= 12`)
+        .bind(previous)
+        .run();
       const oldCount = await legacy.db
         .prepare(`SELECT COUNT(*) AS total FROM product_search_entities e
         WHERE EXISTS (SELECT 1 FROM product_search_entity_offers m
@@ -50,6 +57,7 @@ test("shop totals and pages stay scoped when other shops grow", async () => {
       for (const filter of [
         "shop=hifido&inStock=true",
         "shop=hifido&inStock=true&manufacturer=luxman",
+        "shop=hifido&inStock=true&offer=remote_control&offer=shop_warranty",
         "shop=hifido&shop=missing&inStock=true&manufacturer=luxman&manufacturer=missing",
       ]) {
         const measured = accountReads(db);

@@ -61,6 +61,9 @@ import { FilterMultiSelect } from "./filter-multi-select.js";
 import { CatalogShortcuts } from "./catalog-shortcut-controls.js";
 import { applyCatalogShortcut } from "./catalog-shortcuts.js";
 import { visibleFacetOptions } from "./facet-options.js";
+import { OfferFactFilters } from "./offer-facts.js";
+import { isOfferFactId } from "../src/api/contracts.js";
+import type { OfferFactId } from "../src/api/contracts.js";
 import { FEATURE_DEFINITIONS, isFeatureFilter } from "../src/api/contracts.js";
 import type {
   FacetSelection,
@@ -103,6 +106,7 @@ function filtersFromLocation(favoritesOnly = false): ProductFilters {
     ...parsed.values,
     features: parsed.features,
     facets: parsed.facets,
+    offerFacts: parsed.offerFacts,
     inStock: parsed.inStock,
     favoritesOnly,
     recentOnly: parsed.recentOnly,
@@ -165,6 +169,7 @@ interface FilterPanelProps {
   onToggleChange: (id: ToggleId, checked: boolean) => void;
   onFeatureChange: (feature: FeatureFilter, checked: boolean) => void;
   onFacetChange: (facet: FacetSelection, checked: boolean) => void;
+  onOfferFactChange: (fact: OfferFactId, checked: boolean) => void;
   onClose: () => void;
   onClear: () => void;
 }
@@ -181,6 +186,7 @@ function FilterPanel({
   onToggleChange,
   onFeatureChange,
   onFacetChange,
+  onOfferFactChange,
   onClose,
   onClear,
 }: FilterPanelProps) {
@@ -365,6 +371,11 @@ function FilterPanel({
             </fieldset>
           ))}
         </details>
+        <OfferFactFilters
+          selected={filters.offerFacts}
+          disabled={filters.favoritesOnly}
+          onChange={onOfferFactChange}
+        />
         {isMobile ? (
           <QuickFilters
             filters={filters}
@@ -695,7 +706,10 @@ export function PublicApp() {
       const feature = featureFromFilterId(id);
       const facet = facetFromFilterId(id);
       const selection = selectionFromFilterId(id);
-      if (feature) next.features = next.features.filter((selected) => selected !== feature);
+      const offer = id.startsWith("offer:") ? id.slice(6) : "";
+      if (isOfferFactId(offer)) {
+        next.offerFacts = (next.offerFacts ?? []).filter((selected) => selected !== offer);
+      } else if (feature) next.features = next.features.filter((selected) => selected !== feature);
       else if (facet) {
         const key = facetSelectionKey(facet);
         next.facets = next.facets.filter((selected) => facetSelectionKey(selected) !== key);
@@ -1035,6 +1049,14 @@ export function PublicApp() {
             })
           }
           onClose={closeFilters}
+          onOfferFactChange={(fact, checked) =>
+            changePanelFilters({
+              ...panelFilters,
+              offerFacts: checked
+                ? [...new Set([...(panelFilters.offerFacts ?? []), fact])]
+                : (panelFilters.offerFacts ?? []).filter((value) => value !== fact),
+            })
+          }
           onClear={() => {
             if (isMobile && filterOpen) setDraftFilters(clearedFilters(panelFilters));
             else clearAllFilters();

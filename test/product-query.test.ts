@@ -102,6 +102,7 @@ test("an absent query parses to the default page of newest listings", () => {
     category: "",
     features: [],
     facets: [],
+    offerFacts: [],
     inStock: false,
     newOnly: false,
     priceDropped: false,
@@ -124,6 +125,19 @@ test("page size and defensive offset parsing remain bounded", () => {
   assert.equal(parseProductQuery(url(`?offset=${MAX_OFFSET + 500}`)).offset, MAX_OFFSET);
   assert.equal(parseProductQuery(url("?minPrice=abc")).minPrice, null);
   assert.equal(parseProductQuery(url("?minPrice=100000")).minPrice, 100000);
+});
+
+test("offer facts validate, deduplicate and canonicalize for search and subscriptions", () => {
+  assert.equal(validateProductQuery(url("?offer=remote_control,shop_warranty")), null);
+  assert.equal(validateProductQuery(url("?offer=remote_control:absent")), "offer_invalid");
+  assert.equal(validateProductQuery(url("?offer=imaginary")), "offer_invalid");
+  const input = url("?offer=shop_warranty&offer=remote_control,shop_warranty");
+  const parsed = parseProductQuery(input);
+  assert.deepEqual(parsed.offerFacts, ["shop_warranty", "remote_control"]);
+  assert.deepEqual(canonicalProductQueryUrl(input, parsed).searchParams.getAll("offer"), [
+    "remote_control",
+    "shop_warranty",
+  ]);
 });
 
 test("free-text values are trimmed and repeated feature parameters are de-duplicated", () => {

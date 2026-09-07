@@ -1,4 +1,5 @@
 import { test } from "vite-plus/test";
+import { sanitizedCatalogSearch } from "../frontend/catalog-url-sanitizer.js";
 import assert from "node:assert/strict";
 
 import { FEATURE_DEFINITIONS } from "../src/api/contracts.js";
@@ -124,6 +125,23 @@ test("URL state round-trips through the filter controls", () => {
   assert.equal(parsed.recentOnly, true);
   assert.equal(parsed.priceDropped, true);
   assert.equal(parsed.view, "cards");
+});
+
+test("offer conditions survive reload, API and Atom feed without accepting unknown facts", () => {
+  const state = filters({ offerFacts: ["shop_warranty", "remote_control", "shop_warranty"] });
+  const search = sanitizedCatalogSearch(`?${filterUrlParams(state, "list")}&offer=imaginary`);
+  assert.deepEqual(parseUrlFilters(search).offerFacts, ["remote_control", "shop_warranty"]);
+  for (const params of [
+    productSearchParams(state),
+    new URL(savedSearchFeedPath(state), "https://example.test").searchParams,
+  ]) {
+    assert.deepEqual(params.getAll("offer"), ["remote_control", "shop_warranty"]);
+  }
+  assert.equal(
+    activeFilterEntries({ ...state, favoritesOnly: true }, { shop: (key) => key, category: "" })
+      .some((entry) => entry.id.startsWith("offer:")),
+    false,
+  );
 });
 
 test("multiple literal values survive URL, API and feed serialization with individual chips", () => {

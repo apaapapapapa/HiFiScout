@@ -43,6 +43,7 @@ export function clearedFilters(filters: ProductFilters): ProductFilters {
     maxPrice: "",
     features: [],
     facets: [],
+    offerFacts: [],
     inStock: false,
     recentOnly: false,
     priceDropped: false,
