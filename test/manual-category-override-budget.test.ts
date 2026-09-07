@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
-import { applyConfirmedSwitchBundleCategory } from "../scripts/lib/confirmed-switch-bundle-category.js";
+import { applyConfirmedSwitchBundleCategory } from "../scripts/apply-confirmed-switch-bundle-category.js";
 import { accountReads } from "../src/db/read-accounting.js";
 import { database, AT } from "./helpers/d1-write-budget.js";
 

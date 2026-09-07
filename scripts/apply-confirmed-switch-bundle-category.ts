@@ -1,9 +1,10 @@
-import { adminCsvOriginal, type AdminCsvChange } from "../../src/api/admin-csv-contracts.js";
+import { adminCsvOriginal, type AdminCsvChange } from "../src/api/admin-csv-contracts.js";
 import {
   applyAdminCsvChange,
   previewAdminCsvChange,
-} from "../../src/db/admin-csv-import-repository.js";
-import type { QueryableDatabase } from "../../src/db/types.js";
+} from "../src/db/admin-csv-import-repository.js";
+import type { QueryableDatabase } from "../src/db/types.js";
+import { createD1RestDatabase } from "./lib/d1-rest-database.js";
 
 const MODEL = "M12 SWITCH IE GOLD + 専用オプションケーブル2.0m ×3本";
 const SOURCE_URL = "https://shop.formusic.jp/network-player/31211.html";
@@ -95,4 +96,22 @@ export async function applyConfirmedSwitchBundleCategory(db: QueryableDatabase):
     }),
   );
   return 1;
+}
+
+function requiredEnv(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`${name} is required`);
+  return value;
+}
+
+// This dedicated entry point is invoked only by the deployment-identity-gated maintenance step.
+// Do not call it from shared audit wrappers that merely check a deploy run's success conclusion.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  await applyConfirmedSwitchBundleCategory(
+    createD1RestDatabase({
+      accountId: requiredEnv("CLOUDFLARE_ACCOUNT_ID"),
+      databaseId: requiredEnv("D1_DATABASE_ID"),
+      apiToken: requiredEnv("CLOUDFLARE_API_TOKEN"),
+    }),
+  );
 }

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 import { applyManualCategoryAuthority } from "../scripts/apply-manual-category-authority.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
-import { applyConfirmedSwitchBundleCategory } from "../scripts/lib/confirmed-switch-bundle-category.js";
+import { applyConfirmedSwitchBundleCategory } from "../scripts/apply-confirmed-switch-bundle-category.js";
 import { updateListingAdminProduct } from "../src/db/listing-admin-repository.js";
 import { recordingDatabase, queryPlan } from "./helpers/query-plan.js";
 
@@ -53,6 +53,15 @@ test("confirmed bundle correction converges without restoring retired catalog id
       .prepare(`SELECT model,raw_model,raw_category,metadata_json,
       model_resolution_status,model_resolution_method,price_yen FROM products WHERE id=1772`)
       .get();
+    // The shared audit caller cannot execute this new correction on an unconfirmed deployment.
+    await assert.rejects(applyManualCategoryAuthority(db), /switching-hub classifications/u);
+    assert.equal(
+      sqlite
+        .prepare("SELECT COUNT(*) n FROM product_admin_overrides WHERE listing_product_id=1772")
+        .get()?.n,
+      0,
+    );
+    await applyConfirmedSwitchBundleCategory(db);
     await applyManualCategoryAuthority(db);
     assert.equal(
       sqlite.prepare("SELECT primary_category_id FROM products WHERE id=1772").get()

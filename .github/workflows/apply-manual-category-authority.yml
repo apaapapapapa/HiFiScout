@@ -9,7 +9,7 @@ on:
       - 'src/crawler/category-enricher.ts'
       - 'scripts/reclassify-knowledge-catalog-products.ts'
       - 'scripts/apply-manual-category-authority.ts'
-      - 'scripts/lib/confirmed-switch-bundle-category.ts'
+      - 'scripts/apply-confirmed-switch-bundle-category.ts'
       - '.github/workflows/apply-manual-category-authority.yml'
   workflow_dispatch:
 
@@ -127,6 +127,12 @@ jobs:
         env:
           D1_DATABASE_ID: ${{ steps.d1.outputs.database_id }}
         run: vp exec tsx scripts/reclassify-knowledge-catalog-products.ts
+
+      - name: Apply the confirmed listing correction and refresh its projections
+        if: steps.deployment.outputs.available == 'true'
+        env:
+          D1_DATABASE_ID: ${{ steps.d1.outputs.database_id }}
+        run: vp exec tsx scripts/apply-confirmed-switch-bundle-category.ts
 
       - name: Apply manual category authority and refresh projections
         if: steps.deployment.outputs.available == 'true'
