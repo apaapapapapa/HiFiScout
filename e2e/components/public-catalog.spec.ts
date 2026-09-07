@@ -275,12 +275,14 @@ test("mobile drafts apply once, cancel safely, validate prices and trap keyboard
   await expect(page.locator("#filter-close")).toBeFocused();
   await selectShop(page);
   await page.locator("#minPrice").fill("100,000");
+  await page.locator("#sheet-recentOnly").check();
   expect(seen.searches).toHaveLength(1);
   expect(page.url()).toBe(originalUrl);
   await page.keyboard.press("Escape");
   await expect(page.locator("#filter-toggle")).toBeFocused();
   await page.locator("#filter-toggle").click();
   await expect(page.locator("#shop input:checked")).toHaveCount(0);
+  await expect(page.locator("#sheet-recentOnly")).not.toBeChecked();
   await page.locator("#minPrice").fill("200000");
   await page.locator("#maxPrice").fill("100000");
   await expect(page.locator("#price-error")).toContainText("最高価格は最低価格以上");
