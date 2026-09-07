@@ -1,6 +1,8 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 
 import worker from "./index.js";
+import type { AdminManufacturerQuery } from "./api/admin-manufacturer-contracts.js";
+import { listAdminManufacturers } from "./db/admin-manufacturer-repository.js";
 import { previewAdminCsvChange, applyAdminCsvChange } from "./db/admin-csv-import-repository.js";
 import { parseAdminCsvPreview, parseAdminCsvApply } from "./http/admin-csv-import.js";
 import type { AdminCsvApplyInput, AdminCsvChange } from "./api/admin-csv-contracts.js";
@@ -60,6 +62,9 @@ import type { ListingAdminListOptions, ListingAdminUpdateInput } from "./http/li
  * Binding configured on the dedicated Access-protected admin Worker; it has no public HTTP route.
  */
 export class CatalogAdminService extends WorkerEntrypoint<Env> implements CatalogAdminRpc {
+  async listManufacturers(options: AdminManufacturerQuery) {
+    return listAdminManufacturers(this.env.DB, options);
+  }
   async previewCsvImport(changes: AdminCsvChange[]) {
     const parsed = parseAdminCsvPreview({ changes });
     if (!parsed) throw new Error("invalid_csv_import");

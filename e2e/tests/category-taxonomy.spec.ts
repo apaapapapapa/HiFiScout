@@ -177,18 +177,22 @@ test("category selection and browser URL state stay wired for parents and leaves
   await catalogPage.goto();
 
   await catalogPage.selectCategory("AMP");
+  await catalogPage.applyFilters();
   await expect(page).toHaveURL(/category=AMP/);
-  expect(lastRequest(requests).searchParams.get("category")).toBe("AMP");
+  await expect.poll(() => lastRequest(requests).searchParams.get("category")).toBe("AMP");
 
   await catalogPage.selectCategory("AMP.PRE");
+  await catalogPage.applyFilters();
   await expect(page).toHaveURL(/category=AMP\.PRE/);
-  expect(lastRequest(requests).searchParams.get("category")).toBe("AMP.PRE");
+  await expect.poll(() => lastRequest(requests).searchParams.get("category")).toBe("AMP.PRE");
 
   await catalogPage.goto("/?category=SPK.LOUDSPEAKER");
   await expect(catalogPage.category).toHaveValue("SPK.LOUDSPEAKER");
-  expect(lastRequest(requests).searchParams.get("category")).toBe("SPK.LOUDSPEAKER");
+  await expect
+    .poll(() => lastRequest(requests).searchParams.get("category"))
+    .toBe("SPK.LOUDSPEAKER");
 
   await catalogPage.goto("/?category=CAB.ANALOG");
   await expect(catalogPage.category).toHaveValue("CAB.ANALOG");
-  expect(lastRequest(requests).searchParams.get("category")).toBe("CAB.ANALOG");
+  await expect.poll(() => lastRequest(requests).searchParams.get("category")).toBe("CAB.ANALOG");
 });

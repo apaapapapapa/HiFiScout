@@ -1,8 +1,6 @@
 import { categoryIdForClassification, categoryIdForFilter } from "../catalog/categories.js";
-import {
-  normalizePresentationColor,
-  presentationColorLabel,
-} from "../catalog/model-presentation-color.js";
+import { canonicalAdminPresentationColor } from "../api/admin-listing-contracts.js";
+import { PRESENTATION_COLORS } from "../catalog/model-presentation-color.js";
 import { isRecord } from "../types.js";
 
 export interface ListingAdminListOptions {
@@ -83,14 +81,6 @@ function bodyText(value: unknown, maxLength: number): string | null {
   return text.length <= maxLength ? text : null;
 }
 
-function canonicalPresentationColor(value: string): string | null {
-  if (!value) return "";
-  const parts = value.split("/").map((part) => part.trim());
-  if (!parts.length || parts.some((part) => !part || !normalizePresentationColor(part)))
-    return null;
-  return presentationColorLabel(parts);
-}
-
 export function parseListingAdminUpdate(value: unknown): ListingAdminUpdateInput | null {
   if (!isRecord(value)) return null;
   const keys = Object.keys(value);
@@ -114,7 +104,7 @@ export function parseListingAdminUpdate(value: unknown): ListingAdminUpdateInput
   if (Object.hasOwn(value, "presentationColor")) {
     const presentationColor = bodyText(value.presentationColor, 100);
     if (presentationColor === null) return null;
-    const canonical = canonicalPresentationColor(presentationColor);
+    const canonical = canonicalAdminPresentationColor(presentationColor, PRESENTATION_COLORS);
     if (canonical === null) return null;
     input.presentationColor = canonical;
   }

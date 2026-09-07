@@ -18,6 +18,7 @@ test("unauthenticated requests cannot read the console, assets, metadata or admi
     "/admin-console.js",
     "/admin-console.css",
     "/api/meta",
+    "/api/admin/manufacturers",
     catalogPath,
     listingPath,
     "/api/admin/offer-facts/replay",
@@ -40,7 +41,14 @@ test("unauthenticated requests cannot read the console, assets, metadata or admi
 for (const mode of ["expired", "wrong-audience", "invalid-signature"] as const) {
   test(`${mode} Access assertions are rejected by the real Worker`, async ({ request, app }) => {
     const headers = { ...(await app.headers(mode)), origin: app.url };
-    for (const path of ["/", "/admin-console.js", "/api/meta", catalogPath, listingPath]) {
+    for (const path of [
+      "/",
+      "/admin-console.js",
+      "/api/meta",
+      "/api/admin/manufacturers",
+      catalogPath,
+      listingPath,
+    ]) {
       expect((await request.get(path, { headers })).status(), path).toBe(403);
     }
     expect(
@@ -79,7 +87,16 @@ test("mock login loads the built console and saves catalog and listing edits thr
 
   await admin.openListings();
   await admin.listings.openEditor(21);
-  await admin.listings.presentationColor().fill("シルバー");
+  const picker = admin.listings.editDialog.getByRole("group", { name: "メーカー", exact: true });
+  await picker.getByText("メーカー名から選ぶ", { exact: true }).click();
+  await picker.getByRole("searchbox", { name: "メーカー候補を検索" }).fill("lux");
+  await expect(picker.getByRole("listbox", { name: "メーカー候補", exact: true })).toContainText(
+    "LUXMAN",
+  );
+  await admin.listings.presentationColor().fill("silver");
+  await expect(
+    admin.listings.editDialog.getByRole("region", { name: "保存前の変更内容" }),
+  ).toContainText("シルバー");
   await admin.listings.saveButton().click();
   await expect(admin.listings.editDialog).not.toBeVisible();
   await expect(admin.listings.listingRow(21)).toContainText("シルバー");

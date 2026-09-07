@@ -192,6 +192,7 @@ test("a shop filter narrows the card summary instead of contradicting it", async
   await expect(catalogPage.cardShop()).toHaveText("3店舗");
 
   await catalogPage.selectShop("shop-b");
+  await catalogPage.applyFilters();
 
   await expect(catalogPage.cardShop()).toHaveText("Shop B");
   await expect(catalogPage.cardPriceRow()).not.toContainText("〜");

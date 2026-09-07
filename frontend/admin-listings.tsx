@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
+import { AdminManufacturerPicker } from "./admin-manufacturer-picker.js";
+import { AdminEditDiff, type AdminEditDiffRow } from "./admin-edit-diff.js";
+import {
+  canonicalAdminPresentationColor,
+  type PresentationColorDefinition,
+} from "../src/api/admin-listing-contracts.js";
 import { AdminOfferFacts } from "./admin-offer-facts.js";
 import { AdminOfferFactReplay } from "./admin-offer-fact-replay.js";
 
@@ -131,6 +137,9 @@ function StackCell({
 export function ListingAdmin() {
   const [status, setStatus] = useState<StatusMessage>(EMPTY_STATUS);
   const [categories, setCategories] = useState<CategoryFacet[]>([]);
+  const [presentationColors, setPresentationColors] = useState<
+    readonly PresentationColorDefinition[]
+  >([]);
   const [shops, setShops] = useState<{ key: string; name: string }[]>([]);
   const filterableCategories = useMemo(
     () => categories.filter((category) => category.filterable),
@@ -151,6 +160,7 @@ export function ListingAdmin() {
   const [ready, setReady] = useState(false);
 
   const [editing, setEditing] = useState<ListingProduct | null>(null);
+  const [editManufacturerName, setEditManufacturerName] = useState("");
   const [factsEditing, setFactsEditing] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState<EditDraft>({
     manufacturerId: "",
@@ -208,10 +218,12 @@ export function ListingAdmin() {
       try {
         const meta = await adminJson<{
           categoryFacets: CategoryFacet[];
+          presentationColors?: PresentationColorDefinition[];
           shops?: { key: string; name: string }[];
         }>("/api/meta");
         if (cancelled) return;
         setCategories(meta.categoryFacets);
+        setPresentationColors(meta.presentationColors ?? []);
         setShops([...(meta.shops ?? [])].sort((a, b) => a.name.localeCompare(b.name, "ja")));
         await loadListings(EMPTY_FILTERS, 0, []);
       } catch (error) {
@@ -243,6 +255,7 @@ export function ListingAdmin() {
 
   const openEdit = (product: ListingProduct) => {
     setEditing(product);
+    setEditManufacturerName(product.manufacturer);
     setEditDraft({
       manufacturerId: product.canonicalManufacturerId || product.manufacturerId || "",
       model: product.model || "",
@@ -271,6 +284,52 @@ export function ListingAdmin() {
       (editDraft.primaryCategoryId !== "" &&
         editDraft.primaryCategoryId !== initialEditDraft.primaryCategoryId)),
   );
+  const editChanges: AdminEditDiffRow[] = [];
+  const canonicalColor = canonicalAdminPresentationColor(
+    editDraft.presentationColor.trim(),
+    presentationColors,
+  );
+  const invalidColor =
+    initialEditDraft !== null &&
+    editDraft.presentationColor.trim() !== initialEditDraft.presentationColor &&
+    canonicalColor === null;
+  if (initialEditDraft) {
+    const manufacturerId = editDraft.manufacturerId.trim().toLowerCase();
+    if (manufacturerId !== initialEditDraft.manufacturerId)
+      editChanges.push({
+        field: "メーカー",
+        before: initialEditDraft.manufacturerId,
+        after: manufacturerId
+          ? `${editManufacturerName || manufacturerId} (${manufacturerId})`
+          : "メーカー未解決として固定",
+      });
+    if (editDraft.model.trim() !== initialEditDraft.model)
+      editChanges.push({
+        field: "型番",
+        before: initialEditDraft.model,
+        after: editDraft.model.trim() || "型番未解決として固定",
+      });
+    if (editDraft.presentationColor.trim() !== initialEditDraft.presentationColor)
+      editChanges.push({
+        field: "表示色 / 仕上げ",
+        before: initialEditDraft.presentationColor,
+        after:
+          canonicalColor === null ? "入力を確認してください" : canonicalColor || "色なしとして固定",
+      });
+    if (
+      editDraft.primaryCategoryId &&
+      editDraft.primaryCategoryId !== initialEditDraft.primaryCategoryId
+    )
+      editChanges.push({
+        field: "主カテゴリ",
+        before:
+          categories.find((category) => category.id === initialEditDraft.primaryCategoryId)?.name ||
+          "未分類",
+        after:
+          categories.find((category) => category.id === editDraft.primaryCategoryId)?.name ||
+          editDraft.primaryCategoryId,
+      });
+  }
 
   const closeEdit = (force = false) => {
     if (!force && editDirty && !window.confirm("未保存の変更を破棄しますか？")) return;
@@ -285,7 +344,7 @@ export function ListingAdmin() {
 
   const saveEditing = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!editing || !initialEditDraft || saving || !editDirty) return;
+    if (!editing || !initialEditDraft || saving || !editDirty || invalidColor) return;
     const input: {
       manufacturerId?: string;
       model?: string;
@@ -683,19 +742,17 @@ export function ListingAdmin() {
                 </div>
               </dl>
             </div>
-            <label>
-              <span>Canonical Manufacturer ID</span>
-              <input
-                type="text"
-                maxLength={100}
-                autoComplete="off"
-                value={editDraft.manufacturerId}
-                onChange={({ currentTarget: { value: nextValue } }) =>
-                  setEditDraft((value) => ({ ...value, manufacturerId: nextValue }))
-                }
-              />
-              <small>例: luxman。空欄にするとメーカー未解決として固定します。</small>
-            </label>
+            <AdminManufacturerPicker
+              value={editDraft.manufacturerId}
+              valueLabel={editManufacturerName}
+              disabled={saving}
+              clearLabel="メーカー未解決にする"
+              onChange={(manufacturerId, name) => {
+                setEditDraft((value) => ({ ...value, manufacturerId }));
+                setEditManufacturerName(name || "");
+              }}
+            />
+            <small>「メーカー未解決にする」は未解決の手動補正として保存します。</small>
             <label>
               <span>型番</span>
               <input
@@ -716,6 +773,8 @@ export function ListingAdmin() {
                 maxLength={100}
                 autoComplete="off"
                 placeholder="ブラック / シルバー / ブラック/ゴールド"
+                aria-invalid={invalidColor}
+                aria-describedby="listing-color-error"
                 value={editDraft.presentationColor}
                 onChange={({ currentTarget: { value: nextValue } }) =>
                   setEditDraft((value) => ({ ...value, presentationColor: nextValue }))
@@ -724,6 +783,9 @@ export function ListingAdmin() {
               <small>
                 Catalogの標準色辞書へ正規化します。2色仕上げは「ブラック/ゴールド」のように /
                 で区切れます。空欄は色なしとして固定します。
+              </small>
+              <small id="listing-color-error" role="status">
+                {invalidColor ? "標準色として認識できません。色名を確認してください。" : ""}
               </small>
             </label>
             <label>
@@ -746,6 +808,7 @@ export function ListingAdmin() {
                 ))}
               </select>
             </label>
+            <AdminEditDiff rows={editChanges} />
             <div className="edit-impact">
               <strong>保存時の処理</strong>
               <p>
@@ -763,7 +826,7 @@ export function ListingAdmin() {
               <button className="secondary-button" type="button" onClick={() => closeEdit()}>
                 キャンセル
               </button>
-              <button type="submit" disabled={busy || saving || !editDirty}>
+              <button type="submit" disabled={busy || saving || !editDirty || invalidColor}>
                 {saving ? "保存中…" : "変更を保存"}
               </button>
             </div>

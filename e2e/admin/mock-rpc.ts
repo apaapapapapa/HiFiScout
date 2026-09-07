@@ -56,6 +56,19 @@ export function createMockAdminRpc() {
   const rpc: AdminRpc = {
     getOfferFactReplay: async () => null,
     stepOfferFactReplay: unsupported("stepOfferFactReplay"),
+    async listManufacturers({ query, afterId, limit }) {
+      const matching = [
+        { id: "accuphase", name: "Accuphase" },
+        { id: "luxman", name: "LUXMAN" },
+      ].filter(
+        (item) =>
+          item.id > afterId &&
+          `${item.id} ${item.name}`.toLowerCase().includes(query.toLowerCase()),
+      );
+      const items = matching.slice(0, limit);
+      const hasMore = matching.length > limit;
+      return { items, hasMore, nextAfterId: hasMore ? items.at(-1)!.id : null };
+    },
     getOfferFacts: unsupported("getOfferFacts"),
     updateOfferFacts: unsupported("updateOfferFacts"),
     async listProducts() {
