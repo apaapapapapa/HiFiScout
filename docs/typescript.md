@@ -20,7 +20,7 @@ External HTML/HTTP/query-string/D1/queue/environment input remains runtime-valid
 
 ## Execution and builds
 
-- Unit tests: Vitest through `vp run test:unit`; individual files through `vp test run`.
+- Unit tests: Vitest through `vp run test`; individual files through `vp test run`.
 - Node tooling/maintenance: `vp exec tsx`, including shop scaffolding and D1 integration scripts.
 - Public React UI: `frontend/app.tsx` -> `public/app.js` through the `public` mode in `vite.config.ts`.
 - Admin React UI: `frontend/admin-console.tsx` -> `admin-public/admin-console.js` through the `admin` mode.

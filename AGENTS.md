@@ -51,7 +51,7 @@ Use the project-pinned Vite+ toolchain. Versions and commands are defined in `pa
 | Read-only gate | `vp run check` |
 | Format/lint fixes only | `vp run fix` |
 | One unit-test file | `vp test run test/<name>.test.ts` |
-| Verbose unit tests when diagnosing | `vp run test:unit:verbose` |
+| Verbose unit tests when diagnosing | `vp run test --reporter=verbose` |
 | Local development | `vp run db:migrate:local`, then `vp run dev` |
 | Published documentation or documentation-generator changes | `vp run docs:build` |
 | Contributor instructions only | Review scope/conflicts, referenced paths and `git diff --check` |

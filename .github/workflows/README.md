@@ -20,6 +20,11 @@ HiFiScout keeps workflow orchestration thin. Domain behavior, repair logic, and 
 - `secret-scan.yml` — secret scanning.
 - `autofix.yml` — PR formatting/lint autofix only.
 
+The `ci:*` tasks in `vite.config.ts` reuse `package.json` commands. They retain CI-specific cache
+metadata, the declaration-before-compiler and frontend-before-Worker dependencies, and four separate
+unit timing reports. Change shared commands in the package scripts instead of copying a second CI
+version; change task scheduling/cache metadata in Vite's task configuration.
+
 `.github/actions/change-scope` compares the candidate tree with the event's comparison base. Documentation-only changes retain source/toolchain checks and the always-present `fan-out` result but skip application test/build/security steps. Unknown bases run the full suite. All application jobs still report a result, so a workflow-level path filter cannot strand the required check in Pending. The dependency audit still runs for every application change; CodeQL and the weekly secret scan retain their own schedules.
 
 The Docs workflow caches generated SchemaSpy output by the migration contents, Wrangler/dependency configuration and generator sources. The generator verifies the fingerprint and its output before reuse; cache misses run the original fresh local migration and SchemaSpy generation. This cache never supplies databases to migration safety tests.
