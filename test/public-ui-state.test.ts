@@ -110,7 +110,7 @@ test("detail reset, initial state and complete reset have distinct stock and que
   assert.equal(details.minPrice, "");
   assert.deepEqual(details.shop, []);
   assert.equal(clearedFilters(current).inStock, false);
-  assert.deepEqual(initialFilters(current), filters());
+  assert.deepEqual(initialFilters(current), { ...filters(), specificationFilters: {} });
 });
 
 test("empty-search alternatives remove only their named conditions and are limited to three", () => {
