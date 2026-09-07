@@ -55,15 +55,20 @@ export function sellerOfferFactWrites(
   title: string,
   conditionText: string,
   observedAt: string,
+  replay?: { ruleVersion: number; token: string },
 ): D1PreparedStatement[] {
   const facts = JSON.stringify(inferOfferFacts(title, conditionText, observedAt));
+  const guard = replay
+    ? " AND EXISTS (SELECT 1 FROM product_offer_fact_replays r WHERE r.rule_version = ? AND r.step_token = ?)"
+    : "";
+  const guardBinds = replay ? [replay.ruleVersion, replay.token] : [];
   return [
     db
       .prepare(`DELETE FROM product_offer_facts
       WHERE product_id = (SELECT id FROM products WHERE shop_key = ? AND source_id = ?)
         AND source = 'seller'
-        AND fact_id NOT IN (SELECT json_extract(value, '$.factId') FROM json_each(?))`)
-      .bind(shopKey, sourceId, facts),
+        AND fact_id NOT IN (SELECT json_extract(value, '$.factId') FROM json_each(?))${guard}`)
+      .bind(shopKey, sourceId, facts, ...guardBinds),
     db
       .prepare(`INSERT INTO product_offer_facts
       (product_id, fact_id, source, state, source_field, rule_id, confidence, observed_at)
@@ -77,11 +82,11 @@ export function sellerOfferFactWrites(
             AND f.source = 'seller' AND f.state = json_extract(j.value, '$.state')
             AND f.source_field = json_extract(j.value, '$.sourceField')
             AND f.rule_id = json_extract(j.value, '$.ruleId')
-            AND f.confidence = json_extract(j.value, '$.confidence'))
+            AND f.confidence = json_extract(j.value, '$.confidence'))${guard}
       ON CONFLICT(product_id, fact_id, source) DO UPDATE SET
         state = excluded.state, source_field = excluded.source_field,
         rule_id = excluded.rule_id, confidence = excluded.confidence,
         observed_at = excluded.observed_at`)
-      .bind(observedAt, facts, shopKey, sourceId),
+      .bind(observedAt, facts, shopKey, sourceId, ...guardBinds),
   ];
 }

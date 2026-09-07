@@ -24,6 +24,7 @@ const ADMIN_SECTION_LINKS: Record<AdminTab, readonly AdminSectionLink[]> = {
   listings: [
     { label: "登録商品を検索", selector: "#listing-search-heading" },
     { label: "登録商品一覧", selector: ".listing-table" },
+    { label: "出品条件の再処理", selector: "#offer-replay-heading" },
   ],
   reports: [{ label: "誤り報告キュー", selector: "#correction-reports-heading" }],
 };

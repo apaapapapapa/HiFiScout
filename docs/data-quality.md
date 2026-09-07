@@ -26,7 +26,9 @@ every selected fact on the same listing as the shop, stock and price predicates.
 representatives and cursor ordering use that matching subset; the detail still shows all shops.
 Shared URLs and Atom feeds preserve these selections. Unknown or unreplayed listings do not match,
 as the opt-in controls explain. Existing listings still need operator-controlled bounded replay and
-coverage review before these filters are promoted; admin replay/coverage controls ship separately.
+coverage review before these filters are promoted. The Access-protected listing console provides
+manual decisions and durable, bounded replay with per-shop and per-category coverage snapshots;
+see [Registered Product Admin](./listing-admin.md#bounded-offer-fact-replay).
 
 `src/catalog/sale-subject.ts` separates the sale object from compatible equipment and included or missing accessories. Category inference and catalog evidence consumption share that distinction; identity exact/alias matching additionally rejects bundles and incompatible accessory evidence. A per-model lookup cache must still apply the listing-specific guard when consuming its result, since a body and its remote can share the same seller model field in one batch.
 

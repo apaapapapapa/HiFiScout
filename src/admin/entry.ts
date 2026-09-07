@@ -21,6 +21,8 @@ import type {
 } from "../db/product-correction-report-repository.js";
 
 interface ListingAdminRpc extends CatalogAdminRpc {
+  getOfferFactReplay(): Promise<unknown>;
+  stepOfferFactReplay(): Promise<unknown>;
   getOfferFacts(listingId: number): Promise<unknown>;
   updateOfferFacts(listingId: number, changes: OfferFactChanges): Promise<unknown>;
   listListings(options: ListingAdminListOptions): Promise<unknown>;
@@ -43,6 +45,7 @@ interface AdminEnv {
 const LISTING_COLLECTION_PATH = "/api/admin/listings";
 const LISTING_PATH = /^\/api\/admin\/listings\/(\d{1,15})$/u;
 const OFFER_FACT_PATH = /^\/api\/admin\/listings\/(\d{1,15})\/offer-facts$/u;
+const OFFER_FACT_REPLAY_PATH = "/api/admin/offer-facts/replay";
 const CORRECTION_REPORT_COLLECTION_PATH = "/api/admin/correction-reports";
 const CORRECTION_REPORT_PATH = /^\/api\/admin\/correction-reports\/(\d{1,15})$/u;
 const CONSOLE_ASSET_PATHS = new Set([
@@ -80,6 +83,7 @@ function isAdminEntryRoute(pathname: string): boolean {
     pathname === LISTING_COLLECTION_PATH ||
     LISTING_PATH.test(pathname) ||
     OFFER_FACT_PATH.test(pathname) ||
+    pathname === OFFER_FACT_REPLAY_PATH ||
     pathname === CORRECTION_REPORT_COLLECTION_PATH ||
     CORRECTION_REPORT_PATH.test(pathname)
   );
@@ -115,6 +119,22 @@ export async function handleAuthenticatedAdminEntryRequest(
   env: AdminEnv,
 ): Promise<Response> {
   const url = new URL(request.url);
+
+  if (url.pathname === OFFER_FACT_REPLAY_PATH && request.method === "GET") {
+    return json(await env.CATALOG_ADMIN.getOfferFactReplay());
+  }
+  if (url.pathname === OFFER_FACT_REPLAY_PATH && request.method === "POST") {
+    if (!isJsonRequest(request))
+      return json({ error: "application_json_required" }, { status: 415 });
+    if (!isSameOriginBrowserMutation(request, url))
+      return json({ error: "same_origin_required" }, { status: 403 });
+    const body = await readJsonBody(request, 1024);
+    if (body === REQUEST_BODY_TOO_LARGE)
+      return json({ error: "request_body_too_large" }, { status: 413 });
+    if (body === null || typeof body !== "object" || Array.isArray(body) || Object.keys(body).length)
+      return json({ error: "invalid_replay_request" }, { status: 400 });
+    return json(await env.CATALOG_ADMIN.stepOfferFactReplay());
+  }
 
   const offerFactMatch = url.pathname.match(OFFER_FACT_PATH);
   if (offerFactMatch && (request.method === "GET" || request.method === "PATCH")) {

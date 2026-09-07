@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { AdminOfferFacts } from "./admin-offer-facts.js";
+import { AdminOfferFactReplay } from "./admin-offer-fact-replay.js";
 
 import {
   EMPTY_STATUS,
@@ -615,6 +616,8 @@ export function ListingAdmin() {
           </section>
         </>
       ) : null}
+
+      <AdminOfferFactReplay shops={shops} categories={categories} />
 
       {factsEditing !== null ? (
         <AdminOfferFacts

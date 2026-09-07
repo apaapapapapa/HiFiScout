@@ -20,6 +20,8 @@ test("unauthenticated requests cannot read the console, assets, metadata or admi
     "/api/meta",
     catalogPath,
     listingPath,
+    "/api/admin/offer-facts/replay",
+    `${listingPath}/21/offer-facts`,
   ]) {
     const response = await request.get(path);
     expect(response.status(), path).toBe(403);
