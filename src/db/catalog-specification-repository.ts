@@ -1,6 +1,7 @@
 import { parseCatalogSpecifications } from "../api/catalog-specification-contracts.js";
 import type { CatalogSpecificationRecord } from "../api/catalog-specification-contracts.js";
 import type { QueryableDatabase } from "./types.js";
+import { firstMeasured } from "./read-accounting.js";
 
 export function decodeCatalogSpecifications(
   json: unknown,
@@ -21,12 +22,17 @@ export function decodeCatalogSpecifications(
 }
 
 export async function readCatalogSpecifications(db: QueryableDatabase, id: number) {
-  const row = await db
-    .prepare(`SELECT kp.id, s.specification_json, s.updated_at
+  const row = await firstMeasured<{
+    id: number;
+    specification_json: string | null;
+    updated_at: string | null;
+  }>(
+    db
+      .prepare(`SELECT kp.id, s.specification_json, s.updated_at
     FROM knowledge_catalog_products kp LEFT JOIN catalog_product_specifications s
       ON s.catalog_product_id = kp.id WHERE kp.id = ?`)
-    .bind(id)
-    .first<{ id: number; specification_json: string | null; updated_at: string | null }>();
+      .bind(id),
+  );
   return row
     ? {
         productId: id,

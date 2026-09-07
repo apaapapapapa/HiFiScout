@@ -103,6 +103,7 @@ test("an absent query parses to the default page of newest listings", () => {
     features: [],
     facets: [],
     offerFacts: [],
+    specificationFilters: {},
     inStock: false,
     newOnly: false,
     priceDropped: false,

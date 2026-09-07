@@ -40,6 +40,7 @@ import type {
   ProductSearchResponse,
 } from "../api/contracts.js";
 import { parseProductSearchKey } from "../api/product-search-key.js";
+import { addSpecificationFilters } from "./specification-search.js";
 import {
   addCursorPredicate,
   cursorFor,
@@ -478,6 +479,7 @@ export async function searchProducts(
   const binds: unknown[] = [];
   const search = addSearchPlan(query.q, where, binds);
   addProductFilters(query, where, binds);
+  addSpecificationFilters(query.specificationFilters, where, binds);
   const filter = offerFilter(query);
   const inStockOnly = Boolean(
     query.inStock &&
