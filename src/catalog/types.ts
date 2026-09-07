@@ -552,6 +552,8 @@ export interface FacetValueDefinition {
   readonly id: string;
   readonly name: string;
   readonly order: number;
+  /** Optional UI scope, using registry ancestry rather than ID prefixes. */
+  readonly categoryIds?: readonly CategoryId[];
 }
 
 export interface FacetDefinition {
@@ -560,19 +562,27 @@ export interface FacetDefinition {
   readonly order: number;
   /** Empty means globally applicable; otherwise the UI reveals it for these category roots. */
   readonly categoryRootIds: readonly CategoryGroupId[];
+  /** When present, replaces the broad root scope with specific roots/leaves for the UI. */
+  readonly categoryIds?: readonly CategoryId[];
   readonly values: readonly FacetValueDefinition[];
 }
 
 function facetValues(
-  ...values: readonly (readonly [string, string])[]
+  ...values: readonly (readonly [string, string, (readonly CategoryId[])?])[]
 ): readonly FacetValueDefinition[] {
   return Object.freeze(
-    values.map(([id, name], index) => Object.freeze({ id, name, order: index + 1 })),
+    values.map(([id, name, categoryIds], index) =>
+      Object.freeze({ id, name, order: index + 1, ...(categoryIds ? { categoryIds } : {}) }),
+    ),
   );
 }
 
 function facetGroups(...groups: readonly CategoryGroupId[]): readonly CategoryGroupId[] {
   return Object.freeze(groups);
+}
+
+function facetCategories(...categories: readonly CategoryId[]): readonly CategoryId[] {
+  return Object.freeze(categories);
 }
 
 const CONNECTOR_VALUES = facetValues(
@@ -618,15 +628,15 @@ export const FACET_DEFINITIONS: readonly FacetDefinition[] = Object.freeze([
     order: 3,
     categoryRootIds: facetGroups("PER", "SPK", "SYS"),
     values: facetValues(
-      ["bookshelf", "ブックシェルフ"],
-      ["floorstanding", "フロア型"],
-      ["desktop", "デスクトップ"],
-      ["one_box", "一体型"],
-      ["true_wireless", "完全ワイヤレス"],
-      ["over_ear", "オーバーイヤー"],
-      ["on_ear", "オンイヤー"],
-      ["in_ear", "カナル型"],
-      ["open_ear", "オープンイヤー"],
+      ["bookshelf", "ブックシェルフ", ["SPK.LOUDSPEAKER"]],
+      ["floorstanding", "フロア型", ["SPK.LOUDSPEAKER"]],
+      ["desktop", "デスクトップ", ["SPK.LOUDSPEAKER", "SYS"]],
+      ["one_box", "一体型", ["SPK.LOUDSPEAKER", "SYS"]],
+      ["true_wireless", "完全ワイヤレス", ["PER.EARPHONE"]],
+      ["over_ear", "オーバーイヤー", ["PER.HEADPHONE"]],
+      ["on_ear", "オンイヤー", ["PER.HEADPHONE"]],
+      ["in_ear", "カナル型", ["PER.EARPHONE"]],
+      ["open_ear", "オープンイヤー", ["PER"]],
     ),
   }),
   Object.freeze({
@@ -634,6 +644,7 @@ export const FACET_DEFINITIONS: readonly FacetDefinition[] = Object.freeze([
     name: "チャンネル用途",
     order: 4,
     categoryRootIds: facetGroups("SPK"),
+    categoryIds: facetCategories("SPK.LOUDSPEAKER"),
     values: facetValues(["center", "センター"], ["surround", "サラウンド"]),
   }),
   Object.freeze({
@@ -641,6 +652,7 @@ export const FACET_DEFINITIONS: readonly FacetDefinition[] = Object.freeze([
     name: "増幅方式",
     order: 5,
     categoryRootIds: facetGroups("SPK"),
+    categoryIds: facetCategories("SPK.LOUDSPEAKER", "SPK.SUBWOOFER"),
     values: facetValues(["active", "アクティブ"], ["passive", "パッシブ"]),
   }),
   Object.freeze({
@@ -687,6 +699,7 @@ export const FACET_DEFINITIONS: readonly FacetDefinition[] = Object.freeze([
     name: "ネットワーク機器",
     order: 10,
     categoryRootIds: facetGroups("SIG"),
+    categoryIds: facetCategories("SIG.NETWORK"),
     values: facetValues(["switch", "スイッチ"], ["router", "ルーター"], ["bridge", "ブリッジ"]),
   }),
   Object.freeze({
@@ -695,10 +708,10 @@ export const FACET_DEFINITIONS: readonly FacetDefinition[] = Object.freeze([
     order: 11,
     categoryRootIds: facetGroups("AMP", "PWR", "ACC"),
     values: facetValues(
-      ["tube", "真空管"],
-      ["solid_state", "ソリッドステート"],
-      ["class_d", "Class-D"],
-      ["transformer", "トランス"],
+      ["tube", "真空管", ["AMP", "ACC.TUBE"]],
+      ["solid_state", "ソリッドステート", ["AMP"]],
+      ["class_d", "Class-D", ["AMP.INTEGRATED", "AMP.POWER", "AMP.HEADPHONE", "AMP.RECEIVER"]],
+      ["transformer", "トランス", ["AMP.STEPUP", "PWR"]],
     ),
   }),
   Object.freeze({
@@ -713,6 +726,7 @@ export const FACET_DEFINITIONS: readonly FacetDefinition[] = Object.freeze([
     name: "処理種別",
     order: 13,
     categoryRootIds: facetGroups("PRC"),
+    categoryIds: facetCategories("PRC.PROCESSOR"),
     values: facetValues(
       ["room_correction", "ルーム補正"],
       ["equalizer", "イコライザー"],
@@ -725,6 +739,7 @@ export const FACET_DEFINITIONS: readonly FacetDefinition[] = Object.freeze([
     name: "可搬性",
     order: 14,
     categoryRootIds: facetGroups("PER", "SRC", "SPK"),
+    categoryIds: facetCategories("PER", "SRC", "SPK", "AMP.HEADPHONE"),
     values: facetValues(
       ["portable", "ポータブル"],
       ["stationary", "据置型"],
@@ -747,6 +762,7 @@ export const FACET_DEFINITIONS: readonly FacetDefinition[] = Object.freeze([
     name: "カートリッジ方式",
     order: 16,
     categoryRootIds: facetGroups("ANA"),
+    categoryIds: facetCategories("ANA.CARTRIDGE", "ANA.STYLUS"),
     values: facetValues(["mm", "MM"], ["mc", "MC"], ["mi", "MI"]),
   }),
   Object.freeze({
@@ -754,6 +770,13 @@ export const FACET_DEFINITIONS: readonly FacetDefinition[] = Object.freeze([
     name: "フォノ入力対応",
     order: 17,
     categoryRootIds: facetGroups("AMP"),
+    categoryIds: facetCategories(
+      "AMP.INTEGRATED",
+      "AMP.PRE",
+      "AMP.RECEIVER",
+      "AMP.PHONO",
+      "AMP.STEPUP",
+    ),
     values: facetValues(["mm", "MM対応"], ["mc", "MC対応"]),
   }),
   Object.freeze({
@@ -761,17 +784,18 @@ export const FACET_DEFINITIONS: readonly FacetDefinition[] = Object.freeze([
     name: "対応メディア",
     order: 18,
     categoryRootIds: facetGroups("SRC", "REC"),
+    categoryIds: facetCategories("SRC.DISC", "SRC.SERVER", "ANA.TAPE", "REC.RECORDER"),
     values: facetValues(
-      ["cd", "CD"],
-      ["sacd", "SACD"],
-      ["dvd", "DVD"],
-      ["blu_ray", "Blu-ray"],
-      ["md", "MD"],
-      ["ld", "LD"],
-      ["cassette", "カセット"],
-      ["open_reel", "オープンリール"],
-      ["dat", "DAT"],
-      ["dcc", "DCC"],
+      ["cd", "CD", ["SRC.DISC", "SRC.SERVER", "REC.RECORDER"]],
+      ["sacd", "SACD", ["SRC.DISC", "REC.RECORDER"]],
+      ["dvd", "DVD", ["SRC.DISC", "REC.RECORDER"]],
+      ["blu_ray", "Blu-ray", ["SRC.DISC", "REC.RECORDER"]],
+      ["md", "MD", ["SRC.DISC", "REC.RECORDER"]],
+      ["ld", "LD", ["SRC.DISC", "REC.RECORDER"]],
+      ["cassette", "カセット", ["ANA.TAPE", "REC.RECORDER"]],
+      ["open_reel", "オープンリール", ["ANA.TAPE", "REC.RECORDER"]],
+      ["dat", "DAT", ["ANA.TAPE", "REC.RECORDER"]],
+      ["dcc", "DCC", ["ANA.TAPE", "REC.RECORDER"]],
     ),
   }),
   Object.freeze({
@@ -779,6 +803,7 @@ export const FACET_DEFINITIONS: readonly FacetDefinition[] = Object.freeze([
     name: "ケーブル長",
     order: 19,
     categoryRootIds: facetGroups("CAB", "PWR"),
+    categoryIds: facetCategories("CAB", "PWR.CORD"),
     values: facetValues(
       ["under_1m", "1m未満"],
       ["1_to_2m", "1m以上・2m未満"],
@@ -792,6 +817,7 @@ export const FACET_DEFINITIONS: readonly FacetDefinition[] = Object.freeze([
     name: "部品種別",
     order: 20,
     categoryRootIds: facetGroups("ACC"),
+    categoryIds: facetCategories("ACC.PART"),
     values: facetValues(
       ["driver", "スピーカーユニット"],
       ["tweeter", "ツイーター"],
