@@ -9,6 +9,7 @@ import {
 import { updateOfferFactAdmin } from "../src/db/offer-fact-admin-repository.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { invocationBudget } from "../src/db/invocation-budget.js";
+import { migrationSources } from "./helpers/migrations.js";
 
 const AT = "2026-09-07T00:00:00.000Z";
 const NOW = new Date(AT);
@@ -102,6 +103,26 @@ function seed(sqlite: ReturnType<typeof migratedSqlite>["sqlite"]) {
     INSERT INTO product_offer_facts(product_id,fact_id,source,state,source_field,rule_id,confidence,observed_at)
       SELECT id,'used','seller','present','condition_text','fixture',1,'${AT}' FROM products;`);
 }
+
+test("upgrade queues retained evidence and catalog removal cascades its derived state", async () => {
+  const migration = "0109_condition_market_analysis.sql";
+  const { db, sqlite } = migratedSqlite({ before: migration });
+  try {
+    seed(sqlite);
+    const retained = sqlite.prepare("SELECT * FROM product_offer_facts").all();
+    sqlite.exec(migrationSources.find((entry) => entry.name === migration)!.sql);
+    assert.deepEqual(sqlite.prepare("SELECT * FROM product_offer_facts").all(), retained);
+    assert.equal((await maintainMarketAnalysis(db, NOW)).refreshed, 1);
+    assert.equal((await loadMarketAnalysis(db, 700001))?.current_conditions[0]?.median_yen, 200);
+    await updateOfferFactAdmin(db, 1, { used: "unknown" }, AT);
+    sqlite.exec("DELETE FROM knowledge_catalog_products WHERE id=700001");
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM catalog_market_dirty").get()?.n, 0);
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM catalog_market_analysis").get()?.n, 0);
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM products").get()?.n, 3);
+  } finally {
+    sqlite.close();
+  }
+});
 
 test("projections coalesce changes, honor manual unknown, reject stale claims and recover failures", async () => {
   const { db, sqlite } = migratedSqlite();
