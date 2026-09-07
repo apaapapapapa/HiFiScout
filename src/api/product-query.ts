@@ -15,7 +15,10 @@ import {
 import { facetSelectionKey, parseFacetSelection } from "../catalog/product-facets.js";
 import { MULTI_SELECT_LIMITS, PRODUCT_QUERY_SORTS } from "./contracts.js";
 import { validateQueryContract } from "./route-contract.js";
-import { SPECIFICATION_FILTER_DEFINITIONS, parseSpecificationFilterValue } from "./catalog-specification-contracts.js";
+import {
+  SPECIFICATION_FILTER_DEFINITIONS,
+  parseSpecificationFilterValue,
+} from "./catalog-specification-contracts.js";
 import type { SpecificationFilterQuery } from "./catalog-specification-contracts.js";
 import type { ProductQuerySort } from "./contracts.js";
 import type { FacetSelection, OfferFactId } from "../catalog/types.js";
@@ -40,7 +43,9 @@ const FEATURE_IDS = FEATURE_FILTER_DEFINITIONS.map((feature) => feature.id);
  */
 export const PRODUCT_QUERY_PARAMETERS = [
   ...SPECIFICATION_FILTER_DEFINITIONS.map((definition) => ({
-    name: definition.id, type: "string" as const, maxLength: 12,
+    name: definition.id,
+    type: "string" as const,
+    maxLength: 12,
     description: `${definition.name} (${definition.unit}), positive ${definition.integer ? "integer" : "number with up to 3 decimal places"}, at most ${definition.maximum}. Requires recorded catalog specifications; unknown values do not match.`,
   })),
   {
@@ -252,7 +257,8 @@ export function validateProductQuery(url: URL): string | null {
   if (contractError) return contractError;
   for (const definition of SPECIFICATION_FILTER_DEFINITIONS) {
     const value = url.searchParams.get(definition.id);
-    if (value !== null && parseSpecificationFilterValue(definition.id, value) === null) return `invalid_${definition.id}`;
+    if (value !== null && parseSpecificationFilterValue(definition.id, value) === null)
+      return `invalid_${definition.id}`;
   }
   const features = requestedFeatures(url.searchParams).map((value) => parseFeatureFilter(value));
   if (new Set(features.map((value) => value?.featureId)).size !== features.length)
@@ -278,11 +284,13 @@ export function parseProductQuery(url: URL): ProductQuery {
   const sort = params.get("sort");
   return {
     q: trimmed(params, "q"),
-    specificationFilters: Object.fromEntries(SPECIFICATION_FILTER_DEFINITIONS.flatMap(({ id }) => {
-      const value = params.get(id);
-      const parsed = value === null ? null : parseSpecificationFilterValue(id, value);
-      return parsed === null ? [] : [[id, parsed]];
-    })),
+    specificationFilters: Object.fromEntries(
+      SPECIFICATION_FILTER_DEFINITIONS.flatMap(({ id }) => {
+        const value = params.get(id);
+        const parsed = value === null ? null : parseSpecificationFilterValue(id, value);
+        return parsed === null ? [] : [[id, parsed]];
+      }),
+    ),
     shop: selections(params, "shop"),
     manufacturer: selections(params, "manufacturer"),
     category: trimmed(params, "category"),

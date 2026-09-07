@@ -1,16 +1,24 @@
 import type { SpecificationFilterQuery } from "../api/catalog-specification-contracts.js";
 
 const dimensions = [
-  ["maxWidthMm", "widthMm", "width"], ["maxHeightMm", "heightMm", "height"],
-  ["maxDepthMm", "depthMm", "depth"], ["maxWeightKg", "weightKg", "weight"],
+  ["maxWidthMm", "widthMm", "width"],
+  ["maxHeightMm", "heightMm", "height"],
+  ["maxDepthMm", "depthMm", "depth"],
+  ["maxWeightKg", "weightKg", "weight"],
 ] as const;
 const ports = [
-  ["minXlrInputs", "input", "XLR"], ["minXlrOutputs", "output", "XLR"],
-  ["minRcaInputs", "input", "RCA"], ["minRcaOutputs", "output", "RCA"],
+  ["minXlrInputs", "input", "XLR"],
+  ["minXlrOutputs", "output", "XLR"],
+  ["minRcaInputs", "input", "RCA"],
+  ["minRcaOutputs", "output", "RCA"],
 ] as const;
 
 /** Indexed current catalog facts; specifications never come from another product's offer. */
-export function addSpecificationFilters(filters: SpecificationFilterQuery | undefined, where: string[], binds: unknown[]): void {
+export function addSpecificationFilters(
+  filters: SpecificationFilterQuery | undefined,
+  where: string[],
+  binds: unknown[],
+): void {
   if (!filters) return;
   for (const [id, field, index] of dimensions) {
     const value = filters[id];

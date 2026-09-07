@@ -28,12 +28,19 @@ export type SpecificationFilterId = (typeof SPECIFICATION_FILTER_DEFINITIONS)[nu
 export type SpecificationFilterValues = Partial<Record<SpecificationFilterId, string>>;
 export type SpecificationFilterQuery = Partial<Record<SpecificationFilterId, number>>;
 
-export function parseSpecificationFilterValue(id: SpecificationFilterId, value: string): number | null {
+export function parseSpecificationFilterValue(
+  id: SpecificationFilterId,
+  value: string,
+): number | null {
   const definition = SPECIFICATION_FILTER_DEFINITIONS.find((entry) => entry.id === id);
   const normalized = value.normalize("NFKC").trim();
   if (!definition || !/^\d{1,6}(?:\.\d{1,3})?$/.test(normalized)) return null;
   const number = Number(normalized);
-  return number > 0 && number <= definition.maximum && (!definition.integer || Number.isInteger(number)) ? number : null;
+  return number > 0 &&
+    number <= definition.maximum &&
+    (!definition.integer || Number.isInteger(number))
+    ? number
+    : null;
 }
 
 /** Reject invalid units, counts and links at both the RPC and browser boundaries. */
