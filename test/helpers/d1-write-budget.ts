@@ -7,7 +7,7 @@ const AT = "2026-09-05T00:00:00.000Z";
 const NEXT = "2026-09-05T01:00:00.000Z";
 
 /** Real workerd rows_written includes indexes, triggers and AUTOINCREMENT's sqlite_sequence. */
-async function database() {
+async function database({ before }: { before?: string } = {}) {
   const mf = new Miniflare(
     convertV4MiniflareOptions({
       modules: true,
@@ -19,6 +19,7 @@ async function database() {
   try {
     const db = asQueryableDatabase(await mf.getD1Database("DB"));
     for (const migration of migrationSources) {
+      if (migration.name === before) break;
       const sql = migration.sql.replace(/^\s*--[^\n]*$/gm, "").trim();
       if (sql) await db.prepare(sql).run();
     }
