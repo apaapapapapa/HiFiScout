@@ -12,7 +12,7 @@ export class ListingAdminPage {
   readonly editDialog: Locator;
 
   constructor(readonly root: Locator) {
-    this.heading = root.getByRole("heading", { name: "登録商品 管理" });
+    this.heading = root.getByRole("heading", { name: "登録商品を検索・編集" });
     this.status = root.getByRole("status").first();
     this.query = root.locator("#listings-listing-query");
     this.shop = root.locator("#listings-shop-key");

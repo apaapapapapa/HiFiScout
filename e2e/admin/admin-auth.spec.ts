@@ -170,3 +170,25 @@ test("mock authentication does not bypass same-origin or JSON validation", async
   }
   expect(app.state.writes).toEqual({ catalog: 0, listing: 0 });
 });
+
+test("a shop-only deep link loads filtered listings directly without catalog requests", async ({
+  page,
+  context,
+  app,
+}) => {
+  await context.setExtraHTTPHeaders(await app.headers());
+  const requests: URL[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/admin/")) requests.push(new URL(request.url()));
+  });
+  await page.goto("/?shopKey=audiounion&scope=all#listings");
+  const admin = new AdminConsolePage(page.locator("#admin-root"), page);
+  await expect(admin.listings.listingRow(21)).toBeVisible();
+  await expect(admin.listings.shop).toHaveValue("audiounion");
+  await expect(admin.listings.scope).toHaveValue("all");
+  const listings = requests.filter((url) => url.pathname === listingPath);
+  expect(listings).toHaveLength(1);
+  expect(listings[0].searchParams.get("shopKey")).toBe("audiounion");
+  expect(listings[0].searchParams.get("scope")).toBe("all");
+  expect(requests.some((url) => url.pathname.includes("knowledge-catalog"))).toBe(false);
+});

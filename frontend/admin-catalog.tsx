@@ -1,3 +1,4 @@
+import type { CatalogView } from "./admin-navigation.js";
 import { AdminCatalogSpecifications } from "./admin-catalog-specifications.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
@@ -135,14 +136,13 @@ interface CsvExportConfig {
   latestUrl: string;
   startBody: object;
   downloadUrl(jobId: string): string;
-  secondary?: boolean;
   muted?: boolean;
 }
 
 const CSV_EXPORT_CONFIG: Record<CsvExportKey, CsvExportConfig> = {
   catalog: {
-    title: "Knowledge Catalog",
-    kicker: "CATALOG",
+    title: "製品カタログ",
+    kicker: "製品マスター",
     description:
       "カタログ全件・全列と、登録商品・別名・出典・検証履歴などの全関連情報をCSV（ZIP）に出力します。",
     collectionUrl: "/api/admin/knowledge-catalog-exports",
@@ -153,7 +153,7 @@ const CSV_EXPORT_CONFIG: Record<CsvExportKey, CsvExportConfig> = {
   },
   "product-audit-active": {
     title: "掲載中商品",
-    kicker: "RECOMMENDED",
+    kicker: "掲載中",
     description: "掲載中商品の全列を出力します。照合用のカタログ・関連テーブルは全件を含みます。",
     collectionUrl: "/api/admin/product-audit-exports",
     latestUrl: "/api/admin/product-audit-exports?scope=active",
@@ -163,7 +163,7 @@ const CSV_EXPORT_CONFIG: Record<CsvExportKey, CsvExportConfig> = {
   },
   "product-audit-all": {
     title: "全履歴",
-    kicker: "ARCHIVE",
+    kicker: "すべての登録商品",
     description:
       "販売終了・非掲載を含む登録商品とカタログ・関連履歴の全件・全列をCSV（ZIP）に出力します。",
     collectionUrl: "/api/admin/product-audit-exports",
@@ -171,7 +171,6 @@ const CSV_EXPORT_CONFIG: Record<CsvExportKey, CsvExportConfig> = {
     startBody: { scope: "all" },
     downloadUrl: (jobId) =>
       `/api/admin/product-audit-exports/${encodeURIComponent(jobId)}/download`,
-    secondary: true,
     muted: true,
   },
 };
@@ -340,21 +339,16 @@ function CsvExportCard({
         </p>
       </div>
       <div className="export-job-actions">
-        <button
-          className={config.secondary ? "secondary-button" : undefined}
-          type="button"
-          disabled={state.busy || active}
-          onClick={() => onGenerate("complete")}
-        >
-          {buttonText}
+        <button type="button" disabled={state.busy || active} onClick={() => onGenerate("csv")}>
+          {state.busy ? "受付中…" : active ? "生成中…" : "編集用CSVを生成"}
         </button>
         <button
           className="secondary-button"
           type="button"
           disabled={state.busy || active}
-          onClick={() => onGenerate("csv")}
+          onClick={() => onGenerate("complete")}
         >
-          編集用CSVを生成
+          {buttonText}
         </button>
         {job?.status === "ready" && !expired
           ? Array.from({ length: job.archivePartCount || 1 }, (_, index) => (
@@ -376,8 +370,35 @@ function CsvExportCard({
   );
 }
 
-export function CatalogAdmin() {
-  const [status, setStatus] = useState<StatusMessage>(EMPTY_STATUS);
+export function CatalogAdmin({
+  view = "catalog",
+  active = true,
+  search = "",
+  onDataChanged,
+}: {
+  onDataChanged?: () => void;
+  view?: CatalogView;
+  active?: boolean;
+  search?: string;
+}) {
+  const [statuses, setStatuses] = useState<Record<CatalogView, StatusMessage>>({
+    catalog: EMPTY_STATUS,
+    duplicates: EMPTY_STATUS,
+    candidates: EMPTY_STATUS,
+    csv: EMPTY_STATUS,
+  });
+  const setViewStatus = useCallback(
+    (target: CatalogView, value: StatusMessage) =>
+      setStatuses((current) => ({ ...current, [target]: value })),
+    [],
+  );
+  const status = statuses[view];
+  const setStatus = (value: StatusMessage) => setViewStatus(view, value);
+  const [metaReady, setMetaReady] = useState(false);
+  const [metaError, setMetaError] = useState("");
+  const [metaAttempt, setMetaAttempt] = useState(0);
+  const loadedViews = useRef(new Map<CatalogView, string>());
+  const searchRequests = useRef({ catalog: 0, candidates: 0, duplicates: 0 });
   const [categories, setCategories] = useState<CategoryFacet[]>([]);
   const categoryNames = useMemo(
     () => new Map(categories.map((category) => [category.id, category.name.trim()])),
@@ -395,7 +416,6 @@ export function CatalogAdmin() {
   const [catalogNextAfterId, setCatalogNextAfterId] = useState<number | null>(null);
   const [catalogHistory, setCatalogHistory] = useState<number[]>([]);
   const [catalogBusy, setCatalogBusy] = useState(true);
-  const [catalogReady, setCatalogReady] = useState(false);
 
   const [candidateDraft, setCandidateDraft] = useState<CatalogFilters>(EMPTY_FILTERS);
   const [candidateApplied, setCandidateApplied] = useState<CatalogFilters>(EMPTY_FILTERS);
@@ -424,6 +444,7 @@ export function CatalogAdmin() {
   const [editLifecycle, setEditLifecycle] = useState<LifecycleStatus>("unknown");
   const [editSaving, setEditSaving] = useState(false);
   const [editWarning, setEditWarning] = useState(false);
+  const [editError, setEditError] = useState("");
   const [mergeSourceId, setMergeSourceId] = useState("");
   const [mergeStatus, setMergeStatus] = useState("");
   const [mergePreview, setMergePreview] = useState<{
@@ -442,8 +463,9 @@ export function CatalogAdmin() {
 
   const loadCatalog = useCallback(
     async (filters: CatalogFilters, afterId: number, nextHistory: number[]) => {
+      const request = ++searchRequests.current.catalog;
       setCatalogBusy(true);
-      setStatus({ text: "Catalogを読み込んでいます…", kind: "info" });
+      setViewStatus("catalog", { text: "Catalogを読み込んでいます…", kind: "info" });
       const params = new URLSearchParams({ limit: "50" });
       if (filters.q.trim()) params.set("q", filters.q.trim());
       if (filters.manufacturerId.trim()) {
@@ -455,23 +477,28 @@ export function CatalogAdmin() {
         const result = await adminJson<CatalogListResponse>(
           `/api/admin/knowledge-catalog/products?${params}`,
         );
+        if (request !== searchRequests.current.catalog) return;
         setCatalogItems(result.items);
         setCatalogAfterId(afterId);
         setCatalogNextAfterId(result.nextAfterId);
         setCatalogHistory(nextHistory);
-        setCatalogReady(true);
-        setStatus(EMPTY_STATUS);
+        setViewStatus("catalog", EMPTY_STATUS);
       } catch (error) {
-        setStatus({ text: `Catalogを読み込めません: ${catalogErrorText(error)}`, kind: "error" });
+        if (request !== searchRequests.current.catalog) return;
+        setViewStatus("catalog", {
+          text: `Catalogを読み込めません: ${catalogErrorText(error)}`,
+          kind: "error",
+        });
       } finally {
-        setCatalogBusy(false);
+        if (request === searchRequests.current.catalog) setCatalogBusy(false);
       }
     },
-    [],
+    [setViewStatus],
   );
 
   const loadCandidates = useCallback(
     async (filters: CatalogFilters, afterId: number, nextHistory: number[]) => {
+      const request = ++searchRequests.current.candidates;
       setCandidateBusy(true);
       const params = new URLSearchParams({ limit: "50" });
       if (filters.q.trim()) params.set("q", filters.q.trim());
@@ -480,28 +507,32 @@ export function CatalogAdmin() {
       }
       if (filters.categoryId) params.set("categoryId", filters.categoryId);
       if (afterId) params.set("afterId", String(afterId));
+      setViewStatus("candidates", EMPTY_STATUS);
       try {
         const result = await adminJson<CandidateListResponse>(
           `/api/admin/knowledge-catalog/candidates?${params}`,
         );
+        if (request !== searchRequests.current.candidates) return;
         setCandidateItems(result.items);
         setCandidateAfterId(afterId);
         setCandidateNextAfterId(result.nextAfterId);
         setCandidateHistory(nextHistory);
       } catch (error) {
-        setStatus({
+        if (request !== searchRequests.current.candidates) return;
+        setViewStatus("candidates", {
           text: `未検証候補を読み込めません: ${catalogErrorText(error)}`,
           kind: "error",
         });
       } finally {
-        setCandidateBusy(false);
+        if (request === searchRequests.current.candidates) setCandidateBusy(false);
       }
     },
-    [],
+    [setViewStatus],
   );
 
   const loadDuplicates = useCallback(
     async (manufacturerId: string, afterKey: string, nextHistory: string[]) => {
+      const request = ++searchRequests.current.duplicates;
       setDuplicateBusy(true);
       const params = new URLSearchParams({ limit: "20" });
       if (manufacturerId.trim()) params.set("manufacturerId", manufacturerId.trim().toLowerCase());
@@ -510,6 +541,7 @@ export function CatalogAdmin() {
         const result = await adminJson<DuplicateListResponse>(
           `/api/admin/knowledge-catalog/duplicates?${params}`,
         );
+        if (request !== searchRequests.current.duplicates) return;
         setDuplicateItems(result.items);
         setDuplicateAfterKey(afterKey);
         setDuplicateNextAfterKey(result.nextAfterKey);
@@ -517,15 +549,16 @@ export function CatalogAdmin() {
         // A reloaded page carries fresh suggestions, so stale choices must not survive it.
         setDuplicateTargets({});
       } catch (error) {
-        setStatus({
+        if (request !== searchRequests.current.duplicates) return;
+        setViewStatus("duplicates", {
           text: `重複Catalogを読み込めません: ${catalogErrorText(error)}`,
           kind: "error",
         });
       } finally {
-        setDuplicateBusy(false);
+        if (request === searchRequests.current.duplicates) setDuplicateBusy(false);
       }
     },
-    [],
+    [setViewStatus],
   );
 
   const loadLatestCsvExport = useCallback(async (key: CsvExportKey, initial = false) => {
@@ -549,43 +582,65 @@ export function CatalogAdmin() {
 
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
-      setStatus({ text: "管理データを読み込んでいます…", kind: "info" });
-      try {
-        const meta = await adminJson<{ categoryFacets: CategoryFacet[] }>("/api/meta");
+    setMetaError("");
+    void adminJson<{ categoryFacets: CategoryFacet[] }>("/api/meta")
+      .then((meta) => {
         if (cancelled) return;
         setCategories(meta.categoryFacets);
-        await Promise.all([
-          loadCatalog(EMPTY_FILTERS, 0, []),
-          loadCandidates(EMPTY_FILTERS, 0, []),
-          loadDuplicates("", "", []),
-          ...CSV_EXPORT_KEYS.map((key) => loadLatestCsvExport(key, true)),
-        ]);
-      } catch (error) {
-        if (!cancelled) {
-          setCatalogBusy(false);
-          setCandidateBusy(false);
-          setDuplicateBusy(false);
-          setStatus({
-            text: `管理画面を初期化できません: ${catalogErrorText(error)}`,
-            kind: "error",
-          });
-        }
-      }
-    })();
+        setMetaReady(true);
+      })
+      .catch((error) => {
+        if (!cancelled) setMetaError(catalogErrorText(error));
+      });
     return () => {
       cancelled = true;
     };
-  }, [loadCatalog, loadCandidates, loadDuplicates, loadLatestCsvExport]);
+  }, [metaAttempt]);
 
   useEffect(() => {
+    if (!active || !metaReady || loadedViews.current.get(view) === search) return;
+    loadedViews.current.set(view, search);
+    const params = new URLSearchParams(search);
+    const filters = {
+      q: params.get("q")?.trim() || "",
+      manufacturerId: params.get("manufacturerId")?.trim() || "",
+      categoryId: params.get("categoryId") || "",
+    };
+    if (view === "catalog") {
+      setCatalogDraft(filters);
+      setCatalogApplied(filters);
+      void loadCatalog(filters, 0, []);
+    } else if (view === "candidates") {
+      setCandidateDraft(filters);
+      setCandidateApplied(filters);
+      void loadCandidates(filters, 0, []);
+    } else if (view === "duplicates") {
+      setDuplicateManufacturerDraft(filters.manufacturerId);
+      setDuplicateManufacturerApplied(filters.manufacturerId);
+      void loadDuplicates(filters.manufacturerId, "", []);
+    } else {
+      for (const key of CSV_EXPORT_KEYS) void loadLatestCsvExport(key, true);
+    }
+  }, [
+    active,
+    metaReady,
+    view,
+    search,
+    loadCatalog,
+    loadCandidates,
+    loadDuplicates,
+    loadLatestCsvExport,
+  ]);
+
+  useEffect(() => {
+    if (!active || view !== "csv") return;
     const activeKeys = CSV_EXPORT_KEYS.filter((key) => csvExportActive(csvStates[key].job));
     if (!activeKeys.length) return undefined;
     const timer = window.setTimeout(() => {
       for (const key of activeKeys) void loadLatestCsvExport(key);
     }, 5_000);
     return () => window.clearTimeout(timer);
-  }, [csvStates, loadLatestCsvExport]);
+  }, [active, view, csvStates, loadLatestCsvExport]);
 
   useEffect(() => {
     const dialog = editDialogRef.current;
@@ -694,6 +749,7 @@ export function CatalogAdmin() {
   };
 
   const openEdit = (product: CatalogProduct) => {
+    setEditError("");
     setEditing(product);
     setEditName(product.canonicalName);
     setEditCategory(product.primaryCategoryId);
@@ -750,6 +806,7 @@ export function CatalogAdmin() {
       setStatus({ text: "表示名とカテゴリは必須です。", kind: "error" });
       return;
     }
+    setEditError("");
     setEditSaving(true);
     try {
       const result = await adminJson<CatalogUpdateResponse>(
@@ -770,6 +827,7 @@ export function CatalogAdmin() {
         kind: "success",
       });
     } catch (error) {
+      setEditError(`保存できません: ${catalogErrorText(error)}`);
       setStatus({ text: `保存できません: ${catalogErrorText(error)}`, kind: "error" });
     } finally {
       setEditSaving(false);
@@ -959,678 +1017,682 @@ export function CatalogAdmin() {
   const filterableCategories = categories.filter((category) => category.filterable);
 
   return (
-    <section
-      id="catalog-pane"
-      className="admin-pane"
-      role="tabpanel"
-      aria-labelledby="admin-tab-catalog"
-    >
-      <div className="admin-pane-heading">
-        <div>
-          <p className="eyebrow">CATALOG OPERATIONS</p>
-          <h2>Knowledge Catalog 管理</h2>
-          <p>検証済みCatalogの表示名・カテゴリ・ライフサイクルを検索・修正します。</p>
+    <section id="catalog-pane" className="admin-pane" aria-label="カタログ作業">
+      {!metaReady ? (
+        <div className="panel admin-load-state" role={metaError ? "alert" : "status"}>
+          <p>{metaError || "作業画面を準備しています…"}</p>
+          {metaError ? (
+            <button type="button" onClick={() => setMetaAttempt((attempt) => attempt + 1)}>
+              もう一度読み込む
+            </button>
+          ) : null}
         </div>
-      </div>
+      ) : null}
       <p className="status-message" role="status" aria-live="polite" data-kind={status.kind}>
         {status.text}
       </p>
 
-      {catalogReady ? (
+      {metaReady ? (
         <>
-          <section className="panel workspace-panel" aria-labelledby="catalog-search-heading">
-            <div className="panel-heading">
-              <div>
-                <p className="eyebrow">CATALOG WORKSPACE</p>
-                <h2 id="catalog-search-heading">Catalogを検索・編集</h2>
-                <p>製品名・型番・メーカー・カテゴリを組み合わせて対象を絞り込めます。</p>
+          <div hidden={view !== "catalog"}>
+            <section className="panel workspace-panel" aria-labelledby="catalog-search-heading">
+              <div className="panel-heading">
+                <div>
+                  <h2 id="catalog-search-heading">製品カタログを検索</h2>
+                  <p>製品名・型番・メーカー・カテゴリを組み合わせて対象を絞り込めます。</p>
+                </div>
+                <div className="header-actions">
+                  <span className="keyboard-hint">
+                    <kbd>Enter</kbd> で検索
+                  </span>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={operationBusy}
+                    onClick={() => openCreate(null)}
+                  >
+                    ＋ Catalogを追加
+                  </button>
+                </div>
               </div>
-              <div className="header-actions">
-                <span className="keyboard-hint">
-                  <kbd>Enter</kbd> で検索
-                </span>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  disabled={operationBusy}
-                  onClick={() => openCreate(null)}
-                >
-                  ＋ Catalogを追加
-                </button>
-              </div>
-            </div>
-            <form className="search-grid" onSubmit={submitCatalogSearch}>
-              <label className="search-field search-field-wide">
-                <span>製品を検索</span>
-                <input
-                  id="catalog-catalog-query"
-                  type="search"
-                  placeholder="製品名 / 型番 / manufacturer id"
-                  autoComplete="off"
-                  value={catalogDraft.q}
-                  disabled={catalogBusy}
-                  onChange={({ currentTarget: { value: nextValue } }) =>
-                    setCatalogDraft((value) => ({ ...value, q: nextValue }))
-                  }
-                />
-              </label>
-              <label className="search-field">
-                <span>Manufacturer ID</span>
-                <input
-                  id="catalog-manufacturer-id"
-                  type="text"
-                  placeholder="luxman"
-                  spellCheck={false}
-                  autoComplete="off"
-                  value={catalogDraft.manufacturerId}
-                  disabled={catalogBusy}
-                  onChange={({ currentTarget: { value: nextValue } }) =>
-                    setCatalogDraft((value) => ({
-                      ...value,
-                      manufacturerId: nextValue,
-                    }))
-                  }
-                />
-              </label>
-              <label className="search-field">
-                <span>カテゴリ</span>
-                <select
-                  id="catalog-category-filter"
-                  value={catalogDraft.categoryId}
-                  disabled={catalogBusy}
-                  onChange={({ currentTarget: { value: nextValue } }) =>
-                    setCatalogDraft((value) => ({
-                      ...value,
-                      categoryId: nextValue,
-                    }))
-                  }
-                >
-                  <option value="">すべてのカテゴリ</option>
-                  {filterableCategories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="search-actions">
-                <button
-                  className="tertiary-button"
-                  type="button"
-                  disabled={
-                    catalogBusy || !Object.values(catalogDraft).some((value) => value.trim())
-                  }
-                  onClick={() => {
-                    setCatalogDraft(EMPTY_FILTERS);
-                    setCatalogApplied(EMPTY_FILTERS);
-                    void loadCatalog(EMPTY_FILTERS, 0, []);
-                  }}
-                >
-                  条件をクリア
-                </button>
-                <button type="submit" disabled={catalogBusy}>
-                  検索
-                </button>
-              </div>
-            </form>
-          </section>
+              <form className="search-grid" onSubmit={submitCatalogSearch}>
+                <label className="search-field search-field-wide">
+                  <span>製品を検索</span>
+                  <input
+                    id="catalog-catalog-query"
+                    type="search"
+                    placeholder="例：LUXMAN D-1000"
+                    autoComplete="off"
+                    value={catalogDraft.q}
+                    disabled={catalogBusy}
+                    onChange={({ currentTarget: { value: nextValue } }) =>
+                      setCatalogDraft((value) => ({ ...value, q: nextValue }))
+                    }
+                  />
+                </label>
+                <label className="search-field">
+                  <span>メーカーID</span>
+                  <input
+                    id="catalog-manufacturer-id"
+                    type="text"
+                    placeholder="luxman"
+                    spellCheck={false}
+                    autoComplete="off"
+                    value={catalogDraft.manufacturerId}
+                    disabled={catalogBusy}
+                    onChange={({ currentTarget: { value: nextValue } }) =>
+                      setCatalogDraft((value) => ({
+                        ...value,
+                        manufacturerId: nextValue,
+                      }))
+                    }
+                  />
+                </label>
+                <label className="search-field">
+                  <span>カテゴリ</span>
+                  <select
+                    id="catalog-category-filter"
+                    value={catalogDraft.categoryId}
+                    disabled={catalogBusy}
+                    onChange={({ currentTarget: { value: nextValue } }) =>
+                      setCatalogDraft((value) => ({
+                        ...value,
+                        categoryId: nextValue,
+                      }))
+                    }
+                  >
+                    <option value="">すべてのカテゴリ</option>
+                    {filterableCategories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="search-actions">
+                  <button
+                    className="tertiary-button"
+                    type="button"
+                    disabled={
+                      catalogBusy || !Object.values(catalogDraft).some((value) => value.trim())
+                    }
+                    onClick={() => {
+                      setCatalogDraft(EMPTY_FILTERS);
+                      setCatalogApplied(EMPTY_FILTERS);
+                      void loadCatalog(EMPTY_FILTERS, 0, []);
+                    }}
+                  >
+                    条件をクリア
+                  </button>
+                  <button type="submit" disabled={catalogBusy}>
+                    検索
+                  </button>
+                </div>
+              </form>
+            </section>
 
-          <section
-            className={`panel table-panel${catalogBusy ? " is-loading" : ""}`}
-            aria-label="Knowledge Catalog 一覧"
-            aria-busy={catalogBusy}
-          >
-            <div className="table-toolbar">
-              <div>
-                <p className="eyebrow">VERIFIED</p>
-                <h2>Catalog一覧</h2>
+            <section
+              className={`panel table-panel${catalogBusy ? " is-loading" : ""}`}
+              aria-label="Knowledge Catalog 一覧"
+              aria-busy={catalogBusy}
+            >
+              <div className="table-toolbar">
+                <div>
+                  <h2>検索結果</h2>
+                </div>
+                <p className="result-summary" aria-live="polite">
+                  {catalogSummary}
+                </p>
               </div>
-              <p className="result-summary" aria-live="polite">
-                {catalogSummary}
-              </p>
-            </div>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>メーカー</th>
-                    <th>型番</th>
-                    <th>表示名</th>
-                    <th>カテゴリ</th>
-                    <th>状態</th>
-                    <th>listing</th>
-                    <th>更新日時</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {catalogItems.map((product) => (
-                    <tr key={product.id} data-catalog-id={product.id}>
-                      <td data-label="ID" className="id-cell">
-                        {product.id}
-                      </td>
-                      <td data-label="メーカー">{product.manufacturerId}</td>
-                      <td data-label="型番" className="model-cell">
-                        {product.canonicalModel}
-                      </td>
-                      <td data-label="表示名" className="name-cell">
-                        {product.canonicalName}
-                      </td>
-                      <td data-label="カテゴリ">
-                        <span className="category-badge">
-                          {categoryName(product.primaryCategoryId)}
-                        </span>
-                      </td>
-                      <td data-label="状態">
-                        <span
-                          className={`lifecycle-badge ${lifecycleClass(product.lifecycleStatus)}`}
-                        >
-                          {lifecycleName(product.lifecycleStatus)}
-                        </span>
-                      </td>
-                      <td data-label="listing">
-                        <span className="count-badge">{product.matchedListingCount}</span>
-                      </td>
-                      <td data-label="更新日時" className="updated-cell">
-                        {dateText(product.updatedAt)}
-                      </td>
-                      <td data-label="操作" className="row-actions">
-                        <button
-                          type="button"
-                          className="secondary-button compact"
-                          aria-label={`${product.canonicalName} の機種の関係`}
-                          onClick={() => setRelationsProductId(product.id)}
-                        >
-                          機種の関係
-                        </button>
-                        <button
-                          type="button"
-                          className="secondary-button compact"
-                          aria-label={`${product.canonicalName} を編集`}
-                          onClick={() => openEdit(product)}
-                        >
-                          編集
-                        </button>
-                        <button
-                          type="button"
-                          className="secondary-button compact"
-                          aria-label={`${product.canonicalName} の仕様を編集`}
-                          onClick={() => setSpecificationProduct(product)}
-                        >
-                          仕様
-                        </button>
-                      </td>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>製品 / メーカー</th>
+                      <th>カテゴリ</th>
+                      <th>生産状況</th>
+                      <th>関連商品</th>
+                      <th>更新日時</th>
+                      <th>操作</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {!catalogItems.length ? (
-              <p className="empty-state">
-                <strong>条件に一致するCatalogがありません。</strong>
-                <span>検索条件を減らすか、条件をクリアして再検索してください。</span>
-              </p>
-            ) : null}
-            <div className="pagination-bar">
-              <span>ページ {catalogHistory.length + 1}</span>
-              <nav className="pagination" aria-label="Catalogページング">
-                <button
-                  className="secondary-button"
-                  type="button"
-                  disabled={catalogBusy || !catalogHistory.length}
-                  onClick={() => {
-                    const previous = catalogHistory.at(-1);
-                    if (previous !== undefined)
-                      void loadCatalog(catalogApplied, previous, catalogHistory.slice(0, -1));
-                  }}
-                >
-                  ← 前へ
-                </button>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  disabled={catalogBusy || catalogNextAfterId === null}
-                  onClick={() => {
-                    if (catalogNextAfterId !== null)
-                      void loadCatalog(catalogApplied, catalogNextAfterId, [
-                        ...catalogHistory,
-                        catalogAfterId,
-                      ]);
-                  }}
-                >
-                  次へ →
-                </button>
-              </nav>
-            </div>
-          </section>
-
-          <section
-            className={`panel workspace-panel${duplicateBusy ? " is-loading" : ""}`}
-            aria-labelledby="duplicate-heading"
-            aria-busy={duplicateBusy}
-          >
-            <div className="panel-heading">
-              <div>
-                <p className="eyebrow">DUPLICATE CATALOGS</p>
-                <h2 id="duplicate-heading">同一製品の重複Catalogを統合</h2>
-                <p>
-                  区切り記号・改訂表記・旧manufacturer
-                  idの違いだけで別Catalogになった検証済みレコードをまとめます。残すCatalogを選ぶと、他のalias・source・検証履歴・Product
-                  Identityがそこへ移り、重複側は削除されます。
-                </p>
-              </div>
-            </div>
-            <form className="search-grid duplicate-search" onSubmit={submitDuplicateSearch}>
-              <label className="search-field">
-                <span>Manufacturer ID</span>
-                <input
-                  type="text"
-                  placeholder="luxman"
-                  spellCheck={false}
-                  autoComplete="off"
-                  value={duplicateManufacturerDraft}
-                  disabled={duplicateBusy || operationBusy}
-                  onChange={({ currentTarget: { value: nextValue } }) =>
-                    setDuplicateManufacturerDraft(nextValue)
-                  }
-                />
-              </label>
-              <div className="search-actions">
-                <button
-                  className="tertiary-button"
-                  type="button"
-                  disabled={duplicateBusy || operationBusy || !duplicateManufacturerDraft.trim()}
-                  onClick={() => {
-                    setDuplicateManufacturerDraft("");
-                    setDuplicateManufacturerApplied("");
-                    void loadDuplicates("", "", []);
-                  }}
-                >
-                  条件をクリア
-                </button>
-                <button type="submit" disabled={duplicateBusy || operationBusy}>
-                  重複を再検出
-                </button>
-              </div>
-            </form>
-            <div className="table-toolbar">
-              <div>
-                <p className="eyebrow">REVIEW</p>
-                <h2>重複候補</h2>
-              </div>
-              <p className="result-summary" aria-live="polite">
-                {duplicateSummary}
-              </p>
-            </div>
-            <div className="duplicate-groups">
-              {duplicateItems.map((group) => {
-                const targetId = duplicateTargets[group.groupKey] ?? group.suggestedTargetId;
-                const merging = mergingGroupKey === group.groupKey;
-                return (
-                  <article className="duplicate-group" key={group.groupKey}>
-                    <div className="duplicate-group-heading">
-                      <div>
-                        <p className="eyebrow">{group.manufacturerId}</p>
-                        <h3>{group.identityModel}</h3>
-                      </div>
-                      <span className="count-badge">{group.products.length}件</span>
-                    </div>
-                    <div className="table-wrap">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>残す</th>
-                            <th>ID</th>
-                            <th>メーカー</th>
-                            <th>型番</th>
-                            <th>表示名</th>
-                            <th>カテゴリ</th>
-                            <th>状態</th>
-                            <th>listing</th>
-                            <th>alias/source</th>
-                            <th>更新日時</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {group.products.map((product) => (
-                            <tr
-                              key={product.id}
-                              data-catalog-id={product.id}
-                              data-merge-target={product.id === targetId ? "true" : "false"}
+                  </thead>
+                  <tbody>
+                    {catalogItems.map((product) => (
+                      <tr key={product.id} data-catalog-id={product.id}>
+                        <td data-label="製品 / メーカー" className="name-cell">
+                          <div className="listing-cell-stack">
+                            <button
+                              type="button"
+                              className="admin-text-button"
+                              onClick={() => openEdit(product)}
                             >
-                              <td data-label="残す">
-                                <input
-                                  type="radio"
-                                  name={`duplicate-target-${group.groupKey}`}
-                                  value={product.id}
-                                  checked={product.id === targetId}
-                                  disabled={duplicateBusy || operationBusy}
-                                  aria-label={`Catalog #${product.id} を残す`}
-                                  onChange={() =>
-                                    setDuplicateTargets((targets) => ({
-                                      ...targets,
-                                      [group.groupKey]: product.id,
-                                    }))
-                                  }
-                                />
-                              </td>
-                              <td data-label="ID" className="id-cell">
-                                {product.id}
-                              </td>
-                              <td data-label="メーカー">{product.manufacturerId}</td>
-                              <td data-label="型番" className="model-cell">
-                                {product.canonicalModel}
-                              </td>
-                              <td data-label="表示名" className="name-cell">
-                                {product.canonicalName}
-                              </td>
-                              <td data-label="カテゴリ">
-                                <span className="category-badge">
-                                  {categoryName(product.primaryCategoryId)}
-                                </span>
-                              </td>
-                              <td data-label="状態">
-                                <span
-                                  className={`lifecycle-badge ${lifecycleClass(product.lifecycleStatus)}`}
-                                >
-                                  {lifecycleName(product.lifecycleStatus)}
-                                </span>
-                              </td>
-                              <td data-label="listing">
-                                <span className="count-badge">{product.matchedListingCount}</span>
-                              </td>
-                              <td data-label="alias/source">
-                                {product.aliasCount} / {product.sourceCount}
-                              </td>
-                              <td data-label="更新日時" className="updated-cell">
-                                {dateText(product.updatedAt)}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    <div className="duplicate-group-actions">
-                      <p className="duplicate-group-note">
-                        Catalog #{targetId} を残し、他の{group.products.length - 1}
-                        件をここへ統合します。
-                      </p>
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        disabled={duplicateBusy || operationBusy}
-                        onClick={() => void mergeDuplicateGroup(group)}
-                      >
-                        {merging ? "統合しています…" : "このグループを統合"}
-                      </button>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-            {!duplicateItems.length ? (
-              <p className="empty-state">
-                <strong>統合が必要な重複Catalogはありません。</strong>
-                <span>
-                  {duplicateNextAfterKey !== null
-                    ? "このページには該当がありませんでした。次へで続きを確認してください。"
-                    : "同一製品を指す検証済みCatalogは見つかりませんでした。"}
-                </span>
-              </p>
-            ) : null}
-            <div className="pagination-bar">
-              <span>ページ {duplicateHistory.length + 1}</span>
-              <nav className="pagination" aria-label="重複Catalogページング">
-                <button
-                  className="secondary-button"
-                  type="button"
-                  disabled={duplicateBusy || operationBusy || !duplicateHistory.length}
-                  onClick={() => {
-                    const previous = duplicateHistory.at(-1);
-                    if (previous !== undefined) {
-                      void loadDuplicates(
-                        duplicateManufacturerApplied,
-                        previous,
-                        duplicateHistory.slice(0, -1),
-                      );
-                    }
-                  }}
-                >
-                  ← 前へ
-                </button>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  disabled={duplicateBusy || operationBusy || duplicateNextAfterKey === null}
-                  onClick={() => {
-                    if (duplicateNextAfterKey !== null) {
-                      void loadDuplicates(duplicateManufacturerApplied, duplicateNextAfterKey, [
-                        ...duplicateHistory,
-                        duplicateAfterKey,
-                      ]);
-                    }
-                  }}
-                >
-                  次へ →
-                </button>
-              </nav>
-            </div>
-          </section>
-
-          <section className="panel workspace-panel" aria-labelledby="candidate-search-heading">
-            <div className="panel-heading">
-              <div>
-                <p className="eyebrow">MANUAL VERIFICATION</p>
-                <h2 id="candidate-search-heading">未検証候補を確認</h2>
-                <p>
-                  自動VerifyでCatalogへ昇格できなかった候補を検索し、人手で確認して検証済みにできます。
-                </p>
-              </div>
-            </div>
-            <form className="search-grid" onSubmit={submitCandidateSearch}>
-              <label className="search-field search-field-wide">
-                <span>候補を検索</span>
-                <input
-                  type="search"
-                  placeholder="製品名 / 型番 / manufacturer id"
-                  autoComplete="off"
-                  value={candidateDraft.q}
-                  disabled={candidateBusy || operationBusy}
-                  onChange={({ currentTarget: { value: nextValue } }) =>
-                    setCandidateDraft((value) => ({ ...value, q: nextValue }))
-                  }
-                />
-              </label>
-              <label className="search-field">
-                <span>Manufacturer ID</span>
-                <input
-                  type="text"
-                  placeholder="mark-levinson"
-                  spellCheck={false}
-                  autoComplete="off"
-                  value={candidateDraft.manufacturerId}
-                  disabled={candidateBusy || operationBusy}
-                  onChange={({ currentTarget: { value: nextValue } }) =>
-                    setCandidateDraft((value) => ({
-                      ...value,
-                      manufacturerId: nextValue,
-                    }))
-                  }
-                />
-              </label>
-              <label className="search-field">
-                <span>カテゴリ</span>
-                <select
-                  value={candidateDraft.categoryId}
-                  disabled={candidateBusy || operationBusy}
-                  onChange={({ currentTarget: { value: nextValue } }) =>
-                    setCandidateDraft((value) => ({
-                      ...value,
-                      categoryId: nextValue,
-                    }))
-                  }
-                >
-                  <option value="">すべてのカテゴリ</option>
-                  {filterableCategories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="search-actions">
-                <button
-                  className="tertiary-button"
-                  type="button"
-                  disabled={
-                    candidateBusy ||
-                    operationBusy ||
-                    !Object.values(candidateDraft).some((value) => value.trim())
-                  }
-                  onClick={() => {
-                    setCandidateDraft(EMPTY_FILTERS);
-                    setCandidateApplied(EMPTY_FILTERS);
-                    void loadCandidates(EMPTY_FILTERS, 0, []);
-                  }}
-                >
-                  条件をクリア
-                </button>
-                <button type="submit" disabled={candidateBusy || operationBusy}>
-                  候補を検索
-                </button>
-              </div>
-            </form>
-            <div className="table-toolbar">
-              <div>
-                <p className="eyebrow">PENDING</p>
-                <h2>未検証候補</h2>
-              </div>
-              <p className="result-summary" aria-live="polite">
-                {candidateSummary}
-              </p>
-            </div>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>メーカー</th>
-                    <th>型番</th>
-                    <th>サンプル</th>
-                    <th>カテゴリ</th>
-                    <th>状態</th>
-                    <th>listing</th>
-                    <th>更新日時</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {candidateItems.map((candidate) => {
-                    const manufacturer = candidate.observedManufacturer || candidate.manufacturerId;
-                    const model = candidate.observedModel || candidate.normalizedModel;
-                    const primaryCategory =
-                      candidate.candidateCategoryIds.find((id) =>
-                        categories.some((category) => category.id === id && category.classifiable),
-                      ) || "";
-                    return (
-                      <tr key={candidate.id}>
-                        <td data-label="ID" className="id-cell">
-                          {candidate.id}
-                        </td>
-                        <td data-label="メーカー">{manufacturer}</td>
-                        <td data-label="型番" className="model-cell">
-                          {model}
-                        </td>
-                        <td data-label="サンプル" className="name-cell">
-                          {candidate.sampleTitle || `${manufacturer} ${model}`.trim()}
+                              {product.canonicalName}
+                            </button>
+                            <span>
+                              {product.manufacturerId} · {product.canonicalModel}
+                            </span>
+                            <small>#{product.id}</small>
+                          </div>
                         </td>
                         <td data-label="カテゴリ">
-                          <span className="category-badge">{categoryName(primaryCategory)}</span>
-                        </td>
-                        <td data-label="状態">
-                          <span className="lifecycle-badge lifecycle-unknown">
-                            {candidateStatus(candidate.verificationStatus)}
+                          <span className="category-badge">
+                            {categoryName(product.primaryCategoryId)}
                           </span>
                         </td>
-                        <td data-label="listing">
-                          <span className="count-badge">{candidate.activeListingCount}</span>
+                        <td data-label="状態">
+                          <span
+                            className={`lifecycle-badge ${lifecycleClass(product.lifecycleStatus)}`}
+                          >
+                            {lifecycleName(product.lifecycleStatus)}
+                          </span>
+                        </td>
+                        <td data-label="関連商品">
+                          <span className="count-badge">{product.matchedListingCount}</span>
                         </td>
                         <td data-label="更新日時" className="updated-cell">
-                          {dateText(candidate.updatedAt)}
+                          {dateText(product.updatedAt)}
                         </td>
                         <td data-label="操作" className="row-actions">
                           <button
                             type="button"
                             className="secondary-button compact"
-                            disabled={operationBusy}
-                            onClick={() => openCreate(candidate)}
+                            aria-label={`${product.canonicalName} の機種の関係`}
+                            onClick={() => setRelationsProductId(product.id)}
                           >
-                            手動Verify
+                            機種の関係
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button compact"
+                            aria-label={`${product.canonicalName} を編集`}
+                            onClick={() => openEdit(product)}
+                          >
+                            編集
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button compact"
+                            aria-label={`${product.canonicalName} の仕様を編集`}
+                            onClick={() => setSpecificationProduct(product)}
+                          >
+                            仕様
                           </button>
                         </td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            {!candidateItems.length ? (
-              <p className="empty-state">
-                <strong>条件に一致する未検証候補がありません。</strong>
-                <span>検索条件を減らすか、Catalog一覧も確認してください。</span>
-              </p>
-            ) : null}
-            <div className="pagination-bar">
-              <span>ページ {candidateHistory.length + 1}</span>
-              <nav className="pagination" aria-label="未検証候補ページング">
-                <button
-                  className="secondary-button"
-                  type="button"
-                  disabled={candidateBusy || operationBusy || !candidateHistory.length}
-                  onClick={() => {
-                    const previous = candidateHistory.at(-1);
-                    if (previous !== undefined)
-                      void loadCandidates(
-                        candidateApplied,
-                        previous,
-                        candidateHistory.slice(0, -1),
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {!catalogItems.length ? (
+                <p className="empty-state">
+                  <strong>
+                    {catalogBusy ? "検索しています…" : "条件に一致する製品がありません。"}
+                  </strong>
+                  <span>検索条件を減らすか、条件をクリアして再検索してください。</span>
+                </p>
+              ) : null}
+              <div className="pagination-bar">
+                <span>ページ {catalogHistory.length + 1}</span>
+                <nav className="pagination" aria-label="Catalogページング">
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={catalogBusy || !catalogHistory.length}
+                    onClick={() => {
+                      const previous = catalogHistory.at(-1);
+                      if (previous !== undefined)
+                        void loadCatalog(catalogApplied, previous, catalogHistory.slice(0, -1));
+                    }}
+                  >
+                    ← 前へ
+                  </button>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={catalogBusy || catalogNextAfterId === null}
+                    onClick={() => {
+                      if (catalogNextAfterId !== null)
+                        void loadCatalog(catalogApplied, catalogNextAfterId, [
+                          ...catalogHistory,
+                          catalogAfterId,
+                        ]);
+                    }}
+                  >
+                    次へ →
+                  </button>
+                </nav>
+              </div>
+            </section>
+          </div>
+          <div hidden={view !== "duplicates"}>
+            <section
+              className={`panel workspace-panel${duplicateBusy ? " is-loading" : ""}`}
+              aria-labelledby="duplicate-heading"
+              aria-busy={duplicateBusy}
+            >
+              <div className="panel-heading">
+                <div>
+                  <p className="eyebrow">DUPLICATE CATALOGS</p>
+                  <h2 id="duplicate-heading">同一製品の重複Catalogを統合</h2>
+                  <p>
+                    区切り記号・改訂表記・旧manufacturer
+                    idの違いだけで別Catalogになった検証済みレコードをまとめます。残すCatalogを選ぶと、他のalias・source・検証履歴・Product
+                    Identityがそこへ移り、重複側は削除されます。
+                  </p>
+                </div>
+              </div>
+              <form className="search-grid duplicate-search" onSubmit={submitDuplicateSearch}>
+                <label className="search-field">
+                  <span>メーカーID</span>
+                  <input
+                    type="text"
+                    placeholder="luxman"
+                    spellCheck={false}
+                    autoComplete="off"
+                    value={duplicateManufacturerDraft}
+                    disabled={duplicateBusy || operationBusy}
+                    onChange={({ currentTarget: { value: nextValue } }) =>
+                      setDuplicateManufacturerDraft(nextValue)
+                    }
+                  />
+                </label>
+                <div className="search-actions">
+                  <button
+                    className="tertiary-button"
+                    type="button"
+                    disabled={duplicateBusy || operationBusy || !duplicateManufacturerDraft.trim()}
+                    onClick={() => {
+                      setDuplicateManufacturerDraft("");
+                      setDuplicateManufacturerApplied("");
+                      void loadDuplicates("", "", []);
+                    }}
+                  >
+                    条件をクリア
+                  </button>
+                  <button type="submit" disabled={duplicateBusy || operationBusy}>
+                    重複を再検出
+                  </button>
+                </div>
+              </form>
+              <div className="table-toolbar">
+                <div>
+                  <p className="eyebrow">REVIEW</p>
+                  <h2>重複候補</h2>
+                </div>
+                <p className="result-summary" aria-live="polite">
+                  {duplicateSummary}
+                </p>
+              </div>
+              <div className="duplicate-groups">
+                {duplicateItems.map((group) => {
+                  const targetId = duplicateTargets[group.groupKey] ?? group.suggestedTargetId;
+                  const merging = mergingGroupKey === group.groupKey;
+                  return (
+                    <article className="duplicate-group" key={group.groupKey}>
+                      <div className="duplicate-group-heading">
+                        <div>
+                          <p className="eyebrow">{group.manufacturerId}</p>
+                          <h3>{group.identityModel}</h3>
+                        </div>
+                        <span className="count-badge">{group.products.length}件</span>
+                      </div>
+                      <div className="table-wrap">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>残す</th>
+                              <th>ID</th>
+                              <th>メーカー</th>
+                              <th>型番</th>
+                              <th>表示名</th>
+                              <th>カテゴリ</th>
+                              <th>状態</th>
+                              <th>関連商品</th>
+                              <th>alias/source</th>
+                              <th>更新日時</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {group.products.map((product) => (
+                              <tr
+                                key={product.id}
+                                data-catalog-id={product.id}
+                                data-merge-target={product.id === targetId ? "true" : "false"}
+                              >
+                                <td data-label="残す">
+                                  <input
+                                    type="radio"
+                                    name={`duplicate-target-${group.groupKey}`}
+                                    value={product.id}
+                                    checked={product.id === targetId}
+                                    disabled={duplicateBusy || operationBusy}
+                                    aria-label={`Catalog #${product.id} を残す`}
+                                    onChange={() =>
+                                      setDuplicateTargets((targets) => ({
+                                        ...targets,
+                                        [group.groupKey]: product.id,
+                                      }))
+                                    }
+                                  />
+                                </td>
+                                <td data-label="ID" className="id-cell">
+                                  {product.id}
+                                </td>
+                                <td data-label="メーカー">{product.manufacturerId}</td>
+                                <td data-label="型番" className="model-cell">
+                                  {product.canonicalModel}
+                                </td>
+                                <td data-label="表示名" className="name-cell">
+                                  {product.canonicalName}
+                                </td>
+                                <td data-label="カテゴリ">
+                                  <span className="category-badge">
+                                    {categoryName(product.primaryCategoryId)}
+                                  </span>
+                                </td>
+                                <td data-label="状態">
+                                  <span
+                                    className={`lifecycle-badge ${lifecycleClass(product.lifecycleStatus)}`}
+                                  >
+                                    {lifecycleName(product.lifecycleStatus)}
+                                  </span>
+                                </td>
+                                <td data-label="関連商品">
+                                  <span className="count-badge">{product.matchedListingCount}</span>
+                                </td>
+                                <td data-label="alias/source">
+                                  {product.aliasCount} / {product.sourceCount}
+                                </td>
+                                <td data-label="更新日時" className="updated-cell">
+                                  {dateText(product.updatedAt)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="duplicate-group-actions">
+                        <p className="duplicate-group-note">
+                          Catalog #{targetId} を残し、他の{group.products.length - 1}
+                          件をここへ統合します。
+                        </p>
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          disabled={duplicateBusy || operationBusy}
+                          onClick={() => void mergeDuplicateGroup(group)}
+                        >
+                          {merging ? "統合しています…" : "このグループを統合"}
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+              {!duplicateItems.length ? (
+                <p className="empty-state">
+                  <strong>統合が必要な重複Catalogはありません。</strong>
+                  <span>
+                    {duplicateNextAfterKey !== null
+                      ? "このページには該当がありませんでした。次へで続きを確認してください。"
+                      : "同一製品を指す検証済みCatalogは見つかりませんでした。"}
+                  </span>
+                </p>
+              ) : null}
+              <div className="pagination-bar">
+                <span>ページ {duplicateHistory.length + 1}</span>
+                <nav className="pagination" aria-label="重複Catalogページング">
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={duplicateBusy || operationBusy || !duplicateHistory.length}
+                    onClick={() => {
+                      const previous = duplicateHistory.at(-1);
+                      if (previous !== undefined) {
+                        void loadDuplicates(
+                          duplicateManufacturerApplied,
+                          previous,
+                          duplicateHistory.slice(0, -1),
+                        );
+                      }
+                    }}
+                  >
+                    ← 前へ
+                  </button>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={duplicateBusy || operationBusy || duplicateNextAfterKey === null}
+                    onClick={() => {
+                      if (duplicateNextAfterKey !== null) {
+                        void loadDuplicates(duplicateManufacturerApplied, duplicateNextAfterKey, [
+                          ...duplicateHistory,
+                          duplicateAfterKey,
+                        ]);
+                      }
+                    }}
+                  >
+                    次へ →
+                  </button>
+                </nav>
+              </div>
+            </section>
+          </div>
+          <div hidden={view !== "candidates"}>
+            <section className="panel workspace-panel" aria-labelledby="candidate-search-heading">
+              <div className="panel-heading">
+                <div>
+                  <p className="eyebrow">MANUAL VERIFICATION</p>
+                  <h2 id="candidate-search-heading">未検証候補を確認</h2>
+                  <p>
+                    自動VerifyでCatalogへ昇格できなかった候補を検索し、人手で確認して検証済みにできます。
+                  </p>
+                </div>
+              </div>
+              <form className="search-grid" onSubmit={submitCandidateSearch}>
+                <label className="search-field search-field-wide">
+                  <span>候補を検索</span>
+                  <input
+                    type="search"
+                    placeholder="例：LUXMAN D-1000"
+                    autoComplete="off"
+                    value={candidateDraft.q}
+                    disabled={candidateBusy || operationBusy}
+                    onChange={({ currentTarget: { value: nextValue } }) =>
+                      setCandidateDraft((value) => ({ ...value, q: nextValue }))
+                    }
+                  />
+                </label>
+                <label className="search-field">
+                  <span>メーカーID</span>
+                  <input
+                    type="text"
+                    placeholder="mark-levinson"
+                    spellCheck={false}
+                    autoComplete="off"
+                    value={candidateDraft.manufacturerId}
+                    disabled={candidateBusy || operationBusy}
+                    onChange={({ currentTarget: { value: nextValue } }) =>
+                      setCandidateDraft((value) => ({
+                        ...value,
+                        manufacturerId: nextValue,
+                      }))
+                    }
+                  />
+                </label>
+                <label className="search-field">
+                  <span>カテゴリ</span>
+                  <select
+                    value={candidateDraft.categoryId}
+                    disabled={candidateBusy || operationBusy}
+                    onChange={({ currentTarget: { value: nextValue } }) =>
+                      setCandidateDraft((value) => ({
+                        ...value,
+                        categoryId: nextValue,
+                      }))
+                    }
+                  >
+                    <option value="">すべてのカテゴリ</option>
+                    {filterableCategories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="search-actions">
+                  <button
+                    className="tertiary-button"
+                    type="button"
+                    disabled={
+                      candidateBusy ||
+                      operationBusy ||
+                      !Object.values(candidateDraft).some((value) => value.trim())
+                    }
+                    onClick={() => {
+                      setCandidateDraft(EMPTY_FILTERS);
+                      setCandidateApplied(EMPTY_FILTERS);
+                      void loadCandidates(EMPTY_FILTERS, 0, []);
+                    }}
+                  >
+                    条件をクリア
+                  </button>
+                  <button type="submit" disabled={candidateBusy || operationBusy}>
+                    候補を検索
+                  </button>
+                </div>
+              </form>
+              <div className="table-toolbar">
+                <div>
+                  <p className="eyebrow">PENDING</p>
+                  <h2>未検証候補</h2>
+                </div>
+                <p className="result-summary" aria-live="polite">
+                  {candidateSummary}
+                </p>
+              </div>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>メーカー</th>
+                      <th>型番</th>
+                      <th>サンプル</th>
+                      <th>カテゴリ</th>
+                      <th>状態</th>
+                      <th>関連商品</th>
+                      <th>更新日時</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {candidateItems.map((candidate) => {
+                      const manufacturer =
+                        candidate.observedManufacturer || candidate.manufacturerId;
+                      const model = candidate.observedModel || candidate.normalizedModel;
+                      const primaryCategory =
+                        candidate.candidateCategoryIds.find((id) =>
+                          categories.some(
+                            (category) => category.id === id && category.classifiable,
+                          ),
+                        ) || "";
+                      return (
+                        <tr key={candidate.id}>
+                          <td data-label="ID" className="id-cell">
+                            {candidate.id}
+                          </td>
+                          <td data-label="メーカー">{manufacturer}</td>
+                          <td data-label="型番" className="model-cell">
+                            {model}
+                          </td>
+                          <td data-label="サンプル" className="name-cell">
+                            {candidate.sampleTitle || `${manufacturer} ${model}`.trim()}
+                          </td>
+                          <td data-label="カテゴリ">
+                            <span className="category-badge">{categoryName(primaryCategory)}</span>
+                          </td>
+                          <td data-label="状態">
+                            <span className="lifecycle-badge lifecycle-unknown">
+                              {candidateStatus(candidate.verificationStatus)}
+                            </span>
+                          </td>
+                          <td data-label="関連商品">
+                            <span className="count-badge">{candidate.activeListingCount}</span>
+                          </td>
+                          <td data-label="更新日時" className="updated-cell">
+                            {dateText(candidate.updatedAt)}
+                          </td>
+                          <td data-label="操作" className="row-actions">
+                            <button
+                              type="button"
+                              className="secondary-button compact"
+                              disabled={operationBusy}
+                              onClick={() => openCreate(candidate)}
+                            >
+                              手動Verify
+                            </button>
+                          </td>
+                        </tr>
                       );
-                  }}
-                >
-                  ← 前へ
-                </button>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  disabled={candidateBusy || operationBusy || candidateNextAfterId === null}
-                  onClick={() => {
-                    if (candidateNextAfterId !== null)
-                      void loadCandidates(candidateApplied, candidateNextAfterId, [
-                        ...candidateHistory,
-                        candidateAfterId,
-                      ]);
-                  }}
-                >
-                  次へ →
-                </button>
-              </nav>
-            </div>
-          </section>
-
-          <details className="panel export-panel">
-            <summary className="export-summary">
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {!candidateItems.length ? (
+                <p className="empty-state">
+                  <strong>条件に一致する未検証候補がありません。</strong>
+                  <span>検索条件を減らすか、Catalog一覧も確認してください。</span>
+                </p>
+              ) : null}
+              <div className="pagination-bar">
+                <span>ページ {candidateHistory.length + 1}</span>
+                <nav className="pagination" aria-label="未検証候補ページング">
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={candidateBusy || operationBusy || !candidateHistory.length}
+                    onClick={() => {
+                      const previous = candidateHistory.at(-1);
+                      if (previous !== undefined)
+                        void loadCandidates(
+                          candidateApplied,
+                          previous,
+                          candidateHistory.slice(0, -1),
+                        );
+                    }}
+                  >
+                    ← 前へ
+                  </button>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={candidateBusy || operationBusy || candidateNextAfterId === null}
+                    onClick={() => {
+                      if (candidateNextAfterId !== null)
+                        void loadCandidates(candidateApplied, candidateNextAfterId, [
+                          ...candidateHistory,
+                          candidateAfterId,
+                        ]);
+                    }}
+                  >
+                    次へ →
+                  </button>
+                </nav>
+              </div>
+            </section>
+          </div>
+          <section className="panel export-panel" hidden={view !== "csv"} aria-label="CSV入出力">
+            <div className="export-summary">
               <span className="export-summary-copy">
-                <span className="eyebrow">AI DATA AUDIT</span>
-                <strong>カタログと登録商品をCSVで診断</strong>
-                <span>Catalog・重複・カテゴリ・メーカー/型番の品質確認用データを生成します。</span>
+                <span className="eyebrow">一括編集とデータ出力</span>
+                <strong>ダウンロード → CSVを編集 → 差分確認 → 登録・更新</strong>
+                <span>一括修正には編集用CSV、全情報の確認にはZIPを選びます。</span>
               </span>
-              <span className="summary-chevron" aria-hidden="true" />
-            </summary>
+            </div>
             <div className="export-content">
               <p className="export-description">
-                Knowledge Catalogは検証状態やカテゴリ・alias・source・Product
-                Identityを含む全情報を、テーブルごとのCSVに分けてZIPで出力します。色・セット商品のカテゴリ・内部メタデータ・手動修正・価格履歴も含み、長文や関連情報を省略しません。
+                編集用CSVは一括修正に使うファイルです。全情報ZIPには、製品情報・別名・出典・手動修正・価格履歴など、保存済みの関連情報も含みます。
               </p>
               <div className="export-jobs">
                 {CSV_EXPORT_KEYS.map((key) => (
@@ -1645,14 +1707,18 @@ export function CatalogAdmin() {
               <p className="export-note">
                 バックグラウンドで分割生成するため、画面を閉じても継続します。ZIPが複数ある場合は全パートを取得してください。生成期限は24時間、ダウンロード期限は完成から7日間です。一括修正には「編集用CSV」を生成し、edit_列を編集して下のフォームで取り込んでください。全情報ZIP内のCSVは取り込み対象外です。
               </p>
-              <AdminCsvImport
-                categories={categories}
-                onApplied={() => {
-                  void loadCatalog(catalogApplied, 0, []);
-                }}
-              />
+              {loadedViews.current.has("csv") ? (
+                <AdminCsvImport
+                  categories={categories}
+                  onApplied={() => {
+                    loadedViews.current.delete("catalog");
+                    loadedViews.current.delete("duplicates");
+                    onDataChanged?.();
+                  }}
+                />
+              ) : null}
             </div>
-          </details>
+          </section>
         </>
       ) : null}
 
@@ -1665,6 +1731,8 @@ export function CatalogAdmin() {
       ) : null}
 
       <dialog
+        className="admin-editor"
+        aria-labelledby="catalog-editor-heading"
         ref={editDialogRef}
         onClose={() => setEditing(null)}
         onCancel={(event) => {
@@ -1677,7 +1745,7 @@ export function CatalogAdmin() {
             <div className="dialog-heading">
               <div>
                 <p className="eyebrow">EDIT CATALOG</p>
-                <h2>Catalog情報を修正</h2>
+                <h2 id="catalog-editor-heading">カタログ情報を修正</h2>
               </div>
               <button
                 className="icon-button"
@@ -1781,16 +1849,8 @@ export function CatalogAdmin() {
                   ? "未保存の変更があります。"
                   : "変更すると保存できます。"}
             </p>
-            <div className="dialog-actions">
-              <button className="secondary-button" type="button" onClick={closeEdit}>
-                キャンセル
-              </button>
-              <button type="submit" disabled={catalogBusy || editSaving || !editDirty}>
-                {editSaving ? "保存中…" : "変更を保存"}
-              </button>
-            </div>
-            <div className="edit-impact">
-              <strong>重複CatalogをこのCatalogへ統合</strong>
+            <details className="edit-impact admin-advanced-merge">
+              <summary>詳細操作：別のカタログをこの製品へ統合</summary>
               <p>
                 統合元の別名・出典・検証履歴・関連商品をこの製品へ移し、統合元の製品情報を削除します。
               </p>
@@ -1842,6 +1902,11 @@ export function CatalogAdmin() {
               <p className="edit-change-status" data-dirty={mergeStatus ? "warning" : "false"}>
                 {mergeStatus}
               </p>
+              {editError ? (
+                <p role="alert" className="csv-import-error">
+                  {editError}
+                </p>
+              ) : null}
               <div className="dialog-actions">
                 <button
                   className="secondary-button"
@@ -1860,6 +1925,14 @@ export function CatalogAdmin() {
                   {operationBusy ? "処理中…" : "このCatalogへ統合"}
                 </button>
               </div>
+            </details>
+            <div className="dialog-actions">
+              <button className="secondary-button" type="button" onClick={closeEdit}>
+                キャンセル
+              </button>
+              <button type="submit" disabled={catalogBusy || editSaving || !editDirty}>
+                {editSaving ? "保存中…" : "変更を保存"}
+              </button>
             </div>
           </form>
         ) : null}
@@ -1873,6 +1946,8 @@ export function CatalogAdmin() {
         />
       ) : null}
       <dialog
+        className="admin-editor"
+        aria-labelledby="catalog-create-heading"
         ref={createDialogRef}
         onClose={() => setCreateMode(null)}
         onCancel={(event) => {
@@ -1885,7 +1960,9 @@ export function CatalogAdmin() {
             <div className="dialog-heading">
               <div>
                 <p className="eyebrow">MANUAL VERIFICATION</p>
-                <h2>{createMode.candidate ? "未検証候補を確認して登録" : "Catalogを手動追加"}</h2>
+                <h2 id="catalog-create-heading">
+                  {createMode.candidate ? "未検証候補を確認して登録" : "Catalogを手動追加"}
+                </h2>
               </div>
               <button
                 className="icon-button"

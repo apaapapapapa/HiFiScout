@@ -15,23 +15,25 @@ export class AdminConsolePage {
     readonly root: Locator,
     readonly page: Page,
   ) {
-    this.heading = root.getByRole("heading", { name: "HiFiScout 管理コンソール" });
-    this.catalogTab = root.getByRole("tab", { name: /Knowledge Catalog/u });
-    this.listingsTab = root.getByRole("tab", { name: /登録商品/u });
-    this.sectionLinks = root.getByRole("group", { name: /内の機能/u }).getByRole("button");
-    this.catalog = new CatalogAdminPage(root.locator("#catalog-pane"));
+    this.heading = root.locator(".admin-workspace-heading h1");
+    this.catalogTab = root.getByRole("link", { name: "製品カタログ", exact: true });
+    this.listingsTab = root.getByRole("link", { name: "登録商品", exact: true });
+    this.sectionLinks = root.getByRole("navigation", { name: "管理メニュー" }).getByRole("link");
+    this.catalog = new CatalogAdminPage(root.locator("#catalog-pane"), root);
     this.listings = new ListingAdminPage(root.locator("#listings-pane"));
   }
 
   async openCatalog(): Promise<void> {
-    await this.catalogTab.click();
+    if (await this.catalogTab.isVisible()) await this.catalogTab.click();
+    else await this.root.getByRole("combobox", { name: "作業を選ぶ" }).selectOption("catalog");
   }
 
   async openListings(): Promise<void> {
-    await this.listingsTab.click();
+    if (await this.listingsTab.isVisible()) await this.listingsTab.click();
+    else await this.root.getByRole("combobox", { name: "作業を選ぶ" }).selectOption("listings");
   }
 
   sectionLink(name: string): Locator {
-    return this.root.getByRole("button", { name, exact: true });
+    return this.root.getByRole("link", { name, exact: true });
   }
 }

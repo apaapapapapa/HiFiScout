@@ -1,294 +1,165 @@
 import { useEffect, useRef, useState } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { MouseEvent } from "react";
 import { createRoot } from "react-dom/client";
-
 import { CatalogAdmin } from "./admin-catalog.js";
 import { CorrectionReportsAdmin } from "./admin-correction-reports.js";
 import { ListingAdmin } from "./admin-listings.js";
-
-type AdminTab = "catalog" | "listings" | "reports";
-
-interface AdminSectionLink {
-  label: string;
-  selector: string;
-}
-
-const ADMIN_TABS: readonly AdminTab[] = ["catalog", "listings", "reports"];
-const ADMIN_SECTION_LINKS: Record<AdminTab, readonly AdminSectionLink[]> = {
-  catalog: [
-    { label: "Catalog検索・編集", selector: "#catalog-search-heading" },
-    { label: "重複Catalog統合", selector: "#duplicate-heading" },
-    { label: "未検証候補", selector: "#candidate-search-heading" },
-    { label: "CSV診断", selector: ".export-panel" },
-  ],
-  listings: [
-    { label: "登録商品を検索", selector: "#listing-search-heading" },
-    { label: "登録商品一覧", selector: ".listing-table" },
-    { label: "出品条件の再処理", selector: "#offer-replay-heading" },
-  ],
-  reports: [{ label: "誤り報告キュー", selector: "#correction-reports-heading" }],
-};
-
-function requestedTab(): AdminTab {
-  if (window.location.hash === "#listings") return "listings";
-  if (window.location.hash === "#reports") return "reports";
-  return "catalog";
-}
-
-function tabUrl(tab: AdminTab): string {
-  const url = new URL(window.location.href);
-  url.searchParams.delete("q");
-  url.searchParams.delete("shopKey");
-  url.searchParams.delete("scope");
-  url.hash = tab === "catalog" ? "" : tab;
-  return url.toString();
-}
-
-function scrollToAdminTarget(selector: string): void {
-  const target = document.querySelector<HTMLElement>(selector);
-  if (!target) return;
-  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
-}
-
-function setControlledFieldValue(
-  element: HTMLInputElement | HTMLSelectElement,
-  value: string,
-): void {
-  const prototype =
-    element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
-  const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
-  if (setter) setter.call(element, value);
-  else element.value = value;
-  element.dispatchEvent(
-    new Event(element instanceof HTMLSelectElement ? "change" : "input", { bubbles: true }),
-  );
-}
-
-function applyDeepLinkFilters(tab: AdminTab): boolean {
-  const params = new URLSearchParams(window.location.search);
-  const query = params.get("q")?.trim() || "";
-  if (tab === "catalog") {
-    if (!query) return true;
-    const input = document.querySelector<HTMLInputElement>("#catalog-catalog-query");
-    if (!input || input.disabled) return false;
-    const form = input.closest("form");
-    if (!form) return false;
-    setControlledFieldValue(input, query);
-    window.requestAnimationFrame(() => form.requestSubmit());
-    return true;
-  }
-  if (tab === "listings") {
-    if (!query) return true;
-    const queryInput = document.querySelector<HTMLInputElement>("#listings-listing-query");
-    const shopInput = document.querySelector<HTMLInputElement>("#listings-shop-key");
-    const scopeSelect = document.getElementById(
-      "listings-listing-scope",
-    ) as HTMLSelectElement | null;
-    if (!queryInput || queryInput.disabled || !shopInput || !scopeSelect) return false;
-    const form = queryInput.closest("form");
-    if (!form) return false;
-    setControlledFieldValue(queryInput, query);
-    const shopKey = params.get("shopKey")?.trim() || "";
-    if (shopKey) setControlledFieldValue(shopInput, shopKey);
-    if (params.get("scope") === "all") setControlledFieldValue(scopeSelect, "all");
-    window.requestAnimationFrame(() => form.requestSubmit());
-    return true;
-  }
-  return true;
-}
+import { ADMIN_VIEWS, adminLocation, adminViewUrl, isCatalogView } from "./admin-navigation.js";
+import type { AdminView } from "./admin-navigation.js";
 
 export function AdminConsole() {
-  const [activeTab, setActiveTab] = useState<AdminTab>(requestedTab);
-  const [mountedTabs, setMountedTabs] = useState<Set<AdminTab>>(() => new Set([requestedTab()]));
-  const appliedDeepLink = useRef<string | null>(null);
-  const activeSectionLabel =
-    activeTab === "catalog"
-      ? "Knowledge Catalog 内の機能"
-      : activeTab === "listings"
-        ? "登録商品 内の機能"
-        : "情報の誤り報告 内の機能";
+  const [location, setLocation] = useState(() => adminLocation(window.location));
+  const [visited, setVisited] = useState<Set<AdminView>>(() => new Set([location.view]));
+  const title = useRef<HTMLHeadingElement>(null);
+  const [dataRevision, setDataRevision] = useState(0);
+  const focusNextView = useRef(false);
+  const active = ADMIN_VIEWS.find((view) => view.id === location.view)!;
+  const catalogView = isCatalogView(location.view) ? location.view : null;
+  const listingActive = location.view === "listings" || location.view === "maintenance";
 
   useEffect(() => {
-    const onPopState = () => {
-      const tab = requestedTab();
-      setActiveTab(tab);
-      setMountedTabs((current) => new Set(current).add(tab));
+    const sync = () => {
+      const next = adminLocation(window.location);
+      setLocation(next);
+      setVisited((current) => new Set(current).add(next.view));
     };
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
+    window.addEventListener("popstate", sync);
+    window.addEventListener("hashchange", sync);
+    return () => {
+      window.removeEventListener("popstate", sync);
+      window.removeEventListener("hashchange", sync);
+    };
   }, []);
 
   useEffect(() => {
-    if (activeTab === "reports") return;
-    const params = new URLSearchParams(window.location.search);
-    if (!params.get("q")?.trim()) return;
-    const deepLinkKey = `${activeTab}:${window.location.search}`;
-    if (appliedDeepLink.current === deepLinkKey) return;
-    let cancelled = false;
-    let retryTimer = 0;
-    const tryApply = () => {
-      if (cancelled) return;
-      if (applyDeepLinkFilters(activeTab)) {
-        appliedDeepLink.current = deepLinkKey;
-        return;
-      }
-      retryTimer = window.setTimeout(tryApply, 50);
-    };
-    tryApply();
-    return () => {
-      cancelled = true;
-      window.clearTimeout(retryTimer);
-    };
-  }, [activeTab]);
+    document.title = `${active.label} | HiFiScout 管理`;
+    if (focusNextView.current) {
+      title.current?.focus({ preventScroll: true });
+      window.scrollTo({ top: 0, behavior: "instant" });
+      focusNextView.current = false;
+    }
+  }, [active]);
 
-  const selectTab = (tab: AdminTab, updateHistory = true) => {
-    setActiveTab(tab);
-    setMountedTabs((current) => new Set(current).add(tab));
-    if (updateHistory) window.history.pushState(null, "", tabUrl(tab));
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => scrollToAdminTarget(`#${tab}-pane`));
-    });
+  const selectView = (view: AdminView) => {
+    if (view === location.view) return;
+    window.history.pushState(null, "", adminViewUrl(window.location.href, view));
+    focusNextView.current = true;
+    setLocation(adminLocation(window.location));
+    setVisited((current) => new Set(current).add(view));
   };
 
-  const handleTabKey = (event: ReactKeyboardEvent<HTMLButtonElement>, tab: AdminTab) => {
-    let target: AdminTab | null = null;
-    const index = ADMIN_TABS.indexOf(tab);
-    if (event.key === "ArrowLeft")
-      target = ADMIN_TABS[(index + ADMIN_TABS.length - 1) % ADMIN_TABS.length];
-    else if (event.key === "ArrowRight") target = ADMIN_TABS[(index + 1) % ADMIN_TABS.length];
-    else if (event.key === "Home") target = ADMIN_TABS[0];
-    else if (event.key === "End") target = ADMIN_TABS[ADMIN_TABS.length - 1];
-    if (!target) return;
+  const navigate = (event: MouseEvent<HTMLAnchorElement>, view: AdminView) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+      return;
     event.preventDefault();
-    selectTab(target);
-    window.requestAnimationFrame(() => document.getElementById(`admin-tab-${target}`)?.focus());
+    selectView(view);
   };
 
   return (
-    <main className="admin-shell">
-      <header className="admin-header">
+    <div className="admin-shell">
+      <a
+        className="admin-skip-link"
+        href="#admin-content"
+        onClick={(event) => {
+          event.preventDefault();
+          document.getElementById("admin-content")?.focus();
+          document.getElementById("admin-content")?.scrollIntoView();
+        }}
+      >
+        作業内容へ移動
+      </a>
+      <aside className="admin-sidebar">
         <a
-          className="brand-link"
-          href="https://hifiscout.tokyojp.workers.dev/"
-          rel="noreferrer"
-          aria-label="HiFiScout を開く"
+          className="admin-brand"
+          href={adminViewUrl(window.location.href, "catalog")}
+          onClick={(event) => navigate(event, "catalog")}
         >
-          <span className="brand-mark" aria-hidden="true">
-            <img src="/hifiscout-mark.jpg" alt="" />
-          </span>
-          <span className="brand-copy">
+          <img src="/hifiscout-mark.jpg" alt="" width="36" height="36" />
+          <span>
             <strong>HiFiScout</strong>
-            <span>Admin Console</span>
+            <small>管理コンソール</small>
           </span>
         </a>
-        <div className="header-copy">
-          <p className="eyebrow eyebrow-inverse">ADMIN OPERATIONS</p>
-          <h1>
-            HiFiScout <span>管理コンソール</span>
-          </h1>
-          <p className="lede">
-            Catalogと販売店から取得した登録商品、利用者からの事実誤り報告を、ひとつの画面から検索・監査・修正できます。
-          </p>
-        </div>
-        <div className="header-actions">
-          <span className="access-badge">
-            <span aria-hidden="true" />
-            Cloudflare Access 保護中
-          </span>
-          <a
-            className="header-link"
-            href="https://hifiscout.tokyojp.workers.dev/"
-            rel="noreferrer"
-            target="_blank"
+        <nav className="admin-navigation" aria-label="管理メニュー">
+          {["日常の管理", "データの整備"].map((group) => (
+            <div className="admin-nav-group" key={group}>
+              <p>{group}</p>
+              {ADMIN_VIEWS.filter((view) => view.group === group).map((view) => (
+                <a
+                  key={view.id}
+                  id={`admin-nav-${view.id}`}
+                  href={adminViewUrl(window.location.href, view.id)}
+                  aria-current={view.id === location.view ? "page" : undefined}
+                  onClick={(event) => navigate(event, view.id)}
+                >
+                  {view.label}
+                  <span aria-hidden="true">›</span>
+                </a>
+              ))}
+            </div>
+          ))}
+        </nav>
+        <label className="admin-mobile-navigation">
+          <span>作業を選ぶ</span>
+          <select
+            value={location.view}
+            onChange={(event) => selectView(event.currentTarget.value as AdminView)}
           >
-            検索サイトを開く <span aria-hidden="true">↗</span>
-          </a>
-        </div>
-      </header>
-
-      <nav className="admin-tabs-shell" aria-label="管理メニュー">
-        <div className="admin-menu-group admin-menu-primary">
-          <span className="admin-menu-label">管理対象</span>
-          <div className="admin-tabs" role="tablist" aria-label="管理コンソール">
-            <button
-              id="admin-tab-catalog"
-              className="admin-tab"
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "catalog"}
-              aria-controls="catalog-pane"
-              tabIndex={activeTab === "catalog" ? 0 : -1}
-              onClick={() => selectTab("catalog")}
-              onKeyDown={(event) => handleTabKey(event, "catalog")}
-            >
-              <span className="admin-tab-title">Knowledge Catalog</span>
-              <span className="admin-tab-description">製品マスター・カテゴリ・CSV監査</span>
-            </button>
-            <button
-              id="admin-tab-listings"
-              className="admin-tab"
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "listings"}
-              aria-controls="listings-pane"
-              tabIndex={activeTab === "listings" ? 0 : -1}
-              onClick={() => selectTab("listings")}
-              onKeyDown={(event) => handleTabKey(event, "listings")}
-            >
-              <span className="admin-tab-title">登録商品</span>
-              <span className="admin-tab-description">
-                店舗listing・メーカー・型番・カテゴリ補正
-              </span>
-            </button>
-            <button
-              id="admin-tab-reports"
-              className="admin-tab"
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "reports"}
-              aria-controls="reports-pane"
-              tabIndex={activeTab === "reports" ? 0 : -1}
-              onClick={() => selectTab("reports")}
-              onKeyDown={(event) => handleTabKey(event, "reports")}
-            >
-              <span className="admin-tab-title">誤り報告</span>
-              <span className="admin-tab-description">匿名報告の確認・監査・解決</span>
-            </button>
-          </div>
-        </div>
-        <div className="admin-menu-group admin-menu-secondary">
-          <span className="admin-menu-label">機能へ移動</span>
-          <div className="admin-section-links" role="group" aria-label={activeSectionLabel}>
-            {ADMIN_SECTION_LINKS[activeTab].map((item) => (
-              <button
-                key={item.selector}
-                className="admin-section-link"
-                type="button"
-                onClick={() => scrollToAdminTarget(item.selector)}
-              >
-                {item.label}
-              </button>
+            {["日常の管理", "データの整備"].map((group) => (
+              <optgroup key={group} label={group}>
+                {ADMIN_VIEWS.filter((view) => view.group === group).map((view) => (
+                  <option key={view.id} value={view.id}>
+                    {view.label}
+                  </option>
+                ))}
+              </optgroup>
             ))}
-          </div>
+          </select>
+        </label>
+        <a
+          className="admin-public-link"
+          href="https://hifiscout.tokyojp.workers.dev/"
+          target="_blank"
+          rel="noreferrer"
+        >
+          検索サイトを開く ↗
+        </a>
+      </aside>
+      <main className="admin-content" id="admin-content" tabIndex={-1}>
+        <header className="admin-workspace-heading">
+          <p className="admin-breadcrumb">
+            管理コンソール <span aria-hidden="true">/</span> {active.group}
+          </p>
+          <h1 ref={title} tabIndex={-1}>
+            {active.label}
+          </h1>
+          <p>{active.description}</p>
+        </header>
+        <div hidden={catalogView === null}>
+          {[...visited].some(isCatalogView) ? (
+            <CatalogAdmin
+              onDataChanged={() => setDataRevision((value) => value + 1)}
+              view={catalogView ?? "catalog"}
+              active={catalogView !== null}
+              search={catalogView ? location.search : ""}
+            />
+          ) : null}
         </div>
-      </nav>
-
-      <div hidden={activeTab !== "catalog"}>
-        {mountedTabs.has("catalog") ? <CatalogAdmin /> : null}
-      </div>
-      <div hidden={activeTab !== "listings"}>
-        {mountedTabs.has("listings") ? <ListingAdmin /> : null}
-      </div>
-      <div
-        id="reports-pane"
-        role="tabpanel"
-        aria-labelledby="admin-tab-reports"
-        hidden={activeTab !== "reports"}
-      >
-        {mountedTabs.has("reports") ? <CorrectionReportsAdmin /> : null}
-      </div>
-    </main>
+        <div hidden={!listingActive}>
+          {visited.has("listings") || visited.has("maintenance") ? (
+            <ListingAdmin
+              revision={dataRevision}
+              view={location.view === "maintenance" ? "maintenance" : "listings"}
+              active={listingActive}
+              search={listingActive ? location.search : ""}
+            />
+          ) : null}
+        </div>
+        <div id="reports-pane" hidden={location.view !== "reports"}>
+          {visited.has("reports") ? <CorrectionReportsAdmin /> : null}
+        </div>
+      </main>
+    </div>
   );
 }
 

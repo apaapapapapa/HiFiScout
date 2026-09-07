@@ -204,7 +204,7 @@ test("admin exports expose every ZIP volume and retain the legacy CSV download",
   );
   const card = component
     .locator(".export-job")
-    .filter({ has: page.getByRole("heading", { name: "Knowledge Catalog", exact: true }) });
+    .filter({ has: page.getByRole("heading", { name: "製品カタログ", exact: true }) });
   await card.getByRole("button", { name: "編集用CSVを生成" }).click();
   await expect.poll(() => formats).toEqual(["csv"]);
   await card.getByRole("button", { name: "全情報ZIPを生成" }).click();
@@ -421,12 +421,12 @@ test("admin catalog screen uses the shared POM for search and edit flows", async
   const admin = new AdminConsolePage(component, page);
 
   await expect(admin.heading).toBeVisible();
-  await expect(admin.catalogTab).toHaveAttribute("aria-selected", "true");
+  await expect(admin.catalogTab).toHaveAttribute("aria-current", "page");
   await expect(admin.catalog.heading).toBeVisible();
-  await expect(admin.catalog.duplicateHeading).toBeVisible();
-  await expect(admin.catalog.candidateHeading).toBeVisible();
+  await expect(admin.catalog.duplicateHeading).not.toBeVisible();
+  await expect(admin.catalog.candidateHeading).not.toBeVisible();
   await expect(admin.catalog.csvSummary).toBeVisible();
-  await expect(admin.sectionLinks).toHaveCount(4);
+  await expect(admin.sectionLinks).toHaveCount(7);
 
   await admin.catalog.searchFor("D-1000");
   await expect(admin.catalog.resultSummary).toContainText("検索「D-1000」");
@@ -451,10 +451,10 @@ test("admin listings screen uses the shared POM for tab, search, and color edit 
   const admin = new AdminConsolePage(component, page);
 
   await admin.openListings();
-  await expect(admin.listingsTab).toHaveAttribute("aria-selected", "true");
+  await expect(admin.listingsTab).toHaveAttribute("aria-current", "page");
   await expect(page).toHaveURL(/#listings$/u);
   await expect(admin.listings.heading).toBeVisible();
-  await expect(admin.sectionLinks).toHaveCount(3);
+  await expect(admin.sectionLinks).toHaveCount(7);
 
   await admin.listings.searchFor("D-1000");
   await expect(admin.listings.status).toContainText("検索条件を反映しました");
@@ -676,7 +676,7 @@ test("offer replay resumes server progress after an interrupted response", async
   });
   const component = await mount("frontend/admin-console/Default");
   const admin = new AdminConsolePage(component, page);
-  await admin.openListings();
+  await admin.sectionLink("出品条件の再処理").click();
   const replay = page.getByRole("region", { name: "出品条件の再処理・充足率" });
   await replay.getByRole("button", { name: "最大25件を再処理", exact: true }).click();
   await expect(replay.getByRole("status")).toContainText("中断しました");
@@ -797,6 +797,7 @@ test("shop filters use names and manual merge requires a full identity preview",
   await admin.catalogTab.click();
   await admin.catalog.openEditor(11);
   const dialog = admin.catalog.editDialog;
+  await dialog.getByText("詳細操作：別のカタログをこの製品へ統合", { exact: true }).click();
   await dialog.getByLabel("統合元 Catalog ID").fill("12");
   await expect(
     dialog.getByRole("button", { name: "このCatalogへ統合", exact: true }),
@@ -853,4 +854,68 @@ test("model specifications save explicit units and preserve unrecorded inputs", 
     path: "test-results/admin-model-specifications-mobile.png",
     fullPage: true,
   });
+});
+
+test("task navigation loads only the requested workspace and retains search state", async ({
+  page,
+  mount,
+}) => {
+  const paths: string[] = [];
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith("/api/admin/")) paths.push(path);
+  });
+  const component = await mount("frontend/admin-console/Default");
+  const admin = new AdminConsolePage(component, page);
+  await expect(admin.catalog.catalogRow(11)).toBeVisible();
+  expect(paths).toEqual(["/api/admin/knowledge-catalog/products"]);
+  await admin.catalog.searchFor("D-1000");
+  await expect(admin.catalog.resultSummary).toContainText("D-1000");
+  await admin.sectionLink("重複の整理").click();
+  await expect(admin.catalog.duplicateHeading).toBeVisible();
+  await expect(admin.catalog.heading).not.toBeVisible();
+  await expect.poll(() => paths.filter((path) => path.endsWith("/duplicates")).length).toBe(1);
+  await admin.openCatalog();
+  await expect(admin.catalog.query).toHaveValue("D-1000");
+  expect(paths.filter((path) => path.endsWith("/products"))).toHaveLength(2);
+  await page.goBack();
+  await expect(admin.heading).toHaveText("重複の整理");
+  await page.goForward();
+  await expect(admin.catalog.query).toHaveValue("D-1000");
+  expect(paths.some((path) => path.includes("exports") || path.endsWith("/candidates"))).toBe(
+    false,
+  );
+});
+
+test("metadata failure offers a retry without leaving the workspace", async ({ page, mount }) => {
+  let fail = true;
+  await page.route("**/api/meta", (route) =>
+    fail
+      ? route.fulfill({ status: 503, json: { error: "temporarily_unavailable" } })
+      : route.fallback(),
+  );
+  const component = await mount("frontend/admin-console/Default");
+  const admin = new AdminConsolePage(component, page);
+  await expect(component.getByRole("alert")).toContainText("temporarily_unavailable");
+  fail = false;
+  await component.getByRole("button", { name: "もう一度読み込む" }).click();
+  await expect(admin.catalog.catalogRow(11)).toBeVisible();
+  await expect(component.getByRole("alert")).toHaveCount(0);
+});
+
+test("mobile task selection and listing editing fit the viewport", async ({ page, mount }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const component = await mount("frontend/admin-console/Default");
+  const admin = new AdminConsolePage(component, page);
+  await component.getByRole("combobox", { name: "作業を選ぶ" }).selectOption("listings");
+  await expect(admin.listings.listingRow(21)).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await admin.listings.openEditor(21);
+  await expect(admin.listings.editDialog).toBeVisible();
+  expect((await admin.listings.editDialog.boundingBox())?.width).toBeLessThanOrEqual(390);
+  await admin.listings.presentationColor().fill("シルバー");
+  await admin.listings.saveButton().click();
+  await expect(admin.listings.listingRow(21)).toContainText("シルバー");
 });
