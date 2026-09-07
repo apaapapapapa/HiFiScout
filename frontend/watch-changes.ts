@@ -154,7 +154,7 @@ export async function refreshWatchedProducts(
   if (keys.length > MAX_WATCH_REFRESH || keys.some((key) => !validProductKey(key)))
     throw new Error("invalid_watch_scope");
   const unique = [...new Set(keys)];
-  const results: WatchRefreshResult[] = new Array(unique.length);
+  const results: WatchRefreshResult[] = unique.map((key) => ({ key, detail: null }));
   let cursor = 0;
   const worker = async () => {
     while (cursor < unique.length) {
