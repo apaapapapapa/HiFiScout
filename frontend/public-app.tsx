@@ -60,7 +60,11 @@ import {
 } from "./public-ui-state.js";
 import { useFilterSheet } from "./use-filter-sheet.js";
 import { FeedSubscription } from "./feed-subscription.js";
-import { WATCH_PREFERENCES_KEY, parseWatchPreferences, updateWatchPreference } from "./watch-preferences.js";
+import {
+  WATCH_PREFERENCES_KEY,
+  parseWatchPreferences,
+  updateWatchPreference,
+} from "./watch-preferences.js";
 import { WatchPreferenceEditor } from "./watch-preferences-ui.js";
 import { SearchSuggestionInput } from "./search-suggestion-input.js";
 import { sortShopsByJapaneseReading } from "./shop-options.js";
@@ -532,12 +536,15 @@ export function PublicApp() {
     parseFavoriteStorage(readPreference(FAVORITES_KEY), isProductSearchItem),
   );
   const favoritesRef = useRef(favorites);
-  const [watchPreferences, setWatchPreferences] = useState(() => parseWatchPreferences(readPreference(WATCH_PREFERENCES_KEY)));
+  const [watchPreferences, setWatchPreferences] = useState(() =>
+    parseWatchPreferences(readPreference(WATCH_PREFERENCES_KEY)),
+  );
   const [watchKey, setWatchKey] = useState<string | null>(null);
   const watchProduct = watchKey ? favorites.products.get(watchKey) : undefined;
   useEffect(() => {
     const update = (event: StorageEvent) => {
-      if (event.key === WATCH_PREFERENCES_KEY || event.key === null) setWatchPreferences(parseWatchPreferences(readPreference(WATCH_PREFERENCES_KEY)));
+      if (event.key === WATCH_PREFERENCES_KEY || event.key === null)
+        setWatchPreferences(parseWatchPreferences(readPreference(WATCH_PREFERENCES_KEY)));
     };
     window.addEventListener("storage", update);
     return () => window.removeEventListener("storage", update);
@@ -1376,14 +1383,27 @@ export function PublicApp() {
           </nav>
         </div>
       </main>
-      {watchProduct ? <WatchPreferenceEditor key={watchProduct.key} product={watchProduct}
-        preference={watchPreferences.find((entry) => entry.key === watchProduct.key)}
-        onClose={() => setWatchKey(null)} onSave={(target, note, expectedUpdatedAt) => {
-          const next = updateWatchPreference(parseWatchPreferences(readPreference(WATCH_PREFERENCES_KEY)), watchProduct.key, target, note, new Date().toISOString(), expectedUpdatedAt);
-          if (!next || !savePreference(WATCH_PREFERENCES_KEY, JSON.stringify(next))) return false;
-          setWatchPreferences(next);
-          return true;
-        }} /> : null}
+      {watchProduct ? (
+        <WatchPreferenceEditor
+          key={watchProduct.key}
+          product={watchProduct}
+          preference={watchPreferences.find((entry) => entry.key === watchProduct.key)}
+          onClose={() => setWatchKey(null)}
+          onSave={(target, note, expectedUpdatedAt) => {
+            const next = updateWatchPreference(
+              parseWatchPreferences(readPreference(WATCH_PREFERENCES_KEY)),
+              watchProduct.key,
+              target,
+              note,
+              new Date().toISOString(),
+              expectedUpdatedAt,
+            );
+            if (!next || !savePreference(WATCH_PREFERENCES_KEY, JSON.stringify(next))) return false;
+            setWatchPreferences(next);
+            return true;
+          }}
+        />
+      ) : null}
 
       <dialog
         ref={offersDialogRef}

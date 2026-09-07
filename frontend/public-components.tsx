@@ -269,10 +269,16 @@ export function ProductCard({
           {offerAvailability(product)}
         </div>
         <p className="updated">{updated}</p>
-        {favorite && watchPreference ? <WatchSummary product={product} preference={watchPreference} /> : null}
+        {favorite && watchPreference ? (
+          <WatchSummary product={product} preference={watchPreference} />
+        ) : null}
       </div>
       <div className="actions">
-        {favorite && hasServerDetail && onWatch ? <button type="button" className="offers-button" onClick={() => onWatch(product.key)}>希望価格・メモ</button> : null}
+        {favorite && hasServerDetail && onWatch ? (
+          <button type="button" className="offers-button" onClick={() => onWatch(product.key)}>
+            希望価格・メモ
+          </button>
+        ) : null}
         {product.identity_kind === "catalog" && onCompare ? (
           <button
             type="button"
