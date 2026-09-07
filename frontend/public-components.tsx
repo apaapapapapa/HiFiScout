@@ -5,6 +5,7 @@ import { dateFmt, yen } from "./format.js";
 import { activityData, priceDropped } from "./product-activity.js";
 import { ProductPriceIndexSummary, RelativePriceBadge } from "./price-index-ui.js";
 import { ModelRelations } from "./model-relations-ui.js";
+import { MarketAnalysis } from "./market-analysis-ui.js";
 import { OfferFacts } from "./offer-facts.js";
 import { OfferTerms } from "./offer-terms.js";
 import { WatchSummary } from "./watch-preferences-ui.js";
@@ -537,6 +538,7 @@ export function OffersContent({
         )}
       </ol>
       <ProductPriceIndexSummary product={product} />
+      <MarketAnalysis analysis={product.market_analysis} />
       {product.model_relations ? (
         <section aria-label="確認済みの機種の関係">
           <h3>機種の関係・シリーズ</h3>
