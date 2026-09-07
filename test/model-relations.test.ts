@@ -3,12 +3,26 @@ import assert from "node:assert/strict";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { parseModelFactInput } from "../src/catalog/model-relations.js";
 import type { ModelFactInput } from "../src/catalog/model-relations.js";
-import { listModelFacts, readModelFact, saveModelFact } from "../src/db/model-relation-repository.js";
+import {
+  listModelFacts,
+  readModelFact,
+  saveModelFact,
+} from "../src/db/model-relation-repository.js";
 
 const AT = "2026-09-07T00:00:00.000Z";
 const actor = { actor: "verified-access-subject" };
 function input(overrides: Partial<ModelFactInput> = {}): ModelFactInput {
-  return { kind: "successor", relatedProductId: 700002, familyName: "", position: null, state: "verified", sourceId: null, manualNote: "メーカー資料で前後継関係を確認しました。", manufacturerJustification: "", ...overrides };
+  return {
+    kind: "successor",
+    relatedProductId: 700002,
+    familyName: "",
+    position: null,
+    state: "verified",
+    sourceId: null,
+    manualNote: "メーカー資料で前後継関係を確認しました。",
+    manufacturerJustification: "",
+    ...overrides,
+  };
 }
 function fixture() {
   const result = migratedSqlite();
@@ -23,7 +37,14 @@ function fixture() {
 
 test("model fact input rejects unsupported relations, self-invented fields and unproven publication", () => {
   assert.ok(parseModelFactInput(input()));
-  for (const value of [input({ manualNote: "" }), { ...input(), fuzzy: true }, input({ relatedProductId: 0 }), input({ kind: "family" }), input({ position: 2 })]) assert.equal(parseModelFactInput(value), null);
+  for (const value of [
+    input({ manualNote: "" }),
+    { ...input(), fuzzy: true },
+    input({ relatedProductId: 0 }),
+    input({ kind: "family" }),
+    input({ position: 2 }),
+  ])
+    assert.equal(parseModelFactInput(value), null);
   assert.ok(parseModelFactInput(input({ state: "candidate", manualNote: "" })));
 });
 
@@ -32,22 +53,44 @@ test("manual model decisions preserve timestamps on a no-op and audit each chang
   try {
     const first = (await saveModelFact(db, 700001, input(), actor, AT))!;
     const changes = sqlite.prepare("SELECT total_changes() AS n").get()?.n;
-    const same = (await saveModelFact(db, 700002, input(), { ...actor, id: first.id, expectedVersion: 1 }, "2026-09-08T00:00:00Z"))!;
+    const same = (await saveModelFact(
+      db,
+      700002,
+      input(),
+      { ...actor, id: first.id, expectedVersion: 1 },
+      "2026-09-08T00:00:00Z",
+    ))!;
     assert.equal(same.version, 1);
     assert.equal(same.verified_at, AT);
     assert.equal(sqlite.prepare("SELECT total_changes() AS n").get()?.n, changes);
-    const next = (await saveModelFact(db, 700001, input({ state: "candidate" }), { ...actor, id: first.id, expectedVersion: 1 }, AT))!;
+    const next = (await saveModelFact(
+      db,
+      700001,
+      input({ state: "candidate" }),
+      { ...actor, id: first.id, expectedVersion: 1 },
+      AT,
+    ))!;
     assert.equal(next.version, 2);
-    await assert.rejects(saveModelFact(db, 700001, input(), { ...actor, id: first.id, expectedVersion: 1 }, AT), /conflict/);
-    const audits = sqlite.prepare("SELECT * FROM knowledge_catalog_model_fact_audits ORDER BY id").all();
+    await assert.rejects(
+      saveModelFact(db, 700001, input(), { ...actor, id: first.id, expectedVersion: 1 }, AT),
+      /conflict/,
+    );
+    const audits = sqlite
+      .prepare("SELECT * FROM knowledge_catalog_model_fact_audits ORDER BY id")
+      .all();
     assert.equal(audits.length, 2);
     assert.equal(audits[1].actor, actor.actor);
     assert.equal(JSON.parse(String(audits[1].before_json)).data.state, "verified");
     assert.equal(JSON.parse(String(audits[1].after_json)).data.state, "candidate");
     sqlite.exec("DELETE FROM product_search_entities");
     assert.ok(await readModelFact(db, first.id));
-    await assert.rejects(saveModelFact(db, 700001, input({ relatedProductId: 799999 }), actor, AT), /FOREIGN KEY/);
-  } finally { sqlite.close(); }
+    await assert.rejects(
+      saveModelFact(db, 700001, input({ relatedProductId: 799999 }), actor, AT),
+      /FOREIGN KEY/,
+    );
+  } finally {
+    sqlite.close();
+  }
 });
 
 test("verified successor chains reject cycles, self-links, forks and duplicates atomically", async () => {
@@ -55,56 +98,135 @@ test("verified successor chains reject cycles, self-links, forks and duplicates 
   try {
     await saveModelFact(db, 700001, input(), actor, AT);
     await saveModelFact(db, 700002, input({ relatedProductId: 700003 }), actor, AT);
-    for (const [from, to] of [[700003, 700001], [700003, 700003], [700001, 700004], [700001, 700002]]) {
+    for (const [from, to] of [
+      [700003, 700001],
+      [700003, 700003],
+      [700001, 700004],
+      [700001, 700002],
+    ]) {
       await assert.rejects(saveModelFact(db, from, input({ relatedProductId: to }), actor, AT));
     }
-    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM knowledge_catalog_model_facts").get()?.n, 2);
-    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM knowledge_catalog_model_fact_audits").get()?.n, 2);
-    await assert.rejects(saveModelFact(db, 700004, input({ relatedProductId: 700006 }), actor, AT), /catalog_model_fact_invalid/);
-    await saveModelFact(db, 700004, input({ relatedProductId: 700006, manufacturerJustification: "ブランド移管をメーカー資料で確認しました。" }), actor, AT);
-  } finally { sqlite.close(); }
+    assert.equal(
+      sqlite.prepare("SELECT COUNT(*) AS n FROM knowledge_catalog_model_facts").get()?.n,
+      2,
+    );
+    assert.equal(
+      sqlite.prepare("SELECT COUNT(*) AS n FROM knowledge_catalog_model_fact_audits").get()?.n,
+      2,
+    );
+    await assert.rejects(
+      saveModelFact(db, 700004, input({ relatedProductId: 700006 }), actor, AT),
+      /catalog_model_fact_invalid/,
+    );
+    await saveModelFact(
+      db,
+      700004,
+      input({
+        relatedProductId: 700006,
+        manufacturerJustification: "ブランド移管をメーカー資料で確認しました。",
+      }),
+      actor,
+      AT,
+    );
+  } finally {
+    sqlite.close();
+  }
 });
 
 test("source loss, changes and ageing require review without a full catalog write", async () => {
   const { db, sqlite } = fixture();
   try {
-    const fact = (await saveModelFact(db, 700001, input({ sourceId: 880001, manualNote: "" }), actor, AT))!;
+    const fact = (await saveModelFact(
+      db,
+      700001,
+      input({ sourceId: 880001, manualNote: "" }),
+      actor,
+      AT,
+    ))!;
     assert.equal((await listModelFacts(db, 700001, AT))[0].review_state, "verified");
     sqlite.exec("UPDATE knowledge_catalog_sources SET status='missing' WHERE id=880001");
     assert.equal((await listModelFacts(db, 700001, AT))[0].review_state, "due");
-    sqlite.exec("UPDATE knowledge_catalog_sources SET status='active',content_hash='changed' WHERE id=880001");
+    sqlite.exec(
+      "UPDATE knowledge_catalog_sources SET status='active',content_hash='changed' WHERE id=880001",
+    );
     assert.equal((await listModelFacts(db, 700001, AT))[0].review_state, "due");
-    await saveModelFact(db, 700001, input({ sourceId: 880001, manualNote: "" }), { ...actor, id: fact.id, expectedVersion: 1, reverify: true }, AT);
-    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM knowledge_catalog_model_fact_audits").get()?.n, 2);
+    await saveModelFact(
+      db,
+      700001,
+      input({ sourceId: 880001, manualNote: "" }),
+      { ...actor, id: fact.id, expectedVersion: 1, reverify: true },
+      AT,
+    );
+    assert.equal(
+      sqlite.prepare("SELECT COUNT(*) AS n FROM knowledge_catalog_model_fact_audits").get()?.n,
+      2,
+    );
     assert.equal((await listModelFacts(db, 700001, AT))[0].review_state, "verified");
     assert.equal((await listModelFacts(db, 700001, "2027-09-07T00:00:00Z"))[0].review_state, "due");
     sqlite.exec("DELETE FROM knowledge_catalog_sources WHERE id=880001");
     const due = (await listModelFacts(db, 700001, AT))[0];
     assert.equal(due.review_state, "due");
     assert.equal(due.source_url, "https://example.test/source");
-  } finally { sqlite.close(); }
+  } finally {
+    sqlite.close();
+  }
 });
 
 test("a failed family decision rolls back its new family and audit together", async () => {
   const { db, sqlite } = fixture();
   try {
-    sqlite.exec("CREATE TRIGGER reject_fact BEFORE INSERT ON knowledge_catalog_model_facts BEGIN SELECT RAISE(ABORT,'injected'); END");
-    await assert.rejects(saveModelFact(db, 700001, input({ kind: "family", relatedProductId: null, familyName: "Rollback family" }), actor, AT), /injected/);
-    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM knowledge_catalog_model_families").get()?.n, 0);
-    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM knowledge_catalog_model_fact_audits").get()?.n, 0);
-  } finally { sqlite.close(); }
+    sqlite.exec(
+      "CREATE TRIGGER reject_fact BEFORE INSERT ON knowledge_catalog_model_facts BEGIN SELECT RAISE(ABORT,'injected'); END",
+    );
+    await assert.rejects(
+      saveModelFact(
+        db,
+        700001,
+        input({ kind: "family", relatedProductId: null, familyName: "Rollback family" }),
+        actor,
+        AT,
+      ),
+      /injected/,
+    );
+    assert.equal(
+      sqlite.prepare("SELECT COUNT(*) AS n FROM knowledge_catalog_model_families").get()?.n,
+      0,
+    );
+    assert.equal(
+      sqlite.prepare("SELECT COUNT(*) AS n FROM knowledge_catalog_model_fact_audits").get()?.n,
+      0,
+    );
+  } finally {
+    sqlite.close();
+  }
 });
 
 test("families keep explicit order and symmetric variants canonicalize endpoint order", async () => {
   const { db, sqlite } = fixture();
   try {
-    const family = input({ kind: "family", relatedProductId: null, familyName: "Reference series", position: 1 });
+    const family = input({
+      kind: "family",
+      relatedProductId: null,
+      familyName: "Reference series",
+      position: 1,
+    });
     await saveModelFact(db, 700001, family, actor, AT);
     await assert.rejects(saveModelFact(db, 700002, family, actor, AT), /UNIQUE/);
     await saveModelFact(db, 700002, { ...family, position: 2 }, actor, AT);
-    const variant = (await saveModelFact(db, 700005, input({ kind: "variant", relatedProductId: 700003 }), actor, AT))!;
+    const variant = (await saveModelFact(
+      db,
+      700005,
+      input({ kind: "variant", relatedProductId: 700003 }),
+      actor,
+      AT,
+    ))!;
     assert.equal(variant.product_id, 700003);
     assert.equal(variant.related_product_id, 700005);
-    await assert.rejects(saveModelFact(db, 700003, input({ kind: "variant", relatedProductId: 700005 }), actor, AT), /UNIQUE/);
-  } finally { sqlite.close(); }
+    await assert.rejects(
+      saveModelFact(db, 700003, input({ kind: "variant", relatedProductId: 700005 }), actor, AT),
+      /UNIQUE/,
+    );
+  } finally {
+    sqlite.close();
+  }
 });
