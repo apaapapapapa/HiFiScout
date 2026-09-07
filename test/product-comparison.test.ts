@@ -88,7 +88,10 @@ test("comparison rejects a catalog ID inconsistent with its wire key", async () 
     return Response.json({ product: { ...product(key), catalog_product_id: 99 }, offers: [] });
   });
   const columns = await loadComparisonProducts(api, ["c-1", "c-2"], new AbortController().signal);
-  assert.deepEqual(columns.map((column) => column.product), [null, null]);
+  assert.deepEqual(
+    columns.map((column) => column.product),
+    [null, null],
+  );
 });
 
 test("cancelled comparison requests do not become unavailable-product results", async () => {
