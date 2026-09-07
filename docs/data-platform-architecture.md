@@ -761,3 +761,9 @@ Unit/regression tests cover:
 Migrations are forward-only and run before replacement Worker code. Use additive schema changes
 for mixed-version deployment, then retire obsolete structures only after callers have moved. Review
 the currently deployed SHA and schema compatibility before a rollback.
+
+### 機種比較用の出典付き仕様
+
+確認済みCatalogの2〜4機種比較は既存の詳細APIを最大4回使用する。寸法（本体1台分、mm）・重量（kg）・入力／出力の系統数・最大12項目の主要仕様を、Access管理画面から出典URLとともに登録する。出品ごとの電圧・搭載オプションを機種共通仕様へ転記しない。
+
+`catalog_product_specifications` はCatalog IDを主キーとする任意の記録で、既存詳細SELECTへ主キーLEFT JOINする。検索一覧の読み取りは増えず、クロールや一括推測のバックフィルは行わない。NULLは未記載、空の端子配列は確認済みの「なし」、系統数NULLは未確認。同一内容の保存は更新日時も変更しない。モデル共通仕様は機種同定とは別の管理者確認で、登録・更新日時と参照資料を比較表に表示する。全情報CSVに含める。

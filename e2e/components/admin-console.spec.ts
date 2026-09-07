@@ -816,3 +816,38 @@ test("shop filters use names and manual merge requires a full identity preview",
   await click;
   await expect(dialog).toBeVisible();
 });
+
+test("model specifications save explicit units and preserve unrecorded inputs", async ({
+  page,
+  mount,
+}) => {
+  await mockAdminApi(page);
+  let saved: Record<string, unknown> | null = null;
+  await page.route("**/api/admin/knowledge-catalog/products/11/specifications", async (route) => {
+    if (route.request().method() === "PATCH")
+      saved = { ...route.request().postDataJSON(), updatedAt: "2026-09-07T00:00:00Z" };
+    await route.fulfill({ json: { productId: 11, specifications: saved } });
+  });
+  await mount("frontend/admin-console/Default");
+  await page.getByRole("button", { name: "LUXMAN D-1000 の仕様を編集", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "LUXMAN D-1000 の比較用仕様" });
+  await dialog.getByLabel("幅 (mm)", { exact: true }).fill("440");
+  await dialog.getByLabel("重量 (kg)", { exact: true }).fill("12.5");
+  await dialog.getByLabel("出典URL", { exact: true }).fill("https://example.test/manual");
+  await expect(dialog.getByRole("region", { name: "保存前の変更内容" })).toContainText("440");
+  await dialog.getByRole("button", { name: "仕様を保存", exact: true }).click();
+  await expect(dialog.getByRole("status")).toHaveText("比較用の仕様を保存しました。");
+  expect(saved).toMatchObject({
+    widthMm: 440,
+    heightMm: null,
+    weightKg: 12.5,
+    inputs: null,
+    outputs: null,
+  });
+  await expect(dialog.getByRole("button", { name: "仕様を保存", exact: true })).toBeDisabled();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({
+    path: "test-results/admin-model-specifications-mobile.png",
+    fullPage: true,
+  });
+});

@@ -105,6 +105,11 @@ export interface CatalogAdminRpc {
   listDuplicates(options: CatalogAdminDuplicateListOptions): Promise<unknown>;
   createProduct(input: CatalogAdminCreateInput): Promise<unknown>;
   verifyCandidate(candidateId: number, input: CatalogAdminCreateInput): Promise<unknown>;
+  getSpecifications(productId: number): Promise<unknown>;
+  updateSpecifications(
+    productId: number,
+    input: import("../catalog/types.js").CatalogSpecifications,
+  ): Promise<unknown>;
   updateProduct(productId: number, input: CatalogAdminUpdateInput): Promise<unknown>;
   mergeProducts(targetProductId: number, sourceProductId: number): Promise<unknown>;
   startKnowledgeCatalogExport(format?: DataExportFormat): Promise<KnowledgeCatalogExportJob>;

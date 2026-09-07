@@ -70,6 +70,7 @@ export function isCompleteExportTable(name: string): boolean {
     !name.endsWith("_export_jobs") &&
     (/^(?:products$|product_|knowledge_catalog_|data_quality_remediation_)/u.test(name) ||
       [
+        "catalog_product_specifications",
         "price_history",
         "evidence_archive",
         "listing_projection_pending",

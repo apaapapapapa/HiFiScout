@@ -1,3 +1,4 @@
+import { AdminCatalogSpecifications } from "./admin-catalog-specifications.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { AdminCsvImport } from "./admin-csv-import.js";
@@ -415,6 +416,7 @@ export function CatalogAdmin() {
   const [duplicateTargets, setDuplicateTargets] = useState<Record<string, number>>({});
   const [mergingGroupKey, setMergingGroupKey] = useState("");
 
+  const [specificationProduct, setSpecificationProduct] = useState<CatalogProduct | null>(null);
   const [editing, setEditing] = useState<CatalogProduct | null>(null);
   const [relationsProductId, setRelationsProductId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
@@ -1150,6 +1152,14 @@ export function CatalogAdmin() {
                         >
                           編集
                         </button>
+                        <button
+                          type="button"
+                          className="secondary-button compact"
+                          aria-label={`${product.canonicalName} の仕様を編集`}
+                          onClick={() => setSpecificationProduct(product)}
+                        >
+                          仕様
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -1644,6 +1654,14 @@ export function CatalogAdmin() {
             </div>
           </details>
         </>
+      ) : null}
+
+      {specificationProduct ? (
+        <AdminCatalogSpecifications
+          productId={specificationProduct.id}
+          name={specificationProduct.canonicalName}
+          onClose={() => setSpecificationProduct(null)}
+        />
       ) : null}
 
       <dialog

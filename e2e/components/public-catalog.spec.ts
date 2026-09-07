@@ -252,6 +252,20 @@ test("shared comparison loads canonical products, retains failed columns, and re
           key,
           catalog_product_id: Number(key.slice(2)),
           model: `Model ${key}`,
+          specifications:
+            key === "c-1"
+              ? {
+                  widthMm: 440,
+                  heightMm: null,
+                  depthMm: 400,
+                  weightKg: 12.5,
+                  inputs: [{ connector: "RCA ライン", count: 3 }],
+                  outputs: [],
+                  main: [{ name: "定格出力", value: "100 W / 8 Ω" }],
+                  sourceUrl: "https://example.test/manual",
+                  updatedAt: "2026-09-07T00:00:00Z",
+                }
+              : null,
           lowest_price_yen: null,
           highest_price_yen: null,
         }),
@@ -279,6 +293,24 @@ test("shared comparison loads canonical products, retains failed columns, and re
     "/?compare=c-1%2Cc-3",
   );
   await expect(page).toHaveURL(/compare=c-1%2Cc-3/);
+  await expect(
+    comparison.getByRole("row", { name: "幅 440 mm 記載なし", exact: true }),
+  ).toBeVisible();
+  await expect(
+    comparison.getByRole("row", { name: "入力端子 RCA ライン（3系統） 記載なし", exact: true }),
+  ).toBeVisible();
+  await expect(
+    comparison.getByRole("row", { name: "仕様: 定格出力 100 W / 8 Ω 記載なし", exact: true }),
+  ).toBeVisible();
+  await expect(comparison.getByRole("link", { name: "参照資料" })).toHaveAttribute(
+    "href",
+    "https://example.test/manual",
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(
+    comparison.getByRole("region", { name: "製品の比較表（横にスクロールできます）" }),
+  ).toBeVisible();
+  await page.screenshot({ path: "test-results/model-specifications-mobile.png", fullPage: true });
   await comparison.getByRole("button", { name: "c-3を比較から外す" }).click();
   await expect(page.getByRole("status").filter({ hasText: "もう1件" })).toBeVisible();
   await page.evaluate(() => history.back());

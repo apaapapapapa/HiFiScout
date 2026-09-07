@@ -1,3 +1,4 @@
+import { decodeCatalogSpecifications } from "./catalog-specification-repository.js";
 /**
  * The one production implementation of product search.
  *
@@ -610,12 +611,19 @@ export async function productSearchDetail(
 ): Promise<ProductSearchDetailResponse | null> {
   if (!parseProductSearchKey(key)) return null;
   const entity = await db
-    .prepare(`SELECT ${entityColumns("e")} FROM product_search_entities e WHERE e.entity_key = ?
+    .prepare(`SELECT ${entityColumns("e")}, s.specification_json, s.updated_at AS specifications_updated_at
+      FROM product_search_entities e LEFT JOIN catalog_product_specifications s
+        ON s.catalog_product_id = e.catalog_product_id WHERE e.entity_key = ?
       AND (e.entity_kind = 'unresolved_listing' OR EXISTS (
         SELECT 1 FROM knowledge_catalog_products kp
         WHERE kp.id = e.catalog_product_id AND kp.verification_status = 'verified'))`)
     .bind(key)
-    .first<ProductSearchEntityRow>();
+    .first<
+      ProductSearchEntityRow & {
+        specification_json: string | null;
+        specifications_updated_at: string | null;
+      }
+    >();
   if (!entity) return null;
 
   const offers = await db
@@ -638,6 +646,10 @@ export async function productSearchDetail(
     representativeOffer: offerRows[0] ?? null,
     representativeOfferFacts: facts.get(Number(offerRows[0]?.listing_product_id)) ?? [],
   });
+  product.specifications = decodeCatalogSpecifications(
+    entity.specification_json,
+    entity.specifications_updated_at,
+  );
   return {
     product,
     offers: offerRows.map((row) => ({

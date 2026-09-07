@@ -71,6 +71,8 @@ export function createMockAdminRpc() {
       const hasMore = matching.length > limit;
       return { items, hasMore, nextAfterId: hasMore ? items.at(-1)!.id : null };
     },
+    getSpecifications: unsupported("getSpecifications"),
+    updateSpecifications: unsupported("updateSpecifications"),
     getOfferFacts: unsupported("getOfferFacts"),
     updateOfferFacts: unsupported("updateOfferFacts"),
     async listProducts() {

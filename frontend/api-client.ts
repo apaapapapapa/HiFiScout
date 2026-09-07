@@ -1,3 +1,4 @@
+import { isCatalogSpecificationRecord } from "../src/api/catalog-specification-contracts.js";
 /**
  * `/api` access plus the guards that turn an untrusted JSON response into a typed payload.
  *
@@ -259,6 +260,12 @@ export function isProductSearchItem(value: unknown): value is ProductSearchItem 
   ] as const;
   if (!stringFields.every((field) => typeof value[field] === "string")) return false;
   if (!value.key) return false;
+  if (
+    value.specifications !== undefined &&
+    value.specifications !== null &&
+    !isCatalogSpecificationRecord(value.specifications)
+  )
+    return false;
   if (value.presentation_colors !== undefined && !isStringArray(value.presentation_colors)) {
     return false;
   }

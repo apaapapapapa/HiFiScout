@@ -1,3 +1,8 @@
+import {
+  readCatalogSpecifications,
+  updateCatalogSpecifications,
+} from "./db/catalog-specification-repository.js";
+import type { CatalogSpecifications } from "./catalog/types.js";
 import { WorkerEntrypoint } from "cloudflare:workers";
 
 import worker from "./index.js";
@@ -109,6 +114,14 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
 
   async verifyCandidate(candidateId: number, input: CatalogAdminCreateInput) {
     return verifyKnowledgeCatalogAdminCandidate(this.env.DB, candidateId, input);
+  }
+
+  async getSpecifications(productId: number) {
+    return readCatalogSpecifications(this.env.DB, productId);
+  }
+
+  async updateSpecifications(productId: number, input: CatalogSpecifications) {
+    return updateCatalogSpecifications(this.env.DB, productId, input);
   }
 
   async updateProduct(productId: number, input: CatalogAdminUpdateInput) {

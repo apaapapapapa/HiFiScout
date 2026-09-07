@@ -171,6 +171,8 @@ export interface ProductOffer {
  * produced it; `offer_count` is therefore a count of *matching* offers, not of all of them.
  */
 export interface ProductSearchItem {
+  /** Source-backed model specifications, loaded on detail requests only. */
+  specifications?: import("../catalog/types.js").CatalogSpecificationRecord | null;
   key: string;
   identity_kind: ProductSearchIdentityKind;
   catalog_product_id: number | null;

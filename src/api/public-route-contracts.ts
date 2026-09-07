@@ -117,6 +117,61 @@ export const PUBLIC_API_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
       "last_computed_at",
     ],
   },
+  CatalogSpecifications: {
+    type: ["object", "null"],
+    additionalProperties: false,
+    properties: {
+      widthMm: { type: ["number", "null"], exclusiveMinimum: 0, maximum: 100000 },
+      heightMm: { type: ["number", "null"], exclusiveMinimum: 0, maximum: 100000 },
+      depthMm: { type: ["number", "null"], exclusiveMinimum: 0, maximum: 100000 },
+      weightKg: { type: ["number", "null"], exclusiveMinimum: 0, maximum: 100000 },
+      inputs: {
+        type: ["array", "null"],
+        maxItems: 16,
+        items: { $ref: "#/components/schemas/SpecificationPort" },
+      },
+      outputs: {
+        type: ["array", "null"],
+        maxItems: 16,
+        items: { $ref: "#/components/schemas/SpecificationPort" },
+      },
+      main: {
+        type: "array",
+        maxItems: 12,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            name: { type: "string", minLength: 1, maxLength: 60 },
+            value: { type: "string", minLength: 1, maxLength: 200 },
+          },
+          required: ["name", "value"],
+        },
+      },
+      sourceUrl: { type: "string", format: "uri", maxLength: 2048 },
+      updatedAt: { type: "string", format: "date-time" },
+    },
+    required: [
+      "widthMm",
+      "heightMm",
+      "depthMm",
+      "weightKg",
+      "inputs",
+      "outputs",
+      "main",
+      "sourceUrl",
+      "updatedAt",
+    ],
+  },
+  SpecificationPort: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      connector: { type: "string", minLength: 1, maxLength: 60 },
+      count: { type: ["integer", "null"], minimum: 1, maximum: 128 },
+    },
+    required: ["connector", "count"],
+  },
   ProductSearchItem: {
     type: "object",
     additionalProperties: false,
@@ -150,6 +205,7 @@ export const PUBLIC_API_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
         ...PRODUCT_OFFER_SCHEMA,
         type: ["object", "null"],
       },
+      specifications: { $ref: "#/components/schemas/CatalogSpecifications" },
       price_index: { $ref: "#/components/schemas/ProductPriceIndexSummary" },
     },
     required: [
