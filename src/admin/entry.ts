@@ -3,6 +3,7 @@ import { isJsonRequest, readJsonBody, REQUEST_BODY_TOO_LARGE } from "../http/req
 import catalogAdmin from "./index.js";
 import { requireCloudflareAccess } from "./access.js";
 import type { CatalogAdminRpc } from "./contracts.js";
+import { parseAdminWorkCountCursor } from "../api/admin-work-counts-contract.js";
 import { parseOfferFactChanges } from "../catalog/offer-fact-decisions.js";
 import type { OfferFactChanges } from "../catalog/offer-fact-decisions.js";
 import {
@@ -43,6 +44,7 @@ interface AdminEnv {
 }
 
 const LISTING_COLLECTION_PATH = "/api/admin/listings";
+const WORK_COUNTS_PATH = "/api/admin/work-counts";
 const LISTING_PATH = /^\/api\/admin\/listings\/(\d{1,15})$/u;
 const OFFER_FACT_PATH = /^\/api\/admin\/listings\/(\d{1,15})\/offer-facts$/u;
 const OFFER_FACT_REPLAY_PATH = "/api/admin/offer-facts/replay";
@@ -81,6 +83,7 @@ function isAdminEntryRoute(pathname: string): boolean {
     CONSOLE_ASSET_PATHS.has(pathname) ||
     RETIRED_LEGACY_PATHS.has(pathname) ||
     pathname === LISTING_COLLECTION_PATH ||
+    pathname === WORK_COUNTS_PATH ||
     LISTING_PATH.test(pathname) ||
     OFFER_FACT_PATH.test(pathname) ||
     pathname === OFFER_FACT_REPLAY_PATH ||
@@ -119,6 +122,12 @@ export async function handleAuthenticatedAdminEntryRequest(
   env: AdminEnv,
 ): Promise<Response> {
   const url = new URL(request.url);
+
+  if (url.pathname === WORK_COUNTS_PATH && request.method === "GET") {
+    const cursor = parseAdminWorkCountCursor(url);
+    if (!cursor) return json({ error: "invalid_work_count_cursor" }, { status: 400 });
+    return json(await env.CATALOG_ADMIN.getWorkCounts(cursor));
+  }
 
   if (url.pathname === OFFER_FACT_REPLAY_PATH && request.method === "GET") {
     return json(await env.CATALOG_ADMIN.getOfferFactReplay());

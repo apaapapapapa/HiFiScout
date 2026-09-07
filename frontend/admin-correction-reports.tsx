@@ -75,7 +75,7 @@ function targetLabel(report: CorrectionReport): string {
   return `${product || report.productKey} / ${listing}`;
 }
 
-export function CorrectionReportsAdmin() {
+export function CorrectionReportsAdmin({ onDataChanged }: { onDataChanged?: () => void } = {}) {
   const [status, setStatus] = useState<ProductCorrectionReportStatus | "">("open");
   const [reason, setReason] = useState<ProductCorrectionReportReason | "">("");
   const [shopKey, setShopKey] = useState("");
@@ -161,6 +161,7 @@ export function CorrectionReportsAdmin() {
         body: JSON.stringify({ action, note }),
       });
       setMessage(action === "review_started" ? "確認中にしました。" : "報告を解決しました。");
+      onDataChanged?.();
       await load();
     } catch (error) {
       setMessage(`更新に失敗しました: ${genericErrorText(error)}`);

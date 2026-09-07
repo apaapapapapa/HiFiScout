@@ -17,6 +17,9 @@ function adminEnv(seenPaths: string[]) {
       },
     },
     CATALOG_ADMIN: {
+      async getWorkCounts(): Promise<unknown> {
+        return { reports: 99, candidates: 100, duplicateIdentities: [], nextDuplicateCursor: null };
+      },
       async listListings(): Promise<unknown> {
         return { items: [], nextAfterId: null, hasMore: false };
       },
@@ -44,6 +47,28 @@ test("admin root serves the single React console entrypoint", async () => {
   assert.equal(response.status, 200);
   assert.deepEqual(seenPaths, ["/index.html"]);
   assertAdminSecurityHeaders(response);
+});
+
+test("authenticated count API returns no-store counts and rejects invalid cursors", async () => {
+  const env = adminEnv([]);
+  const response = await handleAuthenticatedAdminEntryRequest(
+    new Request("https://admin.example.test/api/admin/work-counts"),
+    env,
+  );
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assertAdminSecurityHeaders(response);
+  assert.deepEqual(await response.json(), {
+    reports: 99,
+    candidates: 100,
+    duplicateIdentities: [],
+    nextDuplicateCursor: null,
+  });
+  const invalid = await handleAuthenticatedAdminEntryRequest(
+    new Request("https://admin.example.test/api/admin/work-counts?afterId=-1"),
+    env,
+  );
+  assert.equal(invalid.status, 400);
 });
 
 test("admin brand image is served through the protected static asset binding", async () => {

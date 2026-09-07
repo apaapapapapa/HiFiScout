@@ -6,9 +6,15 @@ import { CorrectionReportsAdmin } from "./admin-correction-reports.js";
 import { ListingAdmin } from "./admin-listings.js";
 import { ADMIN_VIEWS, adminLocation, adminViewUrl, isCatalogView } from "./admin-navigation.js";
 import type { AdminView } from "./admin-navigation.js";
+import { adminWorkCountLabel, useAdminWorkCounts } from "./admin-work-counts.js";
 
 export function AdminConsole() {
   const [location, setLocation] = useState(() => adminLocation(window.location));
+  const { counts, refresh: refreshWorkCounts } = useAdminWorkCounts(location.view);
+  const workCount = (view: AdminView) =>
+    view === "reports" || view === "duplicates" || view === "candidates"
+      ? adminWorkCountLabel(counts[view])
+      : null;
   const [visited, setVisited] = useState<Set<AdminView>>(() => new Set([location.view]));
   const title = useRef<HTMLHeadingElement>(null);
   const [dataRevision, setDataRevision] = useState(0);
@@ -90,10 +96,22 @@ export function AdminConsole() {
                   id={`admin-nav-${view.id}`}
                   href={adminViewUrl(window.location.href, view.id)}
                   aria-current={view.id === location.view ? "page" : undefined}
+                  aria-label={view.label}
+                  aria-description={
+                    workCount(view.id) !== null ? `作業件数 ${workCount(view.id)}` : undefined
+                  }
                   onClick={(event) => navigate(event, view.id)}
                 >
                   {view.label}
-                  <span aria-hidden="true">›</span>
+                  {workCount(view.id) !== null ? (
+                    <span className="admin-work-count" aria-hidden="true">
+                      {workCount(view.id)}
+                    </span>
+                  ) : (
+                    <span className="admin-nav-arrow" aria-hidden="true">
+                      ›
+                    </span>
+                  )}
                 </a>
               ))}
             </div>
@@ -110,6 +128,7 @@ export function AdminConsole() {
                 {ADMIN_VIEWS.filter((view) => view.group === group).map((view) => (
                   <option key={view.id} value={view.id}>
                     {view.label}
+                    {workCount(view.id) !== null ? `　${workCount(view.id)}` : ""}
                   </option>
                 ))}
               </optgroup>
@@ -138,7 +157,11 @@ export function AdminConsole() {
         <div hidden={catalogView === null}>
           {[...visited].some(isCatalogView) ? (
             <CatalogAdmin
-              onDataChanged={() => setDataRevision((value) => value + 1)}
+              onDataChanged={() => {
+                setDataRevision((value) => value + 1);
+                refreshWorkCounts();
+              }}
+              onWorkCountsChanged={refreshWorkCounts}
               view={catalogView ?? "catalog"}
               active={catalogView !== null}
               search={catalogView ? location.search : ""}
@@ -156,7 +179,9 @@ export function AdminConsole() {
           ) : null}
         </div>
         <div id="reports-pane" hidden={location.view !== "reports"}>
-          {visited.has("reports") ? <CorrectionReportsAdmin /> : null}
+          {visited.has("reports") ? (
+            <CorrectionReportsAdmin onDataChanged={refreshWorkCounts} />
+          ) : null}
         </div>
       </main>
     </div>
