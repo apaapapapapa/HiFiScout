@@ -141,6 +141,38 @@ test("initial loading does not report zero matches and a completed empty search 
   await expect(page.locator("#products")).toContainText("一致する商品はありません");
 });
 
+test("equipment shortcuts issue one combined search and retain budget and query", async ({
+  page,
+  mount,
+}) => {
+  const seen = await mockCatalog(page);
+  await mount("frontend/public-app/Default");
+  await expect(page.locator(".card")).toHaveCount(1);
+  await page.locator("#q").fill("Reference");
+  await expect.poll(() => seen.searches.at(-1)?.searchParams.get("q")).toBe("Reference");
+  await page.locator("#maxPrice").fill("100000");
+  await expect.poll(() => seen.searches.at(-1)?.searchParams.get("maxPrice")).toBe("100000");
+  await page.locator("#category").selectOption("ANA.TAPE");
+  await page.getByText("機能・仕様で詳しく絞り込む", { exact: true }).click();
+  await page.getByLabel("DAC搭載", { exact: true }).selectOption("dac");
+  await page.locator("#facet-supported_media-cassette").check();
+  await expect
+    .poll(() => seen.searches.at(-1)?.searchParams.getAll("facet"))
+    .toEqual(["supported_media:cassette"]);
+  const before = seen.searches.length;
+  await page.getByRole("button", { name: "ブックシェルフ", exact: true }).click();
+  await expect.poll(() => seen.searches.length).toBe(before + 1);
+  const params = seen.searches.at(-1)!.searchParams;
+  expect(params.get("category")).toBe("SPK.LOUDSPEAKER");
+  expect(params.getAll("facet")).toEqual(["form_factor:bookshelf"]);
+  expect(params.getAll("feature")).toEqual([]);
+  expect(params.get("q")).toBe("Reference");
+  expect(params.get("maxPrice")).toBe("100000");
+  await expect(page.getByRole("button", { name: /形状: ブックシェルフを解除/ })).toBeVisible();
+  await page.locator("#favoritesOnly").check();
+  await expect(page.getByRole("button", { name: "MCカートリッジ", exact: true })).toBeDisabled();
+});
+
 test("capability controls preserve absent and unknown states through requests and active chips", async ({
   page,
   mount,
