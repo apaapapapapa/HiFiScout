@@ -720,6 +720,18 @@ The Cloudflare API token used by deployment therefore needs the permission requi
 
 ## Regression coverage
 
+### Device-local watch planning
+
+Favorites can carry a target asking price and a private consideration note in a separate versioned
+browser store. The store accepts at most 200 product/listing keys, whole-yen targets in the public
+price range, and 1,000-character notes. Notes never enter search URLs or server requests. Planning
+data remains available if an item is removed and later added to favorites; clear both fields to
+remove its planning entry. Legacy numeric listing favorites are not reinterpreted as server keys.
+Same-value saves preserve timestamps. The editor protects dirty drafts and detects changes from
+another tab before saving; a storage failure preserves the draft. A target-price marker applies
+only when the displayed representative offer has an observed in-stock price within the target.
+The existing snapshot observation caveat continues to apply; this feature performs no monitoring.
+
 ### Product comparison
 
 The public catalog can select two to four verified catalog products for a shareable comparison
