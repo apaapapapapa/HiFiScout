@@ -10,6 +10,11 @@ import { enrichProductCategories } from "../src/crawler/category-enricher.js";
 import { detailFetchOptions, emptyCatalogDb } from "./helpers/fixtures.js";
 import type { ExistingCategoryEnrichmentState } from "../src/db/types.js";
 import { discoverLinkedPages } from "../src/crawler/html-listing.js";
+import { bootstrapManufacturers } from "../src/catalog/manufacturers.js";
+import { createManufacturerResolver } from "../src/catalog/manufacturer-resolver.js";
+import { listManufacturerAliasEvidence } from "../src/db/manufacturer-repository.js";
+import { resolveProductCatalogFields } from "../src/db/model-repository.js";
+import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 
 // Minimal factual markup, not copies of seller descriptions. A visible control proves each
 // hidden-markup assertion exercises the shop's parser instead of passing on an invalid fixture.
@@ -142,6 +147,31 @@ test("Fujiya fallback retains Japanese model names and bracketed SKUs", () => {
       model: "FS-700S3/B",
     },
   );
+});
+
+test("bootstrap manufacturer aliases remain compatible with the migrated operational identities", async () => {
+  const { db } = migratedSqlite();
+  const aliases = await listManufacturerAliasEvidence(db);
+  const resolve = createManufacturerResolver(aliases);
+  for (const manufacturer of bootstrapManufacturers()) {
+    for (const rawManufacturer of [manufacturer.name, ...manufacturer.aliases]) {
+      const result = resolve({ rawManufacturer });
+      assert.equal(result.status, "resolved", rawManufacturer);
+      assert.equal(result.canonicalManufacturerId, manufacturer.id, rawManufacturer);
+    }
+  }
+  const plugin = getShopPlugin("fujiya-avic")!;
+  const [parsed] = plugin.parse(
+    '<a href="/shop/g/g240001299999/">Pioneer DJ パイオニアディージェー DDJ-FLX4</a><p>39,800円</p>',
+  );
+  assert.equal(parsed.rawManufacturer, "Pioneer DJ");
+  const [resolved] = await resolveProductCatalogFields(db, [parsed], {
+    shopKey: plugin.key,
+    aliases,
+  });
+  assert.equal(resolved.manufacturerId, "pioneer");
+  assert.equal(resolved.manufacturerResolutionStatus, "resolved");
+  assert.equal(resolved.model, "DDJ-FLX4");
 });
 
 test("Fujiya detail classification cannot start in site navigation", () => {
