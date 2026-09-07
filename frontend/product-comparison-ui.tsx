@@ -1,3 +1,4 @@
+import type { SpecificationPort } from "../src/api/catalog-specification-contracts.js";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import type { ApiClient } from "./api-client.js";
@@ -26,11 +27,49 @@ function activity(product: DisplayProduct): string {
     : "—";
 }
 
+function ports(items: SpecificationPort[] | null | undefined): string {
+  if (items == null) return "記載なし";
+  return items.length
+    ? items
+        .map((p) => `${p.connector}（${p.count == null ? "系統数未確認" : `${p.count}系統`}）`)
+        .join(" / ")
+    : "なし（確認済み）";
+}
+
 const rows: { label: string; cell: (product: DisplayProduct) => ReactNode }[] = [
   { label: "メーカー", cell: (p) => p.manufacturer || "—" },
   { label: "カテゴリ", cell: (p) => p.direct_categories?.join(" / ") || p.category || "—" },
   { label: "出品されている仕上げ", cell: (p) => p.presentation_colors?.join(" / ") || "—" },
   { label: "掲載中の価格帯", cell: priceRange },
+  ...(
+    [
+      { key: "widthMm", label: "幅", unit: "mm" },
+      { key: "heightMm", label: "高さ", unit: "mm" },
+      { key: "depthMm", label: "奥行", unit: "mm" },
+      { key: "weightKg", label: "重量", unit: "kg" },
+    ] as const
+  ).map(({ key, label, unit }) => ({
+    label,
+    cell: (p: DisplayProduct) =>
+      p.specifications?.[key] == null ? "記載なし" : `${p.specifications[key]} ${unit}`,
+  })),
+  { label: "入力端子", cell: (p) => ports(p.specifications?.inputs) },
+  { label: "出力端子", cell: (p) => ports(p.specifications?.outputs) },
+  {
+    label: "仕様の出典",
+    cell: (p) =>
+      p.specifications ? (
+        <>
+          <a href={p.specifications.sourceUrl} target="_blank" rel="noreferrer">
+            参照資料
+          </a>
+          <br />
+          登録・更新: {new Date(p.specifications.updatedAt).toLocaleDateString("ja-JP")}
+        </>
+      ) : (
+        "記載なし"
+      ),
+  },
   { label: "在庫ありの出品", cell: (p) => `${p.in_stock_offer_count}件` },
   { label: "掲載中の出品・店舗", cell: (p) => `${p.offer_count}件 / ${p.shop_count}店舗` },
   { label: "最新の動き", cell: activity },
@@ -81,6 +120,19 @@ export function ProductComparison({
   if (!keys.length) return null;
   const columns = result?.selection === selection ? result.columns : null;
   const path = comparisonPath(keys);
+  const specificationNames = [
+    ...new Set(
+      (columns ?? []).flatMap((c) => c.product?.specifications?.main.map((s) => s.name) ?? []),
+    ),
+  ];
+  const comparisonRows = [
+    ...rows,
+    ...specificationNames.map((name) => ({
+      label: `仕様: ${name}`,
+      cell: (p: DisplayProduct) =>
+        p.specifications?.main.find((s) => s.name === name)?.value ?? "記載なし",
+    })),
+  ];
   return (
     <section className="product-comparison" aria-labelledby="product-comparison-title">
       <div className="comparison-toolbar">
@@ -124,7 +176,9 @@ export function ProductComparison({
             aria-label="製品の比較表（横にスクロールできます）"
           >
             <table className="comparison-table">
-              <caption>価格は出品価格です。記載のない情報は「—」で表示します。</caption>
+              <caption>
+                価格は出品価格です。寸法・重量は本体1台分の登録仕様です。未登録の仕様は「記載なし」、出品価格等の欠損は「—」で表示します。
+              </caption>
               <thead>
                 <tr>
                   <th scope="col">比較項目</th>
@@ -137,7 +191,7 @@ export function ProductComparison({
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {comparisonRows.map((row) => (
                   <tr key={row.label}>
                     <th scope="row">{row.label}</th>
                     {columns.map(({ key, product }) => (

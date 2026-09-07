@@ -180,3 +180,43 @@ test("admin metadata exposes shop names and keys for the shop selector", async (
   assert.ok(meta.shops.some((shop) => shop.key === "hifido" && shop.name === "ハイファイ堂"));
   assert.equal(new Set(meta.shops.map((shop) => shop.key)).size, meta.shops.length);
 });
+
+test("specification mutations validate source, units and same-origin before service RPC", async () => {
+  const env = adminEnv([]);
+  const writes: unknown[] = [];
+  env.CATALOG_ADMIN.getSpecifications = async () => ({ productId: 11, specifications: null });
+  env.CATALOG_ADMIN.updateSpecifications = async (id, input) => {
+    writes.push({ id, input });
+    return { productId: id, specifications: input };
+  };
+  const url = "https://admin.example.test/api/admin/knowledge-catalog/products/11/specifications";
+  const input = {
+    widthMm: 440,
+    heightMm: null,
+    depthMm: null,
+    weightKg: null,
+    inputs: null,
+    outputs: [],
+    main: [],
+    sourceUrl: "https://example.test/manual",
+  };
+  const read = await handleAuthenticatedCatalogAdminRequest(new Request(url), env);
+  assert.equal(read.status, 200);
+  const patch = (body: unknown, origin = "https://admin.example.test") =>
+    new Request(url, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", origin },
+      body: JSON.stringify(body),
+    });
+  assert.equal(
+    (await handleAuthenticatedCatalogAdminRequest(patch(input, "https://other.test"), env)).status,
+    403,
+  );
+  assert.equal(
+    (await handleAuthenticatedCatalogAdminRequest(patch({ ...input, widthMm: -1 }), env)).status,
+    400,
+  );
+  assert.equal(writes.length, 0);
+  assert.equal((await handleAuthenticatedCatalogAdminRequest(patch(input), env)).status, 200);
+  assert.deepEqual(writes, [{ id: 11, input }]);
+});

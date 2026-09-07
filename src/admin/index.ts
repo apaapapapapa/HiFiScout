@@ -1,3 +1,4 @@
+import { parseCatalogSpecifications } from "../api/catalog-specification-contracts.js";
 import { json, isSameOriginBrowserMutation, withCatalogAdminSecurityHeaders } from "./http.js";
 import { isJsonRequest, readJsonBody, REQUEST_BODY_TOO_LARGE } from "../http/request.js";
 import { SHOP_DEFINITIONS } from "../config.js";
@@ -144,7 +145,10 @@ function manualOperationError(error: unknown): Response {
   ) {
     return json({ error: message }, { status: 400 });
   }
-  if (message === "catalog_admin_merge_manufacturer_mismatch") {
+  if (
+    message === "catalog_admin_merge_manufacturer_mismatch" ||
+    message === "catalog_admin_merge_specifications_conflict"
+  ) {
     return json({ error: message }, { status: 409 });
   }
   if (message.includes("catalog_admin_model_facts_review_required"))
@@ -404,6 +408,24 @@ export async function handleAuthenticatedCatalogAdminRequest(
     } catch (error) {
       return manualOperationError(error);
     }
+  }
+
+  const specificationMatch = url.pathname.match(
+    /^\/api\/admin\/knowledge-catalog\/products\/([0-9]+)\/specifications$/u,
+  );
+  if (specificationMatch && (request.method === "GET" || request.method === "PATCH")) {
+    const id = Number(specificationMatch[1]);
+    if (!Number.isSafeInteger(id) || id <= 0) return json({ error: "invalid_id" }, { status: 400 });
+    if (request.method === "GET") {
+      const result = await env.CATALOG_ADMIN.getSpecifications(id);
+      return result ? json(result) : json({ error: "not_found" }, { status: 404 });
+    }
+    const body = await mutationBody(request, url);
+    if (isResponse(body)) return body;
+    const input = parseCatalogSpecifications(body);
+    if (!input) return json({ error: "invalid_catalog_specifications" }, { status: 400 });
+    const result = await env.CATALOG_ADMIN.updateSpecifications(id, input);
+    return result ? json(result) : json({ error: "not_found" }, { status: 404 });
   }
 
   const productMatch = url.pathname.match(PRODUCT_PATH);

@@ -1600,3 +1600,26 @@ export interface ProductModelRelations {
     members: (RelatedCatalogModel & { position: number | null })[];
   }[];
 }
+
+/** Bounded, source-backed model specifications shared by HTTP and admin forms. */
+export interface SpecificationPort {
+  connector: string;
+  /** Number of signal systems, not individual RCA sockets. Null means unrecorded. */
+  count: number | null;
+}
+
+export interface CatalogSpecifications {
+  widthMm: number | null;
+  heightMm: number | null;
+  depthMm: number | null;
+  weightKg: number | null;
+  /** Null means unrecorded; an empty array explicitly means no ports. */
+  inputs: SpecificationPort[] | null;
+  outputs: SpecificationPort[] | null;
+  main: { name: string; value: string }[];
+  sourceUrl: string;
+}
+
+export interface CatalogSpecificationRecord extends CatalogSpecifications {
+  updatedAt: string;
+}

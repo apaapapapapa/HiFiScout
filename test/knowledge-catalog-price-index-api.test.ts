@@ -132,7 +132,7 @@ test("product search exposes price_index only for resolved catalog products with
 
 test("product detail exposes the same optional price-index contract", async () => {
   const db = captureDatabase((statement) => {
-    if (/FROM product_search_entities e WHERE e\.entity_key/.test(statement.sql)) {
+    if (/FROM product_search_entities e/.test(statement.sql)) {
       return [entityRow({ id: 12, entity_key: "c-12", catalog_product_id: 12 })];
     }
     if (isPriceIndexRead(statement.sql)) return [priceIndexRow(12)];

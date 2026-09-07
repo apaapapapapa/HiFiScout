@@ -303,7 +303,7 @@ test("the page selects explicit entity columns instead of SELECT *", async () =>
 
 test("product detail loads offers, evidence and model facts in bounded queries", async () => {
   const db = captureDatabase((statement) =>
-    /FROM product_search_entities e WHERE e\.entity_key/.test(statement.sql)
+    /FROM product_search_entities e/.test(statement.sql)
       ? [entityRow({ id: 12, entity_key: "c-12", offer_count: 2, shop_count: 2 })]
       : [
           offerRow({ listing_product_id: 100, shop_key: "hifido", price_yen: 300_000 }),

@@ -1,3 +1,4 @@
+import { decodeCatalogSpecifications } from "./catalog-specification-repository.js";
 import { categoryClosureIds, getCategory } from "../catalog/categories.js";
 import type { ProductSearchItem } from "../api/contracts.js";
 import { firstMeasured } from "./read-accounting.js";
@@ -13,12 +14,15 @@ export async function catalogProductWithoutOffers(
     manufacturer: string;
     model: string;
     category_id: string | null;
+    specification_json: string | null;
+    specifications_updated_at: string | null;
   }>(
     db
       .prepare(`
     SELECT p.manufacturer_id,COALESCE(m.canonical_name,p.manufacturer_id) AS manufacturer,p.canonical_model AS model,
-      (SELECT category_id FROM knowledge_catalog_product_categories WHERE product_id=p.id AND is_primary=1 LIMIT 1) AS category_id
+      (SELECT category_id FROM knowledge_catalog_product_categories WHERE product_id=p.id AND is_primary=1 LIMIT 1) AS category_id, s.specification_json, s.updated_at AS specifications_updated_at
     FROM knowledge_catalog_products p LEFT JOIN knowledge_catalog_manufacturers m ON m.id=p.manufacturer_id
+    LEFT JOIN catalog_product_specifications s ON s.catalog_product_id=p.id
     WHERE p.id=? AND p.verification_status='verified'`)
       .bind(id),
   );
@@ -26,6 +30,10 @@ export async function catalogProductWithoutOffers(
   const categoryId = row.category_id || "unclassified";
   return {
     key: `c-${id}`,
+    specifications: decodeCatalogSpecifications(
+      row.specification_json,
+      row.specifications_updated_at,
+    ),
     identity_kind: "catalog",
     catalog_product_id: id,
     manufacturer: row.manufacturer,
