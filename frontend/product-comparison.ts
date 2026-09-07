@@ -49,6 +49,7 @@ export async function loadComparisonProducts(
         if (
           !isProductDetailResponse(data) ||
           data.product.key !== key ||
+          data.product.catalog_product_id !== Number(key.slice(2)) ||
           data.product.identity_kind !== "catalog"
         )
           throw new TypeError("invalid_comparison_product");
