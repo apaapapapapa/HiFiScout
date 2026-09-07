@@ -19,6 +19,7 @@ test("unauthenticated requests cannot read the console, assets, metadata or admi
     "/admin-console.css",
     "/api/meta",
     "/api/admin/manufacturers",
+    "/api/admin/work-counts",
     catalogPath,
     listingPath,
     "/api/admin/offer-facts/replay",
@@ -64,6 +65,7 @@ for (const mode of ["expired", "wrong-audience", "invalid-signature"] as const) 
       "/admin-console.js",
       "/api/meta",
       "/api/admin/manufacturers",
+      "/api/admin/work-counts",
       catalogPath,
       listingPath,
     ]) {

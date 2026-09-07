@@ -375,8 +375,10 @@ export function CatalogAdmin({
   active = true,
   search = "",
   onDataChanged,
+  onWorkCountsChanged,
 }: {
   onDataChanged?: () => void;
+  onWorkCountsChanged?: () => void;
   view?: CatalogView;
   active?: boolean;
   search?: string;
@@ -865,6 +867,7 @@ export function CatalogAdmin({
         body: JSON.stringify(payload),
       });
       setCreateMode(null);
+      onWorkCountsChanged?.();
       if (candidate) {
         await loadCandidates(candidateApplied, candidateAfterId, candidateHistory);
       } else {
@@ -917,6 +920,7 @@ export function CatalogAdmin({
         { method: "POST", body: JSON.stringify({ sourceProductId: sourceId }) },
       );
       setEditing(null);
+      onWorkCountsChanged?.();
       await loadCatalog(catalogApplied, 0, []);
       const replayText = result.replayComplete
         ? "再投影も完了しました。"
@@ -979,6 +983,7 @@ export function CatalogAdmin({
     } finally {
       setOperationBusy(false);
       setMergingGroupKey("");
+      onWorkCountsChanged?.();
       await loadDuplicates(duplicateManufacturerApplied, duplicateAfterKey, duplicateHistory);
       await loadCatalog(catalogApplied, catalogAfterId, catalogHistory);
     }

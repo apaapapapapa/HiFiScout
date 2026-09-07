@@ -70,6 +70,13 @@ async function mockAdminApi(page: Page): Promise<void> {
     const json = (body: unknown, status = 200) =>
       route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
     if (url.pathname === "/api/admin/offer-facts/replay") return json(null);
+    if (url.pathname === "/api/admin/work-counts")
+      return json({
+        reports: 0,
+        candidates: 0,
+        duplicateIdentities: [],
+        nextDuplicateCursor: null,
+      });
 
     if (url.pathname === "/api/meta")
       return json({
@@ -868,7 +875,9 @@ test("task navigation loads only the requested workspace and retains search stat
   const component = await mount("frontend/admin-console/Default");
   const admin = new AdminConsolePage(component, page);
   await expect(admin.catalog.catalogRow(11)).toBeVisible();
-  expect(paths).toEqual(["/api/admin/knowledge-catalog/products"]);
+  expect(paths.filter((path) => path !== "/api/admin/work-counts")).toEqual([
+    "/api/admin/knowledge-catalog/products",
+  ]);
   await admin.catalog.searchFor("D-1000");
   await expect(admin.catalog.resultSummary).toContainText("D-1000");
   await admin.sectionLink("重複の整理").click();
@@ -885,6 +894,57 @@ test("task navigation loads only the requested workspace and retains search stat
   expect(paths.some((path) => path.includes("exports") || path.endsWith("/candidates"))).toBe(
     false,
   );
+});
+
+test("task selector and sidebar show capped work counts without loading their lists", async ({
+  page,
+  mount,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route("**/api/admin/work-counts", (route) =>
+    route.fulfill({
+      json: {
+        reports: 99,
+        candidates: 0,
+        duplicateIdentities: Array.from({ length: 100 }, (_, i) => [
+          `luxman M${i}`,
+          `luxman M${i}`,
+        ]).flat(),
+        nextDuplicateCursor: null,
+      },
+    }),
+  );
+  const component = await mount("frontend/admin-console/Default");
+  const select = component.getByRole("combobox", { name: "作業を選ぶ" });
+  await expect(select.locator('option[value="reports"]')).toHaveText("誤り報告　99");
+  await expect(select.locator('option[value="duplicates"]')).toHaveText("重複の整理　99+");
+  await expect(select.locator('option[value="candidates"]')).toHaveText("未検証候補　0");
+  await expect(select.locator('option[value="catalog"]')).toHaveText("製品カタログ");
+  await select.selectOption("duplicates");
+  await expect(component.locator(".admin-workspace-heading h1")).toHaveText("重複の整理");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(
+    component.getByRole("link", { name: "重複の整理", exact: true }).locator(".admin-work-count"),
+  ).toHaveText("99+");
+});
+
+test("count failures keep the task selector usable and never claim zero work", async ({
+  page,
+  mount,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route("**/api/admin/work-counts", (route) =>
+    route.fulfill({ status: 503, json: { error: "unavailable" } }),
+  );
+  const component = await mount("frontend/admin-console/Default");
+  const select = component.getByRole("combobox", { name: "作業を選ぶ" });
+  for (const view of ["reports", "duplicates", "candidates"])
+    await expect(select.locator(`option[value="${view}"]`)).toContainText("—");
+  await select.selectOption("candidates");
+  await expect(component.locator(".admin-workspace-heading h1")).toHaveText("未検証候補");
 });
 
 test("metadata failure offers a retry without leaving the workspace", async ({ page, mount }) => {
@@ -954,11 +1014,23 @@ test("correction reports submit filters explicitly and retain the typed audit no
     reads += 1;
     return route.fulfill({ json: { items: [report], nextBeforeId: null, hasMore: false } });
   });
+  await page.route("**/api/admin/work-counts", (route) =>
+    route.fulfill({
+      json: {
+        reports: report.status === "rejected" ? 0 : 1,
+        candidates: 0,
+        duplicateIdentities: [],
+        nextDuplicateCursor: null,
+      },
+    }),
+  );
   const component = await mount("frontend/admin-console/Default");
   const admin = new AdminConsolePage(component, page);
   await admin.sectionLink("誤り報告").click();
   const reports = component.getByRole("region", { name: "情報の誤り報告" });
   const note = reports.getByRole("textbox", { name: "監査メモ" });
+  const reportCount = admin.sectionLink("誤り報告").locator(".admin-work-count");
+  await expect(reportCount).toHaveText("1");
   await expect(note).toBeVisible();
   expect(reads).toBe(1);
   await reports.getByRole("textbox", { name: "店舗ID" }).fill("audiounion");
@@ -970,4 +1042,5 @@ test("correction reports submit filters explicitly and retain the typed audit no
   await reports.getByRole("button", { name: "却下", exact: true }).click();
   await expect.poll(() => appliedNote).toBe("販売店の型番と一致することを確認しました。");
   await expect(note).toHaveCount(0);
+  await expect(reportCount).toHaveText("0");
 });

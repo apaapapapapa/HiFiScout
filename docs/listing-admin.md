@@ -28,6 +28,21 @@ Back/Forward and direct links select the corresponding workspace. Navigation pre
 loaded searches and in-progress CSV input within the open console; it does not persist private
 admin data in browser storage. Each workspace has a distinct page title and an active menu label.
 
+The task selector and sidebar show work counts for correction reports (all unresolved `open` and
+`in_review` reports, regardless of age), duplicate catalog **groups**, and candidates whose review
+status is `pending`. Counts are independent of workspace search filters: 0–99 display numerically,
+and 100 or more display as `99+`. Unavailable or incomplete counts display `—`, never a false zero.
+They refresh after report actions, catalog creation/verification/merges and CSV changes, and when
+returning to the window or changing workspaces after a minute. There is no idle polling.
+
+`GET /api/admin/work-counts` is Access protected and uses the Service Binding. Status-indexed
+subqueries read at most 100 reports/candidates each. A trigger-maintained projection retains only
+members of non-singleton identity buckets; a keyset request reads at most 201 projected catalog
+members. The server applies the shared identity normalizer, and the browser counts each true
+duplicate group once across pages, stopping at 100 groups. Buckets shared by different manufacturers
+are not counted as duplicates. Catalog-wide aggregation is confined to the migration backfill,
+not navigation requests. Multi-page counts are eventually consistent with concurrent changes.
+
 Catalog, candidate, duplicate and export queries start when their workspace is first opened.
 Listing search and replay are also loaded independently. A failed metadata request has an inline
 retry. Deep-link filters are passed directly to React state before the first search; a listing link

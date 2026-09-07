@@ -24,6 +24,7 @@ import type {
   CatalogAdminUpdateInput,
 } from "./admin/contracts.js";
 import { listKnowledgeCatalogDuplicates } from "./db/knowledge-catalog-duplicate-repository.js";
+import { readAdminWorkCounts } from "./db/admin-work-counts-repository.js";
 import {
   listKnowledgeCatalogAdminProducts,
   updateKnowledgeCatalogAdminProduct,
@@ -70,6 +71,11 @@ import type { ListingAdminListOptions, ListingAdminUpdateInput } from "./http/li
  * Binding configured on the dedicated Access-protected admin Worker; it has no public HTTP route.
  */
 export class CatalogAdminService extends WorkerEntrypoint<Env> implements CatalogAdminRpc {
+  async getWorkCounts(
+    cursor: import("./api/admin-work-counts-contract.js").AdminDuplicateCountCursor,
+  ) {
+    return readAdminWorkCounts(this.env.DB, cursor);
+  }
   async getModelFacts(productId: number) {
     return readModelFactsAdmin(this.env.DB, productId);
   }
