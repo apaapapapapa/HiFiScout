@@ -6,12 +6,15 @@ HiFiScout follows a test pyramid: most behavior is verified in-process with Vite
 
 ### 1. Unit tests — default and largest layer
 
-Run with `vp run test` or `vp run test:unit`, or as part of `vp run verify`. A single file runs with
+Run with `vp run test`, or as part of `vp run verify`. A single file runs with
 `vp test run test/<name>.test.ts`.
 
-The default reporter is `dot`: a passing run prints compact progress instead of one line per test, and
-failing tests still print their assertion, diff, and stack in full. `vp run test:unit:verbose` uses
-Vitest's verbose reporter when you need to read passing test names.
+The default reporter is `dot`, configured once in `vite.config.ts`: a passing run prints compact
+progress, and failing tests still print their assertion, diff, and stack in full. Use
+`vp run test --reporter=verbose` to read passing test names. Filters and shard selections are
+also arguments, for example `vp run test test/cloudflare-access.test.ts` or
+`vp run test --shard=1/4`. The CI tasks below additionally produce the timing reports; they are
+the maintained four-shard execution path.
 
 Keep parsing, normalization, category inference, query construction, scheduling decisions, guards, and shop-specific mapping rules here. Prefer pure functions and deterministic fixtures. Stub network, browser, queue, and D1 boundaries rather than exercising remote services.
 

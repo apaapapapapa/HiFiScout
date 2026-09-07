@@ -62,6 +62,24 @@ vp run docs:openapi
 
 ## Commands
 
+`package.json` owns executable project commands. CI's `ci:*` tasks in `vite.config.ts` reuse those
+commands and add cache inputs/outputs and prerequisite ordering. Worker declarations remain a
+separately cached prerequisite of the CI compiler; browser bundles remain prerequisites of Worker
+dry runs. The four CI unit shards share one command builder and retain separate timing reports.
+
+Use `vp run test` for unit tests and pass variants as arguments, such as
+`vp run test --reporter=verbose` or `vp run test --shard=1/4`.
+Pass these arguments directly after the task name; an extra `--` is forwarded literally by the
+pinned Vite+ runner and can prevent the underlying tool from interpreting its options.
+`format:check` reuses `format` with `--check`, so both use the same source globs. `check` remains
+read-only, `fix` applies formatting/lint fixes, and `verify` runs both in order.
+
+Documentation generation, validation, build and preview commands have different outputs and remain
+separate. `docs:openapi:check` generates then validates the contract; `docs:openapi` adds the HTML view.
+Database migration and explicit repair commands such as `price-index:backfill` also remain available.
+Production deployment is owned by the `Deploy Cloudflare` workflow, including its quota and smoke
+checks, rather than a separate package script.
+
 Generate all references:
 
 ```sh
@@ -87,7 +105,7 @@ AI coding agents re-read command output as context tokens on every subsequent tu
 | Setting | Effect |
 | --- | --- |
 | `.npmrc` (`loglevel=warn`) | Drops the `npm notice run ...` preamble printed before every script |
-| `--test-reporter=dot` in `test:unit` | A passing test run stays compact; failures still print assertion, diff, and stack |
+| `test.reporters: ["dot"]` in `vite.config.ts` | A passing test run stays compact; failures still print assertion, diff, and stack |
 | `scripts/run-quiet.ts` | Captures a child command's output and prints it only on a non-zero exit |
 
 `vp run types:worker` is wrapped in `run-quiet.ts` because `wrangler types` re-prints the whole generated `Env` interface on every invocation. Wrap further tooling the same way when it is noisy on success:

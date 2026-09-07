@@ -11,7 +11,7 @@ type union in `src/crawler/types.ts`.
 Use the scaffold generator:
 
 ```bash
-vp run create-shop -- \
+vp run create-shop \
   --key example-audio \
   --name "Example Audio" \
   --base-url https://example.com \

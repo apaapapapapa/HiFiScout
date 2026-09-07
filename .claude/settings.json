@@ -13,8 +13,6 @@
       "Bash(vp run types:worker)",
       "Bash(vp run check:no-js-source)",
       "Bash(vp run test)",
-      "Bash(vp run test:unit)",
-      "Bash(vp run test:unit:verbose)",
       "Bash(vp run build:*)",
       "Bash(vp test run:*)",
       "Bash(git status:*)",

@@ -68,9 +68,10 @@ Vitest suite. `vp run check` runs the gate without applying fixes.
 
 | Task | Command |
 | --- | --- |
+| Unit-test suite | `vp run test` |
 | One unit-test file | `vp test run test/<name>.test.ts` |
 | Build public/admin UI, Workers, and Lambda | `vp run build` |
-| Scaffold a shop | `vp run create-shop -- --key <shop-key> --name "<name>" --base-url https://example.com --transport direct --interval 60` |
+| Scaffold a shop | `vp run create-shop --key <shop-key> --name "<name>" --base-url https://example.com --transport direct --interval 60` |
 | Build developer documentation | `vp run docs:build` |
 
 See [Adding shops](docs/adding-shops.md), [TypeScript development](docs/typescript.md), and
@@ -106,6 +107,8 @@ is a daily safety net. Public metadata and recent price medians read persisted p
 data-platform and crawl guides for the remaining costs and measurement limits.
 
 `Deploy Cloudflare` owns provisioning, migrations, Worker deployment, and the immediate smoke check.
+Use that workflow for production deployment; package scripts provide local builds and the migration
+steps consumed by the workflow, without a second combined deployment entry point.
 Product Search/Identity/data-quality checks run in the separate `Production Operational Health`
 workflow. Downstream workflows consume the exact SHA in the `deployment-identity` artifact.
 A successful but quota-deferred/no-op deploy does not publish that artifact or change production.
