@@ -8,7 +8,7 @@
 
 import { FEATURE_FILTER_DEFINITIONS, parseFeatureFilter } from "../catalog/types.js";
 import { facetSelectionKey, parseFacetSelection } from "../catalog/product-facets.js";
-import { PRODUCT_QUERY_SORTS } from "./contracts.js";
+import { MULTI_SELECT_LIMITS, PRODUCT_QUERY_SORTS } from "./contracts.js";
 import { validateQueryContract } from "./route-contract.js";
 import type { ProductQuerySort } from "./contracts.js";
 import type { FacetSelection } from "../catalog/types.js";
@@ -41,14 +41,20 @@ export const PRODUCT_QUERY_PARAMETERS = [
   {
     name: "shop",
     type: "string",
+    repeatable: true,
+    maxItems: MULTI_SELECT_LIMITS.shop.maxItems,
     maxLength: LENGTH_LIMITS.shop,
-    description: "Restrict matches to offers from one shop key.",
+    description:
+      "Restrict matches to offers from any selected shop. Repeat the parameter for OR; all offer conditions must match the same offer.",
   },
   {
     name: "manufacturer",
     type: "string",
+    repeatable: true,
+    maxItems: MULTI_SELECT_LIMITS.manufacturer.maxItems,
     maxLength: LENGTH_LIMITS.manufacturer,
-    description: "Restrict matches to one manufacturer display name.",
+    description:
+      "Restrict matches to any selected manufacturer. Repeat the parameter for OR; commas remain literal name characters.",
   },
   {
     name: "category",
@@ -143,8 +149,8 @@ export const PRODUCT_QUERY_PARAMETERS = [
 export interface ProductQuery {
   /** Trimmed free-text search; empty when absent. */
   q: string;
-  shop: string;
-  manufacturer: string;
+  shop: string[];
+  manufacturer: string[];
   category: string;
   /** De-duplicated, validated feature ids. */
   features: string[];
@@ -166,6 +172,17 @@ export interface ProductQuery {
 
 function trimmed(params: URLSearchParams, key: string): string {
   return params.get(key)?.trim() || "";
+}
+
+function selections(params: URLSearchParams, key: "shop" | "manufacturer"): string[] {
+  return [
+    ...new Set(
+      params
+        .getAll(key)
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  ].sort();
 }
 
 /** `feature` accepts both repeated parameters and comma-separated values. */
@@ -233,8 +250,8 @@ export function parseProductQuery(url: URL): ProductQuery {
   const sort = params.get("sort");
   return {
     q: trimmed(params, "q"),
-    shop: trimmed(params, "shop"),
-    manufacturer: trimmed(params, "manufacturer"),
+    shop: selections(params, "shop"),
+    manufacturer: selections(params, "manufacturer"),
     category: trimmed(params, "category"),
     features: requestedFeatures(params),
     facets: requestedFacetSelections(params),
@@ -263,8 +280,9 @@ export function canonicalProductQueryUrl(url: URL, query: ProductQuery): URL {
   const canonical = new URL(url);
   const params = new URLSearchParams();
   if (query.q) params.set("q", query.q);
-  if (query.shop) params.set("shop", query.shop);
-  if (query.manufacturer) params.set("manufacturer", query.manufacturer);
+  for (const shop of [...new Set(query.shop)].sort()) params.append("shop", shop);
+  for (const manufacturer of [...new Set(query.manufacturer)].sort())
+    params.append("manufacturer", manufacturer);
   if (query.category) params.set("category", query.category);
   for (const feature of [...query.features].sort()) params.append("feature", feature);
   for (const facet of [...query.facets].sort((left, right) =>

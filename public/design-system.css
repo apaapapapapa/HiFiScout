@@ -913,3 +913,17 @@ body.filters-open { overflow: hidden; }
 .offers { max-height: none; overflow: visible; }
 .offer-shop { font-size: 14px; letter-spacing: 0; }
 @media (min-width: 761px) { .view-switch { display: inline-flex; } }
+/* Searchable, bounded choices remain inline in the scrollable filter sheet/sidebar. */
+.filters .multi-filter { min-width: 0; padding: 0; border: 0; }
+.multi-filter legend { margin-bottom: 6px; }
+.multi-filter summary {
+  padding: 10px; border: 1px solid #d6d6d6; border-radius: 8px;
+  color: #191817; font-size: 13px; cursor: pointer;
+}
+.multi-filter summary:focus-visible { outline: 2px solid var(--hs-focus); outline-offset: 2px; }
+.multi-options { margin-top: 8px; }
+.multi-option-list { max-height: 220px; overflow: auto; margin-top: 8px; }
+.multi-option-list .check { display: flex; }
+.multi-option-list span { overflow-wrap: anywhere; }
+.multi-selected { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.multi-selected .filter-chip { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }

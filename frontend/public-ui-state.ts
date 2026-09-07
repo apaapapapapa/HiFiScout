@@ -36,8 +36,8 @@ export function clearedFilters(filters: ProductFilters): ProductFilters {
   return {
     ...filters,
     q: "",
-    shop: "",
-    manufacturer: "",
+    shop: [],
+    manufacturer: [],
     category: "",
     minPrice: "",
     maxPrice: "",

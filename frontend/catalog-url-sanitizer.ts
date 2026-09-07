@@ -19,7 +19,12 @@ import {
   productKeyFromPermalinkPath,
   productPermalinkPath,
 } from "./product-permalink.js";
-import { parseFeatureParams } from "./filters.js";
+import {
+  parseFacetParams,
+  parseFeatureParams,
+  parseSelectionParams,
+  facetSelectionKey,
+} from "./filters.js";
 
 /** Mirrors the server's per-parameter character limits. */
 const TEXT_LIMITS = [
@@ -45,6 +50,10 @@ export function sanitizedCatalogSearch(search: string): string {
   const params = new URLSearchParams();
 
   for (const { key, maxLength } of TEXT_LIMITS) {
+    if (key === "shop" || key === "manufacturer") {
+      for (const value of parseSelectionParams(source, key)) params.append(key, value);
+      continue;
+    }
     const value = source.get(key);
     // Counted in code points: a Japanese query must not be rejected for its byte length.
     if (value == null || !value.trim() || [...value].length > maxLength) continue;
@@ -63,6 +72,7 @@ export function sanitizedCatalogSearch(search: string): string {
   // already clean and reloading it does not rewrite the address bar. Validation and de-duplication
   // are the filter module's, so the accepted vocabulary is not restated here.
   for (const feature of parseFeatureParams(source)) params.append("feature", feature);
+  for (const facet of parseFacetParams(source)) params.append("facet", facetSelectionKey(facet));
 
   // Only the non-default state is carried: `inStock` defaults on, the other two default off.
   if (source.get("inStock") === "false") params.set("inStock", "false");

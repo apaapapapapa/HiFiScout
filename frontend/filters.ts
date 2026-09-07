@@ -10,7 +10,11 @@
  * splits it into product-level and offer-level predicates, and `limit`/`offset` count products.
  */
 
-import { FACET_DEFINITIONS, FEATURE_FILTER_DEFINITIONS } from "../src/api/contracts.js";
+import {
+  FACET_DEFINITIONS,
+  FEATURE_FILTER_DEFINITIONS,
+  MULTI_SELECT_LIMITS,
+} from "../src/api/contracts.js";
 import type { FacetSelection, FeatureFilter } from "../src/api/contracts.js";
 import { yen } from "./format.js";
 import { PAGE_SIZE, pageOffset } from "./pagination.js";
@@ -28,7 +32,8 @@ export const URL_VALUE_IDS = [
   "sort",
 ] as const;
 
-export type UrlValueId = (typeof URL_VALUE_IDS)[number];
+export type SelectionId = "shop" | "manufacturer";
+export type UrlValueId = Exclude<(typeof URL_VALUE_IDS)[number], SelectionId>;
 
 /** Checkbox controls. `inStock` defaults to on, which is why the URL encodes its *off* state. */
 export const TOGGLE_IDS = ["inStock", "favoritesOnly", "recentOnly", "priceDropped"] as const;
@@ -86,10 +91,28 @@ export function facetFromFilterId(id: string): FacetSelection | null {
  * collapse onto the same edge-cache key the server canonicalises to.
  */
 export type ProductFilters = Record<UrlValueId, string> &
+  Record<SelectionId, readonly string[]> &
   Record<ToggleId, boolean> & {
     features: readonly FeatureFilter[];
     facets: readonly FacetSelection[];
   };
+
+export function selectionValues(values: readonly string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort();
+}
+
+export function parseSelectionParams(params: URLSearchParams, id: SelectionId): string[] {
+  const limit = MULTI_SELECT_LIMITS[id];
+  if (params.getAll(id).length > limit.maxItems) return [];
+  return selectionValues(params.getAll(id).filter((value) => [...value].length <= limit.maxLength));
+}
+
+export function selectionFromFilterId(id: string): { field: SelectionId; value: string } | null {
+  for (const field of ["shop", "manufacturer"] as const) {
+    if (id.startsWith(`${field}:`)) return { field, value: id.slice(field.length + 1) };
+  }
+  return null;
+}
 
 function featureParams(features: readonly FeatureFilter[]): FeatureFilter[] {
   return [...new Set(features)].sort();
@@ -136,7 +159,7 @@ export interface FilterEntry {
 }
 
 export interface UrlFilterState {
-  values: Record<UrlValueId, string>;
+  values: Pick<ProductFilters, UrlValueId | SelectionId>;
   features: FeatureFilter[];
   facets: FacetSelection[];
   inStock: boolean;
@@ -164,6 +187,10 @@ export function productSearchParams(
 ): URLSearchParams {
   const params = new URLSearchParams();
   for (const id of URL_VALUE_IDS) {
+    if (id === "shop" || id === "manufacturer") {
+      for (const value of selectionValues(filters[id])) params.append(id, value);
+      continue;
+    }
     const value = filters[id].trim();
     if (value) params.set(id, value);
   }
@@ -202,6 +229,10 @@ export function savedSearchFeedPath(filters: ProductFilters): string {
 export function filterUrlParams(filters: ProductFilters, view: ProductView): URLSearchParams {
   const params = new URLSearchParams();
   for (const id of URL_VALUE_IDS) {
+    if (id === "shop" || id === "manufacturer") {
+      for (const value of selectionValues(filters[id])) params.append(id, value);
+      continue;
+    }
     const value = filters[id].trim();
     if (!value) continue;
     if (id === "sort" && value === DEFAULT_SORT) continue;
@@ -223,8 +254,8 @@ export function parseUrlFilters(search: string): UrlFilterState {
   return {
     values: {
       q: params.get("q") || "",
-      shop: params.get("shop") || "",
-      manufacturer: params.get("manufacturer") || "",
+      shop: parseSelectionParams(params, "shop"),
+      manufacturer: parseSelectionParams(params, "manufacturer"),
       category: params.get("category") || "",
       minPrice: params.get("minPrice") || "",
       maxPrice: params.get("maxPrice") || "",
@@ -241,7 +272,7 @@ export function parseUrlFilters(search: string): UrlFilterState {
 
 export interface FilterLabels {
   /** Display name of the selected shop; falls back to the key when unknown. */
-  shop: string;
+  shop: string | ((key: string) => string);
   /** Display name of the selected category option. */
   category: string;
 }
@@ -252,9 +283,20 @@ export function activeFilterEntries(filters: ProductFilters, labels: FilterLabel
   const minPrice = intOrNull(filters.minPrice);
   const maxPrice = intOrNull(filters.maxPrice);
   if (filters.q) entries.push({ id: "q", label: `検索: ${filters.q}`, detail: false });
-  if (filters.shop) entries.push({ id: "shop", label: labels.shop, detail: true });
-  if (filters.manufacturer) {
-    entries.push({ id: "manufacturer", label: filters.manufacturer, detail: true });
+  for (const field of ["shop", "manufacturer"] as const) {
+    const values = selectionValues(filters[field]);
+    for (const value of values) {
+      entries.push({
+        id: values.length === 1 ? field : `${field}:${value}`,
+        label:
+          field === "shop"
+            ? typeof labels.shop === "function"
+              ? labels.shop(value)
+              : labels.shop || value
+            : value,
+        detail: true,
+      });
+    }
   }
   if (filters.category) {
     entries.push({ id: "category", label: labels.category || filters.category, detail: true });

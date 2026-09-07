@@ -61,6 +61,13 @@ test("shop counts preserve entity distinctness and same-offer conditions across 
       ["shop=hifido&inStock=true&q=LUXMAN", [1, 8]],
       ["shop=hifido&inStock=true&category=dac", [1, 8]],
       ["shop=missing&inStock=true", []],
+      ["shop=hifido&shop=audiounion&inStock=true&maxPrice=50", [1, 4]],
+      ["shop=hifido&shop=missing&inStock=true&maxPrice=50", []],
+      ["manufacturer=luxman&manufacturer=MSB&shop=hifido&inStock=true", [1, 7, 8]],
+      [
+        "manufacturer=luxman&manufacturer=MSB&shop=hifido&shop=audiounion&inStock=true",
+        [1, 4, 7, 8, 10],
+      ],
     ];
     for (const [filter, ids] of cases) {
       const result = await searchProducts(db, productQuery(`?${filter}&includeTotal=true`));
@@ -99,6 +106,32 @@ test("shop counts preserve entity distinctness and same-offer conditions across 
       100,
       "the other shop's cheaper offer is excluded",
     );
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("multiple shops preserve matching-offer prices, counts and cursor scope", async () => {
+  const { sqlite, db } = fixture();
+  try {
+    const base =
+      "?shop=hifido&shop=audiounion&manufacturer=LUXMAN&inStock=true&sort=priceAsc&limit=1&includeTotal=true";
+    const first = await searchProducts(db, productQuery(base));
+    assert.equal(first.totalCount, 4);
+    assert.equal(first.items[0].key, "l-1");
+    assert.equal(first.items[0].lowest_price_yen, 10);
+    assert.equal(first.items[0].offer_count, 3);
+    assert.equal(first.items[0].shop_count, 2);
+    assert.equal(first.items[0].representative_offer?.shop_key, "audiounion");
+    const reordered = base.replace("shop=hifido&shop=audiounion", "shop=audiounion&shop=hifido");
+    const second = await searchProducts(
+      db,
+      productQuery(`${reordered}&cursor=${encodeURIComponent(first.nextCursor!)}`),
+    );
+    assert.equal(second.items[0].key, "l-4");
+    assert.equal(second.items[0].lowest_price_yen, 50);
+    assert.equal(second.items[0].offer_count, 1);
+    assert.equal(second.totalCount, 4);
   } finally {
     sqlite.close();
   }

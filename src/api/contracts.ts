@@ -75,6 +75,12 @@ export const PRODUCT_QUERY_SORTS: readonly ProductQuerySort[] = [
   "dealScore",
 ];
 
+/** Bounded repeated public filter values; commas remain part of a manufacturer name. */
+export const MULTI_SELECT_LIMITS = {
+  shop: { maxItems: 20, maxLength: 80 },
+  manufacturer: { maxItems: 20, maxLength: 100 },
+} as const;
+
 /**
  * Public seller facts returned by the price-history endpoint.
  *

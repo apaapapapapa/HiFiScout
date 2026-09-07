@@ -29,6 +29,33 @@ test("unknown and repeated singleton parameters cannot become cache busters", ()
   assert.equal(validateProductQuery(url("?feature=dac&feature=network_playback")), null);
 });
 
+test("repeated shops and manufacturers use bounded literal values and canonical set ordering", () => {
+  const input = url(
+    "?shop=b&shop=a&shop=b&manufacturer=LUXMAN&manufacturer=Acme%2C+Inc.&manufacturer=%20LUXMAN%20",
+  );
+  assert.equal(validateProductQuery(input), null);
+  const query = parseProductQuery(input);
+  assert.deepEqual(query.shop, ["a", "b"]);
+  assert.deepEqual(query.manufacturer, ["Acme, Inc.", "LUXMAN"]);
+  const canonical = canonicalProductQueryUrl(input, query);
+  assert.deepEqual(canonical.searchParams.getAll("shop"), ["a", "b"]);
+  assert.deepEqual(canonical.searchParams.getAll("manufacturer"), ["Acme, Inc.", "LUXMAN"]);
+  assert.equal(
+    canonicalProductQueryUrl(canonical, parseProductQuery(canonical)).href,
+    canonical.href,
+  );
+  for (const field of ["shop", "manufacturer"]) {
+    assert.equal(
+      validateProductQuery(
+        url("?" + Array.from({ length: 21 }, (_, i) => `${field}=${i}`).join("&")),
+      ),
+      `${field}_too_many`,
+    );
+  }
+  assert.equal(validateProductQuery(url(`?shop=a&shop=${"x".repeat(81)}`)), "shop_too_long");
+  assert.deepEqual(parseProductQuery(url("?shop=a&manufacturer=LUXMAN")).shop, ["a"]);
+});
+
 test("boolean product filters reject unsupported values", () => {
   assert.equal(validateProductQuery(url("?newOnly=1")), "newOnly_invalid");
   assert.equal(validateProductQuery(url("?priceDropped=yes")), "priceDropped_invalid");
@@ -70,8 +97,8 @@ test("an absent query parses to the default page of newest listings", () => {
 
   assert.deepEqual(query, {
     q: "",
-    shop: "",
-    manufacturer: "",
+    shop: [],
+    manufacturer: [],
     category: "",
     features: [],
     facets: [],

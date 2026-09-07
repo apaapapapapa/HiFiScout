@@ -10,14 +10,15 @@ import {
   parseUrlFilters,
   productSearchParams,
   savedSearchFeedPath,
+  selectionFromFilterId,
 } from "../frontend/filters.js";
 import type { ProductFilters } from "../frontend/filters.js";
 
 function filters(overrides: Partial<ProductFilters> = {}): ProductFilters {
   return {
     q: "",
-    shop: "",
-    manufacturer: "",
+    shop: [],
+    manufacturer: [],
     category: "",
     minPrice: "",
     maxPrice: "",
@@ -42,8 +43,8 @@ test("the saved-search feed carries filters but not UI sorting or pagination", (
     savedSearchFeedPath(
       filters({
         q: "TAD 1000",
-        shop: "hifido",
-        manufacturer: "TAD",
+        shop: ["hifido"],
+        manufacturer: ["TAD"],
         category: "dac",
         sort: "priceAsc",
         features: ["phono_input", "dac"],
@@ -97,8 +98,8 @@ test("favorites-only is device state and is never shared through the URL", () =>
 test("URL state round-trips through the filter controls", () => {
   const source = filters({
     q: "TAD",
-    shop: "hifido",
-    manufacturer: "LUXMAN",
+    shop: ["hifido"],
+    manufacturer: ["LUXMAN"],
     category: "pre_amp",
     minPrice: "1000",
     maxPrice: "2000",
@@ -112,8 +113,8 @@ test("URL state round-trips through the filter controls", () => {
 
   assert.deepEqual(parsed.values, {
     q: "TAD",
-    shop: "hifido",
-    manufacturer: "LUXMAN",
+    shop: ["hifido"],
+    manufacturer: ["LUXMAN"],
     category: "pre_amp",
     minPrice: "1000",
     maxPrice: "2000",
@@ -123,6 +124,36 @@ test("URL state round-trips through the filter controls", () => {
   assert.equal(parsed.recentOnly, true);
   assert.equal(parsed.priceDropped, true);
   assert.equal(parsed.view, "cards");
+});
+
+test("multiple literal values survive URL, API and feed serialization with individual chips", () => {
+  const state = filters({ shop: ["b", "a", "b"], manufacturer: ["LUXMAN", "Acme, Inc."] });
+  const url = filterUrlParams(state, "list");
+  const restored = parseUrlFilters(`?${url}`);
+  assert.deepEqual(restored.values.shop, ["a", "b"]);
+  assert.deepEqual(restored.values.manufacturer, ["Acme, Inc.", "LUXMAN"]);
+  for (const params of [
+    productSearchParams(state),
+    new URL(savedSearchFeedPath(state), "https://example.test").searchParams,
+  ]) {
+    assert.deepEqual(params.getAll("shop"), ["a", "b"]);
+    assert.deepEqual(params.getAll("manufacturer"), ["Acme, Inc.", "LUXMAN"]);
+  }
+  const chips = activeFilterEntries(state, { shop: (key) => `Shop ${key}`, category: "" });
+  assert.deepEqual(
+    chips.slice(0, 4).map(({ id, label }) => [id, label]),
+    [
+      ["shop:a", "Shop a"],
+      ["shop:b", "Shop b"],
+      ["manufacturer:Acme, Inc.", "Acme, Inc."],
+      ["manufacturer:LUXMAN", "LUXMAN"],
+    ],
+  );
+  assert.deepEqual(selectionFromFilterId("manufacturer:A:B"), {
+    field: "manufacturer",
+    value: "A:B",
+  });
+  assert.equal(selectionFromFilterId("q"), null);
 });
 
 test("an empty or unknown URL falls back to the defaults", () => {
@@ -135,7 +166,7 @@ test("an empty or unknown URL falls back to the defaults", () => {
 
 test("filter chips are ordered and only detail filters are counted", () => {
   const entries = activeFilterEntries(
-    filters({ q: "TAD", shop: "hifido", category: "pre_amp", minPrice: "100000" }),
+    filters({ q: "TAD", shop: ["hifido"], category: "pre_amp", minPrice: "100000" }),
     { shop: "ハイファイ堂", category: "プリアンプ" },
   );
 

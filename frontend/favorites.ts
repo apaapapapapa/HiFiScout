@@ -217,8 +217,10 @@ export function favoriteMatchesFilters(
 ): boolean {
   const q = filters.q.trim().toLocaleLowerCase("ja-JP");
   if (q && !normalizedSearchText(product).includes(q)) return false;
-  if (filters.shop && product.representative_offer?.shop_key !== filters.shop) return false;
-  if (filters.manufacturer && product.manufacturer !== filters.manufacturer) return false;
+  if (filters.shop.length && !filters.shop.includes(product.representative_offer?.shop_key ?? ""))
+    return false;
+  if (filters.manufacturer.length && !filters.manufacturer.includes(product.manufacturer))
+    return false;
   const categoryIds = stringArray(product.category_ids) ?? [];
   if (
     filters.category &&

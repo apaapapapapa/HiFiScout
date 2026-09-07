@@ -249,6 +249,18 @@ When the caller explicitly selects `newest`, `oldest`, `updated`, `priceAsc`, or
 
 Filters split by what they describe, and the split is load-bearing:
 
+`shop` and `manufacturer` accept up to 20 repeated values each. Choices within one field are ORed;
+different fields remain ANDed. Commas are literal manufacturer-name characters, not separators.
+Single-value URLs remain valid. Parsing and cache/cursor serialization deduplicate and sort the
+sets, including saved-search feeds. Multi-shop lookup still starts from the shop/active index and
+uses one bounded JSON bind; it preserves same-offer predicates and matching-subset aggregates.
+Manufacturer aliases retain the existing compatibility matching and its documented scan costs.
+
+The public controls search the persisted metadata locally and expose individual removable choices.
+Their counts describe the whole metadata snapshot, not the current combination of filters. Local
+favorites match selected shops only against their saved representative offer, as before. Shared
+URLs retain repeated choices and typed facets through sanitization and reload.
+
 - **Product-level** — `manufacturer`, `category`, `facet`, `feature` — restrict the entity. A group category expands to its descendants at query time.
   - `category` matches the entity's *membership*, not its one representative category. A listing is one sale and may hold several products — a transport and a DAC sold together — so it belongs to every category its component products are in, and to the ancestors they share, once each. Membership is projected from the listings currently offering the entity into `product_search_entity_categories`, which is also what the category facet counts, so the number beside a category and the cards that category returns are the same set read twice rather than two calculations that can drift.
   - repeated `facet=<dimension>:<value>` selections are ORed within one dimension and ANDed between dimensions. `connector_a=xlr OR rca` plus `signal_type=analog`, for example, means `(xlr OR rca) AND analog`; each dimension is one product-level `EXISTS` over the entity's offers.

@@ -15,8 +15,8 @@ import { productQuery } from "./helpers/product-query.js";
 function filters(overrides: Partial<ProductFilters> = {}): ProductFilters {
   return {
     q: "",
-    shop: "",
-    manufacturer: "",
+    shop: [],
+    manufacturer: [],
     category: "",
     minPrice: "",
     maxPrice: "",
