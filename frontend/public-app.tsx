@@ -56,6 +56,8 @@ import { useFilterSheet } from "./use-filter-sheet.js";
 import { FeedSubscription } from "./feed-subscription.js";
 import { SearchSuggestionInput } from "./search-suggestion-input.js";
 import { sortShopsByJapaneseReading } from "./shop-options.js";
+import { CatalogShortcuts } from "./catalog-shortcut-controls.js";
+import { applyCatalogShortcut } from "./catalog-shortcuts.js";
 import { FACET_DEFINITIONS, FEATURE_DEFINITIONS, isFeatureFilter } from "../src/api/contracts.js";
 import type {
   FacetSelection,
@@ -1010,6 +1012,13 @@ export function PublicApp() {
               </button>
             </div>
           </label>
+          <CatalogShortcuts
+            disabled={filters.favoritesOnly}
+            onSelect={(shortcut) => {
+              closeFilters();
+              commitFilters(applyCatalogShortcut(filtersRef.current, shortcut));
+            }}
+          />
         </section>
 
         <FilterPanel

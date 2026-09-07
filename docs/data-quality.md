@@ -136,6 +136,10 @@ Infrastructure-level D1/R2 latency, storage, and error metrics remain in Cloudfl
 ### Category completion: product types, specifications and capabilities
 
 Taxonomy v3 retains 12 filterable roots and 62 product-type leaves. Display names are Japanese.
+Public equipment shortcuts map familiar names to these canonical categories plus existing facets.
+Choosing one replaces category, capability and specification criteria in a single search, retaining
+the query, manufacturers, shops, budget and quick filters. CD/SACD uses OR within the media facet.
+Shortcuts are disabled in local favorites, whose snapshots lack specification facts.
 Tape decks now belong to the source-equipment root (`SRC`). Their durable leaf ID remains
 `ANA.TAPE` so saved URLs, verified catalog entries and explicit admin corrections remain valid;
 always use the registry's `parentId`/closure, not an ID prefix, to determine ancestry.
