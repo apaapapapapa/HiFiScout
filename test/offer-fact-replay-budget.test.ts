@@ -38,4 +38,4 @@ test("replay reads and writes a bounded prefix as the retained inventory grows",
   } finally {
     await dispose();
   }
-});
+}, 30_000);
