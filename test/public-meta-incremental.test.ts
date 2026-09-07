@@ -39,10 +39,10 @@ function canonical(batches: PublicMetaSnapshot["batches"]) {
 }
 
 test("incremental metadata matches the full aggregate across migration and source transitions", async () => {
-  const { sqlite, db } = migratedSqlite({ before: "0102_incremental_public_meta.sql" });
+  const { sqlite, db } = migratedSqlite({ before: "0103_incremental_public_meta.sql" });
   try {
     sqlite.exec(seed);
-    sqlite.exec(migrationSources.find((m) => m.name === "0102_incremental_public_meta.sql")!.sql);
+    sqlite.exec(migrationSources.find((m) => m.name === "0103_incremental_public_meta.sql")!.sql);
     const transitions = [
       "SELECT 1", // The migration backfill must include existing data without waiting for a dirty event.
       "UPDATE products SET manufacturer = 'AAA' WHERE id = 2",

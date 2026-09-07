@@ -152,7 +152,7 @@ and guard order; regional hit rates and platform request coalescing require prod
 never aggregate the catalog. Scheduled work normally publishes counts hourly; `countsUpdatedAt`
 identifies that complete snapshot while shop sync/health keep their short edge-cache cadence.
 
-Migration 0102 introduces `public_meta_counts` and the `public_meta_incremental_aggregate` reader.
+Migration 0103 introduces `public_meta_counts` and the `public_meta_incremental_aggregate` reader.
 Shop/manufacturer counts use active listings, including the existing minimum manufacturer label per
 manufacturer ID. Category counts use entity memberships. Guarded source triggers apply only actual
 changes; a price, heartbeat, unchanged classification or cache timestamp does not change counters.
@@ -182,7 +182,7 @@ Rollback deploys the previous Worker; it does not drop the source-maintained tab
 
 ### Category storage and D1 measurement
 
-Migration 0101 makes `product_categories`, `product_search_entity_categories` and
+Migration 0102 makes `product_categories`, `product_search_entity_categories` and
 `knowledge_catalog_product_categories` `WITHOUT ROWID`: the existing composite membership key is
 the physical key, removing the separate rowid-table/primary-index write. Secondary indexes, primary
 category uniqueness, foreign-key cascades and admin override guards remain intact. The replacement
@@ -209,7 +209,7 @@ The existing unchanged-crawl/search write-budget tests must continue to pass.
 
 One-time table copies, index builds and backfill are separate from steady-state savings. A populated
 local upgrade with 250 listing categories, 250 entity categories, one catalog category and 250
-entity facets measured 7,599 reads/1,658 writes for 0101 and 4,569 reads/289 writes for 0102. These
+entity facets measured 7,599 reads/1,658 writes for 0102 and 4,569 reads/289 writes for 0103. These
 sum individual statements in atomic D1 batches; the metadata for only the final statement of a
 multi-statement `prepare().run()` is not a migration total. Production migration cost depends on its
 actual data; the existing quota-aware deployment and migration-history checks remain the gate.
@@ -322,6 +322,18 @@ When the caller explicitly selects `newest`, `oldest`, `updated`, `priceAsc`, or
 ### Filters, sorting and pagination
 
 Filters split by what they describe, and the split is load-bearing:
+
+`shop` and `manufacturer` accept up to 20 repeated values each. Choices within one field are ORed;
+different fields remain ANDed. Commas are literal manufacturer-name characters, not separators.
+Single-value URLs remain valid. Parsing and cache/cursor serialization deduplicate and sort the
+sets, including saved-search feeds. Multi-shop lookup still starts from the shop/active index and
+uses one bounded JSON bind; it preserves same-offer predicates and matching-subset aggregates.
+Manufacturer aliases retain the existing compatibility matching and its documented scan costs.
+
+The public controls search the persisted metadata locally and expose individual removable choices.
+Their counts describe the whole metadata snapshot, not the current combination of filters. Local
+favorites match selected shops only against their saved representative offer, as before. Shared
+URLs retain repeated choices and typed facets through sanitization and reload.
 
 - **Product-level** — `manufacturer`, `category`, `facet`, `feature` — restrict the entity. A group category expands to its descendants at query time.
   - `category` matches the entity's *membership*, not its one representative category. A listing is one sale and may hold several products — a transport and a DAC sold together — so it belongs to every category its component products are in, and to the ancestors they share, once each. Membership is projected from the listings currently offering the entity into `product_search_entity_categories`, which is also what the category facet counts, so the number beside a category and the cards that category returns are the same set read twice rather than two calculations that can drift.

@@ -9,6 +9,19 @@ import { sanitizedCatalogSearch, sanitizedCatalogUrl } from "../frontend/catalog
  * server: anything the API would answer `400` to is dropped before the app ever sees it.
  */
 
+test("shared repeated selections and specification facets survive sanitization", () => {
+  const search = sanitizedCatalogSearch(
+    "?shop=b&shop=a&shop=b&manufacturer=Acme%2C+Inc.&manufacturer=LUXMAN&facet=form_factor:bookshelf&facet=not-real:value",
+  );
+  const params = new URLSearchParams(search);
+  assert.deepEqual(params.getAll("shop"), ["a", "b"]);
+  assert.deepEqual(params.getAll("manufacturer"), ["Acme, Inc.", "LUXMAN"]);
+  assert.deepEqual(params.getAll("facet"), ["form_factor:bookshelf"]);
+  assert.equal(sanitizedCatalogSearch(search), search);
+  const oversized = Array.from({ length: 30 }, (_, i) => `shop=shop-${i}`).join("&");
+  assert.equal(new URLSearchParams(sanitizedCatalogSearch(oversized)).getAll("shop").length, 0);
+});
+
 test("a clean link is left exactly as it is", () => {
   assert.equal(sanitizedCatalogSearch("?q=LUXMAN&sort=priceAsc"), "q=LUXMAN&sort=priceAsc");
   assert.equal(sanitizedCatalogUrl("/", "?q=LUXMAN", ""), null);

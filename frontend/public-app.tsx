@@ -21,9 +21,10 @@ import {
   parseUrlFilters,
   productSearchParams,
   savedSearchFeedPath,
+  selectionFromFilterId,
 } from "./filters.js";
 import { featureFromFilterId } from "./filters.js";
-import type { ProductFilters, ProductView, ToggleId, UrlValueId } from "./filters.js";
+import type { ProductFilters, ProductView, SelectionId, ToggleId, UrlValueId } from "./filters.js";
 import {
   FAVORITES_KEY,
   favoriteResults,
@@ -56,6 +57,9 @@ import { useFilterSheet } from "./use-filter-sheet.js";
 import { FeedSubscription } from "./feed-subscription.js";
 import { SearchSuggestionInput } from "./search-suggestion-input.js";
 import { sortShopsByJapaneseReading } from "./shop-options.js";
+import { FilterMultiSelect } from "./filter-multi-select.js";
+import { CatalogShortcuts } from "./catalog-shortcut-controls.js";
+import { applyCatalogShortcut } from "./catalog-shortcuts.js";
 import { visibleFacetOptions } from "./facet-options.js";
 import { FEATURE_DEFINITIONS, isFeatureFilter } from "../src/api/contracts.js";
 import type {
@@ -157,6 +161,7 @@ interface FilterPanelProps {
   isMobile: boolean;
   onApply: () => void;
   onValueChange: (id: UrlValueId, value: string, debounced?: boolean) => void;
+  onSelectionChange: (id: SelectionId, values: string[]) => void;
   onToggleChange: (id: ToggleId, checked: boolean) => void;
   onFeatureChange: (feature: FeatureFilter, checked: boolean) => void;
   onFacetChange: (facet: FacetSelection, checked: boolean) => void;
@@ -172,6 +177,7 @@ function FilterPanel({
   isMobile,
   onApply,
   onValueChange,
+  onSelectionChange,
   onToggleChange,
   onFeatureChange,
   onFacetChange,
@@ -215,47 +221,35 @@ function FilterPanel({
           </button>
         </div>
 
-        <label>
-          <span>ショップ</span>
-          <select
-            id="shop"
-            value={filters.shop}
-            onChange={(event) => onValueChange("shop", event.currentTarget.value)}
-          >
-            <option value="">すべて</option>
-            {shops.map((shop) => (
-              <option key={shop.key} value={shop.key}>
-                {shop.name}
-                {isNonNegativeInteger(shop.activeProductCount)
-                  ? ` (${shop.activeProductCount})`
-                  : ""}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>メーカー</span>
-          <input
-            id="manufacturer"
-            type="search"
-            list="manufacturer-options"
-            placeholder="メーカー名を入力"
-            autoComplete="off"
-            value={filters.manufacturer}
-            onChange={(event) => onValueChange("manufacturer", event.currentTarget.value, true)}
-          />
-          <datalist id="manufacturer-options">
-            {meta?.manufacturerFacets?.length
-              ? meta.manufacturerFacets.map((facet) => (
-                  <option
-                    key={facet.name}
-                    value={facet.name}
-                    label={`${facet.name} (${facet.activeProductCount})`}
-                  />
-                ))
-              : (meta?.manufacturers ?? []).map((value) => <option key={value} value={value} />)}
-          </datalist>
-        </label>
+        <FilterMultiSelect
+          id="shop"
+          label="ショップ"
+          selected={filters.shop}
+          options={shops.map((shop) => ({
+            value: shop.key,
+            label: shop.name,
+            count: shop.activeProductCount,
+          }))}
+          onChange={(values) => onSelectionChange("shop", values)}
+        />
+        <FilterMultiSelect
+          id="manufacturer"
+          label="メーカー"
+          selected={filters.manufacturer}
+          options={
+            meta?.manufacturerFacets?.length
+              ? meta.manufacturerFacets.map((facet) => ({
+                  value: facet.name,
+                  label: facet.name,
+                  count: facet.activeProductCount,
+                }))
+              : (meta?.manufacturers ?? []).map((value) => ({ value, label: value }))
+          }
+          onChange={(values) => onSelectionChange("manufacturer", values)}
+        />
+        <p className="filter-note">
+          メーカー・ショップなど異なる項目の条件は、すべて一致する商品を表示します。候補の件数は全体の掲載数です。
+        </p>
         <label>
           <span>カテゴリ</span>
           <select
@@ -700,25 +694,22 @@ export function PublicApp() {
       const next = { ...filtersRef.current };
       const feature = featureFromFilterId(id);
       const facet = facetFromFilterId(id);
+      const selection = selectionFromFilterId(id);
       if (feature) next.features = next.features.filter((selected) => selected !== feature);
       else if (facet) {
         const key = facetSelectionKey(facet);
         next.facets = next.facets.filter((selected) => facetSelectionKey(selected) !== key);
-      } else if (
+      } else if (selection) {
+        next[selection.field] = next[selection.field].filter((value) => value !== selection.value);
+      } else if (id === "shop" || id === "manufacturer") next[id] = [];
+      else if (
         id === "inStock" ||
         id === "favoritesOnly" ||
         id === "recentOnly" ||
         id === "priceDropped"
       )
         next[id] = false;
-      else if (
-        id === "q" ||
-        id === "shop" ||
-        id === "manufacturer" ||
-        id === "category" ||
-        id === "minPrice" ||
-        id === "maxPrice"
-      )
+      else if (id === "q" || id === "category" || id === "minPrice" || id === "maxPrice")
         next[id] = "";
       commitFilters(next);
     },
@@ -873,7 +864,7 @@ export function PublicApp() {
           ...(result.categoryFacets ?? []).map((facet) => facet.id),
           ...(result.categories ?? []),
         ]);
-        if (current.shop && !validShops.has(current.shop)) current.shop = "";
+        current.shop = current.shop.filter((shop) => validShops.has(shop));
         if (current.category && !validCategories.has(current.category)) current.category = "";
         if (result.facets) {
           const validFacets = new Set(
@@ -925,7 +916,7 @@ export function PublicApp() {
     errorMessage,
   });
   const activeFilters = activeFilterEntries(appliedFilters, {
-    shop: shopName(appliedFilters.shop),
+    shop: shopName,
     category: selectedCategoryLabel,
   });
   const detailFilterCount = activeFilters.filter((entry) => entry.detail).length;
@@ -994,6 +985,13 @@ export function PublicApp() {
               </button>
             </div>
           </label>
+          <CatalogShortcuts
+            disabled={filters.favoritesOnly}
+            onSelect={(shortcut) => {
+              closeFilters();
+              commitFilters(applyCatalogShortcut(filtersRef.current, shortcut));
+            }}
+          />
         </section>
 
         <FilterPanel
@@ -1006,6 +1004,7 @@ export function PublicApp() {
             if (isMobile && filterOpen) setDraftFilters({ ...panelFilters, [id]: value });
             else changeValue(id, value, debounced);
           }}
+          onSelectionChange={(id, values) => changePanelFilters({ ...panelFilters, [id]: values })}
           onToggleChange={(id, checked) => changePanelFilters({ ...panelFilters, [id]: checked })}
           onFeatureChange={(feature, checked) =>
             changePanelFilters({
@@ -1186,7 +1185,9 @@ export function PublicApp() {
                       product={product}
                       favorite={favorites.products.has(product.key)}
                       shopName={shopName}
-                      onManufacturer={(manufacturer) => changeValue("manufacturer", manufacturer)}
+                      onManufacturer={(manufacturer) =>
+                        commitFilters({ ...filtersRef.current, manufacturer: [manufacturer] })
+                      }
                       onFavorite={toggleFavorite}
                       onOffers={(key) => void showOffers(key)}
                     />

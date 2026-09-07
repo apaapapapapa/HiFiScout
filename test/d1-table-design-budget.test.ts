@@ -31,7 +31,7 @@ async function fullRefresh(db: QueryableDatabase, now: Date) {
 }
 
 test("D1 category insert savings include retained indexes and override guards", async () => {
-  const { db, dispose } = await database({ before: "0101_category_memberships_without_rowid.sql" });
+  const { db, dispose } = await database({ before: "0102_category_memberships_without_rowid.sql" });
   try {
     await db
       .prepare(`INSERT INTO products(id, shop_key, source_id, title, source_url, first_seen_at, last_seen_at, last_changed_at)
@@ -53,7 +53,7 @@ test("D1 category insert savings include retained indexes and override guards", 
         .run();
       before.push(Number(result.meta.rows_written));
     }
-    await apply(db, "0101_category_memberships_without_rowid.sql");
+    await apply(db, "0102_category_memberships_without_rowid.sql");
     const after = [];
     for (const { table, id } of operations) {
       await db.prepare(`DELETE FROM ${table} WHERE category_id = 'AMP.PRE'`).run();
@@ -90,7 +90,7 @@ test("D1 category insert savings include retained indexes and override guards", 
 test("D1 metadata measures the complete refresh workload and bounded changed-entity work", async () => {
   for (const size of [1_000, 10_000]) {
     const { db, dispose } = await database({
-      before: "0101_category_memberships_without_rowid.sql",
+      before: "0102_category_memberships_without_rowid.sql",
     });
     try {
       await db
@@ -123,8 +123,8 @@ test("D1 metadata measures the complete refresh workload and bounded changed-ent
       await fullRefresh(old.db, AT);
       const expected = await readPublicMetaSnapshot(db);
       await change(db, "black");
-      await apply(db, "0101_category_memberships_without_rowid.sql");
-      await apply(db, "0102_incremental_public_meta.sql");
+      await apply(db, "0102_category_memberships_without_rowid.sql");
+      await apply(db, "0103_incremental_public_meta.sql");
       await db.prepare("UPDATE public_meta_snapshot SET generated_at = '2000-01-01'").run();
       const improved = accountReads(db);
       await change(improved.db, "white");

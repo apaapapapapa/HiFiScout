@@ -34,7 +34,7 @@ export class CatalogPage {
     this.count = page.locator("#count");
     this.countLabel = page.locator("#count-label");
     this.manufacturer = page.locator("#manufacturer");
-    this.manufacturerOptions = page.locator("#manufacturer-options option");
+    this.manufacturerOptions = page.locator('#manufacturer input[type="checkbox"]');
     this.products = page.locator("#products");
     this.pagination = page.locator("#pagination");
     this.loadMore = page.locator("#load-more");
@@ -66,7 +66,7 @@ export class CatalogPage {
   }
 
   firstShopOption(): Locator {
-    return this.shop.locator('option:not([value=""])').first();
+    return this.shop.locator('input[type="checkbox"]').first();
   }
 
   pageButton(pageNumber: number): Locator {
@@ -118,7 +118,11 @@ export class CatalogPage {
   }
 
   async selectShop(value: string): Promise<void> {
-    await this.shop.selectOption(value);
+    if ((await this.shop.getAttribute("open")) === null) await this.shop.locator("summary").click();
+    for (const option of await this.shop.locator('input[type="checkbox"]').all()) {
+      await option.setChecked((await option.getAttribute("value")) === value);
+    }
+    await this.shop.locator("summary").click();
   }
 
   async selectCategory(value: string): Promise<void> {

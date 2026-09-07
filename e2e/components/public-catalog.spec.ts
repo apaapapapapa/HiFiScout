@@ -20,8 +20,16 @@ const meta = {
       sync: null,
       health: null,
     },
+    {
+      key: "shop-b",
+      name: "別の販売店",
+      enabled: true,
+      intervalMinutes: 60,
+      sync: null,
+      health: null,
+    },
   ],
-  manufacturers: ["LUXMAN"],
+  manufacturers: ["LUXMAN", "Accuphase"],
   categories: [],
   categoryFacets: [
     {
@@ -93,6 +101,12 @@ async function mockCatalog(
   return seen;
 }
 
+async function selectShop(page: Page, name = "テスト販売店") {
+  await page.locator("#shop summary").click();
+  await page.locator("#shop").getByRole("checkbox", { name, exact: true }).check();
+  await page.locator("#shop summary").click();
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => {
@@ -118,7 +132,43 @@ test("initial metadata failure stays visible and retries the complete initializa
   await expect(page.locator(".card")).toHaveCount(1);
   expect(seen.meta).toBe(2);
   expect(seen.searches).toHaveLength(1);
-  await expect(page.locator("#shop option")).toHaveCount(2);
+  await expect(page.locator('#shop input[type="checkbox"]')).toHaveCount(2);
+});
+
+test("searchable multi-selects send OR choices and remove one active choice", async ({
+  page,
+  mount,
+}) => {
+  const seen = await mockCatalog(page);
+  await mount("frontend/public-app/Default");
+  await expect(page.locator(".card")).toHaveCount(1);
+  await page.locator("#manufacturer summary").click();
+  await page.getByRole("searchbox", { name: "メーカーの候補を検索" }).fill("accu");
+  await page
+    .locator("#manufacturer")
+    .getByRole("checkbox", { name: "Accuphase", exact: true })
+    .check();
+  await page.getByRole("searchbox", { name: "メーカーの候補を検索" }).fill("lux");
+  await page
+    .locator("#manufacturer")
+    .getByRole("checkbox", { name: "LUXMAN", exact: true })
+    .check();
+  await page.locator("#manufacturer summary").click();
+  await selectShop(page);
+  await selectShop(page, "別の販売店");
+  await expect
+    .poll(() => seen.searches.at(-1)?.searchParams.getAll("shop"))
+    .toEqual(["shop-a", "shop-b"]);
+  expect(seen.searches.at(-1)?.searchParams.getAll("manufacturer")).toEqual([
+    "Accuphase",
+    "LUXMAN",
+  ]);
+  expect(new URL(page.url()).searchParams.getAll("shop")).toEqual(["shop-a", "shop-b"]);
+  await page.locator('#active-filters [data-clear-filter="manufacturer:Accuphase"]').click();
+  await expect
+    .poll(() => seen.searches.at(-1)?.searchParams.getAll("manufacturer"))
+    .toEqual(["LUXMAN"]);
+  expect(seen.searches.at(-1)?.searchParams.getAll("shop")).toEqual(["shop-a", "shop-b"]);
 });
 
 test("initial loading does not report zero matches and a completed empty search does", async ({
@@ -139,6 +189,38 @@ test("initial loading does not report zero matches and a completed empty search 
   await page.locator("#q").fill("zero");
   await expect(page.locator("#count")).toHaveText("0");
   await expect(page.locator("#products")).toContainText("一致する商品はありません");
+});
+
+test("equipment shortcuts issue one combined search and retain budget and query", async ({
+  page,
+  mount,
+}) => {
+  const seen = await mockCatalog(page);
+  await mount("frontend/public-app/Default");
+  await expect(page.locator(".card")).toHaveCount(1);
+  await page.locator("#q").fill("Reference");
+  await expect.poll(() => seen.searches.at(-1)?.searchParams.get("q")).toBe("Reference");
+  await page.locator("#maxPrice").fill("100000");
+  await expect.poll(() => seen.searches.at(-1)?.searchParams.get("maxPrice")).toBe("100000");
+  await page.locator("#category").selectOption("ANA.TAPE");
+  await page.getByText("機能・仕様で詳しく絞り込む", { exact: true }).click();
+  await page.getByLabel("DAC搭載", { exact: true }).selectOption("dac");
+  await page.locator("#facet-supported_media-cassette").check();
+  await expect
+    .poll(() => seen.searches.at(-1)?.searchParams.getAll("facet"))
+    .toEqual(["supported_media:cassette"]);
+  const before = seen.searches.length;
+  await page.getByRole("button", { name: "ブックシェルフ", exact: true }).click();
+  await expect.poll(() => seen.searches.length).toBe(before + 1);
+  const params = seen.searches.at(-1)!.searchParams;
+  expect(params.get("category")).toBe("SPK.LOUDSPEAKER");
+  expect(params.getAll("facet")).toEqual(["form_factor:bookshelf"]);
+  expect(params.getAll("feature")).toEqual([]);
+  expect(params.get("q")).toBe("Reference");
+  expect(params.get("maxPrice")).toBe("100000");
+  await expect(page.getByRole("button", { name: /形状: ブックシェルフを解除/ })).toBeVisible();
+  await page.locator("#favoritesOnly").check();
+  await expect(page.getByRole("button", { name: "MCカートリッジ", exact: true })).toBeDisabled();
 });
 
 test("capability controls preserve absent and unknown states through requests and active chips", async ({
@@ -186,20 +268,20 @@ test("mobile drafts apply once, cancel safely, validate prices and trap keyboard
   await expect(page.locator("#apply-filters")).toBeFocused();
   await page.locator("#apply-filters").press("Tab");
   await expect(page.locator("#filter-close")).toBeFocused();
-  await page.locator("#shop").selectOption("shop-a");
+  await selectShop(page);
   await page.locator("#minPrice").fill("100,000");
   expect(seen.searches).toHaveLength(1);
   expect(page.url()).toBe(originalUrl);
   await page.keyboard.press("Escape");
   await expect(page.locator("#filter-toggle")).toBeFocused();
   await page.locator("#filter-toggle").click();
-  await expect(page.locator("#shop")).toHaveValue("");
+  await expect(page.locator("#shop input:checked")).toHaveCount(0);
   await page.locator("#minPrice").fill("200000");
   await page.locator("#maxPrice").fill("100000");
   await expect(page.locator("#price-error")).toContainText("最高価格は最低価格以上");
   await expect(page.locator("#apply-filters")).toBeDisabled();
   await page.locator("#maxPrice").fill("１，０００，０００");
-  await page.locator("#shop").selectOption("shop-a");
+  await selectShop(page);
   await page.locator("#apply-filters").click();
   await expect.poll(() => seen.searches.length).toBe(2);
   expect(seen.searches[1].searchParams.get("minPrice")).toBe("200000");

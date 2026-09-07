@@ -4,7 +4,7 @@ import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { migrationSources } from "./helpers/migrations.js";
 
 test("category table replacement preserves rows, guards, primary uniqueness and cascades", () => {
-  const { sqlite } = migratedSqlite({ before: "0101_category_memberships_without_rowid.sql" });
+  const { sqlite } = migratedSqlite({ before: "0102_category_memberships_without_rowid.sql" });
   try {
     sqlite.exec(`PRAGMA foreign_keys = ON;
       INSERT INTO products(id, shop_key, source_id, title, source_url, first_seen_at, last_seen_at, last_changed_at)
@@ -32,7 +32,7 @@ test("category table replacement preserves rows, guards, primary uniqueness and 
       .get()?.payload_json;
     sqlite.exec("BEGIN");
     sqlite.exec(
-      migrationSources.find((m) => m.name === "0101_category_memberships_without_rowid.sql")!.sql,
+      migrationSources.find((m) => m.name === "0102_category_memberships_without_rowid.sql")!.sql,
     );
     sqlite.exec("COMMIT");
     assert.deepEqual(

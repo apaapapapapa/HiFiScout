@@ -165,7 +165,8 @@ test("changing a shop filter refreshes search and exposes a removable filter chi
   if (!firstShopValue) {
     throw new Error("Expected at least one selectable shop option");
   }
-  const firstShopLabel = (await firstShopOption.textContent())?.trim() || firstShopValue;
+  const firstShopLabel =
+    (await firstShopOption.getAttribute("aria-label"))?.trim() || firstShopValue;
   const firstShopFilterLabel = firstShopLabel.replace(/\s+\(\d+\)$/u, "");
   const filteredRequestPromise = page.waitForRequest((request) => {
     const url = new URL(request.url());
@@ -180,13 +181,13 @@ test("changing a shop filter refreshes search and exposes a removable filter chi
   const filteredRequest = await filteredRequestPromise;
 
   expect(new URL(filteredRequest.url()).searchParams.get("shop")).toBe(firstShopValue);
-  await expect(catalogPage.shop).toHaveValue(firstShopValue);
+  await expect(firstShopOption).toBeChecked();
   await expect(catalogPage.activeFilters).toContainText(firstShopFilterLabel);
   await expect(page).toHaveURL(new RegExp(`shop=${encodeURIComponent(firstShopValue)}`));
   await expect(catalogPage.count).toHaveText(/^\d+$/);
 
   await catalogPage.clearFilterButton("shop").click();
-  await expect(catalogPage.shop).toHaveValue("");
+  await expect(catalogPage.shop.locator('input[type="checkbox"]:checked')).toHaveCount(0);
   await expect(catalogPage.activeFilters).not.toContainText(firstShopFilterLabel);
   await expect(catalogPage.count).toHaveText(/^\d+$/);
 });
@@ -337,7 +338,7 @@ test("URL restores search state and recent/price-drop filters reach the API", as
     "/?manufacturer=LUXMAN&sort=priceAsc&inStock=false&newOnly=true&priceDropped=true",
   );
 
-  await expect(catalogPage.manufacturer).toHaveValue("LUXMAN");
+  await expect(catalogPage.manufacturer.locator('input[value="LUXMAN"]')).toBeChecked();
   await expect(catalogPage.sort).toHaveValue("priceAsc");
   await expect(catalogPage.inStock).not.toBeChecked();
   await expect(catalogPage.recentOnly).toBeChecked();

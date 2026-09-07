@@ -23,6 +23,7 @@ import { MANUFACTURER_RESOLVER_VERSION } from "../catalog/manufacturer-resolver.
 import { MODEL_RESOLVER_VERSION } from "../catalog/model-resolver.js";
 import { normalizeIdentityModel } from "../catalog/product-identity.js";
 import { readListingProjectionTokens } from "./listing-projection-pending.js";
+import { sellerOfferFactWrites } from "./offer-fact-repository.js";
 import type {
   CatalogProductUpsertInput,
   CategoryId,
@@ -525,11 +526,29 @@ function dependentListingWrites(
   product: CatalogProductUpsertInput,
   fields: CatalogFields,
   observedAt: string,
-  flags: { categories: boolean; features: boolean; facets: boolean; history: boolean },
+  flags: {
+    categories: boolean;
+    features: boolean;
+    facets: boolean;
+    history: boolean;
+    offerFacts: boolean;
+  },
 ): D1PreparedStatement[] {
   const statements: D1PreparedStatement[] = [];
   const lookup = "SELECT id FROM products WHERE shop_key = ? AND source_id = ?";
   const identity = [shopKey, product.sourceId];
+  if (flags.offerFacts) {
+    statements.push(
+      ...sellerOfferFactWrites(
+        db,
+        shopKey,
+        product.sourceId,
+        product.title,
+        product.conditionText,
+        observedAt,
+      ),
+    );
+  }
   if (flags.categories) {
     statements.push(
       db.prepare(`DELETE FROM product_categories WHERE product_id = (${lookup})`).bind(...identity),
@@ -710,6 +729,7 @@ export async function upsertProducts(
           features: true,
           facets: true,
           history: true,
+          offerFacts: true,
         }),
       );
       featureFactCount += fields.featureFacts.filter((fact) => fact.source === "title").length;
@@ -786,6 +806,7 @@ export async function upsertProducts(
           features: syncFeatures,
           facets: syncFacets,
           history: priceChanged,
+          offerFacts: syncFeatures || existing.condition_text !== product.conditionText,
         }),
       );
       if (syncFeatures)

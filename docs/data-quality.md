@@ -12,6 +12,16 @@ Snapshot quality and crawl-run quality are semantically separate even though the
 
 ## Decision evidence and precision
 
+Seller condition, included items, warranty and sale-unit facts live in `product_offer_facts`,
+separately from catalog capabilities and product identity. `src/catalog/offer-facts.ts` derives
+only explicit statements from the already-collected title and condition text. Missing or
+contradictory evidence stays unknown; seller grades are not converted to a universal score.
+Each fact carries a source field, rule id and observation time, without retaining seller prose.
+New listings and title/condition changes write these facts atomically with the listing. Equal
+facts keep their decision time, removed evidence removes only seller facts, and manual-source
+records survive crawler refreshes. Existing unchanged listings require bounded replay before
+coverage-dependent public filters can be enabled; this storage slice does not enable those filters.
+
 `src/catalog/sale-subject.ts` separates the sale object from compatible equipment and included or missing accessories. Category inference and catalog evidence consumption share that distinction; identity exact/alias matching additionally rejects bundles and incompatible accessory evidence. A per-model lookup cache must still apply the listing-specific guard when consuming its result, since a body and its remote can share the same seller model field in one batch.
 
 Capability and power-source wording such as “remote control compatible CD player” and “AC adapter powered headphone amplifier” describes the equipment. Strip those phrases before sale-object inference while retaining accessory-sale relationships such as “remote control compatible with CD-S3000” and “AC adapter for headphone amplifier”.
@@ -136,6 +146,10 @@ Infrastructure-level D1/R2 latency, storage, and error metrics remain in Cloudfl
 ### Category completion: product types, specifications and capabilities
 
 Taxonomy v3 retains 12 filterable roots and 62 product-type leaves. Display names are Japanese.
+Public equipment shortcuts map familiar names to these canonical categories plus existing facets.
+Choosing one replaces category, capability and specification criteria in a single search, retaining
+the query, manufacturers, shops, budget and quick filters. CD/SACD uses OR within the media facet.
+Shortcuts are disabled in local favorites, whose snapshots lack specification facts.
 Tape decks now belong to the source-equipment root (`SRC`). Their durable leaf ID remains
 `ANA.TAPE` so saved URLs, verified catalog entries and explicit admin corrections remain valid;
 always use the registry's `parentId`/closure, not an ID prefix, to determine ancestry.
