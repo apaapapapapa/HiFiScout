@@ -250,13 +250,17 @@ export function ProductCard({
         <p className="updated">{updated}</p>
       </div>
       <div className="actions">
-        {product.identity_kind === "catalog" && onCompare ? <button
-          type="button"
-          className="offers-button"
-          aria-pressed={compared}
-          disabled={!compared && comparisonFull}
-          onClick={() => onCompare(product.key)}
-        >{compared ? "比較から外す" : "製品を比較"}</button> : null}
+        {product.identity_kind === "catalog" && onCompare ? (
+          <button
+            type="button"
+            className="offers-button"
+            aria-pressed={compared}
+            disabled={!compared && comparisonFull}
+            onClick={() => onCompare(product.key)}
+          >
+            {compared ? "比較から外す" : "製品を比較"}
+          </button>
+        ) : null}
         <button
           className="fav"
           data-fav={product.key}

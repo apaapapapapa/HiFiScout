@@ -523,7 +523,9 @@ export function PublicApp() {
   const [meta, setMeta] = useState<MetaResponse | null>(null);
   const [shops, setShops] = useState<ShopIndex>({});
   const [products, setProducts] = useState<DisplayProduct[]>([]);
-  const [comparisonKeys, setComparisonKeys] = useState(() => comparisonKeysFromSearch(location.search));
+  const [comparisonKeys, setComparisonKeys] = useState(() =>
+    comparisonKeysFromSearch(location.search),
+  );
   const [favorites, setFavorites] = useState<FavoriteStore>(() =>
     parseFavoriteStorage(readPreference(FAVORITES_KEY), isProductSearchItem),
   );
@@ -839,7 +841,11 @@ export function PublicApp() {
     if (next.length) params.set("compare", next.join(","));
     else params.delete("compare");
     const search = params.toString();
-    history.pushState(history.state, "", `${location.pathname}${search ? `?${search}` : ""}${location.hash}`);
+    history.pushState(
+      history.state,
+      "",
+      `${location.pathname}${search ? `?${search}` : ""}${location.hash}`,
+    );
     setComparisonKeys(next);
   };
 
@@ -1236,7 +1242,9 @@ export function PublicApp() {
           <ProductComparison
             keys={comparisonKeys}
             api={api}
-            onRemove={(key) => updateComparison(comparisonKeys.filter((selected) => selected !== key))}
+            onRemove={(key) =>
+              updateComparison(comparisonKeys.filter((selected) => selected !== key))
+            }
             onClear={() => updateComparison([])}
           />
           <p id="favorites-note" className="favorites-note" hidden={!favoriteMode}>
@@ -1286,7 +1294,13 @@ export function PublicApp() {
                       favorite={favorites.products.has(product.key)}
                       compared={comparisonKeys.includes(product.key)}
                       comparisonFull={comparisonKeys.length >= 4}
-                      onCompare={(key) => updateComparison(comparisonKeys.includes(key) ? comparisonKeys.filter((selected) => selected !== key) : [...comparisonKeys, key])}
+                      onCompare={(key) =>
+                        updateComparison(
+                          comparisonKeys.includes(key)
+                            ? comparisonKeys.filter((selected) => selected !== key)
+                            : [...comparisonKeys, key],
+                        )
+                      }
                       shopName={shopName}
                       onManufacturer={(manufacturer) => {
                         setDraftFilters((draft) =>

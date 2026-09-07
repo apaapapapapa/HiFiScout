@@ -134,13 +134,27 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test("shared comparison loads canonical products, retains failed columns, and retries", async ({ page, mount }) => {
+test("shared comparison loads canonical products, retains failed columns, and retries", async ({
+  page,
+  mount,
+}) => {
   await mockCatalog(page);
   let secondAttempts = 0;
   await page.route("**/api/product-search/c-*", async (route) => {
     const key = new URL(route.request().url()).pathname.split("/").at(-1)!;
     if (key === "c-3" && ++secondAttempts === 1) return route.fulfill({ status: 503, json: {} });
-    return route.fulfill({ json: { product: product({ key, catalog_product_id: Number(key.slice(2)), model: `Model ${key}`, lowest_price_yen: null, highest_price_yen: null }), offers: [] } });
+    return route.fulfill({
+      json: {
+        product: product({
+          key,
+          catalog_product_id: Number(key.slice(2)),
+          model: `Model ${key}`,
+          lowest_price_yen: null,
+          highest_price_yen: null,
+        }),
+        offers: [],
+      },
+    });
   });
   await page.evaluate(() => history.replaceState(null, "", "/?compare=c-03,c-1,c-3"));
   await mount("frontend/public-app/Default");
@@ -148,9 +162,16 @@ test("shared comparison loads canonical products, retains failed columns, and re
   await expect(comparison.getByRole("status")).toContainText("取得できない製品");
   await expect(comparison.getByRole("columnheader")).toHaveCount(3);
   await comparison.getByRole("button", { name: "比較情報を再読み込み" }).click();
-  await expect(comparison.getByRole("columnheader", { name: "Model c-3", exact: true })).toBeVisible();
-  await expect(comparison.getByRole("row", { name: "掲載中の価格帯 — —", exact: true })).toBeVisible();
-  await expect(comparison.getByRole("link", { name: "この比較の共有URL" })).toHaveAttribute("href", "/?compare=c-1%2Cc-3");
+  await expect(
+    comparison.getByRole("columnheader", { name: "Model c-3", exact: true }),
+  ).toBeVisible();
+  await expect(
+    comparison.getByRole("row", { name: "掲載中の価格帯 — —", exact: true }),
+  ).toBeVisible();
+  await expect(comparison.getByRole("link", { name: "この比較の共有URL" })).toHaveAttribute(
+    "href",
+    "/?compare=c-1%2Cc-3",
+  );
   await expect(page).toHaveURL(/compare=c-1%2Cc-3/);
   await comparison.getByRole("button", { name: "c-3を比較から外す" }).click();
   await expect(page.getByRole("status").filter({ hasText: "もう1件" })).toBeVisible();
@@ -158,17 +179,32 @@ test("shared comparison loads canonical products, retains failed columns, and re
   await expect(page.getByRole("region", { name: "製品比較 (2/4)", exact: true })).toBeVisible();
 });
 
-test("comparison selection stops at four and survives search filter updates", async ({ page, mount }) => {
+test("comparison selection stops at four and survives search filter updates", async ({
+  page,
+  mount,
+}) => {
   await mockCatalog(page);
-  const items = Array.from({ length: 5 }, (_, index) => product({ key: `c-${index + 1}`, catalog_product_id: index + 1 }));
-  await page.route("**/api/product-search?**", (route) => route.fulfill({ json: { ...results, items, totalCount: 5 } }));
+  const items = Array.from({ length: 5 }, (_, index) =>
+    product({ key: `c-${index + 1}`, catalog_product_id: index + 1 }),
+  );
+  await page.route("**/api/product-search?**", (route) =>
+    route.fulfill({ json: { ...results, items, totalCount: 5 } }),
+  );
   await page.route("**/api/product-search/c-*", (route) => {
     const key = new URL(route.request().url()).pathname.split("/").at(-1);
-    return route.fulfill({ json: { product: items.find((candidate) => candidate.key === key), offers: [] } });
+    return route.fulfill({
+      json: { product: items.find((candidate) => candidate.key === key), offers: [] },
+    });
   });
   await mount("frontend/public-app/Default");
-  for (let id = 1; id <= 4; id++) await page.locator(`[data-key="c-${id}"]`).getByRole("button", { name: "製品を比較", exact: true }).click();
-  const fifth = page.locator('[data-key="c-5"]').getByRole("button", { name: "製品を比較", exact: true });
+  for (let id = 1; id <= 4; id++)
+    await page
+      .locator(`[data-key="c-${id}"]`)
+      .getByRole("button", { name: "製品を比較", exact: true })
+      .click();
+  const fifth = page
+    .locator('[data-key="c-5"]')
+    .getByRole("button", { name: "製品を比較", exact: true });
   await expect(fifth).toBeDisabled();
   await page.locator("#q").fill("amp");
   await expect(page).toHaveURL(/q=amp/);
