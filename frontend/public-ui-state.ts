@@ -139,7 +139,12 @@ export function filterRelaxations(filters: ProductFilters): FilterRelaxation[] {
       label: "値下げ条件だけ解除",
       filters: { ...filters, priceDropped: false },
     });
-  if (!filters.favoritesOnly && (filters.features.length || filters.facets.length || Object.values(filters.specificationFilters ?? {}).some(Boolean)))
+  if (
+    !filters.favoritesOnly &&
+    (filters.features.length ||
+      filters.facets.length ||
+      Object.values(filters.specificationFilters ?? {}).some(Boolean))
+  )
     choices.push({
       id: "specifications",
       label: "機能・仕様だけ解除",

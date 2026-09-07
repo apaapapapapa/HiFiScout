@@ -1,14 +1,32 @@
 import { expect, test } from "../fixtures/catalog-test.js";
 import { product, routeProductSearch } from "./product-fixtures.js";
 
-test("specification drafts apply once, survive reload and saved feeds, and reject invalid values", async ({ page, catalogPage }) => {
+test("specification drafts apply once, survive reload and saved feeds, and reject invalid values", async ({
+  page,
+  catalogPage,
+}) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.route("**/api/meta", (route) => route.fulfill({
-    contentType: "application/json", body: JSON.stringify({ status: "healthy",
-      shops: [{ key: "shop-a", name: "Shop A", enabled: true, intervalMinutes: 60, sync: null, health: null }],
-      manufacturers: ["LUXMAN"], categories: ["AMP.PRE"], categoryFacets: [],
+  await page.route("**/api/meta", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "healthy",
+        shops: [
+          {
+            key: "shop-a",
+            name: "Shop A",
+            enabled: true,
+            intervalMinutes: 60,
+            sync: null,
+            health: null,
+          },
+        ],
+        manufacturers: ["LUXMAN"],
+        categories: ["AMP.PRE"],
+        categoryFacets: [],
+      }),
     }),
-  }));
+  );
   const requests: URL[] = [];
   await routeProductSearch(page, (url) => {
     requests.push(url);
@@ -32,7 +50,10 @@ test("specification drafts apply once, survive reload and saved feeds, and rejec
   await page.getByRole("textbox", { name: "検索名", exact: true }).fill("ラック用アンプ");
   await page.getByRole("button", { name: "この検索を保存", exact: true }).click();
   const stored = page.locator(".saved-searches li").filter({ hasText: "ラック用アンプ" });
-  await expect(stored.locator('a[href^="/api/feed"]')).toHaveAttribute("href", /maxWidthMm=450.*minXlrOutputs=3/);
+  await expect(stored.locator('a[href^="/api/feed"]')).toHaveAttribute(
+    "href",
+    /maxWidthMm=450.*minXlrOutputs=3/,
+  );
   await page.locator('[data-clear-filter="spec:maxWidthMm"]').click();
   await expect(page).not.toHaveURL(/maxWidthMm=/);
   await page.getByRole("button", { name: "ラック用アンプを検索", exact: true }).click();

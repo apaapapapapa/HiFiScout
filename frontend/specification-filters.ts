@@ -19,12 +19,16 @@ export function specificationErrors(values: SpecificationFilterValues = {}) {
   return errors;
 }
 
-export function normalizedSpecifications(values: SpecificationFilterValues = {}): SpecificationFilterValues | null {
+export function normalizedSpecifications(
+  values: SpecificationFilterValues = {},
+): SpecificationFilterValues | null {
   if (Object.keys(specificationErrors(values)).length) return null;
-  return Object.fromEntries(SPECIFICATION_FILTER_DEFINITIONS.flatMap(({ id }) => {
-    const value = values[id]?.trim();
-    return value ? [[id, String(parseSpecificationFilterValue(id, value))]] : [];
-  }));
+  return Object.fromEntries(
+    SPECIFICATION_FILTER_DEFINITIONS.flatMap(({ id }) => {
+      const value = values[id]?.trim();
+      return value ? [[id, String(parseSpecificationFilterValue(id, value))]] : [];
+    }),
+  );
 }
 
 export function specificationFromFilterId(value: string): SpecificationFilterId | null {

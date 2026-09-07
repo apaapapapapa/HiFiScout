@@ -227,7 +227,9 @@ function FilterPanel({
 
   useFilterSheet(panelRef, open, isMobile, onClose);
   const errors = priceErrors(filters);
-  const invalid = Object.keys(errors).length > 0 || Object.keys(specificationErrors(filters.specificationFilters)).length > 0;
+  const invalid =
+    Object.keys(errors).length > 0 ||
+    Object.keys(specificationErrors(filters.specificationFilters)).length > 0;
 
   return (
     <>
@@ -304,12 +306,7 @@ function FilterPanel({
             value={filters.minPrice}
             onChange={(event) => onValueChange("minPrice", event.currentTarget.value, true)}
             onKeyDown={(event) => {
-              if (
-                event.key === "Enter" &&
-                !event.nativeEvent.isComposing &&
-                !invalid
-              )
-                onApply();
+              if (event.key === "Enter" && !event.nativeEvent.isComposing && !invalid) onApply();
             }}
           />
         </label>
@@ -324,12 +321,7 @@ function FilterPanel({
             value={filters.maxPrice}
             onChange={(event) => onValueChange("maxPrice", event.currentTarget.value, true)}
             onKeyDown={(event) => {
-              if (
-                event.key === "Enter" &&
-                !event.nativeEvent.isComposing &&
-                !invalid
-              )
-                onApply();
+              if (event.key === "Enter" && !event.nativeEvent.isComposing && !invalid) onApply();
             }}
           />
         </label>
@@ -364,10 +356,20 @@ function FilterPanel({
         </p>
         <details
           className="advanced-filters"
-          open={filters.features.length > 0 || filters.facets.length > 0 || Object.values(filters.specificationFilters ?? {}).some(Boolean) ? true : undefined}
+          open={
+            filters.features.length > 0 ||
+            filters.facets.length > 0 ||
+            Object.values(filters.specificationFilters ?? {}).some(Boolean)
+              ? true
+              : undefined
+          }
         >
           <summary>機能・仕様で詳しく絞り込む</summary>
-          <SpecificationFilterControls values={filters.specificationFilters} disabled={filters.favoritesOnly} onChange={onSpecificationChange} />
+          <SpecificationFilterControls
+            values={filters.specificationFilters}
+            disabled={filters.favoritesOnly}
+            onChange={onSpecificationChange}
+          />
           {/*
           Feature matching is a server-side predicate over stored facts. Favorites are matched
           locally against snapshots that carry none, so the control is disabled there rather than
@@ -1133,9 +1135,12 @@ export function PublicApp() {
           }
           onValueChange={(id, value) => changePanelFilters({ ...panelFilters, [id]: value })}
           onSelectionChange={(id, values) => changePanelFilters({ ...panelFilters, [id]: values })}
-          onSpecificationChange={(id, value) => changePanelFilters({
-            ...panelFilters, specificationFilters: { ...panelFilters.specificationFilters, [id]: value },
-          })}
+          onSpecificationChange={(id, value) =>
+            changePanelFilters({
+              ...panelFilters,
+              specificationFilters: { ...panelFilters.specificationFilters, [id]: value },
+            })
+          }
           onToggleChange={(id, checked) => changePanelFilters({ ...panelFilters, [id]: checked })}
           onFeatureChange={(feature, checked) =>
             changePanelFilters({

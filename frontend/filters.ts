@@ -294,9 +294,11 @@ export function parseUrlFilters(search: string): UrlFilterState {
     features: parseFeatureParams(params),
     facets: parseFacetParams(params),
     offerFacts: parseOfferParams(params),
-    specificationFilters: Object.fromEntries(SPECIFICATION_FILTER_DEFINITIONS.flatMap(({ id }) =>
-      params.has(id) ? [[id, params.get(id)!]] : [],
-    )),
+    specificationFilters: Object.fromEntries(
+      SPECIFICATION_FILTER_DEFINITIONS.flatMap(({ id }) =>
+        params.has(id) ? [[id, params.get(id)!]] : [],
+      ),
+    ),
     inStock: params.get("inStock") !== "false",
     recentOnly: params.get("newOnly") === "true",
     priceDropped: params.get("priceDropped") === "true",
@@ -347,7 +349,8 @@ export function activeFilterEntries(filters: ProductFilters, labels: FilterLabel
   if (!filters.favoritesOnly) {
     for (const { id, name, unit } of SPECIFICATION_FILTER_DEFINITIONS) {
       const value = filters.specificationFilters?.[id];
-      if (value) entries.push({ id: `spec:${id}`, label: `${name}: ${value}${unit}`, detail: true });
+      if (value)
+        entries.push({ id: `spec:${id}`, label: `${name}: ${value}${unit}`, detail: true });
     }
     for (const fact of OFFER_FACT_DEFINITIONS) {
       if (filters.offerFacts?.includes(fact.id)) {

@@ -28,7 +28,10 @@ import {
 } from "./filters.js";
 import { comparisonKeysFromSearch } from "./product-comparison.js";
 import { PRODUCT_QUERY_SORTS } from "../src/api/contracts.js";
-import { SPECIFICATION_FILTER_DEFINITIONS, parseSpecificationFilterValue } from "../src/api/catalog-specification-contracts.js";
+import {
+  SPECIFICATION_FILTER_DEFINITIONS,
+  parseSpecificationFilterValue,
+} from "../src/api/catalog-specification-contracts.js";
 
 /** Mirrors the server's per-parameter character limits. */
 const TEXT_LIMITS = [
