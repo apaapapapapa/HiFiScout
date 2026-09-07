@@ -22,6 +22,7 @@ import {
 import {
   parseFacetParams,
   parseFeatureParams,
+  parseOfferParams,
   parseSelectionParams,
   facetSelectionKey,
 } from "./filters.js";
@@ -72,6 +73,7 @@ export function sanitizedCatalogSearch(search: string): string {
   // already clean and reloading it does not rewrite the address bar. Validation and de-duplication
   // are the filter module's, so the accepted vocabulary is not restated here.
   for (const feature of parseFeatureParams(source)) params.append("feature", feature);
+  for (const fact of parseOfferParams(source)) params.append("offer", fact);
   for (const facet of parseFacetParams(source)) params.append("facet", facetSelectionKey(facet));
 
   // Only the non-default state is carried: `inStock` defaults on, the other two default off.

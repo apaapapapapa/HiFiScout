@@ -19,6 +19,8 @@ import {
   FEATURE_DEFINITIONS,
   FEATURE_FILTER_DEFINITIONS,
   isFeatureFilter,
+  OFFER_FACT_DEFINITIONS,
+  isOfferFactId,
 } from "../catalog/types.js";
 import type {
   FacetDefinition,
@@ -39,6 +41,8 @@ import type {
  * which is exactly how the four existing filters ended up with no way to select them.
  */
 export { FACET_DEFINITIONS, FEATURE_DEFINITIONS, FEATURE_FILTER_DEFINITIONS, isFeatureFilter };
+export { OFFER_FACT_DEFINITIONS, isOfferFactId };
+export type { OfferFact, OfferFactId } from "../catalog/types.js";
 export type {
   FacetDefinition,
   FacetId,
@@ -130,6 +134,8 @@ export type ProductSearchIdentityKind = "catalog" | "unresolved_listing";
 export interface ProductOffer {
   /** `products.id`. Also the key for `/api/products/:id/history`. */
   listing_product_id: number;
+  /** Effective listing evidence, including explicit manual decisions. Missing means unknown. */
+  offer_facts?: import("../catalog/types.js").OfferFact[];
   shop_key: string;
   source_url: string;
   title: string;

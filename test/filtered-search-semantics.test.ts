@@ -5,7 +5,7 @@ import {
   manufacturerFilterIds,
   manufacturerFilterPresentations,
 } from "../src/catalog/manufacturers.js";
-import { searchProducts } from "../src/db/product-search-repository.js";
+import { productSearchDetail, searchProducts } from "../src/db/product-search-repository.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { productQuery } from "./helpers/product-query.js";
 
@@ -44,6 +44,59 @@ function fixture() {
       .run(id, categoryFilterIds("dac")[0]);
   return { sqlite, db };
 }
+
+test("offer conditions intersect on one listing, including summaries, cursor order and manual authority", async () => {
+  const { sqlite, db } = fixture();
+  try {
+    const insert = sqlite.prepare(`INSERT INTO product_offer_facts
+      (product_id, fact_id, source, state, source_field, rule_id, confidence, observed_at)
+      VALUES (?, ?, 'seller', 'present', 'condition_text', 'fixture', 1, '2026-09-07')`);
+    insert.run(1, "remote_control");
+    insert.run(2, "shop_warranty");
+    for (const id of [3, 4, 6, 8]) {
+      insert.run(id, "remote_control");
+      insert.run(id, "shop_warranty");
+    }
+    const base =
+      "?offer=remote_control&offer=shop_warranty&inStock=true&sort=priceAsc&includeTotal=true&limit=1";
+    const first = await searchProducts(db, productQuery(base));
+    assert.equal(first.totalCount, 2);
+    assert.equal(first.items[0].key, "l-1");
+    assert.equal(first.items[0].offer_count, 1);
+    assert.equal(first.items[0].lowest_price_yen, 150);
+    assert.equal(first.items[0].representative_offer?.listing_product_id, 3);
+    const second = await searchProducts(
+      db,
+      productQuery(`${base}&cursor=${encodeURIComponent(first.nextCursor!)}`),
+    );
+    assert.equal(second.items[0].key, "l-8");
+    for (const extra of ["&maxPrice=50", "&shop=audiounion"]) {
+      assert.equal((await searchProducts(db, productQuery(base + extra))).totalCount, 0);
+    }
+    sqlite.exec(`INSERT INTO product_offer_facts
+      VALUES (3,'remote_control','manual','unknown','manual','admin',1,'2026-09-07')`);
+    assert.equal((await searchProducts(db, productQuery(base))).items[0].key, "l-8");
+    const detail = await productSearchDetail(db, "l-1");
+    assert.equal(detail?.offers.length, 3, "the detail still allows comparing all shops");
+    const overridden = detail?.offers.find((offer) => offer.listing_product_id === 3);
+    assert.equal(
+      overridden?.offer_facts?.find((fact) => fact.factId === "remote_control")?.state,
+      "unknown",
+    );
+    sqlite.exec("UPDATE product_offer_facts SET state='absent' WHERE source='manual'");
+    assert.equal((await searchProducts(db, productQuery(base))).totalCount, 1);
+    sqlite.exec("DELETE FROM product_offer_facts WHERE source='manual'");
+    assert.equal((await searchProducts(db, productQuery(base))).totalCount, 2);
+    const plan = sqlite
+      .prepare(
+        "EXPLAIN QUERY PLAN SELECT * FROM product_offer_facts WHERE product_id=? AND fact_id=? AND source=?",
+      )
+      .all(3, "remote_control", "manual");
+    assert.ok(plan.some((row) => String(row.detail).includes("SEARCH")));
+  } finally {
+    sqlite.close();
+  }
+});
 
 test("shop counts preserve entity distinctness and same-offer conditions across filters and pages", async () => {
   const { sqlite, db } = fixture();

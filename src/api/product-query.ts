@@ -6,12 +6,17 @@
  * pure functions and are unit-tested without a database.
  */
 
-import { FEATURE_FILTER_DEFINITIONS, parseFeatureFilter } from "../catalog/types.js";
+import {
+  FEATURE_FILTER_DEFINITIONS,
+  parseFeatureFilter,
+  OFFER_FACT_DEFINITIONS,
+  isOfferFactId,
+} from "../catalog/types.js";
 import { facetSelectionKey, parseFacetSelection } from "../catalog/product-facets.js";
 import { MULTI_SELECT_LIMITS, PRODUCT_QUERY_SORTS } from "./contracts.js";
 import { validateQueryContract } from "./route-contract.js";
 import type { ProductQuerySort } from "./contracts.js";
-import type { FacetSelection } from "../catalog/types.js";
+import type { FacetSelection, OfferFactId } from "../catalog/types.js";
 import type { QueryParameterContract } from "./route-contract.js";
 
 export const DEFAULT_PAGE_SIZE = 50;
@@ -87,6 +92,17 @@ export const PRODUCT_QUERY_PARAMETERS = [
     description: "Required typed facet as facet_id:value. May be repeated or comma-separated.",
   },
   {
+    name: "offer",
+    type: "string",
+    repeatable: true,
+    commaSeparated: true,
+    maxLength: 300,
+    maxItems: OFFER_FACT_DEFINITIONS.length,
+    enum: OFFER_FACT_DEFINITIONS.map((fact) => fact.id),
+    description:
+      "Explicit seller or manual facts required on the same offer. AND across facts and other offer filters. Missing and explicitly absent facts do not match.",
+  },
+  {
     name: "minPrice",
     type: "integer",
     minimum: 0,
@@ -156,6 +172,7 @@ export interface ProductQuery {
   features: string[];
   /** OR within one facet id, AND across distinct facet ids. */
   facets: FacetSelection[];
+  offerFacts?: OfferFactId[];
   inStock: boolean;
   newOnly: boolean;
   priceDropped: boolean;
@@ -255,6 +272,15 @@ export function parseProductQuery(url: URL): ProductQuery {
     category: trimmed(params, "category"),
     features: requestedFeatures(params),
     facets: requestedFacetSelections(params),
+    offerFacts: [
+      ...new Set(
+        params
+          .getAll("offer")
+          .flatMap((value) => value.split(","))
+          .map((value) => value.trim())
+          .filter(isOfferFactId),
+      ),
+    ],
     inStock: params.get("inStock") === "true",
     newOnly: params.get("newOnly") === "true",
     priceDropped: params.get("priceDropped") === "true",
@@ -285,6 +311,7 @@ export function canonicalProductQueryUrl(url: URL, query: ProductQuery): URL {
     params.append("manufacturer", manufacturer);
   if (query.category) params.set("category", query.category);
   for (const feature of [...query.features].sort()) params.append("feature", feature);
+  for (const fact of [...(query.offerFacts ?? [])].sort()) params.append("offer", fact);
   for (const facet of [...query.facets].sort((left, right) =>
     facetSelectionKey(left).localeCompare(facetSelectionKey(right)),
   ))

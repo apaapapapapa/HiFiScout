@@ -7,7 +7,7 @@
  * merely because its top-level collections exist.
  */
 
-import { MAX_SUGGESTIONS, MAX_SUGGEST_QUERY_LENGTH } from "../src/api/contracts.js";
+import { MAX_SUGGESTIONS, MAX_SUGGEST_QUERY_LENGTH, isOfferFactId } from "../src/api/contracts.js";
 import type {
   MetaCategoryFacet,
   MetaManufacturerFacet,
@@ -200,6 +200,27 @@ export function isProductOffer(value: unknown): value is ProductOffer {
   // Optional for the same reason `category_ids` is: a favorite stored by an older build predates
   // the field, and discarding the card over a finish label would lose the user's favorite.
   if (value.presentation_color !== undefined && typeof value.presentation_color !== "string") {
+    return false;
+  }
+  if (
+    value.offer_facts !== undefined &&
+    (!Array.isArray(value.offer_facts) ||
+      value.offer_facts.length > 15 ||
+      !value.offer_facts.every(
+        (fact) =>
+          isRecord(fact) &&
+          isOfferFactId(fact.factId) &&
+          ["present", "absent", "unknown"].includes(String(fact.state)) &&
+          ["seller", "manual"].includes(String(fact.source)) &&
+          ["title", "condition_text", "manual"].includes(String(fact.sourceField)) &&
+          typeof fact.ruleId === "string" &&
+          typeof fact.confidence === "number" &&
+          fact.confidence >= 0 &&
+          fact.confidence <= 1 &&
+          typeof fact.observedAt === "string" &&
+          Number.isFinite(Date.parse(fact.observedAt)),
+      ))
+  ) {
     return false;
   }
 

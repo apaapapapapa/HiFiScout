@@ -1,4 +1,5 @@
 import { PRODUCT_QUERY_PARAMETERS } from "./product-query.js";
+import { OFFER_FACT_DEFINITIONS } from "./contracts.js";
 import { SUGGEST_QUERY_PARAMETERS } from "./suggest-query.js";
 import { defineRoute } from "./route-contract.js";
 import type { JsonSchema } from "./route-contract.js";
@@ -18,6 +19,11 @@ const PRODUCT_OFFER_SCHEMA: JsonSchema = {
     source_url: { type: "string", format: "uri" },
     title: { type: "string" },
     condition_text: { type: "string" },
+    offer_facts: {
+      type: "array",
+      maxItems: OFFER_FACT_DEFINITIONS.length,
+      items: { $ref: "#/components/schemas/OfferFact" },
+    },
     presentation_color: { type: "string" },
     price_yen: nullableInteger,
     previous_price_yen: nullableInteger,
@@ -52,6 +58,20 @@ export const PUBLIC_API_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
     required: ["error"],
   },
   ProductOffer: PRODUCT_OFFER_SCHEMA,
+  OfferFact: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      factId: { type: "string", enum: OFFER_FACT_DEFINITIONS.map((fact) => fact.id) },
+      state: { type: "string", enum: ["present", "absent", "unknown"] },
+      source: { type: "string", enum: ["seller", "manual"] },
+      sourceField: { type: "string", enum: ["title", "condition_text", "manual"] },
+      ruleId: { type: "string" },
+      confidence: { type: "number", minimum: 0, maximum: 1 },
+      observedAt: { type: "string", format: "date-time" },
+    },
+    required: ["factId", "state", "source", "sourceField", "ruleId", "confidence", "observedAt"],
+  },
   ProductPriceIndexListingEndObservation: {
     type: "object",
     additionalProperties: false,

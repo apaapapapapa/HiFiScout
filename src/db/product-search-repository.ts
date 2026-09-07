@@ -53,6 +53,7 @@ import {
   toProductSearchItem,
 } from "./product-search-entity-mapper.js";
 import { newOfferPredicate } from "./product-search-entity-sql.js";
+import { effectiveOfferFacts } from "./offer-fact-repository.js";
 import type {
   ProductSearchEntityRow,
   ProductSearchOfferAggregateRow,
@@ -280,6 +281,17 @@ function offerFilter(query: ProductQuery): OfferFilter {
     predicates.push("p.price_yen <= ?");
     binds.push(query.maxPrice);
   }
+  if (query.offerFacts?.length) {
+    predicates.push(`NOT EXISTS (
+      SELECT 1 FROM json_each(?) required WHERE NOT EXISTS (
+        SELECT 1 FROM product_offer_facts f
+        WHERE f.product_id = p.id AND f.fact_id = required.value AND f.state = 'present'
+          AND (f.source = 'manual' OR NOT EXISTS (
+            SELECT 1 FROM product_offer_facts m
+            WHERE m.product_id = p.id AND m.fact_id = f.fact_id AND m.source = 'manual'))
+      ))`);
+    binds.push(JSON.stringify(query.offerFacts));
+  }
   return {
     sql: predicates.length ? ` AND ${predicates.join(" AND ")}` : "",
     binds,
@@ -359,6 +371,7 @@ function offerSortScopeKey(query: ProductQuery): string {
     query.priceDropped ? "1" : "0",
     query.minPrice == null ? "" : String(query.minPrice),
     query.maxPrice == null ? "" : String(query.maxPrice),
+    ...(query.offerFacts?.length ? [[...query.offerFacts].sort().join(",")] : []),
   ]
     .map((value) => encodeURIComponent(value))
     .join("|");
@@ -467,6 +480,7 @@ export async function searchProducts(
     query.shop.length === 0 &&
     !query.newOnly &&
     !query.priceDropped &&
+    !query.offerFacts?.length &&
     query.minPrice == null &&
     query.maxPrice == null,
   );
@@ -606,8 +620,18 @@ export async function productSearchDetail(
     .bind(Number(entity.id), MAX_DETAIL_OFFERS)
     .all<ProductSearchOfferRow>();
   const offerRows = offers.results || [];
+  const facts = await effectiveOfferFacts(
+    db,
+    offerRows.map((row) => Number(row.listing_product_id)),
+  );
   const product: ProductSearchItem = toProductSearchItem(entity, {
     representativeOffer: offerRows[0] ?? null,
   });
-  return { product, offers: offerRows.map((row) => toProductOffer(row)) };
+  return {
+    product,
+    offers: offerRows.map((row) => ({
+      ...toProductOffer(row),
+      offer_facts: facts.get(Number(row.listing_product_id)) ?? [],
+    })),
+  };
 }
