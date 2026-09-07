@@ -1,3 +1,4 @@
+import { stripRawTextElements } from "../../html/raw-text.js";
 import { cleanText, inferCategory, parseYen } from "../normalize.js";
 import { availabilityFromSignals } from "../availability.js";
 import type { SellerProduct, ShopAdapter } from "../types.js";
@@ -79,6 +80,7 @@ function categoryFor(sourceUrl: string, title: string): { slug: string; category
 }
 
 export function parseForMusicListing(html: string): SellerProduct[] {
+  html = stripRawTextElements(html);
   const products: SellerProduct[] = [];
   const rowRe = /<tr\b[^>]*id=["']post-(\d+)["'][^>]*>([\s\S]*?)<\/tr>/gi;
 

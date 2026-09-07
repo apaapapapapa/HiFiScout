@@ -1,3 +1,4 @@
+import { stripRawTextElements } from "../../html/raw-text.js";
 import {
   collectProductAnchors,
   type CanonicalProductLink,
@@ -189,6 +190,7 @@ export function parseOsakayaListing(
   html: string,
   page: Partial<OsakayaPage> = {},
 ): SellerProduct[] {
+  html = stripRawTextElements(html);
   const products: SellerProduct[] = [];
   const identities = structuredIdentities(html);
 

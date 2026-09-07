@@ -178,6 +178,48 @@ test("a parser failure archives the real failed sample and never publishes inven
   assert.equal(new TextDecoder().decode(archived[0]), HTML);
 });
 
+test("staged extractor versions fence stale decisions without another seller request", async () => {
+  const { db } = migratedSqlite();
+  await session(db, "version-fence");
+  const product = normalizeCatalogProduct({
+    sourceId: "EX1",
+    sourceUrl: "https://www.fujiya-avic.co.jp/shop/g/gEX1/",
+    manufacturer: "Example",
+    model: "EX-1",
+    title: "Example EX-1",
+    conditionText: "",
+    priceYen: null,
+    stockStatus: "unknown",
+  });
+  for (const version of [1, 2]) {
+    const target = { ...product, sourceUrl: `${product.sourceUrl}?v=${version}` };
+    const evidence = [{ categoryIds: ["SRC.DISC"], source: "detail_metadata", strength: "strong" }];
+    await recordCrawlFetchDetailPage(db, {
+      runId: "version-fence",
+      targetUrl: target.sourceUrl,
+      evidence,
+      extractorVersion: version,
+      fetchedAt: AT,
+    });
+    let extractions = 0;
+    const read = () =>
+      readStagedDetailEvidence(
+        db,
+        "version-fence",
+        target,
+        () => {
+          extractions++;
+          return [];
+        },
+        2,
+      );
+    if (version === 1) await assert.rejects(read, /extractor version changed/);
+    else assert.deepEqual(await read(), evidence);
+    assert.equal(extractions, 0);
+    assert.equal(await hasCrawlFetchDetailPage(db, "version-fence", target.sourceUrl), true);
+  }
+});
+
 test("detail evidence and an HTML replay produce the same per-listing classification and decision time", async () => {
   const { db, sqlite } = migratedSqlite();
   await session(db, "detail");
@@ -413,7 +455,13 @@ test("finalization publishes structured detail evidence once without seller I/O 
     '<meta name="description" content="Example EX-1 完全ワイヤレスイヤホンの中古商品です。">',
     product,
   );
-  await recordCrawlFetchDetailPage(db, { runId, targetUrl: sourceUrl, evidence, fetchedAt: AT });
+  await recordCrawlFetchDetailPage(db, {
+    runId,
+    targetUrl: sourceUrl,
+    evidence,
+    fetchedAt: AT,
+    extractorVersion: fujiya.capabilities.detailCategoryEvidence!.version,
+  });
   const ready = await getCrawlFetchSession(db, runId);
   assert.ok(ready);
   const originalFetch = globalThis.fetch;

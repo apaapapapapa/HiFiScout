@@ -28,7 +28,13 @@ const MANUFACTURER_SOURCE: readonly ManufacturerSourceEntry[] = [
   ["yamaha", "YAMAHA", ["yamaha", "ヤマハ"]],
   ["technics", "Technics", ["technics", "テクニクス"]],
   ["sony", "SONY", ["sony", "ソニー"]],
-  ["pioneer", "Pioneer", ["pioneer", "パイオニア"]],
+  // Migration 0035 verifies Pioneer DJ as an alias of `pioneer`. Reuse that identity while
+  // recognizing the full bilingual prefix in seller titles.
+  [
+    "pioneer",
+    "Pioneer",
+    ["pioneer", "パイオニア", "pioneer dj", "pioneerdj", "パイオニアディージェー"],
+  ],
   ["mcintosh", "McIntosh", ["mcintosh", "マッキントッシュ"]],
   [
     "mark-levinson",

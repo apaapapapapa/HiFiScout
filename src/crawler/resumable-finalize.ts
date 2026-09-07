@@ -171,6 +171,7 @@ export async function processFinalize(
                 session.run_id,
                 product,
                 extract,
+                plugin.capabilities.detailCategoryEvidence?.version,
               );
               if (evidence !== null) return evidence;
               if (options.requireStagedDetailFetches) {

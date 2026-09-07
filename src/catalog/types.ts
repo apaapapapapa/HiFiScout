@@ -375,6 +375,8 @@ export interface CategoryClassificationMetadata {
   confidence: number;
   /** Added by the crawler's detail-page enrichment pass. */
   detailCheckedAt?: string;
+  /** Shop-local extractor semantics used for the detail decision; absent means version 1. */
+  detailExtractorVersion?: number;
   /** Added by the knowledge-catalog enrichment pass. */
   catalogProductId?: number;
   catalogMatchType?: KnowledgeCatalogMatchType;
@@ -388,13 +390,17 @@ export interface CategoryClassificationMetadata {
 export type CategoryClassificationMetadataPatch = Readonly<Record<string, unknown>>;
 
 /**
- * The caller-facing patch of `applyCategoryClassification`: only the four keys the enrichment
+ * The caller-facing patch of `applyCategoryClassification`: only the keys the enrichment
  * passes actually add, so a typo or a wrong value type is rejected instead of persisted.
  */
 export type CategoryClassificationMetadataOverrides = Partial<
   Pick<
     CategoryClassificationMetadata,
-    "detailCheckedAt" | "catalogProductId" | "catalogMatchType" | "catalogMatchedAt"
+    | "detailCheckedAt"
+    | "detailExtractorVersion"
+    | "catalogProductId"
+    | "catalogMatchType"
+    | "catalogMatchedAt"
   >
 >;
 

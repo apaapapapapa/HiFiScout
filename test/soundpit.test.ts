@@ -51,6 +51,20 @@ test("Sound Pit discovery follows only detail links and carries listing availabi
   });
 });
 
+test("Sound Pit does not carry fallback product facts from hidden index entries", () => {
+  for (const hidden of [
+    `<!--${listingHtml}-->`,
+    `<script>${listingHtml}</script>`,
+    `<style>${listingHtml}</style>`,
+  ]) {
+    assert.deepEqual(discoverSoundPitDetails(hidden), []);
+    assert.deepEqual(
+      discoverSoundPitDetails(`${hidden}${listingHtml}`),
+      discoverSoundPitDetails(listingHtml),
+    );
+  }
+});
+
 test("Sound Pit detail parser extracts factual price and product fields", () => {
   const html = `
   <h3>Used Audio 中古商品</h3>

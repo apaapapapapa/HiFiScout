@@ -183,6 +183,8 @@ test("Fujiya DJ/DTM listings remain classifiable from the new arrivals feed", ()
     </div>`;
   const [item] = fujiyaAvicAdapter.parse(html, page);
   assert.equal(item.category, "DJ機器・DTM");
+  assert.equal(item.manufacturer, "Pioneer DJ");
+  assert.equal(item.model, "DDJ-FLX4");
   assert.equal(item.priceYen, 39800);
   assert.equal(item.stockStatus, "in_stock");
 });

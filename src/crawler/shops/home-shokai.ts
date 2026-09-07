@@ -1,3 +1,4 @@
+import { stripRawTextElements } from "../../html/raw-text.js";
 import { availabilityFromSignals } from "../availability.js";
 import { cleanText, inferCategory, parseYen, splitManufacturerModel } from "../normalize.js";
 import type { CrawlPageObject, SellerProduct, ShopAdapter } from "../types.js";
@@ -133,7 +134,8 @@ function splitProductFacts(
   return {
     manufacturer: cleanText(split.manufacturer),
     model: cleanText(split.model) || core,
-    rawCategory: inferCategory(core),
+    // An inferred model-name hint is not a category supplied by the seller.
+    rawCategory: "",
   };
 }
 
@@ -168,6 +170,7 @@ export function parseHomeShokaiListing(
   html: string,
   page: Partial<HomeShokaiPage> = {},
 ): SellerProduct[] {
+  html = stripRawTextElements(html);
   const products = new Map<string, SellerProduct>();
   const anchorRe = /<a\b[^>]*href\s*=\s*(["'])([^"']+)\1[^>]*>([\s\S]*?)<\/a>/gi;
 

@@ -119,10 +119,21 @@ Prefer separately labeled manufacturer/model fields and structured Product data 
 ignore navigation, comments and script text. `src/crawler/listing-fields.ts` provides bounded card
 and nested field readers, including repeated cards with missing closing tags.
 
+Sanitize comments and raw script/style elements **before** scanning for cards, rows or anchors;
+stripping only the extracted inner text is too late because the hidden wrapper has already been
+lost. Use `stripRawTextElements` at a custom parser's entry boundary. Anchor offsets and the HTML
+sliced with them must refer to the same sanitized string. Keep the generic parser's separate JSON-LD
+reader intact. Each shop has a visible-control/hidden-markup regression in
+`test/crawl-audit-prevention.test.ts`; hidden entries must neither create listings nor change a
+visible listing's maker, model, price or availability.
+
 Retain model revisions, cable lengths, impedance, quantities and bundled accessories. Parentheses
 are not inherently sales annotations: the central model resolver removes only recognized notes and
 records their provenance. Cover adjacent products with different makers/prices/stock states, unknown
 multi-word brands, and Japanese model names using minimal fixtures based on the seller's markup.
+Fujiya's fallback may remove a bilingual manufacturer spelling only when it matches a known alias
+of the same maker. Japanese model names and bracketed SKUs must remain together. If a shop supplies
+no category field, leave `rawCategory` empty; a model-name guess belongs only in the parser hint.
 
 Explicit `+` bundles retain one seller listing and one price. The model resolver stores each
 component's manufacturer/model/finish in `metadata.modelNormalization.bundleComponents`, removes
@@ -189,6 +200,20 @@ Seller-category policy may be `authoritative`, `corroborative`, or `ignore`. Cat
 registered under `capabilities.catalog`; optional detail enrichment is registered under
 `capabilities.detailCategoryEvidence`. It returns product-specific evidence, never the final category
 decision. Detail requests are bounded by the platform and only unresolved products need them.
+
+Detail extraction must first match the expected product, then read bounded product information.
+Fujiya uses product-specific metadata/lead segments, excluding navigation, related headings and
+accessory rows. Ippinkan reads the matched product's explicit `カテゴリー` table/definition field,
+not its global menu or accessory list. Budgets and cache durations remain shop policy in
+`src/crawler/shops/index.ts` and the corresponding adapter; do not fetch every detail page.
+
+Set `capabilities.detailCategoryEvidence.version` when changing extraction semantics (omitted means
+version 1). Positive and negative detail caches are reused only for the current shop-local version;
+this avoids invalidating other shops or scheduling a catalog-wide replay. Structured staged results
+carry that version too. If a deployment crosses a run, an old committed result retains its request
+fence but cannot be stamped as current evidence or a negative cache hit; the next ordinary crawl
+retries within its existing request budget. Manual overrides and verified catalog authority remain
+ahead of optional detail enrichment.
 
 Taxonomy v3 uses canonical product-type leaves, separate facets, and capabilities. `unclassified`
 means evidence is insufficient; it is internal and non-filterable. There is no canonical `other`

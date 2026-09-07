@@ -1,3 +1,4 @@
+import { stripRawTextElements } from "../../html/raw-text.js";
 import { availabilityFromSignals } from "../availability.js";
 import {
   bestListingTitle,
@@ -186,6 +187,7 @@ export function parseAfroAudioListing(
   html: string,
   page: Partial<AfroAudioPage> = {},
 ): SellerProduct[] {
+  html = stripRawTextElements(html);
   const products: SellerProduct[] = [];
 
   for (const { record, text: blockText } of productListingBlocks(

@@ -312,6 +312,8 @@ export type DetailEvidenceLoader = (
 
 /** Optional seller-specific detail-page evidence extraction. */
 export interface DetailCategoryEvidenceCapability {
+  /** Bump when extraction semantics change. Omitted means legacy version 1. */
+  readonly version?: number;
   extract(
     html: string,
     product: DetailCategoryExtractionInput,

@@ -8,6 +8,7 @@ import {
   stableSourceId,
 } from "../normalize.js";
 import { listingBlocks, listingFieldText } from "../listing-fields.js";
+import { mentionsDetailProduct, productDetailScope } from "../detail-product-scope.js";
 import { parseProductPage } from "../parser.js";
 import type { CategoryEvidenceInput, NormalizedCatalogProduct } from "../../catalog/types.js";
 import type { CrawlPageObject, SellerProduct, ShopAdapter } from "../types.js";
@@ -56,7 +57,9 @@ function attribute(attrs: string, name: string): string {
 
 function metaDescriptions(html: string): string[] {
   const descriptions: string[] = [];
-  for (const match of String(html || "").matchAll(/<meta\b([^>]*)>/gi)) {
+  // Document metadata precedes the rendered content; body/template meta tags are not evidence.
+  const header = html.split(/<(?:body|main|header|nav|aside|footer|template|h[1-6])\b/i, 1)[0];
+  for (const match of header.matchAll(/<meta\b([^>]*)>/gi)) {
     const attrs = match[1];
     const name = (attribute(attrs, "name") || attribute(attrs, "property")).toLowerCase();
     if (!["description", "og:description", "twitter:description"].includes(name)) continue;
@@ -64,20 +67,6 @@ function metaDescriptions(html: string): string[] {
     if (content) descriptions.push(content);
   }
   return [...new Set(descriptions)];
-}
-
-function productNeedles(
-  product: Partial<Pick<NormalizedCatalogProduct, "model" | "title">>,
-): string[] {
-  return [...new Set([product.model, product.title].map(cleanText).filter(Boolean))].sort(
-    (left, right) => right.length - left.length,
-  );
-}
-
-function containsProductNeedle(sentence: string, needles: string[]): boolean {
-  if (!needles.length) return true;
-  const normalized = sentence.normalize("NFKC").toLowerCase();
-  return needles.some((needle) => normalized.includes(needle.normalize("NFKC").toLowerCase()));
 }
 
 function productTitleDeclaresCable(
@@ -95,12 +84,12 @@ function firstExplicitDetailEvidence(
 ): CategoryEvidenceInput[] {
   const normalized = cleanText(text);
   if (!normalized) return [];
-  const needles = productNeedles(product);
   const sentences = normalized
     .split(/[。！？!?]+/)
     .map(cleanText)
     .filter(Boolean)
-    .filter((sentence) => containsProductNeedle(sentence, needles));
+    .filter((sentence) => mentionsDetailProduct(sentence, product))
+    .filter((sentence) => !/付属品|付属の|同梱|組み合わせ|対応機種|使用例/u.test(sentence));
   for (const sentence of sentences) {
     const evidence = categoryEvidenceFromText(sentence, {
       source,
@@ -127,31 +116,34 @@ function firstExplicitDetailEvidence(
   return [];
 }
 
-function productLeadText(
-  html: string,
-  product: Partial<Pick<NormalizedCatalogProduct, "model" | "title">> = {},
-): string {
-  const visible = cleanText(stripRawTextElements(html));
-  const needle = cleanText(product.model || product.title || "");
-  if (!needle) return visible.slice(0, 1200);
-  const index = visible.toLowerCase().indexOf(needle.toLowerCase());
-  return visible.slice(index >= 0 ? index : 0, (index >= 0 ? index : 0) + 1200);
-}
-
 export function extractFujiyaDetailCategoryEvidence(
   html: string,
   product: Partial<Pick<NormalizedCatalogProduct, "model" | "title">> = {},
 ): CategoryEvidenceInput[] {
-  for (const description of metaDescriptions(html)) {
+  const lead = productDetailScope(html, product);
+  if (lead === null) return [];
+  for (const description of metaDescriptions(stripRawTextElements(html))) {
     const evidence = firstExplicitDetailEvidence(description, "detail_metadata", product);
     if (evidence.length) return evidence;
   }
 
-  return firstExplicitDetailEvidence(
-    productLeadText(html, product),
-    "detail_product_text",
-    product,
-  );
+  // Keep block boundaries: a model heading followed by an accessories row is not one sentence.
+  const segments = lead
+    .replace(/<br\b[^>]*>|<\/(?:p|div|li|dt|dd|tr|td|th|h[1-6])\s*>/gi, "\n")
+    .split("\n")
+    .map(cleanText);
+  let remaining = 1200;
+  for (const segment of segments) {
+    if (remaining <= 0) break;
+    const evidence = firstExplicitDetailEvidence(
+      segment.slice(0, remaining),
+      "detail_product_text",
+      product,
+    );
+    if (evidence.length) return evidence;
+    remaining -= segment.length;
+  }
+  return [];
 }
 
 export function parseFujiyaResultCount(html: string): number | null {

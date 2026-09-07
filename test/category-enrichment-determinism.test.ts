@@ -102,6 +102,7 @@ test("a copy already classified from a detail page classifies its siblings witho
       metadata_json: JSON.stringify({
         categoryClassification: {
           version: CATEGORY_CLASSIFICATION_METADATA_VERSION,
+          detailExtractorVersion: fujiyaAvicPlugin.capabilities.detailCategoryEvidence?.version,
           state: "classified",
           detailCheckedAt: "2026-08-21T10:00:00.000Z",
         },
