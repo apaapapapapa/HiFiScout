@@ -544,7 +544,7 @@ test("manufacturer choice and changes remain usable on a narrow admin dialog", a
   expect(
     await admin.listings.editDialog.evaluate((node) => node.scrollWidth <= node.clientWidth),
   ).toBe(true);
-  await admin.listings.editDialog.screenshot({
+  await diff.screenshot({
     path: testInfo.outputPath("admin-edit-preview-mobile.png"),
   });
 });
