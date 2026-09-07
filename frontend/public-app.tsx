@@ -60,6 +60,7 @@ import {
 } from "./public-ui-state.js";
 import { useFilterSheet } from "./use-filter-sheet.js";
 import { FeedSubscription } from "./feed-subscription.js";
+import { SavedSearches } from "./saved-searches-ui.js";
 import { SearchSuggestionInput } from "./search-suggestion-input.js";
 import { sortShopsByJapaneseReading } from "./shop-options.js";
 import { FilterMultiSelect } from "./filter-multi-select.js";
@@ -1149,6 +1150,7 @@ export function PublicApp() {
         />
 
         <div className="catalog-results">
+          <SavedSearches filters={appliedFilters} onApply={(next) => { closeFilters(); commitFilters(next); }} />
           <QuickFilters filters={filters} favoriteCount={favoriteCount} onChange={changeToggle} />
 
           <div id="active-filters" className="active-filters" aria-live="polite">

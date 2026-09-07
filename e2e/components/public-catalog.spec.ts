@@ -134,6 +134,34 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+test("named saved searches restore applied filters and support rename and removal", async ({ page, mount }) => {
+  await mockCatalog(page);
+  await mount("frontend/public-app/Default");
+  await page.locator("#q").fill("LUXMAN");
+  await expect(page).toHaveURL(/q=LUXMAN/);
+  await page.locator(".saved-searches > summary").click();
+  await page.getByLabel("検索名", { exact: true }).fill("アンプ候補");
+  await page.getByRole("button", { name: "この検索を保存", exact: true }).click();
+  await expect(page.locator(".saved-searches")).toContainText("検索条件を保存しました");
+  await page.locator("#q").fill("TAD");
+  await expect(page).toHaveURL(/q=TAD/);
+  await page.getByRole("button", { name: "アンプ候補を検索", exact: true }).click();
+  await expect(page.locator("#q")).toHaveValue("LUXMAN");
+  await expect(page).toHaveURL(/q=LUXMAN/);
+  await page.getByRole("button", { name: "アンプ候補の名前を変更", exact: true }).click();
+  await page.getByLabel("検索名", { exact: true }).fill("ラック用");
+  await page.getByRole("button", { name: "検索名を変更", exact: true }).click();
+  const saved = page.locator(".saved-searches li").filter({ hasText: "ラック用" });
+  await saved.locator(".feed-subscription > summary").click();
+  await expect(saved.getByRole("link", { name: "Atomフィードを開く" })).toHaveAttribute("href", /q=LUXMAN/);
+  const entries = await page.evaluate(() => JSON.parse(localStorage.getItem("hifiscout:saved-searches:v1") || "[]"));
+  expect(entries).toHaveLength(1);
+  expect(entries[0].name).toBe("ラック用");
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "ラック用を削除", exact: true }).click();
+  await expect(page.locator(".saved-searches > summary")).toContainText("0/20");
+});
+
 test("condition groups stage appearance and service criteria and preserve unknown evidence", async ({
   page,
   mount,

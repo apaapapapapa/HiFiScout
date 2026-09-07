@@ -27,6 +27,7 @@ import {
   facetSelectionKey,
 } from "./filters.js";
 import { comparisonKeysFromSearch } from "./product-comparison.js";
+import { PRODUCT_QUERY_SORTS } from "../src/api/contracts.js";
 
 /** Mirrors the server's per-parameter character limits. */
 const TEXT_LIMITS = [
@@ -35,9 +36,6 @@ const TEXT_LIMITS = [
   { key: "manufacturer", maxLength: 100 },
   { key: "category", maxLength: 100 },
 ] as const;
-
-/** Only the price sorts are shareable; the rest are defaults the app applies itself. */
-const SHAREABLE_SORTS = ["priceAsc", "priceDesc"];
 
 const VIEWS = ["cards", "list"];
 
@@ -68,7 +66,7 @@ export function sanitizedCatalogSearch(search: string): string {
   }
 
   const sort = source.get("sort");
-  if (sort && SHAREABLE_SORTS.includes(sort)) params.set("sort", sort);
+  if (sort && sort !== "newest" && PRODUCT_QUERY_SORTS.some((value) => value === sort)) params.set("sort", sort);
 
   // Emitted between `sort` and the toggles to match `filterUrlParams`, so a link the app wrote is
   // already clean and reloading it does not rewrite the address bar. Validation and de-duplication
