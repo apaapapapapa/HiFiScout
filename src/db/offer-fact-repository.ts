@@ -12,12 +12,14 @@ export function sellerOfferFactWrites(
 ): D1PreparedStatement[] {
   const facts = JSON.stringify(inferOfferFacts(title, conditionText, observedAt));
   return [
-    db.prepare(`DELETE FROM product_offer_facts
+    db
+      .prepare(`DELETE FROM product_offer_facts
       WHERE product_id = (SELECT id FROM products WHERE shop_key = ? AND source_id = ?)
         AND source = 'seller'
         AND fact_id NOT IN (SELECT json_extract(value, '$.factId') FROM json_each(?))`)
       .bind(shopKey, sourceId, facts),
-    db.prepare(`INSERT INTO product_offer_facts
+    db
+      .prepare(`INSERT INTO product_offer_facts
       (product_id, fact_id, source, state, source_field, rule_id, confidence, observed_at)
       SELECT p.id, json_extract(j.value, '$.factId'), 'seller',
         json_extract(j.value, '$.state'), json_extract(j.value, '$.sourceField'),

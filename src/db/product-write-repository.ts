@@ -526,15 +526,28 @@ function dependentListingWrites(
   product: CatalogProductUpsertInput,
   fields: CatalogFields,
   observedAt: string,
-  flags: { categories: boolean; features: boolean; facets: boolean; history: boolean; offerFacts: boolean },
+  flags: {
+    categories: boolean;
+    features: boolean;
+    facets: boolean;
+    history: boolean;
+    offerFacts: boolean;
+  },
 ): D1PreparedStatement[] {
   const statements: D1PreparedStatement[] = [];
   const lookup = "SELECT id FROM products WHERE shop_key = ? AND source_id = ?";
   const identity = [shopKey, product.sourceId];
   if (flags.offerFacts) {
-    statements.push(...sellerOfferFactWrites(
-      db, shopKey, product.sourceId, product.title, product.conditionText, observedAt,
-    ));
+    statements.push(
+      ...sellerOfferFactWrites(
+        db,
+        shopKey,
+        product.sourceId,
+        product.title,
+        product.conditionText,
+        observedAt,
+      ),
+    );
   }
   if (flags.categories) {
     statements.push(
