@@ -21,6 +21,7 @@ export function AdminOfferFactReplay({
   const [progress, setProgress] = useState<Progress | null>(null);
   const [status, setStatus] = useState("進捗を読み込んでいます…");
   const [busy, setBusy] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [scope, setScope] = useState<"byShop" | "byCategory">("byShop");
   const stop = useRef(false);
   const running = useRef(false);
@@ -47,25 +48,41 @@ export function AdminOfferFactReplay({
     };
   }, []);
 
-  const run = async (steps: number) => {
+  const run = async (steps: number | "all") => {
     if (running.current) return;
     running.current = true;
     started.current = true;
     stop.current = false;
     setBusy(true);
-    setStatus("再処理しています…");
+    setStopping(false);
+    const runningStatus =
+      steps === "all" ? "全商品を再処理しています…（25件ずつ）" : "再処理しています…";
+    setStatus(runningStatus);
+    let previousCount = progress?.scannedCount ?? 0;
+    let unchangedSteps = 0;
     try {
-      for (let step = 0; step < steps && !stop.current; step++) {
+      for (let step = 0; (steps === "all" || step < steps) && !stop.current; step++) {
         const next = await adminJson<Progress>(PATH, { method: "POST", body: "{}" });
         if (!mounted.current) return;
         setProgress(next);
+        if (next.completedAt) {
+          setStatus("再処理が完了しました。");
+          return;
+        }
+        // A fenced server step can make no progress. Do not spin indefinitely under contention.
+        unchangedSteps = next.scannedCount > previousCount ? 0 : unchangedSteps + 1;
+        previousCount = next.scannedCount;
+        if (steps === "all" && unchangedSteps >= 3 && !stop.current) {
+          throw new Error("進捗が更新されないため停止しました。少し待ってから再開してください。");
+        }
+        if (!stop.current) setStatus(runningStatus);
+      }
+      if (mounted.current)
         setStatus(
-          next.completedAt
-            ? "再処理が完了しました。"
+          stop.current
+            ? "停止しました。保存済みの続きから再開できます。"
             : "進捗を保存しました。続きから再開できます。",
         );
-        if (next.completedAt) break;
-      }
     } catch (error) {
       if (mounted.current)
         setStatus(`中断しました。再開時は保存済みの続きから処理します: ${genericErrorText(error)}`);
@@ -77,7 +94,12 @@ export function AdminOfferFactReplay({
   return (
     <section className="panel table-panel" aria-labelledby="offer-replay-heading">
       <h2 id="offer-replay-heading">出品条件の再処理・充足率</h2>
-      <p>保存済みの出品を1回最大25件ずつ処理します。店舗への再アクセスは行いません。</p>
+      <p>
+        保存済みの全商品（掲載終了を含む）を1回最大25件ずつ処理します。店舗への再アクセスは行わず、手動修正は保持します。
+      </p>
+      <p>
+        「全商品を再処理」は保存済みの続きから完了まで自動で処理します。実行中はこのタブを開いたままにしてください。停止・タブを閉じた後も続きから再開できます。
+      </p>
       <p role="status">{status}</p>
       <p>
         {progress
@@ -101,15 +123,32 @@ export function AdminOfferFactReplay({
         >
           最大500件を再処理
         </button>
+        <button
+          type="button"
+          disabled={busy || Boolean(progress?.completedAt)}
+          onClick={() => {
+            if (
+              window.confirm(
+                "全商品（掲載終了を含む）の出品条件を、保存済みの続きから完了まで再処理します。手動修正は保持します。実行中はこのタブを開いたままにしてください。開始しますか？",
+              )
+            )
+              void run("all");
+          }}
+        >
+          全商品を再処理
+        </button>
         {busy ? (
           <button
             type="button"
             className="secondary-button"
+            disabled={stopping}
             onClick={() => {
               stop.current = true;
+              setStopping(true);
+              setStatus("実行中の25件以内の処理が終わり次第、停止します…");
             }}
           >
-            この処理の後で停止
+            {stopping ? "停止しています…" : "この処理の後で停止"}
           </button>
         ) : null}
       </div>

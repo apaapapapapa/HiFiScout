@@ -47,8 +47,17 @@ export function createMockAdminRpc() {
       },
     },
     writes: { catalog: 0, listing: 0 },
+    replay: { scannedCount: 0, totalCount: 550, stepCalls: 0 },
     unexpectedCalls: [] as string[],
   };
+  const replayProgress = () => ({
+    ruleVersion: 1,
+    scannedCount: state.replay.scannedCount,
+    activeCount: Math.max(0, state.replay.scannedCount - 1),
+    completedAt:
+      state.replay.scannedCount >= state.replay.totalCount ? "2026-09-07T00:00:00Z" : null,
+    coverage: { byShop: [], byCategory: [] },
+  });
   const unsupported = (method: string) => async () => {
     state.unexpectedCalls.push(method);
     throw new Error(`Unmocked admin RPC: ${method}`);
@@ -56,8 +65,12 @@ export function createMockAdminRpc() {
   const rpc: AdminRpc = {
     getModelFacts: unsupported("getModelFacts"),
     saveModelFacts: unsupported("saveModelFacts"),
-    getOfferFactReplay: async () => null,
-    stepOfferFactReplay: unsupported("stepOfferFactReplay"),
+    getOfferFactReplay: async () => (state.replay.stepCalls ? replayProgress() : null),
+    async stepOfferFactReplay() {
+      state.replay.stepCalls++;
+      state.replay.scannedCount = Math.min(state.replay.scannedCount + 25, state.replay.totalCount);
+      return replayProgress();
+    },
     async listManufacturers({ query, afterId, limit }) {
       const matching = [
         { id: "accuphase", name: "Accuphase" },
