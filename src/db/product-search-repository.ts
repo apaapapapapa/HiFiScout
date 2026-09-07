@@ -245,9 +245,12 @@ function addProductFilters(query: ProductQuery, where: string[], binds: unknown[
     facetsById.set(facet.facetId, values);
   }
   for (const [facetId, values] of facetsById) {
+    // Keep the correlated lookup entity-local: first resolve this entity's offers, then use the
+    // product-leading primary key for their facet facts. A reorderable join can start at the
+    // facet/value index and rescan every matching fact for each candidate entity.
     where.push(`EXISTS (
       SELECT 1 FROM product_search_entity_offers m
-      JOIN product_facet_facts pff ON pff.product_id = m.listing_product_id
+      CROSS JOIN product_facet_facts pff ON pff.product_id = m.listing_product_id
       WHERE m.entity_id = e.id AND pff.facet_id = ?
         AND pff.facet_value IN (${values.map(() => "?").join(",")})
     )`);

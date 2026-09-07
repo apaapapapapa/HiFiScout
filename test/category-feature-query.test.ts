@@ -64,7 +64,7 @@ test("facet values are ORed within one dimension and dimensions are ANDed", asyn
   );
 
   const call = db.calls[0];
-  assert.equal((call.sql.match(/JOIN product_facet_facts pff/g) || []).length, 2);
+  assert.equal((call.sql.match(/CROSS JOIN product_facet_facts pff/g) || []).length, 2);
   assert.equal((call.sql.match(/EXISTS \(/g) || []).length, 2);
   assert.match(call.sql, /pff\.facet_value IN \(\?,\?\)/);
   assert.match(call.sql, /pff\.facet_value IN \(\?\)/);
