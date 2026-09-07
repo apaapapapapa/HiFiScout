@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
+import { AdminOfferFacts } from "./admin-offer-facts.js";
 
 import {
   EMPTY_STATUS,
@@ -149,6 +150,7 @@ export function ListingAdmin() {
   const [ready, setReady] = useState(false);
 
   const [editing, setEditing] = useState<ListingProduct | null>(null);
+  const [factsEditing, setFactsEditing] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState<EditDraft>({
     manufacturerId: "",
     model: "",
@@ -562,6 +564,13 @@ export function ListingAdmin() {
                           >
                             編集
                           </button>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => setFactsEditing(product.id)}
+                          >
+                            出品条件
+                          </button>
                         </td>
                       </tr>
                     );
@@ -605,6 +614,14 @@ export function ListingAdmin() {
             </div>
           </section>
         </>
+      ) : null}
+
+      {factsEditing !== null ? (
+        <AdminOfferFacts
+          key={factsEditing}
+          listingId={factsEditing}
+          onClose={() => setFactsEditing(null)}
+        />
       ) : null}
 
       <dialog

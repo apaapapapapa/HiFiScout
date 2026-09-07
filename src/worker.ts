@@ -28,6 +28,8 @@ import {
   listListingAdminProducts,
   updateListingAdminProduct,
 } from "./db/listing-admin-repository.js";
+import { readOfferFactAdmin, updateOfferFactAdmin } from "./db/offer-fact-admin-repository.js";
+import type { OfferFactChanges } from "./catalog/offer-fact-decisions.js";
 import {
   listProductCorrectionReports,
   updateProductCorrectionReport,
@@ -101,6 +103,14 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
 
   async listListings(options: ListingAdminListOptions) {
     return listListingAdminProducts(this.env.DB, options);
+  }
+
+  async getOfferFacts(listingId: number) {
+    return readOfferFactAdmin(this.env.DB, listingId);
+  }
+
+  async updateOfferFacts(listingId: number, changes: OfferFactChanges) {
+    return updateOfferFactAdmin(this.env.DB, listingId, changes);
   }
 
   async updateListing(listingId: number, input: ListingAdminUpdateInput) {
