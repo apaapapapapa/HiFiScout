@@ -47,11 +47,16 @@ import {
 } from "./public-components.js";
 import {
   clearedFilters,
+  clearedDetailFilters,
+  desktopPanelFilters,
+  filterRelaxations,
+  initialFilters,
   normalizedPriceFilters,
   normalizePrice,
   priceErrors,
   readPreference,
   savePreference,
+  sameFilters,
 } from "./public-ui-state.js";
 import { useFilterSheet } from "./use-filter-sheet.js";
 import { FeedSubscription } from "./feed-subscription.js";
@@ -159,6 +164,8 @@ interface FilterPanelProps {
   favoriteCount: number;
   open: boolean;
   isMobile: boolean;
+  pending: boolean;
+  onBudget: (maximum: string) => void;
   onApply: () => void;
   onValueChange: (id: UrlValueId, value: string, debounced?: boolean) => void;
   onSelectionChange: (id: SelectionId, values: string[]) => void;
@@ -175,6 +182,8 @@ function FilterPanel({
   favoriteCount,
   open,
   isMobile,
+  pending,
+  onBudget,
   onApply,
   onValueChange,
   onSelectionChange,
@@ -265,28 +274,44 @@ function FilterPanel({
           <span>最低価格（円）</span>
           <input
             id="minPrice"
-            inputMode="numeric"
+            inputMode="decimal"
             placeholder="0"
             aria-invalid={!!errors.minPrice}
             aria-describedby="price-help price-error"
             value={filters.minPrice}
             onChange={(event) => onValueChange("minPrice", event.currentTarget.value, true)}
+            onKeyDown={(event) => {
+              if (
+                event.key === "Enter" &&
+                !event.nativeEvent.isComposing &&
+                Object.keys(errors).length === 0
+              )
+                onApply();
+            }}
           />
         </label>
         <label>
           <span>最高価格（円）</span>
           <input
             id="maxPrice"
-            inputMode="numeric"
-            placeholder="1,000,000"
+            inputMode="decimal"
+            placeholder="100,000 または 10万"
             aria-invalid={!!errors.maxPrice}
             aria-describedby="price-help price-error"
             value={filters.maxPrice}
             onChange={(event) => onValueChange("maxPrice", event.currentTarget.value, true)}
+            onKeyDown={(event) => {
+              if (
+                event.key === "Enter" &&
+                !event.nativeEvent.isComposing &&
+                Object.keys(errors).length === 0
+              )
+                onApply();
+            }}
           />
         </label>
         <p id="price-help" className="filter-note">
-          円単位・上限なしは空欄。
+          円・万円で入力できます（例: 100,000 / 10万 / 12.5万円）。指定なしは空欄。
           {["minPrice", "maxPrice"]
             .map((id) => {
               const value = normalizePrice(filters[id as "minPrice" | "maxPrice"]);
@@ -294,6 +319,23 @@ function FilterPanel({
             })
             .join(" 〜 ")}
         </p>
+        <div className="budget-presets" role="group" aria-label="予算の目安">
+          {[
+            ["50000", "5万円以下"],
+            ["100000", "10万円以下"],
+            ["300000", "30万円以下"],
+          ].map(([maximum, label]) => (
+            <button
+              type="button"
+              className="filter-chip"
+              key={maximum}
+              aria-pressed={!filters.minPrice && normalizePrice(filters.maxPrice) === maximum}
+              onClick={() => onBudget(maximum)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <p id="price-error" className="field-error" role="status">
           {Object.values(errors).join(" ")}
         </p>
@@ -373,9 +415,14 @@ function FilterPanel({
             prefix="sheet-"
           />
         ) : null}
+        <p className="filter-note" role="status" id="filter-draft-status">
+          {pending
+            ? "未適用の変更があります。適用すると検索結果を更新します。"
+            : "詳細条件は「適用」で反映します。"}
+        </p>
         <div className="filter-actions">
           <button id="clear-filters" className="button-secondary" type="button" onClick={onClear}>
-            すべて解除
+            詳細条件を解除
           </button>
           <button
             id="apply-filters"
@@ -691,27 +738,33 @@ export function PublicApp() {
 
   const clearFilter = useCallback(
     (id: string) => {
-      const next = { ...filtersRef.current };
-      const feature = featureFromFilterId(id);
-      const facet = facetFromFilterId(id);
-      const selection = selectionFromFilterId(id);
-      if (feature) next.features = next.features.filter((selected) => selected !== feature);
-      else if (facet) {
-        const key = facetSelectionKey(facet);
-        next.facets = next.facets.filter((selected) => facetSelectionKey(selected) !== key);
-      } else if (selection) {
-        next[selection.field] = next[selection.field].filter((value) => value !== selection.value);
-      } else if (id === "shop" || id === "manufacturer") next[id] = [];
-      else if (
-        id === "inStock" ||
-        id === "favoritesOnly" ||
-        id === "recentOnly" ||
-        id === "priceDropped"
-      )
-        next[id] = false;
-      else if (id === "q" || id === "category" || id === "minPrice" || id === "maxPrice")
-        next[id] = "";
-      commitFilters(next);
+      const remove = (current: ProductFilters): ProductFilters => {
+        const next = { ...current };
+        const feature = featureFromFilterId(id);
+        const facet = facetFromFilterId(id);
+        const selection = selectionFromFilterId(id);
+        if (feature) next.features = next.features.filter((selected) => selected !== feature);
+        else if (facet) {
+          const key = facetSelectionKey(facet);
+          next.facets = next.facets.filter((selected) => facetSelectionKey(selected) !== key);
+        } else if (selection) {
+          next[selection.field] = next[selection.field].filter(
+            (value) => value !== selection.value,
+          );
+        } else if (id === "shop" || id === "manufacturer") next[id] = [];
+        else if (
+          id === "inStock" ||
+          id === "favoritesOnly" ||
+          id === "recentOnly" ||
+          id === "priceDropped"
+        )
+          next[id] = false;
+        else if (id === "q" || id === "category" || id === "minPrice" || id === "maxPrice")
+          next[id] = "";
+        return next;
+      };
+      setDraftFilters((draft) => (draft ? remove(draft) : null));
+      commitFilters(remove(filtersRef.current));
     },
     [commitFilters],
   );
@@ -725,10 +778,13 @@ export function PublicApp() {
     commitFilters(clearedFilters(filtersRef.current));
   }, [closeFilters, commitFilters]);
   const changePanelFilters = (next: ProductFilters) => {
-    if (isMobile && filterOpen) setDraftFilters(next);
-    else commitFilters(next);
+    setDraftFilters(next);
   };
-  const panelFilters = draftFilters ?? filters;
+  const panelFilters = draftFilters
+    ? isMobile
+      ? draftFilters
+      : desktopPanelFilters(filters, draftFilters)
+    : filters;
 
   const toggleFavorite = useCallback(
     (key: string) => {
@@ -811,11 +867,12 @@ export function PublicApp() {
     const query = window.matchMedia(MOBILE_QUERY);
     const update = () => {
       setIsMobile(query.matches);
-      if (!query.matches) closeFilters();
+      setDraftFilters((draft) => (draft ? desktopPanelFilters(filtersRef.current, draft) : null));
+      if (!query.matches) setFilterOpen(false);
     };
     query.addEventListener("change", update);
     return () => query.removeEventListener("change", update);
-  }, [closeFilters]);
+  }, []);
 
   useEffect(() => {
     document.body.classList.toggle("filters-open", isMobile && filterOpen);
@@ -973,7 +1030,7 @@ export function PublicApp() {
                 aria-expanded={filterOpen}
                 onClick={() => {
                   if (isMobile) {
-                    setDraftFilters({ ...filtersRef.current });
+                    setDraftFilters((draft) => draft ?? { ...filtersRef.current });
                     setFilterOpen(true);
                   }
                 }}
@@ -1000,10 +1057,11 @@ export function PublicApp() {
           favoriteCount={favoriteCount}
           open={filterOpen}
           isMobile={isMobile}
-          onValueChange={(id, value, debounced) => {
-            if (isMobile && filterOpen) setDraftFilters({ ...panelFilters, [id]: value });
-            else changeValue(id, value, debounced);
-          }}
+          pending={draftFilters !== null && !sameFilters(panelFilters, filters)}
+          onBudget={(maximum) =>
+            changePanelFilters({ ...panelFilters, minPrice: "", maxPrice: maximum })
+          }
+          onValueChange={(id, value) => changePanelFilters({ ...panelFilters, [id]: value })}
           onSelectionChange={(id, values) => changePanelFilters({ ...panelFilters, [id]: values })}
           onToggleChange={(id, checked) => changePanelFilters({ ...panelFilters, [id]: checked })}
           onFeatureChange={(feature, checked) =>
@@ -1035,15 +1093,12 @@ export function PublicApp() {
             })
           }
           onClose={closeFilters}
-          onClear={() => {
-            if (isMobile && filterOpen) setDraftFilters(clearedFilters(panelFilters));
-            else clearAllFilters();
-          }}
+          onClear={() => setDraftFilters(clearedDetailFilters(panelFilters))}
           onApply={() => {
             const next = normalizedPriceFilters(panelFilters);
             if (next) {
               closeFilters();
-              commitFilters(next);
+              if (!sameFilters(next, filtersRef.current)) commitFilters(next);
             }
           }}
         />
@@ -1185,9 +1240,12 @@ export function PublicApp() {
                       product={product}
                       favorite={favorites.products.has(product.key)}
                       shopName={shopName}
-                      onManufacturer={(manufacturer) =>
-                        commitFilters({ ...filtersRef.current, manufacturer: [manufacturer] })
-                      }
+                      onManufacturer={(manufacturer) => {
+                        setDraftFilters((draft) =>
+                          draft ? { ...draft, manufacturer: [manufacturer] } : null,
+                        );
+                        commitFilters({ ...filtersRef.current, manufacturer: [manufacturer] });
+                      }}
                       onFavorite={toggleFavorite}
                       onOffers={(key) => void showOffers(key)}
                     />
@@ -1201,6 +1259,15 @@ export function PublicApp() {
                     favoriteMode={favoriteMode}
                     hasFavorites={favoriteCount > 0}
                     onClear={clearAllFilters}
+                    relaxations={filterRelaxations(appliedFilters)}
+                    onRelax={(next) => {
+                      closeFilters();
+                      commitFilters(next);
+                    }}
+                    onReset={() => {
+                      closeFilters();
+                      commitFilters(initialFilters(filtersRef.current));
+                    }}
                   />
                 )}
               </>

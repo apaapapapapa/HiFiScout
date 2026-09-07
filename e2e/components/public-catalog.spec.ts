@@ -156,6 +156,8 @@ test("searchable multi-selects send OR choices and remove one active choice", as
   await page.locator("#manufacturer summary").click();
   await selectShop(page);
   await selectShop(page, "別の販売店");
+  expect(seen.searches).toHaveLength(1);
+  await page.locator("#apply-filters").click();
   await expect
     .poll(() => seen.searches.at(-1)?.searchParams.getAll("shop"))
     .toEqual(["shop-a", "shop-b"]);
@@ -201,11 +203,11 @@ test("equipment shortcuts issue one combined search and retain budget and query"
   await page.locator("#q").fill("Reference");
   await expect.poll(() => seen.searches.at(-1)?.searchParams.get("q")).toBe("Reference");
   await page.locator("#maxPrice").fill("100000");
-  await expect.poll(() => seen.searches.at(-1)?.searchParams.get("maxPrice")).toBe("100000");
   await page.locator("#category").selectOption("ANA.TAPE");
   await page.getByText("機能・仕様で詳しく絞り込む", { exact: true }).click();
   await page.getByLabel("DAC搭載", { exact: true }).selectOption("dac");
   await page.locator("#facet-supported_media-cassette").check();
+  await page.locator("#apply-filters").click();
   await expect
     .poll(() => seen.searches.at(-1)?.searchParams.getAll("facet"))
     .toEqual(["supported_media:cassette"]);
@@ -236,15 +238,18 @@ test("capability controls preserve absent and unknown states through requests an
   await expect(page.locator("#facet-supported_media-cassette")).toBeVisible();
   await expect(page.locator("#facet-supported_media-cd")).toHaveCount(0);
   await page.getByLabel("DAC搭載", { exact: true }).selectOption("dac:absent");
+  await page.locator("#apply-filters").click();
   await expect
     .poll(() => seen.searches.at(-1)?.searchParams.getAll("feature"))
     .toEqual(["dac:absent"]);
   await expect(page.getByRole("button", { name: /DAC搭載: 非搭載/ })).toBeVisible();
   await page.getByLabel("録音機能", { exact: true }).selectOption("recording:unknown");
+  await page.locator("#apply-filters").click();
   await expect
     .poll(() => seen.searches.at(-1)?.searchParams.getAll("feature"))
     .toEqual(["dac:absent", "recording:unknown"]);
   await page.getByLabel("DAC搭載", { exact: true }).selectOption("dac");
+  await page.locator("#apply-filters").click();
   await expect
     .poll(() => seen.searches.at(-1)?.searchParams.getAll("feature"))
     .toEqual(["dac", "recording:unknown"]);
@@ -345,7 +350,7 @@ test("long names and seven-digit prices fit across filter breakpoints", async ({
   }
 });
 
-test("desktop price chips match normalized requests for grouped and full-width yen", async ({
+test("desktop applies prices once and keeps pending details separate from immediate controls", async ({
   page,
   mount,
 }) => {
@@ -353,10 +358,52 @@ test("desktop price chips match normalized requests for grouped and full-width y
   const seen = await mockCatalog(page);
   await mount("frontend/public-app/Default");
   await expect(page.locator(".card")).toHaveCount(1);
-  await page.locator("#minPrice").fill("100,000");
-  await expect(page.locator('[data-clear-filter="minPrice"]')).toContainText("100,000");
-  expect(seen.searches.at(-1)?.searchParams.get("minPrice")).toBe("100000");
+  await page.locator("#minPrice").fill("5万");
+  await page.locator("#maxPrice").fill("12.5万円");
+  await selectShop(page);
+  await expect(page.locator("#filter-draft-status")).toContainText("未適用");
+  expect(seen.searches).toHaveLength(1);
+  await page.locator("#recentOnly").check();
+  await expect.poll(() => seen.searches.length).toBe(2);
+  expect(seen.searches.at(-1)?.searchParams.has("maxPrice")).toBe(false);
+  expect(seen.searches.at(-1)?.searchParams.getAll("shop")).toEqual([]);
+  await page.locator("#apply-filters").click();
+  await expect.poll(() => seen.searches.length).toBe(3);
+  expect(seen.searches.at(-1)?.searchParams.get("minPrice")).toBe("50000");
+  expect(seen.searches.at(-1)?.searchParams.get("maxPrice")).toBe("125000");
+  expect(seen.searches.at(-1)?.searchParams.get("newOnly")).toBe("true");
+  expect(seen.searches.at(-1)?.searchParams.getAll("shop")).toEqual(["shop-a"]);
+  await expect(page.locator('[data-clear-filter="maxPrice"]')).toContainText("125,000");
+  await page.locator("#apply-filters").click();
+  expect(seen.searches).toHaveLength(3);
   await page.locator("#minPrice").fill("１，０００");
+  await page.locator("#minPrice").press("Enter");
   await expect(page.locator('[data-clear-filter="minPrice"]')).toHaveText(/1,000以上/);
   expect(seen.searches.at(-1)?.searchParams.get("minPrice")).toBe("1000");
+});
+
+test("budget presets and partial relaxation keep unrelated search conditions", async ({
+  page,
+  mount,
+}) => {
+  const seen = await mockCatalog(page);
+  await mount("frontend/public-app/Default");
+  await expect(page.locator(".card")).toHaveCount(1);
+  await page.locator("#minPrice").fill("20万");
+  await page.getByRole("button", { name: "10万円以下", exact: true }).click();
+  await expect(page.locator("#minPrice")).toHaveValue("");
+  await expect(page.locator("#maxPrice")).toHaveValue("100000");
+  await selectShop(page);
+  await page.locator("#apply-filters").click();
+  await page.locator("#q").fill("zero");
+  await expect(page.locator("#count")).toHaveText("0");
+  await page.getByRole("button", { name: "価格条件だけ解除", exact: true }).click();
+  await expect.poll(() => seen.searches.at(-1)?.searchParams.has("maxPrice")).toBe(false);
+  expect(seen.searches.at(-1)?.searchParams.get("q")).toBe("zero");
+  expect(seen.searches.at(-1)?.searchParams.getAll("shop")).toEqual(["shop-a"]);
+  expect(seen.searches.at(-1)?.searchParams.get("inStock")).toBe("true");
+  await page.getByRole("button", { name: "初期条件に戻す（在庫あり）", exact: true }).click();
+  await expect(page.locator(".card")).toHaveCount(1);
+  expect(new URL(page.url()).searchParams.has("shop")).toBe(false);
+  await expect(page.locator("#inStock")).toBeChecked();
 });

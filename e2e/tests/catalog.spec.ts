@@ -178,6 +178,7 @@ test("changing a shop filter refreshes search and exposes a removable filter chi
   });
 
   await catalogPage.selectShop(firstShopValue);
+  await catalogPage.applyFilters();
   const filteredRequest = await filteredRequestPromise;
 
   expect(new URL(filteredRequest.url()).searchParams.get("shop")).toBe(firstShopValue);

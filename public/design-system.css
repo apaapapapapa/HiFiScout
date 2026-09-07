@@ -927,3 +927,6 @@ body.filters-open { overflow: hidden; }
 .multi-option-list span { overflow-wrap: anywhere; }
 .multi-selected { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .multi-selected .filter-chip { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
+.budget-presets, .empty-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.budget-presets button[aria-pressed="true"] { background: #191817; color: #fff; }
+.filters #filter-draft-status { font-size: 12px; }
