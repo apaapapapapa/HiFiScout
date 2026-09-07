@@ -988,9 +988,5 @@ body.filters-open { overflow: hidden; }
 .comparison-table th:first-child { min-width: 140px; }
 .comparison-table .price-index-summary { min-width: 200px; }
 
-.specification-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.specification-port { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto; gap: 8px; align-items: end; margin-block: 8px; }
-.specification-port input { min-width: 0; width: 100%; }
-@media (max-width: 600px) { .specification-fields, .specification-port { grid-template-columns: 1fr; } }
 .offer > .offer-terms { grid-area: terms; min-width: 0; }
 .offer > .offer-facts { grid-area: facts; min-width: 0; }

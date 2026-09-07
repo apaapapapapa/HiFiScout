@@ -131,6 +131,7 @@ export function AdminCatalogSpecifications({
       }}
     >
       <form
+        className="edit-form specification-editor"
         onSubmit={(event) => {
           event.preventDefault();
           void save();

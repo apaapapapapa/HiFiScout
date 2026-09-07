@@ -1347,3 +1347,12 @@ dialog::backdrop {
 }
 .merge-preview p { white-space: pre-line; overflow-wrap: anywhere; line-height: 1.7; }
 @media (max-width: 640px) { .merge-preview { grid-template-columns: 1fr; } }
+
+/* Source-backed model specification editor. */
+.specification-editor fieldset { display: grid; gap: 12px; min-width: 0; margin: 0; padding: 16px; border: 1px solid var(--border); border-radius: 8px; }
+.specification-editor legend { font-weight: 700; padding-inline: 4px; }
+.specification-editor label { display: grid; gap: 6px; min-width: 0; }
+.specification-editor .specification-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.specification-port { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto; gap: 8px; align-items: end; }
+.specification-editor input { min-width: 0; width: 100%; }
+@media (max-width: 600px) { .specification-editor .specification-fields, .specification-port { grid-template-columns: 1fr; } }

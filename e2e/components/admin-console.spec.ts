@@ -846,6 +846,9 @@ test("model specifications save explicit units and preserve unrecorded inputs", 
   });
   await expect(dialog.getByRole("button", { name: "仕様を保存", exact: true })).toBeDisabled();
   await page.setViewportSize({ width: 390, height: 844 });
+  await dialog.evaluate((element) => {
+    element.scrollTop = 0;
+  });
   await page.screenshot({
     path: "test-results/admin-model-specifications-mobile.png",
     fullPage: true,
