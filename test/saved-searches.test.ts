@@ -1,10 +1,21 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
-import { MAX_SAVED_SEARCHES, parseSavedSearches, savedSearchFilters, savedSearchName, savedSearchQuery } from "../frontend/saved-searches.js";
+import {
+  MAX_SAVED_SEARCHES,
+  parseSavedSearches,
+  savedSearchFilters,
+  savedSearchName,
+  savedSearchQuery,
+} from "../frontend/saved-searches.js";
 import { savedSearchFeedPath } from "../frontend/filters.js";
 import { sanitizedCatalogSearch } from "../frontend/catalog-url-sanitizer.js";
 
-const entry = { id: "search-1", name: "アンプ候補", query: "q=amp&sort=oldest&offer=remote_control&offer=shop_warranty&inStock=false", updatedAt: "2026-09-07T00:00:00Z" };
+const entry = {
+  id: "search-1",
+  name: "アンプ候補",
+  query: "q=amp&sort=oldest&offer=remote_control&offer=shop_warranty&inStock=false",
+  updatedAt: "2026-09-07T00:00:00Z",
+};
 
 test("saved searches round-trip repeated conditions and sorting into search and Atom", () => {
   const filters = savedSearchFilters(entry.query);
@@ -27,13 +38,18 @@ test("saved searches round-trip repeated conditions and sorting into search and 
 });
 
 test("invalid local search data is rejected instead of silently widening its filters", () => {
-  for (const raw of ["{", "null", "{}", JSON.stringify(Array(MAX_SAVED_SEARCHES + 1).fill(entry)),
+  for (const raw of [
+    "{",
+    "null",
+    "{}",
+    JSON.stringify(Array(MAX_SAVED_SEARCHES + 1).fill(entry)),
     JSON.stringify([{ ...entry, query: "q=amp&unknown=1" }]),
     JSON.stringify([{ ...entry, query: "minPrice=500&maxPrice=100" }]),
     JSON.stringify([{ ...entry, query: "manufacturer=" + "a".repeat(101) }]),
     JSON.stringify([{ ...entry, id: "../evil" }]),
     JSON.stringify([{ ...entry, updatedAt: "invalid" }]),
-  ]) assert.deepEqual(parseSavedSearches(raw), []);
+  ])
+    assert.deepEqual(parseSavedSearches(raw), []);
   assert.equal(parseSavedSearches(JSON.stringify([entry, entry])).length, 1);
   const invalid = { ...savedSearchFilters(""), q: "a".repeat(101) };
   assert.equal(savedSearchQuery(invalid), null);

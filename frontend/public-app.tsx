@@ -1150,7 +1150,13 @@ export function PublicApp() {
         />
 
         <div className="catalog-results">
-          <SavedSearches filters={appliedFilters} onApply={(next) => { closeFilters(); commitFilters(next); }} />
+          <SavedSearches
+            filters={appliedFilters}
+            onApply={(next) => {
+              closeFilters();
+              commitFilters(next);
+            }}
+          />
           <QuickFilters filters={filters} favoriteCount={favoriteCount} onChange={changeToggle} />
 
           <div id="active-filters" className="active-filters" aria-live="polite">
