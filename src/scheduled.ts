@@ -67,6 +67,7 @@ import {
 } from "./knowledge-catalog/queue-write-quota.js";
 import { recoverStaleKnowledgeCatalogExportJobs } from "./knowledge-catalog-export/service.js";
 import { runRetentionCleanup } from "./maintenance.js";
+import { maintainMarketAnalysis } from "./db/market-analysis-repository.js";
 import { recoverStaleProductAuditExportJobs } from "./product-audit-export/service.js";
 import { errorMessage } from "./types.js";
 import type { DispatchResult } from "./crawler/types.js";
@@ -594,6 +595,7 @@ export async function recoverKnowledgeCatalogQueueQuota(env: Env, now = new Date
 export async function maintainRecentPriceIndexes(db: QueryableDatabase, now = new Date()) {
   const backfill = await backfillRecentPriceIndexes(db, { now });
   const refresh = await refreshExpiredRecentPriceIndexes(db, { now });
+  const market = await maintainMarketAnalysis(db, now);
   const result = {
     backfillStatus: backfill.status,
     backfillSelectedProducts: backfill.selectedCount,
@@ -606,6 +608,8 @@ export async function maintainRecentPriceIndexes(db: QueryableDatabase, now = ne
     dueProducts: refresh.selectedCount,
     refreshedProducts: refresh.refreshedCount,
     refreshHasMore: refresh.hasMore,
+    marketSelectedProducts: market.selected,
+    marketRefreshedProducts: market.refreshed,
   };
   console.log(JSON.stringify({ event: "price_index_recent_refresh", ...result }));
   return result;

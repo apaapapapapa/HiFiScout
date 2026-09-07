@@ -14,6 +14,7 @@ import {
   searchProducts as baseSearchProducts,
 } from "./product-search-repository.js";
 import type { QueryableDatabase } from "./types.js";
+import { loadMarketAnalysis } from "./market-analysis-repository.js";
 
 export type PriceIndexedProductSearchItem = ProductSearchItem & {
   /** Omitted until the named asking-sample threshold is met. */
@@ -62,10 +63,14 @@ export async function productSearchDetail(
 ): Promise<PriceIndexedProductSearchDetailResponse | null> {
   const response = await baseProductSearchDetail(db, key);
   if (!response) return null;
-  const [product] = await addPriceIndexes(db, [response.product]);
+  let [product] = await addPriceIndexes(db, [response.product]);
   if (!product) return response;
 
   const catalogProductId = product.catalog_product_id;
+  if (catalogProductId !== null) {
+    const analysis = await loadMarketAnalysis(db, catalogProductId);
+    if (analysis) product = { ...product, market_analysis: analysis };
+  }
   if (!product.price_index || catalogProductId == null) return { ...response, product };
 
   const listingEndObservations = await loadKnowledgeCatalogListingEndObservations(
