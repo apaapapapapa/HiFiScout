@@ -1,6 +1,7 @@
 # Registered Product Admin
 
-The Access-protected admin Worker exposes `/listing-admin` for correcting canonical fields on seller listings.
+The Access-protected admin Worker exposes the console at `/`; the registered-product tab uses
+`/#listings`. Retired `/listing-admin` and `/catalog-admin` entry points return 404.
 
 `wrangler.admin.jsonc` deploys `src/admin/entry.ts`. The Worker verifies the Cloudflare Access JWT
 and calls `CatalogAdminService` through the `CATALOG_ADMIN` Service Binding; it has no direct D1
@@ -10,6 +11,12 @@ Access through the admin deployment workflow rather than trying a static token i
 The React console starts in `frontend/admin-console.tsx`; listing behavior lives in
 `frontend/admin-listings.tsx`. Catalog editing, duplicate review, correction reports, and asynchronous
 CSV exports are separate capabilities in the same admin surface and its RPC contract.
+
+For local authenticated browser testing, run `vp run test:e2e:admin` after installing Chromium with
+`vp exec playwright install chromium`. The suite uses the real built console and Worker authentication
+with a test-only Access issuer and in-memory RPC state; it does not require a real login or change
+production Access settings. See [Testing strategy](./testing-strategy.md#local-authenticated-admin-coverage)
+for fixtures, rejection/recovery cases and the boundary this suite covers.
 
 ## Complete data exports
 
