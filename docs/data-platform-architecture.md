@@ -732,6 +732,17 @@ another tab before saving; a storage failure preserves the draft. A target-price
 only when the displayed representative offer has an observed in-stock price within the target.
 The existing snapshot observation caveat continues to apply; this feature performs no monitoring.
 
+### Device-local saved searches
+
+Named searches retain the applied public filter query in a versioned browser storage key, up to
+20 entries with 80-character names. Apply, rename and delete are explicit. Saving does not capture
+unapplied filter drafts, comparison selections, paging or favorite mode. Stored queries use the
+same bounded vocabulary as shared URLs, including all supported sorts; malformed or obsolete
+entries are discarded rather than silently broadening their conditions. A storage failure keeps
+the current entries and reports the failure. Each entry links to the existing Atom subscription
+for its saved conditions. Names remain device-local and are not transmitted to the feed endpoint.
+This adds no polling, server storage, crawl scheduling, notifications or account dependency.
+
 ### Product comparison
 
 The public catalog can select two to four verified catalog products for a shareable comparison
