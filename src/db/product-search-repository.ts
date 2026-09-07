@@ -54,6 +54,8 @@ import {
 } from "./product-search-entity-mapper.js";
 import { newOfferPredicate } from "./product-search-entity-sql.js";
 import { effectiveOfferFacts } from "./offer-fact-repository.js";
+import { publicModelRelations } from "./public-model-relations-repository.js";
+import { catalogProductWithoutOffers } from "./catalog-product-detail-repository.js";
 import type {
   ProductSearchEntityRow,
   ProductSearchOfferAggregateRow,
@@ -601,7 +603,8 @@ export async function productSearchDetail(
   db: QueryableDatabase,
   key: string,
 ): Promise<ProductSearchDetailResponse | null> {
-  if (!parseProductSearchKey(key)) return null;
+  const identity = parseProductSearchKey(key);
+  if (!identity) return null;
   const entity = await db
     .prepare(`SELECT ${entityColumns("e")} FROM product_search_entities e WHERE e.entity_key = ?
       AND (e.entity_kind = 'unresolved_listing' OR EXISTS (
@@ -609,7 +612,13 @@ export async function productSearchDetail(
         WHERE kp.id = e.catalog_product_id AND kp.verification_status = 'verified'))`)
     .bind(key)
     .first<ProductSearchEntityRow>();
-  if (!entity) return null;
+  if (!entity) {
+    if (identity.kind !== "catalog") return null;
+    const product = await catalogProductWithoutOffers(db, identity.id);
+    if (!product) return null;
+    const relations = await publicModelRelations(db, identity.id);
+    return { product: { ...product, ...(relations ? { model_relations: relations } : {}) }, offers: [] };
+  }
 
   const offers = await db
     .prepare(`
@@ -630,6 +639,10 @@ export async function productSearchDetail(
   const product: ProductSearchItem = toProductSearchItem(entity, {
     representativeOffer: offerRows[0] ?? null,
   });
+  if (product.identity_kind === "catalog" && product.catalog_product_id !== null) {
+    const relations = await publicModelRelations(db, product.catalog_product_id);
+    if (relations) product.model_relations = relations;
+  }
   return {
     product,
     offers: offerRows.map((row) => ({

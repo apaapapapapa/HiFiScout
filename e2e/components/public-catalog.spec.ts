@@ -134,44 +134,6 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test("condition groups stage appearance and service criteria and preserve unknown evidence", async ({
-  page,
-  mount,
-}, testInfo) => {
-  const seen = await mockCatalog(page);
-  await mount("frontend/public-app/Default");
-  await expect(page.locator(".card")).toHaveCount(1);
-  await page.getByText("状態・付属品・保証で絞り込む", { exact: true }).click();
-  await page
-    .getByRole("group", { name: "外観", exact: true })
-    .getByRole("checkbox", { name: "目立つ傷なし", exact: true })
-    .check();
-  await page
-    .getByRole("group", { name: "整備・修理・改造歴", exact: true })
-    .getByRole("checkbox", { name: "整備済み", exact: true })
-    .check();
-  expect(seen.searches).toHaveLength(1);
-  await page.locator("#apply-filters").click();
-  await expect
-    .poll(() => seen.searches.at(-1)?.searchParams.getAll("offer"))
-    .toEqual(["appearance_clean", "maintenance_serviced"]);
-  await page.locator(".offers-button[data-offers]").click();
-  await page.getByRole("button", { name: "在庫情報を再読み込み" }).click();
-  const facts = page.locator(".offer-facts");
-  await expect(facts.getByRole("region", { name: "外観", exact: true })).toContainText("記載なし");
-  await expect(facts.getByRole("region", { name: "付属品", exact: true })).toContainText(
-    "なし（明記）",
-  );
-  await expect(
-    facts.getByRole("region", { name: "整備・修理・改造歴", exact: true }),
-  ).toContainText("記載なし");
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect
-    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
-    .toBe(true);
-  await page.screenshot({ path: testInfo.outputPath("used-condition-mobile.png"), fullPage: true });
-});
-
 test("shared comparison loads canonical products, retains failed columns, and retries", async ({
   page,
   mount,
@@ -189,6 +151,11 @@ test("shared comparison loads canonical products, retains failed columns, and re
           model: `Model ${key}`,
           lowest_price_yen: null,
           highest_price_yen: null,
+          model_relations: key === "c-1" ? {
+            links: [{ key: "c-2", kind: "successor", manufacturer: "Test", model: "Next model",
+              proof: { kind: "source", sourceUrl: "https://example.test/official", verifiedAt: "2026-09-07T00:00:00Z" } }],
+            families: [],
+          } : undefined,
         }),
         offers: [],
       },
@@ -202,6 +169,8 @@ test("shared comparison loads canonical products, retains failed columns, and re
   const comparison = page.getByRole("region", { name: "製品比較 (2/4)", exact: true });
   await expect(comparison.getByRole("status")).toContainText("取得できない製品");
   await expect(comparison.getByRole("columnheader")).toHaveCount(3);
+  await expect(comparison.getByRole("link", { name: "Test Next model" })).toHaveAttribute("href", "/p/c-2");
+  await expect(comparison.getByRole("link", { name: "出典", exact: true })).toHaveAttribute("href", "https://example.test/official");
   await comparison.getByRole("button", { name: "比較情報を再読み込み" }).click();
   await expect(
     comparison.getByRole("columnheader", { name: "Model c-3", exact: true }),

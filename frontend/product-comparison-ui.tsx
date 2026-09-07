@@ -7,6 +7,7 @@ import type { ComparisonColumn } from "./product-comparison.js";
 import { productPermalinkPath } from "./product-permalink.js";
 import { ProductPriceIndexSummary, productPriceIndex } from "./price-index-ui.js";
 import { yen } from "./format.js";
+import { ModelRelations } from "./model-relations-ui.js";
 
 function priceRange(product: DisplayProduct): string {
   const low = product.lowest_price_yen;
@@ -33,6 +34,7 @@ const rows: { label: string; cell: (product: DisplayProduct) => ReactNode }[] = 
   { label: "在庫ありの出品", cell: (p) => `${p.in_stock_offer_count}件` },
   { label: "掲載中の出品・店舗", cell: (p) => `${p.offer_count}件 / ${p.shop_count}店舗` },
   { label: "最新の動き", cell: activity },
+  { label: "機種の関係・シリーズ", cell: (p) => p.model_relations ? <ModelRelations relations={p.model_relations} currentKey={p.key} /> : "—" },
   {
     label: "過去の出品価格の指標",
     cell: (p) => (productPriceIndex(p) ? <ProductPriceIndexSummary product={p} /> : "—"),

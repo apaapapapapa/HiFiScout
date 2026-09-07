@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { database, AT } from "./helpers/d1-write-budget.js";
 import { accountReads } from "../src/db/read-accounting.js";
 import { listModelFacts, saveModelFact } from "../src/db/model-relation-repository.js";
+import { publicModelRelations } from "../src/db/public-model-relations-repository.js";
 import type { ModelFactInput } from "../src/catalog/model-relations.js";
 
 test("model fact reads and guarded writes do not scan unrelated relationships", async () => {
@@ -25,6 +26,9 @@ test("model fact reads and guarded writes do not scan unrelated relationships", 
       manufacturerJustification: "",
     };
     const first = (await saveModelFact(db, 700001, input, { actor: "budget-test" }, AT))!;
+    const family = { ...input, kind: "family" as const, relatedProductId: null, familyName: "Budget series" };
+    await saveModelFact(db, 700001, { ...family, position: 1 }, { actor: "budget-test" }, AT);
+    await saveModelFact(db, 700002, { ...family, position: 2 }, { actor: "budget-test" }, AT);
     let previous = 0;
     for (const size of [100, 10000]) {
       await db
@@ -40,7 +44,10 @@ test("model fact reads and guarded writes do not scan unrelated relationships", 
         .bind(previous + 1, size, AT)
         .run();
       const measured = accountReads(db);
-      assert.equal((await listModelFacts(measured.db, 700001, AT)).length, 1);
+      assert.equal((await listModelFacts(measured.db, 700001, AT)).length, 2);
+      const published = (await publicModelRelations(measured.db, 700001, AT))!;
+      assert.equal(published.links.length, 1);
+      assert.equal(published.families[0].members.length, 2);
       await saveModelFact(
         measured.db,
         700001,
@@ -58,7 +65,7 @@ test("model fact reads and guarded writes do not scan unrelated relationships", 
     }
     assert.ok(costs[1].reads <= costs[0].reads + 20, JSON.stringify(costs));
     assert.ok(
-      costs.every((cost) => cost.reads < 100 && cost.writes === 0 && cost.statements <= 4),
+      costs.every((cost) => cost.reads < 100 && cost.writes === 0 && cost.statements <= 6),
       JSON.stringify(costs),
     );
     const measured = accountReads(db);

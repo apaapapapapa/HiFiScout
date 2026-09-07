@@ -20,7 +20,6 @@ import {
   FEATURE_FILTER_DEFINITIONS,
   isFeatureFilter,
   OFFER_FACT_DEFINITIONS,
-  OFFER_FACT_GROUPS,
   isOfferFactId,
 } from "../catalog/types.js";
 import type {
@@ -42,12 +41,9 @@ import type {
  * which is exactly how the four existing filters ended up with no way to select them.
  */
 export { FACET_DEFINITIONS, FEATURE_DEFINITIONS, FEATURE_FILTER_DEFINITIONS, isFeatureFilter };
-export { OFFER_FACT_DEFINITIONS, OFFER_FACT_GROUPS, isOfferFactId };
+export { OFFER_FACT_DEFINITIONS, isOfferFactId };
 export type { OfferFact, OfferFactId } from "../catalog/types.js";
-/** Missing counts belong to an older replay vocabulary and must not be displayed as zero. */
-export type OfferFactCoverageRow = { key: string; listings: number } & Partial<
-  Record<(typeof OFFER_FACT_GROUPS)[number]["id"], number>
->;
+export type { CatalogRelationProof, RelatedCatalogModel, ProductModelRelations } from "../catalog/types.js";
 export type {
   ModelFactInput,
   ModelFactWriteInput,
@@ -171,6 +167,8 @@ export interface ProductOffer {
  * produced it; `offer_count` is therefore a count of *matching* offers, not of all of them.
  */
 export interface ProductSearchItem {
+  /** Verified model relations, loaded only for a product detail; absent means unknown. */
+  model_relations?: import("../catalog/types.js").ProductModelRelations;
   key: string;
   identity_kind: ProductSearchIdentityKind;
   catalog_product_id: number | null;

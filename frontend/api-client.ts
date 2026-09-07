@@ -7,12 +7,7 @@
  * merely because its top-level collections exist.
  */
 
-import {
-  MAX_SUGGESTIONS,
-  MAX_SUGGEST_QUERY_LENGTH,
-  OFFER_FACT_DEFINITIONS,
-  isOfferFactId,
-} from "../src/api/contracts.js";
+import { MAX_SUGGESTIONS, MAX_SUGGEST_QUERY_LENGTH, isOfferFactId } from "../src/api/contracts.js";
 import type {
   MetaCategoryFacet,
   MetaManufacturerFacet,
@@ -29,6 +24,7 @@ import type {
   SuggestResponse,
 } from "../src/api/contracts.js";
 import type { ProductDetailResponse, ProductHistoryResponse, ProductsResponse } from "./types.js";
+import { isProductModelRelations } from "./model-relations.js";
 
 /** Matches the Worker's own `cache-control: public, max-age=30` on these endpoints. */
 const CACHE_TTL_MS = 30_000;
@@ -210,7 +206,7 @@ export function isProductOffer(value: unknown): value is ProductOffer {
   if (
     value.offer_facts !== undefined &&
     (!Array.isArray(value.offer_facts) ||
-      value.offer_facts.length > OFFER_FACT_DEFINITIONS.length ||
+      value.offer_facts.length > 15 ||
       !value.offer_facts.every(
         (fact) =>
           isRecord(fact) &&
@@ -249,6 +245,7 @@ export function isProductOffer(value: unknown): value is ProductOffer {
  */
 export function isProductSearchItem(value: unknown): value is ProductSearchItem {
   if (!isRecord(value)) return false;
+  if (value.model_relations !== undefined && !isProductModelRelations(value.model_relations)) return false;
   const stringFields = [
     "key",
     "manufacturer",
