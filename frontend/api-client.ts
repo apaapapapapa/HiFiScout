@@ -7,7 +7,12 @@
  * merely because its top-level collections exist.
  */
 
-import { MAX_SUGGESTIONS, MAX_SUGGEST_QUERY_LENGTH, isOfferFactId } from "../src/api/contracts.js";
+import {
+  MAX_SUGGESTIONS,
+  MAX_SUGGEST_QUERY_LENGTH,
+  OFFER_FACT_DEFINITIONS,
+  isOfferFactId,
+} from "../src/api/contracts.js";
 import type {
   MetaCategoryFacet,
   MetaManufacturerFacet,
@@ -206,7 +211,7 @@ export function isProductOffer(value: unknown): value is ProductOffer {
   if (
     value.offer_facts !== undefined &&
     (!Array.isArray(value.offer_facts) ||
-      value.offer_facts.length > 15 ||
+      value.offer_facts.length > OFFER_FACT_DEFINITIONS.length ||
       !value.offer_facts.every(
         (fact) =>
           isRecord(fact) &&

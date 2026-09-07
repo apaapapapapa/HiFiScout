@@ -19,6 +19,12 @@
   color: #555555;
 }
 
+.offer-fact-group h3 { margin: 12px 0 4px; font-size: 14px; }
+.offer-fact-group dl, .offer-fact-group p { margin: 0; }
+.offer-fact-group p { color: #555555; font-size: 13px; }
+.filters .offer-fact-filter-group { margin: 8px 0 12px; padding: 0; border: 0; min-inline-size: 0; }
+.offer-facts .filter-note { color: #555555; font-size: 12px; line-height: 1.7; }
+
 :root {
   --hs-ink: #000;
   --hs-warm-ink: #191817;
