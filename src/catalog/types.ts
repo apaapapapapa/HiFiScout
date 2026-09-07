@@ -952,6 +952,43 @@ export interface InferFeatureFactsOptions {
   verifiedAt?: string | null;
 }
 
+/** Seller-observed facts belong to a listing, independently of catalog capabilities. */
+export const OFFER_FACT_DEFINITIONS = [
+  { id: "unused", name: "未使用品", group: "condition" },
+  { id: "display", name: "展示品", group: "condition" },
+  { id: "outlet", name: "アウトレット", group: "condition" },
+  { id: "used", name: "中古品", group: "condition" },
+  { id: "junk", name: "ジャンク", group: "condition" },
+  { id: "operation_confirmed", name: "動作確認済み", group: "operation" },
+  { id: "operation_unchecked", name: "動作未確認", group: "operation" },
+  { id: "original_box", name: "元箱", group: "included" },
+  { id: "remote_control", name: "リモコン", group: "included" },
+  { id: "manual", name: "取扱説明書", group: "included" },
+  { id: "shop_warranty", name: "販売店保証", group: "warranty" },
+  { id: "manufacturer_warranty", name: "メーカー保証", group: "warranty" },
+  { id: "sale_pair", name: "ペア販売", group: "sale_unit" },
+  { id: "sale_single", name: "単体販売", group: "sale_unit" },
+  { id: "sale_set", name: "セット販売", group: "sale_unit" },
+] as const;
+
+export type OfferFactId = (typeof OFFER_FACT_DEFINITIONS)[number]["id"];
+export type OfferFactState = "present" | "absent" | "unknown";
+export type OfferFactSource = "seller" | "manual";
+
+export interface OfferFact {
+  factId: OfferFactId;
+  state: OfferFactState;
+  source: OfferFactSource;
+  sourceField: "title" | "condition_text" | "manual";
+  ruleId: string;
+  confidence: number;
+  observedAt: string;
+}
+
+export function isOfferFactId(value: unknown): value is OfferFactId {
+  return typeof value === "string" && OFFER_FACT_DEFINITIONS.some((fact) => fact.id === value);
+}
+
 // ---------------------------------------------------------------------------
 // Presentation colors (src/catalog/model-presentation-color.ts)
 // ---------------------------------------------------------------------------
