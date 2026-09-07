@@ -138,8 +138,10 @@ test("offer conditions survive reload, API and Atom feed without accepting unkno
     assert.deepEqual(params.getAll("offer"), ["remote_control", "shop_warranty"]);
   }
   assert.equal(
-    activeFilterEntries({ ...state, favoritesOnly: true }, { shop: (key) => key, category: "" })
-      .some((entry) => entry.id.startsWith("offer:")),
+    activeFilterEntries(
+      { ...state, favoritesOnly: true },
+      { shop: (key) => key, category: "" },
+    ).some((entry) => entry.id.startsWith("offer:")),
     false,
   );
 });

@@ -38,7 +38,9 @@ export function OfferFacts({ facts = [] }: { facts?: readonly OfferFact[] }) {
           );
         })}
       </dl>
-      <p className="filter-note">記載なしは「付属しない」「保証がない」という意味ではありません。</p>
+      <p className="filter-note">
+        記載なしは「付属しない」「保証がない」という意味ではありません。
+      </p>
     </details>
   );
 }
@@ -70,7 +72,9 @@ export function OfferFactFilters({
         <p className="filter-note">
           同じ出品にすべての条件が明記されているものを検索します。記載なし・未整理の出品は含みません。
         </p>
-        {disabled ? <p className="filter-note">お気に入り表示中は出品条件で絞り込めません</p> : null}
+        {disabled ? (
+          <p className="filter-note">お気に入り表示中は出品条件で絞り込めません</p>
+        ) : null}
       </fieldset>
     </details>
   );

@@ -57,7 +57,8 @@ test("offer conditions intersect on one listing, including summaries, cursor ord
       insert.run(id, "remote_control");
       insert.run(id, "shop_warranty");
     }
-    const base = "?offer=remote_control&offer=shop_warranty&inStock=true&sort=priceAsc&includeTotal=true&limit=1";
+    const base =
+      "?offer=remote_control&offer=shop_warranty&inStock=true&sort=priceAsc&includeTotal=true&limit=1";
     const first = await searchProducts(db, productQuery(base));
     assert.equal(first.totalCount, 2);
     assert.equal(first.items[0].key, "l-1");
@@ -78,12 +79,19 @@ test("offer conditions intersect on one listing, including summaries, cursor ord
     const detail = await productSearchDetail(db, "l-1");
     assert.equal(detail?.offers.length, 3, "the detail still allows comparing all shops");
     const overridden = detail?.offers.find((offer) => offer.listing_product_id === 3);
-    assert.equal(overridden?.offer_facts?.find((fact) => fact.factId === "remote_control")?.state, "unknown");
+    assert.equal(
+      overridden?.offer_facts?.find((fact) => fact.factId === "remote_control")?.state,
+      "unknown",
+    );
     sqlite.exec("UPDATE product_offer_facts SET state='absent' WHERE source='manual'");
     assert.equal((await searchProducts(db, productQuery(base))).totalCount, 1);
     sqlite.exec("DELETE FROM product_offer_facts WHERE source='manual'");
     assert.equal((await searchProducts(db, productQuery(base))).totalCount, 2);
-    const plan = sqlite.prepare("EXPLAIN QUERY PLAN SELECT * FROM product_offer_facts WHERE product_id=? AND fact_id=? AND source=?").all(3, "remote_control", "manual");
+    const plan = sqlite
+      .prepare(
+        "EXPLAIN QUERY PLAN SELECT * FROM product_offer_facts WHERE product_id=? AND fact_id=? AND source=?",
+      )
+      .all(3, "remote_control", "manual");
     assert.ok(plan.some((row) => String(row.detail).includes("SEARCH")));
   } finally {
     sqlite.close();
