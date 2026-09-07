@@ -1,6 +1,7 @@
 import { parseModelFactInput } from "../catalog/model-relations.js";
 import type { ModelFactInput } from "../catalog/model-relations.js";
 import type { QueryableDatabase, ReadableDatabase } from "./types.js";
+import { firstMeasured } from "./read-accounting.js";
 
 interface ModelFactRow {
   id: string;
@@ -17,10 +18,9 @@ interface ModelFactRow {
 }
 
 export function readModelFact(db: ReadableDatabase, id: string) {
-  return db
-    .prepare("SELECT * FROM knowledge_catalog_model_facts WHERE id = ?")
-    .bind(id)
-    .first<ModelFactRow>();
+  return firstMeasured<ModelFactRow>(
+    db.prepare("SELECT * FROM knowledge_catalog_model_facts WHERE id = ?").bind(id),
+  );
 }
 
 /** Same-value saves are free; re-verification is explicit and advances the proof's decision time. */
@@ -52,18 +52,18 @@ export async function saveModelFact(
   let from = before?.product_id ?? productId,
     to = input.relatedProductId;
   if (input.kind === "variant" && to !== null && from > to) [from, to] = [to, from];
-  const product = await db
-    .prepare("SELECT manufacturer_id FROM knowledge_catalog_products WHERE id = ?")
-    .bind(from)
-    .first<{ manufacturer_id: string }>();
+  const product = await firstMeasured<{ manufacturer_id: string }>(
+    db.prepare("SELECT manufacturer_id FROM knowledge_catalog_products WHERE id = ?").bind(from),
+  );
   if (!product) throw new Error("catalog_model_fact_product_missing");
   const source =
     input.sourceId === null
       ? null
-      : await db
-          .prepare("SELECT source_url, content_hash FROM knowledge_catalog_sources WHERE id = ?")
-          .bind(input.sourceId)
-          .first<{ source_url: string; content_hash: string }>();
+      : await firstMeasured<{ source_url: string; content_hash: string }>(
+          db
+            .prepare("SELECT source_url, content_hash FROM knowledge_catalog_sources WHERE id = ?")
+            .bind(input.sourceId),
+        );
   if (input.sourceId !== null && !source) throw new Error("catalog_model_fact_source_missing");
   // Store the canonical orientation, including for symmetric variants opened from either endpoint.
   const data = JSON.stringify({ ...input, relatedProductId: to });
@@ -146,7 +146,11 @@ export async function listModelFacts(
     LEFT JOIN knowledge_catalog_products target ON target.id = f.related_product_id
     LEFT JOIN knowledge_catalog_model_families family ON family.id = f.family_id
     LEFT JOIN knowledge_catalog_sources s ON s.id = f.source_id
-    WHERE (f.product_id = ? OR f.related_product_id = ?) AND f.state <> 'removed' ORDER BY f.id LIMIT 41`)
+    WHERE f.id IN (
+      SELECT id FROM knowledge_catalog_model_facts WHERE product_id = ? AND state <> 'removed'
+      UNION
+      SELECT id FROM knowledge_catalog_model_facts WHERE related_product_id = ? AND state <> 'removed'
+    ) ORDER BY f.id LIMIT 41`)
     .bind(now, now, productId, productId)
     .all<
       ModelFactRow & {
