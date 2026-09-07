@@ -28,6 +28,7 @@ import {
 } from "./filters.js";
 import { comparisonKeysFromSearch } from "./product-comparison.js";
 import { PRODUCT_QUERY_SORTS } from "../src/api/contracts.js";
+import { SPECIFICATION_FILTER_DEFINITIONS, parseSpecificationFilterValue } from "../src/api/catalog-specification-contracts.js";
 
 /** Mirrors the server's per-parameter character limits. */
 const TEXT_LIMITS = [
@@ -73,6 +74,12 @@ export function sanitizedCatalogSearch(search: string): string {
   // already clean and reloading it does not rewrite the address bar. Validation and de-duplication
   // are the filter module's, so the accepted vocabulary is not restated here.
   for (const feature of parseFeatureParams(source)) params.append("feature", feature);
+  for (const { id } of SPECIFICATION_FILTER_DEFINITIONS) {
+    const values = source.getAll(id);
+    if (values.length !== 1 || values[0].length > 12) continue;
+    const value = parseSpecificationFilterValue(id, values[0]);
+    if (value !== null) params.set(id, String(value));
+  }
   for (const fact of parseOfferParams(source)) params.append("offer", fact);
   for (const facet of parseFacetParams(source)) params.append("facet", facetSelectionKey(facet));
 

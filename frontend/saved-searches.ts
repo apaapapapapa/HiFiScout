@@ -26,6 +26,7 @@ export function savedSearchFilters(query: string): ProductFilters {
     features: parsed.features,
     facets: parsed.facets,
     offerFacts: parsed.offerFacts,
+    specificationFilters: parsed.specificationFilters,
     inStock: parsed.inStock,
     recentOnly: parsed.recentOnly,
     priceDropped: parsed.priceDropped,

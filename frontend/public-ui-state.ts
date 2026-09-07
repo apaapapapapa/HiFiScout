@@ -1,5 +1,6 @@
 import type { ProductFilters } from "./filters.js";
 import { DEFAULT_SORT, filterUrlParams } from "./filters.js";
+import { normalizedSpecifications } from "./specification-filters.js";
 
 export type PriceErrors = Partial<Record<"minPrice" | "maxPrice", string>>;
 
@@ -56,6 +57,7 @@ export function clearedFilters(filters: ProductFilters): ProductFilters {
     features: [],
     facets: [],
     offerFacts: [],
+    specificationFilters: {},
     inStock: false,
     recentOnly: false,
     priceDropped: false,
@@ -74,11 +76,18 @@ export function clearedDetailFilters(filters: ProductFilters): ProductFilters {
     features: [],
     facets: [],
     offerFacts: [],
+    specificationFilters: {},
   };
 }
 
 export function initialFilters(filters: ProductFilters): ProductFilters {
   return { ...clearedFilters(filters), inStock: true, sort: DEFAULT_SORT };
+}
+
+export function normalizedProductFilters(filters: ProductFilters): ProductFilters | null {
+  const prices = normalizedPriceFilters(filters);
+  const specifications = normalizedSpecifications(filters.specificationFilters);
+  return prices && specifications ? { ...prices, specificationFilters: specifications } : null;
 }
 
 /** Desktop detailed edits survive immediate query/sort/quick-filter changes without applying them. */
@@ -130,11 +139,11 @@ export function filterRelaxations(filters: ProductFilters): FilterRelaxation[] {
       label: "値下げ条件だけ解除",
       filters: { ...filters, priceDropped: false },
     });
-  if (!filters.favoritesOnly && (filters.features.length || filters.facets.length))
+  if (!filters.favoritesOnly && (filters.features.length || filters.facets.length || Object.values(filters.specificationFilters ?? {}).some(Boolean)))
     choices.push({
       id: "specifications",
       label: "機能・仕様だけ解除",
-      filters: { ...filters, features: [], facets: [] },
+      filters: { ...filters, features: [], facets: [], specificationFilters: {} },
     });
   if (filters.inStock)
     choices.push({
