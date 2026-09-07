@@ -987,6 +987,16 @@ body.filters-open { overflow: hidden; }
 .comparison-table th, .comparison-table td { min-width: 180px; padding: 16px 12px; border-bottom: 1px solid #e5e5e5; text-align: left; vertical-align: top; }
 .comparison-table th:first-child { min-width: 140px; }
 .comparison-table .price-index-summary { min-width: 200px; }
+.catalog-quick-tools { display: flex; flex-wrap: wrap; align-items: start; gap: 0 16px; margin-bottom: 12px; }
+.catalog-quick-tools > .quick-filters { margin-bottom: 0; }
+.saved-searches[open] { flex-basis: 100%; border-bottom: 1px solid #e5e5e5; }
+.saved-searches summary { min-height: 44px; align-content: center; cursor: pointer; }
+.saved-searches-content { padding-block: 12px; }
+.saved-searches form, .saved-searches li { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.saved-searches ul { padding: 0; list-style: none; }
+.saved-searches li { padding-block: 12px; border-top: 1px solid #e5e5e5; }
+.saved-searches input { max-width: 100%; min-height: 44px; font: inherit; }
+.saved-searches button { min-height: 44px; }
 .model-relations { line-height: 1.7; overflow-wrap: anywhere; }
 .model-relations ul { padding-left: 20px; }
 .model-relations li { margin-bottom: 8px; }
