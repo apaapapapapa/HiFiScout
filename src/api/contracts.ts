@@ -49,6 +49,12 @@ export type OfferFactCoverageRow = { key: string; listings: number } & Partial<
   Record<(typeof OFFER_FACT_GROUPS)[number]["id"], number>
 >;
 export type {
+  ModelFactInput,
+  ModelFactWriteInput,
+  AdminModelFact,
+  ModelFactsAdminSnapshot,
+} from "../catalog/types.js";
+export type {
   FacetDefinition,
   FacetId,
   FacetSelection,

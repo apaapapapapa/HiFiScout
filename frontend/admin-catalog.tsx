@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { AdminCsvImport } from "./admin-csv-import.js";
 import { AdminManufacturerPicker } from "./admin-manufacturer-picker.js";
 import { AdminEditDiff } from "./admin-edit-diff.js";
+import { AdminModelRelations } from "./admin-model-relations.js";
 
 import {
   AdminOperationError,
@@ -415,6 +416,7 @@ export function CatalogAdmin() {
   const [mergingGroupKey, setMergingGroupKey] = useState("");
 
   const [editing, setEditing] = useState<CatalogProduct | null>(null);
+  const [relationsProductId, setRelationsProductId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
   const [editCategory, setEditCategory] = useState("");
   const [editLifecycle, setEditLifecycle] = useState<LifecycleStatus>("unknown");
@@ -1135,6 +1137,14 @@ export function CatalogAdmin() {
                         <button
                           type="button"
                           className="secondary-button compact"
+                          aria-label={`${product.canonicalName} の機種の関係`}
+                          onClick={() => setRelationsProductId(product.id)}
+                        >
+                          機種の関係
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary-button compact"
                           aria-label={`${product.canonicalName} を編集`}
                           onClick={() => openEdit(product)}
                         >
@@ -1837,6 +1847,13 @@ export function CatalogAdmin() {
         ) : null}
       </dialog>
 
+      {relationsProductId !== null ? (
+        <AdminModelRelations
+          key={relationsProductId}
+          productId={relationsProductId}
+          onClose={() => setRelationsProductId(null)}
+        />
+      ) : null}
       <dialog
         ref={createDialogRef}
         onClose={() => setCreateMode(null)}

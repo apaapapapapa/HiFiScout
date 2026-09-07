@@ -23,6 +23,7 @@ test("unauthenticated requests cannot read the console, assets, metadata or admi
     listingPath,
     "/api/admin/offer-facts/replay",
     `${listingPath}/21/offer-facts`,
+    `${catalogPath}/11/model-facts`,
   ]) {
     const response = await request.get(path);
     expect(response.status(), path).toBe(403);
@@ -36,6 +37,14 @@ test("unauthenticated requests cannot read the console, assets, metadata or admi
     expect(response.status(), path).toBe(403);
   }
   expect(app.state.writes).toEqual({ catalog: 0, listing: 0 });
+  expect(
+    (
+      await request.post(`${catalogPath}/11/model-facts`, {
+        headers: { origin: app.url },
+        data: {},
+      })
+    ).status(),
+  ).toBe(403);
 });
 
 for (const mode of ["expired", "wrong-audience", "invalid-signature"] as const) {

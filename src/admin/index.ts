@@ -11,7 +11,8 @@ import {
   parseKnowledgeCatalogAdminUpdate,
   parseKnowledgeCatalogDuplicateListQuery,
 } from "../http/knowledge-catalog-admin.js";
-import { requireCloudflareAccess } from "./access.js";
+import { requireCloudflareAccess, verifyCloudflareAccessRequest } from "./access.js";
+import { parseModelFactWrite } from "../http/model-fact-admin.js";
 import { parseAdminManufacturerQuery } from "../api/admin-manufacturer-contracts.js";
 import { PRESENTATION_COLORS } from "../catalog/model-presentation-color.js";
 import { parseAdminCsvPreview, parseAdminCsvApply } from "../http/admin-csv-import.js";
@@ -30,6 +31,7 @@ const CANDIDATE_COLLECTION_PATH = "/api/admin/knowledge-catalog/candidates";
 const DUPLICATE_COLLECTION_PATH = "/api/admin/knowledge-catalog/duplicates";
 const CANDIDATE_VERIFY_PATH = /^\/api\/admin\/knowledge-catalog\/candidates\/(\d{1,15})\/verify$/u;
 const PRODUCT_PATH = /^\/api\/admin\/knowledge-catalog\/products\/(\d{1,15})$/u;
+const MODEL_FACT_PATH = /^\/api\/admin\/knowledge-catalog\/products\/(\d{1,15})\/model-facts$/u;
 const PRODUCT_MERGE_PATH = /^\/api\/admin\/knowledge-catalog\/products\/(\d{1,15})\/merge$/u;
 const CATALOG_EXPORT_COLLECTION_PATH = "/api/admin/knowledge-catalog-exports";
 const CATALOG_EXPORT_JOB_PATH =
@@ -145,6 +147,8 @@ function manualOperationError(error: unknown): Response {
   if (message === "catalog_admin_merge_manufacturer_mismatch") {
     return json({ error: message }, { status: 409 });
   }
+  if (message.includes("catalog_admin_model_facts_review_required"))
+    return json({ error: "catalog_admin_model_facts_review_required" }, { status: 409 });
   console.error(
     JSON.stringify({ message: "Catalog Admin manual operation failed", error: message }),
   );
@@ -179,6 +183,35 @@ export async function handleAuthenticatedCatalogAdminRequest(
   env: CatalogAdminEnv,
 ): Promise<Response> {
   const url = new URL(request.url);
+
+  const modelFactMatch = url.pathname.match(MODEL_FACT_PATH);
+  if (modelFactMatch && (request.method === "GET" || request.method === "POST")) {
+    const productId = Number(modelFactMatch[1]);
+    if (productId <= 0) return json({ error: "invalid_product_id" }, { status: 400 });
+    try {
+      if (request.method === "GET") {
+        const result = await env.CATALOG_ADMIN.getModelFacts(productId);
+        return result ? json(result) : json({ error: "not_found" }, { status: 404 });
+      }
+      const body = await mutationBody(request, url, 8192);
+      if (isResponse(body)) return body;
+      const input = parseModelFactWrite(body);
+      if (!input) return json({ error: "invalid_model_fact" }, { status: 400 });
+      const claims = await verifyCloudflareAccessRequest(request, {
+        teamDomain: env.ACCESS_TEAM_DOMAIN || "",
+        audience: env.ACCESS_AUD || "",
+      });
+      return json(
+        await env.CATALOG_ADMIN.saveModelFacts(productId, input, claims?.sub || "access_admin"),
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/catalog_model_fact_|UNIQUE constraint|FOREIGN KEY|CHECK constraint/u.test(message))
+        return json({ error: "model_fact_conflict_or_invalid" }, { status: 409 });
+      console.error("Model fact admin failed", error);
+      return json({ error: "model_fact_unavailable" }, { status: 503 });
+    }
+  }
 
   if (
     request.method === "POST" &&

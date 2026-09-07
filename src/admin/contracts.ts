@@ -6,6 +6,7 @@ import type {
   AdminManufacturerPage,
   AdminManufacturerQuery,
 } from "../api/admin-manufacturer-contracts.js";
+import type { ModelFactWriteInput } from "../catalog/types.js";
 import type { KnowledgeCatalogExportJob } from "../knowledge-catalog-export/types.js";
 import type {
   AdminCsvApplyInput,
@@ -94,6 +95,8 @@ export interface CatalogAdminProductExportRow {
 }
 
 export interface CatalogAdminRpc {
+  getModelFacts(productId: number): Promise<unknown>;
+  saveModelFacts(productId: number, input: ModelFactWriteInput, actor: string): Promise<unknown>;
   listManufacturers(options: AdminManufacturerQuery): Promise<AdminManufacturerPage>;
   previewCsvImport(changes: AdminCsvChange[]): Promise<AdminCsvResult[]>;
   applyCsvImport(input: AdminCsvApplyInput): Promise<AdminCsvResult>;
