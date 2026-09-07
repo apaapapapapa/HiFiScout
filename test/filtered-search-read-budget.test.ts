@@ -41,9 +41,9 @@ test("shop totals and pages stay scoped when other shops grow", async () => {
       const legacy = accountReads(db);
       await db
         .prepare(`INSERT INTO product_offer_facts
-          SELECT id, value, 'seller', 'present', 'condition_text', 'fixture', 1, '${AT}'
+          SELECT products.id, value, 'seller', 'present', 'condition_text', 'fixture', 1, '${AT}'
           FROM products CROSS JOIN json_each('["remote_control","shop_warranty"]')
-          WHERE id > ? AND id <= 12`)
+          WHERE products.id > ? AND products.id <= 12`)
         .bind(previous)
         .run();
       const oldCount = await legacy.db

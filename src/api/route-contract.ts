@@ -25,6 +25,7 @@ export interface JsonSchema {
   maximum?: number;
   minLength?: number;
   maxLength?: number;
+  maxItems?: number;
   items?: JsonSchema;
   properties?: Readonly<Record<string, JsonSchema>>;
   required?: readonly string[];

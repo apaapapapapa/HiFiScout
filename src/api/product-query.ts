@@ -97,6 +97,7 @@ export const PRODUCT_QUERY_PARAMETERS = [
     repeatable: true,
     commaSeparated: true,
     maxLength: 300,
+    maxItems: OFFER_FACT_DEFINITIONS.length,
     enum: OFFER_FACT_DEFINITIONS.map((fact) => fact.id),
     description:
       "Explicit seller or manual facts required on the same offer. AND across facts and other offer filters. Missing and explicitly absent facts do not match.",
