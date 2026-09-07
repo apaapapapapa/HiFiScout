@@ -22,3 +22,5 @@
 .shortcut-help { flex-basis: 100%; margin: 0; }
 
 .filters .specification-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 0}.specification-filters>.filter-note{grid-column:1/-1}.specification-filters label{min-width:0}.specification-filters input{width:100%;min-width:0}.specification-filters .field-error:empty{display:none}
+
+.market-analysis{margin:20px 0;padding:16px 0;border-top:1px solid #e5e5e5}.market-analysis summary{cursor:pointer;font-weight:600}.market-analysis p{font-size:12px;line-height:1.7;color:#555}.market-analysis h3{font-size:15px;margin:20px 0 8px}.market-table-scroll{max-width:100%;overflow-x:auto}.market-analysis table{width:100%;border-collapse:collapse;font-size:12px;white-space:nowrap}.market-analysis th,.market-analysis td{padding:8px;text-align:left;border-bottom:1px solid #e5e5e5}.market-analysis th{font-weight:600}.market-price-chart{display:block;max-width:600px;width:100%;height:auto;margin:12px 0;color:#191817}.market-price-chart text{fill:currentColor;font-size:11px}

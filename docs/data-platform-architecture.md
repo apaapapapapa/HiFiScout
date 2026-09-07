@@ -722,6 +722,12 @@ The Cloudflare API token used by deployment therefore needs the permission requi
 
 ### Condition bands and monthly market observations
 
+The product offer detail expands into condition/unit tables and six monthly observations. A median
+chart leaves missing months disconnected; the accessible table retains every count and interval.
+Sparse groups say data insufficient, and a limited computation exposes no misleading partial chart.
+Unchanged-price listings may have months without retained observations; this is not an inventory
+census. The browser validates the bounded payload and never persists it into favorite snapshots.
+
 Product detail can read one persisted `catalog_market_analysis` record. Search pages do not load
 this payload and no request aggregates history. The existing hourly price-index maintenance drains
 at most five queued products, each with at most 200 current offers and 500 retained samples. An
