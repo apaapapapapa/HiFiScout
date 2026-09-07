@@ -229,6 +229,11 @@ test("sale unit, voltage and installed options stay beside their own offer price
   await expect
     .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
     .toBe(true);
+  const priceBox = await offers.nth(0).locator(".offer-commerce").boundingBox();
+  const termBox = await offers.nth(0).locator(".offer-terms").boundingBox();
+  const updatedBox = await offers.nth(0).locator(".offer-updated").boundingBox();
+  expect(termBox!.y).toBeGreaterThanOrEqual(priceBox!.y + priceBox!.height);
+  expect(termBox!.y + termBox!.height).toBeLessThanOrEqual(updatedBox!.y);
   await page.screenshot({ path: testInfo.outputPath("offer-terms-mobile.png"), fullPage: true });
 });
 
