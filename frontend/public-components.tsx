@@ -7,6 +7,8 @@ import { ProductPriceIndexSummary, RelativePriceBadge } from "./price-index-ui.j
 import { ModelRelations } from "./model-relations-ui.js";
 import { OfferFacts } from "./offer-facts.js";
 import { OfferTerms } from "./offer-terms.js";
+import { WatchSummary } from "./watch-preferences-ui.js";
+import type { WatchPreference } from "./watch-preferences.js";
 import {
   SHOP_LISTING_URLS,
   categoryOptionModel,
@@ -93,6 +95,8 @@ interface ProductCardProps {
   compared?: boolean;
   comparisonFull?: boolean;
   onCompare?: (key: string) => void;
+  onWatch?: (key: string) => void;
+  watchPreference?: WatchPreference;
   shopName: (shopKey: string) => string;
   onManufacturer: (manufacturer: string) => void;
   onFavorite: (key: string) => void;
@@ -148,6 +152,8 @@ export function ProductCard({
   compared = false,
   comparisonFull = false,
   onCompare,
+  onWatch,
+  watchPreference,
   shopName,
   onManufacturer,
   onFavorite,
@@ -263,8 +269,16 @@ export function ProductCard({
           {offerAvailability(product)}
         </div>
         <p className="updated">{updated}</p>
+        {favorite && watchPreference ? (
+          <WatchSummary product={product} preference={watchPreference} />
+        ) : null}
       </div>
       <div className="actions">
+        {favorite && hasServerDetail && onWatch ? (
+          <button type="button" className="offers-button" onClick={() => onWatch(product.key)}>
+            希望価格・メモ
+          </button>
+        ) : null}
         {product.identity_kind === "catalog" && onCompare ? (
           <button
             type="button"

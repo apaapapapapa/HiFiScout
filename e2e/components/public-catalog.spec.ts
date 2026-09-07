@@ -642,6 +642,38 @@ test("offer conditions reach the search together and each active chip can be cle
   await expect(page.getByRole("checkbox", { name: "販売店保証", exact: true })).toBeDisabled();
 });
 
+test("favorite planning saves yen targets and private notes with dirty close protection", async ({
+  page,
+  mount,
+}) => {
+  await mockCatalog(page);
+  await mount("frontend/public-app/Default");
+  await page.locator("[data-fav]").first().click();
+  await page.getByRole("button", { name: "希望価格・メモ", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "希望価格・検討メモ", exact: true });
+  await dialog.getByLabel("希望価格（円）", { exact: true }).fill("12.5万円");
+  await dialog.getByLabel("検討メモ", { exact: true }).fill("ラック幅と付属リモコンを確認");
+  await dialog.getByRole("button", { name: "希望価格・メモを保存", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".watch-summary")).toContainText("125,000");
+  await expect(page.locator(".watch-summary")).toContainText("付属リモコン");
+  await page.getByRole("button", { name: "希望価格・メモ", exact: true }).click();
+  await expect(dialog.getByLabel("検討メモ", { exact: true })).toHaveValue(
+    "ラック幅と付属リモコンを確認",
+  );
+  await expect(
+    dialog.getByRole("button", { name: "希望価格・メモを保存", exact: true }),
+  ).toBeDisabled();
+  await dialog.getByLabel("検討メモ", { exact: true }).fill("変更途中");
+  page.once("dialog", (confirmation) => confirmation.dismiss());
+  await dialog.getByRole("button", { name: "閉じる", exact: true }).click();
+  await expect(dialog).toBeVisible();
+  const entries = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem("hifiscout:watch-preferences:v1") || "[]"),
+  );
+  expect(entries[0].note).toBe("ラック幅と付属リモコンを確認");
+});
+
 test("favorite save failures are visible and removal can be undone", async ({ page, mount }) => {
   await mockCatalog(page);
   await mount("frontend/public-app/Default");
