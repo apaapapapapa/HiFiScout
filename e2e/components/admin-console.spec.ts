@@ -686,28 +686,63 @@ test("offer replay resumes server progress after an interrupted response", async
   ).toBeDisabled();
 });
 
-test("model relations verify an explicitly selected product and retain optimistic versions", async ({ page, mount }) => {
+test("model relations verify an explicitly selected product and retain optimistic versions", async ({
+  page,
+  mount,
+}) => {
   const received: ModelFactWriteInput[] = [];
   let facts: AdminModelFact[] = [];
   await page.route("**/api/admin/knowledge-catalog/products?**", (route) => {
     const query = new URL(route.request().url()).searchParams.get("q");
-    return route.fulfill({ json: { items: query === "next-model" ? [{ ...catalogProduct, id: 12, canonicalName: "後継モデル" }] : [catalogProduct], nextAfterId: null } });
+    return route.fulfill({
+      json: {
+        items:
+          query === "next-model"
+            ? [{ ...catalogProduct, id: 12, canonicalName: "後継モデル" }]
+            : [catalogProduct],
+        nextAfterId: null,
+      },
+    });
   });
   await page.route("**/api/admin/knowledge-catalog/products/*/model-facts", async (route) => {
     if (route.request().method() === "POST") {
       const body = route.request().postDataJSON() as ModelFactWriteInput;
       received.push(body);
-      facts = [{ id: "00000000-0000-4000-8000-000000000001", version: received.length, productId: 11, productName: catalogProduct.canonicalName, relatedProductName: "後継モデル", input: body.fact, reviewState: "verified", sourceUrl: "", verifiedAt: "2026-09-07T00:00:00Z", reviewDueAt: "2027-03-06T00:00:00Z" }];
+      facts = [
+        {
+          id: "00000000-0000-4000-8000-000000000001",
+          version: received.length,
+          productId: 11,
+          productName: catalogProduct.canonicalName,
+          relatedProductName: "後継モデル",
+          input: body.fact,
+          reviewState: "verified",
+          sourceUrl: "",
+          verifiedAt: "2026-09-07T00:00:00Z",
+          reviewDueAt: "2027-03-06T00:00:00Z",
+        },
+      ];
     }
-    return route.fulfill({ json: { product: { id: 11, name: catalogProduct.canonicalName, manufacturerId: "luxman" }, facts, sources: [], audits: [] } });
+    return route.fulfill({
+      json: {
+        product: { id: 11, name: catalogProduct.canonicalName, manufacturerId: "luxman" },
+        facts,
+        sources: [],
+        audits: [],
+      },
+    });
   });
   await mount("frontend/admin-console/Default");
-  await page.getByRole("button", { name: `${catalogProduct.canonicalName} の機種の関係`, exact: true }).click();
+  await page
+    .getByRole("button", { name: `${catalogProduct.canonicalName} の機種の関係`, exact: true })
+    .click();
   const editor = page.getByRole("dialog", { name: "機種の関係・シリーズ", exact: true });
   await editor.getByLabel("関係先の機種を検索").fill("next-model");
   await editor.getByRole("button", { name: "機種を検索", exact: true }).click();
   await editor.getByRole("button", { name: "luxman / 後継モデル (#12)", exact: true }).click();
-  await editor.getByLabel("確認内容・資料の説明").fill("公式資料で後継機種として紹介されていることを確認しました。");
+  await editor
+    .getByLabel("確認内容・資料の説明")
+    .fill("公式資料で後継機種として紹介されていることを確認しました。");
   await editor.getByLabel("確認状態", { exact: true }).selectOption("verified");
   await editor.getByRole("button", { name: "関係を保存", exact: true }).click();
   await expect(editor.getByRole("status")).toContainText("保存しました");

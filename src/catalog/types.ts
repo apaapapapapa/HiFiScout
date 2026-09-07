@@ -1540,6 +1540,12 @@ export interface AdminModelFact {
 export interface ModelFactsAdminSnapshot {
   product: { id: number; name: string; manufacturerId: string };
   facts: AdminModelFact[];
-  sources: { id: number; sourceType: string; url: string; status: string; retrievedAt: string | null }[];
+  sources: {
+    id: number;
+    sourceType: string;
+    url: string;
+    status: string;
+    retrievedAt: string | null;
+  }[];
   audits: { id: number; actor: string; occurredAt: string; before: unknown; after: unknown }[];
 }

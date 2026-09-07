@@ -147,7 +147,8 @@ function manualOperationError(error: unknown): Response {
   if (message === "catalog_admin_merge_manufacturer_mismatch") {
     return json({ error: message }, { status: 409 });
   }
-  if (message.includes("catalog_admin_model_facts_review_required")) return json({ error: "catalog_admin_model_facts_review_required" }, { status: 409 });
+  if (message.includes("catalog_admin_model_facts_review_required"))
+    return json({ error: "catalog_admin_model_facts_review_required" }, { status: 409 });
   console.error(
     JSON.stringify({ message: "Catalog Admin manual operation failed", error: message }),
   );
@@ -196,11 +197,17 @@ export async function handleAuthenticatedCatalogAdminRequest(
       if (isResponse(body)) return body;
       const input = parseModelFactWrite(body);
       if (!input) return json({ error: "invalid_model_fact" }, { status: 400 });
-      const claims = await verifyCloudflareAccessRequest(request, { teamDomain: env.ACCESS_TEAM_DOMAIN || "", audience: env.ACCESS_AUD || "" });
-      return json(await env.CATALOG_ADMIN.saveModelFacts(productId, input, claims?.sub || "access_admin"));
+      const claims = await verifyCloudflareAccessRequest(request, {
+        teamDomain: env.ACCESS_TEAM_DOMAIN || "",
+        audience: env.ACCESS_AUD || "",
+      });
+      return json(
+        await env.CATALOG_ADMIN.saveModelFacts(productId, input, claims?.sub || "access_admin"),
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (/catalog_model_fact_|UNIQUE constraint|FOREIGN KEY|CHECK constraint/u.test(message)) return json({ error: "model_fact_conflict_or_invalid" }, { status: 409 });
+      if (/catalog_model_fact_|UNIQUE constraint|FOREIGN KEY|CHECK constraint/u.test(message))
+        return json({ error: "model_fact_conflict_or_invalid" }, { status: 409 });
       console.error("Model fact admin failed", error);
       return json({ error: "model_fact_unavailable" }, { status: 503 });
     }

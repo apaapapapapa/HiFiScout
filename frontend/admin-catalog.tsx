@@ -1134,7 +1134,14 @@ export function CatalogAdmin() {
                         {dateText(product.updatedAt)}
                       </td>
                       <td data-label="操作" className="row-actions">
-                        <button type="button" className="secondary-button compact" aria-label={`${product.canonicalName} の機種の関係`} onClick={() => setRelationsProductId(product.id)}>機種の関係</button>
+                        <button
+                          type="button"
+                          className="secondary-button compact"
+                          aria-label={`${product.canonicalName} の機種の関係`}
+                          onClick={() => setRelationsProductId(product.id)}
+                        >
+                          機種の関係
+                        </button>
                         <button
                           type="button"
                           className="secondary-button compact"
@@ -1840,7 +1847,13 @@ export function CatalogAdmin() {
         ) : null}
       </dialog>
 
-      {relationsProductId !== null ? <AdminModelRelations key={relationsProductId} productId={relationsProductId} onClose={() => setRelationsProductId(null)} /> : null}
+      {relationsProductId !== null ? (
+        <AdminModelRelations
+          key={relationsProductId}
+          productId={relationsProductId}
+          onClose={() => setRelationsProductId(null)}
+        />
+      ) : null}
       <dialog
         ref={createDialogRef}
         onClose={() => setCreateMode(null)}

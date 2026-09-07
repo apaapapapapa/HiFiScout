@@ -6,18 +6,52 @@ import { readModelFactsAdmin, saveModelFactsAdmin } from "../src/db/model-fact-a
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import type { ModelFactWriteInput } from "../src/catalog/types.js";
 
-const write: ModelFactWriteInput = { id: null, expectedVersion: null, reverify: false, fact: { kind: "successor", relatedProductId: 700002, familyName: "", position: null, state: "verified", sourceId: null, manualNote: "公式資料で後継機種の関係を確認しました。", manufacturerJustification: "" } };
+const write: ModelFactWriteInput = {
+  id: null,
+  expectedVersion: null,
+  reverify: false,
+  fact: {
+    kind: "successor",
+    relatedProductId: 700002,
+    familyName: "",
+    position: null,
+    state: "verified",
+    sourceId: null,
+    manualNote: "公式資料で後継機種の関係を確認しました。",
+    manufacturerJustification: "",
+  },
+};
 
 test("admin model writes require bounded JSON, optimistic versions and same-origin requests", async () => {
   let writes = 0;
-  const env = { CATALOG_ADMIN: {
-    getModelFacts: async () => ({ facts: [] }),
-    saveModelFacts: async (_id: number, input: ModelFactWriteInput, actor: string) => { writes++; assert.deepEqual(input, write); assert.equal(actor, "access_admin"); return {}; },
-  } } as unknown as Parameters<typeof handleAuthenticatedCatalogAdminRequest>[1];
+  const env = {
+    CATALOG_ADMIN: {
+      getModelFacts: async () => ({ facts: [] }),
+      saveModelFacts: async (_id: number, input: ModelFactWriteInput, actor: string) => {
+        writes++;
+        assert.deepEqual(input, write);
+        assert.equal(actor, "access_admin");
+        return {};
+      },
+    },
+  } as unknown as Parameters<typeof handleAuthenticatedCatalogAdminRequest>[1];
   const url = "https://admin.example.test/api/admin/knowledge-catalog/products/700001/model-facts";
-  const request = (body: unknown, origin = "https://admin.example.test") => handleAuthenticatedCatalogAdminRequest(new Request(url, { method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify(body) }), env);
+  const request = (body: unknown, origin = "https://admin.example.test") =>
+    handleAuthenticatedCatalogAdminRequest(
+      new Request(url, {
+        method: "POST",
+        headers: { origin, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+      env,
+    );
   assert.equal((await handleAuthenticatedCatalogAdminRequest(new Request(url), env)).status, 200);
-  for (const body of [{ ...write, actor: "forged" }, { ...write, expectedVersion: 1 }, { ...write, id: "unknown" }, { ...write, reverify: "true" }]) {
+  for (const body of [
+    { ...write, actor: "forged" },
+    { ...write, expectedVersion: 1 },
+    { ...write, id: "unknown" },
+    { ...write, reverify: "true" },
+  ]) {
     assert.equal(parseModelFactWrite(body), null);
     assert.equal((await request(body)).status, 400);
   }
@@ -41,9 +75,29 @@ test("admin snapshots preserve sourced decisions, versions, audit and removal", 
     assert.equal(result.audits[0].actor, "reviewer-subject");
     const inverse = (await readModelFactsAdmin(db, 700002))!;
     assert.equal(inverse.facts[0].productName, "Model A");
-    const removed = (await saveModelFactsAdmin(db, 700002, { ...write, id: result.facts[0].id, expectedVersion: 1, fact: { ...write.fact, state: "removed" } }, "reviewer-subject"))!;
+    const removed = (await saveModelFactsAdmin(
+      db,
+      700002,
+      {
+        ...write,
+        id: result.facts[0].id,
+        expectedVersion: 1,
+        fact: { ...write.fact, state: "removed" },
+      },
+      "reviewer-subject",
+    ))!;
     assert.equal(removed.facts.length, 0);
     assert.equal(removed.audits.length, 2);
-    await assert.rejects(saveModelFactsAdmin(db, 700001, { ...write, id: result.facts[0].id, expectedVersion: 1 }, "reviewer-subject"), /conflict/);
-  } finally { sqlite.close(); }
+    await assert.rejects(
+      saveModelFactsAdmin(
+        db,
+        700001,
+        { ...write, id: result.facts[0].id, expectedVersion: 1 },
+        "reviewer-subject",
+      ),
+      /conflict/,
+    );
+  } finally {
+    sqlite.close();
+  }
 });
