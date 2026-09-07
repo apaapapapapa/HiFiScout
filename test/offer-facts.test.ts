@@ -61,6 +61,14 @@ test("facts carry field provenance and a bounded rule identifier without seller 
 });
 
 test("appearance, functional faults and service history remain independent seller claims", () => {
+  for (const separator of ["、", ",", "，", " "]) {
+    assert.deepEqual(states(`元箱あり${separator}修理可能`), { original_box: "present" });
+    assert.deepEqual(states(`元箱あり${separator}整備予定`), { original_box: "present" });
+  }
+  assert.deepEqual(states("元箱あり、整備済み、発送予定"), {
+    original_box: "present",
+    maintenance_serviced: "present",
+  });
   assert.deepEqual(
     states("中古品", "目立った傷なし。動作不良あり。整備済み。修理歴あり。改造歴なし"),
     {

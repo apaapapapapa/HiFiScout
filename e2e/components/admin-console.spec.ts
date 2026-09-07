@@ -666,7 +666,10 @@ test("offer replay resumes server progress after an interrupted response", async
         scannedCount: scanned,
         activeCount: scanned,
         completedAt: scanned >= 50 ? "2026-09-07T00:00:00Z" : null,
-        coverage: { byShop: [], byCategory: [] },
+        coverage: {
+          byShop: [{ key: "fixture", listings: scanned, appearance: scanned, maintenance: 0 }],
+          byCategory: [],
+        },
       },
     });
   });
@@ -679,6 +682,10 @@ test("offer replay resumes server progress after an interrupted response", async
   await replay.getByRole("button", { name: "最大25件を再処理", exact: true }).click();
   await expect(replay.getByRole("status")).toContainText("完了しました");
   await expect(replay).toContainText("処理済み 50件");
+  await expect(replay.getByRole("columnheader", { name: "外観", exact: true })).toBeVisible();
+  await expect(replay.locator('td[data-label="外観"]')).toHaveText("50 / 50");
+  await expect(replay.locator('td[data-label="整備・修理・改造歴"]')).toHaveText("0 / 50");
+  await expect(replay.locator('td[data-label="動作"]')).toHaveText("未集計");
   expect(writes).toBe(2);
   await expect(
     replay.getByRole("button", { name: "最大500件を再処理", exact: true }),

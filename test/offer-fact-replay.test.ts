@@ -43,7 +43,7 @@ function fixture() {
   const fixture = migratedSqlite();
   fixture.sqlite.exec(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<30)
     INSERT INTO products(id,shop_key,source_id,title,condition_text,source_url,is_active,first_seen_at,last_seen_at,last_changed_at)
-    SELECT i,'shop',CAST(i AS TEXT),'Amp A1',CASE WHEN i=1 THEN '元箱あり。当店保証付き' ELSE '元箱なし' END,
+    SELECT i,'shop',CAST(i AS TEXT),'Amp A1',CASE WHEN i=1 THEN '元箱あり。当店保証付き。目立つ傷なし。整備済み。動作確認済み' ELSE '元箱なし' END,
       'https://example.test/'||i,CASE WHEN i=2 THEN 0 ELSE 1 END,'${AT}','${AT}','${AT}' FROM n`);
   return fixture;
 }
@@ -67,9 +67,19 @@ test("replay resumes a fixed horizon, records active coverage and retains origin
     assert.equal(final?.maxProductId, 30);
     assert.equal(final?.activeCount, 29);
     assert.ok(final?.completedAt);
-    assert.deepEqual(final?.coverage.byShop, [
-      { key: "shop", listings: 29, condition: 0, included: 29, warranty: 1, sale_unit: 0 },
-    ]);
+    assert.equal(final?.coverage.byShop.length, 1);
+    const coverage = final!.coverage.byShop[0];
+    assert.equal(coverage.key, "shop");
+    assert.equal(coverage.listings, 29);
+    assert.equal(coverage.condition, 0);
+    assert.equal(coverage.included, 29);
+    assert.equal(coverage.warranty, 1);
+    assert.equal(coverage.sale_unit, 0);
+    assert.equal(coverage.appearance, 1);
+    assert.equal(coverage.operation, 1);
+    assert.equal(coverage.maintenance, 1);
+    assert.equal(final?.coverage.byCategory[0].appearance, 1);
+    assert.equal(final?.coverage.byCategory[0].maintenance, 1);
     assert.equal(final?.coverage.byCategory[0].included, 29);
     assert.equal(
       sqlite.prepare("SELECT COUNT(*) AS n FROM product_offer_facts WHERE product_id=100").get()?.n,

@@ -1,5 +1,6 @@
 import { inferOfferFacts, OFFER_FACT_RULE_VERSION } from "../catalog/offer-facts.js";
-import { OFFER_FACT_DEFINITIONS } from "../catalog/types.js";
+import { OFFER_FACT_DEFINITIONS, OFFER_FACT_GROUPS } from "../catalog/types.js";
+import type { OfferFactCoverageRow } from "../api/contracts.js";
 import { accountReads, firstMeasured } from "./read-accounting.js";
 import { sellerOfferFactWrites } from "./offer-fact-repository.js";
 import type { QueryableDatabase, ReadableDatabase } from "./types.js";
@@ -7,17 +8,9 @@ import type { QueryableDatabase, ReadableDatabase } from "./types.js";
 export const OFFER_FACT_REPLAY_BATCH_SIZE = 25;
 const MAX_COHORT_BYTES = 128 * 1024;
 
-interface CoverageGroup {
-  key: string;
-  listings: number;
-  condition: number;
-  included: number;
-  warranty: number;
-  sale_unit: number;
-}
 interface Coverage {
-  byShop: CoverageGroup[];
-  byCategory: CoverageGroup[];
+  byShop: OfferFactCoverageRow[];
+  byCategory: OfferFactCoverageRow[];
 }
 interface ReplayRow {
   rule_version: number;
@@ -70,15 +63,16 @@ export async function readOfferFactReplay(db: ReadableDatabase) {
   return row ? progress(row) : null;
 }
 
-function addCoverage(bucket: CoverageGroup[], key: string, groups: Set<string>) {
+function addCoverage(bucket: OfferFactCoverageRow[], key: string, groups: Set<string>) {
   let row = bucket.find((entry) => entry.key === key);
   if (!row) {
-    row = { key, listings: 0, condition: 0, included: 0, warranty: 0, sale_unit: 0 };
+    row = { key, listings: 0 };
+    for (const group of OFFER_FACT_GROUPS) row[group.id] = 0;
     bucket.push(row);
   }
   row.listings++;
-  for (const group of ["condition", "included", "warranty", "sale_unit"] as const) {
-    if (groups.has(group)) row[group]++;
+  for (const group of OFFER_FACT_GROUPS) {
+    if (groups.has(group.id)) row[group.id] = (row[group.id] ?? 0) + 1;
   }
 }
 

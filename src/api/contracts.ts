@@ -44,6 +44,10 @@ import type {
 export { FACET_DEFINITIONS, FEATURE_DEFINITIONS, FEATURE_FILTER_DEFINITIONS, isFeatureFilter };
 export { OFFER_FACT_DEFINITIONS, OFFER_FACT_GROUPS, isOfferFactId };
 export type { OfferFact, OfferFactId } from "../catalog/types.js";
+/** Missing counts belong to an older replay vocabulary and must not be displayed as zero. */
+export type OfferFactCoverageRow = { key: string; listings: number } & Partial<
+  Record<(typeof OFFER_FACT_GROUPS)[number]["id"], number>
+>;
 export type {
   FacetDefinition,
   FacetId,

@@ -92,14 +92,16 @@ export function inferOfferFacts(
         .normalize("NFKC");
       // Refuse claims qualified as comparisons, exclusions, requests or uncertain descriptions.
       const clauses = text
-        .split(/[。\n;；]/u)
+        .split(/[。\n;；、，,]/u)
         .filter(
           (clause) =>
-            !/(?:同様|相当|ではありません|ではない|ではございません|不明|要確認|かもしれ|希望|別売|予定|必要|推奨|可能|対応可能)/u.test(
+            !/(?:同様|相当|ではありません|ではない|ではございません|不明|要確認|かもしれ|希望|別売)/u.test(
               clause,
             ),
         );
       for (const clause of clauses) {
+        // Service plans qualify the history claim, not unrelated included items in the same text.
+        if (factId.startsWith("maintenance_") && /(?:予定|必要|推奨|可能)/u.test(clause)) continue;
         const absent = negative?.test(clause) ?? false;
         const present = positive.test(clause);
         if (absent) observations.push({ state: "absent", field });

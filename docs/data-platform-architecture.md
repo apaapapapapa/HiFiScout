@@ -70,6 +70,8 @@ stock filters. A manual absent/unknown decision excludes an extracted positive f
 additional search aggregation or seller fetch is needed for the expanded vocabulary. The current
 `OFFER_FACT_RULE_VERSION` makes existing evidence eligible for the admin's bounded saved-evidence
 replay; deployment does not automatically scan or refetch all inventory.
+Replay coverage uses the same group registry, including appearance, operation and service history;
+older responses with no count display “未集計”, distinct from an observed zero.
 
 ### Search entities
 
