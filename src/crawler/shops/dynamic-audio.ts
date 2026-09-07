@@ -145,6 +145,7 @@ function conditionText(
 }
 
 export function parseDynamicAudioListing(html: string): SellerProduct[] {
+  html = stripRawTextElements(html);
   const products: SellerProduct[] = [];
 
   for (const article of wordpressArticles(html)) {

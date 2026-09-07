@@ -60,6 +60,7 @@ function fallbackFacts(fragment: string) {
 }
 
 export function discoverSoundPitDetails(html: string): SoundPitPage[] {
+  html = stripRawTextElements(html);
   const pages: SoundPitPage[] = [];
   const seen = new Set<string>();
   const anchorRe = /<a\b[^>]*href\s*=\s*(["'])([^"']+)\1[^>]*>([\s\S]*?)<\/a>/gi;
@@ -144,6 +145,7 @@ export function parseSoundPitDetail(
   html: string,
   page: Partial<SoundPitPage> = {},
 ): SellerProduct[] {
+  html = stripRawTextElements(html);
   if (page.kind === "index") return [];
   const sourceUrl = absoluteDetailUrl(page.url || "");
   const sourceId = sourceUrl ? sourceIdFromUrl(sourceUrl) : null;

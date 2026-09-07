@@ -1,3 +1,4 @@
+import { stripRawTextElements } from "../../html/raw-text.js";
 import { availabilityFromSignals } from "../availability.js";
 import { cleanText, inferCategory, parseYen, stableSourceId } from "../normalize.js";
 import type { SellerProduct, ShopAdapter } from "../types.js";
@@ -137,6 +138,7 @@ function parseSection(sectionHtml: string, rawCategory: string): SellerProduct[]
 }
 
 export function parseAudioSpaceCoreListing(html: string): SellerProduct[] {
+  html = stripRawTextElements(html);
   const products: SellerProduct[] = [];
   const sections = String(html || "").matchAll(
     /<h3\b[^>]*>([\s\S]*?)<\/h3>([\s\S]*?)(?=<h3\b|$)/giu,

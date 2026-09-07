@@ -15,6 +15,8 @@ export interface CrawlFetchDetailPageRow {
   fetched_at: string;
   /** Undefined means a legacy HTML/error row; [] is a committed negative extraction result. */
   category_evidence?: CategoryEvidenceInput[];
+  /** Optional for rows written before extractor-version fencing. */
+  extractor_version?: number;
 }
 
 interface DetailStagingRow {
@@ -73,6 +75,17 @@ function stagedCategoryEvidence(value: string | null): CategoryEvidenceInput[] |
   });
 }
 
+function stagedExtractorVersion(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const payload: unknown = JSON.parse(value);
+  if (!isRecord(payload) || payload.kind !== "category_evidence") return undefined;
+  const version = payload.extractorVersion ?? 1;
+  if (typeof version !== "number" || !Number.isSafeInteger(version) || version < 1) {
+    throw new Error("invalid staged category extractor version");
+  }
+  return version;
+}
+
 /**
  * Detail responses reuse the existing crawl_fetch_pages staging table. They are terminal `ignored`
  * rows with ordinals appended after the parsed listing frontier, so they cannot participate in page
@@ -110,6 +123,7 @@ export async function getCrawlFetchDetailPage(
     html_bytes: Number(staged.html_bytes || 0),
     fetched_at: staged.fetched_at,
     category_evidence: stagedCategoryEvidence(staged.products_json),
+    extractor_version: stagedExtractorVersion(staged.products_json),
   };
 }
 
@@ -161,6 +175,7 @@ export async function recordCrawlFetchDetailPage(
     errorMessage?: string | null;
     fetchedAt: string;
     evidence?: readonly CategoryEvidenceInput[];
+    extractorVersion?: number;
     htmlBytes?: number;
   },
 ): Promise<void> {
@@ -178,7 +193,12 @@ export async function recordCrawlFetchDetailPage(
     ? JSON.stringify({ errorMessage })
     : input.evidence === undefined
       ? null
-      : JSON.stringify({ kind: "category_evidence", version: 1, evidence: input.evidence });
+      : JSON.stringify({
+          kind: "category_evidence",
+          version: 1,
+          evidence: input.evidence,
+          extractorVersion: input.extractorVersion ?? 1,
+        });
 
   await db
     .prepare(`

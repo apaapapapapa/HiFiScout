@@ -80,6 +80,7 @@ interface LinkedPageDiscoveryOptions<T> {
 }
 
 export function discoverLinkedPages<T>(html: string, options: LinkedPageDiscoveryOptions<T>): T[] {
+  html = stripRawTextElements(html);
   let maxPage = options.currentPage;
 
   for (const match of String(html || "").matchAll(/href\s*=\s*(["'])([^"']+)\1/gi)) {

@@ -1,3 +1,4 @@
+import { stripRawTextElements } from "../../html/raw-text.js";
 import { availabilityFromSignals } from "../availability.js";
 import {
   bestListingTitle,
@@ -124,6 +125,7 @@ function stockStatus(text: string) {
 }
 
 export function parseAvacListing(html: string, page: Partial<AvacPage> = {}): SellerProduct[] {
+  html = stripRawTextElements(html);
   const products: SellerProduct[] = [];
 
   for (const { record, text: blockText } of productListingBlocks(

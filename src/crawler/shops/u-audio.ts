@@ -1,3 +1,4 @@
+import { stripRawTextElements } from "../../html/raw-text.js";
 import {
   collectProductAnchors,
   visibleListingText,
@@ -169,6 +170,7 @@ export function parseUAudioResultCount(html: string): number | null {
 }
 
 export function parseUAudioListing(html: string, page: Partial<UAudioPage> = {}): SellerProduct[] {
+  html = stripRawTextElements(html);
   const records = collectProductAnchors(html, canonicalProductLink);
   const products: SellerProduct[] = [];
 

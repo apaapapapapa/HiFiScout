@@ -9,11 +9,19 @@ export async function readStagedDetailEvidence(
   runId: string,
   product: NormalizedCatalogProduct,
   extract: DetailCategoryEvidenceCapability["extract"],
+  extractorVersion = 1,
 ): Promise<CategoryEvidenceInput[] | null> {
   const staged = await getCrawlFetchDetailPage(db, runId, product.sourceUrl);
   if (!staged) return null;
   if (staged.error_message) throw new Error(staged.error_message);
-  if (staged.category_evidence !== undefined) return staged.category_evidence;
+  if (staged.category_evidence !== undefined) {
+    // Keep the committed request fence across a deployment. A stale extraction is retried on a
+    // later crawl, never refetched here or stamped as a current positive/negative cache entry.
+    if ((staged.extractor_version ?? 1) !== extractorVersion) {
+      throw new Error("staged category extractor version changed during crawl");
+    }
+    return staged.category_evidence;
+  }
   if (staged.html_text !== null) return extract(staged.html_text, product);
   throw new Error(`staged category detail result is unavailable: ${product.sourceUrl}`);
 }

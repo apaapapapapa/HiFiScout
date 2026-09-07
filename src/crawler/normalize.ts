@@ -110,6 +110,23 @@ interface ManufacturerModelPair {
 }
 
 function splitFujiyaManufacturerModel(value: string): ManufacturerModelPair | null {
+  const known = splitKnownManufacturerModel(value);
+  if (known) {
+    // A Japanese token may be the actual model name. Remove a second manufacturer spelling
+    // only when it is a verified alias of the prefix, never by skipping ahead to an ASCII SKU.
+    const secondSpelling = splitKnownManufacturerModel(known.model);
+    const parts = value.split(/\s+/);
+    let manufacturer = known.rawManufacturer || known.displayName;
+    for (let end = 1; end <= parts.length; end += 1) {
+      const prefix = parts.slice(0, end).join(" ");
+      const normalized = normalizeManufacturer(prefix);
+      if (normalized.matchedAlias && normalized.id === known.id) manufacturer = prefix;
+    }
+    return {
+      manufacturer,
+      model: secondSpelling?.id === known.id ? secondSpelling.model : known.model,
+    };
+  }
   const tokens = value.split(/\s+/).filter(Boolean);
   if (tokens.length < 2) return null;
 
@@ -117,14 +134,11 @@ function splitFujiyaManufacturerModel(value: string): ManufacturerModelPair | nu
   if (firstJapaneseToken < 0) return null;
 
   const manufacturerEnd = firstJapaneseToken === 0 ? 1 : firstJapaneseToken;
-  const modelStart = tokens.findIndex(
-    (token, index) => index >= manufacturerEnd && /[A-Za-z0-9]/.test(token),
-  );
-  if (modelStart < 0) return null;
+  if (manufacturerEnd >= tokens.length) return null;
 
   return {
     manufacturer: tokens.slice(0, manufacturerEnd).join(" "),
-    model: tokens.slice(modelStart).join(" "),
+    model: tokens.slice(manufacturerEnd).join(" "),
   };
 }
 
