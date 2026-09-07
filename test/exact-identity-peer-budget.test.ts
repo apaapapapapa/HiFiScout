@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
-import { compatibleExactIdentityCategoriesSql } from "../src/db/product-search-entity-sql.js";
+import {
+  compatibleExactIdentityCategoriesSql,
+  eligibleExactIdentitySql,
+  sameExactIdentitySql,
+} from "../src/db/product-search-entity-sql.js";
 import { exactIdentityPeerIdsSql } from "../src/db/product-search-exact-identity.js";
 import { syncProductSearchEntities } from "../src/db/product-search-entity-repository.js";
 import { accountReads } from "../src/db/read-accounting.js";
@@ -160,6 +164,88 @@ test("exact peer lookup stays identity-scoped as unrelated categories and listin
           catalog_product_id = 1 WHERE listing_product_id = 5;`)
       .run();
     assert.deepEqual(await peers(), [1, 2, 3, 4]);
+  } finally {
+    await dispose();
+  }
+}, 60_000);
+
+test("multi-seed exact peer lookup evaluates each identity once", async () => {
+  const { db, dispose } = await database();
+  try {
+    await db
+      .prepare(`
+        WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 40)
+        INSERT INTO products(id, shop_key, source_id, canonical_manufacturer_id, model,
+          normalized_model, model_resolution_status, primary_category_id, title, source_url,
+          first_seen_at, last_seen_at, last_changed_at)
+        SELECT i, CASE WHEN i <= 20 THEN 'seed-shop' ELSE 'peer-shop' END, CAST(i AS TEXT),
+          'luxman', 'C10', 'C10', 'resolved', 'AMP.PRE', 'LUXMAN C10',
+          'https://example.test/' || i, '${AT}', '${AT}', '${AT}' FROM n
+      `)
+      .run();
+
+    const seeds = Array.from({ length: 20 }, (_, index) => index + 1);
+    const placeholders = seeds.map(() => "?").join(",");
+    const legacySql = `
+      SELECT DISTINCT peer.id AS id
+      FROM products seed
+      CROSS JOIN products peer INDEXED BY idx_products_exact_identity
+        ON ${sameExactIdentitySql("seed", "peer")}
+      WHERE seed.id IN (${placeholders})
+        AND seed.model_resolution_status = 'resolved'
+        AND COALESCE(seed.canonical_manufacturer_id, '') <> ''
+        AND COALESCE(seed.normalized_model, '') <> ''
+        AND ${eligibleExactIdentitySql("peer")}
+        AND ${compatibleExactIdentityCategoriesSql("peer")}
+    `;
+    const expected = Array.from({ length: 40 }, (_, index) => index + 1);
+
+    const legacy = accountReads(db);
+    const legacyRows = await legacy.db
+      .prepare(legacySql)
+      .bind(...seeds)
+      .all<{ id: number }>();
+    assert.deepEqual(
+      (legacyRows.results || []).map((row) => row.id).sort((a, b) => a - b),
+      expected,
+    );
+
+    const measured = accountReads(db);
+    const result = await measured.db
+      .prepare(exactIdentityPeerIdsSql(seeds.length))
+      .bind(...seeds)
+      .all<{ id: number }>();
+    assert.deepEqual(
+      (result.results || []).map((row) => row.id).sort((a, b) => a - b),
+      expected,
+    );
+    console.log(
+      JSON.stringify({
+        event: "multi_seed_exact_identity_read_budget",
+        seedCount: seeds.length,
+        peerCount: expected.length,
+        legacyRowsRead: legacy.rowsRead(),
+        deduplicatedRowsRead: measured.rowsRead(),
+      }),
+    );
+    assert.ok(
+      measured.rowsRead() * 10 < legacy.rowsRead(),
+      `identity-deduplicated ${measured.rowsRead()} vs repeated ${legacy.rowsRead()} rows`,
+    );
+
+    await db
+      .prepare("UPDATE products SET primary_category_id = 'AMP.INTEGRATED' WHERE id = 40")
+      .run();
+    const legacyContradiction = await db
+      .prepare(legacySql)
+      .bind(...seeds)
+      .all<{ id: number }>();
+    const deduplicatedContradiction = await db
+      .prepare(exactIdentityPeerIdsSql(seeds.length))
+      .bind(...seeds)
+      .all<{ id: number }>();
+    assert.deepEqual(legacyContradiction.results, []);
+    assert.deepEqual(deduplicatedContradiction.results, []);
   } finally {
     await dispose();
   }
