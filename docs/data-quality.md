@@ -146,6 +146,10 @@ Infrastructure-level D1/R2 latency, storage, and error metrics remain in Cloudfl
 ### Category completion: product types, specifications and capabilities
 
 Taxonomy v3 retains 12 filterable roots and 62 product-type leaves. Display names are Japanese.
+Public equipment shortcuts map familiar names to these canonical categories plus existing facets.
+Choosing one replaces category, capability and specification criteria in a single search, retaining
+the query, manufacturers, shops, budget and quick filters. CD/SACD uses OR within the media facet.
+Shortcuts are disabled in local favorites, whose snapshots lack specification facts.
 Tape decks now belong to the source-equipment root (`SRC`). Their durable leaf ID remains
 `ANA.TAPE` so saved URLs, verified catalog entries and explicit admin corrections remain valid;
 always use the registry's `parentId`/closure, not an ID prefix, to determine ancestry.
@@ -164,6 +168,13 @@ written in the seller's text; an unspecified second endpoint is not copied from 
 Ambiguous multi-ended cables are left unspecified. Endpoint shapes include standard phone-plug
 sizes and USB Type-A/B/C. Cable length is filtered in half-open ranges: under 1m, 1–2m, 2–3m,
 3–5m and 5m or longer. Ambiguous lengths are not inferred; exact seller text remains retained.
+
+Public specification controls use the facet registry's optional root/leaf scopes on both fields
+and values. Parent selection reveals its children's applicable choices; registry ancestry also
+keeps tape media under `SRC`. Headphone amplifiers expose portability, while unrelated cartridge,
+phono, processor, part and cable-length controls stay hidden. These scopes suggest UI choices;
+they do not reject stored facts or alter search predicates. Selected values remain visible and
+removable after a category change or when restoring an older URL.
 
 `recording` joins the existing four capabilities. `?feature=dac` still means positive evidence;
 `?feature=dac:absent` requires explicit absence, and `?feature=dac:unknown` matches missing or

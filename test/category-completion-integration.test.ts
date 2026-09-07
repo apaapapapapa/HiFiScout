@@ -41,25 +41,35 @@ async function seed(db: QueryableDatabase, titles: readonly string[]) {
 test("tape migration repairs ancestors without changing durable identities or explicit overrides", async () => {
   const { sqlite, db } = migratedSqlite({ before: MIGRATION });
   try {
-    // Seed the historical schema directly: today's projection writer needs columns added later.
-    await upsertProducts(
-      db,
-      "hifido",
-      ["テープデッキ T1", "テープデッキ T2", "レコードプレーヤー R1"].map((title, index) =>
-        normalizeCatalogProduct({
-          sourceId: `completion-${index}`,
+    // Keep the historical fixture independent of tables required by today's listing writer.
+    for (const [index, title] of [
+      "テープデッキ T1",
+      "テープデッキ T2",
+      "レコードプレーヤー R1",
+    ].entries()) {
+      const category = index < 2 ? "ANA.TAPE" : "ANA.TURNTABLE";
+      sqlite
+        .prepare(`INSERT INTO products
+          (shop_key, source_id, title, condition_text, price_yen, stock_status, source_url,
+           first_seen_at, last_seen_at, last_changed_at, primary_category_id, category_ids)
+          VALUES ('hifido', ?, ?, '中古', ?, 'in_stock', ?, ?, ?, ?, ?, ?)`)
+        .run(
+          `completion-${index}`,
           title,
-          manufacturer: "",
-          model: "",
-          conditionText: "中古",
-          priceYen: 10000 + index,
-          stockStatus: "in_stock",
-          sourceUrl: `https://example.test/completion-${index}`,
-        }),
-      ),
-      AT,
-    );
+          10000 + index,
+          `https://example.test/completion-${index}`,
+          AT,
+          AT,
+          AT,
+          category,
+          JSON.stringify([category, "ANA"]),
+        );
+    }
     sqlite.exec(`
+      INSERT INTO product_categories(product_id, category_id, is_direct)
+        SELECT id, primary_category_id, 1 FROM products;
+      INSERT INTO price_history(product_id, price_yen, observed_at)
+        SELECT id, price_yen, '${AT}' FROM products;
       INSERT INTO product_identity_resolutions(listing_product_id,status,match_method,confidence,evaluated_at)
         SELECT id,'unresolved','unresolved','none','${AT}' FROM products;
       INSERT INTO product_search_entities(entity_key,entity_kind,fallback_listing_id,primary_category_id)

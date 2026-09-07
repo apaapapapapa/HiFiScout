@@ -11,7 +11,7 @@ CREATE TABLE product_offer_facts (
   observed_at TEXT NOT NULL,
   PRIMARY KEY (product_id, fact_id, source),
   CHECK (source = 'manual' OR state <> 'unknown')
-) WITHOUT ROWID;
+);
 
 CREATE INDEX idx_product_offer_facts_filter
   ON product_offer_facts(fact_id, state, product_id);

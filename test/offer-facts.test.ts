@@ -4,6 +4,7 @@ import { inferOfferFacts } from "../src/catalog/offer-facts.js";
 import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
 import { upsertProducts } from "../src/db/product-write-repository.js";
 import { sellerOfferFactWrites } from "../src/db/offer-fact-repository.js";
+import { createCompleteExportPlan, readCompleteExportPage } from "../src/export/complete-csv.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 
 const AT = "2026-09-07T00:00:00.000Z";
@@ -91,6 +92,11 @@ test("facts persist atomically with the listing and preserve manual decisions on
     sqlite.exec(
       `INSERT INTO product_offer_facts SELECT id, 'original_box', 'manual', 'absent', 'manual', 'admin', 1, '${AT}' FROM products`,
     );
+    const plan = await createCompleteExportPlan(db, "all", 1);
+    const table = plan.tables.findIndex((entry) => entry.name === "product_offer_facts");
+    const exported = await readCompleteExportPage(db, plan, { table, after: null });
+    assert.equal(exported.rows, 3, "full exports retain both seller and manual evidence");
+    assert.match(new TextDecoder().decode(exported.bytes), /"manual","absent","manual"/u);
     await upsertProducts(db, "facts", [listing("元箱なし")], LATER);
     assert.deepEqual(
       rows().map((row) => [row.fact_id, row.state, row.source]),
