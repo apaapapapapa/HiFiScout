@@ -91,14 +91,12 @@ export function captureWatchObservation(
     // A capped or inconsistent result cannot prove another listing disappeared.
     complete:
       detail.offers.length < MAX_OFFERS && detail.offers.length === detail.product.offer_count,
-    offers: detail.offers
-      .slice(0, MAX_OFFERS)
-      .map((offer) => ({
-        id: offer.listing_product_id,
-        shopKey: offer.shop_key,
-        priceYen: offer.price_yen,
-        stock: offer.stock_status,
-      })),
+    offers: detail.offers.slice(0, MAX_OFFERS).map((offer) => ({
+      id: offer.listing_product_id,
+      shopKey: offer.shop_key,
+      priceYen: offer.price_yen,
+      stock: offer.stock_status,
+    })),
   };
 }
 
