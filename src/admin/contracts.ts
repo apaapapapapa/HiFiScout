@@ -2,6 +2,10 @@ import type {
   ProductAuditExportJob,
   ProductAuditExportScope,
 } from "../product-audit-export/types.js";
+import type {
+  AdminManufacturerPage,
+  AdminManufacturerQuery,
+} from "../api/admin-manufacturer-contracts.js";
 import type { KnowledgeCatalogExportJob } from "../knowledge-catalog-export/types.js";
 import type {
   AdminCsvApplyInput,
@@ -90,6 +94,7 @@ export interface CatalogAdminProductExportRow {
 }
 
 export interface CatalogAdminRpc {
+  listManufacturers(options: AdminManufacturerQuery): Promise<AdminManufacturerPage>;
   previewCsvImport(changes: AdminCsvChange[]): Promise<AdminCsvResult[]>;
   applyCsvImport(input: AdminCsvApplyInput): Promise<AdminCsvResult>;
   listProducts(options: CatalogAdminListOptions): Promise<unknown>;

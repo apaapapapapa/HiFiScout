@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { AdminCsvImport } from "./admin-csv-import.js";
+import { AdminManufacturerPicker } from "./admin-manufacturer-picker.js";
+import { AdminEditDiff } from "./admin-edit-diff.js";
 
 import {
   AdminOperationError,
@@ -1716,6 +1718,31 @@ export function CatalogAdmin() {
               <strong>保存時の処理</strong>
               <p>このCatalogに関連する販売店の商品にもカテゴリ・検索表示を反映します。</p>
             </div>
+            <AdminEditDiff
+              rows={[
+                ...(editName.trim() !== editing.canonicalName
+                  ? [{ field: "表示名", before: editing.canonicalName, after: editName.trim() }]
+                  : []),
+                ...(editCategory !== editing.primaryCategoryId
+                  ? [
+                      {
+                        field: "主カテゴリ",
+                        before: categoryName(editing.primaryCategoryId),
+                        after: categoryName(editCategory),
+                      },
+                    ]
+                  : []),
+                ...(editLifecycle !== editing.lifecycleStatus
+                  ? [
+                      {
+                        field: "生産状況",
+                        before: lifecycleName(editing.lifecycleStatus),
+                        after: lifecycleName(editLifecycle),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
             <p
               className="edit-change-status"
               data-dirty={editWarning ? "warning" : editDirty ? "true" : "false"}
@@ -1845,22 +1872,16 @@ export function CatalogAdmin() {
                 <p className="identity-note">{createMode.candidate.sampleTitle}</p>
               </div>
             ) : null}
-            <label>
-              <span>Manufacturer ID / メーカー名</span>
-              <input
-                type="text"
-                maxLength={100}
-                required
-                autoComplete="off"
-                value={createDraft.manufacturerId}
-                onChange={({ currentTarget: { value: nextValue } }) =>
-                  setCreateDraft((value) => ({
-                    ...value,
-                    manufacturerId: nextValue,
-                  }))
-                }
-              />
-            </label>
+            <AdminManufacturerPicker
+              key={createMode.candidate?.id ?? "new"}
+              value={createDraft.manufacturerId}
+              disabled={operationBusy}
+              clearLabel="メーカーを選び直す"
+              customLabel="候補にないメーカー名・既存IDを指定する"
+              onChange={(manufacturerId) =>
+                setCreateDraft((value) => ({ ...value, manufacturerId }))
+              }
+            />
             <label>
               <span>型番</span>
               <input

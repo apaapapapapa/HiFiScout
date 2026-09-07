@@ -72,8 +72,24 @@ async function mockAdminApi(page: Page): Promise<void> {
     if (url.pathname === "/api/meta")
       return json({
         categoryFacets: categories,
+        presentationColors: [
+          { id: "black", name: "ブラック", aliases: ["black", "黒"], codes: ["b"], order: 0 },
+          { id: "silver", name: "シルバー", aliases: ["silver", "銀"], codes: ["s"], order: 1 },
+          { id: "gold", name: "ゴールド", aliases: ["gold", "金"], codes: [], order: 2 },
+        ],
         shops: [{ key: "audiounion", name: "Audio Union" }],
       });
+    if (url.pathname === "/api/admin/manufacturers") {
+      const query = (url.searchParams.get("q") || "").toLowerCase();
+      return json({
+        items: [
+          { id: "accuphase", name: "Accuphase" },
+          { id: "luxman", name: "LUXMAN" },
+        ].filter((item) => `${item.name} ${item.id}`.toLowerCase().includes(query)),
+        hasMore: false,
+        nextAfterId: null,
+      });
+    }
     if (url.pathname === "/api/admin/knowledge-catalog/products" && request.method() === "GET") {
       if (url.searchParams.get("limit") === "1") {
         const afterId = Number(url.searchParams.get("afterId"));
@@ -416,6 +432,10 @@ test("admin catalog screen uses the shared POM for search and edit flows", async
   await admin.catalog.openEditor(11);
   await expect(admin.catalog.editDialog).toBeVisible();
   await admin.catalog.editName().fill("LUXMAN D-1000 Reference");
+  const changes = admin.catalog.editDialog.getByRole("region", { name: "保存前の変更内容" });
+  await expect(changes.getByRole("row", { name: /表示名/ })).toContainText(
+    "LUXMAN D-1000 Reference",
+  );
   await admin.catalog.saveButton().click();
   await expect(admin.catalog.catalogRow(11)).toContainText("LUXMAN D-1000 Reference");
   await expect(admin.catalog.status).toContainText("保存しました");
@@ -440,8 +460,140 @@ test("admin listings screen uses the shared POM for tab, search, and color edit 
   await admin.listings.openEditor(21);
   await expect(admin.listings.editDialog).toBeVisible();
   await admin.listings.presentationColor().fill("ブラック/ゴールド");
+  await expect(
+    admin.listings.editDialog.getByRole("region", { name: "保存前の変更内容" }),
+  ).toContainText("ブラック/ゴールド");
   await admin.listings.saveButton().click();
   await expect(admin.listings.listingRow(21)).toContainText("色: ブラック/ゴールド");
+});
+
+test("manufacturer lookup keeps the selected ID until a candidate is chosen and shows the saved diff", async ({
+  page,
+  mount,
+}) => {
+  const component = await mount("frontend/admin-console/Default");
+  const admin = new AdminConsolePage(component, page);
+  await admin.openListings();
+  await admin.listings.openEditor(21);
+  const picker = admin.listings.editDialog.getByRole("group", { name: "メーカー", exact: true });
+  await picker.getByText("メーカー名から選ぶ", { exact: true }).click();
+  await picker.getByRole("searchbox", { name: "メーカー候補を検索" }).fill("acc");
+  await expect(picker.getByRole("listbox", { name: "メーカー候補", exact: true })).toContainText(
+    "Accuphase",
+  );
+  await expect(picker.locator(".manufacturer-selection")).toContainText("LUXMAN");
+  await expect(admin.listings.saveButton()).toBeDisabled();
+  await picker
+    .getByRole("listbox", { name: "メーカー候補", exact: true })
+    .selectOption("accuphase");
+  const diff = admin.listings.editDialog.getByRole("region", { name: "保存前の変更内容" });
+  await expect(diff).toContainText("luxman");
+  await expect(diff).toContainText("Accuphase (accuphase)");
+  const request = page.waitForRequest(
+    (request) =>
+      new URL(request.url()).pathname === "/api/admin/listings/21" && request.method() === "PATCH",
+  );
+  await admin.listings.saveButton().click();
+  expect((await request).postDataJSON()).toEqual({ manufacturerId: "accuphase" });
+});
+
+test("manufacturer lookup retries without clearing selection, and unresolved is explicit in the preview", async ({
+  page,
+  mount,
+}) => {
+  let calls = 0;
+  await page.route("**/api/admin/manufacturers?**", async (route) => {
+    calls++;
+    await route.fulfill({
+      status: calls === 1 ? 503 : 200,
+      contentType: "application/json",
+      body: JSON.stringify(
+        calls === 1 ? { error: "temporary" } : { items: [], hasMore: false, nextAfterId: null },
+      ),
+    });
+  });
+  const component = await mount("frontend/admin-console/Default");
+  const admin = new AdminConsolePage(component, page);
+  await admin.openListings();
+  await admin.listings.openEditor(21);
+  const picker = admin.listings.editDialog.getByRole("group", { name: "メーカー", exact: true });
+  await picker.getByText("メーカー名から選ぶ", { exact: true }).click();
+  await picker.getByRole("button", { name: "メーカー候補を再読み込み" }).click();
+  await expect(picker).toContainText("一致する検証済みメーカーがありません");
+  await expect(picker.locator(".manufacturer-selection")).toContainText("LUXMAN");
+  await expect(admin.listings.saveButton()).toBeDisabled();
+  await picker.getByRole("button", { name: "メーカー未解決にする", exact: true }).click();
+  await expect(
+    admin.listings.editDialog.getByRole("region", { name: "保存前の変更内容" }),
+  ).toContainText("メーカー未解決として固定");
+});
+
+test("manufacturer choice and changes remain usable on a narrow admin dialog", async ({
+  page,
+  mount,
+}, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const component = await mount("frontend/admin-console/Default");
+  const admin = new AdminConsolePage(component, page);
+  await admin.openListings();
+  await admin.listings.openEditor(21);
+  await admin.listings.presentationColor().fill("silver");
+  const diff = admin.listings.editDialog.getByRole("region", { name: "保存前の変更内容" });
+  await expect(diff.getByRole("columnheader", { name: "現在", exact: true })).toBeVisible();
+  await expect(diff.getByRole("cell", { name: "シルバー", exact: true })).toBeVisible();
+  expect(
+    await admin.listings.editDialog.evaluate((node) => node.scrollWidth <= node.clientWidth),
+  ).toBe(true);
+  await admin.listings.editDialog.screenshot({
+    path: testInfo.outputPath("admin-edit-preview-mobile.png"),
+  });
+});
+
+test("an older manufacturer response cannot replace the current query", async ({ page, mount }) => {
+  let release!: () => void;
+  const hold = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let received!: () => void;
+  const requested = new Promise<void>((resolve) => {
+    received = resolve;
+  });
+  let sent!: () => void;
+  const completed = new Promise<void>((resolve) => {
+    sent = resolve;
+  });
+  await page.route("**/api/admin/manufacturers?**", async (route) => {
+    if (new URL(route.request().url()).searchParams.get("q") !== "stale") return route.fallback();
+    received();
+    await hold;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [{ id: "old", name: "Old result" }],
+        hasMore: false,
+        nextAfterId: null,
+      }),
+    });
+    sent();
+  });
+  const component = await mount("frontend/admin-console/Default");
+  const admin = new AdminConsolePage(component, page);
+  await admin.openListings();
+  await admin.listings.openEditor(21);
+  const picker = admin.listings.editDialog.getByRole("group", { name: "メーカー", exact: true });
+  await picker.getByText("メーカー名から選ぶ", { exact: true }).click();
+  await picker.getByRole("searchbox", { name: "メーカー候補を検索" }).fill("stale");
+  await requested;
+  await picker.getByRole("searchbox", { name: "メーカー候補を検索" }).fill("acc");
+  await expect(picker.getByRole("listbox", { name: "メーカー候補", exact: true })).toContainText(
+    "Accuphase",
+  );
+  release();
+  await completed;
+  await expect(
+    picker.getByRole("listbox", { name: "メーカー候補", exact: true }),
+  ).not.toContainText("Old result");
+  await expect(picker.locator(".manufacturer-selection")).toContainText("LUXMAN");
 });
 
 test("every catalog close control confirms before discarding dirty fields", async ({
