@@ -10,6 +10,13 @@ const stockStatus: JsonSchema = {
   type: "string",
   enum: ["in_stock", "sold_out", "unknown"],
 };
+const relatedModelProperties: Record<string, JsonSchema> = {
+  key: { type: "string", pattern: "^c-[1-9][0-9]*$" },
+  manufacturer: { type: "string" },
+  model: { type: "string" },
+  proof: { $ref: "#/components/schemas/CatalogRelationProof" },
+};
+const familyPosition: JsonSchema = { type: ["integer", "null"], minimum: 0, maximum: 1000 };
 const PRODUCT_OFFER_SCHEMA: JsonSchema = {
   type: "object",
   additionalProperties: false,
@@ -58,6 +65,60 @@ export const PUBLIC_API_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
     required: ["error"],
   },
   ProductOffer: PRODUCT_OFFER_SCHEMA,
+  CatalogRelationProof: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      kind: { type: "string", enum: ["source", "manual"] },
+      sourceUrl: { type: ["string", "null"], format: "uri" },
+      verifiedAt: { type: "string", format: "date-time" },
+    },
+    required: ["kind", "sourceUrl", "verifiedAt"],
+  },
+  ProductModelRelations: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      links: {
+        type: "array",
+        maxItems: 40,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            ...relatedModelProperties,
+            kind: { type: "string", enum: ["predecessor", "successor", "variant"] },
+          },
+          required: ["key", "manufacturer", "model", "proof", "kind"],
+        },
+      },
+      families: {
+        type: "array",
+        maxItems: 40,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            name: { type: "string" },
+            position: familyPosition,
+            proof: { $ref: "#/components/schemas/CatalogRelationProof" },
+            members: {
+              type: "array",
+              maxItems: 40,
+              items: {
+                type: "object",
+                additionalProperties: false,
+                properties: { ...relatedModelProperties, position: familyPosition },
+                required: ["key", "manufacturer", "model", "proof", "position"],
+              },
+            },
+          },
+          required: ["name", "position", "proof", "members"],
+        },
+      },
+    },
+    required: ["links", "families"],
+  },
   OfferFact: {
     type: "object",
     additionalProperties: false,
@@ -151,6 +212,7 @@ export const PUBLIC_API_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
         type: ["object", "null"],
       },
       price_index: { $ref: "#/components/schemas/ProductPriceIndexSummary" },
+      model_relations: { $ref: "#/components/schemas/ProductModelRelations" },
     },
     required: [
       "key",

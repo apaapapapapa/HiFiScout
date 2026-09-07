@@ -29,6 +29,7 @@ import type {
   SuggestResponse,
 } from "../src/api/contracts.js";
 import type { ProductDetailResponse, ProductHistoryResponse, ProductsResponse } from "./types.js";
+import { isProductModelRelations } from "./model-relations.js";
 
 /** Matches the Worker's own `cache-control: public, max-age=30` on these endpoints. */
 const CACHE_TTL_MS = 30_000;
@@ -249,6 +250,8 @@ export function isProductOffer(value: unknown): value is ProductOffer {
  */
 export function isProductSearchItem(value: unknown): value is ProductSearchItem {
   if (!isRecord(value)) return false;
+  if (value.model_relations !== undefined && !isProductModelRelations(value.model_relations))
+    return false;
   const stringFields = [
     "key",
     "manufacturer",

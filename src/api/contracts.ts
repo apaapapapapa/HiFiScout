@@ -49,6 +49,11 @@ export type OfferFactCoverageRow = { key: string; listings: number } & Partial<
   Record<(typeof OFFER_FACT_GROUPS)[number]["id"], number>
 >;
 export type {
+  CatalogRelationProof,
+  RelatedCatalogModel,
+  ProductModelRelations,
+} from "../catalog/types.js";
+export type {
   ModelFactInput,
   ModelFactWriteInput,
   AdminModelFact,
@@ -171,6 +176,8 @@ export interface ProductOffer {
  * produced it; `offer_count` is therefore a count of *matching* offers, not of all of them.
  */
 export interface ProductSearchItem {
+  /** Verified model relations, loaded only for a product detail; absent means unknown. */
+  model_relations?: import("../catalog/types.js").ProductModelRelations;
   key: string;
   identity_kind: ProductSearchIdentityKind;
   catalog_product_id: number | null;
