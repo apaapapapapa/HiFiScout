@@ -43,6 +43,7 @@ import type {
 export { FACET_DEFINITIONS, FEATURE_DEFINITIONS, FEATURE_FILTER_DEFINITIONS, isFeatureFilter };
 export { OFFER_FACT_DEFINITIONS, isOfferFactId };
 export type { OfferFact, OfferFactId } from "../catalog/types.js";
+export type { ModelFactInput, ModelFactWriteInput, AdminModelFact, ModelFactsAdminSnapshot } from "../catalog/types.js";
 export type {
   FacetDefinition,
   FacetId,

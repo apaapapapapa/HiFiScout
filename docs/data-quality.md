@@ -294,6 +294,7 @@ Validation follows at most 100 successor links and fails closed at that boundary
 are limited to 40 per endpoint and 40 per family. Partial indexes exclude removed decisions.
 Optimistic versions reject stale edits; facts and their audit records commit atomically.
 
-This storage layer precedes the Access-protected editor and public relation summaries. No model
-relationships are inferred, seeded, or published by this migration. Catalog deletion requires an
-explicit review of existing model facts; transient search-entity cleanup leaves them intact.
+The [Access-protected model relationship editor](./listing-admin.md#model-relationships-and-series)
+manages the verification state and evidence. Public relation summaries are added separately. No
+model relationships are inferred or seeded by migrations. Catalog deletion requires an explicit
+review of existing model facts; transient search-entity cleanup leaves them intact.

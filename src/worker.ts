@@ -2,6 +2,9 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 
 import worker from "./index.js";
 import type { AdminManufacturerQuery } from "./api/admin-manufacturer-contracts.js";
+import type { ModelFactWriteInput } from "./catalog/types.js";
+import { readModelFactsAdmin, saveModelFactsAdmin } from "./db/model-fact-admin-repository.js";
+import { parseModelFactWrite } from "./http/model-fact-admin.js";
 import { listAdminManufacturers } from "./db/admin-manufacturer-repository.js";
 import { previewAdminCsvChange, applyAdminCsvChange } from "./db/admin-csv-import-repository.js";
 import { parseAdminCsvPreview, parseAdminCsvApply } from "./http/admin-csv-import.js";
@@ -62,6 +65,15 @@ import type { ListingAdminListOptions, ListingAdminUpdateInput } from "./http/li
  * Binding configured on the dedicated Access-protected admin Worker; it has no public HTTP route.
  */
 export class CatalogAdminService extends WorkerEntrypoint<Env> implements CatalogAdminRpc {
+  async getModelFacts(productId: number) {
+    return readModelFactsAdmin(this.env.DB, productId);
+  }
+
+  async saveModelFacts(productId: number, input: ModelFactWriteInput, actor: string) {
+    const parsed = parseModelFactWrite(input);
+    if (!parsed) throw new Error("catalog_model_fact_invalid");
+    return saveModelFactsAdmin(this.env.DB, productId, parsed, actor);
+  }
   async listManufacturers(options: AdminManufacturerQuery) {
     return listAdminManufacturers(this.env.DB, options);
   }

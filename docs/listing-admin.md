@@ -277,3 +277,22 @@ row in a page was already refreshed. Failed projection work still resumes from i
 ## Verification
 
 CI applies all D1 migrations and then runs `scripts/verify-listing-admin-overrides.ts`. The integration check simulates a crawler attempting to overwrite a corrected listing and verifies that canonical values remain manually corrected while raw seller evidence still updates.
+## Model relationships and series
+
+The Catalog table's **機種の関係** action opens an independent editor for successor links,
+verified variants and ordered series memberships. Select the related model from the existing
+verified-catalog search and choose an existing source for either endpoint, or enter a manual
+verification note. Candidate and rejected decisions are distinct from verified decisions. A
+missing or changed source, or a passed review deadline, is shown as **再確認待ち**. The explicit
+re-verification action records a new decision time; an unchanged ordinary save is disabled.
+
+The Access-protected `GET/POST /api/admin/knowledge-catalog/products/:id/model-facts` endpoint
+returns current facts, up to 40 source choices and the most recent 20 audit events. POST requires
+a same-origin JSON body of at most 8 KiB and the current optimistic version for edits. The reviewer
+comes from the verified Access subject, never a submitted actor field. The Service Binding
+validates the write contract again. There is no corresponding public admin route.
+
+Deletion keeps a removed decision and its audit. Catalog merges/deletions are blocked while
+current model relationships need review; after explicit removal, old model-fact rows may be
+cleaned up with the catalog product while the audit remains. Relation editing never merges
+identities or creates catalog products for presentation colours.

@@ -1506,3 +1506,40 @@ export interface CandidatePriorityInput {
 
 // Knowledge source verification types live beside their implementation, in
 // `src/catalog/knowledge-verification/types.ts`.
+export interface ModelFactInput {
+  kind: "successor" | "variant" | "family";
+  relatedProductId: number | null;
+  familyName: string;
+  position: number | null;
+  state: "candidate" | "verified" | "rejected" | "removed";
+  sourceId: number | null;
+  manualNote: string;
+  manufacturerJustification: string;
+}
+
+export interface ModelFactWriteInput {
+  id: string | null;
+  expectedVersion: number | null;
+  reverify: boolean;
+  fact: ModelFactInput;
+}
+
+export interface AdminModelFact {
+  id: string;
+  version: number;
+  productId: number;
+  productName: string;
+  relatedProductName: string | null;
+  input: ModelFactInput;
+  reviewState: ModelFactInput["state"] | "due";
+  sourceUrl: string;
+  verifiedAt: string | null;
+  reviewDueAt: string | null;
+}
+
+export interface ModelFactsAdminSnapshot {
+  product: { id: number; name: string; manufacturerId: string };
+  facts: AdminModelFact[];
+  sources: { id: number; sourceType: string; url: string; status: string; retrievedAt: string | null }[];
+  audits: { id: number; actor: string; occurredAt: string; before: unknown; after: unknown }[];
+}

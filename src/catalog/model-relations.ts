@@ -1,13 +1,5 @@
-export interface ModelFactInput {
-  kind: "successor" | "variant" | "family";
-  relatedProductId: number | null;
-  familyName: string;
-  position: number | null;
-  state: "candidate" | "verified" | "rejected" | "removed";
-  sourceId: number | null;
-  manualNote: string;
-  manufacturerJustification: string;
-}
+import type { ModelFactInput } from "./types.js";
+export type { ModelFactInput } from "./types.js";
 
 export function parseModelFactInput(value: unknown): ModelFactInput | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
