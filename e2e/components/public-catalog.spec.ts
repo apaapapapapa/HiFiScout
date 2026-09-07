@@ -156,8 +156,11 @@ test("shared comparison loads canonical products, retains failed columns, and re
       },
     });
   });
-  await page.evaluate(() => history.replaceState(null, "", "/?compare=c-03,c-1,c-3"));
   await mount("frontend/public-app/Default");
+  await page.evaluate(() => {
+    history.replaceState(null, "", "/?compare=c-1%2Cc-3");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
   const comparison = page.getByRole("region", { name: "製品比較 (2/4)", exact: true });
   await expect(comparison.getByRole("status")).toContainText("取得できない製品");
   await expect(comparison.getByRole("columnheader")).toHaveCount(3);
