@@ -73,6 +73,21 @@ replay; deployment does not automatically scan or refetch all inventory.
 Replay coverage uses the same group registry, including appearance, operation and service history;
 older responses with no count display “未集計”, distinct from an observed zero.
 
+### Sale units and installed options beside prices
+
+The price area shows sale unit, explicitly stated AC input voltage and installed DAC/phono/network
+boards for that offer. Optional compatibility or a model's built-in capability does not prove an
+installed board. Conflicting sale units/voltages remain unresolved; no per-piece conversion or
+equivalence between a pair and a set is invented. Product cards identify the representative shop
+and its price when several offers are grouped, so its conditions cannot label another offer's price.
+The existing detail retains all shops and their separate evidence. Missing values are visible and
+do not mean domestic voltage or an absent option.
+
+Search reads effective facts once for only the selected page's representative listing IDs (at most
+100), using the listing/fact/source primary key and the existing manual-override rule. This adds one
+bounded read, no writes, full-inventory aggregation or per-card HTTP request. Local D1 budget tests
+cover the statement and verify that unrelated inventory growth does not expand the scoped read.
+
 ### Search entities
 
 `product_search_entities` is the product-level read model. Each row is one **search entity**, which is either:

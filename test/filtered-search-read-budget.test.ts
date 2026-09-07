@@ -43,7 +43,7 @@ test("shop totals and pages stay scoped when other shops grow", async () => {
         .prepare(`INSERT INTO product_offer_facts
           SELECT products.id, value, 'seller', 'present', 'condition_text', 'fixture', 1, '${AT}'
           FROM products CROSS JOIN json_each('["remote_control","shop_warranty"]')
-          WHERE products.id > ? AND products.id <= 12`)
+          WHERE products.id > ?`)
         .bind(previous)
         .run();
       const oldCount = await legacy.db
@@ -72,8 +72,8 @@ test("shop totals and pages stay scoped when other shops grow", async () => {
         assert.equal(measured.rowsWritten(), 0);
         assert.equal(
           measured.countedStatements(),
-          4,
-          "count, page and both offer loaders are measured",
+          5,
+          "count, page, both offer loaders and page-scoped facts are measured",
         );
         costs.push({ size, filter, rowsRead: measured.rowsRead(), legacyCount: legacy.rowsRead() });
       }

@@ -25,6 +25,15 @@
 .filters .offer-fact-filter-group { margin: 8px 0 12px; padding: 0; border: 0; min-inline-size: 0; }
 .offer-facts .filter-note { color: #555555; font-size: 12px; line-height: 1.7; }
 
+.representative-terms { margin: 8px 0; text-align: start; }
+.representative-terms > p { margin: 0 0 4px; color: #555555; font-size: 11px; }
+.offer-terms { margin: 8px 0; font-size: 12px; line-height: 1.6; }
+.offer-terms > div { display: grid; grid-template-columns: 6.5em minmax(0, 1fr); gap: 8px; }
+.offer-terms dt { color: #555555; }
+.offer-terms dd { margin: 0; overflow-wrap: anywhere; }
+.offer-terms dd span { display: inline; }
+.offer-terms dd span + span::before { content: " / "; }
+
 :root {
   --hs-ink: #000;
   --hs-warm-ink: #191817;
