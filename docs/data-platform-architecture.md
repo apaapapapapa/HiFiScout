@@ -720,6 +720,22 @@ The Cloudflare API token used by deployment therefore needs the permission requi
 
 ## Regression coverage
 
+### Detailed specification search
+
+Public search and Atom accept positive `maxWidthMm`, `maxHeightMm`, `maxDepthMm`, `maxWeightKg`
+limits and integer `minXlrInputs`, `minXlrOutputs`, `minRcaInputs`, `minRcaOutputs` counts. Conditions
+are ANDed on one currently verified catalog product. Unrecorded dimensions/counts do not match.
+Dimensions are millimetres and weight is kilograms; connector counts use the source's system count,
+not a guessed count of individual physical sockets. Only exact XLR/RCA names (ASCII case and outer
+space ignored) are used for these filters; ambiguous duplicate labels retain an unknown count.
+
+Dimension expression indexes and a bounded port projection avoid expanding every catalog record
+on each search. Triggers maintain at most four connector rows per specification atomically, retain
+unchanged counts without writes, and cascade when the source specification is removed. Existing
+records are projected by the migration without fetching sellers. Their original sourced JSON is
+the export authority; the port table is a rebuildable search projection. Filters do not scan price
+history, change identities or reuse a different product's specifications.
+
 ### Favorite revisit observations
 
 Opening a favorites view refreshes its first ten visible products, using at most two concurrent

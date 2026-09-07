@@ -14,6 +14,28 @@ const record = (v: unknown): v is Record<string, unknown> =>
 const text = (v: unknown, max: number): v is string =>
   typeof v === "string" && v.trim().length > 0 && v.length <= max;
 
+export const SPECIFICATION_FILTER_DEFINITIONS = [
+  { id: "maxWidthMm", name: "幅の上限", unit: "mm", maximum: 100000, integer: false },
+  { id: "maxHeightMm", name: "高さの上限", unit: "mm", maximum: 100000, integer: false },
+  { id: "maxDepthMm", name: "奥行の上限", unit: "mm", maximum: 100000, integer: false },
+  { id: "maxWeightKg", name: "重量の上限", unit: "kg", maximum: 100000, integer: false },
+  { id: "minXlrInputs", name: "XLR入力の下限", unit: "系統", maximum: 128, integer: true },
+  { id: "minXlrOutputs", name: "XLR出力の下限", unit: "系統", maximum: 128, integer: true },
+  { id: "minRcaInputs", name: "RCA入力の下限", unit: "系統", maximum: 128, integer: true },
+  { id: "minRcaOutputs", name: "RCA出力の下限", unit: "系統", maximum: 128, integer: true },
+] as const;
+export type SpecificationFilterId = (typeof SPECIFICATION_FILTER_DEFINITIONS)[number]["id"];
+export type SpecificationFilterValues = Partial<Record<SpecificationFilterId, string>>;
+export type SpecificationFilterQuery = Partial<Record<SpecificationFilterId, number>>;
+
+export function parseSpecificationFilterValue(id: SpecificationFilterId, value: string): number | null {
+  const definition = SPECIFICATION_FILTER_DEFINITIONS.find((entry) => entry.id === id);
+  const normalized = value.normalize("NFKC").trim();
+  if (!definition || !/^\d{1,6}(?:\.\d{1,3})?$/.test(normalized)) return null;
+  const number = Number(normalized);
+  return number > 0 && number <= definition.maximum && (!definition.integer || Number.isInteger(number)) ? number : null;
+}
+
 /** Reject invalid units, counts and links at both the RPC and browser boundaries. */
 export function parseCatalogSpecifications(value: unknown): CatalogSpecifications | null {
   if (!record(value)) return null;
