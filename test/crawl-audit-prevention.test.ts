@@ -5,6 +5,7 @@ import { getShopPlugin, SHOP_PLUGINS } from "../src/crawler/shops/index.js";
 import { extractFujiyaDetailCategoryEvidence } from "../src/crawler/shops/fujiya-avic.js";
 import { classifyCategoryEvidence } from "../src/catalog/category-classifier.js";
 import type { CrawlPage } from "../src/crawler/types.js";
+import type { SoundPitPage } from "../src/crawler/shops/soundpit.js";
 import { enrichProductCategories } from "../src/crawler/category-enricher.js";
 import { detailFetchOptions, emptyCatalogDb } from "./helpers/fixtures.js";
 import type { ExistingCategoryEnrichmentState } from "../src/db/types.js";
@@ -12,7 +13,7 @@ import { discoverLinkedPages } from "../src/crawler/html-listing.js";
 
 // Minimal factual markup, not copies of seller descriptions. A visible control proves each
 // hidden-markup assertion exercises the shop's parser instead of passing on an invalid fixture.
-const listings: readonly (readonly [string, string, CrawlPage?])[] = [
+const listings: readonly (readonly [string, string, (CrawlPage | SoundPitPage)?])[] = [
   [
     "audiounion",
     `<li class="item"><span class="maker_name">LUXMAN</span><span class="item_name"><a href="/ct/detail/used/226458/">C-10X</a></span><span class="selling_price">198,000円</span></li>`,

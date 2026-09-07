@@ -98,6 +98,7 @@ function insertUnresolvedCheck(
       JSON.stringify({
         categoryClassification: {
           version: CATEGORY_CLASSIFICATION_METADATA_VERSION,
+          detailExtractorVersion: fujiyaAvic.capabilities.detailCategoryEvidence?.version,
           state: "unresolved",
           detailCheckedAt: detailCheckedAt.toISOString(),
         },
