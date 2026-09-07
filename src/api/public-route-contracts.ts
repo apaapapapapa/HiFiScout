@@ -9,8 +9,11 @@ const nullableString: JsonSchema = { type: ["string", "null"] };
 const marketBandProperties: Record<string, JsonSchema> = {
   listing_count: { type: "integer", minimum: 0 },
   shop_count: { type: "integer", minimum: 0 },
-  median_yen: nullableInteger, min_yen: nullableInteger, max_yen: nullableInteger,
-  first_observed_at: nullableString, last_observed_at: nullableString,
+  median_yen: nullableInteger,
+  min_yen: nullableInteger,
+  max_yen: nullableInteger,
+  first_observed_at: nullableString,
+  last_observed_at: nullableString,
 };
 const stockStatus: JsonSchema = {
   type: "string",
@@ -65,25 +68,63 @@ const PRODUCT_OFFER_SCHEMA: JsonSchema = {
 
 export const PUBLIC_API_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
   ProductMarketAnalysis: {
-    type: "object", additionalProperties: false,
+    type: "object",
+    additionalProperties: false,
     properties: {
-      version: { type: "integer", enum: [1] }, status: { type: "string", enum: ["ready", "limited"] },
+      version: { type: "integer", enum: [1] },
+      status: { type: "string", enum: ["ready", "limited"] },
       as_of: { type: "string", format: "date-time" },
-      current_conditions: { type: "array", maxItems: 36, items: {
-        type: "object", additionalProperties: false,
-        properties: { ...marketBandProperties,
-          condition: { type: "string", enum: ["unused", "display", "outlet", "used", "junk", "operation_unchecked", "operation_fault", "mixed", "unknown"] },
-          sale_unit: { type: "string", enum: ["single", "pair", "set", "unknown"] },
-        }, required: [...Object.keys(marketBandProperties), "condition", "sale_unit"],
-      } },
-      months: { type: "array", maxItems: 6, items: {
-        type: "object", additionalProperties: false,
-        properties: { ...marketBandProperties, month: { type: "string", pattern: "^[0-9]{4}-[0-9]{2}$" },
-          first_observed_listings: { type: "integer", minimum: 0 },
-          sold_out_listings: { type: "integer", minimum: 0 }, deactivated_listings: { type: "integer", minimum: 0 },
-        }, required: [...Object.keys(marketBandProperties), "month", "first_observed_listings", "sold_out_listings", "deactivated_listings"],
-      } },
-    }, required: ["version", "status", "as_of", "current_conditions", "months"],
+      current_conditions: {
+        type: "array",
+        maxItems: 36,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            ...marketBandProperties,
+            condition: {
+              type: "string",
+              enum: [
+                "unused",
+                "display",
+                "outlet",
+                "used",
+                "junk",
+                "operation_unchecked",
+                "operation_fault",
+                "mixed",
+                "unknown",
+              ],
+            },
+            sale_unit: { type: "string", enum: ["single", "pair", "set", "unknown"] },
+          },
+          required: [...Object.keys(marketBandProperties), "condition", "sale_unit"],
+        },
+      },
+      months: {
+        type: "array",
+        maxItems: 6,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            ...marketBandProperties,
+            month: { type: "string", pattern: "^[0-9]{4}-[0-9]{2}$" },
+            first_observed_listings: { type: "integer", minimum: 0 },
+            sold_out_listings: { type: "integer", minimum: 0 },
+            deactivated_listings: { type: "integer", minimum: 0 },
+          },
+          required: [
+            ...Object.keys(marketBandProperties),
+            "month",
+            "first_observed_listings",
+            "sold_out_listings",
+            "deactivated_listings",
+          ],
+        },
+      },
+    },
+    required: ["version", "status", "as_of", "current_conditions", "months"],
   },
   ApiError: {
     type: "object",

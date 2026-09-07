@@ -99,7 +99,11 @@ test("the scheduled price-index task invokes bounded backfill and expiry mainten
     console.log = originalLog;
   }
 
-  assert.equal(db.calls.length, 5, "empty price and condition projection maintenance stays bounded");
+  assert.equal(
+    db.calls.length,
+    5,
+    "empty price and condition projection maintenance stays bounded",
+  );
   assert.equal(
     db.calls.some((statement) => /knowledge_catalog_price_index_samples/u.test(statement.sql)),
     false,
