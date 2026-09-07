@@ -23,6 +23,7 @@ function filters(minPrice = "", maxPrice = ""): ProductFilters {
     ...parsed.values,
     features: [],
     facets: [],
+    offerFacts: [],
     inStock: true,
     favoritesOnly: false,
     recentOnly: false,

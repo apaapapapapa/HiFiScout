@@ -55,6 +55,7 @@ export function clearedFilters(filters: ProductFilters): ProductFilters {
     maxPrice: "",
     features: [],
     facets: [],
+    offerFacts: [],
     inStock: false,
     recentOnly: false,
     priceDropped: false,
@@ -72,6 +73,7 @@ export function clearedDetailFilters(filters: ProductFilters): ProductFilters {
     maxPrice: "",
     features: [],
     facets: [],
+    offerFacts: [],
   };
 }
 
@@ -139,6 +141,12 @@ export function filterRelaxations(filters: ProductFilters): FilterRelaxation[] {
       id: "stock",
       label: "売切れ・在庫不明も含める",
       filters: { ...filters, inStock: false },
+    });
+  if (!filters.favoritesOnly && filters.offerFacts?.length)
+    choices.push({
+      id: "offer",
+      label: "状態・付属品・保証だけ解除",
+      filters: { ...filters, offerFacts: [] },
     });
   if (filters.shop.length)
     choices.push({ id: "shop", label: "ショップ条件だけ解除", filters: { ...filters, shop: [] } });

@@ -4,6 +4,7 @@ import { isLegacyFavoriteKey } from "./favorites.js";
 import { dateFmt, yen } from "./format.js";
 import { activityData, priceDropped } from "./product-activity.js";
 import { ProductPriceIndexSummary, RelativePriceBadge } from "./price-index-ui.js";
+import { OfferFacts } from "./offer-facts.js";
 import {
   SHOP_LISTING_URLS,
   categoryOptionModel,
@@ -374,6 +375,7 @@ function OfferRow({
         <span className={`stock ${offer.stock_status}`}>{stockLabel(offer.stock_status)}</span>
       </div>
       <p className="offer-title">{offer.title}</p>
+      <OfferFacts facts={offer.offer_facts} />
       <p className="offer-updated">
         最終確認:{" "}
         {offer.last_seen_at && Number.isFinite(Date.parse(offer.last_seen_at)) ? (

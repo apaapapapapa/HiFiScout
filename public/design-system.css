@@ -1,3 +1,24 @@
+.offer-facts {
+  margin-block: 12px;
+}
+
+.offer-facts dl > div {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) 2fr;
+  gap: 12px;
+  border-bottom: 1px solid #e5e5e5;
+  padding-block: 4px;
+}
+
+.offer-facts dd {
+  margin: 0;
+}
+
+.offer-facts small {
+  display: block;
+  color: #555555;
+}
+
 :root {
   --hs-ink: #000;
   --hs-warm-ink: #191817;

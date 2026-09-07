@@ -14,8 +14,10 @@ import {
   FACET_DEFINITIONS,
   FEATURE_FILTER_DEFINITIONS,
   MULTI_SELECT_LIMITS,
+  OFFER_FACT_DEFINITIONS,
+  isOfferFactId,
 } from "../src/api/contracts.js";
-import type { FacetSelection, FeatureFilter } from "../src/api/contracts.js";
+import type { FacetSelection, FeatureFilter, OfferFactId } from "../src/api/contracts.js";
 import { yen } from "./format.js";
 import { PAGE_SIZE, pageOffset } from "./pagination.js";
 
@@ -95,6 +97,7 @@ export type ProductFilters = Record<UrlValueId, string> &
   Record<ToggleId, boolean> & {
     features: readonly FeatureFilter[];
     facets: readonly FacetSelection[];
+    offerFacts?: readonly OfferFactId[];
   };
 
 export function selectionValues(values: readonly string[]): string[] {
@@ -116,6 +119,18 @@ export function selectionFromFilterId(id: string): { field: SelectionId; value: 
 
 function featureParams(features: readonly FeatureFilter[]): FeatureFilter[] {
   return [...new Set(features)].sort();
+}
+
+export function parseOfferParams(params: URLSearchParams): OfferFactId[] {
+  return [
+    ...new Set(
+      params
+        .getAll("offer")
+        .flatMap((value) => value.split(","))
+        .map((value) => value.trim())
+        .filter(isOfferFactId),
+    ),
+  ].sort();
 }
 
 function facetParams(facets: readonly FacetSelection[]): FacetSelection[] {
@@ -162,6 +177,7 @@ export interface UrlFilterState {
   values: Pick<ProductFilters, UrlValueId | SelectionId>;
   features: FeatureFilter[];
   facets: FacetSelection[];
+  offerFacts: OfferFactId[];
   inStock: boolean;
   recentOnly: boolean;
   priceDropped: boolean;
@@ -195,6 +211,7 @@ export function productSearchParams(
     if (value) params.set(id, value);
   }
   for (const feature of featureParams(filters.features)) params.append("feature", feature);
+  for (const fact of [...new Set(filters.offerFacts ?? [])].sort()) params.append("offer", fact);
   for (const facet of facetParams(filters.facets)) params.append("facet", facetSelectionKey(facet));
   if (filters.inStock) params.set("inStock", "true");
   if (filters.recentOnly) params.set("newOnly", "true");
@@ -239,6 +256,7 @@ export function filterUrlParams(filters: ProductFilters, view: ProductView): URL
     params.set(id, value);
   }
   for (const feature of featureParams(filters.features)) params.append("feature", feature);
+  for (const fact of [...new Set(filters.offerFacts ?? [])].sort()) params.append("offer", fact);
   for (const facet of facetParams(filters.facets)) params.append("facet", facetSelectionKey(facet));
   if (!filters.inStock) params.set("inStock", "false");
   if (filters.recentOnly) params.set("newOnly", "true");
@@ -263,6 +281,7 @@ export function parseUrlFilters(search: string): UrlFilterState {
     },
     features: parseFeatureParams(params),
     facets: parseFacetParams(params),
+    offerFacts: parseOfferParams(params),
     inStock: params.get("inStock") !== "false",
     recentOnly: params.get("newOnly") === "true",
     priceDropped: params.get("priceDropped") === "true",
@@ -311,6 +330,11 @@ export function activeFilterEntries(filters: ProductFilters, labels: FilterLabel
   // predicate cannot be applied there. The selection is kept — it applies again the moment the mode
   // is turned off — but claiming it as an active filter while results ignore it would be a lie.
   if (!filters.favoritesOnly) {
+    for (const fact of OFFER_FACT_DEFINITIONS) {
+      if (filters.offerFacts?.includes(fact.id)) {
+        entries.push({ id: `offer:${fact.id}`, label: `${fact.name}の明記あり`, detail: true });
+      }
+    }
     for (const feature of featureParams(filters.features)) {
       entries.push({
         id: featureFilterId(feature),

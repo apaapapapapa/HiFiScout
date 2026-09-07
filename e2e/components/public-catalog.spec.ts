@@ -84,7 +84,26 @@ async function mockCatalog(
       }
       if (url.pathname.startsWith("/api/product-search/")) {
         seen.detail++;
-        return seen.detail === 1 ? json({}, 503) : json({ product: item, offers: [offer()] });
+        return seen.detail === 1
+          ? json({}, 503)
+          : json({
+              product: item,
+              offers: [
+                offer({
+                  offer_facts: [
+                    {
+                      factId: "original_box",
+                      state: "absent",
+                      source: "seller",
+                      sourceField: "condition_text",
+                      ruleId: "fixture",
+                      confidence: 1,
+                      observedAt: "2026-09-07T00:00:00Z",
+                    },
+                  ],
+                }),
+              ],
+            });
       }
       if (url.pathname.endsWith("/history")) {
         seen.history++;
@@ -308,11 +327,39 @@ test("single-offer detail and history keep their targets when retrying failures"
   await page.locator(".product-title-link").click();
   await page.getByRole("button", { name: "在庫情報を再読み込み" }).click();
   await expect(page.locator(".offer")).toHaveCount(1);
+  await expect(page.locator(".offer-facts dl > div").filter({ hasText: "元箱" })).toContainText(
+    "なし（明記）",
+  );
+  await expect(page.locator(".offer-facts dl > div").filter({ hasText: "リモコン" })).toContainText(
+    "記載なし",
+  );
   expect(seen.detail).toBe(2);
   await page.getByRole("button", { name: "価格履歴", exact: true }).click();
   await page.getByRole("button", { name: "価格履歴を再読み込み" }).click();
   await expect(page.locator("#history-dialog")).toContainText("履歴はまだありません");
   expect(seen.history).toBe(2);
+});
+
+test("offer conditions reach the search together and each active chip can be cleared", async ({
+  page,
+  mount,
+}) => {
+  const seen = await mockCatalog(page);
+  await mount("frontend/public-app/Default");
+  await expect(page.locator(".card")).toHaveCount(1);
+  await page.getByText("状態・付属品・保証で絞り込む", { exact: true }).click();
+  await page.getByRole("checkbox", { name: "リモコン", exact: true }).check();
+  await page.getByRole("checkbox", { name: "販売店保証", exact: true }).check();
+  await page.locator("#apply-filters").click();
+  await expect
+    .poll(() => seen.searches.at(-1)?.searchParams.getAll("offer"))
+    .toEqual(["remote_control", "shop_warranty"]);
+  await page.getByRole("button", { name: "リモコンの明記ありを解除", exact: true }).click();
+  await expect
+    .poll(() => seen.searches.at(-1)?.searchParams.getAll("offer"))
+    .toEqual(["shop_warranty"]);
+  await page.locator("#favoritesOnly").check();
+  await expect(page.getByRole("checkbox", { name: "販売店保証", exact: true })).toBeDisabled();
 });
 
 test("favorite save failures are visible and removal can be undone", async ({ page, mount }) => {

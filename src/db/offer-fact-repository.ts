@@ -1,5 +1,51 @@
 import { inferOfferFacts } from "../catalog/offer-facts.js";
+import { isOfferFactId } from "../catalog/types.js";
+import type { OfferFact } from "../catalog/types.js";
 import type { ReadableDatabase } from "./types.js";
+
+/** One bounded detail read; a manual decision (including unknown) overrides seller extraction. */
+export async function effectiveOfferFacts(
+  db: ReadableDatabase,
+  productIds: readonly number[],
+): Promise<Map<number, OfferFact[]>> {
+  const result = new Map<number, OfferFact[]>();
+  if (!productIds.length) return result;
+  if (productIds.length > 200) throw new Error("offer_facts_scope_too_large");
+  const rows = await db
+    .prepare(`SELECT f.product_id, f.fact_id, f.state, f.source, f.source_field,
+      f.rule_id, f.confidence, f.observed_at FROM product_offer_facts f
+      WHERE f.product_id IN (SELECT value FROM json_each(?))
+        AND (f.source = 'manual' OR NOT EXISTS (
+          SELECT 1 FROM product_offer_facts m
+          WHERE m.product_id = f.product_id AND m.fact_id = f.fact_id AND m.source = 'manual'))
+      ORDER BY f.product_id, f.fact_id`)
+    .bind(JSON.stringify(productIds))
+    .all<{
+      product_id: number;
+      fact_id: string;
+      state: OfferFact["state"];
+      source: OfferFact["source"];
+      source_field: OfferFact["sourceField"];
+      rule_id: string;
+      confidence: number;
+      observed_at: string;
+    }>();
+  for (const row of rows.results) {
+    if (!isOfferFactId(row.fact_id)) continue;
+    const facts = result.get(row.product_id) ?? [];
+    facts.push({
+      factId: row.fact_id,
+      state: row.state,
+      source: row.source,
+      sourceField: row.source_field,
+      ruleId: row.rule_id,
+      confidence: row.confidence,
+      observedAt: row.observed_at,
+    });
+    result.set(row.product_id, facts);
+  }
+  return result;
+}
 
 /** Two statements, inside the caller's listing transaction. Equal facts retain decision time. */
 export function sellerOfferFactWrites(
