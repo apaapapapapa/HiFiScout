@@ -249,3 +249,23 @@
     display: block;
   }
 }
+/* Searchable manufacturer selection and inline save previews. */
+.admin-manufacturer-picker { min-width: 0; border: 1px solid #d7d2c8; border-radius: 8px; padding: 12px; }
+.admin-manufacturer-picker legend { font-weight: 700; padding: 0 4px; }
+.admin-manufacturer-picker details { margin-top: 10px; }
+.admin-manufacturer-picker summary { cursor: pointer; min-height: 40px; align-content: center; }
+.admin-manufacturer-picker input, .admin-manufacturer-picker select { width: 100%; margin: 6px 0; }
+.admin-manufacturer-picker select[size] { height: auto; min-height: 84px; }
+.manufacturer-selection { overflow-wrap: anywhere; margin: 0 0 8px; }
+.manufacturer-selection code { font-size: 12px; }
+.manufacturer-page-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-edit-diff { min-width: 0; margin: 12px 0; }
+.admin-edit-diff h3 { font-size: 14px; margin: 0 0 8px; }
+.admin-edit-diff table { display: table; min-width: 0; width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
+.admin-edit-diff thead { display: table-header-group; }
+.admin-edit-diff tbody { display: table-row-group; }
+.admin-edit-diff tr { display: table-row; padding: 0; }
+.admin-edit-diff th, .admin-edit-diff td { display: table-cell; padding: 8px; border: 1px solid #d7d2c8; text-align: left; vertical-align: top; overflow-wrap: anywhere; white-space: pre-wrap; }
+.admin-edit-diff td::before { content: none; }
+.admin-edit-diff th:first-child { width: 26%; }
+.admin-edit-diff td:last-child { background: #f2f3ef; }

@@ -12,6 +12,8 @@ import {
   parseKnowledgeCatalogDuplicateListQuery,
 } from "../http/knowledge-catalog-admin.js";
 import { requireCloudflareAccess } from "./access.js";
+import { parseAdminManufacturerQuery } from "../api/admin-manufacturer-contracts.js";
+import { PRESENTATION_COLORS } from "../catalog/model-presentation-color.js";
 import { parseAdminCsvPreview, parseAdminCsvApply } from "../http/admin-csv-import.js";
 import { ADMIN_CSV_MAX_REQUEST_BYTES } from "../api/admin-csv-contracts.js";
 import type { DataExportFormat } from "../export/contracts.js";
@@ -208,8 +210,14 @@ export async function handleAuthenticatedCatalogAdminRequest(
   if (request.method === "GET" && url.pathname === "/api/meta") {
     return json({
       categoryFacets: categoryFacets(),
+      presentationColors: PRESENTATION_COLORS,
       shops: Object.values(SHOP_DEFINITIONS).map(({ key, name }) => ({ key, name })),
     });
+  }
+  if (request.method === "GET" && url.pathname === "/api/admin/manufacturers") {
+    const options = parseAdminManufacturerQuery(url);
+    if (!options) return json({ error: "invalid_manufacturer_query" }, { status: 400 });
+    return json(await env.CATALOG_ADMIN.listManufacturers(options));
   }
   if (request.method === "POST" && url.pathname === CATALOG_EXPORT_COLLECTION_PATH) {
     const body = await mutationBody(request, url, 1024);

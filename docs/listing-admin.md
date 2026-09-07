@@ -105,6 +105,23 @@ Seller-owned evidence remains read-only in this console: title, price, stock sta
 Categories must be classifiable taxonomy v3 leaves. An unresolved listing starts with no valid
 category selection; the internal `unclassified` sentinel and legacy `other` are not manual targets.
 
+Listing edits and new catalog entries offer a manufacturer-name picker. Its Access-protected
+`/api/admin/manufacturers` read delegates to `CatalogAdminService.listManufacturers` and searches
+only verified registry entries and their verified aliases. Search text never becomes a selected
+identity automatically. Pages contain at most 50 entries and use an ID cursor; changing the query
+starts over, failed requests can be retried, and stale responses cannot replace current choices.
+The lookup reads manufacturer/alias tables, never aggregates products or creates registry entries.
+Substring searches can scan the manufacturer registry; page size is not a constant-read claim.
+The public Worker still returns 404 for this and every other admin API.
+
+Clearing a listing's manufacturer explicitly stages an unresolved manual override. Catalog creation
+retains the existing direct name/ID input under a secondary disclosure for identities outside the
+verified picker; this does not mark the manufacturer verified or change the creation contract.
+Listing and catalog editors show current and saved values inline before submission. Color/finish
+previews use the HTTP parser's canonical spelling, and unknown color inputs must be corrected.
+Seller-owned evidence stays visible and read-only; saving still uses the existing override and
+projection sequence below, without an additional confirmation dialog.
+
 ## Persistence contract
 
 Edits are stored in `product_admin_overrides`. A later crawler write may refresh seller evidence, but the database re-applies the explicit operator correction before downstream projections are rebuilt. Category membership is likewise kept on the manually selected category closure while an override exists.

@@ -3,6 +3,7 @@ import { test } from "vite-plus/test";
 
 import { handleAuthenticatedCatalogAdminRequest } from "../src/admin/index.js";
 import { adminCsvOriginal } from "../src/api/admin-csv-contracts.js";
+import type { AdminManufacturerQuery } from "../src/api/admin-manufacturer-contracts.js";
 
 function adminEnv(seenPaths: string[]) {
   return {
@@ -40,6 +41,28 @@ function assertAdminSecurityHeaders(response: Response): void {
   assert.match(csp, /frame-ancestors 'none'/u);
   assert.match(csp, /object-src 'none'/u);
 }
+
+test("manufacturer picker reads only through a validated admin RPC request", async () => {
+  const seen: AdminManufacturerQuery[] = [];
+  const env = adminEnv([]);
+  env.CATALOG_ADMIN.listManufacturers = async (options) => {
+    seen.push(options);
+    return { items: [{ id: "luxman", name: "LUXMAN" }], hasMore: false, nextAfterId: null };
+  };
+  const response = await handleAuthenticatedCatalogAdminRequest(
+    new Request("https://admin.example.test/api/admin/manufacturers?q=ラックス&limit=10"),
+    env,
+  );
+  assert.equal(response.status, 200);
+  assertAdminSecurityHeaders(response);
+  assert.deepEqual(seen, [{ query: "ラックス", afterId: "", limit: 10 }]);
+  const invalid = await handleAuthenticatedCatalogAdminRequest(
+    new Request("https://admin.example.test/api/admin/manufacturers?limit=5000"),
+    env,
+  );
+  assert.equal(invalid.status, 400);
+  assert.equal(seen.length, 1);
+});
 
 test("Catalog Admin clean routes fetch the clean asset URL instead of the .html redirect target", async () => {
   for (const pathname of ["/", "/catalog-admin"]) {
