@@ -1,6 +1,7 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { productSearchDetail, searchProducts } from "../src/db/product-search-repository.js";
+import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { captureDatabase } from "./helpers/d1.js";
 import { entityRow, offerRow } from "./helpers/product-search.js";
 import { productQuery } from "./helpers/product-query.js";
@@ -335,4 +336,22 @@ test("a malformed product key is rejected before any query runs", async () => {
 test("an unknown product key answers with no detail rather than an empty product", async () => {
   const db = captureDatabase([]);
   assert.equal(await productSearchDetail(db, "c-999"), null);
+});
+
+test("detail does not publish a rejected catalog identity while its projection awaits repair", async () => {
+  const { db, sqlite } = migratedSqlite();
+  try {
+    sqlite.exec(`INSERT INTO knowledge_catalog_products
+      (id,manufacturer_id,canonical_model,normalized_model,created_at,updated_at)
+      VALUES(900001,'test','TEST','TEST','2026-09-07','2026-09-07');
+      INSERT INTO product_search_entities(entity_key,entity_kind,catalog_product_id)
+      VALUES('c-900001','catalog',900001);`);
+    assert.ok(await productSearchDetail(db, "c-900001"));
+    sqlite.exec(
+      "UPDATE knowledge_catalog_products SET verification_status='rejected' WHERE id=900001",
+    );
+    assert.equal(await productSearchDetail(db, "c-900001"), null);
+  } finally {
+    sqlite.close();
+  }
 });

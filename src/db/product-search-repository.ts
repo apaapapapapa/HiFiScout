@@ -603,7 +603,10 @@ export async function productSearchDetail(
 ): Promise<ProductSearchDetailResponse | null> {
   if (!parseProductSearchKey(key)) return null;
   const entity = await db
-    .prepare(`SELECT ${entityColumns("e")} FROM product_search_entities e WHERE e.entity_key = ?`)
+    .prepare(`SELECT ${entityColumns("e")} FROM product_search_entities e WHERE e.entity_key = ?
+      AND (e.entity_kind = 'unresolved_listing' OR EXISTS (
+        SELECT 1 FROM knowledge_catalog_products kp
+        WHERE kp.id = e.catalog_product_id AND kp.verification_status = 'verified'))`)
     .bind(key)
     .first<ProductSearchEntityRow>();
   if (!entity) return null;
