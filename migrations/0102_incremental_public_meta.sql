@@ -93,8 +93,10 @@ UNION ALL
 SELECT 'taxonomy' AS kind, '' AS group_key, 'legacy_other_count' AS value WHERE OLD.is_active = 1 AND (OLD.primary_category_id = 'other')));
 END;
 
+-- Account for the attempted transition before AFTER triggers may restore manual authority.
+-- The nested restoring UPDATE then reverses that delta, regardless of AFTER trigger order.
 CREATE TRIGGER public_meta_products_update
-AFTER UPDATE OF shop_key, manufacturer_id, manufacturer, is_active, primary_category_id, metadata_json ON products
+BEFORE UPDATE OF shop_key, manufacturer_id, manufacturer, is_active, primary_category_id, metadata_json ON products
 WHEN OLD.is_active IS NOT NEW.is_active OR (OLD.is_active = 1 AND (OLD.shop_key IS NOT NEW.shop_key OR OLD.manufacturer_id IS NOT NEW.manufacturer_id OR OLD.manufacturer IS NOT NEW.manufacturer OR OLD.primary_category_id IS NOT NEW.primary_category_id OR (CASE WHEN json_valid(COALESCE(OLD.metadata_json, '')) THEN CAST(json_extract(OLD.metadata_json, '$.categoryClassification.confidence') AS REAL) BETWEEN 0.000001 AND 0.649999 ELSE 0 END) IS NOT (CASE WHEN json_valid(COALESCE(NEW.metadata_json, '')) THEN CAST(json_extract(NEW.metadata_json, '$.categoryClassification.confidence') AS REAL) BETWEEN 0.000001 AND 0.649999 ELSE 0 END)))
 BEGIN
 UPDATE public_meta_counts SET row_count = row_count - 1

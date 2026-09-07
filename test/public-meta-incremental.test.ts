@@ -201,3 +201,41 @@ test("metadata work yields before touching counters when the invocation cannot f
     sqlite.close();
   }
 });
+
+test("manual authority corrections keep counters exact regardless of AFTER trigger order", async () => {
+  const { sqlite, db } = migratedSqlite();
+  try {
+    sqlite.exec(seed);
+    sqlite.exec(`INSERT INTO product_admin_overrides(listing_product_id,manufacturer_id,manufacturer_name,created_at,updated_at)
+      VALUES(1,'luxman','LUXMAN','2026','2026')`);
+    for (const reorder of [false, true]) {
+      if (reorder) {
+        const sql = String(
+          sqlite
+            .prepare(
+              "SELECT sql FROM sqlite_schema WHERE name='product_admin_overrides_products_au'",
+            )
+            .get()?.sql,
+        );
+        sqlite.exec("DROP TRIGGER product_admin_overrides_products_au");
+        sqlite.exec(sql);
+      }
+      sqlite.exec(
+        "UPDATE products SET manufacturer='TAD',manufacturer_id='tad' WHERE id=1; UPDATE public_meta_snapshot SET generated_at='2000-01-01'",
+      );
+      await refreshPublicMetaSnapshot(db, AT);
+      const expected = JSON.parse(
+        String(
+          sqlite.prepare("SELECT payload_json FROM public_meta_aggregate").get()?.payload_json,
+        ),
+      );
+      assert.deepEqual(
+        canonical((await readPublicMetaSnapshot(db)).batches),
+        canonical(expected),
+        `reordered=${reorder}`,
+      );
+    }
+  } finally {
+    sqlite.close();
+  }
+});

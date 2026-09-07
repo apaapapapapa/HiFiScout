@@ -8,6 +8,7 @@ import {
   readPublicMetaSnapshot,
 } from "../src/db/public-meta-repository.js";
 import type { QueryableDatabase } from "../src/db/types.js";
+import { createCompleteExportPlan, readCompleteExportPage } from "../src/export/complete-csv.js";
 
 const AT = new Date("2030-01-01T00:00:00Z");
 const counts = (accounting: ReturnType<typeof accountReads>) => ({
@@ -65,6 +66,22 @@ test("D1 category insert savings include retained indexes and override guards", 
     assert.deepEqual(before, [4, 3, 5]);
     assert.deepEqual(after, [3, 2, 4]);
     console.log(JSON.stringify({ event: "category_membership_d1_writes", before, after }));
+    // Exercise the full schema inventory on actual D1: endpoint queries must respect its
+    // compound-SELECT limit, and a page must not skip remaining categories of the same product.
+    await db
+      .prepare(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<1001)
+      INSERT INTO product_categories SELECT 1, printf('CAT-%04d', i), 1 FROM n`)
+      .run();
+    const plan = await createCompleteExportPlan(db, "all", 1);
+    const table = plan.tables.findIndex((entry) => entry.name === "product_categories");
+    assert.equal(plan.version, 2);
+    const first = await readCompleteExportPage(db, plan, { table, after: null });
+    assert.equal(first.rows, 1000);
+    assert.equal(first.next.table, table);
+    await db.prepare("INSERT INTO product_categories VALUES(1, 'ZZ-after-horizon', 1)").run();
+    const last = await readCompleteExportPage(db, plan, first.next);
+    assert.equal(last.rows, 2);
+    assert.equal(last.next.table, table + 1);
   } finally {
     await dispose();
   }

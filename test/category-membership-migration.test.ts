@@ -71,9 +71,10 @@ test("category table replacement preserves rows, guards, primary uniqueness and 
       /FOREIGN KEY/,
     );
     sqlite.exec(
-      "DELETE FROM product_admin_overrides; DELETE FROM products WHERE id = 1; DELETE FROM knowledge_catalog_products WHERE id = 999999",
+      "DELETE FROM products WHERE id = 1; DELETE FROM knowledge_catalog_products WHERE id = 999999",
     );
     assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM product_categories").get()?.n, 0);
+    assert.equal(sqlite.prepare("SELECT COUNT(*) n FROM product_admin_overrides").get()?.n, 0);
     assert.equal(
       sqlite.prepare("SELECT COUNT(*) n FROM product_search_entity_categories").get()?.n,
       0,

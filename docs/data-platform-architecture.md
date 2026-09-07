@@ -157,6 +157,8 @@ Shop/manufacturer counts use active listings, including the existing minimum man
 manufacturer ID. Category counts use entity memberships. Guarded source triggers apply only actual
 changes; a price, heartbeat, unchanged classification or cache timestamp does not change counters.
 Empty vocabulary entries are removed, so retired values do not accumulate in every later scan.
+Listing UPDATE deltas run before AFTER triggers can restore manual authority; a restoring UPDATE
+reverses that delta. Correct counts must not depend on the creation order of AFTER triggers.
 
 Facets count distinct entities even when several shops or evidence sources assert the same value.
 Offer/fact/activity changes coalesce into `public_meta_dirty_entities`; the reader re-evaluates only
@@ -186,14 +188,21 @@ the physical key, removing the separate rowid-table/primary-index write. Seconda
 category uniqueness, foreign-key cascades and admin override guards remain intact. The replacement
 and restoration of the old metadata view share one migration transaction.
 
+Complete CSV exports use ordered composite-key cursors for these tables, preserving all categories
+of a product across page boundaries and exact integer keys beyond JavaScript's safe range. New
+plans use version 2 so an older Worker cannot misread the cursor during rollback; unchanged version
+1 plans remain readable. An export captured against the old table DDL stops at the existing schema
+guard after migration and must be regenerated. Endpoint queries also respect D1's compound-SELECT
+limit. Public snapshots and source writes remain compatible with the previous Worker.
+
 `test/d1-table-design-budget.test.ts` uses local Miniflare/workerd D1, including indexes and triggers.
 Its three isolated category inserts fall from 4/3/5 to 3/2/4 writes before adding the metadata
 triggers. Do not present those as the combined category-counter path: that path also maintains a
 counter, and disappearing vocabulary may require cleanup.
 
 The metadata workload changes 100 listing cache timestamps and ten entity facet values, then
-publishes one snapshot. At 1,000 listings it reads 7,134 rows before and 704 after; at 10,000 it reads
-70,134 before and the same 704 after. Both workloads write 331 before and 391 after (3 versus 10 SQL
+publishes one snapshot. At 1,000 listings it reads 7,134 rows before and 804 after; at 10,000 it reads
+70,134 before and the same 804 after. Both workloads write 331 before and 391 after (3 versus 10 SQL
 statements). An unchanged refresh reads 23 and writes one row in five statements. This demonstrates
 bounded reads with explicit write amplification, not an account-wide reduction in both dimensions.
 The existing unchanged-crawl/search write-budget tests must continue to pass.

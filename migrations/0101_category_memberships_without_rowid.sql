@@ -31,6 +31,10 @@ WHEN EXISTS (
   SELECT 1 FROM product_admin_overrides o
   WHERE o.listing_product_id = OLD.product_id AND o.primary_category_id IS NOT NULL
 )
+-- Preserve manual category protection while allowing the parent's ON DELETE CASCADE.
+-- Child cascade order can change after a table rebuild; it must not depend on the override
+-- row having been deleted first. SQLite removes the parent before applying child actions.
+AND EXISTS (SELECT 1 FROM products WHERE id = OLD.product_id)
 BEGIN
   SELECT RAISE(IGNORE);
 END;
