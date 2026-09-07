@@ -155,7 +155,7 @@ test("condition groups stage appearance and service criteria and preserve unknow
   await expect
     .poll(() => seen.searches.at(-1)?.searchParams.getAll("offer"))
     .toEqual(["appearance_clean", "maintenance_serviced"]);
-  await page.locator(".offers-button").click();
+  await page.locator(".offers-button[data-offers]").click();
   await page.getByRole("button", { name: "在庫情報を再読み込み" }).click();
   const facts = page.locator(".offer-facts");
   await expect(facts.getByRole("region", { name: "外観", exact: true })).toContainText("記載なし");
