@@ -20,7 +20,7 @@ import { directCategoryIds } from "../catalog/listing-components.js";
 import { normalizeManufacturer } from "../catalog/manufacturers.js";
 import { presentationColorList } from "../catalog/model-presentation-color.js";
 import { NEW_OFFER_WINDOW_MS } from "./product-search-entity-sql.js";
-import type { ProductOffer, ProductSearchItem } from "../api/contracts.js";
+import type { OfferFact, ProductOffer, ProductSearchItem } from "../api/contracts.js";
 import type {
   ProductSearchEntityRow,
   ProductSearchOfferAggregateRow,
@@ -101,9 +101,10 @@ export function safeProductSourceUrl(value: string): string {
   }
 }
 
-export function toProductOffer(row: ProductSearchOfferRow): ProductOffer {
+export function toProductOffer(row: ProductSearchOfferRow, facts?: OfferFact[]): ProductOffer {
   return {
     listing_product_id: Number(row.listing_product_id),
+    ...(facts ? { offer_facts: facts } : {}),
     shop_key: row.shop_key,
     source_url: safeProductSourceUrl(row.source_url),
     title: row.title,
@@ -123,6 +124,7 @@ export interface ProductSearchItemContext {
   /** Aggregates over the offers that matched the request, when offer filters narrowed them. */
   aggregate?: ProductSearchOfferAggregateRow | null;
   representativeOffer?: ProductSearchOfferRow | null;
+  representativeOfferFacts?: OfferFact[];
   now?: number;
 }
 
@@ -139,7 +141,12 @@ function isNewOffer(newestListedAt: string | null, now: number): boolean {
 
 export function toProductSearchItem(
   row: ProductSearchEntityRow,
-  { aggregate = null, representativeOffer = null, now = Date.now() }: ProductSearchItemContext = {},
+  {
+    aggregate = null,
+    representativeOffer = null,
+    representativeOfferFacts,
+    now = Date.now(),
+  }: ProductSearchItemContext = {},
 ): ProductSearchItem {
   const summary = aggregate ?? row;
   const newestListedAt = summary.newest_listed_at ?? null;
@@ -193,6 +200,8 @@ export function toProductSearchItem(
     newest_listed_at: newestListedAt,
     has_new_offer: isNewOffer(newestListedAt, now),
     has_price_drop: Boolean(Number(summary.has_price_drop || 0)),
-    representative_offer: representativeOffer ? toProductOffer(representativeOffer) : null,
+    representative_offer: representativeOffer
+      ? toProductOffer(representativeOffer, representativeOfferFacts)
+      : null,
   };
 }

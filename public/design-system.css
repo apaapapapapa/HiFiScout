@@ -25,6 +25,15 @@
 .filters .offer-fact-filter-group { margin: 8px 0 12px; padding: 0; border: 0; min-inline-size: 0; }
 .offer-facts .filter-note { color: #555555; font-size: 12px; line-height: 1.7; }
 
+.representative-terms { margin: 8px 0; text-align: start; }
+.representative-terms > p { margin: 0 0 4px; color: #555555; font-size: 11px; }
+.offer-terms { margin: 8px 0; font-size: 12px; line-height: 1.6; }
+.offer-terms > div { display: grid; grid-template-columns: 6.5em minmax(0, 1fr); gap: 8px; }
+.offer-terms dt { color: #555555; }
+.offer-terms dd { margin: 0; overflow-wrap: anywhere; }
+.offer-terms dd span { display: inline; }
+.offer-terms dd span + span::before { content: " / "; }
+
 :root {
   --hs-ink: #000;
   --hs-warm-ink: #191817;
@@ -891,7 +900,7 @@ button:disabled { cursor: not-allowed; }
 .price-index-summary > summary { min-height: 44px; cursor: pointer; font-size: 15px; font-weight: 600; }
 .price-index-heading { margin-top: 16px; }
 .offers { padding: 0; list-style: none; }
-.offer { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 0.5fr); grid-template-areas: "head commerce" "title commerce" "updated actions"; gap: 8px 20px; padding: 20px 0; border-top: 1px solid var(--hs-divider); }
+.offer { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 0.5fr); grid-template-areas: "head commerce" "title terms" "updated actions" "facts facts"; gap: 8px 20px; padding: 20px 0; border-top: 1px solid var(--hs-divider); }
 .offer-head { grid-area: head; display: flex; flex-wrap: wrap; gap: 8px; }
 .offer-title { grid-area: title; margin: 0; }
 .offer-commerce { grid-area: commerce; align-self: center; text-align: right; font-variant-numeric: tabular-nums; }
@@ -922,7 +931,7 @@ button:disabled { cursor: not-allowed; }
   .result-count { max-width: none; }
   .result-header { align-items: flex-start; }
   .sort-control select { max-width: 100%; }
-  .offer { grid-template-columns: 1fr; grid-template-areas: "head" "title" "commerce" "updated" "actions"; }
+  .offer { grid-template-columns: 1fr; grid-template-areas: "head" "title" "commerce" "terms" "updated" "actions" "facts"; }
   .offer-commerce { text-align: left; }
   .offer-actions { justify-content: flex-start; }
   .actions .shop-link { margin-left: 0 !important; }
@@ -982,3 +991,6 @@ body.filters-open { overflow: hidden; }
 .model-relations ul { padding-left: 20px; }
 .model-relations li { margin-bottom: 8px; }
 .model-relation-proof { display: block; font-size: 12px; color: #555; }
+
+.offer > .offer-terms { grid-area: terms; min-width: 0; }
+.offer > .offer-facts { grid-area: facts; min-width: 0; }

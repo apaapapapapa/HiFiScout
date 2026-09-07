@@ -1,3 +1,4 @@
+import { migrationSources } from "./helpers/migrations.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "vite-plus/test";
@@ -143,6 +144,8 @@ test("tape migration repairs ancestors without changing durable identities or ex
       "DELETE FROM product_categories WHERE product_id IN (SELECT listing_product_id FROM product_admin_overrides)",
     );
     assert.deepEqual(memberships("completion-0"), ["ANA.TAPE", "SRC"]);
+    // Current search reads offer facts; preserve the historical migration assertions above.
+    sqlite.exec(migrationSources.find((row) => row.name === "0101_seller_offer_facts.sql")!.sql);
     assert.equal((await searchProducts(db, productQuery("?category=SRC"))).items.length, 2);
     assert.equal((await searchProducts(db, productQuery("?category=ANA"))).items.length, 2);
   } finally {

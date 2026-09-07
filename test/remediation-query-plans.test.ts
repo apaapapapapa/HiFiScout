@@ -288,6 +288,23 @@ for (const shape of SEARCH_SHAPES) {
                 },
               ]
             : [];
+    const factReads = executed.filter((statement) =>
+      /FROM product_offer_facts f/.test(statement.sql),
+    );
+    for (const statement of factReads) {
+      const ids: unknown = JSON.parse(String(statement.binds[0]));
+      assert.ok(
+        Array.isArray(ids) && ids.length <= 100,
+        "fact lookup is limited to page representatives",
+      );
+    }
+    if (factReads.length)
+      allowances.push({
+        tables: ["json_each"],
+        when: /FROM product_offer_facts f/,
+        reason:
+          "JSON contains at most 100 page representative IDs; persistent fact rows must still use their index",
+      });
     assertNoGrowingTableScans(sqlite, executed, { label: shape.label, allowances });
     if (shape.label === "price sort") {
       assertNoSortBeforeLimit(sqlite, executed, shape.label);

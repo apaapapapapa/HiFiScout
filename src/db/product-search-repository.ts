@@ -17,8 +17,9 @@
  *   not a lenient one.
  *
  * Offer data is loaded with a bounded number of queries per request — never one per result. At the
- * maximum page size a response costs at most eight statements: an optional count, the entity page,
- * and up to three chunks each for filtered aggregates and representative offers.
+ * maximum page size a response costs at most nine statements: an optional count, the entity page,
+ * up to three chunks each for filtered aggregates and representative offers, and one indexed fact
+ * read limited to the selected representatives.
  */
 
 import { categoryFilterIds } from "../catalog/categories.js";
@@ -550,11 +551,17 @@ export async function searchProducts(
     loadOfferAggregates(db, entityIds, filter),
     loadRepresentativeOffers(db, entityIds, filter),
   ]);
+  const facts = await effectiveOfferFacts(
+    db,
+    [...representatives.values()].map((offer) => Number(offer.listing_product_id)),
+  );
   const now = Date.now();
   const items = pageRows.map((row) =>
     toProductSearchItem(row, {
       aggregate: aggregates.get(Number(row.id)) ?? null,
       representativeOffer: representatives.get(Number(row.id)) ?? null,
+      representativeOfferFacts:
+        facts.get(Number(representatives.get(Number(row.id))?.listing_product_id)) ?? [],
       now,
     }),
   );
@@ -641,6 +648,7 @@ export async function productSearchDetail(
   );
   const product: ProductSearchItem = toProductSearchItem(entity, {
     representativeOffer: offerRows[0] ?? null,
+    representativeOfferFacts: facts.get(Number(offerRows[0]?.listing_product_id)) ?? [],
   });
   if (product.identity_kind === "catalog" && product.catalog_product_id !== null) {
     const relations = await publicModelRelations(db, product.catalog_product_id);

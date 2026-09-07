@@ -1,3 +1,5 @@
+import { offerTermGroups } from "../src/api/offer-terms-contracts.js";
+import type { OfferFact, OfferFactId } from "../src/api/contracts.js";
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
@@ -105,4 +107,42 @@ test("unknown permalink response is a usable no-store 404 without the SPA shell"
   assert.match(html, /商品が見つかりません/);
   assert.match(html, /href="\/"/);
   assert.doesNotMatch(html, /src="\/app\.js"/);
+});
+
+test("direct product links preserve price-adjacent terms including partial unknown and conflicting voltage", () => {
+  const fact = (factId: OfferFactId, state: OfferFact["state"] = "present"): OfferFact => ({
+    factId,
+    state,
+    source: "manual",
+    sourceField: "manual",
+    ruleId: "manual",
+    confidence: 1,
+    observedAt: "2026-09-07T00:00:00Z",
+  });
+  const facts = [
+    fact("sale_pair"),
+    fact("option_dac"),
+    fact("option_phono", "unknown"),
+    fact("voltage_100v"),
+    fact("voltage_230v"),
+  ];
+  const groups = offerTermGroups(facts);
+  assert.match(
+    groups.find((g) => g.id === "option")!.values.join(" / "),
+    /DAC.*フォノ.*不明（管理者確認）/,
+  );
+  assert.deepEqual(groups.find((g) => g.id === "voltage")!.values, [
+    "不明（記載が競合・販売店で確認）",
+  ]);
+  const html = renderProductPermalinkHtml(
+    { ...DETAIL, offers: [{ ...DETAIL.offers[0], offer_facts: facts }] },
+    "https://example.test",
+  );
+  assert.match(html, /ペア/);
+  assert.match(html, /フォノボード搭載：不明（管理者確認）/);
+  assert.match(html, /不明（記載が競合・販売店で確認）/);
+  assert.ok(
+    html.indexOf("660,000円", html.indexOf('permalink-offer"')) <
+      html.indexOf('<dl class="offer-terms'),
+  );
 });

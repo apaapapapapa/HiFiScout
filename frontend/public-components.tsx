@@ -6,6 +6,7 @@ import { activityData, priceDropped } from "./product-activity.js";
 import { ProductPriceIndexSummary, RelativePriceBadge } from "./price-index-ui.js";
 import { ModelRelations } from "./model-relations-ui.js";
 import { OfferFacts } from "./offer-facts.js";
+import { OfferTerms } from "./offer-terms.js";
 import {
   SHOP_LISTING_URLS,
   categoryOptionModel,
@@ -245,6 +246,19 @@ export function ProductCard({
         <div className="price-row">
           <strong>{priceSummary(product)}</strong>
         </div>
+        {product.representative_offer ? (
+          <div className="representative-terms">
+            {multiOffer ? (
+              <p>
+                表示出品: {shopName(product.representative_offer.shop_key)} /{" "}
+                {product.representative_offer.price_yen == null
+                  ? "価格不明"
+                  : yen.format(product.representative_offer.price_yen)}
+              </p>
+            ) : null}
+            <OfferTerms facts={product.representative_offer.offer_facts} />
+          </div>
+        ) : null}
         <div className={`stock ${offerAvailabilityClass(product)}`}>
           {offerAvailability(product)}
         </div>
@@ -410,6 +424,7 @@ function OfferRow({
           <del>{yen.format(offer.previous_price_yen)}</del>
         ) : null}
       </div>
+      <OfferTerms facts={offer.offer_facts} />
       <div className="offer-actions">
         <button
           type="button"
