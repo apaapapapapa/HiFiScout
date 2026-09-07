@@ -18,6 +18,20 @@ with a test-only Access issuer and in-memory RPC state; it does not require a re
 production Access settings. See [Testing strategy](./testing-strategy.md#local-authenticated-admin-coverage)
 for fixtures, rejection/recovery cases and the boundary this suite covers.
 
+## Seller offer decisions
+
+The listing row's **出品条件** action opens the title, original condition label and seller-derived
+facts alongside separate manual decisions. The editor can confirm presence, explicit absence, or
+unknown, and can remove a decision with **自動判定に戻す**. Unknown is an intentional override;
+removing a decision restores the retained seller evidence. Only changed fields are submitted.
+
+`GET/PATCH /api/admin/listings/:id/offer-facts` uses the same Access-protected entry and Service
+Binding as listing edits. PATCH accepts at most the declared offer-fact vocabulary with a 4 KiB
+JSON body and enforces the existing same-origin policy. Each patch commits atomically; repeating
+the same decision writes no rows and retains its observation time. Seller facts, listing identity,
+price history and catalog classification are preserved. The public search reads manual authority
+directly, without triggering catalog-wide projection work.
+
 ## Complete data exports
 
 The **全情報ZIPを生成** action produces ZIP volumes containing **all columns and all retained rows** of the

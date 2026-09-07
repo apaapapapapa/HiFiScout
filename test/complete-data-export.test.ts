@@ -32,6 +32,47 @@ import { localD1 } from "./helpers/local-d1.js";
 
 const NOW = new Date();
 
+test("composite export cursors preserve integer precision, ties, retries and fixed horizons", async () => {
+  const { db, sqlite } = migratedSqlite();
+  try {
+    sqlite.exec(
+      "CREATE TABLE product_composite_export_fixture(product_id INTEGER, category_id TEXT, PRIMARY KEY(product_id,category_id)) WITHOUT ROWID",
+    );
+    const insert = sqlite.prepare(
+      "INSERT INTO product_composite_export_fixture VALUES(9007199254740993,?)",
+    );
+    sqlite.exec("BEGIN");
+    for (let i = 0; i < 1002; i += 1) insert.run(`c${String(i).padStart(4, "0")}`);
+    sqlite.exec("COMMIT");
+    const plan = await createCompleteExportPlan(db, "all", 0);
+    const table = plan.tables.findIndex(
+      (entry) => entry.name === "product_composite_export_fixture",
+    );
+    assert.equal(plan.version, 2);
+    const first = await readCompleteExportPage(db, plan, { table, after: null });
+    assert.equal(first.rows, 1000);
+    assert.deepEqual(JSON.parse(first.next.after!), ["9007199254740993", "c0999"]);
+    assert.deepEqual(
+      (await readCompleteExportPage(db, plan, { table, after: null })).bytes,
+      first.bytes,
+    );
+    assert.equal(parseCsv(first.bytes)[1][0], "9007199254740993");
+    sqlite.exec(
+      "DELETE FROM product_composite_export_fixture WHERE category_id='c1000'; INSERT INTO product_composite_export_fixture VALUES(9007199254740993,'z'),(9007199254740994,'a')",
+    );
+    const last = await readCompleteExportPage(db, plan, first.next);
+    assert.equal(last.rows, 1);
+    assert.equal(parseCsv(last.bytes)[1][1], "c1001");
+    assert.equal(last.next.table, table + 1);
+    await assert.rejects(
+      readCompleteExportPage(db, plan, { table, after: '["wrong-length"]' }),
+      /invalid_composite_cursor/,
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
 /** Independent stdlib parsers verify ZIP directories/CRCs and multiline CSV quoting. */
 function unzip(bytes: Uint8Array): Record<string, string> {
   return JSON.parse(

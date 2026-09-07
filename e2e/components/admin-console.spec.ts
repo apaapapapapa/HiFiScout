@@ -596,6 +596,56 @@ test("an older manufacturer response cannot replace the current query", async ({
   await expect(picker.locator(".manufacturer-selection")).toContainText("LUXMAN");
 });
 
+test("offer editor saves only changed decisions and can restore seller authority", async ({
+  page,
+  mount,
+}) => {
+  const decisions: Record<string, string> = {};
+  const received: Record<string, string>[] = [];
+  await page.route("**/api/admin/listings/21/offer-facts", async (route) => {
+    if (route.request().method() === "PATCH") {
+      const changes = route.request().postDataJSON() as Record<string, string>;
+      received.push(changes);
+      for (const [id, value] of Object.entries(changes)) {
+        if (value === "inherit") delete decisions[id];
+        else decisions[id] = value;
+      }
+    }
+    await route.fulfill({
+      json: {
+        listingId: 21,
+        title: listingProduct.title,
+        conditionText: "リモコンあり",
+        sourceUrl: listingProduct.sourceUrl,
+        facts: [
+          { factId: "remote_control", state: "present", source: "seller" },
+          ...Object.entries(decisions).map(([factId, state]) => ({
+            factId,
+            state,
+            source: "manual",
+          })),
+        ],
+      },
+    });
+  });
+  const component = await mount("frontend/admin-console/Default");
+  const admin = new AdminConsolePage(component, page);
+  await admin.openListings();
+  await page.getByRole("button", { name: "出品条件", exact: true }).click();
+  const editor = page.getByRole("dialog", { name: "出品の条件を修正" });
+  await expect(editor.getByRole("button", { name: "出品条件を保存" })).toBeDisabled();
+  await editor.getByLabel("リモコン", { exact: true }).selectOption("absent");
+  await editor.getByRole("button", { name: "出品条件を保存" }).click();
+  await expect(editor.getByRole("status")).toContainText("保存しました");
+  expect(received).toEqual([{ remote_control: "absent" }]);
+  await editor.getByLabel("リモコン", { exact: true }).selectOption("inherit");
+  await editor.getByRole("button", { name: "出品条件を保存" }).click();
+  await expect(editor.getByRole("status")).toContainText("保存しました");
+  await expect(editor.getByRole("button", { name: "出品条件を保存" })).toBeDisabled();
+  expect(received[1]).toEqual({ remote_control: "inherit" });
+  await expect(editor.getByLabel("リモコン", { exact: true })).toHaveValue("inherit");
+});
+
 test("every catalog close control confirms before discarding dirty fields", async ({
   page,
   mount,

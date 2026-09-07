@@ -17,6 +17,8 @@ import {
   syncShopPresentations,
 } from "./product-presentation.js";
 import type { MetaResponse } from "../src/api/contracts.js";
+import type { ProductFilters } from "./filters.js";
+import type { FilterRelaxation } from "./public-ui-state.js";
 import type {
   DisplayOffer,
   DisplayProduct,
@@ -286,10 +288,16 @@ export function EmptyProducts({
   favoriteMode,
   hasFavorites,
   onClear,
+  relaxations = [],
+  onRelax,
+  onReset,
 }: {
   favoriteMode: boolean;
   hasFavorites: boolean;
   onClear: () => void;
+  relaxations?: FilterRelaxation[];
+  onRelax?: (filters: ProductFilters) => void;
+  onReset?: () => void;
 }) {
   if (favoriteMode && !hasFavorites) {
     return (
@@ -302,8 +310,30 @@ export function EmptyProducts({
   return (
     <div className="empty">
       <strong>条件に一致する商品はありません。</strong>
+      {relaxations.length && onRelax ? (
+        <>
+          <span>条件を一つ緩めて、もう一度探せます。</span>
+          <div className="empty-actions">
+            {relaxations.map((choice) => (
+              <button
+                type="button"
+                key={choice.id}
+                data-relax-filter={choice.id}
+                onClick={() => onRelax(choice.filters)}
+              >
+                {choice.label}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
+      {onReset ? (
+        <button type="button" onClick={onReset}>
+          初期条件に戻す（在庫あり）
+        </button>
+      ) : null}
       <button type="button" data-clear-all onClick={onClear}>
-        条件をすべて解除
+        在庫条件を含めてすべて解除
       </button>
     </div>
   );

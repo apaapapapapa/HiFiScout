@@ -3,6 +3,8 @@ import { isJsonRequest, readJsonBody, REQUEST_BODY_TOO_LARGE } from "../http/req
 import catalogAdmin from "./index.js";
 import { requireCloudflareAccess } from "./access.js";
 import type { CatalogAdminRpc } from "./contracts.js";
+import { parseOfferFactChanges } from "../catalog/offer-fact-decisions.js";
+import type { OfferFactChanges } from "../catalog/offer-fact-decisions.js";
 import {
   parseListingAdminListQuery,
   parseListingAdminUpdate,
@@ -19,6 +21,8 @@ import type {
 } from "../db/product-correction-report-repository.js";
 
 interface ListingAdminRpc extends CatalogAdminRpc {
+  getOfferFacts(listingId: number): Promise<unknown>;
+  updateOfferFacts(listingId: number, changes: OfferFactChanges): Promise<unknown>;
   listListings(options: ListingAdminListOptions): Promise<unknown>;
   updateListing(listingId: number, input: ListingAdminUpdateInput): Promise<unknown>;
   listCorrectionReports(options: ProductCorrectionReportListOptions): Promise<unknown>;
@@ -38,6 +42,7 @@ interface AdminEnv {
 
 const LISTING_COLLECTION_PATH = "/api/admin/listings";
 const LISTING_PATH = /^\/api\/admin\/listings\/(\d{1,15})$/u;
+const OFFER_FACT_PATH = /^\/api\/admin\/listings\/(\d{1,15})\/offer-facts$/u;
 const CORRECTION_REPORT_COLLECTION_PATH = "/api/admin/correction-reports";
 const CORRECTION_REPORT_PATH = /^\/api\/admin\/correction-reports\/(\d{1,15})$/u;
 const CONSOLE_ASSET_PATHS = new Set([
@@ -74,6 +79,7 @@ function isAdminEntryRoute(pathname: string): boolean {
     RETIRED_LEGACY_PATHS.has(pathname) ||
     pathname === LISTING_COLLECTION_PATH ||
     LISTING_PATH.test(pathname) ||
+    OFFER_FACT_PATH.test(pathname) ||
     pathname === CORRECTION_REPORT_COLLECTION_PATH ||
     CORRECTION_REPORT_PATH.test(pathname)
   );
@@ -109,6 +115,32 @@ export async function handleAuthenticatedAdminEntryRequest(
   env: AdminEnv,
 ): Promise<Response> {
   const url = new URL(request.url);
+
+  const offerFactMatch = url.pathname.match(OFFER_FACT_PATH);
+  if (offerFactMatch && (request.method === "GET" || request.method === "PATCH")) {
+    const listingId = Number(offerFactMatch[1]);
+    if (!Number.isSafeInteger(listingId) || listingId <= 0)
+      return json({ error: "invalid_id" }, { status: 400 });
+    if (request.method === "GET") {
+      const result = await env.CATALOG_ADMIN.getOfferFacts(listingId);
+      return result ? json(result) : json({ error: "not_found" }, { status: 404 });
+    }
+    if (!isJsonRequest(request))
+      return json({ error: "application_json_required" }, { status: 415 });
+    if (!isSameOriginBrowserMutation(request, url))
+      return json({ error: "same_origin_required" }, { status: 403 });
+    const body = await readJsonBody(request, 4096);
+    if (body === REQUEST_BODY_TOO_LARGE)
+      return json({ error: "request_body_too_large" }, { status: 413 });
+    const changes = parseOfferFactChanges(body);
+    if (!changes) return json({ error: "invalid_offer_fact_changes" }, { status: 400 });
+    try {
+      const result = await env.CATALOG_ADMIN.updateOfferFacts(listingId, changes);
+      return result ? json(result) : json({ error: "not_found" }, { status: 404 });
+    } catch (error) {
+      return updateError(error);
+    }
+  }
 
   if (request.method === "GET" && url.pathname === LISTING_COLLECTION_PATH) {
     const options = parseListingAdminListQuery(url);

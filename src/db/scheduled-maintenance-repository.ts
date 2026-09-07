@@ -57,3 +57,5 @@ export async function completeMaintenance(db: QueryableDatabase, name: string, t
     .bind(name, token)
     .run();
 }
+/** A bounded task completed a page but must retain its obligation for the next cron tick. */
+export const MAINTENANCE_PENDING = Symbol("maintenancePending");

@@ -12,6 +12,7 @@ import {
   pendingMaintenance,
   claimMaintenance,
   completeMaintenance,
+  MAINTENANCE_PENDING,
 } from "../src/db/scheduled-maintenance-repository.js";
 import { runPendingMaintenance } from "../src/scheduled.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
@@ -189,4 +190,41 @@ test("stale maintenance completion cannot delete a newer claim", async () => {
   );
   await completeMaintenance(db, "task", current);
   assert.deepEqual(await pendingMaintenance(db, later), []);
+});
+
+test("a completed maintenance page keeps its obligation without blocking other work", async () => {
+  const { db, sqlite } = migratedSqlite();
+  try {
+    const at = new Date("2030-01-01T00:00:00Z");
+    await enqueueMaintenance(db, ["paged", "small"], at);
+    let pages = 0;
+    let smallRuns = 0;
+    const tasks = [
+      {
+        name: "paged",
+        async run() {
+          return ++pages < 2 ? MAINTENANCE_PENDING : undefined;
+        },
+      },
+      {
+        name: "small",
+        async run() {
+          smallRuns += 1;
+        },
+      },
+    ];
+    for (let tick = 0; tick < 2; tick += 1) {
+      const now = new Date(at.getTime() + tick * 5 * 60_000);
+      const budget = invocationBudget(db);
+      await runPendingMaintenance({ DB: budget.db } as unknown as Env, now, budget, tasks);
+      assert.equal(smallRuns, 1);
+      assert.equal(
+        sqlite.prepare("SELECT COUNT(*) n FROM scheduled_maintenance_pending").get()?.n,
+        tick === 0 ? 1 : 0,
+      );
+    }
+    assert.equal(pages, 2);
+  } finally {
+    sqlite.close();
+  }
 });

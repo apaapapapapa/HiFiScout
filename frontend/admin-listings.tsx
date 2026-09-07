@@ -6,6 +6,7 @@ import {
   canonicalAdminPresentationColor,
   type PresentationColorDefinition,
 } from "../src/api/admin-listing-contracts.js";
+import { AdminOfferFacts } from "./admin-offer-facts.js";
 
 import {
   EMPTY_STATUS,
@@ -159,6 +160,7 @@ export function ListingAdmin() {
 
   const [editing, setEditing] = useState<ListingProduct | null>(null);
   const [editManufacturerName, setEditManufacturerName] = useState("");
+  const [factsEditing, setFactsEditing] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState<EditDraft>({
     manufacturerId: "",
     model: "",
@@ -621,6 +623,13 @@ export function ListingAdmin() {
                           >
                             編集
                           </button>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => setFactsEditing(product.id)}
+                          >
+                            出品条件
+                          </button>
                         </td>
                       </tr>
                     );
@@ -664,6 +673,14 @@ export function ListingAdmin() {
             </div>
           </section>
         </>
+      ) : null}
+
+      {factsEditing !== null ? (
+        <AdminOfferFacts
+          key={factsEditing}
+          listingId={factsEditing}
+          onClose={() => setFactsEditing(null)}
+        />
       ) : null}
 
       <dialog
