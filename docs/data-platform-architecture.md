@@ -722,6 +722,12 @@ The Cloudflare API token used by deployment therefore needs the permission requi
 
 ### Detailed specification search
 
+The detailed filter panel keeps dimensions, weight and connector counts as unapplied drafts until
+Apply. Invalid numeric input remains visible and blocks submission. Applied values round-trip
+through removable chips, shared URLs, named saved searches and Atom. Favorite snapshots cannot
+evaluate specifications, so controls are disabled and their predicates are not claimed in that mode.
+
+
 Public search and Atom accept positive `maxWidthMm`, `maxHeightMm`, `maxDepthMm`, `maxWeightKg`
 limits and integer `minXlrInputs`, `minXlrOutputs`, `minRcaInputs`, `minRcaOutputs` counts. Conditions
 are ANDed on one currently verified catalog product. Unrecorded dimensions/counts do not match.

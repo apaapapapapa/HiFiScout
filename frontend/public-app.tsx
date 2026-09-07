@@ -51,7 +51,7 @@ import {
   desktopPanelFilters,
   filterRelaxations,
   initialFilters,
-  normalizedPriceFilters,
+  normalizedProductFilters,
   normalizePrice,
   priceErrors,
   readPreference,
@@ -75,6 +75,9 @@ import { CatalogShortcuts } from "./catalog-shortcut-controls.js";
 import { applyCatalogShortcut } from "./catalog-shortcuts.js";
 import { visibleFacetOptions } from "./facet-options.js";
 import { OfferFactFilters } from "./offer-facts.js";
+import { SpecificationFilterControls } from "./specification-filter-controls.js";
+import { specificationErrors, specificationFromFilterId } from "./specification-filters.js";
+import type { SpecificationFilterId } from "../src/api/catalog-specification-contracts.js";
 import { canonicalComparisonKeys, comparisonKeysFromSearch } from "./product-comparison.js";
 import { ProductComparison } from "./product-comparison-ui.js";
 import { isOfferFactId } from "../src/api/contracts.js";
@@ -122,6 +125,7 @@ function filtersFromLocation(favoritesOnly = false): ProductFilters {
     features: parsed.features,
     facets: parsed.facets,
     offerFacts: parsed.offerFacts,
+    specificationFilters: parsed.specificationFilters,
     inStock: parsed.inStock,
     favoritesOnly,
     recentOnly: parsed.recentOnly,
@@ -187,6 +191,7 @@ interface FilterPanelProps {
   onFeatureChange: (feature: FeatureFilter, checked: boolean) => void;
   onFacetChange: (facet: FacetSelection, checked: boolean) => void;
   onOfferFactChange: (fact: OfferFactId, checked: boolean) => void;
+  onSpecificationChange: (id: SpecificationFilterId, value: string) => void;
   onClose: () => void;
   onClear: () => void;
 }
@@ -206,6 +211,7 @@ function FilterPanel({
   onFeatureChange,
   onFacetChange,
   onOfferFactChange,
+  onSpecificationChange,
   onClose,
   onClear,
 }: FilterPanelProps) {
@@ -221,6 +227,9 @@ function FilterPanel({
 
   useFilterSheet(panelRef, open, isMobile, onClose);
   const errors = priceErrors(filters);
+  const invalid =
+    Object.keys(errors).length > 0 ||
+    Object.keys(specificationErrors(filters.specificationFilters)).length > 0;
 
   return (
     <>
@@ -297,12 +306,7 @@ function FilterPanel({
             value={filters.minPrice}
             onChange={(event) => onValueChange("minPrice", event.currentTarget.value, true)}
             onKeyDown={(event) => {
-              if (
-                event.key === "Enter" &&
-                !event.nativeEvent.isComposing &&
-                Object.keys(errors).length === 0
-              )
-                onApply();
+              if (event.key === "Enter" && !event.nativeEvent.isComposing && !invalid) onApply();
             }}
           />
         </label>
@@ -317,12 +321,7 @@ function FilterPanel({
             value={filters.maxPrice}
             onChange={(event) => onValueChange("maxPrice", event.currentTarget.value, true)}
             onKeyDown={(event) => {
-              if (
-                event.key === "Enter" &&
-                !event.nativeEvent.isComposing &&
-                Object.keys(errors).length === 0
-              )
-                onApply();
+              if (event.key === "Enter" && !event.nativeEvent.isComposing && !invalid) onApply();
             }}
           />
         </label>
@@ -357,9 +356,20 @@ function FilterPanel({
         </p>
         <details
           className="advanced-filters"
-          open={filters.features.length > 0 || filters.facets.length > 0 ? true : undefined}
+          open={
+            filters.features.length > 0 ||
+            filters.facets.length > 0 ||
+            Object.values(filters.specificationFilters ?? {}).some(Boolean)
+              ? true
+              : undefined
+          }
         >
           <summary>機能・仕様で詳しく絞り込む</summary>
+          <SpecificationFilterControls
+            values={filters.specificationFilters}
+            disabled={filters.favoritesOnly}
+            onChange={onSpecificationChange}
+          />
           {/*
           Feature matching is a server-side predicate over stored facts. Favorites are matched
           locally against snapshots that carry none, so the control is disabled there rather than
@@ -449,7 +459,7 @@ function FilterPanel({
             id="apply-filters"
             className="button-primary"
             type="button"
-            disabled={Object.keys(errors).length > 0}
+            disabled={invalid}
             onClick={onApply}
           >
             条件を適用して結果を見る
@@ -622,7 +632,7 @@ export function PublicApp() {
   const syncUrl = useCallback(
     (nextFilters: ProductFilters, nextView: ProductView, replace = false) => {
       if (!bootedRef.current) return;
-      const normalized = normalizedPriceFilters(nextFilters);
+      const normalized = normalizedProductFilters(nextFilters);
       if (!normalized) return;
       const params = filterUrlParams(normalized, nextView);
       const compare = comparisonKeysFromSearch(location.search);
@@ -654,7 +664,7 @@ export function PublicApp() {
         refresh = false,
       }: { page?: number; reset?: boolean; refresh?: boolean } = {},
     ) => {
-      const normalized = normalizedPriceFilters(nextFilters);
+      const normalized = normalizedProductFilters(nextFilters);
       if (!normalized) {
         controllerRef.current?.abort();
         requestSequenceRef.current++;
@@ -784,7 +794,11 @@ export function PublicApp() {
         const facet = facetFromFilterId(id);
         const selection = selectionFromFilterId(id);
         const offer = id.startsWith("offer:") ? id.slice(6) : "";
-        if (isOfferFactId(offer))
+        const specification = specificationFromFilterId(id);
+        if (specification) {
+          next.specificationFilters = { ...next.specificationFilters };
+          delete next.specificationFilters[specification];
+        } else if (isOfferFactId(offer))
           next.offerFacts = (next.offerFacts ?? []).filter((selected) => selected !== offer);
         else if (feature) next.features = next.features.filter((selected) => selected !== feature);
         else if (facet) {
@@ -1022,7 +1036,7 @@ export function PublicApp() {
     [favoriteMode, favorites, appliedFilters, products, selectedCategoryLabel],
   );
   const initialLoading = !favoriteMode && (initialization === "loading" || (!hasLoaded && loading));
-  const invalidPrice = Object.keys(priceErrors(filters)).length > 0;
+  const invalidPrice = normalizedProductFilters(filters) === null;
   const summary = resultSummary({
     shown: visibleProducts.length,
     favoriteMode,
@@ -1121,6 +1135,12 @@ export function PublicApp() {
           }
           onValueChange={(id, value) => changePanelFilters({ ...panelFilters, [id]: value })}
           onSelectionChange={(id, values) => changePanelFilters({ ...panelFilters, [id]: values })}
+          onSpecificationChange={(id, value) =>
+            changePanelFilters({
+              ...panelFilters,
+              specificationFilters: { ...panelFilters.specificationFilters, [id]: value },
+            })
+          }
           onToggleChange={(id, checked) => changePanelFilters({ ...panelFilters, [id]: checked })}
           onFeatureChange={(feature, checked) =>
             changePanelFilters({
@@ -1161,7 +1181,7 @@ export function PublicApp() {
           }
           onClear={() => setDraftFilters(clearedDetailFilters(panelFilters))}
           onApply={() => {
-            const next = normalizedPriceFilters(panelFilters);
+            const next = normalizedProductFilters(panelFilters);
             if (next) {
               closeFilters();
               if (!sameFilters(next, filtersRef.current)) commitFilters(next);
@@ -1291,7 +1311,7 @@ export function PublicApp() {
           ) : null}
           {invalidPrice ? (
             <p className="field-error" role="status">
-              価格条件を修正してください。表示中の結果は更新していません。
+              価格・仕様の条件を修正してください。表示中の結果は更新していません。
             </p>
           ) : null}
           {notice ? (
