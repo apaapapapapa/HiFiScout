@@ -1578,3 +1578,25 @@ export interface ModelFactsAdminSnapshot {
   }[];
   audits: { id: number; actor: string; occurredAt: string; before: unknown; after: unknown }[];
 }
+export interface CatalogRelationProof {
+  kind: "source" | "manual";
+  sourceUrl: string | null;
+  verifiedAt: string;
+}
+
+export interface RelatedCatalogModel {
+  key: string;
+  manufacturer: string;
+  model: string;
+  proof: CatalogRelationProof;
+}
+
+export interface ProductModelRelations {
+  links: (RelatedCatalogModel & { kind: "predecessor" | "successor" | "variant" })[];
+  families: {
+    name: string;
+    position: number | null;
+    proof: CatalogRelationProof;
+    members: (RelatedCatalogModel & { position: number | null })[];
+  }[];
+}

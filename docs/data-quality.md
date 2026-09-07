@@ -295,6 +295,11 @@ are limited to 40 per endpoint and 40 per family. Partial indexes exclude remove
 Optimistic versions reject stale edits; facts and their audit records commit atomically.
 
 The [Access-protected model relationship editor](./listing-admin.md#model-relationships-and-series)
-manages the verification state and evidence. Public relation summaries are added separately. No
+manages the verification state and evidence. Product details, comparison and fixed product URLs
+display only currently verified relations and ordered family members, with public source links and
+decision dates. Private notes, reviewer subjects and audit JSON are never projected publicly. A
+verified catalog product remains available at its fixed URL even without a search entity or offers;
+this does not create an offer or change search grouping. Detail reads use the endpoint and family
+indexes, bounded by the existing 40-fact / 40-member limits; ordinary search adds no relation reads. No
 model relationships are inferred or seeded by migrations. Catalog deletion requires an explicit
 review of existing model facts; transient search-entity cleanup leaves them intact.
