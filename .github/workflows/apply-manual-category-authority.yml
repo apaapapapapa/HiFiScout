@@ -9,6 +9,7 @@ on:
       - 'src/crawler/category-enricher.ts'
       - 'scripts/reclassify-knowledge-catalog-products.ts'
       - 'scripts/apply-manual-category-authority.ts'
+      - 'scripts/lib/confirmed-switch-bundle-category.ts'
       - '.github/workflows/apply-manual-category-authority.yml'
   workflow_dispatch:
 

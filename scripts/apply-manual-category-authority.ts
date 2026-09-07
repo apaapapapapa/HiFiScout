@@ -10,6 +10,7 @@ import {
 import { refreshListingProjections } from "../src/db/listing-projection-refresh.js";
 import type { QueryableDatabase } from "../src/db/types.js";
 import { createD1RestDatabase } from "./lib/d1-rest-database.js";
+import { applyConfirmedSwitchBundleCategory } from "./lib/confirmed-switch-bundle-category.js";
 
 const AUDIT_SOURCES = [
   "manual://approved-category-audit/2026-08-19",
@@ -240,6 +241,7 @@ async function verifyTargets(db: QueryableDatabase): Promise<void> {
 
 export async function applyManualCategoryAuthority(db: QueryableDatabase): Promise<number> {
   const evaluatedAt = new Date().toISOString();
+  const confirmedListingCorrections = await applyConfirmedSwitchBundleCategory(db);
   const targets = await loadTargets(db);
   const statements: D1PreparedStatement[] = [];
   const tokens = new Map<number, string>();
@@ -319,11 +321,12 @@ export async function applyManualCategoryAuthority(db: QueryableDatabase): Promi
       auditSources: AUDIT_SOURCES,
       targetCount: targets.length,
       changedCount: refreshTargets.length,
+      confirmedListingCorrections,
       deferredUnclassifiedCount: deferredTargets.length,
       deferredUnclassifiedTargets: deferredTargets,
     }),
   );
-  return refreshTargets.length;
+  return refreshTargets.length + confirmedListingCorrections;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
