@@ -14,17 +14,31 @@ test("market UI explains sparse groups, observation periods and non-transaction 
   assert.match(html, /合算できません/);
   assert.doesNotMatch(html, /<svg/);
   assert.equal(renderToStaticMarkup(<MarketAnalysis analysis={undefined} />), "");
-  const limited = renderToStaticMarkup(<MarketAnalysis analysis={{ ...analysis, status: "limited", months: [] }} />);
+  const limited = renderToStaticMarkup(
+    <MarketAnalysis analysis={{ ...analysis, status: "limited", months: [] }} />,
+  );
   assert.match(limited, /現在利用できません/);
   assert.doesNotMatch(limited, /<table/);
 });
 
 test("chart gaps remain gaps and monthly source counts accompany the median", () => {
-  const samples = ["2026-07-01T00:00:00Z", "2026-09-01T00:00:00Z"].flatMap((at, month) => [1, 2, 3].map((id) => ({
-    id: month * 3 + id, listing_product_id: id, shop_key: id === 1 ? "a" : "b", price_yen: 10000 + id * 100 + month * 1000,
-    sample_kind: "asking", signal_kind: "asking", observed_at: at,
-  })));
-  const analysis = calculateMarketAnalysis([], new Map(), samples, new Date("2026-09-07T00:00:00Z"));
+  const samples = ["2026-07-01T00:00:00Z", "2026-09-01T00:00:00Z"].flatMap((at, month) =>
+    [1, 2, 3].map((id) => ({
+      id: month * 3 + id,
+      listing_product_id: id,
+      shop_key: id === 1 ? "a" : "b",
+      price_yen: 10000 + id * 100 + month * 1000,
+      sample_kind: "asking",
+      signal_kind: "asking",
+      observed_at: at,
+    })),
+  );
+  const analysis = calculateMarketAnalysis(
+    [],
+    new Map(),
+    samples,
+    new Date("2026-09-07T00:00:00Z"),
+  );
   const html = renderToStaticMarkup(<MarketAnalysis analysis={analysis} />);
   assert.match(html, /<svg/);
   const path = html.match(/<path d="([^"]*)"/)?.[1] ?? "";

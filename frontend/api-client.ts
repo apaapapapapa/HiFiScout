@@ -252,7 +252,8 @@ export function isProductOffer(value: unknown): value is ProductOffer {
  */
 export function isProductSearchItem(value: unknown): value is ProductSearchItem {
   if (!isRecord(value)) return false;
-  if (value.market_analysis !== undefined && !isProductMarketAnalysis(value.market_analysis)) return false;
+  if (value.market_analysis !== undefined && !isProductMarketAnalysis(value.market_analysis))
+    return false;
   if (value.model_relations !== undefined && !isProductModelRelations(value.model_relations))
     return false;
   const stringFields = [
