@@ -53,6 +53,26 @@ preserve other filters. Resetting to initial conditions restores in-stock search
 condition also removes the stock restriction. These alternatives issue ordinary bounded searches,
 without speculative count queries or a promise that a relaxed condition will return results.
 
+### Comparing a used listing's condition
+
+Public offer details and filters share the condition vocabulary with the admin editor. Sales status,
+appearance, operation, included items, warranty and service/repair/modification history are separate
+groups. Shop-specific letter or numeric grades stay in the seller's original condition field; they
+are never converted into a cross-shop quality score. Conservative rules accept explicit statements
+such as visible wear, an operating fault, completed service or a repair history from already collected
+titles/condition fields. Plans, uncertain claims and contradictory evidence do not become facts.
+Missing evidence stays unknown, including missing service history. Dates label the evidence check,
+not a service date or warranty expiry. Warranty scope and detailed repair records remain at the
+linked seller page.
+
+Every selected offer condition must be present on the same listing that meets the price, shop and
+stock filters. A manual absent/unknown decision excludes an extracted positive for that fact. No
+additional search aggregation or seller fetch is needed for the expanded vocabulary. The current
+`OFFER_FACT_RULE_VERSION` makes existing evidence eligible for the admin's bounded saved-evidence
+replay; deployment does not automatically scan or refetch all inventory.
+Replay coverage uses the same group registry, including appearance, operation and service history;
+older responses with no count display “未集計”, distinct from an observed zero.
+
 ### Search entities
 
 `product_search_entities` is the product-level read model. Each row is one **search entity**, which is either:

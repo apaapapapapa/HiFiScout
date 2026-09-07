@@ -984,6 +984,17 @@ export interface InferFeatureFactsOptions {
   verifiedAt?: string | null;
 }
 
+/** Display groups are shared by public comparison, filters and the listing editor. */
+export const OFFER_FACT_GROUPS = [
+  { id: "condition", name: "販売区分" },
+  { id: "appearance", name: "外観" },
+  { id: "operation", name: "動作" },
+  { id: "included", name: "付属品" },
+  { id: "warranty", name: "保証" },
+  { id: "maintenance", name: "整備・修理・改造歴" },
+  { id: "sale_unit", name: "販売単位" },
+] as const;
+
 /** Seller-observed facts belong to a listing, independently of catalog capabilities. */
 export const OFFER_FACT_DEFINITIONS = [
   { id: "unused", name: "未使用品", group: "condition" },
@@ -991,13 +1002,19 @@ export const OFFER_FACT_DEFINITIONS = [
   { id: "outlet", name: "アウトレット", group: "condition" },
   { id: "used", name: "中古品", group: "condition" },
   { id: "junk", name: "ジャンク", group: "condition" },
+  { id: "appearance_clean", name: "目立つ傷なし", group: "appearance" },
+  { id: "appearance_wear", name: "傷・汚れあり", group: "appearance" },
   { id: "operation_confirmed", name: "動作確認済み", group: "operation" },
   { id: "operation_unchecked", name: "動作未確認", group: "operation" },
+  { id: "operation_fault", name: "動作不良あり", group: "operation" },
   { id: "original_box", name: "元箱", group: "included" },
   { id: "remote_control", name: "リモコン", group: "included" },
   { id: "manual", name: "取扱説明書", group: "included" },
   { id: "shop_warranty", name: "販売店保証", group: "warranty" },
   { id: "manufacturer_warranty", name: "メーカー保証", group: "warranty" },
+  { id: "maintenance_serviced", name: "整備済み", group: "maintenance" },
+  { id: "maintenance_repaired", name: "修理歴あり", group: "maintenance" },
+  { id: "maintenance_modified", name: "改造歴あり", group: "maintenance" },
   { id: "sale_pair", name: "ペア販売", group: "sale_unit" },
   { id: "sale_single", name: "単体販売", group: "sale_unit" },
   { id: "sale_set", name: "セット販売", group: "sale_unit" },

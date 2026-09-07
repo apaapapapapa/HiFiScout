@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { OFFER_FACT_DEFINITIONS } from "../src/api/contracts.js";
+import { OFFER_FACT_DEFINITIONS, OFFER_FACT_GROUPS } from "../src/api/contracts.js";
 import type { OfferFact } from "../src/api/contracts.js";
 import { adminJson, genericErrorText, safeSourceUrl } from "./admin-shared.js";
 
@@ -113,38 +113,45 @@ export function AdminOfferFacts({
             ) : null}
             <p>「自動判定に戻す」は手動補正を解除します。「不明」は自動判定より優先されます。</p>
             <fieldset disabled={saving}>
-              <legend>状態・付属品・保証・販売単位</legend>
-              {OFFER_FACT_DEFINITIONS.map((definition) => {
-                const seller = snapshot.facts.find(
-                  (fact) => fact.factId === definition.id && fact.source === "seller",
-                );
-                return (
-                  <label key={definition.id}>
-                    <span>{definition.name}</span>
-                    <select
-                      aria-label={definition.name}
-                      value={draft[definition.id] ?? manual.get(definition.id) ?? "inherit"}
-                      onChange={(event) => {
-                        const value = event.currentTarget.value;
-                        setDraft((previous) => ({ ...previous, [definition.id]: value }));
-                      }}
-                    >
-                      <option value="inherit">自動判定に戻す</option>
-                      <option value="present">あり（確認済み）</option>
-                      <option value="absent">なし（確認済み）</option>
-                      <option value="unknown">不明</option>
-                    </select>
-                    <small>
-                      店舗の記載:{" "}
-                      {seller?.state === "present"
-                        ? "あり"
-                        : seller?.state === "absent"
-                          ? "なし"
-                          : "不明"}
-                    </small>
-                  </label>
-                );
-              })}
+              <legend>状態・付属品・保証・整備歴・販売単位</legend>
+              {OFFER_FACT_GROUPS.map((group) => (
+                <fieldset key={group.id}>
+                  <legend>{group.name}</legend>
+                  {OFFER_FACT_DEFINITIONS.filter((definition) => definition.group === group.id).map(
+                    (definition) => {
+                      const seller = snapshot.facts.find(
+                        (fact) => fact.factId === definition.id && fact.source === "seller",
+                      );
+                      return (
+                        <label key={definition.id}>
+                          <span>{definition.name}</span>
+                          <select
+                            aria-label={definition.name}
+                            value={draft[definition.id] ?? manual.get(definition.id) ?? "inherit"}
+                            onChange={(event) => {
+                              const value = event.currentTarget.value;
+                              setDraft((previous) => ({ ...previous, [definition.id]: value }));
+                            }}
+                          >
+                            <option value="inherit">自動判定に戻す</option>
+                            <option value="present">あり（確認済み）</option>
+                            <option value="absent">なし（確認済み）</option>
+                            <option value="unknown">不明</option>
+                          </select>
+                          <small>
+                            店舗の記載:{" "}
+                            {seller?.state === "present"
+                              ? "あり"
+                              : seller?.state === "absent"
+                                ? "なし"
+                                : "不明"}
+                          </small>
+                        </label>
+                      );
+                    },
+                  )}
+                </fieldset>
+              ))}
             </fieldset>
             <button type="submit" className="primary-button" disabled={saving || !dirty}>
               出品条件を保存

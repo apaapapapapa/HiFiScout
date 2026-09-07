@@ -1,20 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { adminJson, genericErrorText } from "./admin-shared.js";
-
-interface CoverageGroup {
-  key: string;
-  listings: number;
-  condition: number;
-  included: number;
-  warranty: number;
-  sale_unit: number;
-}
+import { OFFER_FACT_GROUPS } from "../src/api/contracts.js";
+import type { OfferFactCoverageRow } from "../src/api/contracts.js";
 interface Progress {
   ruleVersion: number;
   scannedCount: number;
   activeCount: number;
   completedAt: string | null;
-  coverage: { byShop: CoverageGroup[]; byCategory: CoverageGroup[] };
+  coverage: { byShop: OfferFactCoverageRow[]; byCategory: OfferFactCoverageRow[] };
 }
 const PATH = "/api/admin/offer-facts/replay";
 
@@ -143,10 +136,9 @@ export function AdminOfferFactReplay({
                 <tr>
                   <th>区分</th>
                   <th>掲載中</th>
-                  <th>状態</th>
-                  <th>付属品</th>
-                  <th>保証</th>
-                  <th>販売単位</th>
+                  {OFFER_FACT_GROUPS.map((group) => (
+                    <th key={group.id}>{group.name}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -158,9 +150,9 @@ export function AdminOfferFactReplay({
                         : categories.find((category) => category.id === row.key)?.name) || row.key}
                     </th>
                     <td>{row.listings}</td>
-                    {(["condition", "included", "warranty", "sale_unit"] as const).map((group) => (
-                      <td key={group}>
-                        {row[group]} / {row.listings}
+                    {OFFER_FACT_GROUPS.map((group) => (
+                      <td key={group.id} data-label={group.name}>
+                        {row[group.id] == null ? "未集計" : `${row[group.id]} / ${row.listings}`}
                       </td>
                     ))}
                   </tr>

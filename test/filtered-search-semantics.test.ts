@@ -45,6 +45,36 @@ function fixture() {
   return { sqlite, db };
 }
 
+test("appearance and service filters cannot borrow a different offer's evidence", async () => {
+  const { sqlite, db } = fixture();
+  try {
+    sqlite.exec(`INSERT INTO product_offer_facts VALUES
+      (1,'appearance_clean','seller','present','condition_text','fixture',1,'2026-09-07'),
+      (2,'maintenance_serviced','seller','present','condition_text','fixture',1,'2026-09-07'),
+      (3,'appearance_clean','seller','present','condition_text','fixture',1,'2026-09-07'),
+      (3,'maintenance_serviced','seller','present','condition_text','fixture',1,'2026-09-07')`);
+    const query = productQuery(
+      "?offer=appearance_clean&offer=maintenance_serviced&inStock=true&includeTotal=true",
+    );
+    const result = await searchProducts(db, query);
+    assert.equal(result.totalCount, 1);
+    assert.equal(result.items[0].lowest_price_yen, 150);
+    assert.equal(result.items[0].offer_count, 1);
+    sqlite.exec(`INSERT INTO product_offer_facts VALUES
+      (3,'maintenance_serviced','manual','unknown','manual','fixture',1,'2026-09-07')`);
+    assert.equal((await searchProducts(db, query)).totalCount, 0);
+    const detail = await productSearchDetail(db, "l-1");
+    assert.equal(
+      detail?.offers
+        .find((offer) => offer.listing_product_id === 3)
+        ?.offer_facts?.find((fact) => fact.factId === "maintenance_serviced")?.state,
+      "unknown",
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
 test("offer conditions intersect on one listing, including summaries, cursor order and manual authority", async () => {
   const { sqlite, db } = fixture();
   try {

@@ -1,6 +1,6 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
-import { inferOfferFacts } from "../src/catalog/offer-facts.js";
+import { inferOfferFacts, OFFER_FACT_RULE_VERSION } from "../src/catalog/offer-facts.js";
 import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
 import { upsertProducts } from "../src/db/product-write-repository.js";
 import { sellerOfferFactWrites } from "../src/db/offer-fact-repository.js";
@@ -54,10 +54,49 @@ test("facts carry field provenance and a bounded rule identifier without seller 
     state: "present",
     source: "seller",
     sourceField: "condition_text",
-    ruleId: "offer.v1.original_box",
+    ruleId: `offer.v${OFFER_FACT_RULE_VERSION}.original_box`,
     confidence: 1,
     observedAt: AT,
   });
+});
+
+test("appearance, functional faults and service history remain independent seller claims", () => {
+  for (const separator of ["、", ",", "，", " "]) {
+    assert.deepEqual(states(`元箱あり${separator}修理可能`), { original_box: "present" });
+    assert.deepEqual(states(`元箱あり${separator}整備予定`), { original_box: "present" });
+  }
+  assert.deepEqual(states("元箱あり、整備済み、発送予定"), {
+    original_box: "present",
+    maintenance_serviced: "present",
+  });
+  assert.deepEqual(
+    states("中古品", "目立った傷なし。動作不良あり。整備済み。修理歴あり。改造歴なし"),
+    {
+      used: "present",
+      appearance_clean: "present",
+      operation_fault: "present",
+      maintenance_serviced: "present",
+      maintenance_repaired: "present",
+      maintenance_modified: "absent",
+    },
+  );
+  assert.deepEqual(states("傷・汚れあり。オーバーホール済。改造済み"), {
+    appearance_wear: "present",
+    maintenance_serviced: "present",
+    maintenance_modified: "present",
+  });
+  for (const text of [
+    "Aランク",
+    "修理可能",
+    "整備予定",
+    "修理歴不明",
+    "動作不良なし",
+    "整備済みではありません",
+    "傷なしを希望",
+  ]) {
+    assert.deepEqual(states(text), {}, text);
+  }
+  assert.deepEqual(states("修理歴あり", "修理歴なし"), {});
 });
 
 function listing(conditionText: string) {
