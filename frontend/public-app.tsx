@@ -58,7 +58,8 @@ import { SearchSuggestionInput } from "./search-suggestion-input.js";
 import { sortShopsByJapaneseReading } from "./shop-options.js";
 import { CatalogShortcuts } from "./catalog-shortcut-controls.js";
 import { applyCatalogShortcut } from "./catalog-shortcuts.js";
-import { FACET_DEFINITIONS, FEATURE_DEFINITIONS, isFeatureFilter } from "../src/api/contracts.js";
+import { visibleFacetOptions } from "./facet-options.js";
+import { FEATURE_DEFINITIONS, isFeatureFilter } from "../src/api/contracts.js";
 import type {
   FacetSelection,
   FeatureFilter,
@@ -181,24 +182,7 @@ function FilterPanel({
 }: FilterPanelProps) {
   const panelRef = useRef<HTMLElement>(null);
   const shops = useMemo(() => sortShopsByJapaneseReading(meta?.shops ?? []), [meta]);
-  const selectedCategoryRoots = useMemo(() => {
-    if (!filters.category) return new Set<string>();
-    const canonicalIds = meta?.legacyCategoryAliases?.[filters.category] ?? [filters.category];
-    return new Set(
-      canonicalIds.map(
-        (categoryId) =>
-          meta?.categoryFacets?.find((category) => category.id === categoryId)?.parentId ??
-          categoryId,
-      ),
-    );
-  }, [filters.category, meta]);
-  const selectedFacetIds = new Set(filters.facets.map((facet) => facet.facetId));
-  const visibleFacets = FACET_DEFINITIONS.filter(
-    (facet) =>
-      selectedFacetIds.has(facet.id) ||
-      facet.categoryRootIds.length === 0 ||
-      facet.categoryRootIds.some((rootId) => selectedCategoryRoots.has(rootId)),
-  );
+  const visibleFacets = visibleFacetOptions(filters.category, filters.facets, meta);
   const facetCounts = new Map(
     (meta?.facets ?? []).map((facet) => [
       `${facet.facetId}:${facet.value}`,

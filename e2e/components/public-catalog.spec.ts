@@ -183,6 +183,8 @@ test("capability controls preserve absent and unknown states through requests an
   await page.getByText("機能・仕様で詳しく絞り込む", { exact: true }).click();
   await page.locator("#category").selectOption("ANA.TAPE");
   await expect(page.getByRole("group", { name: "対応メディア", exact: true })).toBeVisible();
+  await expect(page.locator("#facet-supported_media-cassette")).toBeVisible();
+  await expect(page.locator("#facet-supported_media-cd")).toHaveCount(0);
   await page.getByLabel("DAC搭載", { exact: true }).selectOption("dac:absent");
   await expect
     .poll(() => seen.searches.at(-1)?.searchParams.getAll("feature"))
