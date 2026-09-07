@@ -26,6 +26,7 @@ import {
   parseSelectionParams,
   facetSelectionKey,
 } from "./filters.js";
+import { comparisonKeysFromSearch } from "./product-comparison.js";
 
 /** Mirrors the server's per-parameter character limits. */
 const TEXT_LIMITS = [
@@ -83,6 +84,9 @@ export function sanitizedCatalogSearch(search: string): string {
 
   const view = source.get("view");
   if (view && VIEWS.includes(view)) params.set("view", view);
+
+  const compare = comparisonKeysFromSearch(search);
+  if (compare.length) params.set("compare", compare.join(","));
 
   return params.toString();
 }

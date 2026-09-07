@@ -192,7 +192,7 @@ export function ProductPriceIndexSummary({ product }: { product: DisplayProduct 
       <div className="price-index-heading">
         <div>
           <p className="price-index-kicker">PRICE INDEX</p>
-          <h3 id="price-index-title">出品価格の参考値</h3>
+          <h3>出品価格の参考値</h3>
         </div>
         <span>
           {index.asking_listing_count != null

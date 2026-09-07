@@ -88,6 +88,9 @@ export function SyncShopRows({ meta }: { meta: MetaResponse | null }) {
 interface ProductCardProps {
   product: DisplayProduct;
   favorite: boolean;
+  compared?: boolean;
+  comparisonFull?: boolean;
+  onCompare?: (key: string) => void;
   shopName: (shopKey: string) => string;
   onManufacturer: (manufacturer: string) => void;
   onFavorite: (key: string) => void;
@@ -140,6 +143,9 @@ function productCategoryLabels(product: DisplayProduct): string[] {
 export function ProductCard({
   product,
   favorite,
+  compared = false,
+  comparisonFull = false,
+  onCompare,
   shopName,
   onManufacturer,
   onFavorite,
@@ -244,6 +250,17 @@ export function ProductCard({
         <p className="updated">{updated}</p>
       </div>
       <div className="actions">
+        {product.identity_kind === "catalog" && onCompare ? (
+          <button
+            type="button"
+            className="offers-button"
+            aria-pressed={compared}
+            disabled={!compared && comparisonFull}
+            onClick={() => onCompare(product.key)}
+          >
+            {compared ? "比較から外す" : "製品を比較"}
+          </button>
+        ) : null}
         <button
           className="fav"
           data-fav={product.key}
