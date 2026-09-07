@@ -705,6 +705,21 @@ The Cloudflare API token used by deployment therefore needs the permission requi
 
 ## Regression coverage
 
+### Product comparison
+
+The public catalog can select two to four verified catalog products for a shareable comparison
+(`/?compare=c-1,c-2`). Keys are normalized, deduplicated and ordered by catalog ID; unresolved
+listing keys and oversized selections are rejected. Selecting one product retains a pending
+selection. Search/filter changes preserve the comparison and browser Back/Forward restores it.
+
+The browser makes at most four existing, unfiltered product-detail requests when the selection
+changes. It never compares the filtered card summaries or stale favorite snapshots. A failed or
+missing product retains an unavailable column with a retry action; unknown facts use `—`.
+Current asking prices, active listing/shop counts, presentation finishes and latest activity are
+shown alongside the existing optional asking-price index and its evidence counts. These are
+listing prices, not sale prices. No new history scan or product identity grouping is introduced.
+Verified model relationships and detailed sourced specifications extend this surface separately.
+
 Unit/regression tests cover:
 
 - FTS query parsing and escaping
