@@ -76,6 +76,7 @@ export function isProductMarketAnalysis(value: unknown): value is ProductMarketA
   const asOf = Date.parse(value.as_of),
     groups = new Set<string>(),
     months = new Set<string>();
+  let currentListings = 0;
   for (const group of value.current_conditions) {
     if (
       !band(group, asOf) ||
@@ -88,8 +89,11 @@ export function isProductMarketAnalysis(value: unknown): value is ProductMarketA
       return false;
     const key = `${group.condition}:${group.sale_unit}`;
     if (groups.has(key)) return false;
+    currentListings += group.listing_count;
+    if (group.listing_count === 0 || currentListings > 200) return false;
     groups.add(key);
   }
+  let observedSamples = 0;
   for (const month of value.months) {
     if (
       !band(month, asOf) ||
@@ -102,6 +106,14 @@ export function isProductMarketAnalysis(value: unknown): value is ProductMarketA
       !count(month.deactivated_listings)
     )
       return false;
+    const first = month.first_observed_at;
+    const last = month.last_observed_at;
+    if (first && new Date(first).toISOString().slice(0, 7) !== month.month) return false;
+    if (last && new Date(last).toISOString().slice(0, 7) !== month.month) return false;
+    observedSamples += month.listing_count;
+    observedSamples += month.sold_out_listings;
+    observedSamples += month.deactivated_listings;
+    if (observedSamples > 500) return false;
     months.add(month.month);
   }
   const expected = Array.from({ length: 6 }, (_, index) => {
