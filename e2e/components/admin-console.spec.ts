@@ -68,6 +68,7 @@ async function mockAdminApi(page: Page): Promise<void> {
     if (!url.pathname.startsWith("/api/")) return route.continue();
     const json = (body: unknown, status = 200) =>
       route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+    if (url.pathname === "/api/admin/offer-facts/replay") return json(null);
 
     if (url.pathname === "/api/meta")
       return json({
@@ -452,7 +453,7 @@ test("admin listings screen uses the shared POM for tab, search, and color edit 
   await expect(admin.listingsTab).toHaveAttribute("aria-selected", "true");
   await expect(page).toHaveURL(/#listings$/u);
   await expect(admin.listings.heading).toBeVisible();
-  await expect(admin.sectionLinks).toHaveCount(2);
+  await expect(admin.sectionLinks).toHaveCount(3);
 
   await admin.listings.searchFor("D-1000");
   await expect(admin.listings.status).toContainText("検索条件を反映しました");
@@ -644,6 +645,44 @@ test("offer editor saves only changed decisions and can restore seller authority
   await expect(editor.getByRole("button", { name: "出品条件を保存" })).toBeDisabled();
   expect(received[1]).toEqual({ remote_control: "inherit" });
   await expect(editor.getByLabel("リモコン", { exact: true })).toHaveValue("inherit");
+});
+
+test("offer replay resumes server progress after an interrupted response", async ({
+  page,
+  mount,
+}) => {
+  let scanned = 0;
+  let writes = 0;
+  await page.route("**/api/admin/offer-facts/replay", async (route) => {
+    if (route.request().method() === "POST") {
+      expect(route.request().postDataJSON()).toEqual({});
+      writes++;
+      scanned += 25;
+      if (writes === 1) return route.fulfill({ status: 503, json: { error: "interrupted" } });
+    }
+    return route.fulfill({
+      json: {
+        ruleVersion: 1,
+        scannedCount: scanned,
+        activeCount: scanned,
+        completedAt: scanned >= 50 ? "2026-09-07T00:00:00Z" : null,
+        coverage: { byShop: [], byCategory: [] },
+      },
+    });
+  });
+  const component = await mount("frontend/admin-console/Default");
+  const admin = new AdminConsolePage(component, page);
+  await admin.openListings();
+  const replay = page.getByRole("region", { name: "出品条件の再処理・充足率" });
+  await replay.getByRole("button", { name: "最大25件を再処理", exact: true }).click();
+  await expect(replay.getByRole("status")).toContainText("中断しました");
+  await replay.getByRole("button", { name: "最大25件を再処理", exact: true }).click();
+  await expect(replay.getByRole("status")).toContainText("完了しました");
+  await expect(replay).toContainText("処理済み 50件");
+  expect(writes).toBe(2);
+  await expect(
+    replay.getByRole("button", { name: "最大500件を再処理", exact: true }),
+  ).toBeDisabled();
 });
 
 test("every catalog close control confirms before discarding dirty fields", async ({

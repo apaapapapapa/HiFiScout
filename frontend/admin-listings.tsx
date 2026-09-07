@@ -7,6 +7,7 @@ import {
   type PresentationColorDefinition,
 } from "../src/api/admin-listing-contracts.js";
 import { AdminOfferFacts } from "./admin-offer-facts.js";
+import { AdminOfferFactReplay } from "./admin-offer-fact-replay.js";
 
 import {
   EMPTY_STATUS,
@@ -674,6 +675,8 @@ export function ListingAdmin() {
           </section>
         </>
       ) : null}
+
+      <AdminOfferFactReplay shops={shops} categories={categories} />
 
       {factsEditing !== null ? (
         <AdminOfferFacts

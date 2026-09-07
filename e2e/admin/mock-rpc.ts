@@ -54,6 +54,8 @@ export function createMockAdminRpc() {
     throw new Error(`Unmocked admin RPC: ${method}`);
   };
   const rpc: AdminRpc = {
+    getOfferFactReplay: async () => null,
+    stepOfferFactReplay: unsupported("stepOfferFactReplay"),
     async listManufacturers({ query, afterId, limit }) {
       const matching = [
         { id: "accuphase", name: "Accuphase" },

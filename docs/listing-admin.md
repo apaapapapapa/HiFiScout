@@ -32,6 +32,29 @@ the same decision writes no rows and retains its observation time. Seller facts,
 price history and catalog classification are preserved. The public search reads manual authority
 directly, without triggering catalog-wide projection work.
 
+## Bounded offer-fact replay
+
+**出品条件の再処理・充足率** processes retained listing fields without contacting sellers. One request
+handles at most 25 listings; the optional 500-listing action sends at most 20 sequential requests.
+Stopping or closing the page finishes only the current small transaction. Reopening the console
+reads the durable cursor, so an interrupted response does not cause the browser to resend an old
+position. Progress is keyed by extraction-rule version and pins the maximum listing id at start.
+New listings already receive facts through the ordinary listing writer.
+
+Each step atomically claims its expected cursor, verifies the source-field snapshot, writes facts
+under a unique step token, and records coverage. A concurrent caller or changed source snapshot
+cannot advance or write stale facts. A failed transaction rolls back its cursor and facts together.
+Observation dates use the original listing's `last_seen_at`, not the date of replay; manual decisions
+survive. Completed steps and unchanged seller facts retain existing write guards.
+
+Coverage is a retained snapshot of active listings processed in this run, grouped separately by shop
+and category. It counts explicit positive or negative evidence for condition, included items,
+warranty, and sale unit. It is partial until completion and is not a live inventory denominator.
+Review these gaps and sample the seller evidence before promoting filters more widely. The
+`offer_fact_replay_step` log records D1 reads, writes and statement counts for each bounded step.
+`GET/POST /api/admin/offer-facts/replay` is Access protected; POST takes only an empty JSON object,
+and the client cannot supply a cursor or override the server's batch size.
+
 ## Complete data exports
 
 The **全情報ZIPを生成** action produces ZIP volumes containing **all columns and all retained rows** of the

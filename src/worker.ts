@@ -31,6 +31,7 @@ import {
   updateListingAdminProduct,
 } from "./db/listing-admin-repository.js";
 import { readOfferFactAdmin, updateOfferFactAdmin } from "./db/offer-fact-admin-repository.js";
+import { readOfferFactReplay, stepOfferFactReplay } from "./db/offer-fact-replay-repository.js";
 import type { OfferFactChanges } from "./catalog/offer-fact-decisions.js";
 import {
   listProductCorrectionReports,
@@ -112,6 +113,14 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
 
   async getOfferFacts(listingId: number) {
     return readOfferFactAdmin(this.env.DB, listingId);
+  }
+
+  async getOfferFactReplay() {
+    return readOfferFactReplay(this.env.DB);
+  }
+
+  async stepOfferFactReplay() {
+    return stepOfferFactReplay(this.env.DB);
   }
 
   async updateOfferFacts(listingId: number, changes: OfferFactChanges) {
