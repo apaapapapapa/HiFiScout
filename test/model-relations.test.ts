@@ -201,6 +201,30 @@ test("a failed family decision rolls back its new family and audit together", as
   }
 });
 
+test("catalog deletion requires relationship review and keeps removed-decision audit", async () => {
+  const { db, sqlite } = fixture();
+  try {
+    const fact = (await saveModelFact(db, 700001, input(), actor, AT))!;
+    assert.throws(
+      () => sqlite.exec("DELETE FROM knowledge_catalog_products WHERE id=700001"),
+      /catalog_admin_model_facts_review_required/,
+    );
+    await saveModelFact(
+      db,
+      700001,
+      input({ state: "removed" }),
+      { ...actor, id: fact.id, expectedVersion: 1 },
+      AT,
+    );
+    sqlite.exec("DELETE FROM knowledge_catalog_products WHERE id=700001");
+    assert.equal(await readModelFact(db, fact.id), null);
+    const audit = sqlite.prepare("SELECT * FROM knowledge_catalog_model_fact_audits").all();
+    assert.equal(audit.length, 2);
+  } finally {
+    sqlite.close();
+  }
+});
+
 test("families keep explicit order and symmetric variants canonicalize endpoint order", async () => {
   const { db, sqlite } = fixture();
   try {

@@ -9,8 +9,8 @@ CREATE TABLE knowledge_catalog_model_families (
 
 CREATE TABLE knowledge_catalog_model_facts (
   id TEXT PRIMARY KEY,
-  product_id INTEGER NOT NULL REFERENCES knowledge_catalog_products(id),
-  related_product_id INTEGER REFERENCES knowledge_catalog_products(id),
+  product_id INTEGER NOT NULL REFERENCES knowledge_catalog_products(id) ON DELETE CASCADE,
+  related_product_id INTEGER REFERENCES knowledge_catalog_products(id) ON DELETE CASCADE,
   family_id TEXT REFERENCES knowledge_catalog_model_families(id),
   position INTEGER,
   relation_type TEXT CHECK(relation_type IN ('successor', 'variant')),
@@ -75,8 +75,10 @@ WHERE f.state <> 'removed' AND (
   (f.relation_type = 'variant' AND f.product_id > f.related_product_id)
   OR (family.id IS NOT NULL AND family.manufacturer_id <> p.manufacturer_id)
   OR (target.id IS NOT NULL AND target.manufacturer_id <> p.manufacturer_id AND length(trim(f.manufacturer_justification)) < 10)
-  OR (SELECT COUNT(*) FROM (SELECT id FROM knowledge_catalog_model_facts x WHERE x.state <> 'removed' AND (x.product_id = f.product_id OR x.related_product_id = f.product_id) LIMIT 41)) > 40
-  OR (f.related_product_id IS NOT NULL AND (SELECT COUNT(*) FROM (SELECT id FROM knowledge_catalog_model_facts x WHERE x.state <> 'removed' AND (x.product_id = f.related_product_id OR x.related_product_id = f.related_product_id) LIMIT 41)) > 40)
+  OR ((SELECT COUNT(*) FROM (SELECT id FROM knowledge_catalog_model_facts x WHERE x.state <> 'removed' AND x.product_id = f.product_id LIMIT 41))
+    + (SELECT COUNT(*) FROM (SELECT id FROM knowledge_catalog_model_facts x WHERE x.state <> 'removed' AND x.related_product_id = f.product_id LIMIT 41))) > 40
+  OR (f.related_product_id IS NOT NULL AND ((SELECT COUNT(*) FROM (SELECT id FROM knowledge_catalog_model_facts x WHERE x.state <> 'removed' AND x.product_id = f.related_product_id LIMIT 41))
+    + (SELECT COUNT(*) FROM (SELECT id FROM knowledge_catalog_model_facts x WHERE x.state <> 'removed' AND x.related_product_id = f.related_product_id LIMIT 41))) > 40)
   OR (f.family_id IS NOT NULL AND (SELECT COUNT(*) FROM (SELECT id FROM knowledge_catalog_model_facts x WHERE x.family_id = f.family_id AND x.state <> 'removed' LIMIT 41)) > 40)
   OR (f.state = 'verified' AND (
     p.verification_status <> 'verified' OR (target.id IS NOT NULL AND target.verification_status <> 'verified')
@@ -101,6 +103,17 @@ WHERE f.state <> 'removed' AND (
 CREATE TRIGGER model_fact_validate_insert AFTER INSERT ON knowledge_catalog_model_facts
 BEGIN
   SELECT RAISE(ABORT, 'catalog_model_fact_invalid') WHERE EXISTS (SELECT 1 FROM knowledge_catalog_invalid_model_facts WHERE id = NEW.id);
+END;
+
+-- Active facts need an explicit review before a catalog merge/deletion. Removed facts may cascade;
+-- their audit records deliberately have no catalog foreign key and remain available afterwards.
+CREATE TRIGGER catalog_product_model_fact_guard BEFORE DELETE ON knowledge_catalog_products
+BEGIN
+  SELECT RAISE(ABORT, 'catalog_admin_model_facts_review_required') WHERE EXISTS (
+    SELECT id FROM knowledge_catalog_model_facts WHERE product_id = OLD.id AND state <> 'removed'
+    UNION ALL
+    SELECT id FROM knowledge_catalog_model_facts WHERE related_product_id = OLD.id AND state <> 'removed'
+  );
 END;
 CREATE TRIGGER model_fact_validate_update AFTER UPDATE ON knowledge_catalog_model_facts
 BEGIN
