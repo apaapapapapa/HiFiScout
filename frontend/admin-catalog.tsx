@@ -1975,7 +1975,7 @@ export function CatalogAdmin() {
               <button className="secondary-button" type="button" onClick={closeCreate}>
                 キャンセル
               </button>
-              <button type="submit" disabled={operationBusy}>
+              <button type="submit" disabled={operationBusy || !createDraft.manufacturerId.trim()}>
                 {operationBusy
                   ? "処理中…"
                   : createMode.candidate
