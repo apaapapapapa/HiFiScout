@@ -190,6 +190,7 @@ export function ListingAdmin({
           text: hasFilters ? "検索条件を反映しました。" : "登録商品を表示しています。",
           kind: "success",
         });
+        return true;
       } catch (error) {
         if (request !== searchRequest.current) return;
         setItems([]);
@@ -198,6 +199,7 @@ export function ListingAdmin({
           text: `登録商品の取得に失敗しました: ${listingErrorText(error)}`,
           kind: "error",
         });
+        return false;
       } finally {
         if (request === searchRequest.current) setBusy(false);
       }
@@ -388,10 +390,12 @@ export function ListingAdmin({
         body: JSON.stringify(input),
       });
       closeEdit(true);
-      await loadListings(applied, currentAfterId, history);
+      const refreshed = await loadListings(applied, currentAfterId, history);
       setStatus({
-        text: `登録商品 #${response.listing.id} を保存しました。検索結果にも反映しました。`,
-        kind: "success",
+        text: refreshed
+          ? `登録商品 #${response.listing.id} を保存しました。検索結果にも反映しました。`
+          : `登録商品 #${response.listing.id} は保存済みです。一覧を読み込めなかったため、もう一度検索してください。`,
+        kind: refreshed ? "success" : "error",
       });
     } catch (error) {
       setEditError(`保存に失敗しました: ${listingErrorText(error)}`);

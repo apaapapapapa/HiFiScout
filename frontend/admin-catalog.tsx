@@ -1902,11 +1902,6 @@ export function CatalogAdmin({
               <p className="edit-change-status" data-dirty={mergeStatus ? "warning" : "false"}>
                 {mergeStatus}
               </p>
-              {editError ? (
-                <p role="alert" className="csv-import-error">
-                  {editError}
-                </p>
-              ) : null}
               <div className="dialog-actions">
                 <button
                   className="secondary-button"
@@ -1926,6 +1921,11 @@ export function CatalogAdmin({
                 </button>
               </div>
             </details>
+            {editError ? (
+              <p role="alert" className="csv-import-error">
+                {editError}
+              </p>
+            ) : null}
             <div className="dialog-actions">
               <button className="secondary-button" type="button" onClick={closeEdit}>
                 キャンセル

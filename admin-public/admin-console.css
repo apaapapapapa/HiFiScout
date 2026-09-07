@@ -293,7 +293,7 @@ button,
   padding: 24px;
   gap: 18px;
 }
-.admin-editor .dialog-heading {
+.admin-editor .edit-form > .dialog-heading {
   position: sticky;
   z-index: 4;
   top: -24px;
@@ -302,7 +302,7 @@ button,
   background: #fff;
   border-bottom: 1px solid var(--border);
 }
-.admin-editor .dialog-actions {
+.admin-editor .edit-form > .dialog-actions {
   position: sticky;
   z-index: 4;
   bottom: -24px;
@@ -520,12 +520,12 @@ button,
   .admin-editor .edit-form {
     padding: 20px;
   }
-  .admin-editor .dialog-heading {
+  .admin-editor .edit-form > .dialog-heading {
     top: -20px;
     margin: -20px -20px 0;
     padding: 18px 20px;
   }
-  .admin-editor .dialog-actions {
+  .admin-editor .edit-form > .dialog-actions {
     bottom: -20px;
     margin: 0 -20px -20px;
     padding-inline: 20px;
@@ -626,4 +626,91 @@ button,
 }
 .admin-edit-diff td:last-child {
   background: #f2f3ef;
+}
+
+.admin-reports .section-heading {
+  margin-bottom: 20px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.admin-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  gap: 14px;
+  align-items: end;
+}
+.admin-filter-grid label {
+  display: grid;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 650;
+}
+.admin-filter-grid input,
+.admin-filter-grid select {
+  width: 100%;
+  min-width: 0;
+}
+.admin-reports .table-scroll {
+  overflow-x: auto;
+}
+.admin-reports td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+.admin-reports td:last-child {
+  min-width: 220px;
+}
+.admin-reports textarea {
+  width: 100%;
+  min-height: 84px;
+  margin: 10px 0;
+  padding: 10px;
+  font: inherit;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  resize: vertical;
+}
+.admin-reports textarea:focus-visible {
+  outline: 3px solid var(--accent-soft);
+  outline-offset: 2px;
+  border-color: var(--accent);
+}
+.admin-reports .offer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.admin-reports .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+@media (max-width: 1120px) {
+  .admin-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 760px) {
+  .admin-filter-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .admin-reports .table-scroll {
+    padding: 10px;
+  }
+  .admin-reports td:last-child {
+    min-width: 0;
+  }
+  .admin-reports textarea,
+  .admin-reports .offer-actions {
+    grid-column: 1 / -1;
+  }
+  .admin-reports textarea {
+    font-size: 16px;
+  }
 }

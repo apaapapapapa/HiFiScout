@@ -137,6 +137,7 @@ test("an expired session preserves an edit and only writes after mock reauthenti
   await expect(admin.catalog.root.locator('[role="status"]').first()).toContainText(
     "ログインの有効期限が切れたか",
   );
+  await expect(admin.catalog.editDialog.getByRole("alert")).toBeVisible();
   expect(app.state.writes.catalog).toBe(0);
   expect(app.state.catalog.canonicalName).toBe("LUXMAN D-1000");
 

@@ -919,3 +919,55 @@ test("mobile task selection and listing editing fit the viewport", async ({ page
   await admin.listings.saveButton().click();
   await expect(admin.listings.listingRow(21)).toContainText("シルバー");
 });
+
+test("correction reports submit filters explicitly and retain the typed audit note", async ({
+  page,
+  mount,
+}) => {
+  let reads = 0;
+  let appliedNote = "";
+  const report = {
+    id: 31,
+    productKey: "c-11",
+    listingProductId: null,
+    reason: "wrong_model",
+    explanation: "型番を確認してください。",
+    snapshot: {
+      manufacturer: "LUXMAN",
+      model: "D-1000",
+      category: "デジタル",
+      shopKey: "audiounion",
+    },
+    status: "open",
+    resolutionNote: "",
+    createdAt: "2026-09-07T00:00:00Z",
+    updatedAt: "2026-09-07T00:00:00Z",
+    resolvedAt: null,
+  };
+  await page.route("**/api/admin/correction-reports**", (route) => {
+    if (route.request().method() === "PATCH") {
+      appliedNote = route.request().postDataJSON().note;
+      report.status = "rejected";
+      report.resolutionNote = appliedNote;
+      return route.fulfill({ json: report });
+    }
+    reads += 1;
+    return route.fulfill({ json: { items: [report], nextBeforeId: null, hasMore: false } });
+  });
+  const component = await mount("frontend/admin-console/Default");
+  const admin = new AdminConsolePage(component, page);
+  await admin.sectionLink("誤り報告").click();
+  const reports = component.getByRole("region", { name: "情報の誤り報告" });
+  const note = reports.getByRole("textbox", { name: "監査メモ" });
+  await expect(note).toBeVisible();
+  expect(reads).toBe(1);
+  await reports.getByRole("textbox", { name: "店舗ID" }).fill("audiounion");
+  expect(reads).toBe(1);
+  await reports.getByRole("button", { name: "絞り込む" }).click();
+  await expect.poll(() => reads).toBe(2);
+  await note.fill("販売店の型番と一致することを確認しました。");
+  await expect(note).toHaveValue("販売店の型番と一致することを確認しました。");
+  await reports.getByRole("button", { name: "却下", exact: true }).click();
+  await expect.poll(() => appliedNote).toBe("販売店の型番と一致することを確認しました。");
+  await expect(note).toHaveCount(0);
+});
