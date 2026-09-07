@@ -63,8 +63,8 @@ function product(overrides: Partial<DisplayProduct> = {}): DisplayProduct {
 function filters(overrides: Partial<ProductFilters> = {}): ProductFilters {
   return {
     q: "",
-    shop: "",
-    manufacturer: "",
+    shop: [],
+    manufacturer: [],
     category: "",
     minPrice: "",
     maxPrice: "",
@@ -158,6 +158,28 @@ test("a snapshot keeps exactly the rendered fields and detaches the nested offer
   assert.deepEqual(snapshot.representative_offer, source.representative_offer);
 });
 
+test("favorite selections use OR within each field and AND across fields", () => {
+  const item = product();
+  const shop = item.representative_offer!.shop_key;
+  assert.equal(
+    favoriteMatchesFilters(
+      item,
+      filters({ manufacturer: ["Other", "TAD"], shop: ["missing", shop] }),
+      "",
+      NOW,
+    ),
+    true,
+  );
+  assert.equal(
+    favoriteMatchesFilters(item, filters({ manufacturer: ["Other"], shop: [shop] }), "", NOW),
+    false,
+  );
+  assert.equal(
+    favoriteMatchesFilters(item, filters({ manufacturer: ["TAD"], shop: ["missing"] }), "", NOW),
+    false,
+  );
+});
+
 test("free-text favorite search covers the same terms as the server entity index", () => {
   assert.equal(favoriteMatchesFilters(product(), filters({ q: "me1tx" }), "", NOW), true);
   assert.equal(favoriteMatchesFilters(product(), filters({ q: "ブックシェルフ" }), "", NOW), true);
@@ -218,8 +240,8 @@ test("stock, recency and price-drop toggles each narrow the favorites view", () 
 
 test("the shop filter is evaluated against the snapshot's own offer", () => {
   const stored = product({ representative_offer: offer({ shop_key: "formusic" }) });
-  assert.equal(favoriteMatchesFilters(stored, filters({ shop: "formusic" }), "", NOW), true);
-  assert.equal(favoriteMatchesFilters(stored, filters({ shop: "hifido" }), "", NOW), false);
+  assert.equal(favoriteMatchesFilters(stored, filters({ shop: ["formusic"] }), "", NOW), true);
+  assert.equal(favoriteMatchesFilters(stored, filters({ shop: ["hifido"] }), "", NOW), false);
 });
 
 test("price sorting pushes unpriced products last in both directions", () => {
@@ -299,7 +321,7 @@ test("the favorites view filters then sorts", () => {
     legacyIds: new Set<number>(),
   };
 
-  const results = favoriteResults(store, filters({ shop: "hifido", sort: "priceAsc" }), "", NOW);
+  const results = favoriteResults(store, filters({ shop: ["hifido"], sort: "priceAsc" }), "", NOW);
 
   assert.deepEqual(
     results.map((item) => item.key),

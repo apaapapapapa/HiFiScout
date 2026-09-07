@@ -165,7 +165,8 @@ test("changing a shop filter refreshes search and exposes a removable filter chi
   if (!firstShopValue) {
     throw new Error("Expected at least one selectable shop option");
   }
-  const firstShopLabel = (await firstShopOption.textContent())?.trim() || firstShopValue;
+  const firstShopLabel =
+    (await firstShopOption.getAttribute("aria-label"))?.trim() || firstShopValue;
   const firstShopFilterLabel = firstShopLabel.replace(/\s+\(\d+\)$/u, "");
   const filteredRequestPromise = page.waitForRequest((request) => {
     const url = new URL(request.url());

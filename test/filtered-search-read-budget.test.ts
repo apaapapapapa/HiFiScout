@@ -50,6 +50,7 @@ test("shop totals and pages stay scoped when other shops grow", async () => {
       for (const filter of [
         "shop=hifido&inStock=true",
         "shop=hifido&inStock=true&manufacturer=luxman",
+        "shop=hifido&shop=missing&inStock=true&manufacturer=luxman&manufacturer=missing",
       ]) {
         const measured = accountReads(db);
         const result = await searchProducts(

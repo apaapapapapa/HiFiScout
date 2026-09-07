@@ -42,6 +42,7 @@ export interface QueryParameterContract {
   description: string;
   required?: boolean;
   repeatable?: boolean;
+  maxItems?: number;
   commaSeparated?: boolean;
   maxLength?: number;
   normalizedMaxLength?: number;
@@ -117,6 +118,8 @@ export function validateQueryContract(
   for (const parameter of parameters) {
     const values = params.getAll(parameter.name);
     if (!parameter.repeatable && values.length > 1) return `${parameter.name}_repeated`;
+    if (parameter.maxItems != null && values.length > parameter.maxItems)
+      return `${parameter.name}_too_many`;
   }
 
   for (const parameter of parameters) {
@@ -210,7 +213,13 @@ export function openApiQueryParameter(parameter: QueryParameterContract): Record
     required: parameter.required ?? false,
     description: parameter.description,
     ...(arrayLike ? { style: "form", explode: Boolean(parameter.repeatable) } : {}),
-    schema: arrayLike ? { type: "array", items: scalarSchema } : scalarSchema,
+    schema: arrayLike
+      ? {
+          type: "array",
+          items: scalarSchema,
+          ...(parameter.maxItems != null ? { maxItems: parameter.maxItems } : {}),
+        }
+      : scalarSchema,
   };
 }
 

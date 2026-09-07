@@ -173,14 +173,14 @@ function relevanceOrder(q: string, plan: FtsSearchPlan | null, rankBinds: unknow
 
 /** Product-level filters: they describe the product, so they never look at an individual offer. */
 function addProductFilters(query: ProductQuery, where: string[], binds: unknown[]): void {
-  if (query.manufacturer) {
+  if (query.manufacturer.length) {
     // A visible canonical facet can race ahead of resolver replay. Keep matching the old ids, and
     // also the seller presentation itself so a Japanese-only alias whose old id was a badge-specific
     // hash (for example `【中古品】ラックスマン`) cannot disappear during that window.
-    const manufacturerIds = manufacturerFilterIds(query.manufacturer);
-    const manufacturerPresentations = manufacturerFilterPresentations(query.manufacturer).map(
-      (presentation) => presentation.toLowerCase().replace(/\s+/gu, ""),
-    );
+    const manufacturerIds = [...new Set(query.manufacturer.flatMap(manufacturerFilterIds))];
+    const manufacturerPresentations = [
+      ...new Set(query.manufacturer.flatMap(manufacturerFilterPresentations)),
+    ].map((presentation) => presentation.toLowerCase().replace(/\s+/gu, ""));
     where.push(`(
       e.manufacturer_id IN (SELECT value FROM json_each(?))
       OR ${NORMALIZED_MANUFACTURER_PRESENTATION_SQL} IN (SELECT value FROM json_each(?))
@@ -259,9 +259,11 @@ function addProductFilters(query: ProductQuery, where: string[], binds: unknown[
 function offerFilter(query: ProductQuery): OfferFilter {
   const predicates: string[] = [];
   const binds: unknown[] = [];
-  if (query.shop) {
-    predicates.push("p.shop_key = ?");
-    binds.push(query.shop);
+  if (query.shop.length) {
+    predicates.push(
+      query.shop.length === 1 ? "p.shop_key = ?" : "p.shop_key IN (SELECT value FROM json_each(?))",
+    );
+    binds.push(query.shop.length === 1 ? query.shop[0] : JSON.stringify(query.shop));
   }
   if (query.inStock) predicates.push("p.stock_status = 'in_stock'");
   if (query.newOnly) predicates.push(newOfferPredicate("p"));
@@ -282,7 +284,7 @@ function offerFilter(query: ProductQuery): OfferFilter {
     sql: predicates.length ? ` AND ${predicates.join(" AND ")}` : "",
     binds,
     active: predicates.length > 0,
-    shopScoped: Boolean(query.shop),
+    shopScoped: query.shop.length > 0,
   };
 }
 
@@ -351,7 +353,7 @@ function needsRequestScopedSort(
 /** A stable cursor namespace for an ordering derived from request-level offer predicates. */
 function offerSortScopeKey(query: ProductQuery): string {
   return [
-    query.shop,
+    JSON.stringify([...query.shop].sort()),
     query.inStock ? "1" : "0",
     query.newOnly ? "1" : "0",
     query.priceDropped ? "1" : "0",
@@ -462,7 +464,7 @@ export async function searchProducts(
   const filter = offerFilter(query);
   const inStockOnly = Boolean(
     query.inStock &&
-    !query.shop &&
+    query.shop.length === 0 &&
     !query.newOnly &&
     !query.priceDropped &&
     query.minPrice == null &&

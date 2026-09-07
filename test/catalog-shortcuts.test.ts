@@ -24,8 +24,8 @@ test("a shortcut replaces equipment criteria together and preserves the shopper'
   const filters = { ...values, ...state, favoritesOnly: false };
   const next = applyCatalogShortcut(filters, CATALOG_SHORTCUTS[0]);
   assert.equal(next.q, "Limited");
-  assert.equal(next.manufacturer, "LUXMAN");
-  assert.equal(next.shop, "hifido");
+  assert.deepEqual(next.manufacturer, ["LUXMAN"]);
+  assert.deepEqual(next.shop, ["hifido"]);
   assert.equal(next.minPrice, "50000");
   assert.equal(next.maxPrice, "100000");
   assert.equal(next.recentOnly, true);
