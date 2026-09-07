@@ -11,6 +11,7 @@
     "test:unit:shard:2": "vp test run --reporter=dot --shard=2/2",
     "benchmark:parser": "vp exec tsx scripts/parser-cpu-benchmark.ts --check",
     "test:e2e": "vp exec playwright test --config e2e/playwright.config.ts",
+    "test:e2e:admin": "vp run build:frontend:admin && vp exec playwright test --config e2e/playwright.admin.config.ts",
     "fix": "vp run format && vp run lint:fix",
     "check": "vp run lint && vp run format:check && vp run check:no-js-source && vp run typecheck && vp run benchmark:parser && vp run test:unit",
     "verify": "vp run fix && vp run check",

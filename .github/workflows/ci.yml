@@ -137,7 +137,10 @@ jobs:
       - name: Run Playwright component suite
         if: steps.scope.outputs.application == 'true'
         run: vp exec playwright test --config e2e/playwright.components.config.ts
-      - name: Preserve component screenshots and failure traces
+      - name: Run authenticated admin Playwright suite with local Access and RPC mocks
+        if: steps.scope.outputs.application == 'true'
+        run: vp run test:e2e:admin
+      - name: Preserve component and admin screenshots and failure traces
         if: always() && steps.scope.outputs.application == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

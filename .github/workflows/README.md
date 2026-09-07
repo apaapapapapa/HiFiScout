@@ -14,7 +14,7 @@ HiFiScout keeps workflow orchestration thin. Domain behavior, repair logic, and 
 
 ## Validation
 
-- `ci.yml` — source/toolchain checks, sharded Vitest, parser performance, local D1 integration, React browser component tests, builds, and dependency security. Short checks share the `static-checks` runner. The component job also populates the shared Chromium and pinned Noto CJK caches; unit jobs need no browser.
+- `ci.yml` — source/toolchain checks, sharded Vitest, parser performance, local D1 integration, React browser component tests, authenticated admin browser tests with local Access/RPC mocks, builds, and dependency security. Short checks share the `static-checks` runner. The component job runs both browser suites and populates the shared Chromium and pinned Noto CJK caches; unit jobs need no browser.
 - `docs.yml` — architecture boundary check plus deterministic documentation build/publish. Its separate best-effort AI refresh job may update only `docs/ai-generated/**`, validates candidates with Archify and a full VitePress build, and opens/updates a documentation PR. Missing credentials, Codex usage limits, timeouts, invalid output, or publication restrictions retain the last committed snapshot and do not block deterministic docs publication.
 - `codeql.yml` — CodeQL security analysis.
 - `secret-scan.yml` — secret scanning.

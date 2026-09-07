@@ -43,6 +43,29 @@ server. This is the `component` job in CI, distinct from deployed E2E. Public ca
 
 ### 4. E2E — minimal deployed smoke layer
 
+#### Local authenticated admin coverage
+
+`vp run test:e2e:admin` builds the production admin frontend and runs
+`e2e/playwright.admin.config.ts`. Install Chromium first with `vp exec playwright install chromium`.
+Each test creates an isolated HTTP server on an ephemeral `127.0.0.1` port, an RSA key, and fresh
+in-memory `CATALOG_ADMIN` RPC fixtures. It serves the built HTML/assets through the real
+`src/admin/entry.ts` entry, including Access JWT verification, request validation and security headers.
+
+Only the Access issuer/JWKS and the Service Binding are mocked. Tests inject locally signed
+`cf-access-jwt-assertion` headers with `app.headers()`; use `"expired"`, `"wrong-audience"` or
+`"invalid-signature"` for rejection cases, or omit the header for unauthenticated requests.
+No Cloudflare login, credentials, deployed Worker, D1 or seller calls are needed. Unexpected Worker
+fetches and unimplemented RPC operations fail the test. `E2E_BASE_URL` is deliberately ignored.
+There is no production authentication bypass, test token, login endpoint or deployment config flag.
+
+The suite covers protected HTML/assets/read and write APIs, catalog/listing edits, session expiry
+during editing and reauthentication, plus same-origin/JSON guards. It runs in CI's `component` job
+with failure traces/screenshots retained alongside the gallery suite. These are local browser/Worker
+boundary tests, not a simulation of Cloudflare's interactive login challenge or proof of D1 persistence.
+Domain logic, CSV variants and infrastructure behavior remain in their existing lower-level suites.
+
+#### Deployed public smoke coverage
+
 Playwright lives in `e2e/` so Chromium and the Playwright runner are not dependencies of the fast unit-test job.
 
 The E2E suite validates only critical wiring that smaller tests cannot prove:
@@ -72,7 +95,8 @@ environment.
 
 The `CI` workflow runs source/toolchain checks, the sharded Vitest suite, parser performance checks,
 local D1 migrations, `scripts/verify-search-integration.ts`,
-`scripts/verify-listing-admin-overrides.ts`, React component browser tests, and build/dry-run checks.
+`scripts/verify-listing-admin-overrides.ts`, React component and mocked-auth admin browser tests,
+and build/dry-run checks.
 The `component` job installs Chromium on a cache miss and saves the browser cache on main for
 post-deploy E2E. Japanese screenshot fonts come from a checksum-pinned Ubuntu Noto CJK package and
 are cached as font files, avoiding apt repository updates on every run. Unit-test jobs need no browser.
