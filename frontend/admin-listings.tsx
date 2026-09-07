@@ -564,7 +564,11 @@ export function ListingAdmin() {
                           >
                             編集
                           </button>
-                          <button type="button" className="secondary-button" onClick={() => setFactsEditing(product.id)}>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => setFactsEditing(product.id)}
+                          >
                             出品条件
                           </button>
                         </td>
@@ -613,7 +617,11 @@ export function ListingAdmin() {
       ) : null}
 
       {factsEditing !== null ? (
-        <AdminOfferFacts key={factsEditing} listingId={factsEditing} onClose={() => setFactsEditing(null)} />
+        <AdminOfferFacts
+          key={factsEditing}
+          listingId={factsEditing}
+          onClose={() => setFactsEditing(null)}
+        />
       ) : null}
 
       <dialog

@@ -444,7 +444,10 @@ test("admin listings screen uses the shared POM for tab, search, and color edit 
   await expect(admin.listings.listingRow(21)).toContainText("色: ブラック/ゴールド");
 });
 
-test("offer editor saves only changed decisions and can restore seller authority", async ({ page, mount }) => {
+test("offer editor saves only changed decisions and can restore seller authority", async ({
+  page,
+  mount,
+}) => {
   const decisions: Record<string, string> = {};
   const received: Record<string, string>[] = [];
   await page.route("**/api/admin/listings/21/offer-facts", async (route) => {
@@ -456,13 +459,22 @@ test("offer editor saves only changed decisions and can restore seller authority
         else decisions[id] = value;
       }
     }
-    await route.fulfill({ json: {
-      listingId: 21, title: listingProduct.title, conditionText: "リモコンあり", sourceUrl: listingProduct.sourceUrl,
-      facts: [
-        { factId: "remote_control", state: "present", source: "seller" },
-        ...Object.entries(decisions).map(([factId, state]) => ({ factId, state, source: "manual" })),
-      ],
-    } });
+    await route.fulfill({
+      json: {
+        listingId: 21,
+        title: listingProduct.title,
+        conditionText: "リモコンあり",
+        sourceUrl: listingProduct.sourceUrl,
+        facts: [
+          { factId: "remote_control", state: "present", source: "seller" },
+          ...Object.entries(decisions).map(([factId, state]) => ({
+            factId,
+            state,
+            source: "manual",
+          })),
+        ],
+      },
+    });
   });
   const component = await mount("frontend/admin-console/Default");
   const admin = new AdminConsolePage(component, page);

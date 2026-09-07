@@ -33,7 +33,9 @@ export async function updateOfferFactAdmin(
   const statements = Object.entries(parsed).map(([id, state]) =>
     state === "inherit"
       ? db
-          .prepare("DELETE FROM product_offer_facts WHERE product_id = ? AND fact_id = ? AND source = 'manual'")
+          .prepare(
+            "DELETE FROM product_offer_facts WHERE product_id = ? AND fact_id = ? AND source = 'manual'",
+          )
           .bind(listingId, id)
       : db
           .prepare(`INSERT INTO product_offer_facts
