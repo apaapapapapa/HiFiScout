@@ -1280,8 +1280,15 @@ export function PublicApp() {
           <p id="favorites-note" className="favorites-note" hidden={!favoriteMode}>
             お気に入りはこの端末にのみ保存されます。価格や在庫は最後に表示した時点の情報です。
           </p>
-          {favoriteMode ? <FavoriteWatch key={filterUrlParams(appliedFilters, "list").toString()}
-            products={visibleProducts} api={api} onSnapshots={refreshFavoriteSnapshots} shopName={shopName} /> : null}
+          {favoriteMode ? (
+            <FavoriteWatch
+              key={filterUrlParams(appliedFilters, "list").toString()}
+              products={visibleProducts}
+              api={api}
+              onSnapshots={refreshFavoriteSnapshots}
+              shopName={shopName}
+            />
+          ) : null}
           {invalidPrice ? (
             <p className="field-error" role="status">
               価格条件を修正してください。表示中の結果は更新していません。

@@ -692,20 +692,38 @@ test("favorite save failures are visible and removal can be undone", async ({ pa
   await expect(page.locator(".fav")).toHaveAttribute("aria-pressed", "true");
 });
 
-test("favorite revisit compares observations once and preserves the baseline on a failed retry", async ({ page, mount }) => {
+test("favorite revisit compares observations once and preserves the baseline on a failed retry", async ({
+  page,
+  mount,
+}) => {
   await mockCatalog(page);
   let calls = 0;
   await page.route("**/api/product-search/c-1", (route) => {
     calls++;
     if (calls > 1) return route.fulfill({ status: 503, json: {} });
-    return route.fulfill({ json: { product: product({ lowest_price_yen: 90000 }), offers: [offer({ price_yen: 90000 })] } });
+    return route.fulfill({
+      json: {
+        product: product({ lowest_price_yen: 90000 }),
+        offers: [offer({ price_yen: 90000 })],
+      },
+    });
   });
-  await page.evaluate(() => localStorage.setItem("hifiscout:watch-observations:v1", JSON.stringify([
-    { key: "c-1", checkedAt: "2026-09-01T00:00:00Z", complete: true, offers: [
-      { id: 1, shopKey: "shop-a", priceYen: 100000, stock: "in_stock" },
-      { id: 2, shopKey: "shop-b", priceYen: 110000, stock: "in_stock" },
-    ] },
-  ])));
+  await page.evaluate(() =>
+    localStorage.setItem(
+      "hifiscout:watch-observations:v1",
+      JSON.stringify([
+        {
+          key: "c-1",
+          checkedAt: "2026-09-01T00:00:00Z",
+          complete: true,
+          offers: [
+            { id: 1, shopKey: "shop-a", priceYen: 100000, stock: "in_stock" },
+            { id: 2, shopKey: "shop-b", priceYen: 110000, stock: "in_stock" },
+          ],
+        },
+      ]),
+    ),
+  );
   await mount("frontend/public-app/Default");
   await page.locator(".fav").click();
   await page.locator("#favoritesOnly").check();
@@ -718,7 +736,9 @@ test("favorite revisit compares observations once and preserves the baseline on 
   const saved = await page.evaluate(() => localStorage.getItem("hifiscout:watch-observations:v1"));
   await watch.getByRole("button", { name: "この10件を再確認", exact: true }).click();
   await expect(watch).toContainText("前回の記録を保持しています");
-  expect(await page.evaluate(() => localStorage.getItem("hifiscout:watch-observations:v1"))).toBe(saved);
+  expect(await page.evaluate(() => localStorage.getItem("hifiscout:watch-observations:v1"))).toBe(
+    saved,
+  );
   expect(calls).toBe(2);
 });
 
