@@ -146,17 +146,22 @@ test("equipment shortcuts issue one combined search and retain budget and query"
   mount,
 }) => {
   const seen = await mockCatalog(page);
-  await page.evaluate(() =>
-    history.replaceState(
-      null,
-      "",
-      "/?q=Reference&maxPrice=100000&category=PER.HEADPHONE&feature=dac&facet=acoustic_design:open_back",
-    ),
-  );
   await mount("frontend/public-app/Default");
   await expect(page.locator(".card")).toHaveCount(1);
+  await page.locator("#q").fill("Reference");
+  await expect.poll(() => seen.searches.at(-1)?.searchParams.get("q")).toBe("Reference");
+  await page.locator("#maxPrice").fill("100000");
+  await expect.poll(() => seen.searches.at(-1)?.searchParams.get("maxPrice")).toBe("100000");
+  await page.locator("#category").selectOption("ANA.TAPE");
+  await page.getByText("機能・仕様で詳しく絞り込む", { exact: true }).click();
+  await page.getByLabel("DAC搭載", { exact: true }).selectOption("dac");
+  await page.locator("#facet-supported_media-cassette").check();
+  await expect
+    .poll(() => seen.searches.at(-1)?.searchParams.getAll("facet"))
+    .toEqual(["supported_media:cassette"]);
+  const before = seen.searches.length;
   await page.getByRole("button", { name: "ブックシェルフ", exact: true }).click();
-  await expect.poll(() => seen.searches.length).toBe(2);
+  await expect.poll(() => seen.searches.length).toBe(before + 1);
   const params = seen.searches.at(-1)!.searchParams;
   expect(params.get("category")).toBe("SPK.LOUDSPEAKER");
   expect(params.getAll("facet")).toEqual(["form_factor:bookshelf"]);

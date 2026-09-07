@@ -13,8 +13,10 @@
 .catalog-shortcuts { margin-top: 12px; }
 .shortcut-label,
 .shortcut-help { color: #555; font-size: 12px; }
-.catalog-shortcuts .button-secondary { padding: 6px 12px; font-size: 12px; }
-.catalog-shortcuts details { flex-basis: 100%; }
+.catalog-shortcuts .button-secondary { padding: 6px 12px; font: inherit; font-size: 12px; border: 1px solid #e5e5e5; border-radius: 999px; background: #fff; color: #191817; cursor: pointer; }
+.catalog-shortcuts .button-secondary:focus-visible { outline: 2px solid #191817; outline-offset: 2px; }
+.catalog-shortcuts .button-secondary:disabled { opacity: .5; cursor: default; }
+.catalog-shortcuts details[open] { flex-basis: 100%; }
 .catalog-shortcuts summary { width: fit-content; cursor: pointer; font-size: 12px; }
 .shortcut-options { margin-top: 8px; }
 .shortcut-help { flex-basis: 100%; margin: 0; }
