@@ -1,5 +1,5 @@
+import { effectiveManufacturerAliases, scopedAliasCache } from "./manufacturer-alias-scope.js";
 import {
-  bootstrapManufacturers,
   isManufacturerPlaceholder,
   manufacturerPrefixPattern,
   normalizeManufacturerKey,
@@ -30,42 +30,15 @@ function clean(value: unknown = ""): string {
   return String(value).normalize("NFKC").replace(/\s+/g, " ").trim();
 }
 
-function bootstrapAliases(): ManufacturerAliasEvidence[] {
-  return bootstrapManufacturers().flatMap((manufacturer) =>
-    [manufacturer.name, ...manufacturer.aliases].map((alias) => ({
-      manufacturerId: manufacturer.id,
-      canonicalName: manufacturer.name,
-      alias,
-      normalizedAlias: normalizeManufacturerKey(alias),
-      verificationStatus: "verified" as const,
-      source: "code_bootstrap",
-      ruleVersion: MANUFACTURER_RESOLVER_VERSION,
-    })),
-  );
-}
-
-function allAliases(operationalAliases: readonly ManufacturerAliasEvidence[]) {
-  const rows = [...operationalAliases, ...bootstrapAliases()]
-    .map((row) => ({
-      ...row,
-      normalizedAlias: normalizeManufacturerKey(row.normalizedAlias || row.alias),
-    }))
-    .filter((row) => row.normalizedAlias && row.verificationStatus !== "rejected");
-  const seen = new Set<string>();
-  return rows.filter((row) => {
-    const key = `${row.manufacturerId}\u0000${row.normalizedAlias}\u0000${row.verificationStatus}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
 function prepareAliases(
   operationalAliases: readonly ManufacturerAliasEvidence[],
 ): PreparedManufacturerAliases {
   const exact = new Map<string, ManufacturerAliasEvidence[]>();
   const prefixes: { row: ManufacturerAliasEvidence; pattern: RegExp }[] = [];
-  for (const row of allAliases(operationalAliases)) {
+  for (const row of effectiveManufacturerAliases(
+    operationalAliases,
+    MANUFACTURER_RESOLVER_VERSION,
+  )) {
     const matches = exact.get(row.normalizedAlias) || [];
     matches.push(row);
     exact.set(row.normalizedAlias, matches);
@@ -253,8 +226,8 @@ function resolvePreparedManufacturer(
 export function createManufacturerResolver(
   operationalAliases: readonly ManufacturerAliasEvidence[] = [],
 ): ManufacturerResolver {
-  const aliases = prepareAliases(operationalAliases);
-  return (input) => resolvePreparedManufacturer(input, aliases);
+  const aliases = scopedAliasCache(operationalAliases, prepareAliases);
+  return (input) => resolvePreparedManufacturer(input, aliases(input.shopKey));
 }
 
 /** Pure, deterministic one-off resolution over bootstrap plus D1-provided alias evidence. */
@@ -274,6 +247,7 @@ export function resolveManufacturer(
 export function applyManufacturerResolution(
   product: NormalizedCatalogProduct,
   aliasesOrResolver: readonly ManufacturerAliasEvidence[] | ManufacturerResolver = [],
+  shopKey = "",
 ): NormalizedCatalogProduct {
   const resolver =
     typeof aliasesOrResolver === "function"
@@ -281,6 +255,7 @@ export function applyManufacturerResolution(
       : createManufacturerResolver(aliasesOrResolver);
   const resolution = resolver({
     rawManufacturer: product.rawManufacturer,
+    shopKey,
     manufacturerCandidate: product.rawManufacturer ? product.manufacturer : "",
     title: product.title,
   });

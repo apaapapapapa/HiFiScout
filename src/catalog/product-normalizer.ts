@@ -120,6 +120,7 @@ export function normalizeCatalogProduct(
   const manufacturerCandidate = clean(product.manufacturer || rawManufacturer);
   const rawCategory = clean(product.rawCategory ?? "");
   const manufacturer = resolveManufacturer({
+    shopKey: context.shopKey,
     rawManufacturer,
     manufacturerCandidate,
     title: product.title,

@@ -449,3 +449,16 @@ the preview bounds or missing products produce individual sample errors.
 
 Rule versions and the observation time accompany results. The proposed values are explicitly before
 catalog rematching; existing manual decisions remain visible. Changing input clears the old comparison.
+
+### メーカー別名の適用範囲
+
+メーカー照合と型番からのメーカー表記除去は、同じ別名辞書とショップ範囲を使う。
+全ショップ共通の別名は既存テーブル、ショップ固有の別名は
+`knowledge_catalog_shop_manufacturer_aliases` に保存する。同じメーカー・正規化別名の
+ショップ指定は、そのショップでの共通指定を上書きする。他メーカーとの表記衝突は
+引き続き未確定候補になり、ショップ指定だけで別メーカーを強制確定しない。
+
+`admin_alias_control` による無効化は組み込みの別名にも適用する。従来の未採用提案を
+意味する `rejected` は、組み込み辞書を無効化しない。ショップ別のコンパイル結果は
+バッチ内で再利用し、商品ごとに辞書を問い合わせない。辞書の変更は対象商品の明示的な
+再処理で反映するため、この保存形式の追加だけでは全商品のルール版を更新しない。

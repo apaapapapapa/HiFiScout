@@ -110,7 +110,7 @@ export async function resolveProductCatalogFields(
   const modelResolver = createModelResolver(evidence);
   return products.map((product) =>
     applyModelResolution(
-      applyManufacturerResolution(product, manufacturerResolver),
+      applyManufacturerResolution(product, manufacturerResolver, options.shopKey),
       modelResolver,
       options.shopKey,
     ),

@@ -1155,6 +1155,8 @@ export type ManufacturerVerificationStatus = "pending" | "verified" | "rejected"
 
 /** D1-backed alias evidence passed into the pure manufacturer resolver. */
 export interface ManufacturerAliasEvidence {
+  /** Empty/omitted applies globally; otherwise only this shop may use the alias. */
+  shopKey?: string;
   manufacturerId: string;
   canonicalName: string;
   alias: string;
@@ -1165,6 +1167,7 @@ export interface ManufacturerAliasEvidence {
 }
 
 export interface ManufacturerResolutionInput {
+  shopKey?: string;
   rawManufacturer?: unknown;
   manufacturerCandidate?: unknown;
   title?: unknown;

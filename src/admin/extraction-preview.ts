@@ -95,6 +95,7 @@ export async function previewAdminExtraction(
     if (!manufacturer) throw new Error("仮ルールには確認済みメーカーを選択してください。");
     draftEvidence = {
       manufacturerId: input.draftAlias.manufacturerId,
+      shopKey: input.draftAlias.shopKey,
       canonicalName: manufacturer.canonical_name,
       alias: input.draftAlias.alias,
       normalizedAlias: normalizeManufacturerKey(input.draftAlias.alias),
@@ -107,7 +108,19 @@ export async function previewAdminExtraction(
     manufacturer: createManufacturerResolver(aliases),
     model: createModelResolver(aliases),
   };
-  const proposedAliases = draftEvidence ? [draftEvidence, ...aliases] : aliases;
+  const proposedAliases = draftEvidence
+    ? [
+        draftEvidence,
+        ...aliases.filter(
+          (row) =>
+            !(
+              row.manufacturerId === draftEvidence.manufacturerId &&
+              row.normalizedAlias === draftEvidence.normalizedAlias &&
+              (row.shopKey ?? "") === (draftEvidence.shopKey ?? "")
+            ),
+        ),
+      ]
+    : aliases;
   const draftResolvers = draftEvidence
     ? {
         manufacturer: createManufacturerResolver(proposedAliases),
@@ -175,7 +188,7 @@ export async function previewAdminExtraction(
       : source.categoryEvidence;
     const extract = (resolvers: typeof baseResolvers) => {
       let product = applyModelResolution(
-        applyManufacturerResolution(source, resolvers.manufacturer),
+        applyManufacturerResolution(source, resolvers.manufacturer, raw.shopKey),
         resolvers.model,
         raw.shopKey,
       );

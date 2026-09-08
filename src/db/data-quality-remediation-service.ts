@@ -298,6 +298,7 @@ async function replayDerivedListing(
   const modelResolver = createModelResolver(aliases);
   const manufacturer = manufacturerResolver({
     rawManufacturer: row.raw_manufacturer,
+    shopKey: row.shop_key,
     manufacturerCandidate: row.raw_manufacturer ? row.manufacturer : "",
     title: row.title,
   });

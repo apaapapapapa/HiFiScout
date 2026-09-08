@@ -474,3 +474,20 @@ test("unknown manufacturer values aggregate by normalized raw value and impact",
   assert.match(db.calls[0].sql, /listing_count DESC, shop_count DESC/);
   assert.deepEqual(db.calls[0].binds, [25]);
 });
+
+test("explicit admin rejection schedules its first replay page, while ordinary rejection does not", async () => {
+  const rejected = {
+    manufacturerId: "luxman",
+    canonicalName: "LUXMAN",
+    alias: "ラックスマン",
+    verificationStatus: "rejected" as const,
+    source: "admin_alias_control",
+  };
+  const result = await saveManufacturerAliasAndReprocess(captureDatabase(), rejected);
+  assert.ok(result.replay);
+  const ordinary = await saveManufacturerAliasAndReprocess(captureDatabase(), {
+    ...rejected,
+    source: "observed_listing",
+  });
+  assert.equal(ordinary.replay, null);
+});

@@ -279,6 +279,10 @@ test("model replay keeps empty raw evidence and recovers after downstream failur
       updated_at TEXT NOT NULL
     );
   `);
+  sqlite.exec(`CREATE TABLE knowledge_catalog_shop_manufacturer_aliases AS
+    SELECT *, '' AS shop_key FROM knowledge_catalog_manufacturer_aliases WHERE 0;
+    CREATE INDEX idx_knowledge_catalog_manufacturer_alias_lookup ON knowledge_catalog_manufacturer_aliases(normalized_alias,verification_status,manufacturer_id);
+    CREATE INDEX idx_shop_alias_lookup ON knowledge_catalog_shop_manufacturer_aliases(normalized_alias,verification_status,manufacturer_id,shop_key);`);
   const db = sqliteD1(sqlite);
   let projection = "old";
   let refreshAttempts = 0;
