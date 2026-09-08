@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import { createRoot } from "react-dom/client";
 import { CatalogAdmin } from "./admin-catalog.js";
+import { AdminCrawls } from "./admin-crawls.js";
 import { CorrectionReportsAdmin } from "./admin-correction-reports.js";
 import { ListingAdmin } from "./admin-listings.js";
 import { ADMIN_VIEWS, adminLocation, adminViewUrl, isCatalogView } from "./admin-navigation.js";
@@ -154,6 +155,9 @@ export function AdminConsole() {
           </h1>
           <p>{active.description}</p>
         </header>
+        <div hidden={location.view !== "crawls"}>
+          {visited.has("crawls") ? <AdminCrawls /> : null}
+        </div>
         <div hidden={catalogView === null}>
           {[...visited].some(isCatalogView) ? (
             <CatalogAdmin

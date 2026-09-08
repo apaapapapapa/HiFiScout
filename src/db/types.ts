@@ -231,6 +231,9 @@ export interface ProductFeatureFactRow {
 
 export interface ShopSyncStateRow {
   shop_key: string;
+  admin_paused?: number;
+  admin_pause_updated_at?: string | null;
+  previous_item_count?: number | null;
   last_attempt_at: string | null;
   last_success_at: string | null;
   last_error_at: string | null;

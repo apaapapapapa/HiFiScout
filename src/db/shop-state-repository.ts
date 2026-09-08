@@ -48,7 +48,11 @@ export async function markShopSuccess(
     .prepare(`
     INSERT INTO shop_sync_state (shop_key, last_success_at, consecutive_failures, backoff_until, last_error, last_item_count)
     VALUES (?, ?, 0, NULL, NULL, ?)
-    ON CONFLICT(shop_key) DO UPDATE SET last_success_at = excluded.last_success_at,
+    ON CONFLICT(shop_key) DO UPDATE SET
+      previous_item_count = CASE WHEN shop_sync_state.last_success_at IS NULL THEN NULL
+        WHEN shop_sync_state.last_success_at IS NOT excluded.last_success_at
+        THEN shop_sync_state.last_item_count ELSE shop_sync_state.previous_item_count END,
+      last_success_at = excluded.last_success_at,
       consecutive_failures = 0, backoff_until = NULL, last_error = NULL, last_item_count = excluded.last_item_count
   `)
     .bind(shopKey, succeededAt, itemCount)
@@ -132,7 +136,7 @@ export async function reserveShopDispatch(
         dispatch_requested_at = excluded.dispatch_requested_at,
         dispatch_token = excluded.dispatch_token,
         dispatch_last_sent_at = excluded.dispatch_last_sent_at
-      WHERE shop_sync_state.dispatch_requested_at IS NULL
+      WHERE shop_sync_state.dispatch_requested_at IS NULL AND shop_sync_state.admin_paused = 0
     `)
     .bind(shopKey, requestedAt, dispatchToken, requestedAt)
     .run();
@@ -181,5 +185,19 @@ export async function clearShopDispatch(db: QueryableDatabase, shopKey: string):
       WHERE shop_key = ?
     `)
     .bind(shopKey)
+    .run();
+}
+
+/** Administrative intent; the owning DO also gates alarms from its local durable storage. */
+export async function setShopAdminPaused(
+  db: QueryableDatabase,
+  shopKey: string,
+  paused: boolean,
+): Promise<void> {
+  await db
+    .prepare(`INSERT INTO shop_sync_state(shop_key, admin_paused, admin_pause_updated_at)
+    VALUES (?, ?, ?) ON CONFLICT(shop_key) DO UPDATE SET admin_paused = excluded.admin_paused,
+    admin_pause_updated_at = excluded.admin_pause_updated_at WHERE admin_paused <> excluded.admin_paused`)
+    .bind(shopKey, paused ? 1 : 0, new Date().toISOString())
     .run();
 }

@@ -1,5 +1,11 @@
 export const ADMIN_VIEWS = [
   {
+    id: "crawls",
+    label: "ショップ別クロール",
+    description: "ショップごとの収集状況・予定停止を確認し、停止・再開・再実行します。",
+    group: "日常の管理",
+  },
+  {
     id: "catalog",
     label: "製品カタログ",
     description: "メーカー共通の製品情報を検索・修正します。",

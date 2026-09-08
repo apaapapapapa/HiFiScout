@@ -49,6 +49,7 @@ export function createMockAdminRpc() {
     },
     history: [] as AdminChangeHistoryItem[],
     historyConflict: false,
+    crawls: { paused: false, reads: 0, actions: [] as string[] },
     bulk: {
       enabled: false,
       conflict: false,
@@ -73,6 +74,50 @@ export function createMockAdminRpc() {
     throw new Error(`Unmocked admin RPC: ${method}`);
   };
   const rpc: AdminRpc = {
+    async getCrawlOverview() {
+      state.crawls.reads++;
+      return {
+        observedAt: "2026-09-01T15:00:00Z",
+        quietHours: true,
+        quietEndsAt: "2026-09-01T23:00:00Z",
+        items: [
+          {
+            shopKey: "hifido",
+            name: "ハイファイ堂",
+            enabled: true,
+            configured: true,
+            pausedIntent: state.crawls.paused,
+            lastSuccessAt: "2026-09-01T12:00:00Z",
+            lastAttemptAt: "2026-09-01T13:00:00Z",
+            lastError: "取得先から503応答",
+            lastErrorAt: "2026-09-01T13:00:00Z",
+            consecutiveFailures: 1,
+            backoffUntil: null,
+            lastItemCount: 90,
+            previousItemCount: 100,
+            nextScheduledAt: "2026-09-01T23:31:00Z",
+            lastProjectionAt: "2026-09-01T12:00:00Z",
+            error: null,
+            control: {
+              paused: state.crawls.paused,
+              running: true,
+              nextAlarmAt: "2026-09-01T23:00:00Z",
+              acceptedAt: "2026-09-01T13:00:00Z",
+              jobId: "same-generation",
+              stage: "fetch",
+              pagesFetched: 10,
+              pagesParsed: 10,
+              progressAt: "2026-09-01T13:59:00Z",
+            },
+          },
+        ],
+      };
+    },
+    async controlCrawl(_shopKey, action) {
+      state.crawls.actions.push(action);
+      state.crawls.paused = action === "pause";
+      return { message: action === "pause" ? "一時停止しました。" : "一時停止を解除しました。" };
+    },
     getWorkCounts: async () => ({
       reports: 0,
       candidates: 0,
