@@ -27,6 +27,7 @@ test("unauthenticated requests cannot read the console, assets, metadata or admi
     `${listingPath}/21/diagnosis`,
     "/api/admin/change-history?kind=listing&id=21",
     "/api/admin/crawls",
+    "/api/admin/jobs",
     `${catalogPath}/11/model-facts`,
   ]) {
     const response = await request.get(path);

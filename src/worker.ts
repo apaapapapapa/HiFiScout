@@ -79,6 +79,9 @@ import type { ListingAdminListOptions, ListingAdminUpdateInput } from "./http/li
  * Binding configured on the dedicated Access-protected admin Worker; it has no public HTTP route.
  */
 export class CatalogAdminService extends WorkerEntrypoint<Env> implements CatalogAdminRpc {
+  async adminJobs(input: unknown) {
+    return requestAdminJobs(this.env, input);
+  }
   async getCrawlOverview() {
     return readAdminCrawls(this.env);
   }
@@ -282,3 +285,5 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
 export default worker;
 import type { DataExportFormat } from "./export/contracts.js";
 import { readAdminCrawls, controlAdminCrawl } from "./crawler/admin-crawl.js";
+import { requestAdminJobs } from "./admin/jobs-client.js";
+export { AdminJobs } from "./admin/background-jobs.js";

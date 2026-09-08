@@ -391,3 +391,31 @@ durable receipt and projection continuation as CSV import. Concurrent edits are 
 requests retain their operation IDs for safe retry. Applied rows are skipped on resume. Stop takes
 effect after the current request; results remain visible while the dialog is open. Opening the
 dialog adds no inventory scans, counts or polling, and only selected rows are validated or changed.
+
+## Durable background processing
+
+`AdminJobs` is a separate SQLite-backed Durable Object reached through the Access-protected
+`POST /api/admin/jobs` service-binding API. One coordinator serializes admin work; it has no role
+in per-shop crawl dispatch. Commands support create, append, start, pause, resume, failed-only retry,
+cancel, list and bounded result pages. User-interface integration is delivered separately.
+
+CSV targets retain the confirmed before-image, revision and operation ID. Uploads use at most 20
+rows and 256KiB per request, with exact offset/content verification for repeated delivery. A job
+cannot start until every declared row has been received. The processing-data limit is 128MiB;
+the existing source CSV limit remains 100MiB. At most three uploading, queued, running or paused
+jobs are admitted. No D1 writes occur during upload or job-list reads.
+
+Each alarm performs at most five existing CSV apply/continuation steps, or one offer-fact replay
+batch of at most 25 listings. The same D1 snapshot guards and receipts prevent stale overwrites
+and repeated changes after a lost job checkpoint. A transport/quota failure stops that job before
+the remaining rows are attempted. Other row conflicts are recorded individually; failed-only retry
+uses the retained revisions and never silently refreshes stale input. Replay pins its rule version
+and stops after three no-progress steps. Pause/cancel received during a D1 request remains in
+effect after that bounded step finishes. Resume preserves its stored cursor.
+
+The job index and counters are stored with the coordinator; viewing them never counts products or
+scans D1 history. Lists return 25 summaries and result pages return 50 rows using time/target indexes.
+Successful rows immediately discard their input payload. Remaining result details expire after seven
+days and are deleted in chunks of at most 1,000 rows; small summaries and canonical D1 correction
+receipts remain. A paused/uploading job whose details expired must be uploaded again. Metadata reads
+do not run jobs, poll, or repair data. Alarms and explicit control actions own continuation.

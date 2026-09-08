@@ -9,10 +9,11 @@
   "exports": {
     "default": { "type": "worker", "cache": { "enabled": false } },
     "PublicSearchCache": { "type": "worker", "cache": { "enabled": true } },
-    "CrawlScheduler": { "type": "durable-object", "storage": "sqlite" }
+    "CrawlScheduler": { "type": "durable-object", "storage": "sqlite" },
+    "AdminJobs": { "type": "durable-object", "storage": "sqlite" }
   },
   "durable_objects": {
-    "bindings": [{ "name": "CRAWL_SCHEDULER", "class_name": "CrawlScheduler" }]
+    "bindings": [{ "name": "CRAWL_SCHEDULER", "class_name": "CrawlScheduler" }, { "name": "ADMIN_JOBS", "class_name": "AdminJobs" }]
   },
   "version_metadata": { "binding": "CF_VERSION_METADATA" },
   "browser": { "binding": "BROWSER" },

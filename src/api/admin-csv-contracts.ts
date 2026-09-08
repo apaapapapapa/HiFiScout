@@ -92,6 +92,45 @@ export interface AdminCsvApplyInput {
   operationId: string;
 }
 
+export type AdminJobStatus =
+  | "uploading"
+  | "queued"
+  | "running"
+  | "paused"
+  | "completed"
+  | "failed"
+  | "cancelled";
+export interface AdminBackgroundJob {
+  id: string;
+  kind: "csv" | "replay";
+  label: string;
+  status: AdminJobStatus;
+  createdAt: string;
+  updatedAt: string;
+  total: number;
+  uploaded: number;
+  processed: number;
+  failed: number;
+  error: string;
+  expiresAt: string | null;
+  detailsAvailable: boolean;
+}
+export type AdminJobCommand =
+  | { action: "list"; before?: string }
+  | { action: "get"; id: string; after?: number }
+  | { action: "create"; id: string; kind: "csv" | "replay"; total: number; label: string }
+  | { action: "append"; id: string; offset: number; items: AdminCsvApplyInput[] }
+  | { action: "start" | "pause" | "resume" | "retry" | "cancel"; id: string };
+export interface AdminJobList {
+  items: AdminBackgroundJob[];
+  nextBefore: string | null;
+}
+export interface AdminJobDetail {
+  job: AdminBackgroundJob;
+  items: { ordinal: number; result: AdminCsvResult | null; state: string }[];
+  nextAfter: number | null;
+}
+
 export function adminCsvOriginal(
   kind: AdminCsvKind,
   id: number,

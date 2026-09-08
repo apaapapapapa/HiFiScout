@@ -25,6 +25,7 @@ import type {
 } from "../db/product-correction-report-repository.js";
 
 interface ListingAdminRpc extends CatalogAdminRpc {
+  adminJobs(input: unknown): Promise<unknown>;
   getCrawlOverview(): Promise<unknown>;
   controlCrawl(shopKey: string, action: "pause" | "resume" | "run"): Promise<unknown>;
   getChangeHistory(kind: "listing" | "catalog", id: number): Promise<unknown>;
@@ -98,6 +99,7 @@ function isAdminEntryRoute(pathname: string): boolean {
     RETIRED_LEGACY_PATHS.has(pathname) ||
     pathname === LISTING_COLLECTION_PATH ||
     pathname === WORK_COUNTS_PATH ||
+    pathname === "/api/admin/jobs" ||
     pathname === "/api/admin/crawls" ||
     pathname === "/api/admin/crawls/control" ||
     pathname === "/api/admin/change-history" ||
@@ -142,6 +144,26 @@ export async function handleAuthenticatedAdminEntryRequest(
   env: AdminEnv,
 ): Promise<Response> {
   const url = new URL(request.url);
+
+  if (url.pathname === "/api/admin/jobs" && request.method === "POST") {
+    if (!isJsonRequest(request))
+      return json({ error: "application_json_required" }, { status: 415 });
+    if (!isSameOriginBrowserMutation(request, url))
+      return json({ error: "same_origin_required" }, { status: 403 });
+    const body = await readJsonBody(request, ADMIN_CSV_MAX_REQUEST_BYTES);
+    if (body === REQUEST_BODY_TOO_LARGE)
+      return json({ error: "request_body_too_large" }, { status: 413 });
+    const command = parseAdminJobCommand(body);
+    if (!command) return json({ error: "invalid_admin_job_command" }, { status: 400 });
+    try {
+      return json(await env.CATALOG_ADMIN.adminJobs(command));
+    } catch (error) {
+      return json(
+        { error: error instanceof Error ? error.message : "処理の状態を確認できませんでした。" },
+        { status: 503 },
+      );
+    }
+  }
 
   if (url.pathname === "/api/admin/crawls" && request.method === "GET")
     return json(await env.CATALOG_ADMIN.getCrawlOverview());
@@ -353,3 +375,5 @@ export default {
     return handleAuthenticatedAdminEntryRequest(request, env);
   },
 } satisfies ExportedHandler<AdminEnv>;
+import { parseAdminJobCommand } from "../http/admin-jobs.js";
+import { ADMIN_CSV_MAX_REQUEST_BYTES } from "../api/admin-csv-contracts.js";
