@@ -104,6 +104,7 @@ function isAdminEntryRoute(pathname: string): boolean {
     pathname === LISTING_COLLECTION_PATH ||
     pathname === WORK_COUNTS_PATH ||
     pathname === "/api/admin/extraction-preview" ||
+    pathname === "/api/admin/manufacturer-registry" ||
     pathname === "/api/admin/operations" ||
     pathname === "/api/admin/jobs" ||
     pathname === "/api/admin/crawls" ||

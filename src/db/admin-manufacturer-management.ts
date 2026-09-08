@@ -208,6 +208,7 @@ interface ScanRow {
   shop_key: string;
   canonical_manufacturer_id: string;
   normalized_raw_manufacturer: string;
+  raw_manufacturer: string;
   title: string;
 }
 export async function scanManufacturerImpact(
@@ -219,7 +220,7 @@ export async function scanManufacturerImpact(
 ) {
   const scanLimit = matchLimit <= 5 ? 25 : 200;
   const select =
-    "SELECT id,shop_key,canonical_manufacturer_id,normalized_raw_manufacturer,substr(title,1,4096) AS title FROM products";
+    "SELECT id,shop_key,canonical_manufacturer_id,normalized_raw_manufacturer,substr(raw_manufacturer,1,4097) AS raw_manufacturer,substr(title,1,4096) AS title FROM products";
   const read = async (active?: number) =>
     (
       await db
@@ -243,6 +244,8 @@ export async function scanManufacturerImpact(
     if (
       row.canonical_manufacturer_id === matcher.manufacturerId ||
       matcher.keys.includes(row.normalized_raw_manufacturer) ||
+      row.raw_manufacturer.length > 4096 ||
+      matcher.keys.includes(normalizeManufacturerKey(row.raw_manufacturer)) ||
       matcher.keys.some((key) => normalizedTitle.includes(key))
     )
       ids.push(row.id);

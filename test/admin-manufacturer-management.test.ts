@@ -221,3 +221,23 @@ test("failed job acceptance remains applied and can be retried from history with
     sqlite.close();
   }
 });
+
+test("retained inactive rows match current raw normalization even with a legacy cached key", async () => {
+  const { db, sqlite } = migratedSqlite();
+  try {
+    sqlite.exec(
+      "INSERT INTO products(id,shop_key,is_active,source_id,title,raw_manufacturer,normalized_raw_manufacturer,source_url,first_seen_at,last_seen_at,last_changed_at) VALUES(100001,'audiounion',0,'legacy-brand','X-100','株式会社 ABC','株式会社abc','https://example.test/','','','')",
+    );
+    const result = await scanManufacturerImpact(
+      db,
+      { manufacturerId: "test-abc", shopKey: "audiounion", keys: ["abc"] },
+      0,
+      100001,
+      5,
+    );
+    assert.deepEqual(result.ids, [100001]);
+    assert.equal(result.hasMore, false);
+  } finally {
+    sqlite.close();
+  }
+});

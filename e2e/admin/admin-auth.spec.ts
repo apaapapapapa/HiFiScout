@@ -211,3 +211,27 @@ test("a shop-only deep link loads filtered listings directly without catalog req
   expect(listings[0].searchParams.get("scope")).toBe("all");
   expect(requests.some((url) => url.pathname.includes("knowledge-catalog"))).toBe(false);
 });
+
+test("manufacturer registry requests pass through the real Access and entry routing guards", async ({
+  request,
+  app,
+}) => {
+  const path = "/api/admin/manufacturer-registry",
+    input = { action: "get", manufacturerId: "luxman" };
+  const headers = { ...(await app.headers()), origin: app.url };
+  const response = await request.post(path, { headers, data: input });
+  expect(response.status()).toBe(200);
+  expect(await response.json()).toEqual({ received: input });
+  expect(app.state.manufacturerCommands).toEqual([input]);
+  const foreign = await request.post(path, {
+    headers: { ...headers, origin: "https://other.example" },
+    data: input,
+  });
+  expect(foreign.status()).toBe(403);
+  const invalid = await request.post(path, {
+    headers,
+    data: { action: "preview", edit: {}, afterId: 0 },
+  });
+  expect(invalid.status()).toBe(400);
+  expect(app.state.manufacturerCommands).toHaveLength(1);
+});

@@ -135,8 +135,12 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
       <p>
         送信が完了した処理は画面を閉じても継続します。更新日時と進捗は保存済みの情報です。必要なときに再読み込みしてください。
       </p>
-      {busy ? <p role="status">処理の状態を確認しています…</p> : null}
-      {message ? <p role="status">{message}</p> : null}
+      {busy || message ? (
+        <p role="status">
+          {busy ? "処理の状態を確認しています… " : ""}
+          {message}
+        </p>
+      ) : null}
       {error ? <p role="alert">{error}</p> : null}
       {list?.items.length === 0 ? (
         <p>処理の記録はありません。CSV入出力または出品条件の再処理から開始できます。</p>
