@@ -18,7 +18,7 @@ const LABELS: Record<AdminJobStatus, string> = {
 };
 
 export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void }) {
-  const seenProgress = useRef(new Map<string, number>());
+  const seenProgress = useRef(new Map<string, { processed: number; failed: number }>());
   const [list, setList] = useState<AdminJobList | null>(null);
   const [before, setBefore] = useState<string | undefined>();
   const [history, setHistory] = useState<(string | undefined)[]>([]);
@@ -28,10 +28,16 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   function remember(value: AdminJobList) {
-    const changed = value.items.some(
-      (job) => job.processed > (seenProgress.current.get(job.id) ?? 0),
+    const changed = value.items.some((job) => {
+      const previous = seenProgress.current.get(job.id);
+      return (
+        job.processed > (previous?.processed ?? 0) ||
+        (previous !== undefined && job.failed < previous.failed)
+      );
+    });
+    value.items.forEach((job) =>
+      seenProgress.current.set(job.id, { processed: job.processed, failed: job.failed }),
     );
-    value.items.forEach((job) => seenProgress.current.set(job.id, job.processed));
     setList(value);
     if (changed) onDataChanged();
   }

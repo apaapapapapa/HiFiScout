@@ -15,7 +15,11 @@ const PATH = "/api/admin/offer-facts/replay";
 export function AdminOfferFactReplay({
   shops,
   categories,
+  active = true,
+  revision = 0,
 }: {
+  active?: boolean;
+  revision?: number;
   shops: readonly { key: string; name: string }[];
   categories: readonly { id: string; name: string }[];
 }) {
@@ -26,36 +30,42 @@ export function AdminOfferFactReplay({
   const [scope, setScope] = useState<"byShop" | "byCategory">("byShop");
   const stop = useRef(false);
   const running = useRef(false);
-  const started = useRef(false);
+  const loadedRevision = useRef<number | null>(null);
   const mounted = useRef(true);
   const jobId = useRef<string | null>(null);
   const [submittedJob, setSubmittedJob] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   useEffect(() => {
     mounted.current = true;
-    void adminJson<Progress | null>(PATH)
-      .then((value) => {
-        if (mounted.current && !started.current) {
-          setProgress(value);
-          setStatus(
-            value?.completedAt ? "再処理は完了しています。" : "保存済みの情報から再処理できます。",
-          );
-        }
-      })
-      .catch((error) => {
-        if (mounted.current && !started.current)
-          setStatus(`取得できませんでした: ${genericErrorText(error)}`);
-      });
     return () => {
       mounted.current = false;
       stop.current = true;
     };
   }, []);
+  useEffect(() => {
+    if (!active || busy || submitting || loadedRevision.current === revision) return;
+    let cancelled = false;
+    void adminJson<Progress | null>(PATH)
+      .then((value) => {
+        if (cancelled) return;
+        loadedRevision.current = revision;
+        setProgress(value);
+        setStatus(
+          value?.completedAt ? "再処理は完了しています。" : "保存済みの情報から再処理できます。",
+        );
+      })
+      .catch((error) => {
+        if (!cancelled) setStatus(`取得できませんでした: ${genericErrorText(error)}`);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [active, revision, busy, submitting]);
 
   const run = async (steps: number) => {
     if (running.current) return;
     running.current = true;
-    started.current = true;
+    loadedRevision.current = revision;
     stop.current = false;
     setBusy(true);
     setStopping(false);
@@ -88,6 +98,7 @@ export function AdminOfferFactReplay({
   };
   const startBackground = async () => {
     if (busy || submitting) return;
+    loadedRevision.current = revision;
     jobId.current ||= crypto.randomUUID();
     setSubmitting(true);
     try {

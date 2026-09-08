@@ -1,5 +1,55 @@
 import { test, expect } from "./fixtures.js";
 
+test("observing a successful retry invalidates previously loaded catalog and replay views", async ({
+  page,
+  context,
+  app,
+}) => {
+  const id = crypto.randomUUID();
+  app.state.jobs.set(id, {
+    id,
+    kind: "csv",
+    label: "再試行.csv",
+    status: "failed",
+    createdAt: "2026-09-08T00:00:00Z",
+    updatedAt: "2026-09-08T00:00:00Z",
+    total: 1,
+    uploaded: 1,
+    processed: 1,
+    failed: 1,
+    error: "",
+    expiresAt: "2026-09-15T00:00:00Z",
+    detailsAvailable: true,
+  });
+  await context.setExtraHTTPHeaders(await app.headers());
+  await page.goto("/#jobs");
+  await expect(page.getByRole("region", { name: "バックグラウンド処理一覧" })).toContainText(
+    "失敗 1件",
+  );
+  const nav = page.getByRole("navigation", { name: "管理メニュー" });
+  await nav.getByRole("link", { name: "製品カタログ", exact: true }).click();
+  await expect(page.getByRole("button", { name: "LUXMAN D-1000", exact: true })).toBeVisible();
+  await nav.getByRole("link", { name: "出品条件の再処理", exact: true }).click();
+  await expect(page.getByRole("region", { name: "出品条件の再処理・充足率" })).toContainText(
+    "再処理できます",
+  );
+  await nav.getByRole("link", { name: "バックグラウンド処理", exact: true }).click();
+  app.state.catalog.canonicalName = "再試行後のカタログ";
+  app.state.replay.scannedCount = 550;
+  app.state.replay.stepCalls = 1;
+  const job = app.state.jobs.get(id)!;
+  job.failed = 0;
+  job.status = "completed";
+  await page.getByRole("button", { name: "進捗を再読み込み" }).click();
+  await expect(page.getByRole("cell", { name: /^完了/u })).toBeVisible();
+  await nav.getByRole("link", { name: "製品カタログ", exact: true }).click();
+  await expect(page.getByRole("button", { name: "再試行後のカタログ", exact: true })).toBeVisible();
+  await nav.getByRole("link", { name: "出品条件の再処理", exact: true }).click();
+  await expect(page.getByRole("region", { name: "出品条件の再処理・充足率" })).toContainText(
+    "再処理は完了しています",
+  );
+});
+
 test("saved jobs expose pause, resume and failed-only retry without automatic polling", async ({
   page,
   context,

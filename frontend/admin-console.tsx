@@ -20,6 +20,7 @@ export function AdminConsole() {
   const [visited, setVisited] = useState<Set<AdminView>>(() => new Set([location.view]));
   const title = useRef<HTMLHeadingElement>(null);
   const [dataRevision, setDataRevision] = useState(0);
+  const [backgroundRevision, setBackgroundRevision] = useState(0);
   const focusNextView = useRef(false);
   const active = ADMIN_VIEWS.find((view) => view.id === location.view)!;
   const catalogView = isCatalogView(location.view) ? location.view : null;
@@ -160,6 +161,7 @@ export function AdminConsole() {
           {visited.has("jobs") ? (
             <AdminJobsPanel
               onDataChanged={() => {
+                setBackgroundRevision((value) => value + 1);
                 setDataRevision((value) => value + 1);
                 refreshWorkCounts();
               }}
@@ -172,6 +174,7 @@ export function AdminConsole() {
         <div hidden={catalogView === null}>
           {[...visited].some(isCatalogView) ? (
             <CatalogAdmin
+              revision={backgroundRevision}
               onDataChanged={() => {
                 setDataRevision((value) => value + 1);
                 refreshWorkCounts();
