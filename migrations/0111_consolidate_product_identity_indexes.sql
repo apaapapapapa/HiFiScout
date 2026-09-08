@@ -13,4 +13,5 @@ DROP INDEX IF EXISTS idx_products_identity_group;
 DROP INDEX IF EXISTS idx_products_exact_identity;
 CREATE INDEX idx_products_exact_identity
   ON products(canonical_manufacturer_id, normalized_model, is_active, model_resolution_status)
-  WHERE canonical_manufacturer_id <> '' AND normalized_model <> '';
+  WHERE COALESCE(canonical_manufacturer_id, '') <> ''
+    AND COALESCE(normalized_model, '') <> '';

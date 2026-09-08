@@ -31,8 +31,8 @@ function hasVerifiedCatalogMatch(alias: string): string {
 export function eligibleExactIdentitySql(alias: string): string {
   return `${alias}.is_active = 1
     AND ${alias}.model_resolution_status = 'resolved'
-    AND ${alias}.canonical_manufacturer_id <> ''
-    AND ${alias}.normalized_model <> ''
+    AND COALESCE(${alias}.canonical_manufacturer_id, '') <> ''
+    AND COALESCE(${alias}.normalized_model, '') <> ''
     AND NOT EXISTS (
       SELECT 1 FROM product_identity_resolutions veto
       WHERE veto.listing_product_id = ${alias}.id AND veto.match_method = 'vetoed'

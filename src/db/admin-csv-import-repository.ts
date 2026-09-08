@@ -500,7 +500,8 @@ async function resumeReceipt(
             .prepare(`SELECT p.id, p.shop_key, p.source_id, r.catalog_product_id AS matched_catalog_id
           FROM products p LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
           WHERE p.canonical_manufacturer_id = ? AND p.normalized_model IN (${target.identityModels.map(() => "?").join(",")})
-            AND p.canonical_manufacturer_id <> '' AND p.normalized_model <> ''
+            AND COALESCE(p.canonical_manufacturer_id, '') <> ''
+            AND COALESCE(p.normalized_model, '') <> ''
             AND p.id > ?
           ORDER BY p.id LIMIT ?`)
             .bind(target.manufacturerId, ...target.identityModels, afterId, REPLAY_PAGE_SIZE)

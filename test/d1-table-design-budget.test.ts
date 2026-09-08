@@ -154,8 +154,8 @@ test("the consolidated identity index excludes blank listings without increasing
       .prepare(`SELECT p.canonical_manufacturer_id, p.normalized_model, COUNT(*) AS listing_count
       FROM products p
       WHERE p.is_active = 1
-        AND p.canonical_manufacturer_id <> ''
-        AND p.normalized_model <> ''
+        AND COALESCE(p.canonical_manufacturer_id, '') <> ''
+        AND COALESCE(p.normalized_model, '') <> ''
       GROUP BY p.canonical_manufacturer_id, p.normalized_model
       ORDER BY listing_count DESC, p.canonical_manufacturer_id, p.normalized_model
       LIMIT 25`)
