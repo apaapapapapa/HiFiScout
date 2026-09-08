@@ -1,5 +1,11 @@
 export const ADMIN_VIEWS = [
   {
+    id: "extraction",
+    label: "抽出テスト",
+    description: "保存済み商品やタイトルで、抽出結果と仮の別名ルールを比較します。",
+    group: "データの整備",
+  },
+  {
     id: "operations",
     label: "負荷・稼働状況",
     description: "保存済みの使用量・失敗・本番バージョンを確認します。",
@@ -78,7 +84,7 @@ export function adminLocation(location: { hash: string; search: string }): {
 
 export function adminViewUrl(href: string, view: AdminView): string {
   const url = new URL(href);
-  for (const key of ["q", "shopKey", "scope", "manufacturerId", "categoryId", "jobId"])
+  for (const key of ["q", "shopKey", "scope", "manufacturerId", "categoryId", "jobId", "listingId"])
     url.searchParams.delete(key);
   url.hash = view === "catalog" ? "" : view;
   return `${url.pathname}${url.search}${url.hash}`;

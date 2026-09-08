@@ -29,6 +29,7 @@ test("unauthenticated requests cannot read the console, assets, metadata or admi
     "/api/admin/crawls",
     "/api/admin/jobs",
     "/api/admin/operations",
+    "/api/admin/extraction-preview",
     `${catalogPath}/11/model-facts`,
   ]) {
     const response = await request.get(path);
