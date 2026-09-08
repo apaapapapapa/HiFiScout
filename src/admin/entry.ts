@@ -1,3 +1,6 @@
+import { parseAdminRestoreSelection } from "./change-history.js";
+import type { AdminRestoreSelection } from "../api/admin-listing-contracts.js";
+import { isRecord } from "../types.js";
 import { json, isSameOriginBrowserMutation, withCatalogAdminSecurityHeaders } from "./http.js";
 import { isJsonRequest, readJsonBody, REQUEST_BODY_TOO_LARGE } from "../http/request.js";
 import catalogAdmin from "./index.js";
@@ -22,6 +25,13 @@ import type {
 } from "../db/product-correction-report-repository.js";
 
 interface ListingAdminRpc extends CatalogAdminRpc {
+  getChangeHistory(kind: "listing" | "catalog", id: number): Promise<unknown>;
+  previewHistoryRestore(input: AdminRestoreSelection): Promise<unknown>;
+  restoreHistoryColor(
+    input: AdminRestoreSelection,
+    revision: string,
+    operationId: string,
+  ): Promise<unknown>;
   getListingDiagnosis(listingId: number): Promise<unknown>;
   getOfferFactReplay(): Promise<unknown>;
   stepOfferFactReplay(): Promise<unknown>;
@@ -86,6 +96,9 @@ function isAdminEntryRoute(pathname: string): boolean {
     RETIRED_LEGACY_PATHS.has(pathname) ||
     pathname === LISTING_COLLECTION_PATH ||
     pathname === WORK_COUNTS_PATH ||
+    pathname === "/api/admin/change-history" ||
+    pathname === "/api/admin/change-history/restore-preview" ||
+    pathname === "/api/admin/change-history/restore-color" ||
     LISTING_PATH.test(pathname) ||
     OFFER_FACT_PATH.test(pathname) ||
     DIAGNOSIS_PATH.test(pathname) ||
@@ -126,6 +139,43 @@ export async function handleAuthenticatedAdminEntryRequest(
 ): Promise<Response> {
   const url = new URL(request.url);
 
+  if (url.pathname === "/api/admin/change-history" && request.method === "GET") {
+    const kind = url.searchParams.get("kind");
+    const id = Number(url.searchParams.get("id"));
+    if ((kind !== "listing" && kind !== "catalog") || !Number.isSafeInteger(id) || id < 1)
+      return json({ error: "invalid_history_query" }, { status: 400 });
+    return json(await env.CATALOG_ADMIN.getChangeHistory(kind, id));
+  }
+  if (
+    [
+      "/api/admin/change-history/restore-preview",
+      "/api/admin/change-history/restore-color",
+    ].includes(url.pathname) &&
+    request.method === "POST"
+  ) {
+    if (!isJsonRequest(request))
+      return json({ error: "application_json_required" }, { status: 415 });
+    if (!isSameOriginBrowserMutation(request, url))
+      return json({ error: "same_origin_required" }, { status: 403 });
+    const body = await readJsonBody(request, 8192);
+    if (body === REQUEST_BODY_TOO_LARGE)
+      return json({ error: "request_body_too_large" }, { status: 413 });
+    if (!isRecord(body)) return json({ error: "invalid_history_restore" }, { status: 400 });
+    const selection = parseAdminRestoreSelection(body.selection);
+    if (!selection) return json({ error: "invalid_history_restore" }, { status: 400 });
+    if (url.pathname.endsWith("restore-preview"))
+      return json(await env.CATALOG_ADMIN.previewHistoryRestore(selection));
+    if (
+      typeof body.revision !== "string" ||
+      !/^[\da-f]{64}$/iu.test(body.revision) ||
+      typeof body.operationId !== "string" ||
+      !/^[\da-f-]{36}$/iu.test(body.operationId)
+    )
+      return json({ error: "invalid_history_restore" }, { status: 400 });
+    return json(
+      await env.CATALOG_ADMIN.restoreHistoryColor(selection, body.revision, body.operationId),
+    );
+  }
   if (url.pathname === WORK_COUNTS_PATH && request.method === "GET") {
     const cursor = parseAdminWorkCountCursor(url);
     if (!cursor) return json({ error: "invalid_work_count_cursor" }, { status: 400 });

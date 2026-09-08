@@ -79,3 +79,25 @@ export interface AdminListingDiagnosis {
   }>;
   peersHasMore: boolean;
 }
+
+export interface AdminChangeHistoryItem {
+  operationId: string;
+  kind: "listing" | "catalog";
+  targetId: number;
+  source: "editor" | "csv" | "resolver";
+  before: Record<string, string>;
+  after: Record<string, string>;
+  createdAt: string;
+  status: string;
+}
+export interface AdminChangeHistory {
+  items: AdminChangeHistoryItem[];
+  hasMore: boolean;
+}
+export interface AdminRestoreSelection {
+  kind: "listing" | "catalog";
+  targetId: number;
+  source: "editor" | "csv";
+  operationId: string;
+  field: string;
+}
