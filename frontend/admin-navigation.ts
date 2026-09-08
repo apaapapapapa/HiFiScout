@@ -1,5 +1,11 @@
 export const ADMIN_VIEWS = [
   {
+    id: "operations",
+    label: "負荷・稼働状況",
+    description: "保存済みの使用量・失敗・本番バージョンを確認します。",
+    group: "日常の管理",
+  },
+  {
     id: "jobs",
     label: "バックグラウンド処理",
     description: "CSV取込・再処理の進捗を確認し、停止・再開・失敗した対象の再試行を行います。",
