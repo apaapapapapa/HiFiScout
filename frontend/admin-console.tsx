@@ -1,3 +1,4 @@
+import { AdminExtractionPreview } from "./admin-extraction-preview.js";
 import { AdminOperationsPanel } from "./admin-operations.js";
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
@@ -158,6 +159,9 @@ export function AdminConsole() {
           </h1>
           <p>{active.description}</p>
         </header>
+        <div hidden={location.view !== "extraction"}>
+          {visited.has("extraction") ? <AdminExtractionPreview /> : null}
+        </div>
         <div hidden={location.view !== "operations"}>
           {visited.has("operations") ? <AdminOperationsPanel /> : null}
         </div>

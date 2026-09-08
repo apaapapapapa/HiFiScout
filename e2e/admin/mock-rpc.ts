@@ -78,6 +78,7 @@ export function createMockAdminRpc() {
     throw new Error(`Unmocked admin RPC: ${method}`);
   };
   const rpc: AdminRpc = {
+    previewExtraction: unsupported("previewExtraction"),
     getOperations: unsupported("getOperations"),
     async adminJobs(input) {
       const command = parseAdminJobCommand(input);

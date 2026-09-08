@@ -51,6 +51,9 @@ export function AdminListingDiagnosisPanel({
         ) : null}
         {data ? (
           <>
+            <p>
+              <a href={`/?listingId=${listingId}#extraction`}>この商品で抽出テスト</a>
+            </p>
             <h3>販売店から保存した情報</h3>
             <p>{data.seller.title}</p>
             <dl>

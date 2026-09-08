@@ -183,3 +183,41 @@ export interface AdminOperations {
   runtime: AdminRuntimeSnapshot | null;
   unavailable: string[];
 }
+
+export type AdminExtractionSample =
+  | { listingId: number }
+  | {
+      title: string;
+      rawManufacturer: string;
+      rawModel: string;
+      rawCategory: string;
+      shopKey: string;
+    };
+export interface AdminExtractionRequest {
+  samples: AdminExtractionSample[];
+  draftAlias?: { manufacturerId: string; alias: string; shopKey: string };
+}
+export interface AdminExtractionFields {
+  manufacturerId: string;
+  manufacturer: string;
+  model: string;
+  normalizedModel: string;
+  categoryId: string;
+  color: string;
+}
+export interface AdminExtractionResult {
+  observedAt: string;
+  versions: { manufacturer: number; model: number; taxonomy: string };
+  items: {
+    listingId: number | null;
+    title: string;
+    shopKey: string;
+    error?: string;
+    saved: AdminExtractionFields | null;
+    current: AdminExtractionFields | null;
+    proposed: AdminExtractionFields | null;
+    withOverrides: AdminExtractionFields | null;
+    overrides: string[];
+    reasons: { manufacturer: string; model: string; category: string } | null;
+  }[];
+}

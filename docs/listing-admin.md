@@ -430,3 +430,22 @@ The serving public Worker version comes from runtime metadata. The saved status 
 D1-quota deferral from completed deployment workflows, including successful no-op runs. SQL summaries
 older than eight hours and runtime summaries older than one hour are labelled stale. The dashboard
 does not enable paused production health checks. See [the snapshot collection contract](./d1-sql-observation.md#admin-dashboard-snapshots).
+
+## Extraction preview
+
+**抽出テスト** (`/#extraction`) accepts up to 20 retained listing IDs and/or entered seller titles.
+The listing diagnosis panel links to a prefilled sample. Submission compares stored fields, current
+extraction, an optional draft manufacturer alias (global or one shop), and proposed values retaining
+manual authority. The draft is never saved. Conflicting verified aliases remain ambiguous, so the
+preview does not quietly reassign another manufacturer's spelling.
+
+The Access-protected `POST /api/admin/extraction-preview` accepts at most 128KiB. It reads selected
+primary keys and a reference alias dictionary capped before filtering at 1,001 rows; more than
+1,000 dictionary rows is rejected rather than calculating with incomplete evidence. No inventory
+count, seller fetch, D1 mutation, catalog match, or projection update occurs. The manufacturer and
+model resolvers are compiled once per batch. Retained non-title category evidence uses the same
+pure helper as remediation; title evidence is recalculated with current rules. Stored fields over
+the preview bounds or missing products produce individual sample errors.
+
+Rule versions and the observation time accompany results. The proposed values are explicitly before
+catalog rematching; existing manual decisions remain visible. Changing input clears the old comparison.

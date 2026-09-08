@@ -2,10 +2,7 @@ import {
   classifyCategoryEvidence,
   summarizeCategoryEvidence,
 } from "../catalog/category-classifier.js";
-import {
-  categoryEvidenceFromText,
-  collectListingCategoryEvidence,
-} from "../catalog/category-evidence.js";
+import { retainedCategoryEvidence } from "../catalog/retained-category-evidence.js";
 import { TAXONOMY_VERSION } from "../catalog/categories.js";
 import {
   componentCategoryIds,
@@ -20,12 +17,7 @@ import { createModelResolver } from "../catalog/model-resolver.js";
 import { inferFeatureFacts } from "../catalog/product-features.js";
 import { inferFacetFacts, normalizeFacetFacts } from "../catalog/product-facets.js";
 import { RESOLUTION_VERSIONS } from "../catalog/resolution-versions.js";
-import type {
-  CategoryEvidenceInput,
-  CategoryId,
-  FacetFact,
-  FeatureFact,
-} from "../catalog/types.js";
+import type { CategoryId, FacetFact, FeatureFact } from "../catalog/types.js";
 import { errorMessage, isRecord } from "../types.js";
 import { saveDataQualityRun } from "./data-quality-repository.js";
 import {
@@ -128,34 +120,6 @@ function metadataObject(value: string): Record<string, unknown> {
 
 function classificationMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
   return isRecord(metadata.categoryClassification) ? metadata.categoryClassification : {};
-}
-
-function storedCategoryEvidence(
-  row: RemediationListingRow,
-  metadata: Record<string, unknown>,
-): CategoryEvidenceInput[] {
-  const stored = classificationMetadata(metadata).evidence;
-  if (Array.isArray(stored)) {
-    const evidence = stored.filter(
-      (entry): entry is CategoryEvidenceInput =>
-        isRecord(entry) &&
-        Array.isArray(entry.categoryIds) &&
-        typeof entry.source === "string" &&
-        typeof entry.strength === "string",
-    );
-    if (evidence.length)
-      return [
-        // Stored seller, official and admin evidence remains authoritative. Title-derived decisions
-        // must be recomputed from the full retained title, not replayed as the old classifier's ids.
-        ...evidence.filter((entry) => entry.source !== "title"),
-        ...categoryEvidenceFromText(row.title),
-      ];
-  }
-  return collectListingCategoryEvidence({
-    title: row.title,
-    rawCategory: row.raw_category,
-    hintedCategory: row.category,
-  }).evidence;
 }
 
 function featureKey(
@@ -351,7 +315,10 @@ async function replayDerivedListing(
   const presentationColor = presentationColorLabel(model.presentationColors);
 
   const metadata = metadataObject(row.metadata_json);
-  const evidence = storedCategoryEvidence(row, metadata);
+  const evidence = retainedCategoryEvidence(
+    { title: row.title, rawCategory: row.raw_category, hintedCategory: row.category },
+    metadata,
+  );
   const classification = classifyCategoryEvidence(evidence);
   // The same derivation the crawl path runs, from the same stored seller evidence. A replay that
   // recomputed the classification but not the component set would leave a set listing with a

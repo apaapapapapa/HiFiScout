@@ -1,3 +1,5 @@
+import { parseAdminExtractionRequest } from "./http/admin-extraction-preview.js";
+import { previewAdminExtraction } from "./admin/extraction-preview.js";
 import { readAdminOperations } from "./admin/operations.js";
 import { readAdminChangeHistory } from "./db/admin-change-history-repository.js";
 import {
@@ -80,6 +82,11 @@ import type { ListingAdminListOptions, ListingAdminUpdateInput } from "./http/li
  * Binding configured on the dedicated Access-protected admin Worker; it has no public HTTP route.
  */
 export class CatalogAdminService extends WorkerEntrypoint<Env> implements CatalogAdminRpc {
+  async previewExtraction(input: unknown) {
+    const parsed = parseAdminExtractionRequest(input);
+    if (!parsed) throw new Error("invalid_extraction_input");
+    return previewAdminExtraction(this.env.DB, parsed);
+  }
   async getOperations() {
     return readAdminOperations(this.env);
   }

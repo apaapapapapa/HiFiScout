@@ -1,3 +1,4 @@
+import { parseAdminExtractionRequest } from "../http/admin-extraction-preview.js";
 import { parseAdminRestoreSelection } from "./change-history.js";
 import type { AdminRestoreSelection } from "../api/admin-listing-contracts.js";
 import { isRecord } from "../types.js";
@@ -25,6 +26,7 @@ import type {
 } from "../db/product-correction-report-repository.js";
 
 interface ListingAdminRpc extends CatalogAdminRpc {
+  previewExtraction(input: unknown): Promise<unknown>;
   getOperations(): Promise<unknown>;
   adminJobs(input: unknown): Promise<unknown>;
   getCrawlOverview(): Promise<unknown>;
@@ -100,6 +102,7 @@ function isAdminEntryRoute(pathname: string): boolean {
     RETIRED_LEGACY_PATHS.has(pathname) ||
     pathname === LISTING_COLLECTION_PATH ||
     pathname === WORK_COUNTS_PATH ||
+    pathname === "/api/admin/extraction-preview" ||
     pathname === "/api/admin/operations" ||
     pathname === "/api/admin/jobs" ||
     pathname === "/api/admin/crawls" ||
@@ -146,6 +149,38 @@ export async function handleAuthenticatedAdminEntryRequest(
   env: AdminEnv,
 ): Promise<Response> {
   const url = new URL(request.url);
+
+  if (url.pathname === "/api/admin/extraction-preview" && request.method === "POST") {
+    if (!isJsonRequest(request))
+      return json({ error: "application_json_required" }, { status: 415 });
+    if (!isSameOriginBrowserMutation(request, url))
+      return json({ error: "same_origin_required" }, { status: 403 });
+    const body = await readJsonBody(request, 128 * 1024);
+    if (body === REQUEST_BODY_TOO_LARGE)
+      return json({ error: "request_body_too_large" }, { status: 413 });
+    const input = parseAdminExtractionRequest(body);
+    if (!input)
+      return json(
+        { error: "最大20件のサンプルと有効なショップ・メーカーを指定してください。" },
+        { status: 400 },
+      );
+    try {
+      return json(await env.CATALOG_ADMIN.previewExtraction(input));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (
+        [
+          "仮ルールには確認済みメーカーを選択してください。",
+          "別名辞書がプレビュー上限を超えています。対象を限定する必要があります。",
+        ].includes(message)
+      )
+        return json({ error: message }, { status: 409 });
+      return json(
+        { error: "抽出テストを実行できませんでした。入力と対象商品の状態を確認してください。" },
+        { status: 503 },
+      );
+    }
+  }
 
   if (url.pathname === "/api/admin/operations" && request.method === "GET")
     return json(await env.CATALOG_ADMIN.getOperations());
