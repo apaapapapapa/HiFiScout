@@ -25,6 +25,7 @@ import type {
 } from "../db/product-correction-report-repository.js";
 
 interface ListingAdminRpc extends CatalogAdminRpc {
+  getOperations(): Promise<unknown>;
   adminJobs(input: unknown): Promise<unknown>;
   getCrawlOverview(): Promise<unknown>;
   controlCrawl(shopKey: string, action: "pause" | "resume" | "run"): Promise<unknown>;
@@ -99,6 +100,7 @@ function isAdminEntryRoute(pathname: string): boolean {
     RETIRED_LEGACY_PATHS.has(pathname) ||
     pathname === LISTING_COLLECTION_PATH ||
     pathname === WORK_COUNTS_PATH ||
+    pathname === "/api/admin/operations" ||
     pathname === "/api/admin/jobs" ||
     pathname === "/api/admin/crawls" ||
     pathname === "/api/admin/crawls/control" ||
@@ -144,6 +146,9 @@ export async function handleAuthenticatedAdminEntryRequest(
   env: AdminEnv,
 ): Promise<Response> {
   const url = new URL(request.url);
+
+  if (url.pathname === "/api/admin/operations" && request.method === "GET")
+    return json(await env.CATALOG_ADMIN.getOperations());
 
   if (url.pathname === "/api/admin/jobs" && request.method === "POST") {
     if (!isJsonRequest(request))

@@ -1,3 +1,4 @@
+import { parseAdminSqlSnapshot } from "../src/admin/operations.js";
 import { writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { loadSqlObservations, SqlObservationClient } from "./lib/d1-sql-observation-client.js";
@@ -11,20 +12,20 @@ try {
       at: { type: "string" },
       "database-id": { type: "string" },
       output: { type: "string" },
+      publish: { type: "boolean", default: false },
     },
   });
-  const input = await loadSqlObservations(
-    new SqlObservationClient({
-      accountId: process.env.CLOUDFLARE_ACCOUNT_ID ?? "",
-      apiToken: process.env.CLOUDFLARE_API_TOKEN ?? "",
-    }),
-    {
-      at: values.at ? new Date(values.at) : new Date(),
-      hours: Number(values.hours),
-      databaseId: values["database-id"],
-    },
-  );
+  const client = new SqlObservationClient({
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID ?? "",
+    apiToken: process.env.CLOUDFLARE_API_TOKEN ?? "",
+  });
+  const input = await loadSqlObservations(client, {
+    at: values.at ? new Date(values.at) : new Date(),
+    hours: Number(values.hours),
+    databaseId: values["database-id"],
+  });
   const report = buildSqlLoadReport(input, { sourceCommit: process.env.GITHUB_SHA ?? null });
+  if (values.publish) await client.saveAdminSnapshot("sql-load", parseAdminSqlSnapshot(report));
   const json = JSON.stringify(report);
   if (values.output) await writeFile(values.output, `${json}\n`, { mode: 0o600 });
   // One stable, machine-readable line lets authenticated GitHub tools read the report without ZIP support.

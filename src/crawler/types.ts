@@ -30,6 +30,7 @@ import type {
 /** Binding members of the generated `Env`; everything else in it is a string var. */
 export type EnvBindingName =
   | "EVIDENCE_BUCKET"
+  | "OPS_BUCKET"
   | "DB"
   | "CRAWL_QUEUE"
   | "CRAWL_FAST_QUEUE"
