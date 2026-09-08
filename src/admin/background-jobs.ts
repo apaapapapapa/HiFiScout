@@ -316,13 +316,13 @@ export class AdminJobs extends DurableObject<Env> {
 
   async alarm(): Promise<void> {
     const sql = this.ctx.storage.sql;
+    await this.cleanup();
     const job = sql
       .exec<JobRow>(
         "SELECT * FROM jobs WHERE status IN ('queued','running') ORDER BY created_at,id LIMIT 1",
       )
       .toArray()[0];
     if (!job) {
-      await this.cleanup();
       await this.schedule();
       return;
     }
@@ -447,7 +447,7 @@ export class AdminJobs extends DurableObject<Env> {
     const sql = this.ctx.storage.sql;
     const job = sql
       .exec<JobRow>(
-        "SELECT * FROM jobs WHERE details_available=1 AND expires_at<=? ORDER BY expires_at,id LIMIT 1",
+        "SELECT * FROM jobs WHERE details_available=1 AND status NOT IN ('queued','running') AND expires_at<=? ORDER BY expires_at,id LIMIT 1",
         new Date().toISOString(),
       )
       .toArray()[0];

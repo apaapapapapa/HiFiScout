@@ -320,10 +320,18 @@ test("job history uses a page index and expired details are removed in bounded c
       .prepare(`WITH RECURSIVE n(i) AS (VALUES(1) UNION ALL SELECT i+1 FROM n WHERE i<1500)
       INSERT INTO items(job_id,ordinal,input_json) SELECT ?,i,'{}' FROM n`)
       .run(id);
+    const activeId = crypto.randomUUID();
+    const inputs = [];
+    for (let n = 0; n < 7; n++) inputs.push(await input(h, 100001 + n));
+    await h.command({ action: "create", id: activeId, kind: "csv", total: 7, label: "ongoing" });
+    await h.command({ action: "append", id: activeId, offset: 0, items: inputs });
+    await h.command({ action: "start", id: activeId });
     await h.alarm();
     assert.equal(h.local.prepare("SELECT COUNT(*) AS n FROM items WHERE job_id=?").get(id)?.n, 500);
+    assert.equal((await h.command({ action: "get", id: activeId })).job.processed, 5);
     await h.alarm();
     assert.equal((await h.command({ action: "get", id })).job.detailsAvailable, false);
+    assert.equal((await h.command({ action: "get", id: activeId })).job.status, "completed");
   } finally {
     h.close();
   }
