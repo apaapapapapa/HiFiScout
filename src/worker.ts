@@ -1,3 +1,4 @@
+import { readAdminOperations } from "./admin/operations.js";
 import { readAdminChangeHistory } from "./db/admin-change-history-repository.js";
 import {
   parseAdminRestoreSelection,
@@ -79,6 +80,9 @@ import type { ListingAdminListOptions, ListingAdminUpdateInput } from "./http/li
  * Binding configured on the dedicated Access-protected admin Worker; it has no public HTTP route.
  */
 export class CatalogAdminService extends WorkerEntrypoint<Env> implements CatalogAdminRpc {
+  async getOperations() {
+    return readAdminOperations(this.env);
+  }
   async adminJobs(input: unknown) {
     return requestAdminJobs(this.env, input);
   }

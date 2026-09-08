@@ -171,6 +171,51 @@ export class SqlObservationClient {
     });
   }
 
+  /** Passive Workers analytics, grouped only by status; no application request or SQL. */
+  async workerStatusMetrics(
+    worker: "hifiscout" | "hifiscout-admin",
+    windowStart: string,
+    windowEnd: string,
+  ) {
+    return jsonResponse(
+      await this.request("/graphql", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          query: `query AdminWorkerStatus($accountTag: string, $worker: string, $start: string, $end: string) {
+        viewer { accounts(filter: {accountTag: $accountTag}) { workersInvocationsAdaptive(limit: 50,
+          filter: {scriptName: $worker, datetime_geq: $start, datetime_lt: $end}) {
+          dimensions { status } sum { requests errors }
+        } } }
+      }`,
+          variables: { accountTag: this.accountId, worker, start: windowStart, end: windowEnd },
+        }),
+      }),
+    );
+  }
+
+  async saveAdminSnapshot(kind: "sql-load" | "runtime", value: unknown): Promise<void> {
+    const body = JSON.stringify(value);
+    if (Buffer.byteLength(body) > 64 * 1024)
+      throw new SqlObservationError("Admin snapshot exceeds its size bound.");
+    const path = this.accountPath(
+      `/r2/buckets/${SQL_OBSERVATION_BUCKET}/objects/admin/v1/${kind}.json`,
+    );
+    const saved = await this.request(path, {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        "cache-control": "private, no-store",
+        "cf-r2-data-catalog-check": "true",
+      },
+      body,
+    });
+    await saved.body?.cancel();
+    const readBack = await jsonResponse(await this.request(path));
+    if (!isDeepStrictEqual(readBack, value))
+      throw new SqlObservationError("Admin snapshot read-back mismatch.");
+  }
+
   /** Dedicated bucket, private on creation; never enables a public domain or grants access.
    * Only our named prefix policy is managed; unrelated lifecycle rules remain byte-for-byte. */
   async ensureArchiveStorage(): Promise<void> {

@@ -136,3 +136,50 @@ export interface AdminCrawlOverview {
     error: string | null;
   }[];
 }
+
+export interface AdminSqlMetrics {
+  count: number | null;
+  rowsRead: number | null;
+  rowsWritten: number | null;
+  durationMs: number | null;
+}
+export interface AdminSqlSnapshot {
+  generatedAt: string;
+  requestedHours: string[];
+  missingHours: string[];
+  observedTotals: AdminSqlMetrics;
+  hours: {
+    windowStart: string;
+    windowEnd: string;
+    collectedAt: string;
+    provisional: boolean;
+    totals: AdminSqlMetrics;
+    limited: boolean;
+  }[];
+  topReads: (AdminSqlMetrics & { fingerprint: string; operation: string })[];
+  topWrites: (AdminSqlMetrics & { fingerprint: string; operation: string })[];
+}
+export interface AdminRuntimeSnapshot {
+  generatedAt: string;
+  windowStart: string;
+  windowEnd: string;
+  workerStats: {
+    worker: string;
+    available: boolean;
+    limitHit: boolean;
+    statuses: { status: string; requests: number | null; errors: number | null }[];
+  }[];
+  deployment: {
+    targetSha: string;
+    state: "deferred" | "success" | "failure" | "pending";
+    updatedAt: string | null;
+    runUrl: string | null;
+  } | null;
+}
+export interface AdminOperations {
+  observedAt: string;
+  version: { id: string | null; tag: string | null; timestamp: string | null };
+  sql: AdminSqlSnapshot | null;
+  runtime: AdminRuntimeSnapshot | null;
+  unavailable: string[];
+}

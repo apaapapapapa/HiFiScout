@@ -150,6 +150,34 @@ or application D1 queries. The four scheduled reports add at most 96 R2 object r
 manual/post-deployment reports and control-plane binding/deployment lookups. No raw gzip or private
 analysis result is uploaded to GitHub, and no R2 public access or retention policy is changed.
 
+### Admin dashboard snapshots
+
+The workflow now passes `--publish` to the report command. This additionally replaces one bounded,
+allowlisted 64KiB JSON summary at `admin/v1/sql-load.json` and verifies its read-back. It retains
+hour boundaries, collection times, provisional/limited coverage, metrics and top fingerprints;
+SQL text, parameters and arbitrary archive properties are excluded. Ordinary command-line reports
+without `--publish` remain read-only. The four scheduled publications add four R2 writes and four
+verification reads per day; the 24 source-hour reads are reused.
+
+Each ordinary 15-minute archive run also writes `admin/v1/runtime.json`. Two native
+`workersInvocationsAdaptive` requests group the public/admin Workers by invocation status, at most
+50 groups each over the previous 24 hours ending five minutes before collection. `exceededCpu`
+is retained as an invocation outcome, separate from SQL duration. Missing metrics stay unknown.
+The collector separately reads the main reference and its latest Cloudflare deployment commit
+status. A successful workflow explicitly marked as D1-quota-deferred remains **deferred**.
+Each publication replaces one fixed object and verifies it, without a bucket listing or D1 query.
+
+`GET /api/admin/operations` is Access protected and reads only these two keys via the service
+binding. It does not execute SQL, collect telemetry, enumerate archives, or run active health checks.
+Missing/invalid/oversized summaries degrade independently. The actual serving Worker version ID
+comes directly from `CF_VERSION_METADATA`, separately from the saved status of main. A successful
+commit status alone is not proof that a new version was deployed. Active production health checks
+remain paused. Native SQL aggregates do not include shop parameters, and invocation aggregates do
+not attribute failures to a shop; use saved shop/job failures for that narrower context.
+
+See the official [Workers GraphQL example](https://developers.cloudflare.com/analytics/graphql-api/tutorials/querying-workers-metrics/)
+and [CPU outcome reference](https://developers.cloudflare.com/workers/platform/limits/#cpu-time).
+
 ## Verification
 
 Every successful archive job reads back each R2 object and verifies its database, hour and collection
