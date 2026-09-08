@@ -1,3 +1,10 @@
+import { readAdminChangeHistory } from "./db/admin-change-history-repository.js";
+import {
+  parseAdminRestoreSelection,
+  previewAdminHistoryRestore,
+  restoreAdminHistoryColor,
+} from "./admin/change-history.js";
+import type { AdminRestoreSelection } from "./api/admin-listing-contracts.js";
 import { readAdminListingDiagnosis } from "./db/admin-diagnostics-repository.js";
 import {
   readCatalogSpecifications,
@@ -139,6 +146,21 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
     return mergeKnowledgeCatalogAdminProducts(this.env.DB, targetProductId, sourceProductId);
   }
 
+  async getChangeHistory(kind: "listing" | "catalog", id: number) {
+    if (!["listing", "catalog"].includes(kind) || !Number.isSafeInteger(id) || id < 1)
+      throw new Error("invalid_history_query");
+    return readAdminChangeHistory(this.env.DB, kind, id);
+  }
+  async previewHistoryRestore(input: AdminRestoreSelection) {
+    const parsed = parseAdminRestoreSelection(input);
+    if (!parsed) throw new Error("invalid_history_restore");
+    return previewAdminHistoryRestore(this.env.DB, parsed);
+  }
+  async restoreHistoryColor(input: AdminRestoreSelection, revision: string, operationId: string) {
+    const parsed = parseAdminRestoreSelection(input);
+    if (!parsed) throw new Error("invalid_history_restore");
+    return restoreAdminHistoryColor(this.env.DB, parsed, revision, operationId);
+  }
   async getListingDiagnosis(listingId: number) {
     return readAdminListingDiagnosis(this.env.DB, listingId);
   }

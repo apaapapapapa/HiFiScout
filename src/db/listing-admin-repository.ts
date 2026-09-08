@@ -1,3 +1,4 @@
+import { adminChangeJournalStatement, adminHistoryGuardStatement } from "./admin-change-journal.js";
 import {
   UNCLASSIFIED_CATEGORY_ID,
   categoryClosureIds,
@@ -298,6 +299,21 @@ export async function updateListingAdminProduct(
   if (!existing) return null;
 
   const previousOverride = overrideState(existing);
+  const currentValues = {
+    manufacturerId: existing.canonical_manufacturer_id,
+    model: existing.model,
+    primaryCategoryId: existing.primary_category_id,
+    presentationColor: existing.presentation_color,
+  };
+  if (
+    !transactionPrefix.length &&
+    Object.entries(input).every(
+      ([field, value]) =>
+        currentValues[field as keyof typeof currentValues] === value &&
+        previousOverride[field as keyof typeof previousOverride] === value,
+    )
+  )
+    return { listing: toProduct(existing), refreshedListings: 0 };
   const merged: OverrideState = { ...previousOverride };
 
   if (input.manufacturerId !== undefined) {
@@ -346,7 +362,33 @@ export async function updateListingAdminProduct(
     ? merged.presentationColor || ""
     : existing.presentation_color;
 
+  const beforeValues = {
+    manufacturer_id: existing.canonical_manufacturer_id,
+    model: existing.model,
+    primary_category_id: existing.primary_category_id,
+    presentation_color: existing.presentation_color,
+  };
+  const afterValues = {
+    manufacturer_id: manufacturerOverridden ? manufacturerId : existing.canonical_manufacturer_id,
+    model,
+    primary_category_id: categoryId,
+    presentation_color: presentationColor,
+  };
   const statements: D1PreparedStatement[] = [
+    ...(!transactionPrefix.length
+      ? [
+          adminHistoryGuardStatement(
+            db,
+            "listing",
+            listingId,
+            JSON.stringify(beforeValues),
+            existing.override_updated_at || "",
+          ),
+        ]
+      : []),
+    ...(!transactionPrefix.length
+      ? adminChangeJournalStatement(db, "listing", listingId, beforeValues, afterValues, updatedAt)
+      : []),
     db.prepare("DELETE FROM product_admin_overrides WHERE listing_product_id = ?").bind(listingId),
     db
       .prepare(`

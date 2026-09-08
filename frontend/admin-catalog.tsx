@@ -1,3 +1,4 @@
+import { AdminChangeHistoryPanel } from "./admin-change-history.js";
 import type { CatalogView } from "./admin-navigation.js";
 import { AdminCatalogSpecifications } from "./admin-catalog-specifications.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -440,6 +441,7 @@ export function CatalogAdmin({
 
   const [specificationProduct, setSpecificationProduct] = useState<CatalogProduct | null>(null);
   const [editing, setEditing] = useState<CatalogProduct | null>(null);
+  const [historyTarget, setHistoryTarget] = useState<number | null>(null);
   const [relationsProductId, setRelationsProductId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
   const [editCategory, setEditCategory] = useState("");
@@ -1209,6 +1211,13 @@ export function CatalogAdmin({
                           <button
                             type="button"
                             className="secondary-button compact"
+                            onClick={() => setHistoryTarget(product.id)}
+                          >
+                            変更履歴
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button compact"
                             aria-label={`${product.canonicalName} を編集`}
                             onClick={() => openEdit(product)}
                           >
@@ -1727,6 +1736,17 @@ export function CatalogAdmin({
         </>
       ) : null}
 
+      {historyTarget !== null ? (
+        <AdminChangeHistoryPanel
+          kind="catalog"
+          targetId={historyTarget}
+          onClose={() => setHistoryTarget(null)}
+          onChanged={() => {
+            void loadCatalog(catalogApplied, catalogAfterId, catalogHistory);
+            onDataChanged?.();
+          }}
+        />
+      ) : null}
       {specificationProduct ? (
         <AdminCatalogSpecifications
           productId={specificationProduct.id}

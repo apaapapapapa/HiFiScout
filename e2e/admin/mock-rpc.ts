@@ -1,3 +1,4 @@
+import type { AdminChangeHistoryItem } from "../../src/api/admin-listing-contracts.js";
 import type adminWorker from "../../src/admin/entry.js";
 
 type AdminRpc = Parameters<typeof adminWorker.fetch>[1]["CATALOG_ADMIN"];
@@ -46,6 +47,8 @@ export function createMockAdminRpc() {
         updatedAt: null as string | null,
       },
     },
+    history: [] as AdminChangeHistoryItem[],
+    historyConflict: false,
     writes: { catalog: 0, listing: 0 },
     replay: { scannedCount: 0, totalCount: 550, stepCalls: 0 },
     unexpectedCalls: [] as string[],
@@ -137,6 +140,30 @@ export function createMockAdminRpc() {
         peersHasMore: false,
       };
     },
+    getChangeHistory: async () => ({ items: state.history, hasMore: false }),
+    async previewHistoryRestore(selection) {
+      if (state.historyConflict) return { status: "conflict", message: "後続の変更があります。" };
+      const item = state.history.find((row) => row.operationId === selection.operationId);
+      if (!item) return { status: "invalid", message: "履歴なし" };
+      const original = {
+        manufacturer_id: state.listing.canonicalManufacturerId,
+        model: state.listing.model,
+        primary_category_id: state.listing.primaryCategoryId,
+      };
+      return {
+        status: "ready",
+        message: "復元できます。",
+        revision: "a".repeat(64),
+        before: original.model,
+        after: item.before.model,
+        change: {
+          line: 1,
+          original: { version: 1, kind: "listing", id: state.listing.id, values: original },
+          values: { ...original, model: item.before.model },
+        },
+      };
+    },
+    restoreHistoryColor: unsupported("restoreHistoryColor"),
     getModelFacts: unsupported("getModelFacts"),
     saveModelFacts: unsupported("saveModelFacts"),
     getOfferFactReplay: async () => (state.replay.stepCalls ? replayProgress() : null),
@@ -204,7 +231,18 @@ export function createMockAdminRpc() {
       return null;
     },
     previewCsvImport: unsupported("previewCsvImport"),
-    applyCsvImport: unsupported("applyCsvImport"),
+    async applyCsvImport(input) {
+      if (!state.history.length) return unsupported("applyCsvImport")();
+      state.listing.model = input.change.values.model;
+      state.writes.listing++;
+      return {
+        status: "applied",
+        message: "復元しました。",
+        line: 1,
+        id: state.listing.id,
+        kind: "listing",
+      };
+    },
     createProduct: unsupported("createProduct"),
     verifyCandidate: unsupported("verifyCandidate"),
     mergeProducts: unsupported("mergeProducts"),

@@ -1,3 +1,4 @@
+import { adminChangeJournalStatement, adminHistoryGuardStatement } from "./admin-change-journal.js";
 import {
   categoryClosureIds,
   categoryIdForClassification,
@@ -386,7 +387,28 @@ export async function updateKnowledgeCatalogAdminProduct(
     throw new Error("catalog_admin_category_invalid");
   }
 
+  const beforeValues = {
+    manufacturer_id: existing.manufacturerId,
+    canonical_model: existing.canonicalModel,
+    canonical_name: existing.canonicalName,
+    lifecycle_status: existing.lifecycleStatus,
+    primary_category_id: existing.primaryCategoryId,
+  };
+  const afterValues = {
+    ...beforeValues,
+    canonical_name: input.canonicalName,
+    lifecycle_status: input.lifecycleStatus,
+    primary_category_id: input.primaryCategoryId,
+  };
   const statements: D1PreparedStatement[] = [
+    adminHistoryGuardStatement(
+      db,
+      "catalog",
+      productId,
+      JSON.stringify(beforeValues),
+      existing.updatedAt,
+    ),
+    ...adminChangeJournalStatement(db, "catalog", productId, beforeValues, afterValues, updatedAt),
     db
       .prepare(`
         UPDATE knowledge_catalog_products

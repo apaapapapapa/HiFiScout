@@ -1,3 +1,4 @@
+import { AdminChangeHistoryPanel } from "./admin-change-history.js";
 import { AdminListingDiagnosisPanel } from "./admin-listing-diagnosis.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
@@ -153,6 +154,7 @@ export function ListingAdmin({
 
   const [editing, setEditing] = useState<ListingProduct | null>(null);
   const [editManufacturerName, setEditManufacturerName] = useState("");
+  const [historyTarget, setHistoryTarget] = useState<number | null>(null);
   const [diagnosing, setDiagnosing] = useState<number | null>(null);
   const [factsEditing, setFactsEditing] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState<EditDraft>({
@@ -639,6 +641,13 @@ export function ListingAdmin({
                             >
                               判定理由
                             </button>
+                            <button
+                              type="button"
+                              className="secondary-button compact"
+                              onClick={() => setHistoryTarget(product.id)}
+                            >
+                              変更履歴
+                            </button>
                           </td>
                         </tr>
                       );
@@ -692,6 +701,16 @@ export function ListingAdmin({
         ) : null}
       </div>
 
+      {historyTarget !== null ? (
+        <AdminChangeHistoryPanel
+          kind="listing"
+          targetId={historyTarget}
+          onClose={() => setHistoryTarget(null)}
+          onChanged={() => {
+            void loadListings(applied, currentAfterId, history);
+          }}
+        />
+      ) : null}
       {diagnosing !== null ? (
         <AdminListingDiagnosisPanel
           key={diagnosing}

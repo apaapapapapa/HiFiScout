@@ -76,6 +76,7 @@ export function isCompleteExportTable(name: string): boolean {
         "listing_projection_pending",
         "taxonomy_v3_migration_audit",
         "admin_csv_import_changes",
+        "admin_product_change_log",
       ].includes(name))
   );
 }

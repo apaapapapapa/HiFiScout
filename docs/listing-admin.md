@@ -355,3 +355,26 @@ and a capped exact-identity index lookup for 20 active peers (plus one continuat
 does not crawl, resolve, repair, count all products or scan the catalog. Peer membership is a
 comparison snapshot, not proof that two listings should be merged. The inspector loads on demand
 and offers retry on failure; it never polls in the background.
+
+## Change history and guarded restoration
+
+Catalog and listing rows offer **変更履歴**, combining up to 25 recent editor changes, CSV receipts
+and retained resolver events. Reads use per-target time indexes (at most 26 rows per source), without
+inventory counts or a global history scan. Older records remain in complete exports. Existing CSV
+before-images are reused; changed individual edits add one atomic journal row. Unchanged repeated
+listing overrides write nothing. Historical resolver events are shown as reference-only because
+they do not retain the complete editable state.
+
+**この値へ戻す** previews one field against the current value and rejects a later edit, a same-value
+ABA cycle, an incomplete import or a now-invalid value. Applying the preview uses the existing
+CSV revision/transaction guard and resumable projection receipt. Colour restoration uses the same
+listing writer with an atomic snapshot guard and idempotent operation journal. A restoration is a
+new manual decision, not removal of an override or a database rollback. Other fields and retained
+seller evidence are preserved. Catalogue creation receipts without a before-image cannot be used
+as delete operations. Model relationship/specification decisions retain their own existing editors.
+
+The Access-protected history API supports `GET /api/admin/change-history?kind=listing&id=...`,
+`POST /api/admin/change-history/restore-preview`, and the colour apply endpoint
+`POST /api/admin/change-history/restore-color`. Other restored fields use the existing CSV apply
+endpoint. Each step is bounded; keep the dialog open until projection completion, or reuse the
+same in-memory operation after a network failure. Public admin routes remain unavailable.
