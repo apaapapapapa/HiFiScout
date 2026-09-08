@@ -54,13 +54,13 @@ export async function previewAdminHistoryRestore(
   const state = await db
     .prepare(ADMIN_HISTORY_STATE_SQL[selection.kind])
     .bind(selection.targetId)
-    .first<{ values_json: string; updated_at: string }>();
+    .first<{ values_json: string; updated_at: string; decision_at?: string | null }>();
   if (!history || !state || !Object.hasOwn(history.before, selection.field))
     return { status: "invalid" as const, message: "復元できる変更前の値がありません。" };
   const current = JSON.parse(state.values_json) as Record<string, string>;
   if (
     history.status === "pending" ||
-    state.updated_at !== history.createdAt ||
+    (selection.kind === "catalog" ? state.decision_at : state.updated_at) !== history.createdAt ||
     current[selection.field] !== history.after[selection.field] ||
     (await hasLaterAdminChange(db, history))
   )

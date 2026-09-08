@@ -170,6 +170,10 @@ test("catalogue name history supports a field restore without rewriting the manu
       "2026-09-01T00:00:00Z",
     );
     const edit = (await readAdminChangeHistory(db, "catalog", 100001)).items[0];
+    // Routine remediation changes storage timestamps without creating a new admin decision.
+    sqlite.exec(`UPDATE knowledge_catalog_products SET remediation_after_listing_id = 123,
+      last_remediated_at = '2026-09-02T00:00:00Z', updated_at = '2026-09-02T00:00:00Z'
+      WHERE id = 100001`);
     const preview = await previewAdminHistoryRestore(db, {
       kind: "catalog",
       targetId: 100001,
@@ -181,6 +185,22 @@ test("catalogue name history supports a field restore without rewriting the manu
     assert.ok("change" in preview && preview.change);
     assert.equal(preview.change.values.manufacturer_id, "luxman");
     assert.equal(preview.change.values.canonical_name, "LUXMAN M-1");
+    sqlite.exec(
+      "UPDATE knowledge_catalog_products SET last_reviewed_at = '2026-09-03T00:00:00Z' WHERE id = 100001",
+    );
+    assert.equal(
+      (
+        await previewAdminHistoryRestore(db, {
+          kind: "catalog",
+          targetId: 100001,
+          source: "editor",
+          operationId: edit.operationId,
+          field: "canonical_name",
+        })
+      ).status,
+      "conflict",
+      "a later review still conflicts even if values match",
+    );
   } finally {
     sqlite.close();
   }

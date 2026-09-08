@@ -9,7 +9,7 @@ export const ADMIN_HISTORY_STATE_SQL = {
     'canonical_name', p.canonical_name, 'lifecycle_status', p.lifecycle_status,
     'primary_category_id', COALESCE((SELECT category_id FROM knowledge_catalog_product_categories
       WHERE product_id = p.id AND is_primary = 1 LIMIT 1), '')) AS values_json,
-    p.updated_at FROM knowledge_catalog_products p WHERE p.id = ?`,
+    p.updated_at, p.last_reviewed_at AS decision_at FROM knowledge_catalog_products p WHERE p.id = ?`,
 } as const;
 
 export function adminHistoryGuardStatement(
