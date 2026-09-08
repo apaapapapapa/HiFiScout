@@ -173,6 +173,8 @@ async function identityMembers(
       LEFT JOIN product_search_entities e ON e.id = o.entity_id
       WHERE p.is_active = 1
         AND p.model_resolution_status = 'resolved'
+        AND COALESCE(p.canonical_manufacturer_id, '') <> ''
+        AND COALESCE(p.normalized_model, '') <> ''
         AND NOT EXISTS (
           SELECT 1 FROM product_identity_resolutions r
           JOIN knowledge_catalog_products kp

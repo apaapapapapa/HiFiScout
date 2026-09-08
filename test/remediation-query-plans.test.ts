@@ -216,11 +216,11 @@ test("unresolved identity grouping walks the identity-group index, not the listi
   assert.equal(rest.length, 0, "grouping should be one statement, not a per-group lookup");
   const plan = queryPlan(sqlite, grouping);
   // `LIMIT` sits after GROUP BY here, so it bounds the rows returned but not the rows read. The
-  // only thing that bounds the read is the index, which is what has to be asserted: drop
-  // idx_products_identity_group and this becomes a full listing sweep on every dashboard load.
+  // only thing that bounds the read is the consolidated identity index, which is what has to be
+  // asserted: drop it and this becomes a full listing sweep on every dashboard load.
   assert.ok(
-    readsThroughIndex(plan, "p", "idx_products_identity_group"),
-    `grouping must read listings through idx_products_identity_group, got:\n${plan
+    readsThroughIndex(plan, "p", "idx_products_exact_identity"),
+    `grouping must read listings through idx_products_exact_identity, got:\n${plan
       .map((step) => step.detail)
       .join("\n")}`,
   );

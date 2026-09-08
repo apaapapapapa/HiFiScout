@@ -124,8 +124,8 @@ export async function listUnresolvedIdentityGroups(
       FROM products p
       LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
       WHERE p.is_active = 1
-        AND p.canonical_manufacturer_id <> ''
-        AND p.normalized_model <> ''
+        AND COALESCE(p.canonical_manufacturer_id, '') <> ''
+        AND COALESCE(p.normalized_model, '') <> ''
         AND COALESCE(r.status, 'unresolved') <> 'matched'
       GROUP BY p.canonical_manufacturer_id, p.normalized_model
       ORDER BY listing_count DESC, shop_count DESC,
