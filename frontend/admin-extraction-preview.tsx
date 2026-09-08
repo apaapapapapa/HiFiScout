@@ -217,6 +217,13 @@ export function AdminExtractionPreview() {
               </label>
             </>
           ) : null}
+          {manufacturerId ? (
+            <p>
+              <a href={`/?manufacturerId=${manufacturerId}#manufacturers`}>
+                このメーカーの正式名称・別名を管理する
+              </a>
+            </p>
+          ) : null}
         </fieldset>
         <button type="submit" disabled={busy}>
           {busy ? "抽出を確認しています…" : "保存せず抽出を確認"}

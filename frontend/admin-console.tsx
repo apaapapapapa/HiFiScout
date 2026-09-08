@@ -1,3 +1,4 @@
+import { AdminManufacturerRegistry } from "./admin-manufacturer-registry.js";
 import { AdminExtractionPreview } from "./admin-extraction-preview.js";
 import { AdminOperationsPanel } from "./admin-operations.js";
 import { useEffect, useRef, useState } from "react";
@@ -159,6 +160,17 @@ export function AdminConsole() {
           </h1>
           <p>{active.description}</p>
         </header>
+        <div hidden={location.view !== "manufacturers"}>
+          {visited.has("manufacturers") ? (
+            <AdminManufacturerRegistry
+              onDataChanged={() => {
+                setBackgroundRevision((value) => value + 1);
+                setDataRevision((value) => value + 1);
+                refreshWorkCounts();
+              }}
+            />
+          ) : null}
+        </div>
         <div hidden={location.view !== "extraction"}>
           {visited.has("extraction") ? <AdminExtractionPreview /> : null}
         </div>
