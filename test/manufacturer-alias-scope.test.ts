@@ -117,3 +117,37 @@ test("both database readers retain scoped rejection and global evidence without 
     await dispose();
   }
 }, 30_000);
+
+test("a preview can enable a spelling that is currently disabled only for the requested shop", async () => {
+  const { previewAdminExtraction } = await import("../src/admin/extraction-preview.js");
+  const { db, dispose } = await database();
+  try {
+    await db
+      .prepare(
+        "INSERT INTO knowledge_catalog_manufacturers(id,canonical_name,verification_status,created_at,updated_at) VALUES('luxman','LUXMAN','verified','','') ON CONFLICT(id) DO NOTHING",
+      )
+      .run();
+    await db
+      .prepare(
+        "INSERT INTO knowledge_catalog_shop_manufacturer_aliases(manufacturer_id,alias,normalized_alias,verification_status,created_at,updated_at,shop_key) VALUES('luxman','デモラボ','デモラボ','rejected','','','audiounion')",
+      )
+      .run();
+    const raw = {
+      title: "デモラボ L-505",
+      rawManufacturer: "デモラボ",
+      rawModel: "デモラボ L-505",
+      rawCategory: "",
+      shopKey: "audiounion",
+    };
+    const result = await previewAdminExtraction(db, {
+      samples: [raw, { ...raw, shopKey: "hifido" }],
+      draftAlias: { manufacturerId: "luxman", alias: "デモラボ", shopKey: "audiounion" },
+    });
+    assert.equal(result.items[0].current?.manufacturerId, "");
+    assert.equal(result.items[0].proposed?.manufacturerId, "luxman");
+    assert.equal(result.items[0].proposed?.model, "L-505");
+    assert.equal(result.items[1].proposed?.manufacturerId, "");
+  } finally {
+    await dispose();
+  }
+}, 30_000);

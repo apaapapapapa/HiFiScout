@@ -132,11 +132,11 @@ export async function listManufacturerAliasEvidence(
   const result = await db
     .prepare(`
       WITH aliases AS (
-        SELECT a.*, '' AS shop_key FROM knowledge_catalog_manufacturer_aliases a
+        SELECT a.*, '' AS shop_key FROM knowledge_catalog_manufacturer_aliases a INDEXED BY idx_knowledge_catalog_manufacturer_alias_lookup
         UNION ALL
         SELECT id, manufacturer_id, alias, normalized_alias, verification_status, source,
           provenance_json, rule_version, created_at, updated_at, shop_key
-          FROM knowledge_catalog_shop_manufacturer_aliases
+          FROM knowledge_catalog_shop_manufacturer_aliases INDEXED BY idx_shop_alias_lookup
       )
       SELECT a.*, m.canonical_name FROM aliases a
       JOIN knowledge_catalog_manufacturers m ON m.id = a.manufacturer_id
@@ -524,7 +524,7 @@ export async function reprocessManufacturerAliasListings(
     selected,
     aliases,
     evaluatedAt,
-    `verified_manufacturer_alias:${alias.normalizedAlias}`,
+    `${alias.verificationStatus}_manufacturer_alias:${alias.normalizedAlias}`,
     dependencies,
   );
 }
@@ -568,7 +568,8 @@ export async function saveManufacturerAliasAndReprocess(
 ): Promise<{ alias: ManufacturerAliasEvidence; replay: ManufacturerAliasReplayResult | null }> {
   const alias = await saveManufacturerAlias(db, input);
   const replay =
-    alias.verificationStatus === "verified"
+    alias.verificationStatus === "verified" ||
+    (alias.source === "admin_alias_control" && alias.verificationStatus === "rejected")
       ? await reprocessManufacturerAliasListings(db, alias, options)
       : null;
   return { alias, replay };
