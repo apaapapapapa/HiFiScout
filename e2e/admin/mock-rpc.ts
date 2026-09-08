@@ -49,6 +49,13 @@ export function createMockAdminRpc() {
     },
     history: [] as AdminChangeHistoryItem[],
     historyConflict: false,
+    bulk: {
+      enabled: false,
+      conflict: false,
+      loseResponse: false,
+      appliedOperations: [] as string[],
+      calls: [] as string[],
+    },
     writes: { catalog: 0, listing: 0 },
     replay: { scannedCount: 0, totalCount: 550, stepCalls: 0 },
     unexpectedCalls: [] as string[],
@@ -199,7 +206,13 @@ export function createMockAdminRpc() {
       return { refreshedListings: 1 };
     },
     async listListings() {
-      return { items: [state.listing], nextAfterId: null, hasMore: false };
+      return {
+        items: state.bulk.enabled
+          ? [state.listing, { ...state.listing, id: 22, title: "選択しない商品" }]
+          : [state.listing],
+        nextAfterId: null,
+        hasMore: false,
+      };
     },
     async updateListing(id, input) {
       if (id !== state.listing.id) return null;
@@ -230,8 +243,38 @@ export function createMockAdminRpc() {
     async latestProductAuditExportJob() {
       return null;
     },
-    previewCsvImport: unsupported("previewCsvImport"),
+    async previewCsvImport(changes) {
+      if (!state.bulk.enabled) return unsupported("previewCsvImport")();
+      return changes.map((change) => ({
+        line: change.line,
+        id: change.original.id,
+        kind: change.original.kind,
+        status: state.bulk.conflict ? ("conflict" as const) : ("ready" as const),
+        message: state.bulk.conflict ? "別の変更が入りました。" : "変更できます。",
+        revision: "a".repeat(64),
+      }));
+    },
     async applyCsvImport(input) {
+      if (state.bulk.enabled) {
+        state.bulk.calls.push(input.operationId);
+        if (input.change.original.id !== 21) throw new Error("Unexpected bulk target");
+        if (!state.bulk.appliedOperations.includes(input.operationId)) {
+          state.bulk.appliedOperations.push(input.operationId);
+          state.listing.model = input.change.values.model;
+          state.writes.listing++;
+        }
+        if (state.bulk.loseResponse) {
+          state.bulk.loseResponse = false;
+          throw new Error("Response lost");
+        }
+        return {
+          status: "applied",
+          message: "変更を適用しました。",
+          line: input.change.line,
+          id: 21,
+          kind: "listing",
+        };
+      }
       if (!state.history.length) return unsupported("applyCsvImport")();
       state.listing.model = input.change.values.model;
       state.writes.listing++;

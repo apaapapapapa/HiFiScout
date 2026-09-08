@@ -1,4 +1,5 @@
 import { AdminChangeHistoryPanel } from "./admin-change-history.js";
+import { AdminBulkEdit } from "./admin-bulk-edit.js";
 import { AdminListingDiagnosisPanel } from "./admin-listing-diagnosis.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
@@ -147,6 +148,8 @@ export function ListingAdmin({
   const [draft, setDraft] = useState<ListingFilters>(EMPTY_FILTERS);
   const [applied, setApplied] = useState<ListingFilters>(EMPTY_FILTERS);
   const [items, setItems] = useState<ListingProduct[]>([]);
+  const [selected, setSelected] = useState<number[]>([]);
+  const [bulkItems, setBulkItems] = useState<ListingProduct[] | null>(null);
   const [currentAfterId, setCurrentAfterId] = useState(0);
   const [nextAfterId, setNextAfterId] = useState<number | null>(null);
   const [history, setHistory] = useState<number[]>([]);
@@ -171,6 +174,7 @@ export function ListingAdmin({
     async (filters: ListingFilters, afterId: number, nextHistory: number[]) => {
       const request = ++searchRequest.current;
       setBusy(true);
+      setSelected([]);
       setStatus({ text: "登録商品を読み込んでいます…", kind: "info" });
       const params = new URLSearchParams({ scope: filters.scope, limit: "50" });
       if (filters.q.trim()) params.set("q", filters.q.trim());
@@ -548,10 +552,32 @@ export function ListingAdmin({
                   {items.length ? `${items.length.toLocaleString("ja-JP")}件を表示` : "該当 0件"}
                 </p>
               </div>
+              <div className="table-toolbar">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={items.length > 0 && selected.length === items.length}
+                    disabled={busy || !items.length}
+                    onChange={(event) =>
+                      setSelected(event.currentTarget.checked ? items.map((item) => item.id) : [])
+                    }
+                  />
+                  このページの全商品を選択
+                </label>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={busy || !selected.length}
+                  onClick={() => setBulkItems(items.filter((item) => selected.includes(item.id)))}
+                >
+                  選択した{selected.length}件を一括修正
+                </button>
+              </div>
               <div className="table-wrap">
                 <table className="listing-table">
                   <thead>
                     <tr>
+                      <th>選択</th>
                       <th>商品 / 販売店</th>
                       <th>メーカー・型番</th>
                       <th>カテゴリ / 補正</th>
@@ -564,6 +590,22 @@ export function ListingAdmin({
                       const labels = overrideLabels(product);
                       return (
                         <tr key={product.id}>
+                          <td data-label="選択">
+                            <input
+                              type="checkbox"
+                              aria-label={`商品 #${product.id} を選択`}
+                              disabled={busy}
+                              checked={selected.includes(product.id)}
+                              onChange={(event) => {
+                                const checked = event.currentTarget.checked;
+                                setSelected((ids) =>
+                                  checked
+                                    ? [...ids, product.id]
+                                    : ids.filter((id) => id !== product.id),
+                                );
+                              }}
+                            />
+                          </td>
                           <td data-label="商品 / 販売店" className="listing-product-cell">
                             <div className="listing-cell-stack">
                               <button
@@ -701,6 +743,16 @@ export function ListingAdmin({
         ) : null}
       </div>
 
+      {bulkItems ? (
+        <AdminBulkEdit
+          items={bulkItems}
+          categories={categories}
+          onClose={() => setBulkItems(null)}
+          onChanged={() => {
+            void loadListings(applied, currentAfterId, history);
+          }}
+        />
+      ) : null}
       {historyTarget !== null ? (
         <AdminChangeHistoryPanel
           kind="listing"
