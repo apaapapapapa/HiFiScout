@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
+import { unstable_splitSqlQuery } from "wrangler";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { migrationSources } from "./helpers/migrations.js";
 import {
@@ -55,9 +56,9 @@ test("the additive migration initializes repeated-report flags for preexisting r
     addReport(sqlite, 1, 11, "accepted");
     addReport(sqlite, 3, 11);
     addReport(sqlite, 4, 12);
-    sqlite.exec(
-      migrationSources.find((row) => row.name === "0116_admin_quality_priority.sql")!.sql,
-    );
+    // Exercise the pinned deployment splitter, including CASE expressions inside triggers.
+    const sql = migrationSources.find((row) => row.name === "0116_admin_quality_priority.sql")!.sql;
+    for (const statement of unstable_splitSqlQuery(sql)) sqlite.exec(statement);
     const group = sqlite
       .prepare("SELECT * FROM admin_quality_report_groups WHERE target_key='listing:11'")
       .get();

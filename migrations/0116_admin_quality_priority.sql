@@ -16,16 +16,16 @@ CREATE TABLE admin_quality_report_members (
 );
 CREATE INDEX idx_admin_quality_report_priority ON admin_quality_report_groups(recurrence_count DESC,open_count DESC,updated_at DESC,target_key DESC,reason DESC) WHERE open_count>0;
 CREATE INDEX idx_admin_quality_report_lookup ON product_correction_reports(
- (CASE WHEN listing_product_id IS NOT NULL THEN 'listing:'||listing_product_id ELSE 'product:'||product_key END), reason,status,created_at DESC,id DESC
+ ( CASE WHEN listing_product_id IS NOT NULL THEN 'listing:'||listing_product_id ELSE 'product:'||product_key END ), reason,status,created_at DESC,id DESC
 );
 CREATE INDEX idx_admin_quality_candidate_priority ON knowledge_catalog_candidates(priority_score DESC,updated_at DESC,id DESC) WHERE review_status='pending' AND active_listing_count>0;
 WITH history AS (
- SELECT r.id,CASE WHEN r.listing_product_id IS NOT NULL THEN 'listing:'||r.listing_product_id ELSE 'product:'||r.product_key END AS target_key,r.reason,r.created_at,
- MIN(CASE WHEN r.status='accepted' THEN COALESCE(r.resolved_at,r.updated_at) END) OVER(PARTITION BY CASE WHEN r.listing_product_id IS NOT NULL THEN 'listing:'||r.listing_product_id ELSE 'product:'||r.product_key END,r.reason) AS first_accepted_at
+ SELECT r.id, CASE WHEN r.listing_product_id IS NOT NULL THEN 'listing:'||r.listing_product_id ELSE 'product:'||r.product_key END AS target_key,r.reason,r.created_at,
+ MIN( CASE WHEN r.status='accepted' THEN COALESCE(r.resolved_at,r.updated_at) END ) OVER(PARTITION BY CASE WHEN r.listing_product_id IS NOT NULL THEN 'listing:'||r.listing_product_id ELSE 'product:'||r.product_key END ,r.reason) AS first_accepted_at
  FROM product_correction_reports r
 )
 INSERT INTO admin_quality_report_members(report_id,target_key,reason,recurrence)
- SELECT id,target_key,reason,CASE WHEN created_at>first_accepted_at THEN 1 ELSE 0 END FROM history;
+ SELECT id,target_key,reason, CASE WHEN created_at>first_accepted_at THEN 1 ELSE 0 END FROM history;
 INSERT INTO admin_quality_report_groups(target_key,reason,open_count,report_count,accepted_count,recurrence_count,updated_at)
  SELECT m.target_key,m.reason,SUM(r.status IN ('open','in_review')),COUNT(*),SUM(r.status='accepted'),SUM(m.recurrence),MAX(r.updated_at)
  FROM admin_quality_report_members m JOIN product_correction_reports r ON r.id=m.report_id GROUP BY m.target_key,m.reason;
@@ -33,9 +33,9 @@ INSERT INTO admin_quality_report_groups(target_key,reason,open_count,report_coun
 CREATE TRIGGER admin_quality_report_insert AFTER INSERT ON product_correction_reports
 BEGIN
  INSERT INTO admin_quality_report_members(report_id,target_key,reason,recurrence)
- VALUES(NEW.id,CASE WHEN NEW.listing_product_id IS NOT NULL THEN 'listing:'||NEW.listing_product_id ELSE 'product:'||NEW.product_key END,NEW.reason,CASE WHEN EXISTS(SELECT 1 FROM admin_quality_report_groups WHERE target_key=CASE WHEN NEW.listing_product_id IS NOT NULL THEN 'listing:'||NEW.listing_product_id ELSE 'product:'||NEW.product_key END AND reason=NEW.reason AND accepted_count>0) THEN 1 ELSE 0 END);
+ VALUES(NEW.id, CASE WHEN NEW.listing_product_id IS NOT NULL THEN 'listing:'||NEW.listing_product_id ELSE 'product:'||NEW.product_key END ,NEW.reason, CASE WHEN EXISTS(SELECT 1 FROM admin_quality_report_groups WHERE target_key= CASE WHEN NEW.listing_product_id IS NOT NULL THEN 'listing:'||NEW.listing_product_id ELSE 'product:'||NEW.product_key END AND reason=NEW.reason AND accepted_count>0) THEN 1 ELSE 0 END );
  INSERT INTO admin_quality_report_groups(target_key,reason,open_count,report_count,accepted_count,recurrence_count,updated_at)
- VALUES(CASE WHEN NEW.listing_product_id IS NOT NULL THEN 'listing:'||NEW.listing_product_id ELSE 'product:'||NEW.product_key END,NEW.reason,NEW.status IN ('open','in_review'),1,NEW.status='accepted',(SELECT recurrence FROM admin_quality_report_members WHERE report_id=NEW.id),NEW.updated_at)
+ VALUES( CASE WHEN NEW.listing_product_id IS NOT NULL THEN 'listing:'||NEW.listing_product_id ELSE 'product:'||NEW.product_key END ,NEW.reason,NEW.status IN ('open','in_review'),1,NEW.status='accepted',(SELECT recurrence FROM admin_quality_report_members WHERE report_id=NEW.id),NEW.updated_at)
  ON CONFLICT(target_key,reason) DO UPDATE SET open_count=open_count+excluded.open_count,report_count=report_count+1,accepted_count=accepted_count+excluded.accepted_count,recurrence_count=recurrence_count+excluded.recurrence_count,updated_at=MAX(updated_at,excluded.updated_at);
 END;
 CREATE TRIGGER admin_quality_report_status AFTER UPDATE OF status ON product_correction_reports WHEN OLD.status IS NOT NEW.status
