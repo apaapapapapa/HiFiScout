@@ -130,6 +130,16 @@ test("quality loads lazily, shows scope and unknowns, and explicitly advances sp
   await expect(panel).toContainText("未集計ショップ: 未集計・品質不明");
   await panel.getByRole("combobox", { name: "課題の並び順" }).selectOption("count");
   expect(calls).toHaveLength(3);
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await reportPanel
+      .locator("td")
+      .filter({ hasText: /^3件$/ })
+      .evaluate((cell) => getComputedStyle(cell, "::before").content),
+  ).toContain("補正後の再報告");
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
+  ).toBe(true);
   await panel.getByRole("button", { name: "該当商品を確認", exact: true }).click();
   const sample = panel.getByRole("region", { name: "課題の商品サンプル" });
   await expect(sample).toContainText("続きの範囲を確認できます");

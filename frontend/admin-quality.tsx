@@ -163,22 +163,22 @@ export function AdminQualityPanel() {
                 <tbody>
                   {reports.items.map((row) => (
                     <tr key={`${row.targetKey}:${row.reason}`}>
-                      <td>
+                      <td data-label="対象・理由">
                         {[row.manufacturer, row.model].filter(Boolean).join(" ") || row.productKey}
                         <br />
                         <small>
                           {row.shopKey || "商品全体"} · {correctionReportReasonLabel(row.reason)}
                         </small>
                       </td>
-                      <td>{row.recurrenceCount}件</td>
-                      <td>
+                      <td data-label="補正後の再報告">{row.recurrenceCount}件</td>
+                      <td data-label="未対応 / 保持報告">
                         {row.openCount}件 / {row.reportCount}件
                       </td>
-                      <td>
+                      <td data-label="関連出品">
                         {row.relatedOfferCount === null ? "不明" : `${row.relatedOfferCount}件`}
                       </td>
-                      <td>{dateText(row.updatedAt)}</td>
-                      <td>
+                      <td data-label="更新日時">{dateText(row.updatedAt)}</td>
+                      <td data-label="対応">
                         {row.reportId !== null ? (
                           <a href={`/?reportId=${row.reportId}#reports`}>
                             報告 #{row.reportId} を確認
@@ -259,20 +259,20 @@ export function AdminQualityPanel() {
                 <tbody>
                   {issues.map((row) => (
                     <tr key={`${row.shopKey}:${row.kind}`}>
-                      <td>{severityNames[row.severity]}</td>
-                      <td>
+                      <td data-label="優先度">{severityNames[row.severity]}</td>
+                      <td data-label="ショップ・課題">
                         {row.shopName}
                         <br />
                         {kindNames[row.kind]}
                       </td>
-                      <td>
+                      <td data-label="影響商品 / 集計対象">
                         {row.count}件 / {row.total}件
                       </td>
-                      <td>
+                      <td data-label="集計日時">
                         {dateText(row.snapshotAt)}
                         {stale(row.snapshotAt) ? <p>24時間以上前の集計</p> : null}
                       </td>
-                      <td>
+                      <td data-label="確認">
                         <button type="button" disabled={busy} onClick={() => void inspect(row)}>
                           該当商品を確認
                         </button>
@@ -375,15 +375,15 @@ export function AdminQualityPanel() {
                 <tbody>
                   {candidates.items.map((row) => (
                     <tr key={row.id}>
-                      <td>
+                      <td data-label="候補">
                         {row.manufacturer} {row.model}
                       </td>
-                      <td>{row.priorityScore}</td>
-                      <td>
+                      <td data-label="優先度">{row.priorityScore}</td>
+                      <td data-label="関連商品 / ショップ">
                         {row.listingCount}件 / {row.shopCount}店
                       </td>
-                      <td>{dateText(row.updatedAt)}</td>
-                      <td>
+                      <td data-label="更新日時">{dateText(row.updatedAt)}</td>
+                      <td data-label="対応">
                         <a href={candidateUrl(row)}>候補を確認</a>
                       </td>
                     </tr>
