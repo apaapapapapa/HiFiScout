@@ -1,3 +1,4 @@
+import { effectiveManufacturerAliases, scopedAliasCache } from "./manufacturer-alias-scope.js";
 /**
  * Model Resolution.
  *
@@ -6,7 +7,6 @@
  */
 
 import {
-  bootstrapManufacturers,
   manufacturerPrefixPattern,
   normalizeManufacturerKey,
   stripBracketedManufacturerAlias,
@@ -425,12 +425,18 @@ function presentationPatterns(
     byManufacturer.set(id, entries);
   };
 
-  for (const manufacturer of bootstrapManufacturers()) {
-    for (const alias of [manufacturer.name, ...manufacturer.aliases]) add(manufacturer.id, alias);
-  }
-  for (const row of operationalAliases) {
+  const effective = effectiveManufacturerAliases(operationalAliases, MODEL_RESOLVER_VERSION);
+  const disabled = new Set(
+    operationalAliases
+      .filter(
+        (row) => row.source === "admin_alias_control" && row.verificationStatus === "rejected",
+      )
+      .map((row) => `${row.manufacturerId}\u0000${normalizeManufacturerKey(row.alias)}`),
+  );
+  for (const row of effective) {
     if (row.verificationStatus !== "verified") continue;
-    add(row.manufacturerId, row.canonicalName);
+    if (!disabled.has(`${row.manufacturerId}\u0000${normalizeManufacturerKey(row.canonicalName)}`))
+      add(row.manufacturerId, row.canonicalName);
     add(row.manufacturerId, row.alias);
   }
 
@@ -604,8 +610,8 @@ function resolvePreparedModel(
 export function createModelResolver(
   operationalAliases: readonly ManufacturerAliasEvidence[] = [],
 ): ModelResolver {
-  const prepared = presentationPatterns(operationalAliases);
-  return (input) => resolvePreparedModel(input, prepared);
+  const prepared = scopedAliasCache(operationalAliases, presentationPatterns);
+  return (input) => resolvePreparedModel(input, prepared(clean(input.shopKey)));
 }
 
 let bootstrapResolver: ModelResolver | undefined;

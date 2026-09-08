@@ -175,7 +175,7 @@ export async function previewAdminExtraction(
       : source.categoryEvidence;
     const extract = (resolvers: typeof baseResolvers) => {
       let product = applyModelResolution(
-        applyManufacturerResolution(source, resolvers.manufacturer),
+        applyManufacturerResolution(source, resolvers.manufacturer, raw.shopKey),
         resolvers.model,
         raw.shopKey,
       );

@@ -369,6 +369,7 @@ export interface KnowledgeCatalogManufacturerRow {
 }
 
 export interface KnowledgeCatalogManufacturerAliasRow {
+  shop_key?: string;
   id: number;
   manufacturer_id: string;
   canonical_name: string;
