@@ -1,5 +1,11 @@
 export const ADMIN_VIEWS = [
   {
+    id: "quality",
+    label: "品質点検",
+    description: "再報告・未分類・照合の問題を、影響と優先度から確認します。",
+    group: "日常の管理",
+  },
+  {
     id: "manufacturers",
     label: "メーカー・別名",
     description: "正式名称・表記揺れの影響を確認し、履歴を残して修正します。",
@@ -90,7 +96,16 @@ export function adminLocation(location: { hash: string; search: string }): {
 
 export function adminViewUrl(href: string, view: AdminView): string {
   const url = new URL(href);
-  for (const key of ["q", "shopKey", "scope", "manufacturerId", "categoryId", "jobId", "listingId"])
+  for (const key of [
+    "q",
+    "shopKey",
+    "scope",
+    "manufacturerId",
+    "categoryId",
+    "jobId",
+    "listingId",
+    "reportId",
+  ])
     url.searchParams.delete(key);
   url.hash = view === "catalog" ? "" : view;
   return `${url.pathname}${url.search}${url.hash}`;

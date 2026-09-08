@@ -18,7 +18,7 @@ test("legacy entry links and task links retain their search inputs", () => {
 
 test("task navigation clears domain filters while preserving unrelated URL state", () => {
   const href =
-    "https://admin.example.test/?q=amp&shopKey=audiounion&scope=all&manufacturerId=luxman&categoryId=amp&fixture=1#listings";
+    "https://admin.example.test/?q=amp&shopKey=audiounion&scope=all&manufacturerId=luxman&categoryId=amp&reportId=901&fixture=1#listings";
   assert.equal(adminViewUrl(href, "csv"), "/?fixture=1#csv");
   assert.equal(adminViewUrl(href, "catalog"), "/?fixture=1");
   assert.equal(adminViewUrl(href, "maintenance"), "/?fixture=1#maintenance");
