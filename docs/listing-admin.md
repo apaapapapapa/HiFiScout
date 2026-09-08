@@ -414,3 +414,19 @@ Successful rows immediately discard their input payload. Remaining result detail
 days and are deleted in chunks of at most 1,000 rows; small summaries and canonical D1 correction
 receipts remain. A paused/uploading job whose details expired must be uploaded again. Metadata reads
 do not run jobs, poll, or repair data. Alarms and explicit control actions own continuation.
+
+## Operations dashboard
+
+**負荷・稼働状況** (`/#operations`) loads on first entry and explicit refresh. It reads two fixed R2
+summaries, the existing small shop-state overview, and at most 25 stored background-job summaries.
+It never aggregates inventory, catalog or correction-history tables. D1 values describe observed
+SQL groups; hourly missing/provisional/limited coverage and collection dates remain visible.
+Native Worker invocation statuses include CPU exhaustion, with separate unavailable indicators.
+These native aggregates cannot attribute usage or CPU failures to a shop. A separate failure list
+filters saved shop failures and recent CSV/replay jobs by process and shop, and links to their
+existing controls. SQL rankings filter by statement kind without additional requests.
+
+The serving public Worker version comes from runtime metadata. The saved status of main distinguishes
+D1-quota deferral from completed deployment workflows, including successful no-op runs. SQL summaries
+older than eight hours and runtime summaries older than one hour are labelled stale. The dashboard
+does not enable paused production health checks. See [the snapshot collection contract](./d1-sql-observation.md#admin-dashboard-snapshots).

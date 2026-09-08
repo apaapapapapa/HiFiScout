@@ -1,3 +1,4 @@
+import { AdminOperationsPanel } from "./admin-operations.js";
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import { createRoot } from "react-dom/client";
@@ -157,6 +158,9 @@ export function AdminConsole() {
           </h1>
           <p>{active.description}</p>
         </header>
+        <div hidden={location.view !== "operations"}>
+          {visited.has("operations") ? <AdminOperationsPanel /> : null}
+        </div>
         <div hidden={location.view !== "jobs"}>
           {visited.has("jobs") ? (
             <AdminJobsPanel
