@@ -88,7 +88,8 @@ export interface AdminManufacturerRegistryDetail {
   history: { operationId: string; createdAt: string; edit: AdminManufacturerEdit }[];
   observedAt: string;
 }
-export interface AdminManufacturerPreview {
+export interface AdminManufacturerPreview<TSamples> {
+  aliasBefore: AdminManufacturerAlias | null;
   revision: string;
   before: AdminManufacturerRegistryDetail;
   edit: AdminManufacturerEdit;
@@ -101,7 +102,7 @@ export interface AdminManufacturerPreview {
     matched: number;
     hasMore: boolean;
   };
-  samples: import("./admin-listing-contracts.js").AdminExtractionResult;
+  samples: TSamples;
   collisions: { alias: string; shopKey: string; manufacturerId: string; name: string }[];
 }
 export type AdminManufacturerCommand =

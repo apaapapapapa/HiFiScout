@@ -1,3 +1,4 @@
+import type { AdminExtractionResult } from "../src/api/admin-listing-contracts.js";
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
@@ -96,7 +97,7 @@ test("preview identifies collisions and preserves manual values without mutating
       action: "preview",
       edit,
       afterId: 0,
-    })) as AdminManufacturerPreview;
+    })) as AdminManufacturerPreview<AdminExtractionResult>;
     assert.equal(result.samples.items[0].current?.manufacturerId, "");
     assert.equal(result.samples.items[0].proposed?.manufacturerId, "luxman");
     assert.equal(result.samples.items[0].withOverrides?.model, "手動型番");
@@ -105,7 +106,7 @@ test("preview identifies collisions and preserves manual values without mutating
       action: "preview",
       edit: { ...edit, alias: { alias: "Accuphase", shopKey: "", enabled: true } },
       afterId: 0,
-    })) as AdminManufacturerPreview;
+    })) as AdminManufacturerPreview<AdminExtractionResult>;
     assert.ok(collision.collisions.some((row) => row.manufacturerId === "accuphase"));
   } finally {
     sqlite.close();

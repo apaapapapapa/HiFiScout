@@ -1,3 +1,5 @@
+import { normalizeManufacturerKey } from "../catalog/manufacturers.js";
+import type { AdminExtractionResult } from "../api/admin-listing-contracts.js";
 import { RESOLUTION_VERSIONS } from "../catalog/resolution-versions.js";
 import { TAXONOMY_VERSION } from "../catalog/categories.js";
 import type {
@@ -90,7 +92,7 @@ export async function administerManufacturerRegistry(env: Env, command: AdminMan
   const changes = plannedManufacturerAliases(command.edit, before).filter(
     (row) => row.verificationStatus === "verified",
   );
-  const collisions: AdminManufacturerPreview["collisions"] = [];
+  const collisions: AdminManufacturerPreview<AdminExtractionResult>["collisions"] = [];
   const seen = new Set<string>();
   // Include every scoped dictionary for global claims; a clash never silently chooses a manufacturer.
   for (const shopKey of new Set(["", ...proposed.map((row) => row.shopKey ?? "")])) {
@@ -116,6 +118,13 @@ export async function administerManufacturerRegistry(env: Env, command: AdminMan
     }
   }
   return {
+    aliasBefore: command.edit.alias
+      ? (before.aliases.find(
+          (row) =>
+            row.shopKey === command.edit.alias!.shopKey &&
+            row.normalizedAlias === normalizeManufacturerKey(command.edit.alias!.alias),
+        ) ?? null)
+      : null,
     revision: await manufacturerRevision(version, command.edit),
     before,
     edit: command.edit,
@@ -130,5 +139,5 @@ export async function administerManufacturerRegistry(env: Env, command: AdminMan
     },
     samples,
     collisions,
-  } satisfies AdminManufacturerPreview;
+  } satisfies AdminManufacturerPreview<AdminExtractionResult>;
 }
