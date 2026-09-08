@@ -1,3 +1,4 @@
+import { readAdminListingDiagnosis } from "./db/admin-diagnostics-repository.js";
 import {
   readCatalogSpecifications,
   updateCatalogSpecifications,
@@ -136,6 +137,10 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
 
   async mergeProducts(targetProductId: number, sourceProductId: number) {
     return mergeKnowledgeCatalogAdminProducts(this.env.DB, targetProductId, sourceProductId);
+  }
+
+  async getListingDiagnosis(listingId: number) {
+    return readAdminListingDiagnosis(this.env.DB, listingId);
   }
 
   async listListings(options: ListingAdminListOptions) {

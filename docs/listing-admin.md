@@ -342,3 +342,16 @@ Deletion keeps a removed decision and its audit. Catalog merges/deletions are bl
 current model relationships need review; after explicit removal, old model-fact rows may be
 cleaned up with the catalog product while the audit remains. Relation editing never merges
 identities or creates catalog products for presentation colours.
+
+## Listing diagnosis
+
+Each registered listing has a **判定理由** inspector. It reads the retained seller fields, current
+normalization/resolution, explicit overrides, catalog match/candidate and rejection evidence, and
+stored search membership. Manual overrides are identified separately; historical automatic decisions
+that were not retained are never reconstructed or presented as facts.
+
+The Access-protected `GET /api/admin/listings/:id/diagnosis` uses primary-key joins for one listing
+and a capped exact-identity index lookup for 20 active peers (plus one continuation indicator). It
+does not crawl, resolve, repair, count all products or scan the catalog. Peer membership is a
+comparison snapshot, not proof that two listings should be merged. The inspector loads on demand
+and offers retry on failure; it never polls in the background.
