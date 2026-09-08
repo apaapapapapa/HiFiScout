@@ -460,13 +460,16 @@ export function upsertEntityCategoriesSql(offerScope = ""): string {
  * or moved to another entity.
  */
 export function deleteStaleEntityCategoriesSql(entityScope = ""): string {
+  // Production D1 sometimes reordered ordinary inner joins around the correlated entity key and
+  // scanned product_categories for every chunk. This path is always an entity-index lookup followed
+  // by the two primary-key lookups, independent of table statistics.
   return `
     DELETE FROM product_search_entity_categories
     WHERE NOT EXISTS (
       SELECT 1
-      FROM product_search_entity_offers m
-      JOIN products p ON p.id = m.listing_product_id
-      JOIN product_categories pc ON pc.product_id = m.listing_product_id
+      FROM product_search_entity_offers m INDEXED BY idx_product_search_entity_offers_entity
+      CROSS JOIN products p ON p.id = m.listing_product_id
+      CROSS JOIN product_categories pc ON pc.product_id = m.listing_product_id
       WHERE m.entity_id = product_search_entity_categories.entity_id
         AND pc.category_id = product_search_entity_categories.category_id
         AND p.is_active = 1

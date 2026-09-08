@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 import { syncProductSearchEntities } from "../src/db/product-search-entity-repository.js";
+import {
+  deleteStaleEntityCategoriesSql,
+  scopeClause,
+} from "../src/db/product-search-entity-sql.js";
 import { repairActiveListingProjectionGaps } from "../src/db/product-search-gap-repair.js";
 import { searchProducts } from "../src/db/product-search-repository.js";
 import { accountReads } from "../src/db/read-accounting.js";
@@ -106,6 +110,76 @@ test("unchanged projection and empty pending work stay bounded as unrelated rows
     assert.ok(costs[2].emptyRepair <= costs[0].emptyRepair + 20, JSON.stringify(costs));
     assert.ok(costs[2].dateChange <= costs[0].dateChange + 5, JSON.stringify(costs));
     console.log(JSON.stringify({ event: "observed_projection_read_budget", costs }));
+  } finally {
+    await dispose();
+  }
+}, 60_000);
+
+test("scoped stale-category pruning follows offer and category indexes", async () => {
+  const { db, dispose } = await database();
+  try {
+    await db
+      .prepare(`WITH RECURSIVE n(i) AS (
+        SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 10000
+      ) INSERT INTO products(id,shop_key,source_id,title,source_url,is_active,
+        first_seen_at,last_seen_at,last_changed_at,primary_category_id)
+        SELECT i,'budget',CAST(i AS TEXT),'fixture','https://example.test/'||i,1,
+          '${AT}','${AT}','${AT}','AMP.PRE' FROM n`)
+      .run();
+    await db
+      .prepare(`INSERT INTO product_categories(product_id,category_id,is_direct)
+        SELECT id,'AMP.PRE',1 FROM products;
+        INSERT INTO product_search_entities(id,entity_key,entity_kind,fallback_listing_id)
+        SELECT id,'l-'||id,'unresolved_listing',id FROM products;
+        INSERT INTO product_search_entity_offers(listing_product_id,entity_id,shop_key)
+        SELECT id,id,shop_key FROM products;
+        INSERT INTO product_search_entity_categories(entity_id,category_id,is_direct)
+        SELECT id,'AMP.PRE',1 FROM products;`)
+      .run();
+
+    const targetIds = Array.from({ length: 40 }, (_, index) => index + 1);
+    const measured = accountReads(db);
+    const pruneSql = deleteStaleEntityCategoriesSql(scopeClause("entity_id", targetIds.length));
+    const plan = await db
+      .prepare(`EXPLAIN QUERY PLAN ${pruneSql}`)
+      .bind(...targetIds)
+      .all<{ detail: string }>();
+    assert.ok(
+      plan.results.some((row: { detail: string }) =>
+        row.detail.includes("idx_product_search_entity_offers_entity"),
+      ),
+      JSON.stringify(plan.results),
+    );
+    const result = await measured.db
+      .prepare(pruneSql)
+      .bind(...targetIds)
+      .run();
+    assert.equal(Number(result.meta.changes || 0), 0);
+    assert.equal(measured.rowsWritten(), 0);
+    assert.ok(measured.rowsRead() < 300, `stale-category prune read ${measured.rowsRead()} rows`);
+    console.log(
+      JSON.stringify({
+        event: "stale_entity_category_read_budget",
+        indexed: { reads: measured.rowsRead(), writes: measured.rowsWritten() },
+      }),
+    );
+
+    await db
+      .prepare("DELETE FROM product_categories WHERE product_id = 1 AND category_id = 'AMP.PRE'")
+      .run();
+    const stale = await db
+      .prepare(deleteStaleEntityCategoriesSql(scopeClause("entity_id", 1)))
+      .bind(1)
+      .run();
+    assert.ok(Number(stale.meta.changes || 0) >= 1);
+    assert.equal(
+      await db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM product_search_entity_categories WHERE entity_id = 1",
+        )
+        .first("count"),
+      0,
+    );
   } finally {
     await dispose();
   }
