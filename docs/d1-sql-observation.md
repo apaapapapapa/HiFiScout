@@ -113,8 +113,9 @@ query plans against a safe local fixture, then compare observed read/write costs
 `Production Operational Health` also runs R2-only analysis at **07:50, 11:50, 17:50 and 22:50 JST**
 (`50 2,8,13,22 * * *` UTC), ahead of the assistant's 08:00, 12:00, 18:00 and 23:00 checks.
 These report-only runs skip Insights collection. Manual and post-deployment runs generate a report
-after their normal archive step. The 15-minute archive schedule is unchanged. Separate concurrency
-groups keep an archive run from replacing a pending scheduled report. Active health audits remain
+after their normal archive step. The 15-minute archive schedule is unchanged. Snapshot publishers
+share one job concurrency group so PUT/read-back operations cannot overlap or replace newer data
+with a report started earlier. Active health audits remain
 paused.
 
 The dedicated, public-safe entrypoint downloads the original gzip bytes, decompresses and validates

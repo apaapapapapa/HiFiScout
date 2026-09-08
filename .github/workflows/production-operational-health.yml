@@ -30,7 +30,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     concurrency:
-      group: production-d1-sql-${{ github.event_name == 'schedule' && github.event.schedule == '50 2,8,13,22 * * *' && 'report' || 'archive' }}
+      # All fixed-key publishers share this fence, including report-only schedules.
+      group: production-d1-sql-snapshots
       cancel-in-progress: false
     permissions:
       contents: read
