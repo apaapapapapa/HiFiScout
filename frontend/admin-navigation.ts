@@ -1,5 +1,11 @@
 export const ADMIN_VIEWS = [
   {
+    id: "manufacturers",
+    label: "メーカー・別名",
+    description: "正式名称・表記揺れの影響を確認し、履歴を残して修正します。",
+    group: "データの整備",
+  },
+  {
     id: "extraction",
     label: "抽出テスト",
     description: "保存済み商品やタイトルで、抽出結果と仮の別名ルールを比較します。",
