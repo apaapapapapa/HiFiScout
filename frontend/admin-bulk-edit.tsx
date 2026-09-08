@@ -119,13 +119,13 @@ export function AdminBulkEdit({
             });
             row = { ...response, operationId, revision };
             if (row.status === "applied" || row.status === "pending") changed = true;
-          } catch (reason) {
+          } catch {
             row = {
               ...row,
               operationId,
               revision,
               status: "failed",
-              message: genericErrorText(reason),
+              message: "更新結果を確認できません。再試行してください。",
             };
           }
           results[index] = row;

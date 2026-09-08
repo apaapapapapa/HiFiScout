@@ -25,7 +25,7 @@ for (const conflict of [false, true])
       await expect(dialog.getByRole("button", { name: "0件に変更を適用" })).toBeDisabled();
     } else {
       await dialog.getByRole("button", { name: "1件に変更を適用" }).click();
-      await expect(dialog).toContainText("Response lost");
+      await expect(dialog).toContainText("更新結果を確認できません。再試行してください。");
       await dialog.getByRole("button", { name: "残りを再開・失敗を再試行" }).click();
       await expect(dialog).toContainText("適用済み 1件");
       expect(app.state.listing.model).toBe("D-999");
