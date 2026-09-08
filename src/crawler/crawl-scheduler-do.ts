@@ -16,7 +16,7 @@ import {
   sumDbUsageMetrics,
   type DbUsageMetrics,
 } from "../db/read-accounting.js";
-import { crawlDispatchToken } from "../db/shop-state-repository.js";
+import { crawlDispatchToken, setShopAdminPaused } from "../db/shop-state-repository.js";
 import type { QueryableDatabase } from "../db/types.js";
 import { planStagedCategoryDetailInputs } from "./category-enrichment-pacing.js";
 import {
@@ -56,6 +56,7 @@ import type { ShopPlugin } from "./types.js";
 // Durable Object storage namespaces must stay stable across Worker deployments so an in-flight
 // execution created by an older isolate remains visible to the new runtime and its scheduled Alarm.
 const EXECUTION_STORAGE_KEY = "phase2_crawl_execution";
+const ADMIN_PAUSED_STORAGE_KEY = "admin_paused";
 const MIN_ALARM_DELAY_MS = 1;
 
 interface StoredExecution {
@@ -159,9 +160,67 @@ function withoutInlineInventoryRecheck(env: Env, plugin: ShopPlugin): Env {
 export class CrawlScheduler extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === "/admin/status" && request.method === "GET")
+      return Response.json(await this.adminStatus());
+    if (url.pathname === "/admin/control" && request.method === "POST")
+      return this.adminControl(request);
     if (request.method !== "POST") return new Response("not found", { status: 404 });
     if (url.pathname === CRAWL_SCHEDULER_START_PATH) return this.startCrawl(request);
     return new Response("not found", { status: 404 });
+  }
+
+  private async adminStatus() {
+    const execution = await this.ctx.storage.get<StoredExecution>(EXECUTION_STORAGE_KEY);
+    const paused = (await this.ctx.storage.get<boolean>(ADMIN_PAUSED_STORAGE_KEY)) === true;
+    const alarm = await this.ctx.storage.getAlarm();
+    return {
+      paused,
+      running: !!execution,
+      nextAlarmAt: !paused && alarm !== null ? new Date(alarm).toISOString() : null,
+      acceptedAt: execution?.acceptedAt ?? null,
+      jobId: execution ? executionIdentity(execution.message) : null,
+      stage: !execution
+        ? "idle"
+        : execution.inventoryRecheckPending
+          ? "inventory"
+          : execution.detailTargetUrl
+            ? "detail"
+            : (execution.message.continuation?.phase ?? "initialize"),
+      pagesFetched: execution?.collectionProgress?.progress.pages_fetched ?? null,
+      pagesParsed: execution?.collectionProgress?.progress.pages_parsed ?? null,
+      progressAt: execution?.collectionProgress?.progress.updated_at ?? null,
+    };
+  }
+
+  private async adminControl(request: Request): Promise<Response> {
+    const body: unknown = await request.json().catch(() => null);
+    if (
+      !isRecord(body) ||
+      typeof body.shopKey !== "string" ||
+      !getShopPlugin(body.shopKey) ||
+      !["pause", "resume", "wake"].includes(String(body.action))
+    )
+      return new Response("invalid control", { status: 400 });
+    const shopKey = body.shopKey;
+    return this.ctx.blockConcurrencyWhile(async () => {
+      const execution = await this.ctx.storage.get<StoredExecution>(EXECUTION_STORAGE_KEY);
+      if (execution && execution.message.shopKey !== shopKey)
+        return new Response("wrong scheduler", { status: 409 });
+      if (body.action === "pause") {
+        // Gate local alarms first. Retrying a failed D1 intent write is safe.
+        await this.ctx.storage.put(ADMIN_PAUSED_STORAGE_KEY, true);
+        await this.ctx.storage.deleteAlarm();
+        await setShopAdminPaused(this.env.DB, shopKey, true);
+      } else if (body.action === "resume") {
+        // Keep the local gate closed until scheduling intent has been persisted.
+        await setShopAdminPaused(this.env.DB, shopKey, false);
+        await this.ctx.storage.put(ADMIN_PAUSED_STORAGE_KEY, false);
+        if (execution) await this.ctx.storage.setAlarm(alarmAt(Date.now()));
+      } else if (execution && !(await this.ctx.storage.get<boolean>(ADMIN_PAUSED_STORAGE_KEY))) {
+        await this.ctx.storage.setAlarm(alarmAt(Date.now()));
+      }
+      return Response.json(await this.adminStatus());
+    });
   }
 
   private async startCrawl(request: Request): Promise<Response> {
@@ -183,7 +242,8 @@ export class CrawlScheduler extends DurableObject<Env> {
         existing.message.shopKey === message.shopKey &&
         executionIdentity(existing.message) === executionIdentity(message)
       ) {
-        await this.ctx.storage.setAlarm(alarmAt(Date.now()));
+        if (!(await this.ctx.storage.get<boolean>(ADMIN_PAUSED_STORAGE_KEY)))
+          await this.ctx.storage.setAlarm(alarmAt(Date.now()));
         return new Response(null, { status: 202 });
       }
       console.warn(
@@ -205,7 +265,8 @@ export class CrawlScheduler extends DurableObject<Env> {
       nextOriginNotBeforeMs: 0,
       collectionProgress: null,
     });
-    await this.ctx.storage.setAlarm(alarmAt(Date.now()));
+    if (!(await this.ctx.storage.get<boolean>(ADMIN_PAUSED_STORAGE_KEY)))
+      await this.ctx.storage.setAlarm(alarmAt(Date.now()));
     console.log(
       JSON.stringify({
         event: "crawl_do_accepted",
@@ -220,6 +281,7 @@ export class CrawlScheduler extends DurableObject<Env> {
   }
 
   async alarm(): Promise<void> {
+    if ((await this.ctx.storage.get<boolean>(ADMIN_PAUSED_STORAGE_KEY)) === true) return;
     const execution = await this.ctx.storage.get<StoredExecution>(EXECUTION_STORAGE_KEY);
     if (!execution) return;
     // Also covers Alarms armed before deployment and delayed/retried daytime Alarms. Keep the

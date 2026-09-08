@@ -66,6 +66,28 @@ not replayed, and seller pacing is unchanged.
 
 ## Bounded work and persistence
 
+### Administrative controls
+
+The Access-protected admin console exposes `/api/admin/crawls` and `/api/admin/crawls/control`
+through `CatalogAdminService`. The overview reads the small shop-state table once and each shop's
+compact DO status, with at most four concurrent status calls. It shows observation/progress times,
+the next registry-derived schedule slot, last success, prior-success inventory delta, projection
+watermark, failure/backoff information and explicit manual/overnight pause states. No listing counts
+or crawl-history aggregation run on navigation; the view refreshes only on entry or user action.
+
+Manual pause first persists the owning DO's local alarm gate, then D1 scheduling intent. New
+reservations and watchdog recovery skip paused shops. Alarms check the local gate without D1 or
+seller I/O, preserving the exact execution, cursor, token and prepared permit. Resume persists
+scheduling intent before opening the local gate; a lost response can safely be retried. A bounded
+step already in progress may finish. Pause is separate from deployment configuration and daily
+quiet hours; resuming cannot bypass the nightly window or the PREPARE/FETCH pacing rules.
+
+**途中から再実行** re-arms the current execution. If the DO record is missing but a D1 dispatch is
+reserved, the command re-delivers that same immutable token. A new forced dispatch is allowed only
+when neither exists and normal configuration/quiet-hour guards allow it. Internal DO control URLs
+are reached only by the service, not exposed as public admin endpoints. A failed status read is
+displayed as unavailable, not as an idle or healthy shop.
+
 - The owning DO fetches and parses one listing page in the same Alarm, then atomically commits its
   products, discovered frontier and a progress receipt. No successful listing HTML is retained.
   This removes the intermediate fetched-page UPDATE and the extra parse Alarm; it does

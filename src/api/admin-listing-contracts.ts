@@ -101,3 +101,38 @@ export interface AdminRestoreSelection {
   operationId: string;
   field: string;
 }
+export interface AdminCrawlStatus {
+  paused: boolean;
+  running: boolean;
+  nextAlarmAt: string | null;
+  acceptedAt: string | null;
+  jobId: string | null;
+  stage: string;
+  pagesFetched: number | null;
+  pagesParsed: number | null;
+  progressAt: string | null;
+}
+export interface AdminCrawlOverview {
+  observedAt: string;
+  quietHours: boolean;
+  quietEndsAt: string | null;
+  items: {
+    shopKey: string;
+    name: string;
+    enabled: boolean;
+    configured: boolean;
+    pausedIntent: boolean;
+    lastSuccessAt: string | null;
+    lastAttemptAt: string | null;
+    lastError: string | null;
+    lastErrorAt: string | null;
+    consecutiveFailures: number;
+    backoffUntil: string | null;
+    lastItemCount: number | null;
+    previousItemCount: number | null;
+    nextScheduledAt: string | null;
+    lastProjectionAt: string | null;
+    control: AdminCrawlStatus | null;
+    error: string | null;
+  }[];
+}

@@ -485,7 +485,11 @@ export interface DueDispatchCandidate {
   lastAttempt: string;
 }
 
-export type DispatchRejectionReason = "unknown_shop" | "disabled" | "configuration_missing";
+export type DispatchRejectionReason =
+  | "unknown_shop"
+  | "disabled"
+  | "configuration_missing"
+  | "admin_paused";
 
 export type DispatchResult =
   | { status: "queued"; queued: string[] }

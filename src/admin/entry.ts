@@ -25,6 +25,8 @@ import type {
 } from "../db/product-correction-report-repository.js";
 
 interface ListingAdminRpc extends CatalogAdminRpc {
+  getCrawlOverview(): Promise<unknown>;
+  controlCrawl(shopKey: string, action: "pause" | "resume" | "run"): Promise<unknown>;
   getChangeHistory(kind: "listing" | "catalog", id: number): Promise<unknown>;
   previewHistoryRestore(input: AdminRestoreSelection): Promise<unknown>;
   restoreHistoryColor(
@@ -96,6 +98,8 @@ function isAdminEntryRoute(pathname: string): boolean {
     RETIRED_LEGACY_PATHS.has(pathname) ||
     pathname === LISTING_COLLECTION_PATH ||
     pathname === WORK_COUNTS_PATH ||
+    pathname === "/api/admin/crawls" ||
+    pathname === "/api/admin/crawls/control" ||
     pathname === "/api/admin/change-history" ||
     pathname === "/api/admin/change-history/restore-preview" ||
     pathname === "/api/admin/change-history/restore-color" ||
@@ -138,6 +142,28 @@ export async function handleAuthenticatedAdminEntryRequest(
   env: AdminEnv,
 ): Promise<Response> {
   const url = new URL(request.url);
+
+  if (url.pathname === "/api/admin/crawls" && request.method === "GET")
+    return json(await env.CATALOG_ADMIN.getCrawlOverview());
+  if (url.pathname === "/api/admin/crawls/control" && request.method === "POST") {
+    if (!isJsonRequest(request))
+      return json({ error: "application_json_required" }, { status: 415 });
+    if (!isSameOriginBrowserMutation(request, url))
+      return json({ error: "same_origin_required" }, { status: 403 });
+    const body = await readJsonBody(request, 1024);
+    if (body === REQUEST_BODY_TOO_LARGE)
+      return json({ error: "request_body_too_large" }, { status: 413 });
+    if (
+      !isRecord(body) ||
+      typeof body.shopKey !== "string" ||
+      !/^[a-z0-9-]{1,64}$/u.test(body.shopKey) ||
+      !["pause", "resume", "run"].includes(String(body.action))
+    )
+      return json({ error: "invalid_crawl_control" }, { status: 400 });
+    return json(
+      await env.CATALOG_ADMIN.controlCrawl(body.shopKey, body.action as "pause" | "resume" | "run"),
+    );
+  }
 
   if (url.pathname === "/api/admin/change-history" && request.method === "GET") {
     const kind = url.searchParams.get("kind");

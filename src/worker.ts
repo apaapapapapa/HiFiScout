@@ -79,6 +79,12 @@ import type { ListingAdminListOptions, ListingAdminUpdateInput } from "./http/li
  * Binding configured on the dedicated Access-protected admin Worker; it has no public HTTP route.
  */
 export class CatalogAdminService extends WorkerEntrypoint<Env> implements CatalogAdminRpc {
+  async getCrawlOverview() {
+    return readAdminCrawls(this.env);
+  }
+  async controlCrawl(shopKey: string, action: "pause" | "resume" | "run") {
+    return controlAdminCrawl(this.env, shopKey, action);
+  }
   async getWorkCounts(
     cursor: import("./api/admin-work-counts-contract.js").AdminDuplicateCountCursor,
   ) {
@@ -275,3 +281,4 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
 
 export default worker;
 import type { DataExportFormat } from "./export/contracts.js";
+import { readAdminCrawls, controlAdminCrawl } from "./crawler/admin-crawl.js";

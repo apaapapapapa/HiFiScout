@@ -58,6 +58,7 @@ export function dueDispatchCandidates(
     if (excluded.has(plugin.key)) return null;
     const definition = plugin.definition;
     const state = states.get(plugin.key) || null;
+    if (state?.admin_paused) return null;
     if (!getShopEnabled(env, definition)) return null;
     if (!isConfigured(env, plugin)) return null;
     const intervalMinutes = getShopIntervalMinutes(env, definition);
@@ -138,6 +139,7 @@ export async function recoverStalledCrawlDispatches(
   const batchRunId = `crawl-recovery:${recoveredAt}:${crypto.randomUUID()}`;
 
   for (const state of states) {
+    if (state.admin_paused) continue;
     if (!shouldRecoverDispatch(state, now, recoveryMinutes) || !state.dispatch_requested_at)
       continue;
     const plugin = getShopPlugin(state.shop_key);
@@ -230,6 +232,7 @@ async function dispatchOneCrawl(
     return { status: "skipped", reason: "crawl_quiet_hours", shopKey: plugin.key };
   }
   const state = await getShopState(env.DB, plugin.key);
+  if (state?.admin_paused) return { status: "rejected", reason: "admin_paused" };
   const settings = getCrawlerSettings(env);
   if (isDispatchReservationActive(state)) {
     return { status: "skipped", reason: "dispatch_lease_active", shopKey: plugin.key };
