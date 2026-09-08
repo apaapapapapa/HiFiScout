@@ -74,6 +74,7 @@ export function createMockAdminRpc() {
     throw new Error(`Unmocked admin RPC: ${method}`);
   };
   const rpc: AdminRpc = {
+    adminJobs: unsupported("adminJobs"),
     async getCrawlOverview() {
       state.crawls.reads++;
       return {
