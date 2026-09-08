@@ -378,3 +378,16 @@ The Access-protected history API supports `GET /api/admin/change-history?kind=li
 `POST /api/admin/change-history/restore-color`. Other restored fields use the existing CSV apply
 endpoint. Each step is bounded; keep the dialog open until projection completion, or reuse the
 same in-memory operation after a network failure. Public admin routes remain unavailable.
+
+## Bulk corrections from search results
+
+Select explicit listing rows (or the current page, at most 50) and choose **一括修正** to change a
+manufacturer, model or category. A new search or page navigation clears the selection. The dialog
+keeps a snapshot of selected targets and displays each before/after value and validation result
+before an explicit apply action. Empty manufacturer/model input is an intentional unresolved override.
+
+Preview uses the existing bounded CSV validation batches; apply uses the same revision guard,
+durable receipt and projection continuation as CSV import. Concurrent edits are excluded and failed
+requests retain their operation IDs for safe retry. Applied rows are skipped on resume. Stop takes
+effect after the current request; results remain visible while the dialog is open. Opening the
+dialog adds no inventory scans, counts or polling, and only selected rows are validated or changed.
