@@ -135,8 +135,12 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
       <p>
         送信が完了した処理は画面を閉じても継続します。更新日時と進捗は保存済みの情報です。必要なときに再読み込みしてください。
       </p>
-      {busy ? <p role="status">処理の状態を確認しています…</p> : null}
-      {message ? <p role="status">{message}</p> : null}
+      {busy || message ? (
+        <p role="status">
+          {busy ? "処理の状態を確認しています… " : ""}
+          {message}
+        </p>
+      ) : null}
       {error ? <p role="alert">{error}</p> : null}
       {list?.items.length === 0 ? (
         <p>処理の記録はありません。CSV入出力または出品条件の再処理から開始できます。</p>
@@ -180,7 +184,9 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
                       </p>
                     </>
                   ) : (
-                    <p>処理済み {job.processed}件</p>
+                    <p>
+                      {job.kind === "manufacturer" ? "確認済み" : "処理済み"} {job.processed}件
+                    </p>
                   )}
                   {!job.detailsAvailable ? <p>詳細の保持期限が切れています。</p> : null}
                 </td>
@@ -205,8 +211,7 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
                   ) : null}
                   {job.status === "paused" ||
                   job.status === "running" ||
-                  (job.status === "failed" &&
-                    (job.kind === "replay" || job.processed < job.total)) ? (
+                  (job.status === "failed" && (job.kind !== "csv" || job.processed < job.total)) ? (
                     <button
                       type="button"
                       className="secondary-button"
@@ -332,9 +337,11 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
           </div>
           {!detail.items.length ? (
             <p>
-              {detail.job.kind === "replay"
-                ? "充足率の集計は出品条件の再処理画面で確認できます。"
-                : "表示できる詳細はありません。"}
+              {detail.job.kind === "manufacturer"
+                ? "確認済み件数は候補の探索範囲です。該当商品だけを最新の辞書で再判定しました。"
+                : detail.job.kind === "replay"
+                  ? "充足率の集計は出品条件の再処理画面で確認できます。"
+                  : "表示できる詳細はありません。"}
             </p>
           ) : null}
           <div className="pagination">

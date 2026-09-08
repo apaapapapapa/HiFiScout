@@ -298,6 +298,7 @@ export function AdminOperationsPanel() {
             <option value="crawl">クロール</option>
             <option value="csv">CSV取込</option>
             <option value="replay">出品条件再処理</option>
+            <option value="manufacturer">メーカー再判定</option>
           </select>
         </label>{" "}
         <label>

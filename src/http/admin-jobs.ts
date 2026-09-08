@@ -36,12 +36,12 @@ export function parseAdminJobCommand(value: unknown): AdminJobCommand | null {
       };
     case "create":
       if (
-        (value.kind !== "csv" && value.kind !== "replay") ||
+        (value.kind !== "csv" && value.kind !== "replay" && value.kind !== "manufacturer") ||
         !Number.isSafeInteger(value.total) ||
         Number(value.total) < 0 ||
         Number(value.total) > ADMIN_CSV_MAX_ROWS ||
         (value.kind === "csv" && value.total === 0) ||
-        (value.kind === "replay" && value.total !== 0) ||
+        (value.kind !== "csv" && value.total !== 0) ||
         typeof value.label !== "string" ||
         value.label.length > 100
       )

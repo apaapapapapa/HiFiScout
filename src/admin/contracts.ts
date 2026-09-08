@@ -95,6 +95,7 @@ export interface CatalogAdminProductExportRow {
 }
 
 export interface CatalogAdminRpc {
+  manufacturerRegistry(input: unknown): Promise<unknown>;
   getWorkCounts(
     cursor: import("../api/admin-work-counts-contract.js").AdminDuplicateCountCursor,
   ): Promise<import("../api/admin-work-counts-contract.js").AdminWorkCountsPage>;

@@ -1,3 +1,6 @@
+import { administerManufacturerRegistry } from "./admin/manufacturer-registry.js";
+import { parseAdminManufacturerCommand } from "./http/admin-manufacturer-registry.js";
+import { ManufacturerRegistryConflict } from "./db/admin-manufacturer-management.js";
 import { parseAdminExtractionRequest } from "./http/admin-extraction-preview.js";
 import { previewAdminExtraction } from "./admin/extraction-preview.js";
 import { readAdminOperations } from "./admin/operations.js";
@@ -82,6 +85,26 @@ import type { ListingAdminListOptions, ListingAdminUpdateInput } from "./http/li
  * Binding configured on the dedicated Access-protected admin Worker; it has no public HTTP route.
  */
 export class CatalogAdminService extends WorkerEntrypoint<Env> implements CatalogAdminRpc {
+  async manufacturerRegistry(input: unknown) {
+    const command = parseAdminManufacturerCommand(input);
+    if (!command) return { error: "入力を確認してください。", status: 400 };
+    try {
+      return await administerManufacturerRegistry(this.env, command);
+    } catch (error) {
+      if (error instanceof ManufacturerRegistryConflict)
+        return { error: error.message, status: 409 };
+      console.error(
+        JSON.stringify({
+          event: "manufacturer_registry_failed",
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      );
+      return {
+        error: "メーカー管理の処理に失敗しました。同じ操作を再試行してください。",
+        status: 503,
+      };
+    }
+  }
   async previewExtraction(input: unknown) {
     const parsed = parseAdminExtractionRequest(input);
     if (!parsed) throw new Error("invalid_extraction_input");

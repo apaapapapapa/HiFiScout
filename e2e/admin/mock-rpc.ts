@@ -53,6 +53,7 @@ export function createMockAdminRpc() {
     historyConflict: false,
     jobs: new Map<string, AdminBackgroundJob>(),
     jobCommands: [] as AdminJobCommand[],
+    manufacturerCommands: [] as unknown[],
     crawls: { paused: false, reads: 0, actions: [] as string[] },
     bulk: {
       enabled: false,
@@ -78,6 +79,10 @@ export function createMockAdminRpc() {
     throw new Error(`Unmocked admin RPC: ${method}`);
   };
   const rpc: AdminRpc = {
+    async manufacturerRegistry(input) {
+      state.manufacturerCommands.push(input);
+      return { received: input };
+    },
     previewExtraction: unsupported("previewExtraction"),
     getOperations: unsupported("getOperations"),
     async adminJobs(input) {

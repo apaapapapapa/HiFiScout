@@ -390,3 +390,71 @@ test("replay stops after three stalled checkpoints and rejects a changed rule ve
     h.close();
   }
 });
+
+test("manufacturer replay survives pause and restart while retaining manual correction authority", async () => {
+  const { applyManufacturerRegistry, manufacturerRevision, registryVersion } =
+    await import("../src/db/admin-manufacturer-management.js");
+  const h = harness();
+  try {
+    h.sqlite.exec(
+      "WITH RECURSIVE n(id) AS (VALUES(100001) UNION ALL SELECT id+1 FROM n WHERE id<100007) INSERT INTO products(id,shop_key,source_id,title,raw_manufacturer,raw_model,source_url,first_seen_at,last_seen_at,last_changed_at) SELECT id,'audiounion','brand-job-'||id,'デモラボ L-505','デモラボ','デモラボ L-505','https://example.test/','','','' FROM n",
+    );
+    h.sqlite.exec(
+      "INSERT INTO product_admin_overrides(listing_product_id,model,normalized_model,created_at,updated_at) VALUES(100001,'手動型番','MANUAL','',''); UPDATE products SET model='手動型番',normalized_model='MANUAL' WHERE id=100001;",
+    );
+    const edit = {
+      manufacturerId: "luxman",
+      canonicalName: "LUXMAN",
+      nameJa: "",
+      nameEn: "",
+      alias: { alias: "デモラボ", shopKey: "audiounion", enabled: true },
+    };
+    const id = crypto.randomUUID();
+    await h.command(
+      { action: "create", kind: "manufacturer", id, total: 0, label: "メーカー再判定" },
+      409,
+    );
+    await applyManufacturerRegistry(
+      h.db,
+      edit,
+      await manufacturerRevision(await registryVersion(h.db), edit),
+      id,
+    );
+    await h.command({
+      action: "create",
+      kind: "manufacturer",
+      id,
+      total: 0,
+      label: "メーカー再判定",
+    });
+    await h.command({ action: "start", id });
+    h.afterBatch(async () => {
+      await h.command({ action: "pause", id });
+    });
+    await h.alarm();
+    let result = await h.command({ action: "get", id });
+    assert.equal(result.job.status, "paused");
+    assert.equal(result.job.processed, 5);
+    h.restart();
+    await h.command({ action: "resume", id });
+    await h.alarm();
+    result = await h.command({ action: "get", id });
+    assert.equal(result.job.status, "completed");
+    assert.equal(result.job.processed, 7);
+    assert.equal(
+      h.sqlite.prepare("SELECT canonical_manufacturer_id FROM products WHERE id=100007").get()
+        ?.canonical_manufacturer_id,
+      "luxman",
+    );
+    assert.equal(
+      h.sqlite.prepare("SELECT model FROM products WHERE id=100001").get()?.model,
+      "手動型番",
+    );
+    assert.equal(
+      h.sqlite.prepare("SELECT raw_model FROM products WHERE id=100001").get()?.raw_model,
+      "デモラボ L-505",
+    );
+  } finally {
+    h.close();
+  }
+});
