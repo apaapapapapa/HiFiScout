@@ -40,7 +40,12 @@ test("retained correction projections rank repeated reports and follow status tr
     assert.equal(page.items[0].relatedOfferCount, null);
     sqlite.exec("DELETE FROM product_correction_reports WHERE id=1;");
     assert.equal((await readAdminQualityReports(db)).items[0].reportCount, 1);
+    // The original accepted report has expired, but retained recurrence still proves prior repair.
+    addReport(sqlite, 5, 11, "open", "2026-09-10T00:00:00.000Z");
+    assert.equal((await readAdminQualityReports(db)).items[0].recurrenceCount, 2);
     sqlite.exec("DELETE FROM product_correction_reports WHERE id=3;");
+    assert.equal((await readAdminQualityReports(db)).items[0].recurrenceCount, 1);
+    sqlite.exec("DELETE FROM product_correction_reports WHERE id=5;");
     const remaining = await readAdminQualityReports(db);
     assert.equal(remaining.items.length, 1);
     assert.equal(remaining.items[0].listingId, 12);
