@@ -24,7 +24,10 @@ export const ADMIN_LISTING_DIAGNOSIS_SQL = `SELECT json_object(
     'candidateId', r.candidate_catalog_product_id, 'candidateName', candidate.canonical_name),
   'search', json_object('key', e.entity_key, 'kind', e.entity_kind, 'model', e.model,
     'categoryId', e.primary_category_id, 'offerCount', e.offer_count,
-    'pending', p.remediation_projection_required, 'active', p.is_active)
+    'pending', (p.remediation_projection_required = 1
+      OR EXISTS (SELECT 1 FROM listing_projection_pending lp WHERE lp.listing_product_id = p.id)
+      OR EXISTS (SELECT 1 FROM product_search_catalog_pending cp WHERE cp.listing_product_id = p.id)),
+    'active', p.is_active)
 ) AS snapshot
 FROM products p
 LEFT JOIN product_admin_overrides o ON o.listing_product_id = p.id

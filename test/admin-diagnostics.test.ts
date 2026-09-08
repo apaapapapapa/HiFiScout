@@ -29,6 +29,7 @@ test("diagnosis preserves raw evidence, overrides and an unresolved candidate wi
     assert.equal(data.identity.catalogId, null);
     assert.equal(data.identity.rejectedBy, '["category_conflict"]');
     assert.equal(data.search.key, null);
+    assert.equal(data.search.pending, 1, "new listings carry a durable projection obligation");
     assert.equal(sqlite.prepare("SELECT total_changes() AS n").get()?.n, changes);
     assert.equal(await readAdminListingDiagnosis(db, 999999), null);
     await assert.rejects(readAdminListingDiagnosis(db, 0), /invalid_listing_id/u);
@@ -59,6 +60,27 @@ test("diagnosis peer reads are capped and use the identity index without a tempo
       .join("\n");
     assert.match(plans, /SEARCH p USING INDEX idx_products_exact_identity/u);
     assert.doesNotMatch(plans, /SCAN |USE TEMP B-TREE/u);
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("diagnosis reads both durable pending tables independently of the remediation flag", async () => {
+  const { db, sqlite } = migratedSqlite();
+  try {
+    sqlite.exec(`INSERT INTO products(id, shop_key, source_id, title, source_url, first_seen_at, last_seen_at, last_changed_at)
+      VALUES (100001, 'test', 'pending', 'title', '', '', '', '');`);
+    assert.equal((await readAdminListingDiagnosis(db, 100001))?.search.pending, 1);
+    sqlite.exec("DELETE FROM listing_projection_pending WHERE listing_product_id = 100001");
+    assert.equal((await readAdminListingDiagnosis(db, 100001))?.search.pending, 0);
+    sqlite.exec(
+      "INSERT INTO product_search_catalog_pending(listing_product_id, token) VALUES (100001, 'catalog-transition')",
+    );
+    assert.equal((await readAdminListingDiagnosis(db, 100001))?.search.pending, 1);
+    sqlite.exec(
+      "DELETE FROM product_search_catalog_pending WHERE listing_product_id = 100001; UPDATE products SET remediation_projection_required = 1 WHERE id = 100001",
+    );
+    assert.equal((await readAdminListingDiagnosis(db, 100001))?.search.pending, 1);
   } finally {
     sqlite.close();
   }
