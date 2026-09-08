@@ -127,6 +127,60 @@ test("one identity index serves grouping and peer lookup with fewer D1 writes", 
   }
 }, 30_000);
 
+test("the consolidated identity index excludes blank listings without increasing grouping reads", async () => {
+  const open = async (consolidated: boolean) => {
+    const instance = await database({ before: "0111_consolidate_product_identity_indexes.sql" });
+    if (consolidated) await apply(instance.db, "0111_consolidate_product_identity_indexes.sql");
+    await instance.db
+      .prepare(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 10000)
+      INSERT INTO products(
+        id, shop_key, source_id, title, source_url, first_seen_at, last_seen_at, last_changed_at,
+        canonical_manufacturer_id, normalized_model, model_resolution_status
+      )
+      SELECT i, 'blank', CAST(i AS TEXT), 'blank', 'https://example.test/' || i,
+        '2026', '2026', '2026', '', '', 'unresolved' FROM n;
+      INSERT INTO products(
+        id, shop_key, source_id, title, source_url, first_seen_at, last_seen_at, last_changed_at,
+        canonical_manufacturer_id, normalized_model, model_resolution_status
+      ) VALUES (10001, 'test', '10001', 'C-10', 'https://example.test/10001',
+        '2026', '2026', '2026', 'luxman', 'c10', 'resolved');`)
+      .run();
+    return instance;
+  };
+  const before = await open(false);
+  const after = await open(true);
+  const grouping = (db: QueryableDatabase) =>
+    db
+      .prepare(`SELECT p.canonical_manufacturer_id, p.normalized_model, COUNT(*) AS listing_count
+      FROM products p
+      WHERE p.is_active = 1
+        AND p.canonical_manufacturer_id <> ''
+        AND p.normalized_model <> ''
+      GROUP BY p.canonical_manufacturer_id, p.normalized_model
+      ORDER BY listing_count DESC, p.canonical_manufacturer_id, p.normalized_model
+      LIMIT 25`)
+      .all();
+  try {
+    const oldRead = await grouping(before.db);
+    const newRead = await grouping(after.db);
+    assert.deepEqual(newRead.results, oldRead.results);
+    assert.ok(
+      Number(newRead.meta.rows_read) <= Number(oldRead.meta.rows_read),
+      `blank identity grouping reads: ${JSON.stringify({ before: oldRead.meta, after: newRead.meta })}`,
+    );
+    console.log(
+      JSON.stringify({
+        event: "blank_identity_grouping_d1_reads",
+        before: oldRead.meta.rows_read,
+        after: newRead.meta.rows_read,
+      }),
+    );
+  } finally {
+    await before.dispose();
+    await after.dispose();
+  }
+}, 30_000);
+
 test("D1 metadata measures the complete refresh workload and bounded changed-entity work", async () => {
   for (const size of [1_000, 10_000]) {
     const { db, dispose } = await database({
