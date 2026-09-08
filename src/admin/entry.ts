@@ -157,7 +157,8 @@ export async function handleAuthenticatedAdminEntryRequest(
       !isRecord(body) ||
       typeof body.shopKey !== "string" ||
       !/^[a-z0-9-]{1,64}$/u.test(body.shopKey) ||
-      !["pause", "resume", "run"].includes(String(body.action))
+      typeof body.action !== "string" ||
+      !["pause", "resume", "run"].includes(body.action)
     )
       return json({ error: "invalid_crawl_control" }, { status: 400 });
     return json(

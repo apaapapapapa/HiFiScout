@@ -198,7 +198,8 @@ export class CrawlScheduler extends DurableObject<Env> {
       !isRecord(body) ||
       typeof body.shopKey !== "string" ||
       !getShopPlugin(body.shopKey) ||
-      !["pause", "resume", "wake"].includes(String(body.action))
+      typeof body.action !== "string" ||
+      !["pause", "resume", "wake"].includes(body.action)
     )
       return new Response("invalid control", { status: 400 });
     const shopKey = body.shopKey;
