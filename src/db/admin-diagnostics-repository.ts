@@ -1,4 +1,4 @@
-import type { AdminListingDiagnosis } from "../api/admin-diagnostics-contracts.js";
+import type { AdminListingDiagnosis } from "../api/admin-listing-contracts.js";
 import type { ReadableDatabase } from "./types.js";
 
 /** Only primary-key joins: opening the inspector never resolves or repairs an identity. */

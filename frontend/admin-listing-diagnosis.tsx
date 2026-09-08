@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { AdminListingDiagnosis } from "../src/api/admin-diagnostics-contracts.js";
+import type { AdminListingDiagnosis } from "../src/api/admin-listing-contracts.js";
 import { adminJson, dateText, genericErrorText, safeSourceUrl } from "./admin-shared.js";
 
 export function AdminListingDiagnosisPanel({
