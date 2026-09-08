@@ -234,6 +234,14 @@ the physical key, removing the separate rowid-table/primary-index write. Seconda
 category uniqueness, foreign-key cascades and admin override guards remain intact. The replacement
 and restoration of the old metadata view share one migration transaction.
 
+Incremental stale-category pruning remains scoped to the affected entity IDs. Its correlated lookup
+must start from `idx_product_search_entity_offers_entity`, then use the product and category primary
+keys; `INDEXED BY` and `CROSS JOIN` preserve that order when production table statistics would
+otherwise make D1 scan category memberships once per chunk. This reuses retained indexes and adds no
+write maintenance. The local budget covers 40 affected entities amid 10,000 unrelated memberships,
+but production validation must still compare the old and new query shapes because local D1 may have
+already selected the intended plan.
+
 Complete CSV exports use ordered composite-key cursors for these tables, preserving all categories
 of a product across page boundaries and exact integer keys beyond JavaScript's safe range. New
 plans use version 2 so an older Worker cannot misread the cursor during rollback; unchanged version
