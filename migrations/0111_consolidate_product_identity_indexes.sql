@@ -1,0 +1,12 @@
+-- `products` is the highest-write table in the crawler. Exact identity changes currently maintain
+-- two indexes with the same leading identity columns:
+--
+-- * `idx_products_identity_group` serves the unresolved-identity dashboard;
+-- * `idx_products_exact_identity` serves exact-identity peer expansion and repair.
+--
+-- The existing exact-identity index already has the same identity prefix and also serves the
+-- unresolved grouping. Keep its wider shape: catalog correction pages intentionally include both
+-- active and inactive listings, and use that index before their id cursor. Removing only the
+-- duplicate identity-group entry lowers every manufacturer/model identity update without adding a
+-- read or a replacement write elsewhere.
+DROP INDEX IF EXISTS idx_products_identity_group;

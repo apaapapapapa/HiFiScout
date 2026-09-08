@@ -87,6 +87,46 @@ test("D1 category insert savings include retained indexes and override guards", 
   }
 }, 30_000);
 
+test("one identity index serves grouping and peer lookup with fewer D1 writes", async () => {
+  const open = async (consolidated: boolean) => {
+    const instance = await database({ before: "0111_consolidate_product_identity_indexes.sql" });
+    if (consolidated) await apply(instance.db, "0111_consolidate_product_identity_indexes.sql");
+    await instance.db
+      .prepare(`INSERT INTO products(
+        id, shop_key, source_id, title, source_url, first_seen_at, last_seen_at, last_changed_at,
+        canonical_manufacturer_id, normalized_model, model_resolution_status
+      ) VALUES (1, 'test', '1', 'C-10', 'https://example.test/1', '2026', '2026', '2026',
+        'luxman', 'c10', 'resolved')`)
+      .run();
+    return instance;
+  };
+  const before = await open(false);
+  const after = await open(true);
+  try {
+    const change = (db: QueryableDatabase) =>
+      db
+        .prepare("UPDATE products SET canonical_manufacturer_id = ? WHERE id = 1")
+        .bind("luxman-audio")
+        .run();
+    const oldWrite = await change(before.db);
+    const newWrite = await change(after.db);
+    assert.ok(
+      Number(newWrite.meta.rows_written) < Number(oldWrite.meta.rows_written),
+      `identity update writes: ${JSON.stringify({ before: oldWrite.meta, after: newWrite.meta })}`,
+    );
+    console.log(
+      JSON.stringify({
+        event: "product_identity_index_d1_writes",
+        before: oldWrite.meta.rows_written,
+        after: newWrite.meta.rows_written,
+      }),
+    );
+  } finally {
+    await before.dispose();
+    await after.dispose();
+  }
+}, 30_000);
+
 test("D1 metadata measures the complete refresh workload and bounded changed-entity work", async () => {
   for (const size of [1_000, 10_000]) {
     const { db, dispose } = await database({
