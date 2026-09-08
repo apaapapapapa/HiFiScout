@@ -102,7 +102,7 @@ export type AdminJobStatus =
   | "cancelled";
 export interface AdminBackgroundJob {
   id: string;
-  kind: "csv" | "replay";
+  kind: "csv" | "replay" | "manufacturer";
   label: string;
   status: AdminJobStatus;
   createdAt: string;
@@ -118,7 +118,13 @@ export interface AdminBackgroundJob {
 export type AdminJobCommand =
   | { action: "list"; before?: string }
   | { action: "get"; id: string; after?: number; failedOnly?: boolean }
-  | { action: "create"; id: string; kind: "csv" | "replay"; total: number; label: string }
+  | {
+      action: "create";
+      id: string;
+      kind: "csv" | "replay" | "manufacturer";
+      total: number;
+      label: string;
+    }
   | { action: "append"; id: string; offset: number; items: AdminCsvApplyInput[] }
   | { action: "start" | "pause" | "resume" | "retry" | "cancel"; id: string };
 export interface AdminJobList {

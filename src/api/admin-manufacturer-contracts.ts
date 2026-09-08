@@ -66,3 +66,52 @@ export function isAdminManufacturerPage(value: unknown): value is AdminManufactu
       : page.nextAfterId === null)
   );
 }
+
+export interface AdminManufacturerEdit {
+  manufacturerId: string;
+  canonicalName: string;
+  nameJa: string;
+  nameEn: string;
+  alias?: { alias: string; shopKey: string; enabled: boolean };
+}
+export interface AdminManufacturerAlias {
+  alias: string;
+  normalizedAlias: string;
+  shopKey: string;
+  status: "pending" | "verified" | "rejected";
+  source: string;
+}
+export interface AdminManufacturerRegistryDetail {
+  profile: Omit<AdminManufacturerEdit, "alias">;
+  exists: boolean;
+  aliases: AdminManufacturerAlias[];
+  history: { operationId: string; createdAt: string; edit: AdminManufacturerEdit }[];
+  observedAt: string;
+}
+export interface AdminManufacturerPreview {
+  revision: string;
+  before: AdminManufacturerRegistryDetail;
+  edit: AdminManufacturerEdit;
+  scope: {
+    shopKey: string;
+    afterId: number;
+    nextAfterId: number;
+    maxId: number;
+    scanned: number;
+    matched: number;
+    hasMore: boolean;
+  };
+  samples: import("./admin-listing-contracts.js").AdminExtractionResult;
+  collisions: { alias: string; shopKey: string; manufacturerId: string; name: string }[];
+}
+export type AdminManufacturerCommand =
+  | { action: "replay"; operationId: string }
+  | { action: "get"; manufacturerId: string }
+  | { action: "preview"; edit: AdminManufacturerEdit; afterId: number; maxId?: number }
+  | { action: "apply"; edit: AdminManufacturerEdit; revision: string; operationId: string };
+export interface AdminManufacturerApplyResult {
+  applied: true;
+  operationId: string;
+  replay: "queued" | "pending";
+  message: string;
+}

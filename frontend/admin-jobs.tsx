@@ -180,7 +180,9 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
                       </p>
                     </>
                   ) : (
-                    <p>処理済み {job.processed}件</p>
+                    <p>
+                      {job.kind === "manufacturer" ? "確認済み" : "処理済み"} {job.processed}件
+                    </p>
                   )}
                   {!job.detailsAvailable ? <p>詳細の保持期限が切れています。</p> : null}
                 </td>
@@ -205,8 +207,7 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
                   ) : null}
                   {job.status === "paused" ||
                   job.status === "running" ||
-                  (job.status === "failed" &&
-                    (job.kind === "replay" || job.processed < job.total)) ? (
+                  (job.status === "failed" && (job.kind !== "csv" || job.processed < job.total)) ? (
                     <button
                       type="button"
                       className="secondary-button"
@@ -332,9 +333,11 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
           </div>
           {!detail.items.length ? (
             <p>
-              {detail.job.kind === "replay"
-                ? "充足率の集計は出品条件の再処理画面で確認できます。"
-                : "表示できる詳細はありません。"}
+              {detail.job.kind === "manufacturer"
+                ? "確認済み件数は候補の探索範囲です。該当商品だけを最新の辞書で再判定しました。"
+                : detail.job.kind === "replay"
+                  ? "充足率の集計は出品条件の再処理画面で確認できます。"
+                  : "表示できる詳細はありません。"}
             </p>
           ) : null}
           <div className="pagination">

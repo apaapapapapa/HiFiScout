@@ -61,6 +61,7 @@ const fields = (p: NormalizedCatalogProduct): AdminExtractionFields => ({
 export async function previewAdminExtraction(
   db: ReadableDatabase,
   request: AdminExtractionRequest,
+  dictionary?: { current: ManufacturerAliasEvidence[]; proposed: ManufacturerAliasEvidence[] },
 ): Promise<AdminExtractionResult> {
   const input = parseAdminExtractionRequest(request);
   if (!input) throw new Error("抽出テストの入力が正しくありません。");
@@ -83,7 +84,7 @@ export async function previewAdminExtraction(
       ).results
     : [];
   const byId = new Map(saved.map((row) => [row.id, row]));
-  const aliases = await readAdminManufacturerAliases(db);
+  const aliases = dictionary?.current ?? (await readAdminManufacturerAliases(db));
   let draftEvidence: ManufacturerAliasEvidence | null = null;
   if (input.draftAlias) {
     const manufacturer = await db
@@ -108,25 +109,28 @@ export async function previewAdminExtraction(
     manufacturer: createManufacturerResolver(aliases),
     model: createModelResolver(aliases),
   };
-  const proposedAliases = draftEvidence
-    ? [
-        draftEvidence,
-        ...aliases.filter(
-          (row) =>
-            !(
-              row.manufacturerId === draftEvidence.manufacturerId &&
-              row.normalizedAlias === draftEvidence.normalizedAlias &&
-              (row.shopKey ?? "") === (draftEvidence.shopKey ?? "")
-            ),
-        ),
-      ]
-    : aliases;
-  const draftResolvers = draftEvidence
-    ? {
-        manufacturer: createManufacturerResolver(proposedAliases),
-        model: createModelResolver(proposedAliases),
-      }
-    : baseResolvers;
+  const proposedAliases =
+    dictionary?.proposed ??
+    (draftEvidence
+      ? [
+          draftEvidence,
+          ...aliases.filter(
+            (row) =>
+              !(
+                row.manufacturerId === draftEvidence.manufacturerId &&
+                row.normalizedAlias === draftEvidence.normalizedAlias &&
+                (row.shopKey ?? "") === (draftEvidence.shopKey ?? "")
+              ),
+          ),
+        ]
+      : aliases);
+  const draftResolvers =
+    draftEvidence || dictionary
+      ? {
+          manufacturer: createManufacturerResolver(proposedAliases),
+          model: createModelResolver(proposedAliases),
+        }
+      : baseResolvers;
   const items = input.samples.map((sample): AdminExtractionResult["items"][number] => {
     const listingId = "listingId" in sample ? sample.listingId : null;
     const row = listingId ? byId.get(listingId) : undefined;
@@ -205,7 +209,8 @@ export async function previewAdminExtraction(
     };
     const current = extract(baseResolvers);
     const proposed =
-      input.draftAlias && (!input.draftAlias.shopKey || input.draftAlias.shopKey === raw.shopKey)
+      dictionary ||
+      (input.draftAlias && (!input.draftAlias.shopKey || input.draftAlias.shopKey === raw.shopKey))
         ? extract(draftResolvers)
         : current;
     const display = fields(proposed);

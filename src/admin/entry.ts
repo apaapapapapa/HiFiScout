@@ -1,3 +1,4 @@
+import { parseAdminManufacturerCommand } from "../http/admin-manufacturer-registry.js";
 import { parseAdminExtractionRequest } from "../http/admin-extraction-preview.js";
 import { parseAdminRestoreSelection } from "./change-history.js";
 import type { AdminRestoreSelection } from "../api/admin-listing-contracts.js";
@@ -180,6 +181,27 @@ export async function handleAuthenticatedAdminEntryRequest(
         { status: 503 },
       );
     }
+  }
+
+  if (url.pathname === "/api/admin/manufacturer-registry" && request.method === "POST") {
+    if (!isJsonRequest(request))
+      return json({ error: "application_json_required" }, { status: 415 });
+    if (!isSameOriginBrowserMutation(request, url))
+      return json({ error: "same_origin_required" }, { status: 403 });
+    const body = await readJsonBody(request, 8192);
+    if (body === REQUEST_BODY_TOO_LARGE)
+      return json({ error: "request_body_too_large" }, { status: 413 });
+    const command = parseAdminManufacturerCommand(body);
+    if (!command) return json({ error: "入力を確認してください。" }, { status: 400 });
+    const result = await env.CATALOG_ADMIN.manufacturerRegistry(command);
+    return json(result, {
+      status:
+        isRecord(result) &&
+        typeof result.status === "number" &&
+        [400, 409, 503].includes(result.status)
+          ? result.status
+          : 200,
+    });
   }
 
   if (url.pathname === "/api/admin/operations" && request.method === "GET")

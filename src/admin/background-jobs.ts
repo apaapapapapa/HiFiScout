@@ -1,3 +1,12 @@
+import { registryVersion } from "../db/admin-manufacturer-management.js";
+import { readAdminManufacturerAliases } from "../db/admin-manufacturer-registry.js";
+import type { ManufacturerAliasEvidence } from "../catalog/types.js";
+import {
+  readManufacturerChange,
+  scanManufacturerImpact,
+  type ManufacturerMatcher,
+} from "../db/admin-manufacturer-management.js";
+import { replayAdminCsvListings } from "../db/data-quality-remediation-service.js";
 import { DurableObject } from "cloudflare:workers";
 import type {
   AdminBackgroundJob,
@@ -17,7 +26,7 @@ import { OFFER_FACT_RULE_VERSION } from "../catalog/offer-facts.js";
 
 type JobRow = {
   id: string;
-  kind: "csv" | "replay";
+  kind: "csv" | "replay" | "manufacturer";
   label: string;
   status: AdminJobStatus;
   created_at: string;
@@ -62,6 +71,7 @@ class JobInputError extends Error {}
 
 /** One persisted coordinator serializes admin work separately from every shop's crawl DO. */
 export class AdminJobs extends DurableObject<Env> {
+  private aliasSnapshot: { version: number; aliases: ManufacturerAliasEvidence[] } | null = null;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     ctx.storage.sql.exec(`CREATE TABLE IF NOT EXISTS jobs (
@@ -147,6 +157,21 @@ export class AdminJobs extends DurableObject<Env> {
         )
           throw new JobInputError("同じ処理IDに異なる入力が指定されています。");
         return { job: jobDto(existing) };
+      }
+      if (command.kind === "manufacturer") {
+        const receipt = await readManufacturerChange(this.env.DB, command.id);
+        if (!receipt || receipt.status !== "applied")
+          throw new JobInputError("適用済みのメーカー変更だけを再処理できます。");
+        const raced = sql.exec<JobRow>("SELECT * FROM jobs WHERE id=?", command.id).toArray()[0];
+        if (raced) {
+          if (
+            raced.kind !== command.kind ||
+            raced.total !== command.total ||
+            raced.label !== command.label
+          )
+            throw new JobInputError("同じ処理IDに異なる入力が指定されています。");
+          return { job: jobDto(raced) };
+        }
       }
       const active = sql
         .exec<JobRow>(
@@ -334,7 +359,8 @@ export class AdminJobs extends DurableObject<Env> {
       job.id,
     );
     try {
-      if (job.kind === "replay") await this.replay(job);
+      if (job.kind === "manufacturer") await this.manufacturer(job);
+      else if (job.kind === "replay") await this.replay(job);
       else
         for (let step = 0; step < 5; step++) {
           const current = this.job(job.id);
@@ -424,6 +450,44 @@ export class AdminJobs extends DurableObject<Env> {
       );
     }
     await this.schedule();
+  }
+
+  private async manufacturer(job: JobRow) {
+    const receipt = await readManufacturerChange(this.env.DB, job.id);
+    if (!receipt || receipt.status !== "applied") throw new Error("manufacturer_change_missing");
+    const matcher = JSON.parse(receipt.matcher_json) as ManufacturerMatcher;
+    const page = await scanManufacturerImpact(
+      this.env.DB,
+      matcher,
+      Math.max(0, job.after_index),
+      receipt.max_product_id,
+      5,
+    );
+    if (page.ids.length) {
+      const version = await registryVersion(this.env.DB);
+      if (!this.aliasSnapshot || this.aliasSnapshot.version !== version)
+        this.aliasSnapshot = { version, aliases: await readAdminManufacturerAliases(this.env.DB) };
+      await replayAdminCsvListings(
+        this.env.DB,
+        page.ids,
+        new Date().toISOString(),
+        this.aliasSnapshot.aliases,
+      );
+    }
+    // Reprocessing is idempotent and preserves newer manual overrides; a lost checkpoint only repeats this bounded page.
+    this.ctx.storage.sql.exec(
+      "UPDATE jobs SET after_index=?,processed=processed+?,updated_at=? WHERE id=?",
+      page.nextAfterId,
+      page.scanned,
+      new Date().toISOString(),
+      job.id,
+    );
+    if (!page.hasMore)
+      this.ctx.storage.sql.exec(
+        "UPDATE jobs SET status='completed',error='',expires_at=? WHERE id=? AND status='running'",
+        new Date(Date.now() + RETENTION_MS).toISOString(),
+        job.id,
+      );
   }
 
   private async replay(job: JobRow) {

@@ -17,7 +17,12 @@ import { createModelResolver } from "../catalog/model-resolver.js";
 import { inferFeatureFacts } from "../catalog/product-features.js";
 import { inferFacetFacts, normalizeFacetFacts } from "../catalog/product-facets.js";
 import { RESOLUTION_VERSIONS } from "../catalog/resolution-versions.js";
-import type { CategoryId, FacetFact, FeatureFact } from "../catalog/types.js";
+import type {
+  CategoryId,
+  FacetFact,
+  FeatureFact,
+  ManufacturerAliasEvidence,
+} from "../catalog/types.js";
 import { errorMessage, isRecord } from "../types.js";
 import { saveDataQualityRun } from "./data-quality-repository.js";
 import {
@@ -732,10 +737,11 @@ export async function replayAdminCsvListings(
   db: QueryableDatabase,
   listingIds: readonly number[],
   evaluatedAt: string,
+  aliasSnapshot?: ManufacturerAliasEvidence[],
 ): Promise<void> {
   if (!listingIds.length) return;
   if (listingIds.length > 10) throw new Error("csv_replay_page_too_large");
-  const aliases = await listManufacturerAliasEvidence(db);
+  const aliases = aliasSnapshot ?? (await listManufacturerAliasEvidence(db));
   const rows: RemediationListingRow[] = [];
   const tokens = new Map<number, string>();
   for (const id of listingIds) {
