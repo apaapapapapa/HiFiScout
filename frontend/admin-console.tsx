@@ -1,4 +1,5 @@
 import { AdminManufacturerRegistry } from "./admin-manufacturer-registry.js";
+import { AdminQualityPanel } from "./admin-quality.js";
 import { AdminExtractionPreview } from "./admin-extraction-preview.js";
 import { AdminOperationsPanel } from "./admin-operations.js";
 import { useEffect, useRef, useState } from "react";
@@ -160,6 +161,9 @@ export function AdminConsole() {
           </h1>
           <p>{active.description}</p>
         </header>
+        <div hidden={location.view !== "quality"}>
+          {visited.has("quality") ? <AdminQualityPanel /> : null}
+        </div>
         <div hidden={location.view !== "manufacturers"}>
           {visited.has("manufacturers") ? (
             <AdminManufacturerRegistry
@@ -218,7 +222,11 @@ export function AdminConsole() {
         </div>
         <div id="reports-pane" hidden={location.view !== "reports"}>
           {visited.has("reports") ? (
-            <CorrectionReportsAdmin onDataChanged={refreshWorkCounts} />
+            <CorrectionReportsAdmin
+              active={location.view === "reports"}
+              search={location.search}
+              onDataChanged={refreshWorkCounts}
+            />
           ) : null}
         </div>
       </main>

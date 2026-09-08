@@ -35,6 +35,11 @@ const REASON_LABELS: Record<ProductCorrectionReportReason, string> = {
   stale_or_missing_offer: "在庫情報が古い・不足",
   other_factual_error: "その他の事実誤り",
 };
+export function correctionReportReasonLabel(reason: string): string {
+  return Object.hasOwn(REASON_LABELS, reason)
+    ? REASON_LABELS[reason as ProductCorrectionReportReason]
+    : reason;
+}
 
 const STATUS_LABELS: Record<ProductCorrectionReportStatus, string> = {
   open: "未確認",
@@ -75,7 +80,19 @@ function targetLabel(report: CorrectionReport): string {
   return `${product || report.productKey} / ${listing}`;
 }
 
-export function CorrectionReportsAdmin({ onDataChanged }: { onDataChanged?: () => void } = {}) {
+function reportIdFromSearch(search: string) {
+  const id = Number(new URLSearchParams(search).get("reportId"));
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+export function CorrectionReportsAdmin({
+  onDataChanged,
+  active = true,
+  search = window.location.search,
+}: { onDataChanged?: () => void; active?: boolean; search?: string } = {}) {
+  const [focusedReportId, setFocusedReportId] = useState(() => reportIdFromSearch(search));
+  useEffect(() => {
+    if (active) setFocusedReportId(reportIdFromSearch(search));
+  }, [active, search]);
   const [status, setStatus] = useState<ProductCorrectionReportStatus | "">("open");
   const [reason, setReason] = useState<ProductCorrectionReportReason | "">("");
   const [shopKey, setShopKey] = useState("");
@@ -111,9 +128,15 @@ export function CorrectionReportsAdmin({ onDataChanged }: { onDataChanged?: () =
       try {
         const query = new URLSearchParams(params);
         if (beforeId !== null) query.set("beforeId", String(beforeId));
-        const result = await adminJson<CorrectionReportListResponse>(
-          `/api/admin/correction-reports?${query}`,
-        );
+        const result =
+          focusedReportId !== null
+            ? await adminJson<CorrectionReportListResponse>("/api/admin/quality", {
+                method: "POST",
+                body: JSON.stringify({ action: "report", id: focusedReportId }),
+              })
+            : await adminJson<CorrectionReportListResponse>(
+                `/api/admin/correction-reports?${query}`,
+              );
         if (sequence !== requestSequence.current) return;
         setItems((current) => (append ? [...current, ...result.items] : result.items));
         setNextBeforeId(result.nextBeforeId);
@@ -127,7 +150,7 @@ export function CorrectionReportsAdmin({ onDataChanged }: { onDataChanged?: () =
         if (sequence === requestSequence.current) setBusy(false);
       }
     },
-    [params],
+    [params, focusedReportId],
   );
 
   useEffect(() => {
@@ -143,8 +166,15 @@ export function CorrectionReportsAdmin({ onDataChanged }: { onDataChanged?: () =
 
   const submitFilters = (event: FormEvent) => {
     event.preventDefault();
+    clearFocus();
     setAppliedFilters({ status, reason, shopKey, maxAgeDays });
   };
+  function clearFocus() {
+    setFocusedReportId(null);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("reportId");
+    window.history.replaceState(null, "", url);
+  }
 
   const act = async (report: CorrectionReport, action: "review_started" | ResolutionAction) => {
     const note = notes[report.id]?.trim() || "";
@@ -184,6 +214,14 @@ export function CorrectionReportsAdmin({ onDataChanged }: { onDataChanged?: () =
         </p>
       </div>
 
+      {focusedReportId !== null ? (
+        <p>
+          報告 #{focusedReportId} に絞って表示しています。
+          <button type="button" disabled={busy} onClick={clearFocus}>
+            報告IDの絞り込みを解除
+          </button>
+        </p>
+      ) : null}
       <form className="panel workspace-panel admin-filter-grid" onSubmit={submitFilters}>
         <label>
           状態
