@@ -221,3 +221,73 @@ export interface AdminExtractionResult {
     reasons: { manufacturer: string; model: string; category: string } | null;
   }[];
 }
+
+export type AdminQualityKind = "manufacturer" | "category" | "identity_veto" | "identity_candidate";
+export interface AdminQualityShopIssue {
+  shopKey: string;
+  shopName: string;
+  kind: AdminQualityKind;
+  count: number;
+  total: number;
+  severity: "critical" | "warning" | "healthy" | "unknown";
+  snapshotAt: string;
+}
+export interface AdminQualityOverview {
+  observedAt: string;
+  issues: AdminQualityShopIssue[];
+  snapshots: { shopKey: string; shopName: string; snapshotAt: string; total: number }[];
+  missingShops: { shopKey: string; shopName: string }[];
+}
+export type AdminQualityReportCursor = [number, number, string, string, string];
+export interface AdminQualityReportGroup {
+  targetKey: string;
+  reason: string;
+  openCount: number;
+  reportCount: number;
+  recurrenceCount: number;
+  updatedAt: string;
+  reportId: number | null;
+  listingId: number | null;
+  productKey: string;
+  shopKey: string;
+  manufacturer: string;
+  model: string;
+  relatedOfferCount: number | null;
+  relatedAt: string | null;
+}
+export interface AdminQualityReportPage {
+  observedAt: string;
+  items: AdminQualityReportGroup[];
+  nextBefore: AdminQualityReportCursor | null;
+}
+export interface AdminQualitySamples {
+  observedAt: string;
+  shopKey: string;
+  kind: AdminQualityKind;
+  scanned: number;
+  afterId: number;
+  nextAfterId: number;
+  hasMore: boolean;
+  items: { id: number; title: string; manufacturer: string; model: string; categoryId: string }[];
+}
+export type AdminQualityCandidateCursor = [number, string, number];
+export interface AdminQualityCandidatePage {
+  observedAt: string;
+  items: {
+    id: number;
+    manufacturerId: string;
+    manufacturer: string;
+    model: string;
+    listingCount: number;
+    shopCount: number;
+    priorityScore: number;
+    updatedAt: string;
+  }[];
+  nextBefore: AdminQualityCandidateCursor | null;
+}
+export type AdminQualityCommand =
+  | { action: "overview" }
+  | { action: "reports"; before?: AdminQualityReportCursor }
+  | { action: "candidates"; before?: AdminQualityCandidateCursor }
+  | { action: "samples"; shopKey: string; kind: AdminQualityKind; afterId: number }
+  | { action: "report"; id: number };

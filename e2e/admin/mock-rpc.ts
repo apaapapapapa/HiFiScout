@@ -79,6 +79,9 @@ export function createMockAdminRpc() {
     throw new Error(`Unmocked admin RPC: ${method}`);
   };
   const rpc: AdminRpc = {
+    async adminQuality(input) {
+      return { received: input };
+    },
     async manufacturerRegistry(input) {
       state.manufacturerCommands.push(input);
       return { received: input };

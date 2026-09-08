@@ -31,6 +31,7 @@ test("unauthenticated requests cannot read the console, assets, metadata or admi
     "/api/admin/operations",
     "/api/admin/extraction-preview",
     "/api/admin/manufacturer-registry",
+    "/api/admin/quality",
     `${catalogPath}/11/model-facts`,
   ]) {
     const response = await request.get(path);
@@ -234,4 +235,22 @@ test("manufacturer registry requests pass through the real Access and entry rout
   });
   expect(invalid.status()).toBe(400);
   expect(app.state.manufacturerCommands).toHaveLength(1);
+});
+
+test("quality reads use the protected entry and reject unknown scopes", async ({
+  request,
+  app,
+}) => {
+  const headers = { ...(await app.headers()), origin: app.url };
+  const response = await request.post("/api/admin/quality", {
+    headers,
+    data: { action: "overview" },
+  });
+  expect(response.status()).toBe(200);
+  expect(await response.json()).toEqual({ received: { action: "overview" } });
+  const invalid = await request.post("/api/admin/quality", {
+    headers,
+    data: { action: "samples", shopKey: "invalid", kind: "manufacturer", afterId: 0 },
+  });
+  expect(invalid.status()).toBe(400);
 });

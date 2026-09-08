@@ -1,3 +1,4 @@
+import { parseAdminQualityCommand } from "../http/admin-quality.js";
 import { parseAdminManufacturerCommand } from "../http/admin-manufacturer-registry.js";
 import { parseAdminExtractionRequest } from "../http/admin-extraction-preview.js";
 import { parseAdminRestoreSelection } from "./change-history.js";
@@ -105,6 +106,7 @@ function isAdminEntryRoute(pathname: string): boolean {
     pathname === WORK_COUNTS_PATH ||
     pathname === "/api/admin/extraction-preview" ||
     pathname === "/api/admin/manufacturer-registry" ||
+    pathname === "/api/admin/quality" ||
     pathname === "/api/admin/operations" ||
     pathname === "/api/admin/jobs" ||
     pathname === "/api/admin/crawls" ||
@@ -179,6 +181,26 @@ export async function handleAuthenticatedAdminEntryRequest(
         return json({ error: message }, { status: 409 });
       return json(
         { error: "抽出テストを実行できませんでした。入力と対象商品の状態を確認してください。" },
+        { status: 503 },
+      );
+    }
+  }
+
+  if (url.pathname === "/api/admin/quality" && request.method === "POST") {
+    if (!isJsonRequest(request))
+      return json({ error: "application_json_required" }, { status: 415 });
+    if (!isSameOriginBrowserMutation(request, url))
+      return json({ error: "same_origin_required" }, { status: 403 });
+    const body = await readJsonBody(request, 4096);
+    if (body === REQUEST_BODY_TOO_LARGE)
+      return json({ error: "request_body_too_large" }, { status: 413 });
+    const command = parseAdminQualityCommand(body);
+    if (!command) return json({ error: "入力を確認してください。" }, { status: 400 });
+    try {
+      return json(await env.CATALOG_ADMIN.adminQuality(command));
+    } catch {
+      return json(
+        { error: "品質点検の情報を取得できませんでした。再読み込みしてください。" },
         { status: 503 },
       );
     }
