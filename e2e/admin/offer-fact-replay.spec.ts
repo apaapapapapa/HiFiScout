@@ -1,7 +1,6 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures.js";
 
-const path = "/api/admin/offer-facts/replay";
 const replay = (page: Page) => page.getByRole("region", { name: "出品条件の再処理・充足率" });
 
 async function startAll(page: Page) {
@@ -9,126 +8,59 @@ async function startAll(page: Page) {
   await replay(page).getByRole("button", { name: "全商品を再処理", exact: true }).click();
 }
 
-test("all-product replay requires confirmation and continues past 500 until server completion", async ({
+test("all-product replay confirms submission and shows durable progress after navigation", async ({
   page,
   context,
   app,
 }) => {
-  const bodies: unknown[] = [];
-  page.on("request", (request) => {
-    if (request.url().endsWith(path) && request.method() === "POST")
-      bodies.push(request.postDataJSON());
-  });
   await context.setExtraHTTPHeaders(await app.headers());
   await page.goto("/#maintenance");
   await expect(replay(page).getByRole("status")).toContainText("再処理できます");
   page.once("dialog", async (dialog) => {
-    expect(dialog.type()).toBe("confirm");
     expect(dialog.message()).toContain("掲載終了を含む");
     await dialog.dismiss();
   });
   await replay(page).getByRole("button", { name: "全商品を再処理", exact: true }).click();
-  expect(app.state.replay.stepCalls).toBe(0);
-
+  expect(app.state.jobCommands).toEqual([]);
   await startAll(page);
-  await expect(replay(page).getByRole("status")).toHaveText("再処理が完了しました。");
-  await expect(replay(page)).toContainText("処理済み 550件 / うち掲載中 549件");
-  expect(app.state.replay.stepCalls).toBe(22);
-  expect(bodies).toEqual(Array.from({ length: 22 }, () => ({})));
-  for (const name of ["最大25件を再処理", "最大500件を再処理", "全商品を再処理"])
-    await expect(replay(page).getByRole("button", { name, exact: true })).toBeDisabled();
-  await page.reload();
-  await expect(replay(page).getByRole("status")).toHaveText("再処理は完了しています。");
-  await expect(replay(page).getByRole("button", { name: "全商品を再処理" })).toBeDisabled();
-  expect(app.state.replay.stepCalls).toBe(22);
+  await expect(replay(page).getByRole("status")).toContainText("画面を閉じても処理は続きます");
+  expect(app.state.jobCommands.map((command) => command.action)).toEqual(["create", "start"]);
+  expect(app.state.replay.stepCalls).toBe(0);
+  const job = [...app.state.jobs.values()][0];
+  await page.goto(`/?jobId=${job.id}#jobs`);
+  await expect(page.getByRole("region", { name: "バックグラウンド処理一覧" })).toContainText(
+    "実行待ち",
+  );
+  job.processed = 550;
+  job.status = "completed";
+  await page.getByRole("button", { name: "進捗を再読み込み" }).click();
+  await expect(page.getByRole("region", { name: "バックグラウンド処理一覧" })).toContainText(
+    "処理済み 550件",
+  );
+  await expect(page.getByRole("cell", { name: /^完了/u })).toBeVisible();
+  expect(app.state.replay.stepCalls).toBe(0);
 });
 
-test("stopping finishes only the in-flight step and all-product replay resumes after reload", async ({
-  page,
-  context,
-  app,
-}) => {
-  let release!: () => void;
-  const held = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  await page.route(`**${path}`, async (route) => {
-    if (route.request().method() !== "POST" || app.state.replay.stepCalls > 0)
-      return route.continue();
-    const response = await route.fetch();
-    await held;
-    return route.fulfill({ response });
-  });
-  try {
-    await context.setExtraHTTPHeaders(await app.headers());
-    await page.goto("/#maintenance");
-    await startAll(page);
-    await expect.poll(() => app.state.replay.stepCalls).toBe(1);
-    for (const name of ["最大25件を再処理", "最大500件を再処理", "全商品を再処理"])
-      await expect(replay(page).getByRole("button", { name, exact: true })).toBeDisabled();
-    await replay(page).getByRole("button", { name: "この処理の後で停止" }).click();
-    await expect(replay(page).getByRole("button", { name: "停止しています…" })).toBeDisabled();
-    release();
-    await expect(replay(page).getByRole("status")).toContainText("停止しました。");
-    expect(app.state.replay.stepCalls).toBe(1);
-    await page.reload();
-    await expect(replay(page)).toContainText("処理済み 25件");
-    expect(app.state.replay.stepCalls).toBe(1);
-    await startAll(page);
-    await expect(replay(page).getByRole("status")).toHaveText("再処理が完了しました。");
-    expect(app.state.replay.stepCalls).toBe(22);
-  } finally {
-    release();
-  }
-});
-
-test("an interrupted response stops all-product replay until the operator resumes saved progress", async ({
-  page,
-  context,
-  app,
-}) => {
-  await page.route(`**${path}`, async (route) => {
-    if (route.request().method() !== "POST" || app.state.replay.stepCalls > 0)
-      return route.continue();
-    // Commit through the real authenticated Worker, then lose its successful response.
+test("a lost start response reuses the same background job", async ({ page, context, app }) => {
+  let interrupted = false;
+  await page.route("**/api/admin/jobs", async (route) => {
+    if (route.request().postDataJSON().action !== "start" || interrupted) return route.continue();
+    interrupted = true;
     await route.fetch();
     return route.fulfill({ status: 503, json: { error: "interrupted" } });
   });
   await context.setExtraHTTPHeaders(await app.headers());
   await page.goto("/#maintenance");
+  await expect(replay(page).getByRole("status")).toContainText("再処理できます");
   await startAll(page);
-  await expect(replay(page).getByRole("status")).toContainText("中断しました");
-  expect(app.state.replay).toEqual({ scannedCount: 25, totalCount: 550, stepCalls: 1 });
+  await expect(replay(page).getByRole("status")).toContainText("受付を確認できませんでした");
   await startAll(page);
-  await expect(replay(page).getByRole("status")).toHaveText("再処理が完了しました。");
-  expect(app.state.replay.stepCalls).toBe(22);
-});
-
-test("all-product replay stops after three consecutive responses without progress", async ({
-  page,
-  context,
-  app,
-}) => {
-  let calls = 0;
-  await page.route(`**${path}`, (route) => {
-    if (route.request().method() !== "POST") return route.continue();
-    calls++;
-    return route.fulfill({
-      json: {
-        ruleVersion: 1,
-        scannedCount: 0,
-        activeCount: 0,
-        completedAt: null,
-        coverage: { byShop: [], byCategory: [] },
-      },
-    });
-  });
-  await context.setExtraHTTPHeaders(await app.headers());
-  await page.goto("/#maintenance");
-  await startAll(page);
-  await expect(replay(page).getByRole("status")).toContainText("進捗が更新されないため停止");
-  await expect(replay(page).getByRole("button", { name: "全商品を再処理" })).toBeEnabled();
-  expect(calls).toBe(3);
+  await expect(replay(page).getByRole("status")).toContainText("画面を閉じても処理は続きます");
+  expect(app.state.jobs.size).toBe(1);
+  const ids = app.state.jobCommands.filter((c) => c.action === "create").map((c) => c.id);
+  expect(ids).toHaveLength(2);
+  expect(new Set(ids).size).toBe(1);
+  expect(app.state.replay.stepCalls).toBe(0);
 });
 
 for (const [name, steps] of [

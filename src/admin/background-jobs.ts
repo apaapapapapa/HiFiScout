@@ -182,7 +182,7 @@ export class AdminJobs extends DurableObject<Env> {
     if (command.action === "get") {
       const rows = sql
         .exec<ItemRow>(
-          "SELECT ordinal,state,result_json FROM items WHERE job_id = ? AND ordinal > ? ORDER BY ordinal LIMIT 51",
+          `SELECT ordinal,state,result_json FROM items WHERE job_id = ? ${command.failedOnly ? "AND state='failed'" : ""} AND ordinal > ? ORDER BY ordinal LIMIT 51`,
           job.id,
           command.after ?? -1,
         )
@@ -413,7 +413,12 @@ export class AdminJobs extends DurableObject<Env> {
         }),
       );
       sql.exec(
-        "UPDATE jobs SET status='failed',error='処理が中断しました。保存済みの続きから再開できます。',updated_at=? WHERE id=? AND status='running'",
+        "UPDATE jobs SET status='failed',error=?,updated_at=? WHERE id=? AND status='running'",
+        error instanceof Error && error.message === "offer_fact_replay_no_progress"
+          ? "進捗が更新されないため停止しました。状態を確認してから再開してください。"
+          : error instanceof Error && error.message === "offer_fact_rule_version_changed"
+            ? "抽出ルールが更新されています。この処理を中止して、新しい再処理を開始してください。"
+            : "処理が中断しました。保存済みの続きから再開できます。",
         new Date().toISOString(),
         job.id,
       );

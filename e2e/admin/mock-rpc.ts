@@ -1,4 +1,6 @@
 import type { AdminChangeHistoryItem } from "../../src/api/admin-listing-contracts.js";
+import type { AdminBackgroundJob, AdminJobCommand } from "../../src/api/admin-csv-contracts.js";
+import { parseAdminJobCommand } from "../../src/http/admin-jobs.js";
 import type adminWorker from "../../src/admin/entry.js";
 
 type AdminRpc = Parameters<typeof adminWorker.fetch>[1]["CATALOG_ADMIN"];
@@ -49,6 +51,8 @@ export function createMockAdminRpc() {
     },
     history: [] as AdminChangeHistoryItem[],
     historyConflict: false,
+    jobs: new Map<string, AdminBackgroundJob>(),
+    jobCommands: [] as AdminJobCommand[],
     crawls: { paused: false, reads: 0, actions: [] as string[] },
     bulk: {
       enabled: false,
@@ -74,7 +78,46 @@ export function createMockAdminRpc() {
     throw new Error(`Unmocked admin RPC: ${method}`);
   };
   const rpc: AdminRpc = {
-    adminJobs: unsupported("adminJobs"),
+    async adminJobs(input) {
+      const command = parseAdminJobCommand(input);
+      if (!command) throw new Error("Invalid job command");
+      state.jobCommands.push(command);
+      if (command.action === "list") return { items: [...state.jobs.values()], nextBefore: null };
+      if (command.action === "create") {
+        const existing = state.jobs.get(command.id);
+        if (existing) return { job: existing };
+        const job: AdminBackgroundJob = {
+          id: command.id,
+          kind: command.kind,
+          label: command.label,
+          status: "uploading",
+          createdAt: "2026-09-01T00:00:00Z",
+          updatedAt: "2026-09-01T00:00:00Z",
+          total: command.total,
+          uploaded: 0,
+          processed: 0,
+          failed: 0,
+          error: "",
+          expiresAt: "2026-09-08T00:00:00Z",
+          detailsAvailable: true,
+        };
+        state.jobs.set(job.id, job);
+        return { job };
+      }
+      const job = state.jobs.get(command.id);
+      if (!job) throw new Error("Job not found");
+      if (command.action === "get") return { job, items: [], nextAfter: null };
+      if (command.action === "append") job.uploaded += command.items.length;
+      else if (
+        command.action === "start" ||
+        command.action === "resume" ||
+        command.action === "retry"
+      )
+        job.status = "queued";
+      else if (command.action === "pause") job.status = "paused";
+      else if (command.action === "cancel") job.status = "cancelled";
+      return { job };
+    },
     async getCrawlOverview() {
       state.crawls.reads++;
       return {

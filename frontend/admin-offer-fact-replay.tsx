@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { adminJson, genericErrorText } from "./admin-shared.js";
 import { OFFER_FACT_GROUPS } from "../src/api/contracts.js";
+import { submitAdminReplayJob } from "./admin-job-client.js";
 import type { OfferFactCoverageRow } from "../src/api/contracts.js";
 interface Progress {
   ruleVersion: number;
@@ -14,7 +15,11 @@ const PATH = "/api/admin/offer-facts/replay";
 export function AdminOfferFactReplay({
   shops,
   categories,
+  active = true,
+  revision = 0,
 }: {
+  active?: boolean;
+  revision?: number;
   shops: readonly { key: string; name: string }[];
   categories: readonly { id: string; name: string }[];
 }) {
@@ -25,55 +30,55 @@ export function AdminOfferFactReplay({
   const [scope, setScope] = useState<"byShop" | "byCategory">("byShop");
   const stop = useRef(false);
   const running = useRef(false);
-  const started = useRef(false);
+  const loadedRevision = useRef<number | null>(null);
   const mounted = useRef(true);
+  const jobId = useRef<string | null>(null);
+  const [submittedJob, setSubmittedJob] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   useEffect(() => {
     mounted.current = true;
-    void adminJson<Progress | null>(PATH)
-      .then((value) => {
-        if (mounted.current && !started.current) {
-          setProgress(value);
-          setStatus(
-            value?.completedAt ? "再処理は完了しています。" : "保存済みの情報から再処理できます。",
-          );
-        }
-      })
-      .catch((error) => {
-        if (mounted.current && !started.current)
-          setStatus(`取得できませんでした: ${genericErrorText(error)}`);
-      });
     return () => {
       mounted.current = false;
       stop.current = true;
     };
   }, []);
+  useEffect(() => {
+    if (!active || busy || submitting || loadedRevision.current === revision) return;
+    let cancelled = false;
+    void adminJson<Progress | null>(PATH)
+      .then((value) => {
+        if (cancelled) return;
+        loadedRevision.current = revision;
+        setProgress(value);
+        setStatus(
+          value?.completedAt ? "再処理は完了しています。" : "保存済みの情報から再処理できます。",
+        );
+      })
+      .catch((error) => {
+        if (!cancelled) setStatus(`取得できませんでした: ${genericErrorText(error)}`);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [active, revision, busy, submitting]);
 
-  const run = async (steps: number | "all") => {
+  const run = async (steps: number) => {
     if (running.current) return;
     running.current = true;
-    started.current = true;
+    loadedRevision.current = revision;
     stop.current = false;
     setBusy(true);
     setStopping(false);
-    const runningStatus =
-      steps === "all" ? "全商品を再処理しています…（25件ずつ）" : "再処理しています…";
+    const runningStatus = "再処理しています…";
     setStatus(runningStatus);
-    let previousCount = progress?.scannedCount ?? 0;
-    let unchangedSteps = 0;
     try {
-      for (let step = 0; (steps === "all" || step < steps) && !stop.current; step++) {
+      for (let step = 0; step < steps && !stop.current; step++) {
         const next = await adminJson<Progress>(PATH, { method: "POST", body: "{}" });
         if (!mounted.current) return;
         setProgress(next);
         if (next.completedAt) {
           setStatus("再処理が完了しました。");
           return;
-        }
-        // A fenced server step can make no progress. Do not spin indefinitely under contention.
-        unchangedSteps = next.scannedCount > previousCount ? 0 : unchangedSteps + 1;
-        previousCount = next.scannedCount;
-        if (steps === "all" && unchangedSteps >= 3 && !stop.current) {
-          throw new Error("進捗が更新されないため停止しました。少し待ってから再開してください。");
         }
         if (!stop.current) setStatus(runningStatus);
       }
@@ -91,6 +96,28 @@ export function AdminOfferFactReplay({
       if (mounted.current) setBusy(false);
     }
   };
+  const startBackground = async () => {
+    if (busy || submitting) return;
+    loadedRevision.current = revision;
+    jobId.current ||= crypto.randomUUID();
+    setSubmitting(true);
+    try {
+      const job = await submitAdminReplayJob(jobId.current);
+      jobId.current = job.id;
+      setSubmittedJob(job.id);
+      setStatus(
+        job.status === "queued" || job.status === "running"
+          ? "再処理を受け付けました。画面を閉じても処理は続きます。"
+          : "既存の処理があります。現在の状態は処理一覧で確認してください。",
+      );
+    } catch (error) {
+      setStatus(
+        `受付を確認できませんでした。同じ処理として再試行できます: ${genericErrorText(error)}`,
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
   return (
     <section className="panel table-panel" aria-labelledby="offer-replay-heading">
       <h2 id="offer-replay-heading">出品条件の再処理・充足率</h2>
@@ -98,9 +125,14 @@ export function AdminOfferFactReplay({
         保存済みの全商品（掲載終了を含む）を1回最大25件ずつ処理します。店舗への再アクセスは行わず、手動修正は保持します。
       </p>
       <p>
-        「全商品を再処理」は保存済みの続きから完了まで自動で処理します。実行中はこのタブを開いたままにしてください。停止・タブを閉じた後も続きから再開できます。
+        「全商品を再処理」は保存済みの続きから処理します。受付完了後は画面を閉じても継続し、処理一覧から停止・再開できます。
       </p>
       <p role="status">{status}</p>
+      {submittedJob ? (
+        <p>
+          <a href={`/?jobId=${submittedJob}#jobs`}>処理一覧で進捗と結果を確認</a>
+        </p>
+      ) : null}
       <p>
         {progress
           ? `処理済み ${progress.scannedCount}件 / うち掲載中 ${progress.activeCount}件`
@@ -110,7 +142,7 @@ export function AdminOfferFactReplay({
         <button
           className="secondary-button"
           type="button"
-          disabled={busy || Boolean(progress?.completedAt)}
+          disabled={busy || submitting || !!submittedJob || Boolean(progress?.completedAt)}
           onClick={() => void run(1)}
         >
           最大25件を再処理
@@ -118,21 +150,21 @@ export function AdminOfferFactReplay({
         <button
           className="secondary-button"
           type="button"
-          disabled={busy || Boolean(progress?.completedAt)}
+          disabled={busy || submitting || !!submittedJob || Boolean(progress?.completedAt)}
           onClick={() => void run(20)}
         >
           最大500件を再処理
         </button>
         <button
           type="button"
-          disabled={busy || Boolean(progress?.completedAt)}
+          disabled={busy || submitting || !!submittedJob || Boolean(progress?.completedAt)}
           onClick={() => {
             if (
               window.confirm(
-                "全商品（掲載終了を含む）の出品条件を、保存済みの続きから完了まで再処理します。手動修正は保持します。実行中はこのタブを開いたままにしてください。開始しますか？",
+                "全商品（掲載終了を含む）の出品条件を、保存済みの続きから完了まで再処理します。手動修正は保持します。受付後は画面を閉じても継続します。開始しますか？",
               )
             )
-              void run("all");
+              void startBackground();
           }}
         >
           全商品を再処理

@@ -3,6 +3,7 @@ import type { MouseEvent } from "react";
 import { createRoot } from "react-dom/client";
 import { CatalogAdmin } from "./admin-catalog.js";
 import { AdminCrawls } from "./admin-crawls.js";
+import { AdminJobsPanel } from "./admin-jobs.js";
 import { CorrectionReportsAdmin } from "./admin-correction-reports.js";
 import { ListingAdmin } from "./admin-listings.js";
 import { ADMIN_VIEWS, adminLocation, adminViewUrl, isCatalogView } from "./admin-navigation.js";
@@ -19,6 +20,7 @@ export function AdminConsole() {
   const [visited, setVisited] = useState<Set<AdminView>>(() => new Set([location.view]));
   const title = useRef<HTMLHeadingElement>(null);
   const [dataRevision, setDataRevision] = useState(0);
+  const [backgroundRevision, setBackgroundRevision] = useState(0);
   const focusNextView = useRef(false);
   const active = ADMIN_VIEWS.find((view) => view.id === location.view)!;
   const catalogView = isCatalogView(location.view) ? location.view : null;
@@ -155,12 +157,24 @@ export function AdminConsole() {
           </h1>
           <p>{active.description}</p>
         </header>
+        <div hidden={location.view !== "jobs"}>
+          {visited.has("jobs") ? (
+            <AdminJobsPanel
+              onDataChanged={() => {
+                setBackgroundRevision((value) => value + 1);
+                setDataRevision((value) => value + 1);
+                refreshWorkCounts();
+              }}
+            />
+          ) : null}
+        </div>
         <div hidden={location.view !== "crawls"}>
           {visited.has("crawls") ? <AdminCrawls /> : null}
         </div>
         <div hidden={catalogView === null}>
           {[...visited].some(isCatalogView) ? (
             <CatalogAdmin
+              revision={backgroundRevision}
               onDataChanged={() => {
                 setDataRevision((value) => value + 1);
                 refreshWorkCounts();

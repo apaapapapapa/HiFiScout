@@ -22,6 +22,7 @@ export function parseAdminJobCommand(value: unknown): AdminJobCommand | null {
   const id = value.id;
   switch (value.action) {
     case "get":
+      if (value.failedOnly !== undefined && typeof value.failedOnly !== "boolean") return null;
       if (
         value.after !== undefined &&
         (!Number.isSafeInteger(value.after) || Number(value.after) < -1)
@@ -31,6 +32,7 @@ export function parseAdminJobCommand(value: unknown): AdminJobCommand | null {
         action: "get",
         id,
         ...(typeof value.after === "number" ? { after: value.after } : {}),
+        ...(value.failedOnly === true ? { failedOnly: true } : {}),
       };
     case "create":
       if (

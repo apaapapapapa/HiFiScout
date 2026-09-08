@@ -1,5 +1,11 @@
 export const ADMIN_VIEWS = [
   {
+    id: "jobs",
+    label: "バックグラウンド処理",
+    description: "CSV取込・再処理の進捗を確認し、停止・再開・失敗した対象の再試行を行います。",
+    group: "データの整備",
+  },
+  {
     id: "crawls",
     label: "ショップ別クロール",
     description: "ショップごとの収集状況・予定停止を確認し、停止・再開・再実行します。",
@@ -66,7 +72,7 @@ export function adminLocation(location: { hash: string; search: string }): {
 
 export function adminViewUrl(href: string, view: AdminView): string {
   const url = new URL(href);
-  for (const key of ["q", "shopKey", "scope", "manufacturerId", "categoryId"])
+  for (const key of ["q", "shopKey", "scope", "manufacturerId", "categoryId", "jobId"])
     url.searchParams.delete(key);
   url.hash = view === "catalog" ? "" : view;
   return `${url.pathname}${url.search}${url.hash}`;

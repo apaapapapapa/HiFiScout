@@ -372,12 +372,14 @@ function CsvExportCard({
 }
 
 export function CatalogAdmin({
+  revision = 0,
   view = "catalog",
   active = true,
   search = "",
   onDataChanged,
   onWorkCountsChanged,
 }: {
+  revision?: number;
   onDataChanged?: () => void;
   onWorkCountsChanged?: () => void;
   view?: CatalogView;
@@ -400,7 +402,7 @@ export function CatalogAdmin({
   const [metaReady, setMetaReady] = useState(false);
   const [metaError, setMetaError] = useState("");
   const [metaAttempt, setMetaAttempt] = useState(0);
-  const loadedViews = useRef(new Map<CatalogView, string>());
+  const loadedViews = useRef(new Map<CatalogView, { search: string; revision: number }>());
   const searchRequests = useRef({ catalog: 0, candidates: 0, duplicates: 0 });
   const [categories, setCategories] = useState<CategoryFacet[]>([]);
   const categoryNames = useMemo(
@@ -602,8 +604,20 @@ export function CatalogAdmin({
   }, [metaAttempt]);
 
   useEffect(() => {
-    if (!active || !metaReady || loadedViews.current.get(view) === search) return;
-    loadedViews.current.set(view, search);
+    const previous = loadedViews.current.get(view);
+    if (
+      !active ||
+      !metaReady ||
+      (previous?.search === search && (view === "csv" || previous.revision === revision))
+    )
+      return;
+    loadedViews.current.set(view, { search, revision });
+    if (previous?.search === search) {
+      if (view === "catalog") void loadCatalog(catalogApplied, 0, []);
+      else if (view === "candidates") void loadCandidates(candidateApplied, 0, []);
+      else if (view === "duplicates") void loadDuplicates(duplicateManufacturerApplied, "", []);
+      return;
+    }
     const params = new URLSearchParams(search);
     const filters = {
       q: params.get("q")?.trim() || "",
@@ -634,6 +648,10 @@ export function CatalogAdmin({
     loadCandidates,
     loadDuplicates,
     loadLatestCsvExport,
+    revision,
+    catalogApplied,
+    candidateApplied,
+    duplicateManufacturerApplied,
   ]);
 
   useEffect(() => {

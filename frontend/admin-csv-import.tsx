@@ -11,6 +11,7 @@ import {
 import { readAdminCsv } from "./admin-csv-parser.js";
 import { AdminOperationError, genericErrorText, type CategoryFacet } from "./admin-shared.js";
 import { adminCsvRequest } from "./admin-csv-request.js";
+import { submitAdminCsvJob } from "./admin-job-client.js";
 
 const FIELD_LABELS: Record<string, string> = {
   manufacturer_id: "メーカーID",
@@ -81,6 +82,8 @@ export function AdminCsvImport({
   const [needsLogin, setNeedsLogin] = useState(false);
   const [paused, setPaused] = useState(false);
   const active = useRef<AbortController | null>(null);
+  const uploadId = useRef<string | null>(null);
+  const [submittedJob, setSubmittedJob] = useState<string | null>(null);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -101,6 +104,8 @@ export function AdminCsvImport({
 
   async function preview() {
     if (!file || busy) return;
+    uploadId.current = null;
+    setSubmittedJob(null);
     const controller = new AbortController();
     active.current = controller;
     setBusy(true);
@@ -166,63 +171,53 @@ export function AdminCsvImport({
   }
 
   async function apply() {
-    if (busy) return;
+    if (busy || submittedJob) return;
     const controller = new AbortController();
     active.current = controller;
     setBusy(true);
     setError("");
     setNeedsLogin(false);
     setPaused(false);
-    const progress = [...results];
+    const progress = results.map((row) =>
+      row.status === "ready" || row.status === "pending"
+        ? { ...row, operationId: row.operationId || crypto.randomUUID() }
+        : row,
+    );
+    setResults(progress);
+    const inputs = changes.flatMap((change, index) => {
+      const row = progress[index];
+      return row &&
+        (row.status === "ready" || row.status === "pending") &&
+        row.revision &&
+        row.operationId
+        ? [{ change, revision: row.revision, operationId: row.operationId }]
+        : [];
+    });
+    uploadId.current ||= crypto.randomUUID();
     try {
-      for (let index = 0; index < changes.length; index += 1) {
-        let row = progress[index];
-        if (!row || (row.status !== "ready" && row.status !== "pending")) continue;
-        let operationId = row.operationId || crypto.randomUUID();
-        let revision = row.revision || "";
-        // Save the ID before sending: a lost response may already have committed this operation.
-        progress[index] = { ...row, operationId, revision };
-        setResults([...progress]);
-        setPage(Math.floor(index / PAGE_SIZE));
-        do {
-          setMessage(index + 1 + " / " + changes.length + "件目を更新・反映しています。");
-          row = await adminCsvRequest<AdminCsvResult>(
-            "apply",
-            {
-              method: "POST",
-              signal: controller.signal,
-              body: JSON.stringify({ change: changes[index], revision, operationId }),
-            },
-            () => setMessage("接続を再試行しています。適用済みの更新は重複実行しません。"),
-          );
-          if (!mounted.current || controller.signal.aborted) return;
-          // A concurrent upload may already have committed this exact edit.
-          operationId = row.operationId || operationId;
-          revision = row.revision || revision;
-          progress[index] = { ...row, operationId, revision };
-          setResults([...progress]);
-        } while (row.status === "pending");
-        if (row.status !== "applied" && row.status !== "unchanged") {
-          setValidated(false);
-          throw new Error(
-            "更新を中断しました。結果を確認し、差分を再確認してから再試行してください。",
-          );
-        }
-      }
+      setMessage("処理を準備しています。送信が完了するまで画面を開いたままにしてください。");
+      const job = await submitAdminCsvJob(
+        uploadId.current,
+        file?.name || "CSV取込",
+        inputs,
+        controller.signal,
+        (uploaded) => {
+          if (mounted.current) setMessage(`処理データを送信中: ${uploaded} / ${inputs.length}件`);
+        },
+      );
+      if (!mounted.current) return;
+      setSubmittedJob(job.id);
       setMessage(
-        action +
-          "が完了しました。適用済み " +
-          progress.filter((row) => row.status === "applied").length +
-          "件、変更なし " +
-          progress.filter((row) => row.status === "unchanged").length +
-          "件。",
+        job.status === "queued" || job.status === "running"
+          ? "処理を受け付けました。画面を閉じても処理は続きます。進捗と結果は処理一覧で確認してください。"
+          : "この処理の記録があります。現在の状態と結果は処理一覧で確認してください。",
       );
       onApplied?.();
     } catch (failure) {
       if (mounted.current && !controller.signal.aborted) {
         setPaused(true);
         setNeedsLogin(failure instanceof AdminOperationError && failure.requiresAuthentication);
-        setMessage("更新を一時停止しました。適用済みの行と再開位置は保持されています。");
+        setMessage("送信を中断しました。同じ処理IDと送信済みの位置で再開できます。");
         setError(genericErrorText(failure));
       }
     } finally {
@@ -294,6 +289,8 @@ export function AdminCsvImport({
           accept=".csv,text/csv"
           disabled={busy}
           onChange={(event) => {
+            uploadId.current = null;
+            setSubmittedJob(null);
             setFile(event.currentTarget.files?.[0] || null);
             setChanges([]);
             setResults([]);
@@ -312,19 +309,24 @@ export function AdminCsvImport({
           type="button"
           className="primary"
           onClick={() => void apply()}
-          disabled={busy || !validated || blocked || ready === 0}
+          disabled={busy || !validated || blocked || ready === 0 || !!submittedJob}
         >
-          {paused ? `残り${ready}件の${action}を再開` : `${ready}件の${action}を実行`}
+          {paused ? `送信を再開` : `${ready}件の${action}を実行`}
         </button>
         {changes.length > 0 && (
           <button type="button" onClick={downloadResults}>
-            結果CSVをダウンロード
+            確認結果CSVをダウンロード
           </button>
         )}
       </div>
       <p role="status" aria-live="polite">
         {message}
       </p>
+      {submittedJob ? (
+        <p>
+          <a href={`/?jobId=${submittedJob}#jobs`}>処理一覧で進捗と結果を確認</a>
+        </p>
+      ) : null}
       {changes.length > 0 && (
         <p>
           新規追加 {additions}件 / 既存行の修正 {changes.length - additions}件
@@ -424,8 +426,8 @@ export function AdminCsvImport({
         </>
       )}
       <p>
-        更新中は画面を開いたままにしてください。通信が切れた場合は同じCSVを再度読み込み、
-        「差分を確認」から再開できます。削除や価格・在庫の更新は行いません。
+        送信中は画面を開いたままにしてください。受付完了後は画面を閉じても処理が続きます。
+        進捗・停止・再開は処理一覧で確認できます。送信に失敗した場合はこの画面の「送信を再開」を押してください。
       </p>
     </section>
   );

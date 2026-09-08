@@ -739,7 +739,12 @@ export function ListingAdmin({
       </div>
       <div hidden={view !== "maintenance"}>
         {metaReady && replayVisited ? (
-          <AdminOfferFactReplay shops={shops} categories={categories} />
+          <AdminOfferFactReplay
+            shops={shops}
+            categories={categories}
+            active={active && view === "maintenance"}
+            revision={revision}
+          />
         ) : null}
       </div>
 
