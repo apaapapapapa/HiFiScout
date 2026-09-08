@@ -117,7 +117,7 @@ export interface AdminBackgroundJob {
 }
 export type AdminJobCommand =
   | { action: "list"; before?: string }
-  | { action: "get"; id: string; after?: number }
+  | { action: "get"; id: string; after?: number; failedOnly?: boolean }
   | { action: "create"; id: string; kind: "csv" | "replay"; total: number; label: string }
   | { action: "append"; id: string; offset: number; items: AdminCsvApplyInput[] }
   | { action: "start" | "pause" | "resume" | "retry" | "cancel"; id: string };

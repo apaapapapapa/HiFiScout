@@ -197,6 +197,12 @@ test("failed-only retry skips applied rows and never replaces a stale revision",
     assert.equal(result.job.processed, 2);
     assert.equal(result.job.failed, 1);
     assert.equal(result.items[1].result?.status, "conflict");
+    const failures = await h.command({ action: "get", id, failedOnly: true });
+    assert.deepEqual(
+      failures.items.map((row) => row.ordinal),
+      [1],
+    );
+    assert.equal(parseAdminJobCommand({ action: "get", id, failedOnly: "true" }), null);
     assert.equal(
       h.sqlite.prepare("SELECT model FROM products WHERE id=100002").get()?.model,
       "Concurrent change",
@@ -351,6 +357,35 @@ test("offer replay runs one bounded batch per alarm without a browser", async ()
     const result = await h.command({ action: "get", id });
     assert.equal(result.job.processed, 30);
     assert.equal(result.job.status, "completed");
+  } finally {
+    h.close();
+  }
+});
+
+test("replay stops after three stalled checkpoints and rejects a changed rule version", async () => {
+  const h = harness();
+  try {
+    for (let n = 0; n < 30; n++) await input(h, 100001 + n);
+    const id = crypto.randomUUID();
+    await h.command({ action: "create", id, kind: "replay", total: 0, label: "stalled" });
+    await h.command({ action: "start", id });
+    for (let step = 0; step < 3; step++) {
+      // Emulate a concurrent checkpoint that supplies no forward progress to the coordinator.
+      h.afterBatch(async () => {
+        h.sqlite.exec(
+          "UPDATE product_offer_fact_replays SET after_id=0,scanned_count=0,completed_at=NULL",
+        );
+      });
+      await h.alarm();
+      const job = (await h.command({ action: "get", id })).job;
+      assert.equal(job.processed, 0);
+      assert.equal(job.status, step === 2 ? "failed" : "running");
+    }
+    assert.match((await h.command({ action: "get", id })).job.error, /進捗が更新されない/);
+    h.local.prepare("UPDATE jobs SET rule_version=-1 WHERE id=?").run(id);
+    await h.command({ action: "resume", id });
+    await h.alarm();
+    assert.match((await h.command({ action: "get", id })).job.error, /抽出ルールが更新/);
   } finally {
     h.close();
   }

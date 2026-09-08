@@ -218,7 +218,75 @@ test("admin exports expose every ZIP volume and retain the legacy CSV download",
   await expect.poll(() => formats).toEqual(["csv", "complete"]);
 });
 
-test("CSV import retries an outage with the same operation and follows durable pending work", async ({
+async function mockBackgroundUpload(page: Page, failure?: "outage" | "expired" | "redirect") {
+  const state = {
+    commands: [] as {
+      action: string;
+      id: string;
+      offset?: number;
+      items?: { operationId: string; change: { original: { id: number | null } } }[];
+    }[],
+    failed: false,
+    job: null as {
+      id: string;
+      kind: string;
+      total: number;
+      uploaded: number;
+      status: string;
+    } | null,
+  };
+  await page.route("**/api/admin/jobs", async (route) => {
+    const command = route.request().postDataJSON();
+    state.commands.push(command);
+    if (command.action === "create")
+      state.job ||= {
+        id: command.id,
+        kind: command.kind,
+        total: command.total,
+        uploaded: 0,
+        status: "uploading",
+      };
+    if (command.action === "append") {
+      if (failure && !state.failed) {
+        state.failed = true;
+        return failure === "redirect"
+          ? route.fulfill({ status: 302, headers: { location: "/cdn-cgi/access/login" } })
+          : route.fulfill({
+              status: failure === "expired" ? 403 : 503,
+              json: { error: failure === "expired" ? "cloudflare_access_required" : "interrupted" },
+            });
+      }
+      expect(command.offset).toBe(state.job!.uploaded);
+      state.job!.uploaded += command.items.length;
+    }
+    if (command.action === "start") {
+      expect(state.job!.uploaded).toBe(state.job!.total);
+      state.job!.status = "queued";
+    }
+    return route.fulfill({ json: { job: state.job } });
+  });
+  await page.route("**/api/admin/csv-import/*", async (route) => {
+    expect(route.request().url()).toMatch(/\/preview$/u);
+    const input = route.request().postDataJSON();
+    return route.fulfill({
+      json: {
+        items: input.changes.map(
+          (change: { line: number; original: { id: number | null; kind: string } }) => ({
+            line: change.line,
+            id: change.original.id,
+            kind: change.original.kind,
+            message: "確認結果",
+            status: "ready",
+            revision: "revision",
+          }),
+        ),
+      },
+    });
+  });
+  return state;
+}
+
+test("CSV upload requires a reviewed diff and retries with the same job and operation IDs", async ({
   page,
   mount,
 }) => {
@@ -232,52 +300,34 @@ test("CSV import retries an outage with the same operation and follows durable p
     adminCsvEditHeader("listing") +
     "\n21," +
     adminCsvEditRow(original).replace(/,"C10",/u, ',"C11",');
-  const operationId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-  const received: { operationId: string }[] = [];
-  await page.route("**/api/admin/csv-import/*", async (route) => {
-    const input = route.request().postDataJSON();
-    const result = { line: 2, id: 21, kind: "listing", message: "確認結果" };
-    if (route.request().url().endsWith("/preview")) {
-      expect(input.changes).toHaveLength(1);
-      return route.fulfill({
-        json: { items: [{ ...result, status: "ready", revision: "revision" }] },
-      });
-    }
-    received.push(input);
-    if (received.length === 1) {
-      return route.fulfill({ status: 503, json: { error: "cloudflare_access_unavailable" } });
-    }
-    return route.fulfill({
-      json: {
-        ...result,
-        status: received.length === 2 ? "pending" : "applied",
-        operationId,
-      },
-    });
-  });
+  const state = await mockBackgroundUpload(page, "outage");
   const component = await mount("frontend/admin-console/Default");
   const admin = new AdminConsolePage(component, page);
   await admin.catalog.csvSummary.click();
   const panel = component.getByRole("region", { name: "編集したCSVで一括登録・更新" });
-  await panel.getByLabel("編集済みCSV（100MiB以内）").setInputFiles({
-    name: "corrections.csv",
-    mimeType: "text/csv",
-    buffer: Buffer.from(csv),
-  });
+  await panel
+    .getByLabel("編集済みCSV（100MiB以内）")
+    .setInputFiles({ name: "corrections.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
   await expect(panel.getByRole("button", { name: "0件の更新を実行" })).toBeDisabled();
   await panel.getByRole("button", { name: "差分を確認" }).click();
   await expect(panel.getByRole("table")).toContainText("C10 → C11");
-  await expect(panel.getByRole("table")).toContainText("更新可能");
-  expect(received).toHaveLength(0);
+  expect(state.commands).toHaveLength(0);
   await panel.getByRole("button", { name: "1件の更新を実行" }).click();
-  await expect(panel.getByRole("status")).toContainText("更新が完了しました");
-  expect(received).toHaveLength(3);
-  expect(received[1].operationId).toBe(received[0].operationId);
-  expect(received[2].operationId).toBe(operationId);
-  await expect(panel.getByRole("button", { name: "結果CSVをダウンロード" })).toBeEnabled();
+  await expect(panel.getByRole("status")).toContainText("送信を中断しました");
+  await panel.getByRole("button", { name: "送信を再開", exact: true }).click();
+  await expect(panel.getByRole("status")).toContainText("画面を閉じても処理は続きます");
+  const appends = state.commands.filter((command) => command.action === "append");
+  expect(appends).toHaveLength(2);
+  expect(appends[1]).toEqual(appends[0]);
+  expect(new Set(state.commands.map((command) => command.id)).size).toBe(1);
+  await expect(panel.getByRole("link", { name: "処理一覧で進捗と結果を確認" })).toHaveAttribute(
+    "href",
+    `/?jobId=${state.job!.id}#jobs`,
+  );
+  await expect(panel.getByRole("button", { name: "1件の更新を実行" })).toBeDisabled();
 });
 
-test("CSV imports show new catalog rows alongside corrections and display assigned IDs", async ({
+test("CSV background submission preserves both catalog creation and correction targets", async ({
   page,
   mount,
 }) => {
@@ -294,34 +344,7 @@ test("CSV imports show new catalog rows alongside corrections and display assign
     "\n21," +
     adminCsvEditRow(original).replace(/,"LUXMAN C10",/u, ',"Corrected C10",') +
     "\n,,luxman,C11,LUXMAN C11,AMP.PRE,unknown";
-  const received: (number | null)[] = [];
-  await page.route("**/api/admin/csv-import/*", async (route) => {
-    const input = route.request().postDataJSON();
-    if (route.request().url().endsWith("/preview"))
-      return route.fulfill({
-        json: {
-          items: input.changes.map((change: { line: number; original: { id: number | null } }) => ({
-            line: change.line,
-            id: change.original.id,
-            kind: "catalog",
-            status: "ready",
-            revision: "revision",
-            message: "確認結果",
-          })),
-        },
-      });
-    received.push(input.change.original.id);
-    return route.fulfill({
-      json: {
-        line: input.change.line,
-        id: input.change.original.id ?? 99,
-        kind: "catalog",
-        status: "applied",
-        operationId: input.operationId,
-        message: "反映完了",
-      },
-    });
-  });
+  const state = await mockBackgroundUpload(page);
   const component = await mount("frontend/admin-console/Default");
   const admin = new AdminConsolePage(component, page);
   await admin.catalog.csvSummary.click();
@@ -332,18 +355,19 @@ test("CSV imports show new catalog rows alongside corrections and display assign
   await panel.getByRole("button", { name: "差分を確認" }).click();
   await expect(panel).toContainText("新規追加 1件 / 既存行の修正 1件");
   await expect(panel.getByRole("table")).toContainText("追加可能");
-  expect(received).toHaveLength(0);
+  expect(state.commands).toHaveLength(0);
   await panel.getByRole("button", { name: "2件の登録・更新を実行" }).click();
-  await expect(panel.getByRole("status")).toContainText("登録・更新が完了しました");
-  await expect(panel.getByRole("table")).toContainText("新規追加 #99");
-  expect(received).toEqual([21, null]);
+  await expect(panel.getByRole("status")).toContainText("処理を受け付けました");
+  expect(
+    state.commands
+      .filter((command) => command.action === "append")
+      .flatMap((command) => command.items!.map((item) => item.change.original.id)),
+  ).toEqual([21, null]);
+  expect(state.job!.status).toBe("queued");
 });
 
-for (const failure of ["expired", "redirect"] as const) {
-  test(`CSV import retains progress and resumes after an Access ${failure}`, async ({
-    page,
-    mount,
-  }) => {
+for (const failure of ["expired", "redirect"] as const)
+  test(`CSV upload resumes after an Access ${failure}`, async ({ page, mount }) => {
     const originals = [21, 22].map((id) =>
       adminCsvOriginal("listing", id, {
         manufacturer_id: "luxman",
@@ -361,42 +385,7 @@ for (const failure of ["expired", "redirect"] as const) {
             original.id + "," + adminCsvEditRow(original).replace(/,"C10",/u, ',"C11",'),
         )
         .join("\n");
-    let previews = 0;
-    const received: { operationId: string; change: { original: { id: number } } }[] = [];
-    await page.route("**/api/admin/csv-import/*", async (route) => {
-      const input = route.request().postDataJSON();
-      if (route.request().url().endsWith("/preview")) {
-        previews += 1;
-        return route.fulfill({
-          json: {
-            items: originals.map((original, index) => ({
-              line: index + 2,
-              id: original.id,
-              kind: "listing",
-              status: "ready",
-              revision: "revision",
-              message: "更新可能",
-            })),
-          },
-        });
-      }
-      received.push(input);
-      if (received.length === 2) {
-        return failure === "expired"
-          ? route.fulfill({ status: 403, json: { error: "cloudflare_access_required" } })
-          : route.fulfill({ status: 302, headers: { location: "/cdn-cgi/access/login" } });
-      }
-      return route.fulfill({
-        json: {
-          line: input.change.line,
-          id: input.change.original.id,
-          kind: "listing",
-          status: "applied",
-          operationId: input.operationId,
-          message: "適用済み",
-        },
-      });
-    });
+    const state = await mockBackgroundUpload(page, failure);
     const component = await mount("frontend/admin-console/Default");
     const admin = new AdminConsolePage(component, page);
     await admin.catalog.csvSummary.click();
@@ -411,14 +400,13 @@ for (const failure of ["expired", "redirect"] as const) {
       "target",
       "_blank",
     );
-    await panel.getByRole("button", { name: "残り1件の更新を再開" }).click();
-    await expect(panel.getByRole("status")).toContainText("更新が完了しました");
-    expect(previews).toBe(1);
-    expect(received.map((input) => input.change.original.id)).toEqual([21, 22, 22]);
-    expect(received[2].operationId).toBe(received[1].operationId);
+    await panel.getByRole("button", { name: "送信を再開", exact: true }).click();
+    await expect(panel.getByRole("status")).toContainText("処理を受け付けました");
+    const attempts = state.commands.filter((command) => command.action === "append");
+    expect(attempts).toHaveLength(2);
+    expect(attempts[1]).toEqual(attempts[0]);
     await expect(panel.getByRole("alert")).toHaveCount(0);
   });
-}
 
 test("admin catalog screen uses the shared POM for search and edit flows", async ({
   page,
@@ -433,7 +421,7 @@ test("admin catalog screen uses the shared POM for search and edit flows", async
   await expect(admin.catalog.duplicateHeading).not.toBeVisible();
   await expect(admin.catalog.candidateHeading).not.toBeVisible();
   await expect(admin.catalog.csvSummary).toBeVisible();
-  await expect(admin.sectionLinks).toHaveCount(8);
+  await expect(admin.sectionLinks).toHaveCount(9);
   await expect(admin.sectionLinks.filter({ hasText: "ショップ別クロール" })).toBeVisible();
 
   await admin.catalog.searchFor("D-1000");
@@ -462,7 +450,7 @@ test("admin listings screen uses the shared POM for tab, search, and color edit 
   await expect(admin.listingsTab).toHaveAttribute("aria-current", "page");
   await expect(page).toHaveURL(/#listings$/u);
   await expect(admin.listings.heading).toBeVisible();
-  await expect(admin.sectionLinks).toHaveCount(8);
+  await expect(admin.sectionLinks).toHaveCount(9);
 
   await admin.listings.searchFor("D-1000");
   await expect(admin.listings.status).toContainText("検索条件を反映しました");

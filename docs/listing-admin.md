@@ -21,9 +21,9 @@ for fixtures, rejection/recovery cases and the boundary this suite covers.
 ## Task workspaces
 
 The console uses a persistent sidebar on desktop and a labelled native task selector on mobile.
-The seven workspaces are product catalog (`/` or `/#catalog`), registered products (`/#listings`),
+The workspaces are product catalog (`/` or `/#catalog`), registered products (`/#listings`),
 correction reports (`/#reports`), duplicate review (`/#duplicates`), unverified candidates
-(`/#candidates`), CSV import/export (`/#csv`), and offer-fact replay (`/#maintenance`). Browser
+(`/#candidates`), CSV import/export (`/#csv`), offer-fact replay (`/#maintenance`), crawl controls (`/#crawls`), and background jobs (`/#jobs`). Browser
 Back/Forward and direct links select the corresponding workspace. Navigation preserves already
 loaded searches and in-progress CSV input within the open console; it does not persist private
 admin data in browser storage. Each workspace has a distinct page title and an active menu label.
@@ -48,7 +48,7 @@ Listing search and replay are also loaded independently. A failed metadata reque
 retry. Deep-link filters are passed directly to React state before the first search; a listing link
 can supply `shopKey` and `scope` without `q`. Returning to a loaded workspace does not refetch its
 unchanged search. Export status polling runs only while the CSV workspace is visible. Started
-server export jobs and browser CSV updates retain their existing continuation behavior.
+server export and submitted CSV jobs continue independently of the browser.
 
 Search results emphasize product identity and the primary editing actions. Raw seller evidence
 remains in the listing editor. Editors use a side panel with a sticky heading and save
@@ -75,17 +75,12 @@ directly, without triggering catalog-wide projection work.
 
 **出品条件の再処理・充足率** processes retained listing fields without contacting sellers. One request
 handles at most 25 listings; the optional 500-listing action sends at most 20 sequential requests.
-**全商品を再処理** asks for confirmation, then sends these same bounded requests sequentially until
-the server reports completion, including inactive listings. It resumes the saved cursor rather than
-resetting already processed work. Keep the admin tab open: this is browser-driven continuation, not
-a background job. A stop request waits for the current small transaction and prevents the next one;
-closing the tab also stops continuation. Reopening the console
-reads the durable cursor, so an interrupted response does not cause the browser to resend an old
-position. Progress is keyed by extraction-rule version and pins the maximum listing id at start.
-New listings already receive facts through the ordinary listing writer. Errors, including expired
-Access sessions, stop continuation until the operator restarts it. Three consecutive responses
-without progress also stop all-product continuation to avoid an unbounded loop under contention.
-All run buttons are disabled while running or after this rule version has completed.
+**全商品を再処理** confirms and submits a durable job, including inactive listings. After the
+submission is accepted, closing the tab does not stop processing. Open **バックグラウンド処理** to
+check saved progress or pause/resume it; one in-flight bounded step may finish after a pause.
+The job resumes the saved cursor and pins the extraction-rule version. New listings receive facts
+through the ordinary writer. A processing error or three consecutive steps without progress stops
+the job for review. The 25/500 actions retain their bounded foreground request limits.
 
 Each step atomically claims its expected cursor, verifies the source-field snapshot, writes facts
 under a unique step token, and records coverage. A concurrent caller or changed source snapshot
@@ -247,16 +242,16 @@ from this CSV: use individual editing and regenerate it. Other unchanged rows re
 2. Review the new-row/correction counts, before/after values, and row-level validation results. Unchanged rows are not submitted
    for updating. Invalid IDs, duplicate rows, duplicate catalog identities, or stale originals block
    the update button; correct the file or generate a fresh export.
-3. Select **更新を実行** (or **登録・更新を実行** when adding catalog rows) only after reviewing the complete validation results. Keep the screen open
-   while updates and related listing/search projection changes run.
-4. Download the result CSV if needed. If interrupted, choose the same edited CSV (or the result CSV)
-   and run **差分を確認** again. Already-applied edits are skipped and pending projection work resumes.
+3. Select **更新を実行** (or **登録・更新を実行** when adding catalog rows) after reviewing validation.
+   Keep the page open until all confirmed rows have been sent and the job is accepted. Updates then
+   continue on the server, including related listing/search projections.
+4. Open the linked **バックグラウンド処理** to read saved progress and row results, pause/resume,
+   or retry failed targets. **確認結果CSVをダウンロード** contains the preview, not background results.
 
 New entries become manually verified catalog products, with a generated ID, category closure,
 canonical model alias, and a `manual_verified` source naming the import operation. These records
-and the durable receipt commit in one transaction. The result table shows the assigned ID; the
-result CSV preserves the original input and includes it separately as `result_target_id`, so the
-file can resume pending additions. Generate a fresh edit export to correct an added entry later.
+and the durable receipt commit in one transaction. The job result table shows the assigned ID. Durable inputs and receipts retain the original
+creation intent so interrupted additions resume with the same operation ID. Generate a fresh edit export to correct an added entry later.
 
 Duplicate additions are checked across the entire file, including unchanged existing rows and
 manufacturer/model spelling variants under the shared catalog identity rules. Database checks
@@ -271,16 +266,15 @@ Completing a creation records the catalog remediation watermark for that creatio
 generation together with the applied receipt, so catalog finalization does not repeat the work.
 A later verification retains its own pending remediation work.
 
-If the current page is still open, an interrupted update retains its operation IDs and can use
-**更新を再開** directly. An Access login failure offers **別タブでログインを確認**; authenticate there,
-then return to the original page to resume without parsing and previewing the file again. A lost
-response reuses the same durable operation ID. Only CSV preview/apply retry temporary network or
-502/503/504 failures, at most twice with backoff; authentication failures and conflicts stop promptly.
-Refreshing/closing the original page still requires selecting the CSV again.
+An interrupted **upload** retains the job and row operation IDs in the open page; **送信を再開**
+checks the server offset before resending. An Access failure offers **別タブでログインを確認**; log in
+there and return to retry. Submitted jobs no longer depend on the browser session. If the page
+closed before submission finished, cancel the incomplete upload in the job list and select the CSV
+again. A fully uploaded job can be started from that list even if its start response was lost.
 
 Updates are atomic **per changed row**, not across the whole file. The server revalidates at apply
 time and transactionally guards the current revision together with the mutation and durable receipt.
-A concurrent change stops processing without overwriting the newer values; earlier successful rows
+A concurrent change is recorded as a failed target without overwriting newer values; successful rows
 remain applied. There is no automatic whole-file rollback. If catalog edits alter the originals of a
 separately exported listing file, regenerate that listing export before making further corrections.
 
@@ -397,7 +391,8 @@ dialog adds no inventory scans, counts or polling, and only selected rows are va
 `AdminJobs` is a separate SQLite-backed Durable Object reached through the Access-protected
 `POST /api/admin/jobs` service-binding API. One coordinator serializes admin work; it has no role
 in per-shop crawl dispatch. Commands support create, append, start, pause, resume, failed-only retry,
-cancel, list and bounded result pages. User-interface integration is delivered separately.
+cancel, list and bounded result pages. The **バックグラウンド処理** workspace reads these saved
+summaries on demand, with no idle polling; result pages can filter failures using the state index.
 
 CSV targets retain the confirmed before-image, revision and operation ID. Uploads use at most 20
 rows and 256KiB per request, with exact offset/content verification for repeated delivery. A job
