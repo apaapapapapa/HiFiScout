@@ -12,7 +12,7 @@ import type {
 } from "../src/api/admin-listing-contracts.js";
 import { AdminManufacturerPicker } from "./admin-manufacturer-picker.js";
 import { AdminListingDiagnosisPanel } from "./admin-listing-diagnosis.js";
-import { adminJson, dateText, genericErrorText } from "./admin-shared.js";
+import { AdminOperationError, adminJson, dateText, genericErrorText } from "./admin-shared.js";
 const command = <T,>(input: AdminManufacturerCommand) =>
   adminJson<T>("/api/admin/manufacturer-registry", { method: "POST", body: JSON.stringify(input) });
 const fieldNames = [
@@ -41,6 +41,7 @@ export function AdminManufacturerRegistry({ onDataChanged }: { onDataChanged: ()
   );
   const [detail, setDetail] = useState<AdminManufacturerRegistryDetail | null>(null);
   const [edit, setEdit] = useState<AdminManufacturerEdit | null>(null);
+  const [existingAlias, setExistingAlias] = useState(false);
   const [preview, setPreview] = useState<AdminManufacturerPreview<AdminExtractionResult> | null>(
     null,
   );
@@ -81,6 +82,7 @@ export function AdminManufacturerRegistry({ onDataChanged }: { onDataChanged: ()
     setError("");
   }
   function choose(value: string) {
+    setExistingAlias(false);
     setSelected(value);
     setDetail(null);
     setEdit(null);
@@ -90,6 +92,7 @@ export function AdminManufacturerRegistry({ onDataChanged }: { onDataChanged: ()
   }
   async function open() {
     if (!selected || locked) return;
+    setExistingAlias(false);
     setBusy(true);
     setError("");
     setOutcome(null);
@@ -147,6 +150,7 @@ export function AdminManufacturerRegistry({ onDataChanged }: { onDataChanged: ()
       setOutcome(result);
       setPending(null);
       setPreview(null);
+      setExistingAlias(false);
       onDataChanged();
       // Keep the acknowledged result visible even if the follow-up detail read fails.
       try {
@@ -160,6 +164,10 @@ export function AdminManufacturerRegistry({ onDataChanged }: { onDataChanged: ()
         setError(genericErrorText(reason));
       }
     } catch (reason) {
+      if (reason instanceof AdminOperationError && [400, 409].includes(reason.status)) {
+        setPending(null);
+        setPreview(null);
+      }
       setError(genericErrorText(reason));
     } finally {
       setBusy(false);
@@ -251,7 +259,8 @@ export function AdminManufacturerRegistry({ onDataChanged }: { onDataChanged: ()
                 <input
                   type="checkbox"
                   checked={!!edit.alias}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    setExistingAlias(false);
                     change(
                       event.target.checked
                         ? { ...edit, alias: { alias: "", shopKey: "", enabled: true } }
@@ -261,17 +270,27 @@ export function AdminManufacturerRegistry({ onDataChanged }: { onDataChanged: ()
                             nameJa: edit.nameJa,
                             nameEn: edit.nameEn,
                           },
-                    )
-                  }
+                    );
+                  }}
                 />
                 別名も変更する
               </label>
               {edit.alias ? (
                 <div>
+                  {existingAlias ? (
+                    <p>
+                      選択した別名の有効・無効を変更します。表記や適用範囲を変更する場合は、先にこの別名を無効化して保存し、新しい別名を追加してください。
+                    </p>
+                  ) : (
+                    <p>
+                      別名を追加します。同じ表記・適用範囲が登録済みなら、その有効・無効を更新します。
+                    </p>
+                  )}
                   <label>
                     別名
                     <input
                       value={edit.alias.alias}
+                      readOnly={existingAlias}
                       required
                       maxLength={100}
                       onChange={(event) =>
@@ -283,6 +302,7 @@ export function AdminManufacturerRegistry({ onDataChanged }: { onDataChanged: ()
                     別名の適用範囲
                     <select
                       value={edit.alias.shopKey}
+                      disabled={existingAlias}
                       onChange={(event) =>
                         change({ ...edit, alias: { ...edit.alias!, shopKey: event.target.value } })
                       }
@@ -317,6 +337,15 @@ export function AdminManufacturerRegistry({ onDataChanged }: { onDataChanged: ()
                   </p>
                 </div>
               ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  setExistingAlias(false);
+                  change({ ...edit, alias: { alias: "", shopKey: "", enabled: true } });
+                }}
+              >
+                新しい別名を追加
+              </button>
               <button type="submit">変更の影響を確認</button>
             </fieldset>
           </form>
@@ -498,7 +527,8 @@ export function AdminManufacturerRegistry({ onDataChanged }: { onDataChanged: ()
                       <button
                         type="button"
                         disabled={locked}
-                        onClick={() =>
+                        onClick={() => {
+                          setExistingAlias(true);
                           change({
                             ...edit,
                             alias: {
@@ -506,8 +536,8 @@ export function AdminManufacturerRegistry({ onDataChanged }: { onDataChanged: ()
                               shopKey: row.shopKey,
                               enabled: row.status === "verified",
                             },
-                          })
-                        }
+                          });
+                        }}
                       >
                         この別名を編集
                       </button>
