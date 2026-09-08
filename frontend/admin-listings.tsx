@@ -1,3 +1,4 @@
+import { AdminListingDiagnosisPanel } from "./admin-listing-diagnosis.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { AdminManufacturerPicker } from "./admin-manufacturer-picker.js";
@@ -152,6 +153,7 @@ export function ListingAdmin({
 
   const [editing, setEditing] = useState<ListingProduct | null>(null);
   const [editManufacturerName, setEditManufacturerName] = useState("");
+  const [diagnosing, setDiagnosing] = useState<number | null>(null);
   const [factsEditing, setFactsEditing] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState<EditDraft>({
     manufacturerId: "",
@@ -630,6 +632,13 @@ export function ListingAdmin({
                             >
                               出品条件
                             </button>
+                            <button
+                              type="button"
+                              className="secondary-button compact"
+                              onClick={() => setDiagnosing(product.id)}
+                            >
+                              判定理由
+                            </button>
                           </td>
                         </tr>
                       );
@@ -683,6 +692,13 @@ export function ListingAdmin({
         ) : null}
       </div>
 
+      {diagnosing !== null ? (
+        <AdminListingDiagnosisPanel
+          key={diagnosing}
+          listingId={diagnosing}
+          onClose={() => setDiagnosing(null)}
+        />
+      ) : null}
       {factsEditing !== null ? (
         <AdminOfferFacts
           key={factsEditing}

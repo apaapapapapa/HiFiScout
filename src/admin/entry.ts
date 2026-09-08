@@ -22,6 +22,7 @@ import type {
 } from "../db/product-correction-report-repository.js";
 
 interface ListingAdminRpc extends CatalogAdminRpc {
+  getListingDiagnosis(listingId: number): Promise<unknown>;
   getOfferFactReplay(): Promise<unknown>;
   stepOfferFactReplay(): Promise<unknown>;
   getOfferFacts(listingId: number): Promise<unknown>;
@@ -46,6 +47,7 @@ interface AdminEnv {
 const LISTING_COLLECTION_PATH = "/api/admin/listings";
 const WORK_COUNTS_PATH = "/api/admin/work-counts";
 const LISTING_PATH = /^\/api\/admin\/listings\/(\d{1,15})$/u;
+const DIAGNOSIS_PATH = /^\/api\/admin\/listings\/(\d{1,15})\/diagnosis$/u;
 const OFFER_FACT_PATH = /^\/api\/admin\/listings\/(\d{1,15})\/offer-facts$/u;
 const OFFER_FACT_REPLAY_PATH = "/api/admin/offer-facts/replay";
 const CORRECTION_REPORT_COLLECTION_PATH = "/api/admin/correction-reports";
@@ -86,6 +88,7 @@ function isAdminEntryRoute(pathname: string): boolean {
     pathname === WORK_COUNTS_PATH ||
     LISTING_PATH.test(pathname) ||
     OFFER_FACT_PATH.test(pathname) ||
+    DIAGNOSIS_PATH.test(pathname) ||
     pathname === OFFER_FACT_REPLAY_PATH ||
     pathname === CORRECTION_REPORT_COLLECTION_PATH ||
     CORRECTION_REPORT_PATH.test(pathname)
@@ -148,6 +151,12 @@ export async function handleAuthenticatedAdminEntryRequest(
     )
       return json({ error: "invalid_replay_request" }, { status: 400 });
     return json(await env.CATALOG_ADMIN.stepOfferFactReplay());
+  }
+
+  const diagnosisMatch = url.pathname.match(DIAGNOSIS_PATH);
+  if (diagnosisMatch && request.method === "GET") {
+    const result = await env.CATALOG_ADMIN.getListingDiagnosis(Number(diagnosisMatch[1]));
+    return result ? json(result) : json({ error: "not_found" }, { status: 404 });
   }
 
   const offerFactMatch = url.pathname.match(OFFER_FACT_PATH);
