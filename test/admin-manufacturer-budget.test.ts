@@ -38,6 +38,18 @@ test("manufacturer scans and retry receipts have fixed D1 budgets amid unrelated
       5,
     );
     assert.ok(global.rowsRead() < 60, `global reads=${global.rowsRead()}`);
+    const populated = accountReads(db);
+    const scoped = await scanManufacturerImpact(
+      populated.db,
+      { manufacturerId: "luxman", shopKey: "hifido", keys: ["デモラボ"] },
+      0,
+      104000,
+      5,
+    );
+    assert.equal(scoped.scanned, 25);
+    assert.equal(scoped.hasMore, true);
+    assert.equal(populated.rowsWritten(), 0);
+    assert.ok(populated.rowsRead() < 120, `populated scoped reads=${populated.rowsRead()}`);
     const edit = {
       manufacturerId: "luxman",
       canonicalName: "LUXMAN",

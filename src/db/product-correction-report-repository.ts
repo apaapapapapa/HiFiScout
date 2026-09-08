@@ -202,7 +202,7 @@ export async function listProductCorrectionReports(
   };
 }
 
-async function getProductCorrectionReport(
+export async function getProductCorrectionReport(
   db: ReadableDatabase,
   reportId: number,
 ): Promise<ProductCorrectionReport | null> {

@@ -1,3 +1,5 @@
+import { parseAdminQualityCommand } from "./http/admin-quality.js";
+import { readAdminQuality } from "./admin/quality.js";
 import { administerManufacturerRegistry } from "./admin/manufacturer-registry.js";
 import { parseAdminManufacturerCommand } from "./http/admin-manufacturer-registry.js";
 import { ManufacturerRegistryConflict } from "./db/admin-manufacturer-management.js";
@@ -85,6 +87,11 @@ import type { ListingAdminListOptions, ListingAdminUpdateInput } from "./http/li
  * Binding configured on the dedicated Access-protected admin Worker; it has no public HTTP route.
  */
 export class CatalogAdminService extends WorkerEntrypoint<Env> implements CatalogAdminRpc {
+  async adminQuality(input: unknown) {
+    const command = parseAdminQualityCommand(input);
+    if (!command) throw new Error("invalid_quality_command");
+    return readAdminQuality(this.env, command);
+  }
   async manufacturerRegistry(input: unknown) {
     const command = parseAdminManufacturerCommand(input);
     if (!command) return { error: "入力を確認してください。", status: 400 };

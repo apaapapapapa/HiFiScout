@@ -225,12 +225,12 @@ export async function scanManufacturerImpact(
     (
       await db
         .prepare(
-          `${select} WHERE ${active === undefined ? "" : "shop_key=? AND is_active=? AND "}id>? AND id<=? ORDER BY id LIMIT ${scanLimit + 1}`,
+          `${select}${active === undefined ? "" : " INDEXED BY idx_products_admin_shop_cursor"} WHERE ${active === undefined ? "" : "shop_key=? AND is_active=? AND "}id>? AND id<=? ORDER BY id LIMIT ${scanLimit + 1}`,
         )
         .bind(...(active === undefined ? [] : [matcher.shopKey, active]), afterId, maxId)
         .all<ScanRow>()
     ).results;
-  // Existing (shop_key,is_active,rowid) index bounds both active and retained inactive windows.
+  // The ID cursor index bounds both active and retained inactive windows without a shop-wide sort.
   const rows = matcher.shopKey
     ? [...(await read(0)), ...(await read(1))].sort((a, b) => a.id - b.id).slice(0, scanLimit + 1)
     : await read();
