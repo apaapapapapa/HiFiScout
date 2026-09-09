@@ -43,6 +43,9 @@ test("incremental metadata matches the full aggregate across migration and sourc
   try {
     sqlite.exec(seed);
     sqlite.exec(migrationSources.find((m) => m.name === "0103_incremental_public_meta.sql")!.sql);
+    sqlite.exec(
+      migrationSources.find((m) => m.name === "0117_bound_public_meta_product_updates.sql")!.sql,
+    );
     const transitions = [
       "SELECT 1", // The migration backfill must include existing data without waiting for a dirty event.
       "UPDATE products SET manufacturer = 'AAA' WHERE id = 2",
