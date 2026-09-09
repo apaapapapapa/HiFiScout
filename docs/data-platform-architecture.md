@@ -205,6 +205,9 @@ changes; a price, heartbeat, unchanged classification or cache timestamp does no
 Empty vocabulary entries are removed, so retired values do not accumulate in every later scan.
 Listing UPDATE deltas run before AFTER triggers can restore manual authority; a restoring UPDATE
 reverses that delta. Correct counts must not depend on the creation order of AFTER triggers.
+Product counter transitions address the `(kind, group_key, value)` primary key directly. Canonical
+category changes that do not enter or leave a taxonomy counter therefore remain proportional to the
+fixed counter vocabulary instead of scanning facet and category values.
 
 Facets count distinct entities even when several shops or evidence sources assert the same value.
 Offer/fact/activity changes coalesce into `public_meta_dirty_entities`; the reader re-evaluates only
