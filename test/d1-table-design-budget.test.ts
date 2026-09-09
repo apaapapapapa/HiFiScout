@@ -252,3 +252,56 @@ test("D1 metadata measures the complete refresh workload and bounded changed-ent
     }
   }
 }, 60_000);
+
+test("product category changes address public metadata counters by primary key", async () => {
+  const open = async (bounded: boolean) => {
+    const instance = await database({ before: "0117_bound_public_meta_product_updates.sql" });
+    if (bounded) await apply(instance.db, "0117_bound_public_meta_product_updates.sql");
+    await instance.db
+      .prepare(`INSERT INTO products(
+        id, shop_key, source_id, manufacturer, manufacturer_id, title, source_url,
+        first_seen_at, last_seen_at, last_changed_at, primary_category_id
+      ) VALUES (1, 'test', 'one', 'LUXMAN', 'luxman', 'C-10', 'https://example.test/one',
+        '2026', '2026', '2026', 'AMP.POWER');
+      WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 10000)
+      INSERT INTO public_meta_counts(kind, group_key, value, row_count)
+      SELECT 'facet', 'fixture', printf('value-%05d', i), 1 FROM n;`)
+      .run();
+    return instance;
+  };
+  const before = await open(false);
+  const after = await open(true);
+  try {
+    const change = (db: QueryableDatabase) =>
+      db.prepare("UPDATE products SET primary_category_id = 'AMP.PRE' WHERE id = 1").run();
+    const oldResult = await change(before.db);
+    const newResult = await change(after.db);
+    const oldReads = Number(oldResult.meta.rows_read);
+    const newReads = Number(newResult.meta.rows_read);
+    assert.ok(
+      newReads < oldReads / 100,
+      `category update reads: ${JSON.stringify({ before: oldResult.meta, after: newResult.meta })}`,
+    );
+    assert.ok(
+      Number(newResult.meta.rows_written) <= Number(oldResult.meta.rows_written),
+      `category update writes: ${JSON.stringify({ before: oldResult.meta, after: newResult.meta })}`,
+    );
+    const newCounts = await after.db
+      .prepare("SELECT * FROM public_meta_counts ORDER BY kind, group_key, value")
+      .all();
+    const oldCounts = await before.db
+      .prepare("SELECT * FROM public_meta_counts ORDER BY kind, group_key, value")
+      .all();
+    assert.deepEqual(newCounts.results, oldCounts.results);
+    console.log(
+      JSON.stringify({
+        event: "public_meta_product_update_d1_budget",
+        before: oldResult.meta,
+        after: newResult.meta,
+      }),
+    );
+  } finally {
+    await before.dispose();
+    await after.dispose();
+  }
+}, 30_000);
