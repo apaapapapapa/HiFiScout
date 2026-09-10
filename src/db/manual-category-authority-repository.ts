@@ -1,4 +1,4 @@
-import { knowledgeCatalogKey } from "../catalog/knowledge-catalog.js";
+import { knowledgeCatalogKey, normalizeCatalogModel } from "../catalog/knowledge-catalog.js";
 import type { KnowledgeCatalogMatch } from "../catalog/types.js";
 import type { ReadableDatabase } from "./types.js";
 
@@ -19,11 +19,8 @@ interface ManualCategoryCatalogRow {
   normalized_model: string;
   canonical_name: string;
   category_id: string;
-}
-
-interface ManualCategoryAliasRow {
-  product_id: number;
-  normalized_alias: string;
+  lookup_model: string;
+  match_type: "exact" | "alias";
 }
 
 function unique(values: readonly unknown[]): string[] {
@@ -61,75 +58,87 @@ export async function findManualVerifiedCategoryMatches(
   });
   if (!candidates.length) return new Map();
 
-  const manufacturerIds = unique(
-    candidates.map((product) => product.manufacturerId || product.manufacturer_id),
-  ).map((value) => value.toLowerCase());
+  const requested = unique(
+    candidates.map((product) => {
+      const manufacturerId = String(
+        product.manufacturerId || product.manufacturer_id || "",
+      ).toLowerCase();
+      const model = normalizeCatalogModel(product.model || "");
+      return manufacturerId && model ? JSON.stringify([manufacturerId, model]) : "";
+    }),
+  ).map((value) => JSON.parse(value) as [string, string]);
+  const requestedKeys = new Set(
+    requested.map(([manufacturerId, model]) => `${manufacturerId}:${model}`),
+  );
 
   const catalogRows: ManualCategoryCatalogRow[] = [];
-  for (let i = 0; i < manufacturerIds.length; i += CHUNK_SIZE) {
-    const chunk = manufacturerIds.slice(i, i + CHUNK_SIZE);
-    const placeholders = chunk.map(() => "?").join(",");
-    const result = await db
-      .prepare(`
-        SELECT DISTINCT kp.id, kp.manufacturer_id, kp.canonical_model, kp.normalized_model,
-               kp.canonical_name, kpc.category_id
-        FROM knowledge_catalog_products kp
-        JOIN knowledge_catalog_sources s
-          ON s.product_id = kp.id
-         AND s.source_type = 'manual_verified'
-         AND s.status = 'active'
-        JOIN knowledge_catalog_product_categories kpc
-          ON kpc.product_id = kp.id AND kpc.is_primary = 1
-        WHERE kp.verification_status = 'verified'
-          AND kp.manufacturer_id IN (${placeholders})
-        ORDER BY kp.id
-      `)
-      .bind(...chunk)
-      .all<ManualCategoryCatalogRow>();
-    catalogRows.push(...(result.results || []));
-  }
-
-  const aliasesByProduct = new Map<number, string[]>();
-  const productIds = catalogRows.map((row) => row.id);
-  for (let i = 0; i < productIds.length; i += CHUNK_SIZE) {
-    const chunk = productIds.slice(i, i + CHUNK_SIZE);
-    if (!chunk.length) continue;
-    const placeholders = chunk.map(() => "?").join(",");
-    const result = await db
-      .prepare(`
-        SELECT product_id, normalized_alias
-        FROM knowledge_catalog_aliases
-        WHERE alias_type = 'model' AND product_id IN (${placeholders})
-      `)
-      .bind(...chunk)
-      .all<ManualCategoryAliasRow>();
-    for (const row of result.results || []) {
-      const aliases = aliasesByProduct.get(row.product_id) || [];
-      aliases.push(row.normalized_alias);
-      aliasesByProduct.set(row.product_id, aliases);
-    }
+  for (let i = 0; i < requested.length; i += CHUNK_SIZE) {
+    const chunk = requested.slice(i, i + CHUNK_SIZE);
+    const pairPredicates = chunk
+      .map(() => "(kp.manufacturer_id = ? AND kp.normalized_model = ?)")
+      .join(" OR ");
+    const pairBinds = chunk.flatMap(([manufacturerId, model]) => [manufacturerId, model]);
+    const manufacturers = [...new Set(chunk.map(([manufacturerId]) => manufacturerId))];
+    const models = [...new Set(chunk.map(([, model]) => model))];
+    const [exact, aliases] = await Promise.all([
+      db
+        .prepare(`
+          SELECT kp.id, kp.manufacturer_id, kp.canonical_model, kp.normalized_model,
+                 kp.canonical_name, kpc.category_id,
+                 kp.normalized_model AS lookup_model, 'exact' AS match_type
+          FROM knowledge_catalog_products kp
+          JOIN knowledge_catalog_product_categories kpc
+            ON kpc.product_id = kp.id AND kpc.is_primary = 1
+          WHERE kp.verification_status = 'verified'
+            AND (${pairPredicates})
+            AND EXISTS (
+              SELECT 1 FROM knowledge_catalog_sources s
+              WHERE s.product_id = kp.id
+                AND s.source_type = 'manual_verified'
+                AND s.status = 'active'
+            )
+        `)
+        .bind(...pairBinds)
+        .all<ManualCategoryCatalogRow>(),
+      db
+        .prepare(`
+          SELECT kp.id, kp.manufacturer_id, kp.canonical_model, kp.normalized_model,
+                 kp.canonical_name, kpc.category_id,
+                 ka.normalized_alias AS lookup_model, 'alias' AS match_type
+          FROM knowledge_catalog_aliases ka INDEXED BY idx_knowledge_catalog_aliases_lookup
+          JOIN knowledge_catalog_products kp ON kp.id = ka.product_id
+          JOIN knowledge_catalog_product_categories kpc
+            ON kpc.product_id = kp.id AND kpc.is_primary = 1
+          WHERE ka.alias_type = 'model'
+            AND ka.normalized_alias IN (${models.map(() => "?").join(",")})
+            AND kp.verification_status = 'verified'
+            AND kp.manufacturer_id IN (${manufacturers.map(() => "?").join(",")})
+            AND EXISTS (
+              SELECT 1 FROM knowledge_catalog_sources s
+              WHERE s.product_id = kp.id
+                AND s.source_type = 'manual_verified'
+                AND s.status = 'active'
+            )
+        `)
+        .bind(...models, ...manufacturers)
+        .all<ManualCategoryCatalogRow>(),
+    ]);
+    catalogRows.push(...(exact.results || []), ...(aliases.results || []));
   }
 
   const index = new Map<string, KnowledgeCatalogMatch | null>();
   for (const row of catalogRows) {
-    const base = {
+    const key = knowledgeCatalogKey(row.manufacturer_id, row.lookup_model);
+    if (!requestedKeys.has(key)) continue;
+    setUnambiguous(index, key, {
       id: row.id,
       manufacturerId: row.manufacturer_id,
       canonicalModel: row.canonical_model,
       normalizedModel: row.normalized_model,
       canonicalName: row.canonical_name,
       categoryIds: [row.category_id],
-    };
-    setUnambiguous(index, knowledgeCatalogKey(row.manufacturer_id, row.normalized_model), {
-      ...base,
-      matchType: "exact",
+      matchType: row.match_type,
     });
-    for (const alias of aliasesByProduct.get(row.id) || []) {
-      setUnambiguous(index, knowledgeCatalogKey(row.manufacturer_id, alias), {
-        ...base,
-        matchType: "alias",
-      });
-    }
   }
 
   const matches = new Map<string, KnowledgeCatalogMatch>();
