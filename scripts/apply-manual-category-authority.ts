@@ -117,7 +117,7 @@ async function loadCatalogModels(db: QueryableDatabase): Promise<ManualCategoryC
           kp.manufacturer_id,
           kp.canonical_model,
           kpc.category_id AS expected_category_id
-        FROM knowledge_catalog_sources s
+        FROM knowledge_catalog_sources s INDEXED BY idx_knowledge_catalog_sources_manual_audit
         CROSS JOIN knowledge_catalog_products kp ON kp.id = s.product_id
         CROSS JOIN knowledge_catalog_product_categories kpc
           ON kpc.product_id = kp.id AND kpc.is_primary = 1
