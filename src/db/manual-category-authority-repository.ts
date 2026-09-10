@@ -1,5 +1,6 @@
 import { knowledgeCatalogKey, normalizeCatalogModel } from "../catalog/knowledge-catalog.js";
 import type { KnowledgeCatalogMatch } from "../catalog/types.js";
+import { catalogRetrievalKey, catalogRetrievalKeySql } from "./catalog-lookup-candidates.js";
 import type { ReadableDatabase } from "./types.js";
 
 const CHUNK_SIZE = 40;
@@ -74,23 +75,25 @@ export async function findManualVerifiedCategoryMatches(
   const catalogRows: ManualCategoryCatalogRow[] = [];
   for (let i = 0; i < requested.length; i += CHUNK_SIZE) {
     const chunk = requested.slice(i, i + CHUNK_SIZE);
-    const pairPredicates = chunk
-      .map(() => "(kp.manufacturer_id = ? AND kp.normalized_model = ?)")
-      .join(" OR ");
-    const pairBinds = chunk.flatMap(([manufacturerId, model]) => [manufacturerId, model]);
-    const manufacturers = [...new Set(chunk.map(([manufacturerId]) => manufacturerId))];
-    const models = [...new Set(chunk.map(([, model]) => model))];
+    // Anchor each pair through the existing coarse retrieval index before applying exact equality.
+    // The retrieval key only narrows candidates; it never broadens manual authority semantics.
+    const wanted = JSON.stringify(
+      chunk.map(([manufacturerId, model]) => [manufacturerId, model, catalogRetrievalKey(model)]),
+    );
     const [exact, aliases] = await Promise.all([
       db
         .prepare(`
           SELECT kp.id, kp.manufacturer_id, kp.canonical_model, kp.normalized_model,
                  kp.canonical_name, kpc.category_id,
                  kp.normalized_model AS lookup_model, 'exact' AS match_type
-          FROM knowledge_catalog_products kp
-          JOIN knowledge_catalog_product_categories kpc
+          FROM json_each(?) wanted
+          CROSS JOIN knowledge_catalog_products kp INDEXED BY idx_catalog_products_retrieval_key
+          CROSS JOIN knowledge_catalog_product_categories kpc
             ON kpc.product_id = kp.id AND kpc.is_primary = 1
           WHERE kp.verification_status = 'verified'
-            AND (${pairPredicates})
+            AND kp.manufacturer_id = json_extract(wanted.value, '$[0]')
+            AND ${catalogRetrievalKeySql("kp.normalized_model")} = json_extract(wanted.value, '$[2]')
+            AND kp.normalized_model = json_extract(wanted.value, '$[1]')
             AND EXISTS (
               SELECT 1 FROM knowledge_catalog_sources s
               WHERE s.product_id = kp.id
@@ -98,21 +101,22 @@ export async function findManualVerifiedCategoryMatches(
                 AND s.status = 'active'
             )
         `)
-        .bind(...pairBinds)
+        .bind(wanted)
         .all<ManualCategoryCatalogRow>(),
       db
         .prepare(`
           SELECT kp.id, kp.manufacturer_id, kp.canonical_model, kp.normalized_model,
                  kp.canonical_name, kpc.category_id,
                  ka.normalized_alias AS lookup_model, 'alias' AS match_type
-          FROM knowledge_catalog_aliases ka INDEXED BY idx_knowledge_catalog_aliases_lookup
-          JOIN knowledge_catalog_products kp ON kp.id = ka.product_id
-          JOIN knowledge_catalog_product_categories kpc
+          FROM json_each(?) wanted
+          CROSS JOIN knowledge_catalog_aliases ka INDEXED BY idx_knowledge_catalog_aliases_lookup
+          CROSS JOIN knowledge_catalog_products kp ON kp.id = ka.product_id
+          CROSS JOIN knowledge_catalog_product_categories kpc
             ON kpc.product_id = kp.id AND kpc.is_primary = 1
           WHERE ka.alias_type = 'model'
-            AND ka.normalized_alias IN (${models.map(() => "?").join(",")})
+            AND ka.normalized_alias = json_extract(wanted.value, '$[1]')
             AND kp.verification_status = 'verified'
-            AND kp.manufacturer_id IN (${manufacturers.map(() => "?").join(",")})
+            AND kp.manufacturer_id = json_extract(wanted.value, '$[0]')
             AND EXISTS (
               SELECT 1 FROM knowledge_catalog_sources s
               WHERE s.product_id = kp.id
@@ -120,7 +124,7 @@ export async function findManualVerifiedCategoryMatches(
                 AND s.status = 'active'
             )
         `)
-        .bind(...models, ...manufacturers)
+        .bind(wanted)
         .all<ManualCategoryCatalogRow>(),
     ]);
     catalogRows.push(...(exact.results || []), ...(aliases.results || []));
