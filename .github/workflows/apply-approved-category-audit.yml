@@ -4,12 +4,12 @@ on:
   push:
     branches: [main]
     paths:
-      - 'migrations/0031_correct_audited_product_categories.sql'
-      - 'migrations/0032_correct_n05xd_category.sql'
-      - 'migrations/0035_correct_ai_audited_product_data.sql'
-      - 'scripts/apply-approved-category-audit.ts'
-      - 'scripts/apply-manual-category-authority.ts'
-      - '.github/workflows/apply-approved-category-audit.yml'
+      - "migrations/0031_correct_audited_product_categories.sql"
+      - "migrations/0032_correct_n05xd_category.sql"
+      - "migrations/0035_correct_ai_audited_product_data.sql"
+      - "scripts/apply-approved-category-audit.ts"
+      - "scripts/apply-manual-category-authority.ts"
+      - ".github/workflows/apply-approved-category-audit.yml"
   workflow_dispatch:
 
 permissions:
@@ -92,7 +92,7 @@ jobs:
             WHERE is_active = 1
               AND canonical_manufacturer_id = 'esoteric'
               AND (model LIKE 'N-01XD SE%' OR model = 'N-05XD')
-              AND primary_category_id <> 'network_player';")"
+              AND primary_category_id <> 'SRC.STREAMER';")"
           if [[ "$(jq '.[0].results | length' <<< "$protected")" -ne 0 ]]; then
             echo 'User-confirmed ESOTERIC network-player classifications regressed:' >&2
             jq '.[0].results' <<< "$protected" >&2
