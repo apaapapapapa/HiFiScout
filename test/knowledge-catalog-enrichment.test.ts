@@ -2,6 +2,7 @@ import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
+import { normalizeCatalogModel } from "../src/catalog/knowledge-catalog.js";
 import { enrichProductCategories } from "../src/crawler/category-enricher.js";
 import { getShopPlugin } from "../src/crawler/shops/index.js";
 import { findVerifiedCatalogMatches } from "../src/db/knowledge-catalog-repository.js";
@@ -202,6 +203,8 @@ test("manual-verified exact model may classify a candidate model without weakeni
     canonical_name: "sNH-10G 50Ω",
     category_id: "network_switch",
     is_primary: 1,
+    lookup_model: normalizeCatalogModel(sellerModel),
+    match_type: "exact",
   };
   const db = catalogDb([manualRow], [], [manualRow]);
 
