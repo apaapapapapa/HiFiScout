@@ -54,6 +54,17 @@ test("manual category maintenance seeks audited models instead of scanning unrel
       .run();
     await db
       .prepare(`
+        WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<10000)
+        INSERT INTO knowledge_catalog_sources(
+          product_id,source_type,source_url,status,created_at,updated_at
+        )
+        SELECT 980001,'trusted_catalog','https://example.test/source/'||i,'active',
+          '2026-09-10','2026-09-10'
+        FROM n
+      `)
+      .run();
+    await db
+      .prepare(`
         INSERT INTO products(
           id,shop_key,source_id,title,manufacturer,model,source_url,
           first_seen_at,last_seen_at,last_changed_at,is_active,
