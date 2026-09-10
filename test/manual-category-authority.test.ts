@@ -9,7 +9,7 @@ const SOTM_MODEL = "sNH-10G (クロック機能及びマスタークロック入
 
 test("manual category authority accepts only candidate exact/explicit-alias models", async () => {
   const db = captureDatabase((statement) => {
-    if (/FROM knowledge_catalog_products kp/.test(statement.sql)) {
+    if (/'exact' AS match_type/.test(statement.sql)) {
       return [
         {
           id: 224,
@@ -18,14 +18,22 @@ test("manual category authority accepts only candidate exact/explicit-alias mode
           normalized_model: "SNH-10G (クロック機能及びマスタークロック入力機能モデル、50Ω、12V)",
           canonical_name: "sNH-10G 50Ω",
           category_id: "network_switch",
+          lookup_model: "SNH-10G (クロック機能及びマスタークロック入力機能モデル、50Ω、12V)",
+          match_type: "exact",
         },
       ];
     }
-    if (/FROM knowledge_catalog_aliases/.test(statement.sql)) {
+    if (/'alias' AS match_type/.test(statement.sql)) {
       return [
         {
-          product_id: 224,
-          normalized_alias: "SNH-10G MANUAL ALIAS",
+          id: 224,
+          manufacturer_id: "sotm",
+          canonical_model: SOTM_MODEL,
+          normalized_model: "SNH-10G (クロック機能及びマスタークロック入力機能モデル、50Ω、12V)",
+          canonical_name: "sNH-10G 50Ω",
+          category_id: "network_switch",
+          lookup_model: "SNH-10G MANUAL ALIAS",
+          match_type: "alias",
         },
       ];
     }
@@ -69,7 +77,7 @@ test("manual category authority accepts only candidate exact/explicit-alias mode
 
 test("ambiguous manual aliases are never authoritative", async () => {
   const db = captureDatabase((statement) => {
-    if (/FROM knowledge_catalog_products kp/.test(statement.sql)) {
+    if (/'alias' AS match_type/.test(statement.sql)) {
       return [
         {
           id: 224,
@@ -78,6 +86,8 @@ test("ambiguous manual aliases are never authoritative", async () => {
           normalized_model: "SNH-10G 50OHM",
           canonical_name: "sNH-10G 50Ω",
           category_id: "network_switch",
+          lookup_model: "SNH-10G SHARED",
+          match_type: "alias",
         },
         {
           id: 225,
@@ -86,13 +96,9 @@ test("ambiguous manual aliases are never authoritative", async () => {
           normalized_model: "SNH-10G 75OHM",
           canonical_name: "sNH-10G 75Ω",
           category_id: "network_switch",
+          lookup_model: "SNH-10G SHARED",
+          match_type: "alias",
         },
-      ];
-    }
-    if (/FROM knowledge_catalog_aliases/.test(statement.sql)) {
-      return [
-        { product_id: 224, normalized_alias: "SNH-10G SHARED" },
-        { product_id: 225, normalized_alias: "SNH-10G SHARED" },
       ];
     }
     return [];
