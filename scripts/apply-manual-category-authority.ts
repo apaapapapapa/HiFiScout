@@ -17,7 +17,15 @@ const AUDIT_SOURCES = [
 ] as const;
 const AUDIT_SOURCE_PLACEHOLDERS = AUDIT_SOURCES.map(() => "?").join(",");
 const CATEGORY_PROJECTION_TOKEN_PREFIX = "category:manual-audit:";
+const LOOKUP_CHUNK_SIZE = 100;
 export const USER_CONFIRMED_SWITCH_CATEGORY_ID = "SIG.NETWORK" as const;
+
+interface ManualCategoryCatalogModelRow {
+  catalog_product_id: number;
+  manufacturer_id: string;
+  lookup_model: string;
+  expected_category_id: string;
+}
 
 interface ManualCategoryTargetRow {
   id: number;
@@ -100,40 +108,91 @@ export function planManualCategoryAuthority(
   };
 }
 
-async function loadTargets(db: QueryableDatabase): Promise<ManualCategoryTargetRow[]> {
+async function loadCatalogModels(db: QueryableDatabase): Promise<ManualCategoryCatalogModelRow[]> {
   const result = await db
     .prepare(`
-      SELECT DISTINCT
-        p.id,
-        p.shop_key,
-        p.source_id,
-        p.canonical_manufacturer_id AS manufacturer_id,
-        p.model,
-        p.primary_category_id AS current_category_id,
-        p.direct_category_ids,
-        kpc.category_id AS expected_category_id,
-        kp.id AS catalog_product_id
-      FROM products p
-      JOIN knowledge_catalog_products kp
-        ON kp.manufacturer_id = p.canonical_manufacturer_id
-       AND kp.verification_status = 'verified'
-      JOIN knowledge_catalog_sources s
-        ON s.product_id = kp.id
-       AND s.source_type = 'manual_verified'
-       AND s.source_url IN (${AUDIT_SOURCE_PLACEHOLDERS})
-       AND s.status = 'active'
-      JOIN knowledge_catalog_product_categories kpc
-        ON kpc.product_id = kp.id AND kpc.is_primary = 1
-      LEFT JOIN knowledge_catalog_aliases ka
-        ON ka.product_id = kp.id AND ka.alias_type = 'model'
-      WHERE p.is_active = 1
-        AND p.model_resolution_status <> 'resolved'
-        AND (p.model = kp.canonical_model OR p.model = ka.alias)
-      ORDER BY p.id
+      WITH audited AS MATERIALIZED (
+        SELECT DISTINCT
+          kp.id AS catalog_product_id,
+          kp.manufacturer_id,
+          kp.canonical_model,
+          kpc.category_id AS expected_category_id
+        FROM knowledge_catalog_sources s INDEXED BY idx_knowledge_catalog_sources_manual_audit
+        CROSS JOIN knowledge_catalog_products kp ON kp.id = s.product_id
+        CROSS JOIN knowledge_catalog_product_categories kpc
+          ON kpc.product_id = kp.id AND kpc.is_primary = 1
+        WHERE s.source_type = 'manual_verified'
+          AND s.source_url IN (${AUDIT_SOURCE_PLACEHOLDERS})
+          AND s.status = 'active'
+          AND kp.verification_status = 'verified'
+      )
+      SELECT catalog_product_id, manufacturer_id,
+             canonical_model AS lookup_model, expected_category_id
+      FROM audited
+      UNION
+      SELECT audited.catalog_product_id, audited.manufacturer_id,
+             ka.alias AS lookup_model, audited.expected_category_id
+      FROM audited
+      CROSS JOIN knowledge_catalog_aliases ka
+        ON ka.product_id = audited.catalog_product_id AND ka.alias_type = 'model'
+      ORDER BY catalog_product_id, lookup_model
     `)
     .bind(...AUDIT_SOURCES)
-    .all<ManualCategoryTargetRow>();
+    .all<ManualCategoryCatalogModelRow>();
   return result.results || [];
+}
+
+/** Resolve the bounded audited catalog set first, then seek listings by manufacturer. This keeps
+ * the maintenance cost proportional to approved models instead of walking every active listing. */
+export async function loadManualCategoryAuthorityTargets(
+  db: QueryableDatabase,
+): Promise<ManualCategoryTargetRow[]> {
+  const catalogModels = await loadCatalogModels(db);
+  const targets: ManualCategoryTargetRow[] = [];
+  for (let i = 0; i < catalogModels.length; i += LOOKUP_CHUNK_SIZE) {
+    const wanted = JSON.stringify(
+      catalogModels
+        .slice(i, i + LOOKUP_CHUNK_SIZE)
+        .map((row) => [
+          row.catalog_product_id,
+          row.manufacturer_id,
+          row.lookup_model,
+          row.expected_category_id,
+        ]),
+    );
+    const result = await db
+      .prepare(`
+        SELECT DISTINCT
+          p.id,
+          p.shop_key,
+          p.source_id,
+          p.canonical_manufacturer_id AS manufacturer_id,
+          p.model,
+          p.primary_category_id AS current_category_id,
+          p.direct_category_ids,
+          json_extract(wanted.value, '$[3]') AS expected_category_id,
+          CAST(json_extract(wanted.value, '$[0]') AS INTEGER) AS catalog_product_id
+        FROM json_each(?) wanted
+        CROSS JOIN products p INDEXED BY idx_products_canonical_manufacturer
+        WHERE p.canonical_manufacturer_id <> ''
+          AND p.canonical_manufacturer_id = json_extract(wanted.value, '$[1]')
+          AND p.is_active = 1
+          AND p.model_resolution_status <> 'resolved'
+          AND p.model = json_extract(wanted.value, '$[2]')
+        ORDER BY p.id
+      `)
+      .bind(wanted)
+      .all<ManualCategoryTargetRow>();
+    targets.push(...(result.results || []));
+  }
+  return [
+    ...new Map(
+      targets.map((target) => [
+        `${target.id}:${target.catalog_product_id}:${target.expected_category_id}`,
+        target,
+      ]),
+    ).values(),
+  ].sort((left, right) => left.id - right.id);
 }
 
 async function runBatches(
@@ -147,80 +206,79 @@ async function runBatches(
 }
 
 async function verifyTargets(db: QueryableDatabase): Promise<void> {
-  const result = await db
-    .prepare(`
-      SELECT DISTINCT
-        p.id,
-        p.shop_key,
-        p.source_id,
-        p.canonical_manufacturer_id AS manufacturer_id,
-        p.model,
-        p.primary_category_id AS current_category_id,
-        p.direct_category_ids,
-        kpc.category_id AS expected_category_id,
-        kp.id AS catalog_product_id,
-        e.id AS entity_id,
-        e.entity_key,
-        e.primary_category_id AS entity_category_id
-      FROM products p
-      JOIN knowledge_catalog_products kp
-        ON kp.manufacturer_id = p.canonical_manufacturer_id
-       AND kp.verification_status = 'verified'
-      JOIN knowledge_catalog_sources s
-        ON s.product_id = kp.id
-       AND s.source_type = 'manual_verified'
-       AND s.source_url IN (${AUDIT_SOURCE_PLACEHOLDERS})
-       AND s.status = 'active'
-      JOIN knowledge_catalog_product_categories kpc
-        ON kpc.product_id = kp.id AND kpc.is_primary = 1
-      LEFT JOIN knowledge_catalog_aliases ka
-        ON ka.product_id = kp.id AND ka.alias_type = 'model'
-      LEFT JOIN product_search_entity_offers o ON o.listing_product_id = p.id
-      LEFT JOIN product_search_entities e ON e.id = o.entity_id
-      WHERE p.is_active = 1
-        AND p.model_resolution_status <> 'resolved'
-        AND kpc.category_id <> ?
-        AND (p.model = kp.canonical_model OR p.model = ka.alias)
-        AND (
-          p.primary_category_id <> kpc.category_id
+  const targets = (await loadManualCategoryAuthorityTargets(db)).filter(
+    (target) => target.expected_category_id !== UNCLASSIFIED_CATEGORY_ID,
+  );
+  const mismatches: ManualCategoryMismatchRow[] = [];
+  for (let i = 0; i < targets.length; i += LOOKUP_CHUNK_SIZE) {
+    const expected = JSON.stringify(
+      targets
+        .slice(i, i + LOOKUP_CHUNK_SIZE)
+        .map((target) => [target.id, target.catalog_product_id, target.expected_category_id]),
+    );
+    const result = await db
+      .prepare(`
+        SELECT DISTINCT
+          p.id,
+          p.shop_key,
+          p.source_id,
+          p.canonical_manufacturer_id AS manufacturer_id,
+          p.model,
+          p.primary_category_id AS current_category_id,
+          p.direct_category_ids,
+          json_extract(expected.value, '$[2]') AS expected_category_id,
+          CAST(json_extract(expected.value, '$[1]') AS INTEGER) AS catalog_product_id,
+          e.id AS entity_id,
+          e.entity_key,
+          e.primary_category_id AS entity_category_id
+        FROM json_each(?) expected
+        CROSS JOIN products p ON p.id = CAST(json_extract(expected.value, '$[0]') AS INTEGER)
+        LEFT JOIN product_search_entity_offers o ON o.listing_product_id = p.id
+        LEFT JOIN product_search_entities e ON e.id = o.entity_id
+        WHERE p.primary_category_id <> json_extract(expected.value, '$[2]')
           OR p.classification_status <> 'classified'
           OR NOT EXISTS (
             SELECT 1 FROM json_each(p.direct_category_ids) direct
-            WHERE direct.value = kpc.category_id
+            WHERE direct.value = json_extract(expected.value, '$[2]')
           )
           OR NOT EXISTS (
             SELECT 1 FROM product_categories pc
             WHERE pc.product_id = p.id
-              AND pc.category_id = kpc.category_id
+              AND pc.category_id = json_extract(expected.value, '$[2]')
               AND pc.is_direct = 1
           )
           OR e.id IS NULL
-          OR e.primary_category_id <> kpc.category_id
-        )
-      ORDER BY p.id
-    `)
-    .bind(...AUDIT_SOURCES, UNCLASSIFIED_CATEGORY_ID)
-    .all<ManualCategoryMismatchRow>();
-  if ((result.results || []).length) {
-    throw new Error(
-      `manual category authority mismatches remain: ${JSON.stringify(result.results)}`,
-    );
+          OR e.primary_category_id <> json_extract(expected.value, '$[2]')
+        ORDER BY p.id
+      `)
+      .bind(expected)
+      .all<ManualCategoryMismatchRow>();
+    mismatches.push(...(result.results || []));
+  }
+  if (mismatches.length) {
+    throw new Error(`manual category authority mismatches remain: ${JSON.stringify(mismatches)}`);
   }
 
+  const confirmedSwitches = JSON.stringify([
+    ["sotm", "sNH-10G%", "prefix"],
+    ["telegartner", "M12 SWITCH IE GOLD + 専用オプションケーブル2.0m ×3本", "exact"],
+  ]);
   const switches = await db
     .prepare(`
       SELECT p.id, p.canonical_manufacturer_id, p.model, p.primary_category_id,
              e.entity_key, e.primary_category_id AS entity_category_id
-      FROM products p
+      FROM json_each(?) wanted
+      CROSS JOIN products p INDEXED BY idx_products_canonical_manufacturer
       LEFT JOIN product_search_entity_offers o ON o.listing_product_id = p.id
       LEFT JOIN product_search_entities e ON e.id = o.entity_id
-      WHERE p.is_active = 1
+      WHERE p.canonical_manufacturer_id <> ''
+        AND p.canonical_manufacturer_id = json_extract(wanted.value, '$[0]')
+        AND p.is_active = 1
         AND (
-          (p.canonical_manufacturer_id = 'sotm' AND p.model LIKE 'sNH-10G%')
-          OR (
-            p.canonical_manufacturer_id = 'telegartner'
-            AND p.model = 'M12 SWITCH IE GOLD + 専用オプションケーブル2.0m ×3本'
-          )
+          (json_extract(wanted.value, '$[2]') = 'prefix'
+            AND p.model LIKE json_extract(wanted.value, '$[1]'))
+          OR (json_extract(wanted.value, '$[2]') = 'exact'
+            AND p.model = json_extract(wanted.value, '$[1]'))
         )
         AND (
           p.primary_category_id <> ?
@@ -229,7 +287,7 @@ async function verifyTargets(db: QueryableDatabase): Promise<void> {
         )
       ORDER BY p.id
     `)
-    .bind(USER_CONFIRMED_SWITCH_CATEGORY_ID, USER_CONFIRMED_SWITCH_CATEGORY_ID)
+    .bind(confirmedSwitches, USER_CONFIRMED_SWITCH_CATEGORY_ID, USER_CONFIRMED_SWITCH_CATEGORY_ID)
     .all<ManualCategoryMismatchRow>();
   if ((switches.results || []).length) {
     throw new Error(
@@ -240,7 +298,7 @@ async function verifyTargets(db: QueryableDatabase): Promise<void> {
 
 export async function applyManualCategoryAuthority(db: QueryableDatabase): Promise<number> {
   const evaluatedAt = new Date().toISOString();
-  const targets = await loadTargets(db);
+  const targets = await loadManualCategoryAuthorityTargets(db);
   const statements: D1PreparedStatement[] = [];
   const tokens = new Map<number, string>();
   const refreshTargets: Array<{ id: number; shop_key: string; source_id: string }> = [];
