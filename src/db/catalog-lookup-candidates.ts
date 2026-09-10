@@ -47,7 +47,7 @@ export function catalogRetrievalKeySql(column: string): string {
   return `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(${presentation},' ',''),'-',''),'/',''),'.',''),'_','')`;
 }
 
-function retrievalKey(value: string): string {
+export function catalogRetrievalKey(value: string): string {
   return value
     .normalize("NFKC")
     .toUpperCase()
@@ -64,7 +64,7 @@ function lookupKeys(input: CatalogLookupInput, purpose: "identity" | "category")
     ...new Set(
       variants
         .flatMap((model) => [model, ...buildModelSearchAliases(model)])
-        .map(retrievalKey)
+        .map(catalogRetrievalKey)
         .filter(Boolean),
     ),
   ];
