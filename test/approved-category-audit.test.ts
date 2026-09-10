@@ -10,6 +10,10 @@ const n05xdMigration = await readFile(
   new URL("../migrations/0032_correct_n05xd_category.sql", import.meta.url),
   "utf8",
 );
+const auditWorkflow = await readFile(
+  new URL("../.github/workflows/apply-approved-category-audit.yml", import.meta.url),
+  "utf8",
+);
 
 const approvedCorrections = [
   ["Grandioso T1", "turntable"],
@@ -47,6 +51,8 @@ test("user-confirmed ESOTERIC network-player policy is preserved", () => {
   assert.doesNotMatch(correctionMigration, /N-01XD SE/);
   assert.match(n05xdMigration, /'N-05XD'/);
   assert.match(n05xdMigration, /'network_player'/);
+  assert.match(auditWorkflow, /primary_category_id <> 'SRC\.STREAMER'/);
+  assert.doesNotMatch(auditWorkflow, /primary_category_id <> 'network_player'/);
 });
 
 test("EDISCREATION is the canonical manufacturer spelling", () => {
