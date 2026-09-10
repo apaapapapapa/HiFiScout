@@ -52,23 +52,19 @@ test("manual category authority reads only requested models as a manufacturer ca
     assert.equal(legacyRows.results?.length, 1001);
 
     const measured = accountReads(db);
-    const matches = await findManualVerifiedCategoryMatches(measured.db, [
-      {
+    const matches = await findManualVerifiedCategoryMatches(
+      measured.db,
+      Array.from({ length: 40 }, (_, index) => ({
         manufacturerId: "budget-brand",
-        model: "TARGET-1",
+        model: index === 0 ? "TARGET-1" : index === 1 ? "Target One Alias" : `MISSING-${index}`,
         modelResolutionStatus: "candidate",
-      },
-      {
-        manufacturerId: "budget-brand",
-        model: "Target One Alias",
-        modelResolutionStatus: "candidate",
-      },
-    ]);
+      })),
+    );
     assert.equal(matches.get(knowledgeCatalogKey("budget-brand", "TARGET-1"))?.id, 800001);
     assert.equal(matches.get(knowledgeCatalogKey("budget-brand", "Target One Alias"))?.id, 800001);
     assert.equal(measured.rowsWritten(), 0);
     assert.ok(
-      measured.rowsRead() < 100,
+      measured.rowsRead() < 200,
       `bounded reads=${measured.rowsRead()} legacy reads=${legacy.rowsRead()}`,
     );
     assert.ok(
