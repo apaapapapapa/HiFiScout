@@ -19,6 +19,9 @@ const categoryCases = [
   ["speaker stand", "ACC.STAND"],
   ["プリメインアンプ DAC搭載", "AMP.INTEGRATED"],
   ["CDプレーヤー リモコン付", "SRC.DISC"],
+  ["TAD TAD-D1000MK2 SILVER SACD/CDプレーヤー / 384kHz・32bit対応 / リモコンあり", "SRC.DISC"],
+  ["CDプレーヤー リモコン有り", "SRC.DISC"],
+  ["CDプレーヤー用リモコン 在庫あり", "ACC.PART"],
   ["CDプレーヤー リモコン欠品", "SRC.DISC"],
   ["CD player with remote control", "SRC.DISC"],
   ["CDプレーヤー リモコン操作対応", "SRC.DISC"],
@@ -60,6 +63,8 @@ test("identity corpus distinguishes a compatible accessory from an included one"
   for (const [title, expected] of [
     ["YAMAHA CD-S3000 専用リモコン", "unresolved"],
     ["YAMAHA CD-S3000 リモコン付", "matched"],
+    ["YAMAHA CD-S3000 リモコンあり", "matched"],
+    ["YAMAHA CD-S3000 専用リモコン 在庫あり", "unresolved"],
     ["YAMAHA CD-S3000 リモコン欠品", "matched"],
     ["YAMAHA CD-S3000 Remote control compatible CD player", "matched"],
     ["YAMAHA CD-S3000 remote control compatible with CD-S3000", "unresolved"],

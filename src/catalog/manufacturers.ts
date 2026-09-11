@@ -167,11 +167,16 @@ const MANUFACTURERS: readonly ManufacturerDefinition[] = MANUFACTURER_SOURCE.map
 );
 
 const MANUFACTURER_LISTING_LABEL =
-  /^(?:(?:【|〖|\[)\s*(?:中古(?:品)?|新品|展示(?:処分)?品?|特価(?:商品|品)?|未使用(?:開封)?品?|B級品|アウトレット(?:品)?|現品処分品|セール中|送料無料)\s*(?:】|〗|\])\s*)+/iu;
+  /^(?:(?:【|〖|\[)\s*(?:中古(?:品)?|新品|展示(?:処分)?品?|特価(?:商品|品)?|未使用(?:開封)?品?|B級品|アウトレット(?:品)?|現品処分品|セール中|SALE|美品|極美品|送料無料|国内正規品(?:\s*100V)?|正規輸入品|バナナプラグ仕様)\s*(?:】|〗|\])\s*)+/iu;
 
 /** Remove seller condition badges accidentally captured as part of manufacturer/title evidence. */
 export function stripManufacturerListingLabels(value: unknown = ""): string {
-  return String(value).replace(MANUFACTURER_LISTING_LABEL, "").trim();
+  return String(value).trim().replace(MANUFACTURER_LISTING_LABEL, "").trim();
+}
+
+/** Numeric speaker-model tokens accidentally split into the brand column (for example 702S2). */
+export function isModelOnlyManufacturer(value: unknown = ""): boolean {
+  return /^\d{3,}[a-z]{1,2}\d*$/iu.test(stripManufacturerListingLabels(value).normalize("NFKC"));
 }
 
 const MANUFACTURER_PLACEHOLDER_RE = /^(?:不明(?:\s+.*)?|メーカー不明|その他|ノーブランド)$/u;
@@ -186,7 +191,7 @@ export function isManufacturerPlaceholder(value: unknown = ""): boolean {
 
 export function normalizeManufacturerKey(value: unknown = ""): string {
   const stripped = stripManufacturerListingLabels(String(value).normalize("NFKC"));
-  if (isManufacturerPlaceholder(stripped)) return "";
+  if (isManufacturerPlaceholder(stripped) || isModelOnlyManufacturer(stripped)) return "";
   return stripped
     .toLowerCase()
     .replace(/\b(?:co\.?\s*,?\s*ltd\.?|corporation|corp\.?|inc\.?|limited|ltd\.?)\b/gi, "")
@@ -328,6 +333,7 @@ export function normalizeManufacturer(value: unknown = ""): ManufacturerNormaliz
   const raw = cleanSourceText(stripManufacturerListingLabels(value));
   if (!raw) return { id: "", displayName: "", matchedAlias: false };
   const key = normalizeManufacturerKey(raw);
+  if (!key) return { id: "", displayName: "", matchedAlias: false };
   const known = BY_ALIAS.get(key) || BY_ID.get(raw.toLowerCase());
   if (known) return { id: known.id, displayName: known.name, matchedAlias: true };
   return { id: fallbackId(key), displayName: raw, matchedAlias: false };

@@ -65,6 +65,7 @@ export interface UnresolvedModelGroup {
 }
 
 interface ModelReplayListingRow {
+  raw_manufacturer: string;
   id: number;
   shop_key: string;
   source_id: string;
@@ -134,7 +135,7 @@ export async function selectStaleModelListings(
   const take = boundedLimit(limit);
   const result = await db
     .prepare(`
-      SELECT id, shop_key, source_id, canonical_manufacturer_id, model, raw_model, normalized_model,
+      SELECT id, shop_key, source_id, canonical_manufacturer_id, raw_manufacturer, model, raw_model, normalized_model,
              presentation_color, model_resolution_status, model_resolution_method,
              model_resolution_confidence,
              model_resolver_version, remediation_projection_required, title, metadata_json
@@ -182,6 +183,7 @@ export async function reprocessStaleModelListings(
   for (const row of selected.rows) {
     const resolution = resolver({
       rawModel: row.raw_model,
+      rawManufacturer: row.raw_manufacturer,
       title: row.title,
       manufacturerId: row.canonical_manufacturer_id,
       shopKey: row.shop_key,

@@ -10,6 +10,8 @@ import {
   manufacturerPrefixPattern,
   normalizeManufacturerKey,
   stripBracketedManufacturerAlias,
+  stripManufacturerListingLabels,
+  isModelOnlyManufacturer,
 } from "./manufacturers.js";
 import {
   PRESENTATION_BARE_COLOR_PATTERN,
@@ -28,7 +30,7 @@ import type {
   ResolutionStatus,
 } from "./types.js";
 
-export const MODEL_RESOLVER_VERSION = 12;
+export const MODEL_RESOLVER_VERSION = 13;
 
 export type ModelResolver = (input: ModelResolutionInput) => ModelResolutionResult;
 
@@ -479,7 +481,20 @@ function resolvePreparedModel(
   const manufacturerId = clean(input.manufacturerId).toLowerCase();
   const shopKey = clean(input.shopKey).toLowerCase();
   const fromSeller = Boolean(rawModel);
-  const source = fromSeller ? rawModel : manufacturerId ? clean(input.title) : "";
+  let source = fromSeller ? rawModel : manufacturerId ? clean(input.title) : "";
+  // Historical title splitting consumed the model's first token as the manufacturer. Recover
+  // only when the original title independently starts with that exact token and raw-model tail.
+  // rawModel itself remains immutable, and this never supplies a canonical manufacturer.
+  const misplaced = stripManufacturerListingLabels(clean(input.rawManufacturer));
+  const restored = `${misplaced} ${rawModel}`;
+  const title = stripManufacturerListingLabels(clean(input.title));
+  if (
+    !manufacturerId &&
+    fromSeller &&
+    isModelOnlyManufacturer(misplaced) &&
+    (title === restored || title.startsWith(`${restored} `))
+  )
+    source = restored;
   if (!source) return unresolvedResult(rawModel, rawModel);
 
   const presentation = prepared.get(manufacturerId);
@@ -637,6 +652,7 @@ export function applyModelResolution(
       : createModelResolver(aliasesOrResolver);
   const resolution = resolver({
     rawModel: product.rawModel,
+    rawManufacturer: product.rawManufacturer,
     title: product.title,
     manufacturerId: product.manufacturerId,
     shopKey,

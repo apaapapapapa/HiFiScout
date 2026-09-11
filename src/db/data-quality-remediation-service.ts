@@ -309,11 +309,10 @@ async function replayDerivedListing(
     manufacturerCandidate: row.raw_manufacturer ? row.manufacturer : "",
     title: row.title,
   });
-  const manufacturerFilterId = manufacturerIdForFilter(
-    manufacturer.displayName || row.manufacturer || row.raw_manufacturer,
-  );
+  const manufacturerFilterId = manufacturerIdForFilter(manufacturer.displayName);
   const model = modelResolver({
     rawModel: row.raw_model,
+    rawManufacturer: row.raw_manufacturer,
     title: row.title,
     manufacturerId: manufacturer.canonicalManufacturerId,
     shopKey: row.shop_key,

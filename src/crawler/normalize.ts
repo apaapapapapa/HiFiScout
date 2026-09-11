@@ -4,6 +4,7 @@ import {
   stripManufacturerListingLabels,
   manufacturerPrefixPattern,
   normalizeManufacturer,
+  isModelOnlyManufacturer,
 } from "../catalog/manufacturers.js";
 import { availabilityFromText } from "./availability.js";
 import { splitModelBundle } from "../catalog/model-bundle.js";
@@ -196,6 +197,7 @@ export function splitManufacturerModel(
 
   const tokens = value.split(/\s+/);
   const manufacturer = tokens[0] || "";
+  if (isModelOnlyManufacturer(manufacturer)) return { manufacturer: "", model: value };
   return { manufacturer, model: tokens.slice(1).join(" ") };
 }
 
