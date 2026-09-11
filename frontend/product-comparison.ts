@@ -41,7 +41,7 @@ export async function loadComparisonProducts(
   refresh = false,
 ): Promise<ComparisonColumn[]> {
   const canonical = canonicalComparisonKeys(keys);
-  if (canonical.length < 2) return [];
+  if (!canonical.length) return [];
   return Promise.all(
     canonical.map(async (key) => {
       try {

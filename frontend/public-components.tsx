@@ -8,6 +8,7 @@ import { ModelRelations } from "./model-relations-ui.js";
 import { MarketAnalysis } from "./market-analysis-ui.js";
 import { OfferFacts } from "./offer-facts.js";
 import { OfferTerms } from "./offer-terms.js";
+import { offerTermGroups } from "../src/api/offer-terms-contracts.js";
 import { WatchSummary } from "./watch-preferences-ui.js";
 import type { WatchPreference } from "./watch-preferences.js";
 import {
@@ -263,7 +264,7 @@ export function ProductCard({
                   : yen.format(product.representative_offer.price_yen)}
               </p>
             ) : null}
-            <OfferTerms facts={product.representative_offer.offer_facts} />
+            <OfferTerms facts={product.representative_offer.offer_facts} compact />
           </div>
         ) : null}
         <div className={`stock ${offerAvailabilityClass(product)}`}>
@@ -523,6 +524,55 @@ export function OffersContent({
       ) : (
         <p className="offers-note">この商品はまだ他店の在庫と照合できていません。</p>
       )}
+      {offers.length > 1 ? (
+        <div
+          className="offer-overview"
+          tabIndex={0}
+          role="region"
+          aria-label="店舗ごとの価格・在庫一覧"
+        >
+          <table>
+            <caption>掲載中の出品を比較</caption>
+            <thead>
+              <tr>
+                <th scope="col">販売店</th>
+                <th scope="col">価格</th>
+                <th scope="col">在庫</th>
+                <th scope="col">販売単位・仕様</th>
+                <th scope="col">確認先</th>
+              </tr>
+            </thead>
+            <tbody>
+              {offers.map((offer) => (
+                <tr key={offer.listing_product_id}>
+                  <th scope="row">{shopName(offer.shop_key)}</th>
+                  <td>{offer.price_yen == null ? "価格不明" : yen.format(offer.price_yen)}</td>
+                  <td>{stockLabel(offer.stock_status)}</td>
+                  <td>
+                    {offerTermGroups(offer.offer_facts).every((group) =>
+                      group.values.every((value) => value === "記載なし"),
+                    ) ? (
+                      "記載なし"
+                    ) : (
+                      <OfferTerms facts={offer.offer_facts} compact />
+                    )}
+                  </td>
+                  <td>
+                    <a
+                      href={safeExternalUrl(offer.source_url)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`${shopName(offer.shop_key)}で確認`}
+                    >
+                      販売店 ↗
+                    </a>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
       <ol className="offers">
         {offers.length ? (
           offers.map((offer) => (
@@ -537,6 +587,10 @@ export function OffersContent({
           <li>表示できる在庫がありません。</li>
         )}
       </ol>
+      <p className="filter-note">
+        記載なしは「付属しない」「保証がない」「整備歴がない」という意味ではありません。
+        店舗独自の外観ランクは共通ランクに換算していません。日付は情報の確認日で、整備日や保証期限ではありません。
+      </p>
       <ProductPriceIndexSummary product={product} />
       <MarketAnalysis analysis={product.market_analysis} />
       {product.model_relations ? (

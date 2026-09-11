@@ -4,7 +4,7 @@ import type { OfferFact, OfferFactId } from "../src/api/contracts.js";
 export function OfferFacts({ facts = [] }: { facts?: readonly OfferFact[] }) {
   const byId = new Map(facts.map((fact) => [fact.factId, fact]));
   return (
-    <details className="offer-facts" open={facts.length > 0}>
+    <details className="offer-facts">
       <summary>状態・付属品・保証・整備歴</summary>
       {OFFER_FACT_GROUPS.map((group) => {
         const definitions = OFFER_FACT_DEFINITIONS.filter(
@@ -51,10 +51,6 @@ export function OfferFacts({ facts = [] }: { facts?: readonly OfferFact[] }) {
           </section>
         );
       })}
-      <p className="filter-note">
-        記載なしは「付属しない」「保証がない」「整備歴がない」という意味ではありません。
-        店舗独自の外観ランクは共通ランクに換算していません。日付は情報の確認日で、整備日や保証期限ではありません。
-      </p>
     </details>
   );
 }

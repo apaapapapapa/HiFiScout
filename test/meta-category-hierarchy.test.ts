@@ -46,9 +46,14 @@ test("manufacturer facet normalization merges aliases and sums their active coun
     { value: "TAD", active_product_count: 1 },
   ];
 
-  assert.deepEqual(normalizeManufacturerFacets(rows), [
-    { name: "LUXMAN", activeProductCount: 5 },
-    { name: "TAD", activeProductCount: 1 },
-  ]);
+  const facets = normalizeManufacturerFacets(rows);
+  assert.deepEqual(
+    facets.map(({ name, activeProductCount }) => ({ name, activeProductCount })),
+    [
+      { name: "LUXMAN", activeProductCount: 5 },
+      { name: "TAD", activeProductCount: 1 },
+    ],
+  );
+  assert.ok(facets.find((facet) => facet.name === "LUXMAN")?.aliases?.includes("ラックスマン"));
   assert.deepEqual(normalizeManufacturerFacetValues(rows), ["LUXMAN", "TAD"]);
 });

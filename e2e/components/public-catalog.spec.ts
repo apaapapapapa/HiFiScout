@@ -30,6 +30,10 @@ const meta = {
     },
   ],
   manufacturers: ["LUXMAN", "Accuphase"],
+  manufacturerFacets: [
+    { name: "LUXMAN", activeProductCount: 1, aliases: ["luxman", "ラックスマン"] },
+    { name: "Accuphase", activeProductCount: 1, aliases: ["accuphase", "アキュフェーズ"] },
+  ],
   categories: [],
   categoryFacets: [
     {
@@ -194,6 +198,8 @@ test("condition groups stage appearance and service criteria and preserve unknow
   await page.locator(".offers-button[data-offers]").click();
   await page.getByRole("button", { name: "在庫情報を再読み込み" }).click();
   const facts = page.locator(".offer-facts");
+  await expect(facts).not.toHaveAttribute("open");
+  await facts.locator("summary").click();
   await expect(facts.getByRole("region", { name: "外観", exact: true })).toContainText("記載なし");
   await expect(facts.getByRole("region", { name: "付属品", exact: true })).toContainText(
     "なし（明記）",
@@ -374,7 +380,7 @@ test("shared comparison loads canonical products, retains failed columns, and re
     comparison.getByRole("region", { name: "製品の比較表（横にスクロールできます）" }),
   ).toBeVisible();
   await page.screenshot({ path: "test-results/model-specifications-mobile.png", fullPage: true });
-  await comparison.getByRole("button", { name: "c-3を比較から外す" }).click();
+  await comparison.getByRole("button", { name: "Model c-3を比較から外す" }).click();
   await expect(page.getByRole("status").filter({ hasText: "もう1件" })).toBeVisible();
   await page.evaluate(() => history.back());
   await expect(page.getByRole("region", { name: "製品比較 (2/4)", exact: true })).toBeVisible();
@@ -386,7 +392,7 @@ test("comparison selection stops at four and survives search filter updates", as
 }) => {
   await mockCatalog(page);
   const items = Array.from({ length: 5 }, (_, index) =>
-    product({ key: `c-${index + 1}`, catalog_product_id: index + 1 }),
+    product({ key: `c-${index + 1}`, catalog_product_id: index + 1, model: `Model ${index + 1}` }),
   );
   await page.route("**/api/product-search?**", (route) =>
     route.fulfill({ json: { ...results, items, totalCount: 5 } }),
@@ -410,7 +416,7 @@ test("comparison selection stops at four and survives search filter updates", as
   await page.locator("#q").fill("amp");
   await expect(page).toHaveURL(/q=amp/);
   await expect(page).toHaveURL(/compare=c-1%2Cc-2%2Cc-3%2Cc-4/);
-  await page.getByRole("button", { name: "c-2を比較から外す" }).click();
+  await page.getByRole("button", { name: "Model 2を比較から外す" }).click();
   await expect(fifth).toBeEnabled();
 });
 
@@ -761,6 +767,110 @@ test("long names and seven-digit prices fit across filter breakpoints", async ({
   }
 });
 
+test("manufacturer candidates share Japanese aliases and keep changes staged", async ({
+  page,
+  mount,
+}) => {
+  const seen = await mockCatalog(page);
+  await mount("frontend/public-app/Default");
+  await page.locator("#manufacturer summary").click();
+  await page.getByRole("searchbox", { name: "メーカーの候補を検索" }).fill("ラックスマン");
+  const choice = page
+    .locator("#manufacturer")
+    .getByRole("checkbox", { name: "LUXMAN", exact: true });
+  await expect(choice).toBeVisible();
+  await choice.check();
+  expect(seen.searches).toHaveLength(1);
+  await page.locator(".pending-filter-notice").getByRole("button", { name: "変更を適用" }).click();
+  await expect
+    .poll(() => seen.searches.at(-1)?.searchParams.getAll("manufacturer"))
+    .toEqual(["LUXMAN"]);
+});
+
+test("removing the last favorite also clears its watch scope without another refresh", async ({
+  page,
+  mount,
+}) => {
+  await mockCatalog(page);
+  let calls = 0;
+  await page.route("**/api/product-search/c-1", (route) => {
+    calls++;
+    return route.fulfill({ json: { product: item, offers: [offer()] } });
+  });
+  await mount("frontend/public-app/Default");
+  await page.locator(".fav").click();
+  await page.locator("#favoritesOnly").check();
+  const watch = page.getByRole("region", { name: "お気に入りの変化", exact: true });
+  await expect(watch).toContainText("初回の記録です");
+  expect(calls).toBe(1);
+  await page.locator(".fav").click();
+  await expect(page.locator(".card")).toHaveCount(0);
+  await expect(watch).toHaveCount(0);
+  expect(calls).toBe(1);
+  await page.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(watch).toBeVisible();
+});
+
+test("first selection shows its product name immediately and omits entirely missing specs", async ({
+  page,
+  mount,
+}) => {
+  await mockCatalog(page);
+  const second = product({ key: "c-2", catalog_product_id: 2, model: "D-07X" });
+  await page.route("**/api/product-search?**", (route) =>
+    route.fulfill({ json: { ...results, items: [item, second] } }),
+  );
+  await page.route("**/api/product-search/c-*", (route) =>
+    route.fulfill({
+      json: { product: route.request().url().endsWith("c-1") ? item : second, offers: [] },
+    }),
+  );
+  await mount("frontend/public-app/Default");
+  await page
+    .locator('[data-key="c-1"]')
+    .getByRole("button", { name: "製品を比較", exact: true })
+    .click();
+  await expect(page.locator(".comparison-selection")).toContainText(item.model);
+  await expect(page.locator(".comparison-selection")).not.toContainText("c-1");
+  await page
+    .locator('[data-key="c-2"]')
+    .getByRole("button", { name: "製品を比較", exact: true })
+    .click();
+  await expect(page.locator(".comparison-table")).toBeVisible();
+  await expect(
+    page.locator(".comparison-table").getByRole("rowheader", { name: "幅", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.locator(".product-comparison")).toContainText(
+    "全製品で記載のない仕様項目は省略",
+  );
+});
+
+test("unknown card terms stay compact and the overview exposes every shop before expanded facts", async ({
+  page,
+  mount,
+}) => {
+  await mockCatalog(page);
+  const offers = [offer(), offer({ listing_product_id: 2, shop_key: "shop-b", price_yen: 120000 })];
+  const grouped = product({ representative_offer: offers[0], offer_count: 2, shop_count: 2 });
+  await page.route("**/api/product-search?**", (route) =>
+    route.fulfill({ json: { ...results, items: [grouped] } }),
+  );
+  await page.route("**/api/product-search/c-1", (route) =>
+    route.fulfill({ json: { product: grouped, offers } }),
+  );
+  await mount("frontend/public-app/Default");
+  await expect(page.locator(".card")).toHaveCount(1);
+  await expect(page.locator(".card .offer-terms")).toHaveCount(0);
+  await page.locator(".offers-button[data-offers]").click();
+  const overview = page.getByRole("region", { name: "店舗ごとの価格・在庫一覧" });
+  await expect(overview.getByRole("row")).toHaveCount(3);
+  await expect(overview).toContainText("120,000");
+  await expect(overview.getByRole("link", { name: "別の販売店で確認" })).toBeInViewport();
+  await expect(page.locator(".offer-facts[open]")).toHaveCount(0);
+  await page.locator(".offer-facts summary").first().click();
+  await expect(page.locator(".offer-facts[open]")).toContainText("記載なし");
+});
+
 test("desktop applies prices once and keeps pending details separate from immediate controls", async ({
   page,
   mount,
@@ -773,6 +883,8 @@ test("desktop applies prices once and keeps pending details separate from immedi
   await page.locator("#maxPrice").fill("12.5万円");
   await selectShop(page);
   await expect(page.locator("#filter-draft-status")).toContainText("未適用");
+  await expect(page.locator(".pending-filter-notice")).toContainText("未適用");
+  await expect(page.locator("#apply-filters")).toBeInViewport();
   expect(seen.searches).toHaveLength(1);
   await page.locator("#recentOnly").check();
   await expect.poll(() => seen.searches.length).toBe(2);
@@ -785,6 +897,7 @@ test("desktop applies prices once and keeps pending details separate from immedi
   expect(seen.searches.at(-1)?.searchParams.get("newOnly")).toBe("true");
   expect(seen.searches.at(-1)?.searchParams.getAll("shop")).toEqual(["shop-a"]);
   await expect(page.locator('[data-clear-filter="maxPrice"]')).toContainText("125,000");
+  await expect(page.locator(".pending-filter-notice")).toHaveCount(0);
   await page.locator("#apply-filters").click();
   expect(seen.searches).toHaveLength(3);
   await page.locator("#minPrice").fill("１，０００");

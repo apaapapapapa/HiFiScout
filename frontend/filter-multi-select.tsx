@@ -7,6 +7,7 @@ export interface FilterOption {
   value: string;
   label: string;
   count?: number;
+  aliases?: readonly string[];
 }
 
 export function FilterMultiSelect({
@@ -26,7 +27,9 @@ export function FilterMultiSelect({
   const detailsRef = useRef<HTMLDetailsElement>(null);
   const normalize = (value: string) => value.normalize("NFKC").toLocaleLowerCase("ja-JP").trim();
   const matching = options.filter((option) =>
-    normalize(`${option.label} ${option.value}`).includes(normalize(search)),
+    [option.label, option.value, ...(option.aliases ?? [])].some((value) =>
+      normalize(value).includes(normalize(search)),
+    ),
   );
   const visible = matching.slice(0, 50);
   const labels = new Map(options.map((option) => [option.value, option.label]));

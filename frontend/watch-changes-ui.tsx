@@ -40,7 +40,8 @@ export function FavoriteWatch({
   onSnapshots: (products: DisplayProduct[]) => void;
   shopName: (key: string) => string;
 }) {
-  // Freeze this view's scope: updated prices/stock may change favorite filtering and ordering.
+  // Freeze within the parent's filter + favorite-membership key. Snapshot refreshes may change
+  // prices/order, but adding or removing a favorite remounts this scope and aborts stale work.
   const [scope] = useState(() => products.filter((product) => validProductKey(product.key)));
   const [batch, setBatch] = useState(0);
   const [attempt, setAttempt] = useState(0);

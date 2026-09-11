@@ -36,7 +36,11 @@ function ports(items: SpecificationPort[] | null | undefined): string {
     : "なし（確認済み）";
 }
 
-const rows: { label: string; cell: (product: DisplayProduct) => ReactNode }[] = [
+const rows: {
+  label: string;
+  cell: (product: DisplayProduct) => ReactNode;
+  available?: (product: DisplayProduct) => boolean;
+}[] = [
   { label: "メーカー", cell: (p) => p.manufacturer || "—" },
   { label: "カテゴリ", cell: (p) => p.direct_categories?.join(" / ") || p.category || "—" },
   { label: "出品されている仕上げ", cell: (p) => p.presentation_colors?.join(" / ") || "—" },
@@ -50,13 +54,23 @@ const rows: { label: string; cell: (product: DisplayProduct) => ReactNode }[] = 
     ] as const
   ).map(({ key, label, unit }) => ({
     label,
+    available: (p: DisplayProduct) => p.specifications?.[key] != null,
     cell: (p: DisplayProduct) =>
       p.specifications?.[key] == null ? "記載なし" : `${p.specifications[key]} ${unit}`,
   })),
-  { label: "入力端子", cell: (p) => ports(p.specifications?.inputs) },
-  { label: "出力端子", cell: (p) => ports(p.specifications?.outputs) },
+  {
+    label: "入力端子",
+    cell: (p) => ports(p.specifications?.inputs),
+    available: (p) => p.specifications?.inputs != null,
+  },
+  {
+    label: "出力端子",
+    cell: (p) => ports(p.specifications?.outputs),
+    available: (p) => p.specifications?.outputs != null,
+  },
   {
     label: "仕様の出典",
+    available: (p) => p.specifications != null,
     cell: (p) =>
       p.specifications ? (
         <>
@@ -86,11 +100,13 @@ const rows: { label: string; cell: (product: DisplayProduct) => ReactNode }[] = 
 
 export function ProductComparison({
   keys,
+  knownProducts = [],
   api,
   onRemove,
   onClear,
 }: {
   keys: string[];
+  knownProducts?: readonly DisplayProduct[];
   api: ApiClient;
   onRemove: (key: string) => void;
   onClear: () => void;
@@ -119,14 +135,22 @@ export function ProductComparison({
   }, [api, selection, attempt]);
   if (!keys.length) return null;
   const columns = result?.selection === selection ? result.columns : null;
+  const productName = (key: string) =>
+    columns?.find((column) => column.key === key)?.product?.model ||
+    knownProducts.find((product) => product.key === key)?.model ||
+    (columns ? "製品情報を取得できませんでした" : "製品名を読み込み中…");
   const path = comparisonPath(keys);
   const specificationNames = [
     ...new Set(
       (columns ?? []).flatMap((c) => c.product?.specifications?.main.map((s) => s.name) ?? []),
     ),
   ];
+  const knownRows = rows.filter(
+    (row) =>
+      !row.available || columns?.some((column) => column.product && row.available!(column.product)),
+  );
   const comparisonRows = [
-    ...rows,
+    ...knownRows,
     ...specificationNames.map((name) => ({
       label: `仕様: ${name}`,
       cell: (p: DisplayProduct) =>
@@ -148,26 +172,33 @@ export function ProductComparison({
       <ul className="comparison-selection">
         {keys.map((key) => (
           <li key={key}>
-            {columns?.find((column) => column.key === key)?.product?.model || key}
-            <button type="button" aria-label={`${key}を比較から外す`} onClick={() => onRemove(key)}>
+            {productName(key)}
+            <button
+              type="button"
+              aria-label={`${productName(key)}を比較から外す`}
+              onClick={() => onRemove(key)}
+            >
               外す
             </button>
           </li>
         ))}
       </ul>
+      {columns?.some((column) => !column.product) ? (
+        <p role="status">
+          取得できない製品があります。
+          <button type="button" onClick={() => setAttempt((value) => value + 1)}>
+            比較情報を再読み込み
+          </button>
+        </p>
+      ) : null}
       {keys.length < 2 ? (
         <p role="status">もう1件選ぶと比較できます。</p>
       ) : !columns ? (
         <p role="status">比較情報を読み込んでいます…</p>
       ) : (
         <>
-          {columns.some((column) => !column.product) ? (
-            <p role="status">
-              取得できない製品があります。
-              <button type="button" onClick={() => setAttempt((value) => value + 1)}>
-                比較情報を再読み込み
-              </button>
-            </p>
+          {knownRows.length < rows.length ? (
+            <p className="filter-note">全製品で記載のない仕様項目は省略しています。</p>
           ) : null}
           <div
             className="comparison-table-wrap"
@@ -184,7 +215,7 @@ export function ProductComparison({
                   <th scope="col">比較項目</th>
                   {columns.map(({ key, product }) => (
                     <th scope="col" key={key}>
-                      <a href={productPermalinkPath(key) || "/"}>{product?.model || key}</a>
+                      <a href={productPermalinkPath(key) || "/"}>{productName(key)}</a>
                       {!product ? <p>取得できませんでした</p> : null}
                     </th>
                   ))}
