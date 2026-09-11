@@ -119,17 +119,14 @@ test("a resolved job persists a fresh data-quality snapshot without inventing a 
   assert.deepEqual(result.affectedShops, ["audio-union"]);
   const insertIndex = db.calls.findIndex((call) => /INSERT INTO data_quality_runs/.test(call.sql));
   const resolveIndex = db.calls.findIndex((call) => /SET status = 'resolved'/.test(call.sql));
-  const seedCursorIndex = db.calls.findIndex((call) =>
-    /data_quality_remediation_seed_cursors/.test(call.sql),
-  );
   assert.ok(insertIndex >= 0, "the sweep must persist the recomputed snapshot, not only log it");
   assert.ok(
     resolveIndex > insertIndex,
     "snapshot persistence must complete before the job is resolved",
   );
   assert.ok(
-    seedCursorIndex > resolveIndex,
-    "an existing queue job must resolve before stale selectors consume the remaining budget",
+    !db.calls.some((call) => /data_quality_remediation_seed_cursors/.test(call.sql)),
+    "an existing queue job must finish the scheduled obligation without an optional discovery phase",
   );
 
   const insert = db.calls[insertIndex];
@@ -191,4 +188,19 @@ test("an empty claim leaves the data-quality history untouched", async () => {
   assert.equal(result.resolved, 0);
   assert.deepEqual(result.affectedShops, []);
   assert.ok(!db.calls.some((call) => /INSERT INTO data_quality_runs/.test(call.sql)));
+});
+
+test("the scheduled path still discovers stale work after the durable queue drains", async () => {
+  const db = captureDatabase(() => []);
+
+  const result = await runDataQualityRemediationSweep(db, {
+    now: new Date("2026-08-15T00:00:00.000Z"),
+    preferQueuedWork: true,
+  });
+
+  assert.equal(result.claimed, 0);
+  assert.ok(
+    db.calls.some((call) => /data_quality_remediation_seed_cursors/.test(call.sql)),
+    "an empty initial claim must retain the bounded stale-work discovery path",
+  );
 });
