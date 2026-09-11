@@ -110,18 +110,26 @@ test("a resolved job persists a fresh data-quality snapshot without inventing a 
     claimLimit: 10,
     leaseSeconds: 300,
     now: new Date("2026-08-15T00:00:00.000Z"),
+    preferQueuedWork: true,
   });
 
   assert.equal(result.resolved, 1);
   assert.equal(result.failed, 0);
+  assert.equal(result.seeded, 0);
   assert.deepEqual(result.affectedShops, ["audio-union"]);
-
   const insertIndex = db.calls.findIndex((call) => /INSERT INTO data_quality_runs/.test(call.sql));
   const resolveIndex = db.calls.findIndex((call) => /SET status = 'resolved'/.test(call.sql));
+  const seedCursorIndex = db.calls.findIndex((call) =>
+    /data_quality_remediation_seed_cursors/.test(call.sql),
+  );
   assert.ok(insertIndex >= 0, "the sweep must persist the recomputed snapshot, not only log it");
   assert.ok(
     resolveIndex > insertIndex,
     "snapshot persistence must complete before the job is resolved",
+  );
+  assert.ok(
+    seedCursorIndex > resolveIndex,
+    "an existing queue job must resolve before stale selectors consume the remaining budget",
   );
 
   const insert = db.calls[insertIndex];
@@ -149,6 +157,7 @@ test("snapshot finalization failure retries the processed job instead of resolvi
     claimLimit: 10,
     leaseSeconds: 300,
     now: new Date("2026-08-15T00:00:00.000Z"),
+    preferQueuedWork: true,
   });
 
   assert.equal(result.resolved, 0);
@@ -156,6 +165,10 @@ test("snapshot finalization failure retries the processed job instead of resolvi
   assert.equal(result.retried, 1);
   assert.deepEqual(result.affectedShops, ["audio-union"]);
   assert.ok(!db.calls.some((call) => /SET status = 'resolved'/.test(call.sql)));
+  assert.ok(
+    !db.calls.some((call) => /data_quality_remediation_seed_cursors/.test(call.sql)),
+    "a failed queued job must not spend the remaining budget on stale selectors",
+  );
   const retry = db.calls.find(
     (call) => /SET status = \?, available_at = \?/.test(call.sql) && call.binds[0] === "pending",
   );
