@@ -5,6 +5,17 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/d1-health-query.sh"
 D1_QUERY_RETRY_SECONDS=3
 
 read_split_groups() {
+  local products='products p INDEXED BY idx_products_exact_identity'
+  local label='product_search.split_groups' escaped_keys
+  if [ -n "${split_group_keys:-}" ]; then
+    # Values come from the first observation, not shell code. Escape JSON for one SQL literal.
+    escaped_keys="${split_group_keys//\'/\'\'}"
+    products="json_each('$escaped_keys') observed
+      CROSS JOIN products p INDEXED BY idx_products_exact_identity
+        ON p.canonical_manufacturer_id = json_extract(observed.value, '\$[0]')
+       AND p.normalized_model = json_extract(observed.value, '\$[1]')"
+    label='product_search.split_groups_recheck'
+  fi
   query "
   SELECT
     p.canonical_manufacturer_id,
@@ -12,7 +23,7 @@ read_split_groups() {
     COUNT(*) AS listing_count,
     COUNT(DISTINCT p.shop_key) AS shop_count,
     COUNT(DISTINCT m.entity_id) AS entity_count
-  FROM products p
+  FROM $products
   JOIN product_search_entity_offers m ON m.listing_product_id = p.id
   LEFT JOIN product_identity_resolutions r
     ON r.listing_product_id = p.id AND r.status = 'matched'
@@ -31,14 +42,22 @@ read_split_groups() {
       ELSE NULL
     END) <= 1
   ORDER BY listing_count DESC, shop_count DESC
-  LIMIT 50;" "product_search.split_groups"
+  LIMIT 51;" "$label"
 }
 
 split_groups="$(read_split_groups)"
+if [ "$(jq 'length' <<< "$split_groups")" -gt 50 ]; then
+  echo 'Split identities exceed the retry scope; refusing a truncated convergence check.' >&2
+  jq . <<< "$split_groups" >&2
+  exit 1
+fi
 if [ "$(jq 'length' <<< "$split_groups")" -ne 0 ]; then
+  split_group_keys="$(jq -cer 'map([.canonical_manufacturer_id, .normalized_model])
+    | if all(.[]; all(.[]; type == "string" and length > 0)) then . else error("invalid identity keys") end' <<< "$split_groups")"
   # The deploy can finish just after a five-minute GENERAL_CRON boundary. The newly deployed repair
   # path has not had an opportunity to run in that case, so allow exactly one subsequent tick plus a
   # small execution grace period. Persistent drift is still reported by the second observation.
+  # Recheck all peers of each captured identity, including identities whose original seed vanished.
   echo "Safe exact identities are split; allowing the shared post-deploy repair window." >&2
   jq . <<< "$split_groups" >&2
   bash scripts/wait-for-active-crawl-convergence.sh --projection-grace
@@ -50,6 +69,11 @@ jq . <<< "$split_groups"
 if [ "$(jq 'length' <<< "$split_groups")" -ne 0 ]; then
   echo 'Safe exact product identities are split across Product Search entities.' >&2
   exit 1
+fi
+
+if [ "$HEALTH_INCLUDE_DIAGNOSTICS" != '1' ]; then
+  echo 'Representative groups and candidate diagnostics omitted; set HEALTH_INCLUDE_DIAGNOSTICS=1 for the extended report.'
+  exit 0
 fi
 
 grouped="$(query "

@@ -3,6 +3,12 @@
 D1_QUERY_MAX_ATTEMPTS=3
 D1_QUERY_RETRY_SECONDS=5
 
+HEALTH_INCLUDE_DIAGNOSTICS="${HEALTH_INCLUDE_DIAGNOSTICS:-0}"
+case "$HEALTH_INCLUDE_DIAGNOSTICS" in
+  0|1) ;;
+  *) echo 'HEALTH_INCLUDE_DIAGNOSTICS must be 0 or 1.' >&2; exit 2 ;;
+esac
+
 # Log only D1 response metadata, never SQL/binds or result rows. stderr remains outside $(query).
 # Malformed/failed responses are unknown costs, not zero-cost queries. Metadata from an invalid
 # result shape still counts: a successful database execution may have to be retried by the caller.

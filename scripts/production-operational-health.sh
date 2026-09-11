@@ -3,26 +3,6 @@ set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib/d1-health-query.sh"
 
-verify_audiounion_inventory() {
-  local result row in_stock
-  result="$(query "
-    SELECT
-      COUNT(*) AS active_count,
-      SUM(CASE WHEN stock_status = 'in_stock' THEN 1 ELSE 0 END) AS in_stock_count,
-      SUM(CASE WHEN stock_status = 'unknown' THEN 1 ELSE 0 END) AS unknown_count,
-      MAX(last_seen_at) AS latest_seen_at
-    FROM products
-    WHERE shop_key = 'audiounion' AND is_active = 1;" "data_platform.audiounion_inventory")"
-  row="$(jq -c '.[0] // {}' <<< "$result")"
-  echo 'AudioUnion inventory state:'
-  jq . <<< "$row"
-  in_stock="$(jq -r '.in_stock_count // 0' <<< "$row")"
-  if [ "$in_stock" -le 0 ]; then
-    echo "AudioUnion has no active in-stock listings after the priced-listing fix." >&2
-    exit 1
-  fi
-}
-
 read_search_entities() {
   query "$(cat scripts/sql/search-entity-health.sql)" "data_platform.search_entities"
 }
@@ -43,41 +23,14 @@ search_non_stale_drift_count() {
   jq '[.[0] | .unmembered_active_listings, .inactive_offer_memberships, .entities_without_offers, .ineligible_catalog_entities, .offer_count_mismatches] | map(. // 0) | add' <<< "$1"
 }
 
-verify_audiounion_inventory
-
-identity="$(query "
-  SELECT
-    COUNT(*) AS resolution_count,
-    SUM(CASE WHEN status = 'matched' THEN 1 ELSE 0 END) AS matched_count,
-    SUM(CASE WHEN status = 'unresolved' THEN 1 ELSE 0 END) AS unresolved_count,
-    SUM(CASE WHEN match_method = 'vetoed' THEN 1 ELSE 0 END) AS veto_count,
-    SUM(CASE WHEN status = 'unresolved' AND candidate_catalog_product_id IS NOT NULL THEN 1 ELSE 0 END) AS candidate_count,
-    MAX(evaluated_at) AS latest_evaluated_at
-  FROM product_identity_resolutions;" "data_platform.identity")"
-
-evidence="$(query "
-  SELECT
-    COUNT(*) AS evidence_count,
-    COALESCE(SUM(content_bytes), 0) AS content_bytes,
-    SUM(CASE WHEN COALESCE(r2_object_key, '') <> '' THEN 1 ELSE 0 END) AS object_key_count,
-    MAX(captured_at) AS latest_captured_at
-  FROM evidence_archive;" "data_platform.evidence")"
-
-shops="$(query "
-  SELECT
-    shop_key,
-    COUNT(*) AS active_count,
-    SUM(CASE WHEN stock_status = 'unknown' THEN 1 ELSE 0 END) AS inventory_unknown_count,
-    MAX(last_seen_at) AS latest_seen_at
-  FROM products
-  WHERE is_active = 1
-  GROUP BY shop_key
-  ORDER BY shop_key;" "data_platform.shops")"
-
 baseline="$(query "
   SELECT
     p.shop_key,
     COUNT(*) AS total_items,
+    SUM(CASE WHEN p.stock_status = 'in_stock' THEN 1 ELSE 0 END) AS in_stock_count,
+    MAX(p.last_seen_at) AS latest_seen_at,
+    SUM(CASE WHEN p.manufacturer_resolver_version < 2 THEN 1 ELSE 0 END) AS stale_manufacturer_listings,
+    SUM(CASE WHEN p.model_resolver_version < 2 THEN 1 ELSE 0 END) AS stale_model_listings,
     SUM(CASE
       WHEN COALESCE(p.raw_manufacturer, '') = ''
        AND p.manufacturer_resolution_status <> 'resolved'
@@ -104,80 +57,28 @@ baseline="$(query "
   GROUP BY p.shop_key
   ORDER BY p.shop_key;" "data_platform.baseline")"
 
-unresolved_manufacturers="$(query "
-  SELECT
-    p.normalized_raw_manufacturer,
-    MIN(p.raw_manufacturer) AS sample_raw_manufacturer,
-    COUNT(*) AS active_listing_count,
-    COUNT(DISTINCT p.shop_key) AS shop_count
-  FROM products p
-  WHERE p.is_active = 1 AND p.manufacturer_resolution_status <> 'resolved'
-  GROUP BY p.normalized_raw_manufacturer
-  ORDER BY active_listing_count DESC, shop_count DESC, p.normalized_raw_manufacturer
-  LIMIT 25;" "data_platform.unresolved_manufacturers")"
-
-unresolved_manufacturer_models="$(query "
-  SELECT
-    p.canonical_manufacturer_id,
-    p.normalized_model,
-    p.shop_key,
-    COUNT(*) AS active_listing_count
-  FROM products p
-  JOIN product_identity_resolutions r ON r.listing_product_id = p.id
-  WHERE p.is_active = 1 AND r.status = 'unresolved'
-  GROUP BY p.canonical_manufacturer_id, p.normalized_model, p.shop_key
-  ORDER BY active_listing_count DESC, p.canonical_manufacturer_id,
-           p.normalized_model, p.shop_key
-  LIMIT 50;" "data_platform.unresolved_manufacturer_models")"
-
-unresolved_models="$(query "
-  SELECT
-    p.canonical_manufacturer_id,
-    p.model_resolution_status,
-    p.model_resolution_method,
-    MIN(p.raw_model) AS sample_raw_model,
-    COUNT(*) AS active_listing_count,
-    COUNT(DISTINCT p.shop_key) AS shop_count
-  FROM products p
-  WHERE p.is_active = 1 AND p.model_resolution_status <> 'resolved'
-  GROUP BY p.canonical_manufacturer_id, p.model_resolution_status,
-           p.model_resolution_method
-  ORDER BY active_listing_count DESC, shop_count DESC, p.canonical_manufacturer_id
-  LIMIT 25;" "data_platform.unresolved_models")"
-
-remediation_events="$(query "
-  SELECT
-    field,
-    reason,
-    COUNT(*) AS change_count,
-    MAX(processed_at) AS last_processed_at
-  FROM data_quality_remediation_events
-  GROUP BY field, reason
-  ORDER BY change_count DESC, field, reason
-  LIMIT 25;" "data_platform.remediation_events")"
-
-remediation_queue="$(query "
-  SELECT
-    SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
-    SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END) AS processing,
-    SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) AS resolved,
-    SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
-    SUM(CASE WHEN status IN ('pending', 'processing') THEN 1 ELSE 0 END) AS backlog,
-    MIN(CASE WHEN status IN ('pending', 'processing') THEN created_at END) AS oldest_pending_at
-  FROM data_quality_remediation_queue;" "data_platform.remediation_queue")"
-remediation_queue_with_rates="$(jq 'map(. + {
-  completed: ((.resolved // 0) + (.failed // 0)),
-  failure_rate: (if (((.resolved // 0) + (.failed // 0)) > 0) then ((.failed // 0) / ((.resolved // 0) + (.failed // 0))) else null end)
-})' <<< "$remediation_queue")"
-
-stale_resolver_versions="$(query "
-  SELECT
-    SUM(CASE WHEN manufacturer_resolver_version < 2 THEN 1 ELSE 0 END)
-      AS stale_manufacturer_listings,
-    SUM(CASE WHEN model_resolver_version < 2 THEN 1 ELSE 0 END)
-      AS stale_model_listings
-  FROM products
-  WHERE is_active = 1;" "data_platform.stale_resolver_versions")"
+# These summaries share the required active-listing/identity scan above.
+shops="$(jq 'map({shop_key, active_count: .total_items, inventory_unknown_count, latest_seen_at})' <<< "$baseline")"
+identity="$(jq '[{
+  resolution_count: ([.[] | .identity_matched_count + .identity_unresolved_count] | add // 0),
+  matched_count: ([.[].identity_matched_count] | add // 0),
+  unresolved_count: ([.[].identity_unresolved_count] | add // 0),
+  veto_count: ([.[].identity_veto_count] | add // 0),
+  candidate_count: ([.[].identity_candidate_count] | add // 0)
+}]' <<< "$baseline")"
+stale_resolver_versions="$(jq '[{
+  stale_manufacturer_listings: ([.[].stale_manufacturer_listings] | add // 0),
+  stale_model_listings: ([.[].stale_model_listings] | add // 0)
+}]' <<< "$baseline")"
+audiounion_inventory="$(jq '[.[] | select(.shop_key == "audiounion") | {
+  active_count: .total_items, in_stock_count, unknown_count: .inventory_unknown_count, latest_seen_at
+}]' <<< "$baseline")"
+echo 'AudioUnion inventory state:'
+jq . <<< "$audiounion_inventory"
+if [ "$(jq '.[0].in_stock_count // 0' <<< "$audiounion_inventory")" -le 0 ]; then
+  echo "AudioUnion has no active in-stock listings after the priced-listing fix." >&2
+  exit 1
+fi
 
 # Listing writes and search projection refreshes are separate bounded D1 writes. Most intermediate
 # states should disappear within seconds, so keep the short retry window. A stale fallback is the
@@ -266,10 +167,8 @@ if ! (D1_QUERY_MAX_ATTEMPTS=1; query \
   exit 1
 fi
 
-echo 'Product Identity production state:'
+echo 'Active Product Identity production state:'
 jq . <<< "$identity"
-echo 'Evidence metadata production state:'
-jq . <<< "$evidence"
 echo 'Active listings by shop:'
 jq . <<< "$shops"
 echo 'Phase 2 snapshot baseline:'
@@ -278,16 +177,6 @@ echo 'Phase 4 product search read model:'
 jq . <<< "$search_entities"
 echo 'Latest persisted Phase 2 quality runs:'
 jq . <<< "$quality_runs"
-echo 'Top unresolved manufacturer raw values:'
-jq . <<< "$unresolved_manufacturers"
-echo 'Top unresolved manufacturer/model/shop groups:'
-jq . <<< "$unresolved_manufacturer_models"
-echo 'Top model extraction failures:'
-jq . <<< "$unresolved_models"
-echo 'Remediation changes recorded:'
-jq . <<< "$remediation_events"
-echo 'Remediation queue operational state:'
-jq . <<< "$remediation_queue_with_rates"
 echo 'Listings still behind the current resolver versions:'
 jq . <<< "$stale_resolver_versions"
 
@@ -297,14 +186,9 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     echo
     echo 'This report runs after deployment. A failure marks operational health degraded without rewriting the deployment result.'
     echo
-    echo '#### Product Identity'
+    echo '#### Active Product Identity'
     echo '```json'
     jq . <<< "$identity"
-    echo '```'
-    echo
-    echo '#### Evidence metadata'
-    echo '```json'
-    jq . <<< "$evidence"
     echo '```'
     echo
     echo '#### Active listings by shop'
@@ -327,34 +211,15 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     jq . <<< "$quality_runs"
     echo '```'
     echo
-    echo '### Top unresolved manufacturer raw values'
-    echo '```json'
-    jq . <<< "$unresolved_manufacturers"
-    echo '```'
-    echo
-    echo '### Top unresolved manufacturer/model/shop groups'
-    echo '```json'
-    jq . <<< "$unresolved_manufacturer_models"
-    echo '```'
-    echo
-    echo '### Top model extraction failures'
-    echo '```json'
-    jq . <<< "$unresolved_models"
-    echo '```'
-    echo
-    echo '### Remediation changes recorded'
-    echo '```json'
-    jq . <<< "$remediation_events"
-    echo '```'
-    echo
-    echo '### Remediation queue operational state'
-    echo '```json'
-    jq . <<< "$remediation_queue_with_rates"
-    echo '```'
-    echo
     echo '### Listings still behind the current resolver versions'
     echo '```json'
     jq . <<< "$stale_resolver_versions"
     echo '```'
   } >> "$GITHUB_STEP_SUMMARY"
+fi
+
+if [ "$HEALTH_INCLUDE_DIAGNOSTICS" = '1' ]; then
+  bash scripts/production-operational-diagnostics.sh
+else
+  echo 'Historical and ranked diagnostics omitted; set HEALTH_INCLUDE_DIAGNOSTICS=1 for the extended report.'
 fi

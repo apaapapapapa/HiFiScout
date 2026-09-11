@@ -46,26 +46,35 @@ PROJECTION_REPAIR_GRACE_SECONDS="${PROJECTION_REPAIR_GRACE_SECONDS:-45}"
 
 read_blocking_sessions() {
   query "
+    WITH active_sessions AS MATERIALIZED (
     SELECT
       s.shop_key,
       COUNT(*) AS active_session_count,
       MIN(s.updated_at) AS oldest_session_update,
       MAX(s.updated_at) AS latest_session_update
-    FROM crawl_fetch_sessions s
+    FROM crawl_fetch_sessions s INDEXED BY idx_crawl_fetch_sessions_active
     WHERE s.status IN ('collecting', 'finalizing')
-      AND EXISTS (
+    GROUP BY s.shop_key
+    )
+    SELECT s.* FROM active_sessions s
+    WHERE EXISTS (
         SELECT 1
-        FROM products p
+        FROM json_each('$identity_gap_ids') observed
+        CROSS JOIN products p ON p.id = observed.value
         LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
         WHERE p.shop_key = s.shop_key
           AND p.is_active = 1
           AND r.listing_product_id IS NULL
       )
-    GROUP BY s.shop_key
     ORDER BY s.shop_key;" "convergence.blocking_sessions"
 }
 
 read_identity_gap_rows() {
+  local scope='' label='convergence.identity_gaps'
+  if [ -n "${identity_gap_ids:-}" ]; then
+    scope="AND p.id IN (SELECT value FROM json_each('$identity_gap_ids'))"
+    label='convergence.identity_gaps_recheck'
+  fi
   query "
     SELECT
       p.id,
@@ -82,8 +91,9 @@ read_identity_gap_rows() {
     LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
     WHERE p.is_active = 1
       AND r.listing_product_id IS NULL
+      $scope
     ORDER BY p.id
-    LIMIT 25;" "convergence.identity_gaps"
+    LIMIT 1001;" "$label"
 }
 
 if ! [[ "$ACTIVE_CRAWL_CONVERGENCE_MAX_WAIT_SECONDS" =~ ^[0-9]+$ ]] || \
@@ -93,6 +103,21 @@ if ! [[ "$ACTIVE_CRAWL_CONVERGENCE_MAX_WAIT_SECONDS" =~ ^[0-9]+$ ]] || \
   echo "Invalid crawl/projection convergence timing configuration." >&2
   exit 2
 fi
+
+# Observe coverage once before waiting. Polling never rescans every listing in an active shop.
+# Strict checks after this wait still audit the full current state, including any new gaps.
+identity_gaps="$(read_identity_gap_rows)"
+identity_gap_count="$(jq 'length' <<< "$identity_gaps")"
+if [ "$identity_gap_count" -eq 0 ]; then
+  echo "No active crawl or post-crawl Product Identity coverage gap requires convergence time."
+  exit 0
+fi
+if [ "$identity_gap_count" -gt 1000 ]; then
+  echo 'Identity gaps exceed the bounded wait scope; continuing to the strict health checks.' >&2
+  exit 0
+fi
+identity_gap_ids="$(jq -cer 'map(.id) | if all(.[]; type == "number" and . > 0 and floor == .)
+  then . else error("invalid identity gap IDs") end' <<< "$identity_gaps")"
 
 started_epoch="$(date +%s)"
 active_wait_exhausted=0
