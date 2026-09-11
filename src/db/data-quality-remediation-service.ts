@@ -743,7 +743,7 @@ export async function runDataQualityRemediationSweep(
   // Scheduled sweeps claim one expensive projection at a time. Once that durable work is fully
   // resolved, use any remaining budget to discover future work; a cooperative budget yield here
   // cannot make the completed projection run again on the next tick.
-  if (seedAfterProcessing) {
+  if (seedAfterProcessing && resolved === jobs.length) {
     seeded = await seedDataQualityRemediationQueue(db, { limit: seedLimit, now: evaluatedAt });
   }
 

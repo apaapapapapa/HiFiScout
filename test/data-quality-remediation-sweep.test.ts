@@ -157,6 +157,7 @@ test("snapshot finalization failure retries the processed job instead of resolvi
     claimLimit: 10,
     leaseSeconds: 300,
     now: new Date("2026-08-15T00:00:00.000Z"),
+    preferQueuedWork: true,
   });
 
   assert.equal(result.resolved, 0);
@@ -164,6 +165,10 @@ test("snapshot finalization failure retries the processed job instead of resolvi
   assert.equal(result.retried, 1);
   assert.deepEqual(result.affectedShops, ["audio-union"]);
   assert.ok(!db.calls.some((call) => /SET status = 'resolved'/.test(call.sql)));
+  assert.ok(
+    !db.calls.some((call) => /data_quality_remediation_seed_cursors/.test(call.sql)),
+    "a failed queued job must not spend the remaining budget on stale selectors",
+  );
   const retry = db.calls.find(
     (call) => /SET status = \?, available_at = \?/.test(call.sql) && call.binds[0] === "pending",
   );
