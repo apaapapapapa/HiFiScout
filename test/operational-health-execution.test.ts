@@ -51,11 +51,9 @@ test("strict operational health keeps all gates with four queries and optional d
     "data_platform.fts_integrity",
   ]);
   assert.match(result.sql.at(-1)!, /integrity-check/);
-  const detailed = runHealthScript(
-    dataScript,
-    [...core, ...Array.from({ length: 7 }, () => [])],
-    { HEALTH_INCLUDE_DIAGNOSTICS: "1" },
-  );
+  const detailed = runHealthScript(dataScript, [...core, ...Array.from({ length: 7 }, () => [])], {
+    HEALTH_INCLUDE_DIAGNOSTICS: "1",
+  });
   assert.equal(detailed.status, 0, detailed.stderr);
   assert.equal(detailed.sql.length, 11);
   assert.ok(detailed.labels.includes("data_platform.unresolved_manufacturer_models"));
@@ -90,7 +88,10 @@ test("all six projection faults fail after scoped retries; oversized scopes neve
     const fault = [{ ...clean[0], [kind]: 1, entity_ids: "[1]", listing_ids: "[1]" }];
     const result = runHealthScript(dataScript, [baseline, fault, fault, fault, fault, fault, []]);
     assert.equal(result.status, 1, result.stderr);
-    assert.equal(result.labels.filter((label) => label === "data_platform.search_entities").length, 1);
+    assert.equal(
+      result.labels.filter((label) => label === "data_platform.search_entities").length,
+      1,
+    );
     assert.equal(
       result.labels.filter((label) => label === "data_platform.search_entities_recheck").length,
       4,
@@ -133,7 +134,9 @@ test("split grouping observes the catalog once and rechecks safely quoted captur
   ]);
   assert.equal(oversized.status, 1);
   assert.equal(oversized.sql.length, 1);
-  const detailed = runHealthScript(groupingScript, [[], [], []], { HEALTH_INCLUDE_DIAGNOSTICS: "1" });
+  const detailed = runHealthScript(groupingScript, [[], [], []], {
+    HEALTH_INCLUDE_DIAGNOSTICS: "1",
+  });
   assert.equal(detailed.status, 0, detailed.stderr);
   assert.equal(detailed.sql.length, 3);
 });
