@@ -12,6 +12,19 @@ Snapshot quality and crawl-run quality are semantically separate even though the
 
 ## Decision evidence and precision
 
+Reviewed model form factors in `src/catalog/verified-model-facets.ts` supplement missing seller
+wording for explicitly listed speaker models. Every fact retains its official source URL and review
+date. Matching requires the verified manufacturer, speaker classification, and a complete approved
+model/finish expression. Accessories, unknown editions and unrelated bundles gain no fact; identity
+and revision evidence never change. Crawl and bounded category replay use the same derivation.
+Automatic facet synchronization reads one listing's indexed facts, retains manual sources and keeps
+unchanged observation times without writing. It uses two statements regardless of retained inventory.
+
+The reviewed LUXMAN D-07X and D-10X specification migration fills only missing specifications on
+exact verified catalog models. It preserves existing admin entries and uses the current port
+projection trigger. Values describe the original model; included accessories and warranty remain
+listing-specific seller facts.
+
 Seller condition, included items, warranty and sale-unit facts live in `product_offer_facts`,
 separately from catalog capabilities and product identity. `src/catalog/offer-facts.ts` derives
 only explicit statements from the already-collected title and condition text. Missing or

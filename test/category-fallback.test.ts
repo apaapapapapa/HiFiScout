@@ -127,7 +127,7 @@ test("Hifido recognizes supported seller categories that previously became blank
 test("category metadata version advances so stale rows are replayable", () => {
   // A literal on purpose: bumping the classifier is what makes every stored listing eligible for
   // the remediation replay, so it cannot be done without editing this line and thinking about the
-  // backfill it starts. Version 19 removes explicit included-item wording such as リモコンあり
-  // before sale-object inference through the bounded active-inventory selectors.
-  assert.equal(CATEGORY_CLASSIFICATION_METADATA_VERSION, 19);
+  // backfill it starts. Version 20 adds source-reviewed speaker form factors
+  // through the bounded active-inventory selectors.
+  assert.equal(CATEGORY_CLASSIFICATION_METADATA_VERSION, 20);
 });

@@ -26,8 +26,9 @@ import { presentationColorLabel } from "./model-presentation-color.js";
 import { resolveModel, MODEL_RESOLVER_VERSION } from "./model-resolver.js";
 import { inferFeatureFacts, normalizeFeatureFacts } from "./product-features.js";
 import { inferFacetFacts, normalizeFacetFacts } from "./product-facets.js";
+import { verifiedModelFacetFacts, VERIFIED_MODEL_FACET_SOURCE } from "./verified-model-facets.js";
 
-const CLASSIFICATION_METADATA_VERSION = 19;
+const CLASSIFICATION_METADATA_VERSION = 20;
 
 export interface CatalogNormalizationContext {
   /** Source seller used by narrowly scoped model-annotation rules. */
@@ -160,7 +161,10 @@ export function normalizeCatalogProduct(
   const facetFacts = normalizeFacetFacts([
     ...(Array.isArray(product.facetFacts)
       ? product.facetFacts.filter(
-          (fact) => fact.source !== "title" && fact.source !== "seller_category",
+          (fact) =>
+            fact.source !== "title" &&
+            fact.source !== "seller_category" &&
+            !fact.source?.startsWith(`${VERIFIED_MODEL_FACET_SOURCE}:`),
         )
       : []),
     ...inferFacetFacts(product.title || "", {
@@ -169,6 +173,12 @@ export function normalizeCatalogProduct(
       legacyCategoryIds: mappedLegacyCategory ? [mappedLegacyCategory] : [],
     }),
     ...inferFacetFacts(rawCategory, { source: "seller_category", confidence: 0.7 }),
+    ...verifiedModelFacetFacts({
+      manufacturerId: manufacturer.canonicalManufacturerId,
+      model: model.model,
+      title: product.title || "",
+      primaryCategoryId: classification.primaryCategoryId,
+    }),
   ]);
   return applyCategoryClassification(
     {
