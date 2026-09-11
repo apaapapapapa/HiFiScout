@@ -80,6 +80,26 @@ if [ "$(jq '.[0].in_stock_count // 0' <<< "$audiounion_inventory")" -le 0 ]; the
   exit 1
 fi
 
+# The baseline is authoritative for these gates. Fail before scanning search entities or waiting
+# for projection repair when missing identity coverage already makes this observation unhealthy.
+identity_count="$(jq -r '.[0].resolution_count // 0' <<< "$identity")"
+identity_missing_count="$(jq '[.[].identity_resolution_missing_count // 0] | add // 0' <<< "$baseline")"
+shop_count="$(jq 'length' <<< "$shops")"
+
+if [ "$identity_count" -le 0 ]; then
+  echo "Product Identity has no production rows." >&2
+  exit 1
+fi
+if [ "$shop_count" -le 0 ]; then
+  echo "No active production shop data found." >&2
+  exit 1
+fi
+if [ "$identity_missing_count" -ne 0 ]; then
+  echo "Product Identity coverage gap detected: ${identity_missing_count} active listing(s) have no resolution row." >&2
+  jq '[.[] | select((.identity_resolution_missing_count // 0) > 0) | {shop_key, total_items, identity_matched_count, identity_unresolved_count, identity_resolution_missing_count}]' <<< "$baseline" >&2
+  exit 1
+fi
+
 # Listing writes and search projection refreshes are separate bounded D1 writes. Most intermediate
 # states should disappear within seconds, so keep the short retry window. A stale fallback is the
 # special case: the bounded projection repair is deliberately scheduled on GENERAL_CRON every five
@@ -137,23 +157,6 @@ baseline_with_rates="$(jq 'map(. + {
   model_extraction_rate: (if .model_expected_count > 0 then (.model_extracted_count / .model_expected_count) else null end)
 })' <<< "$baseline")"
 
-identity_count="$(jq -r '.[0].resolution_count // 0' <<< "$identity")"
-identity_missing_count="$(jq '[.[].identity_resolution_missing_count // 0] | add // 0' <<< "$baseline")"
-shop_count="$(jq 'length' <<< "$shops")"
-
-if [ "$identity_count" -le 0 ]; then
-  echo "Product Identity has no production rows." >&2
-  exit 1
-fi
-if [ "$shop_count" -le 0 ]; then
-  echo "No active production shop data found." >&2
-  exit 1
-fi
-if [ "$identity_missing_count" -ne 0 ]; then
-  echo "Product Identity coverage gap detected: ${identity_missing_count} active listing(s) have no resolution row." >&2
-  jq '[.[] | select((.identity_resolution_missing_count // 0) > 0) | {shop_key, total_items, identity_matched_count, identity_unresolved_count, identity_resolution_missing_count}]' <<< "$baseline" >&2
-  exit 1
-fi
 if [ "$search_drift" -ne 0 ]; then
   echo "Product search read model drifted after its allowed convergence window; POST /api/admin/product-search/rebuild repairs it." >&2
   jq . <<< "$search_entities" >&2

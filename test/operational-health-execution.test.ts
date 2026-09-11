@@ -62,7 +62,7 @@ test("strict operational health keeps all gates with four queries and optional d
   assert.equal(invalid.sql.length, 0);
 });
 
-test("inventory and identity coverage errors still fail before FTS checking", () => {
+test("inventory and identity coverage errors fail before further catalog reads", () => {
   const inventory = runHealthScript(dataScript, [[{ ...baseline[0], in_stock_count: 0 }]]);
   assert.equal(inventory.status, 1);
   assert.match(inventory.stderr, /no active in-stock/);
@@ -73,7 +73,15 @@ test("inventory and identity coverage errors still fail before FTS checking", ()
   ]);
   assert.equal(identity.status, 1);
   assert.match(identity.stderr, /coverage gap detected/);
-  assert.ok(!identity.labels.includes("data_platform.fts_integrity"));
+  assert.deepEqual(identity.labels, ["data_platform.baseline"]);
+  const missing = runHealthScript(dataScript, [
+    [{ ...baseline[0], identity_matched_count: 0, identity_resolution_missing_count: 1 }],
+    clean,
+    [],
+  ]);
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /Product Identity has no production rows/);
+  assert.deepEqual(missing.labels, ["data_platform.baseline"]);
 });
 
 test("all six projection faults fail after scoped retries; oversized scopes never retry", () => {

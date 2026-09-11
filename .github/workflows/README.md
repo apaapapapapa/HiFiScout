@@ -88,6 +88,7 @@ baseline, the full search-entity audit, latest quality rows and the existing FTS
 AudioUnion stock, per-shop inventory, active identity counts and stale resolver counts are derived
 from the same baseline. The identity summary is explicitly active-listing-only; a successful baseline
 still requires identity coverage for every active listing and active in-stock AudioUnion inventory.
+Stock/identity failures stop at that first baseline query, before any search audit or retry wait.
 Entity summary counts and drift flags share one entity-state evaluation, preserving all six failure
 types, exact counts and the captured retry IDs. The initial audit remains proportional to the full
 active-listing/membership/entity state; it is not a constant-cost or sampled health claim.
@@ -105,7 +106,12 @@ current memberships, retaining the initial catalog-wide counts as snapshot metad
 fallback is still checked for a missing listing membership. More than 1,000 IDs in either scope fails
 immediately instead of retrying a truncated sample or repeating the full audit. These rechecks prove
 convergence of the captured scope; unrelated changes after the first observation await a later audit.
-Product Search split-group detection likewise makes one full observation, then rechecks the captured
+Product Search split-group detection first seeks active/resolved listings through
+`idx_products_model_resolution`, so retired listing history does not extend the initial scan.
+Both observations exclude vetoed resolutions and verified catalog matches, matching runtime
+eligibility. Category compatibility includes eligible peers with no membership yet; their absence
+must not hide a category contradiction. The separate listing-coverage audit handles missing offers.
+Split detection makes one full observation, then rechecks the captured
 manufacturer/model keys through the existing exact-identity index. It includes every current peer of
 those keys, even if an original listing disappeared. At most 50 keys may be retried; observing 51
 fails immediately. New unrelated splits after the initial observation await a later full audit.
@@ -146,6 +152,15 @@ The unchanged FTS integrity command accounts for one D1-reported write in both c
 measurements; the audit SELECTs and scoped rechecks write zero rows. These are local regression
 measurements, not a claim that the suspended production checks have been run or that account-wide
 D1 use has fallen by the same percentage.
+
+The split-health regression also compares both observations with the runtime audit across vetoed,
+candidate, verified/unverified and missing-membership cases. With three active peers and 10,000
+retired listings, the initial query reads 13 rows instead of 10,010. The active-only index requires
+grouping work: with 10,003 active listings it reads 40,013 instead of 30,010 for the prior
+exact-identity-index scan. This tradeoff prevents unbounded growth with inactive history; it is not
+a claim of fewer initial grouping reads for every data distribution. The scoped search-entity
+retry was also measured with 10,000 unrelated active listings and remained at 26 reads, so no
+additional join-order rewrite was needed there.
 
 ## Manual data operations and audits
 

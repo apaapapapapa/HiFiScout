@@ -5,7 +5,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/d1-health-query.sh"
 D1_QUERY_RETRY_SECONDS=3
 
 read_split_groups() {
-  local products='products p INDEXED BY idx_products_exact_identity'
+  # The first observation has no identity key. Seek active/resolved rows instead of scanning
+  # the exact-identity index's leading keys across every retired listing.
+  local products='products p INDEXED BY idx_products_model_resolution'
   local label='product_search.split_groups' escaped_keys
   if [ -n "${split_group_keys:-}" ]; then
     # Values come from the first observation, not shell code. Escape JSON for one SQL literal.
@@ -24,15 +26,16 @@ read_split_groups() {
     COUNT(DISTINCT p.shop_key) AS shop_count,
     COUNT(DISTINCT m.entity_id) AS entity_count
   FROM $products
-  JOIN product_search_entity_offers m ON m.listing_product_id = p.id
+  LEFT JOIN product_search_entity_offers m ON m.listing_product_id = p.id
   LEFT JOIN product_identity_resolutions r
-    ON r.listing_product_id = p.id AND r.status = 'matched'
+    ON r.listing_product_id = p.id
   LEFT JOIN knowledge_catalog_products kp
-    ON kp.id = r.catalog_product_id AND kp.verification_status = 'verified'
+    ON kp.id = r.catalog_product_id AND r.status = 'matched' AND kp.verification_status = 'verified'
   WHERE p.is_active = 1
     AND p.model_resolution_status = 'resolved'
     AND COALESCE(p.canonical_manufacturer_id, '') <> ''
     AND COALESCE(p.normalized_model, '') <> ''
+    AND COALESCE(r.match_method, '') <> 'vetoed'
     AND kp.id IS NULL
   GROUP BY p.canonical_manufacturer_id, p.normalized_model
   HAVING COUNT(*) > 1

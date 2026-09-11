@@ -4,6 +4,7 @@ import { test } from "vite-plus/test";
 import { database, AT } from "./helpers/d1-write-budget.js";
 import { addHealthListings } from "./helpers/health-fixture.js";
 import { runHealthScript } from "./helpers/health-cli.js";
+import { EXACT_IDENTITY_SPLIT_COUNT_SQL } from "../src/db/product-search-exact-identity.js";
 
 // Workerd startup, schema migration and 10k-row fixture setup share the D1 integration allowance.
 // SQL regression gates below use billed rows, not wall-clock timing.
@@ -126,6 +127,117 @@ test("split-identity rechecks seek captured keys even after a seed disappears", 
     console.log(
       JSON.stringify({
         event: "split_health_recheck_budget",
+        small: small.meta.rows_read,
+        large: large.meta.rows_read,
+      }),
+    );
+  } finally {
+    await dispose();
+  }
+}, 30_000);
+
+test("split health uses runtime eligibility and category rules in both observations", async () => {
+  const { db, dispose } = await database();
+  try {
+    const invocation = runHealthScript("scripts/product-search-identity-health.sh", [
+      [{ canonical_manufacturer_id: "maker", normalized_model: "MODEL" }],
+      [],
+    ]);
+    assert.equal(invocation.status, 0, invocation.stderr);
+    await addHealthListings(db, 1, 3);
+    await db
+      .prepare("UPDATE products SET normalized_model='MODEL',primary_category_id='AMP.PRE'")
+      .run();
+    const check = async (expected: number, reason: string) => {
+      const runtime = await db
+        .prepare(EXACT_IDENTITY_SPLIT_COUNT_SQL)
+        .first<{ split_exact_identity_groups: number }>();
+      assert.equal(runtime?.split_exact_identity_groups, expected, reason);
+      for (const sql of invocation.sql) {
+        const result = await db.prepare(sql).all();
+        assert.equal(result.results.length, expected, reason);
+        assert.equal(result.meta.rows_written, 0);
+      }
+    };
+    await check(1, "ordinary safe peers remain detectable");
+    await db
+      .prepare(`UPDATE product_identity_resolutions SET match_method='vetoed' WHERE listing_product_id=3;
+      UPDATE products SET primary_category_id='AMP.INTEGRATED' WHERE id=3;`)
+      .run();
+    await check(1, "a vetoed category contradiction must not hide a real split");
+    await db
+      .prepare(`UPDATE product_identity_resolutions SET match_method='vetoed' WHERE listing_product_id=2;
+      UPDATE products SET primary_category_id='AMP.PRE' WHERE id=3;`)
+      .run();
+    await check(0, "vetoed listings must not create a false split");
+    await db
+      .prepare(`UPDATE product_identity_resolutions SET match_method='none' WHERE listing_product_id=2;
+      UPDATE products SET model_resolution_status='candidate' WHERE id=2;`)
+      .run();
+    await check(0, "candidate models remain excluded");
+    await db
+      .prepare(`UPDATE products SET model_resolution_status='resolved' WHERE id=2;
+      UPDATE products SET primary_category_id='AMP.INTEGRATED' WHERE id=3;
+      INSERT INTO knowledge_catalog_products(id,manufacturer_id,canonical_model,normalized_model,
+        verification_status,created_at,updated_at)
+      VALUES(1,'maker','MODEL','MODEL','verified','${AT}','${AT}');
+      UPDATE product_identity_resolutions SET status='matched',match_method='exact',catalog_product_id=1
+      WHERE listing_product_id=3;`)
+      .run();
+    await check(1, "verified catalog matches do not veto fallback grouping");
+    await db
+      .prepare("UPDATE knowledge_catalog_products SET verification_status='rejected' WHERE id=1")
+      .run();
+    await check(
+      0,
+      "a rejected match remains eligible and its category contradiction vetoes grouping",
+    );
+    await db
+      .prepare(`DELETE FROM product_identity_resolutions WHERE listing_product_id=3;
+      DELETE FROM product_search_entity_offers WHERE listing_product_id=3;`)
+      .run();
+    await check(0, "a missing membership must not hide an eligible category contradiction");
+    await db.prepare("UPDATE products SET primary_category_id='unclassified' WHERE id=3").run();
+    await check(1, "an unspecified category is not a contradiction");
+  } finally {
+    await dispose();
+  }
+}, 30_000);
+
+test("initial split health seeks active resolved listings without scanning retired history", async () => {
+  const { db, dispose } = await database();
+  try {
+    const sql = runHealthScript("scripts/product-search-identity-health.sh", [[]]).sql[0];
+    await addHealthListings(db, 1, 3);
+    await db.prepare("UPDATE products SET normalized_model='MODEL'").run();
+    const small = await db.prepare(sql).all();
+    assert.equal(small.results.length, 1);
+    await addHealthListings(db, 4, 10003);
+    // Historical listings have no live cards and must not increase an active audit's reads.
+    await db
+      .prepare(
+        "UPDATE products SET is_active=0 WHERE id>3; DELETE FROM product_search_entities WHERE id>3;",
+      )
+      .run();
+    const large = await db.prepare(sql).all();
+    assert.deepEqual(large.results, small.results);
+    assert.ok(
+      large.meta.rows_read <= small.meta.rows_read + 5,
+      JSON.stringify({ small: small.meta, large: large.meta }),
+    );
+    assert.ok(large.meta.rows_read < 40);
+    assert.equal(large.meta.rows_written, 0);
+    const plan = (await db.prepare("EXPLAIN QUERY PLAN " + sql).all<{ detail: string }>()).results;
+    assert.ok(
+      plan.some((row: { detail: string }) =>
+        /SEARCH p USING INDEX idx_products_model_resolution.*model_resolution_status=\? AND is_active=\?/.test(
+          row.detail,
+        ),
+      ),
+    );
+    console.log(
+      JSON.stringify({
+        event: "initial_split_health_read_budget",
         small: small.meta.rows_read,
         large: large.meta.rows_read,
       }),
