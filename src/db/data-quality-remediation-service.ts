@@ -589,7 +589,6 @@ export async function runDataQualityRemediationSweep(
   // too little budget for its three projection stages and make the next tick repeat completed
   // stages. When the queue is empty, discover and claim new work in this same sweep as before.
   let seeded: SeedRemediationResult = { selectedCount: 0, workKeys: [], scannedCount: 0 };
-  let seedAfterProcessing = false;
   let jobs: DataQualityRemediationJob[];
   if (preferQueuedWork) {
     jobs = await claimDataQualityRemediationBatch(db, {
@@ -597,7 +596,6 @@ export async function runDataQualityRemediationSweep(
       claimedAt: evaluatedAt,
       leaseSeconds,
     });
-    seedAfterProcessing = jobs.length > 0;
   } else {
     seeded = await seedDataQualityRemediationQueue(db, { limit: seedLimit, now: evaluatedAt });
     jobs = [];
@@ -740,12 +738,12 @@ export async function runDataQualityRemediationSweep(
     }
   }
 
-  // Scheduled sweeps claim one expensive projection at a time. Once that durable work is fully
-  // resolved, use any remaining budget to discover future work; a cooperative budget yield here
-  // cannot make the completed projection run again on the next tick.
-  if (seedAfterProcessing && resolved === jobs.length) {
-    seeded = await seedDataQualityRemediationQueue(db, { limit: seedLimit, now: evaluatedAt });
-  }
+  // Scheduled sweeps claim one expensive projection at a time. When durable work was already
+  // queued, finish this maintenance obligation without starting a second selector-scan phase.
+  // Otherwise that optional discovery can exhaust the invocation after the job resolved, leave
+  // the outer maintenance row pending, and make it run again on the next (off-cadence) tick after
+  // unrelated work has consumed the projection budget. Once the queue drains, the empty-claim
+  // path above still discovers and processes fresh work in this same sweep.
 
   // Outstanding work only. What this sweep itself did is already counted above, so recomputing
   // lifetime totals here would read the whole retained history to report a backlog of two.
