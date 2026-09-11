@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect } from "react";
 import type { RefObject } from "react";
 
 /** The responsive sheet has the same modal keyboard behavior as the native detail dialogs. */
@@ -8,6 +8,36 @@ export function useFilterSheet(
   mobile: boolean,
   onClose: () => void,
 ) {
+  useLayoutEffect(() => {
+    const panel = ref.current;
+    if (!panel || mobile) return;
+    let frame = 0;
+    const update = () => {
+      const height = Math.max(
+        0,
+        innerHeight - Math.max(24, panel.getBoundingClientRect().top) - 24,
+      );
+      panel.style.setProperty("--filter-available-height", `${height}px`);
+    };
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(update);
+    };
+    const observer = new ResizeObserver(schedule);
+    document
+      .querySelectorAll(".hero, .search-shell")
+      .forEach((element) => observer.observe(element));
+    window.addEventListener("resize", schedule);
+    window.addEventListener("scroll", schedule, { passive: true });
+    update();
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("scroll", schedule);
+      panel.style.removeProperty("--filter-available-height");
+    };
+  }, [ref, mobile]);
   useEffect(() => {
     const panel = ref.current;
     if (!panel) return;

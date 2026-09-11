@@ -297,7 +297,8 @@ test("the offer list keeps what actually distinguishes two offers of the same mo
   assert.match(markup, /data-history="22"/u);
   assert.match(markup, /<del>￥1,000,000<\/del>/u);
   assert.match(markup, /売り切れ/u);
-  assert.equal((markup.match(/href="https:\/\/example\.test\/p1"/g) || []).length, 2);
+  // Each offer has a dealer link in the compact overview and in its detailed row.
+  assert.equal((markup.match(/href="https:\/\/example\.test\/p1"/g) || []).length, 4);
 });
 
 test("an unresolved product says the comparison is unavailable, not that it failed", () => {

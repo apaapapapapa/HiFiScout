@@ -193,7 +193,7 @@ main {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-height: calc(100vh - 48px);
+  max-height: var(--filter-available-height, calc(100dvh - 320px));
   overflow: hidden;
   padding: 18px 16px;
   background: var(--hs-paper);

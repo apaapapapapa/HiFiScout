@@ -30,6 +30,10 @@ const meta = {
     },
   ],
   manufacturers: ["LUXMAN", "Accuphase"],
+  manufacturerFacets: [
+    { name: "LUXMAN", activeProductCount: 1, aliases: ["luxman", "ラックスマン"] },
+    { name: "Accuphase", activeProductCount: 1, aliases: ["accuphase", "アキュフェーズ"] },
+  ],
   categories: [],
   categoryFacets: [
     {

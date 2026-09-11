@@ -12,7 +12,7 @@ import {
   canonicalCategoryDefinitions,
   getCategory,
 } from "../catalog/categories.js";
-import { normalizeManufacturer } from "../catalog/manufacturers.js";
+import { normalizeManufacturer, manufacturerSearchAliases } from "../catalog/manufacturers.js";
 import { SHOP_DEFINITIONS, getShopEnabled, getShopIntervalMinutes } from "../config.js";
 import { buildSyncHealth } from "../health.js";
 import type {
@@ -87,7 +87,11 @@ export function normalizeManufacturerFacets(
     counts.set(name, (counts.get(name) || 0) + (Number.isFinite(count) ? count : 0));
   }
   return [...counts.entries()]
-    .map(([name, activeProductCount]) => ({ name, activeProductCount }))
+    .map(([name, activeProductCount]) => ({
+      name,
+      activeProductCount,
+      aliases: manufacturerSearchAliases(name),
+    }))
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 

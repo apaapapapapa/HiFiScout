@@ -146,7 +146,8 @@ function isMetaManufacturerFacet(value: unknown): value is MetaManufacturerFacet
   return (
     isRecord(value) &&
     typeof value.name === "string" &&
-    isNonNegativeInteger(value.activeProductCount)
+    isNonNegativeInteger(value.activeProductCount) &&
+    (value.aliases === undefined || isStringArray(value.aliases))
   );
 }
 

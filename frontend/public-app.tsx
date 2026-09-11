@@ -277,6 +277,7 @@ function FilterPanel({
                     value: facet.name,
                     label: facet.name,
                     count: facet.activeProductCount,
+                    aliases: facet.aliases,
                   }))
                 : (meta?.manufacturers ?? []).map((value) => ({ value, label: value }))
             }

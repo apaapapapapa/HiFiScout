@@ -372,6 +372,8 @@ export interface MetaShop {
 export interface MetaManufacturerFacet {
   name: string;
   activeProductCount: number;
+  /** Shared search vocabulary; optional for metadata cached before aliases were included. */
+  aliases?: string[];
 }
 
 export interface MetaCategoryFacet {

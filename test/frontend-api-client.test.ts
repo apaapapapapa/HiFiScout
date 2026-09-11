@@ -153,6 +153,13 @@ test("meta response guard rejects malformed nested shop and facet values", () =>
     false,
   );
   assert.equal(isMetaResponse({ ...valid, manufacturers: ["TAD", 42] }), false);
+  assert.equal(
+    isMetaResponse({
+      ...valid,
+      manufacturerFacets: [{ name: "LUXMAN", activeProductCount: 1, aliases: [42] }],
+    }),
+    false,
+  );
 });
 
 test("history response guard validates the listing labels and every price point", () => {
