@@ -62,7 +62,7 @@ test("comparison requests are bounded and validate each returned identity indepe
     return Response.json({ product: product(key === "c-3" ? "c-1" : key), offers: [] });
   });
   const signal = new AbortController().signal;
-  assert.deepEqual(await loadComparisonProducts(api, ["c-1"], signal), []);
+  assert.deepEqual(await loadComparisonProducts(api, [], signal), []);
   assert.deepEqual(
     await loadComparisonProducts(api, ["c-1", "c-2", "c-3", "c-4", "c-5"], signal),
     [],
@@ -92,6 +92,17 @@ test("comparison rejects a catalog ID inconsistent with its wire key", async () 
     columns.map((column) => column.product),
     [null, null],
   );
+});
+
+test("the first comparison selection resolves its name without waiting for a second product", async () => {
+  let requests = 0;
+  const api = createApiClient(async () => {
+    requests++;
+    return Response.json({ product: { ...product("c-1"), model: "D-10X" }, offers: [] });
+  });
+  const columns = await loadComparisonProducts(api, ["c-1"], new AbortController().signal);
+  assert.equal(columns[0]?.product?.model, "D-10X");
+  assert.equal(requests, 1);
 });
 
 test("cancelled comparison requests do not become unavailable-product results", async () => {

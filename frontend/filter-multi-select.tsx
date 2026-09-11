@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { MULTI_SELECT_LIMITS } from "../src/api/contracts.js";
+import { manufacturerSearchAliases } from "../src/catalog/manufacturers.js";
 import { selectionValues } from "./filters.js";
 import type { SelectionId } from "./filters.js";
 
@@ -26,7 +27,11 @@ export function FilterMultiSelect({
   const detailsRef = useRef<HTMLDetailsElement>(null);
   const normalize = (value: string) => value.normalize("NFKC").toLocaleLowerCase("ja-JP").trim();
   const matching = options.filter((option) =>
-    normalize(`${option.label} ${option.value}`).includes(normalize(search)),
+    [
+      option.label,
+      option.value,
+      ...(id === "manufacturer" ? manufacturerSearchAliases(option.value) : []),
+    ].some((value) => normalize(value).includes(normalize(search))),
   );
   const visible = matching.slice(0, 50);
   const labels = new Map(options.map((option) => [option.value, option.label]));

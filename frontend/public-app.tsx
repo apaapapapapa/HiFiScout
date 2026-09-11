@@ -255,215 +255,221 @@ function FilterPanel({
           </button>
         </div>
 
-        <FilterMultiSelect
-          id="shop"
-          label="ショップ"
-          selected={filters.shop}
-          options={shops.map((shop) => ({
-            value: shop.key,
-            label: shop.name,
-            count: shop.activeProductCount,
-          }))}
-          onChange={(values) => onSelectionChange("shop", values)}
-        />
-        <FilterMultiSelect
-          id="manufacturer"
-          label="メーカー"
-          selected={filters.manufacturer}
-          options={
-            meta?.manufacturerFacets?.length
-              ? meta.manufacturerFacets.map((facet) => ({
-                  value: facet.name,
-                  label: facet.name,
-                  count: facet.activeProductCount,
-                }))
-              : (meta?.manufacturers ?? []).map((value) => ({ value, label: value }))
-          }
-          onChange={(values) => onSelectionChange("manufacturer", values)}
-        />
-        <p className="filter-note">
-          メーカー・ショップなど異なる項目の条件は、すべて一致する商品を表示します。候補の件数は全体の掲載数です。
-        </p>
-        <label>
-          <span>カテゴリ</span>
-          <select
-            id="category"
-            value={filters.category}
-            onChange={(event) => onValueChange("category", event.currentTarget.value)}
-          >
-            <option value="">すべて</option>
-            <CategoryOptions meta={meta} />
-          </select>
-        </label>
-        <label>
-          <span>最低価格（円）</span>
-          <input
-            id="minPrice"
-            inputMode="decimal"
-            placeholder="0"
-            aria-invalid={!!errors.minPrice}
-            aria-describedby="price-help price-error"
-            value={filters.minPrice}
-            onChange={(event) => onValueChange("minPrice", event.currentTarget.value, true)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.nativeEvent.isComposing && !invalid) onApply();
-            }}
+        <div className="filter-fields">
+          <FilterMultiSelect
+            id="shop"
+            label="ショップ"
+            selected={filters.shop}
+            options={shops.map((shop) => ({
+              value: shop.key,
+              label: shop.name,
+              count: shop.activeProductCount,
+            }))}
+            onChange={(values) => onSelectionChange("shop", values)}
           />
-        </label>
-        <label>
-          <span>最高価格（円）</span>
-          <input
-            id="maxPrice"
-            inputMode="decimal"
-            placeholder="100,000 または 10万"
-            aria-invalid={!!errors.maxPrice}
-            aria-describedby="price-help price-error"
-            value={filters.maxPrice}
-            onChange={(event) => onValueChange("maxPrice", event.currentTarget.value, true)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.nativeEvent.isComposing && !invalid) onApply();
-            }}
+          <FilterMultiSelect
+            id="manufacturer"
+            label="メーカー"
+            selected={filters.manufacturer}
+            options={
+              meta?.manufacturerFacets?.length
+                ? meta.manufacturerFacets.map((facet) => ({
+                    value: facet.name,
+                    label: facet.name,
+                    count: facet.activeProductCount,
+                  }))
+                : (meta?.manufacturers ?? []).map((value) => ({ value, label: value }))
+            }
+            onChange={(values) => onSelectionChange("manufacturer", values)}
           />
-        </label>
-        <p id="price-help" className="filter-note">
-          円・万円で入力できます（例: 100,000 / 10万 / 12.5万円）。指定なしは空欄。
-          {["minPrice", "maxPrice"]
-            .map((id) => {
-              const value = normalizePrice(filters[id as "minPrice" | "maxPrice"]);
-              return value ? Number(value).toLocaleString("ja-JP") + "円" : "指定なし";
-            })
-            .join(" 〜 ")}
-        </p>
-        <div className="budget-presets" role="group" aria-label="予算の目安">
-          {[
-            ["50000", "5万円以下"],
-            ["100000", "10万円以下"],
-            ["300000", "30万円以下"],
-          ].map(([maximum, label]) => (
-            <button
-              type="button"
-              className="filter-chip"
-              key={maximum}
-              aria-pressed={!filters.minPrice && normalizePrice(filters.maxPrice) === maximum}
-              onClick={() => onBudget(maximum)}
+          <p className="filter-note">
+            メーカー・ショップなど異なる項目の条件は、すべて一致する商品を表示します。候補の件数は全体の掲載数です。
+          </p>
+          <label>
+            <span>カテゴリ</span>
+            <select
+              id="category"
+              value={filters.category}
+              onChange={(event) => onValueChange("category", event.currentTarget.value)}
             >
-              {label}
-            </button>
-          ))}
-        </div>
-        <p id="price-error" className="field-error" role="status">
-          {Object.values(errors).join(" ")}
-        </p>
-        <details
-          className="advanced-filters"
-          open={
-            filters.features.length > 0 ||
-            filters.facets.length > 0 ||
-            Object.values(filters.specificationFilters ?? {}).some(Boolean)
-              ? true
-              : undefined
-          }
-        >
-          <summary>機能・仕様で詳しく絞り込む</summary>
-          <SpecificationFilterControls
-            values={filters.specificationFilters}
-            disabled={filters.favoritesOnly}
-            onChange={onSpecificationChange}
-          />
-          {/*
+              <option value="">すべて</option>
+              <CategoryOptions meta={meta} />
+            </select>
+          </label>
+          <label>
+            <span>最低価格（円）</span>
+            <input
+              id="minPrice"
+              inputMode="decimal"
+              placeholder="0"
+              aria-invalid={!!errors.minPrice}
+              aria-describedby="price-help price-error"
+              value={filters.minPrice}
+              onChange={(event) => onValueChange("minPrice", event.currentTarget.value, true)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.nativeEvent.isComposing && !invalid) onApply();
+              }}
+            />
+          </label>
+          <label>
+            <span>最高価格（円）</span>
+            <input
+              id="maxPrice"
+              inputMode="decimal"
+              placeholder="100,000 または 10万"
+              aria-invalid={!!errors.maxPrice}
+              aria-describedby="price-help price-error"
+              value={filters.maxPrice}
+              onChange={(event) => onValueChange("maxPrice", event.currentTarget.value, true)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.nativeEvent.isComposing && !invalid) onApply();
+              }}
+            />
+          </label>
+          <p id="price-help" className="filter-note">
+            円・万円で入力できます（例: 100,000 / 10万 / 12.5万円）。指定なしは空欄。
+            {["minPrice", "maxPrice"]
+              .map((id) => {
+                const value = normalizePrice(filters[id as "minPrice" | "maxPrice"]);
+                return value ? Number(value).toLocaleString("ja-JP") + "円" : "指定なし";
+              })
+              .join(" 〜 ")}
+          </p>
+          <div className="budget-presets" role="group" aria-label="予算の目安">
+            {[
+              ["50000", "5万円以下"],
+              ["100000", "10万円以下"],
+              ["300000", "30万円以下"],
+            ].map(([maximum, label]) => (
+              <button
+                type="button"
+                className="filter-chip"
+                key={maximum}
+                aria-pressed={!filters.minPrice && normalizePrice(filters.maxPrice) === maximum}
+                onClick={() => onBudget(maximum)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <p id="price-error" className="field-error" role="status">
+            {Object.values(errors).join(" ")}
+          </p>
+          <details
+            className="advanced-filters"
+            open={
+              filters.features.length > 0 ||
+              filters.facets.length > 0 ||
+              Object.values(filters.specificationFilters ?? {}).some(Boolean)
+                ? true
+                : undefined
+            }
+          >
+            <summary>機能・仕様で詳しく絞り込む</summary>
+            <SpecificationFilterControls
+              values={filters.specificationFilters}
+              disabled={filters.favoritesOnly}
+              onChange={onSpecificationChange}
+            />
+            {/*
           Feature matching is a server-side predicate over stored facts. Favorites are matched
           locally against snapshots that carry none, so the control is disabled there rather than
           left to look applied while the results ignore it. The selection itself survives.
         */}
-          <fieldset className="filter-features" disabled={filters.favoritesOnly}>
-            <legend>機能</legend>
-            {FEATURE_DEFINITIONS.map((feature) => {
-              const selected =
-                filters.features.find((value) => value.split(":")[0] === feature.id) ?? "";
-              return (
-                <label key={feature.id}>
-                  <span id={`feature-${feature.id}-label`}>{feature.name}</span>
-                  <select
-                    id={`feature-${feature.id}`}
-                    aria-labelledby={`feature-${feature.id}-label`}
-                    value={selected}
-                    onChange={(event) => {
-                      const value = event.currentTarget.value;
-                      if (isFeatureFilter(value)) onFeatureChange(value, true);
-                      else onFeatureChange(selected || feature.id, false);
-                    }}
-                  >
-                    <option value="">指定なし</option>
-                    <option value={feature.id}>搭載・対応</option>
-                    <option value={`${feature.id}:absent`}>非搭載・非対応</option>
-                    <option value={`${feature.id}:unknown`}>不明</option>
-                  </select>
-                </label>
-              );
-            })}
-            <p className="filter-note">不明は情報不足・情報の不一致です。非搭載とは区別します。</p>
-            {filters.favoritesOnly ? (
-              <p className="filter-note">お気に入り表示中は機能で絞り込めません</p>
-            ) : null}
-          </fieldset>
-          {visibleFacets.map((facet) => (
-            <fieldset className="filter-features" disabled={filters.favoritesOnly} key={facet.id}>
-              <legend>{facet.name}</legend>
-              {facet.values.map((value) => {
-                const selection: FacetSelection = { facetId: facet.id, value: value.id };
-                const key = facetSelectionKey(selection);
-                const count = facetCounts.get(key);
+            <fieldset className="filter-features" disabled={filters.favoritesOnly}>
+              <legend>機能</legend>
+              {FEATURE_DEFINITIONS.map((feature) => {
+                const selected =
+                  filters.features.find((value) => value.split(":")[0] === feature.id) ?? "";
                 return (
-                  <label className="check" key={key}>
-                    <input
-                      id={`facet-${facet.id}-${value.id}`}
-                      type="checkbox"
-                      checked={filters.facets.some(
-                        (selected) => facetSelectionKey(selected) === key,
-                      )}
-                      onChange={(event) => onFacetChange(selection, event.currentTarget.checked)}
-                    />
-                    <span>
-                      {value.name}
-                      {isNonNegativeInteger(count) ? ` (${count})` : ""}
-                    </span>
+                  <label key={feature.id}>
+                    <span id={`feature-${feature.id}-label`}>{feature.name}</span>
+                    <select
+                      id={`feature-${feature.id}`}
+                      aria-labelledby={`feature-${feature.id}-label`}
+                      value={selected}
+                      onChange={(event) => {
+                        const value = event.currentTarget.value;
+                        if (isFeatureFilter(value)) onFeatureChange(value, true);
+                        else onFeatureChange(selected || feature.id, false);
+                      }}
+                    >
+                      <option value="">指定なし</option>
+                      <option value={feature.id}>搭載・対応</option>
+                      <option value={`${feature.id}:absent`}>非搭載・非対応</option>
+                      <option value={`${feature.id}:unknown`}>不明</option>
+                    </select>
                   </label>
                 );
               })}
+              <p className="filter-note">
+                不明は情報不足・情報の不一致です。非搭載とは区別します。
+              </p>
+              {filters.favoritesOnly ? (
+                <p className="filter-note">お気に入り表示中は機能で絞り込めません</p>
+              ) : null}
             </fieldset>
-          ))}
-        </details>
-        <OfferFactFilters
-          selected={filters.offerFacts}
-          disabled={filters.favoritesOnly}
-          onChange={onOfferFactChange}
-        />
-        {isMobile ? (
-          <QuickFilters
-            filters={filters}
-            favoriteCount={favoriteCount}
-            onChange={onToggleChange}
-            prefix="sheet-"
+            {visibleFacets.map((facet) => (
+              <fieldset className="filter-features" disabled={filters.favoritesOnly} key={facet.id}>
+                <legend>{facet.name}</legend>
+                {facet.values.map((value) => {
+                  const selection: FacetSelection = { facetId: facet.id, value: value.id };
+                  const key = facetSelectionKey(selection);
+                  const count = facetCounts.get(key);
+                  return (
+                    <label className="check" key={key}>
+                      <input
+                        id={`facet-${facet.id}-${value.id}`}
+                        type="checkbox"
+                        checked={filters.facets.some(
+                          (selected) => facetSelectionKey(selected) === key,
+                        )}
+                        onChange={(event) => onFacetChange(selection, event.currentTarget.checked)}
+                      />
+                      <span>
+                        {value.name}
+                        {isNonNegativeInteger(count) ? ` (${count})` : ""}
+                      </span>
+                    </label>
+                  );
+                })}
+              </fieldset>
+            ))}
+          </details>
+          <OfferFactFilters
+            selected={filters.offerFacts}
+            disabled={filters.favoritesOnly}
+            onChange={onOfferFactChange}
           />
-        ) : null}
-        <p className="filter-note" role="status" id="filter-draft-status">
-          {pending
-            ? "未適用の変更があります。適用すると検索結果を更新します。"
-            : "詳細条件は「適用」で反映します。"}
-        </p>
-        <div className="filter-actions">
-          <button id="clear-filters" className="button-secondary" type="button" onClick={onClear}>
-            詳細条件を解除
-          </button>
-          <button
-            id="apply-filters"
-            className="button-primary"
-            type="button"
-            disabled={invalid}
-            onClick={onApply}
-          >
-            条件を適用して結果を見る
-          </button>
+          {isMobile ? (
+            <QuickFilters
+              filters={filters}
+              favoriteCount={favoriteCount}
+              onChange={onToggleChange}
+              prefix="sheet-"
+            />
+          ) : null}
+        </div>
+        <div className="filter-footer">
+          <p className="filter-note" role="status" id="filter-draft-status">
+            {pending
+              ? "未適用の変更があります。適用すると検索結果を更新します。"
+              : "詳細条件は「適用」で反映します。"}
+          </p>
+          <div className="filter-actions">
+            <button id="clear-filters" className="button-secondary" type="button" onClick={onClear}>
+              詳細条件を解除
+            </button>
+            <button
+              id="apply-filters"
+              className="button-primary"
+              type="button"
+              disabled={invalid}
+              onClick={onApply}
+            >
+              条件を適用して結果を見る
+            </button>
+          </div>
         </div>
       </section>
     </>
@@ -842,6 +848,14 @@ export function PublicApp() {
       ? draftFilters
       : desktopPanelFilters(filters, draftFilters)
     : filters;
+  const pendingFilters = draftFilters !== null && !sameFilters(panelFilters, filters);
+  const applyPanelFilters = () => {
+    const next = normalizedProductFilters(panelFilters);
+    if (next) {
+      closeFilters();
+      if (!sameFilters(next, filtersRef.current)) commitFilters(next);
+    }
+  };
 
   const toggleFavorite = useCallback(
     (key: string) => {
@@ -1129,7 +1143,7 @@ export function PublicApp() {
           favoriteCount={favoriteCount}
           open={filterOpen}
           isMobile={isMobile}
-          pending={draftFilters !== null && !sameFilters(panelFilters, filters)}
+          pending={pendingFilters}
           onBudget={(maximum) =>
             changePanelFilters({ ...panelFilters, minPrice: "", maxPrice: maximum })
           }
@@ -1180,13 +1194,7 @@ export function PublicApp() {
             })
           }
           onClear={() => setDraftFilters(clearedDetailFilters(panelFilters))}
-          onApply={() => {
-            const next = normalizedProductFilters(panelFilters);
-            if (next) {
-              closeFilters();
-              if (!sameFilters(next, filtersRef.current)) commitFilters(next);
-            }
-          }}
+          onApply={applyPanelFilters}
         />
 
         <div className="catalog-results">
@@ -1289,8 +1297,21 @@ export function PublicApp() {
             </div>
           </div>
 
+          {pendingFilters ? (
+            <div className="pending-filter-notice" role="status">
+              <span>未適用の変更があります。結果は適用済みの条件で表示しています。</span>
+              <button
+                type="button"
+                onClick={applyPanelFilters}
+                disabled={!normalizedProductFilters(panelFilters)}
+              >
+                変更を適用
+              </button>
+            </div>
+          ) : null}
           <ProductComparison
             keys={comparisonKeys}
+            knownProducts={visibleProducts}
             api={api}
             onRemove={(key) =>
               updateComparison(comparisonKeys.filter((selected) => selected !== key))
@@ -1302,7 +1323,7 @@ export function PublicApp() {
           </p>
           {favoriteMode ? (
             <FavoriteWatch
-              key={filterUrlParams(appliedFilters, "list").toString()}
+              key={`${filterUrlParams(appliedFilters, "list")}|${[...favorites.products.keys()].sort().join(",")}`}
               products={visibleProducts}
               api={api}
               onSnapshots={refreshFavoriteSnapshots}

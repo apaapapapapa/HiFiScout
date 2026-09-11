@@ -190,11 +190,11 @@ main {
   grid-area: filters;
   position: sticky;
   top: 24px;
-  display: grid;
-  grid-template-columns: 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 16px;
   max-height: calc(100vh - 48px);
-  overflow: auto;
+  overflow: hidden;
   padding: 18px 16px;
   background: var(--hs-paper);
   border: 1px solid var(--hs-divider);
@@ -202,6 +202,20 @@ main {
   box-shadow: none;
   scrollbar-width: thin;
 }
+
+.filter-fields { display: grid; gap: 16px; min-height: 0; overflow: auto; padding: 3px; scrollbar-width: thin; }
+.filter-footer { flex: none; border-top: 1px solid var(--hs-divider); background: var(--hs-paper); }
+.filter-footer .filter-note { margin: 8px 0; }
+.filters .filter-footer .filter-actions { position: static; padding: 0; }
+.pending-filter-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 12px 0; padding: 12px 0; border-block: 1px solid var(--hs-divider); font-size: 14px; }
+.pending-filter-notice button { min-height: 44px; }
+.offer-overview { overflow-x: auto; margin: 16px 0; }
+.offer-overview table { border-collapse: collapse; width: 100%; font-size: 14px; }
+.offer-overview caption { text-align: left; font-weight: 600; padding-bottom: 8px; }
+.offer-overview th, .offer-overview td { text-align: left; vertical-align: top; padding: 10px 8px; border-bottom: 1px solid var(--hs-divider); }
+.offer-overview td:nth-child(2) { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.offer-overview .offer-terms { margin: 0; min-width: 180px; }
+.offer-overview a { display: inline-flex; align-items: center; min-height: 44px; white-space: nowrap; }
 
 .filters label {
   gap: 6px;
@@ -790,10 +804,9 @@ dialog::backdrop {
     right: 0;
     bottom: 0;
     z-index: 30;
-    display: grid;
-    grid-template-columns: 1fr;
+    display: flex;
     max-height: 86vh;
-    overflow: auto;
+    overflow: hidden;
     margin-bottom: 0;
     padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
     border: 1px solid var(--hs-divider);
