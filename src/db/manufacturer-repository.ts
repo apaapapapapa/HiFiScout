@@ -272,9 +272,8 @@ function manufacturerResolutionMoved(
     row.manufacturer_resolution_status !== next.status ||
     row.manufacturer_resolution_method !== next.method ||
     row.manufacturer_resolution_confidence !== next.confidence ||
-    row.manufacturer !== (next.displayName || row.manufacturer) ||
-    row.manufacturer_id !==
-      manufacturerIdForFilter(next.displayName || row.manufacturer || row.raw_manufacturer)
+    row.manufacturer !== next.displayName ||
+    row.manufacturer_id !== manufacturerIdForFilter(next.displayName)
   );
 }
 
@@ -351,14 +350,13 @@ async function reprocessManufacturerRows(
     });
     const model = modelResolver({
       rawModel: row.raw_model,
+      rawManufacturer: row.raw_manufacturer,
       title: row.title,
       manufacturerId: resolution.canonicalManufacturerId,
       shopKey: row.shop_key,
     });
     const presentationColor = presentationColorLabel(model.presentationColors);
-    const manufacturerFilterId = manufacturerIdForFilter(
-      resolution.displayName || row.manufacturer || row.raw_manufacturer,
-    );
+    const manufacturerFilterId = manufacturerIdForFilter(resolution.displayName);
     const manufacturerMoved = manufacturerResolutionMoved(row, resolution);
     const modelMoved = modelResolutionMoved(row, model, presentationColor);
     const moved = manufacturerMoved || modelMoved;
@@ -405,7 +403,7 @@ async function reprocessManufacturerRows(
           WHERE id = ?
         `)
         .bind(
-          resolution.displayName || row.manufacturer,
+          resolution.displayName,
           manufacturerFilterId,
           resolution.normalizedRawManufacturer,
           resolution.canonicalManufacturerId,
