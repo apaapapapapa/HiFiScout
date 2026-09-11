@@ -33,6 +33,7 @@ import {
   seedDataQualityRemediationQueue,
   type DataQualityRemediationJob,
   type DataQualityRemediationWorkType,
+  type SeedRemediationResult,
 } from "./data-quality-remediation-queue-repository.js";
 import { refreshListingProjections } from "./listing-projection-refresh.js";
 import { listManufacturerAliasEvidence } from "./manufacturer-repository.js";
@@ -101,6 +102,7 @@ export interface RunDataQualityRemediationSweepOptions {
   claimLimit?: number;
   leaseSeconds?: number;
   now?: Date;
+  preferQueuedWork?: boolean;
 }
 
 export interface RunDataQualityRemediationSweepResult {
@@ -578,15 +580,38 @@ export async function runDataQualityRemediationSweep(
     claimLimit = 10,
     leaseSeconds = 300,
     now = new Date(),
+    preferQueuedWork = false,
   }: RunDataQualityRemediationSweepOptions = {},
 ): Promise<RunDataQualityRemediationSweepResult> {
   const evaluatedAt = now.toISOString();
-  const seeded = await seedDataQualityRemediationQueue(db, { limit: seedLimit, now: evaluatedAt });
-  const jobs = await claimDataQualityRemediationBatch(db, {
-    limit: claimLimit,
-    claimedAt: evaluatedAt,
-    leaseSeconds,
-  });
+  // Drain already-durable work before spending this invocation's D1-call budget scanning every
+  // stale selector. A queued job already names the required replay, while seeding first can leave
+  // too little budget for its three projection stages and make the next tick repeat completed
+  // stages. When the queue is empty, discover and claim new work in this same sweep as before.
+  let seeded: SeedRemediationResult = { selectedCount: 0, workKeys: [], scannedCount: 0 };
+  let seedAfterProcessing = false;
+  let jobs: DataQualityRemediationJob[];
+  if (preferQueuedWork) {
+    jobs = await claimDataQualityRemediationBatch(db, {
+      limit: claimLimit,
+      claimedAt: evaluatedAt,
+      leaseSeconds,
+    });
+    seedAfterProcessing = jobs.length > 0;
+  } else {
+    seeded = await seedDataQualityRemediationQueue(db, { limit: seedLimit, now: evaluatedAt });
+    jobs = [];
+  }
+  if (!jobs.length) {
+    if (preferQueuedWork) {
+      seeded = await seedDataQualityRemediationQueue(db, { limit: seedLimit, now: evaluatedAt });
+    }
+    jobs = await claimDataQualityRemediationBatch(db, {
+      limit: claimLimit,
+      claimedAt: evaluatedAt,
+      leaseSeconds,
+    });
+  }
   const aliases = jobs.some((job) => requiresDerivedReplay(job.workType))
     ? await listManufacturerAliasEvidence(db)
     : [];
@@ -713,6 +738,13 @@ export async function runDataQualityRemediationSweep(
         );
       }
     }
+  }
+
+  // Scheduled sweeps claim one expensive projection at a time. Once that durable work is fully
+  // resolved, use any remaining budget to discover future work; a cooperative budget yield here
+  // cannot make the completed projection run again on the next tick.
+  if (seedAfterProcessing) {
+    seeded = await seedDataQualityRemediationQueue(db, { limit: seedLimit, now: evaluatedAt });
   }
 
   // Outstanding work only. What this sweep itself did is already counted above, so recomputing

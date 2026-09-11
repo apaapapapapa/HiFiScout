@@ -669,7 +669,7 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
     name: "data_quality_remediation_sweep",
     everyTicks: 2,
     offset: 1,
-    run: (env) => runDataQualityRemediationSweep(env.DB, { claimLimit: 1 }),
+    run: (env) => runDataQualityRemediationSweep(env.DB, { claimLimit: 1, preferQueuedWork: true }),
   },
   {
     // This is the bounded convergence mechanism promised by repairGeneralCronProjectionGaps: if a
