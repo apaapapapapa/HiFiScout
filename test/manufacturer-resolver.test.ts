@@ -62,6 +62,35 @@ test("a verified operational alias resolves to its canonical manufacturer", () =
   assert.equal(result.method, "verified_alias");
 });
 
+test("sale and condition labels are removed without guessing unknown brands", () => {
+  for (const [raw, expected] of [
+    ["[美品]", ""],
+    ["【正規輸入品】", ""],
+    ["702S2", ""],
+    ["[美品]オーディオ工房スギナカ", "オーディオ工房スギナカ"],
+    ["【SALE】G.I.P.", "G.I.P."],
+    ["【国内正規品100V】JADIS", "JADIS"],
+  ]) {
+    const result = resolveManufacturer({ rawManufacturer: raw });
+    assert.equal(result.displayName, expected, raw);
+  }
+  const preserved = resolveManufacturer({ rawManufacturer: "[Custom] Audio" });
+  assert.equal(preserved.displayName, "[Custom] Audio");
+  const legacy = normalizeCatalogProduct(
+    parsedProduct({
+      manufacturer: "702S2",
+      rawManufacturer: "702S2",
+      model: "Signature / Midnight Blue Metalic (ペア)",
+      title: "【中古品】702S2 Signature / Midnight Blue Metalic (ペア) ※送料無料",
+    }),
+  );
+  assert.equal(legacy.manufacturer, "");
+  assert.equal(legacy.manufacturerId, "");
+  assert.equal(legacy.rawManufacturer, "702S2");
+  assert.equal(legacy.rawModel, "Signature / Midnight Blue Metalic (ペア)");
+  assert.ok(legacy.model.startsWith("702S2 Signature"));
+});
+
 test("pending and ambiguous aliases remain candidates without a canonical id", () => {
   const pending = resolveManufacturer({ rawManufacturer: "Shared Audio" }, [
     alias({

@@ -1,6 +1,6 @@
 import type { ClassifiableCategoryId } from "./types.js";
 
-export const SALE_SUBJECT_POLICY_VERSION = 1;
+export const SALE_SUBJECT_POLICY_VERSION = 2;
 
 export interface SaleSubjectEvidence {
   kind: "accessory" | "bundle" | "unspecified";
@@ -33,7 +33,7 @@ export function saleSubjectText(value: string): string {
         " ",
       )
       .replace(
-        /(?:リモコン|ケーブル|ケース|カバー|ACアダプタ(?:ー)?|DAC|フォノ(?:イコライザー|アンプ)?|ヘッドホンアンプ)\s*(?:は\s*)?(?:非搭載|搭載|内蔵|非付属|付属(?:なし|無し)?|付き?|欠品|なし|無し)/gi,
+        /(?:リモコン|ケーブル|ケース|カバー|ACアダプタ(?:ー)?|DAC|フォノ(?:イコライザー|アンプ)?|ヘッドホンアンプ)\s*(?:は\s*)?(?:非搭載|搭載|内蔵|非付属|付属(?:なし|無し)?|付き?|欠品|なし|無し|あり|有り)/gi,
         " ",
       )
       .replace(

@@ -3,6 +3,7 @@ import {
   isManufacturerPlaceholder,
   manufacturerPrefixPattern,
   normalizeManufacturerKey,
+  stripManufacturerListingLabels,
 } from "./manufacturers.js";
 import type {
   ManufacturerAliasEvidence,
@@ -12,7 +13,7 @@ import type {
   NormalizedCatalogProduct,
 } from "./types.js";
 
-export const MANUFACTURER_RESOLVER_VERSION = 12;
+export const MANUFACTURER_RESOLVER_VERSION = 13;
 
 export type ManufacturerResolver = (
   input: ManufacturerResolutionInput,
@@ -131,7 +132,7 @@ function resolveTruncatedManufacturerPrefix(
   const explicitValues = [...new Set([raw, candidate].map(clean).filter(Boolean))];
   if (!explicitValues.length) return null;
 
-  const cleanTitle = clean(title);
+  const cleanTitle = stripManufacturerListingLabels(clean(title));
   const compatible = aliases.prefixes.filter((entry) => {
     if (!entry.pattern.test(cleanTitle)) return false;
     return explicitValues.some((value) => {
@@ -153,8 +154,8 @@ function resolvePreparedManufacturer(
   { rawManufacturer, manufacturerCandidate, title }: ManufacturerResolutionInput,
   aliases: PreparedManufacturerAliases,
 ): ManufacturerResolutionResult {
-  const raw = clean(rawManufacturer);
-  const candidate = clean(manufacturerCandidate);
+  const raw = stripManufacturerListingLabels(clean(rawManufacturer));
+  const candidate = stripManufacturerListingLabels(clean(manufacturerCandidate));
   if (isManufacturerPlaceholder(raw) || isManufacturerPlaceholder(candidate)) {
     return {
       canonicalManufacturerId: "",
@@ -201,7 +202,7 @@ function resolvePreparedManufacturer(
     };
   }
 
-  const cleanTitle = clean(title);
+  const cleanTitle = stripManufacturerListingLabels(clean(title));
   const prefixMatches = aliases.prefixes.filter((entry) => entry.pattern.test(cleanTitle));
   const longest = Math.max(0, ...prefixMatches.map((entry) => entry.row.normalizedAlias.length));
   const strongest = prefixMatches
@@ -261,7 +262,7 @@ export function applyManufacturerResolution(
   });
   return {
     ...product,
-    manufacturer: resolution.displayName || product.manufacturer,
+    manufacturer: resolution.displayName,
     manufacturerId: resolution.canonicalManufacturerId,
     normalizedRawManufacturer: resolution.normalizedRawManufacturer,
     manufacturerResolutionStatus: resolution.status,

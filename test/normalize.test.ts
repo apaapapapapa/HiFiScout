@@ -53,6 +53,20 @@ test("Ippinkan title splitting removes listing condition markers", () => {
 });
 
 test("seller condition badges do not become part of the manufacturer", () => {
+  assert.deepEqual(splitManufacturerModel("【SALE】EAR 868", "shimamusen"), {
+    manufacturer: "EAR",
+    model: "868",
+  });
+  assert.deepEqual(
+    splitManufacturerModel(
+      "【中古品】702S2 Signature / Midnight Blue Metalic (ペア)",
+      "shimamusen",
+    ),
+    {
+      manufacturer: "",
+      model: "702S2 Signature / Midnight Blue Metalic (ペア)",
+    },
+  );
   assert.deepEqual(splitManufacturerModel("【中古品】MSB Analog DAC ※送料無料", "shimamusen"), {
     manufacturer: "MSB",
     model: "Analog DAC ※送料無料",

@@ -1204,6 +1204,8 @@ export type ModelResolutionMethod =
  */
 export interface ModelResolutionInput {
   rawModel?: unknown;
+  /** Original parser output; used only to repair a model token misplaced in the brand column. */
+  rawManufacturer?: unknown;
   title?: unknown;
   manufacturerId?: unknown;
   /** Seller identity used only by explicitly scoped annotation rules. */

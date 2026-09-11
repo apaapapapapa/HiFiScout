@@ -27,7 +27,7 @@ import { resolveModel, MODEL_RESOLVER_VERSION } from "./model-resolver.js";
 import { inferFeatureFacts, normalizeFeatureFacts } from "./product-features.js";
 import { inferFacetFacts, normalizeFacetFacts } from "./product-facets.js";
 
-const CLASSIFICATION_METADATA_VERSION = 18;
+const CLASSIFICATION_METADATA_VERSION = 19;
 
 export interface CatalogNormalizationContext {
   /** Source seller used by narrowly scoped model-annotation rules. */
@@ -130,6 +130,7 @@ export function normalizeCatalogProduct(
   // presentation tokens and fall back to title evidence only for a known manufacturer.
   const model = resolveModel({
     rawModel: product.rawModel ?? product.model ?? "",
+    rawManufacturer,
     title: product.title,
     manufacturerId: manufacturer.canonicalManufacturerId,
     shopKey: context.shopKey,

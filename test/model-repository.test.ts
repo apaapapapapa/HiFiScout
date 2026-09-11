@@ -237,6 +237,7 @@ test("model replay keeps empty raw evidence and recovers after downstream failur
       shop_key TEXT NOT NULL,
       source_id TEXT NOT NULL,
       canonical_manufacturer_id TEXT NOT NULL,
+      raw_manufacturer TEXT NOT NULL DEFAULT '',
       model TEXT NOT NULL,
       raw_model TEXT NOT NULL,
       normalized_model TEXT NOT NULL,

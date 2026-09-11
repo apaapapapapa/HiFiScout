@@ -14,6 +14,7 @@ import {
   selectStaleManufacturerListings,
 } from "../src/db/manufacturer-repository.js";
 import { captureDatabase, type CapturedStatement } from "./helpers/d1.js";
+import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 
 test("D1 aliases load with canonical names and verification metadata", async () => {
   const db = captureDatabase([
@@ -449,6 +450,44 @@ test("manufacturer replay recovers after downstream failure without rewriting se
   assert.equal(state.raw_model, "Example Audio Japan X-1 中古");
   assert.equal(state.manufacturer_resolver_version, MANUFACTURER_RESOLVER_VERSION);
   assert.equal(state.model_resolver_version, MODEL_RESOLVER_VERSION);
+});
+
+test("manufacturer replay clears a misplaced model brand and restores its model before advancing versions", async () => {
+  const { db, sqlite } = migratedSqlite();
+  try {
+    sqlite
+      .prepare(`INSERT INTO products(id,shop_key,source_id,manufacturer,raw_manufacturer,
+      manufacturer_id,model,raw_model,title,source_url,first_seen_at,last_seen_at,last_changed_at)
+      VALUES (5500,'shimamusen','audit-702','702S2','702S2','702s2',?,?,?,
+        'https://example.test/702','2026-09-11','2026-09-11','2026-09-11')`)
+      .run(
+        "Signature / Midnight Blue Metalic (ペア)",
+        "Signature / Midnight Blue Metalic (ペア)",
+        "【中古品】702S2 Signature / Midnight Blue Metalic (ペア) ※送料無料",
+      );
+    const result = await reprocessStaleManufacturerListings(
+      db,
+      { limit: 10 },
+      {
+        refreshListings: async () => undefined,
+      },
+    );
+    assert.equal(result.changedCount, 1);
+    const row = sqlite
+      .prepare(`SELECT manufacturer,manufacturer_id,raw_manufacturer,raw_model,
+      model,manufacturer_resolver_version,model_resolver_version FROM products WHERE id=5500`)
+      .get()!;
+    assert.equal(row.manufacturer, "");
+    assert.equal(row.manufacturer_id, "");
+    assert.equal(row.raw_manufacturer, "702S2");
+    assert.equal(row.raw_model, "Signature / Midnight Blue Metalic (ペア)");
+    assert.ok(String(row.model).startsWith("702S2 Signature"));
+    assert.equal(row.manufacturer_resolver_version, MANUFACTURER_RESOLVER_VERSION);
+    assert.equal(row.model_resolver_version, MODEL_RESOLVER_VERSION);
+    assert.equal((await reprocessStaleManufacturerListings(db, { limit: 10 })).processedCount, 0);
+  } finally {
+    sqlite.close();
+  }
 });
 
 test("unknown manufacturer values aggregate by normalized raw value and impact", async () => {

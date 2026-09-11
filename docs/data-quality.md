@@ -34,6 +34,15 @@ see [Registered Product Admin](./listing-admin.md#bounded-offer-fact-replay).
 
 Capability and power-source wording such as “remote control compatible CD player” and “AC adapter powered headphone amplifier” describes the equipment. Strip those phrases before sale-object inference while retaining accessory-sale relationships such as “remote control compatible with CD-S3000” and “AC adapter for headphone amplifier”.
 
+Explicit included-item phrases such as `リモコンあり` and `リモコン有り` likewise describe the
+equipment's offer; `CDプレーヤー用リモコン 在庫あり` still sells the remote. Leading, recognized
+condition, sale and import badges are removed from manufacturer presentation, including unknown
+brands, while unrecognized bracketed names remain intact. A numeric model token accidentally
+parsed as a manufacturer supplies no brand identity. Its model prefix is recovered only when the
+stored title independently confirms the exact original prefix and model tail. Raw seller columns
+remain unchanged. Resolver version changes enter the existing bounded replay queue; they do not
+require a full scan or re-fetch during a public request.
+
 `identitySafeModelLookupVariants` is the common listing/catalog vocabulary for presentation and approved manufacturer-market variants. `modelLookupAliases` identifies category-only hints such as a bundle's base model; those hints cannot authorize a product merge. Revision vetoes remain effective for aliases. Candidate retrieval uses indexed model keys through `catalog-lookup-candidates.ts`; the retrieval key is only a coarse candidate filter, not evidence of identity. Fuzzy discovery is capped and its candidates cannot authorize exact/alias attachment. Bootstrap dictionaries and prepared identity candidates are reused without caching changing operational alias snapshots indefinitely.
 
 Exact and alias retrieval batch bounded manufacturer/key pairs through the existing indexes. Every matching candidate is retained, including ambiguous keys; grouping still requires the domain resolver's evidence checks. Candidate review refresh also batches desired rows while preserving ignored decisions, unchanged timestamps and zero-write replay. The scheduled dispatch regression includes a production-sized listing set, verified catalog matches, the full target allowance and shared cron bookkeeping within the unchanged D1 call budget.
