@@ -73,7 +73,32 @@ To resume health checks after explicit approval, restore both job conditions to
 
 Operational-health workflows are detection/reporting paths. They must not automatically mutate production data or re-run themselves through repair loops. Repair commands may exist as explicit maintenance scripts and can be invoked deliberately when an operator has identified the incident.
 
-The active-crawl wait keeps its existing bound. After that, the first projection drift observation creates one cron-plus-grace deadline in `PROJECTION_CONVERGENCE_STATE_FILE`; identity coverage, stale fallback and split-group checks share it. Each check still re-reads and fails on persistent drift, but cannot grant another full cron window after an earlier check already waited.
+The active-crawl wait keeps its existing time bound. It observes identity gaps once, captures up to
+1,000 listing IDs, and polls only those IDs against indexed active sessions. With no gaps it returns
+after that one query. More than 1,000 gaps skips waiting and proceeds to the strict full audit; a
+truncated sample cannot establish health. Terminal session history and unrelated shop inventory are
+not scanned on each poll. The following strict audit still sees new gaps outside the wait scope.
+After that, the first projection drift observation creates one cron-plus-grace deadline in
+`PROJECTION_CONVERGENCE_STATE_FILE`; identity coverage, stale fallback and split-group checks share
+it. Each check still re-reads and fails on persistent drift, but cannot grant another full cron window
+after an earlier check already waited.
+
+The strict data-platform path uses four SQL statements on a healthy run: the active listing/identity
+baseline, the full search-entity audit, latest quality rows and the existing FTS integrity command.
+AudioUnion stock, per-shop inventory, active identity counts and stale resolver counts are derived
+from the same baseline. The identity summary is explicitly active-listing-only; a successful baseline
+still requires identity coverage for every active listing and active in-stock AudioUnion inventory.
+Stock/identity failures stop at that first baseline query, before any search audit or retry wait.
+Entity summary counts and drift flags share one entity-state evaluation, preserving all six failure
+types, exact counts and the captured retry IDs. The initial audit remains proportional to the full
+active-listing/membership/entity state; it is not a constant-cost or sampled health claim.
+
+Full-history identity/evidence/remediation summaries and ranked unresolved-product diagnostics live
+in `scripts/production-operational-diagnostics.sh`. They run only with
+`HEALTH_INCLUDE_DIAGNOSTICS=1`; the default is `0`. The same opt-in controls representative groups
+and unresolved presentation rankings in the Product Search identity script. These reports do not
+decide consistency and no longer scan growing history on every strict check. An extended report
+still incurs its full diagnostic reads. Neither setting enables a paused workflow job.
 
 When explicitly run, the data-platform script makes one full search-entity observation and captures
 the affected entity/listing IDs. Its remaining observations query only that scope and the listings'
@@ -81,6 +106,15 @@ current memberships, retaining the initial catalog-wide counts as snapshot metad
 fallback is still checked for a missing listing membership. More than 1,000 IDs in either scope fails
 immediately instead of retrying a truncated sample or repeating the full audit. These rechecks prove
 convergence of the captured scope; unrelated changes after the first observation await a later audit.
+Product Search split-group detection first seeks active/resolved listings through
+`idx_products_model_resolution`, so retired listing history does not extend the initial scan.
+Both observations exclude vetoed resolutions and verified catalog matches, matching runtime
+eligibility. Category compatibility includes eligible peers with no membership yet; their absence
+must not hide a category contradiction. The separate listing-coverage audit handles missing offers.
+Split detection makes one full observation, then rechecks the captured
+manufacturer/model keys through the existing exact-identity index. It includes every current peer of
+those keys, even if an original listing disappeared. At most 50 keys may be retried; observing 51
+fails immediately. New unrelated splits after the initial observation await a later full audit.
 Latest quality history starts from indexed distinct-shop seeks and then fetches one indexed row per
 shop, including retired shops; equal timestamps select the highest ID. It does not scan every
 historical quality row. These SQL changes do not enable the suspended operational-health jobs.
@@ -106,6 +140,27 @@ per-statement metadata, zero/unknown values, retries and terminal failures witho
 listings, holding one identity fixed while unrelated makers/models/categories grow. It checks
 correlated lookup cost, cross-shop repair, unchanged replay writes and conservative eligibility.
 Local fixture measurements are regression gates, not production account-wide savings estimates.
+
+`test/operational-health-execution.test.ts` executes the real shell scripts with a local CLI and clock
+stub: default/extended query counts, all six drift failures, identity/stock failures, quoted identity
+keys, scope overflow and the bounded convergence wait. `test/operational-health-sql-budget.test.ts`
+runs the SQL against real Miniflare D1 with all migrations, including mixed/overlapping faults and
+100/1,000/10,000 healthy listings. The full search audit reads 1,308/13,008/130,008 rows; the earlier
+query used 1,616/16,016/160,016 on the same fixture. The complete healthy data-platform script reads
+150,012 instead of 280,029 rows at 10,000 single-offer listings (14 statements reduced to four).
+The unchanged FTS integrity command accounts for one D1-reported write in both complete-script
+measurements; the audit SELECTs and scoped rechecks write zero rows. These are local regression
+measurements, not a claim that the suspended production checks have been run or that account-wide
+D1 use has fallen by the same percentage.
+
+The split-health regression also compares both observations with the runtime audit across vetoed,
+candidate, verified/unverified and missing-membership cases. With three active peers and 10,000
+retired listings, the initial query reads 13 rows instead of 10,010. The active-only index requires
+grouping work: with 10,003 active listings it reads 40,013 instead of 30,010 for the prior
+exact-identity-index scan. This tradeoff prevents unbounded growth with inactive history; it is not
+a claim of fewer initial grouping reads for every data distribution. The scoped search-entity
+retry was also measured with 10,000 unrelated active listings and remained at 26 reads, so no
+additional join-order rewrite was needed there.
 
 ## Manual data operations and audits
 
