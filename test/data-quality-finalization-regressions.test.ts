@@ -17,7 +17,7 @@ test("generic DQ replay keeps public manufacturer_id separate from verified cano
   assert.notEqual(manufacturerIdForFilter("Mystery Audio"), "");
   assert.match(
     remediationService,
-    /const manufacturerFilterId = manufacturerIdForFilter\([\s\S]*?manufacturer\.displayName \|\| row\.manufacturer \|\| row\.raw_manufacturer/u,
+    /const manufacturerFilterId = manufacturerIdForFilter\(manufacturer\.displayName\)/u,
   );
   assert.equal(
     [
