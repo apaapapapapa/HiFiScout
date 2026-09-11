@@ -3,6 +3,8 @@ import { test } from "vite-plus/test";
 import { verifiedModelFacetFacts } from "../src/catalog/verified-model-facets.js";
 import { normalizeCatalogProduct } from "../src/catalog/product-normalizer.js";
 import { parsedProduct } from "./helpers/fixtures.js";
+import { migratedSqlite } from "./helpers/migrated-sqlite.js";
+import { upsertProducts } from "../src/db/product-write-repository.js";
 
 const facts = (model: string, overrides = {}) =>
   verifiedModelFacetFacts({
@@ -60,4 +62,58 @@ test("unverified revisions, other brands, components and compatible stands acqui
   assert.deepEqual(facts("805D4", { manufacturerId: "other-brand" }), []);
   assert.deepEqual(facts("805D4", { primaryCategoryId: "ACC.STAND" }), []);
   assert.deepEqual(facts("805D4", { title: "B&W 805D4専用スタンド" }), []);
+  for (const title of ["BW805D4+A12", "B&W 805D4 + A12", "B&W 805D4 + 802D4"])
+    assert.deepEqual(facts("805D4", { title }), [], title);
+  assert.deepEqual(facts("805D4+FS805D4", { title: "BW805D4+FS805D4+A12" }), []);
+});
+
+test("crawler replaces obsolete verified facets after model-only changes and preserves manual facts", async () => {
+  const { sqlite, db } = migratedSqlite();
+  const product = (model: string) =>
+    normalizeCatalogProduct(
+      parsedProduct({
+        sourceId: "reviewed",
+        sourceUrl: "https://example.test/reviewed",
+        manufacturer: "B&W",
+        model,
+        title: "B&W 中古スピーカー",
+        rawCategory: "スピーカー",
+      }),
+    );
+  try {
+    await upsertProducts(db, "shop", [product("805D4")], "2026-09-11T00:00:00.000Z");
+    const listing = sqlite.prepare("SELECT id FROM products WHERE source_id='reviewed'").get() as {
+      id: number;
+    };
+    const count = () =>
+      (
+        sqlite
+          .prepare(
+            "SELECT COUNT(*) n FROM product_facet_facts WHERE product_id=? AND source LIKE 'verified_model:%'",
+          )
+          .get(listing.id) as { n: number }
+      ).n;
+    assert.equal(count(), 1);
+    sqlite
+      .prepare(
+        "INSERT INTO product_facet_facts(product_id,facet_id,facet_value,source,confidence) VALUES (?,'use_case','home','manual',1)",
+      )
+      .run(listing.id);
+    await upsertProducts(db, "shop", [product("805D4SE")], "2026-09-12T00:00:00.000Z");
+    assert.equal(count(), 0);
+    assert.equal(
+      (
+        sqlite
+          .prepare(
+            "SELECT COUNT(*) n FROM product_facet_facts WHERE product_id=? AND source='manual'",
+          )
+          .get(listing.id) as { n: number }
+      ).n,
+      1,
+    );
+    await upsertProducts(db, "shop", [product("805D4")], "2026-09-13T00:00:00.000Z");
+    assert.equal(count(), 1);
+  } finally {
+    sqlite.close();
+  }
 });

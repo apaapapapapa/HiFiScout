@@ -594,7 +594,8 @@ function dependentListingWrites(
     statements.push(
       db
         .prepare(
-          `DELETE FROM product_facet_facts WHERE product_id = (${lookup}) AND source IN ('title','seller_category','legacy_category')`,
+          `DELETE FROM product_facet_facts WHERE product_id = (${lookup})
+            AND (source IN ('title','seller_category','legacy_category') OR source LIKE 'verified_model:%')`,
         )
         .bind(...identity),
     );
@@ -746,6 +747,9 @@ export async function upsertProducts(
     const syncFeatures = existing.title !== product.title;
     const syncFacets =
       syncFeatures ||
+      existing.model !== product.model ||
+      existing.manufacturer_id !== fields.manufacturerId ||
+      existing.primary_category_id !== fields.primaryCategoryId ||
       existing.category !== product.category ||
       (existing.raw_category ?? existing.category ?? "") !== fields.rawCategory;
 

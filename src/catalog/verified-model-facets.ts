@@ -5,29 +5,29 @@ import type { FacetFact } from "./types.js";
 export const VERIFIED_BOOKSHELF_REFERENCES = [
   {
     model: "805 D4 Signature",
-    key: "805D4SIGNATURE",
+    modelCode: "805D4SIGNATURE",
     sourceUrl: "https://www.bowerswilkins.com/en/product/loudspeakers/805-d4-signature/300679.html",
   },
   {
     model: "805 D4",
-    key: "805D4",
+    modelCode: "805D4",
     sourceUrl: "https://www.bowerswilkins.com/en/product/loudspeakers/805-d4/150241.html",
   },
   {
     model: "805 D3",
-    key: "805D3",
+    modelCode: "805D3",
     sourceUrl:
       "https://www.bowerswilkins.com/on/demandware.static/-/Library-Sites-bowers_europe_shared/default/dw8b9f6335/archive-manuals/805-d3-info-sheet_0.pdf",
   },
   {
     model: "805 Diamond",
-    key: "805DIAMOND",
+    modelCode: "805DIAMOND",
     sourceUrl:
       "https://www.bowerswilkins.com/on/demandware.static/-/Library-Sites-bowers_europe_shared/default/dwce418a2b/archive-manuals/eng_fp29483_805-diamond_info_sheet.pdf",
   },
   {
     model: "805 S",
-    key: "805S",
+    modelCode: "805S",
     sourceUrl:
       "https://www.bowerswilkins.com/on/demandware.static/-/Library-Sites-bowers_europe_shared/default/dwab5e957c/archive-manuals/eng_fp20311_805-s_info_sheet.pdf",
   },
@@ -49,20 +49,27 @@ export function verifiedModelFacetFacts(input: ModelFacetEvidence): FacetFact[] 
   if (input.manufacturerId !== "bowers-wilkins" || input.primaryCategoryId !== "SPK.LOUDSPEAKER")
     return [];
   if (inferSaleSubject(input.title, input.model).kind === "accessory") return [];
+  // An exact parsed model does not erase other equipment named by the seller's title.
+  // Remove only the reviewed speaker/stand combination before checking every remaining bundle.
+  const bundleEvidence = `${input.title} ${input.model}`
+    .normalize("NFKC")
+    .replace(/805\s*D4\s*\+\s*FS805\s*D4/gi, "805D4");
+  if (/[A-Z0-9.-]*\d[A-Z0-9.-]*\s*[+＆&]\s*[A-Z0-9.-]*\d[A-Z0-9.-]*/i.test(bundleEvidence))
+    return [];
   const value = input.model
     .normalize("NFKC")
     .toUpperCase()
     .replace(/\((?:ペア|PAIR)\)/g, "")
     .replace(/\(805DIAMOND ローズナット\)/g, "")
     .replace(/[\s/・-]/g, "");
-  const reference = VERIFIED_BOOKSHELF_REFERENCES.find(({ key }) => {
-    if (!value.startsWith(key)) return false;
-    const tail = value.slice(key.length);
+  const reference = VERIFIED_BOOKSHELF_REFERENCES.find(({ modelCode }) => {
+    if (!value.startsWith(modelCode)) return false;
+    const tail = value.slice(modelCode.length);
     // Colour annotations are model presentation only; unknown editions/accessories stay unknown.
     if (/^(?:MR|B|グロスブラック|ローズナット|カリフォルニアバールグロス)?$/.test(tail))
       return true;
-    if (key === "805D4SIGNATURE" && tail === "WITHSTAND") return true;
-    return key === "805D4" && tail === "+FS805D4";
+    if (modelCode === "805D4SIGNATURE" && tail === "WITHSTAND") return true;
+    return modelCode === "805D4" && tail === "+FS805D4";
   });
   return reference
     ? [
