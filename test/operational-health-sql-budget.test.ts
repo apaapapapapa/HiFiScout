@@ -117,7 +117,7 @@ test("split-identity rechecks seek captured keys even after a seed disappears", 
     assert.deepEqual((await db.prepare(sql).all()).results, []);
     const plan = (await db.prepare("EXPLAIN QUERY PLAN " + sql).all<{ detail: string }>()).results;
     assert.ok(
-      plan.some((row) =>
+      plan.some((row: { detail: string }) =>
         /SEARCH p USING INDEX idx_products_exact_identity.*canonical_manufacturer_id=\? AND normalized_model=\?/.test(
           row.detail,
         ),
@@ -167,7 +167,7 @@ test("convergence polls do not scan unrelated listings or terminal crawl history
     assert.ok(large.meta.rows_read < 40, JSON.stringify(large.meta));
     const recheck = await db.prepare(invocation.sql[3]).all<{ id: number }>();
     assert.deepEqual(
-      recheck.results.map((row) => row.id),
+      recheck.results.map((row: { id: number }) => row.id),
       [1],
     );
     assert.ok(recheck.meta.rows_read < 15, JSON.stringify(recheck.meta));
