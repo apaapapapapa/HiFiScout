@@ -567,7 +567,10 @@ async function prepareJob(
   if (requiresDerivedReplay(job.workType)) {
     const replay = await replayDerivedListing(db, row, aliases, evaluatedAt);
     projectionToken = replay.projectionToken;
-    projectionRequired = replay.projectionRequired;
+    // A full rebuild is an explicit repair request for downstream read models, not only a
+    // resolver-version replay. It must repair missing/stale projections even when every derived
+    // listing column is already current.
+    projectionRequired = replay.projectionRequired || job.workType === "reprocess_listing";
   }
   return { job, row, projectionToken, projectionRequired };
 }
