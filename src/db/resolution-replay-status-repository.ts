@@ -1,4 +1,5 @@
 import { RESOLUTION_VERSIONS } from "../catalog/resolution-versions.js";
+import { CATEGORY_VERSION_EXPRESSION } from "./resolution-version-sql.js";
 import type { QueryableDatabase } from "./types.js";
 
 interface ResolutionReplayRow extends Record<string, unknown> {
@@ -95,14 +96,14 @@ export async function resolutionReplayStatus(
           SUM(CASE WHEN p.manufacturer_resolver_version < ? THEN 1 ELSE 0 END) AS stale_manufacturer,
           SUM(CASE WHEN p.model_resolver_version < ? THEN 1 ELSE 0 END) AS stale_model,
           SUM(CASE
-            WHEN COALESCE(CAST(json_extract(p.metadata_json, '$.categoryClassification.version') AS INTEGER), 0) < ?
+            WHEN ${CATEGORY_VERSION_EXPRESSION} < ?
             THEN 1 ELSE 0 END) AS stale_category,
           SUM(CASE WHEN COALESCE(r.identity_resolver_version, 0) < ? THEN 1 ELSE 0 END) AS stale_identity,
           SUM(CASE WHEN p.remediation_projection_required = 1 THEN 1 ELSE 0 END) AS projection_dirty,
           SUM(CASE WHEN
             p.manufacturer_resolver_version < ? OR
             p.model_resolver_version < ? OR
-            COALESCE(CAST(json_extract(p.metadata_json, '$.categoryClassification.version') AS INTEGER), 0) < ? OR
+            ${CATEGORY_VERSION_EXPRESSION} < ? OR
             COALESCE(r.identity_resolver_version, 0) < ? OR
             p.remediation_projection_required = 1
           THEN 1 ELSE 0 END) AS stale_listings

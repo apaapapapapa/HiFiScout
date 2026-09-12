@@ -114,7 +114,8 @@ export interface AdminBackgroundJob {
   error: string;
   expiresAt: string | null;
   detailsAvailable: boolean;
-  modelReplay?: { version: number; scanned: number };
+  // `model` wire fields also serve category replay; retain compatibility with existing tabs/jobs.
+  modelReplay?: { version: number; categoryVersion?: number; scanned: number };
 }
 export type AdminJobCommand =
   | { action: "list"; before?: string }
@@ -132,6 +133,7 @@ export interface AdminJobList {
   items: AdminBackgroundJob[];
   nextBefore: string | null;
   modelResolverVersion?: number;
+  categoryClassifierVersion?: number;
 }
 export interface AdminJobDetail {
   job: AdminBackgroundJob;

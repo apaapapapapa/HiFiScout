@@ -27,7 +27,10 @@ import { applyAdminCsvChange } from "../db/admin-csv-import-repository.js";
 import { stepOfferFactReplay } from "../db/offer-fact-replay-repository.js";
 import { OFFER_FACT_RULE_VERSION } from "../catalog/offer-facts.js";
 import { RESOLUTION_VERSIONS } from "../catalog/resolution-versions.js";
-import { needsAdminModelReplay, scanAdminModelReplay } from "../db/admin-model-replay.js";
+import {
+  needsAdminResolutionReplay,
+  scanAdminResolutionReplay,
+} from "../db/admin-resolution-replay.js";
 
 type JobRow = {
   id: string;
@@ -57,6 +60,11 @@ type ItemRow = {
 };
 const RETENTION_MS = 7 * 24 * 60 * 60_000;
 const MAX_UPLOAD_BYTES = 128 * 1024 * 1024;
+// A model-only cursor may have already passed category-stale rows. Never reuse it for this scope.
+const REPLAY_SCOPE = "model-category";
+const REPLAY_VERSIONS_JSON = JSON.stringify({ ...RESOLUTION_VERSIONS, scope: REPLAY_SCOPE });
+const REPLAY_CHANGED_MESSAGE =
+  "判定ルールまたは対象範囲が更新されています。この処理を中止して、新しい一括再判定を開始してください。";
 const jobDto = (row: JobRow): AdminBackgroundJob => ({
   id: row.id,
   kind: row.kind,
@@ -74,7 +82,7 @@ const jobDto = (row: JobRow): AdminBackgroundJob => ({
 });
 class JobInputError extends Error {}
 
-type ModelReplayState = {
+type ResolutionReplayState = {
   versions_json: string;
   max_product_id: number | null;
   after_id: number;
@@ -118,22 +126,28 @@ export class AdminJobs extends DurableObject<Env> {
     return row;
   }
 
-  private modelState(id: string): ModelReplayState {
+  // Keep the persisted table/kind names so deployed model-only jobs remain readable.
+  private replayState(id: string): ResolutionReplayState {
     const row = this.ctx.storage.sql
-      .exec<ModelReplayState>("SELECT * FROM model_replays WHERE job_id=?", id)
+      .exec<ResolutionReplayState>("SELECT * FROM model_replays WHERE job_id=?", id)
       .toArray()[0];
     if (!row) throw new Error("model_replay_state_missing");
     return row;
   }
 
   private dto(row: JobRow): AdminBackgroundJob {
+    const state = row.kind === "model" ? this.replayState(row.id) : null;
+    const versions = state
+      ? (JSON.parse(state.versions_json) as { scope?: string; category: number })
+      : null;
     return {
       ...jobDto(row),
-      ...(row.kind === "model"
+      ...(state
         ? {
             modelReplay: {
               version: row.rule_version,
-              scanned: this.modelState(row.id).scanned_count,
+              ...(versions?.scope === REPLAY_SCOPE ? { categoryVersion: versions.category } : {}),
+              scanned: state.scanned_count,
             },
           }
         : {}),
@@ -186,6 +200,7 @@ export class AdminJobs extends DurableObject<Env> {
         items: page.map((row) => this.dto(row)),
         nextBefore: rows.length > 25 ? `${page.at(-1)!.created_at}~${page.at(-1)!.id}` : null,
         modelResolverVersion: RESOLUTION_VERSIONS.model,
+        categoryClassifierVersion: RESOLUTION_VERSIONS.category,
       };
     }
     if (command.action === "create") {
@@ -231,7 +246,7 @@ export class AdminJobs extends DurableObject<Env> {
             `SELECT j.* FROM jobs j JOIN model_replays r ON r.job_id=j.id
           WHERE j.status IN ('uploading','queued','running','paused','failed') AND j.details_available=1
             AND r.versions_json=? ORDER BY j.created_at,j.id LIMIT 1`,
-            JSON.stringify(RESOLUTION_VERSIONS),
+            REPLAY_VERSIONS_JSON,
           )
           .toArray()[0];
         if (replay) return { job: this.dto(replay) };
@@ -257,7 +272,7 @@ export class AdminJobs extends DurableObject<Env> {
           sql.exec(
             "INSERT INTO model_replays(job_id,versions_json) VALUES (?,?)",
             command.id,
-            JSON.stringify(RESOLUTION_VERSIONS),
+            REPLAY_VERSIONS_JSON,
           );
       });
       await this.schedule();
@@ -344,13 +359,8 @@ export class AdminJobs extends DurableObject<Env> {
         job.id,
       );
     } else if (command.action === "resume") {
-      if (
-        job.kind === "model" &&
-        this.modelState(job.id).versions_json !== JSON.stringify(RESOLUTION_VERSIONS)
-      )
-        throw new JobInputError(
-          "判定ルールが更新されています。この処理を中止して、新しい一括再判定を開始してください。",
-        );
+      if (job.kind === "model" && this.replayState(job.id).versions_json !== REPLAY_VERSIONS_JSON)
+        throw new JobInputError(REPLAY_CHANGED_MESSAGE);
       if (!job.details_available)
         throw new JobInputError(
           "詳細データの保持期限が切れています。新しい処理を作成してください。",
@@ -427,7 +437,7 @@ export class AdminJobs extends DurableObject<Env> {
     );
     try {
       if (job.kind === "manufacturer") await this.manufacturer(job);
-      else if (job.kind === "model") await this.modelReplay(job);
+      else if (job.kind === "model") await this.resolutionReplay(job);
       else if (job.kind === "replay") await this.replay(job);
       else
         for (let step = 0; step < 5; step++) {
@@ -525,8 +535,8 @@ export class AdminJobs extends DurableObject<Env> {
               ? "商品情報の更新との競合が続くため停止しました。時間をおいて続きから再開してください。"
               : error instanceof Error && error.message === "offer_fact_rule_version_changed"
                 ? "抽出ルールが更新されています。この処理を中止して、新しい再処理を開始してください。"
-                : error instanceof Error && error.message === "model_replay_version_changed"
-                  ? "判定ルールが更新されています。この処理を中止して、新しい一括再判定を開始してください。"
+                : error instanceof Error && error.message === "resolution_replay_version_changed"
+                  ? REPLAY_CHANGED_MESSAGE
                   : "処理が中断しました。保存済みの続きから再開できます。",
           new Date().toISOString(),
           job.id,
@@ -595,21 +605,25 @@ export class AdminJobs extends DurableObject<Env> {
     else if (stalled >= 3) throw new Error("offer_fact_replay_no_progress");
   }
 
-  private async modelReplay(job: JobRow) {
+  private async resolutionReplay(job: JobRow) {
     const sql = this.ctx.storage.sql;
-    let state = this.modelState(job.id);
-    if (state.versions_json !== JSON.stringify(RESOLUTION_VERSIONS))
-      throw new Error("model_replay_version_changed");
+    let state = this.replayState(job.id);
+    if (state.versions_json !== REPLAY_VERSIONS_JSON)
+      throw new Error("resolution_replay_version_changed");
     if (state.max_product_id === null) {
       const last = await this.env.DB.prepare(
         "SELECT id FROM products ORDER BY id DESC LIMIT 1",
       ).first<{ id: number }>();
       sql.exec("UPDATE model_replays SET max_product_id=? WHERE job_id=?", last?.id ?? 0, job.id);
-      state = this.modelState(job.id);
+      state = this.replayState(job.id);
     }
     let pending = JSON.parse(state.pending_ids) as number[];
     if (!pending.length && !state.scan_complete) {
-      const page = await scanAdminModelReplay(this.env.DB, state.after_id, state.max_product_id!);
+      const page = await scanAdminResolutionReplay(
+        this.env.DB,
+        state.after_id,
+        state.max_product_id!,
+      );
       // Persist the bounded candidate window before any D1 mutation. A lost response retries the
       // same candidate; already-current rows are skipped by the primary-key eligibility check.
       sql.exec(
@@ -620,13 +634,13 @@ export class AdminJobs extends DurableObject<Env> {
         Number(page.complete),
         job.id,
       );
-      state = this.modelState(job.id);
+      state = this.replayState(job.id);
       pending = page.ids;
     }
     if (this.job(job.id).status !== "running") return;
     const id = pending[0];
     if (id !== undefined) {
-      const needed = await needsAdminModelReplay(this.env.DB, id);
+      const needed = await needsAdminResolutionReplay(this.env.DB, id);
       if (needed) {
         const version = await registryVersion(this.env.DB);
         if (!this.aliasSnapshot || this.aliasSnapshot.version !== version)

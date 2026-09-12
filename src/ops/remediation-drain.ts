@@ -1,4 +1,5 @@
 import { RESOLUTION_VERSIONS } from "../catalog/resolution-versions.js";
+import { CATEGORY_VERSION_EXPRESSION } from "../db/resolution-version-sql.js";
 import { compactSupersededAutomaticRemediationJobs } from "../db/data-quality-remediation-compaction.js";
 import { runDataQualityRemediationSweep } from "../db/data-quality-remediation-service.js";
 import type { QueryableDatabase } from "../db/types.js";
@@ -37,7 +38,7 @@ async function replayStatus(db: QueryableDatabase) {
           SUM(CASE WHEN p.manufacturer_resolver_version < ? THEN 1 ELSE 0 END) AS stale_manufacturer,
           SUM(CASE WHEN p.model_resolver_version < ? THEN 1 ELSE 0 END) AS stale_model,
           SUM(CASE
-            WHEN COALESCE(CAST(json_extract(p.metadata_json, '$.categoryClassification.version') AS INTEGER), 0) < ?
+            WHEN ${CATEGORY_VERSION_EXPRESSION} < ?
             THEN 1 ELSE 0 END) AS stale_category,
           SUM(CASE WHEN COALESCE(r.identity_resolver_version, 0) < ? THEN 1 ELSE 0 END) AS stale_identity,
           SUM(CASE WHEN p.remediation_projection_required = 1 THEN 1 ELSE 0 END) AS projection_dirty

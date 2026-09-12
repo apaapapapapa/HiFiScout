@@ -17,6 +17,15 @@ const LABELS: Record<AdminJobStatus, string> = {
   cancelled: "中止",
 };
 
+function ReplayRuleVersions({ model, category }: { model?: number; category?: number }) {
+  return model === undefined ? null : (
+    <p>
+      判定ルール: 型番 v{model}
+      {category === undefined ? "" : ` / カテゴリ v${category}`}
+    </p>
+  );
+}
+
 export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void }) {
   const replayId = useRef<string | null>(null);
   const seenProgress = useRef(new Map<string, { processed: number; failed: number }>());
@@ -125,7 +134,7 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
       setBusy(false);
     }
   }
-  async function startModelReplay() {
+  async function startResolutionReplay() {
     setBusy(true);
     setError("");
     setMessage("");
@@ -135,7 +144,7 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
       replayId.current = null;
       setMessage(
         job.status === "queued" || job.status === "running"
-          ? "型番の一括再判定を受け付けました。画面を閉じても継続します。"
+          ? "型番・カテゴリの一括再判定を受け付けました。画面を閉じても継続します。"
           : "同じ判定ルールの処理があります。処理一覧から状態を確認して再開してください。",
       );
       setHistory([]);
@@ -148,26 +157,27 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
   }
   return (
     <section className="panel workspace-panel" aria-label="バックグラウンド処理一覧">
-      <section className="model-replay-launch" aria-label="型番の一括再判定">
-        <h2>型番の一括再判定</h2>
+      <section className="model-replay-launch" aria-label="型番・カテゴリの一括再判定">
+        <h2>型番・カテゴリの一括再判定</h2>
         <p>
-          判定ルールの更新後、掲載中の旧バージョン商品を保存済み情報から再判定します。
+          型番またはカテゴリの判定ルールが古い掲載中の商品を、保存済み情報からまとめて再判定します。
           メーカー・カテゴリ・商品照合と検索表示も更新し、手動修正は保持します。
         </p>
         <p>少量ずつ完了まで継続します。進捗確認・一時停止・再開は下の処理一覧から行えます。</p>
-        {list?.modelResolverVersion !== undefined ? (
-          <p>現在の型番判定ルール: v{list.modelResolverVersion}</p>
-        ) : null}
+        <ReplayRuleVersions
+          model={list?.modelResolverVersion}
+          category={list?.categoryClassifierVersion}
+        />
         <button
           type="button"
           disabled={busy || !list}
           onClick={() => {
             if (
               window.confirm(
-                "掲載中の旧バージョン商品を一括再判定します。手動修正は保持され、画面を閉じても継続します。開始しますか？",
+                "型番またはカテゴリの判定ルールが古い掲載中の商品を一括再判定します。手動修正は保持され、画面を閉じても継続します。開始しますか？",
               )
             )
-              void startModelReplay();
+              void startResolutionReplay();
           }}
         >
           旧バージョンの商品を一括再判定
@@ -191,7 +201,7 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
       {error ? <p role="alert">{error}</p> : null}
       {list?.items.length === 0 ? (
         <p>
-          処理の記録はありません。型番の一括再判定、CSV入出力または出品条件の再処理から開始できます。
+          処理の記録はありません。型番・カテゴリの一括再判定、CSV入出力または出品条件の再処理から開始できます。
         </p>
       ) : null}
       <div className="table-wrap">
@@ -237,7 +247,10 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
                       <p>
                         確認済み {job.modelReplay.scanned}件 · 対象処理済み {job.processed}件
                       </p>
-                      <p>型番判定ルール v{job.modelReplay.version}</p>
+                      <ReplayRuleVersions
+                        model={job.modelReplay.version}
+                        category={job.modelReplay.categoryVersion}
+                      />
                     </div>
                   ) : (
                     <p>

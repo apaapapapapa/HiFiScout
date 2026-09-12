@@ -96,17 +96,22 @@ Review these gaps and sample the seller evidence before promoting filters more w
 `GET/POST /api/admin/offer-facts/replay` is Access protected; POST takes only an empty JSON object,
 and the client cannot supply a cursor or override the server's batch size.
 
-## Bounded model resolver replay
+## Bounded model and category replay {#bounded-model-resolver-replay}
 
-**バックグラウンド処理 → 型番の一括再判定 → 旧バージョンの商品を一括再判定**
+**バックグラウンド処理 → 型番・カテゴリの一括再判定 → 旧バージョンの商品を一括再判定**
 starts a durable `model` job through the existing Access-protected `/api/admin/jobs` route.
-The screen displays the deployed model resolver version. Confirming submits and starts the job;
+The existing job kind and storage are shared by both stages; there is no separate category job.
+The screen displays both deployed rule versions, while each job shows its pinned versions.
+Confirming submits and starts the job;
 closing the browser does not interrupt it. The existing job list provides saved progress,
 pause/resume, cancellation and failure recovery, without automatic polling.
 
 The first alarm captures the maximum stored product ID. Each discovery step inspects at most
-25 IDs, including inactive rows, then retains only active listings whose model resolver version
-is old or whose downstream projection remains pending. The small candidate window is saved in
+25 IDs, including inactive rows, then retains only active listings whose model or category version
+is old or whose downstream projection remains pending. A missing category version counts as old.
+One shared SQL predicate serves discovery and the point check; the category-version expression
+is also shared with scheduled remediation and status reporting. Filtering happens after the bounded
+ID window, so current rows do not cause an unbounded stale-filter scan. The small candidate window is saved in
 the coordinator's SQLite storage and drained one listing per alarm. Current and inactive listings
 are skipped; a primary-key check also skips candidates completed by cron or crawling in the meantime.
 New IDs beyond the captured boundary are handled by normal ingestion or a later job. No full-table
@@ -118,10 +123,15 @@ search projection, identity resolution and search-entity membership. Seller evid
 manual overrides retain their authority. A failed downstream refresh retains its projection token
 and pending candidate for retry; a lost job checkpoint never advances past unfinished work.
 Pausing or cancelling during a D1 operation can allow that one listing to finish, but cannot restart
-the job. Repeated submissions reuse an unfinished job with the same resolver tuple. The job pins
-all deterministic resolver versions; a code deployment that changes any of them stops the old job
+the job. Repeated submissions reuse an unfinished job with the same resolver tuple and selection scope. The job pins
+all deterministic resolver versions and its scope; a code deployment that changes either stops the old job
 and requires cancellation followed by a new job. Manufacturer aliases use the existing cached
 registry snapshot, refreshed when its generation changes.
+
+On the upgrade from model-only replay, unfinished old jobs stop with an instruction to cancel and
+start a new replay. A new job scans from the beginning so category-only rows behind the old cursor
+are included. Completed work remains applied and current rows are skipped. Existing history stays
+readable and does not claim a category replay version for model-only jobs.
 
 The canonical-field update compares the retained source snapshot and projection token with those
 read for that attempt. A concurrent crawl invalidates the update before dependent facts or search
@@ -129,8 +139,9 @@ work can use the older evidence. The candidate remains saved and is retried with
 three consecutive source conflicts stop the job for review instead of retrying indefinitely.
 
 The GitHub Actions **Resolver Replay Drain** remains available for broader operator maintenance.
-The admin job selects model-version drift and pending projections; it is not a full catalog audit
-or a sweep of listings with only manufacturer/category-version drift.
+The admin job selects model/category-version drift and pending projections; it is not a full catalog audit
+or a sweep of listings with only manufacturer/identity-version drift. It reclassifies stored listings,
+not Knowledge Catalog master records, and does not increment rule versions just to force reprocessing.
 
 ## Complete data exports
 
