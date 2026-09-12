@@ -62,6 +62,7 @@ interface RemediationListingRow {
   raw_category: string;
   primary_category_id: string;
   category_ids: string;
+  direct_category_ids: string;
   classification_status: string;
   search_aliases: string;
   metadata_json: string;
@@ -226,6 +227,7 @@ async function loadListing(
              model, raw_model, normalized_model, presentation_color, model_resolution_status,
              model_resolution_method, model_resolution_confidence, model_resolver_version,
              title, category, raw_category, primary_category_id, category_ids,
+             direct_category_ids,
              classification_status, search_aliases, metadata_json,
              remediation_projection_required, remediation_projection_token
       FROM products
@@ -284,6 +286,41 @@ const REPLAY_SOURCE_FIELDS = [
   "metadata_json",
   "remediation_projection_token",
 ] as const;
+
+const REPLAY_DERIVED_FIELDS = [
+  "manufacturer",
+  "normalized_raw_manufacturer",
+  "manufacturer_id",
+  "canonical_manufacturer_id",
+  "manufacturer_resolution_status",
+  "manufacturer_resolution_method",
+  "manufacturer_resolution_confidence",
+  "manufacturer_resolver_version",
+  "model",
+  "normalized_model",
+  "presentation_color",
+  "model_resolution_status",
+  "model_resolution_method",
+  "model_resolution_confidence",
+  "model_resolver_version",
+  "category",
+  "primary_category_id",
+  "category_ids",
+  "direct_category_ids",
+  "classification_status",
+  "search_aliases",
+  "metadata_json",
+] as const;
+
+type ReplayDerivedField = (typeof REPLAY_DERIVED_FIELDS)[number];
+
+const CATEGORY_MEMBERSHIP_FIELDS = new Set<ReplayDerivedField>([
+  "primary_category_id",
+  "category_ids",
+  "direct_category_ids",
+]);
+
+const REPLAY_CAS_FIELDS = [...REPLAY_SOURCE_FIELDS, ...REPLAY_DERIVED_FIELDS] as const;
 
 export class ListingReplaySourceChangedError extends Error {
   constructor() {
@@ -388,124 +425,68 @@ async function replayDerivedListing(
   const directCategoryIdsJson = JSON.stringify(categorySet.directCategoryIds);
   const token = `dq-replay:${evaluatedAt}:${row.id}`;
 
-  const result = await db
-    .prepare(`
-      UPDATE products
-      SET manufacturer = ?,
-          normalized_raw_manufacturer = ?,
-          manufacturer_id = ?,
-          canonical_manufacturer_id = ?,
-          manufacturer_resolution_status = ?,
-          manufacturer_resolution_method = ?,
-          manufacturer_resolution_confidence = ?,
-          manufacturer_resolver_version = ?,
-          model = ?,
-          normalized_model = ?,
-          presentation_color = ?,
-          model_resolution_status = ?,
-          model_resolution_method = ?,
-          model_resolution_confidence = ?,
-          model_resolver_version = ?,
-          category = ?,
-          primary_category_id = ?,
-          category_ids = ?,
-          direct_category_ids = ?,
-          classification_status = ?,
-          search_aliases = ?,
-          metadata_json = ?,
-          remediation_projection_required = 1,
-          remediation_projection_token = ?
-      WHERE id = ?
-        AND ${REPLAY_SOURCE_FIELDS.map((field) => `${field} IS ?`).join(" AND ")}
-        AND (
-          manufacturer IS NOT ?
-          OR normalized_raw_manufacturer IS NOT ?
-          OR manufacturer_id IS NOT ?
-          OR canonical_manufacturer_id IS NOT ?
-          OR manufacturer_resolution_status IS NOT ?
-          OR manufacturer_resolution_method IS NOT ?
-          OR manufacturer_resolution_confidence IS NOT ?
-          OR manufacturer_resolver_version IS NOT ?
-          OR model IS NOT ?
-          OR normalized_model IS NOT ?
-          OR presentation_color IS NOT ?
-          OR model_resolution_status IS NOT ?
-          OR model_resolution_method IS NOT ?
-          OR model_resolution_confidence IS NOT ?
-          OR model_resolver_version IS NOT ?
-          OR category IS NOT ?
-          OR primary_category_id IS NOT ?
-          OR category_ids IS NOT ?
-          OR direct_category_ids IS NOT ?
-          OR classification_status IS NOT ?
-          OR search_aliases IS NOT ?
-          OR metadata_json IS NOT ?
-        )
-    `)
-    .bind(
-      manufacturer.displayName,
-      manufacturer.normalizedRawManufacturer,
-      manufacturerFilterId,
-      manufacturer.canonicalManufacturerId,
-      manufacturer.status,
-      manufacturer.method,
-      manufacturer.confidence,
-      RESOLUTION_VERSIONS.manufacturer,
-      model.model,
-      model.normalizedModel,
-      presentationColor,
-      model.status,
-      model.method,
-      model.confidence,
-      RESOLUTION_VERSIONS.model,
-      categorySet.displayName,
-      categorySet.primaryCategoryId,
-      categoryIdsJson,
-      directCategoryIdsJson,
-      categorySet.classificationStatus,
-      categorySet.searchAliases,
-      metadataJson,
-      token,
-      row.id,
-      ...REPLAY_SOURCE_FIELDS.map((field) => row[field]),
-      manufacturer.displayName,
-      manufacturer.normalizedRawManufacturer,
-      manufacturerFilterId,
-      manufacturer.canonicalManufacturerId,
-      manufacturer.status,
-      manufacturer.method,
-      manufacturer.confidence,
-      RESOLUTION_VERSIONS.manufacturer,
-      model.model,
-      model.normalizedModel,
-      presentationColor,
-      model.status,
-      model.method,
-      model.confidence,
-      RESOLUTION_VERSIONS.model,
-      categorySet.displayName,
-      categorySet.primaryCategoryId,
-      categoryIdsJson,
-      directCategoryIdsJson,
-      categorySet.classificationStatus,
-      categorySet.searchAliases,
-      metadataJson,
-    )
-    .run();
-
-  const changed = Number(result?.meta?.changes || 0) > 0;
+  const derived: Record<ReplayDerivedField, string | number> = {
+    manufacturer: manufacturer.displayName,
+    normalized_raw_manufacturer: manufacturer.normalizedRawManufacturer,
+    manufacturer_id: manufacturerFilterId,
+    canonical_manufacturer_id: manufacturer.canonicalManufacturerId,
+    manufacturer_resolution_status: manufacturer.status,
+    manufacturer_resolution_method: manufacturer.method,
+    manufacturer_resolution_confidence: manufacturer.confidence,
+    manufacturer_resolver_version: RESOLUTION_VERSIONS.manufacturer,
+    model: model.model,
+    normalized_model: model.normalizedModel,
+    presentation_color: presentationColor,
+    model_resolution_status: model.status,
+    model_resolution_method: model.method,
+    model_resolution_confidence: model.confidence,
+    model_resolver_version: RESOLUTION_VERSIONS.model,
+    category: categorySet.displayName,
+    primary_category_id: categorySet.primaryCategoryId,
+    category_ids: categoryIdsJson,
+    direct_category_ids: directCategoryIdsJson,
+    classification_status: categorySet.classificationStatus,
+    search_aliases: categorySet.searchAliases,
+    metadata_json: metadataJson,
+  };
+  const changedFields = REPLAY_DERIVED_FIELDS.filter((field) => row[field] !== derived[field]);
+  let changed = false;
+  if (changedFields.length) {
+    // SQLite maintains every index and UPDATE OF trigger named by a SET clause even when the value
+    // assigned to that column is unchanged. A resolver-version replay commonly changes metadata
+    // alone; assigning all derived columns made that one change rewrite every identity/category
+    // index. The identifiers come only from the fixed list above, while the source snapshot keeps
+    // the same lost-update fence as the former all-column statement. Compare the complete loaded
+    // replay snapshot so a concurrent writer cannot change an omitted derived field unnoticed.
+    const result = await db
+      .prepare(`
+        UPDATE products
+        SET ${changedFields.map((field) => `${field} = ?`).join(", ")},
+            remediation_projection_required = 1,
+            remediation_projection_token = ?
+        WHERE id = ?
+          AND ${REPLAY_CAS_FIELDS.map((field) => `${field} IS ?`).join(" AND ")}
+      `)
+      .bind(
+        ...changedFields.map((field) => derived[field]),
+        token,
+        row.id,
+        ...REPLAY_CAS_FIELDS.map((field) => row[field]),
+      )
+      .run();
+    changed = Number(result?.meta?.changes || 0) > 0;
+  }
   if (!changed) {
     // Zero changes can mean equal derived values or a failed source-snapshot comparison. Do not
     // write categories/facts, refresh projections or acknowledge a newer token in the latter case.
     const current = await loadListing(db, row.id);
-    if (!current || REPLAY_SOURCE_FIELDS.some((field) => current[field] !== row[field]))
+    if (!current || REPLAY_CAS_FIELDS.some((field) => current[field] !== row[field]))
       throw new ListingReplaySourceChangedError();
   }
-  // A replay that moved a listing's category without rebuilding `product_categories` left it
-  // counted under the category it used to be in — visible today in the facet counts, and a wrong
-  // search result once the filter reads membership. Only on an actual change, so an unchanged
-  // listing is not churned through a delete-and-insert every sweep.
-  if (changed) {
+  // Rebuild membership only when membership fields moved. Resolver metadata, model presentation,
+  // or aliases do not change `product_categories`; deleting and reinserting the same rows for those
+  // changes added writes without changing the search result.
+  if (changed && changedFields.some((field) => CATEGORY_MEMBERSHIP_FIELDS.has(field))) {
     await rebuildListingCategories(
       db,
       row.id,
