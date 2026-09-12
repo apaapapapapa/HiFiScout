@@ -36,11 +36,14 @@ function clean(value: unknown = ""): string {
  * the product title. The placeholder is still retained as raw seller evidence; only the title used
  * for verified alias lookup drops it.
  */
-function manufacturerTitleEvidence(value: unknown): string {
-  return stripManufacturerListingLabels(clean(value)).replace(
-    /^(?:その他|ノーブランド|メーカー不明|不明)(?:\s+(?:そのた|フメイ))?(?:\s+|$)/u,
-    "",
-  );
+function manufacturerTitleEvidence(value: unknown, removePlaceholder = false): string {
+  const title = stripManufacturerListingLabels(clean(value));
+  return removePlaceholder
+    ? title.replace(
+        /^(?:その他|ノーブランド|メーカー不明|不明)(?:\s+(?:そのた|フメイ))?(?:\s+|$)/u,
+        "",
+      )
+    : title;
 }
 
 function prepareAliases(
@@ -218,7 +221,7 @@ function resolvePreparedManufacturer(
     };
   }
 
-  const cleanTitle = manufacturerTitleEvidence(title);
+  const cleanTitle = manufacturerTitleEvidence(title, shopKey === "fujiya-avic");
   const prefixMatches = aliases.prefixes.filter((entry) => entry.pattern.test(cleanTitle));
   const longest = Math.max(0, ...prefixMatches.map((entry) => entry.row.normalizedAlias.length));
   const strongest = prefixMatches
