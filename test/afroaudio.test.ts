@@ -147,6 +147,46 @@ test("Afro Audio keeps seller titles as evidence but removes card-model presenta
   assert.equal(items[4].model, "LINN LP12用 インナープラッター");
 });
 
+test("Afro Audio keeps known multi-word manufacturers out of the model", () => {
+  const html = `
+    <a href="/products/detail/30327">
+      〖Bランク〗Counter Point SA-3 プリアンプ カウンターポイント
+      @61001 61001 ￥198,000 税込 在庫あり
+    </a>
+    <a href="/products/detail/30332">
+      〖Aランク〗Golden Dragon KT88 4本 真空管 ゴールデンドラゴン
+      @61002 61002 ￥44,000 税込 在庫あり
+    </a>`;
+
+  const items = parseAfroAudioListing(html, { rawCategory: "アンプ" });
+  assert.equal(items.length, 2);
+  assert.deepEqual(
+    items.map(({ manufacturer, model }) => ({ manufacturer, model })),
+    [
+      { manufacturer: "Counter Point", model: "SA-3" },
+      { manufacturer: "Golden Dragon", model: "KT88 4本" },
+    ],
+  );
+  assert.deepEqual(
+    items.map((item) => {
+      const normalized = normalizeCatalogProduct(item);
+      return {
+        manufacturer: normalized.manufacturer,
+        manufacturerId: normalized.manufacturerId,
+        model: normalized.model,
+      };
+    }),
+    [
+      { manufacturer: "Counterpoint", manufacturerId: "counterpoint", model: "SA-3" },
+      {
+        manufacturer: "Golden Dragon",
+        manufacturerId: "golden-dragon",
+        model: "KT88 4本",
+      },
+    ],
+  );
+});
+
 test("Afro Audio parser de-duplicates links and ignores footer availability labels", () => {
   const html = `
     <div class="item">

@@ -5,6 +5,7 @@ import {
   MANUFACTURER_RESOLVER_VERSION,
   resolveManufacturer,
 } from "../src/catalog/manufacturer-resolver.js";
+import { resolveModel } from "../src/catalog/model-resolver.js";
 import {
   normalizeManufacturer,
   splitKnownManufacturerModel,
@@ -18,10 +19,30 @@ interface MultiWordManufacturerCase {
   readonly model: string;
   readonly shopKey: string;
   readonly resolverMethod: string;
+  readonly titleManufacturer?: string;
+  readonly parsedManufacturer?: string;
   readonly assertNormalizedLegacy?: boolean;
 }
 
 const CASES: readonly MultiWordManufacturerCase[] = [
+  {
+    canonicalName: "Counterpoint",
+    id: "counterpoint",
+    legacyName: "Counter",
+    model: "SA-3",
+    shopKey: "afroaudio",
+    resolverMethod: "title_bootstrap_alias",
+    titleManufacturer: "Counter Point",
+    parsedManufacturer: "Counter Point",
+  },
+  {
+    canonicalName: "Golden Dragon",
+    id: "golden-dragon",
+    legacyName: "Golden",
+    model: "KT88 4本",
+    shopKey: "afroaudio",
+    resolverMethod: "title_bootstrap_alias",
+  },
   {
     canonicalName: "Unison Research",
     id: "unisonresearch",
@@ -58,7 +79,8 @@ const CASES: readonly MultiWordManufacturerCase[] = [
 ];
 
 for (const scenario of CASES) {
-  const title = `${scenario.canonicalName} ${scenario.model}`;
+  const title = `${scenario.titleManufacturer || scenario.canonicalName} ${scenario.model}`;
+  const parsedManufacturer = scenario.parsedManufacturer || scenario.canonicalName;
 
   test(`${scenario.canonicalName} is a canonical multi-word manufacturer`, () => {
     assert.deepEqual(normalizeManufacturer(scenario.canonicalName), {
@@ -70,12 +92,12 @@ for (const scenario of CASES) {
     assert.deepEqual(splitKnownManufacturerModel(title), {
       id: scenario.id,
       displayName: scenario.canonicalName,
-      rawManufacturer: scenario.canonicalName,
+      rawManufacturer: parsedManufacturer,
       model: scenario.model,
     });
 
     assert.deepEqual(splitManufacturerModel(title, scenario.shopKey), {
-      manufacturer: scenario.canonicalName,
+      manufacturer: parsedManufacturer,
       model: scenario.model,
     });
   });
@@ -94,6 +116,20 @@ for (const scenario of CASES) {
     if (scenario.assertNormalizedLegacy) {
       assert.equal(result.normalizedRawManufacturer, scenario.legacyName.toLowerCase());
     }
+  });
+
+  test(`legacy ${scenario.canonicalName} model evidence drops the remaining manufacturer tokens`, () => {
+    const legacyModel = title.split(/\s+/u).slice(1).join(" ");
+    const result = resolveModel({
+      rawManufacturer: scenario.legacyName,
+      rawModel: legacyModel,
+      title,
+      manufacturerId: scenario.id,
+      shopKey: scenario.shopKey,
+    });
+
+    assert.equal(result.status, "resolved");
+    assert.equal(result.model, scenario.model);
   });
 }
 
