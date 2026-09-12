@@ -142,21 +142,29 @@ test("REWIRE parser decodes numeric entities and classifies known floorstanding 
   assert.equal(normalizedMcIntosh.model, "XRT22 + MQ107");
 });
 
-test("REWIRE strips whole Super Audio descriptors without truncating revisions or bundles", () => {
+test("REWIRE retains disc-player evidence for central resolution and its annotation provenance", () => {
   const cases = [
     ["K-05 Super Audio CD Player", "K-05"],
     ["K-05Xs Super Audio CD/CD Player", "K-05Xs"],
     ["K-05X SACD/CD Player", "K-05X"],
     ["K-05 MK2 Super Audio CD Player", "K-05 MK2"],
     ["K-05 Super Audio CD Player MK2", "K-05 Super Audio CD Player MK2"],
-    ["K-05 Super Audio CD Player + G-01", "K-05 Super Audio CD Player + G-01"],
+    ["K-05 Super Audio CD Player + G-01", "K-05 + G-01"],
   ];
   for (const [description, expected] of cases) {
     const [item] = parseRewireListing(`<a href="/webshop/2023/10/18/esoteric_k-05/">
       ESOTERIC ${description} エソテリック SACDプレーヤー #R08500 ¥298,300(税込) プレーヤー
     </a>`);
-    assert.equal(item.model, expected, description);
+    assert.equal(item.model, description);
     assert.ok(item.title.includes(description));
+    const normalized = normalizeCatalogProduct(item, {}, { shopKey: "rewire" });
+    assert.equal(normalized.rawModel, description);
+    assert.equal(normalized.model, expected, description);
+    if (expected !== description) {
+      assert.ok(
+        normalized.metadata.modelNormalization?.removedAnnotations.includes("product_type_suffix"),
+      );
+    }
   }
 });
 

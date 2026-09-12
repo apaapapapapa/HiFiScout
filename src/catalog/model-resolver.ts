@@ -22,7 +22,6 @@ import {
 } from "./model-presentation-color.js";
 import { identityModelParts, normalizeIdentityModel } from "./product-identity.js";
 import { splitModelBundle } from "./model-bundle.js";
-import { DISC_PLAYER_TYPE_SUFFIX } from "./model-presentation-type.js";
 import type {
   ManufacturerAliasEvidence,
   ModelResolutionInput,
@@ -179,7 +178,9 @@ const ANNOTATION_RULES: readonly AnnotationRule[] = [
   },
   {
     name: "product_type_suffix",
-    pattern: DISC_PLAYER_TYPE_SUFFIX,
+    // Match the complete trailing label; the original raw model and following identity survive.
+    pattern:
+      /(?:^|\s+)(?:(?:super\s+audio\s+)?(?:sacd|cd)(?:\s*\/\s*cd)?\s+player|sacd(?:\s*\/\s*cd)?)\s*$/iu,
   },
   {
     name: "seller_product_type",

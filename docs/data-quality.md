@@ -109,9 +109,10 @@ catalog decisions remain separate, explicitly scoped work. A shop-local detail e
 invalidates only that shop's stale extraction decisions, without increasing its request cap or
 automatically resuming a paused full-data audit.
 
-Disc-player presentation uses one complete-suffix vocabulary for seller extraction and model
-resolution, including `Super Audio CD/CD Player`. It cannot consume following revisions or bundle
-components. Legacy REWIRE models ending in `Super Audio` are shortened only when the saved title
+The central model resolver removes complete disc-player suffixes, including `Super Audio CD/CD
+Player`. REWIRE preserves those labels in the extracted model so new crawls retain raw evidence and
+annotation provenance, just like stored-model replay. Removal cannot consume following revisions
+or bundle components. Legacy REWIRE models ending in `Super Audio` are shortened only when the saved title
 confirms that exact model prefix followed by the complete CD-player descriptor. Explicit servicing
 notes such as `(整備済み)` leave the display model while the original seller title and raw model
 retain the evidence for offer facts. A servicing bracket containing additional model/revision text
