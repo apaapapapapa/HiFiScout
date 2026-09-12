@@ -319,6 +319,7 @@ test("Fujiya refreshes old positive and negative extraction caches without inval
           ...product.metadata.categoryClassification,
           state,
           detailCheckedAt: "2026-09-06T23:00:00Z",
+          detailExtractorVersion: 2,
         },
       }),
     };
@@ -338,7 +339,7 @@ test("Fujiya refreshes old positive and negative extraction caches without inval
     assert.equal(result.detailRequests, 1);
     assert.equal(result.cacheHits, 0);
     assert.equal(result.products[0].primaryCategoryId, "SRC.STREAMER");
-    assert.equal(result.products[0].metadata.categoryClassification.detailExtractorVersion, 2);
+    assert.equal(result.products[0].metadata.categoryClassification.detailExtractorVersion, 3);
     const refreshed = result.products[0];
     const cached = await enrichProductCategories({
       db: emptyCatalogDb(),

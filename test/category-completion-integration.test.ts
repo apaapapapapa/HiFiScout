@@ -39,6 +39,80 @@ async function seed(db: QueryableDatabase, titles: readonly string[]) {
   );
 }
 
+test("media/noise replay updates searchable memberships and preserves manual category authority", async () => {
+  const { sqlite, db } = migratedSqlite();
+  try {
+    await seed(db, ["1500-550", "Crystal E", "ケース"]);
+    sqlite.exec(`
+      UPDATE products SET title='10号メタルリール' WHERE source_id='completion-2';
+      UPDATE products SET metadata_json=json_object('categoryClassification',json_object('version',15,'evidence',json('[]')));
+      UPDATE products SET raw_category='オープンリールテープ',
+        metadata_json=json_object('categoryClassification',json_object('version',15,'evidence',json('[{"source":"seller_category","strength":"supporting","categoryIds":["ANA.TAPE"],"value":"オープンリールテープ"}]')))
+        WHERE source_id='completion-0';
+      UPDATE products SET raw_manufacturer='KOJO' WHERE source_id='completion-1';
+      INSERT INTO product_admin_overrides(listing_product_id,primary_category_id,category_ids,category_name,created_at,updated_at)
+        SELECT id,'ACC.CASE','["ACC.CASE","ACC"]','ケース','${AT}','${AT}' FROM products WHERE source_id='completion-2';
+    `);
+    const result = await runDataQualityRemediationSweep(db, {
+      seedLimit: 10,
+      claimLimit: 10,
+      now: new Date("2026-09-12T02:00:00Z"),
+    });
+    assert.equal(result.resolved, 3);
+    const rows = sqlite
+      .prepare(
+        "SELECT source_id,primary_category_id,raw_category,remediation_projection_required,json_extract(metadata_json,'$.categoryClassification.version') AS version FROM products ORDER BY source_id",
+      )
+      .all();
+    assert.deepEqual(
+      rows.map((row) => row.primary_category_id),
+      ["REC.MEDIA", "ACC.GROUND_NOISE", "ACC.CASE"],
+    );
+    assert.equal(rows[0].raw_category, "オープンリールテープ");
+    assert.ok(
+      rows.every(
+        (row) =>
+          row.version === CATEGORY_CLASSIFICATION_METADATA_VERSION &&
+          row.remediation_projection_required === 0,
+      ),
+    );
+    for (const [category, sourceId] of [
+      ["REC.MEDIA", "completion-0"],
+      ["REC", "completion-0"],
+      ["ACC.GROUND_NOISE", "completion-1"],
+      ["ACC.CASE", "completion-2"],
+    ]) {
+      const found = await searchProducts(db, productQuery(`?category=${category}`));
+      assert.deepEqual(
+        found.items.map((item) => item.representative_offer?.source_url),
+        [`https://example.test/${sourceId}`],
+      );
+    }
+    const grounded = await searchProducts(
+      db,
+      productQuery("?category=ACC.GROUND_NOISE&facet=noise_accessory_type:grounding"),
+    );
+    assert.deepEqual(
+      grounded.items.map((item) => item.representative_offer?.source_url),
+      ["https://example.test/completion-1"],
+    );
+    const before = sqlite.prepare("SELECT * FROM products ORDER BY id").all();
+    const next = await runDataQualityRemediationSweep(db, {
+      seedLimit: 10,
+      claimLimit: 10,
+      now: new Date("2026-09-12T02:01:00Z"),
+    });
+    assert.equal(next.resolved, 0);
+    assert.deepEqual(sqlite.prepare("SELECT * FROM products ORDER BY id").all(), before);
+    assert.equal(
+      sqlite.prepare("SELECT updated_at FROM product_admin_overrides").get()?.updated_at,
+      AT,
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
 test("tape migration repairs ancestors without changing durable identities or explicit overrides", async () => {
   const { sqlite, db } = migratedSqlite({ before: MIGRATION });
   try {

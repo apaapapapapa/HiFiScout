@@ -188,6 +188,7 @@ async function syncDerivedFacetFacts(
 ): Promise<void> {
   const next = normalizeFacetFacts([
     ...inferFacetFacts(row.title, {
+      manufacturer: row.raw_manufacturer || row.manufacturer,
       source: "title",
       confidence: 0.8,
       verifiedAt: evaluatedAt,
@@ -309,7 +310,12 @@ async function replayDerivedListing(
 
   const metadata = metadataObject(row.metadata_json);
   const evidence = retainedCategoryEvidence(
-    { title: row.title, rawCategory: row.raw_category, hintedCategory: row.category },
+    {
+      title: row.title,
+      rawCategory: row.raw_category,
+      hintedCategory: row.category,
+      manufacturer: row.raw_manufacturer || row.manufacturer,
+    },
     metadata,
   );
   const classification = classifyCategoryEvidence(evidence);

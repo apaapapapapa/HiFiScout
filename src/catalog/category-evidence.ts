@@ -1,6 +1,7 @@
 import { categoryFilterIds, normalizeCategory } from "./categories.js";
 import { inferExplicitCategoryIds } from "./category-rules.js";
 import { inferSaleSubject } from "./sale-subject.js";
+import { reviewedProductTypeEvidence } from "./reviewed-product-types.js";
 import type {
   CategoryPolicyInput,
   CategoryEvidenceInput,
@@ -146,6 +147,7 @@ export function parserHintEvidence(
 
 export function collectListingCategoryEvidence({
   title = "",
+  manufacturer = "",
   rawCategory = "",
   hintedCategory = "",
   categoryMapping = {},
@@ -156,6 +158,10 @@ export function collectListingCategoryEvidence({
     ...sellerCategoryEvidence(rawCategory, categoryMapping, policy),
     ...categoryEvidenceFromText(title, { source: "title", strength: "strong", context: "title" }),
   ];
+  // An explicit sale-object type wins over a reviewed model hint; the latter cannot turn a
+  // replacement part or compatible cable into the device whose model happens to be mentioned.
+  if (!evidence.some((item) => item.source === "title"))
+    evidence.push(...reviewedProductTypeEvidence(title, manufacturer));
   if (!rawCategory) evidence.push(...parserHintEvidence(hintedCategory, policy));
   return { evidence, policy };
 }

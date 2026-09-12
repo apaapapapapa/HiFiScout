@@ -235,6 +235,25 @@ drivers, tweeters, horns and enclosures are `ACC.PART` with `part_type` and `tar
 a finished add-on super tweeter remains `SPK.LOUDSPEAKER`. Channel dividers, equalizers and AV
 processors use `PRC.PROCESSOR` plus `processor_type`.
 
+Recording tape and empty reels use `REC.MEDIA` under `REC`, independently of the `ANA.TAPE`
+deck hardware. Explicit medium and reel-size wording produces `recording_medium` and `reel_size`
+facets; a metal/plastic reel alone does not establish whether tape is included or unused.
+Media is model-optional in data-quality coverage, like cables and accessories.
+Standalone virtual grounds, noise-reduction plugs and USB noise filters use `ACC.GROUND_NOISE`
+under `ACC`, with `noise_accessory_type` facets. Signal isolators, power conditioners/distributors,
+cables and replacement parts retain their existing product types. Generic "noise reduction"
+wording alone establishes no category. Narrow manufacturer/model rules in
+`src/catalog/reviewed-product-types.ts` carry their official product-type sources and review IDs;
+they supply category evidence, never verified catalog identity or an assertion of audible benefit.
+
+Fujiya detail extractor v3 reads only product-bound `block-topic-path--list` trails whose current
+item identifies the requested product and, when available, matches its listing URL. The terminal
+category of the deepest trail takes precedence over repeated ancestor trails. Unknown terminal
+buckets do not inherit an earphone/headphone ancestor, and equal-depth disagreements or conflicts
+with product-specific prose remain ambiguous. Menu categories cannot classify a listing. The
+shop-local extractor version invalidates old negative detail caches within the existing request
+budget; resolver replay itself does not fetch those pages.
+
 Headphone acoustic design and form factor, cartridge MM/MC/MI construction, phono MM/MC support,
 and portable/stationary use are independent facets. Cable endpoints follow the order explicitly
 written in the seller's text; an unspecified second endpoint is not copied from the first.
@@ -256,10 +275,13 @@ different features are ANDed. Missing mentions never produce absent facts. These
 entity-local indexed offer/fact lookups, not a full-catalog aggregate. Favorites lack capability
 facts, so their existing filter-disable behavior is retained.
 
-Classifier version 18 selects existing active listings through the bounded remediation queue;
+The classifier version in `src/catalog/resolution-versions.ts` selects existing active listings through the bounded remediation queue;
 inactive listings are selected when reactivated. Replay regenerates title-derived category,
-capability and facet evidence from the retained full title while preserving seller/official/admin
-evidence and existing write guards. No deployment-triggered seller refetch or full-inventory rewrite
+capability and facet evidence from the retained full title, and regenerates reviewed product-type
+hints with the seller's manufacturer field. Recognized seller-category vocabulary is reinterpreted
+against the current taxonomy without promoting its recorded evidence tier; opaque shop mappings
+retain their stored decision. Official/detail/admin evidence and existing write guards survive.
+No deployment-triggered seller refetch or full-inventory rewrite
 is required. Search projections and metadata converge through the existing refresh paths.
 
 Migration 0017 introduced search/identity/evidence foundations and migration 0018 added Evidence Archive usage metadata. Deployment applies migrations before the Worker release, so Phase 2 migration 0019 is applied after those foundations. Migration 0020 closes the rollout-era Identity coverage gap by inserting an explicit unresolved/backfill-pending resolution for every existing listing that lacks one.

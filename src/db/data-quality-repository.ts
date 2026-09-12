@@ -13,6 +13,7 @@ import type {
 } from "./types.js";
 
 const MODEL_OPTIONAL_CATEGORIES = [
+  "REC.MEDIA",
   "cable",
   "cable_xlr",
   "cable_rca",
