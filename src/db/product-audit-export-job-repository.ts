@@ -1,3 +1,8 @@
+import type {
+  AdvanceDataExportJobInput,
+  ClaimedDataExportJob,
+  DataExportCursor,
+} from "../export/contracts.js";
 import { COMPLETE_ARCHIVE_PART_CHUNKS } from "../export/contracts.js";
 import type { DataExportFormat } from "../export/contracts.js";
 import type {
@@ -36,28 +41,11 @@ export interface ProductAuditExportJobCreation {
   created: boolean;
 }
 
-export interface ClaimedProductAuditExportJob {
-  job: ProductAuditExportJob;
-  leaseToken: string;
-  leaseExpiresAt: string;
-}
+export type ClaimedProductAuditExportJob = ClaimedDataExportJob<ProductAuditExportJob>;
 
-export interface AdvanceProductAuditExportJobInput {
-  jobId: string;
-  leaseToken: string;
-  expectedAfterId: number;
-  expectedChunkCount: number;
-  nextAfterId: number;
-  addedRows: number;
-  addedBytes: number;
-  hasMore: boolean;
-  advancedAt: Date;
-}
+export type AdvanceProductAuditExportJobInput = AdvanceDataExportJobInput;
 
-export interface ProductAuditExportExpectedCursor {
-  afterId: number;
-  chunkCount: number;
-}
+export type ProductAuditExportExpectedCursor = DataExportCursor;
 
 function number(value: unknown): number {
   const parsed = Number(value);

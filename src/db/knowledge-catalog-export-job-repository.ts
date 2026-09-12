@@ -1,3 +1,8 @@
+import type {
+  AdvanceDataExportJobInput,
+  ClaimedDataExportJob,
+  DataExportCursor,
+} from "../export/contracts.js";
 import { COMPLETE_ARCHIVE_PART_CHUNKS } from "../export/contracts.js";
 import type { DataExportFormat } from "../export/contracts.js";
 import type {
@@ -34,28 +39,11 @@ export interface KnowledgeCatalogExportJobCreation {
   created: boolean;
 }
 
-export interface ClaimedKnowledgeCatalogExportJob {
-  job: KnowledgeCatalogExportJob;
-  leaseToken: string;
-  leaseExpiresAt: string;
-}
+export type ClaimedKnowledgeCatalogExportJob = ClaimedDataExportJob<KnowledgeCatalogExportJob>;
 
-export interface AdvanceKnowledgeCatalogExportJobInput {
-  jobId: string;
-  leaseToken: string;
-  expectedAfterId: number;
-  expectedChunkCount: number;
-  nextAfterId: number;
-  addedRows: number;
-  addedBytes: number;
-  hasMore: boolean;
-  advancedAt: Date;
-}
+export type AdvanceKnowledgeCatalogExportJobInput = AdvanceDataExportJobInput;
 
-export interface KnowledgeCatalogExportExpectedCursor {
-  afterId: number;
-  chunkCount: number;
-}
+export type KnowledgeCatalogExportExpectedCursor = DataExportCursor;
 
 function number(value: unknown): number {
   const parsed = Number(value);
