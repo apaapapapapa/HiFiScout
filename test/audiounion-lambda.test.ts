@@ -613,7 +613,8 @@ test("Lambda follows a same-host redirect but refuses one that leaves the allowe
   assert.equal(refused.statusCode, 502);
   assert.equal(JSON.parse(refused.body).error, "redirect_rejected");
   assert.equal(
-    offHost.some((url) => url.includes("169.254.169.254")),
+    // Whole-host comparison, matching how the Lambda decides.
+    offHost.some((url) => new URL(url).hostname === "169.254.169.254"),
     false,
     "the refused destination must never receive a request from the Lambda",
   );
@@ -644,7 +645,7 @@ test("Lambda refuses a robots.txt redirect that leaves the allowed hosts", async
   assert.equal(result.statusCode, 502);
   assert.equal(JSON.parse(result.body).error, "redirect_rejected");
   assert.equal(
-    requested.some((url) => url.includes("attacker.test")),
+    requested.some((url) => new URL(url).hostname === "attacker.test"),
     false,
   );
 });

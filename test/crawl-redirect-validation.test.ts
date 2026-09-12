@@ -89,7 +89,9 @@ test("a redirect to another origin is refused before the request is sent", async
       error instanceof CrawlRedirectRejectedError && /evil\.example\.net/u.test(error.message),
   );
   assert.equal(
-    record.urls.some((url) => url.includes("evil.example.net")),
+    // Compared as a whole origin, exactly as the guard under test does: a substring check is the
+    // mistake this change exists to remove.
+    record.urls.some((url) => new URL(url).origin === "https://evil.example.net"),
     false,
     "the refused destination must never receive a request",
   );
@@ -118,7 +120,7 @@ test("a downgrade to HTTP is refused", async () => {
       error instanceof CrawlRedirectRejectedError && /not HTTPS/u.test(error.message),
   );
   assert.equal(
-    record.urls.some((url) => url.startsWith("http://")),
+    record.urls.some((url) => new URL(url).protocol === "http:"),
     false,
   );
 });
@@ -232,7 +234,7 @@ test("robots rules are re-applied to the redirect destination", async () => {
 
 test("an explicitly declared extra origin is allowed, and only that one", async () => {
   const record = recorder((url) =>
-    url.startsWith("https://shop.example.net")
+    new URL(url).origin === "https://shop.example.net"
       ? html("<html>moved</html>")
       : redirect("https://shop.example.net/used"),
   );
