@@ -169,6 +169,7 @@ export function normalizeCatalogProduct(
         )
       : []),
     ...inferFacetFacts(product.title || "", {
+      manufacturer: rawManufacturer || manufacturerCandidate,
       source: "title",
       confidence: 0.8,
       legacyCategoryIds: mappedLegacyCategory ? [mappedLegacyCategory] : [],

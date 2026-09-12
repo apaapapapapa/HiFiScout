@@ -85,6 +85,10 @@ test("reviewed noise products classify without assigning a catalog identity", ()
     );
     assert.equal(product.primaryCategoryId, "ACC.GROUND_NOISE", title);
     assert.ok(
+      product.facetFacts.some((fact) => fact.facetId === "noise_accessory_type"),
+      title,
+    );
+    assert.ok(
       product.categoryEvidence.some(
         (item) =>
           item.source === "reviewed_product_type" &&
@@ -190,6 +194,21 @@ test("replay reinterprets old seller vocabulary without raising authority or los
 });
 
 test("media and accessory facets describe only explicit properties", () => {
+  assert.ok(
+    inferFacetFacts("Crystal E", { manufacturer: "KOJO" }).some(
+      (fact) => fact.facetId === "noise_accessory_type" && fact.value === "grounding",
+    ),
+  );
+  for (const [title, manufacturer] of [
+    ["Crystal E", "Other Brand"],
+    ["Crystal E用交換部品", "KOJO"],
+  ])
+    assert.equal(
+      inferFacetFacts(title, { manufacturer }).some(
+        (fact) => fact.facetId === "noise_accessory_type",
+      ),
+      false,
+    );
   const pairs = (title: string) =>
     inferFacetFacts(title).map((fact) => `${fact.facetId}:${fact.value}`);
   assert.ok(pairs("10号メタルリール").includes("reel_size:size_10"));

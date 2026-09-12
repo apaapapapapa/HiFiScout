@@ -6,6 +6,7 @@ import { isFacetId, isFacetValue } from "./types.js";
 import type { FacetFact, FacetFactInput, FacetId, FacetSelection } from "./types.js";
 
 export interface InferFacetFactsOptions {
+  manufacturer?: string;
   source?: string;
   confidence?: number;
   verifiedAt?: string | null;
@@ -162,6 +163,7 @@ export function normalizeFacetFacts(facts: readonly FacetFactInput[] = []): Face
 export function inferFacetFacts(
   text: string = "",
   {
+    manufacturer = "",
     source = "title",
     confidence = 0.8,
     verifiedAt = null,
@@ -184,7 +186,7 @@ export function inferFacetFacts(
       const uniqueSizes = [...new Set(sizes.map((match) => match[1]))];
       if (uniqueSizes.length === 1) add("reel_size", `size_${uniqueSizes[0]}`);
     }
-    const reviewedNoise = reviewedNoiseAccessory(value);
+    const reviewedNoise = reviewedNoiseAccessory(value, manufacturer);
     if (categoryId === "ACC.GROUND_NOISE" || (!categoryId && reviewedNoise)) {
       if (reviewedNoise) add("noise_accessory_type", reviewedNoise.kind);
       else if (/仮想アース|virtual\s+ground|grounding\s*(?:box|unit)/i.test(subject))

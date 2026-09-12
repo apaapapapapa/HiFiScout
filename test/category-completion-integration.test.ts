@@ -88,6 +88,14 @@ test("media/noise replay updates searchable memberships and preserves manual cat
         [`https://example.test/${sourceId}`],
       );
     }
+    const grounded = await searchProducts(
+      db,
+      productQuery("?category=ACC.GROUND_NOISE&facet=noise_accessory_type:grounding"),
+    );
+    assert.deepEqual(
+      grounded.items.map((item) => item.representative_offer?.source_url),
+      ["https://example.test/completion-1"],
+    );
     const before = sqlite.prepare("SELECT * FROM products ORDER BY id").all();
     const next = await runDataQualityRemediationSweep(db, {
       seedLimit: 10,

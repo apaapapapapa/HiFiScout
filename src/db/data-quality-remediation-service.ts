@@ -188,6 +188,7 @@ async function syncDerivedFacetFacts(
 ): Promise<void> {
   const next = normalizeFacetFacts([
     ...inferFacetFacts(row.title, {
+      manufacturer: row.raw_manufacturer || row.manufacturer,
       source: "title",
       confidence: 0.8,
       verifiedAt: evaluatedAt,
