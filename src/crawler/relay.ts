@@ -5,6 +5,13 @@ import type {
   RelayPageOptions,
 } from "./types.js";
 import { decodeHtmlResponse } from "./fetch.js";
+import {
+  CRAWL_MAX_HTML_RESPONSE_BYTES,
+  CRAWL_MAX_RELAY_ERROR_BYTES,
+  CRAWL_MAX_RELAY_JSON_BYTES,
+  readBoundedResponseText,
+  readLimitedResponseText,
+} from "./response-limits.js";
 
 const RELAY_HTTP_TIMEOUT_MS = 30_000;
 
@@ -54,14 +61,21 @@ function relayError(status: number, detail = ""): AugmentedCrawlError {
 /** `createRelayHtmlFetcher` always resolves `fetchFn`, so the internal request path requires it. */
 type RelayRequestContext = RelayFetcherConfig & { fetchFn: typeof fetch };
 
+/** The relay response together with the deadline that must also bound reading its body. */
+interface RelayHttpResponse {
+  response: Response;
+  deadline: AbortSignal;
+}
+
 async function relayResponse(
   { relayUrl, relayToken, fetchFn }: RelayRequestContext,
   body: Record<string, unknown>,
   accept: string,
-): Promise<Response> {
+): Promise<RelayHttpResponse> {
   if (!configured(relayUrl)) throw new Error("relay URL is not configured");
   if (!configured(relayToken)) throw new Error("relay token is not configured");
 
+  const deadline = AbortSignal.timeout(RELAY_HTTP_TIMEOUT_MS);
   const response = await fetchFn(relayUrl.trim(), {
     method: "POST",
     headers: {
@@ -71,7 +85,7 @@ async function relayResponse(
     },
     body: JSON.stringify(body),
     redirect: "follow",
-    signal: AbortSignal.timeout(RELAY_HTTP_TIMEOUT_MS),
+    signal: deadline,
   });
 
   const upstreamStatus = Number.parseInt(
@@ -81,7 +95,13 @@ async function relayResponse(
   if (!response.ok && !Number.isFinite(upstreamStatus)) {
     let detail = "";
     try {
-      detail = (await response.text()).replace(/\s+/g, " ").trim().slice(0, 200);
+      // Only the leading diagnostic matters, and it is trimmed to 200 characters regardless; a relay
+      // that answers a failure with an unbounded body must not be buffered to produce it.
+      const read = await readBoundedResponseText(response, {
+        maxBytes: CRAWL_MAX_RELAY_ERROR_BYTES,
+        signal: deadline,
+      });
+      detail = read.text.replace(/\s+/g, " ").trim().slice(0, 200);
     } catch {
       // Keep the status-only error when the relay body cannot be read.
     }
@@ -95,19 +115,27 @@ async function relayResponse(
     }
     throw relayError(response.status, detail);
   }
-  return response;
+  return { response, deadline };
 }
 
-async function relayPageFromResponse(response: Response): Promise<RelayPage> {
+async function relayPageFromResponse({
+  response,
+  deadline,
+}: RelayHttpResponse): Promise<RelayPage> {
   const upstreamStatus = Number.parseInt(
     response.headers.get("x-hifiscout-upstream-status") || "",
     10,
   );
   const status = Number.isFinite(upstreamStatus) ? upstreamStatus : response.status;
   const contentType = response.headers.get("content-type") || "";
+  // The relay returns the seller body verbatim, so the same ceiling that protects the direct
+  // transport applies here; the relay is a different route to the same untrusted bytes.
   const body = contentType.includes("text/html")
-    ? await decodeHtmlResponse(response)
-    : await response.text();
+    ? await decodeHtmlResponse(response, { signal: deadline })
+    : await readLimitedResponseText(response, {
+        maxBytes: CRAWL_MAX_HTML_RESPONSE_BYTES,
+        signal: deadline,
+      });
   return { status, contentType, body };
 }
 
@@ -116,7 +144,7 @@ async function requestRelayPage(
   url: string,
   { userAgent, requestDelayMs }: RelayPageOptions = {},
 ): Promise<RelayPage> {
-  const response = await relayResponse(
+  const relayed = await relayResponse(
     relay,
     {
       url,
@@ -125,7 +153,7 @@ async function requestRelayPage(
     },
     "text/html,application/xhtml+xml",
   );
-  return relayPageFromResponse(response);
+  return relayPageFromResponse(relayed);
 }
 
 function parseRelayFetchPermit(value: unknown): RelayFetchPermit {
@@ -170,7 +198,7 @@ export async function prepareRelayFetchPermit(
   { userAgent, requestDelayMs }: RelayPageOptions = {},
 ): Promise<RelayFetchPermit> {
   const relay: RelayRequestContext = { ...config, fetchFn: config.fetchFn || fetch };
-  const response = await relayResponse(
+  const { response, deadline } = await relayResponse(
     relay,
     {
       operation: "prepare",
@@ -180,7 +208,17 @@ export async function prepareRelayFetchPermit(
     },
     "application/json",
   );
-  return parseRelayFetchPermit((await response.json()) as unknown);
+  const permitJson = await readLimitedResponseText(response, {
+    maxBytes: CRAWL_MAX_RELAY_JSON_BYTES,
+    signal: deadline,
+  });
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(permitJson) as unknown;
+  } catch {
+    throw new Error("relay PREPARE returned an invalid response");
+  }
+  return parseRelayFetchPermit(parsed);
 }
 
 export async function fetchPreparedRelayPage(
@@ -194,7 +232,7 @@ export async function fetchPreparedRelayPage(
     throw new Error("relay permit user-agent mismatch");
   }
   const relay: RelayRequestContext = { ...config, fetchFn: config.fetchFn || fetch };
-  const response = await relayResponse(
+  const relayed = await relayResponse(
     relay,
     {
       operation: "fetch",
@@ -204,7 +242,7 @@ export async function fetchPreparedRelayPage(
     },
     "text/html,application/xhtml+xml",
   );
-  return relayPageFromResponse(response);
+  return relayPageFromResponse(relayed);
 }
 
 export async function fetchPreparedRelayHtmlPage(

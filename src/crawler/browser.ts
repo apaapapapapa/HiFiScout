@@ -1,4 +1,5 @@
 import { fetchRobotsPolicy, getCrawlDelayMs, isPathAllowed } from "./robots.js";
+import { CRAWL_MAX_HTML_RESPONSE_BYTES, CrawlResponseTooLargeError } from "./response-limits.js";
 import { isRecord } from "../types.js";
 import type {
   AugmentedCrawlError,
@@ -101,12 +102,27 @@ export function createBrowserHtmlFetcher(
     return page;
   }
 
+  /**
+   * Rendering happens in the remote browser session, so the Worker can only bound what crosses back
+   * to it. The residual risk is the browser session's own buffering, which this transport does not
+   * control; the ceiling below is what protects the Worker's decoder and parser.
+   *
+   * Comparing UTF-16 code units against a byte ceiling is deliberately lenient — every character is
+   * at least one byte — so a page under the limit here is always under it in bytes too.
+   */
+  function boundedContent(html: string): string {
+    if (html.length > CRAWL_MAX_HTML_RESPONSE_BYTES) {
+      throw new CrawlResponseTooLargeError(CRAWL_MAX_HTML_RESPONSE_BYTES);
+    }
+    return html;
+  }
+
   async function navigate(targetPage: BrowserPageLike, url: string): Promise<string> {
     const response = await targetPage.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
     const status = response?.status() ?? 0;
     if (status < 200 || status >= 400) throw crawlError(status);
     pageOrigin = new URL(targetPage.url()).origin;
-    return targetPage.content();
+    return boundedContent(await targetPage.content());
   }
 
   async function browserFetch(targetPage: BrowserPageLike, url: string): Promise<string> {
@@ -115,7 +131,7 @@ export function createBrowserHtmlFetcher(
       return { status: response.status, html: await response.text() };
     }, url);
     if (result.status < 200 || result.status >= 400) throw crawlError(result.status);
-    return result.html;
+    return boundedContent(result.html);
   }
 
   return {
@@ -136,6 +152,8 @@ export function createBrowserHtmlFetcher(
         return html;
       } catch (error) {
         if (isRecord(error) && typeof error.status === "number" && error.status) throw error;
+        // An oversized page must stay identifiable as such rather than becoming a generic failure.
+        if (error instanceof CrawlResponseTooLargeError) throw error;
         throw new Error(
           `browser crawl failed: ${error instanceof Error ? error.message : String(error)}`,
         );

@@ -401,6 +401,16 @@ export interface FetchHtmlPageOptions {
   requestDelayMs: number;
   fetchFn?: typeof fetch;
   robotsCache?: RobotsCache;
+  /**
+   * Total budget for the request and its body read. Defaults to the direct transport's own
+   * deadline; transports that do not own the HTTP request ignore it.
+   */
+  timeoutMs?: number;
+  /**
+   * Ceiling on the bytes read from one page body. Defaults to the shared crawl ceiling; a shop that
+   * genuinely needs a different budget states it here rather than removing the limit.
+   */
+  maxResponseBytes?: number;
 }
 
 export interface RelayPageOptions {

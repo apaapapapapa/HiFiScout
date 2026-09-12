@@ -67,6 +67,9 @@ export async function fetchPreparedDirectHtmlPage(
     throw new Error(`direct fetch permit is not ready until ${permit.notBeforeMs}`);
   }
 
+  // One deadline covers the request and its body; a seller that sends headers and then stalls is
+  // the same outage as one that never answers.
+  const deadline = AbortSignal.timeout(CRAWL_HTTP_TIMEOUT_MS);
   const response = await fetchFn(targetUrl, {
     headers: {
       "User-Agent": userAgent,
@@ -75,7 +78,7 @@ export async function fetchPreparedDirectHtmlPage(
       "Cache-Control": "no-cache",
     },
     redirect: "follow",
-    signal: AbortSignal.timeout(CRAWL_HTTP_TIMEOUT_MS),
+    signal: deadline,
   });
   if (response.status === 403 || response.status === 429) {
     const error: AugmentedCrawlError = new Error(`crawl blocked with HTTP ${response.status}`);
@@ -87,5 +90,5 @@ export async function fetchPreparedDirectHtmlPage(
   if (!contentType.includes("text/html")) {
     throw new Error(`unexpected content type: ${contentType}`);
   }
-  return decodeHtmlResponse(response);
+  return decodeHtmlResponse(response, { signal: deadline });
 }
