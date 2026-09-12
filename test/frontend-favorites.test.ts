@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { isProductSearchItem } from "../frontend/api-client.js";
 import {
   favoriteMatchesFilters,
+  favoriteShopMatch,
   favoriteResults,
   favoriteSnapshot,
   favoriteStoragePayload,
@@ -11,6 +12,8 @@ import {
   parseFavoriteStorage,
   sortFavorites,
 } from "../frontend/favorites.js";
+import type { FavoriteProduct } from "../frontend/favorites.js";
+import { changeFavoriteStorage, readFavorites } from "../frontend/favorite-storage.js";
 import type { ProductFilters } from "../frontend/filters.js";
 import type { DisplayOffer, DisplayProduct } from "../frontend/types.js";
 
@@ -362,5 +365,79 @@ test("the favorites view filters then sorts", () => {
   assert.deepEqual(
     results.map((item) => item.key),
     ["c-3", "c-1"],
+  );
+});
+
+test("interleaved tab intents preserve additions and a late refresh cannot resurrect a removal", () => {
+  let value: string | null = null;
+  const storage = {
+    getItem: () => value,
+    setItem: (_key: string, next: string) => {
+      value = next;
+    },
+  };
+  const first = product({ key: "c-1" });
+  const second = product({ key: "c-2" });
+  changeFavoriteStorage(storage, { kind: "add", product: first });
+  changeFavoriteStorage(storage, { kind: "add", product: second });
+  assert.deepEqual([...readFavorites(storage).products.keys()], ["c-1", "c-2"]);
+  changeFavoriteStorage(storage, { kind: "remove", key: first.key });
+  changeFavoriteStorage(storage, {
+    kind: "refresh",
+    products: [first, { ...second, lowest_price_yen: 90_000 }],
+  });
+  const current = readFavorites(storage);
+  assert.deepEqual([...current.products.keys()], ["c-2"]);
+  assert.equal(current.products.get("c-2")?.lowest_price_yen, 90_000);
+  changeFavoriteStorage(storage, { kind: "add", product: first });
+  assert.equal(readFavorites(storage).products.size, 2);
+});
+
+test("favorite search uses shared token, width, model and manufacturer aliases", () => {
+  const tad = product({
+    model: "D1000mk2",
+    representative_offer: offer({ title: "TAD D1000mk2" }),
+  });
+  for (const q of ["tad 1000", "ＴＡＤ　１０００", "D-1000 MKII"]) {
+    assert.equal(favoriteMatchesFilters(tad, filters({ q }), "", NOW), true, q);
+  }
+  assert.equal(favoriteMatchesFilters(tad, filters({ q: "tad 1000 missing" }), "", NOW), false);
+  const luxman = product({ manufacturer: "LUXMAN", manufacturer_id: "luxman", model: "D-10X" });
+  assert.equal(favoriteMatchesFilters(luxman, filters({ q: "ラックスマン D10X" }), "", NOW), true);
+});
+
+test("multi-shop favorites retain unknown candidates and filter confirmed offers together", () => {
+  const item: FavoriteProduct = product({ offer_count: 2, shop_count: 2 });
+  assert.equal(favoriteShopMatch(item, ["second-shop"]), "unknown");
+  assert.equal(favoriteMatchesFilters(item, filters({ shop: ["second-shop"] }), "", NOW), true);
+  item.favorite_offers = {
+    key: item.key,
+    checkedAt: new Date(NOW).toISOString(),
+    complete: true,
+    offers: [
+      { id: 1, shopKey: "hifido", priceYen: 100_000, stock: "in_stock" },
+      { id: 2, shopKey: "second-shop", priceYen: 200_000, stock: "in_stock" },
+    ],
+  };
+  assert.equal(favoriteShopMatch(item, ["second-shop"]), "match");
+  assert.equal(favoriteShopMatch(item, ["absent"]), "missing");
+  assert.equal(
+    favoriteMatchesFilters(item, filters({ shop: ["second-shop"], maxPrice: "150000" }), "", NOW),
+    false,
+  );
+  assert.equal(
+    favoriteMatchesFilters(item, filters({ shop: ["second-shop"], minPrice: "150000" }), "", NOW),
+    true,
+  );
+  const raw = JSON.stringify([item]);
+  assert.deepEqual(
+    parseFavoriteStorage(raw, isProductSearchItem).products.get(item.key)?.favorite_offers,
+    item.favorite_offers,
+  );
+  item.favorite_offers.key = "c-999";
+  assert.equal(
+    parseFavoriteStorage(JSON.stringify([item]), isProductSearchItem).products.get(item.key)
+      ?.favorite_offers,
+    undefined,
   );
 });

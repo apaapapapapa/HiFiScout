@@ -31,6 +31,9 @@ import { productPriceIndex } from "./price-index-ui.js";
 import { safeDate } from "./format.js";
 import type { ProductFilters } from "./filters.js";
 import type { DisplayOffer, DisplayProduct } from "./types.js";
+import { parseFtsSearchQuery } from "../src/search/fts-query.js";
+import { parseWatchObservations } from "./watch-changes.js";
+import type { WatchObservation } from "./watch-changes.js";
 
 export const FAVORITES_KEY = "hifiscout:favorites";
 
@@ -42,9 +45,43 @@ export function isLegacyFavoriteKey(key: string): boolean {
 }
 
 export interface FavoriteStore {
-  products: Map<string, DisplayProduct>;
+  products: Map<string, FavoriteProduct>;
   /** Listing ids from the oldest storage format, which carry nothing renderable. */
   legacyIds: Set<number>;
+}
+
+/** Optional local evidence from the existing bounded detail refresh; never sent to the server. */
+export type FavoriteProduct = DisplayProduct & { favorite_offers?: WatchObservation };
+
+function favoriteObservation(product: FavoriteProduct): WatchObservation | undefined {
+  if (!product.favorite_offers) return undefined;
+  return parseWatchObservations(JSON.stringify([product.favorite_offers])).find(
+    (entry) => entry.key === product.key,
+  );
+}
+
+export function favoriteShopMatch(
+  product: FavoriteProduct,
+  shops: readonly string[],
+  filters: Pick<ProductFilters, "inStock" | "minPrice" | "maxPrice"> = {
+    inStock: false,
+    minPrice: "",
+    maxPrice: "",
+  },
+): "match" | "missing" | "unknown" {
+  if (!shops.length) return "match";
+  const observation = product.favorite_offers;
+  const matches = (shop: string, price: number | null, stock: string) =>
+    shops.includes(shop) &&
+    (!filters.inStock || stock === "in_stock") &&
+    (!filters.minPrice || (price !== null && price >= Number(filters.minPrice))) &&
+    (!filters.maxPrice || (price !== null && price <= Number(filters.maxPrice)));
+  if (observation?.offers.some((offer) => matches(offer.shopKey, offer.priceYen, offer.stock)))
+    return "match";
+  if (observation?.complete) return "missing";
+  const offer = product.representative_offer;
+  if (offer && matches(offer.shop_key, offer.price_yen, offer.stock_status)) return "match";
+  return product.offer_count <= 1 && product.representative_offer ? "missing" : "unknown";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -68,12 +105,14 @@ function stockStatus(value: unknown): DisplayOffer["stock_status"] {
 }
 
 /** Explicit field list: a snapshot must not grow just because the API item did. */
-export function favoriteSnapshot(product: DisplayProduct): DisplayProduct {
+export function favoriteSnapshot(product: FavoriteProduct): FavoriteProduct {
   const categoryIds = stringArray(product.category_ids);
   const directCategoryIds = stringArray(product.direct_category_ids);
   const directCategories = stringArray(product.direct_categories);
   const priceIndex = productPriceIndex(product);
+  const observation = favoriteObservation(product);
   return {
+    ...(observation ? { favorite_offers: observation } : {}),
     key: product.key,
     identity_kind: product.identity_kind,
     catalog_product_id: product.catalog_product_id,
@@ -172,7 +211,7 @@ export function parseFavoriteStorage(
   raw: string | null,
   isProduct: (value: unknown) => value is DisplayProduct,
 ): FavoriteStore {
-  const products = new Map<string, DisplayProduct>();
+  const products = new Map<string, FavoriteProduct>();
   const legacyIds = new Set<number>();
   try {
     const parsed: unknown = JSON.parse(raw || "[]");
@@ -180,7 +219,7 @@ export function parseFavoriteStorage(
     const entries: unknown[] = parsed;
     for (const entry of entries) {
       if (isProduct(entry)) {
-        products.set(entry.key, entry);
+        products.set(entry.key, favoriteSnapshot(entry));
         continue;
       }
       if (isRecord(entry)) {
@@ -207,19 +246,19 @@ export function favoriteStoragePayload(store: FavoriteStore): unknown[] {
  *
  * `category_ids` carries the canonical leaf plus its ancestors, so a favorite under a group filter
  * follows the same closure semantics as `/api/product-search`. Older snapshots without that field
- * keep the leaf/display-label fallback. Offer-level filters are evaluated against the snapshot's
- * representative offer, which is all a stored favorite knows about.
+ * keep the leaf/display-label fallback. Offer-level filters use the saved detail observation or
+ * representative offer; unconfirmed multi-shop candidates remain visible until refreshed.
  */
 export function favoriteMatchesFilters(
-  product: DisplayProduct,
+  product: FavoriteProduct,
   filters: ProductFilters,
   categoryLabel: string,
   now = Date.now(),
 ): boolean {
-  const q = filters.q.trim().toLocaleLowerCase("ja-JP");
-  if (q && !normalizedSearchText(product).includes(q)) return false;
-  if (filters.shop.length && !filters.shop.includes(product.representative_offer?.shop_key ?? ""))
-    return false;
+  const terms = parseFtsSearchQuery(filters.q).terms;
+  const searchable = normalizedSearchText(product);
+  if (!terms.every((term) => searchable.includes(term.toLocaleLowerCase("ja-JP")))) return false;
+  if (favoriteShopMatch(product, filters.shop, filters) === "missing") return false;
   if (filters.manufacturer.length && !filters.manufacturer.includes(product.manufacturer))
     return false;
   const categoryIds = stringArray(product.category_ids) ?? [];
@@ -234,6 +273,9 @@ export function favoriteMatchesFilters(
   if (filters.inStock && product.in_stock_offer_count < 1) return false;
   if (filters.recentOnly && !activityData(product, now).isNew) return false;
   if (filters.priceDropped && !priceDropped(product)) return false;
+  // Shop, stock and price must hold for the same known offer. Incomplete candidates stay visible
+  // with an explicit note until the user's bounded refresh can confirm or exclude them.
+  if (filters.shop.length) return true;
   const minPrice = Number.parseInt(filters.minPrice, 10);
   // A null price coerces to 0 in the original relational comparison; `?? 0` keeps that.
   if (Number.isFinite(minPrice) && !((product.lowest_price_yen ?? 0) >= minPrice)) return false;

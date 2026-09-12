@@ -94,6 +94,7 @@ export function SyncShopRows({ meta }: { meta: MetaResponse | null }) {
 interface ProductCardProps {
   product: DisplayProduct;
   favorite: boolean;
+  favoriteShopUnconfirmed?: boolean;
   compared?: boolean;
   comparisonFull?: boolean;
   onCompare?: (key: string) => void;
@@ -151,6 +152,7 @@ function productCategoryLabels(product: DisplayProduct): string[] {
 export function ProductCard({
   product,
   favorite,
+  favoriteShopUnconfirmed = false,
   compared = false,
   comparisonFull = false,
   onCompare,
@@ -249,6 +251,11 @@ export function ProductCard({
           ))}
           {condition ? <span className="condition">{condition}</span> : null}
         </div>
+        {favoriteShopUnconfirmed ? (
+          <p className="filter-note">
+            選択した店舗の出品は未確認です。お気に入りを再確認してください。
+          </p>
+        ) : null}
       </div>
       <div className="product-commerce">
         <div className="price-row">

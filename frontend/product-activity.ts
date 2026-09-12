@@ -11,6 +11,8 @@
 
 import { safeDate } from "./format.js";
 import type { DisplayProduct } from "./types.js";
+import { manufacturerSearchAliases } from "../src/catalog/manufacturers.js";
+import { buildModelSearchAliases } from "../src/catalog/product-identity.js";
 
 const RECENT_WINDOW_MS = 48 * 60 * 60 * 1000;
 
@@ -51,12 +53,15 @@ export function normalizedSearchText(product: DisplayProduct): string {
   return [
     product.manufacturer,
     product.manufacturer_id,
+    ...manufacturerSearchAliases(product.manufacturer_id || product.manufacturer),
     product.model,
+    ...buildModelSearchAliases(product.model),
     product.category,
     product.representative_offer?.title,
   ]
     .filter(Boolean)
     .join(" ")
+    .normalize("NFKC")
     .toLocaleLowerCase("ja-JP");
 }
 

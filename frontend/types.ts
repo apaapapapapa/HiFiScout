@@ -77,6 +77,7 @@ export interface ProductHistoryResponse {
 
 /** One fetched page of results, kept so page navigation can replay without a request. */
 export interface PageState {
+  expiresAt: number;
   items: DisplayProduct[];
   hasMore: boolean;
   nextCursor: string | null;

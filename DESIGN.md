@@ -95,6 +95,25 @@ only recorded sale-unit, voltage and option facts; offer details retain explicit
 Favorite watch scope resets on membership or applied-filter changes, while price snapshot updates
 retain the current observation baseline and do not trigger another automatic refresh.
 
+Favorites re-read the latest device-local state before each mutation and serialize writes with an
+origin-wide Web Lock where available. Cross-tab changes update the visible membership; snapshot
+refreshes never recreate a removed favorite. Favorite text search shares catalog query tokenization,
+width normalization and manufacturer/model aliases. Shop filters use the bounded offer observations
+from detail refreshes; incomplete candidates remain visible with an explicit note instead of being
+reported absent. Known shop, stock and price conditions must match the same offer.
+
+The favorite watch also offers an explicit all-favorites scope, including products hidden by current
+filters. It still processes at most ten products per user-visible batch with two concurrent requests,
+without a timer or whole-collection loop. Snapshot updates reapply the display filters while retaining
+the selected watch batch and comparison baseline.
+
+Detail navigation preserves the originating list page, scroll position and keyboard focus in history
+state. Back/Forward cancel pending text searches. Japanese composition owns its arrow and Enter keys;
+only committed text starts search and suggestion requests. List page snapshots expire with the API
+client's cache policy. Expiration discards the old cursor chain and refreshes only the requested page,
+not every visited page in the background. If that page no longer exists, fetch the last valid page
+once. Cached-page restoration cancels unfinished requests before displaying the restored snapshot.
+
 ### Buttons and actions
 
 Use a small action hierarchy:

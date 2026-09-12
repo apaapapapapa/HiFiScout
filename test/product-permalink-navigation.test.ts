@@ -10,7 +10,9 @@ import {
 
 const navigationSource = stripTypeScriptTypes(
   readFileSync(new URL("../frontend/product-permalink-navigation.ts", import.meta.url), "utf8"),
-).replace(/^import[^;]+;\s*/, "");
+)
+  .replace(/^import[^;]+;\s*/gm, "")
+  .replace(/^export /gm, "");
 
 type NavigationEvent = {
   target: FakeElement;
@@ -99,6 +101,7 @@ function navigationHarness() {
   runInNewContext(navigationSource, {
     productKeyFromPermalinkPath,
     productPermalinkPath,
+    captureCatalogPosition: () => {},
     Element: FakeElement,
     HTMLDialogElement: FakeDialog,
     get location() {

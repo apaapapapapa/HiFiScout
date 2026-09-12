@@ -34,7 +34,7 @@ import { isProductModelRelations } from "./model-relations.js";
 import { isProductMarketAnalysis } from "./market-analysis.js";
 
 /** Matches the Worker's own `cache-control: public, max-age=30` on these endpoints. */
-const CACHE_TTL_MS = 30_000;
+export const CACHE_TTL_MS = 30_000;
 
 interface CachedResponse {
   data: unknown;

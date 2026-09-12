@@ -1,4 +1,5 @@
 import { productKeyFromPermalinkPath, productPermalinkPath } from "./product-permalink.js";
+import { captureCatalogPosition } from "./catalog-navigation.js";
 
 const HISTORY_STATE_KEY = "hifiscoutProductPermalink";
 let suppressOfferPush = false;
@@ -53,7 +54,7 @@ function closeReactOffersDialog(): void {
   dialog.close();
 }
 
-function restoreProductFromHistory(): void {
+export function restoreProductFromHistory(): void {
   if (suppressDialogClose) return;
   const key = productKeyFromPermalinkPath(location.pathname);
   if (!key) {
@@ -71,6 +72,8 @@ function restoreProductFromHistory(): void {
 
   const trigger = offerTriggerFor(key);
   if (!trigger) return;
+  const dialog = document.querySelector<HTMLDialogElement>("#offers-dialog");
+  if (dialog?.open && dialog.dataset.productKey === key) return;
   hideServerPermalink();
   suppressOfferPush = true;
   trigger.click();
@@ -98,6 +101,7 @@ function install(): void {
       if (key && !suppressOfferPush) {
         const nextUrl = permalinkUrl(key);
         if (nextUrl && productKeyFromPermalinkPath(location.pathname) !== key) {
+          captureCatalogPosition(key);
           const current = history.state && typeof history.state === "object" ? history.state : {};
           history.pushState({ ...current, [HISTORY_STATE_KEY]: key }, "", nextUrl);
           hideServerPermalink();
