@@ -189,7 +189,7 @@ test("the scheduled remediation sweep does not recount the durable backlog", asy
   assert.ok(task);
   assert.equal(
     task.minimumRemainingCalls,
-    30,
+    31,
     "a scheduled replay must not start after earlier tasks have spent its completion budget",
   );
   const db = captureDatabase(() => []);

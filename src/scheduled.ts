@@ -674,11 +674,11 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
     name: "data_quality_remediation_sweep",
     everyTicks: 2,
     offset: 1,
-    // One listing replay can use roughly thirty binding calls across derivation, the three
-    // projection stages, snapshot persistence and durable completion. Starting with only the
-    // generic eight-call floor allowed search projection writes before identity resolution hit
-    // the hard cap, so the next tick repeated work that could never finish in the first one.
-    minimumRemainingCalls: 30,
+    // One call claims the task, then one listing replay can use roughly thirty calls across
+    // derivation, the three projection stages, snapshot persistence and durable completion.
+    // Starting with only the generic eight-call floor allowed search projection writes before
+    // identity resolution hit the hard cap, so the next tick repeated work that could not finish.
+    minimumRemainingCalls: 31,
     run: (env) =>
       runDataQualityRemediationSweep(env.DB, {
         claimLimit: 1,

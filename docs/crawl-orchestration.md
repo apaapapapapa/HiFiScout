@@ -159,9 +159,10 @@ displayed as unavailable, not as an idle or healthy shop.
 General Cron serializes watchdogs and maintenance under the budget in `src/db/invocation-budget.ts`.
 `scheduled_maintenance_pending` retains due tasks across yields, with finalization calls reserved
 and still metered. Before claiming a task, the scheduler requires its admission floor to remain:
-eight D1 binding calls by default, and thirty for the non-checkpointed data-quality remediation
-sweep. When fewer calls remain, the task stays unclaimed and oldest in the pending queue for the
-next five-minute tick. This avoids writing a partial projection that cannot reach durable job
+eight D1 binding calls by default, and thirty-one (one claim plus thirty execution calls) for the
+non-checkpointed data-quality remediation sweep. When fewer calls remain, the task stays unclaimed
+and oldest in the pending queue for the next five-minute tick. This avoids writing a partial
+projection that cannot reach durable job
 completion in the same invocation; it does not change remediation cadence or results. Stalled
 recovery explicitly uses `idx_crawl_runs_running_started_at`, excluding
 terminal history even when statistics would select the older general date index. Deployment checks
