@@ -26,23 +26,27 @@ test("metadata-only remediation does not rewrite unrelated listing indexes or ca
       )
       .bind(RESOLUTION_VERSIONS.category - 1, id)
       .run();
-    const beforeCategories = await db
-      .prepare(
-        "SELECT category_id, is_direct FROM product_categories WHERE product_id = ? ORDER BY category_id",
-      )
-      .bind(id)
-      .all();
-
-    const measured = accountReads(db);
-    await replayAdminCsvListings(measured.db, [id], "2026-09-12T09:00:00.000Z", []);
-
-    assert.deepEqual(
+    const beforeCategories = (
       await db
         .prepare(
           "SELECT category_id, is_direct FROM product_categories WHERE product_id = ? ORDER BY category_id",
         )
         .bind(id)
-        .all(),
+        .all()
+    ).results;
+
+    const measured = accountReads(db);
+    await replayAdminCsvListings(measured.db, [id], "2026-09-12T09:00:00.000Z", []);
+
+    assert.deepEqual(
+      (
+        await db
+          .prepare(
+            "SELECT category_id, is_direct FROM product_categories WHERE product_id = ? ORDER BY category_id",
+          )
+          .bind(id)
+          .all()
+      ).results,
       beforeCategories,
     );
     assert.ok(measured.rowsWritten() > 0);
