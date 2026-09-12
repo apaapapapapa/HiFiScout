@@ -180,6 +180,11 @@ body {
 .workspace-panel {
   padding: 20px;
 }
+.model-replay-launch {
+  margin-bottom: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
 .panel-heading {
   margin-bottom: 18px;
 }

@@ -4,7 +4,7 @@ import type {
   AdminJobDetail,
   AdminJobStatus,
 } from "../src/api/admin-csv-contracts.js";
-import { adminJobRequest } from "./admin-job-client.js";
+import { adminJobRequest, submitAdminReplayJob } from "./admin-job-client.js";
 import { dateText, genericErrorText } from "./admin-shared.js";
 
 const LABELS: Record<AdminJobStatus, string> = {
@@ -18,6 +18,7 @@ const LABELS: Record<AdminJobStatus, string> = {
 };
 
 export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void }) {
+  const replayId = useRef<string | null>(null);
   const seenProgress = useRef(new Map<string, { processed: number; failed: number }>());
   const [list, setList] = useState<AdminJobList | null>(null);
   const [before, setBefore] = useState<string | undefined>();
@@ -124,8 +125,54 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
       setBusy(false);
     }
   }
+  async function startModelReplay() {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    replayId.current ||= crypto.randomUUID();
+    try {
+      const job = await submitAdminReplayJob(replayId.current, "model");
+      replayId.current = null;
+      setMessage(
+        job.status === "queued" || job.status === "running"
+          ? "型番の一括再判定を受け付けました。画面を閉じても継続します。"
+          : "同じ判定ルールの処理があります。処理一覧から状態を確認して再開してください。",
+      );
+      setHistory([]);
+      await refresh(undefined);
+    } catch (reason) {
+      setError(genericErrorText(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <section className="panel workspace-panel" aria-label="バックグラウンド処理一覧">
+      <section className="model-replay-launch" aria-label="型番の一括再判定">
+        <h2>型番の一括再判定</h2>
+        <p>
+          判定ルールの更新後、掲載中の旧バージョン商品を保存済み情報から再判定します。
+          メーカー・カテゴリ・商品照合と検索表示も更新し、手動修正は保持します。
+        </p>
+        <p>少量ずつ完了まで継続します。進捗確認・一時停止・再開は下の処理一覧から行えます。</p>
+        {list?.modelResolverVersion !== undefined ? (
+          <p>現在の型番判定ルール: v{list.modelResolverVersion}</p>
+        ) : null}
+        <button
+          type="button"
+          disabled={busy || !list}
+          onClick={() => {
+            if (
+              window.confirm(
+                "掲載中の旧バージョン商品を一括再判定します。手動修正は保持され、画面を閉じても継続します。開始しますか？",
+              )
+            )
+              void startModelReplay();
+          }}
+        >
+          旧バージョンの商品を一括再判定
+        </button>
+      </section>
       <div className="panel-heading">
         <h2>処理一覧</h2>
         <button type="button" disabled={busy} onClick={() => void refresh(before)}>
@@ -143,7 +190,9 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
       ) : null}
       {error ? <p role="alert">{error}</p> : null}
       {list?.items.length === 0 ? (
-        <p>処理の記録はありません。CSV入出力または出品条件の再処理から開始できます。</p>
+        <p>
+          処理の記録はありません。型番の一括再判定、CSV入出力または出品条件の再処理から開始できます。
+        </p>
       ) : null}
       <div className="table-wrap">
         <table>
@@ -183,6 +232,13 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
                         処理済み {job.processed} / {job.total}件 · 失敗 {job.failed}件
                       </p>
                     </>
+                  ) : job.modelReplay ? (
+                    <div>
+                      <p>
+                        確認済み {job.modelReplay.scanned}件 · 対象処理済み {job.processed}件
+                      </p>
+                      <p>型番判定ルール v{job.modelReplay.version}</p>
+                    </div>
                   ) : (
                     <p>
                       {job.kind === "manufacturer" ? "確認済み" : "処理済み"} {job.processed}件
@@ -337,11 +393,13 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
           </div>
           {!detail.items.length ? (
             <p>
-              {detail.job.kind === "manufacturer"
-                ? "確認済み件数は候補の探索範囲です。該当商品だけを最新の辞書で再判定しました。"
-                : detail.job.kind === "replay"
-                  ? "充足率の集計は出品条件の再処理画面で確認できます。"
-                  : "表示できる詳細はありません。"}
+              {detail.job.kind === "model"
+                ? "確認済み件数は保存済み商品の探索範囲です。旧バージョンの商品と検索表示の更新待ちを処理します。対象処理済みには、クロールなどで先に更新された商品も含みます。"
+                : detail.job.kind === "manufacturer"
+                  ? "確認済み件数は候補の探索範囲です。該当商品だけを最新の辞書で再判定しました。"
+                  : detail.job.kind === "replay"
+                    ? "充足率の集計は出品条件の再処理画面で確認できます。"
+                    : "表示できる詳細はありません。"}
             </p>
           ) : null}
           <div className="pagination">

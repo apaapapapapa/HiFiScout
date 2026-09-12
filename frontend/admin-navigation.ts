@@ -26,7 +26,7 @@ export const ADMIN_VIEWS = [
   {
     id: "jobs",
     label: "バックグラウンド処理",
-    description: "CSV取込・再処理の進捗を確認し、停止・再開・失敗した対象の再試行を行います。",
+    description: "型番の一括再判定を開始し、CSV取込・再処理の進捗確認や停止・再開を行います。",
     group: "データの整備",
   },
   {

@@ -264,6 +264,23 @@ async function rebuildListingCategories(
  * Recompute derived fields and return the projection token that this worker owns. If the product
  * row is already current, ownership stays with the token observed when the row was loaded.
  */
+const REPLAY_SOURCE_FIELDS = [
+  "raw_manufacturer",
+  "raw_model",
+  "title",
+  "raw_category",
+  "category",
+  "manufacturer",
+  "metadata_json",
+  "remediation_projection_token",
+] as const;
+
+export class ListingReplaySourceChangedError extends Error {
+  constructor() {
+    super("listing_replay_source_changed");
+  }
+}
+
 async function replayDerivedListing(
   db: QueryableDatabase,
   row: RemediationListingRow,
@@ -384,6 +401,7 @@ async function replayDerivedListing(
           remediation_projection_required = 1,
           remediation_projection_token = ?
       WHERE id = ?
+        AND ${REPLAY_SOURCE_FIELDS.map((field) => `${field} IS ?`).join(" AND ")}
         AND (
           manufacturer IS NOT ?
           OR normalized_raw_manufacturer IS NOT ?
@@ -434,6 +452,7 @@ async function replayDerivedListing(
       metadataJson,
       token,
       row.id,
+      ...REPLAY_SOURCE_FIELDS.map((field) => row[field]),
       manufacturer.displayName,
       manufacturer.normalizedRawManufacturer,
       manufacturerFilterId,
@@ -460,6 +479,13 @@ async function replayDerivedListing(
     .run();
 
   const changed = Number(result?.meta?.changes || 0) > 0;
+  if (!changed) {
+    // Zero changes can mean equal derived values or a failed source-snapshot comparison. Do not
+    // write categories/facts, refresh projections or acknowledge a newer token in the latter case.
+    const current = await loadListing(db, row.id);
+    if (!current || REPLAY_SOURCE_FIELDS.some((field) => current[field] !== row[field]))
+      throw new ListingReplaySourceChangedError();
+  }
   // A replay that moved a listing's category without rebuilding `product_categories` left it
   // counted under the category it used to be in — visible today in the facet counts, and a wrong
   // search result once the filter reads membership. Only on an actual change, so an unchanged

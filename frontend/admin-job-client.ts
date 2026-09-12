@@ -44,13 +44,16 @@ export async function submitAdminCsvJob(
   return job;
 }
 
-export async function submitAdminReplayJob(id: string): Promise<AdminBackgroundJob> {
+export async function submitAdminReplayJob(
+  id: string,
+  kind: "replay" | "model" = "replay",
+): Promise<AdminBackgroundJob> {
   const { job } = await adminJobRequest<{ job: AdminBackgroundJob }>({
     action: "create",
     id,
-    kind: "replay",
+    kind,
     total: 0,
-    label: "全商品の出品条件再処理",
+    label: kind === "model" ? "旧バージョン商品の型番再判定" : "全商品の出品条件再処理",
   });
   return (await adminJobRequest<{ job: AdminBackgroundJob }>({ action: "start", id: job.id })).job;
 }

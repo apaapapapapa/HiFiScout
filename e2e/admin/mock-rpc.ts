@@ -1,6 +1,7 @@
 import type { AdminChangeHistoryItem } from "../../src/api/admin-listing-contracts.js";
 import type { AdminBackgroundJob, AdminJobCommand } from "../../src/api/admin-csv-contracts.js";
 import { parseAdminJobCommand } from "../../src/http/admin-jobs.js";
+import { MODEL_RESOLVER_VERSION } from "../../src/catalog/model-resolver.js";
 import type adminWorker from "../../src/admin/entry.js";
 
 type AdminRpc = Parameters<typeof adminWorker.fetch>[1]["CATALOG_ADMIN"];
@@ -92,7 +93,12 @@ export function createMockAdminRpc() {
       const command = parseAdminJobCommand(input);
       if (!command) throw new Error("Invalid job command");
       state.jobCommands.push(command);
-      if (command.action === "list") return { items: [...state.jobs.values()], nextBefore: null };
+      if (command.action === "list")
+        return {
+          items: [...state.jobs.values()],
+          nextBefore: null,
+          modelResolverVersion: MODEL_RESOLVER_VERSION,
+        };
       if (command.action === "create") {
         const existing = state.jobs.get(command.id);
         if (existing) return { job: existing };
@@ -110,6 +116,9 @@ export function createMockAdminRpc() {
           error: "",
           expiresAt: "2026-09-08T00:00:00Z",
           detailsAvailable: true,
+          ...(command.kind === "model"
+            ? { modelReplay: { version: MODEL_RESOLVER_VERSION, scanned: 0 } }
+            : {}),
         };
         state.jobs.set(job.id, job);
         return { job };
