@@ -174,6 +174,45 @@ Both pending selectors materialize their indexed, limited work sets before looki
 
 Migration 0090 records a token in `listing_projection_pending` in the same transaction as an inserted or materially updated listing, including deactivation. Heartbeats and same-value updates do not enqueue work. This obligation survives a failure before `recordCrawlRunWorkSet`; an unchanged crawl returns pending observed sources in its derived work set. Normal crawl continuations and remediation refreshes clear only the token captured before their projection work, after dependency-ordered completion. A concurrent newer edit therefore remains pending. The tables contain current work and constant-size audit cursors, not another append-only event log.
 
+### Public API rate limiting
+
+`src/api-guard.ts` resolves a bucket for every public API request and then answers one of three
+decisions, which the routes act on separately:
+
+| State | Answer |
+| --- | --- |
+| Within the limit | Normal handling |
+| Over the limit | `429` |
+| Limiter unconfigured or failing | `503` on the routes it protects |
+
+The third state covers both a missing `API_RATE_LIMITER` binding and a `.limit()` that throws.
+Neither is a pass: a deployment without a working limiter refuses the routes the limiter is
+responsible for rather than serving them unmetered. There is no "no binding, so this must be
+development" bypass; local and test callers supply an explicit mock instead.
+
+The bucket is resolved before the binding is consulted, so a limiter problem can only affect routes
+the limiter covers. Static assets and the retired `/api/admin/*` paths carry no bucket and are never
+stopped by one.
+
+While the limiter is unavailable, a read an existing Cache API entry already answers is still served
+from that entry — `/api/feed`, `/api/meta`, `/api/knowledge-catalog/status` and product permalinks.
+A cache **miss** is refused rather than allowed to reach D1 with no limit in force. Search and
+suggestions have no such mode: they are served by a cached Worker entrypoint whose cache this Worker
+cannot interrogate, so asking it for a hit also authorizes a miss. They answer `503`.
+
+Degradation is logged as one structured line per isolate per minute, not per request: a limiter
+outage affects every request, and logging each one would turn a failed defence into a second
+incident.
+
+Client identity stays `cf-connecting-ip`, which the edge sets and a caller cannot choose. This is an
+abuse brake, not a usage meter: it does not account for the D1 free-tier quota, and no per-request
+D1 counter exists to replace it.
+
+`test/api-rate-limit-degradation.test.ts` fixes the per-route behaviour and asserts that
+`wrangler.jsonc` declares the binding for every environment. Post-deployment, the deploy workflow's
+runtime smoke check requires `GET /api/feed` to answer `200`, which a deployment missing the binding
+could not do.
+
 ### Public search response cache
 
 The default Worker remains uncached so every public API request passes its rate limiter and URL

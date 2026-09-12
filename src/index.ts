@@ -15,7 +15,7 @@ import {
 import { catalogHtmlWithFeedAutodiscovery } from "./http/catalog-feed-autodiscovery.js";
 import { handleProductCorrectionReport } from "./http/product-correction-report.js";
 import { handleProductPermalink } from "./http/product-permalink.js";
-import { json } from "./http/response.js";
+import { rateLimitedResponse, rateLimiterUnavailableResponse } from "./http/response.js";
 import { handleHttp } from "./http/router.js";
 import { handleQueue } from "./queue.js";
 import type { WorkerQueueMessage } from "./queue.js";
@@ -44,7 +44,10 @@ async function handlePublicHttp(
 
   if (request.method === "POST" && url.pathname === "/api/product-correction-reports") {
     const rate = await checkPublicApiRateLimit(request, env);
-    if (!rate.allowed) return json({ error: "rate_limited" }, { status: 429 });
+    if (rate.decision === "limited") return rateLimitedResponse();
+    // An unauthenticated write has no cached answer to fall back on: without a working limiter it is
+    // refused outright rather than accepted unmetered.
+    if (rate.decision === "unavailable") return rateLimiterUnavailableResponse();
     return handleProductCorrectionReport(request, env);
   }
 
