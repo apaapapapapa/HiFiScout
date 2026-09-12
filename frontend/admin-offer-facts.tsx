@@ -119,9 +119,14 @@ export function AdminOfferFacts({
                   <legend>{group.name}</legend>
                   {OFFER_FACT_DEFINITIONS.filter((definition) => definition.group === group.id).map(
                     (definition) => {
-                      const seller = snapshot.facts.find(
-                        (fact) => fact.factId === definition.id && fact.source === "seller",
-                      );
+                      const seller =
+                        snapshot.facts.find(
+                          (fact) =>
+                            fact.factId === definition.id && fact.source === "seller_detail",
+                        ) ??
+                        snapshot.facts.find(
+                          (fact) => fact.factId === definition.id && fact.source === "seller",
+                        );
                       return (
                         <label key={definition.id}>
                           <span>{definition.name}</span>
@@ -141,7 +146,9 @@ export function AdminOfferFacts({
                           <small>
                             店舗の記載:{" "}
                             {seller?.state === "present"
-                              ? "あり"
+                              ? seller.warrantyMonths
+                                ? `あり（${seller.warrantyMonths}か月）`
+                                : "あり"
                               : seller?.state === "absent"
                                 ? "なし"
                                 : "不明"}

@@ -173,7 +173,7 @@ test("inventory recheck accepts the scheduler prepared FETCH seam without Relay 
       return {
         status: 200,
         contentType: "text/html; charset=utf-8",
-        body: "<main>販売価格 <strong>¥798,000</strong></main>",
+        body: "<main>販売価格 <strong>¥798,000</strong><button>カートに入れる</button></main>",
       };
     },
   });

@@ -54,6 +54,33 @@ function product(overrides: Partial<ProductSearchItem> = {}): ProductSearchItem 
   };
 }
 
+test("product validation accepts bounded seller-detail warranty periods and rejects malformed periods", () => {
+  const fact = {
+    factId: "shop_warranty" as const,
+    state: "present" as const,
+    source: "seller_detail" as const,
+    sourceField: "detail_warranty" as const,
+    ruleId: "audiounion.detail.v1.shop_warranty",
+    confidence: 1,
+    observedAt: "2026-09-11T00:00:00Z",
+    warrantyMonths: 6,
+  };
+  const item = product({ representative_offer: offer({ offer_facts: [fact] }) });
+  assert.equal(isProductSearchItem(item), true);
+  for (const warrantyMonths of [0, 121, 1.5, "6", null]) {
+    assert.equal(
+      isProductSearchItem({
+        ...item,
+        representative_offer: {
+          ...item.representative_offer,
+          offer_facts: [{ ...fact, warrantyMonths }],
+        },
+      }),
+      false,
+    );
+  }
+});
+
 function meta(): MetaResponse {
   return {
     status: "healthy",

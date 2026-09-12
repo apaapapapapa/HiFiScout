@@ -88,8 +88,10 @@ export async function recordInventoryUnavailable(
   checkedAt: string,
   failureCount: number,
   deactivate: boolean,
+  evidence: "missing" | "sold" = "missing",
 ): Promise<D1Result> {
   const inactive = deactivate ? 1 : 0;
+  const sold = deactivate || evidence === "sold" ? 1 : 0;
   return db
     .prepare(`
     UPDATE products
@@ -98,9 +100,9 @@ export async function recordInventoryUnavailable(
         inventory_check_failures = ?,
         stock_status = CASE WHEN ? = 1 THEN 'sold_out' ELSE stock_status END,
         is_active = CASE WHEN ? = 1 THEN 0 ELSE is_active END,
-        last_changed_at = CASE WHEN ? = 1 THEN ? ELSE last_changed_at END
+        last_changed_at = CASE WHEN ? = 1 OR (? = 1 AND stock_status <> 'sold_out') THEN ? ELSE last_changed_at END
     WHERE id = ? AND is_active = 1
   `)
-    .bind(checkedAt, checkedAt, failureCount, inactive, inactive, inactive, checkedAt, productId)
+    .bind(checkedAt, checkedAt, failureCount, sold, inactive, inactive, sold, checkedAt, productId)
     .run();
 }

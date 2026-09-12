@@ -145,7 +145,8 @@ test("tape migration repairs ancestors without changing durable identities or ex
     );
     assert.deepEqual(memberships("completion-0"), ["ANA.TAPE", "SRC"]);
     // Current search reads offer facts; preserve the historical migration assertions above.
-    sqlite.exec(migrationSources.find((row) => row.name === "0101_seller_offer_facts.sql")!.sql);
+    for (const current of migrationSources.filter((row) => row.name > MIGRATION))
+      sqlite.exec(current.sql);
     assert.equal((await searchProducts(db, productQuery("?category=SRC"))).items.length, 2);
     assert.equal((await searchProducts(db, productQuery("?category=ANA"))).items.length, 2);
   } finally {

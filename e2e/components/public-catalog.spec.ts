@@ -104,6 +104,16 @@ async function mockCatalog(
                       confidence: 1,
                       observedAt: "2026-09-07T00:00:00Z",
                     },
+                    {
+                      factId: "shop_warranty",
+                      state: "present",
+                      source: "seller_detail",
+                      sourceField: "detail_warranty",
+                      ruleId: "audiounion.detail.v1.shop_warranty",
+                      confidence: 1,
+                      observedAt: "2026-09-11T00:00:00Z",
+                      warrantyMonths: 6,
+                    },
                   ],
                 }),
               ],
@@ -620,6 +630,10 @@ test("single-offer detail and history keep their targets when retrying failures"
     "記載なし",
   );
   expect(seen.detail).toBe(2);
+  await expect(
+    page.locator(".offer-facts dl > div").filter({ hasText: "販売店保証" }),
+  ).toContainText("あり（6か月）");
+  await expect(page.locator(".offer-facts")).toContainText("店舗詳細の記載");
   await page.getByRole("button", { name: "価格履歴", exact: true }).click();
   await page.getByRole("button", { name: "価格履歴を再読み込み" }).click();
   await expect(page.locator("#history-dialog")).toContainText("履歴はまだありません");

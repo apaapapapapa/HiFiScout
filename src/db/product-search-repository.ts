@@ -1,3 +1,4 @@
+import { EFFECTIVE_OFFER_FACT_SQL } from "./offer-fact-precedence.js";
 import { decodeCatalogSpecifications } from "./catalog-specification-repository.js";
 /**
  * The one production implementation of product search.
@@ -294,9 +295,7 @@ function offerFilter(query: ProductQuery): OfferFilter {
       SELECT 1 FROM json_each(?) required WHERE NOT EXISTS (
         SELECT 1 FROM product_offer_facts f
         WHERE f.product_id = p.id AND f.fact_id = required.value AND f.state = 'present'
-          AND (f.source = 'manual' OR NOT EXISTS (
-            SELECT 1 FROM product_offer_facts m
-            WHERE m.product_id = p.id AND m.fact_id = f.fact_id AND m.source = 'manual'))
+          AND ${EFFECTIVE_OFFER_FACT_SQL}
       ))`);
     binds.push(JSON.stringify(query.offerFacts));
   }

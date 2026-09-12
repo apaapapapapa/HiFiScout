@@ -193,8 +193,19 @@ export const PUBLIC_API_SCHEMAS: Readonly<Record<string, JsonSchema>> = {
     properties: {
       factId: { type: "string", enum: OFFER_FACT_DEFINITIONS.map((fact) => fact.id) },
       state: { type: "string", enum: ["present", "absent", "unknown"] },
-      source: { type: "string", enum: ["seller", "manual"] },
-      sourceField: { type: "string", enum: ["title", "condition_text", "manual"] },
+      source: { type: "string", enum: ["seller", "seller_detail", "manual"] },
+      sourceField: {
+        type: "string",
+        enum: [
+          "title",
+          "condition_text",
+          "detail_accessories",
+          "detail_condition",
+          "detail_warranty",
+          "manual",
+        ],
+      },
+      warrantyMonths: { type: "integer", minimum: 1, maximum: 120 },
       ruleId: { type: "string" },
       confidence: { type: "number", minimum: 0, maximum: 1 },
       observedAt: { type: "string", format: "date-time" },

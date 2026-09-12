@@ -40,7 +40,7 @@ test("shop totals and pages stay scoped when other shops grow", async () => {
         .run();
       const legacy = accountReads(db);
       await db
-        .prepare(`INSERT INTO product_offer_facts
+        .prepare(`INSERT INTO product_offer_facts(product_id,fact_id,source,state,source_field,rule_id,confidence,observed_at)
           SELECT products.id, value, 'seller', 'present', 'condition_text', 'fixture', 1, '${AT}'
           FROM products CROSS JOIN json_each('["remote_control","shop_warranty"]')
           WHERE products.id > ?`)

@@ -36,7 +36,8 @@ test("in-stock date migration, cursors and refresh ignore newer unavailable offe
       ],
     );
     // Current search reads offer facts; preserve the historical migration assertions above.
-    sqlite.exec(migrationSources.find((row) => row.name === "0101_seller_offer_facts.sql")!.sql);
+    for (const current of migrationSources.filter((row) => row.name > migration.name))
+      sqlite.exec(current.sql);
     for (const sort of ["newest", "updated", "oldest"]) {
       const first = await searchProducts(
         db,

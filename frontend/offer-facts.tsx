@@ -26,7 +26,9 @@ export function OfferFacts({ facts = [] }: { facts?: readonly OfferFact[] }) {
                       <dt>{definition.name}</dt>
                       <dd>
                         {fact?.state === "present"
-                          ? "あり"
+                          ? fact.warrantyMonths
+                            ? `あり（${fact.warrantyMonths}か月）`
+                            : "あり"
                           : fact?.state === "absent"
                             ? "なし（明記）"
                             : fact?.source === "manual"
@@ -34,7 +36,12 @@ export function OfferFacts({ facts = [] }: { facts?: readonly OfferFact[] }) {
                               : "記載なし"}
                         {fact ? (
                           <small>
-                            {fact.source === "manual" ? "管理者確認" : "店舗の記載"} /{" "}
+                            {fact.source === "manual"
+                              ? "管理者確認"
+                              : fact.source === "seller_detail"
+                                ? "店舗詳細の記載"
+                                : "店舗の記載"}{" "}
+                            /{" "}
                             <time dateTime={fact.observedAt}>
                               {new Date(fact.observedAt).toLocaleDateString("ja-JP")}
                             </time>

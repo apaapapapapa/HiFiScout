@@ -220,8 +220,22 @@ export function isProductOffer(value: unknown): value is ProductOffer {
           isRecord(fact) &&
           isOfferFactId(fact.factId) &&
           ["present", "absent", "unknown"].includes(String(fact.state)) &&
-          ["seller", "manual"].includes(String(fact.source)) &&
-          ["title", "condition_text", "manual"].includes(String(fact.sourceField)) &&
+          ["seller", "seller_detail", "manual"].includes(String(fact.source)) &&
+          [
+            "title",
+            "condition_text",
+            "detail_accessories",
+            "detail_condition",
+            "detail_warranty",
+            "manual",
+          ].includes(String(fact.sourceField)) &&
+          (fact.warrantyMonths === undefined ||
+            (fact.factId === "shop_warranty" &&
+              fact.state === "present" &&
+              typeof fact.warrantyMonths === "number" &&
+              Number.isInteger(fact.warrantyMonths) &&
+              fact.warrantyMonths >= 1 &&
+              fact.warrantyMonths <= 120)) &&
           typeof fact.ruleId === "string" &&
           typeof fact.confidence === "number" &&
           fact.confidence >= 0 &&

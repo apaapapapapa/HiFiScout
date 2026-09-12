@@ -204,6 +204,11 @@ export type ShopDefinitionInput = Omit<ShopDefinition, "envPrefix">;
 
 /** What a shop must supply to opt into the post-crawl inventory recheck. */
 export interface InventoryRecheckPolicy {
+  /** Null means the expected listing fields could not be read; an empty array clears old detail facts. */
+  extractOfferFacts?(
+    html: string,
+    observedAt: string,
+  ): import("../catalog/types.js").OfferFact[] | null;
   /** Reject anything outside the shop's own detail-page URL contract. */
   isDetailUrl(value: string): boolean;
 

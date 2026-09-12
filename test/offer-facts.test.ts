@@ -163,7 +163,7 @@ test("facts persist atomically with the listing and preserve manual decisions on
     );
     assert.deepEqual(rows(), before, "equal facts retain their original observation time");
     sqlite.exec(
-      `INSERT INTO product_offer_facts SELECT id, 'original_box', 'manual', 'absent', 'manual', 'admin', 1, '${AT}' FROM products`,
+      `INSERT INTO product_offer_facts (product_id,fact_id,source,state,source_field,rule_id,confidence,observed_at) SELECT id, 'original_box', 'manual', 'absent', 'manual', 'admin', 1, '${AT}' FROM products`,
     );
     const plan = await createCompleteExportPlan(db, "all", 1);
     const table = plan.tables.findIndex((entry) => entry.name === "product_offer_facts");

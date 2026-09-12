@@ -45,10 +45,51 @@ function fixture() {
   return { sqlite, db };
 }
 
+test("search and detail apply manual, detail, then title authority on the same offer", async () => {
+  const { sqlite, db } = fixture();
+  try {
+    sqlite.exec(`INSERT INTO product_offer_facts(product_id,fact_id,source,state,source_field,rule_id,confidence,observed_at,warranty_months) VALUES
+      (1,'shop_warranty','seller','present','title','fixture',1,'2026-09-07',NULL),
+      (1,'shop_warranty','seller_detail','absent','detail_warranty','fixture',1,'2026-09-11',NULL),
+      (2,'shop_warranty','seller','absent','title','fixture',1,'2026-09-07',NULL),
+      (2,'shop_warranty','seller_detail','present','detail_warranty','fixture',1,'2026-09-11',6)`);
+    const result = await searchProducts(
+      db,
+      productQuery("?offer=shop_warranty&inStock=true&includeTotal=true"),
+    );
+    assert.equal(result.totalCount, 1);
+    assert.equal(result.items[0].offer_count, 1);
+    assert.equal(result.items[0].representative_offer?.listing_product_id, 2);
+    const facts = (await productSearchDetail(db, "l-1"))?.offers.find(
+      (o) => o.listing_product_id === 2,
+    )?.offer_facts;
+    assert.equal(facts?.[0].source, "seller_detail");
+    assert.equal(facts?.[0].warrantyMonths, 6);
+    sqlite.exec(`INSERT INTO product_offer_facts(product_id,fact_id,source,state,source_field,rule_id,confidence,observed_at) VALUES
+      (2,'shop_warranty','manual','unknown','manual','admin',1,'2026-09-12')`);
+    assert.equal(
+      (
+        await searchProducts(
+          db,
+          productQuery("?offer=shop_warranty&inStock=true&includeTotal=true"),
+        )
+      ).totalCount,
+      0,
+    );
+    assert.equal(
+      (await productSearchDetail(db, "l-1"))?.offers.find((o) => o.listing_product_id === 2)
+        ?.offer_facts?.[0].state,
+      "unknown",
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
 test("price-adjacent terms belong only to the filtered representative offer", async () => {
   const { sqlite, db } = fixture();
   try {
-    sqlite.exec(`INSERT INTO product_offer_facts VALUES
+    sqlite.exec(`INSERT INTO product_offer_facts (product_id,fact_id,source,state,source_field,rule_id,confidence,observed_at) VALUES
       (1,'sale_pair','seller','present','title','fixture',1,'2026-09-07'),
       (1,'voltage_100v','seller','present','title','fixture',1,'2026-09-07'),
       (2,'sale_single','seller','present','title','fixture',1,'2026-09-07'),
@@ -77,7 +118,7 @@ test("price-adjacent terms belong only to the filtered representative offer", as
 test("appearance and service filters cannot borrow a different offer's evidence", async () => {
   const { sqlite, db } = fixture();
   try {
-    sqlite.exec(`INSERT INTO product_offer_facts VALUES
+    sqlite.exec(`INSERT INTO product_offer_facts (product_id,fact_id,source,state,source_field,rule_id,confidence,observed_at) VALUES
       (1,'appearance_clean','seller','present','condition_text','fixture',1,'2026-09-07'),
       (2,'maintenance_serviced','seller','present','condition_text','fixture',1,'2026-09-07'),
       (3,'appearance_clean','seller','present','condition_text','fixture',1,'2026-09-07'),
@@ -89,7 +130,7 @@ test("appearance and service filters cannot borrow a different offer's evidence"
     assert.equal(result.totalCount, 1);
     assert.equal(result.items[0].lowest_price_yen, 150);
     assert.equal(result.items[0].offer_count, 1);
-    sqlite.exec(`INSERT INTO product_offer_facts VALUES
+    sqlite.exec(`INSERT INTO product_offer_facts (product_id,fact_id,source,state,source_field,rule_id,confidence,observed_at) VALUES
       (3,'maintenance_serviced','manual','unknown','manual','fixture',1,'2026-09-07')`);
     assert.equal((await searchProducts(db, query)).totalCount, 0);
     const detail = await productSearchDetail(db, "l-1");
@@ -132,7 +173,7 @@ test("offer conditions intersect on one listing, including summaries, cursor ord
     for (const extra of ["&maxPrice=50", "&shop=audiounion"]) {
       assert.equal((await searchProducts(db, productQuery(base + extra))).totalCount, 0);
     }
-    sqlite.exec(`INSERT INTO product_offer_facts
+    sqlite.exec(`INSERT INTO product_offer_facts(product_id,fact_id,source,state,source_field,rule_id,confidence,observed_at)
       VALUES (3,'remote_control','manual','unknown','manual','admin',1,'2026-09-07')`);
     assert.equal((await searchProducts(db, productQuery(base))).items[0].key, "l-8");
     const detail = await productSearchDetail(db, "l-1");

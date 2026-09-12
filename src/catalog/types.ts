@@ -1070,13 +1070,20 @@ export interface ProductMarketAnalysis {
     deactivated_listings: number;
   })[];
 }
-export type OfferFactSource = "seller" | "manual";
+export type OfferFactSource = "seller" | "seller_detail" | "manual";
 
 export interface OfferFact {
   factId: OfferFactId;
   state: OfferFactState;
   source: OfferFactSource;
-  sourceField: "title" | "condition_text" | "manual";
+  sourceField:
+    | "title"
+    | "condition_text"
+    | "detail_accessories"
+    | "detail_condition"
+    | "detail_warranty"
+    | "manual";
+  warrantyMonths?: number;
   ruleId: string;
   confidence: number;
   observedAt: string;
