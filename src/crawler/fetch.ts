@@ -1,8 +1,13 @@
 import type { AugmentedCrawlError, FetchHtmlPageOptions } from "./types.js";
 import { fetchRobotsPolicy, getCrawlDelayMs, isPathAllowed } from "./robots.js";
+import {
+  CRAWL_MAX_HTML_RESPONSE_BYTES,
+  readLimitedResponseText,
+  type LimitedResponseReadOptions,
+} from "./response-limits.js";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-const CRAWL_HTTP_TIMEOUT_MS = 30_000;
+export const CRAWL_HTTP_TIMEOUT_MS = 30_000;
 
 function responseCharset(contentType = ""): string {
   const raw = contentType.match(/charset\s*=\s*["']?([^;"'\s]+)/i)?.[1]?.toLowerCase();
@@ -19,14 +24,21 @@ function responseCharset(contentType = ""): string {
   );
 }
 
-export async function decodeHtmlResponse(response: Response): Promise<string> {
-  const bytes = await response.arrayBuffer();
-  const charset = responseCharset(response.headers.get("content-type") || "");
-  try {
-    return new TextDecoder(charset).decode(bytes);
-  } catch {
-    return new TextDecoder("utf-8").decode(bytes);
-  }
+/**
+ * Decodes an HTML body using its declared charset, reading at most {@link CRAWL_MAX_HTML_RESPONSE_BYTES}.
+ *
+ * Callers pass the deadline that bounded the request so a body that stops mid-stream ends with the
+ * request rather than holding the invocation open.
+ */
+export async function decodeHtmlResponse(
+  response: Response,
+  { maxBytes = CRAWL_MAX_HTML_RESPONSE_BYTES, signal }: Partial<LimitedResponseReadOptions> = {},
+): Promise<string> {
+  return readLimitedResponseText(response, {
+    maxBytes,
+    signal,
+    charset: responseCharset(response.headers.get("content-type") || ""),
+  });
 }
 
 export async function fetchHtmlPage(
@@ -37,6 +49,8 @@ export async function fetchHtmlPage(
     requestDelayMs,
     fetchFn = fetch,
     robotsCache = new Map(),
+    timeoutMs = CRAWL_HTTP_TIMEOUT_MS,
+    maxResponseBytes = CRAWL_MAX_HTML_RESPONSE_BYTES,
   }: FetchHtmlPageOptions,
 ): Promise<string> {
   let robotsFetchedNow = false;
@@ -55,6 +69,11 @@ export async function fetchHtmlPage(
   );
   if (robotsFetchedNow && effectiveDelayMs > 0) await sleep(effectiveDelayMs);
 
+  // A single upstream that never answers must fail inside the crawler's catch/backoff path
+  // instead of consuming the Queue worker's 15-minute wall-clock budget and disappearing as a
+  // hard kill with only last_attempt_at advanced. The same deadline covers the body: a seller that
+  // sends headers and then stalls halfway through the page is the same outage.
+  const deadline = AbortSignal.timeout(timeoutMs);
   const response = await fetchFn(url, {
     headers: {
       "User-Agent": userAgent,
@@ -63,10 +82,7 @@ export async function fetchHtmlPage(
       "Cache-Control": "no-cache",
     },
     redirect: "follow",
-    // A single upstream that never answers must fail inside the crawler's catch/backoff path
-    // instead of consuming the Queue worker's 15-minute wall-clock budget and disappearing as a
-    // hard kill with only last_attempt_at advanced.
-    signal: AbortSignal.timeout(CRAWL_HTTP_TIMEOUT_MS),
+    signal: deadline,
   });
 
   if (response.status === 403 || response.status === 429) {
@@ -78,7 +94,10 @@ export async function fetchHtmlPage(
   const contentType = response.headers.get("content-type") || "";
   if (!contentType.includes("text/html"))
     throw new Error(`unexpected content type: ${contentType}`);
-  const html = await decodeHtmlResponse(response);
+  const html = await decodeHtmlResponse(response, {
+    signal: deadline,
+    maxBytes: maxResponseBytes,
+  });
   if (effectiveDelayMs > 0) await sleep(effectiveDelayMs);
   return html;
 }

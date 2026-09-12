@@ -1,4 +1,5 @@
 import { fetchRobotsPolicy, getCrawlDelayMs, isPathAllowed } from "./robots.js";
+import { CRAWL_MAX_HTML_RESPONSE_BYTES, CrawlResponseTooLargeError } from "./response-limits.js";
 import { isRecord } from "../types.js";
 import type {
   AugmentedCrawlError,
@@ -101,21 +102,46 @@ export function createBrowserHtmlFetcher(
     return page;
   }
 
-  async function navigate(targetPage: BrowserPageLike, url: string): Promise<string> {
+  /**
+   * Rendering happens in the remote browser session, so the Worker can only bound what crosses back
+   * to it. The residual risk is the browser session's own buffering, which this transport does not
+   * control; the ceiling below is what protects the Worker's decoder and parser.
+   *
+   * The budget is in bytes, so the check is too: one Japanese character is three UTF-8 bytes, and
+   * counting UTF-16 code units would let a page three times over the ceiling through. The length
+   * comparison is only a cheap pre-filter — a string longer than the ceiling can never encode to
+   * fewer bytes — that avoids encoding an obviously oversized page just to measure it.
+   */
+  function boundedContent(html: string, maxBytes: number): string {
+    if (html.length > maxBytes || new TextEncoder().encode(html).byteLength > maxBytes) {
+      throw new CrawlResponseTooLargeError(maxBytes);
+    }
+    return html;
+  }
+
+  async function navigate(
+    targetPage: BrowserPageLike,
+    url: string,
+    maxBytes: number,
+  ): Promise<string> {
     const response = await targetPage.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
     const status = response?.status() ?? 0;
     if (status < 200 || status >= 400) throw crawlError(status);
     pageOrigin = new URL(targetPage.url()).origin;
-    return targetPage.content();
+    return boundedContent(await targetPage.content(), maxBytes);
   }
 
-  async function browserFetch(targetPage: BrowserPageLike, url: string): Promise<string> {
+  async function browserFetch(
+    targetPage: BrowserPageLike,
+    url: string,
+    maxBytes: number,
+  ): Promise<string> {
     const result = await targetPage.evaluate(async (targetUrl) => {
       const response = await fetch(targetUrl, { cache: "no-store", credentials: "same-origin" });
       return { status: response.status, html: await response.text() };
     }, url);
     if (result.status < 200 || result.status >= 400) throw crawlError(result.status);
-    return result.html;
+    return boundedContent(result.html, maxBytes);
   }
 
   return {
@@ -125,17 +151,20 @@ export function createBrowserHtmlFetcher(
         fetchFn: options.fetchFn ?? globalThis.fetch,
         robotsCache: options.robotsCache ?? new Map<string, string | null>(),
       });
+      const maxBytes = options.maxResponseBytes ?? CRAWL_MAX_HTML_RESPONSE_BYTES;
       try {
         const targetPage = await ensurePage();
         const targetOrigin = new URL(url).origin;
         const html =
           pageOrigin === targetOrigin
-            ? await browserFetch(targetPage, url)
-            : await navigate(targetPage, url);
+            ? await browserFetch(targetPage, url, maxBytes)
+            : await navigate(targetPage, url, maxBytes);
         if (effectiveDelayMs > 0) await sleep(effectiveDelayMs);
         return html;
       } catch (error) {
         if (isRecord(error) && typeof error.status === "number" && error.status) throw error;
+        // An oversized page must stay identifiable as such rather than becoming a generic failure.
+        if (error instanceof CrawlResponseTooLargeError) throw error;
         throw new Error(
           `browser crawl failed: ${error instanceof Error ? error.message : String(error)}`,
         );

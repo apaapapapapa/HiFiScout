@@ -1,4 +1,5 @@
 import type { RobotsGroup } from "./types.js";
+import { CRAWL_MAX_ROBOTS_RESPONSE_BYTES, readBoundedResponseText } from "./response-limits.js";
 
 const ROBOTS_HTTP_TIMEOUT_MS = 15_000;
 
@@ -81,16 +82,37 @@ export async function fetchRobotsPolicy(
   userAgent: string,
 ): Promise<string | null> {
   const robotsUrl = new URL("/robots.txt", baseUrl).toString();
+  // One deadline for the request and the body: a robots.txt that stalls mid-stream must not hold the
+  // crawl open any longer than one that never answers.
+  const deadline = AbortSignal.timeout(ROBOTS_HTTP_TIMEOUT_MS);
   const response = await fetchFn(robotsUrl, {
     headers: { "User-Agent": userAgent },
-    signal: AbortSignal.timeout(ROBOTS_HTTP_TIMEOUT_MS),
+    signal: deadline,
   });
   if (response.status === 429) throw new Error("robots.txt temporarily unavailable (429)");
   // RFC 9309 classifies 4xx responses as "unavailable": crawlers may access other resources.
   // A 403 for robots.txt alone is therefore not equivalent to an explicit Disallow rule.
-  if (response.status >= 400 && response.status < 500) return null;
-  if (response.status >= 500)
+  if (response.status >= 400 && response.status < 500) {
+    await response.body?.cancel().catch(() => {});
+    return null;
+  }
+  if (response.status >= 500) {
+    await response.body?.cancel().catch(() => {});
     throw new Error(`robots.txt temporarily unavailable (${response.status})`);
-  if (!response.ok) return null;
-  return response.text();
+  }
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => {});
+    return null;
+  }
+  // RFC 9309 lets a crawler stop parsing at 500 KiB and requires the cut to land on a line boundary,
+  // so an oversized robots.txt degrades to its first rules instead of failing the crawl. A partial
+  // trailing line is dropped rather than parsed as a shorter, more permissive path.
+  const { text, truncated } = await readBoundedResponseText(response, {
+    maxBytes: CRAWL_MAX_ROBOTS_RESPONSE_BYTES,
+    signal: deadline,
+    charset: "utf-8",
+  });
+  if (!truncated) return text;
+  const lastLineBreak = text.lastIndexOf("\n");
+  return lastLineBreak < 0 ? "" : text.slice(0, lastLineBreak + 1);
 }
