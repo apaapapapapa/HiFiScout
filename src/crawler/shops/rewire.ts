@@ -1,5 +1,6 @@
 import { availabilityFromSignals } from "../availability.js";
 import { stripRawTextElements } from "../../html/raw-text.js";
+import { DISC_PLAYER_TYPE_SUFFIX } from "../../catalog/model-presentation-type.js";
 import { cleanText, inferCategory, parseYen, splitManufacturerModel } from "../normalize.js";
 import type { CrawlPageObject, SellerProduct, ShopAdapter } from "../types.js";
 
@@ -33,7 +34,7 @@ const FLOORSTANDING_MODEL_PATTERNS: readonly RegExp[] = [
 
 const JAPANESE_TEXT_PATTERN = /[ぁ-んァ-ヶ一-龯]/u;
 const ENGLISH_PRODUCT_TYPE_SUFFIX =
-  /\s+(?:(?:stereo|mono(?:ral)?|tube|line)?\s*(?:power|integrated|pre)?\s*amplifier|preamp|preamplifier|speaker\s+system|sacd\/cd|sacd|cd\s+player|d\/a\s+converter)\b[\s\S]*$/iu;
+  /\s+(?:(?:stereo|mono(?:ral)?|tube|line)?\s*(?:power|integrated|pre)?\s*amplifier|preamp|preamplifier|speaker\s+system|d\/a\s+converter)\b[\s\S]*$/iu;
 
 export interface RewirePage extends CrawlPageObject {
   readonly page: number;
@@ -160,7 +161,9 @@ function conciseRewireModel(rawModel: string, isCable: boolean): string {
     if (/[A-Za-z0-9]/u.test(prefix)) value = prefix;
   }
 
-  value = cleanText(value.replace(ENGLISH_PRODUCT_TYPE_SUFFIX, " "));
+  value = cleanText(
+    value.replace(DISC_PLAYER_TYPE_SUFFIX, " ").replace(ENGLISH_PRODUCT_TYPE_SUFFIX, " "),
+  );
 
   value = value
     .replace(/[\s/／|]+$/u, "")
