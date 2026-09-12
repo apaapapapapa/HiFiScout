@@ -303,6 +303,10 @@ Migration 0084 removes the obsolete listing FTS index and guards projection/enti
 
 The write path also avoids unchanged indexed-column assignments and filters equal search/candidate
 rows before INSERT, preventing AUTOINCREMENT sequence writes from an otherwise no-op upsert.
+Resolver remediation applies the same rule to its listing replay: it constructs the `products`
+assignment list from the derived fields that actually changed, while retaining the source snapshot
+and projection-token fence. A metadata-only resolver-version advance therefore does not name every
+identity/category index column or rebuild an unchanged `product_categories` membership set.
 `syncProductMetadata` retains `categoryClassification.catalogMatchedAt` when the materialized
 decision is unchanged; `detailCheckedAt` still represents a meaningful negative-cache update.
 Candidate review timestamps record a changed decision, while review-run rows record executions.

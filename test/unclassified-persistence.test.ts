@@ -148,6 +148,7 @@ const UNCLASSIFIED_LISTING_ROW = {
   raw_category: "",
   primary_category_id: "other",
   category_ids: '["other"]',
+  direct_category_ids: '["other"]',
   classification_status: "unclassified",
   search_aliases: "",
   metadata_json: "{}",
@@ -177,22 +178,41 @@ test("the data-quality replay persists the same unclassified shape the crawl pat
     now: new Date("2026-08-22T00:00:00.000Z"),
   });
 
-  const replay = db.calls.find((call) => /UPDATE products\s+SET manufacturer = \?/.test(call.sql));
+  const replay = db.calls.find((call) =>
+    /UPDATE products\s+SET[\s\S]*direct_category_ids = \?/.test(call.sql),
+  );
   assert.ok(replay, "a classify_category job must replay the listing's derived fields");
-  assert.equal(replay.binds[10], "ブラック", "the replay persists every model-resolver field");
-  assert.equal(replay.binds[16], "unclassified", "the replay writes the unclassified sentinel");
+  const assignments = [...replay.sql.matchAll(/(?:SET|,)\s*([a-z_]+) = \?/gu)].map(
+    (match) => match[1],
+  );
+  const bound = (field: string) => replay.binds[assignments.indexOf(field)];
   assert.equal(
-    replay.binds[17],
+    bound("presentation_color"),
+    "ブラック",
+    "the replay persists every changed model-resolver field",
+  );
+  assert.equal(
+    bound("primary_category_id"),
+    "unclassified",
+    "the replay writes the unclassified sentinel",
+  );
+  assert.equal(
+    bound("category_ids"),
     '["unclassified"]',
     "the replay must persist [primary_category_id], never the classifier's in-memory empty array",
   );
   assert.equal(
-    replay.binds[18],
+    bound("direct_category_ids"),
     '["unclassified"]',
     "an unclassified listing is directly in exactly one category: the sentinel, once",
   );
-  assert.equal(replay.binds[19], "unclassified");
-  const metadata = JSON.parse(String(replay.binds[21])) as {
+  assert.equal(UNCLASSIFIED_LISTING_ROW.classification_status, "unclassified");
+  assert.equal(
+    assignments.includes("classification_status"),
+    false,
+    "an already-unclassified row does not rewrite the equal status column",
+  );
+  const metadata = JSON.parse(String(bound("metadata_json"))) as {
     modelNormalization?: { presentationColors?: string[] };
   };
   assert.deepEqual(metadata.modelNormalization?.presentationColors, ["ブラック"]);

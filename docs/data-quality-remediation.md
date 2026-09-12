@@ -88,6 +88,11 @@
 - 変更された出品からprojectionを更新し、exact identityはdirty setで修復します。
   正常クロールごとの全件再生、Alarmごとのstaged inventory再読込、公開リクエストでの履歴集計を
   再導入しません。
+- resolver再生は、再計算結果が変わった出品列だけを`products`へ代入します。D1は`SET`句に
+  含まれる索引列と`UPDATE OF` triggerを値が同じでも保守するため、metadataだけのversion更新で
+  identity/category索引を巻き込まないことが重要です。カテゴリmembershipのdelete/insertも
+  `primary_category_id`、`category_ids`、`direct_category_ids`のいずれかが変わった場合だけ行います。
+  source列とprojection tokenのsnapshot条件は維持し、並行更新を完了扱いにしません。
 - 詳細補完の計画・target chunk・cursorを分離し、D1に保存済みの詳細ページを再取得しません。
   negative cacheを含むmetadataだけの変更もあり、出品列の差分だけでmetadata同期を省略しません。
 - Query call数、SQL statement数、返却行数、D1の課金対象行数を区別します。計測metadataがない
