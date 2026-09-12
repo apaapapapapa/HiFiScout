@@ -106,9 +106,7 @@ export function createExportConsumer<Job extends DataExportJob, Kind extends Dat
     message: Message<DataExportQueueMessage<Kind>>,
   ): Promise<{ status: "completed" | "continued" | "failed" | "ignored" | "retrying" }> {
     if (!isDataExportQueueMessage(message.body, kind)) {
-      console.error(
-        JSON.stringify({ event: `${kind}_invalid_message`, body: message.body }),
-      );
+      console.error(JSON.stringify({ event: `${kind}_invalid_message`, body: message.body }));
       message.ack();
       return { status: "ignored" };
     }
@@ -212,9 +210,7 @@ export function createExportConsumer<Job extends DataExportJob, Kind extends Dat
       message.ack();
       console.log(
         JSON.stringify({
-          event: chunk.hasMore
-            ? `${kind}_chunk_completed`
-            : `${kind}_ready`,
+          event: chunk.hasMore ? `${kind}_chunk_completed` : `${kind}_ready`,
           jobId: claim.job.id,
           chunkIndex: body.expectedChunkCount,
           rows: chunk.rowCount,
