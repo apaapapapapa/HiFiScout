@@ -14,6 +14,7 @@ import type { ZipEntry } from "./zip.js";
 import type { CsvExportDownloadJob } from "./service.js";
 
 import { COMPLETE_ARCHIVE_PART_CHUNKS } from "./contracts.js";
+import type { StoredDataExportChunk } from "./contracts.js";
 const encoder = new TextEncoder();
 
 interface StoredPage {
@@ -189,13 +190,7 @@ export async function ensureCompleteArchiveChunk(
   job: { id: string; scope: CompleteExportScope; maxPrimaryId: number },
   index: number,
   chunkKey: (id: string, index: number) => string,
-): Promise<{
-  key: string;
-  nextAfterId: number;
-  rowCount: number;
-  byteCount: number;
-  hasMore: boolean;
-}> {
+): Promise<StoredDataExportChunk> {
   const key = chunkKey(job.id, index);
   const definitionKey = planKey(chunkKey, job.id);
   let planObject = await bucket.get(definitionKey);
