@@ -54,6 +54,7 @@ test("plural and structured breadcrumb names are not model-local evidence", asyn
       html: `<main><ul class="${name}"><li>Headphones</li><li>AT-HA2</li></ul>
         <div>Headphone Amplifier</div><h2>AT-HA2</h2></main>`,
     });
+    assert.equal(result.status, "verified", name);
     assert.equal(result.primaryCategoryId, "AMP.HEADPHONE", name);
   }
 });
