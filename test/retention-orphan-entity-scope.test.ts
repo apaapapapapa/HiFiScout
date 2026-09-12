@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import type { DatabaseSync } from "node:sqlite";
+import { readFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { test } from "vite-plus/test";
 
 import { runRetentionCleanup } from "../src/maintenance.js";
@@ -314,5 +315,46 @@ test("a run past one chunk retires every orphan and counts each half once", asyn
     entityIds.filter((id) => entityExists(sqlite, id)),
     [],
     "no orphan survives past the first chunk",
+  );
+});
+
+/**
+ * The residue the scoped sweep cannot reach.
+ *
+ * Bounding the daily sweep answers for orphans this path creates from now on. It cannot answer for
+ * ones already in the table: the earlier implementation deleted listings and swept entities as two
+ * separate statements, so an interrupted run committed the cascade and lost the sweep, and by then
+ * both the listing and the membership are gone -- there is nothing left to derive a candidate from.
+ * Migration 0121 clears those once, which is why the daily path is allowed to stop looking.
+ */
+const ORPHAN_MIGRATION = readFileSync(
+  new URL("../migrations/0121_retire_pre_existing_orphan_entities.sql", import.meta.url),
+  "utf8",
+);
+
+test("migration 0121 clears the orphans the scoped sweep can no longer find", () => {
+  const sqlite = new DatabaseSync(":memory:");
+  sqlite.exec(`
+    PRAGMA foreign_keys = ON;
+    CREATE TABLE product_search_entities (id INTEGER PRIMARY KEY AUTOINCREMENT, entity_key TEXT NOT NULL UNIQUE);
+    CREATE TABLE product_search_entity_offers (
+      listing_product_id INTEGER PRIMARY KEY,
+      entity_id INTEGER NOT NULL,
+      FOREIGN KEY (entity_id) REFERENCES product_search_entities(id) ON DELETE CASCADE
+    );
+    INSERT INTO product_search_entities(id, entity_key) VALUES (1, 'c-orphan'), (2, 'c-offered');
+    INSERT INTO product_search_entity_offers(listing_product_id, entity_id) VALUES (10, 2);
+  `);
+
+  sqlite.exec(ORPHAN_MIGRATION);
+
+  assert.deepEqual(
+    (
+      sqlite.prepare("SELECT entity_key FROM product_search_entities ORDER BY id").all() as {
+        entity_key: string;
+      }[]
+    ).map((row) => row.entity_key),
+    ["c-offered"],
+    "the orphan is cleared and the entity with an offer is left alone",
   );
 });

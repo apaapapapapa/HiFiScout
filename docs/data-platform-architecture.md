@@ -99,6 +99,8 @@ The fallback kind is mandatory rather than a nicety: identity coverage is incomp
 
 `product_search_entity_offers` maps each active listing to exactly one entity. `listing_product_id` is the table's primary key, so duplicate membership is impossible by schema rather than by convention.
 
+Every entity has at least one offer, and unfiltered search depends on it: the list query selects from `product_search_entities` without joining offers, so an entity with none is a product in the results with nothing to buy. **That invariant is owned by whichever path removes the last membership, not by a global backstop.** Each one prunes the entity IDs it touched: the projection path scopes its empty-entity delete to the affected IDs, and daily retention scopes its sweep to the entities the listings it just deleted belonged to, reading them before the `ON DELETE CASCADE` removes the evidence and committing both halves in one batch. Neither reads the whole table, so an entity nothing touched is never visited. A new path that can drop a membership therefore owns its own cleanup — retention will not converge drift it did not cause. `rebuildProductSearchEntities` remains the unscoped repair for drift that escaped anyway, and is an operator action rather than a cadence. Migration 0121 cleared the orphans left by the earlier retention implementation, which deleted listings and swept entities in separate statements and so could commit the cascade and lose the sweep.
+
 Shop-filtered search starts with that shop's active listings through the existing
 `idx_products_shop_active_quality` index and then looks up offer membership by listing ID. The
 result is an entity-ID set: multiple matching listings still count as one product. Exact totals
