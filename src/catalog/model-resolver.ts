@@ -176,7 +176,8 @@ const ANNOTATION_RULES: readonly AnnotationRule[] = [
   },
 ];
 
-const SHIPPING_ANNOTATION_RULES = ANNOTATION_RULES.filter((rule) => rule.name === "shipping");
+const PREFIX_RECOVERY_SHIPPING_NOTE =
+  /\s*※\s*送料無料(?:\s*《(?:北海道|沖縄|離島)(?:[・、,]\s*(?:北海道|沖縄|離島))*を除く》)?\s*$/u;
 
 /**
  * Shops whose model resolver behavior is narrower than the global rules.
@@ -340,17 +341,16 @@ function preservesModelIdentity(before: string, after: string): boolean {
 }
 
 function titleConfirmsMisplacedModel(title: string, restored: string): boolean {
-  if (title === restored || title.startsWith(`${restored} `)) return true;
+  if (title === restored) return true;
 
   // Legacy raw models can end at `※送料無料` while the title continues immediately with a
-  // regional exclusion. Compare only after removing the same explicit shipping vocabulary,
-  // requiring the entire remaining model to match and retaining the revision-token guard.
+  // regional exclusion. Unlike general display cleanup, corroborating an identity prefix must
+  // not consume arbitrary text after the note: another model or accessory may follow it.
   const withoutShipping = (value: string): string =>
-    SHIPPING_ANNOTATION_RULES.reduce((text, rule) => text.replace(rule.pattern, " ").trim(), value);
+    value.replace(PREFIX_RECOVERY_SHIPPING_NOTE, "").trim();
   const modelCore = withoutShipping(restored);
   const titleCore = withoutShipping(title);
   return (
-    modelCore !== restored &&
     titleCore === modelCore &&
     preservesModelIdentity(restored, modelCore) &&
     preservesModelIdentity(title, titleCore)

@@ -62,11 +62,11 @@ condition, sale and import badges are removed from manufacturer presentation, in
 brands, while unrecognized bracketed names remain intact. A numeric model token accidentally
 parsed as a manufacturer supplies no brand identity. Its model prefix is recovered only when the
 stored title independently confirms the exact original prefix and model tail. When a title expands
-a shipping footnote beyond the stored model (for example, an attached regional exclusion), only
-the existing explicit shipping rules may be ignored for comparison; the complete remaining model
-must match and revision tokens must survive. Raw seller columns remain unchanged. Resolver
-version changes enter the existing bounded replay queue; they do not
-require a full scan or re-fetch during a public request.
+a shipping footnote beyond the stored model, only `※送料無料` and its explicitly recognized
+regional exclusion may be ignored for comparison. The complete remaining model must match and
+revision tokens must survive; arbitrary prose or accessory names following a shipping note cannot
+justify prefix recovery. Raw seller columns remain unchanged. Resolver version changes enter the
+existing bounded replay queue; they do not require a full scan or re-fetch during a public request.
 
 `identitySafeModelLookupVariants` is the common listing/catalog vocabulary for presentation and approved manufacturer-market variants. `modelLookupAliases` identifies category-only hints such as a bundle's base model; those hints cannot authorize a product merge. Revision vetoes remain effective for aliases. Candidate retrieval uses indexed model keys through `catalog-lookup-candidates.ts`; the retrieval key is only a coarse candidate filter, not evidence of identity. Fuzzy discovery is capped and its candidates cannot authorize exact/alias attachment. Bootstrap dictionaries and prepared identity candidates are reused without caching changing operational alias snapshots indefinitely.
 
