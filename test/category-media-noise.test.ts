@@ -134,6 +134,18 @@ test("reviewed Fujiya placeholder products receive their confirmed product type"
       title,
     );
   }
+
+  for (const title of [
+    "Mother Audio ME5 Cable",
+    "Quill Acoustics Satin 専用ケース",
+    "G4 Audio Dracula replacement cord",
+  ]) {
+    assert.notEqual(
+      normalizeCatalogProduct(parsedProduct({ title })).primaryCategoryId,
+      "PER.EARPHONE",
+      title,
+    );
+  }
 });
 
 test("model hints do not consume compatibility, replacement parts or unknown revisions", () => {
