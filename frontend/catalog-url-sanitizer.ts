@@ -70,8 +70,8 @@ export function sanitizedCatalogSearch(search: string): string {
   }
 
   const sort = source.get("sort");
-  if (sort && sort !== "newest" && PRODUCT_QUERY_SORTS.some((value) => value === sort))
-    params.set("sort", sort);
+  // Retain explicit valid sorts, including `updated` in searches saved before it became default.
+  if (sort && PRODUCT_QUERY_SORTS.some((value) => value === sort)) params.set("sort", sort);
 
   // Emitted between `sort` and the toggles to match `filterUrlParams`, so a link the app wrote is
   // already clean and reloading it does not rewrite the address bar. Validation and de-duplication

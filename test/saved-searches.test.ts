@@ -37,6 +37,19 @@ test("saved searches round-trip repeated conditions and sorting into search and 
   assert.equal(sanitizedCatalogSearch("sort=dealScore"), "sort=dealScore");
 });
 
+test("saved explicit activity sorts survive the change of the public default", () => {
+  const query = "q=amp&sort=updated&offer=remote_control&inStock=false";
+  const stored = parseSavedSearches(JSON.stringify([{ ...entry, query }]));
+  assert.equal(stored.length, 1);
+  assert.equal(stored[0].query, query);
+  const restored = savedSearchFilters(stored[0].query);
+  assert.equal(restored.sort, "updated");
+  assert.equal(restored.q, "amp");
+  assert.deepEqual(restored.offerFacts, ["remote_control"]);
+  assert.equal(restored.inStock, false);
+  assert.equal(savedSearchQuery(restored), "q=amp&offer=remote_control&inStock=false");
+});
+
 test("invalid local search data is rejected instead of silently widening its filters", () => {
   for (const raw of [
     "{",

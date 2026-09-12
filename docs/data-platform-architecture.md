@@ -408,6 +408,13 @@ Explicit sorting follows the same offer subset as the card whenever an offer fil
 | `updated` | most recent meaningful listing activity across offers, descending |
 | `priceAsc` / `priceDesc` | lowest offer price; the lowest **in-stock** price when `inStock=true`, so "cheapest first" never orders by a price nobody can buy |
 
+The public UI defaults to `updated` (「新着・更新順」), so meaningful price and stock changes can
+appear ahead of older unchanged listings. `newest` and `oldest` remain explicit publication-date
+choices (「掲載が新しい順」 / 「掲載が古い順」). Favorites use the same date meanings, and URL
+normalization retains explicit publication-date sorts. The API's omitted-sort default remains
+`newest`; the UI sends its selected sort explicitly. This reuses the existing activity indexes and
+does not add crawl writes or a new aggregation path.
+
 The cursor records both the aggregate variant and, for request-scoped sorts, the offer-filter scope that defined it. A cursor therefore cannot resume under an ordering whose visible card values were calculated from a different offer subset. `items`, `hasMore`, `totalCount`, `totalPages` and cursor movement all operate on entities before any offer is loaded.
 
 Offer summaries and representative offers are loaded in chunks of entity IDs to stay under D1's bind-parameter ceiling. Unfiltered responses skip the offer-aggregate loader; price summaries have their own bounded projection loader. There is no per-result offer lookup. This bounds statement fan-out by page size, but filtered sorting may still aggregate matching active listings and an exact total may inspect the matching set. See `test/remediation-query-plans.test.ts`; a bounded response is not proof of constant-cost SQL.
