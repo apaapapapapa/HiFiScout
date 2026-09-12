@@ -107,14 +107,9 @@ export async function readBoundedResponseText(
 ): Promise<LimitedResponseRead> {
   const decoder = createDecoder(charset);
 
-  // Cheap early rejection only. A body already declared larger than the ceiling cannot fit under it,
-  // but a missing or understated header never relaxes the streamed count below.
-  const declared = Number(response.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > maxBytes) {
-    await response.body?.cancel().catch(() => {});
-    return { text: "", truncated: true };
-  }
-
+  // `Content-Length` is never consulted here. A caller that truncates still needs the permitted
+  // prefix, and discarding it because the header declared a larger total would hand back an empty
+  // policy that allows everything.
   const body = response.body;
   if (!body?.getReader) {
     // A runtime without a readable stream still gets the ceiling, just after the platform buffered.
@@ -159,6 +154,14 @@ export async function readLimitedResponseText(
   response: Response,
   options: LimitedResponseReadOptions,
 ): Promise<string> {
+  // Cheap early rejection, valid only because this caller keeps nothing on overflow. A body already
+  // declared larger than the ceiling cannot fit under it; a missing or understated header changes
+  // nothing, since the streamed count below is what actually enforces the limit.
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > options.maxBytes) {
+    await response.body?.cancel().catch(() => {});
+    throw new CrawlResponseTooLargeError(options.maxBytes);
+  }
   const { text, truncated } = await readBoundedResponseText(response, options);
   if (truncated) throw new CrawlResponseTooLargeError(options.maxBytes);
   return text;

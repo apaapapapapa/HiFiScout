@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
 import { decodeHtmlResponse, fetchHtmlPage } from "../src/crawler/fetch.js";
-import { fetchRobotsPolicy } from "../src/crawler/robots.js";
+import { fetchRobotsPolicy, isPathAllowed } from "../src/crawler/robots.js";
 import {
   CRAWL_MAX_ROBOTS_RESPONSE_BYTES,
   CrawlResponseTooLargeError,
@@ -285,4 +285,39 @@ test("an oversized page fails the collection instead of reporting an empty shop"
     "a refused body must never reach the product deactivation path",
   );
   assert.equal((await getCrawlFetchSession(db, runId))?.status, "failed");
+});
+
+test("an oversized robots.txt keeps its leading rules even when Content-Length declares the full size", async () => {
+  // A truthful header must not short-circuit a truncating read: dropping the permitted prefix would
+  // hand back an empty policy, and an empty policy allows every path.
+  const oversized = `User-agent: *\nDisallow: /private\n${"# padding\n".repeat(
+    Math.ceil(CRAWL_MAX_ROBOTS_RESPONSE_BYTES / 10),
+  )}`;
+  const fetchFn: typeof fetch = async () =>
+    new Response(oversized, {
+      headers: {
+        "content-type": "text/plain",
+        "content-length": String(new TextEncoder().encode(oversized).byteLength),
+      },
+    });
+
+  const policy = await fetchRobotsPolicy(fetchFn, "https://example.com", "HiFiScoutBot/0.1");
+  assert.ok(policy?.includes("Disallow: /private"));
+  assert.equal(
+    isPathAllowed(policy, "https://example.com/private/page", "HiFiScoutBot/0.1"),
+    false,
+  );
+});
+
+test("a body measured in bytes is refused even when its character count fits", async () => {
+  // Japanese text is three UTF-8 bytes per character, so a code-unit comparison would let a body
+  // three times over the ceiling through.
+  const japanese = "中".repeat(400);
+  const { response } = chunkedResponse([new TextEncoder().encode(japanese)], {
+    headers: HTML_HEADERS,
+  });
+  await assert.rejects(
+    decodeHtmlResponse(response, { maxBytes: 600 }),
+    (error: unknown) => error instanceof CrawlResponseTooLargeError,
+  );
 });
