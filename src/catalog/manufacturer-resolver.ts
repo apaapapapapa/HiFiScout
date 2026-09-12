@@ -13,7 +13,7 @@ import type {
   NormalizedCatalogProduct,
 } from "./types.js";
 
-export const MANUFACTURER_RESOLVER_VERSION = 15;
+export const MANUFACTURER_RESOLVER_VERSION = 16;
 
 export type ManufacturerResolver = (
   input: ManufacturerResolutionInput,
@@ -29,6 +29,21 @@ interface PreparedManufacturerAliases {
 
 function clean(value: unknown = ""): string {
   return String(value).normalize("NFKC").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Some sellers place a placeholder brand (and its kana reading) before the real manufacturer in
+ * the product title. The placeholder is still retained as raw seller evidence; only the title used
+ * for verified alias lookup drops it.
+ */
+function manufacturerTitleEvidence(value: unknown, removePlaceholder = false): string {
+  const title = stripManufacturerListingLabels(clean(value));
+  return removePlaceholder
+    ? title.replace(
+        /^(?:その他|ノーブランド|メーカー不明|不明)(?:\s+(?:そのた|フメイ))?(?:\s+|$)/u,
+        "",
+      )
+    : title;
 }
 
 function prepareAliases(
@@ -132,7 +147,7 @@ function resolveTruncatedManufacturerPrefix(
   const explicitValues = [...new Set([raw, candidate].map(clean).filter(Boolean))];
   if (!explicitValues.length) return null;
 
-  const cleanTitle = stripManufacturerListingLabels(clean(title));
+  const cleanTitle = manufacturerTitleEvidence(title);
   const compatible = aliases.prefixes.filter((entry) => {
     if (!entry.pattern.test(cleanTitle)) return false;
     return explicitValues.some((value) => {
@@ -151,12 +166,14 @@ function resolveTruncatedManufacturerPrefix(
 }
 
 function resolvePreparedManufacturer(
-  { rawManufacturer, manufacturerCandidate, title }: ManufacturerResolutionInput,
+  { rawManufacturer, manufacturerCandidate, title, shopKey }: ManufacturerResolutionInput,
   aliases: PreparedManufacturerAliases,
 ): ManufacturerResolutionResult {
-  const raw = stripManufacturerListingLabels(clean(rawManufacturer));
-  const candidate = stripManufacturerListingLabels(clean(manufacturerCandidate));
-  if (isManufacturerPlaceholder(raw) || isManufacturerPlaceholder(candidate)) {
+  const rawEvidence = stripManufacturerListingLabels(clean(rawManufacturer));
+  const candidateEvidence = stripManufacturerListingLabels(clean(manufacturerCandidate));
+  const rawPlaceholder = isManufacturerPlaceholder(rawEvidence);
+  const candidatePlaceholder = isManufacturerPlaceholder(candidateEvidence);
+  if ((rawPlaceholder || candidatePlaceholder) && shopKey !== "fujiya-avic") {
     return {
       canonicalManufacturerId: "",
       displayName: "",
@@ -168,6 +185,8 @@ function resolvePreparedManufacturer(
       candidateManufacturerIds: [],
     };
   }
+  const raw = rawPlaceholder ? "" : rawEvidence;
+  const candidate = candidatePlaceholder ? "" : candidateEvidence;
   const normalizedRaw = normalizeManufacturerKey(raw);
   const normalizedCandidate = normalizeManufacturerKey(candidate);
 
@@ -202,7 +221,7 @@ function resolvePreparedManufacturer(
     };
   }
 
-  const cleanTitle = stripManufacturerListingLabels(clean(title));
+  const cleanTitle = manufacturerTitleEvidence(title, shopKey === "fujiya-avic");
   const prefixMatches = aliases.prefixes.filter((entry) => entry.pattern.test(cleanTitle));
   const longest = Math.max(0, ...prefixMatches.map((entry) => entry.row.normalizedAlias.length));
   const strongest = prefixMatches

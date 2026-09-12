@@ -104,6 +104,51 @@ test("reviewed noise products classify without assigning a catalog identity", ()
   assert.deepEqual(inferExplicitCategoryIds("USBノイズ除去フィルター"), ["ACC.GROUND_NOISE"]);
 });
 
+test("reviewed Fujiya placeholder products receive their confirmed product type", () => {
+  for (const [title, model, category] of [
+    [
+      "その他 そのた ESSENCE AUDIO 4.4mm to 4.4mm mini-mini Cable",
+      "ESSENCE AUDIO 4.4mm to 4.4mm mini-mini Cable",
+      "CAB.ANALOG",
+    ],
+    ["その他 そのた QuillAcoustics Satin", "QuillAcoustics Satin", "PER.EARPHONE"],
+    ["その他 そのた G4 Audio Dracula", "G4 Audio Dracula", "PER.EARPHONE"],
+    ["その他 そのた Mother Audio ME5", "Mother Audio ME5", "PER.EARPHONE"],
+  ] as const) {
+    const product = normalizeCatalogProduct(
+      parsedProduct({
+        title,
+        manufacturer: "その他",
+        rawManufacturer: "その他",
+        model,
+        rawModel: model,
+      }),
+      {},
+      { shopKey: "fujiya-avic" },
+    );
+    assert.equal(product.primaryCategoryId, category, title);
+    assert.ok(
+      product.categoryEvidence.some(
+        (item) => item.source === "reviewed_product_type" && item.value?.startsWith("https://"),
+      ),
+      title,
+    );
+  }
+
+  for (const title of [
+    "Mother Audio ME5 Cable",
+    "Mother Audio ME5 adapter",
+    "Quill Acoustics Satin 専用ケース",
+    "G4 Audio Dracula replacement cord",
+  ]) {
+    assert.notEqual(
+      normalizeCatalogProduct(parsedProduct({ title })).primaryCategoryId,
+      "PER.EARPHONE",
+      title,
+    );
+  }
+});
+
 test("model hints do not consume compatibility, replacement parts or unknown revisions", () => {
   for (const title of [
     "KOJO Crystal EpHA用交換プラグ",
