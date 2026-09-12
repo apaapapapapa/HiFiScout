@@ -187,6 +187,11 @@ test("the scheduled remediation sweep does not recount the durable backlog", asy
     (candidate) => candidate.name === "data_quality_remediation_sweep",
   );
   assert.ok(task);
+  assert.equal(
+    task.minimumRemainingCalls,
+    31,
+    "a scheduled replay must not start after earlier tasks have spent its completion budget",
+  );
   const db = captureDatabase(() => []);
   const result = (await task.run({ DB: db } as unknown as Env)) as { queue: unknown };
 
