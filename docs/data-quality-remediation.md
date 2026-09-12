@@ -92,6 +92,9 @@
   含まれる索引列と`UPDATE OF` triggerを値が同じでも保守するため、metadataだけのversion更新で
   identity/category索引を巻き込まないことが重要です。カテゴリmembershipのdelete/insertも
   `primary_category_id`、`category_ids`、`direct_category_ids`のいずれかが変わった場合だけ行います。
+  resolver versionとmetadataだけが変わり、検索・Identity・entityの入力が同一なら、3段階の
+  projection再計算も行いません。ただし、以前の処理が残した`remediation_projection_required`と
+  tokenは別の未完了作業なので、metadata更新だけで消さずにprojectionを完了します。
   source列、再生対象の全derived列、projection tokenのsnapshot条件を維持し、SET句から省略した列を
   別処理が並行更新した場合も完了扱いにしません。
 - 詳細補完の計画・target chunk・cursorを分離し、D1に保存済みの詳細ページを再取得しません。
