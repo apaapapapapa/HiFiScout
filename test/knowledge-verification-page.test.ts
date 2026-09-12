@@ -37,6 +37,35 @@ test("canonical display names exclude title navigation and retain model editions
   assert.equal(result.canonicalName, "AT-LPW50BT RW");
 });
 
+test("model-bearing title segments may follow a manufacturer or site prefix", async () => {
+  const result = await verifyOfficialProductPage({
+    candidate: { manufacturerId: "audio-technica", observedModel: "AT-HA2" },
+    html: "<head><title>Manufacturer | AT-HA2 Headphone Amplifier | Products</title></head><main><h2>AT-HA2</h2></main>",
+  });
+  assert.equal(result.status, "verified");
+  assert.equal(result.primaryCategoryId, "AMP.HEADPHONE");
+  assert.equal(result.canonicalName, "AT-HA2 Headphone Amplifier");
+});
+
+test("plural and structured breadcrumb names are not model-local evidence", async () => {
+  for (const name of ["breadcrumbs", "BreadcrumbList", "product-breadcrumb"]) {
+    const result = await verifyOfficialProductPage({
+      candidate: { manufacturerId: "audio-technica", observedModel: "AT-HA2" },
+      html: `<main><ul class="${name}"><li>Headphones</li><li>AT-HA2</li></ul>
+        <div>Headphone Amplifier</div><h2>AT-HA2</h2></main>`,
+    });
+    assert.equal(result.primaryCategoryId, "AMP.HEADPHONE", name);
+  }
+});
+
+test("a headphone accessories breadcrumb alone cannot verify headphones", async () => {
+  const result = await verifyOfficialProductPage({
+    candidate: { manufacturerId: "audio-technica", observedModel: "AT-HA2" },
+    html: '<head><title>AT-HA2 | Headphones: Accessories</title></head><main><ul class="breadcrumbs"><li>Headphones: Accessories</li><li>AT-HA2</li></ul><h2>AT-HA2</h2></main>',
+  });
+  assert.equal(result.status, "ambiguous");
+});
+
 test("navigation-only model mentions cannot verify a different product", async () => {
   for (const chrome of ["nav", "header", "footer", "aside"]) {
     const result = await verifyOfficialProductPage({

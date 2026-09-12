@@ -84,7 +84,7 @@ function productContentHtml(html: string): string {
   const value = String(html)
     .replace(/<(head|nav|header|footer|aside)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
     .replace(
-      /<(div|ol|ul)\b[^>]*(?:class|id)=["'][^"']*\bbreadcrumb\b[^"']*["'][^>]*>[\s\S]*?<\/\1>/gi,
+      /<(div|ol|ul)\b[^>]*(?:class|id)=["'][^"']*breadcrumb[^"']*["'][^>]*>[\s\S]*?<\/\1>/gi,
       " ",
     );
   const semantic = value.match(/<(main|article)\b[^>]*>([\s\S]*?)<\/\1>/i)?.[2];
@@ -240,8 +240,12 @@ export async function verifyOfficialProductPage({
   const product = matchingProducts[0];
   const title = firstElementText(html, "title");
   // A pipe-delimited site section (e.g. "Headphones: accessories") is navigation, not a
-  // product type or display name. Keep only the model-bearing leading product segment.
-  const titleProduct = clean(title).split("|")[0] || "";
+  // product type or display name. The site's name may precede the product; require one unique
+  // model-bearing segment instead of assuming its position or combining conflicting segments.
+  const titleSegments = [...new Set(clean(title).split("|").map(clean))].filter((segment) =>
+    matchesCandidateText(segment, candidate),
+  );
+  const titleProduct = titleSegments.length === 1 ? titleSegments[0] : "";
   const contentHtml = productContentHtml(html);
   const h1 = firstElementText(contentHtml, "h1");
   const blocks = modelBearingBlocks(contentHtml, candidate);
@@ -319,12 +323,17 @@ export async function verifyOfficialProductPage({
   }
 
   if (!classification || classification.classificationReason === "insufficient_evidence") {
+    const breadcrumb = breadcrumbText(html);
     const fallbackEvidence = [
       product?.description,
       // Page-level labels describe this product only if the page heading identifies it. On index
       // pages a matching paragraph for one sibling must not borrow the page's general category.
       ...([h1, titleEligible ? title : ""].some((value) => matchesCandidateText(value, candidate))
-        ? [metaContent(html, "description"), breadcrumbText(html)]
+        ? [
+            metaContent(html, "description"),
+            // A broad accessories bucket does not prove the kind of accessory or its host.
+            /\baccessor(?:y|ies)\b|アクセサリ/i.test(breadcrumb) ? "" : breadcrumb,
+          ]
         : []),
     ]
       .map((value) => categoryEvidence(value, "strong", candidate, additionalCategoryIds))
