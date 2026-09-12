@@ -1,5 +1,6 @@
 import type { AugmentedCrawlError, FetchHtmlPageOptions } from "./types.js";
-import { fetchRobotsPolicy, getCrawlDelayMs, isPathAllowed } from "./robots.js";
+import { createRobotsGate, fetchRobotsPolicy, getCrawlDelayMs, isPathAllowed } from "./robots.js";
+import { allowedOriginSet, fetchFollowingValidatedRedirects } from "./redirects.js";
 import {
   CRAWL_MAX_HTML_RESPONSE_BYTES,
   readLimitedResponseText,
@@ -51,11 +52,19 @@ export async function fetchHtmlPage(
     robotsCache = new Map(),
     timeoutMs = CRAWL_HTTP_TIMEOUT_MS,
     maxResponseBytes = CRAWL_MAX_HTML_RESPONSE_BYTES,
+    allowedRedirectOrigins = [],
   }: FetchHtmlPageOptions,
 ): Promise<string> {
+  // A destination is compared against this set as a whole value; the shop's own origin plus whatever
+  // it has explicitly declared, never a prefix of either.
+  const allowedOrigins = allowedOriginSet([baseUrl, ...allowedRedirectOrigins]);
+
   let robotsFetchedNow = false;
   if (!robotsCache.has(baseUrl)) {
-    robotsCache.set(baseUrl, await fetchRobotsPolicy(fetchFn, baseUrl, userAgent));
+    robotsCache.set(
+      baseUrl,
+      await fetchRobotsPolicy(fetchFn, baseUrl, userAgent, { allowedOrigins }),
+    );
     robotsFetchedNow = true;
   }
   const robotsText = robotsCache.get(baseUrl);
@@ -71,19 +80,26 @@ export async function fetchHtmlPage(
 
   // A single upstream that never answers must fail inside the crawler's catch/backoff path
   // instead of consuming the Queue worker's 15-minute wall-clock budget and disappearing as a
-  // hard kill with only last_attempt_at advanced. The same deadline covers the body: a seller that
-  // sends headers and then stalls halfway through the page is the same outage.
+  // hard kill with only last_attempt_at advanced. One deadline covers the whole redirect chain and
+  // the body, so neither extra hops nor a seller that sends headers and then stalls can extend it.
   const deadline = AbortSignal.timeout(timeoutMs);
-  const response = await fetchFn(url, {
-    headers: {
-      "User-Agent": userAgent,
-      Accept: "text/html,application/xhtml+xml",
-      "Accept-Language": "ja,en;q=0.7",
-      "Cache-Control": "no-cache",
+  const response = await fetchFollowingValidatedRedirects(
+    url,
+    {
+      headers: {
+        "User-Agent": userAgent,
+        Accept: "text/html,application/xhtml+xml",
+        "Accept-Language": "ja,en;q=0.7",
+        "Cache-Control": "no-cache",
+      },
     },
-    redirect: "follow",
-    signal: deadline,
-  });
+    {
+      fetchFn,
+      allowedOrigins,
+      signal: deadline,
+      beforeRequest: createRobotsGate({ fetchFn, userAgent, robotsCache, allowedOrigins }),
+    },
+  );
 
   if (response.status === 403 || response.status === 429) {
     const error: AugmentedCrawlError = new Error(`crawl blocked with HTTP ${response.status}`);

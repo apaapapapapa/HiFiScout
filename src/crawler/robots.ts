@@ -1,5 +1,6 @@
-import type { RobotsGroup } from "./types.js";
+import type { RobotsCache, RobotsGroup } from "./types.js";
 import { CRAWL_MAX_ROBOTS_RESPONSE_BYTES, readBoundedResponseText } from "./response-limits.js";
+import { allowedOriginSet, fetchFollowingValidatedRedirects } from "./redirects.js";
 
 const ROBOTS_HTTP_TIMEOUT_MS = 15_000;
 
@@ -76,19 +77,35 @@ export function getCrawlDelayMs(
   return Math.max(...delays) * 1000;
 }
 
+export interface RobotsFetchOptions {
+  /**
+   * Origins `robots.txt` itself may be redirected to. Defaults to the policy's own origin, so the
+   * policy fetch cannot become a second, unchecked route to somewhere else.
+   */
+  allowedOrigins?: ReadonlySet<string>;
+}
+
 export async function fetchRobotsPolicy(
   fetchFn: typeof fetch,
   baseUrl: string,
   userAgent: string,
+  { allowedOrigins }: RobotsFetchOptions = {},
 ): Promise<string | null> {
   const robotsUrl = new URL("/robots.txt", baseUrl).toString();
   // One deadline for the request and the body: a robots.txt that stalls mid-stream must not hold the
   // crawl open any longer than one that never answers.
   const deadline = AbortSignal.timeout(ROBOTS_HTTP_TIMEOUT_MS);
-  const response = await fetchFn(robotsUrl, {
-    headers: { "User-Agent": userAgent },
-    signal: deadline,
-  });
+  // RFC 9309 expects redirects to be followed, but a policy redirect is subject to the same
+  // destination rules as any other crawl request.
+  const response = await fetchFollowingValidatedRedirects(
+    robotsUrl,
+    { headers: { "User-Agent": userAgent } },
+    {
+      fetchFn,
+      allowedOrigins: allowedOrigins ?? allowedOriginSet([robotsUrl]),
+      signal: deadline,
+    },
+  );
   if (response.status === 429) throw new Error("robots.txt temporarily unavailable (429)");
   // RFC 9309 classifies 4xx responses as "unavailable": crawlers may access other resources.
   // A 403 for robots.txt alone is therefore not equivalent to an explicit Disallow rule.
@@ -115,4 +132,36 @@ export async function fetchRobotsPolicy(
   if (!truncated) return text;
   const lastLineBreak = text.lastIndexOf("\n");
   return lastLineBreak < 0 ? "" : text.slice(0, lastLineBreak + 1);
+}
+
+/**
+ * Per-destination robots gate used while following redirects.
+ *
+ * Every hop is evaluated against the policy of the origin it is about to reach, so a redirect cannot
+ * carry the crawl onto a path the destination's own `robots.txt` disallows. A redirect chain is the
+ * continuation of one already-paced request, so hops are not separately delayed.
+ */
+export function createRobotsGate({
+  fetchFn,
+  userAgent,
+  robotsCache,
+  allowedOrigins,
+}: {
+  fetchFn: typeof fetch;
+  userAgent: string;
+  robotsCache: RobotsCache;
+  allowedOrigins: ReadonlySet<string>;
+}): (targetUrl: string) => Promise<void> {
+  return async (targetUrl: string) => {
+    const origin = new URL(targetUrl).origin;
+    if (!robotsCache.has(origin)) {
+      robotsCache.set(
+        origin,
+        await fetchRobotsPolicy(fetchFn, origin, userAgent, { allowedOrigins }),
+      );
+    }
+    if (!isPathAllowed(robotsCache.get(origin), targetUrl, userAgent)) {
+      throw new Error(`robots.txt disallows ${new URL(targetUrl).pathname}`);
+    }
+  };
 }

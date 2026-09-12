@@ -299,6 +299,13 @@ export interface SellerProduct {
 
 export interface TransportCapability {
   readonly kind: TransportKind;
+  /**
+   * Extra origins this shop is known to redirect to, beyond its own `baseUrl` origin.
+   *
+   * Declaring one is a deliberate configuration decision that needs its own evidence and test. The
+   * set is never widened by a fetched page or by the destination a redirect happens to name.
+   */
+  readonly allowedRedirectOrigins?: readonly string[];
 }
 
 /** Catalog normalization hints owned by one seller but interpreted by shared catalog code. */
@@ -411,6 +418,12 @@ export interface FetchHtmlPageOptions {
    * genuinely needs a different budget states it here rather than removing the limit.
    */
   maxResponseBytes?: number;
+  /**
+   * Extra origins this shop may legitimately be redirected to, beyond `baseUrl`'s own origin.
+   *
+   * The allowed set is configuration, never something a fetched page or a redirect may extend.
+   */
+  allowedRedirectOrigins?: readonly string[];
 }
 
 export interface RelayPageOptions {
