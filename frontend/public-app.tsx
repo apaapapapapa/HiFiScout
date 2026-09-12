@@ -5,11 +5,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   createApiClient,
+  CACHE_TTL_MS,
   isMetaResponse,
   isNonNegativeInteger,
   isProductDetailResponse,
   isProductHistoryResponse,
-  isProductSearchItem,
   isProductsResponse,
 } from "./api-client.js";
 import { sanitizedCatalogUrl } from "./catalog-url-sanitizer.js";
@@ -25,14 +25,8 @@ import {
 } from "./filters.js";
 import { featureFromFilterId } from "./filters.js";
 import type { ProductFilters, ProductView, SelectionId, ToggleId, UrlValueId } from "./filters.js";
-import {
-  FAVORITES_KEY,
-  favoriteResults,
-  favoriteSnapshot,
-  favoriteStoragePayload,
-  parseFavoriteStorage,
-} from "./favorites.js";
-import type { FavoriteStore } from "./favorites.js";
+import { favoriteResults, favoriteShopMatch } from "./favorites.js";
+import { useFavorites } from "./use-favorites.js";
 import { pageNumbers, resultSummary } from "./pagination.js";
 import { syncStatusSummary } from "./product-presentation.js";
 import {
@@ -97,6 +91,15 @@ import type {
   ShopIndex,
 } from "./types.js";
 
+import {
+  catalogFilterKey,
+  captureCatalogPosition,
+  catalogPosition,
+  recordCatalogPage,
+  restoreCatalogPosition,
+} from "./catalog-navigation.js";
+import { restoreProductFromHistory } from "./product-permalink-navigation.js";
+
 const VIEW_KEY = "hifiscout:view";
 const MOBILE_QUERY = "(max-width: 1100px)";
 const DEBOUNCE_MS = 400;
@@ -136,10 +139,6 @@ function filtersFromLocation(favoritesOnly = false): ProductFilters {
 function sanitizeAddressBar(): void {
   const nextUrl = sanitizedCatalogUrl(location.pathname, location.search, location.hash);
   if (nextUrl) history.replaceState(null, "", nextUrl);
-}
-
-function cloneFavorites(store: FavoriteStore): FavoriteStore {
-  return { products: new Map(store.products), legacyIds: new Set(store.legacyIds) };
 }
 
 function QuickFilters({
@@ -551,10 +550,8 @@ export function PublicApp() {
   const [comparisonKeys, setComparisonKeys] = useState(() =>
     comparisonKeysFromSearch(location.search),
   );
-  const [favorites, setFavorites] = useState<FavoriteStore>(() =>
-    parseFavoriteStorage(readPreference(FAVORITES_KEY), isProductSearchItem),
-  );
-  const favoritesRef = useRef(favorites);
+  const { favorites, notice, setNotice, toggleFavorite, refreshFavoriteSnapshots } =
+    useFavorites(products);
   const [watchPreferences, setWatchPreferences] = useState(() =>
     parseWatchPreferences(readPreference(WATCH_PREFERENCES_KEY)),
   );
@@ -578,9 +575,6 @@ export function PublicApp() {
   const [initAttempt, setInitAttempt] = useState(0);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [draftFilters, setDraftFilters] = useState<ProductFilters | null>(null);
-  const [notice, setNotice] = useState<{ text: string; undo?: () => void; error?: boolean } | null>(
-    null,
-  );
   const offersTargetRef = useRef<string | null>(null);
   const historyTargetRef = useRef<number | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
@@ -598,6 +592,7 @@ export function PublicApp() {
 
   const shopName = useCallback((key: string) => shops[key]?.name || key || "ショップ不明", [shops]);
   const favoriteCount = favorites.products.size + favorites.legacyIds.size;
+  const [watchAll, setWatchAll] = useState(false);
   const feedPath = useMemo(() => savedSearchFeedPath(appliedFilters), [appliedFilters]);
 
   const selectedCategoryLabel = useMemo(() => {
@@ -608,33 +603,6 @@ export function PublicApp() {
       appliedFilters.category
     );
   }, [appliedFilters.category, meta]);
-
-  const persistFavorites = useCallback((next: FavoriteStore) => {
-    if (!savePreference(FAVORITES_KEY, JSON.stringify(favoriteStoragePayload(next)))) {
-      setNotice({
-        text: "お気に入りを保存できませんでした。ブラウザーの保存容量・設定を確認して、もう一度お試しください。",
-        error: true,
-      });
-      return false;
-    }
-    favoritesRef.current = next;
-    setFavorites(next);
-    return true;
-  }, []);
-
-  const refreshFavoriteSnapshots = useCallback(
-    (items: DisplayProduct[]) => {
-      const current = favoritesRef.current;
-      let next: FavoriteStore | null = null;
-      for (const product of items) {
-        if (!current.products.has(product.key)) continue;
-        next ??= cloneFavorites(current);
-        next.products.set(product.key, favoriteSnapshot(product));
-      }
-      if (next) persistFavorites(next);
-    },
-    [persistFavorites],
-  );
 
   const syncUrl = useCallback(
     (nextFilters: ProductFilters, nextView: ProductView, replace = false) => {
@@ -649,7 +617,10 @@ export function PublicApp() {
       const current = `${location.pathname}${location.search}${location.hash}`;
       if (next === current) return;
       if (replace) history.replaceState(null, "", next);
-      else history.pushState(null, "", next);
+      else {
+        captureCatalogPosition();
+        history.pushState(null, "", next);
+      }
     },
     [],
   );
@@ -680,6 +651,7 @@ export function PublicApp() {
       }
       setAppliedFilters(normalized);
       if (nextFilters.favoritesOnly) {
+        if (bootedRef.current) recordCatalogPage(normalized, 1);
         controllerRef.current?.abort();
         requestSequenceRef.current++;
         setLoading(false);
@@ -688,15 +660,29 @@ export function PublicApp() {
       }
       if (!bootedRef.current) return;
       if (reset) resetPages();
-      if (!reset && totalPagesRef.current > 0 && page > totalPagesRef.current) return;
 
+      // A stale page also invalidates its cursor chain. Revalidate only the requested page,
+      // using an offset and a new total rather than mixing it with expired neighbors.
+      const expired = [...pagesRef.current.values()].some(
+        (cached) => cached.expiresAt <= Date.now(),
+      );
+      if (expired || refresh) {
+        pagesRef.current.clear();
+        totalPagesRef.current = 0;
+        refresh = true;
+      }
+      if (totalPagesRef.current > 0) page = Math.min(page, totalPagesRef.current);
       const cachedPage = pagesRef.current.get(page);
       if (cachedPage) {
+        controllerRef.current?.abort();
+        requestSequenceRef.current++;
+        setLoading(false);
         currentPageRef.current = page;
         setCurrentPage(page);
         setProducts(cachedPage.items);
         refreshFavoriteSnapshots(cachedPage.items);
         setErrorMessage("");
+        recordCatalogPage(normalized, page);
         return;
       }
 
@@ -716,7 +702,7 @@ export function PublicApp() {
       setErrorMessage("");
 
       try {
-        const result = await api.fetchJson(`/api/product-search?${params}`, {
+        let result = await api.fetchJson(`/api/product-search?${params}`, {
           signal: controller.signal,
           refresh,
         });
@@ -726,8 +712,26 @@ export function PublicApp() {
         if (isNonNegativeInteger(result.totalPages)) {
           totalPagesRef.current = result.totalPages;
           setTotalPages(result.totalPages);
+          const lastPage = Math.max(1, result.totalPages);
+          if (page > lastPage) {
+            page = lastPage;
+            if (result.totalPages > 0) {
+              const lastPageParams = productSearchParams(normalized, {
+                page,
+                includeTotal: false,
+              });
+              result = await api.fetchJson(`/api/product-search?${lastPageParams}`, {
+                signal: controller.signal,
+                refresh: true,
+              });
+              if (sequence !== requestSequenceRef.current) return;
+              if (!isProductsResponse(result))
+                throw new TypeError("Unexpected /api/product-search payload");
+            }
+          }
         }
         const pageState: PageState = {
+          expiresAt: Date.now() + CACHE_TTL_MS,
           items: result.items,
           hasMore: result.hasMore,
           nextCursor: result.nextCursor,
@@ -738,6 +742,7 @@ export function PublicApp() {
         setProducts(pageState.items);
         setHasLoaded(true);
         refreshFavoriteSnapshots(pageState.items);
+        recordCatalogPage(normalized, page);
       } catch (error) {
         if (sequence !== requestSequenceRef.current) return;
         if (!(error instanceof Error) || error.name !== "AbortError") {
@@ -751,18 +756,20 @@ export function PublicApp() {
     [api, refreshFavoriteSnapshots, resetPages],
   );
 
+  const cancelPendingInput = useCallback(() => {
+    if (inputTimerRef.current) clearTimeout(inputTimerRef.current);
+    inputTimerRef.current = null;
+  }, []);
+
   const commitFilters = useCallback(
     (next: ProductFilters, replace = false) => {
-      if (inputTimerRef.current) {
-        clearTimeout(inputTimerRef.current);
-        inputTimerRef.current = null;
-      }
+      cancelPendingInput();
       filtersRef.current = next;
       setFilters(next);
       syncUrl(next, viewRef.current, replace);
       void loadProducts(next, { reset: true });
     },
-    [loadProducts, syncUrl],
+    [loadProducts, syncUrl, cancelPendingInput],
   );
 
   const changeValue = useCallback(
@@ -858,39 +865,13 @@ export function PublicApp() {
     }
   };
 
-  const toggleFavorite = useCallback(
-    (key: string) => {
-      const next = cloneFavorites(favoritesRef.current);
-      const removed = next.products.get(key);
-      if (removed) next.products.delete(key);
-      else {
-        const product = products.find((candidate) => candidate.key === key);
-        if (!product) return;
-        next.products.set(product.key, favoriteSnapshot(product));
-      }
-      if (!persistFavorites(next)) return;
-      setNotice(
-        removed
-          ? {
-              text: "お気に入りから削除しました。",
-              undo: () => {
-                const restored = cloneFavorites(favoritesRef.current);
-                restored.products.set(key, removed);
-                if (persistFavorites(restored)) setNotice({ text: "お気に入りに戻しました。" });
-              },
-            }
-          : { text: "お気に入りに追加しました。この端末のブラウザーに保存されます。" },
-      );
-    },
-    [persistFavorites, products],
-  );
-
   const updateComparison = (keys: string[]) => {
     const next = canonicalComparisonKeys(keys);
     const params = new URLSearchParams(location.search);
     if (next.length) params.set("compare", next.join(","));
     else params.delete("compare");
     const search = params.toString();
+    captureCatalogPosition();
     history.pushState(
       history.state,
       "",
@@ -967,21 +948,30 @@ export function PublicApp() {
 
   useEffect(() => {
     const onPopState = () => {
+      cancelPendingInput();
       setComparisonKeys(comparisonKeysFromSearch(location.search));
       closeFilters();
       const next = filtersFromLocation(filtersRef.current.favoritesOnly);
       const parsed = parseUrlFilters(location.search);
       const nextView = parsed.view ?? viewRef.current;
+      const position = catalogPosition(history.state, catalogFilterKey(next));
+      const reset = !sameFilters(next, filtersRef.current);
       filtersRef.current = next;
       setFilters(next);
       viewRef.current = nextView;
       setView(nextView);
       savePreference(VIEW_KEY, nextView);
-      void loadProducts(next, { reset: true });
+      void loadProducts(next, { reset, page: position?.page ?? 1 }).then(() =>
+        restoreCatalogPosition(position),
+      );
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, [loadProducts, closeFilters]);
+  }, [loadProducts, closeFilters, cancelPendingInput]);
+
+  useEffect(() => {
+    restoreProductFromHistory();
+  }, [products]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1027,7 +1017,9 @@ export function PublicApp() {
         bootedRef.current = true;
         setInitialization("ready");
         syncUrl(current, nextView, true);
-        await loadProducts(current, { reset: true });
+        const position = catalogPosition(history.state, catalogFilterKey(current));
+        await loadProducts(current, { reset: true, page: position?.page ?? 1 });
+        restoreCatalogPosition(position);
       } catch (error) {
         console.error("Failed to initialize application", error);
         if (!cancelled) {
@@ -1071,6 +1063,7 @@ export function PublicApp() {
       setView(nextView);
       savePreference(VIEW_KEY, nextView);
       syncUrl(filtersRef.current, nextView);
+      recordCatalogPage(filtersRef.current, currentPageRef.current);
     },
     [syncUrl],
   );
@@ -1107,6 +1100,7 @@ export function PublicApp() {
               <SearchSuggestionInput
                 api={api}
                 value={filters.q}
+                onCompositionStart={cancelPendingInput}
                 onValueChange={(value, debounced) => changeValue("q", value, debounced)}
               />
               <button
@@ -1324,13 +1318,28 @@ export function PublicApp() {
             お気に入りはこの端末にのみ保存されます。価格や在庫は最後に表示した時点の情報です。
           </p>
           {favoriteMode ? (
-            <FavoriteWatch
-              key={`${filterUrlParams(appliedFilters, "list")}|${[...favorites.products.keys()].sort().join(",")}`}
-              products={visibleProducts}
-              api={api}
-              onSnapshots={refreshFavoriteSnapshots}
-              shopName={shopName}
-            />
+            <>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={watchAll}
+                  onChange={(event) => setWatchAll(event.currentTarget.checked)}
+                />
+                <span>絞り込みで非表示のお気に入りも再確認する（10件ずつ）</span>
+              </label>
+              {appliedFilters.shop.length ? (
+                <p className="filter-note">
+                  店舗の内訳が未確認の商品も表示します。再確認すると店舗条件に反映します。
+                </p>
+              ) : null}
+              <FavoriteWatch
+                key={`${watchAll ? "all" : filterUrlParams(appliedFilters, "list")}|${[...favorites.products.keys()].sort().join(",")}`}
+                products={watchAll ? [...favorites.products.values()] : visibleProducts}
+                api={api}
+                onSnapshots={refreshFavoriteSnapshots}
+                shopName={shopName}
+              />
+            </>
           ) : null}
           {invalidPrice ? (
             <p className="field-error" role="status">
@@ -1372,6 +1381,11 @@ export function PublicApp() {
                   visibleProducts.map((product) => (
                     <ProductCard
                       key={product.key}
+                      favoriteShopUnconfirmed={
+                        favoriteMode &&
+                        favoriteShopMatch(product, appliedFilters.shop, appliedFilters) ===
+                          "unknown"
+                      }
                       product={product}
                       favorite={favorites.products.has(product.key)}
                       watchPreference={watchPreferences.find((entry) => entry.key === product.key)}
@@ -1471,6 +1485,7 @@ export function PublicApp() {
       <dialog
         ref={offersDialogRef}
         id="offers-dialog"
+        data-product-key={offersTargetRef.current ?? undefined}
         aria-labelledby="offers-title"
         onClose={() => {
           offersTargetRef.current = null;
