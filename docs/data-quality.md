@@ -294,6 +294,9 @@ complete verified manufacturer prefix immediately following it may supply the ca
 manufacturer; later mentions in product prose cannot. Other shops retain the conservative
 placeholder rejection. This keeps seller evidence intact while allowing model resolution to remove
 the recovered brand from affected listings.
+Confirmed Fujiya rows whose titles do not name a product type use narrowly reviewed manufacturer
+and model rules for category evidence; each rule records its external source and cannot create a
+catalog identity. Broader placeholder rows stay unclassified until independent evidence exists.
 
 Migration 0024 gives Model Resolution its own rule version, extends Knowledge Catalog candidates with the evidence a reviewer needs (raw model variants, sample source URLs, identity rejection reason, unresolved-identity and `other` counts), and adds `data_quality_remediation_events` for before/after provenance. `model_resolver_version` defaults to `1` so every pre-existing listing stays behind the current resolver and is selectable for bounded replay. Resolver versions mean that the stored evidence was evaluated by that algorithm; `remediation_projection_required` separately remains set until projection, Product Identity, and search-entity refresh all succeed. A compare-and-clear operation token prevents an older concurrent replay from clearing newer pending work. A failed downstream pass is therefore selected again even after its derived fields and resolver version were persisted.
 
