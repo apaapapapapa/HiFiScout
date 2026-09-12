@@ -81,7 +81,9 @@ export function favoriteShopMatch(
   if (observation?.complete) return "missing";
   const offer = product.representative_offer;
   if (offer && matches(offer.shop_key, offer.price_yen, offer.stock_status)) return "match";
-  return product.offer_count <= 1 && product.representative_offer ? "missing" : "unknown";
+  // Search aggregates may cover only the selected shop, even when they report one offer.
+  // Only a complete detail observation (or an old single-listing favorite) proves absence.
+  return isLegacyFavoriteKey(product.key) && offer ? "missing" : "unknown";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -12,7 +12,7 @@ import {
   parseFavoriteStorage,
   sortFavorites,
 } from "../frontend/favorites.js";
-import type { FavoriteProduct } from "../frontend/favorites.js";
+import type { FavoriteProduct, FavoriteStore } from "../frontend/favorites.js";
 import { changeFavoriteStorage, readFavorites } from "../frontend/favorite-storage.js";
 import type { ProductFilters } from "../frontend/filters.js";
 import type { DisplayOffer, DisplayProduct } from "../frontend/types.js";
@@ -179,7 +179,7 @@ test("favorite selections use OR within each field and AND across fields", () =>
   );
   assert.equal(
     favoriteMatchesFilters(item, filters({ manufacturer: ["TAD"], shop: ["missing"] }), "", NOW),
-    false,
+    true,
   );
 });
 
@@ -241,10 +241,10 @@ test("stock, recency and price-drop toggles each narrow the favorites view", () 
   );
 });
 
-test("the shop filter is evaluated against the snapshot's own offer", () => {
+test("a known shop matches while unobserved shops remain candidates until detail confirmation", () => {
   const stored = product({ representative_offer: offer({ shop_key: "formusic" }) });
   assert.equal(favoriteMatchesFilters(stored, filters({ shop: ["formusic"] }), "", NOW), true);
-  assert.equal(favoriteMatchesFilters(stored, filters({ shop: ["hifido"] }), "", NOW), false);
+  assert.equal(favoriteMatchesFilters(stored, filters({ shop: ["hifido"] }), "", NOW), true);
 });
 
 test("price sorting pushes unpriced products last in both directions", () => {
@@ -330,7 +330,7 @@ test("sorting does not mutate the caller's array", () => {
 });
 
 test("the favorites view filters then sorts", () => {
-  const store = {
+  const store: FavoriteStore = {
     products: new Map([
       [
         "c-1",
@@ -360,6 +360,12 @@ test("the favorites view filters then sorts", () => {
     legacyIds: new Set<number>(),
   };
 
+  store.products.get("c-2")!.favorite_offers = {
+    key: "c-2",
+    checkedAt: new Date(NOW).toISOString(),
+    complete: true,
+    offers: [{ id: 1, shopKey: "formusic", priceYen: 100, stock: "in_stock" }],
+  };
   const results = favoriteResults(store, filters({ shop: ["hifido"], sort: "priceAsc" }), "", NOW);
 
   assert.deepEqual(
@@ -426,6 +432,10 @@ test("favorite search uses shared token, width, model and manufacturer aliases",
 
 test("multi-shop favorites retain unknown candidates and filter confirmed offers together", () => {
   const item: FavoriteProduct = product({ offer_count: 2, shop_count: 2 });
+  assert.equal(
+    favoriteShopMatch(product({ offer_count: 1, shop_count: 1 }), ["second-shop"]),
+    "unknown",
+  );
   assert.equal(favoriteShopMatch(item, ["second-shop"]), "unknown");
   assert.equal(favoriteMatchesFilters(item, filters({ shop: ["second-shop"] }), "", NOW), true);
   item.favorite_offers = {
