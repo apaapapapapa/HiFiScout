@@ -114,6 +114,8 @@ test("reviewed Fujiya placeholder products receive their confirmed product type"
     ["その他 そのた QuillAcoustics Satin", "QuillAcoustics Satin", "PER.EARPHONE"],
     ["その他 そのた G4 Audio Dracula", "G4 Audio Dracula", "PER.EARPHONE"],
     ["その他 そのた Mother Audio ME5", "Mother Audio ME5", "PER.EARPHONE"],
+    ["Mother Audio ME5 with ear hooks", "Mother Audio ME5", "PER.EARPHONE"],
+    ["Mother Audio ME5 イヤーフック付き", "Mother Audio ME5", "PER.EARPHONE"],
   ] as const) {
     const product = normalizeCatalogProduct(
       parsedProduct({
