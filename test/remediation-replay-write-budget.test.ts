@@ -121,3 +121,32 @@ test("metadata-only remediation still finishes a projection marker owned by an o
     await dispose();
   }
 }, 30_000);
+
+test("an explicit catalog identity edit can force projection without listing-derived changes", async () => {
+  const { db, dispose } = await database();
+  try {
+    const product = listing("catalog-identity-change");
+    await upsertProducts(db, "budget", [product], AT);
+    await refreshListingProjections(db, [{ shop_key: "budget", source_id: product.sourceId }], AT);
+    const id = Number(
+      await db
+        .prepare("SELECT id FROM products WHERE shop_key = ? AND source_id = ?")
+        .bind("budget", product.sourceId)
+        .first("id"),
+    );
+    await db.prepare("DELETE FROM product_search_projection WHERE product_id = ?").bind(id).run();
+
+    await replayAdminCsvListings(db, [id], "2026-09-12T09:00:00.000Z", [], {
+      forceProjection: true,
+    });
+
+    assert.ok(
+      await db
+        .prepare("SELECT product_id FROM product_search_projection WHERE product_id = ?")
+        .bind(id)
+        .first(),
+    );
+  } finally {
+    await dispose();
+  }
+}, 30_000);
