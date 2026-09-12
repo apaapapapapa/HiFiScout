@@ -3,3 +3,6 @@ dd6445dcb874500111705c6b14cc52d597a9b6a7:src/crawler/crawl-scheduler-do.ts:gener
 9b4b45c45bd1b01d73984c916971fd84c71bc0c5:src/crawler/crawl-scheduler-do.ts:generic-api-key:40
 # The same public DO record name in the collection recovery fixture, before its inline annotation.
 2b0d8b8f4c640dbe854768c5b71cab945329ebc0:test/crawl-do-collection-progress.test.ts:generic-api-key:28
+# Public Bowers & Wilkins model code "805D4SIGNATURE"; field renamed to modelCode in follow-up.
+a3ed43c2b96040840db367879a59b6f1da523467:src/catalog/verified-model-facets.ts:generic-api-key:8
+a3ed43c2b96040840db367879a59b6f1da523467:src/catalog/verified-model-facets.ts:generic-api-key:64

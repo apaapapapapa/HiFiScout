@@ -1,3 +1,4 @@
+import { syncAutomaticFacetFacts } from "./derived-facet-repository.js";
 import {
   classifyCategoryEvidence,
   summarizeCategoryEvidence,
@@ -16,13 +17,9 @@ import { presentationColorLabel } from "../catalog/model-presentation-color.js";
 import { createModelResolver } from "../catalog/model-resolver.js";
 import { inferFeatureFacts } from "../catalog/product-features.js";
 import { inferFacetFacts, normalizeFacetFacts } from "../catalog/product-facets.js";
+import { verifiedModelFacetFacts } from "../catalog/verified-model-facets.js";
 import { RESOLUTION_VERSIONS } from "../catalog/resolution-versions.js";
-import type {
-  CategoryId,
-  FacetFact,
-  FeatureFact,
-  ManufacturerAliasEvidence,
-} from "../catalog/types.js";
+import type { CategoryId, FeatureFact, ManufacturerAliasEvidence } from "../catalog/types.js";
 import { errorMessage, isRecord } from "../types.js";
 import { saveDataQualityRun } from "./data-quality-repository.js";
 import {
@@ -77,10 +74,6 @@ interface StoredFeatureFactRow {
   state: string;
   source: string;
   confidence: number;
-}
-
-function facetKey(fact: Pick<FacetFact, "facetId" | "value" | "source" | "confidence">): string {
-  return `${fact.facetId}:${fact.value}:${fact.source}:${Number(fact.confidence)}`;
 }
 
 interface PreparedRemediationJob {
@@ -191,6 +184,7 @@ async function syncDerivedFacetFacts(
   db: QueryableDatabase,
   row: RemediationListingRow,
   evaluatedAt: string,
+  derived: Parameters<typeof verifiedModelFacetFacts>[0],
 ): Promise<void> {
   const next = normalizeFacetFacts([
     ...inferFacetFacts(row.title, {
@@ -203,34 +197,9 @@ async function syncDerivedFacetFacts(
       confidence: 0.7,
       verifiedAt: evaluatedAt,
     }),
+    ...verifiedModelFacetFacts(derived),
   ]);
-  const statements: D1PreparedStatement[] = [
-    db
-      .prepare(`
-        DELETE FROM product_facet_facts
-        WHERE product_id = ? AND source IN ('title', 'seller_category')
-      `)
-      .bind(row.id),
-  ];
-  for (const fact of next.sort((left, right) => facetKey(left).localeCompare(facetKey(right)))) {
-    statements.push(
-      db
-        .prepare(`
-          INSERT OR REPLACE INTO product_facet_facts(
-            product_id, facet_id, facet_value, source, confidence, verified_at
-          ) VALUES (?, ?, ?, ?, ?, ?)
-        `)
-        .bind(
-          row.id,
-          fact.facetId,
-          fact.value,
-          fact.source,
-          fact.confidence,
-          fact.verifiedAt || evaluatedAt,
-        ),
-    );
-  }
-  await db.batch(statements);
+  await syncAutomaticFacetFacts(db, row.id, next);
 }
 
 async function loadListing(
@@ -504,7 +473,12 @@ async function replayDerivedListing(
     );
   }
   await syncTitleFeatureFacts(db, row, evaluatedAt);
-  await syncDerivedFacetFacts(db, row, evaluatedAt);
+  await syncDerivedFacetFacts(db, row, evaluatedAt, {
+    manufacturerId: manufacturer.canonicalManufacturerId,
+    model: model.model,
+    title: row.title,
+    primaryCategoryId: categorySet.primaryCategoryId,
+  });
   return changed ? token : row.remediation_projection_token;
 }
 
