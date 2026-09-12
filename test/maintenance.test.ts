@@ -18,23 +18,34 @@ test("retention cutoffs use conservative operational defaults", () => {
 });
 
 test("deleting an aged-out listing also retires the product it was the last offer for", async () => {
-  const db = captureDatabase();
+  // The candidate set is read before the cascade removes the evidence, so the double has to answer
+  // both reads: the listings this run will delete, and the entities they still belong to.
+  const db = captureDatabase((statement) => {
+    if (/SELECT id FROM products/.test(statement.sql)) return [{ id: 11 }];
+    if (/SELECT DISTINCT entity_id/.test(statement.sql)) return [{ entity_id: 7 }];
+    return [];
+  });
   const result = await runRetentionCleanup(
     { DB: db },
     { now: new Date("2026-08-11T00:00:00.000Z") },
   );
 
-  const prune = db.calls.find((statement) =>
+  const prune = db.batched.find((statement) =>
     /DELETE FROM product_search_entities/.test(statement.sql),
   );
   assert.ok(prune, "expected empty product entities to be pruned");
   assert.match(prune.sql, /NOT EXISTS[\s\S]*product_search_entity_offers/);
+  // Scoped to the entities the deleted listings belonged to, rather than the whole table.
+  assert.match(prune.sql, /WHERE id IN \(\?\)/);
+  assert.deepEqual(prune.binds, [7]);
   assert.equal(result.deleted.emptySearchEntities, 1);
-  // Order matters: pruning before the listing delete would leave the entity behind.
-  const listingDelete = db.calls.findIndex((statement) =>
+
+  // Order still matters, and now it is order within one batch: pruning before the listing delete
+  // would read the membership the cascade has not removed yet and leave the entity behind.
+  const listingDelete = db.batched.findIndex((statement) =>
     /DELETE FROM products/.test(statement.sql),
   );
-  assert.ok(listingDelete >= 0 && listingDelete < db.calls.indexOf(prune));
+  assert.ok(listingDelete >= 0 && listingDelete < db.batched.indexOf(prune));
 });
 
 test("expired Product Audit exports are deleted in a bounded daily batch", async () => {
