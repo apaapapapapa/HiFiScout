@@ -145,8 +145,7 @@ export function reviewedProductTypeEvidence(
   const subject = saleSubjectText(title);
   if (inferSaleSubject(title).kind === "unspecified") {
     const productType = PRODUCT_TYPES.find(
-      (entry) =>
-        entry.brand.test(`${manufacturer} ${subject}`) && entry.model.test(subject),
+      (entry) => entry.brand.test(`${manufacturer} ${subject}`) && entry.model.test(subject),
     );
     if (productType) {
       return [
