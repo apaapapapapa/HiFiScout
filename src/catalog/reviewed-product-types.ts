@@ -15,6 +15,14 @@ interface ReviewedProductType {
   model: RegExp;
   categoryId: "CAB.ANALOG" | "PER.EARPHONE";
   sourceUrl: string;
+  excludeAccessorySubjects?: boolean;
+}
+
+const REVIEWED_PRODUCT_ACCESSORY =
+  /ケーブル|コード|ケース|カバー|交換|変換|\bcables?\b|\bcords?\b|\bcases?\b|\bcovers?\b|\breplacement\b|\bfor\b|専用|対応/i;
+
+function isReviewedProductAccessory(subject: string): boolean {
+  return REVIEWED_PRODUCT_ACCESSORY.test(subject);
 }
 
 /** Narrow product-type facts confirmed from manufacturer or specialist-retailer evidence. */
@@ -32,6 +40,7 @@ const PRODUCT_TYPES: readonly ReviewedProductType[] = [
     model: /\bsatin\b/i,
     categoryId: "PER.EARPHONE",
     sourceUrl: "https://shop.musicteck.com/products/quill-satin",
+    excludeAccessorySubjects: true,
   },
   {
     id: "g4_audio_dracula",
@@ -39,6 +48,7 @@ const PRODUCT_TYPES: readonly ReviewedProductType[] = [
     model: /\bdracula\b/i,
     categoryId: "PER.EARPHONE",
     sourceUrl: "https://kaitori.e-earphone.jp/list/160244",
+    excludeAccessorySubjects: true,
   },
   {
     id: "mother_audio_me5",
@@ -46,6 +56,7 @@ const PRODUCT_TYPES: readonly ReviewedProductType[] = [
     model: /\bme5\b/i,
     categoryId: "PER.EARPHONE",
     sourceUrl: "https://www.motheraudio.com/item.php?name=me5",
+    excludeAccessorySubjects: true,
   },
 ];
 
@@ -126,12 +137,7 @@ const NOISE_ACCESSORIES: readonly ReviewedNoiseAccessory[] = [
 
 export function reviewedNoiseAccessory(title: string, manufacturer = "") {
   const subject = saleSubjectText(title);
-  if (
-    inferSaleSubject(title).kind !== "unspecified" ||
-    /ケーブル|コード|ケース|カバー|交換|変換|\bcables?\b|\bcords?\b|\bcases?\b|\bcovers?\b|\breplacement\b|\bfor\b|専用|対応/i.test(
-      subject,
-    )
-  )
+  if (inferSaleSubject(title).kind !== "unspecified" || isReviewedProductAccessory(subject))
     return undefined;
   return NOISE_ACCESSORIES.find(
     (entry) => entry.brand.test(`${manufacturer} ${subject}`) && entry.model.test(subject),
@@ -145,7 +151,10 @@ export function reviewedProductTypeEvidence(
   const subject = saleSubjectText(title);
   if (inferSaleSubject(title).kind === "unspecified") {
     const productType = PRODUCT_TYPES.find(
-      (entry) => entry.brand.test(`${manufacturer} ${subject}`) && entry.model.test(subject),
+      (entry) =>
+        entry.brand.test(`${manufacturer} ${subject}`) &&
+        entry.model.test(subject) &&
+        (!entry.excludeAccessorySubjects || !isReviewedProductAccessory(subject)),
     );
     if (productType) {
       return [
