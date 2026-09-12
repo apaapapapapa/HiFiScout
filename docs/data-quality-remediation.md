@@ -96,6 +96,7 @@
   projection再計算も行いません。ただし、以前の処理が残した`remediation_projection_required`と
   tokenは別の未完了作業なので、metadata更新だけで消さずにprojectionを完了します。また、Catalogの
   Identity編集は候補集合そのものが変わるため、出品の導出列が同じでも明示的に再投影します。
+  同様に、管理者が明示したfull rebuildは検索read modelの修復も目的に含むため省略しません。
   source列、再生対象の全derived列、projection tokenのsnapshot条件を維持し、SET句から省略した列を
   別処理が並行更新した場合も完了扱いにしません。
 - 詳細補完の計画・target chunk・cursorを分離し、D1に保存済みの詳細ページを再取得しません。
