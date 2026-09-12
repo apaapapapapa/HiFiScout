@@ -593,8 +593,12 @@ export function runDataQualityRemediationSweep(
 ): Promise<UnmeasuredDataQualityRemediationSweepResult>;
 export function runDataQualityRemediationSweep(
   db: QueryableDatabase,
-  options?: RunDataQualityRemediationSweepOptions,
+  options?: RunDataQualityRemediationSweepOptions & { measureQueue?: true },
 ): Promise<RunDataQualityRemediationSweepResult>;
+export function runDataQualityRemediationSweep(
+  db: QueryableDatabase,
+  options: RunDataQualityRemediationSweepOptions,
+): Promise<RunDataQualityRemediationSweepResult | UnmeasuredDataQualityRemediationSweepResult>;
 export async function runDataQualityRemediationSweep(
   db: QueryableDatabase,
   {
