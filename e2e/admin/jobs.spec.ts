@@ -135,3 +135,45 @@ test("a fully uploaded job can start after navigation and cancellation confirms 
   await expect(page.getByRole("status")).toContainText("適用済みの変更は保持");
   expect(app.state.jobs.get(id)?.status).toBe("cancelled");
 });
+
+test("model resolver replay confirms, survives navigation, and exposes saved progress and controls", async ({
+  page,
+  context,
+  app,
+}) => {
+  await context.setExtraHTTPHeaders(await app.headers());
+  await page.goto("/#jobs");
+  const panel = page.getByRole("region", { name: "型番の一括再判定", exact: true });
+  await expect(panel).toContainText("現在の型番判定ルール");
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await panel.getByRole("button", { name: "旧バージョンの商品を一括再判定" }).click();
+  expect(app.state.jobs.size).toBe(0);
+  page.once("dialog", (dialog) => dialog.accept());
+  await panel.getByRole("button", { name: "旧バージョンの商品を一括再判定" }).click();
+  await expect(page.getByRole("status")).toContainText("型番の一括再判定を受け付けました");
+  const job = [...app.state.jobs.values()][0];
+  expect(job.kind).toBe("model");
+  expect(app.state.replay.stepCalls).toBe(0);
+  job.processed = 1;
+  job.modelReplay!.scanned = 25;
+  await page.reload();
+  await expect(page.getByRole("cell", { name: /確認済み 25件/u })).toContainText(
+    "対象処理済み 1件",
+  );
+  await page.getByRole("button", { name: "一時停止", exact: true }).click();
+  expect(job.status).toBe("paused");
+  await page.getByRole("button", { name: "続きから再開" }).click();
+  expect(job.status).toBe("queued");
+  job.status = "completed";
+  job.processed = 20;
+  await page.getByRole("button", { name: "進捗を再読み込み" }).click();
+  await expect(page.getByRole("cell", { name: /^完了/u })).toBeVisible();
+  await expect(page.getByRole("cell", { name: /確認済み 25件/u })).toContainText(
+    "対象処理済み 20件",
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(
+    panel.getByRole("button", { name: "旧バージョンの商品を一括再判定" }),
+  ).toBeInViewport();
+  await page.screenshot({ path: "test-results/admin-model-replay-mobile.png", fullPage: true });
+});

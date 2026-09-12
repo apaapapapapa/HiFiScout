@@ -23,10 +23,12 @@ import { readJsonBody, REQUEST_BODY_TOO_LARGE } from "../http/request.js";
 import { applyAdminCsvChange } from "../db/admin-csv-import-repository.js";
 import { stepOfferFactReplay } from "../db/offer-fact-replay-repository.js";
 import { OFFER_FACT_RULE_VERSION } from "../catalog/offer-facts.js";
+import { RESOLUTION_VERSIONS } from "../catalog/resolution-versions.js";
+import { needsAdminModelReplay, scanAdminModelReplay } from "../db/admin-model-replay.js";
 
 type JobRow = {
   id: string;
-  kind: "csv" | "replay" | "manufacturer";
+  kind: AdminBackgroundJob["kind"];
   label: string;
   status: AdminJobStatus;
   created_at: string;
@@ -69,6 +71,15 @@ const jobDto = (row: JobRow): AdminBackgroundJob => ({
 });
 class JobInputError extends Error {}
 
+type ModelReplayState = {
+  versions_json: string;
+  max_product_id: number | null;
+  after_id: number;
+  scanned_count: number;
+  pending_ids: string;
+  scan_complete: number;
+};
+
 /** One persisted coordinator serializes admin work separately from every shop's crawl DO. */
 export class AdminJobs extends DurableObject<Env> {
   private aliasSnapshot: { version: number; aliases: ManufacturerAliasEvidence[] } | null = null;
@@ -89,7 +100,11 @@ export class AdminJobs extends DurableObject<Env> {
       CREATE TABLE IF NOT EXISTS items(job_id TEXT NOT NULL, ordinal INTEGER NOT NULL,
         state TEXT NOT NULL DEFAULT 'pending', input_json TEXT, result_json TEXT,
         PRIMARY KEY(job_id, ordinal));
-      CREATE INDEX IF NOT EXISTS items_work ON items(job_id, state, ordinal);`);
+      CREATE INDEX IF NOT EXISTS items_work ON items(job_id, state, ordinal);
+      CREATE TABLE IF NOT EXISTS model_replays(job_id TEXT PRIMARY KEY,
+        versions_json TEXT NOT NULL, max_product_id INTEGER,
+        after_id INTEGER NOT NULL DEFAULT 0, scanned_count INTEGER NOT NULL DEFAULT 0,
+        pending_ids TEXT NOT NULL DEFAULT '[]', scan_complete INTEGER NOT NULL DEFAULT 0);`);
   }
 
   private job(id: string): JobRow {
@@ -98,6 +113,28 @@ export class AdminJobs extends DurableObject<Env> {
       .toArray()[0];
     if (!row) throw new JobInputError("処理が見つかりません。");
     return row;
+  }
+
+  private modelState(id: string): ModelReplayState {
+    const row = this.ctx.storage.sql
+      .exec<ModelReplayState>("SELECT * FROM model_replays WHERE job_id=?", id)
+      .toArray()[0];
+    if (!row) throw new Error("model_replay_state_missing");
+    return row;
+  }
+
+  private dto(row: JobRow): AdminBackgroundJob {
+    return {
+      ...jobDto(row),
+      ...(row.kind === "model"
+        ? {
+            modelReplay: {
+              version: row.rule_version,
+              scanned: this.modelState(row.id).scanned_count,
+            },
+          }
+        : {}),
+    };
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -143,8 +180,9 @@ export class AdminJobs extends DurableObject<Env> {
       ).toArray();
       const page = rows.slice(0, 25);
       return {
-        items: page.map(jobDto),
+        items: page.map((row) => this.dto(row)),
         nextBefore: rows.length > 25 ? `${page.at(-1)!.created_at}~${page.at(-1)!.id}` : null,
+        modelResolverVersion: RESOLUTION_VERSIONS.model,
       };
     }
     if (command.action === "create") {
@@ -156,7 +194,7 @@ export class AdminJobs extends DurableObject<Env> {
           existing.label !== command.label
         )
           throw new JobInputError("同じ処理IDに異なる入力が指定されています。");
-        return { job: jobDto(existing) };
+        return { job: this.dto(existing) };
       }
       if (command.kind === "manufacturer") {
         const receipt = await readManufacturerChange(this.env.DB, command.id);
@@ -170,7 +208,7 @@ export class AdminJobs extends DurableObject<Env> {
             raced.label !== command.label
           )
             throw new JobInputError("同じ処理IDに異なる入力が指定されています。");
-          return { job: jobDto(raced) };
+          return { job: this.dto(raced) };
         }
       }
       const active = sql
@@ -182,26 +220,45 @@ export class AdminJobs extends DurableObject<Env> {
         const replay = active.find(
           (j) => j.kind === "replay" && j.rule_version === OFFER_FACT_RULE_VERSION,
         );
-        if (replay) return { job: jobDto(replay) };
+        if (replay) return { job: this.dto(replay) };
+      }
+      if (command.kind === "model") {
+        const replay = sql
+          .exec<JobRow>(
+            `SELECT j.* FROM jobs j JOIN model_replays r ON r.job_id=j.id
+          WHERE j.status IN ('uploading','queued','running','paused','failed') AND j.details_available=1
+            AND r.versions_json=? ORDER BY j.created_at,j.id LIMIT 1`,
+            JSON.stringify(RESOLUTION_VERSIONS),
+          )
+          .toArray()[0];
+        if (replay) return { job: this.dto(replay) };
       }
       if (active.length >= 3)
         throw new JobInputError(
           "同時に保持できる未完了の処理は3件です。処理を完了または中止してください。",
         );
       const now = new Date().toISOString();
-      sql.exec(
-        "INSERT INTO jobs(id,kind,label,status,created_at,updated_at,total,rule_version,expires_at) VALUES (?,?,?,'uploading',?,?,?,?,?)",
-        command.id,
-        command.kind,
-        command.label,
-        now,
-        now,
-        command.total,
-        OFFER_FACT_RULE_VERSION,
-        new Date(Date.now() + RETENTION_MS).toISOString(),
-      );
+      this.ctx.storage.transactionSync(() => {
+        sql.exec(
+          "INSERT INTO jobs(id,kind,label,status,created_at,updated_at,total,rule_version,expires_at) VALUES (?,?,?,'uploading',?,?,?,?,?)",
+          command.id,
+          command.kind,
+          command.label,
+          now,
+          now,
+          command.total,
+          command.kind === "model" ? RESOLUTION_VERSIONS.model : OFFER_FACT_RULE_VERSION,
+          new Date(Date.now() + RETENTION_MS).toISOString(),
+        );
+        if (command.kind === "model")
+          sql.exec(
+            "INSERT INTO model_replays(job_id,versions_json) VALUES (?,?)",
+            command.id,
+            JSON.stringify(RESOLUTION_VERSIONS),
+          );
+      });
       await this.schedule();
-      return { job: jobDto(this.job(command.id)) };
+      return { job: this.dto(this.job(command.id)) };
     }
     const job = this.job(command.id);
     if (command.action === "get") {
@@ -214,7 +271,7 @@ export class AdminJobs extends DurableObject<Env> {
         .toArray();
       const page = rows.slice(0, 50);
       return {
-        job: jobDto(job),
+        job: this.dto(job),
         items: page.map((row) => ({
           ordinal: row.ordinal,
           state: row.state,
@@ -284,6 +341,13 @@ export class AdminJobs extends DurableObject<Env> {
         job.id,
       );
     } else if (command.action === "resume") {
+      if (
+        job.kind === "model" &&
+        this.modelState(job.id).versions_json !== JSON.stringify(RESOLUTION_VERSIONS)
+      )
+        throw new JobInputError(
+          "判定ルールが更新されています。この処理を中止して、新しい一括再判定を開始してください。",
+        );
       if (!job.details_available)
         throw new JobInputError(
           "詳細データの保持期限が切れています。新しい処理を作成してください。",
@@ -316,7 +380,7 @@ export class AdminJobs extends DurableObject<Env> {
       );
     }
     await this.schedule();
-    return { job: jobDto(this.job(job.id)) };
+    return { job: this.dto(this.job(job.id)) };
   }
 
   private async schedule() {
@@ -360,6 +424,7 @@ export class AdminJobs extends DurableObject<Env> {
     );
     try {
       if (job.kind === "manufacturer") await this.manufacturer(job);
+      else if (job.kind === "model") await this.modelReplay(job);
       else if (job.kind === "replay") await this.replay(job);
       else
         for (let step = 0; step < 5; step++) {
@@ -444,7 +509,9 @@ export class AdminJobs extends DurableObject<Env> {
           ? "進捗が更新されないため停止しました。状態を確認してから再開してください。"
           : error instanceof Error && error.message === "offer_fact_rule_version_changed"
             ? "抽出ルールが更新されています。この処理を中止して、新しい再処理を開始してください。"
-            : "処理が中断しました。保存済みの続きから再開できます。",
+            : error instanceof Error && error.message === "model_replay_version_changed"
+              ? "判定ルールが更新されています。この処理を中止して、新しい一括再判定を開始してください。"
+              : "処理が中断しました。保存済みの続きから再開できます。",
         new Date().toISOString(),
         job.id,
       );
@@ -510,6 +577,77 @@ export class AdminJobs extends DurableObject<Env> {
         job.id,
       );
     else if (stalled >= 3) throw new Error("offer_fact_replay_no_progress");
+  }
+
+  private async modelReplay(job: JobRow) {
+    const sql = this.ctx.storage.sql;
+    let state = this.modelState(job.id);
+    if (state.versions_json !== JSON.stringify(RESOLUTION_VERSIONS))
+      throw new Error("model_replay_version_changed");
+    if (state.max_product_id === null) {
+      const last = await this.env.DB.prepare(
+        "SELECT id FROM products ORDER BY id DESC LIMIT 1",
+      ).first<{ id: number }>();
+      sql.exec("UPDATE model_replays SET max_product_id=? WHERE job_id=?", last?.id ?? 0, job.id);
+      state = this.modelState(job.id);
+    }
+    let pending = JSON.parse(state.pending_ids) as number[];
+    if (!pending.length && !state.scan_complete) {
+      const page = await scanAdminModelReplay(this.env.DB, state.after_id, state.max_product_id!);
+      // Persist the bounded candidate window before any D1 mutation. A lost response retries the
+      // same candidate; already-current rows are skipped by the primary-key eligibility check.
+      sql.exec(
+        `UPDATE model_replays SET after_id=?,scanned_count=scanned_count+?,pending_ids=?,scan_complete=? WHERE job_id=?`,
+        page.afterId,
+        page.scanned,
+        JSON.stringify(page.ids),
+        Number(page.complete),
+        job.id,
+      );
+      state = this.modelState(job.id);
+      pending = page.ids;
+    }
+    if (this.job(job.id).status !== "running") return;
+    const id = pending[0];
+    if (id !== undefined) {
+      const needed = await needsAdminModelReplay(this.env.DB, id);
+      if (needed) {
+        const version = await registryVersion(this.env.DB);
+        if (!this.aliasSnapshot || this.aliasSnapshot.version !== version)
+          this.aliasSnapshot = {
+            version,
+            aliases: await readAdminManufacturerAliases(this.env.DB),
+          };
+        if (this.job(job.id).status !== "running") return;
+        await replayAdminCsvListings(
+          this.env.DB,
+          [id],
+          new Date().toISOString(),
+          this.aliasSnapshot.aliases,
+        );
+      }
+      this.ctx.storage.transactionSync(() => {
+        sql.exec(
+          "UPDATE model_replays SET pending_ids=? WHERE job_id=?",
+          JSON.stringify(pending.slice(1)),
+          job.id,
+        );
+        sql.exec(
+          "UPDATE jobs SET processed=processed+1,updated_at=? WHERE id=?",
+          new Date().toISOString(),
+          job.id,
+        );
+      });
+      pending = pending.slice(1);
+    } else {
+      sql.exec("UPDATE jobs SET updated_at=? WHERE id=?", new Date().toISOString(), job.id);
+    }
+    if (state.scan_complete && !pending.length)
+      sql.exec(
+        "UPDATE jobs SET status='completed',error='',expires_at=? WHERE id=? AND status='running'",
+        new Date(Date.now() + RETENTION_MS).toISOString(),
+        job.id,
+      );
   }
 
   private async cleanup() {

@@ -96,6 +96,37 @@ Review these gaps and sample the seller evidence before promoting filters more w
 `GET/POST /api/admin/offer-facts/replay` is Access protected; POST takes only an empty JSON object,
 and the client cannot supply a cursor or override the server's batch size.
 
+## Bounded model resolver replay
+
+**バックグラウンド処理 → 型番の一括再判定 → 旧バージョンの商品を一括再判定**
+starts a durable `model` job through the existing Access-protected `/api/admin/jobs` route.
+The screen displays the deployed model resolver version. Confirming submits and starts the job;
+closing the browser does not interrupt it. The existing job list provides saved progress,
+pause/resume, cancellation and failure recovery, without automatic polling.
+
+The first alarm captures the maximum stored product ID. Each discovery step inspects at most
+25 IDs, including inactive rows, then retains only active listings whose model resolver version
+is old or whose downstream projection remains pending. The small candidate window is saved in
+the coordinator's SQLite storage and drained one listing per alarm. Current and inactive listings
+are skipped; a primary-key check also skips candidates completed by cron or crawling in the meantime.
+New IDs beyond the captured boundary are handled by normal ingestion or a later job. No full-table
+count or repeated stale-filter scan is needed. `確認済み` counts inspected rows; `対象処理済み`
+counts completed candidates, including those already updated by another worker.
+
+Replay uses the existing authoritative stored-listing path: manufacturer/model/category derivation,
+search projection, identity resolution and search-entity membership. Seller evidence and explicit
+manual overrides retain their authority. A failed downstream refresh retains its projection token
+and pending candidate for retry; a lost job checkpoint never advances past unfinished work.
+Pausing or cancelling during a D1 operation can allow that one listing to finish, but cannot restart
+the job. Repeated submissions reuse an unfinished job with the same resolver tuple. The job pins
+all deterministic resolver versions; a code deployment that changes any of them stops the old job
+and requires cancellation followed by a new job. Manufacturer aliases use the existing cached
+registry snapshot, refreshed when its generation changes.
+
+The GitHub Actions **Resolver Replay Drain** remains available for broader operator maintenance.
+The admin job selects model-version drift and pending projections; it is not a full catalog audit
+or a sweep of listings with only manufacturer/category-version drift.
+
 ## Complete data exports
 
 The **全情報ZIPを生成** action produces ZIP volumes containing **all columns and all retained rows** of the

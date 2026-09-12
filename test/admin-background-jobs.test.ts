@@ -12,12 +12,14 @@ import type {
   AdminCsvChange,
 } from "../src/api/admin-csv-contracts.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
+import { RESOLUTION_VERSIONS } from "../src/catalog/resolution-versions.js";
 
 function harness() {
   const data = migratedSqlite();
   const local = new DatabaseSync(":memory:");
   const queries: string[] = [];
   let crashAfterApply = false;
+  let crashModelCheckpoint = false;
   let afterBatch: (() => Promise<void>) | undefined;
   let alarm: number | null = null;
   const ctx = {
@@ -25,6 +27,10 @@ function harness() {
       sql: {
         exec(query: string, ...bindings: (string | number | null)[]) {
           queries.push(query);
+          if (crashModelCheckpoint && query.startsWith("UPDATE model_replays SET pending_ids=")) {
+            crashModelCheckpoint = false;
+            throw new Error("simulated model checkpoint loss");
+          }
           if (crashAfterApply && query.startsWith("UPDATE items SET state=")) {
             crashAfterApply = false;
             throw new Error("simulated receipt checkpoint loss");
@@ -83,6 +89,9 @@ function harness() {
     command,
     crashAfterApply: () => {
       crashAfterApply = true;
+    },
+    crashModelCheckpoint: () => {
+      crashModelCheckpoint = true;
     },
     afterBatch: (callback: () => Promise<void>) => {
       afterBatch = callback;
@@ -454,6 +463,186 @@ test("manufacturer replay survives pause and restart while retaining manual corr
       h.sqlite.prepare("SELECT raw_model FROM products WHERE id=100001").get()?.raw_model,
       "デモラボ L-505",
     );
+  } finally {
+    h.close();
+  }
+});
+
+function modelListings(h: ReturnType<typeof harness>, count: number, start = 100001) {
+  const insert = h.sqlite
+    .prepare(`INSERT INTO products(id,shop_key,source_id,title,raw_manufacturer,raw_model,
+    model,source_url,first_seen_at,last_seen_at,last_changed_at,price_yen,model_resolver_version)
+    VALUES (?,'audiounion',?,'TAD D-1000 MK2 中古','TAD','D-1000 MK2 中古','古い型番',
+      'https://example.test/model','2026-01-01','2026-01-02','2026-01-03',100000,1)`);
+  for (let i = start; i < start + count; i++) insert.run(i, String(i));
+}
+
+const modelCommand = (id = crypto.randomUUID()): AdminJobCommand => ({
+  action: "create",
+  id,
+  kind: "model",
+  total: 0,
+  label: "型番再判定",
+});
+
+test("model replay persists one candidate window, respects pause and snapshot bounds, and preserves manual fields", async () => {
+  const h = harness();
+  try {
+    modelListings(h, 4);
+    h.sqlite
+      .exec(`INSERT INTO product_admin_overrides(listing_product_id,model,normalized_model,created_at,updated_at)
+      VALUES(100001,'手動型番','MANUAL','',''); UPDATE products SET model='手動型番',normalized_model='MANUAL' WHERE id=100001;
+      UPDATE products SET is_active=0 WHERE id=100004;`);
+    const id = crypto.randomUUID();
+    await h.command(modelCommand(id));
+    await h.command({ action: "start", id });
+    await h.alarm();
+    const first = (await h.command({ action: "get", id })).job;
+    assert.equal(first.processed, 1);
+    assert.deepEqual(first.modelReplay, { version: RESOLUTION_VERSIONS.model, scanned: 4 });
+    assert.equal(first.status, "running");
+    assert.equal(
+      h.sqlite.prepare("SELECT model FROM products WHERE id=100001").get()?.model,
+      "手動型番",
+    );
+    assert.equal(
+      h.sqlite.prepare("SELECT model_resolver_version FROM products WHERE id=100002").get()
+        ?.model_resolver_version,
+      1,
+    );
+    await h.command({ action: "pause", id });
+    h.restart();
+    await h.alarm();
+    assert.equal((await h.command({ action: "get", id })).job.processed, 1);
+    modelListings(h, 1, 100005);
+    await h.command({ action: "resume", id });
+    await h.alarm();
+    await h.alarm();
+    const completed = (await h.command({ action: "get", id })).job;
+    assert.equal(completed.status, "completed");
+    assert.equal(completed.processed, 3);
+    assert.equal(completed.modelReplay?.scanned, 4);
+    const row = h.sqlite.prepare("SELECT * FROM products WHERE id=100002").get()!;
+    assert.equal(row.model_resolver_version, RESOLUTION_VERSIONS.model);
+    assert.equal(row.manufacturer_resolver_version, RESOLUTION_VERSIONS.manufacturer);
+    assert.equal(row.raw_model, "D-1000 MK2 中古");
+    assert.equal(row.price_yen, 100000);
+    assert.equal(row.last_seen_at, "2026-01-02");
+    assert.equal(row.remediation_projection_required, 0);
+    assert.equal(
+      h.sqlite
+        .prepare(
+          "SELECT COUNT(*) AS n FROM product_search_entity_offers WHERE listing_product_id IN (100001,100002,100003)",
+        )
+        .get()?.n,
+      3,
+    );
+    assert.equal(
+      h.sqlite
+        .prepare(
+          "SELECT COUNT(*) AS n FROM products WHERE id IN (100004,100005) AND model_resolver_version=1",
+        )
+        .get()?.n,
+      2,
+    );
+  } finally {
+    h.close();
+  }
+});
+
+test("model replay scans an all-current tail in bounded windows and coalesces repeated submissions", async () => {
+  const h = harness();
+  try {
+    modelListings(h, 51);
+    h.sqlite.prepare("UPDATE products SET model_resolver_version=?").run(RESOLUTION_VERSIONS.model);
+    const writes = h.sqlite.prepare("SELECT total_changes() AS n").get()?.n;
+    const id = crypto.randomUUID();
+    await h.command(modelCommand(id));
+    assert.equal((await h.command(modelCommand())).job.id, id);
+    await h.command({ action: "start", id });
+    await h.alarm();
+    assert.equal((await h.command({ action: "get", id })).job.modelReplay?.scanned, 25);
+    h.restart();
+    await h.alarm();
+    assert.equal((await h.command({ action: "get", id })).job.modelReplay?.scanned, 50);
+    await h.alarm();
+    const job = (await h.command({ action: "get", id })).job;
+    assert.equal(job.status, "completed");
+    assert.equal(job.processed, 0);
+    assert.equal(job.modelReplay?.scanned, 51);
+    assert.equal(h.sqlite.prepare("SELECT total_changes() AS n").get()?.n, writes);
+    assert.equal(parseAdminJobCommand({ ...modelCommand(), total: 1 }), null);
+  } finally {
+    h.close();
+  }
+});
+
+test("model replay recovers lost checkpoints without double counting or repeating completed D1 writes", async () => {
+  const h = harness();
+  try {
+    modelListings(h, 2);
+    const id = crypto.randomUUID();
+    await h.command(modelCommand(id));
+    await h.command({ action: "start", id });
+    h.crashModelCheckpoint();
+    await h.alarm();
+    assert.equal((await h.command({ action: "get", id })).job.status, "failed");
+    assert.equal((await h.command(modelCommand())).job.id, id);
+    assert.equal(
+      h.sqlite.prepare("SELECT model_resolver_version FROM products WHERE id=100001").get()
+        ?.model_resolver_version,
+      RESOLUTION_VERSIONS.model,
+    );
+    const writes = h.sqlite.prepare("SELECT total_changes() AS n").get()?.n;
+    h.restart();
+    await h.command({ action: "resume", id });
+    await h.alarm();
+    assert.equal((await h.command({ action: "get", id })).job.processed, 1);
+    assert.equal(h.sqlite.prepare("SELECT total_changes() AS n").get()?.n, writes);
+    await h.alarm();
+    assert.equal((await h.command({ action: "get", id })).job.processed, 2);
+    assert.equal((await h.command({ action: "get", id })).job.status, "completed");
+  } finally {
+    h.close();
+  }
+});
+
+test("model replay retains failed projection work and an in-flight pause, then rejects a changed resolver tuple", async () => {
+  const h = harness();
+  try {
+    modelListings(h, 2);
+    const id = crypto.randomUUID();
+    await h.command(modelCommand(id));
+    await h.command({ action: "start", id });
+    h.afterBatch(async () => {
+      throw new Error("D1 unavailable after derived update");
+    });
+    await h.alarm();
+    assert.equal((await h.command({ action: "get", id })).job.status, "failed");
+    assert.equal(
+      h.sqlite.prepare("SELECT remediation_projection_required FROM products WHERE id=100001").get()
+        ?.remediation_projection_required,
+      1,
+    );
+    await h.command({ action: "resume", id });
+    h.afterBatch(async () => {
+      await h.command({ action: "pause", id });
+    });
+    await h.alarm();
+    assert.equal((await h.command({ action: "get", id })).job.status, "paused");
+    assert.equal((await h.command({ action: "get", id })).job.processed, 1);
+    const writes = h.sqlite.prepare("SELECT total_changes() AS n").get()?.n;
+    h.local
+      .prepare("UPDATE model_replays SET versions_json=? WHERE job_id=?")
+      .run(JSON.stringify({ ...RESOLUTION_VERSIONS, category: -1 }), id);
+    await h.command({ action: "resume", id }, 409);
+    h.local.prepare("UPDATE jobs SET status='queued' WHERE id=?").run(id);
+    h.restart();
+    await h.alarm();
+    assert.match((await h.command({ action: "get", id })).job.error, /判定ルールが更新/);
+    assert.equal(h.sqlite.prepare("SELECT total_changes() AS n").get()?.n, writes);
+    await h.command({ action: "cancel", id });
+    assert.notEqual((await h.command(modelCommand())).job.id, id);
   } finally {
     h.close();
   }

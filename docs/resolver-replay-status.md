@@ -1,5 +1,10 @@
 # Resolver replay status
 
+For model-version updates, the admin console also provides **バックグラウンド処理 → 型番の一括再判定**.
+Its durable job continues without the browser and supports saved progress, pause/resume and cancellation.
+See [bounded model replay](./listing-admin.md#bounded-model-resolver-replay) for its scope and recovery rules.
+It does not publish the GitHub commit status described below.
+
 **Resolver Replay Drain** is an operator-triggered maintenance workflow that supplements the normal
 bounded scheduled remediation sweep in `src/scheduled.ts`. Run it manually when stale manufacturer,
 model, category, identity, or projection signals need an explicit drain. Each workflow dispatch
