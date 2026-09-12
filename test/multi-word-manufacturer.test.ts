@@ -5,6 +5,7 @@ import {
   MANUFACTURER_RESOLVER_VERSION,
   resolveManufacturer,
 } from "../src/catalog/manufacturer-resolver.js";
+import { resolveModel } from "../src/catalog/model-resolver.js";
 import {
   normalizeManufacturer,
   splitKnownManufacturerModel,
@@ -115,6 +116,20 @@ for (const scenario of CASES) {
     if (scenario.assertNormalizedLegacy) {
       assert.equal(result.normalizedRawManufacturer, scenario.legacyName.toLowerCase());
     }
+  });
+
+  test(`legacy ${scenario.canonicalName} model evidence drops the remaining manufacturer tokens`, () => {
+    const legacyModel = title.split(/\s+/u).slice(1).join(" ");
+    const result = resolveModel({
+      rawManufacturer: scenario.legacyName,
+      rawModel: legacyModel,
+      title,
+      manufacturerId: scenario.id,
+      shopKey: scenario.shopKey,
+    });
+
+    assert.equal(result.status, "resolved");
+    assert.equal(result.model, scenario.model);
   });
 }
 
