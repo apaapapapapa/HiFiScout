@@ -3,6 +3,40 @@ import assert from "node:assert/strict";
 
 import { verifyOfficialProductPage } from "../src/catalog/knowledge-verification/page-verification.js";
 
+test("official navigation labels cannot classify an amplifier as headphones", async () => {
+  const result = await verifyOfficialProductPage({
+    candidate: { manufacturerId: "audio-technica", observedModel: "AT-HA2" },
+    sourceUrl: "https://www.audio-technica.co.jp/product/AT-HA2",
+    // Minimal structure observed on the official page on 2026-09-12; no seller prose/assets.
+    html: `<head><title>AT-HA2｜ヘッドホン：アクセサリー｜オーディオテクニカ</title></head>
+      <article><ul class="breadcrumb"><li>ヘッドホン：アクセサリー</li><li>AT-HA2</li></ul>
+      <p class="product_name">ヘッドホンアンプ</p>
+      <h2>AT-HA2 <span>{{ selected_retail_price }}</span></h2></article>`,
+  });
+  assert.equal(result.status, "verified");
+  assert.equal(result.primaryCategoryId, "AMP.HEADPHONE");
+  assert.equal(result.canonicalName, "AT-HA2");
+});
+
+test("a site section in a document title is not product category evidence", async () => {
+  const result = await verifyOfficialProductPage({
+    candidate: { manufacturerId: "audio-technica", observedModel: "AT-HA2" },
+    html: "<head><title>AT-HA2 | ヘッドホン | メーカー</title></head><main><h2>AT-HA2</h2></main>",
+  });
+  assert.equal(result.status, "ambiguous");
+});
+
+test("canonical display names exclude title navigation and retain model editions", async () => {
+  const result = await verifyOfficialProductPage({
+    candidate: { manufacturerId: "audio-technica", observedModel: "AT-LPW50BT RW" },
+    html: `<head><title>AT-LPW50BT RW｜アナログ：レコードプレーヤー｜メーカー</title></head>
+      <main><p>AT-LPW50BT RW レコードプレーヤー</p></main>`,
+  });
+  assert.equal(result.status, "verified");
+  assert.equal(result.canonicalModel, "AT-LPW50BT RW");
+  assert.equal(result.canonicalName, "AT-LPW50BT RW");
+});
+
 test("navigation-only model mentions cannot verify a different product", async () => {
   for (const chrome of ["nav", "header", "footer", "aside"]) {
     const result = await verifyOfficialProductPage({

@@ -81,7 +81,12 @@ function firstElementText(html: string, tag: string): string {
  * either element, remove the standard global-chrome containers before converting the body to text.
  */
 function productContentHtml(html: string): string {
-  const value = String(html).replace(/<(nav|header|footer|aside)\b[^>]*>[\s\S]*?<\/\1>/gi, " ");
+  const value = String(html)
+    .replace(/<(head|nav|header|footer|aside)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(
+      /<(div|ol|ul)\b[^>]*(?:class|id)=["'][^"']*\bbreadcrumb\b[^"']*["'][^>]*>[\s\S]*?<\/\1>/gi,
+      " ",
+    );
   const semantic = value.match(/<(main|article)\b[^>]*>([\s\S]*?)<\/\1>/i)?.[2];
   return semantic ?? value;
 }
@@ -192,7 +197,12 @@ function canonicalNameFromPage(
 ): string {
   for (const value of values) {
     const text = clean(value);
-    if (text && text.length <= MAX_CANONICAL_NAME_CHARS && matchesCandidateText(text, candidate)) {
+    if (
+      text &&
+      !text.includes("{{") &&
+      text.length <= MAX_CANONICAL_NAME_CHARS &&
+      matchesCandidateText(text, candidate)
+    ) {
       return text;
     }
   }
@@ -229,6 +239,9 @@ export async function verifyOfficialProductPage({
   const matchingProducts = matchingProductNodes(productNodes, candidate);
   const product = matchingProducts[0];
   const title = firstElementText(html, "title");
+  // A pipe-delimited site section (e.g. "Headphones: accessories") is navigation, not a
+  // product type or display name. Keep only the model-bearing leading product segment.
+  const titleProduct = clean(title).split("|")[0] || "";
   const contentHtml = productContentHtml(html);
   const h1 = firstElementText(contentHtml, "h1");
   const blocks = modelBearingBlocks(contentHtml, candidate);
@@ -281,7 +294,7 @@ export async function verifyOfficialProductPage({
 
   if (!classification || classification.classificationReason === "insufficient_evidence") {
     const localEvidence: CategoryEvidenceInput[] = [];
-    for (const value of [h1, titleEligible ? title : "", ...blocks]) {
+    for (const value of [h1, ...blocks]) {
       const evidence = modelContextEvidence(value, candidate, "verified", additionalCategoryIds);
       if (evidence) localEvidence.push(evidence);
     }
@@ -295,6 +308,14 @@ export async function verifyOfficialProductPage({
       if (evidence) localEvidence.push(evidence);
     }
     if (localEvidence.length) classification = classifyCategoryEvidence(localEvidence);
+  }
+
+  if (
+    titleEligible &&
+    (!classification || classification.classificationReason === "insufficient_evidence")
+  ) {
+    const evidence = modelContextEvidence(titleProduct, candidate, "strong", additionalCategoryIds);
+    if (evidence) classification = classifyCategoryEvidence([evidence]);
   }
 
   if (!classification || classification.classificationReason === "insufficient_evidence") {
@@ -335,7 +356,11 @@ export async function verifyOfficialProductPage({
     candidate.observedModel || candidate.model || directModel || candidate.normalizedModel,
   );
   const fallbackName = `${candidate.observedManufacturer || candidate.manufacturerId} ${canonicalModel}`;
-  const canonicalName = canonicalNameFromPage(candidate, [product?.name, h1, title], fallbackName);
+  const canonicalName = canonicalNameFromPage(
+    candidate,
+    [product?.name, h1, titleEligible ? titleProduct : ""],
+    fallbackName,
+  );
   return {
     status: "verified",
     sourceUrl,
@@ -346,6 +371,6 @@ export async function verifyOfficialProductPage({
     categoryIds: classification.categoryIds,
     primaryCategoryId: classification.primaryCategoryId,
     contentHash: await sha256Hex(html),
-    message: "verified_from_official_product_page_v3",
+    message: "verified_from_official_product_page_v4",
   };
 }
