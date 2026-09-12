@@ -69,6 +69,7 @@ const MANUFACTURER_SOURCE: readonly ManufacturerSourceEntry[] = [
   ["solid-tech", "SOLID TECH", ["solid tech"]],
   ["top-wing", "TOP WING", ["top wing"]],
   ["united-electronics", "UNITED ELECTRONICS", ["united electronics"]],
+  ["unisonresearch", "Unison Research", ["unison research"]],
   ["yg-acoustics", "YG Acoustics", ["yg acoustics"]],
   ["luna-cables", "Luna Cables", ["luna cables"]],
   ["trinnov-audio", "TRINNOV AUDIO", ["trinnov audio"]],
