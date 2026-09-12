@@ -808,6 +808,7 @@ export async function replayAdminCsvListings(
   listingIds: readonly number[],
   evaluatedAt: string,
   aliasSnapshot?: ManufacturerAliasEvidence[],
+  options: { forceProjection?: boolean } = {},
 ): Promise<void> {
   if (!listingIds.length) return;
   if (listingIds.length > 10) throw new Error("csv_replay_page_too_large");
@@ -818,7 +819,8 @@ export async function replayAdminCsvListings(
     const row = await loadListing(db, id);
     if (!row) continue;
     const replay = await replayDerivedListing(db, row, aliases, evaluatedAt);
-    if (replay.projectionRequired) tokens.set(row.id, replay.projectionToken);
+    if (options.forceProjection || replay.projectionRequired)
+      tokens.set(row.id, replay.projectionToken);
     rows.push(row);
   }
   const projectedRows = rows.filter((row) => tokens.has(row.id));
