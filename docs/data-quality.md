@@ -109,6 +109,16 @@ catalog decisions remain separate, explicitly scoped work. A shop-local detail e
 invalidates only that shop's stale extraction decisions, without increasing its request cap or
 automatically resuming a paused full-data audit.
 
+The central model resolver removes complete disc-player suffixes, including `Super Audio CD/CD
+Player`. REWIRE preserves those labels in the extracted model so new crawls retain raw evidence and
+annotation provenance, just like stored-model replay. Removal cannot consume following revisions
+or bundle components. Legacy REWIRE models ending in `Super Audio` are shortened only when the saved title
+confirms that exact model prefix followed by the complete CD-player descriptor. Explicit servicing
+notes such as `(整備済み)` leave the display model while the original seller title and raw model
+retain the evidence for offer facts. A servicing bracket containing additional model/revision text
+is not discarded. Resolver version replay updates existing derived fields and search projections;
+an explicitly scoped correction can use the existing bounded listing replay without a full crawl.
+
 ### The unclassified sentinel
 
 "The classifier could not decide" has its own category id, `unclassified` (display name `未分類`).

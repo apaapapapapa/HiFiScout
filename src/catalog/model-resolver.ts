@@ -30,7 +30,7 @@ import type {
   ResolutionStatus,
 } from "./types.js";
 
-export const MODEL_RESOLVER_VERSION = 14;
+export const MODEL_RESOLVER_VERSION = 15;
 
 export type ModelResolver = (input: ModelResolutionInput) => ModelResolutionResult;
 
@@ -46,6 +46,7 @@ interface AnnotationRule {
   readonly pattern: RegExp;
   readonly requiresBarePresentationEvidence?: boolean;
   readonly shopKey?: string;
+  readonly requiresCompleteDiscPlayerTitle?: boolean;
 }
 
 interface StrippedModel {
@@ -93,6 +94,17 @@ const ANNOTATION_RULES: readonly AnnotationRule[] = [
   {
     name: "condition",
     pattern: /\b(?:USED|DEMO|OUTLET|MINT|PRE-?OWNED|SECOND\s*HAND|EX-?DEMO|B-?STOCK)\b/giu,
+  },
+  {
+    name: "condition",
+    // Match the whole note: a tube model or revision inside the same brackets is not a condition.
+    pattern:
+      /\s*[(【［[]\s*(?:メーカー|当店)?(?:点検整備|整備|点検|修理|メンテナンス|オーバーホール)済(?:み|品)?\s*[)】］\]]\s*/gu,
+  },
+  {
+    name: "condition",
+    pattern:
+      /\s+(?:メーカー|当店)?(?:点検整備|整備|点検|修理|メンテナンス|オーバーホール)済(?:み|品)?\s*$/u,
   },
   {
     name: "packaging",
@@ -163,6 +175,20 @@ const ANNOTATION_RULES: readonly AnnotationRule[] = [
     name: "product_type_suffix",
     pattern:
       /\s+[\p{Script=Han}\p{Script=Katakana}ー]{0,8}(?:プリメインアンプ|インテグレーテッドアンプ|パワーアンプ|プリアンプ|コントロールアンプ|AVアンプ|ヘッドホンアンプ|フォノイコライザー|レコードプレーヤー|ターンテーブル|CDプレーヤー|SACD(?:\/CD)?プレーヤー|CDトランスポート|SACDトランスポート|ネットワークプレーヤー|ネットワークプレイヤー|ネットワークトランスポート|D\/Aコンバータ(?:ー)?|DAコンバータ(?:ー)?|サブウーファー|スピーカー|ヘッドホン|イヤホン|トーンアーム|カートリッジ|昇圧トランス|チューナー|イコライザー)\s*$/gu,
+  },
+  {
+    name: "product_type_suffix",
+    // Match the complete trailing label; the original raw model and following identity survive.
+    pattern:
+      /(?:^|\s+)(?:(?:super\s+audio\s+)?(?:sacd|cd)(?:\s*\/\s*cd)?\s+player|sacd(?:\s*\/\s*cd)?)\s*$/iu,
+  },
+  {
+    name: "seller_product_type",
+    shopKey: "rewire",
+    // Older REWIRE extraction removed only `CD Player`, leaving `K-05 Super Audio`.
+    // The original title must confirm the complete, adjacent descriptor for this exact prefix.
+    pattern: /\s+super\s+audio\s*$/iu,
+    requiresCompleteDiscPlayerTitle: true,
   },
   {
     // Some seller list pages append both a Japanese product-type label and a Japanese brand
@@ -289,6 +315,7 @@ function stripSellerAnnotations(
   value: string,
   manufacturerId: string,
   shopKey: string,
+  title: string,
 ): StrippedModel {
   const preferred = preferredBracketedModelAlias(value);
   const removed = [...preferred.removed];
@@ -301,6 +328,17 @@ function stripSellerAnnotations(
     const before = text;
     for (const rule of ANNOTATION_RULES) {
       if (rule.shopKey && rule.shopKey !== shopKey) continue;
+      if (rule.requiresCompleteDiscPlayerTitle) {
+        if (!rule.pattern.test(text)) continue;
+        const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        if (
+          !new RegExp(
+            String.raw`(?:^|\s)${escaped}\s+CD(?:\s*/\s*CD)?\s+Player(?:\s|$)`,
+            "iu",
+          ).test(title)
+        )
+          continue;
+      }
       if (
         rule.requiresBarePresentationEvidence &&
         !canStripBarePresentationColor(manufacturerId, text)
@@ -556,7 +594,7 @@ function resolvePreparedModel(
       const part = partPresentation
         ? stripManufacturerPresentation(component.model, partPresentation)
         : component.model;
-      const stripped = stripSellerAnnotations(part, id, shopKey);
+      const stripped = stripSellerAnnotations(part, id, shopKey, clean(input.title));
       const safe = preservesModelIdentity(part, stripped.text);
       if (part !== component.model || (!bundle.groupedManufacturers && component.manufacturer)) {
         removedAnnotations.add("bundle_manufacturer_presentation");
@@ -586,7 +624,12 @@ function resolvePreparedModel(
       bundleComponents,
     };
   }
-  const stripped = stripSellerAnnotations(withoutManufacturer, manufacturerId, shopKey);
+  const stripped = stripSellerAnnotations(
+    withoutManufacturer,
+    manufacturerId,
+    shopKey,
+    clean(input.title),
+  );
   const safe = preservesModelIdentity(withoutManufacturer, stripped.text);
   const model = safe ? stripped.text : withoutManufacturer;
   const normalizedModel = normalizeIdentityModel(model);

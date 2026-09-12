@@ -33,7 +33,7 @@ const FLOORSTANDING_MODEL_PATTERNS: readonly RegExp[] = [
 
 const JAPANESE_TEXT_PATTERN = /[ぁ-んァ-ヶ一-龯]/u;
 const ENGLISH_PRODUCT_TYPE_SUFFIX =
-  /\s+(?:(?:stereo|mono(?:ral)?|tube|line)?\s*(?:power|integrated|pre)?\s*amplifier|preamp|preamplifier|speaker\s+system|sacd\/cd|sacd|cd\s+player|d\/a\s+converter)\b[\s\S]*$/iu;
+  /\s+(?:(?:stereo|mono(?:ral)?|tube|line)?\s*(?:power|integrated|pre)?\s*amplifier|preamp|preamplifier|speaker\s+system|d\/a\s+converter)\b[\s\S]*$/iu;
 
 export interface RewirePage extends CrawlPageObject {
   readonly page: number;
@@ -160,6 +160,7 @@ function conciseRewireModel(rawModel: string, isCable: boolean): string {
     if (/[A-Za-z0-9]/u.test(prefix)) value = prefix;
   }
 
+  // Disc-player labels stay in the raw model; the central resolver records their removal.
   value = cleanText(value.replace(ENGLISH_PRODUCT_TYPE_SUFFIX, " "));
 
   value = value

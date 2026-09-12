@@ -43,6 +43,79 @@ test("raw model presentation is preserved when the display model is cleaned", ()
   assert.equal(result.normalizedModel, "D1000MK2");
 });
 
+test("complete English disc-player labels leave the model and its revision intact", () => {
+  for (const descriptor of [
+    "Super Audio CD Player",
+    "Super Audio CD/CD Player",
+    "SACD/CD Player",
+  ]) {
+    const rawModel = `K-05Xs ${descriptor}`;
+    const result = resolve(rawModel, "esoteric");
+    assert.equal(result.model, "K-05Xs", rawModel);
+    assert.equal(result.normalizedModel, "K05XS");
+    assert.equal(result.rawModel, rawModel);
+    assert.equal(result.status, "resolved");
+  }
+  assert.equal(resolve("K-05 MK2 Super Audio CD Player", "esoteric").model, "K-05 MK2");
+  for (const rawModel of [
+    "K-05 Super Audio",
+    "K-05 CD Player MK2",
+    "CD Player",
+    "Super Audio CD Player",
+    "Super Audio CD/CD Player",
+  ]) {
+    assert.equal(resolve(rawModel, "esoteric").model, rawModel);
+  }
+});
+
+test("legacy REWIRE Super Audio residue needs the exact original disc-player title", () => {
+  const input = {
+    rawModel: "K-05 Super Audio",
+    manufacturerId: "esoteric",
+    shopKey: "rewire",
+    title: "ESOTERIC K-05 Super Audio CD Player エソテリック SACDプレーヤー",
+  };
+  const result = resolveModel(input);
+  assert.equal(result.rawModel, input.rawModel);
+  assert.equal(result.model, "K-05");
+  assert.equal(result.normalizedModel, "K05");
+  assert.ok(result.removedAnnotations.includes("seller_product_type"));
+  for (const title of [
+    "",
+    "ESOTERIC K-05 Super Audio",
+    "ESOTERIC K-05Xs Super Audio CD Player",
+    "ESOTERIC K-05 Super Audio MK2 CD Player",
+    "ESOTERIC K-05 Super Audio + X-1 CD Player",
+    "ESOTERIC X-K-05 Super Audio CD Player",
+  ]) {
+    assert.equal(resolveModel({ ...input, title }).model, input.rawModel, title);
+  }
+  assert.equal(resolveModel({ ...input, shopKey: "another-shop" }).model, input.rawModel);
+});
+
+test("servicing notes are presentation while bundle components and seller evidence survive", () => {
+  const rawModel = "Grandioso P1+Grandioso D1(元箱あり)(セット販売)(整備済み)";
+  const result = resolveModel({
+    rawModel,
+    manufacturerId: "esoteric",
+    shopKey: "tereon",
+    title: `ESOTERIC ${rawModel}`,
+  });
+  assert.equal(result.model, "Grandioso P1 + Grandioso D1");
+  assert.equal(result.rawModel, rawModel);
+  assert.equal(result.status, "candidate");
+  assert.deepEqual(
+    result.bundleComponents?.map((part) => part.model),
+    ["Grandioso P1", "Grandioso D1"],
+  );
+  for (const note of ["(整備済み)", "（メーカー点検整備済み）", "【メンテナンス済】", "整備済み"]) {
+    assert.equal(resolve(`K-05Xs ${note}`, "esoteric").model, "K-05Xs", note);
+  }
+  for (const note of ["(整備済み MK2)", "(整備済み WE300B)", "(整備済みではありません)"]) {
+    assert.equal(resolve(`K-05Xs ${note}`, "esoteric").model, `K-05Xs ${note}`, note);
+  }
+});
+
 test("a misplaced model prefix is recovered across an expanded shipping footnote", () => {
   const modelTail = "Signature / Midnight Blue Metalic (ペア)";
   for (const rawModel of [modelTail, `${modelTail} ※送料無料`]) {
