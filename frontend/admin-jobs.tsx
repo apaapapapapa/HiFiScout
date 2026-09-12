@@ -148,7 +148,7 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
   }
   return (
     <section className="panel workspace-panel" aria-label="バックグラウンド処理一覧">
-      <section aria-label="型番の一括再判定">
+      <section className="model-replay-launch" aria-label="型番の一括再判定">
         <h2>型番の一括再判定</h2>
         <p>
           判定ルールの更新後、掲載中の旧バージョン商品を保存済み情報から再判定します。
@@ -233,12 +233,12 @@ export function AdminJobsPanel({ onDataChanged }: { onDataChanged: () => void })
                       </p>
                     </>
                   ) : job.modelReplay ? (
-                    <>
+                    <div>
                       <p>
                         確認済み {job.modelReplay.scanned}件 · 対象処理済み {job.processed}件
                       </p>
                       <p>型番判定ルール v{job.modelReplay.version}</p>
-                    </>
+                    </div>
                   ) : (
                     <p>
                       {job.kind === "manufacturer" ? "確認済み" : "処理済み"} {job.processed}件
