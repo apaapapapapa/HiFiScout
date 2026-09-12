@@ -96,9 +96,11 @@ export interface RunDataQualityRemediationSweepOptions {
   leaseSeconds?: number;
   now?: Date;
   preferQueuedWork?: boolean;
+  /** Exact backlog metrics are useful on demand, but scale with the outstanding queue. */
+  measureQueue?: boolean;
 }
 
-export interface RunDataQualityRemediationSweepResult {
+interface RemediationSweepResult {
   seeded: number;
   seedScannedCount: number;
   claimed: number;
@@ -106,7 +108,14 @@ export interface RunDataQualityRemediationSweepResult {
   failed: number;
   retried: number;
   affectedShops: string[];
+}
+
+export interface RunDataQualityRemediationSweepResult extends RemediationSweepResult {
   queue: Awaited<ReturnType<typeof dataQualityRemediationActiveQueueMetrics>>;
+}
+
+export interface UnmeasuredDataQualityRemediationSweepResult extends RemediationSweepResult {
+  queue: null;
 }
 
 function metadataObject(value: string): Record<string, unknown> {
@@ -578,6 +587,18 @@ export async function refreshRemediationShopProjections(
   }
 }
 
+export function runDataQualityRemediationSweep(
+  db: QueryableDatabase,
+  options: RunDataQualityRemediationSweepOptions & { measureQueue: false },
+): Promise<UnmeasuredDataQualityRemediationSweepResult>;
+export function runDataQualityRemediationSweep(
+  db: QueryableDatabase,
+  options?: RunDataQualityRemediationSweepOptions & { measureQueue?: true },
+): Promise<RunDataQualityRemediationSweepResult>;
+export function runDataQualityRemediationSweep(
+  db: QueryableDatabase,
+  options: RunDataQualityRemediationSweepOptions,
+): Promise<RunDataQualityRemediationSweepResult | UnmeasuredDataQualityRemediationSweepResult>;
 export async function runDataQualityRemediationSweep(
   db: QueryableDatabase,
   {
@@ -586,8 +607,9 @@ export async function runDataQualityRemediationSweep(
     leaseSeconds = 300,
     now = new Date(),
     preferQueuedWork = false,
+    measureQueue = true,
   }: RunDataQualityRemediationSweepOptions = {},
-): Promise<RunDataQualityRemediationSweepResult> {
+): Promise<RunDataQualityRemediationSweepResult | UnmeasuredDataQualityRemediationSweepResult> {
   const evaluatedAt = now.toISOString();
   // Drain already-durable work before spending this invocation's D1-call budget scanning every
   // stale selector. A queued job already names the required replay, while seeding first can leave
@@ -751,9 +773,12 @@ export async function runDataQualityRemediationSweep(
   // path above still discovers and processes fresh work in this same sweep.
 
   // Outstanding work only. What this sweep itself did is already counted above, so recomputing
-  // lifetime totals here would read the whole retained history to report a backlog of two.
-  const queue = await dataQualityRemediationActiveQueueMetrics(db);
-  const result: RunDataQualityRemediationSweepResult = {
+  // lifetime totals here would read the whole retained history to report a backlog of two. The
+  // scheduled caller also skips this exact aggregate: it does not make a scheduling decision from
+  // the count, and the active queue can contain thousands of durable rows while one bounded job is
+  // handled per tick. Admin and explicit drain callers retain the exact on-demand measurement.
+  const queue = measureQueue ? await dataQualityRemediationActiveQueueMetrics(db) : null;
+  const result = {
     seeded: seeded.workKeys.length,
     seedScannedCount: seeded.scannedCount ?? 0,
     claimed: jobs.length,

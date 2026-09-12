@@ -178,6 +178,32 @@ test("quota recovery probes every ten minutes without raising the per-tick cap",
   assert.equal(firesIn.length, 2, "queue quota recovery should run every ten minutes");
 });
 
+test("the scheduled remediation sweep does not recount the durable backlog", async () => {
+  const at = ticks(12).find((tick) =>
+    dueMaintenanceTasks(tick).some((task) => task.name === "data_quality_remediation_sweep"),
+  );
+  assert.ok(at);
+  const task = dueMaintenanceTasks(at).find(
+    (candidate) => candidate.name === "data_quality_remediation_sweep",
+  );
+  assert.ok(task);
+  const db = captureDatabase(() => []);
+  const result = (await task.run({ DB: db } as unknown as Env)) as { queue: unknown };
+
+  assert.equal(
+    result.queue,
+    null,
+    "an omitted measurement must be explicit rather than reported as zero",
+  );
+  assert.equal(
+    db.calls.some((statement) =>
+      /SELECT COUNT\(\*\) AS count, MIN\(created_at\) AS oldest_created_at/u.test(statement.sql),
+    ),
+    false,
+    "the ten-minute path must not scan every pending and processing queue row for logging",
+  );
+});
+
 test("export recovery stays close to the two-minute threshold it exists to enforce", () => {
   // Both export services treat a job as stuck after 120s. Spreading maintenance load must not
   // quietly turn that into an hour of a user-visible export sitting stuck.
