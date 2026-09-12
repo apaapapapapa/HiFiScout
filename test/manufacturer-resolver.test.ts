@@ -153,6 +153,14 @@ test("verified title evidence recovers a manufacturer behind a seller placeholde
     assert.equal(result.method, "title_bootstrap_alias");
     assert.equal(result.normalizedRawManufacturer, "");
   }
+
+  const otherShop = resolveManufacturer({
+    shopKey: "other-shop",
+    rawManufacturer: "",
+    title: "その他 SONY HAP-Z1ES",
+  });
+  assert.equal(otherShop.status, "unresolved");
+  assert.equal(otherShop.canonicalManufacturerId, "");
 });
 
 test("placeholder recovery preserves seller evidence and removes the recovered brand from model", () => {
