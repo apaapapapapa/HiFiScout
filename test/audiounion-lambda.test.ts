@@ -492,3 +492,80 @@ test("Lambda never fetches an AudioUnion detail page when robots disallows it", 
   assert.equal(JSON.parse(result.body).error, "robots_disallowed");
   assert.equal(detailFetched, false);
 });
+
+test("Lambda refuses an oversized upstream body instead of proxying it", async () => {
+  let cancelled = false;
+  const handler = createHandler({
+    env: env({ MIN_REQUEST_DELAY_MS: "0" }),
+    sleepFn: async () => {},
+    fetchFn: async (url) => {
+      if (url.endsWith("/robots.txt")) return new Response("User-agent: *\n", { status: 200 });
+      // A body that keeps arriving: far beyond any observed listing page, and beyond what a
+      // Function URL response can carry once base64 expands it.
+      const stream = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          controller.enqueue(new Uint8Array(1_000_000));
+        },
+        cancel() {
+          cancelled = true;
+        },
+      });
+      return new Response(stream, {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    },
+  });
+
+  const result = await handler(event({ url: DETAIL_URL }));
+
+  assert.equal(result.statusCode, 502);
+  assert.equal(result.body, "upstream_response_too_large");
+  // Without an upstream-status header the Worker reads this as a relay failure, so the collection
+  // fails rather than recording an empty seller page.
+  assert.equal(result.headers["x-hifiscout-upstream-status"], undefined);
+  assert.equal(cancelled, true);
+});
+
+test("Lambda still proxies a body that sits exactly at the ceiling", async () => {
+  const atLimit = "a".repeat(4_000_000);
+  const handler = createHandler({
+    env: env({ MIN_REQUEST_DELAY_MS: "0" }),
+    sleepFn: async () => {},
+    fetchFn: async (url) => {
+      if (url.endsWith("/robots.txt")) return new Response("User-agent: *\n", { status: 200 });
+      return new Response(atLimit, {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    },
+  });
+
+  const result = await handler(event({ url: DETAIL_URL }));
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(Buffer.from(result.body, "base64").byteLength, 4_000_000);
+});
+
+test("Lambda truncates an oversized robots.txt at a line boundary", async () => {
+  const calls: string[] = [];
+  const oversizedRobots = `User-agent: *\nDisallow: /ct/search\n${"# padding\n".repeat(60_000)}Disallow: /ct/detail`;
+  const handler = createHandler({
+    env: env({ MIN_REQUEST_DELAY_MS: "0" }),
+    sleepFn: async () => {},
+    fetchFn: async (url) => {
+      calls.push(url);
+      if (url.endsWith("/robots.txt")) return new Response(oversizedRobots, { status: 200 });
+      return new Response("<html>ok</html>", {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    },
+  });
+
+  // The trailing `Disallow: /ct/detail` falls outside the parsing limit, so the detail fetch is
+  // still allowed; an oversized policy degrades rather than failing the relay.
+  const result = await handler(event({ url: DETAIL_URL }));
+  assert.equal(result.statusCode, 200);
+  assert.equal(calls[1], DETAIL_URL);
+});

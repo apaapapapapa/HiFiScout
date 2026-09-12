@@ -219,9 +219,19 @@ limit, so an oversized policy is truncated at a line boundary instead of failing
 Fetch ceilings are independent of evidence retention (`EVIDENCE_MAX_BYTES`); how much may be
 fetched and how much may be stored are separate requirements.
 
+The AudioUnion relay Lambda applies its own ceiling before proxying, capped at 4 MB because a Lambda
+Function URL response may not exceed 6 MB once base64 expands it. An oversized upstream returns a
+relay failure (`502 upstream_response_too_large`, deliberately without
+`x-hifiscout-upstream-status`) so the Worker fails the collection rather than recording an empty
+seller page.
+
 The `browser` transport renders in a remote browser session, so the Worker can only bound the HTML
 that crosses back to it. The browser session's own buffering is a residual risk outside the
 Worker's control; no shop currently uses that transport.
+
+Knowledge Catalog verification (`src/catalog/knowledge-verification/http.ts`) reaches arbitrary
+manufacturer sites and has always had its own byte and time budget
+(`KNOWLEDGE_CATALOG_SOURCE_MAX_RESPONSE_BYTES`); it does not share these crawl transports.
 
 ## Queue boundary
 

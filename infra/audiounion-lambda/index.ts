@@ -34,6 +34,8 @@ interface RelayFetchResponse {
   readonly status: number;
   readonly ok: boolean;
   readonly headers: { get(name: string): string | null };
+  /** Present on a real `fetch` response; absent in hand-built test doubles. */
+  readonly body?: ReadableStream<Uint8Array> | null;
   text(): Promise<string>;
   arrayBuffer(): Promise<ArrayBuffer>;
 }
@@ -110,10 +112,74 @@ const RELAY_PERMIT_VERSION = 1 as const;
 const RELAY_PERMIT_TTL_MS = 5 * 60_000;
 const MAX_PERMIT_LENGTH = 4096;
 const PERMIT_SIGNING_CONTEXT = "hifiscout-relay-permit-v1:";
+/**
+ * Ceiling on an upstream body the relay will read.
+ *
+ * A Lambda Function URL response may not exceed 6 MB including base64 expansion, so the raw body has
+ * to stay near 4 MB; that is also far more than any observed seller listing page. The Worker applies
+ * its own, separate ceiling to whatever the relay returns.
+ */
+const MAX_UPSTREAM_RESPONSE_BYTES = 4_000_000;
+/** RFC 9309 allows a parsing limit; the same 500 KiB the Worker uses. */
+const MAX_ROBOTS_RESPONSE_BYTES = 512 * 1024;
 const AUDIOUNION_HOST = "www.audiounion.jp";
 const HIFIDO_HOST = "www.hifido.co.jp";
 const HIFIDO_ALLOWED_QUERY_KEYS = new Set(["L", "LNG", "O", "OD"]);
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+class UpstreamResponseTooLargeError extends Error {
+  constructor(maxBytes: number) {
+    super(`upstream response exceeded the ${maxBytes} byte limit`);
+    this.name = "UpstreamResponseTooLargeError";
+  }
+}
+
+/**
+ * Reads at most `maxBytes` of an upstream body.
+ *
+ * The cap is enforced on bytes actually read, so it holds without a `Content-Length` and for a
+ * compressed payload that expands after `fetch` decodes it. Past the ceiling the reader is
+ * cancelled: `truncate` keeps what was read, otherwise the read fails.
+ */
+async function readBoundedBody(
+  response: RelayFetchResponse,
+  maxBytes: number,
+  { truncate = false }: { truncate?: boolean } = {},
+): Promise<Buffer> {
+  const body = response.body;
+  if (!body?.getReader) {
+    const buffered = Buffer.from(await response.arrayBuffer());
+    if (buffered.byteLength <= maxBytes) return buffered;
+    if (truncate) return buffered.subarray(0, maxBytes);
+    throw new UpstreamResponseTooLargeError(maxBytes);
+  }
+
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  let drained = false;
+  try {
+    for (;;) {
+      const result = await reader.read();
+      if (result.done) {
+        drained = true;
+        break;
+      }
+      const remaining = maxBytes - total;
+      if (result.value.byteLength > remaining) {
+        if (!truncate) throw new UpstreamResponseTooLargeError(maxBytes);
+        chunks.push(result.value.subarray(0, remaining));
+        total = maxBytes;
+        break;
+      }
+      total += result.value.byteLength;
+      chunks.push(result.value);
+    }
+    return Buffer.concat(chunks);
+  } finally {
+    if (!drained) await reader.cancel().catch(() => {});
+  }
+}
 
 /** Narrows a `JSON.parse` result to a plain keyed object; arrays are rejected. */
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -245,7 +311,13 @@ async function fetchRobotsPolicy(
   if (response.status >= 500)
     throw new Error(`robots.txt temporarily unavailable (${response.status})`);
   if (!response.ok) return null;
-  return response.text();
+  // RFC 9309 permits a parsing limit and requires the cut to land on a line boundary, so an
+  // oversized policy degrades to its leading rules instead of failing the relay.
+  const bounded = await readBoundedBody(response, MAX_ROBOTS_RESPONSE_BYTES, { truncate: true });
+  const text = bounded.toString("utf8");
+  if (bounded.byteLength < MAX_ROBOTS_RESPONSE_BYTES) return text;
+  const lastLineBreak = text.lastIndexOf("\n");
+  return lastLineBreak < 0 ? "" : text.slice(0, lastLineBreak + 1);
 }
 
 function configuredEntryUrl(env: RelayEnv): string {
@@ -416,7 +488,20 @@ async function proxyTarget(
     headers: profile.headers,
     redirect: "follow",
   });
-  const bytes = Buffer.from(await upstream.arrayBuffer());
+  let bytes: Buffer;
+  try {
+    bytes = await readBoundedBody(upstream, MAX_UPSTREAM_RESPONSE_BYTES);
+  } catch (error) {
+    if (!(error instanceof UpstreamResponseTooLargeError)) throw error;
+    // No `x-hifiscout-upstream-status`: the Worker must read this as a relay failure and fail the
+    // collection, never as an empty seller page.
+    return {
+      statusCode: 502,
+      headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+      body: "upstream_response_too_large",
+      isBase64Encoded: false,
+    };
+  }
   const contentType = upstream.headers.get("content-type") || "text/html; charset=utf-8";
   return {
     statusCode: upstream.status,
