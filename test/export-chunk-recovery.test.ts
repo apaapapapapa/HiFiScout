@@ -19,7 +19,7 @@ for (const fixture of exportFixtures) {
   function arrange() {
     const key = `${fixture.kind}/job/00000001.csv`;
     // This is the pre-refactor persisted metadata format, including its domain-specific keys.
-    const object: R2Object = {
+    const object = {
       key,
       size: 42,
       version: "test-version",
@@ -40,7 +40,7 @@ for (const fixture of exportFixtures) {
         rowCount: "2",
         hasMore: "1",
       },
-    };
+    } satisfies R2Object;
     const options = {
       key,
       kind: fixture.kind,
