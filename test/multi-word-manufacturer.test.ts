@@ -23,6 +23,14 @@ interface MultiWordManufacturerCase {
 
 const CASES: readonly MultiWordManufacturerCase[] = [
   {
+    canonicalName: "Unison Research",
+    id: "unisonresearch",
+    legacyName: "Unison",
+    model: "Simply Four",
+    shopKey: "shimamusen",
+    resolverMethod: "title_bootstrap_alias",
+  },
+  {
     canonicalName: "CAMELOT TECHNOLOGY",
     id: "camelot-technology",
     legacyName: "CAMELOT",
