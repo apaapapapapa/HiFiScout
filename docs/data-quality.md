@@ -288,6 +288,13 @@ Migration 0017 introduced search/identity/evidence foundations and migration 001
 
 Migration 0023 separates raw and derived manufacturer/model fields on seller listings and adds canonical manufacturer plus manufacturer-alias persistence. The public `manufacturer_id` remains a filter/display compatibility field; only `canonical_manufacturer_id` may load Product Identity candidates. Pending aliases and verified alias collisions therefore cannot silently merge products.
 
+Fujiya manufacturer placeholders such as `その他` remain in `raw_manufacturer`, but are treated as
+missing for verified title-alias recovery. When a Fujiya title begins with that placeholder, only a
+complete verified manufacturer prefix immediately following it may supply the canonical
+manufacturer; later mentions in product prose cannot. Other shops retain the conservative
+placeholder rejection. This keeps seller evidence intact while allowing model resolution to remove
+the recovered brand from affected listings.
+
 Migration 0024 gives Model Resolution its own rule version, extends Knowledge Catalog candidates with the evidence a reviewer needs (raw model variants, sample source URLs, identity rejection reason, unresolved-identity and `other` counts), and adds `data_quality_remediation_events` for before/after provenance. `model_resolver_version` defaults to `1` so every pre-existing listing stays behind the current resolver and is selectable for bounded replay. Resolver versions mean that the stored evidence was evaluated by that algorithm; `remediation_projection_required` separately remains set until projection, Product Identity, and search-entity refresh all succeed. A compare-and-clear operation token prevents an older concurrent replay from clearing newer pending work. A failed downstream pass is therefore selected again even after its derived fields and resolver version were persisted.
 
 ## Model Resolution
