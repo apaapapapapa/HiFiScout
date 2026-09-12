@@ -24,6 +24,11 @@ test("generic DQ replay keeps public manufacturer_id separate from verified cano
     /manufacturer_id:\s*manufacturerFilterId,\s*canonical_manufacturer_id:\s*manufacturer\.canonicalManufacturerId,/u,
     "the derived update map must keep the public filter id separate from the canonical id",
   );
+  assert.match(
+    remediationService,
+    /const REPLAY_CAS_FIELDS = \[\.\.\.REPLAY_SOURCE_FIELDS, \.\.\.REPLAY_DERIVED_FIELDS\]/u,
+    "the partial update must reject concurrent changes to fields omitted from its SET clause",
+  );
 });
 
 test("administrative resolver drain uses bulk resolver replay and batched generic claims", () => {

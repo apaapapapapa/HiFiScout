@@ -320,6 +320,8 @@ const CATEGORY_MEMBERSHIP_FIELDS = new Set<ReplayDerivedField>([
   "direct_category_ids",
 ]);
 
+const REPLAY_CAS_FIELDS = [...REPLAY_SOURCE_FIELDS, ...REPLAY_DERIVED_FIELDS] as const;
+
 export class ListingReplaySourceChangedError extends Error {
   constructor() {
     super("listing_replay_source_changed");
@@ -454,7 +456,8 @@ async function replayDerivedListing(
     // assigned to that column is unchanged. A resolver-version replay commonly changes metadata
     // alone; assigning all derived columns made that one change rewrite every identity/category
     // index. The identifiers come only from the fixed list above, while the source snapshot keeps
-    // the same lost-update fence as the former all-column statement.
+    // the same lost-update fence as the former all-column statement. Compare the complete loaded
+    // replay snapshot so a concurrent writer cannot change an omitted derived field unnoticed.
     const result = await db
       .prepare(`
         UPDATE products
@@ -462,13 +465,13 @@ async function replayDerivedListing(
             remediation_projection_required = 1,
             remediation_projection_token = ?
         WHERE id = ?
-          AND ${REPLAY_SOURCE_FIELDS.map((field) => `${field} IS ?`).join(" AND ")}
+          AND ${REPLAY_CAS_FIELDS.map((field) => `${field} IS ?`).join(" AND ")}
       `)
       .bind(
         ...changedFields.map((field) => derived[field]),
         token,
         row.id,
-        ...REPLAY_SOURCE_FIELDS.map((field) => row[field]),
+        ...REPLAY_CAS_FIELDS.map((field) => row[field]),
       )
       .run();
     changed = Number(result?.meta?.changes || 0) > 0;
@@ -477,7 +480,7 @@ async function replayDerivedListing(
     // Zero changes can mean equal derived values or a failed source-snapshot comparison. Do not
     // write categories/facts, refresh projections or acknowledge a newer token in the latter case.
     const current = await loadListing(db, row.id);
-    if (!current || REPLAY_SOURCE_FIELDS.some((field) => current[field] !== row[field]))
+    if (!current || REPLAY_CAS_FIELDS.some((field) => current[field] !== row[field]))
       throw new ListingReplaySourceChangedError();
   }
   // Rebuild membership only when membership fields moved. Resolver metadata, model presentation,
