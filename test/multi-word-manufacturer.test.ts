@@ -18,10 +18,30 @@ interface MultiWordManufacturerCase {
   readonly model: string;
   readonly shopKey: string;
   readonly resolverMethod: string;
+  readonly titleManufacturer?: string;
+  readonly parsedManufacturer?: string;
   readonly assertNormalizedLegacy?: boolean;
 }
 
 const CASES: readonly MultiWordManufacturerCase[] = [
+  {
+    canonicalName: "Counterpoint",
+    id: "counterpoint",
+    legacyName: "Counter",
+    model: "SA-3",
+    shopKey: "afroaudio",
+    resolverMethod: "title_bootstrap_alias",
+    titleManufacturer: "Counter Point",
+    parsedManufacturer: "Counter Point",
+  },
+  {
+    canonicalName: "Golden Dragon",
+    id: "golden-dragon",
+    legacyName: "Golden",
+    model: "KT88 4本",
+    shopKey: "afroaudio",
+    resolverMethod: "title_bootstrap_alias",
+  },
   {
     canonicalName: "Unison Research",
     id: "unisonresearch",
@@ -58,7 +78,8 @@ const CASES: readonly MultiWordManufacturerCase[] = [
 ];
 
 for (const scenario of CASES) {
-  const title = `${scenario.canonicalName} ${scenario.model}`;
+  const title = `${scenario.titleManufacturer || scenario.canonicalName} ${scenario.model}`;
+  const parsedManufacturer = scenario.parsedManufacturer || scenario.canonicalName;
 
   test(`${scenario.canonicalName} is a canonical multi-word manufacturer`, () => {
     assert.deepEqual(normalizeManufacturer(scenario.canonicalName), {
@@ -70,12 +91,12 @@ for (const scenario of CASES) {
     assert.deepEqual(splitKnownManufacturerModel(title), {
       id: scenario.id,
       displayName: scenario.canonicalName,
-      rawManufacturer: scenario.canonicalName,
+      rawManufacturer: parsedManufacturer,
       model: scenario.model,
     });
 
     assert.deepEqual(splitManufacturerModel(title, scenario.shopKey), {
-      manufacturer: scenario.canonicalName,
+      manufacturer: parsedManufacturer,
       model: scenario.model,
     });
   });

@@ -13,7 +13,7 @@ import type {
   NormalizedCatalogProduct,
 } from "./types.js";
 
-export const MANUFACTURER_RESOLVER_VERSION = 14;
+export const MANUFACTURER_RESOLVER_VERSION = 15;
 
 export type ManufacturerResolver = (
   input: ManufacturerResolutionInput,
