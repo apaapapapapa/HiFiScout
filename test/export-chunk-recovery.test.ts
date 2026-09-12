@@ -19,9 +19,16 @@ for (const fixture of exportFixtures) {
   function arrange() {
     const key = `${fixture.kind}/job/00000001.csv`;
     // This is the pre-refactor persisted metadata format, including its domain-specific keys.
-    const object = {
+    const object: R2Object = {
       key,
       size: 42,
+      version: "test-version",
+      etag: "test-etag",
+      httpEtag: '"test-etag"',
+      checksums: { toJSON: () => ({}) },
+      uploaded: new Date("2026-09-12T00:00:00.000Z"),
+      storageClass: "Standard",
+      writeHttpMetadata() {},
       customMetadata: {
         version: "1",
         ...Object.fromEntries(
@@ -33,7 +40,7 @@ for (const fixture of exportFixtures) {
         rowCount: "2",
         hasMore: "1",
       },
-    } as R2Object;
+    };
     const options = {
       key,
       kind: fixture.kind,
@@ -99,9 +106,12 @@ for (const fixture of exportFixtures) {
     ];
     for (const corruption of corruptions) {
       const { object, options } = arrange();
-      object.customMetadata = { ...object.customMetadata, ...corruption };
+      const corruptedObject: R2Object = {
+        ...object,
+        customMetadata: { ...object.customMetadata, ...corruption },
+      };
       const put = vi.fn(async () => null);
-      const bucket = { head: async () => object, put } as unknown as R2Bucket;
+      const bucket = { head: async () => corruptedObject, put } as unknown as R2Bucket;
       await assert.rejects(ensureStoredCsvChunk(bucket, options), {
         message: `${fixture.kind}_chunk_metadata_invalid:${object.key}`,
       });
