@@ -2,6 +2,7 @@ import { inferOfferFacts } from "../catalog/offer-facts.js";
 import { isOfferFactId } from "../catalog/types.js";
 import type { OfferFact } from "../catalog/types.js";
 import type { ReadableDatabase } from "./types.js";
+import { EFFECTIVE_OFFER_FACT_SQL } from "./offer-fact-precedence.js";
 
 /** One bounded detail read; a manual decision (including unknown) overrides seller extraction. */
 export async function effectiveOfferFacts(
@@ -13,11 +14,9 @@ export async function effectiveOfferFacts(
   if (productIds.length > 200) throw new Error("offer_facts_scope_too_large");
   const rows = await db
     .prepare(`SELECT f.product_id, f.fact_id, f.state, f.source, f.source_field,
-      f.rule_id, f.confidence, f.observed_at FROM product_offer_facts f
+      f.rule_id, f.confidence, f.observed_at, f.warranty_months FROM product_offer_facts f
       WHERE f.product_id IN (SELECT value FROM json_each(?))
-        AND (f.source = 'manual' OR NOT EXISTS (
-          SELECT 1 FROM product_offer_facts m
-          WHERE m.product_id = f.product_id AND m.fact_id = f.fact_id AND m.source = 'manual'))
+        AND ${EFFECTIVE_OFFER_FACT_SQL}
       ORDER BY f.product_id, f.fact_id`)
     .bind(JSON.stringify(productIds))
     .all<{
@@ -29,6 +28,7 @@ export async function effectiveOfferFacts(
       rule_id: string;
       confidence: number;
       observed_at: string;
+      warranty_months: number | null;
     }>();
   for (const row of rows.results) {
     if (!isOfferFactId(row.fact_id)) continue;
@@ -41,6 +41,7 @@ export async function effectiveOfferFacts(
       ruleId: row.rule_id,
       confidence: row.confidence,
       observedAt: row.observed_at,
+      ...(row.warranty_months != null ? { warrantyMonths: row.warranty_months } : {}),
     });
     result.set(row.product_id, facts);
   }
@@ -66,9 +67,16 @@ export function sellerOfferFactWrites(
     db
       .prepare(`DELETE FROM product_offer_facts
       WHERE product_id = (SELECT id FROM products WHERE shop_key = ? AND source_id = ?)
-        AND source = 'seller'
-        AND fact_id NOT IN (SELECT json_extract(value, '$.factId') FROM json_each(?))${guard}`)
-      .bind(shopKey, sourceId, facts, ...guardBinds),
+        AND ((source = 'seller'
+          AND fact_id NOT IN (SELECT json_extract(value, '$.factId') FROM json_each(?)))
+        OR (source = 'seller_detail' AND EXISTS (
+          SELECT 1 FROM json_each(?) j WHERE json_extract(j.value,'$.factId') = product_offer_facts.fact_id
+            AND json_extract(j.value,'$.state') <> product_offer_facts.state
+            AND NOT EXISTS (SELECT 1 FROM product_offer_facts previous
+              WHERE previous.product_id = product_offer_facts.product_id
+                AND previous.fact_id = product_offer_facts.fact_id AND previous.source = 'seller'
+                AND previous.state = json_extract(j.value,'$.state')))))${guard}`)
+      .bind(shopKey, sourceId, facts, facts, ...guardBinds),
     db
       .prepare(`INSERT INTO product_offer_facts
       (product_id, fact_id, source, state, source_field, rule_id, confidence, observed_at)

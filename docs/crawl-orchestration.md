@@ -26,6 +26,14 @@ The Durable Object is the single-flight authority. D1 does not maintain a second
 `dispatched` covers both an accepted command and active execution; DO state describes the step.
 The old public `POST /api/admin/crawl` is blocked by `src/index.ts`, regardless of bearer token.
 
+Inventory recheck reads one stale candidate per successful crawl through the same paced request.
+AudioUnion's listing status field is authoritative: a retained price or a related item's purchase
+button does not prove availability. An explicit sold observation sets `stock_status` to `sold_out`
+immediately; deactivation still requires the configured consecutive failure threshold. Missing
+pages retain the repeated-observation rule, and transient errors never imply a sale. The already
+fetched listing fields can update structured offer facts without another HTTP request. The existing
+checked-result finalization refreshes the affected listing's public search projection.
+
 ## Daily shop schedules
 
 Shops without a dedicated `scheduleCron` receive **two automatic crawl slots per day**. The shared

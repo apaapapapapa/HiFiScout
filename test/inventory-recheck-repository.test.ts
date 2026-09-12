@@ -61,10 +61,11 @@ test("available verification resets failures without touching listing last_seen_
 test("unavailable verification only deactivates when the caller reaches its threshold", async () => {
   const keepDb = captureDb();
   await recordInventoryUnavailable(keepDb, 9, "2026-08-11T10:00:00.000Z", 1, false);
-  assert.deepEqual(keepDb.calls[0].binds.slice(0, 7), [
+  assert.deepEqual(keepDb.calls[0].binds.slice(0, 8), [
     "2026-08-11T10:00:00.000Z",
     "2026-08-11T10:00:00.000Z",
     1,
+    0,
     0,
     0,
     0,
@@ -73,10 +74,11 @@ test("unavailable verification only deactivates when the caller reaches its thre
 
   const deactivateDb = captureDb();
   await recordInventoryUnavailable(deactivateDb, 9, "2026-08-12T10:00:00.000Z", 2, true);
-  assert.deepEqual(deactivateDb.calls[0].binds.slice(0, 7), [
+  assert.deepEqual(deactivateDb.calls[0].binds.slice(0, 8), [
     "2026-08-12T10:00:00.000Z",
     "2026-08-12T10:00:00.000Z",
     2,
+    1,
     1,
     1,
     1,

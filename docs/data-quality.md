@@ -27,13 +27,21 @@ listing-specific seller facts.
 
 Seller condition, included items, warranty and sale-unit facts live in `product_offer_facts`,
 separately from catalog capabilities and product identity. `src/catalog/offer-facts.ts` derives
-only explicit statements from the already-collected title and condition text. Missing or
+explicit statements from the already-collected title and condition text. AudioUnion's inventory
+recheck also extracts `seller_detail` facts from the listing's dedicated accessory, condition and
+warranty fields in that same fetched page. A stated warranty duration is stored in months;
+model specifications and generic shop policies are not evidence for an individual offer. Missing or
 contradictory evidence stays unknown; seller grades are not converted to a universal score.
 Each fact carries a source field, rule id and observation time, without retaining seller prose.
 New listings and title/condition changes write these facts atomically with the listing. Equal
 facts keep their decision time, removed evidence removes only seller facts, and manual-source
 records survive crawler refreshes. The public detail loads effective facts for at most 200 offers in
-one indexed batch; manual decisions, including unknown, take precedence over seller extraction.
+one indexed batch. Shared detail/filter precedence is manual (including unknown), then seller detail,
+then title/condition extraction. A changed, explicit list-field fact invalidates a contradicting old
+detail fact; unchanged list observations retain the more specific detail. Equal detail facts keep
+their observation time. A readable detail replaces its own facts; failed HTTP or an unreadable
+listing section preserves them. Migration 0120 retains prior seller/manual records when adding
+the detail source and warranty duration. Detail facts use the same listing retention policy.
 Explicit absence and missing evidence have different labels. Repeatable `offer` filters require
 every selected fact on the same listing as the shop, stock and price predicates. Prices, counts,
 representatives and cursor ordering use that matching subset; the detail still shows all shops.
@@ -42,6 +50,7 @@ as the opt-in controls explain. Existing listings still need operator-controlled
 coverage review before these filters are promoted. The Access-protected listing console provides
 manual decisions and durable, bounded replay with per-shop and per-category coverage snapshots;
 see [Registered Product Admin](./listing-admin.md#bounded-offer-fact-replay).
+That replay and its coverage measure title/condition rules; they do not fetch detail pages.
 
 `src/catalog/sale-subject.ts` separates the sale object from compatible equipment and included or missing accessories. Category inference and catalog evidence consumption share that distinction; identity exact/alias matching additionally rejects bundles and incompatible accessory evidence. A per-model lookup cache must still apply the listing-specific guard when consuming its result, since a body and its remote can share the same seller model field in one batch.
 

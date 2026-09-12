@@ -25,6 +25,7 @@ import {
 import { createRelayHtmlFetcher } from "./relay.js";
 import { relayConfiguration } from "./transport.js";
 import { isRecord } from "../types.js";
+import { saveSellerDetailOfferFacts } from "../db/seller-detail-offer-repository.js";
 import type { InventoryRecheckCandidateRow, QueryableDatabase } from "../db/types.js";
 import type {
   CrawlerEnv,
@@ -66,10 +67,12 @@ interface InventoryRepository {
     checkedAt: string,
     failureCount: number,
     deactivate: boolean,
+    evidence?: "missing" | "sold",
   ): Promise<unknown>;
 }
 
 interface InventoryRecheckOptions {
+  saveDetailFacts?: typeof saveSellerDetailOfferFacts;
   now?: Date;
   fetchFn?: typeof fetch;
   fetchPage?: (url: string, options: RelayPageOptions) => Promise<RelayPage>;
@@ -182,6 +185,7 @@ async function recordUnavailable(
     attemptedAt,
     failureCount,
     deactivate,
+    evidence,
   );
   return {
     status: "checked",
@@ -208,6 +212,7 @@ export async function recheckShopInventory(
     fetchFn = fetch,
     fetchPage,
     repository = defaultRepository,
+    saveDetailFacts = saveSellerDetailOfferFacts,
   }: InventoryRecheckOptions = {},
 ): Promise<InventoryRecheckResult> {
   const policy = plugin.capabilities.inventoryRecheck;
@@ -308,6 +313,8 @@ export async function recheckShopInventory(
       };
     }
 
+    const facts = policy.extractOfferFacts?.(page.body, attemptedAt);
+    if (facts != null) await saveDetailFacts(env.DB, candidate.id, facts);
     const classification = policy.classifyPage(page.body);
     if (classification === "in_stock") {
       await repository.markInventoryAvailable(env.DB, candidate.id, attemptedAt);

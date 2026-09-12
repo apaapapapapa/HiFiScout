@@ -116,12 +116,13 @@ test("a shop that declares no recheck policy is skipped without touching the dat
   assert.equal(repository.calls.length, 0);
 });
 
-test("recheck marks an explicitly priced detail page as available", async () => {
+test("recheck marks an explicit listing purchase control as available", async () => {
   const repository = fakeRepository();
   const result = await recheck(env(), {
     now: NOW,
     repository,
-    fetchFn: async () => upstreamResponse("<html><body>販売価格 <b>¥798,000</b></body></html>"),
+    fetchFn: async () =>
+      upstreamResponse("<main>販売価格 <b>¥798,000</b><button>カートに入れる</button></main>"),
   });
 
   assert.equal(result.status, "checked");
@@ -143,7 +144,7 @@ test("first explicit sold page records unavailable evidence but keeps the produc
   const result = await recheck(env(), {
     now: NOW,
     repository,
-    fetchFn: async () => upstreamResponse("<html><body>この商品は販売終了しました</body></html>"),
+    fetchFn: async () => upstreamResponse("<main>この商品は販売終了しました</main>"),
   });
 
   assert.equal(result.status, "checked");
@@ -162,7 +163,7 @@ test("second consecutive explicit sold page deactivates the product", async () =
   const result = await recheck(env(), {
     now: NOW,
     repository,
-    fetchFn: async () => upstreamResponse("<html><body>販売終了</body></html>"),
+    fetchFn: async () => upstreamResponse("<main>販売終了</main>"),
   });
 
   assert.equal(result.outcome, "sold_deactivated");
@@ -279,4 +280,47 @@ test("disabled rechecks do not select or fetch a product", async () => {
   assert.deepEqual(result, { status: "skipped", reason: "disabled" });
   assert.equal(repository.calls.length, 0);
   assert.equal(fetched, false);
+});
+
+test("inventory and detail facts share one paced fetch and failures never erase evidence", async () => {
+  let fetches = 0;
+  const saved: unknown[] = [];
+  for (const status of [200, 429, 404]) {
+    const repository = fakeRepository();
+    const result = await recheck(env(), {
+      now: NOW,
+      repository,
+      fetchPage: async () => {
+        fetches++;
+        return {
+          status,
+          contentType: "text/html",
+          body: `<div id="item_info"><p id="item_info_product_status">この商品は販売済みです</p>¥618,000</div>
+        <div id="used_item_info"><div id="warranty_line"><div class="itp_data">６ヶ月</div></div></div>`,
+        };
+      },
+      saveDetailFacts: async (_db, id, facts) => {
+        saved.push({ id, facts });
+      },
+    });
+    if (status === 200) assert.equal(result.outcome, "sold_retry");
+  }
+  assert.equal(fetches, 3);
+  assert.deepEqual(saved, [
+    {
+      id: 7,
+      facts: [
+        {
+          factId: "shop_warranty",
+          state: "present",
+          source: "seller_detail",
+          sourceField: "detail_warranty",
+          ruleId: "audiounion.detail.v1.shop_warranty",
+          confidence: 1,
+          observedAt: NOW.toISOString(),
+          warrantyMonths: 6,
+        },
+      ],
+    },
+  ]);
 });

@@ -54,7 +54,7 @@ test("replay resumes a fixed horizon, records active coverage and retains origin
     assert.equal(await readOfferFactReplay(db), null);
     const original = sqlite.prepare("SELECT * FROM products").all();
     sqlite.exec(
-      `INSERT INTO product_offer_facts VALUES (1,'original_box','manual','unknown','manual','fixture',1,'${AT}')`,
+      `INSERT INTO product_offer_facts (product_id,fact_id,source,state,source_field,rule_id,confidence,observed_at) VALUES (1,'original_box','manual','unknown','manual','fixture',1,'${AT}')`,
     );
     const first = await stepOfferFactReplay(db);
     assert.equal(first?.scannedCount, 25);

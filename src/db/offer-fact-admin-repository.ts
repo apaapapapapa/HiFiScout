@@ -13,11 +13,19 @@ export async function readOfferFactAdmin(db: ReadableDatabase, listingId: number
   if (!listing) return null;
   const rows = await db
     .prepare(`SELECT fact_id AS factId, state, source, source_field AS sourceField,
-      rule_id AS ruleId, confidence, observed_at AS observedAt
+      rule_id AS ruleId, confidence, observed_at AS observedAt, warranty_months AS warrantyMonths
       FROM product_offer_facts WHERE product_id = ? ORDER BY fact_id, source`)
     .bind(listingId)
-    .all<OfferFact>();
-  return { ...listing, facts: rows.results.filter((fact) => isOfferFactId(fact.factId)) };
+    .all<Omit<OfferFact, "warrantyMonths"> & { warrantyMonths: number | null }>();
+  return {
+    ...listing,
+    facts: rows.results
+      .filter((fact) => isOfferFactId(fact.factId))
+      .map(({ warrantyMonths, ...fact }) => ({
+        ...fact,
+        ...(warrantyMonths != null ? { warrantyMonths } : {}),
+      })),
+  };
 }
 
 /** Patch only named decisions; inherit removes manual authority without erasing seller evidence. */
