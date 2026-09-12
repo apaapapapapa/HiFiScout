@@ -137,6 +137,7 @@ test("reviewed Fujiya placeholder products receive their confirmed product type"
 
   for (const title of [
     "Mother Audio ME5 Cable",
+    "Mother Audio ME5 adapter",
     "Quill Acoustics Satin 専用ケース",
     "G4 Audio Dracula replacement cord",
   ]) {
