@@ -93,6 +93,7 @@ import type {
 
 import {
   catalogFilterKey,
+  captureCatalogPosition,
   catalogPosition,
   recordCatalogPage,
   restoreCatalogPosition,
@@ -616,7 +617,10 @@ export function PublicApp() {
       const current = `${location.pathname}${location.search}${location.hash}`;
       if (next === current) return;
       if (replace) history.replaceState(null, "", next);
-      else history.pushState(null, "", next);
+      else {
+        captureCatalogPosition();
+        history.pushState(null, "", next);
+      }
     },
     [],
   );
@@ -867,6 +871,7 @@ export function PublicApp() {
     if (next.length) params.set("compare", next.join(","));
     else params.delete("compare");
     const search = params.toString();
+    captureCatalogPosition();
     history.pushState(
       history.state,
       "",

@@ -101,6 +101,9 @@ refreshes never recreate a removed favorite. Favorite text search shares catalog
 width normalization and manufacturer/model aliases. Shop filters use the bounded offer observations
 from detail refreshes; incomplete candidates remain visible with an explicit note instead of being
 reported absent. Known shop, stock and price conditions must match the same offer.
+Canonical search aliases travel in the product response and favorite snapshot, capped at 32 strings
+of 200 characters. This adds no database reads and keeps catalog implementation out of the browser.
+Older snapshots acquire that vocabulary when their product is next displayed or explicitly refreshed.
 
 The favorite watch also offers an explicit all-favorites scope, including products hidden by current
 filters. It still processes at most ten products per user-visible batch with two concurrent requests,
@@ -108,7 +111,9 @@ without a timer or whole-collection loop. Snapshot updates reapply the display f
 the selected watch batch and comparison baseline.
 
 Detail navigation preserves the originating list page, scroll position and keyboard focus in history
-state. Back/Forward cancel pending text searches. Japanese composition owns its arrow and Enter keys;
+state, including which detail button opened it. Other history pushes capture the current scroll;
+an uncaptured position never overrides native scroll restoration. Back/Forward cancel pending text
+searches. Japanese composition owns its arrow and Enter keys;
 only committed text starts search and suggestion requests. List page snapshots expire with the API
 client's cache policy. Expiration discards the old cursor chain and refreshes only the requested page,
 not every visited page in the background. If that page no longer exists, fetch the last valid page

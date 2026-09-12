@@ -101,7 +101,7 @@ function install(): void {
       if (key && !suppressOfferPush) {
         const nextUrl = permalinkUrl(key);
         if (nextUrl && productKeyFromPermalinkPath(location.pathname) !== key) {
-          captureCatalogPosition(key);
+          captureCatalogPosition(key, target);
           const current = history.state && typeof history.state === "object" ? history.state : {};
           history.pushState({ ...current, [HISTORY_STATE_KEY]: key }, "", nextUrl);
           hideServerPermalink();

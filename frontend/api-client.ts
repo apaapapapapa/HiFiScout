@@ -290,6 +290,13 @@ export function isProductSearchItem(value: unknown): value is ProductSearchItem 
   if (value.presentation_colors !== undefined && !isStringArray(value.presentation_colors)) {
     return false;
   }
+  if (
+    value.search_aliases !== undefined &&
+    (!isStringArray(value.search_aliases) ||
+      value.search_aliases.length > 32 ||
+      value.search_aliases.some((alias) => alias.length > 200))
+  )
+    return false;
   // The card maps over these directly, so a stored value that is truthy but not an array would
   // throw while rendering instead of being discarded as the malformed entry it is. `category_ids`
   // needs no check here only because every reader of it goes through a defensive `stringArray`.

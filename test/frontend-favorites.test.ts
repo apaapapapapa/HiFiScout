@@ -396,14 +396,32 @@ test("interleaved tab intents preserve additions and a late refresh cannot resur
 test("favorite search uses shared token, width, model and manufacturer aliases", () => {
   const tad = product({
     model: "D1000mk2",
+    search_aliases: ["TAD", "D-1000 MKII", "D1000MK2"],
     representative_offer: offer({ title: "TAD D1000mk2" }),
   });
   for (const q of ["tad 1000", "ＴＡＤ　１０００", "D-1000 MKII"]) {
     assert.equal(favoriteMatchesFilters(tad, filters({ q }), "", NOW), true, q);
   }
   assert.equal(favoriteMatchesFilters(tad, filters({ q: "tad 1000 missing" }), "", NOW), false);
-  const luxman = product({ manufacturer: "LUXMAN", manufacturer_id: "luxman", model: "D-10X" });
+  const luxman = product({
+    manufacturer: "LUXMAN",
+    manufacturer_id: "luxman",
+    model: "D-10X",
+    search_aliases: ["ラックスマン", "D10X"],
+  });
   assert.equal(favoriteMatchesFilters(luxman, filters({ q: "ラックスマン D10X" }), "", NOW), true);
+  const restored = readFavorites({ getItem: () => JSON.stringify([favoriteSnapshot(luxman)]) });
+  assert.equal(
+    favoriteMatchesFilters(
+      restored.products.get(luxman.key)!,
+      filters({ q: "ラックスマン D10X" }),
+      "",
+      NOW,
+    ),
+    true,
+  );
+  assert.equal(isProductSearchItem({ ...luxman, search_aliases: [42] }), false);
+  assert.equal(isProductSearchItem({ ...luxman, search_aliases: Array(33).fill("alias") }), false);
 });
 
 test("multi-shop favorites retain unknown candidates and filter confirmed offers together", () => {

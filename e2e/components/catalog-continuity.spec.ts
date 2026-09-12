@@ -21,35 +21,38 @@ async function catalog(
   } = {},
 ) {
   const seen = { searches: [] as URL[], details: [] as string[] };
-  await page.route("**/api/**", async (route) => {
-    const url = new URL(route.request().url());
-    let body: unknown;
-    if (url.pathname === "/api/meta")
-      body = {
-        status: "healthy",
-        categories: [],
-        categoryFacets: [],
-        manufacturers: ["LUXMAN"],
-        shops: ["shop-a", "shop-b"].map((key) => ({
-          key,
-          name: key,
-          enabled: true,
-          intervalMinutes: 60,
-          sync: null,
-          health: null,
-        })),
-      };
-    else if (url.pathname === "/api/product-search") {
-      seen.searches.push(url);
-      body = (await options.search?.(url)) ?? response();
-    } else if (url.pathname.startsWith("/api/product-search/")) {
-      const key = url.pathname.split("/").at(-1)!;
-      seen.details.push(key);
-      const item = key === second.key ? second : first;
-      body = options.detail?.(key) ?? { product: item, offers: [offer()] };
-    } else body = { suggestions: ["LUXMAN D-10X"] };
-    return route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
-  });
+  await page.route(
+    (url) => url.pathname.startsWith("/api/"),
+    async (route) => {
+      const url = new URL(route.request().url());
+      let body: unknown;
+      if (url.pathname === "/api/meta")
+        body = {
+          status: "healthy",
+          categories: [],
+          categoryFacets: [],
+          manufacturers: ["LUXMAN"],
+          shops: ["shop-a", "shop-b"].map((key) => ({
+            key,
+            name: key,
+            enabled: true,
+            intervalMinutes: 60,
+            sync: null,
+            health: null,
+          })),
+        };
+      else if (url.pathname === "/api/product-search") {
+        seen.searches.push(url);
+        body = (await options.search?.(url)) ?? response();
+      } else if (url.pathname.startsWith("/api/product-search/")) {
+        const key = url.pathname.split("/").at(-1)!;
+        seen.details.push(key);
+        const item = key === second.key ? second : first;
+        body = options.detail?.(key) ?? { product: item, offers: [offer()] };
+      } else body = { suggestions: ["LUXMAN D-10X"] };
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
+    },
+  );
   return seen;
 }
 
@@ -148,6 +151,15 @@ test("detail Back and Forward preserve a later page, focus and scroll", async ({
   });
   await mount("frontend/public-app/Default");
   await page.getByRole("button", { name: "3ページ目", exact: true }).click();
+  const compare = page
+    .locator("[data-key='c-308']")
+    .getByRole("button", { name: "製品を比較", exact: true });
+  await compare.scrollIntoViewIfNeeded();
+  const comparisonScroll = await page.evaluate(() => scrollY);
+  await compare.click();
+  await page.goBack();
+  await expect(compare).toHaveAttribute("aria-pressed", "false");
+  await expect.poll(() => page.evaluate(() => scrollY)).toBe(comparisonScroll);
   const title = page.locator("[data-key='c-308'] .product-title-link");
   await title.scrollIntoViewIfNeeded();
   const originScroll = await page.evaluate(() => scrollY);
@@ -165,6 +177,12 @@ test("detail Back and Forward preserve a later page, focus and scroll", async ({
   await expect(page.locator("#offers-dialog")).toContainText("Page three 8");
   await page.goBack();
   await expect(title).toBeFocused();
+  const detail = page.locator("[data-key='c-308'] .offers-button[data-offers]");
+  await detail.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#offers-dialog")).toBeVisible();
+  await page.locator("#offers-dialog .dialog-close").click();
+  await expect(detail).toBeFocused();
   expect(seen.searches).toHaveLength(2);
 });
 
@@ -293,5 +311,5 @@ test("refreshing a vanished last page returns to the remaining page", async ({ p
   await expect(page.locator("#products")).toContainText("First");
   expect(seen.searches).toHaveLength(4);
   expect(seen.searches.at(-1)?.searchParams.has("cursor")).toBe(false);
-  expect(seen.searches.at(-1)?.searchParams.get("includeTotal")).toBe("false");
+  expect(seen.searches.at(-1)?.searchParams.has("includeTotal")).toBe(false);
 });

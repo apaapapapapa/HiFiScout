@@ -31,7 +31,7 @@ import { productPriceIndex } from "./price-index-ui.js";
 import { safeDate } from "./format.js";
 import type { ProductFilters } from "./filters.js";
 import type { DisplayOffer, DisplayProduct } from "./types.js";
-import { parseFtsSearchQuery } from "../src/search/fts-query.js";
+import { productSearchTerms } from "../src/api/contracts.js";
 import { parseWatchObservations } from "./watch-changes.js";
 import type { WatchObservation } from "./watch-changes.js";
 
@@ -119,6 +119,9 @@ export function favoriteSnapshot(product: FavoriteProduct): FavoriteProduct {
     manufacturer: product.manufacturer,
     manufacturer_id: product.manufacturer_id,
     model: product.model,
+    ...(product.search_aliases
+      ? { search_aliases: product.search_aliases.slice(0, 32).map((alias) => alias.slice(0, 200)) }
+      : {}),
     primary_category_id: product.primary_category_id,
     ...(categoryIds ? { category_ids: [...categoryIds] } : {}),
     ...(directCategoryIds ? { direct_category_ids: [...directCategoryIds] } : {}),
@@ -255,7 +258,7 @@ export function favoriteMatchesFilters(
   categoryLabel: string,
   now = Date.now(),
 ): boolean {
-  const terms = parseFtsSearchQuery(filters.q).terms;
+  const terms = productSearchTerms(filters.q);
   const searchable = normalizedSearchText(product);
   if (!terms.every((term) => searchable.includes(term.toLocaleLowerCase("ja-JP")))) return false;
   if (favoriteShopMatch(product, filters.shop, filters) === "missing") return false;

@@ -98,6 +98,25 @@ test("product search cards hide seller condition badges from manufacturer presen
   assert.equal(unknown.manufacturer_id, "example-audio");
 });
 
+test("favorite vocabulary comes from canonical server aliases without browser domain imports", () => {
+  for (const [manufacturer, manufacturerId, model, query] of [
+    ["LUXMAN", "luxman", "D-10X", "ラックスマン D10X"],
+    ["TAD", "tad", "D1000mk2", "ＴＡＤ D-1000 MKII"],
+  ]) {
+    const snapshot = favoriteSnapshot(
+      toProductSearchItem(
+        entityRow({
+          manufacturer,
+          manufacturer_id: manufacturerId,
+          model,
+        }),
+      ),
+    );
+    assert.equal(favoriteMatchesFilters(snapshot, filters({ q: query }), ""), true, query);
+    assert.equal(favoriteMatchesFilters(snapshot, filters({ q: `${query} absent` }), ""), false);
+  }
+});
+
 test("manufacturer filter vocabulary canonicalizes and deduplicates stale presentations", () => {
   assert.deepEqual(
     normalizeManufacturerFacetValues([
