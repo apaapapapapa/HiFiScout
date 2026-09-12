@@ -54,6 +54,17 @@ test("metadata-only remediation does not rewrite unrelated listing indexes or ca
       measured.rowsWritten() <= 4,
       `metadata-only replay wrote ${measured.rowsWritten()} rows`,
     );
+    assert.ok(
+      measured.rowsRead() <= 35,
+      `metadata-only replay read ${measured.rowsRead()} rows without changing a projection`,
+    );
+    assert.equal(
+      await db
+        .prepare("SELECT remediation_projection_required FROM products WHERE id = ?")
+        .bind(id)
+        .first("remediation_projection_required"),
+      0,
+    );
     console.log(
       JSON.stringify({
         event: "remediation_metadata_only_write_budget",
@@ -61,6 +72,50 @@ test("metadata-only remediation does not rewrite unrelated listing indexes or ca
         rowsWritten: measured.rowsWritten(),
         statements: measured.countedStatements(),
       }),
+    );
+  } finally {
+    await dispose();
+  }
+}, 30_000);
+
+test("metadata-only remediation still finishes a projection marker owned by an older writer", async () => {
+  const { db, dispose } = await database();
+  try {
+    const product = listing("metadata-only-pending");
+    await upsertProducts(db, "budget", [product], AT);
+    await refreshListingProjections(db, [{ shop_key: "budget", source_id: product.sourceId }], AT);
+    const id = Number(
+      await db
+        .prepare("SELECT id FROM products WHERE shop_key = ? AND source_id = ?")
+        .bind("budget", product.sourceId)
+        .first("id"),
+    );
+    await db
+      .prepare(`UPDATE products
+        SET metadata_json = json_set(metadata_json, '$.categoryClassification.version', ?),
+            remediation_projection_required = 1,
+            remediation_projection_token = 'older-writer'
+        WHERE id = ?`)
+      .bind(RESOLUTION_VERSIONS.category - 1, id)
+      .run();
+    await db.prepare("DELETE FROM product_search_projection WHERE product_id = ?").bind(id).run();
+
+    await replayAdminCsvListings(db, [id], "2026-09-12T09:00:00.000Z", []);
+
+    assert.ok(
+      await db
+        .prepare("SELECT product_id FROM product_search_projection WHERE product_id = ?")
+        .bind(id)
+        .first(),
+    );
+    assert.deepEqual(
+      await db
+        .prepare(
+          "SELECT remediation_projection_required AS pending, remediation_projection_token AS token FROM products WHERE id = ?",
+        )
+        .bind(id)
+        .first(),
+      { pending: 0, token: "" },
     );
   } finally {
     await dispose();
