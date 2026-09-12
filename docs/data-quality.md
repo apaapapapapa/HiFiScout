@@ -54,6 +54,11 @@ That replay and its coverage measure title/condition rules; they do not fetch de
 
 `src/catalog/sale-subject.ts` separates the sale object from compatible equipment and included or missing accessories. Category inference and catalog evidence consumption share that distinction; identity exact/alias matching additionally rejects bundles and incompatible accessory evidence. A per-model lookup cache must still apply the listing-specific guard when consuming its result, since a body and its remote can share the same seller model field in one batch.
 
+Explicit connector compatibility such as `IEM 2pinコネクタ用` does not establish an earphone
+sale. The shared sale-subject text excludes that span from category evidence while retaining raw
+seller values. Without independent cable/adapter evidence the category remains unresolved, rather
+than guessing an accessory type. Existing manual category overrides survive bounded category replay.
+
 Capability and power-source wording such as “remote control compatible CD player” and “AC adapter powered headphone amplifier” describes the equipment. Strip those phrases before sale-object inference while retaining accessory-sale relationships such as “remote control compatible with CD-S3000” and “AC adapter for headphone amplifier”.
 
 Explicit included-item phrases such as `リモコンあり` and `リモコン有り` likewise describe the
