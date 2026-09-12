@@ -223,7 +223,10 @@ test("composition does not search or select suggestions until the text is commit
   await expect(input).toHaveValue("ラックスマン");
   expect(seen.searches).toHaveLength(count);
   await input.dispatchEvent("compositionend", { data: "ラックスマン" });
-  await page.clock.runFor(600);
+  // Resume before waiting on React's commit and its debounce. A paused clock can finish its
+  // one advance before React schedules that timer, leaving an otherwise valid request frozen.
+  await page.clock.resume();
+  await expect(input).toHaveValue("ラックスマン");
   await expect.poll(() => seen.searches.at(-1)?.searchParams.get("q")).toBe("ラックスマン");
 });
 
