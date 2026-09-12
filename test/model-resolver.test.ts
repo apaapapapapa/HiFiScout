@@ -43,6 +43,38 @@ test("raw model presentation is preserved when the display model is cleaned", ()
   assert.equal(result.normalizedModel, "D1000MK2");
 });
 
+test("a misplaced model prefix is recovered across an expanded shipping footnote", () => {
+  const modelTail = "Signature / Midnight Blue Metalic (ペア)";
+  for (const rawModel of [modelTail, `${modelTail} ※送料無料`]) {
+    const result = resolveModel({
+      rawModel,
+      rawManufacturer: "702S2",
+      title: `【中古品】702S2 ${modelTail} ※送料無料《北海道・沖縄・離島を除く》`,
+      manufacturerId: "",
+      shopKey: "shimamusen",
+    });
+    assert.equal(result.rawModel, rawModel);
+    assert.equal(result.model, `702S2 ${modelTail}`);
+    assert.ok(result.normalizedModel.startsWith("702S2SIGNATURE"));
+    assert.equal(result.status, "candidate");
+  }
+});
+
+test("shipping cleanup does not excuse conflicting model or accessory evidence", () => {
+  const rawModel = "Signature ※送料無料";
+  for (const title of [
+    "702S2 SignatureX ※送料無料《北海道を除く》",
+    "702S2 Signature MK2 ※送料無料《北海道を除く》",
+    "702S2 Signature + FS-702 ※送料無料《北海道を除く》",
+    "703S2 Signature ※送料無料《北海道を除く》",
+    "702S2 Signature ※送料無料《MK2》",
+  ]) {
+    const result = resolveModel({ rawModel, rawManufacturer: "702S2", title });
+    assert.equal(result.rawModel, rawModel);
+    assert.equal(result.model, "Signature", title);
+  }
+});
+
 test("normalized model is deterministic across punctuation and spacing variants", () => {
   const variants = ["D-1000 MK2", "D‐1000　MKII", "d1000 mark ii", "D_1000 MK2"];
   const normalized = new Set(variants.map((variant) => resolve(variant).normalizedModel));
