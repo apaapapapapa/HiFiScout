@@ -19,7 +19,7 @@ interface ReviewedProductType {
 }
 
 const REVIEWED_PRODUCT_ACCESSORY =
-  /ケーブル|コード|ケース|カバー|交換|変換|\bcables?\b|\bcords?\b|\bcases?\b|\bcovers?\b|\breplacement\b|\bfor\b|専用|対応/i;
+  /ケーブル|コード|ケース|カバー|交換|変換|アダプター?|イヤー(?:ピース|チップ)|ポーチ|\bcables?\b|\bcords?\b|\bcases?\b|\bcovers?\b|\breplacement\b|\badapt(?:e|o)rs?\b|\bear\s*tips?\b|\beartips?\b|\bpouches?\b|\bfor\b|専用|対応/i;
 
 function isReviewedProductAccessory(subject: string): boolean {
   return REVIEWED_PRODUCT_ACCESSORY.test(subject);
