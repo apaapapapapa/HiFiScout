@@ -42,7 +42,7 @@ interface RelayFetchResponse {
 
 interface RelayFetchInit {
   headers: RelayHeaders;
-  redirect: "follow";
+  redirect: "follow" | "manual";
 }
 
 type RelayFetch = (url: string, init: RelayFetchInit) => Promise<RelayFetchResponse>;
@@ -122,10 +122,75 @@ const PERMIT_SIGNING_CONTEXT = "hifiscout-relay-permit-v1:";
 const MAX_UPSTREAM_RESPONSE_BYTES = 4_000_000;
 /** RFC 9309 allows a parsing limit; the same 500 KiB the Worker uses. */
 const MAX_ROBOTS_RESPONSE_BYTES = 512 * 1024;
+/** RFC 9309 expects at least five redirects to be followed; nothing here needs more. */
+const MAX_REDIRECTS = 5;
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const AUDIOUNION_HOST = "www.audiounion.jp";
 const HIFIDO_HOST = "www.hifido.co.jp";
 const HIFIDO_ALLOWED_QUERY_KEYS = new Set(["L", "LNG", "O", "OD"]);
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+class RedirectRejectedError extends Error {
+  constructor(reason: string) {
+    super(`relay redirect rejected: ${reason}`);
+    this.name = "RedirectRejectedError";
+  }
+}
+
+/**
+ * Hosts this relay may send a request to, redirects included.
+ *
+ * The relay runs in AWS, where "the platform cannot reach a private address" is not true, so a
+ * seller redirect is never followed blindly: every hop is validated before it is requested.
+ */
+const ALLOWED_UPSTREAM_HOSTS = new Set([AUDIOUNION_HOST, HIFIDO_HOST]);
+
+function assertAllowedUpstream(target: URL): void {
+  if (target.username || target.password) {
+    throw new RedirectRejectedError(`destination on ${target.host} carries embedded credentials`);
+  }
+  if (target.protocol !== "https:") {
+    throw new RedirectRejectedError(`destination is not HTTPS: ${target.protocol}//`);
+  }
+  if (target.port !== "" || !ALLOWED_UPSTREAM_HOSTS.has(target.hostname)) {
+    throw new RedirectRejectedError(`host ${target.host} is not an allowed relay upstream`);
+  }
+}
+
+/**
+ * Performs a request, following redirects one validated hop at a time.
+ *
+ * The initial URL has already passed the stricter per-shop URL-shape allowlist; a redirect is held
+ * to the host-level rule, which is what keeps the relay from being pointed elsewhere.
+ */
+async function fetchValidatedUpstream(
+  fetchFn: RelayFetch,
+  url: string,
+  headers: RelayHeaders,
+): Promise<RelayFetchResponse> {
+  let target = new URL(url);
+  const visited = new Set<string>();
+  for (let hop = 0; ; hop += 1) {
+    assertAllowedUpstream(target);
+    const href = target.toString();
+    if (visited.has(href)) throw new RedirectRejectedError(`redirect loop returning to ${href}`);
+    visited.add(href);
+
+    const response = await fetchFn(href, { headers, redirect: "manual" });
+    if (!REDIRECT_STATUSES.has(response.status)) return response;
+
+    await response.body?.cancel().catch(() => {});
+    if (hop >= MAX_REDIRECTS)
+      throw new RedirectRejectedError(`more than ${MAX_REDIRECTS} redirects`);
+    const location = response.headers.get("location")?.trim();
+    if (!location) throw new RedirectRejectedError("redirect response had no Location header");
+    try {
+      target = new URL(location, href);
+    } catch {
+      throw new RedirectRejectedError("redirect Location is not a resolvable URL");
+    }
+  }
+}
 
 class UpstreamResponseTooLargeError extends Error {
   constructor(maxBytes: number) {
@@ -302,10 +367,8 @@ async function fetchRobotsPolicy(
   userAgent: string,
 ): Promise<string | null> {
   const robotsUrl = new URL("/robots.txt", baseUrl).toString();
-  const response = await fetchFn(robotsUrl, {
-    headers: { "User-Agent": userAgent },
-    redirect: "follow",
-  });
+  // The policy fetch must not become a second, unchecked route: it follows the same host rules.
+  const response = await fetchValidatedUpstream(fetchFn, robotsUrl, { "User-Agent": userAgent });
   if (response.status === 429) throw new Error("robots.txt temporarily unavailable (429)");
   if (response.status >= 400 && response.status < 500) return null;
   if (response.status >= 500)
@@ -484,10 +547,7 @@ async function proxyTarget(
   profile: RelayRequestProfile,
   env: RelayEnv,
 ): Promise<RelayResponse> {
-  const upstream = await fetchFn(targetUrl, {
-    headers: profile.headers,
-    redirect: "follow",
-  });
+  const upstream = await fetchValidatedUpstream(fetchFn, targetUrl, profile.headers);
   let bytes: Buffer;
   try {
     bytes = await readBoundedBody(upstream, MAX_UPSTREAM_RESPONSE_BYTES);
@@ -583,7 +643,9 @@ export function createHandler({
         if (profile.userAgent !== claims.profileUserAgent) {
           return jsonResponse(409, { error: "permit_profile_changed" });
         }
-        return proxyTarget(fetchFn, claims.targetUrl, profile, env);
+        // `return await` on purpose: a bare `return` of the promise would settle after this
+        // try/catch has exited, so an upstream or destination failure would escape the mapping below.
+        return await proxyTarget(fetchFn, claims.targetUrl, profile, env);
       }
 
       let requestedUrl: URL;
@@ -645,12 +707,15 @@ export function createHandler({
       // Compatibility path for the Queue-based relay consumers. Phase 4 adds the permit protocol
       // without changing production pacing semantics; Phase 5 will move these callers to DO Alarms.
       if (effectiveDelayMs > 0) await sleepFn(effectiveDelayMs);
-      return proxyTarget(fetchFn, targetUrl, profile, env);
+      return await proxyTarget(fetchFn, targetUrl, profile, env);
     } catch (error) {
-      return jsonResponse(502, {
-        error: "relay_failure",
-        message: String(error instanceof Error ? error.message : String(error)).slice(0, 300),
-      });
+      const message = String(error instanceof Error ? error.message : String(error)).slice(0, 300);
+      // A refused destination is reported distinctly so it is diagnosable as a policy decision
+      // rather than an upstream outage. Either way the Worker reads a relay failure.
+      if (error instanceof RedirectRejectedError) {
+        return jsonResponse(502, { error: "redirect_rejected", message });
+      }
+      return jsonResponse(502, { error: "relay_failure", message });
     }
   };
 }

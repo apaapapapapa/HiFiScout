@@ -6,6 +6,11 @@ import type {
 } from "./types.js";
 import { decodeHtmlResponse } from "./fetch.js";
 import {
+  CRAWL_REDIRECT_REJECTED_CODE,
+  CrawlRedirectRejectedError,
+  isRedirectStatus,
+} from "./redirects.js";
+import {
   CRAWL_MAX_HTML_RESPONSE_BYTES,
   CRAWL_MAX_RELAY_ERROR_BYTES,
   CRAWL_MAX_RELAY_JSON_BYTES,
@@ -55,6 +60,7 @@ function relayError(status: number, detail = ""): AugmentedCrawlError {
   if (/invalid_permit|permit_binding_mismatch|permit_profile_changed/i.test(detail)) {
     error.code = "relay_permit_invalid";
   }
+  if (/redirect_rejected/i.test(detail)) error.code = CRAWL_REDIRECT_REJECTED_CODE;
   return error;
 }
 
@@ -76,6 +82,9 @@ async function relayResponse(
   if (!configured(relayToken)) throw new Error("relay token is not configured");
 
   const deadline = AbortSignal.timeout(RELAY_HTTP_TIMEOUT_MS);
+  // The relay endpoint is ours and never redirects. Following one would re-send the relay bearer
+  // token to whatever destination the response named, so a redirect is refused outright rather than
+  // validated: there is no second address this credential belongs to.
   const response = await fetchFn(relayUrl.trim(), {
     method: "POST",
     headers: {
@@ -84,9 +93,15 @@ async function relayResponse(
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
-    redirect: "follow",
+    redirect: "manual",
     signal: deadline,
   });
+  if (isRedirectStatus(response.status)) {
+    await response.body?.cancel().catch(() => {});
+    throw new CrawlRedirectRejectedError(
+      `relay endpoint answered HTTP ${response.status}; the relay credential is never forwarded`,
+    );
+  }
 
   const upstreamStatus = Number.parseInt(
     response.headers.get("x-hifiscout-upstream-status") || "",

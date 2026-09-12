@@ -1,6 +1,7 @@
 import { decodeHtmlResponse } from "./fetch.js";
-import { fetchRobotsPolicy, getCrawlDelayMs, isPathAllowed } from "./robots.js";
-import type { AugmentedCrawlError } from "./types.js";
+import { createRobotsGate, fetchRobotsPolicy, getCrawlDelayMs, isPathAllowed } from "./robots.js";
+import { allowedOriginSet, fetchFollowingValidatedRedirects } from "./redirects.js";
+import type { AugmentedCrawlError, RobotsCache } from "./types.js";
 
 const CRAWL_HTTP_TIMEOUT_MS = 30_000;
 
@@ -25,15 +26,19 @@ export async function prepareDirectFetchPermit(
     requestDelayMs,
     fetchFn = fetch,
     nowMs = Date.now(),
+    allowedRedirectOrigins = [],
   }: {
     baseUrl: string;
     userAgent: string;
     requestDelayMs: number;
     fetchFn?: typeof fetch;
     nowMs?: number;
+    allowedRedirectOrigins?: readonly string[];
   },
 ): Promise<DirectFetchPermit> {
-  const robotsText = await fetchRobotsPolicy(fetchFn, baseUrl, userAgent);
+  const robotsText = await fetchRobotsPolicy(fetchFn, baseUrl, userAgent, {
+    allowedOrigins: allowedOriginSet([baseUrl, ...allowedRedirectOrigins]),
+  });
   if (!isPathAllowed(robotsText, targetUrl, userAgent)) {
     throw new Error(`robots.txt disallows ${new URL(targetUrl).pathname}`);
   }
@@ -58,7 +63,15 @@ export async function fetchPreparedDirectHtmlPage(
     userAgent,
     fetchFn = fetch,
     nowMs = Date.now(),
-  }: { userAgent: string; fetchFn?: typeof fetch; nowMs?: number },
+    allowedRedirectOrigins = [],
+    robotsCache = new Map(),
+  }: {
+    userAgent: string;
+    fetchFn?: typeof fetch;
+    nowMs?: number;
+    allowedRedirectOrigins?: readonly string[];
+    robotsCache?: RobotsCache;
+  },
 ): Promise<string> {
   if (targetUrl !== permit.targetUrl || userAgent !== permit.userAgent) {
     throw new Error("direct fetch permit identity mismatch");
@@ -67,19 +80,35 @@ export async function fetchPreparedDirectHtmlPage(
     throw new Error(`direct fetch permit is not ready until ${permit.notBeforeMs}`);
   }
 
-  // One deadline covers the request and its body; a seller that sends headers and then stalls is
-  // the same outage as one that never answers.
+  // The permit authorized one exact URL whose robots policy was already evaluated, so only that URL
+  // starts without a re-check; every redirect destination is validated and re-evaluated before it is
+  // requested. One deadline covers the chain and the body.
+  const allowedOrigins = allowedOriginSet([
+    new URL(permit.targetUrl).origin,
+    ...allowedRedirectOrigins,
+  ]);
   const deadline = AbortSignal.timeout(CRAWL_HTTP_TIMEOUT_MS);
-  const response = await fetchFn(targetUrl, {
-    headers: {
-      "User-Agent": userAgent,
-      Accept: "text/html,application/xhtml+xml",
-      "Accept-Language": "ja,en;q=0.7",
-      "Cache-Control": "no-cache",
+  const robotsGate = createRobotsGate({ fetchFn, userAgent, robotsCache, allowedOrigins });
+  const response = await fetchFollowingValidatedRedirects(
+    targetUrl,
+    {
+      headers: {
+        "User-Agent": userAgent,
+        Accept: "text/html,application/xhtml+xml",
+        "Accept-Language": "ja,en;q=0.7",
+        "Cache-Control": "no-cache",
+      },
     },
-    redirect: "follow",
-    signal: deadline,
-  });
+    {
+      fetchFn,
+      allowedOrigins,
+      signal: deadline,
+      beforeRequest: async (destination) => {
+        if (destination === permit.targetUrl) return;
+        await robotsGate(destination);
+      },
+    },
+  );
   if (response.status === 403 || response.status === 429) {
     const error: AugmentedCrawlError = new Error(`crawl blocked with HTTP ${response.status}`);
     error.status = response.status;

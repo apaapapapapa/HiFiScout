@@ -141,6 +141,20 @@ function validateCapabilities<TPage extends CrawlPage>(
   if (definition.transportConfigurationRequired === true && transport !== "relay") {
     invalid(key, "transportConfigurationRequired requires relay transport");
   }
+  for (const origin of capabilities.transport?.allowedRedirectOrigins ?? []) {
+    let parsed: URL;
+    try {
+      parsed = new URL(origin);
+    } catch {
+      invalid(key, `allowedRedirectOrigins entry is not a URL: ${origin}`);
+      continue;
+    }
+    // The declared value must be exactly an origin: a path or credentials here would suggest the
+    // comparison is something other than whole-origin equality.
+    if (parsed.protocol !== "https:" || parsed.origin !== origin) {
+      invalid(key, `allowedRedirectOrigins entry must be an https origin: ${origin}`);
+    }
+  }
 }
 
 /** Compose one concrete adapter into a frozen registered plugin. */

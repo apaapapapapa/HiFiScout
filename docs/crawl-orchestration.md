@@ -233,6 +233,38 @@ Knowledge Catalog verification (`src/catalog/knowledge-verification/http.ts`) re
 manufacturer sites and has always had its own byte and time budget
 (`KNOWLEDGE_CATALOG_SOURCE_MAX_RESPONSE_BYTES`); it does not share these crawl transports.
 
+### Validated redirects
+
+Crawl traffic follows redirects manually (`src/crawler/redirects.ts`). Every hop is validated
+**before the request is sent**, because checking only the final URL has already leaked the request:
+
+- the destination must be HTTPS,
+- its normalized origin must be a whole-value match in the shop's allowed set — never a prefix or
+  substring test, which would accept `https://<shop-host>.attacker.example`,
+- the URL must not carry embedded credentials.
+
+`Location` is resolved against the URL that produced it. The chain is bounded by a hop limit and by
+a visited-destination check, unused redirect bodies are released, and the shop's `robots.txt` rules
+are re-evaluated for each destination, so a redirect cannot carry the crawl onto a disallowed path.
+
+The allowed set is a shop's own `baseUrl` origin plus anything it declares in
+`capabilities.transport.allowedRedirectOrigins`. It is configuration: a fetched page or the
+destination a redirect happens to name never extends it. No shop declares an extra origin today.
+
+One deadline covers the whole chain and the body that follows it, so a longer chain cannot buy
+itself more time.
+
+The relay endpoint is ours and never redirects: `relay.ts` refuses one outright instead of
+validating it, so the relay bearer token is never re-sent to a destination a response named.
+
+The relay Lambda applies the same contract in AWS, where "the platform cannot reach a private
+address" does not hold: it validates each hop against its allowed upstream hosts before requesting
+it, for the proxied page and for `robots.txt` alike, and reports a refusal as
+`502 redirect_rejected`.
+
+A refused destination raises `CrawlRedirectRejectedError` and fails the collection through the
+normal failure path — never a successful crawl with zero items.
+
 ## Queue boundary
 
 Crawl control state must not be written by a Queue consumer. Crawl Queue bindings, fast/heavy/relay crawl lanes, and Queue-quota-based routing are retired.
