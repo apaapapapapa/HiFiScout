@@ -21,6 +21,12 @@ export function saleSubjectText(value: string): string {
   return (
     value
       .normalize("NFKC")
+      // Connector compatibility names the equipment an accessory fits, not the item for sale.
+      // It alone cannot prove that the item is a cable either; keep that case unresolved.
+      .replace(
+        /(?:\biem\b|イヤホン|イヤフォン|ヘッドホン|ヘッドフォン)\s*(?:(?:0\.\d+\s*mm|[2-4]\s*pin|mmcx)\s*)+(?:コネクタ|connectors?)\s*(?:用|対応)/gi,
+        " ",
+      )
       .replace(
         /リモコン操作(?:対応|可能)?|リモコン対応|(?:AC|DC)\s*アダプタ(?:ー)?駆動|\bremote[ -]+control(?:led|lable)\b/gi,
         " ",

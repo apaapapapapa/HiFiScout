@@ -14,6 +14,20 @@ function classify(title: string, rawCategory = "") {
   );
 }
 
+test("IEM connector compatibility does not establish the sale of an earphone", () => {
+  const title = "Brise Works ブリスワークス MIKAGE【0.78mm IEM 2pinコネクタ用】 [BW-MKG544L2P]";
+  assert.deepEqual(inferExplicitCategoryIds(title), []);
+  assert.equal(classify(title).primaryCategoryId, "unclassified");
+  assert.deepEqual(inferExplicitCategoryIds(`${title} リケーブル`), ["CAB.PERSONAL"]);
+  assert.deepEqual(inferExplicitCategoryIds("Example イヤホン MMCXコネクタ用 変換プラグ"), [
+    "CAB.ADAPTER",
+  ]);
+  assert.deepEqual(inferExplicitCategoryIds("Example IEM with 2pin connectors"), ["PER.EARPHONE"]);
+  assert.deepEqual(inferExplicitCategoryIds("Example イヤホン 0.78mm 2pin端子搭載"), [
+    "PER.EARPHONE",
+  ]);
+});
+
 // --- G-1: v3 has one broad loudspeaker product type and independent properties -------------------
 
 test("a generic speaker title lands on the broad loudspeaker product type", () => {

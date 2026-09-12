@@ -28,7 +28,7 @@ import { inferFeatureFacts, normalizeFeatureFacts } from "./product-features.js"
 import { inferFacetFacts, normalizeFacetFacts } from "./product-facets.js";
 import { verifiedModelFacetFacts, VERIFIED_MODEL_FACET_SOURCE } from "./verified-model-facets.js";
 
-const CLASSIFICATION_METADATA_VERSION = 20;
+const CLASSIFICATION_METADATA_VERSION = 21;
 
 export interface CatalogNormalizationContext {
   /** Source seller used by narrowly scoped model-annotation rules. */
