@@ -617,6 +617,11 @@ export async function maintainRecentPriceIndexes(db: QueryableDatabase, now = ne
 
 export interface ScheduledWork {
   name: string;
+  /**
+   * Calls that must still be available before this task is claimed. Expensive, non-checkpointed
+   * work uses this to yield before its first write instead of repeating partial work next tick.
+   */
+  minimumRemainingCalls?: number;
   run(env: Env, scheduledAt?: Date): Promise<unknown>;
 }
 
@@ -669,6 +674,11 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
     name: "data_quality_remediation_sweep",
     everyTicks: 2,
     offset: 1,
+    // One listing replay can use roughly thirty binding calls across derivation, the three
+    // projection stages, snapshot persistence and durable completion. Starting with only the
+    // generic eight-call floor allowed search projection writes before identity resolution hit
+    // the hard cap, so the next tick repeated work that could never finish in the first one.
+    minimumRemainingCalls: 30,
     run: (env) =>
       runDataQualityRemediationSweep(env.DB, {
         claimLimit: 1,
@@ -800,12 +810,12 @@ export async function runPendingMaintenance(
     // Leave enough room to claim and complete a useful unit instead of repeatedly acquiring a
     // lease with only one query left. The binding wrapper remains the hard stop inside each task.
     if (budget.exhausted()) break;
-    if (budget.remainingCalls() < 8) {
+    const task = registry.find((candidate) => candidate.name === name);
+    if (!task) continue;
+    if (budget.remainingCalls() < (task.minimumRemainingCalls ?? 8)) {
       budget.defer();
       break;
     }
-    const task = registry.find((candidate) => candidate.name === name);
-    if (!task) continue;
     const token = await claimMaintenance(env.DB, name, scheduledAt);
     if (!token) continue;
     const accounting = accountReads(env.DB);
