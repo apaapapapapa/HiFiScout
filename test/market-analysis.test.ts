@@ -112,6 +112,8 @@ test("upgrade queues retained evidence and catalog removal cascades its derived 
     const retained = sqlite.prepare("SELECT * FROM product_offer_facts").all();
     sqlite.exec(migrationSources.find((entry) => entry.name === migration)!.sql);
     assert.deepEqual(sqlite.prepare("SELECT * FROM product_offer_facts").all(), retained);
+    for (const current of migrationSources.filter((entry) => entry.name > migration))
+      sqlite.exec(current.sql);
     assert.equal((await maintainMarketAnalysis(db, NOW)).refreshed, 1);
     assert.equal((await loadMarketAnalysis(db, 700001))?.current_conditions[0]?.median_yen, 200);
     await updateOfferFactAdmin(db, 1, { used: "unknown" }, AT);
