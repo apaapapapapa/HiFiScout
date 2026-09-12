@@ -81,6 +81,7 @@ interface PreparedRemediationJob {
   job: DataQualityRemediationJob;
   row: RemediationListingRow;
   projectionToken: string;
+  projectionRequired: boolean;
 }
 
 export interface RemediationProjectionWork {
@@ -320,6 +321,22 @@ const CATEGORY_MEMBERSHIP_FIELDS = new Set<ReplayDerivedField>([
   "direct_category_ids",
 ]);
 
+// These fields record which resolver/classifier produced the already-persisted values, but they
+// are not inputs to search projection, Product Identity, or search-entity membership. A rule-version
+// replay commonly changes only this metadata. Running all three downstream stages in that case
+// re-reads the same listing and catalog rows without changing a projection. Keep every other field
+// conservative: if a derived value not listed here moves, refresh the downstream read models.
+const NON_PROJECTION_REPLAY_FIELDS = new Set<ReplayDerivedField>([
+  "manufacturer_resolver_version",
+  "model_resolver_version",
+  "metadata_json",
+]);
+
+interface DerivedReplayResult {
+  projectionToken: string;
+  projectionRequired: boolean;
+}
+
 const REPLAY_CAS_FIELDS = [...REPLAY_SOURCE_FIELDS, ...REPLAY_DERIVED_FIELDS] as const;
 
 export class ListingReplaySourceChangedError extends Error {
@@ -333,7 +350,7 @@ async function replayDerivedListing(
   row: RemediationListingRow,
   aliases: Awaited<ReturnType<typeof listManufacturerAliasEvidence>>,
   evaluatedAt: string,
-): Promise<string> {
+): Promise<DerivedReplayResult> {
   const manufacturerResolver = createManufacturerResolver(aliases);
   const modelResolver = createModelResolver(aliases);
   const manufacturer = manufacturerResolver({
@@ -450,8 +467,12 @@ async function replayDerivedListing(
     metadata_json: metadataJson,
   };
   const changedFields = REPLAY_DERIVED_FIELDS.filter((field) => row[field] !== derived[field]);
+  const projectionChanged = changedFields.some((field) => !NON_PROJECTION_REPLAY_FIELDS.has(field));
   let changed = false;
   if (changedFields.length) {
+    const assignments = changedFields.map((field) => `${field} = ?`);
+    if (projectionChanged)
+      assignments.push("remediation_projection_required = 1", "remediation_projection_token = ?");
     // SQLite maintains every index and UPDATE OF trigger named by a SET clause even when the value
     // assigned to that column is unchanged. A resolver-version replay commonly changes metadata
     // alone; assigning all derived columns made that one change rewrite every identity/category
@@ -461,15 +482,13 @@ async function replayDerivedListing(
     const result = await db
       .prepare(`
         UPDATE products
-        SET ${changedFields.map((field) => `${field} = ?`).join(", ")},
-            remediation_projection_required = 1,
-            remediation_projection_token = ?
+        SET ${assignments.join(", ")}
         WHERE id = ?
           AND ${REPLAY_CAS_FIELDS.map((field) => `${field} IS ?`).join(" AND ")}
       `)
       .bind(
         ...changedFields.map((field) => derived[field]),
-        token,
+        ...(projectionChanged ? [token] : []),
         row.id,
         ...REPLAY_CAS_FIELDS.map((field) => row[field]),
       )
@@ -501,7 +520,12 @@ async function replayDerivedListing(
     title: row.title,
     primaryCategoryId: categorySet.primaryCategoryId,
   });
-  return changed ? token : row.remediation_projection_token;
+  return {
+    projectionToken: projectionChanged ? token : row.remediation_projection_token,
+    // An older failed writer may still own a dirty token even when this replay only advances
+    // metadata. It must still finish before the marker can be acknowledged.
+    projectionRequired: projectionChanged || row.remediation_projection_required === 1,
+  };
 }
 
 /**
@@ -539,10 +563,16 @@ async function prepareJob(
   if (!row) return null;
 
   let projectionToken = row.remediation_projection_token;
+  let projectionRequired = true;
   if (requiresDerivedReplay(job.workType)) {
-    projectionToken = await replayDerivedListing(db, row, aliases, evaluatedAt);
+    const replay = await replayDerivedListing(db, row, aliases, evaluatedAt);
+    projectionToken = replay.projectionToken;
+    // A full rebuild is an explicit repair request for downstream read models, not only a
+    // resolver-version replay. It must repair missing/stale projections even when every derived
+    // listing column is already current.
+    projectionRequired = replay.projectionRequired || job.workType === "reprocess_listing";
   }
-  return { job, row, projectionToken };
+  return { job, row, projectionToken, projectionRequired };
 }
 
 /**
@@ -665,11 +695,13 @@ export async function runDataQualityRemediationSweep(
       await refreshRemediationShopProjections(
         db,
         shopKey,
-        preparedJobs.map((prepared) => ({
-          listingProductId: prepared.row.id,
-          sourceId: prepared.row.source_id,
-          projectionToken: prepared.projectionToken,
-        })),
+        preparedJobs
+          .filter((prepared) => prepared.projectionRequired)
+          .map((prepared) => ({
+            listingProductId: prepared.row.id,
+            sourceId: prepared.row.source_id,
+            projectionToken: prepared.projectionToken,
+          })),
         evaluatedAt,
       );
     } catch (error) {
@@ -779,6 +811,7 @@ export async function replayAdminCsvListings(
   listingIds: readonly number[],
   evaluatedAt: string,
   aliasSnapshot?: ManufacturerAliasEvidence[],
+  options: { forceProjection?: boolean } = {},
 ): Promise<void> {
   if (!listingIds.length) return;
   if (listingIds.length > 10) throw new Error("csv_replay_page_too_large");
@@ -788,10 +821,13 @@ export async function replayAdminCsvListings(
   for (const id of listingIds) {
     const row = await loadListing(db, id);
     if (!row) continue;
-    tokens.set(row.id, await replayDerivedListing(db, row, aliases, evaluatedAt));
+    const replay = await replayDerivedListing(db, row, aliases, evaluatedAt);
+    if (options.forceProjection || replay.projectionRequired)
+      tokens.set(row.id, replay.projectionToken);
     rows.push(row);
   }
-  await refreshListingProjections(db, rows, evaluatedAt);
+  const projectedRows = rows.filter((row) => tokens.has(row.id));
+  await refreshListingProjections(db, projectedRows, evaluatedAt);
   for (const [id, token] of tokens) {
     if (token) await clearProjectionPendingForToken(db, id, token);
   }

@@ -539,6 +539,8 @@ async function resumeReceipt(
           db,
           selected.map((row) => row.id),
           now,
+          undefined,
+          { forceProjection: true },
         );
       } else {
         await refreshListingProjections(db, selected, now);

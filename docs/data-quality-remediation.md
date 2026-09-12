@@ -6,15 +6,15 @@
 
 ## 調査の入口
 
-| 症状 | 最初に確認する実装・証拠 |
-| --- | --- |
-| メーカーが解決されない | `src/catalog/manufacturer-resolver.ts`、`src/db/manufacturer-repository.ts`、raw値と検証済みエイリアス |
+| 症状                             | 最初に確認する実装・証拠                                                                                      |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| メーカーが解決されない           | `src/catalog/manufacturer-resolver.ts`、`src/db/manufacturer-repository.ts`、raw値と検証済みエイリアス        |
 | 型番が分裂する／別製品がまとまる | `src/catalog/model-resolver.ts`、`src/catalog/product-identity.ts`、`src/db/product-search-exact-identity.ts` |
-| カテゴリが不正／未分類が多い | `src/catalog/category-evidence.ts`、`src/catalog/category-classifier.ts`、ショップのcatalog capability |
-| 同じ商品で詳細補完結果が違う | `src/crawler/category-enricher.ts`、`src/crawler/detail-enrichment-plan.ts`、保存済み詳細証拠とキャッシュ |
-| 修正が次回クロールで戻る | `src/db/product-write-repository.ts`、`src/db/data-quality-remediation-service.ts`、管理override |
-| 再生が進まない／検索だけ古い | resolver version、`remediation_projection_required`、D1のremediation queueとcrawl work items |
-| 分類率・在庫・検索件数がおかしい | 出品単位とentity単位、snapshot日時、収集とprojectionの各watermark |
+| カテゴリが不正／未分類が多い     | `src/catalog/category-evidence.ts`、`src/catalog/category-classifier.ts`、ショップのcatalog capability        |
+| 同じ商品で詳細補完結果が違う     | `src/crawler/category-enricher.ts`、`src/crawler/detail-enrichment-plan.ts`、保存済み詳細証拠とキャッシュ     |
+| 修正が次回クロールで戻る         | `src/db/product-write-repository.ts`、`src/db/data-quality-remediation-service.ts`、管理override              |
+| 再生が進まない／検索だけ古い     | resolver version、`remediation_projection_required`、D1のremediation queueとcrawl work items                  |
+| 分類率・在庫・検索件数がおかしい | 出品単位とentity単位、snapshot日時、収集とprojectionの各watermark                                             |
 
 [データ品質の契約](./data-quality.md)、[検索・保存構造](./data-platform-architecture.md)、
 [クロール制御](./crawl-orchestration.md)を症状に応じて参照します。
@@ -92,6 +92,11 @@
   含まれる索引列と`UPDATE OF` triggerを値が同じでも保守するため、metadataだけのversion更新で
   identity/category索引を巻き込まないことが重要です。カテゴリmembershipのdelete/insertも
   `primary_category_id`、`category_ids`、`direct_category_ids`のいずれかが変わった場合だけ行います。
+  resolver versionとmetadataだけが変わり、検索・Identity・entityの入力が同一なら、3段階の
+  projection再計算も行いません。ただし、以前の処理が残した`remediation_projection_required`と
+  tokenは別の未完了作業なので、metadata更新だけで消さずにprojectionを完了します。また、Catalogの
+  Identity編集は候補集合そのものが変わるため、出品の導出列が同じでも明示的に再投影します。
+  同様に、管理者が明示したfull rebuildは検索read modelの修復も目的に含むため省略しません。
   source列、再生対象の全derived列、projection tokenのsnapshot条件を維持し、SET句から省略した列を
   別処理が並行更新した場合も完了扱いにしません。
 - 詳細補完の計画・target chunk・cursorを分離し、D1に保存済みの詳細ページを再取得しません。
