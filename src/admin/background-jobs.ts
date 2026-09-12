@@ -6,7 +6,10 @@ import {
   scanManufacturerImpact,
   type ManufacturerMatcher,
 } from "../db/admin-manufacturer-management.js";
-import { replayAdminCsvListings } from "../db/data-quality-remediation-service.js";
+import {
+  ListingReplaySourceChangedError,
+  replayAdminCsvListings,
+} from "../db/data-quality-remediation-service.js";
 import { DurableObject } from "cloudflare:workers";
 import type {
   AdminBackgroundJob,
@@ -503,18 +506,31 @@ export class AdminJobs extends DurableObject<Env> {
           message: error instanceof Error ? error.message : String(error),
         }),
       );
-      sql.exec(
-        "UPDATE jobs SET status='failed',error=?,updated_at=? WHERE id=? AND status='running'",
-        error instanceof Error && error.message === "offer_fact_replay_no_progress"
-          ? "進捗が更新されないため停止しました。状態を確認してから再開してください。"
-          : error instanceof Error && error.message === "offer_fact_rule_version_changed"
-            ? "抽出ルールが更新されています。この処理を中止して、新しい再処理を開始してください。"
-            : error instanceof Error && error.message === "model_replay_version_changed"
-              ? "判定ルールが更新されています。この処理を中止して、新しい一括再判定を開始してください。"
-              : "処理が中断しました。保存済みの続きから再開できます。",
-        new Date().toISOString(),
-        job.id,
-      );
+      if (
+        job.kind === "model" &&
+        error instanceof ListingReplaySourceChangedError &&
+        this.job(job.id).stalled_steps < 2
+      ) {
+        sql.exec(
+          "UPDATE jobs SET status='queued',stalled_steps=stalled_steps+1,updated_at=? WHERE id=? AND status='running'",
+          new Date().toISOString(),
+          job.id,
+        );
+      } else
+        sql.exec(
+          "UPDATE jobs SET status='failed',error=?,updated_at=? WHERE id=? AND status='running'",
+          error instanceof Error && error.message === "offer_fact_replay_no_progress"
+            ? "進捗が更新されないため停止しました。状態を確認してから再開してください。"
+            : error instanceof ListingReplaySourceChangedError
+              ? "商品情報の更新との競合が続くため停止しました。時間をおいて続きから再開してください。"
+              : error instanceof Error && error.message === "offer_fact_rule_version_changed"
+                ? "抽出ルールが更新されています。この処理を中止して、新しい再処理を開始してください。"
+                : error instanceof Error && error.message === "model_replay_version_changed"
+                  ? "判定ルールが更新されています。この処理を中止して、新しい一括再判定を開始してください。"
+                  : "処理が中断しました。保存済みの続きから再開できます。",
+          new Date().toISOString(),
+          job.id,
+        );
     }
     await this.schedule();
   }
@@ -633,7 +649,7 @@ export class AdminJobs extends DurableObject<Env> {
           job.id,
         );
         sql.exec(
-          "UPDATE jobs SET processed=processed+1,updated_at=? WHERE id=?",
+          "UPDATE jobs SET processed=processed+1,stalled_steps=0,updated_at=? WHERE id=?",
           new Date().toISOString(),
           job.id,
         );

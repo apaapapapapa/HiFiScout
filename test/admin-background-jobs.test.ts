@@ -20,6 +20,7 @@ function harness() {
   const queries: string[] = [];
   let crashAfterApply = false;
   let crashModelCheckpoint = false;
+  let beforeReplayWrite: (() => void) | undefined;
   let afterBatch: (() => Promise<void>) | undefined;
   let alarm: number | null = null;
   const ctx = {
@@ -63,7 +64,24 @@ function harness() {
     },
   } as unknown as DurableObjectState;
   const runtimeDb = {
-    prepare: data.db.prepare.bind(data.db),
+    prepare(query: string) {
+      const wrap = (statement: D1PreparedStatement): D1PreparedStatement => ({
+        ...statement,
+        first: statement.first.bind(statement),
+        all: statement.all.bind(statement),
+        raw: statement.raw?.bind(statement),
+        bind: (...values: unknown[]) => wrap(statement.bind(...values)),
+        async run<T>() {
+          if (query.includes("UPDATE products") && query.includes("SET manufacturer = ?")) {
+            const callback = beforeReplayWrite;
+            beforeReplayWrite = undefined;
+            callback?.();
+          }
+          return statement.run<T>();
+        },
+      });
+      return wrap(data.db.prepare(query));
+    },
     async batch<T = unknown>(statements: D1PreparedStatement[]) {
       const result = await data.db.batch<T>(statements);
       const callback = afterBatch;
@@ -92,6 +110,9 @@ function harness() {
     },
     crashModelCheckpoint: () => {
       crashModelCheckpoint = true;
+    },
+    beforeReplayWrite: (callback: () => void) => {
+      beforeReplayWrite = callback;
     },
     afterBatch: (callback: () => Promise<void>) => {
       afterBatch = callback;
@@ -643,6 +664,80 @@ test("model replay retains failed projection work and an in-flight pause, then r
     assert.equal(h.sqlite.prepare("SELECT total_changes() AS n").get()?.n, writes);
     await h.command({ action: "cancel", id });
     assert.notEqual((await h.command(modelCommand())).job.id, id);
+  } finally {
+    h.close();
+  }
+});
+
+test("a concurrent crawl fences old replay input and the saved candidate retries fresh evidence", async () => {
+  const h = harness();
+  try {
+    modelListings(h, 1);
+    const id = crypto.randomUUID();
+    await h.command(modelCommand(id));
+    await h.command({ action: "start", id });
+    h.beforeReplayWrite(() => {
+      h.sqlite
+        .prepare(`UPDATE products SET raw_manufacturer='LUXMAN',manufacturer='LUXMAN',
+        raw_model='L-505Z',model='L-505Z',normalized_model='L505Z',title='LUXMAN L-505Z',
+        canonical_manufacturer_id='luxman',manufacturer_id='luxman',
+        metadata_json='{"crawl":"new"}',model_resolver_version=?,
+        remediation_projection_token='newer-crawl',remediation_projection_required=1 WHERE id=100001`)
+        .run(RESOLUTION_VERSIONS.model);
+    });
+    await h.alarm();
+    assert.equal((await h.command({ action: "get", id })).job.status, "queued");
+    assert.equal((await h.command({ action: "get", id })).job.processed, 0);
+    const fresh = h.sqlite.prepare("SELECT * FROM products WHERE id=100001").get()!;
+    assert.equal(fresh.model, "L-505Z");
+    assert.equal(fresh.raw_model, "L-505Z");
+    assert.equal(fresh.canonical_manufacturer_id, "luxman");
+    assert.equal(fresh.metadata_json, '{"crawl":"new"}');
+    assert.equal(fresh.remediation_projection_token, "newer-crawl");
+    assert.equal(
+      h.sqlite.prepare("SELECT COUNT(*) AS n FROM product_search_entity_offers").get()?.n,
+      0,
+    );
+    h.restart();
+    await h.alarm();
+    assert.equal((await h.command({ action: "get", id })).job.status, "completed");
+    assert.equal((await h.command({ action: "get", id })).job.processed, 1);
+    assert.equal(
+      h.sqlite.prepare("SELECT model FROM products WHERE id=100001").get()?.model,
+      "L-505Z",
+    );
+    assert.equal(
+      h.sqlite.prepare("SELECT remediation_projection_required FROM products WHERE id=100001").get()
+        ?.remediation_projection_required,
+      0,
+    );
+  } finally {
+    h.close();
+  }
+});
+
+test("repeated source conflicts stop bounded retries without advancing the model candidate", async () => {
+  const h = harness();
+  try {
+    modelListings(h, 1);
+    const id = crypto.randomUUID();
+    await h.command(modelCommand(id));
+    await h.command({ action: "start", id });
+    for (let n = 0; n < 3; n++) {
+      h.beforeReplayWrite(() => {
+        h.sqlite
+          .prepare("UPDATE products SET title=? WHERE id=100001")
+          .run(`TAD D-1000 MK2 新着${n}`);
+      });
+      await h.alarm();
+    }
+    const job = (await h.command({ action: "get", id })).job;
+    assert.equal(job.status, "failed");
+    assert.equal(job.processed, 0);
+    assert.match(job.error, /競合が続く/);
+    await h.command({ action: "resume", id });
+    await h.alarm();
+    assert.equal((await h.command({ action: "get", id })).job.status, "completed");
   } finally {
     h.close();
   }

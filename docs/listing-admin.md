@@ -123,6 +123,11 @@ all deterministic resolver versions; a code deployment that changes any of them 
 and requires cancellation followed by a new job. Manufacturer aliases use the existing cached
 registry snapshot, refreshed when its generation changes.
 
+The canonical-field update compares the retained source snapshot and projection token with those
+read for that attempt. A concurrent crawl invalidates the update before dependent facts or search
+work can use the older evidence. The candidate remains saved and is retried with fresh input;
+three consecutive source conflicts stop the job for review instead of retrying indefinitely.
+
 The GitHub Actions **Resolver Replay Drain** remains available for broader operator maintenance.
 The admin job selects model-version drift and pending projections; it is not a full catalog audit
 or a sweep of listings with only manufacturer/category-version drift.
