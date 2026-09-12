@@ -30,7 +30,7 @@ import type {
   ResolutionStatus,
 } from "./types.js";
 
-export const MODEL_RESOLVER_VERSION = 13;
+export const MODEL_RESOLVER_VERSION = 14;
 
 export type ModelResolver = (input: ModelResolutionInput) => ModelResolutionResult;
 
@@ -175,6 +175,9 @@ const ANNOTATION_RULES: readonly AnnotationRule[] = [
       /\s+(?:光絶縁ツール|スイッチングハブ|CDデッキ|プリメインアンプ|パワーアンプ|プリアンプ|ターンテーブル|フォノイコライザー|ネットワークプレーヤー|スピーカー|ヘッドホン)\s+[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー・]+\s*$/giu,
   },
 ];
+
+const PREFIX_RECOVERY_SHIPPING_NOTE =
+  /\s*※\s*送料無料(?:\s*《(?:北海道|沖縄|離島)(?:[・、,]\s*(?:北海道|沖縄|離島))*を除く》)?\s*$/u;
 
 /**
  * Shops whose model resolver behavior is narrower than the global rules.
@@ -337,6 +340,23 @@ function preservesModelIdentity(before: string, after: string): boolean {
   return source.variants.every((variant) => result.variants.includes(variant));
 }
 
+function titleConfirmsMisplacedModel(title: string, restored: string): boolean {
+  if (title === restored) return true;
+
+  // Legacy raw models can end at `※送料無料` while the title continues immediately with a
+  // regional exclusion. Unlike general display cleanup, corroborating an identity prefix must
+  // not consume arbitrary text after the note: another model or accessory may follow it.
+  const withoutShipping = (value: string): string =>
+    value.replace(PREFIX_RECOVERY_SHIPPING_NOTE, "").trim();
+  const modelCore = withoutShipping(restored);
+  const titleCore = withoutShipping(title);
+  return (
+    titleCore === modelCore &&
+    preservesModelIdentity(restored, modelCore) &&
+    preservesModelIdentity(title, titleCore)
+  );
+}
+
 function unclassifiedResidue(value: string): string[] {
   const found: string[] = [];
   for (const rule of UNCLASSIFIED_RULES) {
@@ -492,7 +512,7 @@ function resolvePreparedModel(
     !manufacturerId &&
     fromSeller &&
     isModelOnlyManufacturer(misplaced) &&
-    (title === restored || title.startsWith(`${restored} `))
+    titleConfirmsMisplacedModel(title, restored)
   )
     source = restored;
   if (!source) return unresolvedResult(rawModel, rawModel);

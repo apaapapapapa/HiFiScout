@@ -462,8 +462,8 @@ test("manufacturer replay clears a misplaced model brand and restores its model 
         'https://example.test/702','2026-09-11','2026-09-11','2026-09-11')`)
       .run(
         "Signature / Midnight Blue Metalic (ペア)",
-        "Signature / Midnight Blue Metalic (ペア)",
-        "【中古品】702S2 Signature / Midnight Blue Metalic (ペア) ※送料無料",
+        "Signature / Midnight Blue Metalic (ペア) ※送料無料",
+        "【中古品】702S2 Signature / Midnight Blue Metalic (ペア) ※送料無料《北海道・沖縄・離島を除く》",
       );
     const result = await reprocessStaleManufacturerListings(
       db,
@@ -480,7 +480,7 @@ test("manufacturer replay clears a misplaced model brand and restores its model 
     assert.equal(row.manufacturer, "");
     assert.equal(row.manufacturer_id, "");
     assert.equal(row.raw_manufacturer, "702S2");
-    assert.equal(row.raw_model, "Signature / Midnight Blue Metalic (ペア)");
+    assert.equal(row.raw_model, "Signature / Midnight Blue Metalic (ペア) ※送料無料");
     assert.ok(String(row.model).startsWith("702S2 Signature"));
     assert.equal(row.manufacturer_resolver_version, MANUFACTURER_RESOLVER_VERSION);
     assert.equal(row.model_resolver_version, MODEL_RESOLVER_VERSION);
