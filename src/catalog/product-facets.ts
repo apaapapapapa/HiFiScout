@@ -1,6 +1,7 @@
 import { legacyCategoryFacetSelections } from "./categories.js";
 import { inferExplicitCategoryIds } from "./category-rules.js";
 import { saleSubjectText } from "./sale-subject.js";
+import { reviewedNoiseAccessory } from "./reviewed-product-types.js";
 import { isFacetId, isFacetValue } from "./types.js";
 import type { FacetFact, FacetFactInput, FacetId, FacetSelection } from "./types.js";
 
@@ -175,6 +176,22 @@ export function inferFacetFacts(
     facts.push({ facetId, value: facetValue, source, confidence, verifiedAt });
   const endpoints = categoryId.startsWith("CAB.") ? cableEndpoints(subject) : [];
   if (value.trim()) {
+    if (categoryId === "REC.MEDIA") {
+      if (/オープンリール|\bopen[\s-]*reel|(?:7|10)\s*号.*リール|空リール/i.test(subject))
+        add("recording_medium", "open_reel");
+      if (/カセット|\bcassette\b/i.test(subject)) add("recording_medium", "cassette");
+      const sizes = [...subject.matchAll(/(?<!\d)(7|10)\s*号/gi)];
+      const uniqueSizes = [...new Set(sizes.map((match) => match[1]))];
+      if (uniqueSizes.length === 1) add("reel_size", `size_${uniqueSizes[0]}`);
+    }
+    const reviewedNoise = reviewedNoiseAccessory(value);
+    if (categoryId === "ACC.GROUND_NOISE" || (!categoryId && reviewedNoise)) {
+      if (reviewedNoise) add("noise_accessory_type", reviewedNoise.kind);
+      else if (/仮想アース|virtual\s+ground|grounding\s*(?:box|unit)/i.test(subject))
+        add("noise_accessory_type", "grounding");
+      else if (/usb.*(?:フィルタ|filter)/i.test(subject)) add("noise_accessory_type", "usb_filter");
+      else if (/プラグ|\bplug\b/i.test(subject)) add("noise_accessory_type", "plug");
+    }
     for (const [facetId, facetValue, pattern] of FACET_RULES) {
       if (facetId === "processor_type" && categoryId !== "PRC.PROCESSOR") continue;
       if (facetId === "signal_type" && !categoryId.startsWith("CAB.") && categoryId !== "PWR.CORD")

@@ -309,7 +309,12 @@ async function replayDerivedListing(
 
   const metadata = metadataObject(row.metadata_json);
   const evidence = retainedCategoryEvidence(
-    { title: row.title, rawCategory: row.raw_category, hintedCategory: row.category },
+    {
+      title: row.title,
+      rawCategory: row.raw_category,
+      hintedCategory: row.category,
+      manufacturer: row.raw_manufacturer || row.manufacturer,
+    },
     metadata,
   );
   const classification = classifyCategoryEvidence(evidence);

@@ -10,7 +10,11 @@ import {
 import { listingBlocks, listingFieldText } from "../listing-fields.js";
 import { mentionsDetailProduct, productDetailScope } from "../detail-product-scope.js";
 import { parseProductPage } from "../parser.js";
-import type { CategoryEvidenceInput, NormalizedCatalogProduct } from "../../catalog/types.js";
+import type {
+  CategoryEvidenceInput,
+  ClassifiableCategoryId,
+  NormalizedCatalogProduct,
+} from "../../catalog/types.js";
 import type { CrawlPageObject, SellerProduct, ShopAdapter } from "../types.js";
 
 const PAGE_SIZE = 50;
@@ -116,15 +120,96 @@ function firstExplicitDetailEvidence(
   return [];
 }
 
+const DETAIL_CATEGORY_LABELS: ReadonlyMap<string, ClassifiableCategoryId> = new Map([
+  ["イヤホン", "PER.EARPHONE"],
+  ["カナル型イヤホン", "PER.EARPHONE"],
+  ["インナーイヤー型イヤホン", "PER.EARPHONE"],
+  ["完全ワイヤレスイヤホン", "PER.EARPHONE"],
+  ["ワイヤレスイヤホン", "PER.EARPHONE"],
+  ["ヘッドホン", "PER.HEADPHONE"],
+  ["リスニングヘッドホン", "PER.HEADPHONE"],
+  ["モニターヘッドホン", "PER.HEADPHONE"],
+  ["ワイヤレスヘッドホン", "PER.HEADPHONE"],
+  ["イヤーピース", "ACC.WEAR"],
+  ["ヘッドホン交換用イヤーパッド", "ACC.WEAR"],
+  ["イヤホンパーツ", "ACC.PART"],
+  ["ヘッドホンパーツ", "ACC.PART"],
+  ["イヤホンケーブル", "CAB.PERSONAL"],
+  ["ヘッドホンケーブル", "CAB.PERSONAL"],
+  ["イヤホンケース", "ACC.CASE"],
+  ["ヘッドホンスタンド", "ACC.STAND"],
+  ["ポータブルプレーヤー", "SRC.DAP"],
+  ["CDプレーヤー", "SRC.DISC"],
+  ["ネットワークプレーヤー", "SRC.STREAMER"],
+  ["アナログプレーヤー", "ANA.TURNTABLE"],
+  ["スピーカー", "SPK.LOUDSPEAKER"],
+]);
+
+function breadcrumbCategoryEvidence(
+  html: string,
+  product: Partial<Pick<NormalizedCatalogProduct, "model" | "title" | "sourceUrl">>,
+): CategoryEvidenceInput[] {
+  const candidates: {
+    depth: number;
+    categoryId: ClassifiableCategoryId | undefined;
+    value: string;
+  }[] = [];
+  for (const trail of listingBlocks(html, "ul", "block-topic-path--list").slice(0, 16)) {
+    const items = listingBlocks(trail, "li");
+    const current = listingBlocks(trail, "li", "block-topic-path--item__current");
+    if (current.length !== 1 || items.at(-1) !== current[0]) continue;
+    if (!mentionsDetailProduct(cleanText(current[0]), product)) continue;
+    const href = current[0].match(/<a\b[^>]*\bhref\s*=\s*(["'])(.*?)\1/i)?.[2];
+    if (!href) continue;
+    try {
+      const url = new URL(href, fujiyaAvicAdapter.baseUrl);
+      if (url.origin !== fujiyaAvicAdapter.baseUrl || !/^\/shop\/g\/g\d+\/$/.test(url.pathname))
+        continue;
+      if (product.sourceUrl && url.pathname !== new URL(product.sourceUrl).pathname) continue;
+    } catch {
+      continue;
+    }
+    // Only the terminal category can describe the sale object. An unrecognized accessory bucket
+    // must not fall back to its "earphones" ancestor. Brand-only trails contribute no evidence.
+    const terminal = items.at(-2);
+    if (!terminal) continue;
+    const value = cleanText(terminal.match(/<a\b[^>]*>([\s\S]*?)<\/a>/i)?.[1] || "")
+      .normalize("NFKC")
+      .replace(/\(中古\)$/, "");
+    const categoryId = DETAIL_CATEGORY_LABELS.get(value);
+    candidates.push({ depth: items.length, categoryId, value });
+  }
+  // Fujiya repeats ancestor trails; prefer its most specific product-bound trail. Equally deep
+  // conflicting trails stay separate evidence so the classifier can leave them ambiguous.
+  const deepest = Math.max(0, ...candidates.map((item) => item.depth));
+  const seen = new Set<string>();
+  return candidates
+    .filter((item) => item.depth === deepest)
+    .flatMap((item) => {
+      if (!item.categoryId || seen.has(item.categoryId)) return [];
+      seen.add(item.categoryId);
+      return [
+        {
+          categoryIds: [item.categoryId],
+          source: "detail_breadcrumb",
+          strength: "strong" as const,
+          value: item.value,
+          ruleId: "fujiya.product_breadcrumb.v3",
+        },
+      ];
+    });
+}
+
 export function extractFujiyaDetailCategoryEvidence(
   html: string,
-  product: Partial<Pick<NormalizedCatalogProduct, "model" | "title">> = {},
+  product: Partial<Pick<NormalizedCatalogProduct, "model" | "title" | "sourceUrl">> = {},
 ): CategoryEvidenceInput[] {
   const lead = productDetailScope(html, product);
   if (lead === null) return [];
+  const breadcrumb = breadcrumbCategoryEvidence(html, product);
   for (const description of metaDescriptions(stripRawTextElements(html))) {
     const evidence = firstExplicitDetailEvidence(description, "detail_metadata", product);
-    if (evidence.length) return evidence;
+    if (evidence.length) return [...breadcrumb, ...evidence];
   }
 
   // Keep block boundaries: a model heading followed by an accessories row is not one sentence.
@@ -140,10 +225,10 @@ export function extractFujiyaDetailCategoryEvidence(
       "detail_product_text",
       product,
     );
-    if (evidence.length) return evidence;
+    if (evidence.length) return [...breadcrumb, ...evidence];
     remaining -= segment.length;
   }
-  return [];
+  return breadcrumb;
 }
 
 export function parseFujiyaResultCount(html: string): number | null {

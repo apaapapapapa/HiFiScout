@@ -21,12 +21,12 @@ import { parseUrlFilters, featureFromFilterId } from "../frontend/filters.js";
 const facets = (text: string) =>
   inferFacetFacts(text).map((fact) => `${fact.facetId}:${fact.value}`);
 
-test("category completion retains 12 roots and 62 durable leaves, reparenting tape by metadata", () => {
+test("category completion retains 12 roots and 64 durable leaves, reparenting tape by metadata", () => {
   assert.equal(
     CATEGORIES.filter((category) => category.parentId === null && category.filterable).length,
     12,
   );
-  assert.equal(CATEGORIES.filter((category) => category.classifiable).length, 62);
+  assert.equal(CATEGORIES.filter((category) => category.classifiable).length, 64);
   assert.equal(getCategory("ANA.TAPE")?.parentId, "SRC");
   assert.deepEqual(categoryClosureIds("ANA.TAPE"), ["ANA.TAPE", "SRC"]);
   assert.ok(categoryFilterIds("SRC").includes("ANA.TAPE"));

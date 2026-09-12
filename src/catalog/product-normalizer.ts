@@ -28,7 +28,7 @@ import { inferFeatureFacts, normalizeFeatureFacts } from "./product-features.js"
 import { inferFacetFacts, normalizeFacetFacts } from "./product-facets.js";
 import { verifiedModelFacetFacts, VERIFIED_MODEL_FACET_SOURCE } from "./verified-model-facets.js";
 
-const CLASSIFICATION_METADATA_VERSION = 21;
+const CLASSIFICATION_METADATA_VERSION = 22;
 
 export interface CatalogNormalizationContext {
   /** Source seller used by narrowly scoped model-annotation rules. */
@@ -139,6 +139,7 @@ export function normalizeCatalogProduct(
   const metadata: Record<string, unknown> = isRecord(product.metadata) ? product.metadata : {};
   const { evidence } = collectListingCategoryEvidence({
     rawCategory,
+    manufacturer: rawManufacturer || manufacturerCandidate,
     title: product.title || "",
     hintedCategory: product.category || "",
     categoryMapping: config.categoryMapping || {},

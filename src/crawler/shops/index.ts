@@ -133,7 +133,7 @@ export const SHOP_PLUGINS: readonly ShopPlugin[] = createShopRegistry([
     },
     {
       catalog: { categoryPolicy: FUJIYA_CATEGORY_POLICY },
-      detailCategoryEvidence: { version: 2, extract: extractFujiyaDetailCategoryEvidence },
+      detailCategoryEvidence: { version: 3, extract: extractFujiyaDetailCategoryEvidence },
     },
   ),
   defineShopPlugin(

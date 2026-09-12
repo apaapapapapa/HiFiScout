@@ -6,6 +6,81 @@ import {
   parseFujiyaResultCount,
 } from "../src/crawler/shops/fujiya-avic.js";
 import { coverageDecision, initialPageQueue } from "../src/crawler/strategies.js";
+import { classifyCategoryEvidence } from "../src/catalog/category-classifier.js";
+
+// Structural selectors observed on the ANDROMEDA seller page, with minimal synthetic content.
+function productTrail(categories: readonly string[], model = "ANDROMEDA", id = "240004022011") {
+  return `<ul class="block-topic-path--list" id="bread-crumb-list" itemtype="https://schema.org/BreadcrumbList">
+    <li class="block-topic-path--item__home"><a href="/shop/default.aspx">トップ</a></li>
+    ${categories.map((name) => `<li class="block-topic-path--genre-item"><a href="/shop/r/rA-EAP/">${name}</a></li>`).join("")}
+    <li class="block-topic-path--genre-item block-topic-path--item__current"><a href="/shop/g/g${id}/">${model}</a></li>
+  </ul>`;
+}
+
+test("Fujiya product-bound breadcrumbs classify model-only listings and ignore shared navigation", () => {
+  const html = `<header><h1>フジヤエービック</h1><nav>ヘッドホン スピーカー ケーブル</nav></header>
+    ${productTrail(["イヤホン"])}${productTrail(["イヤホン", "カナル型イヤホン", "カナル型イヤホン(中古)"])}
+    <main><h2>ANDROMEDA</h2><p>在庫がありません</p></main>`;
+  const evidence = extractFujiyaDetailCategoryEvidence(html, {
+    model: "ANDROMEDA",
+    sourceUrl: "https://www.fujiya-avic.co.jp/shop/g/g240004022011/",
+  });
+  assert.equal(classifyCategoryEvidence(evidence).primaryCategoryId, "PER.EARPHONE");
+  assert.equal(evidence[0].source, "detail_breadcrumb");
+  assert.equal(evidence[0].ruleId, "fujiya.product_breadcrumb.v3");
+});
+
+test("Fujiya terminal accessory buckets do not inherit their earphone ancestor", () => {
+  for (const [terminal, expected] of [
+    ["イヤーピース", "ACC.WEAR"],
+    ["イヤホンケース", "ACC.CASE"],
+    ["イヤホンケーブル", "CAB.PERSONAL"],
+    ["未対応アクセサリー", "unclassified"],
+  ]) {
+    const html = `${productTrail(["イヤホン"], "X1")}${productTrail(["イヤホン", terminal], "X1")}<main><h2>X1</h2></main>`;
+    assert.equal(
+      classifyCategoryEvidence(extractFujiyaDetailCategoryEvidence(html, { model: "X1" }))
+        .primaryCategoryId,
+      expected,
+      terminal,
+    );
+  }
+});
+
+test("Fujiya rejects unrelated product trails and keeps conflicting evidence ambiguous", () => {
+  const identity = {
+    model: "X1",
+    sourceUrl: "https://www.fujiya-avic.co.jp/shop/g/g240004022011/",
+  };
+  for (const trail of [
+    productTrail(["イヤホン"], "X2"),
+    productTrail(["イヤホン"], "X1", "999999999999"),
+  ]) {
+    assert.deepEqual(
+      extractFujiyaDetailCategoryEvidence(`${trail}<main><h2>X1</h2></main>`, identity),
+      [],
+    );
+  }
+  const conflicting = `${productTrail(["イヤホン"], "X1")}${productTrail(["ヘッドホン"], "X1")}<main><h2>X1</h2></main>`;
+  assert.equal(
+    classifyCategoryEvidence(extractFujiyaDetailCategoryEvidence(conflicting, identity))
+      .classificationState,
+    "ambiguous",
+  );
+  const metadataConflict = `<head><meta name="description" content="X1はヘッドホンです。"></head>${productTrail(["イヤホン"], "X1")}<main><h2>X1</h2></main>`;
+  assert.equal(
+    classifyCategoryEvidence(extractFujiyaDetailCategoryEvidence(metadataConflict, identity))
+      .classificationState,
+    "ambiguous",
+  );
+  assert.deepEqual(
+    extractFujiyaDetailCategoryEvidence(
+      `${productTrail(["イヤホン"], "X1")}<main><h2>X2</h2></main>`,
+      identity,
+    ),
+    [],
+  );
+});
 
 function initialPages() {
   return initialPageQueue(fujiyaAvicAdapter, 50);

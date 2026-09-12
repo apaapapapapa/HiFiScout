@@ -83,6 +83,7 @@ export type ClassifiableCategoryId =
   | "ACC.MAINTENANCE"
   | "ACC.TUBE"
   | "ACC.PART"
+  | "ACC.GROUND_NOISE"
   | "SYS.MULTIFUNCTION"
   | "SYS.COMPLETE"
   | "REC.INTERFACE"
@@ -91,7 +92,8 @@ export type ClassifiableCategoryId =
   | "REC.RECORDER"
   | "REC.MICPRE"
   | "REC.MONITOR"
-  | "REC.DJ";
+  | "REC.DJ"
+  | "REC.MEDIA";
 
 /**
  * The answer "the classifier could not decide", which is not a category a product belongs to.
@@ -516,6 +518,7 @@ export interface CategoryNormalizationConfig {
 
 export interface CollectListingCategoryEvidenceOptions {
   title?: string;
+  manufacturer?: string;
   rawCategory?: string;
   hintedCategory?: string;
   categoryMapping?: CategoryMapping;
@@ -552,7 +555,10 @@ export type FacetId =
   | "supported_media"
   | "cable_length"
   | "part_type"
-  | "target_equipment";
+  | "target_equipment"
+  | "recording_medium"
+  | "reel_size"
+  | "noise_accessory_type";
 
 export interface FacetValueDefinition {
   readonly id: string;
@@ -848,6 +854,34 @@ export const FACET_DEFINITIONS: readonly FacetDefinition[] = Object.freeze([
       ["disc_player", "ディスク機器"],
       ["turntable", "レコードプレーヤー"],
       ["tape_deck", "テープデッキ"],
+    ),
+  }),
+  Object.freeze({
+    id: "recording_medium",
+    name: "録音媒体",
+    order: 22,
+    categoryRootIds: facetGroups("REC"),
+    categoryIds: facetCategories("REC.MEDIA"),
+    values: facetValues(["open_reel", "オープンリール"], ["cassette", "カセット"]),
+  }),
+  Object.freeze({
+    id: "reel_size",
+    name: "リールサイズ",
+    order: 23,
+    categoryRootIds: facetGroups("REC"),
+    categoryIds: facetCategories("REC.MEDIA"),
+    values: facetValues(["size_7", "7号"], ["size_10", "10号"]),
+  }),
+  Object.freeze({
+    id: "noise_accessory_type",
+    name: "ノイズ対策用品の種別",
+    order: 24,
+    categoryRootIds: facetGroups("ACC"),
+    categoryIds: facetCategories("ACC.GROUND_NOISE"),
+    values: facetValues(
+      ["grounding", "仮想アース"],
+      ["plug", "ノイズ対策プラグ"],
+      ["usb_filter", "USBフィルター"],
     ),
   }),
 ]);
