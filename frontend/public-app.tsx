@@ -1266,8 +1266,9 @@ export function PublicApp() {
                   value={filters.sort}
                   onChange={(event) => changeValue("sort", event.currentTarget.value)}
                 >
-                  <option value="newest">新着・更新順</option>
-                  <option value="oldest">更新が古い順</option>
+                  <option value="updated">新着・更新順</option>
+                  <option value="newest">掲載が新しい順</option>
+                  <option value="oldest">掲載が古い順</option>
                   <option value="dealScore">全店舗の最安値で割安な順</option>
                   <option value="priceAsc">価格が安い順</option>
                   <option value="priceDesc">価格が高い順</option>

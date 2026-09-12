@@ -68,7 +68,7 @@ function filters(overrides: Partial<ProductFilters> = {}): ProductFilters {
     category: "",
     minPrice: "",
     maxPrice: "",
-    sort: "newest",
+    sort: "updated",
     features: [],
     facets: [],
     inStock: false,
@@ -273,9 +273,45 @@ test("the default favorite order is most recent activity first", () => {
   ];
 
   assert.deepEqual(
-    sortFavorites(items, "newest").map((item) => item.key),
+    sortFavorites(items, "updated").map((item) => item.key),
     ["c-2", "c-3", "c-1"],
   );
+});
+
+test("favorite publication order differs from activity order and keeps unknown dates last", () => {
+  const items = [
+    product({
+      key: "recent-price-change",
+      newest_listed_at: "2026-09-01",
+      latest_activity_at: "2026-09-12",
+    }),
+    product({
+      key: "recent-listing",
+      newest_listed_at: "2026-09-11",
+      latest_activity_at: "2026-09-11",
+    }),
+    product({ key: "missing-date", newest_listed_at: null, latest_activity_at: null }),
+    product({ key: "invalid-date", newest_listed_at: "invalid", latest_activity_at: null }),
+  ];
+  const keys = (sort: string) => sortFavorites(items, sort).map((item) => item.key);
+  assert.deepEqual(keys("updated"), [
+    "recent-price-change",
+    "recent-listing",
+    "missing-date",
+    "invalid-date",
+  ]);
+  assert.deepEqual(keys("newest"), [
+    "recent-listing",
+    "recent-price-change",
+    "missing-date",
+    "invalid-date",
+  ]);
+  assert.deepEqual(keys("oldest"), [
+    "recent-price-change",
+    "recent-listing",
+    "missing-date",
+    "invalid-date",
+  ]);
 });
 
 test("sorting does not mutate the caller's array", () => {

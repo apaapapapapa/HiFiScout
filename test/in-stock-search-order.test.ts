@@ -1,10 +1,61 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
+import { DEFAULT_SORT } from "../frontend/filters.js";
 import { refreshEntityAggregatesSql } from "../src/db/product-search-entity-sql.js";
 import { searchProducts } from "../src/db/product-search-repository.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { migrationSources } from "./helpers/migrations.js";
 import { productQuery } from "./helpers/product-query.js";
+
+test("the public default ranks price changes, restocks and new listings by activity across pages", async () => {
+  const { db, sqlite } = migratedSqlite();
+  try {
+    sqlite.exec(`INSERT INTO products(id,shop_key,source_id,title,source_url,stock_status,first_seen_at,last_seen_at,last_changed_at,last_activity_at,is_active) VALUES
+      (1,'hifido','1','Price changed','https://example.test/1','in_stock','2026-09-09','2026-09-12T02:32:00Z','2026-09-12T02:32:00Z','2026-09-12T02:32:00Z',1),
+      (2,'fujiya-avic','2','Yesterday listing','https://example.test/2','in_stock','2026-09-11T12:33:00Z','2026-09-11T12:33:00Z','2026-09-11T12:33:00Z','2026-09-11T12:33:00Z',1),
+      (3,'audiounion','3','New today','https://example.test/3','in_stock','2026-09-12T01:00:00Z','2026-09-12T01:00:00Z','2026-09-12T01:00:00Z','2026-09-12T01:00:00Z',1),
+      (4,'hifido','4','Restocked','https://example.test/4','in_stock','2026-09-05','2026-09-12T02:31:00Z','2026-09-12T02:31:00Z','2026-09-12T02:31:00Z',1),
+      (5,'hifido','5','Heartbeat only','https://example.test/5','in_stock','2026-09-01','2026-09-12T03:00:00Z','2026-09-01','2026-09-01',1),
+      (6,'hifido','6','Sold today','https://example.test/6','sold_out','2026-09-10','2026-09-12T03:00:00Z','2026-09-12T03:00:00Z','2026-09-12T03:00:00Z',1);
+      INSERT INTO product_search_entities(id,entity_key,entity_kind,fallback_listing_id)
+      SELECT id,'l-' || id,'unresolved_listing',id FROM products;
+      INSERT INTO product_search_entity_offers(listing_product_id,entity_id,shop_key)
+      SELECT id,id,shop_key FROM products;`);
+    await db.prepare(refreshEntityAggregatesSql()).run();
+    const query = `?inStock=true&sort=${DEFAULT_SORT}&limit=2`;
+    const first = await searchProducts(db, productQuery(query));
+    assert.deepEqual(
+      first.items.map((item) => item.key),
+      ["l-1", "l-4"],
+    );
+    assert.ok(first.nextCursor);
+    const second = await searchProducts(
+      db,
+      productQuery(`${query}&cursor=${encodeURIComponent(first.nextCursor)}`),
+    );
+    assert.deepEqual(
+      second.items.map((item) => item.key),
+      ["l-3", "l-2"],
+    );
+    assert.ok(second.nextCursor);
+    const third = await searchProducts(
+      db,
+      productQuery(`${query}&cursor=${encodeURIComponent(second.nextCursor)}`),
+    );
+    assert.deepEqual(
+      third.items.map((item) => item.key),
+      ["l-5"],
+    );
+    assert.equal(third.hasMore, false);
+    const listings = await searchProducts(db, productQuery("?inStock=true&sort=newest"));
+    assert.deepEqual(
+      listings.items.map((item) => item.key),
+      ["l-3", "l-2", "l-1", "l-4", "l-5"],
+    );
+  } finally {
+    sqlite.close();
+  }
+});
 
 test("in-stock date migration, cursors and refresh ignore newer unavailable offers", async () => {
   const migration = migrationSources.find((row) => row.name === "0098_in_stock_search_order.sql");

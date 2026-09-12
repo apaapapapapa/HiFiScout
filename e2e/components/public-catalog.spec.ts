@@ -148,6 +148,30 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+test("default activity sorting and explicit listing sorts keep controls, requests and URLs aligned", async ({
+  page,
+  mount,
+}) => {
+  const seen = await mockCatalog(page);
+  await mount("frontend/public-app/Default");
+  const sort = page.getByRole("combobox", { name: "並び順", exact: true });
+  await expect(sort).toHaveValue("updated");
+  await expect.poll(() => seen.searches.at(-1)?.searchParams.get("sort")).toBe("updated");
+  expect(new URL(page.url()).searchParams.has("sort")).toBe(false);
+  for (const [label, value] of [
+    ["掲載が新しい順", "newest"],
+    ["掲載が古い順", "oldest"],
+  ]) {
+    await sort.selectOption({ label });
+    await expect(sort).toHaveValue(value);
+    await expect.poll(() => seen.searches.at(-1)?.searchParams.get("sort")).toBe(value);
+    expect(new URL(page.url()).searchParams.get("sort")).toBe(value);
+  }
+  await sort.selectOption({ label: "新着・更新順" });
+  await expect(sort).toHaveValue("updated");
+  await expect(page).not.toHaveURL(/sort=/);
+});
+
 test("named saved searches restore applied filters and support rename and removal", async ({
   page,
   mount,

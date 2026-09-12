@@ -96,14 +96,14 @@ test("the URL is sanitized before the catalog script reads it", async ({ page, c
   const apiParams = new URL((await productRequestPromise).url()).searchParams;
   expect(apiParams.get("q")).toBeNull();
   expect(apiParams.get("cursor")).toBeNull();
-  expect(apiParams.get("sort")).toBe("newest");
+  expect(apiParams.get("sort")).toBe("updated");
 
   // The address bar is corrected too, so a reload or share carries the cleaned link.
   expect([...new URL(page.url()).searchParams.keys()]).toEqual([]);
 
   // The controls were populated from the corrected URL rather than the original.
   await expect(catalogPage.searchInput).toHaveValue("");
-  await expect(catalogPage.sort).toHaveValue("newest");
+  await expect(catalogPage.sort).toHaveValue("updated");
   await expect(catalogPage.products).not.toContainText("商品の取得に失敗しました。");
 });
 

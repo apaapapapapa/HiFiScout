@@ -28,6 +28,7 @@ import {
   priceDropped,
 } from "./product-activity.js";
 import { productPriceIndex } from "./price-index-ui.js";
+import { safeDate } from "./format.js";
 import type { ProductFilters } from "./filters.js";
 import type { DisplayOffer, DisplayProduct } from "./types.js";
 
@@ -254,7 +255,7 @@ function favoriteDealScore(product: DisplayProduct): number | null {
   return Math.round(((current - index.asking_median_yen) * 10_000) / index.asking_median_yen);
 }
 
-/** Price and deal-score sorts push unavailable values last; everything else is by recency. */
+/** Match the catalog's price, listing-date and activity sorts; unavailable values sort last. */
 export function sortFavorites(products: DisplayProduct[], sort: string): DisplayProduct[] {
   const sorted = [...products];
   sorted.sort((left, right) => {
@@ -273,6 +274,16 @@ export function sortFavorites(products: DisplayProduct[], sort: string): Display
       return sort === "priceAsc"
         ? left.lowest_price_yen - right.lowest_price_yen
         : right.lowest_price_yen - left.lowest_price_yen;
+    }
+    if (sort === "newest" || sort === "oldest") {
+      const leftDate = left.newest_listed_at ? safeDate(left.newest_listed_at) : null;
+      const rightDate = right.newest_listed_at ? safeDate(right.newest_listed_at) : null;
+      if (!leftDate && !rightDate) return 0;
+      if (!leftDate) return 1;
+      if (!rightDate) return -1;
+      return sort === "oldest"
+        ? leftDate.getTime() - rightDate.getTime()
+        : rightDate.getTime() - leftDate.getTime();
     }
     return activityTime(right) - activityTime(left);
   });
