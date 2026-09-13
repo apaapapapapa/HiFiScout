@@ -122,6 +122,23 @@ fixtures or runtime dependencies requires a new reviewed baseline, not a manufac
 
 ## Extending the harness
 
+## Architecture gate
+
+`vp run check:architecture` runs the existing pinned dependency-cruiser rules in
+`.dependency-cruiser.json`. It is part of normal `check`/`verify` and the required CI static job;
+the documentation command delegates to the same entrypoint. CI's explicit cache inputs include
+the rule file, TypeScript configuration, dependency lock and both source trees.
+
+The long diagnostic names the violated rule, source and target modules, and the rule's reason.
+Use that owning boundary to repair the dependency: browser imports belong in API contracts;
+domain decisions stay independent of repositories; shop adapters enter through the registry;
+crawl scheduling and Knowledge Catalog verification retain their own orchestration. Move shared
+types or inject the necessary capability at the composition root, then rerun the same command.
+Rule exceptions and baseline suppression files require an explicit architectural change; do not
+add one merely to make CI pass. There is no second hand-written dependency checker.
+
+## Extension points
+
 Reuse package scripts, Vitest, Playwright, real migrated local D1 fixtures and deployment-owned
 identity artifacts. Add a diagnostic at the boundary that owns the behavior. Keep orchestration
 thin, execute bounded commands and leave concise machine-readable results for the next session.

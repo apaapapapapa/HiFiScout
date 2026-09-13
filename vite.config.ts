@@ -72,6 +72,18 @@ export default defineConfig(({ mode }) => ({
       "ci:lint": ciScript("lint"),
       "ci:format-check": ciScript("format:check"),
       "ci:no-js-source": ciScript("check:no-js-source"),
+      "ci:architecture": {
+        command: ciScript("check:architecture"),
+        input: [
+          ".dependency-cruiser.json",
+          "tsconfig.json",
+          "package.json",
+          "package-lock.json",
+          "src/**",
+          "frontend/**",
+        ],
+        output: [],
+      },
       "ci:types-worker": {
         command: ciScript("types:worker"),
         input: ["wrangler.jsonc", "package.json", "package-lock.json"],
