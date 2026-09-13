@@ -4,10 +4,26 @@ import {
   assessHarnessReport,
   parseHarnessReport,
   reportExitCode,
+  requireTimestamp,
 } from "../scripts/harness/report.js";
 import type { HarnessReport } from "../scripts/harness/report.js";
 
 const sha = "a".repeat(40);
+test("timestamps require an explicit zone and real calendar components", () => {
+  for (const value of [
+    "2026-02-30T00:00:00Z",
+    "2026-02-29T00:00:00+09:00",
+    "2026-09-13T24:00:00Z",
+    "2026-09-13T00:00:00",
+    "2026-09-13T00:00Z",
+    "2026-09-13T00:00:00+24:00",
+    "2026-09-13T00:00:00+09:60",
+  ]) {
+    assert.throws(() => requireTimestamp(value), value);
+  }
+  assert.equal(requireTimestamp("2024-02-29T09:00:00.12+09:00"), "2024-02-29T00:00:00.120Z");
+  assert.equal(requireTimestamp("2026-09-13T00:00:00-04:30"), "2026-09-13T04:30:00.000Z");
+});
 function fixture(): HarnessReport {
   return {
     schemaVersion: 1,

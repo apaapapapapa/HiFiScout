@@ -42,9 +42,16 @@ export function requireSha(value: unknown): string {
 
 export function requireTimestamp(value: unknown): string {
   const timestamp = requireText(value, "timestamp");
-  if (!/^\d{4}-\d{2}-\d{2}T/u.test(timestamp) || !Number.isFinite(Date.parse(timestamp))) {
+  const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,3}))?(Z|[+-]\d{2}:\d{2})$/u.exec(
+    timestamp,
+  );
+  if (!match || !Number.isFinite(Date.parse(timestamp))) {
     throw new Error("invalid_timestamp");
   }
+  // Check the supplied wall-clock fields before applying its offset. Date.parse otherwise
+  // normalizes impossible dates such as February 30, hiding a change to the evidence interval.
+  const wallClock = `${match[1]}.${(match[2] ?? "").padEnd(3, "0")}Z`;
+  if (new Date(wallClock).toISOString() !== wallClock) throw new Error("invalid_timestamp");
   return new Date(timestamp).toISOString();
 }
 
