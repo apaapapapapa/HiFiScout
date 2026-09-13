@@ -262,15 +262,12 @@ test("favorites are stored as product snapshots and rendered without a favorites
   await expect(catalogPage.productTitle("D-10X")).toBeVisible();
   await catalogPage.addFavorite("c-1");
 
-  const stored: unknown = await page.evaluate(() =>
-    JSON.parse(localStorage.getItem("hifiscout:favorites") || "[]"),
-  );
-  expect(stored).toHaveLength(1);
-  expect(stored).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({ key: "c-1", manufacturer: "LUXMAN", model: "D-10X" }),
-    ]),
-  );
+  // Web Locks make persistence asynchronous; a completed click alone does not mean it committed.
+  await expect
+    .poll(() =>
+      page.evaluate(() => JSON.parse(localStorage.getItem("hifiscout:favorites") || "[]")),
+    )
+    .toEqual([expect.objectContaining({ key: "c-1", manufacturer: "LUXMAN", model: "D-10X" })]);
 
   await catalogPage.goToPage(2);
   await expect(catalogPage.productTitle("ME1TX")).toBeVisible();
