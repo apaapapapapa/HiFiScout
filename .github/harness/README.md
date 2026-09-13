@@ -3,6 +3,22 @@
 The harness connects existing verification tools with explicit acceptance evidence. It runs in the
 development/CI environment and does not add a production Worker or D1 table.
 
+## Isolated loop execution
+
+Run the loop CLI from the trusted controller checkout. `loop prepare <state> <source-repo>
+<workspace-root>` creates one owned `automation/loop/<task-id>` Git worktree at the frozen baseline;
+it refuses a foreign origin, unowned directory, changed branch or dirty checkout. Keep the state and
+workspace root outside the repair checkout and retain them together across sessions.
+
+Before requesting a repair, `loop begin <state> <attempt.json>` charges the iteration and reservations.
+The request contains `hypothesis`, `externalCalls` and `reservedCostMicros`. The native coding agent
+returns a unified text patch; `loop apply <state> <workspace-root> <iteration> <base-sha> <patch>`
+stages it in a temporary Git index, checks the complete baseline diff, and commits only permitted
+changes. Each attempt accepts one patch. The original checkout is untouched. Retries of the same
+patch are idempotent; an interrupted recorded transaction can be retried with the same arguments.
+Locks are never stolen. `loop block/resume/stop <state> <reason>` records operator decisions without
+resetting spent attempts, reservations or deadlines. Worktrees isolate edits; they are not an OS sandbox.
+
 ## Bounded improvement loops
 
 `vp run harness loop validate .github/harness/loop.example.json` validates an execution contract.
