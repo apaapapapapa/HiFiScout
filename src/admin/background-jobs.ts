@@ -689,11 +689,23 @@ export class AdminJobs extends DurableObject<Env> {
       if (job.kind === "catalog") {
         // Reap receipts for deleted listings using the ID window already read, without querying
         // D1 again. A large deletion gap is cleaned in bounded chunks across subsequent runs.
+        // The terminal window also covers receipts above the surviving product maximum, including
+        // an empty catalog. Keeping the listing scan bound separate preserves its start snapshot.
+        const cleanupUpperId = page.complete
+          ? Math.max(
+              state.max_product_id!,
+              sql
+                .exec<{ id: number }>(
+                  "SELECT COALESCE(MAX(listing_product_id),0) AS id FROM catalog_replay_marks",
+                )
+                .toArray()[0].id,
+            )
+          : page.afterId;
         sql.exec(
           `DELETE FROM catalog_replay_marks WHERE listing_product_id IN (
           SELECT listing_product_id FROM catalog_replay_marks WHERE listing_product_id<=?
           AND listing_product_id>? AND listing_product_id NOT IN (SELECT value FROM json_each(?)) LIMIT 1000)`,
-          page.afterId,
+          cleanupUpperId,
           previousAfterId,
           JSON.stringify(page.ids),
         );

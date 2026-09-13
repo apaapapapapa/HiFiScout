@@ -129,7 +129,9 @@ boundary are handled by normal ingestion or the next manual run.
 
 Only one fingerprint per listing is retained in the admin DO; job-detail expiry does not discard
 the comparison baseline. Deleted-listing receipts are pruned in bounded chunks from ID windows
-already read. No D1 schema or normal-ingestion writes are added for this feature. The
+already read. The terminal window also cleans receipts above the last surviving listing ID, including
+when no listings remain; each window deletes at most 1,000 receipts. No D1 schema or normal-ingestion
+writes are added for this feature. The
 `admin_catalog_replay_check` log measures the read-only fingerprint check's D1 reads, writes and
 statement count; it does not claim to measure the subsequent replay or account-wide production load.
 

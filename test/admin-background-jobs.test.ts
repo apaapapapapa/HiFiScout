@@ -561,6 +561,39 @@ async function drainCatalog(h: ReturnType<typeof harness>, id = crypto.randomUUI
   assert.fail("catalog replay failed to drain bounded fixture");
 }
 
+test("catalog replay prunes deleted tail receipts and an empty listing table in bounded chunks", async () => {
+  const h = harness();
+  try {
+    catalogListings(h, 26);
+    await drainCatalog(h);
+    const receiptCount = () =>
+      h.local.prepare("SELECT COUNT(*) n FROM catalog_replay_marks").get()?.n;
+    assert.equal(receiptCount(), 26);
+    // Delete the captured maximum after the first 25-ID window was saved. The final scan is empty.
+    h.beforeCatalogApply(() => h.sqlite.exec("DELETE FROM products WHERE id=100026"));
+    assert.equal((await drainCatalog(h)).catalogReplay?.skipped, 25);
+    assert.equal(receiptCount(), 25);
+    // The next job's captured maximum is now below the highest retained receipt.
+    h.sqlite.exec("DELETE FROM products WHERE id=100025");
+    assert.equal((await drainCatalog(h)).catalogReplay?.skipped, 24);
+    assert.equal(receiptCount(), 24);
+    h.sqlite.exec("DELETE FROM products");
+    assert.equal((await drainCatalog(h)).catalogReplay?.scanned, 0);
+    assert.equal(receiptCount(), 0);
+    h.local.exec(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<1001)
+      INSERT INTO catalog_replay_marks(listing_product_id,fingerprint,applied_job_id)
+      SELECT i,'deleted','expired-job' FROM n`);
+    const changes = h.sqlite.prepare("SELECT total_changes() n").get()?.n;
+    await drainCatalog(h);
+    assert.equal(receiptCount(), 1);
+    await drainCatalog(h);
+    assert.equal(receiptCount(), 0);
+    assert.equal(h.sqlite.prepare("SELECT total_changes() n").get()?.n, changes);
+  } finally {
+    h.close();
+  }
+});
+
 test("catalog replay applies additions and category changes to current and inactive listings, then skips unchanged input", async () => {
   const h = harness();
   try {
