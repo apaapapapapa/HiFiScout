@@ -184,6 +184,18 @@ export function renderProductPermalinkHtml(
 </html>`;
 }
 
+/** HTML sibling of the JSON 503: the permalink namespace answers documents, not JSON. */
+function permalinkUnavailableResponse(): Response {
+  return new Response("Service Unavailable", {
+    status: 503,
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "no-store",
+      "retry-after": "30",
+    },
+  });
+}
+
 export function productPermalinkNotFoundResponse(): Response {
   const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,follow"><title>商品が見つかりません | HiFiScout</title><link rel="stylesheet" href="/styles.css"></head><body><main><h1>商品が見つかりません</h1><p>URLが正しくないか、商品が現在のカタログに存在しません。</p><p><a href="/">HiFiScoutの商品一覧へ戻る</a></p></main></body></html>`;
   return new Response(html, {
@@ -213,28 +225,36 @@ export async function handleProductPermalink(
   }
 
   const rate = await checkPublicApiRateLimit(request, env);
-  if (!rate.allowed) {
+  if (rate.decision === "limited") {
     return new Response("Too Many Requests", {
       status: 429,
       headers: { "cache-control": "no-store", "retry-after": "60" },
     });
   }
+  // The limiter could not decide. A permalink already in the edge cache is still served from it;
+  // a miss must not reach D1 unmetered, so it answers 503 instead.
+  const cacheOnly = rate.decision === "unavailable";
 
   const key = productKeyFromPermalinkPath(url.pathname);
   if (!key) return productPermalinkNotFoundResponse();
 
   // Catalog query parameters belong to the SPA state, not to the product document itself.
   const cacheRequest = new Request(new URL(url.pathname, url.origin).toString(), { method: "GET" });
-  return cachedResponse(cacheRequest, ctx, async () => {
-    const detail = await productSearchDetail(env.DB, key);
-    if (!detail) return productPermalinkNotFoundResponse();
-    return new Response(renderProductPermalinkHtml(detail, url.origin), {
-      status: 200,
-      headers: {
-        "content-type": "text/html; charset=utf-8",
-        "cache-control": `public, max-age=${PERMALINK_CACHE_TTL_SECONDS}`,
-        "x-robots-tag": "noindex, follow",
-      },
-    });
-  });
+  return cachedResponse(
+    cacheRequest,
+    ctx,
+    async () => {
+      const detail = await productSearchDetail(env.DB, key);
+      if (!detail) return productPermalinkNotFoundResponse();
+      return new Response(renderProductPermalinkHtml(detail, url.origin), {
+        status: 200,
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": `public, max-age=${PERMALINK_CACHE_TTL_SECONDS}`,
+          "x-robots-tag": "noindex, follow",
+        },
+      });
+    },
+    { cacheOnly, unavailableResponse: permalinkUnavailableResponse },
+  );
 }

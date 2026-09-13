@@ -13,6 +13,32 @@ export function json(data: unknown, init: ResponseInit = {}): Response {
   });
 }
 
+/** The caller is over its limit. */
+export function rateLimitedResponse(): Response {
+  return json({ error: "rate_limited" }, { status: 429, headers: { "retry-after": "60" } });
+}
+
+/**
+ * The rate limiter could not decide, so the request is refused rather than served unmetered.
+ *
+ * This is deliberately distinct from 429: nothing is wrong with the caller, the protection is
+ * missing. A read that an existing cache entry can answer is served from that entry instead; what
+ * must not happen is a cache miss quietly falling through to D1 with no limit in force.
+ */
+export function rateLimiterUnavailableResponse(): Response {
+  return json(
+    { error: "rate_limiter_unavailable" },
+    { status: 503, headers: { "retry-after": "30" } },
+  );
+}
+
+export interface CachedReadOptions {
+  /** Serve only from an existing cache entry; a miss must not reach D1. */
+  cacheOnly?: boolean;
+  /** Response for a `cacheOnly` miss. Defaults to the JSON 503. */
+  unavailableResponse?: () => Response;
+}
+
 /**
  * Serves a successful public read through Cloudflare's edge cache.
  *
@@ -23,13 +49,20 @@ export async function cachedResponse(
   request: Request,
   ctx: ExecutionContext,
   load: () => Response | Promise<Response>,
+  {
+    cacheOnly = false,
+    unavailableResponse = rateLimiterUnavailableResponse,
+  }: CachedReadOptions = {},
 ): Promise<Response> {
-  if (typeof caches === "undefined") return load();
-  const cache = (caches as CacheStorage & { readonly default: Cache }).default;
-  const cached = await cache.match(request);
+  const cache =
+    typeof caches === "undefined"
+      ? null
+      : (caches as CacheStorage & { readonly default: Cache }).default;
+  const cached = cache ? await cache.match(request) : undefined;
   if (cached) return cached;
+  if (cacheOnly) return unavailableResponse();
   const response = await load();
-  if (response.ok) ctx.waitUntil(cache.put(request, response.clone()));
+  if (cache && response.ok) ctx.waitUntil(cache.put(request, response.clone()));
   return response;
 }
 
@@ -44,10 +77,14 @@ export async function cachedJson(
   ctx: ExecutionContext,
   ttlSeconds: number,
   load: () => unknown | Promise<unknown>,
+  options: CachedReadOptions = {},
 ): Promise<Response> {
   const cacheControl = `public, max-age=${ttlSeconds}`;
-  return cachedResponse(request, ctx, async () =>
-    json(await load(), { headers: { "cache-control": cacheControl } }),
+  return cachedResponse(
+    request,
+    ctx,
+    async () => json(await load(), { headers: { "cache-control": cacheControl } }),
+    options,
   );
 }
 
@@ -57,6 +94,7 @@ export async function cachedAtom(
   ctx: ExecutionContext,
   ttlSeconds: number,
   load: () => string | Promise<string>,
+  options: CachedReadOptions = {},
 ): Promise<Response> {
   const cacheControl = `public, max-age=${ttlSeconds}`;
   return cachedResponse(
@@ -69,5 +107,6 @@ export async function cachedAtom(
           "cache-control": cacheControl,
         },
       }),
+    options,
   );
 }

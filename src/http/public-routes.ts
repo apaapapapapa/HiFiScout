@@ -12,9 +12,24 @@ import { LEGACY_CATEGORY_MIGRATION_RULES, TAXONOMY_VERSION } from "../catalog/ca
 import { PRODUCT_SEARCH_ROUTE, SUGGEST_ROUTE } from "../api/public-route-contracts.js";
 import { routeMatches } from "../api/route-contract.js";
 import { publicSearchResponse } from "./public-search-response.js";
-import { cachedResponse, json } from "./response.js";
+import { cachedResponse, json, rateLimiterUnavailableResponse } from "./response.js";
 
-function cachedSearch(url: URL, env: Env, ctx: ExecutionContext): Promise<Response> {
+/** Options the outer router passes down; see `handleApi`. */
+export interface PublicContractRouteOptions {
+  /** The rate limiter could not decide: nothing here may reach D1. */
+  cacheOnly?: boolean;
+}
+
+function cachedSearch(
+  url: URL,
+  env: Env,
+  ctx: ExecutionContext,
+  cacheOnly: boolean,
+): Promise<Response> {
+  // Search is served by a cached Worker entrypoint, whose cache this Worker cannot interrogate: it
+  // can only be asked to produce a response, which on a miss means a D1 read with no limit in force.
+  // So unlike the Cache API reads in the router, search has no cache-only mode and refuses instead.
+  if (cacheOnly) return Promise.resolve(rateLimiterUnavailableResponse());
   // The response is public. Client cookies, authorization and cache-busting headers must not
   // fragment/bypass the internal cache. The outer router already checked the rate limit.
   const request = new Request(url);
@@ -25,13 +40,19 @@ function cachedSearch(url: URL, env: Env, ctx: ExecutionContext): Promise<Respon
 
 interface RuntimeRoute {
   contract: typeof PRODUCT_SEARCH_ROUTE | typeof SUGGEST_ROUTE;
-  handle(request: Request, env: Env, ctx: ExecutionContext, url: URL): Promise<Response>;
+  handle(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+    url: URL,
+    options: PublicContractRouteOptions,
+  ): Promise<Response>;
 }
 
 const runtimeRoutes: readonly RuntimeRoute[] = [
   {
     contract: PRODUCT_SEARCH_ROUTE,
-    async handle(_request, env, ctx, url) {
+    async handle(_request, env, ctx, url, { cacheOnly = false }) {
       const validationError = validateProductQuery(url);
       if (validationError) return json({ error: validationError }, { status: 400 });
       const query = parseProductQuery(url);
@@ -48,16 +69,16 @@ const runtimeRoutes: readonly RuntimeRoute[] = [
           }),
         );
       }
-      return cachedSearch(canonicalProductQueryUrl(url, query), env, ctx);
+      return cachedSearch(canonicalProductQueryUrl(url, query), env, ctx, cacheOnly);
     },
   },
   {
     contract: SUGGEST_ROUTE,
-    async handle(_request, env, ctx, url) {
+    async handle(_request, env, ctx, url, { cacheOnly = false }) {
       const validationError = validateSuggestQuery(url);
       if (validationError) return json({ error: validationError }, { status: 400 });
       const query = parseSuggestQuery(url);
-      return cachedSearch(canonicalSuggestQueryUrl(url, query), env, ctx);
+      return cachedSearch(canonicalSuggestQueryUrl(url, query), env, ctx, cacheOnly);
     },
   },
 ];
@@ -72,11 +93,12 @@ export async function handlePublicContractRoute(
   request: Request,
   env: Env,
   ctx: ExecutionContext,
+  options: PublicContractRouteOptions = {},
 ): Promise<Response | null> {
   const url = new URL(request.url);
   for (const route of runtimeRoutes) {
     if (routeMatches(route.contract, request, url)) {
-      return route.handle(request, env, ctx, url);
+      return route.handle(request, env, ctx, url, options);
     }
   }
   return null;
