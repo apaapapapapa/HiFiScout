@@ -24,7 +24,23 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 jobs:
+  changes:
+    if: github.event_name == 'workflow_run'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      required: ${{ steps.scope.outputs.required }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: ./.github/actions/deployment-run-scope
+        id: scope
+        with:
+          github-token: ${{ github.token }}
+
   d1-sql-archive:
+    needs: changes
+    # Failed Deploy runs and unknown metadata still collect passive evidence.
+    if: always() && needs.changes.outputs.required != 'false'
     # Also collect after FAILED deployments: the collector resolves the actual Worker binding,
     # does not need deployment-identity, and sends no queries to the application D1 database.
     runs-on: ubuntu-latest

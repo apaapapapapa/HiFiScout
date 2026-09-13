@@ -11,6 +11,9 @@ outputs:
   application:
     description: Whether application validation/deployment is required
     value: ${{ steps.scope.outputs.application }}
+  markdown-only:
+    description: Whether a known nonempty diff contains only .md files, at any depth
+    value: ${{ steps.scope.outputs.markdown-only }}
 runs:
   using: composite
   steps:
@@ -22,6 +25,7 @@ runs:
       run: |
         set -euo pipefail
         application=true
+        markdown_only=false
         if [[ "$BASE_REF" =~ ^[0-9a-f]{40}$ && ! "$BASE_REF" =~ ^0+$ ]]; then
           if git cat-file -e "${BASE_REF}^{commit}" 2>/dev/null || \
              git fetch --no-tags --depth=1 origin "$BASE_REF"; then
@@ -30,13 +34,22 @@ runs:
             # Disabling rename detection makes a move out of application sources visible as a deletion.
             git diff --no-renames --name-only -z "$BASE_REF" "$HEAD_REF" > "$changes"
             application=false
+            if [[ -s "$changes" ]]; then
+              markdown_only=true
+            fi
             while IFS= read -r -d '' path; do
               case "$path" in
-                docs/*|README.md|AGENTS.md|CLAUDE.md|DESIGN.md|LICENSE|LICENSE.md) ;;
-                *) application=true; break ;;
+                *.md) ;;
+                *) markdown_only=false ;;
+              esac
+              case "$path" in
+                *.md|docs/*|LICENSE) ;;
+                *) application=true ;;
               esac
             done < "$changes"
           fi
         fi
         echo "application=$application" >> "$GITHUB_OUTPUT"
+        echo "markdown-only=$markdown_only" >> "$GITHUB_OUTPUT"
         echo "Application changes: $application (base: ${BASE_REF:-unknown})."
+        echo "Markdown-only changes: $markdown_only."

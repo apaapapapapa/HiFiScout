@@ -1,0 +1,39 @@
+name: Detect deployment work
+description: Skip downstream work only when the owning Deploy run explicitly skipped its deploy job
+inputs:
+  github-token:
+    description: Token with actions read permission
+    required: true
+  run-id:
+    description: Triggering Deploy Cloudflare run; empty for manual and scheduled runs
+    default: "${{ github.event.workflow_run.id }}"
+outputs:
+  required:
+    description: False only for a successful preflight with an intentionally skipped deployment
+    value: ${{ steps.scope.outputs.required }}
+runs:
+  using: composite
+  steps:
+    - id: scope
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        DEPLOY_RUN_ID: ${{ inputs.run-id }}
+      run: |
+        set -euo pipefail
+        required=true
+        if [[ "$DEPLOY_RUN_ID" =~ ^[0-9]+$ ]]; then
+          # Inspect every page of the latest attempt. Older workflows or unavailable metadata
+          # retain the existing downstream checks; missing evidence never means no deployment.
+          if pages="$(gh api --paginate --slurp "/repos/${GITHUB_REPOSITORY}/actions/runs/${DEPLOY_RUN_ID}/jobs?filter=latest&per_page=100")"; then
+            if jq -e '[.[].jobs[]] as $jobs |
+              ([$jobs[] | select(.name == "changes")] | length == 1) and
+              ([$jobs[] | select(.name == "deploy")] | length == 1) and
+              any($jobs[]; .name == "changes" and .conclusion == "success") and
+              any($jobs[]; .name == "deploy" and .conclusion == "skipped")' <<< "$pages" >/dev/null; then
+              required=false
+            fi
+          fi
+        fi
+        echo "required=$required" >> "$GITHUB_OUTPUT"
+        echo "Post-deployment work required: $required."

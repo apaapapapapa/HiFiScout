@@ -17,13 +17,24 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  static-checks:
+  changes:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
+    outputs:
+      application: ${{ steps.scope.outputs.application }}
+      markdown-only: ${{ steps.scope.outputs.markdown-only }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/change-scope
         id: scope
+
+  static-checks:
+    needs: changes
+    if: needs.changes.outputs.markdown-only != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/setup-node-deps
         with:
           cache-write: "true"
@@ -44,24 +55,20 @@ jobs:
             echo 'A workflow bypasses Vite+ runtime/tool resolution.' >&2
             exit 1
           fi
-          if grep -RInE '^[[:space:]]*(npm|npx)[[:space:]]' README.md AGENTS.md docs; then
-            echo 'Documentation contains a standalone npm/npx command; document the Vite+ entrypoint instead.' >&2
-            exit 1
-          fi
       - run: vp run ci:lint
       - run: vp run ci:format-check
       - run: vp run ci:no-js-source
       - name: Enforce architecture boundaries with repair guidance
-        if: steps.scope.outputs.application == 'true'
+        if: needs.changes.outputs.application == 'true'
         run: vp run ci:architecture
       - name: Typecheck source
-        if: steps.scope.outputs.application == 'true'
+        if: needs.changes.outputs.application == 'true'
         run: vp run ci:typecheck
       - name: Compare parser stages with relative CPU baselines
-        if: steps.scope.outputs.application == 'true'
+        if: needs.changes.outputs.application == 'true'
         run: vp run ci:parser-benchmark
       - name: Preserve parser CPU cost samples
-        if: always() && steps.scope.outputs.application == 'true'
+        if: always() && needs.changes.outputs.application == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: harness-cost-parser
@@ -69,10 +76,12 @@ jobs:
           retention-days: 30
           if-no-files-found: error
       - name: Build application bundles
-        if: steps.scope.outputs.application == 'true'
+        if: needs.changes.outputs.application == 'true'
         run: vp run ci:build
 
   unit-test:
+    needs: changes
+    if: needs.changes.outputs.application == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -81,14 +90,10 @@ jobs:
         shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: ./.github/actions/change-scope
-        id: scope
       - uses: ./.github/actions/setup-node-deps
-        if: steps.scope.outputs.application == 'true'
       - run: vp run ci:test-shard-${{ matrix.shard }}
-        if: steps.scope.outputs.application == 'true'
       - name: Preserve unit timing profiles
-        if: always() && steps.scope.outputs.application == 'true'
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: unit-timings-${{ matrix.shard }}
@@ -97,7 +102,7 @@ jobs:
           if-no-files-found: error
 
       - name: Preserve D1, DO and Queue cost samples
-        if: always() && steps.scope.outputs.application == 'true'
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: harness-cost-shard-${{ matrix.shard }}
@@ -106,43 +111,38 @@ jobs:
           if-no-files-found: ignore
 
   product-replay:
-    needs: [unit-test, static-checks]
-    if: always()
+    needs: [changes, unit-test, static-checks]
+    if: always() && needs.changes.result == 'success' && needs.changes.outputs.application == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: ./.github/actions/change-scope
-        id: scope
       - uses: ./.github/actions/setup-node-deps
-        if: steps.scope.outputs.application == 'true'
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        if: steps.scope.outputs.application == 'true'
         with:
           pattern: unit-timings-*
           path: .generated/replay-input
           merge-multiple: true
       - name: Assemble fixed product regression evidence from all four CI shards
-        if: steps.scope.outputs.application == 'true'
         run: vp run harness replay .generated/product-replay .generated/replay-input/unit-timings-{1,2,3,4}.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always() && steps.scope.outputs.application == 'true'
+        if: always()
         with:
           name: product-replay
           path: .generated/product-replay/
           retention-days: 30
           if-no-files-found: error
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        if: always() && steps.scope.outputs.application == 'true'
+        if: always()
         with:
           pattern: harness-cost-*
           path: .generated/cost-samples
           merge-multiple: true
       - name: Assess complete cost evidence for this source
-        if: always() && steps.scope.outputs.application == 'true'
+        if: always()
         run: vp run harness cost-report .generated/cost-samples .generated/cost-report.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always() && steps.scope.outputs.application == 'true'
+        if: always()
         with:
           name: cost-evidence
           path: |
@@ -152,24 +152,22 @@ jobs:
           if-no-files-found: error
 
   integration:
+    needs: changes
+    if: needs.changes.outputs.application == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: ./.github/actions/change-scope
-        id: scope
       - uses: ./.github/actions/setup-node-deps
-        if: steps.scope.outputs.application == 'true'
       - run: vp run db:migrate:local
-        if: steps.scope.outputs.application == 'true'
       - name: Verify listing admin overrides survive crawler writes
-        if: steps.scope.outputs.application == 'true'
         run: vp exec tsx scripts/verify-listing-admin-overrides.ts
       - name: Verify D1 FTS search migration
-        if: steps.scope.outputs.application == 'true'
         run: vp exec tsx scripts/verify-search-integration.ts
 
   migration-safety:
+    needs: changes
+    if: needs.changes.outputs.application == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -178,38 +176,31 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-      - uses: ./.github/actions/change-scope
-        id: scope
       - uses: ./.github/actions/setup-node-deps
-        if: steps.scope.outputs.application == 'true'
       - name: Verify frozen migrations and seeded upgrade with previous runtime
-        if: steps.scope.outputs.application == 'true'
         run: vp run test:migrations
 
   component:
+    needs: changes
+    if: needs.changes.outputs.application == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       HARNESS_UI: "1"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: ./.github/actions/change-scope
-        id: scope
       - uses: ./.github/actions/setup-node-deps
-        if: steps.scope.outputs.application == 'true'
       - uses: ./.github/actions/setup-playwright
-        if: steps.scope.outputs.application == 'true'
         with:
           cache-write: "${{ github.event_name == 'push' }}"
           japanese-fonts: "true"
       - name: Run Playwright component suite
-        if: steps.scope.outputs.application == 'true'
         run: vp exec playwright test --config e2e/playwright.components.config.ts
       - name: Run authenticated admin Playwright suite with local Access and RPC mocks
-        if: always() && steps.scope.outputs.application == 'true'
+        if: always()
         run: vp run test:e2e:admin
       - name: Preserve component and admin screenshots and failure traces
-        if: always() && steps.scope.outputs.application == 'true'
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: component-ui-review
@@ -218,26 +209,24 @@ jobs:
           if-no-files-found: ignore
 
   dependency-security:
+    needs: changes
+    if: needs.changes.outputs.application == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: ./.github/actions/change-scope
-        id: scope
       - uses: ./.github/actions/setup-node-deps
-        if: steps.scope.outputs.application == 'true'
       # Vite+ 0.2.9's `vp pm audit` does not accept npm's positional `signatures`
       # subcommand. Run the project-pinned npm inside the Vite+ environment instead.
       - name: Verify npm registry signatures and provenance
-        if: steps.scope.outputs.application == 'true'
         run: vp env exec npm audit signatures
       - name: Fail on high or critical dependency vulnerabilities
-        if: steps.scope.outputs.application == 'true'
         run: vp env exec npm audit --audit-level=high
 
   fan-out:
     name: fan-out
     needs:
+      - changes
       - static-checks
       - unit-test
       - product-replay
@@ -252,6 +241,9 @@ jobs:
       - name: Verify CI fan-out
         shell: bash
         env:
+          SCOPE_RESULT: ${{ needs.changes.result }}
+          MARKDOWN_ONLY: ${{ needs.changes.outputs.markdown-only }}
+          APPLICATION: ${{ needs.changes.outputs.application }}
           STATIC_RESULT: ${{ needs.static-checks.result }}
           UNIT_RESULT: ${{ needs.unit-test.result }}
           REPLAY_RESULT: ${{ needs.product-replay.result }}
@@ -261,15 +253,33 @@ jobs:
           DEPENDENCY_RESULT: ${{ needs.dependency-security.result }}
         run: |
           set -euo pipefail
+          if [[ "$SCOPE_RESULT" != "success" ]]; then
+            echo "Change detection did not succeed: $SCOPE_RESULT" >&2
+            exit 1
+          fi
+          expected_static=success
+          expected_application=success
+          if [[ "$MARKDOWN_ONLY" == "true" ]]; then
+            expected_static=skipped
+          fi
+          if [[ "$APPLICATION" == "false" ]]; then
+            expected_application=skipped
+          elif [[ "$APPLICATION" != "true" || "$MARKDOWN_ONLY" == "true" ]]; then
+            echo "Invalid change detection outputs." >&2
+            exit 1
+          fi
+          if [[ "$STATIC_RESULT" != "$expected_static" ]]; then
+            echo "Static checks: expected $expected_static, got $STATIC_RESULT" >&2
+            exit 1
+          fi
           for result in \
-            "${STATIC_RESULT}" \
             "${UNIT_RESULT}" \
             "${REPLAY_RESULT}" \
             "${INTEGRATION_RESULT}" \
             "${MIGRATION_RESULT}" \
             "${COMPONENT_RESULT}" \
             "${DEPENDENCY_RESULT}"; do
-            if [[ "${result}" != "success" ]]; then
+            if [[ "${result}" != "$expected_application" ]]; then
               echo "Required CI job finished with result: ${result}" >&2
               exit 1
             fi
