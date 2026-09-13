@@ -137,6 +137,17 @@ class RedirectRejectedError extends Error {
   }
 }
 
+/** A redirect destination the host's own `robots.txt` excludes. */
+class RedirectRobotsDisallowedError extends Error {
+  constructor(path: string) {
+    super(`robots_disallowed for redirect destination ${path}`);
+    this.name = "RedirectRobotsDisallowedError";
+  }
+}
+
+/** Evaluated for each redirect destination before it is requested. */
+type RedirectRobotsGate = (target: URL) => Promise<void>;
+
 /**
  * Hosts this relay may send a request to, redirects included.
  *
@@ -160,13 +171,16 @@ function assertAllowedUpstream(target: URL): void {
 /**
  * Performs a request, following redirects one validated hop at a time.
  *
- * The initial URL has already passed the stricter per-shop URL-shape allowlist; a redirect is held
- * to the host-level rule, which is what keeps the relay from being pointed elsewhere.
+ * The initial URL has already passed the stricter per-shop URL-shape allowlist, and its robots
+ * policy was evaluated by the caller (or, for a permit, at PREPARE time). Every *later* hop is held
+ * to the host-level rule and to `robotsGate`, so a same-host redirect cannot carry the relay onto a
+ * path the seller excludes — the guarantee the direct transport already gives.
  */
 async function fetchValidatedUpstream(
   fetchFn: RelayFetch,
   url: string,
   headers: RelayHeaders,
+  robotsGate?: RedirectRobotsGate,
 ): Promise<RelayFetchResponse> {
   let target = new URL(url);
   const visited = new Set<string>();
@@ -175,6 +189,7 @@ async function fetchValidatedUpstream(
     const href = target.toString();
     if (visited.has(href)) throw new RedirectRejectedError(`redirect loop returning to ${href}`);
     visited.add(href);
+    if (hop > 0 && robotsGate) await robotsGate(target);
 
     const response = await fetchFn(href, { headers, redirect: "manual" });
     if (!REDIRECT_STATUSES.has(response.status)) return response;
@@ -541,13 +556,37 @@ function verifyPermit(value: unknown, secret: string): RelayPermitClaims | null 
   }
 }
 
+/**
+ * Robots gate for redirect destinations.
+ *
+ * The policy is fetched lazily, so a request that is never redirected costs nothing extra, and it
+ * is cached per origin for the rest of the chain. `robots.txt` is itself exempt: it is fetched
+ * without a gate, since a policy cannot be the authority on whether it may be read.
+ */
+function redirectRobotsGate(fetchFn: RelayFetch, userAgent: string): RedirectRobotsGate {
+  const policies = new Map<string, string | null>();
+  return async (target: URL) => {
+    if (!policies.has(target.origin)) {
+      policies.set(target.origin, await fetchRobotsPolicy(fetchFn, target.origin, userAgent));
+    }
+    if (!isPathAllowed(policies.get(target.origin) ?? null, target.toString(), userAgent)) {
+      throw new RedirectRobotsDisallowedError(target.pathname);
+    }
+  };
+}
+
 async function proxyTarget(
   fetchFn: RelayFetch,
   targetUrl: string,
   profile: RelayRequestProfile,
   env: RelayEnv,
 ): Promise<RelayResponse> {
-  const upstream = await fetchValidatedUpstream(fetchFn, targetUrl, profile.headers);
+  const upstream = await fetchValidatedUpstream(
+    fetchFn,
+    targetUrl,
+    profile.headers,
+    redirectRobotsGate(fetchFn, profile.userAgent),
+  );
   let bytes: Buffer;
   try {
     bytes = await readBoundedBody(upstream, MAX_UPSTREAM_RESPONSE_BYTES);
@@ -712,6 +751,9 @@ export function createHandler({
       const message = String(error instanceof Error ? error.message : String(error)).slice(0, 300);
       // A refused destination is reported distinctly so it is diagnosable as a policy decision
       // rather than an upstream outage. Either way the Worker reads a relay failure.
+      if (error instanceof RedirectRobotsDisallowedError) {
+        return jsonResponse(502, { error: "robots_disallowed_redirect", message });
+      }
       if (error instanceof RedirectRejectedError) {
         return jsonResponse(502, { error: "redirect_rejected", message });
       }

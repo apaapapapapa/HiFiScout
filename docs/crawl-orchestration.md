@@ -260,7 +260,16 @@ validating it, so the relay bearer token is never re-sent to a destination a res
 The relay Lambda applies the same contract in AWS, where "the platform cannot reach a private
 address" does not hold: it validates each hop against its allowed upstream hosts before requesting
 it, for the proxied page and for `robots.txt` alike, and reports a refusal as
-`502 redirect_rejected`.
+`502 redirect_rejected`. A redirect destination is also evaluated against that host's `robots.txt`
+before it is requested (`502 robots_disallowed_redirect`), so a same-host redirect cannot carry the
+relay onto an excluded path. The policy is fetched lazily, so an unredirected request costs nothing
+extra, and `robots.txt` itself is exempt — a policy cannot be the authority on whether it may be
+read.
+
+The `browser` transport reports only where it ended up, from `page.url()` after a navigation and
+from `response.url` for the in-page fetch it uses to reuse an open page. Both are checked against
+the allowed set, but neither can refuse a hop before it is sent; that is the transport's documented
+residual risk.
 
 A refused destination raises `CrawlRedirectRejectedError` and fails the collection through the
 normal failure path — never a successful crawl with zero items.
