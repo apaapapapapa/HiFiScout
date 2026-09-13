@@ -9,6 +9,8 @@ import { assessLoopDelivery, parseLoopReview } from "./review.js";
 import { inspectLoopWorkspace, loopGit, withLoopWorkspace } from "./workspace.js";
 import type { LoopRun } from "./state.js";
 import { readLoopRun } from "./state.js";
+import { integer } from "./contract.js";
+import { updateJsonRevision } from "../store.js";
 
 const json = async (path: string): Promise<unknown> => JSON.parse(await readFile(path, "utf8"));
 const bot = (user: unknown) =>
@@ -34,6 +36,101 @@ async function sourceIsCurrent(run: LoopRun, workspace: string, manifest: string
   return view;
 }
 
+interface PendingReview {
+  revision: number;
+  specDigest: string;
+  sourceSha: string;
+  prNumber: number;
+  commentId: number | null;
+}
+function parsePendingReview(value: unknown): PendingReview {
+  if (
+    !isRecord(value) ||
+    typeof value.specDigest !== "string" ||
+    typeof value.sourceSha !== "string"
+  )
+    throw new Error("invalid_pending_review");
+  return {
+    revision: integer(value.revision, "request_revision", 1),
+    specDigest: value.specDigest,
+    sourceSha: value.sourceSha,
+    prNumber: integer(value.prNumber, "request_pr", 1),
+    commentId: value.commentId === null ? null : integer(value.commentId, "request_comment", 1),
+  };
+}
+const requestPath = (workspace: string, sha: string, number: number) =>
+  resolve(workspace, `.generated/loop/review-request-${sha}-${number}.json`);
+async function pendingReview(path: string, run: LoopRun, sha: string, number: number) {
+  let pending: PendingReview;
+  try {
+    pending = parsePendingReview(await json(path));
+  } catch (error) {
+    if (isRecord(error) && error.code === "ENOENT") return null;
+    throw error;
+  }
+  if (
+    pending.specDigest !== run.specDigest ||
+    pending.sourceSha !== sha ||
+    pending.prNumber !== number
+  )
+    throw new Error("pending_review_identity_mismatch");
+  return pending;
+}
+
+async function reconcileReviewRequest(run: LoopRun, workspace: string, call: typeof gh) {
+  const view = assessLoopRun(run),
+    review = view.review;
+  if (!review) return;
+  const path = requestPath(workspace, review.sourceSha, review.prNumber);
+  const pending = await pendingReview(path, run, review.sourceSha, review.prNumber);
+  if (
+    !pending ||
+    pending.commentId ||
+    (run.spec.delivery.review === "optional" && Date.now() >= Date.parse(review.deadline))
+  )
+    return;
+  const repo = run.spec.repository,
+    pull = await api(call, `repos/${repo}/pulls/${review.prNumber}`);
+  if (!isRecord(pull) || !isRecord(pull.head) || pull.head.sha !== review.sourceSha)
+    throw new Error("pending_review_head_changed");
+  const body = `@codex review <!-- hifiscout-loop:${run.specDigest}:${review.sourceSha}:${review.prNumber} -->`;
+  const pages: unknown = JSON.parse(
+    await call([
+      "api",
+      "--hostname",
+      "github.com",
+      "--method",
+      "GET",
+      "--paginate",
+      "--slurp",
+      `repos/${repo}/issues/${review.prNumber}/comments?per_page=100`,
+    ]),
+  );
+  if (!Array.isArray(pages) || pages.some((page) => !Array.isArray(page)))
+    throw new Error("incomplete_review_request_history");
+  let comment: unknown = pages.flat().find((item) => isRecord(item) && item.body === body);
+  if (!comment)
+    comment = JSON.parse(
+      await call([
+        "api",
+        "--hostname",
+        "github.com",
+        "--method",
+        "POST",
+        `repos/${repo}/issues/${review.prNumber}/comments`,
+        "-f",
+        `body=${body}`,
+      ]),
+    );
+  if (!isRecord(comment)) throw new Error("invalid_review_request_response");
+  const commentId = integer(comment.id, "request_comment", 1);
+  await updateJsonRevision(path, pending.revision, parsePendingReview, (previous) => ({
+    ...pending,
+    revision: previous!.revision + 1,
+    commentId,
+  }));
+}
+
 export async function publishLoopPull(
   statePath: string,
   root: string,
@@ -55,7 +152,10 @@ export async function publishLoopPull(
   return withLoopWorkspace(statePath, root, async (run, workspace, manifest) => {
     const view = await sourceIsCurrent(run, workspace, manifest);
     if (view.phase !== "review") throw new Error("publication_requires_review_stage");
-    if (view.review) return view;
+    if (view.review) {
+      await reconcileReviewRequest(run, workspace, bounded(run, invoke));
+      return view;
+    }
     if (view.lastVerifiedSha === run.spec.baselineSha) throw new Error("repair_has_no_commit");
     const call = bounded(run, invoke),
       repo = run.spec.repository,
@@ -123,31 +223,31 @@ export async function publishLoopPull(
     )
       throw new Error("published_pull_head_mismatch");
     await sourceIsCurrent(await readLoopRun(statePath), workspace, manifest);
+    if (pulls.length && run.spec.delivery.review !== "self") {
+      const path = requestPath(workspace, view.lastVerifiedSha!, number);
+      if (
+        !(await pendingReview(path, run, view.lastVerifiedSha!, number)) &&
+        !run.events.some(
+          (event) =>
+            event.type === "review-requested" &&
+            event.data.prNumber === number &&
+            event.data.sourceSha === view.lastVerifiedSha,
+        )
+      )
+        await updateJsonRevision(path, 0, parsePendingReview, () => ({
+          revision: 1,
+          specDigest: run.specDigest,
+          sourceSha: view.lastVerifiedSha!,
+          prNumber: number,
+          commentId: null,
+        }));
+    }
     const result = await recordLoopEvent(statePath, run, "review-requested", {
       prNumber: number,
       sourceSha: view.lastVerifiedSha,
     });
-    // Opening a PR already triggers Codex. Updates need one explicit request; the journal prevents repeats.
-    if (
-      pulls.length &&
-      run.spec.delivery.review !== "self" &&
-      !run.events.some(
-        (event) =>
-          event.type === "review-requested" &&
-          event.data.prNumber === number &&
-          event.data.sourceSha === view.lastVerifiedSha,
-      )
-    )
-      await call([
-        "api",
-        "--hostname",
-        "github.com",
-        "--method",
-        "POST",
-        `repos/${repo}/issues/${number}/comments`,
-        "-f",
-        "body=@codex review",
-      ]);
+    // Persist intent before transport, then reconcile a stable marker after a lost acknowledgement.
+    await reconcileReviewRequest(await readLoopRun(statePath), workspace, call);
     return result;
   });
 }

@@ -41,6 +41,8 @@ async function fixture(target: "pr" | "merge", review: "self" | "optional") {
     threads = false,
     remoteHead = candidate,
     resolvedSummarySha = candidate;
+  let postFailure: "before" | "after" | null = null;
+  const requests: { id: number; body: string }[] = [];
   const calls: string[][] = [],
     pushes: string[][] = [];
   const pull = () => ({
@@ -79,6 +81,15 @@ async function fixture(target: "pr" | "merge", review: "self" | "optional") {
         },
       ]);
     const path = args.find((arg) => arg.startsWith("repos/"))!;
+    if (path.endsWith("/issues/7/comments") && args.includes("POST")) {
+      const failure = postFailure;
+      postFailure = null;
+      if (failure === "before") throw new Error("request_not_sent");
+      const comment = { id: 11, body: args.find((arg) => arg.startsWith("body="))!.slice(5) };
+      requests.push(comment);
+      if (failure === "after") throw new Error("acknowledgement_lost");
+      return JSON.stringify(comment);
+    }
     if (path.endsWith("/pulls/7/merge")) {
       assert.ok(args.includes(`sha=${candidate}`));
       assert.ok(args.includes("merge_method=merge"));
@@ -111,6 +122,7 @@ async function fixture(target: "pr" | "merge", review: "self" | "optional") {
     if (path.includes("/issues/7/comments?"))
       return JSON.stringify([
         [
+          ...requests,
           {
             user: { login: "chatgpt-codex-connector[bot]" },
             updated_at: new Date().toISOString(),
@@ -132,6 +144,11 @@ async function fixture(target: "pr" | "merge", review: "self" | "optional") {
     push,
     calls,
     pushes,
+    requests,
+    failRequest: (when: "before" | "after") => {
+      exists = true;
+      postFailure = when;
+    },
     setMainCi: () => {
       mainCi = true;
     },
@@ -206,5 +223,29 @@ test("Codex summaries resolve to the full reviewed SHA and a PR-only contract ca
     assert.equal((await observeLoopDelivery(f.state, f.workspaces, f.invoke)).phase, "completed");
   } finally {
     await rm(f.root, { recursive: true, force: true });
+  }
+});
+
+test("review request retries recover unsent requests and lost acknowledgements without a new deadline", async () => {
+  for (const failure of ["before", "after"] as const) {
+    const f = await fixture("pr", "optional");
+    try {
+      f.failRequest(failure);
+      await assert.rejects(
+        publishLoopPull(f.state, f.workspaces, f.invoke, f.push),
+        /request_not_sent|acknowledgement_lost/u,
+      );
+      const requested = await readLoopRun(f.state);
+      const event = requested.events.find((e) => e.type === "review-requested")!;
+      await publishLoopPull(f.state, f.workspaces, f.invoke, f.push);
+      await publishLoopPull(f.state, f.workspaces, f.invoke, f.push);
+      const recovered = await readLoopRun(f.state);
+      assert.equal(recovered.events.filter((e) => e.type === "review-requested").length, 1);
+      assert.equal(recovered.events.find((e) => e.type === "review-requested")!.at, event.at);
+      assert.equal(f.requests.length, 1);
+      assert.equal(f.pushes.length, 1);
+    } finally {
+      await rm(f.root, { recursive: true, force: true });
+    }
   }
 });

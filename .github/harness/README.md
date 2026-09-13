@@ -64,7 +64,10 @@ the coding agent supplies a real self-review receipt (`sourceSha`, `method: self
 then uses GitHub's normal merge API with an expected-head guard. `loop observe <state> <workspace-root>`
 retains fresh GitHub snapshots and advances only when the contracted target is verified. An in-progress
 main run is pending, not success. These commands retain their journal and evidence on interruption;
-rerunning publish does not create duplicate PRs or restart a recorded review wait.
+rerunning publish does not create duplicate PRs or restart a recorded review wait. Updated PR review
+requests retain a pending transport record and stable comment marker, so retries recover both failed
+sends and lost acknowledgements without duplicating an accepted request. Retain those generated
+records with the journal; an expired optional wait still moves to self-review without a new timer.
 
 ## Bounded improvement loops
 
