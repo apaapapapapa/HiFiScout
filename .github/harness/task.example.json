@@ -1,0 +1,13 @@
+{
+  "id": "replace-with-issue-or-task-id",
+  "goal": "Implement the requested change and verify delivery to main",
+  "requirements": [
+    { "id": "main-merge", "scope": "source" },
+    { "id": "review-threads", "scope": "source" },
+    { "id": "ci", "scope": "source" },
+    { "id": "deployment", "scope": "deployment" },
+    { "id": "verification/e2e", "scope": "deployment" }
+  ],
+  "constraints": ["Keep intentionally paused operational audits paused"],
+  "nextActions": ["Read the remaining check reasons and inspect their referenced evidence"]
+}

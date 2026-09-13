@@ -53,6 +53,26 @@ and unrelated parent deployments cannot establish production verification. Autom
 the configured production URL; manual E2E retains its alternate-URL input. Earlier runs without
 receipts remain unconfirmed rather than receiving retroactive evidence.
 
+## Checkpoint and resume
+
+Start from `task.example.json`, replacing the goal and requirements with the actual request.
+`vp run harness checkpoint <task.json> <report.json> <state.json> 0` creates a checkpoint.
+For an update, pass the revision reported by the last successful write instead of 0. The command
+stores incomplete reports too; exit 2 means evidence remains incomplete, not that saving failed.
+`vp run harness resume <state.json>` compares recorded evidence with the actual Git checkout and
+prints constraints, remaining check IDs and next actions. It never executes text from the task.
+
+The task specification owns required check IDs and scopes. A runner cannot waive a requirement
+by omitting it, setting required=false, or relabeling its scope. Scope changes require a new
+checkpoint. Revision checks and an exclusive writer lock prevent concurrent overwrites; a failed
+write preserves the prior state. A lock left by a terminated process requires deliberate cleanup
+after confirming that no writer remains.
+
+Preserve checkpoints in Git or as task/CI artifacts before ending a session. They record the last
+tested SHA; committing a checkpoint or changing source does not transfer previous test success to
+the new SHA. A dirty or changed checkout requires fresh evidence. Use the existing AGENTS.md task
+map to find current sources; old checkpoint prose does not override current code or authorization.
+
 ## Ownership
 
 Reuse package scripts, Vitest, Playwright, real migrated local D1 fixtures and deployment-owned

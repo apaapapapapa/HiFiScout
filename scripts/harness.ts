@@ -3,6 +3,20 @@ import { pathToFileURL } from "node:url";
 import { assessHarnessReport, reportExitCode } from "./harness/report.js";
 
 export async function runHarness(args: string[]): Promise<number> {
+  if (args[0] === "checkpoint" && args.length === 5) {
+    const { saveCheckpoint } = await import("./harness/checkpoint.js");
+    const task: unknown = JSON.parse(await readFile(args[1], "utf8"));
+    const report: unknown = JSON.parse(await readFile(args[2], "utf8"));
+    const result = await saveCheckpoint(task, report, args[3], Number(args[4]));
+    console.log(JSON.stringify(result, null, 2));
+    return reportExitCode(result.status);
+  }
+  if (args[0] === "resume" && args.length === 2) {
+    const { assessCheckpoint, readCheckout } = await import("./harness/checkpoint.js");
+    const result = assessCheckpoint(JSON.parse(await readFile(args[1], "utf8")), readCheckout());
+    console.log(JSON.stringify(result, null, 2));
+    return reportExitCode(result.status);
+  }
   if (args[0] === "delivery" && args.length === 4) {
     const { collectDelivery } = await import("./harness/github.js");
     const report = await collectDelivery(args[1], Number(args[2]), args[3]);
