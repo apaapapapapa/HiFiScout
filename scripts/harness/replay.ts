@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { isRecord } from "../../src/types.js";
 import { readCheckout } from "./checkpoint.js";
+import { repositoryArtifact } from "./artifacts.js";
 import { assessHarnessReport, requireSha, requireText, type CheckStatus } from "./report.js";
 
 /** Reuse incident regressions and their real assertions; never replace them with model scoring. */
@@ -112,7 +113,12 @@ export function collectReplayCases(reports: unknown[]) {
   };
 }
 
-export function replayReport(result: ReplayResult, startedAt: string, finishedAt: string) {
+export function replayReport(
+  result: ReplayResult,
+  startedAt: string,
+  finishedAt: string,
+  artifactUri = "replay.json",
+) {
   return assessHarnessReport({
     schemaVersion: 1,
     runId: `replay-${result.sourceSha}`,
@@ -140,7 +146,7 @@ export function replayReport(result: ReplayResult, startedAt: string, finishedAt
         reason: !result.checkoutStable
           ? "checkout_changed_or_dirty"
           : `${cases.length} assertions; ${failed} failed; ${missing.length} missing suites; local fixture behavior only`,
-        evidence: [{ uri: "replay.json", sourceSha: result.sourceSha }],
+        evidence: [{ uri: artifactUri, sourceSha: result.sourceSha }],
       };
     }),
   });
@@ -240,6 +246,7 @@ export async function runReplay(outputDirectory: string, reportPaths: string[] =
   const checkout = readCheckout();
   const corpusHash = await replayCorpusHash();
   const directory = resolve(outputDirectory);
+  const artifactUri = repositoryArtifact(resolve(directory, "replay.json"));
   await mkdir(directory, { recursive: true });
   if (!reportPaths.length) {
     const reportPath = resolve(directory, "vitest.json");
@@ -282,7 +289,7 @@ export async function runReplay(outputDirectory: string, reportPaths: string[] =
       checkout.sourceSha === current.sourceSha &&
       corpusHash === (await replayCorpusHash()),
   };
-  const report = replayReport(result, startedAt, new Date().toISOString());
+  const report = replayReport(result, startedAt, new Date().toISOString(), artifactUri);
   await writeFile(resolve(directory, "replay.json"), `${JSON.stringify(result, null, 2)}\n`);
   await writeFile(resolve(directory, "replay-report.json"), `${JSON.stringify(report, null, 2)}\n`);
   return report;

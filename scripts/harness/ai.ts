@@ -17,6 +17,7 @@ import {
   AI_HOLDOUT_VERSION,
 } from "../../test/fixtures/ai-catalog-holdout.js";
 import { readCheckout } from "./checkpoint.js";
+import { repositoryArtifact } from "./artifacts.js";
 import { assessHarnessReport, requireSha, requireText, requireTimestamp } from "./report.js";
 
 export const aiResponseDigest = (value: unknown) =>
@@ -297,6 +298,7 @@ export async function runAiHoldout(recordingPath: string, directory: string) {
     !current.dirty &&
     checkout.sourceSha === current.sourceSha;
   const output = resolve(directory);
+  const artifactUri = repositoryArtifact(resolve(output, "evaluation.json"));
   await mkdir(dirname(output), { recursive: true });
   await mkdir(output);
   await writeFile(resolve(output, "recording.json"), `${JSON.stringify(recording, null, 2)}\n`);
@@ -318,7 +320,7 @@ export async function runAiHoldout(recordingPath: string, directory: string) {
         reason: stable
           ? "offline admission/response replay; provider provenance and activation are not approved"
           : "recording_or_checkout_sha_mismatch_or_dirty",
-        evidence: [{ uri: "evaluation.json", sourceSha: result.sourceSha }],
+        evidence: [{ uri: artifactUri, sourceSha: result.sourceSha }],
       },
     ],
   });
