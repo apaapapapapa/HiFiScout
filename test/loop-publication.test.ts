@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { loopGitFixture } from "./helpers/loop-git.js";
-import { loopReport } from "./helpers/loop.js";
+import { loopReport, loopSpec } from "./helpers/loop.js";
 import { applyLoopPatch, prepareLoopWorkspace } from "../scripts/harness/loop/workspace.js";
 import { beginLoopAttempt, finishLoopAttempt } from "../scripts/harness/loop/controller.js";
 import { readLoopRun } from "../scripts/harness/loop/state.js";
@@ -17,7 +17,10 @@ import {
 } from "../scripts/harness/loop/publication.js";
 
 async function fixture(target: "pr" | "merge", review: "self" | "optional") {
-  const f = await loopGitFixture({ delivery: { target, review, reviewWaitMs: 900_000 } });
+  const task = loopSpec().task;
+  // Delivery has an optional observation gate with this ID; preserve the distinct source gate.
+  task.requirements.push({ id: "production-effectiveness", scope: "source" });
+  const f = await loopGitFixture({ task, delivery: { target, review, reviewWaitMs: 900_000 } });
   await prepareLoopWorkspace(f.state, f.source, f.workspaces);
   await beginLoopAttempt(f.state, "Correct the value", { externalCalls: 1, reservedCostMicros: 0 });
   const patch =
@@ -32,6 +35,7 @@ async function fixture(target: "pr" | "merge", review: "self" | "optional") {
   report.startedAt = at;
   report.finishedAt = at;
   report.checks[0].evidence[0].sourceSha = applied.owner.headSha;
+  report.checks.push({ ...report.checks[0], id: "production-effectiveness" });
   await finishLoopAttempt(f.state, report, applied.checkout, new Date().toISOString(), scope);
   const candidate = applied.owner.headSha,
     mergeSha = "b".repeat(40),
