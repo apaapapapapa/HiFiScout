@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "harness": "vp exec tsx scripts/harness.ts",
     "test": "vp test run",
     "benchmark:parser": "vp exec tsx scripts/parser-cpu-benchmark.ts --check",
     "test:e2e": "vp exec playwright test --config e2e/playwright.config.ts",
