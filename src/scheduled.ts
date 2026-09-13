@@ -725,7 +725,8 @@ const MAINTENANCE_TASKS: readonly MaintenanceTask[] = [
     name: "ai_catalog_maintenance",
     everyTicks: 12,
     offset: 4,
-    minimumRemainingCalls: 20,
+    // One maintenance claim plus the twenty-call maximum of the bounded recovery slice.
+    minimumRemainingCalls: 21,
     run: (env, now) => maintainAiCatalogJobs(env, now),
   },
   {
