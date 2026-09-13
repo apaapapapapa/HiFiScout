@@ -517,7 +517,13 @@ does not add crawl writes or a new aggregation path.
 
 The cursor records both the aggregate variant and, for request-scoped sorts, the offer-filter scope that defined it. A cursor therefore cannot resume under an ordering whose visible card values were calculated from a different offer subset. `items`, `hasMore`, `totalCount`, `totalPages` and cursor movement all operate on entities before any offer is loaded.
 
-Offer summaries and representative offers are loaded in chunks of entity IDs to stay under D1's bind-parameter ceiling. Unfiltered responses skip the offer-aggregate loader; price summaries have their own bounded projection loader. There is no per-result offer lookup. This bounds statement fan-out by page size, but filtered sorting may still aggregate matching active listings and an exact total may inspect the matching set. See `test/remediation-query-plans.test.ts`; a bounded response is not proof of constant-cost SQL.
+The inner join to that matching-offer aggregate also proves that an entity has an offer satisfying
+every selected condition. The page does not repeat the same membership predicate. The separate exact
+count still applies it, as do relevance and persisted sort paths that have no matching-offer join.
+This saves a second pass through filtered offers without adding projection writes or changing the
+same-offer contract, totals or cursor scope.
+
+Offer summaries and representative offers are loaded in chunks of entity IDs to stay under D1's bind-parameter ceiling. Unfiltered responses skip the offer-aggregate loader; price summaries have their own bounded projection loader. There is no per-result offer lookup. This bounds statement fan-out by page size, but filtered sorting may still aggregate matching active listings and an exact total may inspect the matching set. See `test/remediation-query-plans.test.ts` and `test/filtered-search-read-budget.test.ts`; a bounded response is not proof of constant-cost SQL.
 
 ## Taxonomy v3: product types, facets, and capabilities
 
