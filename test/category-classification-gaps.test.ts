@@ -69,7 +69,13 @@ test("the speaker root is a filter group and the loudspeaker leaf is classifiabl
 });
 
 test("a bare speaker seller bucket maps to the broad loudspeaker type", () => {
-  for (const rawCategory of ["スピーカー", "speaker", "speaker-system", "中古スピーカー"]) {
+  for (const rawCategory of [
+    "スピーカー",
+    "speaker",
+    "speaker-system",
+    "スピーカーシステム",
+    "中古スピーカー",
+  ]) {
     const product = classify("Example Model X", rawCategory);
     assert.equal(product.classificationStatus, "classified", rawCategory);
     assert.equal(product.primaryCategoryId, "SPK.LOUDSPEAKER", rawCategory);
