@@ -51,6 +51,9 @@ jobs:
       - run: vp run ci:lint
       - run: vp run ci:format-check
       - run: vp run ci:no-js-source
+      - name: Enforce architecture boundaries with repair guidance
+        if: steps.scope.outputs.application == 'true'
+        run: vp run ci:architecture
       - name: Typecheck source
         if: steps.scope.outputs.application == 'true'
         run: vp run ci:typecheck

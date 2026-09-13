@@ -10,7 +10,7 @@
     "test:e2e": "vp exec playwright test --config e2e/playwright.config.ts",
     "test:e2e:admin": "vp run build:frontend:admin && vp exec playwright test --config e2e/playwright.admin.config.ts",
     "fix": "vp run format && vp run lint:fix",
-    "check": "vp run lint && vp run format:check && vp run check:no-js-source && vp run typecheck && vp run benchmark:parser && vp run test",
+    "check": "vp run lint && vp run format:check && vp run check:no-js-source && vp run check:architecture && vp run typecheck && vp run benchmark:parser && vp run test",
     "verify": "vp run fix && vp run check",
     "lint": "vp lint . --deny-warnings",
     "lint:fix": "vp lint . --fix",
@@ -26,7 +26,7 @@
     "docs:api": "vp dlx -p typedoc-plugin-markdown@4.12.0 -p typedoc-vitepress-theme@1.1.3 -p typescript@6.0.2 typedoc@0.28.20",
     "docs:openapi:check": "vp exec tsx scripts/docs/generate-openapi.ts && REDOCLY_TELEMETRY=off REDOCLY_SUPPRESS_UPDATE_NOTICE=true vp dlx -p @redocly/cli@2.47.0 redocly lint --extends=minimal docs/public/generated/openapi.json",
     "docs:openapi": "vp run docs:openapi:check && REDOCLY_TELEMETRY=off REDOCLY_SUPPRESS_UPDATE_NOTICE=true vp dlx -p @redocly/cli@2.47.0 redocly build-docs docs/public/generated/openapi.json --output docs/public/generated/openapi.html",
-    "docs:architecture:check": "vp dlx -p typescript@6.0.2 dependency-cruiser@18.1.0 src frontend --config .dependency-cruiser.json --ts-config tsconfig.json --output-type err",
+    "docs:architecture:check": "vp run check:architecture",
     "docs:architecture": "vp exec tsx scripts/ensure-directories.ts docs/public/generated && vp dlx -p typescript@6.0.2 dependency-cruiser@18.1.0 src frontend --config .dependency-cruiser.json --ts-config tsconfig.json --output-type html --output-to docs/public/generated/dependencies.html && vp dlx -p typescript@6.0.2 dependency-cruiser@18.1.0 src frontend --config .dependency-cruiser.json --ts-config tsconfig.json --collapse 2 --output-type mermaid --output-to docs/public/generated/architecture.mmd && vp exec tsx scripts/docs/render-mermaid-architecture.ts docs/public/generated/architecture.mmd docs/public/generated/architecture.html",
     "docs:ai:stage": "vp exec tsx scripts/docs/stage-ai-docs.ts",
     "docs:db": "bash scripts/docs/generate-db-docs.sh",
@@ -43,7 +43,8 @@
     "build:worker": "vp exec wrangler deploy --dry-run --outdir dist/worker",
     "build:admin-worker": "vp exec wrangler deploy --dry-run --config wrangler.admin.jsonc --outdir dist/admin-worker",
     "build:lambda": "vp build --mode lambda",
-    "check:no-js-source": "vp exec tsx scripts/check-no-first-party-js.ts"
+    "check:no-js-source": "vp exec tsx scripts/check-no-first-party-js.ts",
+    "check:architecture": "vp dlx -p typescript@6.0.2 dependency-cruiser@18.1.0 src frontend --config .dependency-cruiser.json --ts-config tsconfig.json --output-type err-long"
   },
   "dependencies": {
     "react": "^19.2.8",
