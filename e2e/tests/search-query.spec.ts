@@ -1,6 +1,29 @@
 import { expect, test } from "../fixtures/catalog-test.js";
 import { offer, product, routeProductSearch } from "./product-fixtures.js";
 
+test("live LUMIN search does not return Aluminum finishes or Lumina models", async ({
+  request,
+}) => {
+  const response = await request.get("/api/product-search", {
+    params: { q: "lumin", inStock: "true", limit: "50", includeTotal: "true" },
+  });
+  expect(response.ok()).toBe(true);
+  const body = await response.json();
+  expect(Array.isArray(body.items)).toBe(true);
+  // Inventory may legitimately be empty; seeded D1 tests separately require positive matches.
+  for (const item of body.items) expect(item.manufacturer).toBe("LUMIN");
+  console.log(
+    JSON.stringify({
+      event: "lumin_search_smoke",
+      totalCount: body.totalCount,
+      items: body.items.map((item: { manufacturer: string; model: string }) => ({
+        manufacturer: item.manufacturer,
+        model: item.model,
+      })),
+    }),
+  );
+});
+
 test("multi-word search is sent to the product API unchanged and renders its result", async ({
   page,
   catalogPage,

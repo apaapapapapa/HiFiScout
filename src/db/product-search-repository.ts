@@ -147,6 +147,11 @@ function addSearchPlan(q: string, where: string[], binds: unknown[]): SearchPlan
     )`);
     binds.push(term, term, term, term, term);
   }
+  // Trigrams also match inside unrelated words (LUMIN in Aluminum or Lumina). A known brand
+  // prefix describes the entity's manufacturer, not a compatibility mention in its seller title.
+  // Keep FTS as the candidate selector and share the explicit filter's legacy-alias handling.
+  const manufacturer = splitKnownManufacturerModel(plan.query);
+  if (manufacturer) addManufacturerFilter([manufacturer.id], where, binds);
   return { join, plan };
 }
 
@@ -178,15 +183,19 @@ function relevanceOrder(q: string, plan: FtsSearchPlan | null, rankBinds: unknow
   return `${caseSql}${ftsRank}, e.latest_activity_at DESC, e.id DESC`;
 }
 
-/** Product-level filters: they describe the product, so they never look at an individual offer. */
-function addProductFilters(query: ProductQuery, where: string[], binds: unknown[]): void {
-  if (query.manufacturer.length) {
+/** Shared by the explicit facet and a known manufacturer prefix in free text. */
+function addManufacturerFilter(
+  manufacturers: readonly string[],
+  where: string[],
+  binds: unknown[],
+): void {
+  if (manufacturers.length) {
     // A visible canonical facet can race ahead of resolver replay. Keep matching the old ids, and
     // also the seller presentation itself so a Japanese-only alias whose old id was a badge-specific
     // hash (for example `【中古品】ラックスマン`) cannot disappear during that window.
-    const manufacturerIds = [...new Set(query.manufacturer.flatMap(manufacturerFilterIds))];
+    const manufacturerIds = [...new Set(manufacturers.flatMap(manufacturerFilterIds))];
     const manufacturerPresentations = [
-      ...new Set(query.manufacturer.flatMap(manufacturerFilterPresentations)),
+      ...new Set(manufacturers.flatMap(manufacturerFilterPresentations)),
     ].map((presentation) => presentation.toLowerCase().replace(/\s+/gu, ""));
     where.push(`(
       e.manufacturer_id IN (SELECT value FROM json_each(?))
@@ -209,6 +218,11 @@ function addProductFilters(query: ProductQuery, where: string[], binds: unknown[
     const presentationsJson = JSON.stringify(manufacturerPresentations);
     binds.push(JSON.stringify(manufacturerIds), presentationsJson, presentationsJson);
   }
+}
+
+/** Product-level filters: they describe the product, so they never look at an individual offer. */
+function addProductFilters(query: ProductQuery, where: string[], binds: unknown[]): void {
+  addManufacturerFilter(query.manufacturer, where, binds);
   if (query.category) {
     // Membership, not the one representative category. A listing that sells a transport and a DAC
     // is in both, so selecting on `primary_category_id` made it findable under whichever of the
