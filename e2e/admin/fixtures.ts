@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-import { expect, test as base } from "@playwright/test";
+import { expect, test as base } from "../harness-fixtures.js";
 import adminWorker from "../../src/admin/entry.js";
 import { createMockAccess } from "./mock-access.js";
 import { createMockAdminRpc } from "./mock-rpc.js";
@@ -80,6 +80,11 @@ async function startAdminApp() {
     url: origin,
     headers: access.headers,
     state,
+    diagnostics: {
+      serverErrors,
+      unexpectedRequests: access.unexpectedRequests,
+      unexpectedCalls: state.unexpectedCalls,
+    },
     async close() {
       try {
         await new Promise<void>((resolve, reject) => {
@@ -98,12 +103,20 @@ async function startAdminApp() {
 
 export const test = base.extend<{ app: Awaited<ReturnType<typeof startAdminApp>> }>({
   // eslint-disable-next-line no-empty-pattern -- Playwright requires a destructured fixture argument.
-  app: async ({}, use) => {
+  app: async ({}, use, info) => {
     const app = await startAdminApp();
     try {
       await use(app);
     } finally {
-      await app.close();
+      try {
+        await app.close();
+      } finally {
+        if (process.env.HARNESS_UI === "1")
+          await info.attach("admin-server.json", {
+            body: JSON.stringify(app.diagnostics, null, 2),
+            contentType: "application/json",
+          });
+      }
     }
   },
   baseURL: async ({ app }, use) => {

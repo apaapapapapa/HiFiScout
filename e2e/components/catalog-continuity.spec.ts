@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../harness-fixtures.js";
 import type { Page } from "@playwright/test";
 import { product, offer } from "../tests/product-fixtures.js";
 

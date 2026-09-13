@@ -120,8 +120,6 @@ deltas, and ratios only for nonzero baselines. Row/statement/message increases f
 uses the parser gate's 75% plus 0.5 noise margin. Absolute local CPU is diagnostic only. Changing
 fixtures or runtime dependencies requires a new reviewed baseline, not a manufactured improvement.
 
-## Extending the harness
-
 ## Architecture gate
 
 `vp run check:architecture` runs the existing pinned dependency-cruiser rules in
@@ -138,6 +136,29 @@ Rule exceptions and baseline suppression files require an explicit architectural
 add one merely to make CI pass. There is no second hand-written dependency checker.
 
 ## Extension points
+
+## Isolated UI evidence
+
+`vp run harness ui .generated/ui-<run-id>` builds the admin bundle and runs the existing gallery
+and authenticated admin suites. The output directory must be new. Install the same Playwright
+browser used by CI first. The gallery owns its loopback server and each admin test owns an
+ephemeral loopback port, RSA key and in-memory RPC state. The real admin entry still verifies
+Access, CSRF and request contracts. This command has no production target or credentials.
+
+Harness mode disables gallery server/context reuse and blocks browser HTTP/WebSocket requests
+outside the fixture origin. Existing signed local Access and RPC/JWKS mocks retain their strict
+unexpected-call checks. Each case preserves a screenshot, HTML, console/page errors, request
+metadata without headers/bodies/query strings, SHA, URL and retry number. Admin server errors
+are attached too; Playwright retains failure traces. Normal CI enables this mode and uploads
+the existing `component-ui-review` artifact, including final JSON results for both suites.
+
+Per-case evidence records the test status at capture time. Final Playwright results, including
+fixture teardown, own completion; the CLI uses those results and its process exits for the common
+report. Missing/skipped results or a dirty/changed checkout stay unknown. These are browser tests
+against local data, not deployment or production verification. Review screenshots/DOM together
+with console and network evidence; an image alone does not prove an interaction succeeded.
+
+## Adding a boundary
 
 Reuse package scripts, Vitest, Playwright, real migrated local D1 fixtures and deployment-owned
 identity artifacts. Add a diagnostic at the boundary that owns the behavior. Keep orchestration

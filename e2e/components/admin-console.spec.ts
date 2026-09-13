@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../harness-fixtures.js";
 import type { Page, Route } from "@playwright/test";
 import type { AdminModelFact, ModelFactWriteInput } from "../../src/api/contracts.js";
 
