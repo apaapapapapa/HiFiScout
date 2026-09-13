@@ -2,6 +2,18 @@
 
 HiFiScout follows a test pyramid: most behavior is verified in-process with Vitest. Browser component tests run against a local fixture gallery; deployed-environment E2E remains small and checks public user flows after deployment.
 
+## Choosing validation
+
+Match validation to the changed behavior and boundary. Contributor-only prose needs scope/link/diff
+review; published docs and generator changes need `vp run docs:build`. For source/config changes,
+use focused cases while iterating and run the repository's `vp run verify` aggregate on the completed
+candidate. Required CI gates still apply. Reuse applicable existing results; repeat checks for changed
+inputs, failures or a concrete remaining risk, not simply because another instruction says to test.
+
+Local unit/D1 tests, the fixture gallery and mocked-auth admin suite use disposable state and may be
+run, fixed and rerun under the implementation task's existing authorization. Deployed public E2E uses
+its configured target; local fixture authorization does not authorize production repairs or data writes.
+
 ## Pyramid
 
 ### 1. Unit tests — default and largest layer
@@ -18,7 +30,7 @@ the maintained four-shard execution path.
 
 Keep parsing, normalization, category inference, query construction, scheduling decisions, guards, and shop-specific mapping rules here. Prefer pure functions and deterministic fixtures. Stub network, browser, queue, and D1 boundaries rather than exercising remote services.
 
-A regression should be added at this layer whenever the bug can be reproduced without a deployed Worker. This is the preferred layer for almost all parser and catalog-classification defects.
+For a reproduced behavior bug, add or extend a regression at this layer when it can detect the failure without a deployed Worker. This is the preferred layer for parser and catalog-classification defects; tests should establish behavior, not mirror implementation or instruction wording.
 
 `test/decision-quality.test.ts` is a semantic corpus: compatible accessories versus included accessories, phono/microphone preamps, presentation aliases, bundles and revisions. A confident false merge fails even when unresolved coverage improves. Official-page tests preserve decisions under navigation changes and ensure weaker evidence cannot erase a conflict. Rule IDs and versioned evidence make failures attributable to a policy.
 

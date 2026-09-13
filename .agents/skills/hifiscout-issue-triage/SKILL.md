@@ -1,56 +1,43 @@
 ---
 name: hifiscout-issue-triage
-description: "HiFiScoutのIssueを最新実装・PR・観測証跡から再評価し、更新案やクローズ判断を作る。Use for obsolete/completed issue cleanup and acceptance/baseline assessment; mutate issues only when requested or already authorized."
+description: "HiFiScoutのIssueの受入条件・実装・証跡を再評価し、更新内容やクローズ可否を判断するときに使う。"
 ---
 
 # HiFiScout issue triage
 
-## Reconstruct the current requirement
+Read the latest issue requirements/comments and relevant linked PRs; compare with current `main`.
+Preserve accepted scope changes. Historical labels, checklists and architecture are not current proof.
+Use the domain references needed to judge the claim, not every skill named in an old issue.
 
-Read the latest issue body, all relevant comments, linked PRs and their review/merge state. Compare
-with current `main`, deployed identity and current operational configuration. Old issue labels,
-checklists and historical Queue architecture are not proof of current behavior. Preserve the
-user's latest accepted scope changes instead of restoring superseded requirements from history.
+## Match evidence to acceptance
 
-Use the relevant domain skill for the technical judgment and the
-[harness evidence contract](../../../.github/harness/README.md) plus
-[workflow ownership](../../../.github/workflows/README.md) for CI/deployment interpretation.
-Do not collect production data merely because an issue contains an old audit command.
+Summarize each criterion with its evidence (SHA/run/artifact/interval), status and gap/next action.
+Keep `pass`, `fail`, `unknown` and `skipped` distinct. Code removal/supersession can be established from
+source; collect deployed/operational evidence only when the criterion depends on it.
 
-## Assess each acceptance condition
+| Criterion | Evidence boundary |
+| --- | --- |
+| Source behavior / replacement design | Current implementation and relevant checks/PRs |
+| Production rollout | Deployment identity and downstream receipts; see [delivery](../hifiscout-delivery/SKILL.md) |
+| Load/baseline | Coverage and comparable workload; see [SQL observation](../../../docs/d1-sql-observation.md) |
 
-Build a compact table: criterion, current evidence (SHA/run/artifact/interval), status, gap or next
-action. Keep `pass`, `fail`, `unknown` and `skipped` distinct. CI source success, main merge,
-deployment, production convergence and observed cost reduction are different claims.
+A deploy workflow can be green and deferred/no-op. Missing/expired artifacts or quota-blocked metrics
+stay unknown, not zero; hourly archive presence does not prove account-wide completeness. Preserve
+paused audits. A required unmeasured criterion stays unresolved unless its requirement is explicitly
+changed; an old audit command does not authorize new production scans.
 
-- Require evidence from the source/deployment and observation window the criterion actually
-  covers. A newer implementation may supersede the original fix, but show that mapping explicitly.
-- A successful deploy workflow may be deferred/no-op. Inspect `deployment-identity` and the
-  downstream receipts rather than using run `head_sha`. Missing/expired evidence remains missing.
-- For load/baseline criteria, use [SQL observation semantics](../../../docs/d1-sql-observation.md).
-  Quota gaps, truncated groups, sampled data and missing CPU/Queue metrics cannot become zero.
-  A full set of hourly archive files is not a complete account-wide measurement.
-- Keep intentionally disabled health/audit checks disabled. Distinguish passive archive jobs
-  from active D1 scans. Optional paused checks can be skipped, but a required unmeasured condition
-  remains unresolved unless its acceptance requirement is explicitly changed.
+For a fixed-deployment observation requirement, use an already accepted alternative if one exists.
+Otherwise propose deployment segments or equivalent code/config/schema cohorts with comparable
+workload, disjoint hours, coverage/exclusions and independent correctness evidence. State which
+requirement changes and what confidence is lost. Mixed versions never silently satisfy a fixed-version
+baseline; a historical 72-hour rule does not apply to every issue. A recorded proposal is not acceptance.
 
-If a fixed-deployment observation window cannot coexist with continuous releases, first check
-whether an alternative has already been accepted. Otherwise propose a concrete comparison:
-deployment segments, relevant code/config/schema equivalence, comparable traffic/crawl workload,
-nonoverlapping hours, coverage thresholds, exclusions and independent correctness evidence. State
-which original requirement it replaces and what confidence is lost. Do not silently label mixed
-versions as a fixed-version baseline or impose a historical 72-hour rule on unrelated issues.
-An already-authorized issue update can record this proposal without claiming it was accepted.
+## Finish within the requested scope
 
-## Decide and update within scope
+Close as completed only with evidence for current accepted criteria. For an obsolete problem, explain
+the superseding design/PR and appropriate superseded/not-planned decision; do not claim missing original
+measurements passed. If work remains, narrow to the actual gap and a concrete next action.
 
-Close as completed only when current accepted requirements are evidenced. If the problem no longer
-applies, explain the superseding design/PR and use the appropriate superseded/not-planned decision
-rather than pretending the original measurements passed. If work remains, narrow the issue to the
-actual gap and identify a concrete next action. Do not close solely because a PR merged.
-
-For a review-only request, return the decision and draft update. When issue updates/closures are
-authorized, reread the issue before writing, preserve intervening edits and useful evidence, make
-the scoped update, and verify the resulting body/state. Avoid rewriting history or duplicating old
-checklists in a new issue without a reason. If implementation is also requested, use delivery to
-complete it; do not stop at filing another issue instead of doing the authorized fix.
+Review-only work returns the decision/draft. For authorized updates/closures, reread before writing,
+preserve intervening edits and useful evidence, apply the scoped update and verify the final body/state.
+If implementation is requested too, complete it via delivery rather than stopping at another issue.
