@@ -129,5 +129,5 @@ test("category metadata version advances so stale rows are replayable", () => {
   // the remediation replay, so it cannot be done without editing this line and thinking about the
   // backfill it starts. Version 23 distinguishes standalone ear-hook accessories from earphones
   // that include them through the existing bounded active-inventory selectors.
-  assert.equal(CATEGORY_CLASSIFICATION_METADATA_VERSION, 23);
+  assert.equal(CATEGORY_CLASSIFICATION_METADATA_VERSION, 24);
 });

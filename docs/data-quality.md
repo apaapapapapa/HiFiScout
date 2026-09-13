@@ -119,6 +119,12 @@ retain the evidence for offer facts. A servicing bracket containing additional m
 is not discarded. Resolver version replay updates existing derived fields and search projections;
 an explicitly scoped correction can use the existing bounded listing replay without a full crawl.
 
+Exact seller buckets whose sale object is unambiguous may classify at the broad product leaf even
+when the title contains only a model. The allow-list includes Japanese and English spellings of a
+speaker system; near matches and component labels such as a bare driver remain corroborative or
+unclassified. Adding an exact safe bucket requires a classifier metadata version bump so bounded
+replay repairs existing listings as well as new crawls.
+
 ### The unclassified sentinel
 
 "The classifier could not decide" has its own category id, `unclassified` (display name `未分類`).
