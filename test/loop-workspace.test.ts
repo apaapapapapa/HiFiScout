@@ -1,7 +1,6 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   applyLoopPatch,
@@ -9,27 +8,9 @@ import {
   prepareLoopWorkspace,
 } from "../scripts/harness/loop/workspace.js";
 import { beginLoopAttempt, assessLoopRun } from "../scripts/harness/loop/controller.js";
-import { createLoopRun, readLoopRun } from "../scripts/harness/loop/state.js";
-import { loopSpec } from "./helpers/loop.js";
+import { readLoopRun } from "../scripts/harness/loop/state.js";
+import { loopGitFixture as fixture } from "./helpers/loop-git.js";
 
-async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), "loop-workspace-")),
-    source = join(root, "source");
-  await mkdir(join(source, "src"), { recursive: true });
-  await writeFile(join(source, "src/value.ts"), "export const value = 1;\n");
-  await writeFile(join(source, ".gitignore"), ".generated/\n");
-  loopGit(source, ["init", "-b", "main"]);
-  loopGit(source, ["config", "user.email", "test@example.invalid"]);
-  loopGit(source, ["config", "user.name", "Test"]);
-  loopGit(source, ["remote", "add", "origin", "https://github.com/apaapapapapa/HiFiScout.git"]);
-  loopGit(source, ["add", "."]);
-  loopGit(source, ["commit", "-m", "fixture"]);
-  const sha = loopGit(source, ["rev-parse", "HEAD"]),
-    state = join(root, "state.json"),
-    workspaces = join(root, "workspaces");
-  await createLoopRun({ ...loopSpec(), baselineSha: sha }, state);
-  return { root, source, sha, state, workspaces };
-}
 const patch = (path: string, before: string, after: string) =>
   `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n@@ -1 +1 @@\n-${before}\n+${after}\n`;
 

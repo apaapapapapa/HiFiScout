@@ -3,6 +3,7 @@ import { loopSpecDigest, parseLoopSpec } from "./contract.js";
 import { assessLoopRun, beginLoopAttempt, recordLoopEvent } from "./controller.js";
 import { isRecord } from "../../../src/types.js";
 import { applyLoopPatch, prepareLoopWorkspace } from "./workspace.js";
+import { evaluateLoopAttempt } from "./evaluation.js";
 import { createLoopRun, readLoopRun } from "./state.js";
 import { collectCiIntake, ingestLoopSignal, specFromSignal } from "./intake.js";
 
@@ -30,7 +31,9 @@ export async function runLoopCli(args: string[]): Promise<number> {
       undefined,
       args[4] === "manual",
     );
-  } else if (args[0] === "prepare" && args.length === 4)
+  } else if (args[0] === "evaluate" && (args.length === 3 || args.length === 4))
+    result = await evaluateLoopAttempt(args[1], args[2], args[3]);
+  else if (args[0] === "prepare" && args.length === 4)
     result = await prepareLoopWorkspace(args[1], args[2], args[3]);
   else if (args[0] === "begin" && args.length === 3) {
     const request = await json(args[2]);
@@ -58,7 +61,7 @@ export async function runLoopCli(args: string[]): Promise<number> {
     result = await recordLoopEvent(args[1], await readLoopRun(args[1]), type, { reason: args[2] });
   } else
     throw new Error(
-      "usage: harness loop validate <spec> | init <spec> <state> | history <state> | status <state> | ingest <signal> <index> | intake-ci <owner/repo> <run-id> <directory> | prepare <state> <source-repo> <workspace-root> | begin <state> <attempt.json> | apply <state> <workspace-root> <iteration> <base-sha> <patch> | block/resume/stop <state> <reason>",
+      "usage: harness loop validate <spec> | init <spec> <state> | history <state> | status <state> | ingest <signal> <index> | intake-ci <owner/repo> <run-id> <directory> | evaluate <state> <workspace-root> [AI-recording] | prepare <state> <source-repo> <workspace-root> | begin <state> <attempt.json> | apply <state> <workspace-root> <iteration> <base-sha> <patch> | block/resume/stop <state> <reason>",
     );
   console.log(JSON.stringify(result, null, 2));
   return 0;

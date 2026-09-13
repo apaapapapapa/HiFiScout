@@ -19,6 +19,21 @@ patch are idempotent; an interrupted recorded transaction can be retried with th
 Locks are never stolen. `loop block/resume/stop <state> <reason>` records operator decisions without
 resetting spent attempts, reservations or deadlines. Worktrees isolate edits; they are not an OS sandbox.
 
+## Loop evaluation
+
+`loop evaluate <state> <workspace-root> [AI-recording.json]` executes the pinned locked dependency
+setup and read-only `vp run check` in the owned worktree, then records the actual clean commit and
+Git scope. Commands use a fixed argument list, sanitized environment, bounded logs and a process-group
+deadline. A fresh artifact directory is required per attempt; interrupted attempts must be blocked
+and resumed deliberately, retaining their charges. Keep the workspace/journal and generated evidence.
+
+Product and cost contracts measure their frozen baseline in a separate detached worktree and retain
+it for later attempts. Existing replay and cost collectors compare identical corpora/profiles; missing
+coverage or mismatched SHAs stay unknown. Frontend repairs and explicit UI requirements also invoke
+the existing local browser harness. AI contracts require a candidate-bound recorded response file;
+the offline holdout runner does not make provider calls or authorize activation. A source pass moves
+to review, while production effectiveness requires separately collected operational evidence.
+
 ## Bounded improvement loops
 
 `vp run harness loop validate .github/harness/loop.example.json` validates an execution contract.
