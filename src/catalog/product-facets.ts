@@ -96,14 +96,17 @@ const PART_RULES: readonly (readonly [string, RegExp])[] = [
   ["tweeter", /tweeter|ツ[イィ]ーター/i],
   ["horn", /\bhorn\b|ホーン/i],
   ["enclosure", /\benclosure\b|エンクロージャー/i],
-  ["driver", /\bdriver\b|speaker\s+unit|(?:スピーカー|フルレンジ|ウーファー|ドライバー)ユニット/i],
+  [
+    "driver",
+    /\bdriver\b|speaker\s+unit|(?:スピーカー|フルレンジ|ウーファー|ドライバー)ユニット|^ドライバー$/i,
+  ],
   ["terminal", /\bterminal\b|ターミナル|端子/i],
   ["knob", /\bknob\b|ノブ/i],
   ["board", /\bboard\b|基板/i],
   ["remote", /\bremote\b|リモコン/i],
 ];
 const TARGET_RULES: readonly (readonly [string, RegExp])[] = [
-  ["speaker", /\bspeaker\b|スピーカー/i],
+  ["speaker", /\bspeaker\b|スピーカー|^ドライバー$/i],
   ["headphone", /\bheadphone\b|ヘッドホン/i],
   ["earphone", /\b(?:earphone|iem)\b|イヤホン/i],
   ["amplifier", /\b(?:amp|amplifier)\b|アンプ/i],
@@ -171,7 +174,9 @@ export function inferFacetFacts(
   }: InferFacetFactsOptions = {},
 ): FacetFact[] {
   const value = String(text || "").normalize("NFKC");
-  const categoryId = inferExplicitCategoryIds(value)[0] ?? "";
+  const categoryId =
+    inferExplicitCategoryIds(value)[0] ??
+    (source === "seller_category" && legacyCategoryIds.length === 1 ? legacyCategoryIds[0] : "");
   const subject = saleSubjectText(value);
   const facts: FacetFactInput[] = [];
   const add = (facetId: FacetId, facetValue: string) =>

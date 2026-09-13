@@ -107,12 +107,16 @@ test("Hifido recognizes supported seller categories that previously became blank
       <a id="type-26-12345-12346-00" href="/26-12345-12346-00.html">LUXMAN E-250</a>
       <div>メーカー：LUXMAN 定価：100,000円 売価：50,000円 フォノイコライザー 在庫あり</div>
     </div>
+    <div class="list-item">
+      <a id="type-26-12345-12347-00" href="/26-12345-12347-00.html">ALTEC 288B</a>
+      <div>メーカー：ALTEC 定価：100,000円 売価：50,000円 ドライバー 在庫あり</div>
+    </div>
   `;
   const parsed = parseHifidoListing(html);
-  assert.equal(parsed.length, 2);
+  assert.equal(parsed.length, 3);
   assert.deepEqual(
     parsed.map((product) => product.rawCategory),
-    ["CDトランスポート", "フォノイコライザー"],
+    ["CDトランスポート", "フォノイコライザー", "ドライバー"],
   );
   assert.deepEqual(
     parsed.map(
@@ -120,14 +124,15 @@ test("Hifido recognizes supported seller categories that previously became blank
         normalizeCatalogProduct(product, { categoryMapping: HIFIDO_CATEGORY_MAPPING })
           .primaryCategoryId,
     ),
-    ["SRC.DISC", "AMP.PHONO"],
+    ["SRC.DISC", "AMP.PHONO", "ACC.PART"],
   );
 });
 
 test("category metadata version advances so stale rows are replayable", () => {
   // A literal on purpose: bumping the classifier is what makes every stored listing eligible for
   // the remediation replay, so it cannot be done without editing this line and thinking about the
-  // backfill it starts. Version 25 adds only externally reviewed, exact Audio Union product-type
-  // buckets while retaining the existing bounded active-inventory selectors.
-  assert.equal(CATEGORY_CLASSIFICATION_METADATA_VERSION, 25);
+  // backfill it starts. Version 26 adds only externally reviewed, exact Audio Union product-type
+  // buckets and a reviewed Hifido bare-driver bucket while retaining the existing bounded
+  // active-inventory selectors.
+  assert.equal(CATEGORY_CLASSIFICATION_METADATA_VERSION, 26);
 });

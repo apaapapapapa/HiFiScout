@@ -89,6 +89,17 @@ test("bare speaker parts and finished add-on tweeters remain distinct", () => {
   assert.deepEqual(inferExplicitCategoryIds("スピーカーユニット搭載アンプ"), []);
 });
 
+test("an exact mapped seller driver bucket adds part facets without broad title inference", () => {
+  assert.deepEqual(inferExplicitCategoryIds("ドライバー"), []);
+  assert.deepEqual(inferFacetFacts("ドライバー"), []);
+  const facts = inferFacetFacts("ドライバー", {
+    source: "seller_category",
+    legacyCategoryIds: ["ACC.PART"],
+  }).map((fact) => `${fact.facetId}:${fact.value}`);
+  assert.ok(facts.includes("part_type:driver"));
+  assert.ok(facts.includes("target_equipment:speaker"));
+});
+
 test("headphone structure, cartridge method and phono support are separate dimensions", () => {
   assert.ok(facets("半開放型ヘッドホン H1").includes("acoustic_design:semi_open"));
   assert.ok(!facets("半開放型ヘッドホン H1").includes("acoustic_design:open_back"));
