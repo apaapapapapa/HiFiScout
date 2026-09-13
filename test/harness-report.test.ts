@@ -60,7 +60,7 @@ test("skipped required checks, quota gaps and empty requirements cannot imply co
   report.checks[1].status = "fail";
   assert.equal(assessHarnessReport(report).status, "fail");
   assert.deepEqual(
-    ["pass", "fail", "unknown", "skipped"].map((s) => reportExitCode(s as "pass")),
+    (["pass", "fail", "unknown", "skipped"] as const).map(reportExitCode),
     [0, 1, 2, 2],
   );
 });

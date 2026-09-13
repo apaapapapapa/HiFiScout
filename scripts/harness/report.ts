@@ -131,7 +131,7 @@ export function assessHarnessReport(value: unknown) {
     return reason ? { ...check, status: "unknown", reason: `${reason}: ${check.reason}` } : check;
   });
   const required = checks.filter((check) => check.required);
-  const status = required.some((check) => check.status === "fail")
+  const status: CheckStatus = required.some((check) => check.status === "fail")
     ? "fail"
     : !required.length || required.some((check) => check.status !== "pass")
       ? "unknown"
