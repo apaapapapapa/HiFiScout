@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
+import { TEST_ADMIN_PRINCIPAL } from "./helpers/admin-principal.js";
 
 import { handleAuthenticatedCatalogAdminRequest } from "../src/admin/index.js";
 import { adminCsvOriginal } from "../src/api/admin-csv-contracts.js";
@@ -52,6 +53,7 @@ test("manufacturer picker reads only through a validated admin RPC request", asy
   const response = await handleAuthenticatedCatalogAdminRequest(
     new Request("https://admin.example.test/api/admin/manufacturers?q=ラックス&limit=10"),
     env,
+    TEST_ADMIN_PRINCIPAL,
   );
   assert.equal(response.status, 200);
   assertAdminSecurityHeaders(response);
@@ -59,6 +61,7 @@ test("manufacturer picker reads only through a validated admin RPC request", asy
   const invalid = await handleAuthenticatedCatalogAdminRequest(
     new Request("https://admin.example.test/api/admin/manufacturers?limit=5000"),
     env,
+    TEST_ADMIN_PRINCIPAL,
   );
   assert.equal(invalid.status, 400);
   assert.equal(seen.length, 1);
@@ -70,6 +73,7 @@ test("Catalog Admin clean routes fetch the clean asset URL instead of the .html 
     const response = await handleAuthenticatedCatalogAdminRequest(
       new Request(`https://admin.example.test${pathname}?ignored=1`),
       adminEnv(seenPaths),
+      TEST_ADMIN_PRINCIPAL,
     );
 
     assert.equal(response.status, 200);
@@ -95,6 +99,7 @@ test("Catalog Admin duplicate review passes a validated cursor to the RPC", asyn
       "https://admin.example.test/api/admin/knowledge-catalog/duplicates?manufacturerId=LUXMAN&afterKey=L509MK2&limit=5",
     ),
     env,
+    TEST_ADMIN_PRINCIPAL,
   );
 
   assert.equal(response.status, 200);
@@ -104,6 +109,7 @@ test("Catalog Admin duplicate review passes a validated cursor to the RPC", asyn
   const rejected = await handleAuthenticatedCatalogAdminRequest(
     new Request("https://admin.example.test/api/admin/knowledge-catalog/duplicates?limit=0"),
     env,
+    TEST_ADMIN_PRINCIPAL,
   );
 
   assert.equal(rejected.status, 400);
@@ -115,6 +121,7 @@ test("Catalog Admin JSON responses carry the same browser security policy", asyn
   const response = await handleAuthenticatedCatalogAdminRequest(
     new Request("https://admin.example.test/api/meta"),
     adminEnv([]),
+    TEST_ADMIN_PRINCIPAL,
   );
 
   assert.equal(response.status, 200);
@@ -148,6 +155,7 @@ test("CSV mutations validate origin, content type, size and rows before reaching
         body: JSON.stringify({ changes }),
       }),
       env,
+      TEST_ADMIN_PRINCIPAL,
     );
     assert.equal(crossOrigin.status, 403);
   }
@@ -164,6 +172,7 @@ test("CSV mutations validate origin, content type, size and rows before reaching
         body,
       }),
       env,
+      TEST_ADMIN_PRINCIPAL,
     );
     assert.equal(response.status, expected);
     assertAdminSecurityHeaders(response);
@@ -175,6 +184,7 @@ test("admin metadata exposes shop names and keys for the shop selector", async (
   const response = await handleAuthenticatedCatalogAdminRequest(
     new Request("https://admin.example.test/api/meta"),
     adminEnv([]),
+    TEST_ADMIN_PRINCIPAL,
   );
   const meta = (await response.json()) as { shops: { key: string; name: string }[] };
   assert.ok(meta.shops.some((shop) => shop.key === "hifido" && shop.name === "ハイファイ堂"));
@@ -200,7 +210,11 @@ test("specification mutations validate source, units and same-origin before serv
     main: [],
     sourceUrl: "https://example.test/manual",
   };
-  const read = await handleAuthenticatedCatalogAdminRequest(new Request(url), env);
+  const read = await handleAuthenticatedCatalogAdminRequest(
+    new Request(url),
+    env,
+    TEST_ADMIN_PRINCIPAL,
+  );
   assert.equal(read.status, 200);
   const patch = (body: unknown, origin = "https://admin.example.test") =>
     new Request(url, {
@@ -209,14 +223,29 @@ test("specification mutations validate source, units and same-origin before serv
       body: JSON.stringify(body),
     });
   assert.equal(
-    (await handleAuthenticatedCatalogAdminRequest(patch(input, "https://other.test"), env)).status,
+    (
+      await handleAuthenticatedCatalogAdminRequest(
+        patch(input, "https://other.test"),
+        env,
+        TEST_ADMIN_PRINCIPAL,
+      )
+    ).status,
     403,
   );
   assert.equal(
-    (await handleAuthenticatedCatalogAdminRequest(patch({ ...input, widthMm: -1 }), env)).status,
+    (
+      await handleAuthenticatedCatalogAdminRequest(
+        patch({ ...input, widthMm: -1 }),
+        env,
+        TEST_ADMIN_PRINCIPAL,
+      )
+    ).status,
     400,
   );
   assert.equal(writes.length, 0);
-  assert.equal((await handleAuthenticatedCatalogAdminRequest(patch(input), env)).status, 200);
+  assert.equal(
+    (await handleAuthenticatedCatalogAdminRequest(patch(input), env, TEST_ADMIN_PRINCIPAL)).status,
+    200,
+  );
   assert.deepEqual(writes, [{ id: 11, input }]);
 });

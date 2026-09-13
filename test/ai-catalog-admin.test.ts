@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
+import { TEST_ADMIN_PRINCIPAL } from "./helpers/admin-principal.js";
 import { database, AT } from "./helpers/d1-write-budget.js";
 import { parseAiAdminCommand } from "../src/http/admin-ai-catalog.js";
 import { parseKnowledgeCatalogAdminCreate } from "../src/http/knowledge-catalog-admin.js";
@@ -102,7 +103,8 @@ test("AI admin route enforces Access, JSON, same-origin, payload limits and serv
     CATALOG_ADMIN: {
       async adminAiCatalog(command: unknown, actor: string) {
         calls++;
-        assert.equal(actor, "access_admin");
+        // The entry point's verified subject, not a fixed placeholder standing in for everyone.
+        assert.equal(actor, TEST_ADMIN_PRINCIPAL.actor);
         return command;
       },
     },
@@ -123,6 +125,7 @@ test("AI admin route enforces Access, JSON, same-origin, payload limits and serv
       await handleAuthenticatedAdminEntryRequest(
         request({ action: "block" }, { origin: "https://evil.test" }),
         env,
+        TEST_ADMIN_PRINCIPAL,
       )
     ).status,
     403,
@@ -132,6 +135,7 @@ test("AI admin route enforces Access, JSON, same-origin, payload limits and serv
       await handleAuthenticatedAdminEntryRequest(
         request({ action: "block" }, { "content-type": "text/plain" }),
         env,
+        TEST_ADMIN_PRINCIPAL,
       )
     ).status,
     415,
@@ -141,6 +145,7 @@ test("AI admin route enforces Access, JSON, same-origin, payload limits and serv
       await handleAuthenticatedAdminEntryRequest(
         request({ action: "block", padding: "x".repeat(5000) }),
         env,
+        TEST_ADMIN_PRINCIPAL,
       )
     ).status,
     413,
@@ -149,6 +154,7 @@ test("AI admin route enforces Access, JSON, same-origin, payload limits and serv
   const response = await handleAuthenticatedAdminEntryRequest(
     request({ action: "block", actor: "forged" }),
     env,
+    TEST_ADMIN_PRINCIPAL,
   );
   assert.equal(response.status, 200);
   assert.equal(calls, 1);

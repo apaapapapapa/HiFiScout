@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
+import { TEST_ADMIN_PRINCIPAL } from "./helpers/admin-principal.js";
 
 import type { CatalogAdminRpc } from "../src/admin/contracts.js";
 import { handleAuthenticatedCatalogAdminRequest } from "../src/admin/index.js";
@@ -81,6 +82,7 @@ test("protected Knowledge Catalog export starts one asynchronous job", async () 
         return acceptedJob;
       },
     }),
+    TEST_ADMIN_PRINCIPAL,
   );
 
   assert.equal(response.status, 202);
@@ -101,6 +103,7 @@ test("Knowledge Catalog export reports queue failures without exposing details",
         throw new Error("queue unavailable");
       },
     }),
+    TEST_ADMIN_PRINCIPAL,
   );
 
   assert.equal(response.status, 503);
@@ -164,7 +167,11 @@ test("Knowledge Catalog generation rejects invalid, cross-site, and oversized re
   ];
 
   for (const [request, expectedStatus] of cases) {
-    const response = await handleAuthenticatedCatalogAdminRequest(request, env);
+    const response = await handleAuthenticatedCatalogAdminRequest(
+      request,
+      env,
+      TEST_ADMIN_PRINCIPAL,
+    );
     assert.equal(response.status, expectedStatus);
     assertAdminSecurityHeaders(response);
   }
@@ -192,6 +199,7 @@ test("Knowledge Catalog export restores latest state and addresses jobs by UUID"
   const latest = await handleAuthenticatedCatalogAdminRequest(
     new Request("https://admin.example.test/api/admin/knowledge-catalog-exports"),
     env,
+    TEST_ADMIN_PRINCIPAL,
   );
   assert.equal(latest.status, 200);
   assert.deepEqual(await latest.json(), { job: readyJob });
@@ -199,6 +207,7 @@ test("Knowledge Catalog export restores latest state and addresses jobs by UUID"
   const found = await handleAuthenticatedCatalogAdminRequest(
     new Request(`https://admin.example.test/api/admin/knowledge-catalog-exports/${readyJob.id}`),
     env,
+    TEST_ADMIN_PRINCIPAL,
   );
   assert.equal(found.status, 200);
   assert.deepEqual(await found.json(), readyJob);
@@ -207,6 +216,7 @@ test("Knowledge Catalog export restores latest state and addresses jobs by UUID"
   const missing = await handleAuthenticatedCatalogAdminRequest(
     new Request(`https://admin.example.test/api/admin/knowledge-catalog-exports/${missingId}`),
     env,
+    TEST_ADMIN_PRINCIPAL,
   );
   assert.equal(missing.status, 404);
   assert.deepEqual(await missing.json(), { error: "not_found" });
@@ -232,6 +242,7 @@ test("Knowledge Catalog download preserves attachment and admin security headers
         });
       },
     }),
+    TEST_ADMIN_PRINCIPAL,
   );
 
   assert.equal(response.status, 200);
@@ -267,6 +278,7 @@ test("export routes select editable CSV or complete archives and preserve old cl
           body: JSON.stringify({ ...body, format }),
         }),
         env,
+        TEST_ADMIN_PRINCIPAL,
       );
       assert.equal(
         response.status,
@@ -292,13 +304,19 @@ test("archive download routes forward the selected volume and reject invalid par
     const response = await handleAuthenticatedCatalogAdminRequest(
       new Request(`${url}?part=2`),
       env,
+      TEST_ADMIN_PRINCIPAL,
     );
     assert.equal(response.status, 200);
     assertAdminSecurityHeaders(response);
     for (const part of ["", "0", "-1", "1.5", "NaN", "9007199254740992"]) {
       assert.equal(
-        (await handleAuthenticatedCatalogAdminRequest(new Request(`${url}?part=${part}`), env))
-          .status,
+        (
+          await handleAuthenticatedCatalogAdminRequest(
+            new Request(`${url}?part=${part}`),
+            env,
+            TEST_ADMIN_PRINCIPAL,
+          )
+        ).status,
         400,
       );
     }
@@ -325,6 +343,7 @@ test("Knowledge Catalog reads degrade to a retryable response during RPC version
     const response = await handleAuthenticatedCatalogAdminRequest(
       new Request(`https://admin.example.test${path}`),
       env,
+      TEST_ADMIN_PRINCIPAL,
     );
     assert.equal(response.status, 503);
     assert.equal(response.headers.get("retry-after"), "30");

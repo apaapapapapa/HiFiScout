@@ -1,3 +1,5 @@
+import { UNKNOWN_ADMIN_ACTOR } from "../api/admin-actor.js";
+import { adminChangeJournalStatement } from "./admin-change-journal.js";
 import { normalizeCatalogModel } from "../catalog/knowledge-catalog.js";
 import { manufacturerFilterIds } from "../catalog/manufacturers.js";
 import { normalizeIdentityModel } from "../catalog/product-identity.js";
@@ -674,6 +676,14 @@ export async function mergeKnowledgeCatalogProductReferences(
   targetProductId: number,
   source: KnowledgeCatalogMergeSource,
   mergedAt: string,
+  /**
+   * Rows describing the merge itself, committed with it.
+   *
+   * The duplicate is gone once this batch succeeds, so a record written afterwards could fail with
+   * the merge already applied: the caller would report a failure, the retry would find no source
+   * product, and the merge would be the one manual catalog operation with no trace of who ran it.
+   */
+  auditStatements: readonly D1PreparedStatement[] = [],
 ): Promise<void> {
   const sourceProductId = source.id;
   if (targetProductId === sourceProductId) throw new Error("catalog_admin_merge_same_product");
@@ -762,6 +772,7 @@ export async function mergeKnowledgeCatalogProductReferences(
         WHERE catalog_product_id = ?
       `)
       .bind(targetProductId, sourceProductId),
+    ...auditStatements,
     db.prepare("DELETE FROM knowledge_catalog_products WHERE id = ?").bind(sourceProductId),
   );
   try {
@@ -778,6 +789,7 @@ export async function mergeKnowledgeCatalogAdminProducts(
   targetProductId: number,
   sourceProductId: number,
   mergedAt = new Date().toISOString(),
+  actor = UNKNOWN_ADMIN_ACTOR,
 ): Promise<KnowledgeCatalogAdminMergeResult | null> {
   if (targetProductId === sourceProductId) throw new Error("catalog_admin_merge_same_product");
   const [target, source] = await Promise.all([
@@ -807,6 +819,20 @@ export async function mergeKnowledgeCatalogAdminProducts(
     .bind(sourceProductId)
     .first<{ count: number }>();
 
+  // One history row per merge, on the product that disappears: without it the merge is the only
+  // manual catalog operation with no trace of who performed it. A merge is a rare, deliberate
+  // action, so this is one extra INSERT per operation, not per row moved, and it is committed by
+  // the merge's own batch so the record and the merge cannot disagree.
+  const mergeJournal = adminChangeJournalStatement(
+    db,
+    "catalog",
+    sourceProductId,
+    { merged_into: "" },
+    { merged_into: String(targetProductId) },
+    mergedAt,
+    { actor },
+  );
+
   await mergeKnowledgeCatalogProductReferences(
     db,
     targetProductId,
@@ -816,6 +842,7 @@ export async function mergeKnowledgeCatalogAdminProducts(
       canonicalName: source.canonical_name,
     },
     mergedAt,
+    mergeJournal,
   );
 
   await recordManualSource(db, targetProductId, "", mergedAt);

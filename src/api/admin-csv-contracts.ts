@@ -114,6 +114,13 @@ export interface AdminBackgroundJob {
   error: string;
   expiresAt: string | null;
   detailsAvailable: boolean;
+  /**
+   * The operator who requested the work, or `null` for a job recorded before attribution existed.
+   *
+   * Execution always belongs to the `AdminJobs` Durable Object; this names who asked, which is the
+   * distinction the job list has to be able to show.
+   */
+  requestedBy?: string | null;
   // `model` wire fields also serve category replay; retain compatibility with existing tabs/jobs.
   modelReplay?: { version: number; categoryVersion?: number; scanned: number };
 }

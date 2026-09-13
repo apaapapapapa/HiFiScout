@@ -23,6 +23,8 @@ import type {
 import { ADMIN_CSV_MAX_REQUEST_BYTES } from "../api/admin-csv-contracts.js";
 import { parseAdminJobCommand } from "../http/admin-jobs.js";
 import { readJsonBody, REQUEST_BODY_TOO_LARGE } from "../http/request.js";
+import { trustedActor } from "../api/admin-actor.js";
+import { isRecord } from "../types.js";
 import { applyAdminCsvChange } from "../db/admin-csv-import-repository.js";
 import { stepOfferFactReplay } from "../db/offer-fact-replay-repository.js";
 import { OFFER_FACT_RULE_VERSION } from "../catalog/offer-facts.js";
@@ -51,6 +53,7 @@ type JobRow = {
   expires_at: string;
   details_available: number;
   stalled_steps: number;
+  requested_by: string;
 };
 type ItemRow = {
   ordinal: number;
@@ -79,6 +82,8 @@ const jobDto = (row: JobRow): AdminBackgroundJob => ({
   error: row.error,
   expiresAt: row.expires_at,
   detailsAvailable: !!row.details_available,
+  // The job is executed by this Durable Object; `requestedBy` names the operator who asked for it.
+  requestedBy: row.requested_by || null,
 });
 class JobInputError extends Error {}
 
@@ -116,6 +121,14 @@ export class AdminJobs extends DurableObject<Env> {
         versions_json TEXT NOT NULL, max_product_id INTEGER,
         after_id INTEGER NOT NULL DEFAULT 0, scanned_count INTEGER NOT NULL DEFAULT 0,
         pending_ids TEXT NOT NULL DEFAULT '[]', scan_complete INTEGER NOT NULL DEFAULT 0);`);
+    // Who asked for the work, as distinct from this Durable Object, which performs it. Added to an
+    // existing table, so the column may already be there; jobs created before it keep the empty
+    // default and read back as an unrecorded subject rather than being attributed to anyone.
+    try {
+      ctx.storage.sql.exec("ALTER TABLE jobs ADD COLUMN requested_by TEXT NOT NULL DEFAULT ''");
+    } catch {
+      // Already present.
+    }
   }
 
   private job(id: string): JobRow {
@@ -159,11 +172,16 @@ export class AdminJobs extends DurableObject<Env> {
     const raw = await readJsonBody(request, ADMIN_CSV_MAX_REQUEST_BYTES);
     if (raw === REQUEST_BODY_TOO_LARGE)
       return Response.json({ error: "送信データが大きすぎます。" }, { status: 413 });
-    const command = parseAdminJobCommand(raw);
+    // The envelope keeps the operator's identity out of the command itself, so a request body
+    // cannot supply one: `parseAdminJobCommand` never sees the actor field, and `trustedActor`
+    // discards anything that is not an identity this system issued.
+    const envelope = isRecord(raw) && "command" in raw ? raw : { command: raw, actor: undefined };
+    const command = parseAdminJobCommand(envelope.command);
     if (!command)
       return Response.json({ error: "処理の入力を確認してください。" }, { status: 400 });
+    const actor = trustedActor(envelope.actor);
     try {
-      return Response.json(await this.command(command));
+      return Response.json(await this.command(command, actor));
     } catch (error) {
       if (error instanceof JobInputError)
         return Response.json({ error: error.message }, { status: 409 });
@@ -182,6 +200,7 @@ export class AdminJobs extends DurableObject<Env> {
 
   private async command(
     command: AdminJobCommand,
+    actor: string,
   ): Promise<AdminJobList | AdminJobDetail | { job: AdminBackgroundJob }> {
     const sql = this.ctx.storage.sql;
     if (command.action === "list") {
@@ -258,7 +277,7 @@ export class AdminJobs extends DurableObject<Env> {
       const now = new Date().toISOString();
       this.ctx.storage.transactionSync(() => {
         sql.exec(
-          "INSERT INTO jobs(id,kind,label,status,created_at,updated_at,total,rule_version,expires_at) VALUES (?,?,?,'uploading',?,?,?,?,?)",
+          "INSERT INTO jobs(id,kind,label,status,created_at,updated_at,total,rule_version,expires_at,requested_by) VALUES (?,?,?,'uploading',?,?,?,?,?,?)",
           command.id,
           command.kind,
           command.label,
@@ -267,6 +286,7 @@ export class AdminJobs extends DurableObject<Env> {
           command.total,
           command.kind === "model" ? RESOLUTION_VERSIONS.model : OFFER_FACT_RULE_VERSION,
           new Date(Date.now() + RETENTION_MS).toISOString(),
+          actor,
         );
         if (command.kind === "model")
           sql.exec(
@@ -462,7 +482,10 @@ export class AdminJobs extends DurableObject<Env> {
           }
           if (!row.input_json) throw new Error("admin_job_input_missing");
           const input = JSON.parse(row.input_json) as AdminCsvApplyInput;
-          const result = await applyAdminCsvChange(this.env.DB, input);
+          // This Durable Object performs the work; the change is attributed to the operator who
+          // asked for the job. The subject is carried on the job row, never re-read from the item
+          // payload, so a crafted upload cannot name itself as the actor.
+          const result = await applyAdminCsvChange(this.env.DB, input, job.requested_by);
           const nextInput = {
             ...input,
             operationId: result.operationId || input.operationId,

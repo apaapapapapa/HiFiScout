@@ -1,4 +1,5 @@
 import { adminChangeJournalStatement, adminHistoryGuardStatement } from "./admin-change-journal.js";
+import { UNKNOWN_ADMIN_ACTOR } from "../api/admin-actor.js";
 import {
   UNCLASSIFIED_CATEGORY_ID,
   categoryClosureIds,
@@ -294,6 +295,7 @@ export async function updateListingAdminProduct(
   input: ListingAdminUpdateInput,
   updatedAt = new Date().toISOString(),
   transactionPrefix: D1PreparedStatement[] = [],
+  actor = UNKNOWN_ADMIN_ACTOR,
 ): Promise<ListingAdminUpdateResult | null> {
   const existing = await loadListing(db, listingId);
   if (!existing) return null;
@@ -387,7 +389,17 @@ export async function updateListingAdminProduct(
         ]
       : []),
     ...(!transactionPrefix.length
-      ? adminChangeJournalStatement(db, "listing", listingId, beforeValues, afterValues, updatedAt)
+      ? adminChangeJournalStatement(
+          db,
+          "listing",
+          listingId,
+          beforeValues,
+          afterValues,
+          updatedAt,
+          {
+            actor,
+          },
+        )
       : []),
     db.prepare("DELETE FROM product_admin_overrides WHERE listing_product_id = ?").bind(listingId),
     db

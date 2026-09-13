@@ -1,3 +1,4 @@
+import { MAX_ACTOR_LENGTH } from "../api/admin-actor.js";
 import { parseModelFactInput } from "../catalog/model-relations.js";
 import type { ModelFactInput } from "../catalog/model-relations.js";
 import type { QueryableDatabase, ReadableDatabase } from "./types.js";
@@ -36,12 +37,14 @@ export async function saveModelFact(
   now = new Date().toISOString(),
 ) {
   const input = parseModelFactInput(raw);
+  // An empty actor is the recorded "subject unknown", not a missing argument: Access authorizes a
+  // token that carries neither a `sub` nor a service token's `common_name`, and refusing the write
+  // here would turn a gap in the audit trail into a lockout. The length bound still applies.
   if (
     !input ||
     !Number.isSafeInteger(productId) ||
     productId <= 0 ||
-    !options.actor.trim() ||
-    options.actor.length > 200
+    options.actor.length > MAX_ACTOR_LENGTH
   )
     throw new Error("catalog_model_fact_invalid");
   const before = options.id ? await readModelFact(db, options.id) : null;

@@ -1,4 +1,5 @@
 import { test } from "vite-plus/test";
+import { TEST_ADMIN_PRINCIPAL } from "./helpers/admin-principal.js";
 import assert from "node:assert/strict";
 import { parseModelFactWrite } from "../src/http/model-fact-admin.js";
 import { handleAuthenticatedCatalogAdminRequest } from "../src/admin/index.js";
@@ -30,7 +31,8 @@ test("admin model writes require bounded JSON, optimistic versions and same-orig
       saveModelFacts: async (_id: number, input: ModelFactWriteInput, actor: string) => {
         writes++;
         assert.deepEqual(input, write);
-        assert.equal(actor, "access_admin");
+        // The entry point's verified subject, not a fixed placeholder standing in for everyone.
+        assert.equal(actor, TEST_ADMIN_PRINCIPAL.actor);
         return {};
       },
     },
@@ -44,8 +46,13 @@ test("admin model writes require bounded JSON, optimistic versions and same-orig
         body: JSON.stringify(body),
       }),
       env,
+      TEST_ADMIN_PRINCIPAL,
     );
-  assert.equal((await handleAuthenticatedCatalogAdminRequest(new Request(url), env)).status, 200);
+  assert.equal(
+    (await handleAuthenticatedCatalogAdminRequest(new Request(url), env, TEST_ADMIN_PRINCIPAL))
+      .status,
+    200,
+  );
   for (const body of [
     { ...write, actor: "forged" },
     { ...write, expectedVersion: 1 },

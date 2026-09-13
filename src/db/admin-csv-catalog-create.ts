@@ -1,3 +1,4 @@
+import { trustedActor } from "../api/admin-actor.js";
 import type { AdminCsvApplyInput, AdminCsvValues } from "../api/admin-csv-contracts.js";
 import { normalizeCatalogModel } from "../catalog/knowledge-catalog.js";
 import {
@@ -60,6 +61,7 @@ export async function createCatalogCsvProduct(
   values: AdminCsvValues,
   now: string,
   snapshot: string,
+  actor: string,
 ): Promise<void> {
   const normalized = normalizeCatalogModel(values.canonical_model);
   const productId = "(SELECT target_id FROM admin_csv_import_changes WHERE operation_id = ?)";
@@ -91,8 +93,8 @@ export async function createCatalogCsvProduct(
     // Resolve the generated ID inside this transaction. Trigger writes must not redirect it.
     db
       .prepare(`INSERT INTO admin_csv_import_changes(
-      operation_id, target_kind, target_id, before_json, after_json, revision, status, phase, created_at, updated_at
-    ) SELECT ?, 'catalog', id, ?, ?, ?, 'pending', 2, ?, ? FROM knowledge_catalog_products
+      operation_id, target_kind, target_id, before_json, after_json, revision, status, phase, created_at, updated_at, actor
+    ) SELECT ?, 'catalog', id, ?, ?, ?, 'pending', 2, ?, ?, ? FROM knowledge_catalog_products
       WHERE manufacturer_id = ? AND normalized_model = ?`)
       .bind(
         input.operationId,
@@ -101,6 +103,7 @@ export async function createCatalogCsvProduct(
         input.revision,
         now,
         now,
+        trustedActor(actor),
         values.manufacturer_id,
         normalized,
       ),

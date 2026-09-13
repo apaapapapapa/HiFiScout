@@ -1,4 +1,12 @@
 import { json } from "./http.js";
+import {
+  MAX_ACTOR_LENGTH,
+  UNIDENTIFIED_PRINCIPAL,
+  usableIdentifier,
+  type AdminPrincipal,
+} from "../api/admin-actor.js";
+
+export type { AdminPrincipal, AdminPrincipalKind } from "../api/admin-actor.js";
 
 interface CloudflareAccessConfig {
   teamDomain: string;
@@ -21,6 +29,8 @@ export interface CloudflareAccessClaims {
   nbf?: number;
   email?: string;
   sub?: string;
+  /** Present instead of a `sub` when the caller authenticated with an Access service token. */
+  common_name?: string;
   [key: string]: unknown;
 }
 
@@ -219,6 +229,59 @@ export async function verifyCloudflareAccessToken(
   }
 }
 
+function claimString(value: unknown): string | null {
+  return usableIdentifier(value) ? value.trim() : null;
+}
+
+/**
+ * True when the composed identity fits the audit columns as it stands.
+ *
+ * Deliberately not a truncation: the issuer and the prefix are added after the subject is checked,
+ * so slicing the result could map two different subjects onto one stored actor -- silently wrong
+ * attribution -- and could cut a surrogate pair in half. An identity that does not fit is recorded
+ * as unknown instead, which is honest and which {@link trustedActor} would reach anyway.
+ */
+function storable(actor: string): boolean {
+  return actor.length <= MAX_ACTOR_LENGTH;
+}
+
+function issuerHost(issuer: string): string | null {
+  try {
+    const url = new URL(issuer);
+    return url.protocol === "https:" ? url.host : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Derives the principal from verified Access claims.
+ *
+ * Every claim is re-validated here for type and shape. `validClaims` in `access.ts` proves the token
+ * was signed for this application; it does not prove that `sub` or `email` are strings of a sensible
+ * form, and an identity that reaches storage has to be both.
+ *
+ * A service token carries an empty `sub` and a `common_name` holding its client ID. That is how a
+ * machine caller is told apart from a person, rather than being recorded as one.
+ */
+export function adminPrincipalFromClaims(claims: CloudflareAccessClaims): AdminPrincipal | null {
+  const host = issuerHost(claims.iss);
+  if (!host) return null;
+
+  const subject = claimString(claims.sub);
+  if (subject) {
+    const actor = `access:user:${host}/${subject}`;
+    return storable(actor) ? { kind: "user", actor, email: claimString(claims.email) } : null;
+  }
+
+  const commonName = claimString(claims.common_name);
+  if (commonName) {
+    const actor = `access:service:${host}/${commonName}`;
+    return storable(actor) ? { kind: "service", actor, email: null } : null;
+  }
+  return null;
+}
+
 export async function verifyCloudflareAccessRequest(
   request: Request,
   config: CloudflareAccessConfig,
@@ -227,21 +290,53 @@ export async function verifyCloudflareAccessRequest(
   return token ? verifyCloudflareAccessToken(token, config) : null;
 }
 
+/**
+ * Verifies one request and returns the subject behind it, or the response to send instead.
+ *
+ * This is the single place an admin request's token signature is checked. Handlers receive the
+ * resulting {@link AdminPrincipal} as an argument rather than re-deriving it, so no downstream code
+ * has a reason to verify the same token a second time, and nothing request-scoped is parked in a
+ * module-level variable where a concurrent request could read it.
+ *
+ * Failure stays closed: an invalid, expired or absent token is 403. A key-service outage is a
+ * retryable 503, because an operator being unable to reach the JWKS is not a rejected login.
+ */
+export async function authenticateCloudflareAccess(
+  request: Request,
+  config: CloudflareAccessConfig,
+): Promise<{ principal: AdminPrincipal } | { denied: Response }> {
+  let claims: CloudflareAccessClaims | null;
+  try {
+    claims = await verifyCloudflareAccessRequest(request, config);
+  } catch (error) {
+    if (!(error instanceof CloudflareAccessUnavailableError)) throw error;
+    console.warn(JSON.stringify({ event: "admin_access_key_service_unavailable" }));
+    return {
+      denied: json(
+        { error: "cloudflare_access_unavailable" },
+        { status: 503, headers: { "retry-after": "1" } },
+      ),
+    };
+  }
+  if (!claims) return { denied: json({ error: "cloudflare_access_required" }, { status: 403 }) };
+
+  const principal = adminPrincipalFromClaims(claims);
+  // A token can verify and still name nobody this system can record — Cloudflare issues either a
+  // `sub` or a service token's `common_name`, but the audit trail must not depend on that. The
+  // request stays authorized, because Access already allowed it and attribution is not
+  // authorization; it is simply recorded with no subject.
+  if (!principal) {
+    console.warn(JSON.stringify({ event: "admin_access_principal_unidentified" }));
+    return { principal: UNIDENTIFIED_PRINCIPAL };
+  }
+  return { principal };
+}
+
 /** Both admin entry points fail closed, but allow callers to retry a key-service outage. */
 export async function requireCloudflareAccess(
   request: Request,
   config: CloudflareAccessConfig,
 ): Promise<Response | null> {
-  try {
-    return (await verifyCloudflareAccessRequest(request, config))
-      ? null
-      : json({ error: "cloudflare_access_required" }, { status: 403 });
-  } catch (error) {
-    if (!(error instanceof CloudflareAccessUnavailableError)) throw error;
-    console.warn(JSON.stringify({ event: "admin_access_key_service_unavailable" }));
-    return json(
-      { error: "cloudflare_access_unavailable" },
-      { status: 503, headers: { "retry-after": "1" } },
-    );
-  }
+  const result = await authenticateCloudflareAccess(request, config);
+  return "denied" in result ? result.denied : null;
 }

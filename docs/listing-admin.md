@@ -397,6 +397,62 @@ does not crawl, resolve, repair, count all products or scan the catalog. Peer me
 comparison snapshot, not proof that two listings should be merged. The inspector loads on demand
 and offers retry on failure; it never polls in the background.
 
+## Authenticated subject and change attribution
+
+Cloudflare Access authorizes an administrative request; `src/admin/access.ts` verifies that token
+**once per request** and hands the resulting `AdminPrincipal` to the handler as an argument. No
+downstream code re-derives it, and nothing request-scoped is kept in a module-level variable where a
+concurrent request could read it. Failure stays closed: an invalid or absent token is `403`, and a
+JWKS outage is a retryable `503`.
+
+The identity is derived only from verified claims: `access:user:<issuer host>/<sub>` for a person,
+`access:service:<issuer host>/<client id>` for an Access service token, which carries an empty `sub`
+and a `common_name`. The issuer is part of it because `sub` is unique only within one Access account.
+The display email stays separate and is never stored in an audit row — an address can be reassigned,
+so it is not an identity. Claims are re-validated for type and shape at runtime; being signed proves
+who issued them, not that they are usable strings.
+
+A token that verifies but names no subject keeps its authorization — Access already allowed it — and
+is recorded with no subject. **Attribution is not authorization.** Storing an actor neither grants
+nor withholds anything, Access's policy remains the only gate, and this change adds no second
+allow-list inside the application.
+
+Attribution travels on the writes the operation already performs:
+
+| Operation | Where the subject is recorded |
+| --- | --- |
+| Listing and catalog edits | `admin_product_change_log.actor`, in the change's own transaction |
+| Restoration | the same journal row the restore already writes |
+| Merge | one journal row on the product that disappears, committed by the merge's own batch — a merge is otherwise the only manual catalog operation with no trace of who performed it |
+| CSV apply and catalogue creation | `admin_csv_import_changes.actor`, on the receipt already written |
+| Model relationship decisions | the existing `knowledge_catalog_model_facts.audit_actor` |
+| Background jobs (bulk re-resolution, CSV import) | `requested_by` on the `AdminJobs` job row |
+
+Every admin RPC argument carrying a subject is narrowed by `trustedActor` on arrival: only the two
+forms above survive, and anything a request body or an arbitrary header supplied becomes the unknown
+actor. The background-job command parser rebuilds its command from a fixed field set, so an actor in
+an upload never reaches the job; the subject is passed beside the command instead.
+
+For asynchronous work the two roles stay distinct: the `AdminJobs` Durable Object **performs** the
+work, and `requested_by` names the operator who **asked** for it. Job items never carry a subject, so
+a crafted upload cannot name one. No JWT, cookie or other credential material is written to D1, to a
+job row, or to a log.
+
+A verified token can still name nobody this system can record — Cloudflare issues either a `sub` or
+a service token's `common_name`, and a composed identity longer than the audit columns accept is kept
+as unknown rather than cut short, since truncating it could map two operators onto one stored
+subject. Such a request stays authorized and its change is recorded with no subject: attribution is
+not authorization, and refusing the write would turn a gap in the audit trail into a lockout.
+
+Rows written before this existed read as unknown and are **not** backfilled — nobody can say now who
+made those edits, and attributing them to the current operator would be worse than an honest gap. No
+`UPDATE` runs over either table. Automated remediation events are reported with no actor for the same
+reason. The console shows `不明` in both cases.
+
+The RPC arguments are optional so the public Worker (which hosts `CatalogAdminService`) can deploy
+ahead of the admin Worker: during that window the older admin Worker sends no subject and changes are
+recorded as unknown rather than failing.
+
 ## Change history and guarded restoration
 
 Catalog and listing rows offer **変更履歴**, combining up to 25 recent editor changes, CSV receipts
