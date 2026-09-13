@@ -1,3 +1,4 @@
+import { MAX_ACTOR_LENGTH } from "../api/admin-actor.js";
 import type {
   AiAdminCommand,
   AiCatalogDetail,
@@ -119,7 +120,9 @@ export async function adminAiCatalog(
   now = new Date(),
 ) {
   const command = parseAiAdminCommand(input);
-  if (!command || !actor.trim() || actor.length > 200) throw new Error("invalid_ai_command");
+  // The actor is audit data, not an authorization input. An unidentified-but-authorized operator
+  // records an empty subject rather than being refused; only an unstorable length is rejected.
+  if (!command || actor.length > MAX_ACTOR_LENGTH) throw new Error("invalid_ai_command");
   switch (command.action) {
     case "list":
       return page(env, command, now);

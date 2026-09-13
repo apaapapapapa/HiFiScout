@@ -2,10 +2,17 @@ import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
 import {
+  MAX_ACTOR_LENGTH,
   UNKNOWN_ADMIN_ACTOR,
   UNIDENTIFIED_PRINCIPAL,
   trustedActor,
 } from "../src/api/admin-actor.js";
+import { adminAiCatalog } from "../src/ai-suggestions/admin.js";
+import { mergeKnowledgeCatalogProductReferences } from "../src/db/knowledge-catalog-admin-operations.js";
+import { updateCatalogSpecifications } from "../src/db/catalog-specification-repository.js";
+import { saveModelFactsAdmin } from "../src/db/model-fact-admin-repository.js";
+import type { CatalogSpecifications } from "../src/catalog/types.js";
+import type { ModelFactWriteInput } from "../src/catalog/types.js";
 import { adminPrincipalFromClaims } from "../src/admin/access.js";
 import { handleAuthenticatedAdminEntryRequest } from "../src/admin/entry.js";
 import { handleAuthenticatedCatalogAdminRequest } from "../src/admin/index.js";
@@ -15,6 +22,33 @@ import { migratedSqlite } from "./helpers/migrated-sqlite.js";
 import { TEST_ADMIN_PRINCIPAL, TEST_ADMIN_SERVICE_PRINCIPAL } from "./helpers/admin-principal.js";
 
 const ISSUER = "https://hifiscout.cloudflareaccess.com";
+
+const SPECIFICATION: CatalogSpecifications = {
+  widthMm: 440,
+  heightMm: null,
+  depthMm: 400,
+  weightKg: 12.5,
+  inputs: [{ connector: "RCA ライン", count: 3 }],
+  outputs: [],
+  main: [{ name: "定格出力", value: "100 W / 8 Ω" }],
+  sourceUrl: "https://example.test/manual",
+};
+
+const MODEL_FACT_WRITE: ModelFactWriteInput = {
+  id: null,
+  expectedVersion: null,
+  reverify: false,
+  fact: {
+    kind: "successor",
+    relatedProductId: 700002,
+    familyName: "",
+    position: null,
+    state: "verified",
+    sourceId: null,
+    manualNote: "公式資料で後継機種の関係を確認しました。",
+    manufacturerJustification: "",
+  },
+};
 
 function claims(overrides: Record<string, unknown> = {}) {
   return { iss: ISSUER, aud: "admin", exp: 4_102_444_800, ...overrides };
@@ -281,4 +315,112 @@ test("no admin path puts a JWT or a cookie where a job, a row or a log could kee
     true,
     "not three dot-separated JWT parts",
   );
+});
+
+test("a merge and its audit row commit together, or neither does", async () => {
+  // The duplicate is gone once the merge batch succeeds, so an audit row written afterwards could
+  // fail with the merge already applied: the caller would report a failure, the retry would find no
+  // source product, and the merge would be the one manual operation with no record of who ran it.
+  const OPERATION = "11111111-1111-4111-8111-111111111111";
+  for (const failure of ["none", "merge", "audit"] as const) {
+    const { db, sqlite } = migratedSqlite();
+    try {
+      sqlite.exec(
+        `INSERT INTO knowledge_catalog_products (id, manufacturer_id, canonical_model, normalized_model, created_at, updated_at)
+         VALUES (9000001,'luxman','test','TEST','2026-09-07','2026-09-07'),
+                (9000002,'luxman','test2','TEST2','2026-09-07','2026-09-07')`,
+      );
+      await updateCatalogSpecifications(db, 9000002, SPECIFICATION);
+      // A differing source-backed record on the survivor makes the merge's own statements fail.
+      if (failure === "merge")
+        await updateCatalogSpecifications(db, 9000001, { ...SPECIFICATION, widthMm: 450 });
+      // A taken operation id makes the audit insert -- and nothing else -- fail.
+      if (failure === "audit")
+        await db
+          .prepare(
+            `INSERT INTO admin_product_change_log
+              (operation_id, target_kind, target_id, before_json, after_json, created_at, restored_from, actor)
+            VALUES (?, 'catalog', 9000003, '{}', '{}', '2026-09-06T00:00:00.000Z', '', '')`,
+          )
+          .bind(OPERATION)
+          .run();
+
+      const merge = mergeKnowledgeCatalogProductReferences(
+        db,
+        9000001,
+        { id: 9000002, canonicalModel: "test2", canonicalName: "test2" },
+        "2026-09-07T00:00:00.000Z",
+        adminChangeJournalStatement(
+          db,
+          "catalog",
+          9000002,
+          { merged_into: "" },
+          { merged_into: "9000001" },
+          "2026-09-07T00:00:00.000Z",
+          { actor: TEST_ADMIN_PRINCIPAL.actor, operationId: OPERATION },
+        ),
+      );
+      if (failure === "none") await merge;
+      else await assert.rejects(merge);
+
+      const survivors = await db
+        .prepare("SELECT COUNT(*) AS count FROM knowledge_catalog_products WHERE id = 9000002")
+        .first<{ count: number }>();
+      const history = await readAdminChangeHistory(db, "catalog", 9000002);
+
+      // Whichever statement fails, the merge and its record share one outcome. A reported failure
+      // means the duplicate is still there to retry on, never a silently applied merge.
+      assert.equal(Number(survivors?.count), failure === "none" ? 0 : 1, `${failure}: merge`);
+      assert.equal(history.items.length, failure === "none" ? 1 : 0, `${failure}: audit row`);
+      if (failure === "none") assert.equal(history.items[0]?.actor, TEST_ADMIN_PRINCIPAL.actor);
+    } finally {
+      sqlite.close();
+    }
+  }
+});
+
+test("an authorized operator this system cannot name still gets to work", async () => {
+  // Access allows a token carrying neither `sub` nor a service token's `common_name`. Attribution is
+  // not authorization, so the write proceeds and records no subject; refusing it would turn a gap in
+  // the audit trail into a lockout.
+  const { db, sqlite } = migratedSqlite();
+  try {
+    sqlite.exec(`INSERT INTO knowledge_catalog_products(id,manufacturer_id,canonical_model,normalized_model,canonical_name,created_at,updated_at)
+      VALUES(700001,'test','A','A','Model A','2026-09-07','2026-09-07'),(700002,'test','B','B','Model B','2026-09-07','2026-09-07');`);
+
+    const saved = (await saveModelFactsAdmin(db, 700001, MODEL_FACT_WRITE, UNKNOWN_ADMIN_ACTOR))!;
+    assert.equal(saved.audits[0].actor, UNKNOWN_ADMIN_ACTOR, "recorded as unknown, not refused");
+
+    // The AI catalog console rejected an empty actor outright, which would have failed even a read.
+    const page = await adminAiCatalog(
+      { DB: db } as unknown as Parameters<typeof adminAiCatalog>[0],
+      { action: "list", status: "suggested", before: null },
+      UNKNOWN_ADMIN_ACTOR,
+    );
+    assert.ok(page, "an unidentified operator can still open the AI catalog");
+
+    // The length bound is what remains, and it still rejects an unstorable value.
+    await assert.rejects(
+      saveModelFactsAdmin(db, 700001, MODEL_FACT_WRITE, "a".repeat(MAX_ACTOR_LENGTH + 1)),
+      /catalog_model_fact_invalid/,
+    );
+  } finally {
+    sqlite.close();
+  }
+});
+
+test("an identity too long to store is recorded as unknown rather than cut short", () => {
+  // Truncating the composed actor would map two different subjects onto one stored identity, and
+  // could slice a surrogate pair in half. Neither is an honest audit record.
+  const budget = MAX_ACTOR_LENGTH - `access:user:${ISSUER.replace("https://", "")}/`.length;
+  const shared = "s".repeat(budget);
+  const first = adminPrincipalFromClaims(claims({ sub: `${shared}1` }));
+  const second = adminPrincipalFromClaims(claims({ sub: `${shared}2` }));
+
+  assert.equal(first, null);
+  assert.equal(second, null);
+  // The longest identity that does fit is still recorded in full.
+  const fitting = adminPrincipalFromClaims(claims({ sub: shared }));
+  assert.equal(fitting?.actor.length, MAX_ACTOR_LENGTH);
+  assert.equal(fitting?.actor.endsWith(shared), true);
 });

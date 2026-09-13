@@ -423,7 +423,7 @@ Attribution travels on the writes the operation already performs:
 | --- | --- |
 | Listing and catalog edits | `admin_product_change_log.actor`, in the change's own transaction |
 | Restoration | the same journal row the restore already writes |
-| Merge | one journal row on the product that disappears — a merge is otherwise the only manual catalog operation with no trace of who performed it |
+| Merge | one journal row on the product that disappears, committed by the merge's own batch — a merge is otherwise the only manual catalog operation with no trace of who performed it |
 | CSV apply and catalogue creation | `admin_csv_import_changes.actor`, on the receipt already written |
 | Model relationship decisions | the existing `knowledge_catalog_model_facts.audit_actor` |
 | Background jobs (bulk re-resolution, CSV import) | `requested_by` on the `AdminJobs` job row |
@@ -437,6 +437,12 @@ For asynchronous work the two roles stay distinct: the `AdminJobs` Durable Objec
 work, and `requested_by` names the operator who **asked** for it. Job items never carry a subject, so
 a crafted upload cannot name one. No JWT, cookie or other credential material is written to D1, to a
 job row, or to a log.
+
+A verified token can still name nobody this system can record — Cloudflare issues either a `sub` or
+a service token's `common_name`, and a composed identity longer than the audit columns accept is kept
+as unknown rather than cut short, since truncating it could map two operators onto one stored
+subject. Such a request stays authorized and its change is recorded with no subject: attribution is
+not authorization, and refusing the write would turn a gap in the audit trail into a lockout.
 
 Rows written before this existed read as unknown and are **not** backfilled — nobody can say now who
 made those edits, and attributing them to the current operator would be worse than an honest gap. No

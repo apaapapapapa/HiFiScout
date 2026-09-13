@@ -89,8 +89,8 @@ import type { ListingAdminListOptions, ListingAdminUpdateInput } from "./http/li
  * Binding configured on the dedicated Access-protected admin Worker; it has no public HTTP route.
  */
 export class CatalogAdminService extends WorkerEntrypoint<Env> implements CatalogAdminRpc {
-  async adminAiCatalog(input: unknown, actor: string) {
-    return adminAiCatalog(this.env, input, actor);
+  async adminAiCatalog(input: unknown, actor?: string) {
+    return adminAiCatalog(this.env, input, trustedActor(actor));
   }
   async adminQuality(input: unknown) {
     const command = parseAdminQualityCommand(input);
@@ -143,7 +143,7 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
     return readModelFactsAdmin(this.env.DB, productId);
   }
 
-  async saveModelFacts(productId: number, input: ModelFactWriteInput, actor: string) {
+  async saveModelFacts(productId: number, input: ModelFactWriteInput, actor?: string) {
     const parsed = parseModelFactWrite(input);
     if (!parsed) throw new Error("catalog_model_fact_invalid");
     // The argument crossed a process boundary, so it is narrowed here rather than trusted; only an

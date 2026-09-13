@@ -233,6 +233,18 @@ function claimString(value: unknown): string | null {
   return usableIdentifier(value) ? value.trim() : null;
 }
 
+/**
+ * True when the composed identity fits the audit columns as it stands.
+ *
+ * Deliberately not a truncation: the issuer and the prefix are added after the subject is checked,
+ * so slicing the result could map two different subjects onto one stored actor -- silently wrong
+ * attribution -- and could cut a surrogate pair in half. An identity that does not fit is recorded
+ * as unknown instead, which is honest and which {@link trustedActor} would reach anyway.
+ */
+function storable(actor: string): boolean {
+  return actor.length <= MAX_ACTOR_LENGTH;
+}
+
 function issuerHost(issuer: string): string | null {
   try {
     const url = new URL(issuer);
@@ -258,20 +270,14 @@ export function adminPrincipalFromClaims(claims: CloudflareAccessClaims): AdminP
 
   const subject = claimString(claims.sub);
   if (subject) {
-    return {
-      kind: "user",
-      actor: `access:user:${host}/${subject}`.slice(0, MAX_ACTOR_LENGTH),
-      email: claimString(claims.email),
-    };
+    const actor = `access:user:${host}/${subject}`;
+    return storable(actor) ? { kind: "user", actor, email: claimString(claims.email) } : null;
   }
 
   const commonName = claimString(claims.common_name);
   if (commonName) {
-    return {
-      kind: "service",
-      actor: `access:service:${host}/${commonName}`.slice(0, MAX_ACTOR_LENGTH),
-      email: null,
-    };
+    const actor = `access:service:${host}/${commonName}`;
+    return storable(actor) ? { kind: "service", actor, email: null } : null;
   }
   return null;
 }

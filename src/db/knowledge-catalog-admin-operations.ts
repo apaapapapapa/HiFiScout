@@ -676,6 +676,14 @@ export async function mergeKnowledgeCatalogProductReferences(
   targetProductId: number,
   source: KnowledgeCatalogMergeSource,
   mergedAt: string,
+  /**
+   * Rows describing the merge itself, committed with it.
+   *
+   * The duplicate is gone once this batch succeeds, so a record written afterwards could fail with
+   * the merge already applied: the caller would report a failure, the retry would find no source
+   * product, and the merge would be the one manual catalog operation with no trace of who ran it.
+   */
+  auditStatements: readonly D1PreparedStatement[] = [],
 ): Promise<void> {
   const sourceProductId = source.id;
   if (targetProductId === sourceProductId) throw new Error("catalog_admin_merge_same_product");
@@ -764,6 +772,7 @@ export async function mergeKnowledgeCatalogProductReferences(
         WHERE catalog_product_id = ?
       `)
       .bind(targetProductId, sourceProductId),
+    ...auditStatements,
     db.prepare("DELETE FROM knowledge_catalog_products WHERE id = ?").bind(sourceProductId),
   );
   try {
@@ -810,20 +819,10 @@ export async function mergeKnowledgeCatalogAdminProducts(
     .bind(sourceProductId)
     .first<{ count: number }>();
 
-  await mergeKnowledgeCatalogProductReferences(
-    db,
-    targetProductId,
-    {
-      id: sourceProductId,
-      canonicalModel: source.canonical_model,
-      canonicalName: source.canonical_name,
-    },
-    mergedAt,
-  );
-
   // One history row per merge, on the product that disappears: without it the merge is the only
   // manual catalog operation with no trace of who performed it. A merge is a rare, deliberate
-  // action, so this is one extra INSERT per operation, not per row moved.
+  // action, so this is one extra INSERT per operation, not per row moved, and it is committed by
+  // the merge's own batch so the record and the merge cannot disagree.
   const mergeJournal = adminChangeJournalStatement(
     db,
     "catalog",
@@ -833,7 +832,18 @@ export async function mergeKnowledgeCatalogAdminProducts(
     mergedAt,
     { actor },
   );
-  if (mergeJournal.length) await db.batch(mergeJournal);
+
+  await mergeKnowledgeCatalogProductReferences(
+    db,
+    targetProductId,
+    {
+      id: sourceProductId,
+      canonicalModel: source.canonical_model,
+      canonicalName: source.canonical_name,
+    },
+    mergedAt,
+    mergeJournal,
+  );
 
   await recordManualSource(db, targetProductId, "", mergedAt);
   const completed = await completeManualWrite(

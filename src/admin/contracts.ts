@@ -96,14 +96,14 @@ export interface CatalogAdminProductExportRow {
 }
 
 export interface CatalogAdminRpc {
-  adminAiCatalog(input: unknown, actor: string): Promise<unknown>;
+  adminAiCatalog(input: unknown, actor?: string): Promise<unknown>;
   adminQuality(input: unknown): Promise<unknown>;
   manufacturerRegistry(input: unknown): Promise<unknown>;
   getWorkCounts(
     cursor: import("../api/admin-work-counts-contract.js").AdminDuplicateCountCursor,
   ): Promise<import("../api/admin-work-counts-contract.js").AdminWorkCountsPage>;
   getModelFacts(productId: number): Promise<unknown>;
-  saveModelFacts(productId: number, input: ModelFactWriteInput, actor: string): Promise<unknown>;
+  saveModelFacts(productId: number, input: ModelFactWriteInput, actor?: string): Promise<unknown>;
   listManufacturers(options: AdminManufacturerQuery): Promise<AdminManufacturerPage>;
   previewCsvImport(changes: AdminCsvChange[]): Promise<AdminCsvResult[]>;
   /**
