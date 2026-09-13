@@ -240,9 +240,11 @@ abuse brake, not a usage meter: it does not account for the D1 free-tier quota, 
 D1 counter exists to replace it.
 
 `test/api-rate-limit-degradation.test.ts` fixes the per-route behaviour and asserts that
-`wrangler.jsonc` declares the binding for every environment. Post-deployment, the deploy workflow's
-runtime smoke check requires `GET /api/feed` to answer `200`, which a deployment missing the binding
-could not do.
+`wrangler.jsonc` declares the binding for every environment. Named environments are validated on
+their own because bindings are not inherited; regression fixtures cover an omitted binding even
+when the top-level configuration has one. Post-deployment, a cached `GET /api/feed` returning `200`
+alone does not prove the limiter is available. The existing uncached `/api/health` smoke check also
+requires the expected runtime payload, which the limiter's `503` response does not contain.
 
 ### Public search response cache
 

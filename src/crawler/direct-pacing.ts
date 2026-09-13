@@ -103,9 +103,9 @@ export async function fetchPreparedDirectHtmlPage(
       fetchFn,
       allowedOrigins,
       signal: deadline,
-      beforeRequest: async (destination) => {
+      beforeRequest: async (destination, signal) => {
         if (destination === permit.targetUrl) return;
-        await robotsGate(destination);
+        await robotsGate(destination, signal);
       },
     },
   );

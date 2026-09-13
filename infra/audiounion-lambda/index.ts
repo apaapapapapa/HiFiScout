@@ -156,7 +156,7 @@ type RedirectRobotsGate = (target: URL) => Promise<void>;
  */
 const ALLOWED_UPSTREAM_HOSTS = new Set([AUDIOUNION_HOST, HIFIDO_HOST]);
 
-function assertAllowedUpstream(target: URL): void {
+function assertAllowedUpstream(target: URL, shopOrigin: string): void {
   if (target.username || target.password) {
     throw new RedirectRejectedError(`destination on ${target.host} carries embedded credentials`);
   }
@@ -166,6 +166,11 @@ function assertAllowedUpstream(target: URL): void {
   if (target.port !== "" || !ALLOWED_UPSTREAM_HOSTS.has(target.hostname)) {
     throw new RedirectRejectedError(`host ${target.host} is not an allowed relay upstream`);
   }
+  if (target.origin !== shopOrigin) {
+    throw new RedirectRejectedError(
+      `origin ${target.origin} is not allowed for the requested shop`,
+    );
+  }
 }
 
 /**
@@ -173,8 +178,8 @@ function assertAllowedUpstream(target: URL): void {
  *
  * The initial URL has already passed the stricter per-shop URL-shape allowlist, and its robots
  * policy was evaluated by the caller (or, for a permit, at PREPARE time). Every *later* hop is held
- * to the host-level rule and to `robotsGate`, so a same-host redirect cannot carry the relay onto a
- * path the seller excludes — the guarantee the direct transport already gives.
+ * to that same shop's origin and to `robotsGate`. Being another supported relay shop does not
+ * authorize a redirect to it, including redirects from robots.txt itself.
  */
 async function fetchValidatedUpstream(
   fetchFn: RelayFetch,
@@ -183,9 +188,10 @@ async function fetchValidatedUpstream(
   robotsGate?: RedirectRobotsGate,
 ): Promise<RelayFetchResponse> {
   let target = new URL(url);
+  const shopOrigin = target.origin;
   const visited = new Set<string>();
   for (let hop = 0; ; hop += 1) {
-    assertAllowedUpstream(target);
+    assertAllowedUpstream(target, shopOrigin);
     const href = target.toString();
     if (visited.has(href)) throw new RedirectRejectedError(`redirect loop returning to ${href}`);
     visited.add(href);

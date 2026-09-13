@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
-import { test } from "vite-plus/test";
+import { test, vi } from "vite-plus/test";
 
 import { fetchHtmlPage } from "../src/crawler/fetch.js";
-import { CrawlRedirectRejectedError } from "../src/crawler/redirects.js";
+import { fetchPreparedDirectHtmlPage } from "../src/crawler/direct-pacing.js";
+import { fetchRobotsPolicy } from "../src/crawler/robots.js";
+import {
+  CrawlRedirectRejectedError,
+  fetchFollowingValidatedRedirects,
+} from "../src/crawler/redirects.js";
 import { createRelayHtmlFetcher } from "../src/crawler/relay.js";
 import { processFetch } from "../src/crawler/resumable-page-steps.js";
 import type { ResumableRuntimeEnv } from "../src/crawler/resumable-queue-contract.js";
@@ -214,6 +219,160 @@ test("one deadline covers the whole chain rather than each hop", async () => {
   // Every hop shared one signal: a longer chain cannot buy itself more time.
   assert.ok(record.signals.length >= 2);
   assert.equal(new Set(record.signals).size, 1);
+});
+
+for (const transport of ["prepared direct", "page"] as const) {
+  for (const stalled of ["headers", "body"] as const) {
+    test(`${transport} deadline cancels redirect robots ${stalled} without contacting the destination`, async () => {
+      const deadline = new AbortController();
+      const reason = new Error("page deadline expired while reading robots");
+      // Drive the page deadline explicitly; the robots lookup still creates its own real timeout.
+      const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValueOnce(deadline.signal);
+      const destinationOrigin = transport === "prepared direct" ? BASE : "https://shop.example.net";
+      const destination = `${destinationOrigin}/moved`;
+      const robotsCache = new Map<string, string | null>(
+        transport === "page" ? [[BASE, null]] : [],
+      );
+      const urls: string[] = [];
+      let policySignal: AbortSignal | null | undefined;
+      let cancelled = false;
+      let release = () => {};
+      let started!: () => void;
+      const policyStarted = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const fetchFn: typeof fetch = async (input, init) => {
+        const url = String(input);
+        urls.push(url);
+        if (url === PAGE) return redirect(destination);
+        if (url !== `${destinationOrigin}/robots.txt`) return html();
+        policySignal = init?.signal;
+        if (stalled === "headers") {
+          return new Promise<Response>((resolve, reject) => {
+            const abort = () => reject(policySignal?.reason);
+            policySignal?.addEventListener("abort", abort, { once: true });
+            release = () => {
+              policySignal?.removeEventListener("abort", abort);
+              resolve(new Response("User-agent: *\nAllow: /\n"));
+            };
+            started();
+          });
+        }
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode("User-agent: *\n"));
+              release = () => {
+                release = () => {};
+                if (!cancelled) controller.close();
+              };
+            },
+            pull() {
+              started();
+            },
+            cancel() {
+              cancelled = true;
+            },
+          }),
+        );
+      };
+      try {
+        const request =
+          transport === "prepared direct"
+            ? fetchPreparedDirectHtmlPage(
+                {
+                  targetUrl: PAGE,
+                  userAgent: "HiFiScoutBot/0.1",
+                  effectiveDelayMs: 0,
+                  preparedAtMs: 0,
+                  notBeforeMs: 0,
+                },
+                PAGE,
+                { userAgent: "HiFiScoutBot/0.1", fetchFn, robotsCache },
+              )
+            : fetchHtmlPage(
+                PAGE,
+                page({
+                  fetchFn,
+                  robotsCache,
+                  allowedRedirectOrigins: [destinationOrigin],
+                }),
+              );
+        const settled = request.then(
+          () => null,
+          (error: unknown) => error,
+        );
+        await policyStarted;
+        deadline.abort(reason);
+        const inheritedDeadline = policySignal?.aborted;
+        // Unblock the old implementation too, so a failed regression leaves no pending reader.
+        if (!inheritedDeadline) release();
+        const error = await settled;
+        assert.equal(inheritedDeadline, true, "the policy request must be cancelled with its page");
+        assert.equal(error, reason);
+        if (stalled === "body") assert.equal(cancelled, true, "the policy reader is cancelled");
+        assert.equal(
+          urls.includes(destination),
+          false,
+          "no destination request after the deadline",
+        );
+        assert.equal(robotsCache.has(destinationOrigin), false, "a cancelled policy is not cached");
+      } finally {
+        release();
+        timeout.mockRestore();
+      }
+    });
+  }
+}
+
+test("a redirect policy keeps its shorter robots timeout while the page is still live", async () => {
+  const pageDeadline = new AbortController();
+  const robotsDeadline = new AbortController();
+  const reason = new Error("robots timeout");
+  const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValueOnce(robotsDeadline.signal);
+  try {
+    await assert.rejects(
+      fetchRobotsPolicy(
+        async (_input, init) => {
+          robotsDeadline.abort(reason);
+          init?.signal?.throwIfAborted();
+          throw new Error("robots timeout did not cancel the request");
+        },
+        BASE,
+        "HiFiScoutBot/0.1",
+        { signal: pageDeadline.signal },
+      ),
+      (error: unknown) => error === reason,
+    );
+    assert.equal(pageDeadline.signal.aborted, false);
+  } finally {
+    timeout.mockRestore();
+  }
+});
+
+test("a completed policy gate cannot start a request after the deadline", async () => {
+  const deadline = new AbortController();
+  const reason = new Error("deadline expired in policy gate");
+  let requests = 0;
+  await assert.rejects(
+    fetchFollowingValidatedRedirects(
+      PAGE,
+      {},
+      {
+        allowedOrigins: new Set([BASE]),
+        signal: deadline.signal,
+        beforeRequest: () => {
+          deadline.abort(reason);
+        },
+        fetchFn: async () => {
+          requests += 1;
+          return html();
+        },
+      },
+    ),
+    (error: unknown) => error === reason,
+  );
+  assert.equal(requests, 0);
 });
 
 test("robots rules are re-applied to the redirect destination", async () => {

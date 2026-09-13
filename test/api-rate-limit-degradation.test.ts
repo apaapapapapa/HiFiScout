@@ -238,19 +238,16 @@ test("a permalink is served from cache while the limiter is down, and refused on
   assert.equal(miss.result.headers.get("content-type"), "text/plain; charset=utf-8");
 });
 
-test("the public Worker configuration declares the rate limiter every environment needs", () => {
-  interface WranglerConfig {
-    ratelimits?: {
-      name?: string;
-      namespace_id?: string;
-      simple?: { limit?: number; period?: number };
-    }[];
-    env?: Record<string, WranglerConfig>;
-  }
-  const config = JSON.parse(
-    readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8"),
-  ) as WranglerConfig;
+interface WranglerConfig {
+  ratelimits?: {
+    name?: string;
+    namespace_id?: string;
+    simple?: { limit?: number; period?: number };
+  }[];
+  env?: Record<string, WranglerConfig>;
+}
 
+function assertRateLimiterBindings(config: WranglerConfig): void {
   const declares = (candidate: WranglerConfig): boolean =>
     (candidate.ratelimits ?? []).some(
       (entry) =>
@@ -261,13 +258,38 @@ test("the public Worker configuration declares the rate limiter every environmen
     );
 
   assert.ok(declares(config), "the public Worker must bind API_RATE_LIMITER");
-  // A named environment inherits nothing it re-declares, so each one is checked on its own terms.
+  // Bindings are non-inheritable even when a named environment omits the field entirely.
   for (const [name, environment] of Object.entries(config.env ?? {})) {
     assert.ok(
-      declares({ ...config, ...environment }),
+      declares(environment),
       `wrangler environment "${name}" must also bind API_RATE_LIMITER`,
     );
   }
+}
+
+test("the public Worker configuration declares the rate limiter every environment needs", () => {
+  const config = JSON.parse(
+    readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8"),
+  ) as WranglerConfig;
+  assertRateLimiterBindings(config);
+});
+
+test("the configuration gate rejects a missing environment binding despite a valid top-level binding", () => {
+  const config = JSON.parse(
+    readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8"),
+  ) as WranglerConfig;
+  for (const staging of [{}, { ratelimits: [] }]) {
+    assert.throws(
+      () => assertRateLimiterBindings({ ...config, env: { staging } }),
+      /environment "staging" must also bind API_RATE_LIMITER/u,
+    );
+  }
+  assert.doesNotThrow(() =>
+    assertRateLimiterBindings({
+      ...config,
+      env: { staging: { ratelimits: config.ratelimits } },
+    }),
+  );
 });
 
 test("the Access-protected admin Worker deliberately does not bind the public limiter", () => {
