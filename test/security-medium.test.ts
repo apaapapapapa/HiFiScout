@@ -2,6 +2,7 @@ import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import worker from "../src/index.js";
+import { handleHttp } from "../src/http/router.js";
 import { checkPublicApiRateLimit } from "../src/api-guard.js";
 import { parseProductPage } from "../src/crawler/parser.js";
 import { safeProductSourceUrl } from "../src/db/product-search-entity-mapper.js";
@@ -84,15 +85,46 @@ test("public product DTO boundary strips non-web URL schemes", () => {
 });
 
 test("legacy bearer token cannot reach public operational admin routes", async () => {
-  const response = await worker.fetch(
-    new Request("https://example.test/api/admin/crawl?shop=hifido", {
-      method: "POST",
-      headers: { authorization: "Bearer legacy-token" },
-    }),
-    {} as Env,
-    executionContext(),
-  );
+  const routes = [
+    ["GET", "data-platform/status"],
+    ["GET", "data-quality/status"],
+    ["GET", "data-quality/history?shop=hifido"],
+    ["GET", "data-quality/remediation-impact"],
+    ["POST", "data-quality/rebuild"],
+    ["GET", "data-quality/unresolved-manufacturers"],
+    ["POST", "manufacturer-aliases"],
+    ["GET", "data-quality/unresolved-models"],
+    ["GET", "data-quality/unresolved-identity"],
+    ["GET", "data-quality/remediation-events"],
+    ["POST", "data-quality/replay-models"],
+    ["POST", "data-quality/replay-manufacturers"],
+    ["POST", "knowledge-catalog/replay"],
+    ["GET", "product-search/consistency"],
+    ["POST", "product-search/rebuild"],
+    ["POST", "crawl?shop=hifido"],
+  ] as const;
+  const env = new Proxy(
+    { ADMIN_TOKEN: "legacy-token" },
+    {
+      get(_target, property) {
+        assert.fail(`Retired routes must not access the ${String(property)} binding`);
+      },
+    },
+  ) as unknown as Env;
 
-  assert.equal(response.status, 404);
-  assert.deepEqual(await response.json(), { error: "not_found" });
+  for (const handler of [worker.fetch, handleHttp]) {
+    for (const [method, path] of routes) {
+      const response = await handler(
+        new Request(`https://example.test/api/admin/${path}`, {
+          method,
+          headers: { authorization: "Bearer legacy-token" },
+        }),
+        env,
+        executionContext(),
+      );
+      assert.equal(response.status, 404, `${method} ${path}`);
+      assert.equal(response.headers.get("cache-control"), "no-store");
+      assert.deepEqual(await response.json(), { error: "not_found" });
+    }
+  }
 });

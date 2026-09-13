@@ -24,7 +24,7 @@ import { handleScheduled } from "./scheduled.js";
 
 /**
  * Legacy operational admin HTTP routes used a static bearer token on the public Worker. They are
- * retired at the outermost public entrypoint so no bearer value can make those handlers reachable.
+ * retired at the outermost public entrypoint before any binding is accessed.
  * Administrative UI/RPC capabilities live on the separate Cloudflare Access-protected admin Worker.
  */
 async function routePublicHttp(
