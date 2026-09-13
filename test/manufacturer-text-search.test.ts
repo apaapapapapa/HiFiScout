@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 import { searchProducts } from "../src/db/product-search-repository.js";
+import { suggestProducts } from "../src/db/product-suggest-repository.js";
+import { favoriteMatchesFilters } from "../frontend/favorites.js";
+import type { ProductFilters } from "../frontend/filters.js";
 import { accountReads } from "../src/db/read-accounting.js";
 import type { QueryableDatabase } from "../src/db/types.js";
 import { captureDatabase } from "./helpers/d1.js";
@@ -68,6 +71,7 @@ test("known manufacturer text excludes substrings and compatibility mentions bef
   const { sqlite, db } = migratedSqlite();
   try {
     await seed(db);
+    const snapshots = (await searchProducts(db, productQuery("?limit=50"))).items;
     const cases: [string, string[]][] = [
       ["lumin", ["l-1", "l-6", "l-7"]],
       ["LuMiN", ["l-1", "l-6", "l-7"]],
@@ -88,7 +92,39 @@ test("known manufacturer text excludes substrings and compatibility mentions bef
       );
       assert.deepEqual(result.items.map((item) => item.key).sort(), [...expected].sort(), q);
       assert.equal(result.totalCount, expected.length, q);
+      const filters: ProductFilters = {
+        q,
+        shop: [],
+        manufacturer: [],
+        category: "",
+        minPrice: "",
+        maxPrice: "",
+        sort: "updated",
+        features: [],
+        facets: [],
+        inStock: true,
+        favoritesOnly: true,
+        recentOnly: false,
+        priceDropped: false,
+      };
+      assert.deepEqual(
+        snapshots
+          .filter((item) => favoriteMatchesFilters(item, filters, ""))
+          .map((item) => item.key)
+          .sort(),
+        [...expected].sort(),
+        `favorites: ${q}`,
+      );
     }
+    for (const q of ["lumin", "LuMiN", "ＬＵＭＩＮ", "LUMIN U2"]) {
+      const suggestions = await suggestProducts(db, q);
+      assert.ok(suggestions.includes("LUMIN U2"), q);
+      assert.ok(
+        suggestions.every((value) => value === "LUMIN" || value.startsWith("LUMIN ")),
+        q,
+      );
+    }
+    assert.ok((await suggestProducts(db, "Lumina")).includes("Sonus faber Lumina II Amator"));
     for (const [manufacturer, count] of [
       ["fiio", 0],
       ["lumin", 3],
@@ -137,7 +173,7 @@ test("manufacturer text keeps D1 reads scoped to FTS candidates as unrelated ent
     await seed(db);
     const query = productQuery("?q=lumin&inStock=true&includeTotal=true");
     const captured = captureDatabase();
-    await searchProducts(captured, query);
+    await searchProducts(captured, { ...query, includeTotal: false });
     const page = captured.calls.find((call) => /SELECT e\.id, e\.entity_key/.test(call.sql));
     assert.ok(page);
     const plan = await db
@@ -146,7 +182,12 @@ test("manufacturer text keeps D1 reads scoped to FTS candidates as unrelated ent
       .all();
     assert.match(JSON.stringify(plan.results), /product_search_entities_fts VIRTUAL TABLE/);
     assert.doesNotMatch(JSON.stringify(plan.results), /SCAN e(?: USING|["\s])/);
-    const measurements: { size: number; rowsRead: number; statements: number }[] = [];
+    const measurements: {
+      size: number;
+      rowsRead: number;
+      statements: number;
+      suggestReads: number;
+    }[] = [];
     let previous = 12;
     for (const size of [100, 1_000, 10_000]) {
       await db
@@ -173,10 +214,17 @@ test("manufacturer text keeps D1 reads scoped to FTS candidates as unrelated ent
       assert.equal(result.items.length, 3);
       assert.equal(measured.rowsWritten(), 0);
       assert.equal(measured.countedStatements(), 5);
+      const suggestMeasured = accountReads(db);
+      const suggestions = await suggestProducts(suggestMeasured.db, "lumin");
+      assert.ok(suggestions.includes("LUMIN U2"));
+      assert.ok(suggestions.every((value) => value === "LUMIN" || value.startsWith("LUMIN ")));
+      assert.equal(suggestMeasured.countedStatements(), 1);
+      assert.equal(suggestMeasured.rowsWritten(), 0);
       measurements.push({
         size,
         rowsRead: measured.rowsRead(),
         statements: measured.statementCount(),
+        suggestReads: suggestMeasured.rowsRead(),
       });
       previous = size;
     }
@@ -187,6 +235,14 @@ test("manufacturer text keeps D1 reads scoped to FTS candidates as unrelated ent
     );
     assert.ok(
       measurements[2].rowsRead <= measurements[0].rowsRead + 30,
+      JSON.stringify(measurements),
+    );
+    assert.ok(
+      measurements.every((m) => m.suggestReads < 150),
+      JSON.stringify(measurements),
+    );
+    assert.ok(
+      measurements[2].suggestReads <= measurements[0].suggestReads + 30,
       JSON.stringify(measurements),
     );
   } finally {

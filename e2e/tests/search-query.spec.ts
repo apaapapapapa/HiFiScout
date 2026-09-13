@@ -12,10 +12,16 @@ test("live LUMIN search does not return Aluminum finishes or Lumina models", asy
   expect(Array.isArray(body.items)).toBe(true);
   // Inventory may legitimately be empty; seeded D1 tests separately require positive matches.
   for (const item of body.items) expect(item.manufacturer).toBe("LUMIN");
+  const suggestResponse = await request.get("/api/suggest", { params: { q: "lumin" } });
+  expect(suggestResponse.ok()).toBe(true);
+  const { suggestions } = await suggestResponse.json();
+  expect(Array.isArray(suggestions)).toBe(true);
+  for (const value of suggestions) expect(value).toMatch(/^LUMIN(?: |$)/);
   console.log(
     JSON.stringify({
       event: "lumin_search_smoke",
       totalCount: body.totalCount,
+      suggestions,
       items: body.items.map((item: { manufacturer: string; model: string }) => ({
         manufacturer: item.manufacturer,
         model: item.model,

@@ -444,6 +444,11 @@ and alias rules, including Japanese names and full-width input. FTS still select
 the additional predicate, and filtering precedes counts, sorting and pagination. This requires no
 new projection, index or database write.
 
+Typeahead applies this predicate before its candidate limit, and device-local favorites apply the
+same inferred manufacturer alongside their text terms. The browser shares only the manufacturer
+search vocabulary and pure query contract in `src/api/manufacturer-search-contracts.ts`; catalog
+normalization and SQL remain server-side. Search and typeahead reuse `src/db/manufacturer-filter.ts`.
+
 Product search matches `product_search_entities_fts`, whose rows are entities. Each entity indexes canonical manufacturer terms, the canonical normalized model, canonical model terms including Knowledge Catalog aliases, and bounded seller evidence — the titles and normalized terms of up to three member listings — so a query phrased the way a retailer writes it still finds the product without that phrasing becoming canonical truth.
 
 ### Ranking

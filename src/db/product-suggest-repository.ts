@@ -1,6 +1,8 @@
 /** Bounded typeahead suggestions derived only from the product-search entity read model. */
 
 import { normalizeManufacturer, splitKnownManufacturerModel } from "../catalog/manufacturers.js";
+import { inferredSearchManufacturerId } from "../api/manufacturer-search-contracts.js";
+import { addManufacturerFilter } from "./manufacturer-filter.js";
 import { normalizeIdentityModel } from "../catalog/product-identity.js";
 import {
   MAX_SUGGESTIONS,
@@ -69,7 +71,7 @@ async function loadCandidates(
   const ftsQuery = ftsSuggestionQuery(plan, normalizedModel);
   if (!ftsQuery) return [];
 
-  const knownManufacturerId = splitKnownManufacturerModel(q)?.id || "";
+  const knownManufacturerId = inferredSearchManufacturerId(q);
   const exactOrder = normalizedModel
     ? `CASE
         WHEN e.normalized_model = ? THEN 0
@@ -89,6 +91,7 @@ async function loadCandidates(
   const where = ["product_search_entities_fts MATCH ?"];
   const whereBinds: unknown[] = [ftsQuery];
   addShortTermPredicates(plan, where, whereBinds);
+  if (knownManufacturerId) addManufacturerFilter([knownManufacturerId], where, whereBinds);
 
   const result = await db
     .prepare(`

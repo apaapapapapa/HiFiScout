@@ -32,6 +32,10 @@ import { safeDate } from "./format.js";
 import type { ProductFilters } from "./filters.js";
 import type { DisplayOffer, DisplayProduct } from "./types.js";
 import { productSearchTerms } from "../src/api/contracts.js";
+import {
+  inferredSearchManufacturerId,
+  matchesSearchManufacturer,
+} from "../src/api/manufacturer-search-contracts.js";
 import { parseWatchObservations } from "./watch-changes.js";
 import type { WatchObservation } from "./watch-changes.js";
 
@@ -263,6 +267,12 @@ export function favoriteMatchesFilters(
   const terms = productSearchTerms(filters.q);
   const searchable = normalizedSearchText(product);
   if (!terms.every((term) => searchable.includes(term.toLocaleLowerCase("ja-JP")))) return false;
+  const manufacturerId = inferredSearchManufacturerId(filters.q);
+  if (
+    manufacturerId &&
+    !matchesSearchManufacturer(manufacturerId, product.manufacturer_id, product.manufacturer)
+  )
+    return false;
   if (favoriteShopMatch(product, filters.shop, filters) === "missing") return false;
   if (filters.manufacturer.length && !filters.manufacturer.includes(product.manufacturer))
     return false;
