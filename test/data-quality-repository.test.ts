@@ -69,7 +69,7 @@ const snapshotRow = {
 };
 
 test("snapshot uses one D1 aggregate over active shop listings", async () => {
-  const db = captureDb({ firstRows: [snapshotRow] });
+  const db = captureDb({ allRows: [[snapshotRow]] });
   const result = await readDataQualitySnapshot(db, "audio-union");
 
   assert.equal(result.totalItems, 100);
@@ -103,7 +103,7 @@ test("model expectation excludes canonical accessory categories and other", asyn
     "other",
   ]);
 
-  const db = captureDb({ firstRows: [snapshotRow] });
+  const db = captureDb({ allRows: [[snapshotRow]] });
   await readDataQualitySnapshot(db, "audio-union");
   const sql = db.calls[0].sql;
 
@@ -114,7 +114,7 @@ test("model expectation excludes canonical accessory categories and other", asyn
 });
 
 test("quality result is linked to crawl run and persists snapshot and run statuses", async () => {
-  const db = captureDb({ firstRows: [snapshotRow] });
+  const db = captureDb({ allRows: [[snapshotRow]] });
   const result = await saveDataQualityRun(db, {
     shopKey: "audio-union",
     crawlRunId: 42,
@@ -218,7 +218,7 @@ test("stored row exposes identity coverage gaps against all active listings", ()
 });
 
 test("a remediation-triggered run without an explicit item count defaults to the snapshot total", async () => {
-  const db = captureDb({ firstRows: [snapshotRow] });
+  const db = captureDb({ allRows: [[snapshotRow]] });
   const result = await saveDataQualityRun(db, {
     shopKey: "audio-union",
     crawlRunId: null,
@@ -235,7 +235,7 @@ test("a remediation-triggered run without an explicit item count defaults to the
 });
 
 test("a crawl run's explicit item count still overrides the snapshot default", async () => {
-  const db = captureDb({ firstRows: [snapshotRow] });
+  const db = captureDb({ allRows: [[snapshotRow]] });
   const result = await saveDataQualityRun(db, {
     shopKey: "audio-union",
     crawlRunId: 7,

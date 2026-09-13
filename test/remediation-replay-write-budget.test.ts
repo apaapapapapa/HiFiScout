@@ -6,6 +6,7 @@ import {
   replayAdminCsvListings,
   runDataQualityRemediationSweep,
 } from "../src/db/data-quality-remediation-service.js";
+import { saveDataQualityRun } from "../src/db/data-quality-repository.js";
 import { enqueueDataQualityRemediation } from "../src/db/data-quality-remediation-queue-repository.js";
 import { refreshListingProjections } from "../src/db/listing-projection-refresh.js";
 import { accountReads } from "../src/db/read-accounting.js";
@@ -75,6 +76,81 @@ test("metadata-only remediation does not rewrite unrelated listing indexes or ca
         rowsRead: measured.rowsRead(),
         rowsWritten: measured.rowsWritten(),
         statements: measured.countedStatements(),
+      }),
+    );
+  } finally {
+    await dispose();
+  }
+}, 30_000);
+
+test("metadata-only sweep skips the shop-wide quality scan when the latest snapshot is authoritative", async () => {
+  const { db, dispose } = await database();
+  try {
+    const product = listing("metadata-only-snapshot");
+    await upsertProducts(db, "budget", [product], AT);
+    await refreshListingProjections(db, [{ shop_key: "budget", source_id: product.sourceId }], AT);
+    const id = Number(
+      await db
+        .prepare("SELECT id FROM products WHERE shop_key = ? AND source_id = ?")
+        .bind("budget", product.sourceId)
+        .first("id"),
+    );
+    await db
+      .prepare(
+        "WITH RECURSIVE n(id) AS (VALUES(100001) UNION ALL SELECT id+1 FROM n WHERE id<104000) INSERT INTO products(id,shop_key,source_id,title,source_url,first_seen_at,last_seen_at,last_changed_at,manufacturer_resolution_status,classification_status) SELECT id,'budget','quality-budget-'||id,'Other','https://example.test/','','','','resolved','classified' FROM n",
+      )
+      .run();
+    await db
+      .prepare(
+        "WITH RECURSIVE n(id) AS (VALUES(100001) UNION ALL SELECT id+1 FROM n WHERE id<104000) INSERT INTO product_identity_resolutions(listing_product_id,status,match_method,confidence,evaluated_at) SELECT id,'unresolved','budget','none','2026-09-12T08:00:00.000Z' FROM n",
+      )
+      .run();
+    await db
+      .prepare(
+        "UPDATE products SET metadata_json = json_set(metadata_json, '$.categoryClassification.version', ?) WHERE id = ?",
+      )
+      .bind(RESOLUTION_VERSIONS.category - 1, id)
+      .run();
+    await saveDataQualityRun(db, {
+      shopKey: "budget",
+      evaluatedAt: "2026-09-12T08:50:00.000Z",
+    });
+    await enqueueDataQualityRemediation(db, {
+      workKey: `metadata-only-snapshot:${id}`,
+      workType: "classify_category",
+      listingProductId: id,
+      source: "manual",
+      reason: "measure unchanged snapshot",
+      now: "2026-09-12T08:55:00.000Z",
+    });
+
+    const fullScan = accountReads(db);
+    await saveDataQualityRun(fullScan.db, {
+      shopKey: "budget",
+      evaluatedAt: "2026-09-12T08:59:00.000Z",
+    });
+    const optimized = accountReads(db);
+    const result = await runDataQualityRemediationSweep(optimized.db, {
+      seedLimit: 1,
+      claimLimit: 1,
+      now: new Date("2026-09-12T09:00:00.000Z"),
+      preferQueuedWork: true,
+      measureQueue: false,
+    });
+
+    assert.equal(result.resolved, 1);
+    assert.equal(result.snapshotsSkipped, 1);
+    assert.ok(fullScan.rowsRead() >= 4_000, `full snapshot read ${fullScan.rowsRead()} rows`);
+    assert.ok(
+      optimized.rowsRead() < fullScan.rowsRead() / 10,
+      `optimized sweep read ${optimized.rowsRead()} rows after ${fullScan.rowsRead()}-row snapshot`,
+    );
+    console.log(
+      JSON.stringify({
+        event: "remediation_unchanged_snapshot_read_budget",
+        beforeRowsRead: fullScan.rowsRead(),
+        afterRowsRead: optimized.rowsRead(),
+        afterRowsWritten: optimized.rowsWritten(),
       }),
     );
   } finally {
