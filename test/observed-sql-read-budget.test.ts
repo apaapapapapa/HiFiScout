@@ -10,6 +10,8 @@ import { searchProducts } from "../src/db/product-search-repository.js";
 import { accountReads } from "../src/db/read-accounting.js";
 import { AT, database } from "./helpers/d1-write-budget.js";
 import { productQuery } from "./helpers/product-query.js";
+import { measureD1Cost } from "./helpers/harness-cost.js";
+import { recordCostSample } from "../scripts/harness/cost.js";
 
 test("unchanged projection and empty pending work stay bounded as unrelated rows grow", async () => {
   const { db, dispose } = await database();
@@ -138,7 +140,8 @@ test("scoped stale-category pruning follows offer and category indexes", async (
       .run();
 
     const targetIds = Array.from({ length: 40 }, (_, index) => index + 1);
-    const measured = accountReads(db);
+    const boundary = measureD1Cost(db);
+    const measured = accountReads(boundary.db);
     const pruneSql = deleteStaleEntityCategoriesSql(scopeClause("entity_id", targetIds.length));
     const plan = await db
       .prepare(`EXPLAIN QUERY PLAN ${pruneSql}`)
@@ -157,6 +160,14 @@ test("scoped stale-category pruning follows offer and category indexes", async (
     assert.equal(Number(result.meta.changes || 0), 0);
     assert.equal(measured.rowsWritten(), 0);
     assert.ok(measured.rowsRead() < 300, `stale-category prune read ${measured.rowsRead()} rows`);
+    await recordCostSample(
+      "category-prune",
+      "local-workerd",
+      boundary.metrics(),
+      ["test/observed-sql-read-budget.test.ts"],
+      ["10,000 rows; 40 target IDs; fixture setup and EXPLAIN excluded"],
+      plan.results.map((row: { detail: string }) => row.detail),
+    );
     console.log(
       JSON.stringify({
         event: "stale_entity_category_read_budget",

@@ -9,6 +9,7 @@
  */
 
 import { readFile } from "node:fs/promises";
+import { recordCostSample } from "./harness/cost.js";
 
 import { normalizeCatalogProducts } from "../src/catalog/product-normalizer.js";
 import {
@@ -311,6 +312,13 @@ for (const fixture of FIXTURES) results.push(...(await benchmarkFixture(fixture)
 
 for (const item of results) {
   console.log(JSON.stringify({ event: "parser_cpu_benchmark", ...item }));
+  await recordCostSample(
+    `cpu-${item.shopKey}-${item.stage}`,
+    "local-node",
+    { cpuUs: item.cpuUsPerIteration, cpuRelative: item.relativeToReference },
+    ["scripts/parser-cpu-benchmark.ts"],
+    ["same-process reference; absolute CPU is diagnostic; production p95/p99 not collected"],
+  );
 }
 
 if (check) {

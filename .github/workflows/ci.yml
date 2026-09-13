@@ -57,6 +57,14 @@ jobs:
       - name: Compare parser stages with relative CPU baselines
         if: steps.scope.outputs.application == 'true'
         run: vp run ci:parser-benchmark
+      - name: Preserve parser CPU cost samples
+        if: always() && steps.scope.outputs.application == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: harness-cost-parser
+          path: .generated/harness-cost/
+          retention-days: 30
+          if-no-files-found: error
       - name: Build application bundles
         if: steps.scope.outputs.application == 'true'
         run: vp run ci:build
@@ -85,8 +93,17 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+      - name: Preserve D1, DO and Queue cost samples
+        if: always() && steps.scope.outputs.application == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: harness-cost-shard-${{ matrix.shard }}
+          path: .generated/harness-cost/
+          retention-days: 30
+          if-no-files-found: ignore
+
   product-replay:
-    needs: unit-test
+    needs: [unit-test, static-checks]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -110,6 +127,24 @@ jobs:
         with:
           name: product-replay
           path: .generated/product-replay/
+          retention-days: 30
+          if-no-files-found: error
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: always() && steps.scope.outputs.application == 'true'
+        with:
+          pattern: harness-cost-*
+          path: .generated/cost-samples
+          merge-multiple: true
+      - name: Assess complete cost evidence for this source
+        if: always() && steps.scope.outputs.application == 'true'
+        run: vp run harness cost-report .generated/cost-samples .generated/cost-report.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always() && steps.scope.outputs.application == 'true'
+        with:
+          name: cost-evidence
+          path: |
+            .generated/cost-samples/
+            .generated/cost-report.json
           retention-days: 30
           if-no-files-found: error
 

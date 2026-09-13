@@ -91,7 +91,36 @@ missing result or dirty checkout makes comparison unknown. An unchanged known fa
 in the candidate report even when the comparison has no new regressions. Imported Vitest reports
 must come from that checkout's CI graph; the import mode does not authenticate arbitrary JSON.
 
-## Ownership and extension
+## Cost evidence and comparison
+
+The existing parser benchmark and selected budget tests write source-bound samples when
+`HARNESS_COST_OUTPUT` is set. CI collects 13 required samples without re-running those tests:
+split/inline D1 checkpoints, indexed category pruning (including EXPLAIN details), a DO retry,
+Queue redelivery, and eight parser stages. Measurement-producing task cache keys include
+`GITHUB_SHA`, so a previous commit's samples cannot be restored as this commit's observations.
+
+For a local capture on a clean checkout:
+
+```bash
+HARNESS_COST_OUTPUT=.generated/cost vp test run test/d1-crawl-checkpoint-budget.test.ts test/observed-sql-read-budget.test.ts test/crawl-do-collection-progress.test.ts test/queue-routing.test.ts
+HARNESS_COST_OUTPUT=.generated/cost vp run benchmark:parser
+vp run harness cost-report .generated/cost .generated/cost-report.json
+vp run harness compare-cost <baseline-samples-dir> <candidate-samples-dir>
+```
+
+Use fresh directories and retain failed test/benchmark output as well as samples. A sample's
+existence proves measurement, not behavioral success; CI's original assertions and CPU baseline
+gate remain required. Missing samples, dirty/stale SHAs and missing D1 meta stay unknown. The D1
+meter counts batches once, counts failures, and marks row totals null after unmetered first/raw
+calls. Local workerd rows, mocked DO/Queue calls and Node CPU have distinct environments and units.
+They never stand in for production billing or p95/p99 CPU. Production CPU remains explicitly null.
+
+Comparisons require the same fixture/helper/dependency profile and environment. They show absolute
+deltas, and ratios only for nonzero baselines. Row/statement/message increases fail; relative CPU
+uses the parser gate's 75% plus 0.5 noise margin. Absolute local CPU is diagnostic only. Changing
+fixtures or runtime dependencies requires a new reviewed baseline, not a manufactured improvement.
+
+## Extending the harness
 
 Reuse package scripts, Vitest, Playwright, real migrated local D1 fixtures and deployment-owned
 identity artifacts. Add a diagnostic at the boundary that owns the behavior. Keep orchestration
