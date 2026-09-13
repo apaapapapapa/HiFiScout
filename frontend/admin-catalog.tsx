@@ -218,6 +218,8 @@ const EMPTY_CREATE_DRAFT: CreateDraft = {
 
 function catalogErrorText(error: unknown): string {
   const code = genericErrorText(error);
+  if (code.startsWith("catalog_admin_ai_"))
+    return "AI提案が古くなったか、確認した型番と異なります。AIの型番候補で根拠を再確認してください。";
   if (code === "catalog_admin_product_already_exists") {
     const id = error instanceof AdminOperationError ? error.existingProductId : null;
     return id
@@ -459,7 +461,10 @@ export function CatalogAdmin({
   } | null>(null);
   const editDialogRef = useRef<HTMLDialogElement>(null);
 
-  const [createMode, setCreateMode] = useState<{ candidate: CatalogCandidate | null } | null>(null);
+  const [createMode, setCreateMode] = useState<{
+    candidate: CatalogCandidate | null;
+    aiSuggestionId?: string;
+  } | null>(null);
   const [createDraft, setCreateDraft] = useState<CreateDraft>(EMPTY_CREATE_DRAFT);
   const [operationBusy, setOperationBusy] = useState(false);
   const createDialogRef = useRef<HTMLDialogElement>(null);
@@ -799,7 +804,17 @@ export function CatalogAdmin({
     };
     createInitialRef.current = initial;
     setCreateDraft(initial);
-    setCreateMode({ candidate });
+    const query = new URLSearchParams(search);
+    const aiSuggestionId = query.get("aiSuggestionId");
+    setCreateMode({
+      candidate,
+      ...(candidate &&
+      String(candidate.id) === query.get("aiCandidateId") &&
+      aiSuggestionId &&
+      /^[a-f0-9]{64}$/u.test(aiSuggestionId)
+        ? { aiSuggestionId }
+        : {}),
+    });
   };
 
   const submitCatalogSearch = (event: FormEvent<HTMLFormElement>) => {
@@ -866,6 +881,7 @@ export function CatalogAdmin({
       primaryCategoryId: createDraft.primaryCategoryId,
       lifecycleStatus: createDraft.lifecycleStatus,
       sourceUrl: createDraft.sourceUrl.trim(),
+      ...(createMode.aiSuggestionId ? { aiSuggestionId: createMode.aiSuggestionId } : {}),
     };
     if (
       !payload.manufacturerId ||
@@ -1664,6 +1680,12 @@ export function CatalogAdmin({
                             >
                               手動Verify
                             </button>
+                            <a
+                              className="secondary-button compact"
+                              href={`/?candidateId=${candidate.id}#ai`}
+                            >
+                              AI候補を確認
+                            </a>
                           </td>
                         </tr>
                       );
@@ -2016,6 +2038,11 @@ export function CatalogAdmin({
                 ×
               </button>
             </div>
+            {createMode.aiSuggestionId ? (
+              <p>
+                AI提案の確認から移動しました。公式資料で型番と販売対象を確認して入力してください。保存時に提案の鮮度と選択先を再検証します。
+              </p>
+            ) : null}
             {createMode.candidate ? (
               <div className="identity-card">
                 <span>未検証候補</span>

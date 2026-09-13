@@ -38,6 +38,7 @@ export interface CatalogAdminCreateInput extends CatalogAdminUpdateInput {
   manufacturerId: string;
   canonicalModel: string;
   sourceUrl: string;
+  aiSuggestionId?: string;
 }
 
 export type CatalogAdminProductExportScope = ProductAuditExportScope;
@@ -95,6 +96,7 @@ export interface CatalogAdminProductExportRow {
 }
 
 export interface CatalogAdminRpc {
+  adminAiCatalog(input: unknown, actor: string): Promise<unknown>;
   adminQuality(input: unknown): Promise<unknown>;
   manufacturerRegistry(input: unknown): Promise<unknown>;
   getWorkCounts(

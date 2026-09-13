@@ -22,6 +22,7 @@ export interface KnowledgeCatalogAdminCreateInput extends KnowledgeCatalogAdminU
   manufacturerId: string;
   canonicalModel: string;
   sourceUrl: string;
+  aiSuggestionId?: string;
 }
 
 export interface KnowledgeCatalogAdminMergeInput {
@@ -180,6 +181,11 @@ export function parseKnowledgeCatalogAdminCreate(
   const manufacturerId = manufacturerIdForFilter(rawManufacturer);
   const canonicalModel = bodyText(value.canonicalModel, 200);
   const verifiedSourceUrl = sourceUrl(value.sourceUrl);
+  if (
+    value.aiSuggestionId !== undefined &&
+    (typeof value.aiSuggestionId !== "string" || !/^[a-f0-9]{64}$/u.test(value.aiSuggestionId))
+  )
+    return null;
   if (!rawManufacturer || !manufacturerId || !canonicalModel || verifiedSourceUrl === null)
     return null;
 
@@ -188,6 +194,7 @@ export function parseKnowledgeCatalogAdminCreate(
     manufacturerId,
     canonicalModel,
     sourceUrl: verifiedSourceUrl,
+    ...(typeof value.aiSuggestionId === "string" ? { aiSuggestionId: value.aiSuggestionId } : {}),
   };
 }
 

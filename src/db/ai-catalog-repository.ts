@@ -50,10 +50,12 @@ export async function grantAiBudget(
     .run();
   return loadAiBudget(db, aiBudgetDay(now));
 }
-export async function blockAiBudget(db: QueryableDatabase, day: string) {
+export async function blockAiBudget(db: QueryableDatabase, day: string, actor = "runtime") {
   await db
-    .prepare("UPDATE ai_catalog_budgets SET blocked = 1 WHERE day = ? AND blocked = 0")
-    .bind(day)
+    .prepare(`INSERT INTO ai_catalog_budgets(day,policy_key,allowance_milli,blocked,account_evidence,approved_by,created_at)
+    VALUES(?,?,0,1,'execution_stopped',?,?) ON CONFLICT(day) DO UPDATE SET blocked=1
+    WHERE ai_catalog_budgets.blocked=0`)
+    .bind(day, AI_CATALOG_POLICY_KEY, actor, new Date().toISOString())
     .run();
 }
 export async function insertAiJob(

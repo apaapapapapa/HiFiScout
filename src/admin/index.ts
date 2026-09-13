@@ -130,6 +130,7 @@ function knowledgeCatalogExportUnavailable(error: unknown, operation: string): R
 
 function manualOperationError(error: unknown): Response {
   const message = error instanceof Error ? error.message : String(error);
+  if (message.startsWith("catalog_admin_ai_")) return json({ error: message }, { status: 409 });
   if (message.startsWith("catalog_admin_product_already_exists:")) {
     const existingProductId = Number(message.split(":", 2)[1] || 0);
     return json(
