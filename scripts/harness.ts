@@ -1,8 +1,23 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { assessHarnessReport, reportExitCode } from "./harness/report.js";
 
 export async function runHarness(args: string[]): Promise<number> {
+  if (args[0] === "ai-template" && args.length === 2) {
+    const { aiRecordingTemplate } = await import("./harness/ai.js");
+    await mkdir(dirname(args[1]), { recursive: true });
+    await writeFile(args[1], `${JSON.stringify(await aiRecordingTemplate(), null, 2)}\n`, {
+      flag: "wx",
+    });
+    return 0;
+  }
+  if (args[0] === "ai" && args.length === 3) {
+    const { runAiHoldout } = await import("./harness/ai.js");
+    const result = await runAiHoldout(args[1], args[2]);
+    console.log(JSON.stringify(result, null, 2));
+    return reportExitCode(result.status);
+  }
   if (args[0] === "ui" && args.length === 2) {
     const { runUi } = await import("./harness/ui.js");
     const result = await runUi(args[1]);
@@ -58,7 +73,7 @@ export async function runHarness(args: string[]): Promise<number> {
   }
   if (args[0] !== "report" || args.length !== 2) {
     throw new Error(
-      "usage: vp run harness report <report.json> | delivery <owner/repo> <PR> <output-dir> | checkpoint <task.json> <report.json> <state.json> <revision> | resume <state.json> | replay <output-dir> [vitest-reports...] | compare-replay <before.json> <after.json>",
+      "usage: vp run harness report <report.json> | delivery <owner/repo> <PR> <output-dir> | checkpoint <task.json> <report.json> <state.json> <revision> | resume <state.json> | replay <output-dir> [vitest-reports...] | compare-replay <before.json> <after.json> | cost-report <samples-dir> <report.json> | compare-cost <before-dir> <after-dir> | ui <new-output-dir> | ai-template <new-recording.json> | ai <recording.json> <new-output-dir>",
     );
   }
   const input: unknown = JSON.parse(await readFile(args[1], "utf8"));

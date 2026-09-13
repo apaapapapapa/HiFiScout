@@ -160,6 +160,39 @@ with console and network evidence; an image alone does not prove an interaction 
 
 ## Adding a boundary
 
+## Workers AI holdout and review feedback
+
+`vp run harness ai-template .generated/ai-recording.json` writes a new, intentionally incomplete
+recording template for 20 cases across 10 product families outside the TAD/LS50 development canary.
+Positive spellings come from existing shop/identity regressions; negative candidate mutations are
+synthetic counterexamples. The versioned labels carry their source and remain pending independent
+review. The existing live-canary record and policy approval are unchanged.
+
+The template binds each runtime-built request to its snapshot fingerprint, corpus digest and exact
+policy key. Fill model-required `attempts` with recorded `model`, nullable `requestId`, `requestedAt`,
+raw schema-2 `response`, nullable `latencyMs`, and `usage` containing nullable `inputTokens`,
+`outputTokens` and `neurons`. Keep deterministic cases' request null and attempts empty. This command
+does not call Workers AI. Normal CI uses explicitly stubbed responses to verify the evaluator.
+
+`vp run harness ai <recording.json> .generated/ai-<run-id>` preserves the recording, evaluation and
+common report. It separately reports pipeline outcomes, actual model-case outcomes, deterministic
+veto counts, attempts, invalid responses, per-attempt latency and nullable provider usage. Missing
+responses remain unknown; unsafe observed output fails even if another case is missing. A provider
+ID cannot be counted twice. Unavailable usage is never converted to zero or an estimated actual cost.
+
+An optional case `review` contains `decision` (accepted/rejected), `actor`, `reason`, `reviewedAt`,
+the same `fingerprint` and `responseDigest` (SHA-256 of JSON.stringify of the final wire response).
+Reviews bind to that precise response; accepting an absent/invalid suggestion is rejected. Optional
+`groundTruthReview` binds `actor` and `reviewedAt` to `corpusDigest`. Acceptance rate, pending
+suggestions and false accepted suggestions remain separate from model correctness.
+
+Offline output always states that provider/reviewer provenance is unverified, live evaluation is
+unknown, and activation is not approved. Passing fixtures cannot enable inference, change the
+approved policy, bypass identity vetoes or grant account budget. Independent label review and real
+provider evidence are needed for any future live evaluation/activation decision.
+
+## Extending an existing boundary
+
 Reuse package scripts, Vitest, Playwright, real migrated local D1 fixtures and deployment-owned
 identity artifacts. Add a diagnostic at the boundary that owns the behavior. Keep orchestration
 thin, execute bounded commands and leave concise machine-readable results for the next session.
