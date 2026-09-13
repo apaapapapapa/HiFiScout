@@ -194,6 +194,18 @@ test("totals count products, and offsets page over products", async () => {
   assert.match(pageCall(db.calls).sql, /LIMIT \? OFFSET \?/);
 });
 
+test("the unfiltered in-stock total reads the singleton counter", async () => {
+  const db = captureDatabase((statement) =>
+    /FROM product_search_totals/.test(statement.sql) ? [{ total: 6_249 }] : [],
+  );
+
+  const result = await searchProducts(db, productQuery("?inStock=true&includeTotal=true&limit=50"));
+
+  assert.equal(result.totalCount, 6_249);
+  assert.match(db.calls[0].sql, /FROM product_search_totals WHERE singleton = 1/);
+  assert.doesNotMatch(db.calls[0].sql, /COUNT\(\*\)/);
+});
+
 test("offer summary and representative offer cost two bounded queries, not one per result", async () => {
   const db = captureDatabase((statement) =>
     /SELECT e\.id, e\.entity_key/.test(statement.sql)

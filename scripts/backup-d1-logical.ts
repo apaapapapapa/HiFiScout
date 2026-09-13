@@ -28,7 +28,12 @@ export interface BackupTable {
 }
 
 const DEFAULT_BATCH_SIZE = 500;
-const INTERNAL_TABLE_NAMES = new Set(["d1_migrations"]);
+const EXCLUDED_TABLE_NAMES = new Set([
+  "d1_migrations",
+  // Migrations create the singleton at zero and entity INSERT triggers rebuild it during restore.
+  // Dumping this derived row could pair a newer total with an older entity snapshot.
+  "product_search_totals",
+]);
 
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -64,7 +69,7 @@ export function selectBackupTables(rows: readonly TableListRow[]): BackupTable[]
         row.type === "table" &&
         !row.name.startsWith("sqlite_") &&
         !row.name.startsWith("_cf_") &&
-        !INTERNAL_TABLE_NAMES.has(row.name),
+        !EXCLUDED_TABLE_NAMES.has(row.name),
     )
     .map((row) => ({ name: row.name, withoutRowid: row.wr === 1 }))
     .sort((left, right) => left.name.localeCompare(right.name));
