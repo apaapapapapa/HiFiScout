@@ -7,6 +7,7 @@ import { loopReport } from "./helpers/loop.js";
 import { applyLoopPatch, prepareLoopWorkspace } from "../scripts/harness/loop/workspace.js";
 import { beginLoopAttempt, finishLoopAttempt } from "../scripts/harness/loop/controller.js";
 import { readLoopRun } from "../scripts/harness/loop/state.js";
+import { loopStatus } from "../scripts/harness/loop/status.js";
 import { collectLoopScope } from "../scripts/harness/loop/scope.js";
 import {
   publishLoopPull,
@@ -194,6 +195,7 @@ test("publication is idempotent and merge waits for current review gates and mai
     const completed = await observeLoopDelivery(f.state, f.workspaces, f.invoke);
     assert.equal(completed.phase, "completed");
     assert.equal(completed.lastDeliveryReport?.sourceSha, f.mergeSha);
+    assert.deepEqual(loopStatus(await readLoopRun(f.state)).blockers, []);
   } finally {
     await rm(f.root, { recursive: true, force: true });
   }
@@ -221,6 +223,7 @@ test("Codex summaries resolve to the full reviewed SHA and a PR-only contract ca
     );
     await assert.rejects(mergeLoopPull(f.state, f.workspaces, f.invoke), /not_authorized/u);
     assert.equal((await observeLoopDelivery(f.state, f.workspaces, f.invoke)).phase, "completed");
+    assert.deepEqual(loopStatus(await readLoopRun(f.state)).blockers, []);
   } finally {
     await rm(f.root, { recursive: true, force: true });
   }

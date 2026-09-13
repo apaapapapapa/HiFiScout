@@ -50,10 +50,13 @@ export function loopStatus(value: unknown, now = new Date().toISOString()) {
               : Infinity,
           ),
         ).toISOString();
-  const checks = bindRequiredChecks(
-    run.spec.task.requirements,
-    view.lastDeliveryReport?.checks ?? view.lastReport?.checks ?? [],
-  );
+  const checks = bindRequiredChecks(run.spec.task.requirements, [
+    ...new Map(
+      [...(view.lastReport?.checks ?? []), ...(view.lastDeliveryReport?.checks ?? [])].map(
+        (check) => [check.id, check],
+      ),
+    ).values(),
+  ]);
   return {
     ...view,
     generatedAt: at,
