@@ -55,10 +55,6 @@ jobs:
             echo 'A workflow bypasses Vite+ runtime/tool resolution.' >&2
             exit 1
           fi
-          if grep -RInE '^[[:space:]]*(npm|npx)[[:space:]]' README.md AGENTS.md docs; then
-            echo 'Documentation contains a standalone npm/npx command; document the Vite+ entrypoint instead.' >&2
-            exit 1
-          fi
       - run: vp run ci:lint
       - run: vp run ci:format-check
       - run: vp run ci:no-js-source
