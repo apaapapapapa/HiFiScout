@@ -1,0 +1,7 @@
+interface:
+  display_name: "HiFiScout カタログ・品質"
+  short_description: "公式根拠を確認しカタログ追加・判定修正・再処理を進める"
+  default_prompt: "Use $hifiscout-catalog-maintenance to maintain HiFiScout catalog data and safely reprocess affected listings."
+
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,7 @@
+interface:
+  display_name: "HiFiScout 負荷分析"
+  short_description: "D1・Queue・CPUの観測を照合し負荷低減効果を検証する"
+  default_prompt: "Use $hifiscout-load-analysis to diagnose HiFiScout load and verify a bounded improvement against observed evidence."
+
+policy:
+  allow_implicit_invocation: true

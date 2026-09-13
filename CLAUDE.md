@@ -3,7 +3,8 @@
 @AGENTS.md
 
 `AGENTS.md` owns repository rules, validation commands, architectural invariants, and the task map.
-Use its task map to load only the documentation and source needed for the current change.
+Use its task map and project skill routing to open the matching `SKILL.md`, then only the linked
+references, documentation and source needed for the current task.
 Its scope/priority rules apply to skills and referenced documents too. Tool permissions are enforced
 separately by Claude Code settings; repository prose does not override a denied action.
 

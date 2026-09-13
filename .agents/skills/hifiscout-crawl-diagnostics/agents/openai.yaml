@@ -1,0 +1,7 @@
+interface:
+  display_name: "HiFiScout クロール診断"
+  short_description: "ショップの収集停止・抽出不備・検索反映遅延を切り分ける"
+  default_prompt: "Use $hifiscout-crawl-diagnostics to trace this shop problem from seller extraction through public search projection."
+
+policy:
+  allow_implicit_invocation: true

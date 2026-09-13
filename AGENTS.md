@@ -40,6 +40,33 @@ Start with the relevant row rather than loading every document.
 | Harness evidence and completion | `.github/harness/README.md`, `scripts/harness.ts` |
 | Documentation | `docs/index.md`, `docs/tooling.md`, `docs/.vitepress/config.mts` |
 
+## Project skill routing
+
+For the following work, open the matching `SKILL.md` before making domain decisions. Select by the
+requested outcome, not merely by a keyword in a file being inspected. Combine skills when a task
+crosses boundaries; read only the relevant linked references. Implementation work uses its domain
+skill plus `hifiscout-delivery`; an assessment-only request does not activate mutation or delivery.
+
+| Requested work / examples | Skill |
+| --- | --- |
+| Implement/fix, split PRs, address review comments, merge, verify main CI/CD / 実装・マージまで | [hifiscout-delivery](.agents/skills/hifiscout-delivery/SKILL.md) |
+| D1 reads/writes, Queue/CPU load, R2 SQL logs, query/schema cost / 負荷分析・軽減 | [hifiscout-load-analysis](.agents/skills/hifiscout-load-analysis/SKILL.md) |
+| Add catalog products, audit CSV, correct manufacturer/model/category, unsafe grouping, replay / カタログ・再判定 | [hifiscout-catalog-maintenance](.agents/skills/hifiscout-catalog-maintenance/SKILL.md) |
+| Shop stopped/stale, missing new arrivals, parser contamination, add a shop / クロール停止・抽出不備 | [hifiscout-crawl-diagnostics](.agents/skills/hifiscout-crawl-diagnostics/SKILL.md) |
+| Public search/filter/detail interaction, admin usability or browser regression / 画面改善 | [hifiscout-ui-changes](.agents/skills/hifiscout-ui-changes/SKILL.md) |
+| Reassess/update/close issues, validate acceptance evidence or observation windows / Issue再評価 | [hifiscout-issue-triage](.agents/skills/hifiscout-issue-triage/SKILL.md) |
+
+These first-party skills live in the repository's `.agents/skills` discovery location. Their
+descriptions support automatic selection and `agents/openai.yaml` keeps implicit invocation enabled.
+Agents without native skill discovery should follow this table and read the files directly.
+`CLAUDE.md` imports this entry point rather than maintaining a second routing table. Do not load all
+skills up front or apply these HiFiScout workflows to unrelated projects.
+
+When a workflow changes, update the affected skill's links/decision guidance together with its
+canonical docs and keep this table and the skill description aligned. Reference current code for
+versions, schedules and budgets; do not copy incident snapshots into permanent instructions.
+First-party skills are maintained here; `skills-lock.json` pins vendored skills only.
+
 ## Validation
 
 Use the project-pinned Vite+ toolchain. Versions and commands are defined in `package.json`,
