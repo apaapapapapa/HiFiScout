@@ -14,6 +14,7 @@ import {
 } from "./knowledge-catalog-admin-repository.js";
 import type { QueryableDatabase, ReadableDatabase } from "./types.js";
 import { assertAiCatalogVerification } from "./ai-catalog-verification.js";
+import type { AiVerificationFence } from "./ai-catalog-verification.js";
 
 const MANUAL_REPLAY_PAGE_SIZE = 250;
 const MANUAL_REPLAY_MAX_PAGES = 8;
@@ -430,15 +431,17 @@ async function linkCandidateToManualProduct(
   normalizedModel: string,
   verifiedAt: string,
   verifiedCatalog: CatalogStateRow | null,
+  aiFence: AiVerificationFence | null,
 ): Promise<void> {
   // The audit row is also the final compare-and-set guard for an AI handoff. A failed guard
   // violates message's NOT NULL constraint and rolls back the entire candidate/alias batch.
   const messageSql = input.aiSuggestionId
     ? `CASE WHEN EXISTS (
     SELECT 1 FROM ai_catalog_jobs j JOIN knowledge_catalog_candidates c ON c.id = j.candidate_id
+    JOIN ai_catalog_revisions r ON r.manufacturer_id = c.manufacturer_id
     JOIN knowledge_catalog_products p ON p.id = json_extract(j.result_json,'$.catalogProductId')
     JOIN knowledge_catalog_product_categories pc ON pc.product_id = p.id AND pc.is_primary = 1
-    WHERE j.id = ? AND j.status = 'reviewed' AND j.review_outcome = 'useful'
+    WHERE j.id = ? AND j.status = 'reviewed' AND j.review_outcome = 'useful' AND r.revision = ?
       AND c.id = ? AND c.review_status = 'pending' AND c.updated_at = ?
       AND c.observed_model = ? AND c.sample_title = ? AND c.candidate_category_ids = ? AND c.manufacturer_id = ?
       AND p.id = ? AND p.manufacturer_id = ? AND p.normalized_model = ? AND p.canonical_model = ?
@@ -448,6 +451,7 @@ async function linkCandidateToManualProduct(
   const guardBindings = input.aiSuggestionId
     ? [
         input.aiSuggestionId,
+        aiFence?.revision ?? -1,
         candidate.id,
         candidate.updated_at,
         candidate.observed_model,
@@ -592,9 +596,11 @@ export async function verifyKnowledgeCatalogAdminCandidate(
   const normalizedModel = normalizeCatalogModel(input.canonicalModel);
   if (!normalizedModel) throw new Error("catalog_admin_model_invalid");
   const existing = await findCatalogStateByIdentity(db, input.manufacturerId, normalizedModel);
-  if (input.aiSuggestionId) {
-    const selected = await assertAiCatalogVerification(db, candidateId, input);
-    if (existing?.verification_status !== "verified" || Number(existing.id) !== selected)
+  const aiFence = input.aiSuggestionId
+    ? await assertAiCatalogVerification(db, candidateId, input)
+    : null;
+  if (aiFence) {
+    if (existing?.verification_status !== "verified" || Number(existing.id) !== aiFence.productId)
       throw new Error("catalog_admin_ai_stale");
   }
 
@@ -627,6 +633,7 @@ export async function verifyKnowledgeCatalogAdminCandidate(
     normalizedModel,
     verifiedAt,
     existing,
+    aiFence,
   );
   await recordManualSource(db, productId, input.sourceUrl, verifiedAt);
   const completed = await completeManualWrite(db, productId, effectiveInput, verifiedAt);

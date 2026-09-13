@@ -75,7 +75,16 @@ the official model and sale object and provide the verification source themselve
 
 The handoff carries the suggestion ID. Existing Verify rechecks the evidence fingerprint, reviewed
 outcome, supplied catalog ID, model and category before saving. Its final candidate/alias batch
-checks the current target and selected catalog again; a mismatch rolls back the entire batch.
+checks the current target and selected catalog again, plus a manufacturer revision captured before
+reading the full evidence snapshot. Relevant candidate, manufacturer, catalog, model-alias and
+category mutations advance that revision, including changes to secondary categories or alternative
+products. A mismatch rolls back the entire batch. The clock is registered only on a manual AI
+handoff and is not part of the AI fingerprint: crawl timestamps and repeated validation do not
+rewrite it or cause another inference. Once registered, a relevant semantic mutation costs one
+additional D1 row write per affected manufacturer; an unwatched manufacturer adds no row writes.
+The real-workerd regression fixture with 500 unrelated revision rows measures first validation at
+12 rows read, 2 written (row plus primary-key index), and 8 statements; repeated validation costs
+13 rows read, 0 written, and 8 statements. These are fixture measurements, not production totals.
 AI handoffs can only select the reviewed existing verified product. They cannot create or revive
 catalog products. The existing verification-attempt audit links the suggestion ID, and the ordinary
 bounded replay remains responsible for updating listings. A sample title never authorizes a whole

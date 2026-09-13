@@ -1,8 +1,18 @@
 import { loadAiJob } from "./ai-catalog-repository.js";
 import { loadAiCatalogSnapshot } from "./ai-catalog-snapshot.js";
-import { aiSnapshotFingerprint, validateAiSuggestion } from "../ai-suggestions/contract.js";
+import {
+  aiSnapshotFingerprint,
+  parseAiSnapshot,
+  validateAiSuggestion,
+} from "../ai-suggestions/contract.js";
 import { normalizeIdentityModel } from "../catalog/product-identity.js";
 import type { QueryableDatabase } from "./types.js";
+import { firstMeasured } from "./read-accounting.js";
+
+export interface AiVerificationFence {
+  productId: number;
+  revision: number;
+}
 
 /** Called by the existing manual Verify operation, never by inference or usefulness review. */
 export async function assertAiCatalogVerification(
@@ -28,6 +38,21 @@ export async function assertAiCatalogVerification(
     !input.sourceUrl.trim()
   )
     throw new Error("catalog_admin_ai_review_required");
+  const stored = parseAiSnapshot(JSON.parse(job.snapshot_json));
+  if (!stored) throw new Error("catalog_admin_ai_stale");
+  const manufacturer = stored.target.manufacturerId;
+  // Register before reading any snapshot input. Relevant mutations now advance this clock.
+  await db
+    .prepare(`INSERT INTO ai_catalog_revisions(manufacturer_id,revision)
+    SELECT ?,0 WHERE NOT EXISTS (SELECT 1 FROM ai_catalog_revisions WHERE manufacturer_id=?)`)
+    .bind(manufacturer, manufacturer)
+    .run();
+  const clock = await firstMeasured<{ revision: number }>(
+    db
+      .prepare("SELECT revision FROM ai_catalog_revisions WHERE manufacturer_id=?")
+      .bind(manufacturer),
+  );
+  if (!clock) throw new Error("catalog_admin_ai_stale");
   const current = await loadAiCatalogSnapshot(db, candidateId);
   if (!current || (await aiSnapshotFingerprint(current)) !== job.id)
     throw new Error("catalog_admin_ai_stale");
@@ -40,5 +65,5 @@ export async function assertAiCatalogVerification(
     normalizeIdentityModel(selected.model) !== normalizeIdentityModel(input.canonicalModel)
   )
     throw new Error("catalog_admin_ai_selection_changed");
-  return selected.id;
+  return { productId: selected.id, revision: clock.revision } satisfies AiVerificationFence;
 }

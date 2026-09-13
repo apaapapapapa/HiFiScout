@@ -64,6 +64,7 @@ function enabled(db: QueryableDatabase, run: () => Promise<unknown>): AiCatalogE
   };
 }
 
+// Each case boots real workerd and applies the full migration chain, as the D1 budget suites do.
 test("daily grant cannot reset reservations; duplicate claims are atomic and indexed", async () => {
   const { db, dispose } = await database();
   try {
@@ -78,8 +79,8 @@ test("daily grant cannot reset reservations; duplicate claims are atomic and ind
     await grant(db);
     await db
       .prepare(`WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<500)
-      INSERT INTO ai_catalog_jobs(id,candidate_id,snapshot_json,status,created_at,updated_at)
-      SELECT 'unrelated-'||x,x,'{}','reviewed',?,? FROM n`)
+    INSERT INTO ai_catalog_jobs(id,candidate_id,snapshot_json,status,created_at,updated_at)
+    SELECT 'unrelated-'||x,x,'{}','reviewed',?,? FROM n`)
       .bind(AT, AT)
       .run();
     const measured = accountReads(db);
@@ -99,7 +100,7 @@ test("daily grant cannot reset reservations; duplicate claims are atomic and ind
     assert.equal(repeated.rowsWritten(), 0);
     const plan = await db
       .prepare(`EXPLAIN QUERY PLAN SELECT id FROM ai_catalog_jobs
-      WHERE status = 'queued' AND updated_at < ? ORDER BY updated_at,id LIMIT 5`)
+    WHERE status = 'queued' AND updated_at < ? ORDER BY updated_at,id LIMIT 5`)
       .bind(AT)
       .all<{ detail: string }>();
     assert.match(
@@ -117,7 +118,7 @@ test("daily grant cannot reset reservations; duplicate claims are atomic and ind
   } finally {
     await dispose();
   }
-});
+}, 30_000);
 
 test("25 distinct jobs per UTC day and two total attempts, including old-job retries", async () => {
   const { db, dispose } = await database();
@@ -144,7 +145,7 @@ test("25 distinct jobs per UTC day and two total attempts, including old-job ret
   } finally {
     await dispose();
   }
-});
+}, 30_000);
 
 test("changed seller/catalog evidence makes a suggestion stale without canonical writes", async () => {
   const { db, dispose } = await database();
@@ -200,7 +201,7 @@ test("changed seller/catalog evidence makes a suggestion stale without canonical
   } finally {
     await dispose();
   }
-});
+}, 30_000);
 
 test("unknown usage blocks the allowance; late completion cannot overwrite another lease", async () => {
   const { db, dispose } = await database();
@@ -229,9 +230,9 @@ test("unknown usage blocks the allowance; late completion cannot overwrite anoth
   } finally {
     await dispose();
   }
-});
+}, 30_000);
 
-test("retention still runs with inference disabled", async () => {
+test("retention still runs with inference disabled", { timeout: 30_000 }, async () => {
   const { db, dispose } = await database();
   try {
     const snapshot = aiCatalogEvaluationCases[0].snapshot;
@@ -259,4 +260,4 @@ test("a lost invocation is deferred and its day's allowance is blocked even afte
   } finally {
     await dispose();
   }
-});
+}, 30_000);

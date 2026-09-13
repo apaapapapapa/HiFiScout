@@ -8,6 +8,8 @@ import { adminAiCatalog, aiCatalogDetail } from "../src/ai-suggestions/admin.js"
 import { insertAiJob, reviewAiJob } from "../src/db/ai-catalog-repository.js";
 import { loadAiCatalogSnapshot } from "../src/db/ai-catalog-snapshot.js";
 import { aiSnapshotFingerprint } from "../src/ai-suggestions/contract.js";
+import { assertAiCatalogVerification } from "../src/db/ai-catalog-verification.js";
+import { accountReads } from "../src/db/read-accounting.js";
 import {
   verifyKnowledgeCatalogAdminCandidate,
   createKnowledgeCatalogAdminProduct,
@@ -200,63 +202,162 @@ test("usefulness review has no product side effect and Verify links the review a
   } finally {
     await dispose();
   }
-});
+}, 30_000);
 
-test("a target change between validation and final batch rolls back aliases and audit", async () => {
+const concurrentMutations = [
+  [
+    "sale-object title",
+    "UPDATE knowledge_catalog_candidates SET sample_title='D-1000 MK2 専用リモコン' WHERE id=1",
+  ],
+  [
+    "raw model evidence",
+    `UPDATE knowledge_catalog_candidates SET raw_model_variants='["D-1000 MK2 専用リモコン"]' WHERE id=1`,
+  ],
+  [
+    "secondary accessory category",
+    "INSERT INTO knowledge_catalog_product_categories(product_id,category_id,is_primary) VALUES(101,'ACC.PART',0)",
+  ],
+  [
+    "new matching alternative",
+    `INSERT INTO knowledge_catalog_products(id,manufacturer_id,canonical_model,normalized_model,canonical_name,created_at,updated_at)
+    VALUES(102,'tad','D-1000MK2','D1000MK2-BK','TAD D-1000MK2 black','${AT}','${AT}')`,
+  ],
+] as const;
+
+for (const [description, mutation] of concurrentMutations)
+  test(`a concurrent ${description} change rolls back candidate, aliases and audit`, async () => {
+    const { db, dispose } = await database();
+    try {
+      const id = await seed(db);
+      await reviewAiJob(db, id, "useful", "operator", now);
+      let finalBatch = false;
+      const concurrent: QueryableDatabase = {
+        prepare(sql) {
+          if (sql.includes("INSERT INTO knowledge_catalog_verification_attempts"))
+            finalBatch = true;
+          return db.prepare(sql);
+        },
+        async batch(statements) {
+          if (finalBatch) {
+            finalBatch = false;
+            await db.prepare(mutation).run();
+          }
+          return db.batch(statements);
+        },
+      };
+      await assert.rejects(
+        verifyKnowledgeCatalogAdminCandidate(concurrent, 1, { ...input, aiSuggestionId: id }),
+        /ai_stale/,
+      );
+      assert.equal(
+        (
+          await db
+            .prepare("SELECT COUNT(*) AS n FROM knowledge_catalog_aliases")
+            .first<{ n: number }>()
+        )?.n,
+        0,
+      );
+      assert.equal(
+        (
+          await db
+            .prepare("SELECT COUNT(*) AS n FROM knowledge_catalog_verification_attempts")
+            .first<{ n: number }>()
+        )?.n,
+        0,
+      );
+      assert.equal(
+        (
+          await db
+            .prepare("SELECT review_status FROM knowledge_catalog_candidates WHERE id=1")
+            .first<{ review_status: string }>()
+        )?.review_status,
+        "pending",
+      );
+    } finally {
+      await dispose();
+    }
+  }, 30_000);
+
+test("manual verification fence has bounded D1 cost and does not invalidate unchanged AI evidence", async () => {
   const { db, dispose } = await database();
   try {
     const id = await seed(db);
     await reviewAiJob(db, id, "useful", "operator", now);
-    let finalBatch = false;
-    const concurrent: QueryableDatabase = {
-      prepare(sql) {
-        if (sql.includes("INSERT INTO knowledge_catalog_verification_attempts")) finalBatch = true;
-        return db.prepare(sql);
-      },
-      async batch(statements) {
-        if (finalBatch) {
-          finalBatch = false;
-          await db
-            .prepare(
-              "UPDATE knowledge_catalog_candidates SET sample_title='D-1000 MK2 専用リモコン' WHERE id=1",
-            )
-            .run();
-        }
-        return db.batch(statements);
-      },
-    };
-    await assert.rejects(
-      verifyKnowledgeCatalogAdminCandidate(concurrent, 1, { ...input, aiSuggestionId: id }),
-      /ai_stale/,
-    );
+    const semanticSql = "UPDATE knowledge_catalog_candidates SET sample_title=? WHERE id=1";
+    const unregistered = await db.prepare(semanticSql).bind("temporary title").run();
+    await db.prepare(semanticSql).bind("TAD D-1000 MK2").run();
+    await db
+      .prepare(`WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<500)
+      INSERT INTO ai_catalog_revisions(manufacturer_id,revision) SELECT 'unrelated-'||x,0 FROM n`)
+      .run();
+    const first = accountReads(db);
+    const fence = await assertAiCatalogVerification(first.db, 1, { ...input, aiSuggestionId: id });
+    assert.equal(fence.revision, 0);
     assert.equal(
-      (
-        await db
-          .prepare("SELECT COUNT(*) AS n FROM knowledge_catalog_aliases")
-          .first<{ n: number }>()
-      )?.n,
+      first.rowsWritten(),
+      2,
+      "one clock row and its primary-key index are registered once",
+    );
+    const repeated = accountReads(db);
+    assert.deepEqual(
+      await assertAiCatalogVerification(repeated.db, 1, { ...input, aiSuggestionId: id }),
+      fence,
+    );
+    assert.equal(repeated.rowsWritten(), 0, "repeated validation does not rewrite the clock");
+    assert.ok(repeated.rowsRead() < 100, `point/indexed reads: ${repeated.rowsRead()}`);
+    const noOp = await db.prepare(semanticSql).bind("TAD D-1000 MK2").run();
+    const timestamps = await db
+      .prepare(
+        "UPDATE knowledge_catalog_candidates SET updated_at='new crawl',last_seen_at='new crawl' WHERE id=1",
+      )
+      .run();
+    assert.equal(
+      (await assertAiCatalogVerification(db, 1, { ...input, aiSuggestionId: id })).revision,
       0,
     );
+    assert.equal(await aiSnapshotFingerprint((await loadAiCatalogSnapshot(db, 1))!), id);
+    const registered = await db.prepare(semanticSql).bind("temporary title").run();
     assert.equal(
-      (
-        await db
-          .prepare("SELECT COUNT(*) AS n FROM knowledge_catalog_verification_attempts")
-          .first<{ n: number }>()
-      )?.n,
-      0,
+      registered.meta.rows_written,
+      Number(unregistered.meta.rows_written) + 1,
+      "one extra clock write for a relevant mutation",
     );
-    assert.equal(
-      (
-        await db
-          .prepare("SELECT review_status FROM knowledge_catalog_candidates WHERE id=1")
-          .first<{ review_status: string }>()
-      )?.review_status,
-      "pending",
+    const clock = await db
+      .prepare("SELECT revision FROM ai_catalog_revisions WHERE manufacturer_id='tad'")
+      .first<{ revision: number }>();
+    assert.equal(clock?.revision, 1);
+    const plan = await db
+      .prepare(
+        "EXPLAIN QUERY PLAN UPDATE ai_catalog_revisions SET revision=revision+1 WHERE manufacturer_id='tad'",
+      )
+      .all<{ detail: string }>();
+    assert.match(
+      plan.results.map((r: { detail: string }) => r.detail).join(" "),
+      /SEARCH.*INDEX.*manufacturer_id/u,
+    );
+    console.log(
+      JSON.stringify({
+        event: "ai_verification_fence_d1",
+        registration: {
+          reads: first.rowsRead(),
+          writes: first.rowsWritten(),
+          statements: first.statementCount(),
+        },
+        repeat: {
+          reads: repeated.rowsRead(),
+          writes: repeated.rowsWritten(),
+          statements: repeated.statementCount(),
+        },
+        unregisteredWrites: unregistered.meta.rows_written,
+        registeredWrites: registered.meta.rows_written,
+        noOpWrites: noOp.meta.rows_written,
+        timestampWrites: timestamps.meta.rows_written,
+      }),
     );
   } finally {
     await dispose();
   }
-});
+}, 30_000);
 
 test("budget evidence expires and an immutable daily grant cannot reset a block", async () => {
   const { db, dispose } = await database();
@@ -298,4 +399,4 @@ test("budget evidence expires and an immutable daily grant cannot reset a block"
   } finally {
     await dispose();
   }
-});
+}, 30_000);
