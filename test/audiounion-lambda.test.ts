@@ -650,6 +650,65 @@ test("Lambda refuses a robots.txt redirect that leaves the allowed hosts", async
   );
 });
 
+for (const [sourceUrl, otherShopUrl] of [
+  [DETAIL_URL, HIFIDO_URL],
+  [HIFIDO_URL, DETAIL_URL],
+]) {
+  for (const operation of ["legacy", "permit"] as const) {
+    test(`Lambda ${operation} rejects a redirect from ${new URL(sourceUrl).hostname} to another supported shop`, async () => {
+      const requested: string[] = [];
+      const handler = createHandler({
+        env: env({ MIN_REQUEST_DELAY_MS: "0" }),
+        sleepFn: async () => {},
+        fetchFn: async (url) => {
+          requested.push(url);
+          if (url.endsWith("/robots.txt")) return new Response("User-agent: *\nAllow: /\n");
+          if (url === sourceUrl)
+            return new Response(null, { status: 302, headers: { location: otherShopUrl } });
+          return new Response("<html>wrong shop</html>", {
+            headers: { "content-type": "text/html" },
+          });
+        },
+      });
+      let body: { url: string; operation?: string; permit?: string } = { url: sourceUrl };
+      if (operation === "permit") {
+        const prepared = await handler(event({ url: sourceUrl, operation: "prepare" }));
+        assert.equal(prepared.statusCode, 200);
+        const { permit } = JSON.parse(prepared.body) as { permit: string };
+        body = { url: sourceUrl, operation: "fetch", permit };
+      }
+      const result = await handler(event(body));
+      assert.equal(result.statusCode, 502);
+      assert.equal(JSON.parse(result.body).error, "redirect_rejected");
+      assert.equal(
+        requested.some((url) => new URL(url).origin === new URL(otherShopUrl).origin),
+        false,
+        "neither the other shop's page nor its robots policy may be requested",
+      );
+    });
+  }
+
+  test(`Lambda refuses a cross-shop robots redirect from ${new URL(sourceUrl).hostname}`, async () => {
+    const requested: string[] = [];
+    const robotsUrl = new URL("/robots.txt", sourceUrl).toString();
+    const otherRobotsUrl = new URL("/robots.txt", otherShopUrl).toString();
+    const handler = createHandler({
+      env: env({ MIN_REQUEST_DELAY_MS: "0" }),
+      sleepFn: async () => {},
+      fetchFn: async (url) => {
+        requested.push(url);
+        return url === robotsUrl
+          ? new Response(null, { status: 302, headers: { location: otherRobotsUrl } })
+          : new Response("User-agent: *\nAllow: /\n");
+      },
+    });
+    const result = await handler(event({ url: sourceUrl, operation: "prepare" }));
+    assert.equal(result.statusCode, 502);
+    assert.equal(JSON.parse(result.body).error, "redirect_rejected");
+    assert.deepEqual(requested, [robotsUrl]);
+  });
+}
+
 test("Lambda applies robots rules to a redirect destination, not just the original target", async () => {
   const requested: string[] = [];
   const handler = createHandler({

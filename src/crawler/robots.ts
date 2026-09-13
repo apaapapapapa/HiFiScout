@@ -83,18 +83,23 @@ export interface RobotsFetchOptions {
    * policy fetch cannot become a second, unchecked route to somewhere else.
    */
   allowedOrigins?: ReadonlySet<string>;
+  /** The parent page's remaining deadline, when this policy is needed during a redirect. */
+  signal?: AbortSignal;
 }
 
 export async function fetchRobotsPolicy(
   fetchFn: typeof fetch,
   baseUrl: string,
   userAgent: string,
-  { allowedOrigins }: RobotsFetchOptions = {},
+  { allowedOrigins, signal }: RobotsFetchOptions = {},
 ): Promise<string | null> {
   const robotsUrl = new URL("/robots.txt", baseUrl).toString();
   // One deadline for the request and the body: a robots.txt that stalls mid-stream must not hold the
   // crawl open any longer than one that never answers.
-  const deadline = AbortSignal.timeout(ROBOTS_HTTP_TIMEOUT_MS);
+  const timeout = AbortSignal.timeout(ROBOTS_HTTP_TIMEOUT_MS);
+  // A redirect-time policy gets only the page's remaining time, and never more than the normal
+  // robots budget. The combined signal bounds both the policy's redirects and its streamed body.
+  const deadline = signal ? AbortSignal.any([signal, timeout]) : timeout;
   // RFC 9309 expects redirects to be followed, but a policy redirect is subject to the same
   // destination rules as any other crawl request.
   const response = await fetchFollowingValidatedRedirects(
@@ -151,13 +156,13 @@ export function createRobotsGate({
   userAgent: string;
   robotsCache: RobotsCache;
   allowedOrigins: ReadonlySet<string>;
-}): (targetUrl: string) => Promise<void> {
-  return async (targetUrl: string) => {
+}): (targetUrl: string, signal?: AbortSignal) => Promise<void> {
+  return async (targetUrl: string, signal?: AbortSignal) => {
     const origin = new URL(targetUrl).origin;
     if (!robotsCache.has(origin)) {
       robotsCache.set(
         origin,
-        await fetchRobotsPolicy(fetchFn, origin, userAgent, { allowedOrigins }),
+        await fetchRobotsPolicy(fetchFn, origin, userAgent, { allowedOrigins, signal }),
       );
     }
     if (!isPathAllowed(robotsCache.get(origin), targetUrl, userAgent)) {

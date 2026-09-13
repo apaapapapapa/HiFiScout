@@ -257,15 +257,18 @@ The allowed set is a shop's own `baseUrl` origin plus anything it declares in
 `capabilities.transport.allowedRedirectOrigins`. It is configuration: a fetched page or the
 destination a redirect happens to name never extends it. No shop declares an extra origin today.
 
-One deadline covers the whole chain and the body that follows it, so a longer chain cannot buy
-itself more time.
+One deadline covers the whole chain, any redirect-time `robots.txt` lookup (including its redirects
+and streamed body), and the page body that follows it. A policy lookup uses the earlier of the
+page's remaining deadline and its own 15-second limit, so a longer chain cannot buy itself more
+time. Standalone policy reads during PREPARE retain their own bounded deadline.
 
 The relay endpoint is ours and never redirects: `relay.ts` refuses one outright instead of
 validating it, so the relay bearer token is never re-sent to a destination a response named.
 
 The relay Lambda applies the same contract in AWS, where "the platform cannot reach a private
-address" does not hold: it validates each hop against its allowed upstream hosts before requesting
-it, for the proxied page and for `robots.txt` alike, and reports a refusal as
+address" does not hold: it validates each hop against the supported upstream hosts **and the
+original request's shop origin** before requesting it, for the proxied page and for `robots.txt`
+alike. AudioUnion and Hifido cannot redirect into each other's pages or policies. It reports a refusal as
 `502 redirect_rejected`. A redirect destination is also evaluated against that host's `robots.txt`
 before it is requested (`502 robots_disallowed_redirect`), so a same-host redirect cannot carry the
 relay onto an excluded path. The policy is fetched lazily, so an unredirected request costs nothing

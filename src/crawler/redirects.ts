@@ -98,8 +98,8 @@ export interface ValidatedRedirectOptions {
    */
   signal?: AbortSignal;
   maxRedirects?: number;
-  /** Runs for each destination before it is requested; the crawl uses it to re-apply robots rules. */
-  beforeRequest?: (url: string) => Promise<void> | void;
+  /** Runs before each request and shares its deadline, including any robots policy lookup. */
+  beforeRequest?: (url: string, signal?: AbortSignal) => Promise<void> | void;
 }
 
 /**
@@ -135,7 +135,10 @@ export async function fetchFollowingValidatedRedirects(
     }
     visited.add(href);
 
-    await beforeRequest?.(href);
+    signal?.throwIfAborted();
+    await beforeRequest?.(href, signal);
+    // Do not even invoke fetch when a policy check completed after cancellation.
+    signal?.throwIfAborted();
     const response = await fetchFn(href, { ...init, redirect: "manual", signal });
     if (!isRedirectStatus(response.status)) return response;
 
