@@ -58,6 +58,113 @@ function changes(result: D1Response): number {
   return Number(result?.meta?.changes || 0);
 }
 
+/** Bound scope fragments the same way the search-entity projection does. */
+const CLEANUP_CHUNK_SIZE = 40;
+
+function chunked<T>(values: readonly T[], size = CLEANUP_CHUNK_SIZE): T[][] {
+  const batches: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    batches.push(values.slice(index, index + size));
+  }
+  return batches;
+}
+
+function placeholders(count: number): string {
+  return Array.from({ length: count }, () => "?").join(",");
+}
+
+function sum(results: readonly D1Response[]): number {
+  return results.reduce((total, result) => total + changes(result), 0);
+}
+
+/**
+ * Ages out inactive listings, and retires the entities whose last offer they were.
+ *
+ * The read model's invariant is that every entity has an active offer, and deleting a listing
+ * cascades its membership away, so a listing leaving can be the thing that empties an entity. What
+ * that used to cost was a `NOT EXISTS` delete over the whole of `product_search_entities` on every
+ * retention run -- a read proportional to the catalog, performed to find a set that is almost always
+ * empty. Almost, because a listing is normally unlinked when it is deactivated, long before
+ * retention deletes the row; the residue this has to catch is a listing whose deactivation
+ * projection never completed.
+ *
+ * The sweep is now scoped to the entities those listings still belonged to, read before the cascade
+ * removes the evidence. Bounding it this way is only safe because nothing else needs it: the
+ * projection path already prunes to the entity IDs it touched, `rebuildProductSearchEntities` is an
+ * explicit full repair rather than a cadence, and this is the only path in the codebase that deletes
+ * a `products` row at all.
+ *
+ * Three properties this rests on, in the order they matter:
+ *
+ * - The candidate set is derived from the listing IDs actually passed to the delete, not from a
+ *   second evaluation of the selector, so a concurrent write cannot shift the window and leave an
+ *   orphan outside the set.
+ * - The delete keeps the original predicate, so a listing reactivated between the read and the
+ *   write is not deleted for having once matched. Its entity stays in the candidate set, which is
+ *   harmless: the set may over-approximate, never under-approximate.
+ * - `NOT EXISTS` is still evaluated at write time, so an entity that gained an offer after the
+ *   candidate read -- including the listing being re-added -- survives.
+ *
+ * Both halves go in one batch, so an interruption cannot commit the cascade and lose the sweep that
+ * answers for it.
+ */
+async function retireInactiveListings(
+  db: QueryableDatabase,
+  { before, limit }: { before: string; limit: number },
+): Promise<{ listings: number; entities: number }> {
+  const selected = await db
+    .prepare(`
+      SELECT id FROM products
+      WHERE is_active = 0 AND last_seen_at < ?
+      ORDER BY last_seen_at ASC
+      LIMIT ?
+    `)
+    .bind(before, limit)
+    .all<{ id: number }>();
+  const listingIds = (selected.results || []).map((row) => Number(row.id));
+  if (listingIds.length === 0) return { listings: 0, entities: 0 };
+
+  const affected = new Set<number>();
+  for (const chunk of chunked(listingIds)) {
+    const memberships = await db
+      .prepare(`
+        SELECT DISTINCT entity_id FROM product_search_entity_offers
+        WHERE listing_product_id IN (${placeholders(chunk.length)})
+      `)
+      .bind(...chunk)
+      .all<{ entity_id: number }>();
+    for (const row of memberships.results || []) affected.add(Number(row.entity_id));
+  }
+
+  const listingStatements = chunked(listingIds).map((chunk) =>
+    db
+      .prepare(`
+        DELETE FROM products
+        WHERE id IN (${placeholders(chunk.length)})
+          AND is_active = 0
+          AND last_seen_at < ?
+      `)
+      .bind(...chunk, before),
+  );
+  const entityStatements = chunked([...affected]).map((chunk) =>
+    db
+      .prepare(`
+        DELETE FROM product_search_entities
+        WHERE id IN (${placeholders(chunk.length)})
+          AND NOT EXISTS (
+            SELECT 1 FROM product_search_entity_offers m WHERE m.entity_id = product_search_entities.id
+          )
+      `)
+      .bind(...chunk),
+  );
+
+  const results = await db.batch([...listingStatements, ...entityStatements]);
+  return {
+    listings: sum(results.slice(0, listingStatements.length)),
+    entities: sum(results.slice(listingStatements.length)),
+  };
+}
+
 /**
  * Ages resolved remediation jobs out, in bounded statements, until the horizon is clear. Failed
  * jobs are left alone, as before: they are the ones worth keeping for diagnosis.
@@ -197,27 +304,12 @@ export async function runRetentionCleanup(
     .bind(priceHistoryBefore, limit)
     .run();
 
-  const inactiveProducts = await env.DB.prepare(`
-    DELETE FROM products
-    WHERE id IN (
-      SELECT id FROM products
-      WHERE is_active = 0 AND last_seen_at < ?
-      ORDER BY last_seen_at ASC
-      LIMIT ?
-    )
-  `)
-    .bind(inactiveProductsBefore, limit)
-    .run();
-
-  // Deleting a listing cascades its search membership away, which can leave a product entity with
-  // nothing to offer. Retiring those here keeps the read model's "every entity has an active
-  // offer" invariant true without waiting for the next crawl of an unrelated shop.
-  const emptySearchEntities = await env.DB.prepare(`
-    DELETE FROM product_search_entities
-    WHERE NOT EXISTS (
-      SELECT 1 FROM product_search_entity_offers m WHERE m.entity_id = product_search_entities.id
-    )
-  `).run();
+  // Retiring the listings and the entities they emptied is one step: the second half is scoped to
+  // what the first half touched, so it cannot be split without losing the scope.
+  const retired = await retireInactiveListings(env.DB, {
+    before: inactiveProductsBefore,
+    limit,
+  });
 
   const result: RetentionCleanupResult = {
     event: "retention_cleanup",
@@ -232,8 +324,8 @@ export async function runRetentionCleanup(
       crawlFetchSessions,
       crawlRuns: changes(crawlRuns),
       priceHistory: changes(priceHistory),
-      inactiveProducts: changes(inactiveProducts),
-      emptySearchEntities: changes(emptySearchEntities),
+      inactiveProducts: retired.listings,
+      emptySearchEntities: retired.entities,
     },
   };
   console.log(JSON.stringify(result));
