@@ -51,6 +51,30 @@ test("observing a successful retry invalidates previously loaded catalog and rep
   );
 });
 
+test("returning to jobs retries a failed load and clears the stale error", async ({
+  page,
+  context,
+  app,
+}) => {
+  let loads = 0;
+  await page.route("**/api/admin/jobs", (route) => {
+    if (route.request().postDataJSON().action === "list" && loads++ === 0)
+      return route.fulfill({ status: 503, json: { error: "temporary_job_failure" } });
+    return route.continue();
+  });
+  await context.setExtraHTTPHeaders(await app.headers());
+  await page.goto("/#jobs");
+  const panel = page.getByRole("region", { name: "バックグラウンド処理一覧" });
+  await expect(panel.getByRole("alert")).toContainText("temporary_job_failure");
+  const admin = new AdminConsolePage(page.locator("#admin-root"), page);
+  await admin.openCatalog();
+  await admin.openSection("バックグラウンド処理");
+  await expect(panel).toContainText("処理の記録はありません");
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+  expect(loads).toBe(2);
+  expect(app.state.jobs.size).toBe(0);
+});
+
 test("saved jobs expose pause, resume and failed-only retry without automatic polling", async ({
   page,
   context,

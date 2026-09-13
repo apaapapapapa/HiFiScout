@@ -112,6 +112,7 @@ export function AdminJobsPanel({
     let cancelled = false;
     void (async () => {
       setBusy(true);
+      setError("");
       try {
         const id = jobId;
         const [jobs, result] = await Promise.all([
