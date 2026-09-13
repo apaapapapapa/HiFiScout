@@ -1,8 +1,8 @@
 /**
  * HTTP routing for the Worker.
  *
- * Every `/api/` request passes the public rate limiter first; admin routes additionally require a
- * bearer token. Read endpoints go through the edge cache, writes never do.
+ * Public API reads pass the rate limiter; cacheable endpoints can use an existing edge entry
+ * when the limiter is unavailable. Retired admin paths return 404 without accessing bindings.
  *
  * Anything not under `/api/` is a static asset and is handed to the ASSETS binding.
  */
@@ -10,44 +10,13 @@
 import { checkPublicApiRateLimit } from "../api-guard.js";
 import { productSearchAtomFeed } from "../api/atom-feed.js";
 import { canonicalFeedQueryUrl, parseFeedQuery, validateFeedQuery } from "../api/feed-query.js";
-import { SHOP_DEFINITIONS } from "../config.js";
-import { dispatchForcedCrawl } from "../crawler/dispatch.js";
-import { dataPlatformStatus } from "../db/data-platform-status-repository.js";
-import {
-  dataQualityStatusWithRemediationSlo,
-  listDataQualityHistoryWithRemediationSlo,
-} from "../db/data-quality-remediation-governance-repository.js";
-import { dataQualityRemediationImpact } from "../db/data-quality-remediation-impact-repository.js";
-import { enqueueFullDataQualityRebuild } from "../db/data-quality-remediation-queue-repository.js";
-import {
-  listUnresolvedIdentityGroups,
-  reprocessVerifiedCatalogProduct,
-} from "../db/knowledge-catalog-remediation-repository.js";
-import {
-  listUnresolvedManufacturerGroups,
-  reprocessStaleManufacturerListings,
-  saveManufacturerAliasAndReprocess,
-} from "../db/manufacturer-repository.js";
-import { listUnresolvedModelGroups, reprocessStaleModelListings } from "../db/model-repository.js";
-import { listRecentRemediationEvents } from "../db/remediation-event-repository.js";
 import { productHistory } from "../db/product-history-repository.js";
-import {
-  productSearchEntityConsistency,
-  rebuildProductSearchEntities,
-} from "../db/product-search-entity-repository.js";
 import { productSearchDetail } from "../db/product-search-price-index-repository.js";
 import { searchProducts as searchBaseProducts } from "../db/product-search-repository.js";
 import { getSyncHealth } from "../health.js";
 import { knowledgeCatalogStatus } from "./knowledge-catalog-status.js";
-import { parseManufacturerAliasAdminRequest } from "./manufacturer-alias-admin.js";
 import { meta } from "./meta.js";
 import { handlePublicContractRoute } from "./public-routes.js";
-import {
-  DATA_QUALITY_REBUILD_ORDER,
-  parseCatalogReplayRequest,
-  parseDataQualityRebuildRequest,
-  parseReplayRequest,
-} from "./remediation-admin.js";
 import {
   cachedAtom,
   cachedJson,
@@ -55,7 +24,6 @@ import {
   rateLimitedResponse,
   rateLimiterUnavailableResponse,
 } from "./response.js";
-import type { CrawlerEnv } from "../crawler/types.js";
 
 /** Seconds the edge may serve a cached read response. */
 const READ_CACHE_TTL_SECONDS = 30;
@@ -67,23 +35,6 @@ const PRODUCT_HISTORY_PATH = /^\/api\/products\/(\d+)\/history$/;
 
 /** Namespaced entity key (`c-12`, `l-345`), not a bare id — see `api/product-search-key.ts`. */
 const PRODUCT_SEARCH_DETAIL_PATH = /^\/api\/product-search\/([a-z]-\d{1,15})$/;
-
-function adminAuthorized(request: Request, env: CrawlerEnv): boolean {
-  return Boolean(
-    env.ADMIN_TOKEN && request.headers.get("authorization") === `Bearer ${env.ADMIN_TOKEN}`,
-  );
-}
-
-/** `undefined` for an absent body, `null` for malformed JSON — the parsers distinguish them. */
-async function readJsonBody(request: Request): Promise<unknown> {
-  const raw = await request.text();
-  if (!raw.trim()) return undefined;
-  try {
-    return JSON.parse(raw) as unknown;
-  } catch {
-    return null;
-  }
-}
 
 async function handleApi(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const url = new URL(request.url);
@@ -123,8 +74,7 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext): Pro
   }
 
   // Past this point every public route either reads D1 or is an unrecognized path, and none of them
-  // has a cache entry to fall back on. Retired `/api/admin/*` paths carry no bucket, so they never
-  // reach this guard with `cacheOnly` set.
+  // has a cache entry to fall back on.
   if (cacheOnly) return rateLimiterUnavailableResponse();
 
   const detailMatch = url.pathname.match(PRODUCT_SEARCH_DETAIL_PATH);
@@ -144,146 +94,12 @@ async function handleApi(request: Request, env: Env, ctx: ExecutionContext): Pro
       );
     }
   }
-  if (request.method === "GET" && url.pathname === "/api/admin/data-platform/status") {
-    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
-    return json(await dataPlatformStatus(env.DB));
-  }
-  if (request.method === "GET" && url.pathname === "/api/admin/data-quality/status") {
-    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
-    return json(await dataQualityStatusWithRemediationSlo(env.DB));
-  }
-  if (request.method === "GET" && url.pathname === "/api/admin/data-quality/history") {
-    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
-    const shop = String(url.searchParams.get("shop") || "").trim();
-    if (!shop || !SHOP_DEFINITIONS[shop]) return json({ error: "invalid_shop" }, { status: 400 });
-    const history = await listDataQualityHistoryWithRemediationSlo(
-      env.DB,
-      shop,
-      Number(url.searchParams.get("limit")) || undefined,
-    );
-    return json({ shop, history });
-  }
-  if (request.method === "GET" && url.pathname === "/api/admin/data-quality/remediation-impact") {
-    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
-    return json(
-      await dataQualityRemediationImpact(
-        env.DB,
-        Number(url.searchParams.get("limit")) || undefined,
-      ),
-    );
-  }
-  if (request.method === "POST" && url.pathname === "/api/admin/data-quality/rebuild") {
-    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
-    const body = await readJsonBody(request);
-    if (body === null) return json({ error: "invalid_json" }, { status: 400 });
-    const parsed = parseDataQualityRebuildRequest(body);
-    if (!parsed) return json({ error: "invalid_rebuild_request" }, { status: 400 });
-    const rebuildKey = parsed.rebuildKey ?? "post-phase4-data-quality-remediation-13-15";
-    const result = await enqueueFullDataQualityRebuild(env.DB, {
-      ...parsed,
-      rebuildKey,
-      reason: "post_phase4_data_quality_backfill",
-      source: "admin_api",
-    });
-    return json({ order: DATA_QUALITY_REBUILD_ORDER, rebuildKey, ...result }, { status: 202 });
-  }
-  if (
-    request.method === "GET" &&
-    url.pathname === "/api/admin/data-quality/unresolved-manufacturers"
-  ) {
-    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
-    const groups = await listUnresolvedManufacturerGroups(
-      env.DB,
-      Number(url.searchParams.get("limit")) || undefined,
-    );
-    return json({ groups });
-  }
-  if (request.method === "POST" && url.pathname === "/api/admin/manufacturer-aliases") {
-    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
-    const body = await readJsonBody(request);
-    if (body === null) return json({ error: "invalid_json" }, { status: 400 });
-    const parsed = parseManufacturerAliasAdminRequest(body);
-    if (!parsed) return json({ error: "invalid_manufacturer_alias" }, { status: 400 });
-    return json(await saveManufacturerAliasAndReprocess(env.DB, parsed.input, parsed.replay));
-  }
-  if (request.method === "GET" && url.pathname === "/api/admin/data-quality/unresolved-models") {
-    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
-    const groups = await listUnresolvedModelGroups(
-      env.DB,
-      Number(url.searchParams.get("limit")) || undefined,
-    );
-    return json({ groups });
-  }
-  if (request.method === "GET" && url.pathname === "/api/admin/data-quality/unresolved-identity") {
-    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
-    const groups = await listUnresolvedIdentityGroups(
-      env.DB,
-      Number(url.searchParams.get("limit")) || undefined,
-    );
-    return json({ groups });
-  }
-  if (request.method === "GET" && url.pathname === "/api/admin/data-quality/remediation-events") {
-    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
-    const events = await listRecentRemediationEvents(
-      env.DB,
-      Number(url.searchParams.get("limit")) || undefined,
-    );
-    return json({ events });
-  }
-  if (request.method === "POST" && url.pathname === "/api/admin/data-quality/replay-models") {
-    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
-    const replay = parseReplayRequest(await readJsonBody(request));
-    if (!replay) return json({ error: "invalid_replay_request" }, { status: 400 });
-    return json(await reprocessStaleModelListings(env.DB, replay));
-  }
-  if (
-    request.method === "POST" &&
-    url.pathname === "/api/admin/data-quality/replay-manufacturers"
-  ) {
-    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
-    const replay = parseReplayRequest(await readJsonBody(request));
-    if (!replay) return json({ error: "invalid_replay_request" }, { status: 400 });
-    return json(await reprocessStaleManufacturerListings(env.DB, replay));
-  }
-  if (request.method === "POST" && url.pathname === "/api/admin/knowledge-catalog/replay") {
-    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
-    const parsed = parseCatalogReplayRequest(await readJsonBody(request));
-    if (!parsed) return json({ error: "invalid_replay_request" }, { status: 400 });
-    const result = await reprocessVerifiedCatalogProduct(
-      env.DB,
-      parsed.catalogProductId,
-      parsed.replay,
-    );
-    if (!result.target)
-      return json({ error: "verified_catalog_product_not_found" }, { status: 404 });
-    return json(result);
-  }
-  if (request.method === "GET" && url.pathname === "/api/admin/product-search/consistency") {
-    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
-    const consistency = await productSearchEntityConsistency(env.DB);
-    return json(consistency, { status: consistency.ok ? 200 : 409 });
-  }
-  if (request.method === "POST" && url.pathname === "/api/admin/product-search/rebuild") {
-    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
-    return json(await rebuildProductSearchEntities(env.DB));
-  }
   const historyMatch = url.pathname.match(PRODUCT_HISTORY_PATH);
   if (request.method === "GET" && historyMatch) {
     const id = Number(historyMatch[1]);
     if (!Number.isSafeInteger(id) || id <= 0) return json({ error: "invalid_id" }, { status: 400 });
     const result = await productHistory(env.DB, id);
     return result ? json(result) : json({ error: "not_found" }, { status: 404 });
-  }
-  if (request.method === "POST" && url.pathname === "/api/admin/crawl") {
-    if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, { status: 401 });
-    const result = await dispatchForcedCrawl(env, url.searchParams.get("shop"));
-    if (result.status === "rejected" && result.reason === "unknown_shop") {
-      return json({ error: "unknown_shop" }, { status: 400 });
-    }
-    if (result.status === "rejected" && result.reason === "disabled") {
-      return json({ error: "disabled" }, { status: 409 });
-    }
-    return json(result, { status: 202 });
   }
   return json({ error: "not_found" }, { status: 404 });
 }
@@ -294,6 +110,7 @@ export async function handleHttp(
   ctx: ExecutionContext,
 ): Promise<Response> {
   const url = new URL(request.url);
+  if (url.pathname.startsWith("/api/admin/")) return json({ error: "not_found" }, { status: 404 });
   if (url.pathname.startsWith("/api/")) return handleApi(request, env, ctx);
   return env.ASSETS.fetch(request);
 }

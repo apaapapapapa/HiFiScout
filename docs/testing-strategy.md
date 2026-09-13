@@ -139,7 +139,7 @@ next to the ones it belongs with instead of starting a parallel suite:
 
 | Area | Tests |
 | --- | --- |
-| Manufacturer resolution and alias replay | `manufacturer-resolver`, `manufacturer-repository`, `manufacturer-alias-admin` |
+| Manufacturer resolution and alias replay | `manufacturer-resolver`, `manufacturer-repository`, `admin-manufacturer-registry` |
 | Model resolution rules | `model-resolver`, `model-repository` |
 | Model resolution per shop shape | `model-resolver-shop-inputs` |
 | Knowledge Catalog candidates, priority, catalog-driven replay | `knowledge-catalog`, `knowledge-catalog-remediation`, `knowledge-catalog-candidate-selection` |
