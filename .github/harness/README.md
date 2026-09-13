@@ -50,6 +50,22 @@ actual merge SHA. Deployment completion requires the owning deployment identity 
 receipts. Missing evidence stays pending; failed gates block. Repeated identical polls do not count
 as progress, and even an otherwise passing final result cannot exceed the original run deadline.
 
+## Loop PR lifecycle
+
+With authenticated Git push and `gh`, `loop publish <state> <workspace-root>` pushes only the verified
+commit to its owned branch and creates/reuses one PR. It records the review request once; PR opening
+uses the repository's automatic Codex review, while an updated PR gets one explicit request.
+`loop review <state> <workspace-root> [self-review.json]` polls without sleeping. Codex results must
+resolve to the full candidate SHA and all review threads must be resolved. After the optional deadline,
+the coding agent supplies a real self-review receipt (`sourceSha`, `method: self`, `completedAt`,
+`summary`, `reviewedPaths`, `unresolvedFindings`, `artifactUri`); the CLI never fabricates that review.
+
+`loop merge <state> <workspace-root>` requires a merge/deployment contract and current review/CI gates,
+then uses GitHub's normal merge API with an expected-head guard. `loop observe <state> <workspace-root>`
+retains fresh GitHub snapshots and advances only when the contracted target is verified. An in-progress
+main run is pending, not success. These commands retain their journal and evidence on interruption;
+rerunning publish does not create duplicate PRs or restart a recorded review wait.
+
 ## Bounded improvement loops
 
 `vp run harness loop validate .github/harness/loop.example.json` validates an execution contract.
