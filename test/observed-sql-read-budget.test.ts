@@ -190,6 +190,7 @@ test("in-stock date pages avoid full offer aggregation as the result set grows",
   try {
     let previous = 0;
     const costs: { size: number; sort: string; rowsRead: number }[] = [];
+    const totalCosts: { size: number; scanReads: number; counterReads: number }[] = [];
     for (const size of [100, 1_000, 10_000]) {
       await db
         .prepare(`WITH RECURSIVE n(i) AS (SELECT CAST(? AS INTEGER) UNION ALL SELECT i+1 FROM n WHERE i<?)
@@ -209,13 +210,36 @@ test("in-stock date pages avoid full offer aggregation as the result set grows",
         SELECT p.id,e.id,p.shop_key FROM products p JOIN product_search_entities e ON e.entity_key='l-'||p.id WHERE p.id>?`)
         .bind(previous)
         .run();
+      const scanned = accountReads(db);
+      const scannedResult = await scanned.db
+        .prepare(
+          "SELECT COUNT(*) AS total FROM product_search_entities WHERE in_stock_offer_count > 0",
+        )
+        .all<{ total: number }>();
+      const counted = accountReads(db);
+      const counterResult = await counted.db
+        .prepare(
+          "SELECT in_stock_entity_count AS total FROM product_search_totals WHERE singleton = 1",
+        )
+        .all<{ total: number }>();
+      const scannedTotal = Number(scannedResult.results?.[0]?.total);
+      const counterTotal = Number(counterResult.results?.[0]?.total);
+      assert.equal(scannedTotal, size);
+      assert.equal(counterTotal, size);
+      assert.ok(counted.rowsRead() <= 2, `${size}: ${counted.rowsRead()} counter reads`);
+      totalCosts.push({
+        size,
+        scanReads: scanned.rowsRead(),
+        counterReads: counted.rowsRead(),
+      });
       for (const sort of ["newest", "oldest", "updated"]) {
         const measured = accountReads(db);
         const page = await searchProducts(
           measured.db,
-          productQuery(`?inStock=true&sort=${sort}&limit=10`),
+          productQuery(`?inStock=true&sort=${sort}&limit=10&includeTotal=true`),
         );
         assert.equal(page.items.length, 10);
+        assert.equal(page.totalCount, size);
         assert.equal(page.items[0].key, sort === "oldest" ? "l-1" : `l-${size}`);
         assert.ok(page.hasMore && page.nextCursor);
         assert.equal(measured.rowsWritten(), 0);
@@ -228,7 +252,8 @@ test("in-stock date pages avoid full offer aggregation as the result set grows",
       const matching = costs.filter((cost) => cost.sort === sort);
       assert.ok(matching[2].rowsRead <= matching[0].rowsRead + 10, JSON.stringify(matching));
     }
-    console.log(JSON.stringify({ event: "in_stock_search_read_budget", costs }));
+    assert.ok(totalCosts[2].scanReads >= totalCosts[0].scanReads * 50, JSON.stringify(totalCosts));
+    console.log(JSON.stringify({ event: "in_stock_search_read_budget", costs, totalCosts }));
   } finally {
     await dispose();
   }
