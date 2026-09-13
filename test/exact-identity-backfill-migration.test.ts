@@ -1,4 +1,5 @@
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
+import { insertListing } from "./helpers/listing-fixture.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
@@ -15,42 +16,32 @@ interface ListingFixture {
   price: number;
 }
 
-function insertListing(sqlite: DatabaseSync, fixture: ListingFixture): number {
-  const result = sqlite
-    .prepare(`
-      INSERT INTO products(
-        shop_key, source_id, manufacturer, model, title, category, condition_text,
-        price_yen, stock_status, source_url, first_seen_at, last_seen_at, last_changed_at,
-        last_activity_at, is_active,
-        raw_manufacturer, normalized_raw_manufacturer, manufacturer_id, canonical_manufacturer_id,
-        manufacturer_resolution_status, raw_model, normalized_model, model_resolution_status,
-        raw_category, primary_category_id, category_ids, classification_status
-      ) VALUES (
-        ?, ?, 'EDISCREATION', ?, ?, ?, '中古',
-        ?, 'in_stock', ?, ?, ?, ?, ?, 1,
-        'EDISCREATION', 'ediscreation', 'ediscreation', 'ediscreation',
-        'resolved', ?, ?, 'resolved', ?, ?, ?, 'classified'
-      )
-    `)
-    .run(
-      fixture.shop,
-      fixture.source,
-      fixture.model,
-      `EDISCREATION ${fixture.model}`,
-      fixture.category,
-      fixture.price,
-      `https://example.test/${fixture.shop}/${fixture.source}`,
-      "2026-08-20T00:00:00.000Z",
-      "2026-08-22T00:00:00.000Z",
-      "2026-08-21T00:00:00.000Z",
-      "2026-08-21T00:00:00.000Z",
-      fixture.model,
-      fixture.normalizedModel,
-      fixture.category,
-      fixture.category,
-      JSON.stringify([fixture.category]),
-    );
-  return Number(result.lastInsertRowid);
+function insertEdiscreationListing(sqlite: DatabaseSync, fixture: ListingFixture): number {
+  return insertListing(sqlite, {
+    at: "2026-08-21T00:00:00.000Z",
+    first_seen_at: "2026-08-20T00:00:00.000Z",
+    last_seen_at: "2026-08-22T00:00:00.000Z",
+    last_activity_at: "2026-08-21T00:00:00.000Z",
+    shop_key: fixture.shop,
+    source_id: fixture.source,
+    source_url: `https://example.test/${fixture.shop}/${fixture.source}`,
+    manufacturer: "EDISCREATION",
+    raw_manufacturer: "EDISCREATION",
+    normalized_raw_manufacturer: "ediscreation",
+    manufacturer_id: "ediscreation",
+    canonical_manufacturer_id: "ediscreation",
+    manufacturer_resolution_status: "resolved",
+    model: fixture.model,
+    raw_model: fixture.model,
+    normalized_model: fixture.normalizedModel,
+    model_resolution_status: "resolved",
+    title: `EDISCREATION ${fixture.model}`,
+    price_yen: fixture.price,
+    category: fixture.category,
+    raw_category: fixture.category,
+    primary_category_id: fixture.category,
+    category_ids: JSON.stringify([fixture.category]),
+  });
 }
 
 function createFallbackEntity(
@@ -148,7 +139,7 @@ test("0036 groups only safe exact identities and prunes only affected fallback e
   };
 
   const fixtures = [fiberA, fiberB, revision, conflictA, conflictB];
-  const listingIds = fixtures.map((fixture) => insertListing(sqlite, fixture));
+  const listingIds = fixtures.map((fixture) => insertEdiscreationListing(sqlite, fixture));
   const originalEntityIds = listingIds.map((listingId, index) =>
     createFallbackEntity(sqlite, listingId, fixtures[index]!),
   );

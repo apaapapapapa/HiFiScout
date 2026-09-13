@@ -11,6 +11,7 @@ import { refreshListingProjections } from "../src/db/listing-projection-refresh.
 import { listManufacturerAliasEvidence } from "../src/db/manufacturer-repository.js";
 import { searchProducts } from "../src/db/product-search-repository.js";
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
+import { insertListing } from "./helpers/listing-fixture.js";
 import { productQuery } from "./helpers/product-query.js";
 import {
   assertNoGrowingTableScans,
@@ -68,31 +69,30 @@ const REQUIRED_SEED_INDEXES: readonly { readonly table: string; readonly index: 
 ];
 
 function seedListings(sqlite: DatabaseSync): void {
-  const insert = sqlite.prepare(`
-    INSERT INTO products(
-      shop_key, source_id, manufacturer, model, title, category, condition_text,
-      price_yen, stock_status, source_url, first_seen_at, last_seen_at, last_changed_at,
-      last_activity_at, is_active, raw_manufacturer, manufacturer_id, canonical_manufacturer_id,
-      raw_model, normalized_model, raw_category, primary_category_id, category_ids,
-      classification_status, manufacturer_resolver_version, model_resolver_version
-    ) VALUES (
-      ?, ?, 'TAD', ?, ?, 'D/Aコンバーター', '中古',
-      500000, 'in_stock', ?, '2026-07-01T00:00:00.000Z', '2026-07-01T00:00:00.000Z',
-      '2026-07-01T00:00:00.000Z', '2026-07-01T00:00:00.000Z', 1, 'TAD', 'tad', 'tad',
-      ?, ?, 'D/Aコンバーター', 'dac', '["dac"]', 'classified', 1, 1
-    )
-  `);
   for (let i = 0; i < LISTING_COUNT; i += 1) {
     const model = `D${1000 + i}`;
-    insert.run(
-      `shop-${i % 4}`,
-      `source-${i}`,
+    insertListing(sqlite, {
+      at: "2026-07-01T00:00:00.000Z",
+      last_activity_at: "2026-07-01T00:00:00.000Z",
+      shop_key: `shop-${i % 4}`,
+      source_id: `source-${i}`,
+      source_url: `https://example.test/${i}`,
+      manufacturer: "TAD",
+      raw_manufacturer: "TAD",
+      manufacturer_id: "tad",
+      canonical_manufacturer_id: "tad",
       model,
-      `TAD ${model}`,
-      `https://example.test/${i}`,
-      model,
-      model,
-    );
+      raw_model: model,
+      normalized_model: model,
+      title: `TAD ${model}`,
+      price_yen: 500000,
+      category: "D/Aコンバーター",
+      raw_category: "D/Aコンバーター",
+      primary_category_id: "dac",
+      category_ids: '["dac"]',
+      manufacturer_resolver_version: 1,
+      model_resolver_version: 1,
+    });
   }
 }
 
