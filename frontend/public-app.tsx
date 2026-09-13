@@ -1111,9 +1111,15 @@ export function PublicApp() {
     (page: number) => {
       if (loading || page <= 0 || page > totalPagesRef.current || page === currentPageRef.current)
         return;
-      void loadProducts(filtersRef.current, { page }).then(() =>
-        productsRef.current?.scrollIntoView({ block: "start", behavior: "smooth" }),
-      );
+      void loadProducts(filtersRef.current, { page }).then(() => {
+        // Let React remove the loading row before measuring the responsive scroll target.
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            if (currentPageRef.current === page)
+              productsRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+          }),
+        );
+      });
     },
     [loadProducts, loading],
   );
