@@ -83,4 +83,8 @@ test("domain loops cannot opt out of their comparison or AI gate", () => {
   });
   assert.equal(pathAllowed(broad, "scripts/check-no-first-party-js.ts"), false);
   assert.equal(pathAllowed(broad, ".dependency-cruiser.json"), false);
+  const controls = parseLoopSpec({ ...example, allowedPaths: [".claude", ".npmrc", "src"] });
+  assert.equal(pathAllowed(controls, ".claude/settings.json"), false);
+  assert.equal(pathAllowed(controls, ".npmrc"), false);
+  assert.equal(pathAllowed(controls, "src/.claude/settings.json"), false);
 });
