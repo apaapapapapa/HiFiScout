@@ -23,7 +23,43 @@ positive cases, and both positive and abstention cases. This small corpus is a c
 statistical guarantee of population accuracy. A larger reviewed production sample and reviewer
 outcomes are needed before expanding the feature.
 
-## Budget policy
+## Queue and storage
+
+The Worker has a dedicated `AI_CATALOG_QUEUE` and DLQ, with one message and one consumer at a
+time. `ai_catalog_jobs` stores the immutable evidence snapshot before enqueueing. Its SHA-256 key
+includes the supplied alternatives and all inference policy settings. Point lookups recheck the
+current candidate and catalog before inference, after inference and before recording a review.
+Last-seen timestamps alone do not invalidate an otherwise identical snapshot.
+
+Only pending candidates with a verified manufacturer, active observations and a completed
+`not_found`, `ambiguous` or `unsupported` official-verification attempt qualify. Discovery reuses
+the existing indexed exact/alias and bounded fuzzy lookup. More than five alternatives, excessive
+raw-model variants or an oversized request defer to ordinary review instead of dropping evidence.
+The initial canary is operator-selected; it does not scan every listing on a crawl.
+
+An atomic D1 batch inserts an attempt, reserves its pessimistic cost and claims the job. The daily
+25-job limit includes retries of jobs created on previous days. A duplicate delivery cannot obtain
+another lease. At most two attempts are admitted per evidence fingerprint. A 60-second request
+timeout, unknown/over-limit usage or provider error cannot refund capacity. Unknown usage blocks
+the day's allowance; expired leases become deferred instead of silently invoking again. No new
+inference is admitted in the final 15 minutes of a UTC budget window.
+
+Hourly maintenance uses bounded status/age indexes to recover unsent jobs and expire old data.
+Retention still runs while inference is disabled. Job snapshots, validated suggestions and attempt
+metadata expire after 180 days in bounded batches. Queue logs contain identifiers, outcomes and
+D1 counters, never prompts or response payloads. The initial implementation calls the AI binding
+directly; it does not require AI Gateway or store prompt/response payloads in R2.
+
+Inference requires all three gates: `AI_CATALOG_ENABLED=true`, an
+`AI_CATALOG_EVALUATION_POLICY` equal to the exact serialized policy that passed a recorded live
+evaluation, and an unblocked daily account-budget grant. Deployment defaults are disabled with no
+evaluation approval. An operator grant must represent capacity reserved after accounting for all
+other account AI consumers; analytics alone can lag and cannot enforce another caller's ceiling.
+Grants are immutable for that UTC day and cannot reset reservations. An emergency block is final
+for the day. Normal product collection and authoritative classification have no dependency on these
+gates or on model availability.
+
+## Free allowance
 
 `src/ai-suggestions/policy.ts` is the only definition of model, request/output limits, attempt
 limits, retention and daily allowance. On 2026-09-13 the pinned Qwen3 model costs 4,625 Neurons per

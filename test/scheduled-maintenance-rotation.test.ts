@@ -41,6 +41,7 @@ test("every sub-daily maintenance task still runs within an hour", () => {
   assert.deepEqual(
     [...seen].sort(),
     [
+      "ai_catalog_maintenance",
       "data_quality_remediation_sweep",
       "knowledge_catalog_queue_quota_recovery",
       "knowledge_catalog_review_bootstrap",

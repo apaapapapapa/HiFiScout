@@ -17,22 +17,28 @@
   },
   "version_metadata": { "binding": "CF_VERSION_METADATA" },
   "browser": { "binding": "BROWSER" },
+  "ai": { "binding": "AI" },
   "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": ["/api/*", "/"] },
   "triggers": { "crons": ["*/5 * * * *", "*/10 2-13 * * *", "1,31 0-13,23 * * *", "30 12 * * *"] },
   "queues": {
     "producers": [
       { "binding": "KNOWLEDGE_CATALOG_QUEUE", "queue": "hifiscout-knowledge-verification" },
-      { "binding": "PRODUCT_AUDIT_EXPORT_QUEUE", "queue": "hifiscout-product-audit-export" }
+      { "binding": "PRODUCT_AUDIT_EXPORT_QUEUE", "queue": "hifiscout-product-audit-export" },
+      { "binding": "AI_CATALOG_QUEUE", "queue": "hifiscout-ai-catalog" }
     ],
     "consumers": [
       { "queue": "hifiscout-knowledge-verification", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 8, "retry_delay": 300, "dead_letter_queue": "hifiscout-knowledge-verification-dlq", "max_concurrency": 1 },
       { "queue": "hifiscout-knowledge-verification-dlq", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 3, "retry_delay": 300, "max_concurrency": 1 },
       { "queue": "hifiscout-product-audit-export", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 10, "retry_delay": 30, "dead_letter_queue": "hifiscout-product-audit-export-dlq", "max_concurrency": 1 },
-      { "queue": "hifiscout-product-audit-export-dlq", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 3, "retry_delay": 30, "max_concurrency": 1 }
+      { "queue": "hifiscout-product-audit-export-dlq", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 3, "retry_delay": 30, "max_concurrency": 1 },
+      { "queue": "hifiscout-ai-catalog", "max_batch_size": 1, "max_batch_timeout": 5, "max_retries": 2, "retry_delay": 300, "dead_letter_queue": "hifiscout-ai-catalog-dlq", "max_concurrency": 1 },
+      { "queue": "hifiscout-ai-catalog-dlq", "max_batch_size": 1, "max_batch_timeout": 5, "max_retries": 2, "retry_delay": 300, "max_concurrency": 1 }
     ]
   },
   "ratelimits": [{ "name": "API_RATE_LIMITER", "namespace_id": "541721", "simple": { "limit": 120, "period": 60 } }],
   "vars": {
+    "AI_CATALOG_ENABLED": "false",
+    "AI_CATALOG_EVALUATION_POLICY": "",
     "AUDIOUNION_ENABLED": "true",
     "IPPINKAN_ENABLED": "true",
     "FUJIYA_AVIC_ENABLED": "true",

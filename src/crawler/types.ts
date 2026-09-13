@@ -40,6 +40,8 @@ export type EnvBindingName =
   | "ADMIN_JOBS"
   | "KNOWLEDGE_CATALOG_QUEUE"
   | "PRODUCT_AUDIT_EXPORT_QUEUE"
+  | "AI_CATALOG_QUEUE"
+  | "AI"
   | "API_RATE_LIMITER"
   | "BROWSER"
   | "ASSETS"
