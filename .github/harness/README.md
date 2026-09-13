@@ -31,6 +31,14 @@ checking before removal. Inspecting history does not execute its contents or res
 The parent directory is synced after replacement. Both append and read enforce the same serialized
 journal size ceiling, so a successful write cannot create a journal rejected by the reader.
 
+`vp run harness loop status <state.json>` reconstructs the controller state from the journal.
+An attempt reserves its external calls and microdollar allocation before execution. Interrupted work
+keeps those charges when deliberately resumed. Unknown/skipped/missing or stale-SHA evidence blocks
+progress; a source pass advances to review, not deployment/completion. The controller binds the same
+required checks as checkpoints, including explicitly requested comparisons. Repeated failures without
+improvement, the iteration ceiling and the original wall-clock deadline stop the run. Heartbeats do
+not extend deadlines or count as progress. A terminal run requires a new contract/run to try again.
+
 ## Evidence reports
 
 Run `vp run harness report .generated/harness/report.json` to validate and assess a report.

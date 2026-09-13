@@ -29,6 +29,29 @@ export interface HarnessReport {
   checks: HarnessCheck[];
 }
 
+export function bindRequiredChecks(
+  requirements: { id: string; scope: CheckScope }[],
+  observed: HarnessCheck[],
+): HarnessCheck[] {
+  const checks: HarnessCheck[] = requirements.map((requirement) => {
+    const check = observed.find((item) => item.id === requirement.id);
+    return check?.scope === requirement.scope
+      ? { ...check, required: true }
+      : {
+          ...requirement,
+          required: true,
+          status: "unknown",
+          reason: "Required evidence missing or scope changed",
+          evidence: [],
+        };
+  });
+  const ids = new Set(checks.map((check) => check.id));
+  return [
+    ...checks,
+    ...observed.filter((check) => !ids.has(check.id)).map((check) => ({ ...check })),
+  ];
+}
+
 export function requireText(value: unknown, label: string): string {
   if (typeof value !== "string" || !value.trim()) throw new Error(`invalid_${label}`);
   return value;

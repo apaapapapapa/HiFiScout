@@ -4,6 +4,12 @@ import { pathToFileURL } from "node:url";
 import { assessHarnessReport, reportExitCode } from "./harness/report.js";
 
 export async function runHarness(args: string[]): Promise<number> {
+  if (args[0] === "loop" && args[1] === "status" && args.length === 3) {
+    const { assessLoopRun } = await import("./harness/loop/controller.js");
+    const { readLoopRun } = await import("./harness/loop/state.js");
+    console.log(JSON.stringify(assessLoopRun(await readLoopRun(args[2])), null, 2));
+    return 0;
+  }
   if (args[0] === "loop" && args[1] === "init" && args.length === 4) {
     const { createLoopRun } = await import("./harness/loop/state.js");
     const run = await createLoopRun(JSON.parse(await readFile(args[2], "utf8")), args[3]);
