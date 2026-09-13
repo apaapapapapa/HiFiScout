@@ -18,9 +18,17 @@ export async function runLoopCli(args: string[]): Promise<number> {
   else if (args[0] === "ingest" && args.length === 3) {
     const item = await ingestLoopSignal(await json(args[1]), args[2]);
     result = { item, spec: specFromSignal(item.signal) };
-  } else if (args[0] === "intake-ci" && args.length === 4)
-    result = await collectCiIntake(args[1], Number(args[2]), args[3]);
-  else
+  } else if (args[0] === "intake-ci" && (args.length === 4 || args.length === 5)) {
+    if (args[4] !== undefined && args[4] !== "automatic" && args[4] !== "manual")
+      throw new Error("invalid_intake_mode");
+    result = await collectCiIntake(
+      args[1],
+      Number(args[2]),
+      args[3],
+      undefined,
+      args[4] === "manual",
+    );
+  } else
     throw new Error(
       "usage: harness loop validate <spec> | init <spec> <state> | history <state> | status <state> | ingest <signal> <index> | intake-ci <owner/repo> <run-id> <directory>",
     );

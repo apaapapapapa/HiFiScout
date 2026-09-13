@@ -58,6 +58,8 @@ and out-of-order signals cannot move lastSeen backwards. Preserve the index with
 `loop intake-ci <owner/repo> <run-id> <directory>` reads a complete, bounded GitHub CI job snapshot,
 writes deduplicated contracts and retains the evidence links. It rejects incomplete job coverage and
 ignores foreign repositories and `automation/loop/` branches already owned by an existing loop.
+Automatic intake accepts only main push failures. An explicit manual dispatch (or the CLI's final
+`manual` mode argument) may select a same-repository feature run; its whole baseline must be reviewed.
 
 The `autofix.ci` workflow’s `loop-intake` job collects failed CI runs from trusted main code, with read-only
 GitHub permissions and no provider/production credentials. Its artifacts are an intake handoff, not

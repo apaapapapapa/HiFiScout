@@ -13,6 +13,7 @@ import { loopSha, loopTime } from "./helpers/loop.js";
 const repo = "apaapapapapa/HiFiScout";
 const run = {
   id: 123,
+  event: "push",
   path: ".github/workflows/ci.yml",
   repository: { full_name: repo },
   head_repository: { full_name: repo },
@@ -34,6 +35,9 @@ const jobs = {
 test("CI intake distinguishes failed jobs, self-generated runs, foreign sources and incomplete evidence", () => {
   const result = signalsFromCi(repo, run, jobs);
   assert.equal(result.signals.length, 1);
+  const feature = { ...run, event: "pull_request", head_branch: "feat/example" };
+  assert.equal(signalsFromCi(repo, feature, jobs).reason, "automatic_intake_requires_main_push");
+  assert.equal(signalsFromCi(repo, feature, jobs, true).signals.length, 1);
   assert.equal(
     signalsFromCi(repo, { ...run, head_branch: "automation/loop/loop-ci-123" }, jobs).reason,
     "existing_loop_owns_this_ci",
