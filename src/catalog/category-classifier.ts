@@ -19,6 +19,7 @@ const SAFE_SUPPORTING_SELLER_FALLBACKS: ReadonlyMap<string, CategoryId> = new Ma
   ["スピーカー", "SPK.LOUDSPEAKER"],
   ["speaker", "SPK.LOUDSPEAKER"],
   ["speaker-system", "SPK.LOUDSPEAKER"],
+  ["スピーカーシステム", "SPK.LOUDSPEAKER"],
   ["中古スピーカー", "SPK.LOUDSPEAKER"],
   ["カートリッジ", "ANA.CARTRIDGE"],
   ["cartridge", "ANA.CARTRIDGE"],
