@@ -102,7 +102,7 @@ export type AdminJobStatus =
   | "cancelled";
 export interface AdminBackgroundJob {
   id: string;
-  kind: "csv" | "replay" | "manufacturer" | "model";
+  kind: "csv" | "replay" | "manufacturer" | "model" | "catalog";
   label: string;
   status: AdminJobStatus;
   createdAt: string;
@@ -123,6 +123,7 @@ export interface AdminBackgroundJob {
   requestedBy?: string | null;
   // `model` wire fields also serve category replay; retain compatibility with existing tabs/jobs.
   modelReplay?: { version: number; categoryVersion?: number; scanned: number };
+  catalogReplay?: { scanned: number; skipped: number };
 }
 export type AdminJobCommand =
   | { action: "list"; before?: string }

@@ -33,6 +33,14 @@ import {
   needsAdminResolutionReplay,
   scanAdminResolutionReplay,
 } from "../db/admin-resolution-replay.js";
+import {
+  applyCatalogReplay,
+  CatalogReplayChangedError,
+  CATALOG_REPLAY_VERSIONS_JSON,
+  readCatalogReplaySnapshot,
+  scanAdminCatalogReplay,
+} from "../db/admin-catalog-replay.js";
+import { accountReads, dbUsageMetrics } from "../db/read-accounting.js";
 
 type JobRow = {
   id: string;
@@ -66,6 +74,9 @@ const MAX_UPLOAD_BYTES = 128 * 1024 * 1024;
 // A model-only cursor may have already passed category-stale rows. Never reuse it for this scope.
 const REPLAY_SCOPE = "model-category";
 const REPLAY_VERSIONS_JSON = JSON.stringify({ ...RESOLUTION_VERSIONS, scope: REPLAY_SCOPE });
+const listingReplay = (kind: AdminBackgroundJob["kind"]) => kind === "model" || kind === "catalog";
+const replayVersions = (kind: AdminBackgroundJob["kind"]) =>
+  kind === "catalog" ? CATALOG_REPLAY_VERSIONS_JSON : REPLAY_VERSIONS_JSON;
 const REPLAY_CHANGED_MESSAGE =
   "判定ルールまたは対象範囲が更新されています。この処理を中止して、新しい一括再判定を開始してください。";
 const jobDto = (row: JobRow): AdminBackgroundJob => ({
@@ -92,6 +103,7 @@ type ResolutionReplayState = {
   max_product_id: number | null;
   after_id: number;
   scanned_count: number;
+  skipped_count: number;
   pending_ids: string;
   scan_complete: number;
 };
@@ -120,7 +132,16 @@ export class AdminJobs extends DurableObject<Env> {
       CREATE TABLE IF NOT EXISTS model_replays(job_id TEXT PRIMARY KEY,
         versions_json TEXT NOT NULL, max_product_id INTEGER,
         after_id INTEGER NOT NULL DEFAULT 0, scanned_count INTEGER NOT NULL DEFAULT 0,
-        pending_ids TEXT NOT NULL DEFAULT '[]', scan_complete INTEGER NOT NULL DEFAULT 0);`);
+        pending_ids TEXT NOT NULL DEFAULT '[]', scan_complete INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE IF NOT EXISTS catalog_replay_marks(listing_product_id INTEGER PRIMARY KEY,
+        fingerprint TEXT NOT NULL, applied_job_id TEXT NOT NULL);`);
+    try {
+      ctx.storage.sql.exec(
+        "ALTER TABLE model_replays ADD COLUMN skipped_count INTEGER NOT NULL DEFAULT 0",
+      );
+    } catch {
+      // Already present. The historical table also owns catalog replay's bounded listing cursor.
+    }
     // Who asked for the work, as distinct from this Durable Object, which performs it. Added to an
     // existing table, so the column may already be there; jobs created before it keep the empty
     // default and read back as an unrecorded subject rather than being attributed to anyone.
@@ -149,21 +170,23 @@ export class AdminJobs extends DurableObject<Env> {
   }
 
   private dto(row: JobRow): AdminBackgroundJob {
-    const state = row.kind === "model" ? this.replayState(row.id) : null;
+    const state = listingReplay(row.kind) ? this.replayState(row.id) : null;
     const versions = state
       ? (JSON.parse(state.versions_json) as { scope?: string; category: number })
       : null;
     return {
       ...jobDto(row),
-      ...(state
-        ? {
-            modelReplay: {
-              version: row.rule_version,
-              ...(versions?.scope === REPLAY_SCOPE ? { categoryVersion: versions.category } : {}),
-              scanned: state.scanned_count,
-            },
-          }
-        : {}),
+      ...(state && row.kind === "catalog"
+        ? { catalogReplay: { scanned: state.scanned_count, skipped: state.skipped_count } }
+        : state
+          ? {
+              modelReplay: {
+                version: row.rule_version,
+                ...(versions?.scope === REPLAY_SCOPE ? { categoryVersion: versions.category } : {}),
+                scanned: state.scanned_count,
+              },
+            }
+          : {}),
     };
   }
 
@@ -259,13 +282,14 @@ export class AdminJobs extends DurableObject<Env> {
         );
         if (replay) return { job: this.dto(replay) };
       }
-      if (command.kind === "model") {
+      if (listingReplay(command.kind)) {
         const replay = sql
           .exec<JobRow>(
             `SELECT j.* FROM jobs j JOIN model_replays r ON r.job_id=j.id
           WHERE j.status IN ('uploading','queued','running','paused','failed') AND j.details_available=1
-            AND r.versions_json=? ORDER BY j.created_at,j.id LIMIT 1`,
-            REPLAY_VERSIONS_JSON,
+            AND j.kind=? AND r.versions_json=? ORDER BY j.created_at,j.id LIMIT 1`,
+            command.kind,
+            replayVersions(command.kind),
           )
           .toArray()[0];
         if (replay) return { job: this.dto(replay) };
@@ -284,15 +308,15 @@ export class AdminJobs extends DurableObject<Env> {
           now,
           now,
           command.total,
-          command.kind === "model" ? RESOLUTION_VERSIONS.model : OFFER_FACT_RULE_VERSION,
+          listingReplay(command.kind) ? RESOLUTION_VERSIONS.model : OFFER_FACT_RULE_VERSION,
           new Date(Date.now() + RETENTION_MS).toISOString(),
           actor,
         );
-        if (command.kind === "model")
+        if (listingReplay(command.kind))
           sql.exec(
             "INSERT INTO model_replays(job_id,versions_json) VALUES (?,?)",
             command.id,
-            REPLAY_VERSIONS_JSON,
+            replayVersions(command.kind),
           );
       });
       await this.schedule();
@@ -379,7 +403,10 @@ export class AdminJobs extends DurableObject<Env> {
         job.id,
       );
     } else if (command.action === "resume") {
-      if (job.kind === "model" && this.replayState(job.id).versions_json !== REPLAY_VERSIONS_JSON)
+      if (
+        listingReplay(job.kind) &&
+        this.replayState(job.id).versions_json !== replayVersions(job.kind)
+      )
         throw new JobInputError(REPLAY_CHANGED_MESSAGE);
       if (!job.details_available)
         throw new JobInputError(
@@ -457,7 +484,7 @@ export class AdminJobs extends DurableObject<Env> {
     );
     try {
       if (job.kind === "manufacturer") await this.manufacturer(job);
-      else if (job.kind === "model") await this.resolutionReplay(job);
+      else if (listingReplay(job.kind)) await this.resolutionReplay(job);
       else if (job.kind === "replay") await this.replay(job);
       else
         for (let step = 0; step < 5; step++) {
@@ -540,8 +567,9 @@ export class AdminJobs extends DurableObject<Env> {
         }),
       );
       if (
-        job.kind === "model" &&
-        error instanceof ListingReplaySourceChangedError &&
+        listingReplay(job.kind) &&
+        (error instanceof ListingReplaySourceChangedError ||
+          error instanceof CatalogReplayChangedError) &&
         this.job(job.id).stalled_steps < 2
       ) {
         sql.exec(
@@ -554,8 +582,9 @@ export class AdminJobs extends DurableObject<Env> {
           "UPDATE jobs SET status='failed',error=?,updated_at=? WHERE id=? AND status='running'",
           error instanceof Error && error.message === "offer_fact_replay_no_progress"
             ? "進捗が更新されないため停止しました。状態を確認してから再開してください。"
-            : error instanceof ListingReplaySourceChangedError
-              ? "商品情報の更新との競合が続くため停止しました。時間をおいて続きから再開してください。"
+            : error instanceof ListingReplaySourceChangedError ||
+                error instanceof CatalogReplayChangedError
+              ? "商品情報またはカタログの更新との競合が続くため停止しました。時間をおいて続きから再開してください。"
               : error instanceof Error && error.message === "offer_fact_rule_version_changed"
                 ? "抽出ルールが更新されています。この処理を中止して、新しい再処理を開始してください。"
                 : error instanceof Error && error.message === "resolution_replay_version_changed"
@@ -631,7 +660,7 @@ export class AdminJobs extends DurableObject<Env> {
   private async resolutionReplay(job: JobRow) {
     const sql = this.ctx.storage.sql;
     let state = this.replayState(job.id);
-    if (state.versions_json !== REPLAY_VERSIONS_JSON)
+    if (state.versions_json !== replayVersions(job.kind))
       throw new Error("resolution_replay_version_changed");
     if (state.max_product_id === null) {
       const last = await this.env.DB.prepare(
@@ -642,11 +671,9 @@ export class AdminJobs extends DurableObject<Env> {
     }
     let pending = JSON.parse(state.pending_ids) as number[];
     if (!pending.length && !state.scan_complete) {
-      const page = await scanAdminResolutionReplay(
-        this.env.DB,
-        state.after_id,
-        state.max_product_id!,
-      );
+      const previousAfterId = state.after_id;
+      const scan = job.kind === "catalog" ? scanAdminCatalogReplay : scanAdminResolutionReplay;
+      const page = await scan(this.env.DB, state.after_id, state.max_product_id!);
       // Persist the bounded candidate window before any D1 mutation. A lost response retries the
       // same candidate; already-current rows are skipped by the primary-key eligibility check.
       sql.exec(
@@ -659,34 +686,42 @@ export class AdminJobs extends DurableObject<Env> {
       );
       state = this.replayState(job.id);
       pending = page.ids;
+      if (job.kind === "catalog") {
+        // Reap receipts for deleted listings using the ID window already read, without querying
+        // D1 again. A large deletion gap is cleaned in bounded chunks across subsequent runs.
+        sql.exec(
+          `DELETE FROM catalog_replay_marks WHERE listing_product_id IN (
+          SELECT listing_product_id FROM catalog_replay_marks WHERE listing_product_id<=?
+          AND listing_product_id>? AND listing_product_id NOT IN (SELECT value FROM json_each(?)) LIMIT 1000)`,
+          page.afterId,
+          previousAfterId,
+          JSON.stringify(page.ids),
+        );
+      }
     }
     if (this.job(job.id).status !== "running") return;
     const id = pending[0];
     if (id !== undefined) {
-      const needed = await needsAdminResolutionReplay(this.env.DB, id);
-      if (needed) {
-        const version = await registryVersion(this.env.DB);
-        if (!this.aliasSnapshot || this.aliasSnapshot.version !== version)
-          this.aliasSnapshot = {
-            version,
-            aliases: await readAdminManufacturerAliases(this.env.DB),
-          };
+      let skipped = false;
+      if (job.kind === "catalog") {
+        const result = await this.catalogListing(job, id);
+        if (result === null) return;
+        skipped = result;
+      } else if (await needsAdminResolutionReplay(this.env.DB, id)) {
+        const aliases = await this.manufacturerAliases();
         if (this.job(job.id).status !== "running") return;
-        await replayAdminCsvListings(
-          this.env.DB,
-          [id],
-          new Date().toISOString(),
-          this.aliasSnapshot.aliases,
-        );
+        await replayAdminCsvListings(this.env.DB, [id], new Date().toISOString(), aliases);
       }
       this.ctx.storage.transactionSync(() => {
         sql.exec(
-          "UPDATE model_replays SET pending_ids=? WHERE job_id=?",
+          "UPDATE model_replays SET pending_ids=?,skipped_count=skipped_count+? WHERE job_id=?",
           JSON.stringify(pending.slice(1)),
+          Number(skipped),
           job.id,
         );
         sql.exec(
-          "UPDATE jobs SET processed=processed+1,stalled_steps=0,updated_at=? WHERE id=?",
+          "UPDATE jobs SET processed=processed+?,stalled_steps=0,updated_at=? WHERE id=?",
+          Number(!skipped),
           new Date().toISOString(),
           job.id,
         );
@@ -701,6 +736,55 @@ export class AdminJobs extends DurableObject<Env> {
         new Date(Date.now() + RETENTION_MS).toISOString(),
         job.id,
       );
+  }
+
+  private async manufacturerAliases() {
+    const version = await registryVersion(this.env.DB);
+    if (!this.aliasSnapshot || this.aliasSnapshot.version !== version)
+      this.aliasSnapshot = { version, aliases: await readAdminManufacturerAliases(this.env.DB) };
+    return this.aliasSnapshot.aliases;
+  }
+
+  /** A successful receipt is saved before the job cursor. A lost cursor checkpoint retries the
+   * same ID, observes the receipt, and neither repeats its D1 writes nor counts it twice. */
+  private async catalogListing(job: JobRow, id: number): Promise<boolean | null> {
+    const sql = this.ctx.storage.sql;
+    const measured = accountReads(this.env.DB);
+    const before = await readCatalogReplaySnapshot(measured.db, id);
+    if (this.job(job.id).status !== "running") return null;
+    if (!before) {
+      sql.exec("DELETE FROM catalog_replay_marks WHERE listing_product_id=?", id);
+      return true;
+    }
+    const mark = sql
+      .exec<{ fingerprint: string; applied_job_id: string }>(
+        "SELECT fingerprint,applied_job_id FROM catalog_replay_marks WHERE listing_product_id=?",
+        id,
+      )
+      .toArray()[0];
+    const unchanged =
+      !before.listing.remediation_projection_required && mark?.fingerprint === before.fingerprint;
+    console.log(
+      JSON.stringify({
+        event: "admin_catalog_replay_check",
+        listingId: id,
+        unchanged,
+        ...dbUsageMetrics(measured),
+      }),
+    );
+    if (unchanged) return mark.applied_job_id !== job.id;
+    const aliases = await this.manufacturerAliases();
+    if (this.job(job.id).status !== "running") return null;
+    const after = await applyCatalogReplay(this.env.DB, before, aliases);
+    sql.exec(
+      `INSERT INTO catalog_replay_marks(listing_product_id,fingerprint,applied_job_id)
+      VALUES (?,?,?) ON CONFLICT(listing_product_id) DO UPDATE SET
+      fingerprint=excluded.fingerprint,applied_job_id=excluded.applied_job_id`,
+      id,
+      after.fingerprint,
+      job.id,
+    );
+    return false;
   }
 
   private async cleanup() {

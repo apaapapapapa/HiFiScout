@@ -300,6 +300,7 @@ export function AdminOperationsPanel() {
             <option value="replay">出品条件再処理</option>
             <option value="manufacturer">メーカー再判定</option>
             <option value="model">型番・カテゴリ再判定</option>
+            <option value="catalog">カタログ更新の再反映</option>
           </select>
         </label>{" "}
         <label>

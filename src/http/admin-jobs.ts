@@ -39,6 +39,7 @@ export function parseAdminJobCommand(value: unknown): AdminJobCommand | null {
         (value.kind !== "csv" &&
           value.kind !== "replay" &&
           value.kind !== "manufacturer" &&
+          value.kind !== "catalog" &&
           value.kind !== "model") ||
         !Number.isSafeInteger(value.total) ||
         Number(value.total) < 0 ||

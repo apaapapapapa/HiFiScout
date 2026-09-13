@@ -46,14 +46,19 @@ export async function submitAdminCsvJob(
 
 export async function submitAdminReplayJob(
   id: string,
-  kind: "replay" | "model" = "replay",
+  kind: "replay" | "model" | "catalog" = "replay",
 ): Promise<AdminBackgroundJob> {
   const { job } = await adminJobRequest<{ job: AdminBackgroundJob }>({
     action: "create",
     id,
     kind,
     total: 0,
-    label: kind === "model" ? "旧バージョン商品の型番・カテゴリ再判定" : "全商品の出品条件再処理",
+    label:
+      kind === "catalog"
+        ? "カタログ更新を登録商品に反映"
+        : kind === "model"
+          ? "旧バージョン商品の型番・カテゴリ再判定"
+          : "全商品の出品条件再処理",
   });
   return (await adminJobRequest<{ job: AdminBackgroundJob }>({ action: "start", id: job.id })).job;
 }

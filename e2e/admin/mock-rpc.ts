@@ -118,6 +118,7 @@ export function createMockAdminRpc() {
           error: "",
           expiresAt: "2026-09-08T00:00:00Z",
           detailsAvailable: true,
+          ...(command.kind === "catalog" ? { catalogReplay: { scanned: 0, skipped: 0 } } : {}),
           ...(command.kind === "model"
             ? {
                 modelReplay: {
