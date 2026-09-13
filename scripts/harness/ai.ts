@@ -159,7 +159,10 @@ export async function evaluateAiHoldout(value: unknown) {
         !isRecord(attempt.usage)
       )
         throw new Error("invalid_ai_attempt");
-      lastRequestedAt = requireTimestamp(attempt.requestedAt);
+      const requestedAt = requireTimestamp(attempt.requestedAt);
+      if (lastRequestedAt && requestedAt <= lastRequestedAt)
+        throw new Error("ai_attempts_not_chronological");
+      lastRequestedAt = requestedAt;
       if (attempt.requestId !== null) {
         const requestId = requireText(attempt.requestId, "provider_request_id");
         if (providerIds.has(requestId)) throw new Error("duplicate_provider_request_id");

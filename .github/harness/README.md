@@ -182,6 +182,9 @@ Reviews bind to that precise response; accepting an absent/invalid suggestion is
 `groundTruthReview` binds `actor` and `reviewedAt` to `corpusDigest`. Acceptance rate, pending
 suggestions and false accepted suggestions remain separate from model correctness.
 
+Attempt timestamps must increase strictly. Out-of-order or tied retries cannot replace the final
+response or move the review cutoff backwards; reviews must follow the last recorded attempt.
+
 Offline output always states that provider/reviewer provenance is unverified, live evaluation is
 unknown, and activation is not approved. Passing fixtures cannot enable inference, change the
 approved policy, bypass identity vetoes or grant account budget. Independent label review and real
