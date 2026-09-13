@@ -47,7 +47,25 @@ other browser origins and uses the existing signed local Access/RPC/JWKS mocks. 
 evidence, independent of the deployment-owned public E2E verification. See
 [harness operations](../harness/README.md) and [tooling](../../docs/tooling.md) for local commands.
 
-`.github/actions/change-scope` compares the candidate tree with the event's comparison base. A nonempty diff containing only `.md` files anywhere in the tree skips source/toolchain, application test/build and dependency-security jobs before runner allocation. One lightweight `changes` job shares the decision; the always-present required `fan-out` accepts skipped jobs only when that scope requires them to be skipped. Other documentation assets retain source/toolchain checks. Unknown bases run the full suite, and source deletions or moves to Markdown remain application changes. CI itself has no workflow-level path filter, so the required check cannot remain Pending. The dependency audit still runs for every application change. Markdown-only push/PR events skip autofix, Secret Scan, CodeQL and Release; scheduled security scans and manual Release remain available. Developer Docs still builds and publishes documentation, while its independent source architecture check skips Markdown-only diffs.
+`.github/actions/change-scope` compares the candidate tree with the event's comparison base.
+The resulting push/PR validation policy is:
+
+| Changed files | CI jobs | Other push/PR workflows |
+| --- | --- | --- |
+| Only `.md`, anywhere in the repository | Lightweight `changes` and required `fan-out`; application and source/toolchain jobs skip | Developer Docs builds the site and checks documented commands; autofix, Secret Scan, CodeQL and Release skip |
+| Other documentation assets, with no application changes | Source/toolchain checks; application test/build/security jobs skip | Each workflow keeps its own file filters |
+| Application/configuration changes, including mixed Markdown changes | Full source, test, browser, build and dependency-security validation | Each workflow keeps its own file filters |
+| Unknown comparison base | Full CI; no Markdown-only exemption | Each workflow keeps its own file filters |
+
+The required `fan-out` accepts skipped jobs only when the successful scope detection requires
+that result; failures, cancellations and unexpected skips remain failures. CI itself has no
+workflow-level path filter, so its required check cannot remain Pending. A source deletion or move
+to a Markdown path remains an application change. An empty diff is not a Markdown-only change.
+
+Developer Docs publishes on `main` and skips its independent source architecture check for
+Markdown-only diffs. Scheduled security scans and manual Release are independent of push/PR
+file filters. Application CD still compares with the confirmed production SHA, so earlier
+undeployed code or migrations are not lost when the latest commit changes only documentation.
 
 The Docs workflow caches generated SchemaSpy output by the migration contents, Wrangler/dependency configuration and generator sources. The generator verifies the fingerprint and its output before reuse; cache misses run the original fresh local migration and SchemaSpy generation. This cache never supplies databases to migration safety tests.
 
