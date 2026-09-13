@@ -50,7 +50,25 @@ other browser origins and uses the existing signed local Access/RPC/JWKS mocks. 
 evidence, independent of the deployment-owned public E2E verification. See
 [harness operations](../harness/README.md) and [tooling](../../docs/tooling.md) for local commands.
 
-`.github/actions/change-scope` compares the candidate tree with the event's comparison base. Documentation-only changes retain source/toolchain checks and the always-present `fan-out` result but skip application test/build/security steps. Unknown bases run the full suite. All application jobs still report a result, so a workflow-level path filter cannot strand the required check in Pending. The dependency audit still runs for every application change; CodeQL and the weekly secret scan retain their own schedules.
+`.github/actions/change-scope` compares the candidate tree with the event's comparison base.
+The resulting push/PR validation policy is:
+
+| Changed files | CI jobs | Other push/PR workflows |
+| --- | --- | --- |
+| Only `.md`, anywhere in the repository | Lightweight `changes` and required `fan-out`; application and source/toolchain jobs skip | Developer Docs builds the site and checks documented commands; autofix, Secret Scan, CodeQL and Release skip |
+| Other documentation assets, with no application changes | Source/toolchain checks; application test/build/security jobs skip | Each workflow keeps its own file filters |
+| Application/configuration changes, including mixed Markdown changes | Full source, test, browser, build and dependency-security validation | Each workflow keeps its own file filters |
+| Unknown comparison base | Full CI; no Markdown-only exemption | Each workflow keeps its own file filters |
+
+The required `fan-out` accepts skipped jobs only when the successful scope detection requires
+that result; failures, cancellations and unexpected skips remain failures. CI itself has no
+workflow-level path filter, so its required check cannot remain Pending. A source deletion or move
+to a Markdown path remains an application change. An empty diff is not a Markdown-only change.
+
+Developer Docs publishes on `main` and skips its independent source architecture check for
+Markdown-only diffs. Scheduled security scans and manual Release are independent of push/PR
+file filters. Application CD still compares with the confirmed production SHA, so earlier
+undeployed code or migrations are not lost when the latest commit changes only documentation.
 
 The Docs workflow caches generated SchemaSpy output by the migration contents, Wrangler/dependency configuration and generator sources. The generator verifies the fingerprint and its output before reuse; cache misses run the original fresh local migration and SchemaSpy generation. This cache never supplies databases to migration safety tests.
 
@@ -78,7 +96,7 @@ Cloudflare D1 free-tier daily row-read or row-write exhaustion (`7500`) is an ex
 
 For migration comparison, `Deploy Cloudflare` reads the newest valid, unexpired `deployment-identity` artifact and extracts `deployment-sha.txt` directly rather than inferring production from workflow metadata. Keeping confirmed identities for 90 days makes that baseline available across long periods without deployment, while the CI/status gate prevents nightly no-op runs from redeploying an unapproved or already-settled SHA. Downstream E2E, operational-health, and Catalog Admin workflows treat a missing `deployment-identity` from an otherwise successful `Deploy Cloudflare` run as “no new public deployment” and exit successfully without operating on `workflow_run.head_sha`.
 
-Application change detection uses that same confirmed production baseline, not the preceding main commit. Documentation-only differences produce an `application unchanged` status and no new identity artifact; pending code or migrations from an earlier deferred deployment still deploy. CI migration safety compares the PR/push base, while CD verifies upgrade from the actual deployed runtime, so both checks remain necessary.
+Application change detection uses that same confirmed production baseline, not the preceding main commit. Documentation-only differences produce an `application unchanged` status and no new identity artifact; pending code or migrations from an earlier deferred deployment still deploy. A lightweight `changes` preflight owns that comparison and skips the entire `deploy` job when no application deployment is needed. Downstream E2E, Catalog Admin and passive telemetry use `.github/actions/deployment-run-scope` to recognize a successful preflight with a skipped deployment across all job-list pages, then skip their actual jobs. Failed deployments, older workflows and unknown metadata retain their existing checks; scheduled/manual telemetry is independent of this gate. CI migration safety compares the PR/push base, while CD verifies upgrade from the actual deployed runtime, so both checks remain necessary.
 
 Production resources are reconciled by `scripts/lib/production-resources.ts`: an unchanged bucket, lifecycle policy and required Queue set use three reads and no writes. Only a genuine missing resource is created. Owned lifecycle rules update together while unrelated operator policies remain intact; authentication errors and malformed responses fail instead of being interpreted as missing configuration.
 

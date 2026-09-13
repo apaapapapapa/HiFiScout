@@ -21,8 +21,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  playwright:
+  changes:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      required: ${{ steps.scope.outputs.required }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: ./.github/actions/deployment-run-scope
+        id: scope
+        with:
+          github-token: ${{ github.token }}
+
+  playwright:
+    needs: changes
+    if: needs.changes.outputs.required == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

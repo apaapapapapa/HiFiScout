@@ -291,6 +291,14 @@ retain their stored decision. Official/detail/admin evidence and existing write 
 No deployment-triggered seller refetch or full-inventory rewrite
 is required. Search projections and metadata converge through the existing refresh paths.
 
+Supporting seller categories remain non-classifying unless the full normalized value is an
+allow-listed, semantically unambiguous product type. Audio Union's reviewed exact buckets
+`管球式プリメインアンプ`, `デュアルモノラル・パワーアンプ`, and
+`アンプ内蔵ステレオ・ワイヤレス・スピーカー・システム` map respectively to integrated
+amplifier, power amplifier, and loudspeaker. Similar or broader amplifier/speaker buckets remain
+unclassified until independent evidence exists. The corresponding explicit `管球式` and `アンプ内蔵`
+wording independently supplies tube-technology and active-amplification facets.
+
 The AVAC adapter removes a leading standalone `特価` or `特価品` token after the seller's
 authoritative condition marker and before manufacturer/model splitting. The rule is shop-local and
 requires a token boundary, so a product or manufacturer name merely beginning with those characters

@@ -22,6 +22,16 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+      - uses: ./.github/actions/change-scope
+        id: scope
+      - name: Reject legacy documented toolchain entrypoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RInE '^[[:space:]]*(npm|npx)[[:space:]]' README.md AGENTS.md docs; then
+            echo 'Documentation contains a standalone npm/npx command; document the Vite+ entrypoint instead.' >&2
+            exit 1
+          fi
       - uses: ./.github/actions/setup-node-deps
       - name: Fingerprint schema documentation inputs
         id: db-docs
@@ -44,6 +54,7 @@ jobs:
         id: pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
       - name: Validate module dependencies
+        if: steps.scope.outputs.markdown-only != 'true'
         run: vp run docs:architecture:check
       - name: Build developer documentation
         run: vp run docs:build

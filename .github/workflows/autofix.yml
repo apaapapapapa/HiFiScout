@@ -3,6 +3,8 @@ name: autofix.ci
 on:
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
   workflow_run:
     workflows: [CI]
     types: [completed]

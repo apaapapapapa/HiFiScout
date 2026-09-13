@@ -48,7 +48,10 @@ test("Deploy publishes the exact CI-authorized SHA only after production is conf
   assert.ok(publishIdentity > runtimeHealth);
 
   const identitySection = deploy.slice(deploy.indexOf("Record deployment identity"));
-  assert.match(identitySection, /steps\.d1-migrations\.outputs\.already_deployed != 'true'/u);
+  assert.match(
+    deploy,
+    /deploy:\n    needs: changes\n    if: needs\.changes\.outputs\.application == 'true'/u,
+  );
   assert.match(identitySection, /steps\.d1-apply\.outputs\.deferred != 'd1_daily_quota'/u);
 });
 

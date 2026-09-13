@@ -51,20 +51,51 @@ test("documentation detection preserves pending code, renames and unknown compar
     const deferred = commit("code awaiting deployment");
     writeFileSync(join(root, "docs", "guide.md"), "Documentation\n");
     commit("docs only");
-    assert.equal(classify(deferred), "application=false\n");
+    assert.equal(classify(deferred), "application=false\nmarkdown-only=true\n");
     assert.equal(
       classify(production),
-      "application=true\n",
+      "application=true\nmarkdown-only=false\n",
       "unreleased code still needs deployment",
     );
-    assert.equal(classify("0".repeat(40)), "application=true\n");
-    assert.equal(classify(""), "application=true\n");
+    assert.equal(classify("0".repeat(40)), "application=true\nmarkdown-only=false\n");
+    assert.equal(classify(""), "application=true\nmarkdown-only=false\n");
+    assert.equal(classify("f".repeat(40)), "application=true\nmarkdown-only=false\n");
+    assert.equal(
+      classify(git("rev-parse", "HEAD")),
+      "application=false\nmarkdown-only=false\n",
+      "an empty diff does not establish a Markdown-only change",
+    );
+    for (const path of [
+      "README.md",
+      ".github/workflows/README.md",
+      ".agents/skills/example/SKILL.md",
+      "scripts/nested notes\n日本語.md",
+    ]) {
+      const before = git("rev-parse", "HEAD");
+      const target = join(root, path);
+      mkdirSync(join(target, ".."), { recursive: true });
+      writeFileSync(target, "Markdown at any depth\n");
+      commit("Markdown outside docs");
+      assert.equal(classify(before), "application=false\nmarkdown-only=true\n", path);
+      git("rm", path);
+      commit("delete Markdown");
+      assert.equal(classify(git("rev-parse", "HEAD^")), "application=false\nmarkdown-only=true\n");
+    }
+    const beforeAsset = git("rev-parse", "HEAD");
+    writeFileSync(join(root, "docs", "theme.css"), "body {}\n");
+    commit("non-Markdown documentation asset");
+    assert.equal(classify(beforeAsset), "application=false\nmarkdown-only=false\n");
+    const beforeConfig = git("rev-parse", "HEAD");
+    writeFileSync(join(root, "AGENTS.md"), "Instructions\n");
+    writeFileSync(join(root, "vite.config.ts"), "export default {};\n");
+    commit("Markdown and configuration");
+    assert.equal(classify(beforeConfig), "application=true\nmarkdown-only=false\n");
     const beforeRename = git("rev-parse", "HEAD");
-    git("mv", "src/worker.ts", "docs/worker.ts");
+    git("mv", "src/worker.ts", "docs/worker.md");
     commit("move into docs");
     assert.equal(
       classify(beforeRename),
-      "application=true\n",
+      "application=true\nmarkdown-only=false\n",
       "source deletion cannot hide behind a docs rename",
     );
   } finally {

@@ -46,10 +46,15 @@ test("the lowest eligible unresolved listing is the deterministic fallback repre
 test("incremental sync can expand a changed listing to every safe exact peer", () => {
   const sql = exactIdentityPeerIdsSql(3);
 
-  assert.match(sql, /(?:seed\.)?id IN \(\?,\?,\?\)/);
+  assert.doesNotMatch(sql, /(?:seed\.)?id IN \(\?,\?,\?\)/);
+  assert.match(sql, /seed_ids\(id\) AS MATERIALIZED \(VALUES \(\?\),\(\?\),\(\?\)\)/);
+  assert.match(sql, /JOIN products seed ON seed\.id = seed_ids\.id/);
   assert.match(sql, /peer\.canonical_manufacturer_id = seed\.canonical_manufacturer_id/);
   assert.match(sql, /peer\.normalized_model = seed\.normalized_model/);
   assert.match(sql, /peer\.model_resolution_status = 'resolved'/);
+  assert.match(sql, /json_group_array\(peer\.id\)/);
+  assert.match(sql, /json_each\(compatible\.peer_ids\)/);
+  assert.equal((sql.match(/idx_products_exact_identity/g) || []).length, 1);
   assert.doesNotMatch(sql, /peer\.shop_key = seed\.shop_key/);
 });
 

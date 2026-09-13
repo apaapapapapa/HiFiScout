@@ -61,33 +61,33 @@ export function exactIdentityPeerIdsSql(seedCount: number): string {
   if (!seedCount) return "SELECT id FROM products WHERE 0";
   const placeholders = Array.from({ length: seedCount }, () => "?").join(",");
   if (seedCount > 1) {
+    const seedRows = Array.from({ length: seedCount }, () => "(?)").join(",");
     return `
-      WITH seed_identities AS MATERIALIZED (
-        SELECT DISTINCT canonical_manufacturer_id, normalized_model
-        FROM products
-        WHERE id IN (${placeholders})
-          AND model_resolution_status = 'resolved'
-          AND COALESCE(canonical_manufacturer_id, '') <> ''
-          AND COALESCE(normalized_model, '') <> ''
+      WITH seed_ids(id) AS MATERIALIZED (VALUES ${seedRows}),
+      seed_identities AS MATERIALIZED (
+        SELECT DISTINCT seed.canonical_manufacturer_id, seed.normalized_model
+        FROM seed_ids
+        JOIN products seed ON seed.id = seed_ids.id
+        WHERE seed.model_resolution_status = 'resolved'
+          AND COALESCE(seed.canonical_manufacturer_id, '') <> ''
+          AND COALESCE(seed.normalized_model, '') <> ''
       ),
       compatible_identities AS MATERIALIZED (
-        SELECT seed.canonical_manufacturer_id, seed.normalized_model
+        SELECT json_group_array(peer.id) AS peer_ids
         FROM seed_identities seed
-        CROSS JOIN products category_peer INDEXED BY idx_products_exact_identity
-          ON ${sameIdentity("seed", "category_peer")}
-        WHERE ${eligible("category_peer")}
+        CROSS JOIN products peer INDEXED BY idx_products_exact_identity
+          ON ${sameIdentity("seed", "peer")}
+        WHERE ${eligible("peer")}
         GROUP BY seed.canonical_manufacturer_id, seed.normalized_model
         HAVING COUNT(DISTINCT CASE
-          WHEN category_peer.primary_category_id NOT IN ('other', 'unclassified')
-            THEN category_peer.primary_category_id
+          WHEN peer.primary_category_id NOT IN ('other', 'unclassified')
+            THEN peer.primary_category_id
           ELSE NULL
         END) <= 1
       )
-      SELECT peer.id AS id
-      FROM compatible_identities seed
-      CROSS JOIN products peer INDEXED BY idx_products_exact_identity
-        ON ${sameIdentity("seed", "peer")}
-      WHERE ${eligible("peer")}
+      SELECT CAST(peer.value AS INTEGER) AS id
+      FROM compatible_identities compatible
+      CROSS JOIN json_each(compatible.peer_ids) peer
     `;
   }
   return `
