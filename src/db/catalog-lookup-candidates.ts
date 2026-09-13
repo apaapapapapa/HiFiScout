@@ -132,16 +132,18 @@ export async function loadCatalogRowsById(
   const rowQueries: D1PreparedStatement[] = [];
   const aliasQueries: D1PreparedStatement[] = [];
   for (let i = 0; i < ids.length; i += 40) {
-    const chunk = ids.slice(i, i + 40);
+    const chunk = [...new Set(ids.slice(i, i + 40))];
     const parameters = chunk.map(() => "?").join(",");
+    // Drive from the bounded ID set so stale production statistics cannot turn this into a scan of
+    // every verified product. Sort the small result below instead of buying a D1 temporary B-tree.
     rowQueries.push(
       db
         .prepare(`SELECT kp.id,kp.manufacturer_id,kp.canonical_model,kp.normalized_model,kp.canonical_name,
-      kpc.category_id,kpc.is_primary FROM knowledge_catalog_products kp
+      kpc.category_id,kpc.is_primary FROM json_each(?) wanted
+      CROSS JOIN knowledge_catalog_products kp ON kp.id = wanted.value
       LEFT JOIN knowledge_catalog_product_categories kpc ON kpc.product_id = kp.id
-      WHERE kp.verification_status = 'verified' AND kp.id IN (${parameters})
-      ORDER BY kp.id,kpc.is_primary DESC,kpc.category_id`)
-        .bind(...chunk),
+      WHERE kp.verification_status = 'verified'`)
+        .bind(JSON.stringify(chunk)),
     );
     aliasQueries.push(
       db
@@ -151,8 +153,18 @@ export async function loadCatalogRowsById(
     );
   }
   for (let i = 0; i < rowQueries.length; i += 40) {
-    for (const result of await readBatch<CatalogLookupRow>(db, rowQueries.slice(i, i + 40)))
-      rows.push(...(result.results || []));
+    for (const result of await readBatch<CatalogLookupRow>(db, rowQueries.slice(i, i + 40))) {
+      const resultRows = [...(result.results || [])].sort((a, b) => {
+        if (a.id !== b.id) return a.id - b.id;
+        const primary = (b.is_primary ?? -1) - (a.is_primary ?? -1);
+        if (primary !== 0) return primary;
+        if (a.category_id === b.category_id) return 0;
+        if (a.category_id === null) return -1;
+        if (b.category_id === null) return 1;
+        return a.category_id < b.category_id ? -1 : 1;
+      });
+      rows.push(...resultRows);
+    }
     for (const result of await readBatch<CatalogLookupAliasRow>(db, aliasQueries.slice(i, i + 40)))
       aliases.push(...(result.results || []));
   }
