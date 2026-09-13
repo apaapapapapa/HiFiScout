@@ -6,7 +6,7 @@ import {
   UNIDENTIFIED_PRINCIPAL,
   trustedActor,
 } from "../src/api/admin-actor.js";
-import { adminPrincipalFromClaims } from "../src/admin/principal.js";
+import { adminPrincipalFromClaims } from "../src/admin/access.js";
 import { handleAuthenticatedAdminEntryRequest } from "../src/admin/entry.js";
 import { handleAuthenticatedCatalogAdminRequest } from "../src/admin/index.js";
 import { readAdminChangeHistory } from "../src/db/admin-change-history-repository.js";

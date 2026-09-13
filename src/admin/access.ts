@@ -1,6 +1,12 @@
 import { json } from "./http.js";
-import { adminPrincipalFromClaims, type AdminPrincipal } from "./principal.js";
-import { UNIDENTIFIED_PRINCIPAL } from "../api/admin-actor.js";
+import {
+  MAX_ACTOR_LENGTH,
+  UNIDENTIFIED_PRINCIPAL,
+  usableIdentifier,
+  type AdminPrincipal,
+} from "../api/admin-actor.js";
+
+export type { AdminPrincipal, AdminPrincipalKind } from "../api/admin-actor.js";
 
 interface CloudflareAccessConfig {
   teamDomain: string;
@@ -221,6 +227,53 @@ export async function verifyCloudflareAccessToken(
   } catch {
     return null;
   }
+}
+
+function claimString(value: unknown): string | null {
+  return usableIdentifier(value) ? value.trim() : null;
+}
+
+function issuerHost(issuer: string): string | null {
+  try {
+    const url = new URL(issuer);
+    return url.protocol === "https:" ? url.host : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Derives the principal from verified Access claims.
+ *
+ * Every claim is re-validated here for type and shape. `validClaims` in `access.ts` proves the token
+ * was signed for this application; it does not prove that `sub` or `email` are strings of a sensible
+ * form, and an identity that reaches storage has to be both.
+ *
+ * A service token carries an empty `sub` and a `common_name` holding its client ID. That is how a
+ * machine caller is told apart from a person, rather than being recorded as one.
+ */
+export function adminPrincipalFromClaims(claims: CloudflareAccessClaims): AdminPrincipal | null {
+  const host = issuerHost(claims.iss);
+  if (!host) return null;
+
+  const subject = claimString(claims.sub);
+  if (subject) {
+    return {
+      kind: "user",
+      actor: `access:user:${host}/${subject}`.slice(0, MAX_ACTOR_LENGTH),
+      email: claimString(claims.email),
+    };
+  }
+
+  const commonName = claimString(claims.common_name);
+  if (commonName) {
+    return {
+      kind: "service",
+      actor: `access:service:${host}/${commonName}`.slice(0, MAX_ACTOR_LENGTH),
+      email: null,
+    };
+  }
+  return null;
 }
 
 export async function verifyCloudflareAccessRequest(

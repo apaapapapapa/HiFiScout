@@ -13,7 +13,7 @@ import {
   parseKnowledgeCatalogDuplicateListQuery,
 } from "../http/knowledge-catalog-admin.js";
 import { authenticateCloudflareAccess } from "./access.js";
-import type { AdminPrincipal } from "./principal.js";
+import type { AdminPrincipal } from "../api/admin-actor.js";
 import { parseModelFactWrite } from "../http/model-fact-admin.js";
 import { parseAdminManufacturerQuery } from "../api/admin-manufacturer-contracts.js";
 import { PRESENTATION_COLORS } from "../catalog/model-presentation-color.js";

@@ -1,4 +1,4 @@
-import type { AdminPrincipal } from "../../src/admin/principal.js";
+import type { AdminPrincipal } from "../../src/api/admin-actor.js";
 
 /**
  * The subject a test stands in for when it calls an admin handler directly.

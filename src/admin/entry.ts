@@ -8,7 +8,7 @@ import { json, isSameOriginBrowserMutation, withCatalogAdminSecurityHeaders } fr
 import { isJsonRequest, readJsonBody, REQUEST_BODY_TOO_LARGE } from "../http/request.js";
 import catalogAdmin from "./index.js";
 import { authenticateCloudflareAccess } from "./access.js";
-import type { AdminPrincipal } from "./principal.js";
+import type { AdminPrincipal } from "../api/admin-actor.js";
 import { parseAiAdminCommand } from "../http/admin-ai-catalog.js";
 import type { CatalogAdminRpc } from "./contracts.js";
 import { parseAdminWorkCountCursor } from "../api/admin-work-counts-contract.js";
