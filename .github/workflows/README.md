@@ -19,6 +19,9 @@ HiFiScout keeps workflow orchestration thin. Domain behavior, repair logic, and 
 - `codeql.yml` — CodeQL security analysis.
 - `secret-scan.yml` — secret scanning.
 - `autofix.yml` — PR formatting/lint autofix only.
+- `improvement-loop.yml` — bounded CI-failure intake into loop contracts and artifacts. It runs the
+  trusted main collector with read-only GitHub access, rejects foreign/incomplete inputs, and leaves
+  execution to the loop runner. It does not query production or use AI-provider credentials.
 
 The `ci:*` tasks in `vite.config.ts` reuse `package.json` commands. They retain CI-specific cache
 metadata, the declaration-before-compiler and frontend-before-Worker dependencies, and four separate
