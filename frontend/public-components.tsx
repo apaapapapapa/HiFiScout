@@ -10,6 +10,8 @@ import { OfferFacts } from "./offer-facts.js";
 import { OfferTerms } from "./offer-terms.js";
 import { offerTermGroups } from "../src/api/offer-terms-contracts.js";
 import { WatchSummary } from "./watch-preferences-ui.js";
+import { ManufacturerFilterLink, ProductCategoryLinks } from "./product-filter-links.js";
+import type { ProductFilterNavigation } from "./product-filter-links.js";
 import type { WatchPreference } from "./watch-preferences.js";
 import {
   SHOP_LISTING_URLS,
@@ -101,7 +103,7 @@ interface ProductCardProps {
   onWatch?: (key: string) => void;
   watchPreference?: WatchPreference;
   shopName: (shopKey: string) => string;
-  onManufacturer: (manufacturer: string) => void;
+  filterNavigation?: ProductFilterNavigation;
   onFavorite: (key: string) => void;
   onOffers: (key: string) => void;
   now?: number;
@@ -137,18 +139,6 @@ function ShopChip({
   return <span className={`shop shop-${shopKey}`}>{label}</span>;
 }
 
-/**
- * The categories to print on a card, already resolved to labels by the API.
- *
- * A listing that sells several products is in several categories; anything else — including a
- * favorite snapshot saved before the field existed — falls back to the single label it has always
- * carried, so a card that is not a set renders exactly what it rendered before.
- */
-function productCategoryLabels(product: DisplayProduct): string[] {
-  const labels = (product.direct_categories || []).filter(Boolean);
-  return labels.length ? labels : [product.category || "カテゴリ不明"];
-}
-
 export function ProductCard({
   product,
   favorite,
@@ -159,7 +149,7 @@ export function ProductCard({
   onWatch,
   watchPreference,
   shopName,
-  onManufacturer,
+  filterNavigation,
   onFavorite,
   onOffers,
   now = Date.now(),
@@ -167,7 +157,6 @@ export function ProductCard({
   const activity = activityData(product, now);
   const title = product.model || product.representative_offer?.title || "商品名不明";
   const colors = productColors(product);
-  const categories = productCategoryLabels(product);
   const multiOffer = product.offer_count > 1;
   const sourceUrl = safeExternalUrl(product.representative_offer?.source_url);
   const condition = multiOffer ? "" : product.representative_offer?.condition_text || "";
@@ -176,7 +165,6 @@ export function ProductCard({
   const updated = activity.activity
     ? `${activity.label} ${dateFmt.format(activity.activity)}`
     : "更新日時不明";
-  const manufacturer = product.manufacturer || "メーカー不明";
 
   return (
     <article className="card" data-key={product.key}>
@@ -197,20 +185,10 @@ export function ProductCard({
           </div>
         </div>
         <p className="maker">
-          {manufacturer === "メーカー不明" ? (
-            manufacturer
-          ) : (
-            <button
-              type="button"
-              className="manufacturer-filter-link"
-              data-manufacturer-filter={manufacturer}
-              title={`${manufacturer}の商品に絞り込む`}
-              aria-label={`${manufacturer}の商品に絞り込む`}
-              onClick={() => onManufacturer(manufacturer)}
-            >
-              {manufacturer}
-            </button>
-          )}
+          <ManufacturerFilterLink
+            manufacturer={product.manufacturer}
+            navigation={filterNavigation}
+          />
         </p>
         <h2>
           {hasServerDetail ? (
@@ -244,11 +222,7 @@ export function ProductCard({
           ) : null}
         </h2>
         <div className="product-submeta">
-          {categories.map((category) => (
-            <span className="category" key={category}>
-              {category}
-            </span>
-          ))}
+          <ProductCategoryLinks product={product} navigation={filterNavigation} />
           {condition ? <span className="condition">{condition}</span> : null}
         </div>
         {favoriteShopUnconfirmed ? (
@@ -474,6 +448,7 @@ export function OffersContent({
   onRetry,
   shopName,
   onHistory,
+  filterNavigation,
 }: {
   state:
     | { kind: "loading" }
@@ -483,6 +458,7 @@ export function OffersContent({
   shopName: (shopKey: string) => string;
   onHistory: (listingId: number) => void;
   onRetry?: () => void;
+  filterNavigation?: ProductFilterNavigation;
 }) {
   if (!state) return null;
   if (state.kind === "loading")
@@ -511,7 +487,9 @@ export function OffersContent({
   const colors = productColors(product);
   return (
     <>
-      <p className="maker">{product.manufacturer || "メーカー不明"}</p>
+      <p className="maker">
+        <ManufacturerFilterLink manufacturer={product.manufacturer} navigation={filterNavigation} />
+      </p>
       <h2 id="offers-title">
         {heading}
         {colors.length ? (
@@ -524,6 +502,9 @@ export function OffersContent({
           </span>
         ) : null}
       </h2>
+      <div className="product-submeta">
+        <ProductCategoryLinks product={product} navigation={filterNavigation} />
+      </div>
       {product.identity_kind === "catalog" ? (
         <p className="offers-note">
           {product.shop_count}店舗 / {product.offer_count}件の在庫

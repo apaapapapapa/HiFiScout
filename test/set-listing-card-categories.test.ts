@@ -53,7 +53,6 @@ function render(value: DisplayProduct): string {
       product: value,
       favorite: false,
       shopName: () => "ハイファイ堂",
-      onManufacturer: () => undefined,
       onFavorite: () => undefined,
       onOffers: () => undefined,
       now: Date.parse("2026-08-28T00:00:00.000Z"),
@@ -69,8 +68,8 @@ test("a set card renders every direct category, in the order the API sent them",
     }),
   );
 
-  const dac = '<span class="category">DAC</span>';
-  const transport = '<span class="category">トランスポート</span>';
+  const dac = ">DAC</a>";
+  const transport = ">トランスポート</a>";
   assert.ok(markup.includes(dac));
   assert.ok(markup.includes(transport));
   assert.ok(markup.indexOf(dac) < markup.indexOf(transport));
@@ -85,21 +84,21 @@ test("ids without labels render nothing but the listing's own category", () => {
 
   assert.match(
     markup,
-    /<div class="product-submeta"><span class="category">トランスポート<\/span>/,
+    /<div class="product-submeta"><a [^>]*href="\/\?category=transport"[^>]*>トランスポート<\/a>/,
   );
-  assert.doesNotMatch(markup, />DAC<\/span>/);
+  assert.doesNotMatch(markup, />DAC<\/a>/);
 });
 
-test("a one-category card keeps the exact pre-set category markup", () => {
+test("a one-category card offers one category search link", () => {
   const markup = render(
     product({ direct_category_ids: ["transport"], direct_categories: ["トランスポート"] }),
   );
 
   assert.match(
     markup,
-    /<div class="product-submeta"><span class="category">トランスポート<\/span>/,
+    /<div class="product-submeta"><a [^>]*href="\/\?category=transport"[^>]*>トランスポート<\/a>/,
   );
-  assert.equal(markup.match(/class="category"/g)?.length, 1);
+  assert.equal(markup.match(/data-category-filter=/g)?.length, 1);
 });
 
 test("an old favorite without direct categories falls back to the legacy display category", () => {
@@ -107,10 +106,10 @@ test("an old favorite without direct categories falls back to the legacy display
 
   assert.match(
     markup,
-    /<div class="product-submeta"><span class="category">トランスポート<\/span>/,
+    /<div class="product-submeta"><a [^>]*href="\/\?category=transport"[^>]*>トランスポート<\/a>/,
   );
-  assert.doesNotMatch(markup, />DAC<\/span>/);
-  assert.equal(markup.match(/class="category"/g)?.length, 1);
+  assert.doesNotMatch(markup, />DAC<\/a>/);
+  assert.equal(markup.match(/data-category-filter=/g)?.length, 1);
 });
 
 /**
@@ -132,9 +131,9 @@ test("the permalink page shows the same categories as the card", () => {
   );
 
   for (const label of item.direct_categories ?? []) {
-    assert.ok(card.includes(`>${label}</span>`), `card must print ${label}`);
+    assert.ok(card.includes(`>${label}</a>`), `card must print ${label}`);
   }
-  assert.ok(permalink.includes("<p>DAC／トランスポート</p>"), "permalink must print both");
+  assert.match(permalink, />DAC<\/a>／<a [^>]*>トランスポート<\/a>/);
 });
 
 test("a single-product permalink keeps the one label it always had", () => {
@@ -149,6 +148,6 @@ test("a single-product permalink keeps the one label it always had", () => {
 
   // Scoped to the category element: the page also prints the seller's title, which names both
   // products, so a whole-page match would pass for the wrong reason.
-  assert.ok(permalink.includes("<p>トランスポート</p>"));
-  assert.ok(!permalink.includes("<p>トランスポート／DAC</p>"));
+  assert.match(permalink, /<p><a [^>]*>トランスポート<\/a><\/p>/);
+  assert.doesNotMatch(permalink, /<p><a [^>]*>トランスポート<\/a>／/);
 });

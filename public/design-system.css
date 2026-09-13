@@ -453,6 +453,28 @@ main {
   text-transform: inherit;
 }
 
+.product-filter-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: var(--hs-divider);
+  text-underline-offset: 3px;
+}
+
+.product-filter-link:hover {
+  text-decoration-color: currentColor;
+}
+
+.product-filter-link:focus-visible {
+  outline: 2px solid var(--hs-ink);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
 .card h2 {
   margin: 0 0 8px;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;

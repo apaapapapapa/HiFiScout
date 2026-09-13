@@ -89,6 +89,7 @@ test("SSR product HTML exposes factual detail with canonical OGP and noindex", (
   assert.match(html, /property="og:description"/);
   assert.match(html, /name="twitter:card" content="summary"/);
   assert.match(html, /LUX&amp;MAN/);
+  assert.match(html, /href="\/\?manufacturer=LUX%26MAN"/);
   assert.match(html, /D&lt;10X&gt;&quot;/);
   assert.match(html, /D-10X &lt;展示品&gt;/);
   assert.match(html, /660,000円/);
@@ -96,6 +97,30 @@ test("SSR product HTML exposes factual detail with canonical OGP and noindex", (
   assert.match(html, /在庫状態未確認/);
   assert.doesNotMatch(html, /javascript:alert/);
   assert.doesNotMatch(html, /<img/i);
+});
+
+test("SSR category links retain ID-label pairing for sets and support older primary categories", () => {
+  const product = {
+    ...DETAIL.product,
+    primary_category_id: "AMP.INTEGRATED",
+    category: "プリメインアンプ",
+  };
+  const legacyHtml = renderProductPermalinkHtml({ ...DETAIL, product }, "https://example.test");
+  assert.match(legacyHtml, /href="\/\?category=AMP.INTEGRATED"/);
+  const setHtml = renderProductPermalinkHtml(
+    {
+      ...DETAIL,
+      product: {
+        ...product,
+        direct_category_ids: ["AMP.INTEGRATED", "PRC.DAC"],
+        direct_categories: ["", "DAC", "未確認のカテゴリ"],
+      },
+    },
+    "https://example.test",
+  );
+  assert.match(setHtml, /href="\/\?category=PRC.DAC"[^>]*>DAC<\/a>/);
+  assert.doesNotMatch(setHtml, /href="\/\?category=AMP.INTEGRATED"/);
+  assert.doesNotMatch(setHtml, /href="\/\?category=undefined"/);
 });
 
 test("unknown permalink response is a usable no-store 404 without the SPA shell", async () => {
