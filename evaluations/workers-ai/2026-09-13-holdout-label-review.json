@@ -1,0 +1,342 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-09-13T08:18:06.240Z",
+  "authoringBaseCommit": "f384c6cafcb0e8d9330b413b1696929526510733",
+  "priorCorpus": {
+    "version": 1,
+    "digest": "d3ec5e12fb9e6fb622e636d8a9ee6277109594897aa817a51c4ae2a47f157a3f"
+  },
+  "corpusVersion": 2,
+  "corpusDigest": "df973d685aa305b1cf5a4fd86cb7db85d0ac1766347b56cce068779644bfe426",
+  "review": {
+    "actor": "Codex",
+    "method": "Primary-source adjudication before any holdout provider response. The initial input-only pass hid expected labels; fixture implementation was inspected after source findings.",
+    "modelResponsesSeen": false,
+    "independentFromModelResponses": true,
+    "independentHumanReview": false,
+    "status": "source-reviewed",
+    "scope": "Selection among supplied synthetic catalog alternatives; not official verification of every synthetic alternative, population accuracy, or permission to activate inference."
+  },
+  "changesBeforeInference": [
+    {
+      "caseIds": [
+        "holdout-8-same",
+        "holdout-8-distinct"
+      ],
+      "previousTarget": "DP-200USB-K",
+      "previousAlternative": "DP-200USB",
+      "reason": "The manufacturer presents finishes under DP-200USB. An implicit color alias is not a reliable negative label. Both cases now use the official base model, with DP-300F as the different-model alternative.",
+      "originalCasesRetainedAt": "f384c6cafcb0e8d9330b413b1696929526510733:test/fixtures/ai-catalog-holdout.ts"
+    },
+    {
+      "caseIds": [
+        "holdout-9-same",
+        "holdout-9-distinct"
+      ],
+      "previousTarget": "SA-10 SE",
+      "previousAlternative": "SA-10",
+      "reason": "The repository regression tested preserving arbitrary suffixes; it did not establish the existence of SA-10 SE. Use officially documented SA-10 as positive and an explicitly synthetic SE alternative as negative.",
+      "originalCasesRetainedAt": "f384c6cafcb0e8d9330b413b1696929526510733:test/fixtures/ai-catalog-holdout.ts"
+    }
+  ],
+  "sources": [
+    {
+      "id": "yamaha-cds3000",
+      "url": "https://uk.yamaha.com/en/audio/home-audio/products/hifi-components/cd-s3000/",
+      "accessedOn": "2026-09-13",
+      "kind": "manufacturer-primary-source",
+      "finding": "Yamaha names CD-S3000 and lists its supplied remote control. Included accessories do not change the sale object."
+    },
+    {
+      "id": "mcintosh-mc275",
+      "url": "https://www.mcintoshlabs.com/products/amplifiers/MC275B",
+      "accessedOn": "2026-09-13",
+      "kind": "manufacturer-primary-source",
+      "finding": "McIntosh describes the current MC275 as the sixth generation. A bare MC275 identifier does not specify that generation."
+    },
+    {
+      "id": "luxman-c10x",
+      "url": "https://www.luxman.co.jp/product/c-10x",
+      "accessedOn": "2026-09-13",
+      "kind": "manufacturer-primary-source",
+      "finding": "The manufacturer identifies the control amplifier as C-10X; the X is part of its model designation."
+    },
+    {
+      "id": "accuphase-e800",
+      "url": "https://www.accuphase.co.jp/model/e-800.html",
+      "accessedOn": "2026-09-13",
+      "kind": "manufacturer-primary-source",
+      "finding": "The manufacturer identifies E-800. The negative SE suffix is a synthetic candidate mutation, not a claim that E-800 SE is an official product."
+    },
+    {
+      "id": "bw-805d4-signature",
+      "url": "https://www.bowerswilkins.com/en-au/product/loudspeakers/805-d4-signature/300679.html",
+      "accessedOn": "2026-09-13",
+      "kind": "manufacturer-primary-source",
+      "finding": "The manufacturer identifies 805 D4 Signature and describes its upgraded crossover. Signature is not just discarded display text."
+    },
+    {
+      "id": "marklevinson-no326s",
+      "url": "https://www.marklevinson.com/support/support-surround-sound-preamplifiers/NO326S.html",
+      "accessedOn": "2026-09-13",
+      "kind": "manufacturer-primary-source",
+      "finding": "The manufacturer names No.326S; the trailing S is retained. No.326 is a synthetic supplied alternative with that suffix removed."
+    },
+    {
+      "id": "luxman-l507z",
+      "url": "https://www.luxman.co.jp/product/l-507z",
+      "accessedOn": "2026-09-13",
+      "kind": "manufacturer-primary-source",
+      "finding": "The manufacturer identifies L-507Z. The official product index separately lists L-509Z."
+    },
+    {
+      "id": "denon-dp200usb",
+      "url": "https://www.denon.com/ja-jp/product/turntables/dp-200usb/DP200USBJP.html",
+      "accessedOn": "2026-09-13",
+      "kind": "manufacturer-primary-source",
+      "finding": "The official model is DP-200USB with black and premium-silver finishes. A bare model versus a color-coded SKU is an ambiguous negative, so v2 instead supplies a different model number, DP-300F."
+    },
+    {
+      "id": "marantz-sa10",
+      "url": "https://manuals.marantz.com/SA10/EU/EN/index.php",
+      "accessedOn": "2026-09-13",
+      "kind": "manufacturer-primary-source",
+      "finding": "The official manual names SA-10. It does not substantiate the old fixture as an officially verified SA-10 SE product; v2 uses SA-10 as positive and keeps the added SE as an explicitly synthetic alternative."
+    },
+    {
+      "id": "esoteric-n01xd-se",
+      "url": "https://www.esoteric.jp/jp/product/n-01xd_se/top",
+      "accessedOn": "2026-09-13",
+      "kind": "manufacturer-primary-source",
+      "finding": "The manufacturer identifies N-01XD SE; the SE suffix is retained when matching the supplied catalog model."
+    }
+  ],
+  "cases": [
+    {
+      "id": "holdout-1-same",
+      "family": "yamaha/CD-S3000",
+      "fingerprint": "ae3f98ad4ed8137ff85f15aa12158faebeb0cabdd32242f727d6e9788a1868e6",
+      "expectedCatalogProductId": 1001,
+      "sourceIds": [
+        "yamaha-cds3000"
+      ],
+      "rationale": "Exact CD-S3000 identity; included remote control is not a separate sale object.",
+      "evidenceScope": "official-model-with-synthetic-snapshot"
+    },
+    {
+      "id": "holdout-1-distinct",
+      "family": "yamaha/CD-S3000",
+      "fingerprint": "2471833cc4c83dc9bfdebff7453b6d073d1a63b5bb0ec4d36ebcee83852b31f2",
+      "expectedCatalogProductId": null,
+      "sourceIds": [
+        "yamaha-cds3000"
+      ],
+      "rationale": "3000 and 2000 identify different model numbers.",
+      "evidenceScope": "synthetic-counterexample"
+    },
+    {
+      "id": "holdout-2-same",
+      "family": "mcintosh/MC275MK6",
+      "fingerprint": "ddb9e8d493fde3356da23bef8265f90a35040f503899c45c44d7f31efef00b31",
+      "expectedCatalogProductId": 1002,
+      "sourceIds": [
+        "mcintosh-mc275"
+      ],
+      "rationale": "The slash in MC275/MK6 is formatting; both supplied names retain generation 6.",
+      "evidenceScope": "official-model-with-synthetic-snapshot"
+    },
+    {
+      "id": "holdout-2-distinct",
+      "family": "mcintosh/MC275MK6",
+      "fingerprint": "63cfbb1258e1df09ce17298349bd6dd6772eb5df6af1ae1744f6fb061274f9e5",
+      "expectedCatalogProductId": null,
+      "sourceIds": [
+        "mcintosh-mc275"
+      ],
+      "rationale": "The alternative omits generation 6; the snapshot provides no generation-specific alias.",
+      "evidenceScope": "synthetic-counterexample"
+    },
+    {
+      "id": "holdout-3-same",
+      "family": "luxman/C-10X",
+      "fingerprint": "493f30d0b4a660b37d20404fe6bbf7687ffb190176bf5e6a93dd58f2ee6ffe01",
+      "expectedCatalogProductId": 1003,
+      "sourceIds": [
+        "luxman-c10x"
+      ],
+      "rationale": "Exact C-10X identity.",
+      "evidenceScope": "official-model-with-synthetic-snapshot"
+    },
+    {
+      "id": "holdout-3-distinct",
+      "family": "luxman/C-10X",
+      "fingerprint": "b74c8f83bd31336f69b9cd76852ffc4a09fd9cc49a07a212a47b3eb72786c046",
+      "expectedCatalogProductId": null,
+      "sourceIds": [
+        "luxman-c10x"
+      ],
+      "rationale": "The candidate drops the X from the model.",
+      "evidenceScope": "synthetic-counterexample"
+    },
+    {
+      "id": "holdout-4-same",
+      "family": "accuphase/E-800",
+      "fingerprint": "ea359a5542cbf896e68f8937dc4d4a15867259f47b69cef2c7aa0c695555b63c",
+      "expectedCatalogProductId": 1004,
+      "sourceIds": [
+        "accuphase-e800"
+      ],
+      "rationale": "Exact E-800 identity; seller negotiation status is unrelated to identity.",
+      "evidenceScope": "official-model-with-synthetic-snapshot"
+    },
+    {
+      "id": "holdout-4-distinct",
+      "family": "accuphase/E-800",
+      "fingerprint": "e3b6c5e4db15d1e59fd5c497c23c5787e01d6ccb7ce799e0a9bb590847090f47",
+      "expectedCatalogProductId": null,
+      "sourceIds": [
+        "accuphase-e800"
+      ],
+      "rationale": "The candidate invents an SE suffix absent from the sale evidence.",
+      "evidenceScope": "synthetic-counterexample"
+    },
+    {
+      "id": "holdout-5-same",
+      "family": "bowers-wilkins/805D4 Signature",
+      "fingerprint": "46f0cf5349a32d92a81e309f2e1f56bbbf4220895a1edc2f5d1fdb75d0c79a7d",
+      "expectedCatalogProductId": 1005,
+      "sourceIds": [
+        "bw-805d4-signature"
+      ],
+      "rationale": "Whitespace in 805 D4 is formatting; both names retain Signature.",
+      "evidenceScope": "official-model-with-synthetic-snapshot"
+    },
+    {
+      "id": "holdout-5-distinct",
+      "family": "bowers-wilkins/805D4 Signature",
+      "fingerprint": "31657749bf8e349aff38d4c71f1b1fdd32498275b59703d3764ed80d02d69c51",
+      "expectedCatalogProductId": null,
+      "sourceIds": [
+        "bw-805d4-signature"
+      ],
+      "rationale": "The candidate omits the explicit Signature edition.",
+      "evidenceScope": "synthetic-counterexample"
+    },
+    {
+      "id": "holdout-6-same",
+      "family": "mark-levinson/No.326S",
+      "fingerprint": "07b3c076d0ead9fdc0e7808bc5ef131ba254c9f34bc73558a702fee0408a4ecc",
+      "expectedCatalogProductId": 1006,
+      "sourceIds": [
+        "marklevinson-no326s"
+      ],
+      "rationale": "Exact No.326S identity.",
+      "evidenceScope": "official-model-with-synthetic-snapshot"
+    },
+    {
+      "id": "holdout-6-distinct",
+      "family": "mark-levinson/No.326S",
+      "fingerprint": "aef18deb786a408c655cc9de72857183127939bdc4bdbda549b225fd8e7e72d4",
+      "expectedCatalogProductId": null,
+      "sourceIds": [
+        "marklevinson-no326s"
+      ],
+      "rationale": "The candidate drops the S; no authoritative alias is supplied.",
+      "evidenceScope": "synthetic-counterexample"
+    },
+    {
+      "id": "holdout-7-same",
+      "family": "luxman/L-507Z",
+      "fingerprint": "9fa74cbb7a573b5c10c0ec6dd9a54df286bd6c0782f6ba8f389c82c308d2f40e",
+      "expectedCatalogProductId": 1007,
+      "sourceIds": [
+        "luxman-l507z"
+      ],
+      "rationale": "Exact L-507Z identity; an included box does not change the device.",
+      "evidenceScope": "official-model-with-synthetic-snapshot"
+    },
+    {
+      "id": "holdout-7-distinct",
+      "family": "luxman/L-507Z",
+      "fingerprint": "deb5ca75f8ed9b18997c07e01e2bdd81fa209bc68a91c4231f763d2bf384f7b9",
+      "expectedCatalogProductId": null,
+      "sourceIds": [
+        "luxman-l507z"
+      ],
+      "rationale": "507 and 509 are different model numbers.",
+      "evidenceScope": "synthetic-counterexample"
+    },
+    {
+      "id": "holdout-8-same",
+      "family": "denon/DP-200USB",
+      "fingerprint": "1b3cc6e5c82575e30c671c7f48ece2e6e3770e4aa54cb108ec45bf3fec19f602",
+      "expectedCatalogProductId": 1008,
+      "sourceIds": [
+        "denon-dp200usb"
+      ],
+      "rationale": "Exact official DP-200USB base model, without an unresolved color alias.",
+      "evidenceScope": "official-model-with-synthetic-snapshot"
+    },
+    {
+      "id": "holdout-8-distinct",
+      "family": "denon/DP-200USB",
+      "fingerprint": "a2d7087f776f501704d5ef6fe76ad8a6db0295e91a9378202eca773b095bf9fd",
+      "expectedCatalogProductId": null,
+      "sourceIds": [
+        "denon-dp200usb"
+      ],
+      "rationale": "DP-300F and DP-200USB are different supplied model identifiers.",
+      "evidenceScope": "synthetic-counterexample"
+    },
+    {
+      "id": "holdout-9-same",
+      "family": "marantz/SA-10",
+      "fingerprint": "9f2bacb8d5ab48c9f7ef5dfa0b2373f546f763ac29975f21c2849c26cec6a96e",
+      "expectedCatalogProductId": 1009,
+      "sourceIds": [
+        "marantz-sa10"
+      ],
+      "rationale": "Exact official SA-10 model.",
+      "evidenceScope": "official-model-with-synthetic-snapshot"
+    },
+    {
+      "id": "holdout-9-distinct",
+      "family": "marantz/SA-10",
+      "fingerprint": "3f08014c611d2ab27df4ada1d76a00eb3fb3795049c5e0e3101af5cb41108296",
+      "expectedCatalogProductId": null,
+      "sourceIds": [
+        "marantz-sa10"
+      ],
+      "rationale": "An SE suffix cannot be added from evidence that only says SA-10; the negative is synthetic.",
+      "evidenceScope": "synthetic-counterexample"
+    },
+    {
+      "id": "holdout-10-same",
+      "family": "esoteric/N-01XD SE",
+      "fingerprint": "b45c0111a3ed0699a5c054548fe8804246f4d4065044f18c8091a0e049c4f1ab",
+      "expectedCatalogProductId": 1010,
+      "sourceIds": [
+        "esoteric-n01xd-se"
+      ],
+      "rationale": "Exact N-01XD SE identity.",
+      "evidenceScope": "official-model-with-synthetic-snapshot"
+    },
+    {
+      "id": "holdout-10-distinct",
+      "family": "esoteric/N-01XD SE",
+      "fingerprint": "d8d60f8b941a332d053eef71a0e32503271d385e294fe6c2fe528a452548b566",
+      "expectedCatalogProductId": null,
+      "sourceIds": [
+        "esoteric-n01xd-se"
+      ],
+      "rationale": "The candidate drops the explicit SE edition.",
+      "evidenceScope": "synthetic-counterexample"
+    }
+  ],
+  "limitations": [
+    "One assistant performed the source review; no independent human sign-off is claimed.",
+    "Ten paired families are a small curated corpus. Cases within a family are correlated.",
+    "The complete policy/corpus is frozen before model measurement; a later policy change makes this a regression corpus, not a fresh holdout.",
+    "Seller-like titles and catalog IDs are fixtures. The data is not a random sample of current production listings."
+  ]
+}

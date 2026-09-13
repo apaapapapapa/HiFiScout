@@ -166,9 +166,13 @@ with console and network evidence; an image alone does not prove an interaction 
 
 `vp run harness ai-template .generated/ai-recording.json` writes a new, intentionally incomplete
 recording template for 20 cases across 10 product families outside the TAD/LS50 development canary.
-Positive spellings come from existing shop/identity regressions; negative candidate mutations are
-synthetic counterexamples. The versioned labels carry their source and remain pending independent
-review. The existing live-canary record and policy approval are unchanged.
+Positive spellings come from shop/identity regressions and manufacturer sources; negative candidate
+mutations are synthetic counterexamples. Corpus v2's
+[source review](../../evaluations/workers-ai/2026-09-13-holdout-label-review.json) binds every label
+to its snapshot and records changes made before model measurement: an ambiguous DENON color alias
+was replaced by a different-model case, and the unverified SA-10 SE positive became official SA-10.
+The review is independent of model responses and explicitly does not claim a separate human
+reviewer. The existing live-canary record and policy approval are unchanged.
 
 The template binds each runtime-built request to its snapshot fingerprint, corpus digest and exact
 policy key. Fill model-required `attempts` with recorded `model`, nullable `requestId`, `requestedAt`,

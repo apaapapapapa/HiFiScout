@@ -1,14 +1,22 @@
 import type { AiEvaluationCase } from "../../src/ai-suggestions/evaluation.js";
 
-export const AI_HOLDOUT_VERSION = 1;
+export const AI_HOLDOUT_VERSION = 2;
+export const AI_HOLDOUT_LABEL_REVIEW =
+  "evaluations/workers-ai/2026-09-13-holdout-label-review.json";
 export interface AiHoldoutCase extends AiEvaluationCase {
   family: string;
-  provenance: { sourceFile: string; rationale: string; labelReview: "pending" };
+  provenance: {
+    sourceFile: string;
+    rationale: string;
+    labelReview: "source-reviewed";
+    reviewRecord: string;
+  };
 }
 
 // Distinct product families from the TAD/LS50 development canary. Positive spellings are adapted
 // from repository regressions; negatives deliberately mutate the candidate, not real seller data.
-// These labels need independent review before they can support a live-model approval.
+// The linked review was frozen before live responses. It verifies the selection task against
+// primary sources, not population accuracy or an independent human approval.
 const families = [
   [
     "yamaha",
@@ -59,22 +67,8 @@ const families = [
     "L-509Z",
     "test/model-resolver-shop-inputs.test.ts",
   ],
-  [
-    "denon",
-    "DP-200USB-K",
-    "DP-200USB-K",
-    "DENON DP-200USB-K",
-    "DP-200USB",
-    "test/model-resolver-shop-inputs.test.ts",
-  ],
-  [
-    "marantz",
-    "SA-10 SE",
-    "SA-10 SE",
-    "MARANTZ SA-10 SE",
-    "SA-10",
-    "test/model-resolver-shop-inputs.test.ts",
-  ],
+  ["denon", "DP-200USB", "DP-200USB", "DENON DP-200USB", "DP-300F", AI_HOLDOUT_LABEL_REVIEW],
+  ["marantz", "SA-10", "SA-10", "MARANTZ SA-10", "SA-10 SE", AI_HOLDOUT_LABEL_REVIEW],
   [
     "esoteric",
     "N-01XD SE",
@@ -93,7 +87,8 @@ export const aiCatalogHoldoutCases: AiHoldoutCase[] = families.flatMap(
       expectedCatalogProductId: counterexample ? null : 1001 + index,
       provenance: {
         sourceFile,
-        labelReview: "pending" as const,
+        labelReview: "source-reviewed" as const,
+        reviewRecord: AI_HOLDOUT_LABEL_REVIEW,
         rationale: counterexample
           ? "Candidate changes a product number or identity-bearing suffix; abstention is expected"
           : "Same product spelling with seller presentation retained",
@@ -108,7 +103,7 @@ export const aiCatalogHoldoutCases: AiHoldoutCase[] = families.flatMap(
           rawModels: [model],
           categoryIds: [],
           rejectedBy: ["unresolved_model"],
-          revision: "holdout-v1",
+          revision: `holdout-v${AI_HOLDOUT_VERSION}`,
         },
         candidates: [
           {
@@ -116,7 +111,7 @@ export const aiCatalogHoldoutCases: AiHoldoutCase[] = families.flatMap(
             manufacturerId,
             model: counterexample ? negative : canonical,
             categoryIds: [],
-            revision: "holdout-v1",
+            revision: `holdout-v${AI_HOLDOUT_VERSION}`,
           },
         ],
       },
