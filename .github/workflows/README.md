@@ -59,6 +59,12 @@ Production resources are reconciled by `scripts/lib/production-resources.ts`: an
 
 ## Post-deploy verification
 
+Automatic public E2E always uses the configured production URL. Alternate E2E URLs remain available
+for manual runs. Successful automatic public E2E and admin deployment publish a 90-day
+`post-deploy-receipt` artifact binding the verified source SHA, parent Deploy run, downstream
+run/attempt and target URL. The development harness checks these receipts before reporting delivery;
+manual successes or old receipts cannot replace a failed/missing automatic production verification.
+
 Production operational health checks are temporarily paused at the operator's request.
 The `data-platform` and `knowledge-catalog` jobs have unconditional false job guards, so neither
 post-deploy nor manual workflow runs execute their queries or publish health statuses.
