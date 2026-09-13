@@ -10,6 +10,38 @@ import { syncProductSearchEntities } from "../src/db/product-search-entity-repos
 import { accountReads } from "../src/db/read-accounting.js";
 import { AT, database } from "./helpers/d1-write-budget.js";
 
+function previousMultiSeedExactPeerIdsSql(seedCount: number): string {
+  const placeholders = Array.from({ length: seedCount }, () => "?").join(",");
+  return `
+    WITH seed_identities AS MATERIALIZED (
+      SELECT DISTINCT canonical_manufacturer_id, normalized_model
+      FROM products
+      WHERE id IN (${placeholders})
+        AND model_resolution_status = 'resolved'
+        AND COALESCE(canonical_manufacturer_id, '') <> ''
+        AND COALESCE(normalized_model, '') <> ''
+    ),
+    compatible_identities AS MATERIALIZED (
+      SELECT seed.canonical_manufacturer_id, seed.normalized_model
+      FROM seed_identities seed
+      CROSS JOIN products category_peer INDEXED BY idx_products_exact_identity
+        ON ${sameExactIdentitySql("seed", "category_peer")}
+      WHERE ${eligibleExactIdentitySql("category_peer")}
+      GROUP BY seed.canonical_manufacturer_id, seed.normalized_model
+      HAVING COUNT(DISTINCT CASE
+        WHEN category_peer.primary_category_id NOT IN ('other', 'unclassified')
+          THEN category_peer.primary_category_id
+        ELSE NULL
+      END) <= 1
+    )
+    SELECT peer.id AS id
+    FROM compatible_identities seed
+    CROSS JOIN products peer INDEXED BY idx_products_exact_identity
+      ON ${sameExactIdentitySql("seed", "peer")}
+    WHERE ${eligibleExactIdentitySql("peer")}
+  `;
+}
+
 test("exact peer lookup stays identity-scoped as unrelated categories and listings grow", async () => {
   const { db, dispose } = await database();
   try {
@@ -186,6 +218,7 @@ test("multi-seed exact peer lookup evaluates each identity once", async () => {
 
     const seeds = Array.from({ length: 20 }, (_, index) => index + 1);
     const placeholders = seeds.map(() => "?").join(",");
+    const previousMultiSeedSql = previousMultiSeedExactPeerIdsSql(seeds.length);
     const legacySql = `
       SELECT DISTINCT peer.id AS id
       FROM products seed
@@ -199,6 +232,16 @@ test("multi-seed exact peer lookup evaluates each identity once", async () => {
         AND ${compatibleExactIdentityCategoriesSql("peer")}
     `;
     const expected = Array.from({ length: 40 }, (_, index) => index + 1);
+
+    const previousMultiSeed = accountReads(db);
+    const previousMultiSeedRows = await previousMultiSeed.db
+      .prepare(previousMultiSeedSql)
+      .bind(...seeds)
+      .all<{ id: number }>();
+    assert.deepEqual(
+      (previousMultiSeedRows.results || []).map((row) => row.id).sort((a, b) => a - b),
+      expected,
+    );
 
     const legacy = accountReads(db);
     const legacyRows = await legacy.db
@@ -225,12 +268,17 @@ test("multi-seed exact peer lookup evaluates each identity once", async () => {
         seedCount: seeds.length,
         peerCount: expected.length,
         legacyRowsRead: legacy.rowsRead(),
+        previousMultiSeedRowsRead: previousMultiSeed.rowsRead(),
         deduplicatedRowsRead: measured.rowsRead(),
       }),
     );
     assert.ok(
       measured.rowsRead() * 10 < legacy.rowsRead(),
       `identity-deduplicated ${measured.rowsRead()} vs repeated ${legacy.rowsRead()} rows`,
+    );
+    assert.ok(
+      measured.rowsRead() < previousMultiSeed.rowsRead(),
+      `materialized peers ${measured.rowsRead()} vs repeated eligibility ${previousMultiSeed.rowsRead()} rows`,
     );
 
     await db
@@ -246,6 +294,81 @@ test("multi-seed exact peer lookup evaluates each identity once", async () => {
       .all<{ id: number }>();
     assert.deepEqual(legacyContradiction.results, []);
     assert.deepEqual(deduplicatedContradiction.results, []);
+  } finally {
+    await dispose();
+  }
+}, 60_000);
+
+test("multi-seed exact peer lookup scans each distinct identity only once", async () => {
+  const { db, dispose } = await database();
+  try {
+    await db
+      .prepare(`
+        WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 80)
+        INSERT INTO products(id, shop_key, source_id, canonical_manufacturer_id, model,
+          normalized_model, model_resolution_status, primary_category_id, title, source_url,
+          first_seen_at, last_seen_at, last_changed_at)
+        SELECT i, CASE WHEN i <= 40 THEN 'seed-shop' ELSE 'peer-shop' END, CAST(i AS TEXT),
+          'maker-' || CASE WHEN i <= 40 THEN i ELSE i - 40 END,
+          'MODEL-' || CASE WHEN i <= 40 THEN i ELSE i - 40 END,
+          'MODEL-' || CASE WHEN i <= 40 THEN i ELSE i - 40 END,
+          'resolved', 'AMP.PRE', 'exact identity fixture',
+          'https://example.test/' || i, '${AT}', '${AT}', '${AT}' FROM n
+      `)
+      .run();
+    await db
+      .prepare(`
+        WITH RECURSIVE n(i) AS (SELECT 81 UNION ALL SELECT i + 1 FROM n WHERE i < 10080)
+        INSERT INTO products(id, shop_key, source_id, canonical_manufacturer_id, model,
+          normalized_model, model_resolution_status, primary_category_id, title, source_url,
+          first_seen_at, last_seen_at, last_changed_at)
+        SELECT i, 'unrelated', CAST(i AS TEXT), 'unrelated-maker', 'UNRELATED-' || i,
+          'UNRELATED-' || i, 'resolved', 'AMP.INTEGRATED', 'unrelated',
+          'https://example.test/' || i, '${AT}', '${AT}', '${AT}' FROM n
+      `)
+      .run();
+
+    const seeds = Array.from({ length: 40 }, (_, index) => index + 1);
+    const expected = Array.from({ length: 80 }, (_, index) => index + 1);
+    const previous = accountReads(db);
+    const previousRows = await previous.db
+      .prepare(previousMultiSeedExactPeerIdsSql(seeds.length))
+      .bind(...seeds)
+      .all<{ id: number }>();
+    const measured = accountReads(db);
+    const rows = await measured.db
+      .prepare(exactIdentityPeerIdsSql(seeds.length))
+      .bind(...seeds)
+      .all<{ id: number }>();
+
+    assert.deepEqual(
+      (previousRows.results || []).map((row) => row.id).sort((a, b) => a - b),
+      expected,
+    );
+    assert.deepEqual(
+      (rows.results || []).map((row) => row.id).sort((a, b) => a - b),
+      expected,
+    );
+    assert.equal(previous.rowsWritten(), 0);
+    assert.equal(measured.rowsWritten(), 0);
+    assert.ok(
+      measured.rowsRead() < previous.rowsRead(),
+      `one-pass ${measured.rowsRead()} vs two-pass ${previous.rowsRead()} rows`,
+    );
+    assert.ok(
+      measured.rowsRead() < 1_000,
+      `${measured.rowsRead()} rows with 10,000 unrelated rows`,
+    );
+    console.log(
+      JSON.stringify({
+        event: "distinct_exact_identity_peer_read_budget",
+        seedCount: seeds.length,
+        peerCount: expected.length,
+        unrelatedCount: 10_000,
+        previousRowsRead: previous.rowsRead(),
+        onePassRowsRead: measured.rowsRead(),
+      }),
+    );
   } finally {
     await dispose();
   }
