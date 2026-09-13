@@ -22,6 +22,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+      - uses: ./.github/actions/change-scope
+        id: scope
       - uses: ./.github/actions/setup-node-deps
       - name: Fingerprint schema documentation inputs
         id: db-docs
@@ -44,6 +46,7 @@ jobs:
         id: pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
       - name: Validate module dependencies
+        if: steps.scope.outputs.markdown-only != 'true'
         run: vp run docs:architecture:check
       - name: Build developer documentation
         run: vp run docs:build
