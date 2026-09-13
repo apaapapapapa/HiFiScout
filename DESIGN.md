@@ -71,6 +71,12 @@ Search is the dominant control. Desktop filters may use compact contained contro
 
 Active filters should be compact pills. Controls must retain visible keyboard focus and accessible labels even when a reference style is visually minimal.
 
+Applied search conditions stay visible in a sticky bar while browsing results. Keep the pills on
+one horizontally scrollable row, with individual and full reset actions available in place; staged
+detail edits do not appear until applied. On mobile and tablet, the bar sits below the existing
+search header, using its measured height even when equipment shortcuts expand or text wraps.
+Result-page navigation leaves the first product below both sticky surfaces.
+
 Manufacturer names and category labels on results, details and comparisons link to the matching
 structured filter. Selecting one replaces that filter and returns to the first results page while
 retaining the other search conditions. Each category in a set uses its paired category ID; an unknown

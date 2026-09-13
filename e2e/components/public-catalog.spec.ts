@@ -62,7 +62,7 @@ const results = { items: [item], hasMore: false, nextCursor: null, totalCount: 1
 
 async function mockCatalog(
   page: Page,
-  options: { failMeta?: boolean; pauseSearch?: Promise<void> } = {},
+  options: { failMeta?: boolean; pauseSearch?: Promise<void>; results?: typeof results } = {},
 ) {
   const seen = { meta: 0, searches: [] as URL[], detail: 0, history: 0 };
   await page.route(
@@ -83,7 +83,7 @@ async function mockCatalog(
         return json(
           url.searchParams.get("q") === "zero"
             ? { ...results, items: [], totalCount: 0, totalPages: 0 }
-            : results,
+            : (options.results ?? results),
         );
       }
       if (url.pathname.startsWith("/api/product-search/")) {
@@ -804,6 +804,99 @@ test("long names and seven-digit prices fit across filter breakpoints", async ({
     await page.screenshot({ path: testInfo.outputPath(`catalog-${width}.png`), fullPage: true });
   }
 });
+
+for (const width of [390, 1280]) {
+  test(`applied conditions stay visible and usable while scrolling at ${width}px`, async ({
+    page,
+    mount,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    const items = Array.from({ length: 15 }, (_, index) =>
+      product({ key: `c-${index + 1}`, catalog_product_id: index + 1 }),
+    );
+    const seen = await mockCatalog(page, {
+      results: { items, hasMore: true, nextCursor: null, totalCount: 30, totalPages: 2 },
+    });
+    await mount("frontend/public-app/Default");
+    await expect(page.locator(".card")).toHaveCount(items.length);
+    await page.evaluate(() => {
+      history.replaceState(
+        null,
+        "",
+        "/?q=LUXMAN&category=ANA.TAPE&manufacturer=LUXMAN&manufacturer=Accuphase&shop=shop-a&minPrice=50000&maxPrice=120000&newOnly=true&priceDropped=true",
+      );
+      dispatchEvent(new PopStateEvent("popstate"));
+    });
+    const bar = page.getByRole("region", { name: "現在の検索条件", exact: true });
+    await expect(bar).toContainText("テープデッキ");
+    await expect(bar).toContainText("検索: LUXMAN");
+    if (width > 1100) {
+      await page.locator("#maxPrice").fill("130000");
+      await expect(bar.locator('[data-clear-filter="maxPrice"]')).toContainText("120,000");
+      await expect(bar).not.toContainText("130,000");
+    }
+    await page.evaluate(() => scrollTo(0, 1400));
+    const expectPinned = async (mobile: boolean) => {
+      await expect
+        .poll(() =>
+          bar.evaluate((element, belowSearch) => {
+            const search = document.querySelector(".search-shell")!;
+            const expectedTop = belowSearch ? search.getBoundingClientRect().bottom : 0;
+            return Math.abs(element.getBoundingClientRect().top - expectedTop);
+          }, mobile),
+        )
+        .toBeLessThan(2);
+      await expect(bar).toBeInViewport({ ratio: 1 });
+      const box = await bar.boundingBox();
+      expect(box!.height).toBeLessThan(90);
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+        .toBe(true);
+    };
+    await expectPinned(width <= 1100);
+    if (width <= 1100) {
+      await page.locator(".catalog-shortcuts > details > summary").click();
+      await expectPinned(true);
+      await page.locator(".catalog-shortcuts > details > summary").click();
+      await page.setViewportSize({ width: 900, height: 900 });
+      await expectPinned(true);
+      await page.setViewportSize({ width: 320, height: 900 });
+      await expectPinned(true);
+      await page.setViewportSize({ width: 1280, height: 900 });
+      await expectPinned(false);
+      await page.setViewportSize({ width, height: 900 });
+      await expectPinned(true);
+    }
+    await page.screenshot({ path: testInfo.outputPath(`sticky-conditions-${width}.png`) });
+
+    // Keyboard focus scrolls offscreen chips into the single-row strip without losing the page.
+    const category = bar.locator('[data-clear-filter="category"]');
+    await category.focus();
+    await expect(category).toBeInViewport({ ratio: 1 });
+    await category.press("Enter");
+    await expect.poll(() => seen.searches.at(-1)?.searchParams.has("category")).toBe(false);
+    expect(seen.searches.at(-1)?.searchParams.getAll("manufacturer")).toEqual([
+      "Accuphase",
+      "LUXMAN",
+    ]);
+    await expectPinned(width <= 1100);
+
+    await page.getByRole("button", { name: "2ページ目", exact: true }).click();
+    await expect
+      .poll(() =>
+        page.locator("#products").evaluate((element) => {
+          const header = document.querySelector(".active-filter-bar")!;
+          return Math.abs(
+            element.getBoundingClientRect().top - header.getBoundingClientRect().bottom - 12,
+          );
+        }),
+      )
+      .toBeLessThan(2);
+    await bar.getByRole("button", { name: "すべて解除", exact: true }).click();
+    await expect(bar.locator("[data-clear-filter]")).toHaveCount(0);
+    await expect(bar).toContainText("絞り込み条件なし");
+  });
+}
 
 test("manufacturer candidates share Japanese aliases and keep changes staged", async ({
   page,

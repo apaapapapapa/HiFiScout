@@ -53,6 +53,7 @@ import {
   sameFilters,
 } from "./public-ui-state.js";
 import { useFilterSheet } from "./use-filter-sheet.js";
+import { useSearchHeaderLayout } from "./use-search-header-layout.js";
 import { FeedSubscription } from "./feed-subscription.js";
 import { FavoriteWatch } from "./watch-changes-ui.js";
 import {
@@ -589,6 +590,10 @@ export function PublicApp() {
   const bootedRef = useRef(false);
   const inputTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const productsRef = useRef<HTMLElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  const searchRef = useRef<HTMLElement>(null);
+  const conditionsRef = useRef<HTMLElement>(null);
+  useSearchHeaderLayout(mainRef, searchRef, conditionsRef);
   const offersDialogRef = useRef<HTMLDialogElement>(null);
   const historyDialogRef = useRef<HTMLDialogElement>(null);
 
@@ -1106,9 +1111,15 @@ export function PublicApp() {
     (page: number) => {
       if (loading || page <= 0 || page > totalPagesRef.current || page === currentPageRef.current)
         return;
-      void loadProducts(filtersRef.current, { page }).then(() =>
-        productsRef.current?.scrollIntoView({ block: "start", behavior: "smooth" }),
-      );
+      void loadProducts(filtersRef.current, { page }).then(() => {
+        // Let React remove the loading row before measuring the responsive scroll target.
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            if (currentPageRef.current === page)
+              productsRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+          }),
+        );
+      });
     },
     [loadProducts, loading],
   );
@@ -1126,8 +1137,8 @@ export function PublicApp() {
         <SyncStatus meta={meta} failed={initialization === "error"} />
       </header>
 
-      <main>
-        <section className="search-shell" aria-label="商品検索">
+      <main ref={mainRef}>
+        <section ref={searchRef} className="search-shell" aria-label="商品検索">
           <label className="search-primary" htmlFor="q">
             <span>検索</span>
             <div className="search-row">
@@ -1238,34 +1249,37 @@ export function PublicApp() {
             />
           </div>
 
-          <div id="active-filters" className="active-filters" aria-live="polite">
-            {activeFilters.length ? (
-              <>
-                {activeFilters.map((entry) => (
+          <section ref={conditionsRef} className="active-filter-bar" aria-label="現在の検索条件">
+            <span className="active-filter-label">検索条件</span>
+            <div id="active-filters" className="active-filters" aria-live="polite">
+              {activeFilters.length ? (
+                <>
+                  {activeFilters.map((entry) => (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      className="filter-chip"
+                      data-clear-filter={entry.id}
+                      aria-label={`${entry.label}を解除`}
+                      onClick={() => clearFilter(entry.id)}
+                    >
+                      {entry.label} <span aria-hidden="true">×</span>
+                    </button>
+                  ))}
                   <button
-                    key={entry.id}
                     type="button"
-                    className="filter-chip"
-                    data-clear-filter={entry.id}
-                    aria-label={`${entry.label}を解除`}
-                    onClick={() => clearFilter(entry.id)}
+                    className="clear-all"
+                    data-clear-all
+                    onClick={clearAllFilters}
                   >
-                    {entry.label} <span aria-hidden="true">×</span>
+                    すべて解除
                   </button>
-                ))}
-                <button
-                  type="button"
-                  className="clear-all"
-                  data-clear-all
-                  onClick={clearAllFilters}
-                >
-                  すべて解除
-                </button>
-              </>
-            ) : (
-              <span className="no-filters">絞り込み条件なし</span>
-            )}
-          </div>
+                </>
+              ) : (
+                <span className="no-filters">絞り込み条件なし</span>
+              )}
+            </div>
+          </section>
 
           <div className="result-header">
             <div className="result-count">

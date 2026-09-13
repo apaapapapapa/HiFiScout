@@ -901,6 +901,38 @@ dialog::backdrop {
 /* Each result state shares a normal flow column; sidebar height never stretches a hidden row. */
 .catalog-results { grid-area: catalog; min-width: 0; }
 .catalog-results > * { max-width: 100%; }
+.active-filter-bar {
+  position: sticky;
+  top: 0;
+  z-index: 11;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--hs-divider);
+  background: var(--hs-paper);
+}
+.active-filter-label { flex: none; color: var(--hs-muted); font-size: 12px; }
+.active-filter-bar .active-filters {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 4px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.active-filter-bar .filter-chip,
+.active-filter-bar .clear-all,
+.active-filter-bar .no-filters { flex: none; white-space: nowrap; }
+.products { scroll-margin-top: calc(var(--active-filter-bar-height, 65px) + 12px); }
+@media (max-width: 1100px) {
+  .active-filter-bar { top: var(--search-shell-height, 0px); }
+  .products {
+    scroll-margin-top: calc(var(--search-shell-height, 0px) + var(--active-filter-bar-height, 65px) + 12px);
+  }
+}
 [hidden] { display: none !important; }
 :focus-visible { outline: 2px solid #0069b4; outline-offset: 3px; }
 button, a, summary, input, select { touch-action: manipulation; }
