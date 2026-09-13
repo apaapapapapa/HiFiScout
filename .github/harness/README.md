@@ -23,6 +23,12 @@ The schema and status calculation are owned by `scripts/harness/report.ts`.
   and identity, not the truth of arbitrary caller-authored assertions. Prefer reports produced by
   the executable collectors/runners; preserve their underlying artifacts for review.
 
+Local runners record paths relative to the repository root, including the selected output directory.
+Use output directories within the repository (normally `.generated/` or `test-results/`); extract CI
+artifacts back under the same root layout to resolve those references. A report may live outside its
+sample directory. Empty or absent cost-sample directories still produce all required unknown checks;
+before/after comparisons continue to require nonempty measurements.
+
 Unknown measurements must remain null with an explanation. Quota-deferred deployment does not
 create a deployment identity. Intentionally paused operational audits remain paused. A report must
 not enable them, query production to fill a gap or turn a gap into zero.

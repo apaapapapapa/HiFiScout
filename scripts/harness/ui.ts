@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { isRecord } from "../../src/types.js";
 import { readCheckout } from "./checkpoint.js";
+import { repositoryArtifact } from "./artifacts.js";
 import { assessHarnessReport, type CheckStatus } from "./report.js";
 
 export function playwrightOutcome(value: unknown): CheckStatus {
@@ -22,6 +23,7 @@ export function playwrightOutcome(value: unknown): CheckStatus {
 /** Runs only the existing loopback suites; E2E_BASE_URL is deliberately irrelevant. */
 export async function runUi(directory: string) {
   const output = resolve(directory);
+  repositoryArtifact(resolve(output, "ui-report.json"));
   await mkdir(dirname(output), { recursive: true });
   await mkdir(output); // Require a fresh directory: stale screenshots/reports cannot prove success.
   const startedAt = new Date().toISOString(),
@@ -69,7 +71,12 @@ export async function runUi(directory: string) {
       required: true,
       status,
       reason: "isolated local browser suite; inspect results.json and per-test evidence",
-      evidence: [{ uri: `${suite}/results.json`, sourceSha: checkout.sourceSha }],
+      evidence: [
+        {
+          uri: repositoryArtifact(resolve(output, suite, "results.json")),
+          sourceSha: checkout.sourceSha,
+        },
+      ],
     });
   }
   const report = assessHarnessReport({

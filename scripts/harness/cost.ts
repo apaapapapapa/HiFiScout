@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { repositoryArtifact } from "./artifacts.js";
 import { isRecord } from "../../src/types.js";
 import { requireSha, requireText, requireTimestamp } from "./report.js";
 import { assessHarnessReport } from "./report.js";
@@ -120,18 +121,30 @@ export async function recordCostSample(
   await writeFile(join(directory, `${sample.id}.json`), `${JSON.stringify(sample, null, 2)}\n`);
 }
 
-export async function readCostSamples(directory: string) {
+export async function readCostSamples(directory: string, { allowEmpty = false } = {}) {
+  let names: string[];
+  try {
+    names = await readdir(directory);
+  } catch (error) {
+    if (!allowEmpty || !isRecord(error) || error.code !== "ENOENT") throw error;
+    names = [];
+  }
   const samples = await Promise.all(
-    (await readdir(directory))
+    names
       .filter((name) => name.endsWith(".json"))
       .sort()
-      .map(async (name) =>
-        parseCostSample(JSON.parse(await readFile(join(directory, name), "utf8"))),
-      ),
+      .map(async (name) => {
+        const sample = parseCostSample(JSON.parse(await readFile(join(directory, name), "utf8")));
+        if (name !== `${sample.id}.json`) throw new Error("cost_sample_filename_mismatch");
+        return sample;
+      }),
   );
-  if (!samples.length || new Set(samples.map((sample) => sample.id)).size !== samples.length)
+  if (
+    (!allowEmpty && !samples.length) ||
+    new Set(samples.map((sample) => sample.id)).size !== samples.length
+  )
     throw new Error("missing_or_duplicate_cost_samples");
-  if (new Set(samples.map((sample) => sample.sourceSha)).size !== 1)
+  if (samples.length && new Set(samples.map((sample) => sample.sourceSha)).size !== 1)
     throw new Error("mixed_cost_source_shas");
   return samples;
 }
@@ -235,7 +248,8 @@ export const REQUIRED_COST_SAMPLES = [
 export async function costReport(directory: string, outputPath: string) {
   const startedAt = new Date().toISOString(),
     checkout = readCheckout();
-  const samples = await readCostSamples(directory);
+  repositoryArtifact(join(directory, "sample.json"));
+  const samples = await readCostSamples(directory, { allowEmpty: true });
   const report = assessHarnessReport({
     schemaVersion: 1,
     runId: `cost-${checkout.sourceSha}`,
@@ -267,10 +281,18 @@ export async function costReport(directory: string, outputPath: string) {
         reason: complete
           ? `${sample.environment}: measurement available; compare a baseline separately`
           : "missing_measurement_or_stale_or_dirty_checkout",
-        evidence: sample ? [{ uri: `${id}.json`, sourceSha: sample.sourceSha }] : [],
+        evidence: sample
+          ? [
+              {
+                uri: repositoryArtifact(join(directory, `${id}.json`)),
+                sourceSha: sample.sourceSha,
+              },
+            ]
+          : [],
       };
     }),
   });
+  await mkdir(dirname(outputPath), { recursive: true });
   await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`);
   return report;
 }
