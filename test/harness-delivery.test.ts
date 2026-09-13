@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { collectDelivery } from "../scripts/harness/github.js";
 import { assessDelivery } from "../scripts/harness/delivery.js";
 import type { DeliverySnapshot } from "../scripts/harness/delivery.js";
+import { parsePostDeployReceipt } from "../scripts/harness/post-deploy.js";
 
 const sourceSha = "a".repeat(40);
 test("collector follows the status run, downloads its identity and preserves the raw snapshot", async () => {
@@ -15,10 +16,15 @@ test("collector follows the status run, downloads its identity and preserves the
   const invoke = async (args: string[]) => {
     calls.push(args);
     if (args[0] === "run" && args[1] === "download") {
-      assert.equal(args[2], "10");
+      const downstream = s.downstream.find(
+        (item) => String((item.run as { id: number }).id) === args[2],
+      );
       await writeFile(
-        join(args[args.indexOf("--dir") + 1], "deployment-sha.txt"),
-        sourceSha + "\n",
+        join(
+          args[args.indexOf("--dir") + 1],
+          downstream ? "post-deploy-receipt.json" : "deployment-sha.txt",
+        ),
+        downstream ? JSON.stringify(downstream.receipt) : sourceSha + "\n",
       );
       return "";
     }
@@ -33,6 +39,12 @@ test("collector follows the status run, downloads its identity and preserves the
     }
     if (path.includes("/workflows/ci.yml/")) return JSON.stringify([{ workflow_runs: s.ciRuns }]);
     if (path.endsWith("/actions/runs/10")) return JSON.stringify(s.deployment!.run);
+    for (const item of s.downstream) {
+      const id = (item.run as { id: number }).id;
+      if (path.endsWith(`/actions/runs/${id}`)) return JSON.stringify(item.run);
+      if (path.includes(`/actions/runs/${id}/artifacts?`))
+        return JSON.stringify([{ artifacts: [item.artifact] }]);
+    }
     if (path.includes("/artifacts?"))
       return JSON.stringify([{ artifacts: [s.deployment!.artifact] }]);
     throw new Error("unexpected_github_request");
@@ -97,7 +109,7 @@ function snapshot(): DeliverySnapshot {
         context,
         state: "success",
         description: "Verified",
-        target_url: "https://github.com/owner/repo/actions/runs/10",
+        target_url: `https://github.com/owner/repo/actions/runs/${10 + id}`,
       }),
     ),
     deployment: {
@@ -110,8 +122,56 @@ function snapshot(): DeliverySnapshot {
       artifact: { name: "deployment-identity", expired: false, workflow_run: { id: 10 } },
       sourceSha,
     },
+    downstream: ["deployment/catalog-admin", "verification/e2e"].map((context, index) => ({
+      run: {
+        id: 11 + index,
+        path:
+          index === 0 ? ".github/workflows/deploy-catalog-admin.yml" : ".github/workflows/e2e.yml",
+        event: "workflow_run",
+        run_attempt: 1,
+        status: "completed",
+        conclusion: "success",
+      },
+      artifact: { name: "post-deploy-receipt", expired: false, workflow_run: { id: 11 + index } },
+      receipt: {
+        schemaVersion: 1,
+        event: "workflow_run",
+        context,
+        sourceSha,
+        deploymentRunId: 10,
+        runId: 11 + index,
+        runAttempt: 1,
+        targetUrl: "https://production.example.test",
+        expectedUrl: "https://production.example.test",
+        recordedAt: "2026-09-13T00:00:00Z",
+      },
+    })),
   };
 }
+
+test("manual staging success, unrelated parents and receipts from an older attempt do not prove production verification", () => {
+  for (const patch of [
+    { event: "workflow_dispatch" },
+    { run_attempt: 2 },
+    { path: ".github/workflows/unrelated.yml" },
+  ]) {
+    const s = snapshot();
+    s.downstream[1].run = { ...(s.downstream[1].run as object), ...patch };
+    assert.equal(assessDelivery(s).status, "unknown");
+  }
+  const s = snapshot();
+  const receipt = s.downstream[1].receipt as Record<string, unknown>;
+  s.downstream[1].receipt = { ...receipt, deploymentRunId: 999 };
+  assert.equal(assessDelivery(s).status, "unknown");
+  assert.throws(
+    () => parsePostDeployReceipt({ ...receipt, targetUrl: "https://staging.example.test" }),
+    /non_production/u,
+  );
+  assert.throws(
+    () => parsePostDeployReceipt({ ...receipt, event: "workflow_dispatch" }),
+    /invalid_post/u,
+  );
+});
 
 test("delivery uses artifact contents and the latest CI, keeping effectiveness separate", () => {
   const s = snapshot();

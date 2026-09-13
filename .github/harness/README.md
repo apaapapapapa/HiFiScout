@@ -45,6 +45,14 @@ baseline. Top-level conversational comments still need agent/human review; only 
 and GitHub's review decision can be evaluated mechanically. Optional paused audits stay skipped.
 API/authentication/transport failure exits 2; it cannot yield a passing partial snapshot.
 
+Automatic E2E and admin workflows publish `post-deploy-receipt` only after their verification
+succeeds. It binds the checked-out SHA, parent deployment run, verification run/attempt and actual
+production target. The collector downloads the latest status's receipt and checks those fields
+against GitHub metadata. Manual E2E (including alternate URLs), receipts from an earlier attempt
+and unrelated parent deployments cannot establish production verification. Automatic E2E uses
+the configured production URL; manual E2E retains its alternate-URL input. Earlier runs without
+receipts remain unconfirmed rather than receiving retroactive evidence.
+
 ## Ownership
 
 Reuse package scripts, Vitest, Playwright, real migrated local D1 fixtures and deployment-owned

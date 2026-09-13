@@ -1,6 +1,7 @@
 import { isRecord } from "../../src/types.js";
 import { assessHarnessReport, requireSha, requireTimestamp } from "./report.js";
 import type { HarnessCheck } from "./report.js";
+import { parsePostDeployReceipt } from "./post-deploy.js";
 
 export interface DeliverySnapshot {
   repository: string;
@@ -11,6 +12,7 @@ export interface DeliverySnapshot {
   ciRuns: unknown[];
   statuses: unknown[];
   deployment: null | { run: unknown; artifact: unknown; sourceSha: string };
+  downstream: { run: unknown; artifact: unknown; receipt: unknown }[];
 }
 
 export function requireRepository(value: unknown): string {
@@ -165,10 +167,43 @@ export function assessDelivery(snapshot: DeliverySnapshot) {
   );
   for (const context of ["deployment/catalog-admin", "verification/e2e"]) {
     const status = latest(context);
+    let verified = false;
+    for (const item of snapshot.downstream) {
+      const run = record(item.run);
+      const artifact = record(item.artifact);
+      const receipt = parsePostDeployReceipt(item.receipt);
+      const expectedPath =
+        context === "verification/e2e"
+          ? ".github/workflows/e2e.yml"
+          : ".github/workflows/deploy-catalog-admin.yml";
+      if (
+        status?.target_url === `https://github.com/${repo}/actions/runs/${run.id}` &&
+        run.path === expectedPath &&
+        run.event === "workflow_run" &&
+        run.status === "completed" &&
+        run.conclusion === "success" &&
+        artifact.name === "post-deploy-receipt" &&
+        artifact.expired === false &&
+        record(artifact.workflow_run).id === run.id &&
+        receipt.context === context &&
+        receipt.sourceSha === sourceSha &&
+        receipt.runId === run.id &&
+        receipt.runAttempt === run.run_attempt &&
+        snapshot.deployment &&
+        receipt.deploymentRunId === record(snapshot.deployment.run).id
+      )
+        verified = true;
+    }
     add(
       context,
-      statusOf(status?.state),
-      status ? String(status.description) : "No result for this SHA",
+      statusOf(status?.state) === "fail"
+        ? "fail"
+        : status?.state === "success" && verified
+          ? "pass"
+          : "unknown",
+      status
+        ? `${status.description}; automatic deployment receipt=${verified}`
+        : "No result for this SHA",
       typeof status?.target_url === "string" ? status.target_url : prUrl,
       "deployment",
     );

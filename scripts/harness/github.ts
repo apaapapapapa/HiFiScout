@@ -139,12 +139,55 @@ export async function collectDelivery(
     repository: repo,
     collectedAt: new Date().toISOString(),
     pull,
-    pullAfter: await api(`${endpoint}/pulls/${number}`, invoke),
+    pullAfter: pull,
     reviewPages,
     ciRuns,
     statuses,
     deployment,
+    downstream: [],
   };
+  for (const context of ["deployment/catalog-admin", "verification/e2e"]) {
+    const status = statuses
+      .filter(isRecord)
+      .filter((s) => s.context === context)
+      .sort((a, b) => Number(b.id) - Number(a.id))[0];
+    if (typeof status?.target_url !== "string" || !status.target_url.startsWith(runPrefix))
+      continue;
+    const id = status.target_url.slice(runPrefix.length);
+    if (!/^\d+$/u.test(id)) throw new Error("invalid_downstream_run_url");
+    const run = await api(`${endpoint}/actions/runs/${id}`, invoke);
+    const artifacts = await pages(
+      `${endpoint}/actions/runs/${id}/artifacts?per_page=100`,
+      invoke,
+      "artifacts",
+    );
+    const matches = artifacts
+      .filter(isRecord)
+      .filter((a) => a.name === "post-deploy-receipt" && a.expired === false);
+    if (matches.length !== 1) continue;
+    const dir = await mkdtemp(join(tmpdir(), "hifiscout-verification-"));
+    try {
+      await invoke([
+        "run",
+        "download",
+        id,
+        "--repo",
+        repo,
+        "--name",
+        "post-deploy-receipt",
+        "--dir",
+        dir,
+      ]);
+      snapshot.downstream.push({
+        run,
+        artifact: matches[0],
+        receipt: JSON.parse(await readFile(join(dir, "post-deploy-receipt.json"), "utf8")),
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+  snapshot.pullAfter = await api(`${endpoint}/pulls/${number}`, invoke);
   const report = assessDelivery(snapshot);
   await mkdir(outputDir, { recursive: true });
   await writeFile(

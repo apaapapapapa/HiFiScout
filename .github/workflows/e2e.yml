@@ -70,10 +70,16 @@ jobs:
           INPUT_BASE_URL: ${{ inputs.base_url }}
           REPOSITORY_E2E_BASE_URL: ${{ vars.E2E_BASE_URL }}
           REPOSITORY_PRODUCTION_BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           source .github/config/production.env
           base_url="${INPUT_BASE_URL:-${REPOSITORY_E2E_BASE_URL:-${REPOSITORY_PRODUCTION_BASE_URL:-$PRODUCTION_BASE_URL}}}"
+          production_url="${REPOSITORY_PRODUCTION_BASE_URL:-$PRODUCTION_BASE_URL}"
+          if [[ "$EVENT_NAME" == 'workflow_run' ]]; then
+            base_url="$production_url"
+          fi
+          echo "HARNESS_EXPECTED_URL=${production_url%/}" >> "$GITHUB_ENV"
           echo "E2E_BASE_URL=${base_url%/}" >> "$GITHUB_ENV"
       - uses: ./.github/actions/setup-node-deps
         if: steps.deployment.outputs.available == 'true'
@@ -82,6 +88,22 @@ jobs:
       - name: Run Playwright user-flow regression suite
         if: steps.deployment.outputs.available == 'true'
         run: vp run test:e2e
+      - name: Record automatic production verification
+        if: steps.deployment.outputs.available == 'true' && github.event_name == 'workflow_run'
+        env:
+          HARNESS_DEPLOYMENT_SHA: ${{ steps.deployment.outputs.sha }}
+          HARNESS_DEPLOYMENT_RUN_ID: ${{ github.event.workflow_run.id }}
+          HARNESS_TARGET_URL: ${{ env.E2E_BASE_URL }}
+        run: vp exec tsx scripts/harness/post-deploy.ts verification/e2e
+      - name: Preserve production verification identity
+        if: steps.deployment.outputs.available == 'true' && github.event_name == 'workflow_run'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: post-deploy-receipt
+          path: post-deploy-receipt.json
+          retention-days: 90
+          overwrite: true
+          if-no-files-found: error
       - name: Publish E2E status
         if: always() && steps.deployment.outputs.available == 'true' && steps.deployment.outputs.sha != ''
         continue-on-error: true
