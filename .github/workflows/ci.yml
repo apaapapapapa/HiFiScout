@@ -189,6 +189,8 @@ jobs:
   component:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      HARNESS_UI: "1"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/change-scope
@@ -204,7 +206,7 @@ jobs:
         if: steps.scope.outputs.application == 'true'
         run: vp exec playwright test --config e2e/playwright.components.config.ts
       - name: Run authenticated admin Playwright suite with local Access and RPC mocks
-        if: steps.scope.outputs.application == 'true'
+        if: always() && steps.scope.outputs.application == 'true'
         run: vp run test:e2e:admin
       - name: Preserve component and admin screenshots and failure traces
         if: always() && steps.scope.outputs.application == 'true'
