@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import type { DatabaseSync } from "node:sqlite";
 import { test } from "vite-plus/test";
+import { insertListing } from "./helpers/listing-fixture.js";
 
 import { resolveModel } from "../src/catalog/model-resolver.js";
 import { refreshListingProjections } from "../src/db/listing-projection-refresh.js";
@@ -65,7 +66,7 @@ test("color cleanup preserves real revision tokens and does not treat bare short
   assert.equal(ambiguousShortSuffix.normalizedModel, "D1000S");
 });
 
-function insertListing(
+function insertTadListing(
   sqlite: DatabaseSync,
   shopKey: string,
   sourceId: string,
@@ -74,38 +75,30 @@ function insertListing(
   const resolution = resolve(rawModel);
   assert.equal(resolution.status, "resolved");
 
-  const result = sqlite
-    .prepare(`
-      INSERT INTO products(
-        shop_key, source_id, manufacturer, model, title, category, condition_text,
-        price_yen, stock_status, source_url, first_seen_at, last_seen_at, last_changed_at,
-        last_activity_at, is_active,
-        raw_manufacturer, normalized_raw_manufacturer, manufacturer_id, canonical_manufacturer_id,
-        manufacturer_resolution_status, raw_model, normalized_model, model_resolution_status,
-        raw_category, primary_category_id, category_ids, classification_status, search_aliases
-      ) VALUES (
-        ?, ?, 'TAD', ?, ?, 'D/Aコンバーター', '中古',
-        500000, 'in_stock', ?, ?, ?, ?,
-        ?, 1,
-        'TAD', 'TAD', 'tad', 'tad',
-        'resolved', ?, ?, 'resolved',
-        'D/Aコンバーター', 'dac', '["dac"]', 'classified', 'DAC D/A Converter'
-      )
-    `)
-    .run(
-      shopKey,
-      sourceId,
-      resolution.model,
-      `TAD ${rawModel}`,
-      `https://example.test/${shopKey}/${sourceId}`,
-      NOW,
-      NOW,
-      NOW,
-      NOW,
-      rawModel,
-      resolution.normalizedModel,
-    );
-  return Number(result.lastInsertRowid);
+  return insertListing(sqlite, {
+    at: NOW,
+    shop_key: shopKey,
+    source_id: sourceId,
+    manufacturer: "TAD",
+    raw_manufacturer: "TAD",
+    normalized_raw_manufacturer: "TAD",
+    manufacturer_id: "tad",
+    canonical_manufacturer_id: "tad",
+    manufacturer_resolution_status: "resolved",
+    model: resolution.model,
+    raw_model: rawModel,
+    normalized_model: resolution.normalizedModel,
+    model_resolution_status: "resolved",
+    title: `TAD ${rawModel}`,
+    category: "D/Aコンバーター",
+    raw_category: "D/Aコンバーター",
+    primary_category_id: "dac",
+    category_ids: '["dac"]',
+    search_aliases: "DAC D/A Converter",
+    price_yen: 500000,
+    source_url: `https://example.test/${shopKey}/${sourceId}`,
+    last_activity_at: NOW,
+  });
 }
 
 async function refreshBoth(db: QueryableDatabase): Promise<void> {
@@ -121,8 +114,8 @@ async function refreshBoth(db: QueryableDatabase): Promise<void> {
 
 test("black and silver offers are projected into one product search area", async () => {
   const { sqlite, db } = migratedSqlite();
-  const blackId = insertListing(sqlite, "black-shop", "black-1", "D-1000 ブラック");
-  const silverId = insertListing(sqlite, "silver-shop", "silver-1", "D-1000 SILVER");
+  const blackId = insertTadListing(sqlite, "black-shop", "black-1", "D-1000 ブラック");
+  const silverId = insertTadListing(sqlite, "silver-shop", "silver-1", "D-1000 SILVER");
 
   await refreshBoth(db);
 

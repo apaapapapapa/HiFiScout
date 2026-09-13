@@ -1,4 +1,5 @@
 import { migratedSqlite } from "./helpers/migrated-sqlite.js";
+import { insertListing } from "./helpers/listing-fixture.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
@@ -25,40 +26,32 @@ function migrateToV3(sqlite: DatabaseSync): void {
 
 function insertLegacyProduct(sqlite: DatabaseSync, product: LegacyProduct): void {
   const directCategoryIds = product.directCategoryIds ?? [product.categoryId];
-  sqlite
-    .prepare(`
-      INSERT INTO products (
-        id, shop_key, source_id, manufacturer, raw_manufacturer, manufacturer_id,
-        canonical_manufacturer_id, manufacturer_resolution_status, model, raw_model,
-        normalized_model, model_resolution_status, title, category, raw_category,
-        primary_category_id, category_ids, direct_category_ids, classification_status,
-        search_aliases, condition_text, price_yen, stock_status, source_url, first_seen_at,
-        last_seen_at, last_changed_at, last_activity_at, is_active, metadata_json
-      ) VALUES (
-        ?, 'legacy-shop', ?, 'Example', 'Example', 'example', 'example', 'resolved', ?, ?, ?,
-        'resolved', ?, ?, ?, ?, json_array(?), ?, 'classified', ?, 'used', 100000,
-        'in_stock', ?, ?, ?, ?, ?, 1, '{}'
-      )
-    `)
-    .run(
-      product.id,
-      product.sourceId,
-      product.sourceId,
-      product.sourceId,
-      product.sourceId.toUpperCase(),
-      product.title,
-      product.categoryId,
-      product.categoryId,
-      product.categoryId,
-      product.categoryId,
-      JSON.stringify(directCategoryIds),
-      product.categoryId,
-      `https://example.test/${product.sourceId}`,
-      AT,
-      AT,
-      AT,
-      AT,
-    );
+  insertListing(sqlite, {
+    at: AT,
+    id: product.id,
+    shop_key: "legacy-shop",
+    source_id: product.sourceId,
+    manufacturer: "Example",
+    raw_manufacturer: "Example",
+    manufacturer_id: "example",
+    canonical_manufacturer_id: "example",
+    manufacturer_resolution_status: "resolved",
+    model: product.sourceId,
+    raw_model: product.sourceId,
+    normalized_model: product.sourceId.toUpperCase(),
+    model_resolution_status: "resolved",
+    title: product.title,
+    category: product.categoryId,
+    raw_category: product.categoryId,
+    primary_category_id: product.categoryId,
+    category_ids: JSON.stringify([product.categoryId]),
+    direct_category_ids: JSON.stringify(directCategoryIds),
+    search_aliases: product.categoryId,
+    condition_text: "used",
+    source_url: `https://example.test/${product.sourceId}`,
+    last_activity_at: AT,
+    metadata_json: "{}",
+  });
 
   for (const categoryId of directCategoryIds) {
     sqlite
