@@ -96,3 +96,27 @@ test("review outcomes are bound to the actual response and remain distinct from 
   entry.attempts[0].response.evidenceIndex = 1;
   await assert.rejects(evaluateAiHoldout(value), /stale_or_invalid_ai_review/u);
 });
+
+test("retry order cannot make an older response final or move the review cutoff backwards", async () => {
+  const value = await recording();
+  const entry = value.cases.find((item) => item.attempts.length)!;
+  entry.attempts[0].requestedAt = "2026-09-13T00:02:00Z";
+  entry.attempts.push({
+    ...structuredClone(entry.attempts[0]),
+    requestId: `${entry.id}-retry`,
+    requestedAt: "2026-09-13T00:01:00Z",
+  });
+  entry.review = {
+    decision: "accepted",
+    actor: "fixture-reviewer",
+    reason: "older response",
+    reviewedAt: "2026-09-13T00:01:30Z",
+    fingerprint: entry.fingerprint,
+    responseDigest: aiResponseDigest(entry.attempts[1].response),
+  };
+  await assert.rejects(evaluateAiHoldout(value), /ai_attempts_not_chronological/u);
+  entry.attempts[1].requestedAt = entry.attempts[0].requestedAt;
+  await assert.rejects(evaluateAiHoldout(value), /ai_attempts_not_chronological/u);
+  entry.attempts[1].requestedAt = "2026-09-13T00:03:00Z";
+  await assert.rejects(evaluateAiHoldout(value), /review_precedes_inference/u);
+});
