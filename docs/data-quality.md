@@ -284,6 +284,11 @@ retain their stored decision. Official/detail/admin evidence and existing write 
 No deployment-triggered seller refetch or full-inventory rewrite
 is required. Search projections and metadata converge through the existing refresh paths.
 
+The AVAC adapter removes a leading standalone `特価` or `特価品` token after the seller's
+authoritative condition marker and before manufacturer/model splitting. The rule is shop-local and
+requires a token boundary, so a product or manufacturer name merely beginning with those characters
+is preserved.
+
 Migration 0017 introduced search/identity/evidence foundations and migration 0018 added Evidence Archive usage metadata. Deployment applies migrations before the Worker release, so Phase 2 migration 0019 is applied after those foundations. Migration 0020 closes the rollout-era Identity coverage gap by inserting an explicit unresolved/backfill-pending resolution for every existing listing that lacks one.
 
 Migration 0023 separates raw and derived manufacturer/model fields on seller listings and adds canonical manufacturer plus manufacturer-alias persistence. The public `manufacturer_id` remains a filter/display compatibility field; only `canonical_manufacturer_id` may load Product Identity candidates. Pending aliases and verified alias collisions therefore cannot silently merge products.
