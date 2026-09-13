@@ -1,0 +1,7 @@
+interface:
+  display_name: "HiFiScout PR・リリース"
+  short_description: "PRのレビューからmainのCIとデプロイ証跡まで確認する"
+  default_prompt: "Use $hifiscout-delivery to finish this HiFiScout change through PR review, main merge, and pipeline verification."
+
+policy:
+  allow_implicit_invocation: true

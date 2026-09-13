@@ -1,0 +1,7 @@
+interface:
+  display_name: "HiFiScout Issue再評価"
+  short_description: "最新の実装と証跡からIssueの必要性と完了可否を判断する"
+  default_prompt: "Use $hifiscout-issue-triage to reassess this HiFiScout issue against current code, deployment, and acceptance evidence."
+
+policy:
+  allow_implicit_invocation: true

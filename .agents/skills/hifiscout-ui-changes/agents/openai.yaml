@@ -1,0 +1,7 @@
+interface:
+  display_name: "HiFiScout UI・管理画面"
+  short_description: "検索と管理画面の操作を改善し実際の境界で動作を確認する"
+  default_prompt: "Use $hifiscout-ui-changes to implement this public or admin UI change and validate the affected user flow."
+
+policy:
+  allow_implicit_invocation: true
