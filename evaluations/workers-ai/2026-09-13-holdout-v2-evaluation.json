@@ -1,0 +1,468 @@
+{
+  "schemaVersion": 1,
+  "recordingFile": "evaluations/workers-ai/2026-09-13-holdout-v2-qwen3-prompt3.json",
+  "recordingDigest": "914dcc9574fc982653d6c79987b72fdff65b438a483fade80f4bc1f0f611db8e",
+  "sourceSha": "0bc041f9579b3035dedf4609977affa59aaad322",
+  "observedLiveEvaluationStatus": "fail",
+  "activationApproved": false,
+  "measuredRequestLatencyMs": {
+    "scope": "Elapsed time around the REST call inside the connector execution environment",
+    "min": 431,
+    "median": 485.5,
+    "max": 884
+  },
+  "offlineReplay": {
+    "schemaVersion": 1,
+    "sourceSha": "0bc041f9579b3035dedf4609977affa59aaad322",
+    "corpusVersion": 2,
+    "corpusDigest": "df973d685aa305b1cf5a4fd86cb7db85d0ac1766347b56cce068779644bfe426",
+    "policy": {
+      "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+      "kind": "catalog_model_lead",
+      "promptVersion": 3,
+      "schemaVersion": 2,
+      "maxJobsPerDay": 25,
+      "maxAttempts": 2,
+      "maxInputTokens": 2000,
+      "maxRequestBytes": 1744,
+      "maxOutputTokens": 300,
+      "maxResponseBytes": 4096,
+      "maxCandidates": 5,
+      "maxNeuronsPerDay": 1000,
+      "inputNeuronsPerMillion": 4625,
+      "outputNeuronsPerMillion": 30475,
+      "retentionDays": 180
+    },
+    "provenance": "recorded-provider",
+    "inferenceExecuted": false,
+    "responseProvenanceVerified": false,
+    "reviewProvenanceVerified": false,
+    "activationApproved": false,
+    "groundTruthReviewed": true,
+    "totalCases": 20,
+    "families": 10,
+    "deterministicCases": 6,
+    "modelCases": 14,
+    "missingResponses": 0,
+    "pipeline": {
+      "total": 20,
+      "correctSuggestions": 8,
+      "falseSuggestions": 0,
+      "correctAbstentions": 7,
+      "missedSuggestions": 0,
+      "invalidResponses": 5,
+      "precision": 1,
+      "suggestionRecall": 0.8,
+      "passed": false
+    },
+    "modelOnly": {
+      "total": 14,
+      "correctSuggestions": 8,
+      "falseSuggestions": 0,
+      "correctAbstentions": 1,
+      "missedSuggestions": 0,
+      "invalidResponses": 5,
+      "precision": 1,
+      "suggestionRecall": 0.8,
+      "passed": false
+    },
+    "attempts": 14,
+    "invalidAttempts": 5,
+    "usage": {
+      "inputTokens": 2561,
+      "outputTokens": 248,
+      "neurons": 19.401296377182007
+    },
+    "reviewerOutcomes": {
+      "accepted": 8,
+      "rejected": 5,
+      "pending": 0,
+      "falseAccepted": 0,
+      "acceptanceRate": 0.6153846153846154
+    },
+    "status": "fail",
+    "liveEvaluationStatus": "unknown",
+    "results": [
+      {
+        "id": "holdout-1-same",
+        "family": "yamaha/CD-S3000",
+        "expectedCatalogProductId": 1001,
+        "actualCatalogProductId": 1001,
+        "complete": true,
+        "finalValid": true,
+        "route": "model",
+        "admissionReason": null,
+        "attempts": 1,
+        "latencyMs": [
+          884
+        ],
+        "review": {
+          "decision": "accepted",
+          "actor": "Codex",
+          "reason": "Exact CD-S3000 identity; included remote control is not a separate sale object.",
+          "reviewedAt": "2026-09-13T08:26:49.262Z",
+          "fingerprint": "ae3f98ad4ed8137ff85f15aa12158faebeb0cabdd32242f727d6e9788a1868e6",
+          "responseDigest": "a2683acb58afb2bd13154e775c5d6a61ea7de3d39e24dc98666f18440a545ea2"
+        }
+      },
+      {
+        "id": "holdout-1-distinct",
+        "family": "yamaha/CD-S3000",
+        "expectedCatalogProductId": null,
+        "actualCatalogProductId": null,
+        "complete": true,
+        "finalValid": true,
+        "route": "model",
+        "admissionReason": null,
+        "attempts": 1,
+        "latencyMs": [
+          580
+        ],
+        "review": null
+      },
+      {
+        "id": "holdout-2-same",
+        "family": "mcintosh/MC275MK6",
+        "expectedCatalogProductId": 1002,
+        "actualCatalogProductId": null,
+        "complete": true,
+        "finalValid": false,
+        "route": "model",
+        "admissionReason": null,
+        "attempts": 1,
+        "latencyMs": [
+          439
+        ],
+        "review": {
+          "decision": "rejected",
+          "actor": "Codex",
+          "reason": "Invalid wire response: catalogProductId is null but evidenceIndex is 0. Preserve and reject the response without rewriting it.",
+          "reviewedAt": "2026-09-13T08:26:49.262Z",
+          "fingerprint": "ddb9e8d493fde3356da23bef8265f90a35040f503899c45c44d7f31efef00b31",
+          "responseDigest": "9ffdaa9bfa025967206956e2e3abfa45deec887477a416bd433478d660e3380e"
+        }
+      },
+      {
+        "id": "holdout-2-distinct",
+        "family": "mcintosh/MC275MK6",
+        "expectedCatalogProductId": null,
+        "actualCatalogProductId": null,
+        "complete": true,
+        "finalValid": true,
+        "route": "deterministic",
+        "admissionReason": "no_safe_candidate",
+        "attempts": 0,
+        "latencyMs": [],
+        "review": null
+      },
+      {
+        "id": "holdout-3-same",
+        "family": "luxman/C-10X",
+        "expectedCatalogProductId": 1003,
+        "actualCatalogProductId": 1003,
+        "complete": true,
+        "finalValid": true,
+        "route": "model",
+        "admissionReason": null,
+        "attempts": 1,
+        "latencyMs": [
+          431
+        ],
+        "review": {
+          "decision": "accepted",
+          "actor": "Codex",
+          "reason": "Exact C-10X identity.",
+          "reviewedAt": "2026-09-13T08:26:49.262Z",
+          "fingerprint": "493f30d0b4a660b37d20404fe6bbf7687ffb190176bf5e6a93dd58f2ee6ffe01",
+          "responseDigest": "5ae34f6d33e16a9b1b07284a1d9c0560cbdd53465c21d3ac554bd427d4deb8c8"
+        }
+      },
+      {
+        "id": "holdout-3-distinct",
+        "family": "luxman/C-10X",
+        "expectedCatalogProductId": null,
+        "actualCatalogProductId": null,
+        "complete": true,
+        "finalValid": true,
+        "route": "deterministic",
+        "admissionReason": "no_safe_candidate",
+        "attempts": 0,
+        "latencyMs": [],
+        "review": null
+      },
+      {
+        "id": "holdout-4-same",
+        "family": "accuphase/E-800",
+        "expectedCatalogProductId": 1004,
+        "actualCatalogProductId": 1004,
+        "complete": true,
+        "finalValid": true,
+        "route": "model",
+        "admissionReason": null,
+        "attempts": 1,
+        "latencyMs": [
+          479
+        ],
+        "review": {
+          "decision": "accepted",
+          "actor": "Codex",
+          "reason": "Exact E-800 identity; seller negotiation status is unrelated to identity.",
+          "reviewedAt": "2026-09-13T08:26:49.262Z",
+          "fingerprint": "ea359a5542cbf896e68f8937dc4d4a15867259f47b69cef2c7aa0c695555b63c",
+          "responseDigest": "7a64095cdbacb76dedd98bfb09cbe5aa8426e55b93cf1e62a94158373cd24ddf"
+        }
+      },
+      {
+        "id": "holdout-4-distinct",
+        "family": "accuphase/E-800",
+        "expectedCatalogProductId": null,
+        "actualCatalogProductId": null,
+        "complete": true,
+        "finalValid": true,
+        "route": "deterministic",
+        "admissionReason": "no_safe_candidate",
+        "attempts": 0,
+        "latencyMs": [],
+        "review": null
+      },
+      {
+        "id": "holdout-5-same",
+        "family": "bowers-wilkins/805D4 Signature",
+        "expectedCatalogProductId": 1005,
+        "actualCatalogProductId": null,
+        "complete": true,
+        "finalValid": false,
+        "route": "model",
+        "admissionReason": null,
+        "attempts": 1,
+        "latencyMs": [
+          481
+        ],
+        "review": {
+          "decision": "rejected",
+          "actor": "Codex",
+          "reason": "Invalid wire response: catalogProductId is null but evidenceIndex is 0. Preserve and reject the response without rewriting it.",
+          "reviewedAt": "2026-09-13T08:26:49.262Z",
+          "fingerprint": "46f0cf5349a32d92a81e309f2e1f56bbbf4220895a1edc2f5d1fdb75d0c79a7d",
+          "responseDigest": "9ffdaa9bfa025967206956e2e3abfa45deec887477a416bd433478d660e3380e"
+        }
+      },
+      {
+        "id": "holdout-5-distinct",
+        "family": "bowers-wilkins/805D4 Signature",
+        "expectedCatalogProductId": null,
+        "actualCatalogProductId": null,
+        "complete": true,
+        "finalValid": true,
+        "route": "deterministic",
+        "admissionReason": "no_safe_candidate",
+        "attempts": 0,
+        "latencyMs": [],
+        "review": null
+      },
+      {
+        "id": "holdout-6-same",
+        "family": "mark-levinson/No.326S",
+        "expectedCatalogProductId": 1006,
+        "actualCatalogProductId": 1006,
+        "complete": true,
+        "finalValid": true,
+        "route": "model",
+        "admissionReason": null,
+        "attempts": 1,
+        "latencyMs": [
+          529
+        ],
+        "review": {
+          "decision": "accepted",
+          "actor": "Codex",
+          "reason": "Exact No.326S identity.",
+          "reviewedAt": "2026-09-13T08:26:49.262Z",
+          "fingerprint": "07b3c076d0ead9fdc0e7808bc5ef131ba254c9f34bc73558a702fee0408a4ecc",
+          "responseDigest": "592587e05901e6bd22cbbb15fca5c82385346d7aafcd5ec33c55a05635107ff4"
+        }
+      },
+      {
+        "id": "holdout-6-distinct",
+        "family": "mark-levinson/No.326S",
+        "expectedCatalogProductId": null,
+        "actualCatalogProductId": null,
+        "complete": true,
+        "finalValid": false,
+        "route": "model",
+        "admissionReason": null,
+        "attempts": 1,
+        "latencyMs": [
+          451
+        ],
+        "review": {
+          "decision": "rejected",
+          "actor": "Codex",
+          "reason": "Invalid wire response: catalogProductId is null but evidenceIndex is 0. Preserve and reject the response without rewriting it.",
+          "reviewedAt": "2026-09-13T08:26:49.262Z",
+          "fingerprint": "aef18deb786a408c655cc9de72857183127939bdc4bdbda549b225fd8e7e72d4",
+          "responseDigest": "9ffdaa9bfa025967206956e2e3abfa45deec887477a416bd433478d660e3380e"
+        }
+      },
+      {
+        "id": "holdout-7-same",
+        "family": "luxman/L-507Z",
+        "expectedCatalogProductId": 1007,
+        "actualCatalogProductId": 1007,
+        "complete": true,
+        "finalValid": true,
+        "route": "model",
+        "admissionReason": null,
+        "attempts": 1,
+        "latencyMs": [
+          534
+        ],
+        "review": {
+          "decision": "accepted",
+          "actor": "Codex",
+          "reason": "Exact L-507Z identity; an included box does not change the device.",
+          "reviewedAt": "2026-09-13T08:26:49.262Z",
+          "fingerprint": "9fa74cbb7a573b5c10c0ec6dd9a54df286bd6c0782f6ba8f389c82c308d2f40e",
+          "responseDigest": "9869662e6251174492c7a7031702c1724f9ac7ea9b75824bdff51d578a846d72"
+        }
+      },
+      {
+        "id": "holdout-7-distinct",
+        "family": "luxman/L-507Z",
+        "expectedCatalogProductId": null,
+        "actualCatalogProductId": null,
+        "complete": true,
+        "finalValid": false,
+        "route": "model",
+        "admissionReason": null,
+        "attempts": 1,
+        "latencyMs": [
+          486
+        ],
+        "review": {
+          "decision": "rejected",
+          "actor": "Codex",
+          "reason": "Invalid wire response: catalogProductId is null but evidenceIndex is 0. Preserve and reject the response without rewriting it.",
+          "reviewedAt": "2026-09-13T08:26:49.262Z",
+          "fingerprint": "deb5ca75f8ed9b18997c07e01e2bdd81fa209bc68a91c4231f763d2bf384f7b9",
+          "responseDigest": "9ffdaa9bfa025967206956e2e3abfa45deec887477a416bd433478d660e3380e"
+        }
+      },
+      {
+        "id": "holdout-8-same",
+        "family": "denon/DP-200USB",
+        "expectedCatalogProductId": 1008,
+        "actualCatalogProductId": 1008,
+        "complete": true,
+        "finalValid": true,
+        "route": "model",
+        "admissionReason": null,
+        "attempts": 1,
+        "latencyMs": [
+          579
+        ],
+        "review": {
+          "decision": "accepted",
+          "actor": "Codex",
+          "reason": "Exact official DP-200USB base model, without an unresolved color alias.",
+          "reviewedAt": "2026-09-13T08:26:49.262Z",
+          "fingerprint": "1b3cc6e5c82575e30c671c7f48ece2e6e3770e4aa54cb108ec45bf3fec19f602",
+          "responseDigest": "844941710989953d7c782c17a03d6997d15985fd40f70612c25fb7306af5108d"
+        }
+      },
+      {
+        "id": "holdout-8-distinct",
+        "family": "denon/DP-200USB",
+        "expectedCatalogProductId": null,
+        "actualCatalogProductId": null,
+        "complete": true,
+        "finalValid": false,
+        "route": "model",
+        "admissionReason": null,
+        "attempts": 1,
+        "latencyMs": [
+          489
+        ],
+        "review": {
+          "decision": "rejected",
+          "actor": "Codex",
+          "reason": "Invalid wire response: catalogProductId is null but evidenceIndex is 0. Preserve and reject the response without rewriting it.",
+          "reviewedAt": "2026-09-13T08:26:49.262Z",
+          "fingerprint": "a2d7087f776f501704d5ef6fe76ad8a6db0295e91a9378202eca773b095bf9fd",
+          "responseDigest": "9ffdaa9bfa025967206956e2e3abfa45deec887477a416bd433478d660e3380e"
+        }
+      },
+      {
+        "id": "holdout-9-same",
+        "family": "marantz/SA-10",
+        "expectedCatalogProductId": 1009,
+        "actualCatalogProductId": 1009,
+        "complete": true,
+        "finalValid": true,
+        "route": "model",
+        "admissionReason": null,
+        "attempts": 1,
+        "latencyMs": [
+          446
+        ],
+        "review": {
+          "decision": "accepted",
+          "actor": "Codex",
+          "reason": "Exact official SA-10 model.",
+          "reviewedAt": "2026-09-13T08:26:49.262Z",
+          "fingerprint": "9f2bacb8d5ab48c9f7ef5dfa0b2373f546f763ac29975f21c2849c26cec6a96e",
+          "responseDigest": "83e853a52391d6b5077b0ed1cb4e686683bc5aa7e1a31328559ae31976825b7b"
+        }
+      },
+      {
+        "id": "holdout-9-distinct",
+        "family": "marantz/SA-10",
+        "expectedCatalogProductId": null,
+        "actualCatalogProductId": null,
+        "complete": true,
+        "finalValid": true,
+        "route": "deterministic",
+        "admissionReason": "no_safe_candidate",
+        "attempts": 0,
+        "latencyMs": [],
+        "review": null
+      },
+      {
+        "id": "holdout-10-same",
+        "family": "esoteric/N-01XD SE",
+        "expectedCatalogProductId": 1010,
+        "actualCatalogProductId": 1010,
+        "complete": true,
+        "finalValid": true,
+        "route": "model",
+        "admissionReason": null,
+        "attempts": 1,
+        "latencyMs": [
+          485
+        ],
+        "review": {
+          "decision": "accepted",
+          "actor": "Codex",
+          "reason": "Exact N-01XD SE identity.",
+          "reviewedAt": "2026-09-13T08:26:49.262Z",
+          "fingerprint": "b45c0111a3ed0699a5c054548fe8804246f4d4065044f18c8091a0e049c4f1ab",
+          "responseDigest": "afcfc6e769ca19f8e32f8415571a0caa4536af9cbc96dc5e703aa4bddc35a281"
+        }
+      },
+      {
+        "id": "holdout-10-distinct",
+        "family": "esoteric/N-01XD SE",
+        "expectedCatalogProductId": null,
+        "actualCatalogProductId": null,
+        "complete": true,
+        "finalValid": true,
+        "route": "deterministic",
+        "admissionReason": "no_safe_candidate",
+        "attempts": 0,
+        "latencyMs": [],
+        "review": null
+      }
+    ]
+  },
+  "decision": "Do not broaden the current canary or approve a new policy from this result: the zero-invalid-response gate failed. Preserve the strict response validator."
+}

@@ -174,6 +174,15 @@ was replaced by a different-model case, and the unverified SA-10 SE positive bec
 The review is independent of model responses and explicitly does not claim a separate human
 reviewer. The existing live-canary record and policy approval are unchanged.
 
+The [v2 real-model recording](../../evaluations/workers-ai/2026-09-13-holdout-v2-qwen3-prompt3.json)
+and [evaluation](../../evaluations/workers-ai/2026-09-13-holdout-v2-evaluation.json) retain the failed
+prompt-3 result: 14 provider calls, six deterministic abstentions, 80% positive recall and five
+invalid null-ID/non-null-evidence responses rejected by the runtime. Measured usage and latency
+are separate from reservations and production metrics. The CI regression replays those observations
+without inference and expects the failed model gate; it must not repair responses to make it pass.
+The recording names the clean source commit used to freeze requests. Replaying it on a different
+checkout cannot establish that newer SHA's completion through the common report's source gate.
+
 The template binds each runtime-built request to its snapshot fingerprint, corpus digest and exact
 policy key. Fill model-required `attempts` with recorded `model`, nullable `requestId`, `requestedAt`,
 raw schema-2 `response`, nullable `latencyMs`, and `usage` containing nullable `inputTokens`,
