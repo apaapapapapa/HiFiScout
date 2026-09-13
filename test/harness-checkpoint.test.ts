@@ -49,6 +49,22 @@ test("resume reevaluates fixed acceptance conditions against the current checkou
     assert.equal((await saveCheckpoint(task, incomplete, path, 1, checkout)).status, "unknown");
     const failed = { ...report, checks: [{ ...report.checks[0], status: "fail" }] };
     assert.equal((await saveCheckpoint(task, failed, path, 2, checkout)).status, "fail");
+    const unstable = {
+      ...report,
+      checks: [
+        ...report.checks,
+        {
+          ...report.checks[0],
+          id: "snapshot-stable",
+          required: true,
+          status: "unknown",
+          reason: "PR changed during collection",
+        },
+      ],
+    };
+    const resumed = await saveCheckpoint(task, unstable, path, 3, checkout);
+    assert.equal(resumed.status, "unknown");
+    assert.deepEqual(resumed.remaining, ["snapshot-stable"]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

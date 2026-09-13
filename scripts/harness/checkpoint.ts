@@ -128,6 +128,12 @@ export function assessCheckpoint(value: unknown, current: CheckoutState) {
           evidence: [],
         };
   });
+  // Collectors may add integrity requirements (for example snapshot-stable). The task is a
+  // minimum acceptance set, not permission to discard additional required evidence.
+  const taskIds = new Set(checks.map((check) => check.id));
+  checks.push(
+    ...report.checks.filter((check) => !taskIds.has(check.id)).map((check) => ({ ...check })),
+  );
   const sourceStable =
     current.sourceSha === report.sourceSha &&
     checkpoint.checkout.sourceSha === report.sourceSha &&
@@ -150,7 +156,9 @@ export function assessCheckpoint(value: unknown, current: CheckoutState) {
     checkoutMatchesEvidence: sourceStable,
     status: assessed.status,
     checks: assessed.checks,
-    remaining: assessed.checks.filter((check) => check.status !== "pass").map((check) => check.id),
+    remaining: assessed.checks
+      .filter((check) => check.required && check.status !== "pass")
+      .map((check) => check.id),
     nextActions: checkpoint.task.nextActions,
   };
 }
