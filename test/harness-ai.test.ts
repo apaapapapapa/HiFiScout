@@ -1,13 +1,38 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "vite-plus/test";
 import {
   aiRecordingTemplate,
   evaluateAiHoldout,
   aiResponseDigest,
   assertHoldoutIsolation,
+  aiHoldoutDigest,
 } from "../scripts/harness/ai.js";
-import { aiCatalogHoldoutCases } from "./fixtures/ai-catalog-holdout.js";
+import {
+  aiCatalogHoldoutCases,
+  AI_HOLDOUT_LABEL_REVIEW,
+  AI_HOLDOUT_VERSION,
+} from "./fixtures/ai-catalog-holdout.js";
+import { aiSnapshotFingerprint } from "../src/ai-suggestions/contract.js";
 import { AI_CATALOG_POLICY } from "../src/ai-suggestions/policy.js";
+
+test("frozen source review binds every label to the exact holdout snapshot", async () => {
+  const review = JSON.parse(
+    readFileSync(new URL(`../${AI_HOLDOUT_LABEL_REVIEW}`, import.meta.url), "utf8"),
+  );
+  assert.equal(review.corpusVersion, AI_HOLDOUT_VERSION);
+  assert.equal(review.corpusDigest, aiHoldoutDigest());
+  assert.deepEqual(
+    review.cases.map((item: { id: string; expectedCatalogProductId: number | null }) => [
+      item.id,
+      item.expectedCatalogProductId,
+    ]),
+    aiCatalogHoldoutCases.map((item) => [item.id, item.expectedCatalogProductId]),
+  );
+  for (const [index, item] of aiCatalogHoldoutCases.entries()) {
+    assert.equal(review.cases[index].fingerprint, await aiSnapshotFingerprint(item.snapshot));
+  }
+});
 
 async function recording() {
   const template = await aiRecordingTemplate();
