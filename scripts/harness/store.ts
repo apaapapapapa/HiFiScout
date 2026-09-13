@@ -3,6 +3,15 @@ import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import { isRecord } from "../../src/types.js";
 
+async function syncDirectory(path: string): Promise<void> {
+  const directory = await open(dirname(path), "r");
+  try {
+    await directory.sync();
+  } finally {
+    await directory.close();
+  }
+}
+
 // Shared by evidence checkpoints and loop journals. A surviving lock is deliberately not stolen:
 // an operator must first establish that its writer is no longer alive.
 export async function updateJsonRevision<T extends { revision: number }>(
@@ -36,16 +45,12 @@ export async function updateJsonRevision<T extends { revision: number }>(
       await file.close();
     }
     await rename(temporary, path);
-    const directory = await open(dirname(path), "r");
-    try {
-      await directory.sync();
-    } finally {
-      await directory.close();
-    }
+    await syncDirectory(path);
     return next;
   } finally {
     await rm(temporary, { force: true });
     await lock.close();
     await rm(lockPath, { force: true });
+    await syncDirectory(path);
   }
 }

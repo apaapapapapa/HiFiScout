@@ -46,7 +46,11 @@ function statusOf(value: unknown): "pass" | "fail" | "unknown" {
       : "unknown";
 }
 
-export function assessDelivery(snapshot: DeliverySnapshot) {
+export type DeliveryTarget = "pr" | "merge" | "deployment";
+
+export function assessDelivery(snapshot: DeliverySnapshot, target: DeliveryTarget = "deployment") {
+  if (target !== "pr" && target !== "merge" && target !== "deployment")
+    throw new Error("invalid_delivery_target");
   const repo = requireRepository(snapshot.repository);
   const pr = record(snapshot.pull);
   const sourceSha = deliverySource(pr);
@@ -79,6 +83,9 @@ export function assessDelivery(snapshot: DeliverySnapshot) {
     "main-merge",
     pr.merged === true && record(pr.base).ref === "main" ? "pass" : "unknown",
     pr.merged ? "Merged pull request; target must be main" : "PR has not been merged",
+    prUrl,
+    "source",
+    target !== "pr",
   );
 
   const runs = list(snapshot.ciRuns)
@@ -103,12 +110,14 @@ export function assessDelivery(snapshot: DeliverySnapshot) {
   let unresolved = 0;
   let changesRequested = false;
   let reviewRequired = false;
+  let reviewApproved = true;
   snapshot.reviewPages.forEach((page, index) => {
     const data = record(record(page).data);
     const review = record(record(data.repository).pullRequest);
     if (review.headRefOid !== record(pr.head).sha) reviewComplete = false;
     changesRequested ||= review.reviewDecision === "CHANGES_REQUESTED";
     reviewRequired ||= review.reviewDecision === "REVIEW_REQUIRED";
+    reviewApproved &&= review.reviewDecision === "APPROVED";
     const threads = record(review.reviewThreads);
     const pageInfo = record(threads.pageInfo);
     if (typeof pageInfo.hasNextPage !== "boolean") throw new Error("invalid_review_pagination");
@@ -126,6 +135,18 @@ export function assessDelivery(snapshot: DeliverySnapshot) {
         ? "unknown"
         : "pass",
     `Review coverage=${reviewComplete}; unresolved=${unresolved}; changesRequested=${changesRequested}; reviewRequired=${reviewRequired}`,
+  );
+  add(
+    "review-approval",
+    changesRequested
+      ? "fail"
+      : reviewComplete && reviewApproved && !unresolved
+        ? "pass"
+        : "unknown",
+    `Explicit approval=${reviewApproved}; review coverage=${reviewComplete}; unresolved=${unresolved}`,
+    prUrl,
+    "source",
+    false,
   );
 
   const statuses = list(snapshot.statuses)
@@ -164,6 +185,7 @@ export function assessDelivery(snapshot: DeliverySnapshot) {
     `${deployed?.description ?? "No deployment status"}; artifact SHA=${deploymentSha ?? "unconfirmed"}`,
     typeof deployed?.target_url === "string" ? deployed.target_url : prUrl,
     "deployment",
+    target === "deployment",
   );
   for (const context of ["deployment/catalog-admin", "verification/e2e"]) {
     const status = latest(context);
@@ -206,6 +228,7 @@ export function assessDelivery(snapshot: DeliverySnapshot) {
         : "No result for this SHA",
       typeof status?.target_url === "string" ? status.target_url : prUrl,
       "deployment",
+      target === "deployment",
     );
   }
   add(

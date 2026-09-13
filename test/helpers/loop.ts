@@ -6,6 +6,12 @@ export const loopTime = (seconds = 0) =>
   new Date(Date.parse("2026-09-13T00:00:00Z") + seconds * 1000).toISOString();
 export const loopSpec = () => parseLoopSpec({ ...example, baselineSha: loopSha });
 export const loopCheckout = { sourceSha: loopSha, branch: "loop/test", dirty: false };
+export const loopScope = {
+  baselineSha: loopSha,
+  sourceSha: loopSha,
+  artifactUri: ".generated/scope.json",
+  changes: [],
+};
 export function loopReport(status: CheckStatus = "pass", seconds = 2): HarnessReport {
   return {
     schemaVersion: 1,

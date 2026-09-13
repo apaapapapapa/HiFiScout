@@ -7,8 +7,61 @@ import { collectDelivery } from "../scripts/harness/github.js";
 import { assessDelivery } from "../scripts/harness/delivery.js";
 import type { DeliverySnapshot } from "../scripts/harness/delivery.js";
 import { parsePostDeployReceipt } from "../scripts/harness/post-deploy.js";
+import { assessHarnessReport } from "../scripts/harness/report.js";
 
 const sourceSha = "a".repeat(40);
+test("PR and merge targets do not inherit later deployment requirements", () => {
+  const s = snapshot();
+  s.deployment = null;
+  s.downstream = [];
+  s.statuses = [];
+  assert.equal(assessDelivery(s, "merge").status, "pass");
+  assert.equal(assessDelivery(s).status, "unknown");
+  const pull = { ...(s.pull as object), merged: false, merge_commit_sha: null };
+  s.pull = pull;
+  s.pullAfter = pull;
+  s.ciRuns = [
+    {
+      id: 1,
+      head_sha: "b".repeat(40),
+      path: ".github/workflows/ci.yml",
+      event: "pull_request",
+      status: "completed",
+      conclusion: "success",
+    },
+  ];
+  assert.equal(assessDelivery(s, "pr").status, "pass");
+  assert.equal(assessDelivery(s, "merge").status, "unknown");
+});
+test("an explicit-review policy distinguishes approval from merely having no open threads", () => {
+  for (const decision of [null, "APPROVED", "REVIEW_REQUIRED", "CHANGES_REQUESTED"] as const) {
+    const s = snapshot();
+    s.reviewPages = [
+      {
+        data: {
+          repository: {
+            pullRequest: {
+              headRefOid: "b".repeat(40),
+              reviewDecision: decision,
+              reviewThreads: { nodes: [], pageInfo: { hasNextPage: false } },
+            },
+          },
+        },
+      },
+    ];
+    const report = assessDelivery(s);
+    const required = assessHarnessReport({
+      ...report,
+      checks: report.checks.map((check) =>
+        check.id === "review-approval" ? { ...check, required: true } : check,
+      ),
+    });
+    assert.equal(
+      required.status,
+      decision === "APPROVED" ? "pass" : decision === "CHANGES_REQUESTED" ? "fail" : "unknown",
+    );
+  }
+});
 test("collector follows the status run, downloads its identity and preserves the raw snapshot", async () => {
   const s = snapshot();
   const dir = await mkdtemp(join(tmpdir(), "harness-collector-test-"));

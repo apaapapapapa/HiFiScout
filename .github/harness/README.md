@@ -20,6 +20,13 @@ The normalized contract materializes CI, review coverage and stable-snapshot gat
 targets add the existing delivery collector's concrete milestone IDs. Required external review adds
 an approval gate. Missing IDs therefore cannot waive the selected policy, even through checkpoint
 assessment. Delivery milestones are evaluated after source repair, at their corresponding stage.
+The delivery collector emits `review-approval` separately from thread resolution, while AI uses the
+existing `ai/offline-holdout` producer; offline success does not prove live model quality. Frozen AI
+labels are protected from repair paths. Review waits are capped at 900,000 ms (15 minutes).
+Loop callers pass the selected target to `collectDelivery`/`assessDelivery`; milestones after that
+target are optional and deployment artifacts are fetched only for deployment targets. The existing
+`harness delivery` CLI keeps its full-deployment default. Browser acceptance/configuration under
+`e2e` is also protected from automatic repair scope.
 
 Create a journal with `vp run harness loop init <spec.json> <state.json>`; inspect it with
 `vp run harness loop history <state.json>`. Journals extend the existing checkpoint storage primitive:
@@ -30,6 +37,8 @@ as CI artifacts or operator-owned task files. An abandoned lock needs deliberate
 checking before removal. Inspecting history does not execute its contents or restart a stopped run.
 The parent directory is synced after replacement. Both append and read enforce the same serialized
 journal size ceiling, so a successful write cannot create a journal rejected by the reader.
+Lock removal is synced as well. Event data must be plain JSON: non-finite numbers, undefined,
+accessors, sparse arrays and class instances are rejected; stored payloads are detached from callers.
 
 `vp run harness loop status <state.json>` reconstructs the controller state from the journal.
 An attempt reserves its external calls and microdollar allocation before execution. Interrupted work
@@ -38,6 +47,10 @@ progress; a source pass advances to review, not deployment/completion. The contr
 required checks as checkpoints, including explicitly requested comparisons. Repeated failures without
 improvement, the iteration ceiling and the original wall-clock deadline stop the run. Heartbeats do
 not extend deadlines or count as progress. A terminal run requires a new contract/run to try again.
+Source acceptance also requires the complete Git change list bound to the frozen baseline and
+candidate SHA. `collectLoopScope` records this evidence; protected paths, existing acceptance-test
+edits, symlinks/gitlinks and mode changes block the attempt. Requested comparisons must name the
+contract's baseline. A passing JSON assertion alone cannot replace these collector inputs.
 
 ## Evidence reports
 

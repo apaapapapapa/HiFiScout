@@ -8,11 +8,12 @@ import {
   requireText,
   requireTimestamp,
 } from "../report.js";
-import type { HarnessReport } from "../report.js";
+import type { HarnessCheck, HarnessReport } from "../report.js";
 import { digest, integer, isDeliveryCheck } from "./contract.js";
 import type { LoopSpec } from "./contract.js";
 import { appendLoopEvent, parseLoopRun, readLoopRun } from "./state.js";
 import type { LoopRun } from "./state.js";
+import { assessLoopScope } from "./scope.js";
 
 export type LoopPhase =
   | "ready"
@@ -39,7 +40,12 @@ export interface LoopView {
   nextAction: string;
 }
 
-export function assessLoopSource(spec: LoopSpec, value: unknown, checkout: CheckoutState) {
+export function assessLoopSource(
+  spec: LoopSpec,
+  value: unknown,
+  checkout: CheckoutState,
+  scope: unknown = null,
+) {
   const report = parseHarnessReport(value);
   const requirements = [
     ...spec.task.requirements.filter((r) => r.scope === "source" && !isDeliveryCheck(r.id)),
@@ -49,12 +55,27 @@ export function assessLoopSource(spec: LoopSpec, value: unknown, checkout: Check
     requirements,
     report.checks.filter((c) => c.scope === "source" && !isDeliveryCheck(c.id)),
   );
+  const put = (check: HarnessCheck) => {
+    const index = checks.findIndex((item) => item.id === check.id);
+    if (index < 0) checks.push(check);
+    else checks[index] = check;
+  };
+  put(assessLoopScope(spec, report.sourceSha, scope));
+  if (spec.comparisons.length && report.baselineSha !== spec.baselineSha)
+    put({
+      id: "loop:baseline",
+      required: true,
+      scope: "source",
+      status: "unknown",
+      reason: "Comparison baseline differs from the frozen contract",
+      evidence: [],
+    });
   if (checkout.dirty || requireSha(checkout.sourceSha) !== report.sourceSha) {
     for (const check of checks) {
       check.status = "unknown";
       check.reason = "Checkout changed; revalidate before using this outcome";
     }
-    checks.push({
+    put({
       id: "loop:checkout",
       scope: "source",
       required: true,
@@ -145,8 +166,8 @@ export function assessLoopRun(value: unknown, now = new Date().toISOString()): L
           report.startedAt >= view.activeAttempt.startedAt && report.finishedAt <= event.at,
           "report_outside_attempt",
         );
-        const result = assessLoopSource(run.spec, report, parseCheckout(data.checkout));
-        view.lastReport = report;
+        const result = assessLoopSource(run.spec, report, parseCheckout(data.checkout), data.scope);
+        view.lastReport = result;
         view.activeAttempt = null;
         view.lastProgressAt = event.at;
         if (result.status === "pass") {
@@ -156,11 +177,18 @@ export function assessLoopRun(value: unknown, now = new Date().toISOString()): L
         } else if (
           result.status === "unknown" ||
           result.checks.some(
+            (check) => check.id === "loop:change-scope" && check.status !== "pass",
+          ) ||
+          result.checks.some(
             (check) => check.required && (check.status === "unknown" || check.status === "skipped"),
           )
         ) {
           view.phase = "blocked";
-          view.reason = "incomplete_source_evidence";
+          view.reason = result.checks.some(
+            (check) => check.id === "loop:change-scope" && check.status === "fail",
+          )
+            ? "change_scope_violation"
+            : "incomplete_source_evidence";
         } else {
           const required = result.checks.filter((c) => c.required);
           const passed = required.filter((c) => c.status === "pass").length;
@@ -281,12 +309,13 @@ export async function finishLoopAttempt(
   report: unknown,
   checkout: CheckoutState,
   at = new Date().toISOString(),
+  scope: unknown = null,
 ): Promise<LoopView> {
   return recordLoopEvent(
     path,
     await readLoopRun(path),
     "attempt-finished",
-    { report, checkout },
+    { report, checkout, scope },
     at,
   );
 }

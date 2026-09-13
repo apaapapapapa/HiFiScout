@@ -10,7 +10,7 @@ import {
   recordLoopEvent,
 } from "../scripts/harness/loop/controller.js";
 import { createLoopRun, readLoopRun } from "../scripts/harness/loop/state.js";
-import { loopCheckout, loopReport, loopSpec, loopTime } from "./helpers/loop.js";
+import { loopCheckout, loopReport, loopSpec, loopTime, loopScope } from "./helpers/loop.js";
 const free = { externalCalls: 0, reservedCostMicros: 0 };
 
 test("a passing source attempt advances to review; missing, stale or skipped evidence blocks", async () => {
@@ -27,6 +27,7 @@ test("a passing source attempt advances to review; missing, stale or skipped evi
         report,
         { ...loopCheckout, dirty: status === "stale" },
         loopTime(3),
+        loopScope,
       );
       assert.equal(result.phase, status === "pass" ? "review" : "blocked");
       assert.notEqual(result.phase, "completed");
@@ -50,6 +51,7 @@ test("failed attempts stop at no-progress/iteration limits and cannot restart th
         loopReport("fail", n * 3 + 2),
         loopCheckout,
         loopTime(n * 3 + 2),
+        loopScope,
       );
     }
     assert.equal(assessLoopRun(await readLoopRun(path), loopTime(10)).reason, "no_progress_limit");
