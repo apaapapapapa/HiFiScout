@@ -37,8 +37,8 @@
   },
   "ratelimits": [{ "name": "API_RATE_LIMITER", "namespace_id": "541721", "simple": { "limit": 120, "period": 60 } }],
   "vars": {
-    "AI_CATALOG_ENABLED": "false",
-    "AI_CATALOG_EVALUATION_POLICY": "",
+    "AI_CATALOG_ENABLED": "true",
+    "AI_CATALOG_EVALUATION_POLICY": "{\"model\":\"@cf/qwen/qwen3-30b-a3b-fp8\",\"kind\":\"catalog_model_lead\",\"promptVersion\":3,\"schemaVersion\":2,\"maxJobsPerDay\":25,\"maxAttempts\":2,\"maxInputTokens\":2000,\"maxRequestBytes\":1744,\"maxOutputTokens\":300,\"maxResponseBytes\":4096,\"maxCandidates\":5,\"maxNeuronsPerDay\":1000,\"inputNeuronsPerMillion\":4625,\"outputNeuronsPerMillion\":30475,\"retentionDays\":180}",
     "AUDIOUNION_ENABLED": "true",
     "IPPINKAN_ENABLED": "true",
     "FUJIYA_AVIC_ENABLED": "true",

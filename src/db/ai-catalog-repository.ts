@@ -165,6 +165,19 @@ export async function finishAiAttempt(
       ),
   ]);
 }
+/** A deterministic veto is a completed abstention, with no inference attempt or reservation. */
+export async function abstainAiJob(db: QueryableDatabase, id: string, now = new Date()) {
+  await db
+    .prepare(`UPDATE ai_catalog_jobs SET status='no_suggestion',result_json=?,error_code='no_safe_candidate',updated_at=?
+    WHERE id=? AND status='queued'`)
+    .bind(
+      JSON.stringify({ decision: "no_suggestion", catalogProductId: null, evidence: [] }),
+      now.toISOString(),
+      id,
+    )
+    .run();
+}
+
 export async function setAiJobStatus(
   db: QueryableDatabase,
   id: string,

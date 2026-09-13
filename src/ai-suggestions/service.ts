@@ -2,8 +2,9 @@ import {
   AiContractError,
   aiSnapshotFingerprint,
   buildAiRequest,
+  eligibleAiCandidates,
   parseAiSnapshot,
-  validateAiSuggestion,
+  validateAiSelection,
 } from "./contract.js";
 import {
   AI_CATALOG_POLICY,
@@ -13,6 +14,7 @@ import {
 } from "./policy.js";
 import {
   blockAiBudget,
+  abstainAiJob,
   finishAiAttempt,
   insertAiJob,
   loadAiBudget,
@@ -66,11 +68,13 @@ export async function prepareAiCatalogJob(
     throw new Error("invalid_ai_candidate");
   const snapshot = await loadAiCatalogSnapshot(env.DB, candidateId);
   if (!snapshot) throw new Error("ai_candidate_not_eligible");
-  buildAiRequest(snapshot);
+  const eligible = eligibleAiCandidates(snapshot).length > 0;
+  if (eligible) buildAiRequest(snapshot);
   const id = await aiSnapshotFingerprint(snapshot);
   const inserted = await insertAiJob(env.DB, id, snapshot, now);
   if (inserted) {
-    if (aiCatalogEnabled(env)) {
+    if (!eligible) await abstainAiJob(env.DB, id, now);
+    else if (aiCatalogEnabled(env)) {
       // Persist first; maintenance recovers an interrupted or failed send without another AI job.
       try {
         await env.AI_CATALOG_QUEUE!.send({ kind: "ai_catalog_job", jobId: id });
@@ -93,6 +97,7 @@ export async function processAiCatalogJob(env: AiCatalogEnv, id: string, now = n
   const snapshot = storedSnapshot(job);
   if (!snapshot || !(await freshAiSnapshot(env, job)))
     return setAiJobStatus(env.DB, id, "queued", "stale", "target_changed", now);
+  if (!eligibleAiCandidates(snapshot).length) return abstainAiJob(env.DB, id, now);
   let request: ReturnType<typeof buildAiRequest>;
   try {
     request = buildAiRequest(snapshot);
@@ -146,7 +151,7 @@ export async function processAiCatalogJob(env: AiCatalogEnv, id: string, now = n
       await blockAiBudget(env.DB, claim.day);
       error = "usage_unverified";
     } else {
-      result = validateAiSuggestion(snapshot, isRecord(raw) ? raw.response : raw);
+      result = validateAiSelection(snapshot, isRecord(raw) ? raw.response : raw);
       status = result.decision === "suggestion" ? "suggested" : "no_suggestion";
       error = "";
     }

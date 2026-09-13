@@ -2,8 +2,8 @@
 export const AI_CATALOG_POLICY = Object.freeze({
   model: "@cf/qwen/qwen3-30b-a3b-fp8",
   kind: "catalog_model_lead" as const,
-  promptVersion: 1,
-  schemaVersion: 1,
+  promptVersion: 3,
+  schemaVersion: 2,
   maxJobsPerDay: 25,
   maxAttempts: 2,
   maxInputTokens: 2000,
