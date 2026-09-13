@@ -20,6 +20,13 @@ The normalized contract materializes CI, review coverage and stable-snapshot gat
 targets add the existing delivery collector's concrete milestone IDs. Required external review adds
 an approval gate. Missing IDs therefore cannot waive the selected policy, even through checkpoint
 assessment. Delivery milestones are evaluated after source repair, at their corresponding stage.
+The delivery collector emits `review-approval` separately from thread resolution, while AI uses the
+existing `ai/offline-holdout` producer; offline success does not prove live model quality. Frozen AI
+labels are protected from repair paths. Review waits are capped at 900,000 ms (15 minutes).
+Loop callers pass the selected target to `collectDelivery`/`assessDelivery`; milestones after that
+target are optional and deployment artifacts are fetched only for deployment targets. The existing
+`harness delivery` CLI keeps its full-deployment default. Browser acceptance/configuration under
+`e2e` is also protected from automatic repair scope.
 
 ## Evidence reports
 

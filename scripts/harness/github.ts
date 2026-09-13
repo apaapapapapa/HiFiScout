@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isRecord } from "../../src/types.js";
 import { assessDelivery, deliverySource, requireRepository } from "./delivery.js";
-import type { DeliverySnapshot } from "./delivery.js";
+import type { DeliverySnapshot, DeliveryTarget } from "./delivery.js";
 import { requireSha } from "./report.js";
 
 const exec = promisify(execFile);
@@ -50,6 +50,7 @@ export async function collectDelivery(
   number: number,
   outputDir: string,
   invoke: typeof gh = gh,
+  target: DeliveryTarget = "deployment",
 ) {
   const repo = requireRepository(repository);
   if (!Number.isSafeInteger(number) || number <= 0) throw new Error("invalid_pr_number");
@@ -97,6 +98,7 @@ export async function collectDelivery(
   let deployment: DeliverySnapshot["deployment"] = null;
   const runPrefix = `https://github.com/${repo}/actions/runs/`;
   if (
+    target === "deployment" &&
     typeof deployStatus?.target_url === "string" &&
     deployStatus.target_url.startsWith(runPrefix)
   ) {
@@ -146,7 +148,9 @@ export async function collectDelivery(
     deployment,
     downstream: [],
   };
-  for (const context of ["deployment/catalog-admin", "verification/e2e"]) {
+  for (const context of target === "deployment"
+    ? ["deployment/catalog-admin", "verification/e2e"]
+    : []) {
     const status = statuses
       .filter(isRecord)
       .filter((s) => s.context === context)
@@ -188,7 +192,7 @@ export async function collectDelivery(
     }
   }
   snapshot.pullAfter = await api(`${endpoint}/pulls/${number}`, invoke);
-  const report = assessDelivery(snapshot);
+  const report = assessDelivery(snapshot, target);
   await mkdir(outputDir, { recursive: true });
   await writeFile(
     join(outputDir, "github-snapshot.json"),
