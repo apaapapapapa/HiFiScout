@@ -102,6 +102,40 @@ function sweepDatabase({ failSnapshot = false }: { failSnapshot?: boolean } = {}
   });
 }
 
+test("a no-impact replay resolves without repeating an authoritative shop-wide snapshot", async () => {
+  const db = captureDatabase((statement) => {
+    const sql = statement.sql;
+    if (/idx_dq_remediation_queue_pending/.test(sql)) return [{ id: 1 }];
+    if (/SELECT \*\s+FROM data_quality_remediation_queue\s+WHERE id IN/.test(sql)) {
+      return [{ ...CLAIMED_JOB_ROW, work_type: "classify_category" }];
+    }
+    if (/FROM products\s+WHERE id = \?/.test(sql)) {
+      return [
+        {
+          ...LISTING_ROW,
+          remediation_projection_required: 0,
+          remediation_projection_token: "",
+        },
+      ];
+    }
+    if (/FROM data_quality_runs q INDEXED BY idx_data_quality_shop_latest/.test(sql)) {
+      return [{ evaluated_at: "2026-08-14T23:50:00.000Z", has_quality_change: 0 }];
+    }
+    return [];
+  });
+
+  const result = await runDataQualityRemediationSweep(db, {
+    claimLimit: 1,
+    now: new Date("2026-08-15T00:00:00.000Z"),
+    preferQueuedWork: true,
+  });
+
+  assert.equal(result.resolved, 1);
+  assert.equal(result.snapshotsSkipped, 1);
+  assert.ok(!db.calls.some((call) => /COUNT\(\*\) AS total_items/.test(call.sql)));
+  assert.ok(!db.calls.some((call) => /INSERT INTO data_quality_runs/.test(call.sql)));
+});
+
 test("a resolved job persists a fresh data-quality snapshot without inventing a crawl run", async () => {
   const db = sweepDatabase();
 

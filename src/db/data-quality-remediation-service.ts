@@ -34,6 +34,7 @@ import {
 } from "./data-quality-remediation-queue-repository.js";
 import { refreshListingProjections } from "./listing-projection-refresh.js";
 import { listManufacturerAliasEvidence } from "./manufacturer-repository.js";
+import { firstMeasured } from "./read-accounting.js";
 import type { QueryableDatabase } from "./types.js";
 
 interface RemediationListingRow {
@@ -109,6 +110,8 @@ interface RemediationSweepResult {
   resolved: number;
   failed: number;
   retried: number;
+  /** Shops whose latest snapshot stayed authoritative because this sweep changed no DQ input. */
+  snapshotsSkipped: number;
   affectedShops: string[];
 }
 
@@ -118,6 +121,47 @@ export interface RunDataQualityRemediationSweepResult extends RemediationSweepRe
 
 export interface UnmeasuredDataQualityRemediationSweepResult extends RemediationSweepResult {
   queue: null;
+}
+
+interface LatestSnapshotChangeRow {
+  evaluated_at: string;
+  has_quality_change: number;
+}
+
+/**
+ * Decide whether remediation must recompute the shop-wide quality aggregate.
+ *
+ * Crawl success/failure already persists a snapshot after its listing writes. Remediation and
+ * admin paths record every actual manufacturer/model/category/identity transition in the durable
+ * event table. Therefore a latest snapshot with no newer event still describes every input read by
+ * `readDataQualitySnapshot`; resolver-version, metadata, facet and search-projection maintenance
+ * cannot change its counts. Keep the comparison in one indexed read so an older snapshot cannot be
+ * selected independently of the event check.
+ */
+export async function remediationNeedsDataQualitySnapshot(
+  db: QueryableDatabase,
+  shopKey: string,
+): Promise<boolean> {
+  const row = await firstMeasured<LatestSnapshotChangeRow>(
+    db
+      .prepare(`
+      SELECT q.evaluated_at,
+             EXISTS(
+               SELECT 1
+               FROM data_quality_remediation_events e
+                    INDEXED BY idx_data_quality_remediation_events_recent
+               WHERE e.processed_at > q.evaluated_at
+                 AND e.shop_key = q.shop_key
+               LIMIT 1
+             ) AS has_quality_change
+      FROM data_quality_runs q INDEXED BY idx_data_quality_shop_latest
+      WHERE q.shop_key = ?
+      ORDER BY q.evaluated_at DESC, q.id DESC
+      LIMIT 1
+    `)
+      .bind(shopKey),
+  );
+  return !row || Number(row.has_quality_change) === 1;
 }
 
 function metadataObject(value: string): Record<string, unknown> {
@@ -656,6 +700,7 @@ export async function runDataQualityRemediationSweep(
   let resolved = 0;
   let failed = 0;
   let retried = 0;
+  let snapshotsSkipped = 0;
 
   for (const job of jobs) {
     try {
@@ -723,19 +768,32 @@ export async function runDataQualityRemediationSweep(
       continue;
     }
 
-    // Snapshot persistence is part of durable job completion. Keep successfully replayed jobs in
-    // `processing` until their shop's post-remediation snapshot is safely stored; otherwise a
+    // Snapshot persistence is part of durable completion when a quality input moved. Keep those
+    // jobs in `processing` until the post-remediation snapshot is safely stored; otherwise a
     // transient D1 failure could mark the only retryable work resolved and lose the DQ refresh.
+    // A metadata/version/projection-only replay produces no quality event, so its latest snapshot
+    // remains authoritative and repeating the shop-wide aggregate would only save identical data.
     try {
-      const saved = await saveDataQualityRun(db, { shopKey, crawlRunId: null, evaluatedAt });
-      console.log(
-        JSON.stringify({
-          event: "data_quality_remediation_snapshot",
-          shopKey,
-          status: saved.snapshot.status,
-          metrics: saved.snapshot.metrics,
-        }),
-      );
+      if (await remediationNeedsDataQualitySnapshot(db, shopKey)) {
+        const saved = await saveDataQualityRun(db, { shopKey, crawlRunId: null, evaluatedAt });
+        console.log(
+          JSON.stringify({
+            event: "data_quality_remediation_snapshot",
+            shopKey,
+            status: saved.snapshot.status,
+            metrics: saved.snapshot.metrics,
+          }),
+        );
+      } else {
+        snapshotsSkipped += 1;
+        console.log(
+          JSON.stringify({
+            event: "data_quality_remediation_snapshot_skipped",
+            shopKey,
+            reason: "quality_inputs_unchanged",
+          }),
+        );
+      }
     } catch (error) {
       console.error(
         JSON.stringify({
@@ -798,6 +856,7 @@ export async function runDataQualityRemediationSweep(
     resolved,
     failed,
     retried,
+    snapshotsSkipped,
     affectedShops: [...affectedShops].sort(),
     queue,
   };

@@ -1,5 +1,6 @@
 import { evaluateQuality } from "../data-quality/quality-evaluator.js";
 import type { QualityThresholdOverrides } from "../data-quality/quality-thresholds.js";
+import { firstMeasured } from "./read-accounting.js";
 import type {
   DataQualityRunRow,
   DataQualitySnapshotAggregateRow,
@@ -96,8 +97,9 @@ export async function readDataQualitySnapshot(
     | "modelMissingCount"
   >
 > {
-  const row = await db
-    .prepare(`
+  const row = await firstMeasured<DataQualitySnapshotAggregateRow>(
+    db
+      .prepare(`
       SELECT
         COUNT(*) AS total_items,
         SUM(CASE
@@ -123,8 +125,8 @@ export async function readDataQualitySnapshot(
       LEFT JOIN product_identity_resolutions r ON r.listing_product_id = p.id
       WHERE p.shop_key = ? AND p.is_active = 1
     `)
-    .bind(shopKey)
-    .first<DataQualitySnapshotAggregateRow>();
+      .bind(shopKey),
+  );
 
   return {
     totalItems: number(row?.total_items),
