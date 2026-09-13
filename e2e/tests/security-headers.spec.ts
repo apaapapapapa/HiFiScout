@@ -143,3 +143,126 @@ test("search, paging, product detail and shop links work under the enforced poli
   expect(violations, "unexpected CSP violations").toEqual([]);
   expect(pageErrors, "unexpected page errors under the enforced policy").toEqual([]);
 });
+
+/**
+ * The complete set of image sources the public surface is expected to reference.
+ *
+ * An allowlist rather than an origin check on purpose: a retailer's photo copied into a same-origin
+ * path, or inlined as a `data:` URL, would satisfy `img-src 'self' data:` and still be exactly the
+ * republication the catalogue does not do. Widening this set is a deliberate decision, so it should
+ * take a failing test to notice one was made.
+ */
+const ALLOWED_IMAGE_PATHS = ["/hifiscout-mark.jpg"];
+
+test("the only images the catalogue loads are its own, and no seller imagery is republished", async ({
+  page,
+  catalogPage,
+}) => {
+  // `img-src 'self' data:` is only proven by a document that actually loads an image, and the
+  // policy alone cannot tell a first-party icon from a copied product photo.
+  const violations = await collectCspViolations(page);
+  const imageRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.resourceType() === "image") imageRequests.push(request.url());
+  });
+  const failedImages: string[] = [];
+  page.on("response", (response) => {
+    if (response.request().resourceType() === "image" && !response.ok())
+      failedImages.push(`${response.status()} ${response.url()}`);
+  });
+
+  await catalogPage.goto("/");
+  await expect(catalogPage.heading).toBeVisible();
+  await expect(catalogPage.count).not.toHaveText("—");
+
+  const documentImages = await page.evaluate(() => {
+    const icons = [
+      ...document.querySelectorAll('link[rel~="icon"], link[rel~="apple-touch-icon"]'),
+    ].map((link) => (link as HTMLLinkElement).href);
+    const images = [...document.querySelectorAll("img")].map(
+      (image) => image.getAttribute("src") ?? "",
+    );
+    return { icons, images };
+  });
+
+  // An `<img>` on the public catalogue would be a product photo: there are none by design.
+  expect(documentImages.images, "the catalogue renders no <img> elements").toEqual([]);
+
+  const origin = new URL(page.url()).origin;
+  const referenced = [...new Set([...documentImages.icons, ...imageRequests])];
+  expect(referenced.length, "the document references at least one image").toBeGreaterThan(0);
+  expect(
+    referenced.map((url) => (url.startsWith("data:") ? "data:" : new URL(url).pathname)).sort(),
+    "only the known first-party image assets may be referenced",
+  ).toEqual([...ALLOWED_IMAGE_PATHS].sort());
+
+  for (const url of referenced) {
+    expect(new URL(url).origin, `image source must be same-origin: ${url}`).toBe(origin);
+    // Without this the directive could be admitting a 404 rather than a real file.
+    const fetched = await page.request.get(url);
+    expect(fetched.status(), `image must load: ${url}`).toBe(200);
+    expect(fetched.headers()["content-type"] ?? "").toMatch(/^image\//u);
+  }
+
+  expect(failedImages, "images blocked or missing under the enforced policy").toEqual([]);
+  expect(violations, "unexpected CSP violations").toEqual([]);
+});
+
+test("paging re-renders under connect-src, and the price history graphic draws", async ({
+  page,
+  catalogPage,
+}) => {
+  const violations = await collectCspViolations(page);
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+
+  await catalogPage.goto("/");
+  // `#count` renders a placeholder dash while the first fetch is in flight, so pagination does not
+  // exist yet at that point; waiting for a real count is what makes the rest of this deterministic.
+  await expect(catalogPage.count).not.toHaveText("—");
+  await expect(catalogPage.cards.first()).toBeVisible();
+
+  // Paging re-renders from the bundle's own fetches, so it exercises `connect-src 'self'` rather
+  // than only the initial document.
+  const firstKeyBefore = await catalogPage.cards.first().getAttribute("data-key");
+  const secondPage = catalogPage.pageIndicator(2);
+  await expect(secondPage, "the deployed catalogue has more than one page").toBeVisible();
+  await secondPage.click();
+  await expect(secondPage).toHaveAttribute("aria-current", "page");
+  await expect(catalogPage.cards.first()).toBeVisible();
+  expect(
+    await catalogPage.cards.first().getAttribute("data-key"),
+    "page two shows different listings",
+  ).not.toBe(firstKeyBefore);
+
+  // The price history is an inline <svg>, not an image, and it renders only inside the history
+  // dialog -- so loading the catalogue alone would never draw it.
+  const key = await catalogPage.cards.first().getAttribute("data-key");
+  expect(key, "a card exposes its key").toBeTruthy();
+  await catalogPage.offerButton(key!).click();
+  await expect(catalogPage.offersDialog).toBeVisible();
+
+  const historyButtons = catalogPage.offersDialog.locator("[data-history]");
+  await expect(historyButtons.first()).toBeVisible();
+  const listingIds = await historyButtons.evaluateAll((nodes) =>
+    nodes.map((node) => node.getAttribute("data-history") ?? ""),
+  );
+  // Only a listing with recorded observations draws a line, so pick one instead of hoping.
+  let charted = "";
+  for (const listingId of listingIds) {
+    const response = await page.request.get(`/api/products/${listingId}/history`);
+    const body = (await response.json()) as { history?: unknown[] };
+    if ((body.history ?? []).length > 0) {
+      charted = listingId;
+      break;
+    }
+  }
+  expect(charted, "an offer on this page has recorded price history").not.toBe("");
+
+  await catalogPage.offersDialog.locator(`[data-history="${charted}"]`).click();
+  await expect(page.locator("#history-dialog")).toBeVisible();
+  await expect(page.locator("svg.history-sparkline")).toBeVisible();
+
+  expect(violations, "unexpected CSP violations").toEqual([]);
+  expect(pageErrors, "unexpected page errors under the enforced policy").toEqual([]);
+});
