@@ -3,6 +3,21 @@ import { pathToFileURL } from "node:url";
 import { assessHarnessReport, reportExitCode } from "./harness/report.js";
 
 export async function runHarness(args: string[]): Promise<number> {
+  if (args[0] === "replay" && args.length >= 2) {
+    const { runReplay } = await import("./harness/replay.js");
+    const result = await runReplay(args[1], args.slice(2));
+    console.log(JSON.stringify(result, null, 2));
+    return reportExitCode(result.status);
+  }
+  if (args[0] === "compare-replay" && args.length === 3) {
+    const { compareReplays } = await import("./harness/replay.js");
+    const result = compareReplays(
+      JSON.parse(await readFile(args[1], "utf8")),
+      JSON.parse(await readFile(args[2], "utf8")),
+    );
+    console.log(JSON.stringify(result, null, 2));
+    return reportExitCode(result.status);
+  }
   if (args[0] === "checkpoint" && args.length === 5) {
     const { saveCheckpoint } = await import("./harness/checkpoint.js");
     const task: unknown = JSON.parse(await readFile(args[1], "utf8"));
@@ -25,7 +40,7 @@ export async function runHarness(args: string[]): Promise<number> {
   }
   if (args[0] !== "report" || args.length !== 2) {
     throw new Error(
-      "usage: vp run harness report <report.json> | delivery <owner/repo> <PR> <output-dir>",
+      "usage: vp run harness report <report.json> | delivery <owner/repo> <PR> <output-dir> | checkpoint <task.json> <report.json> <state.json> <revision> | resume <state.json> | replay <output-dir> [vitest-reports...] | compare-replay <before.json> <after.json>",
     );
   }
   const input: unknown = JSON.parse(await readFile(args[1], "utf8"));

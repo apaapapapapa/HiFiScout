@@ -73,7 +73,25 @@ tested SHA; committing a checkpoint or changing source does not transfer previou
 the new SHA. A dirty or changed checkout requires fresh evidence. Use the existing AGENTS.md task
 map to find current sources; old checkpoint prose does not override current code or authorization.
 
-## Ownership
+## Product regression replay
+
+`vp run harness replay .generated/product-replay` runs the fixed existing suites listed in
+`scripts/harness/replay.ts`. It preserves the raw Vitest result, runner log, individual assertion
+failures and a common report for extraction, normalization, classification, identity, search and
+admin override stages. These are local fixture outcomes, not a measured production accuracy rate.
+The normal CI shards already execute these cases; the required `product-replay` job imports their
+four JSON artifacts instead of running the tests again. Failed shards preserve their reports too.
+Missing suites and skipped/pending assertions remain unknown. No seller requests are required.
+
+Run the command on clean baseline and candidate checkouts, preserve both directories, then use
+`vp run harness compare-replay <baseline/replay.json> <candidate/replay.json>` to list regressions
+and improvements by case/stage. The corpus digest includes the suite selection, selected test
+sources, tracked fixtures and shared test helpers. A changed corpus, changed case membership,
+missing result or dirty checkout makes comparison unknown. An unchanged known failure is visible
+in the candidate report even when the comparison has no new regressions. Imported Vitest reports
+must come from that checkout's CI graph; the import mode does not authenticate arbitrary JSON.
+
+## Ownership and extension
 
 Reuse package scripts, Vitest, Playwright, real migrated local D1 fixtures and deployment-owned
 identity artifacts. Add a diagnostic at the boundary that owns the behavior. Keep orchestration
