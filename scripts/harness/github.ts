@@ -11,7 +11,7 @@ import { requireSha } from "./report.js";
 const exec = promisify(execFile);
 // gh owns authentication and artifact transport, as in the existing Actions workflows. No
 // shell interpolation, mutations, repair commands or production Cloudflare requests occur here.
-async function gh(args: string[]): Promise<string> {
+export async function gh(args: string[]): Promise<string> {
   const { stdout } = await exec("gh", args, {
     encoding: "utf8",
     timeout: 60_000,

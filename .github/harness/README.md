@@ -52,6 +52,21 @@ candidate SHA. `collectLoopScope` records this evidence; protected paths, existi
 edits, symlinks/gitlinks and mode changes block the attempt. Requested comparisons must name the
 contract's baseline. A passing JSON assertion alone cannot replace these collector inputs.
 
+`loop ingest <signal.json> <index.json>` normalizes CI/product/cost/AI signals and returns a bounded
+contract. Identity is repository + kind + source SHA + failure key; retries update the same item,
+and out-of-order signals cannot move lastSeen backwards. Preserve the index with run artifacts.
+`loop intake-ci <owner/repo> <run-id> <directory>` reads a complete, bounded GitHub CI job snapshot,
+writes deduplicated contracts and retains the evidence links. It rejects incomplete job coverage and
+ignores foreign repositories and `automation/loop/` branches already owned by an existing loop.
+Automatic intake accepts only main push failures. An explicit manual dispatch (or the CLI's final
+`manual` mode argument) may select a same-repository feature run; its whole baseline must be reviewed.
+
+The `autofix.ci` workflow’s `loop-intake` job collects failed CI runs from trusted main code, with read-only
+GitHub permissions and no provider/production credentials. Its artifacts are an intake handoff, not
+proof a repair ran. Stable task IDs let an executor reuse the same journal/worktree across repeated
+artifacts; it must not reset an existing run's budget. No new production scan or duplicate schedule
+is introduced. Operational reports and confirmed admin corrections use the same signal interface.
+
 ## Evidence reports
 
 Run `vp run harness report .generated/harness/report.json` to validate and assess a report.
