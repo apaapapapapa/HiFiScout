@@ -70,7 +70,6 @@ function renderCard(value: DisplayProduct, favorite = false): string {
       product: value,
       favorite,
       shopName,
-      onManufacturer: noop,
       onFavorite: noop,
       onOffers: noop,
       now: NOW,

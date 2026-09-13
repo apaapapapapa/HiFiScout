@@ -54,6 +54,16 @@ function productName(detail: ProductSearchDetailResponse): string {
   return [manufacturer, model].filter(Boolean).join(" ") || "商品詳細";
 }
 
+function productFilterHtml(
+  field: "manufacturer" | "category",
+  value: string,
+  label: string,
+): string {
+  if (!value) return escapeHtml(label);
+  const path = `/?${new URLSearchParams({ [field]: value })}`;
+  return `<a class="product-filter-link ${field === "category" ? "category" : "manufacturer-filter-link"}" href="${escapeHtml(path)}" data-${field}-filter="${escapeHtml(value)}" aria-label="${escapeHtml(`${label}の商品に絞り込む`)}">${escapeHtml(label)}</a>`;
+}
+
 function stockLabel(offer: ProductOffer): string {
   if (offer.stock_status === "in_stock") return "在庫あり";
   if (offer.stock_status === "sold_out") return "売り切れ";
@@ -119,6 +129,30 @@ export function renderProductPermalinkHtml(
   const category = categories.length
     ? categories.join("／")
     : detail.product.category || "カテゴリ未設定";
+  const categoryLinks = detail.product.direct_categories?.some(Boolean)
+    ? detail.product.direct_categories
+        .map((label, index) =>
+          label
+            ? productFilterHtml(
+                "category",
+                detail.product.direct_category_ids?.[index] ||
+                  (label === detail.product.category ? detail.product.primary_category_id : ""),
+                label,
+              )
+            : "",
+        )
+        .filter(Boolean)
+        .join("／")
+    : productFilterHtml(
+        "category",
+        detail.product.category ? detail.product.primary_category_id : "",
+        category,
+      );
+  const manufacturer = detail.product.manufacturer.trim();
+  const heading =
+    manufacturer && manufacturer !== "メーカー不明"
+      ? `${productFilterHtml("manufacturer", manufacturer, manufacturer)} ${escapeHtml(detail.product.model.trim())}`
+      : escapeHtml(name);
   const canonicalPath = productPermalinkPath(detail.product.key) ?? "/";
   const canonical = new URL(canonicalPath, origin).toString();
   const description = `${name} — ${category}。${detail.product.offer_count}件の出品、${detail.product.in_stock_offer_count}件が在庫あり。${priceSummary(detail)}`;
@@ -158,8 +192,8 @@ export function renderProductPermalinkHtml(
       <div class="permalink-head">
         <div>
           <a href="/" aria-label="HiFiScout トップへ">HiFiScout</a>
-          <p>${escapeHtml(category)}</p>
-          <h1>${escapeHtml(name)}${colors}</h1>
+          <p>${categoryLinks}</p>
+          <h1>${heading}${colors}</h1>
         </div>
         <button type="button" data-permalink-close aria-label="商品詳細を閉じる">×</button>
       </div>

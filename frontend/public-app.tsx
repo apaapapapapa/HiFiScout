@@ -74,6 +74,8 @@ import { specificationErrors, specificationFromFilterId } from "./specification-
 import type { SpecificationFilterId } from "../src/api/catalog-specification-contracts.js";
 import { canonicalComparisonKeys, comparisonKeysFromSearch } from "./product-comparison.js";
 import { ProductComparison } from "./product-comparison-ui.js";
+import { applyProductFilter, enhanceProductFilterLinks } from "./product-filter-links.js";
+import type { ProductFilter, ProductFilterNavigation } from "./product-filter-links.js";
 import { isOfferFactId } from "../src/api/contracts.js";
 import type { OfferFactId } from "../src/api/contracts.js";
 import { FEATURE_DEFINITIONS, isFeatureFilter } from "../src/api/contracts.js";
@@ -605,7 +607,12 @@ export function PublicApp() {
   }, [appliedFilters.category, meta]);
 
   const syncUrl = useCallback(
-    (nextFilters: ProductFilters, nextView: ProductView, replace = false) => {
+    (
+      nextFilters: ProductFilters,
+      nextView: ProductView,
+      replace = false,
+      pathname = location.pathname,
+    ) => {
       if (!bootedRef.current) return;
       const normalized = normalizedProductFilters(nextFilters);
       if (!normalized) return;
@@ -613,7 +620,7 @@ export function PublicApp() {
       const compare = comparisonKeysFromSearch(location.search);
       if (compare.length) params.set("compare", compare.join(","));
       const nextSearch = params.toString();
-      const next = `${location.pathname}${nextSearch ? `?${nextSearch}` : ""}${location.hash}`;
+      const next = `${pathname}${nextSearch ? `?${nextSearch}` : ""}${location.hash}`;
       const current = `${location.pathname}${location.search}${location.hash}`;
       if (next === current) return;
       if (replace) history.replaceState(null, "", next);
@@ -762,15 +769,42 @@ export function PublicApp() {
   }, []);
 
   const commitFilters = useCallback(
-    (next: ProductFilters, replace = false) => {
+    (next: ProductFilters, replace = false, pathname = location.pathname) => {
       cancelPendingInput();
       filtersRef.current = next;
       setFilters(next);
-      syncUrl(next, viewRef.current, replace);
+      syncUrl(next, viewRef.current, replace, pathname);
       void loadProducts(next, { reset: true });
     },
     [loadProducts, syncUrl, cancelPendingInput],
   );
+
+  const productFilterNavigation = useMemo<ProductFilterNavigation>(() => {
+    const href = (filter: ProductFilter) => {
+      const params = filterUrlParams(applyProductFilter(filters, filter), view);
+      if (comparisonKeys.length) params.set("compare", comparisonKeys.join(","));
+      return `/?${params}`;
+    };
+    return {
+      href,
+      select: (filter) => {
+        if (!bootedRef.current) {
+          location.assign(href(filter));
+          return;
+        }
+        setDraftFilters((draft) => (draft ? applyProductFilter(draft, filter) : null));
+        commitFilters(applyProductFilter(filtersRef.current, filter), false, "/");
+        // Change the route before closing the dialog so its close handler cannot go Back and
+        // undo the selected filter. The existing history controller restores details on Back.
+        restoreProductFromHistory();
+      },
+    };
+  }, [filters, view, comparisonKeys, commitFilters]);
+
+  useEffect(() => {
+    const permalink = document.getElementById("product-permalink-page");
+    return permalink ? enhanceProductFilterLinks(permalink, productFilterNavigation) : undefined;
+  }, [productFilterNavigation]);
 
   const changeValue = useCallback(
     (id: UrlValueId, value: string, debounced = false) => {
@@ -1309,6 +1343,7 @@ export function PublicApp() {
             keys={comparisonKeys}
             knownProducts={visibleProducts}
             api={api}
+            filterNavigation={productFilterNavigation}
             onRemove={(key) =>
               updateComparison(comparisonKeys.filter((selected) => selected !== key))
             }
@@ -1400,12 +1435,7 @@ export function PublicApp() {
                         )
                       }
                       shopName={shopName}
-                      onManufacturer={(manufacturer) => {
-                        setDraftFilters((draft) =>
-                          draft ? { ...draft, manufacturer: [manufacturer] } : null,
-                        );
-                        commitFilters({ ...filtersRef.current, manufacturer: [manufacturer] });
-                      }}
+                      filterNavigation={productFilterNavigation}
                       onFavorite={toggleFavorite}
                       onOffers={(key) => void showOffers(key)}
                     />
@@ -1502,6 +1532,7 @@ export function PublicApp() {
         <div id="offers-content">
           <OffersContent
             state={offersState}
+            filterNavigation={productFilterNavigation}
             onRetry={() => {
               if (offersTargetRef.current) void showOffers(offersTargetRef.current, true);
             }}

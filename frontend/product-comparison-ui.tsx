@@ -9,6 +9,8 @@ import { productPermalinkPath } from "./product-permalink.js";
 import { ProductPriceIndexSummary, productPriceIndex } from "./price-index-ui.js";
 import { yen } from "./format.js";
 import { ModelRelations } from "./model-relations-ui.js";
+import { ManufacturerFilterLink, ProductCategoryLinks } from "./product-filter-links.js";
+import type { ProductFilterNavigation } from "./product-filter-links.js";
 
 function priceRange(product: DisplayProduct): string {
   const low = product.lowest_price_yen;
@@ -41,8 +43,6 @@ const rows: {
   cell: (product: DisplayProduct) => ReactNode;
   available?: (product: DisplayProduct) => boolean;
 }[] = [
-  { label: "メーカー", cell: (p) => p.manufacturer || "—" },
-  { label: "カテゴリ", cell: (p) => p.direct_categories?.join(" / ") || p.category || "—" },
   { label: "出品されている仕上げ", cell: (p) => p.presentation_colors?.join(" / ") || "—" },
   { label: "掲載中の価格帯", cell: priceRange },
   ...(
@@ -104,12 +104,14 @@ export function ProductComparison({
   api,
   onRemove,
   onClear,
+  filterNavigation,
 }: {
   keys: string[];
   knownProducts?: readonly DisplayProduct[];
   api: ApiClient;
   onRemove: (key: string) => void;
   onClear: () => void;
+  filterNavigation?: ProductFilterNavigation;
 }) {
   const selection = keys.join(",");
   const [attempt, setAttempt] = useState(0);
@@ -150,6 +152,18 @@ export function ProductComparison({
       !row.available || columns?.some((column) => column.product && row.available!(column.product)),
   );
   const comparisonRows = [
+    {
+      label: "メーカー",
+      cell: (p: DisplayProduct) => (
+        <ManufacturerFilterLink manufacturer={p.manufacturer} navigation={filterNavigation} />
+      ),
+    },
+    {
+      label: "カテゴリ",
+      cell: (p: DisplayProduct) => (
+        <ProductCategoryLinks product={p} navigation={filterNavigation} />
+      ),
+    },
     ...knownRows,
     ...specificationNames.map((name) => ({
       label: `仕様: ${name}`,

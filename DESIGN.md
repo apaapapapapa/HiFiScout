@@ -71,6 +71,14 @@ Search is the dominant control. Desktop filters may use compact contained contro
 
 Active filters should be compact pills. Controls must retain visible keyboard focus and accessible labels even when a reference style is visually minimal.
 
+Manufacturer names and category labels on results, details and comparisons link to the matching
+structured filter. Selecting one replaces that filter and returns to the first results page while
+retaining the other search conditions. Each category in a set uses its paired category ID; an unknown
+label without a known ID stays plain text. Links support keyboard activation and opening another tab.
+Searching from a detail closes it and leaves the search on the catalog route; Back restores the detail.
+Directly loaded product documents receive the same filter-aware links in the browser, keeping the
+cached HTML independent of a visitor's search conditions.
+
 ### Product results
 
 Favor catalog rows or visually quiet product cells over floating ecommerce cards. Product identity should lead in this order:
