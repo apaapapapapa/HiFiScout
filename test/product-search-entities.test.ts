@@ -59,8 +59,9 @@ test("entity and membership transitions are committed atomically before aggregat
     "refresh", // Pending correction provenance, even if membership was unchanged.
     "prune",
     "prune",
-    // Aggregates, finishes, category membership (upsert + stale-row sweep), direct-category
-    // presentation and search terms, in that order.
+    // Exact-identity primary category, aggregates, finishes, category membership (upsert +
+    // stale-row sweep), direct-category presentation and search terms, in that order.
+    "refresh",
     "refresh",
     "refresh",
     "refresh",
@@ -69,7 +70,7 @@ test("entity and membership transitions are committed atomically before aggregat
     "refresh",
     "prune",
   ]);
-  assert.equal(db.batched.length, 16);
+  assert.equal(db.batched.length, 17);
   assert.deepEqual(
     writes({ calls: db.batched.slice(0, 9) }).map((statement) =>
       /DELETE FROM product_search_entities/.test(statement.sql) ? "prune" : "projection-write",
