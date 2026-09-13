@@ -54,7 +54,15 @@ Structured logs use:
 - `evidence_storage_warning` when the configured estimated storage threshold is reached;
 - existing `evidence_archived` and `evidence_archive_failure` events for successful and failed writes.
 
-The data-platform status repository calculates `evidenceEstimatedBytes` from non-expired Evidence Archive metadata. The old public `/api/admin/data-platform/status` route is retired; use maintained operational scripts and Cloudflare observability. Cloudflare-native R2 storage and operation metrics remain the source of truth for billing/actual platform usage; the D1 value is an application-side estimate used for operational safety.
+For an explicit evidence-metadata investigation, use `scripts/production-operational-diagnostics.sh`
+through the operational-health script's `HEALTH_INCLUDE_DIAGNOSTICS=1` option. This opt-in report
+reads retained Evidence Archive metadata; it is not a public status endpoint or a measurement of
+current bucket usage. See [the remediation runbook](./data-quality-remediation.md) for operational
+entry points. This option does not enable paused workflow jobs.
+
+`evidence_storage_warning` uses the metadata-based storage estimate in
+`src/evidence/evidence-archive.ts`. Cloudflare-native R2 storage and operation metrics remain the
+source of truth for billing and actual platform usage.
 
 ## Operational policy
 

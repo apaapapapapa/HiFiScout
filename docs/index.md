@@ -19,8 +19,7 @@ This site combines curated architecture documentation with references generated 
 
 - [Data quality](./data-quality.md) — metric semantics, identity coverage, taxonomy, and replay order.
 - [Workers AI suggestions](./workers-ai-suggestions.md) — bounded operator review, evaluation and inference budgets.
-- [Remediation runbook](./data-quality-remediation.md) — evidence-driven investigation and correction.
-- [Resolver replay status](./resolver-replay-status.md) — bounded manual maintenance and convergence.
+- [Remediation runbook](./data-quality-remediation.md) — evidence-driven investigation, correction, and bounded manual replay.
 - [Registered Product Admin](./listing-admin.md) — Access-protected listing corrections and overrides.
 - [R2 evidence limits](./r2-evidence-safety.md) — archive budgets, deduplication, and retention.
 - [D1 SQL observation](./d1-sql-observation.md) — private R2 query-statistics archive and incident analysis without querying D1.

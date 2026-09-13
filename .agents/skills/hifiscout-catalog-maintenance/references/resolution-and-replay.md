@@ -3,7 +3,7 @@
 Start with [resolution versions](../../../../src/catalog/resolution-versions.ts),
 [data-quality remediation](../../../../docs/data-quality-remediation.md),
 [listing diagnosis and replay](../../../../docs/listing-admin.md) and
-[replay status](../../../../docs/resolver-replay-status.md).
+[replay status](../../../../docs/data-quality-remediation.md#resolver-replay).
 
 ## Diagnose the owning boundary
 

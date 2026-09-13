@@ -108,9 +108,13 @@ still returns 404. These controls cannot approve a live evaluation or enable the
 
 The development harness adds a separate 20-case, 10-family holdout in
 `test/fixtures/ai-catalog-holdout.ts`. Its product families do not overlap the TAD/LS50 development
-canary. Positive spellings are adapted from existing shop/identity regressions; negative candidates
-are synthetic mutations. Labels retain source provenance and await independent review. This
-extends evaluation infrastructure; it does not replace or broaden the existing live approval.
+canary. Positive spellings are adapted from shop/identity regressions and manufacturer sources;
+negative candidates are synthetic mutations. Corpus v2 has a
+[source review](https://github.com/apaapapapapa/HiFiScout/blob/main/evaluations/workers-ai/2026-09-13-holdout-label-review.json)
+of every label and snapshot, frozen before live responses. It replaces an ambiguous DENON color
+alias case and the unsupported SA-10 SE positive, preserving the original cases in Git history.
+This is an assistant's source-based review independent of model answers, not a separate human
+sign-off. It does not replace or broaden the existing live approval.
 
 Use `vp run harness ai-template .generated/ai-recording.json` to create an incomplete recording
 template and `vp run harness ai <recording.json> <new-output-dir>` to replay recorded wire responses.

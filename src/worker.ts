@@ -68,7 +68,6 @@ import type {
   ProductCorrectionReportAdminAction,
   ProductCorrectionReportListOptions,
 } from "./db/product-correction-report-repository.js";
-import { listProductAuditExportPage } from "./db/product-audit-export-repository.js";
 import {
   createProductAuditExportDownloadResponse,
   getProductAuditExportJob,
@@ -309,22 +308,6 @@ export class CatalogAdminService extends WorkerEntrypoint<Env> implements Catalo
       new Date(),
       part,
     );
-  }
-
-  /**
-   * @deprecated One-release rollout bridge for an already-deployed admin Worker from PR #251.
-   * The new admin UI never calls this method; remove it after both Workers have shipped together.
-   */
-  async exportProductAuditPage(options: {
-    scope: ProductAuditExportScope;
-    afterId: number;
-    limit: number;
-  }) {
-    return listProductAuditExportPage(this.env.DB, {
-      ...options,
-      maxId: Number.MAX_SAFE_INTEGER,
-      limit: Math.min(250, options.limit),
-    });
   }
 
   async startProductAuditExport(scope: ProductAuditExportScope, format: DataExportFormat = "csv") {

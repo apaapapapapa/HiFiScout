@@ -51,7 +51,7 @@ export type EnvBindingName =
 export type GeneratedEnvVarName = Exclude<keyof Env, EnvBindingName>;
 
 /** Wrangler secrets: real at runtime, absent from the generated `Env`. */
-export type EnvSecretName = "CRAWL_RELAY_URL" | "CRAWL_RELAY_TOKEN" | "ADMIN_TOKEN";
+export type EnvSecretName = "CRAWL_RELAY_URL" | "CRAWL_RELAY_TOKEN";
 
 /**
  * Variables the code reads that are not (yet) declared in `wrangler.jsonc`.

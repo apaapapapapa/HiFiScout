@@ -129,7 +129,7 @@ An entity exists only while it holds at least one active offer, which is what re
 
 `src/db/product-search-entity-sql.ts` and the exact-identity helpers own the derivation used by `syncProductSearchEntities` and `rebuildProductSearchEntities` in `src/db/product-search-entity-repository.ts`. Incremental sync and explicit rebuild share the current rules. Applied migrations retain the SQL needed for their original rollout; they are not edited to follow later runtime changes.
 
-`productSearchEntityConsistency` reports drift per invariant: active listings with no membership, memberships pointing at inactive listings, entities with no offers, fallback entities whose listing is now matched, catalog entities whose product is no longer eligible, stale offer-count aggregates, and FTS index integrity. Production checks live in `.github/workflows/production-operational-health.yml` and its scripts, separately from deployment smoke checks. Public `/api/admin/*` routes are retired at `src/index.ts`; the legacy router's consistency/rebuild handlers are not supported public endpoints. An explicit bounded repair is available through `scripts/repair-product-search-gaps.ts` using the D1 REST API; it also pays for a full remaining-gap count.
+`productSearchEntityConsistency` reports drift per invariant: active listings with no membership, memberships pointing at inactive listings, entities with no offers, fallback entities whose listing is now matched, catalog entities whose product is no longer eligible, stale offer-count aggregates, and FTS index integrity. Production checks live in `.github/workflows/production-operational-health.yml` and its scripts, separately from deployment smoke checks. Public `/api/admin/*` routes are retired at `src/index.ts`; their old consistency/rebuild handlers have been removed. An explicit bounded repair is available through `scripts/repair-product-search-gaps.ts` using the D1 REST API; it also pays for a full remaining-gap count.
 
 ### Repairing exact-identity splits
 
@@ -780,14 +780,10 @@ Each crawl summary additionally carries `searchEntities` with the listings resyn
 
 The crawl's `membership_cleanup` stage walks bounded windows of `listing_projection_pending`, then checks shop, activity and membership by primary key. Its checkpoint is a `pending:<listing ID>` cursor; an older source-ID checkpoint restarts safely. A window containing only healthy or other-shop work still advances and consumes a chunk budget. Membership-only cleanup leaves the full projection token intact for the normal five-minute repair. The stage no longer searches retained inactive product history on every crawl. `auditInactiveSearchMemberships` is the daily safety net for legacy memberships without an obligation: it materializes a bounded membership window before looking up listings, persists its cursor, and never advances past failed or over-budget repairs. A full audit takes successive daily windows; normal deactivations use durable pending work.
 
-Operational scripts and `src/db/data-platform-status-repository.ts` expose counts useful for migration/capacity decisions. The legacy `/api/admin/data-platform/status` public route is blocked by the outer Worker and must not be used as an operational access path. Counts include:
-
-- total and active products
-- price-history rows
-- Knowledge Catalog rows and verified rows
-- identity matched/unresolved/veto counts
-- evidence metadata count
-- crawl runs in the last 24 hours
+Use the maintained [operational diagnostics](./data-quality-remediation.md#運用経路と完了条件)
+and the Access-protected admin quality overview for scoped product/identity investigation. The
+retired public data-platform status handler and its full-table count queries have been removed.
+Historical migration snapshots belong in Git history rather than a second runtime dashboard.
 
 Cloudflare already provides D1 platform analytics for database storage size, read/write query volume, rows read/written, and query latency. HiFiScout does not copy these time-series metrics into D1. Operators should use the Cloudflare D1 Metrics view / GraphQL Analytics API and Worker observability for platform error/timeout signals.
 
