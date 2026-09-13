@@ -15,56 +15,59 @@ const setProduct = product({
 
 async function mockCatalog(page: Page, items = [setProduct]) {
   const searches: URL[] = [];
-  await page.route("**/api/**", (route) => {
-    const url = new URL(route.request().url());
-    let body: unknown;
-    if (url.pathname === "/api/meta") {
-      body = {
-        status: "healthy",
-        shops: [
-          {
-            key: "shop-a",
-            name: "テスト販売店",
-            enabled: true,
-            intervalMinutes: 60,
-            sync: null,
-            health: null,
-          },
-        ],
-        manufacturers: [manufacturer, "LUXMAN"],
-        categories: [],
-        categoryFacets: [
-          { id: "AMP", name: "アンプ", parentId: null },
-          { id: "AMP.INTEGRATED", name: "プリメインアンプ", parentId: "AMP" },
-          { id: "PRC.DAC", name: "DAC", parentId: null },
-        ].map((entry, order) => ({
-          ...entry,
-          order,
-          classifiable: true,
-          filterable: true,
-          group: null,
-          activeProductCount: 1,
-        })),
-      };
-    } else if (url.pathname === "/api/product-search") {
-      searches.push(url);
-      const filtered = url.searchParams.get("category") === "PRC.DAC";
-      body = {
-        items,
-        hasMore: !filtered && !url.searchParams.has("offset"),
-        nextCursor: null,
-        totalCount: filtered ? items.length : 61,
-        totalPages: filtered ? 1 : 2,
-      };
-    } else if (url.pathname.startsWith("/api/product-search/")) {
-      const key = url.pathname.split("/").at(-1)!;
-      body = {
-        product: { ...items[0], key, catalog_product_id: Number(key.slice(2)) },
-        offers: [offer()],
-      };
-    } else body = {};
-    return route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
-  });
+  await page.route(
+    (url) => url.pathname.startsWith("/api/"),
+    (route) => {
+      const url = new URL(route.request().url());
+      let body: unknown;
+      if (url.pathname === "/api/meta") {
+        body = {
+          status: "healthy",
+          shops: [
+            {
+              key: "shop-a",
+              name: "テスト販売店",
+              enabled: true,
+              intervalMinutes: 60,
+              sync: null,
+              health: null,
+            },
+          ],
+          manufacturers: [manufacturer, "LUXMAN"],
+          categories: [],
+          categoryFacets: [
+            { id: "AMP", name: "アンプ", parentId: null },
+            { id: "AMP.INTEGRATED", name: "プリメインアンプ", parentId: "AMP" },
+            { id: "PRC.DAC", name: "DAC", parentId: null },
+          ].map((entry, order) => ({
+            ...entry,
+            order,
+            classifiable: true,
+            filterable: true,
+            group: null,
+            activeProductCount: 1,
+          })),
+        };
+      } else if (url.pathname === "/api/product-search") {
+        searches.push(url);
+        const filtered = url.searchParams.get("category") === "PRC.DAC";
+        body = {
+          items,
+          hasMore: !filtered && !url.searchParams.has("offset"),
+          nextCursor: null,
+          totalCount: filtered ? items.length : 61,
+          totalPages: filtered ? 1 : 2,
+        };
+      } else if (url.pathname.startsWith("/api/product-search/")) {
+        const key = url.pathname.split("/").at(-1)!;
+        body = {
+          product: { ...items[0], key, catalog_product_id: Number(key.slice(2)) },
+          offers: [offer()],
+        };
+      } else body = {};
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
+    },
+  );
   return searches;
 }
 
@@ -92,8 +95,7 @@ for (const { width, view } of [
           q: "Reference",
           category: "AMP",
           shop: "shop-a",
-          sort: "price-asc",
-          page: "2",
+          sort: "priceAsc",
           view,
         });
         params.append("manufacturer", manufacturer);
@@ -103,6 +105,7 @@ for (const { width, view } of [
       { manufacturer, view },
     );
     await mount("frontend/public-app/Default");
+    await page.getByRole("button", { name: "2ページ目", exact: true }).click();
     await expect(page.locator('.page-button[aria-current="page"]')).toHaveText("2");
     const dac = page.locator('.card [data-category-filter="PRC.DAC"]');
     await expect(dac).toHaveText("DAC");
@@ -119,7 +122,7 @@ for (const { width, view } of [
     const params = searches.at(-1)!.searchParams;
     expect(params.get("q")).toBe("Reference");
     expect(params.getAll("shop")).toEqual(["shop-a"]);
-    expect(params.get("sort")).toBe("price-asc");
+    expect(params.get("sort")).toBe("priceAsc");
     expect(params.get("inStock")).toBe("true");
     expect(params.has("offset")).toBe(false);
     expect(params.has("cursor")).toBe(false);
@@ -146,12 +149,12 @@ test("detail metadata searches close the detail and Back restores the detail and
   mount,
 }) => {
   const searches = await mockCatalog(page);
-  await page.evaluate(() => history.replaceState(null, "", "/?page=2"));
   await mount("frontend/public-app/Default");
+  await page.getByRole("button", { name: "2ページ目", exact: true }).click();
   await expect(page.locator('.page-button[aria-current="page"]')).toHaveText("2");
   await page.locator(".card .product-title-link").click();
   await expect(page.locator("#offers-dialog")).toBeVisible();
-  await expect(page).toHaveURL(/\/p\/c-1\?/);
+  await expect(page).toHaveURL(/\/p\/c-1$/);
   await page.locator("#offers-dialog [data-manufacturer-filter]").click();
   await expect
     .poll(() => searches.at(-1)?.searchParams.getAll("manufacturer"))
@@ -161,7 +164,7 @@ test("detail metadata searches close the detail and Back restores the detail and
   expect(new URL(page.url()).searchParams.has("page")).toBe(false);
   await page.goBack();
   await expect(page.locator("#offers-dialog")).toBeVisible();
-  await expect(page).toHaveURL(/\/p\/c-1\?page=2/);
+  await expect(page).toHaveURL(/\/p\/c-1$/);
   await page.goBack();
   await expect(page.locator("#offers-dialog")).not.toBeVisible();
   await expect(page.locator('.page-button[aria-current="page"]')).toHaveText("2");
