@@ -47,7 +47,6 @@ export default {
         items: [
           { text: "Data Quality", link: "/data-quality" },
           { text: "Remediation Runbook", link: "/data-quality-remediation" },
-          { text: "Resolver Replay", link: "/resolver-replay-status" },
           { text: "Registered Product Admin", link: "/listing-admin" },
           { text: "R2 Evidence Limits", link: "/r2-evidence-safety" },
         ],

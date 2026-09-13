@@ -177,10 +177,10 @@ The table describes defaults in `src/data-quality/quality-thresholds.ts`; that m
 
 ## Access and operational entry points
 
-Public `/api/admin/*` requests return 404 in `src/index.ts`, before the legacy router runs.
-`ADMIN_TOKEN` cannot enable those routes. The separate Cloudflare Access-protected admin Worker
+Public `/api/admin/*` requests return 404 before any binding is accessed.
+The old bearer-token handlers and `ADMIN_TOKEN` configuration have been removed. The separate Cloudflare Access-protected admin Worker
 supports catalog/listing editing, correction reports, and CSV exports through `CatalogAdminService`;
-its contract is defined in `src/admin/contracts.ts`. It does not expose every old operational handler.
+its contract is defined in `src/admin/contracts.ts`.
 
 | Responsibility | Current entry point |
 | --- | --- |
@@ -189,19 +189,20 @@ its contract is defined in `src/admin/contracts.ts`. It does not expose every ol
 | Explicit full representation audit | `.github/workflows/product-data-audit.yml` or the admin export surface |
 | Listing/catalog corrections | Access-protected admin Worker; [Registered Product Admin](./listing-admin.md) |
 | Latest/history evaluation and serialization | `src/db/data-quality-repository.ts` |
-| Remediation impact, governance, and contributor aggregation | `src/db/data-quality-remediation-impact-repository.ts`, `src/db/data-quality-remediation-governance-repository.ts` |
+| Quality overview, candidates, and scoped samples | `src/admin/quality.ts`, `src/db/admin-quality-repository.ts` |
 
 The repository serializers keep snapshot metrics and latest crawl-run metrics distinct. Bounded
-history/trend queries and remediation contributor counts describe D1 state; they are not live
+history queries and the admin quality overview describe D1 state; they are not live
 Cloudflare billing metrics. Follow [the remediation runbook](./data-quality-remediation.md) and
-[resolver replay status](./resolver-replay-status.md) for investigations and explicit maintenance.
+[resolver replay](./data-quality-remediation.md#resolver-replay) for investigations and explicit maintenance.
 
 ## Observability
 
 After evaluation, the crawler emits a structured `data_quality_evaluated` log with shop, crawl-run ID, status, item total, and quality rates. HTML and other evidence content are never included in the structured log. Evaluation failures emit `data_quality_evaluation_failure` without failing the crawl.
 
-`Production Operational Health` recomputes active-listing Identity coverage and checks Product
-Search membership/grouping after deployment. Missing identity rows, missing memberships, stale
+`Production Operational Health` has paused its active data-platform, Product Search identity and
+Knowledge Catalog checks; only passive D1 SQL archiving remains active. When explicitly enabled,
+the checks recompute active-listing Identity coverage and Product Search membership/grouping. Missing identity rows, missing memberships, stale
 fallbacks, and invalid entity/offer state fail the operational check. They do not retroactively fail
 a successful Worker deployment. Automatic checks consume the deployed SHA from `deployment-identity`;
 quota-deferred/no-op deployments supply no new identity and downstream checks skip accordingly.
@@ -362,8 +363,8 @@ entity/offer memberships. Rebuilding an entity before its identity refresh would
 it. Step 8 persists the post-remediation snapshot before durable job completion. The normal
 scheduled sweep and the explicit `scripts/resolver-replay-drain.ts` maintenance path use these
 repositories. `enqueueFullDataQualityRebuild` is a separate bounded full-recovery capability, not a
-normal crawl step; its old public HTTP handler is retired. `DATA_QUALITY_REBUILD_ORDER` in
-`src/http/remediation-admin.ts` names the dependency order.
+normal crawl step; its old public HTTP handler has been removed. The shared resolver and
+projection functions above own the dependency order.
 
 ## Verified model relationships
 

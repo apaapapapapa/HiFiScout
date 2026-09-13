@@ -110,9 +110,10 @@
 catalog/listingの編集・CSV exportはAccess保護されたadmin Worker、調査と再生は維持されている
 Actions/scriptsを使います。
 
-- `Production Operational Health`：データと検索同定の検証。自動修復ループではありません。
+- `Production Operational Health`：データと検索同定の検証。現在の能動的な検証jobは停止中です。
+  継続中のD1 SQL保存は受動的な観測であり、データの整合性検証ではありません。
 - `Resolver Replay Drain`：D1 REST API経由で上限付き再生。
-  [再生statusの意味](./resolver-replay-status.md)を確認し、未収束なら負荷と残件を見て次のbatchを判断します。
+  [再生statusの意味](#resolver-replay)を確認し、未収束なら負荷と残件を見て次のbatchを判断します。
 - `Product Data Audit`：必要な場合の全件監査。通常のデプロイや再生完了から自動起動しません。
 - `scripts/repair-product-search-gaps.ts`：明示的な検索投影修復。書き込みに加えて残件の広い検査も
   行うため、通常の低負荷readやdocs検証として実行しません。
@@ -123,3 +124,26 @@ Knowledge Catalog候補と検証 → Product Identity → search entity／offers
 
 完了報告には対象SHA、実行した検証、データ収束の確認範囲と残件を記載します。snapshotや公開countの
 更新待ち、quotaによるデプロイ延期、未計測のCPU/課金行数は、確認済みの成功と分けて記載します。
+
+### Resolver replay
+
+型番・カテゴリのルール更新には管理画面の「バックグラウンド処理 → 型番・カテゴリの一括再判定」を
+使えます。進捗保存、一時停止・再開、取消を備え、ブラウザを閉じても継続します。
+[対象範囲と再開条件](./listing-admin.md#bounded-model-resolver-replay)を確認してください。
+この管理jobは、以下のGitHub commit statusを発行しません。
+
+`Resolver Replay Drain`は通常の上限付きscheduled remediationを補う、手動起動の保守workflowです。
+`scripts/resolver-replay-drain.ts`からD1 REST APIを直接使い、メーカー・型番・カテゴリ・Identity・
+projectionの古い判定を1回の上限付きbatchで処理して停止します。旧ローカルWorkerは使用しません。
+
+実行に使ったcommitの`data-quality/resolver-replay` statusは次の意味です。
+
+| Status | 意味と次の操作 |
+| --- | --- |
+| `pending` | batchは完了したが古い判定が残る。実行結果・負荷・残件を確認してから、次のbatchを手動起動する |
+| `success` | 再生が収束した。必要な場合だけ`Product Data Audit`を手動起動する |
+| `failure` | batchが失敗した。原因を調べてから次の実行を判断する |
+
+Statusのリンク先はその結果を出したActions runです。再生後の整合性確認を含めてrun全体の結果も
+確認し、statusだけで整合性の合格を判断しません。デプロイや`pending`による再起動、再生完了からの
+全件監査の自動起動はありません。通常のscheduled remediationは別の予算で継続します。

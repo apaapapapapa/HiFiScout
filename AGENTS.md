@@ -117,7 +117,7 @@ unresolved risk. Report any check that could not run.
   policy; this does not require retaining every fetched HTML page. See `docs/r2-evidence-safety.md`.
   Do not republish seller images, descriptions, comments, or logos.
 - Public `/api/admin/*` routes return 404. The separate Access-protected admin Worker uses the
-  `CatalogAdminService` Service Binding; internal legacy router handlers do not imply public access.
+  `CatalogAdminService` Service Binding.
 - Read `DESIGN.md` before implementing or substantially restyling public UI. Preserve usability and
   accessibility when a visual reference conflicts with them, and explain non-obvious deviations.
 
