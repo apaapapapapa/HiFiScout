@@ -76,13 +76,7 @@ export function assessLoopScope(spec: LoopSpec, sourceSha: string, value: unknow
   };
 }
 
-export async function collectLoopScope(
-  spec: LoopSpec,
-  cwd: string,
-  artifactUri = ".generated/loop-scope.json",
-): Promise<LoopScope> {
-  const checkout = readCheckout(cwd);
-  if (checkout.dirty) throw new Error("scope_requires_clean_checkout");
+export function readLoopChanges(baselineSha: string, sourceSha: string, cwd: string): LoopChange[] {
   const raw = execFileSync(
     "git",
     [
@@ -91,8 +85,8 @@ export async function collectLoopScope(
       "--abbrev=40",
       "--no-renames",
       "-z",
-      spec.baselineSha,
-      checkout.sourceSha,
+      requireSha(baselineSha),
+      requireSha(sourceSha),
       "--",
     ],
     { cwd, encoding: "utf8", timeout: 10_000, maxBuffer: 1_048_576 },
@@ -110,11 +104,21 @@ export async function collectLoopScope(
       status: match[3] as LoopChange["status"],
     });
   }
+  return changes;
+}
+
+export async function collectLoopScope(
+  spec: LoopSpec,
+  cwd: string,
+  artifactUri = ".generated/loop-scope.json",
+): Promise<LoopScope> {
+  const checkout = readCheckout(cwd);
+  if (checkout.dirty) throw new Error("scope_requires_clean_checkout");
   const scope: LoopScope = {
     baselineSha: requireSha(spec.baselineSha),
     sourceSha: checkout.sourceSha,
     artifactUri: relativePath(artifactUri),
-    changes,
+    changes: readLoopChanges(spec.baselineSha, checkout.sourceSha, cwd),
   };
   // A negative result is evidence too; preserve it before the controller blocks this attempt.
   assessLoopScope(spec, checkout.sourceSha, scope);

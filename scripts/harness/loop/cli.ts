@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { loopSpecDigest, parseLoopSpec } from "./contract.js";
-import { assessLoopRun } from "./controller.js";
+import { assessLoopRun, beginLoopAttempt, recordLoopEvent } from "./controller.js";
+import { isRecord } from "../../../src/types.js";
+import { applyLoopPatch, prepareLoopWorkspace } from "./workspace.js";
 import { createLoopRun, readLoopRun } from "./state.js";
 import { collectCiIntake, ingestLoopSignal, specFromSignal } from "./intake.js";
 
@@ -20,9 +22,35 @@ export async function runLoopCli(args: string[]): Promise<number> {
     result = { item, spec: specFromSignal(item.signal) };
   } else if (args[0] === "intake-ci" && args.length === 4)
     result = await collectCiIntake(args[1], Number(args[2]), args[3]);
-  else
+  else if (args[0] === "prepare" && args.length === 4)
+    result = await prepareLoopWorkspace(args[1], args[2], args[3]);
+  else if (args[0] === "begin" && args.length === 3) {
+    const request = await json(args[2]);
+    if (
+      !isRecord(request) ||
+      typeof request.hypothesis !== "string" ||
+      typeof request.externalCalls !== "number" ||
+      typeof request.reservedCostMicros !== "number"
+    )
+      throw new Error("invalid_attempt_request");
+    result = await beginLoopAttempt(args[1], request.hypothesis, {
+      externalCalls: request.externalCalls,
+      reservedCostMicros: request.reservedCostMicros,
+    });
+  } else if (args[0] === "apply" && args.length === 6)
+    result = await applyLoopPatch(
+      args[1],
+      args[2],
+      Number(args[3]),
+      args[4],
+      await readFile(args[5], "utf8"),
+    );
+  else if (["block", "resume", "stop"].includes(args[0]) && args.length === 3) {
+    const type = args[0] === "block" ? "blocked" : args[0] === "resume" ? "resumed" : "stopped";
+    result = await recordLoopEvent(args[1], await readLoopRun(args[1]), type, { reason: args[2] });
+  } else
     throw new Error(
-      "usage: harness loop validate <spec> | init <spec> <state> | history <state> | status <state> | ingest <signal> <index> | intake-ci <owner/repo> <run-id> <directory>",
+      "usage: harness loop validate <spec> | init <spec> <state> | history <state> | status <state> | ingest <signal> <index> | intake-ci <owner/repo> <run-id> <directory> | prepare <state> <source-repo> <workspace-root> | begin <state> <attempt.json> | apply <state> <workspace-root> <iteration> <base-sha> <patch> | block/resume/stop <state> <reason>",
     );
   console.log(JSON.stringify(result, null, 2));
   return 0;
