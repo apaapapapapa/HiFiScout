@@ -78,6 +78,25 @@ export function exactIdentityRepresentativeListingIdSql(alias: string): string {
 }
 
 /**
+ * The one specific category established anywhere in a safe exact-identity group.
+ *
+ * `compatibleExactIdentityCategoriesSql` already refuses to group two conflicting specific
+ * categories.  Prefer the surviving specific category over a representative listing's legacy
+ * sentinel so an older `unclassified` offer cannot keep the shared public card unclassified after
+ * another shop supplies authoritative category evidence.
+ */
+export function exactIdentityPrimaryCategorySql(alias: string): string {
+  const categoryPeer = `${alias}_primary_category_peer`;
+  return `COALESCE((
+    SELECT MIN(${categoryPeer}.primary_category_id)
+    FROM products ${categoryPeer} INDEXED BY idx_products_exact_identity
+    WHERE ${eligibleExactIdentitySql(categoryPeer)}
+      AND ${sameExactIdentitySql(alias, categoryPeer)}
+      AND ${categoryPeer}.primary_category_id NOT IN ('other', 'unclassified')
+  ), ${alias}.primary_category_id)`;
+}
+
+/**
  * Final fallback owner, shared by entity creation and offer assignment.
  * Keep whitespace after END for Wrangler's SQL-file statement splitter as well as SQLite.
  */
@@ -209,7 +228,7 @@ export function upsertFallbackEntitiesSql(listingScope = ""): string {
            p.manufacturer AS manufacturer,
            p.model AS model,
            COALESCE(sp.normalized_model, '') AS normalized_model,
-           p.primary_category_id AS primary_category_id,
+           ${exactIdentityPrimaryCategorySql("p")} AS primary_category_id,
            COALESCE(NULLIF(sp.manufacturer_terms, ''), p.manufacturer) AS manufacturer_terms,
            COALESCE(NULLIF(sp.model_terms, ''), p.model) AS model_terms,
            '' AS title_terms,

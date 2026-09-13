@@ -52,7 +52,8 @@ test("exact peer lookup stays identity-scoped as unrelated categories and listin
           normalized_model, model_resolution_status, primary_category_id, title, source_url,
           first_seen_at, last_seen_at, last_changed_at)
         SELECT i, CASE WHEN i % 2 = 1 THEN 'hifido' ELSE 'audiounion' END, CAST(i AS TEXT),
-          'luxman', 'C10', 'C10', 'resolved', 'AMP.PRE', 'LUXMAN C10',
+          'luxman', 'C10', 'C10', 'resolved',
+          CASE WHEN i = 1 THEN 'unclassified' ELSE 'AMP.PRE' END, 'LUXMAN C10',
           'https://example.test/' || i, '${AT}', '${AT}', '${AT}' FROM n
       `)
       .run();
@@ -150,9 +151,18 @@ test("exact peer lookup stays identity-scoped as unrelated categories and listin
       .run();
     await syncProductSearchEntities(db, "hifido", ["1"]);
     const entities = await db
-      .prepare("SELECT entity_key, offer_count, shop_count FROM product_search_entities")
+      .prepare(
+        "SELECT entity_key, primary_category_id, offer_count, shop_count FROM product_search_entities",
+      )
       .all();
-    assert.deepEqual(entities.results, [{ entity_key: "l-1", offer_count: 5, shop_count: 2 }]);
+    assert.deepEqual(entities.results, [
+      {
+        entity_key: "l-1",
+        primary_category_id: "AMP.PRE",
+        offer_count: 5,
+        shop_count: 2,
+      },
+    ]);
     const replay = accountReads(db);
     await syncProductSearchEntities(replay.db, "hifido", ["1"]);
     assert.equal(replay.rowsWritten(), 0);
