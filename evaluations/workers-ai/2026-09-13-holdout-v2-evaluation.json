@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "recordingFile": "evaluations/workers-ai/2026-09-13-holdout-v2-qwen3-prompt3.json",
-  "recordingDigest": "914dcc9574fc982653d6c79987b72fdff65b438a483fade80f4bc1f0f611db8e",
+  "recordingDigest": "ae44f9bcde9f1be77f60f5fa89863fe3129b1d7c97d31c2b673b013cc31f41bb",
   "sourceSha": "0bc041f9579b3035dedf4609977affa59aaad322",
   "observedLiveEvaluationStatus": "fail",
   "activationApproved": false,

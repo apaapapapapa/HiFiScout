@@ -1254,6 +1254,14 @@
       ],
       "status": 200,
       "success": true
+    },
+    "sourceArchive": {
+      "repository": "https://github.com/apaapapapapa/HiFiScout.git",
+      "ref": "refs/heads/evidence/ai-holdout-v2-20260913",
+      "commitSha": "0bc041f9579b3035dedf4609977affa59aaad322",
+      "treeSha": "faa07fa057988c99d28c3168e9adf5af9e90938e",
+      "purpose": "Dedicated evidence branch, not a PR head; retain it to keep the actual measured source reachable after squash merges and PR-branch deletion.",
+      "retrieval": "git fetch origin refs/heads/evidence/ai-holdout-v2-20260913"
     }
   },
   "captures": [

@@ -183,6 +183,22 @@ without inference and expects the failed model gate; it must not repair response
 The recording names the clean source commit used to freeze requests. Replaying it on a different
 checkout cannot establish that newer SHA's completion through the common report's source gate.
 
+The original request source is retained on the dedicated
+`evidence/ai-holdout-v2-20260913` branch, independently of the squash-merged PR branch. Retain this
+evidence branch. To inspect or reproduce that source, fetch it explicitly (including in a shallow
+clone), verify its recorded SHA, and create a separate checkout:
+
+```bash
+git fetch origin refs/heads/evidence/ai-holdout-v2-20260913
+git rev-parse FETCH_HEAD
+git worktree add --detach ../hifiscout-ai-holdout 0bc041f9579b3035dedf4609977affa59aaad322
+```
+
+`FETCH_HEAD` must equal the SHA in the recording's `sourceSha`/`measurement.sourceArchive`.
+After installing that checkout's locked dependencies, pass the recording from the newer checkout
+to its `harness ai` command and use a new output directory inside the source checkout. This
+replays responses offline; it makes no new AI requests. The expected result is still `fail`.
+
 The template binds each runtime-built request to its snapshot fingerprint, corpus digest and exact
 policy key. Fill model-required `attempts` with recorded `model`, nullable `requestId`, `requestedAt`,
 raw schema-2 `response`, nullable `latencyMs`, and `usage` containing nullable `inputTokens`,

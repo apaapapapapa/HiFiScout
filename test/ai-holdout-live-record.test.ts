@@ -12,6 +12,7 @@ import { aiCatalogHoldoutCases } from "./fixtures/ai-catalog-holdout.js";
 test("live holdout retains the failed model gate and binds native responses, usage and frozen labels", async () => {
   assert.equal(aiResponseDigest(labelReview), recording.labelReviewDigest);
   assert.equal(aiResponseDigest(recording), report.recordingDigest);
+  assert.equal(recording.measurement.sourceArchive.commitSha, recording.sourceSha);
   assert.equal(recording.groundTruthReview.reviewedAt, labelReview.reviewedAt);
   assert.ok(labelReview.reviewedAt < recording.measurement.requestPlanCreatedAt);
   assert.ok(recording.measurement.requestPlanCreatedAt < recording.measurement.startedAt);
