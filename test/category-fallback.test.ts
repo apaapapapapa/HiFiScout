@@ -127,7 +127,7 @@ test("Hifido recognizes supported seller categories that previously became blank
 test("category metadata version advances so stale rows are replayable", () => {
   // A literal on purpose: bumping the classifier is what makes every stored listing eligible for
   // the remediation replay, so it cannot be done without editing this line and thinking about the
-  // backfill it starts. Version 23 distinguishes standalone ear-hook accessories from earphones
-  // that include them through the existing bounded active-inventory selectors.
-  assert.equal(CATEGORY_CLASSIFICATION_METADATA_VERSION, 24);
+  // backfill it starts. Version 25 adds only externally reviewed, exact Audio Union product-type
+  // buckets while retaining the existing bounded active-inventory selectors.
+  assert.equal(CATEGORY_CLASSIFICATION_METADATA_VERSION, 25);
 });

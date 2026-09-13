@@ -82,6 +82,22 @@ test("a bare speaker seller bucket maps to the broad loudspeaker type", () => {
   }
 });
 
+test("reviewed Audio Union product-type buckets classify without broadening seller evidence", () => {
+  for (const [title, rawCategory, expected] of [
+    ["Triode TRV-A300XR（WE300B仕様）", "管球式プリメインアンプ", "AMP.INTEGRATED"],
+    [
+      "JBL JBL4329P WALJN",
+      "アンプ内蔵ステレオ・ワイヤレス・スピーカー・システム",
+      "SPK.LOUDSPEAKER",
+    ],
+    ["Mark Levinson No5302", "デュアルモノラル・パワーアンプ", "AMP.POWER"],
+  ] as const) {
+    const product = classify(title, rawCategory);
+    assert.equal(product.classificationStatus, "classified", rawCategory);
+    assert.equal(product.primaryCategoryId, expected, rawCategory);
+  }
+});
+
 // --- G-2: brand-anchored DAP model families ------------------------------------------------------
 
 /** The listings the audit named as unambiguous misclassifications. */
@@ -181,6 +197,7 @@ test("a specific seller bucket is still inferred, and still held at the corrobor
     ["フロア型スピーカー(ペア)", "SPK.LOUDSPEAKER"],
     ["管球式フォノイコライザー", "AMP.PHONO"],
     ["ステレオパワーアンプ", "AMP.POWER"],
+    ["管球式パワーアンプ", "AMP.POWER"],
   ] as const) {
     assert.equal(inferExplicitCategoryIds(rawCategory)[0], expected, rawCategory);
     const product = classify("Example Model X", rawCategory);
