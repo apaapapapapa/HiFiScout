@@ -1,7 +1,5 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
 import { isRecord } from "../../src/types.js";
 import {
   assessHarnessReport,
@@ -11,6 +9,7 @@ import {
   requireTimestamp,
 } from "./report.js";
 import type { CheckScope, HarnessCheck, HarnessReport } from "./report.js";
+import { updateJsonRevision } from "./store.js";
 
 export interface HarnessTask {
   id: string;
@@ -172,39 +171,23 @@ export async function saveCheckpoint(
 ) {
   const task = parseHarnessTask(taskValue);
   const report = parseHarnessReport(reportValue);
-  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0)
-    throw new Error("invalid_expected_revision");
-  await mkdir(dirname(path), { recursive: true });
-  const lockPath = `${path}.lock`;
-  const lock = await open(lockPath, "wx");
-  const temporary = `${path}.${randomUUID()}.tmp`;
-  try {
-    let previous: Checkpoint | null = null;
-    try {
-      previous = parseCheckpoint(JSON.parse(await readFile(path, "utf8")));
-    } catch (error) {
-      if (!isRecord(error) || error.code !== "ENOENT") throw error;
-    }
-    if ((previous?.revision ?? 0) !== expectedRevision)
-      throw new Error("checkpoint_revision_conflict");
-    if (previous && previous.taskDigest !== taskDigest(task))
-      throw new Error("task_scope_changed_use_a_new_checkpoint");
-    const next: Checkpoint = {
-      schemaVersion: 1,
-      revision: expectedRevision + 1,
-      task,
-      taskDigest: taskDigest(task),
-      report,
-      checkout,
-      updatedAt: new Date().toISOString(),
-    };
-    const assessment = assessCheckpoint(next, checkout);
-    await writeFile(temporary, JSON.stringify(next, null, 2) + "\n", { flag: "wx" });
-    await rename(temporary, path);
-    return assessment;
-  } finally {
-    await rm(temporary, { force: true });
-    await lock.close();
-    await rm(lockPath, { force: true });
-  }
+  const next = await updateJsonRevision(
+    path,
+    expectedRevision,
+    parseCheckpoint,
+    (previous): Checkpoint => {
+      if (previous && previous.taskDigest !== taskDigest(task))
+        throw new Error("task_scope_changed_use_a_new_checkpoint");
+      return {
+        schemaVersion: 1,
+        revision: expectedRevision + 1,
+        task,
+        taskDigest: taskDigest(task),
+        report,
+        checkout,
+        updatedAt: new Date().toISOString(),
+      };
+    },
+  );
+  return assessCheckpoint(next, checkout);
 }

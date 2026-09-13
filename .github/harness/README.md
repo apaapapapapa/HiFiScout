@@ -16,6 +16,14 @@ Repairs cannot modify the loop controller, harness gates, CI, agent authority, d
 configuration or migrations. Such changes need a separate ordinary engineering PR. Task prose and
 incident evidence never become shell commands or permission to change the fixed acceptance rules.
 
+Create a journal with `vp run harness loop init <spec.json> <state.json>`; inspect it with
+`vp run harness loop history <state.json>`. Journals extend the existing checkpoint storage primitive:
+exclusive writer locks, optimistic revisions, synced temporary files and atomic replacement preserve
+the last complete state. Events are append-only, ordered and chained to the contract digest. This
+detects accidental edits, not a malicious writer able to replace the whole journal. Preserve journals
+as CI artifacts or operator-owned task files. An abandoned lock needs deliberate writer-liveness
+checking before removal. Inspecting history does not execute its contents or restart a stopped run.
+
 ## Evidence reports
 
 Run `vp run harness report .generated/harness/report.json` to validate and assess a report.
